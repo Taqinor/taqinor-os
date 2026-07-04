@@ -349,6 +349,12 @@ class AchatsParametres(models.Model):
     # par défaut (garde de sécurité), contournable avec motif tracé via
     # `sortir_lot_entrepot(..., forcer=True, motif=...)`.
     bloquer_stock_perime = models.BooleanField(default=True)
+    # XSTK8 — refuse par défaut toute écriture qui ferait passer
+    # `Produit.quantite_stock`/`StockEmplacement.quantite` sous zéro (sorties
+    # chantier/assemblage, retours fournisseur…). False = comportement
+    # historique inchangé (aucun garde, comme avant XSTK8) si activé
+    # explicitement par la société.
+    stock_negatif_autorise = models.BooleanField(default=False)
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
 

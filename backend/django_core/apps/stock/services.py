@@ -638,6 +638,30 @@ def export_valorisation_xlsx(company):
         sheet_title='Valorisation')
 
 
+# ── XSTK8 — Contrôle du stock négatif (garde configurable) ──────────────────
+# Seul `transfer_stock` refusait une quantité insuffisante ; les AUTRES
+# chemins d'écriture (sorties chantier assemblage, retours fournisseur) ne
+# vérifiaient rien. `AchatsParametres.stock_negatif_autorise` (défaut False)
+# fait respecter le même garde là où il manquait — le garde EXISTANT de
+# `transfer_stock` reste inchangé (ne l'appelle pas, a déjà le sien). Les
+# données historiques déjà négatives restent lisibles (le garde ne s'applique
+# qu'à une ÉCRITURE qui ferait PASSER sous zéro, jamais à la lecture).
+
+def check_negative_stock_guard(company, quantite_avant, quantite_apres):
+    """Lève ValueError si `quantite_apres` serait négatif et que la société
+    n'autorise pas le stock négatif (`AchatsParametres.stock_negatif_
+    autorise`, défaut False = refuse). Ne fait rien si le réglage l'autorise
+    ou si le résultat reste ≥ 0 (comportement historique inchangé)."""
+    if quantite_apres >= 0:
+        return
+    from .models import AchatsParametres
+    parametres = AchatsParametres.for_company(company)
+    if not parametres.stock_negatif_autorise:
+        raise ValueError(
+            f'Stock insuffisant ({quantite_avant} disponible) — cette '
+            'opération ferait passer le stock sous zéro.')
+
+
 # ── N19 — Retour fournisseur : validation = décrément de stock (SORTIE) ───────
 
 def apply_retour_fournisseur(retour, user):
@@ -659,6 +683,7 @@ def apply_retour_fournisseur(retour, user):
                        .get(pk=ligne.produit_id))
             qte_avant = produit.quantite_stock
             qte_apres = qte_avant - ligne.quantite
+            check_negative_stock_guard(retour.company, qte_avant, qte_apres)
             MouvementStock.objects.create(
                 company=retour.company, produit=produit,
                 type_mouvement=MouvementStock.TypeMouvement.SORTIE,
@@ -2005,6 +2030,7 @@ def consommer_et_produire_assemblage(*, company, kit, composants, produit_compos
             p = Produit.objects.select_for_update().get(id=comp_produit.id)
             avant = p.quantite_stock
             apres = avant - qte_conso
+            check_negative_stock_guard(company, avant, apres)
             mvt = record_stock_movement(
                 company=company, produit=p,
                 type_mouvement=mouvement_type_sortie(),
