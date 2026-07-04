@@ -86,6 +86,9 @@ const STATIC_TRANSLATED: readonly string[] = [
   '/production-mesuree',
   '/ensoleillement-maroc',
   '/parrainage',
+  // WB15 — même écart : routes EN/AR livrées mais jamais enregistrées, donc
+  // aucun hreflang émis sur les 3 URLs.
+  '/methodologie-estimation',
   // W254 — pilier « recharge VE au solaire » : routes EN/AR livrées ci-dessous.
   '/recharge-voiture-electrique-solaire',
 ];
