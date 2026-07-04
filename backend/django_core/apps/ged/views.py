@@ -2924,6 +2924,30 @@ class PlanificationDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             company=self.request.user.company, created_by=self.request.user)
 
 
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def analytique_ged(request):
+    """XGED26 — Analytique workflow d'approbation & signature (KPIs réels).
+
+    `GET ged/analytique/?date_debut=AAAA-MM-JJ&date_fin=AAAA-MM-JJ` — responsable/
+    admin uniquement. Renvoie `{"approbations": {...}, "signatures": {...}}`
+    (voir `selectors.analytique_approbations`/`analytique_signatures` pour le
+    détail des clés) sur des données RÉELLES de la société courante, période
+    filtrable, divide-by-zero gardé (aucune donnée → moyennes `None`, jamais
+    une 500)."""
+    from django.utils.dateparse import parse_date
+
+    date_debut = parse_date(request.query_params.get('date_debut') or '')
+    date_fin = parse_date(request.query_params.get('date_fin') or '')
+    company = request.user.company
+    return Response({
+        'approbations': selectors.analytique_approbations(
+            company, date_debut=date_debut, date_fin=date_fin),
+        'signatures': selectors.analytique_signatures(
+            company, date_debut=date_debut, date_fin=date_fin),
+    })
+
+
 # ── GED20 — Endpoint PUBLIC (sans login) servant un document par jeton ───────
 # AUTHENTIFIÉ UNIQUEMENT PAR LE JETON : aucune identité/société n'est lue de la
 # requête. Tout est résolu DEPUIS le jeton (qui ne référence qu'un seul document

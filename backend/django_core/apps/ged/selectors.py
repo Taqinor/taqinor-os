@@ -6,8 +6,9 @@ Toutes les lectures sont bornées à une société.
 """
 from .models import (
     ACL_RANK, AclGed, ArchivageLegal, Cabinet, Coffre, DemandeApprobation,
-    Document, DocumentLien, DocumentTag, DocumentVersion, Folder, LegalHold,
-    PartageGed, PolitiqueRetention, RegleAclMetadonnee,
+    DemandeSignatureDocument, Document, DocumentLien, DocumentTag,
+    DocumentVersion, Folder, LegalHold, PartageGed, PolitiqueRetention,
+    RegleAclMetadonnee,
 )
 
 
@@ -900,3 +901,137 @@ def regles_acl_metadonnee_for_company(company):
     return (RegleAclMetadonnee.objects
             .filter(company=company)
             .select_related('role', 'created_by'))
+
+
+# ── XGED26 — Analytique workflow & signature ────────────────────────────────
+
+def _duree_moyenne_jours(paires):
+    """Moyenne (en JOURS, float) des écarts `(fin - debut)` d'une liste de
+    tuples `(debut, fin)` — DIVIDE-BY-ZERO gardé (liste vide → None, jamais
+    une ZeroDivisionError)."""
+    ecarts = [
+        (fin - debut).total_seconds() / 86400.0
+        for debut, fin in paires if debut is not None and fin is not None
+    ]
+    if not ecarts:
+        return None
+    return round(sum(ecarts) / len(ecarts), 2)
+
+
+def analytique_approbations(company, *, date_debut=None, date_fin=None):
+    """XGED26 — KPIs d'approbation documentaire (GED18/XGED20) sur une période.
+
+    Renvoie un dict :
+      * ``temps_cycle_moyen_jours`` — délai moyen création → décision
+        (`en_attente`→`approuve`/`rejete`), toutes demandes DÉCIDÉES de la
+        période ;
+      * ``par_statut`` — compte de demandes par statut ;
+      * ``par_emetteur`` — compte de demandes par demandeur (username) ;
+      * ``goulots`` — pour les demandes routées via `RegleApprobationGed`
+        (XGED20, `ChaineApprobationGed`), le délai moyen PAR RANG d'étape
+        (rang → jours moyens jusqu'à approbation de ce rang) — l'étape la
+        plus lente ressort en tête (triée décroissant).
+
+    DIVIDE-BY-ZERO gardé (aucune donnée → moyennes `None`, compteurs `0`).
+    Bornée à la société — jamais de fuite cross-société."""
+    from django.db.models import Count
+
+    qs = DemandeApprobation.objects.filter(company=company)
+    if date_debut is not None:
+        qs = qs.filter(created_at__gte=date_debut)
+    if date_fin is not None:
+        qs = qs.filter(created_at__lte=date_fin)
+
+    decidees = qs.exclude(decision_le__isnull=True)
+    temps_cycle_moyen = _duree_moyenne_jours(
+        [(d.created_at, d.decision_le) for d in decidees])
+
+    par_statut = {
+        row['statut']: row['n']
+        for row in qs.values('statut').annotate(n=Count('id'))
+    }
+    par_emetteur = {
+        (row['demandeur__username'] or '—'): row['n']
+        for row in qs.values('demandeur__username').annotate(n=Count('id'))
+    }
+
+    # Goulots — délai moyen par rang d'étape des chaînes séquentielles XGED20.
+    from .models import ChaineApprobationGed
+    delais_par_rang = {}
+    chaines = (ChaineApprobationGed.objects
+               .filter(company=company, demande__in=qs)
+               .select_related('demande'))
+    for chaine in chaines:
+        debut = chaine.demande.created_at
+        for rang, etape in enumerate(chaine.etapes or []):
+            decision_iso = etape.get('decision_le')
+            if not decision_iso:
+                continue
+            try:
+                from django.utils.dateparse import parse_datetime
+                fin = parse_datetime(decision_iso)
+            except Exception:  # pragma: no cover - défensif.
+                fin = None
+            if fin is None:
+                continue
+            delais_par_rang.setdefault(rang, []).append((debut, fin))
+    goulots = [
+        {'rang': rang, 'delai_moyen_jours': _duree_moyenne_jours(paires)}
+        for rang, paires in delais_par_rang.items()
+    ]
+    goulots.sort(
+        key=lambda g: (g['delai_moyen_jours'] is None, -(g['delai_moyen_jours'] or 0)))
+
+    return {
+        'temps_cycle_moyen_jours': temps_cycle_moyen,
+        'par_statut': par_statut,
+        'par_emetteur': par_emetteur,
+        'goulots': goulots,
+        'total': qs.count(),
+    }
+
+
+def analytique_signatures(company, *, date_debut=None, date_fin=None):
+    """XGED26 — KPIs de signature électronique (GED30/XGED1/XGED2) sur une
+    période.
+
+    Renvoie un dict :
+      * ``taux_completion`` — pourcentage (0-100) de demandes SIGNÉES parmi
+        toutes les demandes de la période (None si aucune demande) ;
+      * ``delai_moyen_envoi_signature_jours`` — délai moyen entre
+        `date_demande` et `date_signature` pour les demandes SIGNÉES ;
+      * ``par_statut`` — compte de demandes par statut ;
+      * ``par_emetteur`` — compte de demandes par créateur (username).
+
+    DIVIDE-BY-ZERO gardé. Bornée à la société — jamais de fuite cross-société."""
+    from django.db.models import Count
+
+    qs = DemandeSignatureDocument.objects.filter(company=company)
+    if date_debut is not None:
+        qs = qs.filter(date_demande__gte=date_debut)
+    if date_fin is not None:
+        qs = qs.filter(date_demande__lte=date_fin)
+
+    total = qs.count()
+    signees = qs.filter(statut='signe')
+    taux_completion = (
+        round((signees.count() / total) * 100, 2) if total else None)
+    delai_moyen = _duree_moyenne_jours(
+        [(d.date_demande, d.date_signature) for d in signees])
+
+    par_statut = {
+        row['statut']: row['n']
+        for row in qs.values('statut').annotate(n=Count('id'))
+    }
+    par_emetteur = {
+        (row['created_by__username'] or '—'): row['n']
+        for row in qs.values('created_by__username').annotate(n=Count('id'))
+    }
+
+    return {
+        'taux_completion': taux_completion,
+        'delai_moyen_envoi_signature_jours': delai_moyen,
+        'par_statut': par_statut,
+        'par_emetteur': par_emetteur,
+        'total': total,
+    }
