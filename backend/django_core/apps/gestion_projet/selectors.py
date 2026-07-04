@@ -1908,6 +1908,60 @@ def heures_attendues_vs_saisies(company, ressource, debut, fin):
     return base
 
 
+# ── Classement de saisie des temps — leaderboard interne (ZPRJ6) ────────────
+def classement_temps(company, debut, fin):
+    """Classement de saisie des temps par ``RessourceProfil`` (ZPRJ6).
+
+    Odoo Timesheets a un leaderboard gamifié (heures encodées, complétude)
+    pour inciter à la saisie. Pour CHAQUE ``RessourceProfil`` ACTIVE liée à un
+    ``user`` (une ressource sans compte ERP n'a rien à « classer ») sur
+    [debut, fin] : ``total_heures`` saisies (réutilise ``heures_attendues_vs_
+    saisies`` — ZPRJ5, ``total_saisi``), ``taux_completude_pct`` (jours saisis
+    / jours ouvrés attendus × 100, réutilise le même sélecteur — arrondi 1
+    décimale, ``None`` si aucun jour attendu, GARDE division par zéro),
+    ``jours_de_retard`` (jours ouvrés attendus SANS AUCUNE saisie sur la
+    fenêtre — même comptage que ``temps_manquants``/XPRJ7, calculé ici
+    directement pour rester cohérent avec le même sélecteur ZPRJ5 déjà
+    exécuté, sans le ré-invoquer).
+
+    AUCUN montant/coût interne (``cout``/``cout_horaire``) n'est exposé ici —
+    seules les heures et la complétude, jamais une donnée de pilotage
+    financier. Lecture seule, multi-société. Trié par ``taux_completude_pct``
+    DÉCROISSANT puis ``total_heures`` DÉCROISSANT (les plus assidus d'abord).
+    Renvoie ``{'debut', 'fin', 'lignes': [{ressource_id, ressource_nom,
+    total_heures, taux_completude_pct, jours_de_retard}, ...]}``.
+    """
+    ressources = RessourceProfil.objects.filter(
+        company=company, actif=True, user__isnull=False)
+
+    lignes = []
+    for ressource in ressources.order_by('nom', 'id'):
+        data = heures_attendues_vs_saisies(company, ressource, debut, fin)
+        jours_attendus = data['jours_attendus']
+        jours_saisis = sum(
+            1 for jour in data['par_jour'] if jour['saisi'] > 0)
+        if jours_attendus > 0:
+            taux_completude_pct = round(
+                jours_saisis / jours_attendus * 100, 1)
+        else:
+            taux_completude_pct = None
+        jours_de_retard = jours_attendus - jours_saisis
+
+        lignes.append({
+            'ressource_id': ressource.id,
+            'ressource_nom': ressource.nom,
+            'total_heures': data['total_saisi'],
+            'taux_completude_pct': taux_completude_pct,
+            'jours_de_retard': jours_de_retard,
+        })
+
+    lignes.sort(key=lambda ln: (
+        -(ln['taux_completude_pct'] or 0), -ln['total_heures']))
+
+    return {'debut': debut.isoformat(), 'fin': fin.isoformat(),
+            'lignes': lignes}
+
+
 # ── Rapprochement pointages RH ↔ temps projet (XPRJ8) ────────────────────────
 def rapprochement_pointages(company, debut, fin, seuil_heures=Decimal('0.5')):
     """Croise pointages RH (FG166) et temps projet, par employé/jour (XPRJ8).

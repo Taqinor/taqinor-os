@@ -2183,6 +2183,25 @@ class TimesheetViewSet(_GestionProjetBaseViewSet):
             request.user.company, ressource, debut, fin)
         return Response(data)
 
+    @action(detail=False, methods=['get'], url_path='classement')
+    def classement(self, request):
+        """Classement de saisie des temps — leaderboard interne (ZPRJ6).
+
+        Query params ``?debut=YYYY-MM-DD&fin=YYYY-MM-DD`` (obligatoires).
+        Délègue à ``selectors.classement_temps`` (trié complétude puis
+        heures). AUCUN montant/coût interne exposé — seulement heures et
+        complétude. Toujours scopé société.
+        """
+        debut = _parse_date_param(request.query_params.get('debut'))
+        fin = _parse_date_param(request.query_params.get('fin'))
+        if debut is None or fin is None:
+            return Response(
+                {'detail': 'Les paramètres « debut » et « fin » '
+                           '(YYYY-MM-DD) sont obligatoires.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        data = selectors.classement_temps(request.user.company, debut, fin)
+        return Response(data)
+
     @action(detail=False, methods=['get'], url_path='rapprochement')
     def rapprochement(self, request):
         """Rapprochement pointages RH ↔ temps projet, par employé/jour (XPRJ8).
