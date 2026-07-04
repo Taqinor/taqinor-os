@@ -28,6 +28,7 @@ from .models import (
     CalendrierProjet,
     DependanceTache,
     Equipe,
+    EvaluationProjet,
     Indisponibilite,
     ItemChecklistTache,
     Jalon,
@@ -88,6 +89,7 @@ from .serializers import (
     ProjetLienSerializer,
     ProjetSerializer,
     RecurrenceTacheSerializer,
+    ReglageTempsSerializer,
     RessourceProfilSerializer,
     RisqueSerializer,
     TacheSerializer,
@@ -197,6 +199,72 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
             ProjetSerializer(resultat['projet']).data,
             status=status.HTTP_201_CREATED)
 
+    @action(detail=True, methods=['post'], url_path='generer-plan-ia')
+    def generer_plan_ia(self, request, pk=None):
+        """Propose un brouillon de WBS via l'IA depuis un devis lié (XPRJ29).
+
+        Corps : ``devis_id`` (obligatoire), ``type_installation`` (optionnel,
+        défaut ``residentiel``). Key-gated sur la clé LLM existante
+        (``GROQ_API_KEY``/provider) — SANS clé, réponse 503 propre (aucune
+        écriture). Ne matérialise RIEN : renvoie la PROPOSITION JSON, à
+        matérialiser via ``confirmer-plan-ia`` après relecture utilisateur.
+        La société est garantie par ``get_object`` (queryset scopé société) :
+        un projet d'une autre société → 404. Un devis d'une autre société,
+        inexistant ou non ACCEPTÉ → 404.
+        """
+        from apps.ventes.selectors import devis_pour_projet
+
+        projet = self.get_object()
+        devis_id = request.data.get('devis_id')
+        if not devis_id:
+            return Response(
+                {'devis_id': 'devis_id est obligatoire.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        devis_data = devis_pour_projet(devis_id, projet.company)
+        if devis_data is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        type_installation = request.data.get(
+            'type_installation', 'residentiel')
+        try:
+            plan = services.proposer_plan_taches_ia(
+                devis_data, type_installation, user=request.user)
+        except services.PlanTachesIAIndisponible as exc:
+            return Response(
+                {'detail': str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        except services.PlanTachesIAError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(plan)
+
+    @action(detail=True, methods=['post'], url_path='confirmer-plan-ia')
+    def confirmer_plan_ia(self, request, pk=None):
+        """Matérialise un plan de tâches PROPOSÉ après confirmation (XPRJ29).
+
+        Corps : ``taches`` (liste, forme ``{code, libelle, phase,
+        duree_jours, dependances_fs}`` — celle renvoyée par
+        ``generer-plan-ia``, éventuellement éditée par l'utilisateur avant
+        confirmation). Action EXPLICITE utilisateur : jamais automatique.
+        Crée phases/tâches/dépendances (voir ``services.
+        materialiser_plan_taches``). La société est garantie par
+        ``get_object`` : un projet d'une autre société → 404.
+        """
+        projet = self.get_object()
+        taches = request.data.get('taches')
+        if not isinstance(taches, list) or not taches:
+            return Response(
+                {'taches': 'Une liste de tâches non vide est obligatoire.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            creees = services.materialiser_plan_taches(
+                projet, {'taches': taches})
+        except services.PlanTachesIAError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            TacheSerializer(creees, many=True).data,
+            status=status.HTTP_201_CREATED)
+
     # ── Machine à états (PROPRE au projet, jamais STAGES.py) ─────────────────
     def _transition(self, request, *, allowed_from, target):
         """Applique une transition de statut si elle est légale, sinon 400.
@@ -220,6 +288,8 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
         ProjetActivity.objects.create(
             company=request.user.company,
             projet=projet,
+            cible_type=ProjetActivity.CibleType.PROJET,
+            cible_id=projet.id,
             old_value=old,
             new_value=target,
             auteur=request.user,
@@ -454,6 +524,38 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
             except (ValueError, TypeError):
                 seuil = None
         return Response(selectors.retards_projet(projet, seuil_jours=seuil))
+
+    @action(detail=True, methods=['get'], url_path='penalites-retard')
+    def penalites_retard(self, request, pk=None):
+        """Exposition COURANTE aux pénalités de retard d'un marché public
+        (XPRJ27) — donnée INTERNE de pilotage, jamais dans un document client.
+
+        La société est garantie par ``get_object`` (queryset scopé société) :
+        un projet d'une autre société → 404. Délègue au sélecteur
+        ``penalites_retard`` (lecture seule) : avant le délai contractuel →
+        exposition nulle ; un projet PRIVÉ (champs marché-public absents) →
+        ``applicable=False`` sans erreur.
+        """
+        projet = self.get_object()
+        return Response(selectors.penalites_retard(projet))
+
+    @action(detail=True, methods=['post'], url_path='lien-evaluation')
+    def lien_evaluation(self, request, pk=None):
+        """Crée/renvoie le lien tokenisé d'évaluation CSAT du projet (ZPRJ7).
+
+        IDEMPOTENT (relation 1–1 — ``get_or_create``) : un second appel
+        renvoie le MÊME lien (jamais de nouveau jeton, jamais de doublon). À
+        envoyer au client à la CLÔTURE du projet. La société est garantie par
+        ``get_object`` : un projet d'une autre société → 404.
+        """
+        projet = self.get_object()
+        evaluation, _ = EvaluationProjet.objects.get_or_create(
+            company=projet.company, projet=projet)
+        return Response({
+            'projet_id': projet.id,
+            'token': evaluation.token,
+            'deja_soumis': evaluation.soumis_le is not None,
+        })
 
     @action(detail=True, methods=['get'], url_path='couts-engages-reels')
     def couts_engages_reels(self, request, pk=None):
@@ -1072,13 +1174,20 @@ class TacheViewSet(_GestionProjetBaseViewSet):
         return qs
 
     def perform_update(self, serializer):
-        """Pose ``date_fin_reelle`` côté serveur au passage à TERMINE (XPRJ17).
+        """Pose ``date_fin_reelle`` côté serveur au passage à TERMINE (XPRJ17)
+        et journalise les champs sensibles modifiés (XPRJ26).
 
         Réinitialisée si le statut repasse à un état non-terminé (correction
         d'une clôture erronée). Base du burndown (charge restante reconstituée
-        à chaque date).
+        à chaque date). Capture les valeurs AVANT sauvegarde pour
+        ``services.journaliser_modification_tache`` (statut, dates prévues,
+        charge, assigné) — une entrée ``ProjetActivity`` par champ RÉELLEMENT
+        changé, auteur posé côté serveur.
         """
         instance = serializer.instance
+        anciennes_valeurs = {
+            champ: getattr(instance, champ)
+            for champ in services.TACHE_CHAMPS_SUIVIS}
         nouveau_statut = serializer.validated_data.get(
             'statut', instance.statut)
         if nouveau_statut == Tache.Statut.TERMINE \
@@ -1090,6 +1199,8 @@ class TacheViewSet(_GestionProjetBaseViewSet):
             serializer.save(date_fin_reelle=None)
         else:
             serializer.save()
+        services.journaliser_modification_tache(
+            serializer.instance, anciennes_valeurs, auteur=self.request.user)
 
     @action(detail=False, methods=['get'], url_path='mes-taches')
     def mes_taches(self, request):
@@ -1178,15 +1289,20 @@ class TacheViewSet(_GestionProjetBaseViewSet):
     def arreter_chrono(self, request, pk=None):
         """Arrête le chrono actif de l'utilisateur et crée la timesheet (XPRJ5).
 
-        La durée est arrondie au quart d'heure supérieur (``pas_minutes``,
-        paramétrable via le corps de requête — défaut 15). Refuse (400) si
-        l'utilisateur n'a aucun chrono actif ou aucun profil ressource lié.
+        Par DÉFAUT, la durée est arrondie selon le réglage temps de la
+        société (``ReglageTemps`` — ZPRJ1, pas/mode paramétrables via
+        ``reglages-temps/``) ; un ``pas_minutes`` explicite dans le corps de
+        requête reste supporté (override ponctuel, arrondi au SUPÉRIEUR de ce
+        pas — compatibilité). Refuse (400) si l'utilisateur n'a aucun chrono
+        actif ou aucun profil ressource lié.
         """
-        pas_minutes = request.data.get('pas_minutes', 15)
-        try:
-            pas_minutes = int(pas_minutes)
-        except (TypeError, ValueError):
-            pas_minutes = 15
+        pas_minutes_raw = request.data.get('pas_minutes')
+        pas_minutes = None
+        if pas_minutes_raw is not None:
+            try:
+                pas_minutes = int(pas_minutes_raw)
+            except (TypeError, ValueError):
+                pas_minutes = None
         try:
             timesheet = services.arreter_chrono(
                 request.user, pas_minutes=pas_minutes)
@@ -1212,6 +1328,31 @@ class ChronoActifViewSet(viewsets.ViewSet):
         if chrono is None:
             return Response(status=status.HTTP_204_NO_CONTENT)
         return Response(ChronoEnCoursSerializer(chrono).data)
+
+
+class ReglageTempsViewSet(viewsets.ViewSet):
+    """Réglages société d'encodage des temps (ZPRJ1) — singleton par société.
+
+    ``GET reglages-temps/mon-reglage/`` / ``PATCH reglages-temps/mon-reglage/``
+    lisent/éditent le réglage de l'appelant (créé à la demande — ``get_or_
+    create``, jamais plusieurs fois pour une même société). ``company`` posée
+    CÔTÉ SERVEUR, jamais lue du corps de requête. Consommé par ``services.
+    arrondir_duree`` (chrono XPRJ5) et par les sélecteurs ``plan_de_charge``/
+    ``nivellement_charge`` (``heures_par_jour``). Même motif que
+    ``apps.rh.views.ReglageRHViewSet`` (« mon-reglage »).
+    """
+    permission_classes = [IsResponsableOrAdmin]
+
+    @action(detail=False, methods=['get', 'patch'], url_path='mon-reglage')
+    def mon_reglage(self, request):
+        reglage = services.get_or_create_reglage_temps(request.user.company)
+        if request.method == 'PATCH':
+            ser = ReglageTempsSerializer(
+                reglage, data=request.data, partial=True)
+            ser.is_valid(raise_exception=True)
+            ser.save()
+            return Response(ser.data)
+        return Response(ReglageTempsSerializer(reglage).data)
 
 
 class DependanceTacheViewSet(_GestionProjetBaseViewSet):
@@ -1278,6 +1419,22 @@ class JalonViewSet(_GestionProjetBaseViewSet):
         if facturation in ('1', 'true', 'True'):
             qs = qs.filter(facturation_pct__gt=0)
         return qs
+
+    def perform_update(self, serializer):
+        """Journalise les champs sensibles modifiés d'un jalon (XPRJ26).
+
+        Capture les valeurs AVANT sauvegarde pour
+        ``services.journaliser_modification_jalon`` (date prévue, statut,
+        facturation_pct) — une entrée ``ProjetActivity`` par champ RÉELLEMENT
+        changé, auteur posé côté serveur. Comportement de sauvegarde inchangé.
+        """
+        instance = serializer.instance
+        anciennes_valeurs = {
+            champ: getattr(instance, champ)
+            for champ in services.JALON_CHAMPS_SUIVIS}
+        serializer.save()
+        services.journaliser_modification_jalon(
+            serializer.instance, anciennes_valeurs, auteur=self.request.user)
 
     @action(detail=True, methods=['post'], url_path='facturer')
     def facturer(self, request, pk=None):
@@ -1653,6 +1810,84 @@ class AffectationRessourceViewSet(_GestionProjetBaseViewSet):
             qs = qs.filter(equipe_id=equipe)
         return qs
 
+    @action(detail=False, methods=['post'], url_path='publier')
+    def publier(self, request):
+        """Publie un lot d'affectations BROUILLON (ZPRJ2) et notifie chaque
+        ressource concernée UNE FOIS.
+
+        Corps : soit ``ids`` (liste d'identifiants), soit ``ressource`` +
+        ``debut``/``fin`` (``YYYY-MM-DD``, période). IDEMPOTENT : une
+        affectation déjà publiée est ignorée sans erreur (comptée dans
+        ``nb_deja_publiees``). ``company`` est TOUJOURS celle de l'appelant.
+        """
+        ids = request.data.get('ids')
+        ressource_id = request.data.get('ressource')
+        debut = _parse_date_param(request.data.get('debut'))
+        fin = _parse_date_param(request.data.get('fin'))
+
+        if not ids and not (ressource_id and debut and fin):
+            return Response(
+                {'detail': (
+                    "Fournir soit 'ids' (liste), soit 'ressource' + 'debut' "
+                    "+ 'fin'.")},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        resultat = services.publier_affectations(
+            request.user.company, ids=ids, ressource_id=ressource_id,
+            debut=debut, fin=fin, auteur=request.user)
+        return Response(resultat)
+
+    @action(detail=False, methods=['post'], url_path='copier-semaine')
+    def copier_semaine(self, request):
+        """Copie le plan de ressources d'une semaine SOURCE vers une semaine
+        CIBLE (ZPRJ3) — équivalent « Copy previous week ».
+
+        Corps : ``semaine_source``/``semaine_cible`` (``YYYY-MM-DD``,
+        obligatoires — débuts des deux fenêtres de 7 jours), ``ressource``
+        ou ``equipe`` (optionnels, filtrent la copie). Saute toute copie qui
+        tomberait sur une indisponibilité ou un conflit (rapport détaillé).
+        Les nouvelles affectations sont créées en statut BROUILLON (ZPRJ2).
+        """
+        semaine_source = _parse_date_param(
+            request.data.get('semaine_source'))
+        semaine_cible = _parse_date_param(request.data.get('semaine_cible'))
+        if semaine_source is None or semaine_cible is None:
+            return Response(
+                {'detail': (
+                    "'semaine_source' et 'semaine_cible' (YYYY-MM-DD) sont "
+                    "obligatoires.")},
+                status=status.HTTP_400_BAD_REQUEST)
+        resultat = services.copier_semaine_precedente(
+            request.user.company,
+            semaine_source=semaine_source, semaine_cible=semaine_cible,
+            ressource_id=request.data.get('ressource'),
+            equipe_id=request.data.get('equipe'))
+        return Response(resultat)
+
+    @action(detail=False, methods=['post'], url_path='auto-affecter')
+    def auto_affecter(self, request):
+        """Applique (ou simule) l'auto-affectation des tâches en excès (ZPRJ4)
+        — équivalent Odoo Planning « Auto Plan ».
+
+        Corps : ``debut``/``fin`` (``YYYY-MM-DD``, obligatoires). Query
+        ``?simuler=1`` (PAR DÉFAUT) : ne mute rien, renvoie le plan proposé.
+        ``?confirm=1`` : applique réellement (déplace les affectations
+        sur-chargées vers les moins chargées disponibles, crée des
+        affectations pour les tâches sans affectation), toujours en statut
+        BROUILLON (ZPRJ2).
+        """
+        debut = _parse_date_param(request.data.get('debut'))
+        fin = _parse_date_param(request.data.get('fin'))
+        if debut is None or fin is None:
+            return Response(
+                {'detail': "'debut' et 'fin' (YYYY-MM-DD) sont obligatoires."},
+                status=status.HTTP_400_BAD_REQUEST)
+        confirmer = request.query_params.get('confirm') in (
+            '1', 'true', 'True')
+        resultat = services.auto_affecter(
+            request.user.company, debut, fin, confirmer=confirmer)
+        return Response(resultat)
+
 
 class IndisponibiliteViewSet(_GestionProjetBaseViewSet):
     """Indisponibilites des ressources de projet (PROJ17).
@@ -1938,6 +2173,53 @@ class TimesheetViewSet(_GestionProjetBaseViewSet):
                 for ligne in data['lignes']
             ],
         })
+
+    @action(detail=False, methods=['get'], url_path='heures-attendues')
+    def heures_attendues(self, request):
+        """Écart heures attendues vs saisies pour UNE ressource (ZPRJ5).
+
+        Query params ``?ressource=<id>&debut=YYYY-MM-DD&fin=YYYY-MM-DD``
+        (obligatoires). Délègue à ``selectors.heures_attendues_vs_saisies``
+        (jours ouvrés attendus, moins indisponibilités, comparés aux heures
+        RÉELLEMENT saisies — distinct de ``manquants``/XPRJ7 qui ne regarde
+        que les jours SANS AUCUNE saisie). ``ressource`` doit appartenir à la
+        société de l'appelant (sinon 404) ; sans ``user`` lié, réponse vide
+        propre plutôt qu'une erreur.
+        """
+        ressource_id = request.query_params.get('ressource')
+        debut = _parse_date_param(request.query_params.get('debut'))
+        fin = _parse_date_param(request.query_params.get('fin'))
+        if not ressource_id or debut is None or fin is None:
+            return Response(
+                {'detail': 'Les paramètres « ressource », « debut » et '
+                           '« fin » (YYYY-MM-DD) sont obligatoires.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        ressource = RessourceProfil.objects.filter(
+            id=ressource_id, company=request.user.company).first()
+        if ressource is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        data = selectors.heures_attendues_vs_saisies(
+            request.user.company, ressource, debut, fin)
+        return Response(data)
+
+    @action(detail=False, methods=['get'], url_path='classement')
+    def classement(self, request):
+        """Classement de saisie des temps — leaderboard interne (ZPRJ6).
+
+        Query params ``?debut=YYYY-MM-DD&fin=YYYY-MM-DD`` (obligatoires).
+        Délègue à ``selectors.classement_temps`` (trié complétude puis
+        heures). AUCUN montant/coût interne exposé — seulement heures et
+        complétude. Toujours scopé société.
+        """
+        debut = _parse_date_param(request.query_params.get('debut'))
+        fin = _parse_date_param(request.query_params.get('fin'))
+        if debut is None or fin is None:
+            return Response(
+                {'detail': 'Les paramètres « debut » et « fin » '
+                           '(YYYY-MM-DD) sont obligatoires.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        data = selectors.classement_temps(request.user.company, debut, fin)
+        return Response(data)
 
     @action(detail=False, methods=['get'], url_path='rapprochement')
     def rapprochement(self, request):

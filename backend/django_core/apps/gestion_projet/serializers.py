@@ -36,6 +36,7 @@ from .models import (
     PointAvancement,
     ProjetLien,
     RecurrenceTache,
+    ReglageTemps,
     RessourceProfil,
     Risque,
     SituationTravaux,
@@ -66,7 +67,13 @@ class ProjetSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'code', 'nom', 'description', 'statut', 'statut_display',
             'client_id', 'date_debut', 'date_fin_prevue', 'responsable',
-            'budget_total', 'date_creation',
+            'budget_total',
+            # Volet marchés publics (XPRJ27) — FACULTATIF, sans impact sur les
+            # projets privés (aucun champ obligatoire).
+            'numero_marche', 'maitre_ouvrage', 'delai_execution_jours',
+            'taux_penalite_retard', 'plafond_penalite_pct', 'montant_marche',
+            'contrat_id',
+            'date_creation',
         ]
         # ``statut`` est piloté UNIQUEMENT par les actions de transition
         # (machine à états côté serveur) — jamais écrit depuis le corps de
@@ -78,18 +85,23 @@ class ProjetSerializer(serializers.ModelSerializer):
 
 
 class ProjetActivitySerializer(serializers.ModelSerializer):
-    """Entrée du journal des transitions de statut d'un projet (lecture seule).
+    """Entrée du journal des modifications d'un projet (lecture seule).
 
-    ``company`` et ``auteur`` sont posés côté serveur ; jamais exposés en
-    écriture.
+    Timeline FUSIONNÉE (XPRJ26) : transitions de statut du projet lui-même
+    (``cible_type='projet'``) ET changements de champs sensibles de ses tâches
+    (``cible_type='tache'``) et jalons (``cible_type='jalon'``). ``company`` et
+    ``auteur`` sont posés côté serveur ; jamais exposés en écriture.
     """
     auteur_nom = serializers.CharField(
         source='auteur.username', read_only=True, default='')
+    cible_type_display = serializers.CharField(
+        source='get_cible_type_display', read_only=True)
 
     class Meta:
         model = ProjetActivity
         fields = [
-            'id', 'projet', 'old_value', 'new_value', 'auteur', 'auteur_nom',
+            'id', 'projet', 'cible_type', 'cible_type_display', 'cible_id',
+            'champ', 'old_value', 'new_value', 'auteur', 'auteur_nom',
             'date_creation',
         ]
         read_only_fields = fields
@@ -522,6 +534,8 @@ class AffectationRessourceSerializer(serializers.ModelSerializer):
         source='ressource.nom', read_only=True, default=None)
     equipe_nom = serializers.CharField(
         source='equipe.nom', read_only=True, default=None)
+    statut_publication_display = serializers.CharField(
+        source='get_statut_publication_display', read_only=True)
 
     class Meta:
         model = AffectationRessource
@@ -532,9 +546,14 @@ class AffectationRessourceSerializer(serializers.ModelSerializer):
             'actif_type', 'actif_id',
             'date_debut', 'date_fin',
             'charge_jours', 'quantite', 'note',
+            # Cycle de publication (ZPRJ2) — jamais posé depuis le corps de
+            # requête : seule l'action ``publier`` le déplace.
+            'statut_publication', 'statut_publication_display',
+            'publie_le', 'publie_par',
             'date_creation',
         ]
-        read_only_fields = ['date_creation']
+        read_only_fields = [
+            'statut_publication', 'publie_le', 'publie_par', 'date_creation']
 
     def validate_tache(self, value):
         return _meme_societe(self, value, 'Tache')
@@ -1239,3 +1258,36 @@ class PointAvancementSerializer(serializers.ModelSerializer):
 
     def validate_projet(self, value):
         return _meme_societe(self, value, 'Projet')
+
+
+class ReglageTempsSerializer(serializers.ModelSerializer):
+    """Réglages société d'encodage des temps (ZPRJ1) — singleton par société.
+
+    ``company`` n'est jamais exposée en écriture : posée côté serveur (get_or_
+    create scopé société). ``arrondi_minutes`` doit être un entier positif.
+    """
+    mode_arrondi_display = serializers.CharField(
+        source='get_mode_arrondi_display', read_only=True)
+    unite_saisie_display = serializers.CharField(
+        source='get_unite_saisie_display', read_only=True)
+
+    class Meta:
+        model = ReglageTemps
+        fields = [
+            'id', 'arrondi_minutes', 'mode_arrondi', 'mode_arrondi_display',
+            'unite_saisie', 'unite_saisie_display', 'heures_par_jour',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_arrondi_minutes(self, value):
+        if value is not None and value < 1:
+            raise serializers.ValidationError(
+                "Le pas d'arrondi doit être un entier positif (minutes).")
+        return value
+
+    def validate_heures_par_jour(self, value):
+        if value is not None and value <= 0:
+            raise serializers.ValidationError(
+                'Les heures par jour doivent être strictement positives.')
+        return value
