@@ -3623,8 +3623,18 @@ class ElementsVariablesPaie(models.Model):
 
     DISTINCT de ``apps.paie.ElementVariable`` (PAIE11) : ce modèle est le
     BORDEREAU récapitulatif RH côté employeur, alimenté manuellement ou par
-    agrégation des heures/absences ; le module paie le consomme via les
-    sélecteurs RH (jamais d'import croisé de models).
+    agrégation des heures/absences.
+
+    DÉCISION (YHIRE1) : ce bordereau reste un export EXTERNE UNIQUEMENT — à
+    l'usage d'un prestataire de paie tiers qui ne consomme pas l'ERP. Le
+    moteur de paie interne (``apps.paie.services.importer_elements_rh``) ne
+    le lit JAMAIS : il importe directement les heures sup validées
+    (``rh.selectors.heures_supp_pour_paie``), les absences non rémunérées
+    validées (``rh.selectors.absences_non_remunerees_pour_paie``) et les
+    primes validées du mois (``rh.selectors.primes_validees_pour_paie``) — ce
+    sont les sources de vérité, jamais ce bordereau agrégé. Ne JAMAIS ajouter
+    une 3ᵉ surface d'import paie : toute nouvelle donnée RH consommée par la
+    paie interne passe par un sélecteur fin dédié, pas par ce modèle.
 
     Multi-société : ``company`` posée CÔTÉ SERVEUR (jamais lue du corps) ;
     ``employe`` doit appartenir à la même société. Le couple

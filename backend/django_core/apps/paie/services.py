@@ -422,15 +422,19 @@ def importer_elements_rh(periode):
             if profil is None:
                 continue
             elements = _elements_rh_du_dossier(periode, dossier)
-            for type_, libelle, quantite, montant in elements:
+            for el in elements:
                 ElementVariable.objects.create(
                     company=periode.company,
                     periode=periode,
                     profil=profil,
-                    type=type_,
-                    libelle=libelle,
-                    quantite=quantite,
-                    montant=montant,
+                    type=el['type'],
+                    libelle=el['libelle'],
+                    quantite=el['quantite'],
+                    montant=el['montant'],
+                    categorie_hs=el.get(
+                        'categorie_hs') or ElementVariable.HS_JOUR,
+                    remunere=el.get('remunere', False),
+                    deduit_solde=el.get('deduit_solde', False),
                     source=ElementVariable.SOURCE_RH,
                 )
                 importes += 1
@@ -440,11 +444,85 @@ def importer_elements_rh(periode):
 def _elements_rh_du_dossier(periode, dossier):
     """Éléments variables RH d'un dossier pour la période — liste de tuples.
 
-    Renvoie ``[(type, libelle, quantite, montant), …]``. Point d'extension de
-    l'import RH (FG192) : tant que RH n'expose pas d'heures/absences du mois, on
-    renvoie une liste vide (import inerte, jamais d'erreur).
+    YHIRE1 — câble réellement l'import (l'ancien stub renvoyait toujours
+    ``[]``) : RH expose TOUT depuis trois sélecteurs fins de
+    ``apps.rh.selectors`` (jamais ``rh.models`` directement) —
+
+    * heures supplémentaires VALORISÉES (``heures_supp_pour_paie``, FG192) →
+      une ligne ``TYPE_HS`` par tranche non nulle (jour/nuit/férié),
+      ``montant`` déjà majoré ;
+    * demandes de congé VALIDÉES d'un ``TypeAbsence.remunere = False``
+      (``absences_non_remunerees_pour_paie``) → une ligne ``TYPE_ABSENCE``
+      (``remunere=False``, ``deduit_solde`` reprise du type) — la proration
+      PAIE13 existante s'applique automatiquement (une absence RÉMUNÉRÉE
+      n'a, par construction, aucune ligne ici : elle ne doit avoir aucun
+      impact sur le net) ;
+    * primes ``PrimeAttribuee`` VALIDÉES du mois
+      (``primes_validees_pour_paie``) → une ligne ``TYPE_PRIME``.
+
+    Renvoie une liste de dicts : ``{'type', 'libelle', 'quantite', 'montant',
+    'categorie_hs'?, 'remunere'?, 'deduit_solde'?}``.
     """
-    return []
+    import calendar
+
+    from apps.rh import selectors as rh_selectors
+
+    date_debut = date(periode.annee, periode.mois, 1)
+    date_fin = date(
+        periode.annee, periode.mois,
+        calendar.monthrange(periode.annee, periode.mois)[1])
+
+    elements = []
+
+    # ── Heures supplémentaires (FG168) ──────────────────────────────────
+    hs_tranches = (
+        ('hs_25', ElementVariable.HS_JOUR, 'Heures sup jour (25 %)'),
+        ('hs_50', ElementVariable.HS_NUIT, 'Heures sup nuit (50 %)'),
+        ('hs_100', ElementVariable.HS_FERIE,
+         'Heures sup férié/dimanche (100 %)'),
+    )
+    for ligne in rh_selectors.heures_supp_pour_paie(
+            dossier.company, date_debut, date_fin, employe_id=dossier.id):
+        total_tranches = sum(
+            (ligne[cle] for cle, _cat, _lib in hs_tranches), Decimal('0'))
+        for cle, categorie, libelle in hs_tranches:
+            quantite = ligne.get(cle) or Decimal('0')
+            if quantite <= 0:
+                continue
+            # Le montant déjà majoré est ventilé au prorata de la tranche
+            # (le sélecteur ne renvoie qu'un montant total par employé).
+            montant = ligne['montant_majore']
+            if total_tranches > 0:
+                montant = _q(
+                    ligne['montant_majore'] * quantite / total_tranches)
+            elements.append({
+                'type': ElementVariable.TYPE_HS, 'libelle': libelle,
+                'quantite': quantite, 'montant': montant,
+                'categorie_hs': categorie,
+            })
+
+    # ── Absences non rémunérées validées (FG163/FG164) ──────────────────
+    for absence in rh_selectors.absences_non_remunerees_pour_paie(
+            dossier.company, date_debut, date_fin, employe_id=dossier.id):
+        elements.append({
+            'type': ElementVariable.TYPE_ABSENCE,
+            'libelle': absence['type_absence_libelle'],
+            'quantite': absence['jours'], 'montant': Decimal('0'),
+            'remunere': False,
+            'deduit_solde': absence['deduit_solde'],
+        })
+
+    # ── Primes validées du mois (FG193) ─────────────────────────────────
+    for prime in rh_selectors.primes_validees_pour_paie(
+            dossier.company, periode.annee, periode.mois,
+            employe_id=dossier.id):
+        elements.append({
+            'type': ElementVariable.TYPE_PRIME,
+            'libelle': prime['type_prime_libelle'],
+            'quantite': Decimal('1'), 'montant': prime['montant'],
+        })
+
+    return elements
 
 
 # ── PAIE13 — Calcul du salaire de base proraté selon le type de rémunération ─
