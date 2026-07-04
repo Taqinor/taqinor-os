@@ -4,6 +4,7 @@ from django.http import HttpResponse  # noqa: F401
 from rest_framework import viewsets, filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
+from rest_framework.parsers import MultiPartParser, JSONParser  # noqa: F401
 from authentication.mixins import TenantMixin  # noqa: F401
 from apps.ventes.utils.references import create_with_reference  # noqa: F401
 from ..models import (  # noqa: F401
@@ -69,6 +70,7 @@ class FactureFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
             'paiements', 'echeancier', 'resoudre_exception',
+            'depuis_ocr',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -136,6 +138,56 @@ class FactureFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
                 except Exception:  # noqa: BLE001 — best-effort
                     pass
         return response
+
+    @action(detail=False, methods=['post'], url_path='depuis-ocr',
+            parser_classes=[MultiPartParser, JSONParser])
+    def depuis_ocr(self, request):
+        """XACC36 — SINK : convertit les champs extraits par l'OCR (prompt
+        stock de ``ocr_service.py``) en brouillon `FactureFournisseur`.
+
+        Corps (JSON ou multipart) : ``fields`` (JSON string ou objet —
+        ``donnees_structurees`` de l'OCR), ``file`` (le scan, optionnel —
+        rattaché en pièce jointe via records/MinIO), ``confirmer_malgre_
+        doublon`` (bool). Jamais de montant inventé : un champ manquant reste
+        vide. Sans fournisseur matché (ICE puis nom), refuse explicitement —
+        la saisie manuelle reste intacte (dégradation propre)."""
+        import json
+        from ..services import creer_facture_fournisseur_depuis_ocr
+
+        fields = request.data.get('fields') or {}
+        if isinstance(fields, str):
+            try:
+                fields = json.loads(fields)
+            except (TypeError, ValueError):
+                fields = {}
+        if not isinstance(fields, dict):
+            return Response(
+                {'detail': 'Le champ « fields » doit être un objet.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        attachment = None
+        upload = request.FILES.get('file')
+        if upload is not None:
+            from apps.records.storage import store_attachment
+            meta, err = store_attachment(upload)
+            if meta:
+                attachment = meta
+
+        try:
+            facture, doublons = creer_facture_fournisseur_depuis_ocr(
+                company=request.user.company, user=request.user,
+                fields=fields, attachment=attachment,
+                confirmer_malgre_doublon=bool(
+                    request.data.get('confirmer_malgre_doublon')),
+            )
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        data = self.get_serializer(facture).data
+        if doublons:
+            data['doublon_warning'] = doublons
+        return Response(data, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['get'], url_path='comptes-a-payer')
     def comptes_a_payer(self, request):

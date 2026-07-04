@@ -2681,3 +2681,126 @@ def log_doublon_override(*, user, instance, detail):
                user=user, detail=detail)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
         logger.info('doublon override (audit indisponible): %s', detail)
+
+
+# ── XACC36 — OCR facture fournisseur → brouillon de facture d'achat ─────────
+# L'EXTRACTION vit dans fastapi_ia/ocr_service.py (prompt stock, classe
+# facture_fournisseur/facture_achat). Ce SINK convertit les champs déjà
+# extraits (``donnees_structurees``) en brouillon `FactureFournisseur`, sans
+# jamais inventer un montant absent (champ vide plutôt que faux). Matche le
+# fournisseur par ICE puis par nom (jamais de création silencieuse d'un
+# fournisseur inconnu — l'utilisateur garde la main pour la saisie manuelle).
+
+def match_fournisseur_from_ocr(company, fields):
+    """XACC36 — matche un Fournisseur existant depuis les champs OCR :
+    priorité à l'ICE (identifiant fiable), repli sur le nom exact (insensible
+    à la casse). Renvoie le Fournisseur ou None (jamais de création
+    silencieuse). LECTURE SEULE."""
+    from .models import Fournisseur
+    fields = fields or {}
+    ice = (fields.get('ice') or '').strip()
+    if ice:
+        match = Fournisseur.objects.filter(company=company, ice=ice).first()
+        if match is not None:
+            return match
+    nom = (fields.get('fournisseur') or '').strip()
+    if nom:
+        return Fournisseur.objects.filter(
+            company=company, nom__iexact=nom).first()
+    return None
+
+
+def creer_facture_fournisseur_depuis_ocr(
+        *, company, user, fields, attachment=None,
+        confirmer_malgre_doublon=False):
+    """XACC36 — crée une `FactureFournisseur` BROUILLON depuis les champs OCR.
+
+    ``fields`` = ``donnees_structurees`` OCR (numero/date/fournisseur/ice/
+    date_echeance/montant_ht/montant_tva/montant_ttc/…). Un champ absent reste
+    VIDE (jamais de montant inventé). Lève ValueError si aucun fournisseur ne
+    matche (l'appelant doit alors proposer la saisie manuelle — dégradation
+    propre). Le doublon XPUR11 est vérifié au passage (warning, jamais
+    bloquant sauf refus explicite non demandé ici) ; ``attachment`` (dict de
+    ``records.storage.store_attachment``) est rattaché en pièce jointe si
+    fourni. Renvoie ``(facture, doublons)``."""
+    from datetime import date as _date
+    from .models import FactureFournisseur
+
+    fields = fields or {}
+    fournisseur = match_fournisseur_from_ocr(company, fields)
+    if fournisseur is None:
+        raise ValueError(
+            'Aucun fournisseur trouvé pour ce document (ICE ou nom) — '
+            'saisie manuelle requise.')
+
+    def _num(key):
+        val = fields.get(key)
+        if val is None or val == '':
+            return None
+        try:
+            return Decimal(str(val))
+        except (InvalidOperation, TypeError, ValueError):
+            return None
+
+    def _parsed_date(key):
+        val = fields.get(key)
+        if not val:
+            return None
+        if isinstance(val, _date):
+            return val
+        try:
+            return _date.fromisoformat(str(val)[:10])
+        except ValueError:
+            return None
+
+    date_facture = _parsed_date('date')
+    date_echeance = _parsed_date('date_echeance')
+    montant_ht = _num('montant_ht')
+    montant_tva = _num('montant_tva')
+    montant_ttc = _num('montant_ttc')
+    ref_fournisseur = (fields.get('numero') or '').strip() or None
+
+    doublons = detect_facture_fournisseur_doublon(
+        company, fournisseur_id=fournisseur.id,
+        ref_fournisseur=ref_fournisseur, montant_ttc=montant_ttc,
+        date_facture=date_facture)
+
+    def _save(ref):
+        return FactureFournisseur.objects.create(
+            company=company, reference=ref, fournisseur=fournisseur,
+            ref_fournisseur=ref_fournisseur,
+            date_facture=date_facture, date_echeance=date_echeance,
+            montant_ht=montant_ht or Decimal('0'),
+            montant_tva=montant_tva or Decimal('0'),
+            montant_ttc=montant_ttc or Decimal('0'),
+            created_by=user,
+            note='Brouillon créé automatiquement depuis un scan OCR.',
+        )
+
+    from apps.ventes.utils.references import create_with_reference
+    facture = create_with_reference(FactureFournisseur, 'FF', company, _save)
+
+    if doublons and confirmer_malgre_doublon:
+        log_doublon_override(
+            user=user, instance=facture,
+            detail=(f'Facture fournisseur {facture.reference} créée depuis '
+                    f'OCR malgré {len(doublons)} doublon(s) potentiel(s).'))
+
+    if attachment:
+        try:
+            from django.contrib.contenttypes.models import ContentType
+            from apps.records.models import Attachment
+            Attachment.objects.create(
+                company=company,
+                content_type=ContentType.objects.get_for_model(
+                    FactureFournisseur),
+                object_id=facture.pk,
+                uploaded_by=user,
+                **attachment,
+            )
+        except Exception:  # noqa: BLE001 — la pièce jointe ne casse jamais
+            logger.info(
+                'XACC36: pièce jointe OCR non rattachée à %s',
+                facture.reference)
+
+    return facture, doublons
