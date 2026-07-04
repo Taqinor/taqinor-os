@@ -4,24 +4,26 @@ L'auto-génération est OFF par défaut (``services.auto_ecritures_actif`` →
 réglage ``COMPTA_AUTO_ECRITURES``) : tant que le founder ne l'active pas, RIEN
 n'est passé en écriture — aucun comportement existant n'est modifié.
 
-FG109 autorise explicitement le câblage « via le bus d'événements OU un appel de
-service ». Le bus d'événements métier (``core.events``, M6) existe désormais,
-mais il n'émet à ce jour que ``devis_accepted`` — AUCUN événement documentaire
-« facture émise / paiement encaissé / avoir émis » n'est encore émis par
-``ventes`` (et en ajouter modifierait ``ventes``, hors périmètre additif ici).
-L'auto-génération reste donc déclenchée par APPEL DE SERVICE EXPLICITE — les
-fonctions ``services.ecriture_pour_facture`` / ``ecriture_pour_paiement`` /
-``ecriture_pour_avoir``, idempotentes et gardées par le toggle ``COMPTA_AUTO_
-ECRITURES`` (OFF par défaut). Le jour où ``ventes`` émettra ces événements
-documentaires sur ``core.events``, il suffira de les abonner ICI (à la manière
-d'``apps/crm/receivers.py``, câblé dans ``ComptaConfig.ready``) ; ce module est
-le point d'ancrage prévu, et reste importable sans dépendance manquante en
-attendant.
+YLEDG1 — ``ventes`` émet désormais ``facture_emise``/``paiement_enregistre``/
+``avoir_cree`` sur ``core.events`` (M6) aux points de transition réels
+(``FactureViewSet.emettre``/``enregistrer_paiement``/``creer_avoir``, l'import
+de relevé bancaire, le webhook ``PaymentLink`` et le service partagé POS). Ce
+module s'y abonne pour appeler le bloc ``services.ecriture_pour_facture`` /
+``ecriture_pour_paiement`` / ``ecriture_pour_avoir`` — idempotentes et gardées
+par le toggle ``COMPTA_AUTO_ECRITURES`` (OFF par défaut, comportement
+inchangé). ``ventes`` n'importe jamais ``apps.compta`` : les instances
+transitent par les arguments du signal.
 """
 
 from django.dispatch import receiver
 
-from core.events import devis_accepted, devis_refused
+from core.events import (
+    avoir_cree,
+    devis_accepted,
+    devis_refused,
+    facture_emise,
+    paiement_enregistre,
+)
 
 from .services import (  # noqa: F401  (ré-export du point d'intégration)
     auto_ecritures_actif,
@@ -42,6 +44,23 @@ from .services import (  # noqa: F401  (ré-export du point d'intégration)
     poster_mouvement_stock,
     sortir_inscriptions_pour_lead,
 )
+
+
+# ── YLEDG1 — auto-génération des écritures de vente sur le bus d'événements ─
+
+@receiver(facture_emise, dispatch_uid="compta_ecriture_pour_facture_emise")
+def _ecriture_pour_facture_emise(sender, instance, company, **kwargs):
+    ecriture_pour_facture(instance)
+
+
+@receiver(paiement_enregistre, dispatch_uid="compta_ecriture_pour_paiement")
+def _ecriture_pour_paiement_enregistre(sender, instance, company, **kwargs):
+    ecriture_pour_paiement(instance)
+
+
+@receiver(avoir_cree, dispatch_uid="compta_ecriture_pour_avoir")
+def _ecriture_pour_avoir_cree(sender, instance, company, **kwargs):
+    ecriture_pour_avoir(instance)
 
 
 # ── XMKT1 — sortie automatique des séquences de relance ────────────────────
