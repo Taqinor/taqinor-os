@@ -538,6 +538,86 @@ def creer_presqu_accident(serializer, company, declare_par=None):
 
 
 @transaction.atomic
+def soumettre_ouverture(ouverture, *, demandeur):
+    """YHIRE14 — soumet une ouverture BROUILLON à approbation.
+
+    Seule une ouverture en ``brouillon`` peut être soumise. Pose
+    ``demandeur`` (celui qui soumet — jamais lu du corps de requête) et
+    ``date_soumission``. Lève ``ValueError`` sinon.
+    """
+    from .models import OuverturePoste
+
+    if ouverture.statut != OuverturePoste.Statut.BROUILLON:
+        raise ValueError(
+            'Seule une ouverture en brouillon peut être soumise à '
+            'approbation.')
+    ouverture.statut = OuverturePoste.Statut.EN_APPROBATION
+    ouverture.demandeur = demandeur
+    ouverture.date_soumission = timezone.now()
+    ouverture.save(update_fields=[
+        'statut', 'demandeur', 'date_soumission', 'date_modification'])
+    return ouverture
+
+
+def approuver_ouverture(ouverture, *, approbateur):
+    """YHIRE14 — approuve une ouverture EN_APPROBATION -> OUVERT.
+
+    SoD (séparation des tâches) : l'approbateur ne peut JAMAIS être le
+    demandeur — auto-approbation refusée (``ValueError``). Lève aussi
+    ``ValueError`` si l'ouverture n'est pas dans l'état décidable.
+    """
+    from .models import OuverturePoste
+
+    if ouverture.statut != OuverturePoste.Statut.EN_APPROBATION:
+        raise ValueError(
+            "Seule une ouverture en attente d'approbation peut être "
+            'approuvée.')
+    if ouverture.demandeur_id and ouverture.demandeur_id == getattr(
+            approbateur, 'id', None):
+        raise ValueError(
+            'Le demandeur ne peut pas approuver sa propre réquisition '
+            '(séparation des tâches).')
+    ouverture.statut = OuverturePoste.Statut.OUVERT
+    ouverture.approbateur = approbateur
+    ouverture.date_decision = timezone.now()
+    ouverture.motif_refus = ''
+    if not ouverture.date_ouverture:
+        ouverture.date_ouverture = timezone.now().date()
+    ouverture.save(update_fields=[
+        'statut', 'approbateur', 'date_decision', 'motif_refus',
+        'date_ouverture', 'date_modification'])
+    return ouverture
+
+
+def refuser_ouverture(ouverture, *, approbateur, motif_refus=''):
+    """YHIRE14 — refuse une ouverture EN_APPROBATION (reste non ouverte).
+
+    Même garde SoD que ``approuver_ouverture``. Le statut refusé n'a pas de
+    valeur dédiée dans le cycle (spécification) : on ramène l'ouverture en
+    ``brouillon`` pour permettre une resoumission après correction, le motif
+    étant conservé pour traçabilité.
+    """
+    from .models import OuverturePoste
+
+    if ouverture.statut != OuverturePoste.Statut.EN_APPROBATION:
+        raise ValueError(
+            "Seule une ouverture en attente d'approbation peut être "
+            'refusée.')
+    if ouverture.demandeur_id and ouverture.demandeur_id == getattr(
+            approbateur, 'id', None):
+        raise ValueError(
+            'Le demandeur ne peut pas refuser sa propre réquisition '
+            '(séparation des tâches).')
+    ouverture.statut = OuverturePoste.Statut.BROUILLON
+    ouverture.approbateur = approbateur
+    ouverture.date_decision = timezone.now()
+    ouverture.motif_refus = motif_refus or ''
+    ouverture.save(update_fields=[
+        'statut', 'approbateur', 'date_decision', 'motif_refus',
+        'date_modification'])
+    return ouverture
+
+
 def embaucher(candidature, matricule=None, **dossier_kwargs):
     """Convertit une candidature EMBAUCHÉE en ``DossierEmploye`` (FG189 — ATS).
 

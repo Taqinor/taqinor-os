@@ -3130,6 +3130,13 @@ class OuverturePoste(models.Model):
     """
 
     class Statut(models.TextChoices):
+        # YHIRE14 — cycle amont d'approbation : une ouverture naît en
+        # BROUILLON (défaut), passe par EN_APPROBATION à la soumission, puis
+        # OUVERT une fois approuvée (SoD : approbateur ≠ demandeur). Les
+        # ouvertures EXISTANTES avant YHIRE14 restent ``ouvert`` — seul le
+        # DÉFAUT à la création change, aucune donnée existante n'est touchée.
+        BROUILLON = 'brouillon', 'Brouillon'
+        EN_APPROBATION = 'en_approbation', 'En approbation'
         OUVERT = 'ouvert', 'Ouvert'
         POURVU = 'pourvu', 'Pourvu'
         CLOS = 'clos', 'Clos'
@@ -3171,7 +3178,30 @@ class OuverturePoste(models.Model):
         default=1, verbose_name='Nombre de postes')
     statut = models.CharField(
         max_length=20, choices=Statut.choices,
-        default=Statut.OUVERT, verbose_name='Statut')
+        default=Statut.BROUILLON, verbose_name='Statut')
+    # YHIRE14 — traçabilité SoD de l'approbation de réquisition (approbateur
+    # ne peut jamais être le demandeur). NULL pour les ouvertures créées avant
+    # YHIRE14 (comportement historique, restées ``ouvert``).
+    demandeur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rh_ouvertures_demandees',
+        verbose_name='Demandeur',
+    )
+    approbateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rh_ouvertures_approuvees',
+        verbose_name='Approbateur',
+    )
+    date_soumission = models.DateTimeField(
+        null=True, blank=True, verbose_name='Soumise le')
+    date_decision = models.DateTimeField(
+        null=True, blank=True, verbose_name='Décidée le')
+    motif_refus = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Motif de refus')
     date_ouverture = models.DateField(
         null=True, blank=True, verbose_name="Date d'ouverture")
     date_cible = models.DateField(

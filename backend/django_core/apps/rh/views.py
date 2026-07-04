@@ -3207,6 +3207,41 @@ class OuverturePosteViewSet(_RhBaseViewSet):
             qs = qs.filter(departement_id=departement)
         return qs.distinct()
 
+    @action(detail=True, methods=['post'])
+    def soumettre(self, request, pk=None):
+        """YHIRE14 — soumet l'ouverture BROUILLON à approbation."""
+        ouverture = self.get_object()
+        try:
+            services.soumettre_ouverture(ouverture, demandeur=request.user)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(ouverture).data)
+
+    @action(detail=True, methods=['post'])
+    def approuver(self, request, pk=None):
+        """YHIRE14 — approuve l'ouverture (SoD : approbateur != demandeur)."""
+        ouverture = self.get_object()
+        try:
+            services.approuver_ouverture(ouverture, approbateur=request.user)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(ouverture).data)
+
+    @action(detail=True, methods=['post'])
+    def refuser(self, request, pk=None):
+        """YHIRE14 — refuse l'ouverture (SoD : approbateur != demandeur)."""
+        ouverture = self.get_object()
+        motif = request.data.get('motif_refus', '')
+        try:
+            services.refuser_ouverture(
+                ouverture, approbateur=request.user, motif_refus=motif)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(ouverture).data)
+
 
 class CandidatureViewSet(_RhBaseViewSet):
     """Candidatures (FG189) — pipeline de recrutement ATS-lite.

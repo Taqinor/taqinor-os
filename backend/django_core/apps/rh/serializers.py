@@ -1695,7 +1695,17 @@ class CandidatureSerializer(serializers.ModelSerializer):
         return f'{obj.employe_cree.nom} {obj.employe_cree.prenom}'
 
     def validate_ouverture(self, value):
-        return _meme_societe(self, value, 'Ouverture')
+        value = _meme_societe(self, value, 'Ouverture')
+        # YHIRE14 — une candidature ne se crée QUE sur une ouverture au
+        # statut OUVERT (le cycle amont brouillon/en_approbation ne doit pas
+        # être court-circuité). Ne s'applique qu'à la CRÉATION : une
+        # candidature déjà rattachée reste modifiable même si l'ouverture a
+        # depuis basculé pourvu/clos/annulé (comportement historique).
+        if self.instance is None and value.statut != OuverturePoste.Statut.OUVERT:
+            raise serializers.ValidationError(
+                "Cette ouverture n'est pas ouverte au recrutement "
+                f'(statut : {value.get_statut_display()}).')
+        return value
 
 
 class OuverturePosteSerializer(serializers.ModelSerializer):
@@ -1725,11 +1735,18 @@ class OuverturePosteSerializer(serializers.ModelSerializer):
             'departement', 'departement_nom',
             'description', 'ville', 'publiee', 'nombre_postes',
             'statut', 'statut_display',
+            # YHIRE14 — traçabilité SoD du cycle d'approbation, lecture seule
+            # (posés par les services soumettre/approuver/refuser).
+            'demandeur', 'approbateur', 'date_soumission', 'date_decision',
+            'motif_refus',
             'date_ouverture', 'date_cible',
             'candidatures',
             'date_creation', 'date_modification',
         ]
-        read_only_fields = ['date_creation', 'date_modification']
+        read_only_fields = [
+            'demandeur', 'approbateur', 'date_soumission', 'date_decision',
+            'motif_refus',
+            'date_creation', 'date_modification']
 
     def get_poste_ref_intitule(self, obj):
         if not obj.poste_ref_id:
