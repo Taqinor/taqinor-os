@@ -481,6 +481,19 @@ class AffectationConducteur(models.Model):
     date_fin = models.DateField(null=True, blank=True, verbose_name="Date de fin")
     notes = models.TextField(blank=True, verbose_name="Notes")
     actif = models.BooleanField(default=True, verbose_name="Actif")
+    # XFLT29 — avantage en nature véhicule -> paie. Un véhicule affecté avec
+    # USAGE PRIVÉ constitue un avantage en nature imposable (règles
+    # marocaines d'évaluation à valider par le fondateur/comptable —
+    # DECISION) : la VALORISATION reste saisie/éditable ici (jamais calculée
+    # automatiquement tant que la règle n'est pas validée). La flotte EXPOSE
+    # cette donnée en LECTURE via ``selectors.avantages_en_nature`` pour que
+    # la paie (FG192) l'intègre à ses éléments variables — la flotte N'ÉCRIT
+    # JAMAIS dans le module paie (cross-app, voir CLAUDE.md).
+    usage_prive = models.BooleanField(
+        default=False, verbose_name='Usage privé (avantage en nature)')
+    valeur_avantage_mensuelle = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0,
+        verbose_name="Valeur de l'avantage en nature (MAD/mois)")
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name="Créé le")
 
