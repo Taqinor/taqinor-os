@@ -7143,3 +7143,146 @@ class LigneReevaluation(models.Model):
 
     def __str__(self):
         return f'{self.item_id} — {self.ecart}'
+
+
+# ── XACC19 — Générateur d'états financiers personnalisés ───────────────────
+
+class EtatPersonnalise(models.Model):
+    """État financier PERSONNALISÉ, défini en données (sans code) — XACC19.
+
+    Les états figés (GL/balance/CPC/bilan/ESG, FG110-114) restent inchangés :
+    ceci est un état ADDITIONNEL, entièrement paramétrable par l'utilisateur.
+    Composé de ``LigneEtatPersonnalise`` (une formule = plages/sommes de
+    comptes avec signe) et de ``ColonneEtatPersonnalise`` (périodes,
+    comparatif N-1, budget FG149, écart %). Évalué côté serveur depuis la
+    balance générale (``selectors.evaluer_etat_personnalise``). ``company``
+    posée côté serveur ; strictement additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='etats_personnalises',
+        verbose_name='Société',
+    )
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    description = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Description')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='etats_personnalises_crees',
+        verbose_name='Créé par')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'État personnalisé'
+        verbose_name_plural = 'États personnalisés'
+        ordering = ['libelle', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'libelle'],
+                name='uniq_etat_personnalise_libelle',
+            ),
+        ]
+
+    def __str__(self):
+        return self.libelle
+
+
+class LigneEtatPersonnalise(models.Model):
+    """Ligne d'un ``EtatPersonnalise`` : libellé + formule (XACC19).
+
+    ``formule`` est une liste de TERMES séparés par des virgules, chacun
+    ``[+-]prefixe`` (ex. ``+70,+71,-60,-61``) où ``prefixe`` matche le début
+    du numéro de compte (``compte.numero.startswith(prefixe)``) — pas de
+    code, juste des plages/sommes signées. ``type_ligne`` distingue un
+    TITRE (aucune valeur, juste un intitulé de section) d'un TOTAL (formule
+    évaluée).
+    """
+    class TypeLigne(models.TextChoices):
+        TITRE = 'titre', 'Titre de section'
+        TOTAL = 'total', 'Ligne calculée (formule)'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='lignes_etat_personnalise',
+        verbose_name='Société',
+    )
+    etat = models.ForeignKey(
+        EtatPersonnalise,
+        on_delete=models.CASCADE,
+        related_name='lignes',
+        verbose_name='État personnalisé',
+    )
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    type_ligne = models.CharField(
+        max_length=10, choices=TypeLigne.choices, default=TypeLigne.TOTAL,
+        verbose_name='Type de ligne')
+    formule = models.CharField(
+        max_length=500, blank=True, default='',
+        verbose_name='Formule (plages de comptes signées)')
+
+    class Meta:
+        verbose_name = "Ligne d'état personnalisé"
+        verbose_name_plural = "Lignes d'état personnalisé"
+        ordering = ['etat_id', 'ordre', 'id']
+
+    def __str__(self):
+        return f'{self.libelle} ({self.formule})'
+
+    def clean(self):
+        super().clean()
+        if self.type_ligne == self.TypeLigne.TOTAL and not (self.formule or '').strip():
+            raise ValidationError(
+                "Une ligne calculée doit porter une formule non vide.")
+
+
+class ColonneEtatPersonnalise(models.Model):
+    """Colonne d'un ``EtatPersonnalise`` : période, comparatif ou budget — XACC19.
+
+    ``type_colonne`` détermine ce qui est évalué pour cette colonne :
+    ``periode`` (bornes date_debut/date_fin explicites), ``comparatif_n1``
+    (même période, exercice précédent) ou ``budget`` (référence un
+    ``Budget`` FG149 — colonne informative comparée à la période).
+    """
+    class Type(models.TextChoices):
+        PERIODE = 'periode', 'Période'
+        COMPARATIF_N1 = 'comparatif_n1', 'Comparatif N-1'
+        BUDGET = 'budget', 'Budget'
+        ECART_PCT = 'ecart_pct', 'Écart % (vs colonne précédente)'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='colonnes_etat_personnalise',
+        verbose_name='Société',
+    )
+    etat = models.ForeignKey(
+        EtatPersonnalise,
+        on_delete=models.CASCADE,
+        related_name='colonnes',
+        verbose_name='État personnalisé',
+    )
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    libelle = models.CharField(max_length=100, verbose_name='Libellé')
+    type_colonne = models.CharField(
+        max_length=15, choices=Type.choices, default=Type.PERIODE,
+        verbose_name='Type de colonne')
+    date_debut = models.DateField(null=True, blank=True, verbose_name='Début')
+    date_fin = models.DateField(null=True, blank=True, verbose_name='Fin')
+    budget = models.ForeignKey(
+        'compta.Budget',
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='colonnes_etat_personnalise',
+        verbose_name='Budget (FG149)')
+
+    class Meta:
+        verbose_name = "Colonne d'état personnalisé"
+        verbose_name_plural = "Colonnes d'état personnalisé"
+        ordering = ['etat_id', 'ordre', 'id']
+
+    def __str__(self):
+        return f'{self.libelle} ({self.type_colonne})'

@@ -11,7 +11,8 @@ from django.db.models import Q, Sum
 from django.utils import timezone
 
 from .models import (
-    Caisse, CautionBancaire, ChargeConstateeAvance, CompteComptable,
+    BudgetLigne, Caisse, CautionBancaire, ChargeConstateeAvance,
+    CompteComptable,
     CompteTresorerie, EcheanceEmprunt,
     Effet, Emprunt,
     EntiteConsolidation, LigneEcriture, LignePrevisionnelTresorerie,
@@ -2748,3 +2749,122 @@ def taux_du_jour(company, devise, une_date=None):
     return TauxDevise.objects.filter(
         company=company, devise=devise, date_taux__lte=une_date,
     ).order_by('-date_taux').first()
+
+
+# ── XACC19 — Générateur d'états financiers personnalisés ───────────────────
+
+class FormuleEtatInvalideError(Exception):
+    """Formule de ligne d'état personnalisé invalide (terme non reconnu)."""
+
+
+def _parser_formule(formule):
+    """Parse ``formule`` (« +70,+71,-60 ») en liste de ``(signe, prefixe)``.
+
+    Un terme valide commence par ``+`` ou ``-`` suivi d'un préfixe de compte
+    non vide (chiffres). Lève ``FormuleEtatInvalideError`` si un terme est mal
+    formé — le service appelant transforme ça en 400 explicite.
+    """
+    termes = []
+    for brut in (formule or '').split(','):
+        terme = brut.strip()
+        if not terme:
+            continue
+        signe = terme[0]
+        if signe not in ('+', '-'):
+            raise FormuleEtatInvalideError(
+                f"Terme invalide « {terme} » : doit commencer par + ou -.")
+        prefixe = terme[1:].strip()
+        if not prefixe or not prefixe.isdigit():
+            raise FormuleEtatInvalideError(
+                f"Terme invalide « {terme} » : préfixe de compte manquant "
+                "ou non numérique.")
+        termes.append((1 if signe == '+' else -1, prefixe))
+    if not termes:
+        raise FormuleEtatInvalideError("La formule ne contient aucun terme.")
+    return termes
+
+
+def _evaluer_formule_sur_balance(formule, balance_lignes):
+    """Évalue une formule sur les lignes d'une ``balance_generale`` (pur calcul).
+
+    Chaque terme ``(signe, prefixe)`` somme le SOLDE (débiteur − créditeur,
+    signé naturel du compte) de tous les comptes dont le numéro commence par
+    ``prefixe``, multiplié par ``signe``. Renvoie un ``Decimal``.
+    """
+    termes = _parser_formule(formule)
+    total = Decimal('0')
+    for signe, prefixe in termes:
+        for ligne in balance_lignes:
+            if ligne['numero'].startswith(prefixe):
+                solde = ligne['solde_debiteur'] - ligne['solde_crediteur']
+                total += signe * solde
+    return total
+
+
+def evaluer_etat_personnalise(etat, *, colonnes_override=None):
+    """Évalue un ``EtatPersonnalise`` : une valeur par (ligne, colonne) — XACC19.
+
+    Pour chaque colonne (période, comparatif N-1, budget, écart %), calcule la
+    balance générale de la période correspondante puis évalue la formule de
+    chaque ligne TOTAL dessus (une ligne TITRE n'a aucune valeur). Une formule
+    invalide lève ``FormuleEtatInvalideError`` (le service/la vue la
+    transforme en 400 explicite). Sans N-1 disponible (colonne comparatif hors
+    de toute donnée), la valeur est simplement 0 (jamais d'erreur). Renvoie
+    ``{'lignes': [{'id', 'libelle', 'type_ligne', 'valeurs': {colonne_id: val}}],
+    'colonnes': [...]}``.
+    """
+    company = etat.company
+    colonnes = list(colonnes_override or etat.colonnes.all().order_by('ordre', 'id'))
+    balances_par_colonne = {}
+    for colonne in colonnes:
+        if colonne.type_colonne == 'budget':
+            # Colonne budget : valeur = somme des montants annuels du budget
+            # référencé, appliquée directement (pas de formule sur la balance).
+            balances_par_colonne[colonne.id] = None
+            continue
+        date_debut, date_fin = colonne.date_debut, colonne.date_fin
+        if colonne.type_colonne == 'comparatif_n1' and date_debut and date_fin:
+            try:
+                date_debut = date_debut.replace(year=date_debut.year - 1)
+                date_fin = date_fin.replace(year=date_fin.year - 1)
+            except ValueError:
+                # 29 février d'une année non bissextile : recule d'un jour.
+                from datetime import timedelta
+                date_debut = date_debut.replace(
+                    year=date_debut.year - 1, day=28) if date_debut.month == 2 else date_debut
+                date_fin = date_fin - timedelta(days=1)
+        balance = balance_generale(company, date_debut=date_debut, date_fin=date_fin)
+        balances_par_colonne[colonne.id] = balance['lignes']
+
+    lignes_resultat = []
+    for ligne in etat.lignes.all().order_by('ordre', 'id'):
+        valeurs = {}
+        if ligne.type_ligne == 'total':
+            for colonne in colonnes:
+                if colonne.type_colonne == 'budget':
+                    if colonne.budget_id:
+                        total = BudgetLigne.objects.filter(
+                            budget_id=colonne.budget_id).aggregate(
+                            **{f'm{i:02d}': Sum(f'm{i:02d}') for i in range(1, 13)})
+                        valeurs[colonne.id] = sum(
+                            (total.get(f'm{i:02d}') or Decimal('0') for i in range(1, 13)),
+                            Decimal('0'))
+                    else:
+                        valeurs[colonne.id] = Decimal('0')
+                    continue
+                balance_lignes = balances_par_colonne.get(colonne.id) or []
+                valeurs[colonne.id] = _evaluer_formule_sur_balance(
+                    ligne.formule, balance_lignes)
+        lignes_resultat.append({
+            'id': ligne.id,
+            'libelle': ligne.libelle,
+            'type_ligne': ligne.type_ligne,
+            'valeurs': valeurs,
+        })
+    return {
+        'colonnes': [
+            {'id': c.id, 'libelle': c.libelle, 'type_colonne': c.type_colonne}
+            for c in colonnes
+        ],
+        'lignes': lignes_resultat,
+    }

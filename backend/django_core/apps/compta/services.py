@@ -44,6 +44,7 @@ from .models import (
     Emprunt, EcheanceEmprunt, ChargeConstateeAvance, DotationEtalement,
     PlanAmortissementFiscal, DotationDerogatoire, TauxDevise,
     ItemOuvertDevise, EcartChange, ReevaluationCloture, LigneReevaluation,
+    EtatPersonnalise, LigneEtatPersonnalise, ColonneEtatPersonnalise,
     Immobilisation, IndemniteChantier, Journal, LigneEcriture,
     LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, NoteFrais,
     OuverturePartage,
@@ -6782,3 +6783,54 @@ def reevaluer_cloture(company, *, date_cloture, user=None):
         run.date_extourne = date_extourne
     run.save()
     return run
+
+
+# ── XACC19 — Générateur d'états financiers personnalisés ───────────────────
+
+@transaction.atomic
+def creer_etat_personnalise(company, *, libelle, description='', lignes=None,
+                            colonnes=None, user=None):
+    """Crée un ``EtatPersonnalise`` avec ses lignes/colonnes en un appel (XACC19).
+
+    ``lignes`` : liste de dicts ``{'libelle', 'type_ligne'?, 'formule'?,
+    'ordre'?}``. ``colonnes`` : liste de dicts ``{'libelle', 'type_colonne'?,
+    'date_debut'?, 'date_fin'?, 'budget'?, 'ordre'?}``. Valide chaque formule
+    (``selectors._parser_formule``) AVANT toute création : une formule
+    invalide lève ``ValidationError`` (400 explicite côté vue), rien n'est
+    persisté. ``company`` posée côté serveur. Renvoie l'état créé.
+    """
+    from apps.compta.selectors import (
+        FormuleEtatInvalideError, _parser_formule as _valider_formule)
+
+    for spec in (lignes or []):
+        if spec.get('type_ligne', LigneEtatPersonnalise.TypeLigne.TOTAL) == \
+                LigneEtatPersonnalise.TypeLigne.TOTAL:
+            try:
+                _valider_formule(spec.get('formule', ''))
+            except FormuleEtatInvalideError as exc:
+                raise ValidationError(str(exc))
+
+    etat = EtatPersonnalise(
+        company=company, libelle=libelle, description=description or '',
+        created_by=user)
+    etat.full_clean()
+    etat.save()
+
+    for idx, spec in enumerate(lignes or []):
+        LigneEtatPersonnalise.objects.create(
+            company=company, etat=etat, ordre=spec.get('ordre', idx),
+            libelle=spec['libelle'],
+            type_ligne=spec.get(
+                'type_ligne', LigneEtatPersonnalise.TypeLigne.TOTAL),
+            formule=spec.get('formule', '') or '',
+        )
+    for idx, spec in enumerate(colonnes or []):
+        ColonneEtatPersonnalise.objects.create(
+            company=company, etat=etat, ordre=spec.get('ordre', idx),
+            libelle=spec['libelle'],
+            type_colonne=spec.get(
+                'type_colonne', ColonneEtatPersonnalise.Type.PERIODE),
+            date_debut=spec.get('date_debut'), date_fin=spec.get('date_fin'),
+            budget=spec.get('budget'),
+        )
+    return etat
