@@ -248,3 +248,34 @@ class MessageMention(models.Model):
 
     def __str__(self):
         return f'@{self.mentioned_user_id} dans {self.message_id}'
+
+
+class ThreadFollow(models.Model):
+    """XKB24 — suivi d'un fil (le message racine porte le fil).
+
+    Le premier posteur (auteur du message racine) et tout répondant sont
+    auto-suivis (`get_or_create` dans `services.reply_in_thread`). Un
+    utilisateur peut aussi suivre/ne plus suivre manuellement. Utilisé pour la
+    boîte « Fils » (fils suivis + non-lus) et pour notifier UNIQUEMENT les
+    suiveurs (jamais tout le canal)."""
+
+    root_message = models.ForeignKey(
+        Message, on_delete=models.CASCADE, related_name='thread_followers')
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='chat_thread_follows')
+    # Dernière lecture du fil par ce suiveur (badge non-lus de la boîte Fils).
+    last_read_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Suivi de fil'
+        verbose_name_plural = 'Suivis de fil'
+        ordering = ['id']
+        unique_together = [('root_message', 'user')]
+        indexes = [
+            models.Index(fields=['user', 'root_message']),
+        ]
+
+    def __str__(self):
+        return f'{self.user_id} suit fil {self.root_message_id}'

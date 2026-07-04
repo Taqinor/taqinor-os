@@ -25,7 +25,7 @@ from apps.crm.models import Client, Lead
 from apps.ventes.models import Devis
 from apps.chat.models import (
     Conversation, ConversationMember, Message, MessageAttachment,
-    MessageReaction, MessageMention,
+    MessageReaction, MessageMention, ThreadFollow,
 )
 from apps.chat import services
 
@@ -633,4 +633,91 @@ class S20MemberManagementTests(TestCase):
         api = auth(carol)
         r = api.post(
             f'/api/django/chat/conversations/{self.conv.id}/leave/')
+        self.assertEqual(r.status_code, 404)
+
+
+class XKB24ThreadTests(TestCase):
+    """XKB24 — fils de discussion : réponses groupées, suivi, notifications
+    ciblées aux suiveurs (jamais tout le canal), boîte Fils."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.alice = make_user(self.company, 'alice')   # racine
+        self.bob = make_user(self.company, 'bob')        # répondant
+        self.carol = make_user(self.company, 'carol')    # membre, ne répond pas
+        self.conv = make_channel(
+            self.company, self.alice, members=[self.bob, self.carol])
+        self.root = Message.objects.create(
+            company=self.company, conversation=self.conv, sender=self.alice,
+            body='Message racine')
+
+    def test_reply_groups_under_root_and_counts(self):
+        api = auth(self.bob)
+        r = api.post(
+            f'/api/django/chat/messages/{self.root.id}/reply/',
+            {'body': 'Réponse de bob'}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(self.root.replies.count(), 1)
+
+        thread = api.get(f'/api/django/chat/messages/{self.root.id}/thread/')
+        self.assertEqual(thread.status_code, 200)
+        self.assertEqual(len(thread.data), 1)
+
+        detail = api.get(f'/api/django/chat/messages/{self.root.id}/')
+        self.assertEqual(detail.data['reply_count'], 1)
+
+    def test_reply_auto_follows_root_author_and_replier(self):
+        services.reply_in_thread(
+            root_message=self.root, sender=self.bob, company=self.company,
+            body='hop')
+        self.assertTrue(ThreadFollow.objects.filter(
+            root_message=self.root, user=self.alice).exists())
+        self.assertTrue(ThreadFollow.objects.filter(
+            root_message=self.root, user=self.bob).exists())
+
+    @patch('apps.notifications.services.notify')
+    def test_only_thread_followers_notified_not_whole_channel(self, mock_notify):
+        services.reply_in_thread(
+            root_message=self.root, sender=self.bob, company=self.company,
+            body='réponse')
+        notified_users = {call.args[0] for call in mock_notify.call_args_list}
+        # alice (racine, auto-suivie) est notifiée ; carol (membre du canal,
+        # pas du fil) ne l'est PAS ; bob (auteur) ne se notifie pas lui-même.
+        self.assertIn(self.alice, notified_users)
+        self.assertNotIn(self.carol, notified_users)
+        self.assertNotIn(self.bob, notified_users)
+
+    def test_followed_threads_box_lists_unread(self):
+        services.reply_in_thread(
+            root_message=self.root, sender=self.bob, company=self.company,
+            body='une réponse')
+        api = auth(self.alice)
+        r = api.get('/api/django/chat/messages/threads/')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(len(r.data), 1)
+        self.assertEqual(r.data[0]['root_message_id'], self.root.id)
+        self.assertEqual(r.data[0]['unread'], 1)
+
+        api.post(f'/api/django/chat/messages/{self.root.id}/thread-read/')
+        r2 = api.get('/api/django/chat/messages/threads/')
+        self.assertEqual(r2.data[0]['unread'], 0)
+
+    def test_manual_follow_unfollow(self):
+        carol_api = auth(self.carol)
+        carol_api.post(
+            f'/api/django/chat/messages/{self.root.id}/thread-follow/')
+        self.assertTrue(ThreadFollow.objects.filter(
+            root_message=self.root, user=self.carol).exists())
+        carol_api.post(
+            f'/api/django/chat/messages/{self.root.id}/thread-unfollow/')
+        self.assertFalse(ThreadFollow.objects.filter(
+            root_message=self.root, user=self.carol).exists())
+
+    def test_reply_non_member_403(self):
+        other_co = make_company(slug='xkb24-other', nom='Other')
+        evil = make_user(other_co, 'evil-xkb24')
+        api = auth(evil)
+        r = api.post(
+            f'/api/django/chat/messages/{self.root.id}/reply/',
+            {'body': 'intrus'}, format='json')
         self.assertEqual(r.status_code, 404)

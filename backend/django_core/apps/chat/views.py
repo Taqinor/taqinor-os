@@ -388,9 +388,64 @@ class MessageViewSet(viewsets.ModelViewSet):
             msg.save(update_fields=['pinned_at', 'pinned_by'])
         return Response(self.get_serializer(msg).data)
 
+    # ── XKB24 — fils de discussion ─────────────────────────────────────
+    @action(detail=True, methods=['post'], url_path='reply')
+    def reply(self, request, pk=None):
+        """Répond en fil au message `pk` (racine). Auto-suit le fil pour
+        l'auteur racine et le répondant ; notifie les suiveurs, pas le canal."""
+        root = self.get_object()
+        company = _company(request)
+        try:
+            reply = services.reply_in_thread(
+                root_message=root, sender=request.user, company=company,
+                body=request.data.get('body', ''),
+                record_type=request.data.get('record_type'),
+                record_id=request.data.get('record_id'),
+                mention_ids=request.data.get('mentions'),
+            )
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(reply).data,
+                        status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'], url_path='thread')
+    def thread(self, request, pk=None):
+        """Liste les réponses du fil du message `pk` (le plus ancien d'abord)."""
+        root = self.get_object()
+        qs = root.replies.filter(deleted_at__isnull=True).order_by(
+            'created_at', 'id')
+        return Response(self.get_serializer(qs, many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='thread-follow')
+    def thread_follow(self, request, pk=None):
+        root = self.get_object()
+        services.follow_thread(root, request.user)
+        return Response({'status': 'ok'})
+
+    @action(detail=True, methods=['post'], url_path='thread-unfollow')
+    def thread_unfollow(self, request, pk=None):
+        root = self.get_object()
+        services.unfollow_thread(root, request.user)
+        return Response({'status': 'ok'})
+
+    @action(detail=True, methods=['post'], url_path='thread-read')
+    def thread_read(self, request, pk=None):
+        root = self.get_object()
+        services.mark_thread_read(root, request.user)
+        return Response({'status': 'ok'})
+
+    @action(detail=False, methods=['get'], url_path='threads')
+    def threads(self, request):
+        """Boîte « Fils » — fils suivis par l'utilisateur, avec non-lus."""
+        company = _company(request)
+        return Response(services.followed_threads(request.user, company))
+
     def get_permissions(self):
         # Les actions au niveau objet exigent l'appartenance.
         if self.action in ('partial_update', 'update', 'destroy', 'react',
-                           'pin', 'unpin', 'download_attachment', 'retrieve'):
+                           'pin', 'unpin', 'download_attachment', 'retrieve',
+                           'reply', 'thread', 'thread_follow',
+                           'thread_unfollow', 'thread_read'):
             return [IsAuthenticated(), IsConversationMember()]
         return [IsAuthenticated()]

@@ -316,6 +316,114 @@ def get_or_create_whatsapp_conversation(company, contact_label):
         return None
 
 
+# ── XKB24 — Fils de discussion ────────────────────────────────────────
+
+@transaction.atomic
+def reply_in_thread(*, root_message, sender, company, body='', **kwargs):
+    """Poste une réponse en fil sur `root_message` (XKB24).
+
+    Auto-suit le fil pour l'auteur racine ET le répondant (`ThreadFollow`), puis
+    notifie UNIQUEMENT les autres suiveurs du fil (jamais tout le canal) — via
+    `EventType.CHAT_MESSAGE`/`CHAT_MENTION` déjà utilisés par le fan-out S9.
+    """
+    from .models import ThreadFollow
+
+    reply = create_message(
+        conversation=root_message.conversation, sender=sender, company=company,
+        body=body, reply_to=root_message, **kwargs)
+
+    # Auto-suivi : le premier posteur (racine) et chaque répondant.
+    if root_message.sender_id:
+        ThreadFollow.objects.get_or_create(
+            root_message=root_message, user_id=root_message.sender_id)
+    if sender is not None:
+        ThreadFollow.objects.get_or_create(
+            root_message=root_message, user=sender)
+
+    transaction.on_commit(lambda: _notify_thread_followers(root_message, reply, sender))
+    return reply
+
+
+def _notify_thread_followers(root_message, reply, sender):
+    """Notifie les suiveurs du fil (hors auteur de la réponse), jamais le canal
+    entier — best-effort, jamais bloquant."""
+    try:
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify
+    except Exception:  # pragma: no cover - défensif
+        return
+
+    from .models import ThreadFollow
+
+    title = 'Nouvelle réponse dans un fil que vous suivez'
+    preview = _preview(reply)
+    link = f'/messages/{root_message.conversation_id}?thread={root_message.pk}'
+
+    followers = (ThreadFollow.objects
+                 .filter(root_message=root_message)
+                 .select_related('user'))
+    for f in followers:
+        u = f.user
+        if u is None or (sender is not None and u.pk == sender.pk):
+            continue
+        try:
+            notify(u, EventType.CHAT_MESSAGE, title, body=preview, link=link,
+                   company=reply.company)
+        except Exception:  # pragma: no cover - défensif
+            continue
+
+
+def thread_reply_count(root_message):
+    """Nombre de réponses (non supprimées) dans le fil de `root_message`."""
+    return root_message.replies.filter(deleted_at__isnull=True).count()
+
+
+def follow_thread(root_message, user):
+    from .models import ThreadFollow
+    obj, _ = ThreadFollow.objects.get_or_create(
+        root_message=root_message, user=user)
+    return obj
+
+
+def unfollow_thread(root_message, user):
+    from .models import ThreadFollow
+    ThreadFollow.objects.filter(root_message=root_message, user=user).delete()
+
+
+def followed_threads(user, company):
+    """Fils suivis par `user` (boîte « Fils ») avec compteur de non-lus, triés
+    par activité récente. Scopé société ; ne fuite jamais un fil d'une autre
+    société (le message racine porte `company`)."""
+    from .models import ThreadFollow
+
+    follows = (ThreadFollow.objects
+               .filter(user=user, root_message__company=company)
+               .select_related('root_message', 'root_message__conversation')
+               .order_by('-root_message__created_at'))
+    out = []
+    for f in follows:
+        root = f.root_message
+        qs = root.replies.filter(deleted_at__isnull=True)
+        if f.last_read_at is not None:
+            qs = qs.filter(created_at__gt=f.last_read_at)
+        out.append({
+            'root_message_id': root.pk,
+            'conversation_id': root.conversation_id,
+            'root_preview': _preview(root),
+            'reply_count': thread_reply_count(root),
+            'unread': qs.count(),
+        })
+    return out
+
+
+def mark_thread_read(root_message, user, when=None):
+    from .models import ThreadFollow
+    when = when or timezone.now()
+    updated = ThreadFollow.objects.filter(
+        root_message=root_message, user=user).update(last_read_at=when)
+    return updated > 0
+
+
 def post_system_message(conversation, body, *, record_type=None, record_id=None):
     """Poste un message SYSTÈME (sender=None) dans une conversation (XKB33).
 

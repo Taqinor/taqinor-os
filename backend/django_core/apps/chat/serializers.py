@@ -53,6 +53,7 @@ class MessageSerializer(serializers.ModelSerializer):
     sender_detail = serializers.SerializerMethodField()
     shared_url = serializers.SerializerMethodField()
     is_pinned = serializers.SerializerMethodField()
+    reply_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Message
@@ -61,14 +62,19 @@ class MessageSerializer(serializers.ModelSerializer):
             'reply_to', 'created_at', 'edited_at', 'deleted_at',
             'pinned_at', 'pinned_by', 'is_pinned',
             'shared_object_id', 'shared_label', 'shared_url',
-            'attachments', 'reactions',
+            'attachments', 'reactions', 'reply_count',
         ]
         # `conversation` est fourni par l'URL/le contexte, pas par le corps.
         read_only_fields = [
             'id', 'sender', 'kind', 'created_at', 'edited_at', 'deleted_at',
             'pinned_at', 'pinned_by', 'shared_object_id', 'shared_label',
-            'attachments', 'reactions',
+            'attachments', 'reactions', 'reply_count',
         ]
+
+    def get_reply_count(self, obj):
+        # XKB24 — compteur de réponses sous le message parent (fil).
+        from .services import thread_reply_count
+        return thread_reply_count(obj)
 
     def get_sender_detail(self, obj):
         if obj.sender_id is None:
