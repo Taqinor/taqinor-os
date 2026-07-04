@@ -69,6 +69,7 @@ from .services import (
     attestation_salaire_ij_cnss,
     bareme_en_vigueur,
     brut_pour_net_cible,
+    avertissements_periode,
     calculer_bulletin,
     changer_statut,
     cloturer_periode_paie,
@@ -937,6 +938,19 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
         periode = self.get_object()
         return Response(
             controle_completude(periode), status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='avertissements')
+    def avertissements(self, request, pk=None):
+        """Panneau d'avertissements pré-run, façon Odoo (ZPAI2).
+
+        Liste PLATE d'avertissements typés + gravité (RIB manquant en
+        virement, CNSS manquant, salaire nul, profil sans dossier actif,
+        CDD échu, actif sans profil de paie) — à afficher en tête du
+        tableau de bord Paie avant de lancer le run.
+        """
+        periode = self.get_object()
+        return Response(
+            avertissements_periode(periode), status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='journal-de-paie')
     def journal_de_paie(self, request, pk=None):

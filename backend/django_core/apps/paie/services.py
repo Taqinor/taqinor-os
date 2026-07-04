@@ -3772,6 +3772,93 @@ def controle_completude(periode):
     }
 
 
+# ── ZPAI2 — Panneau d'avertissements pré-run (blocages de paie) ────────────
+
+def avertissements_periode(periode):
+    """Panneau d'avertissements avant de payer, façon Odoo (ZPAI2).
+
+    Distinct de ``controle_ecarts`` (XPAI15, écart de MONTANTS M vs M-1) : ici
+    ce sont les PRÉREQUIS manquants avant de lancer un run. Réutilise
+    ``controle_completude`` (YHIRE3, mêmes trous structurels) et le reshape
+    en une liste PLATE d'avertissements typés + gravité, plus deux contrôles
+    supplémentaires propres à ZPAI2 :
+
+    * RIB vide alors que ``mode_paiement='virement'`` (bloquant — un profil
+      chèque/espèces sans RIB n'entre pas dans l'ordre de virement, donc pas
+      d'avertissement pour lui) ;
+    * ``salaire_base`` à 0 sur un profil actif (bloquant — bulletin nul).
+
+    Lecture seule, jamais d'écriture sur ``rh``. Renvoie une liste de dicts
+    ``{'type', 'employe_id', 'matricule', 'nom', 'gravite', 'message'}`` —
+    ``gravite`` ∈ {'bloquant', 'avertissement'}.
+    """
+    from .models import ProfilPaie
+
+    completude = controle_completude(periode)
+    company = periode.company
+
+    avertissements = []
+
+    for item in completude['actifs_sans_profil']:
+        avertissements.append({
+            'type': 'sans_profil_paie', 'employe_id': item['dossier_id'],
+            'matricule': item['matricule'], 'nom': item['nom'],
+            'gravite': 'bloquant',
+            'message': f"{item['nom']} — aucun profil de paie : ignoré "
+                       "par l'import RH et par la génération du bulletin.",
+        })
+    for item in completude['profils_sans_cnss']:
+        avertissements.append({
+            'type': 'cnss_manquant', 'employe_id': item['dossier_id'],
+            'matricule': item['matricule'], 'nom': item['nom'],
+            'gravite': 'bloquant',
+            'message': f"{item['nom']} — numéro CNSS manquant.",
+        })
+    for item in completude['profils_actifs_dossiers_non_actifs']:
+        avertissements.append({
+            'type': 'dossier_non_actif', 'employe_id': item['dossier_id'],
+            'matricule': item['matricule'], 'nom': item['nom'],
+            'gravite': 'avertissement',
+            'message': f"{item['nom']} — profil de paie actif alors que le "
+                       f"dossier RH est « {item['statut_dossier']} ».",
+        })
+    for item in completude['contrats_expires']:
+        avertissements.append({
+            'type': 'cdd_echu', 'employe_id': item['dossier_id'],
+            'matricule': item['matricule'], 'nom': item['nom'],
+            'gravite': 'avertissement',
+            'message': f"{item['nom']} — CDD échu le "
+                       f"{item['contrat_date_fin']}.",
+        })
+
+    profils = (
+        ProfilPaie.objects.filter(company=company, actif=True)
+        .select_related('employe'))
+    for profil in profils:
+        dossier = profil.employe
+        nom = f'{dossier.matricule} — {dossier.nom} {dossier.prenom}'.strip()
+        if (profil.mode_paiement == ProfilPaie.MODE_PAIEMENT_VIREMENT
+                and not profil.rib):
+            avertissements.append({
+                'type': 'rib_manquant_virement', 'employe_id': dossier.id,
+                'matricule': dossier.matricule, 'nom': nom,
+                'gravite': 'bloquant',
+                'message': f'{nom} — RIB manquant, mode de paiement '
+                           'virement : sans RIB, le net ne sera pas '
+                           'transmis à la banque.',
+            })
+        if not profil.salaire_base or profil.salaire_base <= 0:
+            avertissements.append({
+                'type': 'salaire_nul', 'employe_id': dossier.id,
+                'matricule': dossier.matricule, 'nom': nom,
+                'gravite': 'bloquant',
+                'message': f'{nom} — salaire de base à 0 : le bulletin '
+                           'sera nul.',
+            })
+
+    return avertissements
+
+
 def synchroniser_salaire(profil, le_jour=None):
     """Aligne ``ProfilPaie.salaire_base`` sur la rémunération RH en vigueur
     (YHIRE6). Jamais de sync silencieuse : appelée EXPLICITEMENT (action
