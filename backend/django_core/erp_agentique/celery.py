@@ -46,6 +46,11 @@ app.conf.enable_utc = False
 #     maintenance SAV dus), quotidien (02:00) — apps/contrats/scheduled.py.
 #   - YSUBS2 : reconductions tacites + diffusion des alertes contrat
 #     (préavis/échéance), quotidien (07:15) — apps/contrats/scheduled.py.
+#   - XKB27 : messages chat programmés + rappels dus, toutes les 5 min —
+#     apps/chat/tasks.py (n'envoie jamais avant l'heure choisie).
+#   - XKB32 : sweep de rétention des conversations chat (02:45) —
+#     apps/chat/tasks.py (sans politique active = aucune purge, journalisé
+#     quand même pour traçabilité CNDP).
 app.conf.beat_schedule = {
     'ventes-check-overdue-factures': {
         'task': 'ventes.check_overdue_factures',
@@ -122,6 +127,7 @@ app.conf.beat_schedule = {
         'task': 'reporting.controle_integrite',
         'schedule': crontab(hour=3, minute=0, day_of_week=1),
     },
+<<<<<<< HEAD
     # YSUBS1 — facturation récurrente auto (échéanciers contrats +
     # maintenance SAV dus), quotidien (heure creuse).
     'contrats-generer-factures-recurrentes-dues': {
@@ -133,5 +139,24 @@ app.conf.beat_schedule = {
     'contrats-reconductions-et-alertes-daily': {
         'task': 'contrats.reconductions_et_alertes_daily',
         'schedule': crontab(hour=7, minute=15),
+    },
+    # XKB27 — envoie les messages chat programmés dus + notifie les rappels
+    # dus (« me rappeler ce message »). Cadence fine (toutes les 5 min) pour
+    # qu'un message programmé parte proche de l'heure choisie, sans surcharger
+    # le worker (sweep court, requêtes indexées sur `status`+date).
+    'chat-send-scheduled-messages': {
+        'task': 'chat.send_scheduled_messages',
+        'schedule': crontab(minute='*/5'),
+    },
+    'chat-send-due-reminders': {
+        'task': 'chat.send_due_reminders',
+        'schedule': crontab(minute='*/5'),
+    },
+    # XKB32 — sweep de rétention des conversations (loi 09-08 / CNDP), une
+    # fois par jour, heure creuse. Sans politique active, ne purge rien mais
+    # journalise quand même l'exécution.
+    'chat-retention-sweep': {
+        'task': 'chat.retention_sweep',
+        'schedule': crontab(hour=2, minute=45),
     },
 }
