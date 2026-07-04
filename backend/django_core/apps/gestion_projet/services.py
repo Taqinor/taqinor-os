@@ -2411,3 +2411,35 @@ def ingest_email_projet(company, *, to_alias, subject='', body='',
     return Tache.objects.create(
         company=company, projet=projet, libelle=libelle,
         description=description, statut=Tache.Statut.A_FAIRE)
+
+
+# ── Conversion à-faire (records.Activity) → tâche projet (XKB4) ────────────
+class ConversionActiviteError(Exception):
+    """Levée quand une activité personnelle ne peut pas être convertie."""
+
+
+def creer_tache_depuis_activite(activite, *, projet_id, company=None):
+    """Convertit un ``records.Activity`` (typiquement un à-faire personnel,
+    XKB4) en ``Tache`` du projet ``projet_id``, en préservant son contenu.
+
+    Reçoit l'instance ``Activity`` déjà chargée par l'appelant (``records``
+    ne nous passe jamais son ``models`` — seul cet import fonction-local par
+    l'appelant existe, jamais l'inverse) ; on ne lit ici que des attributs
+    scalaires (``summary``/``note``/``due_date``), jamais
+    ``apps.records.models`` lui-même, pour ne créer aucune dépendance
+    circulaire. ``company`` est dérivée de l'activité si non fournie, jamais
+    du corps de requête.
+    """
+    company = company or getattr(activite, 'company', None)
+    try:
+        projet = Projet.objects.get(pk=projet_id, company=company)
+    except Projet.DoesNotExist:
+        raise ConversionActiviteError(
+            "Projet introuvable pour cette société.")
+
+    libelle = (getattr(activite, 'summary', '') or '(sans titre)')[:200]
+    return Tache.objects.create(
+        company=projet.company, projet=projet, libelle=libelle,
+        description=getattr(activite, 'note', '') or '',
+        date_fin_prevue=getattr(activite, 'due_date', None),
+        statut=Tache.Statut.A_FAIRE)
