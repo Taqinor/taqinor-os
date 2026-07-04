@@ -1216,6 +1216,44 @@ def draft_bcf_for_shortfall(installation, fournisseur, user, company):
     return bon, len(manquants)
 
 
+# ── YPROC5/YPROC6 — conversion générique lignes → BCF brouillon ─────────────
+# Point d'entrée cross-app RÉUTILISABLE : appelé par ``installations`` (demande
+# d'achat approuvée → BCF, adjudication RFQ → BCF) SANS que ``stock`` importe
+# jamais ``installations``. Une ligne par tuple (produit_id, désignation,
+# quantité, prix) ; ``produit_id`` peut être ``None`` (ligne libre/service, DA
+# hors catalogue). Référence anti-collision (jamais count()+1).
+
+def creer_bcf_depuis_lignes(*, company, user, fournisseur, lignes, note=''):
+    """Crée un ``BonCommandeFournisseur`` BROUILLON depuis une liste de lignes.
+
+    ``lignes`` : itérable de tuples ``(produit_id, designation, qte, prix)``.
+    ``produit_id`` peut être ``None`` (ligne libre/service — ``sans_stock``
+    posé automatiquement par le modèle via l'absence de produit). Lève
+    ValueError si ``lignes`` est vide. Renvoie le ``BonCommandeFournisseur``
+    créé. INTERNE — jamais de prix d'achat sur un document client.
+    """
+    from apps.ventes.utils.references import create_with_reference
+    from .models import BonCommandeFournisseur, LigneBonCommandeFournisseur
+
+    lignes = list(lignes)
+    if not lignes:
+        raise ValueError('Aucune ligne à commander.')
+
+    def _save(ref):
+        bon = BonCommandeFournisseur.objects.create(
+            company=company, reference=ref, fournisseur=fournisseur,
+            statut=BonCommandeFournisseur.Statut.BROUILLON,
+            note=note or '', created_by=user)
+        for produit_id, designation, qte, prix in lignes:
+            LigneBonCommandeFournisseur.objects.create(
+                bon_commande=bon, produit_id=produit_id,
+                designation=designation or '', quantite=int(qte or 0),
+                prix_achat_unitaire=prix or 0)
+        return bon
+
+    return create_with_reference(BonCommandeFournisseur, 'BCF', company, _save)
+
+
 def resolve_fournisseur(company, fournisseur_id, installation):
     """Choisit le fournisseur du brouillon : explicite, sinon (N17) le
     fournisseur le moins cher du premier produit en pénurie, sinon le

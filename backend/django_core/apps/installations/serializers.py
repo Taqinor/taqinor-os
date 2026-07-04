@@ -1416,15 +1416,17 @@ class DemandeAchatSerializer(serializers.ModelSerializer):
         model = DemandeAchat
         fields = [
             'id', 'reference', 'objet', 'chantier', 'programme',
-            'fournisseur_suggere', 'priorite', 'priorite_display',
+            'fournisseur_suggere', 'bon_commande', 'priorite',
+            'priorite_display',
             'date_besoin', 'statut', 'statut_display', 'motif_refus',
             'approuvee_par', 'date_decision', 'note', 'lignes',
             'montant_estime',
             'created_by', 'date_creation', 'date_modification',
         ]
         read_only_fields = [
-            'reference', 'statut', 'approuvee_par', 'date_decision',
-            'motif_refus', 'created_by', 'date_creation', 'date_modification',
+            'reference', 'statut', 'bon_commande', 'approuvee_par',
+            'date_decision', 'motif_refus', 'created_by', 'date_creation',
+            'date_modification',
         ]
 
     def validate_objet(self, value):

@@ -56,6 +56,13 @@ class DemandeAchat(models.Model):
         'stock.Fournisseur', on_delete=models.SET_NULL,
         null=True, blank=True,
         related_name='installations_demandes_achat_suggerees')
+    # YPROC5 — BCF généré depuis cette DA (traçabilité bidirectionnelle : la DA
+    # montre son BCF, la vue BCF peut filtrer par demande). String-FK,
+    # nullable = comportement historique inchangé (aucun BCF généré encore).
+    bon_commande = models.ForeignKey(
+        'stock.BonCommandeFournisseur', on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='installations_demandes_achat')
     priorite = models.CharField(
         max_length=10, choices=Priorite.choices, default=Priorite.NORMALE)
     date_besoin = models.DateField(null=True, blank=True)
