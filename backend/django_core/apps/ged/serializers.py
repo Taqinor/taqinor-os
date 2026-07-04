@@ -230,6 +230,10 @@ class DocumentSerializer(serializers.ModelSerializer):
     proprietaire_nom = serializers.CharField(
         source='proprietaire.username', read_only=True, default=None)
     contact_label = serializers.SerializerMethodField()
+    # ZGED9 — verrou d'avertissement (léger, distinct du check-out GED16).
+    verrou_avertissement_par_nom = serializers.CharField(
+        source='verrou_avertissement_par.username', read_only=True, default=None)
+    est_verrouille_avertissement = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = Document
@@ -250,6 +254,11 @@ class DocumentSerializer(serializers.ModelSerializer):
             # ZGED5 — propriétaire + contact assigné (réassignables via
             # l'action `assigner`, jamais un PATCH direct sur `proprietaire`).
             'proprietaire', 'proprietaire_nom', 'contact_id', 'contact_label',
+            # ZGED9 — verrou d'avertissement (posé/levé via les actions
+            # dédiées, jamais un PATCH direct).
+            'verrou_avertissement_par', 'verrou_avertissement_par_nom',
+            'verrou_avertissement_le', 'verrou_avertissement_motif',
+            'est_verrouille_avertissement',
             'created_at', 'updated_at',
         ]
         read_only_fields = [
@@ -259,6 +268,8 @@ class DocumentSerializer(serializers.ModelSerializer):
             'supprime_le', 'supprime_par', 'est_dans_corbeille',
             'est_document_lien',
             'proprietaire', 'contact_id',
+            'verrou_avertissement_par', 'verrou_avertissement_le',
+            'verrou_avertissement_motif', 'est_verrouille_avertissement',
         ]
 
     def get_contact_label(self, obj):

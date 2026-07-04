@@ -1257,6 +1257,73 @@ def assert_not_locked_by_other(document, user):
         )
 
 
+def verrouiller_avertissement(document, user, *, motif=''):
+    """ZGED9 — Pose le verrou d'AVERTISSEMENT léger (« en cours d'édition »),
+    DISTINCT du check-out GED16 : n'empêche jamais la lecture, affiche
+    seulement un bandeau à tous. Idempotent si déjà posé par le MÊME
+    utilisateur (motif mis à jour) ; si posé par un AUTRE, lève
+    `PermissionError` (→ 409 côté vue).
+
+    Multi-tenant : vérifie que user.company_id == document.company_id."""
+    if document.company_id != user.company_id:
+        raise PermissionError("Document inaccessible.")
+    from django.utils import timezone
+    with transaction.atomic():
+        doc = Document.objects.select_for_update().get(pk=document.pk)
+        if (doc.verrou_avertissement_par_id is not None
+                and doc.verrou_avertissement_par_id != user.pk):
+            raise PermissionError(
+                "Ce document est déjà signalé « en cours d'édition » par un "
+                "autre utilisateur.")
+        doc.verrou_avertissement_par = user
+        doc.verrou_avertissement_le = timezone.now()
+        doc.verrou_avertissement_motif = motif or ''
+        doc.save(update_fields=[
+            'verrou_avertissement_par', 'verrou_avertissement_le',
+            'verrou_avertissement_motif', 'updated_at'])
+    journaliser_evenement(
+        doc, type_evenement='verrou_avertissement_pose',
+        message=motif or '', utilisateur=user)
+    return doc
+
+
+def deverrouiller_avertissement(document, user):
+    """ZGED9 — Lève le verrou d'AVERTISSEMENT. Le poseur OU un
+    gestionnaire/admin peut lever ; un forçage PAR UN TIERS gestionnaire est
+    journalisé distinctement (traçabilité de la levée forcée). Idempotent si
+    déjà libre.
+
+    Multi-tenant : vérifie que user.company_id == document.company_id."""
+    if document.company_id != user.company_id:
+        raise PermissionError("Document inaccessible.")
+    with transaction.atomic():
+        doc = Document.objects.select_for_update().get(pk=document.pk)
+        if doc.verrou_avertissement_par_id is None:
+            return doc  # déjà libre — idempotent.
+        is_poseur = doc.verrou_avertissement_par_id == user.pk
+        is_manager = getattr(user, 'is_admin_role', False) or user.is_superuser
+        if not is_poseur and not is_manager:
+            raise PermissionError(
+                "Seul le poseur du verrou ou un gestionnaire peut le lever.")
+        force = not is_poseur
+        poseur_id = doc.verrou_avertissement_par_id
+        doc.verrou_avertissement_par = None
+        doc.verrou_avertissement_le = None
+        doc.verrou_avertissement_motif = ''
+        doc.save(update_fields=[
+            'verrou_avertissement_par', 'verrou_avertissement_le',
+            'verrou_avertissement_motif', 'updated_at'])
+    journaliser_evenement(
+        doc,
+        type_evenement=(
+            'verrou_avertissement_force' if force else 'verrou_avertissement_leve'),
+        message=(
+            f'Levé de force par un gestionnaire (posé par #{poseur_id}).'
+            if force else ''),
+        utilisateur=user)
+    return doc
+
+
 def change_lifecycle_status(document, target_status, *, user):
     """GED17 — Fait avancer un document dans son cycle de vie (statut LOCAL).
 

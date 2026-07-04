@@ -287,6 +287,11 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         # ZGED7 — favoriser/défavoriser est personnel, ouvert à tout rôle.
         if self.action == 'favori':
             return [IsAnyRole()]
+        # ZGED9 — verrouiller/déverrouiller (avertissement léger) : tout rôle
+        # peut poser/lever SON PROPRE verrou ; la garde gestionnaire pour le
+        # forçage est appliquée dans `services.deverrouiller_avertissement`.
+        if self.action in ('verrouiller', 'deverrouiller'):
+            return [IsAnyRole()]
         # XGED14 — le téléchargement ZIP est une lecture (lisible par tout rôle) ;
         # les autres opérations de lot restent réservées aux responsables/admins.
         if (self.action == 'operations_lot'
@@ -1092,6 +1097,38 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             # GED23 — document archivé légalement : write-once, save() bloqué.
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        except PermissionError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        doc.refresh_from_db()
+        return Response(
+            DocumentSerializer(doc, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='verrouiller')
+    def verrouiller(self, request, pk=None):
+        """ZGED9 — Pose le verrou d'AVERTISSEMENT léger (« en cours
+        d'édition »), DISTINCT du check-out GED16 : n'empêche jamais la
+        lecture, affiche un bandeau à tous. Body optionnel :
+        `{"motif": "..."}`. 409 si déjà posé par un autre utilisateur."""
+        document = self.get_object()
+        try:
+            doc = services.verrouiller_avertissement(
+                document, request.user, motif=request.data.get('motif', ''))
+        except PermissionError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
+        doc.refresh_from_db()
+        return Response(
+            DocumentSerializer(doc, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='deverrouiller')
+    def deverrouiller(self, request, pk=None):
+        """ZGED9 — Lève le verrou d'AVERTISSEMENT. Le poseur OU un
+        gestionnaire/admin peut lever (le forçage par un tiers gestionnaire
+        est journalisé). Idempotent si déjà libre."""
+        document = self.get_object()
+        try:
+            doc = services.deverrouiller_avertissement(document, request.user)
         except PermissionError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)

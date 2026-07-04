@@ -483,6 +483,22 @@ class Document(models.Model):
         verbose_name='propriétaire')
     contact_id = models.PositiveIntegerField(
         null=True, blank=True, verbose_name='contact assigné (crm.Client)')
+    # ZGED9 — verrou d'AVERTISSEMENT léger (« en cours d'édition »), DISTINCT
+    # du check-out/check-in GED16 (`locked_by`/`locked_at` ci-dessus, qui
+    # gouverne le dépôt de version). Ce verrou n'empêche jamais la LECTURE —
+    # il affiche seulement un bandeau « verrouillé par X depuis Y » côté UI,
+    # levable par son poseur OU un gestionnaire (forçage journalisé via
+    # `services.deverrouiller_avertissement`). Additifs, ne changent rien au
+    # sémantique GED16.
+    verrou_avertissement_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_documents_verrou_avertissement',
+        verbose_name='verrou (avertissement) posé par')
+    verrou_avertissement_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='verrou (avertissement) posé le')
+    verrou_avertissement_motif = models.CharField(
+        max_length=300, blank=True, default='',
+        verbose_name='motif du verrou (avertissement)')
     # GED17 — cycle de vie documentaire (statut LOCAL à la GED, séparé du
     # funnel STAGES.py). Tout document naît « brouillon » ; les transitions
     # sont gardées côté serveur par `services.change_lifecycle_status` selon la
@@ -549,6 +565,12 @@ class Document(models.Model):
     def is_locked(self):
         """True si le document est actuellement verrouillé (check-out actif)."""
         return self.locked_by_id is not None
+
+    @property
+    def est_verrouille_avertissement(self):
+        """ZGED9 — True si un verrou d'AVERTISSEMENT (léger, distinct du
+        check-out GED16) est actuellement posé sur ce document."""
+        return self.verrou_avertissement_par_id is not None
 
     @property
     def transitions_autorisees(self):
