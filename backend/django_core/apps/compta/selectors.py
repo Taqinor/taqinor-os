@@ -2421,40 +2421,54 @@ def budget_vs_realise(company, budget, *, date_fin=None):
 
 def resultat_analytique(company, *, date_debut=None, date_fin=None,
                         validees_seulement=False):
-    """Produits − charges ventilés par centre de coût (FG150).
+    """Produits − charges ventilés par centre de coût (FG150 + XACC20).
 
-    Agrège les ``LigneEcriture`` de classes 6/7 portant un centre de coût et
-    renvoie le résultat (produits − charges) par axe analytique :
-    ``{'centres': [{'code', 'libelle', 'axe', 'produits', 'charges',
-    'resultat'}], 'sans_centre': {...}}``. Lecture seule, scopée société.
+    Agrège les ``LigneEcriture`` de classes 6/7 : une ligne portant une
+    ``VentilationAnalytique`` (XACC20) est éclatée AU PRORATA des pourcentages
+    de la distribution sur chacun de ses centres ; une ligne SANS ventilation
+    retombe sur son ``centre_cout`` simple (FG150, rétro-compatible, comme
+    avant XACC20). Renvoie le résultat (produits − charges) par axe
+    analytique : ``{'centres': [{'code', 'libelle', 'axe', 'produits',
+    'charges', 'resultat'}], 'sans_centre': {...}}``. Lecture seule, scopée
+    société.
     """
     qs = _lignes_qs(company, date_debut=date_debut, date_fin=date_fin,
                     validees_seulement=validees_seulement).filter(
-        compte__classe__in=[6, 7])
-    agg = qs.values(
-        'centre_cout', 'centre_cout__code', 'centre_cout__libelle',
-        'centre_cout__axe', 'compte__classe',
-    ).annotate(debit=Sum('debit'), credit=Sum('credit'))
+        compte__classe__in=[6, 7]).select_related(
+        'centre_cout', 'compte').prefetch_related(
+        'ventilation_analytique__distributions__centre_cout')
+
     centres = {}
     sans_centre = {'produits': Decimal('0'), 'charges': Decimal('0')}
-    for row in agg:
-        debit = row['debit'] or Decimal('0')
-        credit = row['credit'] or Decimal('0')
-        cc_id = row['centre_cout']
-        if cc_id is None:
-            cible = sans_centre
+
+    def _cible(cc):
+        if cc is None:
+            return sans_centre
+        return centres.setdefault(cc.id, {
+            'code': cc.code, 'libelle': cc.libelle, 'axe': cc.axe,
+            'produits': Decimal('0'), 'charges': Decimal('0'),
+        })
+
+    for ligne in qs:
+        montant_net = (ligne.credit or Decimal('0')) - (ligne.debit or Decimal('0'))
+        classe = ligne.compte.classe
+        ventilation = getattr(ligne, 'ventilation_analytique', None)
+        distributions = list(ventilation.distributions.all()) if ventilation else []
+        if distributions:
+            for d in distributions:
+                part = (montant_net * d.pourcentage / Decimal('100'))
+                cible = _cible(d.centre_cout)
+                if classe == 7:
+                    cible['produits'] += part
+                else:
+                    cible['charges'] += -part
         else:
-            cible = centres.setdefault(cc_id, {
-                'code': row['centre_cout__code'],
-                'libelle': row['centre_cout__libelle'],
-                'axe': row['centre_cout__axe'],
-                'produits': Decimal('0'),
-                'charges': Decimal('0'),
-            })
-        if row['compte__classe'] == 7:
-            cible['produits'] += credit - debit
-        else:
-            cible['charges'] += debit - credit
+            cible = _cible(ligne.centre_cout)
+            if classe == 7:
+                cible['produits'] += montant_net
+            else:
+                cible['charges'] += -montant_net
+
     liste = []
     for data in centres.values():
         data['resultat'] = data['produits'] - data['charges']

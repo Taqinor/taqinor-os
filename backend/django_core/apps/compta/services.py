@@ -45,6 +45,8 @@ from .models import (
     PlanAmortissementFiscal, DotationDerogatoire, TauxDevise,
     ItemOuvertDevise, EcartChange, ReevaluationCloture, LigneReevaluation,
     EtatPersonnalise, LigneEtatPersonnalise, ColonneEtatPersonnalise,
+    VentilationAnalytique, LigneVentilation, RegleImputation,
+    LigneRegleImputation,
     Immobilisation, IndemniteChantier, Journal, LigneEcriture,
     LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, NoteFrais,
     OuverturePartage,
@@ -254,7 +256,7 @@ def creer_ecriture(company, journal, date_ecriture, libelle, lignes, *,
         statut=statut or EcritureComptable.Statut.BROUILLON,
     )
     for ligne in lignes:
-        LigneEcriture.objects.create(
+        ligne_ecriture = LigneEcriture.objects.create(
             company=company,
             ecriture=ecriture,
             compte=ligne['compte'],
@@ -265,6 +267,13 @@ def creer_ecriture(company, journal, date_ecriture, libelle, lignes, *,
             tiers_id=ligne.get('tiers_id'),
             centre_cout=ligne.get('centre_cout'),
         )
+        # XACC20 — auto-imputation analytique : si aucune ventilation/centre de
+        # coût n'est déjà fourni sur la ligne ET qu'une règle matche, on
+        # applique automatiquement sa distribution (additif, jamais bloquant).
+        if not ligne.get('centre_cout') and 'ventilation' not in ligne:
+            _appliquer_regle_imputation_si_match(
+                company, ligne_ecriture, tiers_id=ligne.get('tiers_id'),
+                produit_id=ligne.get('produit_id'))
     # Garde-fou final : revalide l'équilibre côté modèle.
     ecriture.clean()
     return ecriture
@@ -6834,3 +6843,89 @@ def creer_etat_personnalise(company, *, libelle, description='', lignes=None,
             budget=spec.get('budget'),
         )
     return etat
+
+
+# ── XACC20 — Ventilation analytique %  & règles d'auto-imputation ──────────
+
+@transaction.atomic
+def ventiler_ligne_ecriture(ligne_ecriture, distributions):
+    """Ventile une ``LigneEcriture`` sur plusieurs ``CentreCout`` en % (XACC20).
+
+    ``distributions`` : liste de dicts ``{'centre_cout', 'pourcentage'}``. La
+    somme des pourcentages DOIT valoir exactement 100 (sinon
+    ``ValidationError``, rien n'est persisté). Idempotent : ré-appeler sur la
+    même ligne remplace la distribution précédente (OneToOne). Le champ
+    ``centre_cout`` simple (FG150) de la ligne reste INTACT — c'est une
+    information ADDITIONNELLE, jamais un remplacement destructif. Renvoie la
+    ``VentilationAnalytique``.
+    """
+    total = sum(
+        (Decimal(d['pourcentage']) for d in distributions), Decimal('0'))
+    if total != Decimal('100'):
+        raise ValidationError(
+            f"La ventilation doit sommer à 100 % (reçu {total} %).")
+    ventilation, _ = VentilationAnalytique.objects.get_or_create(
+        company=ligne_ecriture.company, ligne_ecriture=ligne_ecriture)
+    ventilation.distributions.all().delete()
+    for d in distributions:
+        LigneVentilation.objects.create(
+            company=ligne_ecriture.company, ventilation=ventilation,
+            centre_cout=d['centre_cout'],
+            pourcentage=Decimal(d['pourcentage']))
+    return ventilation
+
+
+def creer_regle_imputation(company, *, libelle, prefixe_compte,
+                           distributions, tiers_id=None, produit_id=None,
+                           priorite=100):
+    """Crée une règle d'auto-imputation analytique (XACC20).
+
+    ``distributions`` (même contrat que ``ventiler_ligne_ecriture``) doit
+    sommer à 100 %. La règle s'applique aux NOUVELLES écritures dont un
+    compte commence par ``prefixe_compte`` (et, si fournis, dont le
+    ``tiers_id``/``produit_id`` matchent). Renvoie la règle créée.
+    """
+    total = sum(
+        (Decimal(d['pourcentage']) for d in distributions), Decimal('0'))
+    if total != Decimal('100'):
+        raise ValidationError(
+            f"La distribution de la règle doit sommer à 100 % (reçu {total} %).")
+    regle = RegleImputation.objects.create(
+        company=company, libelle=libelle, prefixe_compte=prefixe_compte,
+        tiers_id=tiers_id, produit_id=produit_id, priorite=priorite,
+    )
+    for d in distributions:
+        LigneRegleImputation.objects.create(
+            company=company, regle=regle, centre_cout=d['centre_cout'],
+            pourcentage=Decimal(d['pourcentage']))
+    return regle
+
+
+def _appliquer_regle_imputation_si_match(company, ligne_ecriture, *,
+                                         tiers_id=None, produit_id=None):
+    """Applique, si une règle matche, sa distribution à ``ligne_ecriture``
+    (XACC20). Silencieuse et non bloquante : aucune règle qui matche = rien ne
+    se passe (comportement de saisie manuelle actuel intact). La première
+    règle active par ``priorite`` dont le compte commence par
+    ``prefixe_compte`` (et dont ``tiers_id``/``produit_id``, si renseignés sur
+    la règle, correspondent) gagne.
+    """
+    numero = ligne_ecriture.compte.numero
+    regles = RegleImputation.objects.filter(
+        company=company, actif=True).order_by('priorite', 'id')
+    for regle in regles:
+        if not numero.startswith(regle.prefixe_compte):
+            continue
+        if regle.tiers_id is not None and regle.tiers_id != tiers_id:
+            continue
+        if regle.produit_id is not None and regle.produit_id != produit_id:
+            continue
+        distributions_regle = list(regle.distributions.all())
+        if not distributions_regle:
+            continue
+        ventiler_ligne_ecriture(ligne_ecriture, [
+            {'centre_cout': d.centre_cout, 'pourcentage': d.pourcentage}
+            for d in distributions_regle
+        ])
+        return regle
+    return None

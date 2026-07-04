@@ -7286,3 +7286,180 @@ class ColonneEtatPersonnalise(models.Model):
 
     def __str__(self):
         return f'{self.libelle} ({self.type_colonne})'
+
+
+# ── XACC20 — Ventilation analytique %  & règles d'auto-imputation ──────────
+
+class VentilationAnalytique(models.Model):
+    """Ventilation en % d'une ``LigneEcriture`` sur plusieurs sections (XACC20).
+
+    ``LigneEcriture.centre_cout`` (FG150) reste mono-axe 1:1 — INCHANGÉ et
+    toujours utilisable. Cette table est une distribution ADDITIONNELLE en
+    pourcentage sur PLUSIEURS ``CentreCout`` (une ligne ``LigneVentilation``
+    par section, Σ pourcentage = 100 % validé en ``clean()``). Les rapports
+    par centre de coût lisent CETTE table en priorité si elle existe pour la
+    ligne, sinon retombent sur ``centre_cout`` simple (rétro-compatible).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='ventilations_analytiques',
+        verbose_name='Société',
+    )
+    ligne_ecriture = models.OneToOneField(
+        LigneEcriture,
+        on_delete=models.CASCADE,
+        related_name='ventilation_analytique',
+        verbose_name="Ligne d'écriture",
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Ventilation analytique'
+        verbose_name_plural = 'Ventilations analytiques'
+        ordering = ['-date_creation', '-id']
+
+    def __str__(self):
+        return f'Ventilation ligne #{self.ligne_ecriture_id}'
+
+    @property
+    def total_pourcentage(self):
+        return sum(
+            (d.pourcentage for d in self.distributions.all()), Decimal('0'))
+
+
+class LigneVentilation(models.Model):
+    """Part (%) d'une ``VentilationAnalytique`` affectée à un ``CentreCout``
+    (XACC20)."""
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='lignes_ventilation',
+        verbose_name='Société',
+    )
+    ventilation = models.ForeignKey(
+        VentilationAnalytique,
+        on_delete=models.CASCADE,
+        related_name='distributions',
+        verbose_name='Ventilation',
+    )
+    centre_cout = models.ForeignKey(
+        CentreCout,
+        on_delete=models.PROTECT,
+        related_name='lignes_ventilation',
+        verbose_name='Centre de coût',
+    )
+    pourcentage = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('0'),
+        verbose_name='Pourcentage (%)')
+
+    class Meta:
+        verbose_name = 'Ligne de ventilation'
+        verbose_name_plural = 'Lignes de ventilation'
+        ordering = ['ventilation_id', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['ventilation', 'centre_cout'],
+                name='uniq_ventilation_centre_cout',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.centre_cout.code} — {self.pourcentage}%'
+
+    def clean(self):
+        super().clean()
+        if self.pourcentage is not None and not (0 < self.pourcentage <= 100):
+            raise ValidationError(
+                "Le pourcentage doit être strictement compris entre 0 et 100.")
+
+
+class RegleImputation(models.Model):
+    """Règle d'auto-imputation analytique par compte/tiers/produit (XACC20).
+
+    Appliquée à la CRÉATION d'une écriture (``services.creer_ecriture``,
+    additif) : si une ligne matche le ``prefixe_compte`` de la règle (et,
+    quand renseigné, le ``tiers_id`` ou ``produit_id``), la distribution en %
+    de la règle est copiée dans une ``VentilationAnalytique`` pour cette
+    ligne — sans jamais imposer de saisie manuelle. Plusieurs règles peuvent
+    matcher ; la première par ``priorite`` (plus petit = prioritaire) gagne.
+    ``produit_id`` référence ``apps.stock.Produit`` par id opaque (jamais un
+    FK cross-app).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='regles_imputation',
+        verbose_name='Société',
+    )
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    prefixe_compte = models.CharField(
+        max_length=20, verbose_name='Préfixe de compte (ou plage)')
+    tiers_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Tiers (optionnel)')
+    produit_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Produit (optionnel)')
+    priorite = models.PositiveIntegerField(
+        default=100, verbose_name='Priorité (plus petit = prioritaire)')
+    actif = models.BooleanField(default=True, verbose_name='Active')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Règle d'imputation analytique"
+        verbose_name_plural = "Règles d'imputation analytique"
+        ordering = ['priorite', 'id']
+
+    def __str__(self):
+        return f'{self.libelle} ({self.prefixe_compte})'
+
+    @property
+    def total_pourcentage(self):
+        return sum(
+            (d.pourcentage for d in self.distributions.all()), Decimal('0'))
+
+
+class LigneRegleImputation(models.Model):
+    """Part (%) d'une ``RegleImputation`` affectée à un ``CentreCout`` (XACC20)."""
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='lignes_regle_imputation',
+        verbose_name='Société',
+    )
+    regle = models.ForeignKey(
+        RegleImputation,
+        on_delete=models.CASCADE,
+        related_name='distributions',
+        verbose_name='Règle',
+    )
+    centre_cout = models.ForeignKey(
+        CentreCout,
+        on_delete=models.PROTECT,
+        related_name='lignes_regle_imputation',
+        verbose_name='Centre de coût',
+    )
+    pourcentage = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('0'),
+        verbose_name='Pourcentage (%)')
+
+    class Meta:
+        verbose_name = "Ligne de règle d'imputation"
+        verbose_name_plural = "Lignes de règle d'imputation"
+        ordering = ['regle_id', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['regle', 'centre_cout'],
+                name='uniq_regle_imputation_centre_cout',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.centre_cout.code} — {self.pourcentage}%'
+
+    def clean(self):
+        super().clean()
+        if self.pourcentage is not None and not (0 < self.pourcentage <= 100):
+            raise ValidationError(
+                "Le pourcentage doit être strictement compris entre 0 et 100.")
