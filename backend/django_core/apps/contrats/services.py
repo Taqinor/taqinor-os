@@ -564,6 +564,20 @@ def activer_si_eligible(contrat, *, today=None, auteur=None):
         new_value=contrat.statut,
         message='Activation automatique à la signature.',
         auteur=auteur)
+
+    # YDOCF5 — émet l'événement métier EXACTEMENT une fois (une seule
+    # bascule → actif par appel, garantie par la garde de transition
+    # ci-dessus). Best-effort : un abonné qui échoue ne doit jamais faire
+    # échouer l'activation, déjà actée.
+    try:
+        from core.events import contrat_actif as contrat_actif_signal
+
+        contrat_actif_signal.send(
+            sender=None, contrat=contrat, user=auteur,
+            company=contrat.company)
+    except Exception:  # pragma: no cover - défensif (best-effort)
+        pass
+
     return True
 
 
@@ -657,9 +671,26 @@ def signer_contrat(contrat, *, signataire_nom, role_signataire,
                 new_value=contrat.statut,
                 message='Toutes les parties requises ont signé.',
                 auteur=auteur if auteur is not None else signataire)
+
+            # YDOCF5 — émet l'événement métier EXACTEMENT une fois (une seule
+            # bascule → signe par appel de ``signer_contrat``, garantie par la
+            # condition ``contrat.statut != Contrat.Statut.SIGNE`` ci-dessus).
+            # Best-effort : jamais bloquant pour la signature déjà actée.
+            try:
+                from core.events import contrat_signe as contrat_signe_signal
+
+                contrat_signe_signal.send(
+                    sender=None, contrat=contrat,
+                    user=auteur if auteur is not None else signataire,
+                    company=contrat.company)
+            except Exception:  # pragma: no cover - défensif (best-effort)
+                pass
+
             # CONTRAT17 — activation automatique « signé → actif » si la prise
             # d'effet est atteinte. Passe par la machine d'états gardée et
             # journalise la bascule ; une prise d'effet future laisse à « signe ».
+            # (émet son propre événement ``contrat_actif`` — voir
+            # ``activer_si_eligible``.)
             contrat_actif = activer_si_eligible(
                 contrat, today=today,
                 auteur=auteur if auteur is not None else signataire)
@@ -1671,10 +1702,18 @@ def resilier_contrat(contrat, *, motif='', date_effet=None, preavis_jours=None,
       résiliation (``version_creee``).
     - AUDIT : la bascule de statut est journalisée dans le chatter (CONTRAT15),
       auteur et société posés côté serveur.
+    - DE-PROVISIONING (YSUBS5) : les ``LigneEcheance`` FUTURES non encore
+      facturées (``facture_id`` NULL, ``date_echeance > today``) de TOUS les
+      échéanciers du contrat passent ``annulee`` — la résiliation stoppe la
+      facturation récurrente à venir sans jamais toucher aux échéances déjà
+      facturées (historique immuable). Puis un signal ``contrat_resilie``
+      (``core/events.py``) est émis pour la propagation aval DÉCOUPLÉE (ex.
+      arrêt des visites préventives SAV, ``apps/sav/receivers.py``) — best-
+      effort, jamais bloquant pour la résiliation elle-même (déjà actée).
 
     Renvoie la ``Resiliation`` créée (``version_creee`` renseigné si snapshot).
     """
-    from .models import Contrat, Resiliation
+    from .models import Contrat, LigneEcheance, Resiliation
 
     if today is None:
         today = timezone.localdate()
@@ -1731,6 +1770,31 @@ def resilier_contrat(contrat, *, motif='', date_effet=None, preavis_jours=None,
         if version is not None:
             resiliation.version_creee = version
             resiliation.save(update_fields=['version_creee'])
+
+    # YSUBS5 — de-provisioning : annule les échéances FUTURES non facturées
+    # (aucun impact sur l'historique déjà facturé). Même app, pas de
+    # frontière cross-app ici.
+    (
+        LigneEcheance.objects
+        .filter(
+            echeancier__contrat=contrat, facture_id__isnull=True,
+            date_echeance__gt=today,
+        )
+        .exclude(statut=LigneEcheance.Statut.ANNULEE)
+        .update(statut=LigneEcheance.Statut.ANNULEE)
+    )
+
+    # YSUBS5 — propagation aval DÉCOUPLÉE (de-provisioning). Best-effort :
+    # un abonné qui échoue ne doit jamais faire échouer la résiliation,
+    # déjà actée ci-dessus.
+    try:
+        from core.events import contrat_resilie as contrat_resilie_signal
+
+        contrat_resilie_signal.send(
+            sender=None, contrat_id=contrat.id, company=contrat.company,
+            date_effet=date_effet)
+    except Exception:  # pragma: no cover - défensif (best-effort)
+        pass
 
     return resiliation
 
@@ -2811,3 +2875,714 @@ def marquer_renouvellement_accepte(contrat, devis, *, auteur=None,
         message='Devis de renouvellement accepté par le client.',
         auteur=auteur)
     return contrat
+
+
+# ---------------------------------------------------------------------------
+# XCTR14 — Portail client : demandes en un clic (renouvellement/résiliation)
+# ---------------------------------------------------------------------------
+
+
+class DemandePortailError(Exception):
+    """Levée quand une demande client (portail) ne peut pas être enregistrée."""
+
+
+def demander_action_portail(contrat, *, type_demande, message=''):
+    """Enregistre une demande client 1-clic depuis le portail — XCTR14.
+
+    ``type_demande`` vaut ``'renouvellement'`` ou ``'resiliation'``. AUCUN
+    changement de statut n'est appliqué ici (préservation des statuts —
+    CONTRAT12) : la demande est journalisée au chatter (``ContratActivity``,
+    type note) puis une notification best-effort est diffusée au responsable
+    du contrat (ou, à défaut, aux destinataires société de l'événement
+    générique ``digest``) via ``apps.notifications.services`` — jamais un
+    import de ses modèles/vues. Une erreur de notification n'empêche jamais
+    l'enregistrement de la demande. Renvoie l'entrée ``ContratActivity`` créée.
+    """
+    from .models import ContratActivity
+
+    libelles = {
+        'renouvellement': 'Demande de renouvellement',
+        'resiliation': 'Demande de résiliation',
+    }
+    if type_demande not in libelles:
+        raise DemandePortailError('Type de demande invalide.')
+
+    texte = libelles[type_demande]
+    if message:
+        texte = f'{texte} — {message.strip()[:2000]}'
+
+    activite = ContratActivity.objects.create(
+        company=contrat.company,
+        contrat=contrat,
+        type=ContratActivity.Kind.NOTE,
+        message=f'[Portail client] {texte}',
+    )
+
+    _notifier_demande_portail(contrat, type_demande, libelles[type_demande])
+
+    return activite
+
+
+def _notifier_demande_portail(contrat, type_demande, titre):
+    """Notifie le responsable (ou la société) d'une demande portail — XCTR14.
+
+    Frontière cross-app (CLAUDE.md) : appelle EXCLUSIVEMENT
+    ``apps.notifications.services`` (jamais ses ``models``/``views``), import
+    FONCTION-LOCAL. BEST-EFFORT : une erreur de notification ne fait jamais
+    échouer l'enregistrement de la demande (déjà journalisée au chatter)."""
+    try:
+        from apps.notifications.services import notify, notify_many, resolve_recipients
+    except Exception:  # pragma: no cover - app notifications absente
+        return
+
+    body = (
+        f'Le client a demandé « {titre.lower()} » '
+        f'sur le contrat « {contrat.objet} ».'
+    )
+    link = '/contrats'
+    try:
+        if contrat.responsable_id:
+            notify(
+                contrat.responsable, 'digest', titre, body=body,
+                link=link, company=contrat.company)
+        else:
+            recipients = resolve_recipients(contrat.company, 'digest')
+            notify_many(
+                recipients, 'digest', titre, body=body,
+                link=link, company=contrat.company)
+    except Exception:  # pragma: no cover - défensif (best-effort)
+        pass
+
+
+# ---------------------------------------------------------------------------
+# XCTR17 — Location de matériel SORTANTE (aux clients) — fondation
+# ---------------------------------------------------------------------------
+
+
+class OrdreLocationError(Exception):
+    """Levée quand un ``OrdreLocation`` ne peut pas être créé/transitionné."""
+
+
+def _ordres_actifs_qs(produit, numero_serie, *, exclure_id=None):
+    """QuerySet des ordres ACTIFS (réservée/enlevée) du MÊME produit + même
+    numéro de série — base de la détection de chevauchement (XCTR17)."""
+    from .models import OrdreLocation
+
+    qs = OrdreLocation.objects.filter(
+        produit=produit,
+        numero_serie=numero_serie or '',
+        statut__in=OrdreLocation.STATUTS_ACTIFS,
+    )
+    if exclure_id is not None:
+        qs = qs.exclude(id=exclure_id)
+    return qs
+
+
+def _verifier_disponibilite(produit, numero_serie, date_debut, date_fin, *,
+                            exclure_id=None):
+    """Lève ``OrdreLocationError`` si un ordre ACTIF chevauche la fenêtre
+    ``[date_debut, date_fin]`` pour le même produit + numéro de série."""
+    for autre in _ordres_actifs_qs(
+            produit, numero_serie, exclure_id=exclure_id):
+        if autre.chevauche(date_debut, date_fin):
+            raise OrdreLocationError(
+                "Ce produit (n° de série "
+                f"« {numero_serie or '—'} ») est déjà réservé/loué sur une "
+                "période qui chevauche celle demandée."
+            )
+
+
+@transaction.atomic
+def creer_ordre_location(company, *, client_id, produit, numero_serie='',
+                         date_reservation, date_enlevement_prevue,
+                         date_retour_prevue, tarif_jour=None, note='',
+                         created_by=None):
+    """Crée un ``OrdreLocation`` avec détection de conflit — XCTR17.
+
+    GARDES (lèvent ``OrdreLocationError`` sans rien écrire) :
+    - ``produit`` doit être ``louable`` (vérifié par l'appelant via
+      ``stock.selectors.get_produit_louable`` — jamais réimporté ici) ;
+    - ``date_enlevement_prevue`` doit être ≤ ``date_retour_prevue`` ;
+    - aucun ordre ACTIF (réservée/enlevée) du même produit + numéro de série
+      ne doit chevaucher la fenêtre ``[date_enlevement_prevue,
+      date_retour_prevue]`` (double réservation refusée).
+
+    ``tarif_jour`` : si absent, retombe sur ``produit.tarif_location_jour``.
+    ``montant_estime`` = ``tarif_jour`` × nombre de jours (bornes incluses),
+    posé côté serveur (jamais lu du corps de requête). Renvoie l'``OrdreLocation``
+    créé.
+    """
+    from .models import OrdreLocation
+
+    if date_enlevement_prevue > date_retour_prevue:
+        raise OrdreLocationError(
+            "La date d'enlèvement prévue doit précéder ou égaler la date de "
+            "retour prévue.")
+
+    _verifier_disponibilite(
+        produit, numero_serie, date_enlevement_prevue, date_retour_prevue)
+
+    tarif = tarif_jour if tarif_jour is not None else produit.tarif_location_jour
+    nb_jours = (date_retour_prevue - date_enlevement_prevue).days + 1
+    montant_estime = (
+        Decimal(str(tarif)) * nb_jours if tarif is not None else Decimal('0'))
+
+    return OrdreLocation.objects.create(
+        company=company,
+        client_id=client_id,
+        produit=produit,
+        numero_serie=numero_serie or '',
+        date_reservation=date_reservation,
+        date_enlevement_prevue=date_enlevement_prevue,
+        date_retour_prevue=date_retour_prevue,
+        tarif_jour=tarif,
+        montant_estime=montant_estime,
+        note=note or '',
+        created_by=created_by,
+    )
+
+
+@transaction.atomic
+def changer_statut_ordre_location(ordre, statut_cible):
+    """Applique une transition GARDÉE sur un ``OrdreLocation`` (XCTR17).
+
+    Fine enveloppe sur ``machine_etats.changer_statut_ordre_location`` (reformule
+    ``TransitionInterdite`` en ``OrdreLocationError``, cohérent avec le reste
+    des services de ce module). Pose ``date_enlevement_reelle`` /
+    ``date_retour_reelle`` côté serveur quand la transition l'implique.
+    """
+    from . import machine_etats
+    from .models import OrdreLocation
+
+    if (ordre.statut == OrdreLocation.Statut.RESERVEE
+            and statut_cible == OrdreLocation.Statut.ENLEVEE
+            and ordre.date_enlevement_reelle is None):
+        ordre.date_enlevement_reelle = timezone.localdate()
+        ordre.save(update_fields=['date_enlevement_reelle'])
+    if (ordre.statut == OrdreLocation.Statut.ENLEVEE
+            and statut_cible == OrdreLocation.Statut.RETOURNEE
+            and ordre.date_retour_reelle is None):
+        ordre.date_retour_reelle = timezone.localdate()
+        ordre.save(update_fields=['date_retour_reelle'])
+
+    try:
+        machine_etats.changer_statut_ordre_location(ordre, statut_cible)
+    except machine_etats.TransitionInterdite as exc:
+        raise OrdreLocationError(str(exc))
+    return ordre
+
+
+# ---------------------------------------------------------------------------
+# XCTR18 — Caution (dépôt de garantie) sur location
+# ---------------------------------------------------------------------------
+
+
+class CautionLocationError(Exception):
+    """Levée quand une opération de caution de location n'est pas permise."""
+
+
+def _journaliser_caution(ordre, *, ancien_statut, nouveau_statut,
+                         montant=None, motif='', auteur=None):
+    """Écrit une entrée du journal de caution — XCTR18. Voir
+    ``models.CautionLocationLog`` (``OrdreLocation`` n'a pas de FK ``Contrat``,
+    donc ce journal est dédié plutôt que ``ContratActivity``)."""
+    from .models import CautionLocationLog
+
+    return CautionLocationLog.objects.create(
+        company=ordre.company,
+        ordre_location=ordre,
+        ancien_statut=ancien_statut,
+        nouveau_statut=nouveau_statut,
+        montant=montant,
+        motif=motif or '',
+        auteur=auteur,
+    )
+
+
+@transaction.atomic
+def encaisser_caution(ordre, *, montant, auteur=None):
+    """Encaisse la caution d'un ordre de location — XCTR18.
+
+    Pose ``caution_montant`` et bascule ``caution_statut`` → ``encaissee``.
+    Refuse (``CautionLocationError``) un montant non strictement positif ou
+    une caution déjà encaissée/restituée/retenue (idempotence : on n'encaisse
+    qu'une fois — repartir de zéro exige un nouvel ordre)."""
+    from .models import OrdreLocation
+
+    if montant is None or Decimal(str(montant)) <= 0:
+        raise CautionLocationError(
+            'Le montant de la caution doit être strictement positif.')
+    if ordre.caution_statut != OrdreLocation.CautionStatut.AUCUNE:
+        raise CautionLocationError(
+            'Une caution a déjà été encaissée pour cet ordre.')
+
+    ancien = ordre.caution_statut
+    ordre.caution_montant = Decimal(str(montant))
+    ordre.caution_statut = OrdreLocation.CautionStatut.ENCAISSEE
+    ordre.save(update_fields=['caution_montant', 'caution_statut'])
+
+    _journaliser_caution(
+        ordre, ancien_statut=ancien, nouveau_statut=ordre.caution_statut,
+        montant=ordre.caution_montant, auteur=auteur)
+    return ordre
+
+
+@transaction.atomic
+def restituer_caution(ordre, *, auteur=None):
+    """Restitue INTÉGRALEMENT la caution — XCTR18.
+
+    GARDE : la restitution est IMPOSSIBLE avant le retour effectif du
+    matériel (``ordre.date_retour_reelle`` posée, c.-à-d. statut ``retournee``
+    ou ``cloturee``) — sinon ``CautionLocationError``. Exige une caution
+    ``encaissee`` (jamais ``aucune``/``restituee``/``retenue_partielle``)."""
+    from .models import OrdreLocation
+
+    if ordre.date_retour_reelle is None:
+        raise CautionLocationError(
+            'La restitution de caution est impossible avant le retour du '
+            'matériel.')
+    if ordre.caution_statut != OrdreLocation.CautionStatut.ENCAISSEE:
+        raise CautionLocationError(
+            'Aucune caution encaissée à restituer pour cet ordre.')
+
+    ancien = ordre.caution_statut
+    ordre.caution_statut = OrdreLocation.CautionStatut.RESTITUEE
+    ordre.save(update_fields=['caution_statut'])
+
+    _journaliser_caution(
+        ordre, ancien_statut=ancien, nouveau_statut=ordre.caution_statut,
+        montant=ordre.caution_montant, auteur=auteur)
+    return ordre
+
+
+@transaction.atomic
+def retenir_caution_partielle(ordre, *, montant_retenu, motif, user=None,
+                              auteur=None, taux_tva=Decimal('20')):
+    """Retenue PARTIELLE sur la caution — XCTR18.
+
+    GARDE : impossible avant le retour effectif (même garde que
+    ``restituer_caution``). Exige une caution ``encaissee`` et
+    ``0 < montant_retenu <= caution_montant``. Génère une ligne facturable
+    (``ventes.services.creer_facture_regie``) pour le montant retenu, via le
+    client résolu du contrat lié éventuel ou, à défaut (``OrdreLocation`` n'a
+    pas de FK contrat), du ``client_id`` propre de l'ordre — frontière
+    cross-app : résolution par le sélecteur ``crm.selectors.get_company_client``
+    (jamais un import de son modèle). Renvoie un dict ``{'ordre', 'facture'}``.
+    """
+    from .models import OrdreLocation
+
+    if ordre.date_retour_reelle is None:
+        raise CautionLocationError(
+            'La retenue de caution est impossible avant le retour du '
+            'matériel.')
+    if ordre.caution_statut != OrdreLocation.CautionStatut.ENCAISSEE:
+        raise CautionLocationError(
+            'Aucune caution encaissée sur laquelle appliquer une retenue.')
+    if ordre.caution_montant is None:
+        raise CautionLocationError('Cet ordre ne porte aucun montant de caution.')
+
+    montant_retenu = Decimal(str(montant_retenu))
+    if montant_retenu <= 0 or montant_retenu > ordre.caution_montant:
+        raise CautionLocationError(
+            'Le montant retenu doit être strictement positif et ne peut '
+            'excéder le montant de la caution.')
+    if not (motif or '').strip():
+        raise CautionLocationError('Un motif est requis pour une retenue.')
+
+    from apps.crm.selectors import get_company_client
+
+    client = get_company_client(ordre.company, ordre.client_id)
+    if client is None:
+        raise CautionLocationError(
+            'Le client de la location est introuvable dans votre société.')
+
+    from apps.ventes.services import creer_facture_regie
+
+    montant_ht = (montant_retenu / (1 + taux_tva / 100)).quantize(
+        Decimal('0.01'))
+    facture = creer_facture_regie(
+        company=ordre.company, client=client, user=user,
+        libelle=f'Retenue sur caution — ordre de location #{ordre.id}',
+        montant_ht=montant_ht, taux_tva=taux_tva)
+
+    ancien = ordre.caution_statut
+    ordre.caution_statut = OrdreLocation.CautionStatut.RETENUE_PARTIELLE
+    ordre.caution_retenue = montant_retenu
+    ordre.caution_motif_retenue = motif.strip()
+    ordre.save(update_fields=[
+        'caution_statut', 'caution_retenue', 'caution_motif_retenue'])
+
+    _journaliser_caution(
+        ordre, ancien_statut=ancien, nouveau_statut=ordre.caution_statut,
+        montant=montant_retenu, motif=motif, auteur=auteur)
+
+    return {'ordre': ordre, 'facture': facture}
+
+
+# ---------------------------------------------------------------------------
+# XCTR19 — Retour de location : retards, frais automatiques, inspection
+# ---------------------------------------------------------------------------
+
+
+class RetourLocationError(Exception):
+    """Levée quand une opération de retour de location n'est pas permise."""
+
+
+def _resoudre_client_ordre(ordre):
+    """Résout le ``crm.Client`` d'un ordre de location — frontière cross-app
+    (sélecteur, jamais un import du modèle ``crm``)."""
+    from apps.crm.selectors import get_company_client
+
+    client = get_company_client(ordre.company, ordre.client_id)
+    if client is None:
+        raise RetourLocationError(
+            'Le client de la location est introuvable dans votre société.')
+    return client
+
+
+def _notifier_retard_ordre(ordre, jours_retard):
+    """Notifie le responsable du retard détecté — XCTR19. Best-effort, jamais
+    bloquant (frontière cross-app : ``apps.notifications.services`` seulement)."""
+    try:
+        from apps.notifications.services import notify_many, resolve_recipients
+    except Exception:  # pragma: no cover - app notifications absente
+        return
+    try:
+        recipients = resolve_recipients(ordre.company, 'digest')
+        notify_many(
+            recipients, 'digest', 'Location en retard',
+            body=(
+                f'Ordre de location #{ordre.id} en retard de '
+                f'{jours_retard} jour(s) (retour prévu '
+                f'{ordre.date_retour_prevue.isoformat()}).'
+            ),
+            link='/contrats', company=ordre.company)
+    except Exception:  # pragma: no cover - défensif (best-effort)
+        pass
+
+
+@transaction.atomic
+def cloturer_ordre_location(ordre, *, user=None, today=None):
+    """Clôture un ordre RETOURNÉ, calcule et facture les frais de retard
+    éventuels avant de basculer au statut ``cloturee`` — XCTR19.
+
+    Le retard se mesure entre ``date_retour_prevue`` et
+    ``date_retour_reelle`` (posée par la transition ``→ retournee``) — jamais
+    la date du jour (une clôture tardive après un retour ponctuel ne doit pas
+    inventer un retard qui n'existe pas). Si ``frais_retard_jour`` est posé ET
+    qu'un retard existe, une facture (``ventes.creer_facture_regie``) est
+    émise pour ``frais_retard_jour × jours_de_retard`` et le client est
+    notifié AVANT facturation (best-effort). Sans retard ou sans
+    ``frais_retard_jour`` : aucun frais, comportement inchangé.
+
+    GARDE : l'ordre doit être ``retournee`` (sinon ``RetourLocationError`` —
+    on ne clôture pas un ordre pas encore rendu). Renvoie l'``OrdreLocation``.
+    """
+    from .models import OrdreLocation
+
+    if ordre.statut != OrdreLocation.Statut.RETOURNEE:
+        raise RetourLocationError(
+            "Seul un ordre « retournée » peut être clôturé.")
+
+    if ordre.date_retour_reelle and ordre.frais_retard_jour:
+        jours_retard = max(
+            0, (ordre.date_retour_reelle - ordre.date_retour_prevue).days)
+        if jours_retard > 0:
+            montant = (
+                Decimal(str(ordre.frais_retard_jour)) * jours_retard)
+            client = _resoudre_client_ordre(ordre)
+
+            # Notification client AVANT facturation (best-effort).
+            try:
+                from apps.notifications.services import notify_many, resolve_recipients
+                recipients = resolve_recipients(ordre.company, 'digest')
+                notify_many(
+                    recipients, 'digest',
+                    'Frais de retard — location',
+                    body=(
+                        f'Des frais de retard de {montant} MAD seront '
+                        f'facturés (ordre #{ordre.id}, {jours_retard} '
+                        'jour(s) de retard).'),
+                    link='/contrats', company=ordre.company)
+            except Exception:  # pragma: no cover - défensif (best-effort)
+                pass
+
+            from apps.ventes.services import creer_facture_regie
+
+            montant_ht = (montant / Decimal('1.2')).quantize(Decimal('0.01'))
+            facture = creer_facture_regie(
+                company=ordre.company, client=client, user=user,
+                libelle=(
+                    f'Frais de retard — ordre de location #{ordre.id} '
+                    f'({jours_retard} jour(s))'),
+                montant_ht=montant_ht)
+
+            ordre.frais_retard_montant = montant
+            ordre.frais_retard_facture_id = facture.id
+            ordre.save(update_fields=[
+                'frais_retard_montant', 'frais_retard_facture_id'])
+
+    try:
+        changer_statut_ordre_location(ordre, OrdreLocation.Statut.CLOTUREE)
+    except OrdreLocationError as exc:
+        raise RetourLocationError(str(exc))
+
+    return ordre
+
+
+@transaction.atomic
+def inspecter_retour(ordre, *, checklist=None, releve_compteur='',
+                     dommages_montant=None, motif_dommages='', user=None):
+    """Enregistre l'inspection de retour d'un ordre — XCTR19.
+
+    ``checklist`` : dict JSON libre (ex. ``{"pneus": "ok", "moteur":
+    "endommage"}``). ``dommages_montant`` : montant chiffré des dommages
+    constatés (``None``/0 = aucun dommage — rien n'est facturé ni ouvert).
+
+    Si des dommages sont chiffrés (> 0) :
+    - une ligne facturable est créée (``ventes.creer_facture_regie``) pour le
+      montant des dommages ;
+    - un ticket SAV de remise en état est ouvert
+      (``sav.services.create_corrective_ticket``, frontière cross-app —
+      jamais un import de ses modèles/vues) — BEST-EFFORT : un échec
+      d'ouverture du ticket n'empêche jamais l'enregistrement de
+      l'inspection ni la facturation, déjà actées.
+
+    Sans dommage chiffré : la checklist/relevé sont enregistrés et RIEN
+    d'autre ne se produit (pas de facture, pas de ticket). Renvoie un dict
+    ``{'ordre', 'facture', 'ticket_id'}`` (``facture``/``ticket_id`` = ``None``
+    si aucun dommage)."""
+    ordre.inspection_checklist = checklist or {}
+    ordre.inspection_releve_compteur = releve_compteur or ''
+    ordre.inspection_date = timezone.now()
+
+    facture = None
+    ticket_id = None
+
+    montant = Decimal(str(dommages_montant)) if dommages_montant else Decimal('0')
+    if montant > 0:
+        ordre.inspection_dommages_montant = montant
+
+        client = _resoudre_client_ordre(ordre)
+        from apps.ventes.services import creer_facture_regie
+
+        montant_ht = (montant / Decimal('1.2')).quantize(Decimal('0.01'))
+        facture = creer_facture_regie(
+            company=ordre.company, client=client, user=user,
+            libelle=(
+                f'Dommages constatés au retour — ordre de location #{ordre.id}'
+                + (f' — {motif_dommages.strip()}' if motif_dommages else '')),
+            montant_ht=montant_ht)
+        ordre.inspection_facture_id = facture.id
+
+        try:
+            from apps.sav.services import create_corrective_ticket
+
+            ticket = create_corrective_ticket(
+                company=ordre.company, client=client, installation=None,
+                description=(
+                    f'Remise en état après location #{ordre.id} — '
+                    f'dommages constatés à l\'inspection de retour.'
+                    + (f' Motif : {motif_dommages.strip()}'
+                       if motif_dommages else '')),
+                created_by=user)
+            ticket_id = ticket.id
+            ordre.inspection_ticket_sav_id = ticket_id
+        except Exception:  # pragma: no cover - défensif (best-effort)
+            pass
+
+    ordre.save(update_fields=[
+        'inspection_checklist', 'inspection_releve_compteur',
+        'inspection_date', 'inspection_dommages_montant',
+        'inspection_facture_id', 'inspection_ticket_sav_id'])
+
+    return {'ordre': ordre, 'facture': facture, 'ticket_id': ticket_id}
+
+
+# ---------------------------------------------------------------------------
+# XCTR20 — Location longue durée : facturation récurrente + prolongation/
+# écourtage
+# ---------------------------------------------------------------------------
+
+
+def facturer_ordre_location_recurrent(ordre, *, user=None, periode=None):
+    """Émet UNE facture de cycle pour un ordre de location longue durée —
+    XCTR20. Réutilise le patron XCTR5 (``enregistrer_cycle`` — même garde
+    anti double-facturation par ``(source_type, source_id, periode)``).
+
+    GARDES (lèvent ``RetourLocationError`` sans rien écrire, RIEN journalisé
+    en cas de garde AMONT — mais une ``FacturationError`` du référentiel de
+    cycle EST journalisée en échec, cohérent avec le patron XCTR5) :
+    - ``facturation_recurrente_active`` doit être vrai ;
+    - ``tarif_jour`` doit être renseigné et positif.
+
+    ``periode`` par défaut = mois courant (``AAAA-MM``, 1 facture par mois
+    max — la garde anti-doublon d'``enregistrer_cycle`` l'assure). Avance
+    ``derniere_facturation`` à la date du jour. Renvoie la ``Facture`` créée.
+    """
+    from .models import CycleFacturationLog
+
+    if not ordre.facturation_recurrente_active:
+        raise RetourLocationError(
+            "La facturation récurrente n'est pas activée sur cet ordre.")
+    if not ordre.tarif_jour or ordre.tarif_jour <= 0:
+        raise RetourLocationError(
+            'Un tarif journalier positif est requis pour facturer.')
+
+    today = timezone.localdate()
+    if periode is None:
+        periode = today.strftime('%Y-%m')
+
+    # 30 jours de location par cycle mensuel (patron simple, cohérent avec le
+    # calcul de ``montant_estime`` à la création — pas de calendrier tiers).
+    montant_ttc = Decimal(str(ordre.tarif_jour)) * 30
+
+    client = _resoudre_client_ordre(ordre)
+    from apps.ventes.services import creer_facture_regie
+
+    montant_ht = (montant_ttc / Decimal('1.2')).quantize(Decimal('0.01'))
+
+    try:
+        facture = creer_facture_regie(
+            company=ordre.company, client=client, user=user,
+            libelle=(
+                f'Location longue durée — ordre #{ordre.id} '
+                f'({ordre.get_facturation_moment_display()}, {periode})'),
+            montant_ht=montant_ht)
+    except Exception as exc:  # pragma: no cover - défensif
+        enregistrer_cycle(
+            ordre.company,
+            source_type=CycleFacturationLog.SourceType.ORDRE_LOCATION,
+            source_id=ordre.id, periode=periode,
+            statut=CycleFacturationLog.Statut.ECHEC, motif=str(exc))
+        raise
+
+    enregistrer_cycle(
+        ordre.company,
+        source_type=CycleFacturationLog.SourceType.ORDRE_LOCATION,
+        source_id=ordre.id, periode=periode,
+        statut=CycleFacturationLog.Statut.GENERE, facture_id=facture.id)
+
+    ordre.derniere_facturation = today
+    ordre.save(update_fields=['derniere_facturation'])
+
+    return facture
+
+
+@transaction.atomic
+def prolonger_ordre_location(ordre, *, nouvelle_date_retour):
+    """Prolonge un ordre de location — XCTR20.
+
+    Re-vérifie la disponibilité (``_verifier_disponibilite``) sur la NOUVELLE
+    fenêtre ``[date_enlevement_prevue, nouvelle_date_retour]`` en EXCLUANT
+    l'ordre lui-même de la détection de conflit — 400 (``OrdreLocationError``)
+    si un autre ordre actif chevauche la prolongation. Recalcule
+    ``montant_estime`` sur la nouvelle durée totale. Renvoie l'``OrdreLocation``.
+    """
+    if nouvelle_date_retour <= ordre.date_retour_prevue:
+        raise OrdreLocationError(
+            'La nouvelle date de retour doit être postérieure à la date '
+            'actuelle.')
+
+    _verifier_disponibilite(
+        ordre.produit, ordre.numero_serie, ordre.date_enlevement_prevue,
+        nouvelle_date_retour, exclure_id=ordre.id)
+
+    ordre.date_retour_prevue = nouvelle_date_retour
+    if ordre.tarif_jour:
+        nb_jours = (
+            nouvelle_date_retour - ordre.date_enlevement_prevue).days + 1
+        ordre.montant_estime = Decimal(str(ordre.tarif_jour)) * nb_jours
+    ordre.save(update_fields=['date_retour_prevue', 'montant_estime'])
+    return ordre
+
+
+@transaction.atomic
+def ecourter_ordre_location(ordre, *, nouvelle_date_retour, user=None):
+    """Écourte un ordre de location : delta → avoir — XCTR20.
+
+    Le delta (jours retranchés × ``tarif_jour``) devient un ``ventes.Avoir``
+    lié à la DERNIÈRE facture émise pour cet ordre (via
+    ``CycleFacturationLog``, patron XCTR6 ``_creer_avoir_prorata``) — sans
+    facture antérieure, l'écourtage recalcule seulement ``montant_estime``
+    (rien à créditer). Renvoie un dict ``{'ordre', 'avoir'}`` (``avoir`` =
+    ``None`` si aucune facture à créditer ou aucun tarif renseigné)."""
+    from .models import CycleFacturationLog
+
+    if nouvelle_date_retour >= ordre.date_retour_prevue:
+        raise OrdreLocationError(
+            'La nouvelle date de retour doit être antérieure à la date '
+            'actuelle pour un écourtage.')
+    if nouvelle_date_retour < ordre.date_enlevement_prevue:
+        raise OrdreLocationError(
+            "La nouvelle date de retour ne peut précéder l'enlèvement.")
+
+    ancien_nb_jours = (
+        ordre.date_retour_prevue - ordre.date_enlevement_prevue).days + 1
+    nouveau_nb_jours = (
+        nouvelle_date_retour - ordre.date_enlevement_prevue).days + 1
+    delta_jours = ancien_nb_jours - nouveau_nb_jours
+
+    avoir = None
+    if ordre.tarif_jour and delta_jours > 0:
+        montant_delta = Decimal(str(ordre.tarif_jour)) * delta_jours
+        facture_id = (
+            CycleFacturationLog.objects
+            .filter(
+                company=ordre.company,
+                source_type=CycleFacturationLog.SourceType.ORDRE_LOCATION,
+                source_id=ordre.id,
+                statut=CycleFacturationLog.Statut.GENERE,
+                facture_id__isnull=False,
+            )
+            .order_by('-date_creation', '-id')
+            .values_list('facture_id', flat=True)
+            .first()
+        )
+        if facture_id:
+            avoir = _creer_avoir_location(
+                ordre, facture_id, montant_delta, user=user)
+
+    ordre.date_retour_prevue = nouvelle_date_retour
+    if ordre.tarif_jour:
+        ordre.montant_estime = Decimal(str(ordre.tarif_jour)) * nouveau_nb_jours
+    ordre.save(update_fields=['date_retour_prevue', 'montant_estime'])
+
+    return {'ordre': ordre, 'avoir': avoir}
+
+
+def _creer_avoir_location(ordre, facture_id, montant_abs, *, user=None):
+    """Crée un ``ventes.Avoir`` lié à une facture de l'ordre — XCTR20 (même
+    patron que ``_creer_avoir_prorata`` XCTR6). Renvoie ``None`` si la
+    facture n'est plus trouvable dans la société (défensif)."""
+    from decimal import ROUND_HALF_UP
+
+    from apps.ventes.models import Avoir, Facture
+    from apps.ventes.utils.references import create_with_reference
+
+    try:
+        facture = Facture.objects.get(pk=facture_id, company=ordre.company)
+    except Facture.DoesNotExist:  # pragma: no cover - défensif
+        return None
+
+    tva_pct = facture.taux_tva or Decimal('20')
+    montant_ttc = Decimal(str(montant_abs))
+    montant_ht = (montant_ttc / (1 + tva_pct / 100)).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
+    montant_tva = (montant_ttc - montant_ht).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+    def _create(ref):
+        return Avoir.objects.create(
+            reference=ref,
+            company=ordre.company,
+            facture=facture,
+            client=facture.client,
+            taux_tva=tva_pct,
+            montant_ht=montant_ht,
+            montant_tva=montant_tva,
+            montant_ttc=montant_ttc,
+            motif=f'Écourtage de location — ordre #{ordre.id}',
+        )
+
+    return create_with_reference(Avoir, 'AV', ordre.company, _create)

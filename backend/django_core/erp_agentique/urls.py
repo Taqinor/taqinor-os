@@ -76,6 +76,8 @@ urlpatterns = [
     path('api/django/pos/', include('apps.pos.urls')),
     # XPOS3 — Lien public tokenisé vers le PDF du ticket de caisse.
     path('api/django/public/pos/', include('apps.pos.public_urls')),
+    # XCTR14 — Portail client : « Mes contrats & abonnements » — sans login.
+    path('api/django/public/contrats/', include('apps.contrats.public_urls')),
 ]
 
 # En production (DEBUG off + gunicorn), les statiques (admin Django) sont
