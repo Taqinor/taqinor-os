@@ -43,6 +43,21 @@ class Projet(models.Model):
         TERMINE = 'termine', 'Terminé'
         ANNULE = 'annule', 'Annulé'
 
+    class PolitiqueFacturation(models.TextChoices):
+        """Politique de facturation DÉCLARATIVE d'un projet (ZPRJ10).
+
+        Purement informative : elle n'altère AUCUN statut devis/BC/facture
+        (couche séparée, règle #4 CLAUDE.md). Elle sert seulement à faire
+        ressortir une incohérence (avertissement non bloquant, jamais un
+        blocage dur) quand une action de facturation d'un autre chemin
+        (régie XPRJ3, situations BTP XPRJ4) est appelée sur un projet déclaré
+        sous une autre politique.
+        """
+        FORFAIT = 'forfait', 'Forfait'
+        JALONS = 'jalons', 'Jalons (facturation à l\'avancement)'
+        REGIE = 'regie', 'Régie (temps & matériel)'
+        SITUATIONS = 'situations', 'Situations de travaux (BTP)'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -74,6 +89,47 @@ class Projet(models.Model):
     budget_total = models.DecimalField(
         max_digits=14, decimal_places=2, default=Decimal('0'),
         verbose_name='Budget total')
+    # ── Volet marchés publics (XPRJ27) — FACULTATIF, sans impact sur les
+    # projets privés (aucun champ obligatoire, tous par défaut vide/0/None).
+    # Les cautions provisoire/définitive vivent déjà dans FG145/contrats —
+    # référence LÂCHE ``contrat_id`` (aucun FK dur, frontière cross-app).
+    numero_marche = models.CharField(
+        max_length=100, blank=True, default='', verbose_name='N° de marché')
+    maitre_ouvrage = models.CharField(
+        max_length=200, blank=True, default='', verbose_name="Maître d'ouvrage")
+    delai_execution_jours = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="Délai d'exécution (jours)")
+    # Taux de pénalité de retard en ‰ (pour mille) par jour de dépassement.
+    taux_penalite_retard = models.DecimalField(
+        max_digits=6, decimal_places=3, null=True, blank=True,
+        verbose_name='Taux de pénalité de retard (‰/jour)')
+    # Plafond de pénalité en % du montant du marché (souvent 10 % au Maroc).
+    plafond_penalite_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        verbose_name='Plafond de pénalité (%)')
+    # Montant du marché — distinct du ``budget_total`` INTERNE de pilotage :
+    # sert d'assiette au calcul de l'exposition aux pénalités.
+    montant_marche = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name='Montant du marché')
+    # Référence LÂCHE vers un ``contrats.Contrat`` (cautions) — jamais de FK dur.
+    contrat_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du contrat (cautions)')
+    # Politique de facturation DÉCLARATIVE (ZPRJ10) — n'altère aucun statut
+    # devis/BC/facture (couche séparée, règle #4). Sert à détecter une
+    # incohérence (avertissement non bloquant) entre le chemin de
+    # facturation appelé (régie XPRJ3, situations XPRJ4) et la politique
+    # déclarée.
+    politique_facturation = models.CharField(
+        max_length=12, choices=PolitiqueFacturation.choices,
+        default=PolitiqueFacturation.FORFAIT,
+        verbose_name='Politique de facturation')
+    # Alias e-mail du projet (ZPRJ12) — optionnel, unique par société quand
+    # renseigné (pattern ``chat.Conversation.alias_email`` ZCTR12). Sans
+    # ingestion e-mail configurée, ce champ reste un simple libellé sans effet.
+    alias_email = models.CharField(
+        max_length=254, blank=True, default='', null=True,
+        verbose_name='Alias e-mail (création de tâches)')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -82,6 +138,12 @@ class Projet(models.Model):
         verbose_name_plural = 'Projets'
         unique_together = [('company', 'code')]
         ordering = ['-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'alias_email'],
+                condition=~models.Q(alias_email__in=['', None]),
+                name='gp_projet_alias_email_uniq'),
+        ]
 
     def __str__(self):
         return f'{self.code} — {self.nom}'
@@ -345,6 +407,12 @@ class Tache(models.Model):
     # reconstituée à chaque date).
     date_fin_reelle = models.DateField(
         null=True, blank=True, verbose_name='Date de fin réelle')
+    # Référence LÂCHE (ZPRJ11) vers le ``sav.Ticket`` créé par conversion
+    # (aucun FK dur, frontière cross-app) — posée côté serveur uniquement par
+    # l'action ``vers-ticket-sav``. Une tâche déjà convertie (non nul) refuse
+    # une seconde conversion (400).
+    ticket_sav_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du ticket SAV (conversion)')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -918,6 +986,27 @@ class AffectationRessource(models.Model):
         verbose_name='Quantité',
     )
     note = models.TextField(blank=True, default='', verbose_name='Note')
+
+    # ── Cycle de publication (ZPRJ2) — enum PROPRE, JAMAIS STAGES.py ─────────
+    class StatutPublication(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        PUBLIE = 'publie', 'Publié'
+
+    statut_publication = models.CharField(
+        max_length=10, choices=StatutPublication.choices,
+        default=StatutPublication.BROUILLON,
+        verbose_name='Statut de publication')
+    # Posés CÔTÉ SERVEUR uniquement par l'action ``affectations/publier/``
+    # (jamais lus du corps de requête).
+    publie_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Publié le')
+    publie_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='+',
+        verbose_name='Publié par',
+    )
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -1047,13 +1136,26 @@ class Indisponibilite(models.Model):
 
 
 class ProjetActivity(models.Model):
-    """Journal minimal des transitions de statut d'un ``Projet``.
+    """Journal des transitions/modifications de champs sensibles d'un ``Projet``.
 
-    Chaque changement de statut appliqué par une action de transition
-    (``views.py``) y est tracé côté serveur : ancien → nouveau statut, auteur,
-    horodatage. La société et l'auteur sont TOUJOURS posés côté serveur, jamais
-    lus du corps de requête. Modèle entièrement additif.
+    Historiquement, tracait UNIQUEMENT le changement de statut du ``Projet``
+    lui-même (``cible_type='projet'``, ``champ=''``). XPRJ26 étend ce journal,
+    SANS changer le comportement des entrées existantes, aux changements de
+    champs sensibles des ``Tache`` (statut, dates prévues, charge, assigné) et
+    ``Jalon`` (date, statut, facturation_pct) — conformité audit/loi 09-08 sur
+    qui a déplacé le planning. ``cible_type`` + ``cible_id`` identifient la
+    cible RÉELLE de l'entrée : ``'projet'`` (défaut rétro-compatible —
+    ``cible_id`` vaut alors ``projet_id``), ``'tache'`` ou ``'jalon'`` ;
+    ``champ`` porte le nom du champ modifié (vide pour les entrées historiques
+    de statut projet). Chaque changement est tracé côté serveur : ancien →
+    nouveau, auteur, horodatage. La société et l'auteur sont TOUJOURS posés
+    côté serveur, jamais lus du corps de requête. Modèle entièrement additif.
     """
+    class CibleType(models.TextChoices):
+        PROJET = 'projet', 'Projet'
+        TACHE = 'tache', 'Tâche'
+        JALON = 'jalon', 'Jalon'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -1066,10 +1168,22 @@ class ProjetActivity(models.Model):
         related_name='activites',
         verbose_name='Projet',
     )
+    # Cible RÉELLE de l'entrée (XPRJ26) — défaut 'projet' pour rester
+    # rétro-compatible avec les entrées historiques (transitions de statut du
+    # projet lui-même, où cible_id == projet_id).
+    cible_type = models.CharField(
+        max_length=10, choices=CibleType.choices,
+        default=CibleType.PROJET, verbose_name='Type de cible')
+    cible_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID de la cible')
+    # Nom du champ modifié (XPRJ26) — vide pour les entrées historiques de
+    # statut projet (comportement inchangé).
+    champ = models.CharField(
+        max_length=50, blank=True, default='', verbose_name='Champ modifié')
     old_value = models.CharField(
-        max_length=15, blank=True, default='', verbose_name='Ancien statut')
+        max_length=255, blank=True, default='', verbose_name='Ancien statut')
     new_value = models.CharField(
-        max_length=15, blank=True, default='', verbose_name='Nouveau statut')
+        max_length=255, blank=True, default='', verbose_name='Nouveau statut')
     auteur = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -2527,3 +2641,114 @@ class PointAvancement(models.Model):
 
     def __str__(self):
         return f'{self.projet_id} — {self.date_point} ({self.sante})'
+
+
+class ReglageTemps(models.Model):
+    """Réglages SINGLETON par société pour l'encodage des temps (ZPRJ1).
+
+    Odoo Timesheets a des « rounding rules » + « time-encoding unit » ;
+    jusqu'ici XPRJ5 (chrono) codait en dur l'arrondi au quart d'heure et rien
+    n'était paramétrable. ``arrondi_minutes`` + ``mode_arrondi`` pilotent le
+    helper ``services.arrondir_duree`` (consommé par le chrono XPRJ5 et — le
+    jour où elle existera — la grille hebdomadaire XPRJ6), ``heures_par_jour``
+    est lu par les sélecteurs ``plan_de_charge``/``nivellement_charge`` à la
+    place de la constante ``_HEURES_PAR_JOUR_DEFAUT``.
+
+    Relation 1–1 avec la société : ``get_or_create`` scopé société (jamais
+    créé plusieurs fois pour une même société). Tout est multi-société :
+    ``company`` est posée côté serveur, jamais lue du corps de requête.
+    Modèle entièrement additif.
+    """
+    class ModeArrondi(models.TextChoices):
+        INFERIEUR = 'inferieur', 'Arrondi au pas inférieur'
+        SUPERIEUR = 'superieur', 'Arrondi au pas supérieur'
+        PROCHE = 'proche', 'Arrondi au pas le plus proche'
+
+    class UniteSaisie(models.TextChoices):
+        HEURES = 'heures', 'Heures'
+        JOURS = 'jours', 'Jours'
+
+    company = models.OneToOneField(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gp_reglage_temps',
+        verbose_name='Société',
+    )
+    arrondi_minutes = models.PositiveSmallIntegerField(
+        default=15, verbose_name="Pas d'arrondi (minutes)")
+    mode_arrondi = models.CharField(
+        max_length=10, choices=ModeArrondi.choices,
+        default=ModeArrondi.SUPERIEUR, verbose_name="Mode d'arrondi")
+    unite_saisie = models.CharField(
+        max_length=10, choices=UniteSaisie.choices,
+        default=UniteSaisie.HEURES, verbose_name='Unité de saisie')
+    heures_par_jour = models.DecimalField(
+        max_digits=4, decimal_places=2, default=Decimal('8'),
+        verbose_name='Heures par jour')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Réglage temps'
+        verbose_name_plural = 'Réglages temps'
+        ordering = ['id']
+
+    def __str__(self):
+        return f'Réglages temps — {self.company_id}'
+
+
+class EvaluationProjet(models.Model):
+    """Enquête de satisfaction client (CSAT) par ``Projet`` (ZPRJ7).
+
+    Odoo Project agrège une note de satisfaction client par tâche/projet ;
+    rien d'équivalent ne existait côté ``gestion_projet`` (le SAV a son CSAT
+    séparé). Relation 1–1 avec le projet : un seul dépôt possible (le
+    ``token`` est régénéré/récupéré via ``projets/<id>/lien-evaluation/`` mais
+    la NOTE ne peut être soumise qu'UNE FOIS — un second POST public est
+    refusé, voir ``public_views.evaluation_projet``).
+
+    Le ``token`` (256 bits URL-safe, généré côté serveur — même génération que
+    ``PortailProjetToken``) donne accès à une vue PUBLIQUE non authentifiée
+    (``portail/evaluation/<token>/``) : AUCUN coût/budget/marge n'y est jamais
+    exposé (formulaire de notation pur). Tout est multi-société : ``company``
+    est posée côté serveur, jamais lue du corps de requête. Modèle entièrement
+    additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gestion_projet_evaluations',
+        verbose_name='Société',
+    )
+    projet = models.OneToOneField(
+        Projet,
+        on_delete=models.CASCADE,
+        related_name='evaluation',
+        verbose_name='Projet',
+    )
+    token = models.CharField(
+        max_length=64, unique=True, default=_generer_token_portail,
+        verbose_name='Jeton')
+    # Note posée par le CLIENT via le portail public — nullable tant qu'aucun
+    # dépôt n'a eu lieu (le lien peut être créé/envoyé avant la clôture).
+    note = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+        verbose_name='Note (1-5)')
+    commentaire = models.TextField(
+        blank=True, default='', verbose_name='Commentaire')
+    soumis_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Soumis le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Évaluation projet (CSAT)'
+        verbose_name_plural = 'Évaluations projet (CSAT)'
+        ordering = ['-id']
+        indexes = [
+            models.Index(fields=['token'], name='gp_eval_token_idx'),
+        ]
+
+    def __str__(self):
+        return f'Évaluation {self.projet_id} — {self.note or "en attente"}'

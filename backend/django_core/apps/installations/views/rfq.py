@@ -8,6 +8,7 @@ Multi-tenant via ``TenantMixin`` : référence/société/created_by posés côt�
 serveur ; les FK liées sont validées tenant. Cross-app : ``stock.Fournisseur``
 en string-FK.
 """
+from django.utils import timezone
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -18,8 +19,10 @@ from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 
 from apps.ventes.utils.references import create_with_reference
 
-from ..models import RFQ, RFQOffre
-from ..serializers import RFQSerializer, RFQOffreSerializer
+from ..models import RFQ, RFQOffre, RFQConsultation
+from ..serializers import (
+    RFQSerializer, RFQOffreSerializer, RFQConsultationSerializer,
+)
 
 READ_ACTIONS = ['list', 'retrieve']
 
@@ -110,6 +113,89 @@ class RFQViewSet(TenantMixin, viewsets.ModelViewSet):
         offre.retenue = True
         offre.save(update_fields=['retenue', 'date_modification'])
         return Response(self.get_serializer(rfq).data)
+
+    @action(detail=True, methods=['post'], url_path='consulter')
+    def consulter(self, request, pk=None):
+        """XPUR20 — ajoute un fournisseur consulté (crée sa consultation +
+        jeton public, idempotent : ré-appeler pour un fournisseur déjà
+        consulté renvoie sa consultation existante). Corps : `fournisseur`
+        (id, doit appartenir à la société)."""
+        rfq = self.get_object()
+        company = request.user.company
+        fournisseur_id = request.data.get('fournisseur')
+        if not fournisseur_id:
+            return Response(
+                {'fournisseur': 'Paramètre `fournisseur` requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        from apps.stock.models import Fournisseur
+        fournisseur = Fournisseur.objects.filter(
+            id=fournisseur_id, company=company).first()
+        if fournisseur is None:
+            return Response(
+                {'fournisseur': 'Fournisseur inconnu pour cette société.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        consultation, _ = RFQConsultation.objects.get_or_create(
+            rfq=rfq, fournisseur=fournisseur, defaults={'company': company})
+        return Response(
+            RFQConsultationSerializer(consultation).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='envoyer-consultations')
+    def envoyer_consultations(self, request, pk=None):
+        """XPUR20 — envoie la RFQ (PDF, aucun prix interne) par email ET
+        WhatsApp à chaque fournisseur consulté n'ayant pas de bouton grisé.
+        Corps optionnel : `consultations` (liste d'ids) — sinon TOUTES les
+        consultations non révoquées de la RFQ. WhatsApp reste manuel-first :
+        on ouvre un brouillon wa.me (le commercial appuie lui-même sur
+        Envoyer) — on trace seulement que le lien a été généré."""
+        from .. import rfq_service
+        rfq = self.get_object()
+        ids = request.data.get('consultations')
+        qs = rfq.consultations.filter(revoque=False).select_related(
+            'fournisseur')
+        if ids:
+            qs = qs.filter(id__in=ids)
+        results = []
+        for consultation in qs:
+            results.append(
+                rfq_service.envoyer_consultation(consultation, request))
+        return Response({'resultats': results})
+
+    @action(detail=True, methods=['post'], url_path='relancer-non-repondants')
+    def relancer_non_repondants(self, request, pk=None):
+        """XPUR20 — relance UNIQUEMENT les fournisseurs consultés n'ayant pas
+        encore répondu (aucune offre liée), avant `date_limite_reponse`."""
+        from .. import rfq_service
+        rfq = self.get_object()
+        qs = rfq.consultations.filter(
+            revoque=False, offre__isnull=True).select_related('fournisseur')
+        results = []
+        for consultation in qs:
+            res = rfq_service.envoyer_consultation(consultation, request)
+            consultation.nb_relances += 1
+            consultation.derniere_relance_le = timezone.now()
+            consultation.save(
+                update_fields=['nb_relances', 'derniere_relance_le'])
+            results.append(res)
+        return Response({'resultats': results})
+
+
+class RFQConsultationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+    """XPUR20/21 — lecture des consultations (fournisseurs invités) d'une
+    RFQ, avec statut d'envoi/réponse par destinataire. Écriture via les
+    actions dédiées de `RFQViewSet` (`consulter`, `envoyer-consultations`,
+    `relancer-non-repondants`)."""
+    queryset = RFQConsultation.objects.select_related(
+        'rfq', 'fournisseur', 'offre').all()
+    serializer_class = RFQConsultationSerializer
+    permission_classes = [IsAnyRole]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        rfq = self.request.query_params.get('rfq')
+        if rfq:
+            qs = qs.filter(rfq_id=rfq)
+        return qs
 
 
 class RFQOffreViewSet(TenantMixin, viewsets.ModelViewSet):

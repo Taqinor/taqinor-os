@@ -76,9 +76,36 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
         return _company_qs(super().get_queryset(), self.request.user)
 
     def get_permissions(self):
-        if self.action in ('enregistrer_avance', 'ventiler'):
+        if self.action in ('enregistrer_avance', 'ventiler', 'rejeter'):
             return [IsResponsableOrAdmin()]
         return [IsAnyRole()]
+
+    @action(detail=True, methods=['post'], url_path='rejeter')
+    def rejeter(self, request, pk=None):
+        """YLEDG5 — marque ce paiement REJETÉ (chèque impayé / virement
+        rejeté). Motif obligatoire ; frais optionnels. Rouvre la facture
+        (montant_du remonte, statut recalculé) et ré-arme les relances. Le
+        paiement n'est jamais supprimé (piste d'audit) ; un double rejet est
+        refusé (409)."""
+        from ..services import rejeter_paiement, PaiementRejectError
+        paiement = self.get_object()
+        motif = (request.data.get('motif') or '').strip()
+        if not motif:
+            return Response(
+                {'detail': 'Le motif du rejet est obligatoire.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            rejeter_paiement(
+                paiement=paiement, motif=motif,
+                frais=request.data.get('frais'),
+                date_rejet=request.data.get('date_rejet'),
+                user=request.user,
+            )
+        except PaiementRejectError as exc:
+            code = (status.HTTP_409_CONFLICT if exc.conflict
+                    else status.HTTP_400_BAD_REQUEST)
+            return Response({'detail': exc.message}, status=code)
+        return Response(PaiementSerializer(paiement).data)
 
     @action(detail=False, methods=['get'], url_path='avances-non-affectees')
     def avances_non_affectees(self, request):

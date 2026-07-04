@@ -1468,3 +1468,138 @@ def conformite_lecture_procedure(company, reference):
         lus += accuses.filter(lu_le__isnull=False).count()
     pct = round(lus / total * 100, 1) if total else None
     return {'total': total, 'lus': lus, 'pct': pct}
+
+
+# ── XQHS20 — Registre des aspects & impacts environnementaux (ISO 14001) ───
+
+def aspects_environnementaux_a_revoir(company, today=None):
+    """Aspects environnementaux dont la revue est due (XQHS20, pattern
+    ``conformites_a_relancer`` QHSE38) : ``date_revue`` absente OU dépassée.
+    Agrégation PURE — aucune mutation."""
+    from django.utils import timezone
+
+    from .models import AspectEnvironnemental
+
+    if today is None:
+        today = timezone.localdate()
+    qs = AspectEnvironnemental.objects.filter(company=company)
+    return [
+        aspect for aspect in qs
+        if aspect.date_revue is None or aspect.date_revue <= today
+    ]
+
+
+# ── XQHS22 — Coût de la non-qualité (CoQ), interne uniquement ──────────────
+
+def cout_non_qualite(company, annee):
+    """Rollup du coût de la non-qualité (XQHS22), ventilé par catégorie
+    (défaillance interne / défaillance externe / prévention-évaluation) et par
+    mois. Agrégation PURE — aucune mutation. Montants INTERNES uniquement
+    (jamais exposés côté client — gardé par ``cout_non_qualite_voir`` côté vue).
+
+    Catégorisation :
+      * défaillance INTERNE — NCR sans ticket SAV d'origine (chantier/retouche).
+      * défaillance EXTERNE — NCR nées d'un ticket SAV (garantie/panne client)
+        + incidents (déjà survenus, coût de correction).
+      * prévention-évaluation — comptage simple des audits/inspections (pas de
+        coût direct saisi ici : indicateur d'effort, pas un montant).
+
+    Renvoie ``{'annee': int, 'interne': Decimal, 'externe': Decimal,
+    'prevention_evaluation_count': int, 'par_mois': [...], 'total': Decimal}``.
+    """
+    from decimal import Decimal
+
+    from .models import ActionCorrectivePreventive, Audit, Incident, \
+        InspectionSecurite, NonConformite
+
+    interne = Decimal('0')
+    externe = Decimal('0')
+    par_mois = {}
+
+    def _bucket(mois):
+        return par_mois.setdefault(
+            mois, {'mois': mois, 'interne': Decimal('0'), 'externe': Decimal('0')})
+
+    ncrs = NonConformite.objects.filter(
+        company=company, date_creation__year=annee)
+    for ncr in ncrs:
+        cout = ncr.cout_reel if ncr.cout_reel is not None else ncr.cout_estime
+        cout = cout or Decimal('0')
+        est_externe = bool(getattr(ncr, 'ticket_sav_id', None))
+        if est_externe:
+            externe += cout
+        else:
+            interne += cout
+        mois = ncr.date_creation.strftime('%Y-%m')
+        bucket = _bucket(mois)
+        bucket['externe' if est_externe else 'interne'] += cout
+
+    capas = ActionCorrectivePreventive.objects.filter(
+        company=company, date_creation__year=annee)
+    for capa in capas:
+        cout = capa.cout or Decimal('0')
+        interne += cout
+        mois = capa.date_creation.strftime('%Y-%m')
+        _bucket(mois)['interne'] += cout
+
+    incidents = Incident.objects.filter(
+        company=company, date_creation__year=annee)
+    for incident in incidents:
+        cout = incident.cout or Decimal('0')
+        externe += cout
+        mois = incident.date_creation.strftime('%Y-%m')
+        _bucket(mois)['externe'] += cout
+
+    prevention_evaluation_count = (
+        Audit.objects.filter(company=company, date_creation__year=annee).count()
+        + InspectionSecurite.objects.filter(
+            company=company, date_creation__year=annee).count()
+    )
+
+    return {
+        'annee': annee,
+        'interne': interne,
+        'externe': externe,
+        'prevention_evaluation_count': prevention_evaluation_count,
+        'par_mois': [par_mois[k] for k in sorted(par_mois)],
+        'total': interne + externe,
+    }
+
+
+# ── XQHS23 — Pont SAV ↔ NCR : taux de défaillance par produit ──────────────
+
+def taux_defaillance_par_produit(company):
+    """NCR d'origine SAV (``ticket_sav`` posé) groupées par produit, via les
+    équipements du parc lus par ``sav.selectors.produits_par_tickets`` (jamais
+    un import direct de ``sav.models``/``stock.models``).
+
+    Renvoie une liste triée par nombre de NCR décroissant ::
+
+        [{'produit_id': int|None, 'produit_nom': str|None, 'nb_ncr': int}, …]
+
+    Une entrée ``produit_id=None`` regroupe les NCR dont le ticket n'a pas
+    d'équipement identifié (ticket sans appareil précis)."""
+    from .models import NonConformite
+
+    ncrs = NonConformite.objects.filter(
+        company=company, ticket_sav_id__isnull=False)
+    ticket_ids = list(ncrs.values_list('ticket_sav_id', flat=True))
+    if not ticket_ids:
+        return []
+
+    from apps.sav.selectors import produits_par_tickets
+
+    mapping = produits_par_tickets(company, ticket_ids)
+
+    comptes = {}
+    for ncr in ncrs:
+        info = mapping.get(ncr.ticket_sav_id) or {
+            'produit_id': None, 'produit_nom': None}
+        cle = info['produit_id']
+        bucket = comptes.setdefault(
+            cle, {'produit_id': cle, 'produit_nom': info['produit_nom'],
+                  'nb_ncr': 0})
+        bucket['nb_ncr'] += 1
+
+    return sorted(
+        comptes.values(), key=lambda b: b['nb_ncr'], reverse=True)

@@ -1,0 +1,216 @@
+"""Introspection du bus d'événements (YEVNT7).
+
+Fournit les briques factuelles qu'un test de couverture utilise pour garantir
+que le bus ``core.events`` et l'énumération ``notifications.EventType`` ne
+laissent AUCUN orphelin silencieux :
+
+* chaque ``Signal`` déclaré dans ``core/events.py`` a au moins un récepteur
+  enregistré (ou est explicitement réservé dans ``ALLOWED_UNCONSUMED``) ;
+* chaque membre ``EventType`` a au moins un producteur ``notify(EventType.X)``
+  dans le code source (ou est explicitement réservé dans
+  ``ALLOWED_UNPRODUCED``) ;
+* chaque récepteur câblé (``@receiver(events.<signal>)``) pointe vers un signal
+  qui existe réellement dans ``core.events``.
+
+``core`` reste une app de FONDATION : ce module n'importe AUCUNE app métier au
+niveau module. La liste des ``EventType`` et le recensement des producteurs se
+font par un SCAN de fichiers (comme ``scripts/check_stages.py``), pas par un
+``import apps.notifications`` — l'introspection des signaux et de leurs
+récepteurs se fait, elle, sur ``core.events`` (même package fondation).
+"""
+from __future__ import annotations
+
+import ast
+import re
+from pathlib import Path
+
+import django.dispatch
+
+from core import events
+
+# Racine ``backend/django_core`` (…/core/event_coverage.py -> parents[1]).
+DJANGO_CORE_ROOT = Path(__file__).resolve().parents[1]
+APPS_ROOT = DJANGO_CORE_ROOT / "apps"
+CORE_ROOT = DJANGO_CORE_ROOT / "core"
+EVENTTYPE_FILE = APPS_ROOT / "notifications" / "models.py"
+
+# --- Listes blanches EXPLICITES (un orphelin non listé fait échouer le test) --
+
+# Signaux de ``core.events`` volontairement SANS abonné dans ce repo (« seams »
+# posés pour un découplage aval futur). Tout signal orphelin non listé ici est
+# une régression (ex. YEVNT1/3/4 avaient laissé s'accumuler des orphelins).
+ALLOWED_UNCONSUMED = {
+    # Destiné à l'app comptable (matérialiser un Paiement / rapprocher la
+    # facture) ; core n'importe jamais l'app comptable — abonné à venir.
+    "payment_captured",
+    # Pose de seam (CONTRAT16/17, YDOCF5) : aucun abonné obligatoire dans ce
+    # lot (facturation récurrente / notification / dépôt GED à brancher).
+    "contrat_signe",
+    "contrat_actif",
+}
+
+# Membres ``EventType`` déclarés mais sans producteur ``notify()`` encore câblé
+# (leur sweep/producteur serait planifié séparément). VIDE aujourd'hui : chaque
+# EventType déclaré a au moins un producteur. Tout nouvel EventType sans
+# producteur DOIT être soit câblé, soit ajouté ici avec une justification.
+ALLOWED_UNPRODUCED: set[str] = set()
+
+
+def declared_signals():
+    """{nom -> Signal} pour chaque ``Signal`` déclaré dans ``core.events``."""
+    return {
+        name: obj
+        for name, obj in vars(events).items()
+        if isinstance(obj, django.dispatch.Signal)
+    }
+
+
+def signal_has_receiver(signal: django.dispatch.Signal) -> bool:
+    """True si au moins un récepteur est enregistré (connecté) sur ``signal``.
+
+    Les récepteurs sont câblés dans les ``apps.py`` ``ready()`` exécutés par
+    ``django.setup()`` avant les tests, donc ``signal.receivers`` est peuplé
+    dès qu'un abonné existe. On ne compte pas les seuls lookups morts (weakref
+    déjà collectée) : dans un process de test frais il n'y en a pas, mais on
+    reste prudent en exigeant au moins une entrée.
+    """
+    return len(signal.receivers) > 0
+
+
+def _eventtype_members() -> dict[str, str]:
+    """{NOM_MEMBRE -> valeur_str} de l'énum ``EventType`` — lus par AST.
+
+    ``EventType`` est une ``TextChoices`` : chaque membre vaut soit
+    ``'valeur'``, soit ``('valeur', 'Libellé')``. On relève le NOM du membre et
+    sa VALEUR chaîne (le premier élément) pour pouvoir détecter un producteur
+    référençant soit ``EventType.NOM`` soit la chaîne ``'valeur'``.
+    """
+    tree = ast.parse(EVENTTYPE_FILE.read_text(encoding="utf-8"))
+    members: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef) and node.name == "EventType":
+            for stmt in node.body:
+                if isinstance(stmt, ast.Assign) and stmt.targets:
+                    tgt = stmt.targets[0]
+                else:
+                    continue
+                if not (isinstance(tgt, ast.Name) and tgt.id.isupper()):
+                    continue
+                value = stmt.value
+                str_value = ""
+                if isinstance(value, ast.Tuple) and value.elts:
+                    first = value.elts[0]
+                    if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                        str_value = first.value
+                elif isinstance(value, ast.Constant) and isinstance(value.value, str):
+                    str_value = value.value
+                members[tgt.id] = str_value
+    return members
+
+
+_PRODUCER_RE = re.compile(r"EventType\.([A-Z_]+)")
+_STRING_RE = re.compile(r"['\"]([a-z0-9_]+)['\"]")
+
+
+def _produced_eventtypes() -> set[str]:
+    """Membres ``EventType`` RÉFÉRENCÉS (produits) dans le code source.
+
+    Balaie tous les ``.py`` sous ``apps/`` et ``core/`` HORS fichiers de test,
+    HORS migrations et HORS le fichier de définition de l'énum, puis relève :
+
+    * chaque ``EventType.<NOM>`` (accès par attribut), et
+    * chaque littéral chaîne correspondant à la VALEUR d'un membre (les
+      producteurs QJ2 passent la valeur ``'lead_new'``/``'devis_opened'`` à
+      ``notify_many()`` plutôt que ``EventType.LEAD_NEW``).
+
+    Un membre référencé de l'une ou l'autre façon compte comme produit.
+    """
+    members = _eventtype_members()
+    value_to_name = {v: n for n, v in members.items() if v}
+    produced: set[str] = set()
+    for root in (APPS_ROOT, CORE_ROOT):
+        for path in root.rglob("*.py"):
+            parts = set(path.parts)
+            if "migrations" in parts:
+                continue
+            name = path.name
+            if name.startswith("test") or name.startswith("tests"):
+                continue
+            if path == EVENTTYPE_FILE:
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            produced.update(_PRODUCER_RE.findall(text))
+            for literal in _STRING_RE.findall(text):
+                if literal in value_to_name:
+                    produced.add(value_to_name[literal])
+    return produced
+
+
+def _referenced_signal_names() -> set[str]:
+    """Noms de signaux ``events.<name>`` passés à ``@receiver(...)``.
+
+    Balaie tous les ``receivers.py`` sous ``apps/`` et relève les décorateurs
+    ``@receiver(<sig>, ...)`` dont le premier argument est ``events.<name>`` ou
+    un ``<name>`` importé depuis ``core.events`` — pour vérifier ensuite qu'ils
+    pointent un signal réellement déclaré.
+    """
+    names: set[str] = set()
+    for path in APPS_ROOT.rglob("receivers.py"):
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except (OSError, SyntaxError, UnicodeDecodeError):
+            continue
+        # Noms importés directement depuis core.events (from core.events import X)
+        imported_from_events: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module == "core.events":
+                for alias in node.names:
+                    imported_from_events.add(alias.asname or alias.name)
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            for deco in node.decorator_list:
+                if not (isinstance(deco, ast.Call)
+                        and isinstance(deco.func, ast.Name)
+                        and deco.func.id == "receiver"):
+                    continue
+                if not deco.args:
+                    continue
+                first = deco.args[0]
+                if (isinstance(first, ast.Attribute)
+                        and isinstance(first.value, ast.Name)
+                        and first.value.id == "events"):
+                    names.add(first.attr)
+                elif (isinstance(first, ast.Name)
+                        and first.id in imported_from_events):
+                    names.add(first.id)
+    return names
+
+
+def eventtype_coverage():
+    """Renvoie (noms_declares, noms_produits) — deux ``set[str]``."""
+    return set(_eventtype_members()), _produced_eventtypes()
+
+
+def orphan_signals() -> set[str]:
+    """Signaux sans récepteur ET non listés dans ALLOWED_UNCONSUMED."""
+    return {
+        name
+        for name, sig in declared_signals().items()
+        if not signal_has_receiver(sig) and name not in ALLOWED_UNCONSUMED
+    }
+
+
+def unproduced_eventtypes() -> set[str]:
+    """EventTypes sans producteur ET non listés dans ALLOWED_UNPRODUCED."""
+    members, produced = eventtype_coverage()
+    return {m for m in members if m not in produced and m not in ALLOWED_UNPRODUCED}
+
+
+def dangling_receiver_signals() -> set[str]:
+    """Signaux référencés par un @receiver mais absents de core.events."""
+    declared = set(declared_signals())
+    return {n for n in _referenced_signal_names() if n not in declared}

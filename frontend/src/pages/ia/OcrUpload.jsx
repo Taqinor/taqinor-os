@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
   FileText, Inbox, AlertCircle, Check, Copy, RefreshCw, Save, Trash2, ChevronDown,
-  UserPlus, FilePlus,
+  UserPlus, FilePlus, Receipt,
 } from 'lucide-react'
 import {
   Button,
@@ -20,6 +20,7 @@ import {
 import { FileUpload } from '../../ui/FileUpload'
 import { cn } from '../../lib/cn'
 import publicapiApi from '../../api/publicapiApi'
+import stockApi from '../../api/stockApi'
 import {
   processOcrDocument,
   saveOcrDocument,
@@ -75,6 +76,11 @@ function AnalyseTab({ canSave }) {
   // FG106 — création d'un lead / brouillon de devis depuis le document OCR.
   const [crmLoading, setCrmLoading] = useState(false)
   const [crmDone, setCrmDone] = useState(null) // { mode, devisReference? }
+  // XACC36 — brouillon de facture d'achat depuis un document OCR
+  // « facture_fournisseur »/« facture_achat ».
+  const [factureLoading, setFactureLoading] = useState(false)
+  const [factureDone, setFactureDone] = useState(null)
+  const [factureError, setFactureError] = useState(null)
 
   const processFile = useCallback((file) => {
     if (!file) return
@@ -87,6 +93,34 @@ function AnalyseTab({ canSave }) {
     setCurrentFile(null)
     setCopied(false)
     setCrmDone(null)
+    setFactureDone(null)
+    setFactureError(null)
+  }
+
+  // XACC36 — POSTe les champs extraits + le scan d'origine vers le SINK
+  // stock, qui matche le fournisseur (ICE puis nom) et crée un brouillon de
+  // facture d'achat. Dégrade proprement (message clair) si aucun fournisseur
+  // ne matche — la saisie manuelle reste intacte.
+  const createFactureFromDocument = async () => {
+    if (!ocrResult) return
+    setFactureLoading(true)
+    setFactureError(null)
+    try {
+      const r = await stockApi.factureFournisseurDepuisOcr({
+        fields: ocrResult.donnees_structurees ?? {},
+        file: currentFile,
+      })
+      setFactureDone({
+        id: r.data.id,
+        reference: r.data.reference,
+        doublon: r.data.doublon_warning ?? null,
+      })
+    } catch (e) {
+      setFactureError(
+        e?.response?.data?.detail ?? 'Création de la facture impossible depuis ce document.')
+    } finally {
+      setFactureLoading(false)
+    }
   }
 
   // FG106 — POSTe les champs extraits vers la passerelle CRM/ventes côté
@@ -300,6 +334,36 @@ function AnalyseTab({ canSave }) {
                   onClick={() => navigate(crmDone.mode === 'devis' ? '/ventes/devis' : '/crm/leads')}
                 >
                   {crmDone.mode === 'devis' ? 'Ouvrir les devis' : 'Ouvrir les leads'}
+                </Button>
+              </div>
+            )}
+            {/* XACC36 — créer un brouillon de facture d'achat (fournisseur
+                matché par ICE puis nom) depuis ce document OCR */}
+            {canSave && !factureDone && (
+              <Button
+                variant="outline" size="sm"
+                onClick={createFactureFromDocument}
+                loading={factureLoading}
+              >
+                {!factureLoading && <Receipt />} Créer facture d'achat
+              </Button>
+            )}
+            {factureError && !factureDone && (
+              <span className="text-sm text-destructive">{factureError}</span>
+            )}
+            {factureDone && (
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge tone={factureDone.doublon ? 'warning' : 'success'} className="gap-1.5 px-3 py-1.5 text-sm">
+                  <Check className="size-4" aria-hidden="true" />
+                  {factureDone.doublon
+                    ? `Facture brouillon créée (${factureDone.reference}) — doublon possible détecté`
+                    : `Facture brouillon créée (${factureDone.reference})`}
+                </Badge>
+                <Button
+                  variant="ghost" size="sm"
+                  onClick={() => navigate('/stock/factures-fournisseur')}
+                >
+                  Ouvrir les factures fournisseur
                 </Button>
               </div>
             )}

@@ -5,6 +5,14 @@ class InstallationsConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'apps.installations'
     verbose_name = 'Chantiers / Installations'
+    module_manifest = {
+        'key': 'installations',
+        'label': 'Chantiers',
+        'icone': 'hard-hat',
+        'depends': ['ventes'],
+        'description': 'Installations et interventions terrain.',
+        'categorie': 'Services',
+    }
 
     def ready(self):
         # M6 — abonne Installations aux événements métier (core.events) : crée
