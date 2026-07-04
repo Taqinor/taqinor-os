@@ -3,6 +3,7 @@ from .models import (
     Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
     Avoir, LigneAvoir, DevisActivity, DevisPreset, RoofLayout,
     FicheTechnique, RemiseEncaissement, LigneRemiseEncaissement,
+    MandatPaiement,
 )
 
 
@@ -734,4 +735,18 @@ class RemiseEncaissementSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'id', 'reference', 'fichier_pdf', 'created_by', 'date_creation',
             'company', 'cloture_par', 'date_cloture',
+        ]
+
+
+class MandatPaiementSerializer(serializers.ModelSerializer):
+    """XCTR22 — mandat de prélèvement carte. `token` n'est JAMAIS accepté en
+    écriture directe (posé uniquement par le service de tokenisation) ; seuls
+    les 4 derniers chiffres/expiration sont exposés pour l'affichage."""
+    client_nom = serializers.CharField(source='client.nom', read_only=True)
+
+    class Meta:
+        model = MandatPaiement
+        fields = '__all__'
+        read_only_fields = [
+            'id', 'token', 'company', 'created_at', 'revoked_at',
         ]

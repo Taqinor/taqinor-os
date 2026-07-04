@@ -2436,3 +2436,83 @@ class LigneRemiseEncaissement(models.Model):
 
     def __str__(self):
         return f'{self.remise_id} — paiement {self.paiement_id}'
+
+
+# ── XCTR22 — Mandat de paiement récurrent (tokenisation carte) ──────────────
+# Key-gated OFF par défaut : tant qu'aucun mandat actif n'existe pour un
+# client (le cas par défaut, aucun fournisseur de tokenisation n'étant câblé),
+# rien ne change au cycle de facturation récurrente existant (XCTR5/XCTR20).
+class MandatPaiement(models.Model):
+    """Mandat de prélèvement carte (tokenisation), proposé depuis le portail
+    client (XCTR14). AUCUN PAN n'est jamais stocké — seul un token OPAQUE du
+    fournisseur (+ 4 derniers chiffres/expiration pour l'affichage)."""
+    class Statut(models.TextChoices):
+        ACTIF = 'actif', 'Actif'
+        EXPIRE = 'expire', 'Expiré'
+        REVOQUE = 'revoque', 'Révoqué'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='mandats_paiement')
+    client = models.ForeignKey(
+        'crm.Client', on_delete=models.PROTECT,
+        related_name='mandats_paiement')
+    provider = models.CharField(max_length=40, default='noop')
+    # Token OPAQUE renvoyé par le fournisseur — jamais un PAN.
+    token = models.CharField(max_length=200, blank=True, default='')
+    derniers_chiffres = models.CharField(max_length=4, blank=True, default='')
+    expiration_mois = models.CharField(
+        max_length=7, blank=True, default='',
+        help_text='MM/AAAA, affichage seulement.')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.ACTIF)
+    # Loi 09-08 — consentement horodaté explicite du client à la tokenisation.
+    consentement_horodate = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Mandat de paiement récurrent'
+        verbose_name_plural = 'Mandats de paiement récurrent'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Mandat {self.client_id} ({self.get_statut_display()})'
+
+    @property
+    def is_actif(self):
+        return self.statut == self.Statut.ACTIF and bool(self.token)
+
+
+class TentativeDebitMandat(models.Model):
+    """XCTR22 — file d'exceptions/dunning du débit automatique par mandat.
+
+    Une ligne par TENTATIVE de débit (succès ou échec) sur une période de
+    facturation donnée — garde anti double-débit : jamais deux débits
+    RÉUSSIS pour le même ``(mandat, periode)``."""
+    class Statut(models.TextChoices):
+        REUSSI = 'reussi', 'Réussi'
+        ECHEC = 'echec', 'Échec'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='tentatives_debit_mandat')
+    mandat = models.ForeignKey(
+        MandatPaiement, on_delete=models.CASCADE,
+        related_name='tentatives')
+    periode = models.CharField(max_length=20)
+    statut = models.CharField(max_length=10, choices=Statut.choices)
+    motif_echec = models.CharField(max_length=255, blank=True, default='')
+    paiement = models.ForeignKey(
+        Paiement, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='tentatives_debit_mandat')
+    date_tentative = models.DateTimeField(auto_now_add=True)
+    prochaine_retentative = models.DateField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Tentative de débit (mandat)'
+        verbose_name_plural = 'Tentatives de débit (mandat)'
+        ordering = ['-date_tentative']
+
+    def __str__(self):
+        return f'{self.mandat_id} / {self.periode} — {self.statut}'
