@@ -13,6 +13,8 @@ from .models import (
     AffectationVehicule,
     AnalyseRisquesChantier,
     AvanceSalaire,
+    AvantageSocial,
+    AyantDroit,
     BesoinFormation,
     BulletinPaie,
     CampagneEvaluation,
@@ -127,6 +129,10 @@ class DossierEmployeSerializer(serializers.ModelSerializer):
         source='get_situation_familiale_display', read_only=True)
     motif_sortie_display = serializers.CharField(
         source='get_motif_sortie_display', read_only=True)
+    # XRH29 — compteurs ayants droit/avantages, cohérence informative avec
+    # ``nombre_enfants`` (pas une source de vérité — juste un affichage).
+    nombre_ayants_droit = serializers.SerializerMethodField()
+    nombre_avantages_sociaux = serializers.SerializerMethodField()
 
     class Meta:
         model = DossierEmploye
@@ -153,9 +159,17 @@ class DossierEmployeSerializer(serializers.ModelSerializer):
             'declaration_entree_statut', 'declaration_entree_date',
             # XRH8 — horaire de travail assigné.
             'horaire',
+            # XRH29 — compteurs ayants droit / avantages sociaux.
+            'nombre_ayants_droit', 'nombre_avantages_sociaux',
             'date_creation',
         ]
         read_only_fields = ['date_creation', 'declaration_entree_date']
+
+    def get_nombre_ayants_droit(self, obj):
+        return obj.ayants_droit.count()
+
+    def get_nombre_avantages_sociaux(self, obj):
+        return obj.avantages_sociaux.count()
 
     def validate_horaire(self, value):
         return _meme_societe(self, value, 'Horaire de travail')
@@ -346,6 +360,43 @@ class EntretienSortieSerializer(serializers.ModelSerializer):
 
     def get_employe_nom(self, obj):
         return f'{obj.employe.nom} {obj.employe.prenom}' if obj.employe_id else ''
+
+
+class AyantDroitSerializer(serializers.ModelSerializer):
+    """Ayant droit / personne à charge (XRH29). ``employe`` même société."""
+    lien_display = serializers.CharField(
+        source='get_lien_display', read_only=True)
+
+    class Meta:
+        model = AyantDroit
+        fields = [
+            'id', 'employe', 'lien', 'lien_display', 'nom',
+            'date_naissance', 'couvert_amo', 'couvert_mutuelle',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+
+class AvantageSocialSerializer(serializers.ModelSerializer):
+    """Avantage social (XRH29 — mutuelle/assurance groupe/CIMR). ``employe``
+    même société."""
+    type_display = serializers.CharField(
+        source='get_type_display', read_only=True)
+
+    class Meta:
+        model = AvantageSocial
+        fields = [
+            'id', 'employe', 'type', 'type_display', 'organisme',
+            'date_adhesion', 'date_fin',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
 
 
 class ElementIntegrationSerializer(serializers.ModelSerializer):

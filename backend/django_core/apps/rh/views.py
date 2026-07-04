@@ -32,6 +32,8 @@ from .models import (
     AffectationVehicule,
     AnalyseRisquesChantier,
     AvanceSalaire,
+    AvantageSocial,
+    AyantDroit,
     BesoinFormation,
     BulletinPaie,
     CampagneEvaluation,
@@ -96,6 +98,8 @@ from .serializers import (
     AnalyseRisquesChantierSerializer,
     AnnuaireEmployeSerializer,
     AutoEvaluationSerializer,
+    AvantageSocialSerializer,
+    AyantDroitSerializer,
     AvanceSalaireSerializer,
     BesoinFormationSerializer,
     BulletinPaieSerializer,
@@ -735,6 +739,37 @@ class EntretienSortieViewSet(_RhBaseViewSet):
     serializer_class = EntretienSortieSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        return qs
+
+
+class AyantDroitViewSet(_RhBaseViewSet):
+    """Ayants droit / personnes à charge (XRH29). ``?employe=<id>``."""
+    queryset = AyantDroit.objects.select_related('employe').all()
+    serializer_class = AyantDroitSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['nom', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        return qs
+
+
+class AvantageSocialViewSet(_RhBaseViewSet):
+    """Avantages sociaux (XRH29 — mutuelle/assurance groupe/CIMR).
+    ``?employe=<id>``."""
+    queryset = AvantageSocial.objects.select_related('employe').all()
+    serializer_class = AvantageSocialSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['type', 'date_creation']
 
     def get_queryset(self):
         qs = super().get_queryset()

@@ -5144,3 +5144,111 @@ class EntretienSortie(models.Model):
 
     def __str__(self):
         return f'Entretien de sortie — {self.employe}'
+
+
+class AyantDroit(models.Model):
+    """XRH29 — ayant droit (personne à charge) nominatif d'un employé.
+
+    ``DossierEmploye.nombre_enfants`` n'est qu'un COMPTEUR pour l'IR ; l'AMO/
+    mutuelle exige les ayants droit NOMINATIFS (conjoint, enfants…) avec leur
+    couverture. Multi-société : ``company`` posée CÔTÉ SERVEUR ; ``employe``
+    doit appartenir à la société. Entièrement additif.
+    """
+
+    class Lien(models.TextChoices):
+        CONJOINT = 'conjoint', 'Conjoint(e)'
+        ENFANT = 'enfant', 'Enfant'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_ayants_droit',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='ayants_droit',
+        verbose_name='Employé',
+    )
+    lien = models.CharField(
+        max_length=20, choices=Lien.choices, verbose_name='Lien')
+    nom = models.CharField(max_length=160, verbose_name='Nom')
+    date_naissance = models.DateField(
+        null=True, blank=True, verbose_name='Date de naissance')
+    couvert_amo = models.BooleanField(
+        default=False, verbose_name='Couvert AMO')
+    couvert_mutuelle = models.BooleanField(
+        default=False, verbose_name='Couvert mutuelle')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Ayant droit'
+        verbose_name_plural = 'Ayants droit'
+        ordering = ['employe', 'nom']
+        indexes = [
+            models.Index(
+                fields=['company', 'employe'],
+                name='rh_ayant_droit_comp_emp_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.nom} ({self.get_lien_display()}) — {self.employe}'
+
+
+class AvantageSocial(models.Model):
+    """XRH29 — avantage social léger d'un employé (mutuelle, CIMR…).
+
+    Registre léger (organisme + dates d'adhésion/fin), DISTINCT des montants
+    de paie (``BulletinPaie``/``ElementsVariablesPaie``). Multi-société :
+    ``company`` posée CÔTÉ SERVEUR ; ``employe`` doit appartenir à la société.
+    Entièrement additif.
+    """
+
+    class Type(models.TextChoices):
+        MUTUELLE = 'mutuelle', 'Mutuelle'
+        ASSURANCE_GROUPE = 'assurance_groupe', 'Assurance groupe'
+        CIMR = 'cimr', 'CIMR'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_avantages_sociaux',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='avantages_sociaux',
+        verbose_name='Employé',
+    )
+    type = models.CharField(
+        max_length=20, choices=Type.choices, verbose_name='Type')
+    organisme = models.CharField(
+        max_length=160, blank=True, default='', verbose_name='Organisme')
+    date_adhesion = models.DateField(
+        null=True, blank=True, verbose_name="Date d'adhésion")
+    date_fin = models.DateField(
+        null=True, blank=True, verbose_name='Date de fin')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Avantage social'
+        verbose_name_plural = 'Avantages sociaux'
+        ordering = ['employe', 'type']
+        indexes = [
+            models.Index(
+                fields=['company', 'employe'],
+                name='rh_avantage_comp_emp_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.get_type_display()} — {self.employe}'

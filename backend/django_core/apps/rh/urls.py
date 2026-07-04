@@ -8,6 +8,8 @@ from .views import (
     AffectationVehiculeViewSet,
     AnalyseRisquesChantierViewSet,
     AvanceSalaireViewSet,
+    AvantageSocialViewSet,
+    AyantDroitViewSet,
     BesoinFormationViewSet,
     BulletinPaieViewSet,
     CampagneEvaluationViewSet,
@@ -78,6 +80,8 @@ router.register(r'grilles-salariales', GrilleSalarialeViewSet)
 router.register(r'documents', DocumentEmployeViewSet)
 router.register(r'elements-sortie', ElementSortieViewSet)
 router.register(r'entretiens-sortie', EntretienSortieViewSet)
+router.register(r'ayants-droit', AyantDroitViewSet)
+router.register(r'avantages-sociaux', AvantageSocialViewSet)
 router.register(r'modeles-integration', ModeleIntegrationViewSet)
 router.register(r'elements-integration', ElementIntegrationViewSet)
 router.register(
