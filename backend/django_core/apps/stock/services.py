@@ -2804,3 +2804,174 @@ def creer_facture_fournisseur_depuis_ocr(
                 facture.reference)
 
     return facture, doublons
+
+
+# ── XPUR13 — Garde-fous prix sur la ligne BCF (accords + historique) ────────
+# `ContratPrixFournisseur`/`CommandeCadre` (installations, FG318/FG314)
+# existaient déjà mais rien ne CONTRÔLAIT les prix saisis sur une ligne de
+# BCF. Ces fonctions sont des WARNINGS (jamais bloquantes) : le prix convenu
+# du contrat en vigueur est réutilisé via le sélecteur fin existant
+# `installations.selectors.prix_convenu_fournisseur` (import paresseux —
+# jamais un import de modèles). Comportement historique inchangé quand aucun
+# contrat/historique ne s'applique (pas de warning).
+
+def historique_prix_produit(
+        company, produit_id, *, fournisseur_id=None, limit=20):
+    """XPUR13 — historique des prix d'achat d'un produit, TOUTES SOURCES
+    (lignes de BCF passées, triées de la plus récente à la plus ancienne).
+    Filtrable par fournisseur. INTERNE, LECTURE SEULE."""
+    from .models import LigneBonCommandeFournisseur, BonCommandeFournisseur
+    qs = (LigneBonCommandeFournisseur.objects
+          .filter(bon_commande__company=company, produit_id=produit_id)
+          .exclude(bon_commande__statut=BonCommandeFournisseur.Statut.ANNULE)
+          .select_related('bon_commande', 'bon_commande__fournisseur')
+          .order_by('-bon_commande__date_creation'))
+    if fournisseur_id:
+        qs = qs.filter(bon_commande__fournisseur_id=fournisseur_id)
+    out = []
+    for ligne in qs[:limit]:
+        bc = ligne.bon_commande
+        out.append({
+            'bon_commande_id': bc.id,
+            'reference': bc.reference,
+            'fournisseur_id': bc.fournisseur_id,
+            'fournisseur_nom': (
+                bc.fournisseur.nom if bc.fournisseur_id else None),
+            'date': bc.date_creation,
+            'prix_achat_unitaire': ligne.prix_achat_unitaire,
+            'quantite': ligne.quantite,
+        })
+    return out
+
+
+def prix_moyen_recent_produit(
+        company, produit_id, *, fournisseur_id=None, limit=20):
+    """XPUR13 — prix d'achat moyen sur l'historique récent (même portée que
+    `historique_prix_produit`). Renvoie None si aucun historique. INTERNE."""
+    historique = historique_prix_produit(
+        company, produit_id, fournisseur_id=fournisseur_id, limit=limit)
+    if not historique:
+        return None
+    total = sum((Decimal(str(h['prix_achat_unitaire'])) for h in historique),
+                Decimal('0'))
+    return (total / len(historique)).quantize(Decimal('0.01'))
+
+
+def check_prix_ligne_bcf(
+        company, *, produit_id, fournisseur_id, prix_saisi,
+        a_la_date=None):
+    """XPUR13 — vérifie le prix d'une ligne de BCF avant/à la saisie.
+
+    Renvoie un dict ``{ok, warnings}`` — JAMAIS bloquant (``ok`` est toujours
+    True, les warnings sont informatifs). Deux règles indépendantes :
+    1. Dépassement du prix CONTRACTUEL en vigueur (accord fournisseur×produit,
+       `installations.selectors.prix_convenu_fournisseur`).
+    2. Écart au-delà du seuil société (`AchatsParametres.
+       seuil_deviation_prix_pct`, 0 = désactivé) par rapport au dernier prix/
+       prix moyen (`PrixFournisseur` + historique BCF)."""
+    from .models import AchatsParametres
+
+    prix = _dec(prix_saisi)
+    warnings = []
+    if prix is None:
+        return {'ok': True, 'warnings': warnings}
+
+    # 1. Prix contractuel (accord fournisseur×produit en vigueur).
+    try:
+        from apps.installations.selectors import prix_convenu_fournisseur
+        accord = prix_convenu_fournisseur(
+            company, produit_id, fournisseur_id=fournisseur_id,
+            a_la_date=a_la_date)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        accord = None
+    if accord and accord.get('prix_convenu') is not None:
+        prix_convenu = Decimal(str(accord['prix_convenu']))
+        if prix > prix_convenu:
+            warnings.append({
+                'type': 'hors_contrat',
+                'prix_convenu': prix_convenu,
+                'prix_saisi': prix,
+                'contrat_id': accord.get('contrat_id'),
+                'message': (
+                    f'Le prix saisi ({prix}) dépasse le prix convenu du '
+                    f'contrat en vigueur ({prix_convenu}).'),
+            })
+
+    # 2. Écart vs dernier prix / prix moyen (seuil paramétrable, 0 = off).
+    parametres = AchatsParametres.for_company(company)
+    seuil = parametres.seuil_deviation_prix_pct or Decimal('0')
+    if seuil > 0:
+        moyen = prix_moyen_recent_produit(
+            company, produit_id, fournisseur_id=fournisseur_id)
+        if moyen and moyen > 0:
+            ecart_pct = abs(prix - moyen) / moyen * Decimal('100')
+            if ecart_pct > seuil:
+                warnings.append({
+                    'type': 'ecart_historique',
+                    'prix_moyen': moyen,
+                    'prix_saisi': prix,
+                    'ecart_pct': ecart_pct.quantize(Decimal('0.1')),
+                    'message': (
+                        f'Le prix saisi ({prix}) dévie de '
+                        f'{ecart_pct.quantize(Decimal("0.1"))} %% du prix '
+                        f'moyen récent ({moyen}), au-delà du seuil société '
+                        f'({seuil} %%).'),
+                })
+
+    return {'ok': True, 'warnings': warnings}
+
+
+def rapport_achats_hors_contrat(
+        company, *, fournisseur_id=None, date_debut=None, date_fin=None):
+    """XPUR13 — rapport « achats hors contrat » : lignes de BCF dont le prix
+    saisi dépasse le prix convenu du contrat en vigueur pour ce couple
+    produit×fournisseur, sur la période (optionnelle) et/ou pour un
+    fournisseur donné. INTERNE, LECTURE SEULE."""
+    from .models import LigneBonCommandeFournisseur, BonCommandeFournisseur
+    try:
+        from apps.installations.selectors import prix_convenu_fournisseur
+    except Exception:  # noqa: BLE001 — best-effort
+        return []
+
+    qs = (LigneBonCommandeFournisseur.objects
+          .filter(bon_commande__company=company)
+          .exclude(bon_commande__statut=BonCommandeFournisseur.Statut.ANNULE)
+          .select_related(
+              'bon_commande', 'bon_commande__fournisseur', 'produit'))
+    if fournisseur_id:
+        qs = qs.filter(bon_commande__fournisseur_id=fournisseur_id)
+    if date_debut:
+        qs = qs.filter(bon_commande__date_creation__gte=date_debut)
+    if date_fin:
+        qs = qs.filter(bon_commande__date_creation__lte=date_fin)
+
+    out = []
+    for ligne in qs:
+        bc = ligne.bon_commande
+        try:
+            accord = prix_convenu_fournisseur(
+                company, ligne.produit_id,
+                fournisseur_id=bc.fournisseur_id,
+                a_la_date=bc.date_creation.date() if bc.date_creation
+                else None)
+        except Exception:  # noqa: BLE001 — best-effort
+            accord = None
+        if not accord or accord.get('prix_convenu') is None:
+            continue
+        prix_convenu = Decimal(str(accord['prix_convenu']))
+        if ligne.prix_achat_unitaire > prix_convenu:
+            out.append({
+                'ligne_id': ligne.id,
+                'bon_commande_id': bc.id,
+                'reference': bc.reference,
+                'fournisseur_id': bc.fournisseur_id,
+                'fournisseur_nom': (
+                    bc.fournisseur.nom if bc.fournisseur_id else None),
+                'produit_id': ligne.produit_id,
+                'produit_nom': ligne.produit.nom if ligne.produit_id else None,
+                'date': bc.date_creation,
+                'prix_convenu': prix_convenu,
+                'prix_saisi': ligne.prix_achat_unitaire,
+                'ecart': ligne.prix_achat_unitaire - prix_convenu,
+            })
+    return out

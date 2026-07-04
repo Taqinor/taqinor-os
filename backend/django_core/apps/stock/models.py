@@ -282,6 +282,14 @@ class AchatsParametres(models.Model):
         max_digits=12, decimal_places=2, default=0)
     tolerance_quantite_pct = models.DecimalField(
         max_digits=5, decimal_places=2, default=0)
+    # XPUR13 — écart % (par rapport au dernier prix / prix moyen d'achat)
+    # au-delà duquel une ligne de BCF lève un warning « prix hors norme ».
+    # 0 = comportement historique inchangé (aucun seuil, pas de warning
+    # d'écart — seul le dépassement du prix CONTRACTUEL est alors signalé).
+    seuil_deviation_prix_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0,
+        help_text='Écart %% (vs dernier prix/prix moyen) déclenchant un '
+                  'warning sur une ligne de BCF. 0 = désactivé.')
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
 

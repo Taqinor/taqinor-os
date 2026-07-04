@@ -76,7 +76,8 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
             return [IsResponsableOrAdmin()]
         elif self.action == 'en_retard':
             return [IsAnyRole()]
-        elif self.action == 'bcf_similaires':
+        elif self.action in (
+                'bcf_similaires', 'historique_prix', 'achats_hors_contrat'):
             return [IsAnyRole()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
@@ -239,7 +240,43 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
                     response.data['conformite_warning'] = warning
             except Exception:  # noqa: BLE001 — le warning ne casse jamais
                 pass
+            self._attach_prix_warnings(response, request)
         return response
+
+    def update(self, request, *args, **kwargs):
+        response = super().update(request, *args, **kwargs)
+        if response.status_code == status.HTTP_200_OK:
+            self._attach_prix_warnings(response, request)
+        return response
+
+    def _attach_prix_warnings(self, response, request):
+        """XPUR13 — WARNING (non bloquant) : ajoute `prix_warnings` à la
+        réponse pour chaque ligne dont le prix saisi dépasse le contrat en
+        vigueur ou dévie au-delà du seuil société. Ne bloque jamais la
+        création/mise à jour."""
+        try:
+            from ..services import check_prix_ligne_bcf
+            fournisseur_id = response.data.get('fournisseur')
+            lignes = response.data.get('lignes') or []
+            prix_warnings = []
+            for ligne in lignes:
+                produit_id = ligne.get('produit')
+                prix_saisi = ligne.get('prix_achat_unitaire')
+                if not produit_id or prix_saisi is None:
+                    continue
+                result = check_prix_ligne_bcf(
+                    request.user.company, produit_id=produit_id,
+                    fournisseur_id=fournisseur_id, prix_saisi=prix_saisi)
+                if result['warnings']:
+                    prix_warnings.append({
+                        'ligne_id': ligne.get('id'),
+                        'produit': produit_id,
+                        'warnings': result['warnings'],
+                    })
+            if prix_warnings:
+                response.data['prix_warnings'] = prix_warnings
+        except Exception:  # noqa: BLE001 — le warning ne casse jamais
+            pass
 
     @action(detail=True, methods=['post'], url_path='envoyer')
     def envoyer(self, request, pk=None):
@@ -305,6 +342,37 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
             request.user.company, fournisseur_id=fournisseur_id,
             produit_ids=produit_ids)
         return Response(similaires)
+
+    @action(detail=False, methods=['get'], url_path='historique-prix')
+    def historique_prix(self, request):
+        """XPUR13 — popover « historique des prix » : derniers achats (toutes
+        sources) d'un produit, optionnellement filtrés à un fournisseur.
+        Query params : ``produit`` (requis), ``fournisseur`` (optionnel).
+        LECTURE SEULE."""
+        from ..services import historique_prix_produit
+        produit_id = request.query_params.get('produit')
+        if not produit_id:
+            return Response(
+                {'detail': 'Le paramètre produit est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        fournisseur_id = request.query_params.get('fournisseur')
+        historique = historique_prix_produit(
+            request.user.company, produit_id, fournisseur_id=fournisseur_id)
+        return Response(historique)
+
+    @action(detail=False, methods=['get'], url_path='achats-hors-contrat')
+    def achats_hors_contrat(self, request):
+        """XPUR13 — rapport « achats hors contrat » : lignes de BCF dont le
+        prix dépasse le prix convenu du contrat en vigueur, filtrable par
+        fournisseur/période. LECTURE SEULE."""
+        from ..services import rapport_achats_hors_contrat
+        fournisseur_id = request.query_params.get('fournisseur')
+        date_debut = request.query_params.get('date_debut')
+        date_fin = request.query_params.get('date_fin')
+        rapport = rapport_achats_hors_contrat(
+            request.user.company, fournisseur_id=fournisseur_id,
+            date_debut=date_debut, date_fin=date_fin)
+        return Response(rapport)
 
     @action(detail=False, methods=['get'], url_path='en-retard')
     def en_retard(self, request):
