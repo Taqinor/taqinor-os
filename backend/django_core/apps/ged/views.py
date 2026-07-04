@@ -5,6 +5,7 @@ TOUJOURS posée côté serveur (TenantMixin) — jamais lue du corps de requête
 Les dossiers (Folder) ont un chemin matérialisé recalculé côté serveur, et les
 versions de document sont numérotées + déduppées via `services`.
 """
+from django.db import models
 from django.http import HttpResponse
 from rest_framework import filters, mixins, status, viewsets
 from rest_framework.decorators import (
@@ -41,6 +42,7 @@ from .models import (
     QuotaDepasseError, QuotaStockage, RegleAclMetadonnee,
     RegleApprobationGed, RegleDossier, RoleSignataire, RoutageDocumentaire,
     SignataireDemande, TypeChampSignature, ValidationOcrDocument,
+    VueGedEnregistree,
 )
 from .serializers import (
     AnnotationDocumentSerializer, ArchivageLegalSerializer, CabinetSerializer,
@@ -58,6 +60,7 @@ from .serializers import (
     RegleDossierSerializer, RoleSignataireSerializer,
     RoutageDocumentaireSerializer, SignataireDemandeSerializer,
     TypeChampSignatureSerializer, ValidationOcrDocumentSerializer,
+    VueGedEnregistreeSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -2657,6 +2660,39 @@ class RoutageDocumentaireViewSet(TenantMixin, viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(
             company=self.request.user.company, created_by=self.request.user)
+
+
+class VueGedEnregistreeViewSet(TenantMixin, viewsets.ModelViewSet):
+    """ZGED8 — Recherches/filtres GED enregistrés et partageables.
+
+    Lecture : chacun voit ses vues PRIVÉES + les vues PARTAGÉES de sa société
+    (jamais les vues privées d'un collègue). Écriture (création/édition) :
+    tout rôle authentifié, `utilisateur` posé côté serveur. Suppression :
+    réservée au créateur OU à un gestionnaire/admin."""
+    queryset = VueGedEnregistree.objects.select_related('utilisateur').all()
+    serializer_class = VueGedEnregistreeSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['nom', 'created_at']
+    permission_classes = [IsAnyRole]
+
+    def get_queryset(self):
+        company = self.request.user.company
+        return VueGedEnregistree.objects.filter(company=company).filter(
+            models.Q(utilisateur=self.request.user) | models.Q(partagee=True)
+        ).select_related('utilisateur')
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, utilisateur=self.request.user)
+
+    def perform_destroy(self, instance):
+        is_owner = instance.utilisateur_id == self.request.user.id
+        is_manager = IsResponsableOrAdmin().has_permission(self.request, self)
+        if not (is_owner or is_manager):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied(
+                "Seul le créateur ou un gestionnaire peut supprimer cette vue.")
+        instance.delete()
 
 
 class JournalAccesViewSet(TenantMixin, mixins.ListModelMixin,

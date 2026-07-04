@@ -3215,3 +3215,44 @@ class FavoriGed(models.Model):
     def __str__(self):
         cible = self.document or self.folder
         return f'Favori {self.utilisateur} → {cible}'
+
+
+# ── ZGED8 — Vues GED enregistrées (filtres partageables) ─────────────────────
+
+class VueGedEnregistree(models.Model):
+    """ZGED8 — Recherche/filtre GED enregistré, réutilisable et partageable.
+
+    Odoo Documents permet d'enregistrer des filtres en « favoris » réutilisables
+    et partageables. `criteres` est un JSON libre (dossier/tags/statut/type/
+    plage de dates/propriétaire — mêmes clés que les query params du
+    `DocumentViewSet`) appliqué côté frontend en rejouant les mêmes filtres.
+    `partagee=True` rend la vue visible en LECTURE de toute la société ;
+    `False` (défaut) la garde privée à son créateur. Suppression réservée au
+    créateur ou à un gestionnaire (gardée dans le viewset). Company posée
+    côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_vues_enregistrees')
+    utilisateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='ged_vues_enregistrees', verbose_name='créateur')
+    nom = models.CharField(max_length=150)
+    criteres = models.JSONField(default=dict, blank=True)
+    partagee = models.BooleanField(default=False, verbose_name='partagée')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['nom', 'id']
+        verbose_name = 'Vue GED enregistrée'
+        verbose_name_plural = 'Vues GED enregistrées'
+        indexes = [
+            models.Index(fields=['company', 'utilisateur'],
+                         name='ged_vue_co_user_idx'),
+            models.Index(fields=['company', 'partagee'],
+                         name='ged_vue_co_partagee_idx'),
+        ]
+
+    def __str__(self):
+        return self.nom

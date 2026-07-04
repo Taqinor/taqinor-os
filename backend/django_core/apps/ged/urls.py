@@ -15,6 +15,7 @@ from .views import (
     RegleApprobationGedViewSet, RegleDossierViewSet, RoleSignataireViewSet,
     RoutageDocumentaireViewSet, SignataireDemandeViewSet,
     TypeChampSignatureViewSet, ValidationOcrDocumentViewSet,
+    VueGedEnregistreeViewSet,
     analytique_ged, mes_favoris, public_depot, public_partage,
     public_signataire, public_signature,
 )
@@ -40,6 +41,7 @@ router.register(r'roles-signataire', RoleSignataireViewSet)
 router.register(r'champs-signature', ChampSignatureViewSet)
 router.register(r'types-champ-signature', TypeChampSignatureViewSet)
 router.register(r'routages-documentaires', RoutageDocumentaireViewSet)
+router.register(r'vues', VueGedEnregistreeViewSet)
 router.register(r'journal-acces', JournalAccesViewSet)
 router.register(r'quotas-stockage', QuotaStockageViewSet)
 router.register(r'depots-publics', DepotPublicViewSet)

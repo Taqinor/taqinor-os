@@ -10,7 +10,7 @@ from .models import (
     PartageGed, PlanificationDocument, PolitiqueRetention,
     RegleAclMetadonnee, RegleApprobationGed, RegleDossier, RoleSignataire,
     RoutageDocumentaire, QuotaStockage, SignataireDemande, TypeChampSignature,
-    ValidationOcrDocument,
+    ValidationOcrDocument, VueGedEnregistree,
 )
 from . import services
 
@@ -809,6 +809,29 @@ class FavoriGedSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {'document': 'Document inconnu.'})
         return attrs
+
+
+class VueGedEnregistreeSerializer(serializers.ModelSerializer):
+    """ZGED8 — Recherche/filtre GED enregistré, partageable.
+
+    `company`/`utilisateur` posés côté serveur — jamais lus du corps."""
+    utilisateur_nom = serializers.CharField(
+        source='utilisateur.username', read_only=True)
+    est_a_moi = serializers.SerializerMethodField()
+
+    class Meta:
+        model = VueGedEnregistree
+        fields = [
+            'id', 'nom', 'criteres', 'partagee',
+            'utilisateur', 'utilisateur_nom', 'est_a_moi',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['utilisateur', 'created_at', 'updated_at']
+
+    def get_est_a_moi(self, obj):
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        return bool(user) and obj.utilisateur_id == user.id
 
 
 class RoleSignataireSerializer(serializers.ModelSerializer):
