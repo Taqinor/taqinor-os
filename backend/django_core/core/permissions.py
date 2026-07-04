@@ -29,6 +29,33 @@ from __future__ import annotations
 from django.http import JsonResponse
 from rest_framework.permissions import SAFE_METHODS, BasePermission
 
+# ─────────────────────────────────────────────────────────────────────────────
+# YRBAC6/YRBAC7 — Registre central des champs sensibles
+# ─────────────────────────────────────────────────────────────────────────────
+# Noms de champs qui ne doivent JAMAIS apparaître dans un payload sérialisé /
+# export / PDF rendu pour un rôle non autorisé. Chaque champ est associé au
+# codename de permission qui SEUL autorise à le voir. Source unique de vérité
+# réutilisée par le sweep anti-fuite (YRBAC6) et le mixin de masquage (YRBAC7).
+SENSITIVE_FIELDS = {
+    # Prix d'achat / coût fournisseur — jamais client-facing (règle produit).
+    'prix_achat': 'prix_achat_voir',
+    'prix_achat_unitaire': 'prix_achat_voir',
+    'date_dernier_achat': 'prix_achat_voir',
+    # Indicateurs de marge dérivés du coût d'achat.
+    'marge': 'marge_voir',
+    'marge_pct': 'marge_voir',
+    'marge_brute': 'marge_voir',
+    # Conditions revendeur / achat.
+    'prix_revendeur': 'prix_achat_voir',
+    # Rémunérations / données RH sensibles.
+    'salaire': 'salaires_voir',
+    'salaire_base': 'salaires_voir',
+    'remuneration': 'salaires_voir',
+    'salaire_net': 'salaires_voir',
+    'salaire_brut': 'salaires_voir',
+}
+
+
 # Préfixes d'URL (2ᵉ segment de /api/django/<seg>/) TOUJOURS exemptés :
 # couches fondation/techniques + surfaces publiques tokenisées. Un module
 # absent de ce set ET absent des manifests installables reste, par prudence,
