@@ -26,6 +26,16 @@
           }
         ]
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "in=$(cat); printf '%s' \"$in\" | grep -iqE 'go deep|deep dive|ultra deep' && printf '%s' '{\"hookSpecificOutput\":{\"hookEventName\":\"UserPromptSubmit\",\"additionalContext\":\"[go-deep orchestration] The user said GO DEEP. Orchestrate on Opus and use multi-agent parallelism ONLY where it genuinely helps, never blindly. (1) FAN OUT parallel agents for INDEPENDENT breadth (separate files, domains, investigations with no shared state); set the model PER agent, never inherit the session model: haiku for scouting/greps/verify-and-skip, sonnet for standard research and build lanes, opus for judgment and adversarial verification. (2) COORDINATE instead of parallelizing when work touches SHARED files or is inherently sequential (same module, one browser, a migration chain): one owner per disjoint file set so lanes never collide. (3) Use FABLE for ONLY the 1-3 frontier passes where top-tier reasoning changes the outcome (final completeness critic, decisive synthesis, adjudicating a contradiction): most expensive model, a scalpel not the default. (4) Prefer a Workflow when control flow benefits from determinism (loop-until-done, fan-out then verify); otherwise plain parallel Agent calls. (5) Always adversarially VERIFY before reporting, against the REAL rendered or executed output, not just a green build. (6) Right-size it: depth = the CORRECT amount of parallelism for this task; skip it for trivial or conversational turns.\"}}' || true"
+          }
+        ]
+      }
     ]
   }
 }
