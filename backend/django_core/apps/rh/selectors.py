@@ -2728,3 +2728,49 @@ def rapport_presence(
             totaux_par_dep.values(),
             key=lambda e: (e['departement_id'] is None, e['departement_nom'])),
     }
+
+
+_JOURS_SEMAINE = [
+    'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche',
+]
+
+DEFAULT_LOCALISATION = 'bureau'
+
+
+def localisation_du_jour(company, jour):
+    """ZRH16 — localisation de travail attendue de chaque employé actif de
+    la société pour ``jour`` (objet ``date``).
+
+    Pour chaque employé (hors sortis) : lit ``localisation_hebdo`` (JSON
+    jour->lieu, clé absente = ``bureau`` par défaut, cf.
+    :data:`DEFAULT_LOCALISATION`) pour le jour de semaine de ``jour`` ; si
+    l'employé a une demande de congé VALIDÉE couvrant ``jour``, la
+    localisation devient ``absent`` (prend le pas sur le réglage). Purement
+    informatif — aucun impact paie/pointage. Lecture seule, société scopée.
+    """
+    from .models import DemandeConge
+
+    nom_jour = _JOURS_SEMAINE[jour.weekday()]
+    employes = DossierEmploye.objects.filter(
+        company=company).exclude(statut=DossierEmploye.Statut.SORTI)
+
+    en_conge_ids = set(
+        DemandeConge.objects.filter(
+            company=company, statut=DemandeConge.Statut.VALIDEE,
+            date_debut__lte=jour, date_fin__gte=jour,
+        ).values_list('employe_id', flat=True))
+
+    resultat = []
+    for emp in employes:
+        if emp.id in en_conge_ids:
+            lieu = 'absent'
+        else:
+            carte = emp.localisation_hebdo or {}
+            lieu = carte.get(nom_jour) or DEFAULT_LOCALISATION
+        resultat.append({
+            'employe_id': emp.id,
+            'nom': f'{emp.nom} {emp.prenom}',
+            'jour': nom_jour,
+            'localisation': lieu,
+        })
+    return resultat

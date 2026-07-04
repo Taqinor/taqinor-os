@@ -362,6 +362,12 @@ class DossierEmploye(models.Model):
     # exclu des serializers de listing — seul le endpoint kiosque le compare).
     code_pointage = models.CharField(
         max_length=12, blank=True, default='', verbose_name='Code pointage (PIN)')
+    # ZRH16 — localisation de télétravail par jour de semaine (« Remote Work »
+    # Odoo). Map jour->lieu parmi bureau/domicile/terrain/autre, TOUS
+    # optionnels (clé absente = bureau par défaut). Purement informatif,
+    # aucun impact paie/pointage. Clés attendues : 'lundi'..'dimanche'.
+    localisation_hebdo = models.JSONField(
+        blank=True, default=dict, verbose_name='Localisation hebdomadaire')
 
     class Meta:
         verbose_name = 'Dossier employé'

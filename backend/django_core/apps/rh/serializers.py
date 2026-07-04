@@ -167,6 +167,8 @@ class DossierEmployeSerializer(serializers.ModelSerializer):
             'horaire',
             # XRH29 — compteurs ayants droit / avantages sociaux.
             'nombre_ayants_droit', 'nombre_avantages_sociaux',
+            # ZRH16 — localisation de télétravail par jour de semaine.
+            'localisation_hebdo',
             'date_creation',
         ]
         read_only_fields = ['date_creation', 'declaration_entree_date']

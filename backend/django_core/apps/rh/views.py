@@ -242,6 +242,11 @@ class DossierEmployeViewSet(_RhBaseViewSet):
         # ne fuit, donc élargir ici l'accès en lecture est sûr.
         if self.action == 'annuaire':
             return [IsAnyRole()]
+        # ZRH16 — savoir où l'équipe travaille aujourd'hui sert à tous, pas
+        # seulement responsable/admin ; aucun champ sensible n'est exposé
+        # (nom, jour, lieu).
+        if self.action == 'localisation_du_jour':
+            return [IsAnyRole()]
         return super().get_permissions()
 
     def perform_update(self, serializer):
@@ -384,6 +389,24 @@ class DossierEmployeViewSet(_RhBaseViewSet):
 
         return Response(
             AnnuaireEmployeSerializer(qs.distinct(), many=True).data)
+
+    @action(
+        detail=False, methods=['get'], url_path='localisation-du-jour')
+    def localisation_du_jour(self, request):
+        """ZRH16 — localisation de travail attendue de chaque employé actif
+        ce jour (« Remote Work » Odoo). ``?jour=YYYY-MM-DD`` (défaut
+        aujourd'hui)."""
+        from datetime import datetime
+        jour_str = request.query_params.get('jour')
+        if jour_str:
+            try:
+                jour = datetime.strptime(jour_str, '%Y-%m-%d').date()
+            except (TypeError, ValueError):
+                jour = timezone.localdate()
+        else:
+            jour = timezone.localdate()
+        return Response(
+            selectors.localisation_du_jour(request.user.company, jour))
 
     @action(detail=True, methods=['get'], url_path='ecart-competences')
     def ecart_competences(self, request, pk=None):
