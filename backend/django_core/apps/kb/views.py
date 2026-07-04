@@ -118,8 +118,16 @@ class KbArticleViewSet(_KbBaseViewSet):
                 "droit d'édition peut le modifier.")
         # Sauvegarde l'article (société re-posée côté serveur) puis fige un
         # instantané versionné du nouvel état.
+        etait_traduction = article.traduction_de_id is not None
         article = serializer.save(company=self.request.user.company)
         services.snapshot_article(article, auteur=self.request.user)
+        # XKB18 — la source qui avance périme ses traductions ; une
+        # traduction elle-même mise à jour redevient à jour.
+        if etait_traduction and article.traduction_perimee:
+            article.traduction_perimee = False
+            article.save(update_fields=['traduction_perimee'])
+        else:
+            services.marquer_traductions_perimees(article)
 
     @action(detail=True, methods=['post'], url_path='publier')
     def publier(self, request, pk=None):
@@ -292,6 +300,23 @@ class KbArticleViewSet(_KbBaseViewSet):
         ser.is_valid(raise_exception=True)
         ser.save(company=self.request.user.company)
         return Response(ser.data)
+
+    @action(detail=True, methods=['post'], url_path='traduire')
+    def traduire(self, request, pk=None):
+        """XKB18 — Crée la traduction ``langue`` de cet article (brouillon,
+        rattachée à la source via ``traduction_de``). Attend
+        ``{"langue": "ar"|"en"|"fr"}``."""
+        article = self.get_object()
+        langue = request.data.get('langue')
+        if langue not in dict(KbArticle.LANGUE_CHOICES):
+            return Response(
+                {'detail': 'Langue invalide (fr, ar ou en attendu).'},
+                status=400)
+        traduction = services.creer_traduction(
+            article, langue=langue, auteur=request.user,
+            company=request.user.company)
+        return Response(
+            self.get_serializer(traduction).data, status=201)
 
     @action(detail=True, methods=['get'], url_path='export-pdf')
     def export_pdf(self, request, pk=None):

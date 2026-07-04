@@ -115,6 +115,31 @@ class KbArticle(models.Model):
     # alors que KbLecture est un « lu/pas lu » idempotent par utilisateur.
     # Posé côté serveur (jamais du corps de requête) via l'action de détail.
     vues = models.PositiveIntegerField(default=0, verbose_name='Vues')
+    # XKB18 — langue de CET article. Défaut ``fr`` = comportement historique
+    # inchangé (tout article existant reste un article français ordinaire).
+    LANGUE_CHOICES = [('fr', 'Français'), ('ar', 'العربية'), ('en', 'English')]
+    langue = models.CharField(
+        max_length=5, choices=LANGUE_CHOICES,
+        default='fr', verbose_name='Langue')
+    # XKB18 — groupe de traduction : pointe vers l'article SOURCE dont celui-ci
+    # est la traduction (self-FK, NULL = article racine/source, pas encore
+    # traduit). Toutes les traductions d'un même contenu partagent la MÊME
+    # source (jamais une chaîne de traductions de traductions) — validé côté
+    # serializer. RÉTRO-COMPATIBLE : NULL par défaut, aucun article existant
+    # n'est affecté.
+    traduction_de = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='traductions',
+        verbose_name='Traduction de',
+    )
+    # XKB18 — la traduction est-elle PÉRIMÉE (la source a été modifiée depuis)?
+    # Posé côté serveur : à chaque modification de l'article SOURCE, toutes ses
+    # traductions sont marquées périmées (services.marquer_traductions_perimees).
+    # Une traduction elle-même modifiée redevient à jour (remis à False).
+    traduction_perimee = models.BooleanField(
+        default=False, verbose_name='Traduction à mettre à jour')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
     date_modification = models.DateTimeField(
@@ -128,6 +153,11 @@ class KbArticle(models.Model):
             models.Index(
                 fields=['company', 'parent', 'ordre'],
                 name='kb_article_parent_ordre_idx'),
+            # XKB18 — nom EXPLICITE (≤30 car.) pour éviter toute divergence
+            # avec le nom haché déterministe de Django.
+            models.Index(
+                fields=['company', 'traduction_de'],
+                name='kb_article_traduction_idx'),
         ]
 
     def __str__(self):

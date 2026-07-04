@@ -33,11 +33,12 @@ class KbArticleSerializer(serializers.ModelSerializer):
             'statut', 'statut_display', 'auteur', 'auteur_nom', 'parent',
             'ordre', 'visibilite', 'est_gabarit', 'verifie_par',
             'verifie_par_nom', 'verifie_jusqua', 'est_verrouille', 'vues',
+            'langue', 'traduction_de', 'traduction_perimee',
             'date_creation', 'date_modification',
         ]
         read_only_fields = [
             'auteur', 'verifie_par', 'verifie_jusqua', 'est_verrouille',
-            'vues', 'date_creation', 'date_modification']
+            'vues', 'traduction_perimee', 'date_creation', 'date_modification']
 
     def validate_parent(self, parent):
         """XKB8 — le parent doit être même-société et ne jamais créer de cycle.
@@ -69,6 +70,26 @@ class KbArticleSerializer(serializers.ModelSerializer):
                         "Ce déplacement créerait un cycle dans l'arborescence.")
                 cursor = cursor.parent
         return parent
+
+    def validate_traduction_de(self, source):
+        """XKB18 — la source de traduction doit être même-société et ne
+        JAMAIS être elle-même une traduction (une chaîne de traductions de
+        traductions n'a pas de sens : toutes les traductions d'un même
+        contenu pointent vers la MÊME source racine)."""
+        if source is None:
+            return source
+        request = self.context.get('request')
+        if request is not None and source.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "L'article source doit appartenir à votre société.")
+        if self.instance is not None and source.id == self.instance.id:
+            raise serializers.ValidationError(
+                "Un article ne peut pas être la traduction de lui-même.")
+        if source.traduction_de_id is not None:
+            raise serializers.ValidationError(
+                "L'article source est déjà une traduction : "
+                "rattachez-vous à sa propre source.")
+        return source
 
 
 class KbArticleVersionSerializer(serializers.ModelSerializer):

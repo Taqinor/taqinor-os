@@ -279,6 +279,44 @@ def importer_markdown(contenu, *, company, auteur=None):
     )
 
 
+# ── XKB18 — Articles multilingues FR/AR/EN ──────────────────────────────────
+
+def creer_traduction(article_source, *, langue, auteur=None, company):
+    """XKB18 — Crée la traduction ``langue`` d'``article_source``.
+
+    Copie titre + corps + catégorie/tags de la source, marque le nouvel
+    article de la langue cible et le rattache à la source
+    (``traduction_de``). Statut ``brouillon`` (la traduction démarre à
+    relire, jamais publiée automatiquement). Société posée côté serveur
+    (jamais du corps de requête) et forcée à celle de la source.
+    """
+    return KbArticle.objects.create(
+        company=company,
+        titre=article_source.titre,
+        corps=article_source.corps,
+        corps_format=article_source.corps_format,
+        categorie=article_source.categorie,
+        tags=article_source.tags,
+        statut=KbArticle.Statut.BROUILLON,
+        auteur=auteur,
+        langue=langue,
+        traduction_de=article_source,
+    )
+
+
+def marquer_traductions_perimees(article):
+    """XKB18 — Marque PÉRIMÉES toutes les traductions d'``article`` quand
+    celui-ci (une source) vient d'être modifié.
+
+    Appelé depuis la mise à jour de l'article (``perform_update``) : si
+    ``article`` porte des traductions (``.traductions``), chacune passe
+    ``traduction_perimee=True`` — l'indicateur « traduction à mettre à jour »
+    de KB18. N'affecte jamais l'article source lui-même. Best-effort et
+    idempotent (un ``update()`` en masse, pas de N+1).
+    """
+    article.traductions.update(traduction_perimee=True)
+
+
 def exporter_zip_company(company):
     """XKB17 — Exporte TOUS les articles d'une société (+ pièces jointes) en ZIP.
 
