@@ -107,6 +107,7 @@
       <tr>
         <th>#</th>
         <th>SKU</th>
+        <th>Réf. fournisseur</th>
         <th>Désignation</th>
         <th class="text-right">Qté</th>
         <th class="text-right">P.U. achat HT</th>
@@ -118,6 +119,7 @@
       <tr>
         <td>{{ loop.index }}</td>
         <td>{{ ligne.produit.sku or '—' }}</td>
+        <td>{{ ref_produit_fournisseur.get(ligne.id, '') or '—' }}</td>
         <td>{{ ligne.produit.nom }}{% if ligne.produit.description %}<br /><span style="font-size:10px;color:#777">{{ ligne.produit.description }}</span>{% endif %}</td>
         <td class="text-right">{{ ligne.quantite }}</td>
         <td class="text-right">{{ "%.2f"|format(ligne.prix_achat_unitaire) }} MAD</td>

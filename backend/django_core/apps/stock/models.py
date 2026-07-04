@@ -742,6 +742,19 @@ class PrixFournisseur(models.Model):
     # produit×fournisseur. Alimente la suggestion `date_livraison_prevue`
     # d'un BCF. Null = pas de délai connu (comportement historique).
     delai_livraison_jours = models.PositiveIntegerField(null=True, blank=True)
+    # ── XPUR14 — code article fournisseur, paliers de quantité, validité ────
+    # Code article CHEZ LE FOURNISSEUR (imprimé sur le PDF BCF pour éviter les
+    # erreurs de préparation côté fournisseur). Vide = comportement historique
+    # (colonne omise du PDF).
+    ref_produit_fournisseur = models.CharField(
+        max_length=100, blank=True, default='',
+        help_text="Code article chez le fournisseur (imprimé sur le PDF "
+                  'BCF).')
+    # Fenêtre de validité du tarif. Vide des deux côtés = comportement
+    # historique (toujours proposé, aucune expiration). Un tarif expiré
+    # (date_fin dépassée) n'est plus proposé par l'auto-fill BCF.
+    date_debut = models.DateField(null=True, blank=True)
+    date_fin = models.DateField(null=True, blank=True)
 
     class Meta:
         verbose_name = "Prix fournisseur"
@@ -751,6 +764,42 @@ class PrixFournisseur(models.Model):
 
     def __str__(self):
         return f'{self.produit_id} @ {self.fournisseur_id} = {self.prix_achat}'
+
+    def est_en_vigueur(self, a_la_date=None):
+        """XPUR14 — vrai si le tarif est valide à la date donnée (aujourd'hui
+        par défaut). Une borne absente est ouverte de ce côté (comportement
+        historique : sans dates saisies, toujours en vigueur)."""
+        from django.utils import timezone
+        ref = a_la_date or timezone.now().date()
+        if self.date_debut and ref < self.date_debut:
+            return False
+        if self.date_fin and ref > self.date_fin:
+            return False
+        return True
+
+
+class PalierPrixFournisseur(models.Model):
+    """XPUR14 — palier de prix par quantité minimale d'un tarif fournisseur.
+
+    Un ``PrixFournisseur`` peut porter plusieurs paliers (ex. 1-9 unités au
+    prix catalogue, 10-49 à un prix réduit, 50+ à un prix encore plus bas).
+    Le palier applicable pour une quantité commandée est celui dont
+    ``qte_min`` est le plus élevé sans dépasser la quantité. Additif : un
+    ``PrixFournisseur`` sans palier garde le comportement historique
+    (``prix_achat`` du tarif de base)."""
+    prix_fournisseur = models.ForeignKey(
+        PrixFournisseur, on_delete=models.CASCADE, related_name='paliers')
+    qte_min = models.PositiveIntegerField()
+    prix = models.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        verbose_name = 'Palier de prix fournisseur'
+        verbose_name_plural = 'Paliers de prix fournisseur'
+        ordering = ['qte_min']
+        unique_together = [('prix_fournisseur', 'qte_min')]
+
+    def __str__(self):
+        return f'{self.prix_fournisseur_id} · {self.qte_min}+ → {self.prix}'
 
 
 # XPUR3 — devises d'achat courantes (imports panneaux/onduleurs). MAD reste le

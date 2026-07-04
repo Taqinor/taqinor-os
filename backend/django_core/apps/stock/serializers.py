@@ -13,6 +13,7 @@ from .models import (
     CategorieFournisseur, ContactFournisseur,
     EcheanceFactureFournisseur, AcompteFournisseur,
     AvoirFournisseur, ImputationAvoirFournisseur,
+    PalierPrixFournisseur,
 )
 
 
@@ -401,17 +402,27 @@ class RetourFournisseurSerializer(serializers.ModelSerializer):
         return retour
 
 
+class PalierPrixFournisseurSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PalierPrixFournisseur
+        fields = ['id', 'qte_min', 'prix']
+
+
 class PrixFournisseurSerializer(serializers.ModelSerializer):
     """N17 — prix d'achat par (produit, fournisseur). INTERNE."""
     fournisseur_nom = serializers.CharField(
         source='fournisseur.nom', read_only=True)
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
+    # XPUR14 — paliers de quantité (lecture ; gestion CRUD via l'endpoint
+    # dédié / l'import xlsx, pas en écriture imbriquée ici).
+    paliers = PalierPrixFournisseurSerializer(many=True, read_only=True)
 
     class Meta:
         model = PrixFournisseur
         fields = [
             'id', 'produit', 'produit_nom', 'fournisseur', 'fournisseur_nom',
             'prix_achat', 'date_dernier_achat', 'delai_livraison_jours',
+            'ref_produit_fournisseur', 'date_debut', 'date_fin', 'paliers',
         ]
         # company posé côté serveur.
 

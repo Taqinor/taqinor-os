@@ -2975,3 +2975,166 @@ def rapport_achats_hors_contrat(
                 'ecart': ligne.prix_achat_unitaire - prix_convenu,
             })
     return out
+
+
+# ── XPUR14 — PrixFournisseur enrichi (code article, paliers, validité) ──────
+# Un tarif fournisseur ne portait que prix + date du dernier achat. Ces
+# fonctions résolvent le prix EFFECTIF (bon palier de quantité, tarif non
+# expiré) et fournissent l'import/export xlsx du tarif d'un fournisseur.
+# Comportement historique inchangé : sans palier/dates saisis, le prix de
+# base (`PrixFournisseur.prix_achat`) reste toujours proposé.
+
+def prix_effectif_fournisseur(
+        produit, fournisseur, *, quantite=1, a_la_date=None):
+    """XPUR14 — prix d'achat EFFECTIF pour (produit, fournisseur, quantité) à
+    une date donnée : le palier applicable (qte_min le plus élevé ≤
+    quantité) si des paliers existent, sinon le prix de base. Renvoie None
+    si le tarif est expiré ou introuvable. LECTURE SEULE."""
+    from .models import PrixFournisseur
+    pf = (PrixFournisseur.objects
+          .filter(produit=produit, fournisseur=fournisseur)
+          .prefetch_related('paliers').first())
+    if pf is None:
+        return None
+    if not pf.est_en_vigueur(a_la_date):
+        return None
+    paliers = [p for p in pf.paliers.all() if p.qte_min <= quantite]
+    if paliers:
+        meilleur = max(paliers, key=lambda p: p.qte_min)
+        return meilleur.prix
+    return pf.prix_achat
+
+
+def export_prix_fournisseur_xlsx(company, fournisseur):
+    """XPUR14 — export xlsx du tarif d'un fournisseur (une ligne par produit,
+    paliers concaténés dans une colonne). Réutilise le builder xlsx partagé
+    (records.xlsx). INTERNE."""
+    from apps.records.xlsx import build_xlsx_response
+    from .models import PrixFournisseur
+
+    headers = [
+        'sku', 'produit', 'ref_produit_fournisseur', 'prix_achat',
+        'date_debut', 'date_fin', 'paliers (qte_min:prix;...)',
+    ]
+    rows = []
+    qs = (PrixFournisseur.objects
+          .filter(company=company, fournisseur=fournisseur)
+          .select_related('produit').prefetch_related('paliers')
+          .order_by('produit__nom'))
+    for pf in qs:
+        paliers_str = ';'.join(
+            f'{p.qte_min}:{p.prix}' for p in pf.paliers.all())
+        rows.append([
+            pf.produit.sku or '', pf.produit.nom,
+            pf.ref_produit_fournisseur, pf.prix_achat,
+            pf.date_debut, pf.date_fin, paliers_str,
+        ])
+    filename = f'tarif-{fournisseur.nom}.xlsx'.replace(' ', '-')
+    return build_xlsx_response(
+        filename, headers, rows, sheet_title='Tarif fournisseur')
+
+
+def _parse_palier_cell(value):
+    """XPUR14 — parse la cellule ``paliers`` (« qte_min:prix;qte_min:prix »)
+    en liste de tuples ``(qte_min:int, prix:Decimal)``. Ignore silencieusement
+    les segments malformés (rapport d'erreurs géré par l'appelant)."""
+    out = []
+    for segment in str(value or '').split(';'):
+        segment = segment.strip()
+        if not segment or ':' not in segment:
+            continue
+        qte_raw, prix_raw = segment.split(':', 1)
+        try:
+            qte = int(qte_raw.strip())
+            prix = Decimal(str(prix_raw.strip()))
+        except (InvalidOperation, TypeError, ValueError):
+            continue
+        out.append((qte, prix))
+    return out
+
+
+def import_prix_fournisseur_xlsx(company, fournisseur, file_bytes):
+    """XPUR14 — import/mise à jour du tarif d'un fournisseur depuis un xlsx
+    (même format que l'export). CRÉATION + MISE À JOUR par SKU — jamais de
+    suppression silencieuse (un produit absent du fichier garde son tarif
+    existant). Renvoie ``{created, updated, errors: [{row, message}]}``.
+    INTERNE."""
+    import io
+    from openpyxl import load_workbook
+    from .models import PrixFournisseur, PalierPrixFournisseur, Produit
+
+    wb = load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+    ws = wb.active
+    rows_iter = ws.iter_rows(values_only=True)
+    header = [str(h or '').strip().lower() for h in next(rows_iter, [])]
+
+    def _col(name):
+        return header.index(name) if name in header else None
+
+    idx_sku = _col('sku')
+    idx_ref = _col('ref_produit_fournisseur')
+    idx_prix = _col('prix_achat')
+    idx_debut = _col('date_debut')
+    idx_fin = _col('date_fin')
+    idx_paliers = None
+    for i, h in enumerate(header):
+        if h.startswith('paliers'):
+            idx_paliers = i
+            break
+
+    created = 0
+    updated = 0
+    errors = []
+    if idx_sku is None or idx_prix is None:
+        errors.append({
+            'row': 1,
+            'message': "Colonnes requises manquantes ('sku', 'prix_achat').",
+        })
+        return {'created': 0, 'updated': 0, 'errors': errors}
+
+    for row_num, row in enumerate(rows_iter, start=2):
+        sku = str(row[idx_sku] or '').strip() if idx_sku < len(row) else ''
+        if not sku:
+            continue
+        produit = Produit.objects.filter(company=company, sku=sku).first()
+        if produit is None:
+            errors.append({
+                'row': row_num,
+                'message': f'SKU introuvable : {sku}.',
+            })
+            continue
+        prix_raw = row[idx_prix] if idx_prix < len(row) else None
+        prix = _dec(prix_raw)
+        if prix is None:
+            errors.append({
+                'row': row_num,
+                'message': f'Prix invalide pour {sku} : {prix_raw!r}.',
+            })
+            continue
+
+        defaults = {'company': company, 'prix_achat': prix}
+        if idx_ref is not None and idx_ref < len(row):
+            defaults['ref_produit_fournisseur'] = str(row[idx_ref] or '')
+        if idx_debut is not None and idx_debut < len(row):
+            defaults['date_debut'] = row[idx_debut] or None
+        if idx_fin is not None and idx_fin < len(row):
+            defaults['date_fin'] = row[idx_fin] or None
+
+        pf, was_created = PrixFournisseur.objects.get_or_create(
+            produit=produit, fournisseur=fournisseur, defaults=defaults)
+        if not was_created:
+            for key, val in defaults.items():
+                setattr(pf, key, val)
+            pf.save(update_fields=list(defaults.keys()))
+            updated += 1
+        else:
+            created += 1
+
+        if idx_paliers is not None and idx_paliers < len(row):
+            paliers = _parse_palier_cell(row[idx_paliers])
+            for qte_min, palier_prix in paliers:
+                PalierPrixFournisseur.objects.update_or_create(
+                    prix_fournisseur=pf, qte_min=qte_min,
+                    defaults={'prix': palier_prix})
+
+    return {'created': created, 'updated': updated, 'errors': errors}

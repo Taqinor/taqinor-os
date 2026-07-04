@@ -4,6 +4,7 @@ from django.http import HttpResponse  # noqa: F401
 from rest_framework import viewsets, filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
+from rest_framework.parsers import MultiPartParser, JSONParser  # noqa: F401
 from authentication.mixins import TenantMixin  # noqa: F401
 from apps.ventes.utils.references import create_with_reference  # noqa: F401
 from ..models import (  # noqa: F401
@@ -54,7 +55,7 @@ class PrixFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
     ordering = ['prix_achat']
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS:
+        if self.action in READ_ACTIONS + ['export_xlsx']:
             return [IsAnyRole()]
         return [HasPermissionOrLegacy('stock_modifier')()]
 
@@ -85,3 +86,45 @@ class PrixFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
     def perform_update(self, serializer):
         self._check_company(serializer)
         serializer.save(company=self.request.user.company)
+
+    @action(detail=False, methods=['get'], url_path='export-xlsx')
+    def export_xlsx(self, request):
+        """XPUR14 — export xlsx du tarif d'un fournisseur (query param
+        ``fournisseur`` requis)."""
+        from ..services import export_prix_fournisseur_xlsx
+        fournisseur_id = request.query_params.get('fournisseur')
+        if not fournisseur_id:
+            return Response(
+                {'detail': 'Le paramètre fournisseur est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        fournisseur = Fournisseur.objects.filter(
+            pk=fournisseur_id, company=request.user.company).first()
+        if fournisseur is None:
+            return Response(
+                {'detail': 'Fournisseur introuvable.'},
+                status=status.HTTP_404_NOT_FOUND)
+        return export_prix_fournisseur_xlsx(request.user.company, fournisseur)
+
+    @action(detail=False, methods=['post'], url_path='import-xlsx',
+            parser_classes=[MultiPartParser])
+    def import_xlsx(self, request):
+        """XPUR14 — import/mise à jour du tarif d'un fournisseur depuis un
+        xlsx (même format que l'export). Corps multipart : ``fournisseur``
+        (id), ``file``. CRÉATION + MISE À JOUR par SKU — jamais de
+        suppression silencieuse."""
+        from ..services import import_prix_fournisseur_xlsx
+        fournisseur_id = request.data.get('fournisseur')
+        upload = request.FILES.get('file')
+        if not fournisseur_id or upload is None:
+            return Response(
+                {'detail': 'fournisseur et file sont requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        fournisseur = Fournisseur.objects.filter(
+            pk=fournisseur_id, company=request.user.company).first()
+        if fournisseur is None:
+            return Response(
+                {'detail': 'Fournisseur introuvable.'},
+                status=status.HTTP_404_NOT_FOUND)
+        result = import_prix_fournisseur_xlsx(
+            request.user.company, fournisseur, upload.read())
+        return Response(result, status=status.HTTP_200_OK)
