@@ -674,6 +674,134 @@ def evaluer_geofencing(company, *, releves=None, alerter=True):
     return alertes
 
 
+# ── XFLT25 — Codes défaut moteur (DTC) sur les relevés télématiques ──────────
+#
+# Un code critique déclenche une alerte + un ``SignalementVehicule`` (XFLT5)
+# gravité critique, IDEMPOTENT : pas de doublon ouvert pour le même
+# (code, véhicule). Key-gated comme toute la télématique (FLOTTE27) — la
+# saisie MANUELLE du code reste toujours possible, gate ou pas.
+
+# Préfixes DTC par défaut (norme OBD-II générique) si la société n'a pas
+# encore édité son propre référentiel ``code_dtc``. P0xxx = moteur/chaîne
+# cinématique générique = criticité par défaut la plus haute (sécurité).
+_CRITICITE_DTC_DEFAUT = {
+    'P0': 'critique',
+    'P1': 'moyenne',
+    'P2': 'moyenne',
+    'P3': 'moyenne',
+    'B0': 'moyenne',   # carrosserie
+    'C0': 'moyenne',   # châssis
+    'U0': 'faible',    # réseau/communication
+}
+
+
+def criticite_dtc(company, code):
+    """XFLT25 — Criticité d'un code DTC pour ``company`` (lecture seule).
+
+    Cherche d'abord une entrée ÉDITABLE du référentiel société
+    (``ReferentielFlotte`` domaine ``code_dtc``) dont ``code`` est un préfixe
+    du code fourni (préfixe le plus long qui matche l'emporte — ex. ``P03``
+    l'emporte sur ``P0``) ; à défaut, retombe sur le référentiel générique
+    OBD-II par défaut (``_CRITICITE_DTC_DEFAUT``). Retourne ``'faible'`` si
+    rien ne correspond (comportement permissif par défaut). Ne lève jamais.
+    """
+    from .models import ReferentielFlotte
+
+    code = (code or '').strip().upper()
+    if not code:
+        return 'faible'
+
+    entrees = list(ReferentielFlotte.objects.filter(
+        company=company, domaine=ReferentielFlotte.Domaine.CODE_DTC,
+        actif=True))
+    meilleure = None
+    for entree in entrees:
+        prefixe = (entree.code or '').strip().upper()
+        if prefixe and code.startswith(prefixe):
+            if meilleure is None or len(prefixe) > len(meilleure.code):
+                meilleure = entree
+    if meilleure is not None:
+        return (meilleure.libelle or 'faible').strip().lower()
+
+    for prefixe, criticite in _CRITICITE_DTC_DEFAUT.items():
+        if code.startswith(prefixe):
+            return criticite
+    return 'faible'
+
+
+def traiter_codes_defaut(releve):
+    """XFLT25 — Traite les ``codes_defaut`` d'un ``ReleveTelematique`` :
+    déclenche une alerte + un ``SignalementVehicule`` gravité CRITIQUE pour
+    chaque code critique (idempotent : pas de doublon ouvert pour le même
+    couple (code, actif)).
+
+    Un code non critique (moyenne/faible) ne fait rien de plus que ce que la
+    saisie a déjà posé (aucun signalement) — seul le CRITIQUE agit. Key-gated
+    implicitement par l'ingestion normale de la télématique : la saisie
+    MANUELLE fonctionne toujours (ne dépend pas de ``telematique_active``).
+
+    Retourne la liste des ``SignalementVehicule`` créés (vide si aucun code
+    critique ou si tous ont déjà un signalement ouvert).
+    """
+    from .models import SignalementVehicule
+
+    codes = releve.codes_defaut or []
+    if not codes:
+        return []
+
+    crees = []
+    for code in codes:
+        if criticite_dtc(releve.company, code) != 'critique':
+            continue
+
+        # Idempotence : pas de doublon OUVERT pour le même code+véhicule.
+        deja_ouvert = SignalementVehicule.objects.filter(
+            company=releve.company,
+            actif_flotte=releve.actif_flotte,
+            statut__in=[SignalementVehicule.Statut.OUVERT,
+                        SignalementVehicule.Statut.EN_COURS],
+            description__contains=f'DTC {code}',
+        ).exists()
+        if deja_ouvert:
+            continue
+
+        signalement = SignalementVehicule.objects.create(
+            company=releve.company,
+            actif_flotte=releve.actif_flotte,
+            description=(
+                f'Code défaut moteur critique DTC {code} détecté '
+                f'({releve.horodatage:%Y-%m-%d %H:%M}).'
+            ),
+            gravite=SignalementVehicule.Gravite.CRITIQUE,
+        )
+        crees.append(signalement)
+
+        try:
+            from apps.notifications.services import notify
+            from .selectors import conducteur_actuel_du_vehicule
+            actif = releve.actif_flotte
+            user = None
+            if actif is not None and actif.vehicule_id is not None:
+                conducteur = conducteur_actuel_du_vehicule(
+                    releve.company, actif.vehicule_id)
+                user = conducteur.user if conducteur is not None else None
+            if user is not None:
+                notify(
+                    user=user,
+                    event_type='flotte_dtc_critique',
+                    title=f'DTC critique : {code}',
+                    body=(
+                        f'{actif.label} — code défaut moteur critique '
+                        f'{code} détecté.'),
+                    link='/flotte/releves-telematiques',
+                    company=releve.company,
+                )
+        except Exception:
+            pass
+
+    return crees
+
+
 # ── FLOTTE28 — Construction de trajets depuis les relevés télématiques ─────────
 
 def _distance_haversine_km(lat1, lng1, lat2, lng2):

@@ -307,6 +307,12 @@ class ReferentielFlotte(models.Model):
         TYPE_ENGIN = 'type_engin', "Type d'engin"
         ENERGIE = 'energie', 'Énergie'
         CATEGORIE_PERMIS = 'categorie_permis', 'Catégorie de permis'
+        # XFLT25 — criticité des préfixes de code défaut moteur (DTC), éditable
+        # par société (P0xxx moteur, etc.). ``code`` porte le préfixe (ex.
+        # ``P0``) et ``libelle`` la criticité littérale
+        # (``critique``/``moyenne``/``faible`` — voir
+        # ``services.criticite_dtc``, qui lit ce référentiel).
+        CODE_DTC = 'code_dtc', 'Criticité des codes défaut (DTC)'
 
     company = models.ForeignKey(
         'authentication.Company',
@@ -2571,6 +2577,14 @@ class ReleveTelematique(models.Model):
     # pour tracer ce que le boîtier a remonté sans inventer de schéma de colonnes.
     raw_payload = models.JSONField(
         default=dict, blank=True, verbose_name='Charge brute (fournisseur)')
+    # XFLT25 — Codes défaut moteur (DTC, Diagnostic Trouble Codes) remontés
+    # par le boîtier OU saisis manuellement (la saisie manuelle reste
+    # toujours possible, comme le reste de la télématique). Liste de codes
+    # bruts (ex. ``["P0301", "P0420"]``) ; la CRITICITÉ par préfixe est un
+    # référentiel ÉDITABLE (``ReferentielFlotte`` domaine ``code_dtc``),
+    # jamais figée dans ce modèle.
+    codes_defaut = models.JSONField(
+        default=list, blank=True, verbose_name='Codes défaut moteur (DTC)')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 

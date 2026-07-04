@@ -74,6 +74,10 @@ class EventType(models.TextChoices):
     # horaire autorisée, détecté sur les relevés télématiques déjà ingérés.
     FLOTTE_ZONE_ALERTE = (
         'flotte_zone_alerte', 'Alerte géofencing véhicule')
+    # XFLT25 — code défaut moteur (DTC) critique détecté sur un relevé
+    # télématique (manuel ou fournisseur).
+    FLOTTE_DTC_CRITIQUE = (
+        'flotte_dtc_critique', 'Code défaut moteur critique (DTC)')
 
 
 class Channel(models.TextChoices):

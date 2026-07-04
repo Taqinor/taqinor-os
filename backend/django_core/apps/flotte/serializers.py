@@ -1635,7 +1635,7 @@ class ReleveTelematiqueSerializer(serializers.ModelSerializer):
             'id', 'actif_flotte', 'actif_label', 'horodatage', 'odometre',
             'position_lat', 'position_lng', 'niveau_carburant',
             'heures_moteur', 'source', 'source_display', 'raw_payload',
-            'date_creation',
+            'codes_defaut', 'date_creation',
         ]
         read_only_fields = ['date_creation']
 

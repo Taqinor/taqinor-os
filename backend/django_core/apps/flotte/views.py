@@ -1887,6 +1887,18 @@ class ReleveTelematiqueViewSet(_FlotteBaseViewSet):
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['horodatage', 'odometre', 'source', 'date_creation']
 
+    def perform_create(self, serializer):
+        # XFLT25 — un code défaut moteur (DTC) critique déclenche une alerte
+        # + un signalement (idempotent). Best-effort : ne bloque jamais la
+        # création du relevé si le traitement échoue.
+        from .services import traiter_codes_defaut
+        serializer.save(company=self.request.user.company)
+        if serializer.instance.codes_defaut:
+            try:
+                traiter_codes_defaut(serializer.instance)
+            except Exception:
+                pass
+
     def get_queryset(self):
         qs = super().get_queryset()
         params = self.request.query_params
