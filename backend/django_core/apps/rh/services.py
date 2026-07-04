@@ -912,6 +912,62 @@ def instancier_integration(dossier, modele=None):
     return ElementIntegrationEmploye.objects.bulk_create(lignes)
 
 
+def _modele_evaluation_applicable(campagne, employe):
+    """ZRH7 — modèle d'évaluation le plus spécifique pour ``employe`` dans
+    ``campagne`` : priorité au modèle EXPLICITE de la campagne s'il est ciblé
+    (poste/département) ou par défaut, sinon un modèle du département de
+    l'employé, sinon le modèle par défaut de la société. ``None`` si aucun.
+    """
+    if campagne.modele_id:
+        return campagne.modele
+    from .models import ModeleEvaluation
+
+    base = ModeleEvaluation.objects.filter(
+        company=campagne.company, actif=True)
+    if employe.poste_ref_id and employe.departement_id:
+        exact = base.filter(
+            poste_ref_id=employe.poste_ref_id,
+            departement_id=employe.departement_id).first()
+        if exact:
+            return exact
+    if employe.poste_ref_id:
+        match = base.filter(
+            poste_ref_id=employe.poste_ref_id, departement__isnull=True
+        ).first()
+        if match:
+            return match
+    if employe.departement_id:
+        match = base.filter(
+            departement_id=employe.departement_id, poste_ref__isnull=True
+        ).first()
+        if match:
+            return match
+    return base.filter(poste_ref__isnull=True, departement__isnull=True).first()
+
+
+def instancier_reponses_evaluation(campagne, employe):
+    """ZRH7 — instancie ``EvaluationEmploye.reponses`` depuis le modèle
+    applicable (campagne > département/poste employé > défaut société).
+
+    Renvoie une liste de dicts ``{libelle, type, cible, reponse: ''}`` (une
+    par question du modèle), ou ``[]`` si aucun modèle applicable — la
+    campagne SANS modèle reste un entretien à synthèse libre, comportement
+    historique inchangé.
+    """
+    modele = _modele_evaluation_applicable(campagne, employe)
+    if modele is None:
+        return []
+    reponses = []
+    for question in modele.questions or []:
+        reponses.append({
+            'libelle': question.get('libelle', ''),
+            'type': question.get('type', 'texte'),
+            'cible': question.get('cible', 'manager'),
+            'reponse': '',
+        })
+    return reponses
+
+
 def controler_permis_affectation(company, employe_id, *, le=None):
     """Contrôle le permis d'un conducteur avant affectation véhicule (FG198).
 

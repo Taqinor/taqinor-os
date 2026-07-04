@@ -3346,6 +3346,62 @@ class Candidature(models.Model):
         return f'{self.nom} — {self.ouverture}'
 
 
+class ModeleEvaluation(models.Model):
+    """Gabarit de questions d'évaluation réutilisable (ZRH7, « Appraisal
+    templates » Odoo).
+
+    ``questions`` (JSON) : liste typée ``[{libelle, type, cible}]`` où
+    ``type`` ∈ {texte, note1-5} et ``cible`` ∈ {employe, manager} (qui
+    répond à la question). Ciblable optionnellement par ``departement`` ou
+    ``poste_ref`` (le modèle le plus spécifique applicable est choisi à la
+    création d'une ``EvaluationEmploye`` — défaut le modèle SANS département
+    ni poste de la société, s'il existe). Multi-société : ``company`` posée
+    CÔTÉ SERVEUR. Additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_modeles_evaluation',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=160, verbose_name='Nom')
+    departement = models.ForeignKey(
+        'rh.Departement',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='modeles_evaluation',
+        verbose_name='Département (cible)',
+    )
+    poste_ref = models.ForeignKey(
+        'rh.Poste',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='modeles_evaluation',
+        verbose_name='Poste (cible)',
+    )
+    # Liste de dicts {libelle, type (texte|note1-5), cible (employe|manager)}.
+    questions = models.JSONField(
+        default=list, blank=True, verbose_name='Questions')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = "Modèle d'évaluation"
+        verbose_name_plural = "Modèles d'évaluation"
+        ordering = ['nom']
+        indexes = [
+            models.Index(
+                fields=['company', 'departement'],
+                name='rh_modeval_comp_dep_idx'),
+        ]
+
+    def __str__(self):
+        return self.nom
+
+
 class CampagneEvaluation(models.Model):
     """Campagne d'appréciation annuelle (FG190) — entretiens & évaluations RH.
 
@@ -3392,6 +3448,16 @@ class CampagneEvaluation(models.Model):
         default=Statut.OUVERTE, verbose_name='Statut')
     description = models.TextField(
         blank=True, default='', verbose_name='Description')
+    # ZRH7 — modèle de questions structuré appliqué aux évaluations créées
+    # dans cette campagne (NULL = comportement historique inchangé, aucune
+    # question structurée).
+    modele = models.ForeignKey(
+        'rh.ModeleEvaluation',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='campagnes',
+        verbose_name="Modèle d'évaluation",
+    )
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
     date_modification = models.DateTimeField(
@@ -3497,6 +3563,13 @@ class EvaluationEmploye(models.Model):
         blank=True, default='', verbose_name='Issue')
     issue_details = models.TextField(
         blank=True, default='', verbose_name="Détails de l'issue")
+    # ZRH7 — réponses structurées instanciées depuis le modèle de la campagne
+    # (``CampagneEvaluation.modele``) à la création : liste de dicts
+    # ``{libelle, type, cible, reponse}`` (``reponse`` vide au départ, saisie
+    # ensuite manager/employé). VIDE si la campagne n'a pas de modèle
+    # (comportement historique inchangé).
+    reponses = models.JSONField(
+        default=list, blank=True, verbose_name='Réponses (modèle)')
     statut = models.CharField(
         max_length=20, choices=Statut.choices,
         default=Statut.PLANIFIE, verbose_name='Statut')

@@ -60,6 +60,7 @@ from .models import (
     InscriptionFormation,
     JourBloqueConge,
     LigneRisqueChantier,
+    ModeleEvaluation,
     ModeleIntegration,
     NoteDeFrais,
     ObjectifIndividuel,
@@ -1865,12 +1866,17 @@ class EvaluationEmployeSerializer(serializers.ModelSerializer):
             'date_entretien', 'note_globale', 'synthese',
             'auto_evaluation', 'note_auto',
             'issue', 'issue_details',
+            # ZRH7 — réponses structurées instanciées depuis le modèle de la
+            # campagne à la CRÉATION (lecture seule ici : la saisie se fait
+            # via l'action dédiée / le portail employé pour les questions
+            # ciblant l'employé).
+            'reponses',
             'statut', 'statut_display',
             'objectifs',
             'date_creation', 'date_modification',
         ]
         read_only_fields = [
-            'date_creation', 'date_modification',
+            'date_creation', 'date_modification', 'reponses',
             # XRH26 — l'auto-évaluation se saisit UNIQUEMENT via le portail
             # self-service (action dédiée), jamais par ce sérialiseur
             # manager/RH générique.
@@ -1901,6 +1907,15 @@ class EvaluationEmployeSerializer(serializers.ModelSerializer):
         # propage aux objectifs enfants (jamais lue du corps).
         objectifs = validated_data.pop('objectifs', [])
         company = validated_data['company']
+        # ZRH7 — instancie ``reponses`` depuis le modèle applicable de la
+        # campagne (fonction cross-module : évite un import circulaire au
+        # chargement en restant dans le même fichier services).
+        from . import services as rh_services
+        campagne = validated_data.get('campagne')
+        employe = validated_data.get('employe')
+        if campagne is not None and employe is not None:
+            validated_data['reponses'] = \
+                rh_services.instancier_reponses_evaluation(campagne, employe)
         evaluation = EvaluationEmploye.objects.create(**validated_data)
         for item in objectifs:
             ObjectifIndividuel.objects.create(
@@ -1942,10 +1957,37 @@ class CampagneEvaluationSerializer(serializers.ModelSerializer):
             'id', 'intitule', 'annee', 'periode',
             'date_debut', 'date_fin',
             'statut', 'statut_display', 'description',
+            'modele',  # ZRH7 — modèle de questions appliqué aux évaluations.
             'evaluations',
             'date_creation', 'date_modification',
         ]
         read_only_fields = ['date_creation', 'date_modification']
+
+    def validate_modele(self, value):
+        return _meme_societe(self, value, "Modèle d'évaluation")
+
+
+class ModeleEvaluationSerializer(serializers.ModelSerializer):
+    """Gabarit de questions d'évaluation réutilisable (ZRH7).
+
+    Le client saisit ``nom``, ``departement``/``poste_ref`` (ciblage
+    optionnel), ``questions`` (liste de dicts {libelle, type, cible}) et
+    ``actif``. ``company`` posée CÔTÉ SERVEUR (jamais lue du corps).
+    """
+
+    class Meta:
+        model = ModeleEvaluation
+        fields = [
+            'id', 'nom', 'departement', 'poste_ref', 'questions', 'actif',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+    def validate_departement(self, value):
+        return _meme_societe(self, value, 'Département')
+
+    def validate_poste_ref(self, value):
+        return _meme_societe(self, value, 'Poste')
 
 
 class SanctionSerializer(serializers.ModelSerializer):

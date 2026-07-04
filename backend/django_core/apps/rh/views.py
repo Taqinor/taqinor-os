@@ -75,6 +75,7 @@ from .models import (
     HoraireTravail,
     IncidentPresence,
     JourBloqueConge,
+    ModeleEvaluation,
     ModeleIntegration,
     NoteDeFrais,
     OrdreMission,
@@ -151,6 +152,7 @@ from .serializers import (
     IncidentPresenceSerializer,
     JourBloqueCongeSerializer,
     MesInfosSerializer,
+    ModeleEvaluationSerializer,
     ModeleIntegrationSerializer,
     NoteDeFraisSerializer,
     OrdreMissionSerializer,
@@ -3646,6 +3648,41 @@ class GabaritEmailRecrutementViewSet(_RhBaseViewSet):
         if etape:
             qs = qs.filter(etape=etape)
         return qs
+
+
+class ModeleEvaluationViewSet(_RhBaseViewSet):
+    """Gabarits de questions d'évaluation réutilisables (ZRH7).
+
+    Société scopée + Administrateur/Responsable. ``departement``/``poste_ref``
+    ciblent optionnellement le modèle (vide/vide = modèle par défaut société).
+    ``company`` posée CÔTÉ SERVEUR (jamais lue du corps).
+
+    Filtres : ``?departement=<id>``, ``?poste_ref=<id>``, ``?actif=0|1``.
+    """
+    queryset = ModeleEvaluation.objects.select_related(
+        'departement', 'poste_ref').all()
+    serializer_class = ModeleEvaluationSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom']
+    ordering_fields = ['nom', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        departement = self.request.query_params.get('departement')
+        if departement:
+            qs = qs.filter(departement_id=departement)
+        poste_ref = self.request.query_params.get('poste_ref')
+        if poste_ref:
+            qs = qs.filter(poste_ref_id=poste_ref)
+        actif = self.request.query_params.get('actif')
+        if actif in ('0', 'false', 'False'):
+            qs = qs.filter(actif=False)
+        elif actif in ('1', 'true', 'True'):
+            qs = qs.filter(actif=True)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
 
 
 class CampagneEvaluationViewSet(_RhBaseViewSet):

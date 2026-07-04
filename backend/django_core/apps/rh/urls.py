@@ -47,6 +47,7 @@ from .views import (
     IncidentPresenceViewSet,
     JourBloqueCongeViewSet,
     KiosquePointageViewSet,
+    ModeleEvaluationViewSet,
     ModeleIntegrationViewSet,
     NoteDeFraisViewSet,
     OrdreMissionViewSet,
@@ -139,6 +140,7 @@ router.register(
 router.register(r'entretiens-recrutement', EntretienRecrutementViewSet)
 router.register(r'gabarits-email-recrutement', GabaritEmailRecrutementViewSet)
 router.register(r'promesses-embauche', PromesseEmbaucheViewSet)
+router.register(r'modeles-evaluation', ModeleEvaluationViewSet)
 router.register(r'campagnes-evaluation', CampagneEvaluationViewSet)
 router.register(r'campagnes-pulse', CampagnePulseViewSet)
 router.register(r'evaluations-employe', EvaluationEmployeViewSet)
