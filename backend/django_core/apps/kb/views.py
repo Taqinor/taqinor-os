@@ -5,6 +5,7 @@ La base est INTERNE : les viewsets filtrent par ``request.user.company``
 requête). Les versions d'article sont des instantanés numérotés côté serveur
 (``services.snapshot_article`` — max(version)+1, JAMAIS count()+1).
 """
+from django.http import HttpResponse
 from rest_framework import filters, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
@@ -291,6 +292,57 @@ class KbArticleViewSet(_KbBaseViewSet):
         ser.is_valid(raise_exception=True)
         ser.save(company=self.request.user.company)
         return Response(ser.data)
+
+    @action(detail=True, methods=['get'], url_path='export-pdf')
+    def export_pdf(self, request, pk=None):
+        """XKB17 — Export PDF fidèle d'un article (WeasyPrint, jamais le
+        moteur devis premium — rule #4). Aucun statut n'est modifié."""
+        article = self.get_object()
+        pdf_bytes = services.article_to_pdf(article)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'attachment; filename="article-{article.id}.pdf"')
+        return response
+
+    @action(detail=True, methods=['get'], url_path='export-markdown')
+    def export_markdown(self, request, pk=None):
+        """XKB17 — Export Markdown fidèle d'un article."""
+        article = self.get_object()
+        contenu = services.article_to_markdown(article)
+        response = HttpResponse(contenu, content_type='text/markdown')
+        response['Content-Disposition'] = (
+            f'attachment; filename="article-{article.id}.md"')
+        return response
+
+    @action(detail=False, methods=['post'], url_path='importer-markdown')
+    def importer_markdown(self, request):
+        """XKB17 — Importe un fichier/texte Markdown comme nouvel article
+        BROUILLON. Attend soit un fichier ``fichier`` (multipart), soit un
+        champ texte ``contenu``."""
+        upload = request.FILES.get('fichier')
+        if upload is not None:
+            contenu = upload.read().decode('utf-8', errors='replace')
+        else:
+            contenu = request.data.get('contenu', '')
+        if not contenu:
+            return Response(
+                {'detail': 'Fournissez un fichier ou un contenu Markdown.'},
+                status=400)
+        article = services.importer_markdown(
+            contenu, company=request.user.company, auteur=request.user)
+        return Response(self.get_serializer(article).data, status=201)
+
+    @action(detail=False, methods=['get'], url_path='export-zip')
+    def export_zip(self, request):
+        """XKB17 — Export ZIP de TOUTE la base de la société (sauvegarde /
+        migration, contrôle des données loi 09-08) : articles + pièces
+        jointes, scopé STRICTEMENT à la société de l'utilisateur — jamais un
+        article d'une autre société."""
+        zip_bytes = services.exporter_zip_company(request.user.company)
+        response = HttpResponse(zip_bytes, content_type='application/zip')
+        response['Content-Disposition'] = (
+            'attachment; filename="kb-export.zip"')
+        return response
 
 
 class KbArticleVersionViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
