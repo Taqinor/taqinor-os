@@ -160,7 +160,12 @@ export const FICHES: Fiche[] = [
       'Conforme IEC 62619 et UN38.3',
     ],
     garantie: 'Garantie 10 ans',
-    warranty: { years: 10 },
+    warranty: {
+      years: 10,
+      // WA13 : terme selon le document de garantie émis par le distributeur
+      // marocain ; certaines variantes régionales de la DL5.0C affichent 7 ans.
+      note: '≥ 70 % de capacité — selon le document de garantie du distributeur (certaines variantes régionales affichent 7 ans)',
+    },
     pairsWith: ['Onduleurs hybrides', 'Supervision & comptage'],
     datasheet:
       'https://www.dyness.com/Public/Uploads/uploadfile/files/20241023/DynessDL5.0CdatasheetEN.pdf',
