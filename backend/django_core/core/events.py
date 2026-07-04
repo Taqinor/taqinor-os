@@ -168,6 +168,20 @@ importe ``apps.audit``.
     * ``montant`` — montant du DERNIER paiement qui a soldé la facture ;
     * ``company`` — la société (posée côté serveur).
 
+``paiement_rejete``
+    Émis quand un ``ventes.Paiement`` encaissé est REJETÉ (chèque revenu
+    impayé / virement rejeté) — YLEDG5. La facture concernée est rouverte
+    (``montant_du`` remonte, statut recalculé) et les relances existantes sont
+    ré-armées AVANT l'émission. Destiné à un abonné compta (extourne
+    l'écriture d'encaissement d'origine, YLEDG4) et un délettrage (YLEDG6) ;
+    aucun abonné obligatoire dans ce lot (pose du seam). Arguments du signal :
+
+    * ``paiement`` — l'instance ``ventes.Paiement`` désormais ``rejete`` ;
+    * ``facture`` — la ``ventes.Facture`` concernée (peut être ``None`` pour
+      une avance non affectée) ;
+    * ``montant`` — montant du paiement rejeté ;
+    * ``company`` — la société (posée côté serveur).
+
 ``document_produit``
     Émis par une app métier/satellite quand elle produit un fichier destiné à
     être centralisé dans la GED (ZGED6 — pattern Odoo « File centralization »).
@@ -266,3 +280,9 @@ document_produit = django.dispatch.Signal()
 # Arguments : facture, montant, company. DISTINCT de payment_captured (capture
 # carte en ligne uniquement) — voir docstring du module ci-dessus.
 facture_paid = django.dispatch.Signal()
+
+# Émis quand un ``ventes.Paiement`` encaissé est REJETÉ (chèque impayé /
+# virement rejeté) — YLEDG5. Arguments : paiement, facture, montant, company.
+# Destiné à un abonné compta (extourne l'écriture d'encaissement, YLEDG4) et
+# délettrage (YLEDG6) — aucun abonné obligatoire dans ce lot (pose du seam).
+paiement_rejete = django.dispatch.Signal()

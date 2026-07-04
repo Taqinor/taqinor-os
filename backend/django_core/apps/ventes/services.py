@@ -1362,6 +1362,71 @@ def reset_relance_escalation(facture):
     return changed
 
 
+class PaiementRejectError(Exception):
+    """YLEDG5 — erreur métier au rejet d'un paiement (message + conflict)."""
+
+    def __init__(self, message, conflict=False):
+        super().__init__(message)
+        self.message = message
+        self.conflict = conflict
+
+
+def rejeter_paiement(*, paiement, motif, frais=None, date_rejet=None, user=None):
+    """YLEDG5 — chemin d'exception « paiement rejeté » (chèque impayé /
+    virement rejeté).
+
+    Le paiement N'EST JAMAIS supprimé (piste d'audit) : il passe
+    ``statut=rejete`` et sort du calcul ``Facture.montant_paye``/``statut`` —
+    la facture redevient ouverte/en retard (recalculée : émise si l'échéance
+    n'est pas dépassée, sinon en retard) et les relances existantes sont
+    ré-armées (symétrique de ``reset_relance_escalation``). Émet
+    ``paiement_rejete`` sur le bus core pour que compta contre-passe
+    l'écriture d'encaissement (YLEDG4) et délettre (YLEDG6). Idempotent côté
+    garde : rejeter un paiement déjà rejeté est refusé (jamais un double
+    rejet)."""
+    from django.utils import timezone
+    from django.db import transaction
+    from .models import Facture, Paiement
+    from core.events import paiement_rejete
+
+    motif = (motif or '').strip()
+    if not motif:
+        raise PaiementRejectError('Le motif du rejet est obligatoire.')
+    if paiement.statut == Paiement.Statut.REJETE:
+        raise PaiementRejectError(
+            'Ce paiement est déjà marqué rejeté.', conflict=True)
+
+    with transaction.atomic():
+        paiement.statut = Paiement.Statut.REJETE
+        paiement.motif_rejet = motif[:255]
+        paiement.frais_rejet = frais
+        paiement.date_rejet = date_rejet or timezone.now().date()
+        paiement.save(update_fields=[
+            'statut', 'motif_rejet', 'frais_rejet', 'date_rejet'])
+
+        facture = paiement.facture
+        if facture is not None:
+            facture.refresh_from_db()
+            # Rouvre la facture : reste dû > 0 → repasse émise (ou en
+            # retard si l'échéance est déjà dépassée), jamais « payée » ni
+            # « annulée » (états terminaux préservés à part la réouverture).
+            if facture.statut not in (
+                    Facture.Statut.ANNULEE,) and facture.montant_du > 0:
+                today = timezone.now().date()
+                if facture.date_echeance and facture.date_echeance < today:
+                    facture.statut = Facture.Statut.EN_RETARD
+                else:
+                    facture.statut = Facture.Statut.EMISE
+                facture.save(update_fields=['statut'])
+            from . import activity
+            activity.log_facture_paiement_rejete(facture, user, paiement, motif)
+
+        paiement_rejete.send(
+            sender=Paiement, paiement=paiement, facture=facture,
+            montant=paiement.montant, company=paiement.company)
+    return paiement
+
+
 def abandonner_solde_facture(facture, *, motif, user=None, auto=False,
                              date_abandon=None):
     """XFAC13 — abandonne le résiduel dû sur une facture (write-off).

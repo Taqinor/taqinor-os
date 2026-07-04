@@ -127,6 +127,19 @@ def log_facture_paiement(facture, user, paiement):
     )
 
 
+def log_facture_paiement_rejete(facture, user, paiement, motif):
+    """YLEDG5 — consigne le rejet d'un paiement (chèque impayé / virement
+    rejeté) dans le chatter de la facture rouverte."""
+    from .models import FactureActivity
+    detail = (f"Paiement rejeté : {paiement.montant} MAD — motif : {motif}")
+    return FactureActivity.objects.create(
+        company=facture.company, facture=facture, user=user,
+        kind=FactureActivity.Kind.MODIFICATION,
+        field='paiement_rejete', field_label='Paiement rejeté',
+        new_value=str(paiement.montant), body=detail + '.',
+    )
+
+
 def log_facture_acompte_transfere_sortie(facture, user, cible, montant, nb):
     """FG50 — chatter de la facture ANNULÉE : l'acompte part vers une autre.
 
