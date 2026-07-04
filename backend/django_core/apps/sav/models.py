@@ -80,6 +80,11 @@ class SavSlaSettings(models.Model):
     # équilibrage de charge). Défaut OFF : comportement actuel inchangé (tout
     # ticket reste affecté à la main tant que la société ne l'active pas).
     affectation_auto_sav = models.BooleanField(default=False)
+    # XSAV24 — auto-clôture des tickets RÉSOLU dormants (sans activité depuis
+    # N jours). 0 (défaut) = OFF, comportement actuel inchangé : un ticket
+    # résolu reste RÉSOLU indéfiniment tant que la société n'active pas ce
+    # réglage explicitement.
+    auto_cloture_jours = models.PositiveIntegerField(default=0)
     date_modification = models.DateTimeField(auto_now=True)
 
     class Meta:

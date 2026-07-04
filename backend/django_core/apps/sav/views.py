@@ -1626,3 +1626,65 @@ def scan_sla_pre_alerts_and_escalations():
             escalations += 1
 
     return {'pre_alerts': pre_alerts, 'escalations': escalations}
+
+
+# ── XSAV24 — Auto-clôture des tickets résolus dormants ───────────────────────
+
+def scan_auto_cloture_tickets_resolus():
+    """XSAV24 — Clôture automatiquement les tickets RÉSOLU sans activité
+    depuis ``SavSlaSettings.auto_cloture_jours`` jours (0 = OFF, comportement
+    actuel inchangé — AUCUN ticket n'est jamais touché tant qu'une société ne
+    fixe pas explicitement une valeur > 0).
+
+    « Sans activité » = aucun ``TicketActivity`` (note ou changement de champ
+    suivi, y compris le passage à RÉSOLU lui-même) depuis N jours — donc un
+    ticket tout juste résolu, ou avec un échange récent, n'est jamais fermé
+    par erreur. IDEMPOTENT : un ticket déjà CLÔTURÉ n'est plus repris par le
+    sweep suivant (il ne filtre que sur ``statut=RESOLU``).
+
+    Notification client optionnelle réutilisée via XSAV4
+    (``notify_ticket_transition``, best-effort, n'envoie rien sans le toggle
+    société ``notifications_client_sav`` — indépendant du toggle
+    ``auto_cloture_jours``)."""
+    from .models import SavSlaSettings, TicketActivity
+
+    today = timezone.localdate()
+    cloture = 0
+
+    tickets = (Ticket.objects
+               .filter(statut=Ticket.Statut.RESOLU, annule=False)
+               .select_related('company'))
+
+    for ticket in tickets:
+        sla = SavSlaSettings.get(ticket.company)
+        if not sla.auto_cloture_jours:
+            continue
+
+        derniere_activite = (
+            TicketActivity.objects.filter(ticket=ticket)
+            .order_by('-created_at').values_list('created_at', flat=True)
+            .first())
+        reference_dt = derniere_activite or ticket.date_modification
+        if reference_dt is None:
+            continue
+        jours_ecoules = (today - timezone.localtime(reference_dt).date()).days
+        if jours_ecoules < sla.auto_cloture_jours:
+            continue
+
+        old = Ticket.objects.get(pk=ticket.pk)
+        ticket.statut = Ticket.Statut.CLOTURE
+        ticket.save(update_fields=['statut'])
+        activity.log_changes(old, ticket, None)
+        activity.log_note(
+            ticket, None,
+            f'Clôturé automatiquement après {sla.auto_cloture_jours} jours '
+            "sans activité.")
+        cloture += 1
+
+        try:
+            from .notifications_client import notify_ticket_transition
+            notify_ticket_transition(ticket, Ticket.Statut.CLOTURE)
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            pass
+
+    return cloture
