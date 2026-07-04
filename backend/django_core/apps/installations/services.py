@@ -376,6 +376,108 @@ def release_reservations(installation):
             .update(active=False))
 
 
+# ── YDOCF7 — Réservation de stock DEPUIS UN BonCommande (BC) ────────────────
+# `bons-commande/{id}/confirmer` ne réservait rien (le stock n'était touché
+# qu'à `marquer-livre`, décrément direct) : entre confirmation et livraison,
+# deux BC confirmés pouvaient promettre le même stock. Ces fonctions
+# réutilisent le mécanisme N14 EXISTANT (`StockReservation` — même modèle,
+# mêmes gardes idempotentes) plutôt que d'en inventer un second : un BC
+# rattaché à un chantier (via son devis ou directement) réserve sur CE
+# chantier ; un BC sans chantier (devis pas encore accepté / BC manuel) est
+# un no-op sûr (rien à réserver dessus, comportement identique à avant).
+# Toujours derrière le toggle société `reserver_stock_bc` (défaut OFF) —
+# l'appelant (views/bon_commande.py) vérifie le toggle avant d'appeler.
+
+def _installation_pour_bc(bon_commande):
+    """Chantier associé à ce BC — direct, sinon via son devis d'origine.
+    Renvoie None si aucun chantier n'existe (BC sans chantier : no-op sûr)."""
+    inst = Installation.objects.filter(bon_commande=bon_commande).first()
+    if inst is not None:
+        return inst
+    if bon_commande.devis_id:
+        inst = Installation.objects.filter(
+            devis_id=bon_commande.devis_id).first()
+    return inst
+
+
+def _bc_quantities(bon_commande):
+    """Quantités entières par produit depuis les lignes du DEVIS d'origine du
+    BC (mêmes lignes que celles décrémentées par `marquer-livre`)."""
+    from decimal import Decimal, ROUND_HALF_UP
+    besoins = {}
+    if not bon_commande.devis_id:
+        return besoins
+    for ligne in bon_commande.devis.lignes.all():
+        if not ligne.produit_id:
+            continue
+        qte = int(Decimal(ligne.quantite).quantize(
+            Decimal('1'), rounding=ROUND_HALF_UP))
+        if qte <= 0:
+            continue
+        besoins[ligne.produit_id] = besoins.get(ligne.produit_id, 0) + qte
+    return besoins
+
+
+def reserver_stock_depuis_bc(bon_commande):
+    """YDOCF7 — réserve le stock des lignes du BC à sa CONFIRMATION.
+
+    No-op sûr (renvoie []) si le BC n'a aucun chantier associé — un chantier
+    n'existe qu'une fois le devis d'origine accepté ; un BC antérieur à cette
+    étape (rare) reste un simple document sans effet sur le stock, comme
+    avant ce toggle. Réutilise `StockReservation` (mêmes gardes qu'un
+    chantier : idempotent, jamais deux réservations pour le même (chantier,
+    produit))."""
+    installation = _installation_pour_bc(bon_commande)
+    if installation is None:
+        return []
+    besoins = _bc_quantities(bon_commande)
+    if not besoins:
+        return []
+    from apps.stock.selectors import valid_produit_ids
+    valid_ids = valid_produit_ids(installation.company, list(besoins))
+    reservations = []
+    for produit_id, qte in besoins.items():
+        if produit_id not in valid_ids:
+            continue
+        resa, created = StockReservation.objects.get_or_create(
+            installation=installation, produit_id=produit_id,
+            defaults={'company': installation.company, 'quantite': qte})
+        if not created and not resa.consomme:
+            changed = []
+            if resa.quantite != qte:
+                resa.quantite = qte
+                changed.append('quantite')
+            if not resa.active:
+                resa.active = True
+                changed.append('active')
+            if changed:
+                resa.save(update_fields=changed)
+        reservations.append(resa)
+    return reservations
+
+
+def liberer_reservation_bc(bon_commande):
+    """YDOCF7 — libère les réservations du chantier du BC à son ANNULATION.
+
+    No-op sûr si aucun chantier associé. Ne touche jamais une réservation
+    déjà consommée (mécanisme `release_reservations` réutilisé tel quel)."""
+    installation = _installation_pour_bc(bon_commande)
+    if installation is None:
+        return 0
+    return release_reservations(installation)
+
+
+def consommer_reservation_bc(bon_commande, user):
+    """YDOCF7 — solde (consomme) les réservations du chantier du BC à sa
+    LIVRAISON, au lieu d'un second décrément direct (double décrément évité :
+    l'appelant, quand le toggle est ON, appelle CECI au lieu de sortir le
+    stock lui-même). No-op sûr si aucun chantier associé."""
+    installation = _installation_pour_bc(bon_commande)
+    if installation is None:
+        return 0
+    return consume_reservations(installation, user)
+
+
 # ── FG296 — Instanciation d'un modèle de projet sur un chantier ───────────────
 # Un modèle de projet (« chantier-type ») pré-crée à la demande/signature les
 # jalons standard (FG293) et complète la nomenclature gelée du chantier
