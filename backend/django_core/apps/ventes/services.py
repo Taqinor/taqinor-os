@@ -1339,6 +1339,48 @@ def reset_relance_escalation(facture):
     return changed
 
 
+def abandonner_solde_facture(facture, *, motif, user=None, auto=False,
+                             date_abandon=None):
+    """XFAC13 — abandonne le résiduel dû sur une facture (write-off).
+
+    Passe la facture ``payee``, trace l'abandon (motif + montant + auteur +
+    auto/manuel), délègue l'écriture comptable (6585/créance + reprise de
+    provision FG152 le cas échéant) à ``apps.compta.services`` (jamais
+    d'import direct de ses modèles) et consigne le chatter. Idempotent : ne
+    fait rien si le résiduel est déjà nul. Renvoie le montant abandonné
+    (``Decimal('0')`` si rien à faire)."""
+    from decimal import Decimal
+    from django.utils import timezone
+    from .models import Facture
+    reste = facture.montant_du
+    if reste <= 0:
+        return Decimal('0')
+    from apps.compta import services as compta_services
+    compta_services.abandonner_creance(
+        facture.company, montant=reste, date_abandon=date_abandon,
+        tiers_type='client', tiers_id=facture.client_id,
+        tiers_nom=getattr(facture.client, 'nom', '') or '',
+        libelle=f'Abandon créance facture {facture.reference}',
+        user=user,
+    )
+    facture.abandon_motif = motif
+    facture.abandon_montant = reste
+    facture.abandon_date = timezone.now()
+    facture.abandon_auto = bool(auto)
+    facture.abandon_par = user if (
+        user and getattr(user, 'is_authenticated', False)) else None
+    facture.statut = Facture.Statut.PAYEE
+    facture.save(update_fields=[
+        'abandon_motif', 'abandon_montant', 'abandon_date', 'abandon_auto',
+        'abandon_par', 'statut',
+    ])
+    from . import activity
+    motif_label = dict(Facture.MotifAbandon.choices).get(motif, motif)
+    activity.log_facture_abandon(facture, user, reste, motif_label, auto=auto)
+    reset_relance_escalation(facture)
+    return reste
+
+
 class StockInsuffisantError(Exception):
     """Levée quand une réservation de stock dépasserait le disponible (U9)."""
 

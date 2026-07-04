@@ -4696,6 +4696,69 @@ def reprendre_provision_creance(prov, *, date_reprise=None, poster=True,
     return prov
 
 
+# ── XFAC13 — Abandon de créance (write-off) ────────────────────────────────
+
+def provisions_ouvertes_pour_tiers(company, *, tiers_type='client', tiers_id):
+    """Provisions FG152 encore en dotation pour ce tiers (lecture seule).
+
+    Utilisé par ``ventes`` pour reprendre automatiquement une provision
+    existante quand la créance qu'elle couvrait est abandonnée (soldée), sans
+    dupliquer la logique de reprise. Jamais d'import du modèle ``ventes`` ici :
+    le tiers est référencé par ``(tiers_type, tiers_id)``.
+    """
+    return list(ProvisionCreance.objects.filter(
+        company=company, tiers_type=tiers_type, tiers_id=tiers_id,
+        statut=ProvisionCreance.Statut.DOTATION,
+    ))
+
+
+@transaction.atomic
+def abandonner_creance(company, *, montant, date_abandon=None,
+                       tiers_type='client', tiers_id=None, tiers_nom='',
+                       libelle='', reprendre_provisions=True, poster=True,
+                       user=None):
+    """Écriture d'abandon de créance (write-off) — XFAC13.
+
+    Solde une créance irrécouvrable/négligeable : débit 6585 « pertes sur
+    créances irrécouvrables » / crédit 3421 « clients » (le compte 6585 est
+    assuré à la volée s'il n'a pas encore été semé — barème CGNC). Si
+    ``reprendre_provisions``, reprend aussi toute provision FG152 encore
+    ouverte pour ce tiers (la créance provisionnée est maintenant définitivement
+    perdue, pas juste recouvrée). Respecte le verrou de période (via
+    ``creer_ecriture_od``). Renvoie l'écriture (ou ``None`` si ``montant`` est
+    nul/négatif — rien n'est posté).
+    """
+    montant = Decimal(montant or 0)
+    if montant <= 0:
+        return None
+    date_abandon = date_abandon or timezone.now().date()
+    ecriture = None
+    if poster:
+        _comptes_requis(company)
+        compte_perte = _assurer_compte(company, '6585')
+        compte_clients = get_compte(company, '3421')
+        if compte_clients is None:
+            compte_clients = _assurer_compte(company, '3421')
+        ecriture = creer_ecriture_od(
+            company, date_abandon,
+            libelle or f'Abandon de créance {tiers_nom}'.strip(),
+            [
+                {'compte': compte_perte, 'debit': montant,
+                 'credit': Decimal('0'), 'libelle': tiers_nom,
+                 'tiers_type': tiers_type, 'tiers_id': tiers_id},
+                {'compte': compte_clients, 'debit': Decimal('0'),
+                 'credit': montant, 'libelle': tiers_nom,
+                 'tiers_type': tiers_type, 'tiers_id': tiers_id},
+            ],
+            created_by=user)
+    if reprendre_provisions and tiers_id is not None:
+        for prov in provisions_ouvertes_pour_tiers(
+                company, tiers_type=tiers_type, tiers_id=tiers_id):
+            reprendre_provision_creance(
+                prov, date_reprise=date_abandon, poster=poster, user=user)
+    return ecriture
+
+
 # ── FG153 — Inter-sociétés / consolidation multi-entités ───────────────────
 
 def ajouter_entite_consolidation(company, *, entite, pourcentage_interet=None,

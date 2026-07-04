@@ -302,6 +302,16 @@ class CompanyProfile(models.Model):
         null=True, blank=True,
         help_text="Délai (jours) proposé par défaut pour l'escompte.")
 
+    # ── XFAC13 — tolérance d'écart de règlement (abandon auto du résiduel) ──
+    # Défaut 0 = comportement actuel inchangé (aucun abandon automatique). Un
+    # résiduel (facture − paiement encaissé) strictement inférieur ou égal à ce
+    # seuil (MAD) est proposé/soldé automatiquement à l'enregistrement du
+    # paiement plutôt que de laisser la facture « en retard » indéfiniment.
+    tolerance_ecart_reglement = models.DecimalField(
+        max_digits=8, decimal_places=2, default=Decimal('0'),
+        help_text='Résiduel (MAD) toléré, abandonné automatiquement à '
+                  "l'encaissement. 0 = désactivé (défaut).")
+
     class Meta:
         verbose_name = 'Profil entreprise'
 

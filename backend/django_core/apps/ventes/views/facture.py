@@ -84,7 +84,7 @@ class FactureViewSet(viewsets.ModelViewSet):
             'generer_pdf', 'telecharger_pdf', 'envoyer_email',
             'relancer', 'exclure_relance', 'whatsapp', 'ubl',
             'dgi_export', 'dgi_conformite', 'bulk', 'lien_paiement',
-            'facturer_penalites', 'consolider',
+            'facturer_penalites', 'consolider', 'abandonner_solde',
         ]:
             return [IsResponsableOrAdmin()]
         # Annuler une facture = réservé à l'admin/propriétaire (geste comptable).
@@ -449,9 +449,70 @@ class FactureViewSet(viewsets.ModelViewSet):
                 # niveau) pour qu'une facture payée cesse d'afficher un retard.
                 from ..services import reset_relance_escalation
                 reset_relance_escalation(locked)
+            elif locked.statut != Facture.Statut.ANNULEE:
+                # XFAC13 — tolérance société : un résiduel sous le seuil
+                # (défaut 0 = désactivé, comportement inchangé) est abandonné
+                # automatiquement à l'encaissement plutôt que de laisser la
+                # facture « en retard » pour quelques centimes.
+                from apps.parametres.models import CompanyProfile
+                profile = CompanyProfile.get(company=locked.company)
+                tolerance = getattr(
+                    profile, 'tolerance_ecart_reglement', None) or Decimal('0')
+                if tolerance > 0 and locked.montant_du <= tolerance:
+                    from ..services import abandonner_solde_facture
+                    abandonner_solde_facture(
+                        locked, motif=Facture.MotifAbandon.ECART_REGLEMENT,
+                        user=request.user, auto=True,
+                    )
+                    locked.refresh_from_db()
             facture = locked
         return Response(
             FactureSerializer(facture).data, status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=['post'], url_path='abandonner-solde',
+            permission_classes=[IsResponsableOrAdmin])
+    def abandonner_solde(self, request, pk=None):
+        """XFAC13 — abandon manuel du résiduel (write-off).
+
+        Motif obligatoire (irrécouvrable / geste commercial / écart de
+        règlement / liquidation). Solde la facture (« payée »), passe
+        l'écriture d'abandon (6585/créance, reprise de provision FG152 le cas
+        échéant) et sort la facture des impayés/balance âgée. Réservé
+        responsable/admin.
+        """
+        facture = self.get_object()
+        motif = (request.data or {}).get('motif')
+        motifs_valides = dict(Facture.MotifAbandon.choices)
+        if motif not in motifs_valides:
+            return Response(
+                {'detail': (
+                    'Motif obligatoire (irrecouvrable / geste_commercial / '
+                    'ecart_reglement / liquidation).'
+                )},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if facture.statut == Facture.Statut.ANNULEE:
+            return Response(
+                {'detail':
+                 'Impossible d\'abandonner le solde d\'une facture annulée.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        with transaction.atomic():
+            locked = Facture.objects.select_for_update().get(pk=facture.pk)
+            if locked.montant_du <= 0:
+                return Response(
+                    {'detail': 'Cette facture n\'a aucun résiduel à '
+                               'abandonner.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            from ..services import abandonner_solde_facture
+            montant = abandonner_solde_facture(
+                locked, motif=motif, user=request.user, auto=False,
+            )
+            locked.refresh_from_db()
+        return Response(
+            {**FactureSerializer(locked).data, 'montant_abandonne': montant},
         )
 
     @action(detail=True, methods=['post'], url_path='generer-pdf',
