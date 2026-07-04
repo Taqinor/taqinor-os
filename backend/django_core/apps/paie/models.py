@@ -449,6 +449,16 @@ class ProfilPaie(models.Model):
         max_length=10, choices=MODE_PAIEMENT_CHOICES,
         default=MODE_PAIEMENT_VIREMENT, verbose_name='Mode de paiement')
     actif = models.BooleanField(default=True, verbose_name='Actif')
+    # XPAI24 — Structure de paie appliquée à la création (gabarit de
+    # rubriques par catégorie). Informatif : aucun lien vivant après
+    # application, les rubriques copiées restent modifiables librement.
+    structure = models.ForeignKey(
+        'StructurePaie',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='profils',
+        verbose_name='Structure de paie appliquée',
+    )
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -1697,3 +1707,85 @@ class DepotBDS(models.Model):
 
     def __str__(self):
         return f'Dépôt BDS {self.get_type_depot_display()} — {self.periode}'
+
+
+# ── XPAI24 — Structures de paie par catégorie (modèles de rubriques) ───────
+
+class StructurePaie(models.Model):
+    """Modèle de rubriques par catégorie de personnel (XPAI24), company-scoped.
+
+    Un jeu de ``Rubrique`` par défaut (cadre/employé/ouvrier/technicien
+    chantier…) appliqué en une fois à un ``ProfilPaie`` à sa création : au lieu
+    d'affecter les rubriques récurrentes une à une (``RubriqueEmploye``), on
+    choisit une structure et ses rubriques sont copiées (chacune reste
+    modifiable individuellement ensuite — la structure n'est qu'un GABARIT,
+    aucun lien n'est conservé après application).
+
+    Multi-société : ``company`` posée côté serveur. Le couple ``(company,
+    code)`` est unique.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='paie_structures',
+        verbose_name='Société',
+    )
+    code = models.CharField(max_length=30, verbose_name='Code')
+    libelle = models.CharField(max_length=120, verbose_name='Libellé')
+    description = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Description')
+    actif = models.BooleanField(default=True, verbose_name='Active')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Structure de paie'
+        verbose_name_plural = 'Structures de paie'
+        ordering = ['libelle']
+        unique_together = [('company', 'code')]
+
+    def __str__(self):
+        return f'{self.code} — {self.libelle}'
+
+
+class StructurePaieRubrique(models.Model):
+    """Rubrique DÉFAUT d'une ``StructurePaie`` (XPAI24) — ligne du gabarit.
+
+    Porte une surcharge optionnelle du ``montant``/``taux`` (mêmes champs que
+    ``RubriqueEmploye``, dont la ligne sera la copie lors de l'application).
+    Multi-société : ``company`` posée côté serveur. Le couple ``(structure,
+    rubrique)`` est unique.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='paie_structure_rubriques',
+        verbose_name='Société',
+    )
+    structure = models.ForeignKey(
+        StructurePaie,
+        on_delete=models.CASCADE,
+        related_name='rubriques_defaut',
+        verbose_name='Structure',
+    )
+    rubrique = models.ForeignKey(
+        Rubrique,
+        on_delete=models.PROTECT,
+        related_name='structures_defaut',
+        verbose_name='Rubrique',
+    )
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name='Montant (surcharge)')
+    taux = models.DecimalField(
+        max_digits=8, decimal_places=4, null=True, blank=True,
+        verbose_name='Taux % (surcharge)')
+
+    class Meta:
+        verbose_name = 'Rubrique de structure'
+        verbose_name_plural = 'Rubriques de structure'
+        ordering = ['rubrique__ordre', 'id']
+        unique_together = [('structure', 'rubrique')]
+
+    def __str__(self):
+        return f'{self.rubrique.code} → {self.structure.code}'

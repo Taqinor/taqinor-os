@@ -24,6 +24,8 @@ from .models import (
     Rubrique,
     RubriqueEmploye,
     SaisieArret,
+    StructurePaie,
+    StructurePaieRubrique,
     TrancheIR,
 )
 
@@ -151,7 +153,7 @@ class ProfilPaieSerializer(serializers.ModelSerializer):
             'jours_travail_mensuel', 'heures_travail_mensuel',
             'affilie_cnss', 'affilie_amo', 'affilie_cimr', 'taux_cimr_salarial',
             'numero_cnss', 'numero_amo', 'numero_cimr', 'rib', 'banque',
-            'mode_paiement', 'actif', 'date_creation',
+            'mode_paiement', 'structure', 'actif', 'date_creation',
         ]
         read_only_fields = ['date_creation']
 
@@ -168,6 +170,51 @@ class ProfilPaieSerializer(serializers.ModelSerializer):
             if not rh_selectors.dossier_appartient_societe(
                     request.user.company, value.id):
                 raise serializers.ValidationError('Employé inconnu.')
+        return value
+
+    def validate_structure(self, value):
+        return _meme_societe(self, value, 'Structure de paie')
+
+
+class StructurePaieRubriqueSerializer(serializers.ModelSerializer):
+    """Rubrique par défaut d'une structure de paie (XPAI24)."""
+    rubrique_code = serializers.CharField(
+        source='rubrique.code', read_only=True)
+
+    class Meta:
+        model = StructurePaieRubrique
+        fields = ['id', 'structure', 'rubrique', 'rubrique_code', 'montant', 'taux']
+
+    def validate_structure(self, value):
+        return _meme_societe(self, value, 'Structure de paie')
+
+    def validate_rubrique(self, value):
+        return _meme_societe(self, value, 'Rubrique')
+
+
+class StructurePaieSerializer(serializers.ModelSerializer):
+    """Structure de paie (gabarit de rubriques par catégorie, XPAI24)."""
+    rubriques_defaut = StructurePaieRubriqueSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = StructurePaie
+        fields = [
+            'id', 'code', 'libelle', 'description', 'actif',
+            'rubriques_defaut', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_code(self, value):
+        request = self.context.get('request')
+        if request is None:
+            return value
+        qs = StructurePaie.objects.filter(
+            company=request.user.company_id, code=value)
+        if self.instance is not None:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(
+                'Une structure avec ce code existe déjà.')
         return value
 
 

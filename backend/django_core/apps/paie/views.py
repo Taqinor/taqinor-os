@@ -39,6 +39,7 @@ from .models import (
     Rubrique,
     RubriqueEmploye,
     SaisieArret,
+    StructurePaie,
 )
 from .serializers import (
     AdhesionMutuelleSerializer,
@@ -57,9 +58,11 @@ from .serializers import (
     RubriqueEmployeSerializer,
     RubriqueSerializer,
     SaisieArretSerializer,
+    StructurePaieSerializer,
 )
 from .services import (
     TransitionPeriodeInterdite,
+    appliquer_structure_a_profil,
     attestation_salaire_ij_cnss,
     bareme_en_vigueur,
     brut_pour_net_cible,
@@ -76,6 +79,7 @@ from .services import (
     ensure_defaults,
     ensure_rubriques_defaut,
     ensure_rubriques_standard,
+    ensure_structures_standard,
     etat_des_charges,
     etat_ir_9421,
     etat_ir_9421_annuel,
@@ -216,6 +220,12 @@ class ProfilPaieViewSet(_PaieBaseViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['employe__nom', 'employe__prenom', 'employe__matricule']
     ordering_fields = ['date_creation', 'id']
+
+    def perform_create(self, serializer):
+        """XPAI24 — un profil créé avec ``structure`` reçoit ses rubriques défaut."""
+        profil = serializer.save(company=self.request.user.company)
+        if profil.structure_id:
+            appliquer_structure_a_profil(profil, profil.structure)
 
     @action(detail=True, methods=['get'], url_path='attestation')
     def attestation(self, request, pk=None):
@@ -379,6 +389,46 @@ class RubriqueEmployeViewSet(_PaieBaseViewSet):
     serializer_class = RubriqueEmployeSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_creation', 'id']
+
+
+class StructurePaieViewSet(_PaieBaseViewSet):
+    """Structures de paie par catégorie (XPAI24) — gabarits de rubriques.
+
+    ``ensure-standard`` sème (idempotent) les 3 structures standard
+    (cadre/employé/ouvrier). ``appliquer`` rattache les rubriques d'une
+    structure à un profil existant (corps : ``profil`` id) — la même
+    application se produit automatiquement à la CRÉATION d'un profil dont
+    ``structure`` est renseignée.
+    """
+    queryset = StructurePaie.objects.prefetch_related('rubriques_defaut').all()
+    serializer_class = StructurePaieSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['libelle', 'date_creation', 'id']
+
+    @action(detail=False, methods=['post'], url_path='ensure-standard')
+    def ensure_standard(self, request):
+        """Sème (idempotent) les 3 structures standard (XPAI24)."""
+        resultat = ensure_structures_standard(request.user.company)
+        return Response(resultat, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='appliquer')
+    def appliquer(self, request, pk=None):
+        """Applique cette structure à un profil existant (corps : ``profil``)."""
+        structure = self.get_object()
+        profil_id = request.data.get('profil')
+        if not profil_id:
+            return Response(
+                {'detail': 'Champ "profil" requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            profil = ProfilPaie.objects.get(
+                pk=profil_id, company=request.user.company)
+        except (ProfilPaie.DoesNotExist, ValueError):
+            return Response(
+                {'detail': 'Profil inconnu.'},
+                status=status.HTTP_404_NOT_FOUND)
+        nb = appliquer_structure_a_profil(profil, structure)
+        return Response({'rattachees': nb}, status=status.HTTP_200_OK)
 
 
 class RegimeMutuelleViewSet(_PaieBaseViewSet):

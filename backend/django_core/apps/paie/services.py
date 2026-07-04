@@ -4262,3 +4262,81 @@ def generer_attestation_pdf_pour_dossier(dossier_employe, attestation_type):
             .first())
     return render_attestation_pdf(
         attestation_type, profil, bulletin=bulletin)
+
+
+# ── XPAI24 — Structures de paie par catégorie (modèles de rubriques) ───────
+
+# Seed idempotent de 3 structures standard : (code, libelle, description,
+# [codes de rubriques RUBRIQUES_STANDARD/RUBRIQUES_DEFAUT à rattacher]).
+# « ouvrier » pré-affecte panier + transport (indemnités chantier usuelles).
+STRUCTURES_STANDARD = [
+    ('CADRE', 'Cadre', 'Structure standard pour le personnel cadre',
+     ['ANCIENNETE']),
+    ('EMPLOYE', 'Employé', 'Structure standard pour le personnel employé',
+     ['ANCIENNETE', 'TRANSPORT']),
+    ('OUVRIER', 'Ouvrier', 'Structure standard pour le personnel ouvrier',
+     ['PANIER', 'TRANSPORT']),
+]
+
+
+def ensure_structures_standard(company):
+    """Sème (idempotent, additif) les 3 structures de paie standard (XPAI24).
+
+    Clé stable ``(company, code)`` : une structure déjà présente n'est jamais
+    modifiée, et ses rubriques déjà rattachées non plus. Suppose les rubriques
+    du catalogue standard déjà présentes (``ensure_rubriques_standard``) — une
+    rubrique manquante est silencieusement sautée (pas d'erreur bloquante).
+    Renvoie ``{'structures': N}`` (nombre de structures créées).
+    """
+    from .models import StructurePaie, StructurePaieRubrique
+
+    cree = 0
+    for code, libelle, description, codes_rubriques in STRUCTURES_STANDARD:
+        structure, created = StructurePaie.objects.get_or_create(
+            company=company, code=code,
+            defaults={'libelle': libelle, 'description': description})
+        if created:
+            cree += 1
+        for code_rub in codes_rubriques:
+            rubrique = Rubrique.objects.filter(
+                company=company, code=code_rub).first()
+            if rubrique is None:
+                continue
+            StructurePaieRubrique.objects.get_or_create(
+                structure=structure, rubrique=rubrique,
+                defaults={'company': company})
+    return {'structures': cree}
+
+
+def appliquer_structure_a_profil(profil, structure):
+    """Applique une ``StructurePaie`` à un ``ProfilPaie`` (XPAI24).
+
+    Copie chaque ``StructurePaieRubrique`` de la structure en une
+    ``RubriqueEmploye`` rattachée au profil (surcharge montant/taux reprise
+    telle quelle). AUCUN lien vivant n'est conservé après coup : une
+    ``RubriqueEmploye`` déjà rattachée pour cette rubrique (même profil) n'est
+    jamais écrasée — reste modifiable librement ensuite, comme toute
+    ``RubriqueEmploye`` normale. Idempotent (ne duplique jamais). Renvoie le
+    nombre de rubriques rattachées.
+    """
+    from .models import RubriqueEmploye
+
+    if structure is None:
+        return 0
+    if structure.company_id != profil.company_id:
+        raise ValueError("Structure d'une autre société.")
+    cree = 0
+    with transaction.atomic():
+        for ligne in structure.rubriques_defaut.select_related('rubrique').all():
+            _, created = RubriqueEmploye.objects.get_or_create(
+                profil=profil, rubrique=ligne.rubrique,
+                defaults={
+                    'company': profil.company,
+                    'montant': ligne.montant,
+                    'taux': ligne.taux,
+                })
+            if created:
+                cree += 1
+        profil.structure = structure
+        profil.save(update_fields=['structure'])
+    return cree
