@@ -3836,11 +3836,12 @@ class InscriptionSequenceViewSet(_ComptaBaseViewSet):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def webhook_brevo_campagne(request):
-    """Réception d'un événement webhook Brevo (XMKT2) : delivered/opened/
-    click/bounce/unsubscribed. Résout la société depuis la ``Campagne``
-    référencée (aucune session utilisateur côté webhook externe). Payload
-    minimal attendu : ``campagne_id``, ``destinataire``, ``event``, et
-    optionnellement ``reason`` (raison SMTP d'un rebond).
+    """Réception d'un événement webhook Brevo (XMKT2/XMKT12) : delivered/
+    opened/click/bounce/unsubscribed/complaint. Résout la société depuis la
+    ``Campagne`` référencée (aucune session utilisateur côté webhook
+    externe). Payload minimal attendu : ``campagne_id``, ``destinataire``,
+    ``event``, et optionnellement ``reason`` (raison SMTP) + ``bounce_type``
+    (``hard``/``soft``, XMKT12).
     """
     data = request.data or {}
     campagne_id = data.get('campagne_id')
@@ -3854,7 +3855,8 @@ def webhook_brevo_campagne(request):
     envoi = services.webhook_brevo_evenement(
         campagne.company, campagne_id=campagne.id,
         destinataire=destinataire, evenement=evenement,
-        raison_smtp=data.get('reason', ''))
+        raison_smtp=data.get('reason', ''),
+        bounce_type=data.get('bounce_type', ''))
     if not envoi:
         return Response({'detail': 'destinataire introuvable'}, status=404)
     return Response({'statut': envoi.statut})

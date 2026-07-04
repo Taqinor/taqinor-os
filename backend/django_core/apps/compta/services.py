@@ -68,7 +68,7 @@ from .models import (
     FamilleTvaNonDeductible,
     EtapeSequence, ExecutionEtapeSequence, InscriptionSequence,
     SequenceRelance, EnvoiCampagne, SuppressionMarketing,
-    ListeDiffusion, AbonnementListe,
+    ListeDiffusion, AbonnementListe, RebondSoft,
 )
 
 
@@ -5556,14 +5556,23 @@ def envoyer_campagne(campagne, *, destinataires=None):
 
 
 def webhook_brevo_evenement(company, *, campagne_id, destinataire, evenement,
-                            raison_smtp=''):
-    """Traite un événement webhook Brevo (XMKT2), gated/no-op sans clé.
+                            raison_smtp='', bounce_type='', max_rebonds_soft=3):
+    """Traite un événement webhook Brevo (XMKT2/XMKT12), gated/no-op sans clé.
 
-    ``evenement`` ∈ delivered/opened/click/bounce/unsubscribed. Met à jour LA
-    ligne ``EnvoiCampagne`` correspondante (company+campagne+destinataire) et
-    laisse les compteurs agrégés de ``Campagne`` dérivables (recalculés par
-    ``recalculer_compteurs_campagne``). Idempotent : rejouer le même événement
-    ne fait qu'écraser l'horodatage, jamais dupliquer de ligne.
+    ``evenement`` ∈ delivered/opened/click/bounce/unsubscribed/complaint. Met
+    à jour LA ligne ``EnvoiCampagne`` correspondante (company+campagne+
+    destinataire) et laisse les compteurs agrégés de ``Campagne`` dérivables
+    (recalculés par ``recalculer_compteurs_campagne``). Idempotent : rejouer
+    le même événement ne fait qu'écraser l'horodatage, jamais dupliquer de
+    ligne.
+
+    XMKT12 — classification des rebonds : ``bounce_type='hard'`` supprime
+    IMMÉDIATEMENT le destinataire (XMKT3, motif rebond_dur, raison SMTP
+    stockée sur la trace) ; ``bounce_type='soft'`` incrémente un compteur
+    persistant (``RebondSoft``, à travers toutes les campagnes) et ne
+    supprime qu'après ``max_rebonds_soft`` occurrences (paramètre société,
+    défaut 3) ; ``evenement='complaint'`` (plainte spam) supprime
+    immédiatement, comme un rebond dur.
     """
     envoi = EnvoiCampagne.objects.filter(
         company=company, campagne_id=campagne_id,
@@ -5577,6 +5586,7 @@ def webhook_brevo_evenement(company, *, campagne_id, destinataire, evenement,
         'click': EnvoiCampagne.Statut.CLIQUE,
         'bounce': EnvoiCampagne.Statut.REBOND,
         'unsubscribed': EnvoiCampagne.Statut.DESINSCRIT,
+        'complaint': EnvoiCampagne.Statut.DESINSCRIT,
     }
     nouveau_statut = mapping.get(evenement)
     if not nouveau_statut:
@@ -5589,11 +5599,30 @@ def webhook_brevo_evenement(company, *, campagne_id, destinataire, evenement,
     if evenement == 'click' and not envoi.clique_le:
         envoi.clique_le = maintenant
         update_fields.append('clique_le')
-    if evenement == 'bounce' and raison_smtp:
+    if evenement in ('bounce', 'complaint') and raison_smtp:
         envoi.raison_smtp = raison_smtp[:255]
         update_fields.append('raison_smtp')
     envoi.save(update_fields=update_fields)
     recalculer_compteurs_campagne(envoi.campagne)
+
+    if evenement == 'complaint':
+        supprimer_destinataire(
+            company, destinataire, motif=SuppressionMarketing.Motif.PLAINTE,
+            source='webhook_brevo')
+    elif evenement == 'bounce' and bounce_type == 'hard':
+        supprimer_destinataire(
+            company, destinataire, motif=SuppressionMarketing.Motif.REBOND_DUR,
+            source=raison_smtp or 'webhook_brevo')
+    elif evenement == 'bounce' and bounce_type == 'soft':
+        compteur, _cree = RebondSoft.objects.get_or_create(
+            company=company, destinataire=destinataire)
+        compteur.compte += 1
+        compteur.save(update_fields=['compte', 'date_maj'])
+        if compteur.compte >= max_rebonds_soft:
+            supprimer_destinataire(
+                company, destinataire,
+                motif=SuppressionMarketing.Motif.REBOND_DUR,
+                source=raison_smtp or 'webhook_brevo_soft_repete')
     return envoi
 
 

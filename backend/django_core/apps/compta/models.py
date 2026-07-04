@@ -4630,6 +4630,39 @@ class SegmentMarketing(models.Model):
         return self.nom
 
 
+# ── XMKT12 — Gestion des rebonds hard/soft ──────────────────────────────────
+
+class RebondSoft(models.Model):
+    """Compteur de rebonds SOFT par destinataire (XMKT12), à travers TOUTES
+    les campagnes — un rebond soft persiste au-delà d'un seul envoi. Une fois
+    ``compte`` >= au seuil société (défaut 3, paramétrable par l'appelant),
+    le destinataire est supprimé (XMKT3) comme un rebond dur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rebonds_soft',
+        verbose_name='Société',
+    )
+    destinataire = models.CharField(max_length=255, verbose_name='Destinataire')
+    compte = models.PositiveIntegerField(default=0, verbose_name='Nombre de rebonds soft')
+    date_maj = models.DateTimeField(auto_now=True, verbose_name='Mis à jour le')
+
+    class Meta:
+        verbose_name = 'Rebond soft'
+        verbose_name_plural = 'Rebonds soft'
+        ordering = ['-date_maj']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'destinataire'],
+                name='uniq_rebond_soft_par_destinataire',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.destinataire} ({self.compte})'
+
+
 # ── FG202 — Séquences de relance automatisées (drip / nurture) ─────────────
 
 class SequenceRelance(models.Model):
