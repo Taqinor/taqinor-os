@@ -707,6 +707,9 @@ class IncidentSerializer(serializers.ModelSerializer):
     ``company`` et ``declare_par`` sont posés côté serveur (jamais lus du corps) ;
     la ``reference`` est attribuée côté serveur (jamais lue du corps). Expose les
     libellés lisibles de ``type_incident``, ``gravite`` et ``statut``.
+
+    XQHS19 — champs environnement (substance/quantité/milieu/notification)
+    tous optionnels ; ``notification_en_retard`` est calculé (lecture seule).
     """
     type_incident_display = serializers.CharField(
         source='get_type_incident_display', read_only=True)
@@ -714,8 +717,11 @@ class IncidentSerializer(serializers.ModelSerializer):
         source='get_gravite_display', read_only=True)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
+    milieu_touche_display = serializers.CharField(
+        source='get_milieu_touche_display', read_only=True, default='')
     declare_par_nom = serializers.CharField(
         source='declare_par.username', read_only=True, default=None)
+    notification_en_retard = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = Incident
@@ -724,7 +730,11 @@ class IncidentSerializer(serializers.ModelSerializer):
             'type_incident_display', 'gravite', 'gravite_display', 'statut',
             'statut_display', 'chantier_id', 'date_incident', 'description',
             'action_immediate', 'declare_par', 'declare_par_nom',
-            'code_defaut', 'date_creation',
+            'code_defaut', 'substance', 'quantite_estimee', 'quantite_unite',
+            'milieu_touche', 'milieu_touche_display', 'notification_requise',
+            'autorite_notifiee', 'date_notification',
+            'date_limite_notification', 'notification_en_retard',
+            'date_creation',
         ]
         read_only_fields = ['reference', 'declare_par', 'date_creation']
 

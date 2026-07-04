@@ -87,15 +87,18 @@ from .selectors import (
 )
 from .services import (
     activer_procedure, calculer_score_audit, calculer_score_notation,
-    cloturer_ncr, compteurs_observations_securite, creer_ncr_depuis_reserve,
+    cloturer_incident, cloturer_ncr, compteurs_observations_securite,
+    creer_ncr_depuis_reserve,
     convertir_observation_en_capa, convertir_observation_en_ncr,
     creer_capa_depuis_ecart_exercice,
     generer_capa_depuis_analyse,
-    creer_signalement_public, generer_qr_signalement, instancier_plan_chantier,
+    creer_signalement_public, generer_qr_signalement,
+    incidents_notification_en_retard, instancier_plan_chantier,
     lever_ncr_audit, lever_ncr_inspection, nouvelle_version_procedure,
     plans_exercices_dus, poser_disposition,
     realiser_exercice_urgence,
     relancer_capa_en_retard, relancer_conformites, relancer_exercices_urgence,
+    relancer_notifications_environnement,
     resolve_lien_signalement_public,
     statuer_controle_reception,
     SIGNALEMENT_OK,
@@ -1396,6 +1399,27 @@ class IncidentViewSet(_QhseBaseViewSet):
         stats['tf'] = None if stats['tf'] is None else str(stats['tf'])
         stats['tg'] = None if stats['tg'] is None else str(stats['tg'])
         return Response(stats)
+
+    @action(detail=True, methods=['post'])
+    def cloturer(self, request, pk=None):
+        """XQHS19 — clôture un incident (gate : notification requise faite)."""
+        incident = self.get_object()
+        try:
+            incident = cloturer_incident(incident)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(IncidentSerializer(incident).data)
+
+    @action(detail=False, methods=['get'], url_path='notifications-en-retard')
+    def notifications_en_retard(self, request):
+        incidents = incidents_notification_en_retard(request.user.company)
+        return Response(IncidentSerializer(incidents, many=True).data)
+
+    @action(detail=False, methods=['post'], url_path='relancer-notifications')
+    def relancer_notifications(self, request):
+        incidents = relancer_notifications_environnement(request.user.company)
+        return Response({'relances': len(incidents)})
 
 
 class DeclarationCnssViewSet(_QhseBaseViewSet):

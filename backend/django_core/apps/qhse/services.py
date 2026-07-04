@@ -2084,3 +2084,75 @@ def relancer_exercices_urgence(company=None):
     for plan in plans:
         _notifier_exercice_du(plan)
     return plans
+
+
+# ── XQHS19 — Incidents environnementaux : notification + gate de clôture ──
+
+from .models import Incident  # noqa: E402  (évite un cycle d'import module)
+
+
+def incidents_notification_en_retard(company, today=None):
+    """Incidents environnementaux dont la notification requise est en retard
+    (XQHS19, pattern ``conformites_a_relancer``/QHSE38). Agrégation PURE."""
+    qs = Incident.objects.filter(
+        company=company,
+        type_incident=Incident.TypeIncident.ENVIRONNEMENT,
+        notification_requise=True,
+        date_notification__isnull=True,
+        date_limite_notification__isnull=False,
+    )
+    if today is None:
+        from django.utils import timezone
+        today = timezone.localdate()
+    return [inc for inc in qs if inc.date_limite_notification <= today]
+
+
+def _notifier_notification_retard(incident):
+    """Notifie (best-effort) le retard de notification réglementaire."""
+    try:
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify
+
+        if incident.declare_par_id is None:
+            return
+        notify(incident.declare_par, EventType.MAINTENANCE_DUE,
+               'Notification environnementale en retard',
+               body=f'Incident « {incident.titre} » : la notification à '
+                    f"l'autorité était due le "
+                    f'{incident.date_limite_notification}.',
+               link='/qhse/incidents', company=incident.company)
+    except Exception:  # pragma: no cover - défensif
+        pass
+
+
+def relancer_notifications_environnement(company=None):
+    """Relance TOUS les incidents environnementaux en retard de notification
+    (XQHS19, pattern ``relancer_conformites``). Ne mute rien. Renvoie les
+    incidents relancés."""
+    if company is not None:
+        incidents = incidents_notification_en_retard(company)
+    else:
+        incidents = []
+        for co in {i.company for i in Incident.objects.filter(
+                type_incident=Incident.TypeIncident.ENVIRONNEMENT)}:
+            incidents.extend(incidents_notification_en_retard(co))
+
+    for incident in incidents:
+        _notifier_notification_retard(incident)
+    return incidents
+
+
+@transaction.atomic
+def cloturer_incident(incident):
+    """Clôture un incident — conditionnée à la notification si requise
+    (XQHS19, pattern ``cloturer_ncr`` QHSE13). Idempotent si déjà clos.
+    Lève ``ValueError`` si la notification requise n'a pas été faite."""
+    if incident.statut == Incident.Statut.CLOS:
+        return incident
+    if not incident.peut_cloturer():
+        raise ValueError(
+            'Clôture impossible : la notification à l’autorité est requise '
+            'et n’a pas encore été enregistrée.')
+    incident.statut = Incident.Statut.CLOS
+    incident.save(update_fields=['statut'])
+    return incident

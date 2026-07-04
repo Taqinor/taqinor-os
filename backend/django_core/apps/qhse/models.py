@@ -1919,6 +1919,8 @@ class Incident(models.Model):
         ACCIDENT = 'accident', 'Accident'
         PRESQU_ACCIDENT = 'presqu_accident', 'Presqu’accident'
         INCIDENT = 'incident', 'Incident'
+        # XQHS19 — incident environnemental (déversement/rejet non conforme).
+        ENVIRONNEMENT = 'environnement', 'Environnement'
 
     class Gravite(models.TextChoices):
         MINEURE = 'mineure', 'Mineure'
@@ -1929,6 +1931,12 @@ class Incident(models.Model):
         OUVERT = 'ouvert', 'Ouvert'
         EN_COURS = 'en_cours', 'En cours'
         CLOS = 'clos', 'Clos'
+
+    # ── XQHS19 — Milieu touché par un incident environnemental ──────────────
+    class MilieuTouche(models.TextChoices):
+        SOL = 'sol', 'Sol'
+        EAU = 'eau', 'Eau'
+        AIR = 'air', 'Air'
 
     company = models.ForeignKey(
         'authentication.Company',
@@ -1973,6 +1981,28 @@ class Incident(models.Model):
         related_name='incidents',
         verbose_name='Code de défaut',
     )
+    # ── XQHS19 — Incidents environnementaux (déversement/rejet) ─────────────
+    # Tous nullable/blank par défaut : additif, aucune valeur sur les
+    # incidents existants (accident/presqu_accident/incident classiques).
+    substance = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Substance')
+    quantite_estimee = models.DecimalField(
+        max_digits=12, decimal_places=3, null=True, blank=True,
+        verbose_name='Quantité estimée')
+    quantite_unite = models.CharField(
+        max_length=20, blank=True, default='', verbose_name='Unité')
+    milieu_touche = models.CharField(
+        max_length=10, choices=MilieuTouche.choices,
+        blank=True, default='', verbose_name='Milieu touché')
+    notification_requise = models.BooleanField(
+        default=False, verbose_name='Notification à autorité requise')
+    autorite_notifiee = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Autorité notifiée')
+    date_notification = models.DateField(
+        null=True, blank=True, verbose_name='Date de notification')
+    date_limite_notification = models.DateField(
+        null=True, blank=True, verbose_name='Date limite de notification')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -2003,6 +2033,24 @@ class Incident(models.Model):
 
     def __str__(self):
         return f'{self.reference or "INC"} — {self.titre}'
+
+    @property
+    def notification_en_retard(self):
+        """XQHS19 — True si une notification requise n'a pas encore été faite
+        et que la date limite est dépassée. Sans échéance/non requise :
+        toujours False (rien à relancer)."""
+        from django.utils import timezone
+
+        if not self.notification_requise or self.date_notification:
+            return False
+        if self.date_limite_notification is None:
+            return False
+        return timezone.localdate() > self.date_limite_notification
+
+    def peut_cloturer(self):
+        """XQHS19 — la clôture exige la notification si elle est requise
+        (analogue au gate CAPA de ``NonConformite``, QHSE13)."""
+        return not (self.notification_requise and not self.date_notification)
 
 
 # ── QHSE30 — Déclaration CNSS de l'accident du travail (échéance légale) ─────
