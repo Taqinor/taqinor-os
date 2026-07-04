@@ -23,6 +23,7 @@ from .views import (
     CompetenceEmployeViewSet,
     CompetenceRequiseViewSet,
     CompetenceViewSet,
+    DemandeAllocationViewSet,
     DemandeCongeViewSet,
     DemandeRHViewSet,
     DepartementViewSet,
@@ -96,6 +97,7 @@ router.register(
 router.register(r'types-absence', TypeAbsenceViewSet)
 router.register(r'soldes-conge', SoldeCongeViewSet)
 router.register(r'demandes-conge', DemandeCongeViewSet)
+router.register(r'demandes-allocation', DemandeAllocationViewSet)
 router.register(r'jours-bloques-conge', JourBloqueCongeViewSet)
 router.register(r'periodes-fermeture', PeriodeFermetureViewSet)
 # NOTE : le kiosque (``pointages/kiosque``) DOIT être enregistré AVANT

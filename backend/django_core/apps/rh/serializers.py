@@ -30,6 +30,7 @@ from .models import (
     CompetenceEmploye,
     CompetenceRequise,
     CorrectionPointage,
+    DemandeAllocation,
     DemandeConge,
     DemandeRH,
     Departement,
@@ -580,6 +581,44 @@ class DemandeCongeSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {'date_fin': 'La date de fin précède la date de début.'})
         return attrs
+
+
+class DemandeAllocationSerializer(serializers.ModelSerializer):
+    """ZRH13 — demande d'allocation de congés self-service. ``employe`` et
+    ``type_absence`` doivent appartenir à la société ; le workflow de
+    décision est posé côté serveur (jamais lu du corps)."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    type_absence_code = serializers.CharField(
+        source='type_absence.code', read_only=True)
+    employe_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DemandeAllocation
+        fields = [
+            'id', 'employe', 'employe_nom', 'type_absence',
+            'type_absence_code', 'jours', 'motif',
+            'statut', 'statut_display',
+            'decide_par', 'date_decision', 'date_creation',
+        ]
+        read_only_fields = [
+            'statut', 'decide_par', 'date_decision', 'date_creation',
+        ]
+
+    def get_employe_nom(self, obj):
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+    def validate_type_absence(self, value):
+        return _meme_societe(self, value, "Type d'absence")
+
+    def validate_jours(self, value):
+        if value <= 0:
+            raise serializers.ValidationError(
+                'Le nombre de jours doit être strictement positif.')
+        return value
 
 
 class FeuilleTempsSerializer(serializers.ModelSerializer):

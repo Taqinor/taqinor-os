@@ -49,6 +49,7 @@ from .models import (
     CompetenceEmploye,
     CompetenceRequise,
     CorrectionPointage,
+    DemandeAllocation,
     DemandeConge,
     DemandeRH,
     Departement,
@@ -124,6 +125,7 @@ from .serializers import (
     CompetenceRequiseSerializer,
     CompetenceSerializer,
     CorrectionPointageSerializer,
+    DemandeAllocationSerializer,
     DemandeCongeSerializer,
     DemandeRHSerializer,
     DepartementSerializer,
@@ -1190,6 +1192,58 @@ class DemandeCongeViewSet(_RhBaseViewSet):
             request.user.company, annee, employe_id=employe,
             departement_id=departement)
         return Response(data)
+
+
+class DemandeAllocationViewSet(_RhBaseViewSet):
+    """Demandes d'allocation de congés self-service (ZRH13).
+
+    Un employé authentifié peut CRÉER une demande pour LUI-MÊME (via le
+    portail, voir ``PortailSelfServiceViewSet.demander_allocation``) ; la
+    liste/validation/refus restent réservées ``IsResponsableOrAdmin`` (gate
+    de classe par défaut). À la VALIDATION, ``services.valider_allocation``
+    crédite ``SoldeConge.acquis`` du nombre de jours — jamais écrit
+    directement du corps. Filtres : ``?employe=`` / ``?statut=``.
+    """
+    queryset = DemandeAllocation.objects.select_related(
+        'employe', 'type_absence', 'decide_par').all()
+    serializer_class = DemandeAllocationSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation', 'statut']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+    @action(detail=True, methods=['post'])
+    def valider(self, request, pk=None):
+        """Valide une demande soumise et crédite le solde disponible."""
+        demande = self.get_object()
+        try:
+            services.valider_allocation(demande, decide_par=request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(demande).data)
+
+    @action(detail=True, methods=['post'])
+    def refuser(self, request, pk=None):
+        """Refuse une demande soumise (aucun crédit de solde)."""
+        demande = self.get_object()
+        try:
+            services.refuser_allocation(demande, decide_par=request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(demande).data)
 
 
 class JourBloqueCongeViewSet(_RhBaseViewSet):
@@ -4954,6 +5008,33 @@ class PortailSelfServiceViewSet(viewsets.ViewSet):
             company=request.user.company, employe=dossier).select_related(
             'type_absence')
         return Response(DemandeCongeSerializer(qs, many=True).data)
+
+    @action(detail=False, methods=['get', 'post'], url_path='mes-allocations')
+    def mes_allocations(self, request):
+        """ZRH13 — allocation de congés self-service : ``GET`` liste les
+        demandes du collaborateur connecté (avec son solde disponible par
+        type) ; ``POST`` en crée une nouvelle pour LUI-MÊME. ``employe`` et
+        ``company`` sont posés CÔTÉ SERVEUR (jamais lus du corps)."""
+        dossier = self._dossier(request)
+        if dossier is None:
+            if request.method == 'POST':
+                return Response(
+                    {'detail': 'Aucun dossier employé lié à ce compte.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            return Response([])
+        if request.method == 'POST':
+            data = {
+                k: v for k, v in request.data.items() if k != 'employe'}
+            data['employe'] = dossier.id
+            ser = DemandeAllocationSerializer(
+                data=data, context={'request': request})
+            ser.is_valid(raise_exception=True)
+            ser.save(company=request.user.company)
+            return Response(ser.data, status=status.HTTP_201_CREATED)
+        qs = DemandeAllocation.objects.filter(
+            company=request.user.company, employe=dossier).select_related(
+            'type_absence')
+        return Response(DemandeAllocationSerializer(qs, many=True).data)
 
     @action(detail=False, methods=['post'], url_path='demander-conge')
     def demander_conge(self, request):

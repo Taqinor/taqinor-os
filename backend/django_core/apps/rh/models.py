@@ -5842,3 +5842,71 @@ class AttributionBadge(models.Model):
 
     def __str__(self):
         return f'{self.badge.nom} → {self.beneficiaire.matricule}'
+
+
+class DemandeAllocation(models.Model):
+    """Demande d'allocation de congés self-service (ZRH13, « My Allocations
+    / request allocation » Odoo).
+
+    Distincte de ``DemandeConge`` (FG163, une ABSENCE prise sur le solde
+    existant) : ici l'employé demande une allocation EXCEPTIONNELLE de jours
+    (RTT, congé d'ancienneté, don de jours…) qui, une fois VALIDÉE,
+    AUGMENTE le ``SoldeConge.acquis`` de l'année via un service dédié
+    (jamais écrit directement du corps). Multi-société : ``company`` posée
+    côté serveur ; ``employe`` et ``type_absence`` doivent appartenir à la
+    même société.
+    """
+    class Statut(models.TextChoices):
+        SOUMISE = 'soumise', 'Soumise'
+        VALIDEE = 'validee', 'Validée'
+        REFUSEE = 'refusee', 'Refusée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_demandes_allocation',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='demandes_allocation',
+        verbose_name='Employé',
+    )
+    type_absence = models.ForeignKey(
+        TypeAbsence,
+        on_delete=models.PROTECT,
+        related_name='demandes_allocation',
+        verbose_name="Type d'absence",
+    )
+    jours = models.DecimalField(
+        max_digits=6, decimal_places=2, verbose_name='Jours demandés')
+    motif = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Motif')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.SOUMISE,
+        verbose_name='Statut')
+    decide_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rh_allocations_decidees',
+        verbose_name='Décidé par',
+    )
+    date_decision = models.DateTimeField(
+        null=True, blank=True, verbose_name='Date de décision')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Demande d'allocation de congés"
+        verbose_name_plural = "Demandes d'allocation de congés"
+        ordering = ['-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'employe', 'statut'],
+                name='rh_demande_alloc_emp_st_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.employe.matricule} — {self.jours} j ({self.statut})'

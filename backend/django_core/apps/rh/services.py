@@ -2414,3 +2414,45 @@ def generer_besoin_recertification(habilitation):
         obligation_reglementaire=True,
         type_obligation=BesoinFormation.TypeObligation.AUTRE,
     )
+
+
+@transaction.atomic
+def valider_allocation(demande, decide_par=None):
+    """ZRH13 — valide une ``DemandeAllocation`` SOUMISE et CRÉDITE le
+    ``SoldeConge.acquis`` de l'année (année de création de la demande) du
+    nombre de jours demandés (verrou pessimiste pour éviter un double
+    crédit concurrent). Lève ``ValueError`` si la demande n'est pas
+    décidable. Idempotent vis-à-vis d'une demande déjà validée (ne
+    re-crédite pas)."""
+    from .models import DemandeAllocation, SoldeConge
+
+    if demande.statut != DemandeAllocation.Statut.SOUMISE:
+        raise ValueError("Seule une demande soumise peut être validée.")
+
+    annee = demande.date_creation.year if demande.date_creation \
+        else timezone.now().year
+    solde, _ = SoldeConge.objects.select_for_update().get_or_create(
+        company=demande.company, employe=demande.employe, annee=annee)
+    solde.acquis = (solde.acquis or Decimal('0')) + demande.jours
+    solde.save(update_fields=['acquis', 'date_modification'])
+
+    demande.statut = DemandeAllocation.Statut.VALIDEE
+    demande.decide_par = decide_par
+    demande.date_decision = timezone.now()
+    demande.save(update_fields=['statut', 'decide_par', 'date_decision'])
+    return demande
+
+
+@transaction.atomic
+def refuser_allocation(demande, decide_par=None):
+    """ZRH13 — refuse une ``DemandeAllocation`` SOUMISE (aucun crédit de
+    solde). Lève ``ValueError`` si la demande n'est pas décidable."""
+    from .models import DemandeAllocation
+
+    if demande.statut != DemandeAllocation.Statut.SOUMISE:
+        raise ValueError("Seule une demande soumise peut être refusée.")
+    demande.statut = DemandeAllocation.Statut.REFUSEE
+    demande.decide_par = decide_par
+    demande.date_decision = timezone.now()
+    demande.save(update_fields=['statut', 'decide_par', 'date_decision'])
+    return demande
