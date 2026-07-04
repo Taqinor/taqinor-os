@@ -6878,3 +6878,63 @@ class DotationDerogatoire(models.Model):
 
     def __str__(self):
         return f'Dérogatoire {self.annee} — {self.difference}'
+
+
+# ── XACC17 — Table de taux de change + contre-valeur MAD ───────────────────
+
+class TauxDevise(models.Model):
+    """Taux de change quotidien ``devise`` → MAD (XACC17).
+
+    Comble l'absence totale de référentiel FX (les documents FG52/DC25
+    portent ``devise``/``taux_change`` mais aucune table n'existe). Une ligne
+    par ``(company, devise, date)`` : ``taux_vers_mad`` = 1 unité de
+    ``devise`` en MAD (ex. EUR au 2026-06-01 → 10.85 → 1 EUR = 10,85 MAD).
+    ``source`` distingue une saisie manuelle d'un feed automatique (BKAM/ECB,
+    key-gated, no-op sans clé — RÈGLE #1 CLAUDE.md n'est PAS concernée, aucune
+    écriture Odoo ici). Un taux SAISI reste prioritaire sur le feed (jamais de
+    snap, cf. ``selectors.taux_du_jour``). ``company`` posée côté serveur ;
+    strictement additif — l'absence de table laisse le repli actuel (taux=1,
+    MAD) intact.
+    """
+    class Source(models.TextChoices):
+        MANUEL = 'manuel', 'Saisie manuelle'
+        BKAM = 'bkam', 'Bank Al-Maghrib (feed)'
+        ECB = 'ecb', 'Banque Centrale Européenne (feed)'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='taux_devise',
+        verbose_name='Société',
+    )
+    devise = models.CharField(
+        max_length=10, verbose_name='Devise (ISO 4217)')
+    date_taux = models.DateField(verbose_name='Date du taux')
+    taux_vers_mad = models.DecimalField(
+        max_digits=14, decimal_places=6, default=Decimal('1.000000'),
+        verbose_name='Taux vers MAD (1 devise = X MAD)')
+    source = models.CharField(
+        max_length=10, choices=Source.choices, default=Source.MANUEL,
+        verbose_name='Source')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Taux de change'
+        verbose_name_plural = 'Taux de change'
+        ordering = ['-date_taux', 'devise']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'devise', 'date_taux'],
+                name='uniq_taux_devise_par_jour',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.devise} {self.date_taux} = {self.taux_vers_mad} MAD'
+
+    def clean(self):
+        super().clean()
+        if self.taux_vers_mad is not None and self.taux_vers_mad <= 0:
+            raise ValidationError(
+                "Le taux vers MAD doit être strictement positif.")

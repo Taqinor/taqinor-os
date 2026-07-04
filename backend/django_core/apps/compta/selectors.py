@@ -16,7 +16,7 @@ from .models import (
     Effet, Emprunt,
     EntiteConsolidation, LigneEcriture, LignePrevisionnelTresorerie,
     MouvementCaisse, Rapprochement, RetenueGarantie, RetenueSource,
-    TimbreFiscal,
+    TauxDevise, TimbreFiscal,
     ClotureCaisse, DotationAmortissement, EcritureComptable,
     RapprochementBancaire,
 )
@@ -2728,3 +2728,23 @@ def solde_charges_constatees_avance(company, *, date_fin=None):
             'solde_restant': restant,
         })
     return {'charges': resultat, 'total_restant': total_restant}
+
+
+# ── XACC17 — Table de taux de change ────────────────────────────────────────
+
+def taux_du_jour(company, devise, une_date=None):
+    """Taux de change ``devise`` → MAD applicable à ``une_date`` (XACC17).
+
+    Renvoie le ``TauxDevise`` le PLUS RÉCENT dont ``date_taux`` est
+    antérieure ou égale à ``une_date`` (défaut aujourd'hui) — ou ``None`` si
+    aucune table n'existe pour cette devise/société (repli MAD/1 intact côté
+    appelant). MAD est toujours 1:1 (jamais de table nécessaire). Lecture
+    seule, scopée société.
+    """
+    devise = (devise or 'MAD').upper()
+    if devise == 'MAD':
+        return None
+    une_date = une_date or timezone.localdate()
+    return TauxDevise.objects.filter(
+        company=company, devise=devise, date_taux__lte=une_date,
+    ).order_by('-date_taux').first()

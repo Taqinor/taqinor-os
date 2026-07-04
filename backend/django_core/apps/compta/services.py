@@ -42,7 +42,7 @@ from .models import (
     ECatalogue, EcritureComptable, Effet, EntiteConsolidation,
     ExerciceComptable, MessageWhatsAppEntrant,
     Emprunt, EcheanceEmprunt, ChargeConstateeAvance, DotationEtalement,
-    PlanAmortissementFiscal, DotationDerogatoire,
+    PlanAmortissementFiscal, DotationDerogatoire, TauxDevise,
     Immobilisation, IndemniteChantier, Journal, LigneEcriture,
     LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, NoteFrais,
     OuverturePartage,
@@ -6501,3 +6501,77 @@ def poster_dotation_derogatoire(dotation, *, user=None):
     dotation.ecriture = ecriture
     dotation.save(update_fields=['posted', 'ecriture'])
     return ecriture
+
+
+# ── XACC17 — Table de taux de change + contre-valeur MAD ───────────────────
+
+def enregistrer_taux_devise(company, *, devise, date_taux, taux_vers_mad,
+                            source=None):
+    """Enregistre (upsert) le taux du jour ``devise`` → MAD (XACC17).
+
+    Idempotent sur ``(company, devise, date_taux)`` : une saisie MANUELLE
+    écrase toujours un feed automatique existant pour le même jour (RÈGLE
+    « never snap » : un taux SAISI par l'utilisateur reste prioritaire — on ne
+    l'écrase JAMAIS avec un feed). Renvoie le ``TauxDevise``.
+    """
+    devise = (devise or '').upper()
+    if not devise or devise == 'MAD':
+        raise ValidationError("MAD n'a pas besoin de table de taux (1:1).")
+    source = source or TauxDevise.Source.MANUEL
+    existant = TauxDevise.objects.filter(
+        company=company, devise=devise, date_taux=date_taux).first()
+    if existant is not None:
+        if (existant.source == TauxDevise.Source.MANUEL
+                and source != TauxDevise.Source.MANUEL):
+            # Un feed ne doit JAMAIS écraser une saisie manuelle du même jour.
+            return existant
+        existant.taux_vers_mad = Decimal(taux_vers_mad)
+        existant.source = source
+        existant.full_clean()
+        existant.save()
+        return existant
+    taux = TauxDevise(
+        company=company, devise=devise, date_taux=date_taux,
+        taux_vers_mad=Decimal(taux_vers_mad), source=source)
+    taux.full_clean()
+    taux.save()
+    return taux
+
+
+def feed_taux_bkam(company, *, devise, date_taux=None):
+    """Feed automatique BKAM (gratuit) — NO-OP tant qu'aucune clé n'est
+    configurée (XACC17, key-gated). Renvoie ``None`` si le feed est
+    indisponible (pas de clé/URL) : le repli est alors la dernière saisie
+    manuelle existante (``selectors.taux_du_jour``), jamais une erreur. Une
+    fois une clé ``BKAM_FX_API_KEY`` configurée dans les settings, cette
+    fonction ferait l'appel réel — non implémenté ici (aucune clé fournie).
+    """
+    api_key = getattr(settings, 'BKAM_FX_API_KEY', '') or ''
+    if not api_key:
+        return None
+    return None  # pragma: no cover - intégration réelle hors périmètre sans clé.
+
+
+def contre_valeur_mad(montant_devise, devise, company=None, *, une_date=None,
+                      taux_vers_mad=None):
+    """Contre-valeur MAD d'un montant en devise (XACC17), pur calcul.
+
+    Priorité : ``taux_vers_mad`` explicite (un taux SAISI sur le document,
+    jamais snappé) > le taux du jour de la table (``selectors.taux_du_jour``,
+    nécessite ``company``) > repli 1:1 si ``devise`` est MAD ou si aucune
+    table n'existe (comportement actuel intact). Renvoie un Decimal arrondi au
+    centime.
+    """
+    devise = (devise or 'MAD').upper()
+    montant = Decimal(montant_devise or 0)
+    if devise == 'MAD':
+        return _arrondi(montant)
+    if taux_vers_mad is not None:
+        taux = Decimal(taux_vers_mad)
+    elif company is not None:
+        from apps.compta.selectors import taux_du_jour as _taux_du_jour
+        enregistrement = _taux_du_jour(company, devise, une_date)
+        taux = enregistrement.taux_vers_mad if enregistrement else Decimal('1')
+    else:
+        taux = Decimal('1')
+    return _arrondi(montant * taux)
