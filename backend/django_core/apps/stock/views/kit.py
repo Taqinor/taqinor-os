@@ -10,7 +10,9 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from core.mixins import TenantMixin
-from authentication.permissions import IsAnyRole, IsAdminRole, HasPermissionOrLegacy
+from authentication.permissions import (
+    IsAnyRole, IsAdminRole, IsResponsableOrAdmin, HasPermissionOrLegacy,
+)
 
 from ..models import KitProduit
 from ..serializers import KitProduitSerializer
@@ -28,6 +30,11 @@ class KitProduitViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        elif self.action == 'structure':
+            # XMFG5 — l'écran est accessible à tout rôle (disponibilité), le
+            # coût/marge sont retirés de la réponse pour les rôles sans
+            # accès responsable/admin (jamais client-facing).
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS:
             return [HasPermissionOrLegacy('stock_modifier')()]
@@ -52,3 +59,20 @@ class KitProduitViewSet(TenantMixin, viewsets.ModelViewSet):
             'quantite_kit': quantite,
             'lignes': exploser_kit(kit, quantite),
         })
+
+    @action(detail=True, methods=['get'], url_path='structure')
+    def structure(self, request, *args, **kwargs):
+        """XMFG5 — nomenclature indentée + disponibilité + kits assemblables.
+        Coût/marge RÉSERVÉS responsable/admin — retirés de la réponse pour
+        les autres rôles (jamais client-facing)."""
+        from ..services import structure_kit
+        kit = self.get_object()
+        data = structure_kit(kit)
+        peut_voir_cout = IsResponsableOrAdmin().has_permission(request, self)
+        if not peut_voir_cout:
+            for ligne in data['composants']:
+                ligne.pop('cout_unitaire', None)
+                ligne.pop('cout_total', None)
+            data.pop('cout_total_roll_up', None)
+            data.pop('marge', None)
+        return Response(data)

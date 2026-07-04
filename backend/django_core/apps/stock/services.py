@@ -2420,6 +2420,60 @@ def exploser_kit_par_id(company, kit_id, quantite_kit=1):
     return exploser_kit(kit, quantite_kit)
 
 
+# ── XMFG5 — Coût de revient du kit : roll-up + structure + stock potentiel ──
+# INTERNE — le coût/marge n'est visible qu'aux rôles responsable/admin
+# (gardé côté vue) ; le prix d'achat/coût n'apparaît JAMAIS sur un document
+# client ni dans un PDF.
+
+def structure_kit(kit):
+    """XMFG5 — nomenclature indentée d'un kit : par composant, quantité,
+    disponibilité (`quantite_disponible` = stock − réservé), coût unitaire
+    (DC28 `cout_achat_courant`) et coût total roll-up. Renvoie
+    {kit_id, kit_nom, composants:[{produit_id, sku, designation, quantite,
+    quantite_disponible, cout_unitaire, cout_total, prix_vente}],
+    cout_total_roll_up, marge, disponibilite_potentielle} où
+    `disponibilite_potentielle` = min(dispo composant ÷ quantité) (combien de
+    kits sont assemblables avec le stock actuel, 0 si un composant manque).
+    INTERNE (coût/marge) — jamais client-facing."""
+    from decimal import Decimal
+    reserves = reserved_quantities(kit.company)
+    composants = kit.composants.select_related('produit').order_by(
+        'produit__nom')
+    lignes = []
+    cout_total = Decimal('0')
+    prix_vente_total = Decimal('0')
+    disponibilite_potentielle = None
+    for c in composants:
+        p = c.produit
+        quantite = c.quantite or Decimal('0')
+        dispo = Decimal(str(p.quantite_stock)) - Decimal(
+            str(reserves.get(p.id, 0)))
+        cout_unitaire = cout_achat_courant(p)
+        cout_ligne = (cout_unitaire * quantite).quantize(Decimal('0.01'))
+        cout_total += cout_ligne
+        prix_vente_total += (p.prix_vente or Decimal('0')) * quantite
+        if quantite > 0:
+            kits_possibles = int((dispo / quantite).to_integral_value(
+                rounding='ROUND_FLOOR')) if dispo > 0 else 0
+            disponibilite_potentielle = kits_possibles if (
+                disponibilite_potentielle is None
+            ) else min(disponibilite_potentielle, kits_possibles)
+        lignes.append({
+            'produit_id': p.id, 'sku': p.sku or '', 'designation': p.nom,
+            'quantite': quantite, 'quantite_disponible': dispo,
+            'cout_unitaire': cout_unitaire, 'cout_total': cout_ligne,
+            'prix_vente': p.prix_vente,
+        })
+    marge = (prix_vente_total - cout_total).quantize(Decimal('0.01'))
+    return {
+        'kit_id': kit.id, 'kit_nom': kit.nom, 'composants': lignes,
+        'cout_total_roll_up': cout_total.quantize(Decimal('0.01')),
+        'prix_vente_total': prix_vente_total.quantize(Decimal('0.01')),
+        'marge': marge,
+        'disponibilite_potentielle': disponibilite_potentielle or 0,
+    }
+
+
 # ── XMFG1 — Backflush : clôture d'un ordre d'assemblage (installations) ──────
 # `installations.OrdreAssemblage.terminer` appelle CE service (jamais de
 # MouvementStock créé côté installations) : une SORTIE par composant (quantité
