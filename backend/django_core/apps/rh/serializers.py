@@ -2023,6 +2023,11 @@ class AvanceSalaireSerializer(serializers.ModelSerializer):
     employe_nom = serializers.SerializerMethodField()
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
+    # YHIRE5 — solde restant dû LU depuis le moteur de retenue paie (jamais
+    # ``paie.models`` importé ici : lecture via le sélecteur cross-app
+    # ``apps.paie.selectors.solde_avance``). ``None`` tant que l'avance n'a
+    # pas encore été approuvée/matérialisée côté paie.
+    solde_restant = serializers.SerializerMethodField()
 
     class Meta:
         model = AvanceSalaire
@@ -2030,16 +2035,24 @@ class AvanceSalaireSerializer(serializers.ModelSerializer):
             'id', 'employe', 'employe_nom', 'valideur',
             'montant', 'date_demande', 'motif',
             'annee_deduction', 'mois_deduction',
-            'statut', 'statut_display',
+            'statut', 'statut_display', 'paie_avance_id', 'solde_restant',
             'date_creation', 'date_modification',
         ]
         read_only_fields = [
-            'valideur', 'statut', 'date_creation', 'date_modification']
+            'valideur', 'statut', 'paie_avance_id',
+            'date_creation', 'date_modification']
 
     def get_employe_nom(self, obj):
         if not obj.employe_id:
             return ''
         return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def get_solde_restant(self, obj):
+        if not obj.paie_avance_id:
+            return None
+        from apps.paie import selectors as paie_selectors
+
+        return paie_selectors.solde_avance(obj.paie_avance_id)
 
     def validate_employe(self, value):
         return _meme_societe(self, value, 'Employé')

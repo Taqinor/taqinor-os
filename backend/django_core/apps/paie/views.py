@@ -19,6 +19,7 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
 from . import builders
+from . import selectors as paie_selectors
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
@@ -68,11 +69,14 @@ from .services import (
     attestation_salaire_ij_cnss,
     bareme_en_vigueur,
     brut_pour_net_cible,
+    avertissements_periode,
     calculer_bulletin,
     changer_statut,
     cloturer_periode_paie,
     commit_reprise_cumuls,
+    controle_completude,
     controle_ecarts,
+    cout_employeur,
     cout_global_par_profil,
     creer_bulletin_rectificatif,
     declaration_cimr,
@@ -110,6 +114,8 @@ from .services import (
     mouvements_cnss_periode,
     notifier_echeances_en_retard,
     parametre_en_vigueur,
+    payer_ordre_virement,
+    payer_organismes,
     profils_hors_virement,
     rapprochement_paie_gl,
     rapprocher_affebds,
@@ -118,6 +124,7 @@ from .services import (
     registre_conges,
     rejeter_ligne_virement,
     simuler_bulletin,
+    synchroniser_salaire,
     valider_bulletin,
 )
 
@@ -243,6 +250,28 @@ class ProfilPaieViewSet(_PaieBaseViewSet):
         bascules = expirer_regimes_echus(request.user.company)
         return Response(
             {'bascules': [p.id for p in bascules]}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='synchroniser-salaire')
+    def synchroniser_salaire_action(self, request, pk=None):
+        """Aligne le salaire du profil sur la rémunération RH en vigueur
+
+        (YHIRE6). Gatée EXPLICITEMENT ``salaires_voir`` (donnée sensible,
+        au-delà de ``paie_gerer``) : un compte sans cette permission fine
+        obtient 403 même s'il gère la paie. Jamais de synchronisation
+        silencieuse — appelée volontairement depuis l'écran de contrôle.
+        """
+        from authentication.permissions import HasPermission
+
+        if not HasPermission('salaires_voir')().has_permission(
+                request, self):
+            return Response(
+                {'detail': 'Permission "salaires_voir" requise.'},
+                status=status.HTTP_403_FORBIDDEN)
+        profil = self.get_object()
+        synchroniser_salaire(profil)
+        profil.refresh_from_db()
+        return Response(
+            self.get_serializer(profil).data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'], url_path='attestation')
     def attestation(self, request, pk=None):
@@ -796,6 +825,45 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
         return Response(
             cout_global_par_profil(periode), status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['get'], url_path='cout-employeur')
+    def cout_employeur_action(self, request, pk=None):
+        """Rapport « coût employeur » CONSOLIDÉ de la période (ZPAI3).
+
+        Total brut + charges patronales + provisions de tous les bulletins
+        validés, ratio coût/net, coût moyen par tête. Distinct de
+        ``cout-global`` (XPAI17, détail PAR employé). ``?export=csv``.
+        Donnée INTERNE (jamais client-facing).
+        """
+        periode = self.get_object()
+        data = cout_employeur(periode)
+        if request.query_params.get('export') == 'csv':
+            return self._export_cout_employeur_csv(data)
+        return Response(data, status=status.HTTP_200_OK)
+
+    @staticmethod
+    def _export_cout_employeur_csv(data):
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, delimiter=';')
+        writer.writerow([
+            f"Coût employeur {data['mois']:02d}/{data['annee']}"])
+        writer.writerow([])
+        writer.writerow(['Salariés', data['nombre_salaries']])
+        writer.writerow(['Total brut', data['total_brut']])
+        writer.writerow(
+            ['Total charges patronales', data['total_charges_patronales']])
+        writer.writerow(['Total provisions', data['total_provisions']])
+        writer.writerow(['Total employeur', data['total_employeur']])
+        writer.writerow(['Total net', data['total_net']])
+        writer.writerow(['Ratio coût/net', data['ratio_cout_net']])
+        writer.writerow(
+            ['Coût moyen par tête', data['cout_moyen_par_tete']])
+        resp = HttpResponse(
+            buffer.getvalue(), content_type='text/csv; charset=utf-8')
+        resp['Content-Disposition'] = (
+            f"attachment; filename=\"cout_employeur_{data['annee']}_"
+            f"{data['mois']:02d}.csv\"")
+        return resp
+
     @action(detail=True, methods=['post'], url_path='journal-ventile')
     def journal_ventile(self, request, pk=None):
         """Passe l'écriture du journal de paie AVEC ventilation analytique (XPAI17)."""
@@ -896,6 +964,33 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
         return Response(
             controle_ecarts(periode, seuil_pct=seuil_pct),
             status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='controle-completude')
+    def controle_completude_action(self, request, pk=None):
+        """Contrôle de complétude pré-paie — trous structurels (YHIRE3).
+
+        Distinct de ``controle-ecarts`` (XPAI15, comparaison M vs M-1) :
+        liste les actifs sans profil de paie, les profils sans CNSS/RIB,
+        les profils actifs dont le dossier RH n'est plus actif (sorti/
+        embauché non pris de poste), et les CDD expirés avant la fin de la
+        période. Lecture seule, affiché en tête du PaieRunWizard.
+        """
+        periode = self.get_object()
+        return Response(
+            controle_completude(periode), status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='avertissements')
+    def avertissements(self, request, pk=None):
+        """Panneau d'avertissements pré-run, façon Odoo (ZPAI2).
+
+        Liste PLATE d'avertissements typés + gravité (RIB manquant en
+        virement, CNSS manquant, salaire nul, profil sans dossier actif,
+        CDD échu, actif sans profil de paie) — à afficher en tête du
+        tableau de bord Paie avant de lancer le run.
+        """
+        periode = self.get_object()
+        return Response(
+            avertissements_periode(periode), status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='journal-de-paie')
     def journal_de_paie(self, request, pk=None):
@@ -1032,6 +1127,55 @@ class BulletinPaieViewSet(_PaieVoirOuGerer, TenantMixin,
         marquer_bulletin_paye(bulletin)
         return Response(
             self.get_serializer(bulletin).data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'], url_path='analyse')
+    def analyse(self, request):
+        """Rapport d'analyse de paie pivot rubrique/département × mois (ZPAI1).
+
+        Paramètres requis ``debut``/``fin`` au format ``YYYY-MM`` (fenêtre
+        inclusive). ``?group_by=rubrique`` (défaut) ou ``?group_by=
+        departement``. ``?export=csv`` renvoie le CSV (une colonne par mois)
+        au lieu du JSON.
+        """
+        debut = request.query_params.get('debut', '')
+        fin = request.query_params.get('fin', '')
+        group_by = request.query_params.get('group_by', 'rubrique')
+        try:
+            annee_debut, mois_debut = (int(x) for x in debut.split('-'))
+            annee_fin, mois_fin = (int(x) for x in fin.split('-'))
+        except (ValueError, AttributeError):
+            return Response(
+                {'detail': 'Paramètres "debut"/"fin" requis (format '
+                 'YYYY-MM).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            data = paie_selectors.analyse_paie(
+                request.user.company, annee_debut, mois_debut,
+                annee_fin, mois_fin, group_by=group_by)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        if request.query_params.get('export') == 'csv':
+            return self._export_analyse_csv(data)
+        return Response(data, status=status.HTTP_200_OK)
+
+    @staticmethod
+    def _export_analyse_csv(data):
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, delimiter=';')
+        writer.writerow([data['group_by'].capitalize()] + data['mois'] + ['Total'])
+        for ligne in data['lignes']:
+            row = [ligne['libelle']]
+            for mois_iso in data['mois']:
+                row.append(ligne['totaux_par_mois'].get(mois_iso, ''))
+            row.append(ligne['total'])
+            writer.writerow(row)
+        writer.writerow([])
+        writer.writerow(['Total général', '', data['total_general']])
+        resp = HttpResponse(
+            buffer.getvalue(), content_type='text/csv; charset=utf-8')
+        resp['Content-Disposition'] = 'attachment; filename="analyse_paie.csv"'
+        return resp
 
     @action(detail=True, methods=['post'], url_path='rectifier')
     def rectifier(self, request, pk=None):
@@ -1206,6 +1350,35 @@ class OrdreVirementViewSet(_PaieVoirOuGerer, TenantMixin,
         return Response(
             self.get_serializer(ordre).data, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['post'], url_path='payer')
+    def payer(self, request, pk=None):
+        """Poste l'écriture de règlement de l'OV (débit 4432, YLEDG7).
+
+        Corps : ``compte_tresorerie`` (id `compta.CompteTresorerie`,
+        requis) ; ``date_reglement`` facultative (défaut aujourd'hui).
+        Idempotent — rejouer renvoie la même écriture.
+        """
+        ordre = self.get_object()
+        compte_id = request.data.get('compte_tresorerie')
+        if not compte_id:
+            return Response(
+                {'detail': 'Champ "compte_tresorerie" requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            ecriture = payer_ordre_virement(
+                ordre, compte_id,
+                date_reglement=request.data.get('date_reglement') or None,
+                created_by=request.user)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                'ordre': self.get_serializer(ordre).data,
+                'ecriture_id': ecriture.id if ecriture else None,
+            },
+            status=status.HTTP_200_OK)
+
     @action(detail=True, methods=['get'], url_path='fichier')
     def fichier(self, request, pk=None):
         """Renvoie le fichier de virement banque (lignes + total, PAIE30).
@@ -1365,10 +1538,60 @@ class EcheanceDeclarativeViewSet(_PaieVoirOuGerer, TenantMixin,
     champs ``periode``/``type_echeance``/``date_limite`` sont posés par le
     générateur (``services.generer_echeances_periode``) et restent en
     lecture seule côté API. ``paie_voir``/``paie_gerer`` (XPAI7).
+
+    L'action ``payer`` (YLEDG7) poste l'écriture de règlement de l'organisme
+    (débit 4441/4452/4443, crédit trésorerie) et marque PAYÉES toutes les
+    échéances du même organisme sur la période — un ``patch`` manuel de
+    ``statut`` reste possible mais ne poste jamais d'écriture.
     """
     permission_classes = [IsResponsableOrAdmin]  # repli si get_permissions absent
     queryset = EcheanceDeclarative.objects.select_related('periode').all()
     serializer_class = EcheanceDeclarativeSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_limite', 'periode', 'id']
-    http_method_names = ['get', 'patch', 'head', 'options']
+    http_method_names = ['get', 'patch', 'post', 'head', 'options']
+
+    # Mappe ``type_echeance`` (modèle) au code ``organisme`` attendu par
+    # ``services.payer_organismes`` (codes de ``_ORGANISMES_CHARGES``).
+    _ORGANISME_PAR_TYPE = {
+        EcheanceDeclarative.TYPE_BDS: 'cnss_amo',
+        EcheanceDeclarative.TYPE_IR_MENSUEL: 'ir',
+        EcheanceDeclarative.TYPE_CIMR: 'cimr',
+    }
+
+    @action(detail=True, methods=['post'], url_path='payer')
+    def payer(self, request, pk=None):
+        """Poste le règlement de l'organisme de cette échéance (YLEDG7).
+
+        Corps : ``compte_tresorerie`` (id, requis), ``date_reglement``
+        facultative. Solde 4441/4452/4443 pour TOUTES les échéances du même
+        organisme sur la période (idempotent — déjà payée = ignorée).
+        """
+        echeance = self.get_object()
+        organisme = self._ORGANISME_PAR_TYPE.get(echeance.type_echeance)
+        if organisme is None:
+            return Response(
+                {'detail': (
+                    "Cette échéance (état 9421 annuel) n'a pas de règlement "
+                    "GL dédié.")},
+                status=status.HTTP_400_BAD_REQUEST)
+        compte_id = request.data.get('compte_tresorerie')
+        if not compte_id:
+            return Response(
+                {'detail': 'Champ "compte_tresorerie" requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            ecriture = payer_organismes(
+                echeance.periode, organisme, compte_id,
+                date_reglement=request.data.get('date_reglement') or None,
+                created_by=request.user)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        echeance.refresh_from_db()
+        return Response(
+            {
+                'echeance': self.get_serializer(echeance).data,
+                'ecriture_id': ecriture.id if ecriture else None,
+            },
+            status=status.HTTP_200_OK)

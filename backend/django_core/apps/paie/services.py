@@ -32,6 +32,7 @@ from django.utils import timezone
 
 from .models import (
     BaremeIR,
+    EcheanceDeclarative,
     ElementVariable,
     ParametrePaie,
     PeriodePaie,
@@ -421,15 +422,19 @@ def importer_elements_rh(periode):
             if profil is None:
                 continue
             elements = _elements_rh_du_dossier(periode, dossier)
-            for type_, libelle, quantite, montant in elements:
+            for el in elements:
                 ElementVariable.objects.create(
                     company=periode.company,
                     periode=periode,
                     profil=profil,
-                    type=type_,
-                    libelle=libelle,
-                    quantite=quantite,
-                    montant=montant,
+                    type=el['type'],
+                    libelle=el['libelle'],
+                    quantite=el['quantite'],
+                    montant=el['montant'],
+                    categorie_hs=el.get(
+                        'categorie_hs') or ElementVariable.HS_JOUR,
+                    remunere=el.get('remunere', False),
+                    deduit_solde=el.get('deduit_solde', False),
                     source=ElementVariable.SOURCE_RH,
                 )
                 importes += 1
@@ -439,11 +444,85 @@ def importer_elements_rh(periode):
 def _elements_rh_du_dossier(periode, dossier):
     """Éléments variables RH d'un dossier pour la période — liste de tuples.
 
-    Renvoie ``[(type, libelle, quantite, montant), …]``. Point d'extension de
-    l'import RH (FG192) : tant que RH n'expose pas d'heures/absences du mois, on
-    renvoie une liste vide (import inerte, jamais d'erreur).
+    YHIRE1 — câble réellement l'import (l'ancien stub renvoyait toujours
+    ``[]``) : RH expose TOUT depuis trois sélecteurs fins de
+    ``apps.rh.selectors`` (jamais ``rh.models`` directement) —
+
+    * heures supplémentaires VALORISÉES (``heures_supp_pour_paie``, FG192) →
+      une ligne ``TYPE_HS`` par tranche non nulle (jour/nuit/férié),
+      ``montant`` déjà majoré ;
+    * demandes de congé VALIDÉES d'un ``TypeAbsence.remunere = False``
+      (``absences_non_remunerees_pour_paie``) → une ligne ``TYPE_ABSENCE``
+      (``remunere=False``, ``deduit_solde`` reprise du type) — la proration
+      PAIE13 existante s'applique automatiquement (une absence RÉMUNÉRÉE
+      n'a, par construction, aucune ligne ici : elle ne doit avoir aucun
+      impact sur le net) ;
+    * primes ``PrimeAttribuee`` VALIDÉES du mois
+      (``primes_validees_pour_paie``) → une ligne ``TYPE_PRIME``.
+
+    Renvoie une liste de dicts : ``{'type', 'libelle', 'quantite', 'montant',
+    'categorie_hs'?, 'remunere'?, 'deduit_solde'?}``.
     """
-    return []
+    import calendar
+
+    from apps.rh import selectors as rh_selectors
+
+    date_debut = date(periode.annee, periode.mois, 1)
+    date_fin = date(
+        periode.annee, periode.mois,
+        calendar.monthrange(periode.annee, periode.mois)[1])
+
+    elements = []
+
+    # ── Heures supplémentaires (FG168) ──────────────────────────────────
+    hs_tranches = (
+        ('hs_25', ElementVariable.HS_JOUR, 'Heures sup jour (25 %)'),
+        ('hs_50', ElementVariable.HS_NUIT, 'Heures sup nuit (50 %)'),
+        ('hs_100', ElementVariable.HS_FERIE,
+         'Heures sup férié/dimanche (100 %)'),
+    )
+    for ligne in rh_selectors.heures_supp_pour_paie(
+            dossier.company, date_debut, date_fin, employe_id=dossier.id):
+        total_tranches = sum(
+            (ligne[cle] for cle, _cat, _lib in hs_tranches), Decimal('0'))
+        for cle, categorie, libelle in hs_tranches:
+            quantite = ligne.get(cle) or Decimal('0')
+            if quantite <= 0:
+                continue
+            # Le montant déjà majoré est ventilé au prorata de la tranche
+            # (le sélecteur ne renvoie qu'un montant total par employé).
+            montant = ligne['montant_majore']
+            if total_tranches > 0:
+                montant = _q(
+                    ligne['montant_majore'] * quantite / total_tranches)
+            elements.append({
+                'type': ElementVariable.TYPE_HS, 'libelle': libelle,
+                'quantite': quantite, 'montant': montant,
+                'categorie_hs': categorie,
+            })
+
+    # ── Absences non rémunérées validées (FG163/FG164) ──────────────────
+    for absence in rh_selectors.absences_non_remunerees_pour_paie(
+            dossier.company, date_debut, date_fin, employe_id=dossier.id):
+        elements.append({
+            'type': ElementVariable.TYPE_ABSENCE,
+            'libelle': absence['type_absence_libelle'],
+            'quantite': absence['jours'], 'montant': Decimal('0'),
+            'remunere': False,
+            'deduit_solde': absence['deduit_solde'],
+        })
+
+    # ── Primes validées du mois (FG193) ─────────────────────────────────
+    for prime in rh_selectors.primes_validees_pour_paie(
+            dossier.company, periode.annee, periode.mois,
+            employe_id=dossier.id):
+        elements.append({
+            'type': ElementVariable.TYPE_PRIME,
+            'libelle': prime['type_prime_libelle'],
+            'quantite': Decimal('1'), 'montant': prime['montant'],
+        })
+
+    return elements
 
 
 # ── PAIE13 — Calcul du salaire de base proraté selon le type de rémunération ─
@@ -992,6 +1071,61 @@ def provision_conges_payes(profil, periode, jours_acquis=None):
 
 
 # ── PAIE28 — Avance / prêt salarié : échéance mensuelle déduite du bulletin ──
+
+# ── YHIRE5 — Réconciliation rh.AvanceSalaire (guichet) ↔ paie.AvanceSalarie
+# (moteur de retenue). ``rh.AvanceSalaire`` reste le GUICHET de demande
+# (portail, approbation superviseur/RH) ; ``paie.AvanceSalarie`` reste le
+# SEUL moteur câblé au bulletin (``echeances_avances_periode``/
+# ``appliquer_remboursements_avances``). Une avance approuvée côté RH est
+# désormais MATÉRIALISÉE ici, une seule fois, pour être réellement retenue.
+
+def creer_avance_depuis_rh(rh_avance):
+    """Matérialise une ``paie.AvanceSalarie`` depuis une ``rh.AvanceSalaire``
+    APPROUVÉE (YHIRE5). Appelée fonction-localement par ``apps.rh.services``
+    à l'approbation (écriture cross-app par la couche ``services``, conforme
+    CLAUDE.md — la paie ne lit jamais ``rh.models`` en retour, elle reçoit
+    l'instance ``rh_avance`` en argument).
+
+    Idempotent : si ``rh_avance.paie_avance_id`` est déjà posé, renvoie
+    l'``AvanceSalarie`` existante SANS EN RECRÉER UNE 2ᵉ. Sinon crée une
+    avance PONCTUELLE (``nombre_echeances=1``, échéance = montant total,
+    retenue au mois ``annee_deduction``/``mois_deduction`` de la demande RH)
+    liée au ``ProfilPaie`` de l'employé.
+
+    Lève ``ValueError`` si l'employé n'a aucun ``ProfilPaie`` (rien à retenir
+    sans profil de paie). Renvoie l'``AvanceSalarie`` créée ou existante.
+    """
+    from .models import AvanceSalarie, ProfilPaie
+
+    if rh_avance.paie_avance_id:
+        return AvanceSalarie.objects.filter(
+            pk=rh_avance.paie_avance_id).first()
+
+    profil = ProfilPaie.objects.filter(
+        company_id=rh_avance.company_id,
+        employe_id=rh_avance.employe_id).first()
+    if profil is None:
+        raise ValueError(
+            "Aucun profil de paie pour cet employé : impossible de "
+            "matérialiser l'avance.")
+
+    annee = rh_avance.annee_deduction or timezone.localdate().year
+    mois = rh_avance.mois_deduction or timezone.localdate().month
+    montant = Decimal(rh_avance.montant or 0)
+    avance = AvanceSalarie.objects.create(
+        company=profil.company,
+        profil=profil,
+        type=AvanceSalarie.TYPE_AVANCE,
+        libelle=(rh_avance.motif or 'Avance sur salaire (RH)')[:120],
+        montant_total=montant,
+        montant_echeance=montant,
+        nombre_echeances=1,
+        date_debut=date(annee, mois, 1),
+    )
+    rh_avance.paie_avance_id = avance.id
+    rh_avance.save(update_fields=['paie_avance_id'])
+    return avance
+
 
 def echeance_avance(avance, le_jour):
     """Échéance retenue sur le bulletin pour une avance, au mois ``le_jour``.
@@ -3508,6 +3642,246 @@ def controle_ecarts(periode, *, seuil_pct=None):
     }
 
 
+# ── YHIRE3 — Contrôle de complétude pré-paie ────────────────────────────────
+
+def controle_completude(periode):
+    """Contrôle de complétude pré-paie (YHIRE3, l'analogue « pas de CNSS = pas
+    de paie »). Rien ne signalait les trous avant génération : un actif SANS
+    ``ProfilPaie`` était silencieusement ignoré par l'import
+    (``importer_elements_rh``), un dossier sans n° CNSS/RIB passait quand même
+    en bulletin/virement, un profil actif dont le dossier est SORTI ou
+    EMBAUCHE (non pris de poste) n'était pas détecté, un CDD dont
+    ``contrat_date_fin`` est antérieure à la période non plus.
+
+    Lecture RH via ``apps.rh.selectors`` (jamais ``rh.models`` directement,
+    hormis la traversée du FK direct ``ProfilPaie.employe`` déjà propriété de
+    la paie). Distinct de ``controle_ecarts`` (XPAI15, comparaison des
+    MONTANTS M vs M-1) : ici ce sont des trous STRUCTURELS.
+
+    YHIRE6 — inclut aussi ``ecarts_remuneration`` : profils actifs dont le
+    ``salaire_base`` DIVERGE de la ``rh.Remuneration`` EN VIGUEUR (FG157,
+    ``rh.selectors.remuneration_en_vigueur``) à la fin de la période —
+    l'historisation par ``date_effet`` promet la reproductibilité, mais
+    RIEN ne remontait jamais l'écart avant. Jamais de montant dans les
+    notifications (donnée sensible) : uniquement dans ce contrôle gaté
+    ``salaires_voir`` côté vue.
+
+    Renvoie ``{'actifs_sans_profil': [...], 'profils_sans_cnss': [...],
+    'profils_sans_rib': [...], 'profils_actifs_dossiers_non_actifs': [...],
+    'contrats_expires': [...], 'ecarts_remuneration': [...]}`` — chaque item
+    porte assez de contexte pour l'écran de contrôle (dossier/profil id,
+    matricule, nom).
+    """
+    import calendar
+
+    from apps.rh import selectors as rh_selectors
+
+    from .models import ProfilPaie
+
+    company = periode.company
+    date_fin_periode = date(
+        periode.annee, periode.mois,
+        calendar.monthrange(periode.annee, periode.mois)[1])
+
+    dossiers_actifs = {
+        d.id: d for d in rh_selectors.dossiers_actifs(company)
+    }
+    profils = list(
+        ProfilPaie.objects.filter(company=company)
+        .select_related('employe'))
+    profils_par_employe = {p.employe_id: p for p in profils}
+
+    def _libelle(dossier):
+        return f'{dossier.matricule} — {dossier.nom} {dossier.prenom}'.strip()
+
+    # Actifs sans profil de paie (l'import RH les ignore silencieusement).
+    actifs_sans_profil = [
+        {'dossier_id': did, 'matricule': d.matricule, 'nom': _libelle(d)}
+        for did, d in dossiers_actifs.items()
+        if did not in profils_par_employe
+    ]
+
+    # Profils actifs (paie) sans CNSS/RIB — bloquant recommandé côté écran.
+    profils_sans_cnss = []
+    profils_sans_rib = []
+    profils_actifs_dossiers_non_actifs = []
+    for profil in profils:
+        if not profil.actif:
+            continue
+        dossier = profil.employe
+        if not profil.numero_cnss:
+            profils_sans_cnss.append({
+                'profil_id': profil.id, 'dossier_id': dossier.id,
+                'matricule': dossier.matricule, 'nom': _libelle(dossier),
+            })
+        if not profil.rib:
+            profils_sans_rib.append({
+                'profil_id': profil.id, 'dossier_id': dossier.id,
+                'matricule': dossier.matricule, 'nom': _libelle(dossier),
+            })
+        # Profil actif alors que le dossier RH est SORTI ou EMBAUCHE (n'a
+        # jamais pris de poste) — décalage à corriger avant de payer.
+        if dossier.id not in dossiers_actifs:
+            profils_actifs_dossiers_non_actifs.append({
+                'profil_id': profil.id, 'dossier_id': dossier.id,
+                'matricule': dossier.matricule, 'nom': _libelle(dossier),
+                'statut_dossier': dossier.statut,
+            })
+
+    # CDD dont la fin de contrat est antérieure à la fin de la période.
+    contrats_expires = [
+        {
+            'profil_id': profil.id, 'dossier_id': profil.employe.id,
+            'matricule': profil.employe.matricule,
+            'nom': _libelle(profil.employe),
+            'contrat_date_fin': profil.employe.contrat_date_fin,
+        }
+        for profil in profils
+        if profil.actif
+        and profil.employe.type_contrat == 'cdd'
+        and profil.employe.contrat_date_fin is not None
+        and profil.employe.contrat_date_fin < date_fin_periode
+    ]
+
+    # YHIRE6 — écart salaire profil (paie) vs rémunération en vigueur (RH).
+    ecarts_remuneration = []
+    for profil in profils:
+        if not profil.actif:
+            continue
+        dossier = profil.employe
+        ref = rh_selectors.remuneration_en_vigueur(
+            company, dossier.id, date_fin_periode)
+        if ref is None:
+            continue
+        if _q(profil.salaire_base) != _q(ref['montant_mensuel']):
+            ecarts_remuneration.append({
+                'profil_id': profil.id, 'dossier_id': dossier.id,
+                'matricule': dossier.matricule, 'nom': _libelle(dossier),
+                'salaire_profil': _q(profil.salaire_base),
+                'remuneration_en_vigueur': ref['montant_mensuel'],
+                'date_effet': ref['date_effet'],
+            })
+
+    return {
+        'actifs_sans_profil': actifs_sans_profil,
+        'profils_sans_cnss': profils_sans_cnss,
+        'profils_sans_rib': profils_sans_rib,
+        'profils_actifs_dossiers_non_actifs': profils_actifs_dossiers_non_actifs,
+        'contrats_expires': contrats_expires,
+        'ecarts_remuneration': ecarts_remuneration,
+    }
+
+
+# ── ZPAI2 — Panneau d'avertissements pré-run (blocages de paie) ────────────
+
+def avertissements_periode(periode):
+    """Panneau d'avertissements avant de payer, façon Odoo (ZPAI2).
+
+    Distinct de ``controle_ecarts`` (XPAI15, écart de MONTANTS M vs M-1) : ici
+    ce sont les PRÉREQUIS manquants avant de lancer un run. Réutilise
+    ``controle_completude`` (YHIRE3, mêmes trous structurels) et le reshape
+    en une liste PLATE d'avertissements typés + gravité, plus deux contrôles
+    supplémentaires propres à ZPAI2 :
+
+    * RIB vide alors que ``mode_paiement='virement'`` (bloquant — un profil
+      chèque/espèces sans RIB n'entre pas dans l'ordre de virement, donc pas
+      d'avertissement pour lui) ;
+    * ``salaire_base`` à 0 sur un profil actif (bloquant — bulletin nul).
+
+    Lecture seule, jamais d'écriture sur ``rh``. Renvoie une liste de dicts
+    ``{'type', 'employe_id', 'matricule', 'nom', 'gravite', 'message'}`` —
+    ``gravite`` ∈ {'bloquant', 'avertissement'}.
+    """
+    from .models import ProfilPaie
+
+    completude = controle_completude(periode)
+    company = periode.company
+
+    avertissements = []
+
+    for item in completude['actifs_sans_profil']:
+        avertissements.append({
+            'type': 'sans_profil_paie', 'employe_id': item['dossier_id'],
+            'matricule': item['matricule'], 'nom': item['nom'],
+            'gravite': 'bloquant',
+            'message': f"{item['nom']} — aucun profil de paie : ignoré "
+                       "par l'import RH et par la génération du bulletin.",
+        })
+    for item in completude['profils_sans_cnss']:
+        avertissements.append({
+            'type': 'cnss_manquant', 'employe_id': item['dossier_id'],
+            'matricule': item['matricule'], 'nom': item['nom'],
+            'gravite': 'bloquant',
+            'message': f"{item['nom']} — numéro CNSS manquant.",
+        })
+    for item in completude['profils_actifs_dossiers_non_actifs']:
+        avertissements.append({
+            'type': 'dossier_non_actif', 'employe_id': item['dossier_id'],
+            'matricule': item['matricule'], 'nom': item['nom'],
+            'gravite': 'avertissement',
+            'message': f"{item['nom']} — profil de paie actif alors que le "
+                       f"dossier RH est « {item['statut_dossier']} ».",
+        })
+    for item in completude['contrats_expires']:
+        avertissements.append({
+            'type': 'cdd_echu', 'employe_id': item['dossier_id'],
+            'matricule': item['matricule'], 'nom': item['nom'],
+            'gravite': 'avertissement',
+            'message': f"{item['nom']} — CDD échu le "
+                       f"{item['contrat_date_fin']}.",
+        })
+
+    profils = (
+        ProfilPaie.objects.filter(company=company, actif=True)
+        .select_related('employe'))
+    for profil in profils:
+        dossier = profil.employe
+        nom = f'{dossier.matricule} — {dossier.nom} {dossier.prenom}'.strip()
+        if (profil.mode_paiement == ProfilPaie.MODE_PAIEMENT_VIREMENT
+                and not profil.rib):
+            avertissements.append({
+                'type': 'rib_manquant_virement', 'employe_id': dossier.id,
+                'matricule': dossier.matricule, 'nom': nom,
+                'gravite': 'bloquant',
+                'message': f'{nom} — RIB manquant, mode de paiement '
+                           'virement : sans RIB, le net ne sera pas '
+                           'transmis à la banque.',
+            })
+        if not profil.salaire_base or profil.salaire_base <= 0:
+            avertissements.append({
+                'type': 'salaire_nul', 'employe_id': dossier.id,
+                'matricule': dossier.matricule, 'nom': nom,
+                'gravite': 'bloquant',
+                'message': f'{nom} — salaire de base à 0 : le bulletin '
+                           'sera nul.',
+            })
+
+    return avertissements
+
+
+def synchroniser_salaire(profil, le_jour=None):
+    """Aligne ``ProfilPaie.salaire_base`` sur la rémunération RH en vigueur
+    (YHIRE6). Jamais de sync silencieuse : appelée EXPLICITEMENT (action
+    ``synchroniser-salaire``, gatée ``salaires_voir`` côté vue) après que
+    l'écart a été vu au contrôle de complétude.
+
+    Lit ``rh.selectors.remuneration_en_vigueur`` (jamais ``rh.models``
+    directement, hormis le FK ``ProfilPaie.employe`` déjà propriété de la
+    paie). Renvoie le profil mis à jour, ou le renvoie inchangé si aucune
+    rémunération RH n'est en vigueur à cette date (rien à synchroniser).
+    """
+    from apps.rh import selectors as rh_selectors
+
+    jour = le_jour or timezone.localdate()
+    ref = rh_selectors.remuneration_en_vigueur(
+        profil.company, profil.employe_id, jour)
+    if ref is None:
+        return profil
+    profil.salaire_base = ref['montant_mensuel']
+    profil.save(update_fields=['salaire_base'])
+    return profil
+
+
 # ── PAIE33 — Livre de paie + journal de paie → écritures (via compta) ───────
 
 # Comptes CGNC utilisés par l'écriture de paie (barème CGNC marocain) :
@@ -3777,6 +4151,150 @@ def rapprochement_paie_gl(periode):
         'ecart_total': _q(ecart_total),
         'coherent': ecart_total == 0,
     }
+
+
+# ── YLEDG7 — Règlement de l'OV salaires + des organismes sociaux ───────────
+#
+# ``journal_de_paie`` (PAIE33) poste correctement les DETTES (crédit 4432 net,
+# 4441 CNSS/AMO, 4452 IR, 4443 CIMR) mais rien ne poste jamais le RÈGLEMENT :
+# ``emettre_ordre_virement`` ne fait que figer le statut, et aucun service ne
+# solde 4441/4452/4443 aux organismes. Les dettes de paie s'empilent au GL
+# pour toujours. Les deux fonctions ci-dessous postent le débit du compte de
+# dette / crédit trésorerie, au même patron que ``journal_de_paie``
+# (``compta.services`` via import cross-app fonction-local, jamais
+# ``compta.models``).
+
+# Mappe le ``code`` de ``_ORGANISMES_CHARGES`` (utilisé par
+# ``etat_des_charges``/``rapprochement_paie_gl``) au(x) type(s)
+# ``EcheanceDeclarative.TYPE_*`` que ``payer_organismes`` peut solder.
+_ECHEANCE_TYPES_PAR_ORGANISME = {
+    'cnss_amo': (EcheanceDeclarative.TYPE_BDS,),
+    'ir': (EcheanceDeclarative.TYPE_IR_MENSUEL,),
+    'cimr': (EcheanceDeclarative.TYPE_CIMR,),
+}
+
+
+def payer_ordre_virement(ordre, compte_tresorerie, *,
+                         date_reglement=None, created_by=None):
+    """Poste l'écriture de règlement de l'OV salaires (YLEDG7).
+
+    À l'émission/exécution de l'``OrdreVirement`` : débite 4432
+    Rémunérations dues au personnel du ``ordre.total`` / crédite le compte
+    comptable du ``compte_tresorerie`` (banque, DC20). Idempotent — un ordre
+    déjà réglé (``ecriture_reglement_id`` posé) renvoie son écriture existante
+    sans repasser. Refusé si la période comptable de la date de règlement est
+    verrouillée (FG115). Le ``compte_tresorerie`` DOIT appartenir à la même
+    société que l'ordre.
+
+    Renvoie l'écriture comptable postée.
+    """
+    from apps.compta import services as compta_services
+    from apps.compta.models import EcritureComptable
+
+    company = ordre.company
+    if ordre.ecriture_reglement_id:
+        return EcritureComptable.objects.filter(
+            pk=ordre.ecriture_reglement_id).first()
+    compte_tresorerie = _resoudre_compte_emetteur(company, compte_tresorerie)
+    if compte_tresorerie is None:
+        raise ValueError(
+            "Le compte de trésorerie doit appartenir à la société de "
+            "l'ordre de virement.")
+    if not ordre.total or ordre.total <= 0:
+        raise ValueError("L'ordre de virement n'a aucun montant à régler.")
+
+    date_reg = date_reglement or timezone.localdate()
+    compte_net = compta_services.get_compte(company, _COMPTE_NET)
+    if compte_net is None:
+        compta_services.seed_plan_comptable(company)
+        compte_net = compta_services.get_compte(company, _COMPTE_NET)
+
+    montant = _q(ordre.total)
+    libelle = f'Règlement salaires {ordre.reference or ordre.id}'
+    lignes = [
+        {'compte': compte_net, 'libelle': libelle,
+         'debit': montant, 'credit': Decimal('0')},
+        {'compte': compte_tresorerie.compte_comptable, 'libelle': libelle,
+         'debit': Decimal('0'), 'credit': montant},
+    ]
+    ecriture = compta_services.creer_ecriture_od(
+        company, date_reg, libelle, lignes,
+        reference=f'OV-REGLEMENT-{ordre.id}', created_by=created_by)
+    ordre.ecriture_reglement_id = ecriture.id
+    ordre.date_reglement = timezone.now()
+    ordre.save(update_fields=['ecriture_reglement_id', 'date_reglement'])
+    return ecriture
+
+
+def payer_organismes(periode, organisme, compte_tresorerie, *,
+                     date_reglement=None, created_by=None):
+    """Poste l'écriture de règlement d'un organisme social (YLEDG7).
+
+    ``organisme`` est un des codes de ``_ORGANISMES_CHARGES``
+    (``'cnss_amo'``/``'ir'``/``'cimr'``) : débite le compte de dette
+    correspondant (4441/4452/4443) du montant dû (``etat_des_charges``) /
+    crédite le compte comptable du ``compte_tresorerie``. Marque PAYÉE la
+    (les) ``EcheanceDeclarative`` de la période correspondant à cet
+    organisme (idempotent par écheance — une échéance déjà payée n'est jamais
+    re-postée). Refusé si la période comptable de règlement est verrouillée.
+
+    Renvoie l'écriture postée, ou ``None`` si le montant dû est nul (rien à
+    régler) ou si toutes les échéances de l'organisme sont déjà payées.
+    """
+    from apps.compta import services as compta_services
+
+    mapping = {code: (libelle, numero)
+               for code, libelle, numero in _ORGANISMES_CHARGES}
+    if organisme not in mapping:
+        raise ValueError(f"Organisme inconnu : {organisme!r}.")
+    libelle_organisme, numero_compte = mapping[organisme]
+
+    company = periode.company
+    types_echeance = _ECHEANCE_TYPES_PAR_ORGANISME.get(organisme, ())
+    echeances = list(EcheanceDeclarative.objects.filter(
+        company=company, periode=periode, type_echeance__in=types_echeance,
+    ).exclude(statut=EcheanceDeclarative.STATUT_PAYEE))
+    if not echeances:
+        # Toutes déjà payées (ou aucune échéance de ce type) — no-op.
+        return None
+
+    etat = etat_des_charges(periode)
+    total_par_code = {o['code']: o['total'] for o in etat['organismes']}
+    montant = total_par_code.get(organisme, Decimal('0.00'))
+    if montant <= 0:
+        return None
+
+    compte_tresorerie = _resoudre_compte_emetteur(company, compte_tresorerie)
+    if compte_tresorerie is None:
+        raise ValueError(
+            "Le compte de trésorerie doit appartenir à la société de la "
+            "période.")
+
+    date_reg = date_reglement or timezone.localdate()
+    compte_dette = compta_services.get_compte(company, numero_compte)
+    if compte_dette is None:
+        compta_services.seed_plan_comptable(company)
+        compte_dette = compta_services.get_compte(company, numero_compte)
+
+    montant = _q(montant)
+    libelle_ecriture = (
+        f'Règlement {libelle_organisme} — {periode.mois:02d}/{periode.annee}')
+    lignes = [
+        {'compte': compte_dette, 'libelle': libelle_ecriture,
+         'debit': montant, 'credit': Decimal('0')},
+        {'compte': compte_tresorerie.compte_comptable,
+         'libelle': libelle_ecriture,
+         'debit': Decimal('0'), 'credit': montant},
+    ]
+    ecriture = compta_services.creer_ecriture_od(
+        company, date_reg, libelle_ecriture, lignes,
+        reference=f'ORG-{organisme.upper()}-{periode.id}',
+        created_by=created_by)
+    for echeance in echeances:
+        echeance.statut = EcheanceDeclarative.STATUT_PAYEE
+        echeance.ecriture_reglement_id = ecriture.id
+        echeance.save(update_fields=['statut', 'ecriture_reglement_id'])
+    return ecriture
 
 
 # ── PAIE27 — Cumul annuel par employé (recalcul depuis bulletins validés) ────
@@ -4709,6 +5227,96 @@ def cout_global_par_profil(periode):
             'ventilation': ventilation_analytique_bulletin(bulletin),
         })
     return resultat
+
+
+# ── ZPAI3 — Rapport « Coût employeur » consolidé de la période ─────────────
+
+# Codes des lignes patronales ITEMISÉES (informative, ``calculer_bulletin``)
+# que le flag ``Rubrique.apparait_cout_employeur`` peut exclure du total —
+# CNSS/AMO patronales n'ont pas de ligne dédiée (agrégées uniquement dans
+# ``charges_patronales``) et restent donc toujours incluses.
+_CODES_PATRONALES_ITEMISEES = ('MUTUELLE_PAT', 'ALLOC_FAM', 'FORMATION_PRO')
+
+
+def cout_employeur(periode):
+    """Rapport « coût employeur » CONSOLIDÉ de la période (ZPAI3), interne.
+
+    Distinct de ``cout_global_par_profil`` (XPAI17, coût + ventilation PAR
+    EMPLOYÉ) : ici un TOTAL société lisible en un écran — brut + toutes les
+    cotisations patronales + provisions de la période, le ratio coût/net, et
+    le coût moyen par tête. Une rubrique de cotisation patronale ITEMISÉE
+    (``_CODES_PATRONALES_ITEMISEES``) dont ``apparait_cout_employeur=False``
+    est RETRANCHÉE du total (jamais du bulletin lui-même — JAMAIS
+    client-facing, gaté ``paie_voir``).
+
+    Renvoie ``{'annee', 'mois', 'nombre_salaries', 'total_brut',
+    'total_charges_patronales', 'total_provisions', 'total_employeur',
+    'total_net', 'ratio_cout_net', 'cout_moyen_par_tete',
+    'rubriques_exclues': [code, ...]}``.
+    """
+    from django.db.models import Sum
+
+    from .models import BulletinPaie, LigneBulletin
+
+    bulletins = list(
+        BulletinPaie.objects.filter(
+            company=periode.company, periode=periode,
+            statut=BulletinPaie.STATUT_VALIDE))
+    nombre_salaries = len(bulletins)
+    if nombre_salaries == 0:
+        return {
+            'annee': periode.annee, 'mois': periode.mois,
+            'nombre_salaries': 0,
+            'total_brut': Decimal('0.00'),
+            'total_charges_patronales': Decimal('0.00'),
+            'total_provisions': Decimal('0.00'),
+            'total_employeur': Decimal('0.00'),
+            'total_net': Decimal('0.00'),
+            'ratio_cout_net': None,
+            'cout_moyen_par_tete': Decimal('0.00'),
+            'rubriques_exclues': [],
+        }
+
+    total_brut = sum(
+        (Decimal(b.brut or 0) for b in bulletins), Decimal('0'))
+    total_charges_patronales = sum(
+        (Decimal(b.charges_patronales or 0) for b in bulletins), Decimal('0'))
+    total_provisions = sum(
+        (Decimal(b.provision_conges or 0) for b in bulletins), Decimal('0'))
+    total_net = sum(
+        (Decimal(b.net_a_payer or 0) for b in bulletins), Decimal('0'))
+
+    # Rubriques patronales itemisées dé-flaggées : leur montant total (somme
+    # des LigneBulletin de ce code) sort de l'agrégat.
+    rubriques_exclues = list(
+        Rubrique.objects.filter(
+            company=periode.company, code__in=_CODES_PATRONALES_ITEMISEES,
+            apparait_cout_employeur=False,
+        ).values_list('code', flat=True))
+    montant_exclu = Decimal('0.00')
+    if rubriques_exclues:
+        montant_exclu = LigneBulletin.objects.filter(
+            company=periode.company, bulletin__in=bulletins,
+            code__in=rubriques_exclues,
+        ).aggregate(total=Sum('montant'))['total'] or Decimal('0.00')
+
+    total_employeur = _q(
+        total_brut + total_charges_patronales + total_provisions
+        - montant_exclu)
+
+    return {
+        'annee': periode.annee, 'mois': periode.mois,
+        'nombre_salaries': nombre_salaries,
+        'total_brut': _q(total_brut),
+        'total_charges_patronales': _q(total_charges_patronales),
+        'total_provisions': _q(total_provisions),
+        'total_employeur': total_employeur,
+        'total_net': _q(total_net),
+        'ratio_cout_net': (
+            _q(total_employeur / total_net) if total_net > 0 else None),
+        'cout_moyen_par_tete': _q(total_employeur / nombre_salaries),
+        'rubriques_exclues': rubriques_exclues,
+    }
 
 
 def journal_de_paie_ventile(periode, *, created_by=None):

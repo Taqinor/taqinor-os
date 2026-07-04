@@ -27,6 +27,8 @@ from .models import (
     Poste,
     PresenceChantier,
     PresquAccident,
+    PrimeAttribuee,
+    Remuneration,
     SessionFormation,
     VisiteMedicale,
 )
@@ -409,6 +411,156 @@ def heures_supp_pour_paie(company, date_debut, date_fin, employe_id=None):
             + (hs.hs_50 or Decimal('0')) + (hs.hs_100 or Decimal('0'))
         row['montant_majore'] += hs.montant_majore or Decimal('0')
     return [agg[k] for k in sorted(agg)]
+
+
+def absences_non_remunerees_pour_paie(company, date_debut, date_fin,
+                                      employe_id=None):
+    """Absences VALIDÉES non rémunérées d'une période (YHIRE1, entrée de paie).
+
+    Sélecteur cross-app : la paie importe les jours d'absence NON rémunérés
+    (``TypeAbsence.remunere = False`` — sans solde, injustifiée…) SANS jamais
+    importer ``rh.models`` directement. Une demande de congé REMUNÉRÉE
+    (congé payé, maladie indemnisée…) n'a AUCUN impact sur le net : elle est
+    délibérément exclue ici (le salarié est payé comme présent).
+
+    Une demande qui chevauche la fenêtre sans y être entièrement contenue est
+    IGNORÉE (bornée strictement à ``[date_debut, date_fin]``) — l'import RH
+    fonctionne par période de paie mensuelle et une demande à cheval sur deux
+    mois est un cas rare traité manuellement.
+
+    Renvoie une liste de dicts (une par demande) : ``{'employe_id',
+    'demande_id', 'type_absence_code', 'type_absence_libelle', 'jours',
+    'deduit_solde'}``.
+    """
+    if company is None or date_debut is None or date_fin is None:
+        return []
+    qs = DemandeConge.objects.filter(
+        company=company,
+        statut=DemandeConge.Statut.VALIDEE,
+        type_absence__remunere=False,
+        date_debut__gte=date_debut,
+        date_fin__lte=date_fin,
+    ).select_related('type_absence')
+    if employe_id is not None:
+        qs = qs.filter(employe_id=employe_id)
+    return [
+        {
+            'employe_id': demande.employe_id,
+            'demande_id': demande.id,
+            'type_absence_code': demande.type_absence.code,
+            'type_absence_libelle': demande.type_absence.libelle,
+            'jours': demande.jours,
+            'deduit_solde': demande.type_absence.deduit_solde,
+        }
+        for demande in qs.order_by('employe_id', 'date_debut')
+    ]
+
+
+def primes_validees_pour_paie(company, annee, mois, employe_id=None):
+    """Primes/indemnités VALIDÉES d'un mois (YHIRE1, entrée de paie, FG193).
+
+    Sélecteur cross-app : la paie importe les primes ``PrimeAttribuee`` au
+    statut ``validee`` (PAYÉE reste exclue — déjà versée hors bulletin, elle
+    ne doit pas re-générer une ligne) de la ``(annee, mois)`` SANS jamais
+    importer ``rh.models`` directement.
+
+    Renvoie une liste de dicts (une par prime) : ``{'employe_id',
+    'prime_id', 'type_prime_libelle', 'montant', 'motif'}``.
+    """
+    if company is None or annee is None or mois is None:
+        return []
+    qs = PrimeAttribuee.objects.filter(
+        company=company, annee=annee, mois=mois,
+        statut=PrimeAttribuee.Statut.VALIDEE,
+    ).select_related('type_prime')
+    if employe_id is not None:
+        qs = qs.filter(employe_id=employe_id)
+    return [
+        {
+            'employe_id': prime.employe_id,
+            'prime_id': prime.id,
+            'type_prime_libelle': prime.type_prime.libelle,
+            'montant': prime.montant,
+            'motif': prime.motif,
+        }
+        for prime in qs.order_by('employe_id', 'id')
+    ]
+
+
+# Facteurs (numérateur, dénominateur) de normalisation vers un montant
+# MENSUEL (YHIRE6). L'horaire est approximé via la norme paie standard
+# (191 h/mois) faute d'un taux horaire contractuel dédié sur ``Remuneration``
+# — write-up assumé, cohérent avec ``ProfilPaie.heures_travail_mensuel`` par
+# défaut.
+_FACTEUR_MENSUALISATION = {
+    Remuneration.Periodicite.MENSUEL: (1, 1),
+    Remuneration.Periodicite.ANNUEL: (1, 12),
+    Remuneration.Periodicite.JOURNALIER: (26, 1),
+    Remuneration.Periodicite.HORAIRE: (191, 1),
+}
+
+
+def remuneration_en_vigueur(company, employe_id, le_jour=None):
+    """Rémunération EN VIGUEUR d'un employé à une date (YHIRE6, FG157).
+
+    La ligne ``Remuneration`` dont ``date_effet`` est la plus récente ≤
+    ``le_jour`` (aujourd'hui par défaut). Sélecteur cross-app : la paie lit
+    la rémunération de référence SANS jamais importer ``rh.models``
+    directement — donnée SENSIBLE (paie), à gater ``salaires_voir`` côté
+    appelant.
+
+    Renvoie ``{'montant_mensuel', 'montant', 'devise', 'periodicite',
+    'date_effet'}`` normalisé en équivalent MENSUEL (pour comparaison directe
+    à ``ProfilPaie.salaire_base``), ou ``None`` si aucune ligne n'est en
+    vigueur à cette date.
+    """
+    from decimal import Decimal
+    if company is None or employe_id is None:
+        return None
+    jour = le_jour or timezone.localdate()
+    ligne = (
+        Remuneration.objects
+        .filter(company=company, employe_id=employe_id, date_effet__lte=jour)
+        .order_by('-date_effet', '-date_creation')
+        .first()
+    )
+    if ligne is None:
+        return None
+    numerateur, denominateur = _FACTEUR_MENSUALISATION.get(
+        ligne.periodicite, (1, 1))
+    montant_mensuel = (
+        Decimal(ligne.montant) * Decimal(numerateur) / Decimal(denominateur))
+    return {
+        'montant_mensuel': montant_mensuel.quantize(Decimal('0.01')),
+        'montant': ligne.montant,
+        'devise': ligne.devise,
+        'periodicite': ligne.periodicite,
+        'date_effet': ligne.date_effet,
+    }
+
+
+def departements_par_employe(company, employe_ids):
+    """Mappe ``employe_id -> {'departement_id', 'departement_nom'}`` (ZPAI1).
+
+    Sélecteur cross-app : la paie lit le département d'un groupe d'employés
+    (rapport d'analyse par département) SANS jamais importer ``rh.models``
+    directement. Un employé sans département (ou hors ``employe_ids``) est
+    absent du dict renvoyé — l'appelant traite ça comme « non affecté ».
+    """
+    if company is None or not employe_ids:
+        return {}
+    qs = (
+        DossierEmploye.objects
+        .filter(company=company, id__in=list(employe_ids))
+        .select_related('departement')
+    )
+    return {
+        d.id: {
+            'departement_id': d.departement_id,
+            'departement_nom': d.departement.nom if d.departement_id else '',
+        }
+        for d in qs
+    }
 
 
 def employes_assignables(company, jour):
