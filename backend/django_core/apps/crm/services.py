@@ -794,6 +794,64 @@ def resolve_client_for_lead(lead: Lead) -> Client:
     return client
 
 
+def appliquer_plan_activite(*, lead, plan, user):
+    """ZSAL2 — applique un :class:`~apps.crm.models.PlanActivite` à un lead.
+
+    Crée une ``records.Activity`` par étape du plan, échéance = aujourd'hui +
+    ``etape.delai_jours``, assignée à ``etape.assigne_par_defaut`` si posé
+    sinon au owner du lead sinon à l'acteur. IDEMPOTENT par (lead, plan) : les
+    activités déjà créées par une précédente application de CE plan sur CE
+    lead sont retrouvées via ``summary`` + une marque dédiée dans ``note``
+    (``[plan:<id>:<etape_id>]``) — une seconde application ne duplique rien et
+    renvoie la liste déjà existante. Un plan archivé (``actif=False``) n'est
+    jamais applicable (ValueError, traduit en 400 par la vue).
+
+    Retourne la liste des ``records.Activity`` (créées ou déjà existantes,
+    dans l'ordre des étapes).
+    """
+    if not plan.actif:
+        raise ValueError("Ce plan d'activité est archivé et n'est plus applicable.")
+    if plan.company_id != lead.company_id:
+        raise ValueError("Plan hors de votre société.")
+
+    from django.contrib.contenttypes.models import ContentType
+    from apps.records.models import Activity
+
+    ct = ContentType.objects.get_for_model(Lead)
+    today = timezone.now().date()
+    resultats = []
+    for etape in plan.etapes.select_related(
+            'activity_type', 'assigne_par_defaut').order_by('ordre', 'delai_jours'):
+        marque = f'[plan:{plan.id}:{etape.id}]'
+        existante = Activity.objects.filter(
+            company=lead.company, content_type=ct, object_id=lead.id,
+            note__contains=marque,
+        ).first()
+        if existante is not None:
+            resultats.append(existante)
+            continue
+        assigne = etape.assigne_par_defaut or lead.owner or user
+        from datetime import timedelta
+        due = today + timedelta(days=etape.delai_jours)
+        act = Activity.objects.create(
+            company=lead.company, content_type=ct, object_id=lead.id,
+            activity_type=etape.activity_type,
+            summary=(etape.resume_defaut or etape.activity_type.nom)[:255],
+            due_date=due,
+            assigned_to=assigne,
+            note=marque,
+            created_by=user,
+        )
+        resultats.append(act)
+
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=user,
+        kind=LeadActivity.Kind.NOTE,
+        body=f"Plan d'activité « {plan.nom} » appliqué "
+             f"({len(plan.etapes.all())} étape(s)).")
+    return resultats
+
+
 def create_draft_lead_from_ocr(*, company, user, fields) -> Lead:
     """FG106 — crée un LEAD brouillon à partir de champs extraits par l'OCR.
 

@@ -1292,3 +1292,60 @@ class ChatSessionPublique(models.Model):
 
     def __str__(self):
         return f'Session livechat #{self.pk} ({self.statut})'
+
+
+class PlanActivite(models.Model):
+    """ZSAL2 — Plan d'activité (Odoo « Activity Plans ») : séquence de tâches
+    pré-définies applicable à un lead d'un clic (ex. « Nouveau lead solaire »
+    = J0 appeler, J1 email étude, J3 visite technique, J7 relance devis).
+
+    Distinct des séquences marketing XMKT (email/SMS automatisés côté
+    marketing) : ceci est une CHECKLIST d'activités internes du commercial,
+    matérialisée en ``records.Activity`` sur le lead cible.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='plans_activite')
+    nom = models.CharField(max_length=120)
+    actif = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Plan d'activité"
+        verbose_name_plural = "Plans d'activité"
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
+
+
+class EtapePlanActivite(models.Model):
+    """ZSAL2 — Une étape d'un :class:`PlanActivite` : un type d'activité à
+    créer, ``delai_jours`` après la date d'application du plan (0 = le jour
+    même), avec un résumé par défaut et un assigné par défaut optionnel
+    (owner du lead si vide, sinon un utilisateur fixe)."""
+    plan = models.ForeignKey(
+        PlanActivite, on_delete=models.CASCADE, related_name='etapes')
+    ordre = models.PositiveIntegerField(default=0)
+    activity_type = models.ForeignKey(
+        'records.ActivityType', on_delete=models.PROTECT,
+        related_name='etapes_plan_activite')
+    delai_jours = models.PositiveIntegerField(
+        default=0,
+        help_text="Nombre de jours après l'application du plan (0 = le jour même).")
+    resume_defaut = models.CharField(max_length=255, blank=True, default='')
+    # NULL = assigné par défaut = owner du lead ciblé (résolu à l'application).
+    assigne_par_defaut = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='etapes_plan_activite_assignees')
+
+    class Meta:
+        verbose_name = "Étape de plan d'activité"
+        verbose_name_plural = "Étapes de plan d'activité"
+        ordering = ['plan', 'ordre', 'delai_jours']
+
+    def __str__(self):
+        return f'{self.plan.nom} — J{self.delai_jours} {self.resume_defaut}'.strip()

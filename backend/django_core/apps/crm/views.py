@@ -5,7 +5,8 @@ from authentication.mixins import TenantMixin
 from authentication.scoping import scope_queryset, scope_client_queryset
 from .models import (
     Appointment, Client, ConcurrentPerte, Lead, LeadTag, MotifPerte, Canal,
-    Parrainage, MessageTemplate, ObjectifCommercial, PointContact, SiteProfile,
+    Parrainage, MessageTemplate, ObjectifCommercial, PlanActivite,
+    PointContact, SiteProfile,
 )
 from .serializers import (
     AppointmentSerializer, ClientSerializer, ConcurrentPerteSerializer,
@@ -13,7 +14,7 @@ from .serializers import (
     LeadTagSerializer, MotifPerteSerializer, CanalSerializer,
     ParrainageSerializer, MessageTemplateSerializer, _tag_en_usage, _motif_en_usage,
     ObjectifCommercialSerializer, ObjectifAttainmentSerializer,
-    PointContactSerializer, SiteProfileSerializer,
+    PlanActiviteSerializer, PointContactSerializer, SiteProfileSerializer,
 )
 from . import activity
 from .services import default_responsable_for
@@ -695,6 +696,34 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(
             LeadActivitySerializer(lead.activites.all(), many=True).data)
 
+    @action(detail=True, methods=['post'], url_path='appliquer-plan',
+            permission_classes=[IsResponsableOrAdmin])
+    def appliquer_plan(self, request, pk=None):
+        """ZSAL2 — applique un PlanActivite (body {plan_id}) au lead : crée
+        une activité par étape, échéance = aujourd'hui + délai. Idempotent :
+        ré-appliquer le même plan ne duplique rien."""
+        lead = self.get_object()
+        plan_id = request.data.get('plan_id')
+        if not plan_id:
+            return Response({'plan_id': 'Requis.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        plan = PlanActivite.objects.filter(
+            id=plan_id, company=request.user.company).first()
+        if plan is None:
+            return Response({'detail': 'Plan introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        from .services import appliquer_plan_activite
+        try:
+            activites = appliquer_plan_activite(
+                lead=lead, plan=plan, user=request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        from apps.records.serializers import ActivitySerializer
+        return Response(
+            ActivitySerializer(activites, many=True).data,
+            status=status.HTTP_200_OK)
+
     @action(detail=True, methods=['get'], url_path='points-contact',
             permission_classes=[IsAnyRole])
     def points_contact(self, request, pk=None):
@@ -1210,6 +1239,21 @@ class SiteProfileViewSet(TenantMixin, viewsets.ModelViewSet):
             company=self.request.user.company,
             created_by=self.request.user,
         )
+
+
+# ── ZSAL2 — Plans d'activité ──────────────────────────────────────────────────
+
+class PlanActiviteViewSet(TenantMixin, viewsets.ModelViewSet):
+    """Plans d'activité (checklists de tâches commerciales) : lecture tout
+    rôle, écriture responsable/admin. Société forcée côté serveur."""
+    queryset = PlanActivite.objects.prefetch_related(
+        'etapes', 'etapes__activity_type').all()
+    serializer_class = PlanActiviteSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
 
 
 # ── FG36 — Modèles de messages WhatsApp/SMS ───────────────────────────────────
