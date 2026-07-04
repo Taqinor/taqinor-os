@@ -55,6 +55,7 @@ from .views import (
     PresquAccidentViewSet,
     PrimeAttribueeViewSet,
     PromesseEmbaucheViewSet,
+    RecrutementStatistiquesViewSet,
     ReglageRHViewSet,
     RemunerationViewSet,
     SanctionViewSet,
@@ -119,6 +120,9 @@ router.register(r'sessions-formation', SessionFormationViewSet)
 router.register(r'besoins-formation', BesoinFormationViewSet)
 router.register(r'ouvertures-poste', OuverturePosteViewSet)
 router.register(r'candidatures', CandidatureViewSet)
+router.register(
+    r'recrutement/statistiques', RecrutementStatistiquesViewSet,
+    basename='rh-recrutement-statistiques')
 router.register(r'entretiens-recrutement', EntretienRecrutementViewSet)
 router.register(r'gabarits-email-recrutement', GabaritEmailRecrutementViewSet)
 router.register(r'promesses-embauche', PromesseEmbaucheViewSet)

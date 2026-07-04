@@ -1817,3 +1817,112 @@ def comparatif_candidats(company, ouverture_id):
     resultats.sort(
         key=lambda r: (r['moyenne'] is None, -(r['moyenne'] or 0)))
     return resultats
+
+
+def stats_recrutement(company, debut=None, fin=None):
+    """XRH22 — analytics recrutement : délai d'embauche, entonnoir, sources.
+
+    Filtre les ``Candidature`` de la société sur ``date_candidature`` dans
+    ``[debut, fin]`` (bornes incluses, optionnelles — période complète si
+    absentes). Renvoie un dict :
+
+    * ``delai_embauche_moyen_jours`` — moyenne (candidat EMBAUCHÉ dans la
+      période) de ``date_modification - date_candidature`` (proxy de la date
+      d'embauche : le passage à l'étape ``embauche`` touche
+      ``date_modification``). ``None`` si aucun embauché avec les deux dates.
+    * ``entonnoir`` — dict ``{etape: nb_candidatures_ayant_atteint_ou_dépassé
+      cette étape}`` sur l'ordre reçu→présélection→entretien→offre→embauché
+      (une candidature à l'étape ``offre`` compte dans reçu/présélection/
+      entretien/offre). ``rejete`` compté séparément, hors entonnoir.
+    * ``candidatures_par_ouverture`` — liste ``{ouverture_id, intitule, nb}``.
+    * ``sources`` — liste ``{source, candidatures, embauches,
+      taux_embauche_pct}`` triée par taux d'embauche décroissant (division par
+      zéro gardée : ``0.0`` si aucune candidature pour la source).
+
+    Lecture seule, société scopée, pas de migration.
+    """
+    from .models import Candidature
+
+    qs = Candidature.objects.filter(company=company)
+    if debut:
+        qs = qs.filter(date_candidature__gte=debut)
+    if fin:
+        qs = qs.filter(date_candidature__lte=fin)
+    candidatures = list(qs.select_related('ouverture'))
+
+    # Délai d'embauche moyen (jours) sur les candidats embauchés de la
+    # période disposant des deux dates.
+    delais = []
+    for c in candidatures:
+        if (c.etape == Candidature.Etape.EMBAUCHE
+                and c.date_candidature and c.date_modification):
+            delta = c.date_modification.date() - c.date_candidature
+            delais.append(delta.days)
+    delai_moyen = round(sum(delais) / len(delais), 1) if delais else None
+
+    # Entonnoir : ordre des étapes et rang de chacune.
+    ordre_etapes = [
+        Candidature.Etape.RECU,
+        Candidature.Etape.PRESELECTION,
+        Candidature.Etape.ENTRETIEN,
+        Candidature.Etape.OFFRE,
+        Candidature.Etape.EMBAUCHE,
+    ]
+    rang = {etape: i for i, etape in enumerate(ordre_etapes)}
+    entonnoir = {etape: 0 for etape in ordre_etapes}
+    nb_rejetes = 0
+    for c in candidatures:
+        if c.etape == Candidature.Etape.REJETE:
+            nb_rejetes += 1
+            continue
+        rang_candidat = rang.get(c.etape)
+        if rang_candidat is None:
+            continue
+        for etape in ordre_etapes:
+            if rang[etape] <= rang_candidat:
+                entonnoir[etape] += 1
+    entonnoir['rejete'] = nb_rejetes
+
+    # Candidatures par ouverture.
+    par_ouverture = {}
+    for c in candidatures:
+        key = c.ouverture_id
+        if key not in par_ouverture:
+            par_ouverture[key] = {
+                'ouverture_id': key,
+                'intitule': c.ouverture.intitule if c.ouverture_id else '',
+                'nb': 0,
+            }
+        par_ouverture[key]['nb'] += 1
+    candidatures_par_ouverture = sorted(
+        par_ouverture.values(), key=lambda r: r['nb'], reverse=True)
+
+    # Efficacité par source.
+    par_source = {}
+    for c in candidatures:
+        source = c.source or ''
+        if source not in par_source:
+            par_source[source] = {'candidatures': 0, 'embauches': 0}
+        par_source[source]['candidatures'] += 1
+        if c.etape == Candidature.Etape.EMBAUCHE:
+            par_source[source]['embauches'] += 1
+
+    sources = []
+    for source, data in par_source.items():
+        nb_cand = data['candidatures']
+        taux = round(
+            (data['embauches'] / nb_cand) * 100, 1) if nb_cand else 0.0
+        sources.append({
+            'source': source,
+            'candidatures': nb_cand,
+            'embauches': data['embauches'],
+            'taux_embauche_pct': taux,
+        })
+    sources.sort(key=lambda r: r['taux_embauche_pct'], reverse=True)
+
+    return {
+        'delai_embauche_moyen_jours': delai_moyen,
+        'entonnoir': entonnoir,
+        'candidatures_par_ouverture': candidatures_par_ouverture,
+        'sources': sources,
+    }

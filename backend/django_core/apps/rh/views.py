@@ -2237,6 +2237,26 @@ class EcheancesRhViewSet(TenantMixin, viewsets.ViewSet):
         return Response(rows)
 
 
+class RecrutementStatistiquesViewSet(TenantMixin, viewsets.ViewSet):
+    """XRH22 — analytics recrutement (délai d'embauche, entonnoir, sources).
+
+    Société scopée + Administrateur/Responsable. Lecture seule.
+
+    Action :
+    * ``GET .../recrutement/statistiques/?debut=YYYY-MM-DD&fin=YYYY-MM-DD`` —
+      délai d'embauche moyen, entonnoir par étape, candidatures par ouverture
+      et efficacité par source sur la période (bornes optionnelles).
+    """
+    permission_classes = [IsResponsableOrAdmin]
+
+    def list(self, request):
+        debut = request.query_params.get('debut') or None
+        fin = request.query_params.get('fin') or None
+        data = selectors.stats_recrutement(
+            request.user.company, debut=debut, fin=fin)
+        return Response(data)
+
+
 class TableauBordHseViewSet(TenantMixin, viewsets.ViewSet):
     """Tableau de bord HSE (FG185) — agrégation lecture seule, admin-gated.
 
