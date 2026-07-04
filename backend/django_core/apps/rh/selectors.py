@@ -2026,3 +2026,97 @@ def departements_descendants(company, departement_id):
         resultat.append(courant)
         a_visiter.extend(enfants_de.get(courant, []))
     return resultat
+
+
+def features_risque_attrition(employe, *, today=None, within_days=90):
+    """XRH31 — assemble les FEATURES d'un employé pour ``core.attrition_risk``.
+
+    Lit UNIQUEMENT via les selectors/models de ``apps.rh`` (jamais un import
+    d'app domaine dans ``core``) : ancienneté (``date_embauche``), incidents
+    de présence des ``within_days`` derniers jours (retards/départs anticipés
+    hors absences — ``IncidentPresence``), absences injustifiées sur la même
+    fenêtre, dernière note d'évaluation (``EvaluationEmploye.note_globale``
+    la plus récente), mois depuis la dernière ``Remuneration`` (augmentation),
+    nombre de ``Sanction`` (toutes, non filtrées par statut annulé — une
+    sanction contestée reste un signal). Renvoie un dict prêt pour
+    :func:`core.attrition_risk.attrition_risk`.
+    """
+    from .models import EvaluationEmploye, IncidentPresence, Remuneration, Sanction
+
+    today = today or timezone.localdate()
+    debut = today - timedelta(days=within_days)
+
+    features = {}
+
+    if employe.date_embauche:
+        jours = (today - employe.date_embauche).days
+        features['seniority_months'] = round(jours / 30.44, 2)
+
+    incidents_qs = IncidentPresence.objects.filter(
+        company=employe.company, employe=employe,
+        date__gte=debut, date__lte=today, justifie=False)
+    features['recent_attendance_incidents'] = incidents_qs.exclude(
+        type_incident=IncidentPresence.TypeIncident.ABSENCE_INJUSTIFIEE
+    ).count()
+    features['unplanned_absences'] = incidents_qs.filter(
+        type_incident=IncidentPresence.TypeIncident.ABSENCE_INJUSTIFIEE
+    ).count()
+
+    derniere_evaluation = EvaluationEmploye.objects.filter(
+        company=employe.company, employe=employe,
+        note_globale__isnull=False).order_by('-date_creation').first()
+    if derniere_evaluation is not None:
+        features['last_evaluation_score'] = float(
+            derniere_evaluation.note_globale)
+
+    derniere_remuneration = Remuneration.objects.filter(
+        company=employe.company, employe=employe
+    ).order_by('-date_effet').first()
+    if derniere_remuneration is not None and derniere_remuneration.date_effet:
+        jours_depuis = (today - derniere_remuneration.date_effet).days
+        features['months_since_last_raise'] = round(jours_depuis / 30.44, 2)
+
+    features['sanctions_count'] = Sanction.objects.filter(
+        company=employe.company, employe=employe).count()
+
+    return features
+
+
+def risque_attrition_employe(employe, *, today=None):
+    """XRH31 — score de risque d'attrition d'UN employé (dict prêt UI/API).
+
+    Assemble les features via :func:`features_risque_attrition` puis délègue
+    le scoring au moteur pur ``core.attrition_risk``. Renvoie
+    ``{employe_id, score, band, factors}``.
+    """
+    from core.attrition_risk import attrition_risk
+
+    features = features_risque_attrition(employe, today=today)
+    resultat = attrition_risk(features)
+    return {
+        'employe_id': employe.id,
+        'score': resultat.score,
+        'band': resultat.band,
+        'factors': resultat.factors,
+    }
+
+
+def top_risque_attrition(company, *, limite=10, today=None):
+    """XRH31 — top-N employés ACTIFS par risque d'attrition décroissant.
+
+    Lecture seule, société scopée. Renvoie une liste triée
+    ``[{employe_id, employe_nom, score, band}, ...]`` limitée à ``limite``.
+    """
+    employes = DossierEmploye.objects.filter(
+        company=company, statut=DossierEmploye.Statut.ACTIF)
+    resultats = []
+    for employe in employes:
+        r = risque_attrition_employe(employe, today=today)
+        resultats.append({
+            'employe_id': employe.id,
+            'employe_nom': f'{employe.nom} {employe.prenom}',
+            'score': r['score'],
+            'band': r['band'],
+        })
+    resultats.sort(key=lambda r: r['score'], reverse=True)
+    return resultats[:limite]

@@ -340,6 +340,15 @@ class DossierEmployeViewSet(_RhBaseViewSet):
         employe = self.get_object()
         return Response(selectors.ecarts_competences(employe))
 
+    @action(detail=True, methods=['get'], url_path='risque-attrition')
+    def risque_attrition(self, request, pk=None):
+        """XRH31 — score de risque d'attrition de l'employé (scorer pur
+        ``core.attrition_risk``, features assemblées via
+        ``selectors.features_risque_attrition``). Gaté
+        ``IsResponsableOrAdmin`` (gate de classe par défaut)."""
+        employe = self.get_object()
+        return Response(selectors.risque_attrition_employe(employe))
+
     @action(detail=True, methods=['post'],
             url_path='ecart-competences-creer-besoin-formation')
     def creer_besoin_formation_depuis_ecart(self, request, pk=None):
@@ -4463,6 +4472,10 @@ class CockpitRhViewSet(viewsets.ViewSet):
 
     Endpoint :
     * ``GET cockpit/`` (list) — renvoie le tableau de bord agrégé.
+    * ``GET cockpit/top-risque-attrition/?limite=N`` — XRH31, top-N employés
+      actifs par risque d'attrition décroissant (scorer pur, calculé à la
+      demande — jamais inclus dans ``list()`` pour ne pas alourdir le cockpit
+      principal d'un scoring par employé à chaque chargement).
     """
     permission_classes = [IsResponsableOrAdmin]
 
@@ -4475,3 +4488,10 @@ class CockpitRhViewSet(viewsets.ViewSet):
             inclure_masse_salariale=peut_voir_salaires,
             departement_id=departement)
         return Response(data)
+
+    @action(detail=False, methods=['get'], url_path='top-risque-attrition')
+    def top_risque_attrition(self, request):
+        limite = int(request.query_params.get('limite', 10))
+        return Response(
+            selectors.top_risque_attrition(
+                request.user.company, limite=limite))
