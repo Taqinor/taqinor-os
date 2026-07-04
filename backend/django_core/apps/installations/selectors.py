@@ -66,6 +66,35 @@ def intervention_scoped(company, pk):
             .first())
 
 
+def intervention_recente_pour_chantier(company, installation_id, *,
+                                       depuis_jours, avant=None,
+                                       exclure_ticket_id=None):
+    """XFSM15 — la plus récente ``Intervention`` TERMINÉE/VALIDÉE du même
+    chantier dans les ``depuis_jours`` derniers jours (avant ``avant``, ou
+    aujourd'hui). Sert à suggérer une récidive à la création d'un ticket SAV
+    sans que ``apps.sav`` importe ``installations.models`` directement.
+
+    ``exclure_ticket_id`` écarte l'intervention déjà liée au ticket en cours
+    d'édition (évite qu'un ticket se suggère lui-même comme son origine).
+    Renvoie ``None`` si aucune intervention récente ne matche."""
+    from django.utils import timezone
+    from .models import Intervention
+
+    if not installation_id or not depuis_jours:
+        return None
+    avant = avant or timezone.localdate()
+    seuil = avant - timezone.timedelta(days=int(depuis_jours))
+    statuts_ok = [Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE]
+    qs = (Intervention.objects
+          .filter(company=company, installation_id=installation_id,
+                  statut__in=statuts_ok, date_realisee__isnull=False,
+                  date_realisee__gte=seuil, date_realisee__lte=avant)
+          .order_by('-date_realisee'))
+    if exclure_ticket_id:
+        qs = qs.exclude(ticket_id=exclure_ticket_id)
+    return qs.first()
+
+
 def reserved_quantity_for_produit(produit):
     """Quantité d'un produit ENGAGÉE par des réservations actives et non
     encore consommées — chantier (N14) + ordre d'assemblage (XMFG2). Lecture

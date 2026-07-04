@@ -569,3 +569,37 @@ def creer_equipement_depuis_vente_pos(*, company, produit, client,
         pass
 
     return equip
+
+
+# ── XFSM15 — Suivi des récidives (callbacks / retour sur panne) ────────────
+
+def suggerer_recidive(*, company, installation_id, exclure_ticket_id=None,
+                      a_la_date=None):
+    """XFSM15 — suggère une récidive à la création d'un ticket : cherche la
+    dernière intervention TERMINÉE/VALIDÉE du MÊME chantier dans la fenêtre
+    paramétrable (`SavSlaSettings.recidive_fenetre_jours`, défaut 30 jours).
+
+    Lit `installations.Intervention` UNIQUEMENT via
+    `installations.selectors.intervention_recente_pour_chantier` (jamais un
+    import direct de `installations.models` — règle de modularité). Renvoie
+    ``(intervention_id, motif)`` ou ``(None, '')`` si rien ne matche."""
+    from .models import SavSlaSettings
+
+    if not installation_id:
+        return None, ''
+    sla = SavSlaSettings.get(company)
+    fenetre = sla.recidive_fenetre_jours
+    if not fenetre:
+        return None, ''
+
+    from apps.installations.selectors import intervention_recente_pour_chantier
+    interv = intervention_recente_pour_chantier(
+        company, installation_id, depuis_jours=fenetre, avant=a_la_date,
+        exclure_ticket_id=exclure_ticket_id)
+    if interv is None:
+        return None, ''
+    type_label = interv.get_type_intervention_display()
+    motif = (
+        f'Intervention #{interv.id} ({type_label}) réalisée le '
+        f'{interv.date_realisee} sur le même chantier (< {fenetre} j).')
+    return interv.id, motif

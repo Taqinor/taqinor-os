@@ -308,7 +308,7 @@ class SavSlaSettingsSerializer(serializers.ModelSerializer):
             'sla_par_priorite', 'sla_breach_enabled',
             'notifications_client_sav', 'sla_jours_ouvres',
             'sla_warning_days', 'escalade_activee', 'affectation_auto_sav',
-            'auto_cloture_jours', 'date_modification',
+            'auto_cloture_jours', 'recidive_fenetre_jours', 'date_modification',
         ]
         read_only_fields = ['date_modification']
 

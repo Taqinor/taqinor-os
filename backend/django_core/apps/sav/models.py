@@ -85,6 +85,10 @@ class SavSlaSettings(models.Model):
     # résolu reste RÉSOLU indéfiniment tant que la société n'active pas ce
     # réglage explicitement.
     auto_cloture_jours = models.PositiveIntegerField(default=0)
+    # XFSM15 — fenêtre (jours) dans laquelle une intervention TERMINÉE/VALIDÉE
+    # sur le MÊME chantier suggère une récidive à la création d'un nouveau
+    # ticket. Paramétrable, défaut 30.
+    recidive_fenetre_jours = models.PositiveIntegerField(default=30)
     date_modification = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -555,6 +559,23 @@ class Ticket(models.Model):
     facture_id_ext = models.IntegerField(
         null=True, blank=True,
         help_text='ID de la Facture ventes générée depuis ce ticket (XFSM1).')
+
+    # ── XFSM15 — Suivi des récidives (callbacks / retour sur panne) ─────────
+    # Un ticket causé par une intervention ratée récente sur le MÊME chantier.
+    # `intervention_origine_id` référence `installations.Intervention` en
+    # LOOSE FK entier (résolu via `installations.selectors`, jamais un import
+    # direct — règle de modularité). False/NULL par défaut = comportement
+    # actuel inchangé.
+    est_recidive = models.BooleanField(default=False)
+    intervention_origine_id = models.IntegerField(
+        null=True, blank=True,
+        help_text="ID de l'installations.Intervention d'origine suspectée "
+                  '(récidive), résolu via installations.selectors.')
+    motif_recidive = models.CharField(max_length=255, blank=True, default='')
+    # Un ticket récidive est non-facturable PAR DÉFAUT (bloque la ligne
+    # correspondante côté XFSM1) — un responsable peut lever l'exclusion
+    # explicitement (override).
+    non_facturable = models.BooleanField(default=False)
 
     class Meta:
         verbose_name = 'Ticket SAV'

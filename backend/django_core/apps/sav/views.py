@@ -564,6 +564,22 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
                 if technicien is not None:
                     inst.technicien_responsable = technicien
                     inst.save(update_fields=['technicien_responsable'])
+        # XFSM15 — suggestion de récidive : une intervention TERMINÉE/VALIDÉE
+        # récente sur le MÊME chantier marque le ticket récidive + non
+        # facturable par défaut (override responsable possible ensuite).
+        if inst.installation_id and not inst.est_recidive:
+            from .services import suggerer_recidive
+            interv_id, motif = suggerer_recidive(
+                company=company, installation_id=inst.installation_id,
+                exclure_ticket_id=inst.id, a_la_date=date_ouverture)
+            if interv_id is not None:
+                inst.est_recidive = True
+                inst.intervention_origine_id = interv_id
+                inst.motif_recidive = motif
+                inst.non_facturable = True
+                inst.save(update_fields=[
+                    'est_recidive', 'intervention_origine_id',
+                    'motif_recidive', 'non_facturable'])
         activity.log_creation(serializer.instance, self.request.user)
 
     # XSAV11 — statuts « clos » depuis lesquels revenir à un statut ouvert
@@ -909,6 +925,20 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         client-facing — règle #4 CLAUDE.md)."""
         ticket = self.get_object()
         from apps.ventes.services import generer_facture_ticket_sav
+
+        # XFSM15 — un ticket récidive est non-facturable PAR DÉFAUT ; un
+        # responsable/admin peut lever l'exclusion via `override=true`.
+        override = str(request.data.get('override') or '') in (
+            '1', 'true', 'True', 'on')
+        if ticket.non_facturable and not override:
+            is_responsable = (
+                getattr(request.user, 'is_admin_role', False)
+                or getattr(request.user, 'is_responsable', False))
+            if not is_responsable:
+                return Response({
+                    'detail': ('Ticket récidive marqué non-facturable — '
+                               'override responsable requis.'),
+                }, status=403)
 
         sous_garantie = ticket.sous_garantie_calcule == Ticket.SousGarantie.OUI
         pieces = list(ticket.pieces.select_related('produit'))
