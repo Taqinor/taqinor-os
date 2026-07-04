@@ -10,6 +10,16 @@ import Article33Ribbon from '../components/Article33Ribbon.astro';
 import Breadcrumb from '../components/Breadcrumb.astro';
 import CtaBand from '../components/CtaBand.astro';
 import StickyCta from '../components/StickyCta.astro';
+import { REALISATIONS } from '../lib/realisations';
+import { PANEL_PERFORMANCE_WARRANTY_YEARS } from '../lib/warranty';
+
+// WB4 (2026-07-04) — le total kWc et la durée de garantie sont DÉRIVÉS
+// (realisations.ts / warranty.ts) au lieu de littéraux recopiés à la main,
+// comme index.astro/impact-taqinor.astro le font déjà — un futur chantier ne
+// peut plus faire diverger silencieusement cette page de confiance.
+const totalKwc = REALISATIONS.reduce((sum, r) => sum + r.kwcNum, 0);
+const totalKwcLabel = totalKwc.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const panelWarrantyLabel = `${PANEL_PERFORMANCE_WARRANTY_YEARS} ans`;
 
 const piliers = [
   {
@@ -23,7 +33,7 @@ const piliers = [
   {
     k: '02',
     title: 'Nos chiffres de production sortent du compteur',
-    body: 'Chaque installation est reliée à Deye Cloud : production en temps réel, alertes automatiques, accès client inclus. Quand nous citons une production, c’est un relevé, pas une projection de brochure.',
+    body: 'Chaque installation est reliée à Deye Cloud : production en temps réel, alertes automatiques, accès client inclus. Quand nous citons une production, c’est un chiffre suivi sur nos chantiers — jamais une projection de brochure ; tant qu’un relevé distinct par site n’est pas encore publié, nous le disons « estimé ».',
     contrast: 'Beaucoup d’installateurs chiffrent l’économie annoncée sur une simulation théorique jamais recroisée avec un compteur réel — la nôtre l’est, en continu.',
     href: '/realisations',
     link: 'Voir nos réalisations',
@@ -125,11 +135,11 @@ const piliers = [
         </div>
         <dl class="grid grid-cols-2 gap-x-6 gap-y-10 border-l-2 border-brass-400/60 pl-6 sm:pl-10" data-stagger>
           <div class="v2-rise" style="--v2-i:0">
-            <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl" data-tally>43,48 kWc</dd>
+            <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl" data-tally>{totalKwcLabel} kWc</dd>
             <dt class="tech-label mt-2 text-lune-faint">Installés — Casablanca, El Jadida, Nouaceur</dt>
           </div>
           <div class="v2-rise" style="--v2-i:1">
-            <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl" data-tally>30 ans</dd>
+            <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl" data-tally>{panelWarrantyLabel}</dd>
             <dt class="tech-label mt-2 text-lune-faint">Garantie de performance</dt>
           </div>
           <div class="v2-rise" style="--v2-i:2">

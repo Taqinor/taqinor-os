@@ -46,8 +46,30 @@ import { formatMAD } from '../lib/format';
 import { WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink } from '../lib/whatsapp';
 import { serviceFaqItems } from '../lib/serviceFaq';
+import { PANEL_PERFORMANCE_WARRANTY_YEARS } from '../lib/warranty';
+import { realisationByRef } from '../lib/realisations';
 
 const waDirect = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude pour une installation solaire.');
+
+// WB4 (2026-07-04) — figcaptions kWc/production dérivées de realisations.ts
+// (source unique) au lieu de littéraux recopiés à la main — un futur chantier
+// modifié dans realisations.ts ne peut plus faire diverger silencieusement
+// cette page.
+const figRef134 = realisationByRef('134');
+const figRef236 = realisationByRef('236');
+
+// WB4 (2026-07-04) — la durée de garantie panneaux est dérivée de warranty.ts
+// (source unique) plutôt qu'un littéral « 30 ans » recopié à la main.
+const panelWarrantyLabel = `${PANEL_PERFORMANCE_WARRANTY_YEARS} ans`;
+const PAYBACK_LOW_YEARS = 4;
+const PAYBACK_HIGH_YEARS = 6;
+const remainingLowYears = PANEL_PERFORMANCE_WARRANTY_YEARS - PAYBACK_HIGH_YEARS;
+const remainingHighYears = PANEL_PERFORMANCE_WARRANTY_YEARS - PAYBACK_LOW_YEARS;
+const YEARS_WORDS_FR: Record<number, string> = {
+  24: 'vingt-quatre', 25: 'vingt-cinq', 26: 'vingt-six', 27: 'vingt-sept', 28: 'vingt-huit',
+};
+const remainingYearsLabel =
+  `${YEARS_WORDS_FR[remainingLowYears] ?? remainingLowYears} à ${YEARS_WORDS_FR[remainingHighYears] ?? remainingHighYears}`;
 
 // W263 — FAQ partagée + garanties par composant, localisées FR (repli par défaut).
 const faqItems = serviceFaqItems('residentiel', 'fr');
@@ -191,20 +213,20 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
         <div class="v2-rise">
           {/* W274 — Chapitre 02, même dispositif que ci-dessus. */}
           <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">02</span>L'horizon d'investissement</p>
-          <h2 class="display v2-section-title mt-5 text-white">Ce que les 30 ans donnent, année par année</h2>
+          <h2 class="display v2-section-title mt-5 text-white">Ce que les {PANEL_PERFORMANCE_WARRANTY_YEARS} ans donnent, année par année</h2>
           <p class="v2-lead mt-5 text-lune-soft">
-            Le constructeur garantit la performance des panneaux sur 30 ans (garantie linéaire). Prenez une villa à
+            Le constructeur garantit la performance des panneaux sur {PANEL_PERFORMANCE_WARRANTY_YEARS} ans (garantie linéaire). Prenez une villa à
             2 000 MAD de facture mensuelle : 6 kWc se chiffrent autour de 60 000 à 75 000 MAD et
             effacent chaque année quelque 12 000 à 16 000 MAD d'électricité (au barème régie ONEE),
             pour la part autoconsommée — aucun tarif de rachat résidentiel (BT) n'étant encore publié,
             le surplus injecté ne vaut rien tant que ce barème n'existe pas.
-            Quatre à six ans pour rembourser ; ensuite, sur les vingt-quatre à vingt-six années qui
+            Quatre à six ans pour rembourser ; ensuite, sur les {remainingYearsLabel} années qui
             restent, le kilowattheure ne coûte presque plus rien — il n'y a qu'un onduleur à
             remplacer une fois sur la durée.
           </p>
           <dl class="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-3 border-l-2 border-brass-400/60 pl-6" data-stagger>
             <div class="v2-rise" style="--v2-i:0">
-              <dd class="fig lum whitespace-nowrap text-2xl sm:text-4xl" data-tally>30 ans</dd>
+              <dd class="fig lum whitespace-nowrap text-2xl sm:text-4xl" data-tally>{panelWarrantyLabel}</dd>
               <dt class="tech-label mt-1.5 text-lune-faint">Garantie panneaux</dt>
             </div>
             <div class="v2-rise" style="--v2-i:1">
@@ -223,8 +245,8 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
               widths={[1600, 1024, 640]} ratio={4 / 3} sizes="(min-width: 1024px) 40vw, 100vw"
               class="v3-grade w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
             <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
-              <span class="tech-label block text-brass-300">Casablanca · 5,68 kWc · 7 135 kWh/an</span>
-              <span class="mt-0.5 block text-xs text-lune">Pose en cours · 8 × Canadian Solar 710 Wc · mars 2026</span>
+              <span class="tech-label block text-brass-300">{figRef134?.ville} · {figRef134?.kwc} · {figRef134?.production}</span>
+              <span class="mt-0.5 block text-xs text-lune">Pose en cours · {figRef134?.panneaux} · {figRef134?.date}</span>
             </figcaption>
           </figure>
           <figure class="v2-rise cine-card group relative overflow-hidden">
@@ -232,8 +254,10 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
               widths={[1600, 1024, 640]} ratio={3 / 2} sizes="(min-width: 1024px) 40vw, 100vw"
               class="v3-grade w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
             <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
-              <span class="tech-label block text-brass-300">El Jadida · 5,68 kWc · 7 135 kWh/an</span>
-              <span class="mt-0.5 block text-xs text-lune">8 × Canadian Solar 710 Wc · Deye 5 kW · production estimée (rendement mesuré)</span>
+              <span class="tech-label block text-brass-300">{figRef236?.ville} · {figRef236?.kwc} · {figRef236?.production}</span>
+              <span class="mt-0.5 block text-xs text-lune">
+                {figRef236?.panneaux} · {figRef236?.onduleur} · {figRef236?.productionEstimated ? 'production estimée (rendement mesuré)' : 'production mesurée'}
+              </span>
             </figcaption>
           </figure>
         </div>

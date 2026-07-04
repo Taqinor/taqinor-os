@@ -13,10 +13,17 @@ import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
+import { REALISATIONS } from '../../lib/realisations';
+import { PANEL_PERFORMANCE_WARRANTY_YEARS } from '../../lib/warranty';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
 const devisHref = L('/devis/mon-toit');
+
+// القاعدة ب4 (2026-07-04) — مُشتقّة بدل أرقام مكتوبة يدوياً، كما في FR.
+const totalKwc = REALISATIONS.reduce((sum, r) => sum + r.kwcNum, 0);
+const totalKwcLabel = totalKwc.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const panelWarrantyLabel = `${PANEL_PERFORMANCE_WARRANTY_YEARS} سنة`;
 
 const piliers = [
   {
@@ -30,7 +37,7 @@ const piliers = [
   {
     k: '02',
     title: 'أرقام مقروءة من العدّاد، لا من مطوية',
-    body: 'كل تركيبة موصولة بـ Deye Cloud: إنتاج في الزمن الحقيقي، تنبيهات تلقائية، ولوج للزبون مُضمَّن. حين نذكر رقم إنتاج، فهو من عدّاد حقيقي — لا من إسقاط مطوية.',
+    body: 'كل تركيبة موصولة بـ Deye Cloud: إنتاج في الزمن الحقيقي، تنبيهات تلقائية، ولوج للزبون مُضمَّن. حين نذكر رقم إنتاج، فهو مُتابَع على أوراشنا — لا إسقاط مطوية أبداً؛ وما دامت قراءة مستقلة لكل موقع غير منشورة، نسمّيه «مُقدَّر».',
     contrast: 'كثير من المركّبين يُقدّرون التوفير الموعود انطلاقاً من محاكاة نظرية لا تُقارَن أبداً بعدّاد حقيقي — أرقامنا تُقارَن به باستمرار.',
     href: '/realisations',
     link: 'انظر إنجازاتنا',
@@ -129,11 +136,11 @@ const piliers = [
         </div>
         <dl class="grid grid-cols-2 gap-x-6 gap-y-10 border-s-2 border-brass-400/60 ps-6 sm:ps-10" data-stagger>
           <div class="v2-rise" style="--v2-i:0">
-            <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl" dir="ltr" data-tally>43,48 kWc</dd>
+            <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl" dir="ltr" data-tally>{totalKwcLabel} kWc</dd>
             <dt class="tech-label mt-2 text-lune-faint">مركَّبة — الدار البيضاء، الجديدة، النواصر</dt>
           </div>
           <div class="v2-rise" style="--v2-i:1">
-            <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl" dir="ltr" data-tally>30 سنة</dd>
+            <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl" dir="ltr" data-tally>{panelWarrantyLabel}</dd>
             <dt class="tech-label mt-2 text-lune-faint">ضمان الأداء</dt>
           </div>
           <div class="v2-rise" style="--v2-i:2">

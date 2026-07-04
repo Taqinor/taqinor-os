@@ -43,11 +43,32 @@ import { whatsappLink } from '../../lib/whatsapp';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
 import { serviceFaqItems } from '../../lib/serviceFaq';
+import { PANEL_PERFORMANCE_WARRANTY_YEARS } from '../../lib/warranty';
+import { realisationByRef } from '../../lib/realisations';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
 
 const waDirect = whatsappLink(WHATSAPP_LEADS, 'مرحباً، أرغب في دراسة لتركيبة شمسية.');
+
+// WB4 (2026-07-04) — مدة ضمان الألواح مُشتقّة من warranty.ts (المصدر الوحيد)
+// بدل رقم «30» مكتوب يدوياً.
+const panelWarrantyLabel = `${PANEL_PERFORMANCE_WARRANTY_YEARS} سنة`;
+const PAYBACK_LOW_YEARS = 4;
+const PAYBACK_HIGH_YEARS = 6;
+const remainingLowYears = PANEL_PERFORMANCE_WARRANTY_YEARS - PAYBACK_HIGH_YEARS;
+const remainingHighYears = PANEL_PERFORMANCE_WARRANTY_YEARS - PAYBACK_LOW_YEARS;
+const YEARS_WORDS_AR: Record<number, string> = {
+  24: 'الأربع والعشرين', 25: 'الخمس والعشرين', 26: 'الست والعشرين', 27: 'السبع والعشرين', 28: 'الثماني والعشرين',
+};
+const remainingYearsLabel =
+  `${YEARS_WORDS_AR[remainingLowYears] ?? remainingLowYears} إلى ${YEARS_WORDS_AR[remainingHighYears] ?? remainingHighYears}`;
+
+// WB4 (2026-07-04) — figcaptions kWc/production مُشتقّة من realisations.ts
+// (المصدر الوحيد) بدل أرقام مكتوبة يدوياً.
+const figRef134 = realisationByRef('134');
+const figRef236 = realisationByRef('236');
+const CITY_AR_MAP: Record<string, string> = { Casablanca: 'الدار البيضاء', 'El Jadida': 'الجديدة' };
 
 // W263 — بنك أسئلة شائعة مشترك + ضمان حسب المكوّن، بالعربية.
 const faqItems = serviceFaqItems('residentiel', 'ar');
@@ -184,18 +205,20 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
         <div class="v2-rise">
           {/* W274 — الفصل 02 */}
           <p class="tech-label v2-kicker rule-brass text-lune"><span class="ms-2 font-display text-xs text-azur-200/80" aria-hidden="true">02</span>أفق الاستثمار</p>
-          <h2 class="display v2-section-title mt-5 text-white">ما تعطيه الـ30 سنة، عاماً بعد عام</h2>
+          <h2 class="display v2-section-title mt-5 text-white">ما تعطيه الـ{PANEL_PERFORMANCE_WARRANTY_YEARS} سنة، عاماً بعد عام</h2>
           <p class="v2-lead mt-5 text-lune-soft">
-            يضمن الصانع أداء الألواح على مدى 30 سنة (ضمان خطي). خذ فيلا بفاتورة
+            يضمن الصانع أداء الألواح على مدى {PANEL_PERFORMANCE_WARRANTY_YEARS} سنة (ضمان خطي). خذ فيلا بفاتورة
             شهرية قدرها 2 000 MAD: 6 kWc تُقدَّر بنحو 60 000 إلى 75 000 MAD
-            وتمحو كل سنة نحو 12 000 إلى 16 000 MAD من الكهرباء (بتعريفة المكتب ONEE).
-            من أربع إلى ست سنوات لتسديدها؛ ثم، على مدى الأربع والعشرين إلى الست والعشرين سنة
+            وتمحو كل سنة نحو 12 000 إلى 16 000 MAD من الكهرباء (بتعريفة المكتب ONEE)، للجزء
+            المُستهلَك ذاتياً — إذ لا توجد بعد تعريفة إعادة شراء منزلية (BT) منشورة، فالفائض
+            المُصدَّر لا يساوي شيئاً ما دامت هذه التعريفة غير موجودة.
+            من أربع إلى ست سنوات لتسديدها؛ ثم، على مدى {remainingYearsLabel} سنة
             المتبقية، لا يكلّف الكيلوواط-ساعة شيئاً تقريباً — ليس هناك سوى عاكس واحد
             يُستبدَل مرة واحدة على طول المدة.
           </p>
           <dl class="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-3 border-s-2 border-brass-400/60 ps-6" data-stagger>
             <div class="v2-rise" style="--v2-i:0">
-              <dd class="fig lum whitespace-nowrap text-2xl sm:text-4xl" data-tally>30 سنة</dd>
+              <dd class="fig lum whitespace-nowrap text-2xl sm:text-4xl" data-tally>{panelWarrantyLabel}</dd>
               <dt class="tech-label mt-1.5 text-lune-faint">ضمان الألواح</dt>
             </div>
             <div class="v2-rise" style="--v2-i:1">
@@ -214,8 +237,8 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
               widths={[1600, 1024, 640]} ratio={4 / 3} sizes="(min-width: 1024px) 40vw, 100vw"
               class="v3-grade w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
             <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
-              <span class="tech-label block text-brass-300">الدار البيضاء · 5,68 kWc · 7 135 kWh/an</span>
-              <span class="mt-0.5 block text-xs text-lune">تركيب جارٍ · 8 × Canadian Solar 710 Wc · مارس 2026</span>
+              <span class="tech-label block text-brass-300">{CITY_AR_MAP[figRef134?.ville ?? ''] ?? figRef134?.ville} · {figRef134?.kwc} · {figRef134?.production}</span>
+              <span class="mt-0.5 block text-xs text-lune">تركيب جارٍ · {figRef134?.panneaux} · {figRef134?.date}</span>
             </figcaption>
           </figure>
           <figure class="v2-rise cine-card group relative overflow-hidden">
@@ -223,8 +246,10 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
               widths={[1600, 1024, 640]} ratio={3 / 2} sizes="(min-width: 1024px) 40vw, 100vw"
               class="v3-grade w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
             <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
-              <span class="tech-label block text-brass-300">الجديدة · 5,68 kWc · 7 135 kWh/an</span>
-              <span class="mt-0.5 block text-xs text-lune">8 × Canadian Solar 710 Wc · Deye 5 kW · إنتاج مُقدَّر (عائد مقاس)</span>
+              <span class="tech-label block text-brass-300">{CITY_AR_MAP[figRef236?.ville ?? ''] ?? figRef236?.ville} · {figRef236?.kwc} · {figRef236?.production}</span>
+              <span class="mt-0.5 block text-xs text-lune">
+                {figRef236?.panneaux} · {figRef236?.onduleur} · {figRef236?.productionEstimated ? 'إنتاج مُقدَّر (عائد مقاس)' : 'إنتاج مقيس'}
+              </span>
             </figcaption>
           </figure>
         </div>
