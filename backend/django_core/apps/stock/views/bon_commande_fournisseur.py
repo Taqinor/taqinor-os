@@ -483,7 +483,10 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
             )
 
         from django.utils import timezone
-        from ..services import record_purchase_price
+        from ..services import (
+            record_purchase_price, credit_emplacement_destination,
+            affecter_livraison_directe_chantier,
+        )
         today = timezone.now().date()
         with transaction.atomic():
             for ligne, qte in plan:
@@ -521,6 +524,16 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
                     company=bc.company, produit=produit,
                     fournisseur=bc.fournisseur,
                     prix_achat=ligne.prix_achat_unitaire, date=today)
+                # XPUR23 — destination de réception : dépôt cible OU
+                # chantier de livraison directe (l'un ou l'autre, jamais les
+                # deux en usage normal ; défaut = dépôt principal inchangé).
+                if bc.chantier_livraison_id:
+                    affecter_livraison_directe_chantier(
+                        bc.company, request.user, bc, produit, qte,
+                        bc.reference)
+                elif bc.emplacement_destination_id:
+                    credit_emplacement_destination(
+                        bc.company, produit, bc.emplacement_destination, qte)
             bc.refresh_from_db()
             if bc.est_entierement_recu:
                 bc.statut = BonCommandeFournisseur.Statut.RECU

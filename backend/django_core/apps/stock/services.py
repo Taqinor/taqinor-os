@@ -353,6 +353,61 @@ def record_purchase_price(*, company, produit, fournisseur, prix_achat, date):
     return obj
 
 
+# ── XPUR23 — Destination de réception (dépôt cible ou chantier direct) ──────
+# Le put-away FG320 suggère un casier, mais l'entrée elle-même ne portait pas
+# de dépôt cible ni de chantier de livraison directe : la marchandise entrait
+# toujours au dépôt principal implicite. Ces fonctions sont appelées APRÈS le
+# MouvementStock ENTREE (jamais un mécanisme parallèle) pour ventiler/tracer
+# la destination. Comportement historique inchangé quand aucune destination
+# n'est renseignée sur le BCF (défaut = dépôt principal, comme aujourd'hui).
+
+def credit_emplacement_destination(company, produit, emplacement, quantite):
+    """XPUR23 — crédite `quantite` sur l'emplacement destination (non
+    principal). Le dépôt PRINCIPAL ne stocke jamais de ligne explicite (sa
+    quantité reste dérivée : total − somme des non-principaux) — appeler
+    cette fonction pour lui est un no-op volontaire (comportement historique
+    déjà correct sans rien faire)."""
+    from .models import StockEmplacement
+    if emplacement is None or emplacement.is_principal or quantite <= 0:
+        return
+    se, _created = StockEmplacement.objects.get_or_create(
+        company=company, produit=produit, emplacement=emplacement,
+        defaults={'quantite': 0})
+    se.quantite = (se.quantite or 0) + quantite
+    se.save(update_fields=['quantite'])
+
+
+def affecter_livraison_directe_chantier(
+        company, user, bc, produit, quantite, reference):
+    """XPUR23 — livraison DIRECTE chantier : la marchandise reçue N'ENTRE
+    JAMAIS en stock libre. On la sort aussitôt (SORTIE tracée, référence du
+    BCF + chantier) via l'accesseur unique `record_stock_movement` — jamais
+    un mécanisme parallèle. Best-effort : une erreur ne casse jamais la
+    réception elle-même (le stock reste alors en dépôt principal, visible et
+    corrigeable manuellement)."""
+    if quantite <= 0:
+        return
+    try:
+        chantier = bc.chantier_livraison
+        record_stock_movement(
+            company=company, produit=produit,
+            type_mouvement=mouvement_type_sortie(),
+            quantite=quantite,
+            quantite_avant=produit.quantite_stock,
+            quantite_apres=produit.quantite_stock - quantite,
+            reference=reference,
+            note=(f'Livraison directe chantier {chantier.reference} '
+                  f'(BCF {bc.reference})'
+                  if chantier is not None else
+                  f'Livraison directe chantier (BCF {bc.reference})'),
+            created_by=user,
+        )
+        produit.refresh_from_db()
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.info(
+            'XPUR23: affectation chantier non tracée pour BCF %s', bc.pk)
+
+
 # ── N18 — Valorisation du stock par emplacement (coût moyen d'achat) ──────────
 # Coût moyen pondéré issu de l'historique d'achat (réceptions de BCF) ; à défaut
 # le prix d'achat catalogue. Valorisation = quantité par emplacement × coût
@@ -645,6 +700,12 @@ def confirm_reception_fournisseur(reception, user):
             qte = min(qte, ligne_cmd.quantite_restante)
             if qte <= 0:
                 continue
+            # XPUR16 — ligne libre/service (sans_stock ou produit=null) :
+            # aucun MouvementStock, la quantité reçue est simplement actée.
+            if ligne_cmd.sans_stock or ligne.produit_id is None:
+                ligne_cmd.quantite_recue += qte
+                ligne_cmd.save(update_fields=['quantite_recue'])
+                continue
             produit = ligne.produit
             produit.refresh_from_db()
             qte_avant = produit.quantite_stock
@@ -667,6 +728,16 @@ def confirm_reception_fournisseur(reception, user):
                     company=reception.company, produit=produit,
                     fournisseur=bc.fournisseur,
                     prix_achat=ligne_cmd.prix_achat_unitaire, date=today)
+            # XPUR23 — destination de réception : dépôt cible OU chantier de
+            # livraison directe (défaut = dépôt principal, inchangé).
+            if bc is not None and bc.chantier_livraison_id:
+                affecter_livraison_directe_chantier(
+                    reception.company, user, bc, produit, qte,
+                    reception.reference)
+            elif bc is not None and bc.emplacement_destination_id:
+                credit_emplacement_destination(
+                    reception.company, produit, bc.emplacement_destination,
+                    qte)
         reception.statut = ReceptionFournisseur.Statut.CONFIRME
         reception.recu_par = reception.recu_par or user
         reception.save(update_fields=['statut', 'recu_par'])

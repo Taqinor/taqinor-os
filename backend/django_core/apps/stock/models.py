@@ -928,6 +928,28 @@ class BonCommandeFournisseur(models.Model):
     # directe des lignes/montants/dates refusée après ENVOYE) ; imprimé sur
     # le PDF (« Rév. N » à partir de 1).
     revision = models.PositiveIntegerField(default=0)
+    # ── XPUR23 — destination de réception ───────────────────────────────────
+    # Dépôt/emplacement CIBLE (nullable = comportement historique : crédite
+    # le dépôt principal, dérivé implicitement) OU chantier de livraison
+    # DIRECTE (string-FK installations.Installation, nullable — distinct du
+    # `chantier_origine` de YPROC10, qui trace la demande d'ORIGINE plutôt
+    # que la LIVRAISON). Au plus l'un des deux est renseigné en usage normal
+    # (non contraint en base : un champ vide reste inoffensif).
+    emplacement_destination = models.ForeignKey(
+        'EmplacementStock', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='bons_commande_destination',
+        help_text='Emplacement crédité à la réception (vide = dépôt '
+                  'principal, comportement historique).')
+    # String-FK cross-app (jamais d'import de apps.installations.models) —
+    # même convention que installations.ContratPrixFournisseur.fournisseur.
+    chantier_livraison = models.ForeignKey(
+        'installations.Installation', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='bons_commande_livraison_directe',
+        help_text='Chantier de LIVRAISON DIRECTE (distinct de '
+                  "chantier_origine/YPROC10, qui trace la demande "
+                  "d'origine) : la réception est suivie d'une affectation "
+                  "chantier tracée (n'entre jamais en stock libre). "
+                  'Vide = comportement historique.')
     note = models.TextField(blank=True, null=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,

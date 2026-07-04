@@ -517,7 +517,11 @@ class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
             'statut_display', 'date_commande', 'note', 'devise',
             'taux_change', 'date_livraison_prevue',
             'date_confirmee_fournisseur', 'numero_confirmation_fournisseur',
-            'revision', 'created_by',
+            'revision',
+            # XPUR23 — destination de réception (dépôt cible OU chantier
+            # de livraison directe ; défaut = dépôt principal, inchangé).
+            'emplacement_destination', 'chantier_livraison',
+            'created_by',
             'created_by_username', 'date_creation', 'date_mise_a_jour',
             'lignes', 'total_achat', 'est_entierement_recu', 'acomptes',
         ]
@@ -546,6 +550,26 @@ class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
         if company is not None and value.company_id != company.id:
             raise serializers.ValidationError(
                 'Fournisseur hors de votre entreprise.')
+        return value
+
+    def validate_emplacement_destination(self, value):
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if value is not None and company is not None \
+                and value.company_id != company.id:
+            raise serializers.ValidationError(
+                'Emplacement hors de votre entreprise.')
+        return value
+
+    def validate_chantier_livraison(self, value):
+        # XPUR23 — string-FK cross-app : on lit `company_id` (présent sur
+        # tout modèle installations.Installation) sans importer son modèle.
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if value is not None and company is not None \
+                and getattr(value, 'company_id', None) != company.id:
+            raise serializers.ValidationError(
+                'Chantier hors de votre entreprise.')
         return value
 
     def _validate_company_produits(self, lignes_data):
