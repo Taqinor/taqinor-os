@@ -216,3 +216,17 @@ def log_facture_abandon(facture, user, montant, motif_label, auto=False):
         body=(f"Solde résiduel de {montant} MAD abandonné {origine} "
               f"— motif : {motif_label}."),
     )
+
+
+def log_facture_activity_contentieux(facture, user, qui, date_str):
+    """XFAC21 — chatter de la facture : passage au contentieux (recouvrement
+    externe). Gèle les relances ordinaires (``exclu_relances``)."""
+    from .models import FactureActivity
+    return FactureActivity.objects.create(
+        company=facture.company, facture=facture, user=user,
+        kind=FactureActivity.Kind.MODIFICATION,
+        field='contentieux', field_label='Passage au contentieux',
+        new_value=date_str,
+        body=f'Passé au contentieux (recouvrement externe) le {date_str} '
+             f'par {qui}.',
+    )

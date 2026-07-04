@@ -10,7 +10,9 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 
 from apps.crm.selectors import client_base_qs
-from authentication.permissions import IsAdminRole, IsAnyRole
+from authentication.permissions import (
+    IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
+)
 
 from .models import Facture, FollowupLevel, PromessePaiement
 from .serializers import FollowupLevelSerializer, PromessePaiementSerializer
@@ -311,6 +313,51 @@ def client_score_comportement(request, client_id):
                         status=status.HTTP_404_NOT_FOUND)
     from .selectors import comportement_paiement
     return Response(comportement_paiement(client))
+
+
+@api_view(['POST'])
+@permission_classes([IsResponsableOrAdmin])
+def dossier_contentieux(request, client_id):
+    """XFAC21 — dossier contentieux / passage en recouvrement externe.
+
+    Sélectionne les factures en souffrance du client (id fournis dans
+    ``factures`` ; par défaut, TOUTES les factures ouvertes/dues du client),
+    génère le pack PDF complet, ouvre une réclamation ``litiges`` de type
+    recouvrement, et gèle les relances ordinaires sur ces factures. Une
+    facture déjà payée/annulée est refusée (rien à recouvrer)."""
+    client = _scope(client_base_qs(), request.user).filter(
+        pk=client_id).first()
+    if client is None:
+        return Response({'detail': 'Client introuvable.'},
+                        status=status.HTTP_404_NOT_FOUND)
+
+    facture_ids = request.data.get('factures')
+    qs = _scope(Facture.objects.filter(client=client), request.user)
+    if facture_ids:
+        qs = qs.filter(pk__in=facture_ids)
+    else:
+        qs = qs.exclude(statut__in=[
+            Facture.Statut.PAYEE, Facture.Statut.ANNULEE,
+            Facture.Statut.BROUILLON,
+        ])
+    factures = [f for f in qs.select_related('client') if f.montant_du > 0]
+    if not factures:
+        return Response(
+            {'detail': 'Aucune facture en souffrance pour ce client.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    from .services import ouvrir_dossier_contentieux
+    dossier_data, reclamation = ouvrir_dossier_contentieux(
+        factures=factures, user=request.user)
+
+    from .utils.pdf import generate_dossier_contentieux_pdf
+    pdf_bytes = generate_dossier_contentieux_pdf(client, dossier_data)
+    resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+    resp['Content-Disposition'] = (
+        f'inline; filename="Contentieux_{client.nom}.pdf"')
+    resp['X-Reclamation-Id'] = str(reclamation.id)
+    return resp
 
 
 @api_view(['GET'])

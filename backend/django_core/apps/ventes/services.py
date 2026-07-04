@@ -1446,6 +1446,125 @@ def anomalies_emission_facture(facture):
     return anomalies
 
 
+def _s2(x):
+    from decimal import Decimal
+    return str(Decimal(x or 0).quantize(Decimal('0.01')))
+
+
+def dossier_contentieux_data(factures):
+    """XFAC21 — assemble les données du pack contentieux pour un jeu de
+    factures en souffrance (toutes du MÊME client — vérifié par l'appelant).
+
+    Renvoie un dict prêt pour le template ``dossier_contentieux.html`` :
+    factures concernées, total réclamé, historique des relances (RelanceLog) +
+    emails (EmailLog), promesses de paiement ROMPUES (PromessePaiement).
+    Lecture seule."""
+    from django.utils import timezone
+    from .models import PromessePaiement
+
+    factures = list(factures)
+    client = factures[0].client if factures else None
+
+    lignes_factures = []
+    total_du = 0
+    relances = []
+    emails = []
+    promesses_rompues = []
+
+    for f in factures:
+        total_du += f.montant_du
+        lignes_factures.append({
+            'reference': f.reference,
+            'date_echeance': (
+                f.date_echeance.isoformat() if f.date_echeance else ''),
+            'jours_retard': f.jours_retard,
+            'total_ttc': _s2(f.total_ttc),
+            'du': _s2(f.montant_du),
+        })
+        for r in f.relances.all().order_by('-date', '-id'):
+            relances.append({
+                'date': r.date.isoformat() if r.date else '',
+                'facture_reference': f.reference,
+                'niveau_nom': r.niveau_nom or '',
+                'note': r.note or '',
+            })
+        for e in f.email_logs.all().order_by('-created_at'):
+            emails.append({
+                'date': e.created_at.isoformat() if e.created_at else '',
+                'direction': e.get_direction_display(),
+                'sujet': e.sujet or '',
+            })
+        for p in f.promesses_paiement.filter(
+                statut=PromessePaiement.Statut.ROMPUE):
+            promesses_rompues.append({
+                'facture_reference': f.reference,
+                'date_promise': p.date_promise.isoformat(),
+                'montant_promis': _s2(p.montant_promis),
+            })
+
+    return {
+        'client': {
+            'nom': f'{client.nom} {client.prenom or ""}'.strip() if client else '',
+            'email': getattr(client, 'email', '') or '',
+            'telephone': getattr(client, 'telephone', '') or '',
+            'adresse': getattr(client, 'adresse', '') or '',
+        },
+        'factures': lignes_factures,
+        'total_du': _s2(total_du),
+        'relances': relances,
+        'emails': emails,
+        'promesses_rompues': promesses_rompues,
+        'date_creation': timezone.now().date().isoformat(),
+    }
+
+
+def ouvrir_dossier_contentieux(*, factures, user=None):
+    """XFAC21 — passage en recouvrement externe pour un jeu de factures.
+
+    (a) assemble les données du pack (voir ``dossier_contentieux_data``) ;
+    (b) ouvre une ``litiges.Reclamation`` de type recouvrement via
+        ``apps.litiges.services.creer_dossier_recouvrement`` (jamais un import
+        de son modèle) ;
+    (c) marque les factures ``exclu_relances`` (comms ordinaires gelées) avec
+        trace chatter « passé au contentieux le … ».
+
+    Toutes les factures DOIVENT appartenir au même client + à la même société
+    (vérifié par l'appelant — la vue scope déjà par client). Renvoie
+    ``(dossier_data, reclamation)``."""
+    from django.utils import timezone
+    from .models import Facture
+
+    factures = list(factures)
+    if not factures:
+        raise ValueError('Aucune facture sélectionnée.')
+    client = factures[0].client
+    company = factures[0].company
+
+    dossier = dossier_contentieux_data(factures)
+
+    from apps.litiges.services import creer_dossier_recouvrement
+    references = ', '.join(f.reference for f in factures)
+    reclamation = creer_dossier_recouvrement(
+        company=company, source_type='client', source_id=client.id,
+        objet=f'Recouvrement externe — {client.nom} ({references})',
+        montant_conteste=sum((f.montant_du for f in factures), 0),
+        description=f'Factures concernées : {references}.',
+        user=user,
+    )
+
+    from . import activity
+    qui = getattr(user, 'username', '?') if user else 'automatique'
+    today = timezone.now().date().isoformat()
+    for f in factures:
+        if f.statut == Facture.Statut.ANNULEE:
+            continue
+        f.exclu_relances = True
+        f.save(update_fields=['exclu_relances'])
+        activity.log_facture_activity_contentieux(f, user, qui, today)
+
+    return dossier, reclamation
+
+
 class StockInsuffisantError(Exception):
     """Levée quand une réservation de stock dépasserait le disponible (U9)."""
 

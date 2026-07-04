@@ -37,6 +37,7 @@ from .recouvrement import (
     client_releve_pdf,
     lettre_relance_pdf,
     client_score_comportement,  # XFAC15
+    dossier_contentieux,  # XFAC21
 )
 from .public_views import proposal_data, proposal_accept, proposal_pdf
 from .dashboard_view import dashboard_quote_to_cash
@@ -134,6 +135,9 @@ urlpatterns = [
     # XFAC15 — badge de comportement de paiement (fiche client).
     path('clients/<int:client_id>/score-comportement/',
          client_score_comportement, name='client-score-comportement'),
+    # XFAC21 — dossier contentieux / passage en recouvrement externe.
+    path('clients/<int:client_id>/dossier-contentieux/',
+         dossier_contentieux, name='client-dossier-contentieux'),
     path('factures/<int:facture_id>/lettre-relance-pdf/', lettre_relance_pdf,
          name='lettre-relance-pdf'),
     # Documents premium ADDITIFS (langage visuel du devis) — rendus à la volée.

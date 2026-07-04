@@ -340,6 +340,17 @@ def generate_proforma_pdf(devis, reference):
     return _html_to_pdf(html)
 
 
+def generate_dossier_contentieux_pdf(client, dossier_data):
+    """XFAC21 — pack PDF complet du dossier contentieux (recouvrement externe).
+
+    Rendu à la volée, non stocké (comme le relevé) — layout maison, jamais le
+    moteur devis premium (RULE #4 : ceci ne concerne AUCUN devis)."""
+    context = _company_context(company=client.company)
+    context['dossier'] = dossier_data
+    html = _render_html('dossier_contentieux.html', context)
+    return _html_to_pdf(html)
+
+
 def generate_recu_pdf(paiement):
     """XFAC9 — quittance (reçu de paiement) PDF. Layout maison (PAS le moteur
     devis) : identité société, montant en chiffres ET en lettres, mode,
