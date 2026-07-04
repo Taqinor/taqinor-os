@@ -816,7 +816,9 @@ class DevisViewSet(viewsets.ModelViewSet):
         chatter du devis et avance le funnel CRM (→ SIGNED). C'est le
         déclencheur explicite de la création d'un chantier."""
         from datetime import date as _date
-        from ..services import accept_devis, AcceptError
+        from ..services import (
+            accept_devis, AcceptError, verifier_credit_hold, CreditHoldError,
+        )
         devis = self.get_object()
         nom = (request.data.get('nom') or '').strip()
         date_str = (request.data.get('date') or '').strip()
@@ -826,6 +828,24 @@ class DevisViewSet(viewsets.ModelViewSet):
         except ValueError:
             return Response({'detail': 'Date invalide (attendu AAAA-MM-JJ).'},
                             status=status.HTTP_400_BAD_REQUEST)
+        # XFAC28 — blocage crédit dur (étend FG41). Flag OFF (défaut) → no-op,
+        # comportement FG41 intact (avertissement seul). Flag ON et client en
+        # dépassement → 403, sauf override explicite responsable/admin
+        # (journalisé chatter + audit).
+        if devis.client_id is not None:
+            override = bool(request.data.get('override_credit'))
+            try:
+                verifier_credit_hold(
+                    devis.client, override=override, user=request.user,
+                    chatter_target=devis, contexte='acceptation devis')
+            except CreditHoldError as exc:
+                return Response(
+                    {'detail': (
+                        'Client en blocage crédit : '
+                        f'{exc.motif}. Un responsable/admin peut passer '
+                        'outre avec `override_credit: true`.'),
+                     'credit_hold': True},
+                    status=status.HTTP_403_FORBIDDEN)
         # A1 — option retenue (« Sans batterie » / « Avec batterie »). La
         # résolution (deux options → choix explicite obligatoire ; mono-option
         # → déduit du scénario) et le tampon d'acceptation passent désormais
@@ -1361,8 +1381,24 @@ class DevisViewSet(viewsets.ModelViewSet):
         from ..utils.echeancier import creer_facture_tranche
         from ..services import (
             reserver_stock_devis_facture, StockInsuffisantError,
+            verifier_credit_hold, CreditHoldError,
         )
         company = request.user.company
+        # XFAC28 — blocage crédit dur (étend FG41). Flag OFF (défaut) → no-op.
+        if devis.client_id is not None:
+            override = bool(request.data.get('override_credit'))
+            try:
+                verifier_credit_hold(
+                    devis.client, override=override, user=request.user,
+                    chatter_target=devis, contexte='génération facture')
+            except CreditHoldError as exc:
+                return Response(
+                    {'detail': (
+                        'Client en blocage crédit : '
+                        f'{exc.motif}. Un responsable/admin peut passer '
+                        'outre avec `override_credit: true`.'),
+                     'credit_hold': True},
+                    status=status.HTTP_403_FORBIDDEN)
         try:
             # U9 — la facturation directe par échéancier court-circuite le bon
             # de commande : on réserve/consomme ici le stock matériel du devis,

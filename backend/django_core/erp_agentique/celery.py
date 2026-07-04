@@ -51,6 +51,8 @@ app.conf.enable_utc = False
 #   - XKB32 : sweep de rétention des conversations chat (02:45) —
 #     apps/chat/tasks.py (sans politique active = aucune purge, journalisé
 #     quand même pour traçabilité CNDP).
+#   - XFAC25 : relevé de compte mensuel automatique (opt-in par client),
+#     1er du mois 08:00 — apps/ventes/scheduled.py.
 app.conf.beat_schedule = {
     'ventes-check-overdue-factures': {
         'task': 'ventes.check_overdue_factures',
@@ -157,5 +159,11 @@ app.conf.beat_schedule = {
     'chat-retention-sweep': {
         'task': 'chat.retention_sweep',
         'schedule': crontab(hour=2, minute=45),
+    },
+    # XFAC25 — relevé de compte mensuel automatique (opt-in par client),
+    # 1er du mois 08:00 Africa/Casablanca.
+    'ventes-releve-mensuel-reminders': {
+        'task': 'ventes.releve_mensuel_reminders',
+        'schedule': crontab(hour=8, minute=0, day_of_month=1),
     },
 }

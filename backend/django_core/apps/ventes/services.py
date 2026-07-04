@@ -1339,6 +1339,282 @@ def reset_relance_escalation(facture):
     return changed
 
 
+def abandonner_solde_facture(facture, *, motif, user=None, auto=False,
+                             date_abandon=None):
+    """XFAC13 — abandonne le résiduel dû sur une facture (write-off).
+
+    Passe la facture ``payee``, trace l'abandon (motif + montant + auteur +
+    auto/manuel), délègue l'écriture comptable (6585/créance + reprise de
+    provision FG152 le cas échéant) à ``apps.compta.services`` (jamais
+    d'import direct de ses modèles) et consigne le chatter. Idempotent : ne
+    fait rien si le résiduel est déjà nul. Renvoie le montant abandonné
+    (``Decimal('0')`` si rien à faire)."""
+    from decimal import Decimal
+    from django.utils import timezone
+    from .models import Facture
+    reste = facture.montant_du
+    if reste <= 0:
+        return Decimal('0')
+    from apps.compta import services as compta_services
+    compta_services.abandonner_creance(
+        facture.company, montant=reste, date_abandon=date_abandon,
+        tiers_type='client', tiers_id=facture.client_id,
+        tiers_nom=getattr(facture.client, 'nom', '') or '',
+        libelle=f'Abandon créance facture {facture.reference}',
+        user=user,
+    )
+    facture.abandon_motif = motif
+    facture.abandon_montant = reste
+    facture.abandon_date = timezone.now()
+    facture.abandon_auto = bool(auto)
+    facture.abandon_par = user if (
+        user and getattr(user, 'is_authenticated', False)) else None
+    facture.statut = Facture.Statut.PAYEE
+    facture.save(update_fields=[
+        'abandon_motif', 'abandon_montant', 'abandon_date', 'abandon_auto',
+        'abandon_par', 'statut',
+    ])
+    from . import activity
+    motif_label = dict(Facture.MotifAbandon.choices).get(motif, motif)
+    activity.log_facture_abandon(facture, user, reste, motif_label, auto=auto)
+    reset_relance_escalation(facture)
+    return reste
+
+
+def anomalies_emission_facture(facture):
+    """XFAC18 — anomalies à contrôler avant l'émission d'une facture.
+
+    Liste (jamais bloquante — informative pour le valideur) :
+      * doublon probable (même client + montant TTC à ±1 % sous 15 jours) ;
+      * remise globale au-delà de ``remise_max_pct`` (réglage société) ;
+      * client au-delà du plafond d'encours FG41.
+
+    Renvoie une liste de dicts ``{'code', 'message'}`` (vide si rien à
+    signaler)."""
+    from datetime import timedelta
+    from decimal import Decimal
+    from django.utils import timezone
+    from .models import Facture
+
+    anomalies = []
+
+    # Doublon probable : même client, montant TTC proche, facture récente.
+    montant = facture.total_ttc
+    if montant and facture.client_id:
+        seuil_jours = timezone.now().date() - timedelta(days=15)
+        marge = montant * Decimal('0.01')
+        doublons = Facture.objects.filter(
+            client_id=facture.client_id, company=facture.company,
+            date_emission__gte=seuil_jours,
+        ).exclude(pk=facture.pk).exclude(
+            statut=Facture.Statut.ANNULEE)
+        for autre in doublons:
+            if abs(autre.total_ttc - montant) <= marge:
+                anomalies.append({
+                    'code': 'doublon_probable',
+                    'message': (
+                        f'Doublon probable : facture {autre.reference} '
+                        f'({autre.total_ttc} MAD) du même client, émise le '
+                        f'{autre.date_emission}.'),
+                })
+                break
+
+    # Remise globale au-delà du seuil société.
+    from apps.parametres.models import CompanyProfile
+    profile = CompanyProfile.get(company=facture.company)
+    remise_max = getattr(profile, 'remise_max_pct', None)
+    if remise_max is not None and (facture.remise_globale or 0) > remise_max:
+        anomalies.append({
+            'code': 'remise_excessive',
+            'message': (
+                f'Remise globale ({facture.remise_globale} %) supérieure au '
+                f'seuil société ({remise_max} %).'),
+        })
+
+    # Client au-delà de son plafond d'encours (FG41).
+    if facture.client_id:
+        from apps.crm.selectors import client_credit_warning
+        warning = client_credit_warning(facture.client)
+        if warning['depasse']:
+            anomalies.append({
+                'code': 'plafond_credit_depasse',
+                'message': (
+                    f"Encours client ({warning['encours']} MAD) au-delà du "
+                    f"plafond ({warning['plafond']} MAD)."),
+            })
+
+    return anomalies
+
+
+class CreditHoldError(Exception):
+    """XFAC28 — levée quand un client est en hold crédit dur (sans override).
+
+    Porte le détail chiffré (``motif``) pour un message 403 explicite."""
+
+    def __init__(self, motif):
+        super().__init__(motif)
+        self.motif = motif
+
+
+def verifier_credit_hold(client, *, override=False, user=None,
+                         chatter_target=None, contexte=''):
+    """XFAC28 — vérifie le hold crédit dur (étend FG41) avant une action
+    sensible (accepter un devis, générer une facture).
+
+    Flag OFF (``CompanyProfile.credit_hold_actif``) → no-op, comportement FG41
+    intact (avertissement seul, jamais consulté ici). Flag ON et le client est
+    en dépassement (plafond et/ou retard, voir
+    ``apps.crm.selectors.credit_hold_check``) : lève ``CreditHoldError`` SAUF
+    si ``override=True`` (responsable/admin explicite) — l'override est
+    journalisé (chatter du devis si fourni + audit) mais laisse passer
+    l'action. Ne renvoie rien ; lève ou passe silencieusement."""
+    from apps.parametres.models import CompanyProfile
+    profile = CompanyProfile.get(company=client.company)
+    if not getattr(profile, 'credit_hold_actif', False):
+        return
+
+    from apps.crm.selectors import credit_hold_check
+    seuil = getattr(profile, 'credit_hold_retard_jours', 0) or 0
+    result = credit_hold_check(client, retard_jours_seuil=seuil)
+    if not result['bloque']:
+        return
+
+    if not override:
+        raise CreditHoldError(result['motif'])
+
+    # Override responsable/admin : journalise (chatter + audit société).
+    from apps.parametres.models_audit import SettingsAuditLog
+    qui = getattr(user, 'username', '?') if user else '?'
+    SettingsAuditLog.log_change(
+        company=client.company, user=user, section='credit_hold',
+        field='override', field_label='Blocage crédit — override',
+        old='bloque', new=f'débloqué par {qui} ({contexte})',
+    )
+    if chatter_target is not None:
+        from . import activity
+        activity.log_devis_credit_hold_override(
+            chatter_target, user, result['motif'])
+
+
+def _s2(x):
+    from decimal import Decimal
+    return str(Decimal(x or 0).quantize(Decimal('0.01')))
+
+
+def dossier_contentieux_data(factures):
+    """XFAC21 — assemble les données du pack contentieux pour un jeu de
+    factures en souffrance (toutes du MÊME client — vérifié par l'appelant).
+
+    Renvoie un dict prêt pour le template ``dossier_contentieux.html`` :
+    factures concernées, total réclamé, historique des relances (RelanceLog) +
+    emails (EmailLog), promesses de paiement ROMPUES (PromessePaiement).
+    Lecture seule."""
+    from django.utils import timezone
+    from .models import PromessePaiement
+
+    factures = list(factures)
+    client = factures[0].client if factures else None
+
+    lignes_factures = []
+    total_du = 0
+    relances = []
+    emails = []
+    promesses_rompues = []
+
+    for f in factures:
+        total_du += f.montant_du
+        lignes_factures.append({
+            'reference': f.reference,
+            'date_echeance': (
+                f.date_echeance.isoformat() if f.date_echeance else ''),
+            'jours_retard': f.jours_retard,
+            'total_ttc': _s2(f.total_ttc),
+            'du': _s2(f.montant_du),
+        })
+        for r in f.relances.all().order_by('-date', '-id'):
+            relances.append({
+                'date': r.date.isoformat() if r.date else '',
+                'facture_reference': f.reference,
+                'niveau_nom': r.niveau_nom or '',
+                'note': r.note or '',
+            })
+        for e in f.email_logs.all().order_by('-created_at'):
+            emails.append({
+                'date': e.created_at.isoformat() if e.created_at else '',
+                'direction': e.get_direction_display(),
+                'sujet': e.sujet or '',
+            })
+        for p in f.promesses_paiement.filter(
+                statut=PromessePaiement.Statut.ROMPUE):
+            promesses_rompues.append({
+                'facture_reference': f.reference,
+                'date_promise': p.date_promise.isoformat(),
+                'montant_promis': _s2(p.montant_promis),
+            })
+
+    return {
+        'client': {
+            'nom': f'{client.nom} {client.prenom or ""}'.strip() if client else '',
+            'email': getattr(client, 'email', '') or '',
+            'telephone': getattr(client, 'telephone', '') or '',
+            'adresse': getattr(client, 'adresse', '') or '',
+        },
+        'factures': lignes_factures,
+        'total_du': _s2(total_du),
+        'relances': relances,
+        'emails': emails,
+        'promesses_rompues': promesses_rompues,
+        'date_creation': timezone.now().date().isoformat(),
+    }
+
+
+def ouvrir_dossier_contentieux(*, factures, user=None):
+    """XFAC21 — passage en recouvrement externe pour un jeu de factures.
+
+    (a) assemble les données du pack (voir ``dossier_contentieux_data``) ;
+    (b) ouvre une ``litiges.Reclamation`` de type recouvrement via
+        ``apps.litiges.services.creer_dossier_recouvrement`` (jamais un import
+        de son modèle) ;
+    (c) marque les factures ``exclu_relances`` (comms ordinaires gelées) avec
+        trace chatter « passé au contentieux le … ».
+
+    Toutes les factures DOIVENT appartenir au même client + à la même société
+    (vérifié par l'appelant — la vue scope déjà par client). Renvoie
+    ``(dossier_data, reclamation)``."""
+    from django.utils import timezone
+    from .models import Facture
+
+    factures = list(factures)
+    if not factures:
+        raise ValueError('Aucune facture sélectionnée.')
+    client = factures[0].client
+    company = factures[0].company
+
+    dossier = dossier_contentieux_data(factures)
+
+    from apps.litiges.services import creer_dossier_recouvrement
+    references = ', '.join(f.reference for f in factures)
+    reclamation = creer_dossier_recouvrement(
+        company=company, source_type='client', source_id=client.id,
+        objet=f'Recouvrement externe — {client.nom} ({references})',
+        montant_conteste=sum((f.montant_du for f in factures), 0),
+        description=f'Factures concernées : {references}.',
+        user=user,
+    )
+
+    from . import activity
+    qui = getattr(user, 'username', '?') if user else 'automatique'
+    today = timezone.now().date().isoformat()
+    for f in factures:
+        if f.statut == Facture.Statut.ANNULEE:
+            continue
+        f.exclu_relances = True
+        f.save(update_fields=['exclu_relances'])
+        activity.log_facture_activity_contentieux(f, user, qui, today)
+
+    return dossier, reclamation
+
+
 class StockInsuffisantError(Exception):
     """Levée quand une réservation de stock dépasserait le disponible (U9)."""
 
@@ -1705,6 +1981,50 @@ def create_payment_link(*, facture, provider=None):
         provider=(provider or 'noop'),
         montant=montant,
     )
+
+
+def _public_url(path):
+    """Construit une URL publique absolue à partir d'un chemin ``/api/...``.
+
+    Réutilise ``settings.PUBLIC_BASE_URL`` (même pattern que
+    ``bcf_share_url``) ; sans réglage, renvoie le chemin relatif tel quel (le
+    QR reste valide une fois servi depuis le même domaine)."""
+    from django.conf import settings
+    base = getattr(settings, 'PUBLIC_BASE_URL', '') or ''
+    if base:
+        return base.rstrip('/') + path
+    return path
+
+
+def qr_svg_for_facture_pdf(facture):
+    """XFAC19 — QR de paiement/vérification pour le PDF facture LEGACY (jamais
+    le moteur devis premium — voir RULE #4).
+
+    Si un ``PaymentLink`` actif (en attente, non expiré) existe déjà pour la
+    facture, le QR pointe vers sa page « Payer en ligne » publique. Sinon, il
+    pointe vers le ``ShareLink`` public (lecture seule) du document. Ajout
+    SILENCIEUX : renvoie ``None`` si aucun lien ne peut être établi (comportement
+    actuel inchangé — pas de QR, pas d'erreur). Le rendu SVG délègue au
+    générateur QR pur de N20 via ``apps.stock.services.qr_svg_for`` (jamais
+    d'import direct de ``apps.stock.labels``)."""
+    from django.utils import timezone
+    from .models import PaymentLink, ShareLink
+    from apps.stock.services import qr_svg_for
+
+    active_link = (
+        PaymentLink.objects.filter(
+            facture=facture, statut=PaymentLink.Statut.EN_ATTENTE,
+            expires_at__gt=timezone.now(),
+        ).order_by('-created_at').first())
+    if active_link is not None:
+        url = _public_url(f'/api/django/public/pay/{active_link.token}/')
+    else:
+        share = ShareLink.for_facture(facture)
+        url = _public_url(f'/api/django/public/document/{share.token}/')
+
+    if not url:
+        return None
+    return qr_svg_for(url)
 
 
 def record_payment_from_link(*, link, payload=None):

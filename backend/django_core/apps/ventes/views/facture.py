@@ -36,6 +36,16 @@ from ..utils.company_settings import create_numbered  # noqa: F401
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
+# XFAC24 — champs FINANCIERS d'une facture, verrouillés en écriture quand
+# CompanyProfile.factures_immuables est ON et que la facture n'est plus
+# brouillon (correction par avoir + nouvelle facture uniquement). Le client
+# est inclus (changer le tiers facturé revient à réécrire le document).
+FACTURE_CHAMPS_FINANCIERS = frozenset([
+    'client', 'montant_ht', 'montant_tva', 'montant_ttc', 'remise_globale',
+    'taux_tva', 'escompte_pct', 'escompte_jours', 'pourcentage',
+    'type_facture',
+])
+
 
 from authentication.scoping import scope_queryset  # noqa: E402,F401
 
@@ -84,7 +94,7 @@ class FactureViewSet(viewsets.ModelViewSet):
             'generer_pdf', 'telecharger_pdf', 'envoyer_email',
             'relancer', 'exclure_relance', 'whatsapp', 'ubl',
             'dgi_export', 'dgi_conformite', 'bulk', 'lien_paiement',
-            'facturer_penalites', 'consolider',
+            'facturer_penalites', 'consolider', 'abandonner_solde',
         ]:
             return [IsResponsableOrAdmin()]
         # Annuler une facture = réservé à l'admin/propriétaire (geste comptable).
@@ -136,10 +146,51 @@ class FactureViewSet(viewsets.ModelViewSet):
                 getattr(profile, 'escompte_jours_defaut', None) is not None:
             save_kwargs['escompte_jours'] = profile.escompte_jours_defaut
 
+        # XFAC18 — workflow de revue : flag OFF (défaut) → rien ne change
+        # (revue_statut reste vide). ON et créateur du tier LIMITÉ (menu_tier
+        # 'normal' — ex. un rôle Commercial avec seulement ventes_creer, qui
+        # passe IsResponsableOrAdmin via ses permissions d'écriture fines mais
+        # n'est PAS du palier responsable/admin) → démarre « à valider ». Un
+        # responsable/admin qui crée directement n'a pas besoin d'être
+        # re-validé.
+        from authentication.models import CustomUser
+        if getattr(profile, 'revue_factures_active', False) and \
+                self.request.user.menu_tier not in (
+                    CustomUser.ROLE_ADMIN, CustomUser.ROLE_RESPONSABLE):
+            save_kwargs['revue_statut'] = Facture.RevueStatut.A_VALIDER
+
         create_numbered(
             Facture, company, 'facture',
             lambda ref: serializer.save(reference=ref, **save_kwargs),
         )
+
+    def perform_update(self, serializer):
+        # XFAC24 — immutabilité de la facture émise (opt-in). Flag OFF
+        # (défaut) → comportement actuel byte-identique. Flag ON et facture
+        # non-brouillon : tout champ FINANCIER dans le corps est refusé (la
+        # correction passe par un avoir + une nouvelle facture) ; les champs
+        # non financiers (conditions, notes, dates de livraison…) restent
+        # modifiables.
+        facture = self.get_object()
+        if facture.statut != Facture.Statut.BROUILLON:
+            from apps.parametres.models import CompanyProfile
+            profile = CompanyProfile.get(company=facture.company)
+            if getattr(profile, 'factures_immuables', False):
+                champs_touches = (
+                    set(serializer.validated_data.keys())
+                    & FACTURE_CHAMPS_FINANCIERS)
+                if champs_touches:
+                    from rest_framework.exceptions import ValidationError
+                    raise ValidationError({
+                        'detail': (
+                            "Facture immuable : les champs financiers d'une "
+                            "facture émise ne peuvent plus être modifiés. "
+                            "Corrigez par un avoir puis une nouvelle "
+                            "facture."
+                        ),
+                        'champs_refuses': sorted(champs_touches),
+                    })
+        serializer.save()
 
     @action(detail=True, methods=['post'], url_path='emettre',
             permission_classes=[IsResponsableOrAdmin])
@@ -157,9 +208,32 @@ class FactureViewSet(viewsets.ModelViewSet):
                 )},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # XFAC18 — workflow de revue (ségrégation des tâches). Flag OFF
+        # (défaut) → comportement inchangé, aucun contrôle supplémentaire.
+        # Flag ON et facture « à valider » → le valideur doit être un
+        # responsable/admin DIFFÉRENT du créateur.
+        from apps.parametres.models import CompanyProfile
+        profile = CompanyProfile.get(company=facture.company)
+        anomalies = []
+        if getattr(profile, 'revue_factures_active', False) and \
+                facture.revue_statut == Facture.RevueStatut.A_VALIDER:
+            if facture.created_by_id == request.user.id:
+                return Response(
+                    {'detail': (
+                        'Cette facture doit être validée par un '
+                        'responsable/admin différent du créateur.'
+                    )},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            from ..services import anomalies_emission_facture
+            anomalies = anomalies_emission_facture(facture)
+            facture.revue_statut = Facture.RevueStatut.VALIDEE
         facture.statut = Facture.Statut.EMISE
         facture.save()
-        return Response(FactureSerializer(facture).data)
+        data = FactureSerializer(facture).data
+        if anomalies:
+            data['anomalies'] = anomalies
+        return Response(data)
 
     @action(detail=True, methods=['post'], url_path='marquer-payee',
             permission_classes=[IsResponsableOrAdmin])
@@ -449,9 +523,70 @@ class FactureViewSet(viewsets.ModelViewSet):
                 # niveau) pour qu'une facture payée cesse d'afficher un retard.
                 from ..services import reset_relance_escalation
                 reset_relance_escalation(locked)
+            elif locked.statut != Facture.Statut.ANNULEE:
+                # XFAC13 — tolérance société : un résiduel sous le seuil
+                # (défaut 0 = désactivé, comportement inchangé) est abandonné
+                # automatiquement à l'encaissement plutôt que de laisser la
+                # facture « en retard » pour quelques centimes.
+                from apps.parametres.models import CompanyProfile
+                profile = CompanyProfile.get(company=locked.company)
+                tolerance = getattr(
+                    profile, 'tolerance_ecart_reglement', None) or Decimal('0')
+                if tolerance > 0 and locked.montant_du <= tolerance:
+                    from ..services import abandonner_solde_facture
+                    abandonner_solde_facture(
+                        locked, motif=Facture.MotifAbandon.ECART_REGLEMENT,
+                        user=request.user, auto=True,
+                    )
+                    locked.refresh_from_db()
             facture = locked
         return Response(
             FactureSerializer(facture).data, status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=['post'], url_path='abandonner-solde',
+            permission_classes=[IsResponsableOrAdmin])
+    def abandonner_solde(self, request, pk=None):
+        """XFAC13 — abandon manuel du résiduel (write-off).
+
+        Motif obligatoire (irrécouvrable / geste commercial / écart de
+        règlement / liquidation). Solde la facture (« payée »), passe
+        l'écriture d'abandon (6585/créance, reprise de provision FG152 le cas
+        échéant) et sort la facture des impayés/balance âgée. Réservé
+        responsable/admin.
+        """
+        facture = self.get_object()
+        motif = (request.data or {}).get('motif')
+        motifs_valides = dict(Facture.MotifAbandon.choices)
+        if motif not in motifs_valides:
+            return Response(
+                {'detail': (
+                    'Motif obligatoire (irrecouvrable / geste_commercial / '
+                    'ecart_reglement / liquidation).'
+                )},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if facture.statut == Facture.Statut.ANNULEE:
+            return Response(
+                {'detail':
+                 'Impossible d\'abandonner le solde d\'une facture annulée.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        with transaction.atomic():
+            locked = Facture.objects.select_for_update().get(pk=facture.pk)
+            if locked.montant_du <= 0:
+                return Response(
+                    {'detail': 'Cette facture n\'a aucun résiduel à '
+                               'abandonner.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            from ..services import abandonner_solde_facture
+            montant = abandonner_solde_facture(
+                locked, motif=motif, user=request.user, auto=False,
+            )
+            locked.refresh_from_db()
+        return Response(
+            {**FactureSerializer(locked).data, 'montant_abandonne': montant},
         )
 
     @action(detail=True, methods=['post'], url_path='generer-pdf',

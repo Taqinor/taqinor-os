@@ -87,6 +87,18 @@ class Client(models.Model):
         help_text='Langue des factures / devis générés pour ce client.',
     )
 
+    # XFAC25 — envoi programmé (mensuel) du relevé de compte. Défaut OFF :
+    # le relevé reste disponible uniquement à la demande (comportement actuel
+    # inchangé). ON + email renseigné + encours non nul → un relevé PDF est
+    # envoyé automatiquement le 1er du mois (job beat idempotent, voir
+    # apps.ventes.scheduled.releve_mensuel_reminders).
+    releve_mensuel_auto = models.BooleanField(
+        default=False,
+        verbose_name='Envoi mensuel automatique du relevé',
+        help_text="Envoie automatiquement le relevé de compte PDF le 1er du "
+                  "mois si l'encours n'est pas nul. Désactivé par défaut.",
+    )
+
     class Meta:
         verbose_name = "Client"
         verbose_name_plural = "Clients"

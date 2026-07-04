@@ -640,6 +640,49 @@ class Facture(models.Model):
         help_text="Nombre de jours depuis l'émission pour bénéficier de "
                   "l'escompte.")
 
+    # ── XFAC13 — abandon de créance (write-off) ──
+    # Trace un solde définitif d'une créance irrécouvrable/négligeable : la
+    # facture passe « payée » sans encaissement complémentaire. NULL/vide =
+    # comportement actuel inchangé (aucun abandon). ``abandon_auto`` distingue
+    # un abandon manuel (motif choisi par un responsable) d'un abandon proposé
+    # automatiquement sous la tolérance société à l'encaissement (XFAC13).
+    class MotifAbandon(models.TextChoices):
+        IRRECOUVRABLE = 'irrecouvrable', 'Irrécouvrable'
+        GESTE_COMMERCIAL = 'geste_commercial', 'Geste commercial'
+        ECART_REGLEMENT = 'ecart_reglement', 'Écart de règlement'
+        LIQUIDATION = 'liquidation', 'Liquidation'
+
+    abandon_motif = models.CharField(
+        max_length=20, choices=MotifAbandon.choices, blank=True, default='')
+    abandon_montant = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text='Résiduel soldé par abandon (MAD).')
+    abandon_date = models.DateTimeField(null=True, blank=True)
+    abandon_auto = models.BooleanField(
+        default=False,
+        help_text="Abandon proposé automatiquement sous la tolérance "
+                  "d'écart de règlement société (par opposition à un "
+                  "abandon manuel motivé).")
+    abandon_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='factures_abandonnees',
+    )
+
+    # ── XFAC18 — statut de REVUE (ségrégation des tâches, style Odoo 19) ──
+    # Statut de TRAVAIL additif, distinct du cycle ``Statut`` existant : quand
+    # le réglage société ``revue_factures_active`` est OFF (défaut), ce champ
+    # reste vide et n'affecte rien (comportement actuel byte-identique). ON,
+    # une facture créée par un utilisateur du tier limité démarre « à
+    # valider » et ``emettre`` exige un valideur DIFFÉRENT du créateur.
+    class RevueStatut(models.TextChoices):
+        A_VALIDER = 'a_valider', 'À valider'
+        VALIDEE = 'validee', 'Validée'
+
+    revue_statut = models.CharField(
+        max_length=15, choices=RevueStatut.choices, blank=True, default='')
+
     # ── Statut de télédéclaration DGI (N39) — purement INFORMATIF, posé à la
     # main. Prépare le modèle de données pour un futur flux DGI sans aucun
     # appel externe aujourd'hui. Défaut « Non soumise » = comportement actuel.

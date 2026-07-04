@@ -13,6 +13,19 @@ def log_devis_note(devis, user, body):
     )
 
 
+def log_devis_credit_hold_override(devis, user, motif):
+    """XFAC28 — chatter du devis : un responsable/admin a débloqué un client
+    en hold crédit dur pour laisser passer cette action (accepter/facturer)."""
+    qui = getattr(user, 'username', '?') if user else '?'
+    return DevisActivity.objects.create(
+        company=devis.company, devis=devis, user=user,
+        kind=DevisActivity.Kind.MODIFICATION,
+        field='credit_hold', field_label='Blocage crédit',
+        new_value='override',
+        body=f'Blocage crédit débloqué par {qui} — {motif}.',
+    )
+
+
 def log_devis_acceptance(devis, user, nom, date_acceptation, option=''):
     """Consigne l'acceptation du devis (qui + quand + option) dans son chatter.
 
@@ -200,4 +213,33 @@ def log_facture_retenue_subie(facture, user, retenue):
         new_value=str(retenue.montant),
         body=(f"Retenue à la source ({retenue.get_type_retenue_display()}) "
               f"de {retenue.montant} MAD constatée par {qui}."),
+    )
+
+
+def log_facture_abandon(facture, user, montant, motif_label, auto=False):
+    """XFAC13 — chatter de la facture : abandon de créance (write-off)."""
+    from .models import FactureActivity
+    qui = getattr(user, 'username', '?') if user else 'automatique'
+    origine = 'automatique (tolérance société)' if auto else f'par {qui}'
+    return FactureActivity.objects.create(
+        company=facture.company, facture=facture, user=user,
+        kind=FactureActivity.Kind.MODIFICATION,
+        field='abandon', field_label='Abandon de créance',
+        new_value=str(montant),
+        body=(f"Solde résiduel de {montant} MAD abandonné {origine} "
+              f"— motif : {motif_label}."),
+    )
+
+
+def log_facture_activity_contentieux(facture, user, qui, date_str):
+    """XFAC21 — chatter de la facture : passage au contentieux (recouvrement
+    externe). Gèle les relances ordinaires (``exclu_relances``)."""
+    from .models import FactureActivity
+    return FactureActivity.objects.create(
+        company=facture.company, facture=facture, user=user,
+        kind=FactureActivity.Kind.MODIFICATION,
+        field='contentieux', field_label='Passage au contentieux',
+        new_value=date_str,
+        body=f'Passé au contentieux (recouvrement externe) le {date_str} '
+             f'par {qui}.',
     )

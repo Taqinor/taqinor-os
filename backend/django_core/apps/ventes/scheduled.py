@@ -419,3 +419,59 @@ def pre_echeance_reminders():
 
     logger.info('pre_echeance_reminders: %s rappel(s) envoyé(s)', sent)
     return sent
+
+
+# XFAC25 — marqueur dédié du relevé mensuel automatique, pour l'idempotence
+# (un seul envoi par client et par mois, jamais deux).
+RELEVE_MENSUEL_MARKER = 'releve_mensuel'
+
+
+@shared_task(name='ventes.releve_mensuel_reminders')
+def releve_mensuel_reminders():
+    """XFAC25 — envoi programmé (mensuel, 1er du mois) du relevé de compte.
+
+    Pour chaque client opt-in (``releve_mensuel_auto=True``) AVEC email ET
+    encours (montant dû total sur ses factures ouvertes) non nul, envoie le
+    relevé PDF existant (``recouvrement._releve_data`` /
+    ``email_service.send_releve_email``) et consigne un ``EmailLog``.
+    Idempotent : un log dédié (``reference`` suffixée du marqueur + mois
+    YYYYMM) empêche un second envoi le même mois même si le job tourne
+    plusieurs fois. Solde nul / opt-out / sans email → rien n'est tenté ni
+    consigné. Renvoie le nombre de relevés envoyés."""
+    from decimal import Decimal
+    from .models import EmailLog
+    from .email_service import send_releve_email
+    from .recouvrement import _releve_data
+    from apps.crm.selectors import client_base_qs
+
+    today = casablanca_today()
+    mois = today.strftime('%Y%m')
+    marker = f'{RELEVE_MENSUEL_MARKER}-{mois}'
+    sent = 0
+
+    clients = client_base_qs().filter(
+        releve_mensuel_auto=True).exclude(email__isnull=True).exclude(email='')
+
+    for client in clients:
+        # Idempotence : un seul envoi par client et par mois.
+        deja_envoye = EmailLog.objects.filter(
+            client=client, reference__endswith=f'::{marker}',
+        ).exists()
+        if deja_envoye:
+            continue
+        data = _releve_data(client, user=None)
+        try:
+            solde_du = Decimal(data['totaux']['du'])
+        except Exception:  # noqa: BLE001 — repli prudent si format inattendu
+            solde_du = Decimal('0')
+        if solde_du <= 0:
+            continue
+        log = send_releve_email(client, data, user=None)
+        if log is None:
+            continue
+        log.reference = f'{marker}'[:80]
+        log.save(update_fields=['reference'])
+        sent += 1
+
+    logger.info('releve_mensuel_reminders: %s relevé(s) envoyé(s)', sent)
+    return sent
