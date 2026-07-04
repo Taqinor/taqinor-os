@@ -1114,6 +1114,24 @@ class DevisViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         from rest_framework.exceptions import ValidationError
+        # YDOCF2 — un devis figé (accepté/refusé/expiré) ne doit plus être
+        # librement édité : le BC/Facture/BoM chantier aval sont déjà générés
+        # depuis son contenu figé. Seule exception : le désactiver (révision
+        # « superseded », is_active=False) — la voie de modification reste
+        # `reviser` (clone en V+1 éditable), jamais un PATCH direct.
+        instance = serializer.instance
+        FROZEN = {Devis.Statut.ACCEPTE, Devis.Statut.REFUSE, Devis.Statut.EXPIRE}
+        if instance.statut in FROZEN:
+            nouveau_is_active = serializer.validated_data.get(
+                'is_active', instance.is_active)
+            only_deactivation = (
+                nouveau_is_active is False and instance.is_active is True
+                and set(serializer.validated_data.keys()) <= {'is_active'}
+            )
+            if not only_deactivation:
+                raise ValidationError({
+                    'statut': 'Devis figé — révisez-le (reviser) pour le '
+                              'modifier.'})
         # ERR8 — un PATCH/PUT ne doit pas re-pointer le devis vers le client/lead
         # d'une autre société (mass-assignment). perform_create valide déjà ces
         # FK ; on applique la même garde à la mise à jour.
