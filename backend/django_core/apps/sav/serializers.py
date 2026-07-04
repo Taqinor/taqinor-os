@@ -9,7 +9,7 @@ from .models import (
     TicketChecklistItem, WarrantyClaim, KbArticle, AlarmeOnduleur,
     TicketSatisfaction, CauseDefaillance, RemedeDefaillance,
     EquipementDowntime, ReleveCompteurEquipement, ReponseType,
-    CompatibilitePiece, PieceRetiree, PretEquipement,
+    CompatibilitePiece, PieceRetiree, PretEquipement, CategorieTicket,
 )
 
 # Fenêtre « garantie expirant bientôt » (jours).
@@ -269,6 +269,9 @@ class TicketSerializer(serializers.ModelSerializer):
         source='cause.nom', read_only=True, default=None)
     remede_nom = serializers.CharField(
         source='remede.nom', read_only=True, default=None)
+    # ZSAV2 — catégorie de ticket configurable (libellé lecture).
+    categorie_nom = serializers.CharField(
+        source='categorie.libelle', read_only=True, default=None)
 
     class Meta:
         model = Ticket
@@ -442,6 +445,13 @@ class RemedeDefaillanceSerializer(serializers.ModelSerializer):
     class Meta:
         model = RemedeDefaillance
         fields = ['id', 'nom', 'ordre', 'archived']
+        read_only_fields = ['id']
+
+
+class CategorieTicketSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CategorieTicket
+        fields = ['id', 'libelle', 'ordre', 'actif']
         read_only_fields = ['id']
 
 

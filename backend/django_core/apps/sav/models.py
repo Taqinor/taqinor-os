@@ -487,6 +487,14 @@ class Ticket(models.Model):
         'sav.RemedeDefaillance', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='tickets')
 
+    # ── ZSAV2 — Catégorie de ticket configurable (au-delà de correctif/
+    # préventif) — optionnelle, n'affecte JAMAIS `type` (qui pilote le
+    # préventif). SET_NULL : la suppression d'une catégorie ne casse pas
+    # l'historique des tickets déjà catégorisés.
+    categorie = models.ForeignKey(
+        'sav.CategorieTicket', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='tickets')
+
     # ── Annulation : un DRAPEAU avec motif, pas une étape (comme « Perdu »). ──
     annule = models.BooleanField(default=False)
     motif_annulation = models.CharField(max_length=255, blank=True, null=True)
@@ -1504,3 +1512,29 @@ class PretEquipement(models.Model):
         if self.statut != self.Statut.EN_COURS or not self.date_retour_prevue:
             return False
         return timezone.localdate() > self.date_retour_prevue
+
+
+# ── ZSAV2 — Types de ticket configurables ────────────────────────────────────
+
+class CategorieTicket(models.Model):
+    """ZSAV2 — Référentiel configurable de catégorie de ticket (Question,
+    Panne matérielle, Demande d'information, Réclamation…), AU-DELÀ du
+    ``Ticket.type`` correctif/préventif figé (qui continue de piloter le
+    préventif — inchangé). Même patron que ``CauseDefaillance``/
+    ``RemedeDefaillance`` (XSAV14) : liste plate, scopée société, éditable
+    dans Paramètres, additive."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='categories_ticket')
+    libelle = models.CharField(max_length=150)
+    ordre = models.PositiveIntegerField(default=0)
+    actif = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['ordre', 'libelle']
+        unique_together = [('company', 'libelle')]
+        verbose_name = 'Catégorie de ticket'
+        verbose_name_plural = 'Catégories de ticket'
+
+    def __str__(self):
+        return self.libelle

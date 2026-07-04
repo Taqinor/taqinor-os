@@ -23,6 +23,7 @@ from .models import (
     WarrantyClaim, KbArticle, AlarmeOnduleur,
     CauseDefaillance, RemedeDefaillance, EquipementDowntime,
     ReleveCompteurEquipement, ReponseType, CompatibilitePiece, PieceRetiree,
+    CategorieTicket,
 )
 from .services import add_months
 from .pdf import rapport_intervention_pdf
@@ -40,6 +41,7 @@ from .serializers import (
     ReleveCompteurEquipementSerializer,
     ReponseTypeSerializer,
     CompatibilitePieceSerializer,
+    CategorieTicketSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -429,6 +431,7 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         client = params.get('client')
         installation = params.get('installation')
         equipement = params.get('equipement')
+        categorie = params.get('categorie')
         if statut:
             qs = qs.filter(statut=statut)
         if type_:
@@ -443,6 +446,8 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             qs = qs.filter(installation_id=installation)
         if equipement:
             qs = qs.filter(equipement_id=equipement)
+        if categorie:
+            qs = qs.filter(categorie_id=categorie)
         # File de service par défaut = tickets OUVERTS non annulés. ?ouvert=tous
         # pour tout voir ; un filtre ?statut explicite l'emporte.
         if self.action == 'list' and not statut:
@@ -1589,6 +1594,31 @@ class RemedeDefaillanceViewSet(TenantMixin, viewsets.ModelViewSet):
         if self.action == 'list' and self.request.query_params.get(
                 'archived') != '1':
             qs = qs.filter(archived=False)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+
+class CategorieTicketViewSet(TenantMixin, viewsets.ModelViewSet):
+    """ZSAV2 — Référentiel de catégorie de ticket (au-delà de correctif/
+    préventif). Lecture tout rôle, écriture responsable/admin (édité dans
+    Paramètres). Même patron que CauseDefaillance/RemedeDefaillance."""
+    queryset = CategorieTicket.objects.all()
+    serializer_class = CategorieTicketSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if self.action == 'list' and self.request.query_params.get(
+                'actif') == '0':
+            qs = qs.filter(actif=False)
+        elif self.action == 'list':
+            qs = qs.filter(actif=True)
         return qs
 
     def perform_create(self, serializer):
