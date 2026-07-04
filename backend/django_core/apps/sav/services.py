@@ -736,3 +736,105 @@ def prets_en_retard(company):
         company=company, statut=PretEquipement.Statut.EN_COURS,
         date_retour_prevue__isnull=False,
         date_retour_prevue__lt=today))
+
+
+# ── XSAV28 — Triage IA du ticket + brouillon de réponse (clé-gated) ─────────
+# Key-gated (GROQ_API_KEY, même clé que XQHS25 — pas de nouvelle dépendance
+# externe/payante ajoutée ici). Sans clé, `ia_disponible()` est False et
+# `suggerer_triage_ticket` renvoie `{'disponible': False}` — jamais
+# d'exception, jamais de no-op cassant. TOUJOURS une proposition éditable,
+# JAMAIS auto-appliquée (pattern propose→confirm, groupe AG).
+
+import json  # noqa: E402
+import os  # noqa: E402
+
+import requests  # noqa: E402
+
+_GROQ_CHAT_URL = 'https://api.groq.com/openai/v1/chat/completions'
+_GROQ_MODEL_DEFAUT = 'llama-3.1-8b-instant'
+
+
+def _groq_api_key():
+    return os.environ.get('GROQ_API_KEY', '') or ''
+
+
+def ia_disponible():
+    """True si une clé IA (GROQ) est configurée. Sert de garde côté vue/
+    front (masque les boutons IA quand False)."""
+    return bool(_groq_api_key())
+
+
+def _appeler_groq(system_prompt, user_prompt, *, timeout=15):
+    """Appel HTTP direct à l'API Groq (compatible OpenAI), sans SDK
+    supplémentaire (``requests`` est déjà une dépendance du projet). Renvoie
+    le contenu texte de la réponse, ou lève une exception (capturée par
+    l'appelant) en cas d'échec réseau/clé/timeout."""
+    resp = requests.post(
+        _GROQ_CHAT_URL,
+        headers={
+            'Authorization': f'Bearer {_groq_api_key()}',
+            'Content-Type': 'application/json',
+        },
+        json={
+            'model': _GROQ_MODEL_DEFAUT,
+            'messages': [
+                {'role': 'system', 'content': system_prompt},
+                {'role': 'user', 'content': user_prompt},
+            ],
+            'temperature': 0,
+            'response_format': {'type': 'json_object'},
+        },
+        timeout=timeout,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    return data['choices'][0]['message']['content']
+
+
+_TRIAGE_SYSTEM_PROMPT = (
+    "Tu es un assistant SAV pour un installateur solaire au Maroc. À partir "
+    "de la description d'un ticket entrant (email, portail, WhatsApp) et "
+    "d'articles de base de connaissance pertinents (fournis en contexte), "
+    "propose un triage structuré. Réponds UNIQUEMENT en JSON valide avec "
+    "les clés : \"type_panne_suggere\" (texte court, ex. « Onduleur en "
+    "défaut »), \"priorite_suggeree\" (une valeur parmi basse|normale|"
+    "haute|urgente), \"resume\" (une phrase résumant le problème), "
+    "\"brouillon_reponse\" (un brouillon de première réponse au client, "
+    "poli et concis, en français, qui s'appuie sur les articles KB fournis "
+    "si pertinents)."
+)
+
+
+def suggerer_triage_ticket(*, company, description):
+    """XSAV28 — suggère type de panne / priorité / résumé + brouillon de
+    première réponse pour un ticket entrant (email FG373, portail, WhatsApp
+    XSAV26). Key-gated : sans ``GROQ_API_KEY``, renvoie
+    ``{'disponible': False}`` (jamais d'exception).
+
+    Les articles KB pertinents (``selectors.kb_articles_pertinents``) sont
+    injectés en contexte du prompt. TOUJOURS une proposition éditable —
+    l'appelant (vue) ne l'applique JAMAIS automatiquement au ticket."""
+    if not ia_disponible():
+        return {'disponible': False}
+    description = (description or '').strip()
+    if not description:
+        return {'disponible': True, 'suggestion': None,
+                'erreur': 'description vide'}
+
+    from .selectors import kb_articles_pertinents
+    articles = kb_articles_pertinents(company, description)
+    contexte_kb = '\n'.join(
+        f"- {a['titre']} : {a['extrait']}" for a in articles)
+    user_prompt = description
+    if contexte_kb:
+        user_prompt = (
+            f'{description}\n\nArticles KB pertinents :\n{contexte_kb}')
+
+    try:
+        contenu = _appeler_groq(_TRIAGE_SYSTEM_PROMPT, user_prompt)
+        suggestion = json.loads(contenu)
+    except Exception as exc:  # pragma: no cover - dépend d'un service externe
+        return {'disponible': True, 'suggestion': None, 'erreur': str(exc)}
+
+    return {'disponible': True, 'suggestion': suggestion,
+            'kb_articles': articles}

@@ -1015,6 +1015,19 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             f'Prêt équipement {pret.produit.nom} retourné.')
         return Response(PretEquipementSerializer(pret).data, status=200)
 
+    @action(detail=True, methods=['get'], url_path='triage-ia',
+            permission_classes=[HasPermissionOrLegacy('sav_voir')])
+    def triage_ia(self, request, pk=None):
+        """XSAV28 — triage IA du ticket (clé-gated, propose→confirme).
+        Suggestions JAMAIS auto-appliquées : GET pur, rien n'est écrit sur le
+        ticket. Sans GROQ_API_KEY, renvoie ``{'disponible': False}`` (200,
+        comportement actuel byte-identique)."""
+        ticket = self.get_object()
+        from .services import suggerer_triage_ticket
+        result = suggerer_triage_ticket(
+            company=ticket.company, description=ticket.description)
+        return Response(result)
+
     @action(detail=True, methods=['get', 'post', 'patch'],
             url_path='checklist',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
