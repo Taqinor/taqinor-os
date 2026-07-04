@@ -104,7 +104,8 @@ class FactureViewSet(viewsets.ModelViewSet):
             'emettre', 'marquer_payee', 'enregistrer_paiement',
             'generer_pdf', 'telecharger_pdf', 'envoyer_email',
             'relancer', 'exclure_relance', 'whatsapp', 'ubl',
-            'dgi_export', 'dgi_conformite', 'bulk', 'lien_paiement',
+            'dgi_export', 'dgi_conformite', 'dgi_transmettre',
+            'bulk', 'lien_paiement',
             'facturer_penalites', 'consolider', 'abandonner_solde',
             'remettre_brouillon',
         ]:
@@ -840,6 +841,31 @@ class FactureViewSet(viewsets.ModelViewSet):
         problemes = validate_dgi_conformity(facture)
         return Response(
             {'conforme': not problemes, 'problemes': problemes})
+
+    @action(detail=True, methods=['post'], url_path='dgi-transmettre',
+            permission_classes=[IsResponsableOrAdmin])
+    def dgi_transmettre(self, request, pk=None):
+        """XFAC29 — Transmet (ou retransmet) la facture à la plateforme DGI
+        agréée configurée. GARDÉ par l'interrupteur maître
+        ``dgi_transmission_actif`` (défaut OFF) : tant qu'il est OFF pour la
+        société, cet endpoint se comporte comme introuvable (404) — la
+        capacité reste invisible, symétrique de `dgi_export`/`dgi_conformite`.
+        Un rejet peut être rejoué (nouvelle tentative) ; une facture déjà
+        ACCEPTÉE n'est jamais retransmise (idempotence)."""
+        facture = self.get_object()
+        from apps.ventes.dgi.transmission import (
+            is_dgi_transmission_enabled, transmettre_facture,
+        )
+        if not is_dgi_transmission_enabled(facture.company):
+            return Response(
+                {'detail': 'Introuvable.'},
+                status=status.HTTP_404_NOT_FOUND)
+        facture = transmettre_facture(facture)
+        return Response({
+            'dgi_statut': facture.dgi_statut,
+            'dgi_reference': facture.dgi_reference,
+            'dgi_motif_rejet': facture.dgi_motif_rejet,
+        })
 
     @action(detail=True, methods=['post'], url_path='whatsapp',
             permission_classes=[IsResponsableOrAdmin])

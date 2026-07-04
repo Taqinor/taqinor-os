@@ -180,6 +180,17 @@ class CompanyProfile(models.Model):
     # ailleurs) : transmission Simpl-TVA, signature électronique certifiée.
     dgi_export_actif = models.BooleanField(default=False)
 
+    # ── XFAC29 — Transmission DGI SORTANTE (interrupteur maître, défaut OFF) ──
+    # Distinct de `dgi_export_actif` (export local N105, jamais transmis) :
+    # arme la couche de SIGNATURE + TRANSMISSION à une plateforme agréée
+    # (apps/ventes/dgi/transmission.py). Tant qu'il est False (défaut), aucun
+    # appel réseau n'est jamais tenté et `Facture.dgi_statut` reste à sa valeur
+    # par défaut. `dgi_transmission_provider` nomme le fournisseur ('noop' par
+    # défaut, 'mock' en tests) — swappable comme `payments/providers.py`.
+    dgi_transmission_actif = models.BooleanField(default=False)
+    dgi_transmission_provider = models.CharField(
+        max_length=30, blank=True, default='noop')
+
     # ── Module d'exécution terrain (F9–F20) — interfaces SWAPPABLES ──
     # Chaque champ NOMME le fournisseur d'une capacité optionnelle. VIDE par
     # défaut = NO-OP total (aucun identifiant externe, aucun coût) : F9 retombe

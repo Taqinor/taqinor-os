@@ -493,7 +493,12 @@ class FactureWriteSerializer(serializers.ModelSerializer):
         model = Facture
         exclude = ['reference', 'fichier_pdf']
         # company is force-assigned in perform_create — never accept it from the body.
-        read_only_fields = ['created_by', 'date_emission', 'company']
+        # XFAC29 : dgi_statut/reference/motif_rejet sont posés UNIQUEMENT par
+        # `transmettre_facture` (action serveur), jamais depuis le corps.
+        read_only_fields = [
+            'created_by', 'date_emission', 'company',
+            'dgi_statut', 'dgi_reference', 'dgi_motif_rejet',
+        ]
 
 
 class LigneAvoirSerializer(serializers.ModelSerializer):

@@ -723,6 +723,32 @@ class Facture(models.Model):
         help_text='1 MAD = X devise (1 = MAD, sans conversion).',
     )
 
+    # ── XFAC29 — Transmission DGI SORTANTE (key-gated, additif) ──
+    # Distincte de `fichier_ubl` (export local N105, jamais transmis) : ces
+    # champs suivent le cycle de vie d'une VRAIE transmission signée à une
+    # plateforme agréée, une fois sa spec publiée. Défaut = jamais transmise
+    # (comportement actuel byte-identique tant qu'aucune transmission n'est
+    # déclenchée).
+    class DgiStatut(models.TextChoices):
+        A_TRANSMETTRE = 'a_transmettre', 'À transmettre'
+        TRANSMISE = 'transmise', 'Transmise'
+        ACCEPTEE = 'acceptee', 'Acceptée'
+        REJETEE = 'rejetee', 'Rejetée'
+
+    dgi_statut = models.CharField(
+        max_length=15, choices=DgiStatut.choices,
+        default=DgiStatut.A_TRANSMETTRE,
+        verbose_name='Statut transmission DGI',
+    )
+    dgi_reference = models.CharField(
+        max_length=100, blank=True, default='',
+        verbose_name='Référence DGI',
+    )
+    dgi_motif_rejet = models.TextField(
+        blank=True, default='',
+        verbose_name='Motif de rejet DGI',
+    )
+
     class Meta:
         verbose_name = 'Facture'
         verbose_name_plural = 'Factures'

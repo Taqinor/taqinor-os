@@ -99,10 +99,16 @@ class TestToggleOffInvisible(DgiTestBase):
         facture = self._facture()
         r = self.api.get(f'/api/django/ventes/factures/{facture.id}/')
         self.assertEqual(r.status_code, 200, r.data)
-        # Aucun champ DGI ne fuit dans la facture (le toggle vit sur le profil).
+        # L'interrupteur maître lui-même ne fuit jamais dans la facture (il vit
+        # sur le profil). Depuis XFAC29, `dgi_statut`/`dgi_reference`/
+        # `dgi_motif_rejet` sont des champs de SUIVI additifs sur Facture
+        # (toujours présents, valeur par défaut 'à transmettre' tant que rien
+        # n'est jamais déclenché) — distincts de l'interrupteur.
         keys = set(r.data.keys())
         self.assertNotIn('dgi_export_actif', keys)
-        self.assertFalse([k for k in keys if 'dgi' in k.lower()])
+        self.assertNotIn('dgi_transmission_actif', keys)
+        self.assertEqual(r.data.get('dgi_statut'), 'a_transmettre')
+        self.assertEqual(r.data.get('dgi_reference'), '')
 
     def test_endpoints_404_when_off(self):
         facture = self._facture()
