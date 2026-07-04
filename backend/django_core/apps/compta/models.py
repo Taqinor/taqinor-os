@@ -3775,6 +3775,14 @@ class Budget(models.Model):
         APPROUVE = 'approuve', 'Approuvé'
         CLOTURE = 'cloture', 'Clôturé'
 
+    # XACC21 — mode de contrôle à l'engagement (BCF, notes de frais…).
+    # ``warning`` (défaut, comportement actuel INCHANGÉ) : un dépassement du
+    # budget restant est signalé mais n'empêche rien. ``bloquant`` : un
+    # dépassement REFUSE la création (400) sauf override du responsable.
+    class Controle(models.TextChoices):
+        WARNING = 'warning', 'Avertissement (non bloquant)'
+        BLOQUANT = 'bloquant', 'Bloquant (override responsable)'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -3787,6 +3795,9 @@ class Budget(models.Model):
     statut = models.CharField(
         max_length=10, choices=Statut.choices, default=Statut.BROUILLON,
         verbose_name='Statut')
+    controle = models.CharField(
+        max_length=10, choices=Controle.choices, default=Controle.WARNING,
+        verbose_name="Mode de contrôle à l'engagement")
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL, null=True, blank=True,

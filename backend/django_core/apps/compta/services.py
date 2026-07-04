@@ -6929,3 +6929,59 @@ def _appliquer_regle_imputation_si_match(company, ligne_ecriture, *,
         ])
         return regle
     return None
+
+
+# ── XACC21 — Contrôle du budget COMPTABLE à l'engagement ───────────────────
+
+def verifier_engagement_budgetaire(company, *, montant_engage, periode,
+                                   centre_cout=None, compte=None,
+                                   est_responsable=False):
+    """Contrôle un engagement (BCF stock, note de frais…) contre le budget
+    COMPTABLE restant (XACC21) — EN COMPLÉMENT du contrôle PROJET FG313
+    (``installations.selectors``, jamais dupliqué ici). Consommé par
+    ``apps.stock``/``apps.rh`` via ce service (jamais un import de modèle
+    compta).
+
+    Renvoie un dict ``{'autorise': bool, 'warning': str|None,
+    'budget_restant': Decimal|None}`` :
+
+    * aucun budget défini pour le centre/compte/année → ``autorise=True``,
+      ``warning=None`` (aucun contrôle possible, comportement actuel intact) ;
+    * budget en mode ``warning`` (défaut) → TOUJOURS ``autorise=True``, avec
+      un ``warning`` texte si l'engagement dépasse le restant (montants
+      inclus) ;
+    * budget en mode ``bloquant`` → un dépassement REFUSE
+      (``autorise=False``) SAUF si ``est_responsable=True`` (override
+      responsable, alors autorisé avec un ``warning`` traçant l'override).
+    """
+    from apps.compta.selectors import budget_restant as _budget_restant
+
+    info = _budget_restant(
+        company, centre_cout=centre_cout, compte=compte, periode=periode)
+    if info is None:
+        return {'autorise': True, 'warning': None, 'budget_restant': None}
+
+    montant_engage = Decimal(montant_engage or 0)
+    nouveau_restant = info['restant'] - montant_engage
+    if nouveau_restant >= 0:
+        return {
+            'autorise': True, 'warning': None,
+            'budget_restant': nouveau_restant,
+        }
+
+    depassement = -nouveau_restant
+    message = (
+        f"Dépassement du budget comptable restant : engagement de "
+        f"{montant_engage} MAD, restant disponible {info['restant']} MAD "
+        f"(dépassement de {depassement} MAD).")
+    if info['controle'] == Budget.Controle.BLOQUANT and not est_responsable:
+        return {
+            'autorise': False, 'warning': message,
+            'budget_restant': nouveau_restant,
+        }
+    if info['controle'] == Budget.Controle.BLOQUANT and est_responsable:
+        message += " Autorisé par override responsable."
+    return {
+        'autorise': True, 'warning': message,
+        'budget_restant': nouveau_restant,
+    }

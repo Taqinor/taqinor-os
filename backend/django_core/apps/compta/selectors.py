@@ -11,7 +11,7 @@ from django.db.models import Q, Sum
 from django.utils import timezone
 
 from .models import (
-    BudgetLigne, Caisse, CautionBancaire, ChargeConstateeAvance,
+    Budget, BudgetLigne, Caisse, CautionBancaire, ChargeConstateeAvance,
     CompteComptable,
     CompteTresorerie, EcheanceEmprunt,
     Effet, Emprunt,
@@ -2414,6 +2414,67 @@ def budget_vs_realise(company, budget, *, date_fin=None):
         'total_budget': total_budget,
         'total_realise': total_realise,
         'total_variance': total_realise - total_budget,
+    }
+
+
+# ── XACC21 — Contrôle du budget COMPTABLE à l'engagement ───────────────────
+
+def budget_restant(company, *, centre_cout=None, compte=None, periode):
+    """Budget COMPTABLE restant pour un centre de coût/compte à une période
+    (XACC21), consommable par ``apps.stock``/``apps.rh`` (EN COMPLÉMENT du
+    contrôle PROJET FG313, ``installations.selectors`` — jamais dupliqué ici).
+
+    ``periode`` : une ``date`` dans l'année budgétaire visée (le budget de
+    l'exercice ``periode.year`` de la société est utilisé — le PLUS RÉCENT si
+    plusieurs budgets existent pour cette année). ``centre_cout``/``compte``
+    filtrent les ``BudgetLigne`` concernées (au moins l'un des deux requis).
+    Renvoie ``None`` si AUCUN budget n'est défini pour cette
+    société/année/centre/compte (= aucun contrôle possible, comportement
+    actuel intact) ; sinon ``{'budget_id', 'controle', 'montant_budgete',
+    'realise', 'restant'}`` où ``restant`` peut être négatif (dépassement).
+    Lecture seule, scopée société.
+    """
+    if centre_cout is None and compte is None:
+        raise ValueError("centre_cout ou compte requis pour budget_restant.")
+    annee = periode.year
+    budget = Budget.objects.filter(
+        company=company, annee=annee).order_by('-id').first()
+    if budget is None:
+        return None
+    lignes_qs = budget.lignes.all()
+    if centre_cout is not None:
+        lignes_qs = lignes_qs.filter(centre_cout=centre_cout)
+    if compte is not None:
+        lignes_qs = lignes_qs.filter(compte=compte)
+    if not lignes_qs.exists():
+        return None
+
+    total_budgete = Decimal('0')
+    total_realise = Decimal('0')
+    debut = date(annee, 1, 1)
+    fin = date(annee, 12, 31)
+    for bl in lignes_qs.select_related('compte'):
+        total_budgete += bl.montant_annuel
+        agg = LigneEcriture.objects.filter(
+            company=company, compte=bl.compte,
+            ecriture__date_ecriture__gte=debut,
+            ecriture__date_ecriture__lte=fin,
+        )
+        if bl.centre_cout_id:
+            agg = agg.filter(centre_cout=bl.centre_cout)
+        agg = agg.aggregate(debit=Sum('debit'), credit=Sum('credit'))
+        debit = agg['debit'] or Decimal('0')
+        credit = agg['credit'] or Decimal('0')
+        if bl.compte.classe == 7:
+            total_realise += credit - debit
+        else:
+            total_realise += debit - credit
+    return {
+        'budget_id': budget.id,
+        'controle': budget.controle,
+        'montant_budgete': total_budgete,
+        'realise': total_realise,
+        'restant': total_budgete - total_realise,
     }
 
 
