@@ -229,6 +229,19 @@ class FactureViewSet(viewsets.ModelViewSet):
             anomalies = anomalies_emission_facture(facture)
             facture.revue_statut = Facture.RevueStatut.VALIDEE
         facture.statut = Facture.Statut.EMISE
+        # XFAC23 — dérive l'échéance depuis les conditions de paiement du
+        # client à l'émission, SAUF si une échéance a déjà été saisie
+        # manuellement (jamais écrasée — input freedom) ; sans réglage
+        # client, l'échéancier FG46/FG220 ou le repli +30 j (scheduled.py)
+        # gardent la priorité, comportement inchangé.
+        if not facture.date_echeance:
+            from ..services import calculer_date_echeance
+            derivee = calculer_date_echeance(
+                client=facture.client, date_emission=facture.date_emission)
+            if derivee is not None:
+                facture.date_echeance = derivee
+        # XFAC18 — save complet (persiste statut + revue_statut + échéance
+        # dérivée), puis surface les anomalies de revue dans la réponse.
         facture.save()
         data = FactureSerializer(facture).data
         if anomalies:
