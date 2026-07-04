@@ -1516,6 +1516,35 @@ class PointageViewSet(_RhBaseViewSet):
             IncidentPresenceSerializer(incident).data,
             status=status.HTTP_201_CREATED)
 
+    @action(detail=False, methods=['get'], url_path='rapport')
+    def rapport(self, request):
+        """ZRH18 — rapport de présence & heures supp. par employé/
+        département sur période (« Attendance reporting » Odoo).
+        ``?debut=&fin=`` (YYYY-MM-DD, requis) + filtres optionnels
+        ``?employe=&departement=``. Gaté ``IsResponsableOrAdmin`` (gate de
+        classe par défaut)."""
+        from datetime import datetime
+
+        debut_str = request.query_params.get('debut')
+        fin_str = request.query_params.get('fin')
+        if not debut_str or not fin_str:
+            return Response(
+                {'detail': "Les paramètres 'debut' et 'fin' sont requis."},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            debut = datetime.strptime(debut_str, '%Y-%m-%d').date()
+            fin = datetime.strptime(fin_str, '%Y-%m-%d').date()
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': "Format de date invalide (attendu YYYY-MM-DD)."},
+                status=status.HTTP_400_BAD_REQUEST)
+        employe_id = request.query_params.get('employe')
+        departement_id = request.query_params.get('departement')
+        data = selectors.rapport_presence(
+            request.user.company, debut, fin,
+            employe_id=employe_id, departement_id=departement_id)
+        return Response(data)
+
 
 class PeriodeFermetureViewSet(_RhBaseViewSet):
     """Fermetures collectives / congés imposés (XRH14).

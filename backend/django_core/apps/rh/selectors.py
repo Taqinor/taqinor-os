@@ -2622,3 +2622,109 @@ def employes_par_competence(
     employes.sort(
         key=lambda e: niveaux_primaire.get(e.id, 0), reverse=True)
     return employes
+
+
+def rapport_presence(
+        company, date_debut, date_fin, employe_id=None,
+        departement_id=None):
+    """ZRH18 — rapport de présence & heures supp. par employé/département
+    sur période (« Attendance reporting » Odoo).
+
+    Pour chaque employé de la société ayant au moins un ``Pointage`` sur
+    ``[date_debut, date_fin]`` (bornes incluses sur ``heure_arrivee``) :
+
+    * ``jours_pointes`` — nombre de jours distincts pointés ;
+    * ``heures_totales`` — somme des ``duree_minutes`` (arrivée->départ)
+      convertie en heures (float, arrondi 2) ;
+    * ``heures_supp`` — total HS validées via :func:`heures_supp_pour_paie` ;
+    * ``jours_absence`` — nb d'``IncidentPresence`` de type
+      ``absence_injustifiee`` NON justifiés sur la période (FG171) ;
+    * ``taux_presence_pct`` — jours_pointes / jours ouvrés de la période
+      (jours calendaires hors dimanche, approximation simple), borné [0,
+      100].
+
+    ``totaux_departement`` agrège les mêmes métriques par département.
+    Filtres optionnels ``employe_id`` / ``departement_id`` (et ses
+    descendants). Divisions par zéro gardées. Lecture seule, société
+    scopée, pas de migration.
+    """
+    from .models import Pointage
+
+    if company is None or date_debut is None or date_fin is None:
+        return {'par_employe': [], 'totaux_departement': []}
+
+    base_emp = DossierEmploye.objects.filter(company=company)
+    if departement_id:
+        ids = departements_descendants(company, departement_id)
+        base_emp = base_emp.filter(departement_id__in=ids)
+    if employe_id:
+        base_emp = base_emp.filter(id=employe_id)
+
+    jours_ouvres = sum(
+        1 for n in range((date_fin - date_debut).days + 1)
+        if (date_debut + timedelta(days=n)).weekday() != 6
+    ) or 1
+
+    hs_par_employe = {
+        row['employe_id']: row['total_hs']
+        for row in heures_supp_pour_paie(company, date_debut, date_fin)
+    }
+
+    par_employe = []
+    for emp in base_emp:
+        pointages = Pointage.objects.filter(
+            company=company, employe=emp,
+            heure_arrivee__date__gte=date_debut,
+            heure_arrivee__date__lte=date_fin)
+        jours_pointes = pointages.dates('heure_arrivee', 'day').count()
+        minutes = sum(
+            p.duree_minutes or 0 for p in pointages)
+        jours_absence = IncidentPresence.objects.filter(
+            company=company, employe=emp,
+            type_incident=IncidentPresence.TypeIncident.ABSENCE_INJUSTIFIEE,
+            date__gte=date_debut, date__lte=date_fin,
+            justifie=False,
+        ).count()
+        if not jours_pointes and not jours_absence and emp.id not in hs_par_employe:
+            continue
+        par_employe.append({
+            'employe_id': emp.id,
+            'nom': f'{emp.nom} {emp.prenom}',
+            'departement_id': emp.departement_id,
+            'jours_pointes': jours_pointes,
+            'heures_totales': round(minutes / 60, 2),
+            'heures_supp': float(hs_par_employe.get(emp.id, 0)),
+            'jours_absence': jours_absence,
+            'taux_presence_pct': round(
+                min(jours_pointes / jours_ouvres, 1.0) * 100, 1),
+        })
+
+    totaux_par_dep = {}
+    for entry in par_employe:
+        dep_id = entry['departement_id']
+        agg = totaux_par_dep.setdefault(dep_id, {
+            'departement_id': dep_id,
+            'jours_pointes': 0, 'heures_totales': 0.0,
+            'heures_supp': 0.0, 'jours_absence': 0,
+        })
+        agg['jours_pointes'] += entry['jours_pointes']
+        agg['heures_totales'] += entry['heures_totales']
+        agg['heures_supp'] += entry['heures_supp']
+        agg['jours_absence'] += entry['jours_absence']
+
+    for dep_id, agg in totaux_par_dep.items():
+        agg['heures_totales'] = round(agg['heures_totales'], 2)
+        agg['heures_supp'] = round(agg['heures_supp'], 2)
+        if dep_id is not None:
+            dep = Departement.objects.filter(
+                company=company, id=dep_id).first()
+            agg['departement_nom'] = dep.nom if dep else ''
+        else:
+            agg['departement_nom'] = 'Sans département'
+
+    return {
+        'par_employe': par_employe,
+        'totaux_departement': sorted(
+            totaux_par_dep.values(),
+            key=lambda e: (e['departement_id'] is None, e['departement_nom'])),
+    }
