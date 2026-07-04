@@ -2289,3 +2289,53 @@ class OrdreLocationViewSet(_ContratsBaseViewSet):
         payload['avoir_id'] = avoir.id if avoir is not None else None
         payload['avoir_reference'] = avoir.reference if avoir is not None else None
         return Response(payload)
+
+    # ── XCTR21 — Utilisation & ROI du parc de location (ADMIN-ONLY) ─────────
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAdminRole])
+    def utilisation(self, request):
+        """GET /ordres-location/utilisation/?periode=AAAA-MM (XCTR21).
+
+        ADMIN-ONLY (403 pour tout autre rôle) : le rapport inclut
+        ``prix_achat``/``payback``, jamais client-facing. ``?periode=`` fixe
+        le mois analysé (défaut : mois courant)."""
+        from datetime import date as _date
+        import calendar
+
+        from django.utils import timezone
+
+        raw = (request.query_params.get('periode') or '').strip()
+        today = timezone.localdate()
+        if raw:
+            try:
+                annee, mois = (int(p) for p in raw.split('-', 1))
+            except (ValueError, TypeError):
+                return Response(
+                    {'detail': 'periode invalide (AAAA-MM attendu).'},
+                    status=status.HTTP_400_BAD_REQUEST)
+        else:
+            annee, mois = today.year, today.month
+
+        periode_debut = _date(annee, mois, 1)
+        dernier_jour = calendar.monthrange(annee, mois)[1]
+        periode_fin = _date(annee, mois, dernier_jour)
+
+        rows = selectors.utilisation_parc_location(
+            request.user.company, periode_debut=periode_debut,
+            periode_fin=periode_fin, admin=True)
+
+        def _fmt(row):
+            out = dict(row)
+            out['taux_utilisation'] = float(out['taux_utilisation'])
+            out['revenu_locatif'] = _money(out['revenu_locatif'])
+            if 'prix_achat' in out:
+                out['prix_achat'] = _money(out['prix_achat'])
+            if out.get('payback') is not None:
+                out['payback'] = float(out['payback'])
+            return out
+
+        return Response({
+            'periode_debut': periode_debut.isoformat(),
+            'periode_fin': periode_fin.isoformat(),
+            'results': [_fmt(r) for r in rows],
+        })

@@ -1287,3 +1287,99 @@ def ordres_location_en_retard(company, today=None):
                 date_retour_prevue__lt=today)
         .order_by('date_retour_prevue', 'id')
     )
+
+
+# ---------------------------------------------------------------------------
+# XCTR21 — Utilisation & ROI du parc de location
+# ---------------------------------------------------------------------------
+
+
+def _jours_loues_dans_periode(ordre, periode_debut, periode_fin):
+    """Nombre de jours (bornes incluses) où ``ordre`` occupe le produit, BORNÉ
+    à ``[periode_debut, periode_fin]`` — XCTR21. Utilise la fenêtre
+    PRÉVUE (cohérent avec la détection de conflit XCTR17) ; un ordre hors
+    fenêtre renvoie 0 (jamais négatif)."""
+    debut = max(ordre.date_enlevement_prevue, periode_debut)
+    fin = min(ordre.date_retour_prevue, periode_fin)
+    if fin < debut:
+        return 0
+    return (fin - debut).days + 1
+
+
+def utilisation_parc_location(company, *, periode_debut, periode_fin,
+                              admin=False):
+    """Rapport d'utilisation/ROI du parc de location, PAR produit — XCTR21.
+
+    Pour chaque produit louable ayant AU MOINS un ordre de location (actif ou
+    non — un ordre annulé/clôturé compte pour l'historique), calcule sur la
+    période ``[periode_debut, periode_fin]`` (bornes incluses) :
+
+    - ``jours_disponibles`` : durée de la période (jours) ;
+    - ``jours_loues`` : Σ des jours occupés par des ordres NON annulés,
+      BORNÉE à la période (un ordre chevauchant partiellement ne compte que
+      sa portion dans la fenêtre — jamais au-delà) ;
+    - ``taux_utilisation`` : ``jours_loues / jours_disponibles`` (0..1) ;
+    - ``revenu_locatif`` : Σ ``montant_estime`` des ordres NON annulés dont la
+      fenêtre chevauche la période ;
+    - ``dormant`` : ``True`` si ``jours_loues == 0`` sur la période (aucune
+      location sur N jours).
+
+    ``payback`` (revenu locatif cumulé ÷ ``prix_achat`` du produit) n'est
+    inclus QUE si ``admin=True`` (ADMIN-ONLY — ``prix_achat`` ne doit JAMAIS
+    apparaître pour un autre rôle ni dans un PDF/export client-facing).
+    Lecture seule, scopée société.
+    """
+    from decimal import Decimal
+
+    from .models import OrdreLocation
+
+    nb_jours_periode = (periode_fin - periode_debut).days + 1
+    if nb_jours_periode <= 0:
+        return []
+
+    ordres = (
+        OrdreLocation.objects
+        .filter(
+            company=company,
+            date_enlevement_prevue__lte=periode_fin,
+            date_retour_prevue__gte=periode_debut,
+        )
+        .exclude(statut=OrdreLocation.Statut.ANNULEE)
+        .select_related('produit')
+    )
+
+    par_produit = {}
+    for ordre in ordres:
+        entry = par_produit.setdefault(ordre.produit_id, {
+            'produit_id': ordre.produit_id,
+            'produit_nom': ordre.produit.nom,
+            'prix_achat': ordre.produit.prix_achat,
+            'jours_loues': 0,
+            'revenu_locatif': Decimal('0'),
+        })
+        entry['jours_loues'] += _jours_loues_dans_periode(
+            ordre, periode_debut, periode_fin)
+        entry['revenu_locatif'] += (ordre.montant_estime or Decimal('0'))
+
+    rows = []
+    for entry in par_produit.values():
+        taux = Decimal(entry['jours_loues']) / Decimal(nb_jours_periode)
+        row = {
+            'produit_id': entry['produit_id'],
+            'produit_nom': entry['produit_nom'],
+            'jours_disponibles': nb_jours_periode,
+            'jours_loues': entry['jours_loues'],
+            'taux_utilisation': taux,
+            'revenu_locatif': entry['revenu_locatif'],
+            'dormant': entry['jours_loues'] == 0,
+        }
+        if admin:
+            prix_achat = entry['prix_achat'] or Decimal('0')
+            row['prix_achat'] = prix_achat
+            row['payback'] = (
+                (entry['revenu_locatif'] / prix_achat)
+                if prix_achat > 0 else None)
+        rows.append(row)
+
+    rows.sort(key=lambda r: r['produit_nom'])
+    return rows
