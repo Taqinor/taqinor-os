@@ -12,6 +12,7 @@ from .views import (
     ProjetDevisViewSet, ProjetTicketViewSet,
     BudgetProjetViewSet, BudgetEngagementViewSet,
     IndisponibiliteRessourceViewSet,
+    AstreinteViewSet,
     EquipeViewSet,
     SousTraitantViewSet,
     OrdreSousTraitanceViewSet,
@@ -24,6 +25,7 @@ from .views import (
     DemandeAchatLigneViewSet,
     RFQViewSet,
     RFQOffreViewSet,
+    RFQConsultationViewSet,
     SeuilApprobationBCFViewSet,
     ApprobationBCFViewSet,
     ControleBudgetaireCommandeView,
@@ -87,6 +89,7 @@ router.register(r'programme-tickets', ProjetTicketViewSet)
 router.register(r'programme-budgets', BudgetProjetViewSet)
 router.register(r'programme-engagements', BudgetEngagementViewSet)
 router.register(r'indisponibilites-ressource', IndisponibiliteRessourceViewSet)
+router.register(r'astreintes', AstreinteViewSet)
 router.register(r'equipes', EquipeViewSet)
 # DC34 — sous-traitants / AP sous-traitant sont des ViewSet façade au-dessus de
 # stock (Fournisseur type=service + chaîne FactureFournisseur/PaiementFournisseur)
@@ -105,6 +108,7 @@ router.register(r'demandes-achat', DemandeAchatViewSet)
 router.register(r'demandes-achat-lignes', DemandeAchatLigneViewSet)
 router.register(r'rfq', RFQViewSet)
 router.register(r'rfq-offres', RFQOffreViewSet)
+router.register(r'rfq-consultations', RFQConsultationViewSet)
 router.register(r'seuils-approbation-bcf', SeuilApprobationBCFViewSet)
 router.register(r'approbations-bcf', ApprobationBCFViewSet)
 router.register(r'commandes-cadre', CommandeCadreViewSet)

@@ -205,10 +205,21 @@ class TestResolve(LabelsApiBase):
         self.assertEqual(res.status_code, 404)
 
     def test_resolve_bad_code_is_400(self):
-        for code in ('', 'garbage', 'PRODUIT:', 'PRODUIT:abc', ':12'):
+        # Codes vides ou malformés AVEC ':' (jeton interne mal formé) restent
+        # 400. Un code SANS ':' (ex. 'garbage') est désormais tenté comme
+        # code-barres fabricant (XSTK3) — voir test_resolve_bad_code_no_colon.
+        for code in ('', 'PRODUIT:', 'PRODUIT:abc', ':12'):
             res = self.api.get(
                 f'/api/django/stock/produits/resolve/?code={code}')
             self.assertIn(res.status_code, (400,), msg=f'code={code!r}')
+
+    def test_resolve_bad_code_no_colon_is_404(self):
+        # XSTK3 — un code sans ':' est tenté comme code-barres fabricant ;
+        # sans correspondance, « produit introuvable » (404), jamais 400
+        # (dégradation propre — un EAN inconnu n'est pas une erreur cliente).
+        res = self.api.get(
+            '/api/django/stock/produits/resolve/?code=garbage')
+        self.assertEqual(res.status_code, 404)
 
     def test_resolve_unknown_prefix_is_400(self):
         res = self.api.get(

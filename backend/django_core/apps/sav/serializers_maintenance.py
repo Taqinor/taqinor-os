@@ -1,4 +1,6 @@
 from rest_framework import serializers
+from rest_framework.exceptions import ValidationError
+
 from .models import ContratMaintenance
 
 
@@ -10,6 +12,10 @@ class ContratMaintenanceSerializer(serializers.ModelSerializer):
     # FG40 — facturation récurrente.
     prochaine_facturation = serializers.SerializerMethodField()
     facturation_due = serializers.SerializerMethodField()
+    # XCTR2 — registre des équipements couverts (lecture enrichie).
+    equipements_detail = serializers.SerializerMethodField()
+    # XCTR3 — droits inclus (entitlements), compteurs consommés/restants.
+    droits_restants = serializers.SerializerMethodField()
 
     class Meta:
         model = ContratMaintenance
@@ -22,8 +28,39 @@ class ContratMaintenanceSerializer(serializers.ModelSerializer):
                   'prochaine_facturation', 'facturation_due',
                   # XSAV7 — overrides SLA optionnels du contrat.
                   'sla_response_days', 'sla_resolution_days',
+                  # XCTR2 — registre des équipements couverts.
+                  'equipements', 'equipements_detail',
+                  # XCTR3 — droits inclus (entitlements).
+                  'visites_incluses_an', 'deplacements_inclus_an',
+                  'pieces_couvertes_pct', 'droits_restants',
                   'date_creation']
         read_only_fields = ['derniere_visite', 'derniere_facturation', 'date_creation']
+
+    def get_droits_restants(self, obj):
+        from .selectors import droits_restants
+        return droits_restants(obj)
+
+    def get_equipements_detail(self, obj):
+        return [
+            {
+                'id': e.id,
+                'numero_serie': getattr(e, 'numero_serie', None),
+                'produit_nom': getattr(e.produit, 'nom', None),
+            }
+            for e in obj.equipements.select_related('produit').all()
+        ]
+
+    def validate_equipements(self, value):
+        """XCTR2 — un équipement d'une autre société est refusé (400) : le
+        registre de couverture ne doit jamais lier du matériel étranger."""
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is None:
+            return value
+        for equipement in value:
+            if equipement.company_id != company.id:
+                raise ValidationError('Équipement inconnu.')
+        return value
 
     def get_prochaine_visite(self, obj):
         return obj.prochaine_visite().isoformat()

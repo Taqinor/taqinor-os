@@ -186,3 +186,45 @@ def _retry_or_fail(task, attachment_id, exc):
                      attachment_id, exc)
         return 'failed'
     raise task.retry(exc=exc, countdown=2 ** retries * 30)
+
+
+# ── XKB27 — messages programmés & rappels (sweep Celery beat) ─────────
+
+@shared_task(name='chat.send_scheduled_messages')
+def task_send_scheduled_messages():
+    """Envoie tout `ScheduledMessage` PENDING dû — jamais avant l'heure."""
+    from .services import sweep_scheduled_messages
+    sent = sweep_scheduled_messages()
+    logger.info('chat.send_scheduled_messages: %s message(s) envoyé(s)', sent)
+    return sent
+
+
+@shared_task(name='chat.send_due_reminders')
+def task_send_due_reminders():
+    """Notifie chaque `MessageReminder` PENDING dû."""
+    from .services import sweep_reminders
+    sent = sweep_reminders()
+    logger.info('chat.send_due_reminders: %s rappel(s) envoyé(s)', sent)
+    return sent
+
+
+# ── XKB32 — rétention & export (loi 09-08) ─────────────────────────────
+
+@shared_task(name='chat.retention_sweep')
+def task_retention_sweep():
+    """Sweep de rétention JOURNALISÉ, société par société. Sans politique
+    active pour une société, le sweep ne purge rien pour elle (comportement
+    par défaut inchangé) — mais l'exécution est journalisée quand même."""
+    from authentication.models import Company
+
+    from .services import sweep_retention
+
+    total = 0
+    for company in Company.objects.all():
+        try:
+            total += sweep_retention(company)
+        except Exception:  # pragma: no cover - défensif, société par société
+            logger.exception(
+                'chat.retention_sweep: échec société=%s', company.pk)
+    logger.info('chat.retention_sweep: %s message(s) purgé(s) au total', total)
+    return total

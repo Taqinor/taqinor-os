@@ -9,7 +9,9 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 from apps.crm.models import Lead, LeadActivity
-from apps.records.models import Activity, ActivityType, Attachment, Comment, Tag, TaggedItem
+from apps.records.models import (
+    Activity, ActivityType, Attachment, Comment, Follower, Tag, TaggedItem,
+)
 
 User = get_user_model()
 
@@ -772,3 +774,243 @@ class TestAttachmentsAll(TestCase):
         data = res.data.get('results', res.data)
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]['filename'], 'mine.pdf')
+
+
+# ── XKB4 — à-faire personnel (sans cible métier) + conversion en tâche ──────
+class TestActivitesPersonnelles(TestCase):
+    def setUp(self):
+        self.company = Company.objects.create(nom='XKB4 Co', slug='xkb4-co')
+        self.type_todo = ActivityType.objects.create(
+            company=self.company, nom='À faire', ordre=5)
+        self.user = User.objects.create_user(
+            username='xkb4_u', password='x', role_legacy='responsable',
+            company=self.company)
+        self.collegue = User.objects.create_user(
+            username='xkb4_collegue', password='x', role_legacy='responsable',
+            company=self.company)
+        self.api = auth(self.user)
+
+    def test_create_personal_todo_without_target(self):
+        resp = self.api.post('/api/django/records/activities/', {
+            'activity_type': self.type_todo.id,
+            'summary': 'Racheter des câbles',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertTrue(resp.data['personnelle'])
+        self.assertIsNone(resp.data['target_model'])
+        act = Activity.objects.get(pk=resp.data['id'])
+        self.assertTrue(act.personnelle)
+        self.assertIsNone(act.content_type_id)
+        self.assertIsNone(act.object_id)
+
+    def test_personal_todo_invisible_to_colleague(self):
+        Activity.objects.create(
+            company=self.company, activity_type=self.type_todo,
+            summary='Privé', personnelle=True,
+            created_by=self.user, assigned_to=self.user)
+        # Le créateur la voit.
+        mine = self.api.get(
+            '/api/django/records/activities/?personnelle=1')
+        data = mine.data['results'] if 'results' in mine.data else mine.data
+        self.assertEqual(len(data), 1)
+        # Un collègue de la même société ne la voit jamais.
+        other_api = auth(self.collegue)
+        listed = other_api.get('/api/django/records/activities/')
+        data2 = listed.data['results'] if 'results' in listed.data else listed.data
+        self.assertEqual(len(data2), 0)
+
+    def test_convert_personal_todo_to_project_task(self):
+        from apps.gestion_projet.models import Projet, Tache
+        projet = Projet.objects.create(
+            company=self.company, code='P-XKB4', nom='Projet XKB4')
+        act = Activity.objects.create(
+            company=self.company, activity_type=self.type_todo,
+            summary='Commander le matériel', note='Détail utile',
+            personnelle=True, created_by=self.user, assigned_to=self.user)
+        resp = self.api.post(
+            f'/api/django/records/activities/{act.id}/vers-tache-projet/',
+            {'projet_id': projet.id}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        tache = Tache.objects.get(pk=resp.data['tache_id'])
+        self.assertEqual(tache.projet_id, projet.id)
+        self.assertEqual(tache.libelle, 'Commander le matériel')
+        self.assertEqual(tache.description, 'Détail utile')
+        act.refresh_from_db()
+        self.assertTrue(act.done)
+
+    def test_convert_unknown_project_returns_400(self):
+        act = Activity.objects.create(
+            company=self.company, activity_type=self.type_todo,
+            summary='X', personnelle=True,
+            created_by=self.user, assigned_to=self.user)
+        resp = self.api.post(
+            f'/api/django/records/activities/{act.id}/vers-tache-projet/',
+            {'projet_id': 999999}, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+
+# ── ZSAL1 — Enchaînement d'activités sur les types d'activité ───────────────
+class TestEnchainementActivites(TestCase):
+    def setUp(self):
+        self.company = Company.objects.create(nom='ZSAL1 Co', slug='zsal1-co')
+        self.user = User.objects.create_user(
+            username='zsal1_u', password='x', role_legacy='responsable',
+            company=self.company)
+        self.lead = Lead.objects.create(company=self.company, nom='ZSAL1 lead')
+        self.api = auth(self.user)
+
+    def test_declencher_creates_exactly_one_followup(self):
+        relance = ActivityType.objects.create(
+            company=self.company, nom='Email de relance', ordre=2)
+        appel = ActivityType.objects.create(
+            company=self.company, nom='Appel', ordre=1,
+            type_suivant=relance,
+            mode_enchainement=ActivityType.ModeEnchainement.DECLENCHER,
+            delai_jours=2)
+        act = Activity.objects.create(
+            company=self.company, content_type=_ct_lead(),
+            object_id=self.lead.id, activity_type=appel,
+            due_date=date.today(), assigned_to=self.user)
+
+        resp = self.api.post(
+            f'/api/django/records/activities/{act.id}/done/', {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIsNotNone(resp.data['chained'])
+        self.assertEqual(resp.data['chained']['activity_type'], relance.id)
+        self.assertEqual(
+            resp.data['chained']['due_date'],
+            str(date.today() + timedelta(days=2)))
+
+        # Une seule activité de suivi a été créée.
+        suivis = Activity.objects.filter(
+            content_type=_ct_lead(), object_id=self.lead.id,
+            activity_type=relance)
+        self.assertEqual(suivis.count(), 1)
+
+        # Re-clôturer (idempotent no-op) n'en crée pas une 2ᵉ.
+        resp2 = self.api.post(
+            f'/api/django/records/activities/{act.id}/done/', {}, format='json')
+        self.assertEqual(resp2.status_code, 200, resp2.data)
+        self.assertIsNone(resp2.data['chained'])
+        self.assertEqual(
+            Activity.objects.filter(
+                content_type=_ct_lead(), object_id=self.lead.id,
+                activity_type=relance).count(),
+            1)
+
+    def test_suggerer_creates_nothing_but_proposes(self):
+        relance = ActivityType.objects.create(
+            company=self.company, nom='Email de relance', ordre=2)
+        appel = ActivityType.objects.create(
+            company=self.company, nom='Appel', ordre=1,
+            type_suivant=relance,
+            mode_enchainement=ActivityType.ModeEnchainement.SUGGERER,
+            delai_jours=3)
+        act = Activity.objects.create(
+            company=self.company, content_type=_ct_lead(),
+            object_id=self.lead.id, activity_type=appel,
+            due_date=date.today(), assigned_to=self.user)
+
+        resp = self.api.post(
+            f'/api/django/records/activities/{act.id}/done/', {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIsNone(resp.data['chained'])
+        self.assertIsNotNone(resp.data['suggestion'])
+        self.assertEqual(resp.data['suggestion']['activity_type'], relance.id)
+        # Rien n'a été créé.
+        self.assertEqual(
+            Activity.objects.filter(
+                content_type=_ct_lead(), object_id=self.lead.id,
+                activity_type=relance).count(),
+            0)
+
+    def test_aucun_mode_unchanged_behaviour(self):
+        appel = ActivityType.objects.create(
+            company=self.company, nom='Appel simple', ordre=1)
+        act = Activity.objects.create(
+            company=self.company, content_type=_ct_lead(),
+            object_id=self.lead.id, activity_type=appel,
+            due_date=date.today(), assigned_to=self.user)
+        resp = self.api.post(
+            f'/api/django/records/activities/{act.id}/done/', {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIsNone(resp.data['chained'])
+        self.assertIsNone(resp.data['suggestion'])
+
+
+# ── XKB34 — S'abonner aux enregistrements (followers) ───────────────────────
+class TestFollowers(TestCase):
+    def setUp(self):
+        self.company = Company.objects.create(nom='XKB34 Co', slug='xkb34-co')
+        self.owner = User.objects.create_user(
+            username='xkb34_owner', password='x', role_legacy='responsable',
+            company=self.company)
+        self.follower_user = User.objects.create_user(
+            username='xkb34_follower', password='x', role_legacy='responsable',
+            company=self.company)
+        self.other = User.objects.create_user(
+            username='xkb34_other', password='x', role_legacy='responsable',
+            company=self.company)
+        self.lead = Lead.objects.create(company=self.company, nom='Follow Me')
+        self.api_follower = auth(self.follower_user)
+        self.api_owner = auth(self.owner)
+
+    def test_follow_then_comment_notifies_follower(self):
+        resp = self.api_follower.post('/api/django/records/followers/', {
+            'model': 'crm.lead', 'id': self.lead.id,
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        follower_id = resp.data['id']
+
+        from apps.notifications.models import Notification
+        note_resp = self.api_owner.post('/api/django/records/comments/', {
+            'model': 'crm.lead', 'id': self.lead.id,
+            'body': 'Un point important',
+        }, format='json')
+        self.assertEqual(note_resp.status_code, 201, note_resp.data)
+        self.assertTrue(
+            Notification.objects.filter(recipient=self.follower_user).exists())
+        # Le commentateur ne se notifie jamais lui-même.
+        self.assertFalse(
+            Notification.objects.filter(recipient=self.owner).exists())
+
+        # Se désabonner arrête les notifications futures.
+        del_resp = self.api_follower.delete(
+            f'/api/django/records/followers/{follower_id}/')
+        self.assertEqual(del_resp.status_code, 204)
+        Notification.objects.all().delete()
+        self.api_owner.post('/api/django/records/comments/', {
+            'model': 'crm.lead', 'id': self.lead.id,
+            'body': 'Un autre point',
+        }, format='json')
+        self.assertFalse(
+            Notification.objects.filter(recipient=self.follower_user).exists())
+
+    def test_follow_is_idempotent(self):
+        self.api_follower.post('/api/django/records/followers/', {
+            'model': 'crm.lead', 'id': self.lead.id,
+        }, format='json')
+        self.api_follower.post('/api/django/records/followers/', {
+            'model': 'crm.lead', 'id': self.lead.id,
+        }, format='json')
+        self.assertEqual(
+            Follower.objects.filter(
+                user=self.follower_user, object_id=self.lead.id).count(), 1)
+
+    def test_unfollow_only_own_subscription(self):
+        follower_obj = Follower.objects.create(
+            company=self.company, content_type=_ct_lead(),
+            object_id=self.lead.id, user=self.follower_user)
+        resp = self.api_owner.delete(
+            f'/api/django/records/followers/{follower_obj.id}/')
+        self.assertEqual(resp.status_code, 403)
+        self.assertTrue(Follower.objects.filter(pk=follower_obj.id).exists())
+
+    def test_auto_follow_service_subscribes_user(self):
+        """L'assignation (appelée par l'app métier propriétaire) auto-abonne."""
+        from apps.records import services as records_services
+        records_services.auto_follow(
+            company=self.company, content_type=_ct_lead(),
+            object_id=self.lead.id, user=self.other)
+        self.assertTrue(records_services.is_following(
+            content_type=_ct_lead(), object_id=self.lead.id, user=self.other))

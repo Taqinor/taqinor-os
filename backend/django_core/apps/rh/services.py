@@ -65,6 +65,128 @@ def droit_annuel(annees_service=0):
         .quantize(Decimal('0.01'))
 
 
+def feries_periode(company, date_debut, date_fin):
+    """ZRH1 — fériés (fixes ET mobiles société) d'une période, cross-app-safe.
+
+    Réutilise ``notifications.calendar_utils.feries_entre`` (jamais
+    ``notifications.models`` importé directement dans ``rh``) pour ajouter
+    les fêtes MOBILES hégiriennes (Aïd el-Fitr, Aïd el-Adha, 1er Moharram,
+    Mawlid…) et tout férié société saisi dans ``notifications.Holiday`` au
+    décompte, en plus de la table FIXE ``holidays.JOURS_FERIES_FIXES_MA``.
+    Renvoie une liste de ``date`` (vide si rien de configuré, ou dates
+    invalides).
+    """
+    if date_debut is None or date_fin is None:
+        return []
+    from apps.notifications.calendar_utils import feries_entre
+    return feries_entre(company, date_debut, date_fin)
+
+
+def annees_service(date_embauche, reference=None):
+    """Années de service pleines à ``reference`` (aujourd'hui par défaut).
+
+    ``None`` si ``date_embauche`` est absente (ancienneté non calculable).
+    """
+    if date_embauche is None:
+        return 0
+    ref = reference or timezone.localdate()
+    annees = ref.year - date_embauche.year
+    if (ref.month, ref.day) < (date_embauche.month, date_embauche.day):
+        annees -= 1
+    return max(annees, 0)
+
+
+@transaction.atomic
+def accruer_conges_mensuel(dossier, *, annee, mois, apply=False):
+    """ZRH2 — acquisition mensuelle automatique pour UN employé/mois.
+
+    Odoo « Accrual Time Off » : crédite ``SoldeConge.acquis`` du droit du mois
+    (``acquisition_mensuelle``, ancienneté dérivée de ``date_embauche``) pour
+    l'année ``annee``, SANS jamais dépasser 12 crédits/an (garde
+    ``mois_acquis``). Idempotent : un second appel pour le MÊME mois ne
+    crédite pas deux fois. ``apply=False`` (dry-run) ne modifie rien et
+    renvoie le montant qui SERAIT crédité. Renvoie un dict
+    ``{'credite': Decimal, 'deja_acquis': bool}``.
+    """
+    from .models import SoldeConge
+
+    solde, _ = SoldeConge.objects.select_for_update().get_or_create(
+        company=dossier.company, employe=dossier, annee=annee)
+    if solde.mois_acquis >= 12 or solde.mois_acquis >= mois:
+        # Déjà crédité pour ce mois (ou l'année est déjà pleinement créditée).
+        return {'credite': Decimal('0'), 'deja_acquis': True}
+
+    service = annees_service(dossier.date_embauche)
+    montant = acquisition_mensuelle(service)
+    if apply:
+        solde.acquis = (solde.acquis or Decimal('0')) + montant
+        solde.mois_acquis = mois
+        solde.save(update_fields=[
+            'acquis', 'mois_acquis', 'date_modification'])
+    return {'credite': montant, 'deja_acquis': False}
+
+
+@transaction.atomic
+def reporter_solde_janvier(dossier, *, annee_precedente, annee_cible,
+                           plafond=None, apply=False):
+    """ZRH2 — report janvier : transfère le ``disponible`` restant de
+    ``annee_precedente`` vers ``report`` de ``annee_cible`` (Odoo « Time Off
+    accrual carry-over »).
+
+    Idempotent (``report_applique`` sur le solde CIBLE) : un second appel ne
+    re-crédite pas. ``plafond`` borne le montant reporté (``None`` =
+    illimité, comportement par défaut). ``apply=False`` ne modifie rien.
+    Renvoie un dict ``{'reporte': Decimal, 'deja_applique': bool}``.
+    """
+    from .models import SoldeConge
+
+    cible, _ = SoldeConge.objects.select_for_update().get_or_create(
+        company=dossier.company, employe=dossier, annee=annee_cible)
+    if cible.report_applique:
+        return {'reporte': Decimal('0'), 'deja_applique': True}
+
+    precedent = SoldeConge.objects.filter(
+        company=dossier.company, employe=dossier,
+        annee=annee_precedente).first()
+    disponible = precedent.disponible if precedent else Decimal('0')
+    if disponible < 0:
+        disponible = Decimal('0')
+    montant = disponible
+    if plafond is not None and montant > plafond:
+        montant = Decimal(str(plafond))
+
+    if apply:
+        cible.report = (cible.report or Decimal('0')) + montant
+        cible.report_applique = True
+        cible.save(update_fields=[
+            'report', 'report_applique', 'date_modification'])
+    return {'reporte': montant, 'deja_applique': False}
+
+
+def jour_bloque_conflit(employe, date_debut, date_fin):
+    """ZRH4 — jour bloqué du DÉPARTEMENT de ``employe`` chevauchant la plage.
+
+    Renvoie le premier ``JourBloqueConge`` en conflit (ou ``None``) : un
+    blocage SANS département lié couvre TOUTE la société ; sinon il ne
+    s'applique qu'aux départements qu'il liste. Un employé sans département
+    n'est concerné QUE par les blocages société entière (sans département).
+    """
+    from django.db.models import Q
+
+    from .models import JourBloqueConge
+
+    qs = JourBloqueConge.objects.filter(
+        company=employe.company, date_debut__lte=date_fin,
+        date_fin__gte=date_debut)
+    if employe.departement_id:
+        qs = qs.filter(
+            Q(departements__isnull=True) |
+            Q(departements__id=employe.departement_id))
+    else:
+        qs = qs.filter(departements__isnull=True)
+    return qs.distinct().first()
+
+
 def calculer_jours_demande(type_absence, date_debut, date_fin,
                            extra_holidays=None,
                            demi_journee_debut=False, demi_journee_fin=False):
@@ -441,6 +563,60 @@ def emarger_dotation(dotation, *, signataire_nom, role_signataire=None,
     return {'emargement': emargement, 'deja_accusee': deja_accusee}
 
 
+def creer_dotation_epi(*, company, epi, employe, quantite, user=None,
+                       bloquer_si_insuffisant=False, **extra_fields):
+    """YHIRE13 — crée une ``DotationEpi`` et décrémente le stock si ``epi``
+    est lié à un produit (``EpiCatalogue.produit_id``).
+
+    Catalogue non lié (``produit_id`` vide) = comportement STRICTEMENT
+    inchangé (aucun effet stock). Le mouvement de stock (typé SORTIE, motif
+    dotation) est créé via ``apps.stock.services`` — jamais d'import direct
+    de ``apps.stock.models``. Lève ``ValueError`` si le stock est insuffisant
+    ET que ``bloquer_si_insuffisant`` est vrai (sinon la dotation se fait
+    quand même, warn par défaut).
+    """
+    from .models import DotationEpi
+
+    dotation = DotationEpi.objects.create(
+        company=company, epi=epi, employe=employe, quantite=quantite,
+        **extra_fields)
+
+    if epi.produit_id:
+        from apps.stock import services as stock_services
+        stock_services.decrementer_stock_dotation_epi(
+            company=company, produit_id=epi.produit_id, quantite=quantite,
+            reference=f'DotationEPI#{dotation.id}', user=user,
+            bloquer_si_insuffisant=bloquer_si_insuffisant)
+
+    return dotation
+
+
+class RestitutionEpiError(Exception):
+    """Erreur métier lors de la restitution d'une dotation EPI (YHIRE13)."""
+
+
+def restituer_dotation_epi(dotation, *, user=None):
+    """YHIRE13 — restitue une ``DotationEpi`` : réintègre le stock si l'EPI
+    est lié à un produit, marque ``restituee``. Une dotation déjà restituée
+    lève ``RestitutionEpiError`` (jamais restituée deux fois — pas de double
+    réintégration de stock)."""
+    if dotation.restituee:
+        raise RestitutionEpiError('Cette dotation a déjà été restituée.')
+
+    if dotation.epi.produit_id:
+        from apps.stock import services as stock_services
+        stock_services.reintegrer_stock_restitution_epi(
+            company=dotation.company, produit_id=dotation.epi.produit_id,
+            quantite=dotation.quantite,
+            reference=f'RestitutionEPI#{dotation.id}', user=user)
+
+    dotation.restituee = True
+    dotation.date_restitution = timezone.now()
+    dotation.save(update_fields=[
+        'restituee', 'date_restitution', 'date_modification'])
+    return dotation
+
+
 def creer_accident_travail(serializer, company):
     """Crée un AccidentTravail (FG181) avec une référence race-safe.
 
@@ -484,6 +660,86 @@ def creer_presqu_accident(serializer, company, declare_par=None):
 
 
 @transaction.atomic
+def soumettre_ouverture(ouverture, *, demandeur):
+    """YHIRE14 — soumet une ouverture BROUILLON à approbation.
+
+    Seule une ouverture en ``brouillon`` peut être soumise. Pose
+    ``demandeur`` (celui qui soumet — jamais lu du corps de requête) et
+    ``date_soumission``. Lève ``ValueError`` sinon.
+    """
+    from .models import OuverturePoste
+
+    if ouverture.statut != OuverturePoste.Statut.BROUILLON:
+        raise ValueError(
+            'Seule une ouverture en brouillon peut être soumise à '
+            'approbation.')
+    ouverture.statut = OuverturePoste.Statut.EN_APPROBATION
+    ouverture.demandeur = demandeur
+    ouverture.date_soumission = timezone.now()
+    ouverture.save(update_fields=[
+        'statut', 'demandeur', 'date_soumission', 'date_modification'])
+    return ouverture
+
+
+def approuver_ouverture(ouverture, *, approbateur):
+    """YHIRE14 — approuve une ouverture EN_APPROBATION -> OUVERT.
+
+    SoD (séparation des tâches) : l'approbateur ne peut JAMAIS être le
+    demandeur — auto-approbation refusée (``ValueError``). Lève aussi
+    ``ValueError`` si l'ouverture n'est pas dans l'état décidable.
+    """
+    from .models import OuverturePoste
+
+    if ouverture.statut != OuverturePoste.Statut.EN_APPROBATION:
+        raise ValueError(
+            "Seule une ouverture en attente d'approbation peut être "
+            'approuvée.')
+    if ouverture.demandeur_id and ouverture.demandeur_id == getattr(
+            approbateur, 'id', None):
+        raise ValueError(
+            'Le demandeur ne peut pas approuver sa propre réquisition '
+            '(séparation des tâches).')
+    ouverture.statut = OuverturePoste.Statut.OUVERT
+    ouverture.approbateur = approbateur
+    ouverture.date_decision = timezone.now()
+    ouverture.motif_refus = ''
+    if not ouverture.date_ouverture:
+        ouverture.date_ouverture = timezone.now().date()
+    ouverture.save(update_fields=[
+        'statut', 'approbateur', 'date_decision', 'motif_refus',
+        'date_ouverture', 'date_modification'])
+    return ouverture
+
+
+def refuser_ouverture(ouverture, *, approbateur, motif_refus=''):
+    """YHIRE14 — refuse une ouverture EN_APPROBATION (reste non ouverte).
+
+    Même garde SoD que ``approuver_ouverture``. Le statut refusé n'a pas de
+    valeur dédiée dans le cycle (spécification) : on ramène l'ouverture en
+    ``brouillon`` pour permettre une resoumission après correction, le motif
+    étant conservé pour traçabilité.
+    """
+    from .models import OuverturePoste
+
+    if ouverture.statut != OuverturePoste.Statut.EN_APPROBATION:
+        raise ValueError(
+            "Seule une ouverture en attente d'approbation peut être "
+            'refusée.')
+    if ouverture.demandeur_id and ouverture.demandeur_id == getattr(
+            approbateur, 'id', None):
+        raise ValueError(
+            'Le demandeur ne peut pas refuser sa propre réquisition '
+            '(séparation des tâches).')
+    ouverture.statut = OuverturePoste.Statut.BROUILLON
+    ouverture.approbateur = approbateur
+    ouverture.date_decision = timezone.now()
+    ouverture.motif_refus = motif_refus or ''
+    ouverture.save(update_fields=[
+        'statut', 'approbateur', 'date_decision', 'motif_refus',
+        'date_modification'])
+    return ouverture
+
+
 def embaucher(candidature, matricule=None, **dossier_kwargs):
     """Convertit une candidature EMBAUCHÉE en ``DossierEmploye`` (FG189 — ATS).
 
@@ -654,6 +910,62 @@ def instancier_integration(dossier, modele=None):
     if not lignes:
         return []
     return ElementIntegrationEmploye.objects.bulk_create(lignes)
+
+
+def _modele_evaluation_applicable(campagne, employe):
+    """ZRH7 — modèle d'évaluation le plus spécifique pour ``employe`` dans
+    ``campagne`` : priorité au modèle EXPLICITE de la campagne s'il est ciblé
+    (poste/département) ou par défaut, sinon un modèle du département de
+    l'employé, sinon le modèle par défaut de la société. ``None`` si aucun.
+    """
+    if campagne.modele_id:
+        return campagne.modele
+    from .models import ModeleEvaluation
+
+    base = ModeleEvaluation.objects.filter(
+        company=campagne.company, actif=True)
+    if employe.poste_ref_id and employe.departement_id:
+        exact = base.filter(
+            poste_ref_id=employe.poste_ref_id,
+            departement_id=employe.departement_id).first()
+        if exact:
+            return exact
+    if employe.poste_ref_id:
+        match = base.filter(
+            poste_ref_id=employe.poste_ref_id, departement__isnull=True
+        ).first()
+        if match:
+            return match
+    if employe.departement_id:
+        match = base.filter(
+            departement_id=employe.departement_id, poste_ref__isnull=True
+        ).first()
+        if match:
+            return match
+    return base.filter(poste_ref__isnull=True, departement__isnull=True).first()
+
+
+def instancier_reponses_evaluation(campagne, employe):
+    """ZRH7 — instancie ``EvaluationEmploye.reponses`` depuis le modèle
+    applicable (campagne > département/poste employé > défaut société).
+
+    Renvoie une liste de dicts ``{libelle, type, cible, reponse: ''}`` (une
+    par question du modèle), ou ``[]`` si aucun modèle applicable — la
+    campagne SANS modèle reste un entretien à synthèse libre, comportement
+    historique inchangé.
+    """
+    modele = _modele_evaluation_applicable(campagne, employe)
+    if modele is None:
+        return []
+    reponses = []
+    for question in modele.questions or []:
+        reponses.append({
+            'libelle': question.get('libelle', ''),
+            'type': question.get('type', 'texte'),
+            'cible': question.get('cible', 'manager'),
+            'reponse': '',
+        })
+    return reponses
 
 
 def controler_permis_affectation(company, employe_id, *, le=None):
@@ -901,6 +1213,55 @@ def controler_geofence_presence(presence, gps_lat, gps_lng):
                 f'≈{int(distance_m)} m du chantier).'),
         )
     return presence
+
+
+# ── ZRH5 — clôture automatique des pointages oubliés ───────────────────────
+
+def clore_pointages_ouverts(company, *, apply=False):
+    """ZRH5 — clôture les pointages OUVERTS (arrivée sans départ) au-delà du
+    seuil société (« Automatic check-out » Odoo).
+
+    Seuil désactivé (``ReglageRH.pointage_auto_depart_apres_h`` NULL) → no-op
+    (liste vide). Un pointage ouvert depuis > seuil est clôturé UNE fois :
+    ``heure_depart = heure_arrivee + seuil``, ``depart_auto = True`` (jamais
+    écrasé si déjà fermé — la requête ne cible que
+    ``heure_depart__isnull=True``), et un ``IncidentPresence`` « départ
+    automatique » est créé pour traçabilité. ``apply=False`` (dry-run) ne
+    modifie rien. Renvoie la liste des pointages (dry-run) ou clôturés
+    (apply), pour rapport.
+    """
+    from datetime import timedelta
+
+    from .models import IncidentPresence, Pointage, ReglageRH
+
+    reglage = ReglageRH.objects.filter(company=company).first()
+    seuil_h = reglage.pointage_auto_depart_apres_h if reglage else None
+    if not seuil_h:
+        return []
+
+    seuil = timedelta(hours=seuil_h)
+    limite = timezone.now() - seuil
+    ouverts = Pointage.objects.filter(
+        company=company, heure_depart__isnull=True,
+        heure_arrivee__isnull=False, heure_arrivee__lte=limite,
+    ).select_related('employe')
+
+    traites = []
+    for pointage in ouverts:
+        depart_calcule = pointage.heure_arrivee + seuil
+        traites.append(pointage)
+        if apply:
+            pointage.heure_depart = depart_calcule
+            pointage.depart_auto = True
+            pointage.save(update_fields=[
+                'heure_depart', 'depart_auto', 'date_modification'])
+            IncidentPresence.objects.create(
+                company=company, employe=pointage.employe,
+                type_incident=IncidentPresence.TypeIncident.DEPART_ANTICIPE,
+                date=pointage.heure_arrivee.date(),
+                motif='Départ automatique (pointage oublié)',
+                note=f'Clôturé après {seuil_h} h sans départ pointé.')
+    return traites
 
 
 # ── XRH13 — import de pointages externes (pointeuse biométrique, CSV) ──────
@@ -1257,3 +1618,799 @@ def rattacher_depuis_vivier(candidature_vivier, ouverture):
             f'Rattaché depuis le vivier (candidature originale '
             f'#{candidature_vivier.id}).'))
     return nouvelle
+
+
+# ── XRH23 — parsing de CV par OCR (key-gated) ───────────────────────────────
+
+class CvParsingUnavailable(Exception):
+    """Levée quand aucun fournisseur OCR n'est configuré (503 douce)."""
+
+
+_CV_MIME_TYPES = {
+    'pdf': 'application/pdf',
+    'png': 'image/png',
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+}
+
+
+def parser_cv(candidature):
+    """XRH23 — OCR le ``cv_fichier`` de la candidature et PRÉ-REMPLIT
+    uniquement les champs VIDES (``nom``/``email``/``telephone``), sans
+    jamais écraser une valeur déjà saisie. Suggère aussi des ``tags_vivier``
+    (compétences détectées) — toujours en complément, jamais en remplacement
+    de tags déjà présents.
+
+    Lève :class:`CvParsingUnavailable` si aucun ``cv_fichier`` n'est attaché
+    ou si aucun fournisseur OCR n'est configuré (``ZHIPU_API_KEY`` absent) —
+    l'appelant (vue) traduit en 503 douce, sans exception non gérée.
+
+    Renvoie un dict ``{champs_remplis: [...], tags_suggeres: [...],
+    donnees_brutes: {...}}``. Entièrement additif, transaction atomique sur
+    la sauvegarde des champs remplis.
+    """
+    from core.ai.services import extract_document
+
+    if not candidature.cv_fichier:
+        raise CvParsingUnavailable('Aucun CV attaché à cette candidature.')
+
+    nom_fichier = candidature.cv_fichier.name or ''
+    ext = nom_fichier.rsplit('.', 1)[-1].lower() if '.' in nom_fichier else ''
+    mime_type = _CV_MIME_TYPES.get(ext, 'application/octet-stream')
+
+    try:
+        candidature.cv_fichier.open('rb')
+        content = candidature.cv_fichier.read()
+    finally:
+        candidature.cv_fichier.close()
+
+    result = extract_document(
+        content=content, mime_type=mime_type, schema='cv')
+    if not result.configured:
+        raise CvParsingUnavailable(
+            "Aucun fournisseur OCR n'est configuré (clé absente) — "
+            'saisie manuelle requise.')
+
+    data = result.data or {}
+    champs_remplis = []
+    update_fields = []
+
+    with transaction.atomic():
+        if not candidature.nom and data.get('nom'):
+            prenom = str(data.get('prenom') or '').strip()
+            nom = str(data.get('nom') or '').strip()
+            candidature.nom = f'{prenom} {nom}'.strip() if prenom else nom
+            champs_remplis.append('nom')
+            update_fields.append('nom')
+        if not candidature.email and data.get('email'):
+            candidature.email = str(data['email']).strip()
+            champs_remplis.append('email')
+            update_fields.append('email')
+        if not candidature.telephone and data.get('telephone'):
+            candidature.telephone = str(data['telephone']).strip()
+            champs_remplis.append('telephone')
+            update_fields.append('telephone')
+
+        competences = data.get('competences') or []
+        if isinstance(competences, str):
+            competences = [c.strip() for c in competences.split(',')
+                           if c.strip()]
+        tags_suggeres = [str(c).strip() for c in competences if str(c).strip()]
+
+        if update_fields:
+            update_fields.append('date_modification')
+            candidature.save(update_fields=update_fields)
+
+    return {
+        'champs_remplis': champs_remplis,
+        'tags_suggeres': tags_suggeres,
+        'donnees_brutes': data,
+    }
+
+
+# ── XRH24 — rétention & anonymisation des candidats (loi 09-08) ────────────
+
+_ANONYMISE_NOM = 'Candidat anonymisé'
+
+
+def candidatures_purgeables(company, *, retention_mois=None, now=None):
+    """XRH24 — candidatures REJETÉES éligibles à l'anonymisation.
+
+    Une candidature est éligible si : ``etape == rejete``, ``vivier`` est
+    ``False`` (jamais le vivier actif — même rejetée, un candidat au vivier
+    est délibérément conservé) et sa dernière activité (``date_modification``,
+    date du passage à ``rejete`` en pratique) dépasse ``retention_mois`` (le
+    réglage société ``ReglageRH.retention_candidatures_mois``, défaut 24, si
+    non fourni). Un candidat déjà anonymisé (``nom`` déjà marqué) est exclu —
+    idempotence. Jamais les embauchés (``etape == embauche`` exclue de fait
+    par le filtre ``rejete``).
+    """
+    from .models import Candidature, ReglageRH, _ajouter_mois
+
+    now = now or timezone.now()
+    if retention_mois is None:
+        reglage = ReglageRH.objects.filter(company=company).first()
+        retention_mois = (
+            reglage.retention_candidatures_mois if reglage else 24)
+
+    # Recule de ``retention_mois`` SANS dépendance externe (pas de dateutil),
+    # en réutilisant l'arithmétique de dates déjà éprouvée des EPI (FG179).
+    seuil_date = _ajouter_mois(now.date(), -int(retention_mois))
+    seuil = timezone.make_aware(
+        timezone.datetime.combine(seuil_date, timezone.datetime.min.time()))
+    return Candidature.objects.filter(
+        company=company,
+        etape=Candidature.Etape.REJETE,
+        vivier=False,
+        date_modification__lt=seuil,
+    ).exclude(nom=_ANONYMISE_NOM)
+
+
+@transaction.atomic
+def anonymiser_candidature(candidature):
+    """XRH24 — anonymise UNE candidature rejetée hors-vivier (irréversible) :
+    ``nom`` → « Candidat anonymisé », ``email``/``telephone`` vidés, le
+    ``cv_fichier`` est supprimé du storage (et le champ vidé), ``note``
+    purgée. La LIGNE survit (jamais de suppression) — les comptages/stats
+    XRH22 restent corrects. ``tags_vivier`` est également vidé (donnée
+    personnelle librement saisie)."""
+    if candidature.cv_fichier:
+        candidature.cv_fichier.delete(save=False)
+
+    candidature.nom = _ANONYMISE_NOM
+    candidature.email = ''
+    candidature.telephone = ''
+    candidature.note = ''
+    candidature.tags_vivier = ''
+    candidature.cv_fichier = None
+    candidature.save(update_fields=[
+        'nom', 'email', 'telephone', 'note', 'tags_vivier', 'cv_fichier',
+        'date_modification'])
+    return candidature
+
+
+def purger_candidatures(company, *, retention_mois=None, now=None,
+                        apply=False):
+    """XRH24 — purge (DRY-RUN par défaut) les candidatures rejetées hors
+    vivier au-delà de la rétention société.
+
+    ``apply=False`` (défaut) : ne modifie RIEN, renvoie seulement le compte et
+    les ids éligibles. ``apply=True`` : anonymise réellement chaque
+    candidature éligible (:func:`anonymiser_candidature`). Jamais les
+    embauchés ni le vivier actif (filtrés en amont par
+    :func:`candidatures_purgeables`). Renvoie
+    ``{'company_id', 'dry_run', 'eligibles', 'anonymisees', 'ids'}``.
+    """
+    candidats = list(candidatures_purgeables(
+        company, retention_mois=retention_mois, now=now))
+    ids = [c.id for c in candidats]
+    anonymisees = 0
+    if apply:
+        for candidature in candidats:
+            anonymiser_candidature(candidature)
+            anonymisees += 1
+
+    return {
+        'company_id': company.id,
+        'dry_run': not apply,
+        'eligibles': len(candidats),
+        'anonymisees': anonymisees,
+        'ids': ids,
+    }
+
+
+# ── XRH26 — auto-évaluation + issues d'évaluation structurées ──────────────
+
+def _porteurs_salaires_voir(company):
+    """Utilisateurs actifs de la société portant la permission
+    ``salaires_voir`` (JSONField liste de codes sur ``roles.Role``)."""
+    from django.contrib.auth import get_user_model
+
+    User = get_user_model()
+    return User.objects.filter(
+        company=company, is_active=True,
+        role__permissions__contains=['salaires_voir'])
+
+
+@transaction.atomic
+def traiter_issue_evaluation(evaluation):
+    """XRH26 — effets de bord de l'``issue`` posée À LA VALIDATION d'un
+    entretien d'évaluation :
+
+    * ``issue == 'formation'`` — crée un ``BesoinFormation`` lié à
+      l'employé évalué (thème = ``issue_details`` si renseigné, sinon un
+      libellé générique), priorité moyenne, statut ``identifie``.
+    * ``issue == 'augmentation_proposee'`` — notifie (best-effort, via
+      ``apps.notifications.services.notify``) chaque porteur actif de
+      ``salaires_voir`` — SANS JAMAIS inclure de montant dans le corps de la
+      notification (juste le nom de l'employé concerné).
+
+    Idempotence pragmatique : appelée uniquement au moment de la validation
+    (vue), jamais automatiquement en boucle. Aucune exception ne remonte côté
+    notification (best-effort) ; la création du besoin de formation reste,
+    elle, dans la transaction (erreur = rollback propre).
+    """
+    from .models import BesoinFormation, EvaluationEmploye
+
+    if evaluation.issue == EvaluationEmploye.Issue.FORMATION:
+        theme = evaluation.issue_details.strip() or (
+            f"Formation suite à l'évaluation {evaluation.campagne.intitule}")
+        BesoinFormation.objects.create(
+            company=evaluation.company,
+            employe=evaluation.employe,
+            theme=theme[:200],
+            priorite=BesoinFormation.Priorite.MOYENNE,
+            statut=BesoinFormation.Statut.IDENTIFIE,
+        )
+
+    if evaluation.issue == EvaluationEmploye.Issue.AUGMENTATION_PROPOSEE:
+        try:
+            from apps.notifications.models import EventType
+            from apps.notifications.services import notify_many
+
+            employe_nom = f'{evaluation.employe.nom} {evaluation.employe.prenom}'
+            notify_many(
+                _porteurs_salaires_voir(evaluation.company),
+                EventType.APPROVAL_REQUESTED,
+                title='Augmentation proposée',
+                body=(
+                    f'Une augmentation a été proposée pour {employe_nom} '
+                    "suite à son entretien d'évaluation."),
+            )
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant.
+            pass
+
+
+# ── XRH32 — baromètre interne eNPS anonyme (pulse) ──────────────────────────
+
+class DejaVoteError(Exception):
+    """Levée quand l'utilisateur a déjà participé à cette campagne pulse."""
+
+
+@transaction.atomic
+def repondre_pulse(campagne, user, *, score, commentaire=''):
+    """XRH32 — enregistre une réponse ANONYME à une campagne pulse.
+
+    Deux écritures dans LA MÊME transaction, JAMAIS reliées entre elles :
+      1. ``ParticipationPulse(campagne, user)`` — la contrainte d'unicité EST
+         le garde-fou anti-double-vote ; si elle existe déjà,
+         :class:`DejaVoteError` est levée AVANT toute écriture de réponse
+         (aucune deuxième ``ReponsePulse`` n'est créée pour ce vote refusé).
+      2. ``ReponsePulse(campagne, score, commentaire)`` — SANS AUCUNE
+         référence à ``user`` : structurellement impossible de relier cette
+         ligne au votant.
+
+    Renvoie la ``ReponsePulse`` créée.
+    """
+    from .models import (
+        ParticipationPulse, ReponsePulse, hash_participation_token,
+    )
+
+    if ParticipationPulse.objects.filter(
+            campagne=campagne, user=user).exists():
+        raise DejaVoteError('Vous avez déjà répondu à cette campagne.')
+
+    ParticipationPulse.objects.create(
+        company=campagne.company, campagne=campagne, user=user,
+        token_hash=hash_participation_token(user.id, campagne.id))
+
+    return ReponsePulse.objects.create(
+        company=campagne.company, campagne=campagne,
+        score=score, commentaire=commentaire or '')
+
+
+# ── YHIRE2 — orchestration de sortie (employe_sorti) ───────────────────────
+
+@transaction.atomic
+def sortir_employe(dossier, *, date_sortie, motif, notes_avances=''):
+    """YHIRE2 — orchestre la sortie d'un ``DossierEmploye`` : jusqu'ici,
+    passer ``statut`` à SORTI était un simple PATCH sans aucun effet — la
+    checklist de restitution restait à saisir à la main, le compte
+    utilisateur lié restait ACTIF et le profil de paie n'était jamais coupé
+    (un sorti pouvait encore recevoir un bulletin normal).
+
+    Dans UNE transaction :
+
+    1. pose ``statut=SORTI`` + ``date_sortie`` + ``motif_sortie`` ;
+    2. GÉNÈRE les ``ElementSortie`` (FG161) depuis les affectations OUVERTES
+       réelles :
+       - une ligne EPI par ``DotationEpi`` de l'employé non encore restituée
+         (``recupere=False``) ;
+       - une ligne VÉHICULE par ``AffectationVehicule`` ACTIVE, close à
+         ``date_sortie`` (``statut=TERMINEE``, ``date_fin=date_sortie``) ;
+       - une note (ligne AUTRE) listant les ``AvanceSalaire`` non soldées
+         (statut demandée/approuvée) si elles existent ;
+    3. désactive le compte utilisateur lié (``user.is_active=False``,
+       horodaté sur le dossier via le chatter XRH6) ;
+    4. émet ``employe_sorti`` sur le bus d'événements (``core.events``) —
+       ``paie`` s'y abonne (``apps/paie/receivers.py``) pour couper
+       ``ProfilPaie.actif``, SANS que ``rh`` importe jamais ``apps.paie``.
+
+    Idempotent : ré-appeler sur un dossier DÉJÀ ``SORTI`` ne RE-génère pas la
+    checklist ni ne ré-émet l'événement (lève ``ValueError``) — évite un
+    doublon d'``ElementSortie``/de désactivation si l'action est rejouée.
+
+    ``dossier``/``motif`` sont déjà scopés/validés par l'appelant (vue) ;
+    aucune lecture de société depuis le corps de requête.
+    """
+    from .models import (
+        AffectationVehicule, AvanceSalaire, DossierEmploye, DotationEpi,
+        ElementSortie,
+    )
+
+    if dossier.statut == DossierEmploye.Statut.SORTI:
+        raise ValueError('Ce dossier est déjà marqué sorti.')
+
+    dossier.statut = DossierEmploye.Statut.SORTI
+    dossier.date_sortie = date_sortie
+    dossier.motif_sortie = motif
+    dossier.save(update_fields=['statut', 'date_sortie', 'motif_sortie'])
+
+    # (b) EPI non restitués → une ligne de checklist par dotation ouverte.
+    dotations_ouvertes = DotationEpi.objects.filter(
+        company=dossier.company, employe=dossier, recupere=False)
+    for dotation in dotations_ouvertes:
+        ElementSortie.objects.create(
+            company=dossier.company,
+            employe=dossier,
+            libelle=f'EPI — {dotation.epi.designation}'[:160],
+            type_element=ElementSortie.TypeElement.EPI,
+        )
+
+    # Véhicules affectés ACTIFS → clôturés à la date de sortie + checklist.
+    affectations_ouvertes = AffectationVehicule.objects.filter(
+        company=dossier.company, employe=dossier,
+        statut=AffectationVehicule.Statut.ACTIVE)
+    for affectation in affectations_ouvertes:
+        ElementSortie.objects.create(
+            company=dossier.company,
+            employe=dossier,
+            libelle=f'Véhicule #{affectation.vehicule_id}'[:160],
+            type_element=ElementSortie.TypeElement.VEHICULE,
+        )
+        affectation.statut = AffectationVehicule.Statut.TERMINEE
+        affectation.date_fin = date_sortie
+        affectation.save(update_fields=['statut', 'date_fin', 'date_modification'])
+
+    # Avances non soldées → note informative (pas de mouvement financier ici,
+    # le solde reste porté par le module concerné — RH ou paie).
+    avances_ouvertes = AvanceSalaire.objects.filter(
+        company=dossier.company, employe=dossier,
+        statut__in=[
+            AvanceSalaire.Statut.DEMANDEE, AvanceSalaire.Statut.APPROUVEE])
+    if avances_ouvertes.exists():
+        total = sum((a.montant or 0) for a in avances_ouvertes)
+        note = (
+            f'{avances_ouvertes.count()} avance(s) non soldée(s) '
+            f'(total {total}).')
+        if notes_avances:
+            note = f'{note} {notes_avances}'.strip()
+        ElementSortie.objects.create(
+            company=dossier.company,
+            employe=dossier,
+            libelle='Avances sur salaire non soldées'[:160],
+            type_element=ElementSortie.TypeElement.AUTRE,
+            note=note[:255],
+        )
+
+    # (c) Compte utilisateur lié désactivé — journalisé.
+    if dossier.user_id and dossier.user.is_active:
+        dossier.user.is_active = False
+        dossier.user.save(update_fields=['is_active'])
+
+    # (d) Bus d'événements — paie s'abonne dans son propre apps.py ready(),
+    # rh n'importe jamais apps.paie.
+    from core.events import employe_sorti
+    employe_sorti.send(
+        sender=DossierEmploye, dossier=dossier, user=dossier.user,
+        motif=motif)
+
+    return dossier
+
+
+# ── YHIRE7 — propagation des effets des sanctions disciplinaires ──────────
+
+# Code stable du TypeAbsence de mise à pied (seedé par ``seed_types_absence``,
+# NON rémunéré, NE déduit PAS le solde de congés — compteur distinct d'une
+# sanction). Un motif reprenant le n° de sanction sert de clé d'idempotence.
+_CODE_TYPE_ABSENCE_MISE_A_PIED = 'MAP'
+
+
+def _motif_absence_mise_a_pied(sanction):
+    """Clé stable (dans ``motif``) reliant une ``DemandeConge`` générée à SA
+    sanction d'origine — sert de garde d'idempotence (une sanction ne génère
+    jamais deux absences)."""
+    return f'Mise à pied — Sanction #{sanction.pk}'
+
+
+@transaction.atomic
+def propager_effets_sanction_notification(sanction):
+    """YHIRE7(a) — à la NOTIFICATION d'une sanction (statut NOTIFIEE), propage
+    son effet métier :
+
+    * ``MISE_A_PIED`` avec ``duree_jours`` > 0 — crée (idempotent : une seule
+      fois par sanction, clé = motif stable) une ``DemandeConge`` déjà
+      VALIDÉE du type ``TypeAbsence`` seedé « Mise à pied » (non rémunéré, ne
+      déduit pas le solde de congés), couvrant
+      ``date_notification`` → ``date_notification + duree_jours - 1`` (ou
+      ``date_faits`` si la notification est absente). Le bulletin de paie
+      exclut cette période via l'import RH→paie (YHIRE1, absence non
+      rémunérée).
+    * tout autre type de sanction — aucun effet (no-op silencieux).
+
+    Ne lève JAMAIS d'exception si le type d'absence n'est pas seedé pour la
+    société (défensif — journalise et ne bloque pas la création/notification
+    de la sanction).
+    """
+    from datetime import timedelta
+
+    from .models import DemandeConge, Sanction, TypeAbsence
+
+    if sanction.type_sanction != Sanction.TypeSanction.MISE_A_PIED:
+        return None
+    if not sanction.duree_jours:
+        return None
+
+    motif = _motif_absence_mise_a_pied(sanction)
+    if DemandeConge.objects.filter(
+            company=sanction.company, employe=sanction.employe,
+            motif=motif).exists():
+        return None  # déjà propagé (idempotence)
+
+    type_absence = TypeAbsence.objects.filter(
+        company=sanction.company, code=_CODE_TYPE_ABSENCE_MISE_A_PIED).first()
+    if type_absence is None:
+        return None  # type non seedé pour cette société — no-op défensif
+
+    date_debut = sanction.date_notification or sanction.date_faits
+    if date_debut is None:
+        return None
+    date_fin = date_debut + timedelta(days=sanction.duree_jours - 1)
+
+    return DemandeConge.objects.create(
+        company=sanction.company,
+        employe=sanction.employe,
+        type_absence=type_absence,
+        date_debut=date_debut,
+        date_fin=date_fin,
+        jours=Decimal(sanction.duree_jours),
+        statut=DemandeConge.Statut.VALIDEE,
+        date_decision=timezone.now(),
+        motif=motif,
+    )
+
+
+@transaction.atomic
+def propager_effets_sanction_annulation(sanction):
+    """YHIRE7(a) — à l'ANNULATION d'une sanction (contestation gagnée),
+    retire l'effet propagé : annule la ``DemandeConge`` de mise à pied liée
+    (créée par ``propager_effets_sanction_notification``) si elle existe et
+    n'est pas déjà annulée. No-op si aucune absence n'avait été générée."""
+    from .models import DemandeConge
+
+    motif = _motif_absence_mise_a_pied(sanction)
+    demande = DemandeConge.objects.filter(
+        company=sanction.company, employe=sanction.employe,
+        motif=motif).exclude(statut=DemandeConge.Statut.ANNULEE).first()
+    if demande is None:
+        return None
+    return annuler_demande(demande)
+
+
+class SortieNonConfirmeeError(Exception):
+    """YHIRE7(b) — levée quand une sanction LICENCIEMENT propose la sortie
+    sans confirmation explicite (jamais automatique silencieux)."""
+
+
+def proposer_sortie_pour_licenciement(
+        sanction, *, confirmer=False, date_sortie=None):
+    """YHIRE7(b) — une sanction ``LICENCIEMENT`` PROPOSE la sortie de
+    l'employé (``sortir_employe``, YHIRE2) — JAMAIS automatique et silencieux :
+    sans ``confirmer=True`` explicite, lève :class:`SortieNonConfirmeeError`
+    (l'appelant — la vue — répond avec les infos pré-remplies pour que
+    l'utilisateur confirme).
+
+    Avec confirmation, appelle ``sortir_employe`` avec
+    ``motif=DossierEmploye.MotifSortie.LICENCIEMENT`` et
+    ``date_sortie`` (par défaut ``date_notification`` de la sanction, sinon
+    aujourd'hui). Un dossier déjà SORTI lève ``ValueError`` (propagé tel
+    quel — même garde d'idempotence que ``sortir_employe``).
+    """
+    from .models import DossierEmploye, Sanction
+
+    if sanction.type_sanction != Sanction.TypeSanction.LICENCIEMENT:
+        return None
+    if not confirmer:
+        raise SortieNonConfirmeeError(
+            'Confirmation explicite requise pour déclencher la sortie '
+            "suite à un licenciement (jamais automatique).")
+    effective_date = (
+        date_sortie or sanction.date_notification or timezone.localdate())
+    return sortir_employe(
+        sanction.employe, date_sortie=effective_date,
+        motif=DossierEmploye.MotifSortie.LICENCIEMENT)
+
+
+# ── YHIRE10 — accident du travail avec arrêt → absence (présence) ─────────
+
+# Code stable du TypeAbsence dédié (seedé par ``seed_types_absence``). La
+# rémunération de cette absence dépend du réglage société (l'indemnisation
+# IJ CNSS reste le périmètre XPAI14 ; on câble ici SEULEMENT la présence —
+# roster + import paie via le flag ``remunere`` du type).
+_CODE_TYPE_ABSENCE_ACCIDENT_TRAVAIL = 'AT'
+
+
+def _motif_absence_accident_travail(accident):
+    """Clé stable reliant la ``DemandeConge`` générée à SON accident
+    d'origine — garde d'idempotence (jamais deux absences pour un même AT ;
+    une prolongation ÉTEND la même ligne au lieu d'en créer une seconde)."""
+    return f'Accident du travail — {accident.reference}'
+
+
+@transaction.atomic
+def synchroniser_absence_accident_travail(accident):
+    """YHIRE10 — synchronise l'absence de présence liée à un
+    ``AccidentTravail`` avec arrêt, appelée à la création ET à chaque mise à
+    jour de l'accident (idempotent) :
+
+    * ``arret_travail=True`` et ``nb_jours_arret > 0`` — crée (1er appel) ou
+      ÉTEND (appel suivant : mêmes dates recalculées depuis
+      ``date_accident``/``nb_jours_arret``, jamais de doublon — clé stable
+      par ``reference``) une ``DemandeConge`` déjà VALIDÉE du type
+      ``TypeAbsence`` seedé « Accident du travail », couvrant
+      ``date_accident`` → ``date_accident + nb_jours_arret - 1`` ;
+    * ``arret_travail=False`` (ou ``nb_jours_arret=0``) — ANNULE l'absence
+      précédemment générée si elle existe (arrêt supprimé/retiré) ;
+    * type non seedé pour la société — no-op défensif (journalisé nulle
+      part, appel silencieux : ne bloque jamais la déclaration de l'AT).
+
+    Renvoie la ``DemandeConge`` active, ou ``None`` si aucun effet.
+    """
+    from datetime import timedelta
+
+    from .models import DemandeConge, TypeAbsence
+
+    motif = _motif_absence_accident_travail(accident)
+    existante = DemandeConge.objects.filter(
+        company=accident.company, employe=accident.employe,
+        motif=motif).exclude(statut=DemandeConge.Statut.ANNULEE).first()
+
+    if not accident.arret_travail or not accident.nb_jours_arret:
+        if existante is not None:
+            annuler_demande(existante)
+        return None
+
+    type_absence = TypeAbsence.objects.filter(
+        company=accident.company,
+        code=_CODE_TYPE_ABSENCE_ACCIDENT_TRAVAIL).first()
+    if type_absence is None:
+        return None  # type non seedé pour cette société — no-op défensif
+
+    date_debut = accident.date_accident
+    date_fin = date_debut + timedelta(days=accident.nb_jours_arret - 1)
+
+    if existante is not None:
+        # Prolongation/ajustement : ÉTEND la même ligne (jamais de doublon).
+        existante.date_debut = date_debut
+        existante.date_fin = date_fin
+        existante.jours = Decimal(accident.nb_jours_arret)
+        existante.type_absence = type_absence
+        existante.save(update_fields=[
+            'date_debut', 'date_fin', 'jours', 'type_absence'])
+        return existante
+
+    return DemandeConge.objects.create(
+        company=accident.company,
+        employe=accident.employe,
+        type_absence=type_absence,
+        date_debut=date_debut,
+        date_fin=date_fin,
+        jours=Decimal(accident.nb_jours_arret),
+        statut=DemandeConge.Statut.VALIDEE,
+        date_decision=timezone.now(),
+        motif=motif,
+    )
+
+
+def comptes_actifs_employes_sortis(company):
+    """YHIRE2 — rapport de sécurité PERMANENT : comptes utilisateur restés
+    ACTIFS alors que leur dossier employé est SORTI. Doit toujours être VIDE
+    en fonctionnement normal (un dossier sorti désactive son compte via
+    ``sortir_employe`` — cette liste ne détecte que les cas hors chemin,
+    ex. données historiques ou sortie faite avant ce câblage).
+
+    Sélecteur pur, scopé société. Renvoie une liste de dicts
+    ``{'employe_id', 'matricule', 'nom', 'prenom', 'user_id', 'username'}``.
+    """
+    from .models import DossierEmploye
+
+    qs = (
+        DossierEmploye.objects
+        .filter(
+            company=company, statut=DossierEmploye.Statut.SORTI,
+            user__isnull=False, user__is_active=True)
+        .select_related('user'))
+    return [
+        {
+            'employe_id': d.pk,
+            'matricule': d.matricule,
+            'nom': d.nom,
+            'prenom': d.prenom,
+            'user_id': d.user_id,
+            'username': getattr(d.user, 'username', ''),
+        }
+        for d in qs
+    ]
+
+
+# ── XRH34 — eLearning léger : quiz + certification ─────────────────────────
+
+def _ajouter_mois(une_date, mois):
+    """Ajoute ``mois`` mois calendaires à ``une_date`` (stdlib uniquement,
+    aucune dépendance externe) — cale le jour sur le dernier jour du mois
+    cible s'il déborde (ex. 31 janvier + 1 mois → 28/29 février)."""
+    import calendar
+
+    total = une_date.month - 1 + mois
+    annee = une_date.year + total // 12
+    moiscible = total % 12 + 1
+    jour = min(une_date.day, calendar.monthrange(annee, moiscible)[1])
+    return une_date.replace(year=annee, month=moiscible, day=jour)
+
+
+def _est_reponse_correcte(question, reponse):
+    """Compare une réponse brute (int ou liste d'ints) aux bonnes réponses
+    d'UNE question — vrai UNIQUEMENT si l'ensemble complet correspond
+    (aucune bonne réponse manquante, aucune fausse en plus)."""
+    bonnes = set(question.get('bonnes_reponses') or [])
+    if isinstance(reponse, (list, tuple, set)):
+        donnees = set(reponse)
+    elif reponse is None:
+        donnees = set()
+    else:
+        donnees = {reponse}
+    return donnees == bonnes
+
+
+def corriger_tentative_quiz(quiz, reponses):
+    """XRH34 — corrige une tentative CÔTÉ SERVEUR : ``reponses`` est une
+    liste parallèle à ``quiz.questions`` (index de choix, ou liste d'index
+    pour une question à choix multiple). Renvoie ``(score_pourcent, reussi)``.
+
+    Les bonnes réponses NE SONT JAMAIS renvoyées à l'appelant — seul le
+    score agrégé l'est. Un quiz sans question renvoie ``(0, False)``
+    (jamais de division par zéro).
+    """
+    questions = quiz.questions or []
+    if not questions:
+        return 0, False
+    reponses = list(reponses or [])
+    correctes = 0
+    for i, question in enumerate(questions):
+        reponse = reponses[i] if i < len(reponses) else None
+        if _est_reponse_correcte(question, reponse):
+            correctes += 1
+    score = round(100 * correctes / len(questions))
+    reussi = score >= quiz.score_reussite
+    return score, reussi
+
+
+@transaction.atomic
+def passer_tentative_quiz(quiz, employe, *, reponses, session=None):
+    """XRH34 — enregistre + corrige une ``TentativeQuiz`` et, en cas de
+    réussite, applique TOUS les effets de certification :
+
+    * upsert du niveau ``CompetenceEmploye`` (niveau CONFIRMÉ) si
+      ``quiz.competence`` est défini (même chemin que
+      ``SessionFormationViewSet.marquer_realisee``, FG187) ;
+    * si ``session`` est fournie ET que le quiz y est explicitement lié
+      (même valeur transmise ici), upsert
+      ``InscriptionFormation.resultat = REUSSI`` du participant ;
+    * si ``quiz.habilitation_type`` est défini ET ``quiz.validite_mois``
+      renseigné : prolonge (ou crée) l'``Habilitation`` de l'employé pour ce
+      type — nouvelle échéance = ``max(aujourd'hui, échéance actuelle) +
+      validite_mois``.
+
+    Un ÉCHEC (score < seuil) N'A AUCUN EFFET (aucune mise à jour de
+    compétence/inscription/habilitation) — seule la tentative est
+    enregistrée avec son score.
+    """
+    from .models import (
+        CompetenceEmploye, Habilitation, InscriptionFormation, TentativeQuiz,
+    )
+
+    score, reussi = corriger_tentative_quiz(quiz, reponses)
+    tentative = TentativeQuiz.objects.create(
+        company=quiz.company, quiz=quiz, employe=employe, session=session,
+        reponses=reponses, score=score, reussi=reussi)
+
+    if not reussi:
+        return tentative
+
+    if quiz.competence_id:
+        CompetenceEmploye.objects.update_or_create(
+            employe=employe, competence_id=quiz.competence_id,
+            defaults={
+                'company': quiz.company,
+                'niveau': CompetenceEmploye.Niveau.CONFIRME,
+                'evalue_le': timezone.now(),
+            },
+        )
+
+    if session is not None:
+        InscriptionFormation.objects.update_or_create(
+            session=session, participant=employe,
+            defaults={'company': quiz.company,
+                      'resultat': InscriptionFormation.Resultat.REUSSI},
+        )
+
+    if quiz.habilitation_type and quiz.validite_mois:
+        today = timezone.localdate()
+        habilitation = Habilitation.objects.filter(
+            employe=employe, type_habilitation=quiz.habilitation_type).first()
+        base = today
+        if habilitation is not None and habilitation.date_validite and \
+                habilitation.date_validite > today:
+            base = habilitation.date_validite
+        nouvelle_echeance = _ajouter_mois(base, quiz.validite_mois)
+        if habilitation is None:
+            Habilitation.objects.create(
+                company=quiz.company, employe=employe,
+                type_habilitation=quiz.habilitation_type,
+                date_obtention=today, date_validite=nouvelle_echeance,
+                actif=True,
+            )
+        else:
+            habilitation.date_validite = nouvelle_echeance
+            habilitation.actif = True
+            habilitation.save(update_fields=[
+                'date_validite', 'actif', 'date_modification'])
+
+    return tentative
+
+
+def generer_besoin_recertification(habilitation):
+    """XRH34 — à l'expiration d'une habilitation LIÉE à un quiz (un
+    ``QuizFormation`` actif existe pour ce ``type_habilitation`` et cette
+    société), crée IDEMPOTENT un ``BesoinFormation`` de re-certification.
+
+    Idempotence : clé stable dans ``theme`` (type d'habilitation + employé) —
+    un ``BesoinFormation`` ``identifie``/``planifie`` déjà ouvert pour cette
+    re-certification n'est jamais dupliqué (re-run = 0 doublon). Une fois le
+    besoin ``satisfait`` (nouvelle réussite prolongeant l'habilitation), un
+    futur cycle d'expiration peut en re-créer un NOUVEAU.
+
+    No-op si aucun quiz actif ne couvre ce type d'habilitation pour la
+    société (pas de fausse alerte pour un titre sans quiz associé), ou si
+    l'habilitation n'est pas expirée.
+    """
+    from .models import BesoinFormation, QuizFormation
+
+    if habilitation.valide:
+        return None
+    quiz_couvrant = QuizFormation.objects.filter(
+        company=habilitation.company, actif=True,
+        habilitation_type=habilitation.type_habilitation).exists()
+    if not quiz_couvrant:
+        return None
+
+    theme = (
+        f'Re-certification — {habilitation.get_type_habilitation_display()} '
+        f'— {habilitation.employe.matricule}')
+    deja_ouvert = BesoinFormation.objects.filter(
+        company=habilitation.company, employe=habilitation.employe,
+        theme=theme,
+        statut__in=[
+            BesoinFormation.Statut.IDENTIFIE, BesoinFormation.Statut.PLANIFIE],
+    ).exists()
+    if deja_ouvert:
+        return None
+
+    return BesoinFormation.objects.create(
+        company=habilitation.company,
+        employe=habilitation.employe,
+        theme=theme[:200],
+        priorite=BesoinFormation.Priorite.HAUTE,
+        obligation_reglementaire=True,
+        type_obligation=BesoinFormation.TypeObligation.AUTRE,
+    )

@@ -15,13 +15,16 @@ from .models import (
     AuditPlanifie,
     CampagneRappel, CauseIncident,
     CheckinSecurite, ControleReception,
-    DeclarationCnss, DemandeActionFournisseur, Derogation, DiffusionProcedure,
+    DeclarationCnss, DemandeActionFournisseur, DemandeChangement,
+    DemandeChangementCapa,
+    Derogation, DiffusionProcedure,
     ElementRappel,
-    EtapeDeclarationAt, NonConformite,
-    NotationFinChantier, PlanControleReception, PlanInspectionChantier,
+    EtapeDeclarationAt, ExerciceUrgence, LienSignalementPublic, NonConformite,
+    NotationFinChantier, ObservationSecurite, PlanControleReception,
+    PlanInspectionChantier,
     PointControleModele,
     ProcedureQualite, ReleveThermographie, ReponseCritere, ReleveControle,
-    ReunionQhse, RisqueOpportunite, RisqueOpportuniteCapa,
+    ReunionQhse, RisqueOpportunite, RisqueOpportuniteCapa, SignalementPublic,
 )
 
 
@@ -1781,3 +1784,755 @@ def rediffuser_nouvelle_version(procedure_precedente, procedure_nouvelle):
     if not users:
         return None
     return diffuser_procedure(procedure_nouvelle, users)
+
+
+# ── XQHS16 — Signalement QR public sans compte (danger/incident chantier) ──
+
+SIGNALEMENT_INTROUVABLE = 'introuvable'
+SIGNALEMENT_OK = 'ok'
+
+
+def resolve_lien_signalement_public(token):
+    """Résout un ``LienSignalementPublic`` depuis son jeton (XQHS16).
+
+    JAMAIS de société/chantier lus de la requête publique : tout vient du
+    jeton. Un jeton inconnu OU un lien révoqué (``actif=False``) renvoient le
+    même statut (pas de fuite entre « inconnu » et « révoqué »).
+
+    Renvoie ``(statut, lien|None)``.
+    """
+    lien = (LienSignalementPublic.objects
+            .filter(token=token, actif=True)
+            .select_related('company')
+            .first())
+    if lien is None:
+        return SIGNALEMENT_INTROUVABLE, None
+    return SIGNALEMENT_OK, lien
+
+
+def _notifier_signalement_public(signalement):
+    """Notifie le responsable HSE du lien (best-effort, jamais bloquant)."""
+    try:
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify
+
+        lien = signalement.lien
+        if lien.responsable_hse_id is None:
+            return
+        notify(lien.responsable_hse, EventType.MAINTENANCE_DUE,
+               'Nouveau signalement QR chantier',
+               body=f'{signalement.get_type_signalement_display()} signalé '
+                    f'via QR public sur le chantier #{lien.chantier_id}.',
+               link='/qhse/incidents', company=signalement.company)
+    except Exception:  # pragma: no cover - défensif
+        pass
+
+
+@transaction.atomic
+def creer_signalement_public(
+        lien, *, type_signalement, description,
+        photo_url='', nom='', telephone=''):
+    """Crée un ``SignalementPublic`` à partir d'un lien tokenisé résolu
+    (XQHS16). La société vient TOUJOURS du lien (jamais de la requête). Notifie
+    (best-effort) le responsable HSE du lien s'il en porte un."""
+    signalement = SignalementPublic.objects.create(
+        company=lien.company,
+        lien=lien,
+        type_signalement=type_signalement,
+        description=description,
+        photo_url=photo_url or '',
+        nom=(nom or '').strip(),
+        telephone=(telephone or '').strip(),
+    )
+    _notifier_signalement_public(signalement)
+    return signalement
+
+
+def generer_qr_signalement(lien, base_url=''):
+    """Génère le QR (PNG bytes) du lien de signalement public (XQHS16).
+
+    Réutilise la lib déjà pinnée pour le QR de la cérémonie de signature devis
+    (``qrcode``, cf. ``apps.ventes.quote_engine``) — aucune nouvelle
+    dépendance. Dégrade proprement (``None``) si la lib est absente : ce n'est
+    PAS un chemin bloquant, seulement l'aperçu imprimable."""
+    try:
+        import qrcode
+    except ImportError:  # pragma: no cover - défensif
+        return None
+    import io
+
+    target = f'{base_url.rstrip("/")}/qhse/signalement/{lien.token}/' \
+        if base_url else lien.token
+    qr = qrcode.QRCode(
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=10, border=2)
+    qr.add_data(target)
+    qr.make(fit=True)
+    img = qr.make_image()
+    buf = io.BytesIO()
+    img.save(buf, 'PNG')
+    return buf.getvalue()
+
+
+# ── XQHS17 — Observations sécurité comportementales (BBS) ──────────────────
+
+@transaction.atomic
+def convertir_observation_en_ncr(observation, gravite=None, signale_par=None):
+    """Convertit une ``ObservationSecurite`` à risque en NCR (XQHS17).
+
+    Idempotent : une observation déjà convertie renvoie sa NCR existante
+    (jamais deux NCR pour la même observation). Lève ``ValueError`` si
+    l'observation est de type ``sur`` (rien à corriger)."""
+    if observation.type_observation != ObservationSecurite.TypeObservation.A_RISQUE:
+        raise ValueError(
+            'Seule une observation « à risque » peut être convertie en NCR.')
+    if observation.non_conformite_liee_id:
+        return observation.non_conformite_liee, False
+
+    ncr = NonConformite.objects.create(
+        company=observation.company,
+        titre=f'BBS · {observation.get_categorie_display()}',
+        description=observation.description,
+        origine='Observation sécurité (BBS)',
+        gravite=gravite or NonConformite.Gravite.MINEURE,
+        chantier_id=observation.chantier_id,
+        signale_par=signale_par or observation.observateur,
+    )
+    observation.non_conformite_liee = ncr
+    observation.save(update_fields=['non_conformite_liee'])
+    return ncr, True
+
+
+@transaction.atomic
+def convertir_observation_en_capa(
+        observation, *, description=None, responsable_id=None, echeance=None):
+    """Convertit une ``ObservationSecurite`` à risque en CAPA (XQHS17).
+
+    Crée (ou réutilise) une NCR minimale support — CAPA exige une NCR parente
+    — puis y attache la CAPA. Idempotent : une observation déjà convertie
+    renvoie sa CAPA existante."""
+    if observation.action_liee_id:
+        return observation.action_liee, False
+
+    ncr, _created = convertir_observation_en_ncr(observation)
+
+    capa = ActionCorrectivePreventive.objects.create(
+        company=observation.company,
+        non_conformite=ncr,
+        type_action=ActionCorrectivePreventive.Type.PREVENTIVE,
+        description=description or (
+            f'Action suite observation BBS : {observation.description}'),
+        responsable_id=responsable_id,
+        echeance=echeance,
+    )
+    observation.action_liee = capa
+    observation.save(update_fields=['action_liee'])
+    return capa, True
+
+
+def compteurs_observations_securite(company, chantier_id=None):
+    """Compteurs cockpit BBS (XQHS17) : ratio sûr/à-risque + observations par
+    superviseur/mois. Agrégation PURE — aucune mutation. Scopé société."""
+    from collections import defaultdict
+
+    qs = ObservationSecurite.objects.filter(company=company)
+    if chantier_id is not None:
+        qs = qs.filter(chantier_id=chantier_id)
+
+    total = qs.count()
+    sures = qs.filter(
+        type_observation=ObservationSecurite.TypeObservation.SUR).count()
+    a_risque = total - sures
+    ratio = round(sures / total * 100, 1) if total else None
+
+    par_superviseur_mois = defaultdict(int)
+    for obs in qs.exclude(observateur__isnull=True):
+        date_ref = obs.date_observation or obs.date_creation.date()
+        cle = (obs.observateur_id, date_ref.strftime('%Y-%m'))
+        par_superviseur_mois[cle] += 1
+
+    return {
+        'total': total,
+        'sures': sures,
+        'a_risque': a_risque,
+        'ratio_sur_pct': ratio,
+        'par_superviseur_mois': [
+            {'observateur_id': sup, 'mois': mois, 'count': count}
+            for (sup, mois), count in sorted(par_superviseur_mois.items())
+        ],
+    }
+
+
+# ── XQHS18 — Exercices d'urgence (drills) rattachés aux plans d'urgence ────
+
+@transaction.atomic
+def realiser_exercice_urgence(
+        exercice, *, date_realisee=None, duree_evacuation_secondes=None,
+        nb_participants=None, participants_libre='', observations=''):
+    """Enregistre la réalisation d'un exercice d'urgence (XQHS18).
+
+    Pose le chrono + observations et passe le statut à ``REALISE``. Un
+    exercice déjà réalisé/annulé n'est pas re-réalisable (idempotence de
+    l'ACTION, pas du modèle — ré-appeler renvoie l'exercice inchangé)."""
+    from django.utils import timezone
+
+    if exercice.statut != ExerciceUrgence.Statut.PLANIFIE:
+        return exercice
+
+    exercice.date_realisee = date_realisee or timezone.localdate()
+    exercice.duree_evacuation_secondes = duree_evacuation_secondes
+    exercice.nb_participants = nb_participants
+    exercice.participants_libre = participants_libre
+    exercice.observations = observations
+    exercice.statut = ExerciceUrgence.Statut.REALISE
+    exercice.save()
+    return exercice
+
+
+@transaction.atomic
+def creer_capa_depuis_ecart_exercice(exercice, *, description=None):
+    """Crée une CAPA à partir d'un écart constaté lors d'un exercice
+    d'urgence (XQHS18). Idempotent : un exercice déjà lié renvoie sa CAPA
+    existante. Exige des ``observations`` non vides (l'écart à corriger)."""
+    if exercice.capa_liee_id:
+        return exercice.capa_liee, False
+    if not (exercice.observations or '').strip():
+        raise ValueError(
+            "Aucun écart renseigné : l'observation est requise pour créer "
+            "une CAPA.")
+
+    ncr = NonConformite.objects.create(
+        company=exercice.company,
+        titre=f'Écart exercice · {exercice.get_type_exercice_display()}',
+        description=exercice.observations,
+        origine="Exercice d'urgence",
+        gravite=NonConformite.Gravite.MINEURE,
+        chantier_id=exercice.plan.chantier_id,
+    )
+    capa = ActionCorrectivePreventive.objects.create(
+        company=exercice.company,
+        non_conformite=ncr,
+        type_action=ActionCorrectivePreventive.Type.CORRECTIVE,
+        description=description or (
+            f'Correction écart exercice : {exercice.observations}'),
+    )
+    exercice.capa_liee = capa
+    exercice.save(update_fields=['capa_liee'])
+    return capa, True
+
+
+def plans_exercices_dus(company, today=None):
+    """Plans d'urgence dont le prochain exercice est dû (XQHS18, pattern
+    QHSE12/QHSE38) : aucun exercice réalisé, OU le dernier exercice réalisé
+    remonte à plus de ``frequence_mois``. Agrégation PURE — aucune mutation."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from .models import PlanUrgence
+
+    if today is None:
+        today = timezone.localdate()
+
+    dus = []
+    for plan in PlanUrgence.objects.filter(company=company):
+        dernier = (plan.exercices
+                   .filter(statut=ExerciceUrgence.Statut.REALISE)
+                   .exclude(date_realisee__isnull=True)
+                   .order_by('-date_realisee')
+                   .first())
+        if dernier is None:
+            dus.append(plan)
+            continue
+        delai = timedelta(days=30 * (plan.frequence_mois or 12))
+        if today >= dernier.date_realisee + delai:
+            dus.append(plan)
+    return dus
+
+
+def _notifier_exercice_du(plan):
+    """Notifie (best-effort) que le prochain exercice d'urgence du plan est
+    dû."""
+    try:
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify
+
+        responsable = getattr(plan, 'responsable', None)
+        cible = responsable or None
+        if cible is None:
+            return
+        notify(cible, EventType.MAINTENANCE_DUE,
+               "Exercice d'urgence dû",
+               body=f'Le plan « {plan.titre} » doit programmer son prochain '
+                    f'exercice (cadence {plan.frequence_mois} mois).',
+               link='/qhse/plans-urgence', company=plan.company)
+    except Exception:  # pragma: no cover - défensif
+        pass
+
+
+def relancer_exercices_urgence(company=None):
+    """Relance TOUS les plans dont le prochain exercice est dû (XQHS18,
+    pattern ``relancer_capa_en_retard``). Ne mute rien — la relance est une
+    notification. Renvoie les plans relancés."""
+    from .models import PlanUrgence
+
+    if company is not None:
+        plans = plans_exercices_dus(company)
+    else:
+        plans = []
+        for co in {p.company for p in PlanUrgence.objects.all()}:
+            plans.extend(plans_exercices_dus(co))
+
+    for plan in plans:
+        _notifier_exercice_du(plan)
+    return plans
+
+
+# ── XQHS19 — Incidents environnementaux : notification + gate de clôture ──
+
+from .models import Incident  # noqa: E402  (évite un cycle d'import module)
+
+
+def incidents_notification_en_retard(company, today=None):
+    """Incidents environnementaux dont la notification requise est en retard
+    (XQHS19, pattern ``conformites_a_relancer``/QHSE38). Agrégation PURE."""
+    qs = Incident.objects.filter(
+        company=company,
+        type_incident=Incident.TypeIncident.ENVIRONNEMENT,
+        notification_requise=True,
+        date_notification__isnull=True,
+        date_limite_notification__isnull=False,
+    )
+    if today is None:
+        from django.utils import timezone
+        today = timezone.localdate()
+    return [inc for inc in qs if inc.date_limite_notification <= today]
+
+
+def _notifier_notification_retard(incident):
+    """Notifie (best-effort) le retard de notification réglementaire."""
+    try:
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify
+
+        if incident.declare_par_id is None:
+            return
+        notify(incident.declare_par, EventType.MAINTENANCE_DUE,
+               'Notification environnementale en retard',
+               body=f'Incident « {incident.titre} » : la notification à '
+                    f"l'autorité était due le "
+                    f'{incident.date_limite_notification}.',
+               link='/qhse/incidents', company=incident.company)
+    except Exception:  # pragma: no cover - défensif
+        pass
+
+
+def relancer_notifications_environnement(company=None):
+    """Relance TOUS les incidents environnementaux en retard de notification
+    (XQHS19, pattern ``relancer_conformites``). Ne mute rien. Renvoie les
+    incidents relancés."""
+    if company is not None:
+        incidents = incidents_notification_en_retard(company)
+    else:
+        incidents = []
+        for co in {i.company for i in Incident.objects.filter(
+                type_incident=Incident.TypeIncident.ENVIRONNEMENT)}:
+            incidents.extend(incidents_notification_en_retard(co))
+
+    for incident in incidents:
+        _notifier_notification_retard(incident)
+    return incidents
+
+
+@transaction.atomic
+def cloturer_incident(incident):
+    """Clôture un incident — conditionnée à la notification si requise
+    (XQHS19, pattern ``cloturer_ncr`` QHSE13). Idempotent si déjà clos.
+    Lève ``ValueError`` si la notification requise n'a pas été faite."""
+    if incident.statut == Incident.Statut.CLOS:
+        return incident
+    if not incident.peut_cloturer():
+        raise ValueError(
+            'Clôture impossible : la notification à l’autorité est requise '
+            'et n’a pas encore été enregistrée.')
+    incident.statut = Incident.Statut.CLOS
+    incident.save(update_fields=['statut'])
+    return incident
+
+
+# ── XQHS21 — Relevés de consommation par site → génération bilan carbone ──
+
+from .models import (  # noqa: E402  (évite un cycle d'import)
+    LigneBilanCarbone, ReleveConsommation,
+)
+
+# Facteurs d'émission par défaut (tCO2e / unité), GHG Protocol / ADEME
+# — mêmes ordres de grandeur que ceux déjà saisis manuellement en QHSE39.
+# Servent uniquement de PRÉ-REMPLISSAGE éditable (jamais imposés).
+_FACTEUR_ELECTRICITE_MAROC = Decimal('0.000700')   # tCO2e/kWh (mix ONEE)
+_FACTEUR_GASOIL = Decimal('0.002680')              # tCO2e/L
+_FACTEUR_ESSENCE = Decimal('0.002310')              # tCO2e/L
+_FACTEUR_EAU = Decimal('0.000344')                  # tCO2e/m3 (traitement/distrib)
+
+
+@transaction.atomic
+def generer_lignes_bilan(bilan, annee):
+    """Agrège les relevés QHSE (sites) + le carburant flotte (véhicules) de
+    l'``annee`` en ``LigneBilanCarbone`` pré-remplies (XQHS21).
+
+    Idempotent : une ligne déjà générée pour la même (bilan, libellé, scope)
+    n'est PAS dupliquée — la génération met à jour la quantité existante
+    plutôt que d'ajouter une ligne (l'utilisateur reste libre d'éditer
+    ensuite ; ré-appeler la génération recale sur les relevés à date)."""
+    from apps.flotte.selectors import consommation_annuelle_flotte
+
+    releves = ReleveConsommation.objects.filter(
+        company=bilan.company, periode__year=annee)
+
+    totaux = {
+        ReleveConsommation.TypeEnergie.ELECTRICITE: Decimal('0'),
+        ReleveConsommation.TypeEnergie.GASOIL: Decimal('0'),
+        ReleveConsommation.TypeEnergie.ESSENCE: Decimal('0'),
+        ReleveConsommation.TypeEnergie.EAU: Decimal('0'),
+    }
+    for releve in releves:
+        totaux[releve.type_energie] += releve.quantite or Decimal('0')
+
+    # Carburant FLOTTE (véhicules) — lu via le sélecteur cross-app, jamais
+    # re-saisi côté QHSE (note du plan XQHS21).
+    conso_flotte = consommation_annuelle_flotte(bilan.company, annee)
+    totaux[ReleveConsommation.TypeEnergie.GASOIL] += Decimal(
+        str(conso_flotte.get('gasoil_litres', 0)))
+    totaux[ReleveConsommation.TypeEnergie.ESSENCE] += Decimal(
+        str(conso_flotte.get('essence_litres', 0)))
+
+    plan = [
+        (ReleveConsommation.TypeEnergie.ELECTRICITE,
+         'Électricité (sites + flotte)', LigneBilanCarbone.Scope.SCOPE_2,
+         'kWh', _FACTEUR_ELECTRICITE_MAROC),
+        (ReleveConsommation.TypeEnergie.GASOIL,
+         'Gasoil (groupes électrogènes + véhicules)',
+         LigneBilanCarbone.Scope.SCOPE_1, 'L', _FACTEUR_GASOIL),
+        (ReleveConsommation.TypeEnergie.ESSENCE,
+         'Essence (groupes électrogènes + véhicules)',
+         LigneBilanCarbone.Scope.SCOPE_1, 'L', _FACTEUR_ESSENCE),
+        (ReleveConsommation.TypeEnergie.EAU, 'Eau', LigneBilanCarbone.Scope.SCOPE_3,
+         'm3', _FACTEUR_EAU),
+    ]
+
+    lignes = []
+    for type_energie, libelle, scope, unite, facteur in plan:
+        quantite = totaux[type_energie]
+        if quantite <= 0:
+            continue
+        ligne, _created = LigneBilanCarbone.objects.update_or_create(
+            company=bilan.company, bilan=bilan, libelle=libelle,
+            defaults={
+                'scope': scope,
+                'categorie': type_energie,
+                'quantite': quantite,
+                'unite': unite,
+                'facteur_emission': facteur,
+            },
+        )
+        lignes.append(ligne)
+    return lignes
+
+
+# ── XQHS23 — Pont SAV ↔ NCR (boucle défaillances terrain/garantie) ─────────
+
+@transaction.atomic
+def creer_ncr_depuis_ticket(ticket_id, company, signale_par=None, gravite=None):
+    """Crée une NCR à partir d'un ticket SAV (XQHS23, pont ticket → NCR).
+
+    Le ticket est lu via le sélecteur LECTURE SEULE
+    ``sav.selectors.ticket_scoped`` (jamais un import de ``apps.sav.models``,
+    règle de modularité cross-app CLAUDE.md) et rattaché en FK-chaîne
+    ``'sav.Ticket'`` nullable (``ticket_sav``, string-FK Django standard).
+    Idempotent : une seule NCR par ticket — ré-appeler renvoie la NCR
+    existante. Lève ``ValueError`` si le ticket n'existe pas dans la
+    société."""
+    existante = NonConformite.objects.filter(
+        company=company, ticket_sav_id=ticket_id).first()
+    if existante is not None:
+        return existante, False
+
+    from apps.sav.selectors import ticket_scoped
+
+    ticket = ticket_scoped(company, ticket_id)
+    if ticket is None:
+        raise ValueError("Ticket SAV introuvable dans votre société.")
+
+    ncr = NonConformite.objects.create(
+        company=company,
+        titre=f'SAV · {ticket.reference}',
+        description=ticket.description or '',
+        origine='Ticket SAV',
+        gravite=gravite or NonConformite.Gravite.MINEURE,
+        chantier_id=ticket.installation_id,
+        signale_par=signale_par,
+        ticket_sav_id=ticket_id,
+    )
+    return ncr, True
+
+
+@transaction.atomic
+def creer_intervention_depuis_ncr(ncr, description=None):
+    """Ouvre une intervention corrective SAV depuis une NCR chantier (XQHS23,
+    pont inverse NCR → ticket). Appelle la fonction FINE
+    ``sav.services.creer_intervention_depuis_installation`` — QHSE n'importe
+    jamais ``sav.models`` directement. Idempotent (même marqueur
+    ``[NCR:<reference>]``). Lève ``ValueError`` si la NCR n'a pas de chantier
+    rattaché."""
+    from apps.sav.services import creer_intervention_depuis_installation
+
+    if ncr.chantier_id is None:
+        raise ValueError(
+            "Impossible d'ouvrir une intervention : la non-conformité n'a "
+            "pas de chantier rattaché.")
+
+    ticket, created = creer_intervention_depuis_installation(
+        company=ncr.company,
+        installation_id=ncr.chantier_id,
+        description=description or (
+            f'Intervention corrective suite NCR : {ncr.titre}'),
+        ncr_reference=ncr.reference or ncr.pk,
+    )
+    return ticket, created
+
+
+# ── XQHS24 — Gestion du changement (MOC léger) ──────────────────────────────
+
+# Transitions valides du cycle de vie MOC. Un changement suit son cycle :
+# une approbation (statut APPROUVE) est requise AVANT tout déploiement.
+_MOC_TRANSITIONS = {
+    DemandeChangement.Statut.BROUILLON: {
+        DemandeChangement.Statut.EN_REVUE, DemandeChangement.Statut.ANNULE},
+    DemandeChangement.Statut.EN_REVUE: {
+        DemandeChangement.Statut.APPROUVE, DemandeChangement.Statut.ANNULE,
+        DemandeChangement.Statut.BROUILLON},
+    DemandeChangement.Statut.APPROUVE: {
+        DemandeChangement.Statut.DEPLOYE, DemandeChangement.Statut.ANNULE},
+    DemandeChangement.Statut.DEPLOYE: {DemandeChangement.Statut.CLOS},
+    DemandeChangement.Statut.CLOS: set(),
+    DemandeChangement.Statut.ANNULE: set(),
+}
+
+
+@transaction.atomic
+def transitionner_demande_changement(demande, nouveau_statut, *, approbateur=None):
+    """Fait avancer le cycle de vie d'une ``DemandeChangement`` (XQHS24).
+
+    Le passage à ``DEPLOYE`` EXIGE que le changement soit passé par
+    ``APPROUVE`` d'abord (gate — la mise en œuvre avant approbation est le
+    risque même que le MOC existe pour prévenir). Toute autre transition non
+    listée dans ``_MOC_TRANSITIONS`` lève ``ValueError``. Pose
+    ``approbateur``/``date_approbation`` au passage à ``APPROUVE``."""
+    permis = _MOC_TRANSITIONS.get(demande.statut, set())
+    if nouveau_statut not in permis:
+        raise ValueError(
+            f'Transition {demande.statut} → {nouveau_statut} non autorisée.')
+
+    demande.statut = nouveau_statut
+    if nouveau_statut == DemandeChangement.Statut.APPROUVE:
+        from django.utils import timezone
+        demande.approbateur = approbateur
+        demande.date_approbation = timezone.now()
+    demande.save()
+    return demande
+
+
+@transaction.atomic
+def creer_capa_mise_en_oeuvre_moc(
+        demande, *, description, responsable_id=None, echeance=None):
+    """Crée une CAPA de mise en œuvre liée à une ``DemandeChangement``
+    (XQHS24). Réutilise une NCR support minimale (pattern
+    ``convertir_observation_en_capa`` XQHS17) car CAPA exige une NCR
+    parente."""
+    ncr = NonConformite.objects.create(
+        company=demande.company,
+        titre=f'MOC · {demande.get_type_changement_display()}',
+        description=demande.description,
+        origine='Gestion du changement (MOC)',
+        gravite=NonConformite.Gravite.MINEURE,
+    )
+    capa = ActionCorrectivePreventive.objects.create(
+        company=demande.company,
+        non_conformite=ncr,
+        type_action=ActionCorrectivePreventive.Type.PREVENTIVE,
+        description=description,
+        responsable_id=responsable_id,
+        echeance=echeance,
+    )
+    DemandeChangementCapa.objects.get_or_create(
+        company=demande.company, demande_changement=demande, capa=capa)
+    return capa
+
+
+def demandes_changement_a_reverser(company, today=None):
+    """Changements temporaires dont la date de réversion est due (XQHS24,
+    pattern ``derogations_a_relancer``/QHSE38). Agrégation PURE."""
+    from django.utils import timezone
+
+    if today is None:
+        today = timezone.localdate()
+    qs = DemandeChangement.objects.filter(
+        company=company, est_temporaire=True,
+        date_expiration__isnull=False,
+        date_expiration__lte=today,
+    ).exclude(statut__in=[
+        DemandeChangement.Statut.CLOS, DemandeChangement.Statut.ANNULE])
+    return list(qs)
+
+
+def _notifier_reversion_due(demande):
+    """Notifie (best-effort) qu'un changement temporaire doit être reversé."""
+    try:
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify
+
+        if demande.approbateur_id is None:
+            return
+        notify(demande.approbateur, EventType.MAINTENANCE_DUE,
+               'Réversion de changement temporaire due',
+               body=f'Le changement « {demande.description[:80]} » devait '
+                    f'être reversé le {demande.date_expiration}.',
+               link='/qhse/gestion-changement', company=demande.company)
+    except Exception:  # pragma: no cover - défensif
+        pass
+
+
+def relancer_demandes_changement(company=None):
+    """Relance TOUS les changements temporaires en retard de réversion
+    (XQHS24, pattern ``relancer_derogations``). Ne mute rien. Renvoie les
+    demandes relancées."""
+    if company is not None:
+        demandes = demandes_changement_a_reverser(company)
+    else:
+        demandes = []
+        for co in {d.company for d in DemandeChangement.objects.filter(
+                est_temporaire=True)}:
+            demandes.extend(demandes_changement_a_reverser(co))
+
+    for demande in demandes:
+        _notifier_reversion_due(demande)
+    return demandes
+
+
+# ── XQHS25 — Assistance IA QHSE (classification + brouillon d'analyse) ────
+# Key-gated (GROQ_API_KEY, déjà présente en .env pour d'autres features — pas
+# de nouvelle dépendance externe/paid ajoutée ici). Sans clé, les fonctions
+# renvoient ``disponible=False`` et une structure vide — jamais d'exception,
+# jamais de no-op cassant. TOUJOURS une proposition éditable, jamais appliquée
+# automatiquement (pattern propose→confirm du groupe AG).
+
+import json  # noqa: E402
+import os  # noqa: E402
+
+import requests  # noqa: E402
+
+_GROQ_CHAT_URL = 'https://api.groq.com/openai/v1/chat/completions'
+_GROQ_MODEL_DEFAUT = 'llama-3.1-8b-instant'
+
+
+def _groq_api_key():
+    return os.environ.get('GROQ_API_KEY', '') or ''
+
+
+def ia_disponible():
+    """True si une clé IA (GROQ) est configurée. Sert de garde côté
+    vue/front (masque les boutons IA quand False)."""
+    return bool(_groq_api_key())
+
+
+def _appeler_groq(system_prompt, user_prompt, *, timeout=15):
+    """Appel HTTP direct à l'API Groq (compatible OpenAI), sans SDK
+    supplémentaire (``requests`` est déjà une dépendance du projet). Renvoie
+    le contenu texte de la réponse, ou lève une exception (capturée par
+    l'appelant) en cas d'échec réseau/clé/timeout."""
+    resp = requests.post(
+        _GROQ_CHAT_URL,
+        headers={
+            'Authorization': f'Bearer {_groq_api_key()}',
+            'Content-Type': 'application/json',
+        },
+        json={
+            'model': _GROQ_MODEL_DEFAUT,
+            'messages': [
+                {'role': 'system', 'content': system_prompt},
+                {'role': 'user', 'content': user_prompt},
+            ],
+            'temperature': 0,
+            'response_format': {'type': 'json_object'},
+        },
+        timeout=timeout,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    return data['choices'][0]['message']['content']
+
+
+_CLASSIFICATION_SYSTEM_PROMPT = (
+    "Tu es un assistant QHSE pour un installateur solaire au Maroc. À partir "
+    "d'une description libre d'incident ou de non-conformité, propose une "
+    "classification structurée. Réponds UNIQUEMENT en JSON valide avec les "
+    "clés : \"type\" (accident|presqu_accident|incident|environnement pour un "
+    "incident, ou une famille de défaut pour une NCR), \"gravite\" "
+    "(mineure|majeure|critique), \"code_defaut_suggere\" (courte étiquette "
+    "libre), \"justification\" (une phrase). Ne donne AUCUNE autre donnée que "
+    "celle décrite dans le texte fourni — aucune donnée d'une autre société "
+    "n'est disponible et ne doit être inventée."
+)
+
+_ANALYSE_SYSTEM_PROMPT = (
+    "Tu es un assistant QHSE. À partir du récit d'investigation d'un "
+    "incident/non-conformité, propose un brouillon structuré. Réponds "
+    "UNIQUEMENT en JSON valide avec les clés : \"cinq_pourquoi\" (liste de 5 "
+    "chaînes, une par niveau, vide si non déterminable), \"cause_racine\" "
+    "(une phrase), \"plan_capa\" (liste d'objets {\"description\": str, "
+    "\"type_action\": \"corrective\"|\"preventive\"}). Toujours une "
+    "PROPOSITION à éditer — jamais présentée comme définitive."
+)
+
+
+def suggerer_classification_incident(description):
+    """XQHS25 — suggère type/gravité/code défaut à partir d'une description
+    libre (incident ou NCR). Key-gated : sans ``GROQ_API_KEY``, renvoie
+    ``{'disponible': False}`` (200, jamais d'exception ni de dépendance dure).
+
+    TOUJOURS une proposition éditable — l'appelant (vue) ne l'applique jamais
+    automatiquement à un enregistrement."""
+    if not ia_disponible():
+        return {'disponible': False}
+    if not (description or '').strip():
+        return {'disponible': True, 'suggestion': None,
+                'erreur': 'description vide'}
+
+    try:
+        contenu = _appeler_groq(
+            _CLASSIFICATION_SYSTEM_PROMPT, description.strip())
+        suggestion = json.loads(contenu)
+    except Exception as exc:  # pragma: no cover - dépend d'un service externe
+        return {'disponible': True, 'suggestion': None, 'erreur': str(exc)}
+
+    return {'disponible': True, 'suggestion': suggestion}
+
+
+def suggerer_analyse_capa(recit_investigation):
+    """XQHS25 — propose un brouillon 5-Pourquoi + plan CAPA depuis un récit
+    d'investigation. Key-gated comme ``suggerer_classification_incident`` —
+    dégrade proprement sans clé. TOUJOURS éditable, jamais auto-appliqué."""
+    if not ia_disponible():
+        return {'disponible': False}
+    if not (recit_investigation or '').strip():
+        return {'disponible': True, 'suggestion': None,
+                'erreur': 'récit vide'}
+
+    try:
+        contenu = _appeler_groq(
+            _ANALYSE_SYSTEM_PROMPT, recit_investigation.strip())
+        suggestion = json.loads(contenu)
+    except Exception as exc:  # pragma: no cover - dépend d'un service externe
+        return {'disponible': True, 'suggestion': None, 'erreur': str(exc)}
+
+    return {'disponible': True, 'suggestion': suggestion}

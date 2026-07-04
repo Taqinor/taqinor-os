@@ -317,3 +317,144 @@ def nombre_proprietes(devis) -> int:
     except (TypeError, ValueError):
         n = 1
     return max(1, n)
+
+
+# ── XFAC15 — score comportement de paiement (agrège FG365) ────────────────
+
+_SCORE_BANDS = (
+    (0.20, 'A'), (0.40, 'B'), (0.60, 'C'), (0.80, 'D'),
+)
+
+
+def _score_to_letter(score):
+    for threshold, letter in _SCORE_BANDS:
+        if score < threshold:
+            return letter
+    return 'E'
+
+
+def _retard_reel_jours(facture):
+    """Jours émission → encaissement RÉELS pour une facture soldée par
+    paiement (dernière date de paiement enregistrée moins émission). Renvoie
+    ``None`` si la facture n'a aucun paiement (rien à mesurer)."""
+    dernier = None
+    for p in facture.paiements.all():
+        if p.date_paiement and (dernier is None or p.date_paiement > dernier):
+            dernier = p.date_paiement
+    if dernier is None or not facture.date_emission:
+        return None
+    delta = (dernier - facture.date_emission).days
+    return delta if delta > 0 else 0
+
+
+def comportement_paiement(client):
+    """XFAC15 — score de comportement de paiement agrégé d'un client.
+
+    AGRÈGE les scores FG365 (``core.payment_delay.payment_delay_risk``, jamais
+    ré-implémenté ici) de toutes les factures ouvertes du client + son retard
+    moyen RÉEL (jours émission → encaissement, sur les factures déjà payées) →
+    une lettre A (excellent payeur) à E (à risque). Un client sans historique
+    exploitable (aucune facture payée, aucune facture ouverte) reçoit un score
+    NEUTRE (``used_fallback=True`` du moteur pur).
+
+    Renvoie un dict :
+      ``{'score': float, 'lettre': 'A'..'E', 'retard_moyen_jours': float,
+         'nb_factures_ouvertes': int, 'nb_factures_historique': int,
+         'used_fallback': bool}``
+    """
+    from core.payment_delay import payment_delay_risk
+    from .models import Facture
+
+    factures = Facture.objects.filter(
+        client=client).exclude(statut=Facture.Statut.ANNULEE).prefetch_related(
+        'paiements', 'avoirs')
+
+    retards_reels = []
+    for f in factures:
+        if f.statut == Facture.Statut.PAYEE:
+            r = _retard_reel_jours(f)
+            if r is not None:
+                retards_reels.append(r)
+
+    retard_moyen = (
+        sum(retards_reels) / len(retards_reels) if retards_reels else None)
+
+    ouvertes = [f for f in factures if f.montant_du > 0]
+    prior_late = sum(1 for r in retards_reels if r > 0)
+
+    if not ouvertes:
+        # Aucune facture ouverte à scorer : le score client se base
+        # uniquement sur l'historique (ou tombe au neutre si aucun non plus).
+        features = {}
+        if retard_moyen is not None:
+            features['client_avg_delay_days'] = retard_moyen
+            features['client_prior_late_count'] = prior_late
+        result = payment_delay_risk(features)
+    else:
+        scores = []
+        for f in ouvertes:
+            feats = {
+                'days_overdue': f.jours_retard,
+                'montant_du': float(f.montant_du),
+                'relance_count': f.relances.count(),
+            }
+            if retard_moyen is not None:
+                feats['client_avg_delay_days'] = retard_moyen
+                feats['client_prior_late_count'] = prior_late
+            scores.append(payment_delay_risk(feats))
+        avg_score = sum(r.score for r in scores) / len(scores)
+        result = scores[0]
+        result.score = avg_score
+        result.band = (
+            'faible' if avg_score < 0.34 else
+            'moyen' if avg_score < 0.67 else 'élevé')
+
+    return {
+        'score': round(result.score, 4),
+        'lettre': _score_to_letter(result.score),
+        'retard_moyen_jours': (
+            round(retard_moyen, 1) if retard_moyen is not None else None),
+        'nb_factures_ouvertes': len(ouvertes),
+        'nb_factures_historique': len(retards_reels),
+        'used_fallback': result.used_fallback,
+    }
+
+
+def date_encaissement_prevue(facture, retard_moyen_jours=None):
+    """XFAC15 — date d'encaissement PRÉVUE d'une facture ouverte.
+
+    Échéance théorique + retard moyen RÉEL du client (comportemental) au lieu
+    de la seule échéance théorique. Sans échéance ou sans retard moyen connu,
+    renvoie l'échéance théorique inchangée (comportement neutre/dégradé)."""
+    from datetime import timedelta
+    if not facture.date_echeance:
+        return None
+    if not retard_moyen_jours:
+        return facture.date_echeance
+    return facture.date_echeance + timedelta(days=round(retard_moyen_jours))
+
+
+# ── XACC29 — Références (pour rapport de continuité des séquences) ────────
+
+def references_factures(company):
+    """XACC29 — Références de toutes les ``Facture`` (hors annulées) d'une
+    société, pour la détection de trous de séquence côté ``compta`` (jamais un
+    import de ``ventes.models`` en dehors de ce module). Lecture seule."""
+    from .models import Facture
+    return list(
+        Facture.objects
+        .exclude(statut=Facture.Statut.ANNULEE)
+        .filter(company=company)
+        .exclude(reference='')
+        .values_list('reference', flat=True)
+    )
+
+
+def references_avoirs(company):
+    """XACC29 — Références de tous les ``Avoir`` d'une société. Lecture seule."""
+    from .models import Avoir
+    return list(
+        Avoir.objects.filter(company=company)
+        .exclude(reference='')
+        .values_list('reference', flat=True)
+    )

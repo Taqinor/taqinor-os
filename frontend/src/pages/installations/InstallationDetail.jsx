@@ -131,6 +131,11 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     statut: F('statut', 'a_planifier'),
     site_adresse: F('site_adresse'),
     site_ville: F('site_ville'),
+    // XFSM8 — notes d'accès, saisies une fois et réutilisées sur chaque visite.
+    contact_site_nom: F('contact_site_nom'),
+    contact_site_telephone: F('contact_site_telephone'),
+    acces_instructions: F('acces_instructions'),
+    horaires_acces: F('horaires_acces'),
     date_pose_prevue: F('date_pose_prevue'),
     date_pose_reelle: F('date_pose_reelle'),
     puissance_installee_kwc: F('puissance_installee_kwc'),
@@ -963,7 +968,23 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                 <Input id="ch-jr" type="number" step="any" value={fields.labour_jours_reels ?? ''}
                        onChange={(e) => set('labour_jours_reels', e.target.value)} />
               </FormField>
+              <FormField label="Contact sur site" htmlFor="ch-contact-nom">
+                <Input id="ch-contact-nom" value={fields.contact_site_nom ?? ''}
+                       onChange={(e) => set('contact_site_nom', e.target.value)} />
+              </FormField>
+              <FormField label="Téléphone du contact" htmlFor="ch-contact-tel">
+                <Input id="ch-contact-tel" value={fields.contact_site_telephone ?? ''}
+                       onChange={(e) => set('contact_site_telephone', e.target.value)} />
+              </FormField>
+              <FormField label="Horaires d'accès" htmlFor="ch-horaires" className="sm:col-span-2">
+                <Input id="ch-horaires" value={fields.horaires_acces ?? ''}
+                       onChange={(e) => set('horaires_acces', e.target.value)} />
+              </FormField>
             </div>
+            <FormField label="Consignes d'accès (clé/badge/gardien, animal, etc.)" htmlFor="ch-acces">
+              <Textarea id="ch-acces" rows={2} value={fields.acces_instructions ?? ''}
+                        onChange={(e) => set('acces_instructions', e.target.value)} />
+            </FormField>
             <FormField label="Notes" htmlFor="ch-notes">
               <Textarea id="ch-notes" rows={2} value={fields.notes ?? ''}
                         onChange={(e) => set('notes', e.target.value)} />

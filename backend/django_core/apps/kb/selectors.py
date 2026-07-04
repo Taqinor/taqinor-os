@@ -13,11 +13,15 @@ import re
 from django.db.models import Exists, OuterRef, Q
 
 from .models import (
+    BlocReutilisable,
     KbArticle,
     KbArticleAcl,
+    KbArticleChunk,
     KbArticleLien,
     KbLecture,
     KbLectureObligatoire,
+    KbParcoursArticle,
+    KbParcoursAssignation,
     KbRechercheVide,
 )
 
@@ -476,3 +480,195 @@ def liens_enrichis(article):
             'source': source,
         })
     return out
+
+
+# ── XKB20 — Récupération RAG des articles KB, respectueuse des ACL ─────────
+
+def retrieve_chunks(user, query, *, limit=5):
+    """XKB20 — Outil de récupération RAG : top-k fragments d'articles KB pour
+    une question, RESPECTUEUX DES ACL.
+
+    Calqué sur ``ged.selectors.retrieve_chunks`` (FG352) : renvoie les
+    ``limit`` fragments (``KbArticleChunk``) les plus proches de la question
+    par distance cosinus dans le MÊME magasin pgvector partagé. Les fragments
+    sont bornés DÈS LE PREMIER JOUR aux articles que ``user`` peut VOIR — via
+    ``visible_articles_qs`` (KB7 ACL par-rôle + XKB9 sections
+    workspace/privé/partagé) — jamais un fragment d'un article restreint pour
+    un utilisateur non autorisé.
+
+    KEY-GATED no-op : sans clé d'embedding ou si la question n'est pas
+    vectorisable, renvoie une liste vide (aucun appel réseau, aucun coût). Le
+    résultat est une liste de ``KbArticleChunk`` (plus proche d'abord),
+    chacun annoté de ``distance``. Import fonction-local de ``apps.ged`` :
+    lecture d'un SERVICE (jamais ses models/views) pour réutiliser le MÊME
+    provider d'embedding — pas de second pipeline RAG.
+    """
+    from apps.ged import services as ged_services
+
+    if not ged_services.embedding_enabled():
+        return []
+    if not query or not str(query).strip():
+        return []
+    vec = ged_services.compute_embedding(str(query))
+    if vec is None:
+        return []
+    from pgvector.django import CosineDistance
+
+    # ACL DÈS LE PREMIER JOUR : ne considère que les articles visibles pour
+    # cet utilisateur (KB7 + XKB9), jamais toute la table.
+    visible_ids = visible_articles_qs(
+        KbArticle.objects.all(), user).values_list('id', flat=True)
+    base = (KbArticleChunk.objects
+            .select_related('article')
+            .filter(article_id__in=visible_ids, embedding__isnull=False))
+    return list(base.annotate(distance=CosineDistance('embedding', vec))
+                .order_by('distance')[:max(1, int(limit))])
+
+
+# ── XKB22 — Parcours de lecture d'intégration ───────────────────────────────
+
+def articles_ordonnes_parcours(parcours):
+    """XKB22 — Articles ORDONNÉS d'un parcours (QuerySet, scopé société)."""
+    return (KbParcoursArticle.objects
+            .filter(parcours=parcours, company=parcours.company)
+            .select_related('article')
+            .order_by('ordre', 'id'))
+
+
+def progression_parcours(assignation):
+    """XKB22 — Progression ARTICLE PAR ARTICLE d'une assignation de parcours.
+
+    Se déduit en LECTURE SEULE des ``KbLecture`` déjà existantes de
+    l'utilisateur assigné sur chaque article ordonné du parcours — aucun
+    second mécanisme de suivi. Renvoie un dict :
+    ``{parcours, utilisateur, articles: [{article, titre, ordre, lu, lu_le}],
+    nombre_lus, nombre_total, complet}``. Scopé société via
+    ``assignation.company``.
+    """
+    membres = articles_ordonnes_parcours(assignation.parcours)
+    lectures = {
+        lecture.article_id: lecture.lu_le
+        for lecture in KbLecture.objects.filter(
+            utilisateur=assignation.utilisateur,
+            article__in=[m.article_id for m in membres])
+    }
+    articles = []
+    nombre_lus = 0
+    for membre in membres:
+        lu_le = lectures.get(membre.article_id)
+        if lu_le is not None:
+            nombre_lus += 1
+        articles.append({
+            'article': membre.article_id,
+            'titre': membre.article.titre,
+            'ordre': membre.ordre,
+            'lu': lu_le is not None,
+            'lu_le': lu_le,
+        })
+    nombre_total = len(articles)
+    return {
+        'parcours': assignation.parcours_id,
+        'utilisateur': assignation.utilisateur_id,
+        'articles': articles,
+        'nombre_lus': nombre_lus,
+        'nombre_total': nombre_total,
+        'complet': nombre_total > 0 and nombre_lus == nombre_total,
+    }
+
+
+def assignations_pour_utilisateur(company, utilisateur):
+    """XKB22 — Assignations de parcours d'UN utilisateur (scopé société).
+
+    Sert à l'écran RH (« statut de complétion visible RH ») via ce sélecteur
+    UNIQUEMENT — ``rh`` ne lit jamais les models/views de ``kb`` directement.
+    """
+    return (KbParcoursAssignation.objects
+            .filter(company=company, utilisateur=utilisateur)
+            .select_related('parcours')
+            .order_by('-date_creation', '-id'))
+
+
+# ── ZGED11 — Propriétés d'article (héritage) + vues d'items ────────────────
+
+def proprietes_effectives(article):
+    """ZGED11 — Propriétés RÉSOLUES d'un article : les siennes propres,
+    complétées par celles de ses ANCÊTRES pour toute clé qu'il ne définit
+    pas lui-même (héritage — « partagées par tous les sous-articles »).
+
+    L'ancêtre le PLUS PROCHE gagne pour une clé donnée (un sous-article peut
+    surcharger localement une propriété héritée sans la redéfinir sur tous
+    les niveaux). Borné à 1000 remontées pour ne jamais boucler sur des
+    données corrompues (même garde que ``validate_parent``/anti-cycle).
+    """
+    effectives = {}
+    cursor = article.parent
+    for _ in range(1000):
+        if cursor is None:
+            break
+        for cle, val in (cursor.proprietes or {}).items():
+            effectives.setdefault(cle, val)
+        cursor = cursor.parent
+    # Les propriétés PROPRES de l'article gagnent toujours sur l'hérité.
+    effectives.update(article.proprietes or {})
+    return effectives
+
+
+def items_parcours_vue(queryset, *, vue, propriete=None):
+    """ZGED11 — Sous-articles d'un queryset (DÉJÀ scopé société+visibilité)
+    rendus comme une COLLECTION structurée pour une ``vue`` donnée.
+
+    * ``liste``/``cartes`` : chaque item porte ses ``proprietes_effectives``
+      (aucun regroupement) — le frontend rend les deux à partir des MÊMES
+      données, seule la disposition change.
+    * ``kanban`` : regroupé par la valeur de ``propriete`` (une propriété de
+      type ``choice`` typiquement, ex. « Statut ») — une clé ``'__aucune__'``
+      accueille les items sans cette propriété renseignée.
+    * ``calendrier`` : ne garde que les items dont ``propriete`` (typiquement
+      une propriété ``date``) est renseignée, groupés par cette valeur.
+
+    Renvoie une liste de dicts ``{id, titre, proprietes, groupe?}`` (vue
+    liste/cartes) ou un dict ``{groupe: [items...]}`` (kanban/calendrier).
+    """
+    items = []
+    for article in queryset.order_by('ordre', 'id'):
+        effectives = proprietes_effectives(article)
+        items.append({
+            'id': article.id,
+            'titre': article.titre,
+            'proprietes': effectives,
+        })
+
+    if vue in ('liste', 'cartes'):
+        return items
+
+    if vue == 'kanban':
+        groupes = {}
+        for item in items:
+            valeur = item['proprietes'].get(propriete) if propriete else None
+            cle = valeur if valeur not in (None, '') else '__aucune__'
+            groupes.setdefault(cle, []).append(item)
+        return groupes
+
+    if vue == 'calendrier':
+        groupes = {}
+        for item in items:
+            valeur = item['proprietes'].get(propriete) if propriete else None
+            if valeur in (None, ''):
+                continue
+            groupes.setdefault(valeur, []).append(item)
+        return groupes
+
+    return items
+
+
+# ── ZGED12 — Presse-papiers Knowledge (blocs réutilisables) ─────────────────
+
+def blocs_visibles(company, user):
+    """ZGED12 — Blocs visibles pour ``user`` : ses blocs PERSONNELS + tous les
+    blocs SOCIÉTÉ (scopé société, jamais cross-tenant)."""
+    from django.db.models import Q
+    user_id = getattr(user, 'id', None)
+    qs = BlocReutilisable.objects.filter(company=company)
+    return qs.filter(
+        Q(portee=BlocReutilisable.Portee.SOCIETE)
+        | Q(portee=BlocReutilisable.Portee.PERSONNEL, created_by_id=user_id))

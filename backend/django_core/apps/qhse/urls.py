@@ -2,31 +2,39 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    ActionCorrectivePreventiveViewSet, AnalyseIncidentViewSet, AuditViewSet,
+    ActionCorrectivePreventiveViewSet, AnalyseIncidentViewSet,
+    AspectEnvironnementalViewSet, AuditViewSet,
     BilanCarboneViewSet, BordereauSuiviDechetViewSet,
     CalendrierQhseViewSet,
     CauseIncidentViewSet, ConformiteEnvironnementaleViewSet,
     ConsignationLotoViewSet,
     CodeDefautViewSet,
     ContactUrgenceViewSet, ControleReceptionViewSet, DechetViewSet,
-    CritereAuditViewSet, DeclarationCnssViewSet, DerogationViewSet,
+    CritereAuditViewSet, DeclarationCnssViewSet, DemandeChangementViewSet,
+    DerogationViewSet,
     EtapeDeclarationAtViewSet,
-    EvaluationRisqueViewSet, GrilleAuditViewSet, IncidentViewSet,
+    CoutNonQualiteViewSet,
+    EvaluationRisqueViewSet, ExerciceUrgenceViewSet, GrilleAuditViewSet,
+    IncidentViewSet,
     IndicateurESGViewSet,
+    ia_suggestion_analyse, ia_suggestion_classification,
     InductionSecuriteViewSet, InspectionSecuriteViewSet,
     Iso9001ReadinessViewSet,
-    ItemNotationViewSet, LigneEvaluationRisqueViewSet,
+    ItemNotationViewSet, LienSignalementPublicViewSet,
+    LigneEvaluationRisqueViewSet,
     NonConformiteViewSet, NotationFinChantierViewSet,
+    ObservationSecuriteViewSet,
     ParetoDefautsViewSet, PermisTravailViewSet,
     PlanControleReceptionViewSet, PlanInspectionChantierViewSet,
     PlanInspectionModeleViewSet,
     PlanUrgenceViewSet,
     LigneBilanCarboneViewSet,
     PointControleModeleViewSet, PointControleReceptionViewSet,
-    ProcedureQualiteViewSet,
+    ProcedureQualiteViewSet, public_signalement,
     QhseChatterEntryViewSet, RecyclageModuleViewSet,
-    ReleveControleViewSet, ReleveCourbeIVViewSet, ReponseCritereViewSet,
-    RetourClientQualiteViewSet, SecouristeViewSet,
+    ReleveConsommationViewSet, ReleveControleViewSet, ReleveCourbeIVViewSet,
+    ReponseCritereViewSet,
+    RetourClientQualiteViewSet, SecouristeViewSet, SignalementPublicViewSet,
 )
 
 router = DefaultRouter()
@@ -82,7 +90,27 @@ router.register(r'controles-reception', ControleReceptionViewSet)
 router.register(r'codes-defaut', CodeDefautViewSet)
 router.register(
     r'pareto-defauts', ParetoDefautsViewSet, basename='pareto-defauts')
+router.register(
+    r'liens-signalement', LienSignalementPublicViewSet)
+router.register(r'signalements-publics', SignalementPublicViewSet)
+router.register(r'observations-securite', ObservationSecuriteViewSet)
+router.register(r'exercices-urgence', ExerciceUrgenceViewSet)
+router.register(r'aspects-environnementaux', AspectEnvironnementalViewSet)
+router.register(r'releves-consommation', ReleveConsommationViewSet)
+router.register(
+    r'cout-non-qualite', CoutNonQualiteViewSet, basename='cout-non-qualite')
+router.register(r'demandes-changement', DemandeChangementViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
+    # XQHS16 — endpoint PUBLIC tokenisé (sans login), en dehors du router
+    # authentifié. Le préfixe `public/` ne doit jamais être capté par une
+    # route authentifiée (même motif que ged.urls `public/<token>/`).
+    path('public/signalement/<str:token>/', public_signalement,
+         name='qhse-public-signalement'),
+    # XQHS25 — assistance IA QHSE (key-gated, authentifié — pas public).
+    path('ia/suggestion-classification/', ia_suggestion_classification,
+         name='qhse-ia-suggestion-classification'),
+    path('ia/suggestion-analyse/', ia_suggestion_analyse,
+         name='qhse-ia-suggestion-analyse'),
 ]

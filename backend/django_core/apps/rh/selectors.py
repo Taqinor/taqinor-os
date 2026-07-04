@@ -27,9 +27,22 @@ from .models import (
     Poste,
     PresenceChantier,
     PresquAccident,
+    PrimeAttribuee,
+    Remuneration,
     SessionFormation,
     VisiteMedicale,
 )
+
+
+def dossier_employe_for_user(company, user_id):
+    """XFSM2 — ``DossierEmploye`` scopé société relié à un compte utilisateur,
+    ou ``None`` si aucun dossier n'est relié (ex. compte sans fiche RH). Point
+    d'entrée de lecture pour les autres modules (ex. installations, pour
+    vérifier une habilitation avant affectation) sans importer ``rh.models``."""
+    if user_id is None:
+        return None
+    return DossierEmploye.objects.filter(
+        company=company, user_id=user_id).first()
 
 
 def dossier_appartient_societe(company, dossier_id):
@@ -299,6 +312,66 @@ def labour_hours_for_installation(installation_id, company=None):
     }
 
 
+def fiche_identite_employe(company, employe_id):
+    """Identité + poste actuel d'un employé, pour la fiche carrière (XPAI26).
+
+    Sélecteur cross-app : la paie lit CE sélecteur (jamais ``rh.models``
+    direct) pour construire la fiche historique de carrière/salaire (registre
+    d'inspection du travail). Renvoie un dict ``{'matricule', 'nom', 'prenom',
+    'poste', 'date_embauche', 'type_contrat', 'date_sortie'}`` ou ``None`` si
+    le dossier est introuvable/hors société.
+    """
+    if company is None or employe_id is None:
+        return None
+    try:
+        dossier = DossierEmploye.objects.select_related(
+            'poste_ref').get(company=company, pk=employe_id)
+    except DossierEmploye.DoesNotExist:
+        return None
+    poste = (dossier.poste_ref.intitule if dossier.poste_ref_id
+             else dossier.poste)
+    return {
+        'matricule': dossier.matricule,
+        'nom': dossier.nom,
+        'prenom': dossier.prenom,
+        'poste': poste or '',
+        'date_embauche': dossier.date_embauche,
+        'type_contrat': dossier.get_type_contrat_display(),
+        'date_sortie': dossier.date_sortie,
+    }
+
+
+def labour_hours_par_installation_pour_employe(
+        company, employe_id, date_debut, date_fin):
+    """Heures ``FeuilleTemps`` d'un employé sur une période, par installation.
+
+    Sélecteur cross-app (XPAI17) : la paie appelle CE sélecteur pour ventiler
+    le coût employeur d'un bulletin au prorata des heures réellement imputées
+    à chaque chantier (``installations.Installation``, référencé en
+    ``installation_id`` — jamais importé directement). Renvoie une liste de
+    dicts ``{'installation_id', 'total_heures'}`` (Decimal), triée par
+    ``installation_id``, EXCLUANT les lignes à 0 heure. Liste vide si aucune
+    heure imputée sur la période (repli attendu vers une clé % fixe côté paie).
+    """
+    from decimal import Decimal
+
+    from django.db.models import Sum
+
+    qs = (
+        FeuilleTemps.objects
+        .filter(company=company, employe_id=employe_id,
+                date__gte=date_debut, date__lte=date_fin)
+        .values('installation_id')
+        .annotate(total_heures=Sum('heures'))
+        .order_by('installation_id')
+    )
+    return [
+        {'installation_id': row['installation_id'],
+         'total_heures': row['total_heures'] or Decimal('0')}
+        for row in qs if (row['total_heures'] or Decimal('0')) > 0
+    ]
+
+
 def heures_supp_pour_paie(company, date_debut, date_fin, employe_id=None):
     """Heures supplémentaires majorées d'une période (FG168, entrée de paie).
 
@@ -340,6 +413,156 @@ def heures_supp_pour_paie(company, date_debut, date_fin, employe_id=None):
     return [agg[k] for k in sorted(agg)]
 
 
+def absences_non_remunerees_pour_paie(company, date_debut, date_fin,
+                                      employe_id=None):
+    """Absences VALIDÉES non rémunérées d'une période (YHIRE1, entrée de paie).
+
+    Sélecteur cross-app : la paie importe les jours d'absence NON rémunérés
+    (``TypeAbsence.remunere = False`` — sans solde, injustifiée…) SANS jamais
+    importer ``rh.models`` directement. Une demande de congé REMUNÉRÉE
+    (congé payé, maladie indemnisée…) n'a AUCUN impact sur le net : elle est
+    délibérément exclue ici (le salarié est payé comme présent).
+
+    Une demande qui chevauche la fenêtre sans y être entièrement contenue est
+    IGNORÉE (bornée strictement à ``[date_debut, date_fin]``) — l'import RH
+    fonctionne par période de paie mensuelle et une demande à cheval sur deux
+    mois est un cas rare traité manuellement.
+
+    Renvoie une liste de dicts (une par demande) : ``{'employe_id',
+    'demande_id', 'type_absence_code', 'type_absence_libelle', 'jours',
+    'deduit_solde'}``.
+    """
+    if company is None or date_debut is None or date_fin is None:
+        return []
+    qs = DemandeConge.objects.filter(
+        company=company,
+        statut=DemandeConge.Statut.VALIDEE,
+        type_absence__remunere=False,
+        date_debut__gte=date_debut,
+        date_fin__lte=date_fin,
+    ).select_related('type_absence')
+    if employe_id is not None:
+        qs = qs.filter(employe_id=employe_id)
+    return [
+        {
+            'employe_id': demande.employe_id,
+            'demande_id': demande.id,
+            'type_absence_code': demande.type_absence.code,
+            'type_absence_libelle': demande.type_absence.libelle,
+            'jours': demande.jours,
+            'deduit_solde': demande.type_absence.deduit_solde,
+        }
+        for demande in qs.order_by('employe_id', 'date_debut')
+    ]
+
+
+def primes_validees_pour_paie(company, annee, mois, employe_id=None):
+    """Primes/indemnités VALIDÉES d'un mois (YHIRE1, entrée de paie, FG193).
+
+    Sélecteur cross-app : la paie importe les primes ``PrimeAttribuee`` au
+    statut ``validee`` (PAYÉE reste exclue — déjà versée hors bulletin, elle
+    ne doit pas re-générer une ligne) de la ``(annee, mois)`` SANS jamais
+    importer ``rh.models`` directement.
+
+    Renvoie une liste de dicts (une par prime) : ``{'employe_id',
+    'prime_id', 'type_prime_libelle', 'montant', 'motif'}``.
+    """
+    if company is None or annee is None or mois is None:
+        return []
+    qs = PrimeAttribuee.objects.filter(
+        company=company, annee=annee, mois=mois,
+        statut=PrimeAttribuee.Statut.VALIDEE,
+    ).select_related('type_prime')
+    if employe_id is not None:
+        qs = qs.filter(employe_id=employe_id)
+    return [
+        {
+            'employe_id': prime.employe_id,
+            'prime_id': prime.id,
+            'type_prime_libelle': prime.type_prime.libelle,
+            'montant': prime.montant,
+            'motif': prime.motif,
+        }
+        for prime in qs.order_by('employe_id', 'id')
+    ]
+
+
+# Facteurs (numérateur, dénominateur) de normalisation vers un montant
+# MENSUEL (YHIRE6). L'horaire est approximé via la norme paie standard
+# (191 h/mois) faute d'un taux horaire contractuel dédié sur ``Remuneration``
+# — write-up assumé, cohérent avec ``ProfilPaie.heures_travail_mensuel`` par
+# défaut.
+_FACTEUR_MENSUALISATION = {
+    Remuneration.Periodicite.MENSUEL: (1, 1),
+    Remuneration.Periodicite.ANNUEL: (1, 12),
+    Remuneration.Periodicite.JOURNALIER: (26, 1),
+    Remuneration.Periodicite.HORAIRE: (191, 1),
+}
+
+
+def remuneration_en_vigueur(company, employe_id, le_jour=None):
+    """Rémunération EN VIGUEUR d'un employé à une date (YHIRE6, FG157).
+
+    La ligne ``Remuneration`` dont ``date_effet`` est la plus récente ≤
+    ``le_jour`` (aujourd'hui par défaut). Sélecteur cross-app : la paie lit
+    la rémunération de référence SANS jamais importer ``rh.models``
+    directement — donnée SENSIBLE (paie), à gater ``salaires_voir`` côté
+    appelant.
+
+    Renvoie ``{'montant_mensuel', 'montant', 'devise', 'periodicite',
+    'date_effet'}`` normalisé en équivalent MENSUEL (pour comparaison directe
+    à ``ProfilPaie.salaire_base``), ou ``None`` si aucune ligne n'est en
+    vigueur à cette date.
+    """
+    from decimal import Decimal
+    if company is None or employe_id is None:
+        return None
+    jour = le_jour or timezone.localdate()
+    ligne = (
+        Remuneration.objects
+        .filter(company=company, employe_id=employe_id, date_effet__lte=jour)
+        .order_by('-date_effet', '-date_creation')
+        .first()
+    )
+    if ligne is None:
+        return None
+    numerateur, denominateur = _FACTEUR_MENSUALISATION.get(
+        ligne.periodicite, (1, 1))
+    montant_mensuel = (
+        Decimal(ligne.montant) * Decimal(numerateur) / Decimal(denominateur))
+    return {
+        'montant_mensuel': montant_mensuel.quantize(Decimal('0.01')),
+        'montant': ligne.montant,
+        'devise': ligne.devise,
+        'periodicite': ligne.periodicite,
+        'date_effet': ligne.date_effet,
+    }
+
+
+def departements_par_employe(company, employe_ids):
+    """Mappe ``employe_id -> {'departement_id', 'departement_nom'}`` (ZPAI1).
+
+    Sélecteur cross-app : la paie lit le département d'un groupe d'employés
+    (rapport d'analyse par département) SANS jamais importer ``rh.models``
+    directement. Un employé sans département (ou hors ``employe_ids``) est
+    absent du dict renvoyé — l'appelant traite ça comme « non affecté ».
+    """
+    if company is None or not employe_ids:
+        return {}
+    qs = (
+        DossierEmploye.objects
+        .filter(company=company, id__in=list(employe_ids))
+        .select_related('departement')
+    )
+    return {
+        d.id: {
+            'departement_id': d.departement_id,
+            'departement_nom': d.departement.nom if d.departement_id else '',
+        }
+        for d in qs
+    }
+
+
 def employes_assignables(company, jour):
     """IDs des employés ACTIFS assignables au dispatch terrain le ``jour`` (FG165).
 
@@ -361,6 +584,38 @@ def employes_assignables(company, jour):
         .exclude(id__in=absents)
         .order_by('nom', 'prenom')
     )
+
+
+def absents_non_justifies(company, jour):
+    """ZRH6 — employés ATTENDUS le ``jour`` sans pointage NI congé validé.
+
+    Odoo « Absence management » : signale l'employé actif assignable ce
+    jour-là (``employes_assignables``) qui n'a NI pointé d'arrivée NI de
+    congé validé le couvrant (réutilise ``employe_absent_le``). Renvoie une
+    liste de dicts ``{employe_id, matricule, nom}``. Toujours scopé société.
+    """
+    from .models import Pointage
+
+    if company is None or jour is None:
+        return []
+    attendus = employes_assignables(company, jour)
+    ont_pointe = set(
+        Pointage.objects.filter(
+            company=company, heure_arrivee__date=jour,
+        ).values_list('employe_id', flat=True))
+
+    resultats = []
+    for employe in attendus:
+        if employe.id in ont_pointe:
+            continue
+        if employe_absent_le(company, employe.id, jour):
+            continue  # déjà exclu par employes_assignables, garde défensive.
+        resultats.append({
+            'employe_id': employe.id,
+            'matricule': employe.matricule,
+            'nom': f'{employe.nom} {employe.prenom}',
+        })
+    return resultats
 
 
 def roster_semaine(company, lundi):
@@ -1519,7 +1774,32 @@ def _masse_salariale_mensuelle(company):
     return total
 
 
-def cockpit_rh(company, *, inclure_masse_salariale=False):
+def motifs_depart(company, debut, fin):
+    """XRH25 — répartition des motifs de départ sur ``[debut, fin]``.
+
+    Agrège les ``EntretienSortie.motif_principal`` des employés SORTIS de la
+    société dont ``date_sortie`` tombe dans la période (bornes incluses).
+    Renvoie un dict ``{motif: nb}`` (motifs sans entretien de sortie renseigné
+    ne sont PAS comptés — distinct du ``DossierEmploye.motif_sortie`` coarse,
+    toujours disponible via le cockpit ``par_statut``). Lecture seule, société
+    scopée.
+    """
+    from .models import EntretienSortie
+
+    entretiens = EntretienSortie.objects.filter(
+        company=company,
+        employe__date_sortie__gte=debut,
+        employe__date_sortie__lte=fin,
+    ).exclude(motif_principal='')
+
+    counts = {}
+    for entretien in entretiens:
+        counts[entretien.motif_principal] = (
+            counts.get(entretien.motif_principal, 0) + 1)
+    return counts
+
+
+def cockpit_rh(company, *, inclure_masse_salariale=False, departement_id=None):
     """Cockpit RH — effectifs & coûts (FG200), agrégation scopée société.
 
     Renvoie un tableau de bord en lecture :
@@ -1533,12 +1813,18 @@ def cockpit_rh(company, *, inclure_masse_salariale=False):
     * ``masse_salariale_mensuelle`` — UNIQUEMENT si ``inclure_masse_salariale``
       (GATED : donnée interne paie, jamais côté client).
 
+    XRH27 — ``departement_id`` filtre le cockpit à CE département ET TOUS ses
+    descendants (arbre de hiérarchie), via :func:`departements_descendants`.
+
     Tout est cadré société (jamais d'accès hors ``company``).
     """
     from datetime import date
 
     today = timezone.localdate()
     base = DossierEmploye.objects.filter(company=company)
+    if departement_id:
+        ids = departements_descendants(company, departement_id)
+        base = base.filter(departement_id__in=ids)
     non_sortis = base.exclude(statut=DossierEmploye.Statut.SORTI)
 
     # Répartitions par statut / contrat.
@@ -1617,6 +1903,11 @@ def cockpit_rh(company, *, inclure_masse_salariale=False):
             'entrees_12m': entrees,
             'sorties_12m': sorties,
             'taux_pct': taux_turnover,
+            # XRH25 — répartition des motifs de départ (12 mois glissants),
+            # depuis les entretiens de sortie structurés (distincts du
+            # ``motif_sortie`` coarse posé à l'offboarding FG161).
+            'motifs_depart': motifs_depart(
+                company, debut_periode, today),
         },
         'alertes': alertes,
     }
@@ -1817,3 +2108,353 @@ def comparatif_candidats(company, ouverture_id):
     resultats.sort(
         key=lambda r: (r['moyenne'] is None, -(r['moyenne'] or 0)))
     return resultats
+
+
+def stats_recrutement(company, debut=None, fin=None):
+    """XRH22 — analytics recrutement : délai d'embauche, entonnoir, sources.
+
+    Filtre les ``Candidature`` de la société sur ``date_candidature`` dans
+    ``[debut, fin]`` (bornes incluses, optionnelles — période complète si
+    absentes). Renvoie un dict :
+
+    * ``delai_embauche_moyen_jours`` — moyenne (candidat EMBAUCHÉ dans la
+      période) de ``date_modification - date_candidature`` (proxy de la date
+      d'embauche : le passage à l'étape ``embauche`` touche
+      ``date_modification``). ``None`` si aucun embauché avec les deux dates.
+    * ``entonnoir`` — dict ``{etape: nb_candidatures_ayant_atteint_ou_dépassé
+      cette étape}`` sur l'ordre reçu→présélection→entretien→offre→embauché
+      (une candidature à l'étape ``offre`` compte dans reçu/présélection/
+      entretien/offre). ``rejete`` compté séparément, hors entonnoir.
+    * ``candidatures_par_ouverture`` — liste ``{ouverture_id, intitule, nb}``.
+    * ``sources`` — liste ``{source, candidatures, embauches,
+      taux_embauche_pct}`` triée par taux d'embauche décroissant (division par
+      zéro gardée : ``0.0`` si aucune candidature pour la source).
+
+    Lecture seule, société scopée, pas de migration.
+    """
+    from .models import Candidature
+
+    qs = Candidature.objects.filter(company=company)
+    if debut:
+        qs = qs.filter(date_candidature__gte=debut)
+    if fin:
+        qs = qs.filter(date_candidature__lte=fin)
+    candidatures = list(qs.select_related('ouverture'))
+
+    # Délai d'embauche moyen (jours) sur les candidats embauchés de la
+    # période disposant des deux dates.
+    delais = []
+    for c in candidatures:
+        if (c.etape == Candidature.Etape.EMBAUCHE
+                and c.date_candidature and c.date_modification):
+            delta = c.date_modification.date() - c.date_candidature
+            delais.append(delta.days)
+    delai_moyen = round(sum(delais) / len(delais), 1) if delais else None
+
+    # Entonnoir : ordre des étapes et rang de chacune.
+    ordre_etapes = [
+        Candidature.Etape.RECU,
+        Candidature.Etape.PRESELECTION,
+        Candidature.Etape.ENTRETIEN,
+        Candidature.Etape.OFFRE,
+        Candidature.Etape.EMBAUCHE,
+    ]
+    rang = {etape: i for i, etape in enumerate(ordre_etapes)}
+    entonnoir = {etape: 0 for etape in ordre_etapes}
+    nb_rejetes = 0
+    for c in candidatures:
+        if c.etape == Candidature.Etape.REJETE:
+            nb_rejetes += 1
+            continue
+        rang_candidat = rang.get(c.etape)
+        if rang_candidat is None:
+            continue
+        for etape in ordre_etapes:
+            if rang[etape] <= rang_candidat:
+                entonnoir[etape] += 1
+    entonnoir['rejete'] = nb_rejetes
+
+    # Candidatures par ouverture.
+    par_ouverture = {}
+    for c in candidatures:
+        key = c.ouverture_id
+        if key not in par_ouverture:
+            par_ouverture[key] = {
+                'ouverture_id': key,
+                'intitule': c.ouverture.intitule if c.ouverture_id else '',
+                'nb': 0,
+            }
+        par_ouverture[key]['nb'] += 1
+    candidatures_par_ouverture = sorted(
+        par_ouverture.values(), key=lambda r: r['nb'], reverse=True)
+
+    # Efficacité par source.
+    par_source = {}
+    for c in candidatures:
+        source = c.source or ''
+        if source not in par_source:
+            par_source[source] = {'candidatures': 0, 'embauches': 0}
+        par_source[source]['candidatures'] += 1
+        if c.etape == Candidature.Etape.EMBAUCHE:
+            par_source[source]['embauches'] += 1
+
+    sources = []
+    for source, data in par_source.items():
+        nb_cand = data['candidatures']
+        taux = round(
+            (data['embauches'] / nb_cand) * 100, 1) if nb_cand else 0.0
+        sources.append({
+            'source': source,
+            'candidatures': nb_cand,
+            'embauches': data['embauches'],
+            'taux_embauche_pct': taux,
+        })
+    sources.sort(key=lambda r: r['taux_embauche_pct'], reverse=True)
+
+    return {
+        'delai_embauche_moyen_jours': delai_moyen,
+        'entonnoir': entonnoir,
+        'candidatures_par_ouverture': candidatures_par_ouverture,
+        'sources': sources,
+    }
+
+
+def _effectif_departement(company, departement_id):
+    """Effectif NON-SORTI directement rattaché à ce département (hors
+    descendants — l'agrégation cumulée se fait dans :func:`arbre_departements`)."""
+    return DossierEmploye.objects.filter(
+        company=company, departement_id=departement_id
+    ).exclude(statut=DossierEmploye.Statut.SORTI).count()
+
+
+def arbre_departements(company):
+    """XRH27 — arbre imbriqué des départements avec effectifs par nœud.
+
+    Renvoie une liste de nœuds RACINE (``parent`` vide), chacun
+    ``{id, nom, code, effectif_propre, effectif_cumule, enfants: [...]}`` où
+    ``effectif_propre`` = employés non-sortis DIRECTEMENT rattachés à ce
+    département, et ``effectif_cumule`` = ``effectif_propre`` + la somme
+    cumulée de TOUS les descendants (récursif). Lecture seule, société
+    scopée.
+    """
+    departements = list(Departement.objects.filter(company=company))
+    enfants_de = {}
+    for d in departements:
+        enfants_de.setdefault(d.parent_id, []).append(d)
+
+    def construire(dep):
+        enfants = [
+            construire(e) for e in enfants_de.get(dep.id, [])]
+        effectif_propre = _effectif_departement(company, dep.id)
+        effectif_cumule = effectif_propre + sum(
+            e['effectif_cumule'] for e in enfants)
+        return {
+            'id': dep.id,
+            'nom': dep.nom,
+            'code': dep.code,
+            'effectif_propre': effectif_propre,
+            'effectif_cumule': effectif_cumule,
+            'enfants': enfants,
+        }
+
+    racines = enfants_de.get(None, [])
+    return [construire(d) for d in racines]
+
+
+def departements_descendants(company, departement_id):
+    """XRH27 — ids du département donné + TOUS ses descendants (récursif).
+
+    Utilisé par le filtre cockpit ``?departement=`` (descendant-inclusif).
+    Renvoie ``[]`` si ``departement_id`` est absent/invalide.
+    """
+    if not departement_id:
+        return []
+    departements = list(Departement.objects.filter(company=company))
+    enfants_de = {}
+    for d in departements:
+        enfants_de.setdefault(d.parent_id, []).append(d.id)
+
+    resultat = []
+    a_visiter = [int(departement_id)]
+    while a_visiter:
+        courant = a_visiter.pop()
+        resultat.append(courant)
+        a_visiter.extend(enfants_de.get(courant, []))
+    return resultat
+
+
+def features_risque_attrition(employe, *, today=None, within_days=90):
+    """XRH31 — assemble les FEATURES d'un employé pour ``core.attrition_risk``.
+
+    Lit UNIQUEMENT via les selectors/models de ``apps.rh`` (jamais un import
+    d'app domaine dans ``core``) : ancienneté (``date_embauche``), incidents
+    de présence des ``within_days`` derniers jours (retards/départs anticipés
+    hors absences — ``IncidentPresence``), absences injustifiées sur la même
+    fenêtre, dernière note d'évaluation (``EvaluationEmploye.note_globale``
+    la plus récente), mois depuis la dernière ``Remuneration`` (augmentation),
+    nombre de ``Sanction`` (toutes, non filtrées par statut annulé — une
+    sanction contestée reste un signal). Renvoie un dict prêt pour
+    :func:`core.attrition_risk.attrition_risk`.
+    """
+    from .models import EvaluationEmploye, IncidentPresence, Remuneration, Sanction
+
+    today = today or timezone.localdate()
+    debut = today - timedelta(days=within_days)
+
+    features = {}
+
+    if employe.date_embauche:
+        jours = (today - employe.date_embauche).days
+        features['seniority_months'] = round(jours / 30.44, 2)
+
+    incidents_qs = IncidentPresence.objects.filter(
+        company=employe.company, employe=employe,
+        date__gte=debut, date__lte=today, justifie=False)
+    features['recent_attendance_incidents'] = incidents_qs.exclude(
+        type_incident=IncidentPresence.TypeIncident.ABSENCE_INJUSTIFIEE
+    ).count()
+    features['unplanned_absences'] = incidents_qs.filter(
+        type_incident=IncidentPresence.TypeIncident.ABSENCE_INJUSTIFIEE
+    ).count()
+
+    derniere_evaluation = EvaluationEmploye.objects.filter(
+        company=employe.company, employe=employe,
+        note_globale__isnull=False).order_by('-date_creation').first()
+    if derniere_evaluation is not None:
+        features['last_evaluation_score'] = float(
+            derniere_evaluation.note_globale)
+
+    derniere_remuneration = Remuneration.objects.filter(
+        company=employe.company, employe=employe
+    ).order_by('-date_effet').first()
+    if derniere_remuneration is not None and derniere_remuneration.date_effet:
+        jours_depuis = (today - derniere_remuneration.date_effet).days
+        features['months_since_last_raise'] = round(jours_depuis / 30.44, 2)
+
+    features['sanctions_count'] = Sanction.objects.filter(
+        company=employe.company, employe=employe).count()
+
+    return features
+
+
+def risque_attrition_employe(employe, *, today=None):
+    """XRH31 — score de risque d'attrition d'UN employé (dict prêt UI/API).
+
+    Assemble les features via :func:`features_risque_attrition` puis délègue
+    le scoring au moteur pur ``core.attrition_risk``. Renvoie
+    ``{employe_id, score, band, factors}``.
+    """
+    from core.attrition_risk import attrition_risk
+
+    features = features_risque_attrition(employe, today=today)
+    resultat = attrition_risk(features)
+    return {
+        'employe_id': employe.id,
+        'score': resultat.score,
+        'band': resultat.band,
+        'factors': resultat.factors,
+    }
+
+
+def top_risque_attrition(company, *, limite=10, today=None):
+    """XRH31 — top-N employés ACTIFS par risque d'attrition décroissant.
+
+    Lecture seule, société scopée. Renvoie une liste triée
+    ``[{employe_id, employe_nom, score, band}, ...]`` limitée à ``limite``.
+    """
+    employes = DossierEmploye.objects.filter(
+        company=company, statut=DossierEmploye.Statut.ACTIF)
+    resultats = []
+    for employe in employes:
+        r = risque_attrition_employe(employe, today=today)
+        resultats.append({
+            'employe_id': employe.id,
+            'employe_nom': f'{employe.nom} {employe.prenom}',
+            'score': r['score'],
+            'band': r['band'],
+        })
+    resultats.sort(key=lambda r: r['score'], reverse=True)
+    return resultats[:limite]
+
+
+# Seuil minimal de réponses avant d'afficher un score eNPS (anonymat XRH32).
+PULSE_SEUIL_ANONYMAT = 5
+
+
+def score_enps_campagne(company, campagne_id):
+    """XRH32 — score eNPS (%promoteurs − %détracteurs) d'une campagne pulse.
+
+    Renvoie ``{nb_reponses, score_enps, masque}`` où ``masque=True`` (et
+    ``score_enps=None``) SOUS ``PULSE_SEUIL_ANONYMAT`` réponses — protection
+    d'anonymat (une poignée de réponses redeviendrait identifiable). Lecture
+    seule, société scopée.
+    """
+    from .models import ReponsePulse
+
+    reponses = list(ReponsePulse.objects.filter(
+        company=company, campagne_id=campagne_id))
+    nb = len(reponses)
+    if nb < PULSE_SEUIL_ANONYMAT:
+        return {'nb_reponses': nb, 'score_enps': None, 'masque': True}
+
+    promoteurs = sum(1 for r in reponses if r.categorie == 'promoteur')
+    detracteurs = sum(1 for r in reponses if r.categorie == 'detracteur')
+    score = round(((promoteurs - detracteurs) / nb) * 100, 1)
+    return {'nb_reponses': nb, 'score_enps': score, 'masque': False}
+
+
+def rapport_conges(company, annee, employe_id=None, departement_id=None):
+    """ZRH3 — rapport congés par type ET par employé (Odoo « Time Off
+    Reporting by Type / by Employee »), sur les demandes VALIDÉES de l'année.
+
+    Renvoie un dict :
+    ``{'par_type': [{'type_absence_id', 'code', 'libelle', 'jours'}],
+       'par_employe': [{'employe_id', 'nom', 'jours', 'par_type': {...},
+                        'solde_disponible'}]}``
+    ``employe_id``/``departement_id`` filtrent optionnellement. Lecture seule,
+    société scopée, jamais lu du corps de requête.
+    """
+    from decimal import Decimal
+
+    from .models import DemandeConge, SoldeConge
+
+    qs = DemandeConge.objects.filter(
+        company=company, statut=DemandeConge.Statut.VALIDEE,
+        date_debut__year=annee,
+    ).select_related('type_absence', 'employe')
+    if employe_id:
+        qs = qs.filter(employe_id=employe_id)
+    if departement_id:
+        qs = qs.filter(employe__departement_id=departement_id)
+
+    par_type = {}
+    par_employe = {}
+    for demande in qs:
+        jours = demande.jours or Decimal('0')
+        ta = demande.type_absence
+        entry_type = par_type.setdefault(ta.id, {
+            'type_absence_id': ta.id, 'code': ta.code,
+            'libelle': ta.libelle, 'jours': Decimal('0'),
+        })
+        entry_type['jours'] += jours
+
+        emp = demande.employe
+        entry_emp = par_employe.setdefault(emp.id, {
+            'employe_id': emp.id, 'nom': f'{emp.nom} {emp.prenom}',
+            'jours': Decimal('0'), 'par_type': {},
+        })
+        entry_emp['jours'] += jours
+        entry_emp['par_type'][ta.code] = \
+            entry_emp['par_type'].get(ta.code, Decimal('0')) + jours
+
+    for emp_id, entry in par_employe.items():
+        solde = SoldeConge.objects.filter(
+            company=company, employe_id=emp_id, annee=annee).first()
+        entry['solde_disponible'] = solde.disponible if solde else Decimal('0')
+
+    return {
+        'par_type': sorted(
+            par_type.values(), key=lambda e: -e['jours']),
+        'par_employe': sorted(
+            par_employe.values(), key=lambda e: -e['jours']),
+    }

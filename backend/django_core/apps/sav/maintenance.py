@@ -16,6 +16,7 @@ from math import asin, cos, radians, sin, sqrt
 
 from django.contrib.auth import get_user_model
 from django.http import HttpResponse
+from django.utils import timezone
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -142,12 +143,21 @@ def planifier_tournee(company, ticket_ids, date_tournee, technicien_id=None):
     return updated
 
 
-def generer_visites_dues(company, user):
+def generer_visites_dues(company, user, avance_jours=0):
     """Crée un ticket SAV préventif pour chaque contrat actif dont la visite est
-    due, et avance la date de dernière visite. Renvoie le nombre généré."""
+    due, et avance la date de dernière visite. Renvoie le nombre généré.
+
+    YSERV5 — ``avance_jours`` (0 par défaut, comportement historique
+    inchangé) décale la comparaison « dû » vers le futur : une visite dont
+    l'échéance tombe dans les ``avance_jours`` prochains jours est
+    matérialisée dès aujourd'hui (utilisé par la tâche Celery quotidienne
+    opt-in, jamais par le bouton manuel qui garde ``avance_jours=0``)."""
+    from datetime import timedelta
+
+    horizon = timezone.localdate() + timedelta(days=avance_jours or 0)
     genere = 0
     for contrat in ContratMaintenance.objects.filter(company=company, actif=True):
-        if not contrat.is_due():
+        if not contrat.is_due(today=horizon):
             continue
         due = contrat.prochaine_visite()
 
@@ -380,3 +390,32 @@ class ContratMaintenanceViewSet(TenantMixin, viewsets.ModelViewSet):
         resp['Content-Disposition'] = (
             f'attachment; filename="maintenance-contrat-{contrat.pk}.pdf"')
         return resp
+
+    @action(detail=True, methods=['get'], url_path='rentabilite',
+            permission_classes=[IsResponsableOrAdmin])
+    def rentabilite(self, request, pk=None):
+        """XSAV18 — P&L de CE contrat (revenu FG40 vs coût tickets liés).
+
+        Admin-only (`prix_achat_voir`) — jamais client-facing, jamais dans un
+        PDF. 403 explicite sans la permission (pas de champ silencieusement
+        absent)."""
+        if not request.user.can_view_buy_prices:
+            return Response(
+                {'detail': 'Coût interne réservé (permission prix_achat_voir).'},
+                status=status.HTTP_403_FORBIDDEN)
+        from .selectors import rentabilite_contrat
+        contrat = self.get_object()
+        return Response(rentabilite_contrat(contrat))
+
+    @action(detail=False, methods=['get'], url_path='rentabilite',
+            permission_classes=[IsResponsableOrAdmin])
+    def rentabilite_liste(self, request):
+        """XSAV18 — Rentabilité de TOUS les contrats, classée par marge
+        croissante (les contrats vendus à perte en premier). Admin-only."""
+        if not request.user.can_view_buy_prices:
+            return Response(
+                {'detail': 'Coût interne réservé (permission prix_achat_voir).'},
+                status=status.HTTP_403_FORBIDDEN)
+        from .selectors import rentabilite_contrats
+        data = rentabilite_contrats(request.user.company)
+        return Response({'results': data})

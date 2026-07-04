@@ -1,7 +1,8 @@
 from rest_framework import serializers
 from .models import (
-    Appointment, Client, ConcurrentPerte, Lead, LeadActivity, MessageTemplate,
-    ObjectifCommercial, Parrainage, PointContact, SiteProfile,
+    Appointment, Client, ConcurrentPerte, EtapePlanActivite, Lead,
+    LeadActivity, MessageTemplate, ObjectifCommercial, Parrainage,
+    PlanActivite, PointContact, SiteProfile,
 )
 from .devis_auto import champs_manquants, message_manquants
 from .scoring import compute_score, score_label
@@ -740,3 +741,23 @@ class PointContactSerializer(serializers.ModelSerializer):
         # Si non fourni, retombe sur maintenant (le champ a un default côté
         # serveur via perform_create ; ici on accepte simplement la valeur).
         return value
+
+
+# ── ZSAL2 — Plans d'activité ─────────────────────────────────────────────────
+
+class EtapePlanActiviteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EtapePlanActivite
+        fields = [
+            'id', 'plan', 'ordre', 'activity_type', 'delai_jours',
+            'resume_defaut', 'assigne_par_defaut',
+        ]
+
+
+class PlanActiviteSerializer(serializers.ModelSerializer):
+    etapes = EtapePlanActiviteSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = PlanActivite
+        fields = ['id', 'company', 'nom', 'actif', 'date_creation', 'etapes']
+        read_only_fields = ['company', 'date_creation']

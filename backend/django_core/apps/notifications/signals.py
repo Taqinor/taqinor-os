@@ -97,6 +97,29 @@ def devis_post_save(sender, instance, created, **kwargs):
         logger.exception('notify DEVIS_ACCEPTED failed (devis %s)', instance.pk)
 
 
+# ── Devis → DEVIS_EXPIRED (YEVNT2) ──────────────────────────────────────────
+# Contrairement aux autres producteurs de ce module (qui diffent pre/post_save
+# sur le modèle), YEVNT2 s'abonne DIRECTEMENT à ``core.events.devis_expired`` —
+# le signal domain-event posé par ``ventes.services.expire_stale_devis``
+# (M6) : plus simple ici (le sweep ne pose l'événement QU'à la transition
+# réelle envoyé→expiré, donc aucune diffing pre/post_save n'est nécessaire).
+def devis_expired_receiver(sender, devis, ancien_statut, **kwargs):
+    recipient = getattr(devis, 'created_by', None)
+    if recipient is None:
+        return
+    try:
+        notify(
+            user=recipient,
+            event_type=EventType.DEVIS_EXPIRED,
+            title='Devis expiré',
+            body=(f'Le devis {devis.reference} a expiré automatiquement '
+                  '(date de validité dépassée). Pensez à relancer le client.'),
+            link=f'/devis/{devis.pk}',
+        )
+    except Exception:  # noqa: BLE001 — jamais bloquant
+        logger.exception('notify DEVIS_EXPIRED failed (devis %s)', devis.pk)
+
+
 # ── SAV Ticket → SAV_TICKET_OPENED (YEVNT4) ─────────────────────────────────
 def sav_ticket_post_save(sender, instance, created, **kwargs):
     """À la CRÉATION d'un ticket SAV → notifie le technicien assigné, sinon
@@ -234,6 +257,7 @@ def connect():
     from apps.crm.models import Lead
     from apps.sav.models import Ticket
     from apps.ventes.models import Devis
+    from core.events import devis_expired
 
     pre_save.connect(lead_pre_save, sender=Lead,
                      dispatch_uid='notifications_lead_pre')
@@ -243,6 +267,8 @@ def connect():
                      dispatch_uid='notifications_devis_pre')
     post_save.connect(devis_post_save, sender=Devis,
                       dispatch_uid='notifications_devis_accepted')
+    devis_expired.connect(devis_expired_receiver,
+                          dispatch_uid='notifications_devis_expired')
     post_save.connect(sav_ticket_post_save, sender=Ticket,
                       dispatch_uid='notifications_sav_ticket_opened')
     pre_save.connect(automation_approval_pre_save, sender=AutomationApproval,

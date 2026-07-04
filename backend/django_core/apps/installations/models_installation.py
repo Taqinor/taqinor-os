@@ -114,6 +114,16 @@ class Installation(models.Model):
     gps_lng = models.DecimalField(
         max_digits=9, decimal_places=6, null=True, blank=True)
 
+    # ── XFSM8 — notes d'accès au site, réutilisées à chaque visite ───────────
+    # Saisies une fois sur le chantier (jamais ressaisies), reprises en lecture
+    # sur toute Intervention de ce chantier (serializer) et sur « Ma journée »
+    # F22 / le compte-rendu F19. Additif, tout nullable/blank.
+    contact_site_nom = models.CharField(max_length=120, blank=True, null=True)
+    contact_site_telephone = models.CharField(
+        max_length=30, blank=True, null=True)
+    acces_instructions = models.TextField(blank=True, null=True)
+    horaires_acces = models.CharField(max_length=200, blank=True, null=True)
+
     # ── Caractéristiques techniques (gelées à la création) ──
     puissance_installee_kwc = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True)
