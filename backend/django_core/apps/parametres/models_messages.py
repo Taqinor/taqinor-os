@@ -40,6 +40,10 @@ MESSAGE_TEMPLATE_DEFAULTS = {
     'livraison_livree':
         'Bonjour {civilite} {nom}, votre matériel {reference} a été livré '
         'sur votre chantier. Suivi : {lien}',
+    # XFSM6 — rappel client J-1 (intervention planifiée demain, non confirmée).
+    'rappel_rdv':
+        'Bonjour {civilite} {nom}, petit rappel : notre équipe est prévue '
+        'chez vous demain pour {reference}. Merci de confirmer : {lien}',
 }
 
 
@@ -62,6 +66,8 @@ class MessageTemplate(models.Model):
         # XSTK22 — notifications client aux transitions de livraison.
         LIVRAISON_EN_TRANSIT = 'livraison_en_transit', 'Livraison en transit'
         LIVRAISON_LIVREE = 'livraison_livree', 'Livraison livrée'
+        # XFSM6 — rappel client J-1 (RDV planifié demain, non confirmé).
+        RAPPEL_RDV = 'rappel_rdv', 'Rappel de RDV (J-1)'
 
     company = models.ForeignKey(
         'authentication.Company',

@@ -53,6 +53,9 @@ app.conf.enable_utc = False
 #     quand même pour traçabilité CNDP).
 #   - XFAC25 : relevé de compte mensuel automatique (opt-in par client),
 #     1er du mois 08:00 — apps/ventes/scheduled.py.
+#   - XFSM6 : rappel client J-1 pour les interventions non confirmées
+#     (07:45) — apps/installations/tasks.py (brouillon wa.me responsable +
+#     email client, key-gated, jamais d'envoi WhatsApp automatique).
 app.conf.beat_schedule = {
     'ventes-check-overdue-factures': {
         'task': 'ventes.check_overdue_factures',
@@ -165,5 +168,10 @@ app.conf.beat_schedule = {
     'ventes-releve-mensuel-reminders': {
         'task': 'ventes.releve_mensuel_reminders',
         'schedule': crontab(hour=8, minute=0, day_of_month=1),
+    },
+    # XFSM6 — rappel client J-1 (interventions non confirmées, demain).
+    'installations-rappel-rdv-j1': {
+        'task': 'installations.rappel_rdv_j1',
+        'schedule': crontab(hour=7, minute=45),
     },
 }
