@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError as DjangoValidationError  # noqa: F401,E501
 from django.db import transaction  # noqa: F401
 from django.http import HttpResponse  # noqa: F401
 from django.utils import timezone  # noqa: F401
@@ -58,6 +59,16 @@ def _company_qs(qs, user):
         return qs
     return qs.none()
 
+
+class _DatedDocument:
+    """YLEDG3 — adaptateur minimal (company, date_emission) pour réutiliser
+    ``apps.compta.services.verifier_facture_modifiable`` sur une date qui
+    n'est pas ``Facture.date_emission`` (ex. la date d'un paiement)."""
+
+    def __init__(self, company, une_date):
+        self.company = company
+        self.date_emission = une_date
+
 # NOTE: ce module fait partie du découpage de l'ancien views.py monolithe
 # (un module par ressource). Comportement et symboles inchangés : le
 # package __init__ ré-exporte toutes les vues publiques.
@@ -102,6 +113,23 @@ class FactureViewSet(viewsets.ModelViewSet):
             return [IsAdminRole()]
         # creer_avoir tombe ici → IsAdminRole (création d'avoir = admin).
         return [IsAdminRole()]
+
+    @staticmethod
+    def _guard_periode_verrouillee(document):
+        """YLEDG3 — refuse (400) une mutation d'un document ventes daté dans
+        une période comptable CLÔTURÉE (FG115). Society/app compta absente ou
+        aucune période verrouillée = garde silencieuse (comportement actuel
+        inchangé). Import function-local de ``apps.compta.services`` — cross-
+        app services autorisé, jamais un import de ``apps.compta.models``."""
+        try:
+            from apps.compta.services import verifier_facture_modifiable
+        except Exception:  # noqa: BLE001 — compta absent = no-op
+            return
+        try:
+            verifier_facture_modifiable(document)
+        except DjangoValidationError as exc:
+            raise ValidationError({'detail': exc.messages[0]
+                                   if exc.messages else str(exc)})
 
     def perform_create(self, serializer):
         from rest_framework.exceptions import ValidationError
@@ -165,6 +193,11 @@ class FactureViewSet(viewsets.ModelViewSet):
         )
 
     def perform_update(self, serializer):
+        # YLEDG3 — un document daté dans une période comptable CLÔTURÉE ne
+        # doit plus pouvoir être modifié. Import function-local de
+        # apps.compta.services (cross-app services autorisé) ; société sans
+        # compta/périodes = garde silencieuse (comportement actuel inchangé).
+        self._guard_periode_verrouillee(self.get_object())
         # XFAC24 — immutabilité de la facture émise (opt-in). Flag OFF
         # (défaut) → comportement actuel byte-identique. Flag ON et facture
         # non-brouillon : tout champ FINANCIER dans le corps est refusé (la
@@ -301,6 +334,7 @@ class FactureViewSet(viewsets.ModelViewSet):
         """
         from decimal import Decimal
         facture = self.get_object()
+        self._guard_periode_verrouillee(facture)
         if facture.statut == Facture.Statut.PAYEE:
             return Response(
                 {'detail': 'Une facture payée ne peut pas être annulée.'},
@@ -486,6 +520,13 @@ class FactureViewSet(viewsets.ModelViewSet):
                 {'detail': 'Le montant du paiement doit être positif.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # YLEDG3 — un paiement DATÉ dans une période comptable clôturée est
+        # refusé (la date du paiement, pas celle de la facture, est ce qui
+        # tombe dans la période comptable concernée).
+        paiement_date = serializer.validated_data.get('date_paiement')
+        if paiement_date is not None:
+            self._guard_periode_verrouillee(
+                _DatedDocument(facture.company, paiement_date))
         # ERR72 — la garde sur-paiement et l'écriture du paiement doivent être
         # sérialisées : on verrouille la ligne facture (select_for_update) puis
         # on lit le reste à payer, on contrôle, et on enregistre — le tout dans
@@ -831,6 +872,7 @@ class FactureViewSet(viewsets.ModelViewSet):
         on crédite ces lignes ; sinon on crédite toute la facture. Lié à la
         facture d'origine ; le PDF reprend le style facture."""
         facture = self.get_object()
+        self._guard_periode_verrouillee(facture)
         if facture.statut not in ('emise', 'payee', 'en_retard'):
             return Response(
                 {'detail': 'Un avoir ne peut être créé que depuis une '
