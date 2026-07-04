@@ -1253,6 +1253,9 @@ class OrdreLocationSerializer(serializers.ModelSerializer):
     produit_nom = serializers.CharField(
         source='produit.nom', read_only=True)
 
+    caution_statut_display = serializers.CharField(
+        source='get_caution_statut_display', read_only=True)
+
     class Meta:
         model = OrdreLocation
         fields = [
@@ -1261,10 +1264,14 @@ class OrdreLocationSerializer(serializers.ModelSerializer):
             'date_retour_prevue', 'date_enlevement_reelle',
             'date_retour_reelle', 'statut', 'statut_display', 'tarif_jour',
             'montant_estime', 'note', 'date_creation',
+            'caution_montant', 'caution_statut', 'caution_statut_display',
+            'caution_retenue', 'caution_motif_retenue',
         ]
         read_only_fields = [
             'id', 'statut', 'date_enlevement_reelle', 'date_retour_reelle',
             'montant_estime', 'date_creation',
+            'caution_montant', 'caution_statut', 'caution_retenue',
+            'caution_motif_retenue',
         ]
 
 

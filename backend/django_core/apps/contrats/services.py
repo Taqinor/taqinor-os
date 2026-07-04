@@ -3006,3 +3006,150 @@ def changer_statut_ordre_location(ordre, statut_cible):
     except machine_etats.TransitionInterdite as exc:
         raise OrdreLocationError(str(exc))
     return ordre
+
+
+# ---------------------------------------------------------------------------
+# XCTR18 — Caution (dépôt de garantie) sur location
+# ---------------------------------------------------------------------------
+
+
+class CautionLocationError(Exception):
+    """Levée quand une opération de caution de location n'est pas permise."""
+
+
+def _journaliser_caution(ordre, *, ancien_statut, nouveau_statut,
+                         montant=None, motif='', auteur=None):
+    """Écrit une entrée du journal de caution — XCTR18. Voir
+    ``models.CautionLocationLog`` (``OrdreLocation`` n'a pas de FK ``Contrat``,
+    donc ce journal est dédié plutôt que ``ContratActivity``)."""
+    from .models import CautionLocationLog
+
+    return CautionLocationLog.objects.create(
+        company=ordre.company,
+        ordre_location=ordre,
+        ancien_statut=ancien_statut,
+        nouveau_statut=nouveau_statut,
+        montant=montant,
+        motif=motif or '',
+        auteur=auteur,
+    )
+
+
+@transaction.atomic
+def encaisser_caution(ordre, *, montant, auteur=None):
+    """Encaisse la caution d'un ordre de location — XCTR18.
+
+    Pose ``caution_montant`` et bascule ``caution_statut`` → ``encaissee``.
+    Refuse (``CautionLocationError``) un montant non strictement positif ou
+    une caution déjà encaissée/restituée/retenue (idempotence : on n'encaisse
+    qu'une fois — repartir de zéro exige un nouvel ordre)."""
+    from .models import OrdreLocation
+
+    if montant is None or Decimal(str(montant)) <= 0:
+        raise CautionLocationError(
+            'Le montant de la caution doit être strictement positif.')
+    if ordre.caution_statut != OrdreLocation.CautionStatut.AUCUNE:
+        raise CautionLocationError(
+            'Une caution a déjà été encaissée pour cet ordre.')
+
+    ancien = ordre.caution_statut
+    ordre.caution_montant = Decimal(str(montant))
+    ordre.caution_statut = OrdreLocation.CautionStatut.ENCAISSEE
+    ordre.save(update_fields=['caution_montant', 'caution_statut'])
+
+    _journaliser_caution(
+        ordre, ancien_statut=ancien, nouveau_statut=ordre.caution_statut,
+        montant=ordre.caution_montant, auteur=auteur)
+    return ordre
+
+
+@transaction.atomic
+def restituer_caution(ordre, *, auteur=None):
+    """Restitue INTÉGRALEMENT la caution — XCTR18.
+
+    GARDE : la restitution est IMPOSSIBLE avant le retour effectif du
+    matériel (``ordre.date_retour_reelle`` posée, c.-à-d. statut ``retournee``
+    ou ``cloturee``) — sinon ``CautionLocationError``. Exige une caution
+    ``encaissee`` (jamais ``aucune``/``restituee``/``retenue_partielle``)."""
+    from .models import OrdreLocation
+
+    if ordre.date_retour_reelle is None:
+        raise CautionLocationError(
+            'La restitution de caution est impossible avant le retour du '
+            'matériel.')
+    if ordre.caution_statut != OrdreLocation.CautionStatut.ENCAISSEE:
+        raise CautionLocationError(
+            'Aucune caution encaissée à restituer pour cet ordre.')
+
+    ancien = ordre.caution_statut
+    ordre.caution_statut = OrdreLocation.CautionStatut.RESTITUEE
+    ordre.save(update_fields=['caution_statut'])
+
+    _journaliser_caution(
+        ordre, ancien_statut=ancien, nouveau_statut=ordre.caution_statut,
+        montant=ordre.caution_montant, auteur=auteur)
+    return ordre
+
+
+@transaction.atomic
+def retenir_caution_partielle(ordre, *, montant_retenu, motif, user=None,
+                              auteur=None, taux_tva=Decimal('20')):
+    """Retenue PARTIELLE sur la caution — XCTR18.
+
+    GARDE : impossible avant le retour effectif (même garde que
+    ``restituer_caution``). Exige une caution ``encaissee`` et
+    ``0 < montant_retenu <= caution_montant``. Génère une ligne facturable
+    (``ventes.services.creer_facture_regie``) pour le montant retenu, via le
+    client résolu du contrat lié éventuel ou, à défaut (``OrdreLocation`` n'a
+    pas de FK contrat), du ``client_id`` propre de l'ordre — frontière
+    cross-app : résolution par le sélecteur ``crm.selectors.get_company_client``
+    (jamais un import de son modèle). Renvoie un dict ``{'ordre', 'facture'}``.
+    """
+    from .models import OrdreLocation
+
+    if ordre.date_retour_reelle is None:
+        raise CautionLocationError(
+            'La retenue de caution est impossible avant le retour du '
+            'matériel.')
+    if ordre.caution_statut != OrdreLocation.CautionStatut.ENCAISSEE:
+        raise CautionLocationError(
+            'Aucune caution encaissée sur laquelle appliquer une retenue.')
+    if ordre.caution_montant is None:
+        raise CautionLocationError('Cet ordre ne porte aucun montant de caution.')
+
+    montant_retenu = Decimal(str(montant_retenu))
+    if montant_retenu <= 0 or montant_retenu > ordre.caution_montant:
+        raise CautionLocationError(
+            'Le montant retenu doit être strictement positif et ne peut '
+            'excéder le montant de la caution.')
+    if not (motif or '').strip():
+        raise CautionLocationError('Un motif est requis pour une retenue.')
+
+    from apps.crm.selectors import get_company_client
+
+    client = get_company_client(ordre.company, ordre.client_id)
+    if client is None:
+        raise CautionLocationError(
+            'Le client de la location est introuvable dans votre société.')
+
+    from apps.ventes.services import creer_facture_regie
+
+    montant_ht = (montant_retenu / (1 + taux_tva / 100)).quantize(
+        Decimal('0.01'))
+    facture = creer_facture_regie(
+        company=ordre.company, client=client, user=user,
+        libelle=f'Retenue sur caution — ordre de location #{ordre.id}',
+        montant_ht=montant_ht, taux_tva=taux_tva)
+
+    ancien = ordre.caution_statut
+    ordre.caution_statut = OrdreLocation.CautionStatut.RETENUE_PARTIELLE
+    ordre.caution_retenue = montant_retenu
+    ordre.caution_motif_retenue = motif.strip()
+    ordre.save(update_fields=[
+        'caution_statut', 'caution_retenue', 'caution_motif_retenue'])
+
+    _journaliser_caution(
+        ordre, ancien_statut=ancien, nouveau_statut=ordre.caution_statut,
+        montant=montant_retenu, motif=motif, auteur=auteur)
+
+    return {'ordre': ordre, 'facture': facture}

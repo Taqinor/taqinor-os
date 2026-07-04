@@ -2595,6 +2595,30 @@ class OrdreLocation(models.Model):
     # une location déjà clôturée/annulée ne bloque plus rien).
     STATUTS_ACTIFS = (Statut.RESERVEE, Statut.ENLEVEE)
 
+    class CautionStatut(models.TextChoices):
+        """XCTR18 — cycle de vie de la caution/dépôt de garantie de l'ordre.
+
+        LOCAL à l'ordre de location : ne touche JAMAIS ``Contrat.statut`` ni
+        le funnel ``STAGES.py`` (rule #2). ``AUCUNE`` = aucune caution
+        demandée (comportement par défaut, inchangé)."""
+        AUCUNE = 'aucune', 'Aucune'
+        ENCAISSEE = 'encaissee', 'Encaissée'
+        RESTITUEE = 'restituee', 'Restituée'
+        RETENUE_PARTIELLE = 'retenue_partielle', 'Retenue partielle'
+
+    # ── XCTR18 — Caution (dépôt de garantie) sur location ───────────────────
+    caution_montant = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Montant de la caution')
+    caution_statut = models.CharField(
+        max_length=20, choices=CautionStatut.choices,
+        default=CautionStatut.AUCUNE, verbose_name='Statut de la caution')
+    caution_retenue = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Montant retenu sur la caution')
+    caution_motif_retenue = models.TextField(
+        blank=True, default='', verbose_name='Motif de la retenue')
+
     class Meta:
         verbose_name = 'Ordre de location'
         verbose_name_plural = 'Ordres de location'
@@ -2622,4 +2646,56 @@ class OrdreLocation(models.Model):
         return (
             self.date_enlevement_prevue <= autre_fin
             and autre_debut <= self.date_retour_prevue
+        )
+
+
+class CautionLocationLog(models.Model):
+    """Journal (chatter) des transitions de caution d'un ``OrdreLocation`` —
+    XCTR18.
+
+    ``OrdreLocation`` n'est PAS un ``Contrat`` (pas de FK vers ``Contrat``,
+    voir docstring de ``OrdreLocation``) — ce journal dédié rejoue le même
+    patron que ``ContratActivity`` (CONTRAT15) sans dépendre de son FK requis.
+    Une entrée par transition de ``caution_statut`` : ancien → nouveau statut,
+    montant concerné et motif éventuel. Société posée CÔTÉ SERVEUR.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='contrats_caution_location_logs',
+        verbose_name='Société',
+    )
+    ordre_location = models.ForeignKey(
+        OrdreLocation,
+        on_delete=models.CASCADE,
+        related_name='caution_logs',
+        verbose_name='Ordre de location',
+    )
+    ancien_statut = models.CharField(
+        max_length=20, blank=True, default='', verbose_name='Ancien statut')
+    nouveau_statut = models.CharField(
+        max_length=20, verbose_name='Nouveau statut')
+    montant = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Montant concerné')
+    motif = models.TextField(blank=True, default='', verbose_name='Motif')
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='caution_location_logs',
+        verbose_name='Auteur',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Journal de caution (location)'
+        verbose_name_plural = 'Journaux de caution (location)'
+        ordering = ['-date_creation', '-id']
+
+    def __str__(self):
+        return (
+            f'Caution ordre #{self.ordre_location_id} : '
+            f'{self.ancien_statut} → {self.nouveau_statut}'
         )

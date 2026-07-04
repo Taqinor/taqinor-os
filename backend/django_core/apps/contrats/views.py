@@ -2122,3 +2122,53 @@ class OrdreLocationViewSet(_ContratsBaseViewSet):
             date_debut=_parse_date('date_debut'),
             date_fin=_parse_date('date_fin'))
         return Response(result)
+
+    # ── XCTR18 — Caution (dépôt de garantie) ────────────────────────────────
+
+    @action(detail=True, methods=['post'], url_path='caution/encaisser')
+    def caution_encaisser(self, request, pk=None):
+        ordre = self.get_object()
+        try:
+            services.encaisser_caution(
+                ordre, montant=request.data.get('montant'),
+                auteur=request.user)
+        except services.CautionLocationError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            OrdreLocationSerializer(
+                ordre, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='caution/restituer')
+    def caution_restituer(self, request, pk=None):
+        ordre = self.get_object()
+        try:
+            services.restituer_caution(ordre, auteur=request.user)
+        except services.CautionLocationError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            OrdreLocationSerializer(
+                ordre, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='caution/retenir')
+    def caution_retenir(self, request, pk=None):
+        ordre = self.get_object()
+        try:
+            resultat = services.retenir_caution_partielle(
+                ordre,
+                montant_retenu=request.data.get('montant_retenu'),
+                motif=request.data.get('motif', ''),
+                user=request.user, auteur=request.user)
+        except services.CautionLocationError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                'ordre': OrdreLocationSerializer(
+                    resultat['ordre'], context={'request': request}).data,
+                'facture_id': resultat['facture'].id,
+                'facture_reference': resultat['facture'].reference,
+            },
+            status=status.HTTP_201_CREATED,
+        )
