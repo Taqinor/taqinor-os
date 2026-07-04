@@ -2,7 +2,7 @@
 /**
  * EN — Guide (W294): Orientation, tilt and shading: maximising production on a
  * Moroccan roof. Faithful translation of /guides/orientation-inclinaison-ombrage,
- * every figure kept EXACT (10–15 % east/west loss, 27–31° tilt by city).
+ * every figure kept EXACT (10–15 % east/west loss, ~30° tilt, stable across cities).
  * Internal links use localizeNavHref (EN/AR if available, else the existing FR
  * page — never a dead link). FR untouched.
  */
@@ -26,7 +26,7 @@ const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Article',
   headline: 'Orientation, tilt and shading: maximising production on a Moroccan roof',
-  description: 'Due south, tilt close to latitude, and zero shade: the three rules that really make the difference on a Moroccan roof, explained with no jargon.',
+  description: 'Due south, tilt optimum around 30°, and zero shade: the three rules that really make the difference on a Moroccan roof, explained with no jargon.',
   image: schemaImageUrl,
   about: { '@type': 'Thing', name: 'Photovoltaic solar installation' },
   author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
@@ -37,7 +37,7 @@ const jsonLd = {
 
 <Layout
   title="Orientation, tilt and shading: maximising production on a Moroccan roof | Taqinor"
-  description="Optimal due-south facing, acceptable east/west (−10 to 15 %), tilt ≈ latitude (27–31° depending on city): the three rules that really make the difference — and why a single chimney can penalise your whole installation."
+  description="Optimal due-south facing, acceptable east/west (−10 to 15 %), tilt optimum around 30°: the three rules that really make the difference — and why a single chimney can penalise your whole installation."
   ogSlug="guides"
 >
   <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
@@ -77,16 +77,11 @@ const jsonLd = {
       <h2 class="display v2-section-title mt-12 text-white">Tilt: neither flat, nor too steep</h2>
       <p class="v2-lead mt-5 text-lune-soft">
         The ideal tilt angle for a panel roughly matches the site's latitude, then is lowered
-        slightly to favour annual production. Most of inhabited Morocco sits between roughly 28°
-        and 36° north latitude (Agadir is at about 30.4°N), giving the following benchmarks for the
-        main cities:
+        slightly to favour annual production. Our own irradiation data (PVGIS, optimised for annual
+        production) gives a remarkably stable optimum from one city to the next, despite latitudes
+        ranging from roughly 28° to 36° north: Agadir, Marrakech, Casablanca, Rabat and Tangier all
+        point to <strong class="text-white">about 30°</strong>.
       </p>
-      <ul class="v2-lead mt-5 list-inside list-disc space-y-2 text-lune-soft">
-        <li><strong class="text-white">Agadir</strong> — about <strong class="text-white">27°</strong></li>
-        <li><strong class="text-white">Marrakech</strong> — about <strong class="text-white">28°</strong></li>
-        <li><strong class="text-white">Casablanca &amp; Rabat</strong> — about <strong class="text-white">29°</strong></li>
-        <li><strong class="text-white">Tangier</strong> — about <strong class="text-white">31°</strong></li>
-      </ul>
       <p class="v2-lead mt-5 text-lune-soft">
         These values come from satellite irradiation data (PVGIS / Global Solar Atlas) and are
         optimised for total annual production, not a single month. In practice, your roof's slope is
@@ -148,7 +143,7 @@ const jsonLd = {
       <p class="v2-lead mt-5 text-lune-soft">
         For orientation, aim for due south when possible; an east or west face costs about 10 to
         15 % of production and remains profitable, a north face is to be avoided. For tilt, an angle
-        of 27 to 31° depending on your city works, and most Moroccan roofs already fall into an
+        around 30° works regardless of your city, and most Moroccan roofs already fall into an
         acceptable range, so there's no need to dwell on it. The real subject, the one worth climbing
         onto the roof at several times of day for, is shade: a poorly placed chimney, wall or tree
         penalises a whole chain of panels, far more than a slightly off orientation. A serious
