@@ -89,6 +89,22 @@ class SavSlaSettings(models.Model):
     # sur le MÊME chantier suggère une récidive à la création d'un nouveau
     # ticket. Paramétrable, défaut 30.
     recidive_fenetre_jours = models.PositiveIntegerField(default=30)
+    # ── YSERV5 — génération automatique planifiée des visites préventives ──
+    # OFF par défaut : comportement actuel inchangé (génération manuelle via
+    # le bouton `generer-dus` uniquement). ON → la tâche Celery quotidienne
+    # matérialise les visites dues sous `visites_avance_jours` jours.
+    generation_auto_visites = models.BooleanField(
+        default=False,
+        verbose_name='Génération automatique des visites',
+        help_text='Génère chaque nuit les visites préventives dues (beat), '
+                  'sans action manuelle.',
+    )
+    visites_avance_jours = models.PositiveIntegerField(
+        default=7,
+        verbose_name="Avance de génération (jours)",
+        help_text='Nombre de jours avant échéance où une visite due est '
+                  'matérialisée par la tâche automatique.',
+    )
     date_modification = models.DateTimeField(auto_now=True)
 
     class Meta:

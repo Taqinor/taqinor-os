@@ -16,6 +16,7 @@ from math import asin, cos, radians, sin, sqrt
 
 from django.contrib.auth import get_user_model
 from django.http import HttpResponse
+from django.utils import timezone
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -142,12 +143,21 @@ def planifier_tournee(company, ticket_ids, date_tournee, technicien_id=None):
     return updated
 
 
-def generer_visites_dues(company, user):
+def generer_visites_dues(company, user, avance_jours=0):
     """Crée un ticket SAV préventif pour chaque contrat actif dont la visite est
-    due, et avance la date de dernière visite. Renvoie le nombre généré."""
+    due, et avance la date de dernière visite. Renvoie le nombre généré.
+
+    YSERV5 — ``avance_jours`` (0 par défaut, comportement historique
+    inchangé) décale la comparaison « dû » vers le futur : une visite dont
+    l'échéance tombe dans les ``avance_jours`` prochains jours est
+    matérialisée dès aujourd'hui (utilisé par la tâche Celery quotidienne
+    opt-in, jamais par le bouton manuel qui garde ``avance_jours=0``)."""
+    from datetime import timedelta
+
+    horizon = timezone.localdate() + timedelta(days=avance_jours or 0)
     genere = 0
     for contrat in ContratMaintenance.objects.filter(company=company, actif=True):
-        if not contrat.is_due():
+        if not contrat.is_due(today=horizon):
             continue
         due = contrat.prochaine_visite()
 

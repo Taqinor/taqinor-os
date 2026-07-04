@@ -59,6 +59,9 @@ app.conf.enable_utc = False
 #   - YHIRE8 : alertes d'expiration RH (habilitations/certifs/docs/visites/EPI,
 #     07:50) et alerte fin de CDD (07:55) — apps/rh/tasks.py (idempotent par
 #     jour+échéance, jamais avant branché sur le beat).
+#   - YSERV5 : génération automatique des visites préventives dues (07:45) —
+#     apps/sav/tasks.py (opt-in par société, OFF par défaut = no-op ;
+#     réutilise generer_visites_dues, idempotent).
 app.conf.beat_schedule = {
     'ventes-check-overdue-factures': {
         'task': 'ventes.check_overdue_factures',
@@ -193,5 +196,11 @@ app.conf.beat_schedule = {
     'rh-alertes-cdd': {
         'task': 'rh.alertes_cdd',
         'schedule': crontab(hour=7, minute=55),
+    },
+    # YSERV5 — génération automatique des visites préventives dues (opt-in
+    # par société via SavSlaSettings.generation_auto_visites), quotidien.
+    'sav-generer-visites-dues-quotidien': {
+        'task': 'sav.generer_visites_dues_quotidien',
+        'schedule': crontab(hour=7, minute=45),
     },
 }
