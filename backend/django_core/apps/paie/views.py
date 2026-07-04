@@ -40,6 +40,7 @@ from .models import (
     RubriqueEmploye,
     SaisieArret,
     StructurePaie,
+    ProvisionPaieMensuelle,
 )
 from .serializers import (
     AdhesionMutuelleSerializer,
@@ -742,6 +743,25 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
         return Response(
             {'id': ecriture.id, 'reference': ecriture.reference},
             status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'], url_path='provisions')
+    def provisions(self, request, pk=None):
+        """Provisions 13e mois / IFC de la période, par employé (XPAI20)."""
+        periode = self.get_object()
+        qs = (
+            ProvisionPaieMensuelle.objects
+            .filter(company=request.user.company, periode=periode)
+            .select_related('profil', 'profil__employe'))
+        data = [{
+            'id': ligne.id,
+            'profil_id': ligne.profil_id,
+            'matricule': getattr(ligne.profil.employe, 'matricule', '')
+            if ligne.profil.employe_id else '',
+            'type_provision': ligne.type_provision,
+            'montant': ligne.montant,
+            'extournee': ligne.extournee,
+        } for ligne in qs]
+        return Response(data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'], url_path='hors-virement')
     def hors_virement(self, request, pk=None):

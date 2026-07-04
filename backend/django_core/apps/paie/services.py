@@ -1898,6 +1898,11 @@ def cloturer_periode_paie(periode, *, valider_brouillons=True):
         # XPAI6 — la clôture avance les échéances déclaratives encore « à
         # générer » (les états/déclarations sont désormais calculables).
         avancer_echeances_cloture(periode)
+        # XPAI20 — la clôture MENSUELLE poste les provisions 13e mois / IFC
+        # (jamais sur un run hors-cycle : le run 13e mois lui-même EXTOURNE
+        # ces provisions, il ne doit pas en reconstituer).
+        if periode.type_run == PeriodePaie.TYPE_RUN_MENSUEL:
+            poster_provisions_mensuelles(periode)
     return periode
 
 
@@ -1977,6 +1982,14 @@ def valider_bulletin(bulletin):
     # AVANT saisie figé ci-dessus.
     appliquer_saisies(bulletin.profil, bulletin.periode,
                       resultat['net_avant_saisie'])
+    # XPAI20 — Un bulletin de run 13e mois/gratification VALIDÉ (le versement
+    # est désormais figé) EXTOURNE les provisions mensuelles accumulées pour
+    # ce profil (best-effort — ne bloque jamais la validation du bulletin).
+    if bulletin.type_bulletin == BulletinPaie.TYPE_GRATIFICATION:
+        try:
+            extourner_provisions_gratification(bulletin.profil)
+        except Exception:  # pragma: no cover - défensif, best-effort
+            pass
     return bulletin
 
 
@@ -4664,3 +4677,179 @@ def journal_de_paie_ventile(periode, *, created_by=None):
     return compta_services.creer_ecriture_od(
         company, date_ecriture, libelle, lignes,
         reference=reference, created_by=created_by)
+
+
+# ── XPAI20 — Provisions gratifications (13e mois) & IFC ────────────────────
+
+_COMPTE_PROVISION_CHARGES_PERSONNEL = '4506'
+_COMPTE_DOTATION_PROVISION_PERSONNEL = '6195'
+
+
+def provision_gratification_mensuelle(profil, periode):
+    """Provision mensuelle du 13e mois / prime de bilan d'un profil (XPAI20).
+
+    1/12ᵉ du salaire de base mensuel de référence du profil, constitué chaque
+    mois de présence (aucune proration jour — cohérent avec le calcul du run
+    13e mois lui-même, XPAI4, qui proratise déjà sur la présence de l'année).
+    Renvoie un ``Decimal`` au centime, 0 si le profil n'est pas actif.
+    """
+    if not profil.actif:
+        return Decimal('0.00')
+    salaire = taux_journalier_profil(profil) * Decimal(
+        max(1, profil.jours_travail_mensuel or 26))
+    return _q(salaire / Decimal('12'))
+
+
+def provision_ifc_mensuelle(profil, periode):
+    """Provision mensuelle de l'indemnité de fin de carrière (IFC, XPAI20).
+
+    Valorise l'indemnité légale de licenciement (barème art. 53,
+    ``indemnite_licenciement_art53``) à l'ancienneté du salarié À LA FIN du
+    mois de la ``periode``, puis lisse le montant total sur 12 mois — la
+    provision mensuelle est le 1/12ᵉ de l'indemnité totale actuelle (une
+    approximation prudente et stable, cohérente d'un mois à l'autre tant que
+    l'ancienneté ne franchit pas un seuil de tranche). Renvoie un ``Decimal``
+    au centime, 0 si le profil n'est pas actif ou sans date d'embauche connue.
+    """
+    from apps.rh import selectors as rh_selectors  # cross-app, lecture seule
+
+    if not profil.actif:
+        return Decimal('0.00')
+    date_embauche = rh_selectors.date_embauche_employe(
+        profil.company, profil.employe_id)
+    if date_embauche is None:
+        return Decimal('0.00')
+    _, dernier_jour = _bornes_periode(periode)
+    anciennete = calculer_anciennete_annees(date_embauche, dernier_jour)
+    taux_h = taux_horaire_base_profil(profil)
+    indemnite_totale = indemnite_licenciement_art53(anciennete, taux_h)
+    if indemnite_totale <= 0:
+        return Decimal('0.00')
+    return _q(indemnite_totale / Decimal('12'))
+
+
+def poster_provisions_mensuelles(periode, *, created_by=None):
+    """Poste (clôture mensuelle) les provisions 13e mois + IFC de la période.
+
+    Pour chaque profil ACTIF de la société, calcule
+    ``provision_gratification_mensuelle`` + ``provision_ifc_mensuelle`` et
+    matérialise une ligne ``ProvisionPaieMensuelle`` PAR TYPE (auditable, clé
+    stable ``(company, profil, periode, type_provision)`` — idempotent : un
+    profil déjà provisionné pour cette période/type n'est jamais recompté).
+    Poste UNE écriture réversible équilibrée pour le TOTAL des deux types
+    (débit 6195 dotation / crédit 4506 provision), via
+    ``compta.services.creer_ecriture_od`` (jamais ``compta.models`` direct).
+    Retourne ``{'lignes': [ProvisionPaieMensuelle...], 'ecriture': Ecriture|None}``.
+    """
+    from apps.compta import services as compta_services  # cross-app WRITE
+
+    from .models import ProfilPaie, ProvisionPaieMensuelle
+
+    company = periode.company
+    profils = ProfilPaie.objects.filter(company=company, actif=True)
+
+    lignes_creees = []
+    total = Decimal('0')
+    with transaction.atomic():
+        for profil in profils:
+            for type_provision, calculer in (
+                (ProvisionPaieMensuelle.TYPE_GRATIFICATION,
+                 provision_gratification_mensuelle),
+                (ProvisionPaieMensuelle.TYPE_IFC, provision_ifc_mensuelle),
+            ):
+                existante = ProvisionPaieMensuelle.objects.filter(
+                    company=company, profil=profil, periode=periode,
+                    type_provision=type_provision).first()
+                if existante is not None:
+                    lignes_creees.append(existante)
+                    total += Decimal(existante.montant or 0)
+                    continue
+                montant = calculer(profil, periode)
+                ligne = ProvisionPaieMensuelle.objects.create(
+                    company=company, profil=profil, periode=periode,
+                    type_provision=type_provision, montant=montant)
+                lignes_creees.append(ligne)
+                total += montant
+
+        ecriture = None
+        nouveau_total = sum(
+            (Decimal(lig.montant or 0) for lig in lignes_creees
+             if lig.ecriture_id is None),
+            Decimal('0'))
+        if nouveau_total > 0:
+            requis = [_COMPTE_PROVISION_CHARGES_PERSONNEL,
+                      _COMPTE_DOTATION_PROVISION_PERSONNEL]
+            if any(compta_services.get_compte(company, num) is None
+                   for num in requis):
+                compta_services.seed_plan_comptable(company)
+            compte_dotation = compta_services.get_compte(
+                company, _COMPTE_DOTATION_PROVISION_PERSONNEL)
+            compte_provision = compta_services.get_compte(
+                company, _COMPTE_PROVISION_CHARGES_PERSONNEL)
+            date_ecriture = date(periode.annee, periode.mois, 28)
+            libelle = (
+                'Provisions 13e mois / IFC '
+                f'{periode.mois:02d}/{periode.annee}')
+            reference = f'PROV-PAIE-{periode.annee}-{periode.mois:02d}'
+            ecriture = compta_services.creer_ecriture_od(
+                company, date_ecriture, libelle,
+                [
+                    {'compte': compte_dotation, 'libelle': libelle,
+                     'debit': nouveau_total, 'credit': 0},
+                    {'compte': compte_provision, 'libelle': libelle,
+                     'debit': 0, 'credit': nouveau_total},
+                ],
+                reference=reference, created_by=created_by)
+            for ligne in lignes_creees:
+                if ligne.ecriture_id is None and ligne.montant > 0:
+                    ligne.ecriture_id = ecriture.id
+                    ligne.save(update_fields=['ecriture_id'])
+
+    return {'lignes': lignes_creees, 'ecriture': ecriture}
+
+
+def extourner_provisions_gratification(profil, *, jusqua_periode=None,
+                                       user=None):
+    """Extourne les provisions 13e mois d'un profil au paiement (XPAI20).
+
+    Appelé quand le run 13e mois (XPAI4, ``generer_run_gratification``) verse
+    la gratification à un profil : reprend (extourne, via
+    ``compta.services.extourner_ecriture`` — idempotent) TOUTES les écritures
+    de provision ``TYPE_GRATIFICATION`` non encore extournées du profil
+    (jusqu'à ``jusqua_periode`` incluse si fournie, sinon toutes). Marque
+    chaque ``ProvisionPaieMensuelle`` concernée ``extournee=True``. Renvoie la
+    liste des lignes extournées.
+    """
+    from django.apps import apps as django_apps
+    from django.db.models import Q
+
+    from apps.compta import services as compta_services  # cross-app WRITE
+
+    from .models import ProvisionPaieMensuelle
+
+    qs = ProvisionPaieMensuelle.objects.filter(
+        company=profil.company, profil=profil,
+        type_provision=ProvisionPaieMensuelle.TYPE_GRATIFICATION,
+        extournee=False, ecriture_id__isnull=False,
+    ).select_related('periode')
+    if jusqua_periode is not None:
+        qs = qs.filter(
+            Q(periode__annee__lt=jusqua_periode.annee)
+            | Q(periode__annee=jusqua_periode.annee,
+                periode__mois__lte=jusqua_periode.mois)
+        )
+
+    EcritureComptable = django_apps.get_model('compta', 'EcritureComptable')
+    extournees = []
+    with transaction.atomic():
+        for ligne in qs:
+            ecriture = EcritureComptable.objects.filter(
+                company=profil.company, id=ligne.ecriture_id).first()
+            if ecriture is None:
+                continue
+            compta_services.extourner_ecriture(ecriture, user=user)
+            ligne.extournee = True
+            ligne.date_extourne = timezone.now()
+            ligne.save(update_fields=['extournee', 'date_extourne'])
+            extournees.append(ligne)
+    return extournees

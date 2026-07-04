@@ -116,6 +116,10 @@ _COMPTES_CGNC = [
     ('4443', 'Caisses de retraite (CIMR)', False, False, 'passif'),
     ('4452', 'État - Impôts sur les rémunérations (IR)', False, False,
      'passif'),
+    # XPAI20 — Provisions pour charges de personnel (gratification 13e mois /
+    # indemnité de fin de carrière), constituées mensuellement et reprises
+    # (extourne) au paiement — même patron que la provision CP (PAIE25).
+    ('4506', 'Provisions pour charges de personnel', False, False, 'passif'),
     # Classe 5 — Trésorerie
     ('5113', 'Effets à encaisser ou à l\'encaissement', False, False, 'actif'),
     ('5141', 'Banque', False, False, 'actif'),
@@ -139,6 +143,10 @@ _COMPTES_CGNC = [
      'corporelles', False, False, 'charge'),
     ('6196', 'Dotations aux provisions pour dépréciation de l\'actif '
      'circulant', False, False, 'charge'),
+    # XPAI20 — Dotation de la provision pour charges de personnel (contre-
+    # partie du crédit 4506 ci-dessus).
+    ('6195', 'Dotations aux provisions pour risques et charges', False,
+     False, 'charge'),
     # Classe 7 — Produits
     ('7111', 'Ventes de marchandises', False, False, 'produit'),
     ('7121', 'Ventes de biens et services produits', False, False, 'produit'),

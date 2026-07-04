@@ -1868,3 +1868,70 @@ class VentilationAnalytiquePaie(models.Model):
     def __str__(self):
         return (f'Profil #{self.profil_id} → '
                 f'centre#{self.centre_cout_id} ({self.pourcentage}%)')
+
+
+# ── XPAI20 — Provisions gratifications (13e mois) & IFC ────────────────────
+
+class ProvisionPaieMensuelle(models.Model):
+    """Provision mensuelle 13e mois / IFC d'un profil (XPAI20), auditable.
+
+    Une ligne PAR PROFIL et par mois de clôture, matérialisant le montant
+    provisionné (1/12ᵉ du 13e mois pour ``TYPE_GRATIFICATION``, quote-part
+    mensuelle de l'indemnité de fin de carrière — barème art. 53 — pour
+    ``TYPE_IFC``). Postée en écriture réversible via ``compta.services``
+    (même patron que la provision CP, PAIE25) — ``ecriture_id`` référence
+    l'``EcritureComptable`` (STRING-FK, jamais ``compta.models`` direct).
+    ``extournee`` passe à vrai quand le run 13e mois (XPAI4) ou la sortie
+    (STC) reprend la provision. Multi-société : ``company`` posée côté
+    serveur. Clé stable ``(company, profil, periode, type_provision)``.
+    """
+    TYPE_GRATIFICATION = 'gratification'
+    TYPE_IFC = 'ifc'
+    TYPE_CHOICES = [
+        (TYPE_GRATIFICATION, '13e mois / prime de bilan'),
+        (TYPE_IFC, 'Indemnité de fin de carrière'),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='paie_provisions_mensuelles',
+        verbose_name='Société',
+    )
+    profil = models.ForeignKey(
+        ProfilPaie,
+        on_delete=models.CASCADE,
+        related_name='provisions_mensuelles',
+        verbose_name='Profil de paie',
+    )
+    periode = models.ForeignKey(
+        PeriodePaie,
+        on_delete=models.CASCADE,
+        related_name='provisions_mensuelles',
+        verbose_name='Période',
+    )
+    type_provision = models.CharField(
+        max_length=14, choices=TYPE_CHOICES, verbose_name='Type de provision')
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant provisionné')
+    # STRING-FK cross-app vers compta.EcritureComptable — jamais
+    # compta.models direct.
+    ecriture_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Écriture (ID, compta)')
+    extournee = models.BooleanField(
+        default=False, verbose_name='Extournée (reprise)')
+    date_extourne = models.DateTimeField(
+        null=True, blank=True, verbose_name='Extournée le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Provision mensuelle (13e mois / IFC)'
+        verbose_name_plural = 'Provisions mensuelles (13e mois / IFC)'
+        ordering = ['-periode__annee', '-periode__mois', 'profil']
+        unique_together = [('company', 'profil', 'periode', 'type_provision')]
+
+    def __str__(self):
+        return (f'{self.get_type_provision_display()} — profil #{self.profil_id} '
+                f'({self.periode})')
