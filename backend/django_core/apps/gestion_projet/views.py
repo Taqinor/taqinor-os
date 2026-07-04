@@ -2155,6 +2155,34 @@ class TimesheetViewSet(_GestionProjetBaseViewSet):
             ],
         })
 
+    @action(detail=False, methods=['get'], url_path='heures-attendues')
+    def heures_attendues(self, request):
+        """Écart heures attendues vs saisies pour UNE ressource (ZPRJ5).
+
+        Query params ``?ressource=<id>&debut=YYYY-MM-DD&fin=YYYY-MM-DD``
+        (obligatoires). Délègue à ``selectors.heures_attendues_vs_saisies``
+        (jours ouvrés attendus, moins indisponibilités, comparés aux heures
+        RÉELLEMENT saisies — distinct de ``manquants``/XPRJ7 qui ne regarde
+        que les jours SANS AUCUNE saisie). ``ressource`` doit appartenir à la
+        société de l'appelant (sinon 404) ; sans ``user`` lié, réponse vide
+        propre plutôt qu'une erreur.
+        """
+        ressource_id = request.query_params.get('ressource')
+        debut = _parse_date_param(request.query_params.get('debut'))
+        fin = _parse_date_param(request.query_params.get('fin'))
+        if not ressource_id or debut is None or fin is None:
+            return Response(
+                {'detail': 'Les paramètres « ressource », « debut » et '
+                           '« fin » (YYYY-MM-DD) sont obligatoires.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        ressource = RessourceProfil.objects.filter(
+            id=ressource_id, company=request.user.company).first()
+        if ressource is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        data = selectors.heures_attendues_vs_saisies(
+            request.user.company, ressource, debut, fin)
+        return Response(data)
+
     @action(detail=False, methods=['get'], url_path='rapprochement')
     def rapprochement(self, request):
         """Rapprochement pointages RH ↔ temps projet, par employé/jour (XPRJ8).

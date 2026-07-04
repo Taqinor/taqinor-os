@@ -1829,6 +1829,85 @@ def temps_manquants(company, debut, fin):
     return {'debut': debut, 'fin': fin, 'lignes': lignes}
 
 
+# ── Heures attendues & heures supplémentaires (ZPRJ5) ────────────────────────
+def heures_attendues_vs_saisies(company, ressource, debut, fin):
+    """Écart heures ATTENDUES vs SAISIES pour UNE ressource sur [debut, fin]
+    (ZPRJ5) — sous-charge / heures supplémentaires, par jour et cumulé.
+
+    Distinct de ``temps_manquants`` (XPRJ7, jours SANS AUCUNE saisie) : ici on
+    QUANTIFIE l'écart d'HEURES, y compris pour un jour partiellement saisi.
+    Pour chaque jour OUVRÉ (semaine L-V par défaut, ``_JOURS_OUVRES_DEFAUT``)
+    de la fenêtre INCLUSIVE [debut, fin] NON couvert par une
+    ``Indisponibilite`` chevauchante de la ressource : l'attendu du jour =
+    ``heures_par_jour`` du réglage temps de la société (ZPRJ1,
+    ``_heures_par_jour_reglage`` — get_or_create-free, LECTURE SEULE) ; le
+    saisi du jour = somme des ``Timesheet.heures`` de la ressource CE jour.
+    L'écart du jour = saisi − attendu (positif = heures supplémentaires,
+    négatif = sous-charge, zéro = pile l'attendu). Un jour d'indisponibilité
+    n'a AUCUN attendu (exclu de ``jours_attendus`` et absent de ``par_jour``).
+
+    Lecture seule, multi-société : toutes les données lues sont filtrées sur
+    ``company`` (la ressource doit appartenir à la MÊME société — l'appelant
+    est responsable de ce scoping, comme pour les autres sélecteurs par
+    ressource). ``fin < debut`` → aucun jour attendu (garde explicite). Une
+    ressource sans ``user`` lié reste calculable (l'appelant décide s'il
+    notifie ou non — pas de filtre ici, contrairement à ``temps_manquants``).
+    Renvoie un dict ``{debut, fin, heures_attendues_jour, jours_attendus,
+    total_attendu, total_saisi, ecart_cumule, par_jour: [{date, attendu,
+    saisi, ecart}, ...]}``.
+    """
+    heures_attendues_jour = float(_heures_par_jour_reglage(company))
+    base = {
+        'debut': debut.isoformat(), 'fin': fin.isoformat(),
+        'heures_attendues_jour': heures_attendues_jour,
+        'jours_attendus': 0,
+        'total_attendu': 0.0, 'total_saisi': 0.0, 'ecart_cumule': 0.0,
+        'par_jour': [],
+    }
+    if fin < debut:
+        return base
+
+    jours_ouvres = _JOURS_OUVRES_DEFAUT
+    indispos = list(Indisponibilite.objects.filter(
+        company=company, ressource=ressource,
+        date_debut__lte=fin, date_fin__gte=debut))
+
+    def _indisponible(jour):
+        return any(i.date_debut <= jour <= i.date_fin for i in indispos)
+
+    saisies_par_jour = {}
+    for ts in Timesheet.objects.filter(
+            company=company, ressource=ressource,
+            date__gte=debut, date__lte=fin):
+        saisies_par_jour[ts.date] = (
+            saisies_par_jour.get(ts.date, Decimal('0')) + (ts.heures or Decimal('0')))
+
+    par_jour = []
+    total_attendu = 0.0
+    total_saisi = 0.0
+    cur = debut
+    while cur <= fin:
+        if cur.weekday() in jours_ouvres and not _indisponible(cur):
+            saisi = float(saisies_par_jour.get(cur, Decimal('0')))
+            ecart = saisi - heures_attendues_jour
+            par_jour.append({
+                'date': cur.isoformat(),
+                'attendu': heures_attendues_jour,
+                'saisi': round(saisi, 2),
+                'ecart': round(ecart, 2),
+            })
+            total_attendu += heures_attendues_jour
+            total_saisi += saisi
+        cur += timedelta(days=1)
+
+    base['jours_attendus'] = len(par_jour)
+    base['total_attendu'] = round(total_attendu, 2)
+    base['total_saisi'] = round(total_saisi, 2)
+    base['ecart_cumule'] = round(total_saisi - total_attendu, 2)
+    base['par_jour'] = par_jour
+    return base
+
+
 # ── Rapprochement pointages RH ↔ temps projet (XPRJ8) ────────────────────────
 def rapprochement_pointages(company, debut, fin, seuil_heures=Decimal('0.5')):
     """Croise pointages RH (FG166) et temps projet, par employé/jour (XPRJ8).
