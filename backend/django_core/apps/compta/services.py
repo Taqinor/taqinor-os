@@ -613,7 +613,8 @@ def auto_lettrer_facture_soldee(facture):
 
 
 @transaction.atomic
-def ecriture_pour_paiement_especes_via_caisse(paiement, *, user=None):
+def ecriture_pour_paiement_especes_via_caisse(paiement, *, force=False,
+                                              user=None):
     """YLEDG9 — route un encaissement ESPÈCES via le module caisse (COMPTA24)
     au lieu de l'écriture banque directe de ``ecriture_pour_paiement`` :
     crée + poste un ``MouvementCaisse`` ENTREE (compte de caisse en débit,
@@ -623,9 +624,16 @@ def ecriture_pour_paiement_especes_via_caisse(paiement, *, user=None):
     de base est nul). Idempotent via la garde ``source_type='paiement'``
     déjà posée par ``creer_ecriture`` (jamais deux écritures pour le même
     paiement — le receveur n'appelle JAMAIS ``ecriture_pour_paiement`` en
-    plus de celle-ci sur le même événement). Renvoie l'écriture du mouvement
-    de caisse, ou ``None`` si aucune caisse n'est configurée (fallback :
-    l'appelant retombe sur ``ecriture_pour_paiement``)."""
+    plus de celle-ci sur le même événement). Gardée par le même toggle maître
+    que ses sœurs (``auto_ecritures_actif``, OFF par défaut) : sans cela, un
+    règlement espèces posté explicitement par un appelant (ex. POS,
+    ``pos.services.valider_vente``) se retrouvait DOUBLE-compté par ce
+    récepteur d'événement même quand l'auto-génération comptable est
+    désactivée. Renvoie l'écriture du mouvement de caisse, ou ``None`` si
+    désactivé ou si aucune caisse n'est configurée (fallback : l'appelant
+    retombe sur ``ecriture_pour_paiement``)."""
+    if not force and not auto_ecritures_actif():
+        return None
     company = paiement.company
     if company is None:
         return None
