@@ -889,6 +889,96 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             return resp
         return Response(rapport)
 
+    def _rapprochement_csv(self, rapport, filename):
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, delimiter=';', lineterminator='\r\n')
+        writer.writerow([
+            'tiers_id', 'nom', 'encours_documentaire', 'solde_gl', 'ecart',
+            'references'])
+        for ligne in rapport['lignes']:
+            writer.writerow([
+                ligne['tiers_id'], ligne['nom'],
+                ligne['encours_documentaire'], ligne['solde_gl'],
+                ligne['ecart'], ' '.join(ligne['references'])])
+        resp = HttpResponse(
+            buffer.getvalue(), content_type='text/csv; charset=utf-8')
+        resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return resp
+
+    @action(detail=False, methods=['get'], url_path='rapprochement-clients')
+    def rapprochement_clients(self, request):
+        """YLEDG13 — tie-out AR : encours documentaire (ventes) vs solde GL
+        3421 non lettré, par client. ``?date=YYYY-MM-DD`` borne le GL ;
+        ``?export=csv`` télécharge. Sur un jeu sain, écart global = 0."""
+        date = request.query_params.get('date') or None
+        rapport = selectors.rapprochement_auxiliaire_clients(
+            request.user.company, date=date)
+        if request.query_params.get('export') == 'csv':
+            return self._rapprochement_csv(
+                rapport, 'rapprochement_clients.csv')
+        return Response(rapport)
+
+    @action(detail=False, methods=['get'],
+            url_path='rapprochement-fournisseurs')
+    def rapprochement_fournisseurs(self, request):
+        """YLEDG13 — tie-out AP : encours documentaire (stock) vs solde GL
+        4411 non lettré, par fournisseur. Miroir de ``rapprochement_clients``."""
+        date = request.query_params.get('date') or None
+        rapport = selectors.rapprochement_auxiliaire_fournisseurs(
+            request.user.company, date=date)
+        if request.query_params.get('export') == 'csv':
+            return self._rapprochement_csv(
+                rapport, 'rapprochement_fournisseurs.csv')
+        return Response(rapport)
+
+
+# ── YLEDG6 — Lettrage / délettrage (FG112) ──────────────────────────────────
+
+class LettrageViewSet(viewsets.ViewSet):
+    """Lettrage manuel + délettrage (FG112/YLEDG6). L'auto-lettrage à
+    l'encaissement (YLEDG6) se pose déjà seul via
+    ``compta.receivers``/``services.auto_lettrer_facture_soldee`` — cette
+    vue couvre la correction manuelle : lettrer un lot choisi, ou délettrer
+    un code posé par erreur (rouvre le lot ; balance âgée/encours
+    ré-incluent les lignes). Admin/Responsable uniquement."""
+    permission_classes = [IsResponsableOrAdmin]
+
+    @action(detail=False, methods=['post'])
+    def lettrer(self, request):
+        ligne_ids = request.data.get('ligne_ids')
+        code = (request.data.get('code') or '').strip()
+        if not isinstance(ligne_ids, list) or not ligne_ids:
+            return Response(
+                {'detail': "'ligne_ids' (liste non vide) requis."},
+                status=status.HTTP_400_BAD_REQUEST)
+        company = request.user.company
+        if not code:
+            compte_id = request.data.get('compte')
+            compte = CompteComptable.objects.filter(
+                company=company, pk=compte_id).first() if compte_id else None
+            if compte is None:
+                return Response(
+                    {'detail': "'code' ou 'compte' (pour en générer un) "
+                               'requis.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            code = selectors.prochain_code_lettrage(company, compte)
+        try:
+            nb = selectors.lettrer(company, ligne_ids, code)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'code': code, 'lignes_lettrees': nb})
+
+    @action(detail=False, methods=['post'])
+    def delettrer(self, request):
+        code = (request.data.get('code') or '').strip()
+        if not code:
+            return Response(
+                {'detail': "'code' requis."},
+                status=status.HTTP_400_BAD_REQUEST)
+        nb = selectors.delettrer(request.user.company, code)
+        return Response({'code': code, 'lignes_delettrees': nb})
+
 
 # ── FG115 — Périodes comptables verrouillables ─────────────────────────────
 

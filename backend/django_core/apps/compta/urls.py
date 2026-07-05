@@ -51,6 +51,7 @@ from .views import (
     ProvisionsPeriodeViewSet,
     ObligationFiscaleViewSet,
     FamilleTvaNonDeductibleViewSet,
+    LettrageViewSet,
 )
 
 router = DefaultRouter()
@@ -93,6 +94,7 @@ router.register(r'provisions', ProvisionViewSet)
 router.register(r'entites-consolidation', EntiteConsolidationViewSet)
 router.register(r'pilotage', PilotageViewSet, basename='pilotage')
 router.register(r'etats', EtatsComptablesViewSet, basename='etats')
+router.register(r'lettrage', LettrageViewSet, basename='lettrage')
 router.register(r'balance-ouverture', BalanceOuvertureViewSet,
                 basename='balance-ouverture')
 router.register(r'provisions-periode', ProvisionsPeriodeViewSet,

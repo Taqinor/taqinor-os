@@ -2123,7 +2123,7 @@ def enregistrer_paiement(*, facture, montant, mode, date_paiement, user,
     même modèle/table que le paiement enregistré depuis l'écran facture,
     aucune duplication de logique."""
     from apps.ventes.models import Paiement
-    return Paiement.objects.create(
+    paiement = Paiement.objects.create(
         company=facture.company,
         facture=facture,
         montant=montant,
@@ -2133,6 +2133,12 @@ def enregistrer_paiement(*, facture, montant, mode, date_paiement, user,
         note=note or '',
         created_by=user,
     )
+    # YLEDG1 — événement documentaire générique (pose du seam pour
+    # compta.ecriture_pour_paiement, jamais d'import de son service ici).
+    from core.events import paiement_enregistre
+    paiement_enregistre.send(
+        sender=Paiement, instance=paiement, company=facture.company)
+    return paiement
 
 
 def facture_montant_du(facture):
@@ -2322,6 +2328,11 @@ def record_payment_from_link(*, link, payload=None):
             reference=(result.get('provider_ref') or '')[:120],
             note='Paiement en ligne (lien « Payer en ligne »).',
         )
+        # YLEDG1 — événement documentaire générique (pose du seam pour
+        # compta.ecriture_pour_paiement).
+        from core.events import paiement_enregistre
+        paiement_enregistre.send(
+            sender=Paiement, instance=paiement, company=facture.company)
         locked_link.statut = PaymentLink.Statut.PAYE
         locked_link.paiement = paiement
         locked_link.provider_ref = (result.get('provider_ref') or '')[:200]

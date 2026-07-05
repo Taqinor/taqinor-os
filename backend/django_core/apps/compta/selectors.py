@@ -285,6 +285,44 @@ def lettrer(company, ligne_ids, code):
     return qs.update(lettrage=code)
 
 
+def prochain_code_lettrage(company, compte):
+    """YLEDG6 — code de lettrage séquentiel A, B, …, Z, AA, AB… pour un
+    compte lettrable donné (jamais réutilisé, même après délettrage — le
+    prochain code repart toujours après le plus haut déjà vu)."""
+    codes = (LigneEcriture.objects
+             .filter(company=company, compte=compte)
+             .exclude(lettrage='')
+             .values_list('lettrage', flat=True).distinct())
+
+    def _rang(code):
+        rang = 0
+        for ch in code:
+            rang = rang * 26 + (ord(ch) - ord('A') + 1)
+        return rang
+
+    def _code(rang):
+        lettres = ''
+        while rang > 0:
+            rang, reste = divmod(rang - 1, 26)
+            lettres = chr(ord('A') + reste) + lettres
+        return lettres
+
+    valides = [c for c in codes if c and c.isalpha() and c.isupper()]
+    dernier_rang = max((_rang(c) for c in valides), default=0)
+    return _code(dernier_rang + 1)
+
+
+def delettrer(company, code):
+    """YLEDG6 — retire le code de lettrage ``code`` d'un lot de lignes (rouvre
+    le lot : la balance âgée / l'encours ré-incluent les lignes). Renvoie le
+    nombre de lignes délettrées. Journalisé côté appelant (jamais silencieux)
+    — cette fonction, LECTURE-ÉCRITURE ciblée, ne touche jamais aux montants
+    ni aux écritures elles-mêmes (COMPTA11 : jamais de suppression/altération
+    d'une écriture validée)."""
+    qs = LigneEcriture.objects.filter(company=company, lettrage=code)
+    return qs.update(lettrage='')
+
+
 # ── FG113 / COMPTA27 — CPC (Compte de Produits et Charges) ─────────────────
 
 def cpc(company, *, date_debut=None, date_fin=None, validees_seulement=False):
@@ -3161,3 +3199,110 @@ def trous_sequences(company, *, exercice=None):
     rapport += _trous_pour_references(
         references_pieces, source_label='pieces_comptables')
     return rapport
+
+
+# ── YLEDG13 — Rapprochement auxiliaire ↔ GL (tie-out AR/AP) ────────────────
+# Compare l'encours DOCUMENTAIRE (lu via ventes.selectors / stock.selectors,
+# jamais leurs models) au solde GL non lettré par tiers (3421/4411) — preuve
+# que les deux systèmes restent égaux une fois YLEDG1/2 câblés. Lecture
+# seule, scopée société.
+
+def _encours_gl_par_tiers(company, compte_numero, *, tiers_type,
+                          date=None):
+    """Solde GL non lettré par ``tiers_id`` d'un compte de tiers donné."""
+    qs = LigneEcriture.objects.filter(
+        company=company, compte__numero=compte_numero, lettrage='',
+        tiers_type=tiers_type, tiers_id__isnull=False)
+    if date:
+        qs = qs.filter(ecriture__date_ecriture__lte=date)
+    par_tiers = {}
+    for ligne in qs:
+        tid = ligne.tiers_id
+        par_tiers.setdefault(tid, Decimal('0'))
+        # Client (actif) : débit − crédit. Fournisseur (passif) : crédit −
+        # débit (inversé en aval selon l'appelant).
+        par_tiers[tid] += (ligne.debit or Decimal('0')) - \
+            (ligne.credit or Decimal('0'))
+    return par_tiers
+
+
+def rapprochement_auxiliaire_clients(company, date=None):
+    """Compare l'encours documentaire clients (ventes) au solde GL 3421 non
+    lettré, par tiers. Renvoie ``{'lignes': [...], 'ecart_total'}`` où chaque
+    ligne est ``{'tiers_id', 'nom', 'encours_documentaire', 'solde_gl',
+    'ecart', 'references'}`` — seuls les tiers en écart (≠ 0, tolérance 1
+    centime) apparaissent. Un document jamais comptabilisé (toggle OFF, ou
+    facture jamais émise) laisse le GL à 0 pendant que le documentaire porte
+    l'encours → apparaît en écart avec sa référence. Une écriture manuelle sur
+    3421 sans document source (donc absente de l'encours documentaire)
+    apparaît symétriquement. Lecture seule."""
+    from apps.ventes import selectors as ventes_selectors
+
+    documentaire = {
+        e['tiers_id']: e for e in ventes_selectors.encours_clients_par_tiers(
+            company)
+    }
+    gl = _encours_gl_par_tiers(company, '3421', tiers_type='client',
+                               date=date)
+    tiers_ids = set(documentaire) | set(gl)
+    lignes = []
+    ecart_total = Decimal('0')
+    for tid in tiers_ids:
+        doc = documentaire.get(tid)
+        doc_montant = doc['encours'] if doc else Decimal('0')
+        gl_montant = gl.get(tid, Decimal('0'))
+        ecart = doc_montant - gl_montant
+        if abs(ecart) <= Decimal('0.01'):
+            continue
+        lignes.append({
+            'tiers_id': tid,
+            'nom': doc['nom'] if doc else '',
+            'encours_documentaire': doc_montant,
+            'solde_gl': gl_montant,
+            'ecart': ecart,
+            'references': doc['references'] if doc else [],
+        })
+        ecart_total += ecart
+    lignes.sort(key=lambda e: abs(e['ecart']), reverse=True)
+    return {'lignes': lignes, 'ecart_total': ecart_total}
+
+
+def rapprochement_auxiliaire_fournisseurs(company, date=None):
+    """Miroir AP de ``rapprochement_auxiliaire_clients`` : compare l'encours
+    documentaire fournisseurs (stock) au solde GL 4411 non lettré, par tiers.
+    Le compte 4411 est un PASSIF (solde naturel créditeur) : le GL est lu
+    crédit − débit pour être homogène au sens « montant dû » du documentaire.
+    Lecture seule."""
+    from apps.stock import selectors as stock_selectors
+
+    documentaire = {
+        e['tiers_id']: e
+        for e in stock_selectors.encours_fournisseurs_par_tiers(company)
+    }
+    gl_actif_sens = _encours_gl_par_tiers(
+        company, '4411', tiers_type='fournisseur', date=date)
+    # _encours_gl_par_tiers calcule débit − crédit (sens actif) ; un compte
+    # fournisseur (passif) veut crédit − débit — on inverse le signe ici
+    # plutôt que dupliquer la fonction.
+    gl = {tid: -montant for tid, montant in gl_actif_sens.items()}
+    tiers_ids = set(documentaire) | set(gl)
+    lignes = []
+    ecart_total = Decimal('0')
+    for tid in tiers_ids:
+        doc = documentaire.get(tid)
+        doc_montant = doc['encours'] if doc else Decimal('0')
+        gl_montant = gl.get(tid, Decimal('0'))
+        ecart = doc_montant - gl_montant
+        if abs(ecart) <= Decimal('0.01'):
+            continue
+        lignes.append({
+            'tiers_id': tid,
+            'nom': doc['nom'] if doc else '',
+            'encours_documentaire': doc_montant,
+            'solde_gl': gl_montant,
+            'ecart': ecart,
+            'references': doc['references'] if doc else [],
+        })
+        ecart_total += ecart
+    lignes.sort(key=lambda e: abs(e['ecart']), reverse=True)
+    return {'lignes': lignes, 'ecart_total': ecart_total}

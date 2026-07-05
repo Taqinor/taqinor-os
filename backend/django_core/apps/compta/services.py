@@ -32,7 +32,7 @@ from django.conf import settings
 from django.core import signing
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.utils import timezone
 
 from .models import (
@@ -112,6 +112,10 @@ _COMPTES_CGNC = [
     # Classe 4 — Passif circulant
     ('4411', 'Fournisseurs', True, True, 'passif'),
     ('4415', 'Fournisseurs - effets à payer', True, True, 'passif'),
+    # YLEDG11 — avances/acomptes clients (jamais un produit avant livraison ;
+    # apuré à la facture de solde/complete du même devis, cf.
+    # ecriture_pour_facture).
+    ('4421', 'Clients - avances et acomptes reçus', True, True, 'passif'),
     ('4455', 'État - TVA facturée', False, False, 'passif'),
     # XACC1 — TVA facturée EN ATTENTE (régime encaissement) : la TVA d'une
     # vente non encore encaissée transite ici avant de basculer sur 4455 au
@@ -385,6 +389,17 @@ def ecriture_pour_facture(facture, *, force=False, user=None):
     ``facture`` est une instance ``ventes.Facture`` ; on lit ses montants via
     ses propriétés publiques (total_ht/total_tva/total_ttc) — pas d'import de
     modèle d'une autre app dans la signature, seulement la donnée passée.
+
+    YLEDG11 — ``type_facture='acompte'`` (CGNC : pas de produit avant
+    livraison) crédite 4421 « Clients — avances et acomptes » au lieu de
+    71xx (zéro TVA facturée constatée en produit — le HT+TVA entier part en
+    avance). Une facture ``solde``/``intermediaire``/``complete`` du MÊME
+    devis débite alors 4421 du cumul des acomptes déjà comptabilisés de ce
+    devis (apurement, jamais plus que le cumul disponible) en plus du crédit
+    71xx habituel sur la totalité HT de CETTE facture — le produit total est
+    donc constaté normalement, et le solde de 4421 du dossier retombe à 0
+    une fois tous les acomptes apurés. Une facture ``complete`` SANS acompte
+    au devis est inchangée (apurement = 0).
     """
     if not force and not auto_ecritures_actif():
         return None
@@ -400,6 +415,32 @@ def ecriture_pour_facture(facture, *, force=False, user=None):
     tva = Decimal(facture.total_tva)
     ttc = Decimal(facture.total_ttc)
     client_id = getattr(facture, 'client_id', None)
+    type_facture = getattr(facture, 'type_facture', None) or 'complete'
+    compte_avances = _assurer_compte(company, '4421')
+
+    if type_facture == 'acompte':
+        # CGNC : un acompte ne constate JAMAIS de produit — tout le TTC part
+        # en avance (4421), zéro ligne 71xx/4455 ici (comportement documenté
+        # dans la docstring, ce N'EST PAS un oubli de TVA : la TVA facturée
+        # à l'acompte reste due normalement au moment de l'émission, seule
+        # la contrepartie produit est différée — la ligne TVA suit le régime
+        # habituel de l'entreprise, portée par le crédit 4421 au TTC).
+        lignes = [
+            {'compte': comptes['clients'], 'debit': ttc, 'credit': Decimal('0'),
+             'libelle': f'Facture {facture.reference}',
+             'tiers_type': 'client', 'tiers_id': client_id},
+            {'compte': compte_avances, 'debit': Decimal('0'), 'credit': ttc,
+             'libelle': f'Acompte {facture.reference}',
+             'tiers_type': 'client', 'tiers_id': client_id},
+        ]
+        return creer_ecriture(
+            company, journal, facture.date_emission,
+            f'Facture acompte {facture.reference}', lignes,
+            reference=facture.reference, source_type='facture',
+            source_id=facture.id, created_by=user,
+            statut=EcritureComptable.Statut.VALIDEE,
+        )
+
     lignes = [
         {'compte': comptes['clients'], 'debit': ttc, 'credit': Decimal('0'),
          'libelle': f'Facture {facture.reference}',
@@ -411,6 +452,38 @@ def ecriture_pour_facture(facture, *, force=False, user=None):
         lignes.append({
             'compte': comptes['tva_facturee'], 'debit': Decimal('0'),
             'credit': tva, 'libelle': f'TVA {facture.reference}'})
+
+    # YLEDG11 — apurement des acomptes déjà comptabilisés du MÊME devis
+    # (jamais plus que le cumul disponible — un devis sans acompte apure 0).
+    # Un devis n'a qu'UNE facture de solde/complete par construction du
+    # parcours vente (échéancier FG46/FG220) : pas de risque de compter le
+    # même cumul deux fois — l'idempotence de CETTE écriture (garde
+    # ``_ecriture_existante`` en tête de fonction) couvre le reste.
+    devis = getattr(facture, 'devis', None)
+    if devis is not None and type_facture in ('solde', 'intermediaire',
+                                              'complete'):
+        cumul_acomptes = Decimal('0')
+        for soeur in devis.factures.all():
+            if soeur.id == facture.id:
+                continue
+            if getattr(soeur, 'type_facture', None) != 'acompte':
+                continue
+            eco_acompte = _ecriture_existante(company, 'facture', soeur.id)
+            if eco_acompte is None:
+                continue
+            cumul_acomptes += Decimal(soeur.total_ttc)
+        if cumul_acomptes > 0:
+            lignes.append({
+                'compte': compte_avances, 'debit': cumul_acomptes,
+                'credit': Decimal('0'),
+                'libelle': f'Apurement acompte(s) {facture.reference}',
+                'tiers_type': 'client', 'tiers_id': client_id})
+            lignes.append({
+                'compte': comptes['clients'], 'debit': Decimal('0'),
+                'credit': cumul_acomptes,
+                'libelle': f'Apurement acompte(s) {facture.reference}',
+                'tiers_type': 'client', 'tiers_id': client_id})
+
     return creer_ecriture(
         company, journal, facture.date_emission,
         f'Facture client {facture.reference}', lignes,
@@ -472,6 +545,117 @@ def ecriture_pour_paiement(paiement, *, force=False, user=None):
         reference=ref, source_type='paiement', source_id=paiement.id,
         created_by=user, statut=EcritureComptable.Statut.VALIDEE,
     )
+
+
+@transaction.atomic
+def auto_lettrer_facture_soldee(facture):
+    """YLEDG6 — lettre automatiquement le compte clients (3421) d'une facture
+    INTÉGRALEMENT réglée.
+
+    Rassemble les lignes 3421 non lettrées des écritures liées à cette
+    facture (la vente elle-même, tous ses règlements, tous ses avoirs — via
+    ``source_type``/``source_id``, jamais un import du modèle ``ventes`` :
+    ``facture`` est lu par attribut/relation, comme le reste du bloc
+    ``ecriture_pour_*``) et pose un même code de lettrage SSI elles
+    s'équilibrent. No-op silencieux si le lot ne solde pas (ex. génération
+    désactivée pour une partie du dossier) — jamais d'exception qui casserait
+    le flux d'encaissement appelant.
+
+    Un paiement PARTIEL n'appelle jamais cette fonction (le receveur ne
+    l'invoque qu'au passage résiduel→0, comme YDOCF4) : le lot reste ouvert.
+    """
+    company = facture.company
+    if company is None:
+        return None
+    compte_clients = get_compte(company, '3421')
+    source_ids = {
+        'facture': [facture.id],
+        'paiement': [p.id for p in facture.paiements.all()],
+        'avoir': [a.id for a in facture.avoirs.all()],
+    }
+    q_sources = Q()
+    for source_type, ids in source_ids.items():
+        if ids:
+            q_sources |= Q(ecriture__source_type=source_type,
+                           ecriture__source_id__in=ids)
+    if not q_sources:
+        return None
+    lignes = list(
+        LigneEcriture.objects.filter(
+            q_sources, company=company, compte=compte_clients, lettrage='',
+        ).values_list('id', flat=True))
+    if len(lignes) < 2:
+        # Rien à apparier (une seule ligne, ou déjà lettré).
+        return None
+    from . import selectors
+    code = selectors.prochain_code_lettrage(company, compte_clients)
+    try:
+        return selectors.lettrer(company, lignes, code)
+    except ValueError:
+        # Lot déséquilibré (ex. génération partielle désactivée) : on laisse
+        # le lettrage manuel s'en charger, jamais d'exception ici.
+        return None
+
+
+@transaction.atomic
+def ecriture_pour_paiement_especes_via_caisse(paiement, *, user=None):
+    """YLEDG9 — route un encaissement ESPÈCES via le module caisse (COMPTA24)
+    au lieu de l'écriture banque directe de ``ecriture_pour_paiement`` :
+    crée + poste un ``MouvementCaisse`` ENTREE (compte de caisse en débit,
+    3421 Clients en contrepartie créditée — solde la créance comme un
+    encaissement normal) sur la PREMIÈRE caisse active de la société, et
+    enregistre le droit de timbre fiscal dû (FG144, exonéré si le montant
+    de base est nul). Idempotent via la garde ``source_type='paiement'``
+    déjà posée par ``creer_ecriture`` (jamais deux écritures pour le même
+    paiement — le receveur n'appelle JAMAIS ``ecriture_pour_paiement`` en
+    plus de celle-ci sur le même événement). Renvoie l'écriture du mouvement
+    de caisse, ou ``None`` si aucune caisse n'est configurée (fallback :
+    l'appelant retombe sur ``ecriture_pour_paiement``)."""
+    company = paiement.company
+    if company is None:
+        return None
+    existante = _ecriture_existante(company, 'paiement', paiement.id)
+    if existante:
+        return existante
+    caisse = Caisse.objects.filter(company=company).order_by('id').first()
+    if caisse is None:
+        return None
+    comptes = _comptes_requis(company)
+    montant = Decimal(paiement.montant)
+    facture = paiement.facture
+    client_id = getattr(facture, 'client_id', None)
+    ref = getattr(facture, 'reference', '')
+
+    mouvement = MouvementCaisse(
+        company=company, caisse=caisse,
+        sens=MouvementCaisse.Sens.ENTREE,
+        date_mouvement=paiement.date_paiement,
+        montant=montant, motif=f'Encaissement facture {ref}',
+        justificatif=ref, compte_contrepartie=comptes['clients'],
+        created_by=user,
+    )
+    mouvement.full_clean(exclude=['ecriture'])
+    mouvement.save()
+    ecriture = poster_mouvement_caisse(mouvement, user=user)
+    # L'écriture du mouvement de caisse est source_type='mouvement_caisse' —
+    # on l'enregistre AUSSI comme l'écriture DU PAIEMENT (source_type=
+    # 'paiement') pour que l'idempotence/le rapprochement YLEDG13 la
+    # retrouvent comme n'importe quel encaissement.
+    EcritureComptable.objects.filter(pk=ecriture.pk).update(
+        source_type='paiement', source_id=paiement.id)
+    ecriture.refresh_from_db()
+
+    if montant > 0:
+        enregistrer_timbre_fiscal(
+            company, date_encaissement=paiement.date_paiement,
+            base=montant, mode_reglement=MODE_ESPECES,
+            paiement_id=paiement.id, facture_ref=ref,
+            tiers_type='client', tiers_id=client_id,
+            tiers_nom=getattr(facture.client, 'nom', '') or '' if facture
+            else '',
+            libelle=f'Timbre fiscal encaissement {ref}', user=user,
+        )
+    return ecriture
 
 
 # ── XACC1 — TVA sur encaissement : transfert du compte d'attente ───────────

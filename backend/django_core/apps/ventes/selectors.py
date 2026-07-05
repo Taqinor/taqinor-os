@@ -458,3 +458,35 @@ def references_avoirs(company):
         .exclude(reference='')
         .values_list('reference', flat=True)
     )
+
+
+def encours_clients_par_tiers(company):
+    """YLEDG13 — encours documentaire (reste dû) par client, factures NON
+    annulées d'une société. Point d'entrée cross-app sanctionné pour
+    ``apps.compta`` (rapprochement auxiliaire/GL, jamais un import direct de
+    ``ventes.models``). Renvoie une liste de dicts ``{'tiers_id', 'nom',
+    'encours', 'references'}`` (encours > 0 seulement, ``references`` = les
+    factures ouvertes de ce client). Lecture seule."""
+    from decimal import Decimal
+    from .models import Facture
+
+    par_client = {}
+    qs = (Facture.objects
+          .filter(company=company)
+          .exclude(statut=Facture.Statut.ANNULEE)
+          .select_related('client'))
+    for facture in qs:
+        du = facture.montant_du
+        if not du:
+            continue
+        client = facture.client
+        entry = par_client.setdefault(client.id, {
+            'tiers_id': client.id,
+            'nom': f'{client.prenom} {client.nom}'.strip()
+                  if hasattr(client, 'prenom') else str(client),
+            'encours': Decimal('0'),
+            'references': [],
+        })
+        entry['encours'] += Decimal(du)
+        entry['references'].append(facture.reference)
+    return [v for v in par_client.values() if v['encours'] > 0]

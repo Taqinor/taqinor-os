@@ -644,6 +644,11 @@ class FactureViewSet(viewsets.ModelViewSet):
             # jamais lu du corps de la requête).
             from .. import activity
             activity.log_facture_paiement(locked, request.user, paiement)
+            # YLEDG1 — événement documentaire générique (pose du seam pour
+            # compta.ecriture_pour_paiement, jamais d'import de son service ici).
+            from core.events import paiement_enregistre
+            paiement_enregistre.send(
+                sender=Paiement, instance=paiement, company=locked.company)
             # Statut auto : intégralement réglée → « Payée ».
             locked.refresh_from_db()
             if locked.montant_du <= Decimal('0') and \
@@ -1070,6 +1075,10 @@ class FactureViewSet(viewsets.ModelViewSet):
         # jamais lu du corps de la requête).
         from .. import activity
         activity.log_facture_avoir(facture, request.user, avoir)
+        # YLEDG1 — événement documentaire générique (pose du seam pour
+        # compta.ecriture_pour_avoir, jamais d'import de son service ici).
+        from core.events import avoir_cree
+        avoir_cree.send(sender=Avoir, instance=avoir, company=company)
         try:
             from ..utils.pdf import generate_avoir_pdf
             generate_avoir_pdf(avoir.id)
