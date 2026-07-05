@@ -2373,6 +2373,33 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     return whatsappLink(WHATSAPP_LEADS, text);
   }
 
+  // WJ102 — pendant que la modale d'abandon est ouverte, le RESTE du document
+  // (en-tête, pied de page, l'assistant lui-même derrière l'overlay) doit
+  // devenir réellement inatteignable — pas seulement masqué visuellement.
+  // Sans ça, un utilisateur au clavier/lecteur d'écran pouvait Tab-cycler
+  // jusqu'à des liens du header/footer DERRIÈRE l'overlay semi-transparent,
+  // alors que le piège de focus (Tab/Shift+Tab plus bas) ne couvre que le
+  // DERNIER Tab avant de reboucler — pas les liens hors de la modale
+  // atteignables par un clic direct/VoiceOver rotor. Même idiome que
+  // Header.astro (menu mobile) : `inert` posé sur chaque enfant DIRECT de
+  // <body> qui ne contient PAS la modale elle-même.
+  const inertedSiblings: HTMLElement[] = [];
+  function setBackgroundInert(on: boolean): void {
+    if (on) {
+      inertedSiblings.length = 0;
+      for (const child of Array.from(document.body.children)) {
+        if (!(child instanceof HTMLElement)) continue;
+        if (child.contains(exitModal)) continue; // ne jamais rendre la modale elle-même inerte
+        if (child.hasAttribute('inert')) continue; // déjà inerte pour une autre raison : ne pas y toucher à la fermeture
+        child.setAttribute('inert', '');
+        inertedSiblings.push(child);
+      }
+    } else {
+      for (const el of inertedSiblings) el.removeAttribute('inert');
+      inertedSiblings.length = 0;
+    }
+  }
+
   /** WJ46 — affiche l'offre WhatsApp (exit-intent OU pic d'intérêt). Ne
    *  s'affiche qu'une fois par visite (`exitShown`), jamais après soumission. */
   function showWhatsappOffer(triggerEl: HTMLElement | null = null) {
@@ -2382,6 +2409,8 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     if (exitWaLink) exitWaLink.href = buildExitWaHref();
     if (exitModal) {
       exitModal.hidden = false;
+      // WJ102 — le reste du document devient inerte tant que la modale est ouverte.
+      setBackgroundInert(true);
       // WJ33 — focus initial DANS la modale (premier champ interactif).
       exitPhoneInput?.focus();
     }
@@ -2410,6 +2439,9 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   function closeExit() {
     if (!exitModal || exitModal.hidden) return;
     exitModal.hidden = true;
+    // WJ102 — restaure l'accessibilité du reste du document AVANT de rendre le
+    // focus (sinon la cible de focus ci-dessous pourrait encore être inerte).
+    setBackgroundInert(false);
     // WJ33 — restauration du focus vers l'élément qui a déclenché l'ouverture
     // (ou, à défaut, un point d'ancrage stable de la page).
     (exitTriggerEl && document.contains(exitTriggerEl) ? exitTriggerEl : $('mt-lang-fr'))?.focus();
