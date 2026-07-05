@@ -23,7 +23,7 @@ from .models import (
     ExerciceComptable, FormulaireIntake,
     Immobilisation, IndemniteChantier, Journal, LigneEcriture,
     LignePrevisionnelTresorerie, LigneReleve, MessageWhatsAppEntrant,
-    ModeleDevis, MouvementCaisse, NoteFrais, OuverturePartage,
+    ModeleDevis, MouvementCaisse, NoteFrais, OuverturePartage, RapportNoteFrais,
     PaymentRun, PaymentRunLine, PeriodeComptable, PlafondNoteFrais,
     PlanAmortissement,
     PlanComptable, Provision, ProvisionCreance, Rapprochement, RapprochementBancaire,
@@ -834,6 +834,43 @@ class NoteFraisSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Le montant d'une note de frais doit être strictement positif.")
         return value
+
+
+# ── ZACC6 — Rapport de notes de frais (regroupement multi-lignes) ─────────
+
+class RapportNoteFraisSerializer(serializers.ModelSerializer):
+    """Rapport regroupant N notes de frais d'un employé (ZACC6).
+
+    La création n'expose que ``employe``/``libelle`` ; ``company``/
+    ``reference``/statut/écritures sont posés côté serveur. Le rattachement
+    des notes se fait via l'action ``creer`` (corps ``note_frais_ids``), et le
+    cycle (soumis/validé/remboursé) évolue par les actions de service."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    employe_nom = serializers.CharField(
+        source='employe.get_full_name', read_only=True, default='')
+    montant_total = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+    notes_ids = serializers.PrimaryKeyRelatedField(
+        source='notes', many=True, read_only=True)
+
+    class Meta:
+        model = RapportNoteFrais
+        fields = [
+            'id', 'reference', 'employe', 'employe_nom', 'libelle', 'statut',
+            'statut_display', 'montant_total', 'notes_ids',
+            'valide_par', 'date_validation', 'ecriture_charge',
+            'mode_remboursement', 'compte_tresorerie', 'date_remboursement',
+            'rembourse_par', 'ecriture_remboursement', 'date_creation',
+        ]
+        read_only_fields = [
+            'reference', 'statut', 'valide_par', 'date_validation',
+            'ecriture_charge', 'compte_tresorerie', 'date_remboursement',
+            'rembourse_par', 'ecriture_remboursement', 'date_creation',
+        ]
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
 
 
 # ── XACC27 — Plafonds de notes de frais par catégorie ──────────────────────
