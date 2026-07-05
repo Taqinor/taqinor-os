@@ -250,11 +250,13 @@ class BackupRunSerializer(serializers.ModelSerializer):
         model = BackupRun
         fields = [
             'id', 'kind', 'mode', 'statut', 'datasets', 'cron', 'artifact_ref',
+            'object_key', 'bytes_taille',
             'manifest', 'declenche_par', 'termine_le', 'detail',
             'created_at', 'updated_at',
         ]
         read_only_fields = [
             'id', 'statut', 'manifest', 'declenche_par', 'termine_le', 'detail',
+            'object_key', 'bytes_taille',
             'created_at', 'updated_at',
         ]
 

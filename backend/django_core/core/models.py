@@ -1408,9 +1408,17 @@ class BackupRun(TimestampedModel):
 
     KIND_EXPORT = 'export'
     KIND_RESTORE = 'restore'
+    # YOPSB1/2 — dump Postgres réel (pg_dump vers MinIO) et drill de
+    # restauration (pg_restore vers une base JETABLE). Système-wide : PAS de
+    # société unique concernée (toute l'instance), d'où ``company`` nullable
+    # ci-dessous réservé à CES deux kinds.
+    KIND_DB_DUMP = 'db_dump'
+    KIND_RESTORE_DRILL = 'restore_drill'
     KIND_CHOICES = [
         (KIND_EXPORT, 'Sauvegarde'),
         (KIND_RESTORE, 'Restauration'),
+        (KIND_DB_DUMP, 'Dump base (pg_dump)'),
+        (KIND_RESTORE_DRILL, 'Drill de restauration'),
     ]
 
     MODE_MANUEL = 'manuel'
@@ -1435,7 +1443,10 @@ class BackupRun(TimestampedModel):
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
-        related_name='backup_runs', verbose_name='Société')
+        related_name='backup_runs', verbose_name='Société',
+        null=True, blank=True,
+        help_text="Nulle UNIQUEMENT pour les kinds système "
+                  "db_dump/restore_drill (toute l'instance, pas une société).")
 
     kind = models.CharField(
         'Type', max_length=10, choices=KIND_CHOICES, default=KIND_EXPORT)
@@ -1456,6 +1467,12 @@ class BackupRun(TimestampedModel):
     artifact_ref = models.CharField(
         "Référence de l'artefact", max_length=500, blank=True, default='',
         help_text='Chemin/URL de stockage du bundle (jamais le contenu).')
+    object_key = models.CharField(
+        'Clé objet MinIO', max_length=500, blank=True, default='',
+        help_text='YOPSB1 — clé de l\'objet .dump dans le bucket erp-backups.')
+    bytes_taille = models.BigIntegerField(
+        'Taille (octets)', null=True, blank=True,
+        help_text='YOPSB1 — taille du dump pg_dump produit.')
     manifest = models.JSONField(
         'Manifeste', default=dict, blank=True,
         help_text='Résumé du bundle (datasets + comptes), sans contenu métier.')

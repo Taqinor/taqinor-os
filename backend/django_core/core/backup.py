@@ -29,10 +29,50 @@ en mémoire) et l'ORM générique.
 """
 from __future__ import annotations
 
+import logging
+import subprocess
+import tempfile
+from pathlib import Path
+
+from django.conf import settings
 from django.utils import timezone
 
 from . import data_explorer
 from .models import BackupRun
+
+logger = logging.getLogger(__name__)
+
+# YOPSB1 — bucket MinIO dédié aux dumps Postgres réels (distinct des exports
+# manifeste FG395). Recopié depuis apps/ventes/utils/minio_client.py SANS
+# l'importer : core reste une couche de fondation qui ne dépend d'aucune app
+# domaine (contrat import-linter core-foundation-is-a-base-layer).
+BACKUP_BUCKET = 'erp-backups'
+
+
+def _minio_client():
+    """Client boto3/S3 vers MinIO (recopié de ventes.utils.minio_client pour
+    que core reste dépendance-libre vis-à-vis des apps domaine)."""
+    import boto3
+    return boto3.client(
+        's3',
+        endpoint_url=f'http://{settings.MINIO_ENDPOINT}',
+        aws_access_key_id=settings.MINIO_ACCESS_KEY,
+        aws_secret_access_key=settings.MINIO_SECRET_KEY,
+        region_name='us-east-1',
+    )
+
+
+def _ensure_backup_bucket(client) -> None:
+    """Crée le bucket ``erp-backups`` s'il n'existe pas (best-effort)."""
+    try:
+        client.head_bucket(Bucket=BACKUP_BUCKET)
+    except Exception:
+        try:
+            client.create_bucket(Bucket=BACKUP_BUCKET)
+            logger.info('Bucket MinIO créé: %s', BACKUP_BUCKET)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning('Impossible de créer le bucket %s: %s',
+                           BACKUP_BUCKET, exc)
 
 
 def _datasets_cibles(datasets):
@@ -120,4 +160,95 @@ def executer_restauration(run: BackupRun):
         'artifact_ref': run.artifact_ref,
     }
     run.save(update_fields=['statut', 'detail', 'updated_at'])
+    return run
+
+
+# ---------------------------------------------------------------------------
+# YOPSB1 — Sauvegarde Postgres réelle, planifiée et hors-serveur.
+#
+# ``dump_database`` lance un ``pg_dump`` (format custom -Fc) vers un fichier
+# temporaire puis l'UPLOAD dans MinIO (bucket ``erp-backups``), et journalise
+# le résultat en ``BackupRun`` (kind=db_dump, company=None — système-wide).
+# Un ``pg_dump`` en échec (code retour != 0) marque le run ``echec`` et NE
+# lève PAS d'exception : l'appelant (commande de gestion / tâche Celery)
+# inspecte ``run.statut`` et sort en code non-nul le cas échéant.
+# ---------------------------------------------------------------------------
+
+def _pg_dump_env_args():
+    """Renvoie (args pg_dump, env avec PGPASSWORD) depuis les variables DB_*
+    déjà lues par ``settings/base.py`` — jamais un mot de passe en argv."""
+    import os
+
+    db = settings.DATABASES['default']
+    args = [
+        'pg_dump',
+        '-Fc',
+        '-h', db.get('HOST', 'db'),
+        '-p', str(db.get('PORT', '5432')),
+        '-U', db.get('USER', 'erp_user'),
+        '-d', db.get('NAME', 'erp_db'),
+    ]
+    env = dict(os.environ)
+    if db.get('PASSWORD'):
+        env['PGPASSWORD'] = db['PASSWORD']
+    return args, env
+
+
+def dump_database(run: BackupRun) -> BackupRun:
+    """YOPSB1 — exécute un ``pg_dump`` réel de toute l'instance et l'upload
+    dans MinIO. ``run`` doit être ``kind=KIND_DB_DUMP`` (company=None).
+
+    Échec ``pg_dump`` (code retour non nul ou exception) → ``statut=echec``,
+    détail de l'erreur, AUCUNE levée d'exception (l'appelant décide du code
+    process de sortie via ``run.statut``)."""
+    run.statut = BackupRun.STATUT_EN_COURS
+    run.save(update_fields=['statut', 'updated_at'])
+
+    args, env = _pg_dump_env_args()
+    horodatage = timezone.now().strftime('%Y%m%d-%H%M%S')
+    object_key = f'pg_dumps/{horodatage}.dump'
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        dump_path = Path(tmpdir) / 'db.dump'
+        try:
+            with open(dump_path, 'wb') as fh:
+                result = subprocess.run(
+                    args, stdout=fh, stderr=subprocess.PIPE, env=env,
+                    timeout=3600)
+        except Exception as exc:  # noqa: BLE001 — pg_dump introuvable, timeout…
+            run.statut = BackupRun.STATUT_ECHEC
+            run.detail = {'message': f'pg_dump: exception: {exc}'}
+            run.save(update_fields=['statut', 'detail', 'updated_at'])
+            return run
+
+        if result.returncode != 0:
+            run.statut = BackupRun.STATUT_ECHEC
+            run.detail = {
+                'message': 'pg_dump a échoué (code non nul).',
+                'returncode': result.returncode,
+                'stderr': (result.stderr or b'').decode(errors='replace')[:2000],
+            }
+            run.save(update_fields=['statut', 'detail', 'updated_at'])
+            return run
+
+        taille = dump_path.stat().st_size
+        try:
+            client = _minio_client()
+            _ensure_backup_bucket(client)
+            client.upload_file(str(dump_path), BACKUP_BUCKET, object_key)
+        except Exception as exc:  # noqa: BLE001 — échec upload = échec du run
+            run.statut = BackupRun.STATUT_ECHEC
+            run.detail = {'message': f"Échec de l'upload MinIO: {exc}"}
+            run.save(update_fields=['statut', 'detail', 'updated_at'])
+            return run
+
+    run.object_key = object_key
+    run.bytes_taille = taille
+    run.artifact_ref = f'minio://{BACKUP_BUCKET}/{object_key}'
+    run.statut = BackupRun.STATUT_TERMINE
+    run.termine_le = timezone.now()
+    run.detail = {'message': 'pg_dump réussi et déposé dans MinIO.',
+                  'bytes': taille}
+    run.save(update_fields=['object_key', 'bytes_taille', 'artifact_ref',
+                            'statut', 'termine_le', 'detail', 'updated_at'])
     return run
