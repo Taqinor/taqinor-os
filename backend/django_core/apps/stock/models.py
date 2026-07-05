@@ -1315,6 +1315,10 @@ class BonCommandeFournisseur(models.Model):
         max_length=200, blank=True, null=True,
         help_text='Conditions de paiement reportées du fournisseur '
                   '(éditables au document), dérivées de delai_paiement_jours.')
+    # ZPUR11 — motif OBLIGATOIRE à l'annulation (texte, requis — 400 si vide),
+    # horodaté + acteur tracés via `records.Comment` (chatter). Vide = jamais
+    # annulé (comportement historique).
+    motif_annulation = models.TextField(blank=True, null=True)
     note = models.TextField(blank=True, null=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,

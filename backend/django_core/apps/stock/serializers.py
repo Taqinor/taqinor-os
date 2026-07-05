@@ -609,6 +609,9 @@ class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
             # conditions de paiement (éditables au document).
             'acheteur', 'ref_fournisseur', 'note_bas_page', 'incoterm',
             'conditions_paiement', 'nb_relances',
+            # ZPUR11 — motif tracé à l'annulation (posé UNIQUEMENT par
+            # l'action `annuler`, jamais en écriture libre).
+            'motif_annulation',
         ]
         # company + reference + created_by sont posés côté serveur. La date
         # confirmée/numéro d'accusé n'est modifiable QUE via l'action
@@ -618,6 +621,8 @@ class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
             'reference', 'created_by', 'date_creation', 'date_mise_a_jour',
             'date_confirmee_fournisseur', 'numero_confirmation_fournisseur',
             'revision',
+            # ZPUR11 — posé uniquement par l'action `annuler`.
+            'motif_annulation',
         ]
 
     def get_acomptes(self, obj):

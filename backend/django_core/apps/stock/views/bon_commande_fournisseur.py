@@ -71,8 +71,8 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
             # légacy responsable/admin pour les comptes sans rôle fin).
             return [HasPermissionOrLegacy('stock_modifier')()]
         elif self.action in WRITE_ACTIONS + [
-            'envoyer', 'recevoir', 'annuler', 'confirmer', 'reviser',
-            'facturer', 'dupliquer', 'fusionner',
+            'envoyer', 'recevoir', 'annuler', 'rouvrir', 'confirmer',
+            'reviser', 'facturer', 'dupliquer', 'fusionner',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'en_retard':
@@ -371,8 +371,20 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
                 {'detail': 'Un BCF entièrement reçu ne peut pas être annulé.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # ZPUR11 — motif OBLIGATOIRE (400 si vide), tracé horodaté + acteur.
+        motif = (request.data.get('motif_annulation') or '').strip()
+        if not motif:
+            return Response(
+                {'detail': "Un motif d'annulation est requis."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         bc.statut = BonCommandeFournisseur.Statut.ANNULE
-        bc.save(update_fields=['statut'])
+        bc.motif_annulation = motif
+        bc.save(update_fields=['statut', 'motif_annulation'])
+        from ..services import log_bcf_chatter
+        log_bcf_chatter(
+            bc, user=request.user,
+            body=f'BCF annulé — motif : {motif}')
         # YPROC7 — cascade : les réceptions brouillon de ce BCF ne doivent
         # plus jamais être confirmables, et le créateur est notifié
         # (best-effort). Un BCF partiellement reçu reste annulable
@@ -383,6 +395,33 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
         data = self.get_serializer(bc).data
         data['cascade'] = detail_cascade
         return Response(data)
+
+    @action(detail=True, methods=['post'], url_path='rouvrir')
+    def rouvrir(self, request, pk=None):
+        """ZPUR11 — réouvre un BCF ANNULE en BROUILLON (jamais si des
+        réceptions CONFIRME existent — refus explicite 400). Journalise la
+        réouverture (chatter, acteur + horodatage)."""
+        bc = self.get_object()
+        if bc.statut != BonCommandeFournisseur.Statut.ANNULE:
+            return Response(
+                {'detail': 'Seul un BCF annulé peut être réouvert.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if bc.receptions.filter(
+                statut=ReceptionFournisseur.Statut.CONFIRME).exists():
+            return Response(
+                {'detail': (
+                    'Ce BCF a des réceptions confirmées : impossible de le '
+                    'réouvrir.')},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        bc.statut = BonCommandeFournisseur.Statut.BROUILLON
+        bc.save(update_fields=['statut'])
+        from ..services import log_bcf_chatter
+        log_bcf_chatter(
+            bc, user=request.user,
+            body='BCF réouvert (repassé en brouillon).')
+        return Response(self.get_serializer(bc).data)
 
     @action(detail=True, methods=['post'], url_path='confirmer')
     def confirmer(self, request, pk=None):

@@ -3652,6 +3652,29 @@ def default_other_information_bcf(bon_commande):
         bon_commande.save(update_fields=changed)
 
 
+# ── ZPUR11 — motif d'annulation obligatoire + réouverture ─────────────────
+
+def log_bcf_chatter(bon_commande, *, user, body):
+    """ZPUR11 — trace une entrée `records.Comment` (chatter, horodaté +
+    acteur) sur un BCF (annulation motivée, réouverture…). Best-effort :
+    ne bloque jamais l'action appelante."""
+    try:
+        from django.contrib.contenttypes.models import ContentType
+        from apps.records.models import Comment
+        from .models import BonCommandeFournisseur
+        Comment.objects.create(
+            company=bon_commande.company,
+            content_type=ContentType.objects.get_for_model(
+                BonCommandeFournisseur),
+            object_id=bon_commande.pk,
+            body=body,
+            author=user,
+        )
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.info(
+            'ZPUR11: chatter non journalisé pour BCF %s', bon_commande.pk)
+
+
 # ── XPUR7 — dates de livraison prévues, accusé fournisseur & OTD réel ──────
 
 def compute_date_livraison_prevue(company, fournisseur, date_commande,
