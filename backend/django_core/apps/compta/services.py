@@ -10824,6 +10824,19 @@ def limite_temps_depassee(enquete, *, debute_le, maintenant=None):
 
 def soumettre_reponse_enquete(
         enquete, *, reponses, contact_ref='', nom_repondant=''):
+    """ZMKT11 — refuse (ValueError) si ``tentatives_max`` est dépassé pour
+    ``contact_ref`` (email d'un répondant identifié)."""
+    if contact_ref and enquete.tentatives_max:
+        restantes = tentatives_restantes(enquete, contact_ref)
+        if restantes is not None and restantes <= 0:
+            raise ValueError('Nombre maximum de tentatives atteint.')
+    return _soumettre_reponse_enquete_interne(
+        enquete, reponses=reponses, contact_ref=contact_ref,
+        nom_repondant=nom_repondant)
+
+
+def _soumettre_reponse_enquete_interne(
+        enquete, *, reponses, contact_ref='', nom_repondant=''):
     """XMKT27 — soumission publique d'une enquête (sans auth). Ne valide QUE
     les questions effectivement visibles (logique conditionnelle) : une
     question masquée n'est jamais requise. Lève ``ValueError`` si une
@@ -10878,6 +10891,42 @@ def calculer_score_enquete(enquete, reponses):
     if points_possibles == 0:
         return Decimal('0')
     return (points_obtenus / points_possibles * 100).quantize(Decimal('0.01'))
+
+
+def acces_enquete_autorise(enquete, *, jeton_invite=None):
+    """ZMKT11 — vérifie le mode d'accès : lien public toujours autorisé,
+    invités-seulement exige un jeton émis (présent dans ``jetons_invites``).
+    """
+    if enquete.mode_acces == Enquete.ModeAcces.LIEN_PUBLIC:
+        return True
+    return bool(jeton_invite and jeton_invite in (enquete.jetons_invites or []))
+
+
+def emettre_jeton_invite(enquete):
+    """ZMKT11 — émet (et enregistre) un nouveau jeton d'invitation."""
+    jeton = uuid.uuid4().hex
+    jetons = list(enquete.jetons_invites or [])
+    jetons.append(jeton)
+    enquete.jetons_invites = jetons
+    enquete.save(update_fields=['jetons_invites'])
+    return jeton
+
+
+def tester_enquete(enquete):
+    """ZMKT11 — ouvre l'enquête en mode aperçu (test) SANS enregistrer de
+    ``ReponseEnquete`` — renvoie le rendu public tel qu'un vrai répondant le
+    verrait."""
+    return rendre_enquete_publique(enquete, {})
+
+
+def tentatives_restantes(enquete, identifiant):
+    """ZMKT11 — nombre de tentatives restantes pour ``identifiant`` (email),
+    ``None`` = illimité (comportement actuel)."""
+    if not enquete.tentatives_max:
+        return None
+    deja_soumises = ReponseEnquete.objects.filter(
+        enquete=enquete, contact_ref=identifiant).count()
+    return max(0, enquete.tentatives_max - deja_soumises)
 
 
 def generer_certificat_pdf(reponse):

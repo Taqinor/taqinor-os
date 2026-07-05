@@ -4894,6 +4894,19 @@ class EnqueteViewSet(_ComptaBaseViewSet):
         enquete = self.get_object()
         return Response(services.analytics_enquete(enquete))
 
+    @action(detail=True, methods=['get'])
+    def tester(self, request, pk=None):
+        """ZMKT11 — aperçu SANS enregistrer de réponse."""
+        enquete = self.get_object()
+        return Response(services.tester_enquete(enquete))
+
+    @action(detail=True, methods=['post'], url_path='emettre-jeton-invite')
+    def emettre_jeton_invite(self, request, pk=None):
+        """ZMKT11 — émet un jeton d'invitation (mode invités-seulement)."""
+        enquete = self.get_object()
+        jeton = services.emettre_jeton_invite(enquete)
+        return Response({'jeton': jeton})
+
 
 # ── XMKT28 — Événements marketing légers ────────────────────────────────────
 
@@ -5281,6 +5294,9 @@ def enquete_publique(request, token):
 
     enquete = Enquete.objects.filter(token=token, actif=True).first()
     if not enquete:
+        return Response({'detail': 'Enquête introuvable.'}, status=404)
+    jeton_invite = request.GET.get('invite')
+    if not services.acces_enquete_autorise(enquete, jeton_invite=jeton_invite):
         return Response({'detail': 'Enquête introuvable.'}, status=404)
     reponses_partielles = {}
     brut = request.GET.get('reponses')

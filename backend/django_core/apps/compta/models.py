@@ -8762,6 +8762,23 @@ class Enquete(models.Model):
     est_certification = models.BooleanField(
         default=False, verbose_name='Est une certification')
 
+    # ── ZMKT11 — mode d'accès, connexion requise, tentatives max ────────────
+    class ModeAcces(models.TextChoices):
+        LIEN_PUBLIC = 'lien_public', 'Lien public'
+        INVITES_SEULEMENT = 'invites_seulement', 'Invités seulement'
+
+    mode_acces = models.CharField(
+        max_length=20, choices=ModeAcces.choices,
+        default=ModeAcces.LIEN_PUBLIC, verbose_name="Mode d'accès")
+    connexion_requise = models.BooleanField(
+        default=False, verbose_name='Connexion requise (email de contact)')
+    tentatives_max = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name='Tentatives max par répondant')
+    # Jetons d'invitation valides (ZMKT11, mode invités-seulement) : liste de
+    # jetons émis explicitement, jamais un lien public ouvert.
+    jetons_invites = models.JSONField(
+        default=list, blank=True, verbose_name="Jetons d'invitation (JSON)")
+
     class Meta:
         verbose_name = 'Enquête'
         verbose_name_plural = 'Enquêtes'
