@@ -206,6 +206,21 @@ html {
   color-scheme: dark;
 }
 
+/* WJ95 — global <select> option fallback (systemic fix). `html { color-scheme:
+   dark }` above plus text-white inherited into <option> left desktop Chromium/
+   Windows rendering white-on-white — invisible until hovered — because
+   color-scheme alone doesn't guarantee an <option> background. A scoped
+   version of this fix already existed for 4 specific selects in
+   preview/toiture-3d-pro-11.astro; ported globally here so every <select> on
+   the site is covered without per-page opt-in. */
+select {
+  color-scheme: dark;
+}
+select option {
+  background-color: var(--color-nuit, #070b1d);
+  color: #fff;
+}
+
 body {
   text-rendering: optimizeLegibility;
 }
