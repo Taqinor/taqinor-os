@@ -1255,11 +1255,22 @@ class DemandeAllocationViewSet(_RhBaseViewSet):
 
 
 class TypeLigneParcoursViewSet(_RhBaseViewSet):
-    """Types de ligne de parcours configurables par société (ZRH15)."""
+    """Types de ligne de parcours configurables par société (ZRH15).
+
+    La LECTURE (liste/détail) est ouverte à TOUT employé authentifié de
+    la société — ces types s'affichent sur la fiche employé et dans
+    l'annuaire self-service ; seule l'écriture (créer/modifier/supprimer
+    un type) reste réservée au palier Administrateur/Responsable.
+    """
     queryset = TypeLigneParcours.objects.all()
     serializer_class = TypeLigneParcoursSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['ordre', 'libelle']
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [IsAnyRole()]
+        return super().get_permissions()
 
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)
@@ -1271,12 +1282,20 @@ class LigneParcoursViewSet(_RhBaseViewSet):
     triée par date (voir ``Meta.ordering``) sur la fiche employé et dans
     l'annuaire self-service (XRH28, via
     ``LigneParcoursAnnuaireSerializer`` — champs non sensibles
-    uniquement). Filtre : ``?employe=``.
+    uniquement). Filtre : ``?employe=``. La LECTURE (liste/détail) est
+    ouverte à TOUT employé authentifié de la société (consultation de sa
+    propre fiche/de l'annuaire) ; seule l'écriture reste réservée au
+    palier Administrateur/Responsable.
     """
     queryset = LigneParcours.objects.select_related('type', 'employe').all()
     serializer_class = LigneParcoursSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_debut', 'date_creation']
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [IsAnyRole()]
+        return super().get_permissions()
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -3549,13 +3568,23 @@ class BadgeReconnaissanceViewSet(_RhBaseViewSet):
     """Catalogue des badges de reconnaissance interne (ZRH14).
 
     Société scopée + Administrateur/Responsable (gate d'écriture du
-    catalogue). ``company`` posée côté serveur.
+    catalogue). La LECTURE (liste/détail) est ouverte à TOUT employé
+    authentifié de la société : la reconnaissance pair-à-pair (ZRH14)
+    suppose que chacun puisse consulter le catalogue (nom/icône/nombre
+    d'attributions) pour choisir un badge à attribuer — seule
+    l'écriture (créer/modifier/supprimer un badge) reste réservée au
+    palier Administrateur/Responsable. ``company`` posée côté serveur.
     """
     queryset = BadgeReconnaissance.objects.all()
     serializer_class = BadgeReconnaissanceSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['nom', 'description']
     ordering_fields = ['nom', 'date_creation']
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [IsAnyRole()]
+        return super().get_permissions()
 
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)

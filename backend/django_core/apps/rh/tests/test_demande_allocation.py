@@ -44,7 +44,8 @@ class DemandeAllocationTests(TestCase):
         self.user_a = make_user(self.co_a, 'da-user-a')
         self.responsable = make_user(
             self.co_a, 'da-resp', role='responsable')
-        self.user_b = make_user(self.co_b, 'da-user-b')
+        self.user_b = make_user(
+            self.co_b, 'da-user-b', role='responsable')
         self.dossier = DossierEmploye.objects.create(
             company=self.co_a, matricule='DA1', nom='N', prenom='P',
             user=self.user_a)

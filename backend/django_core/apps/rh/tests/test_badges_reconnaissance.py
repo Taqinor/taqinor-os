@@ -71,12 +71,16 @@ class BadgesReconnaissanceTests(TestCase):
 
     def test_crud_badges_company_scope(self):
         resp = auth(self.user_a).get(URL_BADGES)
-        noms = [b['nom'] for b in resp.data]
+        rows = resp.data['results'] if isinstance(resp.data, dict) \
+            else resp.data
+        noms = [b['nom'] for b in rows]
         self.assertIn("Esprit d'équipe", noms)
 
     def test_isolation_tenant(self):
         resp = auth(self.user_b).get(URL_BADGES)
-        self.assertEqual(len(resp.data), 0)
+        rows = resp.data['results'] if isinstance(resp.data, dict) \
+            else resp.data
+        self.assertEqual(len(rows), 0)
 
     def test_attribue_par_pose_cote_serveur(self):
         resp = auth(self.user_a).post(URL_ATTRIB, {
