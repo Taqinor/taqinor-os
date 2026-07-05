@@ -1824,6 +1824,9 @@ const signConfig = ok
                   class="sign-pad block w-full touch-none rounded-xl"
                   role="img"
                   aria-label="Zone de signature manuscrite — dessinez votre signature au doigt ou à la souris"
+                  data-aria-label-fr="Zone de signature manuscrite — dessinez votre signature au doigt ou à la souris"
+                  data-aria-label-en="Handwritten signature area — draw your signature with your finger or mouse"
+                  data-aria-label-ar="منطقة التوقيع اليدوي — ارسموا توقيعكم بإصبعكم أو بالفأرة"
                 ></canvas>
               </div>
               <p class="mt-1.5 text-xs text-lune-faint" data-i18n
@@ -2199,6 +2202,16 @@ const signConfig = ok
     document.querySelectorAll<HTMLInputElement>('[data-i18n-placeholder]').forEach((el) => {
       const value = isAr ? el.dataset.placeholderAr : isEn ? el.dataset.placeholderEn : el.dataset.placeholderFr;
       if (typeof value === 'string') el.placeholder = value;
+    });
+    // WJ99 — même registre que les placeholders ci-dessus, mais pour
+    // `aria-label` : cet attribut n'est PAS couvert par le mécanisme data-i18n
+    // (qui ne touche que le contenu affiché des nœuds `data-i18n`) — sans ce
+    // retraduction, un `aria-label` posé au premier rendu restait figé en
+    // français même après bascule EN/AR (CertLogoRow.astro `data-aria-label-*`,
+    // le canevas de signature `data-aria-label-*` ci-dessous).
+    document.querySelectorAll<HTMLElement>('[data-aria-label-fr]').forEach((el) => {
+      const value = isAr ? el.dataset.ariaLabelAr : isEn ? el.dataset.ariaLabelEn : el.dataset.ariaLabelFr;
+      if (typeof value === 'string') el.setAttribute('aria-label', value);
     });
   }
   prepareI18n();
