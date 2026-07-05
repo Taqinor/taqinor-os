@@ -145,6 +145,25 @@ tout seul aux nouveaux modèles.
 construit les objets via les factories `testkit`, jamais `objects.create` à la
 main.** Exemple d'usage : `core/tests/test_testkit.py`.
 
+## Mutation testing (qualité des assertions, pas juste la couverture)
+
+La couverture (% de lignes exécutées) ne dit rien de la QUALITÉ des
+assertions — un test peut exécuter une ligne sans jamais vérifier son
+résultat. `mutmut` (dép DEV, `setup.cfg [mutmut]`) mute volontairement un
+petit périmètre à haut risque — `apps/ventes/quote_engine/builder.py`,
+`apps/ventes/utils/references.py`, `apps/roles/models.py` — et vérifie que la
+suite existante tue chaque mutant. Lancé UNIQUEMENT par
+`.github/workflows/mutation.yml` (nightly + bouton, `continue-on-error`,
+jamais un gate par-commit — le coût est O(mutants × suite complète)).
+
+**Triage d'un mutant survivant** (rapport `mutmut results` / artefact CI) :
+* Assertion manquante → ajouter un test qui aurait tué ce mutant.
+* Mutant sémantiquement équivalent (le mutant produit le même comportement
+  observable, ex. `<` → `<=` sur une borne jamais atteinte) → whitelister
+  explicitement dans `setup.cfg` avec un commentaire justifiant pourquoi.
+Lancer localement sur un seul module : `mutmut run --paths-to-mutate
+apps/ventes/utils/references.py`.
+
 ## Pistes restantes
 * Parcours e2e par fonctionnalité pour les flux encore non couverts (stock,
   installations, SAV, reporting) : **scaffolds prêts** (`frontend/e2e/{stock,

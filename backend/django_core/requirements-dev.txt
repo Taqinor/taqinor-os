@@ -7,3 +7,7 @@ factory_boy==3.3.1
 
 # YTEST15 — deterministic time/random discipline (testkit/time.py)
 freezegun==1.5.1
+
+# YTEST9 — mutation testing on high-risk modules (nightly, non-blocking —
+# see .github/workflows/mutation.yml + setup.cfg [mutmut])
+mutmut==2.4.4
