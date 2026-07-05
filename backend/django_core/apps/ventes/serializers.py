@@ -3,7 +3,7 @@ from .models import (
     Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
     Avoir, LigneAvoir, DevisActivity, DevisPreset, RoofLayout,
     FicheTechnique, RemiseEncaissement, LigneRemiseEncaissement,
-    MandatPaiement, ListePrix, LignePrixListe,
+    MandatPaiement, ListePrix, LignePrixListe, RegleListePrix,
 )
 
 
@@ -815,16 +815,29 @@ class LignePrixListeSerializer(serializers.ModelSerializer):
         read_only_fields = ['id']
 
 
+class RegleListePrixSerializer(serializers.ModelSerializer):
+    """XSAL2 — règle de prix / palier de quantité."""
+    class Meta:
+        model = RegleListePrix
+        fields = [
+            'id', 'liste', 'produit', 'categorie_nom', 'marque',
+            'type_regle', 'valeur', 'quantite_min', 'priorite', 'actif',
+        ]
+        read_only_fields = ['id']
+
+
 class ListePrixSerializer(serializers.ModelSerializer):
-    """XSAL1 — liste de prix clients. `company` toujours forcée côté serveur
-    (jamais acceptée du body — voir ListePrixViewSet.perform_create)."""
+    """XSAL1/XSAL2 — liste de prix clients + ses règles de paliers.
+    `company` toujours forcée côté serveur (jamais acceptée du body — voir
+    ListePrixViewSet.perform_create)."""
     lignes = LignePrixListeSerializer(many=True, read_only=True)
+    regles = RegleListePrixSerializer(many=True, read_only=True)
     est_active = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = ListePrix
         fields = [
             'id', 'company', 'nom', 'devise', 'date_debut', 'date_fin',
-            'archived', 'created_at', 'lignes', 'est_active',
+            'archived', 'created_at', 'lignes', 'regles', 'est_active',
         ]
         read_only_fields = ['id', 'company', 'created_at']

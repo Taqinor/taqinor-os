@@ -2747,3 +2747,67 @@ class LignePrixListe(models.Model):
 
     def __str__(self):
         return f'{self.liste_id} / produit {self.produit_id}'
+
+
+class RegleListePrix(models.Model):
+    """XSAL2 — Règle de prix / palier de quantité sur une liste de prix.
+
+    Portée : produit précis (``produit``), catégorie (``categorie_nom``,
+    string-ref stock — jamais d'import de ``stock.models``), marque
+    (``marque``, string libre — miroir de ``Produit.marque``) ou tout le
+    catalogue (aucune portée renseignée). ``prix_applicable()`` retient la
+    règle la plus spécifique satisfaite par la quantité (priorité décroissante
+    : produit > catégorie > marque > catalogue, puis ``priorite`` explicite,
+    puis palier le plus élevé atteint). Aucune règle ne touche
+    ``prix_achat``."""
+    class TypeRegle(models.TextChoices):
+        PRIX_FIXE = 'prix_fixe', 'Prix fixe'
+        REMISE_PCT = 'remise_pct', 'Remise %'
+        FORMULE_SUR_PRIX_VENTE = 'formule_sur_prix_vente', 'Formule sur prix de vente'
+
+    liste = models.ForeignKey(
+        ListePrix, on_delete=models.CASCADE, related_name='regles')
+    produit = models.ForeignKey(
+        'stock.Produit', on_delete=models.CASCADE, null=True, blank=True,
+        related_name='regles_liste_prix')
+    categorie_nom = models.CharField(max_length=150, blank=True, default='')
+    marque = models.CharField(max_length=100, blank=True, default='')
+    type_regle = models.CharField(max_length=25, choices=TypeRegle.choices)
+    valeur = models.DecimalField(
+        max_digits=10, decimal_places=4,
+        help_text='Prix fixe (MAD), % de remise, ou coefficient formule selon type_regle.')
+    quantite_min = models.DecimalField(
+        max_digits=10, decimal_places=2, default=1,
+        help_text='Palier : quantité minimale pour que la règle s\'applique.')
+    priorite = models.PositiveIntegerField(
+        default=0, help_text='Priorité explicite (plus haut = préféré) à portée égale.')
+    actif = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = 'Règle de liste de prix'
+        verbose_name_plural = 'Règles de liste de prix'
+        ordering = ['-priorite', '-quantite_min']
+
+    def __str__(self):
+        return f'{self.liste_id} / {self.type_regle} (min {self.quantite_min})'
+
+    @property
+    def specificite(self):
+        """Rang de spécificité de portée : produit > catégorie > marque > catalogue."""
+        if self.produit_id:
+            return 3
+        if self.categorie_nom:
+            return 2
+        if self.marque:
+            return 1
+        return 0
+
+    def matches_produit(self, produit):
+        if self.produit_id:
+            return produit.pk == self.produit_id
+        if self.categorie_nom:
+            cat = getattr(produit, 'categorie', None)
+            return bool(cat) and cat.nom == self.categorie_nom
+        if self.marque:
+            return (produit.marque or '') == self.marque
+        return True

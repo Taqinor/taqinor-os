@@ -3717,25 +3717,74 @@ def create_devis_upsell_from_intervention(*, intervention, user):
     return devis
 
 
+def _round2(x):
+    """Arrondi MAD à 2 décimales, HALF_UP (comme le reste du module)."""
+    return Decimal(x).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+
+def _regle_applicable(regles, produit, quantite):
+    """XSAL2 — la règle la plus spécifique dont le palier est atteint.
+
+    Ordre : spécificité de portée (produit > catégorie > marque > catalogue)
+    d'abord, puis priorité explicite, puis palier le plus élevé atteint par
+    `quantite`. Une règle inactive ou dont le palier n'est pas atteint est
+    ignorée."""
+    candidates = [
+        r for r in regles
+        if r.actif and r.matches_produit(produit) and quantite >= r.quantite_min
+    ]
+    if not candidates:
+        return None
+    candidates.sort(
+        key=lambda r: (r.specificite, r.priorite, r.quantite_min), reverse=True)
+    return candidates[0]
+
+
+def _appliquer_regle(regle, prix_base):
+    """XSAL2 — applique une règle résolue au prix de base (jamais à
+    `prix_achat`)."""
+    if regle.type_regle == regle.TypeRegle.PRIX_FIXE:
+        return _round2(regle.valeur)
+    if regle.type_regle == regle.TypeRegle.REMISE_PCT:
+        return _round2(prix_base * (1 - regle.valeur / 100))
+    if regle.type_regle == regle.TypeRegle.FORMULE_SUR_PRIX_VENTE:
+        return _round2(prix_base * regle.valeur)
+    return _round2(prix_base)  # pragma: no cover - défensif, type inconnu
+
+
 def prix_applicable(*, produit, client=None, quantite=1):
-    """XSAL1 — Prix unitaire résolu pour un produit/client/quantité.
+    """XSAL1/XSAL2 — Prix unitaire résolu pour un produit/client/quantité.
 
     Ordre de résolution :
-      1. `client.liste_prix` (si assignée et active) → le prix de ligne fixe
-         (`LignePrixListe`) → sinon `produit.prix_vente`.
+      1. `client.liste_prix` (si assignée et active) → règles de paliers/
+         portée (XSAL2, la plus spécifique satisfaite par `quantite`) →
+         sinon le prix de ligne fixe (`LignePrixListe`) → sinon
+         `produit.prix_vente`.
       2. Sans liste (client=None, `liste_prix` vide, ou liste inactive) →
          `produit.prix_vente` (comportement historique, octet-identique).
 
     Ne renvoie et ne consulte JAMAIS `produit.prix_achat`. Renvoie un dict
-    `{"prix": Decimal, "source": "liste"|"standard", "liste_nom": str|None}`
-    pour que l'appelant (endpoint XSAL3) puisse afficher le badge « Tarif :
-    <nom de la liste> »."""
-    quantite = Decimal(str(quantite or 1))  # noqa: F841 - réservé XSAL2 (paliers)
+    `{"prix": Decimal, "source": "liste"|"regle"|"standard",
+    "liste_nom": str|None}` pour que l'appelant (endpoint XSAL3) puisse
+    afficher le badge « Tarif : <nom de la liste> »."""
+    quantite = Decimal(str(quantite or 1))
     prix_standard = produit.prix_vente
 
     liste = getattr(client, 'liste_prix', None) if client is not None else None
     if liste is None or not liste.est_active:
         return {'prix': prix_standard, 'source': 'standard', 'liste_nom': None}
+
+    regles = list(liste.regles.filter(actif=True).select_related('produit'))
+    regle = _regle_applicable(regles, produit, quantite)
+    if regle is not None:
+        prix_ligne = liste.lignes.filter(produit=produit).values_list(
+            'prix_unitaire', flat=True).first()
+        base = prix_ligne if prix_ligne is not None else prix_standard
+        return {
+            'prix': _appliquer_regle(regle, base),
+            'source': 'regle',
+            'liste_nom': liste.nom,
+        }
 
     ligne = liste.lignes.filter(produit=produit).first()
     if ligne is not None:

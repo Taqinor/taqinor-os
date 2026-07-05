@@ -1,10 +1,11 @@
-"""XSAL1 — Listes de prix clients (détail / revendeur / export).
+"""XSAL1/XSAL2 — Listes de prix clients + règles de paliers de quantité.
 
 Endpoints :
   GET/POST      /ventes/listes-prix/                  list/create
   GET/PUT/PATCH /ventes/listes-prix/{id}/              retrieve/update
   DELETE        /ventes/listes-prix/{id}/              destroy
   POST          /ventes/listes-prix/{id}/lignes/       ajouter/mettre à jour un prix
+  POST          /ventes/listes-prix/{id}/regles/       ajouter une règle de palier
 
 Écriture réservée responsable/admin (une liste de prix révisée agit sur les
 devis de tous les vendeurs) ; lecture ouverte à tout rôle authentifié de la
@@ -18,13 +19,15 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from ..models import ListePrix, LignePrixListe
-from ..serializers import ListePrixSerializer, LignePrixListeSerializer
+from ..serializers import (
+    ListePrixSerializer, LignePrixListeSerializer, RegleListePrixSerializer,
+)
 
 READ_ACTIONS = ['list', 'retrieve']
 
 
 class ListePrixViewSet(viewsets.ModelViewSet):
-    queryset = ListePrix.objects.prefetch_related('lignes').all()
+    queryset = ListePrix.objects.prefetch_related('lignes', 'regles').all()
     serializer_class = ListePrixSerializer
 
     def get_permissions(self):
@@ -65,3 +68,14 @@ class ListePrixViewSet(viewsets.ModelViewSet):
         )
         return Response(
             LignePrixListeSerializer(ligne).data, status=200)
+
+    @action(detail=True, methods=['post'])
+    def regles(self, request, pk=None):
+        """Ajoute une règle de prix/palier à cette liste (XSAL2)."""
+        liste = self.get_object()
+        serializer = RegleListePrixSerializer(data={
+            **request.data, 'liste': liste.id,
+        })
+        serializer.is_valid(raise_exception=True)
+        serializer.save(liste=liste)
+        return Response(serializer.data, status=201)
