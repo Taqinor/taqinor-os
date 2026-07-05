@@ -326,6 +326,70 @@ CELERY_TASK_ACKS_LATE = True
 CELERY_TASK_REJECT_ON_WORKER_LOST = True
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 
+# YOPSB9 — isolation des queues Celery par classe de travail. Sans ceci,
+# toutes les tâches (rendu PDF interactif déclenché par un commercial, digests
+# planifiés, sweeps de rétention, webhooks) partagent la queue `default` : un
+# batch de nuit peut affamer un rendu PDF synchrone. Trois queues :
+#   * `interactive` — rendus PDF déclenchés par une action utilisateur
+#     synchrone (ventes.generate_*_pdf) + transcription vocale (chat.transcribe_*) ;
+#   * `scheduled` — tout job planifié via Celery Beat (voir beat_schedule
+#     dans erp_agentique/celery.py — TOUTES les tâches qui y apparaissent
+#     sont, par construction, des jobs planifiés) ;
+#   * `default` — le reste (webhooks entrants, tâches déclenchées par un
+#     signal/événement synchrone non listé ci-dessus).
+#
+# AUCUN changement de comportement par défaut : une seule commande worker
+# (`celery -A erp_agentique worker`) consomme TOUJOURS les 3 queues sans
+# argument `-Q` (Celery route selon `task_routes` mais un worker sans `-Q`
+# explicite écoute la/les queue(s) par défaut UNIQUEMENT — voir
+# docs/CODEMAP.md pour la commande `-Q default,interactive,scheduled` à
+# utiliser pour que le worker unique consomme bien les 3).
+CELERY_TASK_ROUTES = {
+    'ventes.generate_devis_pdf': {'queue': 'interactive'},
+    'ventes.generate_facture_pdf': {'queue': 'interactive'},
+    'chat.transcribe_voice_attachment': {'queue': 'interactive'},
+    # Toutes les tâches planifiées (beat_schedule) → `scheduled`.
+    'ventes.check_overdue_factures': {'queue': 'scheduled'},
+    'ventes.expire_stale_devis': {'queue': 'scheduled'},
+    'ventes.relance_reminders': {'queue': 'scheduled'},
+    'ventes.devis_followup_nudges': {'queue': 'scheduled'},
+    'ventes.releve_mensuel_reminders': {'queue': 'scheduled'},
+    'crm.appointment_reminders': {'queue': 'scheduled'},
+    'crm.recycler_leads_non_travailles': {'queue': 'scheduled'},
+    'notifications.daily_digest': {'queue': 'scheduled'},
+    'notifications.weekly_digest': {'queue': 'scheduled'},
+    'notifications.sweep_daily': {'queue': 'scheduled'},
+    'automation.time_triggers_daily': {'queue': 'scheduled'},
+    'reporting.email_saved_reports': {'queue': 'scheduled'},
+    'reporting.evaluate_kpi_alertes': {'queue': 'scheduled'},
+    'reporting.controle_integrite': {'queue': 'scheduled'},
+    'ged.purge_corbeille_echue': {'queue': 'scheduled'},
+    'ged.signature_relances_expiration': {'queue': 'scheduled'},
+    'ged.verifier_integrite_archives': {'queue': 'scheduled'},
+    'ged.notifier_emetteurs_expiration_signature': {'queue': 'scheduled'},
+    'contrats.generer_factures_recurrentes_dues': {'queue': 'scheduled'},
+    'contrats.reconductions_et_alertes_daily': {'queue': 'scheduled'},
+    'chat.send_scheduled_messages': {'queue': 'scheduled'},
+    'chat.send_due_reminders': {'queue': 'scheduled'},
+    'chat.retention_sweep': {'queue': 'scheduled'},
+    'installations.rappel_rdv_j1': {'queue': 'scheduled'},
+    'installations.meteo_planning_j3': {'queue': 'scheduled'},
+    'rh.alertes_expiration': {'queue': 'scheduled'},
+    'rh.alertes_cdd': {'queue': 'scheduled'},
+    'sav.generer_visites_dues_quotidien': {'queue': 'scheduled'},
+    'stock.recompute_reordering': {'queue': 'scheduled'},
+    'core.dump_database': {'queue': 'scheduled'},
+    'core.restore_drill': {'queue': 'scheduled'},
+    'core.purge_backups': {'queue': 'scheduled'},
+}
+# Le worker par défaut (sans -Q) écoute la queue nommée dans
+# task_default_queue — on la garde `default` pour ne rien casser ; en
+# production, lancer le worker avec `-Q default,interactive,scheduled` pour
+# qu'un worker UNIQUE consomme bien les 3 (comportement mono-worker inchangé
+# tant que ce -Q n'est pas explicitement restreint — voir
+# docs/deploy-prod / docker-compose.prod.yml).
+CELERY_TASK_DEFAULT_QUEUE = 'default'
+
 # Email — django-anymail (N87). Compte d'envoi configurable : Brevo (ex-
 # Sendinblue) via BREVO_API_KEY, ou SendGrid (héritage), ou SMTP. SANS clé,
 # EMAIL_BACKEND reste le backend console → l'envoi est un NO-OP qui préserve le

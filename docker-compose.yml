@@ -71,7 +71,14 @@ services:
     # Le dossier backend/celery_worker/ contient des tâches Celery additionnelles
     # à intégrer dans django_core/erp_agentique/celery.py si nécessaire.
     build: ./backend/django_core
-    command: celery -A erp_agentique worker -l info
+    # YOPSB9 — le worker unique consomme les 3 queues (default/interactive/
+    # scheduled — cf. CELERY_TASK_ROUTES dans settings/base.py) : sans -Q
+    # explicite, un worker Celery n'écoute QUE `default` et les tâches
+    # routées vers interactive/scheduled ne seraient jamais consommées.
+    # Comportement inchangé (toujours un seul worker, toutes les tâches
+    # traitées) ; poser un worker DÉDIÉ `interactive` en prod si besoin de
+    # séparation réelle (`celery -A erp_agentique worker -Q interactive`).
+    command: celery -A erp_agentique worker -l info -Q default,interactive,scheduled
     volumes:
       - ./backend/django_core:/app
       - ./STAGES.py:/opt/STAGES.py:ro
