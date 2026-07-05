@@ -287,7 +287,11 @@ def _releve_data(client, user=None):
     for f in factures:
         paye = f.montant_paye
         avo = f.avoirs_total
-        du = f.montant_du
+        # XFAC25 — une facture déjà soldée (payée) ne compte jamais dans
+        # l'encours du relevé, même si son solde brut n'est pas nul (ex.
+        # statut forcé sans paiement enregistré) : le statut fait foi, comme
+        # pour la liste des impayés/balance âgée (_facture_due_rows).
+        du = f.montant_du if f.statut != Facture.Statut.PAYEE else Decimal('0')
         total_facture += f.total_ttc
         total_paye += paye
         total_avoir += avo
