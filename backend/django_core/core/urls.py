@@ -47,6 +47,7 @@ from .views import (
     WorkflowTemplateViewSet,
     health_live,
     health_ready,
+    metrics_view,
     secrets_rotation_due,
 )
 
@@ -114,4 +115,6 @@ urlpatterns = router.urls + [
     path('health/ready/', health_ready, name='health-ready'),
     # YHARD5 — tableau « Secrets & rotation » (admin-only, jamais la valeur).
     path('secrets/rotation/', secrets_rotation_due, name='secrets-rotation-due'),
+    # YHARD6 — métriques Prometheus (admin OU IP-allowlist, jamais public).
+    path('metrics/', metrics_view, name='metrics'),
 ]

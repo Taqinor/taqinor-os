@@ -258,4 +258,33 @@ app.conf.beat_schedule = {
         'task': 'core.run_retention',
         'schedule': crontab(hour=2, minute=0),
     },
+    # YHARD6 — heartbeat du beat (toutes les 5 min) : alimente /metrics et
+    # core/health.py (détection d'un beat arrêté).
+    'core-beat-heartbeat': {
+        'task': 'core.beat_heartbeat',
+        'schedule': crontab(minute='*/5'),
+    },
 }
+
+# YHARD6 — compteurs Celery succès/échec (process-local, best-effort) pour
+# l'endpoint /metrics. Enregistrés au niveau du signal Celery (pas Django) :
+# fonctionne aussi bien côté worker que côté beat, sans importer d'app métier.
+from celery.signals import task_success, task_failure  # noqa: E402
+
+
+@task_success.connect
+def _yhard6_on_task_success(**kwargs):
+    try:
+        from core import metrics
+        metrics.record_task_success()
+    except Exception:  # noqa: BLE001 — best-effort, ne doit jamais casser Celery
+        pass
+
+
+@task_failure.connect
+def _yhard6_on_task_failure(**kwargs):
+    try:
+        from core import metrics
+        metrics.record_task_failure()
+    except Exception:  # noqa: BLE001 — best-effort, ne doit jamais casser Celery
+        pass

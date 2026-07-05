@@ -864,3 +864,46 @@ def secrets_rotation_due(request):
             due.extend(integrations_infra.secrets_due_for_rotation(c))
 
     return Response({'count': len(due), 'results': due})
+
+
+def _client_ip(request):
+    forwarded = request.META.get('HTTP_X_FORWARDED_FOR', '')
+    if forwarded:
+        return forwarded.split(',')[0].strip()
+    return request.META.get('REMOTE_ADDR', '')
+
+
+# YHARD6 — endpoint /metrics (format texte Prometheus). JAMAIS public : soit un
+# utilisateur admin authentifié (session/JWT), soit l'IP du caller figure dans
+# ``settings.METRICS_ALLOWED_IPS`` (scrape Prometheus sans session). Vide par
+# défaut = admin-only (aucune IP autorisée). Ne plante jamais : une IP hors
+# liste + non-admin reçoit 403, jamais une 500.
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@authentication_classes([])
+def metrics_view(request):
+    from django.conf import settings
+    from django.http import HttpResponse
+
+    from authentication.cookie_auth import CookieJWTAuthentication
+
+    from . import metrics as metrics_infra
+
+    allowed_ips = set(getattr(settings, 'METRICS_ALLOWED_IPS', []) or [])
+    ip_ok = bool(allowed_ips) and _client_ip(request) in allowed_ips
+
+    admin_ok = False
+    if not ip_ok:
+        try:
+            auth_result = CookieJWTAuthentication().authenticate(request)
+        except Exception:  # noqa: BLE001 — jeton absent/invalide → non-admin
+            auth_result = None
+        if auth_result is not None:
+            user, _token = auth_result
+            admin_ok = bool(getattr(user, 'is_admin_role', False))
+
+    if not (ip_ok or admin_ok):
+        return Response({'detail': 'Accès /metrics non autorisé.'}, status=403)
+
+    body = metrics_infra.render_prometheus_text()
+    return HttpResponse(body, content_type='text/plain; version=0.0.4')

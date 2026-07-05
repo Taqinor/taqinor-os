@@ -591,3 +591,17 @@ try:
         AI_PROVIDERS = {}
 except (ValueError, TypeError):
     AI_PROVIDERS = {}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# YHARD6 — endpoint /metrics (Prometheus). JAMAIS public par défaut : la vue
+# (core/views.py::metrics_view) exige soit un utilisateur authentifié admin
+# (IsAdminRole), soit — pour un scrape Prometheus sans session — une IP dans
+# cet allowlist (ex. l'IP du serveur de monitoring interne). Vide par défaut =
+# accès admin-only uniquement (aucune IP autorisée). ``django-prometheus`` est
+# une dépendance OSS OPTIONNELLE (cf. requirements.txt) pour les métriques
+# HTTP/DB standard ; l'endpoint fonctionne même sans elle (collecteurs custom
+# YHARD6 en pur stdlib, cf. core/metrics.py).
+METRICS_ALLOWED_IPS = [
+    ip.strip() for ip in os.environ.get('METRICS_ALLOWED_IPS', '').split(',')
+    if ip.strip()
+]
