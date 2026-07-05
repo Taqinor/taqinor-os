@@ -39,8 +39,14 @@ def _company(slug):
 
 
 def _user(company, username, is_admin=True, permissions=None):
-    role = Role.objects.create(
-        company=company, nom=f'r-{username}', permissions=permissions or [])
+    # Un Role fin n'est créé QUE si des permissions explicites sont passées :
+    # sinon `is_admin_role`/`is_responsable` retombent sur
+    # `'roles_gerer' in role.permissions` (False pour un rôle vide) au lieu du
+    # repli légitime par `role_legacy` (ERR4, authentication/models.py).
+    role = None
+    if permissions is not None:
+        role = Role.objects.create(
+            company=company, nom=f'r-{username}', permissions=permissions)
     return User.objects.create_user(
         username=username, password='x', company=company, role=role,
         role_legacy='admin' if is_admin else 'responsable')

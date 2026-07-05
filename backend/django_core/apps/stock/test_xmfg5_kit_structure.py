@@ -33,8 +33,14 @@ def _company(slug):
 
 
 def _user(company, username, role_legacy='responsable', permissions=None):
-    role = Role.objects.create(
-        company=company, nom=f'r-{username}', permissions=permissions or [])
+    # Un Role fin n'est créé QUE si des permissions explicites sont passées
+    # (comme test_xpur1_conformite_fournisseur.py) : sinon `is_responsable`
+    # retomberait sur `_role_grants_write([])` → False, cassant le repli
+    # historique par `role_legacy` (ERR4, authentication/models.py).
+    role = None
+    if permissions is not None:
+        role = Role.objects.create(
+            company=company, nom=f'r-{username}', permissions=permissions)
     return User.objects.create_user(
         username=username, password='x', company=company, role=role,
         role_legacy=role_legacy)

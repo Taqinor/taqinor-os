@@ -38,8 +38,14 @@ def _company(slug):
 
 
 def _user(company, username, permissions=None, role_legacy='responsable'):
-    role = Role.objects.create(
-        company=company, nom=f'r-{username}', permissions=permissions or [])
+    # Un Role fin n'est créé QUE si des permissions explicites sont passées :
+    # sinon `is_admin_role`/`is_responsable` retombent sur
+    # `'roles_gerer' in role.permissions` (False pour un rôle vide) au lieu du
+    # repli légitime par `role_legacy` (ERR4, authentication/models.py).
+    role = None
+    if permissions is not None:
+        role = Role.objects.create(
+            company=company, nom=f'r-{username}', permissions=permissions)
     return User.objects.create_user(
         username=username, password='x', company=company, role=role,
         role_legacy=role_legacy)
@@ -140,7 +146,10 @@ class TestEndpoints(Xstk10Base):
             f'/api/django/stock/produits/{self.produit.id}/rebuter/',
             {'quantite': 3, 'motif': 'obsolete'}, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
-        self.assertEqual(resp.data['valeur_perdue'], '3000')
+        # prix_achat porte 2 décimales (DecimalField) : le rendu str() suit la
+        # même convention monétaire que le reste de l'API (ex. `solde_du`
+        # facture fournisseur) — 1000.00 × 3 = 3000.00, pas '3000'.
+        self.assertEqual(resp.data['valeur_perdue'], '3000.00')
         self.produit.refresh_from_db()
         self.assertEqual(self.produit.quantite_stock, 7)
 
