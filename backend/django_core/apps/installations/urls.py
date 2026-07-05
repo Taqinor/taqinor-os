@@ -6,6 +6,8 @@ from .views import (
     CommissioningRecordViewSet, StageModeleViewSet,
     ChecklistTemplateViewSet, ChecklistEtapeModeleViewSet, ShotListSlotViewSet,
     SafetyChecklistSlotViewSet,
+    FicheInterventionTemplateViewSet, FicheInterventionChampViewSet,
+    RecurrenceInterventionViewSet,
     JalonProjetViewSet, ModeleProjetViewSet, ReunionChantierViewSet,
     DocumentProjetViewSet, RevisionDocumentViewSet, FieldSyncView,
     ProjetViewSet, ProjetTacheViewSet, ProjetChantierViewSet,
@@ -82,6 +84,9 @@ router.register(r'etapes-chantier', StageModeleViewSet)
 router.register(r'checklist-templates', ChecklistTemplateViewSet)
 router.register(r'checklist-etapes', ChecklistEtapeModeleViewSet)
 router.register(r'shotlist-slots', ShotListSlotViewSet)
+router.register(r'fiche-intervention-templates', FicheInterventionTemplateViewSet)
+router.register(r'fiche-intervention-champs', FicheInterventionChampViewSet)
+router.register(r'recurrences-intervention', RecurrenceInterventionViewSet)
 router.register(r'consignes-securite', SafetyChecklistSlotViewSet)
 router.register(r'jalons-projet', JalonProjetViewSet)
 router.register(r'modeles-projet', ModeleProjetViewSet)

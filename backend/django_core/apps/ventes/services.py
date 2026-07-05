@@ -3553,3 +3553,165 @@ def debiter_mandat_pour_facture(*, facture, periode, retry_index=0):
         pass
 
     return None
+
+
+# ── ZFSM4 — Facturation directe d'une intervention hors contrat/ticket ──────
+# apps.installations ne peut PAS importer apps.ventes.models directement
+# (règle de modularité CLAUDE.md) : cette fonction est son unique porte
+# d'entrée pour générer une facture brouillon depuis une intervention payante
+# (dépannage résidentiel facturé sur place, prestation ponctuelle) — DISTINCT
+# de XFSM1/XCTR4 qui facturent depuis un TICKET SAV.
+
+def generer_facture_intervention(*, intervention, user):
+    """ZFSM4 — construit une ``Facture`` BROUILLON pour une intervention hors
+    contrat/ticket : lignes matériel depuis ``ConsommationLigne`` (prix de
+    VENTE catalogue, JAMAIS ``prix_achat``) + ligne main-d'œuvre (durée F15
+    ``field_capture.crew_time`` × ``CompanyProfile.taux_horaire_sav``, le
+    taux horaire paramétrable réutilisé de XFSM1 — pas de nouveau champ).
+
+    Référence via ``apps.ventes.utils.references`` (jamais count()+1). PDF
+    legacy (pas ``/proposal`` — règle #4 : ce chemin ne touche jamais le
+    moteur de devis client).
+
+    IDEMPOTENT : si ``intervention.facture_id`` pointe déjà vers une facture
+    non annulée, la renvoie telle quelle plutôt que d'en créer une seconde.
+    Renvoie la ``Facture`` créée (ou réutilisée)."""
+    from .models import Facture, LigneFacture
+    from .utils.company_settings import tva_standard
+    from .utils.references import create_with_reference
+
+    if intervention.facture_id:
+        existante = Facture.objects.filter(
+            pk=intervention.facture_id, company=intervention.company
+        ).exclude(statut=Facture.Statut.ANNULEE).first()
+        if existante is not None:
+            return existante
+
+    installation = intervention.installation
+    if installation is None or installation.client_id is None:
+        raise ValueError(
+            "generer_facture_intervention requires an intervention attached "
+            "to a chantier with a resolved client")
+    client = installation.client
+    company = intervention.company or installation.company
+    taux_tva_defaut = tva_standard(company)
+
+    def _create(ref):
+        return Facture.objects.create(
+            reference=ref, company=company, client=client,
+            statut=Facture.Statut.BROUILLON,
+            type_facture=Facture.TypeFacture.COMPLETE,
+            libelle=(f'Intervention {intervention.get_type_intervention_display()} '
+                     f'— {installation.reference}'),
+            created_by=user,
+        )
+
+    facture = create_with_reference(Facture, 'FAC', company, _create)
+
+    consommation = getattr(intervention, 'consommation', None)
+    if consommation is not None:
+        for ligne in consommation.lignes.all():
+            produit = ligne.produit
+            quantite = ligne.quantite_utilisee
+            if produit is None or not quantite:
+                continue
+            LigneFacture.objects.create(
+                facture=facture, produit=produit,
+                designation=ligne.designation or produit.nom,
+                quantite=quantite,
+                prix_unitaire=Decimal(str(produit.prix_vente or 0)),
+                taux_tva=(produit.tva if produit.tva is not None
+                          else taux_tva_defaut),
+            )
+
+    from apps.installations import field_capture
+    heures_min = field_capture.crew_time(intervention).get('duree_sur_site_min')
+    if heures_min:
+        profile_taux = None
+        try:
+            from apps.parametres.models import CompanyProfile
+            profile_taux = CompanyProfile.get(company).taux_horaire_sav
+        except Exception:  # pragma: no cover - défensif
+            profile_taux = None
+        if profile_taux is not None:
+            heures = (Decimal(heures_min) / Decimal(60)).quantize(
+                Decimal('0.01'), rounding=ROUND_HALF_UP)
+            mo_produit = _main_oeuvre_produit(company)
+            LigneFacture.objects.create(
+                facture=facture, produit=mo_produit,
+                designation="Main-d'œuvre",
+                quantite=heures, prix_unitaire=Decimal(str(profile_taux)),
+                taux_tva=taux_tva_defaut,
+            )
+
+    intervention.facture_id = facture.id
+    intervention.save(update_fields=['facture_id'])
+    logger.info(
+        'ZFSM4: facture %s créée depuis intervention %s (company %s)',
+        facture.reference, intervention.id, getattr(company, 'id', '?'))
+    return facture
+
+
+# ── ZFSM5 — Devis d'upsell créé sur place depuis l'intervention ────────────
+# apps.installations ne peut PAS importer apps.ventes.models directement
+# (règle de modularité CLAUDE.md) : cette fonction est son unique porte
+# d'entrée pour générer un devis brouillon d'upsell depuis une intervention
+# (opportunité vue sur place — 2ᵉ site, batterie, extension) — DISTINCT de
+# XFSM18 (réserve → devis de RÉPARATION, reprise d'un défaut).
+
+def create_devis_upsell_from_intervention(*, intervention, user):
+    """ZFSM5 — crée un DEVIS brouillon d'upsell à partir d'une intervention,
+    pour le cas où le technicien voit une opportunité sur place. Le client
+    est celui du CHANTIER (`intervention.installation.client`, déjà résolu —
+    pattern `create_devis_from_reserve`, aucune re-résolution lead
+    nécessaire). La description est pré-remplie depuis le chantier/type
+    d'intervention ; aucune ligne n'est créée (une LigneDevis exige un
+    Produit du catalogue) — le devis brouillon est laissé à compléter dans
+    l'éditeur.
+
+    Le devis reste ``brouillon`` : ce service CRÉE, il ne change aucun statut
+    aval (règle #4). Aucun impact sur `/proposal`.
+
+    IDEMPOTENT : si ``intervention.devis_upsell_id`` pointe déjà vers un
+    devis existant, le renvoie tel quel plutôt que d'en créer un second.
+    Renvoie le ``Devis`` créé (ou réutilisé)."""
+    from .models import Devis
+    from .utils.references import create_with_reference
+
+    if intervention.devis_upsell_id:
+        existant = Devis.objects.filter(
+            pk=intervention.devis_upsell_id, company=intervention.company
+        ).first()
+        if existant is not None:
+            return existant
+
+    installation = intervention.installation
+    if installation is None or installation.client_id is None:
+        raise ValueError(
+            "create_devis_upsell_from_intervention requires an intervention "
+            "attached to a chantier with a resolved client")
+    client = installation.client
+    company = intervention.company or installation.company
+
+    note = (
+        "Devis d'upsell généré depuis une intervention sur place.\n"
+        f"Chantier : {installation.reference}\n"
+        f"Type d'intervention : {intervention.get_type_intervention_display()}")
+
+    def _create(ref):
+        return Devis.objects.create(
+            company=company,
+            reference=ref,
+            client=client,
+            statut=Devis.Statut.BROUILLON,
+            created_by=user,
+            note=note,
+        )
+
+    devis = create_with_reference(Devis, 'DEV', company, _create)
+    intervention.devis_upsell_id = devis.id
+    intervention.save(update_fields=['devis_upsell_id'])
+    logger.info(
+        'ZFSM5: devis upsell %s créé depuis intervention %s (company %s)',
+        devis.reference, intervention.id, getattr(company, 'id', '?'))
+    return devis

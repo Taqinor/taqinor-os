@@ -31,6 +31,7 @@ from .models_intervention import (
     InterventionActivity,
     InstallationActivity,
     TypeInterventionPlan,
+    RecurrenceIntervention,
 )
 from .models_chantier import (
     ChecklistTemplate,
@@ -59,6 +60,10 @@ from .models_field import (
     SafetySignoff,
     SafetyCheckItem,
     FieldOp,
+    FicheInterventionTemplate,
+    FicheInterventionChamp,
+    FicheInterventionReleve,
+    FicheInterventionValeur,
 )
 from .models_projet import (
     JalonProjet,
@@ -215,6 +220,7 @@ __all__ = [
     'InterventionActivity',
     'InstallationActivity',
     'TypeInterventionPlan',
+    'RecurrenceIntervention',
     'ChecklistTemplate',
     'ChecklistEtapeModele',
     'StageModele',
@@ -239,6 +245,10 @@ __all__ = [
     'SafetySignoff',
     'SafetyCheckItem',
     'FieldOp',
+    'FicheInterventionTemplate',
+    'FicheInterventionChamp',
+    'FicheInterventionReleve',
+    'FicheInterventionValeur',
     'JalonProjet',
     'ModeleProjet',
     'ModeleProjetJalon',

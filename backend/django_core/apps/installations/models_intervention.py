@@ -194,6 +194,17 @@ class Intervention(models.Model):
         max_length=64, unique=True, null=True, blank=True, editable=False,
         help_text="Jeton public du lien « technicien en route » (XFSM7).")
 
+    # ── ZFSM2 — lien public tokenisé du compte-rendu signé ───────────────────
+    # Jeton DISTINCT du lien « en route » (XFSM7 ci-dessus) : XFSM7 ne couvre
+    # QUE le suivi de visite, jamais le compte-rendu final (F19). Même patron
+    # (secrets.token_urlsafe(32), lazy, unique). Généré à la validation de
+    # l'intervention (statut « Validée ») — n'expire jamais par date (le
+    # compte-rendu d'une intervention ancienne reste consultable), mais reste
+    # révocable en vidant le champ.
+    lien_rapport_token = models.CharField(
+        max_length=64, unique=True, null=True, blank=True, editable=False,
+        help_text="Jeton public du lien compte-rendu signé (ZFSM2).")
+
     # ── XFSM21 — météo sur le planning (travaux toiture) ─────────────────────
     # Prévision J+3 (Open-Meteo, gratuit, sans clé) récupérée par la tâche Beat
     # quotidienne pour les interventions POSE planifiées. None = pas encore
@@ -211,6 +222,22 @@ class Intervention(models.Model):
     # interventions qu'il a lui-même annulées (tracé dans `motif_annulation`).
     annulee = models.BooleanField(default=False)
     motif_annulation = models.CharField(max_length=255, blank=True, null=True)
+
+    # ── ZFSM4 — facturation directe d'une intervention hors contrat ─────────
+    # ID de la ``ventes.Facture`` brouillon générée depuis cette intervention
+    # (string-FK par id, JAMAIS un import du modèle ``ventes.Facture`` — règle
+    # de modularité). Nullable : la génération de facture est une action
+    # optionnelle ; posé une fois pour ne jamais double-facturer (idempotent).
+    facture_id = models.PositiveIntegerField(null=True, blank=True)
+
+    # ── ZFSM5 — devis d'upsell créé sur place depuis l'intervention ─────────
+    # ID du ``ventes.Devis`` brouillon d'upsell (string-FK par id, jamais un
+    # import du modèle ``ventes.Devis`` — règle de modularité), pour la
+    # traçabilité DEPUIS l'intervention. DISTINCT de `Reserve.devis_repare_id`
+    # (XFSM18, réserve→devis de réparation) : ceci couvre l'opportunité vue
+    # sur place (2ᵉ site, batterie, extension), pas la reprise d'un défaut.
+    # Nullable : une seule action optionnelle par intervention.
+    devis_upsell_id = models.PositiveIntegerField(null=True, blank=True)
 
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
@@ -254,6 +281,20 @@ class Intervention(models.Model):
         # Comparaison sur la DATE seule (évite tout souci de fuseau horaire) :
         # expiré si aujourd'hui > date_prevue + 1 jour.
         return timezone.localdate() > (self.date_prevue + timedelta(days=1))
+
+    def ensure_lien_rapport_token(self):
+        """ZFSM2 — génère (lazily) et renvoie le jeton public du lien
+        compte-rendu signé. Idempotent : si le jeton existe déjà, le retourne
+        tel quel sans écriture. Même patron que ``ensure_lien_client_token``
+        (XFSM7) / ``sav.Ticket.ensure_share_token`` (FG86) — un jeton
+        DISTINCT, car XFSM7 ne couvre que le suivi « en route »."""
+        if self.lien_rapport_token:
+            return self.lien_rapport_token
+        import secrets
+        token = secrets.token_urlsafe(32)
+        self.lien_rapport_token = token
+        self.save(update_fields=['lien_rapport_token'])
+        return self.lien_rapport_token
 
 
 class InterventionActivity(models.Model):
@@ -363,3 +404,60 @@ class TypeInterventionPlan(models.Model):
     def __str__(self):
         return (f'{self.get_type_installation_display()} — '
                 f'{self.type_intervention_cle} (#{self.ordre})')
+
+
+# ── ZFSM3 — Interventions récurrentes autonomes ──────────────────────────────
+class RecurrenceIntervention(models.Model):
+    """ZFSM3 — gabarit de RÉCURRENCE temporelle pour une prestation périodique
+    SANS contrat de maintenance (ex. nettoyage trimestriel des panneaux,
+    contrôle semestriel d'un site). DISTINCT de `ContratMaintenance`
+    (FG40/FG82/FG88, récurrence PORTÉE PAR un contrat) et de
+    `TypeInterventionPlan` (FG79, une CHAÎNE ponctuelle matérialisée une seule
+    fois à la création du chantier, pas une récurrence temporelle).
+
+    Génère la PROCHAINE `Intervention` à échéance via
+    `manage.py generer_interventions_recurrentes` (branchable Celery beat,
+    pattern FG1/XPRJ13 — voir `apps.gestion_projet.models.RecurrenceTache` /
+    `services.generer_taches_recurrentes`). `prochaine_echeance` avance à
+    chaque génération ; la récurrence s'arrête à `date_fin` OU après
+    `nb_occurrences` (optionnels ; ni l'un ni l'autre = récurrence sans fin).
+    Additif — company-scopé."""
+
+    class Regle(models.TextChoices):
+        MENSUELLE = 'mensuelle', 'Mensuelle'
+        TRIMESTRIELLE = 'trimestrielle', 'Trimestrielle'
+        SEMESTRIELLE = 'semestrielle', 'Semestrielle'
+        ANNUELLE = 'annuelle', 'Annuelle'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='recurrences_intervention')
+    installation = models.ForeignKey(
+        Installation, on_delete=models.CASCADE,
+        related_name='recurrences_intervention')
+    # Clé du type d'intervention (texte, pattern TypeInterventionPlan — pas de
+    # FK rigide pour permettre la création avant que le type existe).
+    type_intervention = models.CharField(max_length=20)
+    technicien_defaut = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='recurrences_intervention_defaut')
+    regle = models.CharField(max_length=15, choices=Regle.choices)
+    intervalle = models.PositiveSmallIntegerField(default=1)
+    prochaine_echeance = models.DateField()
+    date_fin = models.DateField(null=True, blank=True)
+    nb_occurrences = models.PositiveIntegerField(null=True, blank=True)
+    nb_generees = models.PositiveIntegerField(default=0)
+    actif = models.BooleanField(default=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Récurrence d'intervention"
+        verbose_name_plural = "Récurrences d'intervention"
+        ordering = ['prochaine_echeance', 'id']
+        indexes = [
+            models.Index(fields=['actif', 'prochaine_echeance'],
+                         name='inst_recur_actif_echeance_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.type_intervention} ({self.get_regle_display()})'

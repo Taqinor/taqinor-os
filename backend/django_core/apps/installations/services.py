@@ -3163,3 +3163,102 @@ def cloturer_lot_prelevement(lot):
     lot.statut = LotPrelevement.Statut.TERMINE
     lot.save(update_fields=['statut', 'date_modification'])
     return lot
+
+
+# ── ZFSM3 — Interventions récurrentes autonomes (sans contrat) ──────────────
+def _prochaine_echeance_intervention(echeance, regle, intervalle):
+    """ZFSM3 — avance `echeance` d'un pas de la règle. Même patron que
+    `apps.gestion_projet.services._prochaine_echeance_suivante` (mensuelle
+    clampée en fin de mois), étendu trimestrielle/semestrielle/annuelle en
+    multiples de mois."""
+    from .models import RecurrenceIntervention
+    import calendar
+    from datetime import timedelta as _timedelta
+
+    pas_mois = {
+        RecurrenceIntervention.Regle.MENSUELLE: 1,
+        RecurrenceIntervention.Regle.TRIMESTRIELLE: 3,
+        RecurrenceIntervention.Regle.SEMESTRIELLE: 6,
+        RecurrenceIntervention.Regle.ANNUELLE: 12,
+    }
+    mois_pas = pas_mois.get(regle)
+    if mois_pas is None:
+        # Repli défensif (règle inconnue) : pas hebdomadaire — ne devrait
+        # jamais se produire avec les choix fermés du modèle.
+        return echeance + _timedelta(weeks=intervalle)
+    mois_total = echeance.month - 1 + mois_pas * intervalle
+    annee = echeance.year + mois_total // 12
+    mois = mois_total % 12 + 1
+    dernier_jour = calendar.monthrange(annee, mois)[1]
+    jour = min(echeance.day, dernier_jour)
+    return echeance.replace(year=annee, month=mois, day=jour)
+
+
+def generer_interventions_recurrentes(company, *, aujourd_hui=None):
+    """ZFSM3 — génère la PROCHAINE `Intervention` de chaque récurrence ACTIVE
+    à échéance (prestation périodique SANS contrat : nettoyage trimestriel,
+    contrôle semestriel…). IDEMPOTENT : `prochaine_echeance` avance
+    immédiatement après chaque création, donc un re-run le même jour ne crée
+    JAMAIS deux occurrences pour la même échéance. Respecte `date_fin` et
+    `nb_occurrences` (désactive la récurrence une fois atteinte). Renvoie la
+    liste des `Intervention` créées.
+
+    Pattern FG1/XPRJ13 (`apps.gestion_projet.services.
+    generer_taches_recurrentes`) — même forme, adaptée au domaine chantier."""
+    from datetime import date as _date
+
+    from django.db import transaction
+
+    from .models import Intervention, RecurrenceIntervention
+
+    if aujourd_hui is None:
+        aujourd_hui = _date.today()
+
+    crees = []
+    with transaction.atomic():
+        recurrences = RecurrenceIntervention.objects.select_for_update().filter(
+            company=company, actif=True, prochaine_echeance__lte=aujourd_hui)
+        for rec in recurrences:
+            # Rattrape TOUTES les échéances passées (ex. planificateur arrêté
+            # un moment) : une intervention par échéance, jamais deux pour la
+            # même échéance (avance systématique avant l'itération suivante).
+            while rec.actif and rec.prochaine_echeance <= aujourd_hui:
+                if rec.date_fin is not None \
+                        and rec.prochaine_echeance > rec.date_fin:
+                    rec.actif = False
+                    rec.save(update_fields=['actif'])
+                    break
+                if rec.nb_occurrences is not None \
+                        and rec.nb_generees >= rec.nb_occurrences:
+                    rec.actif = False
+                    rec.save(update_fields=['actif'])
+                    break
+                if rec.installation.annule:
+                    # YSERV6 — un chantier annulé n'engendre plus de nouvelle
+                    # occurrence (comportement cohérent avec la garde de
+                    # création manuelle d'intervention).
+                    rec.actif = False
+                    rec.save(update_fields=['actif'])
+                    break
+
+                interv = Intervention.objects.create(
+                    company=rec.company,
+                    installation=rec.installation,
+                    type_intervention=rec.type_intervention,
+                    technicien=rec.technicien_defaut,
+                    date_prevue=rec.prochaine_echeance,
+                )
+                crees.append(interv)
+
+                rec.nb_generees += 1
+                rec.prochaine_echeance = _prochaine_echeance_intervention(
+                    rec.prochaine_echeance, rec.regle, rec.intervalle)
+                if rec.date_fin is not None \
+                        and rec.prochaine_echeance > rec.date_fin:
+                    rec.actif = False
+                if rec.nb_occurrences is not None \
+                        and rec.nb_generees >= rec.nb_occurrences:
+                    rec.actif = False
+                rec.save(update_fields=[
+                    'nb_generees', 'prochaine_echeance', 'actif'])
+    return crees

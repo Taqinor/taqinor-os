@@ -10,6 +10,9 @@ from .models import (
     VoiceMemo, Reserve, ToolReturn, SafetyChecklistSlot, SafetySignoff,
     ReverificationMesure,
     SafetyCheckItem,
+    FicheInterventionTemplate, FicheInterventionChamp,
+    FicheInterventionReleve, FicheInterventionValeur,
+    RecurrenceIntervention,
     TypeInterventionPlan,
     JalonProjet, ModeleProjet, ModeleProjetJalon, ModeleProjetBomLigne,
     ReunionChantier,
@@ -115,6 +118,59 @@ class ChecklistTemplateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Le type du template « Défaut » ne peut pas être modifié.")
         return value or None
+
+
+class FicheInterventionChampSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FicheInterventionChamp
+        fields = ['id', 'template', 'cle', 'libelle', 'type_champ', 'unite',
+                  'ordre', 'obligatoire']
+
+
+class FicheInterventionTemplateSerializer(serializers.ModelSerializer):
+    """ZFSM1 — gabarit de fiche d'intervention + ses champs ordonnés (imbriqués
+    en lecture). `type_intervention` sélectionne le gabarit appliqué à une
+    intervention de ce type."""
+    champs = FicheInterventionChampSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = FicheInterventionTemplate
+        fields = ['id', 'nom', 'type_intervention', 'actif', 'protege', 'champs']
+        read_only_fields = ['protege']
+
+    def validate_type_intervention(self, value):
+        if (self.instance and self.instance.protege
+                and value != self.instance.type_intervention):
+            raise serializers.ValidationError(
+                "Le type d'un gabarit protégé ne peut pas être modifié.")
+        return value
+
+
+class FicheInterventionValeurSerializer(serializers.ModelSerializer):
+    champ_libelle = serializers.CharField(source='champ.libelle', read_only=True)
+    champ_type = serializers.CharField(source='champ.type_champ', read_only=True)
+    champ_unite = serializers.CharField(source='champ.unite', read_only=True)
+    champ_obligatoire = serializers.BooleanField(
+        source='champ.obligatoire', read_only=True)
+    champ_cle = serializers.CharField(source='champ.cle', read_only=True)
+
+    class Meta:
+        model = FicheInterventionValeur
+        fields = ['id', 'champ', 'champ_cle', 'champ_libelle', 'champ_type',
+                  'champ_unite', 'champ_obligatoire', 'valeur', 'renseigne_le']
+        read_only_fields = ['champ']
+
+
+class FicheInterventionReleveSerializer(serializers.ModelSerializer):
+    valeurs = FicheInterventionValeurSerializer(many=True, read_only=True)
+    template_nom = serializers.CharField(
+        source='template.nom', read_only=True, default=None)
+
+    class Meta:
+        model = FicheInterventionReleve
+        fields = ['id', 'intervention', 'template', 'template_nom', 'valeurs',
+                  'date_creation', 'date_modification']
+        read_only_fields = ['intervention', 'template']
 
 
 class ChantierChecklistItemSerializer(serializers.ModelSerializer):
@@ -688,6 +744,30 @@ class TypeInterventionPlanSerializer(serializers.ModelSerializer):
         ]
         # company posée côté serveur.
         read_only_fields = []
+
+
+# ── ZFSM3 — Interventions récurrentes autonomes ──────────────────────────────
+
+class RecurrenceInterventionSerializer(serializers.ModelSerializer):
+    """ZFSM3 — récurrence temporelle d'intervention (sans contrat). La
+    société/l'installation sont scopées côté serveur ; `nb_generees` et
+    `actif` sont dérivés par le générateur (lecture seule)."""
+    regle_display = serializers.CharField(
+        source='get_regle_display', read_only=True)
+    installation_reference = serializers.CharField(
+        source='installation.reference', read_only=True, default=None)
+    technicien_defaut_nom = serializers.CharField(
+        source='technicien_defaut.username', read_only=True, default=None)
+
+    class Meta:
+        model = RecurrenceIntervention
+        fields = [
+            'id', 'installation', 'installation_reference', 'type_intervention',
+            'technicien_defaut', 'technicien_defaut_nom', 'regle', 'regle_display',
+            'intervalle', 'prochaine_echeance', 'date_fin', 'nb_occurrences',
+            'nb_generees', 'actif', 'date_creation',
+        ]
+        read_only_fields = ['nb_generees']
 
 
 # ── FG293 — Jalons & phases de projet ────────────────────────────────────────

@@ -3,7 +3,8 @@
 from django.urls import path
 
 from .public_views import (
-    InterventionLienClientPublicView, RFQConsultationPublicView,
+    InterventionLienClientPublicView, InterventionRapportPdfPublicView,
+    InterventionRapportPublicView, RFQConsultationPublicView,
 )
 
 urlpatterns = [
@@ -14,4 +15,11 @@ urlpatterns = [
     path('intervention/<str:token>/',
          InterventionLienClientPublicView.as_view(),
          name='installations-public-intervention'),
+    # ZFSM2 — compte-rendu d'intervention signé (page + PDF), token distinct.
+    path('intervention-rapport/<str:token>/',
+         InterventionRapportPublicView.as_view(),
+         name='installations-public-intervention-rapport'),
+    path('intervention-rapport/<str:token>/pdf/',
+         InterventionRapportPdfPublicView.as_view(),
+         name='installations-public-intervention-rapport-pdf'),
 ]
