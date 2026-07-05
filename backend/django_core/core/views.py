@@ -838,3 +838,29 @@ class ChangelogViewSet(viewsets.ModelViewSet):
             ChangelogRead.objects.get_or_create(
                 user=request.user, entry=entry)
         return Response({'non_lues': 0})
+
+
+# YHARD5 — tableau « Secrets & rotation », admin-only. Ne renvoie JAMAIS la
+# valeur d'un secret — seulement le fournisseur, le nom de variable
+# d'environnement (secret_ref) et l'échéance de rotation. Company-scopée.
+@api_view(['GET'])
+@permission_classes([IsAdminRole])
+def secrets_rotation_due(request):
+    """``GET /api/django/core/secrets/rotation/`` — intégrations échues."""
+    from . import integrations as integrations_infra
+
+    user = request.user
+    company = user.company if user.company_id else None
+    if company is None and not user.is_superuser:
+        return Response({'count': 0, 'results': []})
+
+    if company is not None:
+        due = integrations_infra.secrets_due_for_rotation(company)
+    else:
+        # Superuser sans société : agrège toutes les sociétés (vue globale).
+        from authentication.models import Company
+        due = []
+        for c in Company.objects.all():
+            due.extend(integrations_infra.secrets_due_for_rotation(c))
+
+    return Response({'count': len(due), 'results': due})

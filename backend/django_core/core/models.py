@@ -538,6 +538,19 @@ class IntegrationConfig(TimestampedModel):
         "Référence du secret", max_length=120, blank=True, default='',
         help_text="Nom de variable d'environnement contenant le secret.")
 
+    # YHARD5 — gouvernance des secrets & suivi de rotation (additif). Aucune
+    # valeur de secret n'est jamais stockée ici : seulement des métadonnées de
+    # suivi (échéance, propriétaire) ; ``secret_ref`` reste la seule
+    # indirection vers la valeur réelle.
+    secret_last_rotated_at = models.DateTimeField(
+        'Dernière rotation du secret', null=True, blank=True)
+    rotation_period_days = models.PositiveIntegerField(
+        'Période de rotation (jours)', null=True, blank=True,
+        help_text='Échéance = dernière rotation + cette période. Vide = pas de suivi.')
+    secret_owner = models.CharField(
+        'Propriétaire du secret', max_length=120, blank=True, default='',
+        help_text='Texte libre (personne/équipe responsable de la rotation).')
+
     class Meta:
         verbose_name = "Configuration d'intégration"
         verbose_name_plural = "Configurations d'intégration"

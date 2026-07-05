@@ -131,3 +131,58 @@ def provider_from_config(config_obj) -> BaseProvider | None:
         return None
     secret = resolve_secret(getattr(config_obj, 'secret_ref', '') or None)
     return cls(config=config_obj.settings or {}, secret=secret)
+
+
+# ---------------------------------------------------------------------------
+# YHARD5 — gouvernance des secrets & suivi de rotation.
+#
+# Aucune valeur de secret n'est jamais lue ni exposée ici — seulement les
+# métadonnées de suivi portées par ``IntegrationConfig`` (nom de variable
+# d'environnement, fournisseur, échéance). Pure lecture, company-scopée par le
+# caller (queryset déjà filtré).
+# ---------------------------------------------------------------------------
+
+
+def secrets_due_for_rotation(company):
+    """Intégrations de ``company`` dont le secret est échu ou sans suivi.
+
+    Échu = ``secret_last_rotated_at + rotation_period_days < maintenant``.
+    Une intégration SANS ``rotation_period_days`` n'est pas suivie (exclue) ;
+    une intégration avec période mais JAMAIS rotée (``secret_last_rotated_at``
+    absent) est considérée échue dès qu'elle a une période définie. Renvoie
+    une liste de dicts sans jamais la valeur du secret.
+    """
+    from django.utils import timezone
+    from .models import IntegrationConfig
+
+    now = timezone.now()
+    qs = (
+        IntegrationConfig.objects
+        .filter(company=company)
+        .exclude(rotation_period_days__isnull=True)
+    )
+    due = []
+    for cfg in qs:
+        if cfg.secret_last_rotated_at is None:
+            is_due = True
+            due_since = None
+        else:
+            deadline = cfg.secret_last_rotated_at + timezone.timedelta(
+                days=cfg.rotation_period_days)
+            is_due = deadline < now
+            due_since = deadline if is_due else None
+        if not is_due:
+            continue
+        due.append({
+            'id': cfg.id,
+            'integration_type': cfg.integration_type,
+            'provider': cfg.provider,
+            'label': cfg.label,
+            'secret_ref': cfg.secret_ref,
+            'secret_owner': cfg.secret_owner,
+            'rotation_period_days': cfg.rotation_period_days,
+            'secret_last_rotated_at': cfg.secret_last_rotated_at,
+            'due_since': due_since,
+        })
+    due.sort(key=lambda d: (d['integration_type'], d['provider']))
+    return due
