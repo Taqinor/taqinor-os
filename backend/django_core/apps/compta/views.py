@@ -1023,6 +1023,113 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             f'"tableau_flux_exercice_{exercice.pk}.csv"')
         return resp
 
+    @action(detail=False, methods=['get'], url_path='tableau-immobilisations')
+    def tableau_immobilisations(self, request):
+        """ZACC12 — Rapport des immobilisations (tableau CGNC B2/B2bis).
+
+        Par immobilisation : valeur brute ouverture/acquisitions/cessions/
+        clôture, cumul d'amortissement ouverture/dotations/reprises/clôture,
+        VNC. Paramètres : ``exercice`` (id, requis), ``validees`` (1 →
+        validées), ``export`` (``csv``/``pdf`` via ZACC1). Lecture seule,
+        scopée société, Admin/Responsable.
+        """
+        exercice, err = self._resolve_exercice(request)
+        if err is not None:
+            return err
+        data = selectors.tableau_immobilisations(
+            request.user.company, exercice,
+            validees_seulement=request.query_params.get('validees') == '1')
+        export = request.query_params.get('export')
+        if export == 'csv':
+            return self._export_tableau_immobilisations_csv(exercice, data)
+        if export == 'pdf':
+            result = self._pdf_or_503(
+                lambda: self._render_tableau_immobilisations_pdf(
+                    request, data))
+            if isinstance(result, Response):
+                return result
+            return self._pdf_response(
+                result, f'tableau_immobilisations_exercice_{exercice.pk}.pdf')
+        return Response(data)
+
+    def _render_tableau_immobilisations_pdf(self, request, data):
+        from datetime import date as _date
+        from html import escape
+        from .pdf_etats import _entete_societe_html, _fmt, _wrap, _html_to_pdf
+        entete = _entete_societe_html(self._company_profile(request))
+        rows = ''.join(
+            f"<tr><td>{escape(li['libelle'])}</td>"
+            f"<td class=\"montant\">{_fmt(li['brut_ouverture'])}</td>"
+            f"<td class=\"montant\">{_fmt(li['acquisitions'])}</td>"
+            f"<td class=\"montant\">{_fmt(li['cessions'])}</td>"
+            f"<td class=\"montant\">{_fmt(li['brut_cloture'])}</td>"
+            f"<td class=\"montant\">{_fmt(li['amort_ouverture'])}</td>"
+            f"<td class=\"montant\">{_fmt(li['dotations'])}</td>"
+            f"<td class=\"montant\">{_fmt(li['reprises'])}</td>"
+            f"<td class=\"montant\">{_fmt(li['amort_cloture'])}</td>"
+            f"<td class=\"montant\">"
+            f"{_fmt(li['valeur_nette_comptable'])}</td></tr>"
+            for li in data['lignes']
+        )
+        totaux = data['totaux']
+        corps = f"""
+        <table><thead><tr><th>Immobilisation</th>
+        <th class="montant">Brut ouv.</th><th class="montant">Acquis.</th>
+        <th class="montant">Cessions</th><th class="montant">Brut clôt.</th>
+        <th class="montant">Amort. ouv.</th>
+        <th class="montant">Dotations</th><th class="montant">Reprises</th>
+        <th class="montant">Amort. clôt.</th><th class="montant">VNC</th>
+        </tr></thead><tbody>{rows}
+        <tr class="total-row"><td>Totaux</td>
+        <td class="montant">{_fmt(totaux['brut_ouverture'])}</td>
+        <td class="montant">{_fmt(totaux['acquisitions'])}</td>
+        <td class="montant">{_fmt(totaux['cessions'])}</td>
+        <td class="montant">{_fmt(totaux['brut_cloture'])}</td>
+        <td class="montant">{_fmt(totaux['amort_ouverture'])}</td>
+        <td class="montant">{_fmt(totaux['dotations'])}</td>
+        <td class="montant">{_fmt(totaux['reprises'])}</td>
+        <td class="montant">{_fmt(totaux['amort_cloture'])}</td>
+        <td class="montant">{_fmt(totaux['valeur_nette_comptable'])}</td>
+        </tr></tbody></table>"""
+        html = _wrap(
+            entete, 'Tableau des immobilisations & amortissements',
+            f"Exercice du {data['date_debut']} au {data['date_fin']}",
+            corps, _date.today())
+        return _html_to_pdf(html)
+
+    @staticmethod
+    def _export_tableau_immobilisations_csv(exercice, data):
+        """Sérialise le tableau des immobilisations (ZACC12) en CSV."""
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, delimiter=';')
+        writer.writerow(['Tableau des immobilisations & amortissements'])
+        writer.writerow(
+            ['Exercice', f"{data['date_debut']} → {data['date_fin']}"])
+        writer.writerow([])
+        writer.writerow([
+            'Immobilisation', 'Brut ouverture', 'Acquisitions', 'Cessions',
+            'Brut clôture', 'Amort. ouverture', 'Dotations', 'Reprises',
+            'Amort. clôture', 'VNC'])
+        for li in data['lignes']:
+            writer.writerow([
+                li['libelle'], li['brut_ouverture'], li['acquisitions'],
+                li['cessions'], li['brut_cloture'], li['amort_ouverture'],
+                li['dotations'], li['reprises'], li['amort_cloture'],
+                li['valeur_nette_comptable']])
+        totaux = data['totaux']
+        writer.writerow([
+            'Totaux', totaux['brut_ouverture'], totaux['acquisitions'],
+            totaux['cessions'], totaux['brut_cloture'],
+            totaux['amort_ouverture'], totaux['dotations'],
+            totaux['reprises'], totaux['amort_cloture'],
+            totaux['valeur_nette_comptable']])
+        resp = HttpResponse(
+            buffer.getvalue(), content_type='text/csv; charset=utf-8')
+        resp['Content-Disposition'] = (
+            'attachment; filename='
+            f'"tableau_immobilisations_exercice_{exercice.pk}.csv"')
+        return resp
+
     @action(detail=False, methods=['get'], url_path='export-fiduciaire')
     def export_fiduciaire(self, request):
         """Export fiduciaire Sage/CEGID des écritures d'un exercice (COMPTA37).

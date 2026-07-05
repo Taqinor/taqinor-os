@@ -12,11 +12,12 @@ from django.db.models import Q, Sum
 from django.utils import timezone
 
 from .models import (
-    Budget, BudgetLigne, Caisse, CautionBancaire, ChargeConstateeAvance,
+    Budget, BudgetLigne, Caisse, CautionBancaire, CessionImmobilisation,
+    ChargeConstateeAvance,
     CompteComptable,
     CompteTresorerie, EcheanceEmprunt,
     Effet, Emprunt,
-    EntiteConsolidation, IndemniteChantier, LigneEcriture,
+    EntiteConsolidation, Immobilisation, IndemniteChantier, LigneEcriture,
     LignePrevisionnelTresorerie,
     MouvementCaisse, Rapprochement, RetenueGarantie, RetenueSource,
     TauxDevise, TimbreFiscal,
@@ -994,6 +995,132 @@ def tableau_flux_tresorerie(company, exercice, *, validees_seulement=False):
         'tresorerie_cloture': tresorerie_cloture,
         'reconciliee': (
             tresorerie_ouverture + variation_nette == tresorerie_cloture),
+    }
+
+
+# ── ZACC12 — Rapport des immobilisations (tableau CGNC B2/B2bis) ──────────
+# Aucun sélecteur d'ÉTAT récapitulatif des immobilisations n'existait (seul un
+# registre `Immobilisation` + un plan d'amortissement par immo). Ce sélecteur
+# assemble, PAR IMMOBILISATION, le tableau CGNC B2 (immobilisations : valeur
+# brute ouverture/acquisitions/cessions/clôture) et B2bis (amortissements :
+# cumul ouverture/dotations de l'exercice/reprises sur cessions/cumul
+# clôture) + la VNC — sans rien recalculer (relit `Immobilisation`,
+# `DotationAmortissement`, `CessionImmobilisation` déjà postés).
+
+def tableau_immobilisations(company, exercice, *, validees_seulement=False):
+    """Tableau des immobilisations & amortissements pour la liasse/l'annexe
+    (ZACC12 — tableaux CGNC B2/B2bis).
+
+    Par immobilisation : valeur brute à l'ouverture (coût si acquise avant
+    l'exercice, sinon 0), acquisitions de l'exercice, cessions de l'exercice
+    (valeur brute sortie), valeur brute à la clôture, cumul d'amortissement à
+    l'ouverture, dotations de l'exercice (postées), reprises sur cessions de
+    l'exercice, cumul à la clôture, VNC. Une immobilisation cédée AVANT
+    l'exercice n'apparaît pas (déjà sortie du patrimoine). Lecture seule,
+    scopée société ; aucune écriture n'est créée. Renvoie ``{'exercice',
+    'date_debut', 'date_fin', 'lignes': [...], 'totaux': {...}}``.
+    """
+    date_debut = exercice.date_debut
+    date_fin = exercice.date_fin
+    lignes = []
+    total_brut_ouverture = Decimal('0')
+    total_acquisitions = Decimal('0')
+    total_cessions_brut = Decimal('0')
+    total_brut_cloture = Decimal('0')
+    total_amort_ouverture = Decimal('0')
+    total_dotations = Decimal('0')
+    total_reprises = Decimal('0')
+    total_amort_cloture = Decimal('0')
+    total_vnc = Decimal('0')
+
+    immos = (Immobilisation.objects.filter(company=company)
+             .filter(Q(date_acquisition__lte=date_fin))
+             .order_by('date_acquisition', 'id'))
+    for immo in immos:
+        cession = CessionImmobilisation.objects.filter(
+            company=company, immobilisation=immo,
+            date_cession__lt=date_debut).first()
+        if cession is not None:
+            continue  # sortie du patrimoine AVANT l'exercice : omise.
+
+        cout = immo.cout or Decimal('0')
+        cession_exercice = CessionImmobilisation.objects.filter(
+            company=company, immobilisation=immo,
+            date_cession__gte=date_debut,
+            date_cession__lte=date_fin).first()
+
+        acquis_avant = immo.date_acquisition < date_debut
+        brut_ouverture = cout if acquis_avant else Decimal('0')
+        acquisitions = Decimal('0') if acquis_avant else cout
+        cessions_brut = cout if cession_exercice is not None else Decimal('0')
+        brut_cloture = brut_ouverture + acquisitions - cessions_brut
+
+        plan = getattr(immo, 'plan_amortissement', None)
+        dotations_qs = (
+            DotationAmortissement.objects.filter(
+                company=company, plan=plan, posted=True)
+            if plan is not None else DotationAmortissement.objects.none())
+        if validees_seulement:
+            dotations_qs = dotations_qs.filter(
+                ecriture__statut=EcritureComptable.Statut.VALIDEE)
+        amort_ouverture = Decimal('0')
+        if plan is not None:
+            cumul_avant = (
+                dotations_qs.filter(date_dotation__lt=date_debut)
+                .order_by('-date_dotation', '-id').values_list(
+                    'cumul', flat=True).first())
+            amort_ouverture = cumul_avant or Decimal('0')
+        dotations_exercice = (
+            dotations_qs.filter(
+                date_dotation__gte=date_debut, date_dotation__lte=date_fin,
+            ).aggregate(total=Sum('montant'))['total'] or Decimal('0'))
+        reprises = (
+            cession_exercice.amortissements_cumules
+            if cession_exercice is not None else Decimal('0'))
+        amort_cloture = amort_ouverture + dotations_exercice - reprises
+        vnc = brut_cloture - amort_cloture
+
+        lignes.append({
+            'immobilisation_id': immo.id,
+            'reference': immo.reference,
+            'libelle': immo.libelle,
+            'categorie': immo.categorie,
+            'brut_ouverture': brut_ouverture,
+            'acquisitions': acquisitions,
+            'cessions': cessions_brut,
+            'brut_cloture': brut_cloture,
+            'amort_ouverture': amort_ouverture,
+            'dotations': dotations_exercice,
+            'reprises': reprises,
+            'amort_cloture': amort_cloture,
+            'valeur_nette_comptable': vnc,
+        })
+        total_brut_ouverture += brut_ouverture
+        total_acquisitions += acquisitions
+        total_cessions_brut += cessions_brut
+        total_brut_cloture += brut_cloture
+        total_amort_ouverture += amort_ouverture
+        total_dotations += dotations_exercice
+        total_reprises += reprises
+        total_amort_cloture += amort_cloture
+        total_vnc += vnc
+
+    return {
+        'exercice': exercice.libelle or str(exercice.pk),
+        'date_debut': date_debut.isoformat(),
+        'date_fin': date_fin.isoformat(),
+        'lignes': lignes,
+        'totaux': {
+            'brut_ouverture': total_brut_ouverture,
+            'acquisitions': total_acquisitions,
+            'cessions': total_cessions_brut,
+            'brut_cloture': total_brut_cloture,
+            'amort_ouverture': total_amort_ouverture,
+            'dotations': total_dotations,
+            'reprises': total_reprises,
+            'amort_cloture': total_amort_cloture,
+            'valeur_nette_comptable': total_vnc,
+        },
     }
 
 
