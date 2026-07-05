@@ -1,10 +1,28 @@
+{# XSAL13 — L() traduit un libellé (FR/AR). Si le contexte n'a pas posé `L`
+   (anciens appelants / tests qui construisent leur propre dict), on retombe
+   sur le libellé FR d'origine — jamais d'UndefinedError, rendu inchangé. #}
+{% macro _L(cle) %}{% if L is defined %}{{ L(cle) }}{% else %}{{ {
+  'facture': 'FACTURE', 'emetteur': 'Émetteur', 'facture_a': 'Facturé à',
+  'date_emission': "Date d'émission", 'echeance': 'Échéance', 'tva': 'TVA',
+  'statut': 'Statut', 'designation': 'Désignation', 'qte': 'Qté',
+  'pu_ht': 'P.U HT', 'remise': 'Remise', 'total_ht': 'Total HT',
+  'sous_total_ht': 'Sous-total HT', 'remise_globale': 'Remise globale',
+  'total_ttc': 'Total TTC', 'note': 'Note',
+  'coordonnees_bancaires': 'Coordonnées bancaires',
+  'signature_cachet': 'Signature & Cachet',
+}[cle] }}{% endif %}{% endmacro %}
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="{{ langue_document or 'fr' }}" {% if langue_document == 'ar' %}dir="rtl"{% endif %}>
 <head>
   <meta charset="UTF-8" />
   <style>
+    {% if arabic_font_face_css %}{{ arabic_font_face_css|safe }}{% endif %}
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 12px; color: #333; }
+    body {
+      font-family: {% if langue_document == 'ar' %}'Noto Sans Arabic', {% endif %}'Helvetica Neue', Arial, sans-serif;
+      font-size: 12px; color: #333;
+      {% if langue_document == 'ar' %}direction: rtl;{% endif %}
+    }
     .page { padding: 40px; }
 
     .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 36px; }
@@ -80,7 +98,7 @@
       {% if logo_uri %}
       <div class="logo"><img src="{{ logo_uri }}" alt="Logo" /></div>
       {% endif %}
-      <div class="doc-title">FACTURE</div>
+      <div class="doc-title">{{ _L('facture') }}</div>
       <div class="doc-ref">{{ facture.reference }}</div>
     </div>
     <div class="company-info">
@@ -95,7 +113,7 @@
   <!-- Émetteur / Client -->
   <div class="parties">
     <div class="partie-block">
-      <div class="partie-label">Émetteur</div>
+      <div class="partie-label">{{ _L('emetteur') }}</div>
       <div class="partie-nom">{{ entreprise_nom }}</div>
       <div class="partie-detail">
         {% if entreprise_adresse %}{{ entreprise_adresse }}<br />{% endif %}
@@ -103,7 +121,7 @@
       </div>
     </div>
     <div class="partie-block">
-      <div class="partie-label">Facturé à</div>
+      <div class="partie-label">{{ _L('facture_a') }}</div>
       <div class="partie-nom">{{ facture.client.nom }} {{ facture.client.prenom or '' }}</div>
       <div class="partie-detail">
         {% if facture.client.email %}{{ facture.client.email }}<br />{% endif %}
@@ -116,19 +134,19 @@
   <!-- Méta -->
   <div class="meta-row">
     <div class="meta-item">
-      <strong>Date d'émission</strong>
+      <strong>{{ _L('date_emission') }}</strong>
       <span>{{ facture.date_emission.strftime('%d/%m/%Y') }}</span>
     </div>
     <div class="meta-item">
-      <strong>Échéance</strong>
+      <strong>{{ _L('echeance') }}</strong>
       <span>{{ facture.date_echeance.strftime('%d/%m/%Y') if facture.date_echeance else 'N/A' }}</span>
     </div>
     <div class="meta-item">
-      <strong>TVA</strong>
+      <strong>{{ _L('tva') }}</strong>
       <span>{{ facture.taux_tva }}%</span>
     </div>
     <div class="meta-item">
-      <strong>Statut</strong>
+      <strong>{{ _L('statut') }}</strong>
       <span class="statut-badge">{{ facture.get_statut_display() }}</span>
     </div>
     {% if facture.periode_service_debut and facture.periode_service_fin %}
@@ -144,11 +162,11 @@
     <thead>
       <tr>
         <th>#</th>
-        <th>Désignation</th>
-        <th class="text-right">Qté</th>
-        <th class="text-right">P.U HT</th>
-        <th class="text-right">Remise</th>
-        <th class="text-right">Total HT</th>
+        <th>{{ _L('designation') }}</th>
+        <th class="text-right">{{ _L('qte') }}</th>
+        <th class="text-right">{{ _L('pu_ht') }}</th>
+        <th class="text-right">{{ _L('remise') }}</th>
+        <th class="text-right">{{ _L('total_ht') }}</th>
       </tr>
     </thead>
     <tbody>
@@ -180,18 +198,18 @@
 
   <!-- Note -->
   {% if facture.note %}
-  <div class="note-block"><strong>Note :</strong> {{ facture.note }}</div>
+  <div class="note-block"><strong>{{ _L('note') }} :</strong> {{ facture.note }}</div>
   {% endif %}
 
   <!-- Totaux -->
   <div class="totaux">
     <div class="totaux-row">
-      <span>Sous-total HT</span>
+      <span>{{ _L('sous_total_ht') }}</span>
       <span>{{ "%.2f"|format(facture.total_ht) }} MAD</span>
     </div>
     {% if facture.remise_globale > 0 %}
     <div class="totaux-row remise">
-      <span>Remise globale ({{ facture.remise_globale }}%)</span>
+      <span>{{ _L('remise_globale') }} ({{ facture.remise_globale }}%)</span>
       <span>−{{ "%.2f"|format(facture.total_ht * facture.remise_globale / 100) }} MAD</span>
     </div>
     {% endif %}
@@ -199,12 +217,12 @@
        une seule ligne, identique à avant. #}
     {% for b in facture.tva_par_taux %}
     <div class="totaux-row">
-      <span>TVA ({{ b.taux }}%)</span>
+      <span>{{ _L('tva') }} ({{ b.taux }}%)</span>
       <span>{{ "%.2f"|format(b.montant) }} MAD</span>
     </div>
     {% endfor %}
     <div class="totaux-row total-ttc">
-      <span>Total TTC</span>
+      <span>{{ _L('total_ttc') }}</span>
       <span>{{ "%.2f"|format(facture.total_ttc) }} MAD</span>
     </div>
   </div>
@@ -221,7 +239,7 @@
   <!-- Coordonnées bancaires -->
   {% if rib %}
   <div class="rib-block">
-    <strong>Coordonnées bancaires</strong>
+    <strong>{{ _L('coordonnees_bancaires') }}</strong>
     RIB : {{ rib }}{% if banque %} — {{ banque }}{% endif %}
   </div>
   {% endif %}
@@ -242,7 +260,7 @@
   {% if signature_uri %}
   <div class="signature-section">
     <div class="signature-block">
-      <div class="signature-label">Signature & Cachet</div>
+      <div class="signature-label">{{ _L('signature_cachet') }}</div>
       <img class="signature-img" src="{{ signature_uri }}" alt="Signature" />
       <div class="signature-line">{{ entreprise_nom }}</div>
     </div>

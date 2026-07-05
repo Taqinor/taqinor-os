@@ -268,6 +268,14 @@ def generate_facture_pdf(facture_id):
         logger.warning('QR facture %s indisponible : %s', facture_id, exc)
         context['facture_qr_svg'] = None
 
+    # XSAL13 — rendu arabe RTL quand Client.langue_document == 'ar'. Défaut
+    # FR octet-identique : langue absente/non-AR → 'fr', gabarit inchangé.
+    from .libelles_ar import document_langue, libelle, arabic_font_face_css
+    langue = document_langue(facture.client)
+    context['langue_document'] = langue
+    context['L'] = lambda cle: libelle(cle, langue)
+    context['arabic_font_face_css'] = arabic_font_face_css() if langue == 'ar' else ''
+
     html = _render_html('facture.html', context)
     pdf_bytes = _html_to_pdf(html)
 
