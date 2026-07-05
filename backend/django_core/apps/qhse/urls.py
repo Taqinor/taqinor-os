@@ -35,7 +35,9 @@ from .views import (
     QhseChatterEntryViewSet, RecyclageModuleViewSet,
     ReleveConsommationViewSet, ReleveControleViewSet, ReleveCourbeIVViewSet,
     ReponseCritereViewSet,
-    RetourClientQualiteViewSet, SecouristeViewSet, SignalementPublicViewSet,
+    RetourClientQualiteViewSet, RevueVeilleReglementaireViewSet,
+    SecouristeViewSet, SignalementPublicViewSet,
+    VeilleReglementaireViewSet,
 )
 
 router = DefaultRouter()
@@ -101,6 +103,8 @@ router.register(r'releves-consommation', ReleveConsommationViewSet)
 router.register(
     r'cout-non-qualite', CoutNonQualiteViewSet, basename='cout-non-qualite')
 router.register(r'demandes-changement', DemandeChangementViewSet)
+router.register(r'veilles-reglementaires', VeilleReglementaireViewSet)
+router.register(r'revues-veille', RevueVeilleReglementaireViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
