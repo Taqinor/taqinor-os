@@ -73,9 +73,10 @@ const parrainageLabel = locale === 'en' ? 'Referral' : locale === 'ar' ? 'الإ
 
 // W339 — libellé du lien SAV/urgence « Déjà client ? » (colonne Contact).
 const dejaClientLabel = locale === 'en' ? 'Already a customer?' : locale === 'ar' ? 'هل أنت زبون بالفعل؟' : 'Déjà client ?';
-// W340 — libellé du lien « Espace client » (colonne Contact), même mécanisme
-// de repli local que dejaClientLabel ci-dessus.
-const espaceClientLabel = locale === 'en' ? 'Client area' : locale === 'ar' ? 'الفضاء الخاص' : 'Espace client';
+// W340/WJ100 — libellé du lien « Espace client » (colonne Contact), centralisé
+// dans i18n/ui.ts (nav.clientArea) — auparavant dupliqué à l'identique dans
+// Header.astro (drift), désormais une seule source.
+const espaceClientLabel = t('nav.clientArea');
 const ressources = [
   { href: '/realisations', label: t('nav.realisations') },
   { href: '/guides', label: t('nav.guides') },
@@ -87,7 +88,7 @@ const ressources = [
   { href: '/parrainage', label: parrainageLabel },
   { href: '/à-propos', label: t('nav.about') },
   { href: '/équipement', label: t('nav.equipment') },
-  { href: '/produits', label: 'Fiches techniques' },
+  { href: '/produits', label: t('nav.produits') },
   { href: '/garanties', label: t('footer.guarantees') },
 ];
 
