@@ -465,6 +465,7 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
         elif self.action in WRITE_ACTIONS + [
             'noter', 'devis_auto', 'archiver', 'restaurer', 'merge',
             'whatsapp_devis', 'bulk', 'log_interaction',
+            'appliquer_plan', 'convertir_client',
         ]:
             # L'archivage réversible est ouvert à la Commerciale.
             return [IsResponsableOrAdmin()]
