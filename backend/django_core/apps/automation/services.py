@@ -299,6 +299,60 @@ class DecisionError(Exception):
     """Décision invalide sur une approbation (statut non éligible)."""
 
 
+# ── XPLT18 — Brouillon de règle proposé par l'agent (langage naturel) ───────
+
+class DraftRuleError(Exception):
+    """Brouillon de règle invalide (message FR, destiné à un 400)."""
+
+
+def create_draft_rule_from_agent(
+        *, company, nom, trigger_type, trigger_config,
+        action_type, action_config, ordre=0):
+    """XPLT18 — crée une ``AutomationRule`` DÉSACTIVÉE à partir d'un brouillon
+    structuré produit par l'agent (LLM) après confirmation utilisateur.
+
+    Le LLM ne produit JAMAIS de code libre : ``trigger_type``/``action_type``
+    doivent appartenir au catalogue FERMÉ (``TriggerType``/``ActionType``),
+    validé ici contre ``selectors.closed_rule_catalogue()`` — jamais contre une
+    liste dupliquée côté agent. La règle est TOUJOURS créée ``enabled=False``
+    (revue admin obligatoire avant toute exécution réelle) ; ``company`` est
+    imposée par l'appelant serveur (jamais lue du brouillon LLM).
+
+    Lève ``DraftRuleError`` (FR) si le déclencheur/l'action n'appartient pas
+    au catalogue fermé, ou si ``nom`` est vide.
+    """
+    from . import selectors
+    from .models import AutomationRule
+
+    nom = (nom or '').strip()
+    if not nom:
+        raise DraftRuleError('Un nom de règle est requis.')
+
+    catalogue = selectors.closed_rule_catalogue()
+    if trigger_type not in catalogue['trigger_types']:
+        raise DraftRuleError(
+            f"Déclencheur inconnu du catalogue : {trigger_type!r}.")
+    if action_type not in catalogue['action_types']:
+        raise DraftRuleError(
+            f"Action inconnue du catalogue : {action_type!r}.")
+
+    if not isinstance(trigger_config, dict):
+        raise DraftRuleError('trigger_config doit être un objet JSON.')
+    if not isinstance(action_config, dict):
+        raise DraftRuleError('action_config doit être un objet JSON.')
+
+    return AutomationRule.objects.create(
+        company=company,
+        nom=nom,
+        enabled=False,  # XPLT18 — toujours désactivée : revue admin requise.
+        trigger_type=trigger_type,
+        trigger_config=trigger_config or {},
+        action_type=action_type,
+        action_config=action_config or {},
+        ordre=ordre or 0,
+    )
+
+
 def decider_approval(approval, *, approve, user):
     """XKB1 — approuve/rejette une ``AutomationApproval`` en attente.
 

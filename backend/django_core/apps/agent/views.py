@@ -86,3 +86,51 @@ class AgentActionUndoView(APIView):
             return Response({'detail': str(exc)}, status=409)
 
         return Response(_serialize_log(log))
+
+
+class AutomationDraftView(APIView):
+    """XPLT18 — ``POST /api/django/agent/actions/automation-draft/``.
+
+    Endpoint cible de l'action catalogue ``automation.rule.propose_draft``.
+    Ne fait QUE relayer vers ``apps.automation.services`` (jamais d'import de
+    ``apps.automation.models`` ici — frontière cross-app respectée) : c'est
+    ce service qui re-valide le brouillon contre le catalogue fermé et crée
+    la règle TOUJOURS désactivée. ``company`` est imposée depuis
+    ``request.user`` (jamais depuis le corps)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from apps.automation.services import DraftRuleError, \
+            create_draft_rule_from_agent
+        from rest_framework import status
+
+        company = request.user.company
+        if company is None:
+            return Response(
+                {'detail': "Aucune société associée à l'utilisateur."},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        data = request.data or {}
+        try:
+            rule = create_draft_rule_from_agent(
+                company=company,
+                nom=data.get('nom', ''),
+                trigger_type=data.get('trigger_type', ''),
+                trigger_config=data.get('trigger_config') or {},
+                action_type=data.get('action_type', ''),
+                action_config=data.get('action_config') or {},
+            )
+        except DraftRuleError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(
+            {
+                'id': rule.pk,
+                'nom': rule.nom,
+                'enabled': rule.enabled,
+                'trigger_type': rule.trigger_type,
+                'action_type': rule.action_type,
+            },
+            status=status.HTTP_201_CREATED)
