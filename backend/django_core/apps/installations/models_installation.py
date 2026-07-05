@@ -85,9 +85,14 @@ class Installation(models.Model):
     reference = models.CharField(max_length=50)
 
     # ── Liens (pivot) ──
+    # Nullable : un chantier peut être créé sans devis lié (saisie manuelle
+    # / migration de données historiques) — YSERV1/YSERV9 couvrent ce
+    # chemin « sans devis, jamais bloqué ». `create_installation_from_devis`
+    # continue de toujours renseigner `client` depuis le devis.
     client = models.ForeignKey(
         'crm.Client', on_delete=models.PROTECT,
         related_name='installations',
+        null=True, blank=True,
     )
     # Devis d'origine. SET_NULL pour ne jamais perdre un chantier réalisé si le
     # devis est supprimé. Un seul chantier par devis (garde dans le service).

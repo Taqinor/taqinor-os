@@ -6,7 +6,7 @@ Le BL PDF existant (N22) part d'un devis/chantier ; la `Livraison` planifiée
 pipeline que les autres PDF (apps.ventes.utils.pdf : identité société +
 template Jinja2 + WeasyPrint). Non stocké : généré et streamé à la demande.
 
-CLIENT-FACING : AUCUN `cout_transport` ni prix d'achat — jamais."""
+CLIENT-FACING : AUCUN coût de transport interne ni prix d'achat — jamais."""
 from apps.ventes.utils.pdf import _company_context, _html_to_pdf, _render_html
 
 
@@ -25,7 +25,8 @@ def _lignes_payload(livraison):
 
 def bon_livraison_pdf(livraison):
     """Génère le bon de livraison (PDF, octets) d'une `Livraison` planifiée.
-    Client-facing : ne rend jamais `cout_transport` ni un prix d'achat."""
+    Client-facing : ne rend jamais le coût de transport interne ni un prix
+    d'achat."""
     inst = livraison.installation
     client = getattr(inst, 'client', None) if inst else None
     context = _company_context(company=livraison.company)

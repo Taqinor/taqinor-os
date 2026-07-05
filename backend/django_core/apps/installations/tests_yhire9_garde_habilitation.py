@@ -74,7 +74,8 @@ def make_chantier(company, user):
 
 def make_dossier(company, user, nom='Tech'):
     return DossierEmploye.objects.create(
-        company=company, user=user, nom=nom, prenom='X')
+        company=company, user=user, nom=nom, prenom='X',
+        matricule=f'YHIRE9-{next(_seq)}')
 
 
 def make_habilitation(company, dossier, type_habilitation):
@@ -144,8 +145,11 @@ class TechnicienHabiliteTests(TestCase):
         self.inst = make_chantier(self.company, self.admin)
         self.tech = make_user(self.company, username='yhire9-tech-ok')
         dossier = make_dossier(self.company, self.tech)
-        # POSE requiert b1v OU br (INTERVENTION_HABILITATIONS['pose_pv_bt']).
+        # POSE requiert b1v ET br (INTERVENTION_HABILITATIONS['pose_pv_bt'] =
+        # ['b1v', 'br'], vérifiées en ET par verifier_habilitation_requise —
+        # apps.rh.selectors, cf. apps/rh/tests/test_garde_habilitation.py).
         make_habilitation(self.company, dossier, 'b1v')
+        make_habilitation(self.company, dossier, 'br')
 
     def test_technicien_habilite_aucun_avertissement(self):
         r = self.api.post(f'{BASE}/interventions/', {

@@ -7,9 +7,9 @@ aucun imprimable jusqu'ici : le magasinier travaille à l'écran.
 Rendu à la volée via le MÊME pipeline que les autres PDF (apps.ventes.utils.pdf
 : identité société + template Jinja2 + WeasyPrint). Non stocké.
 
-STRICTEMENT INTERNE : AUCUN prix — jamais `prix_achat` ni un prix de vente.
-Dégrade proprement si XMFG14 (étapes) ou XMFG7 (séries) sont absents (aucune
-section vide affichée)."""
+STRICTEMENT INTERNE : AUCUN prix — ni prix d'achat catalogue, ni prix de
+vente. Dégrade proprement si XMFG14 (étapes) ou XMFG7 (séries) sont absents
+(aucune section vide affichée)."""
 from apps.ventes.utils.pdf import _company_context, _html_to_pdf, _render_html
 
 
@@ -71,7 +71,7 @@ def _series_attendues(ordre):
 
 def bon_assemblage_pdf(ordre):
     """Génère le bon d'assemblage (PDF, octets) d'un `OrdreAssemblage`.
-    STRICTEMENT INTERNE : ne rend jamais un prix (aucune clé `prix*` dans le
+    STRICTEMENT INTERNE : ne rend jamais un prix (aucune clé de tarif dans le
     contexte)."""
     context = _company_context(company=ordre.company)
     context.update({

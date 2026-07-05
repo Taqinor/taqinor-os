@@ -73,7 +73,7 @@ class TestNotesAccesSurChantier(TestCase):
         self.inst = make_chantier(self.company, self.user)
 
     def test_champs_editables_sur_chantier(self):
-        r = self.api.patch(f'{BASE}/installations/{self.inst.id}/', {
+        r = self.api.patch(f'{BASE}/chantiers/{self.inst.id}/', {
             'contact_site_nom': 'Gardien Ahmed',
             'contact_site_telephone': '0600000000',
             'acces_instructions': 'Chien dans la cour, sonner avant.',
