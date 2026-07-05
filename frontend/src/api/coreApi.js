@@ -46,6 +46,19 @@ const coreApi = {
         motif,
       }),
   },
+
+  // XPLT9 — FG381 dashboards sans-code (CRUD, `layout` JSON opaque). Le
+  // filtre global en cascade (XPLT9) vit dans `layout.globalFilters` (clé
+  // additive, aucune migration) : `getDashboard`/`updateDashboardLayout`
+  // sont les seuls appels nécessaires à ce mécanisme — le CRUD complet
+  // (create/delete/list) n'est volontairement PAS dupliqué ici tant
+  // qu'aucun écran constructeur ne le consomme (cf. DashboardFilterBar).
+  dashboards: {
+    get: (id) => api.get(`/core/dashboards/${id}/`),
+    list: () => api.get('/core/dashboards/'),
+    updateLayout: (id, layout) =>
+      api.patch(`/core/dashboards/${id}/`, { layout }),
+  },
 }
 
 export default coreApi
