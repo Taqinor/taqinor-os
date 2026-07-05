@@ -326,6 +326,24 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
                 {'detail': 'Seul un BCF en brouillon peut être envoyé.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # YPROC4 — l'approbation par palier (FG312) doit BLOQUER l'envoi :
+        # sans seuil configuré pour la société, comportement strictement
+        # inchangé (le sélecteur renvoie True). Import paresseux (précédent
+        # existant : stock.services.reserved_quantity importe déjà
+        # apps.installations.selectors en lazy).
+        from apps.installations.selectors import (
+            bcf_approbation_valide, palier_manquant_bcf_detail,
+        )
+        if not bcf_approbation_valide(bc.company, bc.id, bc.total_achat):
+            palier = palier_manquant_bcf_detail(bc.company, bc.total_achat)
+            return Response(
+                {'detail': (
+                    "Ce BCF dépasse le seuil d'approbation : une "
+                    f"approbation au palier « {palier} » est requise avant "
+                    'envoi (le montant a peut-être augmenté depuis une '
+                    'approbation existante).')},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         bc.statut = BonCommandeFournisseur.Statut.ENVOYE
         bc.save(update_fields=['statut'])
         return Response(self.get_serializer(bc).data)

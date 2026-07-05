@@ -1446,6 +1446,50 @@ def palier_requis_bcf(company, montant):
     return seuil.palier_requis(montant)
 
 
+def bcf_approbation_valide(company, bcf_id, montant):
+    """YPROC4 — l'ENVOI d'un BCF est-il autorisé côté approbation FG312 ?
+
+    Sans seuil ``SeuilApprobationBCF`` actif configuré pour la société :
+    ``True`` (compatibilité totale — le workflow d'approbation n'existe pas
+    pour cette société, comportement historique inchangé).
+
+    Avec un seuil actif : exige une ``ApprobationBCF`` existante pour ce BCF,
+    au palier requis par le montant ACTUEL (``palier_requis_bcf``), ET dont le
+    ``montant_approuve`` couvre au moins ce montant actuel — une hausse du
+    total du BCF depuis l'approbation invalide celle-ci (cohérent avec la
+    ré-approbation XPUR18). Lecture seule, jamais d'écriture ici."""
+    from decimal import Decimal
+    from .models_approbation_bcf import ApprobationBCF
+
+    seuil = seuil_approbation_bcf_actif(company)
+    if seuil is None:
+        return True
+
+    montant = montant or Decimal('0')
+    palier_requis = seuil.palier_requis(montant)
+    approbation = (ApprobationBCF.objects
+                   .filter(company=company, bcf_id=bcf_id)
+                   .order_by('-date_approbation')
+                   .first())
+    if approbation is None:
+        return False
+    if approbation.palier != palier_requis:
+        return False
+    if (approbation.montant_approuve or Decimal('0')) < montant:
+        return False
+    return True
+
+
+def palier_manquant_bcf_detail(company, montant):
+    """YPROC4 — libellé FR du palier requis pour le message de refus 400
+    quand ``bcf_approbation_valide`` est faux (jamais utilisé pour bloquer
+    directement — seulement pour le message)."""
+    from .models_approbation_bcf import PALIER_CHOICES
+    palier = palier_requis_bcf(company, montant)
+    libelles = dict(PALIER_CHOICES)
+    return libelles.get(palier, palier)
+
+
 def controle_budgetaire_commande(company, montant, *, projet_id=None,
                                  categorie='materiel'):
     """FG313 — contrôle budgétaire AVANT de valider une commande : un montant
