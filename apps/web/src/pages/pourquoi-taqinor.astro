@@ -11,15 +11,13 @@ import Breadcrumb from '../components/Breadcrumb.astro';
 import CtaBand from '../components/CtaBand.astro';
 import StickyCta from '../components/StickyCta.astro';
 import RelatedLinks from '../components/RelatedLinks.astro';
-import { REALISATIONS } from '../lib/realisations';
 import { PANEL_PERFORMANCE_WARRANTY_YEARS } from '../lib/warranty';
 
-// WB4 (2026-07-04) — le total kWc et la durée de garantie sont DÉRIVÉS
-// (realisations.ts / warranty.ts) au lieu de littéraux recopiés à la main,
-// comme index.astro/impact-taqinor.astro le font déjà — un futur chantier ne
-// peut plus faire diverger silencieusement cette page de confiance.
-const totalKwc = REALISATIONS.reduce((sum, r) => sum + r.kwcNum, 0);
-const totalKwcLabel = totalKwc.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// WB4 (2026-07-04) — la durée de garantie est DÉRIVÉE (warranty.ts) au lieu
+// d'un littéral recopié à la main, comme index.astro/impact-taqinor.astro le
+// font déjà — un futur chantier ne peut plus faire diverger silencieusement
+// cette page de confiance. L'agrégat kWc installé (somme des chantiers) n'est
+// plus affiché ici (RULE B) — les specs par chantier restent sur /realisations.
 const panelWarrantyLabel = `${PANEL_PERFORMANCE_WARRANTY_YEARS} ans`;
 
 const piliers = [
@@ -34,7 +32,7 @@ const piliers = [
   {
     k: '02',
     title: 'Nos chiffres de production sortent du compteur',
-    body: 'Chaque installation est reliée à Deye Cloud : production en temps réel, alertes automatiques, accès client inclus — un chiffre suivi sur nos chantiers, jamais une projection de brochure.',
+    body: 'Chaque installation bénéficie d’un suivi de production en temps réel : alertes automatiques, accès client inclus — un chiffre suivi sur nos chantiers, jamais une projection de brochure.',
     contrast: 'Beaucoup d’installateurs chiffrent l’économie annoncée sur une simulation théorique jamais recroisée avec un compteur réel — la nôtre l’est, en continu.',
     href: '/realisations',
     link: 'Voir nos réalisations',
@@ -60,7 +58,7 @@ const piliers = [
 
 <Layout
   title="Pourquoi Taqinor — ce qui nous distingue, point par point | Taqinor"
-  description="Quatre différences concrètes : un dimensionnement déduit de votre facture, une production relevée sur Deye Cloud, le dossier loi 82-21 monté et déposé, et une liste courte de marques tier-1 garanties de 10 à 30 ans. Chantiers réels visitables sur demande."
+  description="Quatre différences concrètes : un dimensionnement déduit de votre facture, une production suivie en temps réel, le dossier loi 82-21 monté et déposé, et une liste courte de marques tier-1 garanties de 10 à 30 ans. Chantiers réels visitables sur demande."
   ogSlug="accueil"
 >
   <div class="v2">
@@ -113,7 +111,7 @@ const piliers = [
         <p class="mt-4 max-w-2xl text-sm leading-relaxed text-lune-soft">
           Notre réponse tient en une page : cinq marques tier-1 nommées, chacune avec sa
           <a href="/équipement" class="text-brass-300 underline underline-offset-2 hover:text-white">fiche constructeur officielle</a>,
-          sa garantie contractuelle et — une fois posée — sa production vérifiable sur Deye Cloud.
+          sa garantie contractuelle et — une fois posée — sa production vérifiable en temps réel.
         </p>
       </div>
     </section>
@@ -126,7 +124,7 @@ const piliers = [
           <h2 class="display v2-section-title mt-5 text-white">Des chantiers réels, à voir sur demande</h2>
           <p class="v2-lead mt-5 text-lune-soft">
             Casablanca, El Jadida, Nouaceur : ces installations tournent déjà, et leur production
-            défile sur Deye Cloud. À la question « est-ce que ça marche vraiment ? », nous
+            est suivie en temps réel. À la question « est-ce que ça marche vraiment ? », nous
             répondons par une adresse, pas par un argumentaire. Demandez à visiter.
           </p>
           <div class="mt-8 flex flex-wrap gap-3">
@@ -136,8 +134,8 @@ const piliers = [
         </div>
         <dl class="grid grid-cols-2 gap-x-6 gap-y-10 border-l-2 border-brass-400/60 pl-6 sm:pl-10" data-stagger>
           <div class="v2-rise" style="--v2-i:0">
-            <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl" data-tally>{totalKwcLabel} kWc</dd>
-            <dt class="tech-label mt-2 text-lune-faint">Installés — Casablanca, El Jadida, Nouaceur</dt>
+            <dd class="font-display text-xl font-bold text-white">Casablanca, El Jadida, Nouaceur</dd>
+            <dt class="tech-label mt-2 text-lune-faint">Chantiers réels, visitables sur demande</dt>
           </div>
           <div class="v2-rise" style="--v2-i:1">
             <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl" data-tally>{panelWarrantyLabel}</dd>
@@ -148,7 +146,7 @@ const piliers = [
             <dt class="tech-label mt-2 text-lune-faint">L’étude et le diagnostic</dt>
           </div>
           <div class="v2-rise" style="--v2-i:3">
-            <dd class="font-display text-xl font-bold text-white">Deye Cloud</dd>
+            <dd class="font-display text-xl font-bold text-white">Suivi en temps réel</dd>
             <dt class="tech-label mt-2 text-lune-faint">Production suivie, accès client inclus</dt>
           </div>
         </dl>

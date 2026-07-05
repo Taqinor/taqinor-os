@@ -179,13 +179,13 @@ const RESIDENTIEL: Record<Locale, ServiceCopy> = {
   fr: {
     entretienQ: 'Une installation résidentielle demande-t-elle un entretien régulier ?',
     entretienA:
-      'Le socle est déjà couvert par le monitoring Deye Cloud, remonté sur chaque installation : nous voyons une anomalie avant vous, sur alerte automatique. Au-delà, un passage d’entretien programmé (nettoyage des panneaux notamment) existe en contrat — cadence, délai de réponse et prix exacts sont encore en attente de validation du fondateur, nous ne publions donc aucun chiffre tant qu’il n’est pas arrêté. Voir la page Maintenance & monitoring.',
+      'Le socle est déjà couvert par le suivi de production en temps réel, mis en place sur chaque installation : nous voyons une anomalie avant vous, sur alerte automatique. Au-delà, un passage d’entretien programmé (nettoyage des panneaux notamment) existe en contrat — cadence, délai de réponse et prix exacts sont encore en attente de validation du fondateur, nous ne publions donc aucun chiffre tant qu’il n’est pas arrêté. Voir la page Maintenance & monitoring.',
     prixQ: 'Comment le prix d’une installation résidentielle est-il calculé ?',
     prixA:
       'Le prix suit la puissance, et la puissance suit votre facture — jamais un tarif au mètre carré de toiture. Le diagnostic en ligne donne une première fourchette en 60 secondes à partir de votre facture mensuelle ; le chiffre exact tombe après la visite technique, qui vérifie la toiture et le matériel retenu.',
     inclusQ: 'Qu’est-ce qui est inclus dans une installation Taqinor ?',
     inclusA:
-      'Le matériel posé (panneaux, onduleur, éventuellement batterie), la structure de fixation, la pose par notre équipe, le dossier technique complet à la livraison (schémas unifilaires, calcul de câbles, liste des protections) et l’accès personnel au monitoring Deye Cloud.',
+      'Le matériel posé (panneaux, onduleur, éventuellement batterie), la structure de fixation, la pose par notre équipe, le dossier technique complet à la livraison (schémas unifilaires, calcul de câbles, liste des protections) et l’accès personnel au suivi de production en temps réel.',
     exclusQ: 'Qu’est-ce qui n’est pas couvert par la garantie ?',
     exclusA:
       'Le dommage accidentel ou un choc externe, une intervention par un tiers non habilité par Taqinor, un défaut d’entretien manifeste, un événement de force majeure (relève alors de votre assurance habitation, pas de notre garantie matériel) et l’usure normale au-delà des seuils de performance garantis. Liste indicative, à confirmer — voir la page Garanties pour le détail.',
@@ -199,13 +199,13 @@ const RESIDENTIEL: Record<Locale, ServiceCopy> = {
   en: {
     entretienQ: 'Does a residential installation need regular maintenance?',
     entretienA:
-      'The baseline is already covered by the Deye Cloud monitoring shipped with every installation: we see an anomaly before you do, on an automatic alert. Beyond that, a scheduled maintenance visit (panel cleaning in particular) exists as a contract — the exact cadence, response time and price are still pending founder validation, so we publish no figure until it is settled. See the Maintenance & monitoring page.',
+      'The baseline is already covered by the real-time production monitoring shipped with every installation: we see an anomaly before you do, on an automatic alert. Beyond that, a scheduled maintenance visit (panel cleaning in particular) exists as a contract — the exact cadence, response time and price are still pending founder validation, so we publish no figure until it is settled. See the Maintenance & monitoring page.',
     prixQ: 'How is the price of a residential installation calculated?',
     prixA:
       'The price follows the power, and the power follows your bill — never a price per square metre of roof. The online assessment gives a first range in 60 seconds from your monthly bill; the exact figure comes after the technical visit, which checks the roof and the equipment retained.',
     inclusQ: 'What is included in a Taqinor installation?',
     inclusA:
-      'The equipment fitted (panels, inverter, battery where relevant), the mounting structure, the install by our team, the full technical file on delivery (single-line diagrams, cable sizing, list of protections) and personal access to Deye Cloud monitoring.',
+      'The equipment fitted (panels, inverter, battery where relevant), the mounting structure, the install by our team, the full technical file on delivery (single-line diagrams, cable sizing, list of protections) and personal access to real-time production monitoring.',
     exclusQ: 'What is not covered by the warranty?',
     exclusA:
       'Accidental damage or an external impact, an intervention by a third party not authorised by Taqinor, a clear lack of maintenance, a force-majeure event (a matter for your home insurance, not our hardware warranty) and normal wear beyond the guaranteed performance thresholds. Indicative list, to be confirmed — see the Warranties page for detail.',
@@ -219,13 +219,13 @@ const RESIDENTIEL: Record<Locale, ServiceCopy> = {
   ar: {
     entretienQ: 'هل تحتاج التركيبة السكنية إلى صيانة منتظمة؟',
     entretienA:
-      'القاعدة مُغطّاة بالفعل بمراقبة Deye Cloud المُدرَجة مع كل تركيبة: نرى الخلل قبلكم، عبر تنبيه آلي. إضافة إلى ذلك، تتوفّر زيارة صيانة مبرمجة (تنظيف الألواح خصوصاً) ضمن عقد — الوتيرة الدقيقة وزمن الاستجابة والثمن ما زالت في انتظار مصادقة المؤسس، فلا ننشر أي رقم قبل أن يُحسم. انظر صفحة الصيانة والمراقبة.',
+      'القاعدة مُغطّاة بالفعل بمتابعة الإنتاج في الوقت الحقيقي المُعتمَدة مع كل تركيبة: نرى الخلل قبلكم، عبر تنبيه آلي. إضافة إلى ذلك، تتوفّر زيارة صيانة مبرمجة (تنظيف الألواح خصوصاً) ضمن عقد — الوتيرة الدقيقة وزمن الاستجابة والثمن ما زالت في انتظار مصادقة المؤسس، فلا ننشر أي رقم قبل أن يُحسم. انظر صفحة الصيانة والمراقبة.',
     prixQ: 'كيف يُحسب ثمن تركيبة سكنية؟',
     prixA:
       'الثمن يتبع القدرة، والقدرة تتبع فاتورتكم — لا سعر بالمتر المربع من السطح أبداً. التشخيص عبر الإنترنت يُعطي مجالاً أولياً خلال 60 ثانية انطلاقاً من فاتورتكم الشهرية؛ الرقم الدقيق يأتي بعد الزيارة التقنية التي تتحقّق من السطح والعتاد المُختار.',
     inclusQ: 'ما الذي يُدرَج ضمن تركيبة تاكينور؟',
     inclusA:
-      'العتاد المُركَّب (الألواح، العاكس، البطارية عند الاقتضاء)، بنية التثبيت، التركيب من طرف فريقنا، الملف التقني الكامل عند التسليم (مخططات أحادية الخط، حساب الكوابل، لائحة الحمايات) والولوج الشخصي إلى مراقبة Deye Cloud.',
+      'العتاد المُركَّب (الألواح، العاكس، البطارية عند الاقتضاء)، بنية التثبيت، التركيب من طرف فريقنا، الملف التقني الكامل عند التسليم (مخططات أحادية الخط، حساب الكوابل، لائحة الحمايات) والولوج الشخصي إلى متابعة الإنتاج في الوقت الحقيقي.',
     exclusQ: 'ما الذي لا يُغطّيه الضمان؟',
     exclusA:
       'الضرر العرضي أو الصدمة الخارجية، تدخّل طرف ثالث غير معتمد من تاكينور، إهمال صيانة واضح، حدث قوة قاهرة (يخصّ تأمين سكنكم، لا ضمان معداتنا) والتآكل العادي بما يتجاوز عتبات الأداء المضمونة. لائحة إرشادية، قيد التأكيد — انظر صفحة الضمانات للتفصيل.',
@@ -244,13 +244,13 @@ const PROFESSIONNEL: Record<Locale, ServiceCopy> = {
   fr: {
     entretienQ: 'Un site professionnel demande-t-il un entretien particulier ?',
     entretienA:
-      'Le monitoring Deye Cloud tourne en continu sur l’ensemble du parc et déclenche une alerte chez nous avant que vous ne constatiez quoi que ce soit. Un passage d’entretien programmé peut s’ajouter en contrat ; la cadence, le délai de réponse et le prix exacts restent en attente de validation du fondateur — aucun chiffre n’est publié tant qu’il n’est pas arrêté. Voir la page Maintenance & monitoring.',
+      'Le suivi de production en temps réel tourne en continu sur l’ensemble du parc et déclenche une alerte chez nous avant que vous ne constatiez quoi que ce soit. Un passage d’entretien programmé peut s’ajouter en contrat ; la cadence, le délai de réponse et le prix exacts restent en attente de validation du fondateur — aucun chiffre n’est publié tant qu’il n’est pas arrêté. Voir la page Maintenance & monitoring.',
     prixQ: 'Comment le prix d’un site professionnel est-il calculé ?',
     prixA:
       'Le chiffrage se cale sur vos courbes de charge et sur les conditions de votre raccordement, jamais sur un gabarit générique. Les fourchettes indicatives publiées donnent un ordre de grandeur par tranche de facture ; le devis réel dépend de la visite technique et, en moyenne tension, du régime loi 82-21 applicable (accord de raccordement jusqu’à 5 MW, autorisation au-delà).',
     inclusQ: 'Qu’est-ce qui est inclus dans une installation professionnelle ?',
     inclusA:
-      'Le matériel tier-1 (panneaux, onduleur, structure), le dossier technique complet, le montage du dossier loi 82-21 (accord de raccordement ou autorisation selon la puissance) et l’accès au monitoring Deye Cloud pour l’ensemble du site.',
+      'Le matériel tier-1 (panneaux, onduleur, structure), le dossier technique complet, le montage du dossier loi 82-21 (accord de raccordement ou autorisation selon la puissance) et l’accès au suivi de production en temps réel pour l’ensemble du site.',
     exclusQ: 'Qu’est-ce qui n’est pas couvert par la garantie ?',
     exclusA:
       'Le dommage accidentel ou un choc externe, une intervention par un tiers non habilité par Taqinor, un défaut d’entretien manifeste, un événement de force majeure (assurance du bâtiment, pas notre garantie matériel) et l’usure normale au-delà des seuils garantis. Liste indicative, à confirmer — voir la page Garanties.',
@@ -264,13 +264,13 @@ const PROFESSIONNEL: Record<Locale, ServiceCopy> = {
   en: {
     entretienQ: 'Does a business site need particular maintenance?',
     entretienA:
-      'Deye Cloud monitoring runs continuously across the whole fleet and triggers an alert on our side before you notice anything. A scheduled maintenance visit can be added as a contract; the exact cadence, response time and price are still pending founder validation — no figure is published until it is settled. See the Maintenance & monitoring page.',
+      'Real-time production monitoring runs continuously across the whole fleet and triggers an alert on our side before you notice anything. A scheduled maintenance visit can be added as a contract; the exact cadence, response time and price are still pending founder validation — no figure is published until it is settled. See the Maintenance & monitoring page.',
     prixQ: 'How is the price for a business site calculated?',
     prixA:
       'The costing is set on your load curves and on your grid-connection conditions, never on a generic template. The published indicative ranges give an order of magnitude per bill bracket; the real quote depends on the technical visit and, in medium voltage, on the applicable law 82-21 regime (grid-connection agreement up to 5 MW, authorisation beyond).',
     inclusQ: 'What is included in a business installation?',
     inclusA:
-      'Tier-1 equipment (panels, inverter, structure), the full technical file, building the law 82-21 file (grid-connection agreement or authorisation depending on power) and Deye Cloud monitoring access for the whole site.',
+      'Tier-1 equipment (panels, inverter, structure), the full technical file, building the law 82-21 file (grid-connection agreement or authorisation depending on power) and real-time production monitoring access for the whole site.',
     exclusQ: 'What is not covered by the warranty?',
     exclusA:
       'Accidental damage or an external impact, an intervention by a third party not authorised by Taqinor, a clear lack of maintenance, a force-majeure event (a matter for the building’s insurance, not our hardware warranty) and normal wear beyond the guaranteed thresholds. Indicative list, to be confirmed — see the Warranties page.',
@@ -284,13 +284,13 @@ const PROFESSIONNEL: Record<Locale, ServiceCopy> = {
   ar: {
     entretienQ: 'هل يحتاج الموقع المهني إلى صيانة خاصة؟',
     entretienA:
-      'تعمل مراقبة Deye Cloud باستمرار على كامل الأسطول وتُطلق تنبيهاً لدينا قبل أن تلاحظوا أي شيء. يمكن إضافة زيارة صيانة مبرمجة ضمن عقد؛ الوتيرة الدقيقة وزمن الاستجابة والثمن ما زالت في انتظار مصادقة المؤسس — لا يُنشَر أي رقم قبل أن يُحسم. انظر صفحة الصيانة والمراقبة.',
+      'تعمل متابعة الإنتاج في الوقت الحقيقي باستمرار على كامل الأسطول وتُطلق تنبيهاً لدينا قبل أن تلاحظوا أي شيء. يمكن إضافة زيارة صيانة مبرمجة ضمن عقد؛ الوتيرة الدقيقة وزمن الاستجابة والثمن ما زالت في انتظار مصادقة المؤسس — لا يُنشَر أي رقم قبل أن يُحسم. انظر صفحة الصيانة والمراقبة.',
     prixQ: 'كيف يُحسب ثمن موقع مهني؟',
     prixA:
       'يُضبط التسعير على منحنيات الحمل لديكم وعلى شروط ربطكم بالشبكة، لا على نموذج عام أبداً. المجالات الإرشادية المنشورة تُعطي أمر مقدار حسب شريحة الفاتورة؛ الثمن الحقيقي يعتمد على الزيارة التقنية، وفي المتوسط الجهد، على نظام القانون 82-21 المطبَّق (اتفاقية ربط إلى غاية 5 ميغاواط، ترخيص فوق ذلك).',
     inclusQ: 'ما الذي يُدرَج ضمن تركيبة مهنية؟',
     inclusA:
-      'عتاد من الفئة الأولى (ألواح، عاكس، بنية)، الملف التقني الكامل، إعداد ملف القانون 82-21 (اتفاقية ربط أو ترخيص حسب القدرة) وولوج مراقبة Deye Cloud لكامل الموقع.',
+      'عتاد من الفئة الأولى (ألواح، عاكس، بنية)، الملف التقني الكامل، إعداد ملف القانون 82-21 (اتفاقية ربط أو ترخيص حسب القدرة) وولوج متابعة الإنتاج في الوقت الحقيقي لكامل الموقع.',
     exclusQ: 'ما الذي لا يُغطّيه الضمان؟',
     exclusA:
       'الضرر العرضي أو الصدمة الخارجية، تدخّل طرف ثالث غير معتمد من تاكينور، إهمال صيانة واضح، حدث قوة قاهرة (يخصّ تأمين المبنى، لا ضمان معداتنا) والتآكل العادي بما يتجاوز العتبات المضمونة. لائحة إرشادية، قيد التأكيد — انظر صفحة الضمانات.',
@@ -375,13 +375,13 @@ const BATTERIES: Record<Locale, ServiceCopy> = {
   fr: {
     entretienQ: 'Une batterie de stockage demande-t-elle un entretien ?',
     entretienA:
-      'Le BMS intégré gère la charge et la décharge automatiquement, sans intervention manuelle. Le monitoring Deye Cloud remonte l’état de la batterie en continu ; un passage d’entretien programmé peut s’ajouter en contrat, mais sa cadence, son délai de réponse et son prix exacts restent en attente de validation du fondateur — aucun chiffre publié tant qu’il n’est pas arrêté.',
+      'Le BMS intégré gère la charge et la décharge automatiquement, sans intervention manuelle. Le suivi de production en temps réel remonte l’état de la batterie en continu ; un passage d’entretien programmé peut s’ajouter en contrat, mais sa cadence, son délai de réponse et son prix exacts restent en attente de validation du fondateur — aucun chiffre publié tant qu’il n’est pas arrêté.',
     prixQ: 'Comment le prix d’une batterie de stockage est-il calculé ?',
     prixA:
       'La capacité — donc le prix — suit votre creux de consommation du soir, pas un palier de catalogue : nos modules Dyness s’empilent par tranches de 5 kWh, et on empile juste assez de modules pour couvrir ce que vos panneaux ne fournissent plus une fois le soleil couché.',
     inclusQ: 'Qu’est-ce qui est inclus avec une batterie Dyness ?',
     inclusA:
-      'La batterie lithium-fer-phosphate (LFP) elle-même, son dialogue CAN BMS natif avec l’onduleur hybride Deye qui pilote charge et décharge, le raccordement, et l’accès au monitoring Deye Cloud pour suivre son état.',
+      'La batterie lithium-fer-phosphate (LFP) elle-même, son dialogue CAN BMS natif avec l’onduleur hybride Deye qui pilote charge et décharge, le raccordement, et l’accès au suivi de production en temps réel pour suivre son état.',
     exclusQ: 'Qu’est-ce qui n’est pas couvert par la garantie batterie ?',
     exclusA:
       'Le dommage accidentel ou un choc externe, une intervention par un tiers non habilité par Taqinor, un défaut d’entretien manifeste, un événement de force majeure et l’usure normale au-delà des seuils garantis (≥ 70 % de capacité conservée à 10 ans). Liste indicative, à confirmer — voir la page Garanties.',
@@ -395,13 +395,13 @@ const BATTERIES: Record<Locale, ServiceCopy> = {
   en: {
     entretienQ: 'Does a storage battery need maintenance?',
     entretienA:
-      'The built-in BMS manages charge and discharge automatically, with no manual intervention. Deye Cloud monitoring reports the battery’s state continuously; a scheduled maintenance visit can be added as a contract, but its exact cadence, response time and price are still pending founder validation — no figure published until it is settled.',
+      'The built-in BMS manages charge and discharge automatically, with no manual intervention. Real-time production monitoring reports the battery’s state continuously; a scheduled maintenance visit can be added as a contract, but its exact cadence, response time and price are still pending founder validation — no figure published until it is settled.',
     prixQ: 'How is the price of a storage battery calculated?',
     prixA:
       'Capacity — and therefore price — follows your evening consumption dip, not a catalogue tier: our Dyness modules stack in 5 kWh increments, and we stack just enough modules to cover what your panels no longer provide once the sun has set.',
     inclusQ: 'What is included with a Dyness battery?',
     inclusA:
-      'The lithium-iron-phosphate (LFP) battery itself, its native CAN BMS dialogue with the Deye hybrid inverter that drives charge and discharge, the wiring, and Deye Cloud monitoring access to track its state.',
+      'The lithium-iron-phosphate (LFP) battery itself, its native CAN BMS dialogue with the Deye hybrid inverter that drives charge and discharge, the wiring, and real-time production monitoring access to track its state.',
     exclusQ: 'What is not covered by the battery warranty?',
     exclusA:
       'Accidental damage or an external impact, an intervention by a third party not authorised by Taqinor, a clear lack of maintenance, a force-majeure event and normal wear beyond the guaranteed thresholds (≥ 70 % capacity retained at 10 years). Indicative list, to be confirmed — see the Warranties page.',
@@ -415,13 +415,13 @@ const BATTERIES: Record<Locale, ServiceCopy> = {
   ar: {
     entretienQ: 'هل تحتاج بطارية التخزين إلى صيانة؟',
     entretienA:
-      'يدير نظام BMS المُدمَج الشحن والتفريغ تلقائياً، دون أي تدخّل يدوي. تنقل مراقبة Deye Cloud حالة البطارية باستمرار؛ يمكن إضافة زيارة صيانة مبرمجة ضمن عقد، لكن وتيرتها الدقيقة وزمن استجابتها وثمنها ما زالت في انتظار مصادقة المؤسس — لا يُنشَر أي رقم قبل أن يُحسم.',
+      'يدير نظام BMS المُدمَج الشحن والتفريغ تلقائياً، دون أي تدخّل يدوي. تنقل متابعة الإنتاج في الوقت الحقيقي حالة البطارية باستمرار؛ يمكن إضافة زيارة صيانة مبرمجة ضمن عقد، لكن وتيرتها الدقيقة وزمن استجابتها وثمنها ما زالت في انتظار مصادقة المؤسس — لا يُنشَر أي رقم قبل أن يُحسم.',
     prixQ: 'كيف يُحسب ثمن بطارية التخزين؟',
     prixA:
       'تتبع السعة — وبالتالي الثمن — تراجع استهلاككم المسائي، لا شريحة كاطالوݣ: تتراكم وحدات Dyness لدينا بشرائح 5 kWh، ونُركِّب فقط ما يكفي من الوحدات لتغطية ما لم تعد ألواحكم توفّره بعد غروب الشمس.',
     inclusQ: 'ما الذي يُدرَج مع بطارية Dyness؟',
     inclusA:
-      'البطارية نفسها من الليثيوم-حديد-فوسفات (LFP)، تواصلها الأصلي عبر CAN BMS مع العاكس الهجين Deye الذي يُدير الشحن والتفريغ، التوصيل، وولوج مراقبة Deye Cloud لمتابعة حالتها.',
+      'البطارية نفسها من الليثيوم-حديد-فوسفات (LFP)، تواصلها الأصلي عبر CAN BMS مع العاكس الهجين Deye الذي يُدير الشحن والتفريغ، التوصيل، وولوج متابعة الإنتاج في الوقت الحقيقي لمتابعة حالتها.',
     exclusQ: 'ما الذي لا يُغطّيه ضمان البطارية؟',
     exclusA:
       'الضرر العرضي أو الصدمة الخارجية، تدخّل طرف ثالث غير معتمد من تاكينور، إهمال صيانة واضح، حدث قوة قاهرة والتآكل العادي بما يتجاوز العتبات المضمونة (≥ 70 % من السعة محفوظة عند 10 سنوات). لائحة إرشادية، قيد التأكيد — انظر صفحة الضمانات.',

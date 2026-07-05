@@ -105,13 +105,13 @@ const jsonLd = {
         <div class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
           {bestByCity.map((c, i) => (
             <div class="v2-rise cine-card p-6" style={`--v2-i:${i}`}>
-              <p class="tech-label text-lune-faint">{c.label} · خط العرض {c.lat.toLocaleString('fr-FR')}°</p>
+              <p class="tech-label text-lune-faint">{c.label} · خط العرض <span dir="ltr">{c.lat.toLocaleString('fr-FR')}°</span></p>
               <p class="fig lum mt-2 text-3xl">
                 {c.best.value.toLocaleString('fr-FR')}
                 <span class="ms-1 text-sm font-semibold text-brass-400">kWh/kWc/سنة</span>
               </p>
               <p class="mt-2 text-sm text-lune-soft">
-                بميل {c.best.tilt}°، اتجاه {AZIMUTH_LABELS[c.best.azimuth]}
+                بميل <span dir="ltr">{c.best.tilt}°</span>، اتجاه {AZIMUTH_LABELS[c.best.azimuth]}
               </p>
             </div>
           ))}
@@ -119,7 +119,7 @@ const jsonLd = {
         <Callout type="info" title="كيف تُقرأ هذه الأرقام">
           <p>
             المردودية (kWh/kWc/سنة) هي الإنتاج السنوي النظري لنظام كهروضوئي، شاملاً خسائر النظام
-            (14%) — وليست إنتاجاً حقيقياً مقيساً (راجع صفحة{' '}
+            (<span dir="ltr">14%</span>) — وليست إنتاجاً حقيقياً مقيساً (راجع صفحة{' '}
             <a href={L('/production-mesuree')} class="border-b border-brass-300 pb-0.5 font-semibold text-brass-300">الإنتاج المقيس</a> لدينا
             للأرقام الفعلية). تُستخدَم لمقارنة الإعدادات، لا لتعويض دراسة موقع تأخذ بعين الاعتبار
             الظل الحقيقي والمعدّات المُختارة فعلاً.
@@ -173,7 +173,7 @@ const jsonLd = {
         <p class="mx-auto mt-10 max-w-3xl border-s-4 border-azur-600 ps-4 text-sm leading-relaxed text-encre-soft">
           <strong>المصدر:</strong> قيم مُشتقّة من PVGIS (المفوضية الأوروبية، المركز المشترك
           للأبحاث)، محسوبة لخمس مدن ضمن نطاق خدمتنا ومولَّدة عبر سكريبت{' '}
-          <code>generate-yield-table.mjs</code>. تشمل خسارة نظام بنسبة 14% (الأسلاك، العاكس،
+          <code>generate-yield-table.mjs</code>. تشمل خسارة نظام بنسبة <span dir="ltr">14%</span> (الأسلاك، العاكس،
           الاحترار، الاتساخ) — نفس المعدَّل الذي يعتمده مُقدِّرنا الإلكتروني. خط عرض وسيط يُحسَب
           بالاستيفاء بين المدينتين المحيطتين.
         </p>

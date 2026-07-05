@@ -49,9 +49,9 @@ const waZeroForm = whatsappLink(WHATSAPP_LEADS, zeroFormWhatsappText('ar'));
 
 // W284 — أرقام دقيقة، لا تُقرَّب أبدًا: مُشتقّة من REALISATIONS (مصدر الحقيقة
 // الوحيد، apps/web/src/lib/realisations.ts) بدل نسخها يدويًا، لذا لا يمكن أن
-// تصبح خاطئة بصمت. الأرقام اللاتينية تبقى كما في FR (toLocaleString('fr-FR')).
-const totalKwc = REALISATIONS.reduce((sum, r) => sum + r.kwcNum, 0);
-const totalKwcLabel = totalKwc.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' kWc';
+// تصبح خاطئة بصمت.
+// القاعدة ج5 (2026-07-05) — لم يعد إجمالي kWc المُركَّبة (« 43,48 kWc ») يُعرَض:
+// أُزيلت totalKwc/totalKwcLabel مع النصب.
 // أكبر تركيبة سكنية منشورة (المرجع 468، الجديدة) — بطلة البطل والملاحظة
 // الختامية. مُشتقّة بالفرز على kwcNum، وليست مرجعًا منسوخًا يدويًا.
 const featured = [...REALISATIONS].sort((a, b) => b.kwcNum - a.kwcNum)[0];
@@ -74,7 +74,7 @@ const featuredVilleAr = CITY_AR[featured.ville] ?? featured.ville;
 const heroFigure = MEASURED_FLEET_LIFETIME_MWH_FR; // « 6,56 »
 const heroTitleSuffix = ` MWh أُنتِجت ومُقيسة فعلاً على تركيباتنا.`;
 const heroSub =
-  `رقم تراكمي حقيقي، يُقرأ باستمرار على Deye Cloud — لا توقّعاً تجارياً. تبدأ دراستكم بتشخيص من 60 ثانية.`;
+  `رقم تراكمي حقيقي، مُتابَع في الوقت الحقيقي — لا توقّعاً تجارياً. تبدأ دراستكم بتشخيص من 60 ثانية.`;
 
 // PLACEHOLDER(MERYEM): FAQ مؤقتة.
 const faq = [
@@ -94,7 +94,7 @@ const galleryRaw = [
   { name: 'reflet-468', alt: 'انعكاس الشمس على صف الألواح أثناء التركيب، الجديدة', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: true, type: '24 × Canadian Solar 710 Wc · Deye 15 kW', slug: 'el-jadida-17-kwc' },
   { name: 'equipe-trois', alt: 'فريق Taqinor أمام الصف الطويل من الألواح في نهاية الورش، الجديدة', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: false, type: 'نهاية الورش · فريق Taqinor', slug: 'el-jadida-17-kwc' },
   { name: 'hero-skyline', alt: 'صف من الألواح الشمسية أمام أفق الدار البيضاء ومئذنة، ضوء ذهبي', widths: [2000, 1280, 768, 480], ratio: 16 / 9, showProd: true, type: '16 × Canadian Solar 710 Wc · Deye 10 kW', slug: 'casablanca-11-kwc' },
-  { name: 'portrait-400', alt: 'المهندس أمام حقل الألواح، أفق الدار البيضاء', widths: [1600, 1024, 640], ratio: 4 / 3, showProd: false, type: 'مرصود على Deye Cloud', slug: 'casablanca-11-kwc' },
+  { name: 'portrait-400', alt: 'المهندس أمام حقل الألواح، أفق الدار البيضاء', widths: [1600, 1024, 640], ratio: 4 / 3, showProd: false, type: 'متابعة الإنتاج في الوقت الحقيقي', slug: 'casablanca-11-kwc' },
   { name: 'champ-villa', alt: 'حقل من ثمانية ألواح على سطح فيلا مسطّح، الجديدة', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: true, type: '8 × Canadian Solar 710 Wc · Deye 5 kW', slug: 'el-jadida-6-kwc' },
   { name: 'pose-134', alt: 'الفريق يميل لوحًا أثناء التركيب، الدار البيضاء', widths: [1600, 1024, 640], ratio: 4 / 3, showProd: true, type: 'تركيب جارٍ · 8 × Canadian Solar 710 Wc', slug: 'casablanca-6-kwc' },
   { name: 'equipe-gilet-taqinor', alt: 'مركّب بسترة Taqinor يضع قضبان هيكل، النواصر', widths: [1600, 1024, 640], ratio: 1, showProd: false, type: 'وضع القضبان · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
@@ -122,20 +122,20 @@ const solutions = [
   { href: '/professionnel', tag: 'صناعيون · فنادق · عيادات', title: 'الطاقة الشمسية للمهنيين', body: 'تقليص بند الكهرباء، الجهد المتوسط، مطابقة القانون 82-21.' },
   { href: '/pompage-solaire', tag: 'الفلاحة والسقي', title: 'الضخّ الشمسي', body: 'الضخّ على إيقاع الشمس، غالبًا بلا بطاريات، مُحجَّم على الحاجة الحقيقية.' },
   { href: '/batteries-stockage', tag: 'الاستهلاك الذاتي', title: 'البطاريات والتخزين', body: 'تخزين LFP لليل أو لاستمرارية الخدمة — حين تُبرِّر ذلك الدراسة.' },
-  { href: '/maintenance-monitoring', tag: 'بعد التركيب', title: 'الصيانة والمراقبة', body: 'إشراف Deye Cloud مع ولوج للزبون، خدمة ما بعد البيع استباقية، ملف تقني.' },
+  { href: '/maintenance-monitoring', tag: 'بعد التركيب', title: 'الصيانة والمراقبة', body: 'متابعة الإنتاج في الوقت الحقيقي مع ولوج للزبون، خدمة ما بعد البيع استباقية، ملف تقني.' },
   { href: '/regularization-article-33', tag: 'تسوية الوضعية', title: 'تسوية القانون 82-21', body: 'تسوية وضعية التركيبات القائمة عبر المادة 33.' },
 ];
 
 // المسار الحقيقي، من البداية إلى النهاية. وقائع منشورة سلفًا على الموقع (تشخيص
-// في 60 ثانية، تبادل عبر WhatsApp، زيارة ودراسة مجانيتان، تركيب، تشغيل، مراقبة
-// Deye Cloud مع ولوج للزبون). بلا أي أجل/SLA مخترَع.
+// في 60 ثانية، تبادل عبر WhatsApp، زيارة ودراسة مجانيتان، تركيب، تشغيل، متابعة
+// الإنتاج في الوقت الحقيقي مع ولوج للزبون). بلا أي أجل/SLA مخترَع.
 const journey = [
   { n: '1', title: 'تشخيص في 60 ثانية', body: 'مجال فوري انطلاقًا من فاتورتكم، بلا أي التزام.' },
   { n: '2', title: 'تبادل عبر WhatsApp', body: 'مباشر مع الفريق التقني، بصور للسطح — بلا مركز اتصال.' },
   { n: '3', title: 'زيارة تقنية ودراسة مجانية', body: 'قراءة للسطح في عين المكان، دراسة كاملة وعرض بـ 0 MAD.' },
   { n: '4', title: 'التركيب', body: 'عتاد tier-1 مُركَّب مع ملفه التقني الكامل.' },
   { n: '5', title: 'التشغيل', body: 'الربط والمراقبات، وملف القانون 82-21 يُساق إلى نهايته.' },
-  { n: '6', title: 'مراقبة Deye Cloud', body: 'إنتاج مُقاس باستمرار، مع ولوج للزبون — القياس يحلّ محلّ الوعد.' },
+  { n: '6', title: 'متابعة في الوقت الحقيقي', body: 'إنتاج مُقاس باستمرار، مع ولوج للزبون — القياس يحلّ محلّ الوعد.' },
 ];
 
 // W252 — «كيف يجري الأمر»: شريط من 4 مراحل تحت البطل، الصيغة شبه العالمية
@@ -149,7 +149,7 @@ const howItWorks = [
   { n: '1', title: 'تقدير فوري', body: 'فاتورتكم تمنح مجالاً بالـ kWc في 60 ثانية، بلا أي التزام.' },
   { n: '2', title: 'دراسة شخصية موقَّعة', body: 'زيارة تقنية، تحجيم على سطحكم الحقيقي، مُصادَق عليه وموقَّع قبل أي عرض ثمن.' },
   { n: '3', title: 'عرض ثمن + توقيع إلكتروني', body: 'التسعير المفصَّل يُوقَّع إلكترونياً، أينما كنتم.' },
-  { n: '4', title: 'التركيب وخدمة ما بعد البيع', body: 'تركيب من طرف فريقنا، تشغيل، ثم مراقبة Deye Cloud وخدمة ما بعد بيع استباقية.' },
+  { n: '4', title: 'التركيب وخدمة ما بعد البيع', body: 'تركيب من طرف فريقنا، تشغيل، ثم متابعة الإنتاج في الوقت الحقيقي وخدمة ما بعد بيع استباقية.' },
 ];
 
 // أيقونات سوبر لبطاقات «حلولنا»: خطّ SVG واحد لكل بطاقة، currentColor (درجة
@@ -163,18 +163,16 @@ const solutionIcons: Record<string, string> = {
   '/regularization-article-33': '<path d="M7 4h7l4 4v12H7z" /><path d="M14 4v4h4" /><path d="M9.5 14l1.5 1.5 3-3.5" />',
 };
 
-// لماذا تاكينور / الثقة — أربعة أرقام ضخمة، وقائع منشورة سلفًا. قرار المؤسس
+// لماذا تاكينور / الثقة — ثلاثة أرقام، وقائع منشورة سلفًا. قرار المؤسس
 // 2026-06-22: خانة «دكتور-مهندس» تُستبدَل بمطابقة القانون 82-21 — إشارة ثقة
-// ملموسة وغير شخصية (يعيش رصيد المؤسس على صفحة الفريق). القيم الثلاث الأخرى
-// (أوراش قابلة للزيارة، kWc مُركَّبة، Deye Cloud) بلا تغيير، لكن W284 تشتقّها
-// الآن من REALISATIONS بدل نسخها يدويًا. الذهب يعيش على أرقام .lum (انضباط
-// النحاس). بلا أي ادعاء مخترَع.
+// ملموسة وغير شخصية (يعيش رصيد المؤسس على صفحة الفريق). W284 تشتقّ عدد الأوراش
+// القابلة للزيارة من REALISATIONS بدل نسخه يدويًا. الذهب يعيش على أرقام .lum
+// (انضباط النحاس). بلا أي ادعاء مخترَع.
 const chantiersVisitablesCount = new Set(REALISATIONS.map((r) => r.ville)).size;
 const trust = [
   { fig: String(chantiersVisitablesCount), tally: false, label: 'أوراش قابلة للزيارة', body: 'تركيبات حقيقية للمعاينة عند الطلب — الدار البيضاء، الجديدة، النواصر' },
-  { fig: totalKwcLabel, tally: true, label: 'مُركَّبة', body: 'الدار البيضاء، الجديدة، النواصر' },
   { fig: 'القانون 82-21', tally: false, label: 'مطابقة مُدرَجة', body: 'تصريح تُعِدّه وتُودِعه عنكم Taqinor' },
-  { fig: 'Deye Cloud', tally: false, label: 'إنتاج مُقاس', body: 'مراقبة على كل تركيب، مع ولوج للزبون' },
+  { fig: 'الوقت الحقيقي', tally: false, label: 'متابعة الإنتاج', body: 'متابعة الإنتاج في الوقت الحقيقي على كل تركيب، مع ولوج الزبون' },
 ];
 
 // W265 — قصة استثمار الـ30 سنة: الرقعة اللونية الفاتحة الوحيدة في الصفحة
@@ -183,40 +181,18 @@ const trust = [
 const investment = [
   { v: '3–7 سنوات', label: 'العائد على الاستثمار النموذجي' },
   { v: '30 سنة', label: 'ضمان أداء الألواح' },
-  { v: '60–90 %', label: 'من الفاتورة مُغطّاة' },
+  { v: '50–100 %', label: 'من الفاتورة مُغطّاة — حسب البطاريات والاستعمال نهارًا/ليلاً' },
   { v: '0 MAD', label: 'الدراسة والتشخيص' },
 ];
 
-// W276 — « محرّكنا، مصمَّم في المغرب » : قصة هندسة داخلية صادقة، تُروى عبر
-// الأدوات الثلاث المبنية فعليًا والمُستخدمة سلفًا على الموقع (لا برنامج خارجي،
-// لا ادّعاء مُختلَق):
-//   1. المُقدِّر المُوجَّه بالفاتورة (محرّك تقدير داخلي — موضع الشمس
-//      محسوب داخليًا، تباعد الصفوف مُشتق من قاعدة تظليل الانقلاب الشتوي).
-//   2. محرّك السطح ثلاثي الأبعاد (/devis/mon-toit — تتبّع حقيقي للسطح،
-//      اتجاه وميل حقيقيان، لا جدول عام جاهز).
-//   3. محرّك عرض الأسعار (apps/ventes/quote_engine، PDF مُوقَّع إلكترونيًا)
-//      الذي يُصدر العرض النهائي.
-// لا رقم مُختلَق هنا: الرابط يقود مباشرة إلى المسار الحقيقي (/devis/mon-toit)
-// ليتحقق منه الزائر بنفسه خلال 60 ثانية.
-const engineeringPillars = [
-  {
-    title: 'المُقدِّر المُوجَّه بالفاتورة',
-    body: 'فاتورة الكهرباء وحدها تكفي: محرّكنا يحسب موضع الشمس وتباعد صفوف الألواح انطلاقًا من قاعدة تظليل عند الانقلاب الشتوي — لا جدول عام مستورد.',
-  },
-  {
-    title: 'محرّك السطح ثلاثي الأبعاد',
-    body: 'ارسم سطح منزلك، حدّد اتجاهه، ويتكيّف التحجيم مع الهندسة الحقيقية لمنزلك — نفس التقنية التي جرّبتها للتو في التشخيص أعلاه.',
-  },
-  {
-    title: 'محرّك عرض الأسعار',
-    body: 'العرض الناتج يُوقَّع إلكترونيًا، عبر الإنترنت — بلا إعادة إدخال يدوية بين الدراسة والوثيقة التي توقّعها.',
-  },
-];
+// القاعدة ج8 (2026-07-05) — أُزيلت `engineeringPillars` مع قسم « مُركِّب يبني
+// أيضًا أدواته الخاصة » (المؤسس لا يريد تموقع تاكينور كباني لبرمجياته/أدواته
+// الخاصة).
 ---
 
 <Layout
   title="Taqinor — تركيبات الطاقة الشمسية في المغرب، مطابقة للقانون 82-21"
-  description="تركيبات شمسية للفيلات والصناعة والفنادق بالمغرب: محسوبة على فاتورتكم، ومصرَّح بها وفق القانون 82-21، ومرصودة في إنتاجها الحقيقي على Deye Cloud."
+  description="تركيبات شمسية للفيلات والصناعة والفنادق بالمغرب: محسوبة على فاتورتكم، ومصرَّح بها وفق القانون 82-21، مع متابعة الإنتاج في الوقت الحقيقي وولوج للزبون."
   ogSlug="accueil"
   preloadHeroPoster
 >
@@ -266,12 +242,17 @@ const engineeringPillars = [
       </div>
 
       {/* المحتوى مرسى أسفلًا — eyebrow مُرتجَع إلى لون اللون (انضباط النحاس). */}
-      <div class="mx-auto w-full max-w-6xl px-4 pb-24 pt-32 sm:pb-32">
+      {/* القاعدة ج7 (2026-07-05) — `relative z-10`: يبقى المحتوى (بما فيه
+          الرقم) فوق الفيديو/الملصق (الطبقة `-z-10`) حتى بعد ظهور الفيديو →
+          لم يعد الرقم «يختفي» عند بدء الفيديو. */}
+      <div class="relative z-10 mx-auto w-full max-w-6xl px-4 pb-24 pt-32 sm:pb-32">
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">الدراسة أولًا، ثم الورش</p>
-        {/* القاعدة ب1 (2026-07-04) — عنوان البطل ثابت: لا مزيد من count-up ولا
-            `.cine-in` على عنصر LCP → يُرسَم فورًا، بلا وميض «يظهر ثم يختفي».
-            الرقم يبقى dir="ltr" ليصحّ عرضه ضمن نص عربي. */}
-        <h1 id="hero-title" class="display v2-hero-title hero-title-sweep mt-6 max-w-[15ch]">
+        {/* القاعدة ب1/ج7 (2026-07-04/05) — عنوان البطل ثابت: لا مزيد من
+            count-up ولا `.cine-in` على عنصر LCP → يُرسَم فورًا، بلا وميض
+            «يظهر ثم يختفي». ظل نصي دفاعي: يبقى الرقم الأبيض مقروءًا حتى فوق
+            إطار فيديو مضيء جداً (شمس ساطعة). الرقم يبقى dir="ltr" ليصحّ عرضه
+            ضمن نص عربي. */}
+        <h1 id="hero-title" class="display v2-hero-title hero-title-sweep mt-6 max-w-[15ch] [text-shadow:0_2px_28px_rgb(7_11_29/0.72)]">
           <span class="font-variant-numeric tabular-nums" dir="ltr">{heroFigure}</span>{heroTitleSuffix}
         </h1>
         <p class="v2-lead cine-in cine-in-2 mt-4 max-w-xl text-white/85">{heroSub}</p>
@@ -318,13 +299,13 @@ const engineeringPillars = [
     <InstantEstimator variant="hero" />
 
     {/* وعد الضمان في الصدارة — التزام حقيقي وقوي، مأخوذ من /garanties (30 سنة
-        أداء) ومن مراقبة Deye Cloud المقاسة. */}
+        أداء) ومن متابعة الإنتاج المقاسة في الوقت الحقيقي. */}
     <div class="seam-soft" aria-hidden="true"></div>
     <section class="bg-brass-400/5 px-4 py-6">
       <p class="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center text-sm font-semibold text-lune sm:text-base">
         <span class="text-brass-300">30 سنة من الأداء المضمون</span>
         <span class="text-lune-faint" aria-hidden="true">·</span>
-        <span>إنتاج مُتابَع لا موعود — مراقبة Deye Cloud على كل تركيب</span>
+        <span>إنتاج مُتابَع لا موعود — متابعة في الوقت الحقيقي على كل تركيب</span>
       </p>
     </section>
 
@@ -470,7 +451,7 @@ const engineeringPillars = [
       </div>
     </section>
 
-    {/* ── لماذا تاكينور / الثقة — أربعة أرقام ضخمة (الذهب يعيش على أرقام .lum،
+    {/* ── لماذا تاكينور / الثقة — ثلاثة أرقام (الذهب يعيش على أرقام .lum،
         انضباط النحاس) — وقائع منشورة سلفًا ── */}
     <div class="seam-soft" aria-hidden="true"></div>
     <section class="section px-4">
@@ -483,11 +464,10 @@ const engineeringPillars = [
             الحقيقية. الرقم يقرّر العتاد — لا العكس أبدًا.
           </p>
         </div>
-        {/* W268 — شريط ضخم بعرض كامل من 4 أعمدة، أرقام .fig-lg + خط نحاسي رفيع
-            لكل عمود (نفس أداة شريط «كيف يجري الأمر» و GarantiesTeaser).
-            «الإثبات قبل الوعد» هي أطروحة العلامة: تستحق بياناً، لا جدول
-            مواصفات. ── */}
-        <dl class="mt-12 grid grid-cols-1 gap-x-8 gap-y-12 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
+        {/* W268 — شريط ضخم بعرض كامل، أرقام .fig-lg + خط نحاسي رفيع لكل عمود
+            (نفس أداة شريط «كيف يجري الأمر» و GarantiesTeaser): الإحصاءات
+            الثلاث المتبقية (أبداً تكرار للرقم الإجمالي المُزال). ── */}
+        <dl class="mt-12 grid grid-cols-1 gap-x-8 gap-y-12 sm:grid-cols-3" data-stagger>
           {trust.map((t, i) => (
             <div class="v2-rise relative min-w-0 border-t-2 border-white/10 pt-5" style={`--v2-i:${i}`}>
               <span class="absolute -top-px start-0 h-0.5 w-10 bg-brass-400" aria-hidden="true"></span>
@@ -500,37 +480,10 @@ const engineeringPillars = [
       </div>
     </section>
 
-    {/* ── محرّكنا، مصمَّم في المغرب (W276) — قصة الهندسة الداخلية: مُركِّب
-        يبني أيضًا أدواته الخاصة (مُقدِّر مُوجَّه بالفاتورة، محرّك سطح ثلاثي
-        الأبعاد، محرّك عرض أسعار). صادقة، نادرة في القطاع، وعلى بُعد نقرة
-        واحدة من التحقّق: الرابط يقود إلى المسار الحقيقي (/devis/mon-toit)
-        بدل الاكتفاء بالتصريح به. ── */}
-    <div class="seam-soft" aria-hidden="true"></div>
-    <section class="section px-4">
-      <div class="mx-auto max-w-6xl">
-        <div class="v2-rise max-w-2xl">
-          <p class="tech-label v2-kicker rule-brass text-lune"><span class="ms-2 font-display text-xs text-azur-200/80" aria-hidden="true">03</span>محرّكنا، مصمَّم في المغرب</p>
-          <h2 class="display v2-section-title mt-5 text-white">مُركِّب يبني أيضًا أدواته الخاصة</h2>
-          <p class="v2-body mt-5">
-            معظم مُركِّبي الطاقة الشمسية يشترون برنامج عروض أسعار جاهزًا. تاكينور بنت برنامجها
-            الخاص: المُقدِّر الذي يقرأ فاتورتكم، ومحرّك يرسم سطحكم ثلاثي الأبعاد، ومحرّك يُصدر
-            العرض الذي توقّعونه إلكترونيًا. ثلاث أدوات، فريق تقني واحد — جرّبوها بأنفسكم أدناه.
-          </p>
-        </div>
-        <div class="mt-12 grid gap-6 sm:grid-cols-3" data-stagger>
-          {engineeringPillars.map((p, i) => (
-            <div class="v2-rise relative min-w-0 border-t-2 border-white/10 pt-5" style={`--v2-i:${i}`}>
-              <span class="absolute -top-px start-0 h-0.5 w-10 bg-brass-400" aria-hidden="true"></span>
-              <h3 class="display mt-2 text-lg text-white">{p.title}</h3>
-              <p class="mt-2 text-sm leading-relaxed text-lune-soft">{p.body}</p>
-            </div>
-          ))}
-        </div>
-        <a href={L('/devis/mon-toit')} class="v2-rise group mt-10 inline-flex items-center gap-1 border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-brass-300 transition-colors hover:text-brass-200">
-          جرّبوا المحرّك على سطحي <span class="inline-block rtl:-scale-x-100 motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:-translate-x-1" aria-hidden="true">→</span>
-        </a>
-      </div>
-    </section>
+    {/* القاعدة ج8 (2026-07-05) — أُزيل قسم « محرّكنا، مصمَّم في المغرب » /
+        « مُركِّب يبني أيضًا أدواته الخاصة »: المؤسس لا يريد تموقع تاكينور
+        كباني لبرمجياته/أدواته الخاصة. تبقى اعتمادات المؤسس الهندسية على
+        /à-propos (القاعدة أ) وفي شريط الخبرة أسفله. */}
 
     {/* ── الخبرة — القاعدة أ (2026-07-04): لا صورة/توقيع للمؤسِّس على الصفحة
         الرئيسية بأي لغة (يحلّ محلّ W266). إشارة نصية خفيفة للاعتمادات، بلا
@@ -643,7 +596,7 @@ const engineeringPillars = [
             {[featured.panneaux, featured.onduleur, featured.batterie].filter(Boolean).join(' · ')}
           </p>
           <p class="mt-4 border-t border-white/10 pt-3 text-xs text-lune-faint">
-            تركيبة مرصودة على Deye Cloud، مع ولوج الزبون. زيارات ميدانية ممكنة عند الطلب.
+            تركيبة مُتابَعة في الوقت الحقيقي، مع ولوج الزبون. زيارات ميدانية ممكنة عند الطلب.
           </p>
         </aside>
       </div>
