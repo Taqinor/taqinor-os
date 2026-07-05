@@ -72,6 +72,7 @@ from .models import (
     ListeDiffusion, AbonnementListe, RebondSoft,
     Compensation, LigneCompensation,
     LienTrackee, ClicLien,
+    StatutEngagementContact,
 )
 
 
@@ -6098,6 +6099,73 @@ def _plafond_pression_atteint(company, destinataire):
     return (nb_campagnes + nb_sequences) >= plafond
 
 
+# ── XMKT22 — Politique « sunset » d'engagement ──────────────────────────────
+
+def sunset_fenetre_jours(company):
+    """XMKT22 — fenêtre société (jours), ``None`` si désactivé (défaut)."""
+    try:
+        from apps.parametres.models_company import CompanyProfile
+        profil = CompanyProfile.objects.filter(company=company).first()
+        return getattr(profil, 'sunset_fenetre_jours', None) if profil else None
+    except Exception:  # pragma: no cover - défensif
+        return None
+
+
+def est_dormant(company, destinataire):
+    """XMKT22 — True si ``destinataire`` est marqué dormant (comportement
+    historique préservé si la politique est désactivée, ou si le contact n'a
+    jamais été évalué)."""
+    if not destinataire:
+        return False
+    return StatutEngagementContact.objects.filter(
+        company=company, destinataire=destinataire,
+        statut=StatutEngagementContact.Statut.DORMANT).exists()
+
+
+def recalculer_dormants(company, *, maintenant=None):
+    """XMKT22 — Enveloppe beat : recalcule le statut d'engagement de chaque
+    destinataire connu (EnvoiCampagne) sur la fenêtre société. Désactivé
+    (``sunset_fenetre_jours`` NULL) : no-op, aucun contact n'est jamais
+    marqué dormant. Un destinataire sans AUCUNE ouverture/clic sur la
+    fenêtre → dormant ; sinon → actif (réactivation automatique s'il
+    redevient engagé). Renvoie le nombre de destinataires marqués dormants.
+    """
+    fenetre = sunset_fenetre_jours(company)
+    if not fenetre:
+        return 0
+    maintenant = maintenant or timezone.now()
+    depuis = maintenant - timezone.timedelta(days=fenetre)
+    destinataires = set(
+        EnvoiCampagne.objects.filter(company=company)
+        .values_list('destinataire', flat=True).distinct())
+    marques_dormants = 0
+    for destinataire in destinataires:
+        if not destinataire:
+            continue
+        engage_recemment = EnvoiCampagne.objects.filter(
+            company=company, destinataire=destinataire,
+        ).filter(
+            Q(ouvert_le__gte=depuis) | Q(clique_le__gte=depuis)
+        ).exists()
+        nouveau_statut = (
+            StatutEngagementContact.Statut.ACTIF if engage_recemment
+            else StatutEngagementContact.Statut.DORMANT)
+        obj, _cree = StatutEngagementContact.objects.update_or_create(
+            company=company, destinataire=destinataire,
+            defaults={'statut': nouveau_statut})
+        if nouveau_statut == StatutEngagementContact.Statut.DORMANT:
+            marques_dormants += 1
+    return marques_dormants
+
+
+def reactiver_contact(company, destinataire):
+    """XMKT22 — réactive un contact dormant (chemin de re-permission : clic
+    sur la campagne dédiée « voulez-vous rester informé ? »)."""
+    StatutEngagementContact.objects.update_or_create(
+        company=company, destinataire=destinataire,
+        defaults={'statut': StatutEngagementContact.Statut.ACTIF})
+
+
 def _destinataires_des_listes(campagne):
     """XMKT7 — résout les destinataires INSCRITS des ``listes`` ciblées par
     la campagne (XMKT5). Simple source stable pour l'envoi planifié beat —
@@ -6181,6 +6249,10 @@ def envoyer_campagne(campagne, *, destinataires=None):
         # XMKT7 — un contact déjà au plafond de pression marketing sur la
         # période est sauté (journalisé).
         and not _plafond_pression_atteint(campagne.company, _adresse(cible))
+        # XMKT22 — un contact dormant (politique sunset) est sauté, sauf
+        # sur la campagne de re-permission elle-même (aucun marquage
+        # spécial requis — le clic sur SON lien réactive via traiter_clic_lien).
+        and not est_dormant(campagne.company, _adresse(cible))
     ]
     refuses_consentement = [
         _adresse(cible) for cible in brutes
@@ -6210,6 +6282,22 @@ def envoyer_campagne(campagne, *, destinataires=None):
                 destinataire=dest, contact_ref='',
                 statut=EnvoiCampagne.Statut.REBOND,
                 raison_smtp='plafond_pression_marketing',
+            )
+    dormants = [
+        _adresse(cible) for cible in brutes
+        if not est_supprime(campagne.company, _adresse(cible))
+        and consentement_accorde(
+            campagne.company, _adresse(cible), canal=campagne.canal)
+        and not _plafond_pression_atteint(campagne.company, _adresse(cible))
+        and est_dormant(campagne.company, _adresse(cible))
+    ]
+    for dest in dormants:
+        if dest:
+            EnvoiCampagne.objects.create(
+                company=campagne.company, campagne=campagne,
+                destinataire=dest, contact_ref='',
+                statut=EnvoiCampagne.Statut.REBOND,
+                raison_smtp='contact_dormant_sunset',
             )
     campagne.nb_destinataires = len(cibles)
     if brevo_actif() and cibles:
@@ -6460,6 +6548,9 @@ def traiter_clic_lien(token, *, destinataire=''):
     ClicLien.objects.create(
         company=lien.company, lien=lien, destinataire=destinataire)
     if destinataire:
+        # XMKT22 — un clic réactive automatiquement un contact dormant
+        # (chemin de re-permission).
+        reactiver_contact(lien.company, destinataire)
         envoi = webhook_brevo_evenement(
             lien.company, campagne_id=lien.campagne_id,
             destinataire=destinataire, evenement='click')

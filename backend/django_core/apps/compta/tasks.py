@@ -6,6 +6,7 @@ from celery import shared_task
 from .models import Campagne
 from .services import (
     decider_gagnant_ab, envoyer_campagnes_planifiees, executer_etapes_dues,
+    recalculer_dormants,
 )
 
 
@@ -49,3 +50,16 @@ def decider_gagnants_ab_task():
         if decider_gagnant_ab(campagne):
             decisions += 1
     return {'decisions': decisions}
+
+
+@shared_task(name='compta.recalculer_dormants_marketing')
+def recalculer_dormants_task():
+    """XMKT22 — Enveloppe Celery Beat : recalcule le statut d'engagement
+    (dormant/actif) de chaque société ayant une fenêtre sunset configurée.
+    """
+    from authentication.models import Company
+
+    total = 0
+    for company in Company.objects.all():
+        total += recalculer_dormants(company)
+    return {'contacts_dormants': total}

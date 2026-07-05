@@ -5149,6 +5149,46 @@ class ClicLien(models.Model):
         return f'{self.lien_id} ← {self.destinataire or "?"}'
 
 
+# ── XMKT22 — Politique « sunset » d'engagement ──────────────────────────────
+
+class StatutEngagementContact(models.Model):
+    """Statut d'engagement d'un destinataire marketing (XMKT22) : ``dormant``
+    quand il n'a ouvert/cliqué aucun envoi sur une fenêtre paramétrable
+    (90-180 j). Un contact dormant est sauté aux envois (journalisé XMKT2)
+    tant qu'il n'a pas cliqué une campagne de re-permission.
+    """
+    class Statut(models.TextChoices):
+        ACTIF = 'actif', 'Actif'
+        DORMANT = 'dormant', 'Dormant'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='statuts_engagement',
+        verbose_name='Société',
+    )
+    destinataire = models.CharField(
+        max_length=255, verbose_name='Destinataire (email/téléphone normalisé)')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.ACTIF,
+        verbose_name='Statut')
+    date_maj = models.DateTimeField(auto_now=True, verbose_name='Mis à jour le')
+
+    class Meta:
+        verbose_name = "Statut d'engagement (contact)"
+        verbose_name_plural = "Statuts d'engagement (contacts)"
+        ordering = ['-date_maj']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'destinataire'],
+                name='uniq_statut_engagement_par_destinataire',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.destinataire} ({self.statut})'
+
+
 # ── FG203 — Récupération des devis abandonnés ──────────────────────────────
 
 class RelanceDevisAbandonne(models.Model):

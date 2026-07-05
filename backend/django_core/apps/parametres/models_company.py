@@ -471,6 +471,15 @@ class CompanyProfile(models.Model):
         help_text="Fenêtre glissante (jours) sur laquelle le plafond de "
                   "pression marketing est évalué.")
 
+    # ── XMKT22 — politique « sunset » d'engagement ──────────────────────────
+    # NULL = fonctionnalité désactivée (comportement actuel, aucun contact
+    # jamais marqué dormant). Valeur typique 90-180 jours.
+    sunset_fenetre_jours = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Fenêtre (jours, 90-180 typiquement) sans ouverture/clic "
+                  "au-delà de laquelle un contact est marqué dormant et "
+                  "sauté aux envois. Vide = désactivé (comportement actuel).")
+
     class Meta:
         verbose_name = 'Profil entreprise'
 
