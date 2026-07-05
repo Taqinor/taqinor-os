@@ -616,6 +616,61 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
                 else status.HTTP_400_BAD_REQUEST)
         return Response({'documents': ser.data, 'erreurs': erreurs}, status=http)
 
+    @action(detail=False, methods=['post'], url_path='assembler-photos',
+            parser_classes=[MultiPartParser, FormParser])
+    def assembler_photos(self, request):
+        """XGED12 — Capture mobile photo → PDF multi-pages classé en GED.
+
+        `POST …/documents/assembler-photos/` (multipart) — corps :
+        `{folder: <id>, photos: <binaire>[, photos: <binaire> …], nom?,
+        description?}`. Les photos (déjà recadrées/pivotées CÔTÉ CLIENT via
+        canvas — écran « Numériser » du frontend) sont assemblées en UN SEUL
+        PDF multi-pages CÔTÉ SERVEUR via Pillow (déjà pinné,
+        `services.assembler_photos_pdf`), puis déposées via le MÊME chemin que
+        `televerser` (`services.deposer_photos_assemblees` réutilise
+        `records.storage.store_attachment` + `create_document`/`add_version` —
+        aucun second pipeline d'upload). L'OCR (GED33, no-op sans clé) et
+        l'indexation s'appliquent au PDF assemblé comme pour tout autre dépôt.
+
+        Le dossier cible est borné à la société courante (404 sinon). Société
+        et créateur posés CÔTÉ SERVEUR (jamais lus du corps). Écriture :
+        responsable/admin."""
+        company = request.user.company
+        folder_id = request.data.get('folder')
+        if not folder_id:
+            return Response({'folder': 'Le dossier cible est requis.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        folder = (Folder.objects.filter(company=company)
+                  .filter(pk=folder_id).first())
+        if folder is None:
+            return Response({'folder': 'Dossier inconnu.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        photos = request.FILES.getlist('photos') or request.FILES.getlist('photo')
+        if not photos:
+            return Response({'photos': 'Au moins une photo est requise.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        # GED36 — garde de quota AVANT l'assemblage/stockage (403, jamais 500).
+        total_octets = sum(getattr(p, 'size', 0) or 0 for p in photos)
+        try:
+            services.assert_quota_disponible(
+                company, octets_supplementaires=total_octets)
+        except QuotaDepasseError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_403_FORBIDDEN)
+        images_bytes = [p.read() for p in photos]
+        try:
+            document = services.deposer_photos_assemblees(
+                company=company, folder=folder, images_bytes=images_bytes,
+                nom=(request.data.get('nom') or '').strip(),
+                description=(request.data.get('description') or '').strip(),
+                created_by=request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            DocumentSerializer(document, context={'request': request}).data,
+            status=status.HTTP_201_CREATED)
+
     @action(detail=False, methods=['post'], url_path='import-masse',
             parser_classes=[MultiPartParser, FormParser])
     def import_masse(self, request):
