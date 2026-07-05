@@ -4621,11 +4621,10 @@ def _invalidate_approbation_si_hausse(company, bc, montant_avant, montant_apres)
         palier_apres = seuil.palier_requis(montant_apres)
         approbation = ApprobationBCF.objects.filter(
             company=company, bcf=bc).first()
-        # La hausse invalide l'approbation si elle dépasse le montant déjà
-        # approuvé, OU si elle fait franchir un palier plus strict.
-        if approbation is not None and (
-                montant_apres > approbation.montant_approuve
-                or palier_apres != palier_avant):
+        # La hausse invalide l'approbation SEULEMENT si elle fait franchir un
+        # palier plus strict (FG312) — une hausse qui reste sous le seuil en
+        # vigueur ne touche jamais une approbation existante.
+        if approbation is not None and palier_apres != palier_avant:
             approbation.delete()
             return True
         return False
