@@ -29,6 +29,29 @@ def default_installer_for(company):
         return None
 
 
+# ── ZSTK11 — méthode de réservation du stock (réglage société) ─────────────
+# Défaut 'confirmation' = comportement actuel byte-identique (réservation
+# semée à la création du chantier). 'manuelle' = SEUL le déclencheur devient
+# conditionnel ; le service `seed_reservations` reste inchangé et n'est
+# jamais dupliqué.
+METHODE_RESERVATION_MANUELLE = 'manuelle'
+
+
+def methode_reservation_stock(company):
+    """Valeur configurée `CompanyProfile.methode_reservation_stock` pour la
+    société ('confirmation' par défaut — comportement historique si le
+    profil est absent ou en erreur)."""
+    if company is None:
+        return 'confirmation'
+    try:
+        from apps.parametres.models import CompanyProfile
+        prof = CompanyProfile.get(company)
+        return getattr(prof, 'methode_reservation_stock', 'confirmation') \
+            if prof else 'confirmation'
+    except Exception:  # pragma: no cover - défensif
+        return 'confirmation'
+
+
 # Étapes de checklist d'exécution par défaut (N4). `capture_serie` marque les
 # étapes où l'on relève des n° de série (N9). Toutes « système » (protégées).
 DEFAULT_CHECKLIST_ETAPES = [
@@ -247,9 +270,13 @@ def create_installation_from_devis(devis, user, company):
         )
 
     inst = create_with_reference(Installation, 'CHT', company, _create)
-    # N14 — réserve le stock des SKU de la nomenclature gelée (robuste si le
-    # BOM est vide : aucune réservation, aucun plantage).
-    seed_reservations(inst)
+    # N14/ZSTK11 — réserve le stock des SKU de la nomenclature gelée (robuste
+    # si le BOM est vide : aucune réservation, aucun plantage) — SEULEMENT en
+    # mode 'confirmation' (défaut, byte-identique). En mode 'manuelle', le
+    # déclencheur devient conditionnel : un bouton explicite
+    # (`reserver-stock`) appelle le MÊME service, aucune logique dupliquée.
+    if methode_reservation_stock(company) != METHODE_RESERVATION_MANUELLE:
+        seed_reservations(inst)
     return inst, True
 
 

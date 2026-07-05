@@ -942,6 +942,22 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
         from ..services import chantiers_a_facturer
         return Response(chantiers_a_facturer(request.user.company))
 
+    @action(detail=True, methods=['post'], url_path='reserver-stock',
+            permission_classes=[IsResponsableOrAdmin])
+    def reserver_stock(self, request, pk=None):
+        """ZSTK11 — réserve explicitement le stock du chantier (réutilise le
+        même service N14 `seed_reservations`). Utile en mode
+        `methode_reservation_stock='manuelle'`, où la création du chantier ne
+        sème plus la réservation automatiquement — reste utilisable aussi en
+        mode `confirmation` (idempotent, sans effet de bord supplémentaire)."""
+        from ..services import seed_reservations
+        inst = self.get_object()
+        reservations = seed_reservations(inst)
+        return Response({
+            'installation': inst.id,
+            'reservations_actives': len(reservations),
+        })
+
     # ── CH2 — parcours d'étapes configurables + gates appliqués ─────────────
     @action(detail=True, methods=['get'], url_path='etapes',
             permission_classes=[IsAnyRole])
