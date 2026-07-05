@@ -2438,6 +2438,49 @@ def lettrer_gr_ir_facture(*, facture, company, user):
     return lettres
 
 
+# ── YSTCK7 — peuplement auto du registre entrepôt (SerieEntrepot) à la
+# réception BCF. Consommateur du même événement `reception_fournisseur_
+# confirmee` (abonné dans receivers.py) : DC37/FG61 capturent
+# `LigneReceptionFournisseur.numeros_serie` mais rien ne créait de
+# `SerieEntrepot` (FG323) — le registre devait être peuplé à la main.
+
+def peupler_series_entrepot_reception(*, reception, company, user):
+    """YSTCK7 — pour chaque série présente sur une ligne de la réception,
+    upsert IDEMPOTENT d'un `SerieEntrepot` (produit, numéro, emplacement
+    principal, statut « en stock »). Une série déjà enregistrée pour ce
+    produit+société n'est jamais dupliquée (contrainte unique_together —
+    `get_or_create`). Sans BCF ni séries, no-op. Renvoie le nombre de séries
+    créées."""
+    from .models_serie_entrepot import SerieEntrepot
+    from apps.stock.services import ensure_emplacements
+
+    if company is None or reception is None:
+        return 0
+    depot_principal = ensure_emplacements(company)
+    created = 0
+    for ligne in reception.lignes.select_related('produit').all():
+        if ligne.produit_id is None:
+            continue
+        series = getattr(ligne, 'numeros_serie', None) or []
+        for numero in series:
+            numero = (numero or '').strip() if isinstance(numero, str) \
+                else numero
+            if not numero:
+                continue
+            _, was_created = SerieEntrepot.objects.get_or_create(
+                company=company, produit_id=ligne.produit_id,
+                numero_serie=numero,
+                defaults={
+                    'statut': SerieEntrepot.Statut.EN_STOCK,
+                    'emplacement': depot_principal,
+                    'reference_reception': reception.reference,
+                    'created_by': user,
+                })
+            if was_created:
+                created += 1
+    return created
+
+
 # ── YSERV1 — Gate « acompte encaissé » avant planification (opt-in) ────────
 
 def verifier_gate_acompte_planification(installation):
