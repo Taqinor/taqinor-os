@@ -7309,15 +7309,90 @@ def inscrire_leads_pour_stage(company, stage_key, *, lead_id, lead_reference='')
     ]
 
 
+def _condition_vraie(inscription, condition):
+    """XMKT18 — évalue une condition d'engagement pour une inscription, sur
+    les traces existantes : ``EnvoiCampagne`` (ouverture/clic, TOUTES
+    campagnes du lead depuis le déclenchement) et ``MessageWhatsAppEntrant``
+    (réponse WhatsApp entrante rattachée au lead depuis le déclenchement).
+    """
+    if condition in ('', EtapeSequence.Condition.TOUJOURS):
+        return True
+    contact_ref = f'lead:{inscription.lead_id}'
+    depuis = inscription.declenchee_le
+    if condition == EtapeSequence.Condition.A_OUVERT:
+        return EnvoiCampagne.objects.filter(
+            company=inscription.company, contact_ref=contact_ref,
+            ouvert_le__isnull=False, ouvert_le__gte=depuis).exists()
+    if condition == EtapeSequence.Condition.A_CLIQUE:
+        return EnvoiCampagne.objects.filter(
+            company=inscription.company, contact_ref=contact_ref,
+            clique_le__isnull=False, clique_le__gte=depuis).exists()
+    if condition == EtapeSequence.Condition.N_A_PAS_OUVERT:
+        return not EnvoiCampagne.objects.filter(
+            company=inscription.company, contact_ref=contact_ref,
+            ouvert_le__isnull=False, ouvert_le__gte=depuis).exists()
+    if condition == EtapeSequence.Condition.A_REPONDU:
+        return MessageWhatsAppEntrant.objects.filter(
+            company=inscription.company, lead_id=inscription.lead_id,
+            date_reception__gte=depuis).exists()
+    return True
+
+
+def _appliquer_action_alternative(inscription, etape, action):
+    """XMKT18 — applique l'action alternative (condition fausse). Deux
+    formes reconnues : ``renvoyer:<nouvel_objet>`` (renvoi de l'étape avec un
+    objet différent — journalisé, gated comme l'envoi normal) et
+    ``tache_commerciale`` (crée une relance/tâche au propriétaire du lead via
+    ``crm.services`` — jamais d'import direct du modèle crm)."""
+    if not action:
+        return
+    if action == 'tache_commerciale':
+        from apps.crm.selectors import get_company_lead
+        lead = get_company_lead(inscription.company, inscription.lead_id)
+        if lead is not None:
+            noter_touche_marketing_pour_lead(
+                inscription.company, f'lead:{inscription.lead_id}',
+                f'Séquence « {inscription.sequence.nom} » — relance '
+                f'commerciale créée (branche alternative étape {etape.ordre})')
+    elif action.startswith('renvoyer:'):
+        noter_touche_marketing_pour_lead(
+            inscription.company, f'lead:{inscription.lead_id}',
+            f'Séquence « {inscription.sequence.nom} » — renvoi avec un '
+            f'autre objet (branche alternative étape {etape.ordre})')
+
+
 def _executer_une_etape(inscription, etape):
     """Exécute (ou planifie, gated) une étape pour une inscription et trace
     le résultat. N'envoie jamais réellement ici : réutilise le comportement
     NO-OP existant des intégrations (FG31 — file de relance manuelle quand
     aucune intégration n'est active).
+
+    XMKT18 — si l'étape porte une ``condition``, elle n'est exécutée QUE si
+    la condition est vraie au moment dû ; sinon l'``action_alternative``
+    (si renseignée) est appliquée à la place. La branche prise est tracée
+    sur ``ExecutionEtapeSequence.branche_prise``.
     """
     resultat = 'planifie'
     erreur = ''
     canal = etape.canal
+    condition = getattr(etape, 'condition', EtapeSequence.Condition.TOUJOURS)
+    condition_vraie = _condition_vraie(inscription, condition)
+    branche_prise = 'condition' if condition_vraie else 'alternative'
+
+    if not condition_vraie:
+        _appliquer_action_alternative(
+            inscription, etape, getattr(etape, 'action_alternative', ''))
+        execution = ExecutionEtapeSequence.objects.create(
+            company=inscription.company,
+            inscription=inscription,
+            etape=etape,
+            canal=canal,
+            resultat='condition_fausse',
+            erreur=erreur,
+            branche_prise=branche_prise,
+        )
+        return execution
+
     if canal == EtapeSequence.Canal.WHATSAPP and not whatsapp_actif():
         resultat = 'planifie'  # file manuelle FG31, aucun appel réseau
     elif canal == EtapeSequence.Canal.EMAIL and not email_marketing_actif():
@@ -7331,6 +7406,7 @@ def _executer_une_etape(inscription, etape):
         canal=canal,
         resultat=resultat,
         erreur=erreur,
+        branche_prise=branche_prise,
     )
     # XMKT16 — une ligne de chatter par étape exécutée (pas par batch).
     noter_touche_marketing_pour_lead(

@@ -4920,6 +4920,25 @@ class EtapeSequence(models.Model):
     modele_message = models.TextField(
         blank=True, default='', verbose_name='Modèle de message')
 
+    # ── XMKT18 — condition d'exécution + action alternative ─────────────────
+    class Condition(models.TextChoices):
+        TOUJOURS = 'toujours', 'Toujours'
+        A_OUVERT = 'a_ouvert', 'A ouvert'
+        A_CLIQUE = 'a_clique', 'A cliqué'
+        N_A_PAS_OUVERT = 'n_a_pas_ouvert', "N'a pas ouvert"
+        A_REPONDU = 'a_repondu', 'A répondu (WhatsApp)'
+
+    condition = models.CharField(
+        max_length=20, choices=Condition.choices, default=Condition.TOUJOURS,
+        verbose_name="Condition d'exécution")
+    # Action alternative si la condition est fausse (ex. non-ouvert après 3j
+    # → renvoyer avec un autre objet ; cliqué → tâche commerciale). Vide =
+    # aucune action alternative (comportement actuel : étape simplement
+    # sautée si la condition n'est pas vraie).
+    action_alternative = models.CharField(
+        max_length=30, blank=True, default='',
+        verbose_name='Action alternative si condition fausse')
+
     class Meta:
         verbose_name = 'Étape de séquence'
         verbose_name_plural = 'Étapes de séquence'
@@ -5033,6 +5052,12 @@ class ExecutionEtapeSequence(models.Model):
         verbose_name='Résultat (planifie/envoye/erreur)')
     erreur = models.CharField(max_length=500, blank=True, default='',
                               verbose_name='Erreur')
+    # XMKT18 — branche prise à l'exécution : vide (pas de condition/toujours),
+    # 'condition' (condition vraie, étape normale exécutée) ou 'alternative'
+    # (condition fausse, action alternative exécutée à la place).
+    branche_prise = models.CharField(
+        max_length=20, blank=True, default='',
+        verbose_name='Branche prise (XMKT18)')
 
     class Meta:
         verbose_name = "Exécution d'étape de séquence"
