@@ -599,9 +599,9 @@ class Lead(models.Model):
             # QW10 — dédup indexée (téléphone/email normalisés), remplace le
             # scan Python complet de `find_duplicates_by_contact`.
             models.Index(fields=['company', 'phone_normalise'],
-                         name='crm_lead_company_phone_norm_idx'),
+                         name='crm_lead_phone_norm_idx'),
             models.Index(fields=['company', 'email_normalise'],
-                         name='crm_lead_company_email_norm_idx'),
+                         name='crm_lead_email_norm_idx'),
         ]
         constraints = [
             # An imported record is unique per (company, system, external id) so

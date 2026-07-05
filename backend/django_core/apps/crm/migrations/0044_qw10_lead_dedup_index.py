@@ -67,14 +67,14 @@ class Migration(migrations.Migration):
             model_name="lead",
             index=models.Index(
                 fields=["company", "phone_normalise"],
-                name="crm_lead_company_phone_norm_idx",
+                name="crm_lead_phone_norm_idx",
             ),
         ),
         migrations.AddIndex(
             model_name="lead",
             index=models.Index(
                 fields=["company", "email_normalise"],
-                name="crm_lead_company_email_norm_idx",
+                name="crm_lead_email_norm_idx",
             ),
         ),
         migrations.RunPython(backfill_dedup_columns, noop_reverse),
