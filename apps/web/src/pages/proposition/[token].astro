@@ -1929,6 +1929,40 @@ const signConfig = ok
               <span data-i18n data-fr="Réf." data-en="Ref." data-ar="المرجع">Réf.</span> <span dir="ltr">{reference}</span> · <span data-i18n data-fr="l’horodatage de votre signature s’affichera ici." data-en="your signature's timestamp will appear here." data-ar="سيظهر توقيت توقيعكم هنا.">l’horodatage de votre signature s’affichera ici.</span>
             </p>
 
+            <!-- WJ108 — étape OTP LATENTE : le backend porte un toggle
+                 (ESIGN_OTP_ENABLED) qui, une fois activé côté ERP, exige un
+                 code de confirmation avant l'acceptation — sans ce bloc web,
+                 flipper ce toggle aurait BRIQUÉ toute signature publique (le
+                 backend renvoie une erreur qu'aucun champ ne pouvait
+                 satisfaire). Ce bloc reste MASQUÉ et n'affecte RIEN tant que
+                 le toggle est OFF (comportement d'aujourd'hui, inchangé) : il
+                 n'apparaît QUE si la réponse d'acceptation signale
+                 explicitement un besoin d'OTP (isOtpRequiredDetail,
+                 lib/proposition.ts), jamais de manière proactive. -->
+            <div id="sign-otp-block" hidden class="mt-4 border border-brass-400/40 bg-brass-400/10 p-4">
+              <label for="sign-otp-code" class="tech-label text-brass-300" data-i18n
+                data-fr="Code de confirmation" data-en="Confirmation code" data-ar="رمز التأكيد">
+                Code de confirmation
+              </label>
+              <p class="mt-1 text-xs text-lune-soft" data-i18n
+                data-fr="Pour finaliser votre signature, saisissez le code à 6 chiffres envoyé par WhatsApp ou e-mail."
+                data-en="To finalize your signature, enter the 6-digit code sent by WhatsApp or email."
+                data-ar="لإتمام توقيعكم، أدخلوا الرمز المكون من 6 أرقام المُرسل عبر واتساب أو البريد الإلكتروني.">
+                Pour finaliser votre signature, saisissez le code à 6 chiffres envoyé par WhatsApp ou e-mail.
+              </p>
+              <div class="mt-3 flex flex-wrap items-center gap-2">
+                <input id="sign-otp-code" name="otp_code" type="text" inputmode="numeric" autocomplete="one-time-code"
+                  maxlength="6" placeholder="123456"
+                  class="w-32 border border-white/15 bg-nuit-800 px-3 py-2.5 text-base tracking-widest text-white outline-none focus:border-brass-400" />
+                <button type="button" id="sign-otp-request"
+                  class="py-2.5 px-4 text-sm font-semibold text-brass-300 underline-offset-2 hover:underline" data-i18n
+                  data-fr="Envoyer le code" data-en="Send the code" data-ar="إرسال الرمز">
+                  Envoyer le code
+                </button>
+              </div>
+              <p id="sign-otp-status" class="mt-2 text-xs text-lune-faint" role="status" aria-live="polite" hidden></p>
+            </div>
+
             <p id="sign-error" class="mt-4 text-sm text-alert-300" role="alert" hidden></p>
 
             <button
@@ -2124,6 +2158,8 @@ const signConfig = ok
     buildAcceptBodyRich,
     signStampLabel,
     localizedStamp,
+    isOtpRequiredDetail,
+    isOtpIncorrectDetail,
     type OptionKey,
     type SignFormState,
     type PropLang as SignPropLang,
@@ -2451,6 +2487,53 @@ const signConfig = ok
       (document.getElementById('sign-nom') as HTMLInputElement | null)?.focus();
     });
 
+    // ── WJ108 · OTP e-signature — LATENT tant que le backend n'exige rien ────
+    // (ESIGN_OTP_ENABLED côté ERP). Ce bloc reste masqué et n'affecte AUCUNE
+    // soumission tant que /accept/ ne renvoie pas l'un des 3 messages
+    // reconnus par isOtpRequiredDetail (lib/proposition.ts) — comportement
+    // d'aujourd'hui inchangé.
+    const otpBlock = document.getElementById('sign-otp-block');
+    const otpCodeInput = document.getElementById('sign-otp-code') as HTMLInputElement | null;
+    const otpRequestBtn = document.getElementById('sign-otp-request') as HTMLButtonElement | null;
+    const otpStatusEl = document.getElementById('sign-otp-status');
+    const OTP_SENT_MSG: Record<PropLang, string> = {
+      fr: 'Code envoyé — vérifiez WhatsApp ou vos e-mails.',
+      en: 'Code sent — check WhatsApp or your email.',
+      ar: 'تم إرسال الرمز — تحققوا من واتساب أو بريدكم الإلكتروني.',
+    };
+    const OTP_SEND_FAILED_MSG: Record<PropLang, string> = {
+      fr: 'Impossible d\'envoyer le code pour le moment. Réessayez.',
+      en: 'Could not send the code right now. Please try again.',
+      ar: 'تعذر إرسال الرمز حالياً. يرجى إعادة المحاولة.',
+    };
+    function revealOtpBlock(): void {
+      if (otpBlock) otpBlock.hidden = false;
+      otpCodeInput?.focus();
+    }
+    otpRequestBtn?.addEventListener('click', async () => {
+      if (!otpRequestBtn) return;
+      otpRequestBtn.disabled = true;
+      try {
+        const res = await fetch('/api/proposition-otp', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ token: cfg.token }),
+        });
+        const data = (await res.json().catch(() => ({}))) as { ok?: boolean };
+        if (otpStatusEl) {
+          otpStatusEl.textContent = data.ok ? OTP_SENT_MSG[currentLang] : OTP_SEND_FAILED_MSG[currentLang];
+          otpStatusEl.hidden = false;
+        }
+      } catch {
+        if (otpStatusEl) {
+          otpStatusEl.textContent = OTP_SEND_FAILED_MSG[currentLang];
+          otpStatusEl.hidden = false;
+        }
+      } finally {
+        otpRequestBtn.disabled = false;
+      }
+    });
+
     // ── WJ42 — Horodatage localisé (FR/EN/AR), affiché en direct dans le récap.
     // AVANT : `stampEl.textContent = frenchStamp(now)` écrasait le markup
     // tri-node data-i18n du <p id="sign-stamp"> (ses deux <span data-i18n>
@@ -2591,13 +2674,18 @@ const signConfig = ok
       const submitController = new AbortController();
       const submitTimer = window.setTimeout(() => submitController.abort(), SIGN_SUBMIT_TIMEOUT_MS);
       try {
+        // WJ108 — code OTP OPTIONNEL : vide tant que le bloc n'a jamais été
+        // révélé (backend/toggle OFF ignore le champ vide, comportement
+        // inchangé). Une fois révélé, le client peut le remplir et resoumettre.
+        const otpCode = otpCodeInput?.value.trim() ?? '';
         // Corps RÉTRO-COMPATIBLE : base (token/nom/option) + champs optionnels
-        // (signature, consentement, horodatage) que le backend peut ignorer.
+        // (signature, consentement, horodatage, otp_code) que le backend peut ignorer.
         const richBody = buildAcceptBodyRich(state, cfg.twoOptions, {
           signature_data_url: signatureDataUrl,
           consent_esign: true,
           signed_at_client: signedAtIso,
           on_behalf_of: onBehalfOf,
+          otp_code: otpCode,
         });
         const res = await fetch('/api/proposition-accept', {
           method: 'POST',
@@ -2622,6 +2710,22 @@ const signConfig = ok
         // on bascule quand même sur l'état confirmé (double-clic sûr).
         if (res.status === 409) {
           showSuccess(data.accepte_par_nom || nom.trim(), undefined, signatureDataUrl, true);
+          return;
+        }
+        // WJ108 — LATENT : ce chemin ne se déclenche QUE si le backend a le
+        // toggle ESIGN_OTP_ENABLED actif et renvoie l'un des 3 messages OTP
+        // reconnus (isOtpRequiredDetail) — jamais aujourd'hui (toggle OFF par
+        // défaut). Révèle le bloc de saisie au lieu d'un message d'erreur
+        // générique, et lance automatiquement l'envoi du code la première fois.
+        if (isOtpRequiredDetail(data.detail)) {
+          const firstReveal = otpBlock?.hidden !== false;
+          revealOtpBlock();
+          showError(
+            isOtpIncorrectDetail(data.detail)
+              ? (data.detail ?? '')
+              : 'Un code de confirmation vous a été envoyé — saisissez-le ci-dessus pour finaliser votre signature.',
+          );
+          if (firstReveal) otpRequestBtn?.click();
           return;
         }
         showError(data.detail || 'Une erreur est survenue. Veuillez réessayer.');

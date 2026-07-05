@@ -1179,6 +1179,14 @@ export interface SignSignatureMeta {
    * exactement comme avant.
    */
   on_behalf_of?: string;
+  /**
+   * WJ108 — code OTP à 6 chiffres (backend `apps/ventes/services.py
+   * validate_esign_otp`, toggle `ESIGN_OTP_ENABLED`). Omis quand vide : un
+   * backend/toggle OFF ignore silencieusement ce champ (comportement
+   * inchangé), un backend/toggle ON qui n'a rien reçu répond avec le message
+   * « code requis » que `isOtpRequiredMessage` reconnaît plus bas.
+   */
+  otp_code?: string;
 }
 
 /**
@@ -1204,7 +1212,57 @@ export function buildAcceptBodyRich(
   if (typeof meta.on_behalf_of === 'string' && meta.on_behalf_of.trim()) {
     body.on_behalf_of = meta.on_behalf_of.trim();
   }
+  // WJ108 — idem : omis quand vide (jamais un champ vide envoyé sans raison).
+  if (typeof meta.otp_code === 'string' && meta.otp_code.trim()) {
+    body.otp_code = meta.otp_code.trim();
+  }
   return body;
+}
+
+// ── WJ108 · OTP e-signature (backend toggle ESIGN_OTP_ENABLED, latent) ───────
+//
+// Le backend (`apps/ventes/services.py validate_esign_otp`) répond aux 3
+// messages FR EXACTS ci-dessous selon l'état de l'OTP — AUCUN flag structuré
+// (type `otp_required: true`) n'accompagne ces messages aujourd'hui (voir
+// `apps/ventes/public_views.py proposal_accept` : un simple `{'detail': ...}`
+// en 400, indiscernable structurellement d'une autre erreur de validation).
+// Reconnaître le besoin d'OTP passe donc PAR CONTENU DE MESSAGE — fragile
+// (un futur changement de libellé backend le casserait silencieusement) mais
+// c'est le seul signal disponible sans modification côté serveur. Tant que
+// ESIGN_OTP_ENABLED reste OFF (comportement par défaut), ces messages ne sont
+// jamais renvoyés : cette détection reste un pur no-op aujourd'hui.
+
+const OTP_REQUIRED_MESSAGES = [
+  'Un code de confirmation est requis. Demandez-le via le bouton « Envoyer le code ».',
+  'Le code de confirmation a expiré ou n\'a pas été demandé. Redemandez un nouveau code.',
+  'Code de confirmation incorrect. Vérifiez le code reçu et réessayez.',
+] as const;
+
+/**
+ * WJ108 — Vrai si le `detail` d'une réponse 400 de `/accept/` signale un
+ * besoin d'OTP (absent/expiré/incorrect) plutôt qu'une autre erreur de
+ * validation (nom manquant, devis déjà traité, etc.). `null`/vide → false.
+ */
+export function isOtpRequiredDetail(detail: string | null | undefined): boolean {
+  const d = (detail ?? '').trim();
+  if (!d) return false;
+  return (OTP_REQUIRED_MESSAGES as readonly string[]).includes(d);
+}
+
+/**
+ * WJ108 — Vrai UNIQUEMENT pour le message « code incorrect » (distinct de
+ * « requis »/« expiré ») — permet d'afficher un message d'erreur ciblé
+ * (« code incorrect, réessayez ») plutôt que de redemander un nouveau code à
+ * chaque échec.
+ */
+export function isOtpIncorrectDetail(detail: string | null | undefined): boolean {
+  return (detail ?? '').trim() === OTP_REQUIRED_MESSAGES[2];
+}
+
+/** Construit l'URL backend de demande d'envoi d'un code OTP (même convention que `/accept/`). */
+export function otpRequestEndpoint(apiBase: string, token: string): string {
+  const base = (apiBase || 'https://api.taqinor.ma').replace(/\/+$/, '');
+  return `${base}/api/django/ventes/proposal/${encodeURIComponent(token)}/otp/`;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
