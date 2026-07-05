@@ -80,7 +80,7 @@ class BonCommandeViewSet(viewsets.ModelViewSet):
         return _company_qs(super().get_queryset(), self.request.user)
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS:
+        if self.action in READ_ACTIONS + ['pdf']:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
             'confirmer', 'marquer_livre', 'annuler', 'creer_facture'
@@ -298,3 +298,20 @@ class BonCommandeViewSet(viewsets.ModelViewSet):
             data,
             status=status.HTTP_201_CREATED,
         )
+
+    @action(detail=True, methods=['get'], url_path='pdf')
+    def pdf(self, request, pk=None):
+        """ZSAL8 — PDF imprimable du bon de commande client (layout legacy
+        WeasyPrint, jamais le moteur devis premium — règle #4). Rendu à la
+        volée, non stocké."""
+        bc = self.get_object()
+        from ..utils.pdf import generate_bon_commande_pdf
+        pdf_bytes = generate_bon_commande_pdf(bc.id)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        from ..utils.filenames import document_filename
+        filename = document_filename(
+            'BonCommande', bc.reference,
+            client=bc.client if bc.client_id else None,
+            company=bc.company)
+        response['Content-Disposition'] = f'inline; filename="{filename}"'
+        return response

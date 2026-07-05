@@ -338,6 +338,43 @@ def generate_note_debit_pdf(note_debit_id):
     return key
 
 
+def generate_bon_commande_pdf(bc_id):
+    """ZSAL8 — PDF imprimable du bon de commande CLIENT (rendu à la volée,
+    non stocké — layout maison LEGACY, PAS le moteur devis premium, réservé
+    au devis client par la règle #4). Identité société (ICE/IF/RC),
+    lignes de l'option retenue du devis d'origine (jamais ``prix_achat``),
+    chaîne Sous-total → Remise → HT → TVA → TTC, statut de livraison."""
+    from decimal import Decimal
+
+    from apps.ventes.models import BonCommande
+    from apps.ventes.utils.options import option_lines, option_totaux
+
+    bc = (
+        BonCommande.objects
+        .select_related('client', 'devis', 'company')
+        .get(pk=bc_id)
+    )
+
+    context = _company_context(company=bc.company)
+    context['bc'] = bc
+    if bc.devis:
+        context['lignes'] = option_lines(bc.devis)
+        totaux = option_totaux(bc.devis)
+        context['total_ht'] = totaux['ht']
+        context['total_tva'] = totaux['tva']
+        context['total_ttc'] = totaux['ttc']
+        context['remise_globale'] = bc.devis.remise_globale or Decimal('0')
+    else:
+        context['lignes'] = []
+        context['total_ht'] = Decimal('0')
+        context['total_tva'] = Decimal('0')
+        context['total_ttc'] = Decimal('0')
+        context['remise_globale'] = Decimal('0')
+
+    html = _render_html('bon_commande.html', context)
+    return _html_to_pdf(html)
+
+
 def generate_releve_pdf(client, releve_data):
     """Relevé de compte client (style maison) — rendu à la volée, non stocké."""
     context = _company_context(company=client.company)
