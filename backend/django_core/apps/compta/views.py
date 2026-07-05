@@ -69,6 +69,7 @@ from .models import (
     TypeEvenement,
     BilletEvenement,
     QuestionEvenement,
+    CommunicationEvenement,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -85,6 +86,7 @@ from .serializers import (
     TypeEvenementSerializer,
     BilletEvenementSerializer,
     QuestionEvenementSerializer,
+    CommunicationEvenementSerializer,
     CommissionPayoutRunSerializer, CompteComptableSerializer,
     CompteTresorerieSerializer, ContratAvancementSerializer,
     DeclarationTVASerializer, DemandeApprobationConfigSerializer,
@@ -5037,6 +5039,19 @@ class QuestionEvenementViewSet(_ComptaBaseViewSet):
     """Questions d'inscription par événement (ZMKT16)."""
     queryset = QuestionEvenement.objects.select_related('evenement').all()
     serializer_class = QuestionEvenementSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        evenement_id = self.request.query_params.get('evenement')
+        if evenement_id:
+            qs = qs.filter(evenement_id=evenement_id)
+        return qs
+
+
+class CommunicationEvenementViewSet(_ComptaBaseViewSet):
+    """Communications programmées d'événement (ZMKT17)."""
+    queryset = CommunicationEvenement.objects.select_related('evenement').all()
+    serializer_class = CommunicationEvenementSerializer
 
     def get_queryset(self):
         qs = super().get_queryset()

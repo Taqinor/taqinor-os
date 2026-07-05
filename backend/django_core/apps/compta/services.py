@@ -79,6 +79,7 @@ from .models import (
     EvenementMarketing,
     SupportOffline,
     DomaineEnvoi,
+    CommunicationEvenement,
 )
 
 
@@ -11165,6 +11166,48 @@ def evenements_par_etape(company):
             'type_evenement': evenement.type_evenement,
         })
     return resultat
+
+
+# ── ZMKT17 — Communications programmées d'événement ────────────────────────
+
+def envoyer_communications_evenement_dues(company, *, maintenant=None):
+    """ZMKT17 — Enveloppe beat : envoie chaque communication d'événement dont
+    l'échéance (relative à ``evenement.date_debut``) est atteinte, aux
+    inscrits pertinents (inscrit/confirmé/présent), consentement +
+    suppression respectés, gated comme FG201 (no-op sans clé).
+    """
+    maintenant = maintenant or timezone.now()
+    envoyees = []
+    qs = CommunicationEvenement.objects.filter(
+        company=company, envoyee_le__isnull=True,
+    ).select_related('evenement')
+    for comm in qs:
+        if maintenant < comm.echeance():
+            continue
+        inscrits = InscriptionEvenement.objects.filter(
+            company=company, evenement=comm.evenement,
+            statut__in=[
+                InscriptionEvenement.Statut.INSCRIT,
+                InscriptionEvenement.Statut.CONFIRME,
+                InscriptionEvenement.Statut.PRESENT],
+        )
+        destinataires = []
+        for inscrit in inscrits:
+            dest = inscrit.email if comm.canal == 'email' else inscrit.telephone
+            if not dest:
+                continue
+            if est_supprime(company, dest):
+                continue
+            if not consentement_accorde(company, dest, canal=comm.canal):
+                continue
+            destinataires.append(dest)
+        comm.envoyee_le = maintenant
+        comm.save(update_fields=['envoyee_le'])
+        envoyees.append({
+            'communication_id': comm.id, 'nb_destinataires': len(destinataires),
+            'envoye_reel': brevo_actif(),
+        })
+    return envoyees
 
 
 # ── XMKT29 — Ponts QR pour supports offline (flyers, bâches, véhicules) ────

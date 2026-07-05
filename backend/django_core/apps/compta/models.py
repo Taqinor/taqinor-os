@@ -9038,6 +9038,65 @@ class QuestionEvenement(models.Model):
         return self.libelle
 
 
+# ── ZMKT17 — Communications programmées d'événement ─────────────────────────
+
+class CommunicationEvenement(models.Model):
+    """Communication programmée attachée à un événement (ZMKT17) — rappel
+    avant / relance après, à échéance relative au début de l'événement.
+    Envoi gated comme FG201 (no-op sans clé → file de relance manuelle
+    FG31), consentement + suppression respectés (XMKT3/XMKT4).
+    """
+    class Canal(models.TextChoices):
+        EMAIL = 'email', 'Email'
+        SMS = 'sms', 'SMS'
+        WHATSAPP = 'whatsapp', 'WhatsApp'
+
+    class UniteIntervalle(models.TextChoices):
+        HEURES = 'heures', 'Heures'
+        JOURS = 'jours', 'Jours'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='communications_evenement',
+        verbose_name='Société',
+    )
+    evenement = models.ForeignKey(
+        EvenementMarketing,
+        on_delete=models.CASCADE,
+        related_name='communications',
+        verbose_name='Événement',
+    )
+    canal = models.CharField(
+        max_length=10, choices=Canal.choices, default=Canal.EMAIL,
+        verbose_name='Canal')
+    gabarit = models.TextField(blank=True, default='', verbose_name='Corps')
+    # Intervalle SIGNÉ relatif au début de l'événement (ex. -2 j confirmation,
+    # -2 h rappel, +1 j remerciement).
+    intervalle = models.IntegerField(verbose_name='Intervalle (signé)')
+    unite_intervalle = models.CharField(
+        max_length=10, choices=UniteIntervalle.choices,
+        default=UniteIntervalle.JOURS, verbose_name='Unité')
+    envoyee_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Envoyée le')
+
+    class Meta:
+        verbose_name = "Communication d'événement"
+        verbose_name_plural = "Communications d'événement"
+        ordering = ['intervalle']
+
+    def __str__(self):
+        signe = '+' if self.intervalle >= 0 else ''
+        return f'{self.evenement_id} ({signe}{self.intervalle} {self.unite_intervalle})'
+
+    def echeance(self):
+        import datetime
+        delta = datetime.timedelta(**{
+            'hours' if self.unite_intervalle == self.UniteIntervalle.HEURES
+            else 'days': self.intervalle})
+        return self.evenement.date_debut + delta
+
+
 class InscriptionEvenement(models.Model):
     """Inscription à un ``EvenementMarketing`` (XMKT28) — nom/email/téléphone
     normalisé, statut de présence + check-in sur place (option QR token par

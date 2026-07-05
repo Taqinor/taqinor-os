@@ -6,7 +6,7 @@ from celery import shared_task
 from .models import Campagne
 from .services import (
     decider_gagnant_ab, envoyer_campagnes_planifiees, executer_etapes_dues,
-    recalculer_dormants,
+    recalculer_dormants, envoyer_communications_evenement_dues,
 )
 
 
@@ -63,3 +63,15 @@ def recalculer_dormants_task():
     for company in Company.objects.all():
         total += recalculer_dormants(company)
     return {'contacts_dormants': total}
+
+
+@shared_task(name='compta.envoyer_communications_evenement')
+def envoyer_communications_evenement_task():
+    """ZMKT17 — Enveloppe Celery Beat : envoie chaque communication
+    d'événement dont l'échéance est atteinte."""
+    from authentication.models import Company
+
+    total = 0
+    for company in Company.objects.all():
+        total += len(envoyer_communications_evenement_dues(company))
+    return {'communications_envoyees': total}

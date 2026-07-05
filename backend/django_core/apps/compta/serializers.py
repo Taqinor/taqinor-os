@@ -54,6 +54,7 @@ from .models import (
     TypeEvenement,
     BilletEvenement,
     QuestionEvenement,
+    CommunicationEvenement,
 )
 
 
@@ -2490,6 +2491,16 @@ class QuestionEvenementSerializer(serializers.ModelSerializer):
             'id', 'evenement', 'libelle', 'type_question', 'obligatoire',
             'portee',
         ]
+
+
+class CommunicationEvenementSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CommunicationEvenement
+        fields = [
+            'id', 'evenement', 'canal', 'gabarit', 'intervalle',
+            'unite_intervalle', 'envoyee_le',
+        ]
+        read_only_fields = ['envoyee_le']
 
 
 class SupportOfflineSerializer(serializers.ModelSerializer):
