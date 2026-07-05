@@ -509,6 +509,47 @@ class BonCommande(models.Model):
     def __str__(self):
         return self.reference
 
+    @property
+    def reliquat_par_ligne(self):
+        """XSAL12 — quantité restant à livrer par ligne de devis source.
+
+        Un BC sans devis (ou sans livraison partielle) renvoie une liste
+        vide — comportement historique inchangé (le statut reste piloté par
+        `marquer_livre` seul dans ce cas)."""
+        if self.devis_id is None:
+            return []
+        from django.db.models import Sum
+        livre_par_ligne = dict(
+            LigneLivraisonBC.objects
+            .filter(livraison__bon_commande=self)
+            .values_list('ligne_devis_id')
+            .annotate(total=Sum('quantite_livree'))
+        )
+        out = []
+        for ligne in self.devis.lignes.all():
+            livre = livre_par_ligne.get(ligne.id) or 0
+            out.append({
+                'ligne_devis_id': ligne.id,
+                'designation': ligne.designation,
+                'quantite_commandee': ligne.quantite,
+                'quantite_livree': livre,
+                'reliquat': ligne.quantite - livre,
+            })
+        return out
+
+    @property
+    def est_partiellement_livre(self):
+        """XSAL12 — vrai si au moins une livraison partielle existe et qu'il
+        reste un reliquat (le BC n'est pas encore `livre`)."""
+        if self.statut == self.Statut.LIVRE:
+            return False
+        reliquats = self.reliquat_par_ligne
+        if not reliquats:
+            return False
+        any_livre = any(r['quantite_livree'] > 0 for r in reliquats)
+        any_reliquat = any(r['reliquat'] > 0 for r in reliquats)
+        return any_livre and any_reliquat
+
 
 class Facture(models.Model):
     class Statut(models.TextChoices):
@@ -2881,3 +2922,51 @@ class PlanCommission(models.Model):
             return base_valeur
         best = max(eligible, key=lambda p: p.get('seuil_atteinte_pct', 0))
         return best.get('taux', base_valeur)
+
+
+class LivraisonBC(models.Model):
+    """XSAL12 — Livraison partielle d'un bon de commande client.
+
+    Une ligne par événement de livraison (ex. « panneaux livrés le 3 juin »).
+    Le décompte réel par ligne de BC vit sur ``LigneLivraisonBC`` ; le solde
+    (reliquat) et le passage automatique à ``livre`` sont calculés à la
+    demande depuis l'ensemble des livraisons du BC — jamais stockés en dur
+    pour rester toujours cohérents avec ``LigneDevis.quantite`` source."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='livraisons_bc')
+    bon_commande = models.ForeignKey(
+        BonCommande, on_delete=models.CASCADE, related_name='livraisons')
+    date_livraison = models.DateField()
+    note = models.CharField(max_length=255, blank=True, default='')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='livraisons_bc_creees')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Livraison (BC)'
+        verbose_name_plural = 'Livraisons (BC)'
+        ordering = ['-date_livraison', '-created_at']
+
+    def __str__(self):
+        return f'Livraison {self.bon_commande_id} du {self.date_livraison}'
+
+
+class LigneLivraisonBC(models.Model):
+    """XSAL12 — Quantité livrée pour une ligne de devis donnée, dans une
+    livraison partielle. ``ligne_devis`` référence la ligne du devis source
+    du BC (même app, FK directe autorisée)."""
+    livraison = models.ForeignKey(
+        LivraisonBC, on_delete=models.CASCADE, related_name='lignes')
+    ligne_devis = models.ForeignKey(
+        LigneDevis, on_delete=models.CASCADE,
+        related_name='lignes_livraison_bc')
+    quantite_livree = models.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        verbose_name = 'Ligne de livraison (BC)'
+        verbose_name_plural = 'Lignes de livraison (BC)'
+
+    def __str__(self):
+        return f'{self.livraison_id} / ligne {self.ligne_devis_id} = {self.quantite_livree}'

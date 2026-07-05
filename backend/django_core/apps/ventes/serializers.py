@@ -332,6 +332,10 @@ class BonCommandeSerializer(serializers.ModelSerializer):
     total_ht = serializers.SerializerMethodField()
     total_tva = serializers.SerializerMethodField()
     total_ttc = serializers.SerializerMethodField()
+    # XSAL12 — état dérivé de livraison partielle (lecture seule, calculé à
+    # la demande depuis LigneLivraisonBC ; ne casse pas l'enum de statut).
+    reliquat_par_ligne = serializers.ListField(read_only=True)
+    est_partiellement_livre = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = BonCommande
