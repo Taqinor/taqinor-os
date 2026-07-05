@@ -79,6 +79,21 @@ class AccrualServiceTests(TestCase):
             SoldeConge.objects.filter(
                 company=self.company, employe=dossier, annee=2026).exists())
 
+    def test_dry_run_ne_reporte_pas(self):
+        # Dry-run (apply=False) : ne crée JAMAIS la ligne SoldeConge cible.
+        dossier = make_employe(
+            self.company, 'ZRH2-5b', date_embauche=date(2020, 1, 1))
+        SoldeConge.objects.create(
+            company=self.company, employe=dossier, annee=2025,
+            acquis=Decimal('18'), report=Decimal('0'), pris=Decimal('5'))
+        resultat = services.reporter_solde_janvier(
+            dossier, annee_precedente=2025, annee_cible=2026, apply=False)
+        self.assertEqual(resultat['reporte'], Decimal('13'))
+        self.assertFalse(resultat['deja_applique'])
+        self.assertFalse(
+            SoldeConge.objects.filter(
+                company=self.company, employe=dossier, annee=2026).exists())
+
     def test_report_janvier_transfere_une_seule_fois(self):
         dossier = make_employe(
             self.company, 'ZRH2-6', date_embauche=date(2020, 1, 1))

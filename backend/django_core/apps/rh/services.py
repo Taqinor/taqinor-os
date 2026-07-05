@@ -147,9 +147,17 @@ def reporter_solde_janvier(dossier, *, annee_precedente, annee_cible,
     """
     from .models import SoldeConge
 
-    cible, _ = SoldeConge.objects.select_for_update().get_or_create(
-        company=dossier.company, employe=dossier, annee=annee_cible)
-    if cible.report_applique:
+    if apply:
+        cible, _ = SoldeConge.objects.select_for_update().get_or_create(
+            company=dossier.company, employe=dossier, annee=annee_cible)
+    else:
+        # Dry-run : ne JAMAIS créer la ligne SoldeConge cible (elle ne doit
+        # exister qu'après un report réellement appliqué) — même correctif que
+        # `accruer_conges_mensuel` ci-dessus.
+        cible = SoldeConge.objects.filter(
+            company=dossier.company, employe=dossier,
+            annee=annee_cible).first()
+    if cible is not None and cible.report_applique:
         return {'reporte': Decimal('0'), 'deja_applique': True}
 
     precedent = SoldeConge.objects.filter(
