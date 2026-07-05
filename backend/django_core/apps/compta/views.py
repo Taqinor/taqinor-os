@@ -2737,6 +2737,38 @@ class NoteFraisViewSet(_ComptaBaseViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(note).data)
 
+    @action(detail=True, methods=['get'], url_path='recu-pdf')
+    def recu_pdf(self, request, pk=None):
+        """ZACC8 — Reçu PDF de remboursement de la note (entête société,
+        détail, total en chiffres ET en lettres, mode/date, référence
+        écriture). Une note NON remboursée -> 400 explicite. Company-scopée
+        (404 cross-company via ``get_object``)."""
+        note = self.get_object()  # scopée société par TenantMixin.
+        if note.statut != NoteFrais.Statut.REMBOURSEE:
+            return Response(
+                {'detail': "Cette note de frais n'est pas encore "
+                           "remboursée : aucun reçu à générer."},
+                status=status.HTTP_400_BAD_REQUEST)
+        from .pdf_notes_frais import render_recu_note_frais_pdf
+        try:
+            pdf_bytes = render_recu_note_frais_pdf(
+                note, self._company_profile_for(request))
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'attachment; filename="recu_note_frais_'
+            f'{note.reference or note.id}.pdf"')
+        return resp
+
+    def _company_profile_for(self, request):
+        try:
+            from apps.parametres.models_company import CompanyProfile
+            return CompanyProfile.get(company=request.user.company)
+        except Exception:  # pragma: no cover - profil optionnel.
+            return None
+
     @action(detail=False, methods=['get'])
     def analyse(self, request):
         """ZACC7 — Pivot des frais par employé/catégorie/mois
@@ -2870,6 +2902,35 @@ class RapportNoteFraisViewSet(_ComptaBaseViewSet):
                 {'detail': exc.messages[0] if exc.messages else str(exc)},
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(rapport).data)
+
+    @action(detail=True, methods=['get'], url_path='recu-pdf')
+    def recu_pdf(self, request, pk=None):
+        """ZACC8 — Reçu PDF de remboursement du RAPPORT (détail de chaque
+        note rattachée + total en chiffres ET en lettres). Un rapport NON
+        remboursé -> 400 explicite. Company-scopé (404 cross-company via
+        ``get_object``)."""
+        rapport = self.get_object()  # scopée société par TenantMixin.
+        if rapport.statut != RapportNoteFrais.Statut.REMBOURSE:
+            return Response(
+                {'detail': "Ce rapport de notes de frais n'est pas encore "
+                           "remboursé : aucun reçu à générer."},
+                status=status.HTTP_400_BAD_REQUEST)
+        from .pdf_notes_frais import render_recu_rapport_note_frais_pdf
+        try:
+            from apps.parametres.models_company import CompanyProfile
+            profile = CompanyProfile.get(company=request.user.company)
+        except Exception:  # pragma: no cover - profil optionnel.
+            profile = None
+        try:
+            pdf_bytes = render_recu_rapport_note_frais_pdf(rapport, profile)
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'attachment; filename="recu_rapport_note_frais_'
+            f'{rapport.reference or rapport.id}.pdf"')
+        return resp
 
 
 class PlafondNoteFraisViewSet(_ComptaBaseViewSet):
