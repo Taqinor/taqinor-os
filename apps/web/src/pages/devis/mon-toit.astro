@@ -1617,6 +1617,15 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   // tout premier « retour » ait un état `mtStep` à consulter.
   history.replaceState({ mtStep: step }, '', location.href);
   renderStep();
+  // WJ96(c) — un visiteur qui REPREND son parcours (instantané sessionStorage
+  // WJ61) directement à l'étape 1/2 ne déclenche PAS `ensureMapBooted()` via
+  // `renderStep()` (qui ne boote qu'à `step === 0`) : cliquer « Retour » vers
+  // l'étape carte affichait alors le squelette de chargement à chaque fois,
+  // au lieu d'une carte déjà prête. On préchauffe la config/carte en arrière-
+  // plan dès que l'on sait que ce visiteur a déjà une étape restaurée > 0 —
+  // sans jamais bloquer le rendu de l'étape actuelle (best-effort, idempotent
+  // via `mapFetchDone`).
+  if (savedWizard?.step != null && savedWizard.step > 0) ensureMapBooted();
 
   // ——— helpers de saisie ———
   const val = (id: string) => (($(id) as HTMLInputElement | HTMLSelectElement | null)?.value ?? '');
