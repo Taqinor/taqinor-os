@@ -1045,6 +1045,17 @@ summary:focus-visible {
   flex-direction: row-reverse;
 }
 
+/* WJ103 — the pill itself was still fixed to the physical right (sm:right-6)
+   on desktop: only its internal content mirrored (rule above), not its own
+   position. Move it to the visual start edge under RTL — mobile is
+   unaffected (full-width bar, inset-x-0). */
+@media (min-width: 640px) {
+  [dir="rtl"] #sticky-cta {
+    right: auto;
+    left: 1.5rem;
+  }
+}
+
 /* — prop-lang-switch / mt language toggle: fixed-position chip stays at the
    inline-END (right in LTR, left in RTL) so it never collides with content
    that itself mirrors under RTL. */
