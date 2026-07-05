@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("parametres", "0042_yserv1_exiger_acompte"),
+        ("parametres", "0044_yserv1_exiger_acompte"),
     ]
 
     operations = [

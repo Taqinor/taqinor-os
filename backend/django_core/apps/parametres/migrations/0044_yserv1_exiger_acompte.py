@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("parametres", "0041_xfsm1_taux_horaire_sav"),
+        ("parametres", "0043_ydocf7_reserver_stock_bc"),
     ]
 
     operations = [
