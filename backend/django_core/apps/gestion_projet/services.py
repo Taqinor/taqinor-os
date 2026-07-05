@@ -1703,11 +1703,23 @@ JALON_CHAMPS_SUIVIS = ('date_prevue', 'statut', 'facturation_pct')
 def _valeur_str(valeur):
     """Représentation texte stable d'une valeur de champ pour le journal.
 
-    ``None`` → chaîne vide ; le reste est converti tel quel (les ``Decimal``,
-    dates et énumérations ont déjà un ``str()`` lisible).
+    ``None`` → chaîne vide. Un ``Decimal`` a ses zéros décimaux de fin
+    retirés (p.ex. ``Decimal('30.00')`` -> ``'30'``, ``Decimal('12.50')`` ->
+    ``'12.5'``) SANS jamais basculer en notation scientifique (contrairement à
+    ``Decimal.normalize()``, qui donnerait ``'3E+1'``) : ``facturation_pct``
+    (``DecimalField(decimal_places=2)``) revient de la base avec 2 décimales
+    fixes même quand la valeur saisie n'en avait aucune — sans ce nettoyage,
+    une valeur INCHANGÉE en base (mais reformattée) semblerait avoir changé de
+    forme dans le journal. Le reste est converti tel quel (dates et
+    énumérations ont déjà un ``str()`` lisible).
     """
     if valeur is None:
         return ''
+    if isinstance(valeur, Decimal):
+        texte = format(valeur, 'f')
+        if '.' in texte:
+            texte = texte.rstrip('0').rstrip('.')
+        return texte or '0'
     return str(valeur)
 
 
