@@ -261,6 +261,8 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
             'ajouter_releve', 'supprimer_releve',
             # FG79 — scaffold interventions standard.
             'creer_interventions_standard',
+            # ZSTK11 — réservation stock explicite (mode manuel).
+            'reserver_stock',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':

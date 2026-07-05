@@ -236,6 +236,10 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             'planning_camionnettes',
             # FG69 — signature client.
             'signer_client',
+            # XFSM13 — historique des re-vérifications (lecture).
+            'reverifications',
+            # XFSM22 — durée & pièces suggérées par l'historique.
+            'suggestions_creation',
         ]:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
@@ -255,6 +259,12 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             'confirmer_rdv',
             # XFSM3 — replanification en masse d'une journée.
             'replanifier_en_masse',
+            # XFSM13 — enregistrement d'une re-vérification (écriture).
+            'enregistrer_reverification_view',
+            # XFSM18 — réserve → devis de réparation.
+            'generer_devis_reserve',
+            # XFSM7 — lien public « technicien en route ».
+            'lien_client',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
