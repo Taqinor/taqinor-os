@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import date as _date, timedelta
 from decimal import Decimal, InvalidOperation
 
 from django.contrib.auth import get_user_model
@@ -586,6 +586,8 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
                 'checklist',
                 # YDOCF1 — actions guardées de la machine d'états.
                 'planifier', 'demarrer', 'resoudre', 'cloturer', 'reouvrir',
+                # ZMFG3 — replanification calendrier (date_tournee, un ticket).
+                'replanifier',
                 # ZSAV3 — activités planifiées à échéance.
                 'activites', 'cocher_activite',
                 # ZSAV10 — endpoint d'actions groupées.
@@ -914,6 +916,29 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         ``reopen_count`` quand on rouvre depuis un statut clôturé/résolu."""
         ticket = self.get_object()
         self._appliquer_transition_statut(ticket, Ticket.Statut.NOUVEAU)
+        return Response(
+            TicketSerializer(ticket, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='replanifier',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def replanifier(self, request, pk=None):
+        """ZMFG3 — Replanifie CE ticket (préventif ou correctif) à une nouvelle
+        ``date_tournee`` — glisser-déposer d'une carte du calendrier vers un
+        autre jour. Contrairement à ``planifier_tournee`` (FG88, bulk et
+        restreint aux PREVENTIF pour la tournée groupée), cette action porte
+        sur UN SEUL ticket, quel que soit son type, et ne force aucun
+        changement de statut ni de technicien. Scopée société via
+        ``get_object`` (TenantMixin) ; jamais de PATCH direct (date_tournee
+        reste read-only sur le serializer)."""
+        ticket = self.get_object()
+        raw_date = (request.data.get('date_tournee') or '').strip()
+        try:
+            new_date = _date.fromisoformat(raw_date)
+        except (ValueError, TypeError):
+            return Response(
+                {'date_tournee': 'Date invalide (AAAA-MM-JJ).'}, status=400)
+        ticket.date_tournee = new_date
+        ticket.save(update_fields=['date_tournee'])
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
 

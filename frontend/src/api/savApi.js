@@ -37,6 +37,10 @@ const savApi = {
   // XSAV11 — réouverture d'un ticket vers « nouveau » (transition gardée ;
   // autorisée depuis planifié/résolu/clôturé, refusée depuis en_cours).
   reouvrirTicket: (id) => api.post(`/sav/tickets/${id}/reouvrir/`),
+  // ZMFG3 — vue calendrier : replanifie CE ticket (préventif ou correctif) à
+  // une nouvelle date_tournee (glisser-déposer d'une carte vers un autre jour).
+  replanifierTicket: (id, dateTournee) =>
+    api.post(`/sav/tickets/${id}/replanifier/`, { date_tournee: dateTournee }),
   // N45 — rapport d'intervention (PDF régénéré à la demande, sans prix d'achat).
   rapportPdf: (id) => api.get(`/sav/tickets/${id}/rapport-pdf/`, { responseType: 'blob' }),
   // N46 — pièces consommées sur un ticket (le stock peut être décrémenté).
