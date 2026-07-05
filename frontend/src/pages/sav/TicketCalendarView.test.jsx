@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { render, screen, cleanup } from '@testing-library/react'
 
 /* ZMFG3 — vue calendrier des tickets SAV (préventifs générés + correctifs
    planifiés) sur TicketsPage. savApi mocké : on vérifie le regroupement par
@@ -14,7 +14,8 @@ vi.mock('../../api/savApi', () => ({
 }))
 
 import savApi from '../../api/savApi'
-import { groupTicketsByDate, TicketCalendarView } from './TicketsPage.jsx'
+import { TicketCalendarView } from './TicketsPage.jsx'
+import { groupTicketsByDate } from './ticketCalendarUtils'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 

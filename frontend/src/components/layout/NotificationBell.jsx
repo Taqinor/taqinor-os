@@ -145,6 +145,10 @@ export default function NotificationBell() {
     // temps réel dès qu'une notification arrive, app ouverte.
     const ivPoll = setInterval(checkUnread, 30 * 1000)
     return () => { clearInterval(ivFull); clearInterval(ivPoll) }
+    // mount-only: install the two intervals once; `load`/`checkUnread` are
+    // re-created each render but read via closure, re-running this on every
+    // render would restart both timers continuously.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Marque une notification persistée comme lue, puis recharge le compteur.

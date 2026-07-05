@@ -19,6 +19,7 @@ import installationsApi from '../../api/installationsApi'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
 import TicketSuiviClientPanel from './TicketSuiviClientPanel'
 import TicketChecklistPanel from './TicketChecklistPanel'
+import { groupTicketsByDate } from './ticketCalendarUtils'
 import { INTERVENTION_TYPES } from '../../features/installations/statuses'
 import {
   EMPTY_TICKET_FILTERS,
@@ -880,20 +881,6 @@ export function KanbanColumn({ statut, tickets, onSelect }) {
       </div>
     </div>
   )
-}
-
-// ZMFG3 — Vue calendrier des tickets SAV. Un ticket n'apparaît que s'il porte
-// une `date_tournee` (préventif généré planifié, ou correctif planifié via
-// FG88/le glisser-déposer ci-dessous) ; un ticket SANS date n'y figure JAMAIS
-// (fonction pure, testée indépendamment du rendu).
-export function groupTicketsByDate(tickets) {
-  const map = {}
-  for (const t of tickets ?? []) {
-    if (!t?.date_tournee) continue
-    const key = t.date_tournee
-    ;(map[key] = map[key] || []).push(t)
-  }
-  return map
 }
 
 const CAL_WEEKDAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']

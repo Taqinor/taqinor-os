@@ -72,7 +72,6 @@ export function useBarcodeScanner({ onDetected, formats } = {}) {
     lastValueRef.current = null
     try {
       if (!detectorRef.current) {
-        // eslint-disable-next-line no-undef
         detectorRef.current = new BarcodeDetector({
           formats: formats && formats.length ? formats : DEFAULT_FORMATS,
         })
