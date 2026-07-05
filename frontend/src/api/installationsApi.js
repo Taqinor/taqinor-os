@@ -270,6 +270,134 @@ const installationsApi = {
   // retombe pendant l'envoi (l'outbox réessaiera).
   syncField: (ops) =>
     api.post('/installations/sync/', { ops }, { suppressErrorToast: true }),
+
+  // ── XSTK1 — Magasin : casiers, put-away, pick-lists, colisage ──
+
+  // FG319 — casiers de rangement (zone/allée/casier) sous un emplacement.
+  getBinLocations: (params) => api.get('/installations/bin-locations/', { params }),
+  getBinLocation: (id) => api.get(`/installations/bin-locations/${id}/`),
+  createBinLocation: (data) => api.post('/installations/bin-locations/', data),
+  updateBinLocation: (id, data) => api.patch(`/installations/bin-locations/${id}/`, data),
+  deleteBinLocation: (id) => api.delete(`/installations/bin-locations/${id}/`),
+
+  // FG319 — affectation produit ↔ casier (quantité indicative).
+  getBinAffectations: (params) => api.get('/installations/bin-affectations/', { params }),
+  createBinAffectation: (data) => api.post('/installations/bin-affectations/', data),
+  updateBinAffectation: (id, data) => api.patch(`/installations/bin-affectations/${id}/`, data),
+  deleteBinAffectation: (id) => api.delete(`/installations/bin-affectations/${id}/`),
+
+  // FG320 — rangement guidé (put-away). `bin_suggere` calculé serveur à la
+  // création ; `ranger(id, bin)` confirme (bin optionnel = casier suggéré).
+  getPutAways: (params) => api.get('/installations/putaways/', { params }),
+  getPutAway: (id) => api.get(`/installations/putaways/${id}/`),
+  createPutAway: (data) => api.post('/installations/putaways/', data),
+  rangerPutAway: (id, binId) =>
+    api.post(`/installations/putaways/${id}/ranger/`, binId ? { bin: binId } : {}),
+
+  // FG321 — bons de prélèvement par chantier. Les lignes sont générées
+  // serveur depuis les réservations actives du chantier à la création.
+  getPickLists: (params) => api.get('/installations/pick-lists/', { params }),
+  getPickList: (id) => api.get(`/installations/pick-lists/${id}/`),
+  createPickList: (data) => api.post('/installations/pick-lists/', data),
+  demarrerPickList: (id) => api.post(`/installations/pick-lists/${id}/demarrer/`, {}),
+  terminerPickList: (id) => api.post(`/installations/pick-lists/${id}/terminer/`, {}),
+
+  // FG321 — lignes de prélèvement (cocher `preleve` / `quantite_prelevee`).
+  getPickListLignes: (params) => api.get('/installations/pick-list-lignes/', { params }),
+  updatePickListLigne: (id, data) => api.patch(`/installations/pick-list-lignes/${id}/`, data),
+
+  // FG322 — colis de préparation (référence anti-collision posée serveur).
+  getColisList: (params) => api.get('/installations/colis/', { params }),
+  getColis: (id) => api.get(`/installations/colis/${id}/`),
+  createColis: (data) => api.post('/installations/colis/', data),
+  updateColis: (id, data) => api.patch(`/installations/colis/${id}/`, data),
+  controlerColis: (id) => api.post(`/installations/colis/${id}/controler/`, {}),
+  expedierColis: (id) => api.post(`/installations/colis/${id}/expedier/`, {}),
+
+  // FG322 — lignes de colis (articles emballés + `controle_ok`).
+  getColisLignes: (params) => api.get('/installations/colis-lignes/', { params }),
+  createColisLigne: (data) => api.post('/installations/colis-lignes/', data),
+  updateColisLigne: (id, data) => api.patch(`/installations/colis-lignes/${id}/`, data),
+  deleteColisLigne: (id) => api.delete(`/installations/colis-lignes/${id}/`),
+
+  // ── XSTK2 — Logistique : livraisons, transporteurs, tournée, POD,
+  // comptages cycliques, demandes de transfert ──
+
+  // FG329 — livraisons planifiées (dépôt/direct site → chantier). Cycle :
+  // planifiée → en transit (`expedier`) → livrée (`livrer`) / annulée (`annuler`).
+  getLivraisons: (params) => api.get('/installations/livraisons/', { params }),
+  getLivraison: (id) => api.get(`/installations/livraisons/${id}/`),
+  createLivraison: (data) => api.post('/installations/livraisons/', data),
+  updateLivraison: (id, data) => api.patch(`/installations/livraisons/${id}/`, data),
+  deleteLivraison: (id) => api.delete(`/installations/livraisons/${id}/`),
+  expedierLivraison: (id) => api.post(`/installations/livraisons/${id}/expedier/`, {}),
+  livrerLivraison: (id) => api.post(`/installations/livraisons/${id}/livrer/`, {}),
+  annulerLivraison: (id) => api.post(`/installations/livraisons/${id}/annuler/`, {}),
+
+  // FG329 — lignes de livraison (SKU + quantité).
+  getLivraisonLignes: (params) => api.get('/installations/livraison-lignes/', { params }),
+  createLivraisonLigne: (data) => api.post('/installations/livraison-lignes/', data),
+  updateLivraisonLigne: (id, data) => api.patch(`/installations/livraison-lignes/${id}/`, data),
+  deleteLivraisonLigne: (id) => api.delete(`/installations/livraison-lignes/${id}/`),
+
+  // FG331 — transporteurs (interne/tiers) + tarif de base (INTERNE, jamais
+  // affiché client). Filtrable par `active`.
+  getTransporteurs: (params) => api.get('/installations/transporteurs/', { params }),
+  createTransporteur: (data) => api.post('/installations/transporteurs/', data),
+  updateTransporteur: (id, data) => api.patch(`/installations/transporteurs/${id}/`, data),
+  deleteTransporteur: (id) => api.delete(`/installations/transporteurs/${id}/`),
+
+  // FG332 — tournée de livraison proposée pour un jour (lecture seule,
+  // consultative — n'exécute rien). `jour` = 'YYYY-MM-DD' requis.
+  getTourneeLivraison: (jour, { departLat, departLng } = {}) =>
+    api.get('/installations/tournee-livraison/', {
+      params: {
+        jour,
+        ...(departLat != null ? { depart_lat: departLat } : {}),
+        ...(departLng != null ? { depart_lng: departLng } : {}),
+      },
+    }),
+
+  // FG330 — preuve de livraison (POD) : signature + photo + GPS horodaté.
+  // Une seule preuve par livraison (OneToOne côté serveur). La signature est
+  // une data-URL PNG (canvas) ; la photo passe par `recordsApi.uploadAttachment`
+  // puis son id est posé sur `photo`.
+  getPreuvesLivraison: (params) => api.get('/installations/preuves-livraison/', { params }),
+  getPreuveLivraison: (id) => api.get(`/installations/preuves-livraison/${id}/`),
+  createPreuveLivraison: (data) => api.post('/installations/preuves-livraison/', data),
+  updatePreuveLivraison: (id, data) => api.patch(`/installations/preuves-livraison/${id}/`, data),
+
+  // FG324 — sessions de comptage tournant (cycle count ABC), DISTINCTES des
+  // `inventaire-sessions` one-shot (stockApi, câblées par WR5). Cycle :
+  // planifié → en cours (`demarrer`) → terminé (`terminer`, poste l'écart
+  // constaté en ajustement de stock, idempotent).
+  getSessionsComptage: (params) => api.get('/installations/sessions-comptage/', { params }),
+  getSessionComptage: (id) => api.get(`/installations/sessions-comptage/${id}/`),
+  createSessionComptage: (data) => api.post('/installations/sessions-comptage/', data),
+  updateSessionComptage: (id, data) => api.patch(`/installations/sessions-comptage/${id}/`, data),
+  ajouterLigneComptage: (id, produitId) =>
+    api.post(`/installations/sessions-comptage/${id}/ajouter-ligne/`, { produit: produitId }),
+  demarrerComptage: (id) => api.post(`/installations/sessions-comptage/${id}/demarrer/`, {}),
+  terminerComptage: (id) => api.post(`/installations/sessions-comptage/${id}/terminer/`, {}),
+
+  // FG324 — lignes de comptage (saisie de `quantite_comptee` / `compte`).
+  getComptageLignes: (params) => api.get('/installations/comptage-lignes/', { params }),
+  updateComptageLigne: (id, data) => api.patch(`/installations/comptage-lignes/${id}/`, data),
+
+  // FG325 — demandes de transfert inter-emplacements. Cycle : demandé →
+  // approuvé (`approuver`) / refusé (`refuser`) → exécuté (`executer`, poste
+  // RÉELLEMENT le mouvement de stock ; 409 si source insuffisante).
+  getDemandesTransfert: (params) => api.get('/installations/demandes-transfert/', { params }),
+  getDemandeTransfert: (id) => api.get(`/installations/demandes-transfert/${id}/`),
+  createDemandeTransfert: (data) => api.post('/installations/demandes-transfert/', data),
+  updateDemandeTransfert: (id, data) => api.patch(`/installations/demandes-transfert/${id}/`, data),
+  approuverDemandeTransfert: (id) =>
+    api.post(`/installations/demandes-transfert/${id}/approuver/`, {}),
+  refuserDemandeTransfert: (id, motifRefus) =>
+    api.post(`/installations/demandes-transfert/${id}/refuser/`,
+      motifRefus ? { motif_refus: motifRefus } : {}),
+  executerDemandeTransfert: (id) =>
+    api.post(`/installations/demandes-transfert/${id}/executer/`, {}),
 }
 
 export default installationsApi
