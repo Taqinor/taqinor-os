@@ -4725,6 +4725,30 @@ class CampagneViewSet(_ComptaBaseViewSet):
         clone = services.creer_depuis_modele(modele)
         return Response(CampagneSerializer(clone).data, status=201)
 
+    @action(detail=True, methods=['post'])
+    def dupliquer(self, request, pk=None):
+        """ZMKT4 — duplique une campagne en brouillon indépendant."""
+        campagne = self.get_object()
+        clone = services.dupliquer_campagne(campagne)
+        return Response(CampagneSerializer(clone).data, status=201)
+
+    @action(detail=True, methods=['post'])
+    def annuler(self, request, pk=None):
+        """ZMKT4 — annule une campagne en file/en cours d'envoi."""
+        campagne = self.get_object()
+        services.annuler_campagne(campagne)
+        campagne.refresh_from_db()
+        return Response(CampagneSerializer(campagne).data)
+
+    @action(detail=True, methods=['post'], url_path='renvoyer-echecs')
+    def renvoyer_echecs(self, request, pk=None):
+        """ZMKT4 — recrée l'envoi vers les destinataires en échec
+        récupérable uniquement."""
+        campagne = self.get_object()
+        nouvelles = services.renvoyer_echecs_campagne(campagne)
+        return Response(
+            {'campagnes_creees': [c.id for c in nouvelles]}, status=201)
+
     @action(detail=True, methods=['post'], url_path='rattacher')
     def rattacher(self, request, pk=None):
         """XMKT31 — rattache un objet (séquence/formulaire/code promo/

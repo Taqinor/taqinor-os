@@ -6298,6 +6298,65 @@ def creer_depuis_modele(modele):
     return clone
 
 
+# ── ZMKT4 — Actions Renvoyer les échecs / Dupliquer / Annuler ──────────────
+
+def dupliquer_campagne(campagne):
+    """ZMKT4 — clone une campagne en brouillon indépendant (mêmes règles que
+    ZMKT3 ``creer_depuis_modele``, mais depuis N'IMPORTE QUELLE campagne, pas
+    seulement un modèle)."""
+    clone = Campagne.objects.create(
+        company=campagne.company,
+        nom=f'{campagne.nom} (copie)',
+        canal=campagne.canal,
+        objet=campagne.objet,
+        corps=campagne.corps,
+        segment=dict(campagne.segment or {}),
+        sms_sender_id=campagne.sms_sender_id,
+        variantes_langue=dict(campagne.variantes_langue or {}),
+        est_modele=False,
+    )
+    clone.listes.set(campagne.listes.all())
+    return clone
+
+
+def annuler_campagne(campagne):
+    """ZMKT4 — annule une campagne ``en_file``/``envoi_en_cours`` : le beat
+    cesse tout envoi restant (journalisé). Idempotent — une campagne déjà
+    envoyée/annulée n'est pas modifiée."""
+    if campagne.statut not in (
+            Campagne.Statut.EN_FILE, Campagne.Statut.ENVOI_EN_COURS,
+            Campagne.Statut.BROUILLON):
+        return campagne
+    campagne.statut = Campagne.Statut.ANNULEE
+    campagne.save(update_fields=['statut'])
+    return campagne
+
+
+def renvoyer_echecs_campagne(campagne):
+    """ZMKT4 — recrée l'envoi UNIQUEMENT vers les destinataires en statut
+    rebond soft/échec récupérable de la trace XMKT2 (jamais les
+    désinscrits/consentement refusé — motifs
+    ``consentement_refuse_ou_absent``/``plafond_pression_marketing``/
+    ``contact_dormant_sunset`` exclus)."""
+    motifs_non_recuperables = {
+        'consentement_refuse_ou_absent', 'plafond_pression_marketing',
+        'contact_dormant_sunset',
+    }
+    echecs = campagne.envois.filter(
+        statut=EnvoiCampagne.Statut.REBOND,
+    ).exclude(raison_smtp__in=motifs_non_recuperables)
+    destinataires = [e.destinataire for e in echecs]
+    if not destinataires:
+        return []
+    nouvelle_campagne = Campagne.objects.create(
+        company=campagne.company,
+        nom=f'{campagne.nom} (renvoi échecs)',
+        canal=campagne.canal, objet=campagne.objet, corps=campagne.corps,
+    )
+    envoyer_campagne(nouvelle_campagne, destinataires=destinataires)
+    return [nouvelle_campagne]
+
+
 def _destinataires_des_listes(campagne):
     """XMKT7 — résout les destinataires INSCRITS des ``listes`` ciblées par
     la campagne (XMKT5). Simple source stable pour l'envoi planifié beat —
