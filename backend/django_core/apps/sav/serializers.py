@@ -371,7 +371,10 @@ class TicketSerializer(serializers.ModelSerializer):
             obj.sous_garantie_calcule, obj.sous_garantie_calcule)
 
     def get_nb_interventions(self, obj):
-        return obj.interventions.count()
+        # Reuse the prefetch cache (interventions__technicien on
+        # TicketViewSet.queryset) instead of .count(), which would re-query
+        # per row and defeat the N+1 fix.
+        return len(obj.interventions.all())
 
     def get_sla_due_at_effectif(self, obj):
         due = obj.sla_due_at_effectif()

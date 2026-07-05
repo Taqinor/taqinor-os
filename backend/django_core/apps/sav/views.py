@@ -500,8 +500,9 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
     Tout est scopé à la société ; acteur et société posés côté serveur."""
     queryset = Ticket.objects.select_related(
         'client', 'installation', 'equipement', 'equipement__produit',
-        'technicien_responsable',
-    ).prefetch_related('interventions').all()
+        'technicien_responsable', 'cause', 'remede', 'categorie', 'equipe',
+        'categorie_equipement',
+    ).prefetch_related('interventions__technicien').all()
     serializer_class = TicketSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = [
