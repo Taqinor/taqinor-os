@@ -139,6 +139,25 @@ class Vehicule(models.Model):
         related_name='vehicules',
         verbose_name='Modèle de référence',
     )
+    # ZCTR11 — n° de carte carburant/mobilité (texte libre, distincte de
+    # ``CarteCarburant`` FLOTTE14 qui gère les cartes en tant qu'entités
+    # propres) — simple champ d'identification affiché sur la fiche véhicule.
+    carte_mobilite = models.CharField(
+        max_length=60, blank=True, verbose_name='Carte mobilité')
+    # ZCTR11 — Enrichissement fiscal : copie véhicule des champs catalogue
+    # (``ModeleVehicule.valeur_residuelle``/``pct_charges_non_deductibles``),
+    # pré-remplis à la sélection du modèle (``services.prefill_depuis_modele``)
+    # SANS écraser une saisie existante — un véhicule peut aussi les porter en
+    # saisie libre (sans modèle de référence). Lus par le TCO/amortissement
+    # (FLOTTE30/31) et la synthèse fiscale (XFLT8/XFLT9) pour signaler la part
+    # non déductible.
+    valeur_residuelle = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Valeur résiduelle (MAD)')
+    pct_charges_non_deductibles = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        verbose_name='% charges non déductibles',
+        help_text='0-100 — plafond CGI tourisme. Vide = non renseigné.')
     # XFLT16 — Cession / sortie de parc. Renseignés par l'action ``ceder/`` ;
     # les véhicules vendus/réformés gardent TOUT leur historique mais sont
     # exclus des KPI actifs (FLOTTE35) et des alertes d'échéances.
@@ -167,6 +186,15 @@ class Vehicule(models.Model):
         'immatriculation_faite', 'plaques', 'assurance_active',
         'carte_grise_recue',
     )
+
+    def clean(self):
+        """ZCTR11 — ``pct_charges_non_deductibles`` doit rester dans [0, 100]
+        quand renseigné (vide = non renseigné, aucune contrainte)."""
+        if self.pct_charges_non_deductibles is not None and not (
+                0 <= self.pct_charges_non_deductibles <= 100):
+            raise ValidationError(
+                "Le % de charges non déductibles doit être compris entre "
+                "0 et 100.")
 
     def checklist_mise_en_service_ok(self):
         """XFLT4 — Vrai si tous les items de la checklist de mise en service
@@ -3584,6 +3612,21 @@ class ModeleVehicule(models.Model):
         null=True, blank=True, verbose_name='Capacité réservoir (L)',
         help_text='Sert au détecteur de fraude FLOTTE14 : un plein '
         'dépassant cette capacité est une anomalie.')
+    # ZCTR11 — Enrichissement fiscal du catalogue. ``valeur_residuelle`` sert
+    # de repli au TCO/amortissement quand le véhicule n'a pas (encore) sa
+    # propre estimation ; ``pct_charges_non_deductibles`` (0-100, plafond CGI
+    # tourisme) est pré-rempli sur le ``Vehicule`` à la sélection du modèle et
+    # lu par la synthèse fiscale (XFLT8/XFLT9) pour signaler la part non
+    # déductible. Tous deux nullable/optionnels : aucune régression sur les
+    # modèles déjà catalogués.
+    valeur_residuelle = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Valeur résiduelle (MAD)')
+    pct_charges_non_deductibles = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        verbose_name='% charges non déductibles',
+        help_text='0-100 — plafond CGI tourisme. Vide = non renseigné '
+        '(aucune part non déductible signalée).')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -3597,6 +3640,15 @@ class ModeleVehicule(models.Model):
                 name='flotte_modveh_co_mm_idx',
             ),
         ]
+
+    def clean(self):
+        """ZCTR11 — ``pct_charges_non_deductibles`` doit rester dans [0, 100]
+        quand renseigné (vide = non renseigné, aucune contrainte)."""
+        if self.pct_charges_non_deductibles is not None and not (
+                0 <= self.pct_charges_non_deductibles <= 100):
+            raise ValidationError(
+                "Le % de charges non déductibles doit être compris entre "
+                "0 et 100.")
 
     def __str__(self):
         return f'{self.marque} {self.modele}'

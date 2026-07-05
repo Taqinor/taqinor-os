@@ -1550,6 +1550,10 @@ PREFILL_DEPUIS_MODELE = {
     'energie': 'energie',
     'puissance_fiscale': 'puissance_fiscale',
     'valeur': 'valeur_catalogue',
+    # ZCTR11 — enrichissement fiscal du catalogue : pré-remplis SANS écraser
+    # une saisie existante (même règle que les champs ci-dessus).
+    'valeur_residuelle': 'valeur_residuelle',
+    'pct_charges_non_deductibles': 'pct_charges_non_deductibles',
 }
 
 

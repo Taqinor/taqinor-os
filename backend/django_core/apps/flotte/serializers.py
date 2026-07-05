@@ -64,6 +64,8 @@ class VehiculeSerializer(serializers.ModelSerializer):
             'vin', 'annee', 'date_acquisition', 'type_fiscal',
             'type_fiscal_display', 'tags', 'checklist_mise_en_service',
             'checklist_mise_en_service_ok', 'modele_ref', 'modele_ref_label',
+            'carte_mobilite', 'valeur_residuelle',
+            'pct_charges_non_deductibles',
             'date_cession', 'prix_cession', 'acheteur', 'date_creation',
         ]
         # XFLT16 — la cession passe UNIQUEMENT par l'action ``ceder/`` (calcule
@@ -73,6 +75,13 @@ class VehiculeSerializer(serializers.ModelSerializer):
 
     def get_modele_ref_label(self, obj):
         return str(obj.modele_ref) if obj.modele_ref_id else None
+
+    def validate_pct_charges_non_deductibles(self, value):
+        if value is not None and not (0 <= value <= 100):
+            raise serializers.ValidationError(
+                "Le % de charges non déductibles doit être compris entre "
+                "0 et 100.")
+        return value
 
     def get_checklist_mise_en_service_ok(self, obj):
         return obj.checklist_mise_en_service_ok()
@@ -2106,9 +2115,17 @@ class ModeleVehiculeSerializer(serializers.ModelSerializer):
             'id', 'marque', 'modele', 'categorie', 'categorie_display',
             'energie', 'energie_display', 'co2_g_km', 'places',
             'puissance_fiscale', 'puissance_kw', 'valeur_catalogue',
-            'capacite_reservoir_l', 'date_creation',
+            'capacite_reservoir_l', 'valeur_residuelle',
+            'pct_charges_non_deductibles', 'date_creation',
         ]
         read_only_fields = ['date_creation']
+
+    def validate_pct_charges_non_deductibles(self, value):
+        if value is not None and not (0 <= value <= 100):
+            raise serializers.ValidationError(
+                "Le % de charges non déductibles doit être compris entre "
+                "0 et 100.")
+        return value
 
 
 # ── XFLT13 — Inspections périodiques paramétrables (check-lists DVIR) ──────────

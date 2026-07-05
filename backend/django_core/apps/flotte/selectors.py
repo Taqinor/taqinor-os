@@ -1721,6 +1721,12 @@ def synthese_tva_carburant(company, periode):
     alimenter la déclaration TVA (compta LIT ce sélecteur — jamais l'inverse,
     voir CLAUDE.md).
 
+    ZCTR11 — ``par_vehicule`` signale, PAR véhicule ayant un
+    ``pct_charges_non_deductibles`` renseigné, la part de sa dépense carburant
+    (``prix_total``, sur la période) qui n'est pas déductible fiscalement
+    (plafond CGI tourisme) — les véhicules sans ce pourcentage renseigné n'y
+    figurent PAS (aucun signal fabriqué).
+
     Retourne un dict LECTURE SEULE ::
 
         {
@@ -1730,6 +1736,10 @@ def synthese_tva_carburant(company, periode):
              'tva_non_deductible': <float>}, …
           ],
           'total_recuperable': <float>, 'total_non_deductible': <float>,
+          'par_vehicule': [
+            {'vehicule_id', 'pct_charges_non_deductibles',
+             'montant_carburant', 'montant_carburant_non_deductible'}, …
+          ],
         }
 
     Aucune écriture, aucun effet de bord.
@@ -1744,8 +1754,12 @@ def synthese_tva_carburant(company, periode):
     par_mois = {}
     total_recuperable = 0.0
     total_non_deductible = 0.0
+    # ZCTR11 — cumul du carburant (prix_total) par véhicule, sur la période.
+    carburant_par_vehicule = {}
 
-    for plein in qs.values('date_plein', 'montant_tva', 'tva_recuperable'):
+    for plein in qs.values(
+            'vehicule_id', 'date_plein', 'montant_tva', 'tva_recuperable',
+            'prix_total'):
         mois = plein['date_plein'].strftime('%Y-%m')
         montant = float(plein['montant_tva'] or 0)
         bloc = par_mois.setdefault(
@@ -1758,11 +1772,35 @@ def synthese_tva_carburant(company, periode):
             bloc['tva_non_deductible'] += montant
             total_non_deductible += montant
 
+        veh_id = plein['vehicule_id']
+        carburant_par_vehicule[veh_id] = (
+            carburant_par_vehicule.get(veh_id, 0.0)
+            + float(plein['prix_total'] or 0))
+
+    par_vehicule = []
+    if carburant_par_vehicule:
+        vehicules_pct = Vehicule.objects.filter(
+            company=company,
+            id__in=carburant_par_vehicule.keys(),
+            pct_charges_non_deductibles__isnull=False,
+        ).values_list('id', 'pct_charges_non_deductibles')
+        for veh_id, pct in vehicules_pct:
+            montant_carburant = round(carburant_par_vehicule[veh_id], 2)
+            par_vehicule.append({
+                'vehicule_id': veh_id,
+                'pct_charges_non_deductibles': float(pct),
+                'montant_carburant': montant_carburant,
+                'montant_carburant_non_deductible': round(
+                    montant_carburant * float(pct) / 100.0, 2),
+            })
+        par_vehicule.sort(key=lambda r: r['vehicule_id'])
+
     return {
         'periode': [debut, fin],
         'par_mois': sorted(par_mois.values(), key=lambda b: b['mois']),
         'total_recuperable': round(total_recuperable, 2),
         'total_non_deductible': round(total_non_deductible, 2),
+        'par_vehicule': par_vehicule,
     }
 
 
@@ -2257,13 +2295,18 @@ def tco_vehicule(company, vehicule_id):
     Le ``cout_total`` somme ces postes. ``amortissement`` (cumul des dotations
     via FLOTTE30) est rapporté à titre INDICATIF mais N'EST PAS sommé au total
     (il chevauche la valeur d'acquisition, pas une dépense d'exploitation
-    récurrente). Retourne un dict LECTURE SEULE ::
+    récurrente). ZCTR11 — ``pct_charges_non_deductibles`` (catalogue/véhicule)
+    signale, à titre INDICATIF, la part de ``cout_total`` non déductible
+    fiscalement (plafond CGI tourisme) — ``None`` si non renseigné. Retourne un
+    dict LECTURE SEULE ::
 
         {
           'vehicule_id', 'actif_flotte_id',
           'carburant', 'reparations', 'pneus_pieces', 'assurances',
           'infractions', 'sinistres', 'cout_total',
           'amortissement_cumule',  # indicatif, hors total
+          'pct_charges_non_deductibles',  # ZCTR11, None si non renseigné
+          'part_charges_non_deductibles',  # ZCTR11, None si pct non renseigné
           'distance_totale_km', 'cout_par_km',  # None si distance nulle
         }
 
@@ -2316,6 +2359,16 @@ def tco_vehicule(company, vehicule_id):
 
     amort = amortissement_vehicule(company, vehicule_id)
 
+    # ZCTR11 — Part de charges non déductibles (indicative), dérivée du %
+    # catalogue/véhicule. ``None`` tant que le pourcentage n'est pas renseigné
+    # (aucune régression : les véhicules sans ce champ gardent un TCO
+    # identique à avant).
+    pct_non_deductible = getattr(vehicule, 'pct_charges_non_deductibles', None)
+    part_non_deductible = None
+    if pct_non_deductible is not None:
+        part_non_deductible = round(
+            cout_total * float(pct_non_deductible) / 100.0, 2)
+
     return {
         'vehicule_id': vehicule_id,
         'actif_flotte_id': actif_flotte_id,
@@ -2326,6 +2379,10 @@ def tco_vehicule(company, vehicule_id):
         'sinistres': round(sinistres, 2),
         'cout_total': round(cout_total, 2),
         'amortissement_cumule': amort.get('cumul_amortissements'),
+        'pct_charges_non_deductibles': (
+            float(pct_non_deductible) if pct_non_deductible is not None
+            else None),
+        'part_charges_non_deductibles': part_non_deductible,
         'distance_totale_km': distance,
         'cout_par_km': cout_par_km,
     }

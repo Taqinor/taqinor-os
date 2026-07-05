@@ -153,9 +153,10 @@ class VehiculeViewSet(_FlotteBaseViewSet):
         return qs
 
     def perform_create(self, serializer):
-        # XFLT12 — À la sélection d'un ``modele_ref``, pré-remplit les champs
-        # vides (energie/puissance_fiscale/valeur) SANS écraser une saisie
-        # déjà présente dans le body.
+        # XFLT12/ZCTR11 — À la sélection d'un ``modele_ref``, pré-remplit les
+        # champs vides (energie/puissance_fiscale/valeur/valeur_residuelle/
+        # pct_charges_non_deductibles) SANS écraser une saisie déjà présente
+        # dans le body.
         from .services import prefill_depuis_modele
 
         modele = serializer.validated_data.get('modele_ref')
