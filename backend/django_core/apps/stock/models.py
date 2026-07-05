@@ -1291,6 +1291,30 @@ class BonCommandeFournisseur(models.Model):
     # envoi automatique — le brouillon est proposé, l'utilisateur clique).
     # 0 = comportement historique (jamais relancé).
     nb_relances = models.PositiveIntegerField(default=0)
+    # ── ZPUR8 — onglet « Other Information » Odoo, au niveau du DOCUMENT ────
+    # Acheteur (défaut = created_by, alimente l'analyse achats XPUR24 par
+    # acheteur + l'OTD par acheteur), référence de commande côté fournisseur
+    # (texte libre) et mentions imprimées sur le PDF. Additif — vide/nul =
+    # comportement historique inchangé.
+    acheteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='bons_commande_fournisseur_acheteur',
+        help_text="Acheteur responsable du BCF (défaut = created_by).")
+    ref_fournisseur = models.CharField(
+        max_length=100, blank=True, null=True,
+        help_text='Référence de la commande côté fournisseur (texte libre).')
+    note_bas_page = models.TextField(
+        blank=True, null=True,
+        help_text='Mentions imprimées en bas de page du PDF BCF.')
+    # Report éditable des défauts fournisseur (XPUR5 incoterm, XPUR6
+    # conditions de paiement) AU NIVEAU DU DOCUMENT — sans redéfinir ces
+    # référentiels. Vide = comportement historique (rien reporté).
+    incoterm = models.CharField(max_length=10, blank=True, null=True)
+    conditions_paiement = models.CharField(
+        max_length=200, blank=True, null=True,
+        help_text='Conditions de paiement reportées du fournisseur '
+                  '(éditables au document), dérivées de delai_paiement_jours.')
     note = models.TextField(blank=True, null=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,

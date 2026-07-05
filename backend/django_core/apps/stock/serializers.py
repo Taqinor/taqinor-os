@@ -604,6 +604,11 @@ class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
             'created_by',
             'created_by_username', 'date_creation', 'date_mise_a_jour',
             'lignes', 'total_achat', 'est_entierement_recu', 'acomptes',
+            # ZPUR8 — « Other Information » : acheteur (défaut = created_by),
+            # réf. fournisseur, note de bas de page + report incoterm/
+            # conditions de paiement (éditables au document).
+            'acheteur', 'ref_fournisseur', 'note_bas_page', 'incoterm',
+            'conditions_paiement', 'nb_relances',
         ]
         # company + reference + created_by sont posés côté serveur. La date
         # confirmée/numéro d'accusé n'est modifiable QUE via l'action

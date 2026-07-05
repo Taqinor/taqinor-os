@@ -204,12 +204,26 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
         company = self.request.user.company
 
         def _save(ref):
+            # ZPUR8 — l'acheteur par défaut est le créateur (éditable
+            # ensuite), sauf si explicitement fourni dans le corps.
+            extra = {}
+            if not serializer.validated_data.get('acheteur'):
+                extra['acheteur'] = self.request.user
             return serializer.save(
                 reference=ref, company=company,
                 created_by=self.request.user,
+                **extra,
             )
-        create_with_reference(
+        bc = create_with_reference(
             BonCommandeFournisseur, 'BCF', company, _save)
+        # ZPUR8 — reporte les défauts fournisseur (incoterm/conditions de
+        # paiement) au document, une fois, sans écraser une valeur déjà
+        # fournie. Best-effort : ne bloque jamais la création.
+        try:
+            from ..services import default_other_information_bcf
+            default_other_information_bcf(bc)
+        except Exception:  # noqa: BLE001
+            pass
 
     def create(self, request, *args, **kwargs):
         # XPUR4 — refuse la création si le fournisseur est bloqué commandes

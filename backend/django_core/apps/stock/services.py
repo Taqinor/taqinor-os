@@ -3615,6 +3615,43 @@ def creer_echeancier_facture_fournisseur(company, facture, tranches):
     return created
 
 
+# ── ZPUR8 — « Other Information » BCF : acheteur/réf/note + report défauts ──
+
+def conditions_paiement_label(fournisseur):
+    """ZPUR8 — libellé lisible des conditions de paiement dérivé de
+    `Fournisseur.delai_paiement_jours`/`fin_de_mois` (XPUR6). Vide si aucun
+    délai connu (0 = comptant, comportement historique)."""
+    if fournisseur is None or not fournisseur.delai_paiement_jours:
+        return ''
+    label = f'{fournisseur.delai_paiement_jours} jours'
+    if fournisseur.fin_de_mois:
+        label += ' fin de mois'
+    return label
+
+
+def default_other_information_bcf(bon_commande):
+    """ZPUR8 — reporte au DOCUMENT (une fois, à la création) les défauts
+    fournisseur `incoterm` (XPUR5) et les conditions de paiement dérivées de
+    `delai_paiement_jours` (XPUR6) — SANS redéfinir ces référentiels. Un champ
+    déjà renseigné (édition ultérieure) n'est jamais écrasé. No-op si le BCF
+    n'a pas de fournisseur (comportement historique)."""
+    if bon_commande.fournisseur_id is None:
+        return
+    changed = []
+    if not bon_commande.incoterm:
+        incoterm = bon_commande.fournisseur.incoterm or ''
+        if incoterm:
+            bon_commande.incoterm = incoterm
+            changed.append('incoterm')
+    if not bon_commande.conditions_paiement:
+        label = conditions_paiement_label(bon_commande.fournisseur)
+        if label:
+            bon_commande.conditions_paiement = label
+            changed.append('conditions_paiement')
+    if changed:
+        bon_commande.save(update_fields=changed)
+
+
 # ── XPUR7 — dates de livraison prévues, accusé fournisseur & OTD réel ──────
 
 def compute_date_livraison_prevue(company, fournisseur, date_commande,
@@ -4950,6 +4987,9 @@ def depenses_achats_par_periode(company, *, date_debut=None, date_fin=None):
     par_fournisseur = {}
     par_categorie = {}
     par_mois = {}
+    # ZPUR8 — dépenses PAR ACHETEUR (nullable = comportement historique :
+    # un BCF sans acheteur renseigné groupe sous « — »).
+    par_acheteur = {}
     for ligne in qs:
         bc = ligne.bon_commande
         total = ligne.total_achat
@@ -4958,12 +4998,17 @@ def depenses_achats_par_periode(company, *, date_debut=None, date_fin=None):
         categorie_nom = (
             ligne.produit.categorie.nom
             if ligne.produit_id and ligne.produit.categorie_id else '—')
+        acheteur_nom = (
+            bc.acheteur.get_full_name() or bc.acheteur.username
+            if bc.acheteur_id else '—')
 
         par_fournisseur[fournisseur_nom] = (
             par_fournisseur.get(fournisseur_nom, Decimal('0')) + total)
         par_categorie[categorie_nom] = (
             par_categorie.get(categorie_nom, Decimal('0')) + total)
         par_mois[mois] = par_mois.get(mois, Decimal('0')) + total
+        par_acheteur[acheteur_nom] = (
+            par_acheteur.get(acheteur_nom, Decimal('0')) + total)
 
     return {
         'par_fournisseur': [
@@ -4979,6 +5024,11 @@ def depenses_achats_par_periode(company, *, date_debut=None, date_fin=None):
         'par_mois': [
             {'mois': k, 'total_ht': v}
             for k, v in sorted(par_mois.items(), key=lambda kv: kv[0])
+        ],
+        'par_acheteur': [
+            {'acheteur': k, 'total_ht': v}
+            for k, v in sorted(
+                par_acheteur.items(), key=lambda kv: kv[1], reverse=True)
         ],
     }
 
