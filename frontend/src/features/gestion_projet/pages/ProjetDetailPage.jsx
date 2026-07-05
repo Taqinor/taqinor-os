@@ -4,6 +4,7 @@ import { Pencil, Link2, CheckCircle2, Plus } from 'lucide-react'
 import { DetailShell } from '../../../ui/module'
 import {
   Button, Spinner, EmptyState, DefinitionList, Badge, toast, DataTable,
+  Segmented,
 } from '../../../ui'
 import { useConfirmDialog } from '../../../ui/confirm'
 import { formatMAD, formatDate, formatDateTime } from '../../../lib/format'
@@ -14,6 +15,8 @@ import {
 import ProjetFormDialog from '../components/ProjetFormDialog'
 import LienFormDialog from '../components/LienFormDialog'
 import ClotureDialog from '../components/ClotureDialog'
+import TachesKanbanView from '../components/TachesKanbanView'
+import TachesCalendarView from '../components/TachesCalendarView'
 
 /* UX38 — Détail projet : entête + statut, transitions GARDÉES (miroir de la
    machine à états serveur), onglets Résumé / Liens / Historique / Clôture. */
@@ -24,6 +27,9 @@ export default function ProjetDetailPage() {
   const [projet, setProjet] = useState(null)
   const [liens, setLiens] = useState([])
   const [historique, setHistorique] = useState([])
+  const [taches, setTaches] = useState([])
+  const [tachesVue, setTachesVue] = useState('kanban')
+  const [busyTacheId, setBusyTacheId] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -35,14 +41,16 @@ export default function ProjetDetailPage() {
     setLoading(true)
     setError(null)
     try {
-      const [p, l, h] = await Promise.all([
+      const [p, l, h, t] = await Promise.all([
         gestionProjetApi.getProjet(id),
         gestionProjetApi.getProjetLiens(id).catch(() => ({ data: [] })),
         gestionProjetApi.getProjetHistorique(id).catch(() => ({ data: [] })),
+        gestionProjetApi.getTaches({ projet: id }).catch(() => ({ data: [] })),
       ])
       setProjet(p.data)
       setLiens(Array.isArray(l.data) ? l.data : l.data?.results ?? [])
       setHistorique(Array.isArray(h.data) ? h.data : h.data?.results ?? [])
+      setTaches(Array.isArray(t.data) ? t.data : t.data?.results ?? [])
     } catch (err) {
       setError(errMessage(err, 'Projet introuvable.'))
     } finally {
@@ -69,6 +77,47 @@ export default function ProjetDetailPage() {
       toast.error(errMessage(err, 'Transition refusée.'))
     } finally {
       setBusy(false)
+    }
+  }
+
+  // XPRJ11 — Kanban drag : PATCH le statut avec rollback si le serveur refuse.
+  const changeStatutTache = async (tache, nouveauStatut) => {
+    if (!tache || tache.statut === nouveauStatut) return
+    const ancien = tache.statut
+    setBusyTacheId(tache.id)
+    setTaches((rows) => rows.map((t) => (t.id === tache.id ? { ...t, statut: nouveauStatut } : t)))
+    try {
+      await gestionProjetApi.updateTache(tache.id, { statut: nouveauStatut })
+    } catch (err) {
+      setTaches((rows) => rows.map((t) => (t.id === tache.id ? { ...t, statut: ancien } : t)))
+      toast.error(errMessage(err, "Le changement de statut n'a pas pu être enregistré — réessayez."))
+    } finally {
+      setBusyTacheId(null)
+    }
+  }
+
+  // XPRJ11 — Calendrier drag-to-reschedule : appelle l'action serveur
+  // `reprogrammer` (cascade successeurs conservée) avec rollback réseau.
+  const reprogrammerTache = async (tache, nouvelleDate) => {
+    if (!tache) return
+    const ancienneDate = tache.date_fin_prevue
+    setBusyTacheId(tache.id)
+    setTaches((rows) => rows.map((t) => (t.id === tache.id ? { ...t, date_fin_prevue: nouvelleDate } : t)))
+    try {
+      const res = await gestionProjetApi.reprogrammerTache(tache.id, { date_debut: nouvelleDate })
+      const modifiees = Array.isArray(res.data) ? res.data : []
+      if (modifiees.length) {
+        setTaches((rows) => rows.map((t) => {
+          const maj = modifiees.find((m) => m.id === t.id)
+          return maj ? { ...t, ...maj } : t
+        }))
+      }
+      toast.success('Tâche replanifiée.')
+    } catch (err) {
+      setTaches((rows) => rows.map((t) => (t.id === tache.id ? { ...t, date_fin_prevue: ancienneDate } : t)))
+      toast.error(errMessage(err, "La replanification n'a pas pu être enregistrée — réessayez."))
+    } finally {
+      setBusyTacheId(null)
     }
   }
 
@@ -169,6 +218,38 @@ export default function ProjetDetailPage() {
     <EmptyState title="Aucune transition" description="L'historique des changements de statut apparaîtra ici." />
   )
 
+  const tachesTab = (
+    <div className="flex flex-col gap-3">
+      <div className="flex justify-end">
+        <Segmented
+          size="sm"
+          aria-label="Vue des tâches"
+          value={tachesVue}
+          onChange={setTachesVue}
+          options={[
+            { value: 'kanban', label: 'Kanban' },
+            { value: 'calendrier', label: 'Calendrier' },
+          ]}
+        />
+      </div>
+      {taches.length === 0 ? (
+        <EmptyState title="Aucune tâche" description="Ce projet n'a pas encore de tâche." />
+      ) : tachesVue === 'kanban' ? (
+        <TachesKanbanView
+          taches={taches}
+          onChangeStatut={changeStatutTache}
+          busyTacheId={busyTacheId}
+        />
+      ) : (
+        <TachesCalendarView
+          taches={taches}
+          onReprogrammer={reprogrammerTache}
+          busyTacheId={busyTacheId}
+        />
+      )}
+    </div>
+  )
+
   const clotureTab = (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-muted-foreground">
@@ -214,6 +295,7 @@ export default function ProjetDetailPage() {
         )}
         tabs={[
           { value: 'resume', label: 'Résumé', content: resume },
+          { value: 'taches', label: 'Tâches', count: taches.length, content: tachesTab },
           { value: 'liens', label: 'Liens', count: liens.length, content: liensTab },
           { value: 'historique', label: 'Historique', count: historique.length, content: histoTab },
           { value: 'cloture', label: 'Clôture', content: clotureTab },

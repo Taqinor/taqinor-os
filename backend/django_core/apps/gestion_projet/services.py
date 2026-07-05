@@ -38,6 +38,94 @@ def cout_timesheet(ressource, heures):
     return (Decimal(heures) * cout_horaire).quantize(Decimal('0.01'))
 
 
+def copier_semaine_precedente_timesheets(ressource, *, semaine_source,
+                                         semaine_cible, admin=False):
+    """Copie les timesheets BROUILLON d'une semaine SOURCE vers une semaine
+    CIBLE, décalées du même nombre de jours (XPRJ6 — bouton « copier la
+    semaine précédente » de la grille hebdomadaire).
+
+    ``semaine_source``/``semaine_cible`` sont les débuts (dates) de deux
+    fenêtres de 7 jours inclusives. Chaque ``Timesheet`` de ``ressource`` sur
+    la fenêtre source est dupliquée avec sa date décalée, son ``cout`` refigé
+    (``cout_timesheet``), en statut BROUILLON — JAMAIS le statut source
+    (soumise/approuvée) : une copie est toujours une nouvelle saisie à
+    resoumettre. Respecte le verrou de période (``verifier_periode_ouverte``)
+    sur chaque date CIBLE : une ligne dont la période cible est verrouillée est
+    SAUTÉE (jamais une exception qui interromprait les autres lignes).
+
+    N'écrit RIEN si ``semaine_source == semaine_cible`` (éviterait un
+    auto-doublon immédiat) — renvoie un rapport vide. AUCUN doublon si
+    ré-exécutée deux fois de suite sur la MÊME cible pour la MÊME ligne
+    (projet/tâche/jour) : une timesheet déjà présente ce jour-là pour ce
+    couple est SAUTÉE (jamais une seconde copie).
+
+    Renvoie ``{'nb_copiees': int, 'nb_sautees': int, 'copiees': [...],
+    'sautees': [...]}`` — chaque entrée sautée porte le motif (``'existe_deja'``
+    ou ``'periode_verrouillee'``).
+    """
+    from .models import Timesheet
+
+    decalage_jours = (semaine_cible - semaine_source).days
+    if decalage_jours == 0:
+        return {'nb_copiees': 0, 'nb_sautees': 0, 'copiees': [], 'sautees': []}
+
+    fin_source = semaine_source + timedelta(days=6)
+    sources = list(Timesheet.objects.filter(
+        ressource=ressource, company=ressource.company,
+        date__gte=semaine_source, date__lte=fin_source,
+    ).select_related('projet', 'tache', 'phase').order_by('date', 'id'))
+
+    fin_cible = semaine_cible + timedelta(days=6)
+    existantes_cible = set(
+        Timesheet.objects.filter(
+            ressource=ressource, company=ressource.company,
+            date__gte=semaine_cible, date__lte=fin_cible,
+        ).values_list('projet_id', 'tache_id', 'date'))
+
+    copiees = []
+    sautees = []
+    for source in sources:
+        nouvelle_date = source.date + timedelta(days=decalage_jours)
+        cle = (source.projet_id, source.tache_id, nouvelle_date)
+        if cle in existantes_cible:
+            sautees.append({
+                'timesheet_source': source.id, 'motif': 'existe_deja'})
+            continue
+        try:
+            verifier_periode_ouverte(
+                ressource.company, nouvelle_date, admin=admin)
+        except PeriodeVerrouilleeError:
+            sautees.append({
+                'timesheet_source': source.id,
+                'motif': 'periode_verrouillee'})
+            continue
+        nouvelle = Timesheet.objects.create(
+            company=ressource.company,
+            projet=source.projet,
+            tache=source.tache,
+            phase=source.phase,
+            ressource=ressource,
+            date=nouvelle_date,
+            heures=source.heures,
+            cout=cout_timesheet(ressource, source.heures),
+            commentaire=source.commentaire,
+            facturable=source.facturable,
+            type_activite=source.type_activite,
+            taux_facturation=source.taux_facturation,
+            statut=Timesheet.Statut.BROUILLON,
+        )
+        existantes_cible.add(cle)
+        copiees.append({
+            'timesheet_source': source.id, 'timesheet_creee': nouvelle.id})
+
+    return {
+        'nb_copiees': len(copiees),
+        'nb_sautees': len(sautees),
+        'copiees': copiees,
+        'sautees': sautees,
+    }
+
+
 # ── Cycle de vie & verrouillage de période (XPRJ1) ───────────────────────────
 class TimesheetTransitionError(Exception):
     """Transition de statut illégale sur une ``Timesheet``."""
