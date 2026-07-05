@@ -8841,6 +8841,39 @@ class ReponseEnquete(models.Model):
         return f'{self.enquete_id} ← {self.contact_ref or "anonyme"}'
 
 
+# ── ZMKT14 — Types d'événements + modèles réutilisables ─────────────────────
+
+class TypeEvenement(models.Model):
+    """Modèle réutilisable pour créer un ``EvenementMarketing`` (ZMKT14) :
+    « créer depuis modèle » recopie sa config par défaut (billets ZMKT15,
+    questions ZMKT16, communications ZMKT17 — pré-chargés au moment de leur
+    implémentation ; ``config_defaut`` sert de socle générique en attendant).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='types_evenement',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=200, verbose_name='Nom du modèle')
+    type_evenement_defaut = models.CharField(
+        max_length=20, default='salon',
+        verbose_name="Type d'événement par défaut")
+    config_defaut = models.JSONField(
+        default=dict, blank=True,
+        verbose_name='Configuration par défaut (JSON)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Type d'événement (modèle)"
+        verbose_name_plural = "Types d'événement (modèles)"
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
+
+
 # ── XMKT28 — Événements marketing légers (salons, portes ouvertes, webinaires)
 
 class EvenementMarketing(models.Model):
@@ -8874,6 +8907,26 @@ class EvenementMarketing(models.Model):
         null=True, blank=True, verbose_name='Capacité')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
+
+    # ── ZMKT14 — pipeline d'étapes configurable (JAMAIS les clés STAGES.py) ─
+    class Etape(models.TextChoices):
+        NOUVEAU = 'nouveau', 'Nouveau'
+        CONFIRME = 'confirme', 'Confirmé'
+        ANNONCE = 'annonce', 'Annoncé'
+        TERMINE = 'termine', 'Terminé'
+
+    etape = models.CharField(
+        max_length=12, choices=Etape.choices, default=Etape.NOUVEAU,
+        verbose_name="Étape (pipeline événement, PAS le funnel CRM)")
+    # Type d'événement source (modèle réutilisable, ZMKT14) — nullable, un
+    # événement créé sans modèle reste comme aujourd'hui.
+    type_modele = models.ForeignKey(
+        'compta.TypeEvenement',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='evenements_crees',
+        verbose_name='Créé depuis le modèle',
+    )
 
     class Meta:
         verbose_name = 'Événement marketing'

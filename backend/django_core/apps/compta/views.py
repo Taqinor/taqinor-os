@@ -66,6 +66,7 @@ from .models import (
     EvenementMarketing, InscriptionEvenement,
     SupportOffline,
     DomaineEnvoi,
+    TypeEvenement,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -79,6 +80,7 @@ from .serializers import (
     EvenementMarketingSerializer, InscriptionEvenementSerializer,
     SupportOfflineSerializer,
     DomaineEnvoiSerializer,
+    TypeEvenementSerializer,
     CommissionPayoutRunSerializer, CompteComptableSerializer,
     CompteTresorerieSerializer, ContratAvancementSerializer,
     DeclarationTVASerializer, DemandeApprobationConfigSerializer,
@@ -4982,6 +4984,36 @@ class EvenementMarketingViewSet(_ComptaBaseViewSet):
         evenement = self.get_object()
         nb = services.cloturer_presences_evenement(evenement)
         return Response({'absents_marques': nb})
+
+    @action(detail=False, methods=['get'])
+    def kanban(self, request):
+        """ZMKT14 — Kanban par étape configurable."""
+        return Response(services.evenements_par_etape(request.user.company))
+
+    @action(detail=True, methods=['post'], url_path='avancer-etape')
+    def avancer_etape(self, request, pk=None):
+        evenement = self.get_object()
+        nouvelle_etape = request.data.get('etape')
+        services.avancer_etape_evenement(evenement, nouvelle_etape)
+        evenement.refresh_from_db()
+        return Response(EvenementMarketingSerializer(evenement).data)
+
+
+class TypeEvenementViewSet(_ComptaBaseViewSet):
+    """Modèles réutilisables d'événement (ZMKT14)."""
+    queryset = TypeEvenement.objects.all()
+    serializer_class = TypeEvenementSerializer
+
+    @action(detail=True, methods=['post'], url_path='creer-evenement')
+    def creer_evenement(self, request, pk=None):
+        type_evenement = self.get_object()
+        nom = request.data.get('nom')
+        date_debut = request.data.get('date_debut')
+        if not nom or not date_debut:
+            return Response({'detail': 'nom et date_debut requis.'}, status=400)
+        evenement = services.creer_evenement_depuis_type(
+            type_evenement, nom=nom, date_debut=date_debut)
+        return Response(EvenementMarketingSerializer(evenement).data, status=201)
 
 
 class InscriptionEvenementViewSet(_ComptaBaseViewSet):

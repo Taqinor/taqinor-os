@@ -51,6 +51,7 @@ from .models import (
     EvenementMarketing, InscriptionEvenement,
     SupportOffline,
     DomaineEnvoi,
+    TypeEvenement,
 )
 
 
@@ -2436,6 +2437,17 @@ class EvenementMarketingSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'nom', 'type_evenement', 'type_display', 'date_debut',
             'date_fin', 'lieu', 'capacite', 'nb_inscrits', 'date_creation',
+            'etape', 'type_modele',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class TypeEvenementSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TypeEvenement
+        fields = [
+            'id', 'nom', 'type_evenement_defaut', 'config_defaut',
+            'date_creation',
         ]
         read_only_fields = ['date_creation']
 

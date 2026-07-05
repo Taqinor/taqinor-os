@@ -76,6 +76,7 @@ from .models import (
     ApprobationEnvoiCampagne,
     Enquete, ReponseEnquete,
     InscriptionEvenement,
+    EvenementMarketing,
     SupportOffline,
     DomaineEnvoi,
 )
@@ -11110,6 +11111,37 @@ def cloturer_presences_evenement(evenement):
         InscriptionEvenement.Statut.PRESENT, InscriptionEvenement.Statut.ABSENT])
     nb = qs.update(statut=InscriptionEvenement.Statut.ABSENT)
     return nb
+
+
+# ── ZMKT14 — Types d'événements + modèles + étapes de pipeline ─────────────
+
+def creer_evenement_depuis_type(type_evenement, *, nom, date_debut, **kwargs):
+    """ZMKT14 — crée un ``EvenementMarketing`` depuis un ``TypeEvenement`` :
+    pré-remplit le type d'événement par défaut, garde la trace du modèle
+    source (``type_modele``)."""
+    return EvenementMarketing.objects.create(
+        company=type_evenement.company, nom=nom,
+        type_evenement=type_evenement.type_evenement_defaut,
+        date_debut=date_debut, type_modele=type_evenement, **kwargs)
+
+
+def avancer_etape_evenement(evenement, nouvelle_etape):
+    """ZMKT14 — avance l'événement dans le pipeline configurable (JAMAIS les
+    clés STAGES.py du funnel CRM — un vocabulaire strictement séparé)."""
+    evenement.etape = nouvelle_etape
+    evenement.save(update_fields=['etape'])
+    return evenement
+
+
+def evenements_par_etape(company):
+    """ZMKT14 — Kanban par étape (company-scoped)."""
+    resultat = {etape: [] for etape, _ in EvenementMarketing.Etape.choices}
+    for evenement in EvenementMarketing.objects.filter(company=company):
+        resultat.setdefault(evenement.etape, []).append({
+            'id': evenement.id, 'nom': evenement.nom,
+            'type_evenement': evenement.type_evenement,
+        })
+    return resultat
 
 
 # ── XMKT29 — Ponts QR pour supports offline (flyers, bâches, véhicules) ────
