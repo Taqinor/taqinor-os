@@ -151,7 +151,7 @@ class TestReplanificationMasse(TestCase):
             nouveau_id = resp.data['deplacees'][0]['nouveau_technicien_id']
             self.assertTrue(
                 Notification.objects.filter(
-                    user_id=nouveau_id, company=self.company).exists())
+                    recipient_id=nouveau_id, company=self.company).exists())
 
     def test_intervention_ids_explicite(self):
         resp = self.api.post(f'{BASE}/interventions/replanifier-en-masse/', {

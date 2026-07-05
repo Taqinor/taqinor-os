@@ -2179,7 +2179,12 @@ def previsualiser_replanification_masse(company, *, jour, technicien_id=None,
     jour-là, soit une liste explicite `intervention_ids` (les deux
     combinables : filtre supplémentaire). Chaque proposition réutilise
     ``selectors.suggerer_creneau`` (habilitation/conflit/indispo/charge/
-    distance) — le créneau proposé ne recrée jamais de conflit FG300. Renvoie
+    distance) — le créneau proposé ne recrée jamais de conflit FG300. Un même
+    couple (technicien, date) n'est JAMAIS proposé deux fois DANS le même lot
+    (sinon deux interventions du lot se recréeraient un conflit entre elles
+    avant même d'être enregistrées) : chaque proposition déjà retenue plus
+    haut dans le lot est exclue des candidats suivants, en repliant sur le
+    meilleur candidat restant. Renvoie
     ``{jour, propositions: [{intervention_id, installation_id,
     type_intervention, technicien_actuel_id, proposition}]}``."""
     from .models import Intervention
@@ -2192,13 +2197,21 @@ def previsualiser_replanification_masse(company, *, jour, technicien_id=None,
         qs = qs.filter(id__in=intervention_ids)
 
     propositions = []
+    reserves_dans_le_lot = set()
     for interv in qs.select_related('installation'):
         suggestions = selectors.suggerer_creneau(
             company, chantier_id=interv.installation_id,
-            type_intervention=interv.type_intervention, n=1)
-        proposition = (
-            suggestions['propositions'][0]
-            if suggestions['propositions'] else None)
+            type_intervention=interv.type_intervention, n=10)
+        proposition = None
+        for candidat in suggestions['propositions']:
+            cle = (candidat['technicien_id'], candidat['date'])
+            if cle in reserves_dans_le_lot:
+                continue
+            proposition = candidat
+            break
+        if proposition is not None:
+            reserves_dans_le_lot.add(
+                (proposition['technicien_id'], proposition['date']))
         propositions.append({
             'intervention_id': interv.id,
             'installation_id': interv.installation_id,
