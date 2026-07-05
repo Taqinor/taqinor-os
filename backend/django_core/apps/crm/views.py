@@ -387,7 +387,9 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
     L'utilisateur acteur et la société viennent toujours de la requête côté
     serveur — jamais du corps envoyé par le navigateur.
     """
-    queryset = Lead.objects.all()
+    queryset = Lead.objects.select_related(
+        'owner', 'client'
+    ).prefetch_related('devis').all()
     serializer_class = LeadSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['nom', 'prenom', 'societe', 'email', 'telephone', 'ville']
