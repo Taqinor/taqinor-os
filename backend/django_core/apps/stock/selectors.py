@@ -726,3 +726,86 @@ def lignes_import_depuis_bcf(company, bon_commande_id):
             'pays_origine': p.pays_origine or '',
         })
     return out
+
+
+MOUVEMENTS_AGREGES_GROUP_BY = ('produit', 'type', 'mois', 'emplacement')
+
+
+def mouvements_agreges(company, *, group_by, date_min=None, date_max=None):
+    """ZSTK7 — « Reporting ▸ Moves History » : agrège `MouvementStock` par
+    ``group_by`` (produit/type/mois/emplacement) sur la période optionnelle,
+    en quantités ENTRÉES/SORTIES/NETTES. LECTURE SEULE, INTERNE.
+
+    ``group_by='emplacement'`` réutilise `stock_breakdown_map` (ventilation
+    ACTUELLE par emplacement — le modèle `MouvementStock` ne trace pas
+    l'emplacement par mouvement) : chaque quantité agrégée est éclatée selon
+    la répartition courante du produit entre emplacements. Lève
+    ``ValueError`` si ``group_by`` n'est pas reconnu (400 côté vue)."""
+    from .models import MouvementStock
+
+    if group_by not in MOUVEMENTS_AGREGES_GROUP_BY:
+        raise ValueError(
+            f'group_by inconnu : {group_by!r} '
+            f'(attendu parmi {MOUVEMENTS_AGREGES_GROUP_BY}).')
+
+    qs = MouvementStock.objects.filter(
+        company=company).select_related('produit')
+    if date_min:
+        qs = qs.filter(date__date__gte=date_min)
+    if date_max:
+        qs = qs.filter(date__date__lte=date_max)
+
+    ENTREE = MouvementStock.TypeMouvement.ENTREE
+    SORTIE = MouvementStock.TypeMouvement.SORTIE
+
+    def _cle(m):
+        if group_by == 'produit':
+            return (m.produit_id, m.produit.nom if m.produit_id else '—')
+        if group_by == 'type':
+            return (m.type_mouvement, m.get_type_mouvement_display())
+        if group_by == 'mois':
+            from .services import _mois_key
+            key = _mois_key(m.date)
+            return (key, key)
+        return None  # 'emplacement' traité séparément ci-dessous.
+
+    buckets = {}
+    for m in qs:
+        if group_by == 'emplacement':
+            continue
+        cle, libelle = _cle(m)
+        entry = buckets.setdefault(
+            cle, {'cle': cle, 'libelle': libelle,
+                  'entrees': 0, 'sorties': 0})
+        if m.type_mouvement == ENTREE:
+            entry['entrees'] += m.quantite
+        elif m.type_mouvement == SORTIE:
+            entry['sorties'] += m.quantite
+
+    if group_by == 'emplacement':
+        from .services import stock_breakdown_map
+        breakdown = stock_breakdown_map(company)
+        for m in qs:
+            rows = breakdown.get(m.produit_id, [])
+            total = sum(r['quantite'] for r in rows) or 1
+            for r in rows:
+                part = r['quantite'] / total
+                cle = (r['emplacement_id'], r['emplacement_nom'])
+                entry = buckets.setdefault(
+                    cle, {'cle': cle, 'libelle': r['emplacement_nom'],
+                          'entrees': 0, 'sorties': 0})
+                if m.type_mouvement == ENTREE:
+                    entry['entrees'] += m.quantite * part
+                elif m.type_mouvement == SORTIE:
+                    entry['sorties'] += m.quantite * part
+
+    out = []
+    for entry in buckets.values():
+        out.append({
+            'libelle': entry['libelle'],
+            'entrees': entry['entrees'],
+            'sorties': entry['sorties'],
+            'net': entry['entrees'] - entry['sorties'],
+        })
+    out.sort(key=lambda e: e['libelle'] or '')
+    return out
