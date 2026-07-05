@@ -417,6 +417,20 @@ class OrdreAssemblageViewSet(TenantMixin, viewsets.ModelViewSet):
         ordre = self.get_object()
         return Response(disponibilite_par_ligne(ordre))
 
+    @action(detail=True, methods=['get'], url_path='bon-pdf',
+            permission_classes=[IsAnyRole])
+    def bon_pdf(self, request, pk=None):
+        """ZMFG10 — bon d'assemblage PDF (worksheet atelier). STRICTEMENT
+        INTERNE : aucun prix (test dédié « aucun prix dans le PDF »)."""
+        from django.http import HttpResponse
+        from .. import assembly_pdf
+        ordre = self.get_object()
+        pdf_bytes = assembly_pdf.bon_assemblage_pdf(ordre)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'inline; filename="bon-assemblage-{ordre.id}.pdf"')
+        return resp
+
     @action(detail=True, methods=['post'])
     def demarrer(self, request, pk=None):
         """FG328/XMFG2 — passe l'ordre en cours. Avertit (non bloquant) si des
