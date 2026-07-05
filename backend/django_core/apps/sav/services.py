@@ -887,3 +887,70 @@ def abonner_suiveurs_globaux(ticket):
     for user in users:
         TicketFollower.objects.get_or_create(
             company=ticket.company, ticket=ticket, user=user)
+
+
+# ── XCTR1 — Devis accepté (ligne récurrente) → contrat de maintenance ───────
+
+def creer_contrat_depuis_devis_accepte(*, devis, user=None):
+    """XCTR1 — quand un ``ventes.Devis`` contenant AU MOINS UNE ligne dont le
+    produit est marqué ``est_recurrent`` passe à accepté, crée IDEMPOTENT un
+    ``ContratMaintenance`` pour le client du devis : prix = total TTC des
+    lignes récurrentes, périodicité = celle du premier produit récurrent
+    trouvé (défaut annuel), ``facturation_active=False`` (comportement
+    historique — la facturation récurrente reste un opt-in explicite,
+    cf. FG40). Le contrat est lié au devis via une note dans ``notes`` (pas de
+    nouvelle FK cross-app).
+
+    Aucune écriture cross-app directe : appelé UNIQUEMENT depuis le receveur
+    ``apps/sav/receivers.py`` abonné à ``core.events.devis_accepted``.
+
+    Idempotence : si un ``ContratMaintenance`` référence déjà ce devis dans
+    ``notes`` (marqueur ``[devis:<id>]``), ne crée rien (ré-émission du signal,
+    double clic) et renvoie ``None``. Un devis SANS ligne récurrente ne crée
+    rien non plus (renvoie ``None``).
+    """
+    from decimal import Decimal
+
+    from .models import ContratMaintenance
+
+    marqueur = f'[devis:{devis.pk}]'
+    if ContratMaintenance.objects.filter(
+            company=devis.company, notes__contains=marqueur).exists():
+        return None
+
+    lignes_recurrentes = [
+        ligne for ligne in devis.lignes.select_related('produit').all()
+        if getattr(ligne.produit, 'est_recurrent', False)
+    ]
+    if not lignes_recurrentes:
+        return None
+
+    prix = sum((ligne.total_ht * (
+        1 + (ligne.taux_tva_effectif or 0) / Decimal('100'))
+        for ligne in lignes_recurrentes), Decimal('0'))
+
+    premiere_periodicite = None
+    for ligne in lignes_recurrentes:
+        periodicite = getattr(ligne.produit, 'periodicite_defaut', None)
+        if periodicite:
+            premiere_periodicite = periodicite
+            break
+
+    kwargs = dict(
+        company=devis.company,
+        client=devis.client,
+        date_debut=devis.date_acceptation or timezone.localdate(),
+        prix=prix,
+        actif=True,
+        facturation_active=False,
+        notes=f'Créé automatiquement depuis le devis {marqueur} '
+              f'(ligne(s) récurrente(s) — XCTR1).',
+    )
+    if premiere_periodicite:
+        kwargs['periodicite'] = premiere_periodicite
+
+    installation = getattr(devis, 'installation', None)
+    if installation is not None:
+        kwargs['installation'] = installation
+
+    return ContratMaintenance.objects.create(**kwargs)

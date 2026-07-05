@@ -615,6 +615,30 @@ class Produit(models.Model):
         help_text="Pays d'origine du produit — utilisé pour pré-remplir le "
                   'dossier d\'import ADII.')
 
+    # ── XCTR1 — Produit récurrent (abonnement) → conversion auto en contrat de
+    # maintenance à l'acceptation d'un devis. `est_recurrent` = False par
+    # défaut : AUCUN produit existant ne devient récurrent tant que cette case
+    # n'est pas cochée (comportement inchangé). `periodicite_defaut` est
+    # NULLABLE — vide = pas de préconisation de périodicité (le receiver
+    # retombe sur ContratMaintenance.Periodicite.ANNUEL).
+    class PeriodiciteDefaut(models.TextChoices):
+        MENSUEL = 'mensuel', 'Mensuel'
+        TRIMESTRIEL = 'trimestriel', 'Trimestriel'
+        SEMESTRIEL = 'semestriel', 'Semestriel'
+        ANNUEL = 'annuel', 'Annuel'
+
+    est_recurrent = models.BooleanField(
+        default=False, verbose_name='Produit récurrent (abonnement)',
+        help_text='Prestation d\'abonnement (maintenance, monitoring…) : une '
+                  'ligne de ce produit sur un devis accepté crée '
+                  'automatiquement un contrat de maintenance SAV.')
+    periodicite_defaut = models.CharField(
+        max_length=15, choices=PeriodiciteDefaut.choices,
+        null=True, blank=True,
+        verbose_name='Périodicité par défaut',
+        help_text='Périodicité proposée au contrat de maintenance créé '
+                  '(vide = annuel).')
+
     class Meta:
         verbose_name = "Produit"
         verbose_name_plural = "Produits"
