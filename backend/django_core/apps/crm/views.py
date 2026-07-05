@@ -214,6 +214,26 @@ class ClientViewSet(TenantMixin, viewsets.ModelViewSet):
             'chantiers': chantiers,
         })
 
+    @action(detail=True, methods=['get'], url_path='consolidation',
+            permission_classes=[IsAnyRole])
+    def consolidation(self, request, pk=None):
+        """XSAL9 — Rollup CA groupe (société mère + toutes ses filiales,
+        récursif) — voir ``selectors.consolidation_client``. Lecture seule,
+        bornée à la société courante (get_object passe par TenantMixin)."""
+        from .selectors import consolidation_client
+        client = self.get_object()
+        rollup = consolidation_client(client)
+        return Response({
+            'filiales': [
+                {'id': f.id, 'nom': str(f), 'parent_id': f.parent_id}
+                for f in rollup['filiales']
+            ],
+            'ca_devis_total': str(rollup['ca_devis_total']),
+            'ca_factures_total': str(rollup['ca_factures_total']),
+            'nb_devis_total': rollup['nb_devis_total'],
+            'nb_factures_total': rollup['nb_factures_total'],
+        })
+
     @action(detail=True, methods=['get'], url_path='data-export',
             permission_classes=[IsResponsableOrAdmin])
     def data_export(self, request, pk=None):

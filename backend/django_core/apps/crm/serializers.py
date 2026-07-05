@@ -61,6 +61,33 @@ class ClientSerializer(serializers.ModelSerializer):
                     'client', company, attrs.get('custom_data'))
         return attrs
 
+    def validate_parent(self, value):
+        # XSAL9 — anti-cycle + même société, appliqué ici car DRF n'invoque
+        # PAS Model.clean() automatiquement à l'écriture API (seul
+        # full_clean() le ferait — jamais appelé sur ce chemin).
+        if value is None:
+            return value
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is not None and value.company_id != company.id:
+            raise serializers.ValidationError(
+                'La société mère doit appartenir à la même société.')
+        if self.instance is not None:
+            if value.pk == self.instance.pk:
+                raise serializers.ValidationError(
+                    "Un client ne peut pas être sa propre société mère.")
+            seen = {self.instance.pk}
+            current = value
+            depth = 0
+            while current is not None:
+                if current.pk in seen or depth > 100:
+                    raise serializers.ValidationError(
+                        'Cette hiérarchie créerait un cycle.')
+                seen.add(current.pk)
+                current = current.parent
+                depth += 1
+        return value
+
     def get_fields(self):
         fields = super().get_fields()
         # FG20 — masque la PII en LECTURE pour les rôles non autorisés. On rend

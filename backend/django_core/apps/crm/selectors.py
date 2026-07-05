@@ -1062,3 +1062,67 @@ def leads_source_campagne(company, nom_campagne):
          'stage': lead.stage}
         for lead in leads
     ]
+
+
+# ── XSAL9 — Hiérarchie de comptes (société mère / filiales) + consolidation ──
+
+def _tous_descendants(client):
+    """XSAL9 — Tous les descendants (filiales, petites-filiales…) d'un
+    client, en profondeur, jamais infini (garde anti-cycle même si `clean()`
+    est censé l'empêcher en amont — défense en profondeur). Lecture seule."""
+    out = []
+    frontier = list(client.filiales.all())
+    seen = {client.pk}
+    while frontier:
+        current = frontier.pop()
+        if current.pk in seen:
+            continue
+        seen.add(current.pk)
+        out.append(current)
+        frontier.extend(current.filiales.all())
+    return out
+
+
+def consolidation_client(client):
+    """XSAL9 — Rollup CA groupe : agrège CE client + TOUS ses descendants
+    (filiales, récursif) via les sélecteurs ventes existants (JAMAIS d'import
+    de ``apps.ventes.models``). Renvoie un dict :
+
+      ``{'filiales': [Client, ...], 'ca_devis_total': Decimal,
+         'ca_factures_total': Decimal, 'nb_devis_total': int,
+         'nb_factures_total': int, 'par_client': {client_id: {...}}}``
+
+    Un client SANS filiale renvoie un rollup contenant uniquement ses
+    propres chiffres (comportement dégradé, jamais une erreur). Lecture
+    seule ; toujours borné à la société du client (les sélecteurs ventes
+    filtrent déjà par company+client_ids)."""
+    from decimal import Decimal
+
+    from apps.ventes.selectors import ca_devis_factures_par_clients
+
+    filiales = _tous_descendants(client)
+    tous_ids = [client.pk] + [f.pk for f in filiales]
+    par_client = ca_devis_factures_par_clients(client.company, tous_ids)
+
+    ca_devis_total = Decimal('0')
+    ca_factures_total = Decimal('0')
+    nb_devis_total = 0
+    nb_factures_total = 0
+    for cid in tous_ids:
+        entry = par_client.get(cid) or {
+            'ca_devis': Decimal('0'), 'ca_factures': Decimal('0'),
+            'nb_devis': 0, 'nb_factures': 0,
+        }
+        ca_devis_total += entry['ca_devis']
+        ca_factures_total += entry['ca_factures']
+        nb_devis_total += entry['nb_devis']
+        nb_factures_total += entry['nb_factures']
+
+    return {
+        'filiales': filiales,
+        'ca_devis_total': ca_devis_total,
+        'ca_factures_total': ca_factures_total,
+        'nb_devis_total': nb_devis_total,
+        'nb_factures_total': nb_factures_total,
+        'par_client': par_client,
+    }

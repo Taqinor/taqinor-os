@@ -58,6 +58,9 @@ export default function ClientDetailPanel({ client, onClose, onNewDevis, onChang
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  // XSAL9 — rollup CA groupe (société mère + filiales). Best-effort : une
+  // erreur de chargement n'empêche jamais le reste de la fiche de s'afficher.
+  const [consolidation, setConsolidation] = useState(null)
 
   useEffect(() => {
     let alive = true
@@ -68,6 +71,16 @@ export default function ClientDetailPanel({ client, onClose, onNewDevis, onChang
       .then((res) => { if (alive) setData(res.data) })
       .catch(() => { if (alive) setError(true) })
       .finally(() => { if (alive) setLoading(false) })
+    return () => { alive = false }
+  }, [client.id])
+
+  useEffect(() => {
+    let alive = true
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setConsolidation(null)
+    api.get(`/crm/clients/${client.id}/consolidation/`)
+      .then((res) => { if (alive) setConsolidation(res.data) })
+      .catch(() => { /* best-effort — la fiche reste utilisable sans rollup */ })
     return () => { alive = false }
   }, [client.id])
 
@@ -87,6 +100,28 @@ export default function ClientDetailPanel({ client, onClose, onNewDevis, onChang
           {error && (
             <p className="page-error">
               Impossible de charger les documents — réessayez.
+            </p>
+          )}
+          {/* XSAL9 — hiérarchie de comptes : filiales + rollup CA groupe. */}
+          {consolidation && consolidation.filiales.length > 0 && (
+            <section className="mb-4">
+              <h4 className="font-medium mb-2">
+                Filiales <span className="count-badge">{consolidation.filiales.length}</span>
+              </h4>
+              <p className="text-sm mb-2">
+                CA groupe (devis) : <strong>{formatMAD(consolidation.ca_devis_total)}</strong>
+                {' · '}CA groupe (factures) : <strong>{formatMAD(consolidation.ca_factures_total)}</strong>
+              </p>
+              <ul className="text-sm">
+                {consolidation.filiales.map((f) => (
+                  <li key={f.id}>{f.nom}</li>
+                ))}
+              </ul>
+            </section>
+          )}
+          {client.parent_id != null && (
+            <p className="text-sm text-muted-foreground mb-4">
+              Filiale de la société mère #{client.parent_id}.
             </p>
           )}
           {data && (

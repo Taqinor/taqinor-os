@@ -16,6 +16,8 @@ const crmApi = {
   // anonymisation irréversible des PII (admin uniquement, côté serveur).
   clientDataExport: (id) => api.get(`/crm/clients/${id}/data-export/`),
   anonymizeClient: (id) => api.post(`/crm/clients/${id}/anonymize/`),
+  // XSAL9 — rollup CA groupe (société mère + filiales, récursif).
+  getClientConsolidation: (id) => api.get(`/crm/clients/${id}/consolidation/`),
 
   // Leads / opportunities
   getLeads: (params) => api.get('/crm/leads/', { params }),

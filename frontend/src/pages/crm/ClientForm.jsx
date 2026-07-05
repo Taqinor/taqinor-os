@@ -71,6 +71,8 @@ export default function ClientForm({ client = null, onClose }) {
     rc:          client?.rc          ?? '',
     // N93 — langue des documents client-facing (facture / devis). FR par défaut.
     langue_document: client?.langue_document ?? 'fr',
+    // XSAL9 — société mère (hiérarchie de comptes / consolidation groupe).
+    parent: client?.parent ?? null,
   }), [client])
 
   const [fields, setFields] = useState(initial)
@@ -185,6 +187,8 @@ export default function ClientForm({ client = null, onClose }) {
         rc:        isEntreprise ? (fields.rc.trim() || null) : null,
         // N93 — langue des documents (facture / devis) pour ce client.
         langue_document: fields.langue_document,
+        // XSAL9 — société mère (hiérarchie de comptes), optionnelle.
+        parent: fields.parent || null,
       }
       if (isEdit) {
         await dispatch(updateClient({ id: client.id, data: payload })).unwrap()
@@ -414,6 +418,34 @@ export default function ClientForm({ client = null, onClose }) {
                 <p className="form-hint" data-testid="cf-langue-document-hint">
                   {t('client.langue_document.help')}
                 </p>
+              </FormField>
+
+              {/* XSAL9 — hiérarchie de comptes : société mère (optionnelle).
+                  Rattache ce client à un groupe sans fusionner leurs données ;
+                  anti-cycle + isolation société vérifiés côté serveur. */}
+              <FormField
+                label="Société mère (groupe) — optionnel"
+                htmlFor="cf-parent" fullWidth
+              >
+                <Combobox
+                  id="cf-parent"
+                  value={fields.parent ? String(fields.parent) : null}
+                  onSearch={onSearchCompany}
+                  onChange={(_v, opt) => setField('parent', opt?.hit?.id ?? null)}
+                  placeholder="Rechercher la société mère…"
+                  searchPlaceholder="Nom ou ICE…"
+                  emptyText="Aucune correspondance"
+                />
+                {fields.parent && (
+                  <button
+                    type="button"
+                    className="form-hint"
+                    style={{ cursor: 'pointer', textDecoration: 'underline' }}
+                    onClick={() => setField('parent', null)}
+                  >
+                    Retirer le rattachement
+                  </button>
+                )}
               </FormField>
             </FormSection>
 

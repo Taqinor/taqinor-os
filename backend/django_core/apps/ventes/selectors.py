@@ -553,6 +553,57 @@ def encours_clients_par_tiers(company):
     return [v for v in par_client.values() if v['encours'] > 0]
 
 
+def ca_devis_factures_par_clients(company, client_ids):
+    """XSAL9 — CA (devis + factures) agrégé, PAR client, pour une liste
+    d'ids clients d'une même société. Point d'entrée cross-app sanctionné
+    pour ``apps.crm`` (consolidation groupe — ``crm.selectors.
+    consolidation_client``), jamais un import direct de ``ventes.models``.
+
+    Renvoie un dict ``{client_id: {'ca_devis': Decimal, 'ca_factures':
+    Decimal, 'nb_devis': int, 'nb_factures': int}}`` — un client sans devis/
+    facture n'apparaît PAS dans le résultat (l'appelant fournit un défaut à
+    zéro). Lecture seule ; jamais de fuite cross-société (filtré par
+    ``company`` ET ``client_id__in``)."""
+    from decimal import Decimal
+
+    from .models import Devis, Facture
+
+    client_ids = list(client_ids or [])
+    if not client_ids:
+        return {}
+
+    out = {}
+    devis_qs = (Devis.objects
+                .filter(company=company, client_id__in=client_ids)
+                .exclude(statut=Devis.Statut.REFUSE))
+    for devis in devis_qs:
+        entry = out.setdefault(devis.client_id, {
+            'ca_devis': Decimal('0'), 'ca_factures': Decimal('0'),
+            'nb_devis': 0, 'nb_factures': 0,
+        })
+        try:
+            entry['ca_devis'] += Decimal(str(devis.total_ttc or 0))
+        except Exception:  # noqa: BLE001 — jamais casser la consolidation
+            pass
+        entry['nb_devis'] += 1
+
+    facture_qs = (Facture.objects
+                  .filter(company=company, client_id__in=client_ids)
+                  .exclude(statut=Facture.Statut.ANNULEE))
+    for facture in facture_qs:
+        entry = out.setdefault(facture.client_id, {
+            'ca_devis': Decimal('0'), 'ca_factures': Decimal('0'),
+            'nb_devis': 0, 'nb_factures': 0,
+        })
+        try:
+            entry['ca_factures'] += Decimal(str(facture.total_ttc or 0))
+        except Exception:  # noqa: BLE001 — jamais casser la consolidation
+            pass
+        entry['nb_factures'] += 1
+
+    return out
+
+
 def acompte_paye_pour_devis(devis_id, company):
     """YSERV1 — vrai si le devis a au moins une ``Facture`` de
     ``type_facture='acompte'`` au statut ``payee`` — point d'entrée cross-app

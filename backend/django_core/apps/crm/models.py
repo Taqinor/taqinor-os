@@ -131,6 +131,17 @@ class Client(models.Model):
         ),
     )
 
+    # ── XSAL9 — Hiérarchie de comptes (société mère / filiales) ──
+    # Self-FK nullable, additif : un groupe (ex. holding agricole à 3 fermes)
+    # peut lier ses fiches Client sans fusionner leurs données. `clean()`
+    # garde contre un cycle ; la même société uniquement (jamais cross-tenant).
+    parent = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='filiales',
+        verbose_name='Société mère',
+        help_text="Rattache ce client à une société mère (consolidation "
+                  "CA groupe). Même société uniquement ; jamais de cycle.")
+
     class Meta:
         verbose_name = "Client"
         verbose_name_plural = "Clients"
@@ -138,6 +149,33 @@ class Client(models.Model):
 
     def __str__(self):
         return f"{self.nom} {self.prenom if self.prenom else ''}"
+
+    def clean(self):
+        super().clean()
+        # XSAL9 — anti-cycle : `parent` ne peut jamais créer une boucle
+        # (A→B→A) ni se référencer lui-même, et doit rester dans la MÊME
+        # société (jamais de hiérarchie cross-tenant).
+        if self.parent_id is None:
+            return
+        if self.parent_id == self.pk:
+            from django.core.exceptions import ValidationError
+            raise ValidationError(
+                {'parent': "Un client ne peut pas être sa propre société mère."})
+        if self.company_id and self.parent.company_id != self.company_id:
+            from django.core.exceptions import ValidationError
+            raise ValidationError(
+                {'parent': 'La société mère doit appartenir à la même société.'})
+        seen = {self.pk} if self.pk else set()
+        current = self.parent
+        depth = 0
+        while current is not None:
+            if current.pk in seen or depth > 100:
+                from django.core.exceptions import ValidationError
+                raise ValidationError(
+                    {'parent': 'Cette hiérarchie créerait un cycle.'})
+            seen.add(current.pk)
+            current = current.parent
+            depth += 1
 
 
 class Lead(models.Model):
