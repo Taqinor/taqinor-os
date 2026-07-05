@@ -71,8 +71,9 @@ describe('GarantiesTeaser — FR verbatim, EN/AR présents, chiffres invariants'
     expect(garanties).toContain('87.4 %');
     // Les chiffres ne sont JAMAIS « traduits » en chiffres arabo-indiens.
     expect(garanties).not.toMatch(/[٠-٩۰-۹]/);
-    // Le nom de marque reste identique et présent dans le corps rendu.
-    expect(garanties).toContain('Deye Cloud');
+    // WC10 (2026-07-05) : le suivi n'est plus nommé par la marque de l'app —
+    // on vérifie la présence du concept générique « temps réel » (toutes locales).
+    expect(garanties).toMatch(/temps réel|real-time|الوقت الحقيقي/);
     // Lien interne localisé (via le helper L = localizeNavHref(href, locale)).
     expect(garanties).toContain('localizeNavHref');
     expect(garanties).toContain("L('/garanties')");

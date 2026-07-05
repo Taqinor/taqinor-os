@@ -1,7 +1,7 @@
 ---
 title: "Batterie solaire : stocker ou revendre ? L'économie de l'autoconsommation au Maroc"
 description: "Export limité à 20 % de la production ; rachat 0,18–0,21 DH/kWh en MT/HT, tarif BT résidentiel non encore publié : pourquoi un kWh stocké vaut bien plus qu'un kWh exporté au Maroc."
-pubDate: 2026-06-21
+pubDate: 2026-06-10
 updatedDate: 2026-07-03
 tags: ["batterie", "autoconsommation", "stockage", "économie"]
 author: "Reda Kasri"

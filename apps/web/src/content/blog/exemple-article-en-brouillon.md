@@ -1,7 +1,7 @@
 ---
 title: "Exemple d’article en brouillon (ne pas publier)"
 description: "Article de démonstration en brouillon — il ne doit jamais apparaître sur le site public, le flux RSS ni le sitemap."
-pubDate: 2026-06-21
+pubDate: 2026-05-04
 tags: ["test"]
 author: "Taqinor"
 draft: true

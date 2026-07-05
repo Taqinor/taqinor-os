@@ -31,17 +31,17 @@ const devisHref = L('/devis/mon-toit');
 
 // ── Derived figures — nothing hand-typed ─────────────────────────────────────
 // RULE B (2026-07-04): the raw install count is no longer featured in user
-// copy (h2, denominators) — the page leads with installed kWc and measured
-// kWh instead (partially supersedes W354).
-const kwcTotal = REALISATIONS.reduce((sum, r) => sum + r.kwcNum, 0);
-const kwcTotalLabel = kwcTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// copy (h2, denominators) — the page leads with measured kWh instead
+// (partially supersedes W354).
+// (2026-07-05, founder): cumulative installed kWc is dropped (no longer shown
+// anywhere on the site) — the page now leads with MEASURED production.
 
 // WB1 (2026-07-04): the fabricated per-installation ANNUAL production was
-// removed (identical yield factor across 4 sites — impossible). The only
-// real production figure is the CUMULATIVE tally of the Deye-Cloud-monitored
-// fleet (MEASURED_FLEET, realisations.ts) — cumulative "since commissioning",
-// NEVER annualized.
-const productionTotal = Math.round(MEASURED_FLEET_LIFETIME_MWH * 1000); // 6.56 MWh -> 6,560 kWh
+// removed (identical yield factor across several sites — impossible). The
+// only real production figure is the CUMULATIVE tally of the fleet monitored
+// in real time (MEASURED_FLEET, realisations.ts) — cumulative "since
+// commissioning", NEVER annualized.
+const productionTotal = Math.round(MEASURED_FLEET_LIFETIME_MWH * 1000);
 const productionTotalLabel = productionTotal.toLocaleString('en-US');
 
 const dateFmt = new Intl.DateTimeFormat('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -51,7 +51,7 @@ const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Dataset',
   name: 'Tracked solar production — Taqinor fleet',
-  description: `Cumulative production measured across the monitored fleet (Deye Cloud, ${MEASURED_FLEET.length} plants), as of ${generatedDateLabel}: ${productionTotalLabel} kWh cumulative.`,
+  description: `Cumulative production measured across the fleet monitored in real time (${MEASURED_FLEET.length} plants), as of ${generatedDateLabel}: ${productionTotalLabel} kWh cumulative.`,
   temporalCoverage: FACTS_GENERATED_AT,
   creator: { '@type': 'Organization', name: 'Taqinor', url: 'https://taqinor.ma' },
 };
@@ -59,7 +59,7 @@ const jsonLd = {
 
 <Layout
   title="Tracked solar production — our fleet's real cumulative tally | Taqinor"
-  description={`${productionTotalLabel} kWh tallied cumulatively across the monitored fleet (Deye Cloud), as of ${generatedDateLabel} — nothing rounded up, nothing padded.`}
+  description={`${productionTotalLabel} kWh tallied cumulatively across the fleet monitored in real time, as of ${generatedDateLabel} — nothing rounded up, nothing padded.`}
   ogSlug="equipement"
 >
   <div class="v2">
@@ -75,7 +75,7 @@ const jsonLd = {
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">Ongoing transparency</p>
         <h1 class="display v2-page-title cine-in cine-in-1 mt-6">Tracked production</h1>
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
-          Not a brochure: a counter that keeps rolling. What the fleet monitored on Deye Cloud
+          Not a brochure: a counter that keeps rolling. What the fleet monitored in real time
           has actually produced since commissioning, cumulatively — as of{' '}
           <strong class="text-white">{generatedDateLabel}</strong>.
         </p>
@@ -86,25 +86,23 @@ const jsonLd = {
     <section class="section px-4">
       <div class="mx-auto max-w-6xl">
         <p class="tech-label v2-kicker rule-brass text-lune">Tracked tally as of {generatedDateLabel}</p>
-        <h2 class="display v2-section-title mt-5 text-white">{kwcTotalLabel} kWc, one counter</h2>
-        <div class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
-          <KeyFigure value={kwcTotalLabel} unit="kWc" label="Installed capacity">
-            Cumulative total across published installations.
-          </KeyFigure>
+        <h2 class="display v2-section-title mt-5 text-white">{productionTotalLabel} kWh, one counter</h2>
+        <div class="mt-10 grid gap-6 sm:grid-cols-2" data-stagger>
           <KeyFigure value={productionTotalLabel} unit="kWh cumulative" label="Tracked production">
-            Cumulative tally from the monitored fleet (Deye Cloud) since commissioning — never
+            Cumulative tally from the fleet monitored in real time since commissioning — never
             annualized.
           </KeyFigure>
           <KeyFigure value={String(MEASURED_FLEET.length)} unit="monitored plants" label="Published monitoring">
-            Fleet tracked live on Deye Cloud.
+            Fleet tracked live, client access.
           </KeyFigure>
         </div>
         <Callout type="info" title="How this figure gets refreshed">
           <p>
-            This tally is recalculated each time a Deye Cloud export is republished (roughly:
+            This tally is recalculated each time a monitoring export is republished (roughly:
             with every newly monitored site added to the fleet). The date above is the latest
             snapshot — never a rolling average, never a projection. The measured cumulative is
-            tracked continuously on Deye Cloud, recalculated with every newly documented project.
+            tracked continuously by our real-time production monitoring, recalculated with every
+            newly documented project.
           </p>
         </Callout>
       </div>

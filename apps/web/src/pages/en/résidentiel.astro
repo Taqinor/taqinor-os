@@ -1,11 +1,11 @@
 ---
 /**
  * EN — Residential solar (W67). Faithful translation of /résidentiel ; EVERY
- * figure kept EXACT in Latin digits (11,36 kWc, 60–90 %, 3–7 years,
+ * figure kept EXACT in Latin digits (11,36 kWc, 50–100 %, 3–7 years,
  * 30 years, < 11 kW, 1 000 / 2 000 / 10 000 MAD, ref. 400/236/468/NC-10/25,
- * Canadian Solar 710 Wc, Deye, Dyness LFP, Deye Cloud, ONEE, law 82-21). WB —
+ * Canadian Solar 710 Wc, Deye, Dyness LFP, real-time monitoring, ONEE, law 82-21). WB —
  * fabricated annual kWh production figures removed (no real Deye reading
- * backed them); production is monitored on Deye Cloud, never promised. The
+ * backed them); production is monitored via real-time production monitoring, never promised. The
  * price-bracket data + solar math (BILL_RANGES / localEstimateBand / formatMAD)
  * are reused UNCHANGED — only visible labels are translated. Internal links via
  * localizeNavHref. Shared components (GarantiesTeaser, Testimonials) auto-detect
@@ -86,7 +86,7 @@ const investRangeHigh = formatMAD(Math.max(...brackets.map((b) => b.investHigh))
 
 <Layout
   title="Solar for villas and apartments in Morocco — costed on your bill | Taqinor"
-  description="11,36 kWc in Casablanca, tracked on Deye Cloud: our residential installations sized on your real bill, with honest orders of magnitude, a 3- to 7-year payback and the law 82-21 declaration."
+  description="11,36 kWc in Casablanca, tracked with real-time production monitoring: our residential installations sized on your real bill, with honest orders of magnitude, a 3- to 7-year payback and the law 82-21 declaration."
   ogSlug="residentiel"
 >
   <div class="v2">
@@ -119,7 +119,8 @@ const investRangeHigh = formatMAD(Math.max(...brackets.map((b) => b.investHigh))
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">Villas · apartments</p>
         <h1 class="display v2-page-title cine-in cine-in-1 mt-5 max-w-[18ch]">Your bill already knows the size of your installation</h1>
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
-          Sized properly, an installation covers 60 to 90 % of what a villa consumes. Three figures
+          Sized properly, an installation covers 50 to 100 % of what a villa consumes, depending on
+          the number of batteries and day/night usage. Three figures
           are enough to set the power: your ONEE meter reading, your peak hours and the roof's
           orientation. We work from those readings, and we tell you plainly the power they call
           for — never more to pad the bill, never less to dangle a teaser price.
@@ -149,9 +150,9 @@ const investRangeHigh = formatMAD(Math.max(...brackets.map((b) => b.investHigh))
           <div><p class="fig text-3xl text-azur-600 sm:text-4xl">11,36 <span class="text-base">kWc</span></p><p class="tech-label mt-1.5 text-encre-faint">Installed power</p></div>
           <div><p class="fig text-3xl text-azur-600 sm:text-4xl">16 <span class="text-base">panels</span></p><p class="tech-label mt-1.5 text-encre-faint">Canadian Solar 710 Wc</p></div>
           <div><p class="fig text-3xl text-azur-600 sm:text-4xl">10 <span class="text-base">kWh</span></p><p class="tech-label mt-1.5 text-encre-faint">Dyness LFP storage</p></div>
-          <div><p class="fig text-3xl text-azur-600 sm:text-4xl">Deye <span class="text-base">Cloud</span></p><p class="tech-label mt-1.5 text-encre-faint">Monitoring, client access</p></div>
+          <div><p class="fig text-3xl text-azur-600 sm:text-4xl">Real-time <span class="text-base">tracking</span></p><p class="tech-label mt-1.5 text-encre-faint">Monitoring, client access</p></div>
         </div>
-        <p class="mt-5 border-t border-azur-900/10 pt-3 text-xs text-encre-soft">Production tracked continuously on Deye Cloud, client access.</p>
+        <p class="mt-5 border-t border-azur-900/10 pt-3 text-xs text-encre-soft">Production tracked continuously, real-time production monitoring, client access via app.</p>
       </aside>
     </section>
 
@@ -245,7 +246,7 @@ const investRangeHigh = formatMAD(Math.max(...brackets.map((b) => b.investHigh))
               class="v3-grade w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
             <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
               <span class="tech-label block text-brass-300">El Jadida · 5,68 kWc</span>
-              <span class="mt-0.5 block text-xs text-lune">8 × Canadian Solar 710 Wc · Deye 5 kW · monitored on Deye Cloud</span>
+              <span class="mt-0.5 block text-xs text-lune">8 × Canadian Solar 710 Wc · Deye 5 kW · real-time production monitoring</span>
             </figcaption>
           </figure>
         </div>

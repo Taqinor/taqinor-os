@@ -1,7 +1,7 @@
 ---
 title: "Combien coûte une installation solaire au Maroc en 2026 ?"
 description: "Fourchettes indicatives 2026 par puissance, surcoûts toiture, batterie, TVA — pour savoir à quoi s'attendre avant votre devis."
-pubDate: 2026-06-21
+pubDate: 2026-03-23
 tags: ["coût", "prix", "installation", "2026"]
 author: "Reda Kasri"
 ogSlug: "accueil"

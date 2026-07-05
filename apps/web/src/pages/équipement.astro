@@ -46,7 +46,7 @@ const categories = [
   { ref: 'OND-1', title: 'Onduleurs hybrides — Deye', body: "On retient le Deye hybride pour une raison concrète : quand le réseau saute, il bascule sur batterie en quelques millisecondes, assez vite pour qu'un PC reste allumé. Le reste du temps, il décide seconde par seconde s'il vaut mieux puiser dans les panneaux, recharger la batterie ou tirer sur le réseau. Les gammes SUN-SG04LP1, SG04LP3 et SG01HP3 couvrent 5 à 30 kW, mono comme triphasé, et parlent en CAN au BMS de la batterie. Conformes CEI 61727 et VDE-AR-N-4105.", points: ['Monophasé et triphasé, 5 – 30 kW', 'Gestion batterie CAN BMS intégrée', 'Garantie 10 ans'] },
   { ref: 'OND-2', title: 'Onduleurs réseau — Huawei SUN2000', body: "Quand l'étude ne retient pas de batterie, on passe sur du string pur. Le Huawei SUN2000 optimise chaîne par chaîne : un panneau à l'ombre ne tire plus toute la rangée vers le bas. Du résidentiel à la toiture tertiaire.", points: ['Rendement européen élevé', 'Optimisation par chaîne', 'Garantie 10 ans'] },
   { ref: 'BAT', title: 'Batteries — Dyness DL5.0C', body: "Le lithium-fer-phosphate ne s'emballe pas thermiquement comme d'autres chimies lithium : c'est le choix de la sûreté pour du stockage chez soi. Les modules DL5.0C / DL5.0C PRO s'empilent par tranches de 5 kWh et parlent nativement le CAN BMS des Deye. Certifiés CE, IEC 62619, UN38.3.", points: ['Chimie LFP — 6 000+ cycles à 90 % DoD', 'Modulaire : 5 à 15 kWh et plus', 'Garantie 10 ans'] },
-  { ref: 'MON', title: 'Monitoring — Deye Cloud', body: "Sans mesure, une production annoncée n'est qu'une promesse invérifiable. Chaque toiture porte donc un dongle WiFi/Ethernet relié à Deye Cloud : production à la minute, historiques, alertes sur défaut. Vous gardez votre accès personnel ; de notre côté, nous surveillons tout le parc et intervenons avant que la panne ne se voie chez vous.", points: ['Production mesurée en continu', 'Alertes automatiques — SAV proactif', 'Accès client via application mobile'] },
+  { ref: 'MON', title: 'Monitoring — suivi de production en temps réel', body: "Sans mesure, une production annoncée n'est qu'une promesse invérifiable. Chaque toiture porte donc un dongle WiFi/Ethernet assurant une supervision en temps réel : production à la minute, historiques, alertes sur défaut. Vous gardez votre accès personnel depuis une application ; de notre côté, nous surveillons tout le parc et intervenons avant que la panne ne se voie chez vous.", points: ['Production mesurée en continu', 'Alertes automatiques — SAV proactif', 'Accès client via application mobile'] },
 ];
 
 const warranties = [
@@ -61,7 +61,7 @@ const warranties = [
 
 <Layout
   title="Le matériel posé : Canadian Solar, Deye, Huawei, Dyness — et pourquoi | Taqinor"
-  description="Panneaux bifaciaux Canadian Solar (30 ans de performance linéaire), onduleurs hybrides Deye, batteries Dyness LFP 6 000 cycles, supervision Deye Cloud : le matériel réellement posé chez nous, et la raison technique de chaque choix."
+  description="Panneaux bifaciaux Canadian Solar (30 ans de performance linéaire), onduleurs hybrides Deye, batteries Dyness LFP 6 000 cycles, supervision en temps réel : le matériel réellement posé chez nous, et la raison technique de chaque choix."
   ogSlug="equipement"
 >
   <div class="v2">
@@ -227,8 +227,8 @@ const warranties = [
             <p class="mt-3 text-sm leading-relaxed text-lune-soft">
               Chaque référence de cette page est une marque tier-1 nommée, avec sa fiche constructeur
               officielle liée en <a href="/produits" class="text-brass-300 underline underline-offset-2 hover:text-white">page produit</a>,
-              sa garantie contractuelle Taqinor et — une fois posée — sa production vérifiable sur
-              Deye Cloud. Rien d'anonyme, rien qui ne se retrouve pas.
+              sa garantie contractuelle Taqinor et — une fois posée — sa production vérifiable via
+              le suivi de production en temps réel. Rien d'anonyme, rien qui ne se retrouve pas.
             </p>
           </div>
         </div>
@@ -244,8 +244,8 @@ const warranties = [
         <p class="v2-lead mt-4 text-encre-soft">
           Une garantie ne vaut que par le dossier qui la documente. Chaque installation repart
           avec le sien, complet : schémas unifilaires, calcul de section des câbles, liste des
-          protections, procédure de mise en service et l'accès Deye Cloud pour vérifier la
-          production vous-même.
+          protections, procédure de mise en service et l'accès au suivi de production en temps réel
+          pour vérifier la production vous-même.
         </p>
         <div class="mt-10 border-t-2 border-azur-900 bg-blanc" data-stagger>
           {warranties.map((w, i) => (

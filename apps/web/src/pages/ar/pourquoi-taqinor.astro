@@ -14,16 +14,15 @@ import StickyCta from '../../components/StickyCta.astro';
 import RelatedLinks from '../../components/RelatedLinks.astro';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
-import { REALISATIONS } from '../../lib/realisations';
 import { PANEL_PERFORMANCE_WARRANTY_YEARS } from '../../lib/warranty';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
 const devisHref = L('/devis/mon-toit');
 
-// القاعدة ب4 (2026-07-04) — مُشتقّة بدل أرقام مكتوبة يدوياً، كما في FR.
-const totalKwc = REALISATIONS.reduce((sum, r) => sum + r.kwcNum, 0);
-const totalKwcLabel = totalKwc.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// القاعدة ب4 (2026-07-04) — مُشتقّة بدل رقم مكتوب يدوياً، كما في FR. مجموع
+// كيلوواط الذروة المركّبة (مجموع الأوراش) لم يعد يُعرَض هنا (القاعدة ب) —
+// المواصفات لكل ورش تبقى على /realisations.
 const panelWarrantyLabel = `${PANEL_PERFORMANCE_WARRANTY_YEARS} سنة`;
 
 const piliers = [
@@ -31,22 +30,22 @@ const piliers = [
     k: '01',
     title: 'ننطلق من فاتورتك، لا من كاطالوݣ',
     body: 'تُستنتج القدرة من استهلاكك الفعلي وسطحك — المساحة المفيدة، التوجيه، الظل. ما لم يبرّر هذا الحساب مرجعاً، لا نركّبه. التشخيص والدراسة بـ 0 درهم؛ والمؤسّس هو من يوقّعهما (انظر «من نحن»).',
-    contrast: 'معظم عروض الأثمنة الشمسية بالمغرب تنطلق من عُدّة قياسية (3 أو 5 أو 6 kWc) قبل حتى الاطلاع على فاتورتك — عرضنا ينطلق من فاتورتك.',
+    contrast: 'معظم عروض الأثمنة الشمسية بالمغرب تنطلق من عُدّة قياسية (<span dir="ltr">3</span> أو <span dir="ltr">5</span> أو <span dir="ltr">6 kWc</span>) قبل حتى الاطلاع على فاتورتك — عرضنا ينطلق من فاتورتك.',
     href: '/à-propos',
     link: 'المؤسّس والمنهج',
   },
   {
     k: '02',
     title: 'أرقام مقروءة من العدّاد، لا من مطوية',
-    body: 'كل تركيبة موصولة بـ Deye Cloud: إنتاج في الزمن الحقيقي، تنبيهات تلقائية، ولوج للزبون مُضمَّن — رقم مُتابَع على أوراشنا، لا إسقاط مطوية أبداً.',
+    body: 'كل تركيبة تستفيد من متابعة الإنتاج في الوقت الحقيقي: تنبيهات تلقائية، ولوج للزبون مُضمَّن — رقم مُتابَع على أوراشنا، لا إسقاط مطوية أبداً.',
     contrast: 'كثير من المركّبين يُقدّرون التوفير الموعود انطلاقاً من محاكاة نظرية لا تُقارَن أبداً بعدّاد حقيقي — أرقامنا تُقارَن به باستمرار.',
     href: '/realisations',
     link: 'انظر إنجازاتنا',
   },
   {
     k: '03',
-    title: 'ملف القانون 82-21، مُعدّ ومُودَع',
-    body: 'تصريح (تحت 11 kW في الجهد المنخفض)، اتفاق ربط أو ترخيص: نقرأ حالتك، نحدّد النظام ونودِع الملف — بما في ذلك تسوية التركيبات القائمة عبر المادة 33. القانون سارٍ منذ 9 يونيو 2026.',
+    title: 'ملف القانون <span dir="ltr">82-21</span>، مُعدّ ومُودَع',
+    body: 'تصريح (تحت <span dir="ltr">11 kW</span> في الجهد المنخفض)، اتفاق ربط أو ترخيص: نقرأ حالتك، نحدّد النظام ونودِع الملف — بما في ذلك تسوية التركيبات القائمة عبر المادة 33. القانون سارٍ منذ 9 يونيو 2026.',
     contrast: 'غالباً ما يُترَك الملف التنظيمي على عاتق الزبون بعد انتهاء التركيب — عندنا يُودَع قبل اعتبار الورش منتهياً.',
     href: '/loi-82-21',
     link: 'حدّد نظامي',
@@ -54,7 +53,7 @@ const piliers = [
   {
     k: '04',
     title: 'لائحة قصيرة من علامات الصف الأول',
-    body: 'Canadian Solar، JA Solar، Deye، Huawei، Dyness — مصدرها موزّعون رسميون بالمغرب، ضمانات قابلة للتفعيل محلياً. خمسة أسماء، لا معدات مجهولة: يغطّي الضمان من 10 إلى 30 سنة حسب المكوّن.',
+    body: 'Canadian Solar، JA Solar، Deye، Huawei، Dyness — مصدرها موزّعون رسميون بالمغرب، ضمانات قابلة للتفعيل محلياً. خمسة أسماء، لا معدات مجهولة: يغطّي الضمان من <span dir="ltr">10</span> إلى <span dir="ltr">30 سنة</span> حسب المكوّن.',
     contrast: 'لوح مستورَد دون فيشة صانع أو موزّع رسمي لا يمكنه إثبات ضمانه يوم الحاجة إليه — ألواحنا تستطيع ذلك، علامةً بعلامة.',
     href: '/équipement',
     link: 'انظر المعدات',
@@ -64,7 +63,7 @@ const piliers = [
 
 <Layout
   title="لماذا تاكينور — ما يميّزنا، نقطة بنقطة | Taqinor"
-  description="أربعة فروق ملموسة: تحديد المقاس مستنتَج من فاتورتك، إنتاج مقروء على Deye Cloud، ملف القانون 82-21 مُعدّ ومُودَع، ولائحة قصيرة من علامات الصف الأول مضمونة من 10 إلى 30 سنة. تركيبات حقيقية، يمكن زيارتها عند الطلب."
+  description="أربعة فروق ملموسة: تحديد المقاس مستنتَج من فاتورتك، متابعة الإنتاج في الوقت الحقيقي، ملف القانون 82-21 مُعدّ ومُودَع، ولائحة قصيرة من علامات الصف الأول مضمونة من 10 إلى 30 سنة. تركيبات حقيقية، يمكن زيارتها عند الطلب."
   ogSlug="accueil"
 >
   <div class="v2">
@@ -92,9 +91,9 @@ const piliers = [
         {piliers.map((p, i) => (
           <div class="v2-rise cine-card flex flex-col p-7" style={`--v2-i:${i}`}>
             <p class="fig lum text-3xl" dir="ltr">{p.k}</p>
-            <h2 class="display mt-2 text-2xl text-white">{p.title}</h2>
-            <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{p.body}</p>
-            <p class="mt-3 border-s-2 border-brass-400/50 ps-3 text-sm leading-relaxed text-lune-faint">{p.contrast}</p>
+            <h2 class="display mt-2 text-2xl text-white" set:html={p.title}></h2>
+            <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft" set:html={p.body}></p>
+            <p class="mt-3 border-s-2 border-brass-400/50 ps-3 text-sm leading-relaxed text-lune-faint" set:html={p.contrast}></p>
             <a href={L(p.href)} class="mt-5 inline-block border-b-2 border-white/30 pb-0.5 text-sm font-bold text-white transition-colors hover:border-white">{p.link} <span class="inline-block rtl:-scale-x-100">→</span></a>
           </div>
         ))}
@@ -115,7 +114,7 @@ const piliers = [
         <p class="mt-4 max-w-2xl text-sm leading-relaxed text-lune-soft">
           جوابنا يتّسع لصفحة واحدة: خمس علامات tier-1 مسمّاة، لكل واحدة
           <a href={L('/équipement')} class="text-brass-300 underline underline-offset-2 hover:text-white">فيشتها الرسمية من الصانع</a>،
-          وضمانها التعاقدي، ثم — بعد التركيب — إنتاجها القابل للتحقق على Deye Cloud.
+          وضمانها التعاقدي، ثم — بعد التركيب — إنتاجها القابل للتحقق في الوقت الحقيقي.
         </p>
       </div>
     </section>
@@ -127,7 +126,7 @@ const piliers = [
           <p class="tech-label v2-kicker rule-brass text-lune">اذهب وعاينها</p>
           <h2 class="display v2-section-title mt-5 text-white">تركيبات حقيقية، تُزار عند الطلب</h2>
           <p class="v2-lead mt-5 text-lune-soft">
-            الدار البيضاء، الجديدة، النواصر: هذه التركيبات تشتغل بالفعل، وإنتاجها يمرّ على Deye Cloud.
+            الدار البيضاء، الجديدة، النواصر: هذه التركيبات تشتغل بالفعل، وإنتاجها يُتابَع في الوقت الحقيقي.
             على سؤال «هل يعمل فعلاً؟» نجيب بعنوان، لا بحجج بيع. اطلب الزيارة.
           </p>
           <div class="mt-8 flex flex-wrap gap-3">
@@ -137,8 +136,8 @@ const piliers = [
         </div>
         <dl class="grid grid-cols-2 gap-x-6 gap-y-10 border-s-2 border-brass-400/60 ps-6 sm:ps-10" data-stagger>
           <div class="v2-rise" style="--v2-i:0">
-            <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl" dir="ltr" data-tally>{totalKwcLabel} kWc</dd>
-            <dt class="tech-label mt-2 text-lune-faint">مركَّبة — الدار البيضاء، الجديدة، النواصر</dt>
+            <dd class="font-display text-xl font-bold text-white">الدار البيضاء، الجديدة، النواصر</dd>
+            <dt class="tech-label mt-2 text-lune-faint">أوراش حقيقية، تُزار عند الطلب</dt>
           </div>
           <div class="v2-rise" style="--v2-i:1">
             <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl" dir="ltr" data-tally>{panelWarrantyLabel}</dd>
@@ -149,7 +148,7 @@ const piliers = [
             <dt class="tech-label mt-2 text-lune-faint">الدراسة والتشخيص</dt>
           </div>
           <div class="v2-rise" style="--v2-i:3">
-            <dd class="font-display text-xl font-bold text-white">Deye Cloud</dd>
+            <dd class="font-display text-xl font-bold text-white">متابعة في الوقت الحقيقي</dd>
             <dt class="tech-label mt-2 text-lune-faint">إنتاج مُتابَع، ولوج للزبون مُضمَّن</dt>
           </div>
         </dl>

@@ -13,16 +13,15 @@ import StickyCta from '../../components/StickyCta.astro';
 import RelatedLinks from '../../components/RelatedLinks.astro';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
-import { REALISATIONS } from '../../lib/realisations';
 import { PANEL_PERFORMANCE_WARRANTY_YEARS } from '../../lib/warranty';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
 const devisHref = L('/devis/mon-toit');
 
-// WB4 (2026-07-04) — derived instead of hand-typed literals, mirroring FR.
-const totalKwc = REALISATIONS.reduce((sum, r) => sum + r.kwcNum, 0);
-const totalKwcLabel = totalKwc.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// WB4 (2026-07-04) — derived instead of a hand-typed literal, mirroring FR.
+// The aggregate installed-kWc total (sum across projects) is no longer shown
+// here (RULE B) — per-project specs stay on /realisations.
 const panelWarrantyLabel = `${PANEL_PERFORMANCE_WARRANTY_YEARS} years`;
 
 const piliers = [
@@ -37,7 +36,7 @@ const piliers = [
   {
     k: '02',
     title: 'Our production figures come straight from the meter',
-    body: 'Every installation is connected to Deye Cloud: real-time production, automatic alerts, client access included — a figure tracked on our projects, never a brochure projection.',
+    body: 'Every installation has real-time production monitoring: automatic alerts, client access included — a figure tracked on our projects, never a brochure projection.',
     contrast: 'Many installers quote the promised savings from a theoretical simulation that is never checked against a real meter — ours is, continuously.',
     href: '/realisations',
     link: 'See our projects',
@@ -63,7 +62,7 @@ const piliers = [
 
 <Layout
   title="Why Taqinor — what sets us apart, point by point | Taqinor"
-  description="Four concrete differences: sizing deduced from your bill, production read on Deye Cloud, the Law 82-21 file prepared and filed, and a short list of tier-1 brands warranted from 10 to 30 years. Real installations, visitable on request."
+  description="Four concrete differences: sizing deduced from your bill, real-time production monitoring, the Law 82-21 file prepared and filed, and a short list of tier-1 brands warranted from 10 to 30 years. Real installations, visitable on request."
   ogSlug="accueil"
 >
   <div class="v2">
@@ -115,7 +114,7 @@ const piliers = [
         <p class="mt-4 max-w-2xl text-sm leading-relaxed text-lune-soft">
           Our answer fits on one page: five named tier-1 brands, each with its
           <a href={L('/équipement')} class="text-brass-300 underline underline-offset-2 hover:text-white">official manufacturer datasheet</a>,
-          its contractual warranty and — once installed — verifiable production on Deye Cloud.
+          its contractual warranty and — once installed — verifiable production in real time.
         </p>
       </div>
     </section>
@@ -128,7 +127,7 @@ const piliers = [
           <h2 class="display v2-section-title mt-5 text-white">Real installations, visitable on request</h2>
           <p class="v2-lead mt-5 text-lune-soft">
             Casablanca, El Jadida, Nouaceur: these installations are already running, and their
-            production scrolls by on Deye Cloud. To the question "does it really work?", we answer
+            production is tracked in real time. To the question "does it really work?", we answer
             with an address, not a sales pitch. Ask to visit.
           </p>
           <div class="mt-8 flex flex-wrap gap-3">
@@ -138,8 +137,8 @@ const piliers = [
         </div>
         <dl class="grid grid-cols-2 gap-x-6 gap-y-10 border-s-2 border-brass-400/60 ps-6 sm:ps-10" data-stagger>
           <div class="v2-rise" style="--v2-i:0">
-            <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl" dir="ltr" data-tally>{totalKwcLabel} kWc</dd>
-            <dt class="tech-label mt-2 text-lune-faint">Installed — Casablanca, El Jadida, Nouaceur</dt>
+            <dd class="font-display text-xl font-bold text-white">Casablanca, El Jadida, Nouaceur</dd>
+            <dt class="tech-label mt-2 text-lune-faint">Real projects, visitable on request</dt>
           </div>
           <div class="v2-rise" style="--v2-i:1">
             <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl" dir="ltr" data-tally>{panelWarrantyLabel}</dd>
@@ -150,7 +149,7 @@ const piliers = [
             <dt class="tech-label mt-2 text-lune-faint">The study and the assessment</dt>
           </div>
           <div class="v2-rise" style="--v2-i:3">
-            <dd class="font-display text-xl font-bold text-white">Deye Cloud</dd>
+            <dd class="font-display text-xl font-bold text-white">Real-time monitoring</dd>
             <dt class="tech-label mt-2 text-lune-faint">Tracked production, client access included</dt>
           </div>
         </dl>
