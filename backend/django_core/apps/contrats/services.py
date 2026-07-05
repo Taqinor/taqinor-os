@@ -4005,3 +4005,96 @@ def cloturer_contrats_impayes(company, *, today=None, auteur=None):
             suspendus.append(resultat)
 
     return suspendus
+
+
+# ---------------------------------------------------------------------------
+# ZCTR6 — Devis/commande portant des lignes de location (Rental order via
+# ventes)
+# ---------------------------------------------------------------------------
+
+
+@transaction.atomic
+def creer_ordres_location_depuis_devis(devis, *, company, created_by=None,
+                                       date_enlevement_prevue=None,
+                                       date_retour_prevue=None,
+                                       today=None):
+    """Crée un ``OrdreLocation`` PAR LIGNE louable d'un devis ACCEPTÉ — ZCTR6.
+
+    Chez Odoo une location naît d'une ligne de vente avec période et prix
+    calculé par les Rental Prices ; ici ``OrdreLocation`` (XCTR17) était un
+    objet isolé sans passerelle depuis le devis. Cette action, pour CHAQUE
+    ligne du devis dont le produit est ``louable`` (lu via
+    ``ventes.selectors.lignes_louables_devis`` + ``stock.selectors.
+    produits_louables_qs`` — jamais un import direct de ``ventes.models`` ni
+    ``stock.models``), crée un ``OrdreLocation`` pré-rempli (client résolu du
+    devis, produit, tarif jour/semaine/mois du produit) — les dates
+    d'enlèvement/retour sont celles fournies par l'appelant (repli : demain →
+    dans 7 jours si absentes, un placeholder éditable ensuite sur l'ordre).
+
+    IDEMPOTENT : un ``OrdreLocation`` déjà créé pour la même (devis, ligne)
+    (``devis_id``/``devis_ligne_id``, ZCTR6) n'est jamais recréé — un re-run
+    ne duplique pas. Une ligne dont le produit n'est PAS louable est
+    simplement ignorée. GARDE : le devis doit être ACCEPTÉ et porter un
+    client — sinon ``OrdreLocationError`` et rien n'est créé. Aucun
+    changement au moteur devis ni aux statuts (règle #4).
+
+    Renvoie la liste des ``OrdreLocation`` créés (liste vide si tout était
+    déjà créé, ou si aucune ligne n'est louable).
+    """
+    from .models import OrdreLocation
+
+    if today is None:
+        today = timezone.localdate()
+
+    from apps.ventes import selectors as ventes_selectors
+
+    if devis.company_id != company.id:
+        raise OrdreLocationError(
+            "Le devis n'appartient pas à votre société.")
+    if not ventes_selectors.is_devis_accepte(devis):
+        raise OrdreLocationError(
+            'Seul un devis ACCEPTÉ peut créer des ordres de location.')
+    if not devis.client_id:
+        raise OrdreLocationError(
+            "Le devis n'a pas de client : impossible de créer des ordres "
+            "de location.")
+
+    from apps.stock.selectors import produits_louables_qs
+
+    produit_ids_louables = set(
+        produits_louables_qs(company).values_list('id', flat=True))
+    lignes = ventes_selectors.lignes_louables_devis(
+        devis, produit_ids_louables)
+    if not lignes:
+        return []
+
+    debut = date_enlevement_prevue or (today + timedelta(days=1))
+    fin = date_retour_prevue or (debut + timedelta(days=7))
+
+    from apps.stock.models import Produit
+
+    crees = []
+    for ligne in lignes:
+        # GARDE ANTI-DOUBLON — un ordre existe déjà pour cette (devis, ligne).
+        if OrdreLocation.objects.filter(
+                devis_id=devis.id, devis_ligne_id=ligne['ligne_id']).exists():
+            continue
+        produit = Produit.objects.filter(
+            id=ligne['produit_id'], company=company).first()
+        if produit is None:
+            continue  # pragma: no cover - défensif (produit supprimé entre-temps)
+        ordre = OrdreLocation.objects.create(
+            company=company,
+            client_id=devis.client_id,
+            devis_id=devis.id,
+            devis_ligne_id=ligne['ligne_id'],
+            produit=produit,
+            date_reservation=today,
+            date_enlevement_prevue=debut,
+            date_retour_prevue=fin,
+            tarif_jour=produit.tarif_location_jour,
+            created_by=created_by,
+        )
+        crees.append(ordre)
+
+    return crees

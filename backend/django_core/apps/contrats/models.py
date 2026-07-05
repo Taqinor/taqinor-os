@@ -2640,6 +2640,19 @@ class OrdreLocation(models.Model):
     )
     # Client locataire — lien LÂCHE (jamais un import de crm.Client).
     client_id = models.PositiveIntegerField(verbose_name='ID du client')
+    # ZCTR6 — devis d'ORIGINE (``ventes.Devis``), lien LÂCHE (id seul, jamais
+    # un import de ``ventes.models`` ni un FK dur). NULL = ordre créé
+    # manuellement (comportement XCTR17 inchangé). ``ContratLien`` exige un
+    # ``Contrat`` (FK dur) qui n'existe pas dans ce flux devis→location pur —
+    # ce champ sert de GARDE ANTI-DOUBLON pour
+    # ``services.creer_ordres_location_depuis_devis`` (un re-run sur le même
+    # devis ne duplique jamais un ordre déjà créé pour la même ligne).
+    devis_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du devis d\'origine')
+    # ZCTR6 — ligne du devis d'origine (id seul, même lien lâche que
+    # ``devis_id``) : distingue plusieurs lignes louables d'un même devis.
+    devis_ligne_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID de la ligne devis d\'origine')
     produit = models.ForeignKey(
         'stock.Produit',
         on_delete=models.PROTECT,
@@ -2776,6 +2789,11 @@ class OrdreLocation(models.Model):
             models.Index(
                 fields=['produit', 'numero_serie'],
                 name='contrats_ordloc_prod_serie',
+            ),
+            # ZCTR6 — garde anti-doublon rapide (devis, ligne) → ordre créé.
+            models.Index(
+                fields=['devis_id', 'devis_ligne_id'],
+                name='contrats_ordloc_devis_ligne',
             ),
         ]
 

@@ -1284,6 +1284,7 @@ class OrdreLocationSerializer(serializers.ModelSerializer):
         model = OrdreLocation
         fields = [
             'id', 'client_id', 'produit', 'produit_nom', 'numero_serie',
+            'devis_id', 'devis_ligne_id',
             'date_reservation', 'date_enlevement_prevue',
             'date_retour_prevue', 'date_enlevement_reelle',
             'date_retour_reelle', 'statut', 'statut_display', 'tarif_jour',
@@ -1300,7 +1301,7 @@ class OrdreLocationSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'id', 'statut', 'date_enlevement_reelle', 'date_retour_reelle',
-            'montant_estime', 'date_creation',
+            'montant_estime', 'date_creation', 'devis_id', 'devis_ligne_id',
             'caution_montant', 'caution_statut', 'caution_retenue',
             'caution_motif_retenue',
             'frais_retard_montant', 'frais_retard_facture_id',

@@ -576,3 +576,33 @@ def jours_impaye_facture(facture_id, company):
     if facture is None:
         return 0
     return facture.jours_retard
+
+
+def lignes_louables_devis(devis, produit_ids_louables):
+    """ZCTR6 — Lignes d'un devis dont le produit est LOUABLE.
+
+    Point d'entrée cross-app en LECTURE SEULE pour ``apps.contrats``
+    (rattachement d'ordres de location à un devis accepté) — jamais un
+    import direct de ``apps.ventes.models`` depuis ``contrats``. L'appelant
+    fournit ``produit_ids_louables`` (résolu via
+    ``stock.selectors.produits_louables_qs`` — jamais réimporté ici, aucune
+    dépendance directe à ``stock``). Renvoie une liste de dicts
+    ``{'produit_id', 'quantite', 'ligne_id'}`` — une ligne dont le produit
+    n'est PAS louable est simplement absente (ignorée par l'appelant)."""
+    from .models import LigneDevis
+
+    if not produit_ids_louables:
+        return []
+    lignes = (
+        LigneDevis.objects
+        .filter(devis=devis, produit_id__in=produit_ids_louables)
+        .order_by('id')
+    )
+    return [
+        {
+            'ligne_id': ligne.id,
+            'produit_id': ligne.produit_id,
+            'quantite': ligne.quantite,
+        }
+        for ligne in lignes
+    ]

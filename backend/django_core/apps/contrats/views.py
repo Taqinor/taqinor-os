@@ -2381,6 +2381,52 @@ class OrdreLocationViewSet(_ContratsBaseViewSet):
             f'inline; filename="Bon_restitution_{ordre.id}.pdf"')
         return resp
 
+    @action(detail=False, methods=['post'],
+            url_path=r'depuis-devis/(?P<devis_id>[0-9]+)')
+    def depuis_devis(self, request, devis_id=None):
+        """Crée un ``OrdreLocation`` par ligne louable d'un devis ACCEPTÉ —
+        ZCTR6 (``POST /ordres-location/depuis-devis/<devis_id>/``).
+
+        Corps optionnel : ``date_enlevement_prevue``/``date_retour_prevue``
+        (AAAA-MM-JJ), appliquées à tous les ordres créés — repli demain →
+        +7 jours si absentes. Idempotent (re-run = 0 doublon). Le devis doit
+        appartenir à la société courante et être ACCEPTÉ, sinon 400. Le
+        ``Devis.statut`` n'est JAMAIS modifié (règle #4)."""
+        from apps.ventes.selectors import get_devis_by_pk
+
+        devis = get_devis_by_pk(devis_id)
+        if devis is None:
+            return Response(
+                {'detail': 'Devis introuvable.'},
+                status=status.HTTP_404_NOT_FOUND)
+
+        def _parse_date(key):
+            raw = (request.data.get(key) or '').strip()
+            if not raw:
+                return None
+            from datetime import date as _date
+            try:
+                return _date.fromisoformat(raw)
+            except ValueError:
+                return None
+
+        try:
+            ordres = services.creer_ordres_location_depuis_devis(
+                devis, company=request.user.company,
+                created_by=request.user,
+                date_enlevement_prevue=_parse_date(
+                    'date_enlevement_prevue'),
+                date_retour_prevue=_parse_date('date_retour_prevue'),
+            )
+        except services.OrdreLocationError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(
+            OrdreLocationSerializer(ordres, many=True).data,
+            status=status.HTTP_201_CREATED,
+        )
+
 
 class PlanRecurrentViewSet(_ContratsBaseViewSet):
     """Plans de facturation récurrente réutilisables (nommés) — ZCTR1.
