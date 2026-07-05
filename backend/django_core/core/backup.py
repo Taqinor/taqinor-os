@@ -252,3 +252,173 @@ def dump_database(run: BackupRun) -> BackupRun:
     run.save(update_fields=['object_key', 'bytes_taille', 'artifact_ref',
                             'statut', 'termine_le', 'detail', 'updated_at'])
     return run
+
+
+# ---------------------------------------------------------------------------
+# YOPSB2 — Drill de restauration testé + vérification d'intégrité des dumps.
+#
+# ``restore_drill`` télécharge le dernier dump réussi (YOPSB1), le restaure
+# dans une base JETABLE (jamais la production — garde dure sur le nom), puis
+# compare des comptages de tables clés au manifeste du dump. La base scratch
+# est DROP à la fin (succès ou échec de la comparaison).
+# ---------------------------------------------------------------------------
+
+RESTORE_DRILL_TABLES = [
+    'authentication_customuser',
+    'ventes_devis',
+    'crm_lead',
+]
+
+
+class RestoreDrillGuardError(Exception):
+    """Levée si la base cible du drill == la base de production (jamais)."""
+
+
+def _restore_drill_db_name():
+    """Nom de la base scratch du drill (configurable), avec garde dure
+    empêchant qu'elle coïncide avec la base de production."""
+    import os
+
+    name = os.environ.get('BACKUP_RESTORE_DRILL_DB', 'erp_restore_drill')
+    prod_name = settings.DATABASES['default']['NAME']
+    if name == prod_name:
+        raise RestoreDrillGuardError(
+            "BACKUP_RESTORE_DRILL_DB coïncide avec la base de production "
+            f"({prod_name!r}) — refus d'écrire dessus.")
+    return name
+
+
+def _psql_env_args_for(db_name):
+    import os
+
+    db = settings.DATABASES['default']
+    env = dict(os.environ)
+    if db.get('PASSWORD'):
+        env['PGPASSWORD'] = db['PASSWORD']
+    base = ['-h', db.get('HOST', 'db'), '-p', str(db.get('PORT', '5432')),
+            '-U', db.get('USER', 'erp_user')]
+    return base, env, db_name
+
+
+def _dernier_dump_termine():
+    return (BackupRun.objects
+            .filter(kind=BackupRun.KIND_DB_DUMP,
+                    statut=BackupRun.STATUT_TERMINE)
+            .exclude(object_key='')
+            .order_by('-termine_le', '-id')
+            .first())
+
+
+def restore_drill(run: BackupRun) -> BackupRun:
+    """YOPSB2 — restaure le dernier dump réussi dans une base scratch,
+    vérifie des comptages clés, puis DROP la base scratch. ``run`` doit être
+    ``kind=KIND_RESTORE_DRILL`` (company=None, système-wide).
+
+    Garde dure : refuse d'écrire si la base cible == la base de production
+    (``RestoreDrillGuardError``, jamais un ``pg_restore`` aveugle)."""
+    run.statut = BackupRun.STATUT_EN_COURS
+    run.save(update_fields=['statut', 'updated_at'])
+
+    try:
+        drill_db = _restore_drill_db_name()
+    except RestoreDrillGuardError as exc:
+        run.statut = BackupRun.STATUT_ECHEC
+        run.detail = {'message': str(exc)}
+        run.save(update_fields=['statut', 'detail', 'updated_at'])
+        return run
+
+    source = _dernier_dump_termine()
+    if source is None:
+        run.statut = BackupRun.STATUT_ECHEC
+        run.detail = {'message': 'Aucun BackupRun db_dump terminé disponible '
+                                 'à restaurer.'}
+        run.save(update_fields=['statut', 'detail', 'updated_at'])
+        return run
+
+    base_args, env, _ = _psql_env_args_for(drill_db)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        dump_path = Path(tmpdir) / 'restore.dump'
+        try:
+            client = _minio_client()
+            client.download_file(BACKUP_BUCKET, source.object_key,
+                                 str(dump_path))
+        except Exception as exc:  # noqa: BLE001
+            run.statut = BackupRun.STATUT_ECHEC
+            run.detail = {'message': f'Échec du téléchargement MinIO: {exc}'}
+            run.save(update_fields=['statut', 'detail', 'updated_at'])
+            return run
+
+        try:
+            # 1) (re)créer la base scratch — DROP si résiduelle d'un drill
+            #    précédent interrompu, puis CREATE.
+            subprocess.run(
+                ['dropdb', *base_args, '--if-exists', drill_db],
+                env=env, stderr=subprocess.PIPE, timeout=120)
+            create = subprocess.run(
+                ['createdb', *base_args, drill_db],
+                env=env, stderr=subprocess.PIPE, timeout=120)
+            if create.returncode != 0:
+                run.statut = BackupRun.STATUT_ECHEC
+                run.detail = {
+                    'message': 'createdb (base scratch) a échoué.',
+                    'stderr': (create.stderr or b'').decode(
+                        errors='replace')[:2000],
+                }
+                run.save(update_fields=['statut', 'detail', 'updated_at'])
+                return run
+
+            # 2) pg_restore le dump dans la base scratch.
+            restore = subprocess.run(
+                ['pg_restore', *base_args, '-d', drill_db,
+                 '--no-owner', '--no-privileges', str(dump_path)],
+                env=env, stderr=subprocess.PIPE, timeout=3600)
+            if restore.returncode != 0:
+                run.statut = BackupRun.STATUT_ECHEC
+                run.detail = {
+                    'message': 'pg_restore a échoué.',
+                    'stderr': (restore.stderr or b'').decode(
+                        errors='replace')[:2000],
+                }
+                run.save(update_fields=['statut', 'detail', 'updated_at'])
+                return run
+
+            # 3) comptages de tables clés dans la base restaurée.
+            comptages = {}
+            try:
+                import psycopg2
+                conn = psycopg2.connect(
+                    host=settings.DATABASES['default'].get('HOST', 'db'),
+                    port=settings.DATABASES['default'].get('PORT', '5432'),
+                    user=settings.DATABASES['default'].get('USER', 'erp_user'),
+                    password=settings.DATABASES['default'].get('PASSWORD', ''),
+                    dbname=drill_db)
+                try:
+                    with conn.cursor() as cur:
+                        for table in RESTORE_DRILL_TABLES:
+                            cur.execute(f'SELECT COUNT(*) FROM {table}')
+                            comptages[table] = cur.fetchone()[0]
+                finally:
+                    conn.close()
+            except Exception as exc:  # noqa: BLE001
+                run.statut = BackupRun.STATUT_ECHEC
+                run.detail = {'message': f'Échec des comptages: {exc}'}
+                run.save(update_fields=['statut', 'detail', 'updated_at'])
+                return run
+        finally:
+            # Toujours DROP la base scratch, succès ou échec (jamais laisser
+            # traîner une base jetable en dehors du drill).
+            subprocess.run(
+                ['dropdb', *base_args, '--if-exists', drill_db],
+                env=env, stderr=subprocess.PIPE, timeout=120)
+
+    run.statut = BackupRun.STATUT_TERMINE
+    run.termine_le = timezone.now()
+    run.detail = {
+        'message': 'Drill de restauration réussi.',
+        'source_run_id': source.pk,
+        'source_object_key': source.object_key,
+        'comptages': comptages,
+    }
+    run.save(update_fields=['statut', 'termine_le', 'detail', 'updated_at'])
+    return run
