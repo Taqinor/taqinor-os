@@ -58,6 +58,10 @@ urlpatterns = [
     path('api/django/publicapi/', include('apps.publicapi.urls')),
     # FG107-FG121 — Comptabilité générale (interne, admin/responsable).
     path('api/django/compta/', include('apps.compta.urls')),
+    # ODX10 — Marketing (Email/SMS, séquences, enquêtes/NPS, événements,
+    # fidélité). Nouveau préfixe ; les anciennes routes /compta/… restent
+    # servies à l'identique (mêmes ViewSets) pour ne casser aucun client.
+    path('api/django/marketing/', include('apps.marketing.urls')),
     # FLOTTE1 — Gestion de flotte (véhicules + engins roulants, interne).
     path('api/django/flotte/', include('apps.flotte.urls')),
     # AG1 — Catalogue d'actions agentiques (métadonnées, filtré par caller).

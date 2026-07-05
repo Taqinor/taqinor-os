@@ -89,6 +89,11 @@ INSTALLED_APPS = [
     'apps.automation',
     # N89 — API publique REST (clés API, scopes, webhooks signés).
     'apps.publicapi',
+    # ODX9/ODX10 — Marketing (Email/SMS Marketing + Automation + Surveys +
+    # Events + fidélité). Sorti de compta en préservant les tables physiques
+    # (SeparateDatabaseAndState). Chargé AVANT compta : le shim de ré-export
+    # de compta.models importe apps.marketing.models.
+    'apps.marketing',
     # FG107-FG121 — Comptabilité générale (plan CGNC, journaux, écritures en
     # partie double, états de synthèse). Auto-écritures OFF par défaut.
     'apps.compta',
