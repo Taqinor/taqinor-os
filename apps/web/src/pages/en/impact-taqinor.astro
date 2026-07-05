@@ -31,17 +31,18 @@ const devisHref = L('/devis/mon-toit');
 
 // ── Derived figures — nothing hand-typed ─────────────────────────────────────
 // RULE B (2026-07-04): the raw install count is no longer featured in user
-// copy (lead, h2, denominators) — the page leads with cumulative kWc /
-// measured kWh / CO2 avoided instead (partially supersedes W279).
-const kwcTotal = REALISATIONS.reduce((sum, r) => sum + r.kwcNum, 0);
-const kwcTotalLabel = kwcTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// copy (lead, h2, denominators) — the page leads with measured kWh / CO2
+// avoided instead (partially supersedes W279).
+// (2026-07-05, founder): cumulative installed kWc is dropped (no longer shown
+// anywhere on the site) — the page now leads with MEASURED production.
 
 // WB1 (2026-07-04): the fabricated per-installation ANNUAL production was
-// removed (identical yield factor across 4 sites — impossible). The only
-// real production figure is the CUMULATIVE tally of the Deye-Cloud-monitored
-// fleet (MEASURED_FLEET, realisations.ts) — cumulative "since commissioning",
-// NEVER annualized. CO2 avoided and the tree equivalent derive from it.
-const productionTotal = Math.round(MEASURED_FLEET_LIFETIME_MWH * 1000); // 6.56 MWh -> 6,560 kWh
+// removed (identical yield factor across several sites — impossible). The
+// only real production figure is the CUMULATIVE tally of the fleet monitored
+// in real time (MEASURED_FLEET, realisations.ts) — cumulative "since
+// commissioning", NEVER annualized. CO2 avoided and the tree equivalent
+// derive from it.
+const productionTotal = Math.round(MEASURED_FLEET_LIFETIME_MWH * 1000);
 const productionTotalLabel = productionTotal.toLocaleString('en-US');
 
 const co2KgTotal = productionTotal * CO2_KG_PER_KWH;
@@ -63,14 +64,14 @@ const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'WebPage',
   name: 'Taqinor Impact',
-  description: `Taqinor's cumulative, measured, honest impact: ${kwcTotalLabel} kWc installed, ${productionTotalLabel} kWh measured cumulatively across the monitored fleet (Deye Cloud), ${co2TonnesLabel} tonnes of CO2 avoided to date.`,
+  description: `Taqinor's cumulative, measured, honest impact: ${productionTotalLabel} kWh measured cumulatively across the fleet monitored in real time, ${co2TonnesLabel} tonnes of CO2 avoided to date.`,
   isPartOf: { '@type': 'WebSite', name: 'Taqinor', url: 'https://taqinor.ma' },
 };
 ---
 
 <Layout
   title="Taqinor Impact: our real, cumulative, verifiable numbers | Taqinor"
-  description={`${kwcTotalLabel} kWc installed, ${productionTotalLabel} kWh measured cumulatively (fleet monitored on Deye Cloud), ${co2TonnesLabel} t of CO2 avoided to date: the honest tally of our installations — nothing estimated, nothing rounded up.`}
+  description={`${productionTotalLabel} kWh measured cumulatively (fleet monitored in real time), ${co2TonnesLabel} t of CO2 avoided to date: the honest tally of our installations — nothing estimated, nothing rounded up.`}
   ogSlug="equipement"
 >
   <div class="v2">
@@ -86,9 +87,9 @@ const jsonLd = {
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">Accountability</p>
         <h1 class="display v2-page-title cine-in cine-in-1 mt-6">Taqinor Impact</h1>
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
-          Not a projection, not a target: {kwcTotalLabel} kWc installed, {productionTotalLabel} kWh
+          Not a projection, not a target: {productionTotalLabel} kWh
           measured cumulatively, {co2TonnesLabel} t of CO2 avoided to date — what the fleet monitored
-          on Deye Cloud has actually produced since commissioning. This page grows project by project;
+          in real time has actually produced since commissioning. This page grows project by project;
           it only states what we can prove.
         </p>
       </div>
@@ -98,14 +99,11 @@ const jsonLd = {
     <section class="section px-4">
       <div class="mx-auto max-w-6xl">
         <p class="tech-label v2-kicker rule-brass text-lune">The tally today</p>
-        <h2 class="display v2-section-title mt-5 text-white">{kwcTotalLabel} kWc, one tally</h2>
-        <div class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
-          <KeyFigure value={kwcTotalLabel} unit="kWc" label="Installed capacity">
-            Cumulative total across published installations in {villesUniques.join(', ')}.
-          </KeyFigure>
+        <h2 class="display v2-section-title mt-5 text-white">{productionTotalLabel} kWh measured, one tally</h2>
+        <div class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
           <KeyFigure value={productionTotalLabel} unit="kWh cumulative" label="Measured production">
-            Cumulative tally from the monitored fleet (Deye Cloud) since
-            commissioning.
+            Cumulative tally from the fleet monitored in real time since
+            commissioning, in {villesUniques.join(', ')}.
           </KeyFigure>
           <KeyFigure value={co2TonnesLabel} unit="t CO2" label="CO2 avoided (cumulative)">
             Calculated at {CO2_KG_PER_KWH} kg CO2/kWh, the Moroccan grid emission factor already
@@ -136,7 +134,7 @@ const jsonLd = {
         <h2 class="display v2-section-title mt-5">Project by project</h2>
         <p class="v2-lead mt-4 text-encre-soft">
           Every line is a real installation, documented on our projects page. The cumulative
-          figure above is tracked continuously on Deye Cloud.
+          figure above is tracked continuously by our real-time production monitoring.
         </p>
         <div class="mt-10 border-t-2 border-azur-900 bg-blanc" data-stagger>
           {REALISATIONS.map((r, i) => (
@@ -149,7 +147,7 @@ const jsonLd = {
           ))}
         </div>
         <p class="mx-auto mt-6 max-w-xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
-          <a href={L('/realisations')} class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">See all our projects in detail →</a>
+          <a href={L('/realisations')} class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">See our latest projects in detail →</a>
         </p>
       </div>
     </section>

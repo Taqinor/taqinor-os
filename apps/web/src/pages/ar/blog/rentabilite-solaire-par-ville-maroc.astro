@@ -63,13 +63,13 @@ const breadcrumbLd = {
 };
 
 const pvout = [
-  { city: 'طنجة', value: '~1 550 – 1 650', tilt: '31°', confidence: 'مُقدَّرة' },
-  { city: 'الدار البيضاء', value: '~1 620 – 1 700', tilt: '29°', confidence: 'مُقدَّرة' },
-  { city: 'الرباط-سلا', value: '~1 620 – 1 700', tilt: '29°', confidence: 'مُقدَّرة' },
-  { city: 'فاس', value: '~1 650 – 1 750', tilt: '~32°', confidence: 'مُقدَّرة' },
-  { city: 'مراكش', value: '1 779 (نقطة مؤكَّدة)', tilt: '28°', confidence: 'عالية' },
-  { city: 'أكادير', value: '~1 750 – 1 820', tilt: '27°', confidence: 'مُقدَّرة' },
-  { city: 'ورزازات', value: '~1 850 – 1 950', tilt: '~28–30°', confidence: 'مُقدَّرة' },
+  { city: 'طنجة', value: '~1 550 – 1 650', tilt: '31°' },
+  { city: 'الدار البيضاء', value: '~1 620 – 1 700', tilt: '29°' },
+  { city: 'الرباط-سلا', value: '~1 620 – 1 700', tilt: '29°' },
+  { city: 'فاس', value: '~1 650 – 1 750', tilt: '~32°' },
+  { city: 'مراكش', value: '1 779', tilt: '28°' },
+  { city: 'أكادير', value: '~1 750 – 1 820', tilt: '27°' },
+  { city: 'ورزازات', value: '~1 850 – 1 950', tilt: '~28–30°' },
 ];
 
 const tariffs = [
@@ -121,9 +121,8 @@ const tariffs = [
           العاكس، الغبار على الزجاج.
         </p>
         <p>
-          يُعطي الجدول أدناه هوامش <strong>مُقدَّرة</strong>، محسوبة من بيانات PVGIS وGlobal Solar
-          Atlas وSolargis، بمعدّل خسارة نظام حوالي 14% واتجاه جنوبي تام. قيمة واحدة فقط
-          <strong> مؤكَّدة</strong> بدقّة: مراكش (دراسة MDPI Resources 2024، GTI مقاسة).
+          يُعطي الجدول أدناه هوامش مُقدَّرة، محسوبة من بيانات PVGIS وGlobal Solar
+          Atlas وSolargis، بمعدّل خسارة نظام حوالي 14% واتجاه جنوبي تام، بميلان أمثل مُقدَّر لكل مدينة.
         </p>
         <div class="table-wrap">
           <table>
@@ -131,8 +130,7 @@ const tariffs = [
               <tr>
                 <th>المدينة</th>
                 <th>PVOUT مُقدَّر (kWh/kWc/سنة)</th>
-                <th>الميلان الأمثل (جنوب تام)</th>
-                <th>الموثوقية</th>
+                <th>الميلان الأمثل المُقدَّر (جنوب تام)</th>
               </tr>
             </thead>
             <tbody>
@@ -141,7 +139,6 @@ const tariffs = [
                   <td>{p.city}</td>
                   <td>{p.value}</td>
                   <td>{p.tilt}</td>
-                  <td>{p.confidence}</td>
                 </tr>
               ))}
             </tbody>

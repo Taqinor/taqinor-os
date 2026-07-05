@@ -67,6 +67,11 @@ const closer = fillIntro(cc.closer);
 const pillarStudy = { heading: fillIntro(cc.pillars.study.heading), body: fillIntro(cc.pillars.study.body) };
 const pillarMeasure = { heading: fillIntro(cc.pillars.measure.heading), body: fillIntro(cc.pillars.measure.body) };
 const pillarCompliance = { heading: fillIntro(cc.pillars.compliance.heading), body: fillIntro(cc.pillars.compliance.body) };
+// W328 — نفس نصوص FR: نُظهر تدرّج عائد الاستثمار وملاحظة المُوزِّع (بدون رقم
+// جديد)، وموقع المدينة الجغرافي الصادق للمدن بلا ورش محلي.
+const roiNuance = fillIntro(cc.roiNuance);
+const delegataireNote = cc.delegataireNote ? fillIntro(cc.delegataireNote) : undefined;
+const nearestInstallNote = cc.nearestInstallNote ? fillIntro(cc.nearestInstallNote) : undefined;
 
 const title = fillIntro(cc.title);
 const description = fillIntro(cc.description);
@@ -123,7 +128,7 @@ const heroPhoto = inCity[0]?.photos[0] ?? neutralHero;
       <div class="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
         <div class="v2-rise">
           <p class="tech-label v2-kicker rule-brass text-brass-300">الإمكان الشمسي</p>
-          <p class="fig lum mt-4 text-5xl sm:text-6xl">{c.sunshineHours} <span class="text-2xl">ساعة/سنة</span></p>
+          <p class="fig lum mt-4 text-5xl sm:text-6xl" dir="ltr">{c.sunshineHours} <span class="text-2xl">ساعة/سنة</span></p>
           <p class="tech-label mt-2 text-lune-faint">إشعاع سنوي إرشادي · {cityNameAr}</p>
           <p class="mt-4 max-w-md text-sm leading-relaxed text-lune-soft">
             معطى مناخي عمومي، على سبيل الإرشاد. {sunshineContext}
@@ -132,23 +137,31 @@ const heroPhoto = inCity[0]?.photos[0] ?? neutralHero;
         <dl class="grid grid-cols-2 gap-x-6 gap-y-10 border-l-2 border-brass-400/60 pl-6 sm:pl-10" data-stagger>
           <div class="v2-rise" style="--v2-i:0">
             {/* W211 — whitespace-nowrap removed: can overflow at 320 px in grid-cols-2 */}
-            <dd class="fig lum text-3xl sm:text-4xl" data-tally>60–90 %</dd>
+            <dd class="fig lum text-3xl sm:text-4xl" dir="ltr" data-tally>50–100 %</dd>
             <dt class="tech-label mt-2 text-lune-faint">من الفاتورة مُغطّاة</dt>
           </div>
           <div class="v2-rise" style="--v2-i:1">
-            <dd class="fig lum text-3xl sm:text-4xl" data-tally>3–7 سنوات</dd>
+            <dd class="fig lum text-3xl sm:text-4xl" dir="ltr" data-tally>3–7 سنوات</dd>
             <dt class="tech-label mt-2 text-lune-faint">عائد الاستثمار</dt>
           </div>
           <div class="v2-rise" style="--v2-i:2">
-            <dd class="fig lum text-3xl sm:text-4xl" data-tally>25 سنة</dd>
+            <dd class="fig lum text-3xl sm:text-4xl" dir="ltr" data-tally>25 سنة</dd>
             <dt class="tech-label mt-2 text-lune-faint">ضمان الأداء</dt>
           </div>
           <div class="v2-rise" style="--v2-i:3">
-            <dd class="fig lum text-3xl sm:text-4xl" data-tally>&lt; 11 kW</dd>
+            <dd class="fig lum text-3xl sm:text-4xl" dir="ltr" data-tally>&lt; 11 kW</dd>
             <dt class="tech-label mt-2 text-lune-faint">تصريح بسيط للقانون 82-21</dt>
           </div>
         </dl>
       </div>
+      {/* W328 — بند 3–7 سنوات يبقى الرقم الموحّد عبر الموقع، ونُنسّبه هنا حسب
+          مدينة عبر الإشعاع الشمسي المُثبَّت سلفاً، دون أي رقم جديد مُخترَع. */}
+      <p class="mx-auto mt-8 max-w-3xl text-sm leading-relaxed text-lune-soft">{roiNuance}</p>
+      {delegataireNote && (
+        <p class="mx-auto mt-4 max-w-3xl border-e-2 border-brass-400/60 pe-4 text-sm leading-relaxed text-lune-soft">
+          {delegataireNote}
+        </p>
+      )}
     </section>
 
     <!-- الأوراش: الحقيقية في المدينة، وإلا الأقرب -->
@@ -164,7 +177,7 @@ const heroPhoto = inCity[0]?.photos[0] ?? neutralHero;
                 <Picture name={r!.photos[0].name} alt={cardAlt(r!)} widths={r!.photos[0].widths} ratio={3 / 2}
                   sizes="(min-width: 1024px) 33vw, 50vw" class="aspect-[3/2] w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
                 <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-5 pb-4 pt-16">
-                  <span class="fig block text-2xl text-white">{r!.kwc}{r!.production ? ` · ${r!.production}` : ''}</span>
+                  <span class="fig block text-2xl text-white" dir="ltr">{r!.kwc}{r!.production ? ` · ${r!.production}` : ''}</span>
                   <span class="mt-1 block text-xs text-lune">{r!.panneaux}</span>
                   <span class="mt-2 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white">شاهد دراسة الحالة <span class="inline-block rtl:-scale-x-100">→</span></span>
                 </div>
@@ -174,9 +187,9 @@ const heroPhoto = inCity[0]?.photos[0] ?? neutralHero;
           {/* WJ73 — فجوة التقدير مقابل الدليل، مشروحة بصدق. */}
           {avgYieldPerKwc && southOptimalYield && (
             <p class="v2-rise mt-6 max-w-2xl text-xs leading-relaxed text-lune-faint">
-              للإشارة: هذه التركيبات تقيس في المتوسط ≈{avgYieldPerKwc.toLocaleString('fr-FR')} kWh/kWc/سنة، وهو
-              أقل من ≈{southOptimalYield.toLocaleString('fr-FR')} kWh/kWc/سنة التي يفترضها جدول الإنتاجية
-              المُنمذَج المُستخدَم للتقديرات — التركيبات الحقيقية ليست كلها متّجهة جنوباً بميل 29°، خلافاً
+              للإشارة: هذه التركيبات تقيس في المتوسط <span dir="ltr">≈{avgYieldPerKwc.toLocaleString('fr-FR')} kWh/kWc/سنة</span>، وهو
+              أقل من <span dir="ltr">≈{southOptimalYield.toLocaleString('fr-FR')} kWh/kWc/سنة</span> التي يفترضها جدول الإنتاجية
+              المُنمذَج المُستخدَم للتقديرات — التركيبات الحقيقية ليست كلها متّجهة جنوباً بميل <span dir="ltr">29°</span>، خلافاً
               لافتراض النموذج. الدراسة تُدقّق هذا الرقم على سطحك الحقيقي.
             </p>
           )}
@@ -192,7 +205,7 @@ const heroPhoto = inCity[0]?.photos[0] ?? neutralHero;
           <div class="mt-8 flex flex-wrap gap-3">
             {nearby.map((r) => (
               <a href={L(`/realisations/${r!.slug}`)} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
-                {r!.ville} · {r!.kwc} <span class="inline-block rtl:-scale-x-100">→</span>
+                {r!.ville} · <span dir="ltr">{r!.kwc}</span> <span class="inline-block rtl:-scale-x-100">→</span>
               </a>
             ))}
           </div>
@@ -206,13 +219,15 @@ const heroPhoto = inCity[0]?.photos[0] ?? neutralHero;
           <p class="tech-label v2-kicker rule-brass text-brass-300">مدينتك مُغطّاة</p>
           <h2 class="display v2-section-title mt-5 text-white">نتدخّل {intro} — وأوراشنا تتحدّث عنّا</h2>
           <p class="v2-lead mt-5 text-lune-soft">
-            {cityNameAr} ضمن منطقة تدخّلنا. أقرب تركيباتنا التي هي قيد الخدمة توجد في جهة الدار البيضاء —
-            نفس مناهج الدراسة، نفس العتاد من الفئة الأولى، نفس مراقبة Deye Cloud. إليك أقرب أوراشنا:
+            {/* W296 — موقع جغرافي خاص بالمدينة (جهة، لا كلم مُخترَع) بدل جملة
+                عامة مطابقة عبر المدن الأربع بلا ورش محلي. */}
+            {nearestInstallNote ?? `${cityNameAr} ضمن منطقة تدخّلنا. أقرب تركيباتنا التي هي قيد الخدمة توجد في جهة الدار البيضاء — ` +
+              'نفس مناهج الدراسة، نفس العتاد من الفئة الأولى، نفس متابعة الإنتاج في الوقت الحقيقي.'} إليك أقرب أوراشنا:
           </p>
           <div class="mt-8 flex flex-wrap gap-3">
             {closest.map((r) => (
               <a href={L(`/realisations/${r.slug}`)} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
-                {r.ville} · {r.kwc} <span class="inline-block rtl:-scale-x-100">→</span>
+                {r.ville} · <span dir="ltr">{r.kwc}</span> <span class="inline-block rtl:-scale-x-100">→</span>
               </a>
             ))}
             <a href={L('/realisations')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">

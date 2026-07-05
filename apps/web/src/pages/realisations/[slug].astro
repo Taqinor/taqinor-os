@@ -5,8 +5,8 @@
  * existantes) : aucun chiffre inventé. La carte production est OMISE quand la
  * production n'est pas publiée (ex. Nouaceur) ; quand `productionEstimated`
  * est vrai (WB1, 2026-07-04), le libellé lit « estimée » — jamais « mesurée »
- * tant qu'un relevé Deye Cloud distinct par chantier n'existe pas. Page
- * publique, indexée.
+ * tant qu'un relevé de suivi de production en temps réel distinct par
+ * chantier n'existe pas. Page publique, indexée.
  *
  * W171 — caption scrim via PhotoCaption.astro
  * W178 — lightbox accessible sur les photos de la galerie
@@ -177,7 +177,7 @@ const waCaseStudy = whatsappLink(
             <dt class="tech-label mt-2 text-lune-faint">
               {r.productionEstimated
                 ? 'Production estimée — rendement mesuré de nos chantiers'
-                : 'Production mesurée — Deye Cloud'}
+                : 'Production mesurée — suivi de production en temps réel'}
             </dt>
           </div>
         )}
@@ -369,7 +369,7 @@ const waCaseStudy = whatsappLink(
           Solaire {segmentLabel.toLowerCase()} →
         </a>
         <a href="/realisations" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
-          Toutes nos réalisations →
+          Nos dernières réalisations →
         </a>
       </div>
     </section>

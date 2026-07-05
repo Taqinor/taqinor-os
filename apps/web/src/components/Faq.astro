@@ -76,9 +76,9 @@ items.forEach((item, i) => {
             <details id={item.id} class="group scroll-mt-24 border-b border-white/10 py-5">
               <summary class="flex cursor-pointer list-none items-baseline gap-4 font-display text-base font-bold text-white marker:hidden [&::-webkit-details-marker]:hidden">
                 <span class="inline-block h-2 w-2 flex-none rotate-45 border-[1.5px] border-brass-400 transition-transform group-open:rotate-[135deg]" aria-hidden="true"></span>
-                {item.q}
+                <span class="faq-bidi">{item.q}</span>
               </summary>
-              <p class="mt-3 ps-6 text-sm leading-relaxed text-lune-soft">{item.a}</p>
+              <p class="faq-bidi mt-3 ps-6 text-sm leading-relaxed text-lune-soft">{item.a}</p>
             </details>
           ))}
         </div>
@@ -87,3 +87,19 @@ items.forEach((item, i) => {
   </div>
   </div>
 </section>
+
+<style>
+  /*
+   * W-numérotation RTL — les questions/réponses arrivent en texte simple
+   * (props) et peuvent contenir des nombres latins (ex. "30 ans", "6 000
+   * cycles"). En RTL, sans indication, le navigateur peut réordonner ces
+   * runs numériques. `unicode-bidi: plaintext` fait détecter au navigateur
+   * la direction de CHAQUE élément selon l'algorithme bidi Unicode standard
+   * à partir de son propre contenu, ce qui isole les runs numériques latins
+   * et les rend LTR correctement, sans toucher au rendu FR/EN (plaintext né
+   * comme LTR n'a aucun effet visible sur du texte déjà LTR).
+   */
+  .faq-bidi {
+    unicode-bidi: plaintext;
+  }
+</style>

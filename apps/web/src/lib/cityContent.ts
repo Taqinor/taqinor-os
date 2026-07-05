@@ -122,7 +122,7 @@ export const FALLBACK_CITY_CONTENT: LocalizedCityContent = {
       measure: {
         heading: 'Une production qu’on relève',
         body:
-          'Chaque installation est suivie sur Deye Cloud, accès client compris. ' +
+          'Chaque installation bénéficie d’un suivi de production en temps réel, accès client compris. ' +
           'Vous lisez les kWh réellement produits mois après mois, au lieu de croire un chiffre commercial.',
       },
       compliance: {
@@ -134,7 +134,7 @@ export const FALLBACK_CITY_CONTENT: LocalizedCityContent = {
     closer: 'Faites étudier votre toiture {intro} avant de signer quoi que ce soit.',
     title: 'Installation solaire {intro} — étude, pose et loi 82-21 | Taqinor',
     description:
-      'Installation solaire {intro} : dimensionnement par l’ingénierie sur votre facture, pose, monitoring Deye Cloud et conformité loi 82-21. Étude gratuite.',
+      'Installation solaire {intro} : dimensionnement par l’ingénierie sur votre facture, pose, suivi de production en temps réel et conformité loi 82-21. Étude gratuite.',
     roiNuance:
       'Ce retour sur investissement dépend d’abord de votre facture et du dimensionnement retenu ; ' +
       'l’ensoleillement {intro} en fixe seulement le potentiel de production.',
@@ -157,7 +157,7 @@ export const FALLBACK_CITY_CONTENT: LocalizedCityContent = {
       measure: {
         heading: 'A production we read off',
         body:
-          'Every installation is monitored on Deye Cloud, client access included. ' +
+          'Every installation has real-time production monitoring, client access included. ' +
           'You read the kWh actually produced month after month, instead of trusting a sales figure.',
       },
       compliance: {
@@ -169,7 +169,7 @@ export const FALLBACK_CITY_CONTENT: LocalizedCityContent = {
     closer: 'Have your roof assessed {intro} before you sign anything.',
     title: 'Solar installation {intro} — assessment, install and Law 82-21 | Taqinor',
     description:
-      'Solar installation {intro}: engineering-based sizing on your bill, install, Deye Cloud monitoring and Law 82-21 compliance. Free assessment.',
+      'Solar installation {intro}: engineering-based sizing on your bill, install, real-time production monitoring and Law 82-21 compliance. Free assessment.',
     roiNuance:
       'This payback depends first on your bill and the sizing chosen; ' +
       'the sunshine {intro} only sets the production potential.',
@@ -192,7 +192,7 @@ export const FALLBACK_CITY_CONTENT: LocalizedCityContent = {
       measure: {
         heading: 'إنتاج نقيسه فعلاً',
         body:
-          'كل تركيبة تُراقَب على Deye Cloud، مع ولوج الزبون. ' +
+          'كل تركيبة تخضع لمتابعة الإنتاج في الوقت الحقيقي، مع ولوج الزبون. ' +
           'تقرأ الكيلوواط-ساعة المنتَجة فعلاً شهراً بعد شهر، بدل تصديق رقم تجاري.',
       },
       compliance: {
@@ -204,7 +204,7 @@ export const FALLBACK_CITY_CONTENT: LocalizedCityContent = {
     closer: 'ادرس سطحك {intro} قبل أن توقّع أي شيء.',
     title: 'تركيب شمسي {intro} — دراسة وتركيب والقانون 82-21 | Taqinor',
     description:
-      'تركيب شمسي {intro}: تحديد المقاس بالهندسة انطلاقاً من فاتورتك، تركيب، مراقبة Deye Cloud والامتثال للقانون 82-21. دراسة مجانية.',
+      'تركيب شمسي {intro}: تحديد المقاس بالهندسة انطلاقاً من فاتورتك، تركيب، متابعة الإنتاج في الوقت الحقيقي والامتثال للقانون 82-21. دراسة مجانية.',
     roiNuance:
       'مدّة الاسترداد هذه تتوقّف أولاً على فاتورتك والمقاس المعتمد؛ ' +
       'الإشعاع الشمسي {intro} لا يحدّد سوى إمكان الإنتاج.',
@@ -215,8 +215,8 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
   casablanca: {
     fr: {
       heroLead:
-        'À Casablanca, nous avons déjà posé : une villa de 11,36 kWc face à la skyline, suivie en continu ' +
-        'sur Deye Cloud. C’est ce chantier-là, pas une brochure, qui dit ce qu’une toiture de la ville rend vraiment.',
+        'À Casablanca, nous avons déjà posé : une villa de 11,36 kWc face à la skyline, avec suivi de production ' +
+        'en temps réel. C’est ce chantier-là, pas une brochure, qui dit ce qu’une toiture de la ville rend vraiment.',
       sunshineContext:
         'Sur la côte, l’air marin et la brume matinale tempèrent les pics : ces ≈ 2 950 h restent un ordre de grandeur, ' +
         'pas une garantie. La production réelle d’un toit casablancais se calcule sur son orientation et son ombrage, jamais sur la seule durée d’ensoleillement.',
@@ -230,7 +230,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         measure: {
           heading: 'Ce qui est produit, on le relève',
           body:
-            'Notre installation de 11,36 kWc à Casablanca est suivie sur Deye Cloud, accès client inclus — ' +
+            'Notre installation de 11,36 kWc à Casablanca bénéficie d’un suivi de production en temps réel, accès client inclus — ' +
             'la même transparence sur chaque chantier de la ville : vous lisez la production, vous ne la prenez pas sur parole.',
         },
         compliance: {
@@ -243,7 +243,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       closer: 'Votre toiture casablancaise mérite d’être chiffrée sur vos kWh, pas sur une moyenne.',
       title: 'Installation solaire à Casablanca — étude, pose et loi 82-21 | Taqinor',
       description:
-        'Installation solaire à Casablanca : une villa de 11,36 kWc y est suivie sur Deye Cloud. Étude dimensionnée sur votre facture, pose et déclaration loi 82-21.',
+        'Installation solaire à Casablanca : une villa de 11,36 kWc y bénéficie d’un suivi de production en temps réel. Étude dimensionnée sur votre facture, pose et déclaration loi 82-21.',
       roiNuance:
         'Avec ≈ 2 950 h par an, Casablanca se situe dans la moyenne de nos cinq villes : ni le meilleur ni le plus faible ' +
         'gisement, ce qui place la plupart des toitures casablancaises au centre de la bande 3–7 ans — le dimensionnement ' +
@@ -254,8 +254,8 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
     },
     en: {
       heroLead:
-        'In Casablanca, we have already installed: an 11.36 kWc villa facing the skyline, tracked continuously ' +
-        'on Deye Cloud. It is that project, not a brochure, that tells what a roof in the city really yields.',
+        'In Casablanca, we have already installed: an 11.36 kWc villa facing the skyline, with real-time ' +
+        'production monitoring. It is that project, not a brochure, that tells what a roof in the city really yields.',
       sunshineContext:
         'On the coast, sea air and morning mist temper the peaks: those ≈ 2,950 h remain an order of magnitude, ' +
         'not a guarantee. The real output of a Casablanca roof is computed from its orientation and shading, never from sunshine duration alone.',
@@ -269,7 +269,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         measure: {
           heading: 'What is produced, we read it off',
           body:
-            'Our 11.36 kWc installation in Casablanca is monitored on Deye Cloud, client access included — ' +
+            'Our 11.36 kWc installation in Casablanca has real-time production monitoring, client access included — ' +
             'the same transparency on every project in the city: you read the production, you do not take it on trust.',
         },
         compliance: {
@@ -282,7 +282,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       closer: 'Your Casablanca roof deserves to be priced on your kWh, not on an average.',
       title: 'Solar installation in Casablanca — assessment, install and Law 82-21 | Taqinor',
       description:
-        'Solar installation in Casablanca: an 11.36 kWc villa tracked on Deye Cloud. Assessment sized on your bill, install and Law 82-21 declaration.',
+        'Solar installation in Casablanca: an 11.36 kWc villa with real-time production monitoring. Assessment sized on your bill, install and Law 82-21 declaration.',
       roiNuance:
         'At ≈ 2,950 h a year, Casablanca sits mid-pack among our five cities: neither the best nor the weakest resource, ' +
         'which puts most Casablanca roofs near the centre of the 3–7 year band — sizing on your bill is what really narrows it.',
@@ -292,8 +292,8 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
     },
     ar: {
       heroLead:
-        'في الدار البيضاء، ركّبنا بالفعل: فيلا بقدرة 11,36 kWc تواجه أفق المدينة، مُتابَعة باستمرار ' +
-        'على Deye Cloud. هذا الورش، لا أي مطوية، هو الذي يقول ما يعطيه سطح في المدينة حقاً.',
+        'في الدار البيضاء، ركّبنا بالفعل: فيلا بقدرة 11,36 kWc تواجه أفق المدينة، مع متابعة الإنتاج ' +
+        'في الوقت الحقيقي. هذا الورش، لا أي مطوية، هو الذي يقول ما يعطيه سطح في المدينة حقاً.',
       sunshineContext:
         'على الساحل، يخفّف الهواء البحري والضباب الصباحي من الذُّرى: تبقى هذه الـ ≈ 2 950 ساعة رتبة قدر، ' +
         'لا ضماناً. الإنتاج الحقيقي لسطح بيضاوي يُحسب من توجيهه وتظليله، لا من مدة الإشعاع وحدها.',
@@ -307,7 +307,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         measure: {
           heading: 'ما يُنتَج، نقرؤه فعلاً',
           body:
-            'تركيبتنا بقدرة 11,36 kWc في الدار البيضاء تُراقَب على Deye Cloud، مع ولوج الزبون — ' +
+            'تركيبتنا بقدرة 11,36 kWc في الدار البيضاء تخضع لمتابعة الإنتاج في الوقت الحقيقي، مع ولوج الزبون — ' +
             'الشفافية نفسها في كل ورش بالمدينة: تقرأ الإنتاج، ولا تأخذه على عهدة الكلام.',
         },
         compliance: {
@@ -320,7 +320,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       closer: 'سطحك البيضاوي يستحقّ أن يُسعَّر على كيلوواط-ساعاتك، لا على معدّل.',
       title: 'تركيب شمسي في الدار البيضاء — دراسة وتركيب والقانون 82-21 | Taqinor',
       description:
-        'تركيب شمسي في الدار البيضاء: فيلا بقدرة 11,36 kWc مُتابَعة على Deye Cloud. دراسة محسوبة على فاتورتك، تركيب وتصريح القانون 82-21.',
+        'تركيب شمسي في الدار البيضاء: فيلا بقدرة 11,36 kWc مع متابعة الإنتاج في الوقت الحقيقي. دراسة محسوبة على فاتورتك، تركيب وتصريح القانون 82-21.',
       roiNuance:
         'بـ ≈ 2 950 ساعة في السنة، تقع الدار البيضاء في الوسط بين مدننا الخمس: لا الأفضل ولا الأضعف مخزوناً، ' +
         'ما يضع معظم أسطح الدار البيضاء قرب مركز بند 3–7 سنوات — والمقاس المحسوب على فاتورتك هو ما يضيّقه فعلاً.',
@@ -346,9 +346,9 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
             'On part de vos relevés, jamais d’un kit posé d’avance — et le fondateur, docteur-ingénieur, valide.',
         },
         measure: {
-          heading: 'Deye Cloud, du premier jour',
+          heading: 'Suivi de production, du premier jour',
           body:
-            'Sur chaque pose à Rabat, le monitoring Deye Cloud est ouvert avec votre accès. ' +
+            'Sur chaque pose à Rabat, le suivi de production en temps réel est ouvert avec votre accès. ' +
             'Vous suivez les kWh produits en continu ; un écart se voit, il ne se devine pas.',
         },
         compliance: {
@@ -361,7 +361,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       closer: 'À Rabat, faites dimensionner votre toiture par l’ingénierie avant d’engager un budget.',
       title: 'Installation solaire à Rabat — étude, pose et loi 82-21 | Taqinor',
       description:
-        'Installation solaire à Rabat : Taqinor dimensionne sur votre facture, pose et déclare au titre de la loi 82-21. Monitoring Deye Cloud, chantiers réels mesurés dans la région.',
+        'Installation solaire à Rabat : Taqinor dimensionne sur votre facture, pose et déclare au titre de la loi 82-21. Suivi de production en temps réel, chantiers réels mesurés dans la région.',
       roiNuance:
         'Avec ≈ 2 900 h par an, Rabat a le deuxième gisement le plus faible de nos cinq villes : de quoi tenir dans la ' +
         'bande 3–7 ans, plutôt vers sa partie haute pour un dimensionnement identique — l’étude sur votre facture reste ' +
@@ -371,7 +371,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         'avant de chiffrer votre installation.',
       nearestInstallNote:
         'Rabat partage le même littoral atlantique que la région Casablanca-Settat, juste au sud, où se trouvent tous ' +
-        'nos chantiers déjà en service : mêmes méthodes d’étude, même matériel tier-1, même monitoring Deye Cloud.',
+        'nos chantiers déjà en service : mêmes méthodes d’étude, même matériel tier-1, même suivi de production en temps réel.',
     },
     en: {
       heroLead:
@@ -388,9 +388,9 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
             'We start from your readings, never from a kit fitted in advance — and the founder, a doctor-engineer, validates.',
         },
         measure: {
-          heading: 'Deye Cloud, from day one',
+          heading: 'Real-time monitoring, from day one',
           body:
-            'On every install in Rabat, Deye Cloud monitoring is opened with your access. ' +
+            'On every install in Rabat, real-time production monitoring is opened with your access. ' +
             'You follow the kWh produced continuously; a gap shows, it is not guessed.',
         },
         compliance: {
@@ -403,7 +403,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       closer: 'In Rabat, have your roof sized by engineering before you commit a budget.',
       title: 'Solar installation in Rabat — assessment, install and Law 82-21 | Taqinor',
       description:
-        'Solar installation in Rabat: Taqinor sizes on your bill, installs and declares under Law 82-21. Deye Cloud monitoring, real projects measured in the region.',
+        'Solar installation in Rabat: Taqinor sizes on your bill, installs and declares under Law 82-21. Real-time production monitoring, real projects measured in the region.',
       roiNuance:
         'At ≈ 2,900 h a year, Rabat has the second-lightest resource of our five cities: still well within the 3–7 year ' +
         'band, typically toward its upper half for an identical system size — the assessment on your bill is what really pins it down.',
@@ -411,7 +411,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         'Rabat is served by Redal: we check your tariff bracket on your statement before pricing your installation.',
       nearestInstallNote:
         'Rabat shares the same Atlantic coastline as the Casablanca-Settat region, just to the south, where all our ' +
-        'already-serviced installations are — same assessment methods, same tier-1 equipment, same Deye Cloud monitoring.',
+        'already-serviced installations are — same assessment methods, same tier-1 equipment, same real-time production monitoring.',
     },
     ar: {
       heroLead:
@@ -428,9 +428,9 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
             'ننطلق من قياساتك، لا من طقم مُركَّب سلفاً — والمؤسّس، دكتور-مهندس، يصادق.',
         },
         measure: {
-          heading: 'Deye Cloud، منذ اليوم الأول',
+          heading: 'متابعة الإنتاج في الوقت الحقيقي، منذ اليوم الأول',
           body:
-            'في كل تركيب بالرباط، تُفتَح مراقبة Deye Cloud مع ولوجك. ' +
+            'في كل تركيب بالرباط، تُفتَح متابعة الإنتاج في الوقت الحقيقي مع ولوجك. ' +
             'تتابع الكيلوواط-ساعة المنتَجة باستمرار؛ أي فارق يظهر، ولا يُخمَّن.',
         },
         compliance: {
@@ -443,7 +443,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       closer: 'في الرباط، حدّد مقاس سطحك بالهندسة قبل أن تلتزم بميزانية.',
       title: 'تركيب شمسي في الرباط — دراسة وتركيب والقانون 82-21 | Taqinor',
       description:
-        'تركيب شمسي في الرباط: تاكينور تحدّد المقاس على فاتورتك، تركّب وتصرّح بموجب القانون 82-21. مراقبة Deye Cloud، أوراش حقيقية مقيسة في الجهة.',
+        'تركيب شمسي في الرباط: تاكينور تحدّد المقاس على فاتورتك، تركّب وتصرّح بموجب القانون 82-21. متابعة الإنتاج في الوقت الحقيقي، أوراش حقيقية مقيسة في الجهة.',
       roiNuance:
         'بـ ≈ 2 900 ساعة في السنة، تملك الرباط ثاني أخفّ مخزون بين مدننا الخمس: يبقى ضمن بند 3–7 سنوات، ' +
         'غالباً في نصفه الأعلى لمقاس مماثل — والدراسة على فاتورتك هي ما يحدّده فعلاً.',
@@ -451,7 +451,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         'الرباط توزّعها Redal: نتحقّق من شطرك التعريفي على كشف حسابك قبل تقدير تركيبتك.',
       nearestInstallNote:
         'تشترك الرباط في الساحل الأطلسي نفسه مع جهة الدار البيضاء سطات، جنوباً مباشرة، حيث توجد كل تركيباتنا العاملة ' +
-        'فعلاً — نفس مناهج الدراسة، نفس العتاد من الفئة الأولى، نفس مراقبة Deye Cloud.',
+        'فعلاً — نفس مناهج الدراسة، نفس العتاد من الفئة الأولى، نفس متابعة الإنتاج في الوقت الحقيقي.',
     },
   },
 
@@ -473,7 +473,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         measure: {
           heading: 'La chaleur, ça se surveille',
           body:
-            'Forte température et poussière font baisser le rendement d’un panneau ; Deye Cloud le rend visible. ' +
+            'Forte température et poussière font baisser le rendement d’un panneau ; le suivi de production en temps réel le rend visible. ' +
             'Avec votre accès, vous voyez ce que la toiture produit vraiment l’été comme l’hiver.',
         },
         compliance: {
@@ -486,7 +486,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       closer: 'À Marrakech, le bon dimensionnement vaut mieux qu’un grand champ : faites étudier votre toiture.',
       title: 'Installation solaire à Marrakech — étude, pose et loi 82-21 | Taqinor',
       description:
-        'Installation solaire à Marrakech : ≈ 3 000 h de soleil par an, mais on dimensionne sur votre facture, pas sur la météo. Pose, monitoring Deye Cloud et conformité loi 82-21.',
+        'Installation solaire à Marrakech : ≈ 3 000 h de soleil par an, mais on dimensionne sur votre facture, pas sur la météo. Pose, suivi de production en temps réel et conformité loi 82-21.',
       roiNuance:
         'Avec ≈ 3 000 h par an, Marrakech se classe au-dessus de la moyenne de nos cinq villes : un gisement qui tend la ' +
         'bande 3–7 ans vers sa partie basse pour un dimensionnement comparable — sans jamais dispenser l’étude de vérifier votre toiture.',
@@ -495,7 +495,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         'avant de chiffrer votre installation.',
       nearestInstallNote:
         'Marrakech se trouve au sud-est de la région Casablanca-Settat, où sont concentrés tous nos chantiers déjà en ' +
-        'service : mêmes méthodes d’étude, même matériel tier-1, même monitoring Deye Cloud, quelle que soit la distance.',
+        'service : mêmes méthodes d’étude, même matériel tier-1, même suivi de production en temps réel, quelle que soit la distance.',
     },
     en: {
       heroLead:
@@ -514,7 +514,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         measure: {
           heading: 'Heat is something you monitor',
           body:
-            'High temperature and dust lower a panel’s yield; Deye Cloud makes it visible. ' +
+            'High temperature and dust lower a panel’s yield; real-time production monitoring makes it visible. ' +
             'With your access, you see what the roof really produces in summer as in winter.',
         },
         compliance: {
@@ -527,7 +527,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       closer: 'In Marrakech, the right sizing beats a large array: have your roof assessed.',
       title: 'Solar installation in Marrakech — assessment, install and Law 82-21 | Taqinor',
       description:
-        'Solar installation in Marrakech: ≈ 3,000 h of sun a year, but we size on your bill, not on the weather. Install, Deye Cloud monitoring and Law 82-21 compliance.',
+        'Solar installation in Marrakech: ≈ 3,000 h of sun a year, but we size on your bill, not on the weather. Install, real-time production monitoring and Law 82-21 compliance.',
       roiNuance:
         'At ≈ 3,000 h a year, Marrakech ranks above the average of our five cities: a resource that pulls the 3–7 year ' +
         'band toward its lower half for a comparable system size — never a substitute for checking your actual roof.',
@@ -536,7 +536,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         'before pricing your installation.',
       nearestInstallNote:
         'Marrakech lies south-east of the Casablanca-Settat region, where all our already-serviced installations are ' +
-        'concentrated — same assessment methods, same tier-1 equipment, same Deye Cloud monitoring, whatever the distance.',
+        'concentrated — same assessment methods, same tier-1 equipment, same real-time production monitoring, whatever the distance.',
     },
     ar: {
       heroLead:
@@ -555,7 +555,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         measure: {
           heading: 'الحرارة تُراقَب',
           body:
-            'الحرارة العالية والغبار يخفضان مردود اللوح؛ وDeye Cloud يجعل ذلك مرئياً. ' +
+            'الحرارة العالية والغبار يخفضان مردود اللوح؛ ومتابعة الإنتاج في الوقت الحقيقي تجعل ذلك مرئياً. ' +
             'مع ولوجك، ترى ما ينتجه السطح فعلاً صيفاً وشتاءً.',
         },
         compliance: {
@@ -568,7 +568,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       closer: 'في مراكش، المقاس الصحيح خير من حقل كبير: ادرس سطحك.',
       title: 'تركيب شمسي في مراكش — دراسة وتركيب والقانون 82-21 | Taqinor',
       description:
-        'تركيب شمسي في مراكش: ≈ 3 000 ساعة شمس في السنة، لكننا نحدّد المقاس على فاتورتك، لا على الطقس. تركيب، مراقبة Deye Cloud والامتثال للقانون 82-21.',
+        'تركيب شمسي في مراكش: ≈ 3 000 ساعة شمس في السنة، لكننا نحدّد المقاس على فاتورتك، لا على الطقس. تركيب، متابعة الإنتاج في الوقت الحقيقي والامتثال للقانون 82-21.',
       roiNuance:
         'بـ ≈ 3 000 ساعة في السنة، تُصنَّف مراكش فوق متوسط مدننا الخمس: مخزون يشدّ بند 3–7 سنوات نحو نصفه الأدنى ' +
         'لمقاس مماثل — دون أن يعفي ذلك أبداً من فحص سطحك فعلياً.',
@@ -576,7 +576,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         'مراكش توزّعها الوكالة الجهوية RADEEMA: نتحقّق من شطرك التعريفي على كشف حسابك قبل تقدير تركيبتك.',
       nearestInstallNote:
         'تقع مراكش جنوب شرق جهة الدار البيضاء سطات، حيث تتركّز كل تركيباتنا العاملة فعلاً — نفس مناهج الدراسة، ' +
-        'نفس العتاد من الفئة الأولى، نفس مراقبة Deye Cloud، مهما كانت المسافة.',
+        'نفس العتاد من الفئة الأولى، نفس متابعة الإنتاج في الوقت الحقيقي، مهما كانت المسافة.',
     },
   },
 
@@ -598,7 +598,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         measure: {
           heading: 'Du vent, mais des chiffres fermes',
           body:
-            'Structure ancrée pour les rafales du détroit, production suivie sur Deye Cloud avec votre accès : ' +
+            'Structure ancrée pour les rafales du détroit, production suivie en temps réel avec votre accès : ' +
             'vous lisez les kWh réels, mois après mois, sans avoir à les croire sur parole.',
         },
         compliance: {
@@ -611,7 +611,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       closer: 'À Tanger, un toit bien orienté vaut un grand champ mal posé : faisons l’étude d’abord.',
       title: 'Installation solaire à Tanger — étude, pose et loi 82-21 | Taqinor',
       description:
-        'Installation solaire à Tanger : ≈ 2 800 h de soleil et un détroit venté — d’où un dimensionnement calculé au degré près sur votre facture. Pose, Deye Cloud et loi 82-21.',
+        'Installation solaire à Tanger : ≈ 2 800 h de soleil et un détroit venté — d’où un dimensionnement calculé au degré près sur votre facture. Pose, suivi de production en temps réel et loi 82-21.',
       roiNuance:
         'Avec ≈ 2 800 h par an, Tanger a le gisement le plus faible de nos cinq villes : à dimensionnement égal, cela ' +
         'pousse plutôt vers la partie haute de la bande 3–7 ans — raison de plus pour caler l’orientation et l’inclinaison ' +
@@ -621,7 +621,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         'nous vérifions votre tranche sur votre relevé avant de chiffrer votre installation.',
       nearestInstallNote:
         'Tanger se trouve au nord de la région Casablanca-Settat, où sont concentrés tous nos chantiers déjà en service : ' +
-        'mêmes méthodes d’étude, même matériel tier-1, même monitoring Deye Cloud, quelle que soit la distance.',
+        'mêmes méthodes d’étude, même matériel tier-1, même suivi de production en temps réel, quelle que soit la distance.',
     },
     en: {
       heroLead:
@@ -640,7 +640,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         measure: {
           heading: 'Wind, but firm figures',
           body:
-            'Structure anchored for the gusts of the strait, production followed on Deye Cloud with your access: ' +
+            'Structure anchored for the gusts of the strait, production followed in real time with your access: ' +
             'you read the real kWh, month after month, without having to take them on trust.',
         },
         compliance: {
@@ -653,7 +653,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       closer: 'In Tangier, a well-oriented roof beats a large, poorly fitted array: let’s do the assessment first.',
       title: 'Solar installation in Tangier — assessment, install and Law 82-21 | Taqinor',
       description:
-        'Solar installation in Tangier: ≈ 2,800 h of sun and a windy strait — hence sizing calculated to the degree on your bill. Install, Deye Cloud and Law 82-21.',
+        'Solar installation in Tangier: ≈ 2,800 h of sun and a windy strait — hence sizing calculated to the degree on your bill. Install, real-time production monitoring and Law 82-21.',
       roiNuance:
         'At ≈ 2,800 h a year, Tangier has the lightest resource of our five cities: for an identical system size, that ' +
         'leans toward the upper end of the 3–7 year band — one more reason to get the tilt and orientation right instead ' +
@@ -663,7 +663,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         'we check your tariff bracket on your statement before pricing your installation.',
       nearestInstallNote:
         'Tangier lies north of the Casablanca-Settat region, where all our already-serviced installations are ' +
-        'concentrated — same assessment methods, same tier-1 equipment, same Deye Cloud monitoring, whatever the distance.',
+        'concentrated — same assessment methods, same tier-1 equipment, same real-time production monitoring, whatever the distance.',
     },
     ar: {
       heroLead:
@@ -682,7 +682,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         measure: {
           heading: 'رياح، لكن أرقام ثابتة',
           body:
-            'بنية مُثبَّتة لهبّات المضيق، وإنتاج يُتابَع على Deye Cloud مع ولوجك: ' +
+            'بنية مُثبَّتة لهبّات المضيق، وإنتاج يُتابَع في الوقت الحقيقي مع ولوجك: ' +
             'تقرأ الكيلوواط-ساعة الحقيقية، شهراً بعد شهر، دون أن تأخذها على عهدة الكلام.',
         },
         compliance: {
@@ -695,7 +695,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       closer: 'في طنجة، سطح حسن التوجيه خير من حقل كبير سيّئ التركيب: لنبدأ بالدراسة.',
       title: 'تركيب شمسي في طنجة — دراسة وتركيب والقانون 82-21 | Taqinor',
       description:
-        'تركيب شمسي في طنجة: ≈ 2 800 ساعة شمس ومضيق ذو رياح — ومن ثَمّ مقاس محسوب بدقة الدرجة على فاتورتك. تركيب، Deye Cloud والقانون 82-21.',
+        'تركيب شمسي في طنجة: ≈ 2 800 ساعة شمس ومضيق ذو رياح — ومن ثَمّ مقاس محسوب بدقة الدرجة على فاتورتك. تركيب، متابعة الإنتاج في الوقت الحقيقي والقانون 82-21.',
       roiNuance:
         'بـ ≈ 2 800 ساعة في السنة، تملك طنجة أخفّ مخزون بين مدننا الخمس: لمقاس مماثل، يميل ذلك نحو الطرف الأعلى ' +
         'من بند 3–7 سنوات — سبب إضافي لضبط الميل والتوجيه بدل الاعتماد على الطقس وحده.',
@@ -704,7 +704,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         'نتحقّق من شطرك التعريفي على كشف حسابك قبل تقدير تركيبتك.',
       nearestInstallNote:
         'تقع طنجة شمال جهة الدار البيضاء سطات، حيث تتركّز كل تركيباتنا العاملة فعلاً — نفس مناهج الدراسة، ' +
-        'نفس العتاد من الفئة الأولى، نفس مراقبة Deye Cloud، مهما كانت المسافة.',
+        'نفس العتاد من الفئة الأولى، نفس متابعة الإنتاج في الوقت الحقيقي، مهما كانت المسافة.',
     },
   },
 
@@ -726,7 +726,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         measure: {
           heading: 'Un fort potentiel, vérifié au compteur',
           body:
-            'Beaucoup de soleil ne vaut que confirmé : chaque pose à Agadir est suivie sur Deye Cloud, accès client inclus. ' +
+            'Beaucoup de soleil ne vaut que confirmé : chaque pose à Agadir bénéficie d’un suivi de production en temps réel, accès client inclus. ' +
             'Vous lisez les kWh réellement produits, et l’écart éventuel se voit tout de suite.',
         },
         compliance: {
@@ -739,7 +739,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       closer: 'À Agadir, le soleil est acquis ; ce qui compte, c’est le dimensionnement. Faites étudier votre toiture.',
       title: 'Installation solaire à Agadir — étude, pose et loi 82-21 | Taqinor',
       description:
-        'Installation solaire à Agadir : ≈ 3 400 h de soleil par an, l’un des meilleurs gisements de nos villes — mais on dimensionne sur votre facture. Pose, monitoring Deye Cloud et loi 82-21.',
+        'Installation solaire à Agadir : ≈ 3 400 h de soleil par an, l’un des meilleurs gisements de nos villes — mais on dimensionne sur votre facture. Pose, suivi de production en temps réel et loi 82-21.',
       roiNuance:
         'Avec ≈ 3 400 h par an, Agadir affiche l’un des meilleurs gisements de nos cinq villes : à dimensionnement égal, cela pousse ' +
         'la bande 3–7 ans vers sa partie basse — un avantage réel, que seule l’étude sur votre facture transforme en chiffre exact.',
@@ -748,7 +748,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         'tranche sur votre relevé avant de chiffrer votre installation.',
       nearestInstallNote:
         'Agadir se trouve au sud de la région Casablanca-Settat, où sont concentrés tous nos chantiers déjà en service : ' +
-        'mêmes méthodes d’étude, même matériel tier-1, même monitoring Deye Cloud, quelle que soit la distance.',
+        'mêmes méthodes d’étude, même matériel tier-1, même suivi de production en temps réel, quelle que soit la distance.',
     },
     en: {
       heroLead:
@@ -767,7 +767,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         measure: {
           heading: 'High potential, verified at the meter',
           body:
-            'A lot of sun only counts once confirmed: every install in Agadir is monitored on Deye Cloud, client access included. ' +
+            'A lot of sun only counts once confirmed: every install in Agadir has real-time production monitoring, client access included. ' +
             'You read the kWh actually produced, and any gap shows at once.',
         },
         compliance: {
@@ -780,7 +780,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       closer: 'In Agadir, the sun is a given; what counts is the sizing. Have your roof assessed.',
       title: 'Solar installation in Agadir — assessment, install and Law 82-21 | Taqinor',
       description:
-        'Solar installation in Agadir: ≈ 3,400 h of sun a year, one of the best resources of our cities — but we size on your bill. Install, Deye Cloud monitoring and Law 82-21.',
+        'Solar installation in Agadir: ≈ 3,400 h of sun a year, one of the best resources of our cities — but we size on your bill. Install, real-time production monitoring and Law 82-21.',
       roiNuance:
         'At ≈ 3,400 h a year, Agadir has one of the best resources of our five cities: for an identical system size, that pulls ' +
         'the 3–7 year band toward its lower end — a real edge that only the assessment on your bill turns into an exact figure.',
@@ -789,7 +789,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         'on your statement before pricing your installation.',
       nearestInstallNote:
         'Agadir lies south of the Casablanca-Settat region, where all our already-serviced installations are ' +
-        'concentrated — same assessment methods, same tier-1 equipment, same Deye Cloud monitoring, whatever the distance.',
+        'concentrated — same assessment methods, same tier-1 equipment, same real-time production monitoring, whatever the distance.',
     },
     ar: {
       heroLead:
@@ -808,7 +808,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         measure: {
           heading: 'إمكان عالٍ، مُتحقَّق منه عند العدّاد',
           body:
-            'الشمس الكثيرة لا تُحتسب إلا مُؤكَّدة: كل تركيب بأكادير يُراقَب على Deye Cloud، مع ولوج الزبون. ' +
+            'الشمس الكثيرة لا تُحتسب إلا مُؤكَّدة: كل تركيب بأكادير يخضع لمتابعة الإنتاج في الوقت الحقيقي، مع ولوج الزبون. ' +
             'تقرأ الكيلوواط-ساعة المنتَجة فعلاً، وأي فارق يظهر فوراً.',
         },
         compliance: {
@@ -821,7 +821,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
       closer: 'في أكادير، الشمس مضمونة؛ المهمّ هو المقاس. ادرس سطحك.',
       title: 'تركيب شمسي في أكادير — دراسة وتركيب والقانون 82-21 | Taqinor',
       description:
-        'تركيب شمسي في أكادير: ≈ 3 400 ساعة شمس في السنة، من بين أفضل المخزونات لدينا — لكننا نحدّد المقاس على فاتورتك. تركيب، مراقبة Deye Cloud والقانون 82-21.',
+        'تركيب شمسي في أكادير: ≈ 3 400 ساعة شمس في السنة، من بين أفضل المخزونات لدينا — لكننا نحدّد المقاس على فاتورتك. تركيب، متابعة الإنتاج في الوقت الحقيقي والقانون 82-21.',
       roiNuance:
         'بـ ≈ 3 400 ساعة في السنة، تملك أكادير واحداً من أفضل المخزونات بين مدننا الخمس: لمقاس مماثل، يشدّ ذلك بند 3–7 سنوات ' +
         'نحو طرفه الأدنى — ميزة حقيقية لا تتحوّل إلى رقم دقيق إلا بالدراسة على فاتورتك.',
@@ -829,7 +829,7 @@ export const CITY_CONTENT: Record<string, LocalizedCityContent> = {
         'أكادير توزّعها الوكالة الجهوية SRM سوس-ماسة (خلفاً لـRAMSA): نتحقّق من شطرك التعريفي على كشف حسابك قبل تقدير تركيبتك.',
       nearestInstallNote:
         'تقع أكادير جنوب جهة الدار البيضاء سطات، حيث تتركّز كل تركيباتنا العاملة فعلاً — نفس مناهج الدراسة، ' +
-        'نفس العتاد من الفئة الأولى، نفس مراقبة Deye Cloud، مهما كانت المسافة.',
+        'نفس العتاد من الفئة الأولى، نفس متابعة الإنتاج في الوقت الحقيقي، مهما كانت المسافة.',
     },
   },
 };

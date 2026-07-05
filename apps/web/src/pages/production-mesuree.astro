@@ -5,13 +5,15 @@
  * INTÉGRITÉ (règle du WEB_PLAN) : chaque chiffre est DÉRIVÉ, en direct dans ce
  * fichier, de `realisations.ts` (lecture seule — jamais modifié ici). Aucune
  * valeur n'est saisie à la main :
- *  - kWc installés = somme de `kwcNum` sur toutes les réalisations publiées ;
- *  - production cumulée = somme de `productionNum` sur les seules réalisations
- *    où elle est publiée (`null` exclu — jamais compté comme zéro, jamais
- *    estimé) ;
+ *  - production cumulée = `MEASURED_FLEET_LIFETIME_MWH`, le cumul mesuré de la
+ *    flotte réellement suivie en production (jamais estimé, jamais compté
+ *    comme zéro) ;
  *  - la date affichée est `FACTS_GENERATED_AT` (facts.ts, W380) — le même
  *    horodatage que l'agrégat de faits canoniques, pour que "mesuré au [date]"
  *    reste cohérent d'une page à l'autre.
+ *
+ * (2026-07-05, founder) : le kWc cumulé installé n'est plus mis en avant nulle
+ * part sur le site — la page mène désormais par la production MESURÉE.
  *
  * Différence avec `/impact-taqinor` (W279, déjà en ligne) : cette page-ci est
  * un compteur roulant à vocation de suivi (production + nombre de chantiers
@@ -36,17 +38,17 @@ import { FACTS_GENERATED_AT } from '../lib/facts';
 
 // ── Chiffres dérivés — AUCUNE valeur saisie à la main ────────────────────────
 // RULE B (2026-07-04) : le nombre brut d'installations n'est plus mis en
-// avant en copie utilisateur (h2, dénominateurs) — la page mène par le kWc
-// installé et le kWh mesuré (partiellement supersède W354).
-const kwcTotal = REALISATIONS.reduce((sum, r) => sum + r.kwcNum, 0);
-const kwcTotalLabel = kwcTotal.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// avant en copie utilisateur (h2, dénominateurs) — la page mène par le kWh
+// mesuré (partiellement supersède W354).
+// (2026-07-05, founder) : le kWc cumulé installé est retiré (plus affiché
+// nulle part sur le site) — la page mène désormais par la production MESURÉE.
 
 // WB1 (2026-07-04) : la production ANNUELLE par installation a été retirée
-// (fabriquée — même facteur impossible sur 4 sites). Le seul chiffre de
-// production réel est le CUMUL mesuré de la flotte suivie sur Deye Cloud
+// (fabriquée — même facteur impossible sur plusieurs sites). Le seul chiffre
+// de production réel est le CUMUL mesuré de la flotte suivie en temps réel
 // (MEASURED_FLEET, realisations.ts) — cumul « depuis la mise en service »,
 // JAMAIS annualisé.
-const productionTotal = Math.round(MEASURED_FLEET_LIFETIME_MWH * 1000); // 6,56 MWh → 6 560 kWh
+const productionTotal = Math.round(MEASURED_FLEET_LIFETIME_MWH * 1000);
 const productionTotalLabel = productionTotal.toLocaleString('fr-FR');
 
 const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -56,7 +58,7 @@ const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Dataset',
   name: 'Production solaire suivie — parc Taqinor',
-  description: `Cumul de production mesuré sur la flotte suivie (Deye Cloud, ${MEASURED_FLEET.length} centrales), arrêté au ${generatedDateLabel} : ${productionTotalLabel} kWh cumulés.`,
+  description: `Cumul de production mesuré sur la flotte suivie en temps réel (${MEASURED_FLEET.length} centrales), arrêté au ${generatedDateLabel} : ${productionTotalLabel} kWh cumulés.`,
   temporalCoverage: FACTS_GENERATED_AT,
   creator: { '@type': 'Organization', name: 'Taqinor', url: 'https://taqinor.ma' },
 };
@@ -64,7 +66,7 @@ const jsonLd = {
 
 <Layout
   title="Production solaire suivie — le cumul réel de notre parc | Taqinor"
-  description={`${productionTotalLabel} kWh cumulés sur la flotte suivie (Deye Cloud), cumul arrêté au ${generatedDateLabel} — rien d'arrondi, rien de gonflé.`}
+  description={`${productionTotalLabel} kWh cumulés sur la flotte suivie en temps réel, cumul arrêté au ${generatedDateLabel} — rien d'arrondi, rien de gonflé.`}
   ogSlug="equipement"
 >
   <div class="v2">
@@ -80,7 +82,7 @@ const jsonLd = {
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">Transparence continue</p>
         <h1 class="display v2-page-title cine-in cine-in-1 mt-6">Production suivie</h1>
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
-          Pas une brochure : un compteur qui roule. Ce que la flotte suivie sur Deye Cloud a
+          Pas une brochure : un compteur qui roule. Ce que la flotte suivie en temps réel a
           réellement produit depuis sa mise en service, en cumul — arrêté aujourd'hui au{' '}
           <strong class="text-white">{generatedDateLabel}</strong>.
         </p>
@@ -91,25 +93,23 @@ const jsonLd = {
     <section class="section px-4">
       <div class="mx-auto max-w-6xl">
         <p class="tech-label v2-kicker rule-brass text-lune">Cumul mesuré au {generatedDateLabel}</p>
-        <h2 class="display v2-section-title mt-5 text-white">{kwcTotalLabel} kWc, un seul compteur</h2>
-        <div class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
-          <KeyFigure value={kwcTotalLabel} unit="kWc" label="Puissance installée">
-            Cumul des réalisations publiées.
-          </KeyFigure>
+        <h2 class="display v2-section-title mt-5 text-white">{productionTotalLabel} kWh, un seul compteur</h2>
+        <div class="mt-10 grid gap-6 sm:grid-cols-2" data-stagger>
           <KeyFigure value={productionTotalLabel} unit="kWh cumulés" label="Production suivie">
-            Cumul relevé sur la flotte suivie (Deye Cloud) depuis la mise en service — jamais
+            Cumul relevé sur la flotte suivie en temps réel depuis la mise en service — jamais
             annualisé.
           </KeyFigure>
           <KeyFigure value={String(MEASURED_FLEET.length)} unit="centrales suivies" label="Monitoring publié">
-            Flotte suivie en direct sur Deye Cloud.
+            Flotte suivie en direct, accès client.
           </KeyFigure>
         </div>
         <Callout type="info" title="Comment ce chiffre est mis à jour">
           <p>
-            Ce cumul est recalculé à chaque export Deye Cloud republié (cadence indicative : à
+            Ce cumul est recalculé à chaque export de suivi republié (cadence indicative : à
             chaque nouveau chantier suivi ajouté à la flotte). La date ci-dessus est celle du
             dernier arrêté — jamais une moyenne glissante, jamais une projection. Le cumul mesuré
-            est relevé en continu sur Deye Cloud, recalculé à chaque nouveau chantier documenté.
+            est relevé en continu par notre supervision en temps réel, recalculé à chaque nouveau
+            chantier documenté.
           </p>
         </Callout>
       </div>
@@ -136,7 +136,7 @@ const jsonLd = {
           ))}
         </div>
         <p class="mx-auto mt-6 max-w-xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
-          <a href="/realisations" class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">Voir toutes nos réalisations en détail →</a>
+          <a href="/realisations" class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">Voir nos dernières réalisations en détail →</a>
         </p>
       </div>
     </section>

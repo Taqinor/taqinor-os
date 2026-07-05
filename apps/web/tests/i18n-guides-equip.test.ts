@@ -78,7 +78,11 @@ describe('W67 — EN/AR équipement, article-33 & guides : contrat de page', () 
     "%s : aucun attribut dir/lang codé en dur (le Layout pose lang=ar + dir=rtl)",
     (rel) => {
       const src = read(rel);
-      expect(src).not.toMatch(/\sdir=/);
+      // WC12 (2026-07-05) : `dir="ltr"` sur des tokens numériques latins (isolation
+      // bidi, pour que les nombres ne s'affichent pas à l'envers en arabe) est
+      // LÉGITIME ; on interdit seulement un dir="rtl" codé en dur au niveau page
+      // (le Layout pose déjà dir=rtl sur <html>).
+      expect(src).not.toMatch(/\sdir="rtl"/);
       // On ne réécrit pas non plus le <html lang> : c'est le Layout qui le gère.
       expect(src).not.toContain('lang="ar"');
     },

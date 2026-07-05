@@ -54,17 +54,17 @@ const apresInstallation = [
   {
     k: '01',
     title: 'Commissioning',
-    body: 'The installation is connected, tested, and the monitoring dongle registered on Deye Cloud. The complete technical file (diagrams, protections, procedure) is handed over that same day.',
+    body: 'The installation is connected, tested, and the monitoring dongle registered for real-time production monitoring. The complete technical file (diagrams, protections, procedure) is handed over that same day.',
   },
   {
     k: '02',
     title: 'Production tracking',
-    body: 'From the next day on, your personal Deye Cloud access shows real production, day after day. It is the same data that feeds our written warranties — nothing more, nothing less.',
+    body: 'From the next day on, your personal access shows real production, day after day. It is the same data that feeds our written warranties — nothing more, nothing less.',
   },
   {
     k: '03',
     title: 'Open an after-sales ticket',
-    body: 'An alert on your side or from Deye Cloud? A WhatsApp report opens a ticket in our after-sales module, tracked through to its close — the same door as "Already a customer?" on the contact page.',
+    body: 'An alert on your side or from our real-time monitoring? A WhatsApp report opens a ticket in our after-sales module, tracked through to its close — the same door as "Already a customer?" on the contact page.',
   },
   {
     k: '04',
@@ -80,8 +80,8 @@ const apresInstallation = [
 const entretienTiers = [
   {
     name: 'Essentiel',
-    body: 'Deye Cloud monitoring included and fleet-wide supervision: this is the base already delivered with every installation.',
-    inclusions: ['Personal Deye Cloud access', 'Automatic fault alert', 'Complete technical file'],
+    body: 'Real-time production monitoring included and fleet-wide supervision: this is the base already delivered with every installation.',
+    inclusions: ['Personal access to production monitoring', 'Automatic fault alert', 'Complete technical file'],
     sla: 'pending founder validation',
     prix: 'pending founder validation',
   },
@@ -109,21 +109,21 @@ const waTier = (tierName: string) =>
 // Generic labels only, never a figure we wouldn't stand behind.
 const phoneVues = [
   {
-    appLabel: 'Deye Cloud',
+    appLabel: 'Production monitoring',
     headline: '3.2 kW',
     accent: 'text-brass-300',
     sub: 'Live production',
     caption: 'Your production, readable in real time — the same data that backs our written warranties.',
   },
   {
-    appLabel: 'Deye Cloud',
+    appLabel: 'Production monitoring',
     headline: 'Alert',
     accent: 'text-white',
     sub: 'Inverter · fault code',
     caption: 'An anomaly triggers a WhatsApp alert on our side before you have even noticed it.',
   },
   {
-    appLabel: 'Deye Cloud',
+    appLabel: 'Production monitoring',
     headline: 'History',
     accent: 'text-brass-300',
     sub: 'Savings to date',
@@ -133,16 +133,16 @@ const phoneVues = [
 
 const suivi = [
   {
-    title: 'Deye Cloud monitoring included',
-    body: 'Every installation reports to Deye Cloud: real-time production, daily and monthly history, automatic alerts on faults. You receive your personal access on the mobile app, and you see exactly what the installer sees.',
+    title: 'Real-time production monitoring included',
+    body: 'Every installation is covered by real-time production monitoring: real-time production, daily and monthly history, automatic alerts on faults. You receive your personal access on the mobile app, and you see exactly what the installer sees.',
   },
   {
     title: 'Proactive after-sales',
-    body: 'We keep an eye on the whole installed fleet. When Deye Cloud raises an alert, it is more than a red light: it names the inverter concerned, the fault code reported and the time production dropped off. Often we have already pinned down the cause before the client has seen anything at all.',
+    body: 'We keep an eye on the whole installed fleet. When our real-time monitoring raises an alert, it is more than a red light: it names the inverter concerned, the fault code reported and the time production dropped off. Often we have already pinned down the cause before the client has seen anything at all.',
   },
   {
     title: 'Complete technical file',
-    body: 'The installation leaves with its file: single-line diagrams, cable sizing, the list of protections, the commissioning procedure and access to Deye Cloud monitoring. Enough for another electrician to take over if needed.',
+    body: 'The installation leaves with its file: single-line diagrams, cable sizing, the list of protections, the commissioning procedure and access to real-time production monitoring. Enough for another electrician to take over if needed.',
   },
 ];
 
@@ -154,13 +154,13 @@ const jsonLd = {
   provider: { '@type': 'Organization', name: 'Taqinor', url: 'https://taqinor.ma' },
   areaServed: { '@type': 'Country', name: 'Maroc' },
   description:
-    'Deye Cloud supervision included on every solar installation in Morocco: real-time production, automatic alerts and proactive after-sales, with client access via the mobile app and a complete technical file delivered.',
+    'Real-time monitoring included on every solar installation in Morocco: real-time production, automatic alerts and proactive after-sales, with client access via the mobile app and a complete technical file delivered.',
 };
 ---
 
 <Layout
-  title="Solar maintenance, after-sales & monitoring: Deye Cloud supervision included | Taqinor"
-  description="Every Taqinor installation reports to Deye Cloud — real-time production, history, automatic alerts — with client access on the mobile app. Proactive after-sales acts on alert, before the complaint, and extends into named maintenance contracts. Complete technical file delivered with the project."
+  title="Solar maintenance, after-sales & monitoring: real-time monitoring included | Taqinor"
+  description="Every Taqinor installation is covered by real-time production monitoring — real-time production, history, automatic alerts — with client access on the mobile app. Proactive after-sales acts on alert, before the complaint, and extends into named maintenance contracts. Complete technical file delivered with the project."
   ogSlug="maintenance-monitoring"
 >
   <div class="v2">
@@ -177,8 +177,8 @@ const jsonLd = {
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">After the install</p>
         <h1 class="display v2-page-title cine-in cine-in-1 mt-5">Monitoring &amp; proactive after-sales</h1>
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
-          The day the installation is commissioned, it starts to talk. On Deye Cloud, every Taqinor
-          roof reports its production continuously — yours readable on your phone, ours monitored
+          The day the installation is commissioned, it starts to talk. With real-time production
+          monitoring, every Taqinor roof reports its production continuously — yours readable on your phone, ours monitored
           across the whole fleet. An anomaly triggers an alert; our after-sales team starts from
           there, before the complaint — a dedicated module in our ERP tracks every intervention
           through to its close.
@@ -212,14 +212,14 @@ const jsonLd = {
           ))}
         </ol>
 
-        {/* Client-area door — one brass CTA (the real Deye Cloud portal), two
+        {/* Client-area door — one brass CTA (the real production-tracking portal), two
             secondary links (real after-sales ticket, warranties). */}
         <div class="v2-rise mt-12 border-t-2 border-white/15 bg-white/[0.03] p-7 sm:p-9" style="--v2-i:4">
           <p class="tech-label text-lune">Client area</p>
-          <h3 class="display mt-2 text-xl text-white">Your personal Deye Cloud access</h3>
+          <h3 class="display mt-2 text-xl text-white">Your personal production-tracking access</h3>
           <p class="mt-3 max-w-xl text-sm leading-relaxed text-lune-soft">
-            Every client receives, at commissioning, their own Deye Cloud access — the same
-            platform described above, not a separate Taqinor portal. That's where you track your
+            Every client receives, at commissioning, their own real-time monitoring access with
+            client app access — not a separate Taqinor portal. That's where you track your
             production, day after day.
           </p>
           <div class="mt-6 flex flex-wrap gap-3">
@@ -229,7 +229,7 @@ const jsonLd = {
               target="_blank"
               class="glow inline-flex items-center gap-2 bg-brass-400 px-6 py-3 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300"
             >
-              Open my client area (Deye Cloud) →
+              Open my client area →
             </a>
             <a href={`${L('/contact')}#deja-client`} class="inline-flex items-center gap-2 border border-white/40 px-6 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
               Open an after-sales ticket
@@ -259,9 +259,9 @@ const jsonLd = {
         {/* Filet azur (brass demoted); equipment link in lune (discipline) */}
         <p class="v2-rise mt-12 max-w-xl border-l-2 border-azur-200/40 pl-4 text-sm leading-relaxed text-lune-soft">
           On the hardware side, the data goes through a WiFi or Ethernet dongle plugged into the
-          inverter; it is what sends every measurement to Deye Cloud. The detail is on the equipment
+          inverter; it is what sends every measurement to our real-time monitoring. The detail is on the equipment
           sheet.
-          <a href={L('/équipement')} class="border-b border-lune/40 pb-0.5 font-semibold text-lune transition-colors hover:border-lune hover:text-white">See the Deye Cloud monitoring →</a>
+          <a href={L('/équipement')} class="border-b border-lune/40 pb-0.5 font-semibold text-lune transition-colors hover:border-lune hover:text-white">See the production monitoring →</a>
         </p>
       </div>
     </section>
@@ -295,7 +295,7 @@ const jsonLd = {
           ))}
         </div>
         <p class="v2-rise mx-auto mt-10 max-w-xl text-center text-sm leading-relaxed text-lune-faint">
-          These views illustrate how the Deye Cloud app works — not an official screenshot. What
+          These views illustrate how the production-monitoring app works — not an official screenshot. What
           yours shows depends on your actual installation.
         </p>
       </div>
@@ -354,8 +354,8 @@ const jsonLd = {
           <p class="tech-label v2-kicker rule-brass eyebrow-light">Figures, read off</p>
           <h2 class="display v2-section-title mt-5">What the meter says, not the brochure</h2>
           <p class="v2-lead mt-5 text-encre-soft">
-            The kWh a Taqinor installation shows don't come from a leaflet: Deye Cloud reads them day
-            after day, and that reading is what counts. Our written warranties rest on the same data —
+            The kWh a Taqinor installation shows don't come from a leaflet: our real-time production
+            monitoring reads them day after day, and that reading is what counts. Our written warranties rest on the same data —
             the one the meter records, not the one we'd like to announce.
           </p>
           <p class="mt-5 text-sm leading-relaxed text-encre-soft">

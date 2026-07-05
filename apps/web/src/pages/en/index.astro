@@ -48,11 +48,9 @@ const waZeroForm = whatsappLink(WHATSAPP_LEADS, zeroFormWhatsappText());
 
 // W284 — Precise figures, never rounded: derived from REALISATIONS (single
 // source of truth, apps/web/src/lib/realisations.ts) instead of copied by
-// hand, so they can never silently go stale. Western/Latin digits keep the
-// FR grouping (toLocaleString('fr-FR')) exactly as on the FR home — only the
-// unit word around them is translated.
-const totalKwc = REALISATIONS.reduce((sum, r) => sum + r.kwcNum, 0);
-const totalKwcLabel = totalKwc.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' kWc';
+// hand, so they can never silently go stale.
+// WC5 (2026-07-05) — the total installed kWc pull-figure is no longer shown:
+// totalKwc/totalKwcLabel removed with the monument.
 // The largest published residential installation (ref. 468, El Jadida) —
 // protagonist of the hero and closing aside. Derived by sorting on kwcNum,
 // never a hand-copied reference.
@@ -74,7 +72,7 @@ const casablancaSouthOptimalYield = YIELD_TABLE.casablanca.grid['0']['29'];
 const heroFigure = MEASURED_FLEET_LIFETIME_MWH.toFixed(2); // "6.56"
 const heroTitleSuffix = ` MWh already produced and measured across our installations.`;
 const heroSub =
-  `A real cumulative figure, read continuously on Deye Cloud — not a sales projection. Your study starts with a 60-second diagnostic.`;
+  `A real cumulative figure, tracked in real time — not a sales projection. Your study starts with a 60-second diagnostic.`;
 
 // PLACEHOLDER(MERYEM): provisional FAQ.
 const faq = [
@@ -95,7 +93,7 @@ const galleryRaw = [
   { name: 'reflet-468', alt: 'The sun reflects off the row of panels during the install, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: true, type: '24 × Canadian Solar 710 Wc · Deye 15 kW', slug: 'el-jadida-17-kwc' },
   { name: 'equipe-trois', alt: 'Taqinor team in front of the long row of panels at the end of the job, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: false, type: 'Job complete · Taqinor team', slug: 'el-jadida-17-kwc' },
   { name: 'hero-skyline', alt: 'Row of solar panels in front of the Casablanca skyline and a minaret, golden light', widths: [2000, 1280, 768, 480], ratio: 16 / 9, showProd: true, type: '16 × Canadian Solar 710 Wc · Deye 10 kW', slug: 'casablanca-11-kwc' },
-  { name: 'portrait-400', alt: 'The engineer in front of the panel array, Casablanca skyline', widths: [1600, 1024, 640], ratio: 4 / 3, showProd: false, type: 'Monitored on Deye Cloud', slug: 'casablanca-11-kwc' },
+  { name: 'portrait-400', alt: 'The engineer in front of the panel array, Casablanca skyline', widths: [1600, 1024, 640], ratio: 4 / 3, showProd: false, type: 'Real-time production monitoring', slug: 'casablanca-11-kwc' },
   { name: 'champ-villa', alt: 'Array of eight panels on a flat villa roof, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: true, type: '8 × Canadian Solar 710 Wc · Deye 5 kW', slug: 'el-jadida-6-kwc' },
   { name: 'pose-134', alt: 'The team tilts a panel during the install, Casablanca', widths: [1600, 1024, 640], ratio: 4 / 3, showProd: true, type: 'Install in progress · 8 × Canadian Solar 710 Wc', slug: 'casablanca-6-kwc' },
   { name: 'equipe-gilet-taqinor', alt: 'Installer in a Taqinor vest fitting the rails of a structure, Nouaceur', widths: [1600, 1024, 640], ratio: 1, showProd: false, type: 'Fitting the rails · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
@@ -124,20 +122,20 @@ const solutions = [
   { href: '/professionnel', tag: 'Industry · hotels · clinics', title: 'Business solar', body: 'Cutting your electricity costs, medium voltage, Law 82-21 compliance.' },
   { href: '/pompage-solaire', tag: 'Agriculture & irrigation', title: 'Solar pumping', body: 'Pumping with the sun, often without batteries, sized to the real need.' },
   { href: '/batteries-stockage', tag: 'Self-consumption', title: 'Batteries & storage', body: 'LFP storage for the evening or service continuity — when the study justifies it.' },
-  { href: '/maintenance-monitoring', tag: 'After the install', title: 'Maintenance & monitoring', body: 'Deye Cloud supervision with client access, proactive after-sales, technical file.' },
+  { href: '/maintenance-monitoring', tag: 'After the install', title: 'Maintenance & monitoring', body: 'Real-time production monitoring with client access, proactive after-sales, technical file.' },
   { href: '/regularization-article-33', tag: 'Bringing into compliance', title: 'Law 82-21 regularisation', body: 'Regularising existing installations via Article 33.' },
 ];
 
 // The real journey, end to end. Facts already published on the site (60-second
 // diagnostic, WhatsApp exchange, free visit & study, install, commissioning,
-// Deye Cloud monitoring with client access). No invented delay/SLA.
+// real-time production monitoring with client access). No invented delay/SLA.
 const journey = [
   { n: '1', title: '60-second diagnostic', body: 'An immediate range from your bill, with no commitment.' },
   { n: '2', title: 'WhatsApp exchange', body: 'Straight to the technical team, roof photos in hand — no call centre.' },
   { n: '3', title: 'Technical visit & free study', body: 'On-site roof reading, complete study and a 0 MAD quote.' },
   { n: '4', title: 'Installation', body: 'Tier-1 equipment installed with its complete technical file.' },
   { n: '5', title: 'Commissioning', body: 'Connection, checks, and the Law 82-21 file carried through to the end.' },
-  { n: '6', title: 'Deye Cloud monitoring', body: 'Production read continuously, client access included: you read your kWh at the source.' },
+  { n: '6', title: 'Real-time monitoring', body: 'Production read continuously, client access included: you read your kWh at the source.' },
 ];
 
 // W252 — "How it works": 4-step band under the hero, the near-universal
@@ -151,7 +149,7 @@ const howItWorks = [
   { n: '1', title: 'Instant estimate', body: 'Your bill gives a kWc range in 60 seconds, with no commitment.' },
   { n: '2', title: 'Personalised, signed study', body: 'Technical visit, sizing on your actual roof, validated and signed before any quote.' },
   { n: '3', title: 'Quote + e-signature', body: 'The detailed quote is signed electronically, wherever you are.' },
-  { n: '4', title: 'Installation & after-sales', body: 'Installed by our team, commissioned, then Deye Cloud monitoring and proactive after-sales.' },
+  { n: '4', title: 'Installation & after-sales', body: 'Installed by our team, commissioned, then real-time production monitoring and proactive after-sales.' },
 ];
 
 // Sober iconography for the "Our solutions" cards: one SVG line per card,
@@ -166,19 +164,17 @@ const solutionIcons: Record<string, string> = {
   '/regularization-article-33': '<path d="M7 4h7l4 4v12H7z" /><path d="M14 4v4h4" /><path d="M9.5 14l1.5 1.5 3-3.5" />',
 };
 
-// Why Taqinor / trust — four monumental figures, already-published facts. Founder
+// Why Taqinor / trust — three statistics, already-published facts. Founder
 // decision 2026-06-22: the "doctor-engineer" slot is replaced by Law 82-21
 // compliance — a concrete, non-personal trust signal (the founder credit lives on
-// the team page). The three other values (visitable worksites, kWc installed,
-// Deye Cloud) are unchanged, but W284 now derives them from REALISATIONS
-// instead of copying them by hand. Gold lives on the .lum figures (brass
+// the team page). W284 derives the visitable-worksites count from REALISATIONS
+// instead of copying it by hand. Gold lives on the .lum figures (brass
 // discipline). No invented claim.
 const visitableSitesCount = new Set(REALISATIONS.map((r) => r.ville)).size;
 const trust = [
   { fig: String(visitableSitesCount), tally: false, label: 'Worksites you can visit', body: 'Real installations to see on request — Casablanca, El Jadida, Nouaceur' },
-  { fig: totalKwcLabel, tally: true, label: 'Installed', body: 'Casablanca, El Jadida, Nouaceur' },
   { fig: 'Law 82-21', tally: false, label: 'Compliance included', body: 'Declaration prepared and filed for you by Taqinor' },
-  { fig: 'Deye Cloud', tally: false, label: 'Measured production', body: 'Monitoring on every installation, client access included' },
+  { fig: 'Real-time', tally: false, label: 'Production tracked', body: 'Real-time production monitoring on every installation, client access included' },
 ];
 
 // W265 — The 30-year investment story: the page's ONE clear tonal break
@@ -188,41 +184,18 @@ const trust = [
 const investment = [
   { v: '3–7 years', label: 'Typical return on investment' },
   { v: '30 years', label: 'Panel performance warranty' },
-  { v: '60–90 %', label: 'Of the bill covered' },
+  { v: '50–100 %', label: 'Of the bill covered — depending on batteries and day/night usage' },
   { v: '0 MAD', label: 'The study and the assessment' },
 ];
 
-// W276 — "Our engine, built in Morocco": the true in-house engineering
-// story, told with the THREE tools actually built and already in production
-// on the site (no third-party software, no invented claim):
-//   1. The bill-driven estimator (a home-grown estimation engine — home-grown
-//      solar position, row spacing derived from a winter-solstice shading
-//      rule).
-//   2. The 3D roof engine (/devis/mon-toit — real roof tracing, real
-//      orientation/tilt, not a generic lookup table).
-//   3. The premium quote engine (apps/ventes/quote_engine, e-signed PDF,
-//      see CLAUDE.md rule #4) that renders the final quote.
-// No fabricated number here: the link leads straight to the real journey
-// (/devis/mon-toit) so the visitor can VERIFY it themselves in 60 seconds.
-const engineeringPillars = [
-  {
-    title: 'The bill-driven estimator',
-    body: 'Your electricity bill is enough: our engine computes the sun’s position and the row spacing between panels from a winter-solstice shading rule — not a generic imported lookup table.',
-  },
-  {
-    title: 'The 3D roof engine',
-    body: 'Trace your roof, orient it, and the sizing adapts to your home’s real geometry — the same technology you just tried in the diagnostic above.',
-  },
-  {
-    title: 'The quote engine',
-    body: 'The resulting quote is signed electronically, online — no manual re-entry between the study and the document you sign.',
-  },
-];
+// WC8 (2026-07-05) — `engineeringPillars` removed with the "An installer
+// that also builds its own tools" section (the founder does not want Taqinor
+// positioned as a builder of its own software/tools).
 ---
 
 <Layout
   title="Taqinor — Solar installations in Morocco, Law 82-21 compliant"
-  description="Solar installations for villas, industry and hotels in Morocco: sized on your bill, declared under Law 82-21, and monitored for real production on Deye Cloud."
+  description="Solar installations for villas, industry and hotels in Morocco: sized on your bill, declared under Law 82-21, with real-time production monitoring and client access."
   ogSlug="accueil"
   preloadHeroPoster
 >
@@ -272,13 +245,17 @@ const engineeringPillars = [
       </div>
 
       {/* Content anchored LOW — eyebrow demoted to lune (brass discipline). */}
-      <div class="mx-auto w-full max-w-6xl px-4 pb-24 pt-32 sm:pb-32">
+      {/* WC7 (2026-07-05) — `relative z-10`: the content (including the
+          figure) stays ABOVE the video/poster (the `-z-10` layer) even after
+          the video fades in → the figure no longer "disappears" when the
+          video starts. */}
+      <div class="relative z-10 mx-auto w-full max-w-6xl px-4 pb-24 pt-32 sm:pb-32">
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">The study first, the worksite second</p>
-        {/* WB1 (2026-07-04) — STATIC hero title: no count-up nor `.cine-in`
-            on the LCP element → it paints immediately, no "appears then
-            disappears" flash. The figure keeps dir="ltr" to stay correct
-            in Arabic. */}
-        <h1 id="hero-title" class="display v2-hero-title hero-title-sweep mt-6 max-w-[15ch]">
+        {/* WB1/WC7 (2026-07-04/05) — STATIC hero title: no count-up nor
+            `.cine-in` on the LCP element → it paints immediately, no "appears
+            then disappears" flash. Defensive text-shadow: the white figure
+            stays legible even over a very bright video frame (full sun). */}
+        <h1 id="hero-title" class="display v2-hero-title hero-title-sweep mt-6 max-w-[15ch] [text-shadow:0_2px_28px_rgb(7_11_29/0.72)]">
           <span class="font-variant-numeric tabular-nums" dir="ltr">{heroFigure}</span>{heroTitleSuffix}
         </h1>
         <p class="v2-lead cine-in cine-in-2 mt-4 max-w-xl text-white/85">{heroSub}</p>
@@ -326,13 +303,13 @@ const engineeringPillars = [
     <InstantEstimator variant="hero" />
 
     {/* Warranty promise up top — a true, strong commitment, taken from
-        /garanties (30-year performance) and the measured Deye Cloud monitoring. */}
+        /garanties (30-year performance) and the measured real-time monitoring. */}
     <div class="seam-soft" aria-hidden="true"></div>
     <section class="bg-brass-400/5 px-4 py-6">
       <p class="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center text-sm font-semibold text-lune sm:text-base">
         <span class="text-brass-300">30-year performance warranty</span>
         <span class="text-lune-faint" aria-hidden="true">·</span>
-        <span>production tracked, not promised — Deye Cloud monitoring on every installation</span>
+        <span>production tracked, not promised — real-time monitoring on every installation</span>
       </p>
     </section>
 
@@ -484,7 +461,7 @@ const engineeringPillars = [
       </div>
     </section>
 
-    {/* ── WHY TAQINOR / TRUST — four monumental figures (gold lives on the .lum
+    {/* ── WHY TAQINOR / TRUST — three statistics (gold lives on the .lum
         figures, brass discipline) — already-published facts ── */}
     <div class="seam-soft" aria-hidden="true"></div>
     <section class="section px-4">
@@ -497,11 +474,11 @@ const engineeringPillars = [
             real bill. The figure decides the equipment — never the other way around.
           </p>
         </div>
-        {/* W268 — full-width, 4-column monumental band, .fig-lg numerals +
-            thin brass rule per column (same device as the "How it works"
-            band and GarantiesTeaser). "Proof before the promise" is the
-            brand thesis: it deserves a statement, not a spec table. */}
-        <dl class="mt-12 grid grid-cols-2 gap-x-8 gap-y-12 lg:grid-cols-4" data-stagger>
+        {/* W268 — full-width monumental band, .fig-lg numerals + thin brass
+            rule per column (same device as the "How it works" band and
+            GarantiesTeaser): the three remaining statistics (never a
+            duplicate of the removed total-kWc figure). */}
+        <dl class="mt-12 grid grid-cols-1 gap-x-8 gap-y-12 sm:grid-cols-3" data-stagger>
           {trust.map((t, i) => (
             <div class="v2-rise relative min-w-0 border-t-2 border-white/10 pt-5" style={`--v2-i:${i}`}>
               <span class="absolute -top-px left-0 h-0.5 w-10 bg-brass-400" aria-hidden="true"></span>
@@ -514,38 +491,11 @@ const engineeringPillars = [
       </div>
     </section>
 
-    {/* ── OUR ENGINE, BUILT IN MOROCCO (W276) — the in-house engineering
-        story: an installer that also builds its own tools (bill-driven
-        estimator, 3D roof engine, quote engine). True, rare in the sector,
-        and one click away from verification: the link leads to the real
-        journey (/devis/mon-toit) instead of just asserting it. ── */}
-    <div class="seam-soft" aria-hidden="true"></div>
-    <section class="section px-4">
-      <div class="mx-auto max-w-6xl">
-        <div class="v2-rise max-w-2xl">
-          <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">03</span>Our engine, built in Morocco</p>
-          <h2 class="display v2-section-title mt-5 text-white">An installer that also builds its own tools</h2>
-          <p class="v2-body mt-5">
-            Most solar installers buy a generic quoting tool. Taqinor built its own: the estimator
-            that reads your bill, the engine that traces your roof in 3D, and the engine that
-            produces the quote you sign electronically. Three tools, one technical team — try them
-            yourself below.
-          </p>
-        </div>
-        <div class="mt-12 grid gap-6 sm:grid-cols-3" data-stagger>
-          {engineeringPillars.map((p, i) => (
-            <div class="v2-rise relative min-w-0 border-t-2 border-white/10 pt-5" style={`--v2-i:${i}`}>
-              <span class="absolute -top-px left-0 h-0.5 w-10 bg-brass-400" aria-hidden="true"></span>
-              <h3 class="display mt-2 text-lg text-white">{p.title}</h3>
-              <p class="mt-2 text-sm leading-relaxed text-lune-soft">{p.body}</p>
-            </div>
-          ))}
-        </div>
-        <a href={L('/devis/mon-toit')} class="v2-rise group mt-10 inline-flex items-center gap-1 border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-brass-300 transition-colors hover:text-brass-200">
-          Try the engine on my roof <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span>
-        </a>
-      </div>
-    </section>
+    {/* WC8 (2026-07-05) — "Our engine, built in Morocco" / "An installer
+        that also builds its own tools" section REMOVED: the founder does not
+        want Taqinor positioned as a builder of its own software/tools. The
+        founder's engineering credentials still live on /à-propos (RULE A)
+        and in the Expertise band below. */}
 
     {/* ── EXPERTISE — RULE A (2026-07-04): no founder face/signature on any
         homepage locale (supersedes W266). Subtle text-only credentials cue,
@@ -660,7 +610,7 @@ const engineeringPillars = [
             {[featured.panneaux, featured.onduleur, featured.batterie].filter(Boolean).join(' · ')}
           </p>
           <p class="mt-4 border-t border-white/10 pt-3 text-xs text-lune-faint">
-            Installation monitored on Deye Cloud, client access included. Site visits available on request.
+            Installation tracked in real time, client access included. Site visits available on request.
           </p>
         </aside>
       </div>

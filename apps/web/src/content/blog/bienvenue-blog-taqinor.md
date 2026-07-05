@@ -1,7 +1,7 @@
 ---
 title: "Bienvenue sur le blog Taqinor"
 description: "Pourquoi nous ouvrons un blog, ce qu'on y publiera, et en quoi il complète — sans les remplacer — nos guides pérennes sur le solaire au Maroc."
-pubDate: 2026-06-21
+pubDate: 2026-01-12
 tags: ["actualités", "à-propos"]
 author: "Reda Kasri"
 ogSlug: "accueil"

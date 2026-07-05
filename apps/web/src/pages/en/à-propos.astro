@@ -25,18 +25,15 @@ const devisHref = L('/devis/mon-toit');
 
 /**
  * W345 — Press & partnership factsheet, DERIVED (no hand-typed figures). See
- * the FR page (src/pages/à-propos.astro) for the full rationale: installed
- * kWc + earliest documented project come from realisations.ts; no company
+ * the FR page (src/pages/à-propos.astro) for the full rationale: the
+ * earliest documented project comes from realisations.ts; no company
  * founding date is published anywhere on the site, so none is invented here.
  *
  * RULE B (2026-07-04): the raw install count is no longer a featured public
- * stat — replaced with installed kWc, already the reference measure
- * elsewhere on the site.
+ * stat, and neither is the aggregate installed-kWc total (sum across
+ * projects) — replaced with per-project facts already used elsewhere on the
+ * site (tier-1 brands, earliest documented project).
  */
-const totalKwc = REALISATIONS.reduce((sum, r) => sum + r.kwcNum, 0);
-const totalKwcLabel = totalKwc
-  .toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-  .replace('.', ',');
 const earliestRealisation = REALISATIONS[REALISATIONS.length - 1];
 
 const etapes = [
@@ -58,7 +55,7 @@ const etapes = [
   {
     n: '04',
     title: 'The meter takes over',
-    body: 'Once in service, Deye Cloud reads the production continuously and the client keeps their access: what we forecast becomes legible on a meter. In parallel, the Law 82-21 file is carried through to the end, declaration or regularisation included.',
+    body: 'Once in service, real-time production monitoring reads the production continuously and the client keeps their access: what we forecast becomes legible on a meter. In parallel, the Law 82-21 file is carried through to the end, declaration or regularisation included.',
   },
 ];
 ---
@@ -168,7 +165,7 @@ const etapes = [
           <h2 class="display v2-section-title mt-5 text-white">The same standard, in four commitments</h2>
           <p class="v2-lead mt-5 text-lune-soft">
             The founder's conviction does not stay on this page: it shows in the concrete choices of
-            every project — tier-1 hardware, Deye Cloud monitoring with client access, the Law 82-21
+            every project — tier-1 hardware, real-time production monitoring with client access, the Law 82-21
             file carried through, installations you can go and see. Want these differences detailed,
             point by point? That is the purpose of the <strong class="text-white">Why Taqinor</strong> page.
           </p>
@@ -183,7 +180,7 @@ const etapes = [
             <dt class="tech-label mt-2 text-lune-faint">10+ years R&D expertise — every study validated</dt>
           </div>
           <div class="v2-rise" style="--v2-i:1">
-            <dd class="font-display text-xl font-bold text-white">Deye Cloud</dd>
+            <dd class="font-display text-xl font-bold text-white">Real-time monitoring</dd>
             <dt class="tech-label mt-2 text-lune-faint">Measured production, client access included</dt>
           </div>
           <div class="v2-rise" style="--v2-i:2">
@@ -229,8 +226,8 @@ const etapes = [
               <dt class="tech-label mt-2 text-encre-faint">Trade register (RC 691213)</dt>
             </div>
             <div>
-              <dd class="font-display text-2xl font-bold">{totalKwcLabel} kWc</dd>
-              <dt class="tech-label mt-2 text-encre-faint">Installed, publicly documented projects</dt>
+              <dd class="font-display text-2xl font-bold">Tier-1 only</dd>
+              <dt class="tech-label mt-2 text-encre-faint">Canadian Solar, JA Solar, Deye, Huawei, Dyness</dt>
             </div>
             <div>
               <dd class="font-display text-2xl font-bold">{earliestRealisation.date}</dd>

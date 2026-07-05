@@ -64,13 +64,13 @@ const breadcrumbLd = {
 };
 
 const pvout = [
-  { city: 'Tangier', value: '~1,550 – 1,650', tilt: '31°', confidence: 'estimated' },
-  { city: 'Casablanca', value: '~1,620 – 1,700', tilt: '29°', confidence: 'estimated' },
-  { city: 'Rabat-Salé', value: '~1,620 – 1,700', tilt: '29°', confidence: 'estimated' },
-  { city: 'Fez', value: '~1,650 – 1,750', tilt: '~32°', confidence: 'estimated' },
-  { city: 'Marrakech', value: '1,779 (confirmed point)', tilt: '28°', confidence: 'high' },
-  { city: 'Agadir', value: '~1,750 – 1,820', tilt: '27°', confidence: 'estimated' },
-  { city: 'Ouarzazate', value: '~1,850 – 1,950', tilt: '~28–30°', confidence: 'estimated' },
+  { city: 'Tangier', value: '~1,550 – 1,650', tilt: '31°' },
+  { city: 'Casablanca', value: '~1,620 – 1,700', tilt: '29°' },
+  { city: 'Rabat-Salé', value: '~1,620 – 1,700', tilt: '29°' },
+  { city: 'Fez', value: '~1,650 – 1,750', tilt: '~32°' },
+  { city: 'Marrakech', value: '1,779', tilt: '28°' },
+  { city: 'Agadir', value: '~1,750 – 1,820', tilt: '27°' },
+  { city: 'Ouarzazate', value: '~1,850 – 1,950', tilt: '~28–30°' },
 ];
 
 const tariffs = [
@@ -123,10 +123,9 @@ const tariffs = [
           losses: wiring, inverter, dust on the glass.
         </p>
         <p>
-          The table below gives <strong>estimated</strong> brackets, calculated from PVGIS, Global
+          The table below gives estimated brackets, calculated from PVGIS, Global
           Solar Atlas and Solargis data, with a system loss rate of about 14% and due-south
-          orientation. Only one value is precisely <strong>confirmed</strong>: Marrakech (MDPI
-          Resources 2024 study, measured GTI).
+          orientation, with an estimated optimal tilt for each city.
         </p>
         <div class="table-wrap">
           <table>
@@ -134,8 +133,7 @@ const tariffs = [
               <tr>
                 <th>City</th>
                 <th>Estimated PVOUT (kWh/kWc/yr)</th>
-                <th>Optimal tilt (due south)</th>
-                <th>Confidence</th>
+                <th>Estimated optimal tilt (due south)</th>
               </tr>
             </thead>
             <tbody>
@@ -144,7 +142,6 @@ const tariffs = [
                   <td>{p.city}</td>
                   <td>{p.value}</td>
                   <td>{p.tilt}</td>
-                  <td>{p.confidence}</td>
                 </tr>
               ))}
             </tbody>

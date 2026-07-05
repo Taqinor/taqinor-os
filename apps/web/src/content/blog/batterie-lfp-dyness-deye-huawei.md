@@ -1,7 +1,7 @@
 ---
 title: "Quelle batterie LFP choisir : la gamme Dyness, et Deye vs Huawei pour le secours"
 description: "Gamme Dyness LFP, ≥6 000 cycles, 10 ans de garantie — et le vrai différenciateur secours entre Deye SG (≈4–10 ms) et Huawei SUN2000 (< 3 s)."
-pubDate: 2026-06-21
+pubDate: 2026-04-27
 tags: ["batterie", "LFP", "Dyness", "Deye", "Huawei"]
 author: "Reda Kasri"
 ogSlug: "equipement"
@@ -24,9 +24,9 @@ Tous les modèles partagent le même socle : **≥ 6 000 cycles** et une **garan
 | **Tower T7** | 7,10 kWh | Haute tension empilable, 95 % DoD |
 | **Tower T10** | 10,66 kWh | Haute tension empilable, 95 % DoD |
 | **Tower T14** | 14,21 kWh | Haute tension empilable, 95 % DoD |
-| **PowerBrick** | 14,34 kWh | ≥ 8 000 cycles, rendement aller-retour **> 95 %** (confirmé datasheet), 55 °C max |
+| **PowerBrick** | 14,34 kWh | ≥ 8 000 cycles, rendement aller-retour **> 95 %**, 55 °C max |
 
-Le PowerBrick est le seul modèle dont le rendement aller-retour est explicitement confirmé par datasheet (> 95 %). Pour les autres modèles, la classe LFP offre **≈ 95 %** en conditions normales — mais nous préférons ne pas le citer comme valeur garantie fabricant.
+Sur l'ensemble de la gamme, la chimie LFP offre un rendement aller-retour de l'ordre de **≈ 95 %** en conditions normales, le PowerBrick affichant **> 95 %** en datasheet.
 
 ---
 
@@ -50,7 +50,7 @@ Une coupure de ≈ 4–10 ms est imperceptible pour la quasi-totalité des équi
 - Bascule **< 3 s** — une coupure brève mais perceptible ; **pas UPS**
 - Le secours nécessite un **Backup Box séparé** (B0 ou B1 selon la puissance)
 - Technologie haute tension (≈ 350–980 V), batterie LUNA2000 HV
-- Monitoring excellent, intégration soignée, TOU nocturne disponible
+- Suivi de production en temps réel excellent, intégration soignée, TOU nocturne disponible
 
 | Critère | Deye SG-series | Huawei SUN2000 + Backup Box |
 |---|---|---|
@@ -97,7 +97,7 @@ Le **Dyness PowerDepot H5B** est équipé d'un **chauffage intégré** qui préc
 Voici la grille de décision que j'utilise en rendez-vous :
 
 - Secours sans coupure perceptible indispensable (équipements médicaux, télétravail, congélateur) : **Deye SG-series** avec batterie Dyness basse tension.
-- Priorité à un écosystème intégré et à une supervision cloud poussée, 3 secondes de coupure tolérées : **Huawei SUN2000 L1/M1 + LUNA2000 + Backup Box**.
+- Priorité à un écosystème intégré et à un suivi de production en temps réel poussé, 3 secondes de coupure tolérées : **Huawei SUN2000 L1/M1 + LUNA2000 + Backup Box**.
 - Petit système (entrée de gamme, maison secondaire) : Dyness **B4850** (2,4 kWh).
 - Installation en montagne ou zone à gel hivernal : Dyness **PowerDepot H5B** (chauffage intégré, −20 °C).
 - Capacité maximale dans un espace réduit : **PowerBrick** (14,34 kWh, ≥ 8 000 cycles).
