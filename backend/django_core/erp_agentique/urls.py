@@ -62,6 +62,12 @@ urlpatterns = [
     # fidélité). Nouveau préfixe ; les anciennes routes /compta/… restent
     # servies à l'identique (mêmes ViewSets) pour ne casser aucun client.
     path('api/django/marketing/', include('apps.marketing.urls')),
+    # ODX11 — Appels d'offres (marchés publics/privés). Nouveau préfixe ; les
+    # anciennes routes /compta/… restent servies à l'identique (mêmes ViewSets).
+    path('api/django/ao/', include('apps.ao.urls')),
+    # ODX12 — Portail self-service client. Nouveau préfixe ; les anciennes
+    # routes /compta/… restent servies à l'identique (mêmes ViewSets/vues).
+    path('api/django/portail/', include('apps.portail.urls')),
     # FLOTTE1 — Gestion de flotte (véhicules + engins roulants, interne).
     path('api/django/flotte/', include('apps.flotte.urls')),
     # AG1 — Catalogue d'actions agentiques (métadonnées, filtré par caller).
