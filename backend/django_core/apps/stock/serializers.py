@@ -200,6 +200,16 @@ class ProduitSerializer(serializers.ModelSerializer):
     # Transfert. Map calculée UNE fois par sérialisation (pas de N+1).
     stock_par_emplacement = serializers.SerializerMethodField()
 
+    # XSTK3 — déclaré explicitement `required=False` : DRF (≥ 3.14) dérive un
+    # validateur "unique together" depuis la `UniqueConstraint` conditionnelle
+    # `(company, code_barres)` du modèle et force sinon ce champ à
+    # `required=True`, cassant la création SANS code-barres (comportement
+    # historique, champ nullable). L'unicité PROPRE (400, scopée société,
+    # NULL/'' exclus) reste assurée par `validate_code_barres` ci-dessous —
+    # DRF ne comprend pas la condition partielle de la contrainte DB.
+    code_barres = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True, max_length=64)
+
     def validate_code_barres(self, value):
         # XSTK3 — doublon PROPRE (400) même société, plutôt qu'une
         # IntegrityError 500 sur la contrainte DB. Vide/None reste toléré
@@ -850,6 +860,15 @@ class PaiementFournisseurSerializer(serializers.ModelSerializer):
                         'Le montant dépasse le solde dû '
                         f'({facture.solde_du}).'),
                 })
+        # ZACC9 — `date_paiement` reste nullable (saisie « date à confirmer »
+        # tolérée historiquement), mais l'événement `paiement_fournisseur_
+        # enregistre` (YLEDG2) peut poser une écriture comptable AUTO
+        # (COMPTA_AUTO_ECRITURES) qui exige une date non NULL. Défaut serveur
+        # = aujourd'hui quand omis, jamais None — pas de régression pour un
+        # appelant qui fournit déjà la date.
+        if not attrs.get('date_paiement'):
+            from django.utils import timezone
+            attrs['date_paiement'] = timezone.localdate()
         return attrs
 
 
