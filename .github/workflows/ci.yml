@@ -193,7 +193,7 @@ jobs:
             libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b fonts-dejavu-core
       - name: Install Python dependencies
         working-directory: backend/django_core
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-dev.txt
       - name: Start MinIO + create buckets
         run: |
           docker run -d --name minio -p 9000:9000 \
@@ -401,7 +401,7 @@ jobs:
             libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b fonts-dejavu-core
       - name: Install Python dependencies
         working-directory: backend/django_core
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-dev.txt
       - name: Start MinIO + create buckets
         run: |
           docker run -d --name minio -p 9000:9000 \
