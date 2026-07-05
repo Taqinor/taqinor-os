@@ -1415,6 +1415,67 @@ class Avenant(models.Model):
         return f'Avenant n°{self.numero} — contrat {self.contrat_id}'
 
 
+class MotifResiliation(models.Model):
+    """Référentiel éditable des motifs de résiliation (close reasons) — ZCTR3.
+
+    Odoo attache un « Close Reason » configurable à chaque churn pour
+    l'analyse. Jusqu'ici ``Resiliation.motif`` est un texte libre (le champ
+    RESTE, pour rétrocompat) qui rend les agrégats de churn (XCTR7) bruités.
+    ``MotifResiliation`` est un référentiel COMPANY-SCOPÉ (code, libellé,
+    ordre d'affichage, catégorie optionnelle) qu'une ``Resiliation`` peut
+    rattacher via ``motif_ref`` (FK nullable, en PLUS du texte libre).
+
+    Multi-tenant : ``company`` posée CÔTÉ SERVEUR (jamais lue du corps de
+    requête, ``TenantMixin.perform_create``).
+
+    RUNTIME-SAFETY (leçon FG136) : ``code``/``libelle`` bornés ; l'index est
+    NOMMÉ explicitement (≤30 chars).
+    """
+
+    class Categorie(models.TextChoices):
+        PRIX = 'prix', 'Prix'
+        CONCURRENT = 'concurrent', 'Concurrent'
+        INSATISFACTION = 'insatisfaction', 'Insatisfaction'
+        FIN_PROJET = 'fin_projet', 'Fin de projet'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='motifs_resiliation',
+        verbose_name='Société',
+    )
+    code = models.CharField(max_length=50, verbose_name='Code')
+    libelle = models.CharField(max_length=150, verbose_name='Libellé')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    categorie = models.CharField(
+        max_length=20, choices=Categorie.choices,
+        blank=True, default='', verbose_name='Catégorie')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Motif de résiliation'
+        verbose_name_plural = 'Motifs de résiliation'
+        ordering = ['ordre', 'libelle', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'code'],
+                name='contrats_motifresil_co_code',
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'actif'],
+                name='contrats_motifresil_co_act',
+            ),
+        ]
+
+    def __str__(self):
+        return self.libelle
+
+
 class Resiliation(models.Model):
     """Résiliation d'un contrat (motif / préavis / solde) — CONTRAT25.
 
@@ -1471,9 +1532,21 @@ class Resiliation(models.Model):
         verbose_name='Contrat',
     )
     # Motif/justification de la résiliation. TextField : peut être long sans
-    # jamais lever (leçon FG136).
+    # jamais lever (leçon FG136). RESTE pour rétrocompat (texte libre) — ZCTR3
+    # ajoute ``motif_ref`` en PLUS, jamais en remplacement.
     motif = models.TextField(
         blank=True, default='', verbose_name='Motif de la résiliation')
+    # ZCTR3 — motif NORMALISÉ (référentiel éditable), en plus du texte libre
+    # ``motif`` ci-dessus. NULL = motif texte libre uniquement (comportement
+    # historique inchangé) ; SET_NULL pour ne jamais perdre la résiliation si
+    # le motif référentiel est supprimé.
+    motif_ref = models.ForeignKey(
+        'MotifResiliation',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='resiliations',
+        verbose_name='Motif (référentiel)',
+    )
     # Date de DEMANDE de la résiliation (posée côté serveur, défaut aujourd'hui).
     date_demande = models.DateField(
         null=True, blank=True, verbose_name='Date de demande')

@@ -24,6 +24,7 @@ from .models import (
     LigneEcheance,
     ModeleContrat,
     ModeleContratClause,
+    MotifResiliation,
     Obligation,
     OrdreLocation,
     PartieContrat,
@@ -756,11 +757,14 @@ class ResiliationSerializer(serializers.ModelSerializer):
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     cree_par_username = serializers.SerializerMethodField()
+    motif_ref_libelle = serializers.CharField(
+        source='motif_ref.libelle', read_only=True, default=None)
 
     class Meta:
         model = Resiliation
         fields = [
-            'id', 'contrat', 'motif', 'date_demande', 'date_effet',
+            'id', 'contrat', 'motif', 'motif_ref', 'motif_ref_libelle',
+            'date_demande', 'date_effet',
             'preavis_jours', 'solde', 'statut', 'statut_display',
             'version_creee', 'cree_par', 'cree_par_username', 'date_creation',
         ]
@@ -777,7 +781,10 @@ class ResilierContratSerializer(serializers.Serializer):
     machine d'états gardée (jamais un funnel STAGES.py). Tous les champs sont
     optionnels :
 
-    - ``motif``         : motif/justification de la résiliation ;
+    - ``motif``         : motif/justification de la résiliation (texte libre) ;
+    - ``motif_ref``     : ZCTR3 — id d'un ``MotifResiliation`` normalisé, EN
+      PLUS du texte libre (jamais en remplacement) ; doit appartenir à la
+      société du contrat, sinon 400 ;
     - ``date_effet``    : date de prise d'effet (après préavis) ;
     - ``preavis_jours`` : préavis observé, en jours ;
     - ``solde``         : solde de tout compte / indemnité.
@@ -788,6 +795,9 @@ class ResilierContratSerializer(serializers.Serializer):
     """
     motif = serializers.CharField(
         required=False, allow_blank=True, trim_whitespace=False)
+    motif_ref = serializers.PrimaryKeyRelatedField(
+        required=False, allow_null=True,
+        queryset=MotifResiliation.objects.all())
     date_effet = serializers.DateField(required=False, allow_null=True)
     preavis_jours = serializers.IntegerField(
         required=False, allow_null=True, min_value=0)
@@ -1337,3 +1347,21 @@ class PlanRecurrentSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "L'intervalle doit être un entier positif (≥ 1).")
         return value
+
+
+class MotifResiliationSerializer(serializers.ModelSerializer):
+    """Référentiel éditable des motifs de résiliation (close reasons) — ZCTR3.
+
+    ``company`` n'est jamais exposée en écriture (posée côté serveur par le
+    ``TenantMixin``).
+    """
+    categorie_display = serializers.CharField(
+        source='get_categorie_display', read_only=True)
+
+    class Meta:
+        model = MotifResiliation
+        fields = [
+            'id', 'code', 'libelle', 'ordre', 'actif', 'categorie',
+            'categorie_display', 'date_creation',
+        ]
+        read_only_fields = ['id', 'date_creation']

@@ -1687,8 +1687,9 @@ def resiliation_active(contrat):
 
 
 @transaction.atomic
-def resilier_contrat(contrat, *, motif='', date_effet=None, preavis_jours=None,
-                     solde=None, auteur=None, today=None, snapshot=True):
+def resilier_contrat(contrat, *, motif='', motif_ref=None, date_effet=None,
+                     preavis_jours=None, solde=None, auteur=None, today=None,
+                     snapshot=True):
     """Résilie un contrat (motif / préavis / solde) — CONTRAT25.
 
     Enregistre une ``Resiliation`` (motif, date d'effet, préavis observé, solde
@@ -1724,10 +1725,14 @@ def resilier_contrat(contrat, *, motif='', date_effet=None, preavis_jours=None,
       (``core/events.py``) est émis pour la propagation aval DÉCOUPLÉE (ex.
       arrêt des visites préventives SAV, ``apps/sav/receivers.py``) — best-
       effort, jamais bloquant pour la résiliation elle-même (déjà actée).
+    - ZCTR3 : ``motif_ref`` (optionnel) rattache un ``MotifResiliation``
+      NORMALISÉ, en PLUS du texte libre ``motif`` (jamais en remplacement).
+      Doit appartenir à la MÊME société que le contrat — sinon
+      ``ResiliationError`` et rien n'est créé.
 
     Renvoie la ``Resiliation`` créée (``version_creee`` renseigné si snapshot).
     """
-    from .models import Contrat, LigneEcheance, Resiliation
+    from .models import Contrat, LigneEcheance, MotifResiliation, Resiliation
 
     if today is None:
         today = timezone.localdate()
@@ -1744,6 +1749,23 @@ def resilier_contrat(contrat, *, motif='', date_effet=None, preavis_jours=None,
             f"Le contrat ne peut pas être résilié depuis l'état "
             f"« {contrat.statut} ».")
 
+    # ZCTR3 — le motif référentiel, s'il est fourni, doit appartenir à la même
+    # société que le contrat (jamais un motif d'une autre société).
+    if motif_ref is not None:
+        if isinstance(motif_ref, MotifResiliation):
+            if motif_ref.company_id != contrat.company_id:
+                raise ResiliationError(
+                    "Le motif de résiliation n'appartient pas à votre "
+                    "société.")
+        else:
+            try:
+                motif_ref = MotifResiliation.objects.get(
+                    pk=motif_ref, company=contrat.company)
+            except MotifResiliation.DoesNotExist:
+                raise ResiliationError(
+                    "Le motif de résiliation est introuvable dans votre "
+                    "société.")
+
     ancien = contrat.statut
 
     # Bascule de statut via la machine d'états GARDÉE (jamais un write direct).
@@ -1758,6 +1780,7 @@ def resilier_contrat(contrat, *, motif='', date_effet=None, preavis_jours=None,
         company=contrat.company,
         contrat=contrat,
         motif=motif or '',
+        motif_ref=motif_ref,
         date_demande=today,
         date_effet=date_effet,
         preavis_jours=preavis_jours,

@@ -47,6 +47,7 @@ from .models import (
     LigneEcheance,
     ModeleContrat,
     ModeleContratClause,
+    MotifResiliation,
     Obligation,
     OrdreLocation,
     PartieContrat,
@@ -87,6 +88,7 @@ from .serializers import (
     JalonContratSerializer,
     ModeleContratClauseSerializer,
     ModeleContratSerializer,
+    MotifResiliationSerializer,
     NoterContratSerializer,
     ObligationSerializer,
     OrdreLocationSerializer,
@@ -903,6 +905,7 @@ class ContratViewSet(_ContratsBaseViewSet):
             resiliation = services.resilier_contrat(
                 contrat,
                 motif=data.get('motif', ''),
+                motif_ref=data.get('motif_ref'),
                 date_effet=data.get('date_effet'),
                 preavis_jours=data.get('preavis_jours'),
                 solde=data.get('solde'),
@@ -2356,6 +2359,27 @@ class PlanRecurrentViewSet(_ContratsBaseViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['nom']
     ordering_fields = ['nom', 'date_creation', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        actif = self.request.query_params.get('actif')
+        if actif is not None:
+            qs = qs.filter(actif=actif.lower() in ('1', 'true', 'oui'))
+        return qs
+
+
+class MotifResiliationViewSet(_ContratsBaseViewSet):
+    """Référentiel éditable des motifs de résiliation (close reasons) — ZCTR3.
+
+    Scopé société (``TenantMixin``) ; ``company`` posée CÔTÉ SERVEUR
+    (``perform_create`` du ``TenantMixin`` — jamais lue du corps de requête).
+    CRUD complet. Filtre ``?actif=1``.
+    """
+    queryset = MotifResiliation.objects.all()
+    serializer_class = MotifResiliationSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code', 'libelle']
+    ordering_fields = ['ordre', 'libelle', 'date_creation', 'id']
 
     def get_queryset(self):
         qs = super().get_queryset()
