@@ -340,21 +340,22 @@ def montant_commande_bcf(bon_commande):
 
 
 def montant_recu_bcf(bon_commande):
-    """Montant HT REÇU pour un BCF : Σ sur les réceptions CONFIRMÉES de
-    (quantité reçue × prix d'achat unitaire de la ligne de commande). Reflète
-    la marchandise effectivement entrée en stock. INTERNE. Renvoie un Decimal.
-    """
+    """Montant HT REÇU pour un BCF : Σ sur ses LIGNES de commande de
+    (``quantite_recue`` × prix d'achat unitaire). Reflète la marchandise
+    effectivement entrée en stock. INTERNE. Renvoie un Decimal.
+
+    YPROC8 — lit ``quantite_recue`` (dénormalisée sur la ligne BCF, tenue à
+    jour à la fois par la confirmation de réception ET par le retour
+    fournisseur — ``_reouvrir_quantite_recue_bcf`` la DÉCRÉMENTE), plutôt que
+    de reconstruire depuis les lignes de réception confirmées : celles-ci ne
+    sont jamais modifiées par un retour, ce qui laissait le 3-voies
+    surestimer le reçu après un retour (le rapprochement OUVERT ne se
+    rafraîchissait jamais à la baisse)."""
     from decimal import Decimal
-    from .models import LigneReceptionFournisseur
     total = Decimal('0')
-    lignes = (LigneReceptionFournisseur.objects
-              .filter(reception__bon_commande=bon_commande,
-                      reception__statut='confirme')
-              .select_related('ligne_commande'))
-    for ligne in lignes:
-        pu = (ligne.ligne_commande.prix_achat_unitaire
-              if ligne.ligne_commande else Decimal('0'))
-        total += Decimal(str(ligne.quantite or 0)) * (pu or Decimal('0'))
+    for ligne in bon_commande.lignes.all():
+        total += Decimal(str(ligne.quantite_recue or 0)) * (
+            ligne.prix_achat_unitaire or Decimal('0'))
     return total
 
 
