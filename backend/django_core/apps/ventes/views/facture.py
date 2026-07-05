@@ -974,7 +974,14 @@ class FactureViewSet(viewsets.ModelViewSet):
         """Crée un Avoir (note de crédit) depuis une facture ÉMISE — admin only
         (get_permissions par défaut). Total ou partiel : si `lignes` est fourni
         on crédite ces lignes ; sinon on crédite toute la facture. Lié à la
-        facture d'origine ; le PDF reprend le style facture."""
+        facture d'origine ; le PDF reprend le style facture.
+
+        ZFAC5 — ``mode`` ∈ {``correction`` (défaut, comportement ci-dessus
+        inchangé), ``contre_passation``} : en ``contre_passation`` l'avoir
+        reprend TOUTES les lignes de la facture à l'identique (les `lignes`
+        du corps sont ignorées) et, à son émission, la facture d'origine
+        passe ``annulee`` avec un ``FactureActivity`` liant les deux pièces.
+        Refusé (400) si la facture a déjà des paiements (dû négatif évité)."""
         facture = self.get_object()
         self._guard_periode_verrouillee(facture)
         if facture.statut not in ('emise', 'payee', 'en_retard'):
@@ -982,9 +989,20 @@ class FactureViewSet(viewsets.ModelViewSet):
                 {'detail': 'Un avoir ne peut être créé que depuis une '
                            'facture émise (ou payée/en retard).'},
                 status=status.HTTP_400_BAD_REQUEST)
+        mode = (request.data.get('mode') or 'correction').strip()
+        if mode not in ('correction', 'contre_passation'):
+            return Response(
+                {'detail': "mode doit être 'correction' ou 'contre_passation'."},
+                status=status.HTTP_400_BAD_REQUEST)
+        if mode == 'contre_passation' and facture.montant_paye > 0:
+            return Response(
+                {'detail': ("Contre-passation refusée : cette facture a déjà "
+                            "des paiements enregistrés.")},
+                status=status.HTTP_400_BAD_REQUEST)
         company = facture.company
         motif = (request.data.get('motif') or '').strip()
-        lignes = request.data.get('lignes')
+        lignes = None if mode == 'contre_passation' \
+            else request.data.get('lignes')
         # Plafond : un avoir ne peut pas dépasser le reste créditable de la
         # facture (TTC − avoirs actifs déjà émis). Mesuré AVANT création.
         from decimal import Decimal, InvalidOperation
@@ -1103,6 +1121,21 @@ class FactureViewSet(viewsets.ModelViewSet):
         # jamais lu du corps de la requête).
         from .. import activity
         activity.log_facture_avoir(facture, request.user, avoir)
+        if mode == 'contre_passation':
+            # ZFAC5 — annulation NETTE : la facture d'origine passe annulee,
+            # avec un FactureActivity liant les deux pièces (avoir miroir).
+            from ..models import FactureActivity
+            ancien_statut = facture.statut
+            facture.statut = Facture.Statut.ANNULEE
+            facture.save(update_fields=['statut'])
+            FactureActivity.objects.create(
+                company=company, facture=facture, user=request.user,
+                kind=FactureActivity.Kind.MODIFICATION,
+                field='statut', field_label='Statut',
+                old_value=ancien_statut, new_value=Facture.Statut.ANNULEE,
+                body=(f"Facture annulée par contre-passation — avoir miroir "
+                      f"{avoir.reference}."),
+            )
         # YLEDG1 — événement documentaire générique (pose du seam pour
         # compta.ecriture_pour_avoir, jamais d'import de son service ici).
         from core.events import avoir_cree
