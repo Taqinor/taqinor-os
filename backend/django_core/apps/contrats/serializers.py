@@ -27,6 +27,7 @@ from .models import (
     MotifResiliation,
     Obligation,
     OrdreLocation,
+    ParametresLocation,
     PartieContrat,
     PieceConformite,
     PlanRecurrent,
@@ -1365,3 +1366,20 @@ class MotifResiliationSerializer(serializers.ModelSerializer):
             'categorie_display', 'date_creation',
         ]
         read_only_fields = ['id', 'date_creation']
+
+
+class ParametresLocationSerializer(serializers.ModelSerializer):
+    """Réglages de location, singleton par société — ZCTR4.
+
+    ``company`` n'est jamais exposée en écriture (posée côté serveur par le
+    viewset, qui garantit une seule ligne par société — ``get_or_create``).
+    Toutes les valeurs NULL/0 laissent le comportement XCTR17/19 inchangé.
+    """
+
+    class Meta:
+        model = ParametresLocation
+        fields = [
+            'id', 'duree_minimale_jours', 'temps_securite_heures',
+            'frais_retard_jour_defaut', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['id', 'date_creation', 'date_modification']

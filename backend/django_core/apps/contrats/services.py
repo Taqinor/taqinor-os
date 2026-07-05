@@ -31,6 +31,7 @@ Contenu :
 """
 import html as _html
 import re
+from datetime import timedelta
 from decimal import Decimal
 
 from django.db import transaction
@@ -3203,13 +3204,51 @@ def _ordres_actifs_qs(produit, numero_serie, *, exclure_id=None):
     return qs
 
 
+def _parametres_location(company):
+    """``ParametresLocation`` de la société, ou ``None`` si non créés — ZCTR4.
+    Une société sans ligne créée garde le comportement XCTR17/19 inchangé."""
+    from .models import ParametresLocation
+
+    return ParametresLocation.objects.filter(company=company).first()
+
+
+def _padding_jours(company):
+    """Temps de sécurité (padding), en JOURS ENTIERS arrondis au supérieur —
+    ZCTR4. ``0`` (comportement XCTR17 inchangé) si aucun ``ParametresLocation``
+    n'existe pour la société, ou si ``temps_securite_heures`` est ``0``."""
+    import math
+
+    parametres = _parametres_location(company)
+    if parametres is None or not parametres.temps_securite_heures:
+        return 0
+    return math.ceil(parametres.temps_securite_heures / 24)
+
+
 def _verifier_disponibilite(produit, numero_serie, date_debut, date_fin, *,
-                            exclure_id=None):
+                            exclure_id=None, company=None):
     """Lève ``OrdreLocationError`` si un ordre ACTIF chevauche la fenêtre
-    ``[date_debut, date_fin]`` pour le même produit + numéro de série."""
+    ``[date_debut, date_fin]`` pour le même produit + numéro de série.
+
+    ZCTR4 — si ``company`` est fournie et porte un ``ParametresLocation``
+    avec ``temps_securite_heures`` > 0, la fenêtre occupée de CHAQUE ordre
+    existant est élargie de ce padding (arrondi au jour supérieur) de part
+    et d'autre AVANT de tester le chevauchement — deux locations séparées de
+    moins que le temps de sécurité (entretien) sont refusées. ``company``
+    absente ou sans réglages = comportement XCTR17 strict inchangé."""
+    padding = _padding_jours(company) if company is not None else 0
     for autre in _ordres_actifs_qs(
             produit, numero_serie, exclure_id=exclure_id):
-        if autre.chevauche(date_debut, date_fin):
+        debut_elargi = autre.date_enlevement_prevue - timedelta(days=padding)
+        fin_elargie = autre.date_retour_prevue + timedelta(days=padding)
+        if debut_elargi <= date_fin and date_debut <= fin_elargie:
+            if padding:
+                raise OrdreLocationError(
+                    "Ce produit (n° de série "
+                    f"« {numero_serie or '—'} ») est déjà réservé/loué sur "
+                    "une période qui chevauche celle demandée (ou ne "
+                    f"respecte pas le temps de sécurité de {padding} "
+                    "jour(s))."
+                )
             raise OrdreLocationError(
                 "Ce produit (n° de série "
                 f"« {numero_serie or '—'} ») est déjà réservé/loué sur une "
@@ -3220,21 +3259,29 @@ def _verifier_disponibilite(produit, numero_serie, date_debut, date_fin, *,
 @transaction.atomic
 def creer_ordre_location(company, *, client_id, produit, numero_serie='',
                          date_reservation, date_enlevement_prevue,
-                         date_retour_prevue, tarif_jour=None, note='',
-                         created_by=None):
-    """Crée un ``OrdreLocation`` avec détection de conflit — XCTR17.
+                         date_retour_prevue, tarif_jour=None,
+                         frais_retard_jour=None, note='', created_by=None):
+    """Crée un ``OrdreLocation`` avec détection de conflit — XCTR17 (+ ZCTR4).
 
     GARDES (lèvent ``OrdreLocationError`` sans rien écrire) :
     - ``produit`` doit être ``louable`` (vérifié par l'appelant via
       ``stock.selectors.get_produit_louable`` — jamais réimporté ici) ;
     - ``date_enlevement_prevue`` doit être ≤ ``date_retour_prevue`` ;
+    - ZCTR4 : si ``ParametresLocation.duree_minimale_jours`` est posé pour la
+      société, la durée (bornes incluses) doit être ≥ ce minimum, sinon 400
+      (message FR) ;
     - aucun ordre ACTIF (réservée/enlevée) du même produit + numéro de série
       ne doit chevaucher la fenêtre ``[date_enlevement_prevue,
-      date_retour_prevue]`` (double réservation refusée).
+      date_retour_prevue]`` ÉLARGIE du temps de sécurité/padding (ZCTR4,
+      ``ParametresLocation.temps_securite_heures`` — 0/absent = strict
+      XCTR17 inchangé) — double réservation ou padding insuffisant refusés.
 
     ``tarif_jour`` : si absent, retombe sur ``produit.tarif_location_jour``.
     ``montant_estime`` = ``tarif_jour`` × nombre de jours (bornes incluses),
-    posé côté serveur (jamais lu du corps de requête). Renvoie l'``OrdreLocation``
+    posé côté serveur (jamais lu du corps de requête). ``frais_retard_jour``
+    (ZCTR4) : si absent, hérite de
+    ``ParametresLocation.frais_retard_jour_defaut`` (NULL si aucun réglage) —
+    XCTR19 s'applique ensuite sans changement. Renvoie l'``OrdreLocation``
     créé.
     """
     from .models import OrdreLocation
@@ -3244,13 +3291,28 @@ def creer_ordre_location(company, *, client_id, produit, numero_serie='',
             "La date d'enlèvement prévue doit précéder ou égaler la date de "
             "retour prévue.")
 
+    nb_jours = (date_retour_prevue - date_enlevement_prevue).days + 1
+
+    parametres = _parametres_location(company)
+    duree_minimale = (
+        parametres.duree_minimale_jours if parametres else None)
+    if duree_minimale and nb_jours < duree_minimale:
+        raise OrdreLocationError(
+            f"La durée de location ({nb_jours} jour(s)) est inférieure à "
+            f"la durée minimale requise ({duree_minimale} jour(s))."
+        )
+
     _verifier_disponibilite(
-        produit, numero_serie, date_enlevement_prevue, date_retour_prevue)
+        produit, numero_serie, date_enlevement_prevue, date_retour_prevue,
+        company=company)
 
     tarif = tarif_jour if tarif_jour is not None else produit.tarif_location_jour
-    nb_jours = (date_retour_prevue - date_enlevement_prevue).days + 1
     montant_estime = (
         Decimal(str(tarif)) * nb_jours if tarif is not None else Decimal('0'))
+
+    frais_retard = frais_retard_jour
+    if frais_retard is None and parametres is not None:
+        frais_retard = parametres.frais_retard_jour_defaut
 
     return OrdreLocation.objects.create(
         company=company,
@@ -3262,6 +3324,7 @@ def creer_ordre_location(company, *, client_id, produit, numero_serie='',
         date_retour_prevue=date_retour_prevue,
         tarif_jour=tarif,
         montant_estime=montant_estime,
+        frais_retard_jour=frais_retard,
         note=note or '',
         created_by=created_by,
     )
@@ -3711,7 +3774,7 @@ def prolonger_ordre_location(ordre, *, nouvelle_date_retour):
 
     _verifier_disponibilite(
         ordre.produit, ordre.numero_serie, ordre.date_enlevement_prevue,
-        nouvelle_date_retour, exclure_id=ordre.id)
+        nouvelle_date_retour, exclure_id=ordre.id, company=ordre.company)
 
     ordre.date_retour_prevue = nouvelle_date_retour
     if ordre.tarif_jour:

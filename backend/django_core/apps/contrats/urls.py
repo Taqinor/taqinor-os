@@ -20,6 +20,7 @@ from .views import (
     MotifResiliationViewSet,
     ObligationViewSet,
     OrdreLocationViewSet,
+    ParametresLocationViewSet,
     PartieContratViewSet,
     PieceConformiteViewSet,
     PlanRecurrentViewSet,
@@ -55,6 +56,7 @@ router.register(r'cycles-facturation', CycleFacturationLogViewSet)
 router.register(r'ordres-location', OrdreLocationViewSet)
 router.register(r'plans-recurrents', PlanRecurrentViewSet)
 router.register(r'motifs-resiliation', MotifResiliationViewSet)
+router.register(r'parametres-location', ParametresLocationViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

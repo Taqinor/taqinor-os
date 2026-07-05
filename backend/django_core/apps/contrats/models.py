@@ -2971,3 +2971,56 @@ class PlanRecurrent(models.Model):
         mois_index = date_reference.month - 1
         mois_bloc_debut = (mois_index // mois_par_unite) * mois_par_unite
         return date_reference.replace(month=mois_bloc_debut + 1, day=1)
+
+
+class ParametresLocation(models.Model):
+    """Réglages de location, singleton par société — ZCTR4.
+
+    Odoo Rental Settings porte « minimal rental duration », « default
+    padding time » (buffer d'indisponibilité entre deux locations d'une même
+    unité pour l'entretien) et « default delay costs ». XCTR17 détecte le
+    chevauchement STRICT (``OrdreLocation.chevauche``) mais ignore le
+    padding et n'a aucun défaut de frais/durée.
+
+    - ``duree_minimale_jours`` (NULL = aucun minimum) : la CRÉATION d'un
+      ``OrdreLocation`` plus court que ce minimum est refusée (400 FR).
+    - ``temps_securite_heures`` (défaut 0 = comportement XCTR17 inchangé) :
+      élargit de part et d'autre la fenêtre occupée utilisée par la
+      détection de conflit (``_verifier_disponibilite``) — deux locations
+      trop rapprochées (temps d'entretien insuffisant) sont refusées.
+    - ``frais_retard_jour_defaut`` (NULL = aucun défaut) : un ``OrdreLocation``
+      dont ``frais_retard_jour`` n'est PAS saisi hérite de ce défaut à la
+      création (XCTR19 s'applique ensuite sans changement).
+
+    Toutes les valeurs NULL/0 laissent le comportement XCTR17/19 inchangé —
+    ``ParametresLocation`` est entièrement OPTIONNEL (une société sans ligne
+    créée se comporte exactement comme avant ZCTR4).
+
+    Multi-tenant : ``company`` posée CÔTÉ SERVEUR (``OneToOneField``, une
+    seule ligne par société — singleton).
+    """
+
+    company = models.OneToOneField(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='parametres_location',
+        verbose_name='Société',
+    )
+    duree_minimale_jours = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Durée minimale (jours)')
+    temps_securite_heures = models.PositiveIntegerField(
+        default=0, verbose_name='Temps de sécurité / padding (heures)')
+    frais_retard_jour_defaut = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        verbose_name='Frais de retard / jour par défaut')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Paramètres de location'
+        verbose_name_plural = 'Paramètres de location'
+
+    def __str__(self):
+        return f'Paramètres de location — {self.company_id}'

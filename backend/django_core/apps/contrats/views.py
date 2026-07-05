@@ -50,6 +50,7 @@ from .models import (
     MotifResiliation,
     Obligation,
     OrdreLocation,
+    ParametresLocation,
     PartieContrat,
     PieceConformite,
     PlanRecurrent,
@@ -92,6 +93,7 @@ from .serializers import (
     NoterContratSerializer,
     ObligationSerializer,
     OrdreLocationSerializer,
+    ParametresLocationSerializer,
     PartieContratSerializer,
     PenaliteSLASerializer,
     PieceConformiteSerializer,
@@ -2076,6 +2078,8 @@ class OrdreLocationViewSet(_ContratsBaseViewSet):
                 date_enlevement_prevue=date_enlevement,
                 date_retour_prevue=date_retour,
                 tarif_jour=request.data.get('tarif_jour') or None,
+                frais_retard_jour=request.data.get(
+                    'frais_retard_jour') or None,
                 note=request.data.get('note', ''),
                 created_by=request.user,
             )
@@ -2387,3 +2391,30 @@ class MotifResiliationViewSet(_ContratsBaseViewSet):
         if actif is not None:
             qs = qs.filter(actif=actif.lower() in ('1', 'true', 'oui'))
         return qs
+
+
+class ParametresLocationViewSet(_ContratsBaseViewSet):
+    """Réglages de location, SINGLETON par société — ZCTR4.
+
+    ``GET/PATCH /parametres-location/courant/`` lit/modifie la ligne unique de
+    la société (créée à la volée, ``get_or_create``) ; ``company`` posée CÔTÉ
+    SERVEUR (jamais lue du corps de requête). Le CRUD standard reste
+    disponible (scopé société) mais ``courant/`` est le point d'entrée
+    recommandé côté frontend (jamais deux lignes par société — contrainte
+    ``OneToOneField``).
+    """
+    queryset = ParametresLocation.objects.all()
+    serializer_class = ParametresLocationSerializer
+
+    @action(detail=False, methods=['get', 'patch'], url_path='courant')
+    def courant(self, request):
+        parametres, _ = ParametresLocation.objects.get_or_create(
+            company=request.user.company)
+        if request.method == 'GET':
+            return Response(
+                ParametresLocationSerializer(parametres).data)
+        serializer = ParametresLocationSerializer(
+            parametres, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
