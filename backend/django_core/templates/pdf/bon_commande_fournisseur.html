@@ -56,7 +56,7 @@
       <div class="logo"><img src="{{ logo_uri }}" alt="Logo" /></div>
       {% endif %}
       <div class="doc-title">BON DE COMMANDE</div>
-      <div class="doc-ref">{{ bc.reference }}</div>
+      <div class="doc-ref">{{ bc.reference }}{% if bc.revision and bc.revision > 0 %} — Rév. {{ bc.revision }}{% endif %}</div>
       <div class="doc-internal">Document interne — fournisseur</div>
     </div>
     <div class="company-info">
@@ -99,6 +99,30 @@
       <strong>Statut</strong>
       <span>{{ bc.get_statut_display() }}</span>
     </div>
+    {% if acheteur_nom %}
+    <div class="meta-item">
+      <strong>Acheteur</strong>
+      <span>{{ acheteur_nom }}</span>
+    </div>
+    {% endif %}
+    {% if ref_fournisseur %}
+    <div class="meta-item">
+      <strong>Réf. fournisseur</strong>
+      <span>{{ ref_fournisseur }}</span>
+    </div>
+    {% endif %}
+    {% if incoterm %}
+    <div class="meta-item">
+      <strong>Incoterm</strong>
+      <span>{{ incoterm }}</span>
+    </div>
+    {% endif %}
+    {% if conditions_paiement %}
+    <div class="meta-item">
+      <strong>Conditions de paiement</strong>
+      <span>{{ conditions_paiement }}</span>
+    </div>
+    {% endif %}
   </div>
 
   <!-- Lignes -->
@@ -107,6 +131,7 @@
       <tr>
         <th>#</th>
         <th>SKU</th>
+        <th>Réf. fournisseur</th>
         <th>Désignation</th>
         <th class="text-right">Qté</th>
         <th class="text-right">P.U. achat HT</th>
@@ -118,6 +143,7 @@
       <tr>
         <td>{{ loop.index }}</td>
         <td>{{ ligne.produit.sku or '—' }}</td>
+        <td>{{ ref_produit_fournisseur.get(ligne.id, '') or '—' }}</td>
         <td>{{ ligne.produit.nom }}{% if ligne.produit.description %}<br /><span style="font-size:10px;color:#777">{{ ligne.produit.description }}</span>{% endif %}</td>
         <td class="text-right">{{ ligne.quantite }}</td>
         <td class="text-right">{{ "%.2f"|format(ligne.prix_achat_unitaire) }} MAD</td>
@@ -130,6 +156,9 @@
   <!-- Note -->
   {% if bc.note %}
   <div class="note-block"><strong>Note :</strong> {{ bc.note }}</div>
+  {% endif %}
+  {% if note_bas_page %}
+  <div class="note-block"><strong>Mentions :</strong> {{ note_bas_page }}</div>
   {% endif %}
 
   <!-- Total -->

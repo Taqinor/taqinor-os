@@ -45,10 +45,18 @@ def casablanca_today():
 
 
 def _echeance_effective(facture, today):
-    """Échéance retenue : ``date_echeance`` si posée, sinon émission + 30 j."""
+    """Échéance retenue : ``date_echeance`` si posée (jamais écrasée — input
+    freedom), sinon dérivée des conditions de paiement du client (XFAC23 —
+    délai négocié 30/60/90 j, fin de mois), sinon repli émission + 30 j
+    (comportement historique inchangé pour un client sans réglage)."""
     if facture.date_echeance:
         return facture.date_echeance
     base = facture.date_emission or today
+    from .services import calculer_date_echeance
+    derivee = calculer_date_echeance(
+        client=getattr(facture, 'client', None), date_emission=base)
+    if derivee is not None:
+        return derivee
     return base + timedelta(days=DEFAULT_ECHEANCE_DAYS)
 
 
@@ -216,18 +224,27 @@ def relance_reminders():
     cours) : la relance reste suspendue jusqu'à la date promise ou la rupture
     de la promesse."""
     from datetime import timedelta
-    from .models import Facture, FollowupLevel, RelanceLog
+    from .models import Facture, FollowupLevel, ParametrageRelanceClient, RelanceLog
     from .email_service import send_relance_email
 
     today = casablanca_today()
     _check_promesses_expirees(today)
     sent = 0
+    # ZFAC8 — un client en mode MANUEL est ignoré par le cron automatique (son
+    # responsable le suit via la liste manuelle, pas cet envoi programmé).
+    clients_manuels = set(
+        ParametrageRelanceClient.objects.filter(
+            mode=ParametrageRelanceClient.Mode.MANUEL,
+        ).values_list('client_id', flat=True)
+    )
     factures = Facture.objects.filter(
         prochaine_relance__lte=today, exclu_relances=False,
     ).exclude(
         statut__in=['payee', 'annulee', 'brouillon'],
     ).exclude(
         exclu_relances_jusquau__gte=today,
+    ).exclude(
+        client_id__in=clients_manuels,
     ).select_related('client', 'company').prefetch_related(
         'lignes', 'paiements', 'avoirs')
 
@@ -419,3 +436,85 @@ def pre_echeance_reminders():
 
     logger.info('pre_echeance_reminders: %s rappel(s) envoyé(s)', sent)
     return sent
+
+
+# XFAC25 — marqueur dédié du relevé mensuel automatique, pour l'idempotence
+# (un seul envoi par client et par mois, jamais deux).
+RELEVE_MENSUEL_MARKER = 'releve_mensuel'
+
+
+@shared_task(name='ventes.releve_mensuel_reminders')
+def releve_mensuel_reminders():
+    """XFAC25 — envoi programmé (mensuel, 1er du mois) du relevé de compte.
+
+    Pour chaque client opt-in (``releve_mensuel_auto=True``) AVEC email ET
+    encours (montant dû total sur ses factures ouvertes) non nul, envoie le
+    relevé PDF existant (``recouvrement._releve_data`` /
+    ``email_service.send_releve_email``) et consigne un ``EmailLog``.
+    Idempotent : un log dédié (``reference`` suffixée du marqueur + mois
+    YYYYMM) empêche un second envoi le même mois même si le job tourne
+    plusieurs fois. Solde nul / opt-out / sans email → rien n'est tenté ni
+    consigné. Renvoie le nombre de relevés envoyés."""
+    from decimal import Decimal
+    from .models import EmailLog
+    from .email_service import send_releve_email
+    from .recouvrement import _releve_data
+    from apps.crm.selectors import client_base_qs
+
+    today = casablanca_today()
+    mois = today.strftime('%Y%m')
+    marker = f'{RELEVE_MENSUEL_MARKER}-{mois}'
+    sent = 0
+
+    clients = client_base_qs().filter(
+        releve_mensuel_auto=True).exclude(email__isnull=True).exclude(email='')
+
+    for client in clients:
+        # Idempotence : un seul envoi par client et par mois.
+        deja_envoye = EmailLog.objects.filter(
+            client=client, reference=marker,
+        ).exists()
+        if deja_envoye:
+            continue
+        data = _releve_data(client, user=None)
+        try:
+            solde_du = Decimal(data['totaux']['du'])
+        except Exception:  # noqa: BLE001 — repli prudent si format inattendu
+            solde_du = Decimal('0')
+        if solde_du <= 0:
+            continue
+        log = send_releve_email(client, data, user=None)
+        if log is None:
+            continue
+        log.reference = f'{marker}'[:80]
+        log.save(update_fields=['reference'])
+        sent += 1
+
+    logger.info('releve_mensuel_reminders: %s relevé(s) envoyé(s)', sent)
+    return sent
+
+
+@shared_task(name='ventes.devis_a_facturer_reminder')
+def devis_a_facturer_reminder(jours=7):
+    """ZFAC12 — rappel de courtoisie pré-échéance côté DEVIS accepté non
+    facturé (backlog à facturer). Pour chaque ``Devis`` ``accepte`` sans
+    ``Facture`` liée depuis > ``jours`` jours (défaut 7, réglable), pose une
+    entrée SYSTÈME dans son chatter (``DevisActivity``) — NO-OP d'envoi,
+    comme les autres rappels (aucun email/SMS). Un devis déjà facturé est
+    ignoré. Idempotent : une seule entrée par devis et par jour calendaire
+    même si le job tourne plusieurs fois. Renvoie le nombre de rappels posés."""
+    from . import activity
+    from .selectors import devis_a_facturer
+    from authentication.models import Company
+
+    total = 0
+    for company in Company.objects.all():
+        candidats = devis_a_facturer(company, jours=jours)
+        for devis in candidats:
+            jours_ecoules = (casablanca_today() - devis.date_acceptation).days
+            note = activity.log_devis_a_facturer_reminder(devis, jours_ecoules)
+            if note is not None:
+                total += 1
+
+    logger.info('devis_a_facturer_reminder: %s rappel(s) posé(s)', total)
+    return total

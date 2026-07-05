@@ -9,6 +9,26 @@ détenue, caution unitaire, statut (détenu → retourné), avec la trace du ret
 Cross-app : `stock.Fournisseur` en STRING-FK uniquement. Montant de caution
 INTERNE. Additif & multi-tenant : FK `company` posée côté serveur. Ne fait PAS
 partie du stock vendable canonique (matériel non possédé).
+
+YSTCK8 — GARANTIE DE VALORISATION : ``MaterielConsigne`` n'a AUCUN FK vers
+``stock.Produit`` et ne crée jamais de ``stock.MouvementStock`` ni
+n'incrémente ``Produit.quantite_stock`` — structurellement, ce module ne peut
+donc jamais ajouter de layer de valeur à
+``apps.stock.services.stock_valuation_by_location``/``average_cost_with_source``
+(qui itèrent uniquement sur le catalogue ``Produit``). C'est le blueprint
+« consignation entrante = quantité suivie, VALEUR exclue (owner ≠ company),
+jamais au bilan » déjà respecté par construction — voir
+``apps.stock.services.stock_valuation_excludes_materiel_consigne`` pour la
+garde explicite + le test de non-régression.
+
+POINT D'EXTENSION (décision différée, pas construit ici) : quand la
+CONSOMMATION d'un lot consigné sera modélisée (ex. un touret de câble entamé
+et non retourné), il faudra alors un TRANSFERT DE PROPRIÉTÉ explicite
+(le matériel devient possédé → entre au catalogue/valorisation) + une DETTE
+fournisseur correspondante (pattern SAP 411-K, achat non facturé du
+consommable consigné). Rien de tout cela n'existe aujourd'hui : ``retourner``
+se contente de solder le statut (aucun mouvement de stock, aucune écriture
+compta).
 """
 from django.conf import settings
 from django.db import models

@@ -213,6 +213,13 @@ jobs:
           docker run --rm --network host --entrypoint sh minio/mc:latest -c "
             mc alias set local http://localhost:9000 erp_admin erp_minio_password &&
             mc mb -p local/erp-pdf local/erp-uploads"
+      # YOPSB5 — anti-dérive modèle<->migration : échoue si un changement de
+      # modèle n'a pas sa migration (index nommé à la main divergent,
+      # contrainte sans migration…). Tourne AVANT la suite de tests, même
+      # service Postgres/env que celle-ci.
+      - name: Check for missing migrations (makemigrations --check)
+        working-directory: backend/django_core
+        run: python manage.py makemigrations --check --dry-run
       # Palier « par-merge » : tout SAUF les tests lourds étiquetés `pdf`/`slow`
       # (rendu WeasyPrint, golden PDF…). Ceux-ci tournent dans release-verify
       # (manuel + nightly), pour un retour rapide sur chaque merge.
@@ -222,7 +229,7 @@ jobs:
         # `coverage report` imprime un % backend visible (informatif).
         run: |
           pip install coverage
-          coverage run manage.py test apps authentication -v 2 --exclude-tag=pdf --exclude-tag=slow
+          coverage run manage.py test apps authentication core -v 2 --exclude-tag=pdf --exclude-tag=slow
           coverage report
 
   frontend-lint:
@@ -268,8 +275,18 @@ jobs:
           python-version: '3.11'   # MUST match prod (django_core/fastapi Dockerfiles: python:3.11.x). A 3.12+/3.13 CI would not catch 3.11-only SyntaxErrors (e.g. backslash in f-string) that crash the live PDF generator.
       - name: Check pipeline stage names against STAGES.py
         run: python scripts/check_stages.py
+      - name: Check module registry <-> frontend consistency (ODX21)
+        run: python scripts/check_modules.py
+      - name: Check test determinism (no sleeps / unfrozen live-clock assertions)
+        run: python scripts/check_test_determinism.py
+      - name: Check invariant registry (docs/invariants.md still points at real tests)
+        run: python scripts/check_invariants.py
       - name: Check CODEMAP structural fingerprint
         run: python scripts/codemap_fingerprint.py --check
+      - name: Check for unsafe migration DDL patterns (YOPSB4)
+        run: python scripts/check_safe_migrations.py
+      - name: Test the safe-migrations checker itself (YOPSB4)
+        run: python -m unittest scripts.tests.test_check_safe_migrations -v
 
   web-build-test:
     needs: changes

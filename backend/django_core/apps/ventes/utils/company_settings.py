@@ -10,6 +10,7 @@ from decimal import Decimal
 
 DEFAULT_PREFIXES = {
     'devis': 'DEV', 'facture': 'FAC', 'avoir': 'AVO', 'bon_commande': 'BC',
+    'note_debit': 'ND',
 }
 
 

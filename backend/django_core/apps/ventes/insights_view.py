@@ -20,7 +20,7 @@ from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
-from authentication.permissions import IsAnyRole
+from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 
 
 def _s(d):
@@ -47,6 +47,10 @@ def cash_flow_forecast(request):
 
     Paramètres optionnels :
       - ?horizon=N  : nombre de jours à projeter (défaut 90)
+      - ?mode=comportement : XFAC15 — décale les buckets vers la date
+        d'encaissement PRÉVUE (échéance + retard moyen réel du client) au lieu
+        de la seule échéance théorique. Sans ce paramètre, comportement
+        strictement inchangé (buckets sur échéance théorique).
 
     Réponse :
     {
@@ -75,6 +79,10 @@ def cash_flow_forecast(request):
     from .models import Facture
     company = request.user.company
     today = timezone.now().date()
+    # XFAC15 — mode comportemental : décale les buckets vers la date
+    # d'encaissement prévue plutôt que l'échéance théorique.
+    mode_comportement = request.query_params.get('mode') == 'comportement'
+    scores_cache = {}
 
     # Bornes des buckets temporels.
     week_end = today + timedelta(days=6)
@@ -110,17 +118,29 @@ def cash_flow_forecast(request):
             if f.client else '—'
         )
 
-        if ech is None:
+        # XFAC15 — en mode comportemental, la date qui pilote le bucket est
+        # l'encaissement PRÉVU (échéance + retard moyen réel du client) ;
+        # sans le mode, ``ech`` reste l'échéance théorique inchangée.
+        ech_bucket = ech
+        if mode_comportement and ech is not None and f.client_id:
+            from .selectors import comportement_paiement, \
+                date_encaissement_prevue
+            if f.client_id not in scores_cache:
+                scores_cache[f.client_id] = comportement_paiement(f.client)
+            retard_moyen = scores_cache[f.client_id]['retard_moyen_jours']
+            ech_bucket = date_encaissement_prevue(f, retard_moyen) or ech
+
+        if ech_bucket is None:
             bucket = 'sans_echeance'
-        elif ech < today:
+        elif ech_bucket < today:
             bucket = 'en_retard'
-        elif ech <= week_end:
+        elif ech_bucket <= week_end:
             bucket = 'cette_semaine'
-        elif ech <= next_week_end:
+        elif ech_bucket <= next_week_end:
             bucket = 'semaine_suivante'
-        elif ech <= month_end:
+        elif ech_bucket <= month_end:
             bucket = 'ce_mois'
-        elif next_month_start <= ech <= next_month_end:
+        elif next_month_start <= ech_bucket <= next_month_end:
             bucket = 'mois_suivant'
         else:
             bucket = 'au_dela'
@@ -152,3 +172,67 @@ def cash_flow_forecast(request):
         'total_en_cours': _s(total),
         'rows': rows,
     })
+
+
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def analyse_facturation_view(request):
+    """GET /ventes/etats/analyse-facturation/?debut=&fin=[&export=csv]
+
+    ZFAC10 — « Invoice Analysis » : agrégat des factures scopées société
+    (HT/TVA/TTC) groupé par mois d'émission ET client ET statut, sur
+    ``[debut, fin)`` (défaut : mois courant, réutilise
+    ``exports.period_bounds`` — accepte aussi ``?month=``/``?quarter=``/
+    ``?start=&end=``). ``?export=csv`` télécharge le même agrégat en CSV.
+    Factures annulées exclues du CA. Lecture pure, cross-company isolé."""
+    from .exports import period_bounds
+    from .selectors import analyse_facturation
+
+    user = request.user
+    if not user.company_id and not user.is_superuser:
+        return Response({'detail': 'Accès refusé.'}, status=403)
+
+    params = dict(request.query_params.items())
+    if 'debut' in params and 'start' not in params:
+        params['start'] = params['debut']
+    if 'fin' in params and 'end' not in params:
+        params['end'] = params['fin']
+    try:
+        debut, fin = period_bounds(params)
+    except (ValueError, TypeError):
+        return Response({'detail': 'Période invalide.'}, status=400)
+
+    rows = analyse_facturation(user.company, debut, fin)
+
+    if (request.query_params.get('export') or '').lower() == 'csv':
+        import csv
+        import io
+
+        from django.http import HttpResponse
+
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow([
+            'Mois', 'Client', 'Statut', 'Nb factures',
+            'Total HT', 'Total TVA', 'Total TTC',
+        ])
+        for r in rows:
+            writer.writerow([
+                r['mois'], r['client_nom'], r['statut'], r['nb_factures'],
+                _s(r['total_ht']), _s(r['total_tva']), _s(r['total_ttc']),
+            ])
+        response = HttpResponse(buf.getvalue(), content_type='text/csv')
+        response['Content-Disposition'] = (
+            'attachment; filename="analyse-facturation.csv"')
+        return response
+
+    return Response([
+        {
+            'mois': r['mois'], 'client_id': r['client_id'],
+            'client_nom': r['client_nom'], 'statut': r['statut'],
+            'nb_factures': r['nb_factures'],
+            'total_ht': _s(r['total_ht']), 'total_tva': _s(r['total_tva']),
+            'total_ttc': _s(r['total_ttc']),
+        }
+        for r in rows
+    ])

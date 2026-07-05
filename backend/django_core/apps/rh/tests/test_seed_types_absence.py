@@ -35,7 +35,7 @@ class SeedTypesAbsenceTests(TestCase):
             TypeAbsence.objects.filter(company=self.co)
             .values_list('code', flat=True))
         self.assertEqual(
-            codes, {'MAT', 'PAT', 'MAR', 'NAI', 'DEC', 'CIRC', 'AT'})
+            codes, {'MAT', 'PAT', 'MAR', 'NAI', 'DEC', 'CIRC', 'AT', 'MAP'})
 
     def test_maternite_rule_correct(self):
         self._run()

@@ -14,9 +14,16 @@ duplique donc jamais le chantier. La création est company-scopée
 """
 from django.dispatch import receiver
 
-from core.events import devis_accepted
+from core.events import (
+    devis_accepted, reception_fournisseur_confirmee,
+    facture_fournisseur_creee,
+)
 
-from .services import create_installation_from_devis
+from .services import (
+    create_installation_from_devis, provisionner_gr_ir_reception,
+    lettrer_gr_ir_facture, peupler_series_entrepot_reception,
+    reserver_stock_recu_pour_chantier,
+)
 
 
 @receiver(devis_accepted,
@@ -34,3 +41,58 @@ def _creer_chantier_on_devis_accepted(sender, devis, user, ancien_statut,
     if company is None:
         return
     create_installation_from_devis(devis, user, company)
+
+
+@receiver(reception_fournisseur_confirmee,
+          dispatch_uid="installations_provisionner_gr_ir_on_reception")
+def _provisionner_gr_ir_on_reception(sender, reception, company, user,
+                                     **kwargs):
+    """YPROC3 — à la confirmation d'une réception fournisseur, provisionne la
+    dette latente GR/IR (idempotent, no-op sans BCF lié)."""
+    try:
+        provisionner_gr_ir_reception(
+            reception=reception, company=company, user=user)
+    except Exception:  # pragma: no cover - défensif, best-effort
+        pass
+
+
+@receiver(reception_fournisseur_confirmee,
+          dispatch_uid="installations_peupler_series_entrepot_on_reception")
+def _peupler_series_entrepot_on_reception(sender, reception, company, user,
+                                          **kwargs):
+    """YSTCK7 — à la confirmation d'une réception fournisseur, peuple le
+    registre entrepôt (SerieEntrepot) depuis les séries capturées à la ligne
+    (idempotent, best-effort)."""
+    try:
+        peupler_series_entrepot_reception(
+            reception=reception, company=company, user=user)
+    except Exception:  # pragma: no cover - défensif, best-effort
+        pass
+
+
+@receiver(reception_fournisseur_confirmee,
+          dispatch_uid="installations_reserver_stock_chantier_on_reception")
+def _reserver_stock_chantier_on_reception(sender, reception, company, user,
+                                          **kwargs):
+    """YPROC10 — à la confirmation d'une réception fournisseur dont le BCF
+    porte un `chantier_origine`, réserve les quantités reçues pour ce
+    chantier (idempotent, plafonné au manque recalculé, no-op sans lien)."""
+    try:
+        reserver_stock_recu_pour_chantier(reception=reception)
+    except Exception:  # pragma: no cover - défensif, best-effort
+        pass
+
+
+@receiver(facture_fournisseur_creee,
+          dispatch_uid="installations_lettrer_gr_ir_on_facture")
+def _lettrer_gr_ir_on_facture(sender, instance, company, user=None, **kwargs):
+    """YPROC3 — à la création d'une facture fournisseur, lettre les
+    provisions GR/IR ouvertes du même bon de commande (idempotent).
+
+    Contrat unifié du signal (core/events.py) : ``instance`` = la
+    stock.FactureFournisseur, ``user`` optionnel (None pour une création
+    système/hors-requête, ex. saisie manuelle via la vue)."""
+    try:
+        lettrer_gr_ir_facture(facture=instance, company=company, user=user)
+    except Exception:  # pragma: no cover - défensif, best-effort
+        pass

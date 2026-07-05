@@ -5,6 +5,14 @@ class KbConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'apps.kb'
     verbose_name = 'Base de connaissances'
+    module_manifest = {
+        'key': 'kb',
+        'label': 'Base de connaissances',
+        'icone': 'book',
+        'depends': [],
+        'description': 'Articles et procédures internes.',
+        'categorie': 'Technique',
+    }
 
     def ready(self):
         # KB6 — branche le récepteur qui (ré)indexe un article dans le RAG/DocQA

@@ -6,8 +6,10 @@ gate « Mise en service » (CH2). Multi-tenant : la société est TOUJOURS posé
 côté serveur (jamais lue du corps) ; le queryset est scopé à la société du
 demandeur.
 """
+from django.conf import settings
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
@@ -48,14 +50,38 @@ class CommissioningRecordViewSet(TenantMixin, viewsets.ModelViewSet):
         if inst is not None and inst.company_id != getattr(company, 'id', None):
             raise ValidationError({'installation': 'Chantier inconnu.'})
 
+    @staticmethod
+    def _check_instrument_etalonnage(serializer):
+        """XFSM12 — un instrument dont l'étalonnage FG80 est expiré est
+        toujours signalé (`instrument_etalonnage_expire`), et REFUSÉ (400)
+        AVANT toute écriture seulement si `INSTRUMENT_ETALONNAGE_BLOQUANT` est
+        activé (défaut : avertissement non-bloquant). Vérifié sur un
+        instrument NON PERSISTÉ pour ne jamais créer/modifier la fiche quand le
+        mode strict refuse."""
+        if not settings.INSTRUMENT_ETALONNAGE_BLOQUANT:
+            return
+        instrument_id = serializer.validated_data.get('instrument_id')
+        if not instrument_id:
+            return
+        pk = (serializer.instance.pk
+              if serializer.instance is not None else None)
+        transient = CommissioningRecord(pk=pk, instrument_id=instrument_id)
+        if transient.instrument_etalonnage_expire:
+            raise ValidationError({
+                'instrument_id': (
+                    "L'étalonnage de cet instrument est expiré — "
+                    "enregistrement bloqué (mode strict).")})
+
     def perform_create(self, serializer):
         self._check_installation_tenant(serializer)
+        self._check_instrument_etalonnage(serializer)
         serializer.save(
             company=self.request.user.company,
             created_by=self.request.user)
 
     def perform_update(self, serializer):
         self._check_installation_tenant(serializer)
+        self._check_instrument_etalonnage(serializer)
         serializer.save(company=self.request.user.company)
 
     @action(detail=True, methods=['post'], url_path='ajouter-iv',

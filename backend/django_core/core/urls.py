@@ -34,8 +34,10 @@ from .views import (
     ConsentRecordViewSet,
     DashboardViewSet,
     DataSubjectRequestViewSet,
+    ModuleCatalogViewSet,
     ModuleToggleViewSet,
     PaymentTransactionViewSet,
+    RegistreTraitementViewSet,
     SavedQueryViewSet,
     ScheduledExportViewSet,
     ScheduledJobViewSet,
@@ -43,6 +45,8 @@ from .views import (
     TenantThemeViewSet,
     TrashViewSet,
     WorkflowTemplateViewSet,
+    health_live,
+    health_ready,
 )
 
 router = DefaultRouter()
@@ -66,6 +70,9 @@ router.register(r'bulk-edit', BulkEditViewSet, basename='bulk-edit')
 # FG391 — flags de modules par société (activation/désactivation).
 router.register(r'module-toggles', ModuleToggleViewSet,
                 basename='module-toggle')
+# ODX3 — catalogue de modules (manifests + état) + activer/désactiver avec
+# fermeture de dépendances.
+router.register(r'modules', ModuleCatalogViewSet, basename='module-catalog')
 # FG392 — thème white-label par société (singleton, lecture/upsert).
 router.register(r'theme', TenantThemeViewSet, basename='tenant-theme')
 # FG393 — éditeur de modèles imprimables/brandés (PDF/email/WhatsApp).
@@ -76,6 +83,9 @@ router.register(r'consent-records', ConsentRecordViewSet,
                 basename='consent-record')
 router.register(r'dsr-requests', DataSubjectRequestViewSet,
                 basename='dsr-request')
+# XPLT23 — registre des traitements CNDP (loi 09-08).
+router.register(r'registre-traitements', RegistreTraitementViewSet,
+                basename='registre-traitement')
 # FG395 — sauvegarde/restauration en libre-service (par société).
 router.register(r'sauvegardes', BackupRunViewSet, basename='backup-run')
 # FG397 — page d'état / santé système (services + incidents récents).
@@ -97,4 +107,8 @@ urlpatterns = router.urls + [
     path('dashboards-partages/public/<str:token>/', dashboard_public,
          name='dashboard-partage-public'),
     path('dashboards-tv/', dashboard_tv, name='dashboard-tv'),
+    # YOPSB14 — probes readiness/liveness légers, non authentifiés, jamais
+    # de données société (à sonder par nginx/Caddy avant de router).
+    path('health/live/', health_live, name='health-live'),
+    path('health/ready/', health_ready, name='health-ready'),
 ]

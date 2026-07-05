@@ -5,11 +5,13 @@ dérivée du ``projet`` (jamais lue d'un corps de requête) ; aucun import
 cross-app (on reste dans ``gestion_projet``).
 """
 from datetime import timedelta
+from decimal import ROUND_HALF_UP as _ROUND_HALF_UP
 from decimal import Decimal
 
 from django.db import models, transaction
 
 from .models import (
+    AffectationRessource,
     BaselinePlanning,
     BaselineTache,
     DependanceTache,
@@ -17,6 +19,7 @@ from .models import (
     PhaseProjet,
     Projet,
     RecurrenceTache,
+    RessourceProfil,
     Tache,
 )
 
@@ -107,6 +110,27 @@ class FacturationRegieError(Exception):
 
 
 @transaction.atomic
+def _avertissement_politique_facturation(projet, chemin_attendu):
+    """Avertissement NON BLOQUANT (ZPRJ10) sur une incohérence de politique.
+
+    ``chemin_attendu`` est la politique que l'action de facturation appelée
+    représente (``Projet.PolitiqueFacturation.REGIE`` pour le T&M,
+    ``...SITUATIONS`` pour les situations BTP). Si la politique DÉCLARÉE du
+    projet diverge, renvoie un message d'avertissement — jamais une exception
+    ni un blocage : la politique reste purement déclarative (règle #4, couche
+    séparée des statuts devis/BC/facture).
+    """
+    if projet.politique_facturation == chemin_attendu:
+        return None
+    return (
+        f"Politique de facturation déclarée du projet : "
+        f"« {projet.get_politique_facturation_display()} » — cette action "
+        f"facture pourtant en mode « "
+        f"{dict(Projet.PolitiqueFacturation.choices)[chemin_attendu]} ». "
+        f"Vérifiez que c'est intentionnel."
+    )
+
+
 def facturer_temps_projet(projet, *, debut, fin, user):
     """Facture en régie (T&M) les temps APPROUVÉS + facturables d'une période.
 
@@ -197,6 +221,8 @@ def facturer_temps_projet(projet, *, debut, fin, user):
         'montant_ht': montant_ht,
         'nb_lignes': len(lignes),
         'groupes': groupes_tries,
+        'avertissement_politique': _avertissement_politique_facturation(
+            projet, Projet.PolitiqueFacturation.REGIE),
     }
 
 
@@ -909,6 +935,10 @@ def _arrondir_duree_heures(minutes, pas_minutes=15):
 
     Ex. ``pas_minutes=15`` (quart d'heure) : 1 minute → 15 min (0.25 h) ;
     16 minutes → 30 min (0.50 h) ; 0 minute → 0 h. Renvoie un ``Decimal``.
+
+    Conservé pour compatibilité (utilisé quand un ``pas_minutes`` explicite
+    est passé, ex. override de requête) — le chemin PAR DÉFAUT passe
+    désormais par ``arrondir_duree`` (ZPRJ1, réglage par société).
     """
     import math
     if minutes <= 0:
@@ -917,6 +947,64 @@ def _arrondir_duree_heures(minutes, pas_minutes=15):
     paliers = math.ceil(minutes / pas)
     minutes_arrondies = paliers * pas
     return (Decimal(minutes_arrondies) / Decimal('60')).quantize(Decimal('0.01'))
+
+
+# ── Réglages société temps (ZPRJ1) ───────────────────────────────────────────
+def get_or_create_reglage_temps(company):
+    """Réglage temps SINGLETON de ``company`` (get_or_create, ZPRJ1).
+
+    Jamais créé plusieurs fois pour une même société (``OneToOneField``) :
+    un premier appel le crée avec les valeurs par défaut (arrondi 15 min au
+    pas supérieur, saisie en heures, 8 h/jour), les appels suivants renvoient
+    la même ligne. ``company`` est TOUJOURS l'appelant — jamais lue d'un
+    corps de requête.
+    """
+    from .models import ReglageTemps
+
+    reglage, _ = ReglageTemps.objects.get_or_create(company=company)
+    return reglage
+
+
+def arrondir_duree(company, heures):
+    """Arrondit une durée en HEURES selon le réglage temps de ``company``
+    (ZPRJ1) — remplace la constante en dur consommée par XPRJ5 (chrono) et,
+    demain, la grille hebdomadaire XPRJ6.
+
+    Applique ``arrondi_minutes`` (pas, en minutes) et ``mode_arrondi``
+    (inférieur/supérieur/proche) du ``ReglageTemps`` de la société — get_or_
+    create, jamais d'erreur si le réglage n'existe pas encore. Cas limites :
+    ``heures=0`` → ``Decimal('0')`` (jamais un pas complet à partir de rien) ;
+    une durée déjà EXACTEMENT sur un palier n'est jamais modifiée, quel que
+    soit le mode ; ``+1 minute`` au-delà d'un palier bascule le résultat
+    selon le mode (inférieur reste sur le palier en dessous, supérieur monte
+    au palier au-dessus, proche choisit le plus proche — égalité stricte
+    arrondie au SUPÉRIEUR). Renvoie un ``Decimal`` à 2 décimales.
+    """
+    import math
+
+    reglage = get_or_create_reglage_temps(company)
+    pas_minutes = max(1, int(reglage.arrondi_minutes or 15))
+    mode = reglage.mode_arrondi or 'superieur'
+
+    minutes = Decimal(str(heures or 0)) * Decimal('60')
+    if minutes <= 0:
+        return Decimal('0.00')
+
+    pas = Decimal(pas_minutes)
+    if mode == 'inferieur':
+        paliers = math.floor(minutes / pas)
+        # Une durée non nulle mais sous le premier palier arrondit à 0 pour le
+        # mode « inférieur » (comportement voulu : jamais négatif, jamais un
+        # palier créé à partir de rien) — cohérent avec l'existant XPRJ5.
+        minutes_arrondies = Decimal(paliers) * pas
+    elif mode == 'proche':
+        minutes_arrondies = (minutes / pas).to_integral_value(
+            rounding=_ROUND_HALF_UP) * pas
+    else:  # 'superieur' (défaut) — comportement historique XPRJ5 conservé.
+        paliers = math.ceil(minutes / pas)
+        minutes_arrondies = Decimal(paliers) * pas
+
+    return (minutes_arrondies / Decimal('60')).quantize(Decimal('0.01'))
 
 
 @transaction.atomic
@@ -942,13 +1030,16 @@ def demarrer_chrono(tache, user):
 
 
 @transaction.atomic
-def arreter_chrono(user, *, pas_minutes=15):
+def arreter_chrono(user, *, pas_minutes=None):
     """Arrête le chrono actif de ``user`` et crée la ``Timesheet`` brouillon.
 
-    Lève ``ChronoError`` si aucun chrono actif. La durée est
-    ``maintenant − demarre_a``, arrondie au quart d'heure SUPÉRIEUR
-    (``pas_minutes``, paramétrable — défaut 15 min). La ressource est celle
-    liée à l'utilisateur (``RessourceProfil.user``) — lève ``ChronoError`` si
+    Lève ``ChronoError`` si aucun chrono actif. La durée est ``maintenant −
+    demarre_a``. Par DÉFAUT (``pas_minutes=None``), l'arrondi suit le réglage
+    de la société (``services.arrondir_duree`` — ZPRJ1, pas/mode
+    paramétrables via ``reglages-temps/``) ; un ``pas_minutes`` explicite
+    (override de requête) garde l'ancien comportement (arrondi au SUPÉRIEUR
+    de ce pas, compatibilité XPRJ5). La ressource est celle liée à
+    l'utilisateur (``RessourceProfil.user``) — lève ``ChronoError`` si
     l'utilisateur n'a AUCUN profil ressource (message explicite). Supprime le
     ``ChronoEnCours`` après création. Renvoie la ``Timesheet`` créée.
     """
@@ -970,7 +1061,11 @@ def arreter_chrono(user, *, pas_minutes=15):
     maintenant = timezone.now()
     minutes_ecoulees = max(
         0, (maintenant - chrono.demarre_a).total_seconds() / 60)
-    heures = _arrondir_duree_heures(minutes_ecoulees, pas_minutes)
+    if pas_minutes is not None:
+        heures = _arrondir_duree_heures(minutes_ecoulees, pas_minutes)
+    else:
+        heures = arrondir_duree(
+            chrono.company, Decimal(str(minutes_ecoulees)) / Decimal('60'))
 
     timesheet = Timesheet.objects.create(
         company=chrono.company,
@@ -1592,3 +1687,771 @@ def _split_deps(raw):
     if not raw:
         return []
     return [c.strip() for c in str(raw).split(';') if c.strip()]
+
+
+# ── Journal des modifications de tâches et jalons (XPRJ26) ──────────────────
+# Champs sensibles suivis pour chaque type de cible : au-delà (libellé,
+# description...) rien n'est journalisé — seules les valeurs qui pèsent sur le
+# PLANNING/l'audit sont tracées, pour ne pas noyer l'historique.
+TACHE_CHAMPS_SUIVIS = (
+    'statut', 'date_debut_prevue', 'date_fin_prevue', 'charge_estimee',
+    'assigne_id',
+)
+JALON_CHAMPS_SUIVIS = ('date_prevue', 'statut', 'facturation_pct')
+
+
+def _valeur_str(valeur):
+    """Représentation texte stable d'une valeur de champ pour le journal.
+
+    ``None`` → chaîne vide. Un ``Decimal`` a ses zéros décimaux de fin
+    retirés (p.ex. ``Decimal('30.00')`` -> ``'30'``, ``Decimal('12.50')`` ->
+    ``'12.5'``) SANS jamais basculer en notation scientifique (contrairement à
+    ``Decimal.normalize()``, qui donnerait ``'3E+1'``) : ``facturation_pct``
+    (``DecimalField(decimal_places=2)``) revient de la base avec 2 décimales
+    fixes même quand la valeur saisie n'en avait aucune — sans ce nettoyage,
+    une valeur INCHANGÉE en base (mais reformattée) semblerait avoir changé de
+    forme dans le journal. Le reste est converti tel quel (dates et
+    énumérations ont déjà un ``str()`` lisible).
+    """
+    if valeur is None:
+        return ''
+    if isinstance(valeur, Decimal):
+        texte = format(valeur, 'f')
+        if '.' in texte:
+            texte = texte.rstrip('0').rstrip('.')
+        return texte or '0'
+    return str(valeur)
+
+
+def journaliser_modification_tache(tache, anciennes_valeurs, *, auteur):
+    """Journalise les champs sensibles modifiés d'une ``Tache`` (XPRJ26).
+
+    ``anciennes_valeurs`` est un dict ``{champ: valeur_avant}`` capturé par
+    l'appelant AVANT la sauvegarde (voir ``views.TacheViewSet.perform_update``).
+    Une entrée ``ProjetActivity`` (``cible_type='tache'``, ``cible_id=tache.id``)
+    est créée PAR CHAMP réellement changé parmi ``TACHE_CHAMPS_SUIVIS`` — aucune
+    entrée si rien de suivi n'a changé. ``company``/``auteur`` posés côté
+    serveur. N'écrit RIEN d'autre (comportement de sauvegarde inchangé).
+    """
+    from .models import ProjetActivity
+
+    for champ in TACHE_CHAMPS_SUIVIS:
+        if champ not in anciennes_valeurs:
+            continue
+        avant = anciennes_valeurs[champ]
+        apres = getattr(tache, champ)
+        if avant == apres:
+            continue
+        ProjetActivity.objects.create(
+            company=tache.company,
+            projet=tache.projet,
+            cible_type=ProjetActivity.CibleType.TACHE,
+            cible_id=tache.id,
+            champ=champ,
+            old_value=_valeur_str(avant),
+            new_value=_valeur_str(apres),
+            auteur=auteur,
+        )
+
+
+def journaliser_modification_jalon(jalon, anciennes_valeurs, *, auteur):
+    """Journalise les champs sensibles modifiés d'un ``Jalon`` (XPRJ26).
+
+    Même contrat que ``journaliser_modification_tache`` (voir sa docstring),
+    pour ``JALON_CHAMPS_SUIVIS``. ``cible_type='jalon'``, ``cible_id=jalon.id``.
+    """
+    from .models import ProjetActivity
+
+    for champ in JALON_CHAMPS_SUIVIS:
+        if champ not in anciennes_valeurs:
+            continue
+        avant = anciennes_valeurs[champ]
+        apres = getattr(jalon, champ)
+        if avant == apres:
+            continue
+        ProjetActivity.objects.create(
+            company=jalon.company,
+            projet=jalon.projet,
+            cible_type=ProjetActivity.CibleType.JALON,
+            cible_id=jalon.id,
+            champ=champ,
+            old_value=_valeur_str(avant),
+            new_value=_valeur_str(apres),
+            auteur=auteur,
+        )
+
+
+# ── Génération IA d'un plan de tâches depuis le devis (XPRJ29) ──────────────
+class PlanTachesIAError(Exception):
+    """Erreur métier lors de la génération/matérialisation du plan IA."""
+
+
+class PlanTachesIAIndisponible(PlanTachesIAError):
+    """Levée quand le service IA (FastAPI, key-gated) est indisponible."""
+
+
+def _fastapi_internal_url():
+    """URL interne du service FastAPI IA (même convention que ``apps.chat``/
+    ``apps.crm.intake_photo``)."""
+    import os
+
+    from django.conf import settings
+
+    base = (getattr(settings, 'FASTAPI_INTERNAL_URL', '')
+            or os.environ.get('FASTAPI_INTERNAL_URL', '')
+            or 'http://fastapi_ia:8001/api/fastapi')
+    return base.rstrip('/') + '/projets/generer-plan'
+
+
+def _service_token_for(user):
+    """Jeton JWT court pour relayer l'auth vers FastAPI (même motif que
+    ``apps.crm.intake_photo._service_token_for``)."""
+    if user is None:
+        return ''
+    try:
+        from rest_framework_simplejwt.tokens import AccessToken
+        return str(AccessToken.for_user(user))
+    except Exception:  # pragma: no cover - défensif
+        return ''
+
+
+def proposer_plan_taches_ia(devis_data, type_installation, *, user=None):
+    """Propose un brouillon de plan de tâches (WBS) via le service IA (XPRJ29).
+
+    ``devis_data`` provient EXCLUSIVEMENT de ``apps.ventes.selectors.
+    devis_pour_projet`` (jamais un import de ``ventes.models`` — frontière
+    cross-app). Délègue au service FastAPI ``POST /projets/generer-plan``
+    (key-gated sur ``GROQ_API_KEY``/provider équivalent). AUCUNE écriture :
+    pure proposition JSON, à matérialiser explicitement APRÈS confirmation
+    utilisateur via ``materialiser_plan_taches``.
+
+    Lève ``PlanTachesIAIndisponible`` (503 côté vue) si le service IA renvoie
+    503 (clé absente) ou est injoignable ; ``PlanTachesIAError`` (400 côté vue)
+    si la réponse est invalide (502 FastAPI ou payload inattendu).
+    """
+    import requests
+
+    url = _fastapi_internal_url()
+    token = _service_token_for(user)
+    headers = {'Authorization': f'Bearer {token}'} if token else {}
+    payload = {
+        'devis': {
+            'id': devis_data.get('id'),
+            'montant_materiel': float(devis_data.get('montant_materiel') or 0),
+            'montant_main_oeuvre': float(
+                devis_data.get('montant_main_oeuvre') or 0),
+            'nb_lignes_materiel': devis_data.get('nb_lignes_materiel') or 0,
+            'nb_lignes_main_oeuvre': devis_data.get(
+                'nb_lignes_main_oeuvre') or 0,
+        },
+        'type_installation': type_installation or 'residentiel',
+    }
+    try:
+        resp = requests.post(url, json=payload, headers=headers, timeout=30)
+    except requests.RequestException as exc:
+        raise PlanTachesIAIndisponible(
+            "Le service de génération IA est injoignable.") from exc
+
+    if resp.status_code == 503:
+        raise PlanTachesIAIndisponible(
+            "Le service de génération IA n'est pas configuré (clé LLM "
+            "absente).")
+    if resp.status_code != 200:
+        raise PlanTachesIAError(
+            "Le service IA n'a pas pu proposer de plan exploitable.")
+    try:
+        data = resp.json()
+    except ValueError as exc:
+        raise PlanTachesIAError(
+            "Réponse du service IA illisible.") from exc
+    taches = data.get('taches') if isinstance(data, dict) else None
+    if not isinstance(taches, list) or not taches:
+        raise PlanTachesIAError("Le plan proposé est vide ou invalide.")
+    return {'taches': taches}
+
+
+@transaction.atomic
+def materialiser_plan_taches(projet, plan):
+    """Matérialise un plan de tâches PROPOSÉ (XPRJ29) — APRÈS confirmation.
+
+    ``plan`` est le dict ``{'taches': [{code, libelle, phase, duree_jours,
+    dependances_fs}, ...]}`` renvoyé par ``proposer_plan_taches_ia`` (ou
+    modifié par l'utilisateur avant confirmation — aucune re-validation
+    contre le LLM, seulement contre la forme attendue). Crée, pour chaque
+    tâche : la ``PhaseProjet`` si absente (même logique idempotente
+    qu'``instancier_modele``), la ``Tache`` (dates dérivées de
+    ``duree_jours`` en jours calendaires depuis ``projet.date_debut`` — ou
+    aujourd'hui si absent — de façon SÉQUENTIELLE dans l'ordre des tâches),
+    puis les ``DependanceTache`` FS déclarées (codes inconnus ignorés,
+    silencieusement — la proposition a déjà été nettoyée côté IA mais on ne
+    fait jamais confiance en écriture). ``company`` est TOUJOURS celle du
+    ``projet``. Écritures atomiques. Renvoie la liste des ``Tache`` créées.
+    """
+    from datetime import date as _date
+    from datetime import timedelta
+
+    from .models import PhaseProjet
+
+    taches_brutes = (plan or {}).get('taches') or []
+    if not isinstance(taches_brutes, list) or not taches_brutes:
+        raise PlanTachesIAError("Le plan à matérialiser est vide.")
+
+    libelles_phase = {tp: lib for tp, lib in PHASES_STANDARD}
+    ordres_phase = {
+        tp: i for i, (tp, _) in enumerate(PHASES_STANDARD, start=1)}
+    phases_par_type = {
+        p.type_phase: p for p in projet.phases.all()}
+
+    def _phase_pour(type_phase):
+        phase = phases_par_type.get(type_phase)
+        if phase is None:
+            phase = PhaseProjet.objects.create(
+                company=projet.company,
+                projet=projet,
+                type_phase=type_phase,
+                libelle=libelles_phase.get(type_phase, ''),
+                ordre=ordres_phase.get(type_phase, 0),
+            )
+            phases_par_type[type_phase] = phase
+        return phase
+
+    types_phase_valides = {tp for tp, _ in PHASES_STANDARD}
+    curseur = projet.date_debut or _date.today()
+    taches_par_code = {}
+    creees = []
+    for ordre, brut in enumerate(taches_brutes, start=1):
+        if not isinstance(brut, dict):
+            continue
+        code = str(brut.get('code', '')).strip()
+        libelle = str(brut.get('libelle', '')).strip()
+        if not libelle:
+            continue
+        type_phase = str(brut.get('phase', '')).strip().lower()
+        if type_phase not in types_phase_valides:
+            type_phase = PhaseProjet.TypePhase.ETUDE
+        phase = _phase_pour(type_phase)
+        try:
+            duree = max(1, int(brut.get('duree_jours', 1) or 1))
+        except (TypeError, ValueError):
+            duree = 1
+        date_debut_prevue = curseur
+        date_fin_prevue = curseur + timedelta(days=duree - 1)
+        curseur = date_fin_prevue + timedelta(days=1)
+        tache = Tache.objects.create(
+            company=projet.company,
+            projet=projet,
+            phase=phase,
+            libelle=libelle,
+            code_wbs=code,
+            ordre=ordre,
+            date_debut_prevue=date_debut_prevue,
+            date_fin_prevue=date_fin_prevue,
+        )
+        creees.append(tache)
+        if code:
+            taches_par_code[code] = tache
+
+    for brut in taches_brutes:
+        if not isinstance(brut, dict):
+            continue
+        code = str(brut.get('code', '')).strip()
+        successeur = taches_par_code.get(code)
+        if successeur is None:
+            continue
+        for dep_code in (brut.get('dependances_fs') or []):
+            predecesseur = taches_par_code.get(str(dep_code).strip())
+            if predecesseur is None or predecesseur.id == successeur.id:
+                continue
+            DependanceTache.objects.create(
+                company=projet.company,
+                predecesseur=predecesseur,
+                successeur=successeur,
+                type_dependance=DependanceTache.TypeDependance.FS,
+            )
+
+    if not creees:
+        raise PlanTachesIAError(
+            "Aucune tâche exploitable dans le plan à matérialiser.")
+    return creees
+
+
+# ── Plan de ressources : publication (ZPRJ2) ────────────────────────────────
+@transaction.atomic
+def publier_affectations(company, *, ids=None, ressource_id=None,
+                         debut=None, fin=None, auteur=None):
+    """Publie un lot d'``AffectationRessource`` BROUILLON (ZPRJ2).
+
+    Sélectionne soit par ``ids`` (liste d'identifiants) soit par
+    ``ressource_id`` + ``debut``/``fin`` (période — bornes INCLUSIVES,
+    convention PROJ16/17), scopé ``company``. IDEMPOTENT : une affectation
+    déjà ``publie`` est simplement IGNORÉE (jamais republiée, jamais
+    renotifiée) — un re-run ne fait rien de plus. Pose ``statut_publication``,
+    ``publie_le`` (horodatage serveur) et ``publie_par`` CÔTÉ SERVEUR sur
+    chaque affectation nouvellement publiée, puis notifie CHAQUE ressource
+    concernée UNE FOIS (regroupe par ressource — pas une notification par
+    affectation) via ``apps.notifications.services.notify`` (import
+    fonction-local, cross-app, BEST-EFFORT : un échec de notification
+    n'interrompt jamais la transaction ni les ressources suivantes). Une
+    ressource sans ``user`` lié est publiée normalement mais ignorée
+    proprement côté notification (personne à notifier). Renvoie
+    ``{'nb_publiees': int, 'nb_deja_publiees': int, 'nb_notifies': int}``.
+    """
+    from django.utils import timezone
+
+    qs = AffectationRessource.objects.filter(company=company)
+    if ids:
+        qs = qs.filter(id__in=list(ids))
+    elif ressource_id is not None and debut is not None and fin is not None:
+        qs = qs.filter(
+            ressource_id=ressource_id, date_debut__lte=fin,
+            date_fin__gte=debut)
+    else:
+        return {'nb_publiees': 0, 'nb_deja_publiees': 0, 'nb_notifies': 0}
+
+    affectations = list(qs.select_related('ressource'))
+    nb_deja_publiees = sum(
+        1 for a in affectations
+        if a.statut_publication == AffectationRessource.StatutPublication.PUBLIE)
+    a_publier = [
+        a for a in affectations
+        if a.statut_publication != AffectationRessource.StatutPublication.PUBLIE]
+
+    maintenant = timezone.now()
+    ids_a_publier = [a.id for a in a_publier]
+    if ids_a_publier:
+        AffectationRessource.objects.filter(id__in=ids_a_publier).update(
+            statut_publication=AffectationRessource.StatutPublication.PUBLIE,
+            publie_le=maintenant,
+            publie_par=auteur,
+        )
+
+    # Regroupe par ressource pour UNE notification par ressource (pas une par
+    # affectation), best-effort — un échec ne casse jamais la publication.
+    ressources_a_notifier = {}
+    for a in a_publier:
+        if a.ressource_id is not None:
+            ressources_a_notifier.setdefault(a.ressource_id, a.ressource)
+
+    nb_notifies = 0
+    if ressources_a_notifier:
+        try:
+            from apps.notifications.models import EventType
+            from apps.notifications.services import notify
+        except Exception:  # pragma: no cover - défensif
+            EventType = None
+            notify = None
+
+        for ressource in ressources_a_notifier.values():
+            if notify is None or ressource.user_id is None:
+                continue
+            try:
+                notify(
+                    ressource.user,
+                    EventType.DIGEST,
+                    title='Planning publié',
+                    body='Votre planning a été publié — consultez vos '
+                         'créneaux.',
+                    link=f'gestion_projet:planning_publie:{ressource.id}:'
+                         f'{maintenant.date()}',
+                    company=company,
+                )
+                nb_notifies += 1
+            except Exception:  # pragma: no cover - best-effort
+                continue
+
+    return {
+        'nb_publiees': len(a_publier),
+        'nb_deja_publiees': nb_deja_publiees,
+        'nb_notifies': nb_notifies,
+    }
+
+
+# ── Copier le plan de ressources de la semaine précédente (ZPRJ3) ──────────
+@transaction.atomic
+def copier_semaine_precedente(company, *, semaine_source, semaine_cible,
+                              ressource_id=None, equipe_id=None):
+    """Copie les affectations d'une fenêtre SOURCE vers une fenêtre CIBLE
+    décalée de 7 j × N (ZPRJ3) — équivalent « Copy previous week ».
+
+    ``semaine_source``/``semaine_cible`` sont les débuts (dates) des deux
+    fenêtres de 7 jours [``semaine_X``, ``semaine_X + 6 jours``]. Duplique
+    chaque ``AffectationRessource`` de la société (filtrée par ``ressource_id``
+    OU ``equipe_id`` si fourni — sinon toutes) dont la fenêtre est ENTIÈREMENT
+    contenue dans la semaine source, en décalant ``date_debut``/``date_fin`` du
+    même nombre de jours que l'écart entre les deux débuts de semaine, en
+    statut BROUILLON (ZPRJ2 — jamais publié directement).
+
+    SAUTE (sans écrire) toute copie qui tomberait :
+      * sur une ``Indisponibilite`` de la ressource (``selectors.
+        ressource_disponible_sur_periode``) — les affectations d'équipe/actif
+        matériel n'ont pas de ressource individuelle et ne sont jamais
+        sautées pour ce motif ;
+      * en CONFLIT avec une affectation déjà existante de la même ressource
+        sur la fenêtre cible (détection identique à ``selectors.
+        conflits_affectation`` — chevauchement calendaire, y compris via
+        équipe).
+
+    N'écrit RIEN si ``semaine_source == semaine_cible`` (fenêtre nulle,
+    éviterait un auto-doublon immédiat) — renvoie un rapport vide. AUCUN
+    doublon si ré-exécutée deux fois de suite sur la MÊME cible : la seconde
+    exécution retrouve les affectations déjà copiées sur la fenêtre cible et
+    les compte en conflit (donc sautées), jamais dupliquées deux fois.
+
+    Renvoie ``{'nb_copiees': int, 'nb_sautees': int, 'copiees': [...],
+    'sautees': [...]}`` — chaque entrée porte l'affectation source (id) et,
+    pour les sautées, le motif (``'indisponible'`` ou ``'conflit'``).
+    """
+    from . import selectors
+
+    decalage_jours = (semaine_cible - semaine_source).days
+    if decalage_jours == 0:
+        return {
+            'nb_copiees': 0, 'nb_sautees': 0, 'copiees': [], 'sautees': [],
+        }
+
+    fin_source = semaine_source + timedelta(days=6)
+
+    qs = AffectationRessource.objects.filter(
+        company=company,
+        date_debut__gte=semaine_source, date_fin__lte=fin_source,
+    ).select_related('ressource', 'equipe')
+    if ressource_id is not None:
+        qs = qs.filter(ressource_id=ressource_id)
+    if equipe_id is not None:
+        qs = qs.filter(equipe_id=equipe_id)
+
+    # Affectations EXISTANTES sur la fenêtre cible (anti-conflit ET
+    # anti-doublon sur ré-exécution), indexées par ressource.
+    fin_cible_max = fin_source + timedelta(days=decalage_jours)
+    existantes_cible = list(
+        AffectationRessource.objects.filter(
+            company=company,
+            date_debut__lte=fin_cible_max,
+            date_fin__gte=semaine_cible,
+        ))
+    existantes_par_ressource = {}
+    for existante in existantes_cible:
+        if existante.ressource_id is not None:
+            existantes_par_ressource.setdefault(
+                existante.ressource_id, []).append(existante)
+
+    copiees = []
+    sautees = []
+    for source in qs.order_by('date_debut', 'id'):
+        nouvelle_debut = source.date_debut + timedelta(days=decalage_jours)
+        nouvelle_fin = source.date_fin + timedelta(days=decalage_jours)
+
+        if source.ressource_id is not None:
+            # Indisponibilité de la ressource sur la fenêtre cible.
+            if not selectors.ressource_disponible_sur_periode(
+                    source.ressource, nouvelle_debut, nouvelle_fin):
+                sautees.append({
+                    'affectation_source': source.id, 'motif': 'indisponible',
+                })
+                continue
+            # Conflit avec une affectation déjà existante de la ressource.
+            conflit = False
+            for existante in existantes_par_ressource.get(
+                    source.ressource_id, []):
+                if (nouvelle_debut <= existante.date_fin
+                        and nouvelle_fin >= existante.date_debut):
+                    conflit = True
+                    break
+            if conflit:
+                sautees.append({
+                    'affectation_source': source.id, 'motif': 'conflit',
+                })
+                continue
+
+        nouvelle = AffectationRessource.objects.create(
+            company=company,
+            tache=source.tache,
+            ressource=source.ressource,
+            equipe=source.equipe,
+            actif_type=source.actif_type,
+            actif_id=source.actif_id,
+            date_debut=nouvelle_debut,
+            date_fin=nouvelle_fin,
+            charge_jours=source.charge_jours,
+            quantite=source.quantite,
+            note=source.note,
+            statut_publication=AffectationRessource.StatutPublication.BROUILLON,
+        )
+        if source.ressource_id is not None:
+            existantes_par_ressource.setdefault(
+                source.ressource_id, []).append(nouvelle)
+        copiees.append({
+            'affectation_source': source.id, 'affectation_creee': nouvelle.id,
+        })
+
+    return {
+        'nb_copiees': len(copiees),
+        'nb_sautees': len(sautees),
+        'copiees': copiees,
+        'sautees': sautees,
+    }
+
+
+# ── Auto-affectation : appliquer les propositions de nivellement (ZPRJ4) ───
+def _taches_sans_affectation(company, debut, fin):
+    """Tâches de ``company`` chevauchant [debut, fin] SANS AUCUNE affectation
+    directe/équipe/actif (lecture seule, aide interne à ``auto_affecter``).
+
+    Une tâche sans dates prévues n'est jamais considérée (rien à comparer à
+    la fenêtre) : ce ciblage reste conservateur (jamais une tâche non datée
+    auto-affectée à l'aveugle)."""
+    return list(
+        Tache.objects.filter(
+            company=company,
+            date_debut_prevue__isnull=False, date_fin_prevue__isnull=False,
+            date_debut_prevue__lte=fin, date_fin_prevue__gte=debut,
+        ).exclude(
+            id__in=AffectationRessource.objects.filter(
+                company=company).values_list('tache_id', flat=True)
+        ).select_related('projet'))
+
+
+def auto_affecter(company, debut, fin, *, confirmer=False):
+    """Applique (ou simule) l'auto-affectation des tâches en excès (ZPRJ4).
+
+    Odoo Planning « Auto Plan » — équivalent gestion-projet. Combine deux
+    sources de candidats sur [debut, fin] :
+
+    1. les PROPOSITIONS DE DÉPLACEMENT de ``selectors.nivellement_charge``
+       (ressources sur-chargées → sous-chargées, anti-conflit déjà garanti
+       par le sélecteur) — chaque proposition RÉASSIGNE la ``ressource`` de
+       l'``AffectationRessource`` déplacée (jamais un nouveau créneau) ;
+    2. les TÂCHES SANS AUCUNE AFFECTATION dans la fenêtre — pour chacune, la
+       ressource ACTIVE disponible (``selectors.ressource_disponible_sur_
+       periode``) avec le PLUS de marge (``plan_de_charge.disponible_heures``,
+       simulée en mémoire au fil des affectations pour rester équitable) reçoit
+       une NOUVELLE ``AffectationRessource`` (période = fenêtre de la tâche,
+       statut BROUILLON) ; une tâche sans candidat valide (aucune ressource
+       disponible/avec marge) est RAPPORTÉE, jamais silencieusement ignorée.
+
+    Mode ``?simuler=1`` (``confirmer=False``, PAR DÉFAUT) : NE MUTE RIEN,
+    renvoie le plan proposé. Mode ``?confirm=1`` (``confirmer=True``) :
+    applique réellement (déplace/crée), toujours en statut BROUILLON (ZPRJ2 —
+    jamais publié directement), transaction atomique.
+
+    Renvoie ``{'simule': bool, 'deplacements': [...], 'creations': [...],
+    'non_resolues': [...]}`` — ``deplacements``/``creations`` portent la même
+    forme que confirmées ou simulées (``affectation``/``nouvelle_ressource``
+    pour un déplacement ; ``tache``/``ressource`` pour une création).
+    """
+    from . import selectors
+
+    plan = selectors.nivellement_charge(company, debut, fin)
+    deplacements = [{
+        'affectation': p['affectation'],
+        'tache': p['tache'],
+        'de_ressource': p['de_ressource'],
+        'de_nom': p['de_nom'],
+        'vers_ressource': p['vers_ressource'],
+        'vers_nom': p['vers_nom'],
+        'charge_heures': p['charge_heures'],
+    } for p in plan['propositions']]
+
+    # Marge restante simulée par ressource (réutilisée pour les créations de
+    # tâches sans affectation, à la suite des déplacements proposés).
+    marge_par_ressource = {
+        ligne['ressource']: ligne['disponible_heures']
+        for ligne in plan['sous_charges']
+    }
+    # Cache LOCAL à cet appel (jamais persistant entre requêtes) des
+    # ``RessourceProfil`` candidates, pour éviter N requêtes redondantes.
+    ressources_par_id = {
+        r.id: r for r in RessourceProfil.objects.filter(
+            company=company, id__in=list(marge_par_ressource.keys()))
+    }
+
+    creations = []
+    non_resolues = []
+    taches_sans_affectation = _taches_sans_affectation(company, debut, fin)
+    for tache in taches_sans_affectation:
+        candidats = sorted(
+            marge_par_ressource.items(), key=lambda kv: -kv[1])
+        choisi = None
+        for ressource_id, marge in candidats:
+            if marge <= 0:
+                continue
+            ressource = ressources_par_id.get(ressource_id)
+            if ressource is None or not ressource.actif:
+                continue
+            if not selectors.ressource_disponible_sur_periode(
+                    ressource, tache.date_debut_prevue,
+                    tache.date_fin_prevue):
+                continue
+            choisi = ressource_id
+            break
+        if choisi is None:
+            non_resolues.append({
+                'tache': tache.id, 'tache_libelle': tache.libelle,
+                'projet': tache.projet_id,
+            })
+            continue
+        creations.append({
+            'tache': tache.id, 'tache_libelle': tache.libelle,
+            'ressource': choisi,
+            'date_debut': tache.date_debut_prevue.isoformat(),
+            'date_fin': tache.date_fin_prevue.isoformat(),
+        })
+        marge_par_ressource[choisi] = max(
+            0.0, marge_par_ressource.get(choisi, 0.0) - 1.0)
+
+    if not confirmer:
+        return {
+            'simule': True, 'deplacements': deplacements,
+            'creations': creations, 'non_resolues': non_resolues,
+        }
+
+    with transaction.atomic():
+        for d in deplacements:
+            AffectationRessource.objects.filter(
+                id=d['affectation'], company=company).update(
+                    ressource_id=d['vers_ressource'],
+                    statut_publication=(
+                        AffectationRessource.StatutPublication.BROUILLON),
+                )
+        for c in creations:
+            tache = Tache.objects.get(id=c['tache'], company=company)
+            AffectationRessource.objects.create(
+                company=company,
+                tache=tache,
+                ressource_id=c['ressource'],
+                date_debut=tache.date_debut_prevue,
+                date_fin=tache.date_fin_prevue,
+                statut_publication=(
+                    AffectationRessource.StatutPublication.BROUILLON),
+            )
+
+    return {
+        'simule': False, 'deplacements': deplacements,
+        'creations': creations, 'non_resolues': non_resolues,
+    }
+
+
+# ── Conversion tâche → ticket SAV (ZPRJ11) ───────────────────────────────────
+class ConversionTicketSavError(Exception):
+    """Levée quand une tâche est déjà convertie ou sans client résolvable."""
+
+
+def convertir_tache_en_ticket_sav(tache, *, user=None):
+    """Convertit une ``Tache`` en ``sav.Ticket`` (ZPRJ11).
+
+    Le client est résolu depuis ``tache.projet.client_id`` via un sélecteur
+    ``crm.selectors`` (frontière cross-app, import fonction-local — jamais
+    ``crm.models``). L'écriture du ``Ticket`` passe EXCLUSIVEMENT par
+    ``apps.sav.services.create_ticket_from_projet_tache`` (jamais
+    ``sav.models`` depuis ``gestion_projet``). Une tâche déjà convertie
+    (``ticket_sav_id`` non nul) lève ``ConversionTicketSavError`` — pas de
+    double conversion. Trace le lien retour sur la tâche (référence LÂCHE
+    ``ticket_sav_id``). Renvoie le ``Ticket`` créé (objet de l'app ``sav``).
+    """
+    if tache.ticket_sav_id:
+        raise ConversionTicketSavError(
+            "Cette tâche a déjà été convertie en ticket SAV.")
+
+    projet = tache.projet
+    from apps.crm import selectors as crm_selectors
+    client = None
+    if projet.client_id:
+        client = crm_selectors.get_company_client(
+            projet.company, projet.client_id)
+    if client is None:
+        raise ConversionTicketSavError(
+            "Impossible de résoudre le client du projet — conversion en "
+            "ticket SAV impossible.")
+
+    from apps.sav import services as sav_services
+    description = (
+        f'{tache.libelle}\n\n{tache.description}'
+        if tache.description else tache.libelle)
+    ticket = sav_services.create_ticket_from_projet_tache(
+        company=tache.company, client=client, description=description)
+
+    tache.ticket_sav_id = ticket.id
+    tache.save(update_fields=['ticket_sav_id'])
+    return ticket
+
+
+# ── Création de tâches par e-mail entrant (alias projet) (ZPRJ12) ──────────
+def is_email_ingestion_configured():
+    """True si une ingestion e-mail entrante est configurée (pattern
+    ``apps.ventes.inbound_email.is_inbound_configured``, réutilisé — jamais
+    réinventé). Sans configuration, ``ingest_email_projet`` reste un NO-OP
+    propre (aucune connexion réseau, jamais d'exception)."""
+    from apps.ventes import inbound_email
+    return inbound_email.is_inbound_configured()
+
+
+def ingest_email_projet(company, *, to_alias, subject='', body='',
+                        from_email=''):
+    """Crée une ``Tache`` depuis un e-mail entrant adressé à l'alias d'un
+    projet (ZPRJ12) — pattern d'ingestion réutilisé de
+    ``apps.ventes.inbound_email`` (parsing PUR, aucun appel réseau ici : la
+    connexion IMAP/webhook reste dans la commande appelante).
+
+    ``to_alias`` est comparé à ``Projet.alias_email`` (scopé société,
+    insensible à la casse). Un alias INCONNU (aucun projet ne le porte) est
+    IGNORÉ proprement (renvoie None, jamais d'erreur — un alias mal orthographié
+    ne doit jamais planter le sweep). Sans ingestion configurée
+    (``is_email_ingestion_configured`` False), NE FAIT RIEN et renvoie None
+    (no-op propre) — permet d'appeler cette fonction sans risque même hors
+    configuration (le contrôle est fait ici, pas seulement dans la commande).
+
+    Renvoie la ``Tache`` créée (``statut=a_faire``, ``libelle`` = objet,
+    ``description`` = corps), journalisant l'expéditeur dans la description.
+    """
+    if not is_email_ingestion_configured():
+        return None
+
+    alias = (to_alias or '').strip().lower()
+    if not alias:
+        return None
+
+    projet = Projet.objects.filter(
+        company=company, alias_email__iexact=alias).first()
+    if projet is None:
+        return None
+
+    libelle = (subject or '(sans objet)')[:200]
+    description = body or ''
+    if from_email:
+        description = f'[e-mail de {from_email}]\n\n{description}'
+
+    return Tache.objects.create(
+        company=company, projet=projet, libelle=libelle,
+        description=description, statut=Tache.Statut.A_FAIRE)
+
+
+# ── Conversion à-faire (records.Activity) → tâche projet (XKB4) ────────────
+class ConversionActiviteError(Exception):
+    """Levée quand une activité personnelle ne peut pas être convertie."""
+
+
+def creer_tache_depuis_activite(activite, *, projet_id, company=None):
+    """Convertit un ``records.Activity`` (typiquement un à-faire personnel,
+    XKB4) en ``Tache`` du projet ``projet_id``, en préservant son contenu.
+
+    Reçoit l'instance ``Activity`` déjà chargée par l'appelant (``records``
+    ne nous passe jamais son ``models`` — seul cet import fonction-local par
+    l'appelant existe, jamais l'inverse) ; on ne lit ici que des attributs
+    scalaires (``summary``/``note``/``due_date``), jamais
+    ``apps.records.models`` lui-même, pour ne créer aucune dépendance
+    circulaire. ``company`` est dérivée de l'activité si non fournie, jamais
+    du corps de requête.
+    """
+    company = company or getattr(activite, 'company', None)
+    try:
+        projet = Projet.objects.get(pk=projet_id, company=company)
+    except Projet.DoesNotExist:
+        raise ConversionActiviteError(
+            "Projet introuvable pour cette société.")
+
+    libelle = (getattr(activite, 'summary', '') or '(sans titre)')[:200]
+    return Tache.objects.create(
+        company=projet.company, projet=projet, libelle=libelle,
+        description=getattr(activite, 'note', '') or '',
+        date_fin_prevue=getattr(activite, 'due_date', None),
+        statut=Tache.Statut.A_FAIRE)

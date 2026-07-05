@@ -350,9 +350,10 @@ class TestTicketWarrantyAndChatter(TestCase):
         self.assertEqual(r2.data['sous_garantie_effectif'], 'oui', r2.data)
 
     def test_status_change_logs_chatter(self):
+        # YDOCF1 — la transition passe désormais par l'action guardée dédiée.
         tid = self._open_ticket().data['id']
-        r = self.api.patch(f'/api/django/sav/tickets/{tid}/',
-                           {'statut': 'en_cours'}, format='json')
+        r = self.api.post(f'/api/django/sav/tickets/{tid}/demarrer/',
+                          {}, format='json')
         self.assertEqual(r.status_code, 200, r.data)
         acts = TicketActivity.objects.filter(ticket_id=tid, kind='modification',
                                              field='statut')
@@ -361,17 +362,31 @@ class TestTicketWarrantyAndChatter(TestCase):
         self.assertEqual(acts.first().new_value, 'En cours')
         self.assertEqual(acts.first().user_id, self.user.id)
 
-    def test_invalid_status_rejected(self):
+    def test_status_not_editable_via_direct_patch(self):
+        # YDOCF1 — `statut` est read-only : un PATCH direct est silencieusement
+        # ignoré (statut inchangé), contrairement à avant YDOCF1.
         tid = self._open_ticket().data['id']
         r = self.api.patch(f'/api/django/sav/tickets/{tid}/',
-                           {'statut': 'pas_un_statut'}, format='json')
+                           {'statut': 'en_cours'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['statut'], 'nouveau')
+
+    def test_illegal_status_jump_rejected(self):
+        # YDOCF1 — un saut NOUVEAU → CLOTURE (hors graphe) est refusé (400).
+        tid = self._open_ticket().data['id']
+        r = self.api.post(f'/api/django/sav/tickets/{tid}/cloturer/',
+                          {}, format='json')
         self.assertEqual(r.status_code, 400, r.data)
 
     def test_default_list_shows_open_only(self):
         open_id = self._open_ticket().data['id']
         closed_id = self._open_ticket().data['id']
-        self.api.patch(f'/api/django/sav/tickets/{closed_id}/',
-                       {'statut': 'cloture'}, format='json')
+        self.api.post(f'/api/django/sav/tickets/{closed_id}/demarrer/',
+                      {}, format='json')
+        self.api.post(f'/api/django/sav/tickets/{closed_id}/resoudre/',
+                      {}, format='json')
+        self.api.post(f'/api/django/sav/tickets/{closed_id}/cloturer/',
+                      {}, format='json')
         r = self.api.get('/api/django/sav/tickets/')
         got = set(ids_of(r))
         self.assertIn(open_id, got)
@@ -554,8 +569,9 @@ class TestPermissions(TestCase):
         }, format='json')
         self.assertEqual(r.status_code, 201, r.data)
         tid = r.data['id']
-        r2 = api.patch(f'/api/django/sav/tickets/{tid}/',
-                       {'statut': 'en_cours'}, format='json')
+        # YDOCF1 — la transition passe par l'action guardée dédiée.
+        r2 = api.post(f'/api/django/sav/tickets/{tid}/demarrer/',
+                      {}, format='json')
         self.assertEqual(r2.status_code, 200, r2.data)
         # Mais la Commerciale ne GÈRE pas le parc (pas de equipement_gerer).
         r3 = api.post('/api/django/sav/equipements/', {

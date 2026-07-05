@@ -62,7 +62,7 @@ class ReceptionFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
     ordering = ['-date_creation']
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS:
+        if self.action in READ_ACTIONS + ['scan_gs1', 'etiquettes']:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + ['confirmer', 'annuler']:
             return [IsResponsableOrAdmin()]
@@ -90,6 +90,99 @@ class ReceptionFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
             )
         create_with_reference(ReceptionFournisseur, 'REC', company, _save)
 
+    @action(detail=False, methods=['get'], url_path='scan-gs1')
+    def scan_gs1(self, request):
+        """XSTK4 — décompose un code GS1-128/DataMatrix (query param
+        ``code``) et résout le produit via le GTIN (= `Produit.code_barres`,
+        XSTK3), scopé société. Renvoie ``{produit_id, numeros_serie,
+        numero_lot, date_peremption}`` prêt à préremplir la ligne de
+        réception (``LigneReceptionFournisseur``). GTIN inconnu → 404
+        propre ; code sans AI '01' reconnu → 400 (code illisible)."""
+        from ..gs1 import parse_gs1
+
+        code = (request.query_params.get('code') or '').strip()
+        if not code:
+            return Response(
+                {'detail': 'Code illisible.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        parsed = parse_gs1(code)
+        gtin = parsed.get('gtin')
+        if not gtin:
+            return Response(
+                {'detail': 'Code illisible.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        produit = Produit.objects.filter(
+            company=request.user.company, code_barres=gtin).first()
+        if produit is None:
+            return Response(
+                {'detail': 'Produit introuvable pour ce GTIN.'},
+                status=status.HTTP_404_NOT_FOUND)
+
+        serie = parsed.get('serie')
+        return Response({
+            'produit_id': produit.id,
+            'produit_nom': produit.nom,
+            'numeros_serie': [serie] if serie else None,
+            'numero_lot': parsed.get('lot'),
+            'date_peremption': (
+                parsed['date_peremption'].isoformat()
+                if parsed.get('date_peremption') else None),
+        })
+
+    @action(detail=True, methods=['get'], url_path='etiquettes')
+    def etiquettes(self, request, pk=None):
+        """ZSTK6 — planche d'étiquettes lot/série depuis les lignes de CETTE
+        réception : une étiquette PAR série reçue (`numeros_serie`, jeton
+        `SERIE:<produit>:<valeur>`) + une PAR lot renseigné (`numero_lot`,
+        jeton `LOT:<produit>:<valeur>`). Réutilise le moteur N20
+        (`labels.render_labels_html`) — jamais de prix affiché.
+
+        Paramètres : ``symbology`` (qr défaut | code128), ``sortie`` (pdf
+        défaut | html)."""
+        from .. import labels
+        from apps.ventes.utils.pdf import _html_to_pdf
+
+        reception = self.get_object()
+        symbology = request.query_params.get('symbology', 'qr')
+        if symbology not in ('qr', 'code128'):
+            symbology = 'qr'
+
+        items = []
+        for ligne in reception.lignes.select_related('produit').all():
+            if ligne.produit_id is None:
+                continue
+            nom = ligne.produit.nom
+            for serie in (ligne.numeros_serie or []):
+                if not serie:
+                    continue
+                items.append({
+                    'token': labels.serie_token(ligne.produit_id, serie),
+                    'titre': nom,
+                    'sous_titre': f'N° série {serie}',
+                })
+            if ligne.numero_lot:
+                items.append({
+                    'token': labels.lot_token(
+                        ligne.produit_id, ligne.numero_lot),
+                    'titre': nom,
+                    'sous_titre': f'Lot {ligne.numero_lot}',
+                })
+        if not items:
+            return Response(
+                {'detail': 'Aucun n° de série/lot sur cette réception.'},
+                status=status.HTTP_404_NOT_FOUND)
+
+        html = labels.render_labels_html(items, symbology=symbology)
+        if request.query_params.get('sortie') == 'html':
+            return HttpResponse(html, content_type='text/html; charset=utf-8')
+        pdf_bytes = _html_to_pdf(html)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'inline; filename="etiquettes-{reception.reference}.pdf"')
+        return response
+
     @action(detail=True, methods=['post'], url_path='confirmer')
     def confirmer(self, request, pk=None):
         """Confirme la réception : incrémente le stock (ENTREE) pour chaque
@@ -106,12 +199,20 @@ class ReceptionFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='annuler')
     def annuler(self, request, pk=None):
+        """YSTCK6 — une réception CONFIRMÉE est annulée par CONTRE-PASSATION
+        (mouvement de reversal référencé à l'original, jamais un blocage) via
+        `annuler_reception_confirmee`. Une réception encore en brouillon
+        garde le chemin historique (simple passage à ANNULE, rien à
+        contre-passer)."""
+        from ..services import annuler_reception_confirmee
         reception = self.get_object()
         if reception.statut == ReceptionFournisseur.Statut.CONFIRME:
-            return Response(
-                {'detail': 'Une réception confirmée ne peut pas être annulée '
-                           '(le stock a déjà été incrémenté).'},
-                status=status.HTTP_400_BAD_REQUEST)
+            try:
+                annuler_reception_confirmee(reception, request.user)
+            except ValueError as exc:
+                return Response({'detail': str(exc)},
+                                status=status.HTTP_400_BAD_REQUEST)
+            return Response(self.get_serializer(reception).data)
         reception.statut = ReceptionFournisseur.Statut.ANNULE
         reception.save(update_fields=['statut'])
         return Response(self.get_serializer(reception).data)

@@ -87,10 +87,34 @@ class LigneFactureViewSet(viewsets.ModelViewSet):
                 and facture.company_id != user.company_id:
             raise ValidationError({'facture': 'Facture inconnue.'})
 
+    def _check_immuable(self, facture):
+        """XFAC24 — une ligne d'une facture émise IMMUABLE ne peut plus être
+        créée/modifiée/supprimée (correction par avoir + nouvelle facture).
+        Flag OFF (défaut) ou facture brouillon → comportement inchangé."""
+        if facture is None or facture.statut == facture.Statut.BROUILLON:
+            return
+        from apps.parametres.models import CompanyProfile
+        from rest_framework.exceptions import ValidationError
+        profile = CompanyProfile.get(company=facture.company)
+        if getattr(profile, 'factures_immuables', False):
+            raise ValidationError({
+                'detail': (
+                    "Facture immuable : impossible de modifier les lignes "
+                    "d'une facture émise. Corrigez par un avoir puis une "
+                    "nouvelle facture."
+                ),
+            })
+
     def perform_create(self, serializer):
         self._check_tenant(serializer)
+        self._check_immuable(serializer.validated_data.get('facture'))
         serializer.save()
 
     def perform_update(self, serializer):
         self._check_tenant(serializer)
+        self._check_immuable(serializer.instance.facture)
         serializer.save()
+
+    def perform_destroy(self, instance):
+        self._check_immuable(instance.facture)
+        instance.delete()

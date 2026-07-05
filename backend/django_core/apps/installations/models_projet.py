@@ -66,6 +66,25 @@ class JalonProjet(models.Model):
     date_reelle = models.DateField(null=True, blank=True)
     atteint = models.BooleanField(default=False)
     notes = models.TextField(blank=True, null=True)
+    # YSERV7 — tranche de l'échéancier devis (ventes.Facture.TypeFacture) que
+    # l'atteinte de CE jalon doit rappeler de facturer. Vide = jalon non lié à
+    # une tranche (comportement historique inchangé, aucun rappel émis).
+    # Choix en dur volontairement limités à acompte/intermediaire/solde (jamais
+    # `complete`, réservé aux factures classiques hors échéancier) — string
+    # libre pour éviter un import du modèle ventes depuis installations.
+    TRANCHE_ACOMPTE = 'acompte'
+    TRANCHE_INTERMEDIAIRE = 'intermediaire'
+    TRANCHE_SOLDE = 'solde'
+    TRANCHE_CHOICES = [
+        (TRANCHE_ACOMPTE, 'Acompte'),
+        (TRANCHE_INTERMEDIAIRE, 'Intermédiaire'),
+        (TRANCHE_SOLDE, 'Solde'),
+    ]
+    tranche_echeancier = models.CharField(
+        max_length=20, choices=TRANCHE_CHOICES, blank=True, null=True)
+    # YSERV7 — garde d'idempotence : une seule notification de rappel par
+    # jalon (jamais deux nudges pour la même atteinte).
+    rappel_facturation_envoye = models.BooleanField(default=False)
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
 

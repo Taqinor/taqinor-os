@@ -6,12 +6,15 @@ from .views import (
     CommissioningRecordViewSet, StageModeleViewSet,
     ChecklistTemplateViewSet, ChecklistEtapeModeleViewSet, ShotListSlotViewSet,
     SafetyChecklistSlotViewSet,
+    FicheInterventionTemplateViewSet, FicheInterventionChampViewSet,
+    RecurrenceInterventionViewSet,
     JalonProjetViewSet, ModeleProjetViewSet, ReunionChantierViewSet,
     DocumentProjetViewSet, RevisionDocumentViewSet, FieldSyncView,
     ProjetViewSet, ProjetTacheViewSet, ProjetChantierViewSet,
     ProjetDevisViewSet, ProjetTicketViewSet,
     BudgetProjetViewSet, BudgetEngagementViewSet,
     IndisponibiliteRessourceViewSet,
+    AstreinteViewSet,
     EquipeViewSet,
     SousTraitantViewSet,
     OrdreSousTraitanceViewSet,
@@ -24,6 +27,7 @@ from .views import (
     DemandeAchatLigneViewSet,
     RFQViewSet,
     RFQOffreViewSet,
+    RFQConsultationViewSet,
     SeuilApprobationBCFViewSet,
     ApprobationBCFViewSet,
     ControleBudgetaireCommandeView,
@@ -38,6 +42,8 @@ from .views import (
     ContratPrixLigneViewSet,
     BinLocationViewSet,
     BinAffectationViewSet,
+    CategorieStockageViewSet,
+    RegleRangementViewSet,
     PutAwayViewSet,
     PickListViewSet,
     PickListLigneViewSet,
@@ -62,6 +68,11 @@ from .views import (
     PreuveLivraisonViewSet,
     TransporteurViewSet,
     TourneeLivraisonView,
+    RetourMaterielViewSet,
+    RetourMaterielLigneViewSet,
+    RetourLivraisonViewSet,
+    RetourLivraisonLigneViewSet,
+    LotPrelevementViewSet,
 )
 
 router = DefaultRouter()
@@ -73,6 +84,9 @@ router.register(r'etapes-chantier', StageModeleViewSet)
 router.register(r'checklist-templates', ChecklistTemplateViewSet)
 router.register(r'checklist-etapes', ChecklistEtapeModeleViewSet)
 router.register(r'shotlist-slots', ShotListSlotViewSet)
+router.register(r'fiche-intervention-templates', FicheInterventionTemplateViewSet)
+router.register(r'fiche-intervention-champs', FicheInterventionChampViewSet)
+router.register(r'recurrences-intervention', RecurrenceInterventionViewSet)
 router.register(r'consignes-securite', SafetyChecklistSlotViewSet)
 router.register(r'jalons-projet', JalonProjetViewSet)
 router.register(r'modeles-projet', ModeleProjetViewSet)
@@ -87,6 +101,7 @@ router.register(r'programme-tickets', ProjetTicketViewSet)
 router.register(r'programme-budgets', BudgetProjetViewSet)
 router.register(r'programme-engagements', BudgetEngagementViewSet)
 router.register(r'indisponibilites-ressource', IndisponibiliteRessourceViewSet)
+router.register(r'astreintes', AstreinteViewSet)
 router.register(r'equipes', EquipeViewSet)
 # DC34 — sous-traitants / AP sous-traitant sont des ViewSet façade au-dessus de
 # stock (Fournisseur type=service + chaîne FactureFournisseur/PaiementFournisseur)
@@ -105,6 +120,7 @@ router.register(r'demandes-achat', DemandeAchatViewSet)
 router.register(r'demandes-achat-lignes', DemandeAchatLigneViewSet)
 router.register(r'rfq', RFQViewSet)
 router.register(r'rfq-offres', RFQOffreViewSet)
+router.register(r'rfq-consultations', RFQConsultationViewSet)
 router.register(r'seuils-approbation-bcf', SeuilApprobationBCFViewSet)
 router.register(r'approbations-bcf', ApprobationBCFViewSet)
 router.register(r'commandes-cadre', CommandeCadreViewSet)
@@ -118,6 +134,8 @@ router.register(r'contrats-prix-fournisseur', ContratPrixFournisseurViewSet)
 router.register(r'contrats-prix-lignes', ContratPrixLigneViewSet)
 router.register(r'bin-locations', BinLocationViewSet)
 router.register(r'bin-affectations', BinAffectationViewSet)
+router.register(r'categories-stockage', CategorieStockageViewSet)
+router.register(r'regles-rangement', RegleRangementViewSet)
 router.register(r'putaways', PutAwayViewSet)
 router.register(r'pick-lists', PickListViewSet)
 router.register(r'pick-list-lignes', PickListLigneViewSet)
@@ -141,6 +159,11 @@ router.register(r'livraisons', LivraisonViewSet)
 router.register(r'livraison-lignes', LivraisonLigneViewSet)
 router.register(r'preuves-livraison', PreuveLivraisonViewSet)
 router.register(r'transporteurs', TransporteurViewSet)
+router.register(r'retours-materiel', RetourMaterielViewSet)
+router.register(r'retour-materiel-lignes', RetourMaterielLigneViewSet)
+router.register(r'retours-livraison', RetourLivraisonViewSet)
+router.register(r'retour-livraison-lignes', RetourLivraisonLigneViewSet)
+router.register(r'lots-prelevement', LotPrelevementViewSet)
 
 urlpatterns = [
     # N91/F21 — synchro idempotente de la capture terrain hors-ligne.

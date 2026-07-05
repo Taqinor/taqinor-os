@@ -2,7 +2,8 @@ from rest_framework import serializers
 from .models import (
     Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
     Avoir, LigneAvoir, DevisActivity, DevisPreset, RoofLayout,
-    FicheTechnique,
+    FicheTechnique, RemiseEncaissement, LigneRemiseEncaissement,
+    MandatPaiement,
 )
 
 
@@ -493,7 +494,12 @@ class FactureWriteSerializer(serializers.ModelSerializer):
         model = Facture
         exclude = ['reference', 'fichier_pdf']
         # company is force-assigned in perform_create — never accept it from the body.
-        read_only_fields = ['created_by', 'date_emission', 'company']
+        # XFAC29 : dgi_statut/reference/motif_rejet sont posés UNIQUEMENT par
+        # `transmettre_facture` (action serveur), jamais depuis le corps.
+        read_only_fields = [
+            'created_by', 'date_emission', 'company',
+            'dgi_statut', 'dgi_reference', 'dgi_motif_rejet',
+        ]
 
 
 class LigneAvoirSerializer(serializers.ModelSerializer):
@@ -543,6 +549,43 @@ class AvoirSerializer(serializers.ModelSerializer):
         return f"{c.nom} {c.prenom or ''}".strip() if c else None
 
 
+class LigneNoteDebitSerializer(serializers.ModelSerializer):
+    total_ht = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+
+    class Meta:
+        from .models import LigneNoteDebit
+        model = LigneNoteDebit
+        fields = ['id', 'produit', 'designation', 'quantite', 'prix_unitaire',
+                  'remise', 'taux_tva', 'total_ht']
+
+
+class NoteDebitSerializer(serializers.ModelSerializer):
+    lignes = LigneNoteDebitSerializer(many=True, read_only=True)
+    total_ht = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+    total_tva = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+    total_ttc = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    facture_reference = serializers.CharField(
+        source='facture.reference', read_only=True)
+    client_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import NoteDebit
+        model = NoteDebit
+        fields = '__all__'
+        read_only_fields = ['reference', 'created_by', 'fichier_pdf',
+                            'date_emission', 'company']
+
+    def get_client_nom(self, obj):
+        c = obj.client
+        return f"{c.nom} {c.prenom or ''}".strip() if c else None
+
+
 class PromessePaiementSerializer(serializers.ModelSerializer):
     """XFAC5 — engagement de paiement client (« je paie le 15 »)."""
     facture_reference = serializers.CharField(
@@ -565,6 +608,21 @@ class FollowupLevelSerializer(serializers.ModelSerializer):
         model = FollowupLevel
         fields = ['id', 'ordre', 'nom', 'delai_jours', 'message',
                   'taux_interet_annuel', 'frais_fixes', 'canal']
+
+
+class ParametrageRelanceClientSerializer(serializers.ModelSerializer):
+    """ZFAC8 — réglage par client du responsable/mode de relance."""
+    mode_display = serializers.CharField(
+        source='get_mode_display', read_only=True)
+    responsable_username = serializers.CharField(
+        source='responsable.username', read_only=True, default=None)
+
+    class Meta:
+        from .models import ParametrageRelanceClient
+        model = ParametrageRelanceClient
+        fields = ['id', 'client', 'responsable', 'responsable_username',
+                  'mode', 'mode_display', 'prochaine_relance_manuelle']
+        read_only_fields = ['company']
 
 
 class RelanceLogSerializer(serializers.ModelSerializer):
@@ -689,4 +747,58 @@ class FicheTechniqueSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'id', 'produit_nom', 'created_by_nom',
             'created_at', 'updated_at',
+        ]
+
+
+class LigneRemiseEncaissementSerializer(serializers.ModelSerializer):
+    """XFSM19 — une ligne = un Paiement rattaché à la remise. Lecture seule
+    des attributs utiles du paiement (montant/mode/date/facture) pour
+    l'écran du responsable, sans jamais dupliquer le modèle Paiement."""
+    montant = serializers.DecimalField(
+        source='paiement.montant', max_digits=12, decimal_places=2,
+        read_only=True)
+    mode = serializers.CharField(source='paiement.mode', read_only=True)
+    date_paiement = serializers.DateField(
+        source='paiement.date_paiement', read_only=True)
+    facture_reference = serializers.CharField(
+        source='paiement.facture.reference', read_only=True, default=None)
+
+    class Meta:
+        model = LigneRemiseEncaissement
+        fields = ['id', 'paiement', 'montant', 'mode', 'date_paiement',
+                  'facture_reference']
+        read_only_fields = ['id']
+
+
+class RemiseEncaissementSerializer(serializers.ModelSerializer):
+    lignes = LigneRemiseEncaissementSerializer(many=True, read_only=True)
+    technicien_nom = serializers.CharField(
+        source='technicien.username', read_only=True, default=None)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    montant_lignes = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+    ecart = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = RemiseEncaissement
+        fields = '__all__'
+        read_only_fields = [
+            'id', 'reference', 'fichier_pdf', 'created_by', 'date_creation',
+            'company', 'cloture_par', 'date_cloture',
+        ]
+
+
+class MandatPaiementSerializer(serializers.ModelSerializer):
+    """XCTR22 — mandat de prélèvement carte. `token` n'est JAMAIS accepté en
+    écriture directe (posé uniquement par le service de tokenisation) ; seuls
+    les 4 derniers chiffres/expiration sont exposés pour l'affichage."""
+    client_nom = serializers.CharField(source='client.nom', read_only=True)
+
+    class Meta:
+        model = MandatPaiement
+        fields = '__all__'
+        read_only_fields = [
+            'id', 'token', 'company', 'created_at', 'revoked_at',
         ]
