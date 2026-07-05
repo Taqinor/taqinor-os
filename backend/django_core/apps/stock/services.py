@@ -890,6 +890,15 @@ def confirm_reception_fournisseur(reception, user):
         # stock une seconde fois.
         raise ValueError(
             'Seule une réception en brouillon peut être confirmée.')
+    # YPROC7 — un BCF ANNULÉ ne doit plus jamais recevoir de stock : la garde
+    # intervenait auparavant seulement APRÈS coup (avancement de statut), donc
+    # on pouvait réceptionner (et incrémenter le stock) contre un BCF annulé.
+    if (reception.bon_commande is not None
+            and reception.bon_commande.statut
+            == BonCommandeFournisseur.Statut.ANNULE):
+        raise ValueError(
+            'Ce bon de commande fournisseur est annulé : la réception ne '
+            'peut pas être confirmée.')
     lignes = list(reception.lignes.select_related('ligne_commande', 'produit'))
     if not lignes:
         raise ValueError('La réception ne contient aucune ligne.')
@@ -3140,6 +3149,76 @@ def notify_bcf_en_retard(company):
         except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
             logger.warning('notify_bcf_en_retard: échec pour BCF %s', bc.pk)
     return count
+
+
+def annuler_receptions_brouillon_bcf(bc, user=None):
+    """YPROC7 — à l'annulation d'un BCF, annule en cascade ses réceptions
+    encore en BROUILLON (elles restaient sinon confirmables contre un BCF
+    annulé). Une réception déjà CONFIRME ou ANNULE n'est jamais touchée
+    (idempotent, aucune perte de mouvement de stock déjà posté). Renvoie le
+    nombre de réceptions annulées par cet appel."""
+    from django.utils import timezone
+    from .models import ReceptionFournisseur
+
+    today = timezone.now().date()
+    receptions = bc.receptions.filter(
+        statut=ReceptionFournisseur.Statut.BROUILLON)
+    count = 0
+    for reception in receptions:
+        note_annulation = (
+            f'[{today.isoformat()}] Annulée automatiquement (BCF '
+            f'{bc.reference} annulé).')
+        reception.statut = ReceptionFournisseur.Statut.ANNULE
+        reception.note = (
+            f'{reception.note}\n{note_annulation}'.strip()
+            if reception.note else note_annulation)
+        reception.save(update_fields=['statut', 'note'])
+        count += 1
+    return count
+
+
+def notify_bcf_annule(bc):
+    """YPROC7 — notifie best-effort le créateur du BCF (et de la DA liée si
+    connue) qu'un BCF vient d'être annulé. N'échoue jamais l'annulation."""
+    try:
+        from apps.notifications.services import notify
+        from apps.notifications.models import EventType
+        if bc.created_by_id:
+            notify(
+                bc.created_by, EventType.BCF_CANCELLED,
+                title=f'BCF annulé ({bc.reference})',
+                body=(f'{bc.reference} chez '
+                      f'{bc.fournisseur.nom if bc.fournisseur_id else "?"} '
+                      f'a été annulé.'),
+                company=bc.company)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning('notify_bcf_annule: échec pour BCF %s', bc.pk)
+
+
+def annuler_bcf_cascade(bc, user=None):
+    """YPROC7 — annulation d'un BCF : annule en cascade ses réceptions
+    brouillon (`annuler_receptions_brouillon_bcf`) puis notifie
+    (`notify_bcf_annule`), best-effort. Ne touche PAS au statut du BCF
+    lui-même (laissé à l'appelant — la garde « déjà entièrement reçu » reste
+    dans la vue). Renvoie le détail des quantités déjà entrées en stock
+    (utile si l'annulation concerne un BCF partiellement reçu) pour décision
+    éventuelle de retour fournisseur."""
+    nb_receptions_annulees = annuler_receptions_brouillon_bcf(bc, user=user)
+    notify_bcf_annule(bc)
+    quantites_deja_recues = [
+        {
+            'produit_id': ligne.produit_id,
+            'produit_nom': ligne.produit.nom if ligne.produit_id else (
+                ligne.designation or ''),
+            'quantite_recue': ligne.quantite_recue,
+        }
+        for ligne in bc.lignes.select_related('produit').all()
+        if ligne.quantite_recue
+    ]
+    return {
+        'receptions_annulees': nb_receptions_annulees,
+        'quantites_deja_recues': quantites_deja_recues,
+    }
 
 
 def otd_stats(company, fournisseur):

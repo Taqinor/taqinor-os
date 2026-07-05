@@ -358,7 +358,16 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
             )
         bc.statut = BonCommandeFournisseur.Statut.ANNULE
         bc.save(update_fields=['statut'])
-        return Response(self.get_serializer(bc).data)
+        # YPROC7 — cascade : les réceptions brouillon de ce BCF ne doivent
+        # plus jamais être confirmables, et le créateur est notifié
+        # (best-effort). Un BCF partiellement reçu reste annulable
+        # (comportement inchangé) ; le détail des quantités déjà entrées en
+        # stock est renvoyé pour décision (retour fournisseur éventuel).
+        from ..services import annuler_bcf_cascade
+        detail_cascade = annuler_bcf_cascade(bc, user=request.user)
+        data = self.get_serializer(bc).data
+        data['cascade'] = detail_cascade
+        return Response(data)
 
     @action(detail=True, methods=['post'], url_path='confirmer')
     def confirmer(self, request, pk=None):
