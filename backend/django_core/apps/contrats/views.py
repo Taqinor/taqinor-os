@@ -2350,6 +2350,37 @@ class OrdreLocationViewSet(_ContratsBaseViewSet):
             'results': [_fmt(r) for r in rows],
         })
 
+    @action(detail=True, methods=['get'], url_path='bon-enlevement')
+    def bon_enlevement(self, request, pk=None):
+        """Bon d'enlèvement PDF de cet ordre de location — ZCTR5.
+
+        Rendu par le WeasyPrint générique existant (jamais le moteur devis
+        premium ``/proposal``). Aucun statut modifié par le rendu."""
+        ordre = self.get_object()
+        from .pdf_location import generate_bon_enlevement_pdf
+
+        pdf_bytes = generate_bon_enlevement_pdf(ordre)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'inline; filename="Bon_enlevement_{ordre.id}.pdf"')
+        return resp
+
+    @action(detail=True, methods=['get'], url_path='bon-restitution')
+    def bon_restitution(self, request, pk=None):
+        """Bon de restitution PDF de cet ordre de location — ZCTR5.
+
+        Reprend l'inspection de retour (XCTR19) et les dommages chiffrés le
+        cas échéant. Rendu par le WeasyPrint générique existant. Aucun
+        statut modifié par le rendu."""
+        ordre = self.get_object()
+        from .pdf_location import generate_bon_restitution_pdf
+
+        pdf_bytes = generate_bon_restitution_pdf(ordre)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'inline; filename="Bon_restitution_{ordre.id}.pdf"')
+        return resp
+
 
 class PlanRecurrentViewSet(_ContratsBaseViewSet):
     """Plans de facturation récurrente réutilisables (nommés) — ZCTR1.
