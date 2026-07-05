@@ -99,15 +99,12 @@ class FactureFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
             )
         facture = create_with_reference(
             FactureFournisseur, 'FF', company, _save)
-        # YLEDG2 — événement documentaire générique (pose du seam pour
-        # compta.ecriture_pour_facture_fournisseur, jamais d'import de son
-        # service ici). `instance` reste le nom historique lu par compta ;
-        # `facture`+`user` sont ajoutés pour le contrat unifié attendu par
-        # l'abonné installations (_lettrer_gr_ir_on_facture, YPROC3) — les
-        # deux abonnés reçoivent tous les kwargs via **kwargs.
+        # YLEDG2/YPROC3 — événement documentaire à la création d'une facture
+        # fournisseur. Contrat UNIFIÉ (core/events.py) : instance, company,
+        # user — compta pose l'écriture, installations lettre les GR/IR.
         from core.events import facture_fournisseur_creee
         facture_fournisseur_creee.send(
-            sender=FactureFournisseur, instance=facture, facture=facture,
+            sender=FactureFournisseur, instance=facture,
             company=company, user=self.request.user)
 
     def create(self, request, *args, **kwargs):
