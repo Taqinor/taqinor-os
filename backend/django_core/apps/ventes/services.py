@@ -2187,6 +2187,17 @@ def facture_montant_du(facture):
     return facture.montant_du
 
 
+def enregistrer_contestation_portail(facture, *, motif_label, commentaire=''):
+    """XFAC27 — Trace côté ventes la contestation d'une facture ouverte par
+    le client depuis le portail self-service (``apps.compta`` appelle CETTE
+    fonction, jamais un import direct de ``apps.ventes.models``/``activity``).
+    Ne change AUCUN statut de la facture — seule la réclamation créée côté
+    ``apps.litiges`` suspend les relances (LITIGE3)."""
+    from . import activity
+    return activity.log_facture_contestation_portail(
+        facture, motif_label, commentaire=commentaire)
+
+
 def calculer_date_echeance(*, client, date_emission):
     """XFAC23 — dérive la date d'échéance depuis les conditions de paiement du
     client (délai en jours + report fin de mois).

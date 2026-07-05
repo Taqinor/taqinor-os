@@ -13,11 +13,14 @@ from django.db import IntegrityError
 from django.http import HttpResponse
 
 from rest_framework import filters, status, viewsets
-from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.decorators import (
+    action, api_view, permission_classes, throttle_classes,
+)
 from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework.throttling import SimpleRateThrottle
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsResponsableOrAdmin
@@ -4042,6 +4045,143 @@ def desinscription_publique(request, token):
     if not ok:
         return Response({'detail': resultat}, status=400)
     return Response({'desinscrit': True, 'destinataire': resultat})
+
+
+# ── XFAC26/27 — Portail client self-service : relevé + contestation ───────
+# Le client s'identifie par le token du portail EXISTANT
+# (``ComptePortailClient.token_acces``, FG228) — jamais une 2ᵉ auth. Les
+# données de facturation (relevé, factures) sont lues via
+# ``apps.ventes.selectors`` (jamais un import de ``apps.ventes.models``).
+
+class _PortailComptaThrottle(SimpleRateThrottle):
+    """Débit du portail compta par IP (même patron que
+    ``contrats.public_views.ContratsPortailThrottle`` — sans dépendance
+    externe)."""
+    scope = 'compta_portail'
+    rate = '30/minute'
+
+    def get_rate(self):
+        return self.rate
+
+    def get_cache_key(self, request, view):
+        ident = self.get_ident(request)
+        return self.cache_format % {'scope': self.scope, 'ident': ident}
+
+
+def _portail_noindex(response):
+    response['X-Robots-Tag'] = 'noindex, nofollow, noarchive'
+    return response
+
+
+def _portail_not_found():
+    return _portail_noindex(Response(
+        {'detail': "Ce lien de portail est invalide ou n'existe pas."},
+        status=status.HTTP_404_NOT_FOUND,
+    ))
+
+
+def _resoudre_compte_portail(token):
+    return selectors.compte_portail_par_token(token)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([_PortailComptaThrottle])
+def portail_mon_releve(request, token):
+    """XFAC26 — Relevé de compte self-service : postes ouverts, solde
+    courant, mini balance âgée (0-30/31-60/61-90/90+).
+
+    GET /api/django/compta/portail/<token>/mon-releve/
+
+    Résout le compte portail par token (404 si invalide/inconnu, sans fuite
+    d'existence) puis lit le relevé via ``apps.ventes.selectors`` — jamais un
+    import de ``apps.ventes.models``. Le client ne voit JAMAIS le compte
+    d'un autre (le sélecteur est borné à ``compte.client_id``)."""
+    compte = _resoudre_compte_portail(token)
+    if compte is None:
+        return _portail_not_found()
+
+    from apps.ventes import selectors as ventes_selectors
+    client = compte.client
+    if client is None or client.company_id != compte.company_id:
+        return _portail_not_found()
+
+    data = ventes_selectors.releve_client_portail(client)
+    return _portail_noindex(Response(data))
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([_PortailComptaThrottle])
+def portail_mon_releve_pdf(request, token):
+    """XFAC26 — Téléchargement du relevé de compte PDF (même rendu que
+    l'écran interne)."""
+    compte = _resoudre_compte_portail(token)
+    if compte is None:
+        return _portail_not_found()
+
+    from apps.ventes import selectors as ventes_selectors
+    client = compte.client
+    if client is None or client.company_id != compte.company_id:
+        return _portail_not_found()
+
+    try:
+        pdf_bytes = ventes_selectors.releve_client_pdf_bytes(client)
+    except Exception as exc:
+        return _portail_noindex(Response(
+            {'detail': f'PDF indisponible : {exc}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR))
+    resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+    resp['Content-Disposition'] = (
+        f'inline; filename="Releve_{client.nom}.pdf"')
+    return _portail_noindex(resp)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@throttle_classes([_PortailComptaThrottle])
+def portail_contester_facture(request, token, facture_id):
+    """XFAC27 — Le client conteste UNE de ses factures depuis le portail.
+
+    POST /api/django/compta/portail/<token>/factures/<facture_id>/contester/
+    body: {"motif": "montant"|"prestation"|"deja_payee"|"autre",
+           "commentaire": str (optionnel)}
+
+    Crée une ``litiges.Reclamation`` (type FINANCIER, ``bloque_relances``
+    True — LITIGE3 suspend automatiquement les relances de cette facture),
+    trace la contestation sur le chatter de la facture (``apps.ventes``) et
+    notifie best-effort le créateur de la facture. La facture DOIT
+    appartenir au client résolu par le token (sinon 404, aucune fuite)."""
+    compte = _resoudre_compte_portail(token)
+    if compte is None:
+        return _portail_not_found()
+
+    from apps.ventes import selectors as ventes_selectors
+    from apps.ventes import services as ventes_services
+
+    facture = ventes_selectors.get_facture_scoped(compte.company, facture_id)
+    if facture is None or facture.client_id != compte.client_id:
+        return _portail_not_found()
+
+    motifs = {
+        'montant': 'Montant contesté',
+        'prestation': 'Prestation contestée',
+        'deja_payee': 'Facture déjà payée',
+        'autre': 'Autre motif',
+    }
+    motif = (request.data.get('motif') or '').strip()
+    motif_label = motifs.get(motif, motifs['autre'])
+    commentaire = (request.data.get('commentaire') or '').strip()
+
+    reclamation = services.creer_reclamation_portail(
+        facture, motif_label=motif_label, commentaire=commentaire)
+
+    ventes_services.enregistrer_contestation_portail(
+        facture, motif_label=motif_label, commentaire=commentaire)
+
+    return _portail_noindex(Response(
+        {'reclamation_id': reclamation.id, 'reference': reclamation.reference},
+        status=status.HTTP_201_CREATED))
 
 
 # ── FG203 — Récupération des devis abandonnés ──────────────────────────────

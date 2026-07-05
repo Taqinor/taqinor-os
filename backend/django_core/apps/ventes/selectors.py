@@ -34,6 +34,57 @@ def get_facture_scoped(company, facture_id):
             .filter(id=facture_id, company=company).first())
 
 
+def releve_client_portail(client):
+    """XFAC26 — Relevé de compte self-service (portail client) : réutilise
+    ``recouvrement._releve_data`` (même patron que l'écran interne, sans
+    filtre de portée — le portail montre TOUT le compte du client, jamais un
+    sous-ensemble par créateur) et ajoute une mini balance âgée
+    (0-30/31-60/61-90/90+) + le solde courant, cohérents avec
+    ``balance_agee``. Point d'entrée cross-app pour ``apps.compta``
+    (jamais un import de ``apps.ventes.models``). Lecture seule."""
+    from decimal import Decimal
+
+    from .models import Facture
+    from .recouvrement import _releve_data
+
+    data = _releve_data(client, user=None)
+
+    buckets = {
+        'b0_30': Decimal('0'), 'b31_60': Decimal('0'),
+        'b61_90': Decimal('0'), 'b90_plus': Decimal('0'),
+    }
+    qs = (Facture.objects
+          .filter(client=client)
+          .exclude(statut__in=[Facture.Statut.PAYEE, Facture.Statut.ANNULEE]))
+    for facture in qs:
+        du = facture.montant_du
+        if not du:
+            continue
+        jr = facture.jours_retard
+        if jr <= 30:
+            buckets['b0_30'] += du
+        elif jr <= 60:
+            buckets['b31_60'] += du
+        elif jr <= 90:
+            buckets['b61_90'] += du
+        else:
+            buckets['b90_plus'] += du
+
+    data['solde_courant'] = data['totaux']['du']
+    data['balance_agee'] = {k: str(v) for k, v in buckets.items()}
+    return data
+
+
+def releve_client_pdf_bytes(client):
+    """XFAC26 — PDF du relevé de compte (portail client), même rendu que
+    l'écran interne (``client_releve_pdf``). Lecture seule, jamais un import
+    hors de ce module côté ``apps.compta``."""
+    from .recouvrement import _releve_data
+    from .utils.pdf import generate_releve_pdf
+
+    return generate_releve_pdf(client, _releve_data(client, user=None))
+
+
 def devis_for_lead(lead, ids):
     """Devis d'un lead (dans la société du lead), pour les ids donnés, triés par
     id. Liste matérialisée — comportement identique au filtre inline d'origine."""

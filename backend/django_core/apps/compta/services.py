@@ -9092,3 +9092,29 @@ def valider_compensation(compensation, *, user=None):
         compensation.save(update_fields=[
             'statut', 'ecriture_id', 'date_validation'])
     return compensation
+
+
+# ── XFAC27 — Portail client : contester une facture ─────────────────────────
+
+def creer_reclamation_portail(facture, *, motif_label, commentaire=''):
+    """XFAC27 — Ouvre la ``litiges.Reclamation`` d'une contestation de
+    facture initiée par le CLIENT depuis le portail self-service (jamais un
+    import de ``apps.litiges.models`` — passe par son ``services.py``, le
+    type ``'financier'`` est la valeur stable de
+    ``Reclamation.TypeReclamation.FINANCIER``).
+    ``bloque_relances=True`` (défaut) : LITIGE3 suspend automatiquement les
+    relances de cette facture tant que la réclamation reste ouverte."""
+    from apps.litiges import services as litiges_services
+
+    objet = f'Facture {facture.reference} contestée par le client (portail)'
+    description = motif_label
+    if commentaire:
+        description += f' — {commentaire}'
+    return litiges_services.creer_reclamation(
+        company=facture.company,
+        type_reclamation='financier',
+        source_type='facture', source_id=facture.id,
+        objet=objet, description=description,
+        montant_conteste=facture.montant_du,
+        bloque_relances=True,
+    )
