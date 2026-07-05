@@ -209,6 +209,19 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# YOPSB14 — limites d'upload applicatives (Django) alignées sur
+# `client_max_body_size 15m` déjà posé dans backend/nginx/nginx.conf. Sans
+# elles, Django n'a AUCUNE limite propre : un upload énorme accepté par
+# nginx pourrait épuiser la mémoire du worker (bufferisation complète avant
+# rejet). 15 Mo = 15 * 1024 * 1024 octets, pilotable par env pour un futur
+# réglage sans redéploiement de code.
+DATA_UPLOAD_MAX_MEMORY_SIZE = int(
+    os.environ.get('DATA_UPLOAD_MAX_MEMORY_SIZE', str(15 * 1024 * 1024)))
+FILE_UPLOAD_MAX_MEMORY_SIZE = int(
+    os.environ.get('FILE_UPLOAD_MAX_MEMORY_SIZE', str(15 * 1024 * 1024)))
+DATA_UPLOAD_MAX_NUMBER_FIELDS = int(
+    os.environ.get('DATA_UPLOAD_MAX_NUMBER_FIELDS', '2000'))
+
 # Django REST Framework
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (

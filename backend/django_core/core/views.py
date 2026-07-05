@@ -18,8 +18,13 @@ via ``core.jobs`` (qui fait ``from celery import current_app``). ``core`` reste
 une couche de base (import-linter).
 """
 from rest_framework import status, viewsets
-from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import (
+    api_view,
+    authentication_classes,
+    permission_classes,
+    action,
+)
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from authentication.permissions import (
@@ -696,6 +701,39 @@ class SystemStatusViewSet(viewsets.ViewSet):
             'services': services,
             'incidents': health.recent_incidents(company=company),
         })
+
+
+# YOPSB14 — endpoints readiness/liveness LÉGERS, NON authentifiés, jamais de
+# données société. Distincts de SystemStatusViewSet (agrégat riche,
+# authentifié) : ceux-ci sont conçus pour être sondés par nginx/Caddy AVANT
+# de router une requête (évite les 502 après recréation de conteneur, notés
+# en mémoire projet). Exemptés d'auth ET de throttle (DRF @api_view avec
+# AllowAny + authentication_classes=[] court-circuite l'auth par défaut).
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@authentication_classes([])
+def health_live(request):
+    """``GET /api/django/core/health/live/`` — 200 IMMÉDIAT, process vivant.
+
+    Ne touche JAMAIS la base de données (contrairement à /health/ready/) :
+    répond même si Postgres est down, pour distinguer "le process Django a
+    planté" de "la DB est indisponible"."""
+    return Response({'status': 'live'})
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@authentication_classes([])
+def health_ready(request):
+    """``GET /api/django/core/health/ready/`` — 200 si la DB répond
+    (``core.health._check_db``), 503 sinon. Conçu pour un probe
+    nginx/Caddy AVANT de router du trafic vers ce worker."""
+    from . import health
+    db_check = health.check_db()
+    if db_check['status'] == health.STATUS_DOWN:
+        return Response({'status': 'not-ready', 'detail': db_check['detail']},
+                        status=503)
+    return Response({'status': 'ready'})
 
 
 class ApiUsagePlanViewSet(TenantMixin, viewsets.GenericViewSet):

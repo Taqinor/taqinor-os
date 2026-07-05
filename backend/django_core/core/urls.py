@@ -45,6 +45,8 @@ from .views import (
     TenantThemeViewSet,
     TrashViewSet,
     WorkflowTemplateViewSet,
+    health_live,
+    health_ready,
 )
 
 router = DefaultRouter()
@@ -105,4 +107,8 @@ urlpatterns = router.urls + [
     path('dashboards-partages/public/<str:token>/', dashboard_public,
          name='dashboard-partage-public'),
     path('dashboards-tv/', dashboard_tv, name='dashboard-tv'),
+    # YOPSB14 — probes readiness/liveness légers, non authentifiés, jamais
+    # de données société (à sonder par nginx/Caddy avant de router).
+    path('health/live/', health_live, name='health-live'),
+    path('health/ready/', health_ready, name='health-ready'),
 ]

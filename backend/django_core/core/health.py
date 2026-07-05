@@ -74,6 +74,13 @@ def _check_db():
     return {'name': 'database', 'status': STATUS_OK, 'detail': ''}
 
 
+# YOPSB14 — alias public pour /api/django/core/health/ready/ (core.views).
+# Le probe readiness n'a besoin QUE de la sonde DB (pas du reste de
+# check_services()) — exposé explicitement plutôt que d'accéder au nom
+# préfixé « privé » depuis un autre module.
+check_db = _check_db
+
+
 def _check_cache():
     try:
         cache.set('core_health_probe', '1', 5)
