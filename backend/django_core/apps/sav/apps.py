@@ -24,3 +24,8 @@ class SavConfig(AppConfig):
         # YSUBS5 — abonne sav aux événements métier (core.events) : de-
         # provisioning de la maintenance liée à la résiliation d'un contrat.
         from . import receivers  # noqa: F401
+        # ZMFG7 — abonne sav au bus e-mail entrant (core.email_intake,
+        # FG373) : route un message reçu à l'alias d'une catégorie
+        # d'équipement vers un ticket correctif pré-catégorisé.
+        from .services import register_email_alias_handler
+        register_email_alias_handler()

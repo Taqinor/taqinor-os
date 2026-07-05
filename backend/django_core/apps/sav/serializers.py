@@ -301,6 +301,10 @@ class TicketSerializer(serializers.ModelSerializer):
     # ZMFG1 — équipe de maintenance assignée (libellé lecture).
     equipe_nom = serializers.CharField(
         source='equipe.nom', read_only=True, default=None)
+    # ZMFG7 — catégorie d'équipement d'origine (libellé lecture, routage
+    # par alias e-mail).
+    categorie_equipement_nom = serializers.CharField(
+        source='categorie_equipement.nom', read_only=True, default=None)
     # XCTR2 — couverture de l'équipement lié par le contrat de maintenance
     # ACTIF du client (registre XCTR2). None si aucun contrat/équipement.
     equipement_couvert = serializers.SerializerMethodField()
@@ -571,12 +575,17 @@ class CategorieEquipementSerializer(serializers.ModelSerializer):
         source='responsable.username', read_only=True, default=None)
     # Compteur d'équipements par catégorie (smart-button façon Odoo).
     nb_equipements = serializers.SerializerMethodField()
+    # ZMFG7 — équipe responsable (libellé lecture).
+    equipe_responsable_nom = serializers.CharField(
+        source='equipe_responsable.nom', read_only=True, default=None)
 
     class Meta:
         model = CategorieEquipement
         fields = [
             'id', 'nom', 'responsable', 'responsable_nom', 'commentaire',
             'nb_equipements',
+            # ZMFG7 — alias e-mail → routage auto de demande.
+            'alias_email', 'equipe_responsable', 'equipe_responsable_nom',
         ]
         read_only_fields = ['id']
 

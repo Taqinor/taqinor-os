@@ -1033,3 +1033,94 @@ def creer_contrat_depuis_devis_accepte(*, devis, user=None):
         kwargs['installation'] = installation
 
     return ContratMaintenance.objects.create(**kwargs)
+
+
+# ── ZMFG7 — Alias e-mail par catégorie d'équipement ──────────────────────────
+
+def _extract_to_addresses(message):
+    """Extrait les adresses du header ``To`` (brut) d'un ``InboundMessage``
+    (``core.email_intake``), en minuscules, sans nom affiché."""
+    from email.utils import getaddresses
+
+    to_header = (message.raw_headers or {}).get('To', '')
+    if not to_header:
+        return []
+    return [addr.strip().lower()
+            for _, addr in getaddresses([to_header]) if addr]
+
+
+def categorie_pour_alias(company, message):
+    """ZMFG7 — ``CategorieEquipement`` de la société dont ``alias_email``
+    correspond à UNE des adresses ``To`` du message, ou ``None`` si aucune
+    catégorie ne configure cet alias (route FG373 générique inchangée)."""
+    from .models import CategorieEquipement
+
+    adresses = _extract_to_addresses(message)
+    if not adresses:
+        return None
+    return (CategorieEquipement.objects
+            .filter(company=company, alias_email__in=adresses)
+            .exclude(alias_email__isnull=True)
+            .exclude(alias_email='')
+            .first())
+
+
+def creer_ticket_depuis_email_alias(message, company):
+    """ZMFG7 — Handler enregistré auprès de ``core.email_intake`` (FG373) :
+    si le message entrant est adressé à l'alias e-mail d'une
+    ``CategorieEquipement``, crée un ticket CORRECTIF pré-catégorisé
+    (catégorie posée sur l'équipement via son alias + équipe responsable de
+    la catégorie si posée).
+
+    NO-OP total (ne crée rien) si :
+      * aucune catégorie de la société ne configure cet alias (route
+        générique FG373 inchangée) ;
+      * l'expéditeur ne correspond à AUCUN client existant de la société
+        (on ne devine jamais un client — mieux vaut ne rien créer qu'un
+        ticket orphelin).
+
+    Idempotent par Message-ID : un même message ne crée jamais deux
+    tickets (re-poll IMAP, redélivrance).
+    """
+    categorie = categorie_pour_alias(company, message)
+    if categorie is None:
+        return None  # pas d'alias configuré → route générique inchangée.
+
+    from apps.crm.selectors import find_client_by_email
+    from apps.ventes.utils.references import create_with_reference
+    from .models import Ticket
+
+    client = find_client_by_email(message.from_email, company=company)
+    if client is None:
+        return None  # expéditeur inconnu → aucun ticket orphelin créé.
+
+    marqueur = f'[email:{message.message_id}]' if message.message_id else None
+    if marqueur:
+        existant = Ticket.objects.filter(
+            company=company, description__startswith=marqueur).first()
+        if existant is not None:
+            return existant
+
+    sujet = (message.subject or 'Demande reçue par e-mail').strip()
+    corps = message.body or ''
+    description = f'{marqueur} {sujet}\n\n{corps}' if marqueur else f'{sujet}\n\n{corps}'
+
+    def _create(ref):
+        return Ticket.objects.create(
+            company=company, reference=ref, client=client,
+            type=Ticket.Type.CORRECTIF, statut=Ticket.Statut.NOUVEAU,
+            categorie_equipement=categorie,
+            equipe=categorie.equipe_responsable,
+            date_ouverture=timezone.localdate(),
+            description=description[:4000])
+    return create_with_reference(Ticket, 'SAV', company, _create)
+
+
+def register_email_alias_handler():
+    """ZMFG7 — Abonne ``creer_ticket_depuis_email_alias`` au bus e-mail
+    entrant (``core.email_intake``), câblé depuis ``SavConfig.ready()``.
+    ``core`` ne connaît jamais ``apps.sav`` — même patron de découplage que
+    les autres handlers du registre (docstring ``core/email_intake.py``)."""
+    from core.email_intake import register_handler
+
+    register_handler(creer_ticket_depuis_email_alias)

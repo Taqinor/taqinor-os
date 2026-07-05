@@ -211,12 +211,39 @@ class CategorieEquipement(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='categories_equipement_dirigees')
     commentaire = models.TextField(blank=True, default='')
+    # ── ZMFG7 — Alias e-mail → création auto de demande ─────────────────────
+    # Vide par défaut (comportement actuel inchangé) : un e-mail entrant
+    # (FG373) ne route vers un ticket pré-catégorisé QUE si une catégorie
+    # renseigne cet alias. Unique PAR SOCIÉTÉ quand renseigné (deux
+    # catégories ne peuvent pas partager le même alias).
+    alias_email = models.CharField(
+        max_length=254, blank=True, null=True,
+        verbose_name='Alias e-mail',
+        help_text='Adresse e-mail dédiée à cette catégorie — un message reçu '
+                  'à cet alias crée un ticket correctif pré-catégorisé '
+                  '(vide = pas de routage par alias).')
+    # ZMFG7 — équipe responsable de la catégorie (si posée), affectée
+    # automatiquement au ticket créé par alias. Optionnel : NULL = comme
+    # aujourd'hui, aucune équipe déduite depuis la catégorie.
+    equipe_responsable = models.ForeignKey(
+        'sav.EquipeMaintenance', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='categories_equipement',
+        verbose_name='Équipe responsable',
+        help_text='Équipe de maintenance affectée automatiquement aux '
+                  'tickets créés par alias e-mail pour cette catégorie.')
 
     class Meta:
         verbose_name = 'Catégorie d\'équipement'
         verbose_name_plural = 'Catégories d\'équipement'
         ordering = ['nom']
         unique_together = [('company', 'nom')]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'alias_email'],
+                condition=models.Q(alias_email__isnull=False)
+                & ~models.Q(alias_email=''),
+                name='sav_categorieequipement_company_alias_uniq'),
+        ]
 
     def __str__(self):
         return self.nom
@@ -618,6 +645,16 @@ class Ticket(models.Model):
     # suppression d'une équipe ne casse pas l'historique des tickets.
     equipe = models.ForeignKey(
         'sav.EquipeMaintenance', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='tickets')
+
+    # ── ZMFG7 — Catégorie d'équipement d'origine (routage par alias e-mail) ──
+    # Optionnel : NULL = comportement actuel (aucun ticket n'a jamais porté
+    # de catégorie d'équipement). Posé automatiquement par le handler
+    # d'e-mail entrant (ZMFG7) quand le message arrive sur l'alias d'une
+    # catégorie ; peut aussi être posé manuellement. SET_NULL : la
+    # suppression d'une catégorie ne casse pas l'historique.
+    categorie_equipement = models.ForeignKey(
+        'sav.CategorieEquipement', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='tickets')
 
     # ── Annulation : un DRAPEAU avec motif, pas une étape (comme « Perdu »). ──
