@@ -88,15 +88,20 @@ class YSERV5GenerationAutoTest(TestCase):
         self.assertEqual(n1, n2)
 
     def test_avance_jours_materialise_avant_echeance(self):
-        # Sans avance : pas encore due (visite dans 5 jours).
-        contrat = ContratMaintenance.objects.create(
+        # self.contrat (setUp) a sa prochaine visite dans 5 jours (date_debut
+        # = J-360, périodicité annuelle par défaut => J-360+12mois = J+5).
+        # Un second contrat, dont la prochaine visite (date_debut + 12 mois)
+        # tombe loin dans le futur, sert de témoin « jamais dû ».
+        contrat_lointain = ContratMaintenance.objects.create(
             company=self.company, client=self.client_obj,
             installation=self.inst,
             date_debut=date.today() + timedelta(days=5), actif=True)
         n0 = generer_visites_dues(self.company, self.admin, avance_jours=0)
         self.assertEqual(n0, 0)
-        # Avec 10 jours d'avance : la visite dans 5 jours est due.
+        # Avec 10 jours d'avance : la visite de self.contrat (dans 5 jours) est due.
         n1 = generer_visites_dues(self.company, self.admin, avance_jours=10)
         self.assertGreaterEqual(n1, 1)
-        contrat.refresh_from_db()
-        self.assertIsNotNone(contrat.derniere_visite)
+        self.contrat.refresh_from_db()
+        self.assertIsNotNone(self.contrat.derniere_visite)
+        contrat_lointain.refresh_from_db()
+        self.assertIsNone(contrat_lointain.derniere_visite)
