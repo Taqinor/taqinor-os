@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import {
   Search, Plus, Download, BookText, ListChecks, FileWarning,
   MessageCircle, Code2, Check, FileText, ReceiptText, MoreHorizontal,
-  CreditCard, ShieldCheck, X,
+  CreditCard, ShieldCheck, X, LayoutList, LayoutGrid,
 } from 'lucide-react'
 import {
   fetchFactures,
@@ -18,6 +18,7 @@ import parametresApi from '../../api/parametresApi'
 import api from '../../api/axios'
 import importApi, { downloadXlsx } from '../../api/importApi'
 import FactureForm from './FactureForm'
+import FactureKanbanBoard from './FactureKanbanBoard'
 import {
   Button, Badge, StatusPill, Card, EmptyState, Spinner,
   Tabs, TabsList, TabsTrigger,
@@ -179,6 +180,8 @@ export default function FactureList() {
   const [activeTab, setActiveTab]     = useState('toutes')
   const [search, setSearch]           = useState('')
   const [typeFilter, setTypeFilter]   = useState('')
+  // ZFAC9 — bascule Liste/Kanban (wiring/données only, réutilise `filtered`).
+  const [viewMode, setViewMode]       = useState('liste')
   // Vues enregistrées (FG11).
   const { savedViews: factSavedViews, saveView: saveFactView, deleteView: deleteFactView } = useSavedViews(FL_SAVED_VIEWS_KEY)
   const saveCurrentFactView = () => {
@@ -878,9 +881,31 @@ export default function FactureList() {
             </span>
           ))}
         </div>
+        {/* ZFAC9 — bascule Liste/Kanban : réutilise `filtered` déjà chargé,
+            aucune donnée/refonte nouvelle. */}
+        <div className="ml-auto flex items-center gap-1 rounded-md border border-border p-0.5" role="group" aria-label="Mode d’affichage">
+          <Button
+            type="button" size="sm"
+            variant={viewMode === 'liste' ? 'secondary' : 'ghost'}
+            aria-pressed={viewMode === 'liste'}
+            onClick={() => setViewMode('liste')}
+          >
+            <LayoutList className="size-4" aria-hidden="true" /> Liste
+          </Button>
+          <Button
+            type="button" size="sm"
+            variant={viewMode === 'kanban' ? 'secondary' : 'ghost'}
+            aria-pressed={viewMode === 'kanban'}
+            onClick={() => setViewMode('kanban')}
+          >
+            <LayoutGrid className="size-4" aria-hidden="true" /> Kanban
+          </Button>
+        </div>
       </div>
 
-      {filtered.length === 0 ? (
+      {viewMode === 'kanban' ? (
+        <FactureKanbanBoard factures={filtered} today={today} onOpenFacture={openEdit} />
+      ) : filtered.length === 0 ? (
         <EmptyState
           icon={ReceiptText}
           title={

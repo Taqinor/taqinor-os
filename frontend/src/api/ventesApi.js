@@ -1,6 +1,22 @@
 import api from './axios'
 
 const ventesApi = {
+  // XSAL3 — résolution de prix (liste client / palier de quantité), lecture
+  // seule, company-scoped. BLOQUÉ : dépend de XSAL1 (`ventes.ListePrix` +
+  // `LignePrixListe` + `Client.liste_prix`) et XSAL2 (`RegleListePrix` +
+  // paliers de quantité) — confirmé absents de `apps/ventes/models.py` (grep
+  // `ListePrix|RegleListePrix` : aucun résultat) : ni le modèle, ni le
+  // service `prix_applicable()`, ni cet endpoint n'existent encore côté
+  // backend. Câblé à l'URL conventionnelle décrite par la tâche
+  // (`GET /ventes/prix-applicable/?produit=&client=&quantite=`) pour que
+  // l'intégration DevisGenerator/ProduitPicker (badge « Tarif : <liste> »,
+  // pré-remplissage, jamais de snap/reject de la saisie manuelle) puisse être
+  // câblée dès que XSAL1/XSAL2 livrent — NE PAS appeler depuis un écran tant
+  // que ce commentaire est présent, ni ajouter de logique de repli locale
+  // (le fallback prix_vente doit rester server-side, jamais deviné ici).
+  getPrixApplicable: ({ produit, client, quantite } = {}) =>
+    api.get('/ventes/prix-applicable/', { params: { produit, client, quantite } }),
+
   // Devis
   getDevis: (params) => api.get('/ventes/devis/', { params }),
   getDevisById: (id) => api.get(`/ventes/devis/${id}/`),

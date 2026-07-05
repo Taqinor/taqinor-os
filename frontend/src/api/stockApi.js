@@ -128,6 +128,10 @@ const stockApi = {
     api.post(`/stock/receptions-fournisseur/${id}/confirmer/`),
   annulerReceptionFournisseur: (id) =>
     api.post(`/stock/receptions-fournisseur/${id}/annuler/`),
+  // XSTK4/XSTK5 — décompose un code GS1-128/DataMatrix scanné et résout le
+  // produit + série/lot/péremption préremplis pour la réception scan-first.
+  scanGs1ReceptionFournisseur: (code) =>
+    api.get('/stock/receptions-fournisseur/scan-gs1/', { params: { code } }),
 
   // G5 — Factures fournisseur / comptes à payer (AP). Solde dû = TTC − Σ
   // paiements ; statut recalculé à chaque paiement. Usage INTERNE.
@@ -179,6 +183,36 @@ const stockApi = {
   // FG59 — scorecard performance d'un fournisseur (admin).
   performanceFournisseur: (fournisseurId) =>
     api.get(`/stock/fournisseurs/${fournisseurId}/performance/`),
+  // XPUR25 — fiche fournisseur 360 : agrégat BCF ouverts/en retard, réceptions
+  // attendues, factures ouvertes/solde total dû, derniers paiements,
+  // retours/avoirs, score de performance, documents de conformité (statut
+  // d'expiration), accords de prix actifs. BLOCKED : endpoint backend
+  // `fournisseurs/{id}/vue-360/` pas encore construit (voir docs/PLAN.md XPUR25) —
+  // l'appel 404 aujourd'hui ; la page affiche un état « indisponible » (pas de
+  // crash) tant qu'il n'existe pas.
+  getFournisseur360: (id) => api.get(`/stock/fournisseurs/${id}/vue-360/`),
+  // Onglets détaillés — réutilisent les endpoints EXISTANTS déjà câblés
+  // ailleurs (WR4/FG55/FG56/FG58/FG59, XPUR1, XPUR9), filtrés par fournisseur
+  // côté frontend quand l'API ne filtre pas déjà nativement.
+  getFacturesFournisseurDe: (fournisseurId, params) =>
+    api.get('/stock/factures-fournisseur/', { params: { ...params, fournisseur: fournisseurId } }),
+  getRetoursFournisseurDe: (fournisseurId, params) =>
+    api.get('/stock/retours-fournisseur/', { params }).then((r) => ({
+      ...r,
+      data: Array.isArray(r.data?.results)
+        ? { ...r.data, results: r.data.results.filter((x) => x.fournisseur === fournisseurId) }
+        : (r.data ?? []).filter((x) => x.fournisseur === fournisseurId),
+    })),
+  getBonsCommandeFournisseurDe: (fournisseurId, params) =>
+    api.get('/stock/bons-commande-fournisseur/', { params }).then((r) => ({
+      ...r,
+      data: Array.isArray(r.data?.results)
+        ? { ...r.data, results: r.data.results.filter((x) => x.fournisseur === fournisseurId) }
+        : (r.data ?? []).filter((x) => x.fournisseur === fournisseurId),
+    })),
+  // XPUR1 — documents de conformité, filtrés serveur par ?fournisseur=.
+  getDocumentsConformiteFournisseur: (fournisseurId) =>
+    api.get('/stock/documents-conformite-fournisseur/', { params: { fournisseur: fournisseurId } }),
   // FG55 — PDF d'une facture fournisseur (blob, interne).
   factureFournisseurPdf: (id) =>
     api.get(`/stock/factures-fournisseur/${id}/pdf/`, { responseType: 'blob' }),
