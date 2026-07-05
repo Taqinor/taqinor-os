@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 12px; color: #333; }
+    .page { padding: 40px; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 32px; }
+    .header-left { display: flex; flex-direction: column; gap: 6px; }
+    .logo img { max-height: 90px; max-width: 240px; object-fit: contain; }
+    .doc-title { font-size: 26px; font-weight: bold; color: {{ couleur_principale }}; margin-top: 8px; }
+    .doc-ref { font-size: 12px; color: #666; }
+    .company-info { text-align: right; font-size: 11px; color: #555; line-height: 1.6; }
+    .company-info strong { font-size: 13px; color: #222; }
+
+    .meta-row { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+    .meta-item { background: #f8fafc; border-radius: 4px; padding: 8px 14px; min-width: 140px; }
+    .meta-item strong { display: block; color: #555; font-size: 10px; text-transform: uppercase; margin-bottom: 2px; }
+    .meta-item span { font-size: 12px; color: #1e293b; font-weight: 500; }
+
+    table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+    thead tr { background: {{ couleur_principale }}; color: white; }
+    thead th { padding: 8px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+    tbody tr:nth-child(even) { background: #f9fafb; }
+    tbody td { padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 11.5px; }
+    .text-right { text-align: right; }
+
+    .signature-block { margin-top: 48px; display: flex; justify-content: space-between; }
+    .signature-box { width: 45%; }
+    .signature-box .label { font-size: 11px; color: #555; margin-bottom: 40px; }
+    .signature-box .line { border-top: 1px solid #94a3b8; padding-top: 4px; font-size: 10px; color: #94a3b8; }
+
+    .footer { margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 14px; font-size: 10px; color: #94a3b8; text-align: center; line-height: 1.8; }
+    .footer .footer-legal { font-size: 9.5px; color: #b0bec5; margin-top: 4px; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="header">
+    <div class="header-left">
+      {% if logo_uri %}<div class="logo"><img src="{{ logo_uri }}" alt="Logo" /></div>{% endif %}
+      <div class="doc-title">BON DE LIVRAISON</div>
+      <div class="doc-ref">Livraison n° {{ reference }}</div>
+    </div>
+    <div class="company-info">
+      <strong>{{ entreprise_nom }}</strong><br />
+      {% if entreprise_adresse %}{{ entreprise_adresse }}<br />{% endif %}
+      {% if entreprise_telephone %}Tél : {{ entreprise_telephone }}<br />{% endif %}
+      {% if entreprise_email %}{{ entreprise_email }}{% endif %}
+    </div>
+  </div>
+
+  <div class="meta-row">
+    <div class="meta-item">
+      <strong>Chantier</strong>
+      <span>{{ chantier_reference or '—' }}</span>
+    </div>
+    <div class="meta-item">
+      <strong>Client</strong>
+      <span>{{ client_nom or '—' }}</span>
+    </div>
+    <div class="meta-item">
+      <strong>Adresse de livraison</strong>
+      <span>{{ site_adresse or site_ville or '—' }}</span>
+    </div>
+    <div class="meta-item">
+      <strong>Transporteur</strong>
+      <span>{{ transporteur_nom or '—' }}</span>
+    </div>
+    <div class="meta-item">
+      <strong>Date prévue</strong>
+      <span>{{ date_prevue.strftime('%d/%m/%Y') if date_prevue else 'N/A' }}</span>
+    </div>
+    {% if numero_suivi %}
+    <div class="meta-item">
+      <strong>N° de suivi</strong>
+      <span>{{ numero_suivi }}</span>
+    </div>
+    {% endif %}
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Désignation</th>
+        <th class="text-right">Quantité</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for ligne in lignes %}
+      <tr>
+        <td>{{ ligne.designation }}</td>
+        <td class="text-right">{{ ligne.quantite }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="signature-block">
+    <div class="signature-box">
+      <div class="label">Remis par</div>
+      <div class="line">Nom / Signature</div>
+    </div>
+    <div class="signature-box">
+      <div class="label">Reçu par (client)</div>
+      <div class="line">Nom / Signature / Date</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <strong>{{ entreprise_nom }}</strong>
+    {% if entreprise_adresse %} — {{ entreprise_adresse }}{% endif %}
+    <div class="footer-legal">
+      {% if entreprise_ice %}ICE : {{ entreprise_ice }}{% endif %}
+      {% if entreprise_if %} | IF : {{ entreprise_if }}{% endif %}
+      {% if entreprise_rc %} | RC : {{ entreprise_rc }}{% endif %}
+      <br />Bon de livraison généré automatiquement le {{ now.strftime('%d/%m/%Y à %H:%M') }}
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

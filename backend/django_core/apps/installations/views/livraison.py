@@ -147,6 +147,20 @@ class LivraisonViewSet(TenantMixin, viewsets.ModelViewSet):
             pass
         return self._set_statut(request, Livraison.Statut.ANNULEE)
 
+    @action(detail=True, methods=['get'], url_path='bon-livraison',
+            permission_classes=[IsAnyRole])
+    def bon_livraison(self, request, pk=None):
+        """ZSTK4 — bon de livraison PDF (packing/delivery slip). Client-facing :
+        aucun `cout_transport` ni prix d'achat (test dédié)."""
+        from django.http import HttpResponse
+        from .. import livraison_pdf
+        liv = self.get_object()
+        pdf_bytes = livraison_pdf.bon_livraison_pdf(liv)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'inline; filename="bon-livraison-{liv.id}.pdf"')
+        return resp
+
     @action(detail=False, methods=['get'], url_path='portail',
             permission_classes=[IsAnyRole])
     def portail(self, request):
