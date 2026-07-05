@@ -396,6 +396,16 @@ def _map_payload_to_fields(data: dict) -> dict:
     if page:
         fields['page'] = str(page).strip()[:300] or None
 
+    # QW3 — Préférence de contact EXPLICITE (« WhatsApp uniquement » / « Rappel
+    # téléphonique OK »), DISTINCTE de `whatsapp_opt_in` (consentement
+    # marketing) et de `canal` (canal marketing d'ORIGINE, toujours SITE_WEB
+    # ci-dessus pour ce webhook — jamais réécrit par cette préférence).
+    contact_preference = _clean_choice(
+        data.get('contactPreference', data.get('contact_preference')),
+        Lead.ContactPreference.values)
+    if contact_preference is not None:
+        fields['contact_preference'] = contact_preference
+
     if fields['whatsapp_opt_in'] and fields['telephone']:
         fields['whatsapp'] = fields['telephone']
     # Sous le seuil (ne devrait pas arriver — le site filtre) : étiqueté.

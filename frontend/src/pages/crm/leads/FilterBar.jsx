@@ -137,6 +137,20 @@ export default function FilterBar({ filters, setFilters, leads }) {
         </SelectContent>
       </Select>
 
+      <Select
+        value={toSel(filters.contact_preference)}
+        onValueChange={(v) => setKey('contact_preference')(fromSel(v))}
+      >
+        <SelectTrigger className="fb-select" aria-label="Filtrer par préférence de contact">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ALL}>Toute préférence de contact</SelectItem>
+          <SelectItem value="phone_ok">☎ Rappel demandé</SelectItem>
+          <SelectItem value="whatsapp_only">WhatsApp uniquement</SelectItem>
+        </SelectContent>
+      </Select>
+
       <Select value={toSel(filters.owner)} onValueChange={(v) => setKey('owner')(fromSel(v))}>
         <SelectTrigger className="fb-select" aria-label="Filtrer par responsable">
           <SelectValue />

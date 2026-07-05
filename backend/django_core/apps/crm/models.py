@@ -237,6 +237,15 @@ class Lead(models.Model):
         CETTE_SEMAINE = 'cette_semaine', 'Cette semaine'
         SEMAINE_PROCHAINE = 'semaine_prochaine', 'Semaine prochaine'
 
+    # QW3 — Préférence de contact EXPLICITE du prospect (lead.ts
+    # CONTACT_PREFERENCES), DISTINCTE de `whatsapp_opt_in` (consentement
+    # marketing WhatsApp) et de `Canal` (canal marketing d'ORIGINE) : ceci est
+    # « comment voulez-vous qu'on vous recontacte », une question posée UNE
+    # FOIS au client, jamais déduite ni écrasée par le canal marketing.
+    class ContactPreference(models.TextChoices):
+        WHATSAPP_ONLY = 'whatsapp_only', 'WhatsApp uniquement'
+        PHONE_OK = 'phone_ok', 'Rappel téléphonique OK'
+
     # Langue préférée du contact pour les messages (ex. WhatsApp). Nullable :
     # tant qu'elle n'est pas renseignée, le message retombe sur le FR. Les clés
     # sont identiques à celles attendues par le constructeur WhatsApp
@@ -430,6 +439,12 @@ class Lead(models.Model):
     # Bande ROI préliminaire affichée au prospect (ex. « 5 à 9 kWc · 4 à 6 ans »)
     roi_band = models.CharField(max_length=200, blank=True, null=True)
     whatsapp_opt_in = models.BooleanField(null=True, blank=True)
+    # QW3 — préférence de contact EXPLICITE, distincte de `whatsapp_opt_in`
+    # (consentement marketing) et de `canal` (canal marketing d'origine).
+    # NULL = non renseignée (comportement historique inchangé).
+    contact_preference = models.CharField(
+        max_length=16, choices=ContactPreference.choices, blank=True, null=True,
+        verbose_name='Préférence de contact')
     consent_timestamp = models.DateTimeField(null=True, blank=True)
     # Attribution publicitaire (capture first-touch du site)
     fbclid = models.CharField(max_length=500, blank=True, null=True)

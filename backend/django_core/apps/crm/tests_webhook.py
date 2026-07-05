@@ -385,3 +385,57 @@ class QW2SiteFieldsTests(TestCase):
         lead = Lead.objects.get(pk=res.json()['lead_id'])
         self.assertEqual(lead.company, self.company)
         self.assertNotEqual(lead.company, self.other_company)
+
+
+@override_settings(WEBSITE_LEAD_WEBHOOK_SECRET=SECRET)
+class QW3ContactPreferenceTests(TestCase):
+    """QW3 — "call me" vs "WhatsApp only", distinct de whatsapp_opt_in/Canal."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='Taqinor Test QW3', slug='taqinor-test-qw3')
+        self.url = reverse('website-lead-webhook')
+
+    def post(self, data, secret=SECRET):
+        headers = {'HTTP_X_WEBHOOK_SECRET': secret} if secret is not None else {}
+        return self.client.post(
+            self.url, data=json.dumps(data),
+            content_type='application/json', **headers)
+
+    def test_phone_ok_preference_persisted(self):
+        res = self.post(payload_site(contactPreference='phone_ok'))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertEqual(lead.contact_preference, 'phone_ok')
+
+    def test_whatsapp_only_preference_persisted(self):
+        res = self.post(payload_site(contactPreference='whatsapp_only'))
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertEqual(lead.contact_preference, 'whatsapp_only')
+
+    def test_canal_stays_site_web_regardless_of_contact_preference(self):
+        # Le canal marketing d'ORIGINE n'est jamais réécrit par la préférence
+        # de contact — deux concepts distincts.
+        res = self.post(payload_site(contactPreference='phone_ok'))
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertEqual(lead.canal, Lead.Canal.SITE_WEB)
+
+    def test_distinct_from_whatsapp_opt_in(self):
+        # whatsappOptIn=False (pas de consentement marketing WhatsApp) mais
+        # contactPreference='phone_ok' (le client veut être rappelé) : les
+        # deux signaux coexistent sans se confondre.
+        res = self.post(payload_site(
+            whatsappOptIn=False, contactPreference='phone_ok'))
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertFalse(lead.whatsapp_opt_in)
+        self.assertEqual(lead.contact_preference, 'phone_ok')
+
+    def test_absent_contact_preference_stays_null(self):
+        res = self.post(payload_site())
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertIsNone(lead.contact_preference)
+
+    def test_garbage_contact_preference_ignored(self):
+        res = self.post(payload_site(contactPreference='carrier-pigeon'))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertIsNone(lead.contact_preference)
