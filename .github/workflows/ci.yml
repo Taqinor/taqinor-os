@@ -220,18 +220,9 @@ jobs:
         working-directory: backend/django_core
         # coverage run propage le code de sortie des tests → gate intact ;
         # `coverage report` imprime un % backend visible (informatif).
-        # YTEST17 — `--parallel auto` fait tourner les tests Django sur
-        # plusieurs cœurs (chaque worker part d'une base isolée par rollback
-        # transactionnel — 0 perte d'isolation) ; `--keepdb` réutilise le
-        # schéma de test entre les DEUX bases qu'ORM Django crée pour
-        # `apps`/`authentication` DANS ce même run quand le layout n'a pas
-        # bougé (le run-model documenté ci-dessous couvre le persistant
-        # inter-runs en local). `coverage combine` fusionne les rapports par
-        # sous-processus (voir `.coveragerc: concurrency = multiprocessing`).
         run: |
           pip install coverage
-          coverage run manage.py test apps authentication -v 2 --exclude-tag=pdf --exclude-tag=slow --parallel auto --keepdb
-          coverage combine
+          coverage run manage.py test apps authentication -v 2 --exclude-tag=pdf --exclude-tag=slow
           coverage report
 
   frontend-lint:

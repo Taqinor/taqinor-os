@@ -216,22 +216,6 @@ le correctif et passe après** (le backlog de bugs vit dans
 `docs/ERROR_PLAN.md`). Un ticket qui change un comportement observable sans
 un test de régression qui l'aurait attrapé n'est pas terminé.
 
-## Accélération du gate — `--parallel` + `--keepdb`
-
-Le job `backend-tests` de CI câble `--parallel auto` (Django répartit les
-classes de test sur plusieurs processus — chaque worker part d'un état
-propre par ROLLBACK TRANSACTIONNEL, donc zéro perte d'isolation) et
-`--keepdb` (réutilise le schéma de test déjà migré quand le layout n'a pas
-bougé). `coverage run` combiné à `--parallel` nécessite `concurrency =
-multiprocessing` dans `.coveragerc` + `coverage combine` avant `coverage
-report`, sinon la couverture des sous-processus workers serait perdue.
-
-Le run LOCAL combiné (palier « How a plan run works » du CLAUDE.md) utilise
-DÉJÀ UN SEUL `--keepdb` persistant entre folds successifs (rebuild complet ≈
-13 min, réutilisé ≈ 2 min) — c'est la même logique, appliquée en CI par-merge
-qui elle reste isolée (VM éphémère par run) mais parallélisée sur ses propres
-cœurs.
-
 ## Pistes restantes
 * Parcours e2e par fonctionnalité pour les flux encore non couverts (stock,
   installations, SAV, reporting) : **scaffolds prêts** (`frontend/e2e/{stock,
