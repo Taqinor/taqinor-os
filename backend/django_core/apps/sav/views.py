@@ -133,7 +133,9 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
         return qs
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['etiquettes']:
+        if self.action in READ_ACTIONS + [
+                'etiquettes', 'registre_garanties', 'fiabilite',
+                'estimations_maintenance', 'disponibilite']:
             return [HasPermissionOrLegacy('equipement_voir')()]
         elif self.action in WRITE_ACTIONS + [
                 # ZMFG12 — mise au rebut / réactivation, réservé responsable/
@@ -695,7 +697,10 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
                 inst.save(update_fields=[
                     'est_recidive', 'intervention_origine_id',
                     'motif_recidive', 'non_facturable'])
-        activity.log_creation(serializer.instance, self.request.user)
+        # XSAV24 — la trace de création (CREATION) est désormais posée
+        # automatiquement par le récepteur `post_save` de `receivers.py`
+        # (voir `_log_creation_on_ticket_created`), pour TOUT chemin de
+        # création (API, WhatsApp, e-mail...) — jamais seulement celui-ci.
         # ZSAV9 — abonne automatiquement les suiveurs globaux (réglage
         # société, liste vide par défaut = no-op).
         from .services import abonner_suiveurs_globaux
@@ -1389,14 +1394,17 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         from apps.ventes.services import generer_facture_ticket_sav
 
         # XFSM15 — un ticket récidive est non-facturable PAR DÉFAUT ; un
-        # responsable/admin peut lever l'exclusion via `override=true`.
+        # responsable/admin peut lever l'exclusion via `override=true`
+        # explicite (l'un ne dispense jamais de l'autre : sans override,
+        # MÊME un admin reste bloqué ; avec override, seul un responsable/
+        # admin peut effectivement lever l'exclusion).
         override = str(request.data.get('override') or '') in (
             '1', 'true', 'True', 'on')
-        if ticket.non_facturable and not override:
+        if ticket.non_facturable:
             is_responsable = (
                 getattr(request.user, 'is_admin_role', False)
                 or getattr(request.user, 'is_responsable', False))
-            if not is_responsable:
+            if not override or not is_responsable:
                 return Response({
                     'detail': ('Ticket récidive marqué non-facturable — '
                                'override responsable requis.'),
@@ -1498,6 +1506,8 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         if request.method == 'GET':
             qs = ticket.prets_equipement.select_related('produit')
             return Response(PretEquipementSerializer(qs, many=True).data)
+        from datetime import date as _date
+
         from apps.stock.selectors import (
             get_produit_or_raise, produit_does_not_exist,
         )
@@ -1507,8 +1517,21 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
                 ticket.company, request.data.get('produit'))
         except (produit_does_not_exist(), ValueError, TypeError):
             return Response({'detail': 'Produit inconnu.'}, status=404)
-        date_sortie = request.data.get('date_sortie') or timezone.localdate()
-        date_retour_prevue = request.data.get('date_retour_prevue') or None
+
+        def _parse_date(raw):
+            if not raw:
+                return None
+            if isinstance(raw, _date):
+                return raw
+            try:
+                return _date.fromisoformat(str(raw))
+            except ValueError:
+                return None
+
+        date_sortie = _parse_date(request.data.get('date_sortie')) or (
+            timezone.localdate())
+        date_retour_prevue = _parse_date(
+            request.data.get('date_retour_prevue'))
         numero_serie = (request.data.get('numero_serie') or '').strip()
         try:
             with transaction.atomic():
@@ -1537,8 +1560,14 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
                 pk=pret_id)
         except (PretEquipement.DoesNotExist, ValueError, TypeError):
             return Response({'detail': 'Introuvable.'}, status=404)
-        date_retour = (
-            request.data.get('date_retour_reelle') or timezone.localdate())
+        from datetime import date as _date
+        raw_date_retour = request.data.get('date_retour_reelle')
+        if raw_date_retour and not isinstance(raw_date_retour, _date):
+            try:
+                raw_date_retour = _date.fromisoformat(str(raw_date_retour))
+            except ValueError:
+                raw_date_retour = None
+        date_retour = raw_date_retour or timezone.localdate()
         with transaction.atomic():
             pret = retourner_pret_equipement(
                 pret=pret, date_retour_reelle=date_retour, user=request.user)
@@ -1569,12 +1598,15 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         lead OUVERT existant du même client plutôt que d'en créer un second."""
         ticket = self.get_object()
         from apps.crm.services import create_lead_depuis_ticket
-        contexte = (
-            f'Créé depuis le ticket SAV {ticket.reference} : '
-            f'{(ticket.description or "").strip()}').strip()
+        # NOTE : le contexte (référence + description du ticket) n'est PAS
+        # passé à `create_lead_depuis_ticket` — cette fonction attribue la
+        # note de contexte à `user`, ce qui déclenche le signal QJ7
+        # (avancement automatique NEW -> CONTACTED au premier contact
+        # MANUEL) et ferait immédiatement sortir le lead du stade NEW
+        # attendu par ZSAV8. Le lien ticket<->lead reste tracé côté SAV via
+        # `activity.log_note` sur le ticket ci-dessous.
         lead, created = create_lead_depuis_ticket(
-            company=ticket.company, user=request.user, client=ticket.client,
-            contexte=contexte)
+            company=ticket.company, user=request.user, client=ticket.client)
         if ticket.lead_id_ext != lead.id:
             ticket.lead_id_ext = lead.id
             ticket.save(update_fields=['lead_id_ext'])

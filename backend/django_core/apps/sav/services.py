@@ -755,7 +755,9 @@ def router_whatsapp_entrant_vers_ticket(*, company, expediteur, texte):
             type=Ticket.Type.CORRECTIF,
             description=f'[WhatsApp] {texte}'.strip())
     ticket = create_with_reference(Ticket, 'SAV', company, _create)
-    activity.log_creation(ticket, None)
+    # XSAV24 — la trace de création (CREATION) est posée automatiquement par
+    # le récepteur `post_save` de `receivers.py` (voir
+    # `_log_creation_on_ticket_created`), plus besoin de l'appel explicite ici.
     return 'ticket_cree', ticket
 
 

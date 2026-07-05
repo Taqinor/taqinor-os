@@ -3,15 +3,44 @@
 Abonne ``sav`` aux événements du cœur métier exposés par ``core.events``, pour
 réagir à la résiliation d'un contrat (``apps.contrats``) SANS que ``contrats``
 importe ``sav`` ni l'inverse. Câblé au démarrage par ``SavConfig.ready``.
+
+Contient aussi (XSAV24) le récepteur intra-app qui journalise la CRÉATION
+d'un ``Ticket`` dans son ``TicketActivity`` (chatter) — quel que soit le
+chemin de création (API, WhatsApp, e-mail, tâche planifiée...), pour que
+« sans activité depuis N jours » (auto-clôture) ait toujours un point de
+départ fiable, jamais la simple date de dernière sauvegarde du ticket.
 """
 import logging
 
+from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils import timezone
 
 from core.events import contrat_resilie, devis_accepted, intervention_completed
+from .models import Ticket
 
 logger = logging.getLogger(__name__)
+
+
+@receiver(post_save, sender=Ticket, dispatch_uid="sav_log_creation_on_ticket_created")
+def _log_creation_on_ticket_created(sender, instance, created, **kwargs):
+    """XSAV24 — journalise automatiquement la création d'un ``Ticket`` dans
+    son historique (une seule fois, à l'INSERT). Remplace les appels
+    explicites équivalents (désormais retirés de ``views.py`` /
+    ``services.py`` pour éviter une entrée en double) : TOUT chemin de
+    création (API, WhatsApp XSAV26, alias e-mail, visite préventive
+    planifiée, etc.) obtient désormais la même trace de création — condition
+    dont dépend le sweep d'auto-clôture pour calculer une inactivité fiable
+    sur un ticket qui n'a jamais reçu d'autre activité."""
+    if not created:
+        return
+    try:
+        from . import activity
+        activity.log_creation(instance, getattr(instance, 'created_by', None))
+    except Exception:  # pragma: no cover - défensif (best-effort)
+        logger.warning(
+            'sav: échec journalisation création ticket #%s',
+            getattr(instance, 'pk', None), exc_info=True)
 
 
 @receiver(contrat_resilie, dispatch_uid="sav_deprovision_on_contrat_resilie")
