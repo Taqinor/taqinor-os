@@ -4,8 +4,8 @@
  * /professionnel ; EVERY figure kept EXACT in Latin digits (3–5 years, +20 years,
  * 5 MW, 17,04 kWc, 3,72 kWc, ref. 468, Canadian Solar 710 Wc,
  * Deye 15 kW, law 82-21). WB — fabricated annual kWh production figures
- * removed (no real Deye reading backed them); production is monitored on
- * Deye Cloud, never promised. Price-bracket data + solar math (localEstimateBand /
+ * removed (no real Deye reading backed them); production is monitored via
+ * real-time production monitoring, never promised. Price-bracket data + solar math (localEstimateBand /
  * formatMAD) reused UNCHANGED — only visible labels translated. Internal links
  * via localizeNavHref. Shared components auto-detect locale. FR untouched.
  *
@@ -67,7 +67,7 @@ const segments = [
   {
     n: '01', title: 'مستودع / مصنع',
     body: "كل kWh يدخل في سعر تكلفة قطعة مُنتَجة. سطح عريض ومستوٍ يُسدّد نفسه في 3 إلى 5 سنوات وينتج بالضبط في الساعات التي تشتغل فيها الآلات — يأتي الإنتاج حين يكون الطلب حاضراً.",
-    proof: 'دليل: الجديدة، 17,04 kWc، مُتابَعة على Deye Cloud',
+    proof: 'دليل: الجديدة، 17,04 kWc، مُتابَعة بمراقبة الإنتاج في الوقت الحقيقي',
     financier: 'عبء تشغيلي يتحوّل إلى أصل مُسدَّد في 3 إلى 5 سنوات',
     technique: 'سطح عريض ومستوٍ · تركيب دون توقيف الإنتاج',
   },
@@ -155,7 +155,7 @@ const capexOpex = [
 
 <Layout
   title="الطاقة الشمسية الصناعية والفندقية والطبية بالمغرب — مُسدَّدة في 3 إلى 5 سنوات | Taqinor"
-  description="17,04 kWc بالجديدة، مُتابَعة على Deye Cloud: تركيبات شمسية بالجهد المتوسط مُحدّدة المقاس على منحنيات حمولتك، الفائض مُقيَّم وفق القانون 82-21، من الربط بالشبكة (≤ 5 MW) إلى الترخيص."
+  description="17,04 kWc بالجديدة، مُتابَعة بمراقبة الإنتاج في الوقت الحقيقي: تركيبات شمسية بالجهد المتوسط مُحدّدة المقاس على منحنيات حمولتك، الفائض مُقيَّم وفق القانون 82-21، من الربط بالشبكة (≤ 5 MW) إلى الترخيص."
   ogSlug="professionnel"
 >
   <div class="v2">
@@ -188,7 +188,7 @@ const capexOpex = [
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
           على موقع مهني، ليست الطاقة الشمسية واجهة: إنها معدّة إنتاج، تُسدَّد في 3 إلى
           5 سنوات، ثم تشتغل بعدها أكثر من عشرين سنة. بالجديدة،
-          17,04 kWc مُتابَعة باستمرار على Deye Cloud. أما تحديد المقاس، فينطلق من منحنيات
+          17,04 kWc مُتابَعة باستمرار بمراقبة الإنتاج في الوقت الحقيقي. أما تحديد المقاس، فينطلق من منحنيات
           حمولتك — لا من قالب جاهز.
         </p>
         <div class="cine-in cine-in-3 mt-10 flex flex-wrap items-center gap-3">

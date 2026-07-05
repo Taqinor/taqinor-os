@@ -117,7 +117,7 @@ describe('W57 — frise de parcours bout-en-bout', () => {
     expect(index).toContain('Diagnostic 60 secondes');
     expect(index).toContain('Visite technique & étude gratuite');
     expect(index).toContain('Mise en service');
-    expect(index).toContain('Monitoring Deye Cloud');
+    expect(index).toContain('Suivi en temps réel');
     expect(index).toContain('journey.map');
     // L'ancien <ol> à 3 pas n'est plus rendu en double.
     expect(index).not.toContain("Diagnostic en 60 secondes — fourchette immédiate");

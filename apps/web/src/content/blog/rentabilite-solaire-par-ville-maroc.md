@@ -1,7 +1,7 @@
 ---
 title: "Rentabilité et retour sur investissement du solaire par ville marocaine"
 description: "Payback 5–7 ans, production par ville et tarifs ONEE : tout ce qu'il faut savoir sur la rentabilité du solaire au Maroc."
-pubDate: 2026-06-21
+pubDate: 2026-02-16
 tags: ["rentabilité", "ROI", "production", "villes"]
 author: "Reda Kasri"
 ogSlug: "residentiel"

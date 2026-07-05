@@ -15,23 +15,25 @@
  * finale s'affiche directement (voir script). Zéro CLS : la largeur finale
  * est réservée avant toute animation (src/lib/countup.ts reserveWidth).
  */
-import { REALISATIONS } from '../lib/realisations';
+import { MEASURED_FLEET_LIFETIME_MWH } from '../lib/realisations';
 
-const totalKwc = REALISATIONS.reduce((sum, r) => sum + r.kwcNum, 0);
-const totalKwcLabel = totalKwc.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).replace('.', ',');
-const hasData = totalKwc > 0;
+// WC5/WC6 (2026-07-05) : on n'affiche plus la CAPACITÉ installée (« 43,48 kWc »,
+// retirée du site par décision du fondateur) mais la PRODUCTION réellement
+// MESURÉE de la flotte suivie (MWh) — un chiffre de preuve, pas de capacité.
+const totalMwhLabel = MEASURED_FLEET_LIFETIME_MWH.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const hasData = MEASURED_FLEET_LIFETIME_MWH > 0;
 ---
 
 {hasData && (
   <div class="install-counter" data-install-counter>
     <div class="install-counter__item">
-      <p class="install-counter__value fig lum" data-tally data-final={totalKwcLabel} aria-hidden="true">{totalKwcLabel}</p>
-      <p class="install-counter__label tech-label" data-i18n data-fr="kWc installés" data-ar="كيلوواط ذروة مركّبة">
-        kWc installés
+      <p class="install-counter__value fig lum" data-tally data-final={totalMwhLabel} aria-hidden="true">{totalMwhLabel}</p>
+      <p class="install-counter__label tech-label" data-i18n data-fr="MWh produits et mesurés" data-en="MWh produced and measured" data-ar="ميغاواط-ساعة مُنتَجة ومقيسة">
+        MWh produits et mesurés
       </p>
     </div>
     <p class="sr-only">
-      {totalKwcLabel} kWc installés — chiffre issu des dossiers techniques publiés.
+      {totalMwhLabel} MWh produits et mesurés — cumul du suivi de production en temps réel.
     </p>
   </div>
 )}

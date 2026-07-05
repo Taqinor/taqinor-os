@@ -32,9 +32,8 @@ import { NAP } from '../../../lib/nap';
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
 
-const total = REALISATIONS.reduce((s, r) => s + r.kwcNum, 0);
-// Chiffres en latin partout (intégrité W67) : on garde le format en-US.
-const totalLabel = total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' kWc';
+// WC5 (2026-07-05) — يُزال الرقم الإجمالي « kWc installés » (مجموع كل
+// التركيبات) في كامل الموقع؛ تبقى فقط القدرة لكل تركيبة على حدة.
 const villesCount = new Set(REALISATIONS.map((r) => r.ville)).size;
 
 const altOf = (r: typeof REALISATIONS[number]) => caseStudyBySlug(r.slug, locale).alts[r.photos[0].name] ?? r.photos[0].alt;
@@ -45,7 +44,7 @@ const itemListJsonLd = {
   '@type': 'ItemList',
   name: 'تركيبات تاكينور الشمسية — قابلة للزيارة، إنتاج مُتابَع',
   description:
-    'التركيبات الشمسية التي ركّبتها تاكينور فعلاً، قابلة للزيارة عند الطلب، ومُتابَعة في الإنتاج عبر Deye Cloud.',
+    'التركيبات الشمسية التي ركّبتها تاكينور فعلاً، قابلة للزيارة عند الطلب، مع متابعة الإنتاج في الوقت الحقيقي.',
   itemListElement: REALISATIONS.map((r, i) => ({
     '@type': 'ListItem',
     position: i + 1,
@@ -58,7 +57,7 @@ const itemListJsonLd = {
 
 <Layout
   title="إنجازاتنا الشمسية بالمغرب — تركيبات مُتابَعة | Taqinor"
-  description="التركيبات الشمسية التي ركّبتها تاكينور فعلاً: فيلات بالدار البيضاء والجديدة والنواصر، القدرة، العتاد فوق السطح والإنتاج المُتابَع باستمرار عبر Deye Cloud. دراسات حالة مفصّلة."
+  description="التركيبات الشمسية التي ركّبتها تاكينور فعلاً: فيلات بالدار البيضاء والجديدة والنواصر، القدرة، العتاد فوق السطح ومتابعة الإنتاج في الوقت الحقيقي. دراسات حالة مفصّلة."
   ogSlug="accueil"
 >
   <script type="application/ld+json" set:html={JSON.stringify(itemListJsonLd)} />
@@ -79,12 +78,8 @@ const itemListJsonLd = {
         </p>
         <dl class="cine-in mt-8 flex flex-wrap gap-x-10 gap-y-4 [animation-delay:360ms]">
           <div>
-            <dt class="tech-label text-lune-faint">القدرة المُركَّبة</dt>
-            <dd class="fig lum text-3xl">{totalLabel}</dd>
-          </div>
-          <div>
             <dt class="tech-label text-lune-faint">المدن</dt>
-            <dd class="fig lum text-3xl">{villesCount}</dd>
+            <dd class="fig lum text-3xl" dir="ltr">{villesCount}</dd>
           </div>
           <div>
             <dt class="tech-label text-lune-faint">الأوراش</dt>
@@ -104,8 +99,8 @@ const itemListJsonLd = {
           ومقارنة سطح بسطحك. لكل ورش أدناه، تُنشَر القدرة المُركَّبة والعتاد المُثبَّت كما هي.
         </p>
         <p class="mt-4 text-lune-soft">
-          كل تركيبة مُتابَعة عبر Deye Cloud، مع ولوج للزبون — يُقرَأ الإنتاج هناك باستمرار، مباشرة من
-          العدّاد.
+          كل تركيبة تستفيد من متابعة الإنتاج في الوقت الحقيقي، مع ولوج للزبون — يُقرَأ الإنتاج هناك
+          باستمرار، مباشرة من العدّاد.
         </p>
       </div>
     </section>
