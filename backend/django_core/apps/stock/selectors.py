@@ -320,6 +320,63 @@ def montant_facture_bcf(bon_commande):
     return agg['total'] or Decimal('0')
 
 
+def quantite_en_commande_produit(company, produit_id):
+    """YPROC9 — quantité TOTALE de ``produit_id`` déjà « en commande » chez un
+    fournisseur (Σ ``quantite_restante`` des lignes de BCF BROUILLON ou
+    ENVOYE, jamais ANNULE/RECU — un BCF RECU n'a par construction plus de
+    restant). Ce pipeline arrive tôt ou tard en stock : le net de réappro doit
+    le déduire pour ne pas re-suggérer ce qui est déjà en route. INTERNE,
+    lecture seule."""
+    from .models import BonCommandeFournisseur, LigneBonCommandeFournisseur
+
+    lignes = (LigneBonCommandeFournisseur.objects
+              .filter(
+                  produit_id=produit_id,
+                  bon_commande__company=company,
+                  bon_commande__statut__in=[
+                      BonCommandeFournisseur.Statut.BROUILLON,
+                      BonCommandeFournisseur.Statut.ENVOYE,
+                  ])
+              .select_related('bon_commande'))
+    total = 0
+    for ligne in lignes:
+        total += max(ligne.quantite - ligne.quantite_recue, 0)
+    return total
+
+
+def bcf_sources_en_commande_produit(company, produit_id):
+    """YPROC9/ZPUR10 — détail des BCF sources contribuant à
+    ``quantite_en_commande_produit`` : liste de dicts {bon_commande_id,
+    reference, fournisseur_nom, quantite_restante, date_livraison_prevue}.
+    INTERNE, lecture seule."""
+    from .models import BonCommandeFournisseur, LigneBonCommandeFournisseur
+
+    lignes = (LigneBonCommandeFournisseur.objects
+              .filter(
+                  produit_id=produit_id,
+                  bon_commande__company=company,
+                  bon_commande__statut__in=[
+                      BonCommandeFournisseur.Statut.BROUILLON,
+                      BonCommandeFournisseur.Statut.ENVOYE,
+                  ])
+              .select_related('bon_commande', 'bon_commande__fournisseur'))
+    out = []
+    for ligne in lignes:
+        restant = max(ligne.quantite - ligne.quantite_recue, 0)
+        if restant <= 0:
+            continue
+        bc = ligne.bon_commande
+        out.append({
+            'bon_commande_id': bc.id,
+            'reference': bc.reference,
+            'fournisseur_nom': (
+                bc.fournisseur.nom if bc.fournisseur_id else None),
+            'quantite_restante': restant,
+            'date_livraison_prevue': bc.date_livraison_prevue,
+        })
+    return out
+
+
 def three_way_amounts(company, bc_id):
     """FG131 — Les trois montants HT du rapprochement 3 voies pour un BCF :
     commandé (BC) ↔ reçu (réception) ↔ facturé (facture fournisseur).

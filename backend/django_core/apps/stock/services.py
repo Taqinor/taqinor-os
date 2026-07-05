@@ -1912,19 +1912,23 @@ def creer_profil_saisonnier(
 
 
 def produits_a_reapprovisionner(company):
-    """Retourne les produits dont le stock est <= seuil EFFECTIF (XSTK17 :
+    """Retourne les produits dont la POSITION NETTE (disponible N14 + déjà EN
+    COMMANDE via BCF brouillon/envoyé, YPROC9) est <= seuil EFFECTIF (XSTK17 :
     le profil saisonnier ACTIF prime sur `seuil_alerte` pendant sa fenêtre ;
     hors saison, repli byte-identique sur `seuil_alerte`), groupés par
     fournisseur le moins cher (PrixFournisseur). INTERNE.
 
     Chaque item : {produit_id, nom, quantite_stock, seuil_alerte,
-    quantite_suggere, fournisseur_id, fournisseur_nom, prix_achat,
-    action, kit_id}. ``action`` = 'assembler' (kit_id renseigné) quand le
+    quantite_suggere, disponible, en_commande, fournisseur_id,
+    fournisseur_nom, prix_achat, action, kit_id}. ``quantite_suggere`` est
+    NETTE du pipeline déjà en route (0 → produit exclu du tout : ce qui
+    arrive déjà suffit). ``action`` = 'assembler' (kit_id renseigné) quand le
     produit sous seuil est le ``produit_compose`` d'un kit ACTIF
     (`installations.Kit`, XMFG3) — la suggestion devient « assembler N »
     plutôt qu'un bon de commande fournisseur ; sinon 'acheter'.
     """
     from .models import Produit, PrixFournisseur
+    from .selectors import quantite_en_commande_produit
     from apps.installations.selectors import kit_map_for_produits_composes
 
     # XSTK17 — exclut seulement les produits SANS seuil_alerte ET sans
@@ -1959,12 +1963,21 @@ def produits_a_reapprovisionner(company):
     produits = list(qs)
     kit_map = kit_map_for_produits_composes(
         company, [p.id for p in produits])
+    # YPROC9 — netting : le besoin réel se calcule sur le DISPONIBLE (stock −
+    # réservations chantier actives, N14) PLUS le pipeline déjà EN COMMANDE
+    # (BCF brouillon/envoyé non reçus) — jamais le stock brut seul. Sinon on
+    # re-suggère (et `generer_bcf_reappro` re-commande) ce qui est déjà en
+    # route.
+    reserved_map = reserved_quantities(company)
 
     result = []
     for p in produits:
         seuil_effectif, cible_effective = seuil_effectif_produit(
             company, p, mois=mois_actuel)
-        if p.quantite_stock > (seuil_effectif or 0):
+        disponible = p.quantite_stock - reserved_map.get(p.id, 0)
+        en_commande = quantite_en_commande_produit(company, p.id)
+        position_nette = disponible + en_commande
+        if position_nette > (seuil_effectif or 0):
             continue
         # Fournisseur le moins cher parmi les prix enregistrés.
         best = (PrixFournisseur.objects
@@ -1972,8 +1985,14 @@ def produits_a_reapprovisionner(company):
                 .select_related('fournisseur')
                 .order_by('prix_achat')
                 .first())
-        qte_suggere = cible_effective if cible_effective else (
+        cible = cible_effective if cible_effective else (
             (seuil_effectif or 0) * 2)
+        # Le pipeline déjà en route couvre une partie (ou tout) du besoin —
+        # une quantité suggérée nette <= 0 exclut le produit (rien à
+        # recommander, ce qui arrive déjà suffit).
+        qte_suggere = max(cible - position_nette, 0)
+        if qte_suggere <= 0:
+            continue
         kit_id = kit_map.get(p.id)
         result.append({
             'produit_id': p.id,
@@ -1982,6 +2001,8 @@ def produits_a_reapprovisionner(company):
             'quantite_stock': p.quantite_stock,
             'seuil_alerte': seuil_effectif,
             'quantite_suggere': qte_suggere,
+            'disponible': disponible,
+            'en_commande': en_commande,
             'fournisseur_id': best.fournisseur_id if best else None,
             'fournisseur_nom': best.fournisseur.nom if best else None,
             'prix_achat': str(best.prix_achat) if best else None,
@@ -1991,10 +2012,21 @@ def produits_a_reapprovisionner(company):
     return result
 
 
+REAPPRO_NOTE_MARKER = 'Réapprovisionnement automatique (stock < seuil)'
+
+
 def generer_bcf_reappro(company, user, fournisseur_id):
-    """Génère un BCF BROUILLON pour tous les produits sous seuil, chez le
-    fournisseur donné (ou les moins chers si non précisé). Renvoie
-    {bon_commande_id, reference, nb_lignes}. Lève ValueError si rien à faire."""
+    """Génère (ou complète) un BCF BROUILLON pour tous les produits sous
+    seuil, chez le fournisseur donné (ou les moins chers si non précisé).
+    Renvoie {bon_commande_id, reference, nb_lignes, fusionne}. Lève
+    ValueError si rien à faire.
+
+    YPROC9 — FUSION au lieu de duplication : si un BCF BROUILLON « Réappro-
+    visionnement automatique » existe déjà pour ce fournisseur (même
+    marqueur de note), ses lignes sont incrémentées (ou une ligne ajoutée
+    pour un produit encore absent) au lieu d'ouvrir un second brouillon —
+    deux appels successifs n'ouvrent donc qu'UN seul brouillon par
+    fournisseur."""
     from apps.ventes.utils.references import create_with_reference
     from .models import BonCommandeFournisseur, LigneBonCommandeFournisseur, Fournisseur
 
@@ -2025,13 +2057,42 @@ def generer_bcf_reappro(company, user, fournisseur_id):
         for pid, qte, prix in lignes
     ]
 
+    # Dernier BROUILLON réappro auto du MÊME fournisseur (le plus récent).
+    bon_existant = (BonCommandeFournisseur.objects
+                    .filter(company=company, fournisseur=fournisseur,
+                            statut=BonCommandeFournisseur.Statut.BROUILLON,
+                            note=REAPPRO_NOTE_MARKER)
+                    .order_by('-date_creation')
+                    .first())
+    if bon_existant is not None:
+        lignes_par_produit = {
+            ligne.produit_id: ligne
+            for ligne in bon_existant.lignes.all()}
+        for produit, qte, prix in lignes_produits:
+            existante = lignes_par_produit.get(produit.id)
+            if existante is not None:
+                existante.quantite += qte
+                existante.save(update_fields=['quantite'])
+            else:
+                LigneBonCommandeFournisseur.objects.create(
+                    bon_commande=bon_existant, produit=produit,
+                    quantite=qte,
+                    prix_achat_unitaire=(
+                        Decimal(prix) if prix else Decimal('0')))
+        return {
+            'bon_commande_id': bon_existant.id,
+            'reference': bon_existant.reference,
+            'nb_lignes': len(lignes_produits),
+            'fusionne': True,
+        }
+
     created_bon = {}
 
     def _save(ref):
         bon = BonCommandeFournisseur.objects.create(
             company=company, reference=ref, fournisseur=fournisseur,
             statut=BonCommandeFournisseur.Statut.BROUILLON,
-            note='Réapprovisionnement automatique (stock < seuil)',
+            note=REAPPRO_NOTE_MARKER,
             created_by=user)
         for produit, qte, prix in lignes_produits:
             LigneBonCommandeFournisseur.objects.create(
@@ -2044,7 +2105,7 @@ def generer_bcf_reappro(company, user, fournisseur_id):
     create_with_reference(BonCommandeFournisseur, 'BCF', company, _save)
     bon = created_bon['bon']
     return {'bon_commande_id': bon.id, 'reference': bon.reference,
-            'nb_lignes': len(lignes_produits)}
+            'nb_lignes': len(lignes_produits), 'fusionne': False}
 
 
 # ── FG55 — PDF facture fournisseur ────────────────────────────────────────────
@@ -2477,10 +2538,17 @@ def produits_expirant_bientot(company, jours=90):
 def previsions_reappro(company, nb_mois=6):
     """Calcule la consommation mensuelle moyenne par SKU (SORTIE sur les
     `nb_mois` derniers mois) et propose une quantité de réapprovisionnement.
-    Retourne une liste de dicts par produit avec sortie > 0. Admin-only."""
+    Retourne une liste de dicts par produit avec sortie > 0. Admin-only.
+
+    YPROC9 — enrichit chaque item avec ``date_rupture``/``point_commande``
+    (FG364, `core.stock_reorder.predict_reorder` — jusqu'ici un dead-end,
+    consommé par AUCUNE vue) dérivés de la conso journalière moyenne déjà
+    calculée ici. ``None`` si la conso journalière est nulle (aucune rupture
+    prévisible — le module garde le résultat exploitable)."""
     from django.utils import timezone
     import datetime
     from .models import MouvementStock, Produit
+    from core.stock_reorder import predict_reorder
 
     today = timezone.now().date()
     debut = today - datetime.timedelta(days=30 * nb_mois)
@@ -2509,6 +2577,11 @@ def previsions_reappro(company, nb_mois=6):
         qte_suggeree = (p.quantite_reappro_cible
                         if p.quantite_reappro_cible
                         else max(round(conso_moy * 2), p.seuil_alerte * 2 if p.seuil_alerte else 1))
+        conso_jour = conso_moy / 30.0 if conso_moy else 0.0
+        reorder = predict_reorder(
+            current_stock=p.quantite_stock, today=today,
+            avg_daily_consumption=conso_jour,
+            safety_stock=p.seuil_alerte or 0)
         result.append({
             'produit_id': p.id,
             'nom': p.nom,
@@ -2517,6 +2590,8 @@ def previsions_reappro(company, nb_mois=6):
             'consommation_mensuelle_moy': round(conso_moy, 2),
             'quantite_stock': p.quantite_stock,
             'quantite_suggeree': qte_suggeree,
+            'date_rupture': reorder.rupture_date,
+            'point_commande': reorder.reorder_point,
         })
     result.sort(key=lambda x: -x['consommation_mensuelle_moy'])
     return result
