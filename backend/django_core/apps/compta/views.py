@@ -62,7 +62,7 @@ from .models import (
     FamilleTvaNonDeductible,
     Compensation,
     ApprobationEnvoiCampagne,
-    Enquete,
+    Enquete, ReponseEnquete,
     EvenementMarketing, InscriptionEvenement,
     SupportOffline,
     DomaineEnvoi,
@@ -5315,10 +5315,32 @@ def enquete_soumettre(request, token):
     contact_ref = request.data.get('contact_ref', '')
     try:
         reponse = services.soumettre_reponse_enquete(
-            enquete, reponses=reponses, contact_ref=contact_ref)
+            enquete, reponses=reponses, contact_ref=contact_ref,
+            nom_repondant=request.data.get('nom_repondant', ''))
     except ValueError as exc:
         return Response({'detail': str(exc)}, status=400)
-    return Response({'id': reponse.id}, status=201)
+    return Response({
+        'id': reponse.id,
+        'score_pct': reponse.score_pct,
+        'reussi': reponse.reussi,
+        'certificat_genere': reponse.certificat_genere,
+    }, status=201)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def enquete_certificat_pdf(request, reponse_id):
+    """ZMKT10 — téléchargement du certificat PDF (répondant), 404 si non
+    certifié/échoué (aucune fuite d'existence)."""
+    reponse = ReponseEnquete.objects.filter(id=reponse_id).first()
+    if not reponse or not reponse.certificat_genere:
+        return Response({'detail': 'Certificat indisponible.'}, status=404)
+    pdf_bytes = services.generer_certificat_pdf(reponse)
+    if pdf_bytes is None:
+        return Response({'detail': 'Certificat indisponible.'}, status=404)
+    resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+    resp['Content-Disposition'] = 'inline; filename="certificat.pdf"'
+    return resp
 
 
 # ── XFAC26/27 — Portail client self-service : relevé + contestation ───────

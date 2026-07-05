@@ -10822,19 +10822,76 @@ def limite_temps_depassee(enquete, *, debute_le, maintenant=None):
     return maintenant > echeance
 
 
-def soumettre_reponse_enquete(enquete, *, reponses, contact_ref=''):
+def soumettre_reponse_enquete(
+        enquete, *, reponses, contact_ref='', nom_repondant=''):
     """XMKT27 — soumission publique d'une enquête (sans auth). Ne valide QUE
     les questions effectivement visibles (logique conditionnelle) : une
     question masquée n'est jamais requise. Lève ``ValueError`` si une
-    question obligatoire visible est absente."""
+    question obligatoire visible est absente.
+
+    ZMKT10 — si ``mode_scoring`` != 'aucun', calcule le score (points par
+    réponse dans le JSON questions) et marque réussi/échoué vs
+    ``score_requis_pct``. Si ``est_certification`` et réussi, génère le
+    certificat PDF (stocké nulle part ici — régénérable à la demande via
+    ``generer_certificat_pdf``).
+    """
     reponses = reponses or {}
     visibles = questions_visibles(enquete, reponses)
     for q in visibles:
         if q.get('obligatoire') and not reponses.get(q['id']):
             raise ValueError(f'question obligatoire manquante : {q["id"]}')
-    return ReponseEnquete.objects.create(
+
+    score_pct = None
+    reussi = None
+    if enquete.mode_scoring != Enquete.ModeScoring.AUCUN:
+        score_pct = calculer_score_enquete(enquete, reponses)
+        if enquete.score_requis_pct is not None:
+            reussi = float(score_pct) >= enquete.score_requis_pct
+
+    reponse = ReponseEnquete.objects.create(
         company=enquete.company, enquete=enquete,
-        contact_ref=contact_ref or '', reponses=reponses)
+        contact_ref=contact_ref or '', reponses=reponses,
+        score_pct=score_pct, reussi=reussi)
+
+    if enquete.est_certification and reussi:
+        reponse.certificat_genere = True
+        reponse.save(update_fields=['certificat_genere'])
+    return reponse
+
+
+def calculer_score_enquete(enquete, reponses):
+    """ZMKT10 — calcule le score (%) : Σ points obtenus / Σ points possibles
+    × 100 sur les questions portant un ``points``/``bonne_reponse``.
+    Questions sans barème ignorées (0 point possible)."""
+    from decimal import Decimal
+
+    points_obtenus = Decimal('0')
+    points_possibles = Decimal('0')
+    for q in (enquete.questions or []):
+        points = q.get('points')
+        bonne_reponse = q.get('bonne_reponse')
+        if points is None or bonne_reponse is None:
+            continue
+        points_possibles += Decimal(str(points))
+        if reponses.get(q['id']) == bonne_reponse:
+            points_obtenus += Decimal(str(points))
+    if points_possibles == 0:
+        return Decimal('0')
+    return (points_obtenus / points_possibles * 100).quantize(Decimal('0.01'))
+
+
+def generer_certificat_pdf(reponse):
+    """ZMKT10 — génère le PDF du certificat (WeasyPrint, HORS /proposal)
+    pour une réponse réussie/certifiée. Renvoie ``None`` si non
+    certifiée/échouée."""
+    if not reponse.certificat_genere:
+        return None
+    from .pdf_certificat_enquete import render_certificat_pdf
+
+    nom = reponse.reponses.get('_nom_repondant', reponse.contact_ref or 'Répondant')
+    return render_certificat_pdf(
+        nom_repondant=nom, titre_enquete=reponse.enquete.titre,
+        score_pct=reponse.score_pct)
 
 
 def taux_completion_enquete(enquete):

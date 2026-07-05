@@ -2401,6 +2401,7 @@ class EnqueteSerializer(serializers.ModelSerializer):
             'id', 'titre', 'questions', 'token', 'actif', 'date_creation',
             'mode_pagination', 'barre_progression', 'bouton_retour',
             'limite_temps_minutes', 'ordre_aleatoire',
+            'mode_scoring', 'score_requis_pct', 'est_certification',
         ]
         read_only_fields = ['token', 'date_creation']
 

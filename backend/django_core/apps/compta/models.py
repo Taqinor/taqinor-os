@@ -8748,6 +8748,20 @@ class Enquete(models.Model):
     ordre_aleatoire = models.BooleanField(
         default=False, verbose_name='Ordre aléatoire des questions')
 
+    # ── ZMKT10 — scoring d'enquête + mode certification ─────────────────────
+    class ModeScoring(models.TextChoices):
+        AUCUN = 'aucun', 'Aucun'
+        AVEC_REPONSES = 'avec_reponses_a_la_fin', 'Avec réponses à la fin'
+        SANS_REPONSES = 'sans_reponses', 'Sans réponses'
+
+    mode_scoring = models.CharField(
+        max_length=25, choices=ModeScoring.choices,
+        default=ModeScoring.AUCUN, verbose_name='Mode de scoring')
+    score_requis_pct = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name='Score requis (%)')
+    est_certification = models.BooleanField(
+        default=False, verbose_name='Est une certification')
+
     class Meta:
         verbose_name = 'Enquête'
         verbose_name_plural = 'Enquêtes'
@@ -8784,6 +8798,15 @@ class ReponseEnquete(models.Model):
         default=dict, blank=True, verbose_name='Réponses (JSON)')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Soumise le')
+
+    # ── ZMKT10 — score calculé + certificat ─────────────────────────────────
+    score_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        verbose_name='Score obtenu (%)')
+    reussi = models.BooleanField(
+        null=True, blank=True, verbose_name='Réussi (si scoring/certification)')
+    certificat_genere = models.BooleanField(
+        default=False, verbose_name='Certificat généré')
 
     class Meta:
         verbose_name = 'Réponse à une enquête'

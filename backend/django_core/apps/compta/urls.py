@@ -4,7 +4,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     desinscription_publique, double_optin_confirmer,
     redirection_lien_tracke,
-    enquete_publique, enquete_soumettre, EnqueteViewSet,
+    enquete_publique, enquete_soumettre, enquete_certificat_pdf, EnqueteViewSet,
     evenement_inscription_publique, EvenementMarketingViewSet,
     InscriptionEvenementViewSet,
     SupportOfflineViewSet,
@@ -202,6 +202,8 @@ urlpatterns = [
          name='enquete-publique'),
     path('enquetes-publiques/<str:token>/soumettre/', enquete_soumettre,
          name='enquete-soumettre'),
+    path('reponses-enquete/<int:reponse_id>/certificat/', enquete_certificat_pdf,
+         name='enquete-certificat-pdf'),
     path('evenements-marketing/<int:evenement_id>/inscription-publique/',
          evenement_inscription_publique, name='evenement-inscription-publique'),
     # XFAC26/27 — Portail client self-service (token, sans login).
