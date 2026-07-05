@@ -67,6 +67,7 @@ from .models import (
     SupportOffline,
     DomaineEnvoi,
     TypeEvenement,
+    BilletEvenement,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -81,6 +82,7 @@ from .serializers import (
     SupportOfflineSerializer,
     DomaineEnvoiSerializer,
     TypeEvenementSerializer,
+    BilletEvenementSerializer,
     CommissionPayoutRunSerializer, CompteComptableSerializer,
     CompteTresorerieSerializer, ContratAvancementSerializer,
     DeclarationTVASerializer, DemandeApprobationConfigSerializer,
@@ -5016,6 +5018,19 @@ class TypeEvenementViewSet(_ComptaBaseViewSet):
         return Response(EvenementMarketingSerializer(evenement).data, status=201)
 
 
+class BilletEvenementViewSet(_ComptaBaseViewSet):
+    """Billets d'événement (ZMKT15)."""
+    queryset = BilletEvenement.objects.select_related('evenement').all()
+    serializer_class = BilletEvenementSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        evenement_id = self.request.query_params.get('evenement')
+        if evenement_id:
+            qs = qs.filter(evenement_id=evenement_id)
+        return qs
+
+
 class InscriptionEvenementViewSet(_ComptaBaseViewSet):
     """Inscriptions à un événement (XMKT28)."""
     queryset = InscriptionEvenement.objects.select_related('evenement').all()
@@ -5048,10 +5063,20 @@ def evenement_inscription_publique(request, evenement_id):
     nom = (request.data.get('nom') or '').strip()
     if not nom:
         return Response({'detail': 'nom requis.'}, status=400)
-    inscription = services.inscrire_evenement(
-        evenement, nom=nom,
-        email=request.data.get('email', ''),
-        telephone=request.data.get('telephone', ''))
+    billet = None
+    billet_id = request.data.get('billet_id')
+    if billet_id:
+        billet = BilletEvenement.objects.filter(
+            id=billet_id, evenement=evenement).first()
+        if not billet:
+            return Response({'detail': 'Billet introuvable.'}, status=404)
+    try:
+        inscription = services.inscrire_evenement(
+            evenement, nom=nom,
+            email=request.data.get('email', ''),
+            telephone=request.data.get('telephone', ''), billet=billet)
+    except ValueError as exc:
+        return Response({'detail': str(exc)}, status=400)
     return Response(
         {'id': inscription.id, 'qr_token': inscription.qr_token}, status=201)
 

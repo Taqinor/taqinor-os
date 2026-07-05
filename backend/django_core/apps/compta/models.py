@@ -8937,6 +8937,61 @@ class EvenementMarketing(models.Model):
         return self.nom
 
 
+# ── ZMKT15 — Billets d'événement (types, prix MAD, quotas, fenêtre de vente)
+
+class BilletEvenement(models.Model):
+    """Billet d'un ``EvenementMarketing`` (ZMKT15) : libellé, prix TTC MAD,
+    fenêtre de vente, quota de places. Descripteur de capacité/tarif —
+    AUCUN encaissement en ligne ici (le paiement CMI reste la surface
+    portail existante).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='billets_evenement',
+        verbose_name='Société',
+    )
+    evenement = models.ForeignKey(
+        EvenementMarketing,
+        on_delete=models.CASCADE,
+        related_name='billets',
+        verbose_name='Événement',
+    )
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    prix_ttc_mad = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('0'),
+        verbose_name='Prix TTC (MAD)')
+    date_debut_vente = models.DateTimeField(
+        null=True, blank=True, verbose_name='Début de vente')
+    date_fin_vente = models.DateTimeField(
+        null=True, blank=True, verbose_name='Fin de vente')
+    quota = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Quota de places')
+
+    class Meta:
+        verbose_name = "Billet d'événement"
+        verbose_name_plural = "Billets d'événement"
+        ordering = ['libelle']
+
+    def __str__(self):
+        return f'{self.libelle} ({self.prix_ttc_mad} MAD)'
+
+    def dans_fenetre_vente(self, *, maintenant=None):
+        from django.utils import timezone
+        maintenant = maintenant or timezone.now()
+        if self.date_debut_vente and maintenant < self.date_debut_vente:
+            return False
+        if self.date_fin_vente and maintenant > self.date_fin_vente:
+            return False
+        return True
+
+    @property
+    def places_restantes(self):
+        if self.quota is None:
+            return None
+        return max(0, self.quota - self.inscriptions.count())
+
+
 class InscriptionEvenement(models.Model):
     """Inscription à un ``EvenementMarketing`` (XMKT28) — nom/email/téléphone
     normalisé, statut de présence + check-in sur place (option QR token par
@@ -8977,6 +9032,14 @@ class InscriptionEvenement(models.Model):
         auto_now_add=True, verbose_name='Inscrit le')
     date_pointage = models.DateTimeField(
         null=True, blank=True, verbose_name='Pointé (check-in) le')
+    # ── ZMKT15 — billet optionnel (descripteur capacité/tarif) ──────────────
+    billet = models.ForeignKey(
+        'compta.BilletEvenement',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='inscriptions',
+        verbose_name='Billet',
+    )
 
     class Meta:
         verbose_name = 'Inscription à un événement'

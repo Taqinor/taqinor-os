@@ -52,6 +52,7 @@ from .models import (
     SupportOffline,
     DomaineEnvoi,
     TypeEvenement,
+    BilletEvenement,
 )
 
 
@@ -2450,6 +2451,20 @@ class TypeEvenementSerializer(serializers.ModelSerializer):
             'date_creation',
         ]
         read_only_fields = ['date_creation']
+
+
+class BilletEvenementSerializer(serializers.ModelSerializer):
+    places_restantes = serializers.IntegerField(read_only=True)
+    nb_inscrits = serializers.IntegerField(
+        source='inscriptions.count', read_only=True)
+
+    class Meta:
+        model = BilletEvenement
+        fields = [
+            'id', 'evenement', 'libelle', 'prix_ttc_mad',
+            'date_debut_vente', 'date_fin_vente', 'quota',
+            'places_restantes', 'nb_inscrits',
+        ]
 
 
 class InscriptionEvenementSerializer(serializers.ModelSerializer):
