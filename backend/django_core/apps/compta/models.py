@@ -4515,6 +4515,11 @@ class Campagne(models.Model):
 
     class Statut(models.TextChoices):
         BROUILLON = 'brouillon', 'Brouillon'
+        # ZMKT1 — pipeline d'envoi (Draft → In Queue → Sending → Sent, style
+        # Odoo) : `en_file` = planifiée, en attente du beat (XMKT7) ;
+        # `envoi_en_cours` = lot en cours d'envoi (throttle par lots XMKT7).
+        EN_FILE = 'en_file', 'En file'
+        ENVOI_EN_COURS = 'envoi_en_cours', 'Envoi en cours'
         ENVOYEE = 'envoyee', 'Envoyée'
         ANNULEE = 'annulee', 'Annulée'
 
@@ -4542,7 +4547,7 @@ class Campagne(models.Model):
         max_length=11, blank=True, default='',
         verbose_name="Sender-ID SMS déclaré (XMKT15)")
     statut = models.CharField(
-        max_length=12, choices=Statut.choices, default=Statut.BROUILLON,
+        max_length=15, choices=Statut.choices, default=Statut.BROUILLON,
         verbose_name='Statut')
     # Compteurs de réveil — alimentés par les webhooks Brevo (gated).
     nb_destinataires = models.PositiveIntegerField(

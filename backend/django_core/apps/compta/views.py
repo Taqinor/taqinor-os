@@ -4690,6 +4690,11 @@ class CampagneViewSet(_ComptaBaseViewSet):
         campagne = self.get_object()
         return Response(services.kpi_campagne_mere(campagne))
 
+    @action(detail=False, methods=['get'])
+    def kanban(self, request):
+        """ZMKT1 — campagnes groupées par statut (pipeline Odoo-style)."""
+        return Response(services.campagnes_par_statut(request.user.company))
+
     @action(detail=True, methods=['post'], url_path='rattacher')
     def rattacher(self, request, pk=None):
         """XMKT31 — rattache un objet (séquence/formulaire/code promo/

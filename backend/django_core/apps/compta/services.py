@@ -6252,6 +6252,29 @@ def journal_audit_envois(company):
     return lignes
 
 
+# ── ZMKT1 — Statuts de pipeline mailing + vue Kanban ────────────────────────
+
+def campagnes_par_statut(company):
+    """ZMKT1 — groupe les campagnes par statut (company-scoped) pour la vue
+    Kanban (4 colonnes : brouillon/en_file+envoi_en_cours/envoyee/annulee).
+    """
+    resultat = {statut: [] for statut, _ in Campagne.Statut.choices}
+    qs = Campagne.objects.filter(company=company).order_by('-date_creation')
+    for campagne in qs:
+        taux_ouverture = 0.0
+        if campagne.nb_envois:
+            taux_ouverture = round(
+                campagne.nb_ouvertures / campagne.nb_envois * 100, 1)
+        resultat.setdefault(campagne.statut, []).append({
+            'id': campagne.id,
+            'nom': campagne.nom,
+            'canal': campagne.canal,
+            'nb_destinataires': campagne.nb_destinataires,
+            'taux_ouverture_pct': taux_ouverture,
+        })
+    return resultat
+
+
 def _destinataires_des_listes(campagne):
     """XMKT7 — résout les destinataires INSCRITS des ``listes`` ciblées par
     la campagne (XMKT5). Simple source stable pour l'envoi planifié beat —
@@ -6272,16 +6295,32 @@ def _destinataires_des_listes(campagne):
     return resultat
 
 
+def planifier_campagne(campagne, *, planifiee_le):
+    """ZMKT1 — planifie une campagne : passe ``brouillon`` → ``en_file``
+    (pipeline Odoo-style Draft → In Queue). Idempotent (no-op si déjà
+    planifiée/envoyée/annulée)."""
+    if campagne.statut != Campagne.Statut.BROUILLON:
+        return campagne
+    campagne.planifiee_le = planifiee_le
+    campagne.statut = Campagne.Statut.EN_FILE
+    campagne.save(update_fields=['planifiee_le', 'statut'])
+    return campagne
+
+
 def envoyer_campagnes_planifiees(company, *, maintenant=None):
     """XMKT7 — Enveloppe beat : envoie chaque campagne ``planifiee_le`` dont
     l'échéance est atteinte, par lots throttlés si ``debit_max_par_heure``
     est renseigné (le lot = les destinataires des listes ciblées, tronqué au
     débit horaire ; le reliquat repart en file au prochain passage beat en
-    restant ``brouillon`` avec sa ``planifiee_le`` inchangée).
+    restant ``en_file`` avec sa ``planifiee_le`` inchangée).
+
+    ZMKT1 — la campagne passe ``en_file`` → ``envoi_en_cours`` (positionné
+    par le moteur d'envoi) → ``envoyee``.
     """
     maintenant = maintenant or timezone.now()
     campagnes = Campagne.objects.filter(
-        company=company, statut=Campagne.Statut.BROUILLON,
+        company=company,
+        statut__in=[Campagne.Statut.BROUILLON, Campagne.Statut.EN_FILE],
         planifiee_le__isnull=False, planifiee_le__lte=maintenant,
     )
     envoyees = []
@@ -6310,9 +6349,15 @@ def envoyer_campagne(campagne, *, destinataires=None):
     après ré-import de contacts. Chaque destinataire restant obtient sa ligne
     ``EnvoiCampagne`` (XMKT2), point de départ du drill-down par KPI et du
     suivi webhook Brevo.
+
+    ZMKT1 — pipeline Odoo-style : accepte une campagne ``brouillon`` (envoi
+    direct) ou ``en_file`` (planifiée, XMKT7) ; passe transitoirement par
+    ``envoi_en_cours`` pendant le traitement du lot avant ``envoyee``.
     """
-    if campagne.statut != Campagne.Statut.BROUILLON:
+    if campagne.statut not in (Campagne.Statut.BROUILLON, Campagne.Statut.EN_FILE):
         return campagne
+    campagne.statut = Campagne.Statut.ENVOI_EN_COURS
+    campagne.save(update_fields=['statut'])
     brutes = list(destinataires or [])
 
     def _adresse(cible):
@@ -6322,6 +6367,10 @@ def envoyer_campagne(campagne, *, destinataires=None):
     # XMKT7 — fenêtre de silence : un SMS/WhatsApp ne part jamais la nuit ni
     # un jour férié/non-ouvré (email non concerné par la fenêtre horaire).
     if campagne.canal in ('sms', 'whatsapp') and _hors_fenetre_silence(campagne.company):
+        # ZMKT1 — repasse en_file (jamais coincée en envoi_en_cours) : le
+        # prochain passage beat retentera l'envoi hors fenêtre de silence.
+        campagne.statut = Campagne.Statut.EN_FILE
+        campagne.save(update_fields=['statut'])
         return campagne
 
     cibles = [
