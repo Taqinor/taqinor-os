@@ -168,6 +168,18 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             qs = qs.filter(date_prevue__gte=date_from)
         if date_to:
             qs = qs.filter(date_prevue__lte=date_to)
+        # YSERV6 — une intervention annulée (chantier annulé) sort des vues
+        # kanban/calendrier/charge (list) par défaut ; `?annulee=true` la
+        # réaffiche (audit/historique). Ne s'applique jamais aux actions
+        # détail (retrieve/actions) — une intervention déjà annulée reste
+        # consultable/gérable individuellement par son id.
+        if self.action == 'list':
+            annulee_param = params.get('annulee')
+            if annulee_param is not None and annulee_param.lower() in (
+                    '1', 'true', 'vrai', 'oui'):
+                qs = qs.filter(annulee=True)
+            else:
+                qs = qs.filter(annulee=False)
         return qs
 
     def get_permissions(self):
@@ -236,10 +248,75 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         if camionnette is not None and camionnette.company_id != cid:
             raise ValidationError({'camionnette': 'Emplacement inconnu.'})
 
+    def create(self, request, *args, **kwargs):
+        response = super().create(request, *args, **kwargs)
+        if response.status_code == status.HTTP_201_CREATED:
+            avertissements = getattr(self, '_yhire9_avertissements', None)
+            if avertissements:
+                response.data['avertissements'] = avertissements
+        return response
+
+    def update(self, request, *args, **kwargs):
+        response = super().update(request, *args, **kwargs)
+        if response.status_code == status.HTTP_200_OK:
+            avertissements = getattr(self, '_yhire9_avertissements', None)
+            if avertissements:
+                response.data['avertissements'] = avertissements
+        return response
+
+    def _verifier_habilitation_ou_lever(self, company, technicien,
+                                        type_intervention):
+        """YHIRE9 — garde d'habilitation à l'affectation : mémorise les
+        avertissements pour la réponse (`create`/`update`) et lève en mode
+        'block'."""
+        from rest_framework.exceptions import ValidationError
+        from ..services import verifier_habilitation_affectation
+        bloquant, avertissements = verifier_habilitation_affectation(
+            company, technicien, type_intervention)
+        if avertissements:
+            self._yhire9_avertissements = avertissements
+        if bloquant:
+            raise ValidationError({'technicien': avertissements})
+
     def perform_create(self, serializer):
         self._check_tenant(serializer)
         company = self.request.user.company
         installation = serializer.validated_data.get('installation')
+        # YSERV6 — un chantier annulé refuse toute nouvelle intervention.
+        if installation is not None and installation.annule:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError(
+                {'installation': 'Ce chantier est annulé — impossible de '
+                                 'créer une nouvelle intervention.'})
+        # YSERV1 — Gate « acompte encaissé » avant planification : une
+        # Intervention de type POSE DATÉE sur un chantier dont l'acompte
+        # n'est pas encaissé (toggle société ON) est refusée, sauf override
+        # responsable/admin (seul rôle admis en écriture ici) avec `motif`.
+        type_intervention = serializer.validated_data.get('type_intervention')
+        date_prevue = serializer.validated_data.get('date_prevue')
+        if (installation is not None
+                and type_intervention == Intervention.Type.POSE
+                and date_prevue):
+            from rest_framework.exceptions import ValidationError
+            from ..services import verifier_gate_acompte_planification
+            raison = verifier_gate_acompte_planification(installation)
+            if raison:
+                motif_override = (
+                    self.request.data.get('motif_override_acompte')
+                    or '').strip()
+                if not motif_override:
+                    raise ValidationError({'date_prevue': [raison]})
+                activity.log_note(
+                    installation, self.request.user,
+                    'Intervention de pose planifiée sans acompte — motif : '
+                    f'{motif_override}')
+        # YHIRE9 — garde d'habilitation à l'AFFECTATION (création) : un
+        # technicien sans l'habilitation requise déclenche un avertissement
+        # (mode 'warn', défaut) ou un refus (mode 'block').
+        technicien = serializer.validated_data.get('technicien')
+        if technicien is not None:
+            self._verifier_habilitation_ou_lever(
+                company, technicien, type_intervention)
         interv = serializer.save(company=company, created_by=self.request.user)
         # XFSM4 — priorité héritée du ticket SAV lié quand fournie explicitement
         # aucune priorité (défaut NORMALE côté modèle = « non fournie » ici).
@@ -285,6 +362,17 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             reason = field_services.transition_block_reason(old, new_statut)
             if reason:
                 raise ValidationError({'statut': reason})
+        # YHIRE9 — garde d'habilitation à l'AFFECTATION : seulement quand le
+        # technicien CHANGE (pas de bruit sur une simple modification d'une
+        # intervention déjà correctement affectée).
+        new_technicien = serializer.validated_data.get(
+            'technicien', old.technicien)
+        if (new_technicien is not None
+                and new_technicien.id != old.technicien_id):
+            self._verifier_habilitation_ou_lever(
+                self.request.user.company, new_technicien,
+                serializer.validated_data.get(
+                    'type_intervention', old.type_intervention))
         interv = serializer.save()
         # Auto-tampon date_realisee (compte rendu rempli / terminée) si vide.
         self._stamp_date_realisee(interv)
@@ -1523,7 +1611,7 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         params = request.query_params
         date_from = params.get('date_from')
         date_to = params.get('date_to')
-        qs = Intervention.objects.filter(company=company)
+        qs = Intervention.objects.filter(company=company, annulee=False)
         if date_from:
             qs = qs.filter(date_prevue__gte=date_from)
         if date_to:

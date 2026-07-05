@@ -6,7 +6,33 @@ Câblé au démarrage par ``VentesConfig.ready()``.
 """
 from django.dispatch import receiver
 
-from core.events import payment_captured
+from core.events import payment_captured, chantier_annule
+
+
+@receiver(chantier_annule, dispatch_uid="ventes_alert_on_chantier_annule")
+def _alert_devis_on_chantier_annule(sender, installation, user, company,
+                                    **kwargs):
+    """YSERV9 — à l'annulation d'un chantier (``apps.installations``), pose
+    une activité/alerte (NOTE) sur le devis lié pour que le responsable
+    décide avoir vs retenue sur un acompte déjà encaissé.
+
+    NE change JAMAIS de statut (devis/facture restent intacts — règle #4,
+    STATUT PRESERVATION) : simple note au chatter. No-op si le chantier n'a
+    pas de devis lié (rien à signaler)."""
+    from .models import Devis, DevisActivity
+
+    devis_id = getattr(installation, 'devis_id', None)
+    if not devis_id:
+        return
+    devis = Devis.objects.filter(id=devis_id, company=company).first()
+    if devis is None:
+        return
+    ref = getattr(installation, 'reference', installation.pk)
+    DevisActivity.objects.create(
+        company=company, devis=devis, kind=DevisActivity.Kind.NOTE,
+        user=user,
+        body=(f'Chantier {ref} annulé — vérifier un éventuel avoir/retenue '
+              "sur l'acompte encaissé."))
 
 
 @receiver(payment_captured, dispatch_uid="ventes_materialize_paiement_on_payment_captured")

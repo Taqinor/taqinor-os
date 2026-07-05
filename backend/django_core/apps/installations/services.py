@@ -2139,3 +2139,256 @@ def creer_intervention_depuis_ticket(*, ticket, user, company,
         created_by=user,
     )
     return interv
+
+
+# ── YPROC3 — GR/IR automatique (provision à réception, lettrage à facture) ──
+# Consommateurs des événements ``core.events.reception_fournisseur_confirmee``
+# et ``core.events.facture_fournisseur_creee`` (abonnés dans receivers.py).
+# Montants INTERNES (jamais client-facing).
+
+def provisionner_gr_ir_reception(*, reception, company, user):
+    """YPROC3 — crée la provision GR/IR (`ReceptionNonFacturee`) pour une
+    réception fournisseur venant d'être CONFIRMÉE.
+
+    Montant = Σ (quantité de la ligne de réception × `prix_achat_unitaire` de
+    sa ligne de BCF). IDEMPOTENTE : une réception déjà provisionnée (à la main
+    ou automatiquement) n'est jamais doublée — renvoie la provision existante.
+    Sans BCF lié (réception hors flux normal), no-op (rien à provisionner).
+    """
+    from decimal import Decimal
+    from .models_gr_ir import ReceptionNonFacturee
+
+    if company is None or reception is None:
+        return None
+    bc = reception.bon_commande
+    if bc is None:
+        return None
+
+    existante = ReceptionNonFacturee.objects.filter(
+        company=company, reception=reception).first()
+    if existante is not None:
+        return existante
+
+    montant = Decimal('0')
+    for ligne in reception.lignes.select_related('ligne_commande').all():
+        pu = (ligne.ligne_commande.prix_achat_unitaire
+              if ligne.ligne_commande else Decimal('0')) or Decimal('0')
+        montant += Decimal(str(ligne.quantite or 0)) * pu
+
+    date_reception = reception.date_reception
+    if date_reception is None and reception.date_creation:
+        date_reception = reception.date_creation.date()
+
+    return ReceptionNonFacturee.objects.create(
+        company=company, reception=reception, bon_commande=bc,
+        libelle=f'Réception {reception.reference}',
+        montant_provision=montant,
+        date_reception=date_reception,
+        created_by=user,
+    )
+
+
+def lettrer_gr_ir_facture(*, facture, company, user):
+    """YPROC3 — lettre AUTOMATIQUEMENT les provisions GR/IR ouvertes du bon de
+    commande d'une facture fournisseur venant d'être CRÉÉE.
+
+    Solde (`lettre=True`, `facture` posée, `date_lettrage`) les provisions non
+    encore lettrées de ce BCF, à hauteur du montant facturé (HT) — ne touche
+    jamais une provision d'un autre bon de commande. IDEMPOTENTE : une
+    provision déjà lettrée est ignorée (jamais re-lettrée / re-décrémentée).
+    Sans bon de commande sur la facture, no-op.
+    """
+    from django.utils import timezone
+    from .models_gr_ir import ReceptionNonFacturee
+
+    if company is None or facture is None:
+        return []
+    bc = getattr(facture, 'bon_commande', None)
+    if bc is None:
+        return []
+
+    montant_restant = facture.montant_ht or 0
+    lettres = []
+    provisions = ReceptionNonFacturee.objects.filter(
+        company=company, bon_commande=bc, lettre=False).order_by(
+        'date_creation')
+    for prov in provisions:
+        if montant_restant <= 0:
+            break
+        prov.facture = facture
+        prov.lettre = True
+        prov.date_lettrage = timezone.now().date()
+        prov.save(update_fields=['facture', 'lettre', 'date_lettrage',
+                                 'date_modification'])
+        lettres.append(prov)
+        montant_restant -= (prov.montant_provision or 0)
+    return lettres
+
+
+# ── YSERV1 — Gate « acompte encaissé » avant planification (opt-in) ────────
+
+def verifier_gate_acompte_planification(installation):
+    """YSERV1 — renvoie une raison FRANÇAISE qui bloque le passage du
+    chantier à PLANIFIE, ou ``None`` si la transition est autorisée.
+
+    Toggle société `exiger_acompte_avant_planification` (défaut OFF = jamais
+    de blocage, comportement historique byte-identique). ON : bloque tant
+    qu'aucune Facture de type 'acompte' du devis lié n'est 'payee' — lue via
+    `apps.ventes.selectors.acompte_paye_pour_devis` (jamais un import du
+    modèle ventes). Un chantier sans devis lié n'est jamais bloqué (rien à
+    vérifier)."""
+    company = installation.company
+    if company is None:
+        return None
+    try:
+        from apps.parametres.models import CompanyProfile
+        profil = CompanyProfile.get(company)
+    except Exception:  # pragma: no cover - défensif
+        return None
+    if not getattr(profil, 'exiger_acompte_avant_planification', False):
+        return None
+    if not installation.devis_id:
+        return None
+    from apps.ventes.selectors import acompte_paye_pour_devis
+    if acompte_paye_pour_devis(installation.devis_id, company):
+        return None
+    return ("Planification refusée : l'acompte de ce devis n'est pas "
+            'encore encaissé (réglage société « acompte avant '
+            'planification »).')
+
+
+# ── YSERV6 — annulation de chantier : solder les interventions ouvertes ────
+
+def annuler_interventions_ouvertes(installation, user):
+    """YSERV6 — à l'annulation d'un chantier, marque `annulee=True` (drapeau
+    ORTHOGONAL, la state machine F3 `STATUT_ORDER` reste intacte) toutes ses
+    interventions NON terminées (statut hors TERMINEE/VALIDEE, pas déjà
+    annulée), journalise une note par intervention et notifie les
+    techniciens/équipe assignés (best-effort). Renvoie le nombre marquées.
+    """
+    from .models_intervention import Intervention
+
+    qs = installation.interventions.exclude(
+        statut__in=[Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE]
+    ).filter(annulee=False)
+    count = 0
+    for interv in qs:
+        interv.annulee = True
+        interv.motif_annulation = (
+            f'Chantier {installation.reference} annulé')
+        interv.save(update_fields=['annulee', 'motif_annulation'])
+        from . import intervention_activity
+        intervention_activity.log_note(
+            interv, user,
+            'Intervention annulée automatiquement — chantier annulé.')
+        _notifier_intervention_annulee(interv, user)
+        count += 1
+    return count
+
+
+def _notifier_intervention_annulee(interv, user):
+    """YSERV6 — notifie (best-effort, ne lève jamais) le technicien principal
+    et les membres d'équipe d'une intervention annulée."""
+    try:
+        from apps.notifications.services import notify
+        from apps.notifications.models import EventType
+    except Exception:  # pragma: no cover - défensif
+        return
+    destinataires = set()
+    if interv.technicien_id:
+        destinataires.add(interv.technicien)
+    try:
+        destinataires.update(interv.equipe.all())
+    except Exception:  # pragma: no cover - défensif
+        pass
+    titre = f"Intervention annulée — chantier {interv.installation.reference}"
+    for dest in destinataires:
+        try:
+            notify(
+                dest, EventType.CHANTIER_DUE, titre,
+                body='Le chantier a été annulé, cette intervention ne '
+                     'sera pas réalisée.',
+                company=interv.company)
+        except Exception:  # pragma: no cover - défensif
+            pass
+
+
+def reactiver_interventions_annulees(installation, user):
+    """YSERV6 — à la réactivation d'un chantier, lève UNIQUEMENT le drapeau
+    `annulee` des interventions qui l'ont reçu PAR CETTE annulation (motif
+    traçant la provenance) — jamais une intervention annulée pour une autre
+    raison. Renvoie le nombre réactivé."""
+    marker = f'Chantier {installation.reference} annulé'
+    qs = installation.interventions.filter(
+        annulee=True, motif_annulation=marker)
+    count = 0
+    for interv in qs:
+        interv.annulee = False
+        interv.motif_annulation = None
+        interv.save(update_fields=['annulee', 'motif_annulation'])
+        from . import intervention_activity
+        intervention_activity.log_note(
+            interv, user,
+            'Intervention réactivée — chantier réactivé.')
+        count += 1
+    return count
+
+
+# ── YHIRE9 — garde d'habilitation à l'affectation d'intervention ───────────
+# Mapping type d'intervention → habilitation requise partagé avec XFSM2
+# (``selectors._TYPE_VERS_HABILITATION``) : garde le SEUL référentiel, importé
+# ici plutôt que dupliqué (les deux modules restent dans la même app).
+
+def verifier_habilitation_affectation(company, technicien, type_intervention):
+    """YHIRE9 — vérifie l'habilitation d'un technicien pour le type
+    d'intervention qu'on s'apprête à lui affecter (contrôle à l'ÉCRITURE,
+    complète XFSM2 qui ne fait QUE suggérer).
+
+    Renvoie ``(bloquant, avertissements)`` :
+      * ``bloquant`` — True seulement si le réglage société est 'block' ET
+        l'habilitation requise n'est pas valide ;
+      * ``avertissements`` — liste de messages FRANÇAIS (vide = rien à
+        signaler). Toujours peuplée quand l'habilitation manque/expire,
+        indépendamment du mode (le mode ne change que si ça bloque).
+
+    Un type d'intervention sans mapping connu, un technicien sans fiche RH
+    liée, ou aucun technicien : jamais bloquant (garde SOFT par défaut,
+    cohérent avec FG176/XFSM2 — on ne bloque jamais faute de donnée)."""
+    from .selectors import _TYPE_VERS_HABILITATION
+
+    if technicien is None or company is None:
+        return False, []
+    cle_habilitation = _TYPE_VERS_HABILITATION.get(type_intervention)
+    if not cle_habilitation:
+        return False, []
+
+    from apps.rh.selectors import (
+        dossier_employe_for_user, habilitations_requises_pour_intervention,
+        verifier_habilitation_requise,
+    )
+    # Traduit la clé intermédiaire (ex. 'pose_pv_bt') en codes RÉELS
+    # `Habilitation.TypeHabilitation` (ex. ['b1v', 'br']) via
+    # `INTERVENTION_HABILITATIONS` — jamais la clé intermédiaire directement
+    # (celle-ci ne correspond à aucun titre réel).
+    titres_requis = habilitations_requises_pour_intervention(cle_habilitation)
+    if not titres_requis:
+        return False, []
+    dossier = dossier_employe_for_user(company, technicien.id)
+    if dossier is None:
+        return False, []
+    rapport = verifier_habilitation_requise(
+        company, dossier, titres_requis)
+    if rapport['autorise']:
+        return False, []
+
+    avertissements = [rapport['message']] if rapport.get('message') else [
+        'Habilitation requise manquante ou expirée : '
+        f'{", ".join(titres_requis)}.'
+    ]
+    try:
+        from apps.parametres.models import CompanyProfile
+        profil = CompanyProfile.get(company)
+        mode = getattr(profil, 'mode_garde_habilitation', 'warn')
+    except Exception:  # pragma: no cover - défensif
+        mode = 'warn'
+    return (mode == 'block'), avertissements

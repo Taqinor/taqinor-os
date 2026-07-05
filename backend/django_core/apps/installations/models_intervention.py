@@ -202,6 +202,16 @@ class Intervention(models.Model):
     meteo_risque = models.BooleanField(null=True, blank=True)
     meteo_verifie_le = models.DateTimeField(null=True, blank=True)
 
+    # ── YSERV6 — annulation de chantier : solder les interventions ─────────
+    # Drapeau ORTHOGONAL à `statut` (F3 STATUT_ORDER reste INTACT) : une
+    # intervention non terminée d'un chantier annulé passe `annulee=True`
+    # (jamais un statut supplémentaire dans la state machine). Exclue des vues
+    # kanban/calendrier/charge ; une nouvelle intervention est refusée sur un
+    # chantier annulé. `reactiver()` lève ce drapeau UNIQUEMENT pour les
+    # interventions qu'il a lui-même annulées (tracé dans `motif_annulation`).
+    annulee = models.BooleanField(default=False)
+    motif_annulation = models.CharField(max_length=255, blank=True, null=True)
+
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, related_name='interventions_creees',

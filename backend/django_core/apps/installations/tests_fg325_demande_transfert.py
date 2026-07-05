@@ -105,6 +105,14 @@ class TestDemandeTransfert(TestCase):
         self.assertEqual(resp.status_code, 400, resp.content)
 
     def test_workflow_approuver_executer(self):
+        # YSTCK2 — `executer` ventile RÉELLEMENT le stock : le produit doit
+        # porter assez de stock TOTAL et sa source doit être le dépôt
+        # PRINCIPAL (qui détient le reste par défaut) pour que le transfert
+        # de 3 unités vers la destination réussisse.
+        self.src.is_principal = True
+        self.src.save(update_fields=['is_principal'])
+        self.produit.quantite_stock = 3
+        self.produit.save(update_fields=['quantite_stock'])
         dt = DemandeTransfert.objects.create(
             company=self.company, reference='DTR-X', produit=self.produit,
             source=self.src, destination=self.dst, quantite=3)
@@ -121,6 +129,14 @@ class TestDemandeTransfert(TestCase):
         dt.refresh_from_db()
         self.assertEqual(dt.statut, DemandeTransfert.Statut.EXECUTE)
         self.assertIsNotNone(dt.date_execution)
+        # Le total canonique reste inchangé ; la destination détient
+        # maintenant les 3 unités transférées (YSTCK2).
+        self.produit.refresh_from_db()
+        self.assertEqual(self.produit.quantite_stock, 3)
+        from apps.stock.models import StockEmplacement
+        se_dst = StockEmplacement.objects.get(
+            produit=self.produit, emplacement=self.dst)
+        self.assertEqual(se_dst.quantite, 3)
 
     def test_refuser(self):
         dt = DemandeTransfert.objects.create(

@@ -51,6 +51,12 @@ class RFQ(models.Model):
     date_limite_reponse = models.DateField(null=True, blank=True)
     statut = models.CharField(
         max_length=20, choices=Statut.choices, default=Statut.BROUILLON)
+    # YPROC6 — BCF brouillon créé chez le fournisseur dont l'offre a été
+    # retenue (adjudication). String-FK, nullable = comportement historique
+    # inchangé (aucune adjudication encore faite pour cette RFQ).
+    bon_commande = models.ForeignKey(
+        'stock.BonCommandeFournisseur', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='installations_rfqs')
     note = models.TextField(blank=True, null=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,

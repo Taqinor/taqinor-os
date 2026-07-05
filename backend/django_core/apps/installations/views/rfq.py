@@ -96,9 +96,22 @@ class RFQViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def retenir(self, request, pk=None):
-        """FG311 — retient UNE offre de la RFQ (les autres sont dé-sélectionnées).
-        Corps : `offre` (id). L'offre doit appartenir à cette RFQ."""
+        """FG311/YPROC6 — retient UNE offre de la RFQ (les autres sont
+        dé-sélectionnées). Quand l'offre porte un FOURNISSEUR CATALOGUE et
+        qu'aucun BCF n'est encore lié à cette RFQ, adjuge aussi : crée le BCF
+        brouillon chez le fournisseur gagnant, passe la DA liée `commandee`
+        (si approuvée), mémorise le prix gagnant dans `PrixFournisseur`,
+        clôture la RFQ. Une offre nom-libre (sans fournisseur catalogue) ne
+        fait QUE basculer la sélection — comportement historique inchangé,
+        aucune adjudication possible sans fournisseur catalogue. Corps :
+        `offre` (id). L'offre doit appartenir à cette RFQ. Idempotent :
+        ré-adjuger une RFQ déjà liée à un BCF → 400."""
+        from apps.stock.services import (
+            creer_bcf_depuis_lignes, record_purchase_price,
+        )
+
         rfq = self.get_object()
+        company = request.user.company
         offre_id = request.data.get('offre')
         if not offre_id:
             return Response(
@@ -109,9 +122,62 @@ class RFQViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response(
                 {'offre': "Cette offre n'appartient pas à la RFQ."},
                 status=status.HTTP_400_BAD_REQUEST)
+
         rfq.offres.exclude(id=offre.id).update(retenue=False)
         offre.retenue = True
         offre.save(update_fields=['retenue', 'date_modification'])
+
+        # Adjudication (YPROC6) : seulement pour une offre à fournisseur
+        # catalogue, et seulement si cette RFQ n'a pas déjà un BCF lié
+        # (idempotence — re-basculer la sélection reste possible sans jamais
+        # recréer de second BCF).
+        if offre.fournisseur_id is not None and not rfq.bon_commande_id:
+            demande = rfq.demande
+            if demande is not None:
+                lignes = [
+                    (ligne.produit_id,
+                     ligne.designation or
+                     (ligne.produit.nom if ligne.produit_id else ''),
+                     ligne.quantite, ligne.prix_estime)
+                    for ligne in demande.lignes.select_related(
+                        'produit').all()
+                ]
+            else:
+                lignes = []
+            if not lignes:
+                lignes = [(None, rfq.objet or f'RFQ {rfq.reference}', 1,
+                          offre.montant_ht)]
+
+            bon = creer_bcf_depuis_lignes(
+                company=company, user=request.user,
+                fournisseur=offre.fournisseur, lignes=lignes,
+                note=f'Adjugé depuis {rfq.reference}')
+            rfq.bon_commande = bon
+            rfq.statut = RFQ.Statut.CLOTUREE
+            rfq.save(update_fields=[
+                'bon_commande', 'statut', 'date_modification'])
+
+            if (demande is not None
+                    and demande.statut == demande.Statut.APPROUVEE):
+                demande.bon_commande = demande.bon_commande or bon
+                demande.statut = demande.Statut.COMMANDEE
+                demande.save(update_fields=[
+                    'bon_commande', 'statut', 'date_modification'])
+
+            # Mémorise le prix unitaire gagnant (INTERNE) pour les lignes à
+            # produit catalogue — alimente le comparatif fournisseurs.
+            from django.utils import timezone as _tz
+            for produit_id, _designation, _qte, prix in lignes:
+                if produit_id:
+                    from apps.stock.models import Produit as _Produit
+                    produit = _Produit.objects.filter(
+                        id=produit_id, company=company).first()
+                    if produit is not None:
+                        record_purchase_price(
+                            company=company, produit=produit,
+                            fournisseur=offre.fournisseur, prix_achat=prix,
+                            date=_tz.now().date())
+
         return Response(self.get_serializer(rfq).data)
 
     @action(detail=True, methods=['post'], url_path='consulter')

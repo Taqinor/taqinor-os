@@ -303,6 +303,15 @@ payment_captured = django.dispatch.Signal()
 # cf. docstring du module ci-dessus pour la carte des deux abonnés attendus.
 reception_fournisseur_confirmee = django.dispatch.Signal()
 
+# Émis à la CRÉATION d'une facture fournisseur (YPROC3) — notamment celle
+# construite par ``stock.services.facturer_reception`` depuis une réception
+# confirmée. Arguments : facture (stock.FactureFournisseur), company, user.
+# Abonné dans ce repo : installations (``apps/installations/receivers.py``)
+# lettre automatiquement les provisions GR/IR ouvertes (``ReceptionNonFacturee``)
+# du bon de commande de la facture, à hauteur du montant facturé. ``stock``
+# n'importe jamais ``installations`` — même patron que ``devis_accepted``.
+facture_fournisseur_creee = django.dispatch.Signal()
+
 # Émis à la fin de l'orchestration de sortie d'un employé (YHIRE2).
 # Arguments : dossier (rh.DossierEmploye), user, motif.
 # Abonné dans ce repo : paie (coupe ProfilPaie.actif) — voir docstring du
@@ -379,3 +388,14 @@ avoir_cree = django.dispatch.Signal()
 # instance, company. Abonné dans ce repo : compta (cf. docstring ci-dessus).
 facture_fournisseur_creee = django.dispatch.Signal()
 paiement_fournisseur_enregistre = django.dispatch.Signal()
+
+# Émis à l'annulation d'un chantier (``apps.installations``) — YSERV9.
+# Arguments : installation (installations.Installation), user (peut être
+# None), company. NE change JAMAIS un statut devis/facture (règle #4,
+# STATUT PRESERVATION) : simple signal d'exception pour que ``ventes`` pose
+# une activité/alerte au responsable (décider avoir vs retenue sur un
+# acompte déjà encaissé). Abonné dans ce repo : ventes
+# (``apps/ventes/receivers.py``), qui pose une ``DevisActivity`` de type NOTE
+# sur le devis lié au chantier quand il existe. ``installations`` n'importe
+# jamais ``apps.ventes`` — même patron que ``devis_accepted`` → installations.
+chantier_annule = django.dispatch.Signal()

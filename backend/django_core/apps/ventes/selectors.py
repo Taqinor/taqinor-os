@@ -490,3 +490,19 @@ def encours_clients_par_tiers(company):
         entry['encours'] += Decimal(du)
         entry['references'].append(facture.reference)
     return [v for v in par_client.values() if v['encours'] > 0]
+
+
+def acompte_paye_pour_devis(devis_id, company):
+    """YSERV1 — vrai si le devis a au moins une ``Facture`` de
+    ``type_facture='acompte'`` au statut ``payee`` — point d'entrée cross-app
+    sanctionné pour ``apps.installations`` (jamais un import direct de
+    ``apps.ventes.models``). Lecture seule ; ``devis_id`` sans facture
+    d'acompte payée (ou inconnu/autre société) renvoie ``False``."""
+    from .models import Facture
+    if not devis_id:
+        return False
+    return Facture.objects.filter(
+        devis_id=devis_id, company=company,
+        type_facture=Facture.TypeFacture.ACOMPTE,
+        statut=Facture.Statut.PAYEE,
+    ).exists()

@@ -219,6 +219,9 @@ class InterventionSerializer(serializers.ModelSerializer):
             'arrivee_gps_lat', 'arrivee_gps_lng',
             # XFSM21 — posé uniquement par le sweep Beat météo, jamais du corps.
             'meteo_risque', 'meteo_verifie_le',
+            # YSERV6 — posés uniquement par le chemin d'annulation chantier
+            # (annuler/reactiver), jamais par un PATCH générique.
+            'annulee', 'motif_annulation',
         ]
 
     def get_statut_ordre(self, obj):
@@ -1416,15 +1419,17 @@ class DemandeAchatSerializer(serializers.ModelSerializer):
         model = DemandeAchat
         fields = [
             'id', 'reference', 'objet', 'chantier', 'programme',
-            'fournisseur_suggere', 'priorite', 'priorite_display',
+            'fournisseur_suggere', 'bon_commande', 'priorite',
+            'priorite_display',
             'date_besoin', 'statut', 'statut_display', 'motif_refus',
             'approuvee_par', 'date_decision', 'note', 'lignes',
             'montant_estime',
             'created_by', 'date_creation', 'date_modification',
         ]
         read_only_fields = [
-            'reference', 'statut', 'approuvee_par', 'date_decision',
-            'motif_refus', 'created_by', 'date_creation', 'date_modification',
+            'reference', 'statut', 'bon_commande', 'approuvee_par',
+            'date_decision', 'motif_refus', 'created_by', 'date_creation',
+            'date_modification',
         ]
 
     def validate_objet(self, value):
@@ -1514,12 +1519,12 @@ class RFQSerializer(serializers.ModelSerializer):
         model = RFQ
         fields = [
             'id', 'reference', 'objet', 'demande', 'date_limite_reponse',
-            'statut', 'statut_display', 'note', 'offres', 'consultations',
-            'comparatif',
+            'statut', 'statut_display', 'bon_commande', 'note', 'offres',
+            'consultations', 'comparatif',
             'created_by', 'date_creation', 'date_modification',
         ]
         read_only_fields = [
-            'reference', 'statut', 'created_by',
+            'reference', 'statut', 'bon_commande', 'created_by',
             'date_creation', 'date_modification',
         ]
 

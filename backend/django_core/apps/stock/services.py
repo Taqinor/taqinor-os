@@ -1385,6 +1385,44 @@ def draft_bcf_for_shortfall(installation, fournisseur, user, company):
     return bon, len(manquants)
 
 
+# ── YPROC5/YPROC6 — conversion générique lignes → BCF brouillon ─────────────
+# Point d'entrée cross-app RÉUTILISABLE : appelé par ``installations`` (demande
+# d'achat approuvée → BCF, adjudication RFQ → BCF) SANS que ``stock`` importe
+# jamais ``installations``. Une ligne par tuple (produit_id, désignation,
+# quantité, prix) ; ``produit_id`` peut être ``None`` (ligne libre/service, DA
+# hors catalogue). Référence anti-collision (jamais count()+1).
+
+def creer_bcf_depuis_lignes(*, company, user, fournisseur, lignes, note=''):
+    """Crée un ``BonCommandeFournisseur`` BROUILLON depuis une liste de lignes.
+
+    ``lignes`` : itérable de tuples ``(produit_id, designation, qte, prix)``.
+    ``produit_id`` peut être ``None`` (ligne libre/service — ``sans_stock``
+    posé automatiquement par le modèle via l'absence de produit). Lève
+    ValueError si ``lignes`` est vide. Renvoie le ``BonCommandeFournisseur``
+    créé. INTERNE — jamais de prix d'achat sur un document client.
+    """
+    from apps.ventes.utils.references import create_with_reference
+    from .models import BonCommandeFournisseur, LigneBonCommandeFournisseur
+
+    lignes = list(lignes)
+    if not lignes:
+        raise ValueError('Aucune ligne à commander.')
+
+    def _save(ref):
+        bon = BonCommandeFournisseur.objects.create(
+            company=company, reference=ref, fournisseur=fournisseur,
+            statut=BonCommandeFournisseur.Statut.BROUILLON,
+            note=note or '', created_by=user)
+        for produit_id, designation, qte, prix in lignes:
+            LigneBonCommandeFournisseur.objects.create(
+                bon_commande=bon, produit_id=produit_id,
+                designation=designation or '', quantite=int(qte or 0),
+                prix_achat_unitaire=prix or 0)
+        return bon
+
+    return create_with_reference(BonCommandeFournisseur, 'BCF', company, _save)
+
+
 def resolve_fournisseur(company, fournisseur_id, installation):
     """Choisit le fournisseur du brouillon : explicite, sinon (N17) le
     fournisseur le moins cher du premier produit en pénurie, sinon le
@@ -1451,6 +1489,52 @@ def mouvement_type_rebut():
     """XMFG11 — valeur enum REBUT (sans importer le modèle côté appelant)."""
     from .models import MouvementStock
     return MouvementStock.TypeMouvement.REBUT
+
+
+# ── YSTCK1 — comptage cyclique (installations.SessionComptage/ComptageLigne)
+# poste l'écart en AJUSTEMENT à la clôture. Appelé DEPUIS installations
+# (jamais l'inverse) : le service reste ici (comme `apply_inventory_count`,
+# FG63, le comptage one-shot) — la diff EST le mouvement.
+
+def appliquer_ecarts_comptage(*, company, lignes, user, reference):
+    """YSTCK1 — poste UN `MouvementStock` AJUSTEMENT par ligne dont
+    `quantite_comptee != quantite_theorique` (attribut ``ecart`` non nul, non
+    None), cale `Produit.quantite_stock` sur le compté.
+
+    ``lignes`` : itérable de ``ComptageLigne`` (ou tout objet portant
+    ``produit_id``/``quantite_theorique``/``quantite_comptee``/``ecart``).
+    Une ligne sans produit catalogue (désignation libre) ou pas encore
+    comptée (``quantite_comptee`` None) est ignorée. Renvoie le nombre de
+    mouvements postés. Scopé société ; verrouille le produit (select_for_update)
+    pour éviter une course avec un mouvement concurrent."""
+    from django.db import transaction
+    from .models import MouvementStock, Produit
+
+    count = 0
+    with transaction.atomic():
+        for ligne in lignes:
+            if ligne.produit_id is None:
+                continue
+            if ligne.quantite_comptee is None:
+                continue
+            ecart = ligne.quantite_comptee - (ligne.quantite_theorique or 0)
+            if ecart == 0:
+                continue
+            produit = Produit.objects.select_for_update().filter(
+                id=ligne.produit_id, company=company).first()
+            if produit is None:
+                continue
+            avant = produit.quantite_stock
+            apres = ligne.quantite_comptee
+            record_stock_movement(
+                company=company, produit=produit,
+                type_mouvement=MouvementStock.TypeMouvement.AJUSTEMENT,
+                quantite=abs(ecart), quantite_avant=avant,
+                quantite_apres=apres, reference=f'CYC-{reference}',
+                note=f'Comptage cyclique {reference} — écart {ecart}',
+                created_by=user)
+            count += 1
+    return count
 
 
 def declarer_rebut(*, company, produit, quantite, motif, reference, note,
@@ -1994,6 +2078,16 @@ def facturer_reception(company, user, reception):
     # XPUR8 — impute automatiquement les acomptes non consommés du BCF sur
     # cette première facture (idempotent, no-op si aucun acompte).
     imputer_acomptes_bcf(reception.bon_commande)
+    # YPROC3 — émet l'événement de création de facture fournisseur (best-effort,
+    # ne casse jamais la facturation) : installations peut lettrer sa provision
+    # GR/IR ouverte pour ce bon de commande. stock n'importe jamais installations.
+    try:
+        from core.events import facture_fournisseur_creee
+        facture_fournisseur_creee.send(
+            sender=FactureFournisseur, facture=created['ff'],
+            company=company, user=user)
+    except Exception:  # pragma: no cover - défensif, best-effort
+        pass
     return created['ff']
 
 
