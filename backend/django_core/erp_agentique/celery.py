@@ -209,4 +209,11 @@ app.conf.beat_schedule = {
         'task': 'installations.meteo_planning_j3',
         'schedule': crontab(hour=6, minute=30),
     },
+    # ZSTK1 — recompute réappro + alertes de rupture (« reordering rules
+    # run » façon Odoo), quotidien, heure creuse matinale. Suggestion
+    # seulement (aucun BCF créé automatiquement), idempotent par société.
+    'stock-recompute-reordering': {
+        'task': 'stock.recompute_reordering',
+        'schedule': crontab(hour=6, minute=15),
+    },
 }
