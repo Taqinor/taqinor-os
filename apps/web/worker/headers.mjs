@@ -13,8 +13,11 @@
  * 'unsafe-inline' est nécessaire pour script-src ET style-src tant qu'aucune
  * infrastructure de nonce/hash n'est en place (pas dans le scope de W315).
  * connect-src/img-src/style-src autorisent api.maptiler.com (tuiles + geocodage
- * appelés depuis le navigateur par les outils toiture/roofPro*) et
- * api.taqinor.ma (API ERP). PVGIS (re.jrc.ec.europa.eu) n'est JAMAIS appelé
+ * appelés depuis le navigateur par les outils toiture/roofPro*), api.mapbox.com
+ * (tuiles satellite haute résolution — chargées par buildSatelliteStyle dès que
+ * PUBLIC_MAPBOX_TOKEN est défini ; sans cette autorisation le navigateur bloque
+ * toutes les tuiles Mapbox et la carte reste vide) et api.taqinor.ma (API ERP).
+ * PVGIS (re.jrc.ec.europa.eu) n'est JAMAIS appelé
  * depuis le navigateur (proxy serveur strict, voir src/lib/roofEstimate.ts +
  * src/pages/api/roof-*.ts) donc n'a pas besoin de figurer en connect-src.
  *
@@ -26,9 +29,9 @@ const CSP_DIRECTIVES = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline'",
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https://api.maptiler.com",
+  "img-src 'self' data: blob: https://api.maptiler.com https://api.mapbox.com",
   "font-src 'self' data:",
-  "connect-src 'self' https://api.taqinor.ma https://api.maptiler.com",
+  "connect-src 'self' https://api.taqinor.ma https://api.maptiler.com https://api.mapbox.com",
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self' https://api.taqinor.ma",
