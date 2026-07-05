@@ -15,6 +15,7 @@ from .models import (
     AvoirFournisseur, ImputationAvoirFournisseur,
     PalierPrixFournisseur, PortailFournisseurToken,
     LotEntrepot, InventaireAnnuel, RevalorisationStock, ConditionnementProduit,
+    ModeleBonCommandeFournisseur, ModeleBonCommandeFournisseurLigne,
 )
 
 
@@ -1362,3 +1363,47 @@ class ConditionnementProduitSerializer(serializers.ModelSerializer):
             'id', 'produit', 'produit_nom', 'nom', 'facteur', 'code_barres',
             'unite_stock', 'date_creation',
         ]
+
+
+class ModeleBonCommandeFournisseurLigneSerializer(serializers.ModelSerializer):
+    """ZPUR3 — ligne d'un modèle de BCF : produit + quantité par défaut."""
+    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
+    produit_sku = serializers.CharField(source='produit.sku', read_only=True)
+
+    class Meta:
+        model = ModeleBonCommandeFournisseurLigne
+        fields = ['id', 'produit', 'produit_nom', 'produit_sku', 'quantite']
+
+
+class ModeleBonCommandeFournisseurSerializer(serializers.ModelSerializer):
+    """ZPUR3 — modèle de BCF réutilisable (purchase template)."""
+    lignes = ModeleBonCommandeFournisseurLigneSerializer(many=True, required=False)
+    fournisseur_nom = serializers.CharField(
+        source='fournisseur.nom', read_only=True)
+
+    class Meta:
+        model = ModeleBonCommandeFournisseur
+        fields = [
+            'id', 'nom', 'fournisseur', 'fournisseur_nom', 'note', 'lignes',
+            'date_creation', 'date_mise_a_jour',
+        ]
+
+    def create(self, validated_data):
+        lignes_data = validated_data.pop('lignes', [])
+        modele = ModeleBonCommandeFournisseur.objects.create(**validated_data)
+        for ligne in lignes_data:
+            ModeleBonCommandeFournisseurLigne.objects.create(
+                modele=modele, **ligne)
+        return modele
+
+    def update(self, instance, validated_data):
+        lignes_data = validated_data.pop('lignes', None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        if lignes_data is not None:
+            instance.lignes.all().delete()
+            for ligne in lignes_data:
+                ModeleBonCommandeFournisseurLigne.objects.create(
+                    modele=instance, **ligne)
+        return instance

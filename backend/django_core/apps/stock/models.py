@@ -2172,3 +2172,61 @@ class FicheTechnique(models.Model):
 
     def __str__(self):
         return f'Fiche technique — {self.produit_id}'
+
+
+# ── ZPUR3 — Modèle de BCF réutilisable (purchase template) ──────────────────
+# Odoo permet des « Purchase Templates » pré-remplissant produits/quantités
+# pour des RFQ répétées. Chaque BCF de réappro récurrent (câble, MC4,
+# visserie) se re-saisit aujourd'hui à la main — un modèle nommé matérialise
+# un BCF BROUILLON pré-rempli en un clic.
+
+class ModeleBonCommandeFournisseur(models.Model):
+    """ZPUR3 — modèle de BCF réutilisable : un nom + un fournisseur optionnel
+    + des lignes (produit + quantité par défaut). L'action `generer` (vue)
+    matérialise un BCF BROUILLON pré-rempli à partir de ces lignes, éditable
+    avant envoi. Le modèle lui-même ne bouge jamais aucun stock/mouvement."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='modeles_bcf')
+    nom = models.CharField(max_length=150)
+    fournisseur = models.ForeignKey(
+        Fournisseur, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='modeles_bcf',
+        help_text='Fournisseur par défaut du BCF généré (optionnel — peut '
+                  "être choisi/changé à la génération si absent ici).")
+    note = models.TextField(blank=True, null=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='modeles_bcf_crees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_mise_a_jour = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Modèle de bon de commande fournisseur'
+        verbose_name_plural = 'Modèles de bon de commande fournisseur'
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
+
+
+class ModeleBonCommandeFournisseurLigne(models.Model):
+    """ZPUR3 — ligne d'un modèle de BCF : produit + quantité par défaut."""
+
+    modele = models.ForeignKey(
+        ModeleBonCommandeFournisseur, on_delete=models.CASCADE,
+        related_name='lignes')
+    produit = models.ForeignKey(
+        Produit, on_delete=models.CASCADE,
+        related_name='lignes_modele_bcf')
+    quantite = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        verbose_name = 'Ligne de modèle de BCF'
+        verbose_name_plural = 'Lignes de modèle de BCF'
+        unique_together = [('modele', 'produit')]
+        ordering = ['id']
+
+    def __str__(self):
+        return f'{self.modele_id}: {self.produit_id} × {self.quantite}'
