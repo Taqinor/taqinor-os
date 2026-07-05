@@ -164,6 +164,22 @@ jamais un gate par-commit — le coût est O(mutants × suite complète)).
 Lancer localement sur un seul module : `mutmut run --paths-to-mutate
 apps/ventes/utils/references.py`.
 
+## Test de charge (k6) — le gate est le percentile, jamais la moyenne
+
+`loadtests/` (k6) modélise un mix de trafic réaliste sur les endpoints
+critiques : `browse.js` (scénario `load` — login rare + liste devis/clients en
+lecture, montée progressive), `create-devis.js` (écriture — création de devis
+isolée pour ne pas diluer sa latence dans le volume de lecture), `spike.js`
+(scénario `spike` — surge soudaine 5→100 VUs, mode de défaillance différent
+d'une charge soutenue : saturation de pool/queue). Seuils déclarés par
+PERCENTILE (`p(95)<800ms`, `p(99)<1500ms`, `http_req_failed<0.5%`,
+`loadtests/common.js`) — **jamais la moyenne**, qui masque la traîne qui fait
+mal aux utilisateurs réels. `.github/workflows/loadtest.yml` lance un smoke
+COURT (~5 min, `browse.js` seul) en nightly + bouton, `continue-on-error`
+(non bloquant tant que la stabilité n'est pas prouvée) ; le soak long et
+`spike.js` restent manuels. Lancer en local : `k6 run -e
+BASE_URL=http://localhost:8000 loadtests/browse.js`.
+
 ## Pistes restantes
 * Parcours e2e par fonctionnalité pour les flux encore non couverts (stock,
   installations, SAV, reporting) : **scaffolds prêts** (`frontend/e2e/{stock,
