@@ -1040,6 +1040,97 @@ def deposer_lot_scans(*, company, folder, fichiers, created_by=None):
     return documents
 
 
+# ── XGED12 — Capture mobile photo → PDF multi-pages classé en GED ────────────
+#
+# Assemble N photos (déjà recadrées/pivotées CÔTÉ CLIENT via canvas — cf.
+# `frontend/src/features/ged`) en UN SEUL PDF multi-pages, CÔTÉ SERVEUR, via
+# Pillow (déjà pinné — `Image.save(save_all=True)`, AUCUNE dépendance
+# nouvelle). Le PDF assemblé est ensuite déposé via le MÊME chemin que
+# `televerser` (GED televerser/GED31) — on ne réimplémente ni le stockage ni la
+# création de document/version.
+
+def assembler_photos_pdf(images_bytes):
+    """XGED12 — Assemble une liste d'octets JPEG/PNG en un PDF multi-pages.
+
+    `images_bytes` : liste non vide d'octets d'image (une entrée = une page,
+    dans l'ordre de capture). Chaque image est ouverte via Pillow, convertie en
+    RGB (un PDF n'accepte pas la transparence/palette) puis les pages 2..N sont
+    ajoutées à la première via `save(..., save_all=True, append_images=...)` —
+    exactement le mécanisme multi-pages documenté de Pillow, sans dépendance
+    nouvelle (Pillow==10.4.0 déjà pinné).
+
+    Renvoie les octets du PDF assemblé. Lève `ValueError` si `images_bytes` est
+    vide ou si une entrée n'est pas une image décodable (jamais un PDF
+    silencieusement vide ou corrompu)."""
+    import io
+
+    from PIL import Image, UnidentifiedImageError
+
+    if not images_bytes:
+        raise ValueError("Au moins une photo est requise pour assembler un PDF.")
+
+    pages = []
+    try:
+        for raw in images_bytes:
+            img = Image.open(io.BytesIO(raw))
+            img.load()  # force le décodage immédiat (détecte un fichier corrompu ici)
+            if img.mode != 'RGB':
+                img = img.convert('RGB')
+            pages.append(img)
+    except UnidentifiedImageError as exc:
+        raise ValueError("Une des photos est illisible (format non supporté).") from exc
+
+    buf = io.BytesIO()
+    first, rest = pages[0], pages[1:]
+    if rest:
+        first.save(buf, format='PDF', save_all=True, append_images=rest)
+    else:
+        first.save(buf, format='PDF')
+    return buf.getvalue()
+
+
+def deposer_photos_assemblees(*, company, folder, images_bytes, nom='',
+                              description='', created_by=None):
+    """XGED12 — Assemble des photos en PDF puis les dépose comme Document GED.
+
+    Assemble `images_bytes` (liste d'octets image, une par page) en un PDF
+    multi-pages via `assembler_photos_pdf`, stocke le résultat via
+    `records.storage.store_attachment` (MÊME pipeline MinIO que `televerser` —
+    aucun second chemin d'upload) puis crée le `Document` + sa version 1
+    (`create_document` + `add_version`, société/créateur posés CÔTÉ SERVEUR).
+    Lance l'OCR (GED33, no-op sans clé) et l'indexation (plein-texte +
+    sémantique + RAG) sur le PDF assemblé, comme les autres points de dépôt.
+
+    `folder` DOIT appartenir à `company` (vérifié par `create_document`).
+    Renvoie le `Document` créé."""
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    from apps.records.storage import store_attachment
+
+    pdf_bytes = assembler_photos_pdf(images_bytes)
+    nom = (nom or 'Numérisation').strip()
+    upload = SimpleUploadedFile(
+        f'{nom or "numerisation"}.pdf', pdf_bytes, content_type='application/pdf')
+    meta, err = store_attachment(upload)
+    if err:
+        raise ValueError(err)
+
+    document = create_document(
+        company=company, folder=folder, nom=nom, description=description,
+        created_by=created_by)
+    add_version(
+        document, file_key=meta['file_key'], company=company,
+        filename=meta['filename'], size=meta['size'], mime=meta['mime'],
+        checksum=compute_checksum(pdf_bytes), uploaded_by=created_by)
+    # GED33 — OCR (no-op sans clé) sur le PDF assemblé.
+    ocr_index_document(document, file_bytes=pdf_bytes, mime=meta['mime'])
+    # GED11/GED12/FG352 — indexation plein-texte + sémantique + RAG.
+    update_search_vector(document)
+    index_embedding(document)
+    index_document_chunks(document)
+    return document
+
+
 # ── GED32 — Import en masse (CSV de métadonnées + ZIP de fichiers) ───────────
 #
 # Import gouverné de N documents en un appel : un CSV de MÉTADONNÉES (une ligne

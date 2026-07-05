@@ -41,6 +41,22 @@ const gedApi = {
     })
   },
 
+  // XGED12 — Capture mobile photo → PDF multi-pages classé en GED. `photos`
+  // : tableau de `File`/`Blob` (déjà recadrées/pivotées côté client via
+  // canvas), une par page dans l'ordre de capture. `folder` cible ; `nom`/
+  // `description` optionnels. L'assemblage PDF (Pillow) est CÔTÉ SERVEUR ;
+  // le résultat passe par le MÊME chemin que `televerser` (document + v1).
+  assemblerPhotos: ({ folder, photos, nom, description }) => {
+    const fd = new FormData()
+    fd.append('folder', folder)
+    photos.forEach((photo) => fd.append('photos', photo))
+    if (nom) fd.append('nom', nom)
+    if (description) fd.append('description', description)
+    return api.post('/ged/documents/assembler-photos/', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+
   // ── GED13 — Recherche & filtres avancés ──
   // Recherche plein-texte Postgres (GED11) : `params` = { q }.
   searchDocuments: (params) => api.get('/ged/documents/recherche/', { params }),
