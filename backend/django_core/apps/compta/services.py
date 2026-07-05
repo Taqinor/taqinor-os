@@ -11126,6 +11126,40 @@ def pointer_presence(inscription):
     return inscription
 
 
+def rechercher_inscrits_borne(evenement, terme):
+    """ZMKT18 — recherche par nom/email parmi les inscrits (borne de
+    check-in), company-scopée."""
+    terme = (terme or '').strip()
+    if not terme:
+        return []
+    qs = InscriptionEvenement.objects.filter(
+        company=evenement.company, evenement=evenement,
+    ).filter(Q(nom__icontains=terme) | Q(email__icontains=terme))
+    return [
+        {'id': i.id, 'nom': i.nom, 'email': i.email, 'statut': i.statut}
+        for i in qs
+    ]
+
+
+def pointer_presence_via_qr_ou_recherche(evenement, *, qr_token=None,
+                                         inscription_id=None):
+    """ZMKT18 — check-in via le token QR par inscrit (XMKT28) ou une
+    recherche/sélection directe. Idempotent (une seule fois — délègue à
+    ``pointer_presence``)."""
+    inscription = None
+    if qr_token:
+        inscription = InscriptionEvenement.objects.filter(
+            company=evenement.company, evenement=evenement,
+            qr_token=qr_token).first()
+    elif inscription_id:
+        inscription = InscriptionEvenement.objects.filter(
+            company=evenement.company, evenement=evenement,
+            id=inscription_id).first()
+    if inscription is None:
+        return None
+    return pointer_presence(inscription)
+
+
 def cloturer_presences_evenement(evenement):
     """XMKT28 — marque ``absent`` les inscrits confirmés/inscrits non pointés
     à la fin de l'événement."""

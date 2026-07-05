@@ -4991,6 +4991,13 @@ class EvenementMarketingViewSet(_ComptaBaseViewSet):
         nb = services.cloturer_presences_evenement(evenement)
         return Response({'absents_marques': nb})
 
+    @action(detail=True, methods=['get'])
+    def borne(self, request, pk=None):
+        """ZMKT18 — recherche par nom/email parmi les inscrits."""
+        evenement = self.get_object()
+        terme = request.query_params.get('q', '')
+        return Response(services.rechercher_inscrits_borne(evenement, terme))
+
     @action(detail=False, methods=['get'])
     def kanban(self, request):
         """ZMKT14 — Kanban par étape configurable."""
