@@ -114,6 +114,16 @@ class SavSlaSettings(models.Model):
         related_name='sav_suit_tous_tickets',
         verbose_name='Suivre tous les tickets (utilisateurs)',
     )
+    # ── ZMFG6 — Feuilles de maintenance (worksheets) remplies par le
+    # technicien. OFF par défaut : comportement actuel inchangé (aucun
+    # ticket ne propose de feuille tant que la société ne l'active pas).
+    worksheets_maintenance_actifs = models.BooleanField(
+        default=False,
+        verbose_name='Feuilles de maintenance (worksheets) actives',
+        help_text='Active la feuille de maintenance remplie par le '
+                  'technicien sur les tickets (parité Odoo « Custom '
+                  'Maintenance Worksheets »).',
+    )
     date_modification = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -201,12 +211,39 @@ class CategorieEquipement(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='categories_equipement_dirigees')
     commentaire = models.TextField(blank=True, default='')
+    # ── ZMFG7 — Alias e-mail → création auto de demande ─────────────────────
+    # Vide par défaut (comportement actuel inchangé) : un e-mail entrant
+    # (FG373) ne route vers un ticket pré-catégorisé QUE si une catégorie
+    # renseigne cet alias. Unique PAR SOCIÉTÉ quand renseigné (deux
+    # catégories ne peuvent pas partager le même alias).
+    alias_email = models.CharField(
+        max_length=254, blank=True, null=True,
+        verbose_name='Alias e-mail',
+        help_text='Adresse e-mail dédiée à cette catégorie — un message reçu '
+                  'à cet alias crée un ticket correctif pré-catégorisé '
+                  '(vide = pas de routage par alias).')
+    # ZMFG7 — équipe responsable de la catégorie (si posée), affectée
+    # automatiquement au ticket créé par alias. Optionnel : NULL = comme
+    # aujourd'hui, aucune équipe déduite depuis la catégorie.
+    equipe_responsable = models.ForeignKey(
+        'sav.EquipeMaintenance', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='categories_equipement',
+        verbose_name='Équipe responsable',
+        help_text='Équipe de maintenance affectée automatiquement aux '
+                  'tickets créés par alias e-mail pour cette catégorie.')
 
     class Meta:
         verbose_name = 'Catégorie d\'équipement'
         verbose_name_plural = 'Catégories d\'équipement'
         ordering = ['nom']
         unique_together = [('company', 'nom')]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'alias_email'],
+                condition=models.Q(alias_email__isnull=False)
+                & ~models.Q(alias_email=''),
+                name='sav_categorieequipement_company_alias_uniq'),
+        ]
 
     def __str__(self):
         return self.nom
@@ -608,6 +645,16 @@ class Ticket(models.Model):
     # suppression d'une équipe ne casse pas l'historique des tickets.
     equipe = models.ForeignKey(
         'sav.EquipeMaintenance', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='tickets')
+
+    # ── ZMFG7 — Catégorie d'équipement d'origine (routage par alias e-mail) ──
+    # Optionnel : NULL = comportement actuel (aucun ticket n'a jamais porté
+    # de catégorie d'équipement). Posé automatiquement par le handler
+    # d'e-mail entrant (ZMFG7) quand le message arrive sur l'alias d'une
+    # catégorie ; peut aussi être posé manuellement. SET_NULL : la
+    # suppression d'une catégorie ne casse pas l'historique.
+    categorie_equipement = models.ForeignKey(
+        'sav.CategorieEquipement', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='tickets')
 
     # ── Annulation : un DRAPEAU avec motif, pas une étape (comme « Perdu »). ──
@@ -1259,6 +1306,26 @@ class ContratMaintenance(models.Model):
     )
     date_creation = models.DateTimeField(auto_now_add=True)
 
+    # ── XCTR16 — Facturation à l'usage depuis le monitoring ─────────────────
+    # Tous optionnels : NULL/vide = comportement actuel inchangé (aucune ligne
+    # d'usage sur un contrat qui ne renseigne pas ``tarif_usage``).
+    class UniteUsage(models.TextChoices):
+        KWH = 'kwh', 'kWh'
+        M3 = 'm3', 'm³'
+
+    tarif_usage = models.DecimalField(
+        max_digits=10, decimal_places=4, null=True, blank=True,
+        verbose_name='Tarif à l\'usage (MAD/unité)',
+        help_text='Vide = pas de facturation à l\'usage (comportement actuel).')
+    franchise_incluse = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Franchise incluse (unités/période)',
+        help_text='Quantité incluse par période avant facturation (0 si vide).')
+    unite_usage = models.CharField(
+        max_length=5, choices=UniteUsage.choices, null=True, blank=True,
+        verbose_name='Unité d\'usage',
+        help_text='kWh (monitoring PV) ou m³ (pompage). Vide = pas d\'usage.')
+
     class Meta:
         ordering = ['-date_creation']
         verbose_name = 'Contrat de maintenance'
@@ -1599,6 +1666,12 @@ class PieceConsommee(models.Model):
     def __str__(self):
         return f'{self.produit_id} ×{self.quantite} (ticket {self.ticket_id})'
 
+    @property
+    def operation(self):
+        """ZMFG8 — une `PieceConsommee` est toujours un AJOUT (parité
+        affichage unifié avec `PieceRetiree.operation` retrait/recyclage)."""
+        return 'ajout'
+
 
 # ── XSAV16 — Journal d'immobilisation (downtime) + disponibilité % ──────────
 
@@ -1722,6 +1795,15 @@ class PieceRetiree(models.Model):
         RETOUR_FOURNISSEUR = 'retour_fournisseur', 'Retour fournisseur'
         STOCK_OCCASION = 'stock_occasion', 'Stock occasion'
 
+    # ── ZMFG8 — Typage opérationnel explicite (parité Repair Parts Odoo) ────
+    # `operation` distingue RETRAIT (rebut/retour_fournisseur) de RECYCLAGE
+    # (remise en circulation via `stock_occasion`) — affichage unifié avec
+    # PieceConsommee (AJOUT). Défaut RETRAIT : rétro-compatible avec toute
+    # ligne existante (aucune n'était étiquetée recyclage jusqu'ici).
+    class Operation(models.TextChoices):
+        RETRAIT = 'retrait', 'Retrait'
+        RECYCLAGE = 'recyclage', 'Recyclage'
+
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='pieces_retirees_sav')
@@ -1735,6 +1817,10 @@ class PieceRetiree(models.Model):
     numero_serie = models.CharField(max_length=120, blank=True, default='')
     destination = models.CharField(
         max_length=20, choices=Destination.choices, default=Destination.REBUT)
+    operation = models.CharField(
+        max_length=10, choices=Operation.choices, default=Operation.RETRAIT,
+        help_text='Retrait (rebut/RMA) ou recyclage (remise en circulation '
+                  '— exige destination=stock_occasion).')
     restockee = models.BooleanField(
         default=False,
         help_text=('True une fois le MouvementStock ENTRÉE (stock_occasion) '
@@ -1855,3 +1941,103 @@ class CategorieTicket(models.Model):
 
     def __str__(self):
         return self.libelle
+
+
+# ── ZMFG6 — Feuilles de maintenance (worksheets) ─────────────────────────────
+
+class WorksheetMaintenanceModele(models.Model):
+    """ZMFG6 — Modèle de feuille de maintenance (parité Odoo « Custom
+    Maintenance Worksheets »), distinct de la checklist pass/fail (FG82) :
+    ici le technicien REMPLIT des champs typés (texte/nombre/case/mesure),
+    pas de simple coche.
+
+    ``champs`` est une liste JSON de définitions
+    ``[{"cle": "pression_bar", "libelle": "Pression (bar)", "type": "nombre",
+    "requis": true}, ...]`` — types acceptés : ``texte``/``nombre``/
+    ``case``/``mesure``. Gaté société par
+    ``SavSlaSettings.worksheets_maintenance_actifs`` (défaut OFF)."""
+
+    class TypeTicketApplicable(models.TextChoices):
+        PREVENTIF = 'preventif', 'Préventif'
+        CORRECTIF = 'correctif', 'Correctif'
+        TOUS = 'tous', 'Tous types'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='worksheet_maintenance_modeles')
+    nom = models.CharField(max_length=150)
+    type_ticket_applicable = models.CharField(
+        max_length=15, choices=TypeTicketApplicable.choices,
+        default=TypeTicketApplicable.TOUS)
+    champs = models.JSONField(
+        default=list, blank=True,
+        help_text='Liste de champs typés : '
+                  '[{"cle", "libelle", "type": texte|nombre|case|mesure, '
+                  '"requis"}].')
+    actif = models.BooleanField(default=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['nom']
+        verbose_name = 'Modèle de feuille de maintenance'
+        verbose_name_plural = 'Modèles de feuille de maintenance'
+
+    def __str__(self):
+        return self.nom
+
+
+class TicketWorksheet(models.Model):
+    """ZMFG6 — Feuille de maintenance remplie sur UN ticket, depuis un
+    ``WorksheetMaintenanceModele``. ``valeurs`` est un dict JSON
+    ``{cle: valeur}`` miroir des ``champs`` du modèle. ``complete`` passe à
+    ``True`` seulement quand tous les champs ``requis`` du modèle ont une
+    valeur non vide — imprimé dans le rapport de maintenance PDF (section
+    conditionnelle, `apps/sav/pdf.py`)."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ticket_worksheets')
+    ticket = models.OneToOneField(
+        Ticket, on_delete=models.CASCADE, related_name='worksheet')
+    modele = models.ForeignKey(
+        WorksheetMaintenanceModele, on_delete=models.PROTECT,
+        related_name='ticket_worksheets')
+    valeurs = models.JSONField(default=dict, blank=True)
+    complete = models.BooleanField(default=False)
+    complete_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+')
+    complete_le = models.DateTimeField(null=True, blank=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Feuille de maintenance (ticket)'
+        verbose_name_plural = 'Feuilles de maintenance (ticket)'
+
+    def __str__(self):
+        return f'Feuille {self.modele.nom} (ticket {self.ticket_id})'
+
+    def champs_requis_manquants(self):
+        """Liste des clés de champs REQUIS du modèle sans valeur (ou valeur
+        vide/None) dans ``valeurs`` — sert de garde à la complétion."""
+        manquants = []
+        for champ in (self.modele.champs or []):
+            if not champ.get('requis'):
+                continue
+            cle = champ.get('cle')
+            valeur = self.valeurs.get(cle) if cle else None
+            if valeur in (None, ''):
+                manquants.append(cle)
+        return manquants
+
+    def marquer_complete(self, user):
+        """Marque la feuille complétée si tous les champs requis sont
+        renseignés ; lève ``ValueError`` sinon (garde bloquante, ZMFG6)."""
+        manquants = self.champs_requis_manquants()
+        if manquants:
+            raise ValueError(
+                'Champs requis manquants : ' + ', '.join(manquants))
+        self.complete = True
+        self.complete_par = user
+        self.complete_le = timezone.now()
+        self.save(update_fields=['complete', 'complete_par', 'complete_le'])

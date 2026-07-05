@@ -9,7 +9,7 @@ import logging
 from django.dispatch import receiver
 from django.utils import timezone
 
-from core.events import contrat_resilie, intervention_completed
+from core.events import contrat_resilie, devis_accepted, intervention_completed
 
 logger = logging.getLogger(__name__)
 
@@ -88,3 +88,22 @@ def _avancer_ticket_on_intervention_completed(sender, intervention, company,
         logger.warning(
             'sav: échec avancement ticket sur intervention terminée '
             '#%s', getattr(intervention, 'pk', None), exc_info=True)
+
+
+@receiver(devis_accepted, dispatch_uid="sav_creer_contrat_on_devis_accepted")
+def _creer_contrat_maintenance_on_devis_accepted(sender, devis, user,
+                                                 ancien_statut, **kwargs):
+    """XCTR1 — quand un devis contenant une ligne récurrente
+    (``stock.Produit.est_recurrent``) passe à accepté, crée idempotent le
+    ``ContratMaintenance`` correspondant (jamais deux fois pour le même
+    devis, y compris si le signal est ré-émis). Un devis sans ligne
+    récurrente ne déclenche rien. Best-effort : une erreur ici ne doit
+    jamais remonter (l'acceptation, côté ventes, est déjà actée)."""
+    try:
+        from .services import creer_contrat_depuis_devis_accepte
+
+        creer_contrat_depuis_devis_accepte(devis=devis, user=user)
+    except Exception:  # pragma: no cover - défensif (best-effort)
+        logger.warning(
+            'sav: échec création contrat de maintenance sur devis accepté '
+            '#%s', getattr(devis, 'pk', None), exc_info=True)

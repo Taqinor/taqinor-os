@@ -26,6 +26,7 @@ from .models import (
     ReleveCompteurEquipement, ReponseType, CompatibilitePiece, PieceRetiree,
     CategorieTicket, EquipeMaintenance, CategorieEquipement,
     TicketActiviteAFaire, TicketFollower,
+    WorksheetMaintenanceModele, TicketWorksheet,
 )
 from .services import add_months
 from .pdf import rapport_intervention_pdf
@@ -47,6 +48,7 @@ from .serializers import (
     EquipeMaintenanceSerializer,
     CategorieEquipementSerializer,
     TicketActiviteAFaireSerializer,
+    WorksheetMaintenanceModeleSerializer, TicketWorksheetSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -317,6 +319,16 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
         include_couts = bool(request.user.can_view_buy_prices)
         data = fiabilite_equipement(equipement, include_couts=include_couts)
         return Response(data)
+
+    @action(detail=True, methods=['get'], url_path='estimations-maintenance',
+            permission_classes=[HasPermissionOrLegacy('equipement_voir')])
+    def estimations_maintenance(self, request, pk=None):
+        """ZMFG11 — Prochaine défaillance estimée (MTBF) + prochain entretien
+        dû (contrat de maintenance ou seuil compteur) pour CET équipement."""
+        from .selectors import estimations_maintenance as _estimations_maintenance
+
+        equipement = self.get_object()
+        return Response(_estimations_maintenance(equipement))
 
     @action(detail=True, methods=['get', 'post'], url_path='downtime',
             permission_classes=[HasPermissionOrLegacy('equipement_gerer')])
@@ -1312,7 +1324,7 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         from apps.stock.selectors import (
             get_produit_or_raise, produit_does_not_exist,
         )
-        from .services import retirer_piece
+        from .services import OperationDestinationIncoherenteError, retirer_piece
         try:
             quantite = Decimal(str(request.data.get('quantite') or '1'))
         except (InvalidOperation, TypeError):
@@ -1327,21 +1339,39 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         destination = request.data.get('destination') or PieceRetiree.Destination.REBUT
         if destination not in PieceRetiree.Destination.values:
             return Response({'detail': 'Destination invalide.'}, status=400)
+        # ZMFG8 — typage opérationnel explicite (retrait/recyclage).
+        operation = request.data.get('operation') or PieceRetiree.Operation.RETRAIT
+        if operation not in PieceRetiree.Operation.values:
+            return Response({'detail': 'Opération invalide.'}, status=400)
         numero_serie = (request.data.get('numero_serie') or '').strip()
-        with transaction.atomic():
-            piece = retirer_piece(
-                company=ticket.company, ticket=ticket, produit=produit,
-                quantite=quantite, numero_serie=numero_serie,
-                destination=destination, user=request.user)
-            suffixe = {
-                PieceRetiree.Destination.STOCK_OCCASION: ' (stock occasion +)',
-                PieceRetiree.Destination.RETOUR_FOURNISSEUR: ' (RMA)',
-                PieceRetiree.Destination.REBUT: ' (rebut)',
-            }.get(destination, '')
-            activity.log_note(
-                ticket, request.user,
-                f'Pièce {produit.nom} ×{quantite} retirée{suffixe}')
+        try:
+            with transaction.atomic():
+                piece = retirer_piece(
+                    company=ticket.company, ticket=ticket, produit=produit,
+                    quantite=quantite, numero_serie=numero_serie,
+                    destination=destination, operation=operation,
+                    user=request.user)
+        except OperationDestinationIncoherenteError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        suffixe = {
+            PieceRetiree.Destination.STOCK_OCCASION: ' (stock occasion +)',
+            PieceRetiree.Destination.RETOUR_FOURNISSEUR: ' (RMA)',
+            PieceRetiree.Destination.REBUT: ' (rebut)',
+        }.get(destination, '')
+        activity.log_note(
+            ticket, request.user,
+            f'Pièce {produit.nom} ×{quantite} retirée{suffixe}')
         return Response(PieceRetireeSerializer(piece).data, status=201)
+
+    @action(detail=True, methods=['get'], url_path='pieces-unifiees',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def pieces_unifiees(self, request, pk=None):
+        """ZMFG8 — Affichage unifié Ajout/Retrait/Recyclage des pièces du
+        ticket (`PieceConsommee` + `PieceRetiree`), avec sous-totaux."""
+        from .selectors import pieces_unifiees as _pieces_unifiees
+
+        ticket = self.get_object()
+        return Response(_pieces_unifiees(ticket))
 
     @action(detail=True, methods=['post'], url_path='generer-facture',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
@@ -1615,6 +1645,67 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             item.note = request.data['note'] or ''
         item.save()
         return Response(TicketChecklistItemSerializer(item).data)
+
+    @action(detail=True, methods=['get', 'post', 'patch'],
+            url_path='worksheet',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def worksheet(self, request, pk=None):
+        """ZMFG6 — Feuille de maintenance (worksheet) remplie sur le ticket.
+
+        GET : renvoie la feuille existante (404 si aucune).
+        POST : crée la feuille depuis un modèle (body: {modele_id: N}) ;
+               idempotent (renvoie l'existante si déjà créée, jamais deux
+               feuilles sur le même ticket — OneToOne).
+        PATCH : met à jour les valeurs (body: {valeurs: {...}}) et/ou
+               marque complétée (body: {complete: true}) — refuse (400) si
+               un champ requis du modèle manque encore.
+        Gaté par ``SavSlaSettings.worksheets_maintenance_actifs`` (défaut
+        OFF) : 404 tant que la société n'a pas activé la fonctionnalité."""
+        ticket = self.get_object()
+        sla = SavSlaSettings.get(ticket.company)
+        if not sla.worksheets_maintenance_actifs:
+            return Response(
+                {'detail': 'Feuilles de maintenance non activées pour cette société.'},
+                status=404)
+
+        if request.method == 'GET':
+            worksheet = getattr(ticket, 'worksheet', None)
+            if worksheet is None:
+                return Response({'detail': 'Aucune feuille sur ce ticket.'}, status=404)
+            return Response(TicketWorksheetSerializer(worksheet).data)
+
+        if request.method == 'POST':
+            existing = getattr(ticket, 'worksheet', None)
+            if existing is not None:
+                return Response(TicketWorksheetSerializer(existing).data, status=200)
+            modele_id = request.data.get('modele_id')
+            if not modele_id:
+                return Response({'detail': 'modele_id requis.'}, status=400)
+            try:
+                modele = WorksheetMaintenanceModele.objects.get(
+                    pk=modele_id, company=ticket.company)
+            except WorksheetMaintenanceModele.DoesNotExist:
+                return Response({'detail': 'Modèle introuvable.'}, status=404)
+            worksheet = TicketWorksheet.objects.create(
+                company=ticket.company, ticket=ticket, modele=modele)
+            return Response(
+                TicketWorksheetSerializer(worksheet).data, status=201)
+
+        # PATCH — mise à jour des valeurs / complétion.
+        worksheet = getattr(ticket, 'worksheet', None)
+        if worksheet is None:
+            return Response({'detail': 'Aucune feuille sur ce ticket.'}, status=404)
+        if 'valeurs' in request.data:
+            valeurs = dict(worksheet.valeurs or {})
+            valeurs.update(request.data['valeurs'] or {})
+            worksheet.valeurs = valeurs
+            worksheet.save(update_fields=['valeurs'])
+        if request.data.get('complete'):
+            try:
+                worksheet.marquer_complete(request.user)
+            except ValueError as exc:
+                return Response({'detail': str(exc)}, status=400)
+        return Response(TicketWorksheetSerializer(worksheet).data)
 
     @action(detail=True, methods=['post'], url_path='attente-client',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
@@ -2180,6 +2271,23 @@ class CategorieEquipementViewSet(TenantMixin, viewsets.ModelViewSet):
     écriture responsable/admin (édité dans Paramètres SAV)."""
     queryset = CategorieEquipement.objects.all()
     serializer_class = CategorieEquipementSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+
+# ── ZMFG6 — Feuilles de maintenance (worksheets) ──────────────────────────────
+
+class WorksheetMaintenanceModeleViewSet(TenantMixin, viewsets.ModelViewSet):
+    """ZMFG6 — CRUD modèle de feuille de maintenance, company-scopé (édité
+    dans Paramètres SAV). Lecture tout rôle, écriture responsable/admin."""
+    queryset = WorksheetMaintenanceModele.objects.all()
+    serializer_class = WorksheetMaintenanceModeleSerializer
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:

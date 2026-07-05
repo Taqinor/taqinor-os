@@ -380,7 +380,11 @@ def facturer_contrat_maintenance_beat(contrat, *, user=None):
     bloquant). Renvoie la ``Facture`` créée ; lève ``ValueError`` si la
     facturation échoue (prix manquant…) — l'appelant (le beat) capture
     l'exception PAR contrat pour ne jamais bloquer les suivants.
-    """
+
+    XCTR16 — si le contrat renseigne ``tarif_usage``, ajoute une ligne
+    dédiée « facturation à l'usage » (voir ``calculer_ligne_usage_contrat``)
+    APRÈS la création de la facture (best-effort, ne bloque jamais l'émission
+    de la facture forfaitaire elle-même)."""
     from django.utils import timezone as _timezone
 
     from apps.ventes.services import creer_facture_contrat
@@ -394,18 +398,92 @@ def facturer_contrat_maintenance_beat(contrat, *, user=None):
             contrat.company, contrat.pk, periode, statut_echec=True)
         raise
 
+    motif_usage = ''
+    if contrat.tarif_usage is not None:
+        motif_usage = _ajouter_ligne_usage_contrat(contrat, facture)
+
     _journaliser_cycle_maintenance_beat(
         contrat.company, contrat.pk, periode, statut_echec=False,
-        facture_id=facture.id)
+        facture_id=facture.id, motif=motif_usage)
     return facture
 
 
+# ── XCTR16 — Facturation à l'usage depuis le monitoring ─────────────────────
+
+def calculer_ligne_usage_contrat(contrat, periode_debut, periode_fin):
+    """Calcule la ligne de facturation à l'usage d'un ``ContratMaintenance``
+    sur ``[periode_debut, periode_fin)`` (borne de fin exclusive).
+
+    Renvoie ``(montant_ht, description)`` quand une lecture d'usage existe
+    (``max(0, usage − franchise) × tarif`` — jamais négatif), ou
+    ``(None, motif)`` quand la ligne doit être OMISE : contrat sans
+    ``tarif_usage``/``installation``, ou aucune lecture disponible sur la
+    période (le motif est destiné au journal XCTR5, jamais une exception —
+    l'absence de lecture est un cas attendu, pas une erreur)."""
+    from decimal import Decimal
+
+    if contrat.tarif_usage is None:
+        return None, 'Pas de tarif à l\'usage sur ce contrat.'
+    if contrat.installation_id is None:
+        return None, 'Contrat sans installation liée — usage non calculable.'
+
+    from apps.monitoring.selectors import usage_kwh_periode
+
+    usage = usage_kwh_periode(
+        contrat.company, contrat.installation, periode_debut, periode_fin)
+    if usage is None:
+        return None, (
+            f"Aucun relevé de production sur la période {periode_debut}"
+            f"–{periode_fin} — ligne d'usage omise.")
+
+    franchise = contrat.franchise_incluse or Decimal('0')
+    facturable = max(Decimal('0'), usage - franchise)
+    montant = (facturable * contrat.tarif_usage).quantize(Decimal('0.01'))
+    unite = contrat.get_unite_usage_display() if contrat.unite_usage else 'kWh'
+    description = (
+        f'Facturation à l\'usage — {usage} {unite} relevés, '
+        f'franchise {franchise} {unite}, {facturable} {unite} facturés '
+        f'à {contrat.tarif_usage} MAD/{unite}.')
+    return montant, description
+
+
+def _ajouter_ligne_usage_contrat(contrat, facture):
+    """Ajoute (best-effort) la ligne d'usage calculée sur la ``Facture``
+    récurrente déjà émise, via le hook cross-app générique déjà exposé par
+    ``ventes`` (``ajouter_lignes_frais_refactures`` — même mécanisme que
+    ``apps.compta`` pour les frais refacturés, aucun nouveau couplage).
+    Renvoie le motif (chaîne vide si une ligne a bien été ajoutée) destiné au
+    journal XCTR5."""
+    periode_debut = facture.periode_service_debut
+    periode_fin = facture.periode_service_fin
+    if periode_debut is None or periode_fin is None:
+        return 'Période de service absente sur la facture — usage non calculé.'
+
+    montant, description = calculer_ligne_usage_contrat(
+        contrat, periode_debut, periode_fin)
+    if montant is None:
+        return description
+
+    from apps.ventes.services import ajouter_lignes_frais_refactures
+
+    ajouter_lignes_frais_refactures(
+        facture=facture,
+        lignes=[{'designation': description, 'montant_ht': montant}],
+    )
+    return ''
+
+
 def _journaliser_cycle_maintenance_beat(company, contrat_id, periode, *,
-                                        statut_echec, facture_id=None):
+                                        statut_echec, facture_id=None,
+                                        motif=''):
     """Journalise un cycle de facturation SAV dans le journal contrats —
     XCTR5/YSUBS1. Même patron que
     ``maintenance.ContratMaintenanceViewSet._journaliser_cycle_best_effort``
-    (frontière cross-app : import fonction-local, best-effort)."""
+    (frontière cross-app : import fonction-local, best-effort).
+
+    XCTR16 — ``motif`` trace la ligne d'usage omise (aucune lecture
+    disponible) même quand la facture forfaitaire, elle, a bien été générée
+    (le statut reste ``GENERE`` — seule la ligne d'usage est absente)."""
     try:
         from apps.contrats import services as contrats_services
         from apps.contrats.models import CycleFacturationLog
@@ -420,6 +498,7 @@ def _journaliser_cycle_maintenance_beat(company, contrat_id, periode, *,
             periode=periode,
             statut=statut,
             facture_id=facture_id,
+            motif=motif or '',
         )
     except Exception:  # pragma: no cover - défensif (best-effort)
         pass
@@ -469,8 +548,13 @@ def creer_intervention_depuis_installation(
 
 # ── XMFG10 — Pièces retirées / récupérées sur ticket SAV ─────────────────────
 
+class OperationDestinationIncoherenteError(ValueError):
+    """ZMFG8 — une pièce en ``recyclage`` doit avoir ``destination`` =
+    ``stock_occasion`` (cohérence avec le restock XMFG10)."""
+
+
 def retirer_piece(*, company, ticket, produit, quantite, numero_serie,
-                  destination, user):
+                  destination, user, operation=None):
     """Trace une pièce RETIRÉE du ticket (`PieceRetiree`) et applique les
     effets de bord de sa `destination` :
 
@@ -480,9 +564,22 @@ def retirer_piece(*, company, ticket, produit, quantite, numero_serie,
         à l'équipement si `numero_serie` matche un équipement de la société ;
       * ``rebut`` → aucun mouvement de stock.
 
+    ``operation`` (ZMFG8) — ``retrait`` (défaut) ou ``recyclage`` ; lève
+    ``OperationDestinationIncoherenteError`` si ``recyclage`` est demandé
+    sans ``destination='stock_occasion'`` (garde de cohérence, aucun
+    nouveau mouvement de stock au-delà de celui déjà déclenché par
+    `stock_occasion`).
+
     Si `numero_serie` correspond à un `sav.Equipement` existant (société
     scoped), il est marqué REMPLACÉ. Renvoie la `PieceRetiree` créée."""
     from .models import Equipement, PieceRetiree, WarrantyClaim
+
+    operation = operation or PieceRetiree.Operation.RETRAIT
+    if (operation == PieceRetiree.Operation.RECYCLAGE
+            and destination != PieceRetiree.Destination.STOCK_OCCASION):
+        raise OperationDestinationIncoherenteError(
+            "Une pièce en recyclage doit avoir une destination "
+            "'stock_occasion'.")
 
     equipement_remplace = None
     if numero_serie:
@@ -497,6 +594,7 @@ def retirer_piece(*, company, ticket, produit, quantite, numero_serie,
     piece = PieceRetiree.objects.create(
         company=company, ticket=ticket, produit=produit, quantite=quantite,
         numero_serie=numero_serie or '', destination=destination,
+        operation=operation,
         equipement_remplace=equipement_remplace, created_by=user)
 
     if destination == PieceRetiree.Destination.STOCK_OCCASION:
@@ -887,3 +985,161 @@ def abonner_suiveurs_globaux(ticket):
     for user in users:
         TicketFollower.objects.get_or_create(
             company=ticket.company, ticket=ticket, user=user)
+
+
+# ── XCTR1 — Devis accepté (ligne récurrente) → contrat de maintenance ───────
+
+def creer_contrat_depuis_devis_accepte(*, devis, user=None):
+    """XCTR1 — quand un ``ventes.Devis`` contenant AU MOINS UNE ligne dont le
+    produit est marqué ``est_recurrent`` passe à accepté, crée IDEMPOTENT un
+    ``ContratMaintenance`` pour le client du devis : prix = total TTC des
+    lignes récurrentes, périodicité = celle du premier produit récurrent
+    trouvé (défaut annuel), ``facturation_active=False`` (comportement
+    historique — la facturation récurrente reste un opt-in explicite,
+    cf. FG40). Le contrat est lié au devis via une note dans ``notes`` (pas de
+    nouvelle FK cross-app).
+
+    Aucune écriture cross-app directe : appelé UNIQUEMENT depuis le receveur
+    ``apps/sav/receivers.py`` abonné à ``core.events.devis_accepted``.
+
+    Idempotence : si un ``ContratMaintenance`` référence déjà ce devis dans
+    ``notes`` (marqueur ``[devis:<id>]``), ne crée rien (ré-émission du signal,
+    double clic) et renvoie ``None``. Un devis SANS ligne récurrente ne crée
+    rien non plus (renvoie ``None``).
+    """
+    from decimal import Decimal
+
+    from .models import ContratMaintenance
+
+    marqueur = f'[devis:{devis.pk}]'
+    if ContratMaintenance.objects.filter(
+            company=devis.company, notes__contains=marqueur).exists():
+        return None
+
+    lignes_recurrentes = [
+        ligne for ligne in devis.lignes.select_related('produit').all()
+        if getattr(ligne.produit, 'est_recurrent', False)
+    ]
+    if not lignes_recurrentes:
+        return None
+
+    prix = sum((ligne.total_ht * (
+        1 + (ligne.taux_tva_effectif or 0) / Decimal('100'))
+        for ligne in lignes_recurrentes), Decimal('0'))
+
+    premiere_periodicite = None
+    for ligne in lignes_recurrentes:
+        periodicite = getattr(ligne.produit, 'periodicite_defaut', None)
+        if periodicite:
+            premiere_periodicite = periodicite
+            break
+
+    kwargs = dict(
+        company=devis.company,
+        client=devis.client,
+        date_debut=devis.date_acceptation or timezone.localdate(),
+        prix=prix,
+        actif=True,
+        facturation_active=False,
+        notes=f'Créé automatiquement depuis le devis {marqueur} '
+              f'(ligne(s) récurrente(s) — XCTR1).',
+    )
+    if premiere_periodicite:
+        kwargs['periodicite'] = premiere_periodicite
+
+    installation = getattr(devis, 'installation', None)
+    if installation is not None:
+        kwargs['installation'] = installation
+
+    return ContratMaintenance.objects.create(**kwargs)
+
+
+# ── ZMFG7 — Alias e-mail par catégorie d'équipement ──────────────────────────
+
+def _extract_to_addresses(message):
+    """Extrait les adresses du header ``To`` (brut) d'un ``InboundMessage``
+    (``core.email_intake``), en minuscules, sans nom affiché."""
+    from email.utils import getaddresses
+
+    to_header = (message.raw_headers or {}).get('To', '')
+    if not to_header:
+        return []
+    return [addr.strip().lower()
+            for _, addr in getaddresses([to_header]) if addr]
+
+
+def categorie_pour_alias(company, message):
+    """ZMFG7 — ``CategorieEquipement`` de la société dont ``alias_email``
+    correspond à UNE des adresses ``To`` du message, ou ``None`` si aucune
+    catégorie ne configure cet alias (route FG373 générique inchangée)."""
+    from .models import CategorieEquipement
+
+    adresses = _extract_to_addresses(message)
+    if not adresses:
+        return None
+    return (CategorieEquipement.objects
+            .filter(company=company, alias_email__in=adresses)
+            .exclude(alias_email__isnull=True)
+            .exclude(alias_email='')
+            .first())
+
+
+def creer_ticket_depuis_email_alias(message, company):
+    """ZMFG7 — Handler enregistré auprès de ``core.email_intake`` (FG373) :
+    si le message entrant est adressé à l'alias e-mail d'une
+    ``CategorieEquipement``, crée un ticket CORRECTIF pré-catégorisé
+    (catégorie posée sur l'équipement via son alias + équipe responsable de
+    la catégorie si posée).
+
+    NO-OP total (ne crée rien) si :
+      * aucune catégorie de la société ne configure cet alias (route
+        générique FG373 inchangée) ;
+      * l'expéditeur ne correspond à AUCUN client existant de la société
+        (on ne devine jamais un client — mieux vaut ne rien créer qu'un
+        ticket orphelin).
+
+    Idempotent par Message-ID : un même message ne crée jamais deux
+    tickets (re-poll IMAP, redélivrance).
+    """
+    categorie = categorie_pour_alias(company, message)
+    if categorie is None:
+        return None  # pas d'alias configuré → route générique inchangée.
+
+    from apps.crm.selectors import find_client_by_email
+    from apps.ventes.utils.references import create_with_reference
+    from .models import Ticket
+
+    client = find_client_by_email(message.from_email, company=company)
+    if client is None:
+        return None  # expéditeur inconnu → aucun ticket orphelin créé.
+
+    marqueur = f'[email:{message.message_id}]' if message.message_id else None
+    if marqueur:
+        existant = Ticket.objects.filter(
+            company=company, description__startswith=marqueur).first()
+        if existant is not None:
+            return existant
+
+    sujet = (message.subject or 'Demande reçue par e-mail').strip()
+    corps = message.body or ''
+    description = f'{marqueur} {sujet}\n\n{corps}' if marqueur else f'{sujet}\n\n{corps}'
+
+    def _create(ref):
+        return Ticket.objects.create(
+            company=company, reference=ref, client=client,
+            type=Ticket.Type.CORRECTIF, statut=Ticket.Statut.NOUVEAU,
+            categorie_equipement=categorie,
+            equipe=categorie.equipe_responsable,
+            date_ouverture=timezone.localdate(),
+            description=description[:4000])
+    return create_with_reference(Ticket, 'SAV', company, _create)
+
+
+def register_email_alias_handler():
+    """ZMFG7 — Abonne ``creer_ticket_depuis_email_alias`` au bus e-mail
+    entrant (``core.email_intake``), câblé depuis ``SavConfig.ready()``.
+    ``core`` ne connaît jamais ``apps.sav`` — même patron de découplage que
+    les autres handlers du registre (docstring ``core/email_intake.py``)."""
+    from core.email_intake import register_handler
+
+    register_handler(creer_ticket_depuis_email_alias)

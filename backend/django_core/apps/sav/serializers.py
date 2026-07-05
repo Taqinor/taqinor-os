@@ -11,6 +11,7 @@ from .models import (
     EquipementDowntime, ReleveCompteurEquipement, ReponseType,
     CompatibilitePiece, PieceRetiree, PretEquipement, CategorieTicket,
     EquipeMaintenance, CategorieEquipement, TicketActiviteAFaire,
+    WorksheetMaintenanceModele, TicketWorksheet,
 )
 
 # Fenêtre « garantie expirant bientôt » (jours).
@@ -167,12 +168,16 @@ class PieceRetireeSerializer(serializers.ModelSerializer):
         source='produit.sku', read_only=True, default=None)
     destination_display = serializers.CharField(
         source='get_destination_display', read_only=True)
+    # ZMFG8 — typage opérationnel explicite (ajout/retrait/recyclage).
+    operation_display = serializers.CharField(
+        source='get_operation_display', read_only=True)
 
     class Meta:
         model = PieceRetiree
         fields = [
             'id', 'produit', 'produit_nom', 'produit_marque', 'produit_sku',
             'quantite', 'numero_serie', 'destination', 'destination_display',
+            'operation', 'operation_display',
             'restockee', 'warranty_claim', 'equipement_remplace',
             'date_creation',
         ]
@@ -300,6 +305,10 @@ class TicketSerializer(serializers.ModelSerializer):
     # ZMFG1 — équipe de maintenance assignée (libellé lecture).
     equipe_nom = serializers.CharField(
         source='equipe.nom', read_only=True, default=None)
+    # ZMFG7 — catégorie d'équipement d'origine (libellé lecture, routage
+    # par alias e-mail).
+    categorie_equipement_nom = serializers.CharField(
+        source='categorie_equipement.nom', read_only=True, default=None)
     # XCTR2 — couverture de l'équipement lié par le contrat de maintenance
     # ACTIF du client (registre XCTR2). None si aucun contrat/équipement.
     equipement_couvert = serializers.SerializerMethodField()
@@ -404,6 +413,8 @@ class SavSlaSettingsSerializer(serializers.ModelSerializer):
             'auto_cloture_jours', 'recidive_fenetre_jours',
             # YSERV5 — génération automatique planifiée des visites.
             'generation_auto_visites', 'visites_avance_jours',
+            # ZMFG6 — feuilles de maintenance (worksheets).
+            'worksheets_maintenance_actifs',
             'date_modification',
         ]
         read_only_fields = ['date_modification']
@@ -568,12 +579,17 @@ class CategorieEquipementSerializer(serializers.ModelSerializer):
         source='responsable.username', read_only=True, default=None)
     # Compteur d'équipements par catégorie (smart-button façon Odoo).
     nb_equipements = serializers.SerializerMethodField()
+    # ZMFG7 — équipe responsable (libellé lecture).
+    equipe_responsable_nom = serializers.CharField(
+        source='equipe_responsable.nom', read_only=True, default=None)
 
     class Meta:
         model = CategorieEquipement
         fields = [
             'id', 'nom', 'responsable', 'responsable_nom', 'commentaire',
             'nb_equipements',
+            # ZMFG7 — alias e-mail → routage auto de demande.
+            'alias_email', 'equipe_responsable', 'equipe_responsable_nom',
         ]
         read_only_fields = ['id']
 
@@ -651,3 +667,36 @@ class CompatibilitePieceSerializer(serializers.ModelSerializer):
             'remplace_par_nom', 'date_creation',
         ]
         read_only_fields = ['id', 'company', 'date_creation']
+
+
+# ── ZMFG6 — Feuilles de maintenance (worksheets) ─────────────────────────────
+
+class WorksheetMaintenanceModeleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WorksheetMaintenanceModele
+        fields = [
+            'id', 'nom', 'type_ticket_applicable', 'champs', 'actif',
+            'date_creation',
+        ]
+        read_only_fields = ['id', 'company', 'date_creation']
+
+
+class TicketWorksheetSerializer(serializers.ModelSerializer):
+    modele_nom = serializers.CharField(
+        source='modele.nom', read_only=True, default=None)
+    champs_requis_manquants = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TicketWorksheet
+        fields = [
+            'id', 'ticket', 'modele', 'modele_nom', 'valeurs', 'complete',
+            'complete_par', 'complete_le', 'champs_requis_manquants',
+            'date_creation',
+        ]
+        read_only_fields = [
+            'id', 'company', 'complete', 'complete_par', 'complete_le',
+            'date_creation',
+        ]
+
+    def get_champs_requis_manquants(self, obj):
+        return obj.champs_requis_manquants()
