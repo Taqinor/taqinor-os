@@ -31,14 +31,47 @@ STATUS_DEGRADED = 'degraded'
 STATUS_UNKNOWN = 'unknown'
 
 
+CONN_SATURATION_DEGRADED_RATIO = 0.8
+
+
+def _check_db_connections(cur):
+    """YOPSB7 — remonte le nombre de connexions actives vs ``max_connections``
+    (``pg_stat_activity``/``SHOW max_connections``). ``degraded`` au-delà de
+    80 %. Best-effort : une erreur ici ne fait jamais échouer ``_check_db``
+    (déjà validé par le SELECT 1 qui précède)."""
+    try:
+        cur.execute('SELECT count(*) FROM pg_stat_activity')
+        active = cur.fetchone()[0]
+        cur.execute('SHOW max_connections')
+        max_conn = int(cur.fetchone()[0])
+        ratio = (active / max_conn) if max_conn else 0
+        return {
+            'active': active,
+            'max': max_conn,
+            'ratio': round(ratio, 3),
+            'saturated': ratio >= CONN_SATURATION_DEGRADED_RATIO,
+        }
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        return None
+
+
 def _check_db():
     try:
         with connection.cursor() as cur:
             cur.execute('SELECT 1')
             cur.fetchone()
-        return {'name': 'database', 'status': STATUS_OK, 'detail': ''}
+            conn_info = _check_db_connections(cur)
     except Exception as exc:  # noqa: BLE001
         return {'name': 'database', 'status': STATUS_DOWN, 'detail': str(exc)}
+
+    if conn_info and conn_info['saturated']:
+        return {
+            'name': 'database', 'status': STATUS_DEGRADED,
+            'detail': (
+                f"Connexions proches de la saturation : {conn_info['active']}"
+                f"/{conn_info['max']} ({conn_info['ratio']:.0%})."),
+        }
+    return {'name': 'database', 'status': STATUS_OK, 'detail': ''}
 
 
 def _check_cache():

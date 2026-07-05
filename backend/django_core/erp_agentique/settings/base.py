@@ -164,6 +164,14 @@ TEMPLATES = [
 WSGI_APPLICATION = 'erp_agentique.wsgi.application'
 
 # Database
+# YOPSB7 — CONN_MAX_AGE : sans lui, chaque requête HTTP/Celery ouvre/ferme une
+# connexion Postgres. Avec plusieurs workers Django (threads) + workers Celery
+# + FastAPI, on peut approcher `max_connections` sous charge. `CONN_MAX_AGE`
+# (secondes, 0=désactivé/comportement historique) réutilise les connexions ;
+# `CONN_HEALTH_CHECKS` revalide la connexion avant réemploi (évite de servir
+# une connexion morte après un redémarrage Postgres). Pilotable par env :
+# DB_CONN_MAX_AGE (défaut 60s). Voir docs/CODEMAP.md §7 pour la formule
+# (répliques × workers × threads) < max_connections.
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
@@ -172,6 +180,8 @@ DATABASES = {
         'PASSWORD': os.environ.get('DB_PASSWORD', 'erp_password'),
         'HOST': os.environ.get('DB_HOST', 'db'),
         'PORT': os.environ.get('DB_PORT', '5432'),
+        'CONN_MAX_AGE': int(os.environ.get('DB_CONN_MAX_AGE', '60')),
+        'CONN_HEALTH_CHECKS': True,
     }
 }
 
