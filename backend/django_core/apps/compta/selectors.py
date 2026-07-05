@@ -3187,6 +3187,61 @@ def frais_refacturables_non_factures(company, *, client_id=None):
     return qs.order_by('date_frais', 'id')
 
 
+# ── ZACC7 — Analyse des frais (pivot employé × catégorie × période) ───────
+
+def analyse_notes_frais(company, *, date_debut=None, date_fin=None,
+                        group_by='employe'):
+    """ZACC7 — Agrège les ``NoteFrais`` (non brouillon) de la période par
+    ``group_by`` ∈ {'employe', 'categorie', 'mois'} — le pivot « Expense
+    Analysis » qui manquait (l'écran ne listait que les notes une par une).
+
+    Renvoie ``{'lignes': [{'cle', 'libelle', 'total', 'nombre',
+    'hors_politique_total'}], 'total_general'}`` — ``hors_politique_total``
+    (XACC27, best-effort : 0 si le champ est absent d'anciennes notes) est
+    la part des montants flaggés hors politique dans ce groupe. Exclut les
+    notes ``brouillon`` (jamais soumises — pas encore une dépense engagée
+    validable). Lecture seule ; company-scopée."""
+    qs = (NoteFrais.objects
+          .filter(company=company)
+          .exclude(statut=NoteFrais.Statut.BROUILLON)
+          .select_related('employe'))
+    if date_debut:
+        qs = qs.filter(date_frais__gte=_as_date(date_debut))
+    if date_fin:
+        qs = qs.filter(date_frais__lte=_as_date(date_fin))
+
+    def _cle_libelle(note):
+        if group_by == 'categorie':
+            return note.categorie, note.get_categorie_display()
+        if group_by == 'mois':
+            mois = note.date_frais.strftime('%Y-%m') if note.date_frais else ''
+            return mois, mois
+        # défaut : 'employe'
+        emp = note.employe
+        nom = getattr(emp, 'get_full_name', lambda: '')() or (
+            getattr(emp, 'username', '') if emp else '')
+        return (emp.id if emp else None), (nom or '—')
+
+    buckets = {}
+    total_general = Decimal('0')
+    for note in qs:
+        cle, libelle = _cle_libelle(note)
+        bucket = buckets.setdefault(cle, {
+            'cle': cle, 'libelle': libelle, 'total': Decimal('0'),
+            'nombre': 0, 'hors_politique_total': Decimal('0'),
+        })
+        montant = note.montant or Decimal('0')
+        bucket['total'] += montant
+        bucket['nombre'] += 1
+        if getattr(note, 'hors_politique', False):
+            bucket['hors_politique_total'] += montant
+        total_general += montant
+
+    lignes = sorted(
+        buckets.values(), key=lambda b: b['total'], reverse=True)
+    return {'lignes': lignes, 'total_general': total_general}
+
+
 # ── XACC29 — Rapport de continuité des séquences (gap detection) ──────────
 
 _SEQ_SUFFIX_RE = re.compile(r'^(.*?)-(\d+)$')

@@ -2510,6 +2510,31 @@ class NoteFraisViewSet(_ComptaBaseViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(note).data)
 
+    @action(detail=False, methods=['get'])
+    def analyse(self, request):
+        """ZACC7 — Pivot des frais par employé/catégorie/mois
+        (``?group_by=employe|categorie|mois``, défaut employe) sur la
+        période ``?date_debut=``/``?date_fin=``. ``?export=xlsx`` télécharge."""
+        params = request.query_params
+        group_by = params.get('group_by') or 'employe'
+        if group_by not in ('employe', 'categorie', 'mois'):
+            group_by = 'employe'
+        rapport = selectors.analyse_notes_frais(
+            request.user.company,
+            date_debut=params.get('date_debut') or None,
+            date_fin=params.get('date_fin') or None,
+            group_by=group_by)
+        if params.get('export') == 'xlsx':
+            from apps.records.xlsx import build_xlsx_response
+            headers = [
+                'cle', 'libelle', 'total', 'nombre', 'hors_politique_total']
+            rows = [[ligne[h] for h in headers]
+                    for ligne in rapport['lignes']]
+            return build_xlsx_response(
+                'analyse-notes-frais.xlsx', headers, rows,
+                sheet_title='Analyse frais')
+        return Response(rapport)
+
 
 class PlafondNoteFraisViewSet(_ComptaBaseViewSet):
     """Plafonds de notes de frais par catégorie (XACC27).
