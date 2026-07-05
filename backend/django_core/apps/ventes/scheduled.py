@@ -492,3 +492,29 @@ def releve_mensuel_reminders():
 
     logger.info('releve_mensuel_reminders: %s relevé(s) envoyé(s)', sent)
     return sent
+
+
+@shared_task(name='ventes.devis_a_facturer_reminder')
+def devis_a_facturer_reminder(jours=7):
+    """ZFAC12 — rappel de courtoisie pré-échéance côté DEVIS accepté non
+    facturé (backlog à facturer). Pour chaque ``Devis`` ``accepte`` sans
+    ``Facture`` liée depuis > ``jours`` jours (défaut 7, réglable), pose une
+    entrée SYSTÈME dans son chatter (``DevisActivity``) — NO-OP d'envoi,
+    comme les autres rappels (aucun email/SMS). Un devis déjà facturé est
+    ignoré. Idempotent : une seule entrée par devis et par jour calendaire
+    même si le job tourne plusieurs fois. Renvoie le nombre de rappels posés."""
+    from . import activity
+    from .selectors import devis_a_facturer
+    from authentication.models import Company
+
+    total = 0
+    for company in Company.objects.all():
+        candidats = devis_a_facturer(company, jours=jours)
+        for devis in candidats:
+            jours_ecoules = (casablanca_today() - devis.date_acceptation).days
+            note = activity.log_devis_a_facturer_reminder(devis, jours_ecoules)
+            if note is not None:
+                total += 1
+
+    logger.info('devis_a_facturer_reminder: %s rappel(s) posé(s)', total)
+    return total

@@ -600,3 +600,28 @@ def analyse_facturation(company, debut, fin):
     rows = list(buckets.values())
     rows.sort(key=lambda r: (r['mois'], r['client_nom'], r['statut']))
     return rows
+
+
+def devis_a_facturer(company, *, jours=7, today=None):
+    """ZFAC12 — ``Devis`` ``accepte`` d'une société, sans ``Facture`` liée
+    depuis PLUS de ``jours`` jours (revenu bloqué en amont, backlog à
+    facturer). Un devis déjà facturé (au moins une ``Facture`` via
+    ``devis.factures``) est ignoré. Lecture seule."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from .models import Devis
+
+    today = today or timezone.now().date()
+    seuil = today - timedelta(days=jours)
+
+    candidats = (
+        Devis.objects
+        .filter(company=company, statut=Devis.Statut.ACCEPTE,
+                date_acceptation__isnull=False,
+                date_acceptation__lte=seuil)
+        .exclude(factures__isnull=False)
+        .distinct()
+    )
+    return list(candidats)

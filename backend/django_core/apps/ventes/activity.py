@@ -13,6 +13,26 @@ def log_devis_note(devis, user, body):
     )
 
 
+def log_devis_a_facturer_reminder(devis, jours):
+    """ZFAC12 — rappel de courtoisie « à facturer » : devis accepté depuis
+    plus de N jours sans facture liée. Note SYSTÈME (user=None), une seule
+    fois par jour calendaire (le cron peut tourner plusieurs fois/jour)."""
+    from django.utils import timezone
+    today = timezone.now().date().isoformat()
+    deja = devis.activites.filter(
+        field='a_facturer', new_value=today).exists()
+    if deja:
+        return None
+    return DevisActivity.objects.create(
+        company=devis.company, devis=devis, user=None,
+        kind=DevisActivity.Kind.NOTE,
+        field='a_facturer', field_label='À facturer',
+        new_value=today,
+        body=(f'Devis accepté depuis {jours} jour(s) sans facture émise — '
+              'à facturer.'),
+    )
+
+
 def log_devis_credit_hold_override(devis, user, motif):
     """XFAC28 — chatter du devis : un responsable/admin a débloqué un client
     en hold crédit dur pour laisser passer cette action (accepter/facturer)."""
