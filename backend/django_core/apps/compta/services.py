@@ -6480,6 +6480,58 @@ def clics_par_lien(campagne):
     ]
 
 
+# ── XMKT17 — Coût & ROI MAD par campagne ────────────────────────────────────
+
+def cout_total_campagne(campagne):
+    """XMKT17 — Coût total (MAD) : ``cout_reel_mad`` s'il est renseigné,
+    sinon Σ des ``lignes_cout`` libres, sinon 0."""
+    if campagne.cout_reel_mad is not None:
+        return Decimal(str(campagne.cout_reel_mad))
+    total = Decimal('0')
+    for ligne in (campagne.lignes_cout or []):
+        try:
+            total += Decimal(str(ligne.get('montant_mad', 0)))
+        except Exception:
+            continue
+    return total
+
+
+def roi_campagne(campagne):
+    """XMKT17 — ROI MAD d'une campagne : rapproche le coût (saisi) et le
+    revenu attribué (leads portant l'utm_campaign de la campagne → devis
+    signés, dernier-touch, via ``apps.crm.selectors`` — jamais d'import de
+    ``apps.ventes``/``apps.crm.models``). Renvoie coût, revenu, ROI (%) et
+    coût-par-lead (division par zéro = 0).
+    """
+    from apps.crm.selectors import revenu_attribue_campagne
+
+    cout = cout_total_campagne(campagne)
+    attribution = revenu_attribue_campagne(campagne.company, campagne.nom)
+    revenu = Decimal(attribution['revenu_ttc'])
+    roi_pct = 0.0
+    if cout > 0:
+        roi_pct = round(float((revenu - cout) / cout * 100), 1)
+    cout_par_lead = 0.0
+    if attribution['nb_leads']:
+        cout_par_lead = round(float(cout / attribution['nb_leads']), 2)
+    return {
+        'budget_mad': str(campagne.budget_mad) if campagne.budget_mad is not None else None,
+        'cout_mad': str(cout),
+        'revenu_ttc_mad': str(revenu),
+        'roi_pct': roi_pct,
+        'nb_leads': attribution['nb_leads'],
+        'nb_signes': attribution['nb_signes'],
+        'cout_par_lead_mad': cout_par_lead,
+    }
+
+
+def leads_source_roi(campagne):
+    """XMKT17 — Drill-down vers les leads sources du ROI (via
+    ``apps.crm.selectors``)."""
+    from apps.crm.selectors import leads_source_campagne
+    return leads_source_campagne(campagne.company, campagne.nom)
+
+
 # ── XMKT3 — Désinscription un clic + liste de suppression globale ──────────
 
 _DESINSCRIPTION_SALT = 'compta.xmkt3.desinscription'

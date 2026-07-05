@@ -4581,6 +4581,16 @@ class Campagne(models.Model):
         verbose_name='Variante gagnante (A/B)')
     ab_decide_le = models.DateTimeField(
         null=True, blank=True, verbose_name='Décision A/B prise le')
+    # ── XMKT17 — Coût & ROI MAD par campagne ────────────────────────────────
+    budget_mad = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Budget prévu (MAD)')
+    cout_reel_mad = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Coût réel (MAD)')
+    # Lignes de coût libres : [{"libelle": "Ads Meta", "montant_mad": 500}, …].
+    lignes_cout = models.JSONField(
+        default=list, blank=True, verbose_name='Lignes de coût (JSON)')
 
     class Meta:
         verbose_name = 'Campagne email/SMS'

@@ -4654,6 +4654,18 @@ class CampagneViewSet(_ComptaBaseViewSet):
         campagne = self.get_object()
         return Response(services.clics_par_lien(campagne))
 
+    @action(detail=True, methods=['get'], url_path='roi')
+    def roi(self, request, pk=None):
+        """XMKT17 — ROI MAD : dépensé vs revenu signé attribué + coût/lead."""
+        campagne = self.get_object()
+        return Response(services.roi_campagne(campagne))
+
+    @action(detail=True, methods=['get'], url_path='roi/leads-sources')
+    def roi_leads_sources(self, request, pk=None):
+        """XMKT17 — Drill-down vers les leads sources du ROI."""
+        campagne = self.get_object()
+        return Response(services.leads_source_roi(campagne))
+
     @action(detail=True, methods=['get'], url_path='rendu-lead')
     def rendu_lead(self, request, pk=None):
         """XMKT11 — Rendu final (variante de langue + fusion) pour un lead
