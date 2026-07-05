@@ -115,6 +115,17 @@ def public_api_reference():
                 'tri': ['date_creation', 'date_modification', 'id'],
                 'updated_since': 'date_modification',
             },
+            {
+                'chemin': '/api/public/produits/',
+                'scope': 'read:stock',
+                'description': (
+                    "Disponibilité produit (SKU/nom/marque/catégorie/quantité "
+                    "disponible). Jamais de prix d'achat ni de coût."
+                ),
+                'filtres': ['sku', 'marque', 'categorie'],
+                'tri': ['id', 'nom'],
+                'updated_since': None,
+            },
         ],
         'webhooks': {
             'description': (

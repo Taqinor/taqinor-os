@@ -8,7 +8,7 @@ from rest_framework.routers import DefaultRouter
 
 from .public_views import (
     PublicLeadViewSet, PublicDevisViewSet,
-    PublicFactureViewSet, PublicChantierViewSet,
+    PublicFactureViewSet, PublicChantierViewSet, PublicProduitViewSet,
 )
 
 router = DefaultRouter()
@@ -16,6 +16,7 @@ router.register(r'leads', PublicLeadViewSet, basename='public-lead')
 router.register(r'devis', PublicDevisViewSet, basename='public-devis')
 router.register(r'factures', PublicFactureViewSet, basename='public-facture')
 router.register(r'chantiers', PublicChantierViewSet, basename='public-chantier')
+router.register(r'produits', PublicProduitViewSet, basename='public-produit')
 
 urlpatterns = [
     path('', include(router.urls)),

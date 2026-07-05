@@ -132,11 +132,24 @@ class LivraisonViewSet(TenantMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def livrer(self, request, pk=None):
         """FG329 — marque la livraison livrée. XSTK22 : notifie le client
-        (best-effort)."""
+        (best-effort). XSTK23 : émet le webhook public `livraison.livree`
+        (best-effort, jamais bloquant, via le SERVICE publicapi — jamais son
+        modèle)."""
         liv = self.get_object()
         liv.statut = Livraison.Statut.LIVREE
         liv.save(update_fields=['statut', 'date_modification'])
         self._notify_client(liv, Livraison.Statut.LIVREE, request)
+        try:
+            from apps.publicapi.services import notify_livraison_livree
+            notify_livraison_livree(
+                company_id=liv.company_id,
+                livraison_id=liv.id,
+                reference=liv.reference,
+                installation_id=liv.installation_id,
+                numero_suivi=liv.numero_suivi,
+            )
+        except Exception:  # pragma: no cover - défensif, best-effort
+            pass
         return Response(self.get_serializer(liv).data)
 
     @action(detail=True, methods=['post'])
