@@ -13,6 +13,7 @@ import {
 } from './store/messagingSlice'
 import MentionAutocomplete from './MentionAutocomplete'
 import { activeMention, insertMention, filterMembers, extractMentions } from './mentions'
+import { applyShortcut } from './richText'
 
 /* S16 — Composer : zone de saisie auto-dimensionnée, autocomplétion @mention
    (membres de la société), bouton joindre (image/fichier via FileUpload),
@@ -98,6 +99,23 @@ export default function Composer({
         return
       }
       if (e.key === 'Escape') { setMention(null); return }
+    }
+    // XKB29 — raccourcis markdown : Ctrl/Cmd+B entoure la sélection de
+    // `*gras*`, Ctrl/Cmd+E de `` `code` `` (symétrique au clic sur les
+    // marqueurs eux-mêmes, qui restent tapables littéralement à tout moment).
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'b' || e.key === 'e')) {
+      e.preventDefault()
+      const el = taRef.current
+      if (!el) return
+      const marker = e.key === 'b' ? '*' : '`'
+      const { text: next, selectionStart, selectionEnd } = applyShortcut(
+        text, el.selectionStart, el.selectionEnd, marker)
+      setText(next)
+      requestAnimationFrame(() => {
+        el.focus()
+        el.setSelectionRange(selectionStart, selectionEnd)
+      })
+      return
     }
     // Entrée = envoyer ; Maj+Entrée = nouvelle ligne.
     if (e.key === 'Enter' && !e.shiftKey) {
