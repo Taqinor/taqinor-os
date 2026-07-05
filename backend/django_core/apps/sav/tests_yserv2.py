@@ -72,9 +72,14 @@ class YSERV2HandoffTest(TestCase):
 
     def test_terminer_intervention_avance_ticket_resolu(self):
         ticket = self._ticket(installation=self.inst, statut=Ticket.Statut.EN_COURS)
+        # F5 (installations) bloque désormais toute progression au-delà de
+        # « À préparer » (défaut du modèle) sans confirmation « Tout est
+        # chargé » — hors périmètre de ce test (handoff SAV<->intervention).
+        # On démarre l'intervention à « Sur site », déjà au-delà de la garde.
         interv = Intervention.objects.create(
             company=self.company, installation=self.inst, ticket=ticket,
-            type_intervention=Intervention.Type.DEPANNAGE, created_by=self.admin)
+            type_intervention=Intervention.Type.DEPANNAGE,
+            statut=Intervention.Statut.SUR_SITE, created_by=self.admin)
         api = auth(self.admin)
         resp = api.patch(f'/api/django/installations/interventions/{interv.pk}/', {
             'statut': 'terminee',
@@ -89,9 +94,12 @@ class YSERV2HandoffTest(TestCase):
 
     def test_ne_recule_jamais_un_statut_deja_clos(self):
         ticket = self._ticket(installation=self.inst, statut=Ticket.Statut.CLOTURE)
+        # F5 (installations) : démarre au-delà de « À préparer » — voir
+        # commentaire de test_terminer_intervention_avance_ticket_resolu.
         interv = Intervention.objects.create(
             company=self.company, installation=self.inst, ticket=ticket,
-            type_intervention=Intervention.Type.DEPANNAGE, created_by=self.admin)
+            type_intervention=Intervention.Type.DEPANNAGE,
+            statut=Intervention.Statut.SUR_SITE, created_by=self.admin)
         api = auth(self.admin)
         resp = api.patch(f'/api/django/installations/interventions/{interv.pk}/', {
             'statut': 'terminee',
