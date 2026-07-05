@@ -6155,6 +6155,24 @@ def _resoudre_profil_matricule(company, matricule):
     return ProfilPaie.objects.filter(company=company, employe=dossier).first()
 
 
+def _matricule_connu(company, matricule):
+    """Le matricule correspond-il à un ``rh.DossierEmploye`` de la société ?
+
+    Utilisé par le DRY-RUN (XPAI22) : à ce stade on prévisualise seulement,
+    l'absence d'un ``ProfilPaie`` (paie pas encore configurée pour ce salarié)
+    ne doit PAS être signalée comme « matricule inconnu » — seul un matricule
+    sans dossier RH du tout l'est. Le COMMIT, lui, a réellement besoin du
+    ``ProfilPaie`` pour écrire le ``CumulAnnuel`` (cf. ``_resoudre_profil_matricule``).
+    """
+    from django.apps import apps as django_apps
+
+    if not matricule:
+        return False
+    DossierEmploye = django_apps.get_model('rh', 'DossierEmploye')
+    return DossierEmploye.objects.filter(
+        company=company, matricule=str(matricule).strip()).exists()
+
+
 def dry_run_reprise_cumuls(file_bytes, filename, company):
     """Aperçu de l'import de reprise des cumuls annuels (XPAI22).
 
@@ -6179,7 +6197,7 @@ def dry_run_reprise_cumuls(file_bytes, filename, company):
         if i <= 10:
             apercu.append(f)
         matricule = f.get('matricule')
-        if matricule and _resoudre_profil_matricule(company, matricule) is None:
+        if matricule and not _matricule_connu(company, matricule):
             inconnus.append({'ligne': i, 'matricule': matricule})
 
     return {
