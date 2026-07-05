@@ -98,8 +98,9 @@ class TestPrioriteChampEtFiltre(TestCase):
             priorite=Intervention.Priorite.NORMALE)
         resp = self.api.get(f'{BASE}/interventions/?priorite=urgente')
         self.assertEqual(resp.status_code, 200, resp.content)
-        self.assertEqual(len(resp.data), 1)
-        self.assertEqual(resp.data[0]['priorite'], 'urgente')
+        results = resp.data['results'] if 'results' in resp.data else resp.data
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]['priorite'], 'urgente')
 
     def test_tri_par_defaut_priorite_puis_date(self):
         normale = Intervention.objects.create(
@@ -112,7 +113,8 @@ class TestPrioriteChampEtFiltre(TestCase):
             priorite=Intervention.Priorite.URGENTE, date_prevue='2026-07-20')
         resp = self.api.get(f'{BASE}/interventions/')
         self.assertEqual(resp.status_code, 200, resp.content)
-        ids = [row['id'] for row in resp.data]
+        results = resp.data['results'] if 'results' in resp.data else resp.data
+        ids = [row['id'] for row in results]
         self.assertLess(ids.index(urgente.id), ids.index(normale.id))
 
 
