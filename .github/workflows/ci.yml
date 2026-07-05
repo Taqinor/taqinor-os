@@ -272,6 +272,8 @@ jobs:
         run: python scripts/check_modules.py
       - name: Check test determinism (no sleeps / unfrozen live-clock assertions)
         run: python scripts/check_test_determinism.py
+      - name: Check invariant registry (docs/invariants.md still points at real tests)
+        run: python scripts/check_invariants.py
       - name: Check CODEMAP structural fingerprint
         run: python scripts/codemap_fingerprint.py --check
 

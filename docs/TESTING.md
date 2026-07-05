@@ -201,6 +201,21 @@ préexistantes (2026-07, apps `compta`/`kb`/`ventes` — hors périmètre de cet
 lane) sont whitelistées explicitement dans le script avec la justification ;
 toute NOUVELLE infraction fait échouer le build.
 
+## Registre d'invariants métier + bug → test-rouge-d'abord
+
+`docs/invariants.md` recense les invariants critiques (référence sous
+concurrence, numérotation non-count+1, chaîne TVA, réconciliation des
+totaux, transitions de statut légales, scoping tenant, absence de
+`prix_achat` client-facing), chacun lié au test NOMMÉ qui le garde
+(`fichier.py::Classe::test_méthode`). `scripts/check_invariants.py` (job
+`stage-names`, toujours actif) échoue si une référence ne résout plus vers un
+test réel — un invariant ne doit jamais perdre son garde-fou en silence.
+
+**Règle permanente : tout bug corrigé atterrit avec un test qui échoue AVANT
+le correctif et passe après** (le backlog de bugs vit dans
+`docs/ERROR_PLAN.md`). Un ticket qui change un comportement observable sans
+un test de régression qui l'aurait attrapé n'est pas terminé.
+
 ## Pistes restantes
 * Parcours e2e par fonctionnalité pour les flux encore non couverts (stock,
   installations, SAV, reporting) : **scaffolds prêts** (`frontend/e2e/{stock,
