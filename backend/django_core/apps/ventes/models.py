@@ -1851,6 +1851,16 @@ class ShareLink(models.Model):
     view_count = models.PositiveIntegerField(
         default=0,
         verbose_name='Nombre de consultations')
+    # ── XSAL16 — Analytics d'engagement par section de la proposition ──
+    # JSON additif, agrégé par section : {"prix": {"seconds": 120, "hits": 3},
+    # "etude": {...}, ...}. Alimenté par des beacons POST côté proposition web
+    # (WEB_PLAN WJ — moitié web hors périmètre ERP). Vide/absent = comportement
+    # QJ1 inchangé (aucun affichage supplémentaire).
+    engagement = models.JSONField(null=True, blank=True)
+    # Horodatage du premier engagement PROFOND (seuil dépassé sur au moins une
+    # section) — sert à ne loguer QU'UNE FOIS la note chatter « a commencé à
+    # lire en détail ».
+    deep_engagement_logged_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ['-created_at']
@@ -1870,6 +1880,21 @@ class ShareLink(models.Model):
     @property
     def is_valid(self):
         return self.expires_at > timezone.now()
+
+    @property
+    def engagement_summary(self):
+        """XSAL16 — résumé lisible par section : « a passé 2 min sur le prix,
+        n'a pas ouvert l'étude ». Vide sans beacon (comportement QJ1
+        inchangé, aucune donnée personnelle stockée — juste des sections/
+        durées)."""
+        data = self.engagement or {}
+        return {
+            section: {
+                'seconds': int(v.get('seconds', 0) or 0),
+                'hits': int(v.get('hits', 0) or 0),
+            }
+            for section, v in data.items()
+        }
 
     @classmethod
     def for_devis(cls, devis):

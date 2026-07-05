@@ -670,6 +670,73 @@ def proposal_request_otp(request, token):
     return _noindex(Response({'detail': 'Code envoyé.'}))
 
 
+# Sections reconnues du beacon d'engagement (XSAL16). Une section inconnue est
+# simplement ignorée — jamais d'erreur, jamais de section arbitraire stockée.
+_ENGAGEMENT_SECTIONS = {'hero', 'prix', 'etude', 'garanties', 'signature'}
+# Seuil (secondes cumulées, toutes sections) au-delà duquel on considère que
+# le client a "commencé à lire en détail" — logué UNE SEULE fois par lien.
+_DEEP_ENGAGEMENT_THRESHOLD_SECONDS = 20
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicLinkRateThrottle])
+def proposal_engagement(request, token):
+    """XSAL16 — Beacon léger d'engagement par section de la proposition.
+
+    Corps : ``{"section": "prix", "seconds": 12}``. Aucune donnée
+    personnelle requise ; agrégé (cumul secondes + compteur de hits) sur
+    ``ShareLink.engagement``, jamais cross-tenant (le jeton borne un seul
+    devis d'une seule société). Section inconnue ou seconds invalide → 204
+    silencieux (best-effort, jamais d'erreur qui casserait le beacon côté
+    site). Au premier franchissement du seuil d'engagement profond, une
+    ligne chatter est posée sur le devis (une seule fois par lien)."""
+    link = _resolve_proposal_link(token)
+    if link is None:
+        return _not_found()
+
+    section = str(request.data.get('section') or '').strip().lower()
+    seconds_raw = request.data.get('seconds')
+    try:
+        seconds = max(0, int(float(seconds_raw)))
+    except (TypeError, ValueError):
+        seconds = None
+
+    if section not in _ENGAGEMENT_SECTIONS or seconds is None or seconds == 0:
+        # Rejet silencieux : le beacon ne doit jamais faire planter la page
+        # proposition côté client, mais on n'enregistre rien d'invalide.
+        return _noindex(Response(status=status.HTTP_204_NO_CONTENT))
+
+    engagement = dict(link.engagement or {})
+    slot = dict(engagement.get(section) or {'seconds': 0, 'hits': 0})
+    slot['seconds'] = int(slot.get('seconds', 0)) + seconds
+    slot['hits'] = int(slot.get('hits', 0)) + 1
+    engagement[section] = slot
+    link.engagement = engagement
+
+    total_seconds = sum(int(v.get('seconds', 0)) for v in engagement.values())
+    newly_deep = (
+        link.deep_engagement_logged_at is None
+        and total_seconds >= _DEEP_ENGAGEMENT_THRESHOLD_SECONDS
+    )
+    if newly_deep:
+        link.deep_engagement_logged_at = timezone.now()
+    link.save(update_fields=['engagement', 'deep_engagement_logged_at'])
+
+    if newly_deep and link.devis_id:
+        try:
+            from . import activity
+            resume = ', '.join(
+                f'{sec} ({v["seconds"]}s)' for sec, v in engagement.items())
+            activity.log_devis_note(
+                link.devis, None,
+                f'Le client a commencé à lire la proposition en détail ({resume}).')
+        except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
+            pass
+
+    return _noindex(Response(status=status.HTTP_204_NO_CONTENT))
+
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])

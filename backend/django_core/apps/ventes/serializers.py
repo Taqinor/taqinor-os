@@ -298,6 +298,14 @@ class DevisSerializer(serializers.ModelSerializer):
         link = self._active_share_link(obj)
         return bool(link and link.first_viewed_at is not None)
 
+    # XSAL16 — résumé d'engagement par section (« a passé 2 min sur le prix,
+    # n'a pas ouvert l'étude »). Vide sans beacon — comportement QJ1 inchangé.
+    engagement = serializers.SerializerMethodField()
+
+    def get_engagement(self, obj):
+        link = self._active_share_link(obj)
+        return link.engagement_summary if link else {}
+
     class Meta:
         model = Devis
         fields = '__all__'

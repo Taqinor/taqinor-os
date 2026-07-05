@@ -50,6 +50,7 @@ from .public_views import (
     # QW5 — mêmes vues QJ27, aliasées ici sous le mount `ventes/` (le site
     # les appelle ici, pas sous `public/` — jamais de logique dupliquée).
     proposal_contact_request, proposal_request_otp,
+    proposal_engagement,  # XSAL16
 )
 from .dashboard_view import dashboard_quote_to_cash
 from .insights_view import cash_flow_forecast, analyse_facturation_view  # ZFAC10
@@ -144,6 +145,10 @@ urlpatterns = [
          name='proposal-contact-ventes'),
     path('proposal/<str:token>/otp/', proposal_request_otp,
          name='proposal-otp-ventes'),
+    # XSAL16 — beacon d'engagement par section (backend only ; l'émission
+    # côté page proposition part dans docs/WEB_PLAN.md).
+    path('proposal/<str:token>/engagement/', proposal_engagement,
+         name='proposal-engagement'),
     # Export comptable : journal des ventes + résumé TVA (.xlsx).
     path('journal-ventes/', journal_ventes, name='journal-ventes'),
     # Export comptable DGI (groundwork) : factures validées d'une plage,
