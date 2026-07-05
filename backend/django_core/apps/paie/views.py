@@ -1630,12 +1630,32 @@ class SaisieArretViewSet(_PaieBaseViewSet):
             return Response(
                 {'detail': 'Champ "date_debut" requis (format YYYY-MM-DD).'},
                 status=status.HTTP_400_BAD_REQUEST)
+        # ZPAI7 — le corps JSON envoie des montants en chaîne : converties en
+        # Decimal ICI (jamais laissées telles quelles), sinon l'instance
+        # créée porte un ``str`` en mémoire et les propriétés dérivées
+        # (``solde_restant``) lèvent un TypeError str/Decimal à la
+        # sérialisation de la réponse.
+        try:
+            montant_total = Decimal(str(request.data.get('montant_total')))
+        except (InvalidOperation, TypeError):
+            return Response(
+                {'detail': 'Champ "montant_total" requis (nombre).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        montant_echeance_brut = request.data.get('montant_echeance')
+        try:
+            montant_echeance = (
+                Decimal(str(montant_echeance_brut))
+                if montant_echeance_brut not in (None, '') else None)
+        except InvalidOperation:
+            return Response(
+                {'detail': 'Champ "montant_echeance" invalide (nombre).'},
+                status=status.HTTP_400_BAD_REQUEST)
         try:
             saisies = creer_saisies_arret_lot(
                 request.user.company, profils,
                 type_saisie=request.data.get('type'),
-                montant_total=request.data.get('montant_total'),
-                montant_echeance=request.data.get('montant_echeance'),
+                montant_total=montant_total,
+                montant_echeance=montant_echeance,
                 date_debut=date_debut,
                 creancier=request.data.get('creancier', ''),
                 reference=request.data.get('reference', ''),
