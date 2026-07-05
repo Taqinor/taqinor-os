@@ -96,7 +96,7 @@ def _members_by_ids(conversation, ids):
 @transaction.atomic
 def create_message(*, conversation, sender, company, body='', kind=None,
                    reply_to=None, record_type=None, record_id=None,
-                   mention_ids=None):
+                   mention_ids=None, skip_channel_notify=False):
     """Crée un message dans une conversation (membre déjà vérifié en amont).
 
     Gère le partage d'enregistrement (S8) et les @mentions (S9). La société est
@@ -105,7 +105,10 @@ def create_message(*, conversation, sender, company, body='', kind=None,
 
     Les @mentions sont résolues depuis le corps (@username/@email) ET, en plus,
     depuis la liste d'ids `mention_ids` fournie par le client (S16) — toujours
-    filtrée à l'appartenance, jamais cross-conversation."""
+    filtrée à l'appartenance, jamais cross-conversation.
+
+    `skip_channel_notify` (XKB24) : les réponses en fil notifient UNIQUEMENT les
+    suiveurs du fil (`_notify_thread_followers`), jamais le fan-out S9 tout-canal."""
     from .models import Message, MessageMention
 
     shared_ct = None
@@ -148,8 +151,11 @@ def create_message(*, conversation, sender, company, body='', kind=None,
     for u in mentioned:
         MessageMention.objects.get_or_create(message=msg, mentioned_user=u)
 
-    # Notifications (in-app + Web Push), best-effort, après commit.
-    transaction.on_commit(lambda: _notify_new_message(msg, mentioned))
+    # Notifications (in-app + Web Push), best-effort, après commit. XKB24 : une
+    # réponse en fil notifie uniquement ses suiveurs (cf. reply_in_thread) —
+    # jamais le fan-out S9 tout-canal.
+    if not skip_channel_notify:
+        transaction.on_commit(lambda: _notify_new_message(msg, mentioned))
     # ZCTR12 — canal aliasé -> fan-out email aux membres opt-in (NO-OP sans
     # alias/config email, jamais bloquant).
     transaction.on_commit(lambda: notify_channel_alias_email(msg))
@@ -163,7 +169,12 @@ def _notify_new_message(message, mentioned_users):
     Réutilise le point d'entrée `notify()` (in-app + Web Push). Respecte les
     préférences utilisateur ET le niveau PAR CONVERSATION (XKB25 : tout /
     mentions seulement / muet — l'existant `is_muted` reste préservé, il est
-    mappé vers `muted`)."""
+    mappé vers `muted`).
+
+    ZCTR12 : sur un canal ALIASÉ avec l'email réellement configuré,
+    `notify_channel_alias_email` est le SEUL canal email (format liste de
+    diffusion dédiée) — on n'envoie donc pas un second email générique ici
+    (in-app/WhatsApp/push restent inchangés)."""
     try:
         from apps.notifications.models import EventType
         from apps.notifications.services import notify
@@ -176,6 +187,7 @@ def _notify_new_message(message, mentioned_users):
     sender = message.sender
     company = message.company
     mentioned_ids = {u.pk for u in (mentioned_users or []) if u is not None}
+    skip_email = bool(conv.alias_email) and _email_gated()
 
     title = _conversation_title(conv, sender)
     preview = _preview(message)
@@ -208,7 +220,8 @@ def _notify_new_message(message, mentioned_users):
             event = EventType.CHAT_MESSAGE
             ntitle = title
         try:
-            notify(u, event, ntitle, body=preview, link=link, company=company)
+            notify(u, event, ntitle, body=preview, link=link, company=company,
+                   skip_email=skip_email)
         except Exception:  # pragma: no cover - défensif
             continue
 
@@ -446,7 +459,7 @@ def reply_in_thread(*, root_message, sender, company, body='', **kwargs):
 
     reply = create_message(
         conversation=root_message.conversation, sender=sender, company=company,
-        body=body, reply_to=root_message, **kwargs)
+        body=body, reply_to=root_message, skip_channel_notify=True, **kwargs)
 
     # Auto-suivi : le premier posteur (racine) et chaque répondant.
     if root_message.sender_id:
