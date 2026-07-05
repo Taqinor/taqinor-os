@@ -642,3 +642,54 @@ def tranche_facturee(devis, type_facture):
         .exclude(statut=Facture.Statut.ANNULEE)
         .exists()
     )
+
+
+def jours_impaye_facture(facture_id, company):
+    """ZCTR2 — Nombre de jours DEPUIS lesquels une facture est impayée.
+
+    Point d'entrée cross-app en LECTURE SEULE pour ``apps.contrats``
+    (clôture automatique des contrats impayés) — jamais un import direct de
+    ``apps.ventes.models``. Renvoie ``0`` si la facture est introuvable (id
+    NULL/inconnu, autre société), déjà payée, annulée, ou sans
+    ``date_echeance`` (rien à mesurer) : dans tous ces cas rien n'est dû,
+    cohérent avec ``Facture.jours_retard``. Sinon renvoie le nombre de jours
+    entiers écoulés depuis ``date_echeance`` (0 si l'échéance n'est pas
+    encore dépassée)."""
+    from .models import Facture
+    if not facture_id:
+        return 0
+    facture = Facture.objects.filter(
+        pk=facture_id, company=company).first()
+    if facture is None:
+        return 0
+    return facture.jours_retard
+
+
+def lignes_louables_devis(devis, produit_ids_louables):
+    """ZCTR6 — Lignes d'un devis dont le produit est LOUABLE.
+
+    Point d'entrée cross-app en LECTURE SEULE pour ``apps.contrats``
+    (rattachement d'ordres de location à un devis accepté) — jamais un
+    import direct de ``apps.ventes.models`` depuis ``contrats``. L'appelant
+    fournit ``produit_ids_louables`` (résolu via
+    ``stock.selectors.produits_louables_qs`` — jamais réimporté ici, aucune
+    dépendance directe à ``stock``). Renvoie une liste de dicts
+    ``{'produit_id', 'quantite', 'ligne_id'}`` — une ligne dont le produit
+    n'est PAS louable est simplement absente (ignorée par l'appelant)."""
+    from .models import LigneDevis
+
+    if not produit_ids_louables:
+        return []
+    lignes = (
+        LigneDevis.objects
+        .filter(devis=devis, produit_id__in=produit_ids_louables)
+        .order_by('id')
+    )
+    return [
+        {
+            'ligne_id': ligne.id,
+            'produit_id': ligne.produit_id,
+            'quantite': ligne.quantite,
+        }
+        for ligne in lignes
+    ]

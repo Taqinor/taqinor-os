@@ -1415,6 +1415,67 @@ class Avenant(models.Model):
         return f'Avenant n°{self.numero} — contrat {self.contrat_id}'
 
 
+class MotifResiliation(models.Model):
+    """Référentiel éditable des motifs de résiliation (close reasons) — ZCTR3.
+
+    Odoo attache un « Close Reason » configurable à chaque churn pour
+    l'analyse. Jusqu'ici ``Resiliation.motif`` est un texte libre (le champ
+    RESTE, pour rétrocompat) qui rend les agrégats de churn (XCTR7) bruités.
+    ``MotifResiliation`` est un référentiel COMPANY-SCOPÉ (code, libellé,
+    ordre d'affichage, catégorie optionnelle) qu'une ``Resiliation`` peut
+    rattacher via ``motif_ref`` (FK nullable, en PLUS du texte libre).
+
+    Multi-tenant : ``company`` posée CÔTÉ SERVEUR (jamais lue du corps de
+    requête, ``TenantMixin.perform_create``).
+
+    RUNTIME-SAFETY (leçon FG136) : ``code``/``libelle`` bornés ; l'index est
+    NOMMÉ explicitement (≤30 chars).
+    """
+
+    class Categorie(models.TextChoices):
+        PRIX = 'prix', 'Prix'
+        CONCURRENT = 'concurrent', 'Concurrent'
+        INSATISFACTION = 'insatisfaction', 'Insatisfaction'
+        FIN_PROJET = 'fin_projet', 'Fin de projet'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='motifs_resiliation',
+        verbose_name='Société',
+    )
+    code = models.CharField(max_length=50, verbose_name='Code')
+    libelle = models.CharField(max_length=150, verbose_name='Libellé')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    categorie = models.CharField(
+        max_length=20, choices=Categorie.choices,
+        blank=True, default='', verbose_name='Catégorie')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Motif de résiliation'
+        verbose_name_plural = 'Motifs de résiliation'
+        ordering = ['ordre', 'libelle', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'code'],
+                name='contrats_motifresil_co_code',
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'actif'],
+                name='contrats_motifresil_co_act',
+            ),
+        ]
+
+    def __str__(self):
+        return self.libelle
+
+
 class Resiliation(models.Model):
     """Résiliation d'un contrat (motif / préavis / solde) — CONTRAT25.
 
@@ -1471,9 +1532,21 @@ class Resiliation(models.Model):
         verbose_name='Contrat',
     )
     # Motif/justification de la résiliation. TextField : peut être long sans
-    # jamais lever (leçon FG136).
+    # jamais lever (leçon FG136). RESTE pour rétrocompat (texte libre) — ZCTR3
+    # ajoute ``motif_ref`` en PLUS, jamais en remplacement.
     motif = models.TextField(
         blank=True, default='', verbose_name='Motif de la résiliation')
+    # ZCTR3 — motif NORMALISÉ (référentiel éditable), en plus du texte libre
+    # ``motif`` ci-dessus. NULL = motif texte libre uniquement (comportement
+    # historique inchangé) ; SET_NULL pour ne jamais perdre la résiliation si
+    # le motif référentiel est supprimé.
+    motif_ref = models.ForeignKey(
+        'MotifResiliation',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='resiliations',
+        verbose_name='Motif (référentiel)',
+    )
     # Date de DEMANDE de la résiliation (posée côté serveur, défaut aujourd'hui).
     date_demande = models.DateField(
         null=True, blank=True, verbose_name='Date de demande')
@@ -2567,6 +2640,19 @@ class OrdreLocation(models.Model):
     )
     # Client locataire — lien LÂCHE (jamais un import de crm.Client).
     client_id = models.PositiveIntegerField(verbose_name='ID du client')
+    # ZCTR6 — devis d'ORIGINE (``ventes.Devis``), lien LÂCHE (id seul, jamais
+    # un import de ``ventes.models`` ni un FK dur). NULL = ordre créé
+    # manuellement (comportement XCTR17 inchangé). ``ContratLien`` exige un
+    # ``Contrat`` (FK dur) qui n'existe pas dans ce flux devis→location pur —
+    # ce champ sert de GARDE ANTI-DOUBLON pour
+    # ``services.creer_ordres_location_depuis_devis`` (un re-run sur le même
+    # devis ne duplique jamais un ordre déjà créé pour la même ligne).
+    devis_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du devis d\'origine')
+    # ZCTR6 — ligne du devis d'origine (id seul, même lien lâche que
+    # ``devis_id``) : distingue plusieurs lignes louables d'un même devis.
+    devis_ligne_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID de la ligne devis d\'origine')
     produit = models.ForeignKey(
         'stock.Produit',
         on_delete=models.PROTECT,
@@ -2703,6 +2789,11 @@ class OrdreLocation(models.Model):
             models.Index(
                 fields=['produit', 'numero_serie'],
                 name='contrats_ordloc_prod_serie',
+            ),
+            # ZCTR6 — garde anti-doublon rapide (devis, ligne) → ordre créé.
+            models.Index(
+                fields=['devis_id', 'devis_ligne_id'],
+                name='contrats_ordloc_devis_ligne',
             ),
         ]
 
@@ -2898,3 +2989,56 @@ class PlanRecurrent(models.Model):
         mois_index = date_reference.month - 1
         mois_bloc_debut = (mois_index // mois_par_unite) * mois_par_unite
         return date_reference.replace(month=mois_bloc_debut + 1, day=1)
+
+
+class ParametresLocation(models.Model):
+    """Réglages de location, singleton par société — ZCTR4.
+
+    Odoo Rental Settings porte « minimal rental duration », « default
+    padding time » (buffer d'indisponibilité entre deux locations d'une même
+    unité pour l'entretien) et « default delay costs ». XCTR17 détecte le
+    chevauchement STRICT (``OrdreLocation.chevauche``) mais ignore le
+    padding et n'a aucun défaut de frais/durée.
+
+    - ``duree_minimale_jours`` (NULL = aucun minimum) : la CRÉATION d'un
+      ``OrdreLocation`` plus court que ce minimum est refusée (400 FR).
+    - ``temps_securite_heures`` (défaut 0 = comportement XCTR17 inchangé) :
+      élargit de part et d'autre la fenêtre occupée utilisée par la
+      détection de conflit (``_verifier_disponibilite``) — deux locations
+      trop rapprochées (temps d'entretien insuffisant) sont refusées.
+    - ``frais_retard_jour_defaut`` (NULL = aucun défaut) : un ``OrdreLocation``
+      dont ``frais_retard_jour`` n'est PAS saisi hérite de ce défaut à la
+      création (XCTR19 s'applique ensuite sans changement).
+
+    Toutes les valeurs NULL/0 laissent le comportement XCTR17/19 inchangé —
+    ``ParametresLocation`` est entièrement OPTIONNEL (une société sans ligne
+    créée se comporte exactement comme avant ZCTR4).
+
+    Multi-tenant : ``company`` posée CÔTÉ SERVEUR (``OneToOneField``, une
+    seule ligne par société — singleton).
+    """
+
+    company = models.OneToOneField(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='parametres_location',
+        verbose_name='Société',
+    )
+    duree_minimale_jours = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Durée minimale (jours)')
+    temps_securite_heures = models.PositiveIntegerField(
+        default=0, verbose_name='Temps de sécurité / padding (heures)')
+    frais_retard_jour_defaut = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        verbose_name='Frais de retard / jour par défaut')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Paramètres de location'
+        verbose_name_plural = 'Paramètres de location'
+
+    def __str__(self):
+        return f'Paramètres de location — {self.company_id}'

@@ -31,6 +31,7 @@ Contenu :
 """
 import html as _html
 import re
+from datetime import timedelta
 from decimal import Decimal
 
 from django.db import transaction
@@ -1687,8 +1688,9 @@ def resiliation_active(contrat):
 
 
 @transaction.atomic
-def resilier_contrat(contrat, *, motif='', date_effet=None, preavis_jours=None,
-                     solde=None, auteur=None, today=None, snapshot=True):
+def resilier_contrat(contrat, *, motif='', motif_ref=None, date_effet=None,
+                     preavis_jours=None, solde=None, auteur=None, today=None,
+                     snapshot=True):
     """Résilie un contrat (motif / préavis / solde) — CONTRAT25.
 
     Enregistre une ``Resiliation`` (motif, date d'effet, préavis observé, solde
@@ -1724,10 +1726,14 @@ def resilier_contrat(contrat, *, motif='', date_effet=None, preavis_jours=None,
       (``core/events.py``) est émis pour la propagation aval DÉCOUPLÉE (ex.
       arrêt des visites préventives SAV, ``apps/sav/receivers.py``) — best-
       effort, jamais bloquant pour la résiliation elle-même (déjà actée).
+    - ZCTR3 : ``motif_ref`` (optionnel) rattache un ``MotifResiliation``
+      NORMALISÉ, en PLUS du texte libre ``motif`` (jamais en remplacement).
+      Doit appartenir à la MÊME société que le contrat — sinon
+      ``ResiliationError`` et rien n'est créé.
 
     Renvoie la ``Resiliation`` créée (``version_creee`` renseigné si snapshot).
     """
-    from .models import Contrat, LigneEcheance, Resiliation
+    from .models import Contrat, LigneEcheance, MotifResiliation, Resiliation
 
     if today is None:
         today = timezone.localdate()
@@ -1744,6 +1750,23 @@ def resilier_contrat(contrat, *, motif='', date_effet=None, preavis_jours=None,
             f"Le contrat ne peut pas être résilié depuis l'état "
             f"« {contrat.statut} ».")
 
+    # ZCTR3 — le motif référentiel, s'il est fourni, doit appartenir à la même
+    # société que le contrat (jamais un motif d'une autre société).
+    if motif_ref is not None:
+        if isinstance(motif_ref, MotifResiliation):
+            if motif_ref.company_id != contrat.company_id:
+                raise ResiliationError(
+                    "Le motif de résiliation n'appartient pas à votre "
+                    "société.")
+        else:
+            try:
+                motif_ref = MotifResiliation.objects.get(
+                    pk=motif_ref, company=contrat.company)
+            except MotifResiliation.DoesNotExist:
+                raise ResiliationError(
+                    "Le motif de résiliation est introuvable dans votre "
+                    "société.")
+
     ancien = contrat.statut
 
     # Bascule de statut via la machine d'états GARDÉE (jamais un write direct).
@@ -1758,6 +1781,7 @@ def resilier_contrat(contrat, *, motif='', date_effet=None, preavis_jours=None,
         company=contrat.company,
         contrat=contrat,
         motif=motif or '',
+        motif_ref=motif_ref,
         date_demande=today,
         date_effet=date_effet,
         preavis_jours=preavis_jours,
@@ -3180,13 +3204,51 @@ def _ordres_actifs_qs(produit, numero_serie, *, exclure_id=None):
     return qs
 
 
+def _parametres_location(company):
+    """``ParametresLocation`` de la société, ou ``None`` si non créés — ZCTR4.
+    Une société sans ligne créée garde le comportement XCTR17/19 inchangé."""
+    from .models import ParametresLocation
+
+    return ParametresLocation.objects.filter(company=company).first()
+
+
+def _padding_jours(company):
+    """Temps de sécurité (padding), en JOURS ENTIERS arrondis au supérieur —
+    ZCTR4. ``0`` (comportement XCTR17 inchangé) si aucun ``ParametresLocation``
+    n'existe pour la société, ou si ``temps_securite_heures`` est ``0``."""
+    import math
+
+    parametres = _parametres_location(company)
+    if parametres is None or not parametres.temps_securite_heures:
+        return 0
+    return math.ceil(parametres.temps_securite_heures / 24)
+
+
 def _verifier_disponibilite(produit, numero_serie, date_debut, date_fin, *,
-                            exclure_id=None):
+                            exclure_id=None, company=None):
     """Lève ``OrdreLocationError`` si un ordre ACTIF chevauche la fenêtre
-    ``[date_debut, date_fin]`` pour le même produit + numéro de série."""
+    ``[date_debut, date_fin]`` pour le même produit + numéro de série.
+
+    ZCTR4 — si ``company`` est fournie et porte un ``ParametresLocation``
+    avec ``temps_securite_heures`` > 0, la fenêtre occupée de CHAQUE ordre
+    existant est élargie de ce padding (arrondi au jour supérieur) de part
+    et d'autre AVANT de tester le chevauchement — deux locations séparées de
+    moins que le temps de sécurité (entretien) sont refusées. ``company``
+    absente ou sans réglages = comportement XCTR17 strict inchangé."""
+    padding = _padding_jours(company) if company is not None else 0
     for autre in _ordres_actifs_qs(
             produit, numero_serie, exclure_id=exclure_id):
-        if autre.chevauche(date_debut, date_fin):
+        debut_elargi = autre.date_enlevement_prevue - timedelta(days=padding)
+        fin_elargie = autre.date_retour_prevue + timedelta(days=padding)
+        if debut_elargi <= date_fin and date_debut <= fin_elargie:
+            if padding:
+                raise OrdreLocationError(
+                    "Ce produit (n° de série "
+                    f"« {numero_serie or '—'} ») est déjà réservé/loué sur "
+                    "une période qui chevauche celle demandée (ou ne "
+                    f"respecte pas le temps de sécurité de {padding} "
+                    "jour(s))."
+                )
             raise OrdreLocationError(
                 "Ce produit (n° de série "
                 f"« {numero_serie or '—'} ») est déjà réservé/loué sur une "
@@ -3197,21 +3259,29 @@ def _verifier_disponibilite(produit, numero_serie, date_debut, date_fin, *,
 @transaction.atomic
 def creer_ordre_location(company, *, client_id, produit, numero_serie='',
                          date_reservation, date_enlevement_prevue,
-                         date_retour_prevue, tarif_jour=None, note='',
-                         created_by=None):
-    """Crée un ``OrdreLocation`` avec détection de conflit — XCTR17.
+                         date_retour_prevue, tarif_jour=None,
+                         frais_retard_jour=None, note='', created_by=None):
+    """Crée un ``OrdreLocation`` avec détection de conflit — XCTR17 (+ ZCTR4).
 
     GARDES (lèvent ``OrdreLocationError`` sans rien écrire) :
     - ``produit`` doit être ``louable`` (vérifié par l'appelant via
       ``stock.selectors.get_produit_louable`` — jamais réimporté ici) ;
     - ``date_enlevement_prevue`` doit être ≤ ``date_retour_prevue`` ;
+    - ZCTR4 : si ``ParametresLocation.duree_minimale_jours`` est posé pour la
+      société, la durée (bornes incluses) doit être ≥ ce minimum, sinon 400
+      (message FR) ;
     - aucun ordre ACTIF (réservée/enlevée) du même produit + numéro de série
       ne doit chevaucher la fenêtre ``[date_enlevement_prevue,
-      date_retour_prevue]`` (double réservation refusée).
+      date_retour_prevue]`` ÉLARGIE du temps de sécurité/padding (ZCTR4,
+      ``ParametresLocation.temps_securite_heures`` — 0/absent = strict
+      XCTR17 inchangé) — double réservation ou padding insuffisant refusés.
 
     ``tarif_jour`` : si absent, retombe sur ``produit.tarif_location_jour``.
     ``montant_estime`` = ``tarif_jour`` × nombre de jours (bornes incluses),
-    posé côté serveur (jamais lu du corps de requête). Renvoie l'``OrdreLocation``
+    posé côté serveur (jamais lu du corps de requête). ``frais_retard_jour``
+    (ZCTR4) : si absent, hérite de
+    ``ParametresLocation.frais_retard_jour_defaut`` (NULL si aucun réglage) —
+    XCTR19 s'applique ensuite sans changement. Renvoie l'``OrdreLocation``
     créé.
     """
     from .models import OrdreLocation
@@ -3221,13 +3291,28 @@ def creer_ordre_location(company, *, client_id, produit, numero_serie='',
             "La date d'enlèvement prévue doit précéder ou égaler la date de "
             "retour prévue.")
 
+    nb_jours = (date_retour_prevue - date_enlevement_prevue).days + 1
+
+    parametres = _parametres_location(company)
+    duree_minimale = (
+        parametres.duree_minimale_jours if parametres else None)
+    if duree_minimale and nb_jours < duree_minimale:
+        raise OrdreLocationError(
+            f"La durée de location ({nb_jours} jour(s)) est inférieure à "
+            f"la durée minimale requise ({duree_minimale} jour(s))."
+        )
+
     _verifier_disponibilite(
-        produit, numero_serie, date_enlevement_prevue, date_retour_prevue)
+        produit, numero_serie, date_enlevement_prevue, date_retour_prevue,
+        company=company)
 
     tarif = tarif_jour if tarif_jour is not None else produit.tarif_location_jour
-    nb_jours = (date_retour_prevue - date_enlevement_prevue).days + 1
     montant_estime = (
         Decimal(str(tarif)) * nb_jours if tarif is not None else Decimal('0'))
+
+    frais_retard = frais_retard_jour
+    if frais_retard is None and parametres is not None:
+        frais_retard = parametres.frais_retard_jour_defaut
 
     return OrdreLocation.objects.create(
         company=company,
@@ -3239,6 +3324,7 @@ def creer_ordre_location(company, *, client_id, produit, numero_serie='',
         date_retour_prevue=date_retour_prevue,
         tarif_jour=tarif,
         montant_estime=montant_estime,
+        frais_retard_jour=frais_retard,
         note=note or '',
         created_by=created_by,
     )
@@ -3688,7 +3774,7 @@ def prolonger_ordre_location(ordre, *, nouvelle_date_retour):
 
     _verifier_disponibilite(
         ordre.produit, ordre.numero_serie, ordre.date_enlevement_prevue,
-        nouvelle_date_retour, exclure_id=ordre.id)
+        nouvelle_date_retour, exclure_id=ordre.id, company=ordre.company)
 
     ordre.date_retour_prevue = nouvelle_date_retour
     if ordre.tarif_jour:
@@ -3788,3 +3874,227 @@ def _creer_avoir_location(ordre, facture_id, montant_abs, *, user=None):
         )
 
     return create_with_reference(Avoir, 'AV', ordre.company, _create)
+
+
+# ---------------------------------------------------------------------------
+# ZCTR2 — Clôture automatique des contrats impayés (délai de clôture auto)
+# ---------------------------------------------------------------------------
+
+
+def _jours_impaye_contrat(contrat):
+    """Jours d'impayé du contrat — ZCTR2. Renvoie le MAX des jours d'impayé
+    (``ventes.selectors.jours_impaye_facture``, jamais un import direct de
+    ``ventes.models``) sur toutes les ``LigneEcheance`` facturées du contrat
+    (``facture_id`` non NULL), ``0`` si aucune échéance facturée ou si
+    aucune n'est en retard (rien à clôturer)."""
+    from apps.ventes.selectors import jours_impaye_facture
+
+    from .models import LigneEcheance
+
+    facture_ids = list(
+        LigneEcheance.objects
+        .filter(echeancier__contrat=contrat, facture_id__isnull=False)
+        .exclude(statut=LigneEcheance.Statut.ANNULEE)
+        .values_list('facture_id', flat=True)
+    )
+    max_jours = 0
+    for facture_id in facture_ids:
+        jours = jours_impaye_facture(facture_id, contrat.company)
+        if jours > max_jours:
+            max_jours = jours
+    return max_jours
+
+
+@transaction.atomic
+def suspendre_contrat_si_impaye(contrat, *, today=None, auteur=None):
+    """Suspend un ``Contrat`` ACTIF dont une facture de cycle est impayée
+    depuis plus que ``PlanRecurrent.delai_cloture_auto_jours`` — ZCTR2.
+
+    RÈGLES :
+    - Un contrat SANS ``plan_recurrent`` rattaché, ou dont
+      ``delai_cloture_auto_jours`` est NULL, n'est JAMAIS clôturé
+      automatiquement (comportement neutre par défaut).
+    - Seul un contrat ``actif`` peut être suspendu ici (transition GARDÉE par
+      la machine d'états, ``actif → suspendu``) ; tout autre statut est un
+      no-op silencieux (renvoie ``None``).
+    - IDEMPOTENT : un contrat déjà ``suspendu`` n'est jamais re-suspendu — on
+      court-circuite dès l'entrée (pas de double notification/journal).
+    - Ne résilie JAMAIS le contrat (uniquement ``suspendu``) — la clôture
+      définitive reste un acte manuel distinct (``resilier_contrat``).
+
+    Renvoie le ``Contrat`` si suspendu, ``None`` sinon (rien à faire).
+    """
+    from .machine_etats import transition_permise
+    from .models import Contrat
+
+    if today is None:
+        today = timezone.localdate()
+
+    if contrat.statut != Contrat.Statut.ACTIF:
+        return None
+
+    plan = contrat.plan_recurrent
+    delai = plan.delai_cloture_auto_jours if plan else None
+    if not delai:
+        return None
+
+    jours_impaye = _jours_impaye_contrat(contrat)
+    if jours_impaye <= delai:
+        return None
+
+    if not transition_permise(contrat.statut, Contrat.Statut.SUSPENDU):
+        return None  # pragma: no cover - défensif (garde machine d'états)
+
+    ancien = contrat.statut
+    changer_statut(contrat, Contrat.Statut.SUSPENDU)
+
+    journaliser_transition(
+        contrat, field='statut', old_value=ancien,
+        new_value=contrat.statut,
+        message=(
+            f'Suspension automatique — facture impayée depuis '
+            f'{jours_impaye} jour(s) (délai {delai} j).'),
+        auteur=auteur)
+
+    try:
+        from apps.notifications.services import notify_many, resolve_recipients
+
+        recipients = resolve_recipients(contrat.company, 'digest')
+        notify_many(
+            recipients, 'digest', 'Contrat suspendu — impayé',
+            body=(
+                f'Le contrat #{contrat.id} a été suspendu automatiquement '
+                f'(facture impayée depuis {jours_impaye} jour(s)).'),
+            link='/contrats', company=contrat.company)
+    except Exception:  # pragma: no cover - défensif (best-effort)
+        pass
+
+    return contrat
+
+
+def cloturer_contrats_impayes(company, *, today=None, auteur=None):
+    """Parcourt les ``Contrat`` ACTIFS d'une société et suspend ceux dont une
+    facture de cycle est impayée depuis plus que le délai de leur
+    ``PlanRecurrent`` — ZCTR2 (commande ``cloturer_contrats_impayes``).
+
+    Multi-tenant : ``company`` doit être fournie par l'appelant (la commande
+    boucle par société, jamais de lecture de company du corps de requête).
+    Une exception sur UN contrat n'empêche jamais le traitement des suivants.
+
+    Renvoie la liste des ``Contrat`` effectivement suspendus.
+    """
+    from .models import Contrat
+
+    if today is None:
+        today = timezone.localdate()
+
+    suspendus = []
+    contrats = Contrat.objects.filter(
+        company=company, statut=Contrat.Statut.ACTIF,
+        plan_recurrent__isnull=False,
+        plan_recurrent__delai_cloture_auto_jours__isnull=False,
+    ).select_related('plan_recurrent')
+
+    for contrat in contrats:
+        try:
+            resultat = suspendre_contrat_si_impaye(
+                contrat, today=today, auteur=auteur)
+        except Exception:  # pragma: no cover - défensif (best-effort par contrat)
+            continue
+        if resultat is not None:
+            suspendus.append(resultat)
+
+    return suspendus
+
+
+# ---------------------------------------------------------------------------
+# ZCTR6 — Devis/commande portant des lignes de location (Rental order via
+# ventes)
+# ---------------------------------------------------------------------------
+
+
+@transaction.atomic
+def creer_ordres_location_depuis_devis(devis, *, company, created_by=None,
+                                       date_enlevement_prevue=None,
+                                       date_retour_prevue=None,
+                                       today=None):
+    """Crée un ``OrdreLocation`` PAR LIGNE louable d'un devis ACCEPTÉ — ZCTR6.
+
+    Chez Odoo une location naît d'une ligne de vente avec période et prix
+    calculé par les Rental Prices ; ici ``OrdreLocation`` (XCTR17) était un
+    objet isolé sans passerelle depuis le devis. Cette action, pour CHAQUE
+    ligne du devis dont le produit est ``louable`` (lu via
+    ``ventes.selectors.lignes_louables_devis`` + ``stock.selectors.
+    produits_louables_qs`` — jamais un import direct de ``ventes.models`` ni
+    ``stock.models``), crée un ``OrdreLocation`` pré-rempli (client résolu du
+    devis, produit, tarif jour/semaine/mois du produit) — les dates
+    d'enlèvement/retour sont celles fournies par l'appelant (repli : demain →
+    dans 7 jours si absentes, un placeholder éditable ensuite sur l'ordre).
+
+    IDEMPOTENT : un ``OrdreLocation`` déjà créé pour la même (devis, ligne)
+    (``devis_id``/``devis_ligne_id``, ZCTR6) n'est jamais recréé — un re-run
+    ne duplique pas. Une ligne dont le produit n'est PAS louable est
+    simplement ignorée. GARDE : le devis doit être ACCEPTÉ et porter un
+    client — sinon ``OrdreLocationError`` et rien n'est créé. Aucun
+    changement au moteur devis ni aux statuts (règle #4).
+
+    Renvoie la liste des ``OrdreLocation`` créés (liste vide si tout était
+    déjà créé, ou si aucune ligne n'est louable).
+    """
+    from .models import OrdreLocation
+
+    if today is None:
+        today = timezone.localdate()
+
+    from apps.ventes import selectors as ventes_selectors
+
+    if devis.company_id != company.id:
+        raise OrdreLocationError(
+            "Le devis n'appartient pas à votre société.")
+    if not ventes_selectors.is_devis_accepte(devis):
+        raise OrdreLocationError(
+            'Seul un devis ACCEPTÉ peut créer des ordres de location.')
+    if not devis.client_id:
+        raise OrdreLocationError(
+            "Le devis n'a pas de client : impossible de créer des ordres "
+            "de location.")
+
+    from apps.stock.selectors import produits_louables_qs
+
+    produit_ids_louables = set(
+        produits_louables_qs(company).values_list('id', flat=True))
+    lignes = ventes_selectors.lignes_louables_devis(
+        devis, produit_ids_louables)
+    if not lignes:
+        return []
+
+    debut = date_enlevement_prevue or (today + timedelta(days=1))
+    fin = date_retour_prevue or (debut + timedelta(days=7))
+
+    from apps.stock.models import Produit
+
+    crees = []
+    for ligne in lignes:
+        # GARDE ANTI-DOUBLON — un ordre existe déjà pour cette (devis, ligne).
+        if OrdreLocation.objects.filter(
+                devis_id=devis.id, devis_ligne_id=ligne['ligne_id']).exists():
+            continue
+        produit = Produit.objects.filter(
+            id=ligne['produit_id'], company=company).first()
+        if produit is None:
+            continue  # pragma: no cover - défensif (produit supprimé entre-temps)
+        ordre = OrdreLocation.objects.create(
+            company=company,
+            client_id=devis.client_id,
+            devis_id=devis.id,
+            devis_ligne_id=ligne['ligne_id'],
+            produit=produit,
+            date_reservation=today,
+            date_enlevement_prevue=debut,
+            date_retour_prevue=fin,
+            tarif_jour=produit.tarif_location_jour,
+            created_by=created_by,
+        )
+        crees.append(ordre)
+
+    return crees

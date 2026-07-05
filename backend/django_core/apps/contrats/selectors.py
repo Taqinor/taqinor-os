@@ -821,8 +821,10 @@ def mouvements_mrr(company, debut, fin):
       MOMENT de la résiliation (``mrr_contrat_actif`` avant résiliation n'étant
       plus recalculable après coup, on utilise le MRR courant du contrat comme
       meilleure approximation disponible — cohérent avec CONTRAT33) ;
-    - ``churn_par_motif`` : ventilation de ``churn`` par ``Resiliation.motif``
-      (motif vide groupé sous ``''``) ;
+    - ``churn_par_motif`` : ventilation de ``churn`` par motif — ZCTR3 : utilise
+      ``Resiliation.motif_ref.libelle`` (normalisé) quand présent, sinon replie
+      sur le texte libre ``Resiliation.motif`` (motif vide groupé sous ``''``)
+      — rétrocompatible avec les résiliations sans motif référentiel ;
     - ``net`` : ``new + expansion + contraction + churn`` (contraction et churn
       étant déjà négatifs, ``net`` est une simple somme algébrique — la garde
       ``somme new+expansion−contraction−churn = variation du MRR`` du Done= se
@@ -911,7 +913,7 @@ def mouvements_mrr(company, debut, fin):
     resiliations = (
         Resiliation.objects.filter(company=company)
         .exclude(statut=Resiliation.Statut.ANNULEE)
-        .select_related('contrat')
+        .select_related('contrat', 'motif_ref')
     )
     for resiliation in resiliations:
         date_ref = resiliation.date_effet or resiliation.date_demande
@@ -920,7 +922,11 @@ def mouvements_mrr(company, debut, fin):
         perte = mrr_contrat_actif(resiliation.contrat)
         if perte <= 0:
             continue
-        motif = (resiliation.motif or '').strip()
+        # ZCTR3 — motif normalisé prioritaire (référentiel), repli texte libre.
+        if resiliation.motif_ref_id:
+            motif = resiliation.motif_ref.libelle
+        else:
+            motif = (resiliation.motif or '').strip()
         churn -= perte
         churn_par_motif[motif] = churn_par_motif.get(
             motif, Decimal('0')) - perte

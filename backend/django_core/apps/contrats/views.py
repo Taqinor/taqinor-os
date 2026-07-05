@@ -47,8 +47,10 @@ from .models import (
     LigneEcheance,
     ModeleContrat,
     ModeleContratClause,
+    MotifResiliation,
     Obligation,
     OrdreLocation,
+    ParametresLocation,
     PartieContrat,
     PieceConformite,
     PlanRecurrent,
@@ -87,9 +89,11 @@ from .serializers import (
     JalonContratSerializer,
     ModeleContratClauseSerializer,
     ModeleContratSerializer,
+    MotifResiliationSerializer,
     NoterContratSerializer,
     ObligationSerializer,
     OrdreLocationSerializer,
+    ParametresLocationSerializer,
     PartieContratSerializer,
     PenaliteSLASerializer,
     PieceConformiteSerializer,
@@ -903,6 +907,7 @@ class ContratViewSet(_ContratsBaseViewSet):
             resiliation = services.resilier_contrat(
                 contrat,
                 motif=data.get('motif', ''),
+                motif_ref=data.get('motif_ref'),
                 date_effet=data.get('date_effet'),
                 preavis_jours=data.get('preavis_jours'),
                 solde=data.get('solde'),
@@ -2073,6 +2078,8 @@ class OrdreLocationViewSet(_ContratsBaseViewSet):
                 date_enlevement_prevue=date_enlevement,
                 date_retour_prevue=date_retour,
                 tarif_jour=request.data.get('tarif_jour') or None,
+                frais_retard_jour=request.data.get(
+                    'frais_retard_jour') or None,
                 note=request.data.get('note', ''),
                 created_by=request.user,
             )
@@ -2343,6 +2350,83 @@ class OrdreLocationViewSet(_ContratsBaseViewSet):
             'results': [_fmt(r) for r in rows],
         })
 
+    @action(detail=True, methods=['get'], url_path='bon-enlevement')
+    def bon_enlevement(self, request, pk=None):
+        """Bon d'enlèvement PDF de cet ordre de location — ZCTR5.
+
+        Rendu par le WeasyPrint générique existant (jamais le moteur devis
+        premium ``/proposal``). Aucun statut modifié par le rendu."""
+        ordre = self.get_object()
+        from .pdf_location import generate_bon_enlevement_pdf
+
+        pdf_bytes = generate_bon_enlevement_pdf(ordre)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'inline; filename="Bon_enlevement_{ordre.id}.pdf"')
+        return resp
+
+    @action(detail=True, methods=['get'], url_path='bon-restitution')
+    def bon_restitution(self, request, pk=None):
+        """Bon de restitution PDF de cet ordre de location — ZCTR5.
+
+        Reprend l'inspection de retour (XCTR19) et les dommages chiffrés le
+        cas échéant. Rendu par le WeasyPrint générique existant. Aucun
+        statut modifié par le rendu."""
+        ordre = self.get_object()
+        from .pdf_location import generate_bon_restitution_pdf
+
+        pdf_bytes = generate_bon_restitution_pdf(ordre)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'inline; filename="Bon_restitution_{ordre.id}.pdf"')
+        return resp
+
+    @action(detail=False, methods=['post'],
+            url_path=r'depuis-devis/(?P<devis_id>[0-9]+)')
+    def depuis_devis(self, request, devis_id=None):
+        """Crée un ``OrdreLocation`` par ligne louable d'un devis ACCEPTÉ —
+        ZCTR6 (``POST /ordres-location/depuis-devis/<devis_id>/``).
+
+        Corps optionnel : ``date_enlevement_prevue``/``date_retour_prevue``
+        (AAAA-MM-JJ), appliquées à tous les ordres créés — repli demain →
+        +7 jours si absentes. Idempotent (re-run = 0 doublon). Le devis doit
+        appartenir à la société courante et être ACCEPTÉ, sinon 400. Le
+        ``Devis.statut`` n'est JAMAIS modifié (règle #4)."""
+        from apps.ventes.selectors import get_devis_by_pk
+
+        devis = get_devis_by_pk(devis_id)
+        if devis is None:
+            return Response(
+                {'detail': 'Devis introuvable.'},
+                status=status.HTTP_404_NOT_FOUND)
+
+        def _parse_date(key):
+            raw = (request.data.get(key) or '').strip()
+            if not raw:
+                return None
+            from datetime import date as _date
+            try:
+                return _date.fromisoformat(raw)
+            except ValueError:
+                return None
+
+        try:
+            ordres = services.creer_ordres_location_depuis_devis(
+                devis, company=request.user.company,
+                created_by=request.user,
+                date_enlevement_prevue=_parse_date(
+                    'date_enlevement_prevue'),
+                date_retour_prevue=_parse_date('date_retour_prevue'),
+            )
+        except services.OrdreLocationError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(
+            OrdreLocationSerializer(ordres, many=True).data,
+            status=status.HTTP_201_CREATED,
+        )
+
 
 class PlanRecurrentViewSet(_ContratsBaseViewSet):
     """Plans de facturation récurrente réutilisables (nommés) — ZCTR1.
@@ -2363,3 +2447,51 @@ class PlanRecurrentViewSet(_ContratsBaseViewSet):
         if actif is not None:
             qs = qs.filter(actif=actif.lower() in ('1', 'true', 'oui'))
         return qs
+
+
+class MotifResiliationViewSet(_ContratsBaseViewSet):
+    """Référentiel éditable des motifs de résiliation (close reasons) — ZCTR3.
+
+    Scopé société (``TenantMixin``) ; ``company`` posée CÔTÉ SERVEUR
+    (``perform_create`` du ``TenantMixin`` — jamais lue du corps de requête).
+    CRUD complet. Filtre ``?actif=1``.
+    """
+    queryset = MotifResiliation.objects.all()
+    serializer_class = MotifResiliationSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code', 'libelle']
+    ordering_fields = ['ordre', 'libelle', 'date_creation', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        actif = self.request.query_params.get('actif')
+        if actif is not None:
+            qs = qs.filter(actif=actif.lower() in ('1', 'true', 'oui'))
+        return qs
+
+
+class ParametresLocationViewSet(_ContratsBaseViewSet):
+    """Réglages de location, SINGLETON par société — ZCTR4.
+
+    ``GET/PATCH /parametres-location/courant/`` lit/modifie la ligne unique de
+    la société (créée à la volée, ``get_or_create``) ; ``company`` posée CÔTÉ
+    SERVEUR (jamais lue du corps de requête). Le CRUD standard reste
+    disponible (scopé société) mais ``courant/`` est le point d'entrée
+    recommandé côté frontend (jamais deux lignes par société — contrainte
+    ``OneToOneField``).
+    """
+    queryset = ParametresLocation.objects.all()
+    serializer_class = ParametresLocationSerializer
+
+    @action(detail=False, methods=['get', 'patch'], url_path='courant')
+    def courant(self, request):
+        parametres, _ = ParametresLocation.objects.get_or_create(
+            company=request.user.company)
+        if request.method == 'GET':
+            return Response(
+                ParametresLocationSerializer(parametres).data)
+        serializer = ParametresLocationSerializer(
+            parametres, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)

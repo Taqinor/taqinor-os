@@ -24,8 +24,10 @@ from .models import (
     LigneEcheance,
     ModeleContrat,
     ModeleContratClause,
+    MotifResiliation,
     Obligation,
     OrdreLocation,
+    ParametresLocation,
     PartieContrat,
     PieceConformite,
     PlanRecurrent,
@@ -756,11 +758,14 @@ class ResiliationSerializer(serializers.ModelSerializer):
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     cree_par_username = serializers.SerializerMethodField()
+    motif_ref_libelle = serializers.CharField(
+        source='motif_ref.libelle', read_only=True, default=None)
 
     class Meta:
         model = Resiliation
         fields = [
-            'id', 'contrat', 'motif', 'date_demande', 'date_effet',
+            'id', 'contrat', 'motif', 'motif_ref', 'motif_ref_libelle',
+            'date_demande', 'date_effet',
             'preavis_jours', 'solde', 'statut', 'statut_display',
             'version_creee', 'cree_par', 'cree_par_username', 'date_creation',
         ]
@@ -777,7 +782,10 @@ class ResilierContratSerializer(serializers.Serializer):
     machine d'états gardée (jamais un funnel STAGES.py). Tous les champs sont
     optionnels :
 
-    - ``motif``         : motif/justification de la résiliation ;
+    - ``motif``         : motif/justification de la résiliation (texte libre) ;
+    - ``motif_ref``     : ZCTR3 — id d'un ``MotifResiliation`` normalisé, EN
+      PLUS du texte libre (jamais en remplacement) ; doit appartenir à la
+      société du contrat, sinon 400 ;
     - ``date_effet``    : date de prise d'effet (après préavis) ;
     - ``preavis_jours`` : préavis observé, en jours ;
     - ``solde``         : solde de tout compte / indemnité.
@@ -788,6 +796,9 @@ class ResilierContratSerializer(serializers.Serializer):
     """
     motif = serializers.CharField(
         required=False, allow_blank=True, trim_whitespace=False)
+    motif_ref = serializers.PrimaryKeyRelatedField(
+        required=False, allow_null=True,
+        queryset=MotifResiliation.objects.all())
     date_effet = serializers.DateField(required=False, allow_null=True)
     preavis_jours = serializers.IntegerField(
         required=False, allow_null=True, min_value=0)
@@ -1273,6 +1284,7 @@ class OrdreLocationSerializer(serializers.ModelSerializer):
         model = OrdreLocation
         fields = [
             'id', 'client_id', 'produit', 'produit_nom', 'numero_serie',
+            'devis_id', 'devis_ligne_id',
             'date_reservation', 'date_enlevement_prevue',
             'date_retour_prevue', 'date_enlevement_reelle',
             'date_retour_reelle', 'statut', 'statut_display', 'tarif_jour',
@@ -1289,7 +1301,7 @@ class OrdreLocationSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'id', 'statut', 'date_enlevement_reelle', 'date_retour_reelle',
-            'montant_estime', 'date_creation',
+            'montant_estime', 'date_creation', 'devis_id', 'devis_ligne_id',
             'caution_montant', 'caution_statut', 'caution_retenue',
             'caution_motif_retenue',
             'frais_retard_montant', 'frais_retard_facture_id',
@@ -1337,3 +1349,38 @@ class PlanRecurrentSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "L'intervalle doit être un entier positif (≥ 1).")
         return value
+
+
+class MotifResiliationSerializer(serializers.ModelSerializer):
+    """Référentiel éditable des motifs de résiliation (close reasons) — ZCTR3.
+
+    ``company`` n'est jamais exposée en écriture (posée côté serveur par le
+    ``TenantMixin``).
+    """
+    categorie_display = serializers.CharField(
+        source='get_categorie_display', read_only=True)
+
+    class Meta:
+        model = MotifResiliation
+        fields = [
+            'id', 'code', 'libelle', 'ordre', 'actif', 'categorie',
+            'categorie_display', 'date_creation',
+        ]
+        read_only_fields = ['id', 'date_creation']
+
+
+class ParametresLocationSerializer(serializers.ModelSerializer):
+    """Réglages de location, singleton par société — ZCTR4.
+
+    ``company`` n'est jamais exposée en écriture (posée côté serveur par le
+    viewset, qui garantit une seule ligne par société — ``get_or_create``).
+    Toutes les valeurs NULL/0 laissent le comportement XCTR17/19 inchangé.
+    """
+
+    class Meta:
+        model = ParametresLocation
+        fields = [
+            'id', 'duree_minimale_jours', 'temps_securite_heures',
+            'frais_retard_jour_defaut', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['id', 'date_creation', 'date_modification']
