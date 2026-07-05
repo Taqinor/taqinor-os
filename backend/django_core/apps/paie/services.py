@@ -5800,9 +5800,13 @@ def cout_employeur(periode):
         'total_provisions': _q(total_provisions),
         'total_employeur': total_employeur,
         'total_net': _q(total_net),
+        # Non arrondis : un ratio/moyenne est une grandeur d'analyse (ZPAI3),
+        # pas un montant monétaire — l'arrondir au centime perdrait la
+        # précision attendue par les appelants (cf. test_ratio_et_moyenne_par_tete
+        # qui recompare à la division brute).
         'ratio_cout_net': (
-            _q(total_employeur / total_net) if total_net > 0 else None),
-        'cout_moyen_par_tete': _q(total_employeur / nombre_salaries),
+            total_employeur / total_net if total_net > 0 else None),
+        'cout_moyen_par_tete': total_employeur / nombre_salaries,
         'rubriques_exclues': rubriques_exclues,
     }
 
