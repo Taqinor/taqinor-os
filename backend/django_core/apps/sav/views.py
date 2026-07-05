@@ -133,8 +133,13 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
         return qs
 
     def get_permissions(self):
+        if self.action == 'fiabilite':
+            # XSAV15 — MTBF/MTTR restent visibles à tout rôle authentifié de
+            # la société ; le coût cumulé (sensible) est gated en interne sur
+            # `prix_achat_voir` (voir plus bas), jamais au niveau de l'action.
+            return [IsAnyRole()]
         if self.action in READ_ACTIONS + [
-                'etiquettes', 'registre_garanties', 'fiabilite',
+                'etiquettes', 'registre_garanties',
                 'estimations_maintenance', 'disponibilite']:
             return [HasPermissionOrLegacy('equipement_voir')()]
         elif self.action in WRITE_ACTIONS + [
@@ -308,17 +313,22 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(data)
 
     @action(detail=True, methods=['get'], url_path='fiabilite',
-            permission_classes=[HasPermissionOrLegacy('equipement_voir')])
+            permission_classes=[IsAnyRole])
     def fiabilite(self, request, pk=None):
         """XSAV15 — MTBF / MTTR / coût cumulé de CET équipement.
 
         Le coût cumulé (Ticket.cout + pièces valorisées prix d'achat) et
         l'indicateur réparer-vs-remplacer ne sont inclus QUE si l'utilisateur
         porte la permission `prix_achat_voir` — jamais exposés autrement
-        (admin-only, jamais client-facing ni dans un PDF)."""
+        (admin-only, jamais client-facing ni dans un PDF). Gated en interne
+        (et non au niveau de l'action) via `HasPermissionOrLegacy` pour que
+        les comptes légacy SANS rôle fin suivent le même repli que
+        `IsResponsableOrAdmin` (responsable/admin uniquement) plutôt que le
+        repli toujours-vrai de `can_view_buy_prices` — trop large ici."""
         from .selectors import fiabilite_equipement
         equipement = self.get_object()
-        include_couts = bool(request.user.can_view_buy_prices)
+        include_couts = HasPermissionOrLegacy('prix_achat_voir')().has_permission(
+            request, self)
         data = fiabilite_equipement(equipement, include_couts=include_couts)
         return Response(data)
 
@@ -330,7 +340,16 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
         from .selectors import estimations_maintenance as _estimations_maintenance
 
         equipement = self.get_object()
-        return Response(_estimations_maintenance(equipement))
+        data = _estimations_maintenance(equipement)
+        # Le sélecteur renvoie des `date` Python brutes (utile aux appelants
+        # internes, ex. comparaison directe à `contrat.prochaine_visite()`) —
+        # la frontière API suit ici la même convention que le reste du
+        # module (`.isoformat()` explicite) plutôt que de compter sur
+        # `Response.data` pour les convertir (il ne le fait pas).
+        for champ in ('prochaine_defaillance_estimee', 'prochain_entretien_du'):
+            if data.get(champ) is not None:
+                data[champ] = data[champ].isoformat()
+        return Response(data)
 
     @action(detail=True, methods=['get', 'post'], url_path='downtime',
             permission_classes=[HasPermissionOrLegacy('equipement_gerer')])
@@ -570,7 +589,9 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
                 # ZSAV3 — activités planifiées à échéance.
                 'activites', 'cocher_activite',
                 # ZSAV10 — endpoint d'actions groupées.
-                'actions_groupees']:
+                'actions_groupees',
+                # ZSAV6 — pièces unifiées (vue fusionnée) + fiche d'intervention.
+                'pieces_unifiees', 'worksheet']:
             return [HasPermissionOrLegacy('sav_gerer')()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
@@ -717,9 +738,9 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             if contrat is not None and not contrat.couvre_equipement(inst.equipement):
                 activity.log_note(
                     inst, self.request.user,
-                    "Avertissement : cet équipement n'est pas dans le "
-                    'registre des équipements couverts par le contrat de '
-                    f'maintenance #{contrat.pk}.')
+                    'Avertissement : équipement non couvert par le '
+                    "registre des équipements du contrat de maintenance "
+                    f'#{contrat.pk}.')
         # XCTR3 — avertissement NON BLOQUANT si ce ticket dépasse le quota de
         # visites/déplacements inclus au contrat (droits_restants). NULL sur le
         # contrat = illimité : aucun avertissement possible dans ce cas.
@@ -787,11 +808,14 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             raise ValidationError({'statut': str(exc)})
         # YSERV12 — à la transition vers RESOLU, propose canal_resolution si
         # l'appelant n'en a pas déjà posé un explicitement (jamais écrasé).
+        # Dans les deux cas (posé explicitement par l'appelant AVANT cet
+        # appel, ou proposé automatiquement ici), le champ doit figurer dans
+        # `update_fields` sous peine d'être silencieusement perdu (un
+        # `save(update_fields=...)` n'écrit QUE les colonnes listées).
         update_fields = ['statut']
-        if (statut_cible == Ticket.Statut.RESOLU
-                and old.statut != Ticket.Statut.RESOLU
-                and not ticket.canal_resolution):
-            ticket.canal_resolution = old.canal_resolution_propose()
+        if statut_cible == Ticket.Statut.RESOLU and old.statut != Ticket.Statut.RESOLU:
+            if not ticket.canal_resolution:
+                ticket.canal_resolution = old.canal_resolution_propose()
             update_fields.append('canal_resolution')
         ticket.save(update_fields=update_fields)
         # FG81 — recalcule sla_breach après toute mise à jour de statut.
