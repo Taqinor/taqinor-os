@@ -94,6 +94,11 @@ INSTALLED_APPS = [
     # (SeparateDatabaseAndState). Chargé AVANT compta : le shim de ré-export
     # de compta.models importe apps.marketing.models.
     'apps.marketing',
+    # ODX11 — Appels d'offres (marchés publics/privés, FG222–227). Sorti de
+    # compta en préservant les tables physiques (SeparateDatabaseAndState).
+    # Chargé AVANT compta : le shim de ré-export de compta.models importe
+    # apps.ao.models.
+    'apps.ao',
     # FG107-FG121 — Comptabilité générale (plan CGNC, journaux, écritures en
     # partie double, états de synthèse). Auto-écritures OFF par défaut.
     'apps.compta',
