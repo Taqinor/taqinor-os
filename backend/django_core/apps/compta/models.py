@@ -5189,6 +5189,66 @@ class StatutEngagementContact(models.Model):
         return f'{self.destinataire} ({self.statut})'
 
 
+# ── XMKT23 — Approbation avant envoi de masse + journal d'audit ────────────
+
+class ApprobationEnvoiCampagne(models.Model):
+    """Demande d'approbation d'un envoi de masse (XMKT23), pattern identique à
+    ``automation.AutomationApproval`` (pending/approved/rejected) mais local à
+    compta — au-delà d'un seuil société de destinataires, l'envoi reste
+    bloqué tant qu'un Responsable/Directeur n'a pas approuvé.
+    """
+    class Statut(models.TextChoices):
+        EN_ATTENTE = 'en_attente', 'En attente'
+        APPROUVE = 'approuve', 'Approuvé'
+        REJETE = 'rejete', 'Rejeté'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='approbations_envoi_campagne',
+        verbose_name='Société',
+    )
+    campagne = models.ForeignKey(
+        Campagne,
+        on_delete=models.CASCADE,
+        related_name='approbations_envoi',
+        verbose_name='Campagne',
+    )
+    nb_destinataires_demandes = models.PositiveIntegerField(
+        default=0, verbose_name='Nb destinataires demandés')
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices, default=Statut.EN_ATTENTE,
+        verbose_name='Statut')
+    demande_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='approbations_envoi_demandees',
+        verbose_name='Demandé par',
+    )
+    decide_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='approbations_envoi_decidees',
+        verbose_name='Décidé par',
+    )
+    motif_rejet = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Motif de rejet')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+    date_decision = models.DateTimeField(
+        null=True, blank=True, verbose_name='Décidée le')
+
+    class Meta:
+        verbose_name = "Approbation d'envoi de campagne"
+        verbose_name_plural = "Approbations d'envoi de campagne"
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'{self.campagne_id} ({self.statut})'
+
+
 # ── FG203 — Récupération des devis abandonnés ──────────────────────────────
 
 class RelanceDevisAbandonne(models.Model):

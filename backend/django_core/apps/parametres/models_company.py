@@ -480,6 +480,12 @@ class CompanyProfile(models.Model):
                   "au-delà de laquelle un contact est marqué dormant et "
                   "sauté aux envois. Vide = désactivé (comportement actuel).")
 
+    # ── XMKT23 — approbation avant envoi de masse ───────────────────────────
+    seuil_approbation_envoi_masse = models.PositiveIntegerField(
+        default=100,
+        help_text="Au-delà de ce nombre de destinataires, l'envoi d'une "
+                  "campagne exige l'approbation d'un Responsable/Directeur.")
+
     class Meta:
         verbose_name = 'Profil entreprise'
 

@@ -46,6 +46,7 @@ from .models import (
     ObligationFiscale,
     FamilleTvaNonDeductible,
     Compensation, LigneCompensation,
+    ApprobationEnvoiCampagne,
 )
 
 
@@ -1517,6 +1518,28 @@ class EnvoiCampagneSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'statut', 'raison_smtp', 'envoye_le', 'ouvert_le', 'clique_le',
             'date_creation',
+        ]
+
+
+class ApprobationEnvoiCampagneSerializer(serializers.ModelSerializer):
+    """XMKT23 — demande d'approbation d'un envoi de masse."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    demande_par_nom = serializers.CharField(
+        source='demande_par.username', read_only=True, default='')
+    decide_par_nom = serializers.CharField(
+        source='decide_par.username', read_only=True, default='')
+
+    class Meta:
+        model = ApprobationEnvoiCampagne
+        fields = [
+            'id', 'campagne', 'nb_destinataires_demandes', 'statut',
+            'statut_display', 'demande_par_nom', 'decide_par_nom',
+            'motif_rejet', 'date_creation', 'date_decision',
+        ]
+        read_only_fields = [
+            'campagne', 'nb_destinataires_demandes', 'statut',
+            'date_creation', 'date_decision',
         ]
 
 

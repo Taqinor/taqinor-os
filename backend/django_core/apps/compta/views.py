@@ -61,6 +61,7 @@ from .models import (
     ObligationFiscale,
     FamilleTvaNonDeductible,
     Compensation,
+    ApprobationEnvoiCampagne,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -69,6 +70,7 @@ from .serializers import (
     CampagneSerializer, CautionBancaireSerializer, CentreCoutSerializer,
     CessionImmobilisationSerializer, ClotureCaisseSerializer,
     CodePromotionSerializer, EnvoiCampagneSerializer,
+    ApprobationEnvoiCampagneSerializer,
     CommissionPayoutRunSerializer, CompteComptableSerializer,
     CompteTresorerieSerializer, ContratAvancementSerializer,
     DeclarationTVASerializer, DemandeApprobationConfigSerializer,
@@ -4596,8 +4598,15 @@ class CampagneViewSet(_ComptaBaseViewSet):
     def envoyer(self, request, pk=None):
         campagne = self.get_object()
         destinataires = request.data.get('destinataires') or []
-        services.envoyer_campagne(campagne, destinataires=destinataires)
-        return Response(CampagneSerializer(campagne).data)
+        # XMKT23 — au-delà du seuil société, l'envoi reste bloqué en attente
+        # d'approbation (comportement inchangé sous le seuil).
+        _campagne, approbation = services.demander_ou_envoyer_campagne(
+            campagne, destinataires=destinataires, user=request.user)
+        data = CampagneSerializer(campagne).data
+        if approbation is not None:
+            data['approbation_requise'] = True
+            data['approbation_id'] = approbation.id
+        return Response(data)
 
     @action(detail=True, methods=['get'])
     def apercu_fusion(self, request, pk=None):
@@ -4703,6 +4712,37 @@ class EnvoiCampagneViewSet(_ComptaBaseViewSet):
         if statut:
             qs = qs.filter(statut=statut)
         return qs
+
+
+# ── XMKT23 — Approbation avant envoi de masse + journal d'audit ────────────
+
+class ApprobationEnvoiCampagneViewSet(_ComptaBaseViewSet):
+    """Demandes d'approbation d'envoi de masse (XMKT23)."""
+    http_method_names = ['get', 'post', 'head', 'options']
+    queryset = ApprobationEnvoiCampagne.objects.select_related('campagne').all()
+    serializer_class = ApprobationEnvoiCampagneSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation']
+
+    @action(detail=True, methods=['post'])
+    def approuver(self, request, pk=None):
+        approbation = self.get_object()
+        services.approuver_envoi_campagne(approbation, user=request.user)
+        approbation.refresh_from_db()
+        return Response(ApprobationEnvoiCampagneSerializer(approbation).data)
+
+    @action(detail=True, methods=['post'])
+    def rejeter(self, request, pk=None):
+        approbation = self.get_object()
+        motif = request.data.get('motif', '')
+        services.rejeter_envoi_campagne(approbation, motif=motif, user=request.user)
+        approbation.refresh_from_db()
+        return Response(ApprobationEnvoiCampagneSerializer(approbation).data)
+
+    @action(detail=False, methods=['get'], url_path='journal-audit')
+    def journal_audit(self, request):
+        return Response(
+            services.journal_audit_envois(request.user.company))
 
 
 # ── XMKT5 — Listes de diffusion nommées + abonnements ───────────────────────

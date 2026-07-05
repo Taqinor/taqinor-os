@@ -73,6 +73,7 @@ from .models import (
     Compensation, LigneCompensation,
     LienTrackee, ClicLien,
     StatutEngagementContact,
+    ApprobationEnvoiCampagne,
 )
 
 
@@ -6164,6 +6165,87 @@ def reactiver_contact(company, destinataire):
     StatutEngagementContact.objects.update_or_create(
         company=company, destinataire=destinataire,
         defaults={'statut': StatutEngagementContact.Statut.ACTIF})
+
+
+# ── XMKT23 — Approbation avant envoi de masse + journal d'audit ────────────
+
+def seuil_approbation_envoi_masse(company):
+    """XMKT23 — seuil société (défaut 100)."""
+    try:
+        from apps.parametres.models_company import CompanyProfile
+        profil = CompanyProfile.objects.filter(company=company).first()
+        return getattr(profil, 'seuil_approbation_envoi_masse', 100) if profil else 100
+    except Exception:  # pragma: no cover - défensif
+        return 100
+
+
+def demander_ou_envoyer_campagne(campagne, *, destinataires=None, user=None):
+    """XMKT23 — au-delà du seuil société de destinataires, crée une demande
+    d'approbation EN ATTENTE au lieu d'envoyer directement ; sous le seuil,
+    envoie normalement (comportement actuel préservé). Renvoie
+    ``(campagne, approbation_ou_none)``.
+    """
+    nb = len(destinataires or [])
+    seuil = seuil_approbation_envoi_masse(campagne.company)
+    if nb <= seuil:
+        return envoyer_campagne(campagne, destinataires=destinataires), None
+    approbation = ApprobationEnvoiCampagne.objects.create(
+        company=campagne.company, campagne=campagne,
+        nb_destinataires_demandes=nb, demande_par=user,
+    )
+    # Conserve les destinataires demandés pour l'envoi une fois approuvé.
+    campagne.segment = dict(campagne.segment or {})
+    campagne.segment['_xmkt23_destinataires_en_attente'] = list(destinataires or [])
+    campagne.save(update_fields=['segment'])
+    return campagne, approbation
+
+
+def approuver_envoi_campagne(approbation, *, user=None):
+    """XMKT23 — approuve une demande EN ATTENTE, déclenche l'envoi
+    différé."""
+    if approbation.statut != ApprobationEnvoiCampagne.Statut.EN_ATTENTE:
+        return approbation
+    approbation.statut = ApprobationEnvoiCampagne.Statut.APPROUVE
+    approbation.decide_par = user
+    approbation.date_decision = timezone.now()
+    approbation.save(update_fields=['statut', 'decide_par', 'date_decision'])
+    destinataires = (approbation.campagne.segment or {}).pop(
+        '_xmkt23_destinataires_en_attente', [])
+    envoyer_campagne(approbation.campagne, destinataires=destinataires)
+    return approbation
+
+
+def rejeter_envoi_campagne(approbation, *, motif='', user=None):
+    """XMKT23 — rejette une demande EN ATTENTE (motivé) ; la campagne reste
+    brouillon, jamais envoyée."""
+    if approbation.statut != ApprobationEnvoiCampagne.Statut.EN_ATTENTE:
+        return approbation
+    approbation.statut = ApprobationEnvoiCampagne.Statut.REJETE
+    approbation.decide_par = user
+    approbation.motif_rejet = motif or ''
+    approbation.date_decision = timezone.now()
+    approbation.save(update_fields=[
+        'statut', 'decide_par', 'motif_rejet', 'date_decision'])
+    return approbation
+
+
+def journal_audit_envois(company):
+    """XMKT23 — journal d'audit immuable : qui a envoyé/approuvé quoi à
+    combien de contacts, horodaté (dérivé des ``ApprobationEnvoiCampagne`` +
+    des campagnes envoyées directement sous le seuil)."""
+    lignes = []
+    for approb in ApprobationEnvoiCampagne.objects.filter(company=company):
+        lignes.append({
+            'campagne_id': approb.campagne_id,
+            'campagne_nom': approb.campagne.nom,
+            'nb_destinataires': approb.nb_destinataires_demandes,
+            'statut': approb.statut,
+            'demande_par': getattr(approb.demande_par, 'username', None),
+            'decide_par': getattr(approb.decide_par, 'username', None),
+            'date_creation': approb.date_creation,
+            'date_decision': approb.date_decision,
+        })
+    return lignes
 
 
 def _destinataires_des_listes(campagne):
