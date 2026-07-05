@@ -4600,7 +4600,21 @@ class CampagneViewSet(_ComptaBaseViewSet):
     serializer_class = CampagneSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['nom', 'objet']
-    ordering_fields = ['date_creation', 'nom']
+    # ZMKT2 — tri par les mesures agrégées (les taux dérivés se recalculent
+    # depuis ces champs bruts — DRF ne peut trier que sur des champs réels).
+    ordering_fields = [
+        'date_creation', 'nom', 'envoyee_le', 'nb_envois', 'nb_ouvertures',
+        'nb_clics', 'nb_destinataires',
+    ]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        # ZMKT2 — Group By statut/canal/mois d'envoi (réutilisé par le
+        # frontend pour le regroupement de liste).
+        groupby = self.request.query_params.get('groupby')
+        if groupby in ('statut', 'canal'):
+            qs = qs.order_by(groupby, '-date_creation')
+        return qs
 
     @action(detail=True, methods=['post'])
     def envoyer(self, request, pk=None):

@@ -1471,6 +1471,11 @@ class CampagneSerializer(serializers.ModelSerializer):
         source='get_canal_display', read_only=True)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
+    # ZMKT2 — colonnes de performance dérivées (0 si division par zéro).
+    taux_delivre_pct = serializers.SerializerMethodField()
+    taux_ouverture_pct = serializers.SerializerMethodField()
+    taux_clic_pct = serializers.SerializerMethodField()
+    taux_desinscription_pct = serializers.SerializerMethodField()
 
     class Meta:
         model = Campagne
@@ -1483,12 +1488,36 @@ class CampagneSerializer(serializers.ModelSerializer):
             'ab_test', 'ab_gagnant', 'ab_decide_le',
             'budget_mad', 'cout_reel_mad', 'lignes_cout',
             'parente', 'rattachements',
+            'taux_delivre_pct', 'taux_ouverture_pct', 'taux_clic_pct',
+            'taux_desinscription_pct',
         ]
         read_only_fields = [
             'statut', 'nb_destinataires', 'nb_envois', 'nb_ouvertures',
             'nb_clics', 'envoyee_le', 'date_creation',
             'ab_gagnant', 'ab_decide_le',
         ]
+
+    def _pct(self, numerateur, denominateur):
+        if not denominateur:
+            return 0.0
+        return round(numerateur / denominateur * 100, 1)
+
+    def get_taux_delivre_pct(self, obj):
+        delivres = obj.envois.exclude(
+            statut__in=['rebond']).count() if obj.pk else 0
+        return self._pct(delivres, obj.nb_envois)
+
+    def get_taux_ouverture_pct(self, obj):
+        return self._pct(obj.nb_ouvertures, obj.nb_envois)
+
+    def get_taux_clic_pct(self, obj):
+        return self._pct(obj.nb_clics, obj.nb_envois)
+
+    def get_taux_desinscription_pct(self, obj):
+        if not obj.pk:
+            return 0.0
+        nb_desinscrits = obj.envois.filter(statut='desinscrit').count()
+        return self._pct(nb_desinscrits, obj.nb_envois)
 
     def validate_listes(self, value):
         request = self.context.get('request')
