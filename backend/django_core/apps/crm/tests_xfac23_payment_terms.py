@@ -21,6 +21,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.crm.models import Client
 from apps.crm.selectors import delai_paiement_client
+from apps.stock.models import Produit
 from apps.ventes.models import Facture, LigneFacture
 from apps.ventes.services import calculer_date_echeance
 from apps.ventes.scheduled import _echeance_effective
@@ -101,11 +102,16 @@ class TestEcheanceEffectiveFallbackChain(TestCase):
         self.today = datetime.date(2026, 8, 15)
 
     def _facture(self, client, date_echeance=None):
-        return Facture.objects.create(
+        facture = Facture.objects.create(
             company=self.company, reference='FAC-XFAC23',
             client=client, statut=Facture.Statut.EMISE,
-            date_emission=datetime.date(2026, 7, 1),
             date_echeance=date_echeance)
+        # date_emission est auto_now_add : forcer via update direct (même
+        # convention que test_xfac12_escompte.py) puis recharger.
+        Facture.objects.filter(pk=facture.pk).update(
+            date_emission=datetime.date(2026, 7, 1))
+        facture.refresh_from_db()
+        return facture
 
     def test_echeance_manuelle_jamais_ecrasee(self):
         client = Client.objects.create(
@@ -141,12 +147,16 @@ class TestEmettreActionDerivesEcheance(TestCase):
         self.api.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
 
     def _facture_brouillon(self, client, date_echeance=None):
+        produit = Produit.objects.create(
+            company=self.company, nom='Produit test',
+            sku=f'XFAC23-{Facture.objects.count()}',
+            prix_vente=Decimal('100'), tva=Decimal('20.00'))
         facture = Facture.objects.create(
             company=self.company, reference='FAC-XFAC23-EM',
             client=client, statut=Facture.Statut.BROUILLON,
             taux_tva=Decimal('20.00'), date_echeance=date_echeance)
         LigneFacture.objects.create(
-            facture=facture, designation='Ligne test',
+            facture=facture, produit=produit, designation='Ligne test',
             quantite=Decimal('1'), prix_unitaire=Decimal('100'),
             taux_tva=Decimal('20.00'))
         return facture
