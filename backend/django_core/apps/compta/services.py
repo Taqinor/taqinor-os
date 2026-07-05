@@ -10789,6 +10789,39 @@ def questions_visibles(enquete, reponses_partielles):
     return visibles
 
 
+def rendre_enquete_publique(enquete, reponses_partielles, *, seed=None):
+    """ZMKT9 — applique l'ordre aléatoire (si activé) aux questions visibles,
+    pour le rendu public de l'enquête. ``seed`` optionnel pour un ordre
+    reproductible en test ; sans ``seed``, l'ordre varie à chaque appel
+    (nouvelle ouverture)."""
+    import random
+
+    visibles = questions_visibles(enquete, reponses_partielles)
+    if enquete.ordre_aleatoire:
+        rng = random.Random(seed)
+        visibles = list(visibles)
+        rng.shuffle(visibles)
+    return {
+        'titre': enquete.titre,
+        'questions': visibles,
+        'mode_pagination': enquete.mode_pagination,
+        'barre_progression': enquete.barre_progression,
+        'bouton_retour': enquete.bouton_retour,
+        'limite_temps_minutes': enquete.limite_temps_minutes,
+    }
+
+
+def limite_temps_depassee(enquete, *, debute_le, maintenant=None):
+    """ZMKT9 — True si la limite de temps de l'enquête est dépassée pour une
+    session commencée à ``debute_le``. Pas de limite (NULL) → jamais
+    dépassée (comportement actuel)."""
+    if not enquete.limite_temps_minutes or not debute_le:
+        return False
+    maintenant = maintenant or timezone.now()
+    echeance = debute_le + timezone.timedelta(minutes=enquete.limite_temps_minutes)
+    return maintenant > echeance
+
+
 def soumettre_reponse_enquete(enquete, *, reponses, contact_ref=''):
     """XMKT27 — soumission publique d'une enquête (sans auth). Ne valide QUE
     les questions effectivement visibles (logique conditionnelle) : une

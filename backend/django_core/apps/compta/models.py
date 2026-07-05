@@ -8724,6 +8724,30 @@ class Enquete(models.Model):
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créée le')
 
+    # ── ZMKT9 — options de mise en page & anti-biais ────────────────────────
+    class ModePagination(models.TextChoices):
+        UNE_PAGE = 'une_page', 'Une page'
+        UNE_PAGE_PAR_SECTION = 'une_page_par_section', 'Une page par section'
+        UNE_PAGE_PAR_QUESTION = 'une_page_par_question', 'Une page par question'
+
+    class BarreProgression(models.TextChoices):
+        AUCUNE = 'aucune', 'Aucune'
+        POURCENTAGE = 'pourcentage', 'Pourcentage'
+        NOMBRE = 'nombre', 'Nombre'
+
+    mode_pagination = models.CharField(
+        max_length=25, choices=ModePagination.choices,
+        default=ModePagination.UNE_PAGE, verbose_name='Mode de pagination')
+    barre_progression = models.CharField(
+        max_length=12, choices=BarreProgression.choices,
+        default=BarreProgression.AUCUNE, verbose_name='Barre de progression')
+    bouton_retour = models.BooleanField(
+        default=False, verbose_name='Bouton retour')
+    limite_temps_minutes = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Limite de temps (minutes)')
+    ordre_aleatoire = models.BooleanField(
+        default=False, verbose_name='Ordre aléatoire des questions')
+
     class Meta:
         verbose_name = 'Enquête'
         verbose_name_plural = 'Enquêtes'

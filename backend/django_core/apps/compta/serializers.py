@@ -2397,7 +2397,11 @@ class EnqueteSerializer(serializers.ModelSerializer):
     conditionnelle)."""
     class Meta:
         model = Enquete
-        fields = ['id', 'titre', 'questions', 'token', 'actif', 'date_creation']
+        fields = [
+            'id', 'titre', 'questions', 'token', 'actif', 'date_creation',
+            'mode_pagination', 'barre_progression', 'bouton_retour',
+            'limite_temps_minutes', 'ordre_aleatoire',
+        ]
         read_only_fields = ['token', 'date_creation']
 
     def validate_questions(self, value):

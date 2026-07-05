@@ -5289,17 +5289,28 @@ def enquete_publique(request, token):
             reponses_partielles = _json.loads(brut)
         except (ValueError, TypeError):
             reponses_partielles = {}
-    questions = services.questions_visibles(enquete, reponses_partielles)
-    return Response({'titre': enquete.titre, 'questions': questions})
+    rendu = services.rendre_enquete_publique(enquete, reponses_partielles)
+    return Response(rendu)
 
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def enquete_soumettre(request, token):
-    """Soumission publique d'une enquête (XMKT27), aucune authentification."""
+    """Soumission publique d'une enquête (XMKT27), aucune authentification.
+
+    ZMKT9 — ``debute_le`` (ISO datetime, optionnel) permet de vérifier la
+    limite de temps de l'enquête ; sans elle, aucune vérification (illimité,
+    comportement actuel)."""
+    from django.utils.dateparse import parse_datetime
+
     enquete = Enquete.objects.filter(token=token, actif=True).first()
     if not enquete:
         return Response({'detail': 'Enquête introuvable.'}, status=404)
+    debute_le_brut = request.data.get('debute_le')
+    if debute_le_brut:
+        debute_le = parse_datetime(debute_le_brut)
+        if debute_le and services.limite_temps_depassee(enquete, debute_le=debute_le):
+            return Response({'detail': 'Temps limite dépassé.'}, status=400)
     reponses = request.data.get('reponses') or {}
     contact_ref = request.data.get('contact_ref', '')
     try:
