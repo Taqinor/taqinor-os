@@ -659,6 +659,43 @@ def ecriture_pour_paiement_especes_via_caisse(paiement, *, user=None):
     return ecriture
 
 
+def enregistrer_effet_pour_paiement_cheque(paiement, *, user=None):
+    """YLEDG10 — un règlement CHÈQUE client route par le portefeuille
+    d'effets (``enregistrer_effet``, sens ``recevoir``) au lieu de l'écriture
+    banque directe de ``ecriture_pour_paiement`` : l'argent n'est PAS encore
+    en banque tant que le chèque n'a pas été remis puis encaissé.
+
+    Idempotent (référence au paiement dans le commentaire + garde par
+    ``numero``) : si un ``Effet`` existe déjà pour ce paiement (rejoué sur
+    best-effort), on le renvoie sans en créer un second. Aucune écriture GL
+    n'est postée ici (elle vient du bordereau de remise existant,
+    ``poster_bordereau``, qui crédite 3425 → banque) : ce n'est PAS une
+    régression de YLEDG6 — l'auto-lettrage no-op tant que rien n'est
+    comptabilisé, exactement comme un document jamais émis. Renvoie l'Effet,
+    ou ``None`` si le paiement ne porte aucune facture exploitable."""
+    facture = getattr(paiement, 'facture', None)
+    if facture is None:
+        return None
+    company = facture.company
+    if company is None:
+        return None
+    reference_paiement = f'PAIEMENT-{paiement.id}'
+    existant = Effet.objects.filter(
+        company=company, commentaire=reference_paiement).first()
+    if existant is not None:
+        return existant
+    date_emission = paiement.date_paiement or timezone.localdate()
+    return enregistrer_effet(
+        company, sens=Effet.Sens.RECEVOIR,
+        montant=Decimal(paiement.montant or 0),
+        date_emission=date_emission, date_echeance=date_emission,
+        type_effet=Effet.TypeEffet.CHEQUE,
+        numero=getattr(paiement, 'reference', '') or '',
+        tiers_type='client', tiers_id=facture.client_id,
+        commentaire=reference_paiement, user=user,
+    )
+
+
 # ── XACC1 — TVA sur encaissement : transfert du compte d'attente ───────────
 # En régime « débit » (défaut), la TVA est constatée directement sur les
 # comptes définitifs (4455/3455) à la facturation — RIEN ne change ici, c'est
@@ -3372,11 +3409,30 @@ def rejeter_effet(effet, *, date_rejet=None, frais_rejet=None, commentaire='',
             reference=effet.numero or f'EFFET-{effet.id}',
             source_type='effet_frais_rejet', source_id=effet.id,
             created_by=user, statut=EcritureComptable.Statut.VALIDEE)
+    ancien_commentaire = effet.commentaire
     effet.statut = Effet.Statut.IMPAYE
     effet.frais_rejet = frais
     if commentaire:
         effet.commentaire = commentaire
     effet.save(update_fields=['statut', 'frais_rejet', 'commentaire'])
+
+    # YLEDG10 — un effet À RECEVOIR créé depuis un règlement chèque client
+    # (``enregistrer_effet_pour_paiement_cheque``, commentaire
+    # 'PAIEMENT-<id>') dont le rejet doit rouvrir la facture ventes : émettre
+    # `effet_rejete` pour que `ventes` consomme (jamais un import cross-app de
+    # modèle). Un effet sans cette origine (fournisseur, ou saisi à la main)
+    # ne matche aucun préfixe → no-op côté abonné.
+    if effet.sens == Effet.Sens.RECEVOIR and (
+            ancien_commentaire or '').startswith('PAIEMENT-'):
+        try:
+            paiement_id = int(ancien_commentaire.split('-', 1)[1])
+        except (ValueError, IndexError):
+            paiement_id = None
+        if paiement_id:
+            from core.events import effet_rejete
+            effet_rejete.send(
+                sender=Effet, effet=effet, paiement_id=paiement_id,
+                frais=frais, company=company)
     return effet
 
 
