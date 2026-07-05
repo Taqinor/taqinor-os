@@ -643,6 +643,18 @@ def website_lead_webhook(request):
                 'website_lead_webhook: photo non jointe (lead #%s) : %s',
                 lead.pk, _exc)
 
+        # QW4 — rappel demandé (contact_preference=phone_ok) : notification
+        # DISTINCTE et plus urgente qu'un lead générique, sur création ET
+        # mise à jour (un visiteur revenant peut poser sa préférence après
+        # coup). Idempotent (marqueur chatter) — jamais best-effort bloquant.
+        try:
+            from .services import notify_lead_callback_requested
+            notify_lead_callback_requested(lead)
+        except Exception as _exc:  # noqa: BLE001 — best-effort
+            logger.warning(
+                'website_lead_webhook: notify_lead_callback_requested échoué '
+                '(lead #%s) : %s', lead.pk, _exc)
+
         raw.lead = lead
         raw.processed = True
         raw.save(update_fields=['lead', 'processed'])

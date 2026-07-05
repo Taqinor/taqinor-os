@@ -356,6 +356,19 @@ def lead_sla_hours(company) -> int:
     return 24
 
 
+def callback_sla_hours(company) -> int:
+    """QW4 — Délai SLA (heures) d'un RAPPEL demandé (``contact_preference=
+    phone_ok``), plus SERRÉ que le SLA générique de premier contact
+    (``lead_sla_hours``) : la moitié, plancher 2 h. AUCUN nouveau champ
+    société (on reste dans `apps/crm`, pas de dépendance nouvelle sur
+    `parametres`) — dérivé du SLA générique déjà configurable. 0 (SLA
+    générique désactivé) désactive aussi le SLA rappel."""
+    generic = lead_sla_hours(company)
+    if not generic:
+        return 0
+    return max(2, generic // 2)
+
+
 # Champs scalaires recopiés sur le survivant SEULEMENT s'il les a vides
 # (« on garde la valeur la plus complète », jamais d'écrasement).
 _MERGE_FILL_FIELDS = [
@@ -1526,6 +1539,57 @@ def notify_client_contact_request(devis_reference: str, lead,
         logging.getLogger(__name__).warning(
             'QJ27: notify_client_contact_request échoué pour lead #%s '
             'devis %s : %s', getattr(lead, 'pk', '?'), devis_reference, exc)
+
+
+#: QW4 — marqueur de note système : posé UNE FOIS par lead pour éviter de
+#: notifier plusieurs fois la même demande de rappel (idempotence, même
+#: patron que ``ESCALATION_MARKER`` de ``recycler_leads_non_travailles``).
+CALLBACK_REQUESTED_MARKER = 'auto — rappel demandé (contact_preference=phone_ok)'
+
+
+def notify_lead_callback_requested(lead) -> None:
+    """QW4 — Notification DISTINCTE, urgence plus élevée, quand un lead arrive
+    avec ``contact_preference=phone_ok`` (« rappel demandé »), différente du
+    générique ``notify_new_lead`` (réponse WhatsApp). Notifie owner + supérieur
+    (repli managers société). Idempotent par lead — jamais renotifié deux fois
+    pour la même demande (marqueur chatter). Best-effort — jamais d'exception
+    propagée."""
+    try:
+        if getattr(lead, 'contact_preference', None) != Lead.ContactPreference.PHONE_OK:
+            return
+        already = LeadActivity.objects.filter(
+            lead=lead, kind=LeadActivity.Kind.NOTE,
+            body__startswith=CALLBACK_REQUESTED_MARKER,
+        ).exists()
+        if already:
+            return
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.NOTE,
+            body=f'{CALLBACK_REQUESTED_MARKER}.',
+        )
+        recipients = lead_notification_recipients(lead)
+        if not recipients:
+            return
+        from apps.notifications.services import notify_many
+        nom = (getattr(lead, 'nom', '') or '').strip() or 'Un prospect'
+        body_parts = [f'{nom} a demandé un RAPPEL téléphonique (pas une réponse WhatsApp).']
+        tel = (getattr(lead, 'telephone', '') or '').strip()
+        if tel:
+            body_parts.append(f'Numéro à rappeler : {tel}')
+        notify_many(
+            recipients,
+            'lead_callback_requested',
+            f'☎ Rappeler {nom} — rappel demandé',
+            body='\n'.join(body_parts),
+            link=f'/crm/leads?lead={lead.pk}',
+            company=lead.company,
+        )
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        import logging
+        logging.getLogger(__name__).warning(
+            'QW4: notify_lead_callback_requested échoué pour lead #%s : %s',
+            getattr(lead, 'pk', '?'), exc)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
