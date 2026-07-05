@@ -280,6 +280,18 @@ class ProduitSerializer(serializers.ModelSerializer):
         ]
         # company est posé côté serveur (TenantMixin) — jamais accepté du corps.
         read_only_fields = ['company', 'date_creation', 'date_mise_a_jour']
+        # XSTK3 — DRF dérive un UniqueTogetherValidator de la contrainte
+        # partielle `stock_produit_company_code_barres_uniq` (Meta.constraints)
+        # et marque à tort `code_barres` comme obligatoire, alors que la
+        # contrainte est CONDITIONNELLE (ignore NULL/''). Le champ reste
+        # optionnel au niveau modèle (blank=True, null=True) — on le restaure
+        # explicitement ici plutôt que de laisser le validateur auto-généré
+        # l'imposer.
+        extra_kwargs = {
+            'code_barres': {
+                'required': False, 'allow_null': True, 'allow_blank': True,
+            },
+        }
 
     def _reserved_map(self):
         """Map {produit_id: quantité réservée} calculée UNE fois par sérialisation
