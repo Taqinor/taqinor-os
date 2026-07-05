@@ -314,13 +314,43 @@ def default_responsable_for(company):
     """Responsable assigné par défaut aux nouveaux leads d'une société.
 
     Source unique : le profil entreprise (Paramètres → « Responsable par
-    défaut des nouveaux leads »). None si non configuré ou pas de société.
-    """
+    défaut des nouveaux leads »). Si NON configuré, QW6 — round-robin parmi
+    les utilisateurs commerciaux actifs de la société (jamais un lead assigné
+    à personne, silencieusement invisible). None seulement si la société n'a
+    ni responsable par défaut configuré NI aucun utilisateur commercial actif
+    (rien à assigner)."""
     if company is None:
         return None
     from apps.parametres.models import CompanyProfile
     profile = CompanyProfile.objects.filter(company=company).first()
-    return profile.responsable_defaut_leads if profile else None
+    if profile is not None and profile.responsable_defaut_leads is not None:
+        return profile.responsable_defaut_leads
+    return pick_round_robin_owner(company)
+
+
+def pick_round_robin_owner(company):
+    """QW6 — Choisit un propriétaire par ROUND-ROBIN parmi les utilisateurs
+    commerciaux actifs de la société (permission ``crm_creer``), pour qu'un
+    lead ne reste JAMAIS sans responsable quand aucun « responsable par
+    défaut » n'est configuré. Sans état dédié à maintenir : le tour revient à
+    l'utilisateur ayant le MOINS de leads assignés (ties départagés par id,
+    ordre stable) — équivalent d'une rotation, sans compteur externe. None si
+    la société n'a aucun utilisateur commercial actif."""
+    from django.contrib.auth import get_user_model
+    from django.db.models import Count, Q
+
+    User = get_user_model()
+    candidates = list(
+        User.objects.filter(
+            company=company, is_active=True,
+        ).filter(
+            Q(role__permissions__contains=['crm_creer'])
+            | Q(role__isnull=True, role_legacy__in=['admin', 'responsable']),
+        ).annotate(
+            nb_leads=Count('leads_assignes'),
+        ).order_by('nb_leads', 'pk').distinct()
+    )
+    return candidates[0] if candidates else None
 
 
 # FG28 — SLA première prise de contact ────────────────────────────────────────
