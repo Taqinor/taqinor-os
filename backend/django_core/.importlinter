@@ -33,18 +33,21 @@ modules =
     apps.stock.models
     apps.sav.models
     apps.installations.models
-# A domain model may call its OWN app's selector layer LAZILY (function-local
-# import inside a model method — e.g. `Facture.tva_par_taux` →
-# `ventes.selectors.tva_buckets`, `Ticket` → `sav.selectors.droits_restants`).
+# A domain model may call its OWN app's selector/service layer LAZILY
+# (function-local import inside a model method — e.g. `Facture.tva_par_taux` →
+# `ventes.selectors.tva_buckets`, `Ticket` → `sav.selectors.droits_restants`,
+# `Lead.save` → `crm.services.normalize_phone/email` [QW10 dedup columns]).
 # These run at call time, never at model load, so they cannot reintroduce the
 # load-time model→model cycle this contract exists to prevent. grimp still sees
 # the static edge, and because the selector/service layer legitimately crosses
 # domains (documented above), it makes the 5 model modules appear transitively
-# coupled. Prune ONLY these intra-app model→own-selector entry edges: a DIRECT
-# cross-domain `X.models -> Y.models` import is a separate edge and stays caught.
+# coupled. Prune ONLY these intra-app model→own-selector/service entry edges: a
+# DIRECT cross-domain `X.models -> Y.models` import is a separate edge and stays
+# caught.
 ignore_imports =
     apps.ventes.models -> apps.ventes.selectors
     apps.sav.models -> apps.sav.selectors
+    apps.crm.models -> apps.crm.services
 
 [importlinter:contract:installations-split-models-decoupled]
 name = Split installations model modules never import a sibling domain's models (locks M1 after the M7 split)
