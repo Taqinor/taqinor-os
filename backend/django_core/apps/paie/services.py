@@ -458,7 +458,7 @@ def importer_elements_rh(periode):
             profil = profils.get(dossier.id)
             if profil is None:
                 continue
-            elements = _elements_rh_du_dossier(periode, dossier)
+            elements = _elements_rh_du_dossier(periode, dossier, profil)
             for el in elements:
                 ElementVariable.objects.create(
                     company=periode.company,
@@ -549,7 +549,7 @@ def reporter_elements_periode(periode_cible):
     return copies
 
 
-def _elements_rh_du_dossier(periode, dossier):
+def _elements_rh_du_dossier(periode, dossier, profil=None):
     """Éléments variables RH d'un dossier pour la période — liste de tuples.
 
     YHIRE1 — câble réellement l'import (l'ancien stub renvoyait toujours
@@ -558,7 +558,12 @@ def _elements_rh_du_dossier(periode, dossier):
 
     * heures supplémentaires VALORISÉES (``heures_supp_pour_paie``, FG192) →
       une ligne ``TYPE_HS`` par tranche non nulle (jour/nuit/férié),
-      ``montant`` déjà majoré ;
+      ``montant`` déjà majoré. Si RH renvoie un ``montant_majore`` à 0 (le
+      ``cout_horaire`` interne du dossier RH n'est pas configuré — donnée
+      RH facultative) alors que des heures existent bel et bien, on retombe
+      sur le taux horaire dérivé du PROFIL DE PAIE lui-même
+      (``taux_horaire_base_profil`` + ``taux_majoration_hs``, PAIE14) : le
+      salarié a un salaire de paie même sans coût horaire RH renseigné ;
     * demandes de congé VALIDÉES d'un ``TypeAbsence.remunere = False``
       (``absences_non_remunerees_pour_paie``) → une ligne ``TYPE_ABSENCE``
       (``remunere=False``, ``deduit_solde`` reprise du type) — la proration
@@ -589,6 +594,9 @@ def _elements_rh_du_dossier(periode, dossier):
         ('hs_100', ElementVariable.HS_FERIE,
          'Heures sup férié/dimanche (100 %)'),
     )
+    parametre = parametre_en_vigueur(dossier.company, date_fin)
+    taux_h_base_profil = (
+        taux_horaire_base_profil(profil) if profil is not None else None)
     for ligne in rh_selectors.heures_supp_pour_paie(
             dossier.company, date_debut, date_fin, employe_id=dossier.id):
         total_tranches = sum(
@@ -603,6 +611,13 @@ def _elements_rh_du_dossier(periode, dossier):
             if total_tranches > 0:
                 montant = _q(
                     ligne['montant_majore'] * quantite / total_tranches)
+            if (not montant) and parametre is not None \
+                    and taux_h_base_profil:
+                # RH n'a pas de coût horaire configuré pour ce dossier —
+                # dérive le gain majoré du taux horaire du PROFIL DE PAIE.
+                taux_maj = taux_majoration_hs(parametre, categorie)
+                montant = calculer_gain_hs(
+                    quantite, taux_h_base_profil, taux_maj)
             elements.append({
                 'type': ElementVariable.TYPE_HS, 'libelle': libelle,
                 'quantite': quantite, 'montant': montant,
@@ -2937,6 +2952,15 @@ def generer_ordre_virement(periode, *, date_execution=None, rib_emetteur='',
             )
             total += net
             nombre += 1
+        if nombre == 0:
+            # YLEDG7 — un ordre de virement sans aucune ligne (aucun bulletin
+            # validé payé par virement sur la période) n'a rien à régler :
+            # le refuser plutôt que persister un ordre vide/sans montant que
+            # ``payer_ordre_virement`` traiterait comme "déjà réglé" (total=0).
+            raise ValueError(
+                "Aucun bulletin validé payé par virement sur cette période : "
+                "ordre de virement refusé (montant nul)."
+            )
         ordre.total = _q(total)
         ordre.nombre_lignes = nombre
         ordre.save(update_fields=['total', 'nombre_lignes', 'libelle',
@@ -5776,9 +5800,13 @@ def cout_employeur(periode):
         'total_provisions': _q(total_provisions),
         'total_employeur': total_employeur,
         'total_net': _q(total_net),
+        # Non arrondis : un ratio/moyenne est une grandeur d'analyse (ZPAI3),
+        # pas un montant monétaire — l'arrondir au centime perdrait la
+        # précision attendue par les appelants (cf. test_ratio_et_moyenne_par_tete
+        # qui recompare à la division brute).
         'ratio_cout_net': (
-            _q(total_employeur / total_net) if total_net > 0 else None),
-        'cout_moyen_par_tete': _q(total_employeur / nombre_salaries),
+            total_employeur / total_net if total_net > 0 else None),
+        'cout_moyen_par_tete': total_employeur / nombre_salaries,
         'rubriques_exclues': rubriques_exclues,
     }
 
@@ -5839,10 +5867,14 @@ def journal_de_paie_ventile(periode, *, created_by=None):
             ventilation_par_centre.items(), key=lambda kv: (kv[0] is None, kv[0] or 0)):
         libelle = ('Rémunération + charges patronales'
                    + (f' — centre #{centre_id}' if centre_id else ' — non ventilé'))
+        # ``LigneEcriture.centre_cout`` est une FK : ``creer_ecriture`` assigne
+        # ``ligne['centre_cout']`` tel quel, il faut donc une INSTANCE
+        # ``CentreCout`` (jamais l'id brut) — résolue en lecture seule via
+        # ``compta_services.get_centre_cout``.
         lignes.append({
             'compte': compte(_COMPTE_REMUNERATION),
             'libelle': libelle, 'debit': montant, 'credit': 0,
-            'centre_cout': centre_id,
+            'centre_cout': compta_services.get_centre_cout(company, centre_id),
         })
     if cnss_amo > 0:
         lignes.append({
@@ -6123,6 +6155,24 @@ def _resoudre_profil_matricule(company, matricule):
     return ProfilPaie.objects.filter(company=company, employe=dossier).first()
 
 
+def _matricule_connu(company, matricule):
+    """Le matricule correspond-il à un ``rh.DossierEmploye`` de la société ?
+
+    Utilisé par le DRY-RUN (XPAI22) : à ce stade on prévisualise seulement,
+    l'absence d'un ``ProfilPaie`` (paie pas encore configurée pour ce salarié)
+    ne doit PAS être signalée comme « matricule inconnu » — seul un matricule
+    sans dossier RH du tout l'est. Le COMMIT, lui, a réellement besoin du
+    ``ProfilPaie`` pour écrire le ``CumulAnnuel`` (cf. ``_resoudre_profil_matricule``).
+    """
+    from django.apps import apps as django_apps
+
+    if not matricule:
+        return False
+    DossierEmploye = django_apps.get_model('rh', 'DossierEmploye')
+    return DossierEmploye.objects.filter(
+        company=company, matricule=str(matricule).strip()).exists()
+
+
 def dry_run_reprise_cumuls(file_bytes, filename, company):
     """Aperçu de l'import de reprise des cumuls annuels (XPAI22).
 
@@ -6147,7 +6197,7 @@ def dry_run_reprise_cumuls(file_bytes, filename, company):
         if i <= 10:
             apercu.append(f)
         matricule = f.get('matricule')
-        if matricule and _resoudre_profil_matricule(company, matricule) is None:
+        if matricule and not _matricule_connu(company, matricule):
             inconnus.append({'ligne': i, 'matricule': matricule})
 
     return {

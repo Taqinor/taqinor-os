@@ -243,6 +243,20 @@ def get_compte(company, numero):
         company=company, numero=numero).first()
 
 
+def get_centre_cout(company, centre_cout_id):
+    """``CentreCout`` de la société par id (ou None). Lecture seule.
+
+    Utilisé par les appelants cross-app (ex. ``paie.journal_de_paie_ventile``,
+    XPAI17) qui ne connaissent qu'un id résolu via ``creer_centre_cout`` et
+    doivent le repasser en INSTANCE à ``creer_ecriture`` (la FK
+    ``LigneEcriture.centre_cout`` n'accepte pas un entier brut).
+    """
+    if not centre_cout_id:
+        return None
+    return CentreCout.objects.filter(
+        company=company, pk=centre_cout_id).first()
+
+
 # ── FG108 / COMPTA7 — Fabrique d'écriture en partie double ─────────────────
 
 @transaction.atomic
