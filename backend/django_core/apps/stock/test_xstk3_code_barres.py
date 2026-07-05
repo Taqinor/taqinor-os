@@ -32,9 +32,14 @@ def _company(slug):
     return Company.objects.create(nom=slug, slug=slug)
 
 
-def _user(company, username, permissions=None):
+def _user(company, username, permissions=None, role_nom=None):
+    # QG4 — la CRÉATION de produits (POST /produits/) est réservée par nom de
+    # rôle (Directeur/Commercial responsable, `HasPermissionAndRole`) en plus
+    # de la permission `stock_creer` : un rôle de test doit porter l'un de ces
+    # noms pour que les tests de création (XSTK3) passent la garde QG4.
     role = Role.objects.create(
-        company=company, nom=f'r-{username}', permissions=permissions or [])
+        company=company, nom=role_nom or f'r-{username}',
+        permissions=permissions or [])
     return User.objects.create_user(
         username=username, password='x', company=company, role=role,
         role_legacy='responsable')
@@ -51,7 +56,8 @@ class Xstk3Base(TestCase):
         self.company = _company('xstk3-co')
         self.user = _user(
             self.company, 'xstk3-user',
-            permissions=['stock_modifier', 'stock_voir'])
+            permissions=['stock_modifier', 'stock_voir', 'stock_creer'],
+            role_nom='Commercial responsable')
         self.api = _api(self.user)
         self.produit = Produit.objects.create(
             company=self.company, nom='Panneau 550W', sku='PAN550',
