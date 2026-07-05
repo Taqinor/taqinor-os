@@ -54,7 +54,9 @@ class AyantsDroitAvantagesTests(TestCase):
         self.assertTrue(resp.data['couvert_amo'])
 
         resp = auth(self.rh).get(AYANTS_DROIT_URL, {'employe': self.dossier.id})
-        self.assertEqual(len(resp.data), 1)
+        rows = resp.data['results'] if isinstance(resp.data, dict) \
+            else resp.data
+        self.assertEqual(len(rows), 1)
 
     def test_crud_avantage_social_company_scope(self):
         resp = auth(self.rh).post(AVANTAGES_URL, {
@@ -86,7 +88,9 @@ class AyantsDroitAvantagesTests(TestCase):
             company=self.co, employe=self.dossier, lien='enfant', nom='A')
         resp = auth(rh_b).get(AYANTS_DROIT_URL)
         self.assertEqual(resp.status_code, 200, resp.data)
-        self.assertEqual(len(resp.data), 0)
+        rows = resp.data['results'] if isinstance(resp.data, dict) \
+            else resp.data
+        self.assertEqual(len(rows), 0)
 
     def test_employe_autre_societe_rejete(self):
         co_b = make_company('ayd-c', 'B')
