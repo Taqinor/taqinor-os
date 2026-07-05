@@ -17,7 +17,7 @@ import logging
 from django.conf import settings
 from django.core.mail import EmailMessage, get_connection
 
-from .utils.whatsapp import build_wa_url
+from apps.ventes.utils.whatsapp import build_wa_url
 
 logger = logging.getLogger(__name__)
 
