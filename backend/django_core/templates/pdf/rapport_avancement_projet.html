@@ -52,8 +52,8 @@
       <div class="meta-row">
         <div class="meta-item"><strong>Avancement</strong><span>{{ avancement.avancement_pct }}%</span></div>
         {% if evm %}
-        <div class="meta-item"><strong>SPI</strong><span>{{ evm.spi|default:"—" }}</span></div>
-        <div class="meta-item"><strong>CPI</strong><span>{{ evm.cpi|default:"—" }}</span></div>
+        <div class="meta-item"><strong>SPI</strong><span>{{ evm.spi|default("—") }}</span></div>
+        <div class="meta-item"><strong>CPI</strong><span>{{ evm.cpi|default("—") }}</span></div>
         <div class="meta-item"><strong>EV</strong><span>{{ evm.ev }}</span></div>
         <div class="meta-item"><strong>AC</strong><span>{{ evm.ac }}</span></div>
         {% endif %}
@@ -115,7 +115,7 @@
       <div class="section-title">Synthèse des temps</div>
       {% if synthese_temps %}
       <div class="meta-row">
-        <div class="meta-item"><strong>Total heures</strong><span>{{ synthese_temps.total_heures|default:"0" }}</span></div>
+        <div class="meta-item"><strong>Total heures</strong><span>{{ synthese_temps.total_heures|default("0") }}</span></div>
       </div>
       {% else %}
       <p class="muted">Aucune donnée de temps disponible.</p>
