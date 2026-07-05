@@ -1598,15 +1598,16 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         lead OUVERT existant du même client plutôt que d'en créer un second."""
         ticket = self.get_object()
         from apps.crm.services import create_lead_depuis_ticket
-        # NOTE : le contexte (référence + description du ticket) n'est PAS
-        # passé à `create_lead_depuis_ticket` — cette fonction attribue la
-        # note de contexte à `user`, ce qui déclenche le signal QJ7
-        # (avancement automatique NEW -> CONTACTED au premier contact
-        # MANUEL) et ferait immédiatement sortir le lead du stade NEW
-        # attendu par ZSAV8. Le lien ticket<->lead reste tracé côté SAV via
-        # `activity.log_note` sur le ticket ci-dessous.
+        # Le contexte (référence + description du ticket) est tracé sur le
+        # chatter du lead. `create_lead_depuis_ticket` attribue cette note au
+        # SYSTÈME (user=None), donc le récepteur QJ7 ne fait PAS avancer le
+        # lead hors du stade NEW attendu par ZSAV8.
+        contexte = (
+            f'Créé depuis le ticket SAV {ticket.reference}'
+            + (f' : {ticket.description}' if ticket.description else ''))
         lead, created = create_lead_depuis_ticket(
-            company=ticket.company, user=request.user, client=ticket.client)
+            company=ticket.company, user=request.user, client=ticket.client,
+            contexte=contexte)
         if ticket.lead_id_ext != lead.id:
             ticket.lead_id_ext = lead.id
             ticket.save(update_fields=['lead_id_ext'])

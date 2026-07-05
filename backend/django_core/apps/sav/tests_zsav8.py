@@ -17,7 +17,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
-from apps.crm.models import Client, Lead
+from apps.crm.models import Client, Lead, LeadActivity
 from apps.crm import stages
 from apps.sav.models import Ticket
 
@@ -61,6 +61,30 @@ class ZSAV8CreerLeadTest(TestCase):
 
         self.ticket.refresh_from_db()
         self.assertEqual(self.ticket.lead_id_ext, lead.id)
+
+    def test_contexte_note_tracee_sans_avancer_le_stade(self):
+        """La note de contexte (réf + description du ticket) est tracée sur le
+        chatter du lead, MAIS comme elle est attribuée au système (user=None)
+        le récepteur QJ7 ne fait pas avancer le lead vers CONTACTED : il reste
+        au stade NEW attendu par ZSAV8."""
+        api = auth(self.admin)
+        resp = api.post(
+            f'/api/django/sav/tickets/{self.ticket.id}/creer-lead/')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        lead = Lead.objects.get(pk=resp.data['lead_id'])
+
+        # 1) le lead ne quitte pas le stade NEW malgré la note de contexte
+        self.assertEqual(lead.stage, stages.NEW)
+
+        # 2) la note de contexte EST présente sur le chatter du lead, attribuée
+        #    au système (user None), et cite la référence du ticket
+        notes = LeadActivity.objects.filter(
+            lead=lead, kind=LeadActivity.Kind.NOTE)
+        self.assertEqual(notes.count(), 1)
+        note = notes.get()
+        self.assertIsNone(note.user)
+        self.assertIn(self.ticket.reference, note.body)
+        self.assertIn('Onduleur en fin de vie', note.body)
 
     def test_reutilise_lead_ouvert_existant(self):
         lead_existant = Lead.objects.create(

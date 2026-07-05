@@ -2177,6 +2177,13 @@ def create_lead_depuis_ticket(*, company, user, client, contexte=''):
     au stade ``NEW`` (STAGES.py, jamais codé en dur), pré-rempli avec
     l'identité du client + ``contexte`` en description.
 
+    La note de ``contexte`` est attribuée au SYSTÈME (``user=None``) et non à
+    l'utilisateur appelant : le récepteur QJ7
+    (``_avancer_stage_on_contact_activity``) ne fait avancer NEW -> CONTACTED
+    que sur un premier contact MANUEL (``instance.user is not None``), donc une
+    note système laisse le lead au stade ``NEW`` attendu par ZSAV8 tout en
+    conservant la trace « Créé depuis le ticket SAV … » sur le chatter du lead.
+
     Renvoie ``(lead, created)``."""
     existant = (
         Lead.objects
@@ -2200,5 +2207,7 @@ def create_lead_depuis_ticket(*, company, user, client, contexte=''):
     activity.log_creation(lead, user)
     contexte = (contexte or '').strip()
     if contexte:
-        activity.log_note(lead, user, contexte)
+        # Note SYSTÈME (user=None) : garde le lead au stade NEW (le récepteur
+        # QJ7 ignore les activités système), tout en traçant l'origine.
+        activity.log_note(lead, None, contexte)
     return lead, True
