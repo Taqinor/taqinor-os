@@ -125,6 +125,7 @@ from .services import (
     profils_hors_virement,
     rapprochement_paie_gl,
     rapprocher_affebds,
+    rattacher_bulletins,
     recalculer_cumul_annuel,
     reemettre_ligne_virement,
     registre_conges,
@@ -1039,6 +1040,30 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
                 status=status.HTTP_503_SERVICE_UNAVAILABLE)
         nom = f'bulletins_{periode.annee}_{periode.mois:02d}.pdf'
         return _pdf_response(pdf, nom)
+
+    @action(detail=True, methods=['post'], url_path='rattacher-bulletins')
+    def rattacher_bulletins_action(self, request, pk=None):
+        """Rattache des bulletins non affectés à cette période (ZPAI10).
+
+        Corps : ``bulletins`` (liste d'ids de ``BulletinPaie`` NON clôturés,
+        même société). Refuse si la période cible est clôturée, si un
+        bulletin est d'une autre société, déjà validé, ou créerait un doublon
+        ``(période, profil)``.
+        """
+        periode = self.get_object()
+        bulletin_ids = request.data.get('bulletins') or []
+        if not bulletin_ids:
+            return Response(
+                {'detail': 'Champ "bulletins" (liste d\'ids) requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            rattaches = rattacher_bulletins(periode, bulletin_ids)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            BulletinPaieSerializer(rattaches, many=True).data,
+            status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='journal-de-paie')
     def journal_de_paie(self, request, pk=None):

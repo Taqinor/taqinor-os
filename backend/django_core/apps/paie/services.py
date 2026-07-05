@@ -2423,6 +2423,68 @@ def creer_bulletin_annulation(bulletin_origine, periode_cible):
     return annulation
 
 
+# ── ZPAI10 — Assistant « Ajouter des bulletins existants à une période » ──
+
+def rattacher_bulletins(periode_cible, bulletin_ids):
+    """Rattache des bulletins NON affectés à une ``periode_cible`` (ZPAI10).
+
+    Façon Odoo « Add Payslips » : pose la FK ``periode`` de chaque bulletin
+    listé sur ``periode_cible`` (regroupement rétroactif — utile p. ex. pour
+    consolider un run hors-cycle XPAI4 dans le livre de paie du mois). Garde
+    même société stricte et refuse si la période cible est CLÔTURÉE. Un
+    bulletin qui laisserait un doublon ``(periode_cible, profil)`` (contrainte
+    ``unique_together``) est refusé explicitement (jamais d'IntegrityError
+    500). Opération atomique — soit tout rattache, soit rien. Renvoie la
+    liste des bulletins rattachés (rafraîchis).
+    """
+    from .models import BulletinPaie
+
+    if periode_cible.statut == PeriodePaie.STATUT_CLOTUREE:
+        raise ValueError("La période cible est clôturée.")
+    if not bulletin_ids:
+        raise ValueError("Aucun bulletin fourni.")
+
+    with transaction.atomic():
+        bulletins = list(
+            BulletinPaie.objects
+            .select_for_update()
+            .filter(id__in=bulletin_ids)
+        )
+        if len(bulletins) != len(set(bulletin_ids)):
+            raise ValueError("Un ou plusieurs bulletins sont introuvables.")
+        for bulletin in bulletins:
+            if bulletin.company_id != periode_cible.company_id:
+                raise ValueError(
+                    "Un bulletin appartient à une autre société.")
+        profils_deja_dans_cible = set(
+            BulletinPaie.objects
+            .filter(periode=periode_cible)
+            .exclude(id__in=[b.id for b in bulletins])
+            .values_list('profil_id', flat=True)
+        )
+        profils_du_lot = set()
+        for bulletin in bulletins:
+            if bulletin.profil_id in profils_deja_dans_cible:
+                raise ValueError(
+                    f"Le profil #{bulletin.profil_id} a déjà un bulletin "
+                    "sur la période cible.")
+            if bulletin.profil_id in profils_du_lot:
+                raise ValueError(
+                    f"Le profil #{bulletin.profil_id} apparaît plusieurs "
+                    "fois dans le lot.")
+            profils_du_lot.add(bulletin.profil_id)
+        for bulletin in bulletins:
+            if bulletin.statut == BulletinPaie.STATUT_VALIDE:
+                # Un bulletin VALIDÉ est figé (BulletinVerrouille) — le
+                # rattachement de période n'est permis que sur un brouillon.
+                raise ValueError(
+                    f"Le bulletin #{bulletin.id} est validé (figé) : "
+                    "impossible de le rattacher à une autre période.")
+            bulletin.periode = periode_cible
+            bulletin.save(update_fields=['periode'])
+    return bulletins
+
+
 def valider_bulletin(bulletin):
     """Valide un ``BulletinPaie`` → fige le snapshot (PAIE17).
 
