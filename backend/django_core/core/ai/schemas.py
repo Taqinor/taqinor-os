@@ -94,9 +94,23 @@ CV_SCHEMA = OCRSchema(
     ),
 )
 
+# XSAL8 — Carte de visite (salon/chantier) → pré-remplissage lead express.
+CARTE_VISITE_SCHEMA = OCRSchema(
+    name='carte_visite',
+    label='Carte de visite',
+    fields=(
+        OCRField('nom', 'Nom'),
+        OCRField('prenom', 'Prénom'),
+        OCRField('societe', 'Société'),
+        OCRField('telephone', 'Téléphone'),
+        OCRField('email', 'E-mail'),
+    ),
+)
+
 _SCHEMAS = {
     s.name: s for s in
-    (CIN_SCHEMA, CONTRAT_SCHEMA, BON_LIVRAISON_SCHEMA, CV_SCHEMA)
+    (CIN_SCHEMA, CONTRAT_SCHEMA, BON_LIVRAISON_SCHEMA, CV_SCHEMA,
+     CARTE_VISITE_SCHEMA)
 }
 
 

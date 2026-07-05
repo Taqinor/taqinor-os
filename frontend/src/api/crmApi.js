@@ -42,6 +42,16 @@ const crmApi = {
   // Contrôle pré-création/édition des doublons par téléphone/email (société
   // côté serveur). Avertissement NON bloquant dans le formulaire de lead.
   checkDuplicates: (params) => api.get('/crm/leads/check-duplicates/', { params }),
+  // XSAL8 — scan de carte de visite (photo) → pré-remplissage du lead
+  // express. Ne crée jamais de lead ; renvoie {nom, prenom, societe,
+  // telephone, email, doublons}. 503 si l'OCR n'est pas configuré (clé absente).
+  scanCarteVisite: (file) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.post('/crm/leads/scan-carte/', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
   // Doublons + fusion de leads (sans perte).
   getLeadDuplicates: (id) => api.get(`/crm/leads/${id}/duplicates/`),
   // Atelier doublons : tous les clusters de la société (survivant suggéré).

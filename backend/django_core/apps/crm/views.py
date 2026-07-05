@@ -1,6 +1,8 @@
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from authentication.mixins import TenantMixin
 from authentication.scoping import scope_queryset, scope_client_queryset
 from .models import (
@@ -647,6 +649,42 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
             }
             for d in dups
         ])
+
+    @action(detail=False, methods=['post'], url_path='scan-carte',
+            permission_classes=[IsAnyRole],
+            parser_classes=[MultiPartParser],
+            throttle_classes=[ScopedRateThrottle])
+    def scan_carte(self, request):
+        """XSAL8 — Scan de carte de visite (photo) → pré-remplissage du modal
+        « Lead express ». NE CRÉE JAMAIS de lead — renvoie les champs
+        reconnus + un pré-check de doublons ; l'utilisateur valide avant
+        toute création. Sans clé OCR configurée : 503 douce, aucun appel
+        réseau. Aucune image persistée au-delà du traitement (en mémoire)."""
+        from .services import CarteVisiteScanUnavailable, scan_carte_visite
+
+        upload = request.FILES.get('file')
+        if not upload:
+            return Response(
+                {'detail': 'Aucune image fournie.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            content = upload.read()
+        finally:
+            upload.close()
+
+        try:
+            result = scan_carte_visite(
+                company=request.user.company, file_bytes=content)
+        except CarteVisiteScanUnavailable as exc:
+            message = str(exc)
+            unavailable = 'configuré' in message
+            return Response(
+                {'detail': message},
+                status=(status.HTTP_503_SERVICE_UNAVAILABLE if unavailable
+                        else status.HTTP_400_BAD_REQUEST))
+        return Response(result)
+
+    scan_carte.throttle_scope = 'crm_ocr_scan'
 
     @action(detail=False, methods=['get'], url_path='doublons',
             permission_classes=[IsAnyRole])

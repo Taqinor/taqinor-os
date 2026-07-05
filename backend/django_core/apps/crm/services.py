@@ -1013,6 +1013,88 @@ def create_draft_lead_from_ocr(*, company, user, fields) -> Lead:
     return lead
 
 
+# ── XSAL8 — Scan de carte de visite (salon/chantier) → pré-remplissage ──────
+#
+# NE crée JAMAIS de lead : lit une photo, l'envoie à l'OCR EXISTANT
+# (``core.ai.services.extract_document``, gabarit ``carte_visite`` — la même
+# capacité que FG355/XRH23, key-gated ZHIPU_API_KEY, NO-OP-safe), et renvoie
+# les champs reconnus pour PRÉ-REMPLIR le modal « Lead express » — la création
+# reste TOUJOURS un geste explicite de l'utilisateur (bouton « Créer »).
+
+# Mêmes octets magiques que ``apps.records.storage`` (jamais de nouvelle
+# dépendance) : la carte de visite est une simple PHOTO (JPEG/PNG/WebP),
+# jamais un PDF.
+_CARTE_VISITE_MAX_BYTES = 8 * 1024 * 1024  # 8 Mo (photo mobile courante)
+_CARTE_VISITE_MAGIC = {
+    'image/png': lambda h: h[:8] == b'\x89PNG\r\n\x1a\n',
+    'image/jpeg': lambda h: h[:3] == b'\xff\xd8\xff',
+    'image/webp': lambda h: h[:4] == b'RIFF' and h[8:12] == b'WEBP',
+}
+
+
+class CarteVisiteScanUnavailable(Exception):
+    """XSAL8 — levée quand l'OCR n'est pas configuré (503 douce côté vue) ou
+    quand le fichier fourni n'est pas une image reconnue (400 côté vue)."""
+
+
+def scan_carte_visite(*, company, file_bytes, mime_hint=''):
+    """XSAL8 — Extrait nom/société/téléphone/email d'une photo de carte de
+    visite, PRÉ-VÉRIFIE les doublons, et renvoie un dict prêt à pré-remplir le
+    modal « Lead express » — NE CRÉE JAMAIS de lead (l'utilisateur valide).
+
+    Lève :class:`CarteVisiteScanUnavailable` si le fichier n'est pas une image
+    reconnue (magic bytes) OU trop volumineux OU si aucun fournisseur OCR
+    n'est configuré (``ZHIPU_API_KEY`` absent — dégradation propre, jamais
+    d'appel réseau). Ne persiste JAMAIS l'image reçue au-delà du traitement en
+    mémoire (aucun stockage MinIO — contrairement aux autres flux OCR qui
+    rattachent le fichier en pièce jointe)."""
+    if not file_bytes:
+        raise CarteVisiteScanUnavailable('Aucune image fournie.')
+    if len(file_bytes) > _CARTE_VISITE_MAX_BYTES:
+        raise CarteVisiteScanUnavailable('Image trop volumineuse (max 8 Mo).')
+
+    header = file_bytes[:12]
+    mime = None
+    for candidate_mime, test in _CARTE_VISITE_MAGIC.items():
+        if test(header):
+            mime = candidate_mime
+            break
+    if mime is None:
+        raise CarteVisiteScanUnavailable(
+            'Format non reconnu (JPEG, PNG ou WebP uniquement).')
+
+    from core.ai.services import extract_document
+    result = extract_document(
+        content=file_bytes, mime_type=mime, schema='carte_visite')
+    if not result.configured:
+        raise CarteVisiteScanUnavailable(
+            "Aucun fournisseur OCR n'est configuré (clé absente) — "
+            'saisie manuelle requise.')
+
+    data = result.data or {}
+    nom = str(data.get('nom') or '').strip()[:255]
+    prenom = str(data.get('prenom') or '').strip()[:255]
+    societe = str(data.get('societe') or '').strip()[:255]
+    telephone = str(data.get('telephone') or '').strip()[:50]
+    email = str(data.get('email') or '').strip()[:254]
+
+    doublons = []
+    if telephone or email:
+        dupes = find_duplicates_by_contact(
+            company, phone=telephone or None, email=email or None)
+        doublons = [
+            {'id': d.id, 'nom': d.nom, 'prenom': d.prenom,
+             'telephone': d.telephone, 'email': d.email}
+            for d in dupes
+        ]
+
+    return {
+        'nom': nom, 'prenom': prenom, 'societe': societe,
+        'telephone': telephone, 'email': email,
+        'doublons': doublons,
+    }
+
+
 # ── YLEAD8 — Rattacher l'inbound WhatsApp à un lead OUVERT existant ──────────
 
 def resolve_or_create_lead_from_whatsapp(company, telephone, nom='',

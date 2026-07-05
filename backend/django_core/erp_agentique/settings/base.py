@@ -242,6 +242,8 @@ REST_FRAMEWORK = {
         'ged_public_depot': '30/minute',
         # XPLT4 — webhook entrant automatisation, par jeton.
         'automation_webhook': '60/minute',
+        # XSAL8 — scan de carte de visite (OCR), par utilisateur authentifié.
+        'crm_ocr_scan': '20/hour',
     },
     # YDATA9 — DRF sérialise déjà les `Decimal` en string par défaut (c'est
     # la valeur par défaut de DRF), mais rien ne le VERROUILLAIT explicitement
