@@ -88,7 +88,14 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   <link rel="preconnect" href="https://api.maptiler.com" crossorigin />
   <link rel="preconnect" href="https://api.mapbox.com" crossorigin />
   <section class="bg-nuit px-4 py-8 sm:py-12">
-    <div class="mx-auto max-w-2xl">
+    <!-- WJ98 — au-delà de `lg` (≥1024 px), le formulaire restait figé à
+         `max-w-2xl` (672 px) : sur un écran de bureau, l'assistant flottait
+         dans une colonne étroite avec un vide énorme des deux côtés — aucune
+         mise en page « desktop » réelle. On élargit à `lg:max-w-4xl` (896 px)
+         UNIQUEMENT à partir de `lg` (le mobile/tablette garde `max-w-2xl`,
+         inchangé) ; la largeur récupérée profite directement à la carte
+         (hauteur augmentée ci-dessous) et aux formulaires en grille. -->
+    <div class="mx-auto max-w-2xl lg:max-w-4xl">
       <!-- WJ65 — sortie honnête SANS JavaScript : cette page est entièrement
            pilotée par script (carte, calcul, envoi) — sans JS elle resterait
            muette. On propose ici même une sortie qui ne demande AUCUN JS. -->
@@ -278,7 +285,14 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
                clavier propre (le pin/tracé est à la souris/au tactile ; la
                recherche d'adresse au-dessus reste un vrai formulaire
                accessible). aria-label seul suffit à la nommer. -->
-          <div id="rp9-map" class="mt-skeleton-shimmer mt-0 h-[44dvh] min-h-[280px] w-full bg-nuit-700"
+          <!-- WJ98 — la bande `44dvh` était un compromis TÉLÉPHONE (garder la
+               recherche + les boutons visibles sans défiler) ; sur un viewport
+               desktop `lg:`, la même hauteur relative laisse une carte trop
+               courte pour tracer un contour de toit confortablement. `lg:h-[62vh]`
+               (plafonné à 640 px) donne une zone de travail nettement plus
+               généreuse dès que l'écran a la place, sans toucher au comportement
+               téléphone/tablette (`h-[44dvh]` inchangé en dessous de `lg`). -->
+          <div id="rp9-map" class="mt-skeleton-shimmer mt-0 h-[44dvh] min-h-[280px] w-full bg-nuit-700 lg:h-[62vh] lg:max-h-[640px]"
             aria-label="Carte satellite pour repérer votre toit"></div>
 
           <div class="flex flex-wrap items-center gap-3 border-t border-white/10 p-4">

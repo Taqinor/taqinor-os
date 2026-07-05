@@ -94,7 +94,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   <link rel="preconnect" href="https://api.maptiler.com" crossorigin />
   <link rel="preconnect" href="https://api.mapbox.com" crossorigin />
   <section class="bg-nuit px-4 py-8 sm:py-12">
-    <div class="mx-auto max-w-2xl">
+    <!-- WJ98 — mise en page bureau : élargie au-delà de `max-w-2xl` dès `lg`
+         (mobile/tablette inchangés) ; voir la page FR (pages/devis/mon-toit.astro)
+         pour la justification. -->
+    <div class="mx-auto max-w-2xl lg:max-w-4xl">
       <!-- WJ65 — سطر خروج صادق بدون جافاسكريبت: هذه الصفحة مدفوعة بالكامل
            بالسكربت (الخريطة، الحساب، الإرسال) — بدونه ستبقى صامتة. نوفر هنا
            مخرجاً لا يحتاج أي جافاسكريبت على الإطلاق. -->
@@ -280,7 +283,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
                clavier propre (le pin/tracé est à la souris/au tactile ; la
                recherche d'adresse au-dessus reste un vrai formulaire
                accessible). aria-label seul suffit à la nommer. -->
-          <div id="rp9-map" class="mt-skeleton-shimmer mt-0 h-[44dvh] min-h-[280px] w-full bg-nuit-700"
+          <!-- WJ98 — carte plus haute sur bureau (`lg:h-[62vh]`, plafonnée 640px) ; téléphone/tablette inchangés. -->
+          <div id="rp9-map" class="mt-skeleton-shimmer mt-0 h-[44dvh] min-h-[280px] w-full bg-nuit-700 lg:h-[62vh] lg:max-h-[640px]"
             aria-label="خريطة الأقمار الصناعية لتحديد سطحكم"></div>
 
           <div class="flex flex-wrap items-center gap-3 border-t border-white/10 p-4">
