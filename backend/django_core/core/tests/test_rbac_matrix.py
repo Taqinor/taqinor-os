@@ -63,8 +63,14 @@ class RbacMatrixTests(TestCase):
 
     def test_matrix_covers_crm_ventes_stock(self):
         self.assertEqual(
-            rbac_matrix.covered_apps(), {"crm", "ventes", "stock"},
-            "La matrice de référence doit couvrir crm + ventes + stock.")
+            rbac_matrix.covered_apps(),
+            {
+                "crm", "ventes", "stock",
+                # YRBAC3 — apps nouvellement fine-grainées.
+                "qhse", "gestion_projet", "contrats", "litiges", "kb",
+            },
+            "La matrice de référence doit couvrir crm + ventes + stock + "
+            "qhse + gestion_projet + contrats + litiges + kb.")
 
     def test_every_entry_has_allow_and_deny(self):
         """Chaque ligne a AU MOINS un allow ET, pour les gardes fines, un deny."""
