@@ -72,6 +72,7 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
             return [HasPermissionOrLegacy('stock_modifier')()]
         elif self.action in WRITE_ACTIONS + [
             'envoyer', 'recevoir', 'annuler', 'confirmer', 'reviser',
+            'facturer',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'en_retard':
@@ -607,3 +608,24 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
         from ..selectors import lignes_import_depuis_bcf
         bc = self.get_object()
         return Response(lignes_import_depuis_bcf(request.user.company, bc.pk))
+
+    @action(detail=True, methods=['post'], url_path='facturer')
+    def facturer(self, request, pk=None):
+        """ZPUR1 — facture DIRECTEMENT ce BCF depuis ses lignes « sur
+        commande » (`Produit.politique_facturation_achat`), SANS exiger de
+        réception préalable. Les lignes « sur réception » (défaut) restent
+        hors de ce chemin — elles ne se facturent que via FG56
+        (`receptions-fournisseur/{id}/facturer/`)."""
+        from ..services import facturer_bcf_sur_commande
+        bc = self.get_object()
+        try:
+            facture = facturer_bcf_sur_commande(
+                company=request.user.company, user=request.user,
+                bon_commande=bc)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            FactureFournisseurSerializer(
+                facture, context={'request': request}).data,
+            status=status.HTTP_201_CREATED)

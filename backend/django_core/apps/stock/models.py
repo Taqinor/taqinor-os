@@ -615,6 +615,26 @@ class Produit(models.Model):
         help_text="Pays d'origine du produit — utilisé pour pré-remplir le "
                   'dossier d\'import ADII.')
 
+    # ── ZPUR1 — Politique de facturation d'achat (parité « Bill Control »
+    # Odoo : Ordered vs Received quantities) ───────────────────────────────
+    # Défaut `sur_reception` = comportement HISTORIQUE inchangé (FG56 :
+    # `receptions-fournisseur/{id}/facturer/` reste l'unique chemin). Un
+    # produit `sur_commande` peut en plus être facturé DIRECTEMENT depuis un
+    # BCF (`bons-commande-fournisseur/{id}/facturer/`, ZPUR1) sans exiger de
+    # réception au préalable — utile pour un import payé à la commande.
+    class PolitiqueFacturationAchat(models.TextChoices):
+        SUR_RECEPTION = 'sur_reception', 'Sur réception'
+        SUR_COMMANDE = 'sur_commande', 'Sur commande'
+
+    politique_facturation_achat = models.CharField(
+        max_length=20, choices=PolitiqueFacturationAchat.choices,
+        default=PolitiqueFacturationAchat.SUR_RECEPTION,
+        verbose_name="Politique de facturation d'achat",
+        help_text='« Sur réception » = comportement historique (FG56, '
+                  'facturé depuis la réception). « Sur commande » = peut '
+                  "être facturé directement depuis le BCF, sans exiger de "
+                  'réception préalable (ZPUR1).')
+
     class Meta:
         verbose_name = "Produit"
         verbose_name_plural = "Produits"

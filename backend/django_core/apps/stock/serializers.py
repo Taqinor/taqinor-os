@@ -252,6 +252,9 @@ class ProduitSerializer(serializers.ModelSerializer):
             'unite_stock',
             # Prix (prix_achat gardé par permission, cf. get_fields)
             'prix_achat', 'prix_vente', 'tva',
+            # ZPUR1 — politique de facturation d'achat (sur_reception/
+            # sur_commande) — INTERNE, jamais client-facing (achat).
+            'politique_facturation_achat',
             # Stock
             'quantite_stock', 'seuil_alerte', 'is_archived',
             # Relations (lecture imbriquée + écriture par *_id)

@@ -2341,6 +2341,95 @@ def facturer_reception(company, user, reception):
     return created['ff']
 
 
+# ── ZPUR1 — Politique de facturation d'achat (Odoo « Bill Control ») ────────
+# FG56 (`facturer_reception`, ci-dessus) ne facture QUE depuis une réception
+# confirmée — impossible de facturer d'avance un BCF « à la commande »
+# (import payé sur bon de commande). `Produit.politique_facturation_achat`
+# pilote quelles LIGNES sont éligibles à ce chemin direct ; les lignes
+# `sur_reception` (défaut) restent facturées EXCLUSIVEMENT via FG56.
+
+def facturer_bcf_sur_commande(company, user, bon_commande):
+    """ZPUR1 — construit une FactureFournisseur BROUILLON depuis les lignes
+    COMMANDÉES (quantité × prix d'achat) d'un BCF dont les lignes sont
+    `sur_commande`, SANS exiger de réception. Réutilise le même builder de
+    lignes/montants que FG56 (HT/TVA par ligne, taux produit ou 20% défaut).
+
+    Lève ValueError si le BCF n'a AUCUNE ligne `sur_commande` (les lignes
+    `sur_reception` restent hors de ce chemin — direction vers FG56), ou si
+    ce BCF est déjà entièrement facturé par ce chemin (idempotence : jamais
+    deux factures pour la même quantité `sur_commande`)."""
+    from decimal import Decimal
+    from apps.ventes.utils.references import create_with_reference
+    from .models import FactureFournisseur, LigneFactureFournisseur, Produit
+
+    lignes_eligibles = [
+        ligne for ligne in bon_commande.lignes.select_related('produit').all()
+        if ligne.produit_id is not None
+        and ligne.produit.politique_facturation_achat
+        == Produit.PolitiqueFacturationAchat.SUR_COMMANDE
+    ]
+    if not lignes_eligibles:
+        raise ValueError(
+            "Aucune ligne « sur commande » sur ce bon de commande — "
+            'utilisez la facturation depuis la réception (FG56).')
+
+    marqueur = f'Facture sur commande {bon_commande.reference}'
+    if FactureFournisseur.objects.filter(
+            company=company, bon_commande=bon_commande,
+            note__startswith=marqueur).exists():
+        raise ValueError(
+            f'Ce bon de commande ({bon_commande.reference}) est déjà '
+            'facturé sur commande.')
+
+    taux_tva_defaut = Decimal('20')
+    montant_ht = Decimal('0')
+    montant_tva = Decimal('0')
+    lignes_data = []
+    for ligne in lignes_eligibles:
+        pu = ligne.prix_achat_unitaire or Decimal('0')
+        total = Decimal(str(ligne.quantite)) * pu
+        montant_ht += total
+        designation = (
+            ligne.produit.nom if ligne.produit_id else
+            (ligne.designation or 'Produit'))
+        taux_ligne = (ligne.produit.tva
+                      if ligne.produit_id and ligne.produit.tva is not None
+                      else taux_tva_defaut)
+        tva_ligne = (total * taux_ligne / Decimal('100')).quantize(
+            Decimal('0.01'))
+        montant_tva += tva_ligne
+        lignes_data.append((designation, ligne.quantite, pu, taux_ligne))
+
+    montant_ttc = montant_ht + montant_tva
+    created = {}
+
+    def _save(ref):
+        ff = FactureFournisseur.objects.create(
+            company=company, reference=ref,
+            fournisseur=bon_commande.fournisseur,
+            bon_commande=bon_commande,
+            montant_ht=montant_ht, montant_tva=montant_tva,
+            montant_ttc=montant_ttc,
+            statut=FactureFournisseur.Statut.A_PAYER,
+            note=marqueur, created_by=user)
+        for designation, qte, pu, taux_ligne in lignes_data:
+            LigneFactureFournisseur.objects.create(
+                facture=ff, designation=designation,
+                quantite=qte, prix_unitaire_ht=pu, taux_tva=taux_ligne)
+        created['ff'] = ff
+        return ff
+
+    create_with_reference(FactureFournisseur, 'FF', company, _save)
+    try:
+        from core.events import facture_fournisseur_creee
+        facture_fournisseur_creee.send(
+            sender=FactureFournisseur, facture=created['ff'],
+            company=company, user=user)
+    except Exception:  # pragma: no cover - défensif, best-effort
+        pass
+    return created['ff']
+
+
 # ── DC38 — Landed cost (FG316) replié dans le coût moyen pondéré ─────────────
 # Le coût débarqué d'un dossier d'import (fret/douane/TVA import/transit) est
 # écrit dans le champ EXISTANT `LigneBonCommandeFournisseur.frais_annexes` —
