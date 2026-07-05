@@ -18,6 +18,7 @@ from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 
 # ── QHSE1 / QHSE9 — Non-conformités (NCR) ──────────────────────────────────
@@ -157,8 +158,12 @@ class NonConformite(models.Model):
     cout_reel = models.DecimalField(
         max_digits=12, decimal_places=2,
         null=True, blank=True, verbose_name='Coût réel (interne)')
+    # XQHS22 — pas ``auto_now_add`` : le rollup mensuel (cout_non_qualite)
+    # ventile par ``date_creation`` et doit pouvoir dater un NCR rétroactivement
+    # (backfill/tests) ; l'API garde le champ read-only (auto au moment du
+    # ``create`` via le default), donc le comportement client est inchangé.
     date_creation = models.DateTimeField(
-        auto_now_add=True, verbose_name='Créé le')
+        default=timezone.now, verbose_name='Créé le')
 
     class Meta:
         verbose_name = 'Non-conformité'
