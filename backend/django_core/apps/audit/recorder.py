@@ -54,12 +54,18 @@ def _company_of(instance):
 
 def record(action, *, instance=None, content_type=None, object_id=None,
            object_repr=None, detail='', company=None, user=_UNSET,
-           actor_username=None):
+           actor_username=None, changes=None):
     """Écrit une ligne d'audit. Best-effort : aucune exception ne remonte.
 
     Si ``instance`` est fourni, content_type/object_id/object_repr/company en
     sont dérivés (sauf surcharge explicite). ``user`` par défaut = acteur courant
-    (résolu depuis la requête) ; passer ``user=None`` pour une action système."""
+    (résolu depuis la requête) ; passer ``user=None`` pour une action système.
+
+    ``changes`` (YHARD3, optionnel) — diff structuré best-effort pour les
+    UPDATE : liste de ``{"field": ..., "old": ..., "new": ...}``. Purement
+    additif ; ``None`` par défaut (comportement inchangé). Consommé par
+    ``selectors.reconstruct_as_of`` pour rejouer l'état d'un objet à une date
+    passée."""
     try:
         from django.contrib.contenttypes.models import ContentType
         from .models import AuditLog
@@ -98,6 +104,7 @@ def record(action, *, instance=None, content_type=None, object_id=None,
             object_id=str(object_id or '')[:64],
             object_repr=(object_repr or '')[:255],
             detail=detail or '',
+            changes=changes,
         )
     except Exception:  # noqa: BLE001 — best-effort, ne jamais bloquer la requête
         logger.debug('audit record failed', exc_info=True)
