@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("parametres", "0047_zstk11_methode_reservation_stock"),
+        ("parametres", "0052_xmkt23_seuil_approbation_envoi_masse"),
     ]
 
     operations = [

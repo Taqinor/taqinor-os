@@ -10,7 +10,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("crm", "0046_xsal9_client_parent"),
+        ("crm", "0047_xsal9_client_parent"),
     ]
 
     operations = [

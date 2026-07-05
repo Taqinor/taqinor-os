@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("crm", "0044_qw10_lead_contact_normalized_index"),
+        ("crm", "0045_xsal1_client_liste_prix"),
     ]
 
     operations = [

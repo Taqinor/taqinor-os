@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("crm", "0045_xsal7_lead_forecast_fields"),
+        ("crm", "0046_xsal7_lead_forecast_fields"),
     ]
 
     operations = [
