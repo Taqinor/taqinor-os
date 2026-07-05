@@ -164,13 +164,22 @@ class TestReservationAutomatiqueALaReception(Yproc10Base):
         bon.statut = BonCommandeFournisseur.Statut.ENVOYE
         bon.save(update_fields=['statut'])
 
+        # N14 réserve DÉJÀ tout le besoin du chantier (20) dès sa création
+        # (`seed_reservations`, indépendant de YPROC10) : le disponible reflète
+        # donc le manque réel du chantier avant toute réception (5 stock − 20
+        # réservé = -15).
         avant = available_quantity(self.panneau)
+        self.assertEqual(avant, -15)
         self._confirmer_reception(bon, 10)
         self.panneau.refresh_from_db()
         apres = available_quantity(self.panneau)
-        # Stock total +10 (réception), réservé +10 (chantier) -> disponible
-        # inchangé (la marchandise reçue est immédiatement engagée).
-        self.assertEqual(apres, avant)
+        # YPROC10 replafonne la réservation du chantier à la quantité REÇUE
+        # cumulée (10, jamais plus que le manque figé au brouillon = 15) —
+        # elle n'est donc plus jamais gonflée au besoin total (20). Stock
+        # total +10 (15) − réservé 10 = 5 : le disponible est bien VISIBLE
+        # (il bouge avec la réception) et jamais sur-réservé.
+        self.assertEqual(apres, 5)
+        self.assertGreater(apres, avant)
 
 
 class TestSansChantierOrigineInchange(Yproc10Base):
