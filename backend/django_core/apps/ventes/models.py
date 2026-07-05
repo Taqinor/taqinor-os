@@ -2811,3 +2811,73 @@ class RegleListePrix(models.Model):
         if self.marque:
             return (produit.marque or '') == self.marque
         return True
+
+
+class PlanCommission(models.Model):
+    """XSAL6 — Plan de commission par commercial (au-delà du mode société
+    unique `CompanyProfile.commission_mode`).
+
+    ``owner`` nul = plan par défaut de la société (fallback quand un
+    commercial n'a pas de plan dédié). ``base`` détermine sur quoi le taux/
+    montant s'applique : CA des devis signés, marge interne (ADMIN-ONLY —
+    calculée depuis ``prix_achat``, jamais exposée aux non-admins) ou MAD par
+    kWc installé. ``paliers`` (JSON optionnel) permet une accélération du taux
+    une fois un seuil d'atteinte d'objectif dépassé — la lecture de
+    l'atteinte se fait via ``apps.crm.selectors`` (jamais d'import direct de
+    ``apps.crm.models``). Le rapport (`reporting/insights.commissions`)
+    résout le plan du commercial : plan dédié → plan par défaut société →
+    ``CompanyProfile.commission_mode`` actuel (comportement historique
+    inchangé quand aucun plan n'existe)."""
+    class Base(models.TextChoices):
+        CA_DEVIS_SIGNE = 'ca_devis_signe', 'CA des devis signés'
+        MARGE_INTERNE = 'marge_interne', 'Marge interne (admin uniquement)'
+        PAR_KWC = 'par_kwc', 'MAD par kWc installé'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='plans_commission')
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, null=True,
+        blank=True, related_name='plans_commission',
+        help_text='Vide = plan par défaut de la société.')
+    base = models.CharField(max_length=20, choices=Base.choices)
+    taux_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text='% appliqué à la base (mode ca_devis_signe / marge_interne).')
+    montant_par_kwc = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text='MAD par kWc installé (mode par_kwc).')
+    # Paliers d'accélération : [{"seuil_atteinte_pct": 100, "taux": 5}, ...]
+    # adossés à l'atteinte crm.ObjectifCommercial (lue via crm.selectors).
+    paliers = models.JSONField(null=True, blank=True)
+    actif = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Plan de commission'
+        verbose_name_plural = 'Plans de commission'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        who = f'owner={self.owner_id}' if self.owner_id else 'défaut société'
+        return f'PlanCommission({who}, {self.base})'
+
+    def taux_effectif(self, atteinte_pct=None):
+        """Taux/montant après application du palier d'accélération le plus
+        haut ATTEINT (``atteinte_pct`` fourni par l'appelant, résolu via
+        ``crm.selectors``). Sans palier ou sans atteinte fournie : le taux de
+        base, comportement inchangé."""
+        base_valeur = (
+            self.montant_par_kwc if self.base == self.Base.PAR_KWC
+            else self.taux_pct
+        )
+        if not self.paliers or atteinte_pct is None:
+            return base_valeur
+        eligible = [
+            p for p in self.paliers
+            if atteinte_pct >= p.get('seuil_atteinte_pct', 0)
+        ]
+        if not eligible:
+            return base_valeur
+        best = max(eligible, key=lambda p: p.get('seuil_atteinte_pct', 0))
+        return best.get('taux', base_valeur)
