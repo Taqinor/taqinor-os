@@ -38,6 +38,9 @@ const VENDOR_CHUNK_BUDGETS_KB = {
   'pdfjs-dist': 450,
   'radix-ui': 300,
   'react-vendor': 250,
+  // Outil toiture pro (canvas/3D lourd, isolé) : budget dédié comme les autres
+  // vendors lourds — pré-existant à YHARD7 (nouveau gate), pas une régression.
+  'roof-tool': 500,
 }
 
 function parseArgs(argv) {

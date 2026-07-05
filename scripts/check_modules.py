@@ -35,6 +35,13 @@ KEY_RE = re.compile(r"""['"]?key['"]?\s*[:=]\s*['"]([A-Za-z0-9_]+)['"]""")
 # aliases map a frontend module.config key to the backend manifest key it uses.
 FRONTEND_KEY_ALIASES = {
     'ged_advanced': 'ged',
+    # Nav-groupings frontend batch-4 par-dessus des apps backend existantes
+    # (pas de nouvelle app backend) : magasin (casiers/put-away/pick/colisage)
+    # + logistique (livraisons/transferts/comptages) = surface `stock` ;
+    # workflow (BPM/jobs) = surface `automation`.
+    'magasin': 'stock',
+    'logistique': 'stock',
+    'workflow': 'automation',
 }
 
 
