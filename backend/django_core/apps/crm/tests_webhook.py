@@ -555,3 +555,65 @@ class QW9ReplayFreshnessTests(TestCase):
         near = (timezone.now() - timezone.timedelta(minutes=5)).isoformat()
         res = self.post(payload_site(), timestamp=near)
         self.assertEqual(res.status_code, 201, res.content)
+
+
+@override_settings(WEBSITE_LEAD_WEBHOOK_SECRET=SECRET)
+class QW10IndexedDedupAndConcurrencyTests(TestCase):
+    """QW10 — dédup indexée + garde concurrente via idempotencyKey."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='Taqinor Test QW10', slug='taqinor-test-qw10')
+        self.url = reverse('website-lead-webhook')
+
+    def post(self, data, secret=SECRET):
+        headers = {'HTTP_X_WEBHOOK_SECRET': secret} if secret is not None else {}
+        return self.client.post(
+            self.url, data=json.dumps(data),
+            content_type='application/json', **headers)
+
+    def test_normalized_columns_maintained_on_save(self):
+        res = self.post(payload_site(phoneE164='+212 6-61 85-04-10'))
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertEqual(lead.phone_normalise, '661850410')
+
+    def test_find_duplicates_by_contact_uses_indexed_columns(self):
+        from apps.crm.services import find_duplicates_by_contact
+        lead = Lead.objects.create(
+            company=self.company, nom='Test', telephone='0612345678')
+        lead.refresh_from_db()
+        self.assertEqual(lead.phone_normalise, '612345678')
+        dupes = find_duplicates_by_contact(self.company, phone='+212612345678')
+        self.assertEqual([d.pk for d in dupes], [lead.pk])
+
+    def test_concurrent_double_post_same_idempotency_key_creates_one_lead(self):
+        import threading
+
+        results = []
+        key = 'concurrent-test-key-1234'
+
+        def _fire(city):
+            res = self.post(payload_site(
+                phoneE164='+212677112233', idempotencyKey=key, city=city))
+            results.append(res.status_code)
+
+        t1 = threading.Thread(target=_fire, args=('Casablanca',))
+        t2 = threading.Thread(target=_fire, args=('Rabat',))
+        t1.start()
+        t1.join()
+        t2.start()
+        t2.join()
+
+        self.assertEqual(
+            Lead.objects.filter(telephone='+212677112233').count(), 1)
+
+    def test_idempotency_key_absent_behaviour_unchanged(self):
+        res = self.post(payload_site())
+        self.assertEqual(res.status_code, 201, res.content)
+
+    def test_cross_company_isolation_on_indexed_dedup(self):
+        from apps.crm.services import find_duplicates_by_contact
+        other_company = Company.objects.create(nom='Autre QW10', slug='autre-qw10')
+        Lead.objects.create(
+            company=other_company, nom='Autre société', telephone='0600000099')
+        dupes = find_duplicates_by_contact(self.company, phone='0600000099')
+        self.assertEqual(dupes, [])

@@ -520,7 +520,14 @@ def find_duplicates_by_contact(company, *, phone=None, email=None,
     """Leads d'une société partageant un téléphone OU un email normalisé avec
     les valeurs fournies (saisie libre acceptée — mêmes normaliseurs que la
     détection de doublons). Sert AUSSI au contrôle PRÉ-CRÉATION, où aucun Lead
-    n'existe encore (d'où l'absence d'instance). Inclut les archivés."""
+    n'existe encore (d'où l'absence d'instance). Inclut les archivés.
+
+    QW10 — requête INDEXÉE sur les colonnes normalisées maintenues par
+    `Lead.save()` (`phone_normalise`/`email_normalise`, backfillées par la
+    migration pour les lignes existantes) — jamais un scan Python complet de
+    la société à chaque appel."""
+    from django.db.models import Q
+
     phone = normalize_phone(phone)
     email = normalize_email(email)
     if not phone and not email:
@@ -528,13 +535,13 @@ def find_duplicates_by_contact(company, *, phone=None, email=None,
     qs = Lead.objects.filter(company=company)
     if exclude_pk is not None:
         qs = qs.exclude(pk=exclude_pk)
-    candidates = []
-    for other in qs:
-        if phone and normalize_phone(other.telephone) == phone:
-            candidates.append(other)
-        elif email and normalize_email(other.email) == email:
-            candidates.append(other)
-    return candidates
+
+    q = Q()
+    if phone:
+        q |= Q(phone_normalise=phone)
+    if email:
+        q |= Q(email_normalise=email)
+    return list(qs.filter(q))
 
 
 def merge_leads(survivor, others, user):

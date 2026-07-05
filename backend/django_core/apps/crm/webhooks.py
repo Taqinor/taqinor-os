@@ -515,6 +515,33 @@ def website_lead_webhook(request):
         telephone = fields.get('telephone') or ''
         email = fields.get('email') or ''
 
+        # QW10 — Garde CONCURRENTE via `idempotencyKey` (lib/lead.ts — jeton
+        # généré côté navigateur à l'ouverture de la session de saisie).
+        # `cache.add` est atomique : deux POSTs simultanés avec la MÊME clé ne
+        # peuvent jamais tous les deux se croire « premiers » — la requête
+        # PERDANTE attend brièvement que la gagnante commite son lead, puis
+        # rejoint la dédup téléphone/email normale ci-dessous (jamais de
+        # logique de fusion dupliquée). Best-effort : sans clé (anciens
+        # workers) ou cache indisponible, comportement inchangé (couches 1/2
+        # restent la seule protection).
+        idempotency_key = str(
+            data.get('idempotencyKey') or data.get('idempotency_key') or ''
+        ).strip()[:64]
+        if idempotency_key:
+            try:
+                import time as _time
+
+                from django.core.cache import cache
+                cache_key = f'qw10-idem:{company.pk}:{idempotency_key}'
+                won = cache.add(cache_key, True, DEDUP_WINDOW_SECONDS)
+                if not won:
+                    # Perdant de la course : laisse une chance à la requête
+                    # gagnante de commiter avant la recherche de doublon
+                    # ci-dessous (best-effort, jamais un blocage long).
+                    _time.sleep(0.15)
+            except Exception:  # noqa: BLE001 — cache indisponible : no-op
+                pass
+
         existing = None
         is_window_dedup = False
         # ── Couche 1 : dédup < 60 s (double-clic / relance réseau) ────────────

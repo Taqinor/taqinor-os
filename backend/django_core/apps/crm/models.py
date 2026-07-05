@@ -564,6 +564,30 @@ class Lead(models.Model):
                   'déclenchée par le franchissement du seuil MQL (XMKT21).',
     )
 
+    # ── QW10 — Colonnes de dédup NORMALISÉES + indexées (additif) ──
+    # `find_duplicates_by_contact` itérait TOUS les leads d'une société en
+    # Python à chaque webhook (O(N), cible d'amplification sur un endpoint à
+    # secret statique). Ces colonnes sont maintenues en écriture (voir
+    # `save()`) à partir des mêmes normaliseurs (`services.normalize_phone` /
+    # `normalize_email`) : la recherche devient une requête indexée, pas un
+    # scan. Vide ('') plutôt que NULL pour rester indexable simplement (une
+    # valeur vide n'est jamais un doublon — filtrée côté requête).
+    phone_normalise = models.CharField(
+        max_length=20, blank=True, default='', db_index=True,
+        verbose_name='Téléphone normalisé (dédup)')
+    email_normalise = models.CharField(
+        max_length=254, blank=True, default='', db_index=True,
+        verbose_name='Email normalisé (dédup)')
+
+    def save(self, *args, **kwargs):
+        # QW10 — maintient les colonnes de dédup normalisées à chaque save,
+        # quelle que soit la voie d'écriture (webhook, admin, API, import) —
+        # source unique de vérité : `apps.crm.services` (jamais dupliquée ici).
+        from . import services as _crm_services
+        self.phone_normalise = _crm_services.normalize_phone(self.telephone) or ''
+        self.email_normalise = _crm_services.normalize_email(self.email) or ''
+        super().save(*args, **kwargs)
+
     class Meta:
         verbose_name = 'Lead'
         verbose_name_plural = 'Leads'
@@ -572,6 +596,12 @@ class Lead(models.Model):
             models.Index(fields=['company', 'source']),
             models.Index(fields=['company', 'stage']),
             models.Index(fields=['company', 'score'], name='crm_lead_company_score_idx'),
+            # QW10 — dédup indexée (téléphone/email normalisés), remplace le
+            # scan Python complet de `find_duplicates_by_contact`.
+            models.Index(fields=['company', 'phone_normalise'],
+                         name='crm_lead_company_phone_norm_idx'),
+            models.Index(fields=['company', 'email_normalise'],
+                         name='crm_lead_company_email_norm_idx'),
         ]
         constraints = [
             # An imported record is unique per (company, system, external id) so
