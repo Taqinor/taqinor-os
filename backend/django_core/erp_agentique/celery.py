@@ -133,6 +133,13 @@ app.conf.beat_schedule = {
         'task': 'crm.recycler_leads_non_travailles',
         'schedule': crontab(minute=0),  # every hour
     },
+    # QW4 — SLA rappel plus serré que le SLA générique premier-contact :
+    # tourne plus souvent (toutes les 30 min) pour rattraper une escalade
+    # rapidement sur un SLA rappel typiquement court (2 à quelques heures).
+    'crm-escalader-rappels-demandes': {
+        'task': 'crm.escalader_rappels_demandes',
+        'schedule': crontab(minute='*/30'),
+    },
     # XPLT6 — évalue les alertes de seuil sur KPI agrégés (dédup interne).
     'reporting-evaluate-kpi-alertes': {
         'task': 'reporting.evaluate_kpi_alertes',

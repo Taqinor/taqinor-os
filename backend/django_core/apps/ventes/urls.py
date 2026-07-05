@@ -43,7 +43,12 @@ from .recouvrement import (
     client_score_comportement,  # XFAC15
     dossier_contentieux,  # XFAC21
 )
-from .public_views import proposal_data, proposal_accept, proposal_pdf
+from .public_views import (
+    proposal_data, proposal_accept, proposal_pdf,
+    # QW5 — mêmes vues QJ27, aliasées ici sous le mount `ventes/` (le site
+    # les appelle ici, pas sous `public/` — jamais de logique dupliquée).
+    proposal_contact_request, proposal_request_otp,
+)
 from .dashboard_view import dashboard_quote_to_cash
 from .insights_view import cash_flow_forecast, analyse_facturation_view  # ZFAC10
 from .journal_view import journal_ventes, export_comptable
@@ -129,6 +134,13 @@ urlpatterns = [
     # affichage inline. Placé AVANT le routeur (comme les autres routes
     # proposal/) pour ne pas être avalé par la route /devis/.
     path('proposal/<str:token>/pdf/', proposal_pdf, name='proposal-pdf'),
+    # QW5 — le site poste sur CE mount (ventes/), pas sur public/ où ces vues
+    # QJ27 vivent déjà (apps/ventes/public_urls.py) — sans cet alias, 404.
+    # Même vue, jamais de logique dupliquée.
+    path('proposal/<str:token>/contact/', proposal_contact_request,
+         name='proposal-contact-ventes'),
+    path('proposal/<str:token>/otp/', proposal_request_otp,
+         name='proposal-otp-ventes'),
     # Export comptable : journal des ventes + résumé TVA (.xlsx).
     path('journal-ventes/', journal_ventes, name='journal-ventes'),
     # Export comptable DGI (groundwork) : factures validées d'une plage,

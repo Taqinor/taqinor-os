@@ -211,6 +211,41 @@ class Lead(models.Model):
         AVEC = 'avec', 'Avec batterie'
         LES_DEUX = 'les_deux', 'Les deux options'
 
+    # QW2 — Mode PROFESSIONNEL du site (WJ68) : type de site + nombre de sites.
+    # Vocabulaire identique à `apps/web/src/lib/lead.ts` (FACILITY_TYPES /
+    # SITE_COUNTS) — additifs, optionnels, jamais redemandés au commercial.
+    class FacilityType(models.TextChoices):
+        BUREAU = 'bureau', 'Bureau'
+        ENTREPOT = 'entrepot', 'Entrepôt'
+        USINE = 'usine', 'Usine'
+        COMMERCE = 'commerce', 'Commerce'
+        AGRICOLE = 'agricole', 'Agricole'
+        AUTRE = 'autre', 'Autre'
+
+    class SiteCount(models.TextChoices):
+        UN = '1', '1 site'
+        DEUX_A_CINQ = '2-5', '2 à 5 sites'
+        SIX_PLUS = '6+', '6 sites ou plus'
+
+    # QW2 — Créneau de visite technique préféré (W353), STATIQUE — jamais une
+    # réservation confirmée (le RDV réel reste QJ20 Appointment).
+    class VisitWindowPart(models.TextChoices):
+        MATIN = 'matin', 'Matin'
+        APRES_MIDI = 'apres_midi', 'Après-midi'
+
+    class VisitWindowWeek(models.TextChoices):
+        CETTE_SEMAINE = 'cette_semaine', 'Cette semaine'
+        SEMAINE_PROCHAINE = 'semaine_prochaine', 'Semaine prochaine'
+
+    # QW3 — Préférence de contact EXPLICITE du prospect (lead.ts
+    # CONTACT_PREFERENCES), DISTINCTE de `whatsapp_opt_in` (consentement
+    # marketing WhatsApp) et de `Canal` (canal marketing d'ORIGINE) : ceci est
+    # « comment voulez-vous qu'on vous recontacte », une question posée UNE
+    # FOIS au client, jamais déduite ni écrasée par le canal marketing.
+    class ContactPreference(models.TextChoices):
+        WHATSAPP_ONLY = 'whatsapp_only', 'WhatsApp uniquement'
+        PHONE_OK = 'phone_ok', 'Rappel téléphonique OK'
+
     # Langue préférée du contact pour les messages (ex. WhatsApp). Nullable :
     # tant qu'elle n'est pas renseignée, le message retombe sur le FR. Les clés
     # sont identiques à celles attendues par le constructeur WhatsApp
@@ -404,6 +439,12 @@ class Lead(models.Model):
     # Bande ROI préliminaire affichée au prospect (ex. « 5 à 9 kWc · 4 à 6 ans »)
     roi_band = models.CharField(max_length=200, blank=True, null=True)
     whatsapp_opt_in = models.BooleanField(null=True, blank=True)
+    # QW3 — préférence de contact EXPLICITE, distincte de `whatsapp_opt_in`
+    # (consentement marketing) et de `canal` (canal marketing d'origine).
+    # NULL = non renseignée (comportement historique inchangé).
+    contact_preference = models.CharField(
+        max_length=16, choices=ContactPreference.choices, blank=True, null=True,
+        verbose_name='Préférence de contact')
     consent_timestamp = models.DateTimeField(null=True, blank=True)
     # Attribution publicitaire (capture first-touch du site)
     fbclid = models.CharField(max_length=500, blank=True, null=True)
@@ -438,6 +479,40 @@ class Lead(models.Model):
         null=True, blank=True,
         verbose_name='Charges futures prévues',
         help_text="Liste parmi 'clim', 've', 'pompe'.")
+
+    # ── QW2 — Champs du site sans colonne d'accueil (additifs, nullable) ──
+    # NOTE : `raisonSociale` du site RÉUTILISE `societe` (models.py ci-dessus)
+    # — pas de colonne dédiée (consigne founder explicite).
+    facility_type = models.CharField(
+        max_length=12, choices=FacilityType.choices, blank=True, null=True,
+        verbose_name='Type de site (pro)')
+    site_count = models.CharField(
+        max_length=4, choices=SiteCount.choices, blank=True, null=True,
+        verbose_name='Nombre de sites (pro)')
+    # Créneau de visite technique PRÉFÉRÉ (statique, jamais un RDV confirmé —
+    # le rendez-vous réel reste QJ20 Appointment).
+    visit_window_part = models.CharField(
+        max_length=12, choices=VisitWindowPart.choices, blank=True, null=True,
+        verbose_name='Créneau de visite préféré')
+    visit_window_week = models.CharField(
+        max_length=20, choices=VisitWindowWeek.choices, blank=True, null=True,
+        verbose_name='Semaine de visite préférée')
+    # Référence courte générée CÔTÉ CLIENT (aucune garantie d'unicité globale —
+    # sert de corrélation best-effort avec une conversation WhatsApp/support,
+    # jamais une clé d'unicité serveur).
+    client_ref = models.CharField(
+        max_length=24, blank=True, null=True,
+        verbose_name='Référence client (générée navigateur)')
+    # Diaspora/MRE : `phoneE164` étranger (indicatif ≠ 212) — une motion
+    # commerciale distincte, badge-worthy (jamais utilisé pour qualifiesForCrm).
+    phone_is_foreign = models.BooleanField(
+        null=True, blank=True, verbose_name='Numéro étranger (diaspora/MRE)')
+    # Première page de landing vue (first-touch) — protégé comme l'UTM :
+    # jamais écrasé sur un visiteur revenant (voir `_FIRST_TOUCH_FIELDS`,
+    # apps/crm/webhooks.py).
+    page = models.CharField(
+        max_length=300, blank=True, null=True,
+        verbose_name='Page de landing (first-touch)')
 
     note = models.TextField(blank=True, null=True)
 
@@ -489,6 +564,30 @@ class Lead(models.Model):
                   'déclenchée par le franchissement du seuil MQL (XMKT21).',
     )
 
+    # ── QW10 — Colonnes de dédup NORMALISÉES + indexées (additif) ──
+    # `find_duplicates_by_contact` itérait TOUS les leads d'une société en
+    # Python à chaque webhook (O(N), cible d'amplification sur un endpoint à
+    # secret statique). Ces colonnes sont maintenues en écriture (voir
+    # `save()`) à partir des mêmes normaliseurs (`services.normalize_phone` /
+    # `normalize_email`) : la recherche devient une requête indexée, pas un
+    # scan. Vide ('') plutôt que NULL pour rester indexable simplement (une
+    # valeur vide n'est jamais un doublon — filtrée côté requête).
+    phone_normalise = models.CharField(
+        max_length=20, blank=True, default='', db_index=True,
+        verbose_name='Téléphone normalisé (dédup)')
+    email_normalise = models.CharField(
+        max_length=254, blank=True, default='', db_index=True,
+        verbose_name='Email normalisé (dédup)')
+
+    def save(self, *args, **kwargs):
+        # QW10 — maintient les colonnes de dédup normalisées à chaque save,
+        # quelle que soit la voie d'écriture (webhook, admin, API, import) —
+        # source unique de vérité : `apps.crm.services` (jamais dupliquée ici).
+        from . import services as _crm_services
+        self.phone_normalise = _crm_services.normalize_phone(self.telephone) or ''
+        self.email_normalise = _crm_services.normalize_email(self.email) or ''
+        super().save(*args, **kwargs)
+
     class Meta:
         verbose_name = 'Lead'
         verbose_name_plural = 'Leads'
@@ -497,6 +596,12 @@ class Lead(models.Model):
             models.Index(fields=['company', 'source']),
             models.Index(fields=['company', 'stage']),
             models.Index(fields=['company', 'score'], name='crm_lead_company_score_idx'),
+            # QW10 — dédup indexée (téléphone/email normalisés), remplace le
+            # scan Python complet de `find_duplicates_by_contact`.
+            models.Index(fields=['company', 'phone_normalise'],
+                         name='crm_lead_company_phone_norm_idx'),
+            models.Index(fields=['company', 'email_normalise'],
+                         name='crm_lead_company_email_norm_idx'),
         ]
         constraints = [
             # An imported record is unique per (company, system, external id) so

@@ -34,6 +34,16 @@ DEFAULT_PREFS = {
     'email': False,
 }
 
+# QW8 — Le founder a choisi « email gratuit maintenant » pour l'obligation de
+# rappel (QW4) : le canal email est activé PAR DÉFAUT pour ces deux événements
+# (override par événement) — un rappel demandé mérite mieux qu'une simple
+# ligne in-app qui peut passer inaperçue. Reste surchargeable par une ligne
+# ``NotificationPreference`` explicite (``resolve_prefs`` la préfère toujours).
+EVENT_DEFAULT_OVERRIDES = {
+    'lead_callback_requested': {'email': True},
+    'lead_callback_sla_breach': {'email': True},
+}
+
 # ERR91 — Bornes cohérentes pour la ligne in-app. `title` (255) et `link` (512)
 # sont déjà tronqués sur leur taille de colonne ; le corps (TextField, sans
 # limite de colonne) l'était pas — un appelant pouvait écrire une notification
@@ -42,8 +52,13 @@ MAX_BODY_LEN = 2000
 
 
 def default_prefs_for(event_type):
-    """Retourne les toggles par défaut pour un événement (copie mutable)."""
-    return dict(DEFAULT_PREFS)
+    """Retourne les toggles par défaut pour un événement (copie mutable).
+
+    QW8 — applique un override par événement (``EVENT_DEFAULT_OVERRIDES``)
+    quand il existe, sinon les défauts génériques ``DEFAULT_PREFS``."""
+    prefs = dict(DEFAULT_PREFS)
+    prefs.update(EVENT_DEFAULT_OVERRIDES.get(event_type, {}))
+    return prefs
 
 
 def resolve_prefs(user, event_type):

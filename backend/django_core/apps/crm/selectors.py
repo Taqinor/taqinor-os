@@ -862,6 +862,39 @@ def leads_sla_depasse(company, now=None, seuil_heures=None):
     ).order_by('date_creation')
 
 
+# QW4 — Rappels demandés (contact_preference=phone_ok) non actionnés ─────────
+
+def leads_callback_sla_depasse(company, now=None, seuil_heures=None):
+    """QW4 — Rappels demandés (``contact_preference=phone_ok``) non actionnés
+    (``first_contacted_at`` NULL) au-delà du SLA rappel, plus serré que le SLA
+    générique (``services.callback_sla_hours``). Même patron LECTURE SEULE que
+    ``leads_sla_depasse`` — ``now``/``seuil_heures`` injectables (tests
+    déterministes) ; ``seuil_heures=0`` (SLA désactivé) renvoie un queryset
+    vide. N'exige PAS ``stage=NEW`` : un rappel peut être demandé à n'importe
+    quelle étape (rule #2 — la préférence de contact n'est pas liée au
+    funnel)."""
+    from django.utils import timezone as _timezone
+    import datetime as _dt
+
+    from .models import Lead
+    from .services import callback_sla_hours as _get_callback_sla_hours
+
+    now = now or _timezone.now()
+    if seuil_heures is None:
+        seuil_heures = _get_callback_sla_hours(company)
+    if not seuil_heures:
+        return Lead.objects.none()
+
+    cutoff = now - _dt.timedelta(hours=seuil_heures)
+    return Lead.objects.filter(
+        company=company,
+        is_archived=False,
+        contact_preference=Lead.ContactPreference.PHONE_OK,
+        first_contacted_at__isnull=True,
+        date_creation__lte=cutoff,
+    ).order_by('date_creation')
+
+
 def site_location_for_devis(devis):
     """DC13 — localisation du chantier à créer depuis un devis.
 

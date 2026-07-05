@@ -106,3 +106,22 @@ sslip.io tant que la bascule dashboard vers api.taqinor.ma, décrite plus
 haut, n'est pas faite ; les deux hôtes acceptent le webhook). Le secret
 n'existe **que** dans l'.env du serveur et dans les secrets du Worker —
 jamais dans le dépôt ni dans une conversation.
+
+## Email sortant (QW8 — rendre l'envoi réel)
+
+Sans configuration, l'email reste un NO-OP réseau (backend console) —
+comportement préservé par défaut. Pour un envoi RÉEL en prod (ex. l'email de
+rappel QW4), il faut TOUS les trois réglages suivants dans l'`.env` du
+serveur :
+
+- `EMAIL_BACKEND=anymail.backends.sendinblue.EmailBackend` (Brevo, ex-
+  Sendinblue — le backend anymail déjà installé, aucune nouvelle dépendance) ;
+- `BREVO_API_KEY=<clé API Brevo>` (rangée sous `ANYMAIL['SENDINBLUE_API_KEY']`
+  côté settings — **ne PAS** chercher une clé nommée littéralement
+  `BREVO_API_KEY` dans `ANYMAIL`, c'est le bug QW8 corrigé) ;
+- `DEFAULT_FROM_EMAIL=<expéditeur vérifié Brevo>`.
+
+`apps.ventes.email_service.is_email_configured()` (réutilisé par
+`apps.notifications.services._is_email_configured()`) vérifie
+`ANYMAIL['SENDINBLUE_API_KEY']` OU `ANYMAIL['SENDGRID_API_KEY']` (héritage) —
+sans l'une des deux, tout reste console/NO-OP, jamais une erreur.

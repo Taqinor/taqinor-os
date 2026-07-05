@@ -314,13 +314,43 @@ def default_responsable_for(company):
     """Responsable assigné par défaut aux nouveaux leads d'une société.
 
     Source unique : le profil entreprise (Paramètres → « Responsable par
-    défaut des nouveaux leads »). None si non configuré ou pas de société.
-    """
+    défaut des nouveaux leads »). Si NON configuré, QW6 — round-robin parmi
+    les utilisateurs commerciaux actifs de la société (jamais un lead assigné
+    à personne, silencieusement invisible). None seulement si la société n'a
+    ni responsable par défaut configuré NI aucun utilisateur commercial actif
+    (rien à assigner)."""
     if company is None:
         return None
     from apps.parametres.models import CompanyProfile
     profile = CompanyProfile.objects.filter(company=company).first()
-    return profile.responsable_defaut_leads if profile else None
+    if profile is not None and profile.responsable_defaut_leads is not None:
+        return profile.responsable_defaut_leads
+    return pick_round_robin_owner(company)
+
+
+def pick_round_robin_owner(company):
+    """QW6 — Choisit un propriétaire par ROUND-ROBIN parmi les utilisateurs
+    commerciaux actifs de la société (permission ``crm_creer``), pour qu'un
+    lead ne reste JAMAIS sans responsable quand aucun « responsable par
+    défaut » n'est configuré. Sans état dédié à maintenir : le tour revient à
+    l'utilisateur ayant le MOINS de leads assignés (ties départagés par id,
+    ordre stable) — équivalent d'une rotation, sans compteur externe. None si
+    la société n'a aucun utilisateur commercial actif."""
+    from django.contrib.auth import get_user_model
+    from django.db.models import Count, Q
+
+    User = get_user_model()
+    candidates = list(
+        User.objects.filter(
+            company=company, is_active=True,
+        ).filter(
+            Q(role__permissions__contains=['crm_creer'])
+            | Q(role__isnull=True, role_legacy__in=['admin', 'responsable']),
+        ).annotate(
+            nb_leads=Count('leads_assignes'),
+        ).order_by('nb_leads', 'pk').distinct()
+    )
+    return candidates[0] if candidates else None
 
 
 # FG28 — SLA première prise de contact ────────────────────────────────────────
@@ -354,6 +384,19 @@ def lead_sla_hours(company) -> int:
     except Exception:
         pass
     return 24
+
+
+def callback_sla_hours(company) -> int:
+    """QW4 — Délai SLA (heures) d'un RAPPEL demandé (``contact_preference=
+    phone_ok``), plus SERRÉ que le SLA générique de premier contact
+    (``lead_sla_hours``) : la moitié, plancher 2 h. AUCUN nouveau champ
+    société (on reste dans `apps/crm`, pas de dépendance nouvelle sur
+    `parametres`) — dérivé du SLA générique déjà configurable. 0 (SLA
+    générique désactivé) désactive aussi le SLA rappel."""
+    generic = lead_sla_hours(company)
+    if not generic:
+        return 0
+    return max(2, generic // 2)
 
 
 # Champs scalaires recopiés sur le survivant SEULEMENT s'il les a vides
@@ -520,7 +563,14 @@ def find_duplicates_by_contact(company, *, phone=None, email=None,
     """Leads d'une société partageant un téléphone OU un email normalisé avec
     les valeurs fournies (saisie libre acceptée — mêmes normaliseurs que la
     détection de doublons). Sert AUSSI au contrôle PRÉ-CRÉATION, où aucun Lead
-    n'existe encore (d'où l'absence d'instance). Inclut les archivés."""
+    n'existe encore (d'où l'absence d'instance). Inclut les archivés.
+
+    QW10 — requête INDEXÉE sur les colonnes normalisées maintenues par
+    `Lead.save()` (`phone_normalise`/`email_normalise`, backfillées par la
+    migration pour les lignes existantes) — jamais un scan Python complet de
+    la société à chaque appel."""
+    from django.db.models import Q
+
     phone = normalize_phone(phone)
     email = normalize_email(email)
     if not phone and not email:
@@ -528,13 +578,13 @@ def find_duplicates_by_contact(company, *, phone=None, email=None,
     qs = Lead.objects.filter(company=company)
     if exclude_pk is not None:
         qs = qs.exclude(pk=exclude_pk)
-    candidates = []
-    for other in qs:
-        if phone and normalize_phone(other.telephone) == phone:
-            candidates.append(other)
-        elif email and normalize_email(other.email) == email:
-            candidates.append(other)
-    return candidates
+
+    q = Q()
+    if phone:
+        q |= Q(phone_normalise=phone)
+    if email:
+        q |= Q(email_normalise=email)
+    return list(qs.filter(q))
 
 
 def merge_leads(survivor, others, user):
@@ -1467,31 +1517,67 @@ def notify_devis_opened(devis_reference: str, lead) -> None:
             getattr(lead, 'pk', '?'), devis_reference, exc)
 
 
+#: QW5 — libellés FR par canal de contact proposition (WJ85/WJ54 — le site
+#: envoie 'rappel'/'whatsapp'/'question'/'voice'/'revision', un vocabulaire
+#: plus large que ce que ce module connaissait (whatsapp/rappel seuls).
+_CONTACT_CANAL_LABELS = {
+    'whatsapp': 'par WhatsApp',
+    'rappel': 'par téléphone (rappel)',
+    'question': 'question avant signature',
+    'voice': 'orienté vers une note vocale WhatsApp',
+    'revision': 'demande de modification',
+}
+
+#: QW5 — libellés FR par type de modification demandée (WJ54, uniquement
+#: pertinent quand canal == 'revision').
+_REVISION_KIND_LABELS = {
+    'kwc': 'ajuster la puissance (kWc)',
+    'batterie': 'changer l’option batterie',
+    'autre': 'autre modification',
+}
+
+
 def notify_client_contact_request(devis_reference: str, lead,
-                                  canal='', message='') -> None:
-    """QJ27 — Le CLIENT demande à être contacté (depuis la proposition publique).
+                                  canal='', message='', revision_kind='') -> None:
+    """QJ27/QW5 — Le CLIENT demande à être contacté (proposition publique).
 
     Consigne la demande dans le chatter du lead (note SYSTÈME, user=None — ne
     fait donc jamais avancer le funnel QJ7) ET notifie le responsable du lead
     ET son supérieur (repli managers société quand l'un des deux manque), avec
     un lien wa.me « répondre maintenant ». Best-effort — jamais d'exception
     propagée. La société vient TOUJOURS du lead (jamais d'un corps de requête).
-    """
+
+    QW5 — ``revision_kind`` (WJ54, uniquement quand ``canal == 'revision'``)
+    est journalisé dans le chatter et le corps de notification. Le canal
+    ``rappel`` sur une demande CLIENT (proposition) est une obligation de
+    RAPPEL — même sémantique que QW4 (``contact_preference=phone_ok``) : si le
+    lead lié n'a pas encore cette préférence posée, on la pose ici aussi et on
+    déclenche la même notification distincte + SLA rappel (jamais dupliquée —
+    ``notify_lead_callback_requested`` est déjà idempotent par lead)."""
     try:
-        canal_label = {
-            'whatsapp': 'par WhatsApp',
-            'rappel': 'par téléphone (rappel)',
-        }.get((canal or '').strip(), '')
+        canal_key = (canal or '').strip()
+        canal_label = _CONTACT_CANAL_LABELS.get(canal_key, '')
         nom = (getattr(lead, 'nom', '') or '').strip() or 'Le client'
         # Note chatter (toujours, même sans destinataire notifiable).
         note = f'Le client demande à être contacté ({devis_reference})'
         if canal_label:
             note += f' — {canal_label}'
+        if canal_key == 'revision' and revision_kind:
+            note += f' [{_REVISION_KIND_LABELS.get(revision_kind, revision_kind)}]'
         if message:
-            note += f' : « {message[:500]} »'
+            note += f' : « {message[:2000]} »'
         LeadActivity.objects.create(
             company=lead.company, lead=lead, user=None,
             kind=LeadActivity.Kind.NOTE, body=note)
+
+        # QW5/QW4 — un rappel demandé DEPUIS LA PROPOSITION est la même
+        # obligation qu'un rappel demandé à la capture : pose la préférence si
+        # absente et route vers la notification distincte + SLA rappel.
+        if canal_key == 'rappel' and getattr(lead, 'contact_preference', None) != Lead.ContactPreference.PHONE_OK:
+            lead.contact_preference = Lead.ContactPreference.PHONE_OK
+            lead.save(update_fields=['contact_preference'])
+        if canal_key == 'rappel':
+            notify_lead_callback_requested(lead)
 
         recipients = lead_notification_recipients(lead)
         if not recipients:
@@ -1502,8 +1588,11 @@ def notify_client_contact_request(devis_reference: str, lead,
             f'{nom} demande à être contacté au sujet du devis '
             f'{devis_reference}'
             + (f' ({canal_label})' if canal_label else '') + '.']
+        if canal_key == 'revision' and revision_kind:
+            body_parts.append(
+                f'Type de modification : {_REVISION_KIND_LABELS.get(revision_kind, revision_kind)}')
         if message:
-            body_parts.append(f'Message : « {message[:500]} »')
+            body_parts.append(f'Message : « {message[:2000]} »')
         if wa_url:
             body_parts.append(f'Répondre maintenant : {wa_url}')
         notify_many(
@@ -1519,6 +1608,57 @@ def notify_client_contact_request(devis_reference: str, lead,
         logging.getLogger(__name__).warning(
             'QJ27: notify_client_contact_request échoué pour lead #%s '
             'devis %s : %s', getattr(lead, 'pk', '?'), devis_reference, exc)
+
+
+#: QW4 — marqueur de note système : posé UNE FOIS par lead pour éviter de
+#: notifier plusieurs fois la même demande de rappel (idempotence, même
+#: patron que ``ESCALATION_MARKER`` de ``recycler_leads_non_travailles``).
+CALLBACK_REQUESTED_MARKER = 'auto — rappel demandé (contact_preference=phone_ok)'
+
+
+def notify_lead_callback_requested(lead) -> None:
+    """QW4 — Notification DISTINCTE, urgence plus élevée, quand un lead arrive
+    avec ``contact_preference=phone_ok`` (« rappel demandé »), différente du
+    générique ``notify_new_lead`` (réponse WhatsApp). Notifie owner + supérieur
+    (repli managers société). Idempotent par lead — jamais renotifié deux fois
+    pour la même demande (marqueur chatter). Best-effort — jamais d'exception
+    propagée."""
+    try:
+        if getattr(lead, 'contact_preference', None) != Lead.ContactPreference.PHONE_OK:
+            return
+        already = LeadActivity.objects.filter(
+            lead=lead, kind=LeadActivity.Kind.NOTE,
+            body__startswith=CALLBACK_REQUESTED_MARKER,
+        ).exists()
+        if already:
+            return
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.NOTE,
+            body=f'{CALLBACK_REQUESTED_MARKER}.',
+        )
+        recipients = lead_notification_recipients(lead)
+        if not recipients:
+            return
+        from apps.notifications.services import notify_many
+        nom = (getattr(lead, 'nom', '') or '').strip() or 'Un prospect'
+        body_parts = [f'{nom} a demandé un RAPPEL téléphonique (pas une réponse WhatsApp).']
+        tel = (getattr(lead, 'telephone', '') or '').strip()
+        if tel:
+            body_parts.append(f'Numéro à rappeler : {tel}')
+        notify_many(
+            recipients,
+            'lead_callback_requested',
+            f'☎ Rappeler {nom} — rappel demandé',
+            body='\n'.join(body_parts),
+            link=f'/crm/leads?lead={lead.pk}',
+            company=lead.company,
+        )
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        import logging
+        logging.getLogger(__name__).warning(
+            'QW4: notify_lead_callback_requested échoué pour lead #%s : %s',
+            getattr(lead, 'pk', '?'), exc)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

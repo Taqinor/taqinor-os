@@ -37,6 +37,14 @@ class EventType(models.TextChoices):
     DEVIS_SUPERIOR_CONTACT_REQUESTED = (
         'devis_superior_contact_requested',
         'Avis du supérieur demandé sur un devis')
+    # QW4 — un lead demande explicitement un RAPPEL téléphonique (distinct
+    # d'une simple réponse WhatsApp) : notification à urgence plus élevée.
+    LEAD_CALLBACK_REQUESTED = (
+        'lead_callback_requested', 'Rappel téléphonique demandé')
+    # QW4 — le rappel demandé n'a pas été actionné dans le SLA serré (moitié
+    # du SLA générique premier contact) : escalade dédiée.
+    LEAD_CALLBACK_SLA_BREACH = (
+        'lead_callback_sla_breach', 'Rappel demandé non actionné (SLA)')
     CHANTIER_DUE = 'chantier_due', 'Chantier à installer'
     FACTURE_OVERDUE = 'facture_overdue', 'Facture en retard'
     WARRANTY_EXPIRING = 'warranty_expiring', 'Garantie bientôt expirée'
