@@ -199,6 +199,10 @@ from .models_retour_livraison import (
     RetourLivraison,
     RetourLivraisonLigne,
 )
+from .models_storage_rules import (
+    CategorieStockage,
+    RegleRangement,
+)
 
 __all__ = [
     'Installation',
@@ -303,4 +307,6 @@ __all__ = [
     'RetourMaterielLigne',
     'RetourLivraison',
     'RetourLivraisonLigne',
+    'CategorieStockage',
+    'RegleRangement',
 ]

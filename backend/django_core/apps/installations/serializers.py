@@ -72,6 +72,8 @@ from .models import (
     RetourMaterielLigne,
     RetourLivraison,
     RetourLivraisonLigne,
+    CategorieStockage,
+    RegleRangement,
 )
 
 
@@ -1849,13 +1851,16 @@ class BinLocationSerializer(serializers.ModelSerializer):
     sont imbriquees en lecture."""
     emplacement_nom = serializers.CharField(
         source='emplacement.nom', read_only=True, default=None)
+    categorie_nom = serializers.CharField(
+        source='categorie.nom', read_only=True, default=None)
     affectations = BinAffectationSerializer(many=True, read_only=True)
 
     class Meta:
         model = BinLocation
         fields = [
             'id', 'emplacement', 'emplacement_nom', 'code', 'zone', 'allee',
-            'casier', 'ordre', 'note', 'archived', 'affectations',
+            'casier', 'ordre', 'categorie', 'categorie_nom', 'note',
+            'archived', 'affectations',
             'created_by', 'date_creation', 'date_modification',
         ]
         read_only_fields = [
@@ -2636,3 +2641,53 @@ class RetourLivraisonSerializer(serializers.ModelSerializer):
             'statut', 'created_by', 'valide_par', 'valide_le',
             'date_creation', 'date_modification',
         ]
+
+
+class CategorieStockageSerializer(serializers.ModelSerializer):
+    """ZSTK9 - categorie de stockage (capacite/compatibilite) posable sur un
+    BinLocation. Societe posee COTE SERVEUR."""
+
+    class Meta:
+        model = CategorieStockage
+        fields = [
+            'id', 'nom', 'poids_max_kg', 'qte_max', 'melange_autorise',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+    def validate_nom(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError(
+                'Le nom de la categorie est requis.')
+        return value
+
+
+class RegleRangementSerializer(serializers.ModelSerializer):
+    """ZSTK9 - regle de rangement configurable (produit ou categorie produit
+    -> casier cible, par priorite). Societe posee COTE SERVEUR."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+    bin_cible_code = serializers.CharField(
+        source='bin_cible.code', read_only=True, default=None)
+
+    class Meta:
+        model = RegleRangement
+        fields = [
+            'id', 'produit', 'produit_nom', 'categorie_produit', 'bin_cible',
+            'bin_cible_code', 'priorite', 'actif',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+    def validate(self, attrs):
+        produit = attrs.get('produit') if 'produit' in attrs else getattr(
+            self.instance, 'produit', None)
+        categorie_produit = (
+            attrs.get('categorie_produit')
+            if 'categorie_produit' in attrs
+            else getattr(self.instance, 'categorie_produit', None))
+        if produit is None and not (categorie_produit or '').strip():
+            raise serializers.ValidationError(
+                'Indiquez un produit ou une categorie produit.')
+        return attrs

@@ -49,7 +49,10 @@ from .gr_ir import ReceptionNonFactureeViewSet
 from .contrat_prix import (
     ContratPrixFournisseurViewSet, ContratPrixLigneViewSet,
 )
-from .bin_location import BinLocationViewSet, BinAffectationViewSet
+from .bin_location import (
+    BinLocationViewSet, BinAffectationViewSet, CategorieStockageViewSet,
+    RegleRangementViewSet,
+)
 from .putaway import PutAwayViewSet
 from .picklist import PickListViewSet, PickListLigneViewSet
 from .colisage import ColisViewSet, ColisLigneViewSet
@@ -126,6 +129,8 @@ __all__ = [
     'ContratPrixLigneViewSet',
     'BinLocationViewSet',
     'BinAffectationViewSet',
+    'CategorieStockageViewSet',
+    'RegleRangementViewSet',
     'PutAwayViewSet',
     'PickListViewSet',
     'PickListLigneViewSet',

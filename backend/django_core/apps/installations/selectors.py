@@ -1580,25 +1580,94 @@ def prix_convenu_fournisseur(company, produit_id, *, fournisseur_id=None,
     }
 
 
-def suggerer_bin_putaway(company, produit_id, emplacement_id=None):
-    """FG320 - casier suggere pour ranger un produit recu.
+def _bin_respecte_capacite(bin_loc, produit_id, quantite):
+    """ZSTK9 - le casier respecte-t-il la capacite/compatibilite de sa
+    categorie de stockage pour CETTE quantite entrante ? Sans categorie posee
+    sur le casier, toujours True (comportement historique inchange)."""
+    cat = getattr(bin_loc, 'categorie', None)
+    if cat is None:
+        return True
+    from django.db.models import Sum
+    from .models import BinAffectation
+    existantes = BinAffectation.objects.filter(bin=bin_loc)
+    if not cat.melange_autorise:
+        autre_produit = existantes.exclude(produit_id=produit_id).exists()
+        if autre_produit:
+            return False
+    if cat.qte_max is not None:
+        deja = existantes.filter(produit_id=produit_id).aggregate(
+            total=Sum('quantite'))['total'] or 0
+        if deja + (quantite or 0) > cat.qte_max:
+            return False
+    return True
 
+
+def _bin_cible_regle(company, produit_id, emplacement_id=None):
+    """ZSTK9 - casier cible depuis la premiere `RegleRangement` ACTIVE
+    applicable (par priorite croissante), ou None sans regle. Une regle par
+    `produit` prime sur une regle par `categorie_produit` de meme priorite
+    (ordre naturel de la requete : produit d'abord)."""
+    from .models_storage_rules import RegleRangement
+    qs = RegleRangement.objects.filter(
+        company=company, actif=True, bin_cible__archived=False)
+    if emplacement_id:
+        qs = qs.filter(bin_cible__emplacement_id=emplacement_id)
+    par_produit = qs.filter(produit_id=produit_id).select_related(
+        'bin_cible').order_by('priorite', 'id').first()
+    if par_produit is not None:
+        return par_produit.bin_cible
+
+    produit = None
+    try:
+        from apps.stock.selectors import get_produit_scoped
+        produit = get_produit_scoped(company, produit_id)
+    except Exception:  # pragma: no cover - defensif
+        produit = None
+    categorie_nom = (
+        getattr(produit.categorie, 'nom', None)
+        if produit is not None and produit.categorie_id else None)
+    if not categorie_nom:
+        return None
+    par_categorie = qs.filter(
+        categorie_produit__iexact=categorie_nom).select_related(
+        'bin_cible').order_by('priorite', 'id').first()
+    return par_categorie.bin_cible if par_categorie is not None else None
+
+
+def suggerer_bin_putaway(company, produit_id, emplacement_id=None,
+                         quantite=0):
+    """FG320/ZSTK9 - casier suggere pour ranger un produit recu.
+
+    Priorite 0 (ZSTK9) : une `RegleRangement` ACTIVE applicable (par produit
+    ou categorie produit, priorite croissante) dont le casier respecte sa
+    capacite/compatibilite (`CategorieStockage`) pour la quantite entrante.
     Priorite 1 : un casier deja affecte a ce produit (FG319 BinAffectation),
-    le plus rempli d'abord. Priorite 2 : le premier casier non archive de
-    l'emplacement (par ordre de parcours). Renvoie un BinLocation ou None.
-    """
+    le plus rempli d'abord (sous la meme garde de capacite). Priorite 2 : le
+    premier casier non archive de l'emplacement, par ordre de parcours, dont
+    la capacite n'est pas depassee. Sans regle ni categorie posee nulle part,
+    le comportement reste BYTE-IDENTIQUE a l'historique (FG320)."""
     from .models import BinLocation, BinAffectation
+
+    regle_bin = _bin_cible_regle(company, produit_id, emplacement_id)
+    if regle_bin is not None and _bin_respecte_capacite(
+            regle_bin, produit_id, quantite):
+        return regle_bin
+
     aff_qs = BinAffectation.objects.filter(
         company=company, produit_id=produit_id, bin__archived=False)
     if emplacement_id:
         aff_qs = aff_qs.filter(bin__emplacement_id=emplacement_id)
-    aff = aff_qs.select_related('bin').order_by('-quantite').first()
-    if aff is not None:
-        return aff.bin
+    for aff in aff_qs.select_related('bin').order_by('-quantite'):
+        if _bin_respecte_capacite(aff.bin, produit_id, quantite):
+            return aff.bin
+
     bin_qs = BinLocation.objects.filter(company=company, archived=False)
     if emplacement_id:
         bin_qs = bin_qs.filter(emplacement_id=emplacement_id)
-    return bin_qs.order_by('ordre', 'code').first()
+    for candidate in bin_qs.order_by('ordre', 'code'):
+        if _bin_respecte_capacite(candidate, produit_id, quantite):
+            return candidate
+    return None
 
 
 def proposer_reapprovisionnement(company, quantites_actuelles=None):
