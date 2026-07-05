@@ -1153,6 +1153,11 @@ class Paiement(models.Model):
     )
     reference = models.CharField(max_length=120, blank=True, null=True)
     note = models.TextField(blank=True, null=True)
+    # ZFAC7 — suivi métier des chèques (remise en banque, chèque impayé).
+    # Uniquement pertinent quand mode == CHEQUE ; laissés vides pour tout
+    # autre mode (comportement historique inchangé).
+    numero_cheque = models.CharField(max_length=50, blank=True, default='')
+    banque_tiree = models.CharField(max_length=120, blank=True, default='')
     # XFAC12 — escompte AUTOMATIQUEMENT appliqué à ce règlement (fenêtre
     # atteinte). 0/NULL = comportement actuel inchangé (aucun escompte, ou
     # règlement hors fenêtre).
