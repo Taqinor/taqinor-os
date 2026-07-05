@@ -32,10 +32,18 @@ describe('applySecurityHeaders', () => {
     expect(res.headers.get('Content-Security-Policy')).toBe(CONTENT_SECURITY_POLICY);
   });
 
-  it("la CSP autorise MapTiler (tuiles + geocodage) et l'API taqinor, interdit le framing", () => {
+  it("la CSP autorise MapTiler + Mapbox (tuiles + geocodage) et l'API taqinor, interdit le framing", () => {
     expect(CONTENT_SECURITY_POLICY).toContain("frame-ancestors 'none'");
     expect(CONTENT_SECURITY_POLICY).toContain('https://api.maptiler.com');
     expect(CONTENT_SECURITY_POLICY).toContain('https://api.taqinor.ma');
+    // Mapbox : tuiles satellite HD chargées dès que PUBLIC_MAPBOX_TOKEN est
+    // défini (buildSatelliteStyle) — doit figurer en img-src ET connect-src,
+    // sinon le navigateur bloque toutes les tuiles et la carte reste vide.
+    const csp = CONTENT_SECURITY_POLICY;
+    const imgSrc = csp.split(';').find((d) => d.trim().startsWith('img-src')) ?? '';
+    const connectSrc = csp.split(';').find((d) => d.trim().startsWith('connect-src')) ?? '';
+    expect(imgSrc).toContain('https://api.mapbox.com');
+    expect(connectSrc).toContain('https://api.mapbox.com');
     // PVGIS est proxyé côté serveur uniquement (src/lib/roofEstimate.ts) —
     // jamais appelé depuis le navigateur, donc absent de connect-src.
     expect(CONTENT_SECURITY_POLICY).not.toContain('jrc.ec.europa.eu');
