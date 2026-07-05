@@ -1,9 +1,16 @@
 # Mesure de couverture backend (informational). Lancé en CI :
-#   coverage run manage.py test apps authentication … && coverage report
+#   coverage run manage.py test apps authentication --parallel auto … \
+#   && coverage combine && coverage report
 # On mesure le CODE applicatif, pas les tests/migrations/réglages.
+# YTEST17 — `--parallel` fait tourner les tests Django dans des sous-processus
+# (multiprocessing) : sans `concurrency = multiprocessing`, `coverage run`
+# perdrait la couverture des workers (chaque sous-processus écrirait vers son
+# propre `.coverage.<pid>` non fusionné) → `coverage combine` les regroupe
+# avant `coverage report`.
 [run]
 source = apps,authentication
 branch = True
+concurrency = multiprocessing
 omit =
     */migrations/*
     */tests/*
