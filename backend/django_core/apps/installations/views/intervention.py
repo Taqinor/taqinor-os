@@ -1624,6 +1624,31 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             'token': token,
             'path': f'/public/installations/intervention-rapport/{token}/'})
 
+    # ── ZFSM4 — facturation directe d'une intervention hors contrat ─────────
+    @action(detail=True, methods=['post'], url_path='generer-facture',
+            permission_classes=[IsResponsableOrAdmin])
+    def generer_facture(self, request, pk=None):
+        """ZFSM4 — génère une facture brouillon depuis cette intervention
+        (matériel réellement consommé au prix de VENTE catalogue + ligne
+        main-d'œuvre au taux horaire paramétrable). Idempotent : si
+        l'intervention porte déjà un `facture_id`, le renvoie sans en créer
+        une seconde. Passe EXCLUSIVEMENT par apps.ventes.services (jamais
+        d'import direct des models ventes — règle de modularité)."""
+        interv = self.get_object()
+        from apps.ventes.services import generer_facture_intervention
+        try:
+            facture = generer_facture_intervention(
+                intervention=interv, user=request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        deja_existant = (interv.facture_id == facture.id)
+        return Response({
+            'intervention': interv.id, 'facture_id': facture.id,
+            'facture_reference': facture.reference,
+            'deja_existant': deja_existant,
+        }, status=status.HTTP_200_OK if deja_existant else status.HTTP_201_CREATED)
+
     # ── F23 — code court / QR de l'intervention ──────────────────────────────
     @action(detail=True, methods=['get'], url_path='code',
             permission_classes=[IsAnyRole])

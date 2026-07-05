@@ -223,6 +223,13 @@ class Intervention(models.Model):
     annulee = models.BooleanField(default=False)
     motif_annulation = models.CharField(max_length=255, blank=True, null=True)
 
+    # ── ZFSM4 — facturation directe d'une intervention hors contrat ─────────
+    # ID de la ``ventes.Facture`` brouillon générée depuis cette intervention
+    # (string-FK par id, JAMAIS un import du modèle ``ventes.Facture`` — règle
+    # de modularité). Nullable : la génération de facture est une action
+    # optionnelle ; posé une fois pour ne jamais double-facturer (idempotent).
+    facture_id = models.PositiveIntegerField(null=True, blank=True)
+
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, related_name='interventions_creees',
