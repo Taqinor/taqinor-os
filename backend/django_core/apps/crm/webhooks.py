@@ -47,6 +47,33 @@ _FIRST_TOUCH_FIELDS = frozenset([
 ])
 
 
+#: QW9 — Tolérance de dérive d'horloge pour l'en-tête `X-Webhook-Timestamp`
+#: (déjà émis par le site — lib/lead.ts + proposition-track.ts). Une requête
+#: dont l'horodatage dépasse cette tolérance (rejeu capturé) est rejetée ;
+#: l'ABSENCE de l'en-tête (anciens workers) reste tolérée — jamais bloquant.
+WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS = 600
+
+
+def _freshness_ok(request) -> bool:
+    """QW9 — Rejette un rejeu capturé via l'horodatage `X-Webhook-Timestamp`.
+
+    Tolérant de l'ABSENCE de l'en-tête (anciens workers du site, ou tout appel
+    qui ne le fournit pas) — dans ce cas on laisse passer (comportement actuel
+    préservé). Seul un en-tête PRÉSENT mais hors tolérance (> ~10 min, passé
+    OU futur) est rejeté. Une valeur non parsable est traitée comme absente
+    (jamais bloquant sur un format inattendu)."""
+    raw = request.headers.get('X-Webhook-Timestamp', '')
+    if not raw:
+        return True
+    ts = parse_datetime(raw)
+    if ts is None:
+        return True
+    if timezone.is_naive(ts):
+        ts = timezone.make_aware(ts, timezone.utc)
+    skew = abs((timezone.now() - ts).total_seconds())
+    return skew <= WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS
+
+
 def _secret_ok(request) -> bool:
     expected = getattr(settings, 'WEBSITE_LEAD_WEBHOOK_SECRET', '') or ''
     provided = request.headers.get('X-Webhook-Secret', '')
@@ -419,6 +446,11 @@ def _map_payload_to_fields(data: dict) -> dict:
 def website_lead_webhook(request):
     if not _secret_ok(request):
         return JsonResponse({'detail': 'Secret invalide ou absent.'}, status=401)
+    if not _freshness_ok(request):
+        # QW9 — horodatage hors tolérance : rejeu probable d'une requête
+        # capturée. Rejeté AVANT toute écriture (même le brut n'est pas
+        # stocké — un rejeu n'apporte aucune donnée nouvelle à conserver).
+        return JsonResponse({'detail': 'Horodatage hors tolérance.'}, status=401)
 
     try:
         data = json.loads(request.body.decode('utf-8'))

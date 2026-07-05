@@ -503,3 +503,55 @@ class QW7EngagementPingNeverCorruptsLeadTests(TestCase):
         res = self.post(payload_site())
         self.assertEqual(res.status_code, 201, res.content)
         self.assertEqual(Lead.objects.count(), 1)
+
+
+@override_settings(WEBSITE_LEAD_WEBHOOK_SECRET=SECRET)
+class QW9ReplayFreshnessTests(TestCase):
+    """QW9 — un X-Webhook-Timestamp hors tolérance (rejeu capturé) est rejeté."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='Taqinor Test QW9', slug='taqinor-test-qw9')
+        self.url = reverse('website-lead-webhook')
+
+    def post(self, data, secret=SECRET, timestamp=None):
+        headers = {'HTTP_X_WEBHOOK_SECRET': secret} if secret is not None else {}
+        if timestamp is not None:
+            headers['HTTP_X_WEBHOOK_TIMESTAMP'] = timestamp
+        return self.client.post(
+            self.url, data=json.dumps(data),
+            content_type='application/json', **headers)
+
+    def test_fresh_timestamp_passes(self):
+        from django.utils import timezone
+        ts = timezone.now().isoformat()
+        res = self.post(payload_site(), timestamp=ts)
+        self.assertEqual(res.status_code, 201, res.content)
+
+    def test_stale_timestamp_rejected(self):
+        from django.utils import timezone
+        stale = (timezone.now() - timezone.timedelta(minutes=30)).isoformat()
+        res = self.post(payload_site(), timestamp=stale)
+        self.assertEqual(res.status_code, 401)
+        self.assertEqual(Lead.objects.count(), 0)
+        self.assertEqual(WebsiteLeadPayload.objects.count(), 0)
+
+    def test_future_timestamp_rejected(self):
+        from django.utils import timezone
+        future = (timezone.now() + timezone.timedelta(minutes=30)).isoformat()
+        res = self.post(payload_site(), timestamp=future)
+        self.assertEqual(res.status_code, 401)
+
+    def test_absent_timestamp_still_tolerated(self):
+        # Anciens workers / appelants sans l'en-tête : comportement inchangé.
+        res = self.post(payload_site())
+        self.assertEqual(res.status_code, 201, res.content)
+
+    def test_unparsable_timestamp_never_blocks(self):
+        res = self.post(payload_site(), timestamp='not-a-date')
+        self.assertEqual(res.status_code, 201, res.content)
+
+    def test_slightly_stale_within_tolerance_passes(self):
+        from django.utils import timezone
+        near = (timezone.now() - timezone.timedelta(minutes=5)).isoformat()
+        res = self.post(payload_site(), timestamp=near)
+        self.assertEqual(res.status_code, 201, res.content)
