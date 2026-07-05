@@ -66,6 +66,54 @@ def intervention_scoped(company, pk):
             .first())
 
 
+def intervention_recente_pour_chantier(company, installation_id, *,
+                                       depuis_jours, avant=None,
+                                       exclure_ticket_id=None):
+    """XFSM15 — la plus récente ``Intervention`` TERMINÉE/VALIDÉE du même
+    chantier dans les ``depuis_jours`` derniers jours (avant ``avant``, ou
+    aujourd'hui). Sert à suggérer une récidive à la création d'un ticket SAV
+    sans que ``apps.sav`` importe ``installations.models`` directement.
+
+    ``exclure_ticket_id`` écarte l'intervention déjà liée au ticket en cours
+    d'édition (évite qu'un ticket se suggère lui-même comme son origine).
+    Renvoie ``None`` si aucune intervention récente ne matche."""
+    from django.utils import timezone
+    from .models import Intervention
+
+    if not installation_id or not depuis_jours:
+        return None
+    avant = avant or timezone.localdate()
+    seuil = avant - timezone.timedelta(days=int(depuis_jours))
+    statuts_ok = [Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE]
+    qs = (Intervention.objects
+          .filter(company=company, installation_id=installation_id,
+                  statut__in=statuts_ok, date_realisee__isnull=False,
+                  date_realisee__gte=seuil, date_realisee__lte=avant)
+          .order_by('-date_realisee'))
+    if exclure_ticket_id:
+        qs = qs.exclude(ticket_id=exclure_ticket_id)
+    return qs.first()
+
+
+def interventions_ouvertes_pour_ticket(ticket_id):
+    """YSERV2 — Interventions liées à ``ticket_id`` PAS ENCORE TERMINÉE/
+    VALIDÉE. Point d'entrée cross-app en LECTURE SEULE pour la garde de
+    clôture ``apps.sav.views.TicketViewSet`` (jamais un import du modèle
+    ``Intervention`` depuis ``sav``). Renvoie une liste de dicts plats
+    (jamais l'instance ORM) — vide si aucune intervention liée."""
+    from .models import Intervention
+
+    if not ticket_id:
+        return []
+    statuts_ouverts = [
+        s for s in Intervention.Statut.values
+        if s not in (Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE)
+    ]
+    qs = Intervention.objects.filter(
+        ticket_id=ticket_id, statut__in=statuts_ouverts)
+    return [{'id': i.id, 'statut': i.statut} for i in qs]
+
+
 def reserved_quantity_for_produit(produit):
     """Quantité d'un produit ENGAGÉE par des réservations actives et non
     encore consommées — chantier (N14) + ordre d'assemblage (XMFG2). Lecture
@@ -77,6 +125,19 @@ def reserved_quantity_for_produit(produit):
                .filter(produit=produit)
                .aggregate(total=Sum('quantite')))
     return (agg['total'] or 0) + (agg_asm['total'] or 0)
+
+
+def serie_entrepot_scoped_by_serial(company, produit_id, numero_serie):
+    """ZSTK6 — `SerieEntrepot` (FG323) scopée société, par (produit, n° de
+    série), avec chantier + client préchargés. Point d'entrée cross-app pour
+    le résolveur de scan de `apps.stock` (jamais son modèle importé
+    directement) — LECTURE SEULE, None si introuvable/hors société."""
+    from .models import SerieEntrepot
+    return (SerieEntrepot.objects
+            .filter(company=company, produit_id=produit_id,
+                    numero_serie=numero_serie)
+            .select_related('installation', 'installation__client')
+            .first())
 
 
 def reserved_quantities_for_company(company):
@@ -134,6 +195,19 @@ def kit_map_for_produits_composes(company, produit_ids):
                     produit_compose_id__in=produit_ids)
             .values_list('produit_compose_id', 'id'))
     return {pid: kid for pid, kid in rows}
+
+
+def materiel_consigne_quantite_totale(company):
+    """YSTCK8 — quantité TOTALE de matériel consigné DÉTENU (FG327,
+    `MaterielConsigne`, non possédé — jamais valorisé). Point d'entrée
+    cross-app pour `stock` (garde de valorisation
+    `stock_valuation_excludes_materiel_consigne`), lecture seule."""
+    from django.db.models import Sum
+    from .models_consignation import MaterielConsigne
+    agg = (MaterielConsigne.objects
+           .filter(company=company, statut=MaterielConsigne.Statut.DETENU)
+           .aggregate(total=Sum('quantite')))
+    return agg['total'] or 0
 
 
 def _active_reservations():
@@ -513,7 +587,7 @@ def plan_de_charge_equipes(company, debut, fin, heures_par_jour=8):
     # (``equipe_ref``) quand elle est posée, sinon via le M2M ad-hoc historique.
     # On prefetch les DEUX pour éviter tout N+1 (``membres_intervention``).
     qs = (Intervention.objects
-          .filter(company=company)
+          .filter(company=company, annulee=False)
           .filter(date_prevue__gte=debut, date_prevue__lte=fin)
           .prefetch_related('equipe', 'equipe_ref__membres')
           .only('id', 'technicien_id', 'date_prevue', 'equipe_ref_id'))
@@ -1398,6 +1472,50 @@ def palier_requis_bcf(company, montant):
     return seuil.palier_requis(montant)
 
 
+def bcf_approbation_valide(company, bcf_id, montant):
+    """YPROC4 — l'ENVOI d'un BCF est-il autorisé côté approbation FG312 ?
+
+    Sans seuil ``SeuilApprobationBCF`` actif configuré pour la société :
+    ``True`` (compatibilité totale — le workflow d'approbation n'existe pas
+    pour cette société, comportement historique inchangé).
+
+    Avec un seuil actif : exige une ``ApprobationBCF`` existante pour ce BCF,
+    au palier requis par le montant ACTUEL (``palier_requis_bcf``), ET dont le
+    ``montant_approuve`` couvre au moins ce montant actuel — une hausse du
+    total du BCF depuis l'approbation invalide celle-ci (cohérent avec la
+    ré-approbation XPUR18). Lecture seule, jamais d'écriture ici."""
+    from decimal import Decimal
+    from .models_approbation_bcf import ApprobationBCF
+
+    seuil = seuil_approbation_bcf_actif(company)
+    if seuil is None:
+        return True
+
+    montant = montant or Decimal('0')
+    palier_requis = seuil.palier_requis(montant)
+    approbation = (ApprobationBCF.objects
+                   .filter(company=company, bcf_id=bcf_id)
+                   .order_by('-date_approbation')
+                   .first())
+    if approbation is None:
+        return False
+    if approbation.palier != palier_requis:
+        return False
+    if (approbation.montant_approuve or Decimal('0')) < montant:
+        return False
+    return True
+
+
+def palier_manquant_bcf_detail(company, montant):
+    """YPROC4 — libellé FR du palier requis pour le message de refus 400
+    quand ``bcf_approbation_valide`` est faux (jamais utilisé pour bloquer
+    directement — seulement pour le message)."""
+    from .models_approbation_bcf import PALIER_CHOICES
+    palier = palier_requis_bcf(company, montant)
+    libelles = dict(PALIER_CHOICES)
+    return libelles.get(palier, palier)
+
+
 def controle_budgetaire_commande(company, montant, *, projet_id=None,
                                  categorie='materiel'):
     """FG313 — contrôle budgétaire AVANT de valider une commande : un montant
@@ -1532,25 +1650,94 @@ def prix_convenu_fournisseur(company, produit_id, *, fournisseur_id=None,
     }
 
 
-def suggerer_bin_putaway(company, produit_id, emplacement_id=None):
-    """FG320 - casier suggere pour ranger un produit recu.
+def _bin_respecte_capacite(bin_loc, produit_id, quantite):
+    """ZSTK9 - le casier respecte-t-il la capacite/compatibilite de sa
+    categorie de stockage pour CETTE quantite entrante ? Sans categorie posee
+    sur le casier, toujours True (comportement historique inchange)."""
+    cat = getattr(bin_loc, 'categorie', None)
+    if cat is None:
+        return True
+    from django.db.models import Sum
+    from .models import BinAffectation
+    existantes = BinAffectation.objects.filter(bin=bin_loc)
+    if not cat.melange_autorise:
+        autre_produit = existantes.exclude(produit_id=produit_id).exists()
+        if autre_produit:
+            return False
+    if cat.qte_max is not None:
+        deja = existantes.filter(produit_id=produit_id).aggregate(
+            total=Sum('quantite'))['total'] or 0
+        if deja + (quantite or 0) > cat.qte_max:
+            return False
+    return True
 
+
+def _bin_cible_regle(company, produit_id, emplacement_id=None):
+    """ZSTK9 - casier cible depuis la premiere `RegleRangement` ACTIVE
+    applicable (par priorite croissante), ou None sans regle. Une regle par
+    `produit` prime sur une regle par `categorie_produit` de meme priorite
+    (ordre naturel de la requete : produit d'abord)."""
+    from .models_storage_rules import RegleRangement
+    qs = RegleRangement.objects.filter(
+        company=company, actif=True, bin_cible__archived=False)
+    if emplacement_id:
+        qs = qs.filter(bin_cible__emplacement_id=emplacement_id)
+    par_produit = qs.filter(produit_id=produit_id).select_related(
+        'bin_cible').order_by('priorite', 'id').first()
+    if par_produit is not None:
+        return par_produit.bin_cible
+
+    produit = None
+    try:
+        from apps.stock.selectors import get_produit_scoped
+        produit = get_produit_scoped(company, produit_id)
+    except Exception:  # pragma: no cover - defensif
+        produit = None
+    categorie_nom = (
+        getattr(produit.categorie, 'nom', None)
+        if produit is not None and produit.categorie_id else None)
+    if not categorie_nom:
+        return None
+    par_categorie = qs.filter(
+        categorie_produit__iexact=categorie_nom).select_related(
+        'bin_cible').order_by('priorite', 'id').first()
+    return par_categorie.bin_cible if par_categorie is not None else None
+
+
+def suggerer_bin_putaway(company, produit_id, emplacement_id=None,
+                         quantite=0):
+    """FG320/ZSTK9 - casier suggere pour ranger un produit recu.
+
+    Priorite 0 (ZSTK9) : une `RegleRangement` ACTIVE applicable (par produit
+    ou categorie produit, priorite croissante) dont le casier respecte sa
+    capacite/compatibilite (`CategorieStockage`) pour la quantite entrante.
     Priorite 1 : un casier deja affecte a ce produit (FG319 BinAffectation),
-    le plus rempli d'abord. Priorite 2 : le premier casier non archive de
-    l'emplacement (par ordre de parcours). Renvoie un BinLocation ou None.
-    """
+    le plus rempli d'abord (sous la meme garde de capacite). Priorite 2 : le
+    premier casier non archive de l'emplacement, par ordre de parcours, dont
+    la capacite n'est pas depassee. Sans regle ni categorie posee nulle part,
+    le comportement reste BYTE-IDENTIQUE a l'historique (FG320)."""
     from .models import BinLocation, BinAffectation
+
+    regle_bin = _bin_cible_regle(company, produit_id, emplacement_id)
+    if regle_bin is not None and _bin_respecte_capacite(
+            regle_bin, produit_id, quantite):
+        return regle_bin
+
     aff_qs = BinAffectation.objects.filter(
         company=company, produit_id=produit_id, bin__archived=False)
     if emplacement_id:
         aff_qs = aff_qs.filter(bin__emplacement_id=emplacement_id)
-    aff = aff_qs.select_related('bin').order_by('-quantite').first()
-    if aff is not None:
-        return aff.bin
+    for aff in aff_qs.select_related('bin').order_by('-quantite'):
+        if _bin_respecte_capacite(aff.bin, produit_id, quantite):
+            return aff.bin
+
     bin_qs = BinLocation.objects.filter(company=company, archived=False)
     if emplacement_id:
         bin_qs = bin_qs.filter(emplacement_id=emplacement_id)
-    return bin_qs.order_by('ordre', 'code').first()
+    for candidate in bin_qs.order_by('ordre', 'code'):
+        if _bin_respecte_capacite(candidate, produit_id, quantite):
+            return candidate
+    return None
 
 
 def proposer_reapprovisionnement(company, quantites_actuelles=None):
@@ -1697,3 +1884,607 @@ def demandes_achat_en_attente(company):
             .filter(company=company, statut=DemandeAchat.Statut.SOUMISE)
             .select_related('chantier', 'programme')
             .order_by('date_besoin', 'id'))
+
+
+# ── XSTK22 — suivi de livraison côté client (portail FG228) ─────────────────
+
+def livraisons_client_portail(company, client_id):
+    """XSTK22 — livraisons SCOPÉES à un client (celles de SES chantiers),
+    au format PLAT attendu par le portail : date prévue, statut, numéro de
+    suivi, articles (désignation/quantité SEULEMENT), et un lien de
+    téléchargement de la preuve de livraison (FG330) une fois livrée.
+
+    N'expose JAMAIS ``cout_transport`` ni un prix d'achat — c'est le contrat
+    de ce sélecteur (testé). Lecture seule, scopée société ET client (jamais
+    les livraisons d'un autre client)."""
+    from .models import Livraison
+
+    qs = (Livraison.objects
+          .filter(company=company, installation__client_id=client_id)
+          .select_related('installation')
+          .prefetch_related('lignes', 'preuve')
+          .order_by('-date_prevue', '-date_creation'))
+
+    out = []
+    for liv in qs:
+        preuve = getattr(liv, 'preuve', None)
+        out.append({
+            'id': liv.id,
+            'reference': liv.reference,
+            'chantier_id': liv.installation_id,
+            'date_prevue': liv.date_prevue,
+            'statut': liv.statut,
+            'statut_display': liv.get_statut_display(),
+            'numero_suivi': liv.numero_suivi,
+            'articles': [
+                {'designation': ligne.designation
+                 or (ligne.produit.nom if ligne.produit_id else ''),
+                 'quantite': ligne.quantite}
+                for ligne in liv.lignes.all()
+            ],
+            'pod_disponible': preuve is not None,
+            'pod_url': (
+                f'/api/django/installations/preuves-livraison/'
+                f'{preuve.id}/' if preuve is not None else None),
+        })
+    return out
+
+
+# ── XMFG15 — Analyse d'écarts par ordre + tableau de bord atelier ────────────
+# Coût composants PRÉVU (BOM/lignes × cout_achat_courant) vs CONSOMMÉ réel
+# (mouvements XMFG1 SORTIE + rebuts XMFG11 REBUT rattachés à la référence de
+# l'ordre), temps prévu vs réel (XMFG14 `totaux_temps_ordre`). RESPONSABLE/
+# ADMIN uniquement (coûts d'achat) — la permission est vérifiée côté vue.
+
+def analyse_ecarts_ordre(ordre):
+    """XMFG15 — analyse prévu-vs-réel d'un ordre d'assemblage : coût composants
+    (prévu = BOM/lignes valorisées au coût d'achat courant ; réel = mouvements
+    SORTIE + REBUT rattachés à ``ordre.reference``) et temps (XMFG14). Renvoie
+    un dict PLAT :
+      ``cout``: {prevu, reel, ecart, ecart_pct}
+      ``temps``: {prevu, reel, ecart, complet} (minutes — XMFG14, `None` si
+        aucune durée attendue n'est renseignée)
+      ``rebut``: {quantite, cout} (partie du coût réel imputable au rebut)
+    Lecture seule, ne mute rien."""
+    from decimal import Decimal
+    from apps.stock.selectors import mouvements_par_reference
+    from .services import cout_prevu_assemblage, totaux_temps_ordre
+
+    cout_prevu = cout_prevu_assemblage(ordre)
+
+    cout_reel = Decimal('0')
+    cout_rebut = Decimal('0')
+    qte_rebut = 0
+    for mvt in mouvements_par_reference(ordre.company, ordre.reference):
+        prix = getattr(mvt.produit, 'prix_achat', None) or Decimal('0')
+        montant = Decimal(str(mvt.quantite)) * Decimal(str(prix))
+        if mvt.type_mouvement == 'sortie':
+            cout_reel += montant
+        elif mvt.type_mouvement == 'rebut':
+            cout_reel += montant
+            cout_rebut += montant
+            qte_rebut += mvt.quantite
+
+    ecart_cout = cout_reel - cout_prevu
+    ecart_pct = (float(ecart_cout / cout_prevu * 100)
+                 if cout_prevu else (0.0 if cout_reel == 0 else None))
+
+    temps = totaux_temps_ordre(ordre)
+    temps_prevu = temps['prevu']
+    temps_ecart = (
+        temps['reel'] - temps_prevu if temps_prevu is not None else None)
+
+    return {
+        'ordre_id': ordre.id,
+        'reference': ordre.reference,
+        'cout': {
+            'prevu': float(cout_prevu),
+            'reel': float(cout_reel),
+            'ecart': float(ecart_cout),
+            'ecart_pct': ecart_pct,
+        },
+        'temps': {
+            'prevu': temps_prevu,
+            'reel': temps['reel'],
+            'ecart': temps_ecart,
+            'complet': temps['complet'],
+        },
+        'rebut': {
+            'quantite': qte_rebut,
+            'cout': float(cout_rebut),
+        },
+    }
+
+
+def panneau_atelier(company, *, date_debut=None, date_fin=None):
+    """XMFG15 — panneau « Atelier » : ordres en retard (date_prevue dépassée,
+    non terminés/annulés), en cours, terminés sur la période, taux de rebut
+    (quantité rebutée / quantité totale consommée+rebutée sur les ordres
+    terminés de la période), écart moyen (%) de coût sur les ordres terminés
+    de la période. Filtrable par période (``date_creation`` pour les ordres
+    en cours, ``date_terminaison`` pour les terminés). Lecture seule, scopée
+    société."""
+    from datetime import date as _date
+    from .models import OrdreAssemblage
+
+    today = _date.today()
+
+    en_retard = list(OrdreAssemblage.objects.filter(
+        company=company, statut=OrdreAssemblage.Statut.PLANIFIE,
+        date_prevue__lt=today).select_related('kit'))
+    en_cours = list(OrdreAssemblage.objects.filter(
+        company=company, statut=OrdreAssemblage.Statut.EN_COURS)
+        .select_related('kit'))
+
+    termines_qs = OrdreAssemblage.objects.filter(
+        company=company, statut=OrdreAssemblage.Statut.TERMINE)
+    if date_debut is not None:
+        termines_qs = termines_qs.filter(date_terminaison__date__gte=date_debut)
+    if date_fin is not None:
+        termines_qs = termines_qs.filter(date_terminaison__date__lte=date_fin)
+    termines = list(termines_qs.select_related('kit'))
+
+    qte_rebut_totale = 0
+    qte_consomme_totale = 0
+    ecarts_pct = []
+    for ordre in termines:
+        analyse = analyse_ecarts_ordre(ordre)
+        qte_rebut_totale += analyse['rebut']['quantite']
+        cout_prevu = analyse['cout']['prevu']
+        if cout_prevu:
+            qte_consomme_totale += 1  # comptage d'ordres, pas de quantité brute
+        if analyse['cout']['ecart_pct'] is not None:
+            ecarts_pct.append(analyse['cout']['ecart_pct'])
+
+    taux_rebut = (
+        qte_rebut_totale / max(len(termines), 1) if termines else 0.0)
+    ecart_moyen_pct = (
+        sum(ecarts_pct) / len(ecarts_pct) if ecarts_pct else 0.0)
+
+    def _card(ordre):
+        return {
+            'id': ordre.id, 'reference': ordre.reference,
+            'kit_id': ordre.kit_id,
+            'kit_nom': getattr(ordre.kit, 'nom', None),
+            'date_prevue': ordre.date_prevue,
+            'statut': ordre.statut,
+        }
+
+    return {
+        'debut': date_debut, 'fin': date_fin,
+        'en_retard': [_card(o) for o in en_retard],
+        'en_cours': [_card(o) for o in en_cours],
+        'termines': [_card(o) for o in termines],
+        'totaux': {
+            'nb_en_retard': len(en_retard),
+            'nb_en_cours': len(en_cours),
+            'nb_termines': len(termines),
+            'taux_rebut_moyen': round(taux_rebut, 2),
+            'ecart_cout_moyen_pct': round(ecart_moyen_pct, 2),
+        },
+    }
+
+
+# ── XFSM5 — Fenêtres de RDV promises + taux de ponctualité ───────────────────
+
+def taux_ponctualite(company, *, debut=None, fin=None, technicien_id=None):
+    """XFSM5 — KPI « taux d'arrivée à l'heure » : proportion des interventions
+    ARRIVÉES (`arrivee_site_le` renseigné) dont `arrivee_dans_fenetre` est
+    True, parmi celles où une fenêtre était promise et où l'arrivée a eu
+    lieu. Filtrable par période (`arrivee_site_le`) et par technicien.
+    Lecture seule via `apps.installations.selectors` (jamais d'import de
+    models depuis `reporting`). Renvoie un dict PLAT
+    {nb_mesurees, nb_a_lheure, taux_pct} — `taux_pct` est None si aucune
+    intervention mesurable (jamais de division par zéro)."""
+    from .models import Intervention
+
+    qs = Intervention.objects.filter(
+        company=company, arrivee_site_le__isnull=False,
+        arrivee_dans_fenetre__isnull=False)
+    if debut is not None:
+        qs = qs.filter(arrivee_site_le__date__gte=debut)
+    if fin is not None:
+        qs = qs.filter(arrivee_site_le__date__lte=fin)
+    if technicien_id is not None:
+        qs = qs.filter(technicien_id=technicien_id)
+
+    nb_mesurees = qs.count()
+    nb_a_lheure = qs.filter(arrivee_dans_fenetre=True).count()
+    taux_pct = (
+        round(nb_a_lheure / nb_mesurees * 100, 2) if nb_mesurees else None)
+    return {
+        'nb_mesurees': nb_mesurees,
+        'nb_a_lheure': nb_a_lheure,
+        'taux_pct': taux_pct,
+    }
+
+
+# ── XFSM2 — Assistant de planification : créneau + technicien suggérés ──────
+# Combine les ingrédients déjà existants (plan de charge FG299, conflits
+# FG300, indisponibilités FG302, jours ouvrés, habilitations FG173/176,
+# GPS chantier + haversine) SANS RIEN muter : pure lecture, propositions
+# classées. Traduit `Intervention.Type` (choix fermé) vers les clés de
+# `rh.INTERVENTION_HABILITATIONS` (cadre différent, best-effort — un type
+# sans correspondance connue n'exige aucune habilitation).
+_TYPE_VERS_HABILITATION = {
+    'pose': 'pose_pv_bt',
+    'raccordement': 'pose_pv_bt',
+    'mise_en_service': 'operations_pv',
+    'controle': 'operations_pv',
+    'depannage': 'maintenance_bt',
+}
+
+
+def _techniciens_eligibles(company):
+    """Techniciens éligibles : utilisateurs de la société déjà affectés à au
+    moins une intervention (même bassin que FG299/FG301) — évite de proposer
+    un compte admin/commercial jamais affecté sur le terrain."""
+    from django.contrib.auth import get_user_model
+    from .models import Intervention
+    User = get_user_model()
+    ids = set(Intervention.objects.filter(
+        company=company, technicien_id__isnull=False)
+        .values_list('technicien_id', flat=True).distinct())
+    if not ids:
+        return list(User.objects.filter(company=company))
+    return list(User.objects.filter(company=company, id__in=ids))
+
+
+def suggerer_creneau(company, *, chantier_id, type_intervention, duree_jours=1,
+                     date_cible=None, n=3):
+    """XFSM2 — les N (défaut 3) meilleures propositions de créneau + technicien
+    pour un chantier/type/durée donnés, classées par :
+      1. habilitation requise OK (FG173/176 — un technicien manquant/expiré
+         n'est jamais proposé) ;
+      2. pas de conflit (FG300 : le technicien n'a AUCUNE intervention prévue
+         ce jour) ni d'indisponibilité (FG302) ;
+      3. charge la plus faible (nb d'interventions déjà planifiées, FG299) ;
+      4. distance au site la plus courte depuis les interventions DÉJÀ
+         planifiées du technicien ce jour-là (0 si aucune — dépôt inconnu).
+    Fenêtre de recherche : 14 jours ouvrés à partir de ``date_cible`` (défaut
+    aujourd'hui). Lecture seule, NE MUTE RIEN, scopée société. Renvoie
+    ``{propositions: [{technicien_id, nom, date, score...}], chantier_id}``."""
+    import datetime
+    from .models import Intervention
+
+    chantier = installation_scoped(company, chantier_id)
+    if chantier is None:
+        return {'chantier_id': chantier_id, 'propositions': []}
+
+    if date_cible is None:
+        date_cible = datetime.date.today()
+
+    techniciens = _techniciens_eligibles(company)
+    if not techniciens:
+        return {'chantier_id': chantier_id, 'propositions': []}
+
+    # Vérification habilitation (best-effort, cadre différent — cf. mapping).
+    habilitation_requise = _TYPE_VERS_HABILITATION.get(type_intervention)
+    eligibles = []
+    if habilitation_requise:
+        from apps.rh.selectors import (
+            dossier_employe_for_user, verifier_habilitation_requise)
+        for tech in techniciens:
+            dossier = dossier_employe_for_user(company, tech.id)
+            if dossier is None:
+                # Pas de fiche RH reliée : on ne peut pas vérifier → on ne
+                # bloque PAS (garde RAPPORTE, l'appelant décide — ici on
+                # considère éligible faute de donnée, cohérent avec le
+                # blocage doux FG176).
+                eligibles.append(tech)
+                continue
+            rapport = verifier_habilitation_requise(
+                company, dossier, habilitation_requise)
+            if rapport['autorise']:
+                eligibles.append(tech)
+    else:
+        eligibles = techniciens
+
+    if not eligibles:
+        return {'chantier_id': chantier_id, 'propositions': []}
+
+    site_lat = getattr(chantier, 'gps_lat', None)
+    site_lng = getattr(chantier, 'gps_lng', None)
+
+    # Fenêtre de recherche : 14 jours calendaires à partir de date_cible.
+    candidats = []
+    jour = date_cible
+    jours_testes = 0
+    while jours_testes < 14:
+        # Interventions déjà planifiées CE JOUR (toute ressource confondue) —
+        # sert de proxy de proximité : un technicien déjà dans le secteur ce
+        # jour-là minimise le trajet total. Chargé UNE fois par jour (hors
+        # boucle technicien) pour éviter un N+1.
+        interventions_du_jour = list(
+            Intervention.objects.filter(company=company, date_prevue=jour)
+            .select_related('installation'))
+        for tech in eligibles:
+            if ressource_indisponible(company, tech.id, jour, jour):
+                continue
+            deja_ce_jour = [
+                iv for iv in interventions_du_jour
+                if iv.technicien_id == tech.id]
+            if deja_ce_jour:
+                # FG300 — conflit : le technicien porte déjà une intervention
+                # ce jour-là → jamais proposé pour un NOUVEAU créneau ce jour.
+                continue
+            charge = Intervention.objects.filter(
+                company=company, technicien_id=tech.id,
+                date_prevue__gte=jour,
+                date_prevue__lt=jour + datetime.timedelta(days=14)).count()
+            # Distance au site la plus courte parmi les interventions déjà
+            # planifiées CE JOUR (toute ressource) — 0 si aucune GPS
+            # disponible (dépôt/site inconnu, jamais d'exception).
+            distance = None
+            if site_lat is not None and site_lng is not None:
+                for iv in interventions_du_jour:
+                    autre_lat = getattr(iv.installation, 'gps_lat', None)
+                    autre_lng = getattr(iv.installation, 'gps_lng', None)
+                    if autre_lat is None or autre_lng is None:
+                        continue
+                    d = _haversine_km(
+                        site_lat, site_lng, autre_lat, autre_lng)
+                    if distance is None or d < distance:
+                        distance = d
+            candidats.append({
+                'technicien_id': tech.id,
+                'nom': (getattr(tech, 'get_full_name', lambda: '')()
+                        or tech.username),
+                'date': jour.isoformat(),
+                'charge': charge,
+                'distance_km': round(distance, 1) if distance is not None
+                else None,
+            })
+        jour += datetime.timedelta(days=1)
+        jours_testes += 1
+
+    candidats.sort(key=lambda c: (
+        c['charge'],
+        c['distance_km'] if c['distance_km'] is not None else float('inf'),
+        c['date'], c['nom'].lower()))
+    return {
+        'chantier_id': chantier_id,
+        'propositions': candidats[:max(int(n or 3), 1)],
+    }
+
+
+# ── XFSM7 — lien public « technicien en route » ──────────────────────────────
+# Vitesse moyenne par défaut (km/h) pour l'ETA indicative — pas de service
+# externe, juste une estimation de trajet urbain/interurbain marocain.
+VITESSE_MOYENNE_KMH_DEFAUT = 40
+
+
+def intervention_public_payload(interv):
+    """XFSM7 — payload public (read-only, tokenisé) du suivi de visite : statut
+    courant, nom (+ avatar si disponible) du technicien, fenêtre promise
+    (XFSM5), et ETA estimée UNIQUEMENT si l'intervention est « En route » et
+    qu'une position de départ + le GPS du chantier sont connus (distance
+    haversine / vitesse moyenne paramétrable). Aucune donnée interne (jamais de
+    coûts, jamais de position GPS live — voir XFSM23)."""
+    from .field_services import haversine_km
+    from .models import Intervention
+
+    inst = interv.installation
+    technicien = interv.technicien
+    technicien_nom = None
+    technicien_avatar_url = None
+    if technicien is not None:
+        technicien_nom = (
+            getattr(technicien, 'get_full_name', lambda: '')()
+            or technicien.username)
+        avatar_key = getattr(technicien, 'avatar_key', '')
+        if avatar_key:
+            from authentication.avatars import presign_avatar
+            technicien_avatar_url = presign_avatar(avatar_key)
+
+    eta_minutes = None
+    distance_km = None
+    if (interv.statut == Intervention.Statut.EN_ROUTE
+            and interv.depart_gps_lat is not None
+            and interv.depart_gps_lng is not None):
+        distance_km = haversine_km(
+            interv.depart_gps_lat, interv.depart_gps_lng,
+            getattr(inst, 'gps_lat', None), getattr(inst, 'gps_lng', None))
+        if distance_km is not None:
+            vitesse = VITESSE_MOYENNE_KMH_DEFAUT
+            eta_minutes = round((distance_km / vitesse) * 60) if vitesse else None
+
+    return {
+        'statut': interv.statut,
+        'statut_display': interv.get_statut_display(),
+        'technicien_nom': technicien_nom,
+        'technicien_avatar_url': technicien_avatar_url,
+        'fenetre_debut': interv.fenetre_debut.isoformat() if interv.fenetre_debut else None,
+        'fenetre_fin': interv.fenetre_fin.isoformat() if interv.fenetre_fin else None,
+        'date_prevue': interv.date_prevue.isoformat() if interv.date_prevue else None,
+        'distance_km': distance_km,
+        'eta_minutes': eta_minutes,
+        'site_ville': getattr(inst, 'site_ville', None),
+    }
+
+
+# ── ZFSM2 — lien public tokenisé du compte-rendu signé ───────────────────────
+def intervention_rapport_public_payload(interv):
+    """ZFSM2 — payload public (read-only, tokenisé) du compte-rendu signé :
+    mêmes données que le PDF F19 (photos avant/après, réserves, matériel
+    consommé SANS prix d'achat ni marge, signature), plus un lien de
+    téléchargement du PDF. Aucune donnée interne."""
+    from . import intervention_pdf
+
+    inst = interv.installation
+    return {
+        'statut': interv.statut,
+        'statut_display': interv.get_statut_display(),
+        'type_intervention_display': interv.get_type_intervention_display(),
+        'chantier_reference': getattr(inst, 'reference', None),
+        'site_ville': getattr(inst, 'site_ville', None),
+        'date_realisee': (
+            interv.date_realisee.isoformat() if interv.date_realisee else None),
+        'equipe': intervention_pdf._equipe_payload(interv),
+        'photos': intervention_pdf._photos_payload(interv),
+        'serials': intervention_pdf._serials_payload(interv),
+        'consommation': intervention_pdf._consommation_payload(interv),
+        'reserves': intervention_pdf._reserves_payload(interv),
+        'signataire_nom': interv.signataire_nom or None,
+        'signe_le': interv.signe_le.isoformat() if interv.signe_le else None,
+        'pdf_url': (
+            f'/api/django/public/installations/intervention-rapport/'
+            f'{interv.lien_rapport_token}/pdf/'),
+    }
+
+
+# ── XFSM10 — astreinte / rotation après-heures ────────────────────────────────
+def technicien_astreinte(company, dt):
+    """XFSM10 — technicien d'astreinte couvrant l'instant ``dt`` (datetime
+    aware) pour ``company``, ou None si aucune astreinte ne couvre ce moment.
+    Lecture seule — consommable par d'autres apps (SAV pour le routage des
+    urgences hors heures, paie pour la prime d'astreinte)."""
+    from .models import Astreinte
+    if company is None or dt is None:
+        return None
+    a = (Astreinte.objects
+         .filter(company=company, date_debut__lte=dt, date_fin__gt=dt)
+         .select_related('technicien')
+         .order_by('-date_debut')
+         .first())
+    return a.technicien if a else None
+
+
+def astreintes_periode(company, date_debut, date_fin):
+    """XFSM10 — astreintes de ``company`` chevauchant [date_debut, date_fin)
+    (bornes datetime aware). Lecture seule — consommable par la paie pour la
+    prime d'astreinte (jamais d'import de ``apps.paie.models`` ici)."""
+    from .models import Astreinte
+    if company is None:
+        return Astreinte.objects.none()
+    qs = Astreinte.objects.filter(company=company)
+    if date_debut is not None:
+        qs = qs.filter(date_fin__gt=date_debut)
+    if date_fin is not None:
+        qs = qs.filter(date_debut__lt=date_fin)
+    return qs.select_related('technicien').order_by('date_debut')
+
+
+# ── XFSM22 — durée & pièces suggérées par l'historique (heuristique) ────────
+_TOP_N_PIECES_DEFAUT = 5
+_MIN_HISTORIQUE = 3  # silencieux sous ce nombre d'interventions d'historique.
+
+
+def _mediane(valeurs):
+    vals = sorted(v for v in valeurs if v is not None)
+    n = len(vals)
+    if n == 0:
+        return None
+    milieu = n // 2
+    if n % 2 == 1:
+        return vals[milieu]
+    return (vals[milieu - 1] + vals[milieu]) / 2
+
+
+def suggestion_duree_intervention(company, type_intervention, technicien=None):
+    """XFSM22 — durée suggérée (minutes) = médiane des durées réelles F15 des
+    interventions TERMINÉES de même ``type_intervention``, sur le même
+    technicien s'il a assez d'historique (≥ ``_MIN_HISTORIQUE``), sinon replié
+    sur toute la société. Silencieux (None) sous le seuil d'historique — pur
+    sélecteur lecture seule, aucune dépendance ML."""
+    from .field_capture import crew_time
+    from .models import Intervention
+
+    def _durees(qs):
+        durees = []
+        for interv in qs:
+            minutes = crew_time(interv)['duree_sur_site_min']
+            if minutes is not None:
+                durees.append(minutes)
+        return durees
+
+    base = Intervention.objects.filter(
+        company=company, type_intervention=type_intervention,
+        statut__in=(Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE))
+
+    if technicien is not None:
+        qs_tech = base.filter(technicien=technicien)
+        durees_tech = _durees(qs_tech)
+        if len(durees_tech) >= _MIN_HISTORIQUE:
+            return {
+                'duree_suggeree_min': _mediane(durees_tech),
+                'echantillon': len(durees_tech),
+                'portee': 'technicien',
+            }
+
+    durees_societe = _durees(base)
+    if len(durees_societe) < _MIN_HISTORIQUE:
+        return {
+            'duree_suggeree_min': None,
+            'echantillon': len(durees_societe),
+            'portee': 'societe',
+        }
+    return {
+        'duree_suggeree_min': _mediane(durees_societe),
+        'echantillon': len(durees_societe),
+        'portee': 'societe',
+    }
+
+
+def suggestion_pieces_intervention(
+        company, type_intervention, type_installation=None, top_n=_TOP_N_PIECES_DEFAUT):
+    """XFSM22 — top-N produits les plus consommés (F11) sur les interventions
+    similaires (même ``type_intervention`` + ``type_installation`` du chantier
+    si fourni), triés par quantité totale consommée décroissante. Silencieux
+    ([]) sous le seuil d'historique — pur sélecteur lecture seule."""
+    from .models import ConsommationLigne, Intervention
+
+    interventions = Intervention.objects.filter(
+        company=company, type_intervention=type_intervention,
+        statut__in=(Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE))
+    if type_installation:
+        interventions = interventions.filter(
+            installation__type_installation=type_installation)
+
+    if interventions.count() < _MIN_HISTORIQUE:
+        return []
+
+    lignes = (ConsommationLigne.objects
+              .filter(consommation__intervention__in=interventions)
+              .exclude(produit__isnull=True)
+              .values('produit_id', 'designation')
+              .annotate(total=Sum('quantite_utilisee'))
+              .order_by('-total'))
+    return [
+        {
+            'produit_id': row['produit_id'],
+            'designation': row['designation'],
+            'quantite_totale': row['total'],
+        }
+        for row in lignes[:max(int(top_n or _TOP_N_PIECES_DEFAUT), 1)]
+    ]
+
+
+def intervention_export_row(interv):
+    """ZFSM7 — une ligne PLATE de l'export xlsx des interventions : chantier,
+    client, ville, type, statut, priorité, dates, technicien, équipe, durée
+    réelle (F15, `field_capture.crew_time`). SANS AUCUN coût interne ni marge
+    (lecture seule, aucun champ `prix*`/`cout*`)."""
+    from . import field_capture
+    inst = interv.installation
+    client_nom = ''
+    if inst is not None and inst.client_id:
+        client = inst.client
+        client_nom = f'{getattr(client, "prenom", "") or ""} '.strip()
+        client_nom = f'{client_nom} {getattr(client, "nom", "") or ""}'.strip()
+    duree = field_capture.crew_time(interv).get('duree_sur_site_min')
+    equipe_noms = ', '.join(
+        u.username for u in interv.equipe.all()) if interv.pk else ''
+    return [
+        inst.reference if inst else '',
+        client_nom,
+        getattr(inst, 'site_ville', '') or '' if inst else '',
+        interv.get_type_intervention_display(),
+        interv.get_statut_display(),
+        interv.get_priorite_display(),
+        interv.date_prevue,
+        interv.date_realisee,
+        getattr(interv.technicien, 'username', '') or '',
+        equipe_noms,
+        duree if duree is not None else '',
+    ]

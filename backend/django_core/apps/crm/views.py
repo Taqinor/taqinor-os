@@ -5,7 +5,8 @@ from authentication.mixins import TenantMixin
 from authentication.scoping import scope_queryset, scope_client_queryset
 from .models import (
     Appointment, Client, ConcurrentPerte, Lead, LeadTag, MotifPerte, Canal,
-    Parrainage, MessageTemplate, ObjectifCommercial, PointContact, SiteProfile,
+    Parrainage, MessageTemplate, ObjectifCommercial, PlanActivite,
+    PointContact, SiteProfile,
 )
 from .serializers import (
     AppointmentSerializer, ClientSerializer, ConcurrentPerteSerializer,
@@ -13,7 +14,7 @@ from .serializers import (
     LeadTagSerializer, MotifPerteSerializer, CanalSerializer,
     ParrainageSerializer, MessageTemplateSerializer, _tag_en_usage, _motif_en_usage,
     ObjectifCommercialSerializer, ObjectifAttainmentSerializer,
-    PointContactSerializer, SiteProfileSerializer,
+    PlanActiviteSerializer, PointContactSerializer, SiteProfileSerializer,
 )
 from . import activity
 from .services import default_responsable_for
@@ -56,6 +57,37 @@ def assignable_users(request):
         }
         for u in qs
     ])
+
+
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def equipes_statistiques(request):
+    """ZSAL3 — Tableau de bord « Mes équipes » : pipeline ouvert/pondéré,
+    activités en retard, CA signé du mois vs cible, par équipe commerciale
+    active de la société courante."""
+    user = request.user
+    if not user.company_id:
+        if not user.is_superuser:
+            return Response({'equipes': []})
+        return Response({'equipes': []})
+    from .selectors import stats_equipe
+    return Response({'equipes': stats_equipe(user.company)})
+
+
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def rapport_attribution(request):
+    """ZSAL6 — Rapport d'attribution des leads par commercial + par source,
+    croisé avec le résultat (conversion, CA signé). ?debut=&fin= (YYYY-MM-DD,
+    optionnels) filtrent la période. Lecture seule."""
+    user = request.user
+    if not user.company_id:
+        return Response({'par_commercial': [], 'par_source': []})
+    from django.utils.dateparse import parse_date
+    debut = parse_date(request.query_params.get('debut') or '') or None
+    fin = parse_date(request.query_params.get('fin') or '') or None
+    from .selectors import attribution_leads
+    return Response(attribution_leads(user.company, debut=debut, fin=fin))
 
 
 class ClientViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -355,7 +387,14 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
     L'utilisateur acteur et la société viennent toujours de la requête côté
     serveur — jamais du corps envoyé par le navigateur.
     """
-    queryset = Lead.objects.all()
+    # YOPSB13 — LeadSerializer expose owner_nom/owner_poste/owner_avatar
+    # (SerializerMethodField sur obj.owner), client_nom (obj.client) et devis
+    # (obj.devis, reverse FK) : sans select_related/prefetch_related, la
+    # liste des leads exécute 1 requête PAR LIGNE pour chacune (N+1 réel,
+    # capturé par core.tests.test_utils.AssertQueryBudgetMixin dans
+    # apps/crm/tests/test_lead_query_budget.py).
+    queryset = Lead.objects.select_related('owner', 'client').prefetch_related(
+        'devis').all()
     serializer_class = LeadSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['nom', 'prenom', 'societe', 'email', 'telephone', 'ville']
@@ -433,6 +472,7 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
         elif self.action in WRITE_ACTIONS + [
             'noter', 'devis_auto', 'archiver', 'restaurer', 'merge',
             'whatsapp_devis', 'bulk', 'log_interaction',
+            'appliquer_plan', 'convertir_client',
         ]:
             # L'archivage réversible est ouvert à la Commerciale.
             return [IsResponsableOrAdmin()]
@@ -694,6 +734,54 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
         lead = self.get_object()
         return Response(
             LeadActivitySerializer(lead.activites.all(), many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='appliquer-plan',
+            permission_classes=[IsResponsableOrAdmin])
+    def appliquer_plan(self, request, pk=None):
+        """ZSAL2 — applique un PlanActivite (body {plan_id}) au lead : crée
+        une activité par étape, échéance = aujourd'hui + délai. Idempotent :
+        ré-appliquer le même plan ne duplique rien."""
+        lead = self.get_object()
+        plan_id = request.data.get('plan_id')
+        if not plan_id:
+            return Response({'plan_id': 'Requis.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        plan = PlanActivite.objects.filter(
+            id=plan_id, company=request.user.company).first()
+        if plan is None:
+            return Response({'detail': 'Plan introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        from .services import appliquer_plan_activite
+        try:
+            activites = appliquer_plan_activite(
+                lead=lead, plan=plan, user=request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        from apps.records.serializers import ActivitySerializer
+        return Response(
+            ActivitySerializer(activites, many=True).data,
+            status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='convertir-client',
+            permission_classes=[IsResponsableOrAdmin])
+    def convertir_client(self, request, pk=None):
+        """ZSAL4 — assistant de conversion EXPLICITE lead → client (body
+        {mode: nouveau|lier|aucun, client_id?}). Journalisé dans le chatter."""
+        lead = self.get_object()
+        mode = (request.data.get('mode') or '').strip()
+        client_id = request.data.get('client_id')
+        from .services import convertir_lead_en_client
+        try:
+            client = convertir_lead_en_client(
+                lead=lead, user=request.user, mode=mode, client_id=client_id)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'mode': mode,
+            'client': ClientSerializer(client).data if client else None,
+        })
 
     @action(detail=True, methods=['get'], url_path='points-contact',
             permission_classes=[IsAnyRole])
@@ -1210,6 +1298,21 @@ class SiteProfileViewSet(TenantMixin, viewsets.ModelViewSet):
             company=self.request.user.company,
             created_by=self.request.user,
         )
+
+
+# ── ZSAL2 — Plans d'activité ──────────────────────────────────────────────────
+
+class PlanActiviteViewSet(TenantMixin, viewsets.ModelViewSet):
+    """Plans d'activité (checklists de tâches commerciales) : lecture tout
+    rôle, écriture responsable/admin. Société forcée côté serveur."""
+    queryset = PlanActivite.objects.prefetch_related(
+        'etapes', 'etapes__activity_type').all()
+    serializer_class = PlanActiviteSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
 
 
 # ── FG36 — Modèles de messages WhatsApp/SMS ───────────────────────────────────

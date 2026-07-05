@@ -7,7 +7,9 @@ from rest_framework import serializers
 
 from .models import (
     Conversation, ConversationMember, Message, MessageAttachment,
-    MessageReaction, MessageMention,
+    MessageReaction, MessageMention, UserChatStatus,
+    ScheduledMessage, MessageReminder, MessageBookmark, CannedResponse,
+    RetentionPolicy,
 )
 
 
@@ -53,6 +55,7 @@ class MessageSerializer(serializers.ModelSerializer):
     sender_detail = serializers.SerializerMethodField()
     shared_url = serializers.SerializerMethodField()
     is_pinned = serializers.SerializerMethodField()
+    reply_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Message
@@ -61,14 +64,19 @@ class MessageSerializer(serializers.ModelSerializer):
             'reply_to', 'created_at', 'edited_at', 'deleted_at',
             'pinned_at', 'pinned_by', 'is_pinned',
             'shared_object_id', 'shared_label', 'shared_url',
-            'attachments', 'reactions',
+            'attachments', 'reactions', 'reply_count',
         ]
         # `conversation` est fourni par l'URL/le contexte, pas par le corps.
         read_only_fields = [
             'id', 'sender', 'kind', 'created_at', 'edited_at', 'deleted_at',
             'pinned_at', 'pinned_by', 'shared_object_id', 'shared_label',
-            'attachments', 'reactions',
+            'attachments', 'reactions', 'reply_count',
         ]
+
+    def get_reply_count(self, obj):
+        # XKB24 — compteur de réponses sous le message parent (fil).
+        from .services import thread_reply_count
+        return thread_reply_count(obj)
 
     def get_sender_detail(self, obj):
         if obj.sender_id is None:
@@ -105,6 +113,21 @@ class MessageSerializer(serializers.ModelSerializer):
         return data
 
 
+class UserChatStatusSerializer(serializers.ModelSerializer):
+    is_dnd = serializers.SerializerMethodField()
+
+    class Meta:
+        model = UserChatStatus
+        fields = [
+            'id', 'user', 'status_text', 'status_emoji',
+            'dnd_start', 'dnd_end', 'is_dnd', 'last_seen_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'user', 'last_seen_at', 'updated_at']
+
+    def get_is_dnd(self, obj):
+        return obj.is_dnd_active()
+
+
 class ConversationMemberSerializer(serializers.ModelSerializer):
     user_detail = serializers.SerializerMethodField()
 
@@ -112,7 +135,7 @@ class ConversationMemberSerializer(serializers.ModelSerializer):
         model = ConversationMember
         fields = [
             'id', 'conversation', 'user', 'user_detail', 'role',
-            'last_read_at', 'is_muted', 'joined_at',
+            'last_read_at', 'is_muted', 'notification_level', 'joined_at',
         ]
         read_only_fields = ['id', 'conversation', 'joined_at']
 
@@ -134,8 +157,8 @@ class ConversationSerializer(serializers.ModelSerializer):
         model = Conversation
         fields = [
             'id', 'kind', 'name', 'created_by', 'is_archived',
-            'created_at', 'updated_at', 'members', 'member_ids',
-            'last_message', 'unread_count',
+            'alias_email', 'created_at', 'updated_at', 'members',
+            'member_ids', 'last_message', 'unread_count',
         ]
         read_only_fields = [
             'id', 'created_by', 'created_at', 'updated_at', 'members',
@@ -164,3 +187,52 @@ class ConversationSerializer(serializers.ModelSerializer):
             return 0
         from .services import unread_count
         return unread_count(obj, member)
+
+
+class ScheduledMessageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ScheduledMessage
+        fields = [
+            'id', 'conversation', 'sender', 'body', 'scheduled_at',
+            'status', 'sent_message', 'created_at',
+        ]
+        read_only_fields = ['id', 'sender', 'status', 'sent_message', 'created_at']
+
+
+class MessageReminderSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MessageReminder
+        fields = ['id', 'message', 'user', 'remind_at', 'status', 'created_at']
+        read_only_fields = ['id', 'user', 'status', 'created_at']
+
+
+class MessageBookmarkSerializer(serializers.ModelSerializer):
+    message_detail = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MessageBookmark
+        fields = ['id', 'message', 'message_detail', 'user', 'created_at']
+        read_only_fields = fields
+
+    def get_message_detail(self, obj):
+        return MessageSerializer(obj.message).data
+
+
+class CannedResponseSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CannedResponse
+        fields = [
+            'id', 'shortcut', 'body', 'scope', 'owner',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'owner', 'created_at', 'updated_at']
+
+
+class RetentionPolicySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = RetentionPolicy
+        fields = [
+            'id', 'conversation_kind', 'retention_months',
+            'updated_by', 'updated_at',
+        ]
+        read_only_fields = ['id', 'updated_by', 'updated_at']

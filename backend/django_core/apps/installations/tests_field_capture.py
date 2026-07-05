@@ -284,6 +284,53 @@ class TestConsommation(_Base):
         # (collision avec le produit n°160 en suite complète CI).
         self.assertNotIn('73951', body)  # prix_achat — jamais exposé
 
+    def test_consumption_from_van_decrements_its_emplacement(self):
+        # YSTCK3 — une intervention portant une camionnette assignée
+        # décrémente CE StockEmplacement (jamais le principal dérivé).
+        from apps.stock.models import StockEmplacement
+        from apps.stock.services import ensure_emplacements
+        ensure_emplacements(self.company)
+        camionnette = EmplacementStock.objects.create(
+            company=self.company, nom='Van F11', is_principal=False)
+        StockEmplacement.objects.create(
+            company=self.company, produit=self.onduleur,
+            emplacement=camionnette, quantite=5)
+        self.interv.camionnette = camionnette
+        self.interv.save(update_fields=['camionnette'])
+
+        cons = field_capture.ensure_consommation(self.interv)
+        ligne = cons.lignes.get(designation='Onduleur 5kW')
+        ligne.quantite_utilisee = Decimal('1')
+        ligne.save()
+        field_capture.validate_consommation(cons, self.user)
+
+        se = StockEmplacement.objects.get(
+            produit=self.onduleur, emplacement=camionnette)
+        self.assertEqual(se.quantite, 4)
+
+    def test_consumption_without_van_unchanged(self):
+        # Sans camionnette assignée : comportement historique (aucun
+        # StockEmplacement touché par la consommation terrain).
+        from apps.stock.models import StockEmplacement
+        from apps.stock.services import ensure_emplacements
+        ensure_emplacements(self.company)
+        camionnette = EmplacementStock.objects.create(
+            company=self.company, nom='Van F11 bis', is_principal=False)
+        StockEmplacement.objects.create(
+            company=self.company, produit=self.onduleur,
+            emplacement=camionnette, quantite=5)
+        # self.interv.camionnette reste None (défaut).
+
+        cons = field_capture.ensure_consommation(self.interv)
+        ligne = cons.lignes.get(designation='Onduleur 5kW')
+        ligne.quantite_utilisee = Decimal('1')
+        ligne.save()
+        field_capture.validate_consommation(cons, self.user)
+
+        se = StockEmplacement.objects.get(
+            produit=self.onduleur, emplacement=camionnette)
+        self.assertEqual(se.quantite, 5)
+
 
 # ── F13/F14 — mémo vocal + transcription no-op ───────────────────────────────
 class TestVoiceMemo(_Base):

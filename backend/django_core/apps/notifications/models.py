@@ -37,13 +37,33 @@ class EventType(models.TextChoices):
     DEVIS_SUPERIOR_CONTACT_REQUESTED = (
         'devis_superior_contact_requested',
         'Avis du supérieur demandé sur un devis')
+    # QW4 — un lead demande explicitement un RAPPEL téléphonique (distinct
+    # d'une simple réponse WhatsApp) : notification à urgence plus élevée.
+    LEAD_CALLBACK_REQUESTED = (
+        'lead_callback_requested', 'Rappel téléphonique demandé')
+    # QW4 — le rappel demandé n'a pas été actionné dans le SLA serré (moitié
+    # du SLA générique premier contact) : escalade dédiée.
+    LEAD_CALLBACK_SLA_BREACH = (
+        'lead_callback_sla_breach', 'Rappel demandé non actionné (SLA)')
     CHANTIER_DUE = 'chantier_due', 'Chantier à installer'
     FACTURE_OVERDUE = 'facture_overdue', 'Facture en retard'
     WARRANTY_EXPIRING = 'warranty_expiring', 'Garantie bientôt expirée'
     MAINTENANCE_DUE = 'maintenance_due', 'Visite de maintenance due'
     STOCK_LOW = 'stock_low', 'Stock bas'
+    # ZSTK2 — un lot/réception approche de sa date de péremption (fenêtre
+    # configurable par société, cron quotidien).
+    STOCK_EXPIRATION_SOON = (
+        'stock_expiration_soon', 'Lot bientôt périmé')
     SAV_TICKET_OPENED = 'sav_ticket_opened', 'Ticket SAV ouvert'
     SAV_TICKET_BREACHING = 'sav_ticket_breaching', 'Ticket SAV proche de son délai'
+    # ZSAV3 — activité planifiée à échéance sur un ticket SAV (échue, pas faite).
+    SAV_ACTIVITE_DUE = 'sav_activite_due', 'Activité SAV à échéance'
+    # ZSAV9 — notification d'un suiveur de ticket (note ou transition).
+    SAV_TICKET_FOLLOWED_UPDATE = (
+        'sav_ticket_followed_update', 'Mise à jour sur un ticket suivi')
+    # YSERV5 — génération automatique nocturne de visites préventives dues.
+    SAV_VISITES_AUTO_GENEREES = (
+        'sav_visites_auto_generees', 'Visites préventives générées automatiquement')
     # Group S — messagerie interne (« Discuss »).
     CHAT_MESSAGE = 'chat_message', 'Nouveau message'
     CHAT_MENTION = 'chat_mention', 'Vous avez été mentionné'
@@ -65,11 +85,37 @@ class EventType(models.TextChoices):
         'supplier_doc_expiring', 'Document fournisseur bientôt expiré')
     # XPUR7 — BCF envoyé en retard (prévue/confirmée dépassée, non reçu).
     BCF_LATE = 'bcf_late', 'Bon de commande fournisseur en retard'
+    # YPROC7 — un BCF est annulé (cascade sur ses réceptions brouillon).
+    BCF_CANCELLED = 'bcf_cancelled', 'Bon de commande fournisseur annulé'
+    # ZPUR7 — brouillon de relance PROPOSÉ (jamais envoyé) pour un BCF en
+    # retard, distinct de BCF_LATE (l'alerte buyer XPUR7) : jamais de
+    # doublon de notification.
+    BCF_RELANCE_PROPOSEE = (
+        'bcf_relance_proposee', 'Brouillon de relance BCF proposé')
     # XPRJ22 — retard/risque de planning sur un projet (gestion_projet).
     PROJET_RETARD = 'projet_retard', 'Retard planning projet'
     # XFLT18 — dépassement de budget flotte annuel (par catégorie de coût).
     FLOTTE_BUDGET_DEPASSEMENT = (
         'flotte_budget_depassement', 'Dépassement budget flotte')
+    # XFLT24 — géofencing : entrée en zone interdite / mouvement hors plage
+    # horaire autorisée, détecté sur les relevés télématiques déjà ingérés.
+    FLOTTE_ZONE_ALERTE = (
+        'flotte_zone_alerte', 'Alerte géofencing véhicule')
+    # XFLT25 — code défaut moteur (DTC) critique détecté sur un relevé
+    # télématique (manuel ou fournisseur).
+    FLOTTE_DTC_CRITIQUE = (
+        'flotte_dtc_critique', 'Code défaut moteur critique (DTC)')
+    # ZGED14 — une demande de signature en attente approche de son expiration
+    # (versant ÉMETTEUR, complète les relances SIGNATAIRE de XGED2).
+    GED_SIGNATURE_EXPIRATION_PROCHE = (
+        'ged_signature_expiration_proche',
+        'Demande de signature bientôt expirée')
+    # YEVNT2 — un devis envoyé a expiré automatiquement (QJ5, date de
+    # validité dépassée) sans action du propriétaire.
+    DEVIS_EXPIRED = 'devis_expired', 'Devis expiré'
+    # YEVNT12 — un incident QHSE CRITIQUE est déclaré (au-delà de la note
+    # chatter existante QHSE32) : notifie les responsables QHSE.
+    INCIDENT_CRITICAL = 'incident_critical', 'Incident QHSE critique'
 
 
 class Channel(models.TextChoices):

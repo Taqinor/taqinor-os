@@ -87,6 +87,12 @@ def compte_rendu_pdf(intervention):
                        if client else ''),
         'site_ville': getattr(inst, 'site_ville', '') or '',
         'site_adresse': getattr(inst, 'site_adresse', '') or '',
+        # XFSM8 — notes d'accès du chantier, reprises telles quelles (jamais
+        # ressaisies) sur le compte-rendu.
+        'contact_site_nom': getattr(inst, 'contact_site_nom', '') or '',
+        'contact_site_telephone': getattr(inst, 'contact_site_telephone', '') or '',
+        'acces_instructions': getattr(inst, 'acces_instructions', '') or '',
+        'horaires_acces': getattr(inst, 'horaires_acces', '') or '',
         'date_prevue': intervention.date_prevue,
         'date_realisee': intervention.date_realisee,
         'arrivee_site_le': intervention.arrivee_site_le,

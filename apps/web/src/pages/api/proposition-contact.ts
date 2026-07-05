@@ -2,19 +2,21 @@
  * POST /api/proposition-contact — proxy SAME-ORIGIN de « Être contacté » /
  * « Demander un rappel » (WJ29).
  *
- * Aujourd'hui les boutons rappel/WhatsApp de /proposition/[token] sont des
- * liens client purs (tel:, wa.me) : rien ne notifie l'équipe côté serveur. Ce
- * proxy poste { token, channel, message? } et relaie côté serveur vers
+ * Les boutons rappel/WhatsApp de /proposition/[token] restent aussi des liens
+ * client purs (tel:, wa.me) en secours. Ce proxy poste
+ * { token, channel, message? } et relaie côté serveur vers
  * `{API_BASE}/api/django/ventes/proposal/<token>/contact/` — SYMÉTRIQUE de
  * /api/proposition-accept (même résolution d'API_BASE, même non-exposition du
  * backend au navigateur).
  *
- * Le backend n'expose PAS ENCORE cette route (PLAN2 QJ27, pas construite) :
- * un 404 amont, un 5xx, ou une panne réseau dégradent TOUS vers la même
- * réponse honnête { ok:false, degraded:true, detail:"…contactez-nous sur
- * WhatsApp…" } — jamais une erreur technique brute. Le lien wa.me instantané
- * reste toujours affiché à côté, quel que soit le résultat de cet appel :
- * cette route est un « mieux si possible », jamais un blocage.
+ * QW5 (2026-07-05) — la route backend EXISTE (alias de PLAN2 QJ27 sous ce
+ * mount ventes/, apps/ventes/urls.py) et traite bien channel/message/
+ * revision_kind. Un éventuel 404 amont, 5xx, ou panne réseau dégradent quand
+ * même TOUS vers la même réponse honnête { ok:false, degraded:true,
+ * detail:"…contactez-nous sur WhatsApp…" } — jamais une erreur technique
+ * brute. Le lien wa.me instantané reste toujours affiché à côté, quel que
+ * soit le résultat de cet appel : cette route est un « mieux si possible »,
+ * jamais un blocage.
  *
  * WJ54 — le même proxy porte aussi la demande de modification structurée
  * (« Demander une modification » : ajuster kWc / changer batterie / autre) —

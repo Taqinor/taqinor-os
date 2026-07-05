@@ -259,6 +259,14 @@ def generate_facture_pdf(facture_id):
 
     context = _company_context(company=facture.company)
     context['facture'] = facture
+    # XFAC19 — QR paiement/vérification (PDF facture LEGACY uniquement, jamais
+    # le moteur devis premium). Ajout silencieux : None → footer inchangé.
+    try:
+        from apps.ventes.services import qr_svg_for_facture_pdf
+        context['facture_qr_svg'] = qr_svg_for_facture_pdf(facture)
+    except Exception as exc:  # noqa: BLE001 — best-effort, jamais de crash PDF
+        logger.warning('QR facture %s indisponible : %s', facture_id, exc)
+        context['facture_qr_svg'] = None
 
     html = _render_html('facture.html', context)
     pdf_bytes = _html_to_pdf(html)
@@ -302,6 +310,71 @@ def generate_avoir_pdf(avoir_id):
     return key
 
 
+def generate_note_debit_pdf(note_debit_id):
+    """ZFAC4 — generate, upload and persist PDF for a NoteDebit. Returns MinIO
+    key. Layout legacy facture (templates/pdf/note_debit.html, copie
+    relabellée de avoir.html), aucune refonte visuelle."""
+    from apps.ventes.models import NoteDebit
+    note_debit = (
+        NoteDebit.objects
+        .select_related('client', 'created_by', 'company', 'facture')
+        .prefetch_related('lignes__produit')
+        .get(pk=note_debit_id)
+    )
+
+    context = _company_context(company=note_debit.company)
+    context['note_debit'] = note_debit
+
+    html = _render_html('note_debit.html', context)
+    pdf_bytes = _html_to_pdf(html)
+
+    key = f'notes-debit/{note_debit.reference}.pdf'
+    _upload_pdf(pdf_bytes, key)
+
+    note_debit.fichier_pdf = key
+    note_debit.save(update_fields=['fichier_pdf'])
+
+    logger.info('PDF note de débit généré : %s', key)
+    return key
+
+
+def generate_bon_commande_pdf(bc_id):
+    """ZSAL8 — PDF imprimable du bon de commande CLIENT (rendu à la volée,
+    non stocké — layout maison LEGACY, PAS le moteur devis premium, réservé
+    au devis client par la règle #4). Identité société (ICE/IF/RC),
+    lignes de l'option retenue du devis d'origine (jamais ``prix_achat``),
+    chaîne Sous-total → Remise → HT → TVA → TTC, statut de livraison."""
+    from decimal import Decimal
+
+    from apps.ventes.models import BonCommande
+    from apps.ventes.utils.options import option_lines, option_totaux
+
+    bc = (
+        BonCommande.objects
+        .select_related('client', 'devis', 'company')
+        .get(pk=bc_id)
+    )
+
+    context = _company_context(company=bc.company)
+    context['bc'] = bc
+    if bc.devis:
+        context['lignes'] = option_lines(bc.devis)
+        totaux = option_totaux(bc.devis)
+        context['total_ht'] = totaux['ht']
+        context['total_tva'] = totaux['tva']
+        context['total_ttc'] = totaux['ttc']
+        context['remise_globale'] = bc.devis.remise_globale or Decimal('0')
+    else:
+        context['lignes'] = []
+        context['total_ht'] = Decimal('0')
+        context['total_tva'] = Decimal('0')
+        context['total_ttc'] = Decimal('0')
+        context['remise_globale'] = Decimal('0')
+
+    html = _render_html('bon_commande.html', context)
+    return _html_to_pdf(html)
+
+
 def generate_releve_pdf(client, releve_data):
     """Relevé de compte client (style maison) — rendu à la volée, non stocké."""
     context = _company_context(company=client.company)
@@ -329,6 +402,17 @@ def generate_proforma_pdf(devis, reference):
     context['devis'] = devis
     context['reference'] = reference
     html = _render_html('proforma.html', context)
+    return _html_to_pdf(html)
+
+
+def generate_dossier_contentieux_pdf(client, dossier_data):
+    """XFAC21 — pack PDF complet du dossier contentieux (recouvrement externe).
+
+    Rendu à la volée, non stocké (comme le relevé) — layout maison, jamais le
+    moteur devis premium (RULE #4 : ceci ne concerne AUCUN devis)."""
+    context = _company_context(company=client.company)
+    context['dossier'] = dossier_data
+    html = _render_html('dossier_contentieux.html', context)
     return _html_to_pdf(html)
 
 
@@ -368,3 +452,39 @@ def generate_recu_pdf(paiement):
 
     html = _render_html('recu.html', context)
     return _html_to_pdf(html)
+
+
+def generate_bordereau_remise_pdf(remise_id):
+    """XFSM19 — bordereau PDF d'une remise d'encaissement terrain.
+
+    Layout maison (PAS le moteur devis) : identité société, technicien,
+    lignes (paiement/mode/date/facture), montant déclaré vs somme des
+    lignes, écart. Généré à la clôture ; uploadé + persisté sur
+    ``RemiseEncaissement.fichier_pdf`` comme les autres PDF stockés
+    (devis/facture/avoir). Renvoie les octets PDF."""
+    from apps.ventes.models import RemiseEncaissement
+
+    remise = (
+        RemiseEncaissement.objects
+        .select_related('technicien', 'company')
+        .prefetch_related('lignes__paiement__facture')
+        .get(pk=remise_id)
+    )
+
+    context = _company_context(company=remise.company)
+    context['remise'] = remise
+    context['lignes'] = list(remise.lignes.all())
+    context['montant_lignes'] = remise.montant_lignes
+    context['ecart'] = remise.ecart
+
+    html = _render_html('bordereau_remise.html', context)
+    pdf_bytes = _html_to_pdf(html)
+
+    key = f'remises-encaissement/{remise.company_id}/{remise.reference or remise.id}.pdf'
+    _upload_pdf(pdf_bytes, key)
+
+    remise.fichier_pdf = key
+    remise.save(update_fields=['fichier_pdf'])
+
+    logger.info('PDF bordereau de remise généré : %s', key)
+    return pdf_bytes

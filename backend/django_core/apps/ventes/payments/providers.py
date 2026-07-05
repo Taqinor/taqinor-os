@@ -50,6 +50,25 @@ class PaymentProvider:
         """Valide une notification ; renvoie {'paid', 'provider_ref', 'montant'}."""
         raise NotImplementedError
 
+    # ── XCTR22 — Tokenisation carte / mandat + débit récurrent ──
+    # Extension de l'interface, SEULEMENT pour les fournisseurs qui la
+    # supportent. AUCUN PAN n'est jamais stocké côté ERP : seul un token
+    # opaque du fournisseur (+ 4 derniers chiffres/expiration pour
+    # l'affichage) est persisté sur `ventes.MandatPaiement`.
+    def tokenize(self, *, client, return_url=None):
+        """Ouvre une session hébergée où le CLIENT enregistre sa carte.
+
+        Renvoie {'tokenize_url': str, 'provider_ref': str} — l'appelant
+        redirige le client vers `tokenize_url` ; le fournisseur notifie
+        ensuite (webhook séparé, hors périmètre ici) avec le token final."""
+        raise NotImplementedError
+
+    def charge(self, *, token, montant):
+        """Débite un montant sur un token de carte déjà enregistré.
+
+        Renvoie {'ok': bool, 'provider_ref': str, 'motif_echec': str}."""
+        raise NotImplementedError
+
 
 class NoOpProvider(PaymentProvider):
     """Fournisseur par défaut : page de paiement INTERNE, aucun coût/dépendance.
@@ -83,6 +102,18 @@ class NoOpProvider(PaymentProvider):
             'paid': True,
             'provider_ref': str(payload.get('provider_ref') or '') or '',
             'montant': montant,
+        }
+
+    def tokenize(self, *, client, return_url=None):
+        # Aucune tokenisation réelle : jamais de PAN ni de token opaque
+        # produit — le mandat reste indisponible tant qu'aucun fournisseur
+        # réel n'est configuré.
+        return {'tokenize_url': '', 'provider_ref': ''}
+
+    def charge(self, *, token, montant):
+        return {
+            'ok': False, 'provider_ref': '',
+            'motif_echec': 'Tokenisation non configurée (fournisseur noop).',
         }
 
 
@@ -131,11 +162,78 @@ class HostedGatewayProvider(PaymentProvider):
                            exc_info=True)
             return {'paid': False, 'provider_ref': '', 'montant': None}
 
+    def tokenize(self, *, client, return_url=None):
+        creds = self._credentials(None)
+        if not creds:
+            return {'tokenize_url': '', 'provider_ref': ''}
+        try:
+            # ... créer une session de tokenisation hébergée (CMI) ...
+            return {'tokenize_url': '', 'provider_ref': ''}
+        except Exception:  # noqa: BLE001
+            logger.warning('HostedGateway tokenize a échoué (no-op).',
+                           exc_info=True)
+            return {'tokenize_url': '', 'provider_ref': ''}
+
+    def charge(self, *, token, montant):
+        creds = self._credentials(None)
+        if not creds or not token:
+            return {
+                'ok': False, 'provider_ref': '',
+                'motif_echec': 'Tokenisation CMI non configurée.',
+            }
+        try:
+            # ... débiter le token via l'API CMI ...
+            return {'ok': False, 'provider_ref': '', 'motif_echec': ''}
+        except Exception:  # noqa: BLE001
+            logger.warning('HostedGateway charge a échoué (no-op).',
+                           exc_info=True)
+            return {
+                'ok': False, 'provider_ref': '',
+                'motif_echec': 'Erreur fournisseur.',
+            }
+
+
+class MockTokenizedProvider(PaymentProvider):
+    """Fournisseur de TEST (tokenisation + débit simulés, aucun réseau).
+
+    Sert à prouver le câblage bout en bout (mandat → débit → dunning)
+    sans dépendre d'une plateforme réelle qui n'existe pas encore côté
+    tokenisation CMI. Jamais enregistré comme défaut."""
+
+    key = 'mock_tokenized'
+    label = 'Fournisseur de test (tokenisation simulée)'
+
+    def tokenize(self, *, client, return_url=None):
+        import uuid
+        return {
+            'tokenize_url': '/mock-tokenize/',
+            'provider_ref': f'MOCK-TOK-{uuid.uuid4().hex[:10]}',
+        }
+
+    def charge(self, *, token, montant):
+        import uuid
+        if not token:
+            return {
+                'ok': False, 'provider_ref': '',
+                'motif_echec': 'Token manquant.',
+            }
+        if token == 'FAIL':
+            return {
+                'ok': False, 'provider_ref': '',
+                'motif_echec': 'Carte refusée (test).',
+            }
+        return {
+            'ok': True,
+            'provider_ref': f'MOCK-CHG-{uuid.uuid4().hex[:10]}',
+            'motif_echec': '',
+        }
+
 
 # ── Registre des fournisseurs (swappable, comme le monitoring) ───────────────
 _REGISTRY = {
     NoOpProvider.key: NoOpProvider,
     HostedGatewayProvider.key: HostedGatewayProvider,
+    MockTokenizedProvider.key: MockTokenizedProvider,
 }
 
 

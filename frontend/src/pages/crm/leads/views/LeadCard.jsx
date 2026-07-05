@@ -110,6 +110,14 @@ export default function LeadCard({
         )}
         <span className="kb-card-name">{nomComplet}</span>
         {perdu && <span className="kb-badge-perdu">Perdu</span>}
+        {lead.contact_preference === 'phone_ok' && (
+          <span
+            className="kb-badge-rappel rounded-full bg-info/15 px-1.5 py-0.5 text-info"
+            title="Le client a demandé à être rappelé par téléphone"
+          >
+            ☎ Rappel demandé
+          </span>
+        )}
         {dernierDevisExpire && (
           <span
             className="kb-badge-expire rounded-full bg-warning/15 px-1.5 py-0.5 text-warning"

@@ -86,10 +86,27 @@ class LigneDevisViewSet(viewsets.ModelViewSet):
                 and devis.company_id != user.company_id:
             raise ValidationError({'devis': 'Devis inconnu.'})
 
+    def _check_devis_not_frozen(self, devis):
+        """YDOCF2 — les lignes d'un devis figé (accepté/refusé/expiré) ne sont
+        plus librement éditables : le BC/Facture/BoM chantier aval sont déjà
+        générés depuis le contenu figé. `reviser` (clone en V+1) reste la
+        voie de modification."""
+        from rest_framework.exceptions import ValidationError
+        FROZEN = {Devis.Statut.ACCEPTE, Devis.Statut.REFUSE, Devis.Statut.EXPIRE}
+        if devis is not None and devis.statut in FROZEN:
+            raise ValidationError({
+                'devis': 'Devis figé — révisez-le (reviser) pour le modifier.'})
+
     def perform_create(self, serializer):
         self._check_tenant(serializer)
+        self._check_devis_not_frozen(serializer.validated_data.get('devis'))
         serializer.save()
 
     def perform_update(self, serializer):
         self._check_tenant(serializer)
+        self._check_devis_not_frozen(serializer.instance.devis)
         serializer.save()
+
+    def perform_destroy(self, instance):
+        self._check_devis_not_frozen(instance.devis)
+        instance.delete()

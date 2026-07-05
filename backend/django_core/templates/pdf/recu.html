@@ -89,6 +89,18 @@
       <span>{{ paiement.reference }}</span>
     </div>
     {% endif %}
+    {% if paiement.mode == 'cheque' and paiement.numero_cheque %}
+    <div class="meta-item">
+      <strong>N° chèque</strong>
+      <span>{{ paiement.numero_cheque }}</span>
+    </div>
+    {% endif %}
+    {% if paiement.mode == 'cheque' and paiement.banque_tiree %}
+    <div class="meta-item">
+      <strong>Banque tirée</strong>
+      <span>{{ paiement.banque_tiree }}</span>
+    </div>
+    {% endif %}
   </div>
 
   {% if affectations %}

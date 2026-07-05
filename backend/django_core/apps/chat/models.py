@@ -44,6 +44,11 @@ class Conversation(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='chat_conversations_created')
     is_archived = models.BooleanField(default=False)
+    # ZCTR12 — canal comme liste de diffusion e-mail : optionnel, unique par
+    # société quand renseigné. Sans clé mail configurée (SENDGRID/inbound),
+    # ce champ est un simple libellé sans effet — comportement inchangé.
+    alias_email = models.CharField(
+        max_length=254, blank=True, default='', null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -54,6 +59,12 @@ class Conversation(models.Model):
         indexes = [
             models.Index(fields=['company', 'kind']),
             models.Index(fields=['company', 'is_archived']),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'alias_email'],
+                condition=~models.Q(alias_email__in=['', None]),
+                name='chat_conv_alias_email_uniq'),
         ]
 
     def __str__(self):
@@ -82,6 +93,18 @@ class ConversationMember(models.Model):
     # Dernière lecture : les messages créés après cette date sont « non lus ».
     last_read_at = models.DateTimeField(null=True, blank=True)
     is_muted = models.BooleanField(default=False)
+
+    class NotificationLevel(models.TextChoices):
+        ALL = 'all', 'Tout'
+        MENTIONS = 'mentions', 'Mentions seulement'
+        MUTED = 'muted', 'Muet'
+
+    # XKB25 — remplace `is_muted` par un niveau à 3 valeurs (additif ;
+    # `is_muted` reste et reste synchronisé pour compat ascendante). Défaut
+    # `all` préserve le comportement existant (non muet = tout notifié).
+    notification_level = models.CharField(
+        max_length=10, choices=NotificationLevel.choices,
+        default=NotificationLevel.ALL)
     joined_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -109,6 +132,7 @@ class Message(models.Model):
         VOICE = 'voice', 'Mémo vocal'
         SYSTEM = 'system', 'Système'
         RECORD = 'record', 'Enregistrement partagé'
+        POLL = 'poll', 'Sondage'
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
@@ -248,3 +272,336 @@ class MessageMention(models.Model):
 
     def __str__(self):
         return f'@{self.mentioned_user_id} dans {self.message_id}'
+
+
+class ThreadFollow(models.Model):
+    """XKB24 — suivi d'un fil (le message racine porte le fil).
+
+    Le premier posteur (auteur du message racine) et tout répondant sont
+    auto-suivis (`get_or_create` dans `services.reply_in_thread`). Un
+    utilisateur peut aussi suivre/ne plus suivre manuellement. Utilisé pour la
+    boîte « Fils » (fils suivis + non-lus) et pour notifier UNIQUEMENT les
+    suiveurs (jamais tout le canal)."""
+
+    root_message = models.ForeignKey(
+        Message, on_delete=models.CASCADE, related_name='thread_followers')
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='chat_thread_follows')
+    # Dernière lecture du fil par ce suiveur (badge non-lus de la boîte Fils).
+    last_read_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Suivi de fil'
+        verbose_name_plural = 'Suivis de fil'
+        ordering = ['id']
+        unique_together = [('root_message', 'user')]
+        indexes = [
+            models.Index(fields=['user', 'root_message']),
+        ]
+
+    def __str__(self):
+        return f'{self.user_id} suit fil {self.root_message_id}'
+
+
+class UserChatStatus(models.Model):
+    """XKB26 — statut personnalisé + Ne pas déranger, un par utilisateur.
+
+    Le statut (texte + emoji) s'affiche aux collègues (liste de conversations,
+    autocomplete @mention). La plage NPD (début/fin, toujours en UTC comme le
+    reste du projet) supprime le push ET les notifications chat non urgentes
+    pendant la fenêtre — via `notifications.services.notify` (best-effort,
+    jamais bloquant). `last_seen_at` alimente un « vu récemment » best-effort
+    (mis à jour par polling existant, PAS de WebSocket — la présence temps réel
+    reste S21)."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='chat_user_statuses')
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='chat_status')
+    status_text = models.CharField(max_length=120, blank=True, default='')
+    status_emoji = models.CharField(max_length=16, blank=True, default='')
+    dnd_start = models.DateTimeField(null=True, blank=True)
+    dnd_end = models.DateTimeField(null=True, blank=True)
+    last_seen_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Statut de discussion'
+        verbose_name_plural = 'Statuts de discussion'
+        ordering = ['id']
+        indexes = [
+            models.Index(fields=['company', 'user']),
+        ]
+
+    def is_dnd_active(self, now=None):
+        from django.utils import timezone
+        now = now or timezone.now()
+        if self.dnd_start is None or self.dnd_end is None:
+            return False
+        return self.dnd_start <= now <= self.dnd_end
+
+    def __str__(self):
+        return f'Statut de {self.user_id}'
+
+
+class ScheduledMessage(models.Model):
+    """XKB27 — « Envoyer plus tard » : message différé, expédié par le sweep
+    Celery beat à `scheduled_at`, annulable avant l'heure (`cancelled_at`).
+
+    Le message réel n'est créé qu'AU MOMENT de l'envoi (jamais avant) —
+    `sent_message` pointe alors vers le `Message` produit."""
+
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'En attente'
+        SENT = 'sent', 'Envoyé'
+        CANCELLED = 'cancelled', 'Annulé'
+        FAILED = 'failed', 'Échec'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='chat_scheduled_messages')
+    conversation = models.ForeignKey(
+        Conversation, on_delete=models.CASCADE,
+        related_name='scheduled_messages')
+    sender = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='chat_scheduled_messages')
+    body = models.TextField(blank=True, default='')
+    scheduled_at = models.DateTimeField()
+    status = models.CharField(
+        max_length=10, choices=Status.choices, default=Status.PENDING)
+    sent_message = models.ForeignKey(
+        Message, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Message programmé'
+        verbose_name_plural = 'Messages programmés'
+        ordering = ['scheduled_at', 'id']
+        indexes = [
+            models.Index(fields=['status', 'scheduled_at']),
+            models.Index(fields=['company', 'sender']),
+        ]
+
+    def __str__(self):
+        return f'Programmé {self.pk} @ {self.scheduled_at}'
+
+
+class MessageReminder(models.Model):
+    """XKB27 — « me rappeler ce message » : re-surface un message dans l'inbox
+    notifications de l'utilisateur à l'heure choisie."""
+
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'En attente'
+        SENT = 'sent', 'Envoyé'
+        CANCELLED = 'cancelled', 'Annulé'
+
+    message = models.ForeignKey(
+        Message, on_delete=models.CASCADE, related_name='reminders')
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='chat_message_reminders')
+    remind_at = models.DateTimeField()
+    status = models.CharField(
+        max_length=10, choices=Status.choices, default=Status.PENDING)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Rappel de message'
+        verbose_name_plural = 'Rappels de message'
+        ordering = ['remind_at', 'id']
+        indexes = [
+            models.Index(fields=['status', 'remind_at']),
+            models.Index(fields=['user', 'message']),
+        ]
+
+    def __str__(self):
+        return f'Rappel {self.pk} @ {self.remind_at}'
+
+
+class MessageBookmark(models.Model):
+    """XKB27 — signet personnel (« messages enregistrés ») par utilisateur."""
+
+    message = models.ForeignKey(
+        Message, on_delete=models.CASCADE, related_name='bookmarks')
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='chat_bookmarks')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Signet de message'
+        verbose_name_plural = 'Signets de message'
+        ordering = ['-created_at', '-id']
+        unique_together = [('message', 'user')]
+        indexes = [
+            models.Index(fields=['user', 'message']),
+        ]
+
+    def __str__(self):
+        return f'Signet {self.user_id} → {self.message_id}'
+
+
+class CannedResponse(models.Model):
+    """XKB28 — réponse enregistrée (snippet) déclenchée par `:raccourci` dans
+    le composer chat. Portée société (partagée à tous) ou personnelle
+    (`owner`, privée). Complète les gabarits WhatsApp/email existants qui ne
+    couvrent pas le chat interne."""
+
+    class Scope(models.TextChoices):
+        PERSONAL = 'personal', 'Personnel'
+        COMPANY = 'company', 'Société'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='chat_canned_responses')
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        null=True, blank=True, related_name='chat_canned_responses')
+    shortcut = models.CharField(max_length=64)
+    body = models.TextField()
+    scope = models.CharField(
+        max_length=10, choices=Scope.choices, default=Scope.PERSONAL)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Réponse enregistrée'
+        verbose_name_plural = 'Réponses enregistrées'
+        ordering = ['shortcut']
+        # Un raccourci est unique par portée : `owner=None` (société) ou par
+        # propriétaire (personnel) — appliqué aussi côté service.
+        unique_together = [('company', 'owner', 'shortcut')]
+        indexes = [
+            models.Index(fields=['company', 'scope']),
+        ]
+
+    def __str__(self):
+        return f':{self.shortcut}'
+
+
+class Poll(models.Model):
+    """XKB30 — sondage porté par un `Message.kind='poll'`. Choix unique ou
+    multiple, option anonyme (masque les votants dans les résultats), clôture
+    par l'auteur uniquement."""
+
+    message = models.OneToOneField(
+        Message, on_delete=models.CASCADE, related_name='poll')
+    question = models.CharField(max_length=255)
+    allow_multiple = models.BooleanField(default=False)
+    is_anonymous = models.BooleanField(default=False)
+    closed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Sondage'
+        verbose_name_plural = 'Sondages'
+        ordering = ['-created_at', '-id']
+
+    def __str__(self):
+        return f'Sondage : {self.question}'
+
+
+class PollOption(models.Model):
+    """Option de vote d'un sondage."""
+
+    poll = models.ForeignKey(
+        Poll, on_delete=models.CASCADE, related_name='options')
+    label = models.CharField(max_length=255)
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        verbose_name = 'Option de sondage'
+        verbose_name_plural = 'Options de sondage'
+        ordering = ['order', 'id']
+
+    def __str__(self):
+        return self.label
+
+
+class PollVote(models.Model):
+    """Vote d'un utilisateur pour une option (unique par utilisateur+option ;
+    le choix unique est appliqué côté service en retirant les autres votes de
+    l'utilisateur sur ce sondage avant d'enregistrer le nouveau)."""
+
+    option = models.ForeignKey(
+        PollOption, on_delete=models.CASCADE, related_name='votes')
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='chat_poll_votes')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Vote de sondage'
+        verbose_name_plural = 'Votes de sondage'
+        ordering = ['id']
+        unique_together = [('option', 'user')]
+        indexes = [
+            models.Index(fields=['option', 'user']),
+        ]
+
+    def __str__(self):
+        return f'{self.user_id} -> option {self.option_id}'
+
+
+class RetentionPolicy(models.Model):
+    """XKB32 — politique de rétention admin par type de conversation (loi
+    09-08 / conformité CNDP sur les données employés).
+
+    Une ligne par (société, type de conversation). DÉFAUT : AUCUNE politique
+    -> `retention_months` reste `null` -> le sweep ne purge RIEN pour ce type
+    (comportement inchangé). Poser un nombre de mois active la purge pour ce
+    type UNIQUEMENT."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='chat_retention_policies')
+    conversation_kind = models.CharField(
+        max_length=10, choices=Conversation.Kind.choices)
+    # NULL = pas de politique active pour ce type (aucune purge). Un entier
+    # positif = purge des messages plus vieux que N mois.
+    retention_months = models.PositiveIntegerField(null=True, blank=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+')
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Politique de rétention (chat)'
+        verbose_name_plural = 'Politiques de rétention (chat)'
+        ordering = ['conversation_kind']
+        unique_together = [('company', 'conversation_kind')]
+
+    def __str__(self):
+        months = self.retention_months
+        return f'{self.conversation_kind}: {months or "aucune"} mois'
+
+
+class RetentionSweepRun(models.Model):
+    """XKB32 — journal d'exécution du sweep de rétention (traçabilité CNDP).
+
+    Une ligne par exécution du sweep pour UNE société — jamais silencieux :
+    même « rien à purger » est journalisé (compte à 0)."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='chat_retention_sweep_runs')
+    ran_at = models.DateTimeField(auto_now_add=True)
+    messages_purged = models.PositiveIntegerField(default=0)
+    detail = models.TextField(blank=True, default='')
+
+    class Meta:
+        verbose_name = 'Exécution de purge (chat)'
+        verbose_name_plural = 'Exécutions de purge (chat)'
+        ordering = ['-ran_at', '-id']
+        indexes = [
+            models.Index(fields=['company', 'ran_at']),
+        ]
+
+    def __str__(self):
+        return f'Sweep {self.company_id} @ {self.ran_at} ({self.messages_purged})'

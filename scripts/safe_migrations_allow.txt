@@ -1,0 +1,32 @@
+# YOPSB4 — allowlist of HISTORICAL migrations already merged to main that trip
+# scripts/check_safe_migrations.py's heuristics. Each was reviewed and is safe
+# in its actual context (e.g. RunPython using .all() without an explicit
+# .iterator()/batch marker on a table that was empty/small at migration time,
+# or an AddIndex predating the concurrent-index convention — YOPSB6). A NEW
+# migration is NOT added here: it must fix the flagged pattern instead.
+#
+# One relative repo path per line (forward slashes).
+
+backend/django_core/authentication/migrations/0004_customuser_role_legacy.py
+backend/django_core/authentication/migrations/0007_mark_owner_protected.py
+backend/django_core/authentication/migrations/0013_customuser_poste_ref.py
+backend/django_core/apps/chat/migrations/0003_notification_level.py
+backend/django_core/apps/compta/migrations/0043_dc32_compte_portail_client_fk.py
+backend/django_core/apps/contrats/migrations/0037_zctr6_ordre_location_devis.py
+backend/django_core/apps/crm/migrations/0011_client_type_from_ice.py
+backend/django_core/apps/crm/migrations/0026_lead_score.py
+backend/django_core/apps/ged/migrations/0006_document_search_vector_document_texte_ocr_and_more.py
+backend/django_core/apps/ged/migrations/0009_document_locked_by_locked_at.py
+backend/django_core/apps/ged/migrations/0011_document_statut.py
+backend/django_core/apps/ged/migrations/0036_zged5_document_proprietaire_contact.py
+backend/django_core/apps/gestion_projet/migrations/0023_timesheet_workflow_periode_verrouillee.py
+backend/django_core/apps/installations/migrations/0006_checklisttemplate_and_more.py
+backend/django_core/apps/installations/migrations/0052_dc34_soustraitant_fournisseur.py
+backend/django_core/apps/installations/migrations/0055_xmfg3_ato_devis_chantier.py
+backend/django_core/apps/kb/migrations/0008_kbarticle_parent_ordre.py
+backend/django_core/apps/kb/migrations/0017_kbarticle_langue_traduction.py
+backend/django_core/apps/notifications/migrations/0013_xmkt25_whatsapptemplate_approval.py
+backend/django_core/apps/paie/migrations/0037_zpai7_saisiearret_lot_reference.py
+backend/django_core/apps/rh/migrations/0019_epi_peremption_controle.py
+backend/django_core/apps/sav/migrations/0007_fg81_fg82_fg83_fg85_fg87.py
+backend/django_core/apps/stock/migrations/0013_backfill_garantie_onduleurs.py

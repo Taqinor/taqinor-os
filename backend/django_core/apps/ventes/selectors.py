@@ -24,6 +24,67 @@ def factures_echues(company, *, today=None):
     ).select_related('client', 'created_by')
 
 
+def get_facture_scoped(company, facture_id):
+    """XFAC14 — Facture (AR) scopée société par id, ou ``None``. Point
+    d'entrée cross-app (compensation AR/AP) : lire une facture client sans
+    importer ``apps.ventes.models``. Lecture seule."""
+    from .models import Facture
+    return (Facture.objects
+            .select_related('client')
+            .filter(id=facture_id, company=company).first())
+
+
+def releve_client_portail(client):
+    """XFAC26 — Relevé de compte self-service (portail client) : réutilise
+    ``recouvrement._releve_data`` (même patron que l'écran interne, sans
+    filtre de portée — le portail montre TOUT le compte du client, jamais un
+    sous-ensemble par créateur) et ajoute une mini balance âgée
+    (0-30/31-60/61-90/90+) + le solde courant, cohérents avec
+    ``balance_agee``. Point d'entrée cross-app pour ``apps.compta``
+    (jamais un import de ``apps.ventes.models``). Lecture seule."""
+    from decimal import Decimal
+
+    from .models import Facture
+    from .recouvrement import _releve_data
+
+    data = _releve_data(client, user=None)
+
+    buckets = {
+        'b0_30': Decimal('0'), 'b31_60': Decimal('0'),
+        'b61_90': Decimal('0'), 'b90_plus': Decimal('0'),
+    }
+    qs = (Facture.objects
+          .filter(client=client)
+          .exclude(statut__in=[Facture.Statut.PAYEE, Facture.Statut.ANNULEE]))
+    for facture in qs:
+        du = facture.montant_du
+        if not du:
+            continue
+        jr = facture.jours_retard
+        if jr <= 30:
+            buckets['b0_30'] += du
+        elif jr <= 60:
+            buckets['b31_60'] += du
+        elif jr <= 90:
+            buckets['b61_90'] += du
+        else:
+            buckets['b90_plus'] += du
+
+    data['solde_courant'] = data['totaux']['du']
+    data['balance_agee'] = {k: str(v) for k, v in buckets.items()}
+    return data
+
+
+def releve_client_pdf_bytes(client):
+    """XFAC26 — PDF du relevé de compte (portail client), même rendu que
+    l'écran interne (``client_releve_pdf``). Lecture seule, jamais un import
+    hors de ce module côté ``apps.compta``."""
+    from .recouvrement import _releve_data
+    from .utils.pdf import generate_releve_pdf
+
+    return generate_releve_pdf(client, _releve_data(client, user=None))
+
+
 def devis_for_lead(lead, ids):
     """Devis d'un lead (dans la société du lead), pour les ids donnés, triés par
     id. Liste matérialisée — comportement identique au filtre inline d'origine."""
@@ -317,3 +378,379 @@ def nombre_proprietes(devis) -> int:
     except (TypeError, ValueError):
         n = 1
     return max(1, n)
+
+
+# ── XFAC15 — score comportement de paiement (agrège FG365) ────────────────
+
+_SCORE_BANDS = (
+    (0.20, 'A'), (0.40, 'B'), (0.60, 'C'), (0.80, 'D'),
+)
+
+
+def _score_to_letter(score):
+    for threshold, letter in _SCORE_BANDS:
+        if score < threshold:
+            return letter
+    return 'E'
+
+
+def _retard_reel_jours(facture):
+    """Jours émission → encaissement RÉELS pour une facture soldée par
+    paiement (dernière date de paiement enregistrée moins émission). Renvoie
+    ``None`` si la facture n'a aucun paiement (rien à mesurer)."""
+    dernier = None
+    for p in facture.paiements.all():
+        if p.date_paiement and (dernier is None or p.date_paiement > dernier):
+            dernier = p.date_paiement
+    if dernier is None or not facture.date_emission:
+        return None
+    delta = (dernier - facture.date_emission).days
+    return delta if delta > 0 else 0
+
+
+def comportement_paiement(client):
+    """XFAC15 — score de comportement de paiement agrégé d'un client.
+
+    AGRÈGE les scores FG365 (``core.payment_delay.payment_delay_risk``, jamais
+    ré-implémenté ici) de toutes les factures ouvertes du client + son retard
+    moyen RÉEL (jours émission → encaissement, sur les factures déjà payées) →
+    une lettre A (excellent payeur) à E (à risque). Un client sans historique
+    exploitable (aucune facture payée, aucune facture ouverte) reçoit un score
+    NEUTRE (``used_fallback=True`` du moteur pur).
+
+    Renvoie un dict :
+      ``{'score': float, 'lettre': 'A'..'E', 'retard_moyen_jours': float,
+         'nb_factures_ouvertes': int, 'nb_factures_historique': int,
+         'used_fallback': bool}``
+    """
+    from core.payment_delay import payment_delay_risk
+    from .models import Facture
+
+    factures = Facture.objects.filter(
+        client=client).exclude(statut=Facture.Statut.ANNULEE).prefetch_related(
+        'paiements', 'avoirs')
+
+    retards_reels = []
+    for f in factures:
+        if f.statut == Facture.Statut.PAYEE:
+            r = _retard_reel_jours(f)
+            if r is not None:
+                retards_reels.append(r)
+
+    retard_moyen = (
+        sum(retards_reels) / len(retards_reels) if retards_reels else None)
+
+    ouvertes = [f for f in factures if f.montant_du > 0]
+    prior_late = sum(1 for r in retards_reels if r > 0)
+
+    if not ouvertes:
+        # Aucune facture ouverte à scorer : le score client se base
+        # uniquement sur l'historique (ou tombe au neutre si aucun non plus).
+        features = {}
+        if retard_moyen is not None:
+            features['client_avg_delay_days'] = retard_moyen
+            features['client_prior_late_count'] = prior_late
+        result = payment_delay_risk(features)
+    else:
+        scores = []
+        for f in ouvertes:
+            feats = {
+                'days_overdue': f.jours_retard,
+                'montant_du': float(f.montant_du),
+                'relance_count': f.relances.count(),
+            }
+            if retard_moyen is not None:
+                feats['client_avg_delay_days'] = retard_moyen
+                feats['client_prior_late_count'] = prior_late
+            scores.append(payment_delay_risk(feats))
+        avg_score = sum(r.score for r in scores) / len(scores)
+        result = scores[0]
+        result.score = avg_score
+        result.band = (
+            'faible' if avg_score < 0.34 else
+            'moyen' if avg_score < 0.67 else 'élevé')
+
+    return {
+        'score': round(result.score, 4),
+        'lettre': _score_to_letter(result.score),
+        'retard_moyen_jours': (
+            round(retard_moyen, 1) if retard_moyen is not None else None),
+        'nb_factures_ouvertes': len(ouvertes),
+        'nb_factures_historique': len(retards_reels),
+        'used_fallback': result.used_fallback,
+    }
+
+
+def date_encaissement_prevue(facture, retard_moyen_jours=None):
+    """XFAC15 — date d'encaissement PRÉVUE d'une facture ouverte.
+
+    Échéance théorique + retard moyen RÉEL du client (comportemental) au lieu
+    de la seule échéance théorique. Sans échéance ou sans retard moyen connu,
+    renvoie l'échéance théorique inchangée (comportement neutre/dégradé)."""
+    from datetime import timedelta
+    if not facture.date_echeance:
+        return None
+    if not retard_moyen_jours:
+        return facture.date_echeance
+    return facture.date_echeance + timedelta(days=round(retard_moyen_jours))
+
+
+# ── XACC29 — Références (pour rapport de continuité des séquences) ────────
+
+def references_factures(company):
+    """XACC29 — Références de toutes les ``Facture`` (hors annulées) d'une
+    société, pour la détection de trous de séquence côté ``compta`` (jamais un
+    import de ``ventes.models`` en dehors de ce module). Lecture seule."""
+    from .models import Facture
+    return list(
+        Facture.objects
+        .exclude(statut=Facture.Statut.ANNULEE)
+        .filter(company=company)
+        .exclude(reference='')
+        .values_list('reference', flat=True)
+    )
+
+
+def references_avoirs(company):
+    """XACC29 — Références de tous les ``Avoir`` d'une société. Lecture seule."""
+    from .models import Avoir
+    return list(
+        Avoir.objects.filter(company=company)
+        .exclude(reference='')
+        .values_list('reference', flat=True)
+    )
+
+
+def encours_clients_par_tiers(company):
+    """YLEDG13 — encours documentaire (reste dû) par client, factures NON
+    annulées d'une société. Point d'entrée cross-app sanctionné pour
+    ``apps.compta`` (rapprochement auxiliaire/GL, jamais un import direct de
+    ``ventes.models``). Renvoie une liste de dicts ``{'tiers_id', 'nom',
+    'encours', 'references'}`` (encours > 0 seulement, ``references`` = les
+    factures ouvertes de ce client). Lecture seule."""
+    from decimal import Decimal
+    from .models import Facture
+
+    par_client = {}
+    qs = (Facture.objects
+          .filter(company=company)
+          .exclude(statut=Facture.Statut.ANNULEE)
+          .select_related('client'))
+    for facture in qs:
+        du = facture.montant_du
+        if not du:
+            continue
+        client = facture.client
+        entry = par_client.setdefault(client.id, {
+            'tiers_id': client.id,
+            'nom': (f'{client.prenom} {client.nom}'.strip()
+                    if hasattr(client, 'prenom') else str(client)),
+            'encours': Decimal('0'),
+            'references': [],
+        })
+        entry['encours'] += Decimal(du)
+        entry['references'].append(facture.reference)
+    return [v for v in par_client.values() if v['encours'] > 0]
+
+
+def acompte_paye_pour_devis(devis_id, company):
+    """YSERV1 — vrai si le devis a au moins une ``Facture`` de
+    ``type_facture='acompte'`` au statut ``payee`` — point d'entrée cross-app
+    sanctionné pour ``apps.installations`` (jamais un import direct de
+    ``apps.ventes.models``). Lecture seule ; ``devis_id`` sans facture
+    d'acompte payée (ou inconnu/autre société) renvoie ``False``."""
+    from .models import Facture
+    if not devis_id:
+        return False
+    return Facture.objects.filter(
+        devis_id=devis_id, company=company,
+        type_facture=Facture.TypeFacture.ACOMPTE,
+        statut=Facture.Statut.PAYEE,
+    ).exists()
+
+
+def etat_recouvrement_client(company, client_id):
+    """YCASH4 — État de recouvrement d'UN client, pour le front du funnel.
+
+    Agrège ce que le blueprint L2C appelle "l'état recouvrement remontant au
+    commercial" : le retard maximum parmi ses factures ouvertes, le niveau de
+    relance atteint (réutilise ``recouvrement._current_level`` — jamais une
+    nouvelle échelle), et l'encours échu total (= somme des ``montant_du``
+    des factures en retard, jamais un montant TTC non dû). Ne modifie AUCUN
+    statut ; pur agrégat lecture seule pour l'avertissement FG41 enrichi.
+
+    Renvoie :
+      ``{'retard_max_jours': int, 'niveau_relance': dict|None,
+         'encours_echu': Decimal, 'a_jour': bool}``
+    Un client sans facture en retard renvoie ``a_jour=True`` et
+    ``encours_echu=0`` — l'appelant n'affiche alors aucun avertissement."""
+    from decimal import Decimal
+    from .models import Facture
+    from .recouvrement import _levels, _current_level
+
+    factures = (
+        Facture.objects
+        .filter(company=company, client_id=client_id)
+        .exclude(statut=Facture.Statut.ANNULEE)
+        .prefetch_related('paiements', 'avoirs')
+    )
+
+    retard_max = 0
+    encours_echu = Decimal('0')
+    for f in factures:
+        jr = f.jours_retard
+        if jr > 0:
+            retard_max = max(retard_max, jr)
+            encours_echu += f.montant_du
+
+    if retard_max <= 0:
+        return {
+            'retard_max_jours': 0, 'niveau_relance': None,
+            'encours_echu': Decimal('0'), 'a_jour': True,
+        }
+
+    niveau = _current_level(retard_max, _levels(company))
+    return {
+        'retard_max_jours': retard_max,
+        'niveau_relance': niveau,
+        'encours_echu': encours_echu,
+        'a_jour': False,
+    }
+
+
+def analyse_facturation(company, debut, fin):
+    """ZFAC10 — Analyse de facturation : agrégat HT/TVA/TTC des factures
+    scopées société, groupé par mois d'émission ET par client ET par statut,
+    sur ``[debut, fin)``. Factures annulées EXCLUES du CA. Lecture pure —
+    aucune écriture. Renvoie une liste de dicts triée par mois puis client :
+
+    ``{'mois': 'YYYY-MM', 'client_id', 'client_nom', 'statut',
+       'total_ht', 'total_tva', 'total_ttc', 'nb_factures'}``
+    """
+    from decimal import Decimal
+
+    from .models import Facture
+
+    factures = (
+        Facture.objects
+        .filter(company=company, date_emission__gte=debut,
+                date_emission__lt=fin)
+        .exclude(statut=Facture.Statut.ANNULEE)
+        .select_related('client')
+    )
+
+    buckets = {}
+    for f in factures:
+        mois = f.date_emission.strftime('%Y-%m') if f.date_emission else ''
+        client_nom = (
+            f"{f.client.nom} {f.client.prenom or ''}".strip()
+            if f.client_id else ''
+        )
+        key = (mois, f.client_id, f.statut)
+        entry = buckets.setdefault(key, {
+            'mois': mois, 'client_id': f.client_id, 'client_nom': client_nom,
+            'statut': f.statut, 'total_ht': Decimal('0'),
+            'total_tva': Decimal('0'), 'total_ttc': Decimal('0'),
+            'nb_factures': 0,
+        })
+        entry['total_ht'] += f.total_ht
+        entry['total_tva'] += f.total_tva
+        entry['total_ttc'] += f.total_ttc
+        entry['nb_factures'] += 1
+
+    rows = list(buckets.values())
+    rows.sort(key=lambda r: (r['mois'], r['client_nom'], r['statut']))
+    return rows
+
+
+def devis_a_facturer(company, *, jours=7, today=None):
+    """ZFAC12 — ``Devis`` ``accepte`` d'une société, sans ``Facture`` liée
+    depuis PLUS de ``jours`` jours (revenu bloqué en amont, backlog à
+    facturer). Un devis déjà facturé (au moins une ``Facture`` via
+    ``devis.factures``) est ignoré. Lecture seule."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from .models import Devis
+
+    today = today or timezone.now().date()
+    seuil = today - timedelta(days=jours)
+
+    candidats = (
+        Devis.objects
+        .filter(company=company, statut=Devis.Statut.ACCEPTE,
+                date_acceptation__isnull=False,
+                date_acceptation__lte=seuil)
+        .exclude(factures__isnull=False)
+        .distinct()
+    )
+    return list(candidats)
+
+
+def tranche_facturee(devis, type_facture):
+    """YSERV7 — la facture d'échéancier ``type_facture`` (acompte/
+    intermediaire/solde) existe-t-elle déjà pour ce devis ? Lecture seule,
+    point d'entrée cross-app sanctionné pour ``apps.installations`` (jamais un
+    import direct de ``apps.ventes.models``). Une facture ANNULÉE ne compte
+    pas comme émise (la tranche reste due). Renvoie un booléen."""
+    if devis is None or not type_facture:
+        return False
+    from .models import Facture
+    return (
+        Facture.objects
+        .filter(devis=devis, type_facture=type_facture)
+        .exclude(statut=Facture.Statut.ANNULEE)
+        .exists()
+    )
+
+
+def jours_impaye_facture(facture_id, company):
+    """ZCTR2 — Nombre de jours DEPUIS lesquels une facture est impayée.
+
+    Point d'entrée cross-app en LECTURE SEULE pour ``apps.contrats``
+    (clôture automatique des contrats impayés) — jamais un import direct de
+    ``apps.ventes.models``. Renvoie ``0`` si la facture est introuvable (id
+    NULL/inconnu, autre société), déjà payée, annulée, ou sans
+    ``date_echeance`` (rien à mesurer) : dans tous ces cas rien n'est dû,
+    cohérent avec ``Facture.jours_retard``. Sinon renvoie le nombre de jours
+    entiers écoulés depuis ``date_echeance`` (0 si l'échéance n'est pas
+    encore dépassée)."""
+    from .models import Facture
+    if not facture_id:
+        return 0
+    facture = Facture.objects.filter(
+        pk=facture_id, company=company).first()
+    if facture is None:
+        return 0
+    return facture.jours_retard
+
+
+def lignes_louables_devis(devis, produit_ids_louables):
+    """ZCTR6 — Lignes d'un devis dont le produit est LOUABLE.
+
+    Point d'entrée cross-app en LECTURE SEULE pour ``apps.contrats``
+    (rattachement d'ordres de location à un devis accepté) — jamais un
+    import direct de ``apps.ventes.models`` depuis ``contrats``. L'appelant
+    fournit ``produit_ids_louables`` (résolu via
+    ``stock.selectors.produits_louables_qs`` — jamais réimporté ici, aucune
+    dépendance directe à ``stock``). Renvoie une liste de dicts
+    ``{'produit_id', 'quantite', 'ligne_id'}`` — une ligne dont le produit
+    n'est PAS louable est simplement absente (ignorée par l'appelant)."""
+    from .models import LigneDevis
+
+    if not produit_ids_louables:
+        return []
+    lignes = (
+        LigneDevis.objects
+        .filter(devis=devis, produit_id__in=produit_ids_louables)
+        .order_by('id')
+    )
+    return [
+        {
+            'ligne_id': ligne.id,
+            'produit_id': ligne.produit_id,
+            'quantite': ligne.quantite,
+        }
+        for ligne in lignes
+    ]

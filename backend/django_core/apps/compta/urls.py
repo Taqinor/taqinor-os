@@ -2,24 +2,31 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
+    desinscription_publique, webhook_brevo_campagne, webhook_sms_stop,
+    portail_mon_releve, portail_mon_releve_pdf, portail_contester_facture,
     AppelTelephoniqueViewSet,
     BaremeIndemniteViewSet, BordereauRemiseViewSet, BudgetViewSet,
     CaisseViewSet, CampagneViewSet, CautionBancaireViewSet, CentreCoutViewSet,
+    EnvoiCampagneViewSet, ListeDiffusionViewSet, AbonnementListeViewSet,
+    SegmentMarketingViewSet,
     CessionImmobilisationViewSet, CodePromotionViewSet,
     CommissionPayoutRunViewSet, ComparateurDevisViewSet,
     CompteComptableViewSet, CompteTresorerieViewSet, ContratAvancementViewSet,
     DeclarationTVAViewSet, DemandeApprobationConfigViewSet,
     DotationAmortissementViewSet, ECatalogueViewSet,
     EcritureComptableViewSet, EffetViewSet, EntiteConsolidationViewSet,
-    EtapeSequenceViewSet,
+    EtapeSequenceViewSet, InscriptionSequenceViewSet,
     EtatsComptablesViewSet, ExerciceComptableViewSet, FormulaireIntakeViewSet,
     ImmobilisationViewSet,
     IndemniteChantierViewSet, JournalViewSet,
     LignePrevisionnelTresorerieViewSet, MessageWhatsAppEntrantViewSet,
     ModeleDevisViewSet, NoteFraisViewSet, OuverturePartageViewSet,
     PaymentRunViewSet,
-    PeriodeComptableViewSet, PilotageViewSet, PlanComptableViewSet,
-    ProvisionCreanceViewSet, RapprochementBancaireViewSet, RapprochementViewSet,
+    PeriodeComptableViewSet, PilotageViewSet, PlafondNoteFraisViewSet,
+    PlanComptableViewSet,
+    ProvisionCreanceViewSet, ProvisionViewSet,
+    RapportNoteFraisViewSet,
+    RapprochementBancaireViewSet, RapprochementViewSet,
     RelanceDevisAbandonneViewSet,
     RetenueGarantieViewSet, RetenueSourceViewSet, SequenceRelanceViewSet,
     SessionGuidedSellingViewSet, TimbreFiscalViewSet,
@@ -46,6 +53,8 @@ from .views import (
     ProvisionsPeriodeViewSet,
     ObligationFiscaleViewSet,
     FamilleTvaNonDeductibleViewSet,
+    LettrageViewSet,
+    CompensationViewSet,
 )
 
 router = DefaultRouter()
@@ -70,6 +79,8 @@ router.register(r'effets', EffetViewSet)
 router.register(r'bordereaux', BordereauRemiseViewSet)
 router.register(r'payment-runs', PaymentRunViewSet)
 router.register(r'notes-frais', NoteFraisViewSet)
+router.register(r'rapports-notes-frais', RapportNoteFraisViewSet)
+router.register(r'plafonds-notes-frais', PlafondNoteFraisViewSet)
 router.register(r'baremes-indemnite', BaremeIndemniteViewSet)
 router.register(r'indemnites-chantier', IndemniteChantierViewSet)
 router.register(r'declarations-tva', DeclarationTVAViewSet)
@@ -83,9 +94,11 @@ router.register(r'commission-payout-runs', CommissionPayoutRunViewSet)
 router.register(r'budgets', BudgetViewSet)
 router.register(r'centres-cout', CentreCoutViewSet)
 router.register(r'provisions-creances', ProvisionCreanceViewSet)
+router.register(r'provisions', ProvisionViewSet)
 router.register(r'entites-consolidation', EntiteConsolidationViewSet)
 router.register(r'pilotage', PilotageViewSet, basename='pilotage')
 router.register(r'etats', EtatsComptablesViewSet, basename='etats')
+router.register(r'lettrage', LettrageViewSet, basename='lettrage')
 router.register(r'balance-ouverture', BalanceOuvertureViewSet,
                 basename='balance-ouverture')
 router.register(r'provisions-periode', ProvisionsPeriodeViewSet,
@@ -94,8 +107,13 @@ router.register(r'obligations-fiscales', ObligationFiscaleViewSet)
 router.register(r'familles-tva-non-deductibles', FamilleTvaNonDeductibleViewSet)
 # ── Croissance commerciale / marketing / CPQ (FG201–FG214) ──────────────────
 router.register(r'campagnes', CampagneViewSet)
+router.register(r'envois-campagne', EnvoiCampagneViewSet)
+router.register(r'listes-diffusion', ListeDiffusionViewSet)
+router.register(r'abonnements-liste', AbonnementListeViewSet)
+router.register(r'segments-marketing', SegmentMarketingViewSet)
 router.register(r'sequences-relance', SequenceRelanceViewSet)
 router.register(r'etapes-sequence', EtapeSequenceViewSet)
+router.register(r'inscriptions-sequence', InscriptionSequenceViewSet)
 router.register(r'relances-devis-abandonnes', RelanceDevisAbandonneViewSet)
 router.register(r'ouvertures-partage', OuverturePartageViewSet)
 router.register(r'formulaires-intake', FormulaireIntakeViewSet)
@@ -150,7 +168,20 @@ router.register(r'comptes-auxiliaires', CompteAuxiliaireViewSet)
 router.register(r'pieces-justificatives', PieceJustificativeViewSet)
 router.register(r'pistes-audit', PisteAuditComptableViewSet,
                 basename='pisteaudit')
+# ── XFAC14 — Compensation AR/AP (netting) ───────────────────────────────────
+router.register(r'compensations', CompensationViewSet)
 
 urlpatterns = [
+    path('webhooks/brevo/', webhook_brevo_campagne, name='webhook-brevo-campagne'),
+    path('webhooks/sms-stop/', webhook_sms_stop, name='webhook-sms-stop'),
+    path('desinscription/<str:token>/', desinscription_publique,
+         name='desinscription-publique'),
+    # XFAC26/27 — Portail client self-service (token, sans login).
+    path('portail/<str:token>/mon-releve/', portail_mon_releve,
+         name='portail-mon-releve'),
+    path('portail/<str:token>/mon-releve/pdf/', portail_mon_releve_pdf,
+         name='portail-mon-releve-pdf'),
+    path('portail/<str:token>/factures/<int:facture_id>/contester/',
+         portail_contester_facture, name='portail-contester-facture'),
     path('', include(router.urls)),
 ]

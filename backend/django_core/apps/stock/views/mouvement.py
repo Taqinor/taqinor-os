@@ -53,7 +53,7 @@ class MouvementStockViewSet(viewsets.ModelViewSet):
     ordering = ['-date']
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['export_xlsx']:
+        if self.action in READ_ACTIONS + ['export_xlsx', 'agregation']:
             return [IsAnyRole()]
         elif self.action == 'create':
             return [HasPermissionOrLegacy('stock_mouvement')()]
@@ -95,6 +95,36 @@ class MouvementStockViewSet(viewsets.ModelViewSet):
         from ..services import export_mouvements_xlsx
         qs = self.filter_queryset(self.get_queryset())
         return export_mouvements_xlsx(request.user.company, qs)
+
+    @action(detail=False, methods=['get'], url_path='agregation',
+            permission_classes=[IsAnyRole])
+    def agregation(self, request):
+        """ZSTK7 — « Reporting ▸ Moves History » : quantités entrées/sorties/
+        nettes agrégées par produit/type/mois/emplacement sur une période.
+        INTERNE. ``?export=xlsx`` télécharge le même agrégat (jamais
+        ``?format=``, réservé au routage DRF)."""
+        from ..selectors import mouvements_agreges
+
+        group_by = request.query_params.get('group_by', 'produit')
+        try:
+            rows = mouvements_agreges(
+                request.user.company, group_by=group_by,
+                date_min=request.query_params.get('date_min'),
+                date_max=request.query_params.get('date_max'))
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        if request.query_params.get('export') == 'xlsx':
+            from apps.records.xlsx import build_xlsx_response
+            headers = ['Groupe', 'Entrées', 'Sorties', 'Net']
+            xlsx_rows = [
+                [r['libelle'], r['entrees'], r['sorties'], r['net']]
+                for r in rows]
+            return build_xlsx_response(
+                'mouvements-agregation.xlsx', headers, xlsx_rows,
+                sheet_title='Agrégation mouvements')
+        return Response(rows)
 
     def perform_create(self, serializer):
         from rest_framework.exceptions import PermissionDenied, ValidationError

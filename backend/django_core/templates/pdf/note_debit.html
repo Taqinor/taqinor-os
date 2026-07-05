@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 12px; color: #333; }
+    .page { padding: 40px; }
+
+    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 36px; }
+    .header-left { display: flex; flex-direction: column; gap: 6px; }
+    .logo img { max-height: 96px; max-width: 260px; object-fit: contain; }
+    .doc-title { font-size: 28px; font-weight: bold; color: {{ couleur_principale }}; margin-top: 8px; }
+    .doc-ref { font-size: 13px; color: #666; }
+    .doc-link { font-size: 11px; color: #888; }
+    .company-info { text-align: right; font-size: 11px; color: #555; line-height: 1.6; }
+    .company-info strong { font-size: 13px; color: #222; }
+
+    .parties { display: flex; justify-content: space-between; margin-bottom: 28px; gap: 16px; }
+    .partie-block { background: #f8fafc; border-radius: 6px; padding: 14px 16px; width: 48%; }
+    .partie-label { font-size: 10px; text-transform: uppercase; color: #888; margin-bottom: 6px; letter-spacing: 1px; }
+    .partie-nom { font-weight: bold; font-size: 13px; margin-bottom: 4px; color: #1e293b; }
+    .partie-detail { font-size: 11px; color: #555; line-height: 1.5; }
+
+    .meta-row { display: flex; gap: 10px; margin-bottom: 28px; flex-wrap: wrap; }
+    .meta-item { background: #eff6ff; border-radius: 4px; padding: 8px 14px; min-width: 100px; }
+    .meta-item strong { display: block; color: #555; font-size: 10px; text-transform: uppercase; margin-bottom: 2px; }
+    .meta-item span { font-size: 12px; color: #1e293b; font-weight: 500; }
+
+    table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+    thead tr { background: {{ couleur_principale }}; color: white; }
+    thead th { padding: 10px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+    tbody tr:nth-child(even) { background: #f9fafb; }
+    tbody td { padding: 9px 12px; border-bottom: 1px solid #e5e7eb; font-size: 12px; }
+    .text-right { text-align: right; }
+
+    .totaux { margin-left: auto; width: 300px; margin-bottom: 30px; }
+    .totaux-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #e5e7eb; font-size: 12px; }
+    .totaux-row.total-ttc { font-size: 16px; font-weight: bold; color: {{ couleur_principale }}; border-top: 2px solid {{ couleur_principale }}; border-bottom: none; padding-top: 10px; margin-top: 4px; }
+
+    .note-block { background: #fffbeb; border-left: 3px solid #f59e0b; padding: 12px 14px; margin-bottom: 24px; font-size: 11px; line-height: 1.5; }
+
+    .signature-section { display: flex; justify-content: flex-end; margin-top: 40px; margin-bottom: 20px; }
+    .signature-block { text-align: center; width: 220px; }
+    .signature-label { font-size: 10px; text-transform: uppercase; color: #888; margin-bottom: 8px; letter-spacing: 1px; }
+    .signature-img { max-height: 70px; max-width: 200px; object-fit: contain; }
+    .signature-line { border-top: 1px solid #cbd5e1; margin-top: 8px; padding-top: 6px; font-size: 10px; color: #555; }
+
+    .footer { margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 14px; font-size: 10px; color: #94a3b8; text-align: center; line-height: 1.8; }
+    .footer .footer-legal { font-size: 9.5px; color: #b0bec5; margin-top: 4px; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="header">
+    <div class="header-left">
+      {% if logo_uri %}
+      <div class="logo"><img src="{{ logo_uri }}" alt="Logo" /></div>
+      {% endif %}
+      <div class="doc-title">NOTE DE DÉBIT</div>
+      <div class="doc-ref">{{ note_debit.reference }}</div>
+      <div class="doc-link">Majoration — sur facture {{ note_debit.facture.reference }}</div>
+    </div>
+    <div class="company-info">
+      <strong>{{ entreprise_nom }}</strong><br />
+      {% if entreprise_adresse %}{{ entreprise_adresse }}<br />{% endif %}
+      {% if entreprise_telephone %}Tél : {{ entreprise_telephone }}<br />{% endif %}
+      {% if entreprise_email %}{{ entreprise_email }}<br />{% endif %}
+      {% if entreprise_tva_intra %}TVA : {{ entreprise_tva_intra }}{% endif %}
+    </div>
+  </div>
+
+  <div class="parties">
+    <div class="partie-block">
+      <div class="partie-label">Émetteur</div>
+      <div class="partie-nom">{{ entreprise_nom }}</div>
+      <div class="partie-detail">
+        {% if entreprise_adresse %}{{ entreprise_adresse }}<br />{% endif %}
+        {% if entreprise_siret %}SIRET : {{ entreprise_siret }}{% endif %}
+      </div>
+    </div>
+    <div class="partie-block">
+      <div class="partie-label">Note de débit à charge de</div>
+      <div class="partie-nom">{{ note_debit.client.nom }} {{ note_debit.client.prenom or '' }}</div>
+      <div class="partie-detail">
+        {% if note_debit.client.email %}{{ note_debit.client.email }}<br />{% endif %}
+        {% if note_debit.client.telephone %}{{ note_debit.client.telephone }}<br />{% endif %}
+        {% if note_debit.client.adresse %}{{ note_debit.client.adresse }}{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="meta-row">
+    <div class="meta-item">
+      <strong>Date d'émission</strong>
+      <span>{{ note_debit.date_emission.strftime('%d/%m/%Y') }}</span>
+    </div>
+    <div class="meta-item">
+      <strong>Facture d'origine</strong>
+      <span>{{ note_debit.facture.reference }}</span>
+    </div>
+    <div class="meta-item">
+      <strong>Statut</strong>
+      <span>{{ note_debit.get_statut_display() }}</span>
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Désignation</th>
+        <th class="text-right">Qté</th>
+        <th class="text-right">P.U HT</th>
+        <th class="text-right">Remise</th>
+        <th class="text-right">Total HT</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for ligne in note_debit.lignes.all() %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td>{{ ligne.designation }}</td>
+        <td class="text-right">{{ ligne.quantite }}</td>
+        <td class="text-right">{{ "%.2f"|format(ligne.prix_unitaire) }} MAD</td>
+        <td class="text-right">{% if ligne.remise > 0 %}{{ ligne.remise }}%{% else %}—{% endif %}</td>
+        <td class="text-right"><strong>{{ "%.2f"|format(ligne.total_ht) }} MAD</strong></td>
+      </tr>
+      {% endfor %}
+      {% if not note_debit.lignes.all() %}
+      <tr>
+        <td>1</td>
+        <td>Note de débit sur facture {{ note_debit.facture.reference }}</td>
+        <td class="text-right">1</td>
+        <td class="text-right">{{ "%.2f"|format(note_debit.total_ht) }} MAD</td>
+        <td class="text-right">—</td>
+        <td class="text-right"><strong>{{ "%.2f"|format(note_debit.total_ht) }} MAD</strong></td>
+      </tr>
+      {% endif %}
+    </tbody>
+  </table>
+
+  {% if note_debit.motif %}
+  <div class="note-block"><strong>Motif :</strong> {{ note_debit.motif }}</div>
+  {% endif %}
+
+  <div class="totaux">
+    <div class="totaux-row">
+      <span>Sous-total HT</span>
+      <span>{{ "%.2f"|format(note_debit.total_ht) }} MAD</span>
+    </div>
+    {% for b in note_debit.tva_par_taux %}
+    <div class="totaux-row">
+      <span>TVA ({{ b.taux }}%)</span>
+      <span>{{ "%.2f"|format(b.montant) }} MAD</span>
+    </div>
+    {% endfor %}
+    <div class="totaux-row total-ttc">
+      <span>Total dû en supplément (TTC)</span>
+      <span>{{ "%.2f"|format(note_debit.total_ttc) }} MAD</span>
+    </div>
+  </div>
+
+  {% if signature_uri %}
+  <div class="signature-section">
+    <div class="signature-block">
+      <div class="signature-label">Signature & Cachet</div>
+      <img class="signature-img" src="{{ signature_uri }}" alt="Signature" />
+      <div class="signature-line">{{ entreprise_nom }}</div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="footer">
+    <strong>{{ entreprise_nom }}</strong>
+    {% if entreprise_adresse %} — {{ entreprise_adresse }}{% endif %}
+    {% if entreprise_email %} — {{ entreprise_email }}{% endif %}
+    {% if entreprise_telephone %} — {{ entreprise_telephone }}{% endif %}
+    <div class="footer-legal">
+      {% if entreprise_ice %}ICE : {{ entreprise_ice }}{% endif %}
+      {% if entreprise_if %} | IF : {{ entreprise_if }}{% endif %}
+      {% if entreprise_rc %} | RC : {{ entreprise_rc }}{% endif %}
+      {% if entreprise_patente %} | Patente : {{ entreprise_patente }}{% endif %}
+      {% if entreprise_cnss %} | CNSS : {{ entreprise_cnss }}{% endif %}
+      <br />Note de débit liée à la facture {{ note_debit.facture.reference }} — générée le {{ now.strftime('%d/%m/%Y à %H:%M') }}
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

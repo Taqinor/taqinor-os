@@ -127,6 +127,10 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    # ODX4 — 404 sur les endpoints d'un module désactivé pour la société.
+    # Défaut = actif (aucun 404 nouveau sans toggle). Placé après l'auth Django ;
+    # résout lui-même le JWT DRF best-effort (aucun blocage sans jeton valide).
+    'core.permissions.DisabledModuleMiddleware',
     # Porte la requête courante pour la capture du Journal d'activité (Feature G).
     'apps.audit.middleware.AuditActorMiddleware',
 ]
@@ -160,6 +164,14 @@ TEMPLATES = [
 WSGI_APPLICATION = 'erp_agentique.wsgi.application'
 
 # Database
+# YOPSB7 — CONN_MAX_AGE : sans lui, chaque requête HTTP/Celery ouvre/ferme une
+# connexion Postgres. Avec plusieurs workers Django (threads) + workers Celery
+# + FastAPI, on peut approcher `max_connections` sous charge. `CONN_MAX_AGE`
+# (secondes, 0=désactivé/comportement historique) réutilise les connexions ;
+# `CONN_HEALTH_CHECKS` revalide la connexion avant réemploi (évite de servir
+# une connexion morte après un redémarrage Postgres). Pilotable par env :
+# DB_CONN_MAX_AGE (défaut 60s). Voir docs/CODEMAP.md §7 pour la formule
+# (répliques × workers × threads) < max_connections.
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
@@ -168,6 +180,8 @@ DATABASES = {
         'PASSWORD': os.environ.get('DB_PASSWORD', 'erp_password'),
         'HOST': os.environ.get('DB_HOST', 'db'),
         'PORT': os.environ.get('DB_PORT', '5432'),
+        'CONN_MAX_AGE': int(os.environ.get('DB_CONN_MAX_AGE', '60')),
+        'CONN_HEALTH_CHECKS': True,
     }
 }
 
@@ -195,6 +209,19 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# YOPSB14 — limites d'upload applicatives (Django) alignées sur
+# `client_max_body_size 15m` déjà posé dans backend/nginx/nginx.conf. Sans
+# elles, Django n'a AUCUNE limite propre : un upload énorme accepté par
+# nginx pourrait épuiser la mémoire du worker (bufferisation complète avant
+# rejet). 15 Mo = 15 * 1024 * 1024 octets, pilotable par env pour un futur
+# réglage sans redéploiement de code.
+DATA_UPLOAD_MAX_MEMORY_SIZE = int(
+    os.environ.get('DATA_UPLOAD_MAX_MEMORY_SIZE', str(15 * 1024 * 1024)))
+FILE_UPLOAD_MAX_MEMORY_SIZE = int(
+    os.environ.get('FILE_UPLOAD_MAX_MEMORY_SIZE', str(15 * 1024 * 1024)))
+DATA_UPLOAD_MAX_NUMBER_FIELDS = int(
+    os.environ.get('DATA_UPLOAD_MAX_NUMBER_FIELDS', '2000'))
+
 # Django REST Framework
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
@@ -216,6 +243,13 @@ REST_FRAMEWORK = {
         # XPLT4 — webhook entrant automatisation, par jeton.
         'automation_webhook': '60/minute',
     },
+    # YDATA9 — DRF sérialise déjà les `Decimal` en string par défaut (c'est
+    # la valeur par défaut de DRF), mais rien ne le VERROUILLAIT explicitement
+    # dans ce repo : un changement accidentel de ce réglage romprait la
+    # précision des montants à la frontière API (un float JSON perd des
+    # décimales). Posé explicitement pour que ce comportement soit un choix
+    # documenté, testé, jamais un défaut implicite qui pourrait dériver.
+    'COERCE_DECIMAL_TO_STRING': True,
 }
 
 # Simple JWT Configuration
@@ -278,6 +312,98 @@ CELERY_RESULT_BACKEND = CELERY_BROKER_URL
 CELERY_TIMEZONE = 'Africa/Casablanca'
 CELERY_ENABLE_UTC = False
 
+# YOPSB8 — réglages de production durcis. Sans limite de temps ni garde de
+# perte de worker, une tâche bloquée (ex. rendu PDF WeasyPrint qui hangs)
+# épingle un worker indéfiniment. Le rendu PDF mesuré est ~3-4,5s : marge
+# large avec 120s/180s.
+#   * CELERY_TASK_SOFT_TIME_LIMIT — lève SoftTimeLimitExceeded dans la tâche
+#     (peut être attrapée pour un nettoyage propre) après 120s ;
+#   * CELERY_TASK_TIME_LIMIT — tue le worker process après 180s (dur) ;
+#   * CELERY_TASK_ACKS_LATE — ack APRÈS exécution (pas avant) : une tâche
+#     interrompue par un crash worker est re-livrée, jamais perdue ;
+#   * CELERY_TASK_REJECT_ON_WORKER_LOST — si le worker meurt EN COURS
+#     d'exécution, la tâche est explicitement REJETÉE (donc re-livrée via
+#     acks_late) plutôt que silencieusement perdue ;
+#   * CELERY_WORKER_PREFETCH_MULTIPLIER=1 — équité : un worker ne pré-charge
+#     qu'UNE tâche à la fois (pas de accaparement de la queue par un worker
+#     lent pendant qu'un autre est inactif).
+#
+# IMPORTANT (documenté aussi dans docs/CODEMAP.md) : `acks_late` +
+# `reject_on_worker_lost` signifient qu'UNE tâche à effet de bord PEUT être
+# relancée après un crash worker — toute tâche Celery DOIT donc rester
+# idempotente (les tâches ventes existantes le sont déjà via
+# `_idempotent_cached_key`).
+CELERY_TASK_SOFT_TIME_LIMIT = 120
+CELERY_TASK_TIME_LIMIT = 180
+CELERY_TASK_ACKS_LATE = True
+CELERY_TASK_REJECT_ON_WORKER_LOST = True
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+
+# YOPSB9 — isolation des queues Celery par classe de travail. Sans ceci,
+# toutes les tâches (rendu PDF interactif déclenché par un commercial, digests
+# planifiés, sweeps de rétention, webhooks) partagent la queue `default` : un
+# batch de nuit peut affamer un rendu PDF synchrone. Trois queues :
+#   * `interactive` — rendus PDF déclenchés par une action utilisateur
+#     synchrone (ventes.generate_*_pdf) + transcription vocale (chat.transcribe_*) ;
+#   * `scheduled` — tout job planifié via Celery Beat (voir beat_schedule
+#     dans erp_agentique/celery.py — TOUTES les tâches qui y apparaissent
+#     sont, par construction, des jobs planifiés) ;
+#   * `default` — le reste (webhooks entrants, tâches déclenchées par un
+#     signal/événement synchrone non listé ci-dessus).
+#
+# AUCUN changement de comportement par défaut : une seule commande worker
+# (`celery -A erp_agentique worker`) consomme TOUJOURS les 3 queues sans
+# argument `-Q` (Celery route selon `task_routes` mais un worker sans `-Q`
+# explicite écoute la/les queue(s) par défaut UNIQUEMENT — voir
+# docs/CODEMAP.md pour la commande `-Q default,interactive,scheduled` à
+# utiliser pour que le worker unique consomme bien les 3).
+CELERY_TASK_ROUTES = {
+    'ventes.generate_devis_pdf': {'queue': 'interactive'},
+    'ventes.generate_facture_pdf': {'queue': 'interactive'},
+    'chat.transcribe_voice_attachment': {'queue': 'interactive'},
+    # Toutes les tâches planifiées (beat_schedule) → `scheduled`.
+    'ventes.check_overdue_factures': {'queue': 'scheduled'},
+    'ventes.expire_stale_devis': {'queue': 'scheduled'},
+    'ventes.relance_reminders': {'queue': 'scheduled'},
+    'ventes.devis_followup_nudges': {'queue': 'scheduled'},
+    'ventes.releve_mensuel_reminders': {'queue': 'scheduled'},
+    'crm.appointment_reminders': {'queue': 'scheduled'},
+    'crm.recycler_leads_non_travailles': {'queue': 'scheduled'},
+    'notifications.daily_digest': {'queue': 'scheduled'},
+    'notifications.weekly_digest': {'queue': 'scheduled'},
+    'notifications.sweep_daily': {'queue': 'scheduled'},
+    'automation.time_triggers_daily': {'queue': 'scheduled'},
+    'reporting.email_saved_reports': {'queue': 'scheduled'},
+    'reporting.evaluate_kpi_alertes': {'queue': 'scheduled'},
+    'reporting.controle_integrite': {'queue': 'scheduled'},
+    'ged.purge_corbeille_echue': {'queue': 'scheduled'},
+    'ged.signature_relances_expiration': {'queue': 'scheduled'},
+    'ged.verifier_integrite_archives': {'queue': 'scheduled'},
+    'ged.notifier_emetteurs_expiration_signature': {'queue': 'scheduled'},
+    'contrats.generer_factures_recurrentes_dues': {'queue': 'scheduled'},
+    'contrats.reconductions_et_alertes_daily': {'queue': 'scheduled'},
+    'chat.send_scheduled_messages': {'queue': 'scheduled'},
+    'chat.send_due_reminders': {'queue': 'scheduled'},
+    'chat.retention_sweep': {'queue': 'scheduled'},
+    'installations.rappel_rdv_j1': {'queue': 'scheduled'},
+    'installations.meteo_planning_j3': {'queue': 'scheduled'},
+    'rh.alertes_expiration': {'queue': 'scheduled'},
+    'rh.alertes_cdd': {'queue': 'scheduled'},
+    'sav.generer_visites_dues_quotidien': {'queue': 'scheduled'},
+    'stock.recompute_reordering': {'queue': 'scheduled'},
+    'core.dump_database': {'queue': 'scheduled'},
+    'core.restore_drill': {'queue': 'scheduled'},
+    'core.purge_backups': {'queue': 'scheduled'},
+    'core.run_retention': {'queue': 'scheduled'},
+}
+# Le worker par défaut (sans -Q) écoute la queue nommée dans
+# task_default_queue — on la garde `default` pour ne rien casser ; en
+# production, lancer le worker avec `-Q default,interactive,scheduled` pour
+# qu'un worker UNIQUE consomme bien les 3 (comportement mono-worker inchangé
+# tant que ce -Q n'est pas explicitement restreint — voir
+# docs/deploy-prod / docker-compose.prod.yml).
+CELERY_TASK_DEFAULT_QUEUE = 'default'
+
 # Email — django-anymail (N87). Compte d'envoi configurable : Brevo (ex-
 # Sendinblue) via BREVO_API_KEY, ou SendGrid (héritage), ou SMTP. SANS clé,
 # EMAIL_BACKEND reste le backend console → l'envoi est un NO-OP qui préserve le
@@ -305,6 +431,12 @@ INBOUND_EMAIL_HOST = os.environ.get('INBOUND_EMAIL_HOST', '')
 # Public contact form — PARKED by default. When off, the /api/django/contact/
 # endpoint returns 404 and sends no email. Flip to '1' to re-enable (see CLAUDE.md).
 CONTACT_FORM_ENABLED = os.environ.get('CONTACT_FORM_ENABLED', '0') == '1'
+
+# XRH33 — public careers/recruitment page, PARKED (OFF) by default (same
+# pattern as CONTACT_FORM_ENABLED). When off, both public rh careers
+# endpoints (list + apply) return 404. Founder decision to expose (or not)
+# recruitment publicly. Flip to '1' to re-enable.
+CAREERS_ENABLED = os.environ.get('CAREERS_ENABLED', '0') == '1'
 
 # Récepteur des leads du site public taqinor.ma (apps/crm/webhooks.py).
 # Sans secret configuré, le endpoint répond 401 à tout — fermé par défaut.
@@ -342,6 +474,15 @@ ENTREPRISE_COULEUR = os.environ.get('ENTREPRISE_COULEUR', '#2563EB')
 # the legacy ventes WeasyPrint quote PDF. Only affects QUOTES, never invoices.
 USE_PREMIUM_QUOTE_ENGINE = os.environ.get('USE_PREMIUM_QUOTE_ENGINE', '1') != '0'
 
+# XFSM12 — trace d'étalonnage de l'instrument sur la fiche de recette IEC
+# 62446-1 (CommissioningRecord.instrument_id). Paramétrable warn/block (défaut
+# warn) : quand True, enregistrer une fiche référençant un instrument dont
+# l'étalonnage FG80 est expiré est REFUSÉ (400) ; par défaut ce n'est qu'un
+# avertissement non-bloquant côté client (le payload API le signale quand
+# même via `instrument_etalonnage_expire`).
+INSTRUMENT_ETALONNAGE_BLOQUANT = (
+    os.environ.get('INSTRUMENT_ETALONNAGE_BLOQUANT', '0') == '1')
+
 # GED12 — recherche sémantique documentaire (pgvector). KEY-GATED : OFF par
 # défaut, donc l'indexation d'embeddings est un no-op (aucun appel/coût) et la
 # recherche sémantique retombe sur le plein-texte GED11. Le founder l'active en
@@ -357,6 +498,22 @@ GED_EMBEDDING_ENABLED = os.environ.get('GED_EMBEDDING_ENABLED', '0') == '1'
 # respectées — un document protégé n'est jamais purgé.
 GED_PURGE_AUTO_APPLY = os.environ.get('GED_PURGE_AUTO_APPLY', '0') == '1'
 GED_PURGE_GRACE_DAYS = int(os.environ.get('GED_PURGE_GRACE_DAYS', '30'))
+
+# YOPSB3 — purge GFS automatique des dumps Postgres (core.BackupRun
+# kind=db_dump). DRY-RUN PAR DÉFAUT (même convention que GED_PURGE_AUTO_APPLY
+# ci-dessus) : la tâche planifiée `core.purge_backups` ne supprime rien tant
+# que BACKUP_PURGE_AUTO_APPLY n'est pas explicitement à 1. Schéma configurable
+# (défauts codés) : BACKUP_RETENTION_DAILY=7, WEEKLY=4, MONTHLY=12 sont lus
+# directement depuis l'environnement dans `core.backup._retention_settings`.
+BACKUP_PURGE_AUTO_APPLY = os.environ.get('BACKUP_PURGE_AUTO_APPLY', '0') == '1'
+
+# YOPSB10 — registre de rétention partagé (core.retention). DRY-RUN PAR
+# DÉFAUT (même convention que GED_PURGE_AUTO_APPLY/BACKUP_PURGE_AUTO_APPLY
+# ci-dessus) : la tâche planifiée `core.run_retention` transmet
+# `apply_=False` à CHAQUE politique enregistrée tant que
+# RETENTION_AUTO_APPLY n'est pas explicitement à 1 — aucune politique ne
+# doit alors supprimer quoi que ce soit (contrat imposé à chaque politique).
+RETENTION_AUTO_APPLY = os.environ.get('RETENTION_AUTO_APPLY', '0') == '1'
 
 # GED33/GED34 — OCR de pièces + classification automatique. KEY-GATED : OFF par
 # défaut → tout est un no-op déterministe (aucun appel réseau, aucun coût, aucune

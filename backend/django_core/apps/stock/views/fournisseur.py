@@ -59,6 +59,11 @@ class FournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
             # à tout rôle porteur du droit de lecture stock (get_permissions
             # prime sur le permission_classes de l'@action, d'où ce cas explicite).
             return [HasPermissionOrLegacy('stock_voir')()]
+        elif self.action in ('portail_tokens', 'revoquer_portail_token'):
+            # XPUR22 — gestion des jetons portail fournisseur : écriture Stock,
+            # ouverte à tout rôle porteur du droit `stock_modifier` (get_permissions
+            # prime sur le permission_classes de l'@action, d'où ce cas explicite).
+            return [HasPermissionOrLegacy('stock_modifier')()]
         elif self.action in WRITE_ACTIONS:
             return [HasPermissionOrLegacy('stock_modifier')()]
         elif self.action == 'destroy':
@@ -120,6 +125,46 @@ class FournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
         from ..services import supplier_performance
         fournisseur = self.get_object()
         return Response(supplier_performance(request.user.company, fournisseur))
+
+    @action(detail=True, methods=['get', 'post'], url_path='portail-tokens',
+            permission_classes=[HasPermissionOrLegacy('stock_modifier')])
+    def portail_tokens(self, request, *args, **kwargs):
+        """XPUR22 — GET : liste les jetons portail de ce fournisseur (tous,
+        y compris révoqués/expirés, pour audit). POST : génère un NOUVEAU
+        jeton (l'URL publique est construite côté frontend depuis le
+        token)."""
+        from ..serializers import PortailFournisseurTokenSerializer
+        fournisseur = self.get_object()
+        if request.method.lower() == 'get':
+            tokens = fournisseur.portail_tokens.order_by('-created_at')
+            return Response(
+                PortailFournisseurTokenSerializer(tokens, many=True).data)
+        from ..services import generer_token_portail_fournisseur
+        token_obj = generer_token_portail_fournisseur(
+            request.user.company, fournisseur, request.user)
+        return Response(
+            PortailFournisseurTokenSerializer(token_obj).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'],
+            url_path='portail-tokens/(?P<token_id>[^/.]+)/revoquer',
+            permission_classes=[HasPermissionOrLegacy('stock_modifier')])
+    def revoquer_portail_token(self, request, token_id=None, *args, **kwargs):
+        """XPUR22 — révoque un jeton portail (le lien cesse immédiatement de
+        fonctionner)."""
+        from ..models import PortailFournisseurToken
+        from ..serializers import PortailFournisseurTokenSerializer
+        from ..services import revoquer_token_portail_fournisseur
+        fournisseur = self.get_object()
+        token_obj = PortailFournisseurToken.objects.filter(
+            pk=token_id, fournisseur=fournisseur,
+            company=request.user.company).first()
+        if token_obj is None:
+            return Response(
+                {'detail': 'Jeton introuvable.'},
+                status=status.HTTP_404_NOT_FOUND)
+        revoquer_token_portail_fournisseur(token_obj)
+        return Response(PortailFournisseurTokenSerializer(token_obj).data)
 
 
 class ContactFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):

@@ -15,9 +15,11 @@ from django.http import HttpResponse
 
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
 from . import builders
+from . import selectors as paie_selectors
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
@@ -39,6 +41,9 @@ from .models import (
     Rubrique,
     RubriqueEmploye,
     SaisieArret,
+    StructurePaie,
+    ProvisionPaieMensuelle,
+    TypeEntreePonctuelle,
 )
 from .serializers import (
     AdhesionMutuelleSerializer,
@@ -57,26 +62,41 @@ from .serializers import (
     RubriqueEmployeSerializer,
     RubriqueSerializer,
     SaisieArretSerializer,
+    StructurePaieSerializer,
+    TypeEntreePonctuelleSerializer,
 )
 from .services import (
     TransitionPeriodeInterdite,
+    annuler_saisie_arret,
+    appliquer_structure_a_profil,
     attestation_salaire_ij_cnss,
     bareme_en_vigueur,
     brut_pour_net_cible,
+    avertissements_periode,
     calculer_bulletin,
     changer_statut,
     cloturer_periode_paie,
+    commit_reprise_cumuls,
+    controle_completude,
     controle_ecarts,
+    cout_employeur,
+    cout_global_par_profil,
+    creer_bulletin_annulation,
     creer_bulletin_rectificatif,
+    creer_saisies_arret_lot,
     declaration_cimr,
     declaration_cnss,
     deposer_bds_complementaire,
     deposer_bds_principal,
+    dry_run_reprise_cumuls,
     emettre_ordre_virement,
     ensure_defaults,
+    ensure_types_entree_ponctuelle_standard,
     ensure_rubriques_defaut,
     ensure_rubriques_standard,
+    ensure_structures_standard,
     etat_des_charges,
+    expirer_regimes_echus,
     etat_ir_9421,
     etat_ir_9421_annuel,
     export_xml_simpl_ir_9421,
@@ -90,20 +110,30 @@ from .services import (
     generer_echeances_periode,
     generer_ordre_virement,
     generer_run_gratification,
+    historique_carriere,
     importer_elements_rh,
     journal_de_paie,
+    journal_de_paie_ventile,
     livre_de_paie,
+    marquer_bulletin_lu,
     marquer_bulletin_paye,
     mouvements_cnss_periode,
     notifier_echeances_en_retard,
     parametre_en_vigueur,
+    payer_ordre_virement,
+    payer_organismes,
     profils_hors_virement,
     rapprochement_paie_gl,
     rapprocher_affebds,
+    rattacher_bulletins,
     recalculer_cumul_annuel,
     reemettre_ligne_virement,
+    registre_conges,
+    reporter_elements_periode,
     rejeter_ligne_virement,
+    saisies_arret_du_bulletin,
     simuler_bulletin,
+    synchroniser_salaire,
     valider_bulletin,
 )
 
@@ -205,6 +235,26 @@ class RubriqueViewSet(_PaieBaseViewSet):
         return Response(created, status=status.HTTP_200_OK)
 
 
+class TypeEntreePonctuelleViewSet(_PaieBaseViewSet):
+    """Catalogue des types d'entrées ponctuelles (ZPAI9), société scopée.
+
+    L'action ``seed-standard`` provisionne (idempotent, additif) les types
+    courants (pourboire, remboursement de frais non imposable, déduction
+    ponctuelle) sans jamais écraser un type déjà édité.
+    """
+    queryset = TypeEntreePonctuelle.objects.all()
+    serializer_class = TypeEntreePonctuelleSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code', 'libelle']
+    ordering_fields = ['libelle', 'code', 'id']
+
+    @action(detail=False, methods=['post'], url_path='seed-standard')
+    def seed_standard(self, request):
+        """Provisionne le catalogue standard de types (idempotent)."""
+        created = ensure_types_entree_ponctuelle_standard(request.user.company)
+        return Response(created, status=status.HTTP_200_OK)
+
+
 class ProfilPaieViewSet(_PaieBaseViewSet):
     """Profils de paie des employés (PAIE8) — société scopée, palier paie.
 
@@ -216,6 +266,41 @@ class ProfilPaieViewSet(_PaieBaseViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['employe__nom', 'employe__prenom', 'employe__matricule']
     ordering_fields = ['date_creation', 'id']
+
+    def perform_create(self, serializer):
+        """XPAI24 — un profil créé avec ``structure`` reçoit ses rubriques défaut."""
+        profil = serializer.save(company=self.request.user.company)
+        if profil.structure_id:
+            appliquer_structure_a_profil(profil, profil.structure)
+
+    @action(detail=False, methods=['post'], url_path='expirer-regimes')
+    def expirer_regimes(self, request):
+        """Bascule au régime normal les profils dont la fenêtre est expirée (XPAI18)."""
+        bascules = expirer_regimes_echus(request.user.company)
+        return Response(
+            {'bascules': [p.id for p in bascules]}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='synchroniser-salaire')
+    def synchroniser_salaire_action(self, request, pk=None):
+        """Aligne le salaire du profil sur la rémunération RH en vigueur
+
+        (YHIRE6). Gatée EXPLICITEMENT ``salaires_voir`` (donnée sensible,
+        au-delà de ``paie_gerer``) : un compte sans cette permission fine
+        obtient 403 même s'il gère la paie. Jamais de synchronisation
+        silencieuse — appelée volontairement depuis l'écran de contrôle.
+        """
+        from authentication.permissions import HasPermission
+
+        if not HasPermission('salaires_voir')().has_permission(
+                request, self):
+            return Response(
+                {'detail': 'Permission "salaires_voir" requise.'},
+                status=status.HTTP_403_FORBIDDEN)
+        profil = self.get_object()
+        synchroniser_salaire(profil)
+        profil.refresh_from_db()
+        return Response(
+            self.get_serializer(profil).data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'], url_path='attestation')
     def attestation(self, request, pk=None):
@@ -371,6 +456,65 @@ class ProfilPaieViewSet(_PaieBaseViewSet):
             personnes_a_charge=pac)
         return Response(resultat, status=status.HTTP_200_OK)
 
+    @action(detail=False, methods=['get'], url_path='registre-conges')
+    def registre_conges_action(self, request):
+        """Registre des congés annuel, par employé (XPAI26).
+
+        Paramètre de requête ``annee`` requis. ``?export=pdf``/``?export=csv``
+        renvoient le fichier au lieu du JSON. Lecture seule.
+        """
+        try:
+            annee = int(request.query_params.get('annee'))
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': 'Paramètre "annee" requis (et valide).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        registre = registre_conges(request.user.company, annee)
+        export = request.query_params.get('export')
+        if export == 'pdf':
+            try:
+                pdf = builders.render_registre_conges_pdf(registre)
+            except RuntimeError as exc:
+                return Response(
+                    {'detail': str(exc)},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return _pdf_response(pdf, f'registre_conges_{annee}.pdf')
+        if export == 'csv':
+            buffer = io.StringIO()
+            writer = csv.writer(buffer, delimiter=';')
+            writer.writerow(['Matricule', 'Nom', 'Droits (j)', 'Pris (j)',
+                             'Solde (j)'])
+            for ligne in registre['lignes']:
+                writer.writerow([
+                    ligne['matricule'], ligne['nom'], ligne['droits'],
+                    ligne['pris'], ligne['solde']])
+            resp = HttpResponse(
+                buffer.getvalue(), content_type='text/csv; charset=utf-8')
+            resp['Content-Disposition'] = (
+                f'attachment; filename="registre_conges_{annee}.csv"')
+            return resp
+        return Response(registre, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='historique-carriere')
+    def historique_carriere_action(self, request, pk=None):
+        """Fiche historique de carrière/salaire d'un profil (XPAI26).
+
+        ``?export=pdf`` renvoie le PDF au lieu du JSON. Lecture seule,
+        AUCUNE écriture.
+        """
+        profil = self.get_object()
+        historique = historique_carriere(profil)
+        if request.query_params.get('export') == 'pdf':
+            try:
+                pdf = builders.render_historique_carriere_pdf(historique)
+            except RuntimeError as exc:
+                return Response(
+                    {'detail': str(exc)},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return _pdf_response(
+                pdf, f'historique_carriere_{profil.id}.pdf')
+        return Response(historique, status=status.HTTP_200_OK)
+
 
 class RubriqueEmployeViewSet(_PaieBaseViewSet):
     """Rubriques récurrentes par employé (PAIE9) — société scopée."""
@@ -379,6 +523,46 @@ class RubriqueEmployeViewSet(_PaieBaseViewSet):
     serializer_class = RubriqueEmployeSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_creation', 'id']
+
+
+class StructurePaieViewSet(_PaieBaseViewSet):
+    """Structures de paie par catégorie (XPAI24) — gabarits de rubriques.
+
+    ``ensure-standard`` sème (idempotent) les 3 structures standard
+    (cadre/employé/ouvrier). ``appliquer`` rattache les rubriques d'une
+    structure à un profil existant (corps : ``profil`` id) — la même
+    application se produit automatiquement à la CRÉATION d'un profil dont
+    ``structure`` est renseignée.
+    """
+    queryset = StructurePaie.objects.prefetch_related('rubriques_defaut').all()
+    serializer_class = StructurePaieSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['libelle', 'date_creation', 'id']
+
+    @action(detail=False, methods=['post'], url_path='ensure-standard')
+    def ensure_standard(self, request):
+        """Sème (idempotent) les 3 structures standard (XPAI24)."""
+        resultat = ensure_structures_standard(request.user.company)
+        return Response(resultat, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='appliquer')
+    def appliquer(self, request, pk=None):
+        """Applique cette structure à un profil existant (corps : ``profil``)."""
+        structure = self.get_object()
+        profil_id = request.data.get('profil')
+        if not profil_id:
+            return Response(
+                {'detail': 'Champ "profil" requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            profil = ProfilPaie.objects.get(
+                pk=profil_id, company=request.user.company)
+        except (ProfilPaie.DoesNotExist, ValueError):
+            return Response(
+                {'detail': 'Profil inconnu.'},
+                status=status.HTTP_404_NOT_FOUND)
+        nb = appliquer_structure_a_profil(profil, structure)
+        return Response({'rattachees': nb}, status=status.HTTP_200_OK)
 
 
 class RegimeMutuelleViewSet(_PaieBaseViewSet):
@@ -497,6 +681,21 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response({'importes': importes}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='reporter-elements')
+    def reporter_elements(self, request, pk=None):
+        """Reconduit les éléments récurrents de M-1 vers cette période (ZPAI11).
+
+        Copie les ``ElementVariable`` marqués ``reconduire=True`` de la
+        période calendaire précédente (même société/``type_run``) — no-op si
+        aucune période précédente. Idempotent : un re-run ne duplique jamais
+        une copie déjà faite.
+        """
+        periode = self.get_object()
+        copies = reporter_elements_periode(periode)
+        return Response(
+            {'reconduits': [c.id for c in copies], 'nombre': len(copies)},
+            status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'], url_path='bulletin')
     def bulletin(self, request, pk=None):
@@ -659,6 +858,88 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
         periode = self.get_object()
         return Response(livre_de_paie(periode), status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['get'], url_path='cout-global')
+    def cout_global(self, request, pk=None):
+        """Coût global employeur PAR EMPLOYÉ de la période (XPAI17).
+
+        Donnée INTERNE (jamais client-facing) : brut + charges patronales +
+        provisions par employé, plus la ventilation analytique appliquée.
+        """
+        periode = self.get_object()
+        return Response(
+            cout_global_par_profil(periode), status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='cout-employeur')
+    def cout_employeur_action(self, request, pk=None):
+        """Rapport « coût employeur » CONSOLIDÉ de la période (ZPAI3).
+
+        Total brut + charges patronales + provisions de tous les bulletins
+        validés, ratio coût/net, coût moyen par tête. Distinct de
+        ``cout-global`` (XPAI17, détail PAR employé). ``?export=csv``.
+        Donnée INTERNE (jamais client-facing).
+        """
+        periode = self.get_object()
+        data = cout_employeur(periode)
+        if request.query_params.get('export') == 'csv':
+            return self._export_cout_employeur_csv(data)
+        return Response(data, status=status.HTTP_200_OK)
+
+    @staticmethod
+    def _export_cout_employeur_csv(data):
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, delimiter=';')
+        writer.writerow([
+            f"Coût employeur {data['mois']:02d}/{data['annee']}"])
+        writer.writerow([])
+        writer.writerow(['Salariés', data['nombre_salaries']])
+        writer.writerow(['Total brut', data['total_brut']])
+        writer.writerow(
+            ['Total charges patronales', data['total_charges_patronales']])
+        writer.writerow(['Total provisions', data['total_provisions']])
+        writer.writerow(['Total employeur', data['total_employeur']])
+        writer.writerow(['Total net', data['total_net']])
+        writer.writerow(['Ratio coût/net', data['ratio_cout_net']])
+        writer.writerow(
+            ['Coût moyen par tête', data['cout_moyen_par_tete']])
+        resp = HttpResponse(
+            buffer.getvalue(), content_type='text/csv; charset=utf-8')
+        resp['Content-Disposition'] = (
+            f"attachment; filename=\"cout_employeur_{data['annee']}_"
+            f"{data['mois']:02d}.csv\"")
+        return resp
+
+    @action(detail=True, methods=['post'], url_path='journal-ventile')
+    def journal_ventile(self, request, pk=None):
+        """Passe l'écriture du journal de paie AVEC ventilation analytique (XPAI17)."""
+        periode = self.get_object()
+        ecriture = journal_de_paie_ventile(periode, created_by=request.user)
+        if ecriture is None:
+            return Response(
+                {'detail': 'Aucun bulletin validé pour cette période.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {'id': ecriture.id, 'reference': ecriture.reference},
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'], url_path='provisions')
+    def provisions(self, request, pk=None):
+        """Provisions 13e mois / IFC de la période, par employé (XPAI20)."""
+        periode = self.get_object()
+        qs = (
+            ProvisionPaieMensuelle.objects
+            .filter(company=request.user.company, periode=periode)
+            .select_related('profil', 'profil__employe'))
+        data = [{
+            'id': ligne.id,
+            'profil_id': ligne.profil_id,
+            'matricule': getattr(ligne.profil.employe, 'matricule', '')
+            if ligne.profil.employe_id else '',
+            'type_provision': ligne.type_provision,
+            'montant': ligne.montant,
+            'extournee': ligne.extournee,
+        } for ligne in qs]
+        return Response(data, status=status.HTTP_200_OK)
+
     @action(detail=True, methods=['get'], url_path='hors-virement')
     def hors_virement(self, request, pk=None):
         """Profils réglés hors virement (espèces/chèque) de la période (XPAI9)."""
@@ -726,6 +1007,78 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(
             controle_ecarts(periode, seuil_pct=seuil_pct),
+            status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='controle-completude')
+    def controle_completude_action(self, request, pk=None):
+        """Contrôle de complétude pré-paie — trous structurels (YHIRE3).
+
+        Distinct de ``controle-ecarts`` (XPAI15, comparaison M vs M-1) :
+        liste les actifs sans profil de paie, les profils sans CNSS/RIB,
+        les profils actifs dont le dossier RH n'est plus actif (sorti/
+        embauché non pris de poste), et les CDD expirés avant la fin de la
+        période. Lecture seule, affiché en tête du PaieRunWizard.
+        """
+        periode = self.get_object()
+        return Response(
+            controle_completude(periode), status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='avertissements')
+    def avertissements(self, request, pk=None):
+        """Panneau d'avertissements pré-run, façon Odoo (ZPAI2).
+
+        Liste PLATE d'avertissements typés + gravité (RIB manquant en
+        virement, CNSS manquant, salaire nul, profil sans dossier actif,
+        CDD échu, actif sans profil de paie) — à afficher en tête du
+        tableau de bord Paie avant de lancer le run.
+        """
+        periode = self.get_object()
+        return Response(
+            avertissements_periode(periode), status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='bulletins-pdf')
+    def bulletins_pdf(self, request, pk=None):
+        """Impression en lot des bulletins VALIDÉS de la période (ZPAI5).
+
+        Fusionne (WeasyPrint + PyMuPDF) les PDF de tous les bulletins validés
+        de la période en un seul document, ordonné par matricule/nom ; les
+        brouillons sont exclus. 400 si aucun bulletin validé.
+        """
+        periode = self.get_object()
+        try:
+            pdf = builders.render_bulletins_periode_pdf(periode)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        nom = f'bulletins_{periode.annee}_{periode.mois:02d}.pdf'
+        return _pdf_response(pdf, nom)
+
+    @action(detail=True, methods=['post'], url_path='rattacher-bulletins')
+    def rattacher_bulletins_action(self, request, pk=None):
+        """Rattache des bulletins non affectés à cette période (ZPAI10).
+
+        Corps : ``bulletins`` (liste d'ids de ``BulletinPaie`` NON clôturés,
+        même société). Refuse si la période cible est clôturée, si un
+        bulletin est d'une autre société, déjà validé, ou créerait un doublon
+        ``(période, profil)``.
+        """
+        periode = self.get_object()
+        bulletin_ids = request.data.get('bulletins') or []
+        if not bulletin_ids:
+            return Response(
+                {'detail': 'Champ "bulletins" (liste d\'ids) requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            rattaches = rattacher_bulletins(periode, bulletin_ids)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            BulletinPaieSerializer(rattaches, many=True).data,
             status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='journal-de-paie')
@@ -864,6 +1217,55 @@ class BulletinPaieViewSet(_PaieVoirOuGerer, TenantMixin,
         return Response(
             self.get_serializer(bulletin).data, status=status.HTTP_200_OK)
 
+    @action(detail=False, methods=['get'], url_path='analyse')
+    def analyse(self, request):
+        """Rapport d'analyse de paie pivot rubrique/département × mois (ZPAI1).
+
+        Paramètres requis ``debut``/``fin`` au format ``YYYY-MM`` (fenêtre
+        inclusive). ``?group_by=rubrique`` (défaut) ou ``?group_by=
+        departement``. ``?export=csv`` renvoie le CSV (une colonne par mois)
+        au lieu du JSON.
+        """
+        debut = request.query_params.get('debut', '')
+        fin = request.query_params.get('fin', '')
+        group_by = request.query_params.get('group_by', 'rubrique')
+        try:
+            annee_debut, mois_debut = (int(x) for x in debut.split('-'))
+            annee_fin, mois_fin = (int(x) for x in fin.split('-'))
+        except (ValueError, AttributeError):
+            return Response(
+                {'detail': 'Paramètres "debut"/"fin" requis (format '
+                 'YYYY-MM).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            data = paie_selectors.analyse_paie(
+                request.user.company, annee_debut, mois_debut,
+                annee_fin, mois_fin, group_by=group_by)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        if request.query_params.get('export') == 'csv':
+            return self._export_analyse_csv(data)
+        return Response(data, status=status.HTTP_200_OK)
+
+    @staticmethod
+    def _export_analyse_csv(data):
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, delimiter=';')
+        writer.writerow([data['group_by'].capitalize()] + data['mois'] + ['Total'])
+        for ligne in data['lignes']:
+            row = [ligne['libelle']]
+            for mois_iso in data['mois']:
+                row.append(ligne['totaux_par_mois'].get(mois_iso, ''))
+            row.append(ligne['total'])
+            writer.writerow(row)
+        writer.writerow([])
+        writer.writerow(['Total général', '', data['total_general']])
+        resp = HttpResponse(
+            buffer.getvalue(), content_type='text/csv; charset=utf-8')
+        resp['Content-Disposition'] = 'attachment; filename="analyse_paie.csv"'
+        return resp
+
     @action(detail=True, methods=['post'], url_path='rectifier')
     def rectifier(self, request, pk=None):
         """Crée un bulletin RECTIFICATIF ou RAPPEL liant ce bulletin (PAIE36).
@@ -896,6 +1298,57 @@ class BulletinPaieViewSet(_PaieVoirOuGerer, TenantMixin,
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(
             self.get_serializer(rectif).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='annuler')
+    def annuler(self, request, pk=None):
+        """Crée un bulletin d'ANNULATION (refund payslip) de ce bulletin (ZPAI4).
+
+        Corps : ``periode_cible`` (id d'une période OUVERTE, même société)
+        requis. Recopie chaque ligne de ce bulletin à montant OPPOSÉ, sans
+        toucher au bulletin d'origine (qui reste figé). Le bulletin
+        d'annulation est renvoyé en brouillon (le valider fige/consolide dans
+        le cumul annuel).
+        """
+        origine = self.get_object()
+        periode_id = request.data.get('periode_cible')
+        if not periode_id:
+            return Response(
+                {'detail': 'Champ "periode_cible" requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            periode_cible = PeriodePaie.objects.get(
+                pk=periode_id, company=request.user.company)
+        except (PeriodePaie.DoesNotExist, ValueError):
+            return Response(
+                {'detail': 'Période cible inconnue.'},
+                status=status.HTTP_404_NOT_FOUND)
+        try:
+            annulation = creer_bulletin_annulation(origine, periode_cible)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(annulation).data,
+            status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='saisies-arret')
+    def saisies_arret(self, request, pk=None):
+        """Saisies-arrêt/cessions servies par ce bulletin (ZPAI6).
+
+        Lecture seule : relie les lignes ``SAISIE`` du bulletin figé à leur
+        ``SaisieArret`` d'origine.
+        """
+        bulletin = self.get_object()
+        resultats = saisies_arret_du_bulletin(bulletin)
+        data = [
+            {
+                'saisie_id': r['saisie'].id if r['saisie'] else None,
+                'creancier': r['ligne'].libelle,
+                'montant': str(r['montant']),
+            }
+            for r in resultats
+        ]
+        return Response(data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'], url_path='pdf')
     def pdf(self, request, pk=None):
@@ -954,10 +1407,22 @@ class CoffreFortBulletinViewSet(viewsets.ReadOnlyModelViewSet):
             .prefetch_related('lignes')
         )
 
+    def retrieve(self, request, *args, **kwargs):
+        """XPAI21 — la consultation du détail pose l'accusé de lecture."""
+        bulletin = self.get_object()
+        marquer_bulletin_lu(bulletin)
+        return Response(
+            self.get_serializer(bulletin).data, status=status.HTTP_200_OK)
+
     @action(detail=True, methods=['get'], url_path='pdf')
     def pdf(self, request, pk=None):
-        """PDF du bulletin de l'employé (self-service, PAIE35)."""
+        """PDF du bulletin de l'employé (self-service, PAIE35).
+
+        XPAI21 — le téléchargement pose aussi l'accusé de lecture (première
+        consultation, jamais réécrit).
+        """
         bulletin = self.get_object()  # déjà scopé à l'utilisateur
+        marquer_bulletin_lu(bulletin)
         try:
             pdf = builders.render_bulletin_pdf(bulletin)
         except RuntimeError as exc:
@@ -1025,6 +1490,35 @@ class OrdreVirementViewSet(_PaieVoirOuGerer, TenantMixin,
         return Response(
             self.get_serializer(ordre).data, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['post'], url_path='payer')
+    def payer(self, request, pk=None):
+        """Poste l'écriture de règlement de l'OV (débit 4432, YLEDG7).
+
+        Corps : ``compte_tresorerie`` (id `compta.CompteTresorerie`,
+        requis) ; ``date_reglement`` facultative (défaut aujourd'hui).
+        Idempotent — rejouer renvoie la même écriture.
+        """
+        ordre = self.get_object()
+        compte_id = request.data.get('compte_tresorerie')
+        if not compte_id:
+            return Response(
+                {'detail': 'Champ "compte_tresorerie" requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            ecriture = payer_ordre_virement(
+                ordre, compte_id,
+                date_reglement=request.data.get('date_reglement') or None,
+                created_by=request.user)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                'ordre': self.get_serializer(ordre).data,
+                'ecriture_id': ecriture.id if ecriture else None,
+            },
+            status=status.HTTP_200_OK)
+
     @action(detail=True, methods=['get'], url_path='fichier')
     def fichier(self, request, pk=None):
         """Renvoie le fichier de virement banque (lignes + total, PAIE30).
@@ -1090,6 +1584,91 @@ class SaisieArretViewSet(_PaieBaseViewSet):
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_debut', 'prioritaire', 'date_creation', 'id']
 
+    @action(detail=True, methods=['post'], url_path='annuler')
+    def annuler(self, request, pk=None):
+        """Annule la saisie — stoppe les retenues futures, historique intact (ZPAI6).
+
+        Corps : ``motif`` facultatif. Refuse une saisie déjà soldée
+        (``400``) ; annuler une saisie déjà annulée est un no-op.
+        """
+        saisie = self.get_object()
+        try:
+            saisie = annuler_saisie_arret(
+                saisie, motif=request.data.get('motif', ''))
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(saisie).data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], url_path='creer-lot')
+    def creer_lot(self, request):
+        """Éclate une saisie en N fiches individuelles, une par profil (ZPAI7).
+
+        Corps : ``profils`` (liste d'ids, même société), ``montant_total``,
+        ``montant_echeance`` (facultatif), ``date_debut`` (YYYY-MM-DD),
+        ``creancier``/``reference``/``type``/``prioritaire`` (facultatifs),
+        ``cle_lot`` (requis — identifiant STABLE fourni par l'appelant pour
+        l'idempotence : un re-run avec la même clé ne duplique rien).
+        """
+        profil_ids = request.data.get('profils') or []
+        cle_lot = request.data.get('cle_lot')
+        if not profil_ids or not cle_lot:
+            return Response(
+                {'detail': 'Champs "profils" (liste) et "cle_lot" requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        profils = ProfilPaie.objects.filter(
+            company=request.user.company, id__in=profil_ids)
+        if profils.count() != len(set(profil_ids)):
+            return Response(
+                {'detail': "Un ou plusieurs profils sont introuvables ou "
+                           "d'une autre société."},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            date_debut = date.fromisoformat(request.data.get('date_debut'))
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': 'Champ "date_debut" requis (format YYYY-MM-DD).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        # ZPAI7 — le corps JSON envoie des montants en chaîne : converties en
+        # Decimal ICI (jamais laissées telles quelles), sinon l'instance
+        # créée porte un ``str`` en mémoire et les propriétés dérivées
+        # (``solde_restant``) lèvent un TypeError str/Decimal à la
+        # sérialisation de la réponse.
+        try:
+            montant_total = Decimal(str(request.data.get('montant_total')))
+        except (InvalidOperation, TypeError):
+            return Response(
+                {'detail': 'Champ "montant_total" requis (nombre).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        montant_echeance_brut = request.data.get('montant_echeance')
+        try:
+            montant_echeance = (
+                Decimal(str(montant_echeance_brut))
+                if montant_echeance_brut not in (None, '') else None)
+        except InvalidOperation:
+            return Response(
+                {'detail': 'Champ "montant_echeance" invalide (nombre).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            saisies = creer_saisies_arret_lot(
+                request.user.company, profils,
+                type_saisie=request.data.get('type'),
+                montant_total=montant_total,
+                montant_echeance=montant_echeance,
+                date_debut=date_debut,
+                creancier=request.data.get('creancier', ''),
+                reference=request.data.get('reference', ''),
+                prioritaire=bool(request.data.get('prioritaire', False)),
+                cle_lot=cle_lot,
+            )
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(saisies, many=True).data,
+            status=status.HTTP_200_OK)
+
 
 class CumulAnnuelViewSet(_PaieVoirOuGerer, TenantMixin,
                          viewsets.ReadOnlyModelViewSet):
@@ -1131,6 +1710,49 @@ class CumulAnnuelViewSet(_PaieVoirOuGerer, TenantMixin,
         return Response(
             self.get_serializer(cumul).data, status=status.HTTP_200_OK)
 
+    @action(detail=False, methods=['post'], url_path='reprise-dry-run',
+            parser_classes=[MultiPartParser, FormParser])
+    def reprise_dry_run(self, request):
+        """Aperçu de l'import de reprise des cumuls (XPAI22, go-live).
+
+        Corps multipart : ``file`` (CSV/XLSX). Signale les matricules
+        inconnus AVANT tout commit. Ne modifie rien.
+        """
+        f = request.FILES.get('file')
+        if f is None:
+            return Response(
+                {'detail': 'Aucun fichier fourni.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            resultat = dry_run_reprise_cumuls(
+                f.read(), f.name, request.user.company)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(resultat, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], url_path='reprise-commit',
+            parser_classes=[MultiPartParser, FormParser])
+    def reprise_commit(self, request):
+        """Commit de l'import de reprise des cumuls (XPAI22, go-live).
+
+        Corps multipart : ``file`` (CSV/XLSX). Crée/complète les cumuls sans
+        JAMAIS écraser un cumul déjà calculé depuis de vrais bulletins
+        validés.
+        """
+        f = request.FILES.get('file')
+        if f is None:
+            return Response(
+                {'detail': 'Aucun fichier fourni.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            resultat = commit_reprise_cumuls(
+                f.read(), f.name, request.user.company)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(resultat, status=status.HTTP_200_OK)
+
 
 class EcheanceDeclarativeViewSet(_PaieVoirOuGerer, TenantMixin,
                                  viewsets.ModelViewSet):
@@ -1141,10 +1763,60 @@ class EcheanceDeclarativeViewSet(_PaieVoirOuGerer, TenantMixin,
     champs ``periode``/``type_echeance``/``date_limite`` sont posés par le
     générateur (``services.generer_echeances_periode``) et restent en
     lecture seule côté API. ``paie_voir``/``paie_gerer`` (XPAI7).
+
+    L'action ``payer`` (YLEDG7) poste l'écriture de règlement de l'organisme
+    (débit 4441/4452/4443, crédit trésorerie) et marque PAYÉES toutes les
+    échéances du même organisme sur la période — un ``patch`` manuel de
+    ``statut`` reste possible mais ne poste jamais d'écriture.
     """
     permission_classes = [IsResponsableOrAdmin]  # repli si get_permissions absent
     queryset = EcheanceDeclarative.objects.select_related('periode').all()
     serializer_class = EcheanceDeclarativeSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_limite', 'periode', 'id']
-    http_method_names = ['get', 'patch', 'head', 'options']
+    http_method_names = ['get', 'patch', 'post', 'head', 'options']
+
+    # Mappe ``type_echeance`` (modèle) au code ``organisme`` attendu par
+    # ``services.payer_organismes`` (codes de ``_ORGANISMES_CHARGES``).
+    _ORGANISME_PAR_TYPE = {
+        EcheanceDeclarative.TYPE_BDS: 'cnss_amo',
+        EcheanceDeclarative.TYPE_IR_MENSUEL: 'ir',
+        EcheanceDeclarative.TYPE_CIMR: 'cimr',
+    }
+
+    @action(detail=True, methods=['post'], url_path='payer')
+    def payer(self, request, pk=None):
+        """Poste le règlement de l'organisme de cette échéance (YLEDG7).
+
+        Corps : ``compte_tresorerie`` (id, requis), ``date_reglement``
+        facultative. Solde 4441/4452/4443 pour TOUTES les échéances du même
+        organisme sur la période (idempotent — déjà payée = ignorée).
+        """
+        echeance = self.get_object()
+        organisme = self._ORGANISME_PAR_TYPE.get(echeance.type_echeance)
+        if organisme is None:
+            return Response(
+                {'detail': (
+                    "Cette échéance (état 9421 annuel) n'a pas de règlement "
+                    "GL dédié.")},
+                status=status.HTTP_400_BAD_REQUEST)
+        compte_id = request.data.get('compte_tresorerie')
+        if not compte_id:
+            return Response(
+                {'detail': 'Champ "compte_tresorerie" requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            ecriture = payer_organismes(
+                echeance.periode, organisme, compte_id,
+                date_reglement=request.data.get('date_reglement') or None,
+                created_by=request.user)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        echeance.refresh_from_db()
+        return Response(
+            {
+                'echeance': self.get_serializer(echeance).data,
+                'ecriture_id': ecriture.id if ecriture else None,
+            },
+            status=status.HTTP_200_OK)

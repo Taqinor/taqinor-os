@@ -28,6 +28,7 @@ from ..serializers import (  # noqa: F401
 from ..services import (  # noqa: F401
     create_installation_from_devis, seed_checklist_etapes,
     ensure_checklist_items, ensure_default_template,
+    notifier_reception_solde_a_facturer,
 )
 from .. import field_services  # noqa: F401
 from .. import field_capture  # noqa: F401
@@ -260,6 +261,8 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
             'ajouter_releve', 'supprimer_releve',
             # FG79 — scaffold interventions standard.
             'creer_interventions_standard',
+            # ZSTK11 — réservation stock explicite (mode manuel).
+            'reserver_stock',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -289,16 +292,36 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
         # les raisons en français. Interrupteur : une société sans étapes
         # configurées garde exactement le comportement historique.
         nouveau_statut = serializer.validated_data.get('statut')
+        franchit_vers_planifie = (
+            nouveau_statut == Installation.Statut.PLANIFIE
+            and nouveau_statut != old.statut)
         if nouveau_statut and nouveau_statut != old.statut:
             from rest_framework.exceptions import ValidationError
             from ..services import verifier_transition_statut
             raisons = verifier_transition_statut(old, nouveau_statut)
             if raisons:
                 raise ValidationError({'statut': raisons})
+        # YSERV1 — Gate « acompte encaissé » avant planification. Toggle OFF
+        # (défaut) = comportement byte-identique. ON : un responsable/admin
+        # (seul rôle admis en écriture ici) peut forcer avec un `motif`
+        # obligatoire, journalisé au chatter.
+        motif_override = (self.request.data.get('motif_override_acompte')
+                          or '').strip()
+        if franchit_vers_planifie:
+            from rest_framework.exceptions import ValidationError
+            from ..services import verifier_gate_acompte_planification
+            raison = verifier_gate_acompte_planification(old)
+            if raison:
+                if not motif_override:
+                    raise ValidationError({'statut': [raison]})
         super().perform_update(serializer)
         inst = serializer.instance
         _stamp_statut_dates(inst, old.statut)
         activity.log_changes(old, inst, self.request.user)
+        if franchit_vers_planifie and motif_override:
+            activity.log_note(
+                inst, self.request.user,
+                f'Planifié sans acompte — motif : {motif_override}')
         # N7 — au passage à « Réceptionné », le chantier devient un système
         # installé actif (parc) : on trace l'événement dans le chatter.
         canon_old = Installation.canonical_statut(old.statut)
@@ -308,6 +331,12 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
             activity.log_note(
                 inst, self.request.user,
                 "Chantier réceptionné — système ajouté au parc installé.")
+            # YSERV7 — rappel de facturation pour la tranche SOLDE restante
+            # (best-effort, idempotent, jamais de facture créée).
+            try:
+                notifier_reception_solde_a_facturer(inst, self.request.user)
+            except Exception:  # pragma: no cover - défensif
+                pass
         # FG70 — remise de garantie automatique : balaye le BoM gelé vers le
         # parc SAV (un équipement par ligne, série optionnelle). Idempotent.
         _apply_reception_handover(
@@ -470,6 +499,26 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
                     inst, request.user,
                     f"Réservation de stock libérée — {nb} référence(s) "
                     f"(chantier annulé).")
+            # YSERV6 — solde les interventions non terminées (drapeau
+            # orthogonal, jamais un statut supplémentaire), notifie les
+            # techniciens assignés et les sort des vues kanban/calendrier.
+            from ..services import annuler_interventions_ouvertes
+            nb_interv = annuler_interventions_ouvertes(inst, request.user)
+            if nb_interv:
+                activity.log_note(
+                    inst, request.user,
+                    f"{nb_interv} intervention(s) ouverte(s) annulée(s) "
+                    "(chantier annulé).")
+            # YSERV9 — événement d'exception (best-effort, jamais de statut
+            # devis/facture changé) : ventes peut signaler le devis/acompte
+            # au responsable pour décider avoir vs retenue.
+            try:
+                from core.events import chantier_annule
+                chantier_annule.send(
+                    sender=inst.__class__, installation=inst,
+                    user=request.user, company=inst.company)
+            except Exception:  # pragma: no cover - défensif, best-effort
+                pass
         return Response(
             InstallationSerializer(inst, context={'request': request}).data)
 
@@ -482,6 +531,10 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
             inst.motif_annulation = None
             inst.save(update_fields=['annule', 'motif_annulation'])
             activity.log_note(inst, request.user, "Chantier réactivé")
+            # YSERV6 — lève le drapeau uniquement sur les interventions
+            # annulées PAR cette annulation (traçabilité de provenance).
+            from ..services import reactiver_interventions_annulees
+            reactiver_interventions_annulees(inst, request.user)
         return Response(
             InstallationSerializer(inst, context={'request': request}).data)
 
@@ -882,6 +935,30 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
         inst = self.get_object()
         tarif = request.query_params.get('tarif_jour')
         return Response(compute_chantier_cout(inst, tarif_jour=tarif))
+
+    @action(detail=False, methods=['get'], url_path='a-facturer',
+            permission_classes=[IsResponsableOrAdmin])
+    def a_facturer(self, request):
+        """YSERV7 — chantiers à tranche d'échéancier due (jalon atteint ou
+        réceptionné, non facturé). Liste plate, une entrée par tranche due."""
+        from ..services import chantiers_a_facturer
+        return Response(chantiers_a_facturer(request.user.company))
+
+    @action(detail=True, methods=['post'], url_path='reserver-stock',
+            permission_classes=[IsResponsableOrAdmin])
+    def reserver_stock(self, request, pk=None):
+        """ZSTK11 — réserve explicitement le stock du chantier (réutilise le
+        même service N14 `seed_reservations`). Utile en mode
+        `methode_reservation_stock='manuelle'`, où la création du chantier ne
+        sème plus la réservation automatiquement — reste utilisable aussi en
+        mode `confirmation` (idempotent, sans effet de bord supplémentaire)."""
+        from ..services import seed_reservations
+        inst = self.get_object()
+        reservations = seed_reservations(inst)
+        return Response({
+            'installation': inst.id,
+            'reservations_actives': len(reservations),
+        })
 
     # ── CH2 — parcours d'étapes configurables + gates appliqués ─────────────
     @action(detail=True, methods=['get'], url_path='etapes',

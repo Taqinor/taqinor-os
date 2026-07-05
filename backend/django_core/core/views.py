@@ -18,8 +18,13 @@ via ``core.jobs`` (qui fait ``from celery import current_app``). ``core`` reste
 une couche de base (import-linter).
 """
 from rest_framework import status, viewsets
-from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import (
+    api_view,
+    authentication_classes,
+    permission_classes,
+    action,
+)
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from authentication.permissions import (
@@ -49,6 +54,7 @@ from .models import (
     DeletionRecord,
     ModuleToggle,
     PaymentTransaction,
+    RegistreTraitement,
     SavedQuery,
     ScheduledExport,
     TenantTheme,
@@ -64,6 +70,7 @@ from .serializers import (
     DeletionRecordSerializer,
     ModuleToggleSerializer,
     PaymentTransactionSerializer,
+    RegistreTraitementSerializer,
     SavedQuerySerializer,
     ScheduledExportSerializer,
     ScheduledJobSerializer,
@@ -438,6 +445,59 @@ class ModuleToggleViewSet(TenantMixin, viewsets.ModelViewSet):
         return [IsAdminOrResponsableTier()]
 
 
+class ModuleCatalogViewSet(viewsets.ViewSet):
+    """ODX3 — catalogue de modules (manifests fusionnés avec l'état société).
+
+    Sans modèle propre : fusionne les manifests ``core.modules`` avec l'état
+    ``ModuleToggle`` de la société de l'appelant. Aucune importation d'app
+    domaine (les manifests sont lus par attribut sur les ``AppConfig``).
+
+      * ``GET  …/modules/``                — catalogue installable + état actif ;
+      * ``POST …/modules/{key}/activer/``  — active + fermeture des dépendances ;
+      * ``POST …/modules/{key}/desactiver/`` — refuse en 400 si des modules
+        actifs en dépendent (sauf ``?cascade=1``).
+
+    Lecture ouverte à tout utilisateur authentifié (la SPA en a besoin) ;
+    écriture réservée au palier admin/responsable. ``company`` toujours côté
+    serveur, jamais du body.
+    """
+
+    def get_permissions(self):
+        if self.action in ('list',):
+            return [IsAuthenticated()]
+        return [IsAdminOrResponsableTier()]
+
+    def list(self, request):
+        from . import feature_flags
+        company = request.user.company
+        return Response(feature_flags.catalogue_modules(company))
+
+    @action(detail=True, methods=['post'], url_path='activer')
+    def activer(self, request, pk=None):
+        from . import feature_flags
+        company = request.user.company
+        try:
+            actives = feature_flags.activer_module(company, pk)
+        except feature_flags.DependencyError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response({'actives': actives})
+
+    @action(detail=True, methods=['post'], url_path='desactiver')
+    def desactiver(self, request, pk=None):
+        from . import feature_flags
+        company = request.user.company
+        cascade = str(request.query_params.get('cascade', '')) in ('1', 'true')
+        try:
+            desactives = feature_flags.desactiver_module(
+                company, pk, cascade=cascade)
+        except feature_flags.DependencyError as exc:
+            return Response(
+                {'detail': str(exc), 'dependants': exc.dependents},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response({'desactives': desactives})
+
+
 class TenantThemeViewSet(TenantMixin, viewsets.GenericViewSet):
     """FG392 — thème white-label par société (singleton, lecture/upsert).
 
@@ -541,6 +601,46 @@ class DataSubjectRequestViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(self.get_serializer(dsr_request).data)
 
 
+class RegistreTraitementViewSet(TenantMixin, viewsets.ModelViewSet):
+    """XPLT23 — registre des traitements CNDP (loi 09-08).
+
+    Multi-tenant : ``TenantMixin`` filtre par société et impose ``company``.
+    Réservé au palier admin/responsable (donnée de conformité). Aucune
+    importation d'app domaine.
+
+      * ``GET …/registre-traitements/export-csv/`` — export CSV du registre.
+    """
+    serializer_class = RegistreTraitementSerializer
+    permission_classes = [IsAdminOrResponsableTier]
+    queryset = RegistreTraitement.objects.all()
+    pagination_class = None
+
+    @action(detail=False, methods=['get'], url_path='export-csv')
+    def export_csv(self, request):
+        import csv
+        from django.http import HttpResponse
+
+        rows = self.filter_queryset(self.get_queryset())
+        response = HttpResponse(content_type='text/csv; charset=utf-8')
+        response['Content-Disposition'] = (
+            'attachment; filename="registre-traitements-cndp.csv"')
+        writer = csv.writer(response)
+        writer.writerow([
+            'code', 'finalite', 'base_legale', 'categories_donnees',
+            'categories_personnes', 'destinataires', 'duree_conservation',
+            'numero_recepisse', 'date_recepisse', 'actif',
+        ])
+        for r in rows:
+            writer.writerow([
+                r.code, r.finalite, r.base_legale, r.categories_donnees,
+                r.categories_personnes, r.destinataires, r.duree_conservation,
+                r.numero_recepisse,
+                r.date_recepisse.isoformat() if r.date_recepisse else '',
+                'oui' if r.actif else 'non',
+            ])
+        return response
+
+
 class BackupRunViewSet(TenantMixin, viewsets.ModelViewSet):
     """FG395 — sauvegarde/restauration en libre-service (par société).
 
@@ -601,6 +701,39 @@ class SystemStatusViewSet(viewsets.ViewSet):
             'services': services,
             'incidents': health.recent_incidents(company=company),
         })
+
+
+# YOPSB14 — endpoints readiness/liveness LÉGERS, NON authentifiés, jamais de
+# données société. Distincts de SystemStatusViewSet (agrégat riche,
+# authentifié) : ceux-ci sont conçus pour être sondés par nginx/Caddy AVANT
+# de router une requête (évite les 502 après recréation de conteneur, notés
+# en mémoire projet). Exemptés d'auth ET de throttle (DRF @api_view avec
+# AllowAny + authentication_classes=[] court-circuite l'auth par défaut).
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@authentication_classes([])
+def health_live(request):
+    """``GET /api/django/core/health/live/`` — 200 IMMÉDIAT, process vivant.
+
+    Ne touche JAMAIS la base de données (contrairement à /health/ready/) :
+    répond même si Postgres est down, pour distinguer "le process Django a
+    planté" de "la DB est indisponible"."""
+    return Response({'status': 'live'})
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@authentication_classes([])
+def health_ready(request):
+    """``GET /api/django/core/health/ready/`` — 200 si la DB répond
+    (``core.health._check_db``), 503 sinon. Conçu pour un probe
+    nginx/Caddy AVANT de router du trafic vers ce worker."""
+    from . import health
+    db_check = health.check_db()
+    if db_check['status'] == health.STATUS_DOWN:
+        return Response({'status': 'not-ready', 'detail': db_check['detail']},
+                        status=503)
+    return Response({'status': 'ready'})
 
 
 class ApiUsagePlanViewSet(TenantMixin, viewsets.GenericViewSet):

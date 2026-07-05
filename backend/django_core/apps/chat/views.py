@@ -4,13 +4,19 @@ MULTI-TENANT STRICT : tout queryset est filtré à `request.user.company` ET aux
 conversations dont l'utilisateur est membre. Cross-tenant → 404 (jamais révélé) ;
 non-membre d'une conversation de sa société → 403.
 """
-from django.http import HttpResponse
+import json
+
+from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+
+from authentication.permissions import IsAdminRole
 
 from apps.records.storage import (
     fetch_attachment, store_attachment,
@@ -19,12 +25,15 @@ from apps.records.storage import (
 from . import services
 from .models import (
     Conversation, ConversationMember, Message, MessageAttachment,
-    MessageReaction,
+    MessageReaction, UserChatStatus, ScheduledMessage, CannedResponse,
+    RetentionPolicy,
 )
 from .permissions import IsConversationMember, is_member
 from .selectors import member_conversation_ids, search_messages
 from .serializers import (
-    ConversationSerializer, MessageSerializer,
+    ConversationSerializer, MessageSerializer, UserChatStatusSerializer,
+    ScheduledMessageSerializer, MessageBookmarkSerializer,
+    CannedResponseSerializer, RetentionPolicySerializer,
 )
 
 
@@ -97,7 +106,11 @@ class ConversationViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='mute')
     def mute(self, request, pk=None):
         """Active/désactive la sourdine de la conversation pour le membre
-        courant. Body : {muted: bool}. Scopé société + appartenance."""
+        courant. Body : {muted: bool}. Scopé société + appartenance.
+
+        Conservé pour compat ascendante ; synchronise aussi
+        `notification_level` (XKB25) : muted=True -> 'muted', muted=False ->
+        'all' (comportement existant préservé : non muet = tout notifié)."""
         conv = self.get_object()  # déjà scopé société (cross-tenant → 404)
         member = ConversationMember.objects.filter(
             conversation=conv, user=request.user).first()
@@ -106,8 +119,30 @@ class ConversationViewSet(viewsets.ModelViewSet):
                 {'detail': "Vous n'êtes pas membre de cette conversation."},
                 status=status.HTTP_403_FORBIDDEN)
         muted = request.data.get('muted')
-        member.is_muted = bool(muted) if muted is not None else True
-        member.save(update_fields=['is_muted'])
+        is_muted = bool(muted) if muted is not None else True
+        level = (ConversationMember.NotificationLevel.MUTED if is_muted
+                 else ConversationMember.NotificationLevel.ALL)
+        services.set_notification_level(member, level)
+        return Response(self.get_serializer(conv).data)
+
+    # ── XKB25 — niveau de notification à 3 valeurs ─────────────────────
+    @action(detail=True, methods=['post'], url_path='notification-level')
+    def notification_level(self, request, pk=None):
+        """Définit le niveau de notification (tout/mentions/muet) pour le
+        membre courant. Body : {level: 'all'|'mentions'|'muted'}."""
+        conv = self.get_object()
+        member = ConversationMember.objects.filter(
+            conversation=conv, user=request.user).first()
+        if member is None:
+            return Response(
+                {'detail': "Vous n'êtes pas membre de cette conversation."},
+                status=status.HTTP_403_FORBIDDEN)
+        level = request.data.get('level')
+        try:
+            services.set_notification_level(member, level)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(conv).data)
 
     # ── S20 — gestion des membres d'un canal ──────────────────────────
@@ -156,6 +191,58 @@ class ConversationViewSet(viewsets.ModelViewSet):
         ConversationMember.objects.filter(
             conversation=conv, user=request.user).delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    # ── ZCTR12 — alias e-mail du canal ─────────────────────────────────
+    @action(detail=True, methods=['post'], url_path='alias-email')
+    def alias_email(self, request, pk=None):
+        """Pose/lève l'alias e-mail du canal (admin du canal uniquement).
+        Body: {alias_email: '...'} — vide/absent lève l'alias."""
+        conv = self.get_object()
+        if self._require_admin(conv) is None:
+            return Response(
+                {'detail': 'Action réservée aux administrateurs du canal.'},
+                status=status.HTTP_403_FORBIDDEN)
+        try:
+            services.set_channel_alias(
+                conv, request.data.get('alias_email', ''), request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(conv).data)
+
+    # ── XKB32 — export d'une conversation (audit/conformité CNDP) ──────
+    @action(detail=True, methods=['get'], url_path='export')
+    def export(self, request, pk=None):
+        """Export intégral (JSON ou CSV) d'une conversation — admin
+        uniquement. Scopé société (déjà appliqué par le queryset : une
+        conversation d'une autre société est 404). Déclenché par
+        ``?export=csv`` — jamais ``?format=`` (réservé à la négociation de
+        contenu DRF ; une valeur hors json/api y renvoie 404, cf. le
+        garde-fou identique dans compta/flotte/ged)."""
+        if not getattr(request.user, 'is_admin_role', False):
+            return Response(
+                {'detail': 'Réservé aux administrateurs.'},
+                status=status.HTTP_403_FORBIDDEN)
+        conv = self.get_object()
+        data = services.export_conversation(conv)
+        fmt = request.query_params.get('export', 'json')
+        if fmt == 'csv':
+            import csv
+            import io as _io
+            buf = _io.StringIO()
+            writer = csv.writer(buf)
+            writer.writerow(
+                ['id', 'sender', 'body', 'kind', 'created_at', 'deleted'])
+            for row in data['messages']:
+                writer.writerow([
+                    row['id'], row['sender'], row['body'], row['kind'],
+                    row['created_at'], row['deleted'],
+                ])
+            resp = HttpResponse(buf.getvalue(), content_type='text/csv')
+            resp['Content-Disposition'] = (
+                f'attachment; filename="conversation_{conv.pk}.csv"')
+            return resp
+        return JsonResponse(data)
 
     @action(detail=False, methods=['get'], url_path='search')
     def search(self, request):
@@ -388,9 +475,400 @@ class MessageViewSet(viewsets.ModelViewSet):
             msg.save(update_fields=['pinned_at', 'pinned_by'])
         return Response(self.get_serializer(msg).data)
 
+    # ── XKB24 — fils de discussion ─────────────────────────────────────
+    @action(detail=True, methods=['post'], url_path='reply')
+    def reply(self, request, pk=None):
+        """Répond en fil au message `pk` (racine). Auto-suit le fil pour
+        l'auteur racine et le répondant ; notifie les suiveurs, pas le canal."""
+        root = self.get_object()
+        company = _company(request)
+        try:
+            reply = services.reply_in_thread(
+                root_message=root, sender=request.user, company=company,
+                body=request.data.get('body', ''),
+                record_type=request.data.get('record_type'),
+                record_id=request.data.get('record_id'),
+                mention_ids=request.data.get('mentions'),
+            )
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(reply).data,
+                        status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'], url_path='thread')
+    def thread(self, request, pk=None):
+        """Liste les réponses du fil du message `pk` (le plus ancien d'abord)."""
+        root = self.get_object()
+        qs = root.replies.filter(deleted_at__isnull=True).order_by(
+            'created_at', 'id')
+        return Response(self.get_serializer(qs, many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='thread-follow')
+    def thread_follow(self, request, pk=None):
+        root = self.get_object()
+        services.follow_thread(root, request.user)
+        return Response({'status': 'ok'})
+
+    @action(detail=True, methods=['post'], url_path='thread-unfollow')
+    def thread_unfollow(self, request, pk=None):
+        root = self.get_object()
+        services.unfollow_thread(root, request.user)
+        return Response({'status': 'ok'})
+
+    @action(detail=True, methods=['post'], url_path='thread-read')
+    def thread_read(self, request, pk=None):
+        root = self.get_object()
+        services.mark_thread_read(root, request.user)
+        return Response({'status': 'ok'})
+
+    @action(detail=False, methods=['get'], url_path='threads')
+    def threads(self, request):
+        """Boîte « Fils » — fils suivis par l'utilisateur, avec non-lus."""
+        company = _company(request)
+        return Response(services.followed_threads(request.user, company))
+
+    # ── XKB27 — rappels & signets ──────────────────────────────────────
+    @action(detail=True, methods=['post'], url_path='remind-me')
+    def remind_me(self, request, pk=None):
+        """Body: {remind_at: iso}. Re-surface ce message dans l'inbox
+        notifications à l'heure choisie."""
+        msg = self.get_object()
+        from django.utils.dateparse import parse_datetime
+        remind_at = parse_datetime(request.data.get('remind_at') or '')
+        try:
+            rem = services.remind_me(msg, request.user, remind_at)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        from .serializers import MessageReminderSerializer
+        return Response(MessageReminderSerializer(rem).data,
+                        status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='bookmark')
+    def bookmark(self, request, pk=None):
+        """Bascule un signet personnel sur ce message."""
+        msg = self.get_object()
+        toggled = services.toggle_bookmark(msg, request.user)
+        return Response({'status': toggled})
+
+    # ── XKB30 — sondages ────────────────────────────────────────────────
+    @action(detail=False, methods=['post'], url_path='poll')
+    def create_poll(self, request):
+        """Crée un sondage (`kind=poll`) dans une conversation. Body :
+        {conversation, question, options: [...], allow_multiple, is_anonymous}."""
+        company = _company(request)
+        conv = self._conversation()
+        if conv is None:
+            return Response({'detail': 'Conversation introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        if not is_member(request.user, conv):
+            return Response(
+                {'detail': "Vous n'êtes pas membre de cette conversation."},
+                status=status.HTTP_403_FORBIDDEN)
+        try:
+            poll = services.create_poll(
+                conversation=conv, sender=request.user, company=company,
+                question=request.data.get('question', ''),
+                options=request.data.get('options', []),
+                allow_multiple=bool(request.data.get('allow_multiple')),
+                is_anonymous=bool(request.data.get('is_anonymous')))
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(poll.message).data,
+                        status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='poll-vote')
+    def poll_vote(self, request, pk=None):
+        """Vote sur le sondage porté par ce message. Body:
+        {option_ids: [...]}."""
+        msg = self.get_object()
+        poll = getattr(msg, 'poll', None)
+        if poll is None:
+            return Response({'detail': "Ce message n'est pas un sondage."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            services.vote_poll(
+                poll, request.user, request.data.get('option_ids', []))
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(services.poll_results(poll, request.user))
+
+    @action(detail=True, methods=['post'], url_path='poll-close')
+    def poll_close(self, request, pk=None):
+        msg = self.get_object()
+        poll = getattr(msg, 'poll', None)
+        if poll is None:
+            return Response({'detail': "Ce message n'est pas un sondage."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            services.close_poll(poll, request.user)
+        except PermissionError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_403_FORBIDDEN)
+        return Response(services.poll_results(poll, request.user))
+
+    @action(detail=True, methods=['get'], url_path='poll-results')
+    def poll_results(self, request, pk=None):
+        msg = self.get_object()
+        poll = getattr(msg, 'poll', None)
+        if poll is None:
+            return Response({'detail': "Ce message n'est pas un sondage."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(services.poll_results(poll, request.user))
+
+    @action(detail=False, methods=['get'], url_path='bookmarks')
+    def bookmarks(self, request):
+        """Liste des messages enregistrés (signets) de l'utilisateur."""
+        company = _company(request)
+        rows = services.list_bookmarks(request.user, company)
+        return Response(MessageBookmarkSerializer(rows, many=True).data)
+
     def get_permissions(self):
         # Les actions au niveau objet exigent l'appartenance.
         if self.action in ('partial_update', 'update', 'destroy', 'react',
-                           'pin', 'unpin', 'download_attachment', 'retrieve'):
+                           'pin', 'unpin', 'download_attachment', 'retrieve',
+                           'reply', 'thread', 'thread_follow',
+                           'thread_unfollow', 'thread_read', 'remind_me',
+                           'bookmark', 'poll_vote', 'poll_close',
+                           'poll_results'):
             return [IsAuthenticated(), IsConversationMember()]
         return [IsAuthenticated()]
+
+
+class ScheduledMessageViewSet(viewsets.ModelViewSet):
+    """XKB27 — « Envoyer plus tard ». Un utilisateur ne voit/annule que SES
+    propres messages programmés (scopés société)."""
+    serializer_class = ScheduledMessageSerializer
+    permission_classes = [IsAuthenticated]
+    http_method_names = ['get', 'post', 'delete', 'head', 'options']
+
+    def get_queryset(self):
+        company = _company(self.request)
+        if company is None:
+            return ScheduledMessage.objects.none()
+        return ScheduledMessage.objects.filter(
+            company=company, sender=self.request.user
+        ).select_related('conversation').order_by('scheduled_at', 'id')
+
+    def create(self, request, *args, **kwargs):
+        company = _company(request)
+        conv = Conversation.objects.filter(
+            pk=request.data.get('conversation'), company=company).first()
+        if conv is None:
+            return Response({'detail': 'Conversation introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        if not is_member(request.user, conv):
+            return Response(
+                {'detail': "Vous n'êtes pas membre de cette conversation."},
+                status=status.HTTP_403_FORBIDDEN)
+        from django.utils.dateparse import parse_datetime
+        scheduled_at = parse_datetime(request.data.get('scheduled_at') or '')
+        try:
+            sched = services.schedule_message(
+                conversation=conv, sender=request.user, company=company,
+                body=request.data.get('body', ''), scheduled_at=scheduled_at)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(sched).data,
+                        status=status.HTTP_201_CREATED)
+
+    def destroy(self, request, *args, **kwargs):
+        """Annule le message programmé (pas de suppression physique)."""
+        sched = self.get_object()
+        try:
+            services.cancel_scheduled_message(sched, request.user)
+        except (ValueError, PermissionError) as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(sched).data)
+
+
+class UserChatStatusViewSet(viewsets.GenericViewSet):
+    """XKB26 — statut personnalisé + Ne pas déranger, et « vu récemment ».
+
+    Pas de CRUD REST classique : le statut est TOUJOURS celui de l'appelant
+    (jamais un autre user_id du corps de requête), sauf `colleagues` qui liste
+    les statuts des collègues de la société (lecture seule)."""
+    serializer_class = UserChatStatusSerializer
+    permission_classes = [IsAuthenticated]
+    queryset = UserChatStatus.objects.all()
+
+    @action(detail=False, methods=['get', 'post'], url_path='me')
+    def me(self, request):
+        company = _company(request)
+        if request.method == 'GET':
+            st = services.get_or_create_status(request.user, company)
+            return Response(self.get_serializer(st).data)
+        st = services.set_status(
+            request.user, company,
+            status_text=request.data.get('status_text'),
+            status_emoji=request.data.get('status_emoji'))
+        return Response(self.get_serializer(st).data)
+
+    @action(detail=False, methods=['post'], url_path='clear')
+    def clear(self, request):
+        company = _company(request)
+        st = services.clear_status(request.user, company)
+        return Response(self.get_serializer(st).data)
+
+    @action(detail=False, methods=['post'], url_path='dnd')
+    def dnd(self, request):
+        """Body: {start: iso|null, end: iso|null}. Poser start/end=null lève
+        le NPD (`clear_dnd`)."""
+        company = _company(request)
+        from django.utils.dateparse import parse_datetime
+        start_raw = request.data.get('start')
+        end_raw = request.data.get('end')
+        start = parse_datetime(start_raw) if start_raw else None
+        end = parse_datetime(end_raw) if end_raw else None
+        try:
+            st = services.set_dnd(request.user, company, start=start, end=end)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(st).data)
+
+    @action(detail=False, methods=['post'], url_path='seen')
+    def seen(self, request):
+        """Best-effort « vu récemment », appelé par le polling existant
+        (jamais de WebSocket)."""
+        company = _company(request)
+        st = services.touch_last_seen(request.user, company)
+        return Response(self.get_serializer(st).data)
+
+    @action(detail=False, methods=['get'], url_path='colleagues')
+    def colleagues(self, request):
+        """Statuts des collègues de la société (indicateur dans la liste de
+        conversations + autocomplete @mention)."""
+        company = _company(request)
+        if company is None:
+            return Response([])
+        return Response(services.colleague_statuses(company))
+
+
+class CannedResponseViewSet(viewsets.ModelViewSet):
+    """XKB28 — réponses enregistrées (snippets `:raccourci`) pour le composer
+    chat. Un utilisateur voit ses personnels + ceux de la société ; jamais les
+    personnels d'un autre utilisateur."""
+    serializer_class = CannedResponseSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = None
+
+    def get_queryset(self):
+        company = _company(self.request)
+        if company is None:
+            return CannedResponse.objects.none()
+        prefix = self.request.query_params.get('prefix')
+        return CannedResponse.objects.filter(
+            pk__in=[c.pk for c in services.visible_canned_responses(
+                self.request.user, company, prefix=prefix)])
+
+    def create(self, request, *args, **kwargs):
+        company = _company(request)
+        try:
+            canned = services.create_canned_response(
+                request.user, company,
+                shortcut=request.data.get('shortcut', ''),
+                body=request.data.get('body', ''),
+                scope=request.data.get('scope', CannedResponse.Scope.PERSONAL))
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(canned).data,
+                        status=status.HTTP_201_CREATED)
+
+    def destroy(self, request, *args, **kwargs):
+        canned = self.get_object()
+        try:
+            services.delete_canned_response(canned, request.user)
+        except PermissionError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_403_FORBIDDEN)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class RetentionPolicyViewSet(viewsets.ModelViewSet):
+    """XKB32 — politique de rétention admin par type de conversation.
+
+    Admin uniquement (`IsAdminRole`) ; DÉFAUT = aucune politique = aucune
+    purge (comportement inchangé tant que rien n'est posé ici)."""
+    serializer_class = RetentionPolicySerializer
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    def get_queryset(self):
+        company = _company(self.request)
+        if company is None:
+            return RetentionPolicy.objects.none()
+        return RetentionPolicy.objects.filter(company=company)
+
+    def create(self, request, *args, **kwargs):
+        company = _company(request)
+        kind = request.data.get('conversation_kind')
+        if kind not in dict(Conversation.Kind.choices):
+            return Response({'detail': 'Type de conversation invalide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        months = request.data.get('retention_months')
+        policy = services.set_retention_policy(
+            company, kind, (int(months) if months not in (None, '') else None),
+            request.user)
+        return Response(self.get_serializer(policy).data,
+                        status=status.HTTP_201_CREATED)
+
+    def partial_update(self, request, *args, **kwargs):
+        policy = self.get_object()
+        months = request.data.get('retention_months')
+        updated = services.set_retention_policy(
+            policy.company, policy.conversation_kind,
+            (int(months) if months not in (None, '') else None),
+            request.user)
+        return Response(self.get_serializer(updated).data)
+
+
+# ── ZCTR12 — webhook e-mail entrant (canal-comme-liste-de-diffusion) ───
+#
+# GATED, complet NO-OP sans configuration : `CHAT_INBOUND_EMAIL_SECRET` (env)
+# doit être défini ET le header `X-Inbound-Secret` doit correspondre, sinon
+# 403. La société cible est résolue par `CHAT_INBOUND_EMAIL_COMPANY_ID` (env,
+# scaffold mono-société tant qu'aucun routage multi-société par domaine
+# d'alias n'est fourni) — sans elle, 404 (rien n'est traité). Aucun appel
+# réseau sortant depuis cette vue.
+
+def _inbound_email_secret():
+    import os
+    return os.getenv('CHAT_INBOUND_EMAIL_SECRET', '').strip()
+
+
+def _inbound_email_company():
+    import os
+    from authentication.models import Company
+    raw = os.getenv('CHAT_INBOUND_EMAIL_COMPANY_ID', '').strip()
+    if not raw.isdigit():
+        return None
+    return Company.objects.filter(pk=int(raw)).first()
+
+
+@csrf_exempt
+@require_POST
+def inbound_email_webhook(request):
+    """(b) — E-mail entrant vers un alias de canal. NO-OP complet (403) sans
+    `CHAT_INBOUND_EMAIL_SECRET` configuré ou header incorrect. Payload JSON
+    attendu : {"to": "...", "from": "...", "subject": "...", "text": "..."}."""
+    secret = _inbound_email_secret()
+    if not secret or request.headers.get('X-Inbound-Secret') != secret:
+        return HttpResponse(status=403)
+    company = _inbound_email_company()
+    if company is None:
+        return HttpResponse(status=404)
+    try:
+        payload = json.loads(request.body or b'{}')
+    except ValueError:
+        return HttpResponse(status=400)
+    msg = services.receive_channel_alias_email(
+        company, to_alias=payload.get('to', ''),
+        from_email=payload.get('from', ''),
+        subject=payload.get('subject', ''), body=payload.get('text', ''))
+    return JsonResponse({'created': msg is not None})

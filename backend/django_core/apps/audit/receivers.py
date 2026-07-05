@@ -13,7 +13,7 @@ identiques 1:1 (même action ``PDF``, même cible, même détail, même acteur).
 """
 from django.dispatch import receiver
 
-from core.events import document_pdf_generated
+from core.events import document_pdf_generated, devis_expired
 
 from . import recorder
 from .models import AuditLog
@@ -36,3 +36,20 @@ def _record_pdf_generation(sender, instance, kind, **kwargs):
     """
     detail = _PDF_DETAIL.get(kind, 'PDF généré')
     recorder.record(AuditLog.Action.PDF, instance=instance, detail=detail)
+
+
+@receiver(devis_expired,
+          dispatch_uid='audit_record_on_devis_expired_system')
+def _record_devis_expiration_systeme(sender, devis, ancien_statut, **kwargs):
+    """YEVNT10 — journalise « système » (user=None) l'expiration AUTOMATIQUE
+    d'un devis par le cron ``expire_stale_devis`` (hors requête HTTP), que
+    l'audit par signaux request-scopé ne capte pas.
+
+    Remplace l'ancien appel direct ``ventes → audit.recorder.record`` : ventes
+    émet désormais ``devis_expired`` via ``core.events`` et l'audit s'y abonne
+    ici (M4 — plus aucune arête montante ventes→audit). Best-effort : ``record``
+    n'élève jamais.
+    """
+    recorder.record(
+        AuditLog.Action.STATUS, instance=devis, user=None,
+        detail='Expiration automatique (job : expire_stale_devis).')

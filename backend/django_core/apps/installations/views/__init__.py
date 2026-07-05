@@ -11,6 +11,10 @@ from .commissioning import CommissioningRecordViewSet
 from .stage_config import StageModeleViewSet
 from .checklist_template import ChecklistTemplateViewSet
 from .checklist_etape import ChecklistEtapeModeleViewSet
+from .fiche_intervention import (
+    FicheInterventionTemplateViewSet, FicheInterventionChampViewSet,
+)
+from .recurrence_intervention import RecurrenceInterventionViewSet
 from .intervention import InterventionViewSet
 from .shotlist import ShotListSlotViewSet
 from .safety import SafetyChecklistSlotViewSet
@@ -24,6 +28,7 @@ from .program import (
     BudgetProjetViewSet, BudgetEngagementViewSet,
 )
 from .indispo import IndisponibiliteRessourceViewSet
+from .astreinte import AstreinteViewSet
 from .equipe import EquipeViewSet
 from .soustraitant import SousTraitantViewSet
 from .ordre_soustraitance import OrdreSousTraitanceViewSet
@@ -34,7 +39,7 @@ from .attestation_soustraitant import AttestationSousTraitantViewSet
 from .evaluation_soustraitant import EvaluationSousTraitantViewSet
 from .retenue_garantie import RetenueGarantieSousTraitantViewSet
 from .demande_achat import DemandeAchatViewSet, DemandeAchatLigneViewSet
-from .rfq import RFQViewSet, RFQOffreViewSet
+from .rfq import RFQViewSet, RFQOffreViewSet, RFQConsultationViewSet
 from .approbation_bcf import (
     SeuilApprobationBCFViewSet, ApprobationBCFViewSet,
 )
@@ -48,7 +53,10 @@ from .gr_ir import ReceptionNonFactureeViewSet
 from .contrat_prix import (
     ContratPrixFournisseurViewSet, ContratPrixLigneViewSet,
 )
-from .bin_location import BinLocationViewSet, BinAffectationViewSet
+from .bin_location import (
+    BinLocationViewSet, BinAffectationViewSet, CategorieStockageViewSet,
+    RegleRangementViewSet,
+)
 from .putaway import PutAwayViewSet
 from .picklist import PickListViewSet, PickListLigneViewSet
 from .colisage import ColisViewSet, ColisLigneViewSet
@@ -68,6 +76,11 @@ from .pod import PreuveLivraisonViewSet
 from .transporteur import TransporteurViewSet
 from .tournee import TourneeLivraisonView
 from .field_sync import FieldSyncView
+from .retour_materiel import RetourMaterielViewSet, RetourMaterielLigneViewSet
+from .retour_livraison import (
+    RetourLivraisonViewSet, RetourLivraisonLigneViewSet,
+)
+from .lot_prelevement import LotPrelevementViewSet
 
 __all__ = [
     'TypeInterventionViewSet',
@@ -77,6 +90,9 @@ __all__ = [
     'StageModeleViewSet',
     'ChecklistTemplateViewSet',
     'ChecklistEtapeModeleViewSet',
+    'FicheInterventionTemplateViewSet',
+    'FicheInterventionChampViewSet',
+    'RecurrenceInterventionViewSet',
     'InterventionViewSet',
     'ShotListSlotViewSet',
     'SafetyChecklistSlotViewSet',
@@ -93,6 +109,7 @@ __all__ = [
     'BudgetProjetViewSet',
     'BudgetEngagementViewSet',
     'IndisponibiliteRessourceViewSet',
+    'AstreinteViewSet',
     'EquipeViewSet',
     'SousTraitantViewSet',
     'OrdreSousTraitanceViewSet',
@@ -105,6 +122,7 @@ __all__ = [
     'DemandeAchatLigneViewSet',
     'RFQViewSet',
     'RFQOffreViewSet',
+    'RFQConsultationViewSet',
     'SeuilApprobationBCFViewSet',
     'ApprobationBCFViewSet',
     'ControleBudgetaireCommandeView',
@@ -119,6 +137,8 @@ __all__ = [
     'ContratPrixLigneViewSet',
     'BinLocationViewSet',
     'BinAffectationViewSet',
+    'CategorieStockageViewSet',
+    'RegleRangementViewSet',
     'PutAwayViewSet',
     'PickListViewSet',
     'PickListLigneViewSet',
@@ -144,4 +164,9 @@ __all__ = [
     'TransporteurViewSet',
     'TourneeLivraisonView',
     'FieldSyncView',
+    'RetourMaterielViewSet',
+    'RetourMaterielLigneViewSet',
+    'RetourLivraisonViewSet',
+    'RetourLivraisonLigneViewSet',
+    'LotPrelevementViewSet',
 ]

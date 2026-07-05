@@ -44,6 +44,7 @@ from .models import (
     PlanEntretien,
     Pneumatique,
     PleinCarburant,
+    RappelConstructeur,
     ReferentielFlotte,
     ReleveTelematique,
     RemiseAccessoire,
@@ -54,6 +55,7 @@ from .models import (
     TrajetTelematique,
     Vehicule,
     VisiteTechnique,
+    ZoneGeographique,
 )
 from .serializers import (
     AccuseCharteSerializer,
@@ -86,6 +88,7 @@ from .serializers import (
     PneumatiqueSerializer,
     PleinCarburantSerializer,
     DemandeVehiculeSerializer,
+    RappelConstructeurSerializer,
     ReferentielFlotteSerializer,
     ReleveTelematiqueSerializer,
     RemiseAccessoireSerializer,
@@ -96,6 +99,7 @@ from .serializers import (
     TrajetTelematiqueSerializer,
     VehiculeSerializer,
     VisiteTechniqueSerializer,
+    ZoneGeographiqueSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve', 'consommation', 'anomalies', 'echeances',
@@ -103,7 +107,7 @@ READ_ACTIONS = ['list', 'retrieve', 'consommation', 'anomalies', 'echeances',
                 'tco', 'eco_conduite', 'documents', 'tableau_bord', 'journal',
                 'amortissement', 'expirants', 'ledger', 'historique',
                 'synthese_tva', 'detenteurs_courants', 'taux_completion',
-                'activites']
+                'activites', 'ocr']
 
 
 def _parse_date_param(value):
@@ -898,6 +902,36 @@ class PleinCarburantViewSet(_FlotteBaseViewSet):
 
         from .selectors import consommation_vehicule
         return Response(consommation_vehicule(company, vehicule_id))
+
+    @action(detail=False, methods=['post'])
+    def ocr(self, request):
+        """XFLT23 — OCR d'un reçu de station → champs pré-remplis (gated).
+
+        Accepte une photo (``request.FILES['photo']``, multipart) du reçu de
+        station et renvoie les champs extraits (``date_plein``, ``quantite``,
+        ``prix_total``, ``station``…) pour pré-remplir le formulaire côté
+        frontend — l'utilisateur valide TOUJOURS avant création (jamais de
+        création automatique de ``PleinCarburant`` ici).
+
+        KEY-GATED : sans configuration OCR (``settings.
+        FLOTTE_OCR_PLEINS_ENABLED`` / ``ZHIPU_API_KEY``), renvoie 503 avec un
+        message FR clair — aucun no-op cassant, l'écran de saisie manuelle
+        reste utilisable normalement.
+        """
+        from .services import extraire_recu_carburant, mapper_recu_vers_plein
+
+        photo = request.FILES.get('photo')
+        if photo is None:
+            return Response(
+                {'photo': "Le fichier 'photo' est obligatoire."}, status=400)
+
+        try:
+            champs_bruts = extraire_recu_carburant(
+                photo.read(), mime=getattr(photo, 'content_type', '') or '')
+        except RuntimeError as exc:
+            return Response({'detail': str(exc)}, status=503)
+
+        return Response({'champs': mapper_recu_vers_plein(champs_bruts)})
 
 
 class CarteCarburantViewSet(_FlotteBaseViewSet):
@@ -1855,6 +1889,18 @@ class ReleveTelematiqueViewSet(_FlotteBaseViewSet):
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['horodatage', 'odometre', 'source', 'date_creation']
 
+    def perform_create(self, serializer):
+        # XFLT25 — un code défaut moteur (DTC) critique déclenche une alerte
+        # + un signalement (idempotent). Best-effort : ne bloque jamais la
+        # création du relevé si le traitement échoue.
+        from .services import traiter_codes_defaut
+        serializer.save(company=self.request.user.company)
+        if serializer.instance.codes_defaut:
+            try:
+                traiter_codes_defaut(serializer.instance)
+            except Exception:
+                pass
+
     def get_queryset(self):
         qs = super().get_queryset()
         params = self.request.query_params
@@ -1899,6 +1945,49 @@ class ReleveTelematiqueViewSet(_FlotteBaseViewSet):
             'active': telematique_active(),
             'importes': importes,
         })
+
+
+class ZoneGeographiqueViewSet(_FlotteBaseViewSet):
+    """Zones géographiques de géofencing (XFLT24).
+
+    CRUD scopé société (écriture responsable/admin) des cercles de
+    géofencing (dépôt/chantier/zone interdite + plage horaire autorisée
+    optionnelle). Filtrable par ``?type_zone=<depot|chantier|interdite>`` et
+    ``?actif=true|false``.
+
+    Action ``POST /zones-geographiques/evaluer/`` (écriture responsable/
+    admin) : évalue les relevés télématiques déjà ingérés contre les zones
+    actives de la société (purement local, ``services.evaluer_geofencing``)
+    et diffuse une alerte best-effort par détection. Renvoie la liste des
+    alertes détectées.
+    """
+    queryset = ZoneGeographique.objects.all()
+    serializer_class = ZoneGeographiqueSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['nom', 'type_zone', 'actif', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+
+        type_zone = params.get('type_zone')
+        if type_zone:
+            qs = qs.filter(type_zone=type_zone)
+
+        actif = params.get('actif')
+        if actif is not None:
+            qs = qs.filter(actif=actif.lower() in ('1', 'true', 'yes'))
+
+        return qs
+
+    @action(detail=False, methods=['post'])
+    def evaluer(self, request):
+        """XFLT24 — Évalue le géofencing sur les relevés télématiques
+        existants (purement local, écriture responsable/admin — déclenche
+        des notifications best-effort)."""
+        from .services import evaluer_geofencing
+        alertes = evaluer_geofencing(request.user.company)
+        return Response({'nb_alertes': len(alertes), 'alertes': alertes})
 
 
 class InfractionViewSet(_FlotteBaseViewSet):
@@ -2338,6 +2427,84 @@ class CoutVehiculeViewSet(_FlotteBaseViewSet):
 
         return qs
 
+    @action(detail=False, methods=['post'])
+    def ventiler(self, request):
+        """XFLT30 — Ventile une facture fournisseur sur plusieurs véhicules
+        (écriture responsable/admin).
+
+        Corps attendu ::
+
+            {
+              "montant_total": "12000.00",
+              "actif_flotte_ids": [1, 2, 3],
+              "date": "2026-06-01",
+              "categorie": "entretien",        # optionnel (défaut 'autre')
+              "fournisseur": "Total Maroc",     # optionnel
+              "fournisseur_id_ref": 5,          # optionnel (stock.Fournisseur)
+              "reference_piece": "FAC-2026-042",
+              "repartitions": {"1": "5000", "2": "4000", "3": "3000"},
+              # optionnel — sinon répartition ÉGALE (arrondi centime,
+              # reliquat sur la dernière ligne).
+              "notes": "…",                     # optionnel
+            }
+
+        Crée N ``CoutVehicule`` (un par actif) portant TOUS la même
+        ``reference_piece`` — jamais d'écriture comptable directe (compta lit
+        le ledger via sélecteur). Renvoie les coûts créés (sérialisés).
+        """
+        data = request.data
+        actif_flotte_ids = data.get('actif_flotte_ids') or []
+        try:
+            actif_flotte_ids = [int(a) for a in actif_flotte_ids]
+        except (ValueError, TypeError):
+            return Response(
+                {'actif_flotte_ids': 'Liste d\'identifiants entiers attendue.'},
+                status=400)
+        if not actif_flotte_ids:
+            return Response(
+                {'actif_flotte_ids': 'Au moins un actif est requis.'},
+                status=400)
+
+        montant_total = data.get('montant_total')
+        date_ventilation = _parse_date_param(data.get('date'))
+        if montant_total is None or date_ventilation is None:
+            return Response(
+                {'detail': "'montant_total' et 'date' (YYYY-MM-DD) sont "
+                           "obligatoires."},
+                status=400)
+
+        repartitions_brutes = data.get('repartitions')
+        repartitions = None
+        if repartitions_brutes:
+            try:
+                repartitions = {
+                    int(k): v for k, v in repartitions_brutes.items()}
+            except (ValueError, TypeError, AttributeError):
+                return Response(
+                    {'repartitions': 'Répartition invalide (attendu '
+                                     '{actif_flotte_id: montant}).'},
+                    status=400)
+
+        from .services import ventiler_cout_fournisseur
+        try:
+            crees = ventiler_cout_fournisseur(
+                request.user.company,
+                montant_total=montant_total,
+                actif_flotte_ids=actif_flotte_ids,
+                date=date_ventilation,
+                categorie=data.get('categorie'),
+                fournisseur=data.get('fournisseur', ''),
+                fournisseur_id_ref=data.get('fournisseur_id_ref'),
+                reference_piece=data.get('reference_piece', ''),
+                repartitions=repartitions,
+                notes=data.get('notes', ''),
+            )
+        except (ValueError, TypeError) as exc:
+            return Response({'detail': str(exc)}, status=400)
+
+        serializer = self.get_serializer(crees, many=True)
+        return Response(serializer.data, status=201)
+
 
 class SignalementVehiculeViewSet(_FlotteBaseViewSet):
     """Signalements d'anomalie véhicule déposés par un conducteur (XFLT5).
@@ -2408,6 +2575,38 @@ class SignalementVehiculeViewSet(_FlotteBaseViewSet):
         signalement.save(update_fields=['ordre_reparation'])
 
         return Response(self.get_serializer(signalement).data)
+
+
+class RappelConstructeurViewSet(_FlotteBaseViewSet):
+    """Rappels constructeur (recall) de la société (XFLT28).
+
+    CRUD scopé société (écriture responsable/admin) : référence de campagne,
+    constructeur, description, liste de VIN concernés.
+
+    Action ``POST /rappels-constructeur/<id>/rapprocher/`` (écriture
+    responsable/admin) : rapproche le rappel contre le parc de VIN de la
+    société (``services.rapprocher_rappel``) et crée un
+    ``SignalementVehicule`` (XFLT5) par véhicule touché — idempotent (pas de
+    doublon ouvert pour la même campagne). Renvoie le nombre de VIN matchés
+    et les signalements créés.
+    """
+    queryset = RappelConstructeur.objects.all()
+    serializer_class = RappelConstructeurSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference_campagne', 'constructeur']
+    ordering_fields = ['reference_campagne', 'date_creation']
+
+    @action(detail=True, methods=['post'])
+    def rapprocher(self, request, pk=None):
+        """XFLT28 — Rapproche le rappel contre le parc de VIN (écriture
+        responsable/admin, idempotent)."""
+        rappel = self.get_object()
+        from .services import rapprocher_rappel
+        resultat = rapprocher_rappel(rappel)
+        return Response({
+            'nb_vin_matches': resultat['nb_vin_matches'],
+            'signalements_crees': [s.id for s in resultat['crees']],
+        })
 
 
 # ── XFLT13 — Inspections périodiques paramétrables (check-lists DVIR) ──────────
