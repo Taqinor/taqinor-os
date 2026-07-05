@@ -113,6 +113,9 @@ export default function ParametresEntreprise() {
     // WR12 — flags jusqu'ici backend-only désormais éditables en Paramètres.
     lead_sla_hours: 24,       // FG28
     dgi_export_actif: false,  // N105 (interrupteur maître DGI, sensible/admin)
+    // XSAL11 — round-robin équilibré des leads entrants (OFF par défaut).
+    round_robin_leads_actif: false,
+    round_robin_plafond_leads_ouverts: 20,
   })
   const [saved, setSaved] = useState(false)
   const [assignables, setAssignables] = useState([])
@@ -544,6 +547,10 @@ export default function ParametresEntreprise() {
       // WR12 — FG28 (SLA) + N105 (DGI) exposés en Paramètres.
       lead_sla_hours: profile.lead_sla_hours ?? 24,
       dgi_export_actif: profile.dgi_export_actif ?? false,
+      // XSAL11 — round-robin équilibré des leads entrants (OFF par défaut).
+      round_robin_leads_actif: profile.round_robin_leads_actif ?? false,
+      round_robin_plafond_leads_ouverts:
+        profile.round_robin_plafond_leads_ouverts ?? 20,
       // FG22 — politique de sécurité (défauts inertes).
       password_min_length: profile.password_min_length ?? 8,
       password_require_complexity: profile.password_require_complexity ?? false,
@@ -660,6 +667,10 @@ export default function ParametresEntreprise() {
       referral_reward: form.referral_reward === '' ? null : Number(form.referral_reward),
       // WR12/FG28 — SLA premier contact (heures) : entier ≥ 0, 0 = désactivé.
       lead_sla_hours: Math.max(0, Math.trunc(Number(form.lead_sla_hours) || 0)),
+      // XSAL11 — round-robin équilibré des leads entrants.
+      round_robin_leads_actif: !!form.round_robin_leads_actif,
+      round_robin_plafond_leads_ouverts: Math.max(
+        1, Math.trunc(Number(form.round_robin_plafond_leads_ouverts) || 20)),
     }
     // WR12 — réglages SENSIBLES : ne les transmettre que si l'utilisateur est
     // autorisé (admin). Un rôle non autorisé ne les voit pas et ne peut donc

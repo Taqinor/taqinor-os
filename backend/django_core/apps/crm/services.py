@@ -310,21 +310,97 @@ def sync_relance_activity(lead, user):
         pass
 
 
+def _next_round_robin_owner_for_new_lead(company):
+    """QW6 — Round-robin parmi les commerciaux actifs d'une société, quand
+    AUCUN responsable par défaut n'est configuré (``CompanyProfile.
+    responsable_defaut_leads``).
+
+    Distinct de ``_next_round_robin_commercial`` (XMKT21, départagé par
+    ``mql_assigned_at``, réservé au franchissement du seuil MQL) : ici on
+    départage par le nombre TOTAL de leads déjà assignés (tous statuts), pour
+    répartir la charge entrante générale — pas seulement les MQL. Renvoie
+    None si aucun commercial actif (no-op : le lead reste sans owner, comme
+    aujourd'hui).
+    """
+    from django.contrib.auth import get_user_model
+    from django.db.models import Count
+
+    User = get_user_model()
+    candidats = list(
+        User.objects.filter(
+            company=company, is_active=True, role__nom='Commercial',
+        ).annotate(
+            nb_leads=Count('leads_assignes'),
+        ).order_by('nb_leads', 'id')
+    )
+    return candidats[0] if candidats else None
+
+
+def _leads_ouverts_count(commercial):
+    """XSAL11 — Nombre de leads OUVERTS assignés à un commercial : stage NON
+    SIGNED/COLD (clés STAGES.py — jamais codées en dur) et jamais perdu. Sert
+    de plafond de saturation pour la rotation round-robin équilibrée."""
+    return Lead.objects.filter(
+        owner=commercial, perdu=False,
+    ).exclude(stage__in=[stages.SIGNED, stages.COLD]).count()
+
+
+def _next_balanced_round_robin_commercial(company, plafond):
+    """XSAL11 — Round-robin ÉQUILIBRÉ : parmi les commerciaux actifs de la
+    société (rôle « Commercial » — pas de territoire câblé dans ce dépôt,
+    voir FG236), affecte au prochain dans la rotation (moins de leads
+    OUVERTS d'abord, départage par id) EN SAUTANT quiconque a atteint/dépassé
+    ``plafond`` leads ouverts. Renvoie None si TOUS les commerciaux actifs
+    sont saturés (l'appelant retombe alors sur ``responsable_defaut_leads``)
+    ou s'il n'y a aucun commercial actif du tout."""
+    from django.contrib.auth import get_user_model
+
+    User = get_user_model()
+    candidats = list(
+        User.objects.filter(
+            company=company, is_active=True, role__nom='Commercial',
+        ).order_by('id')
+    )
+    if not candidats:
+        return None
+    eligibles = [
+        c for c in candidats if _leads_ouverts_count(c) < plafond
+    ]
+    if not eligibles:
+        return None  # tous saturés — fallback à l'appelant
+    eligibles.sort(key=lambda c: (_leads_ouverts_count(c), c.id))
+    return eligibles[0]
+
+
 def default_responsable_for(company):
     """Responsable assigné par défaut aux nouveaux leads d'une société.
 
-    Source unique : le profil entreprise (Paramètres → « Responsable par
-    défaut des nouveaux leads »). Si NON configuré, QW6 — round-robin parmi
-    les utilisateurs commerciaux actifs de la société (jamais un lead assigné
-    à personne, silencieusement invisible). None seulement si la société n'a
-    ni responsable par défaut configuré NI aucun utilisateur commercial actif
-    (rien à assigner)."""
+    XSAL11 — quand ``CompanyProfile.round_robin_leads_actif`` est ON, la
+    rotation ÉQUILIBRÉE (en sautant les commerciaux saturés — plafond
+    ``round_robin_plafond_leads_ouverts``) est tentée EN PREMIER ; si tous
+    sont saturés, replie sur le responsable par défaut explicite. OFF
+    (défaut) = comportement byte-identique à avant XSAL11 : le profil
+    entreprise (Paramètres → « Responsable par défaut ») prime, et QW6 replie
+    sur un round-robin simple (par charge totale) si ce réglage est vide.
+    None si aucune société ou aucun commercial actif (comportement inchangé
+    dans ce cas — un lead sans owner reste possible).
+    """
     if company is None:
         return None
     from apps.parametres.models import CompanyProfile
     profile = CompanyProfile.objects.filter(company=company).first()
-    if profile is not None and profile.responsable_defaut_leads is not None:
-        return profile.responsable_defaut_leads
+    explicit = profile.responsable_defaut_leads if profile else None
+
+    if profile is not None and profile.round_robin_leads_actif:
+        balanced = _next_balanced_round_robin_commercial(
+            company, profile.round_robin_plafond_leads_ouverts)
+        if balanced is not None:
+            return balanced
+        # Tous saturés (ou aucun commercial actif) — fallback explicite.
+        return explicit
+
+    if explicit is not None:
+        return explicit
     return pick_round_robin_owner(company)
 
 

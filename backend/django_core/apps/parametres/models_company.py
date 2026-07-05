@@ -72,6 +72,24 @@ class CompanyProfile(models.Model):
         blank=True,
         related_name='+',
     )
+    # ── XSAL11 — Affectation round-robin équilibrée des leads entrants ──
+    # OFF par défaut = comportement actuel inchangé (responsable par défaut /
+    # round-robin déjà existant de QW6). ON : parmi les commerciaux actifs
+    # (rôle « Commercial »), affecte au prochain dans la rotation en sautant
+    # quiconque dépasse le plafond de leads OUVERTS (stage non SIGNED/COLD,
+    # jamais perdu) ; fallback sur `responsable_defaut_leads` si tous saturés.
+    round_robin_leads_actif = models.BooleanField(
+        default=False,
+        verbose_name='Affectation round-robin équilibrée des leads',
+        help_text='OFF = comportement actuel (round-robin simple ou '
+                  "responsable par défaut). ON = plafond de leads ouverts "
+                  'par commercial appliqué avant rotation.')
+    round_robin_plafond_leads_ouverts = models.PositiveIntegerField(
+        default=20,
+        verbose_name='Plafond de leads ouverts par commercial',
+        help_text="Un commercial au-delà de ce nombre de leads OUVERTS "
+                  "(stage non SIGNED/COLD, non perdu) est sauté dans la "
+                  "rotation (XSAL11).")
     # N66 — installateur (technicien) assigné par défaut aux NOUVEAUX chantiers
     # quand aucun n'est choisi. NULL = comportement actuel (le créateur du
     # chantier en est le technicien responsable). Additif.
