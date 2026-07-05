@@ -1156,6 +1156,24 @@ class PermisTravailViewSet(_QhseBaseViewSet):
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
 
+    @action(detail=True, methods=['get'], url_path='pdf')
+    def pdf(self, request, pk=None):
+        """XQHS27 — PDF INTERNE imprimable (FR/AR), scopé société.
+
+        ``?lang=fr`` (défaut) ou ``?lang=ar`` (gabarit RTL, police arabe
+        embarquée). JAMAIS ``/proposal`` — aucun prix, document terrain."""
+        from django.http import HttpResponse
+
+        from .pdf_terrain import render_permis_travail_pdf
+
+        permis = self.get_object()
+        lang = request.query_params.get('lang', 'fr')
+        pdf_bytes = render_permis_travail_pdf(permis, lang=lang)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'attachment; filename="permis-travail-{permis.pk}-{lang}.pdf"')
+        return response
+
 
 class ConsignationLotoViewSet(_QhseBaseViewSet):
     """Consignation électrique (LOTO) rattachée à un permis (QHSE24).
@@ -1282,6 +1300,24 @@ class InductionSecuriteViewSet(_QhseBaseViewSet):
         induction.acquittement_le = acquittement_le
         induction.save(update_fields=['acquittement', 'acquittement_le'])
         return Response(self.get_serializer(induction).data)
+
+    @action(detail=True, methods=['get'], url_path='pdf')
+    def pdf(self, request, pk=None):
+        """XQHS27 — PDF INTERNE imprimable (FR/AR), scopé société.
+
+        ``?lang=fr`` (défaut) ou ``?lang=ar`` (gabarit RTL, police arabe
+        embarquée). JAMAIS ``/proposal`` — aucun prix, document terrain."""
+        from django.http import HttpResponse
+
+        from .pdf_terrain import render_induction_securite_pdf
+
+        induction = self.get_object()
+        lang = request.query_params.get('lang', 'fr')
+        pdf_bytes = render_induction_securite_pdf(induction, lang=lang)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'attachment; filename="induction-securite-{induction.pk}-{lang}.pdf"')
+        return response
 
 
 class PlanUrgenceViewSet(_QhseBaseViewSet):
@@ -2670,3 +2706,34 @@ def ia_suggestion_analyse(request):
     depuis un récit d'investigation libre."""
     recit = request.data.get('recit') or ''
     return Response(suggerer_analyse_capa(recit))
+
+
+# ── XQHS27 — Documents terrain QHSE imprimables bilingues FR/AR ────────────
+# La causerie sécurité vit dans ``rh`` (modèle ``CauserieSecurite``) : lue
+# EXCLUSIVEMENT via ``apps.rh.selectors.causerie_securite_for_id`` (jamais un
+# import de ``rh.models``/``rh.views``), scopée société côté serveur.
+
+@api_view(['GET'])
+def causerie_securite_pdf(request, causerie_id):
+    """XQHS27 — PDF INTERNE de la fiche causerie + émargement (FR/AR).
+
+    ``?lang=fr`` (défaut) ou ``?lang=ar`` (gabarit RTL, police arabe
+    embarquée). 404 si la causerie n'existe pas / n'appartient pas à la
+    société de l'utilisateur. JAMAIS ``/proposal`` — aucun prix."""
+    from django.http import HttpResponse
+
+    from apps.rh.selectors import causerie_securite_for_id
+
+    from .pdf_terrain import render_causerie_securite_pdf
+
+    causerie = causerie_securite_for_id(request.user.company, causerie_id)
+    if causerie is None:
+        return Response(
+            {'detail': 'Causerie introuvable.'},
+            status=status.HTTP_404_NOT_FOUND)
+    lang = request.query_params.get('lang', 'fr')
+    pdf_bytes = render_causerie_securite_pdf(causerie, lang=lang)
+    response = HttpResponse(pdf_bytes, content_type='application/pdf')
+    response['Content-Disposition'] = (
+        f'attachment; filename="causerie-securite-{causerie.pk}-{lang}.pdf"')
+    return response

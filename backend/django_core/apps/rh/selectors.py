@@ -2871,3 +2871,21 @@ def synthese_feedback360(evaluation):
             for r in soumis
         ]
     return result
+
+
+def causerie_securite_for_id(company, causerie_id):
+    """XQHS27 — lecture fine d'une ``CauserieSecurite`` (FG183) scopée société,
+    participants inclus (émargement). Point d'entrée pour un autre module
+    (``qhse``, rendu PDF imprimable de la fiche d'émargement) — jamais un
+    import direct de ``rh.models`` depuis l'appelant.
+
+    Renvoie ``None`` si l'id n'existe pas ou n'appartient pas à ``company``."""
+    from .models import CauserieSecurite
+
+    return (
+        CauserieSecurite.objects
+        .filter(company=company, pk=causerie_id)
+        .select_related('animateur')
+        .prefetch_related('participants__participant')
+        .first()
+    )

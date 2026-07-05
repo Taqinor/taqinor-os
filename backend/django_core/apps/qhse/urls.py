@@ -6,6 +6,7 @@ from .views import (
     AspectEnvironnementalViewSet, AuditViewSet,
     BilanCarboneViewSet, BordereauSuiviDechetViewSet,
     CalendrierQhseViewSet,
+    causerie_securite_pdf,
     CauseIncidentViewSet, ConformiteEnvironnementaleViewSet,
     ConsignationLotoViewSet,
     CodeDefautViewSet,
@@ -113,4 +114,8 @@ urlpatterns = [
          name='qhse-ia-suggestion-classification'),
     path('ia/suggestion-analyse/', ia_suggestion_analyse,
          name='qhse-ia-suggestion-analyse'),
+    # XQHS27 — causerie sécurité (rh.CauserieSecurite) : PDF imprimable
+    # bilingue FR/AR, lu via apps.rh.selectors (jamais rh.models/rh.views).
+    path('causeries/<int:causerie_id>/pdf/', causerie_securite_pdf,
+         name='qhse-causerie-securite-pdf'),
 ]
