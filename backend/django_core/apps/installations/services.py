@@ -2789,6 +2789,90 @@ def contre_transferer_stock_livraison(livraison, user):
     return reversed_count
 
 
+# ── ZSTK8 — retour / transfert inverse depuis une Livraison validée ────────
+# Odoo génère un « return picking » depuis une livraison validée. Les retours
+# FOURNISSEUR existent (stock.RetourFournisseur) mais rien ne permettait de
+# générer un retour CLIENT depuis une `Livraison` livrée. Le retour ré-
+# incrémente le stock du DÉPÔT SOURCE de la livraison (jamais un ajustement
+# libre) — plafonné à la quantité réellement livrée.
+
+def generer_retour_livraison(livraison, user, motif=''):
+    """ZSTK8 — crée un `RetourLivraison` BROUILLON pré-rempli depuis les
+    lignes livrées de la livraison (quantité_livree = quantité de la ligne
+    d'origine, quantite_retournee = 0 par défaut, éditable ensuite ≤ livrée).
+    Renvoie le retour créé."""
+    from .models_retour_livraison import RetourLivraison, RetourLivraisonLigne
+
+    retour = RetourLivraison.objects.create(
+        company=livraison.company, livraison=livraison, motif=motif or '',
+        created_by=user)
+    for ligne in livraison.lignes.select_related('produit').all():
+        RetourLivraisonLigne.objects.create(
+            retour=retour, produit_id=ligne.produit_id,
+            designation=ligne.designation or (
+                ligne.produit.nom if ligne.produit_id else ''),
+            quantite_livree=ligne.quantite, quantite_retournee=0)
+    return retour
+
+
+def valider_retour_livraison(retour, user):
+    """ZSTK8 — valide le retour : pour chaque ligne dont
+    `quantite_retournee > 0`, poste UN `MouvementStock` ENTREE au dépôt
+    SOURCE de la livraison (idempotent via `stock_applique`). Refuse (lève
+    ValueError) si une ligne dépasse la quantité livrée, ou si la livraison
+    source n'a pas de dépôt. Renvoie le nombre de lignes appliquées."""
+    from django.db import transaction
+    from apps.stock.selectors import lock_produit
+    from apps.stock.services import (
+        mouvement_type_entree, record_stock_movement,
+    )
+    from .models_retour_livraison import RetourLivraison
+
+    if retour.statut == RetourLivraison.Statut.VALIDE:
+        raise ValueError('Retour déjà validé.')
+    livraison = retour.livraison
+    if livraison.depot_id is None:
+        raise ValueError('Cette livraison n\'a pas de dépôt source.')
+
+    lignes = list(retour.lignes.select_related('produit').all())
+    for ligne in lignes:
+        if ligne.quantite_retournee > ligne.quantite_livree:
+            raise ValueError(
+                f'Quantité retournée ({ligne.quantite_retournee}) '
+                f'supérieure à la quantité livrée ({ligne.quantite_livree}) '
+                f'pour « {ligne.designation or ligne.produit_id} ».')
+
+    applied = 0
+    with transaction.atomic():
+        for ligne in lignes:
+            if (ligne.stock_applique or ligne.produit_id is None
+                    or ligne.quantite_retournee <= 0):
+                if not ligne.stock_applique:
+                    ligne.stock_applique = True
+                    ligne.save(update_fields=['stock_applique'])
+                continue
+            produit = lock_produit(ligne.produit_id)
+            qte_avant = produit.quantite_stock
+            qte_apres = qte_avant + ligne.quantite_retournee
+            record_stock_movement(
+                company=livraison.company, produit=produit,
+                type_mouvement=mouvement_type_entree(),
+                quantite=ligne.quantite_retournee,
+                quantite_avant=qte_avant, quantite_apres=qte_apres,
+                reference=f'RETOUR-LIV-{livraison.reference}',
+                note=f'Retour livraison {livraison.reference}',
+                created_by=user)
+            ligne.stock_applique = True
+            ligne.save(update_fields=['stock_applique'])
+            applied += 1
+        retour.statut = RetourLivraison.Statut.VALIDE
+        retour.valide_par = user
+        from django.utils import timezone as _tz
+        retour.valide_le = _tz.now()
+        retour.save(update_fields=['statut', 'valide_par', 'valide_le'])
+    return applied
+
+
 # ── YHIRE9 — garde d'habilitation à l'affectation d'intervention ───────────
 # Mapping type d'intervention → habilitation requise partagé avec XFSM2
 # (``selectors._TYPE_VERS_HABILITATION``) : garde le SEUL référentiel, importé

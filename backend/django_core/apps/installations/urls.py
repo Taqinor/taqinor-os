@@ -66,6 +66,8 @@ from .views import (
     TourneeLivraisonView,
     RetourMaterielViewSet,
     RetourMaterielLigneViewSet,
+    RetourLivraisonViewSet,
+    RetourLivraisonLigneViewSet,
 )
 
 router = DefaultRouter()
@@ -149,6 +151,8 @@ router.register(r'preuves-livraison', PreuveLivraisonViewSet)
 router.register(r'transporteurs', TransporteurViewSet)
 router.register(r'retours-materiel', RetourMaterielViewSet)
 router.register(r'retour-materiel-lignes', RetourMaterielLigneViewSet)
+router.register(r'retours-livraison', RetourLivraisonViewSet)
+router.register(r'retour-livraison-lignes', RetourLivraisonLigneViewSet)
 
 urlpatterns = [
     # N91/F21 — synchro idempotente de la capture terrain hors-ligne.

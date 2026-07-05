@@ -70,6 +70,8 @@ from .models import (
     Transporteur,
     RetourMateriel,
     RetourMaterielLigne,
+    RetourLivraison,
+    RetourLivraisonLigne,
 )
 
 
@@ -2576,6 +2578,58 @@ class RetourMaterielSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'installation', 'installation_reference', 'statut',
             'statut_display', 'note', 'lignes', 'created_by', 'valide_par',
+            'valide_le', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'statut', 'created_by', 'valide_par', 'valide_le',
+            'date_creation', 'date_modification',
+        ]
+
+
+class RetourLivraisonLigneSerializer(serializers.ModelSerializer):
+    """ZSTK8 - ligne d'un retour de livraison (SKU, livre vs retourne)."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+
+    class Meta:
+        model = RetourLivraisonLigne
+        fields = [
+            'id', 'retour', 'produit', 'produit_nom', 'designation',
+            'quantite_livree', 'quantite_retournee', 'stock_applique',
+        ]
+        read_only_fields = ['quantite_livree', 'stock_applique']
+
+    def validate(self, attrs):
+        instance = self.instance
+        qte_livree = attrs.get(
+            'quantite_livree',
+            getattr(instance, 'quantite_livree', None))
+        qte_retournee = attrs.get(
+            'quantite_retournee',
+            getattr(instance, 'quantite_retournee', 0))
+        if qte_livree is not None and qte_retournee > qte_livree:
+            raise serializers.ValidationError(
+                {'quantite_retournee':
+                 'La quantité retournée ne peut pas dépasser la quantité '
+                 'livrée.'})
+        return attrs
+
+
+class RetourLivraisonSerializer(serializers.ModelSerializer):
+    """ZSTK8 - retour client genere depuis une Livraison livree. Societe/
+    `created_by` poses COTE SERVEUR ; le statut avance via l'action
+    `valider`. Lignes imbriquees en lecture, pre-remplies a la generation."""
+    livraison_reference = serializers.CharField(
+        source='livraison.reference', read_only=True, default=None)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True, default=None)
+    lignes = RetourLivraisonLigneSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = RetourLivraison
+        fields = [
+            'id', 'livraison', 'livraison_reference', 'statut',
+            'statut_display', 'motif', 'lignes', 'created_by', 'valide_par',
             'valide_le', 'date_creation', 'date_modification',
         ]
         read_only_fields = [

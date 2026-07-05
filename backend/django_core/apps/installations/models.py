@@ -195,6 +195,10 @@ from .models_retour_materiel import (
     RetourMateriel,
     RetourMaterielLigne,
 )
+from .models_retour_livraison import (
+    RetourLivraison,
+    RetourLivraisonLigne,
+)
 
 __all__ = [
     'Installation',
@@ -297,4 +301,6 @@ __all__ = [
     'Transporteur',
     'RetourMateriel',
     'RetourMaterielLigne',
+    'RetourLivraison',
+    'RetourLivraisonLigne',
 ]

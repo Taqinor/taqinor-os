@@ -18,9 +18,12 @@ from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from apps.ventes.utils.references import create_with_reference
 
 from ..models import Livraison, LivraisonLigne
-from ..serializers import LivraisonSerializer, LivraisonLigneSerializer
+from ..serializers import (
+    LivraisonSerializer, LivraisonLigneSerializer, RetourLivraisonSerializer,
+)
 from ..services import (
     ventiler_stock_livraison, contre_transferer_stock_livraison,
+    generer_retour_livraison,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -146,6 +149,24 @@ class LivraisonViewSet(TenantMixin, viewsets.ModelViewSet):
         except Exception:  # pragma: no cover - défensif, best-effort
             pass
         return self._set_statut(request, Livraison.Statut.ANNULEE)
+
+    @action(detail=True, methods=['post'], url_path='generer-retour',
+            permission_classes=[IsResponsableOrAdmin])
+    def generer_retour(self, request, pk=None):
+        """ZSTK8 — génère un `RetourLivraison` brouillon pré-rempli depuis
+        les lignes livrées. Refuse si la livraison n'est pas LIVREE (rien à
+        retourner tant qu'elle n'est pas arrivée)."""
+        liv = self.get_object()
+        if liv.statut != Livraison.Statut.LIVREE:
+            return Response(
+                {'detail': 'Seule une livraison livrée peut générer un '
+                 'retour.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        motif = (request.data.get('motif') or '').strip()
+        retour = generer_retour_livraison(liv, request.user, motif=motif)
+        return Response(
+            RetourLivraisonSerializer(retour).data,
+            status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['get'], url_path='bon-livraison',
             permission_classes=[IsAnyRole])
