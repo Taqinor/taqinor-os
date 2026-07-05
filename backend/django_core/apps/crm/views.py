@@ -387,7 +387,14 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
     L'utilisateur acteur et la société viennent toujours de la requête côté
     serveur — jamais du corps envoyé par le navigateur.
     """
-    queryset = Lead.objects.all()
+    # YOPSB13 — LeadSerializer expose owner_nom/owner_poste/owner_avatar
+    # (SerializerMethodField sur obj.owner), client_nom (obj.client) et devis
+    # (obj.devis, reverse FK) : sans select_related/prefetch_related, la
+    # liste des leads exécute 1 requête PAR LIGNE pour chacune (N+1 réel,
+    # capturé par core.tests.test_utils.AssertQueryBudgetMixin dans
+    # apps/crm/tests/test_lead_query_budget.py).
+    queryset = Lead.objects.select_related('owner', 'client').prefetch_related(
+        'devis').all()
     serializer_class = LeadSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['nom', 'prenom', 'societe', 'email', 'telephone', 'ville']
