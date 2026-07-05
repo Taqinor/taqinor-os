@@ -106,11 +106,15 @@ class PayerOrdreVirementTests(TestCase):
             payer_ordre_virement(ordre, treso_autre.id)
 
     def test_ordre_sans_montant_refuse(self):
-        # Ordre créé mais sans bulletin -> total nul.
+        # Ordre créé mais sans bulletin -> total nul. generer_ordre_virement
+        # crée quand même l'ordre (brouillon vide, XPAI8) ; c'est le
+        # RÈGLEMENT qui doit refuser un ordre sans montant.
         periode_vide = PeriodePaie.objects.create(
             company=self.co, annee=2026, mois=7)
+        ordre = generer_ordre_virement(periode_vide)
+        self.assertEqual(ordre.total, 0)
         with self.assertRaises(ValueError):
-            generer_ordre_virement(periode_vide)
+            payer_ordre_virement(ordre, self.treso.id)
 
 
 class PayerOrganismesTests(TestCase):
