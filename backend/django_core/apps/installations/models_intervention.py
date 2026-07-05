@@ -194,6 +194,17 @@ class Intervention(models.Model):
         max_length=64, unique=True, null=True, blank=True, editable=False,
         help_text="Jeton public du lien « technicien en route » (XFSM7).")
 
+    # ── ZFSM2 — lien public tokenisé du compte-rendu signé ───────────────────
+    # Jeton DISTINCT du lien « en route » (XFSM7 ci-dessus) : XFSM7 ne couvre
+    # QUE le suivi de visite, jamais le compte-rendu final (F19). Même patron
+    # (secrets.token_urlsafe(32), lazy, unique). Généré à la validation de
+    # l'intervention (statut « Validée ») — n'expire jamais par date (le
+    # compte-rendu d'une intervention ancienne reste consultable), mais reste
+    # révocable en vidant le champ.
+    lien_rapport_token = models.CharField(
+        max_length=64, unique=True, null=True, blank=True, editable=False,
+        help_text="Jeton public du lien compte-rendu signé (ZFSM2).")
+
     # ── XFSM21 — météo sur le planning (travaux toiture) ─────────────────────
     # Prévision J+3 (Open-Meteo, gratuit, sans clé) récupérée par la tâche Beat
     # quotidienne pour les interventions POSE planifiées. None = pas encore
@@ -254,6 +265,20 @@ class Intervention(models.Model):
         # Comparaison sur la DATE seule (évite tout souci de fuseau horaire) :
         # expiré si aujourd'hui > date_prevue + 1 jour.
         return timezone.localdate() > (self.date_prevue + timedelta(days=1))
+
+    def ensure_lien_rapport_token(self):
+        """ZFSM2 — génère (lazily) et renvoie le jeton public du lien
+        compte-rendu signé. Idempotent : si le jeton existe déjà, le retourne
+        tel quel sans écriture. Même patron que ``ensure_lien_client_token``
+        (XFSM7) / ``sav.Ticket.ensure_share_token`` (FG86) — un jeton
+        DISTINCT, car XFSM7 ne couvre que le suivi « en route »."""
+        if self.lien_rapport_token:
+            return self.lien_rapport_token
+        import secrets
+        token = secrets.token_urlsafe(32)
+        self.lien_rapport_token = token
+        self.save(update_fields=['lien_rapport_token'])
+        return self.lien_rapport_token
 
 
 class InterventionActivity(models.Model):

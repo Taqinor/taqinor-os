@@ -2290,6 +2290,36 @@ def intervention_public_payload(interv):
     }
 
 
+# ── ZFSM2 — lien public tokenisé du compte-rendu signé ───────────────────────
+def intervention_rapport_public_payload(interv):
+    """ZFSM2 — payload public (read-only, tokenisé) du compte-rendu signé :
+    mêmes données que le PDF F19 (photos avant/après, réserves, matériel
+    consommé SANS prix d'achat ni marge, signature), plus un lien de
+    téléchargement du PDF. Aucune donnée interne."""
+    from . import intervention_pdf
+
+    inst = interv.installation
+    return {
+        'statut': interv.statut,
+        'statut_display': interv.get_statut_display(),
+        'type_intervention_display': interv.get_type_intervention_display(),
+        'chantier_reference': getattr(inst, 'reference', None),
+        'site_ville': getattr(inst, 'site_ville', None),
+        'date_realisee': (
+            interv.date_realisee.isoformat() if interv.date_realisee else None),
+        'equipe': intervention_pdf._equipe_payload(interv),
+        'photos': intervention_pdf._photos_payload(interv),
+        'serials': intervention_pdf._serials_payload(interv),
+        'consommation': intervention_pdf._consommation_payload(interv),
+        'reserves': intervention_pdf._reserves_payload(interv),
+        'signataire_nom': interv.signataire_nom or None,
+        'signe_le': interv.signe_le.isoformat() if interv.signe_le else None,
+        'pdf_url': (
+            f'/api/django/public/installations/intervention-rapport/'
+            f'{interv.lien_rapport_token}/pdf/'),
+    }
+
+
 # ── XFSM10 — astreinte / rotation après-heures ────────────────────────────────
 def technicien_astreinte(company, dt):
     """XFSM10 — technicien d'astreinte couvrant l'instant ``dt`` (datetime

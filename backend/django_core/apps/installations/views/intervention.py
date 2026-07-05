@@ -435,6 +435,11 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             intervention_completed.send(
                 sender=Intervention, intervention=interv,
                 company=self.request.user.company, user=self.request.user)
+        # ZFSM2 — génère le jeton du lien public « compte-rendu signé » à la
+        # validation de l'intervention (lazy, idempotent : ne régénère jamais).
+        if (old.statut != Intervention.Statut.VALIDEE
+                and interv.statut == Intervention.Statut.VALIDEE):
+            interv.ensure_lien_rapport_token()
 
     def perform_destroy(self, instance):
         # Suppression d'intervention → trace au chatter du CHANTIER.
@@ -1605,6 +1610,19 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         resp['Content-Disposition'] = (
             f'inline; filename="compte-rendu-intervention-{interv.id}.pdf"')
         return resp
+
+    # ── ZFSM2 — lien public tokenisé du compte-rendu signé ──────────────────
+    @action(detail=True, methods=['get'], url_path='lien-rapport',
+            permission_classes=[IsResponsableOrAdmin])
+    def lien_rapport(self, request, pk=None):
+        """ZFSM2 — génère (lazily) et renvoie l'URL publique du compte-rendu
+        signé de cette intervention, à partager par WhatsApp/SMS (pattern
+        FG86/liens WhatsApp/XFSM7). Jeton DISTINCT du lien « en route »."""
+        interv = self.get_object()
+        token = interv.ensure_lien_rapport_token()
+        return Response({
+            'token': token,
+            'path': f'/public/installations/intervention-rapport/{token}/'})
 
     # ── F23 — code court / QR de l'intervention ──────────────────────────────
     @action(detail=True, methods=['get'], url_path='code',

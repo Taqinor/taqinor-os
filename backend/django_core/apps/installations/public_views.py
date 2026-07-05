@@ -127,3 +127,48 @@ class InterventionLienClientPublicView(APIView):
                 status=status.HTTP_404_NOT_FOUND)
         from .selectors import intervention_public_payload
         return Response(intervention_public_payload(interv))
+
+
+class InterventionRapportPublicView(APIView):
+    """ZFSM2 — page publique tokenisée du compte-rendu d'intervention signé
+    (F19) : photos avant/après, réserves, matériel consommé SANS prix
+    d'achat ni marge, signature, + lien de téléchargement PDF. Token inconnu
+    ou révoqué → 404 (jamais 403 : on ne confirme pas l'existence du token à
+    un tiers). Read-only, aucune donnée interne."""
+    permission_classes = [AllowAny]
+
+    def get(self, request, token):
+        interv = (
+            Intervention.objects
+            .select_related('installation')
+            .filter(lien_rapport_token=token).first())
+        if interv is None:
+            return Response(
+                {'detail': 'Lien invalide ou expiré.'},
+                status=status.HTTP_404_NOT_FOUND)
+        from .selectors import intervention_rapport_public_payload
+        return Response(intervention_rapport_public_payload(interv))
+
+
+class InterventionRapportPdfPublicView(APIView):
+    """ZFSM2 — téléchargement du PDF du compte-rendu signé, via le MÊME jeton
+    public que la page ci-dessus. Réutilise le rendu F19 existant
+    (`intervention_pdf.compte_rendu_pdf`) — aucune donnée interne."""
+    permission_classes = [AllowAny]
+
+    def get(self, request, token):
+        interv = (
+            Intervention.objects
+            .filter(lien_rapport_token=token).first())
+        if interv is None:
+            return Response(
+                {'detail': 'Lien invalide ou expiré.'},
+                status=status.HTTP_404_NOT_FOUND)
+        from django.http import HttpResponse
+
+        from . import intervention_pdf
+        pdf_bytes = intervention_pdf.compte_rendu_pdf(interv)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'inline; filename="compte-rendu-intervention-{interv.id}.pdf"')
+        return resp
