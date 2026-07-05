@@ -98,6 +98,19 @@ forbidden_modules =
     apps.sav.models
     apps.installations.models
 
+[importlinter:contract:marketing-models-decoupled]
+name = Marketing models never import a business-core domain's models (string FKs only — ODX9/ODX10)
+type = forbidden
+source_modules =
+    apps.marketing.models
+forbidden_modules =
+    apps.crm.models
+    apps.ventes.models
+    apps.stock.models
+    apps.sav.models
+    apps.installations.models
+    apps.compta.models
+
 [importlinter:contract:core-foundation-is-a-base-layer]
 name = The core foundation app imports downward only (no domain-core or satellite app)
 type = forbidden
