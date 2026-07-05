@@ -252,44 +252,102 @@ def _map_payload_to_fields(data: dict) -> dict:
         if mapped_mode:
             fields['type_installation'] = mapped_mode
     # Langue du visiteur (fr/ar/darija) → langue préférée des messages.
-    langue = data.get('langue') or data.get('language') or data.get('lang')
+    # QW1 — le site émet aussi `langue_preferee` (lead.ts:LEAD_LANGS = fr/ar),
+    # à lire EN PLUS de langue/language/lang (jamais ce seul champ ignoré).
+    langue = (data.get('langue_preferee') or data.get('langue')
+              or data.get('language') or data.get('lang'))
     if langue not in (None, ''):
         mapped_langue = _LANGUE_ALIASES.get(str(langue).strip().lower())
         if mapped_langue:
             fields['langue_preferee'] = mapped_langue
     # Distributeur d'électricité (ONEE/Lydec/Redal/autre).
+    # QW1 — le site envoie 'inconnu' (DISTRIBUTEURS de lead.ts) : vocabulaire
+    # à rapprocher de Lead.Distributeur.AUTRE (jamais silencieusement jeté).
     distributeur = _clean_choice(
         data.get('distributeur', data.get('utility')),
-        Lead.Distributeur.values)
+        list(Lead.Distributeur.values) + ['inconnu'])
+    if distributeur == 'inconnu':
+        distributeur = Lead.Distributeur.AUTRE
     if distributeur is not None:
         fields['distributeur'] = distributeur
     # Âge de la toiture (années, bornes plausibles 0–200).
+    # QW1 — le site envoie `roofAgeYears` (lead.ts), pas seulement `roofAge`.
     roof_age = _clean_decimal(
-        data.get('roofAge', data.get('roof_age')), lo=0, hi=200)
+        data.get('roofAgeYears', data.get('roofAge', data.get('roof_age'))),
+        lo=0, hi=200)
     if roof_age is not None:
         fields['roof_age'] = int(roof_age)
-    # Propriétaire / locataire.
-    ownership = _clean_choice(data.get('ownership'), Lead.Ownership.values)
+    # Propriétaire / locataire / décideur.
+    # QW1 — le site envoie `occupantType` (OCCUPANT_TYPES: proprietaire/
+    # locataire/decideur) ; le webhook ne lisait que `ownership`, un vocabulaire
+    # différent. 'decideur' (locataire mais décideur des travaux) est rapproché
+    # de PROPRIETAIRE (décide des travaux), jamais jeté.
+    ownership = _clean_choice(
+        data.get('occupantType', data.get('ownership')),
+        list(Lead.Ownership.values) + ['decideur'])
+    if ownership == 'decideur':
+        ownership = Lead.Ownership.PROPRIETAIRE
     if ownership is not None:
         fields['ownership'] = ownership
     # Horizon du projet.
-    timeline = _clean_choice(
-        data.get('projectTimeline', data.get('project_timeline')),
-        Lead.ProjectTimeline.values)
-    if timeline is not None:
-        fields['project_timeline'] = timeline
+    # QW1 — le site envoie `projectTiming` (PROJECT_TIMINGS: maintenant/3mois/
+    # renseignement), un vocabulaire DIFFÉRENT du `Lead.ProjectTimeline`
+    # (immediat/3_mois/6_mois/plus_tard) — mappé explicitement ci-dessous
+    # (jamais silencieusement jeté, jamais un simple alias 1:1).
+    _PROJECT_TIMING_ALIASES = {
+        'maintenant': Lead.ProjectTimeline.IMMEDIAT,
+        '3mois': Lead.ProjectTimeline.MOINS_3_MOIS,
+        'renseignement': Lead.ProjectTimeline.PLUS_TARD,
+    }
+    timeline_raw = data.get('projectTiming', data.get('project_timeline'))
+    if timeline_raw not in (None, ''):
+        mapped_timeline = _PROJECT_TIMING_ALIASES.get(str(timeline_raw).strip().lower())
+        if mapped_timeline is None:
+            # Rétro-compat : accepte aussi directement le vocabulaire CRM
+            # (`projectTimeline`/`project_timeline` historique).
+            mapped_timeline = _clean_choice(
+                timeline_raw, Lead.ProjectTimeline.values)
+        if mapped_timeline:
+            fields['project_timeline'] = mapped_timeline
     # Intention de financement.
-    financing = _clean_choice(
-        data.get('financingIntent', data.get('financing_intent')),
-        Lead.FinancingIntent.values)
-    if financing is not None:
-        fields['financing_intent'] = financing
+    # QW1 — le site envoie `financingIntent` en FR (comptant/financement/
+    # indecis) ; `Lead.FinancingIntent` utilise cash/credit/indecis — mappé
+    # explicitement (jamais un simple alias qui silencieusement jette
+    # comptant/financement).
+    _FINANCING_INTENT_ALIASES = {
+        'comptant': Lead.FinancingIntent.CASH,
+        'financement': Lead.FinancingIntent.CREDIT,
+        'indecis': Lead.FinancingIntent.INDECIS,
+    }
+    financing_raw = data.get('financingIntent', data.get('financing_intent'))
+    if financing_raw not in (None, ''):
+        mapped_financing = _FINANCING_INTENT_ALIASES.get(str(financing_raw).strip().lower())
+        if mapped_financing is None:
+            mapped_financing = _clean_choice(
+                financing_raw, Lead.FinancingIntent.values)
+        if mapped_financing:
+            fields['financing_intent'] = mapped_financing
     # Charges futures prévues (clim / VE / pompe).
     futures = _clean_futures_charges(
         data.get('futuresCharges', data.get('futures_charges',
                                             data.get('futureLoads'))))
     if futures is not None:
         fields['futures_charges'] = futures
+    # QW1 — Ombrage déclaré par le client (lead.ts OMBRAGES = aucun/partiel/
+    # important) : vocabulaire identique à `Lead.Ombrage` — champ auparavant
+    # totalement omis du mapping.
+    ombrage = _clean_choice(data.get('ombrage'), Lead.Ombrage.values)
+    if ombrage is not None:
+        fields['ombrage'] = ombrage
+    # QW1 — Intérêt batterie (lead.ts `batteryInterest`, booléen) → le champ
+    # de qualification le plus proche existant, `Lead.batterie_souhaitee`
+    # (auparavant totalement omis du mapping).
+    if 'batteryInterest' in data or 'battery_interest' in data:
+        interest = data.get('batteryInterest', data.get('battery_interest'))
+        if isinstance(interest, bool):
+            fields['batterie_souhaitee'] = (
+                Lead.BatterieSouhaitee.AVEC if interest
+                else Lead.BatterieSouhaitee.SANS)
 
     if fields['whatsapp_opt_in'] and fields['telephone']:
         fields['whatsapp'] = fields['telephone']

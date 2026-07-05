@@ -186,3 +186,126 @@ class WebsiteLeadWebhookTests(TestCase):
         self.assertIsNone(lead.facture_ete)
         self.assertFalse(lead.ete_differente)
         self.assertIsNone(lead.raccordement)
+
+
+@override_settings(WEBSITE_LEAD_WEBHOOK_SECRET=SECRET)
+class QW1DroppedFieldsMappingTests(TestCase):
+    """QW1 — plus aucun champ connu du payload réel du site n'est jeté."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='Taqinor Test QW1', slug='taqinor-test-qw1')
+        self.url = reverse('website-lead-webhook')
+
+    def post(self, data, secret=SECRET):
+        headers = {'HTTP_X_WEBHOOK_SECRET': secret} if secret is not None else {}
+        return self.client.post(
+            self.url, data=json.dumps(data),
+            content_type='application/json', **headers)
+
+    def test_full_realistic_payload_round_trips_with_zero_drops(self):
+        """Un payload réaliste complet de /devis/mon-toit ne perd aucun champ connu."""
+        res = self.post(payload_site(
+            langue_preferee='ar',
+            projectTiming='maintenant',
+            roofAgeYears=12,
+            occupantType='decideur',
+            financingIntent='comptant',
+            distributeur='inconnu',
+            ombrage='partiel',
+            batteryInterest=True,
+        ))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertEqual(lead.langue_preferee, 'darija')
+        self.assertEqual(lead.project_timeline, Lead.ProjectTimeline.IMMEDIAT)
+        self.assertEqual(lead.roof_age, 12)
+        self.assertEqual(lead.ownership, Lead.Ownership.PROPRIETAIRE)
+        self.assertEqual(lead.financing_intent, Lead.FinancingIntent.CASH)
+        self.assertEqual(lead.distributeur, Lead.Distributeur.AUTRE)
+        self.assertEqual(lead.ombrage, Lead.Ombrage.PARTIEL)
+        self.assertEqual(lead.batterie_souhaitee, Lead.BatterieSouhaitee.AVEC)
+
+    def test_langue_preferee_key_read(self):
+        res = self.post(payload_site(langue_preferee='fr'))
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertEqual(lead.langue_preferee, 'fr')
+
+    def test_project_timing_vocab_mapped(self):
+        cases = {
+            'maintenant': Lead.ProjectTimeline.IMMEDIAT,
+            '3mois': Lead.ProjectTimeline.MOINS_3_MOIS,
+            'renseignement': Lead.ProjectTimeline.PLUS_TARD,
+        }
+        for raw, expected in cases.items():
+            res = self.post(payload_site(
+                phoneE164=f'+2126{hash(raw) % 10**8:08d}',
+                projectTiming=raw))
+            lead = Lead.objects.get(pk=res.json()['lead_id'])
+            self.assertEqual(lead.project_timeline, expected)
+
+    def test_roof_age_years_key_read(self):
+        res = self.post(payload_site(roofAgeYears=30))
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertEqual(lead.roof_age, 30)
+
+    def test_occupant_type_decideur_mapped_to_proprietaire(self):
+        res = self.post(payload_site(occupantType='decideur'))
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertEqual(lead.ownership, Lead.Ownership.PROPRIETAIRE)
+
+    def test_occupant_type_locataire_passthrough(self):
+        res = self.post(payload_site(occupantType='locataire'))
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertEqual(lead.ownership, Lead.Ownership.LOCATAIRE)
+
+    def test_financing_intent_vocab_mapped(self):
+        cases = {
+            'comptant': Lead.FinancingIntent.CASH,
+            'financement': Lead.FinancingIntent.CREDIT,
+            'indecis': Lead.FinancingIntent.INDECIS,
+        }
+        for raw, expected in cases.items():
+            res = self.post(payload_site(
+                phoneE164=f'+2127{hash(raw) % 10**8:08d}',
+                financingIntent=raw))
+            lead = Lead.objects.get(pk=res.json()['lead_id'])
+            self.assertEqual(lead.financing_intent, expected)
+
+    def test_distributeur_inconnu_mapped_to_autre(self):
+        res = self.post(payload_site(distributeur='inconnu'))
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertEqual(lead.distributeur, Lead.Distributeur.AUTRE)
+
+    def test_distributeur_onee_passthrough(self):
+        res = self.post(payload_site(distributeur='onee'))
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertEqual(lead.distributeur, Lead.Distributeur.ONEE)
+
+    def test_ombrage_previously_omitted_now_read(self):
+        res = self.post(payload_site(ombrage='important'))
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertEqual(lead.ombrage, Lead.Ombrage.IMPORTANT)
+
+    def test_battery_interest_previously_omitted_now_read(self):
+        res_true = self.post(payload_site(
+            phoneE164='+212600000001', batteryInterest=True))
+        lead_true = Lead.objects.get(pk=res_true.json()['lead_id'])
+        self.assertEqual(lead_true.batterie_souhaitee, Lead.BatterieSouhaitee.AVEC)
+
+        res_false = self.post(payload_site(
+            phoneE164='+212600000002', batteryInterest=False))
+        lead_false = Lead.objects.get(pk=res_false.json()['lead_id'])
+        self.assertEqual(lead_false.batterie_souhaitee, Lead.BatterieSouhaitee.SANS)
+
+    def test_unknown_vocab_never_crashes_lead_still_created(self):
+        res = self.post(payload_site(
+            projectTiming='garbage', financingIntent='garbage',
+            distributeur='garbage', occupantType='garbage',
+            ombrage='garbage'))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertIsNone(lead.project_timeline)
+        self.assertIsNone(lead.financing_intent)
+        self.assertIsNone(lead.distributeur)
+        self.assertIsNone(lead.ownership)
+        self.assertIsNone(lead.ombrage)
