@@ -72,7 +72,7 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
             return [HasPermissionOrLegacy('stock_modifier')()]
         elif self.action in WRITE_ACTIONS + [
             'envoyer', 'recevoir', 'annuler', 'confirmer', 'reviser',
-            'facturer',
+            'facturer', 'dupliquer',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'en_retard':
@@ -608,6 +608,17 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
         from ..selectors import lignes_import_depuis_bcf
         bc = self.get_object()
         return Response(lignes_import_depuis_bcf(request.user.company, bc.pk))
+
+    @action(detail=True, methods=['post'], url_path='dupliquer')
+    def dupliquer(self, request, pk=None):
+        """ZPUR4 — clone ce BCF en un nouveau BROUILLON (nouvelle référence,
+        quantités reçues à zéro, statut réinitialisé), copiant fournisseur +
+        lignes. La source n'est jamais modifiée."""
+        from ..services import dupliquer_bcf
+        bc = self.get_object()
+        clone = dupliquer_bcf(request.user.company, request.user, bc)
+        return Response(
+            self.get_serializer(clone).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'], url_path='facturer')
     def facturer(self, request, pk=None):

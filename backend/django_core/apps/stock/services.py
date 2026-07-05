@@ -2430,6 +2430,51 @@ def facturer_bcf_sur_commande(company, user, bon_commande):
     return created['ff']
 
 
+# ── ZPUR4 — Duplication d'un bon de commande fournisseur ────────────────────
+# Odoo offre « Duplicate » sur tout PO/RFQ. QP2 a livré la duplication de
+# PRODUIT ; aucun endpoint ne duplique un BCF. Le clone est TOUJOURS un
+# BROUILLON neuf (nouvelle référence, quantités reçues à zéro, statut
+# réinitialisé) — la source n'est jamais modifiée.
+
+def dupliquer_bcf(company, user, bon_commande):
+    """ZPUR4 — crée un nouveau BCF BROUILLON copiant fournisseur + lignes
+    (produit, quantité, prix d'achat) du BCF source. Référence neuve via
+    `create_with_reference` (jamais count()+1), `date_commande` = aujourd'hui,
+    statut réinitialisé, quantités reçues à zéro. Le BCF source n'est JAMAIS
+    modifié. Renvoie le nouveau BCF."""
+    from django.utils import timezone
+    from apps.ventes.utils.references import create_with_reference
+    from .models import BonCommandeFournisseur, LigneBonCommandeFournisseur
+
+    lignes_source = list(bon_commande.lignes.all())
+    created = {}
+
+    def _save(ref):
+        clone = BonCommandeFournisseur.objects.create(
+            company=company, reference=ref,
+            fournisseur=bon_commande.fournisseur,
+            statut=BonCommandeFournisseur.Statut.BROUILLON,
+            date_commande=timezone.now().date(),
+            devise=bon_commande.devise, taux_change=bon_commande.taux_change,
+            note=f'Dupliqué depuis {bon_commande.reference}',
+            created_by=user)
+        for ligne in lignes_source:
+            LigneBonCommandeFournisseur.objects.create(
+                bon_commande=clone, produit=ligne.produit,
+                designation=ligne.designation, sans_stock=ligne.sans_stock,
+                quantite=ligne.quantite,
+                prix_achat_unitaire=ligne.prix_achat_unitaire,
+                # ZPUR4 — quantité reçue TOUJOURS à zéro sur le clone (jamais
+                # copiée : un clone brouillon n'a par construction rien reçu).
+                quantite_recue=0,
+            )
+        created['bon'] = clone
+        return clone
+
+    create_with_reference(BonCommandeFournisseur, 'BCF', company, _save)
+    return created['bon']
+
+
 # ── DC38 — Landed cost (FG316) replié dans le coût moyen pondéré ─────────────
 # Le coût débarqué d'un dossier d'import (fret/douane/TVA import/transit) est
 # écrit dans le champ EXISTANT `LigneBonCommandeFournisseur.frais_annexes` —
