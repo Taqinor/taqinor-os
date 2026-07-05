@@ -69,8 +69,13 @@ class Xstk6Base(TestCase):
             quantite_stock=0)
 
     def _bcf(self, quantite=10):
+        # Référence UNIQUE par appel (jamais count()+1 sur un modèle sans
+        # rapport — `Produit.objects.count()` ne bouge pas entre deux BCF du
+        # même test, ce qui collisionnait la contrainte d'unicité société
+        # dès qu'un test crée plusieurs BCF, ex. deux réceptions FEFO).
         bc = BonCommandeFournisseur.objects.create(
-            company=self.company, reference=f'BCF-X6-{Produit.objects.count()}',
+            company=self.company,
+            reference=f'BCF-X6-{BonCommandeFournisseur.objects.count() + 1}',
             fournisseur=self.fournisseur,
             statut=BonCommandeFournisseur.Statut.ENVOYE)
         bc.lignes.create(

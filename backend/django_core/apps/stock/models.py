@@ -2,6 +2,7 @@ from decimal import Decimal
 
 from django.db import models
 from django.conf import settings
+from django.core.serializers.json import DjangoJSONEncoder
 
 
 class Categorie(models.Model):
@@ -2004,6 +2005,7 @@ class InventaireAnnuel(models.Model):
     total_valeur = models.DecimalField(max_digits=16, decimal_places=2)
     nb_lignes = models.PositiveIntegerField(default=0)
     donnees = models.JSONField(
+        encoder=DjangoJSONEncoder,
         help_text='Snapshot complet et immuable de la valorisation.')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,

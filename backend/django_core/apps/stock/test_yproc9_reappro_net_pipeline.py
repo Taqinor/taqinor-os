@@ -73,9 +73,11 @@ class TestNettingPipeline(Yproc9Base):
             prix_achat_unitaire=Decimal('20'))
         besoins = produits_a_reapprovisionner(self.company)
         self.assertEqual(len(besoins), 1)
-        # disponible(5) + en_commande(10) = 15 ; cible 30 -> suggéré net 15.
+        # Seul le PIPELINE (en_commande) nette la cible (comportement FG54
+        # préservé : `quantite_suggere` == cible pleine hors pipeline, jamais
+        # réduite par le disponible courant) : cible 30 - en_commande 10 = 20.
         self.assertEqual(besoins[0]['en_commande'], 10)
-        self.assertEqual(besoins[0]['quantite_suggere'], 15)
+        self.assertEqual(besoins[0]['quantite_suggere'], 20)
 
     def test_bcf_annule_ou_recu_nignore_pas_dans_en_commande(self):
         bc_annule = BonCommandeFournisseur.objects.create(
@@ -117,15 +119,22 @@ class TestFusionBcfReappro(Yproc9Base):
             statut=BonCommandeFournisseur.Statut.BROUILLON).count()
         self.assertEqual(nb_brouillons, 1)
 
-        # Baisse le stock à nouveau pour re-déclencher un besoin de réappro
-        # (le premier appel a déjà couvert le manque via le pipeline créé).
-        MouvementStock.objects.create(
-            company=self.company, produit=self.produit,
-            type_mouvement=MouvementStock.TypeMouvement.SORTIE,
-            quantite=5, quantite_avant=5, quantite_apres=0,
-            reference='TEST-SORTIE', note='Test')
-        self.produit.quantite_stock = 0
-        self.produit.save(update_fields=['quantite_stock'])
+        # YPROC9 nette la cible UNIQUEMENT contre le pipeline déjà en commande
+        # (`en_commande`, jamais le disponible courant — comportement FG54
+        # préservé, `quantite_suggere` == cible pleine hors pipeline). Le
+        # premier appel couvre donc intégralement `self.produit` (en_commande
+        # == cible) : un second appel sur le MÊME produit ne resuggérerait
+        # rien. On déclenche le second besoin avec un AUTRE produit sous
+        # seuil chez le même fournisseur, pour vérifier la fusion dans le
+        # MÊME brouillon (et non l'ouverture d'un second).
+        autre_produit = Produit.objects.create(
+            company=self.company, nom='Onduleur YPROC9', sku='OND-YPROC9',
+            prix_vente=Decimal('500'), prix_achat=Decimal('300'),
+            quantite_stock=1, seuil_alerte=5, quantite_reappro_cible=15)
+        from apps.stock.models import PrixFournisseur
+        PrixFournisseur.objects.create(
+            company=self.company, produit=autre_produit,
+            fournisseur=self.fournisseur, prix_achat=Decimal('300'))
 
         result2 = generer_bcf_reappro(
             self.company, user=None, fournisseur_id=self.fournisseur.id)
@@ -135,6 +144,8 @@ class TestFusionBcfReappro(Yproc9Base):
             company=self.company,
             statut=BonCommandeFournisseur.Statut.BROUILLON).count()
         self.assertEqual(nb_brouillons_apres, 1)
+        bon = BonCommandeFournisseur.objects.get(id=result1['bon_commande_id'])
+        self.assertTrue(bon.lignes.filter(produit=autre_produit).exists())
 
     def test_fusion_incremente_la_ligne_existante(self):
         bon_existant = BonCommandeFournisseur.objects.create(

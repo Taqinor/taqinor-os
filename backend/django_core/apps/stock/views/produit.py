@@ -66,7 +66,12 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
         # Écritures Stock : permission ERP granulaire (rôles fins type
         # « Commerciale » = lecture seule) avec comportement historique
         # pour les comptes hérités sans rôle fin.
-        if self.action in READ_ACTIONS + ['export_xlsx']:
+        if self.action in READ_ACTIONS + ['export_xlsx', 'resolve']:
+            # XSTK3/XSTK4 — `resolve` (scan code-barres/GS1) est LECTURE
+            # SEULE, accessible à tout rôle authentifié — même garde que
+            # `@action(permission_classes=[IsAnyRole])` sur l'action
+            # (`get_permissions` prime sur le `permission_classes` de
+            # l'@action, d'où ce cas explicite — sinon repli IsAdminRole).
             return [IsAnyRole()]
         elif self.action in ('create', 'dupliquer'):
             # QG4 — création réservée à Directeur + Commercial responsable.
@@ -74,7 +79,11 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
             # `get_permissions` prime sur le `permission_classes` de l'action,
             # donc la garde DOIT être posée ici (sinon repli IsAdminRole).
             return [PRODUIT_CREATE_PERMISSION()]
-        elif self.action in WRITE_ACTIONS + ['bulk', 'rebuter']:
+        elif self.action in WRITE_ACTIONS + ['bulk', 'rebuter', 'decoupes']:
+            # XSTK16 — la découpe/reconditionnement modifie le stock, même
+            # garde que les autres écritures Stock (`get_permissions` prime
+            # sur le `permission_classes` de l'@action, d'où ce cas explicite
+            # — sinon repli IsAdminRole).
             return [HasPermissionOrLegacy('stock_modifier')()]
         elif self.action in ('destroy', 'force_delete'):
             return [IsAdminRole()]

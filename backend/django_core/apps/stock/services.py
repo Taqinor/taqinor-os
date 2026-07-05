@@ -766,6 +766,8 @@ def figer_inventaire_annuel(company, exercice, user):
     Un `InventaireAnnuel` déjà figé pour cet exercice+société lève ValueError
     (jamais deux figements pour le même exercice, jamais de ré-écriture)."""
     import datetime
+    import json
+    from django.core.serializers.json import DjangoJSONEncoder
     from .models import InventaireAnnuel
     if InventaireAnnuel.objects.filter(
             company=company, exercice=exercice).exists():
@@ -773,12 +775,24 @@ def figer_inventaire_annuel(company, exercice, user):
             f"L'exercice {exercice} est déjà figé pour cette société.")
     date_fin = datetime.date(exercice, 12, 31)
     data = valorisation_a_date(company, date_fin)
+    total_valeur = data['total']
+    nb_lignes = len(data['lignes'])
+    # JSONField encode déjà via DjangoJSONEncoder (les Decimal ne sont pas
+    # sérialisables tels quels) — on applique le même aller-retour EN MÉMOIRE
+    # au blob `donnees` (PAS à `total_valeur`, un vrai DecimalField qui doit
+    # garder son type Decimal) avant `.create()`, pour que
+    # `inventaire.donnees` (objet Python encore en mémoire) soit
+    # BYTE-IDENTIQUE à une relecture depuis la base (le champ une fois stocké
+    # ne connaît plus les Decimal, seulement leur str()) : sans ça,
+    # `test_relit_a_l_identique` verrait deux représentations différentes
+    # (Decimal vs str) pour la même donnée.
+    donnees = json.loads(json.dumps(data, cls=DjangoJSONEncoder))
     return InventaireAnnuel.objects.create(
         company=company, exercice=exercice,
         date_reference=date_fin,
-        total_valeur=data['total'],
-        nb_lignes=len(data['lignes']),
-        donnees=data,
+        total_valeur=total_valeur,
+        nb_lignes=nb_lignes,
+        donnees=donnees,
         created_by=user,
     )
 
@@ -2139,8 +2153,14 @@ def produits_a_reapprovisionner(company):
             company, p, mois=mois_actuel)
         disponible = p.quantite_stock - reserved_map.get(p.id, 0)
         en_commande = quantite_en_commande_produit(company, p.id)
-        position_nette = disponible + en_commande
-        if position_nette > (seuil_effectif or 0):
+        # YPROC9 — le produit reste candidat tant que le DISPONIBLE seul (hors
+        # pipeline) est sous seuil (comportement historique inchangé) : un
+        # BCF ouvert qui ne couvre qu'UNE PARTIE du manque (position nette
+        # au-dessus du seuil mais toujours sous la cible) doit continuer à
+        # être suggéré pour le reliquat — seul `qte_suggere <= 0` (calculé
+        # plus bas contre la CIBLE, pas le seuil) exclut réellement le
+        # produit une fois le pipeline prix en compte.
+        if disponible > (seuil_effectif or 0):
             continue
         # Fournisseur le moins cher parmi les prix enregistrés.
         best = (PrixFournisseur.objects
@@ -2150,10 +2170,15 @@ def produits_a_reapprovisionner(company):
                 .first())
         cible = cible_effective if cible_effective else (
             (seuil_effectif or 0) * 2)
-        # Le pipeline déjà en route couvre une partie (ou tout) du besoin —
-        # une quantité suggérée nette <= 0 exclut le produit (rien à
+        # FG54 (historique) — la quantité SUGGÉRÉE reste la CIBLE pleine
+        # (comportement byte-identique préservé : `quantite_suggere` ==
+        # `quantite_reappro_cible`/`seuil × 2` quand rien n'est en pipeline).
+        # YPROC9 ne déduit QUE le pipeline déjà en commande (`en_commande`) —
+        # jamais le disponible courant, qui sert uniquement à la porte
+        # d'inclusion ci-dessus — pour ne pas re-suggérer ce qui est déjà en
+        # route. Une quantité suggérée nette <= 0 exclut le produit (rien à
         # recommander, ce qui arrive déjà suffit).
-        qte_suggere = max(cible - position_nette, 0)
+        qte_suggere = max(cible - en_commande, 0)
         if qte_suggere <= 0:
             continue
         kit_id = kit_map.get(p.id)
