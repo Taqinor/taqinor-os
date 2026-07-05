@@ -2654,6 +2654,98 @@ def chantiers_a_facturer(company):
     return out
 
 
+# ── YSTCK5 — expédition/annulation de livraison ventile le grand livre ─────
+# `LivraisonViewSet.expedier`/`livrer`/`annuler` ne changeaient QUE le statut :
+# les `LivraisonLigne` (produit + quantité) ne réservaient ni ne déplaçaient
+# jamais rien — la planification était déconnectée du grand livre. À
+# `expedier`, on TRANSFÈRE (jamais un mouvement de sortie : le total ne
+# change pas) les lignes du dépôt de la livraison vers l'emplacement
+# chantier/van (« Camionnette », créée par `ensure_emplacements`) ; à
+# `annuler` d'une livraison déjà expédiée, le contre-transfert. Idempotent via
+# `Livraison.stock_mouvemente`. NB : ne double-compte jamais avec
+# `consume_reservations` (sortie réelle à « Installé ») — ceci est un
+# TRANSFERT interne (dépôt → van/site), pas une consommation.
+
+def _emplacement_van(company):
+    """Emplacement « Camionnette » (van/site) de la société — créé à la
+    volée par `ensure_emplacements` si la société n'a encore aucun
+    emplacement. Repli sur le premier emplacement non principal existant."""
+    from apps.stock.services import ensure_emplacements
+    from apps.stock.models import EmplacementStock
+    ensure_emplacements(company)
+    return (
+        EmplacementStock.objects
+        .filter(company=company, is_principal=False, archived=False)
+        .order_by('ordre', 'id')
+        .first()
+    )
+
+
+def ventiler_stock_livraison(livraison, user):
+    """YSTCK5 — à `expedier` : transfère chaque ligne du dépôt de la
+    livraison vers l'emplacement van. No-op sûr (renvoie 0) si la livraison
+    n'a pas de dépôt source, si son mode est `direct_site` (jamais passé par
+    le dépôt — rien à décrémenter), ou si `stock_mouvemente` est déjà posé
+    (idempotent). Une ligne sans produit catalogue ou en stock insuffisant au
+    dépôt est ignorée (best-effort, ne bloque jamais l'expédition)."""
+    from .models_livraison import Livraison
+    if livraison.stock_mouvemente:
+        return 0
+    if livraison.mode_acheminement == Livraison.ModeAcheminement.DIRECT_SITE:
+        return 0
+    if livraison.depot_id is None:
+        return 0
+    van = _emplacement_van(livraison.company)
+    if van is None:
+        return 0
+    from apps.stock.services import transfer_stock
+    transferred = 0
+    for ligne in livraison.lignes.select_related('produit').all():
+        if ligne.produit_id is None or not ligne.quantite:
+            continue
+        try:
+            transfer_stock(
+                company=livraison.company, user=user,
+                produit_id=ligne.produit_id, source_id=livraison.depot_id,
+                destination_id=van.id, quantite=ligne.quantite,
+                note=f'Expédition livraison {livraison.reference}')
+            transferred += 1
+        except ValueError:
+            continue  # best-effort : stock insuffisant, on n'échoue pas l'expédition.
+    livraison.stock_mouvemente = True
+    livraison.save(update_fields=['stock_mouvemente'])
+    return transferred
+
+
+def contre_transferer_stock_livraison(livraison, user):
+    """YSTCK5 — à `annuler` une livraison déjà ventilée : contre-transfert
+    van → dépôt. No-op si jamais ventilée (`stock_mouvemente=False`)."""
+    if not livraison.stock_mouvemente:
+        return 0
+    if livraison.depot_id is None:
+        return 0
+    van = _emplacement_van(livraison.company)
+    if van is None:
+        return 0
+    from apps.stock.services import transfer_stock
+    reversed_count = 0
+    for ligne in livraison.lignes.select_related('produit').all():
+        if ligne.produit_id is None or not ligne.quantite:
+            continue
+        try:
+            transfer_stock(
+                company=livraison.company, user=user,
+                produit_id=ligne.produit_id, source_id=van.id,
+                destination_id=livraison.depot_id, quantite=ligne.quantite,
+                note=f'Annulation livraison {livraison.reference}')
+            reversed_count += 1
+        except ValueError:
+            continue
+    livraison.stock_mouvemente = False
+    livraison.save(update_fields=['stock_mouvemente'])
+    return reversed_count
+
+
 # ── YHIRE9 — garde d'habilitation à l'affectation d'intervention ───────────
 # Mapping type d'intervention → habilitation requise partagé avec XFSM2
 # (``selectors._TYPE_VERS_HABILITATION``) : garde le SEUL référentiel, importé

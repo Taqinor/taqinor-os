@@ -2497,10 +2497,11 @@ class LivraisonSerializer(serializers.ModelSerializer):
             'transporteur_obj_nom', 'cout_transport', 'mode_acheminement',
             'mode_acheminement_display', 'date_prevue', 'numero_suivi',
             'statut', 'statut_display', 'adresse_site', 'note', 'lignes',
+            'stock_mouvemente',
             'created_by', 'date_creation', 'date_modification',
         ]
         read_only_fields = [
-            'reference', 'statut', 'created_by',
+            'reference', 'statut', 'created_by', 'stock_mouvemente',
             'date_creation', 'date_modification',
         ]
 

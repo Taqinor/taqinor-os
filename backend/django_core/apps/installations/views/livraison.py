@@ -19,6 +19,9 @@ from apps.ventes.utils.references import create_with_reference
 
 from ..models import Livraison, LivraisonLigne
 from ..serializers import LivraisonSerializer, LivraisonLigneSerializer
+from ..services import (
+    ventiler_stock_livraison, contre_transferer_stock_livraison,
+)
 
 READ_ACTIONS = ['list', 'retrieve']
 
@@ -110,11 +113,16 @@ class LivraisonViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def expedier(self, request, pk=None):
-        """FG329 — passe la livraison en transit. XSTK22 : notifie le client
+        """FG329 — passe la livraison en transit. YSTCK5 : ventile le stock
+        dépôt → van (idempotent, best-effort). XSTK22 : notifie le client
         (best-effort, une seule fois)."""
         liv = self.get_object()
         liv.statut = Livraison.Statut.EN_TRANSIT
         liv.save(update_fields=['statut', 'date_modification'])
+        try:
+            ventiler_stock_livraison(liv, request.user)
+        except Exception:  # pragma: no cover - défensif, best-effort
+            pass
         self._notify_client(liv, Livraison.Statut.EN_TRANSIT, request)
         return Response(self.get_serializer(liv).data)
 
@@ -130,7 +138,13 @@ class LivraisonViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def annuler(self, request, pk=None):
-        """FG329 — annule la livraison."""
+        """FG329 — annule la livraison. YSTCK5 : contre-transfert van → dépôt
+        si le stock avait été ventilé (idempotent, best-effort)."""
+        liv = self.get_object()
+        try:
+            contre_transferer_stock_livraison(liv, request.user)
+        except Exception:  # pragma: no cover - défensif, best-effort
+            pass
         return self._set_statut(request, Livraison.Statut.ANNULEE)
 
     @action(detail=False, methods=['get'], url_path='portail',
