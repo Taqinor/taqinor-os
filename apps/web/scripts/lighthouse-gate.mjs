@@ -15,6 +15,15 @@
  * a loading skeleton or a stale hero image is what actually painted first;
  * this closes that gap.
  *
+ * WC2 addendum: every audited route also prints its LCP time (ms), total page
+ * weight (KB), JS+CSS weight (KB), and request count — pulled from Lighthouse's
+ * own 'largest-contentful-paint', 'total-byte-weight', and 'network-requests'
+ * audits (already collected whenever 'performance' is in onlyCategories, so no
+ * extra instrumentation). Run this before/after a perf change (e.g. the
+ * hero-count-up removal + Ken-Burns-off-below-1024px change) against the SAME
+ * built site to get real before/after numbers for the 'home' route — see the
+ * output line "LCP ... ms  total ... KB  js+css ... KB  requests ...".
+ *
  * USAGE (local, standalone — no CI wiring required to run it yourself):
  *   1. Build + serve the site however you like (e.g. `npm run build` then
  *      serve apps/web/dist/client with any static server, or point
@@ -98,7 +107,29 @@ async function auditRoute(baseUrl, route, chromePort) {
     lcpCheck = { expected: route.lcpSelector, reported: reportedSelector, matches };
   }
 
-  return { route, scores, failures, lcpCheck, skipped: false };
+  // WC2 — homepage before/after perf measurement: LCP time, total page weight,
+  // JS+CSS weight, and request count, pulled straight from Lighthouse's own
+  // audits (no extra instrumentation needed — 'total-byte-weight' and
+  // 'network-requests' are collected on every run regardless of onlyCategories
+  // as long as 'performance' is included, since they back the performance
+  // score). Reported for every route so the SAME gate run doubles as the
+  // founder-requested measurement tool, not just a pass/fail.
+  const lcpMs = lhr.audits['largest-contentful-paint']?.numericValue ?? null;
+  const networkRequests = lhr.audits['network-requests']?.details?.items ?? [];
+  const requestCount = networkRequests.length;
+  const totalBytes = lhr.audits['total-byte-weight']?.numericValue
+    ?? networkRequests.reduce((sum, item) => sum + (item.transferSize ?? 0), 0);
+  const jsCssBytes = networkRequests
+    .filter((item) => item.resourceType === 'Script' || item.resourceType === 'Stylesheet')
+    .reduce((sum, item) => sum + (item.transferSize ?? 0), 0);
+  const metrics = {
+    lcpMs: lcpMs !== null ? Math.round(lcpMs) : null,
+    totalKB: Math.round(totalBytes / 1024),
+    jsCssKB: Math.round(jsCssBytes / 1024),
+    requestCount,
+  };
+
+  return { route, scores, failures, lcpCheck, metrics, skipped: false };
 }
 
 async function main() {
@@ -139,6 +170,12 @@ async function main() {
     const pass = r.failures.length === 0 && (!r.lcpCheck || r.lcpCheck.matches);
     if (!pass) ok = false;
     process.stdout.write(`${pass ? 'PASS' : 'FAIL'}  ${r.route.name.padEnd(20)} ${line}\n`);
+    if (r.metrics) {
+      const m = r.metrics;
+      process.stdout.write(
+        `      LCP ${m.lcpMs !== null ? `${m.lcpMs} ms` : 'n/a'}  total ${m.totalKB} KB  js+css ${m.jsCssKB} KB  requests ${m.requestCount}\n`,
+      );
+    }
     if (r.failures.length) {
       process.stdout.write(`      below floor (${SCORE_FLOOR}): ${r.failures.join(', ')}\n`);
     }
