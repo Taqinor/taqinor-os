@@ -1231,6 +1231,19 @@ def noter_devis_ouvert(devis_reference: str, lead) -> None:
     avancer_stage_sur_ouverture_devis(lead)
 
 
+def noter_devis_envoye(devis_reference: str, lead) -> None:
+    """ZSAL5 — Consigne « Devis DEV-… envoyé par email » dans le chatter du
+    lead. Appelé par ``apps.ventes`` (jamais d'import des models crm depuis
+    ventes) quand l'action d'envoi de devis (QJ14) réussit. ``lead`` doit
+    être un objet Lead avec company_id ; ``devis_reference`` est la
+    référence textuelle du devis (pas d'import ventes ici). Note système
+    (``user=None``), best-effort — l'appelant catche toute exception."""
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE,
+        body=f"Devis {devis_reference} envoyé par email")
+
+
 def noter_touche_marketing(lead, message, *, ordre=0, cout=None):
     """XMKT16 — Consigne un événement marketing significatif (envoi/ouverture/
     clic de campagne, étape de séquence exécutée, réponse WhatsApp entrante)
