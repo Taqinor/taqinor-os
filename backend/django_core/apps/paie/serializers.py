@@ -72,6 +72,8 @@ class RubriqueSerializer(serializers.ModelSerializer):
             # PAIE16 — avantage en nature + plafond mensuel d'exonération.
             'avantage_nature', 'plafond_exoneration',
             'compte', 'base', 'taux',
+            # ZPAI8 — règle d'arrondi des jours d'absence.
+            'arrondi', 'sens_arrondi',
             'montant_fixe', 'ordre', 'actif', 'date_creation',
         ]
         read_only_fields = ['date_creation']
