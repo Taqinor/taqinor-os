@@ -4709,6 +4709,47 @@ class CampagneViewSet(_ComptaBaseViewSet):
         """ZMKT1 — campagnes groupées par statut (pipeline Odoo-style)."""
         return Response(services.campagnes_par_statut(request.user.company))
 
+    @action(detail=False, methods=['get'])
+    def reporting(self, request):
+        """ZMKT8 — reporting multi-vue (Graph/Pivot/Cohorte) : mesures
+        délivrés/ouverts/cliqués/rebonds/désinscrits + CTR/CTOR/
+        délivrabilité, groupable par ``?groupby=canal|mois|campagne``."""
+        groupby = request.query_params.get('groupby', 'canal')
+        return Response(
+            services.reporting_campagnes(request.user.company, groupby=groupby))
+
+    @action(detail=False, methods=['get'], url_path='reporting/export')
+    def reporting_export(self, request):
+        """ZMKT8 — export XLSX du reporting multi-vue."""
+        from openpyxl import Workbook
+        from openpyxl.styles import Font
+        from apps.records.xlsx import coerce_cell, XLSX_CONTENT_TYPE
+
+        groupby = request.query_params.get('groupby', 'canal')
+        lignes = services.reporting_campagnes(request.user.company, groupby=groupby)
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Reporting campagnes'
+        headers = [
+            'Groupe', 'Délivrés', 'Ouverts', 'Clics', 'Rebonds',
+            'Désinscrits', 'CTR %', 'CTOR %', 'Délivrabilité %',
+        ]
+        ws.append(headers)
+        for cell in ws[1]:
+            cell.font = Font(bold=True)
+        for ligne in lignes:
+            ws.append([coerce_cell(v) for v in [
+                ligne['groupe'], ligne['delivres'], ligne['ouverts'],
+                ligne['cliques'], ligne['rebonds'], ligne['desinscrits'],
+                ligne['ctr_pct'], ligne['ctor_pct'], ligne['delivrabilite_pct'],
+            ]])
+        import io
+        buf = io.BytesIO()
+        wb.save(buf)
+        resp = HttpResponse(buf.getvalue(), content_type=XLSX_CONTENT_TYPE)
+        resp['Content-Disposition'] = 'attachment; filename="reporting_campagnes.xlsx"'
+        return resp
+
     @action(detail=False, methods=['get'], url_path='modeles')
     def modeles(self, request):
         """ZMKT3 — liste des modèles company-scopés."""

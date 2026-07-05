@@ -7902,6 +7902,67 @@ def participants_sequence(sequence, *, statut=None):
     return resultat
 
 
+def reporting_campagnes(company, *, groupby='canal'):
+    """ZMKT8 — reporting multi-vue (Graph/Pivot/Cohorte) sur la trace XMKT2 :
+    mesures délivrés/ouverts/cliqués/rebonds/désinscrits + CTR/CTOR/
+    délivrabilité, groupables par ``canal``/``mois``/``campagne``.
+    Division par zéro = 0 (jamais d'exception).
+    """
+    from django.db.models.functions import TruncMonth
+
+    envois = EnvoiCampagne.objects.filter(company=company)
+    if groupby == 'mois':
+        envois = envois.annotate(groupe=TruncMonth('date_creation'))
+        cle = 'groupe'
+    elif groupby == 'campagne':
+        cle = 'campagne_id'
+    else:
+        cle = 'campagne__canal'
+
+    groupes = {}
+    for e in envois.values(cle, 'statut'):
+        clef_groupe = e[cle]
+        slot = groupes.setdefault(clef_groupe, {
+            'delivres': 0, 'ouverts': 0, 'cliques': 0, 'rebonds': 0,
+            'desinscrits': 0, 'total': 0,
+        })
+        slot['total'] += 1
+        if e['statut'] == EnvoiCampagne.Statut.REBOND:
+            slot['rebonds'] += 1
+        elif e['statut'] == EnvoiCampagne.Statut.DESINSCRIT:
+            slot['desinscrits'] += 1
+        else:
+            slot['delivres'] += 1
+    # Ouvertures/clics comptés séparément (un envoi peut être ouvert ET
+    # cliqué — pas mutuellement exclusif avec le statut agrégé ci-dessus).
+    for e in envois.filter(ouvert_le__isnull=False).values(cle):
+        groupes.setdefault(e[cle], {
+            'delivres': 0, 'ouverts': 0, 'cliques': 0, 'rebonds': 0,
+            'desinscrits': 0, 'total': 0})['ouverts'] += 1
+    for e in envois.filter(clique_le__isnull=False).values(cle):
+        groupes.setdefault(e[cle], {
+            'delivres': 0, 'ouverts': 0, 'cliques': 0, 'rebonds': 0,
+            'desinscrits': 0, 'total': 0})['cliques'] += 1
+
+    resultat = []
+    for clef_groupe, slot in groupes.items():
+        total = slot['total'] or 1
+        ctr = round(slot['cliques'] / total * 100, 1) if total else 0.0
+        ctor = (round(slot['cliques'] / slot['ouverts'] * 100, 1)
+                if slot['ouverts'] else 0.0)
+        delivrabilite = (
+            round(slot['delivres'] / total * 100, 1) if total else 0.0)
+        resultat.append({
+            'groupe': clef_groupe,
+            'delivres': slot['delivres'], 'ouverts': slot['ouverts'],
+            'cliques': slot['cliques'], 'rebonds': slot['rebonds'],
+            'desinscrits': slot['desinscrits'],
+            'ctr_pct': ctr, 'ctor_pct': ctor,
+            'delivrabilite_pct': delivrabilite,
+        })
+    return resultat
+
+
 def nb_participants_actifs(sequence):
     """ZMKT6 — compteur « N participants actifs »."""
     return sequence.inscriptions.filter(
