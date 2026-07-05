@@ -182,6 +182,35 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
                 qs = qs.filter(annulee=False)
         return qs
 
+    def list(self, request, *args, **kwargs):
+        """ZFSM7 — ``?export=xlsx`` télécharge la liste FILTRÉE (mêmes filtres
+        `statut`/`type_intervention`/`priorite`/plage de dates) en xlsx
+        (colonnes chantier/client/ville/type/statut/priorité/dates/technicien/
+        équipe/durée réelle — SANS aucun coût interne ni marge). Le format
+        DRF ``?format=`` reste réservé — jamais utilisé ici."""
+        if request.query_params.get('export') == 'xlsx':
+            role = getattr(request.user, 'role_legacy', None)
+            if role not in ('responsable', 'admin') and not (
+                    request.user.is_superuser):
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied(
+                    "Export réservé aux rôles responsable/admin.")
+            from apps.records.xlsx import build_xlsx_response
+            from .. import selectors as _selectors
+
+            qs = self.filter_queryset(self.get_queryset())
+            headers = [
+                'Chantier', 'Client', 'Ville', 'Type', 'Statut', 'Priorité',
+                'Date prévue', 'Date réalisée', 'Technicien', 'Équipe',
+                'Durée réelle (min)',
+            ]
+            rows = [_selectors.intervention_export_row(interv)
+                    for interv in qs]
+            return build_xlsx_response(
+                'interventions.xlsx', headers, rows,
+                sheet_title='Interventions')
+        return super().list(request, *args, **kwargs)
+
     def get_permissions(self):
         if self.action in READ_ACTIONS + [
             'historique', 'preparation', 'photos',

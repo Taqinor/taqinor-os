@@ -2358,3 +2358,33 @@ def suggestion_pieces_intervention(
         }
         for row in lignes[:max(int(top_n or _TOP_N_PIECES_DEFAUT), 1)]
     ]
+
+
+def intervention_export_row(interv):
+    """ZFSM7 — une ligne PLATE de l'export xlsx des interventions : chantier,
+    client, ville, type, statut, priorité, dates, technicien, équipe, durée
+    réelle (F15, `field_capture.crew_time`). SANS AUCUN coût interne ni marge
+    (lecture seule, aucun champ `prix*`/`cout*`)."""
+    from . import field_capture
+    inst = interv.installation
+    client_nom = ''
+    if inst is not None and inst.client_id:
+        client = inst.client
+        client_nom = f'{getattr(client, "prenom", "") or ""} '.strip()
+        client_nom = f'{client_nom} {getattr(client, "nom", "") or ""}'.strip()
+    duree = field_capture.crew_time(interv).get('duree_sur_site_min')
+    equipe_noms = ', '.join(
+        u.username for u in interv.equipe.all()) if interv.pk else ''
+    return [
+        inst.reference if inst else '',
+        client_nom,
+        getattr(inst, 'site_ville', '') or '' if inst else '',
+        interv.get_type_intervention_display(),
+        interv.get_statut_display(),
+        interv.get_priorite_display(),
+        interv.date_prevue,
+        interv.date_realisee,
+        getattr(interv.technicien, 'username', '') or '',
+        equipe_noms,
+        duree if duree is not None else '',
+    ]
