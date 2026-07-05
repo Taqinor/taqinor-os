@@ -13,6 +13,7 @@ from rest_framework.decorators import (
 )
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny
+from rest_framework.renderers import BrowsableAPIRenderer, JSONRenderer
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 
@@ -73,6 +74,19 @@ _INLINE_MIMES = {
     'image/png', 'image/jpeg', 'image/webp', 'image/gif',
     'text/plain', 'text/csv', 'text/html',
 }
+
+
+class _CsvOrJSONRenderer(JSONRenderer):
+    """XGED22 — DRF fait la négociation de contenu sur `?format=` AVANT que
+    le corps de la vue ne s'exécute (`DefaultContentNegotiation`, indépendant
+    des `format_suffix_patterns`) : sans renderer déclaré pour `csv`, l'appel
+    `?format=csv` échoue en amont (jamais notre `HttpResponse` renvoyée). On
+    déclare donc explicitement ce format sur l'action pour que la
+    négociation aboutisse ; la vue renvoie ensuite un `HttpResponse` CSV
+    manuel (jamais sérialisé par ce renderer — le JSON reste le
+    comportement par défaut sans `?format=csv`)."""
+    format = 'csv'
+    media_type = 'text/csv'
 
 
 def _permissions_effectives_csv(lignes, filename_suffix):
@@ -187,7 +201,8 @@ class FolderViewSet(TenantMixin, viewsets.ModelViewSet):
         data = FolderSerializer(folder, context={'request': request}).data
         return Response(data)
 
-    @action(detail=True, methods=['get'], url_path='permissions-effectives')
+    @action(detail=True, methods=['get'], url_path='permissions-effectives',
+            renderer_classes=[JSONRenderer, BrowsableAPIRenderer, _CsvOrJSONRenderer])
     def permissions_effectives(self, request, pk=None):
         """XGED22 — Rapport de permissions effectives sur ce DOSSIER.
 
@@ -1589,7 +1604,8 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         data = selectors.timeline_document(document)
         return Response(data)
 
-    @action(detail=True, methods=['get'], url_path='permissions-effectives')
+    @action(detail=True, methods=['get'], url_path='permissions-effectives',
+            renderer_classes=[JSONRenderer, BrowsableAPIRenderer, _CsvOrJSONRenderer])
     def permissions_effectives(self, request, pk=None):
         """XGED22 — Rapport de permissions effectives (« qui voit ce document
         et pourquoi »).
