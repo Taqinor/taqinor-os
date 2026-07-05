@@ -111,11 +111,18 @@ def parse_rows(file_bytes, filename):
     return headers, list(reader)
 
 
-def _map_headers(headers, target):
+def _map_headers(headers, target, saved_mapping=None):
+    """``saved_mapping`` (XPLT2, ``ImportMapping.mapping``) est un dict
+    colonne→champ appliqué EN PRIORITÉ (mêmes clés que le mapping automatique) ;
+    toute colonne non couverte retombe sur le mapping par en-tête habituel."""
     fmap = FIELD_MAPS[target]
     mapped, unmapped = {}, []
     for h in headers:
-        field = fmap.get(_norm(h))
+        field = None
+        if saved_mapping:
+            field = saved_mapping.get(h) or saved_mapping.get(_norm(h))
+        if not field:
+            field = fmap.get(_norm(h))
         if field:
             mapped[h] = field
         else:
@@ -123,15 +130,27 @@ def _map_headers(headers, target):
     return mapped, unmapped
 
 
-def dry_run(file_bytes, filename, target):
-    """Aperçu : mapping colonne→champ + 10 premières lignes mappées + non-mappés."""
+def dry_run(file_bytes, filename, target, company=None, mapping_name=None):
+    """Aperçu : mapping colonne→champ + 10 premières lignes mappées + non-mappés.
+
+    XPLT2 — si ``mapping_name`` désigne un ``ImportMapping`` sauvegardé (pour
+    ``company``+``target``), son mapping colonne→champ est réappliqué en
+    priorité sur le mapping automatique habituel.
+    """
     if target not in TARGETS:
         raise ValueError("Cible d'import inconnue.")
     headers, rows = parse_rows(file_bytes, filename)
     if len(rows) > MAX_ROWS:
         raise ImportTooLarge(
             f'Trop de lignes : {len(rows)} (max {MAX_ROWS}).')
-    mapped, unmapped = _map_headers(headers, target)
+    saved_mapping = None
+    if mapping_name and company is not None:
+        from .models import ImportMapping
+        m = ImportMapping.objects.filter(
+            company=company, entity=target, nom=mapping_name).first()
+        if m is not None:
+            saved_mapping = m.mapping
+    mapped, unmapped = _map_headers(headers, target, saved_mapping)
     preview = []
     for row in rows[:10]:
         preview.append({field: row.get(col) for col, field in mapped.items()})
@@ -143,6 +162,15 @@ def dry_run(file_bytes, filename, target):
         'apercu': preview,
         'total_lignes': len(rows),
     }
+
+
+def save_mapping(company, target, nom, mapping):
+    """XPLT2 — sauvegarde (ou remplace) un mapping colonne→champ nommé pour
+    une cible, réutilisable au prochain dry-run."""
+    from .models import ImportMapping
+    obj, _created = ImportMapping.objects.update_or_create(
+        company=company, entity=target, nom=nom, defaults={'mapping': mapping})
+    return obj
 
 
 def _row_to_fields(row, mapped):
@@ -204,10 +232,11 @@ def _apply_updates(instance, fields, skip_keys=()):
     return changed
 
 
-def commit(file_bytes, filename, target, company, user, mode='creer',
-           external_system=None):
+def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
+                external_system=None, mapping_name=None):
     """Crée (mode=creer, défaut inchangé) ou rapproche+met à jour (maj/upsert)
-    les enregistrements. Renvoie un récapitulatif."""
+    les enregistrements. Renvoie un récapitulatif (dont ``lignes`` : le détail
+    ligne par ligne utilisé par XPLT2 pour le journal ``ImportJob``)."""
     if target not in TARGETS:
         raise ValueError("Cible d'import inconnue.")
     if mode not in MODES:
@@ -226,7 +255,14 @@ def commit(file_bytes, filename, target, company, user, mode='creer',
     if len(rows) > MAX_ROWS:
         raise ImportTooLarge(
             f'Trop de lignes : {len(rows)} (max {MAX_ROWS}).')
-    mapped, _ = _map_headers(headers, target)
+    saved_mapping = None
+    if mapping_name:
+        from .models import ImportMapping
+        m = ImportMapping.objects.filter(
+            company=company, entity=target, nom=mapping_name).first()
+        if m is not None:
+            saved_mapping = m.mapping
+    mapped, _ = _map_headers(headers, target, saved_mapping)
     created, updated, skipped = 0, 0, []
 
     # ERR51 — Tout l'import est atomique : une erreur en cours de boucle annule
@@ -460,4 +496,96 @@ def commit(file_bytes, filename, target, company, user, mode='creer',
                     skipped.append({'ligne': i, 'raison': message or 'erreur'})
 
     return {'ok': True, 'target': target, 'mode': mode, 'created': created,
-            'updated': updated, 'skipped': skipped, 'total': len(rows)}
+            'updated': updated, 'skipped': skipped, 'total': len(rows),
+            'headers': headers, 'rows': rows}
+
+
+def commit(file_bytes, filename, target, company, user, mode='creer',
+           external_system=None, mapping_name=None, rollback_on_error=False):
+    """XPLT2 — enveloppe publique de ``_commit_raw`` : journalise l'import dans
+    un ``ImportJob``/``ImportJobRow`` (statut par ligne, motif d'échec,
+    contenu brut ré-importable) et applique le choix commit partiel (défaut,
+    comportement historique inchangé) vs rollback atomique total.
+
+    ``rollback_on_error=True`` : si NE SERAIT-CE QU'UNE ligne échoue, tout le
+    lot est annulé (aucune création/mise à jour ne subsiste) — le job est
+    journalisé statut ECHEC et la réponse renvoie l'erreur sans avoir rien
+    persisté. ``rollback_on_error=False`` (défaut) : comportement historique —
+    les lignes en échec sont signalées, les autres restent commitées.
+    """
+    from .models import ImportJob, ImportJobRow
+
+    def _run():
+        return _commit_raw(
+            file_bytes, filename, target, company, user, mode=mode,
+            external_system=external_system, mapping_name=mapping_name)
+
+    if rollback_on_error:
+        # Rejoue tout dans UNE transaction externe : si des lignes ont échoué,
+        # on annule le lot entier plutôt que de garder les créations partielles.
+        with transaction.atomic():
+            result = _run()
+            if result['skipped']:
+                transaction.set_rollback(True)
+    else:
+        result = _run()
+
+    rows = result.pop('rows', [])
+    headers = result.pop('headers', [])
+    skipped_by_line = {s['ligne']: s['raison'] for s in result['skipped']}
+    error_count = len(skipped_by_line)
+    rolled_back = rollback_on_error and error_count > 0
+
+    if rolled_back:
+        statut = ImportJob.Statut.ECHEC
+    elif error_count:
+        statut = ImportJob.Statut.PARTIEL
+    else:
+        statut = ImportJob.Statut.OK
+
+    job = ImportJob.objects.create(
+        company=company, target=target, fichier_nom=filename, mode=mode,
+        statut=statut, total_lignes=result['total'],
+        created_count=0 if rolled_back else result['created'],
+        updated_count=0 if rolled_back else result['updated'],
+        error_count=error_count,
+        created_by=user if getattr(user, 'pk', None) else None)
+
+    job_rows = []
+    for i, row in enumerate(rows, 1):
+        raison = skipped_by_line.get(i)
+        job_rows.append(ImportJobRow(
+            job=job, ligne=i,
+            statut=ImportJobRow.Statut.ERREUR if raison else ImportJobRow.Statut.OK,
+            motif=raison,
+            donnees={h: row.get(h) for h in headers} if raison else {}))
+    if job_rows:
+        ImportJobRow.objects.bulk_create(job_rows)
+
+    result['job_id'] = job.pk
+    result['statut'] = statut
+    if rolled_back:
+        result['created'] = 0
+        result['updated'] = 0
+    return result
+
+
+def erreurs_csv_rows(job):
+    """XPLT2 — lignes en ÉCHEC d'un ``ImportJob``, prêtes à être ré-écrites en
+    CSV (mêmes en-têtes que le fichier d'origine + une colonne ``_motif``)."""
+    from .models import ImportJobRow
+    error_rows = job.rows.filter(statut=ImportJobRow.Statut.ERREUR).order_by('ligne')
+    fieldnames = []
+    seen = set()
+    for r in error_rows:
+        for k in r.donnees.keys():
+            if k not in seen:
+                seen.add(k)
+                fieldnames.append(k)
+    fieldnames.append('_motif')
+    out_rows = []
+    for r in error_rows:
+        row = dict(r.donnees)
+        row['_motif'] = r.motif or ''
+        out_rows.append(row)
+    return fieldnames, out_rows
