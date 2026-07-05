@@ -441,6 +441,43 @@ def website_lead_webhook(request):
         logger.error('website_lead_webhook: aucune Company (payload #%s)', raw.pk)
         return JsonResponse({'detail': 'Stocké, mapping différé.', 'payload_id': raw.pk}, status=202)
 
+    # QW7 — Ping d'engagement proposition (WJ55 : proposition-track.ts POSTe
+    # {qualified:false, event_type, phoneE164, utm, page} vers CE MÊME webhook).
+    # [Défensif — le correctif principal est côté source, WEB_PLAN WJ109.]
+    # Un simple "le client a ouvert sa proposition" ne doit JAMAIS créer de
+    # lead ni écraser nom/tags/utm/canal d'un lead déjà existant retrouvé par
+    # téléphone — seule une note chatter + notification best-effort est
+    # journalisée sur le lead déjà connu. Sans lead correspondant, l'événement
+    # est silencieusement abandonné (jamais de lead fantôme « Lead site web »).
+    event_type = data.get('event_type')
+    if event_type:
+        try:
+            phone_raw = str(data.get('phoneE164') or data.get('phone') or '').strip()[:50]
+            from apps.crm.services import normalize_phone
+            phone_key = normalize_phone(phone_raw)
+            matched = None
+            if phone_key:
+                for candidate in Lead.objects.filter(company=company):
+                    if normalize_phone(candidate.telephone) == phone_key:
+                        matched = candidate
+                        break
+            if matched is not None:
+                LeadActivity.objects.create(
+                    company=matched.company, lead=matched, user=None,
+                    kind=LeadActivity.Kind.NOTE,
+                    body=f'Engagement proposition : {event_type}',
+                )
+            raw.lead = matched
+            raw.processed = True
+            raw.save(update_fields=['lead', 'processed'])
+        except Exception:  # noqa: BLE001 — un ping d'engagement ne doit
+            # jamais faire échouer le webhook ni polluer le lead.
+            logger.exception(
+                'website_lead_webhook: engagement ping (event_type=%s) échoué', event_type)
+        return JsonResponse(
+            {'detail': 'Événement enregistré (sans mutation de lead).',
+             'payload_id': raw.pk}, status=200)
+
     try:
         fields = _map_payload_to_fields(data)
         telephone = fields.get('telephone') or ''

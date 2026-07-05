@@ -439,3 +439,67 @@ class QW3ContactPreferenceTests(TestCase):
         self.assertEqual(res.status_code, 201, res.content)
         lead = Lead.objects.get(pk=res.json()['lead_id'])
         self.assertIsNone(lead.contact_preference)
+
+
+@override_settings(WEBSITE_LEAD_WEBHOOK_SECRET=SECRET)
+class QW7EngagementPingNeverCorruptsLeadTests(TestCase):
+    """QW7 — un ping d'engagement proposition ne doit jamais écraser un lead
+    réel ni en créer un fantôme (défensif — correctif principal côté WJ109)."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='Taqinor Test QW7', slug='taqinor-test-qw7')
+        self.url = reverse('website-lead-webhook')
+
+    def post(self, data, secret=SECRET):
+        headers = {'HTTP_X_WEBHOOK_SECRET': secret} if secret is not None else {}
+        return self.client.post(
+            self.url, data=json.dumps(data),
+            content_type='application/json', **headers)
+
+    def _engagement_payload(self, phone):
+        return {
+            'qualified': False,
+            'event_type': 'proposal_first_view',
+            'phoneE164': phone,
+            'utm': {'utm_source': 'proposal_engagement',
+                    'utm_campaign': 'DEV-0001', 'utm_content': 'proposal_first_view'},
+            'page': '/proposal/abc123',
+        }
+
+    def test_engagement_ping_never_creates_a_lead(self):
+        res = self.post(self._engagement_payload('+212677001122'))
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertEqual(Lead.objects.count(), 0)
+
+    def test_engagement_ping_never_overwrites_real_lead_nom(self):
+        real = Lead.objects.create(
+            company=self.company, nom='Amina Benali', telephone='+212677001122',
+            canal=Lead.Canal.WHATSAPP_CTWA, tags='VIP')
+        res = self.post(self._engagement_payload('+212677001122'))
+        self.assertEqual(res.status_code, 200, res.content)
+        real.refresh_from_db()
+        self.assertEqual(real.nom, 'Amina Benali')
+        self.assertEqual(real.tags, 'VIP')
+        self.assertEqual(real.canal, Lead.Canal.WHATSAPP_CTWA)
+
+    def test_engagement_ping_logs_a_chatter_note_on_matched_lead(self):
+        real = Lead.objects.create(
+            company=self.company, nom='Amina Benali', telephone='+212677001122')
+        res = self.post(self._engagement_payload('+212677001122'))
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=real, kind=LeadActivity.Kind.NOTE,
+            body__icontains='Engagement proposition').exists())
+
+    def test_engagement_ping_no_match_is_a_silent_noop(self):
+        res = self.post(self._engagement_payload('+212600000000'))
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertEqual(Lead.objects.count(), 0)
+        self.assertEqual(LeadActivity.objects.count(), 0)
+
+    def test_real_capture_still_creates_a_lead(self):
+        # Un vrai payload de capture (sans event_type) continue de créer un
+        # lead normalement — la garde QW7 ne touche QUE les pings d'engagement.
+        res = self.post(payload_site())
+        self.assertEqual(res.status_code, 201, res.content)
+        self.assertEqual(Lead.objects.count(), 1)
