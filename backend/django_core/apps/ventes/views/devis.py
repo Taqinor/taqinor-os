@@ -54,8 +54,9 @@ def _company_qs(qs, user):
 
 class DevisViewSet(viewsets.ModelViewSet):
     queryset = Devis.objects.select_related(
-        'client', 'created_by'
-    ).prefetch_related('lignes').all()
+        'client', 'created_by', 'lead', 'bon_commande', 'signature',
+        'superseded_by', 'version_parent',
+    ).prefetch_related('lignes', 'factures', 'share_links').all()
 
     def get_queryset(self):
         qs = _company_qs(super().get_queryset(), self.request.user)
