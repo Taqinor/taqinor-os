@@ -5055,6 +5055,17 @@ class SequenceRelanceViewSet(_ComptaBaseViewSet):
         sequence = self.get_object()
         return Response(services.compteurs_par_etape(sequence))
 
+    @action(detail=True, methods=['get'])
+    def participants(self, request, pk=None):
+        """ZMKT6 — liste des participants (nœud courant + prochaine
+        échéance), filtrable par statut, + compteur actifs."""
+        sequence = self.get_object()
+        statut = request.query_params.get('statut')
+        return Response({
+            'participants': services.participants_sequence(sequence, statut=statut),
+            'nb_actifs': services.nb_participants_actifs(sequence),
+        })
+
 
 class EtapeSequenceViewSet(_ComptaBaseViewSet):
     """Étapes d'une séquence de relance (FG202)."""

@@ -7879,6 +7879,35 @@ def traces_sequence(sequence, *, etape_id=None, statut_trace=None):
     ]
 
 
+def participants_sequence(sequence, *, statut=None):
+    """ZMKT6 — liste des participants (``InscriptionSequence``) : nœud
+    courant + prochaine échéance, filtrable par statut."""
+    qs = sequence.inscriptions.select_related('etape_courante').all()
+    if statut:
+        qs = qs.filter(statut=statut)
+    resultat = []
+    for insc in qs:
+        prochaine_echeance = None
+        if insc.etape_courante is not None:
+            prochaine_echeance = insc.declenchee_le + timezone.timedelta(
+                days=insc.etape_courante.delai_jours)
+        resultat.append({
+            'id': insc.id,
+            'lead_id': insc.lead_id,
+            'lead_reference': insc.lead_reference,
+            'etape_courante_id': insc.etape_courante_id,
+            'statut': insc.statut,
+            'prochaine_echeance': prochaine_echeance,
+        })
+    return resultat
+
+
+def nb_participants_actifs(sequence):
+    """ZMKT6 — compteur « N participants actifs »."""
+    return sequence.inscriptions.filter(
+        statut=InscriptionSequence.Statut.ACTIF).count()
+
+
 def compteurs_par_etape(sequence):
     """ZMKT5 — agrège par étape des compteurs Succès/Rejeté/Envoyé."""
     resultat = []
