@@ -214,32 +214,44 @@ export const REALISATIONS: Realisation[] = [
 ];
 
 /**
- * WB1 (2026-07-04) — FLOTTE MESURÉE (Deye Cloud, vue « TAQINOR Solutions »,
- * relevé du 2026-07-04). Ces CUMULS « depuis la mise en service » sont les
- * SEULS chiffres de production réels : les centrales sont récentes
- * (semaines→mois), donc AUCUN chiffre annuel légitime n'existe encore. Source
- * unique du chiffre de production affiché sur l'accueil (héros). Ne jamais
- * transformer un cumul en « production annuelle ».
+ * FLOTTE MESURÉE — cumuls de production « depuis la mise en service » réellement
+ * relevés sur les applications de supervision. Ces cumuls sont les SEULS
+ * chiffres de production réels. Les centrales étant récentes, aucun chiffre
+ * ANNUEL légitime n'existe encore : NE JAMAIS transformer un cumul en
+ * « production annuelle ». Source unique du chiffre de production affiché sur
+ * l'accueil (héros) et les pages impact/production.
  *
- * 2 installations supplémentaires sont suivies sur Huawei FusionSolar et ne
- * sont PAS encore tirées → volontairement exclues (le cumul affiché est donc
- * CONSERVATEUR, jamais surévalué). Voir TODO FONDATEUR en tête de fichier.
+ * IMPORTANT (WC10, 2026-07-05) : le champ `source` (deye/huawei) est INTERNE —
+ * ne jamais afficher les marques « Deye Cloud » / « Huawei FusionSolar » ni le
+ * mot « cloud » au client (le fondateur supervise sur les deux apps ; on parle
+ * de « suivi de production en temps réel », pas d'une marque d'app).
+ *
+ * 2026-07-05 (Reda) : ajout des 2 installations suivies sur Huawei
+ * (Omar Taouss 3,41 MWh ; Villa Haj Elofir 34,22 MWh). Total flotte ≈ 44,19 MWh.
  */
 export interface MeasuredPlant {
-  ville: string;
-  kwc: number;
-  /** Cumul mesuré depuis la mise en service, en MWh (Deye Cloud). */
+  /** Libellé interne du site (jamais affiché tel quel au client). */
+  label: string;
+  /** Puissance installée (kWc) si connue, sinon null. */
+  kwc: number | null;
+  /** Cumul mesuré depuis la mise en service, en MWh. */
   lifetimeMWh: number;
+  /** Application de supervision — INTERNE, jamais affichée (WC10). */
+  source: 'deye' | 'huawei';
 }
 export const MEASURED_FLEET: MeasuredPlant[] = [
-  { ville: 'Aïn Diab (Casablanca)', kwc: 10, lifetimeMWh: 2.62 },
-  { ville: 'Casablanca', kwc: 5.68, lifetimeMWh: 1.41 },
-  { ville: 'El Jadida', kwc: 5, lifetimeMWh: 1.4 },
-  { ville: 'Bd Fès (Casablanca)', kwc: 11.36, lifetimeMWh: 1.13 },
+  { label: 'Aïn Diab (Casablanca)', kwc: 10, lifetimeMWh: 2.62, source: 'deye' },
+  { label: 'Casablanca (Rassam)', kwc: 5.68, lifetimeMWh: 1.41, source: 'deye' },
+  { label: 'El Jadida (Benaissa)', kwc: 5, lifetimeMWh: 1.4, source: 'deye' },
+  { label: 'Bd Fès (Casablanca)', kwc: 11.36, lifetimeMWh: 1.13, source: 'deye' },
+  { label: 'Omar Taouss', kwc: null, lifetimeMWh: 3.41, source: 'huawei' },
+  { label: 'Villa Haj Elofir', kwc: null, lifetimeMWh: 34.22, source: 'huawei' },
 ];
-/** Cumul mesuré de la flotte Deye = 2,62 + 1,41 + 1,40 + 1,13 = 6,56 MWh. */
+/** Cumul mesuré de la flotte = 2,62+1,41+1,40+1,13+3,41+34,22 ≈ 44,19 MWh. */
 export const MEASURED_FLEET_LIFETIME_MWH = MEASURED_FLEET.reduce((s, p) => s + p.lifetimeMWh, 0);
-/** Format FR (virgule décimale) pour l'affichage — « 6,56 ». */
+/** Nombre d'installations réellement supervisées (production mesurée). */
+export const MEASURED_FLEET_COUNT = MEASURED_FLEET.length;
+/** Format FR (virgule décimale) pour l'affichage — « 44,19 ». */
 export const MEASURED_FLEET_LIFETIME_MWH_FR = MEASURED_FLEET_LIFETIME_MWH.toFixed(2).replace('.', ',');
 
 export const realisationBySlug = (slug: string): Realisation | undefined =>

@@ -48,7 +48,7 @@ const categories = [
   { ref: 'OND-1', title: 'Hybrid inverters — Deye', body: "We choose the Deye hybrid for one concrete reason: when the grid drops, it switches to battery within milliseconds — fast enough to keep a computer running. The rest of the time it decides, second by second, whether to draw from the panels, charge the battery or pull from the grid. The SUN-SG04LP1, SG04LP3 and SG01HP3 ranges cover 5 to 30 kW, single-phase as well as three-phase, and talk to the battery BMS over CAN. Compliant with IEC 61727 and VDE-AR-N-4105.", points: ['Single-phase and three-phase, 5 – 30 kW', 'Built-in CAN BMS battery management', '10-year warranty'] },
   { ref: 'OND-2', title: 'Grid-tied inverters — Huawei SUN2000', body: "When the study calls for no battery, we go with pure string. The Huawei SUN2000 optimises string by string: a shaded panel no longer drags the whole row down. From residential to commercial rooftops.", points: ['High European efficiency', 'Per-string optimisation', '10-year warranty'] },
   { ref: 'BAT', title: 'Batteries — Dyness DL5.0C', body: "Lithium iron phosphate does not run away thermally the way some other lithium chemistries do: it's the safe choice for home storage. The DL5.0C / DL5.0C PRO modules stack in 5 kWh blocks and natively speak the CAN BMS of the Deye units. Certified CE, IEC 62619, UN38.3.", points: ['LFP chemistry — 6,000+ cycles at 90 % DoD', 'Modular: 5 to 15 kWh and beyond', '10-year warranty'] },
-  { ref: 'MON', title: 'Monitoring — Deye Cloud', body: "Without measurement, a stated output is just an unverifiable promise. So every roof carries a WiFi/Ethernet dongle linked to Deye Cloud: minute-by-minute production, history, fault alerts. You keep your own personal access; on our side, we watch the whole fleet and step in before the fault ever shows up at your home.", points: ['Production measured continuously', 'Automatic alerts — proactive after-sales', 'Client access via mobile app'] },
+  { ref: 'MON', title: 'Monitoring — real-time production monitoring', body: "Without measurement, a stated output is just an unverifiable promise. So every roof carries a WiFi/Ethernet dongle providing real-time production monitoring: minute-by-minute production, history, fault alerts. You keep your own personal access via an app; on our side, we watch the whole fleet and step in before the fault ever shows up at your home.", points: ['Production measured continuously', 'Automatic alerts — proactive after-sales', 'Client access via mobile app'] },
 ];
 
 const warranties = [
@@ -63,7 +63,7 @@ const warranties = [
 
 <Layout
   title="The hardware we fit: Canadian Solar, Deye, Huawei, Dyness — and why | Taqinor"
-  description="Canadian Solar bifacial panels (30-year linear performance), Deye hybrid inverters, Dyness LFP 6,000-cycle batteries, Deye Cloud supervision: the hardware we actually fit, and the technical reason behind every choice."
+  description="Canadian Solar bifacial panels (30-year linear performance), Deye hybrid inverters, Dyness LFP 6,000-cycle batteries, real-time production monitoring: the hardware we actually fit, and the technical reason behind every choice."
   ogSlug="equipement"
 >
   <div class="v2">
@@ -228,8 +228,8 @@ const warranties = [
             <p class="mt-3 text-sm leading-relaxed text-lune-soft">
               Every reference on this page is a named tier-1 brand, with its official manufacturer
               datasheet linked on the <a href={L('/produits')} class="text-brass-300 underline underline-offset-2 hover:text-white">product page</a>,
-              its Taqinor contractual warranty and — once installed — verifiable production on
-              Deye Cloud. Nothing anonymous, nothing untraceable.
+              its Taqinor contractual warranty and — once installed — verifiable production via
+              real-time production monitoring. Nothing anonymous, nothing untraceable.
             </p>
           </div>
         </div>
@@ -245,8 +245,8 @@ const warranties = [
         <p class="v2-lead mt-4 text-encre-soft">
           A warranty is only worth as much as the file that documents it. Every installation leaves
           with its own, complete: single-line diagrams, cable cross-section calculations, the list
-          of protections, the commissioning procedure and Deye Cloud access so you can check the
-          production yourself.
+          of protections, the commissioning procedure and real-time production monitoring access so
+          you can check the production yourself.
         </p>
         <div class="mt-10 border-t-2 border-azur-900 bg-blanc" data-stagger>
           {warranties.map((w, i) => (

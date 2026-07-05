@@ -86,7 +86,7 @@ const warranties = [
 const engagements = [
   {
     title: 'Nous regardons votre courbe, pas seulement la nôtre',
-    body: 'Chaque installation remonte sur Deye Cloud : production en temps réel, historiques, alertes automatiques. Vous recevez votre accès personnel via l’application mobile — vous voyez exactement ce que nous voyons, jour après jour.',
+    body: 'Chaque installation bénéficie d’un suivi de production en temps réel : historiques, alertes automatiques. Vous recevez votre accès personnel via l’application mobile — vous voyez exactement ce que nous voyons, jour après jour.',
   },
   {
     title: 'C’est nous qui repérons l’anomalie, pas vous',
@@ -94,7 +94,7 @@ const engagements = [
   },
   {
     title: 'Le dossier reste entre vos mains',
-    body: 'À la livraison, vous repartez avec tout : schémas unifilaires, calcul de câbles, liste des protections, procédure de mise en service et accès au monitoring Deye Cloud. De quoi faire intervenir n’importe quel technicien, le jour où vous le voudrez.',
+    body: 'À la livraison, vous repartez avec tout : schémas unifilaires, calcul de câbles, liste des protections, procédure de mise en service et accès au suivi de production en temps réel. De quoi faire intervenir n’importe quel technicien, le jour où vous le voudrez.',
   },
 ];
 
@@ -136,7 +136,7 @@ const productionGuarantee = {
 
 <Layout
   title="Nos garanties — ce qui est couvert, et pour combien d’années | Taqinor"
-  description="Une installation Taqinor s’engage sur la durée : 30 ans de performance linéaire et 12 ans produit sur les panneaux (≥ 87,4 % de puissance à 30 ans), 10 ans onduleurs et batteries, 20 ans structure, 2 ans pose. Et un suivi qui repère l’anomalie avant vous, sur Deye Cloud."
+  description="Une installation Taqinor s’engage sur la durée : 30 ans de performance linéaire et 12 ans produit sur les panneaux (≥ 87,4 % de puissance à 30 ans), 10 ans onduleurs et batteries, 20 ans structure, 2 ans pose. Et un suivi de production en temps réel qui repère l’anomalie avant vous."
   ogSlug="garanties"
 >
   <div class="v2">
@@ -218,7 +218,7 @@ const productionGuarantee = {
           <p class="tech-label text-azur-600">Un scénario concret</p>
           <h3 class="display mt-2 text-lg">Si la performance tombe sous le seuil linéaire garanti</h3>
           <p class="mt-3 text-sm leading-relaxed text-encre-soft">
-            Vos panneaux sont mesurés en continu sur Deye Cloud. Si un contrôle constate, à l’intérieur
+            Vos panneaux sont mesurés en continu grâce au suivi de production en temps réel. Si un contrôle constate, à l’intérieur
             de la période de 30 ans, que la puissance restituée est passée sous le seuil linéaire garanti
             (≥ 87,4 % de la puissance initiale à 30 ans) — hors les exclusions ci-dessus — la garantie constructeur
             s’applique : remplacement ou compensation du panneau concerné, selon les termes du
@@ -238,13 +238,13 @@ const productionGuarantee = {
           {productionGuarantee.floorPct ? (
             <p class="mt-3 text-sm leading-relaxed text-encre-soft">
               Nous nous engageons sur un plancher de <strong>{productionGuarantee.floorPct} %</strong> de
-              la production annuelle estimée (méthode PVGIS), mesurée sur votre monitoring Deye Cloud.
+              la production annuelle estimée (méthode PVGIS), mesurée sur votre suivi de production en temps réel.
               {productionGuarantee.remedy ? ` ${productionGuarantee.remedy}` : ''}
             </p>
           ) : (
             <>
               <p class="mt-3 text-sm leading-relaxed text-encre-soft">
-                Chaque installation Taqinor remonte sa production réelle, en continu, sur Deye Cloud —
+                Chaque installation Taqinor bénéficie d’un suivi de production en temps réel, en continu —
                 c’est justement cette donnée mesurée, sur un parc désormais suivi depuis plus d’un an
                 (voir nos <a href="/realisations" class="font-semibold text-azur-600 underline decoration-azur-600/40 underline-offset-2 hover:decoration-azur-600">réalisations</a>),
                 qui rendrait crédible un engagement chiffré : un plancher de production annuelle

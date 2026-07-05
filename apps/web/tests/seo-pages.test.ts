@@ -248,7 +248,7 @@ describe('teaser garanties (W16)', () => {
       expect(teaser, fig).toContain(fig);
     }
     expect(teaser).toContain('87,4');
-    expect(body).toContain('Deye Cloud');
+    expect(teaser).toMatch(/temps réel|real-time|الوقت الحقيقي/);
     // W67 : le lien est désormais localisé via localizeNavHref('/garanties', locale)
     // (FR inchangé : localizeNavHref('/garanties','fr') === '/garanties'). On vérifie
     // donc la cible /garanties plutôt que le littéral href="/garanties".

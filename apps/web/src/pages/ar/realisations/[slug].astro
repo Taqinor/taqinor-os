@@ -117,9 +117,9 @@ const galleryPhotos = rest;
         <div class="absolute inset-0 bg-gradient-to-t from-nuit via-nuit/55 to-nuit/20"></div>
       </div>
       <div class="mx-auto max-w-6xl px-4 pb-16 pt-24 sm:pb-20 sm:pt-32">
-        <p class="tech-label v2-kicker rule-brass cine-in text-lune">المرجع {r.ref} · {r.ville} · {r.date}</p>
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">المرجع <span dir="ltr">{r.ref} · {r.ville} · {r.date}</span></p>
         <h1 class="display v2-page-title cine-in mt-5 max-w-[20ch] [animation-delay:120ms]">
-          {r.kwc} من التركيب الشمسي {cityIntro}
+          <span dir="ltr">{r.kwc}</span> من التركيب الشمسي {cityIntro}
         </h1>
         <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">{cs.resume}</p>
       </div>
@@ -130,19 +130,19 @@ const galleryPhotos = rest;
       <dl class="mx-auto grid max-w-6xl gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
         <div class="v2-rise" style="--v2-i:0">
           {/* W211 — whitespace-nowrap removed: wide production values can overflow at 320 px */}
-          <dd class="fig lum text-3xl sm:text-4xl" data-tally>{r.kwc}</dd>
+          <dd class="fig lum text-3xl sm:text-4xl" data-tally dir="ltr">{r.kwc}</dd>
           <dt class="tech-label mt-2 text-lune-faint">القدرة المُركَّبة</dt>
         </div>
         {r.production && (
           <div class="v2-rise" style="--v2-i:1">
-            <dd class="fig lum text-3xl sm:text-4xl" data-tally>{r.production}</dd>
+            <dd class="fig lum text-3xl sm:text-4xl" data-tally dir="ltr">{r.production}</dd>
             <dt class="tech-label mt-2 text-lune-faint">
-              {r.productionEstimated ? 'إنتاج مُقدَّر — عائد مقاس على أوراشنا' : 'إنتاج مقيس — Deye Cloud'}
+              {r.productionEstimated ? 'إنتاج مُقدَّر — عائد مقاس على أوراشنا' : 'إنتاج مقيس — متابعة الإنتاج في الوقت الحقيقي'}
             </dt>
           </div>
         )}
         <div class="v2-rise" style="--v2-i:2">
-          <dd class="font-display text-xl font-bold text-white">{r.panneaux}</dd>
+          <dd class="font-display text-xl font-bold text-white" dir="ltr">{r.panneaux}</dd>
           <dt class="tech-label mt-2 text-lune-faint">الألواح المُركَّبة</dt>
         </div>
         <div class="v2-rise" style="--v2-i:3">
@@ -155,7 +155,7 @@ const galleryPhotos = rest;
     <!-- سرد الورش: الوضع، تحديد المقاس، النتيجة المقيسة -->
     <section class="mx-auto max-w-3xl px-4 py-20 sm:py-28">
       <p class="tech-label v2-kicker rule-brass text-lune">الورش، مَرويّاً</p>
-      <h2 class="display v2-section-title mt-5 text-white">لماذا {r.kwc}، على هذا السطح</h2>
+      <h2 class="display v2-section-title mt-5 text-white">لماذا <span dir="ltr">{r.kwc}</span>، على هذا السطح</h2>
       <p class="v2-lead mt-5 text-lune-soft">{cs.situation}</p>
       <p class="v2-lead mt-4 text-lune-soft">{cs.sizing}</p>
       <p class="v2-lead mt-4 text-lune-soft">{cs.result}</p>
@@ -212,7 +212,7 @@ const galleryPhotos = rest;
           {equipment.map((e, i) => (
             <div class="v2-rise flex items-baseline justify-between gap-4 border-b border-white/10 py-4" style={`--v2-i:${i}`}>
               <span class="tech-label text-lune-faint">{e.label}</span>
-              <span class="text-right font-display text-base font-bold text-white">{e.value}</span>
+              <span class="text-right font-display text-base font-bold text-white" dir="ltr">{e.value}</span>
             </div>
           ))}
         </div>

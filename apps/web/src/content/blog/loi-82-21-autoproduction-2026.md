@@ -1,7 +1,7 @@
 ---
 title: "Loi 82-21 : ce qui change depuis le 9 juin 2026"
 description: "Autoproduction au Maroc : 3 régimes, plafond surplus 20 %, net-billing (rachat 0,18–0,21 DH/kWh en MT/HT ; tarif BT résidentiel non encore publié) — la valeur est dans l'autoconsommation."
-pubDate: 2026-06-21
+pubDate: 2026-06-29
 updatedDate: 2026-07-03
 tags: ["loi 82-21", "réglementation", "autoproduction", "2026"]
 author: "Reda Kasri"

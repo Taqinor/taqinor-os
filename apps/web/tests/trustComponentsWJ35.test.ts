@@ -51,15 +51,15 @@ describe('WJ35 — TestimonialCarousel : mêmes garde-fous d\'intégrité que <T
 describe('WJ35 — InstallCounter : chiffres dérivés de realisations.ts, jamais codés en dur', () => {
   it("n'importe que realisations.ts comme source (aucune valeur numérique inventée dans le composant)", () => {
     expect(INSTALL_COUNTER).toContain("from '../lib/realisations'");
-    // RULE B (WA2, 2026-07-04) : le décompte brut d'installations (REALISATIONS.length)
-    // a été retiré ; le composant dérive désormais uniquement le total kWc.
-    expect(INSTALL_COUNTER).toContain('REALISATIONS');
-    expect(INSTALL_COUNTER).toContain('kwcNum');
+    // WC5/WC6 (2026-07-05) : le composant n'affiche plus la CAPACITÉ installée
+    // (« 43,48 kWc », retirée du site) mais la PRODUCTION mesurée de la flotte.
+    expect(INSTALL_COUNTER).toContain('MEASURED_FLEET_LIFETIME_MWH');
+    expect(INSTALL_COUNTER).not.toContain('kWc installés');
   });
-  it('le total kWc dérivé reste identique au chiffre déjà publié sur l’accueil (43,48 kWc)', () => {
-    const total = REALISATIONS.reduce((sum, r) => sum + r.kwcNum, 0);
-    expect(total).toBeCloseTo(43.48, 2);
-    expect(REALISATIONS.length).toBeGreaterThan(0);
+  it('affiche la production mesurée de la flotte (MWh), pas la capacité', () => {
+    expect(INSTALL_COUNTER).toContain('MEASURED_FLEET_LIFETIME_MWH');
+    expect(INSTALL_COUNTER).toContain('MWh produits et mesurés');
+    expect(INSTALL_COUNTER).not.toContain('kwcNum');
   });
   it('reduced-motion : le count-up est gated, la valeur finale est toujours révélée', () => {
     expect(INSTALL_COUNTER).toContain('prefers-reduced-motion');
