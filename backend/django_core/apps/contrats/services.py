@@ -2343,6 +2343,16 @@ def facturer_ligne_echeance(ligne, *, user=None, taux_tva=Decimal('20')):
     ligne.facture_id = facture.id
     ligne.save(update_fields=['facture_id'])
 
+    # YSUBS6 — cette facture est créée EMISE directement (échéancier récurrent,
+    # jamais de passage par l'action `emettre`) : émettre l'événement
+    # documentaire pour que l'auto-écriture compta (YLEDG1, gardée par le
+    # toggle COMPTA_AUTO_ECRITURES, OFF par défaut) se déclenche comme sur une
+    # facture émise via l'écran. core.events est une fondation (M6) — jamais
+    # d'import d'apps.compta ici.
+    from core.events import facture_emise
+    facture_emise.send(
+        sender=Facture, instance=facture, company=echeancier.company)
+
     journaliser_transition(
         contrat, field='facturation', old_value='',
         new_value=f'Facture {facture.reference} (échéance n°{ligne.numero})',
