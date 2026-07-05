@@ -4,12 +4,21 @@
  *
  * Le navigateur du client poste ici { token, reference, clientPhone, event }
  * (`event` ∈ 'proposal_first_view' | 'proposal_scrolled_financing') et ce
- * handler relaie côté serveur vers le MÊME fil lead que capture-lead/preview-
- * lead — `LEAD_WEBHOOK_URL` + en-tête `X-Webhook-Secret` (`LEAD_WEBHOOK_SECRET`)
- * — AUCUN nouvel endpoint backend, AUCUN nouveau secret. `buildProposalTrackPayload`
- * (lib/proposition.ts) porte le garde-fou anti-pollution CRM : sans téléphone
- * client exploitable, elle renvoie `null` et cette route répond 202 sans rien
- * poster (jamais un lead fantôme créé pour un simple événement de lecture).
+ * handler relaie côté serveur vers le canal TÉLÉMÉTRIE/FUNNEL dédié
+ * (`FUNNEL_WEBHOOK_URL` + `X-Webhook-Secret` optionnel via
+ * `FUNNEL_WEBHOOK_SECRET`) — EXACTEMENT le même canal que
+ * `pages/api/funnel-beacon.ts` (voir `lib/funnelBeacon.ts`).
+ *
+ * WJ109 — [CORRECTIF DE CORRUPTION DE DONNÉES EN PRODUCTION] Cette route
+ * postait auparavant vers `LEAD_WEBHOOK_URL`, le webhook de CAPTURE DE LEAD du
+ * CRM (`apps/crm/webhooks.py`). Ce webhook traite CHAQUE payload reçu comme une
+ * mise à jour de lead ; sans nom exploitable dans l'événement, il écrasait le
+ * NOM RÉEL du lead existant par « Lead site web » et le retaguait — un client
+ * qui se contentait d'OUVRIR sa proposition corrompait donc sa propre fiche
+ * CRM. `LEAD_WEBHOOK_URL`/`LEAD_WEBHOOK_SECRET` ne doivent PLUS JAMAIS être lus
+ * ici : une simple vue de proposition n'est PAS une capture de lead. Quand
+ * `FUNNEL_WEBHOOK_URL` n'est pas configuré, l'événement est journalisé
+ * (log-only, comme `funnel-beacon.ts`) — jamais posté au fil lead.
  *
  * Best-effort strict : ne bloque JAMAIS l'UX (toujours 200/202 côté client),
  * aucune PII journalisée, tolère l'absence de configuration webhook.
@@ -23,8 +32,10 @@ import { crossSiteRejection, isSameOriginRequest } from '../../lib/lead';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 
 interface TrackEnv {
-  LEAD_WEBHOOK_URL?: string;
-  LEAD_WEBHOOK_SECRET?: string;
+  /** WJ109 — canal télémétrie DÉDIÉ, distinct du webhook de lead CRM (voir la
+   *  note ci-dessus). Absent par défaut : log-only, jamais bloquant. */
+  FUNNEL_WEBHOOK_URL?: string;
+  FUNNEL_WEBHOOK_SECRET?: string;
 }
 
 function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
@@ -65,16 +76,24 @@ export const POST: APIRoute = async ({ request }) => {
 
   if (!token || !event) return json({ ok: false }, 400);
 
-  const payload = buildProposalTrackPayload({ reference, token, clientPhone }, event);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- clientPhone kept for API compat, never forwarded (WJ109)
+  void clientPhone;
+  const payload = buildProposalTrackPayload({ reference, token }, event);
   if (!payload) {
-    // Aucun téléphone client exploitable : événement abandonné proprement,
-    // jamais un lead fantôme envoyé au CRM (voir la note dans lib/proposition.ts).
+    // Rien de corrélable (ni référence ni token) : événement abandonné
+    // proprement, jamais rien posté nulle part.
     return json({ ok: true, sent: false }, 202);
   }
 
   const env = (cf.env ?? {}) as TrackEnv;
-  const url = env.LEAD_WEBHOOK_URL?.trim();
-  if (!url) return json({ ok: true, sent: false }, 202);
+  // WJ109 — canal télémétrie/funnel UNIQUEMENT ; ne JAMAIS lire
+  // LEAD_WEBHOOK_URL ici (voir la note en tête de fichier).
+  const url = env.FUNNEL_WEBHOOK_URL?.trim();
+  if (!url) {
+    // Log-only, comme funnel-beacon.ts : aucune PII, jamais bloquant.
+    console.log('[proposition-track]', JSON.stringify(payload));
+    return json({ ok: true, sent: false }, 202);
+  }
 
   const background = (async () => {
     try {
@@ -82,7 +101,7 @@ export const POST: APIRoute = async ({ request }) => {
         'content-type': 'application/json',
         'x-webhook-timestamp': new Date().toISOString(),
       };
-      const secret = env.LEAD_WEBHOOK_SECRET?.trim();
+      const secret = env.FUNNEL_WEBHOOK_SECRET?.trim();
       if (secret) headers['x-webhook-secret'] = secret;
       await fetch(url, {
         method: 'POST',

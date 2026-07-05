@@ -36,7 +36,11 @@ import { NAP } from '../../lib/nap';
 // visitables) plutôt qu'un total fixe de projets (cadrage W14, « récence »).
 // WC5 — l'agrégat « kWc installés » (somme des installations) est retiré
 // site-wide ; seule la puissance par installation reste affichée.
-const villesCount = new Set(REALISATIONS.map((r) => r.ville)).size;
+// WN2 (2026-07-05) — un compte de villes (≈3) rendu en chiffre monumental se
+// lit comme un petit nombre décevant ; une liste qualitative des villes
+// (noms réels, dérivés de REALISATIONS) porte la même information sans
+// l'écraser dans un badge chiffré.
+const villesUniques = [...new Set(REALISATIONS.map((r) => r.ville))];
 
 // Préparer les données lightbox pour chaque carte
 const galleryItems = REALISATIONS.map((r) => ({
@@ -88,7 +92,7 @@ const itemListJsonLd = {
         <dl class="cine-in mt-8 flex flex-wrap gap-x-10 gap-y-4 [animation-delay:360ms]">
           <div>
             <dt class="tech-label text-lune-faint">Villes</dt>
-            <dd class="fig lum text-3xl">{villesCount}</dd>
+            <dd class="font-display text-2xl font-bold text-white">{villesUniques.join(' · ')}</dd>
           </div>
           <div>
             <dt class="tech-label text-lune-faint">Chantiers</dt>

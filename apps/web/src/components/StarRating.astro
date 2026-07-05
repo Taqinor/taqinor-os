@@ -1,12 +1,17 @@
 ---
 /**
- * WJ35 — StarRating : note Google RÉELLE uniquement (src/lib/testimonials.ts
- * GOOGLE_RATING). Composant « vide-mais-premium » : tant que le fondateur n'a
- * pas renseigné une vraie note, on affiche un scaffold sobre flagué « pending
- * real content from Reda » — JAMAIS une note ou un compte d'avis fabriqués.
+ * WJ35/WN6 — StarRating : note Google RÉELLE uniquement (src/lib/testimonials.ts
+ * GOOGLE_RATING). Checked-facts-only (WN6) : tant que le fondateur n'a pas
+ * renseigné une vraie note, le composant NE REND RIEN — plus aucun scaffold
+ * d'attente « à venir » (un compte à rebours implicite qu'on ne tient pas) —
+ * JAMAIS une note ou un compte d'avis fabriqués, jamais un espace réservé.
  *
- * FR + AR (dual-node data-i18n, cohérent avec le mécanisme fixé en WJ33 —
- * pas de textContent qui aplatirait des balises imbriquées).
+ * FR + EN + AR (dual-node data-i18n, cohérent avec le mécanisme fixé en WJ33 —
+ * pas de textContent qui aplatirait des balises imbriquées). WJ99 — `data-en`
+ * ajouté : ce composant est monté sur /proposition/[token] (EN disponible) ;
+ * sans variante anglaise, un visiteur en langue EN voyait silencieusement le
+ * texte FR (repli implicite du mécanisme dual-node, jamais un texte manquant
+ * qui casse — mais jamais l'anglais non plus).
  */
 import { GOOGLE_RATING, hasRating } from '../lib/testimonials';
 
@@ -18,38 +23,29 @@ const { compact = false } = Astro.props;
 const rating = hasRating() ? GOOGLE_RATING! : null;
 ---
 
-<div class={`star-rating ${compact ? 'star-rating--compact' : ''}`} aria-label={rating ? `Note ${rating.value} sur 5` : undefined}>
-  {rating ? (
-    <>
-      <span class="star-rating__stars" aria-hidden="true">
-        {[0, 1, 2, 3, 4].map((i) => (
-          <svg class="star-rating__star" viewBox="0 0 20 20" fill="currentColor" xmlns="http://www.w3.org/2000/svg"
-            style={i < Math.round(rating!.value) ? undefined : 'opacity:.28'}>
-            <path d="M10 1.5l2.47 5.27 5.78.62-4.32 3.9 1.2 5.71L10 14.98l-5.13 2.92 1.2-5.71-4.32-3.9 5.78-.62L10 1.5z" />
-          </svg>
-        ))}
-      </span>
-      {rating.url ? (
-        <a href={rating.url} target="_blank" rel="noopener noreferrer" class="star-rating__figure">
-          <span class="font-bold text-white">{rating.value}</span>/5 · {rating.count}{' '}
-          <span data-i18n data-fr="avis Google" data-ar="مراجعة على Google">avis Google</span>
-        </a>
-      ) : (
-        <p class="star-rating__figure">
-          <span class="font-bold text-white">{rating.value}</span>/5 · {rating.count}{' '}
-          <span data-i18n data-fr="avis Google" data-ar="مراجعة على Google">avis Google</span>
-        </p>
-      )}
-    </>
-  ) : (
-    <!-- pending real content from Reda : note Google réelle + lien avis. Aucune
-         étoile ni chiffre n'est affiché tant que ces données ne sont pas fournies. -->
-    <p class="star-rating__pending" data-i18n
-      data-fr="Avis clients — bientôt disponibles" data-ar="آراء العملاء — قريباً">
-      Avis clients — bientôt disponibles
-    </p>
-  )}
-</div>
+{rating && (
+  <div class={`star-rating ${compact ? 'star-rating--compact' : ''}`} aria-label={`Note ${rating.value} sur 5`}>
+    <span class="star-rating__stars" aria-hidden="true">
+      {[0, 1, 2, 3, 4].map((i) => (
+        <svg class="star-rating__star" viewBox="0 0 20 20" fill="currentColor" xmlns="http://www.w3.org/2000/svg"
+          style={i < Math.round(rating.value) ? undefined : 'opacity:.28'}>
+          <path d="M10 1.5l2.47 5.27 5.78.62-4.32 3.9 1.2 5.71L10 14.98l-5.13 2.92 1.2-5.71-4.32-3.9 5.78-.62L10 1.5z" />
+        </svg>
+      ))}
+    </span>
+    {rating.url ? (
+      <a href={rating.url} target="_blank" rel="noopener noreferrer" class="star-rating__figure">
+        <span class="font-bold text-white">{rating.value}</span>/5 · {rating.count}{' '}
+        <span data-i18n data-fr="avis Google" data-en="Google reviews" data-ar="مراجعة على Google">avis Google</span>
+      </a>
+    ) : (
+      <p class="star-rating__figure">
+        <span class="font-bold text-white">{rating.value}</span>/5 · {rating.count}{' '}
+        <span data-i18n data-fr="avis Google" data-en="Google reviews" data-ar="مراجعة على Google">avis Google</span>
+      </p>
+    )}
+  </div>
+)}
 
 <style>
   .star-rating {

@@ -93,9 +93,9 @@ const claimSteps = [
   },
 ];
 
-// W352 — «ضمان إنتاج تاكينور»: scaffold `pending founder commitment`. تبقى
-// floorPct/remedy فارغة (null) إلى أن توفر WG12 (بوابة المؤسس) العتبة
-// السنوية والحل — إلى ذلك الحين لا يُعرض سوى الإطار، أبداً نسبة مخترعة.
+// W352 / WN3 — «ضمان إنتاج تاكينور»: تبقى floorPct/remedy فارغة (null) إلى أن
+// تُحدَّد عتبة رقمية. وما دامت فارغة، يُحذف القسم كلياً من جهة العميل — لا حالة
+// «قيد الانتظار» ولا نسبة مخترعة (قاعدة الوقائع المؤكَّدة فقط).
 const productionGuarantee = {
   floorPct: null as number | null,
   remedy: null as string | null,
@@ -175,8 +175,7 @@ const productionGuarantee = {
             ))}
           </ul>
           <p class="mt-4 text-xs italic text-encre-faint">
-            رهن التأكيد: اللائحة الدقيقة قيد المصادقة من طرف تاكينور — النسخة التعاقدية التي تُسلَّم
-            لكم عند التوقيع هي المرجع.
+            هذه اللائحة استدلالية؛ النسخة التعاقدية التي تُسلَّم لكم عند التوقيع هي المرجع.
           </p>
         </div>
 
@@ -192,38 +191,21 @@ const productionGuarantee = {
           </p>
         </div>
 
-        <!-- W352 — «ضمان إنتاج تاكينور»: قسم مستقل، `pending founder
-             commitment`. يشرح الإطار (كيف تُقاس عتبة إنتاج سنوية، من أي
-             بيانات) دون عرض أي نسبة إلى أن تحسم WG12 — انظر
-             productionGuarantee أعلاه. -->
-        <div class="mx-auto mt-14 max-w-xl border-2 border-brass-400/50 bg-blanc p-6">
-          <p class="tech-label text-azur-600">ما تجعله بياناتنا ممكناً</p>
-          <h3 class="display mt-2 text-lg">ضمان إنتاج تاكينور</h3>
-          {productionGuarantee.floorPct ? (
+        <!-- W352 / WN3 — «ضمان إنتاج تاكينور»: قسم مستقل لا يُعرض إلا عند
+             تحديد عتبة رقمية (productionGuarantee.floorPct). وما دام لا رقم
+             مؤكَّد، يُحذف القسم من جهة العميل — دون عرض أي حالة «قيد الانتظار»
+             (قاعدة الوقائع المؤكَّدة فقط). -->
+        {productionGuarantee.floorPct ? (
+          <div class="mx-auto mt-14 max-w-xl border-2 border-brass-400/50 bg-blanc p-6">
+            <p class="tech-label text-azur-600">ما تجعله بياناتنا ممكناً</p>
+            <h3 class="display mt-2 text-lg">ضمان إنتاج تاكينور</h3>
             <p class="mt-3 text-sm leading-relaxed text-encre-soft">
               نلتزم بعتبة قدرها <strong>{productionGuarantee.floorPct} %</strong> من الإنتاج السنوي
               المقدَّر (منهجية PVGIS)، مقيسةً على متابعة الإنتاج في الوقت الحقيقي الخاصة بكم.
               {productionGuarantee.remedy ? ` ${productionGuarantee.remedy}` : ''}
             </p>
-          ) : (
-            <>
-              <p class="mt-3 text-sm leading-relaxed text-encre-soft">
-                كل تركيبة تاكينور تستفيد من متابعة الإنتاج في الوقت الحقيقي، باستمرار — هذه البيانات المقيسة
-                بالذات، على أسطول يُتابَع منذ أكثر من سنة (انظر
-                {' '}<a href={L('/realisations')} class="font-semibold text-azur-600 underline decoration-azur-600/40 underline-offset-2 hover:decoration-azur-600">إنجازاتنا</a>)،
-                هي ما يجعل التزاماً رقمياً ذا مصداقية: عتبة إنتاج سنوية (كنسبة من تقدير PVGIS المعتمد
-                عند الدراسة) دونها يُطبَّق حل محدد.
-              </p>
-              <p class="mt-3 text-sm leading-relaxed text-encre-soft">
-                هذه العتبة وحلّها لم يُحسما بعد — لا ننشر أي نسبة إلى أن يُحسم الالتزام. سيُستكمل هذا
-                القسم بمجرد ذلك.
-              </p>
-              <p class="mt-4 text-xs italic text-encre-faint">
-                في انتظار التزام من المؤسس — لا يُنشر أي رقم قبل التأكيد.
-              </p>
-            </>
-          )}
-        </div>
+          </div>
+        ) : null}
       </div>
     </section>
 

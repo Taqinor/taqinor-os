@@ -15,24 +15,41 @@ interface CertItem {
   label: string;
   labelAr: string;
   detail: string;
+  detailEn: string;
   detailAr: string;
 }
 
+// WJ99 — `detailEn` ajouté : ce composant est monté sur /proposition/[token]
+// (EN disponible) ; sans variante anglaise, un visiteur EN voyait
+// silencieusement le libellé FR (repli implicite du mécanisme dual-node).
 const CERTS: CertItem[] = [
-  { label: 'IEC 61215 / 61730', labelAr: 'IEC 61215 / 61730', detail: 'Modules certifiés', detailAr: 'ألواح معتمدة' },
-  { label: 'Loi 82-21', labelAr: 'القانون 82-21', detail: 'Autoconsommation BT', detailAr: 'الاستهلاك الذاتي' },
-  { label: '30 ans', labelAr: '30 سنة', detail: 'Garantie performance panneaux', detailAr: 'ضمان أداء الألواح' },
-  { label: '10 ans', labelAr: '10 سنوات', detail: 'Garantie onduleur', detailAr: 'ضمان العاكس' },
+  { label: 'IEC 61215 / 61730', labelAr: 'IEC 61215 / 61730', detail: 'Modules certifiés', detailEn: 'Certified modules', detailAr: 'ألواح معتمدة' },
+  { label: 'Loi 82-21', labelAr: 'القانون 82-21', detail: 'Autoconsommation BT', detailEn: 'Low-voltage self-consumption', detailAr: 'الاستهلاك الذاتي' },
+  { label: '30 ans', labelAr: '30 سنة', detail: 'Garantie performance panneaux', detailEn: 'Panel performance warranty', detailAr: 'ضمان أداء الألواح' },
+  { label: '10 ans', labelAr: '10 سنوات', detail: 'Garantie onduleur', detailEn: 'Inverter warranty', detailAr: 'ضمان العاكس' },
 ];
 ---
 
-<div class="cert-row" role="list" aria-label="Certifications et garanties" data-choreo>
+<!-- WJ99 — `aria-label` racine porte les 3 traductions en `data-*` (jamais un
+     texte statique figé en FR) : /proposition/[token] bascule sa langue
+     ENTIÈREMENT côté client (applyLang('fr'|'en'|'ar'), pas de route /en//ar/
+     dédiée pour cette page dynamique) — un `Astro.currentLocale` résolu au
+     build serait toujours 'fr' ici, jamais la langue réellement affichée. Le
+     script du composant hôte (proposition/[token].astro applyLang) doit lire
+     ces data-attrs et réécrire aria-label à chaque bascule ; sans hôte
+     compatible (ex. mon-toit.astro, FR-only), l'attribut reste simplement le
+     FR ci-dessous — comportement identique à avant. -->
+<div class="cert-row" role="list" aria-label="Certifications et garanties"
+  data-aria-label-fr="Certifications et garanties"
+  data-aria-label-en="Certifications and warranties"
+  data-aria-label-ar="الشهادات والضمانات"
+  data-choreo>
   {/* W377 — data-choreo cascades each cert in as the row scrolls into view
       (see v2.css); --i orders the four items left→right. */}
   {CERTS.map((c, i) => (
     <div class="cert-row__item" role="listitem" style={`--i:${i}`}>
       <p class="cert-row__label">{c.label}</p>
-      <p class="cert-row__detail" data-i18n data-fr={c.detail} data-ar={c.detailAr}>{c.detail}</p>
+      <p class="cert-row__detail" data-i18n data-fr={c.detail} data-en={c.detailEn} data-ar={c.detailAr}>{c.detail}</p>
     </div>
   ))}
 </div>

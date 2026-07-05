@@ -428,8 +428,20 @@ const galleryPhotos = rest;
     cursor: pointer;
     transition: color 200ms, border-color 200ms;
   }
-  .slug-lightbox-arrow--prev { left: 1rem; }
-  .slug-lightbox-arrow--next { right: 1rem; }
+  /* WC3 — RTL : même convention que ar/realisations/index.astro (WA23) :
+     « précédent » reste à droite visuellement (sens de lecture arabe),
+     « suivant » à gauche ; logical properties + chevrons SVG retournés
+     (dessinés pour la sémantique LTR à l'origine). Cette page est TOUJOURS en
+     RTL (locale AR) — sans ce fix les flèches restaient épinglées à gauche/
+     droite physiques, non miroirées. */
+  .slug-lightbox-arrow--prev {
+    inset-inline-start: max(1rem, env(safe-area-inset-left));
+    transform: translateY(-50%) scaleX(-1);
+  }
+  .slug-lightbox-arrow--next {
+    inset-inline-end: max(1rem, env(safe-area-inset-right));
+    transform: translateY(-50%) scaleX(-1);
+  }
   .slug-lightbox-arrow:hover,
   .slug-lightbox-arrow:focus-visible {
     color: var(--color-brass-300);

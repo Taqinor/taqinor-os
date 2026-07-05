@@ -8,6 +8,7 @@ import {
   TELEMETRY_STEP_IDS,
   buildTelemetryEvent,
   isTelemetryEventName,
+  toFunnelWire,
 } from '../src/lib/telemetryEvents';
 
 describe('telemetryEvents — vocabulaire fermé (WJ91)', () => {
@@ -34,10 +35,33 @@ describe('telemetryEvents — vocabulaire fermé (WJ91)', () => {
     }
   });
 
+  // WJ104 — delta d'instrumentation RÉELLEMENT câblé (voir toFunnelWire ci-dessous).
+  it('WJ104 — couvre les nouveaux événements delta (estimate_viewed, callback_requested)', () => {
+    expect(TELEMETRY_EVENTS).toContain('estimate_viewed');
+    expect(TELEMETRY_EVENTS).toContain('callback_requested');
+  });
+
   it('isTelemetryEventName rejette un nom hors vocabulaire', () => {
     expect(isTelemetryEventName('proposal_signed')).toBe(true);
     expect(isTelemetryEventName('random_event')).toBe(false);
     expect(isTelemetryEventName(42)).toBe(false);
+  });
+});
+
+// WJ104 — traduction vers le beacon step-level existant (WJ59 funnelBeacon.ts).
+describe('toFunnelWire — WJ104 : pont vers le beacon {step, action} existant', () => {
+  it('traduit les 4 événements delta vers leur couple {step, action}', () => {
+    expect(toFunnelWire('estimate_viewed')).toEqual({ step: 'estimation', action: 'viewed' });
+    expect(toFunnelWire('callback_requested')).toEqual({ step: 'contact', action: 'callback_requested' });
+    expect(toFunnelWire('proposal_viewed')).toEqual({ step: 'proposal', action: 'viewed' });
+    expect(toFunnelWire('proposal_signed')).toEqual({ step: 'proposal', action: 'signed' });
+  });
+
+  it('renvoie null pour un événement non câblé (statut d\'adoption inchangé)', () => {
+    expect(toFunnelWire('journey_step_viewed')).toBeNull();
+    expect(toFunnelWire('estimate_rendered')).toBeNull();
+    expect(toFunnelWire('whatsapp_clicked')).toBeNull();
+    expect(toFunnelWire('proposal_scrolled_to_financing')).toBeNull();
   });
 });
 

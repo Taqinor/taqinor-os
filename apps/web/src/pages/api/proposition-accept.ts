@@ -87,11 +87,18 @@ export const POST: APIRoute = async ({ request }) => {
     signatureRaw.startsWith('data:image/') && signatureRaw.length <= 300_000 ? signatureRaw : '';
   const consent_esign = body.consent_esign === true || body.consent_esign === 'true';
   const signed_at_client = typeof body.signed_at_client === 'string' ? body.signed_at_client : '';
+  // WJ108 — code OTP OPTIONNEL (backend `validate_esign_otp`, toggle
+  // ESIGN_OTP_ENABLED) : relayé tel quel, ignoré par un backend/toggle OFF
+  // (comportement inchangé). Bornée en longueur par bon sens (le code réel
+  // fait 6 chiffres) — jamais une chaîne arbitraire envoyée sans raison.
+  const otpRaw = typeof body.otp_code === 'string' ? body.otp_code.trim() : '';
+  const otp_code = otpRaw.length > 0 && otpRaw.length <= 16 ? otpRaw : '';
 
   const upstreamBody = buildAcceptBodyRich(form, twoOptions, {
     signature_data_url,
     consent_esign,
     signed_at_client,
+    otp_code,
   });
 
   const url = acceptEndpoint(resolveApiBase(), token);

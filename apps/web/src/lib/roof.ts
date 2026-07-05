@@ -39,6 +39,17 @@ export const PANEL_GAP_M = 0.02; // jeu entre panneaux
 // — Hypothèses énergie (Maroc) —
 export const KWH_PER_KWC_YEAR = 1600; // productible de repli quand PVGIS est injoignable
 export const TARIFF_MAD_PER_KWH = 1.4; // tarif moyen (aligné sur billRange.ts)
+// WC9 (2026-07-05) — le wording client (nos-solutions.astro, index.astro)
+// affiche désormais « 50–100 % de la facture couverte — selon batteries et
+// usage jour/nuit », plus large que la fourchette 60–90 % ci-dessous. Le
+// plafond `annualSavingsBandMad` (cap sur la facture annuelle) porte déjà
+// `high` jusqu'à 100 % de la facture pour une toiture surdimensionnée — donc
+// la borne haute réelle affichée peut déjà atteindre 100 %. Changer ces deux
+// constantes déplacerait aussi les MAD affichés par l'estimateur (bandes de
+// gain sur /devis/mon-toit, hors périmètre HOME) et casserait
+// `tests/roof.test.ts` (bande 60–90 % verrouillée) — laissé tel quel ici ;
+// seul le libellé % public a été élargi. Le fondateur peut resserrer ce
+// commentaire ↔ ces constantes dans une tâche estimateur dédiée si besoin.
 const SELF_CONSUMPTION_LOW = 0.6; // fourchette 60–90 % de la valeur produite
 const SELF_CONSUMPTION_HIGH = 0.9;
 
@@ -257,7 +268,9 @@ export interface SavingsBandOptions {
 
 /**
  * Fourchette d'économies annuelles (MAD) : 60–90 % de la valeur produite,
- * PLAFONNÉE à la facture annuelle estimée si elle est fournie (ERR113). Le
+ * PLAFONNÉE à la facture annuelle estimée si elle est fournie (ERR113) — ce
+ * plafond permet déjà à `high` d'atteindre 100 % de la facture (WC9 : le
+ * wording public dit « 50–100 % », selon batteries/usage jour-nuit). Le
  * plafond garde l'estimation plausible : l'autoconsommation ne peut pas
  * dépasser la dépense réelle. La borne basse est plafonnée au plafond aussi
  * (jamais low > high), donc une toiture surdimensionnée affiche au plus

@@ -425,6 +425,10 @@ const galleryPhotos = rest;
   }
   .slug-lightbox-arrow--prev { left: 1rem; }
   .slug-lightbox-arrow--next { right: 1rem; }
+  /* WC3 — RTL mirror (defensive: this route is EN-only today, but the arrows
+     must not silently stay LTR-pinned if ever rendered under dir="rtl"). */
+  [dir="rtl"] .slug-lightbox-arrow--prev { left: auto; right: 1rem; }
+  [dir="rtl"] .slug-lightbox-arrow--next { right: auto; left: 1rem; }
   .slug-lightbox-arrow:hover,
   .slug-lightbox-arrow:focus-visible {
     color: var(--color-brass-300);

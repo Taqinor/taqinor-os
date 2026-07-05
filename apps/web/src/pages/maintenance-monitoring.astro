@@ -21,9 +21,11 @@
  *
  * W255 — Le SAV proactif devient un titre à part entière (co-tête de page
  * avec le monitoring), et 3 tiers d'entretien NOMMÉS (Essentiel/Confort/
- * Premium) sont scaffoldés : inclusions du site (aucun chiffre inventé), SLA
- * de réponse + prix marqués « en attente de validation du fondateur » (WG10 —
- * pas encore fournis). Chaque tier a un CTA WhatsApp pré-rempli.
+ * Premium) sont scaffoldés : inclusions du site (aucun chiffre inventé).
+ * WN4 (2026-07-05) — délai de réponse (SLA) et tarif ne sont pas encore
+ * validés par le fondateur (WG10) : plutôt qu'un placeholder « en attente de
+ * validation » client-facing, ces deux champs sont OMIS et chaque tier
+ * renvoie vers un devis personnalisé via un CTA WhatsApp pré-rempli.
  *
  * W257 — Monitoring présenté par résultats (3 mockups téléphone honnêtes —
  * aucun faux tableau de bord Deye Cloud, juste les 3 promesses déjà publiées
@@ -75,31 +77,29 @@ const apresInstallation = [
 ];
 
 
-// W255 — 3 tiers d'entretien NOMMÉS, scaffold no-op-safe : inclusions tirées
-// du positionnement déjà publié (monitoring/SAV/dossier technique) ; SLA de
-// réponse et prix restent des placeholders explicitement flagués tant que
-// Reda n'a pas validé les engagements réels (WG10, gate ouvert).
+// W255/WN4 (2026-07-05) — 3 tiers d'entretien NOMMÉS : inclusions tirées du
+// positionnement déjà publié (monitoring/SAV/dossier technique). Le délai de
+// réponse (SLA) et le tarif de chaque formule ne sont pas encore validés par
+// le fondateur (WG10) : plutôt qu'afficher un placeholder « en attente de
+// validation », ces deux champs sont OMIS (règle « faits vérifiés
+// uniquement ») et chaque tier renvoie vers un devis personnalisé par
+// WhatsApp — le prix reste réel, discuté au cas par cas, jamais un chiffre
+// public non tenable.
 const entretienTiers = [
   {
     name: 'Essentiel',
     body: 'Suivi de production en temps réel inclus et surveillance du parc : c’est le socle déjà livré avec chaque installation.',
     inclusions: ['Accès personnel au suivi de production', 'Alerte automatique sur défaut', 'Dossier technique complet'],
-    sla: 'en attente de validation du fondateur',
-    prix: 'en attente de validation du fondateur',
   },
   {
     name: 'Confort',
     body: 'Le socle Essentiel, plus un passage d’entretien programmé pour garder l’installation à son meilleur rendement.',
     inclusions: ['Tout Essentiel', 'Visite d’entretien programmée', 'Nettoyage des panneaux'],
-    sla: 'en attente de validation du fondateur',
-    prix: 'en attente de validation du fondateur',
   },
   {
     name: 'Premium',
     body: 'Le niveau le plus complet : entretien renforcé et intervention prioritaire sur alerte.',
     inclusions: ['Tout Confort', 'Visites d’entretien renforcées', 'Intervention prioritaire sur alerte'],
-    sla: 'en attente de validation du fondateur',
-    prix: 'en attente de validation du fondateur',
   },
 ];
 
@@ -306,7 +306,7 @@ const jsonLd = {
       </div>
     </section>
 
-    {/* ── W255 — SAV : CONTRATS D'ENTRETIEN NOMMÉS (scaffold, SLA/prix gatés WG10) ── */}
+    {/* ── W255/WN4 — SAV : CONTRATS D'ENTRETIEN NOMMÉS (prix sur devis) ── */}
     <div class="v2-seam" aria-hidden="true"></div>
     <section class="bg-blanc-azur px-4 py-16 text-encre sm:py-20">
       <div class="mx-auto max-w-6xl">
@@ -314,9 +314,9 @@ const jsonLd = {
         <h2 class="display v2-section-title mt-5">Nos contrats d’entretien</h2>
         <p class="v2-lead mt-5 max-w-2xl text-encre-soft">
           Le socle Essentiel est déjà inclus avec chaque installation ; Confort et Premium
-          ajoutent l’entretien programmé et une intervention prioritaire. Les délais de réponse
-          engagés et les tarifs de chaque formule sont en attente de validation du fondateur —
-          rien n’est publié avant d’être un engagement réel et tenable.
+          ajoutent l’entretien programmé et une intervention prioritaire. Le tarif de chaque
+          formule dépend de votre installation — écrivez-nous sur WhatsApp pour un devis
+          personnalisé.
         </p>
         <div class="mt-12 grid gap-6 md:grid-cols-3" data-stagger>
           {entretienTiers.map((t, i) => (
@@ -331,18 +331,8 @@ const jsonLd = {
                   </li>
                 ))}
               </ul>
-              <dl class="mt-5 space-y-1 border-t border-azur-900/10 pt-4 text-xs">
-                <div class="flex justify-between gap-2">
-                  <dt class="text-encre-faint">Délai de réponse</dt>
-                  <dd class="text-right italic text-encre-faint">{t.sla}</dd>
-                </div>
-                <div class="flex justify-between gap-2">
-                  <dt class="text-encre-faint">Tarif</dt>
-                  <dd class="text-right italic text-encre-faint">{t.prix}</dd>
-                </div>
-              </dl>
               <a href={waTier(t.name)} rel="noopener" class="mt-6 inline-block border-2 border-azur-600 px-5 py-2.5 text-center text-sm font-bold text-azur-600 transition-colors hover:bg-azur-600 hover:text-white">
-                En savoir plus — {t.name}
+                Demander un devis — {t.name}
               </a>
             </div>
           ))}

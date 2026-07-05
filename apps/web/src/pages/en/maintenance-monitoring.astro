@@ -14,9 +14,11 @@
  *
  * W255 — Proactive after-sales becomes a headline in its own right (co-lead
  * with monitoring), and 3 NAMED entretien tiers (Essentiel/Confort/Premium)
- * are scaffolded: inclusions from the site (no invented figure), response
- * SLA + prices marked "pending founder validation" (WG10 — not yet supplied).
- * Each tier has a prefilled WhatsApp CTA.
+ * are scaffolded: inclusions from the site (no invented figure).
+ * WN4 (2026-07-05) — response SLA and price are not yet validated by the
+ * founder (WG10): instead of a client-facing "pending founder validation"
+ * placeholder, both fields are OMITTED and each tier links to a prefilled
+ * WhatsApp CTA for a personalized quote.
  *
  * W257 — Monitoring presented by outcomes (3 honest phone mockups — no fake
  * Deye Cloud dashboard, just the 3 promises already published above staged
@@ -73,31 +75,26 @@ const apresInstallation = [
   },
 ];
 
-// W255 — 3 NAMED entretien tiers, no-op-safe scaffold: inclusions drawn from
-// what's already published (monitoring/after-sales/technical file); response
-// SLA and prices stay explicit placeholders until Reda validates the real
-// commitments (WG10, gate open).
+// W255/WN4 — 3 NAMED entretien tiers: inclusions drawn from what's already
+// published (monitoring/after-sales/technical file). Response SLA and price
+// are not yet validated by the founder (WG10): rather than a client-facing
+// placeholder, these two fields are OMITTED and each tier links to a
+// personalized WhatsApp quote instead.
 const entretienTiers = [
   {
     name: 'Essentiel',
     body: 'Real-time production monitoring included and fleet-wide supervision: this is the base already delivered with every installation.',
     inclusions: ['Personal access to production monitoring', 'Automatic fault alert', 'Complete technical file'],
-    sla: 'pending founder validation',
-    prix: 'pending founder validation',
   },
   {
     name: 'Confort',
     body: 'The Essentiel base, plus a scheduled maintenance visit to keep the installation at its best output.',
     inclusions: ['Everything in Essentiel', 'Scheduled maintenance visit', 'Panel cleaning'],
-    sla: 'pending founder validation',
-    prix: 'pending founder validation',
   },
   {
     name: 'Premium',
     body: 'The most complete level: reinforced maintenance and priority intervention on alert.',
     inclusions: ['Everything in Confort', 'Reinforced maintenance visits', 'Priority intervention on alert'],
-    sla: 'pending founder validation',
-    prix: 'pending founder validation',
   },
 ];
 
@@ -301,7 +298,7 @@ const jsonLd = {
       </div>
     </section>
 
-    {/* ── W255 — AFTER-SALES: NAMED MAINTENANCE CONTRACTS (scaffold, SLA/price gated WG10) ── */}
+    {/* ── W255/WN4 — AFTER-SALES: NAMED MAINTENANCE CONTRACTS (price on quote) ── */}
     <div class="v2-seam" aria-hidden="true"></div>
     <section class="bg-blanc-azur px-4 py-16 text-encre sm:py-20">
       <div class="mx-auto max-w-6xl">
@@ -309,9 +306,8 @@ const jsonLd = {
         <h2 class="display v2-section-title mt-5">Our maintenance contracts</h2>
         <p class="v2-lead mt-5 max-w-2xl text-encre-soft">
           The Essentiel base is already included with every installation; Confort and Premium add
-          scheduled maintenance and priority intervention. The committed response times and the
-          price of each tier are pending founder validation — nothing is published until it is a
-          real, keepable commitment.
+          scheduled maintenance and priority intervention. The price of each tier depends on your
+          installation — message us on WhatsApp for a personalized quote.
         </p>
         <div class="mt-12 grid gap-6 md:grid-cols-3" data-stagger>
           {entretienTiers.map((t, i) => (
@@ -326,18 +322,8 @@ const jsonLd = {
                   </li>
                 ))}
               </ul>
-              <dl class="mt-5 space-y-1 border-t border-azur-900/10 pt-4 text-xs">
-                <div class="flex justify-between gap-2">
-                  <dt class="text-encre-faint">Response time</dt>
-                  <dd class="text-right italic text-encre-faint">{t.sla}</dd>
-                </div>
-                <div class="flex justify-between gap-2">
-                  <dt class="text-encre-faint">Price</dt>
-                  <dd class="text-right italic text-encre-faint">{t.prix}</dd>
-                </div>
-              </dl>
               <a href={waTier(t.name)} rel="noopener" class="mt-6 inline-block border-2 border-azur-600 px-5 py-2.5 text-center text-sm font-bold text-azur-600 transition-colors hover:bg-azur-600 hover:text-white">
-                Learn more — {t.name}
+                Request a quote — {t.name}
               </a>
             </div>
           ))}

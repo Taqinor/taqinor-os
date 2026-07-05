@@ -27,10 +27,21 @@
  * dashboard/webhook later is additive: the shape below already tolerates it.
  */
 
-export const FUNNEL_STEP_IDS = ['toit', 'facture', 'estimation', 'contact'] as const;
+// WJ104 — `proposal` ajouté aux étapes suivies : le cycle de vie de
+// /proposition/[token] (vue, signature) est un DELTA sur ce même beacon
+// step-level plutôt qu'un canal séparé — voir `src/lib/telemetryEvents.ts`
+// pour le vocabulaire d'événement de plus haut niveau qui s'appuie dessus
+// (estimate_viewed/callback_requested/proposal_viewed/proposal_signed).
+export const FUNNEL_STEP_IDS = ['toit', 'facture', 'estimation', 'contact', 'proposal'] as const;
 export type FunnelStepId = (typeof FUNNEL_STEP_IDS)[number];
 
-export const FUNNEL_ACTIONS = ['reached', 'abandoned'] as const;
+// WJ104 — 3 actions ADDITIVES sur le même vocabulaire fermé step+action
+// (jamais un canal ni un endpoint séparé) : `viewed` (l'étape a réellement
+// affiché son contenu utile — l'estimation rendue, ou la proposition ouverte),
+// `callback_requested` (demande de rappel explicite, DISTINCTE d'un opt-in
+// WhatsApp), `signed` (signature électronique de la proposition). `reached`/
+// `abandoned` (WJ59) restent inchangés pour tout call-site existant.
+export const FUNNEL_ACTIONS = ['reached', 'abandoned', 'viewed', 'callback_requested', 'signed'] as const;
 export type FunnelAction = (typeof FUNNEL_ACTIONS)[number];
 
 export interface FunnelBeaconEvent {

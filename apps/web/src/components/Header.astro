@@ -127,9 +127,9 @@ const ressourcesOffre = [
 ];
 const ressourcesContenu = [
   { href: '/guides', label: t('nav.guides') },
-  { href: '/blog', label: 'Blog' },
+  { href: '/blog', label: t('nav.blog') },
   { href: '/faq', label: t('nav.faq') },
-  { href: '/produits', label: 'Fiches techniques' },
+  { href: '/produits', label: t('nav.produits') },
   { href: '/pourquoi-taqinor', label: t('nav.why') },
 ];
 // W264 — Libellés des deux groupes du déroulant Ressources. Pas de nouvelle
@@ -142,11 +142,12 @@ const ressourcesGroupLabels: Record<'fr' | 'en' | 'ar', { offre: string; contenu
 };
 const ressourcesGroups = ressourcesGroupLabels[locale] ?? ressourcesGroupLabels.fr;
 
-// W340 — « Espace client » : lien EXTERNE vers le vrai portail Deye Cloud
-// (DEYE_CLOUD_URL, source unique lib/nap.ts) — jamais passé par L() puisque
-// ce n'est pas une route interne. Même mécanisme de repli local que les
-// autres petites tables de ce fichier.
-const espaceClientLabel = locale === 'en' ? 'Client area' : locale === 'ar' ? 'الفضاء الخاص' : 'Espace client';
+// W340/WJ100 — « Espace client » : lien EXTERNE vers le vrai portail de suivi
+// de production (DEYE_CLOUD_URL, source unique lib/nap.ts) — jamais passé par
+// L() puisque ce n'est pas une route interne. Libellé centralisé dans
+// i18n/ui.ts (nav.clientArea) — auparavant dupliqué à l'identique ici et dans
+// Footer.astro (drift), désormais une seule source.
+const espaceClientLabel = t('nav.clientArea');
 
 // W251 — Pages longues (guides/blog) : la preuve sociale compacte accompagne
 // le CTA brass au lieu du bouton seul. `showProof` combine « bonne page » ET
@@ -160,9 +161,9 @@ const showHeaderProof = isLongScrollPage && hasRating();
 // (ordre inchangé pour ne pas perturber l'existant hors dropdown desktop).
 const ressources = [
   { href: '/guides', label: t('nav.guides') },
-  { href: '/blog', label: 'Blog' },
+  { href: '/blog', label: t('nav.blog') },
   { href: '/faq', label: t('nav.faq') },
-  { href: '/produits', label: 'Fiches techniques' },
+  { href: '/produits', label: t('nav.produits') },
   { href: '/loi-82-21', label: t('nav.law') },
   { href: '/pourquoi-taqinor', label: t('nav.why') },
   { href: '/financement', label: t('nav.financing') },

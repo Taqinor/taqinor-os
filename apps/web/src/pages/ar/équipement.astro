@@ -93,8 +93,8 @@ const warranties = [
             widths={[1600, 1024, 640]} ratio={4 / 3} sizes="(min-width: 1024px) 40vw, (min-width: 640px) 50vw, 100vw" loading="eager"
             class="w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
           <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
-            <span class="tech-label block text-brass-300">الدار البيضاء · 11.36 kWc</span>
-            <span class="mt-0.5 block text-xs text-lune">عاكس Deye هجين 10 kW · 2 × Dyness DL5.0C · نقطة شحن</span>
+            <span class="tech-label block text-brass-300">الدار البيضاء · <span dir="ltr" style="unicode-bidi:isolate">11.36 kWc</span></span>
+            <span class="mt-0.5 block text-xs text-lune">عاكس Deye هجين <span dir="ltr" style="unicode-bidi:isolate">10 kW</span> · <span dir="ltr" style="unicode-bidi:isolate">2 ×</span> Dyness DL5.0C · نقطة شحن</span>
           </figcaption>
         </figure>
         <figure class="v2-rise cine-card group relative overflow-hidden" style="--v2-i:1">
@@ -102,7 +102,7 @@ const warranties = [
             widths={[1600, 1024, 640]} ratio={4 / 3} sizes="(min-width: 1024px) 30vw, (min-width: 640px) 50vw, 100vw" loading="eager"
             class="h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
           <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
-            <span class="tech-label block text-brass-300">الجديدة · 17.04 kWc</span>
+            <span class="tech-label block text-brass-300">الجديدة · <span dir="ltr" style="unicode-bidi:isolate">17.04 kWc</span></span>
             <span class="mt-0.5 block text-xs text-lune">أطراف البطاريات + صندوق الحماية · عناية بالتفصيل</span>
           </figcaption>
         </figure>
@@ -248,7 +248,7 @@ const warranties = [
           {warranties.map((w, i) => (
             <div class="v2-rise flex items-baseline justify-between gap-4 border-b border-azur-900/15 px-5 py-4" style={`--v2-i:${i}`}>
               <span class="text-sm font-semibold">{w.item}{w.note && <span class="block text-xs font-normal text-encre-faint">{w.note}</span>}</span>
-              <span class="fig whitespace-nowrap text-2xl text-azur-600" data-tally>{w.years}</span>
+              <span class="fig whitespace-nowrap text-2xl text-azur-600" dir="ltr" data-tally>{w.years}</span>
             </div>
           ))}
         </div>
