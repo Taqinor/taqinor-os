@@ -45,7 +45,7 @@ from .recouvrement import (
 )
 from .public_views import proposal_data, proposal_accept, proposal_pdf
 from .dashboard_view import dashboard_quote_to_cash
-from .insights_view import cash_flow_forecast
+from .insights_view import cash_flow_forecast, analyse_facturation_view  # ZFAC10
 from .journal_view import journal_ventes, export_comptable
 from .numbering_view import numerotation_audit, numerotation_preview
 from .extra_docs_views import lettre_relance_premium, fiche_remise_premium
@@ -188,6 +188,8 @@ urlpatterns = [
     path('dashboard/', dashboard_quote_to_cash, name='ventes-dashboard'),
     # FG47 — prévision cash-flow / encaissements à venir (lecture seule).
     path('insights/cash-flow/', cash_flow_forecast, name='ventes-cash-flow'),
+    path('etats/analyse-facturation/', analyse_facturation_view,
+         name='ventes-analyse-facturation'),
     # FG273 — calendrier réglementaire & alertes d'expiration (lecture seule).
     path('calendrier-reglementaire/', calendrier_reglementaire,
          name='calendrier-reglementaire'),

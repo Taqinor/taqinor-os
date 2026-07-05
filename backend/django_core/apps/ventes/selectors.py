@@ -555,3 +555,48 @@ def etat_recouvrement_client(company, client_id):
         'encours_echu': encours_echu,
         'a_jour': False,
     }
+
+
+def analyse_facturation(company, debut, fin):
+    """ZFAC10 — Analyse de facturation : agrégat HT/TVA/TTC des factures
+    scopées société, groupé par mois d'émission ET par client ET par statut,
+    sur ``[debut, fin)``. Factures annulées EXCLUES du CA. Lecture pure —
+    aucune écriture. Renvoie une liste de dicts triée par mois puis client :
+
+    ``{'mois': 'YYYY-MM', 'client_id', 'client_nom', 'statut',
+       'total_ht', 'total_tva', 'total_ttc', 'nb_factures'}``
+    """
+    from decimal import Decimal
+
+    from .models import Facture
+
+    factures = (
+        Facture.objects
+        .filter(company=company, date_emission__gte=debut,
+                date_emission__lt=fin)
+        .exclude(statut=Facture.Statut.ANNULEE)
+        .select_related('client')
+    )
+
+    buckets = {}
+    for f in factures:
+        mois = f.date_emission.strftime('%Y-%m') if f.date_emission else ''
+        client_nom = (
+            f"{f.client.nom} {f.client.prenom or ''}".strip()
+            if f.client_id else ''
+        )
+        key = (mois, f.client_id, f.statut)
+        entry = buckets.setdefault(key, {
+            'mois': mois, 'client_id': f.client_id, 'client_nom': client_nom,
+            'statut': f.statut, 'total_ht': Decimal('0'),
+            'total_tva': Decimal('0'), 'total_ttc': Decimal('0'),
+            'nb_factures': 0,
+        })
+        entry['total_ht'] += f.total_ht
+        entry['total_tva'] += f.total_tva
+        entry['total_ttc'] += f.total_ttc
+        entry['nb_factures'] += 1
+
+    rows = list(buckets.values())
+    rows.sort(key=lambda r: (r['mois'], r['client_nom'], r['statut']))
+    return rows
