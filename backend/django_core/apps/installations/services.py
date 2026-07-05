@@ -520,15 +520,19 @@ def reserver_stock_recu_pour_chantier(*, reception):
     XPUR23), crée/complète les ``StockReservation`` actives du chantier pour
     les produits/quantités REÇUS sur cette réception.
 
-    Plafonné au MANQUE recalculé du chantier (`compute_besoin_materiel`,
-    apps.stock.services — jamais de sur-réservation) et à la quantité reçue
-    sur CETTE réception. Idempotent : re-confirmer une réception déjà traitée
-    ne double jamais la réservation (get_or_create + réalignement, même
-    schéma que ``seed_reservations``). No-op silencieux si le BCF n'a aucun
-    ``chantier_origine`` (comportement historique inchangé). Renvoie le
-    nombre de réservations créées/augmentées."""
-    from apps.stock.services import compute_besoin_materiel
-
+    Plafonné à la quantité COMMANDÉE sur la ligne de BCF (posée par
+    ``draft_bcf_for_shortfall`` = le manque au moment du brouillon — jamais de
+    sur-réservation même si la réception dépasse ce qui était commandé) et à
+    la quantité cumulée réellement REÇUE sur cette ligne
+    (``ligne_commande.quantite_recue``, déjà tenue à jour par
+    ``confirm_reception_fournisseur`` et stable entre deux appels : ne
+    dépend PAS du stock live, qu'on ne recalcule donc jamais ici). La
+    réservation est donc une fonction PURE de données déjà persistées → un
+    rejeu du même événement (ou une confirmation partielle suivie d'une
+    autre) retombe toujours sur la même valeur plafond, jamais une addition
+    en boucle. No-op silencieux si le BCF n'a aucun ``chantier_origine``
+    (comportement historique inchangé). Renvoie le nombre de réservations
+    créées/modifiées."""
     bc = reception.bon_commande
     if bc is None or not getattr(bc, 'chantier_origine_id', None):
         return 0
@@ -536,27 +540,32 @@ def reserver_stock_recu_pour_chantier(*, reception):
     if installation is None:
         return 0
 
-    besoins = {
-        b['produit_id']: b['manque'] for b in compute_besoin_materiel(
-            installation)}
-    if not besoins:
-        return 0
-
-    # Quantités REÇUES sur CETTE réception, par produit (ignore les lignes
-    # libres/service sans produit catalogue).
-    recu_par_produit = {}
-    for ligne in reception.lignes.all():
+    # Plafond stable par produit = la quantité commandée sur CETTE ligne de
+    # BCF (le manque figé au brouillon), et le « réalisé » = la quantité
+    # cumulée reçue sur cette même ligne (toutes réceptions confondues).
+    plafonds = {}
+    recu_cumule_par_produit = {}
+    for ligne in reception.lignes.select_related('ligne_commande').all():
         if ligne.produit_id is None:
             continue
-        recu_par_produit[ligne.produit_id] = (
-            recu_par_produit.get(ligne.produit_id, 0) + (ligne.quantite or 0))
+        ligne_cmd = ligne.ligne_commande
+        ligne_cmd.refresh_from_db()
+        plafonds[ligne.produit_id] = max(
+            plafonds.get(ligne.produit_id, 0), int(ligne_cmd.quantite or 0))
+        recu_cumule_par_produit[ligne.produit_id] = max(
+            recu_cumule_par_produit.get(ligne.produit_id, 0),
+            int(ligne_cmd.quantite_recue or 0))
+
+    if not plafonds:
+        return 0
 
     count = 0
-    for produit_id, qte_recue in recu_par_produit.items():
-        manque = besoins.get(produit_id, 0)
-        if manque <= 0 or qte_recue <= 0:
+    for produit_id, plafond in plafonds.items():
+        if plafond <= 0:
             continue
-        qte_a_reserver = min(qte_recue, manque)
+        qte_a_reserver = min(recu_cumule_par_produit.get(produit_id, 0), plafond)
+        if qte_a_reserver <= 0:
+            continue
         resa, created = StockReservation.objects.get_or_create(
             installation=installation, produit_id=produit_id,
             defaults={'company': installation.company,
@@ -568,13 +577,11 @@ def reserver_stock_recu_pour_chantier(*, reception):
             # Réservation déjà consommée : ne jamais la rouvrir ici (le
             # stock a déjà été décrémenté pour ce chantier).
             continue
-        # Idempotence : n'augmente jamais au-delà du manque courant, et
-        # n'ajoute que la part pas déjà réservée (re-confirmer la même
-        # réception, ou une confirmation partielle suivie d'une autre, ne
-        # double jamais la réservation).
-        nouvelle_quantite = min(resa.quantite + qte_a_reserver, manque)
-        if nouvelle_quantite != resa.quantite:
-            resa.quantite = nouvelle_quantite
+        # Fonction pure du plafond : un rejeu retombe sur la même valeur
+        # (jamais d'addition), une réception ultérieure ne fait que monter
+        # jusqu'au plafond.
+        if qte_a_reserver != resa.quantite:
+            resa.quantite = qte_a_reserver
             resa.active = True
             resa.save(update_fields=['quantite', 'active'])
             count += 1
@@ -2819,16 +2826,27 @@ def chantiers_a_facturer(company):
 def _emplacement_van(company):
     """Emplacement « Camionnette » (van/site) de la société — créé à la
     volée par `ensure_emplacements` si la société n'a encore aucun
-    emplacement. Repli sur le premier emplacement non principal existant."""
+    emplacement. `ensure_emplacements` ne sème le dépôt+camionnette que
+    lorsque la société n'a AUCUN emplacement du tout : si un dépôt a déjà été
+    créé par un autre chemin (ex. directement en base, sans passer par ce
+    helper), il ne recrée jamais la camionnette manquante. On la garantit
+    donc nous-mêmes ici via `get_or_create`, sans toucher au comportement
+    (idempotent, additif) d'`ensure_emplacements` pour ses autres appelants."""
     from apps.stock.services import ensure_emplacements
     from apps.stock.models import EmplacementStock
     ensure_emplacements(company)
-    return (
+    van = (
         EmplacementStock.objects
         .filter(company=company, is_principal=False, archived=False)
         .order_by('ordre', 'id')
         .first()
     )
+    if van is not None:
+        return van
+    van, _created = EmplacementStock.objects.get_or_create(
+        company=company, nom='Camionnette',
+        defaults={'is_principal': False, 'ordre': 10})
+    return van
 
 
 def ventiler_stock_livraison(livraison, user):
