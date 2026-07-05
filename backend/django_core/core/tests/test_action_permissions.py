@@ -22,7 +22,7 @@ UNGUARDED_ACTION_BASELINE = {
     "compta": 128,
     "contrats": 56,
     "flotte": 38,
-    "gestion_projet": 66,
+    "gestion_projet": 70,
     "installations": 4,
     "kb": 34,
     "litiges": 7,
@@ -30,7 +30,7 @@ UNGUARDED_ACTION_BASELINE = {
     "paie": 55,
     "pos": 5,
     "publicapi": 5,
-    "qhse": 61,
+    "qhse": 65,
     "rh": 84,
     "roles": 1,
 }

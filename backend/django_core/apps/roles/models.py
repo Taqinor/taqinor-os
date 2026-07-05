@@ -94,6 +94,23 @@ ALL_PERMISSIONS = [
     # son sous-arbre (toute personne lui remontant, récursivement).
     'records_scope_equipe',
     'records_scope_sous_arbre',
+    # ── YRBAC3 — Fine-grainage des apps gatées seulement par
+    # ``IsResponsableOrAdmin`` : qhse/gestion_projet/contrats/litiges/kb.
+    # Chaque app reçoit deux codes DISJOINTS : ``<app>_voir`` (lecture — GET/
+    # HEAD/OPTIONS) et ``<app>_gerer`` (écriture — POST/PUT/PATCH/DELETE +
+    # actions custom). Compta a déjà ses propres codes fins (compta_saisir/
+    # valider/cloturer, COMPTA40) — pas de doublon ici. Paie a déjà
+    # paie_voir/paie_gerer (XPAI7) — pas de doublon ici non plus.
+    'qhse_voir',
+    'qhse_gerer',
+    'projet_voir',
+    'projet_gerer',
+    'contrat_voir',
+    'contrat_gerer',
+    'litige_voir',
+    'litige_gerer',
+    'kb_voir',
+    'kb_gerer',
 ]
 
 # Permissions de portée : un rôle qui en porte une voit un sous-ensemble ; sans
@@ -160,6 +177,14 @@ RESPONSABLE_PERMISSIONS = [
     # FG20 — la Commerciale/Responsable voit les coordonnées client (besoin
     # opérationnel) ; comportement historique préservé.
     'client_pii_voir',
+    # YRBAC3 — comportement historique préservé : le Responsable avait accès
+    # complet (lecture + écriture) à qhse/gestion_projet/contrats/litiges/kb
+    # via le grossier IsResponsableOrAdmin.
+    'qhse_voir', 'qhse_gerer',
+    'projet_voir', 'projet_gerer',
+    'contrat_voir', 'contrat_gerer',
+    'litige_voir', 'litige_gerer',
+    'kb_voir', 'kb_gerer',
 ]
 
 UTILISATEUR_PERMISSIONS = [
@@ -213,6 +238,13 @@ COMMERCIAL_RESP_PERMISSIONS = [
     'equipement_voir', 'sav_voir', 'sav_gerer', 'sav_export', 'sav_reassign',
     'parametres_voir', 'users_voir', 'reporting_voir', 'reporting_export',
     'client_pii_voir',  # FG20 — coordonnées client (besoin commercial).
+    # YRBAC3 — comportement historique préservé (accès complet via l'ancien
+    # IsResponsableOrAdmin, non-différencié lecture/écriture).
+    'qhse_voir', 'qhse_gerer',
+    'projet_voir', 'projet_gerer',
+    'contrat_voir', 'contrat_gerer',
+    'litige_voir', 'litige_gerer',
+    'kb_voir', 'kb_gerer',
     SCOPE_SUBTREE,
 ]
 
@@ -225,6 +257,13 @@ COMMERCIAL_PERMISSIONS = [
     'stock_voir', 'equipement_voir', 'sav_voir',
     'parametres_voir', 'reporting_voir',
     'client_pii_voir',  # FG20 — coordonnées client (besoin commercial).
+    # YRBAC3 — comportement historique préservé (accès complet via l'ancien
+    # IsResponsableOrAdmin, non-différencié lecture/écriture).
+    'qhse_voir', 'qhse_gerer',
+    'projet_voir', 'projet_gerer',
+    'contrat_voir', 'contrat_gerer',
+    'litige_voir', 'litige_gerer',
+    'kb_voir', 'kb_gerer',
     SCOPE_TEAM,
 ]
 
@@ -241,6 +280,13 @@ TECHNICIEN_RESP_PERMISSIONS = [
     'stock_export',
     'parametres_voir', 'users_voir', 'reporting_voir', 'reporting_export',
     'client_pii_voir',  # FG20 — coordonnées client (intervention terrain).
+    # YRBAC3 — comportement historique préservé (accès complet via l'ancien
+    # IsResponsableOrAdmin, non-différencié lecture/écriture).
+    'qhse_voir', 'qhse_gerer',
+    'projet_voir', 'projet_gerer',
+    'contrat_voir', 'contrat_gerer',
+    'litige_voir', 'litige_gerer',
+    'kb_voir', 'kb_gerer',
     SCOPE_SUBTREE,
 ]
 
@@ -252,6 +298,13 @@ TECHNICIEN_PERMISSIONS = [
     'stock_voir', 'stock_mouvement',
     'parametres_voir', 'reporting_voir',
     'client_pii_voir',  # FG20 — coordonnées client (intervention terrain).
+    # YRBAC3 — comportement historique préservé (accès complet via l'ancien
+    # IsResponsableOrAdmin, non-différencié lecture/écriture).
+    'qhse_voir', 'qhse_gerer',
+    'projet_voir', 'projet_gerer',
+    'contrat_voir', 'contrat_gerer',
+    'litige_voir', 'litige_gerer',
+    'kb_voir', 'kb_gerer',
     SCOPE_TEAM,
 ]
 
@@ -261,6 +314,14 @@ VIEWER_PERMISSIONS = [
     'stock_voir', 'crm_voir', 'ventes_voir', 'installation_voir',
     'equipement_voir', 'sav_voir', 'parametres_voir', 'reporting_voir',
     'client_pii_voir',  # FG20 — préserve l'accès historique aux coordonnées.
+    # YRBAC3 — nouvel accès en LECTURE SEULE (le Viewer n'avait aucun accès à
+    # ces apps avant : IsResponsableOrAdmin bloquait tout porteur lecture
+    # seule). Additif — jamais de _gerer pour ce rôle.
+    'qhse_voir',
+    'projet_voir',
+    'contrat_voir',
+    'litige_voir',
+    'kb_voir',
     SCOPE_TEAM,
 ]
 

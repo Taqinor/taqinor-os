@@ -12,7 +12,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
-from authentication.permissions import IsResponsableOrAdmin
+from authentication.permissions import HasPermissionOrLegacy
+from core.permissions import ScopedPermission, WriteScopedPermissionMixin
 
 from . import selectors, services
 from .models import (
@@ -110,9 +111,16 @@ def _parse_date_param(value):
         return None
 
 
-class _GestionProjetBaseViewSet(TenantMixin, viewsets.ModelViewSet):
-    """Base : société scopée + accès Administrateur/Responsable uniquement."""
-    permission_classes = [IsResponsableOrAdmin]
+class _GestionProjetBaseViewSet(
+        WriteScopedPermissionMixin, TenantMixin, viewsets.ModelViewSet):
+    """Base : société scopée + lecture/écriture fine-grainées (YRBAC3).
+
+    ``projet_voir`` gate les méthodes sûres (GET/HEAD/OPTIONS), ``projet_gerer``
+    gate l'écriture (POST/PUT/PATCH/DELETE + actions custom). Comptes légacy
+    sans rôle fin : repli historique Administrateur/Responsable préservé.
+    """
+    read_permission = 'projet_voir'
+    write_permission = 'projet_gerer'
 
 
 class ProjetViewSet(_GestionProjetBaseViewSet):
@@ -1381,7 +1389,7 @@ class ChronoActifViewSet(viewsets.ViewSet):
     Toujours scopé à l'utilisateur COURANT (jamais un autre — pas de paramètre
     d'utilisateur en entrée).
     """
-    permission_classes = [IsResponsableOrAdmin]
+    permission_classes = [HasPermissionOrLegacy('projet_voir')]
 
     def list(self, request):
         chrono = ChronoEnCours.objects.select_related(
@@ -1401,8 +1409,17 @@ class ReglageTempsViewSet(viewsets.ViewSet):
     arrondir_duree`` (chrono XPRJ5) et par les sélecteurs ``plan_de_charge``/
     ``nivellement_charge`` (``heures_par_jour``). Même motif que
     ``apps.rh.views.ReglageRHViewSet`` (« mon-reglage »).
+
+    L'action ``mon_reglage`` gère GET ET PATCH : ``ScopedPermission`` route par
+    méthode HTTP (GET → ``projet_voir``, PATCH → ``projet_gerer``), donc un
+    ``get_permissions`` dédié (pas un simple ``permission_classes`` figé) est
+    nécessaire pour distinguer les deux à l'intérieur de la même action.
     """
-    permission_classes = [IsResponsableOrAdmin]
+    read_permission = 'projet_voir'
+    write_permission = 'projet_gerer'
+
+    def get_permissions(self):
+        return [ScopedPermission()]
 
     @action(detail=False, methods=['get', 'patch'], url_path='mon-reglage')
     def mon_reglage(self, request):

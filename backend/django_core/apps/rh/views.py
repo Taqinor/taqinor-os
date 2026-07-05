@@ -1587,11 +1587,18 @@ class PointageViewSet(_RhBaseViewSet):
         ``arrivee_gps_lng`` (facultatifs), ``note`` (facultatif). ``company``
         et ``heure_arrivee`` sont TOUJOURS posés côté serveur.
         """
+        from django.http import Http404
+
+        from core.selectors import get_company_object
+
         company = request.user.company
         employe_id = request.data.get('employe')
+        # YRBAC11 — helper canonique (company-scopé, 404 indistinct converti
+        # en 400 « employé inconnu » ici, contrat de validation de ce champ).
         try:
-            employe = DossierEmploye.objects.get(pk=employe_id, company=company)
-        except (DossierEmploye.DoesNotExist, ValueError, TypeError):
+            employe = get_company_object(
+                DossierEmploye, employe_id, request.user)
+        except (Http404, ValueError, TypeError):
             return Response({'employe': 'Employé inconnu.'},
                             status=status.HTTP_400_BAD_REQUEST)
         pointage = Pointage.objects.create(

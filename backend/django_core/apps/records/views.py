@@ -7,7 +7,7 @@ pièce jointe et gestion des types d'activité : Admin.
 from datetime import timedelta
 
 from django.db import models
-from django.http import HttpResponse
+from django.http import Http404, HttpResponse
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import (
@@ -19,6 +19,7 @@ from rest_framework.response import Response
 from authentication.permissions import (
     IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
+from core.selectors import get_company_object
 
 from .models import (
     Activity, ActivityType, Attachment, Comment, Follower, Tag, TaggedItem,
@@ -544,9 +545,11 @@ class TaggedItemViewSet(viewsets.ModelViewSet):
         if not tag_id:
             return Response({'detail': 'tag requis.'},
                             status=status.HTTP_400_BAD_REQUEST)
+        # YRBAC11 — helper canonique (company-scopé, 404 converti en 400 ici,
+        # contrat de validation de ce champ inchangé).
         try:
-            tag = Tag.objects.get(pk=tag_id, company=company)
-        except Tag.DoesNotExist:
+            tag = get_company_object(Tag, tag_id, request.user)
+        except Http404:
             return Response({'detail': 'Tag introuvable.'},
                             status=status.HTTP_400_BAD_REQUEST)
         item, created = TaggedItem.objects.get_or_create(

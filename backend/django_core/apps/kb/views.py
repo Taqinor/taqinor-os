@@ -16,7 +16,8 @@ from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 
 from authentication.mixins import TenantMixin
-from authentication.permissions import IsResponsableOrAdmin
+from authentication.permissions import HasPermissionOrLegacy
+from core.permissions import WriteScopedPermissionMixin
 
 from . import selectors, services
 from .models import (
@@ -47,9 +48,16 @@ from .serializers import (
 )
 
 
-class _KbBaseViewSet(TenantMixin, viewsets.ModelViewSet):
-    """Base : société scopée + accès Administrateur/Responsable uniquement."""
-    permission_classes = [IsResponsableOrAdmin]
+class _KbBaseViewSet(
+        WriteScopedPermissionMixin, TenantMixin, viewsets.ModelViewSet):
+    """Base : société scopée + lecture/écriture fine-grainées (YRBAC3).
+
+    ``kb_voir`` gate les méthodes sûres (GET/HEAD/OPTIONS), ``kb_gerer`` gate
+    l'écriture (POST/PUT/PATCH/DELETE + actions custom). Comptes légacy sans
+    rôle fin : repli historique Administrateur/Responsable préservé.
+    """
+    read_permission = 'kb_voir'
+    write_permission = 'kb_gerer'
 
 
 class KbArticleViewSet(_KbBaseViewSet):
@@ -456,7 +464,7 @@ class KbArticleVersionViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     queryset = KbArticleVersion.objects.select_related(
         'article', 'auteur').all()
     serializer_class = KbArticleVersionSerializer
-    permission_classes = [IsResponsableOrAdmin]
+    permission_classes = [HasPermissionOrLegacy('kb_voir')]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['version', 'date_creation']
 

@@ -21,15 +21,23 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
-from authentication.permissions import IsResponsableOrAdmin
+from core.permissions import WriteScopedPermissionMixin
 
 from .models import Reclamation, ReclamationActivity
 from .serializers import ReclamationActivitySerializer, ReclamationSerializer
 
 
-class _LitigesBaseViewSet(TenantMixin, viewsets.ModelViewSet):
-    """Base : société scopée + accès Administrateur/Responsable uniquement."""
-    permission_classes = [IsResponsableOrAdmin]
+class _LitigesBaseViewSet(
+        WriteScopedPermissionMixin, TenantMixin, viewsets.ModelViewSet):
+    """Base : société scopée + lecture/écriture fine-grainées (YRBAC3).
+
+    ``litige_voir`` gate les méthodes sûres (GET/HEAD/OPTIONS), ``litige_gerer``
+    gate l'écriture (POST/PUT/PATCH/DELETE + actions custom). Comptes légacy
+    sans rôle fin : repli historique Administrateur/Responsable préservé
+    (``ScopedPermission`` → ``_user_has_or_legacy``).
+    """
+    read_permission = 'litige_voir'
+    write_permission = 'litige_gerer'
 
 
 class ReclamationViewSet(_LitigesBaseViewSet):
