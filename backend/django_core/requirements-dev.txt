@@ -1,0 +1,11 @@
+# YOPSB12 — outils de développement UNIQUEMENT (jamais installés en
+# CI/prod : ci.yml et le Dockerfile n'installent que requirements.txt).
+# Installer localement avec : pip install -r requirements-dev.txt
+-r requirements.txt
+
+# Détecteur de requêtes N+1 en développement (middleware + signal profiler).
+# Activé UNIQUEMENT si erp_agentique.settings.dev est chargé ET que le
+# paquet est installé (import gardé — voir erp_agentique/settings/dev.py).
+# Jamais actif en prod/CI (settings.prod ne le charge jamais, et le paquet
+# n'est de toute façon pas installé par requirements.txt).
+nplusone==1.0.0
