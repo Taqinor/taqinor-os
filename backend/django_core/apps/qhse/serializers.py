@@ -27,8 +27,9 @@ from .models import (
     PointControleModele, PointControleReception, ProcedureQualite,
     QhseChatterEntry,
     RecyclageModule, ReleveConsommation, ReleveControle,
-    ReleveCourbeIV, ReponseCritere, RetourClientQualite, Secouriste,
-    SignalementPublic,
+    ReleveCourbeIV, ReponseCritere, RetourClientQualite,
+    RevueVeilleReglementaire, Secouriste,
+    SignalementPublic, VeilleReglementaire,
 )
 
 
@@ -1379,3 +1380,53 @@ class DemandeChangementSerializer(serializers.ModelSerializer):
 
     def validate_evaluation_risque(self, value):
         return _meme_societe(self, value, 'Évaluation des risques')
+
+
+class RevueVeilleReglementaireSerializer(serializers.ModelSerializer):
+    """Revue (occurrence) d'une veille réglementaire (XQHS26). ``company``
+    posée côté serveur ; la ``conclusion`` n'avance QUE via l'action
+    ``conclure`` du viewset (jamais un PATCH direct — sinon le registre légal
+    XQHS8 et la prochaine échéance ne seraient pas mis à jour)."""
+    conclusion_display = serializers.CharField(
+        source='get_conclusion_display', read_only=True)
+    veille_texte = serializers.CharField(
+        source='veille.texte_suivi', read_only=True)
+
+    class Meta:
+        model = RevueVeilleReglementaire
+        fields = [
+            'id', 'veille', 'veille_texte', 'date_echeance', 'date_revue',
+            'conclusion', 'conclusion_display', 'impact_evalue',
+            'resume_ia', 'date_creation',
+        ]
+        read_only_fields = [
+            'date_revue', 'conclusion', 'impact_evalue', 'resume_ia',
+            'date_creation',
+        ]
+
+    def validate_veille(self, value):
+        return _meme_societe(self, value, 'Veille réglementaire')
+
+
+class VeilleReglementaireSerializer(serializers.ModelSerializer):
+    """Texte réglementaire suivi + cadence de revue (XQHS26). ``company``
+    posée côté serveur. ``date_derniere_revue``/``date_prochaine_revue``/
+    ``registre_conformite`` sont en lecture seule : ils n'avancent que via
+    les revues (``qhse.services.conclure_revue_veille``), jamais un PATCH
+    direct."""
+    revues = RevueVeilleReglementaireSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = VeilleReglementaire
+        fields = [
+            'id', 'texte_suivi', 'source', 'description', 'cadence_jours',
+            'date_derniere_revue', 'date_prochaine_revue', 'responsable',
+            'registre_conformite', 'revues', 'date_creation',
+        ]
+        read_only_fields = [
+            'date_derniere_revue', 'date_prochaine_revue',
+            'registre_conformite', 'date_creation',
+        ]
+
+    def validate_responsable(self, value):
+        return _meme_societe(self, value, 'Responsable')

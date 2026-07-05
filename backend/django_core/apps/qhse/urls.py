@@ -6,6 +6,7 @@ from .views import (
     AspectEnvironnementalViewSet, AuditViewSet,
     BilanCarboneViewSet, BordereauSuiviDechetViewSet,
     CalendrierQhseViewSet,
+    causerie_securite_pdf,
     CauseIncidentViewSet, ConformiteEnvironnementaleViewSet,
     ConsignationLotoViewSet,
     CodeDefautViewSet,
@@ -34,7 +35,9 @@ from .views import (
     QhseChatterEntryViewSet, RecyclageModuleViewSet,
     ReleveConsommationViewSet, ReleveControleViewSet, ReleveCourbeIVViewSet,
     ReponseCritereViewSet,
-    RetourClientQualiteViewSet, SecouristeViewSet, SignalementPublicViewSet,
+    RetourClientQualiteViewSet, RevueVeilleReglementaireViewSet,
+    SecouristeViewSet, SignalementPublicViewSet,
+    VeilleReglementaireViewSet,
 )
 
 router = DefaultRouter()
@@ -100,6 +103,8 @@ router.register(r'releves-consommation', ReleveConsommationViewSet)
 router.register(
     r'cout-non-qualite', CoutNonQualiteViewSet, basename='cout-non-qualite')
 router.register(r'demandes-changement', DemandeChangementViewSet)
+router.register(r'veilles-reglementaires', VeilleReglementaireViewSet)
+router.register(r'revues-veille', RevueVeilleReglementaireViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
@@ -113,4 +118,8 @@ urlpatterns = [
          name='qhse-ia-suggestion-classification'),
     path('ia/suggestion-analyse/', ia_suggestion_analyse,
          name='qhse-ia-suggestion-analyse'),
+    # XQHS27 — causerie sécurité (rh.CauserieSecurite) : PDF imprimable
+    # bilingue FR/AR, lu via apps.rh.selectors (jamais rh.models/rh.views).
+    path('causeries/<int:causerie_id>/pdf/', causerie_securite_pdf,
+         name='qhse-causerie-securite-pdf'),
 ]

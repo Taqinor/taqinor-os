@@ -38,8 +38,9 @@ from .models import (
     PointControleModele, PointControleReception, ProcedureQualite,
     QhseChatterEntry,
     RecyclageModule, ReleveConsommation, ReleveControle,
-    ReleveCourbeIV, ReponseCritere, RetourClientQualite, Secouriste,
-    SignalementPublic,
+    ReleveCourbeIV, ReponseCritere, RetourClientQualite,
+    RevueVeilleReglementaire, Secouriste,
+    SignalementPublic, VeilleReglementaire,
 )
 from .serializers import (
     ActionCorrectivePreventiveSerializer, AnalyseIncidentSerializer,
@@ -72,7 +73,9 @@ from .serializers import (
     ReleveConsommationSerializer, ReleveControleSerializer,
     ReleveCourbeIVSerializer,
     ReponseCritereSerializer, RetourClientQualiteSerializer,
+    RevueVeilleReglementaireSerializer,
     SecouristeSerializer, SignalementPublicSerializer,
+    VeilleReglementaireSerializer,
 )
 from . import chatter
 from .selectors import (
@@ -94,6 +97,7 @@ from .selectors import (
 from .services import (
     activer_procedure, calculer_score_audit, calculer_score_notation,
     cloturer_incident, cloturer_ncr, compteurs_observations_securite,
+    conclure_revue_veille,
     creer_capa_mise_en_oeuvre_moc,
     creer_intervention_depuis_ncr, creer_ncr_depuis_reserve,
     creer_ncr_depuis_ticket,
@@ -101,8 +105,10 @@ from .services import (
     creer_capa_depuis_ecart_exercice,
     demandes_changement_a_reverser,
     generer_capa_depuis_analyse, generer_lignes_bilan,
+    generer_revues_veille_dues,
     creer_signalement_public, generer_qr_signalement,
-    incidents_notification_en_retard, instancier_plan_chantier,
+    incidents_notification_en_retard, initialiser_prochaine_revue,
+    instancier_plan_chantier,
     lever_ncr_audit, lever_ncr_inspection, nouvelle_version_procedure,
     plans_exercices_dus, poser_disposition,
     realiser_exercice_urgence,
@@ -1156,6 +1162,24 @@ class PermisTravailViewSet(_QhseBaseViewSet):
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
 
+    @action(detail=True, methods=['get'], url_path='pdf')
+    def pdf(self, request, pk=None):
+        """XQHS27 — PDF INTERNE imprimable (FR/AR), scopé société.
+
+        ``?lang=fr`` (défaut) ou ``?lang=ar`` (gabarit RTL, police arabe
+        embarquée). JAMAIS ``/proposal`` — aucun prix, document terrain."""
+        from django.http import HttpResponse
+
+        from .pdf_terrain import render_permis_travail_pdf
+
+        permis = self.get_object()
+        lang = request.query_params.get('lang', 'fr')
+        pdf_bytes = render_permis_travail_pdf(permis, lang=lang)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'attachment; filename="permis-travail-{permis.pk}-{lang}.pdf"')
+        return response
+
 
 class ConsignationLotoViewSet(_QhseBaseViewSet):
     """Consignation électrique (LOTO) rattachée à un permis (QHSE24).
@@ -1282,6 +1306,24 @@ class InductionSecuriteViewSet(_QhseBaseViewSet):
         induction.acquittement_le = acquittement_le
         induction.save(update_fields=['acquittement', 'acquittement_le'])
         return Response(self.get_serializer(induction).data)
+
+    @action(detail=True, methods=['get'], url_path='pdf')
+    def pdf(self, request, pk=None):
+        """XQHS27 — PDF INTERNE imprimable (FR/AR), scopé société.
+
+        ``?lang=fr`` (défaut) ou ``?lang=ar`` (gabarit RTL, police arabe
+        embarquée). JAMAIS ``/proposal`` — aucun prix, document terrain."""
+        from django.http import HttpResponse
+
+        from .pdf_terrain import render_induction_securite_pdf
+
+        induction = self.get_object()
+        lang = request.query_params.get('lang', 'fr')
+        pdf_bytes = render_induction_securite_pdf(induction, lang=lang)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'attachment; filename="induction-securite-{induction.pk}-{lang}.pdf"')
+        return response
 
 
 class PlanUrgenceViewSet(_QhseBaseViewSet):
@@ -2646,6 +2688,89 @@ class DemandeChangementViewSet(_QhseBaseViewSet):
         return Response({'relances': len(demandes)})
 
 
+# ── XQHS26 — Veille réglementaire QHSE Maroc (revue périodique assistée) ───
+
+class VeilleReglementaireViewSet(_QhseBaseViewSet):
+    """Textes réglementaires suivis + cadence de revue (XQHS26). ``company``
+    posée côté serveur. La cadence par défaut est trimestrielle
+    (``cadence_jours=90``) ; ``date_prochaine_revue`` est initialisée à la
+    création si absente et n'avance ensuite QUE via une revue conclue
+    (jamais un PATCH direct)."""
+    queryset = VeilleReglementaire.objects.all()
+    serializer_class = VeilleReglementaireSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['texte_suivi', 'source']
+    ordering_fields = ['id', 'date_prochaine_revue', 'date_creation']
+
+    def perform_create(self, serializer):
+        veille = serializer.save(company=self.request.user.company)
+        initialiser_prochaine_revue(veille)
+        return veille
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        veille = self.perform_create(serializer)
+        out = self.get_serializer(veille)
+        return Response(out.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'], url_path='generer-revues-dues')
+    def generer_revues_dues(self, request):
+        """Génère les tâches de revue DUES pour la société (idempotent —
+        n'ouvre jamais deux revues ``a_faire`` pour la même veille)."""
+        revues = generer_revues_veille_dues(request.user.company)
+        return Response({
+            'generees': len(revues),
+            'revues': RevueVeilleReglementaireSerializer(
+                revues, many=True).data,
+        })
+
+
+class RevueVeilleReglementaireViewSet(_QhseBaseViewSet):
+    """Revues (occurrences) des veilles réglementaires (XQHS26). ``company``
+    posée côté serveur. Filtre optionnel ``?veille=`` / ``?conclusion=``.
+
+    * ``POST …/<id>/conclure/`` — conclut la revue (``conclusion`` requis :
+      ``applicable``/``non_applicable``), avance ``date_prochaine_revue`` du
+      parent, et lie/instancie le registre légal (XQHS8) si applicable.
+    """
+    queryset = RevueVeilleReglementaire.objects.all()
+    serializer_class = RevueVeilleReglementaireSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'date_echeance', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        veille = self.request.query_params.get('veille')
+        if veille not in (None, ''):
+            qs = qs.filter(veille_id=veille)
+        conclusion = self.request.query_params.get('conclusion')
+        if conclusion not in (None, ''):
+            qs = qs.filter(conclusion=conclusion)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+    @action(detail=True, methods=['post'])
+    def conclure(self, request, pk=None):
+        revue = self.get_object()
+        conclusion = request.data.get('conclusion')
+        if not conclusion:
+            return Response(
+                {'detail': 'conclusion est requise.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            revue = conclure_revue_veille(
+                revue, conclusion,
+                impact_evalue=request.data.get('impact_evalue', ''),
+                resume_ia=request.data.get('resume_ia', ''))
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(revue).data)
+
+
 # ── XQHS25 — Assistance IA QHSE (classification + brouillon d'analyse) ────
 # Key-gated (GROQ_API_KEY) : sans clé, 200 + `disponible=false`, jamais
 # d'erreur ni de dépendance dure. TOUJOURS une proposition éditable, jamais
@@ -2670,3 +2795,34 @@ def ia_suggestion_analyse(request):
     depuis un récit d'investigation libre."""
     recit = request.data.get('recit') or ''
     return Response(suggerer_analyse_capa(recit))
+
+
+# ── XQHS27 — Documents terrain QHSE imprimables bilingues FR/AR ────────────
+# La causerie sécurité vit dans ``rh`` (modèle ``CauserieSecurite``) : lue
+# EXCLUSIVEMENT via ``apps.rh.selectors.causerie_securite_for_id`` (jamais un
+# import de ``rh.models``/``rh.views``), scopée société côté serveur.
+
+@api_view(['GET'])
+def causerie_securite_pdf(request, causerie_id):
+    """XQHS27 — PDF INTERNE de la fiche causerie + émargement (FR/AR).
+
+    ``?lang=fr`` (défaut) ou ``?lang=ar`` (gabarit RTL, police arabe
+    embarquée). 404 si la causerie n'existe pas / n'appartient pas à la
+    société de l'utilisateur. JAMAIS ``/proposal`` — aucun prix."""
+    from django.http import HttpResponse
+
+    from apps.rh.selectors import causerie_securite_for_id
+
+    from .pdf_terrain import render_causerie_securite_pdf
+
+    causerie = causerie_securite_for_id(request.user.company, causerie_id)
+    if causerie is None:
+        return Response(
+            {'detail': 'Causerie introuvable.'},
+            status=status.HTTP_404_NOT_FOUND)
+    lang = request.query_params.get('lang', 'fr')
+    pdf_bytes = render_causerie_securite_pdf(causerie, lang=lang)
+    response = HttpResponse(pdf_bytes, content_type='application/pdf')
+    response['Content-Disposition'] = (
+        f'attachment; filename="causerie-securite-{causerie.pk}-{lang}.pdf"')
+    return response

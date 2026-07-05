@@ -5528,3 +5528,139 @@ class DemandeChangementCapa(models.Model):
 
     def __str__(self):
         return f'{self.demande_changement_id} ↔ CAPA {self.capa_id}'
+
+
+# ── XQHS26 — Veille réglementaire QHSE Maroc (revue périodique assistée) ────
+# DECISION (utilité vs charge à valider par le fondateur). Version SOBRE sans
+# dépendance externe : AUCUN scraping de source (règle CLAUDE.md #5 — ToS) ;
+# les textes suivis sont saisis manuellement, seule la CADENCE de revue est
+# automatisée (génération des revues dues, pas de collecte de contenu).
+
+class VeilleReglementaire(models.Model):
+    """Texte réglementaire QHSE suivi, avec cadence de revue périodique.
+
+    Chaque texte suivi (loi, décret, arrêté, norme…) porte sa ``source``
+    (Bulletin Officiel / ministère / organisme), une cadence de revue
+    (``cadence_jours`` — 90 jours = trimestrielle par défaut) et une
+    ``date_prochaine_revue`` qui avance à chaque revue conclue
+    (``qhse.services.conclure_revue_veille``). Le ``responsable`` (HSE) est
+    celui à qui la revue est assignée.
+
+    Le lien optionnel ``registre_conformite`` rattache ce texte à une entrée du
+    registre des exigences légales généralisé (XQHS8,
+    ``ConformiteEnvironnementale``) : une revue conclut l'applicabilité et peut
+    créer cette entrée si absente (``qhse.services.conclure_revue_veille``).
+
+    Multi-société via ``company`` posée côté serveur (jamais lue du corps de
+    requête). Entièrement additif.
+    """
+    CADENCE_JOURS_DEFAUT = 90  # trimestrielle
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_veilles_reglementaires',
+        verbose_name='Société',
+    )
+    texte_suivi = models.CharField(
+        max_length=255, verbose_name='Texte réglementaire suivi')
+    source = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Source (BO / ministère)')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    cadence_jours = models.PositiveIntegerField(
+        default=CADENCE_JOURS_DEFAUT, verbose_name='Cadence de revue (jours)')
+    date_derniere_revue = models.DateField(
+        null=True, blank=True, verbose_name='Dernière revue')
+    date_prochaine_revue = models.DateField(
+        null=True, blank=True, verbose_name='Prochaine revue')
+    responsable = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_veilles_reglementaires',
+        verbose_name='Responsable HSE',
+    )
+    # Lien optionnel vers le registre légal généralisé (XQHS8). Nullable : posé
+    # par le service lors de la première revue applicable.
+    registre_conformite = models.ForeignKey(
+        ConformiteEnvironnementale,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='veilles_reglementaires',
+        verbose_name='Entrée du registre légal liée',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Veille réglementaire'
+        verbose_name_plural = 'Veilles réglementaires'
+        ordering = ['date_prochaine_revue', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'date_prochaine_revue'],
+                name='qhse_veille_co_prochaine',
+            ),
+        ]
+
+    def __str__(self):
+        return self.texte_suivi
+
+
+class RevueVeilleReglementaire(models.Model):
+    """Une revue périodique (occurrence) d'une ``VeilleReglementaire``.
+
+    Générée automatiquement quand la revue est due
+    (``qhse.services.generer_revues_veille_dues`` — idempotent : une seule
+    revue ``a_faire`` ouverte à la fois par veille). Conclue via
+    ``qhse.services.conclure_revue_veille`` : fixe ``conclusion``
+    (applicable / non_applicable), avance ``date_prochaine_revue`` du parent,
+    et lie/instancie le registre légal (XQHS8) si ``applicable``.
+    """
+    class Conclusion(models.TextChoices):
+        A_FAIRE = 'a_faire', 'À faire'
+        APPLICABLE = 'applicable', 'Applicable'
+        NON_APPLICABLE = 'non_applicable', 'Non applicable'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_revues_veille',
+        verbose_name='Société',
+    )
+    veille = models.ForeignKey(
+        VeilleReglementaire,
+        on_delete=models.CASCADE,
+        related_name='revues',
+        verbose_name='Veille réglementaire',
+    )
+    date_echeance = models.DateField(
+        null=True, blank=True, verbose_name='Échéance de la revue')
+    date_revue = models.DateField(
+        null=True, blank=True, verbose_name='Date de revue effective')
+    conclusion = models.CharField(
+        max_length=15, choices=Conclusion.choices,
+        default=Conclusion.A_FAIRE, verbose_name='Conclusion')
+    impact_evalue = models.TextField(
+        blank=True, default='', verbose_name='Impact évalué')
+    resume_ia = models.TextField(
+        blank=True, default='',
+        verbose_name='Résumé IA du changement (XQHS25, optionnel)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Revue de veille réglementaire'
+        verbose_name_plural = 'Revues de veille réglementaire'
+        ordering = ['-date_echeance', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'conclusion'],
+                name='qhse_revveille_co_concl',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.veille.texte_suivi} — {self.get_conclusion_display()}'

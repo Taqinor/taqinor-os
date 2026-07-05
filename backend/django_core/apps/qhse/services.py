@@ -14,7 +14,7 @@ from .models import (
     AccuseLecture, ActionCorrectivePreventive, AnalyseNcr, Audit,
     AuditPlanifie,
     CampagneRappel, CauseIncident,
-    CheckinSecurite, ControleReception,
+    CheckinSecurite, ConformiteEnvironnementale, ControleReception,
     DeclarationCnss, DemandeActionFournisseur, DemandeChangement,
     DemandeChangementCapa,
     Derogation, DiffusionProcedure,
@@ -24,7 +24,8 @@ from .models import (
     PlanInspectionChantier,
     PointControleModele,
     ProcedureQualite, ReleveThermographie, ReponseCritere, ReleveControle,
-    ReunionQhse, RisqueOpportunite, RisqueOpportuniteCapa, SignalementPublic,
+    ReunionQhse, RevueVeilleReglementaire, RisqueOpportunite,
+    RisqueOpportuniteCapa, SignalementPublic, VeilleReglementaire,
 )
 
 
@@ -1429,6 +1430,107 @@ def enregistrer_evaluation_conformite(conformite, resultat, *, date=None):
     conformite.save(update_fields=[
         'date_derniere_evaluation', 'resultat_derniere_evaluation'])
     return conformite
+
+
+# ── XQHS26 — Veille réglementaire QHSE Maroc (revue périodique assistée) ────
+# Version SOBRE sans dépendance externe : AUCUN scraping (règle CLAUDE.md #5).
+# Seule la CADENCE de revue est automatisée ; le contenu des textes suivis est
+# saisi manuellement.
+
+def _prochaine_echeance(veille, depuis):
+    from datetime import timedelta
+
+    jours = veille.cadence_jours or VeilleReglementaire.CADENCE_JOURS_DEFAUT
+    return depuis + timedelta(days=jours)
+
+
+def initialiser_prochaine_revue(veille, *, today=None):
+    """Pose ``date_prochaine_revue`` à la création si absente (première
+    échéance = aujourd'hui + cadence). Idempotent : ne touche rien si déjà
+    posée."""
+    from django.utils import timezone
+
+    if veille.date_prochaine_revue is not None:
+        return veille
+    today = today or timezone.localdate()
+    veille.date_prochaine_revue = _prochaine_echeance(veille, today)
+    veille.save(update_fields=['date_prochaine_revue'])
+    return veille
+
+
+def generer_revues_veille_dues(company, *, today=None):
+    """Génère les tâches de revue DUES (XQHS26) pour une société.
+
+    Une ``VeilleReglementaire`` dont ``date_prochaine_revue`` est ≤
+    aujourd'hui reçoit une ``RevueVeilleReglementaire`` (statut ``a_faire``,
+    assignée au ``responsable`` de la veille) — SAUF si une revue ``a_faire``
+    est déjà ouverte pour elle (idempotent : n'en crée jamais deux en
+    attente). Renvoie la liste des revues créées."""
+    from django.utils import timezone
+
+    today = today or timezone.localdate()
+    dues = VeilleReglementaire.objects.filter(
+        company=company, date_prochaine_revue__lte=today,
+    ).exclude(
+        revues__conclusion=RevueVeilleReglementaire.Conclusion.A_FAIRE,
+    )
+    created = []
+    for veille in dues:
+        revue = RevueVeilleReglementaire.objects.create(
+            company=company, veille=veille, date_echeance=today,
+        )
+        created.append(revue)
+    return created
+
+
+@transaction.atomic
+def conclure_revue_veille(
+        revue, conclusion, *, impact_evalue='', resume_ia='', date=None):
+    """Conclut une revue de veille réglementaire (XQHS26).
+
+    Fixe ``conclusion`` (``applicable``/``non_applicable``), avance
+    ``date_prochaine_revue`` du parent depuis la date de revue effective, et
+    si ``applicable`` lie/instancie une entrée du registre légal généralisé
+    (XQHS8, ``ConformiteEnvironnementale``) — idempotent : réutilise
+    ``veille.registre_conformite`` si déjà posé, n'en crée jamais deux."""
+    from django.utils import timezone
+
+    if conclusion not in (
+            RevueVeilleReglementaire.Conclusion.APPLICABLE,
+            RevueVeilleReglementaire.Conclusion.NON_APPLICABLE):
+        raise ValueError(
+            'conclusion doit être "applicable" ou "non_applicable"')
+
+    date_revue = date or timezone.localdate()
+    revue.conclusion = conclusion
+    revue.date_revue = date_revue
+    revue.impact_evalue = impact_evalue
+    revue.resume_ia = resume_ia
+    revue.save(update_fields=[
+        'conclusion', 'date_revue', 'impact_evalue', 'resume_ia'])
+
+    veille = revue.veille
+    veille.date_derniere_revue = date_revue
+    veille.date_prochaine_revue = _prochaine_echeance(veille, date_revue)
+    update_fields = ['date_derniere_revue', 'date_prochaine_revue']
+
+    if conclusion == RevueVeilleReglementaire.Conclusion.APPLICABLE \
+            and veille.registre_conformite_id is None:
+        registre = ConformiteEnvironnementale.objects.create(
+            company=veille.company,
+            intitule=veille.texte_suivi,
+            type_conformite=ConformiteEnvironnementale.TypeConformite.AUTRE,
+            thematique=ConformiteEnvironnementale.Thematique.AUTRE,
+            autorite=veille.source,
+            responsable=veille.responsable,
+            date_derniere_evaluation=date_revue,
+            resultat_derniere_evaluation=impact_evalue,
+        )
+        veille.registre_conformite = registre
+        update_fields.append('registre_conformite')
+
+    veille.save(update_fields=update_fields)
+    return revue
 
 
 # ── XQHS9 — Registre des certifications + audits de certification ──────────
