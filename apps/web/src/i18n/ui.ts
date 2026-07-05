@@ -31,6 +31,12 @@ export const ui = {
     'nav.openMenu': 'Ouvrir le menu',
     'nav.primary': 'Navigation principale',
     'nav.mobile': 'Navigation mobile',
+    // WJ100 — 'Blog' et 'Fiches techniques' étaient codés en dur (non
+    // traduits) dans Header.astro/Footer.astro ; 'Espace client' était dupliqué
+    // à l'identique dans les deux fichiers (drift). Centralisés ici.
+    'nav.blog': 'Blog',
+    'nav.produits': 'Fiches techniques',
+    'nav.clientArea': 'Espace client',
     // Pied de page
     'footer.tagline': "Installations solaires dimensionnées par l'ingénierie, conformes à la loi 82-21.",
     'footer.contact': 'Contact',
@@ -159,6 +165,9 @@ export const ui = {
     'nav.openMenu': 'Open menu',
     'nav.primary': 'Main navigation',
     'nav.mobile': 'Mobile navigation',
+    'nav.blog': 'Blog',
+    'nav.produits': 'Technical data sheets',
+    'nav.clientArea': 'Client area',
     'footer.tagline': 'Solar installations engineered to size, compliant with Law 82-21.',
     'footer.contact': 'Contact',
     'footer.contactLink': 'Contact',
@@ -274,6 +283,9 @@ export const ui = {
     'nav.openMenu': 'فتح القائمة',
     'nav.primary': 'التنقل الرئيسي',
     'nav.mobile': 'تنقل الجوال',
+    'nav.blog': 'المدونة',
+    'nav.produits': 'أوراق البيانات التقنية',
+    'nav.clientArea': 'الفضاء الخاص',
     'footer.tagline': 'تركيبات شمسية مصمّمة هندسياً وفق القانون 82-21.',
     'footer.contact': 'اتصال',
     'footer.contactLink': 'اتصال',

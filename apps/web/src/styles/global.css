@@ -206,6 +206,21 @@ html {
   color-scheme: dark;
 }
 
+/* WJ95 — global <select> option fallback (systemic fix). `html { color-scheme:
+   dark }` above plus text-white inherited into <option> left desktop Chromium/
+   Windows rendering white-on-white — invisible until hovered — because
+   color-scheme alone doesn't guarantee an <option> background. A scoped
+   version of this fix already existed for 4 specific selects in
+   preview/toiture-3d-pro-11.astro; ported globally here so every <select> on
+   the site is covered without per-page opt-in. */
+select {
+  color-scheme: dark;
+}
+select option {
+  background-color: var(--color-nuit, #070b1d);
+  color: #fff;
+}
+
 body {
   text-rendering: optimizeLegibility;
 }
@@ -1028,6 +1043,17 @@ summary:focus-visible {
    assistive tech). */
 [dir="rtl"] #sticky-cta > div {
   flex-direction: row-reverse;
+}
+
+/* WJ103 — the pill itself was still fixed to the physical right (sm:right-6)
+   on desktop: only its internal content mirrored (rule above), not its own
+   position. Move it to the visual start edge under RTL — mobile is
+   unaffected (full-width bar, inset-x-0). */
+@media (min-width: 640px) {
+  [dir="rtl"] #sticky-cta {
+    right: auto;
+    left: 1.5rem;
+  }
 }
 
 /* — prop-lang-switch / mt language toggle: fixed-position chip stays at the
