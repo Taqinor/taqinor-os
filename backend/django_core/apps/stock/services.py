@@ -2370,7 +2370,7 @@ def facturer_reception(company, user, reception):
     try:
         from core.events import facture_fournisseur_creee
         facture_fournisseur_creee.send(
-            sender=FactureFournisseur, facture=created['ff'],
+            sender=FactureFournisseur, instance=created['ff'],
             company=company, user=user)
     except Exception:  # pragma: no cover - défensif, best-effort
         pass
@@ -2459,7 +2459,7 @@ def facturer_bcf_sur_commande(company, user, bon_commande):
     try:
         from core.events import facture_fournisseur_creee
         facture_fournisseur_creee.send(
-            sender=FactureFournisseur, facture=created['ff'],
+            sender=FactureFournisseur, instance=created['ff'],
             company=company, user=user)
     except Exception:  # pragma: no cover - défensif, best-effort
         pass

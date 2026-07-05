@@ -303,14 +303,9 @@ payment_captured = django.dispatch.Signal()
 # cf. docstring du module ci-dessus pour la carte des deux abonnés attendus.
 reception_fournisseur_confirmee = django.dispatch.Signal()
 
-# Émis à la CRÉATION d'une facture fournisseur (YPROC3) — notamment celle
-# construite par ``stock.services.facturer_reception`` depuis une réception
-# confirmée. Arguments : facture (stock.FactureFournisseur), company, user.
-# Abonné dans ce repo : installations (``apps/installations/receivers.py``)
-# lettre automatiquement les provisions GR/IR ouvertes (``ReceptionNonFacturee``)
-# du bon de commande de la facture, à hauteur du montant facturé. ``stock``
-# n'importe jamais ``installations`` — même patron que ``devis_accepted``.
-facture_fournisseur_creee = django.dispatch.Signal()
+# (Le signal ``facture_fournisseur_creee`` est défini plus bas, section
+# YLEDG2 — contrat unifié ``instance, company, user`` pour ses DEUX abonnés :
+# installations (lettrage GR/IR, YPROC3) et compta (écriture, YLEDG2).)
 
 # Émis à la fin de l'orchestration de sortie d'un employé (YHIRE2).
 # Arguments : dossier (rh.DossierEmploye), user, motif.
@@ -383,9 +378,15 @@ bon_commande_cree = django.dispatch.Signal()
 paiement_enregistre = django.dispatch.Signal()
 avoir_cree = django.dispatch.Signal()
 
-# YLEDG2 — symétrique achat : chaque création (saisie manuelle) d'une
-# stock.FactureFournisseur / stock.PaiementFournisseur. Arguments communs :
-# instance, company. Abonné dans ce repo : compta (cf. docstring ci-dessus).
+# YLEDG2 / YPROC3 — CRÉATION d'une stock.FactureFournisseur (saisie manuelle
+# via la vue, OU construite par ``stock.services.facturer_reception`` depuis
+# une réception). Contrat UNIFIÉ (un seul signal, deux abonnés) :
+#   Arguments : instance (stock.FactureFournisseur), company, user (peut être
+#   None pour une création système/hors-requête).
+#   Abonnés : compta (``ecriture_pour_facture_fournisseur``, YLEDG2) et
+#   installations (lettre les provisions GR/IR ouvertes du BCF, YPROC3).
+# ``stock`` n'importe jamais compta/installations — même patron que
+# ``devis_accepted``. `paiement_fournisseur_enregistre` : instance, company.
 facture_fournisseur_creee = django.dispatch.Signal()
 paiement_fournisseur_enregistre = django.dispatch.Signal()
 

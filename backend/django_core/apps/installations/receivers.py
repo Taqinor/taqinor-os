@@ -85,10 +85,14 @@ def _reserver_stock_chantier_on_reception(sender, reception, company, user,
 
 @receiver(facture_fournisseur_creee,
           dispatch_uid="installations_lettrer_gr_ir_on_facture")
-def _lettrer_gr_ir_on_facture(sender, facture, company, user, **kwargs):
+def _lettrer_gr_ir_on_facture(sender, instance, company, user=None, **kwargs):
     """YPROC3 — à la création d'une facture fournisseur, lettre les
-    provisions GR/IR ouvertes du même bon de commande (idempotent)."""
+    provisions GR/IR ouvertes du même bon de commande (idempotent).
+
+    Contrat unifié du signal (core/events.py) : ``instance`` = la
+    stock.FactureFournisseur, ``user`` optionnel (None pour une création
+    système/hors-requête, ex. saisie manuelle via la vue)."""
     try:
-        lettrer_gr_ir_facture(facture=facture, company=company, user=user)
+        lettrer_gr_ir_facture(facture=instance, company=company, user=user)
     except Exception:  # pragma: no cover - défensif, best-effort
         pass
