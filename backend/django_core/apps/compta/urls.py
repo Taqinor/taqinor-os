@@ -2,7 +2,8 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    desinscription_publique, webhook_brevo_campagne, webhook_sms_stop,
+    desinscription_publique, double_optin_confirmer,
+    webhook_brevo_campagne, webhook_sms_stop,
     portail_mon_releve, portail_mon_releve_pdf, portail_contester_facture,
     AppelTelephoniqueViewSet,
     BaremeIndemniteViewSet, BordereauRemiseViewSet, BudgetViewSet,
@@ -176,6 +177,8 @@ urlpatterns = [
     path('webhooks/sms-stop/', webhook_sms_stop, name='webhook-sms-stop'),
     path('desinscription/<str:token>/', desinscription_publique,
          name='desinscription-publique'),
+    path('double-optin/<str:token>/', double_optin_confirmer,
+         name='double-optin-confirmer'),
     # XFAC26/27 — Portail client self-service (token, sans login).
     path('portail/<str:token>/mon-releve/', portail_mon_releve,
          name='portail-mon-releve'),

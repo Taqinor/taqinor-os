@@ -4877,6 +4877,22 @@ def desinscription_publique(request, token):
     return Response({'desinscrit': True, 'destinataire': resultat})
 
 
+# ── XMKT4 — Confirmation double opt-in (public, tokenisé, aucune auth) ─────
+
+@api_view(['GET', 'POST'])
+@permission_classes([AllowAny])
+def double_optin_confirmer(request, token):
+    """Clic de confirmation du double opt-in (XMKT4, loi 09-08).
+
+    Pose un ``core.ConsentRecord`` accordé pour la finalité marketing, preuve
+    IP + horodatage. Jeton invalide → 400 sans effet.
+    """
+    ok, resultat = services.confirmer_double_optin_via_token(token)
+    if not ok:
+        return Response({'detail': resultat}, status=400)
+    return Response({'confirme': True, 'destinataire': resultat})
+
+
 # ── XFAC26/27 — Portail client self-service : relevé + contestation ───────
 # Le client s'identifie par le token du portail EXISTANT
 # (``ComptePortailClient.token_acces``, FG228) — jamais une 2ᵉ auth. Les

@@ -6082,7 +6082,26 @@ def envoyer_campagne(campagne, *, destinataires=None):
     cibles = [
         cible for cible in brutes
         if not est_supprime(campagne.company, _adresse(cible))
+        # XMKT4 — un contact sans ConsentRecord accordé pour le canal n'est
+        # jamais ciblé (comportement historique préservé tant qu'AUCUNE
+        # entrée de consentement n'existe pour ce destinataire).
+        and consentement_accorde(
+            campagne.company, _adresse(cible), canal=campagne.canal)
     ]
+    refuses_consentement = [
+        _adresse(cible) for cible in brutes
+        if not est_supprime(campagne.company, _adresse(cible))
+        and not consentement_accorde(
+            campagne.company, _adresse(cible), canal=campagne.canal)
+    ]
+    for dest in refuses_consentement:
+        if dest:
+            EnvoiCampagne.objects.create(
+                company=campagne.company, campagne=campagne,
+                destinataire=dest, contact_ref='',
+                statut=EnvoiCampagne.Statut.REBOND,
+                raison_smtp='consentement_refuse_ou_absent',
+            )
     campagne.nb_destinataires = len(cibles)
     if brevo_actif() and cibles:
         # Intégration réelle (future) — jamais appelée tant que le flag est OFF.
@@ -6290,6 +6309,131 @@ def importer_liste_opposition(company, destinataires, *, source='import_csv'):
         if cree:
             ajoutes += 1
     return ajoutes
+
+
+# ── XMKT4 — Application du consentement marketing par canal (loi 09-08) ────
+# Le registre EXISTE déjà : ``core.ConsentRecord`` (FG394). On ne le duplique
+# JAMAIS ici — on l'applique au moment de l'envoi (campagnes ET séquences).
+
+_CANAL_VERS_PURPOSE = {
+    'email': 'email',
+    'sms': 'sms',
+    'whatsapp': 'whatsapp',
+}
+
+_DOUBLE_OPTIN_SALT = 'compta.xmkt4.double_optin'
+
+
+def _purpose_pour_canal(canal):
+    return _CANAL_VERS_PURPOSE.get((canal or '').strip().lower(), 'marketing')
+
+
+def consentement_accorde(company, destinataire, *, canal='email'):
+    """XMKT4 — un destinataire a-t-il un ``ConsentRecord`` accordé (le plus
+    récent) pour le canal donné ? Sans AUCUNE entrée de consentement pour ce
+    destinataire+finalité, le comportement HISTORIQUE est préservé (True) —
+    l'application stricte ne s'active qu'une fois qu'au moins une entrée de
+    consentement existe pour ce destinataire (évite de bloquer toute la base
+    existante avant migration des consentements).
+    """
+    from core.models import ConsentRecord
+
+    purpose = _purpose_pour_canal(canal)
+    dernier = (
+        ConsentRecord.objects
+        .filter(company=company, subject_identifier=destinataire,
+                purpose=purpose)
+        .order_by('-id')
+        .first())
+    if dernier is None:
+        return True
+    return bool(dernier.granted)
+
+
+def filtrer_destinataires_consentants(company, destinataires, *, canal='email'):
+    """Filtre une liste de destinataires (str) : garde ceux qui ont un
+    consentement accordé (ou aucune entrée = comportement historique) pour le
+    canal. Renvoie ``(consentants, refuses)``.
+    """
+    consentants, refuses = [], []
+    for dest in destinataires:
+        d = (dest or '').strip()
+        if not d:
+            continue
+        if consentement_accorde(company, d, canal=canal):
+            consentants.append(d)
+        else:
+            refuses.append(d)
+    return consentants, refuses
+
+
+def generer_token_double_optin(company_id, destinataire, *, version_texte=''):
+    """Jeton signé (XMKT4) pour le lien de confirmation du double opt-in."""
+    return signing.dumps(
+        {'company_id': company_id, 'destinataire': destinataire,
+         'version_texte': version_texte},
+        salt=_DOUBLE_OPTIN_SALT)
+
+
+def double_optin_actif(company):
+    """XMKT4 — toggle société (``CompanyProfile.double_optin_actif``), OFF
+    par défaut : sans réglage, l'inscription publique reste immédiatement
+    consentante (comportement actuel).
+    """
+    try:
+        from apps.parametres.models_company import CompanyProfile
+        profil = CompanyProfile.objects.filter(company=company).first()
+        return bool(profil and profil.double_optin_actif)
+    except Exception:  # pragma: no cover - défensif
+        return False
+
+
+def confirmer_double_optin_via_token(token):
+    """Traite le clic de confirmation du double opt-in (XMKT4).
+
+    Pose un ``ConsentRecord`` ``granted=True`` pour la finalité marketing,
+    avec l'IP + horodatage comme preuve (loi 09-08). Renvoie
+    ``(ok, destinataire_ou_message_erreur)``.
+    """
+    try:
+        payload = signing.loads(token, salt=_DOUBLE_OPTIN_SALT)
+    except signing.BadSignature:
+        return False, 'Lien invalide.'
+    from authentication.models import Company
+    from core.models import ConsentRecord
+
+    company = Company.objects.filter(id=payload.get('company_id')).first()
+    if not company:
+        return False, 'Lien invalide.'
+    destinataire = (payload.get('destinataire') or '').strip()
+    if not destinataire:
+        return False, 'Lien invalide.'
+    ConsentRecord.objects.create(
+        company=company,
+        subject_identifier=destinataire,
+        purpose='marketing',
+        granted=True,
+        source='double_optin_confirmation',
+        occurred_at=timezone.now(),
+        version_texte=payload.get('version_texte') or '',
+    )
+    return True, destinataire
+
+
+def cndp_footer_texte(company):
+    """XMKT4 — texte de pied d'email marketing avec le n° de déclaration CNDP,
+    si renseigné (``CompanyProfile.numero_declaration_cndp``). Chaîne vide si
+    non renseigné (comportement actuel, aucun pied additionnel).
+    """
+    try:
+        from apps.parametres.models_company import CompanyProfile
+        profil = CompanyProfile.objects.filter(company=company).first()
+        numero = (profil.numero_declaration_cndp or '').strip() if profil else ''
+    except Exception:  # pragma: no cover - défensif
+        numero = ''
+    if not numero:
+        return ''
+    return f'Déclaration CNDP n° {numero}'
 
 
 # ── XMKT5 — Listes de diffusion nommées + abonnements ───────────────────────

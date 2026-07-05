@@ -2356,3 +2356,36 @@ def create_lead_depuis_ticket(*, company, user, client, contexte=''):
         # QJ7 ignore les activités système), tout en traçant l'origine.
         activity.log_note(lead, None, contexte)
     return lead, True
+
+
+# ── XMKT4 — écriture de consentement marketing pour un lead ────────────────
+# Point d'entrée UNIQUE pour poser un ``core.ConsentRecord`` depuis un lead
+# (jamais d'écriture directe de compta/parametres dans core.ConsentRecord au
+# nom d'un lead — cette fonction reste la porte d'entrée crm).
+
+def enregistrer_consentement_lead(
+        lead, *, purpose, granted=True, source='', version_texte='',
+        ip_confirmation=None):
+    """Pose (ou met à jour) le consentement d'un lead pour un canal donné.
+
+    ``purpose`` ∈ 'marketing' / 'email' / 'sms' / 'whatsapp'…
+    ``lead.email`` est utilisé comme identifiant si présent, sinon
+    ``lead.telephone``. Crée une NOUVELLE entrée à chaque appel (le registre
+    ``ConsentRecord`` est un historique append-only, cf. FG394) — la lecture
+    de l'état courant prend toujours la ligne la plus récente.
+    """
+    from core.models import ConsentRecord
+
+    identifiant = (lead.email or lead.telephone or '').strip()
+    if not identifiant:
+        return None
+    return ConsentRecord.objects.create(
+        company=lead.company,
+        subject_identifier=identifiant,
+        purpose=purpose,
+        granted=granted,
+        source=source or '',
+        occurred_at=timezone.now(),
+        version_texte=version_texte or '',
+        ip_confirmation=ip_confirmation,
+    )

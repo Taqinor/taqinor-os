@@ -441,6 +441,22 @@ class CompanyProfile(models.Model):
         help_text='Fenêtre (jours) au-delà de laquelle un lot proche de sa '
                   'péremption déclenche une alerte automatique quotidienne.')
 
+    # ── XMKT4 — consentement marketing (loi 09-08 / CNDP) ───────────────────
+    # Numéro de déclaration CNDP, affiché dans le pied des emails marketing
+    # (informatif, jamais obligatoire — vide = comportement actuel).
+    numero_declaration_cndp = models.CharField(
+        max_length=60, blank=True, default='',
+        help_text="Numéro de déclaration CNDP (loi 09-08), affiché dans le "
+                  "pied des emails marketing s'il est renseigné.")
+    # Double opt-in des inscriptions publiques (FormulaireIntake) : OFF par
+    # défaut (comportement actuel préservé — inscription immédiatement
+    # consentante).
+    double_optin_actif = models.BooleanField(
+        default=False,
+        help_text="Active le double opt-in (email de confirmation, "
+                  "mailable seulement après clic) pour les inscriptions "
+                  "publiques marketing. Désactivé par défaut.")
+
     class Meta:
         verbose_name = 'Profil entreprise'
 
