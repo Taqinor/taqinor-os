@@ -29,6 +29,7 @@ en mémoire) et l'ORM générique.
 """
 from __future__ import annotations
 
+import datetime
 import logging
 import subprocess
 import tempfile
@@ -422,3 +423,107 @@ def restore_drill(run: BackupRun) -> BackupRun:
     }
     run.save(update_fields=['statut', 'termine_le', 'detail', 'updated_at'])
     return run
+
+
+# ---------------------------------------------------------------------------
+# YOPSB3 — Rétention + purge automatique des sauvegardes (7j/4sem/12mois).
+#
+# ``purger_backups`` applique un schéma Grandfather-Father-Son configurable
+# par variables d'environnement (défauts codés) sur les ``BackupRun``
+# ``kind=db_dump`` ``statut=termine`` non encore purgés : garde le dernier
+# dump de chaque jour sur N jours, de chaque semaine sur W semaines, de
+# chaque mois sur M mois ; le reste est supprimé (objet MinIO + soft-delete
+# du BackupRun). DRY-RUN par défaut (``apply_=False``) : rien n'est supprimé
+# tant que l'appelant ne passe pas explicitement ``apply_=True`` (la tâche
+# Celery lit ``settings.BACKUP_PURGE_AUTO_APPLY``, comme GED25).
+# ---------------------------------------------------------------------------
+
+def _retention_settings():
+    import os
+
+    return {
+        'daily': int(os.environ.get('BACKUP_RETENTION_DAILY', '7')),
+        'weekly': int(os.environ.get('BACKUP_RETENTION_WEEKLY', '4')),
+        'monthly': int(os.environ.get('BACKUP_RETENTION_MONTHLY', '12')),
+    }
+
+
+def _a_conserver(runs, now):
+    """Détermine l'ensemble des ``BackupRun`` à CONSERVER selon le schéma GFS.
+
+    ``runs`` : itérable de BackupRun triés ou non, avec ``termine_le`` posé.
+    Renvoie un ``set`` de PK à garder."""
+    cfg = _retention_settings()
+    conserver = set()
+
+    # Regroupe par clé (jour / semaine ISO / mois), garde le PLUS RÉCENT de
+    # chaque groupe dans la fenêtre de rétention correspondante.
+    def _garder_dernier_par_groupe(candidats, key_fn, fenetre_debut):
+        groupes = {}
+        for r in candidats:
+            if r.termine_le is None or r.termine_le < fenetre_debut:
+                continue
+            key = key_fn(r.termine_le)
+            actuel = groupes.get(key)
+            if actuel is None or r.termine_le > actuel.termine_le:
+                groupes[key] = r
+        conserver.update(r.pk for r in groupes.values())
+
+    runs = list(runs)
+    _garder_dernier_par_groupe(
+        runs, lambda dt: dt.date(),
+        now - datetime.timedelta(days=cfg['daily']))
+    _garder_dernier_par_groupe(
+        runs, lambda dt: (dt.isocalendar()[0], dt.isocalendar()[1]),
+        now - datetime.timedelta(weeks=cfg['weekly']))
+    _garder_dernier_par_groupe(
+        runs, lambda dt: (dt.year, dt.month),
+        now - datetime.timedelta(days=31 * cfg['monthly']))
+    return conserver
+
+
+def purger_backups(now=None, apply_=False):
+    """YOPSB3 — purge GFS des dumps db_dump terminés hors schéma de
+    rétention. ``apply_=False`` (défaut) : DRY-RUN, ne supprime rien, ne fait
+    que renvoyer le compte prévisionnel. ``apply_=True`` : supprime l'objet
+    MinIO + soft-delete le ``BackupRun`` pour chaque run hors schéma.
+
+    Renvoie ``{conserves, supprimes, dry_run}``."""
+    now = now or timezone.now()
+    qs = (BackupRun.objects
+          .filter(kind=BackupRun.KIND_DB_DUMP,
+                  statut=BackupRun.STATUT_TERMINE,
+                  purge_is_deleted=False)
+          .exclude(termine_le__isnull=True))
+    runs = list(qs)
+    conserver_pks = _a_conserver(runs, now)
+    a_purger = [r for r in runs if r.pk not in conserver_pks]
+
+    if not apply_:
+        return {
+            'conserves': len(conserver_pks),
+            'supprimes': len(a_purger),
+            'dry_run': True,
+        }
+
+    client = None
+    for r in a_purger:
+        if r.object_key:
+            try:
+                client = client or _minio_client()
+                client.delete_object(Bucket=BACKUP_BUCKET, Key=r.object_key)
+            except Exception as exc:  # noqa: BLE001 — échec objet n'arrête pas
+                logger.warning(
+                    'purger_backups: échec suppression objet MinIO %s: %s',
+                    r.object_key, exc)
+                continue
+        r.purge_is_deleted = True
+        r.purge_deleted_at = now
+        r.save(update_fields=['purge_is_deleted', 'purge_deleted_at',
+                              'updated_at'])
+
+    return {
+        'conserves': len(conserver_pks),
+        'supprimes': len(a_purger),
+        'dry_run': False,
+    }

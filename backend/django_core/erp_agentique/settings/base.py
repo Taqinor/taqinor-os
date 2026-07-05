@@ -384,6 +384,14 @@ GED_EMBEDDING_ENABLED = os.environ.get('GED_EMBEDDING_ENABLED', '0') == '1'
 GED_PURGE_AUTO_APPLY = os.environ.get('GED_PURGE_AUTO_APPLY', '0') == '1'
 GED_PURGE_GRACE_DAYS = int(os.environ.get('GED_PURGE_GRACE_DAYS', '30'))
 
+# YOPSB3 — purge GFS automatique des dumps Postgres (core.BackupRun
+# kind=db_dump). DRY-RUN PAR DÉFAUT (même convention que GED_PURGE_AUTO_APPLY
+# ci-dessus) : la tâche planifiée `core.purge_backups` ne supprime rien tant
+# que BACKUP_PURGE_AUTO_APPLY n'est pas explicitement à 1. Schéma configurable
+# (défauts codés) : BACKUP_RETENTION_DAILY=7, WEEKLY=4, MONTHLY=12 sont lus
+# directement depuis l'environnement dans `core.backup._retention_settings`.
+BACKUP_PURGE_AUTO_APPLY = os.environ.get('BACKUP_PURGE_AUTO_APPLY', '0') == '1'
+
 # GED33/GED34 — OCR de pièces + classification automatique. KEY-GATED : OFF par
 # défaut → tout est un no-op déterministe (aucun appel réseau, aucun coût, aucune
 # dépendance nouvelle). Le founder branchera un provider réel (Zhipu/…) en posant

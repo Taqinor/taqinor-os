@@ -1486,6 +1486,17 @@ class BackupRun(TimestampedModel):
         'Détail', default=dict, blank=True,
         help_text="Compte-rendu d'exécution (erreurs, durées).")
 
+    # YOPSB3 — soft-delete LÉGER (champ direct, PAS SoftDeleteModel : le
+    # manager par défaut de BackupRun reste inchangé pour ne pas affecter les
+    # querysets existants). La purge GFS marque ``purge_is_deleted`` avant de
+    # retirer l'objet MinIO ; les runs purgés restent visibles pour l'audit
+    # via ``all_objects``-style filtre explicite si besoin.
+    purge_is_deleted = models.BooleanField(
+        'Purgé (rétention GFS)', default=False,
+        help_text='YOPSB3 — vrai une fois retiré par la purge GFS (soft-delete).')
+    purge_deleted_at = models.DateTimeField(
+        'Purgé le', null=True, blank=True)
+
     class Meta:
         verbose_name = 'Sauvegarde/restauration'
         verbose_name_plural = 'Sauvegardes/restaurations'
