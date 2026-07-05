@@ -66,6 +66,38 @@ def valid_produit_ids(company, ids):
     )
 
 
+def factures_fournisseur_ouvertes(company, *, date_limite=None):
+    """YLEDG8 — Factures fournisseur à solde dû > 0, pour proposer les
+    échéances d'un ``compta.PaymentRun``. Triées par ``date_echeance``
+    (échéances les plus proches / sans date d'abord — comme la balance
+    âgée). ``date_limite`` (optionnel) ne retient que les échéances à cette
+    date ou avant. Lecture seule ; renvoie une liste de dicts."""
+    from .models import FactureFournisseur
+
+    qs = (FactureFournisseur.objects
+          .filter(company=company)
+          .select_related('fournisseur')
+          .order_by('date_echeance', 'id'))
+    if date_limite:
+        qs = qs.filter(date_echeance__lte=date_limite)
+    out = []
+    for facture in qs:
+        solde = facture.solde_du
+        if not solde:
+            continue
+        out.append({
+            'facture_id': facture.id,
+            'reference': facture.reference,
+            'fournisseur_id': facture.fournisseur_id,
+            'fournisseur_nom': (
+                facture.fournisseur.nom if facture.fournisseur else ''),
+            'date_echeance': facture.date_echeance,
+            'montant': solde,
+            'rib': getattr(facture.fournisseur, 'rib', '') or '',
+        })
+    return out
+
+
 def get_fournisseur_by_id(company, fournisseur_id):
     """FG83 — Renvoie un Fournisseur scopé société par son id, ou None.
     Point d'accès cross-app : SAV utilise ce sélecteur pour ne pas importer

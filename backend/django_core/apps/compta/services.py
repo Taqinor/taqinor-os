@@ -3686,7 +3686,57 @@ def poster_payment_run(run, *, user=None):
     run.ecriture = ecriture
     run.statut = PaymentRun.Statut.POSTEE
     run.save(update_fields=['posted', 'ecriture', 'statut'])
+
+    # YLEDG8 — pour chaque ligne référençant une FactureFournisseur (posée par
+    # `proposer_lignes_payment_run` ou saisie manuellement), créer SON
+    # PaiementFournisseur (mode virement, date du run) via le service dédié de
+    # stock — jamais un import de ses modèles. Une ligne SANS référence (achat
+    # libre / hors AP standard) reste inchangée (comportement historique).
+    from apps.stock import services as stock_services
+    for ligne in lignes:
+        if not ligne.facture_fournisseur_id:
+            continue
+        stock_services.enregistrer_paiement_fournisseur_depuis_run(
+            company=company, facture_id=ligne.facture_fournisseur_id,
+            montant=ligne.montant, date_paiement=run.date_paiement,
+            user=user)
     return ecriture
+
+
+def proposer_lignes_payment_run(run, *, date_limite=None):
+    """YLEDG8 — Remplit une campagne BROUILLON depuis les échéances
+    fournisseur dues (``stock.selectors.factures_fournisseur_ouvertes`` —
+    jamais un import de ses modèles), triées par date d'échéance. N'ajoute
+    QUE les factures pas déjà référencées par une ligne existante de CETTE
+    campagne (idempotent si appelé deux fois). Renvoie la liste des lignes
+    ajoutées."""
+    from apps.stock import selectors as stock_selectors
+
+    if run.statut != PaymentRun.Statut.BROUILLON:
+        raise ValidationError(
+            "Une campagne figée ou postée ne peut plus être modifiée.")
+    deja_references = set(
+        run.lignes.exclude(facture_fournisseur_id__isnull=True)
+        .values_list('facture_fournisseur_id', flat=True))
+    candidates = stock_selectors.factures_fournisseur_ouvertes(
+        run.company, date_limite=date_limite)
+    ajoutees = []
+    for candidate in candidates:
+        if candidate['facture_id'] in deja_references:
+            continue
+        ligne = PaymentRunLine.objects.create(
+            company=run.company, payment_run=run,
+            tiers_type='fournisseur', tiers_id=candidate['fournisseur_id'],
+            beneficiaire=candidate['fournisseur_nom'],
+            reference=candidate['reference'], montant=candidate['montant'],
+            date_echeance=candidate['date_echeance'],
+            rib=candidate['rib'],
+            facture_fournisseur_id=candidate['facture_id'],
+        )
+        ajoutees.append(ligne)
+    if ajoutees:
+        _recalc_total_payment_run(run)
+    return ajoutees
 
 
 # ── FG134 — Génération de fichier de virement bancaire ─────────────────────

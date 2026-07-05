@@ -2305,6 +2305,14 @@ class PaymentRunLine(models.Model):
         max_length=40, blank=True, default='', verbose_name='RIB')
     iban = models.CharField(
         max_length=40, blank=True, default='', verbose_name='IBAN')
+    # YLEDG8 — référence LÂCHE (id opaque, jamais un FK) vers la
+    # ``stock.FactureFournisseur`` réglée par cette ligne. NULL = ligne libre
+    # (comportement historique intact) : au post du run, seules les lignes
+    # référencées créent leur ``PaiementFournisseur`` + recalculent le statut
+    # de la facture (jamais un import de ``apps.stock.models``).
+    facture_fournisseur_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Facture fournisseur réglée (id stock)')
 
     class Meta:
         verbose_name = 'Ligne de règlement fournisseur'

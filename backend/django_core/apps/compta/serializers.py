@@ -739,7 +739,9 @@ class PaymentRunLineSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'tiers_type', 'tiers_id', 'beneficiaire', 'reference',
             'montant', 'date_echeance', 'rib', 'iban',
+            'facture_fournisseur_id',
         ]
+        read_only_fields = ['facture_fournisseur_id']
 
     def validate_montant(self, value):
         if value is not None and value <= 0:

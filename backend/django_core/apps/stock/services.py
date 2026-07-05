@@ -1229,6 +1229,42 @@ def delete_paiement_sous_traitant(paiement):
         recompute_facture_fournisseur_statut(facture)
 
 
+def enregistrer_paiement_fournisseur_depuis_run(*, company, facture_id,
+                                                montant, date_paiement,
+                                                user=None):
+    """YLEDG8 — Crée le ``PaiementFournisseur`` d'une ligne de
+    ``compta.PaymentRun`` POSTÉE référençant cette facture (mode virement,
+    date du run) et recalcule son statut — même chaîne AP standard que
+    ``add_paiement_sous_traitant`` (non restreinte aux sous-traitants).
+
+    Garde anti-doublon avec YLEDG2 : le paiement créé ICI est la seule
+    matérialisation du règlement (compta ne crée QUE l'écriture du run —
+    jamais un 2ᵉ paiement/une 2ᵉ écriture pour la même ligne). Renvoie
+    ``None`` si la facture est introuvable dans la société (aucune
+    exception — l'appelant (compta) journalise et continue les autres
+    lignes du run)."""
+    from decimal import Decimal
+    from django.db import transaction
+    from .models import FactureFournisseur, PaiementFournisseur
+
+    facture = FactureFournisseur.objects.filter(
+        id=facture_id, company=company).first()
+    if facture is None:
+        return None
+    montant_dec = Decimal(str(montant or 0))
+    if montant_dec <= 0:
+        return None
+    with transaction.atomic():
+        paiement = PaiementFournisseur.objects.create(
+            company=company, facture=facture, montant=montant_dec,
+            date_paiement=date_paiement,
+            mode=PaiementFournisseur.Mode.VIREMENT, created_by=user,
+            note='Règlement via campagne de paiement (payment run).')
+        facture.refresh_from_db()
+        recompute_facture_fournisseur_statut(facture)
+    return paiement
+
+
 # ── N14 — Réservé vs disponible : engagé-mais-non-consommé ───────────────────
 # Une réservation de chantier (installations.StockReservation) ENGAGE le stock
 # d'un SKU sans le décrémenter. Le « disponible » d'un produit en tient compte :

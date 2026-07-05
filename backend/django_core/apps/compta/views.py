@@ -2132,6 +2132,22 @@ class PaymentRunViewSet(_ComptaBaseViewSet):
         return super().destroy(request, *args, **kwargs)
 
     @action(detail=True, methods=['post'])
+    def proposer(self, request, pk=None):
+        """YLEDG8 — Remplit la campagne BROUILLON depuis les échéances
+        fournisseur dues (``?date_limite=YYYY-MM-DD`` optionnel). Idempotent :
+        n'ajoute jamais deux fois la même facture fournisseur."""
+        run = self.get_object()  # scopé société par TenantMixin.
+        try:
+            services.proposer_lignes_payment_run(
+                run, date_limite=request.data.get('date_limite') or None)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        run.refresh_from_db()
+        return Response(self.get_serializer(run).data)
+
+    @action(detail=True, methods=['post'])
     def figer(self, request, pk=None):
         """Fige la proposition de règlement (brouillon → proposée, FG133)."""
         run = self.get_object()  # scopé société par TenantMixin.
