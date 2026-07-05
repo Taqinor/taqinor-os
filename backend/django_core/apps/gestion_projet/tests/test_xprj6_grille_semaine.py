@@ -138,7 +138,7 @@ class GrilleSemaineEndpointTests(TestCase):
             {'ressource': self.ressource.id, 'debut': self.lundi.isoformat()})
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(len(resp.data['jours']), 7)
-        self.assertEqual(resp.data['total_semaine'], '2')
+        self.assertEqual(resp.data['total_semaine'], '2.00')
 
     def test_endpoint_ressource_autre_societe_404(self):
         autre_co = make_company('gp-xprj6-ep2', 'E2')
