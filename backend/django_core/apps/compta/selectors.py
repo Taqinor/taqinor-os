@@ -4,6 +4,7 @@ Grand livre (FG110), balance générale (FG111), lettrage (FG112), CPC (FG113) e
 bilan (FG114) se déduisent tous des ``LigneEcriture`` du grand livre. Aucune
 écriture n'est modifiée ici. Toutes les fonctions sont scopées par société.
 """
+import re
 from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -11,12 +12,16 @@ from django.db.models import Q, Sum
 from django.utils import timezone
 
 from .models import (
-    Caisse, CautionBancaire, CompteComptable, CompteTresorerie, Effet,
-    EntiteConsolidation, LigneEcriture, LignePrevisionnelTresorerie,
+    Budget, BudgetLigne, Caisse, CautionBancaire, ChargeConstateeAvance,
+    CompteComptable,
+    CompteTresorerie, EcheanceEmprunt,
+    Effet, Emprunt,
+    EntiteConsolidation, IndemniteChantier, LigneEcriture,
+    LignePrevisionnelTresorerie,
     MouvementCaisse, Rapprochement, RetenueGarantie, RetenueSource,
-    TimbreFiscal,
+    TauxDevise, TimbreFiscal,
     ClotureCaisse, DotationAmortissement, EcritureComptable,
-    RapprochementBancaire,
+    NoteFrais, Provision, RapprochementBancaire,
 )
 
 
@@ -278,6 +283,44 @@ def lettrer(company, ligne_ids, code):
         raise ValueError(
             f"Lettrage impossible : Σ débit ({debit}) ≠ Σ crédit ({credit}).")
     return qs.update(lettrage=code)
+
+
+def prochain_code_lettrage(company, compte):
+    """YLEDG6 — code de lettrage séquentiel A, B, …, Z, AA, AB… pour un
+    compte lettrable donné (jamais réutilisé, même après délettrage — le
+    prochain code repart toujours après le plus haut déjà vu)."""
+    codes = (LigneEcriture.objects
+             .filter(company=company, compte=compte)
+             .exclude(lettrage='')
+             .values_list('lettrage', flat=True).distinct())
+
+    def _rang(code):
+        rang = 0
+        for ch in code:
+            rang = rang * 26 + (ord(ch) - ord('A') + 1)
+        return rang
+
+    def _code(rang):
+        lettres = ''
+        while rang > 0:
+            rang, reste = divmod(rang - 1, 26)
+            lettres = chr(ord('A') + reste) + lettres
+        return lettres
+
+    valides = [c for c in codes if c and c.isalpha() and c.isupper()]
+    dernier_rang = max((_rang(c) for c in valides), default=0)
+    return _code(dernier_rang + 1)
+
+
+def delettrer(company, code):
+    """YLEDG6 — retire le code de lettrage ``code`` d'un lot de lignes (rouvre
+    le lot : la balance âgée / l'encours ré-incluent les lignes). Renvoie le
+    nombre de lignes délettrées. Journalisé côté appelant (jamais silencieux)
+    — cette fonction, LECTURE-ÉCRITURE ciblée, ne touche jamais aux montants
+    ni aux écritures elles-mêmes (COMPTA11 : jamais de suppression/altération
+    d'une écriture validée)."""
+    qs = LigneEcriture.objects.filter(company=company, lettrage=code)
+    return qs.update(lettrage='')
 
 
 # ── FG113 / COMPTA27 — CPC (Compte de Produits et Charges) ─────────────────
@@ -616,9 +659,12 @@ def position_tresorerie(company, *, date_fin=None, validees_seulement=False):
 
     Pour chaque ``CompteTresorerie`` actif de la société, le solde courant =
     ``solde_initial`` + mouvements du grand livre sur son compte comptable
-    (classe 5). Renvoie ``{'comptes': [...], 'total': Decimal}`` où chaque entrée
-    porte ``{'id', 'libelle', 'type_compte', 'banque', 'devise', 'solde_initial',
-    'mouvements', 'solde'}``. Lecture seule, scopée société.
+    (classe 5). Renvoie ``{'comptes': [...], 'total': Decimal,
+    'encours_emprunts': Decimal}`` où chaque entrée de ``comptes`` porte
+    ``{'id', 'libelle', 'type_compte', 'banque', 'devise', 'solde_initial',
+    'mouvements', 'solde'}``. ``encours_emprunts`` (XACC14) est le capital
+    restant dû cumulé de TOUS les emprunts/leasings de la société — ajouté en
+    lecture seule, n'affecte pas ``total``. Lecture seule, scopée société.
     """
     comptes = []
     total = Decimal('0')
@@ -641,7 +687,10 @@ def position_tresorerie(company, *, date_fin=None, validees_seulement=False):
             'mouvements': mouvements,
             'solde': solde,
         })
-    return {'comptes': comptes, 'total': total}
+    encours_emprunts = sum(
+        (e.encours_restant_du for e in Emprunt.objects.filter(company=company)),
+        Decimal('0'))
+    return {'comptes': comptes, 'total': total, 'encours_emprunts': encours_emprunts}
 
 
 def projection_tresorerie(company, *, date_fin=None, validees_seulement=False):
@@ -1136,6 +1185,11 @@ def previsionnel_tresorerie(company, *, date_debut=None, nb_semaines=13):
         date_echeance__lt=fin_horizon,
         statut__in=[Effet.Statut.PORTEFEUILLE, Effet.Statut.REMIS]
     ).order_by('date_echeance', 'id'))
+    # XACC14 — échéances d'emprunt FUTURES non postées : décaissement prévu.
+    echeances_emprunt = list(EcheanceEmprunt.objects.filter(
+        company=company, date_echeance__gte=debut,
+        date_echeance__lt=fin_horizon, posted=False,
+    ).select_related('emprunt').order_by('date_echeance', 'id'))
 
     semaines = []
     for i in range(nb_semaines):
@@ -1174,6 +1228,18 @@ def previsionnel_tresorerie(company, *, date_debut=None, nb_semaines=13):
                     'categorie': ef.sens,
                     'date': ef.date_echeance,
                     'montant': signe,
+                })
+        for ee in echeances_emprunt:
+            if s_debut <= ee.date_echeance <= s_fin:
+                montant = ee.mensualite or Decimal('0')
+                sorties += montant
+                lignes.append({
+                    'type': 'echeance_emprunt',
+                    'libelle': (
+                        f'Échéance emprunt {ee.emprunt.banque or ee.emprunt.reference}'),
+                    'categorie': 'decaissement',
+                    'date': ee.date_echeance,
+                    'montant': -montant,
                 })
         flux_net = entrees - sorties
         solde += flux_net
@@ -2391,44 +2457,119 @@ def budget_vs_realise(company, budget, *, date_fin=None):
     }
 
 
+# ── XACC21 — Contrôle du budget COMPTABLE à l'engagement ───────────────────
+
+def budget_restant(company, *, centre_cout=None, compte=None, periode):
+    """Budget COMPTABLE restant pour un centre de coût/compte à une période
+    (XACC21), consommable par ``apps.stock``/``apps.rh`` (EN COMPLÉMENT du
+    contrôle PROJET FG313, ``installations.selectors`` — jamais dupliqué ici).
+
+    ``periode`` : une ``date`` dans l'année budgétaire visée (le budget de
+    l'exercice ``periode.year`` de la société est utilisé — le PLUS RÉCENT si
+    plusieurs budgets existent pour cette année). ``centre_cout``/``compte``
+    filtrent les ``BudgetLigne`` concernées (au moins l'un des deux requis).
+    Renvoie ``None`` si AUCUN budget n'est défini pour cette
+    société/année/centre/compte (= aucun contrôle possible, comportement
+    actuel intact) ; sinon ``{'budget_id', 'controle', 'montant_budgete',
+    'realise', 'restant'}`` où ``restant`` peut être négatif (dépassement).
+    Lecture seule, scopée société.
+    """
+    if centre_cout is None and compte is None:
+        raise ValueError("centre_cout ou compte requis pour budget_restant.")
+    annee = periode.year
+    budget = Budget.objects.filter(
+        company=company, annee=annee).order_by('-id').first()
+    if budget is None:
+        return None
+    lignes_qs = budget.lignes.all()
+    if centre_cout is not None:
+        lignes_qs = lignes_qs.filter(centre_cout=centre_cout)
+    if compte is not None:
+        lignes_qs = lignes_qs.filter(compte=compte)
+    if not lignes_qs.exists():
+        return None
+
+    total_budgete = Decimal('0')
+    total_realise = Decimal('0')
+    debut = date(annee, 1, 1)
+    fin = date(annee, 12, 31)
+    for bl in lignes_qs.select_related('compte'):
+        total_budgete += bl.montant_annuel
+        agg = LigneEcriture.objects.filter(
+            company=company, compte=bl.compte,
+            ecriture__date_ecriture__gte=debut,
+            ecriture__date_ecriture__lte=fin,
+        )
+        if bl.centre_cout_id:
+            agg = agg.filter(centre_cout=bl.centre_cout)
+        agg = agg.aggregate(debit=Sum('debit'), credit=Sum('credit'))
+        debit = agg['debit'] or Decimal('0')
+        credit = agg['credit'] or Decimal('0')
+        if bl.compte.classe == 7:
+            total_realise += credit - debit
+        else:
+            total_realise += debit - credit
+    return {
+        'budget_id': budget.id,
+        'controle': budget.controle,
+        'montant_budgete': total_budgete,
+        'realise': total_realise,
+        'restant': total_budgete - total_realise,
+    }
+
+
 # ── FG150 — Comptabilité analytique / centres de coût ──────────────────────
 
 def resultat_analytique(company, *, date_debut=None, date_fin=None,
                         validees_seulement=False):
-    """Produits − charges ventilés par centre de coût (FG150).
+    """Produits − charges ventilés par centre de coût (FG150 + XACC20).
 
-    Agrège les ``LigneEcriture`` de classes 6/7 portant un centre de coût et
-    renvoie le résultat (produits − charges) par axe analytique :
-    ``{'centres': [{'code', 'libelle', 'axe', 'produits', 'charges',
-    'resultat'}], 'sans_centre': {...}}``. Lecture seule, scopée société.
+    Agrège les ``LigneEcriture`` de classes 6/7 : une ligne portant une
+    ``VentilationAnalytique`` (XACC20) est éclatée AU PRORATA des pourcentages
+    de la distribution sur chacun de ses centres ; une ligne SANS ventilation
+    retombe sur son ``centre_cout`` simple (FG150, rétro-compatible, comme
+    avant XACC20). Renvoie le résultat (produits − charges) par axe
+    analytique : ``{'centres': [{'code', 'libelle', 'axe', 'produits',
+    'charges', 'resultat'}], 'sans_centre': {...}}``. Lecture seule, scopée
+    société.
     """
     qs = _lignes_qs(company, date_debut=date_debut, date_fin=date_fin,
                     validees_seulement=validees_seulement).filter(
-        compte__classe__in=[6, 7])
-    agg = qs.values(
-        'centre_cout', 'centre_cout__code', 'centre_cout__libelle',
-        'centre_cout__axe', 'compte__classe',
-    ).annotate(debit=Sum('debit'), credit=Sum('credit'))
+        compte__classe__in=[6, 7]).select_related(
+        'centre_cout', 'compte').prefetch_related(
+        'ventilation_analytique__distributions__centre_cout')
+
     centres = {}
     sans_centre = {'produits': Decimal('0'), 'charges': Decimal('0')}
-    for row in agg:
-        debit = row['debit'] or Decimal('0')
-        credit = row['credit'] or Decimal('0')
-        cc_id = row['centre_cout']
-        if cc_id is None:
-            cible = sans_centre
+
+    def _cible(cc):
+        if cc is None:
+            return sans_centre
+        return centres.setdefault(cc.id, {
+            'code': cc.code, 'libelle': cc.libelle, 'axe': cc.axe,
+            'produits': Decimal('0'), 'charges': Decimal('0'),
+        })
+
+    for ligne in qs:
+        montant_net = (ligne.credit or Decimal('0')) - (ligne.debit or Decimal('0'))
+        classe = ligne.compte.classe
+        ventilation = getattr(ligne, 'ventilation_analytique', None)
+        distributions = list(ventilation.distributions.all()) if ventilation else []
+        if distributions:
+            for d in distributions:
+                part = (montant_net * d.pourcentage / Decimal('100'))
+                cible = _cible(d.centre_cout)
+                if classe == 7:
+                    cible['produits'] += part
+                else:
+                    cible['charges'] += -part
         else:
-            cible = centres.setdefault(cc_id, {
-                'code': row['centre_cout__code'],
-                'libelle': row['centre_cout__libelle'],
-                'axe': row['centre_cout__axe'],
-                'produits': Decimal('0'),
-                'charges': Decimal('0'),
-            })
-        if row['compte__classe'] == 7:
-            cible['produits'] += credit - debit
-        else:
-            cible['charges'] += debit - credit
+            cible = _cible(ligne.centre_cout)
+            if classe == 7:
+                cible['produits'] += montant_net
+            else:
+                cible['charges'] += -montant_net
+
     liste = []
     for data in centres.values():
         data['resultat'] = data['produits'] - data['charges']
@@ -2669,3 +2810,529 @@ def export_fiduciaire(company, exercice, *, validees_seulement=False):
             'resultat': etat_cpc['resultat'],
         },
     }
+
+
+# ── XACC15 — Charges constatées d'avance : solde restant à étaler ─────────
+
+def solde_charges_constatees_avance(company, *, date_fin=None):
+    """Rapport du solde 3491 restant à étaler par charge, à une date donnée
+    (XACC15). Pour chaque ``ChargeConstateeAvance`` de la société : montant
+    total, Σ des dotations postées jusqu'à ``date_fin`` (défaut aujourd'hui),
+    et solde restant = montant total − dotations postées. Renvoie
+    ``{'charges': [...], 'total_restant': Decimal}``. Lecture seule.
+    """
+    date_fin = date_fin or timezone.localdate()
+    charges = ChargeConstateeAvance.objects.filter(
+        company=company).prefetch_related('dotations').order_by('-date_debut', '-id')
+    resultat = []
+    total_restant = Decimal('0')
+    for charge in charges:
+        dote = sum(
+            (d.montant for d in charge.dotations.all()
+             if d.posted and d.date_dotation <= date_fin),
+            Decimal('0'))
+        restant = (charge.montant_total or Decimal('0')) - dote
+        if restant < 0:
+            restant = Decimal('0')
+        total_restant += restant
+        resultat.append({
+            'id': charge.id,
+            'reference': charge.reference,
+            'libelle': charge.libelle,
+            'montant_total': charge.montant_total,
+            'dote': dote,
+            'solde_restant': restant,
+        })
+    return {'charges': resultat, 'total_restant': total_restant}
+
+
+# ── XACC17 — Table de taux de change ────────────────────────────────────────
+
+def taux_du_jour(company, devise, une_date=None):
+    """Taux de change ``devise`` → MAD applicable à ``une_date`` (XACC17).
+
+    Renvoie le ``TauxDevise`` le PLUS RÉCENT dont ``date_taux`` est
+    antérieure ou égale à ``une_date`` (défaut aujourd'hui) — ou ``None`` si
+    aucune table n'existe pour cette devise/société (repli MAD/1 intact côté
+    appelant). MAD est toujours 1:1 (jamais de table nécessaire). Lecture
+    seule, scopée société.
+    """
+    devise = (devise or 'MAD').upper()
+    if devise == 'MAD':
+        return None
+    une_date = une_date or timezone.localdate()
+    return TauxDevise.objects.filter(
+        company=company, devise=devise, date_taux__lte=une_date,
+    ).order_by('-date_taux').first()
+
+
+# ── XACC19 — Générateur d'états financiers personnalisés ───────────────────
+
+class FormuleEtatInvalideError(Exception):
+    """Formule de ligne d'état personnalisé invalide (terme non reconnu)."""
+
+
+def _parser_formule(formule):
+    """Parse ``formule`` (« +70,+71,-60 ») en liste de ``(signe, prefixe)``.
+
+    Un terme valide commence par ``+`` ou ``-`` suivi d'un préfixe de compte
+    non vide (chiffres). Lève ``FormuleEtatInvalideError`` si un terme est mal
+    formé — le service appelant transforme ça en 400 explicite.
+    """
+    termes = []
+    for brut in (formule or '').split(','):
+        terme = brut.strip()
+        if not terme:
+            continue
+        signe = terme[0]
+        if signe not in ('+', '-'):
+            raise FormuleEtatInvalideError(
+                f"Terme invalide « {terme} » : doit commencer par + ou -.")
+        prefixe = terme[1:].strip()
+        if not prefixe or not prefixe.isdigit():
+            raise FormuleEtatInvalideError(
+                f"Terme invalide « {terme} » : préfixe de compte manquant "
+                "ou non numérique.")
+        termes.append((1 if signe == '+' else -1, prefixe))
+    if not termes:
+        raise FormuleEtatInvalideError("La formule ne contient aucun terme.")
+    return termes
+
+
+def _evaluer_formule_sur_balance(formule, balance_lignes):
+    """Évalue une formule sur les lignes d'une ``balance_generale`` (pur calcul).
+
+    Chaque terme ``(signe, prefixe)`` somme le SOLDE (débiteur − créditeur,
+    signé naturel du compte) de tous les comptes dont le numéro commence par
+    ``prefixe``, multiplié par ``signe``. Renvoie un ``Decimal``.
+    """
+    termes = _parser_formule(formule)
+    total = Decimal('0')
+    for signe, prefixe in termes:
+        for ligne in balance_lignes:
+            if ligne['numero'].startswith(prefixe):
+                solde = ligne['solde_debiteur'] - ligne['solde_crediteur']
+                total += signe * solde
+    return total
+
+
+def evaluer_etat_personnalise(etat, *, colonnes_override=None):
+    """Évalue un ``EtatPersonnalise`` : une valeur par (ligne, colonne) — XACC19.
+
+    Pour chaque colonne (période, comparatif N-1, budget, écart %), calcule la
+    balance générale de la période correspondante puis évalue la formule de
+    chaque ligne TOTAL dessus (une ligne TITRE n'a aucune valeur). Une formule
+    invalide lève ``FormuleEtatInvalideError`` (le service/la vue la
+    transforme en 400 explicite). Sans N-1 disponible (colonne comparatif hors
+    de toute donnée), la valeur est simplement 0 (jamais d'erreur). Renvoie
+    ``{'lignes': [{'id', 'libelle', 'type_ligne', 'valeurs': {colonne_id: val}}],
+    'colonnes': [...]}``.
+    """
+    company = etat.company
+    colonnes = list(colonnes_override or etat.colonnes.all().order_by('ordre', 'id'))
+    balances_par_colonne = {}
+    for colonne in colonnes:
+        if colonne.type_colonne == 'budget':
+            # Colonne budget : valeur = somme des montants annuels du budget
+            # référencé, appliquée directement (pas de formule sur la balance).
+            balances_par_colonne[colonne.id] = None
+            continue
+        date_debut, date_fin = colonne.date_debut, colonne.date_fin
+        if colonne.type_colonne == 'comparatif_n1' and date_debut and date_fin:
+            try:
+                date_debut = date_debut.replace(year=date_debut.year - 1)
+                date_fin = date_fin.replace(year=date_fin.year - 1)
+            except ValueError:
+                # 29 février d'une année non bissextile : recule d'un jour.
+                from datetime import timedelta
+                date_debut = date_debut.replace(
+                    year=date_debut.year - 1, day=28) if date_debut.month == 2 else date_debut
+                date_fin = date_fin - timedelta(days=1)
+        balance = balance_generale(company, date_debut=date_debut, date_fin=date_fin)
+        balances_par_colonne[colonne.id] = balance['lignes']
+
+    lignes_resultat = []
+    for ligne in etat.lignes.all().order_by('ordre', 'id'):
+        valeurs = {}
+        if ligne.type_ligne == 'total':
+            for colonne in colonnes:
+                if colonne.type_colonne == 'budget':
+                    if colonne.budget_id:
+                        total = BudgetLigne.objects.filter(
+                            budget_id=colonne.budget_id).aggregate(
+                            **{f'm{i:02d}': Sum(f'm{i:02d}') for i in range(1, 13)})
+                        valeurs[colonne.id] = sum(
+                            (total.get(f'm{i:02d}') or Decimal('0') for i in range(1, 13)),
+                            Decimal('0'))
+                    else:
+                        valeurs[colonne.id] = Decimal('0')
+                    continue
+                balance_lignes = balances_par_colonne.get(colonne.id) or []
+                valeurs[colonne.id] = _evaluer_formule_sur_balance(
+                    ligne.formule, balance_lignes)
+        lignes_resultat.append({
+            'id': ligne.id,
+            'libelle': ligne.libelle,
+            'type_ligne': ligne.type_ligne,
+            'valeurs': valeurs,
+        })
+    return {
+        'colonnes': [
+            {'id': c.id, 'libelle': c.libelle, 'type_colonne': c.type_colonne}
+            for c in colonnes
+        ],
+        'lignes': lignes_resultat,
+    }
+
+
+# ── XACC24 — Validation RIB (comptes de trésorerie) ────────────────────────
+
+def comptes_tresorerie_rib_invalides(company):
+    """Liste les ``CompteTresorerie`` actifs dont le RIB porte une clé fausse
+    (XACC24), en WARNING pur — jamais un blocage de saisie historique. Un RIB
+    vide n'est PAS signalé (compte sans RIB renseigné, cas normal). Renvoie
+    une liste de ``{'id', 'libelle', 'rib', 'erreurs'}``. Lecture seule.
+    """
+    from core.rib import valider_rib
+
+    resultat = []
+    for compte in CompteTresorerie.objects.filter(company=company, actif=True):
+        if not (compte.rib or '').strip():
+            continue
+        diagnostic = valider_rib(compte.rib)
+        if not diagnostic['valide']:
+            resultat.append({
+                'id': compte.id, 'libelle': compte.libelle,
+                'rib': compte.rib, 'erreurs': diagnostic['erreurs'],
+            })
+    return resultat
+
+
+# ── XPAI25 — Indemnités chantier remboursables via la paie ─────────────────
+
+def indemnites_chantier_remboursables_par_paie(
+        company, employe_user_id, date_debut, date_fin):
+    """Indemnités chantier VALIDÉES non payées d'un employé sur une période.
+
+    Sélecteur cross-app fin (XPAI25) : la paie appelle CE sélecteur pour
+    lister les ``IndemniteChantier`` (FG136) éligibles à un remboursement via
+    le bulletin de salaire — validées (``statut == VALIDEE``, jamais déjà
+    remboursées, ni côté paie ni côté trésorerie) dont ``date_deplacement``
+    tombe dans ``[date_debut, date_fin]``. Jamais ``compta.models`` importé
+    hors de ce module (lecture seule, cadrée société). Renvoie un queryset.
+    """
+    return (
+        IndemniteChantier.objects
+        .filter(
+            company=company, employe_id=employe_user_id,
+            statut=IndemniteChantier.Statut.VALIDEE,
+            date_deplacement__gte=date_debut, date_deplacement__lte=date_fin,
+        )
+        .order_by('date_deplacement', 'id')
+    )
+
+
+# ── XCTR14 — Résolution du compte portail client par token (lecture seule) ──
+
+def compte_portail_par_token(token):
+    """Résout un ``ComptePortailClient`` ACTIF par son ``token_acces`` (FG228).
+
+    Point d'entrée LECTURE SEULE pour les apps consommatrices du portail
+    tokenisé existant (ex. ``apps.contrats`` — XCTR14) : jamais un import du
+    modèle ``ComptePortailClient`` en dehors de ``compta``. Renvoie ``None``
+    si le token est vide, inconnu, ou correspond à un compte inactif — sans
+    distinguer les deux cas (aucune fuite d'existence du token)."""
+    if not token:
+        return None
+    from .models import ComptePortailClient
+
+    return (
+        ComptePortailClient.objects
+        .filter(token_acces=token, actif=True)
+        .select_related('client')
+        .first()
+    )
+
+
+# ── XACC26 — État récapitulatif des provisions (dotations/reprises) ────────
+
+def etat_provisions(company, *, date_debut=None, date_fin=None, nature=None):
+    """Mouvements de provisions (XACC26) de la période, groupés par nature.
+
+    Liste chaque ``Provision`` dont la dotation OU la dernière reprise tombe
+    dans ``[date_debut, date_fin]`` (bornes optionnelles), avec son solde
+    courant. Renvoie un dict ``{nature: {'label', 'lignes': [...], 'total_dotation',
+    'total_repris', 'total_solde'}}``. Lecture seule ; company-scopé.
+    """
+    date_debut = _as_date(date_debut)
+    date_fin = _as_date(date_fin)
+    qs = Provision.objects.filter(company=company)
+    if nature:
+        qs = qs.filter(nature=nature)
+    if date_debut:
+        qs = qs.filter(
+            Q(date_dotation__gte=date_debut) |
+            Q(date_derniere_reprise__gte=date_debut))
+    if date_fin:
+        qs = qs.filter(
+            Q(date_dotation__lte=date_fin) |
+            Q(date_derniere_reprise__lte=date_fin))
+    result = {}
+    for prov in qs.order_by('nature', 'date_dotation', 'id'):
+        bucket = result.setdefault(prov.nature, {
+            'label': prov.get_nature_display(),
+            'lignes': [],
+            'total_dotation': Decimal('0'),
+            'total_repris': Decimal('0'),
+            'total_solde': Decimal('0'),
+        })
+        bucket['lignes'].append({
+            'id': prov.id,
+            'reference': prov.reference,
+            'motif': prov.motif,
+            'date_dotation': prov.date_dotation,
+            'montant_dotation': prov.montant_dotation,
+            'montant_repris': prov.montant_repris,
+            'solde': prov.solde,
+            'date_derniere_reprise': prov.date_derniere_reprise,
+        })
+        bucket['total_dotation'] += prov.montant_dotation or Decimal('0')
+        bucket['total_repris'] += prov.montant_repris or Decimal('0')
+        bucket['total_solde'] += prov.solde
+    return result
+
+
+# ── XACC28 — Frais refacturables non facturés (billable expenses) ─────────
+
+def frais_refacturables_non_factures(company, *, client_id=None):
+    """Notes de frais refacturables VALIDÉES pas encore refacturées (XACC28).
+
+    ``client_id`` (optionnel) filtre sur le client déjà rattaché à la note ;
+    sans filtre, renvoie toutes les notes refacturables en attente, tous
+    clients confondus. Lecture seule ; company-scopé."""
+    qs = NoteFrais.objects.filter(
+        company=company, refacturable=True,
+        statut=NoteFrais.Statut.VALIDEE,
+        facture_refacturation_id__isnull=True,
+    )
+    if client_id:
+        qs = qs.filter(client_refacturation_id=client_id)
+    return qs.order_by('date_frais', 'id')
+
+
+# ── XACC29 — Rapport de continuité des séquences (gap detection) ──────────
+
+_SEQ_SUFFIX_RE = re.compile(r'^(.*?)-(\d+)$')
+
+
+def _extraire_bucket_numero(reference):
+    """Sépare ``reference`` en (radical, numéro) via le suffixe ``-NNNN``.
+
+    Renvoie ``(None, None)`` si la référence n'a pas de suffixe numérique
+    reconnaissable (jamais bloquant : la référence est alors simplement
+    ignorée du contrôle de continuité)."""
+    if not reference:
+        return None, None
+    m = _SEQ_SUFFIX_RE.match(reference)
+    if not m:
+        return None, None
+    radical, numero = m.group(1), m.group(2)
+    try:
+        return radical, int(numero)
+    except ValueError:
+        return None, None
+
+
+def _trous_pour_references(references, *, source_label):
+    """Groupe ``references`` par radical (préfixe + éventuel segment période)
+    et liste les numéros MANQUANTS entre le min et le max observés par
+    groupe. Renvoie une liste de dicts ``{source, radical, plage, manquants}``
+    — une entrée par radical avec au moins un trou (radical continu = omis)."""
+    buckets = {}
+    for ref in references:
+        radical, numero = _extraire_bucket_numero(ref)
+        if radical is None:
+            continue
+        buckets.setdefault(radical, set()).add(numero)
+    rapport = []
+    for radical, numeros in sorted(buckets.items()):
+        lo, hi = min(numeros), max(numeros)
+        manquants = sorted(set(range(lo, hi + 1)) - numeros)
+        if manquants:
+            rapport.append({
+                'source': source_label,
+                'journal': radical,
+                'plage': [lo, hi],
+                'manquants': manquants,
+            })
+    return rapport
+
+
+def trous_sequences(company, *, exercice=None):
+    """XACC29 — Rapport de continuité des numéros de pièces (audit marocain).
+
+    Balaie les factures ventes (``ventes.selectors.references_factures``), les
+    pièces comptables par journal (``EcritureComptable.reference`` de cette
+    société — même app, lecture directe) et les avoirs
+    (``ventes.selectors.references_avoirs``) — jamais un import de
+    ``ventes.models``. Extrait le compteur final de chaque référence
+    (suffixe ``-NNNN``) et liste, par radical (préfixe + période), les
+    numéros manquants entre le plus petit et le plus grand observés. Une
+    séquence sans trou n'apparaît pas dans le rapport (rapport vide = tout
+    continu). ``exercice`` est actuellement ignoré (réservé, toutes les
+    pièces de la société sont balayées — filtrage par exercice non câblé
+    faute de champ d'exercice direct sur ``EcritureComptable``). Lecture
+    seule ; company-scopé (jamais de fuite cross-company, les sélecteurs
+    sous-jacents filtrent déjà par société)."""
+    from apps.ventes import selectors as ventes_selectors
+
+    rapport = []
+    rapport += _trous_pour_references(
+        ventes_selectors.references_factures(company), source_label='factures')
+    rapport += _trous_pour_references(
+        ventes_selectors.references_avoirs(company), source_label='avoirs')
+    references_pieces = list(
+        EcritureComptable.objects.filter(company=company)
+        .exclude(reference='')
+        .values_list('reference', flat=True)
+    )
+    rapport += _trous_pour_references(
+        references_pieces, source_label='pieces_comptables')
+    return rapport
+
+
+# ── YLEDG13 — Rapprochement auxiliaire ↔ GL (tie-out AR/AP) ────────────────
+# Compare l'encours DOCUMENTAIRE (lu via ventes.selectors / stock.selectors,
+# jamais leurs models) au solde GL non lettré par tiers (3421/4411) — preuve
+# que les deux systèmes restent égaux une fois YLEDG1/2 câblés. Lecture
+# seule, scopée société.
+
+def _encours_gl_par_tiers(company, compte_numero, *, tiers_type,
+                          date=None):
+    """Solde GL non lettré par ``tiers_id`` d'un compte de tiers donné."""
+    qs = LigneEcriture.objects.filter(
+        company=company, compte__numero=compte_numero, lettrage='',
+        tiers_type=tiers_type, tiers_id__isnull=False)
+    if date:
+        qs = qs.filter(ecriture__date_ecriture__lte=date)
+    par_tiers = {}
+    for ligne in qs:
+        tid = ligne.tiers_id
+        par_tiers.setdefault(tid, Decimal('0'))
+        # Client (actif) : débit − crédit. Fournisseur (passif) : crédit −
+        # débit (inversé en aval selon l'appelant).
+        par_tiers[tid] += (ligne.debit or Decimal('0')) - \
+            (ligne.credit or Decimal('0'))
+    return par_tiers
+
+
+def rapprochement_auxiliaire_clients(company, date=None):
+    """Compare l'encours documentaire clients (ventes) au solde GL 3421 non
+    lettré, par tiers. Renvoie ``{'lignes': [...], 'ecart_total'}`` où chaque
+    ligne est ``{'tiers_id', 'nom', 'encours_documentaire', 'solde_gl',
+    'ecart', 'references'}`` — seuls les tiers en écart (≠ 0, tolérance 1
+    centime) apparaissent. Un document jamais comptabilisé (toggle OFF, ou
+    facture jamais émise) laisse le GL à 0 pendant que le documentaire porte
+    l'encours → apparaît en écart avec sa référence. Une écriture manuelle sur
+    3421 sans document source (donc absente de l'encours documentaire)
+    apparaît symétriquement. Lecture seule."""
+    from apps.ventes import selectors as ventes_selectors
+
+    documentaire = {
+        e['tiers_id']: e for e in ventes_selectors.encours_clients_par_tiers(
+            company)
+    }
+    gl = _encours_gl_par_tiers(company, '3421', tiers_type='client',
+                               date=date)
+    tiers_ids = set(documentaire) | set(gl)
+    lignes = []
+    ecart_total = Decimal('0')
+    for tid in tiers_ids:
+        doc = documentaire.get(tid)
+        doc_montant = doc['encours'] if doc else Decimal('0')
+        gl_montant = gl.get(tid, Decimal('0'))
+        ecart = doc_montant - gl_montant
+        if abs(ecart) <= Decimal('0.01'):
+            continue
+        lignes.append({
+            'tiers_id': tid,
+            'nom': doc['nom'] if doc else '',
+            'encours_documentaire': doc_montant,
+            'solde_gl': gl_montant,
+            'ecart': ecart,
+            'references': doc['references'] if doc else [],
+        })
+        ecart_total += ecart
+    lignes.sort(key=lambda e: abs(e['ecart']), reverse=True)
+    return {'lignes': lignes, 'ecart_total': ecart_total}
+
+
+def rapprochement_auxiliaire_fournisseurs(company, date=None):
+    """Miroir AP de ``rapprochement_auxiliaire_clients`` : compare l'encours
+    documentaire fournisseurs (stock) au solde GL 4411 non lettré, par tiers.
+    Le compte 4411 est un PASSIF (solde naturel créditeur) : le GL est lu
+    crédit − débit pour être homogène au sens « montant dû » du documentaire.
+    Lecture seule."""
+    from apps.stock import selectors as stock_selectors
+
+    documentaire = {
+        e['tiers_id']: e
+        for e in stock_selectors.encours_fournisseurs_par_tiers(company)
+    }
+    gl_actif_sens = _encours_gl_par_tiers(
+        company, '4411', tiers_type='fournisseur', date=date)
+    # _encours_gl_par_tiers calcule débit − crédit (sens actif) ; un compte
+    # fournisseur (passif) veut crédit − débit — on inverse le signe ici
+    # plutôt que dupliquer la fonction.
+    gl = {tid: -montant for tid, montant in gl_actif_sens.items()}
+    tiers_ids = set(documentaire) | set(gl)
+    lignes = []
+    ecart_total = Decimal('0')
+    for tid in tiers_ids:
+        doc = documentaire.get(tid)
+        doc_montant = doc['encours'] if doc else Decimal('0')
+        gl_montant = gl.get(tid, Decimal('0'))
+        ecart = doc_montant - gl_montant
+        if abs(ecart) <= Decimal('0.01'):
+            continue
+        lignes.append({
+            'tiers_id': tid,
+            'nom': doc['nom'] if doc else '',
+            'encours_documentaire': doc_montant,
+            'solde_gl': gl_montant,
+            'ecart': ecart,
+            'references': doc['references'] if doc else [],
+        })
+        ecart_total += ecart
+    lignes.sort(key=lambda e: abs(e['ecart']), reverse=True)
+    return {'lignes': lignes, 'ecart_total': ecart_total}
+
+
+def ecatalogue_public_par_token(token):
+    """XPOS14 — E-catalogue public lu par son token (FG214), lecture seule.
+
+    Utilisé par ``apps.ventes.public_views`` (frontière selectors — jamais
+    d'import de ``compta.models`` côté ventes). Renvoie ``None`` si le token
+    est inconnu, l'e-catalogue est inactif, ou expiré — un appelant public
+    traite ``None`` comme 404, sans jamais fuiter d'information sur l'état
+    réel (existe mais expiré / n'existe pas)."""
+    from .models import ECatalogue
+    try:
+        cat = ECatalogue.objects.get(token=token, actif=True)
+    except ECatalogue.DoesNotExist:
+        return None
+    if cat.expire_le and cat.expire_le < timezone.now():
+        return None
+    return cat
+
+
+def produits_publics_du_catalogue(ecatalogue):
+    """Produits exposés par un e-catalogue (prix public TTC uniquement,
+    jamais `prix_achat`). Lecture seule, scopée à la société du catalogue."""
+    from apps.stock.models import Produit
+    return list(
+        Produit.objects.filter(
+            company_id=ecatalogue.company_id,
+            id__in=ecatalogue.produit_ids or [],
+        )
+    )

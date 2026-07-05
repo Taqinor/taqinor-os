@@ -3,7 +3,10 @@ from datetime import date
 from django.contrib.contenttypes.models import ContentType
 from rest_framework import serializers
 
-from .models import Activity, ActivityType, Attachment, Comment, Tag, TaggedItem, ALLOWED_TARGETS
+from .models import (
+    Activity, ActivityType, Attachment, Comment, Follower, Tag, TaggedItem,
+    ALLOWED_TARGETS,
+)
 
 
 def resolve_target(model_label, object_id, company):
@@ -52,8 +55,10 @@ def activity_state(due_date, done):
 class ActivityTypeSerializer(serializers.ModelSerializer):
     class Meta:
         model = ActivityType
+        # ZSAL1 — type_suivant/mode_enchainement/delai_jours additifs.
         fields = ['id', 'nom', 'icone', 'ordre', 'delai_defaut_jours',
-                  'est_systeme']
+                  'est_systeme', 'type_suivant', 'mode_enchainement',
+                  'delai_jours']
         read_only_fields = ['est_systeme']
 
 
@@ -75,7 +80,7 @@ class ActivitySerializer(serializers.ModelSerializer):
             'id', 'activity_type', 'activity_type_nom', 'activity_type_icone',
             'summary', 'note', 'due_date', 'assigned_to', 'assigned_to_nom',
             'done', 'done_at', 'done_by', 'auto_relance', 'state',
-            'object_id', 'target_model', 'target_label',
+            'personnelle', 'object_id', 'target_model', 'target_label',
             'created_at',
         ]
         read_only_fields = ['done', 'done_at', 'done_by', 'auto_relance',
@@ -86,9 +91,14 @@ class ActivitySerializer(serializers.ModelSerializer):
 
     def get_target_model(self, obj):
         ct = obj.content_type
+        if ct is None:
+            return None
         return f'{ct.app_label}.{ct.model}'
 
     def get_target_label(self, obj):
+        # XKB4 — un à-faire personnel n'a pas de cible métier.
+        if obj.content_type_id is None:
+            return None
         target = obj.content_object
         if target is None:
             return None
@@ -169,3 +179,21 @@ class TaggedItemSerializer(serializers.ModelSerializer):
         model = TaggedItem
         fields = ['id', 'tag', 'tag_nom', 'tag_couleur', 'object_id', 'created_at']
         read_only_fields = ['id', 'tag_nom', 'tag_couleur', 'object_id', 'created_at']
+
+
+class FollowerSerializer(serializers.ModelSerializer):
+    """XKB34 — abonnement d'un utilisateur à un enregistrement."""
+    user_username = serializers.CharField(
+        source='user.username', read_only=True, default=None)
+    target_model = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Follower
+        fields = ['id', 'user', 'user_username', 'sous_type', 'object_id',
+                  'target_model', 'created_at']
+        read_only_fields = ['id', 'user', 'user_username', 'object_id',
+                            'target_model', 'created_at']
+
+    def get_target_model(self, obj):
+        ct = obj.content_type
+        return f'{ct.app_label}.{ct.model}'

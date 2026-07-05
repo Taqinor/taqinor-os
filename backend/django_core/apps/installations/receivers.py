@@ -14,9 +14,15 @@ duplique donc jamais le chantier. La création est company-scopée
 """
 from django.dispatch import receiver
 
-from core.events import devis_accepted
+from core.events import (
+    devis_accepted, reception_fournisseur_confirmee,
+    facture_fournisseur_creee,
+)
 
-from .services import create_installation_from_devis
+from .services import (
+    create_installation_from_devis, provisionner_gr_ir_reception,
+    lettrer_gr_ir_facture,
+)
 
 
 @receiver(devis_accepted,
@@ -34,3 +40,27 @@ def _creer_chantier_on_devis_accepted(sender, devis, user, ancien_statut,
     if company is None:
         return
     create_installation_from_devis(devis, user, company)
+
+
+@receiver(reception_fournisseur_confirmee,
+          dispatch_uid="installations_provisionner_gr_ir_on_reception")
+def _provisionner_gr_ir_on_reception(sender, reception, company, user,
+                                     **kwargs):
+    """YPROC3 — à la confirmation d'une réception fournisseur, provisionne la
+    dette latente GR/IR (idempotent, no-op sans BCF lié)."""
+    try:
+        provisionner_gr_ir_reception(
+            reception=reception, company=company, user=user)
+    except Exception:  # pragma: no cover - défensif, best-effort
+        pass
+
+
+@receiver(facture_fournisseur_creee,
+          dispatch_uid="installations_lettrer_gr_ir_on_facture")
+def _lettrer_gr_ir_on_facture(sender, facture, company, user, **kwargs):
+    """YPROC3 — à la création d'une facture fournisseur, lettre les
+    provisions GR/IR ouvertes du même bon de commande (idempotent)."""
+    try:
+        lettrer_gr_ir_facture(facture=facture, company=company, user=user)
+    except Exception:  # pragma: no cover - défensif, best-effort
+        pass

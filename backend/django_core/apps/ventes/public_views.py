@@ -768,3 +768,161 @@ def pay_webhook(request, token):
         'montant': str(paiement.montant),
         'statut': PaymentLink.Statut.PAYE,
     }))
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicLinkRateThrottle])
+def ecatalogue_public(request, token):
+    """XPOS14 — E-catalogue public tokenisé (FG214), lecture seule.
+
+    Renvoie le titre du catalogue + la liste des produits exposés, prix
+    public TTC UNIQUEMENT (jamais ``prix_achat``). Lu via
+    ``compta.selectors`` (jamais un import de ``compta.models``)."""
+    from apps.compta.selectors import (
+        ecatalogue_public_par_token, produits_publics_du_catalogue,
+    )
+    cat = ecatalogue_public_par_token(token)
+    if cat is None:
+        return _not_found()
+    produits = produits_publics_du_catalogue(cat)
+    return _noindex(Response({
+        'titre': cat.titre,
+        'produits': [
+            {
+                'id': p.id, 'nom': p.nom, 'sku': p.sku or '',
+                'description': p.description or '',
+                'prix_vente': str(p.prix_vente),
+            }
+            for p in produits
+        ],
+    }))
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicLinkRateThrottle])
+def ecatalogue_demander_devis(request, token):
+    """XPOS14 — « Demander un devis » depuis le panier de l'e-catalogue public.
+
+    Le visiteur compose une sélection (produits + quantités) et ses
+    coordonnées (nom, téléphone, email) ; ceci crée un ``Lead`` CRM
+    pré-qualifié (canal e-catalogue) + un ``Devis`` brouillon pré-rempli avec
+    ces lignes — le pont vers la vente conseillée, sans boutique en ligne.
+
+    Réutilise le chemin de création de lead EXISTANT
+    (``crm.services.create_lead_from_livechat`` — même dédup par téléphone/
+    email, jamais un 2ᵉ chemin de création) : la SEULE nouveauté est le
+    panier de produits → lignes de devis liées. Anti-spam : honeypot
+    (``site_web`` cache, un bot qui le remplit voit un 201 factice sans rien
+    créer) + throttle DRF (30/min/IP+jeton, même limite que les autres
+    endpoints publics). Notifie le commercial via ``notifications.notify()``.
+    """
+    from apps.compta.selectors import (
+        ecatalogue_public_par_token, produits_publics_du_catalogue,
+    )
+    cat = ecatalogue_public_par_token(token)
+    if cat is None:
+        return _not_found()
+
+    # Honeypot — un bot qui remplit ce champ caché voit un succès factice.
+    if (request.data.get('site_web') or '').strip():
+        return _noindex(Response(
+            {'detail': 'Votre demande a bien été transmise. Merci.'},
+            status=status.HTTP_201_CREATED))
+
+    nom = (str(request.data.get('nom') or '')).strip()[:255]
+    telephone = (str(request.data.get('telephone') or '')).strip()[:20]
+    email = (str(request.data.get('email') or '')).strip()[:254]
+    if not nom or not (telephone or email):
+        return _noindex(Response(
+            {'detail': 'Nom et téléphone ou email requis.'},
+            status=status.HTTP_400_BAD_REQUEST))
+
+    lignes_in = request.data.get('lignes')
+    if not isinstance(lignes_in, list) or not lignes_in:
+        return _noindex(Response(
+            {'detail': 'Sélectionnez au moins un produit.'},
+            status=status.HTTP_400_BAD_REQUEST))
+
+    produits_exposes = {
+        p.id: p for p in produits_publics_du_catalogue(cat)
+    }
+    from decimal import Decimal, InvalidOperation
+    clean_lignes = []
+    for ligne in lignes_in:
+        if not isinstance(ligne, dict):
+            continue
+        produit_id = ligne.get('produit')
+        try:
+            produit_id = int(produit_id)
+        except (TypeError, ValueError):
+            continue
+        produit = produits_exposes.get(produit_id)
+        if produit is None:
+            continue
+        try:
+            qte = Decimal(str(ligne.get('quantite', 1)))
+        except (InvalidOperation, TypeError, ValueError):
+            qte = Decimal('1')
+        if qte <= 0:
+            qte = Decimal('1')
+        clean_lignes.append({'produit': produit, 'quantite': qte})
+
+    if not clean_lignes:
+        return _noindex(Response(
+            {'detail': 'Sélection de produits invalide.'},
+            status=status.HTTP_400_BAD_REQUEST))
+
+    company = cat.company
+    noms_produits = ', '.join(
+        f'{c["produit"].nom} x{c["quantite"]}' for c in clean_lignes)
+    transcript = f'Demande de devis depuis l\'e-catalogue « {cat.titre} » : {noms_produits}'
+
+    from apps.crm.services import create_lead_from_livechat
+    lead = create_lead_from_livechat(
+        company=company, nom=nom, telephone=telephone, email=email,
+        transcript_text=transcript,
+    )
+
+    from .models import Devis, LigneDevis
+    from apps.crm.services import resolve_client_for_lead
+    from .utils.company_settings import create_numbered
+    client = resolve_client_for_lead(lead)
+
+    def _create(ref):
+        devis = Devis.objects.create(
+            company=company, reference=ref, client=client, lead=lead,
+            statut=Devis.Statut.BROUILLON,
+        )
+        for c in clean_lignes:
+            produit = c['produit']
+            LigneDevis.objects.create(
+                devis=devis, produit=produit, designation=produit.nom,
+                quantite=c['quantite'], prix_unitaire=produit.prix_vente,
+                taux_tva=getattr(produit, 'tva', None),
+            )
+        return devis
+
+    devis = create_numbered(Devis, company, 'devis', _create)
+
+    try:
+        from apps.notifications.services import notify
+        from apps.crm.services import default_responsable_for
+        commercial = default_responsable_for(company)
+        if commercial is not None:
+            notify(
+                commercial, 'ecatalogue_devis_demande',
+                f'Nouvelle demande de devis — e-catalogue ({lead.nom})',
+                body=(f'{lead.nom} a demandé un devis depuis l\'e-catalogue : '
+                      f'{noms_produits}'),
+                link='/ventes/devis',
+                company=company,
+            )
+    except Exception:  # noqa: BLE001 — best-effort
+        pass
+
+    return _noindex(Response({
+        'detail': 'Votre demande a bien été transmise. Nous vous recontactons vite.',
+        'reference': devis.reference,
+    }, status=status.HTTP_201_CREATED))

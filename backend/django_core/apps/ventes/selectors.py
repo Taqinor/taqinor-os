@@ -317,3 +317,241 @@ def nombre_proprietes(devis) -> int:
     except (TypeError, ValueError):
         n = 1
     return max(1, n)
+
+
+# ── XFAC15 — score comportement de paiement (agrège FG365) ────────────────
+
+_SCORE_BANDS = (
+    (0.20, 'A'), (0.40, 'B'), (0.60, 'C'), (0.80, 'D'),
+)
+
+
+def _score_to_letter(score):
+    for threshold, letter in _SCORE_BANDS:
+        if score < threshold:
+            return letter
+    return 'E'
+
+
+def _retard_reel_jours(facture):
+    """Jours émission → encaissement RÉELS pour une facture soldée par
+    paiement (dernière date de paiement enregistrée moins émission). Renvoie
+    ``None`` si la facture n'a aucun paiement (rien à mesurer)."""
+    dernier = None
+    for p in facture.paiements.all():
+        if p.date_paiement and (dernier is None or p.date_paiement > dernier):
+            dernier = p.date_paiement
+    if dernier is None or not facture.date_emission:
+        return None
+    delta = (dernier - facture.date_emission).days
+    return delta if delta > 0 else 0
+
+
+def comportement_paiement(client):
+    """XFAC15 — score de comportement de paiement agrégé d'un client.
+
+    AGRÈGE les scores FG365 (``core.payment_delay.payment_delay_risk``, jamais
+    ré-implémenté ici) de toutes les factures ouvertes du client + son retard
+    moyen RÉEL (jours émission → encaissement, sur les factures déjà payées) →
+    une lettre A (excellent payeur) à E (à risque). Un client sans historique
+    exploitable (aucune facture payée, aucune facture ouverte) reçoit un score
+    NEUTRE (``used_fallback=True`` du moteur pur).
+
+    Renvoie un dict :
+      ``{'score': float, 'lettre': 'A'..'E', 'retard_moyen_jours': float,
+         'nb_factures_ouvertes': int, 'nb_factures_historique': int,
+         'used_fallback': bool}``
+    """
+    from core.payment_delay import payment_delay_risk
+    from .models import Facture
+
+    factures = Facture.objects.filter(
+        client=client).exclude(statut=Facture.Statut.ANNULEE).prefetch_related(
+        'paiements', 'avoirs')
+
+    retards_reels = []
+    for f in factures:
+        if f.statut == Facture.Statut.PAYEE:
+            r = _retard_reel_jours(f)
+            if r is not None:
+                retards_reels.append(r)
+
+    retard_moyen = (
+        sum(retards_reels) / len(retards_reels) if retards_reels else None)
+
+    ouvertes = [f for f in factures if f.montant_du > 0]
+    prior_late = sum(1 for r in retards_reels if r > 0)
+
+    if not ouvertes:
+        # Aucune facture ouverte à scorer : le score client se base
+        # uniquement sur l'historique (ou tombe au neutre si aucun non plus).
+        features = {}
+        if retard_moyen is not None:
+            features['client_avg_delay_days'] = retard_moyen
+            features['client_prior_late_count'] = prior_late
+        result = payment_delay_risk(features)
+    else:
+        scores = []
+        for f in ouvertes:
+            feats = {
+                'days_overdue': f.jours_retard,
+                'montant_du': float(f.montant_du),
+                'relance_count': f.relances.count(),
+            }
+            if retard_moyen is not None:
+                feats['client_avg_delay_days'] = retard_moyen
+                feats['client_prior_late_count'] = prior_late
+            scores.append(payment_delay_risk(feats))
+        avg_score = sum(r.score for r in scores) / len(scores)
+        result = scores[0]
+        result.score = avg_score
+        result.band = (
+            'faible' if avg_score < 0.34 else
+            'moyen' if avg_score < 0.67 else 'élevé')
+
+    return {
+        'score': round(result.score, 4),
+        'lettre': _score_to_letter(result.score),
+        'retard_moyen_jours': (
+            round(retard_moyen, 1) if retard_moyen is not None else None),
+        'nb_factures_ouvertes': len(ouvertes),
+        'nb_factures_historique': len(retards_reels),
+        'used_fallback': result.used_fallback,
+    }
+
+
+def date_encaissement_prevue(facture, retard_moyen_jours=None):
+    """XFAC15 — date d'encaissement PRÉVUE d'une facture ouverte.
+
+    Échéance théorique + retard moyen RÉEL du client (comportemental) au lieu
+    de la seule échéance théorique. Sans échéance ou sans retard moyen connu,
+    renvoie l'échéance théorique inchangée (comportement neutre/dégradé)."""
+    from datetime import timedelta
+    if not facture.date_echeance:
+        return None
+    if not retard_moyen_jours:
+        return facture.date_echeance
+    return facture.date_echeance + timedelta(days=round(retard_moyen_jours))
+
+
+# ── XACC29 — Références (pour rapport de continuité des séquences) ────────
+
+def references_factures(company):
+    """XACC29 — Références de toutes les ``Facture`` (hors annulées) d'une
+    société, pour la détection de trous de séquence côté ``compta`` (jamais un
+    import de ``ventes.models`` en dehors de ce module). Lecture seule."""
+    from .models import Facture
+    return list(
+        Facture.objects
+        .exclude(statut=Facture.Statut.ANNULEE)
+        .filter(company=company)
+        .exclude(reference='')
+        .values_list('reference', flat=True)
+    )
+
+
+def references_avoirs(company):
+    """XACC29 — Références de tous les ``Avoir`` d'une société. Lecture seule."""
+    from .models import Avoir
+    return list(
+        Avoir.objects.filter(company=company)
+        .exclude(reference='')
+        .values_list('reference', flat=True)
+    )
+
+
+def encours_clients_par_tiers(company):
+    """YLEDG13 — encours documentaire (reste dû) par client, factures NON
+    annulées d'une société. Point d'entrée cross-app sanctionné pour
+    ``apps.compta`` (rapprochement auxiliaire/GL, jamais un import direct de
+    ``ventes.models``). Renvoie une liste de dicts ``{'tiers_id', 'nom',
+    'encours', 'references'}`` (encours > 0 seulement, ``references`` = les
+    factures ouvertes de ce client). Lecture seule."""
+    from decimal import Decimal
+    from .models import Facture
+
+    par_client = {}
+    qs = (Facture.objects
+          .filter(company=company)
+          .exclude(statut=Facture.Statut.ANNULEE)
+          .select_related('client'))
+    for facture in qs:
+        du = facture.montant_du
+        if not du:
+            continue
+        client = facture.client
+        entry = par_client.setdefault(client.id, {
+            'tiers_id': client.id,
+            'nom': f'{client.prenom} {client.nom}'.strip()
+                  if hasattr(client, 'prenom') else str(client),
+            'encours': Decimal('0'),
+            'references': [],
+        })
+        entry['encours'] += Decimal(du)
+        entry['references'].append(facture.reference)
+    return [v for v in par_client.values() if v['encours'] > 0]
+
+
+def acompte_paye_pour_devis(devis_id, company):
+    """YSERV1 — vrai si le devis a au moins une ``Facture`` de
+    ``type_facture='acompte'`` au statut ``payee`` — point d'entrée cross-app
+    sanctionné pour ``apps.installations`` (jamais un import direct de
+    ``apps.ventes.models``). Lecture seule ; ``devis_id`` sans facture
+    d'acompte payée (ou inconnu/autre société) renvoie ``False``."""
+    from .models import Facture
+    if not devis_id:
+        return False
+    return Facture.objects.filter(
+        devis_id=devis_id, company=company,
+        type_facture=Facture.TypeFacture.ACOMPTE,
+        statut=Facture.Statut.PAYEE,
+    ).exists()
+
+
+def etat_recouvrement_client(company, client_id):
+    """YCASH4 — État de recouvrement d'UN client, pour le front du funnel.
+
+    Agrège ce que le blueprint L2C appelle "l'état recouvrement remontant au
+    commercial" : le retard maximum parmi ses factures ouvertes, le niveau de
+    relance atteint (réutilise ``recouvrement._current_level`` — jamais une
+    nouvelle échelle), et l'encours échu total (= somme des ``montant_du``
+    des factures en retard, jamais un montant TTC non dû). Ne modifie AUCUN
+    statut ; pur agrégat lecture seule pour l'avertissement FG41 enrichi.
+
+    Renvoie :
+      ``{'retard_max_jours': int, 'niveau_relance': dict|None,
+         'encours_echu': Decimal, 'a_jour': bool}``
+    Un client sans facture en retard renvoie ``a_jour=True`` et
+    ``encours_echu=0`` — l'appelant n'affiche alors aucun avertissement."""
+    from decimal import Decimal
+    from .models import Facture
+    from .recouvrement import _levels, _current_level
+
+    factures = (
+        Facture.objects
+        .filter(company=company, client_id=client_id)
+        .exclude(statut=Facture.Statut.ANNULEE)
+        .prefetch_related('paiements', 'avoirs')
+    )
+
+    retard_max = 0
+    encours_echu = Decimal('0')
+    for f in factures:
+        jr = f.jours_retard
+        if jr > 0:
+            retard_max = max(retard_max, jr)
+            encours_echu += f.montant_du
+
+    if retard_max <= 0:
+        return {
+            'retard_max_jours': 0, 'niveau_relance': None,
+            'encours_echu': Decimal('0'), 'a_jour': True,
+        }
+
+    niveau = _current_level(retard_max, _levels(company))
+    return {
+        'retard_max_jours': retard_max,
+        'niveau_relance': niveau,
+        'encours_echu': encours_echu,
+        'a_jour': False,
+    }

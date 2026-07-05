@@ -27,6 +27,8 @@ from .views import (
     AttestationConformiteViewSet,  # FG277
     TestPerformanceReceptionViewSet,  # FG278
     AttestationREViewSet,  # FG287
+    RemiseEncaissementViewSet,  # XFSM19
+    MandatPaiementViewSet,  # XCTR22
 )
 from .recouvrement import (
     FollowupLevelViewSet,
@@ -36,6 +38,8 @@ from .recouvrement import (
     client_releve,
     client_releve_pdf,
     lettre_relance_pdf,
+    client_score_comportement,  # XFAC15
+    dossier_contentieux,  # XFAC21
 )
 from .public_views import proposal_data, proposal_accept, proposal_pdf
 from .dashboard_view import dashboard_quote_to_cash
@@ -101,6 +105,12 @@ router.register(r'tests-pr-reception', TestPerformanceReceptionViewSet,
 # FG287 — attestations d'énergie renouvelable.
 router.register(r'attestations-re', AttestationREViewSet,
                 basename='attestation-re')
+# XFSM19 — rapprochement des encaissements terrain par technicien.
+router.register(r'remises-encaissement', RemiseEncaissementViewSet,
+                basename='remise-encaissement')
+# XCTR22 — mandats de paiement récurrent (tokenisation carte).
+router.register(r'mandats-paiement', MandatPaiementViewSet,
+                basename='mandat-paiement')
 
 urlpatterns = [
     # Q6/Q7 — Proposition web tokenisée (données JSON + e-signature). Jeton
@@ -130,6 +140,12 @@ urlpatterns = [
     path('clients/<int:client_id>/releve/', client_releve, name='client-releve'),
     path('clients/<int:client_id>/releve-pdf/', client_releve_pdf,
          name='client-releve-pdf'),
+    # XFAC15 — badge de comportement de paiement (fiche client).
+    path('clients/<int:client_id>/score-comportement/',
+         client_score_comportement, name='client-score-comportement'),
+    # XFAC21 — dossier contentieux / passage en recouvrement externe.
+    path('clients/<int:client_id>/dossier-contentieux/',
+         dossier_contentieux, name='client-dossier-contentieux'),
     path('factures/<int:facture_id>/lettre-relance-pdf/', lettre_relance_pdf,
          name='lettre-relance-pdf'),
     # Documents premium ADDITIFS (langage visuel du devis) — rendus à la volée.

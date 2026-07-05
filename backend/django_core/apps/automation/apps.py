@@ -6,6 +6,14 @@ class AutomationConfig(AppConfig):
     name = 'apps.automation'
     label = 'automation'
     verbose_name = 'Automatisations'
+    module_manifest = {
+        'key': 'automation',
+        'label': 'Automatisations',
+        'icone': 'zap',
+        'depends': [],
+        'description': 'Règles et approbations sans code.',
+        'categorie': 'Technique',
+    }
 
     def ready(self):
         from . import signals

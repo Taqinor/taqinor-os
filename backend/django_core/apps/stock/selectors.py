@@ -34,6 +34,20 @@ def lock_produit(pk):
     return Produit.objects.select_for_update().get(pk=pk)
 
 
+def mouvements_par_reference(company, reference):
+    """XMFG15 — mouvements de stock (SORTIE/ENTREE/REBUT…) rattachés à un
+    document source par ``reference`` (ex. la référence d'un ordre
+    d'assemblage), scopés société. Lecture seule, jamais d'instance exposée
+    hors de cette app : les appelants lisent les champs plats via
+    ``.values()`` ou itèrent l'objet localement dans ce module."""
+    from .models import MouvementStock
+    if not reference:
+        return MouvementStock.objects.none()
+    return (MouvementStock.objects
+            .filter(company=company, reference=reference)
+            .select_related('produit'))
+
+
 def get_emplacement_scoped(company, pk):
     """EmplacementStock scopé société par id, ou None. Lecture seule."""
     from .models import EmplacementStock
@@ -123,6 +137,27 @@ def facture_fournisseur_scoped(company, facture_id):
     return (FactureFournisseur.objects
             .select_related('fournisseur', 'created_by')
             .filter(id=facture_id, company=company).first())
+
+
+def ligne_facture_fournisseur_scoped(company, facture_id, ligne_id):
+    """XACC33 — Ligne d'une facture fournisseur, scopée société, ou None.
+
+    Point d'entrée cross-app pour ``apps.compta`` (capitalisation d'une ligne
+    en immobilisation, XACC33) : jamais un import de ``apps.stock.models`` en
+    dehors de ce module. Vérifie que la ligne appartient bien à la facture
+    ``facture_id`` ET que cette facture appartient à ``company`` — renvoie
+    ``None`` (jamais une autre société) si l'un des deux ne correspond pas.
+    Lecture seule."""
+    from .models import LigneFactureFournisseur
+
+    return (
+        LigneFactureFournisseur.objects
+        .select_related('facture', 'produit')
+        .filter(
+            id=ligne_id, facture_id=facture_id,
+            facture__company=company)
+        .first()
+    )
 
 
 def paiement_fournisseur_scoped(company, paiement_id):
@@ -357,4 +392,138 @@ def acomptes_fournisseur_ouverts(company):
                 'montant_non_consomme': non_consomme,
                 'date_versement': a.date_versement,
             })
+    return out
+
+
+# ── XCTR17 — Location de matériel SORTANTE : produits louables ─────────────
+
+def get_produit_louable(company, pk):
+    """Produit LOUABLE scopé société par id, ou ``None`` (XCTR17).
+
+    Renvoie ``None`` si le produit n'existe pas dans la société OU si
+    ``louable`` est faux — jamais un produit non louable (garde métier avant
+    la création d'un ``contrats.OrdreLocation``)."""
+    from .models import Produit
+    return Produit.objects.filter(
+        id=pk, company=company, louable=True).first()
+
+
+def produits_louables_qs(company):
+    """QuerySet des produits louables de la société (XCTR17). Lecture seule."""
+    from .models import Produit
+    return Produit.objects.filter(company=company, louable=True)
+
+
+# ── XPUR17 — TVA par ligne sur la facture fournisseur ────────────────────────
+# Ventilation HT/TVA PAR TAUX (20/14/10/7 %/exonéré). Point d'entrée cross-app
+# LECTURE SEULE pour la comptabilité (apps.compta) : le relevé de déductions
+# TVA lit la ventilation à travers ce sélecteur plutôt qu'en important
+# apps.stock.models directement.
+
+def sous_totaux_tva_facture_fournisseur(facture):
+    """XPUR17 — sous-totaux HT/TVA groupés par taux pour UNE facture
+    fournisseur, dérivés de ses lignes. Une ligne sans taux (`taux_tva` NULL
+    — facture historique) n'est PAS incluse ici : la facture garde alors son
+    `montant_tva` global agrégé comme unique source de vérité (compat totale).
+    Renvoie une liste triée par taux décroissant : ``[{taux_tva, total_ht,
+    total_tva}, ...]`` (vide si aucune ligne ventilée). LECTURE SEULE."""
+    from decimal import Decimal
+    par_taux = {}
+    for ligne in facture.lignes.all():
+        if ligne.taux_tva is None:
+            continue
+        taux = ligne.taux_tva
+        entry = par_taux.setdefault(
+            taux, {'taux_tva': taux, 'total_ht': Decimal('0'),
+                   'total_tva': Decimal('0')})
+        entry['total_ht'] += ligne.total_ht
+        entry['total_tva'] += ligne.total_tva
+    return sorted(par_taux.values(), key=lambda e: e['taux_tva'], reverse=True)
+
+
+def releve_deductions_tva_par_taux(company, *, date_debut=None, date_fin=None):
+    """XPUR17 — relevé de déductions TVA (achats) groupé PAR TAUX sur la
+    période, toutes factures fournisseur confondues (statut de règlement
+    indifférent — la déduction s'apprécie à la facture, pas au paiement).
+    Point d'entrée cross-app pour la comptabilité. LECTURE SEULE."""
+    from decimal import Decimal
+    from .models import FactureFournisseur
+    qs = FactureFournisseur.objects.filter(company=company).prefetch_related(
+        'lignes')
+    if date_debut:
+        qs = qs.filter(date_facture__gte=date_debut)
+    if date_fin:
+        qs = qs.filter(date_facture__lte=date_fin)
+
+    par_taux = {}
+    for facture in qs:
+        for entry in sous_totaux_tva_facture_fournisseur(facture):
+            taux = entry['taux_tva']
+            agg = par_taux.setdefault(
+                taux, {'taux_tva': taux, 'total_ht': Decimal('0'),
+                       'total_tva': Decimal('0'), 'nombre_factures': 0})
+            agg['total_ht'] += entry['total_ht']
+            agg['total_tva'] += entry['total_tva']
+            agg['nombre_factures'] += 1
+    return sorted(par_taux.values(), key=lambda e: e['taux_tva'], reverse=True)
+
+
+def encours_fournisseurs_par_tiers(company):
+    """YLEDG13 — encours documentaire (reste dû) par fournisseur, factures
+    fournisseur non soldées d'une société. Point d'entrée cross-app
+    sanctionné pour ``apps.compta`` (rapprochement auxiliaire/GL, jamais un
+    import direct de ``stock.models``). Renvoie une liste de dicts
+    ``{'tiers_id', 'nom', 'encours', 'references'}`` (encours > 0
+    seulement). Lecture seule."""
+    from decimal import Decimal
+    from .models import FactureFournisseur
+
+    par_fournisseur = {}
+    qs = (FactureFournisseur.objects
+          .filter(company=company)
+          .select_related('fournisseur'))
+    for facture in qs:
+        du = facture.solde_du
+        if not du:
+            continue
+        fournisseur = facture.fournisseur
+        entry = par_fournisseur.setdefault(fournisseur.id, {
+            'tiers_id': fournisseur.id,
+            'nom': fournisseur.nom,
+            'encours': Decimal('0'),
+            'references': [],
+        })
+        entry['encours'] += Decimal(du)
+        entry['references'].append(facture.reference)
+    return [v for v in par_fournisseur.values() if v['encours'] > 0]
+
+
+def lignes_import_depuis_bcf(company, bon_commande_id):
+    """XSTK19 — lignes candidates pour un dossier d'import ADII, pré-remplies
+    depuis les SKUs d'un bon de commande fournisseur (code SH + pays
+    d'origine du produit quand renseignés). Point d'entrée cross-app pour
+    ``installations.DossierImport`` — LECTURE SEULE, jamais d'instance
+    ``LigneBonCommandeFournisseur`` exposée en dehors de ce module.
+
+    Renvoie [{produit_id, sku, designation, quantite, code_sh, pays_origine}]
+    scopé société ; liste vide si le BCF n'existe pas / n'appartient pas à la
+    société. Les champs code_sh/pays_origine peuvent être vides (jamais
+    inventés)."""
+    from .models import LigneBonCommandeFournisseur
+    lignes = (LigneBonCommandeFournisseur.objects
+              .filter(bon_commande_id=bon_commande_id,
+                      bon_commande__company=company,
+                      produit__isnull=False)
+              .select_related('produit'))
+    out = []
+    for ligne in lignes:
+        p = ligne.produit
+        out.append({
+            'produit_id': p.id,
+            'sku': p.sku or '',
+            'designation': p.nom,
+            'quantite': ligne.quantite,
+            'code_sh': p.code_sh or '',
+            'pays_origine': p.pays_origine or '',
+        })
     return out

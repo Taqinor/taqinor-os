@@ -376,6 +376,108 @@ def release_reservations(installation):
             .update(active=False))
 
 
+# ── YDOCF7 — Réservation de stock DEPUIS UN BonCommande (BC) ────────────────
+# `bons-commande/{id}/confirmer` ne réservait rien (le stock n'était touché
+# qu'à `marquer-livre`, décrément direct) : entre confirmation et livraison,
+# deux BC confirmés pouvaient promettre le même stock. Ces fonctions
+# réutilisent le mécanisme N14 EXISTANT (`StockReservation` — même modèle,
+# mêmes gardes idempotentes) plutôt que d'en inventer un second : un BC
+# rattaché à un chantier (via son devis ou directement) réserve sur CE
+# chantier ; un BC sans chantier (devis pas encore accepté / BC manuel) est
+# un no-op sûr (rien à réserver dessus, comportement identique à avant).
+# Toujours derrière le toggle société `reserver_stock_bc` (défaut OFF) —
+# l'appelant (views/bon_commande.py) vérifie le toggle avant d'appeler.
+
+def _installation_pour_bc(bon_commande):
+    """Chantier associé à ce BC — direct, sinon via son devis d'origine.
+    Renvoie None si aucun chantier n'existe (BC sans chantier : no-op sûr)."""
+    inst = Installation.objects.filter(bon_commande=bon_commande).first()
+    if inst is not None:
+        return inst
+    if bon_commande.devis_id:
+        inst = Installation.objects.filter(
+            devis_id=bon_commande.devis_id).first()
+    return inst
+
+
+def _bc_quantities(bon_commande):
+    """Quantités entières par produit depuis les lignes du DEVIS d'origine du
+    BC (mêmes lignes que celles décrémentées par `marquer-livre`)."""
+    from decimal import Decimal, ROUND_HALF_UP
+    besoins = {}
+    if not bon_commande.devis_id:
+        return besoins
+    for ligne in bon_commande.devis.lignes.all():
+        if not ligne.produit_id:
+            continue
+        qte = int(Decimal(ligne.quantite).quantize(
+            Decimal('1'), rounding=ROUND_HALF_UP))
+        if qte <= 0:
+            continue
+        besoins[ligne.produit_id] = besoins.get(ligne.produit_id, 0) + qte
+    return besoins
+
+
+def reserver_stock_depuis_bc(bon_commande):
+    """YDOCF7 — réserve le stock des lignes du BC à sa CONFIRMATION.
+
+    No-op sûr (renvoie []) si le BC n'a aucun chantier associé — un chantier
+    n'existe qu'une fois le devis d'origine accepté ; un BC antérieur à cette
+    étape (rare) reste un simple document sans effet sur le stock, comme
+    avant ce toggle. Réutilise `StockReservation` (mêmes gardes qu'un
+    chantier : idempotent, jamais deux réservations pour le même (chantier,
+    produit))."""
+    installation = _installation_pour_bc(bon_commande)
+    if installation is None:
+        return []
+    besoins = _bc_quantities(bon_commande)
+    if not besoins:
+        return []
+    from apps.stock.selectors import valid_produit_ids
+    valid_ids = valid_produit_ids(installation.company, list(besoins))
+    reservations = []
+    for produit_id, qte in besoins.items():
+        if produit_id not in valid_ids:
+            continue
+        resa, created = StockReservation.objects.get_or_create(
+            installation=installation, produit_id=produit_id,
+            defaults={'company': installation.company, 'quantite': qte})
+        if not created and not resa.consomme:
+            changed = []
+            if resa.quantite != qte:
+                resa.quantite = qte
+                changed.append('quantite')
+            if not resa.active:
+                resa.active = True
+                changed.append('active')
+            if changed:
+                resa.save(update_fields=changed)
+        reservations.append(resa)
+    return reservations
+
+
+def liberer_reservation_bc(bon_commande):
+    """YDOCF7 — libère les réservations du chantier du BC à son ANNULATION.
+
+    No-op sûr si aucun chantier associé. Ne touche jamais une réservation
+    déjà consommée (mécanisme `release_reservations` réutilisé tel quel)."""
+    installation = _installation_pour_bc(bon_commande)
+    if installation is None:
+        return 0
+    return release_reservations(installation)
+
+
+def consommer_reservation_bc(bon_commande, user):
+    """YDOCF7 — solde (consomme) les réservations du chantier du BC à sa
+    LIVRAISON, au lieu d'un second décrément direct (double décrément évité :
+    l'appelant, quand le toggle est ON, appelle CECI au lieu de sortir le
+    stock lui-même). No-op sûr si aucun chantier associé."""
+    installation = _installation_pour_bc(bon_commande)
+    if installation is None:
+        return 0
+    return consume_reservations(installation, user)
+
+
 # ── FG296 — Instanciation d'un modèle de projet sur un chantier ───────────────
 # Un modèle de projet (« chantier-type ») pré-crée à la demande/signature les
 # jalons standard (FG293) et complète la nomenclature gelée du chantier
@@ -1191,6 +1293,88 @@ def compute_iv_ecart(reading):
     return reading
 
 
+# ── XFSM13 — re-vérification périodique IEC 62446-2 vs baseline de recette ──
+def _pct_ecart(mesure, baseline):
+    """Écart relatif (%) mesuré vs baseline, ou None si une valeur manque ou
+    que la baseline est nulle (division impossible)."""
+    from decimal import Decimal
+    if mesure is None or baseline in (None, 0):
+        return None
+    ecart = (Decimal(mesure) - Decimal(baseline)) / Decimal(baseline) * 100
+    return ecart.quantize(Decimal('0.01'))
+
+
+def enregistrer_reverification(
+        intervention, mesures, user=None, seuil_alerte_pct=20):
+    """XFSM13 — enregistre une re-vérification IEC 62446-2 pour
+    ``intervention`` (de type ``Intervention.Type.REVERIFICATION_62446``),
+    compare ses mesures ``{isolement_mohm, continuite_terre_ohm,
+    voc_par_string: {label: valeur}}`` à la baseline du chantier (la fiche de
+    recette ``CommissioningRecord`` du chantier + ses ``CommissioningIVReading``),
+    calcule la dérive, et crée une ``Reserve`` sur l'intervention si la dérive
+    dépasse ``seuil_alerte_pct`` (défaut 20 %) sur au moins un point.
+
+    Silencieux (dérive = None) sur tout point sans baseline correspondante —
+    ne bloque jamais l'enregistrement. Idempotent au niveau caller : chaque
+    appel crée une NOUVELLE re-vérification (l'historique de dérive dans le
+    temps est la valeur du contrôle)."""
+    from .models import CommissioningIVReading, Reserve, ReverificationMesure
+
+    company = intervention.company
+    installation = intervention.installation
+    baseline = getattr(installation, 'commissioning_record', None)
+
+    isolement_mesure = mesures.get('isolement_mohm')
+    continuite_mesure = mesures.get('continuite_terre_ohm')
+    isolement_ecart = _pct_ecart(
+        isolement_mesure, getattr(baseline, 'isolement_mohm', None))
+
+    voc_comparaison = []
+    depassement = False
+    if isolement_ecart is not None and abs(isolement_ecart) > seuil_alerte_pct:
+        depassement = True
+
+    if baseline is not None:
+        baseline_iv = {
+            r.string_label: r.voc_mesure_v
+            for r in CommissioningIVReading.objects.filter(record=baseline)}
+        for label, voc_mesure in (mesures.get('voc_par_string') or {}).items():
+            voc_baseline = baseline_iv.get(label)
+            ecart = _pct_ecart(voc_mesure, voc_baseline)
+            voc_comparaison.append({
+                'string_label': label,
+                'voc_baseline_v': str(voc_baseline) if voc_baseline is not None else None,
+                'voc_mesure_v': str(voc_mesure) if voc_mesure is not None else None,
+                'ecart_pct': str(ecart) if ecart is not None else None,
+            })
+            if ecart is not None and abs(ecart) > seuil_alerte_pct:
+                depassement = True
+
+    reverif = ReverificationMesure.objects.create(
+        company=company, intervention_id=intervention.id,
+        record_baseline=baseline,
+        isolement_mohm=isolement_mesure,
+        continuite_terre_ohm=continuite_mesure,
+        voc_comparaison=voc_comparaison,
+        isolement_ecart_pct=isolement_ecart,
+        seuil_alerte_pct=seuil_alerte_pct,
+        depassement_detecte=depassement,
+        observations=mesures.get('observations') or '',
+        created_by=user)
+
+    if depassement:
+        reserve = Reserve.objects.create(
+            company=company, intervention=intervention,
+            description=(
+                "Re-vérification IEC 62446-2 : dérive au-delà du seuil "
+                f"({seuil_alerte_pct} %) détectée vs la recette initiale."),
+            created_by=user)
+        reverif.reserve_id = reserve.id
+        reverif.save(update_fields=['reserve_id'])
+
+    return reverif
+
+
 # ── CH4 — Pack de remise client (handover) ───────────────────────────────────
 # Le pack assemble les pièces du dossier remis au client + au vendeur en
 # RÉFÉRENÇANT l'état réel du chantier (jamais de binaire stocké). Chaque pièce
@@ -1772,3 +1956,541 @@ def decider_demande_achat(demande_achat, *, approuver, user, motif_refus=''):
         'statut', 'approuvee_par', 'date_decision', 'motif_refus',
         'date_modification'])
     return demande_achat
+
+
+# ── XFSM3 — Replanification en masse d'une journée ───────────────────────────
+# Construit sur XFSM2 (meilleur créneau) / FG301 (nivellement) : entrée = un
+# jour + (optionnellement) un technicien absent ou une liste d'IDs. Sortie =
+# propositions de nouveaux créneaux/techniciens (réutilise la même logique
+# de scoring que XFSM2, respecte FG300/FG302), puis application en un appel.
+# `?simuler=1` (dry-run) ne mute rien — jamais de conflit créé (les créneaux
+# proposés excluent déjà les techniciens en conflit/indisponibles ce jour-là,
+# héritage direct de XFSM2).
+
+def previsualiser_replanification_masse(company, *, jour, technicien_id=None,
+                                        intervention_ids=None):
+    """XFSM3 — propositions de re-slot pour un jour donné (dry-run, NE MUTE
+    RIEN). Cible soit toutes les interventions du `technicien_id` donné ce
+    jour-là, soit une liste explicite `intervention_ids` (les deux
+    combinables : filtre supplémentaire). Chaque proposition réutilise
+    ``selectors.suggerer_creneau`` (habilitation/conflit/indispo/charge/
+    distance) — le créneau proposé ne recrée jamais de conflit FG300. Renvoie
+    ``{jour, propositions: [{intervention_id, installation_id,
+    type_intervention, technicien_actuel_id, proposition}]}``."""
+    from .models import Intervention
+    from . import selectors
+
+    qs = Intervention.objects.filter(company=company, date_prevue=jour)
+    if technicien_id is not None:
+        qs = qs.filter(technicien_id=technicien_id)
+    if intervention_ids:
+        qs = qs.filter(id__in=intervention_ids)
+
+    propositions = []
+    for interv in qs.select_related('installation'):
+        suggestions = selectors.suggerer_creneau(
+            company, chantier_id=interv.installation_id,
+            type_intervention=interv.type_intervention, n=1)
+        proposition = (
+            suggestions['propositions'][0]
+            if suggestions['propositions'] else None)
+        propositions.append({
+            'intervention_id': interv.id,
+            'installation_id': interv.installation_id,
+            'type_intervention': interv.type_intervention,
+            'technicien_actuel_id': interv.technicien_id,
+            'proposition': proposition,
+        })
+    return {'jour': str(jour), 'propositions': propositions}
+
+
+def appliquer_replanification_masse(company, *, jour, motif, user,
+                                    technicien_id=None, intervention_ids=None):
+    """XFSM3 — applique en UN appel les propositions de
+    ``previsualiser_replanification_masse`` : chaque intervention resolvable
+    (une proposition existe) est déplacée vers le technicien + date proposés,
+    le compteur `rdv_reschedule_count` (FG78) est incrémenté et un chatter
+    (motif) est posé, et le technicien réassigné est notifié (best-effort,
+    `apps.notifications`). Les interventions SANS proposition (aucun
+    créneau disponible dans la fenêtre XFSM2) sont laissées INTACTES et
+    listées à part. Renvoie
+    ``{jour, deplacees: [...], non_resolues: [intervention_id...]}``."""
+    from django.db import transaction
+    from . import intervention_activity
+    from .models import Intervention
+
+    motif = (motif or '').strip()
+    preview = previsualiser_replanification_masse(
+        company, jour=jour, technicien_id=technicien_id,
+        intervention_ids=intervention_ids)
+
+    deplacees = []
+    non_resolues = []
+    with transaction.atomic():
+        for entry in preview['propositions']:
+            proposition = entry['proposition']
+            if proposition is None:
+                non_resolues.append(entry['intervention_id'])
+                continue
+            interv = Intervention.objects.select_for_update().get(
+                id=entry['intervention_id'], company=company)
+            ancien_tech_id = interv.technicien_id
+            nouvelle_date = proposition['date']
+            nouveau_tech_id = proposition['technicien_id']
+            interv.technicien_id = nouveau_tech_id
+            if str(interv.date_prevue) != nouvelle_date:
+                interv.rdv_reschedule_count = (
+                    interv.rdv_reschedule_count or 0) + 1
+            interv.date_prevue = nouvelle_date
+            interv.save(update_fields=[
+                'technicien_id', 'date_prevue', 'rdv_reschedule_count'])
+            intervention_activity.log_note(
+                interv, user,
+                f"Replanification en masse ({motif or 'sans motif'}) : "
+                f"{ancien_tech_id or 'non assigné'} → {nouveau_tech_id}, "
+                f"nouvelle date {nouvelle_date}.")
+            _notifier_reassignation(interv, user)
+            deplacees.append({
+                'intervention_id': interv.id,
+                'ancien_technicien_id': ancien_tech_id,
+                'nouveau_technicien_id': nouveau_tech_id,
+                'nouvelle_date': nouvelle_date,
+            })
+    return {
+        'jour': str(jour), 'deplacees': deplacees,
+        'non_resolues': non_resolues,
+    }
+
+
+def _notifier_reassignation(interv, user):
+    """XFSM3 — notifie (best-effort, ne lève jamais) le technicien réassigné
+    d'un changement de créneau."""
+    try:
+        from apps.notifications.services import notify
+        from apps.notifications.models import EventType
+    except Exception:  # pragma: no cover - défensif
+        return
+    if not interv.technicien_id:
+        return
+    try:
+        titre = f"Intervention replanifiée — #{interv.id}"
+        notify(
+            interv.technicien, EventType.CHANTIER_DUE, titre,
+            body=f"Nouvelle date : {interv.date_prevue}.",
+            company=interv.company)
+    except Exception:  # pragma: no cover - défensif
+        pass
+
+
+# ── XMFG16 — Assemblage sous-traité (façon) avec suivi des composants confiés
+# Cycle : à la CONFIRMATION d'un ordre lié à un sous-traitant, les composants
+# de sa BOM/lignes sont transférés (TransfertStock, `apps.stock.services`)
+# vers un emplacement dédié « chez {sous-traitant} » (créé à la volée). À la
+# RÉCEPTION du composite, le backflush XMFG1 consomme les composants DEPUIS
+# cet emplacement (`emplacement_source` forcé) et le composite est valorisé
+# coût composants + montant façon de l'OST (INTERNE — jamais client-facing,
+# jamais dans un PDF).
+
+def confier_composants_soustraitance(ordre):
+    """XMFG16 — transfère les composants de l'ordre (lignes XMFG6, repli BOM
+    du kit) vers l'emplacement dédié du sous-traitant lié, et POSE cet
+    emplacement comme `emplacement_source` de l'ordre (le backflush XMFG1 à la
+    clôture consommera DEPUIS cet emplacement). No-op si l'ordre n'a pas de
+    `sous_traitant`. Idempotent : ne retransfère pas si `emplacement_source`
+    pointe déjà vers l'emplacement du sous-traitant."""
+    from apps.stock.services import (
+        get_or_create_emplacement_soustraitant, transfer_stock,
+        ensure_emplacements)
+
+    if ordre.sous_traitant_id is None:
+        return ordre
+
+    emplacement = get_or_create_emplacement_soustraitant(
+        ordre.company, ordre.sous_traitant.nom)
+    if ordre.emplacement_source_id == emplacement.id:
+        return ordre  # déjà confié — idempotent.
+
+    depot_principal = ensure_emplacements(ordre.company)
+    lignes = list(ordre.lignes.select_related('produit').all())
+    composants = (
+        [(ligne.produit, ligne.quantite) for ligne in lignes] if lignes
+        else [(c.produit, (c.quantite or 0) * ordre.quantite)
+              for c in ordre.kit.composants.select_related('produit').all()])
+    for produit, quantite in composants:
+        if produit is None or not quantite:
+            continue
+        try:
+            transfer_stock(
+                company=ordre.company, user=ordre.created_by,
+                produit_id=produit.id, source_id=depot_principal.id,
+                destination_id=emplacement.id, quantite=quantite,
+                note=f'Confié sous-traitant — ordre {ordre.reference}')
+        except ValueError:
+            # Stock insuffisant au dépôt principal : best-effort, le rapport
+            # de reliquat (ci-dessous) restera visible à l'appelant — on ne
+            # bloque jamais la confirmation d'ordre pour cette raison.
+            continue
+
+    ordre.emplacement_source = emplacement
+    ordre.save(update_fields=['emplacement_source'])
+    return ordre
+
+
+def cout_composite_soustraite(ordre):
+    """XMFG16 — coût du composite reçu d'un sous-traitant : coût composants
+    (``cout_prevu_assemblage``, INTERNE) + montant façon de l'OST lié
+    (``montant_realise`` si posé, sinon ``montant`` engagé). None si l'ordre
+    n'a pas d'``ordre_sous_traitance``. JAMAIS client-facing ni dans un PDF."""
+    from decimal import Decimal
+    if ordre.ordre_sous_traitance_id is None:
+        return None
+    ost = ordre.ordre_sous_traitance
+    montant_facon = (
+        ost.montant_realise if ost.montant_realise is not None
+        else ost.montant) or Decimal('0')
+    return cout_prevu_assemblage(ordre) + Decimal(str(montant_facon))
+
+
+def rapport_composants_chez_soustraitants(company):
+    """XMFG16 — reliquat des composants restant CHEZ CHAQUE sous-traitant
+    (emplacements « Chez {nom} » avec du stock ventilé non encore consommé —
+    un ordre déjà backflushé, ``stock_mouvemente=True``, n'a plus de reliquat).
+    Renvoie une liste [{sous_traitant_id, sous_traitant_nom, emplacement_id,
+    lignes: [{produit_id, produit_nom, quantite}]}]. Lecture seule."""
+    from .models import OrdreAssemblage
+
+    ordres = (OrdreAssemblage.objects
+              .filter(company=company, sous_traitant__isnull=False,
+                      emplacement_source__isnull=False,
+                      stock_mouvemente=False)
+              .exclude(statut=OrdreAssemblage.Statut.ANNULE)
+              .select_related('sous_traitant', 'emplacement_source'))
+    par_emplacement = {}
+    for ordre in ordres:
+        emp = ordre.emplacement_source
+        entry = par_emplacement.setdefault(emp.id, {
+            'sous_traitant_id': ordre.sous_traitant_id,
+            'sous_traitant_nom': ordre.sous_traitant.nom,
+            'emplacement_id': emp.id,
+            'lignes': [],
+        })
+        for se in emp.stocks.select_related('produit').all():
+            entry['lignes'].append({
+                'produit_id': se.produit_id,
+                'produit_nom': se.produit.nom,
+                'quantite': se.quantite,
+            })
+    return list(par_emplacement.values())
+
+
+def marquer_serie_entrepot_sortie(*, company, produit_id, numero_serie):
+    """XPOS9 — si `numero_serie` est déjà enregistré au registre entrepôt
+    (`SerieEntrepot`, FG323) pour ce produit/société, le marque SORTI (vente
+    comptoir). No-op silencieux si la série n'y est pas enregistrée — un
+    produit sérialisé peut très bien être vendu sans être jamais passé par
+    l'entrepôt tracé. Renvoie l'objet mis à jour, ou None si non trouvé."""
+    from .models_serie_entrepot import SerieEntrepot
+
+    entry = SerieEntrepot.objects.filter(
+        company=company, produit_id=produit_id,
+        numero_serie=numero_serie).first()
+    if entry is None:
+        return None
+    if entry.statut != SerieEntrepot.Statut.SORTI:
+        entry.statut = SerieEntrepot.Statut.SORTI
+        entry.save(update_fields=['statut', 'date_modification'])
+    return entry
+
+
+class TicketSansInstallationError(Exception):
+    """YSERV2 — levée quand un ticket SAV sans chantier lié demande la
+    création d'une intervention (rien à planifier sans Installation)."""
+
+
+def creer_intervention_depuis_ticket(*, ticket, user, company,
+                                     type_intervention=None):
+    """YSERV2 — Point d'entrée cross-app (services.py cible) pour créer une
+    ``Intervention`` pré-remplie depuis un ticket SAV, appelé EXCLUSIVEMENT
+    par ``apps.sav.views`` (jamais un import du modèle ``Intervention``
+    depuis ``sav`` — frontière cross-app, CLAUDE.md).
+
+    Le chantier (``installation``), le technicien (``technicien_responsable``
+    du ticket) sont repris tels quels ; le type par défaut est DEPANNAGE
+    (correctif) sauf ``type_intervention`` explicite. Refuse proprement
+    (``TicketSansInstallationError``) si le ticket n'a pas d'installation
+    liée — rien à planifier sans chantier. ``ticket`` est passé en instance
+    déjà résolue/scopée société par l'appelant ; ``company`` est TOUJOURS
+    posée côté serveur (jamais lue du corps de requête).
+
+    Renvoie l'``Intervention`` créée.
+    """
+    from .models_intervention import Intervention
+
+    if not ticket.installation_id:
+        raise TicketSansInstallationError(
+            "Ce ticket n'a pas de chantier lié — impossible de planifier "
+            'une intervention.')
+
+    interv = Intervention.objects.create(
+        company=company,
+        installation_id=ticket.installation_id,
+        ticket=ticket,
+        type_intervention=type_intervention or Intervention.Type.DEPANNAGE,
+        technicien=ticket.technicien_responsable,
+        date_prevue=ticket.date_tournee,
+        created_by=user,
+    )
+    return interv
+
+
+# ── YPROC3 — GR/IR automatique (provision à réception, lettrage à facture) ──
+# Consommateurs des événements ``core.events.reception_fournisseur_confirmee``
+# et ``core.events.facture_fournisseur_creee`` (abonnés dans receivers.py).
+# Montants INTERNES (jamais client-facing).
+
+def provisionner_gr_ir_reception(*, reception, company, user):
+    """YPROC3 — crée la provision GR/IR (`ReceptionNonFacturee`) pour une
+    réception fournisseur venant d'être CONFIRMÉE.
+
+    Montant = Σ (quantité de la ligne de réception × `prix_achat_unitaire` de
+    sa ligne de BCF). IDEMPOTENTE : une réception déjà provisionnée (à la main
+    ou automatiquement) n'est jamais doublée — renvoie la provision existante.
+    Sans BCF lié (réception hors flux normal), no-op (rien à provisionner).
+    """
+    from decimal import Decimal
+    from .models_gr_ir import ReceptionNonFacturee
+
+    if company is None or reception is None:
+        return None
+    bc = reception.bon_commande
+    if bc is None:
+        return None
+
+    existante = ReceptionNonFacturee.objects.filter(
+        company=company, reception=reception).first()
+    if existante is not None:
+        return existante
+
+    montant = Decimal('0')
+    for ligne in reception.lignes.select_related('ligne_commande').all():
+        pu = (ligne.ligne_commande.prix_achat_unitaire
+              if ligne.ligne_commande else Decimal('0')) or Decimal('0')
+        montant += Decimal(str(ligne.quantite or 0)) * pu
+
+    date_reception = reception.date_reception
+    if date_reception is None and reception.date_creation:
+        date_reception = reception.date_creation.date()
+
+    return ReceptionNonFacturee.objects.create(
+        company=company, reception=reception, bon_commande=bc,
+        libelle=f'Réception {reception.reference}',
+        montant_provision=montant,
+        date_reception=date_reception,
+        created_by=user,
+    )
+
+
+def lettrer_gr_ir_facture(*, facture, company, user):
+    """YPROC3 — lettre AUTOMATIQUEMENT les provisions GR/IR ouvertes du bon de
+    commande d'une facture fournisseur venant d'être CRÉÉE.
+
+    Solde (`lettre=True`, `facture` posée, `date_lettrage`) les provisions non
+    encore lettrées de ce BCF, à hauteur du montant facturé (HT) — ne touche
+    jamais une provision d'un autre bon de commande. IDEMPOTENTE : une
+    provision déjà lettrée est ignorée (jamais re-lettrée / re-décrémentée).
+    Sans bon de commande sur la facture, no-op.
+    """
+    from django.utils import timezone
+    from .models_gr_ir import ReceptionNonFacturee
+
+    if company is None or facture is None:
+        return []
+    bc = getattr(facture, 'bon_commande', None)
+    if bc is None:
+        return []
+
+    montant_restant = facture.montant_ht or 0
+    lettres = []
+    provisions = ReceptionNonFacturee.objects.filter(
+        company=company, bon_commande=bc, lettre=False).order_by(
+        'date_creation')
+    for prov in provisions:
+        if montant_restant <= 0:
+            break
+        prov.facture = facture
+        prov.lettre = True
+        prov.date_lettrage = timezone.now().date()
+        prov.save(update_fields=['facture', 'lettre', 'date_lettrage',
+                                 'date_modification'])
+        lettres.append(prov)
+        montant_restant -= (prov.montant_provision or 0)
+    return lettres
+
+
+# ── YSERV1 — Gate « acompte encaissé » avant planification (opt-in) ────────
+
+def verifier_gate_acompte_planification(installation):
+    """YSERV1 — renvoie une raison FRANÇAISE qui bloque le passage du
+    chantier à PLANIFIE, ou ``None`` si la transition est autorisée.
+
+    Toggle société `exiger_acompte_avant_planification` (défaut OFF = jamais
+    de blocage, comportement historique byte-identique). ON : bloque tant
+    qu'aucune Facture de type 'acompte' du devis lié n'est 'payee' — lue via
+    `apps.ventes.selectors.acompte_paye_pour_devis` (jamais un import du
+    modèle ventes). Un chantier sans devis lié n'est jamais bloqué (rien à
+    vérifier)."""
+    company = installation.company
+    if company is None:
+        return None
+    try:
+        from apps.parametres.models import CompanyProfile
+        profil = CompanyProfile.get(company)
+    except Exception:  # pragma: no cover - défensif
+        return None
+    if not getattr(profil, 'exiger_acompte_avant_planification', False):
+        return None
+    if not installation.devis_id:
+        return None
+    from apps.ventes.selectors import acompte_paye_pour_devis
+    if acompte_paye_pour_devis(installation.devis_id, company):
+        return None
+    return ("Planification refusée : l'acompte de ce devis n'est pas "
+            'encore encaissé (réglage société « acompte avant '
+            'planification »).')
+
+
+# ── YSERV6 — annulation de chantier : solder les interventions ouvertes ────
+
+def annuler_interventions_ouvertes(installation, user):
+    """YSERV6 — à l'annulation d'un chantier, marque `annulee=True` (drapeau
+    ORTHOGONAL, la state machine F3 `STATUT_ORDER` reste intacte) toutes ses
+    interventions NON terminées (statut hors TERMINEE/VALIDEE, pas déjà
+    annulée), journalise une note par intervention et notifie les
+    techniciens/équipe assignés (best-effort). Renvoie le nombre marquées.
+    """
+    from .models_intervention import Intervention
+
+    qs = installation.interventions.exclude(
+        statut__in=[Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE]
+    ).filter(annulee=False)
+    count = 0
+    for interv in qs:
+        interv.annulee = True
+        interv.motif_annulation = (
+            f'Chantier {installation.reference} annulé')
+        interv.save(update_fields=['annulee', 'motif_annulation'])
+        from . import intervention_activity
+        intervention_activity.log_note(
+            interv, user,
+            'Intervention annulée automatiquement — chantier annulé.')
+        _notifier_intervention_annulee(interv, user)
+        count += 1
+    return count
+
+
+def _notifier_intervention_annulee(interv, user):
+    """YSERV6 — notifie (best-effort, ne lève jamais) le technicien principal
+    et les membres d'équipe d'une intervention annulée."""
+    try:
+        from apps.notifications.services import notify
+        from apps.notifications.models import EventType
+    except Exception:  # pragma: no cover - défensif
+        return
+    destinataires = set()
+    if interv.technicien_id:
+        destinataires.add(interv.technicien)
+    try:
+        destinataires.update(interv.equipe.all())
+    except Exception:  # pragma: no cover - défensif
+        pass
+    titre = f"Intervention annulée — chantier {interv.installation.reference}"
+    for dest in destinataires:
+        try:
+            notify(
+                dest, EventType.CHANTIER_DUE, titre,
+                body='Le chantier a été annulé, cette intervention ne '
+                     'sera pas réalisée.',
+                company=interv.company)
+        except Exception:  # pragma: no cover - défensif
+            pass
+
+
+def reactiver_interventions_annulees(installation, user):
+    """YSERV6 — à la réactivation d'un chantier, lève UNIQUEMENT le drapeau
+    `annulee` des interventions qui l'ont reçu PAR CETTE annulation (motif
+    traçant la provenance) — jamais une intervention annulée pour une autre
+    raison. Renvoie le nombre réactivé."""
+    marker = f'Chantier {installation.reference} annulé'
+    qs = installation.interventions.filter(
+        annulee=True, motif_annulation=marker)
+    count = 0
+    for interv in qs:
+        interv.annulee = False
+        interv.motif_annulation = None
+        interv.save(update_fields=['annulee', 'motif_annulation'])
+        from . import intervention_activity
+        intervention_activity.log_note(
+            interv, user,
+            'Intervention réactivée — chantier réactivé.')
+        count += 1
+    return count
+
+
+# ── YHIRE9 — garde d'habilitation à l'affectation d'intervention ───────────
+# Mapping type d'intervention → habilitation requise partagé avec XFSM2
+# (``selectors._TYPE_VERS_HABILITATION``) : garde le SEUL référentiel, importé
+# ici plutôt que dupliqué (les deux modules restent dans la même app).
+
+def verifier_habilitation_affectation(company, technicien, type_intervention):
+    """YHIRE9 — vérifie l'habilitation d'un technicien pour le type
+    d'intervention qu'on s'apprête à lui affecter (contrôle à l'ÉCRITURE,
+    complète XFSM2 qui ne fait QUE suggérer).
+
+    Renvoie ``(bloquant, avertissements)`` :
+      * ``bloquant`` — True seulement si le réglage société est 'block' ET
+        l'habilitation requise n'est pas valide ;
+      * ``avertissements`` — liste de messages FRANÇAIS (vide = rien à
+        signaler). Toujours peuplée quand l'habilitation manque/expire,
+        indépendamment du mode (le mode ne change que si ça bloque).
+
+    Un type d'intervention sans mapping connu, un technicien sans fiche RH
+    liée, ou aucun technicien : jamais bloquant (garde SOFT par défaut,
+    cohérent avec FG176/XFSM2 — on ne bloque jamais faute de donnée)."""
+    from .selectors import _TYPE_VERS_HABILITATION
+
+    if technicien is None or company is None:
+        return False, []
+    cle_habilitation = _TYPE_VERS_HABILITATION.get(type_intervention)
+    if not cle_habilitation:
+        return False, []
+
+    from apps.rh.selectors import (
+        dossier_employe_for_user, habilitations_requises_pour_intervention,
+        verifier_habilitation_requise,
+    )
+    # Traduit la clé intermédiaire (ex. 'pose_pv_bt') en codes RÉELS
+    # `Habilitation.TypeHabilitation` (ex. ['b1v', 'br']) via
+    # `INTERVENTION_HABILITATIONS` — jamais la clé intermédiaire directement
+    # (celle-ci ne correspond à aucun titre réel).
+    titres_requis = habilitations_requises_pour_intervention(cle_habilitation)
+    if not titres_requis:
+        return False, []
+    dossier = dossier_employe_for_user(company, technicien.id)
+    if dossier is None:
+        return False, []
+    rapport = verifier_habilitation_requise(
+        company, dossier, titres_requis)
+    if rapport['autorise']:
+        return False, []
+
+    avertissements = [rapport['message']] if rapport.get('message') else [
+        'Habilitation requise manquante ou expirée : '
+        f'{", ".join(titres_requis)}.'
+    ]
+    try:
+        from apps.parametres.models import CompanyProfile
+        profil = CompanyProfile.get(company)
+        mode = getattr(profil, 'mode_garde_habilitation', 'warn')
+    except Exception:  # pragma: no cover - défensif
+        mode = 'warn'
+    return (mode == 'block'), avertissements

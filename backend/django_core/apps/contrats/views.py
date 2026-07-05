@@ -48,8 +48,10 @@ from .models import (
     ModeleContrat,
     ModeleContratClause,
     Obligation,
+    OrdreLocation,
     PartieContrat,
     PieceConformite,
+    PlanRecurrent,
     RegleApprobation,
     Resiliation,
     RetenueGarantie,
@@ -60,7 +62,9 @@ from .serializers import (
     AlerteContratSerializer,
     AvenantSerializer,
     CautionSerializer,
+    ChangerStatutOrdreLocationSerializer,
     ChangerStatutSerializer,
+    EcourterOrdreLocationSerializer,
     ClauseContratSerializer,
     ClauseSerializer,
     ContratActivitySerializer,
@@ -85,9 +89,12 @@ from .serializers import (
     ModeleContratSerializer,
     NoterContratSerializer,
     ObligationSerializer,
+    OrdreLocationSerializer,
     PartieContratSerializer,
     PenaliteSLASerializer,
     PieceConformiteSerializer,
+    PlanRecurrentSerializer,
+    ProlongerOrdreLocationSerializer,
     RegleApprobationSerializer,
     RendreContratSerializer,
     RenouvelerContratSerializer,
@@ -1851,6 +1858,7 @@ class IndexationPrixViewSet(_ContratsBaseViewSet):
             'delta': str(resultat['delta']),
             'avenant_id': avenant.id if avenant is not None else None,
             'avenant_numero': avenant.numero if avenant is not None else None,
+            'lignes_reappliquees': resultat.get('lignes_reappliquees', 0),
         }, status=status.HTTP_200_OK)
 
 
@@ -1982,3 +1990,376 @@ class CycleFacturationLogViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
             },
             status=status.HTTP_201_CREATED,
         )
+
+
+# ---------------------------------------------------------------------------
+# XCTR17 — Location de matériel SORTANTE (aux clients)
+# ---------------------------------------------------------------------------
+
+
+class OrdreLocationViewSet(_ContratsBaseViewSet):
+    """Ordres de location de matériel aux clients (XCTR17).
+
+    Scopé société (``TenantMixin``). Le produit DOIT être ``louable``
+    (vérifié via ``stock.selectors.get_produit_louable`` — jamais un import
+    du modèle ``stock``) et la fenêtre demandée ne doit chevaucher AUCUN
+    ordre actif du même produit + numéro de série (400 sinon). ``company`` et
+    ``created_by`` sont posés CÔTÉ SERVEUR.
+
+    Filtres : ``?produit=<id>``, ``?statut=<valeur>``, ``?client=<id>``.
+    """
+    queryset = OrdreLocation.objects.select_related('produit').all()
+    serializer_class = OrdreLocationSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = [
+        'date_reservation', 'date_enlevement_prevue', 'date_retour_prevue',
+        'date_creation', 'id',
+    ]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        produit_id = self.request.query_params.get('produit')
+        if produit_id:
+            qs = qs.filter(produit_id=produit_id)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        client_id = self.request.query_params.get('client')
+        if client_id:
+            qs = qs.filter(client_id=client_id)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        from apps.stock.selectors import get_produit_louable
+
+        produit_id = request.data.get('produit')
+        produit = get_produit_louable(request.user.company, produit_id)
+        if produit is None:
+            return Response(
+                {'produit': "Produit introuvable ou non louable."},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        def _parse_date(key):
+            raw = (request.data.get(key) or '').strip()
+            if not raw:
+                return None
+            from datetime import date as _date
+            try:
+                return _date.fromisoformat(raw)
+            except ValueError:
+                return None
+
+        date_reservation = _parse_date('date_reservation')
+        date_enlevement = _parse_date('date_enlevement_prevue')
+        date_retour = _parse_date('date_retour_prevue')
+        if not (date_reservation and date_enlevement and date_retour):
+            return Response(
+                {'detail': 'date_reservation, date_enlevement_prevue et '
+                           'date_retour_prevue sont requises (AAAA-MM-JJ).'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        client_id = request.data.get('client_id')
+        if not client_id:
+            return Response(
+                {'client_id': 'Requis.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            ordre = services.creer_ordre_location(
+                request.user.company,
+                client_id=client_id,
+                produit=produit,
+                numero_serie=request.data.get('numero_serie', ''),
+                date_reservation=date_reservation,
+                date_enlevement_prevue=date_enlevement,
+                date_retour_prevue=date_retour,
+                tarif_jour=request.data.get('tarif_jour') or None,
+                note=request.data.get('note', ''),
+                created_by=request.user,
+            )
+        except services.OrdreLocationError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(
+            OrdreLocationSerializer(
+                ordre, context={'request': request}).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='changer-statut')
+    def changer_statut(self, request, pk=None):
+        """Transition GARDÉE du statut local de l'ordre de location."""
+        ordre = self.get_object()
+        serializer = ChangerStatutOrdreLocationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            services.changer_statut_ordre_location(
+                ordre, serializer.validated_data['statut'])
+        except services.OrdreLocationError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            OrdreLocationSerializer(
+                ordre, context={'request': request}).data)
+
+    @action(detail=False, methods=['get'])
+    def disponibilite(self, request):
+        """GET /ordres-location/disponibilite/?produit=<id>&numero_serie=&
+        date_debut=&date_fin= (XCTR17)."""
+        produit_id = request.query_params.get('produit')
+        if not produit_id:
+            return Response(
+                {'detail': 'produit requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        def _parse_date(key):
+            raw = (request.query_params.get(key) or '').strip()
+            if not raw:
+                return None
+            from datetime import date as _date
+            try:
+                return _date.fromisoformat(raw)
+            except ValueError:
+                return None
+
+        result = selectors.disponibilite_produit(
+            request.user.company, produit_id,
+            numero_serie=request.query_params.get('numero_serie'),
+            date_debut=_parse_date('date_debut'),
+            date_fin=_parse_date('date_fin'))
+        return Response(result)
+
+    # ── XCTR18 — Caution (dépôt de garantie) ────────────────────────────────
+
+    @action(detail=True, methods=['post'], url_path='caution/encaisser')
+    def caution_encaisser(self, request, pk=None):
+        ordre = self.get_object()
+        try:
+            services.encaisser_caution(
+                ordre, montant=request.data.get('montant'),
+                auteur=request.user)
+        except services.CautionLocationError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            OrdreLocationSerializer(
+                ordre, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='caution/restituer')
+    def caution_restituer(self, request, pk=None):
+        ordre = self.get_object()
+        try:
+            services.restituer_caution(ordre, auteur=request.user)
+        except services.CautionLocationError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            OrdreLocationSerializer(
+                ordre, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='caution/retenir')
+    def caution_retenir(self, request, pk=None):
+        ordre = self.get_object()
+        try:
+            resultat = services.retenir_caution_partielle(
+                ordre,
+                montant_retenu=request.data.get('montant_retenu'),
+                motif=request.data.get('motif', ''),
+                user=request.user, auteur=request.user)
+        except services.CautionLocationError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                'ordre': OrdreLocationSerializer(
+                    resultat['ordre'], context={'request': request}).data,
+                'facture_id': resultat['facture'].id,
+                'facture_reference': resultat['facture'].reference,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+    # ── XCTR19 — Retour de location : retards, frais, inspection ────────────
+
+    @action(detail=False, methods=['get'], url_path='en-retard')
+    def en_retard(self, request):
+        """GET /ordres-location/en-retard/ (XCTR19) — ordres enlevés dont le
+        retour prévu est dépassé sans retour effectif."""
+        ordres = selectors.ordres_location_en_retard(request.user.company)
+        page = self.paginate_queryset(ordres)
+        serializer = OrdreLocationSerializer(
+            page if page is not None else ordres, many=True,
+            context={'request': request})
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], url_path='cloturer')
+    def cloturer(self, request, pk=None):
+        """Clôture l'ordre RETOURNÉ, facture les frais de retard éventuels."""
+        ordre = self.get_object()
+        try:
+            services.cloturer_ordre_location(ordre, user=request.user)
+        except services.RetourLocationError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            OrdreLocationSerializer(
+                ordre, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='inspecter')
+    def inspecter(self, request, pk=None):
+        """Enregistre l'inspection de retour (checklist + relevé + dommages
+        chiffrés éventuels → ligne de facture + ticket SAV)."""
+        ordre = self.get_object()
+        try:
+            resultat = services.inspecter_retour(
+                ordre,
+                checklist=request.data.get('checklist'),
+                releve_compteur=request.data.get('releve_compteur', ''),
+                dommages_montant=request.data.get('dommages_montant'),
+                motif_dommages=request.data.get('motif_dommages', ''),
+                user=request.user)
+        except services.RetourLocationError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        payload = OrdreLocationSerializer(
+            resultat['ordre'], context={'request': request}).data
+        payload['ticket_id'] = resultat['ticket_id']
+        return Response(payload)
+
+    # ── XCTR20 — Location longue durée : récurrence + prolongation/écourtage
+
+    @action(detail=True, methods=['post'], url_path='facturer-cycle')
+    def facturer_cycle(self, request, pk=None):
+        """Émet UNE facture de cycle récurrent (XCTR20)."""
+        ordre = self.get_object()
+        try:
+            facture = services.facturer_ordre_location_recurrent(
+                ordre, user=request.user,
+                periode=request.data.get('periode'))
+        except services.RetourLocationError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                'facture_id': facture.id,
+                'facture_reference': facture.reference,
+                'ordre': OrdreLocationSerializer(
+                    ordre, context={'request': request}).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=['post'])
+    def prolonger(self, request, pk=None):
+        """Prolonge l'ordre (nouvelle date de retour, re-vérifie la
+        disponibilité) — XCTR20."""
+        ordre = self.get_object()
+        serializer = ProlongerOrdreLocationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            services.prolonger_ordre_location(
+                ordre,
+                nouvelle_date_retour=serializer.validated_data[
+                    'nouvelle_date_retour'])
+        except services.OrdreLocationError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            OrdreLocationSerializer(
+                ordre, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'])
+    def ecourter(self, request, pk=None):
+        """Écourte l'ordre : delta → avoir — XCTR20."""
+        ordre = self.get_object()
+        serializer = EcourterOrdreLocationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            resultat = services.ecourter_ordre_location(
+                ordre,
+                nouvelle_date_retour=serializer.validated_data[
+                    'nouvelle_date_retour'],
+                user=request.user)
+        except services.OrdreLocationError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        payload = OrdreLocationSerializer(
+            resultat['ordre'], context={'request': request}).data
+        avoir = resultat['avoir']
+        payload['avoir_id'] = avoir.id if avoir is not None else None
+        payload['avoir_reference'] = avoir.reference if avoir is not None else None
+        return Response(payload)
+
+    # ── XCTR21 — Utilisation & ROI du parc de location (ADMIN-ONLY) ─────────
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAdminRole])
+    def utilisation(self, request):
+        """GET /ordres-location/utilisation/?periode=AAAA-MM (XCTR21).
+
+        ADMIN-ONLY (403 pour tout autre rôle) : le rapport inclut
+        ``prix_achat``/``payback``, jamais client-facing. ``?periode=`` fixe
+        le mois analysé (défaut : mois courant)."""
+        from datetime import date as _date
+        import calendar
+
+        from django.utils import timezone
+
+        raw = (request.query_params.get('periode') or '').strip()
+        today = timezone.localdate()
+        if raw:
+            try:
+                annee, mois = (int(p) for p in raw.split('-', 1))
+            except (ValueError, TypeError):
+                return Response(
+                    {'detail': 'periode invalide (AAAA-MM attendu).'},
+                    status=status.HTTP_400_BAD_REQUEST)
+        else:
+            annee, mois = today.year, today.month
+
+        periode_debut = _date(annee, mois, 1)
+        dernier_jour = calendar.monthrange(annee, mois)[1]
+        periode_fin = _date(annee, mois, dernier_jour)
+
+        rows = selectors.utilisation_parc_location(
+            request.user.company, periode_debut=periode_debut,
+            periode_fin=periode_fin, admin=True)
+
+        def _fmt(row):
+            out = dict(row)
+            out['taux_utilisation'] = float(out['taux_utilisation'])
+            out['revenu_locatif'] = _money(out['revenu_locatif'])
+            if 'prix_achat' in out:
+                out['prix_achat'] = _money(out['prix_achat'])
+            if out.get('payback') is not None:
+                out['payback'] = float(out['payback'])
+            return out
+
+        return Response({
+            'periode_debut': periode_debut.isoformat(),
+            'periode_fin': periode_fin.isoformat(),
+            'results': [_fmt(r) for r in rows],
+        })
+
+
+class PlanRecurrentViewSet(_ContratsBaseViewSet):
+    """Plans de facturation récurrente réutilisables (nommés) — ZCTR1.
+
+    Scopé société (``TenantMixin``) ; ``company`` posée CÔTÉ SERVEUR
+    (``perform_create`` du ``TenantMixin`` — jamais lue du corps de requête).
+    CRUD complet. Filtre ``?actif=1``.
+    """
+    queryset = PlanRecurrent.objects.all()
+    serializer_class = PlanRecurrentSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom']
+    ordering_fields = ['nom', 'date_creation', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        actif = self.request.query_params.get('actif')
+        if actif is not None:
+            qs = qs.filter(actif=actif.lower() in ('1', 'true', 'oui'))
+        return qs

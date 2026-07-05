@@ -180,6 +180,24 @@ class CompanyProfile(models.Model):
     # ailleurs) : transmission Simpl-TVA, signature électronique certifiée.
     dgi_export_actif = models.BooleanField(default=False)
 
+    # ── XFAC29 — Transmission DGI SORTANTE (interrupteur maître, défaut OFF) ──
+    # Distinct de `dgi_export_actif` (export local N105, jamais transmis) :
+    # arme la couche de SIGNATURE + TRANSMISSION à une plateforme agréée
+    # (apps/ventes/dgi/transmission.py). Tant qu'il est False (défaut), aucun
+    # appel réseau n'est jamais tenté et `Facture.dgi_statut` reste à sa valeur
+    # par défaut. `dgi_transmission_provider` nomme le fournisseur ('noop' par
+    # défaut, 'mock' en tests) — swappable comme `payments/providers.py`.
+    dgi_transmission_actif = models.BooleanField(default=False)
+    dgi_transmission_provider = models.CharField(
+        max_length=30, blank=True, default='noop')
+
+    # ── YDOCF7 — Réservation de stock à la confirmation d'un BonCommande ──
+    # Défaut OFF = comportement actuel intact (stock touché seulement à
+    # `marquer-livre`). ON : `confirmer` réserve (StockReservation N14),
+    # `annuler` libère, `marquer-livre` consomme la réservation au lieu d'un
+    # second décrément direct.
+    reserver_stock_bc = models.BooleanField(default=False)
+
     # ── Module d'exécution terrain (F9–F20) — interfaces SWAPPABLES ──
     # Chaque champ NOMME le fournisseur d'une capacité optionnelle. VIDE par
     # défaut = NO-OP total (aucun identifiant externe, aucun coût) : F9 retombe
@@ -301,6 +319,100 @@ class CompanyProfile(models.Model):
     escompte_jours_defaut = models.PositiveIntegerField(
         null=True, blank=True,
         help_text="Délai (jours) proposé par défaut pour l'escompte.")
+
+    # ── XFAC13 — tolérance d'écart de règlement (abandon auto du résiduel) ──
+    # Défaut 0 = comportement actuel inchangé (aucun abandon automatique). Un
+    # résiduel (facture − paiement encaissé) strictement inférieur ou égal à ce
+    # seuil (MAD) est proposé/soldé automatiquement à l'enregistrement du
+    # paiement plutôt que de laisser la facture « en retard » indéfiniment.
+    tolerance_ecart_reglement = models.DecimalField(
+        max_digits=8, decimal_places=2, default=Decimal('0'),
+        help_text='Résiduel (MAD) toléré, abandonné automatiquement à '
+                  "l'encaissement. 0 = désactivé (défaut).")
+
+    # ── XFAC18 — workflow de revue facture (ségrégation des tâches) ──
+    # Défaut OFF = comportement actuel byte-identique (n'importe quel rôle qui
+    # crée une facture peut l'émettre). ON : une facture créée par un
+    # utilisateur du tier limité démarre « à valider » et l'émission exige un
+    # valideur du tier responsable/admin DIFFÉRENT du créateur.
+    revue_factures_active = models.BooleanField(
+        default=False,
+        help_text="Active le contrôle 4-yeux à l'émission des factures "
+                  "(désactivé par défaut).")
+
+    # ── XFAC24 — immutabilité de la facture émise (opt-in) ──
+    # Défaut OFF = comportement actuel byte-identique (une facture émise reste
+    # librement modifiable, hors verrou de PÉRIODE compta FG115). ON : les
+    # champs financiers d'une facture non-brouillon deviennent en lecture
+    # seule (correction par avoir + nouvelle facture uniquement) — prépare la
+    # facturation électronique DGI (mandat 2026).
+    factures_immuables = models.BooleanField(
+        default=False,
+        help_text="Interdit la modification des champs financiers d'une "
+                  "facture non-brouillon (correction par avoir uniquement).")
+
+    # ── XFAC28 — blocage crédit dur configurable (étend FG41) ──
+    # Défaut OFF = comportement FG41 intact (avertissement seul, jamais de
+    # blocage). ON : un client en dépassement de plafond (ou en retard au-delà
+    # du seuil configuré) voit ``devis/{id}/accepter`` et
+    # ``devis/{id}/generer-facture`` refusés (403), sauf override explicite
+    # d'un responsable/admin. DECISION founder (2026) : seuils par défaut
+    # prudents (0 jour = le critère retard est ignoré tant qu'il n'est pas
+    # explicitement configuré ; le critère plafond utilise TOUJOURS
+    # ``Client.plafond_credit`` déjà existant — FG41) ; le founder ajuste
+    # ``credit_hold_retard_jours`` selon sa politique de recouvrement.
+    credit_hold_actif = models.BooleanField(
+        default=False,
+        help_text="Bloque (403) les nouveaux devis acceptés/factures d'un "
+                  "client en dépassement de crédit, au lieu du seul "
+                  "avertissement FG41. Désactivé par défaut.")
+    credit_hold_retard_jours = models.PositiveIntegerField(
+        default=0,
+        help_text="Jours de retard sur facture(s) ouvertes au-delà desquels "
+                  "le hold s'applique aussi (indépendamment du plafond). "
+                  "0 = ce critère est ignoré (seul le dépassement de "
+                  "plafond FG41 déclenche le hold).")
+
+    # ── XFSM1 — Facturation SAV hors garantie depuis le ticket ──────────────
+    # Taux horaire main-d'œuvre (MAD/heure) utilisé par
+    # ``sav.views.TicketViewSet.generer_facture`` pour chiffrer la ligne MO
+    # d'un ticket SAV hors garantie. Vide = aucun taux configuré : la
+    # génération de facture refuse la ligne MO tant que le founder n'a pas
+    # renseigné ce taux (jamais de valeur inventée).
+    taux_horaire_sav = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text='Taux horaire main-d\'œuvre SAV (MAD/heure), utilisé pour '
+                  'facturer un ticket hors garantie depuis son temps passé.')
+
+    # ── YSERV1 — Gate « acompte encaissé » avant planification (opt-in) ──────
+    # Défaut OFF = comportement actuel byte-identique (aucun contrôle de
+    # paiement à la planification). ON : passer un chantier à PLANIFIE est
+    # refusé tant qu'aucune Facture de type 'acompte' du devis lié n'est
+    # 'payee' — sauf override responsable/admin avec motif obligatoire
+    # (journalisé au chatter).
+    exiger_acompte_avant_planification = models.BooleanField(
+        default=False,
+        help_text="Bloque la planification d'un chantier (statut PLANIFIE) "
+                  "tant que l'acompte du devis lié n'est pas encaissé. "
+                  'Désactivé par défaut.')
+
+    # ── YHIRE9 — garde d'habilitation à l'affectation d'intervention ─────────
+    # Consomme `rh.selectors.verifier_habilitation_requise` (FG176) à
+    # l'affectation/changement de technicien d'une intervention typée.
+    # 'warn' (défaut) = un avertissement `avertissements[]` est renvoyé sans
+    # bloquer (comportement quasi byte-identique — juste un champ en plus) ;
+    # 'block' = l'affectation est refusée (400) tant que l'habilitation
+    # requise n'est pas valide.
+    class ModeGardeHabilitation(models.TextChoices):
+        WARN = 'warn', 'Avertir seulement'
+        BLOCK = 'block', 'Bloquer'
+
+    mode_garde_habilitation = models.CharField(
+        max_length=10, choices=ModeGardeHabilitation.choices,
+        default=ModeGardeHabilitation.WARN,
+        help_text="Comportement quand un technicien affecté n'a pas "
+                  "l'habilitation requise pour le type d'intervention : "
+                  "avertir (défaut) ou bloquer l'affectation.")
 
     class Meta:
         verbose_name = 'Profil entreprise'

@@ -6,13 +6,16 @@ jamais lue d'un corps de requête. Réutilise les conventions de stockage de
 `records.storage` (clé MinIO `file_key`) sans réimplémenter le stockage.
 """
 import hashlib
+import logging
 import re
 
 from django.contrib.postgres.search import SearchVector
 from django.db import models, transaction
 from django.db.models import Value
 
-from .models import Cabinet, Document, DocumentVersion, Folder
+from .models import Cabinet, Document, DocumentVersion, Folder, RoutageDocumentaire
+
+logger = logging.getLogger(__name__)
 
 
 def update_search_vector(document):
@@ -1255,6 +1258,73 @@ def assert_not_locked_by_other(document, user):
             "Le document est extrait par un autre utilisateur. "
             "Attendez le check-in avant de téléverser une nouvelle version."
         )
+
+
+def verrouiller_avertissement(document, user, *, motif=''):
+    """ZGED9 — Pose le verrou d'AVERTISSEMENT léger (« en cours d'édition »),
+    DISTINCT du check-out GED16 : n'empêche jamais la lecture, affiche
+    seulement un bandeau à tous. Idempotent si déjà posé par le MÊME
+    utilisateur (motif mis à jour) ; si posé par un AUTRE, lève
+    `PermissionError` (→ 409 côté vue).
+
+    Multi-tenant : vérifie que user.company_id == document.company_id."""
+    if document.company_id != user.company_id:
+        raise PermissionError("Document inaccessible.")
+    from django.utils import timezone
+    with transaction.atomic():
+        doc = Document.objects.select_for_update().get(pk=document.pk)
+        if (doc.verrou_avertissement_par_id is not None
+                and doc.verrou_avertissement_par_id != user.pk):
+            raise PermissionError(
+                "Ce document est déjà signalé « en cours d'édition » par un "
+                "autre utilisateur.")
+        doc.verrou_avertissement_par = user
+        doc.verrou_avertissement_le = timezone.now()
+        doc.verrou_avertissement_motif = motif or ''
+        doc.save(update_fields=[
+            'verrou_avertissement_par', 'verrou_avertissement_le',
+            'verrou_avertissement_motif', 'updated_at'])
+    journaliser_evenement(
+        doc, type_evenement='verrou_avertissement_pose',
+        message=motif or '', utilisateur=user)
+    return doc
+
+
+def deverrouiller_avertissement(document, user):
+    """ZGED9 — Lève le verrou d'AVERTISSEMENT. Le poseur OU un
+    gestionnaire/admin peut lever ; un forçage PAR UN TIERS gestionnaire est
+    journalisé distinctement (traçabilité de la levée forcée). Idempotent si
+    déjà libre.
+
+    Multi-tenant : vérifie que user.company_id == document.company_id."""
+    if document.company_id != user.company_id:
+        raise PermissionError("Document inaccessible.")
+    with transaction.atomic():
+        doc = Document.objects.select_for_update().get(pk=document.pk)
+        if doc.verrou_avertissement_par_id is None:
+            return doc  # déjà libre — idempotent.
+        is_poseur = doc.verrou_avertissement_par_id == user.pk
+        is_manager = getattr(user, 'is_admin_role', False) or user.is_superuser
+        if not is_poseur and not is_manager:
+            raise PermissionError(
+                "Seul le poseur du verrou ou un gestionnaire peut le lever.")
+        force = not is_poseur
+        poseur_id = doc.verrou_avertissement_par_id
+        doc.verrou_avertissement_par = None
+        doc.verrou_avertissement_le = None
+        doc.verrou_avertissement_motif = ''
+        doc.save(update_fields=[
+            'verrou_avertissement_par', 'verrou_avertissement_le',
+            'verrou_avertissement_motif', 'updated_at'])
+    journaliser_evenement(
+        doc,
+        type_evenement=(
+            'verrou_avertissement_force' if force else 'verrou_avertissement_leve'),
+        message=(
+            f'Levé de force par un gestionnaire (posé par #{poseur_id}).'
+            if force else ''),
+        utilisateur=user)
+    return doc
 
 
 def change_lifecycle_status(document, target_status, *, user):
@@ -2693,12 +2763,20 @@ def creer_demande_multi_signataires(document, *, destinataires, company,
     """XGED2 — Crée une demande de signature à PLUSIEURS destinataires.
 
     `destinataires` : liste ordonnée de dicts
-    `{"nom", "email"?, "telephone"?, "role"?, "ordre"?}`. Le premier élément
-    devient le signataire « principal » de la `DemandeSignatureDocument`
-    (`signataire_nom`/`signataire_email`, rétrocompatibilité GED30/XGED1) ;
-    TOUS les éléments deviennent des `SignataireDemande` ordonnés. `company`
-    est TOUJOURS fournie par l'appelant (jamais lue du corps) et doit
-    correspondre à celle du document (sinon `PermissionError`).
+    `{"nom", "email"?, "telephone"?, "role"?, "ordre"?, "role_signataire"?}`.
+    Le premier élément devient le signataire « principal » de la
+    `DemandeSignatureDocument` (`signataire_nom`/`signataire_email`,
+    rétrocompatibilité GED30/XGED1) ; TOUS les éléments deviennent des
+    `SignataireDemande` ordonnés. `company` est TOUJOURS fournie par
+    l'appelant (jamais lue du corps) et doit correspondre à celle du document
+    (sinon `PermissionError`).
+
+    ZGED1 — `role_signataire` (id, optionnel) référence le catalogue de
+    rôles réutilisables (`RoleSignataire`, borné à la même société — un id
+    d'une autre société est silencieusement ignoré, jamais une fuite) : le
+    destinataire HÉRITE de sa couleur/authentification extra. RÉTROCOMPATIBLE
+    : sans référence, le `role` texte reste la seule valeur (comportement
+    XGED2 inchangé).
 
     Routage : `notifier_prochains_signataires` est appelé immédiatement après
     création — en parallèle, tous les `signataire` sont notifiés ; en
@@ -2707,7 +2785,7 @@ def creer_demande_multi_signataires(document, *, destinataires, company,
     Renvoie la `DemandeSignatureDocument` créée (avec ses `.signataires`).
     """
     from .models import (
-        ROLE_SIGNATAIRE, ROUTAGE_SEQUENTIEL, SignataireDemande,
+        ROLE_SIGNATAIRE, ROUTAGE_SEQUENTIEL, RoleSignataire, SignataireDemande,
     )
 
     if not destinataires:
@@ -2726,6 +2804,11 @@ def creer_demande_multi_signataires(document, *, destinataires, company,
         'routage', 'expires_at', 'relance_cadence_jours', 'updated_at'])
 
     for idx, dest in enumerate(destinataires, start=1):
+        role_signataire = None
+        role_signataire_id = dest.get('role_signataire')
+        if role_signataire_id:
+            role_signataire = RoleSignataire.objects.filter(
+                company=demande.company, pk=role_signataire_id).first()
         SignataireDemande.objects.create(
             company=demande.company,
             demande=demande,
@@ -2734,6 +2817,7 @@ def creer_demande_multi_signataires(document, *, destinataires, company,
             telephone=(dest.get('telephone') or '').strip(),
             ordre=dest.get('ordre', idx),
             role=dest.get('role', ROLE_SIGNATAIRE),
+            role_signataire=role_signataire,
         )
     notifier_prochains_signataires(demande)
     return demande
@@ -2781,6 +2865,141 @@ def notifier_prochains_signataires(demande):
     return notifies
 
 
+# ── ZGED2 — Authentification extra du signataire (SMS/OTP email, key-gated) ─
+
+OTP_EXPIRATION_MINUTES = 10
+OTP_MAX_ESSAIS = 3
+
+
+def _generer_code_otp():
+    """ZGED2 — Génère un code à 6 chiffres cryptographiquement fort."""
+    import secrets as _secrets
+    return f'{_secrets.randbelow(1_000_000):06d}'
+
+
+def _hash_otp(code):
+    return hashlib.sha256(code.encode('utf-8')).hexdigest()
+
+
+def envoyer_code_otp_signataire(signataire, *, telephone_override='',
+                                email_override=''):
+    """ZGED2 — Envoie (ou dégrade proprement) le code d'authentification
+    extra d'UN destinataire, selon son `auth_extra_effective`.
+
+    Sans authentification extra requise (`aucune`) : no-op, renvoie
+    `{'envoye': False, 'mode': 'aucune'}` — la signature se fait directement
+    (comportement XGED1 inchangé).
+
+    Mode `sms` : si la passerelle SMS marocaine (`core.sms`, FG371,
+    key-gated) est configurée pour la société, envoie un code à 6 chiffres au
+    téléphone du signataire ; SANS passerelle configurée, dégrade en « aucune »
+    avec un message clair (no-op, aucun appel réseau, aucune dépendance
+    nouvelle) — la signature reste possible sans OTP, et le journal le note.
+
+    Mode `email_otp` : réutilise le backend email existant (console en local,
+    même mécanisme que les relances XGED2) — toujours « envoyé » car aucune
+    passerelle externe requise.
+
+    Génération/validation horodatées ; le code n'est JAMAIS stocké en clair
+    (seul `otp_code_hash`, SHA-256). Renvoie un dict `{'envoye', 'mode',
+    'detail'}` — jamais d'exception (toujours un résultat exploitable par la
+    vue publique)."""
+    import datetime
+
+    from django.utils import timezone
+
+    mode = signataire.auth_extra_effective
+    if mode == 'aucune':
+        return {'envoye': False, 'mode': 'aucune',
+                'detail': "Aucune authentification extra requise."}
+
+    if mode == 'sms':
+        from core.sms import send_sms
+        company = signataire.demande.company
+        telephone = telephone_override or signataire.telephone
+        if not telephone:
+            return {'envoye': False, 'mode': 'aucune',
+                    'detail': "Aucun téléphone renseigné : authentification "
+                              "SMS dégradée (signature sans OTP)."}
+        code = _generer_code_otp()
+        resultat = send_sms(
+            company, telephone,
+            f'TAQINOR — votre code de signature : {code}')
+        if not resultat.sent:
+            # Passerelle absente/non configurée → dégrade proprement en
+            # « aucune » (jamais bloquant, jamais un faux OTP requis).
+            return {'envoye': False, 'mode': 'aucune',
+                    'detail': f'Passerelle SMS indisponible ({resultat.detail}) '
+                              ': authentification dégradée, signature sans OTP.'}
+        signataire.otp_code_hash = _hash_otp(code)
+        signataire.otp_expires_at = (
+            timezone.now() + datetime.timedelta(minutes=OTP_EXPIRATION_MINUTES))
+        signataire.otp_essais = 0
+        signataire.otp_valide = False
+        signataire.save(update_fields=[
+            'otp_code_hash', 'otp_expires_at', 'otp_essais', 'otp_valide',
+            'updated_at'])
+        return {'envoye': True, 'mode': 'sms', 'detail': 'Code SMS envoyé.'}
+
+    if mode == 'email_otp':
+        from django.conf import settings
+        from django.core.mail import send_mail
+        email = email_override or signataire.email
+        if not email:
+            return {'envoye': False, 'mode': 'aucune',
+                    'detail': "Aucun email renseigné : authentification "
+                              "dégradée, signature sans OTP."}
+        code = _generer_code_otp()
+        from_email = getattr(
+            settings, 'DEFAULT_FROM_EMAIL', 'no-reply@taqinor.ma')
+        try:
+            send_mail(
+                'TAQINOR — code de signature', f'Votre code : {code}',
+                from_email, [email], fail_silently=False)
+        except Exception as exc:  # noqa: BLE001 — dégrade, jamais bloquant.
+            return {'envoye': False, 'mode': 'aucune',
+                    'detail': f"Envoi email échoué ({exc}) : authentification "
+                              "dégradée, signature sans OTP."}
+        signataire.otp_code_hash = _hash_otp(code)
+        signataire.otp_expires_at = (
+            timezone.now() + datetime.timedelta(minutes=OTP_EXPIRATION_MINUTES))
+        signataire.otp_essais = 0
+        signataire.otp_valide = False
+        signataire.save(update_fields=[
+            'otp_code_hash', 'otp_expires_at', 'otp_essais', 'otp_valide',
+            'updated_at'])
+        return {'envoye': True, 'mode': 'email_otp', 'detail': 'Code email envoyé.'}
+
+    return {'envoye': False, 'mode': 'aucune',
+            'detail': f'Mode inconnu : {mode!r} — dégradé.'}
+
+
+def valider_code_otp_signataire(signataire, code):
+    """ZGED2 — Valide le code saisi par le signataire (3 essais max, expire
+    en `OTP_EXPIRATION_MINUTES`).
+
+    Lève `ValueError` (→ 400 explicite côté vue, jamais silencieux) si :
+    aucun code n'a été envoyé, le code a expiré, ou les essais sont épuisés.
+    Un mauvais code incrémente `otp_essais` et lève `ValueError` (tracé).
+    Renvoie `signataire` avec `otp_valide=True` en cas de succès."""
+    from django.utils import timezone
+
+    if not signataire.otp_code_hash or signataire.otp_expires_at is None:
+        raise ValueError("Aucun code d'authentification n'a été envoyé.")
+    if signataire.otp_expires_at <= timezone.now():
+        raise ValueError("Le code d'authentification a expiré.")
+    if signataire.otp_essais >= OTP_MAX_ESSAIS:
+        raise ValueError("Nombre maximal d'essais atteint.")
+    if _hash_otp((code or '').strip()) != signataire.otp_code_hash:
+        signataire.otp_essais += 1
+        signataire.save(update_fields=['otp_essais', 'updated_at'])
+        raise ValueError("Code d'authentification incorrect.")
+    signataire.otp_valide = True
+    signataire.otp_valide_le = timezone.now()
+    signataire.save(update_fields=['otp_valide', 'otp_valide_le', 'updated_at'])
+    return signataire
+
+
 def signer_signataire(signataire, *, consentement, signature_texte='',
                       signature_tracee='', adresse_ip=None, user_agent=''):
     """XGED2 — Signe le rang d'UN signataire et fait progresser le circuit
@@ -2791,10 +3010,18 @@ def signer_signataire(signataire, *, consentement, signature_texte='',
     au signataire individuel plutôt qu'à la demande globale). N'affecte QUE ce
     `SignataireDemande` ; le statut GLOBAL de la demande n'est marqué `signe`
     que lorsque TOUS les `signataire` requis ont signé (`_maj_statut_global`).
-    """
+
+    ZGED2 — si une authentification extra est requise pour ce destinataire
+    (`otp_requis_et_non_valide`), la signature est REFUSÉE (`ValueError`,
+    tracé) tant que le bon code n'a pas été validé au préalable
+    (`valider_code_otp_signataire`)."""
     from django.utils import timezone
     from .models import SIGNATAIRE_SIGNE
 
+    if signataire.otp_requis_et_non_valide:
+        raise ValueError(
+            "Authentification supplémentaire requise avant de signer : "
+            "saisissez le code reçu.")
     if not consentement:
         raise ValueError(
             "Le consentement explicite à contracter électroniquement est requis.")
@@ -2896,6 +3123,81 @@ def expirer_demandes_echues(company, *, now=None):
         demande.save(update_fields=['statut', 'annule_le', 'updated_at'])
         count += 1
     return count
+
+
+def notifier_emetteur_expiration_proche(company, *, seuil_jours=3, now=None):
+    """ZGED14 — Notifie l'ÉMETTEUR d'une demande `en_attente` dont
+    l'expiration approche (versant ÉMETTEUR — XGED2 ne couvre que le
+    SIGNATAIRE). « Approche » = `expires_at` dans les `seuil_jours` à venir
+    (et pas encore dépassée — `expirer_demandes_echues` gère l'échéance
+    dépassée séparément).
+
+    Anti-doublon : une demande déjà notifiée pour SA fenêtre d'expiration
+    courante (`emetteur_notifie_expiration_le` renseigné) n'est pas
+    re-notifiée. `prolonger_demande_signature` remet ce champ à NULL pour
+    réarmer. Une demande sans `created_by` (émetteur inconnu) est ignorée
+    silencieusement. Renvoie le nombre de notifications envoyées."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from .models import DemandeSignatureDocument, SIGNATURE_EN_ATTENTE
+
+    now = now or timezone.now()
+    seuil = now + timedelta(days=seuil_jours)
+    candidats = (DemandeSignatureDocument.objects
+                 .filter(company=company, statut=SIGNATURE_EN_ATTENTE,
+                         expires_at__isnull=False, expires_at__gt=now,
+                         expires_at__lte=seuil,
+                         emetteur_notifie_expiration_le__isnull=True)
+                 .exclude(created_by__isnull=True)
+                 .select_related('created_by', 'document'))
+    count = 0
+    for demande in candidats:
+        jours_restants = max((demande.expires_at - now).days, 0)
+        total = demande.signataires.count()
+        signes = demande.signataires.filter(statut='signe').count()
+        try:
+            from apps.notifications.services import notify
+
+            notify(
+                demande.created_by, 'ged_signature_expiration_proche',
+                title=(
+                    f'Demande de signature « {demande.document.nom} » '
+                    f'expire dans {jours_restants} jour(s)'),
+                body=f'{signes}/{total} signataire(s) ont signé.',
+                company=company,
+            )
+        except Exception:  # pragma: no cover - défensif, best-effort.
+            logger.warning(
+                'ZGED14 — échec notification émetteur demande #%s',
+                demande.pk, exc_info=True)
+        demande.emetteur_notifie_expiration_le = now
+        demande.save(update_fields=[
+            'emetteur_notifie_expiration_le', 'updated_at'])
+        count += 1
+    return count
+
+
+def prolonger_demande_signature(demande, *, expires_at, user):
+    """ZGED14 — Prolonge l'échéance d'une demande de signature `en_attente`
+    (endpoint `demandes-signature/{id}/prolonger/`). Repousse `expires_at` et
+    RÉARME la notification émetteur (remet
+    `emetteur_notifie_expiration_le` à NULL) pour que le prochain sweep puisse
+    re-notifier sur la nouvelle échéance si elle approche à nouveau.
+
+    Multi-tenant : vérifie que `user.company_id == demande.company_id`."""
+    if demande.company_id != user.company_id:
+        raise PermissionError("Demande inaccessible.")
+    demande.expires_at = expires_at
+    demande.emetteur_notifie_expiration_le = None
+    demande.save(update_fields=[
+        'expires_at', 'emetteur_notifie_expiration_le', 'updated_at'])
+    journaliser_evenement(
+        demande.document, type_evenement='signature_prolongee',
+        message=f'Demande #{demande.pk} prolongée jusqu\'au {expires_at}.',
+        utilisateur=user)
+    return demande
 
 
 def relancer_signataires_dus(company, *, now=None):
@@ -4662,3 +4964,517 @@ def avancer_chaine_approbation_ged(demande, *, user, commentaire=''):
     chaine.etapes = etapes
     chaine.save(update_fields=['etapes', 'updated_at'])
     return approve_demande(demande, user=user, commentaire=commentaire)
+
+
+# ── XGED23 — Disposition fin de rétention (revue + certificat) ─────────────
+
+def creer_demande_disposition(
+        company, *, libelle, document_ids, action='detruire', user=None):
+    """XGED23 — Crée une `DemandeDisposition` à partir d'un lot d'ids de
+    documents ÉCHUS proposés (typiquement issus de `selectors.documents_echus`).
+
+    Les documents sous `LegalHold` (GED24) ACTIF sont EXCLUS D'OFFICE du lot
+    (jamais proposés à destruction/archivage) — filtrage silencieux, jamais
+    une erreur. Les ids sont bornés à `company` (un id d'une autre société —
+    ou inexistant — est simplement écarté, jamais une fuite cross-société).
+    `company`/`demandeur` posés côté serveur. Lève `ValueError` si le lot
+    filtré est vide (rien à proposer)."""
+    from .models import DemandeDisposition, Document
+
+    valides = list(
+        Document.objects.filter(company=company, pk__in=document_ids or [])
+        .values_list('pk', flat=True))
+    exclus_hold = _pks_sous_legal_hold(valides)
+    retenus = [pk for pk in valides if pk not in exclus_hold]
+    if not retenus:
+        raise ValueError(
+            "Aucun document éligible : tous exclus (introuvables ou sous "
+            "legal hold actif).")
+    return DemandeDisposition.objects.create(
+        company=company, libelle=libelle, action=action,
+        documents=retenus, demandeur=user)
+
+
+def _pks_sous_legal_hold(document_ids):
+    """XGED23 — pk des documents (parmi `document_ids`) sous `LegalHold` actif.
+
+    Helper interne factorisant l'exclusion d'office des documents gelés hors
+    de tout lot de disposition. Import paresseux (évite un cycle)."""
+    from .models import LegalHold
+    if not document_ids:
+        return set()
+    return set(
+        LegalHold.objects
+        .filter(document_id__in=document_ids, actif=True)
+        .values_list('document_id', flat=True))
+
+
+def approuver_demande_disposition(demande, *, user, commentaire=''):
+    """XGED23 — Approuve une `DemandeDisposition` (ne détruit PAS encore —
+    l'exécution est une étape séparée et explicite, `executer_demande_disposition`).
+
+    Idempotence : une demande déjà décidée lève `DemandeDispositionError`
+    (jamais de double décision silencieuse). `PermissionError` hors société."""
+    from django.utils import timezone
+
+    from .models import DISPOSITION_APPROUVEE, DemandeDispositionError
+
+    if demande.company_id != getattr(user, 'company_id', None):
+        raise PermissionError("Demande de disposition inaccessible.")
+    if not demande.is_pending:
+        raise DemandeDispositionError(
+            "Cette demande de disposition a déjà été décidée.")
+    demande.statut = DISPOSITION_APPROUVEE
+    demande.approbateur = user
+    demande.commentaire = commentaire or demande.commentaire
+    demande.decision_le = timezone.now()
+    demande.save(update_fields=[
+        'statut', 'approbateur', 'commentaire', 'decision_le', 'updated_at'])
+    return demande
+
+
+def rejeter_demande_disposition(demande, *, user, commentaire=''):
+    """XGED23 — Rejette une `DemandeDisposition` : CONSERVE tous les documents
+    du lot (aucun effacement, jamais). Idempotence : demande déjà décidée →
+    `DemandeDispositionError`."""
+    from django.utils import timezone
+
+    from .models import DISPOSITION_REJETEE, DemandeDispositionError
+
+    if demande.company_id != getattr(user, 'company_id', None):
+        raise PermissionError("Demande de disposition inaccessible.")
+    if not demande.is_pending:
+        raise DemandeDispositionError(
+            "Cette demande de disposition a déjà été décidée.")
+    demande.statut = DISPOSITION_REJETEE
+    demande.approbateur = user
+    demande.commentaire = commentaire or demande.commentaire
+    demande.decision_le = timezone.now()
+    demande.save(update_fields=[
+        'statut', 'approbateur', 'commentaire', 'decision_le', 'updated_at'])
+    return demande
+
+
+def executer_demande_disposition(demande, *, user):
+    """XGED23 — Exécute une `DemandeDisposition` APPROUVÉE : pour l'action
+    `detruire`, chaque document du lot ENCORE existant et NON sous legal hold
+    (re-vérifié à l'exécution — un hold posé entre la proposition et
+    l'exécution protège toujours le document, exclusion silencieuse) est
+    supprimé DÉFINITIVEMENT (`Document.delete()`, réel, irréversible), et un
+    `CertificatDestruction` immuable est émis pour CHAQUE document
+    effectivement détruit (hash des métadonnées figé avant suppression).
+    Pour l'action `archiver`, délègue à `archiver_legalement` (GED23 existant,
+    jamais dupliqué) — aucune destruction.
+
+    Lève `DemandeDispositionError` si la demande n'est pas approuvée ou déjà
+    exécutée. `PermissionError` hors société. Renvoie la liste des
+    `CertificatDestruction` créés (vide pour l'action `archiver`)."""
+    import json
+
+    from django.utils import timezone
+
+    from .models import (
+        DISPOSITION_ACTION_ARCHIVER, DISPOSITION_APPROUVEE,
+        DISPOSITION_EXECUTEE, CertificatDestruction, Document,
+        DemandeDispositionError,
+    )
+
+    if demande.company_id != getattr(user, 'company_id', None):
+        raise PermissionError("Demande de disposition inaccessible.")
+    if demande.statut != DISPOSITION_APPROUVEE:
+        raise DemandeDispositionError(
+            "Seule une demande APPROUVÉE peut être exécutée.")
+
+    certificats = []
+    with transaction.atomic():
+        for doc_id in (demande.documents or []):
+            document = Document.objects.filter(
+                company=demande.company, pk=doc_id).first()
+            if document is None:
+                continue  # déjà supprimé/introuvable — silencieux.
+            if _document_sous_legal_hold(document):
+                continue  # protégé entre-temps — exclusion silencieuse.
+            if demande.action == DISPOSITION_ACTION_ARCHIVER:
+                archiver_legalement(document, user=user)
+                continue
+            # Action « detruire » : fige le hash des métadonnées AVANT
+            # suppression réelle (preuve — le contenu n'est jamais conservé).
+            meta_snapshot = {
+                'nom': document.nom,
+                'description': document.description,
+                'custom_data': document.custom_data,
+                'created_at': document.created_at.isoformat()
+                if document.created_at else None,
+            }
+            hash_meta = hashlib.sha256(
+                json.dumps(meta_snapshot, sort_keys=True, default=str)
+                .encode('utf-8')).hexdigest()
+            politique = None
+            try:
+                from . import selectors
+                politique = selectors.politique_applicable(document)
+            except Exception:  # pragma: no cover - défensif.
+                politique = None
+            nom_doc = document.nom
+            doc_pk = document.pk
+            document.delete()
+            certificats.append(CertificatDestruction.objects.create(
+                company=demande.company, demande=demande,
+                document_id_origine=doc_pk, document_nom=nom_doc,
+                politique_appliquee=(politique.nom if politique else ''),
+                hash_metadonnees=hash_meta, detruit_par=user,
+            ))
+        demande.statut = DISPOSITION_EXECUTEE
+        demande.executee_le = timezone.now()
+        demande.save(update_fields=['statut', 'executee_le', 'updated_at'])
+    return certificats
+
+
+# ── XGED24 — Outil de caviardage (redaction) ────────────────────────────────
+
+def caviarder_document(version, zones, *, created_by=None):
+    """XGED24 — Caviarde DÉFINITIVEMENT des zones d'un PDF sur une COPIE
+    publiée (le texte SOUS-JACENT est supprimé, pas un simple rectangle
+    décoratif) — l'ORIGINAL n'est JAMAIS modifié.
+
+    `zones` : liste de `{"page": <int 0-based>, "x0", "y0", "x1", "y1"}` en
+    POURCENTAGE (0-100) de la page — même convention que `AnnotationDocument`
+    (XGED16). Utilise PyMuPDF `add_redact_annot`/`apply_redactions` (import
+    PARESSEUX et GARDÉ) : sans la lib, lève `ValueError` explicite (jamais un
+    caviardage silencieusement faux, ex. juste un rectangle par-dessus qui
+    laisserait le texte extractible).
+
+    La copie devient un NOUVEAU `Document` (dans le même dossier que
+    l'original), dont `custom_data` trace l'origine
+    (`{'caviarde_depuis': <id original>}`) — pattern `source_type`/`source_id`
+    déjà utilisé pour les traces cross-app, pas un nouveau schéma de FK.
+    Respecte les gardes GED23/24 sur l'ORIGINAL (lecture seule — jamais
+    bloquant : caviarder ne MODIFIE pas l'original, seule une garde
+    `assert_not_document_lien` s'applique, XGED18). Renvoie le nouveau
+    `Document` créé."""
+    document = version.document
+    assert_not_document_lien(document, action='caviarder')
+    try:
+        import fitz  # PyMuPDF
+    except Exception:
+        raise ValueError(_pdf_lib_indisponible_message())
+    data, err = _fetch_version_bytes(version)
+    if err:
+        raise ValueError(err)
+    if not zones:
+        raise ValueError("Au moins une zone à caviarder est requise.")
+    doc = fitz.open(stream=data, filetype='pdf')
+    try:
+        for zone in zones:
+            page_no = int(zone.get('page', 0))
+            if page_no < 0 or page_no >= doc.page_count:
+                continue
+            page = doc[page_no]
+            rect = page.rect
+            x0 = rect.x0 + (float(zone.get('x0', 0)) / 100.0) * rect.width
+            y0 = rect.y0 + (float(zone.get('y0', 0)) / 100.0) * rect.height
+            x1 = rect.x0 + (float(zone.get('x1', 0)) / 100.0) * rect.width
+            y1 = rect.y0 + (float(zone.get('y1', 0)) / 100.0) * rect.height
+            page.add_redact_annot(
+                fitz.Rect(x0, y0, x1, y1), fill=(0, 0, 0))
+        for page in doc:
+            # Applique et APLATIT les rédactions : supprime réellement le
+            # texte/l'image sous la zone (pas seulement un rectangle visuel).
+            page.apply_redactions()
+        out_bytes = doc.tobytes()
+    finally:
+        doc.close()
+
+    nom = f'{document.nom} (caviardé)'
+    new_doc = create_document(
+        company=document.company, folder=document.folder, nom=nom,
+        description=document.description,
+        custom_data={'caviarde_depuis': document.pk},
+        created_by=created_by)
+    key, _meta = _store_bytes(out_bytes, mime='application/pdf')
+    add_version(
+        new_doc, file_key=key, company=document.company,
+        filename=f'{nom}.pdf', size=len(out_bytes),
+        mime='application/pdf', uploaded_by=created_by)
+    update_search_vector(new_doc)
+    return new_doc
+
+
+# ── XGED27 — Envoi en masse de demandes de signature ────────────────────────
+
+def _valider_destinataire_envoi_masse(ligne, index):
+    """XGED27 — Valide UNE ligne de destinataire (dict) : `nom` et `email`
+    sont requis. Lève `ValueError` (rapporté par ligne, jamais tout-ou-rien)."""
+    nom = (ligne.get('nom') or '').strip()
+    email = (ligne.get('email') or '').strip()
+    if not nom or not email:
+        raise ValueError(
+            f"Ligne {index + 1} : nom et email sont requis.")
+    return nom, email
+
+
+def creer_lot_envoi_signature(*, company, modele, destinataires, libelle='',
+                              cabinet_nom='Modèles', folder_nom='Mailing',
+                              created_by=None):
+    """XGED27 — Envoi en masse de demandes de signature à partir d'UN
+    `ModeleDocument` (GED27) fusionné pour N `destinataires`.
+
+    `destinataires` : liste de dicts (issus d'un CSV `nom`/`email`/champs de
+    fusion, OU résolus depuis une sélection de clients CRM via
+    `crm.selectors` par l'appelant — cette fonction ne connaît QUE des dicts,
+    jamais `crm.models`). Pour CHAQUE destinataire : le modèle est fusionné
+    avec la ligne comme contexte (`rendre_modele`), un document PERSONNALISÉ
+    est créé + versionné (jamais dédupliqué — contrairement à
+    `generer_document`/GED28, chaque destinataire produit un document
+    DISTINCT), puis une demande de signature individuelle est créée
+    (`demander_signature`, XGED1/2, respecte le mode key-gated no-op).
+
+    Chaque ligne est traitée INDÉPENDAMMENT : une erreur (nom/email manquant,
+    rendu PDF impossible) est RAPPORTÉE dans `resultats` sans jamais bloquer
+    le reste du lot. `company`/`created_by` posés côté serveur.
+
+    Renvoie le `LotEnvoi` créé (avec ses compteurs et `resultats` détaillés).
+    """
+    from .models import LotEnvoi
+
+    resultats = []
+    nb_envoyes = 0
+    nb_erreurs = 0
+    for index, ligne in enumerate(destinataires or []):
+        try:
+            nom, email = _valider_destinataire_envoi_masse(ligne, index)
+            cabinet_resolu, folder_resolu = resoudre_classement(
+                modele, ligne,
+                cabinet_defaut=cabinet_nom, folder_defaut=folder_nom)
+            cabinet = ensure_cabinet(company, cabinet_resolu)
+            folder = ensure_root_folder(company, cabinet=cabinet, nom=folder_resolu)
+            pdf_bytes = rendre_modele(modele, ligne)
+            new_doc = create_document(
+                company=company, folder=folder,
+                nom=f'{modele.nom} — {nom}',
+                description=modele.description or '',
+                custom_data={'envoi_masse_destinataire': email},
+                created_by=created_by)
+            key, meta = _store_bytes(pdf_bytes, mime='application/pdf')
+            add_version(
+                new_doc, file_key=key, company=company,
+                filename=meta.get('filename', ''), size=len(pdf_bytes),
+                mime='application/pdf', uploaded_by=created_by)
+            update_search_vector(new_doc)
+            demande = demander_signature(
+                new_doc, signataire_nom=nom, signataire_email=email,
+                company=company, created_by=created_by)
+            nb_envoyes += 1
+            resultats.append({
+                'ligne': index, 'nom': nom, 'email': email, 'ok': True,
+                'document_id': new_doc.pk, 'demande_id': demande.pk,
+            })
+        except Exception as exc:  # noqa: BLE001 — rapporté par ligne, jamais bloquant.
+            nb_erreurs += 1
+            resultats.append({
+                'ligne': index, 'nom': ligne.get('nom'),
+                'email': ligne.get('email'), 'ok': False, 'erreur': str(exc),
+            })
+
+    return LotEnvoi.objects.create(
+        company=company, modele=modele,
+        libelle=libelle or (modele.nom if modele else 'Envoi en masse'),
+        resultats=resultats, total=len(destinataires or []),
+        nb_envoyes=nb_envoyes, nb_erreurs=nb_erreurs, created_by=created_by)
+
+
+def rafraichir_compteurs_lot_envoi(lot):
+    """XGED27 — Recalcule `nb_vus`/`nb_signes`/`nb_refuses` d'un `LotEnvoi`
+    depuis l'état RÉEL des `DemandeSignatureDocument` créées (via les ids
+    tracés dans `resultats`) — jamais une simple incrémentation optimiste,
+    toujours la vérité depuis les statuts actuels."""
+    from .models import DemandeSignatureDocument
+
+    demande_ids = [
+        r['demande_id'] for r in (lot.resultats or [])
+        if r.get('ok') and r.get('demande_id')
+    ]
+    if not demande_ids:
+        return lot
+    demandes = DemandeSignatureDocument.objects.filter(
+        company=lot.company, pk__in=demande_ids)
+    lot.nb_signes = demandes.filter(statut='signe').count()
+    lot.nb_refuses = demandes.filter(statut='refuse').count()
+    # « Vu » : approximé par toute demande sortie de `en_attente` (signée,
+    # refusée, ou annulée) — le stub GED30 ne trace pas d'ouverture de lien
+    # dédiée hors de ces statuts.
+    lot.nb_vus = demandes.exclude(statut='en_attente').count()
+    lot.save(update_fields=['nb_signes', 'nb_refuses', 'nb_vus', 'updated_at'])
+    return lot
+
+
+# ── XGED30 — Co-édition Office (Collabora/OnlyOffice self-host, gated) ──────
+
+# Extensions Office reconnues par le slot de co-édition (traitement de texte/
+# tableur/présentation) — purement indicatif pour l'UI (bouton conditionnel) ;
+# le backend n'inspecte jamais le contenu, seule l'extension du `filename`.
+OFFICE_EXTENSIONS = {
+    '.docx', '.doc', '.odt', '.xlsx', '.xls', '.ods', '.pptx', '.ppt', '.odp',
+}
+
+
+def office_edit_active():
+    """XGED30 — True si un éditeur Office self-hébergé est configuré.
+
+    KEY-GATED (même motif que `esign_active()` GED30/`embedding_enabled()`
+    GED12) : sans `settings.GED_OFFICE_URL` non vide, le slot de co-édition
+    est un NO-OP COMPLET — aucun appel réseau, aucune UI, aucune dépendance
+    nouvelle. Le founder posera l'URL d'une instance Collabora/OnlyOffice
+    auto-hébergée (nouvelle brique d'infra, à valider) pour l'activer."""
+    from django.conf import settings
+    return bool((getattr(settings, 'GED_OFFICE_URL', '') or '').strip())
+
+
+def office_edit_url():
+    """XGED30 — URL de l'éditeur Office configuré, ou chaîne vide si inactif."""
+    from django.conf import settings
+    if not office_edit_active():
+        return ''
+    return (getattr(settings, 'GED_OFFICE_URL', '') or '').strip()
+
+
+def ouvrir_dans_editeur_office(document, *, user):
+    """XGED30 — Prépare l'ouverture d'un document Office dans l'éditeur
+    embarqué (Collabora/OnlyOffice, slot WOPI-like).
+
+    Lève `ValueError` si le slot n'est pas activé (`office_edit_active()`
+    faux — 400 explicite côté vue, jamais une UI qui pointerait nulle part).
+    Respecte le check-out (GED16, via `checkout_document` — un document
+    verrouillé par un AUTRE utilisateur refuse l'ouverture, même motif que
+    l'édition classique) et les gardes GED23/24 (archivé/hold → refus, jamais
+    une 500). Renvoie `{"editor_url": <str>, "document_id": <int>}` — l'URL
+    de base de l'éditeur ; l'intégration WOPI complète (jeton d'accès par
+    document) est un point d'extension future, hors scope de ce slot minimal.
+    """
+    if not office_edit_active():
+        raise ValueError(
+            "Co-édition Office non configurée (GED_OFFICE_URL absent) : "
+            "cette fonctionnalité est désactivée.")
+    assert_not_archive_legalement(document)
+    assert_not_legal_hold(document)
+    checkout_document(document, user)
+    return {'editor_url': office_edit_url(), 'document_id': document.pk}
+
+
+def sauvegarder_depuis_editeur_office(document, *, contenu_bytes, user,
+                                      filename='', mime=''):
+    """XGED30 — Callback de sauvegarde de l'éditeur Office : crée une
+    NOUVELLE `DocumentVersion` à partir du contenu édité.
+
+    Respecte le check-out (GED16 — `assert_not_locked_by_other`, un
+    utilisateur tiers ne peut pas écraser la session d'édition d'un autre) et
+    les gardes GED23/24 (document archivé/hold → refus explicite, jamais une
+    500). Lève `ValueError` si le slot n'est pas activé. Renvoie la nouvelle
+    `DocumentVersion` créée (le check-out N'EST PAS libéré automatiquement —
+    l'utilisateur ferme l'éditeur puis check-in explicitement, même motif que
+    l'édition classique GED16)."""
+    if not office_edit_active():
+        raise ValueError(
+            "Co-édition Office non configurée (GED_OFFICE_URL absent) : "
+            "cette fonctionnalité est désactivée.")
+    assert_not_archive_legalement(document)
+    assert_not_legal_hold(document)
+    assert_not_locked_by_other(document, user)
+    key, meta = _store_bytes(contenu_bytes, mime=mime or 'application/octet-stream')
+    version = add_version(
+        document, file_key=key, company=document.company,
+        filename=filename or meta.get('filename', ''),
+        size=len(contenu_bytes), mime=mime or meta.get('mime', ''),
+        uploaded_by=user)
+    update_search_vector(document)
+    return version
+
+
+# ── ZGED6 — Centralisation des fichiers par module ───────────────────────────
+
+_JETON_RE = re.compile(r'\{\{\s*(\w+)\s*\}\}')
+
+
+def _resoudre_jetons(texte, contexte):
+    """ZGED6 — Remplace les jetons ``{{ champ }}`` d'un segment de chemin par
+    les valeurs du contexte fourni. Un jeton absent du contexte est rendu vide
+    (jamais une KeyError) — comportement standard, aligné sur ModeleDocument
+    (GED27) qui rend aussi les jetons inconnus vides."""
+    def _sub(match):
+        return str(contexte.get(match.group(1), ''))
+    return _JETON_RE.sub(_sub, texte)
+
+
+def _resoudre_dossier_cible(routage, contexte):
+    """ZGED6 — Résout/crée (idempotent, get_or_create par segment) le dossier
+    cible d'un `RoutageDocumentaire`, à partir de son `dossier_cible`
+    (segments séparés par '/', jetons résolus). Renvoie le `Folder` final."""
+    segments = [
+        _resoudre_jetons(seg.strip(), contexte)
+        for seg in routage.dossier_cible.split('/') if seg.strip()
+    ]
+    parent = None
+    folder = None
+    for segment in segments:
+        folder, _created = Folder.objects.get_or_create(
+            company=routage.company, cabinet=routage.cabinet_cible,
+            parent=parent, nom=segment)
+        parent = folder
+    return folder
+
+
+def router_document_module(source, *, company, file, filename='',
+                           reference='', contexte=None, uploaded_by=None):
+    """ZGED6 — Centralise un fichier produit par un AUTRE module (paie/rh/sav/
+    ventes…) vers le dossier GED configuré pour cette `source` (réglage
+    `RoutageDocumentaire`), avec ses tags par défaut.
+
+    Sans réglage ACTIF pour cette `source`+société : no-op strict, renvoie
+    `None` (comportement actuel inchangé — c'est la voie normale tant qu'un
+    admin n'a rien configuré). IDEMPOTENT par `source`+`reference` : si un
+    document du dossier résolu porte déjà cette référence (posée dans
+    `custom_data['routage_reference']`), le document existant est renvoyé sans
+    créer de doublon ni ajouter de version.
+
+    Appelé UNIQUEMENT depuis `apps/ged/receivers.py` (abonné à l'événement
+    `core.events.document_produit`) — jamais appelé directement par l'app
+    émettrice, qui ne doit jamais importer `apps.ged`.
+    """
+    routage = RoutageDocumentaire.objects.filter(
+        company=company, source=source, actif=True).first()
+    if routage is None:
+        return None
+
+    contexte = contexte or {}
+    folder = _resoudre_dossier_cible(routage, contexte)
+
+    if reference:
+        existant = Document.objects.filter(
+            company=company, folder=folder,
+            custom_data__routage_reference=reference,
+        ).first()
+        if existant is not None:
+            return existant
+
+    from apps.records.storage import store_attachment
+
+    meta, err = store_attachment(file)
+    if err:
+        raise ValueError(err)
+
+    document = Document.objects.create(
+        company=company, folder=folder,
+        nom=filename or meta.get('filename', ''),
+        custom_data={'routage_reference': reference} if reference else {},
+        created_by=uploaded_by,
+    )
+    add_version(
+        document, file_key=meta['file_key'], company=company,
+        filename=meta.get('filename', ''), size=meta.get('size', 0),
+        mime=meta.get('mime', ''), uploaded_by=uploaded_by)
+    update_search_vector(document)
+
+    for tag in routage.tags_defaut.all():
+        assign_tag(document, tag, created_by=uploaded_by)
+
+    return document

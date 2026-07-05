@@ -9,6 +9,7 @@ prix d'achat, marge, ou tout autre champ interne.
 Protections : X-Robots-Tag noindex sur chaque réponse publique ; throttle
 cache-based par IP (30 req/min) sans dépendance externe.
 """
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import (
     api_view, permission_classes, throttle_classes,
@@ -17,7 +18,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 
-from .models import Ticket, TicketSatisfaction
+from .models import Equipement, Ticket, TicketSatisfaction
 
 
 # ── Throttle ─────────────────────────────────────────────────────────────────
@@ -143,3 +144,90 @@ def ticket_public_satisfaction(request, token):
     return _noindex(Response(
         {'note': satisfaction.note, 'commentaire': satisfaction.commentaire},
         status=status.HTTP_201_CREATED))
+
+
+# ── XSAV19 — Page publique « Signaler un problème » via QR équipement ────────
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@throttle_classes([SavPublicThrottle])
+def equipement_public_signaler(request, token):
+    """XSAV19 — Crée un ticket correctif depuis la page publique de
+    l'équipement (scan QR), SANS login.
+
+    Résout l'équipement par son ``public_token`` UNIQUEMENT (distinct du
+    jeton interne ``equipement_token`` — celui-ci reste deviné/interne, ne
+    doit jamais être utilisé pour créer un ticket public). Un token inconnu
+    ou absent renvoie 404 sans fuite de données. Le ticket créé est lié à
+    l'équipement/client résolus côté serveur — jamais depuis le corps.
+
+    Anti-spam : honeypot (``site_web`` — un bot qui remplit ce champ caché
+    voit un 201 factice sans qu'aucun ticket ne soit créé) + throttle DRF
+    (30 req/min/IP, même limite que les autres endpoints publics SAV).
+
+    Aucune donnée interne (cout, chatter, autres tickets, informations
+    société) n'est jamais exposée sur cette page — seuls description,
+    téléphone et une photo optionnelle sont acceptés en entrée."""
+    if not token:
+        return _not_found()
+    try:
+        equipement = Equipement.objects.select_related(
+            'installation', 'installation__client',
+        ).get(public_token=token)
+    except Equipement.DoesNotExist:
+        return _not_found()
+
+    # Honeypot : un champ caché que seuls les bots remplissent. Réponse 201
+    # factice (aucune trace du piège pour l'appelant) sans rien créer.
+    if (request.data.get('site_web') or '').strip():
+        return _noindex(Response(
+            {'detail': 'Signalement enregistré.'},
+            status=status.HTTP_201_CREATED))
+
+    description = (request.data.get('description') or '').strip()[:4000]
+    if not description:
+        return _noindex(Response(
+            {'detail': 'Merci de décrire le problème.'},
+            status=status.HTTP_400_BAD_REQUEST))
+    telephone = (request.data.get('telephone') or '').strip()[:40]
+
+    installation = equipement.installation
+    client = getattr(installation, 'client', None)
+    if client is None:
+        # Défense en profondeur : un équipement doit toujours avoir un
+        # chantier avec client (FK obligatoires) — filet de sécurité.
+        return _noindex(Response(
+            {'detail': 'Équipement introuvable.'}, status=status.HTTP_404_NOT_FOUND))
+
+    corps = description
+    if telephone:
+        corps += f'\n\nTéléphone communiqué : {telephone}'
+
+    from apps.ventes.utils.references import create_with_reference
+
+    def _create(ref):
+        return Ticket.objects.create(
+            reference=ref, company=equipement.company, client=client,
+            installation=installation, equipement=equipement,
+            type=Ticket.Type.CORRECTIF, description=corps,
+            date_ouverture=timezone.localdate(),
+        )
+    ticket = create_with_reference(
+        Ticket, 'SAV', equipement.company, _create)
+
+    # Photo optionnelle — pièce jointe MinIO (apps.records, foundation app).
+    photo = request.FILES.get('photo')
+    if photo is not None:
+        from django.contrib.contenttypes.models import ContentType
+        from apps.records.models import Attachment
+        from apps.records.storage import store_attachment
+
+        data, err = store_attachment(photo)
+        if data is not None:
+            Attachment.objects.create(
+                company=equipement.company,
+                content_type=ContentType.objects.get_for_model(Ticket),
+                object_id=ticket.pk, **data)
+
+    return _noindex(Response(
+        {'reference': ticket.reference}, status=status.HTTP_201_CREATED))
