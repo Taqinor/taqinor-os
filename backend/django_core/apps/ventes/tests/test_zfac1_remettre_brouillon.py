@@ -35,6 +35,15 @@ class TestRemettreBrouillon(TestCase):
             username='zfac1_resp', password='x', role_legacy='responsable',
             company=self.company)
         self.api = auth(self.user)
+        # creer-avoir est réservé à l'admin (cf. test_avoirs.py
+        # test_commerciale_cannot_create_avoir) — un utilisateur distinct est
+        # nécessaire pour poser l'avoir actif dans
+        # test_remettre_brouillon_avoir_actif_refuse ; remettre-brouillon
+        # reste testé via self.user/self.api (responsable).
+        self.admin = User.objects.create_user(
+            username='zfac1_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.admin_api = auth(self.admin)
         self.cl = Client.objects.create(
             company=self.company, nom='Client', prenom='F1',
             email='zfac1@example.com', telephone='+212600000015')
@@ -92,7 +101,10 @@ class TestRemettreBrouillon(TestCase):
 
     def test_remettre_brouillon_avoir_actif_refuse(self):
         facture = self._facture(4)
-        r0 = self.api.post(
+        # creer-avoir est réservé à l'admin — self.user (responsable) ne
+        # peut pas poser l'avoir de préparation ; le reste du test (l'assertion
+        # sous test) continue d'utiliser self.api/self.user.
+        r0 = self.admin_api.post(
             f'/api/django/ventes/factures/{facture.id}/creer-avoir/',
             {'motif': 'erreur'}, format='json')
         self.assertEqual(r0.status_code, 201, r0.data)
