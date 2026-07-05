@@ -107,12 +107,25 @@ class AutoAffecterDeplacementTests(TestCase):
             company=self.co, nom='Sous-chargée', actif=True)
         self.tache = Tache.objects.create(
             company=self.co, projet=self.projet, libelle='T', ordre=1)
-        # Charge énorme sur la ressource sur-chargée (semaine complète,
-        # charge_jours largement > capacité).
-        self.aff = AffectationRessource.objects.create(
+        self.tache2 = Tache.objects.create(
+            company=self.co, projet=self.projet, libelle='T2', ordre=2)
+        # Deux affectations DISJOINTES sur la ressource sur-chargée (5 j-h
+        # chacune = 80h sur 40h de capacité) — la même construction que
+        # test_nivellement_charge.py::test_surcharge_proposee_vers_souscharge,
+        # pour que chaque affectation individuelle (40h) reste déplaçable vers
+        # la ressource sous-chargée (marge 40h) sans recréer de sur-charge.
+        # ``nivellement_charge`` déplace en priorité les affectations les plus
+        # TARDIVES (le début de fenêtre reste stable) : ``self.aff`` porte donc
+        # la fenêtre la plus tardive (Jun4-5), celle qui sera effectivement
+        # proposée/déplacée par les deux tests ci-dessous.
+        self.aff_stable = AffectationRessource.objects.create(
             company=self.co, tache=self.tache, ressource=self.surchargee,
-            date_debut=date(2026, 6, 1), date_fin=date(2026, 6, 5),
-            charge_jours=Decimal('20'))
+            date_debut=date(2026, 6, 1), date_fin=date(2026, 6, 2),
+            charge_jours=Decimal('5'))
+        self.aff = AffectationRessource.objects.create(
+            company=self.co, tache=self.tache2, ressource=self.surchargee,
+            date_debut=date(2026, 6, 4), date_fin=date(2026, 6, 5),
+            charge_jours=Decimal('5'))
 
     def test_simulation_propose_deplacement_sans_muter(self):
         resultat = services.auto_affecter(

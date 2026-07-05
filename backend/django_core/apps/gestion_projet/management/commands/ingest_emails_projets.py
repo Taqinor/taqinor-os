@@ -30,11 +30,11 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument('--company', required=True,
                             help="Slug de la société.")
-        parser.add_argument('--to', required=True, dest='to_alias',
+        parser.add_argument('--to', required=True, dest='to',
                             help="Adresse e-mail destinataire (alias projet).")
         parser.add_argument('--subject', default='', help="Objet du mail.")
         parser.add_argument('--body', default='', help="Corps du mail.")
-        parser.add_argument('--from', default='', dest='from_email',
+        parser.add_argument('--from', default='', dest='from',
                             help="Adresse e-mail expéditrice.")
 
     def handle(self, *args, **options):
@@ -52,9 +52,9 @@ class Command(BaseCommand):
             raise CommandError(f"Company with slug '{slug}' not found.")
 
         tache = ingest_email_projet(
-            company, to_alias=options['to_alias'],
+            company, to_alias=options['to'],
             subject=options['subject'], body=options['body'],
-            from_email=options['from_email'])
+            from_email=options['from'])
 
         if tache is None:
             self.stdout.write(self.style.WARNING(
