@@ -110,6 +110,21 @@ describe('WJ99 — proposition/[token].astro : aria-label retranslated on langua
   });
 });
 
+describe('WJ101 — keyboard-accessible signature step on proposition/[token].astro', () => {
+  it('the signature canvas is keyboard-focusable (tabindex) with a visible focus style', () => {
+    expect(PROPOSITION).toMatch(/id="sign-pad"\s*\n\s*tabindex="0"/);
+    expect(PROPOSITION).toContain('.sign-pad:focus-visible');
+  });
+
+  it('an explicit "skip signature" affordance exists, in FR/EN/AR, and moves focus to the name field', () => {
+    expect(PROPOSITION).toContain('id="sign-pad-skip"');
+    expect(PROPOSITION).toContain('data-fr="Signature non nécessaire — passer au nom"');
+    expect(PROPOSITION).toContain('data-en="Signature not needed — skip to name"');
+    expect(PROPOSITION).toContain('data-ar="لا حاجة للتوقيع — الانتقال إلى الاسم"');
+    expect(PROPOSITION).toMatch(/getElementById\('sign-pad-skip'\)\?\.addEventListener\('click', \(\) => \{\s*\n\s*\(document\.getElementById\('sign-nom'\)/);
+  });
+});
+
 describe('WJ35 — câblage : les deux pages du parcours montent les composants premium', () => {
   it('mon-toit.astro importe StarRating / CertLogoRow / InstallCounter / ZelligeSignature', () => {
     expect(MON_TOIT).toContain("import StarRating from '../../components/StarRating.astro'");

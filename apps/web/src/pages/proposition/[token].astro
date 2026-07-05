@@ -1805,7 +1805,15 @@ const signConfig = ok
               />
             </div>
 
-            <!-- WJ11 · SIGNATURE MANUSCRITE (canvas natif, tactile + souris) ── -->
+            <!-- WJ11/WJ101 · SIGNATURE MANUSCRITE (canvas natif, tactile + souris)
+                 — le canvas lui-même reste POINTEUR-SEUL (dessiner un trait au
+                 clavier n'a pas de sens ergonomique), mais WJ101 rend l'étape
+                 elle-même keyboard-OPÉRABLE : le canvas est focusable
+                 (tabindex, annonce son statut facultatif au focus) et un
+                 bouton dédié permet d'ignorer explicitement le dessin — le
+                 flux légal fonctionne déjà uniquement par nom + cases à
+                 cocher (voir plus bas), donc « ignorer » ne bloque jamais la
+                 signature électronique. ── -->
             <div class="mt-6">
               <div class="flex items-baseline justify-between gap-3">
                 <label for="sign-pad" class="tech-label text-lune-faint" data-i18n data-fr="Votre signature" data-en="Your signature" data-ar="توقيعكم">Votre signature</label>
@@ -1819,20 +1827,35 @@ const signConfig = ok
               <div class="sign-pad-wrap mt-2 rounded-xl border border-white/15 bg-nuit-800">
                 <canvas
                   id="sign-pad"
+                  tabindex="0"
                   width="640"
                   height="180"
                   class="sign-pad block w-full touch-none rounded-xl"
                   role="img"
-                  aria-label="Zone de signature manuscrite — dessinez votre signature au doigt ou à la souris"
-                  data-aria-label-fr="Zone de signature manuscrite — dessinez votre signature au doigt ou à la souris"
-                  data-aria-label-en="Handwritten signature area — draw your signature with your finger or mouse"
-                  data-aria-label-ar="منطقة التوقيع اليدوي — ارسموا توقيعكم بإصبعكم أو بالفأرة"
+                  aria-label="Zone de signature manuscrite — dessinez votre signature au doigt ou à la souris. Facultative : utilisez le bouton « Signature non nécessaire » si vous êtes au clavier."
+                  data-aria-label-fr="Zone de signature manuscrite — dessinez votre signature au doigt ou à la souris. Facultative : utilisez le bouton « Signature non nécessaire » si vous êtes au clavier."
+                  data-aria-label-en="Handwritten signature area — draw your signature with your finger or mouse. Optional: use the “Signature not needed” button if you're on a keyboard."
+                  data-aria-label-ar="منطقة التوقيع اليدوي — ارسموا توقيعكم بإصبعكم أو بالفأرة. اختيارية: استخدموا زر «لا حاجة للتوقيع» إذا كنتم تستخدمون لوحة المفاتيح."
                 ></canvas>
               </div>
-              <p class="mt-1.5 text-xs text-lune-faint" data-i18n
-                data-fr="Dessinez votre signature ci-dessus (facultatif mais recommandé). Votre nom et votre accord ci-dessous valent signature électronique (loi 53-05)."
-                data-en="Draw your signature above (optional but recommended). Your name and your agreement below constitute an electronic signature (law 53-05)."
-                data-ar="ارسموا توقيعكم أعلاه (اختياري لكن مستحسن). اسمكم وموافقتكم أدناه بمثابة توقيع إلكتروني (القانون 53-05).">Dessinez votre signature ci-dessus (facultatif mais recommandé). Votre nom et votre accord ci-dessous valent signature électronique (loi 53-05).</p>
+              <div class="mt-2 flex flex-wrap items-center justify-between gap-2">
+                <p class="text-xs text-lune-faint" data-i18n
+                  data-fr="Dessinez votre signature ci-dessus (facultatif mais recommandé). Votre nom et votre accord ci-dessous valent signature électronique (loi 53-05)."
+                  data-en="Draw your signature above (optional but recommended). Your name and your agreement below constitute an electronic signature (law 53-05)."
+                  data-ar="ارسموا توقيعكم أعلاه (اختياري لكن مستحسن). اسمكم وموافقتكم أدناه بمثابة توقيع إلكتروني (القانون 53-05).">Dessinez votre signature ci-dessus (facultatif mais recommandé). Votre nom et votre accord ci-dessous valent signature électronique (loi 53-05).</p>
+                <!-- WJ101 — affordance clavier explicite : un visiteur au
+                     clavier n'a pas à deviner qu'il peut passer cette étape
+                     (le canvas ne peut pas se "remplir" au clavier). Cliquer
+                     ce bouton avance simplement le focus vers le champ nom —
+                     aucun état à gérer, la signature restait déjà facultative
+                     côté backend/validation. -->
+                <button
+                  type="button"
+                  id="sign-pad-skip"
+                  class="flex-none py-2 px-3 text-xs font-semibold text-brass-300 underline-offset-2 hover:underline"
+                  data-i18n data-fr="Signature non nécessaire — passer au nom" data-en="Signature not needed — skip to name" data-ar="لا حاجة للتوقيع — الانتقال إلى الاسم"
+                >Signature non nécessaire — passer au nom</button>
+              </div>
             </div>
 
             <!-- ── WJ87 · SIGNER AU NOM DU FOYER (optionnel) ─────────────────────
@@ -2416,6 +2439,17 @@ const signConfig = ok
       hasInk = false;
     }
     clearBtn?.addEventListener('click', clearSignature);
+
+    // WJ101 — affordance clavier explicite : le canvas de signature reste
+    // pointeur-seul (dessiner au clavier n'a pas de sens), mais un visiteur au
+    // clavier ne doit pas rester bloqué à se demander comment continuer. Ce
+    // bouton avance simplement le focus vers le champ nom — aucune signature
+    // n'est requise : la validation (validateSign, lib/proposition.ts) n'a
+    // jamais exigé de trait dessiné, seulement le nom + (si deux options)
+    // l'option choisie.
+    document.getElementById('sign-pad-skip')?.addEventListener('click', () => {
+      (document.getElementById('sign-nom') as HTMLInputElement | null)?.focus();
+    });
 
     // ── WJ42 — Horodatage localisé (FR/EN/AR), affiché en direct dans le récap.
     // AVANT : `stampEl.textContent = frenchStamp(now)` écrasait le markup
@@ -3141,10 +3175,16 @@ const signConfig = ok
   }
 
   /* WJ11 — pad de signature : hauteur fixe (zéro CLS) ; pas de débordement.
-     touch-none (classe utilitaire) empêche le scroll pendant le tracé. */
+     touch-none (classe utilitaire) empêche le scroll pendant le tracé.
+     WJ101 — le canvas est désormais focusable (tabindex="0") : un contour de
+     focus visible est requis (WCAG 2.4.7), jamais un `outline: none` implicite. */
   .sign-pad {
     height: 160px;
     cursor: crosshair;
+  }
+  .sign-pad:focus-visible {
+    outline: 2px solid var(--color-brass-400, #e8b54a);
+    outline-offset: 2px;
   }
 
   /* WJ25/WJ27 — scène 3D : ratio RÉSERVÉ avant tout chargement (zéro CLS).
