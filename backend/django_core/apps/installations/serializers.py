@@ -695,10 +695,13 @@ class JalonProjetSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'installation', 'phase', 'phase_display', 'libelle', 'ordre',
             'date_cible', 'date_reelle', 'atteint', 'notes',
+            'tranche_echeancier', 'rappel_facturation_envoye',
             'date_creation', 'date_modification',
         ]
         # company posée côté serveur ; jamais lue du corps.
-        read_only_fields = ['date_creation', 'date_modification']
+        read_only_fields = [
+            'date_creation', 'date_modification', 'rappel_facturation_envoye',
+        ]
 
 
 # ── FG296 — Modèles de projet (templates de chantier-type) ───────────────────

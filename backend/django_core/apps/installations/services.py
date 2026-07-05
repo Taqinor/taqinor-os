@@ -2436,6 +2436,113 @@ def reactiver_interventions_annulees(installation, user):
     return count
 
 
+# ── YSERV7 — jalons atteints & réception → rappel de facturation d'échéancier
+# `JalonProjet.date_reelle`/`atteint` ne déclenchait RIEN côté facturation :
+# atteindre le jalon lié à une tranche (acompte/intermediaire/solde) ou
+# réceptionner le chantier (tranche SOLDE) ne signale jamais qu'une tranche
+# est à facturer. Nudge SEULEMENT — aucune facture créée automatiquement, les
+# statuts document restent inchangés. Lecture des factures du devis via
+# `apps.ventes.selectors` (jamais les models ventes).
+
+def notifier_jalon_a_facturer(jalon, user=None):
+    """YSERV7 — à l'atteinte (`atteint=True`) d'un jalon lié à une tranche
+    d'échéancier non encore facturée, notifie (best-effort) le responsable.
+    Idempotent : `rappel_facturation_envoye` verrouille — ne notifie jamais
+    deux fois pour le même jalon. No-op si le jalon n'est pas atteint, n'a pas
+    de tranche liée, ou si le chantier n'a pas de devis source."""
+    if not jalon.atteint or not jalon.tranche_echeancier:
+        return False
+    if jalon.rappel_facturation_envoye:
+        return False
+    installation = jalon.installation
+    devis = getattr(installation, 'devis', None)
+    if devis is None:
+        return False
+    from apps.ventes.selectors import tranche_facturee
+    if tranche_facturee(devis, jalon.tranche_echeancier):
+        return False
+    try:
+        from apps.notifications.services import notify_many, resolve_recipients
+        from apps.notifications.models import EventType
+        libelle_tranche = dict(jalon.TRANCHE_CHOICES).get(
+            jalon.tranche_echeancier, jalon.tranche_echeancier)
+        recipients = resolve_recipients(jalon.company, EventType.CHANTIER_DUE)
+        titre = f'Facture {libelle_tranche} à émettre — jalon {jalon.libelle} atteint'
+        notify_many(
+            recipients, EventType.CHANTIER_DUE, titre,
+            body=f'Chantier {installation.reference} — tranche '
+                 f'« {libelle_tranche} » non encore facturée.',
+            company=jalon.company)
+    except Exception:  # pragma: no cover - défensif, best-effort
+        pass
+    jalon.rappel_facturation_envoye = True
+    jalon.save(update_fields=['rappel_facturation_envoye'])
+    return True
+
+
+def notifier_reception_solde_a_facturer(installation, user=None):
+    """YSERV7 — à la réception du chantier (RECEPTIONNE), rappelle la tranche
+    SOLDE si elle n'est pas encore facturée. Réutilise le même verrou
+    d'idempotence que `notifier_jalon_a_facturer` : cherche (ou crée à la
+    volée) le jalon RECEPTION du chantier pour y accrocher le drapeau, sans
+    dupliquer le mécanisme de garde. No-op sans devis source."""
+    devis = getattr(installation, 'devis', None)
+    if devis is None:
+        return False
+    from .models import JalonProjet
+    jalon, _ = JalonProjet.objects.get_or_create(
+        installation=installation, phase=JalonProjet.Phase.RECEPTION,
+        defaults={
+            'company': installation.company,
+            'libelle': 'Réception',
+            'tranche_echeancier': JalonProjet.TRANCHE_SOLDE,
+        })
+    changed_fields = []
+    if not jalon.atteint:
+        jalon.atteint = True
+        changed_fields.append('atteint')
+    if not jalon.tranche_echeancier:
+        jalon.tranche_echeancier = JalonProjet.TRANCHE_SOLDE
+        changed_fields.append('tranche_echeancier')
+    if changed_fields:
+        jalon.save(update_fields=changed_fields)
+    return notifier_jalon_a_facturer(jalon, user)
+
+
+def chantiers_a_facturer(company):
+    """YSERV7 — sélecteur : chantiers ayant au moins une tranche due (jalon
+    atteint ou chantier réceptionné) non encore facturée. Renvoie une liste de
+    dicts plats `{installation_id, reference, tranche, jalon_id}` — un par
+    tranche due (un chantier peut apparaître plusieurs fois si plusieurs
+    tranches sont dues). Lecture seule ; import ventes via selectors seulement."""
+    from apps.ventes.selectors import tranche_facturee
+    from .models import JalonProjet
+    out = []
+    jalons = (
+        JalonProjet.objects
+        .filter(company=company, atteint=True,
+                tranche_echeancier__isnull=False)
+        .exclude(tranche_echeancier='')
+        .select_related('installation', 'installation__devis')
+        .order_by('installation_id', 'ordre', 'id')
+    )
+    for jalon in jalons:
+        installation = jalon.installation
+        devis = getattr(installation, 'devis', None)
+        if devis is None:
+            continue
+        if tranche_facturee(devis, jalon.tranche_echeancier):
+            continue
+        out.append({
+            'installation_id': installation.id,
+            'reference': installation.reference,
+            'tranche': jalon.tranche_echeancier,
+            'jalon_id': jalon.id,
+            'jalon_libelle': jalon.libelle,
+        })
+    return out
+
+
 # ── YHIRE9 — garde d'habilitation à l'affectation d'intervention ───────────
 # Mapping type d'intervention → habilitation requise partagé avec XFSM2
 # (``selectors._TYPE_VERS_HABILITATION``) : garde le SEUL référentiel, importé
