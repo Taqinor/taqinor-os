@@ -1094,3 +1094,75 @@ def pieces_unifiees(ticket):
         sous_totaux[row['operation']] += Decimal(str(row['quantite']))
 
     return {'lignes': rows, 'sous_totaux': sous_totaux}
+
+
+# ── ZMFG11 — Prochaine défaillance estimée + prochain entretien dû ─────────
+
+def estimations_maintenance(equipement):
+    """ZMFG11 — Deux dérivés lecture-seule complétant XSAV15 (MTBF/MTTR) :
+
+    * ``prochaine_defaillance_estimee`` = date du DERNIER ticket correctif +
+      MTBF (jours). ``None`` si moins de 2 tickets correctifs datés (MTBF
+      indéfini) — jamais de division par zéro (`fiabilite_equipement` gère
+      déjà ce cas en amont).
+    * ``prochain_entretien_du`` = la plus proche entre (a) la prochaine
+      visite du ``ContratMaintenance`` ACTIF du client qui couvre cet
+      équipement (``sav.selectors``, XCTR2) et (b) l'échéance de seuil
+      compteur (XSAV17) si l'équipement en porte un et qu'un relevé existe.
+      ``None`` si aucune des deux source n'est disponible.
+
+    Renvoie un dict plat, jamais l'instance ORM."""
+    from datetime import timedelta
+    from decimal import Decimal
+
+    from .models import ContratMaintenance, ReleveCompteurEquipement
+
+    # ── Prochaine défaillance estimée ──
+    fiabilite = fiabilite_equipement(equipement, include_couts=False)
+    prochaine_defaillance_estimee = None
+    if fiabilite['mtbf_jours'] is not None:
+        dernier = (Ticket.objects
+                   .filter(equipement=equipement, type=Ticket.Type.CORRECTIF,
+                           annule=False, date_ouverture__isnull=False)
+                   .order_by('-date_ouverture', '-id')
+                   .values_list('date_ouverture', flat=True).first())
+        if dernier is not None:
+            prochaine_defaillance_estimee = dernier + timedelta(
+                days=round(fiabilite['mtbf_jours']))
+
+    # ── Prochain entretien dû ──
+    candidats = []
+
+    client = getattr(equipement.installation, 'client', None) or equipement.client_vente
+    if client is not None:
+        contrat = (ContratMaintenance.objects
+                   .filter(client=client, actif=True)
+                   .order_by('-date_creation').first())
+        if contrat is not None and contrat.couvre_equipement(equipement):
+            candidats.append(contrat.prochaine_visite())
+
+    if equipement.entretien_toutes_les_heures:
+        dernier_releve = (ReleveCompteurEquipement.objects
+                          .filter(equipement=equipement)
+                          .order_by('-date', '-id').first())
+        if dernier_releve is not None:
+            valeur_reference = (
+                equipement.dernier_entretien_compteur_valeur
+                if equipement.dernier_entretien_compteur_valeur is not None
+                else Decimal('0'))
+            restant = (equipement.entretien_toutes_les_heures
+                       - (dernier_releve.valeur - valeur_reference))
+            if restant <= 0:
+                candidats.append(timezone.localdate())
+            # Un compteur cumulatif ne donne pas de DATE d'échéance sans
+            # une cadence d'usage connue — seul un franchissement déjà
+            # atteint (restant <= 0) produit une candidate ici ; sinon on
+            # laisse le contrat temporel (a) faire foi.
+
+    prochain_entretien_du = min(candidats) if candidats else None
+
+    return {
+        'equipement_id': equipement.id,
+        'prochaine_defaillance_estimee': prochaine_defaillance_estimee,
+        'prochain_entretien_du': prochain_entretien_du,
+    }

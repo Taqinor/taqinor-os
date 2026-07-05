@@ -320,6 +320,16 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
         data = fiabilite_equipement(equipement, include_couts=include_couts)
         return Response(data)
 
+    @action(detail=True, methods=['get'], url_path='estimations-maintenance',
+            permission_classes=[HasPermissionOrLegacy('equipement_voir')])
+    def estimations_maintenance(self, request, pk=None):
+        """ZMFG11 — Prochaine défaillance estimée (MTBF) + prochain entretien
+        dû (contrat de maintenance ou seuil compteur) pour CET équipement."""
+        from .selectors import estimations_maintenance as _estimations_maintenance
+
+        equipement = self.get_object()
+        return Response(_estimations_maintenance(equipement))
+
     @action(detail=True, methods=['get', 'post'], url_path='downtime',
             permission_classes=[HasPermissionOrLegacy('equipement_gerer')])
     def downtime(self, request, pk=None):
