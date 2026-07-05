@@ -35,8 +35,18 @@ def is_email_configured():
     Sert UNIQUEMENT à informer l'UI / décider d'un envoi réel ; l'absence de
     configuration n'est jamais une erreur — on retombe sur le backend console
     (NO-OP). On considère « configuré » : une clé Brevo, OU un backend non
-    console explicitement choisi (ex. SMTP avec hôte)."""
-    if (settings.ANYMAIL or {}).get('BREVO_API_KEY'):
+    console explicitement choisi (ex. SMTP avec hôte).
+
+    QW8 — CORRECTIF : ``ANYMAIL`` (settings/base.py) ne pose JAMAIS de clé
+    littéralement nommée ``BREVO_API_KEY`` — la valeur de l'env var
+    ``BREVO_API_KEY`` est rangée sous ``SENDINBLUE_API_KEY`` (nom du backend
+    anymail pour Brevo, ex-Sendinblue) ; ce contrôle vérifiait donc une clé
+    qui n'existe JAMAIS dans ``ANYMAIL``, rendant l'email config-mort même
+    avec une vraie clé Brevo configurée en prod. On honore les DEUX clés
+    réellement posées par les settings (Sendinblue/Brevo ET SendGrid,
+    héritage)."""
+    anymail = settings.ANYMAIL or {}
+    if anymail.get('SENDINBLUE_API_KEY') or anymail.get('SENDGRID_API_KEY'):
         return True
     backend = getattr(settings, 'EMAIL_BACKEND', '') or ''
     if 'console' in backend or 'dummy' in backend:
