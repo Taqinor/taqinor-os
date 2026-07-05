@@ -34,7 +34,10 @@ class DemandeApprobationRibTests(TestCase):
             self.co, fournisseur_id=42, fournisseur_nom='ACME',
             ancien_rib=RIB_VALIDE_ANCIEN, nouveau_rib=RIB_VALIDE_NOUVEAU)
         coord = services._coordonnees_fournisseur(self.co, 42)
-        self.assertEqual(coord['rib'], '')  # pas de fournisseur stock réel ici
+        # Pas de fournisseur stock réel ici (id=42 inconnu) mais une demande
+        # non approuvée existe : le payment run doit quand même utiliser
+        # l'ANCIEN RIB (jamais le nouveau tant qu'il n'est pas approuvé).
+        self.assertEqual(coord['rib'], RIB_VALIDE_ANCIEN)
 
     def test_rib_actif_avant_approbation_est_ancien(self):
         demande = services.demander_changement_rib(
