@@ -592,6 +592,62 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
             if gs1_extra:
                 data['gs1'] = gs1_extra
             return Response(data)
+
+        # ZSTK6 — jetons LOT:<produit_id>:<valeur> / SERIE:<produit_id>:
+        # <valeur> (3 segments, contrairement aux jetons internes à 2
+        # segments type PRODUIT:<id>) : traités AVANT le split générique
+        # ci-dessous car leur second segment n'est pas un simple entier.
+        first_prefix = code.split(':', 1)[0].strip().upper()
+        if first_prefix in (labels.LOT_PREFIX, labels.SERIE_PREFIX):
+            parts = code.split(':', 2)
+            if len(parts) != 3 or not parts[1].strip().isdigit():
+                return Response(
+                    {'detail': 'Code illisible.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            produit_id = int(parts[1].strip())
+            valeur = parts[2].strip()
+            if first_prefix == labels.LOT_PREFIX:
+                from ..models import LotEntrepot
+                lot = (LotEntrepot.objects
+                       .filter(company=request.user.company,
+                               produit_id=produit_id, numero_lot=valeur)
+                       .select_related('produit', 'emplacement')
+                       .first())
+                if lot is None:
+                    return Response(
+                        {'detail': 'Lot introuvable.'},
+                        status=status.HTTP_404_NOT_FOUND)
+                return Response({
+                    'type': 'lot',
+                    'id': lot.id,
+                    'label': f'{lot.produit.nom} — lot {lot.numero_lot}',
+                    'numero_lot': lot.numero_lot,
+                    'quantite_restante': lot.quantite_restante,
+                    'date_peremption': (
+                        lot.date_peremption.isoformat()
+                        if lot.date_peremption else None),
+                    'route': '/stock',
+                })
+            # SERIE — lecture seule via installations.selectors (jamais son
+            # modèle importé directement).
+            from apps.installations.selectors import (
+                serie_entrepot_scoped_by_serial,
+            )
+            serie = serie_entrepot_scoped_by_serial(
+                request.user.company, produit_id, valeur)
+            if serie is None:
+                return Response(
+                    {'detail': 'Série introuvable.'},
+                    status=status.HTTP_404_NOT_FOUND)
+            return Response({
+                'type': 'serie_entrepot',
+                'id': serie.id,
+                'label': f'N° série {serie.numero_serie}',
+                'numero_serie': serie.numero_serie,
+                'statut': serie.statut,
+                'route': '/chantiers' if serie.installation_id else '/stock',
+            })
+
         prefix, _, raw_id = code.partition(':')
         prefix = prefix.strip().upper()
         raw_id = raw_id.strip()
