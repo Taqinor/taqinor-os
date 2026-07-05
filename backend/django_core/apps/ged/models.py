@@ -2007,8 +2007,16 @@ class SignataireDemande(models.Model):
     @property
     def otp_requis_et_non_valide(self):
         """ZGED2 — True si une authentification extra est requise pour CE
-        destinataire et n'a pas encore été validée (bloque la signature)."""
+        destinataire ET qu'un code a effectivement été émis
+        (`otp_code_hash` posé par `envoyer_code_otp_signataire`), mais pas
+        encore validé (bloque la signature).
+
+        Si la passerelle SMS/email est absente/non configurée,
+        `envoyer_code_otp_signataire` dégrade proprement et NE POSE JAMAIS
+        `otp_code_hash` — dans ce cas la signature ne doit PAS être bloquée
+        (comportement XGED1 inchangé, no-op)."""
         return self.auth_extra_effective != ROLE_AUTH_EXTRA_AUCUNE \
+            and bool(self.otp_code_hash) \
             and not self.otp_valide
 
     def __str__(self):
