@@ -10,6 +10,9 @@ F5–F8 — services du module d'exécution terrain (interventions).
     défaut au standard de documentation d'un chantier solaire.
   * F8 — créneaux OBLIGATOIRES manquant de photo (garde la transition vers
     « Terminée »).
+  * ZFSM1 — gabarit de fiche d'intervention configurable par type (mesures/
+    cases/texte), matérialisé paresseusement par intervention ; un champ
+    obligatoire non renseigné garde la transition vers « Terminée ».
 
 Tout est company-scopé ; la société est posée côté serveur. Additif.
 """
@@ -319,14 +322,76 @@ def missing_required_shots(intervention):
     return missing
 
 
-# ── Garde de transition de statut (F5 départ + F8 arrivée à « Terminée ») ────
+# ── ZFSM1 — gabarit de fiche d'intervention configurable par type ────────────
+def fiche_template_for(intervention):
+    """ZFSM1 — gabarit actif correspondant au `type_intervention` de
+    l'intervention, ou None si aucun gabarit n'est configuré pour ce type
+    (comportement inchangé : pas de relevé requis)."""
+    company = intervention.company
+    if company is None:
+        return None
+    from .models import FicheInterventionTemplate
+    return (FicheInterventionTemplate.objects
+            .filter(company=company,
+                    type_intervention=intervention.type_intervention,
+                    actif=True)
+            .first())
+
+
+def ensure_fiche_releve(intervention):
+    """ZFSM1 — garantit le relevé matérialisé de l'intervention depuis son
+    gabarit (idempotent : conserve les valeurs déjà saisies ; ajoute les
+    nouveaux champs, retire ceux qui ont disparu du gabarit). Renvoie None si
+    aucun gabarit ne correspond au type de l'intervention."""
+    template = fiche_template_for(intervention)
+    if template is None:
+        return None
+    from .models import FicheInterventionReleve, FicheInterventionValeur
+    releve, _created = FicheInterventionReleve.objects.get_or_create(
+        intervention=intervention,
+        defaults={'company': intervention.company, 'template': template})
+    if releve.template_id != template.id:
+        releve.template = template
+        releve.save(update_fields=['template'])
+    existing = {v.champ_id: v for v in releve.valeurs.all()}
+    seen = set()
+    for champ in template.champs.all():
+        seen.add(champ.id)
+        if champ.id not in existing:
+            FicheInterventionValeur.objects.create(
+                company=intervention.company, releve=releve, champ=champ)
+    for champ_id, val in existing.items():
+        if champ_id not in seen:
+            val.delete()
+    return releve
+
+
+def missing_required_fiche_champs(intervention):
+    """ZFSM1 — champs OBLIGATOIRES du gabarit sans valeur renseignée (garde la
+    transition vers « Terminée »). Liste vide si pas de gabarit ou tout est
+    renseigné."""
+    releve = ensure_fiche_releve(intervention)
+    if releve is None:
+        return []
+    missing = []
+    for val in releve.valeurs.select_related('champ').all():
+        if not val.champ.obligatoire:
+            continue
+        if not (val.valeur or '').strip():
+            missing.append(val.champ)
+    return missing
+
+
+# ── Garde de transition de statut (F5 départ + F8 arrivée + ZFSM1 fiche) ─────
 def transition_block_reason(intervention, new_statut):
     """Renvoie un message FR si la transition de statut est interdite, sinon
     None. Garde PROPRE à l'intervention — ne lit/écrit JAMAIS le statut chantier
     ni STAGES.py.
 
     F5 : quitter « À préparer » exige la confirmation « Tout est chargé ».
-    F8 : passer à « Terminée » exige une photo par créneau obligatoire."""
+    F8 : passer à « Terminée » exige une photo par créneau obligatoire.
+    ZFSM1 : passer à « Terminée » exige une valeur pour chaque champ
+    obligatoire du gabarit de fiche d'intervention (si un gabarit s'applique)."""
     if new_statut == intervention.statut:
         return None
     order = list(Intervention.STATUT_ORDER)
@@ -346,8 +411,9 @@ def transition_block_reason(intervention, new_statut):
             return ("Confirmez « Tout est chargé » dans la liste de préparation "
                     "avant de quitter « À préparer ».")
 
-    # F8 — on ne peut atteindre « Terminée » (ou au-delà) que si chaque créneau
-    # obligatoire a au moins une photo.
+    # F8 / ZFSM1 — on ne peut atteindre « Terminée » (ou au-delà) que si chaque
+    # créneau obligatoire a au moins une photo ET chaque champ obligatoire du
+    # gabarit de fiche d'intervention est renseigné.
     if (rank(new_statut) >= rank(Intervention.Statut.TERMINEE)
             and rank(intervention.statut) < rank(Intervention.Statut.TERMINEE)):
         missing = missing_required_shots(intervention)
@@ -355,6 +421,11 @@ def transition_block_reason(intervention, new_statut):
             noms = ', '.join(s.libelle for s in missing)
             return ("Photos obligatoires manquantes avant « Terminée » : "
                     f"{noms}.")
+        missing_champs = missing_required_fiche_champs(intervention)
+        if missing_champs:
+            noms = ', '.join(c.libelle for c in missing_champs)
+            return ("Champs obligatoires de la fiche d'intervention manquants "
+                    f"avant « Terminée » : {noms}.")
     return None
 
 

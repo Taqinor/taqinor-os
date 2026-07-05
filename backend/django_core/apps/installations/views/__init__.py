@@ -11,6 +11,9 @@ from .commissioning import CommissioningRecordViewSet
 from .stage_config import StageModeleViewSet
 from .checklist_template import ChecklistTemplateViewSet
 from .checklist_etape import ChecklistEtapeModeleViewSet
+from .fiche_intervention import (
+    FicheInterventionTemplateViewSet, FicheInterventionChampViewSet,
+)
 from .intervention import InterventionViewSet
 from .shotlist import ShotListSlotViewSet
 from .safety import SafetyChecklistSlotViewSet
@@ -86,6 +89,8 @@ __all__ = [
     'StageModeleViewSet',
     'ChecklistTemplateViewSet',
     'ChecklistEtapeModeleViewSet',
+    'FicheInterventionTemplateViewSet',
+    'FicheInterventionChampViewSet',
     'InterventionViewSet',
     'ShotListSlotViewSet',
     'SafetyChecklistSlotViewSet',

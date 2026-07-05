@@ -25,6 +25,7 @@ from ..serializers import (  # noqa: F401
     ConsommationLigneSerializer, VoiceMemoSerializer, ReserveSerializer,
     ToolReturnSerializer, SafetyChecklistSlotSerializer, SafetySignoffSerializer,
     ReverificationMesureSerializer,
+    FicheInterventionReleveSerializer,
 )
 from ..services import (  # noqa: F401
     create_installation_from_devis, seed_checklist_etapes,
@@ -1220,6 +1221,41 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         data = field_capture.crew_time(interv)
         data['labour_jours'] = field_capture.labour_days_for_intervention(interv)
         return Response(data)
+
+    # ── ZFSM1 — gabarit de fiche d'intervention (relevé matérialisé) ─────────
+    @action(detail=True, methods=['get'], url_path='fiche',
+            permission_classes=[IsAnyRole])
+    def fiche(self, request, pk=None):
+        """ZFSM1 — relevé de fiche d'intervention (mesures/cases/texte) selon
+        le gabarit du type de l'intervention. Matérialisé paresseusement à la
+        première consultation. `null` si aucun gabarit ne correspond au type."""
+        interv = self.get_object()
+        releve = field_services.ensure_fiche_releve(interv)
+        if releve is None:
+            return Response(None)
+        return Response(FicheInterventionReleveSerializer(
+            releve, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='renseigner-fiche',
+            permission_classes=[IsResponsableOrAdmin])
+    def renseigner_fiche(self, request, pk=None):
+        """ZFSM1 — renseigne la valeur d'UN champ du relevé. Corps :
+        {"valeur_id": <id>, "valeur": <str>}."""
+        interv = self.get_object()
+        releve = field_services.ensure_fiche_releve(interv)
+        if releve is None:
+            return Response({'detail': "Aucun gabarit pour ce type d'intervention."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        valeur_obj = releve.valeurs.filter(
+            id=request.data.get('valeur_id')).first()
+        if valeur_obj is None:
+            return Response({'detail': 'Champ de fiche inconnu.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        valeur_obj.valeur = str(request.data.get('valeur', '') or '').strip()
+        valeur_obj.renseigne_le = timezone.now()
+        valeur_obj.save(update_fields=['valeur', 'renseigne_le'])
+        return Response(FicheInterventionReleveSerializer(
+            releve, context={'request': request}).data)
 
     # ── F16 — réserves (punch-list) ──────────────────────────────────────────
     @action(detail=True, methods=['get'], url_path='reserves',

@@ -59,6 +59,10 @@ from .models_field import (
     SafetySignoff,
     SafetyCheckItem,
     FieldOp,
+    FicheInterventionTemplate,
+    FicheInterventionChamp,
+    FicheInterventionReleve,
+    FicheInterventionValeur,
 )
 from .models_projet import (
     JalonProjet,
@@ -239,6 +243,10 @@ __all__ = [
     'SafetySignoff',
     'SafetyCheckItem',
     'FieldOp',
+    'FicheInterventionTemplate',
+    'FicheInterventionChamp',
+    'FicheInterventionReleve',
+    'FicheInterventionValeur',
     'JalonProjet',
     'ModeleProjet',
     'ModeleProjetJalon',
