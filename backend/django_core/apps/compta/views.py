@@ -4998,6 +4998,15 @@ class EvenementMarketingViewSet(_ComptaBaseViewSet):
         terme = request.query_params.get('q', '')
         return Response(services.rechercher_inscrits_borne(evenement, terme))
 
+    @action(detail=True, methods=['get'])
+    def badges(self, request, pk=None):
+        """ZMKT19 — impression en lot des badges (PDF multi-pages)."""
+        evenement = self.get_object()
+        pdf_bytes = services.generer_badges_pdf_lot(evenement)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = 'inline; filename="badges.pdf"'
+        return resp
+
     @action(detail=False, methods=['get'])
     def kanban(self, request):
         """ZMKT14 — Kanban par étape configurable."""
@@ -5088,6 +5097,15 @@ class InscriptionEvenementViewSet(_ComptaBaseViewSet):
         services.pointer_presence(inscription)
         inscription.refresh_from_db()
         return Response(InscriptionEvenementSerializer(inscription).data)
+
+    @action(detail=True, methods=['get'])
+    def badge(self, request, pk=None):
+        """ZMKT19 — badge PDF imprimable d'un inscrit."""
+        inscription = self.get_object()
+        pdf_bytes = services.generer_badge_pdf(inscription)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = 'inline; filename="badge.pdf"'
+        return resp
 
 
 @api_view(['POST'])

@@ -11126,6 +11126,53 @@ def pointer_presence(inscription):
     return inscription
 
 
+def generer_badge_pdf(inscription):
+    """ZMKT19 — badge PDF imprimable d'UN inscrit : nom, événement, société
+    organisatrice, QR de check-in (via ``stock.selectors.qr_svg``)."""
+    from apps.stock.selectors import qr_svg
+    from .pdf_badge_evenement import render_badge_pdf
+
+    nom_societe = ''
+    try:
+        from apps.parametres.models_company import CompanyProfile
+        profil = CompanyProfile.objects.filter(
+            company=inscription.company).first()
+        nom_societe = profil.nom if profil else ''
+    except Exception:  # pragma: no cover - défensif
+        pass
+    svg = qr_svg(inscription.qr_token or '')
+    return render_badge_pdf(
+        nom_inscrit=inscription.nom, nom_evenement=inscription.evenement.nom,
+        nom_societe=nom_societe, qr_svg=svg)
+
+
+def generer_badges_pdf_lot(evenement):
+    """ZMKT19 — impression en lot (PDF multi-pages) pour tous les inscrits
+    confirmés de l'événement."""
+    from apps.stock.selectors import qr_svg
+    from .pdf_badge_evenement import render_badges_pdf
+
+    nom_societe = ''
+    try:
+        from apps.parametres.models_company import CompanyProfile
+        profil = CompanyProfile.objects.filter(company=evenement.company).first()
+        nom_societe = profil.nom if profil else ''
+    except Exception:  # pragma: no cover - défensif
+        pass
+    inscrits = evenement.inscriptions.filter(
+        statut__in=[
+            InscriptionEvenement.Statut.CONFIRME,
+            InscriptionEvenement.Statut.INSCRIT])
+    donnees = [
+        {
+            'nom_inscrit': i.nom, 'nom_evenement': evenement.nom,
+            'nom_societe': nom_societe, 'qr_svg': qr_svg(i.qr_token or ''),
+        }
+        for i in inscrits
+    ]
+    return render_badges_pdf(donnees)
+
+
 def rechercher_inscrits_borne(evenement, terme):
     """ZMKT18 — recherche par nom/email parmi les inscrits (borne de
     check-in), company-scopée."""
