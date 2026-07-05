@@ -1915,7 +1915,7 @@ def sortir_employe(dossier, *, date_sortie, motif, notes_avances=''):
     2. GÉNÈRE les ``ElementSortie`` (FG161) depuis les affectations OUVERTES
        réelles :
        - une ligne EPI par ``DotationEpi`` de l'employé non encore restituée
-         (``recupere=False``) ;
+         (``restituee=False``) ;
        - une ligne VÉHICULE par ``AffectationVehicule`` ACTIVE, close à
          ``date_sortie`` (``statut=TERMINEE``, ``date_fin=date_sortie``) ;
        - une note (ligne AUTRE) listant les ``AvanceSalaire`` non soldées
@@ -1948,7 +1948,7 @@ def sortir_employe(dossier, *, date_sortie, motif, notes_avances=''):
 
     # (b) EPI non restitués → une ligne de checklist par dotation ouverte.
     dotations_ouvertes = DotationEpi.objects.filter(
-        company=dossier.company, employe=dossier, recupere=False)
+        company=dossier.company, employe=dossier, restituee=False)
     for dotation in dotations_ouvertes:
         ElementSortie.objects.create(
             company=dossier.company,

@@ -71,7 +71,7 @@ class SortirEmployeServiceTests(TestCase):
             company=self.company, designation='Casque', type_epi='casque')
         DotationEpi.objects.create(
             company=self.company, employe=self.employe, epi=epi,
-            recupere=False)
+            restituee=False)
         AffectationVehicule.objects.create(
             company=self.company, employe=self.employe, vehicule_id=42,
             statut=AffectationVehicule.Statut.ACTIVE)

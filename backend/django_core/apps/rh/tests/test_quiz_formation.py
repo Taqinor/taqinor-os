@@ -128,7 +128,8 @@ class PasserTentativeQuizServiceTests(TestCase):
 
     def test_reussite_avec_session_liee_marque_inscription_reussie(self):
         session = SessionFormation.objects.create(
-            company=self.company, intitule='Session sécurité')
+            company=self.company, intitule='Session sécurité',
+            date_debut=timezone.localdate())
         InscriptionFormation.objects.create(
             company=self.company, session=session, participant=self.employe)
         quiz = make_quiz(self.company)

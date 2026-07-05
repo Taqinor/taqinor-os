@@ -42,11 +42,13 @@ class RetentionCandidaturesTests(TestCase):
     def _old_rejete(self, **kwargs):
         cv = SimpleUploadedFile(
             'cv.pdf', b'%PDF-1.4 fake', content_type='application/pdf')
-        cand = Candidature.objects.create(
+        defaults = dict(
             company=self.co, ouverture=self.ouverture,
             nom='Ancien Rejeté', email='ancien@example.com',
             telephone='0600000000', note='confidentiel',
-            etape=Candidature.Etape.REJETE, cv_fichier=cv, **kwargs)
+            etape=Candidature.Etape.REJETE, cv_fichier=cv)
+        defaults.update(kwargs)
+        cand = Candidature.objects.create(**defaults)
         # Recule la date_modification (auto_now) au-delà de la rétention.
         old_date = timezone.now() - timedelta(days=800)
         Candidature.objects.filter(pk=cand.pk).update(
