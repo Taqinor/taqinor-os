@@ -4939,6 +4939,21 @@ class EtapeSequence(models.Model):
         max_length=30, blank=True, default='',
         verbose_name='Action alternative si condition fausse')
 
+    # ── XMKT19 — actions CRM dans les étapes de séquence ────────────────────
+    class TypeEtape(models.TextChoices):
+        MESSAGE = 'message', 'Message (canal)'
+        ACTION_CRM = 'action_crm', 'Action CRM'
+
+    type_etape = models.CharField(
+        max_length=12, choices=TypeEtape.choices, default=TypeEtape.MESSAGE,
+        verbose_name="Type d'étape")
+    # Config de l'action CRM si ``type_etape == 'action_crm'`` :
+    # {"action": "avancer_stage"|"assigner"|"tag"|"score"|"tache",
+    #  "params": {...}} — jamais de clé de stage hardcodée, la valeur vient
+    # toujours de STAGES.py côté appelant (crm.services).
+    action_crm = models.JSONField(
+        default=dict, blank=True, verbose_name='Action CRM (JSON)')
+
     class Meta:
         verbose_name = 'Étape de séquence'
         verbose_name_plural = 'Étapes de séquence'

@@ -7361,6 +7361,47 @@ def _appliquer_action_alternative(inscription, etape, action):
             f'autre objet (branche alternative étape {etape.ordre})')
 
 
+def _executer_action_crm(inscription, etape):
+    """XMKT19 — exécute l'action CRM configurée sur ``etape.action_crm``
+    (JSON ``{"action": ..., "params": {...}}``), toujours via
+    ``apps.crm.services`` (jamais d'import direct du modèle CRM). Renvoie
+    ``'execute'`` / ``'lead_introuvable'`` / ``'action_inconnue'`` / ``'erreur'``.
+    """
+    from apps.crm.selectors import get_company_lead
+    from apps.crm import services as crm_services
+
+    lead = get_company_lead(inscription.company, inscription.lead_id)
+    if lead is None:
+        return 'lead_introuvable'
+    config = etape.action_crm or {}
+    action = config.get('action')
+    params = config.get('params') or {}
+    try:
+        if action == 'avancer_stage':
+            crm_services.avancer_stage_lead_vers(lead, None, params.get('stage'))
+        elif action == 'assigner':
+            crm_services.assigner_lead_a(lead, None, params.get('owner_id'))
+        elif action == 'tag':
+            crm_services.poser_tag_lead(lead, None, params.get('tag'))
+        elif action == 'retirer_tag':
+            crm_services.retirer_tag_lead(lead, None, params.get('tag'))
+        elif action == 'score':
+            crm_services.ajuster_score_lead(lead, None, params.get('delta', 0))
+        elif action == 'tache':
+            crm_services.creer_relance_lead(
+                lead, None, relance_date=params.get('relance_date'),
+                note=params.get('note', ''))
+        else:
+            return 'action_inconnue'
+    except Exception:
+        return 'erreur'
+    noter_touche_marketing_pour_lead(
+        inscription.company, f'lead:{inscription.lead_id}',
+        f'Séquence « {inscription.sequence.nom} » — action CRM « {action} » '
+        f'exécutée (étape {etape.ordre})')
+    return 'execute'
+
+
 def _executer_une_etape(inscription, etape):
     """Exécute (ou planifie, gated) une étape pour une inscription et trace
     le résultat. N'envoie jamais réellement ici : réutilise le comportement
@@ -7392,6 +7433,21 @@ def _executer_une_etape(inscription, etape):
             branche_prise=branche_prise,
         )
         return execution
+
+    # XMKT19 — étape d'action CRM (au lieu d'un message) : pose l'action puis
+    # trace, jamais de faux "envoi" journalisé pour ce type d'étape.
+    if getattr(etape, 'type_etape', EtapeSequence.TypeEtape.MESSAGE) == \
+            EtapeSequence.TypeEtape.ACTION_CRM:
+        resultat_action = _executer_action_crm(inscription, etape)
+        return ExecutionEtapeSequence.objects.create(
+            company=inscription.company,
+            inscription=inscription,
+            etape=etape,
+            canal='',
+            resultat=resultat_action,
+            erreur='' if resultat_action != 'erreur' else 'action CRM échouée',
+            branche_prise=branche_prise,
+        )
 
     if canal == EtapeSequence.Canal.WHATSAPP and not whatsapp_actif():
         resultat = 'planifie'  # file manuelle FG31, aucun appel réseau

@@ -2389,3 +2389,91 @@ def enregistrer_consentement_lead(
         version_texte=version_texte or '',
         ip_confirmation=ip_confirmation,
     )
+
+
+# ── XMKT19 — Actions CRM exécutables depuis une étape de séquence ──────────
+# Point d'entrée UNIQUE pour qu'une ``EtapeSequence`` (apps.compta) exécute
+# une action CRM au lieu d'un message — jamais d'import direct du modèle
+# crm depuis compta ; chaque fonction journalise le chatter (``LeadActivity``)
+# via ``activity``, jamais silencieuse.
+
+def avancer_stage_lead_vers(lead, user, stage_cible):
+    """XMKT19 — avance ``lead`` vers ``stage_cible`` (clé canonique
+    STAGES.py, jamais hardcodée par l'appelant). Refuse un recul (même règle
+    que le bulk edit, ``_bulk_stage_allowed``). Renvoie True si appliqué.
+    """
+    if not _bulk_stage_allowed(lead.stage, stage_cible):
+        return False
+    ancien = lead.stage
+    lead.stage = stage_cible
+    lead.save(update_fields=['stage'])
+    activity.log_bulk_change(lead, user, 'stage', ancien, stage_cible)
+    return True
+
+
+def assigner_lead_a(lead, user, owner_id):
+    """XMKT19 — assigne (ou vide) le propriétaire du lead."""
+    nouveau = _resolve_owner(lead.company, owner_id)
+    ancien = lead.owner
+    lead.owner = nouveau
+    lead.save(update_fields=['owner'])
+    activity.log_bulk_change(
+        lead, user,
+        'owner',
+        getattr(ancien, 'username', '') if ancien else '',
+        getattr(nouveau, 'username', '') if nouveau else '')
+    return lead
+
+
+def poser_tag_lead(lead, user, tag):
+    """XMKT19 — ajoute (idempotent) un tag au lead."""
+    tag = (tag or '').strip()
+    if not tag:
+        return lead
+    current = [t.strip() for t in (lead.tags or '').split(',') if t.strip()]
+    if tag in current:
+        return lead
+    old = lead.tags or ''
+    current.append(tag)
+    lead.tags = ', '.join(current)[:500]
+    lead.save(update_fields=['tags'])
+    activity.log_bulk_change(lead, user, 'tags', old, lead.tags)
+    return lead
+
+
+def retirer_tag_lead(lead, user, tag):
+    """XMKT19 — retire (idempotent) un tag du lead."""
+    tag = (tag or '').strip()
+    if not tag:
+        return lead
+    current = [t.strip() for t in (lead.tags or '').split(',') if t.strip()]
+    if tag not in current:
+        return lead
+    old = lead.tags or ''
+    current.remove(tag)
+    lead.tags = ', '.join(current)[:500]
+    lead.save(update_fields=['tags'])
+    activity.log_bulk_change(lead, user, 'tags', old, lead.tags)
+    return lead
+
+
+def ajuster_score_lead(lead, user, delta):
+    """XMKT19 — ajuste le score du lead de ``delta`` (peut être négatif),
+    borné à [0, 100]."""
+    ancien = lead.score or 0
+    nouveau = max(0, min(100, ancien + int(delta)))
+    lead.score = nouveau
+    lead.save(update_fields=['score'])
+    activity.log_bulk_change(lead, user, 'score', ancien, nouveau)
+    return lead
+
+
+def creer_relance_lead(lead, user, *, relance_date, note=''):
+    """XMKT19 — crée/pose une relance/tâche (FG31) sur le lead."""
+    lead.relance_date = relance_date
+    lead.save(update_fields=['relance_date'])
+    body = f'Relance planifiée le {relance_date}'
+    if note:
+        body += f' — {note}'
+    activity.log_note(lead, user, body)
+    return lead
