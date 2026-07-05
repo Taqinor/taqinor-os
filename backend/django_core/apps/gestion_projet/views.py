@@ -2393,6 +2393,80 @@ class TimesheetViewSet(_GestionProjetBaseViewSet):
             ],
         })
 
+    @action(detail=False, methods=['get'], url_path='semaine')
+    def semaine(self, request):
+        """Grille hebdomadaire de saisie des temps d'une ressource (XPRJ6).
+
+        Query params ``?ressource=<id>&debut=YYYY-MM-DD`` (obligatoires) —
+        ``debut`` est le premier jour de la semaine analysée. Délègue à
+        ``selectors.grille_semaine_temps`` : lignes projet/tâche × 7 jours +
+        totaux + suggestions de pré-remplissage dérivées des affectations de
+        la ressource sur la semaine (jamais auto-enregistrées — un simple
+        aperçu que le frontend propose en 1 clic). ``ressource`` doit
+        appartenir à la société de l'appelant (sinon 404).
+        """
+        ressource_id = request.query_params.get('ressource')
+        debut = _parse_date_param(request.query_params.get('debut'))
+        if not ressource_id or debut is None:
+            return Response(
+                {'detail': 'Les paramètres « ressource » et « debut » '
+                           '(YYYY-MM-DD) sont obligatoires.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        ressource = RessourceProfil.objects.filter(
+            id=ressource_id, company=request.user.company).first()
+        if ressource is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        data = selectors.grille_semaine_temps(ressource, debut)
+        return Response({
+            'debut_semaine': data['debut_semaine'],
+            'fin_semaine': data['fin_semaine'],
+            'jours': data['jours'],
+            'lignes': [
+                {
+                    'projet': ligne['projet'],
+                    'projet_code': ligne['projet_code'],
+                    'tache': ligne['tache'],
+                    'tache_libelle': ligne['tache_libelle'],
+                    'heures': [str(h) for h in ligne['heures']],
+                    'total_ligne': str(ligne['total_ligne']),
+                }
+                for ligne in data['lignes']
+            ],
+            'total_par_jour': [str(h) for h in data['total_par_jour']],
+            'total_semaine': str(data['total_semaine']),
+            'suggestions': data['suggestions'],
+        })
+
+    @action(detail=False, methods=['post'], url_path='copier-semaine')
+    def copier_semaine(self, request):
+        """Copie les timesheets d'une semaine précédente vers une autre (XPRJ6).
+
+        Corps : ``ressource`` (obligatoire), ``semaine_source`` et
+        ``semaine_cible`` (obligatoires, ``YYYY-MM-DD`` — début de chaque
+        fenêtre de 7 jours). Délègue à
+        ``services.copier_semaine_precedente_timesheets`` (statut toujours
+        BROUILLON sur les copies, jamais de doublon sur ré-exécution, période
+        cible verrouillée sautée proprement). ``ressource`` doit appartenir à
+        la société de l'appelant (sinon 404).
+        """
+        ressource_id = request.data.get('ressource')
+        semaine_source = _parse_date_param(request.data.get('semaine_source'))
+        semaine_cible = _parse_date_param(request.data.get('semaine_cible'))
+        if not ressource_id or semaine_source is None or semaine_cible is None:
+            return Response(
+                {'detail': 'Les paramètres « ressource », « semaine_source » '
+                           'et « semaine_cible » (YYYY-MM-DD) sont '
+                           'obligatoires.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        ressource = RessourceProfil.objects.filter(
+            id=ressource_id, company=request.user.company).first()
+        if ressource is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        rapport = services.copier_semaine_precedente_timesheets(
+            ressource, semaine_source=semaine_source,
+            semaine_cible=semaine_cible, admin=self._est_admin())
+        return Response(rapport)
+
 
 class PeriodeVerrouilleeTempsViewSet(_GestionProjetBaseViewSet):
     """Verrous de période (mois) sur les feuilles de temps (XPRJ1) — CRUD scopé.

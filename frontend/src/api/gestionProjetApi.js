@@ -61,6 +61,9 @@ const gestionProjetApi = {
   createTache: (data) => api.post(`${P}/taches/`, data),
   updateTache: (id, data) => api.patch(`${P}/taches/${id}/`, data),
   deleteTache: (id) => api.delete(`${P}/taches/${id}/`),
+  // Drag calendrier : reprogrammer une tâche (+ cascade successeurs) (XPRJ11).
+  reprogrammerTache: (id, data) =>
+    api.post(`${P}/taches/${id}/reprogrammer/`, data),
   getDependances: (params) => api.get(`${P}/dependances/`, { params }),
   createDependance: (data) => api.post(`${P}/dependances/`, data),
   deleteDependance: (id) => api.delete(`${P}/dependances/${id}/`),
@@ -99,7 +102,13 @@ const gestionProjetApi = {
   deleteIndisponibilite: (id) => api.delete(`${P}/indisponibilites/${id}/`),
   getTimesheets: (params) => api.get(`${P}/timesheets/`, { params }),
   createTimesheet: (data) => api.post(`${P}/timesheets/`, data),
+  updateTimesheet: (id, data) => api.patch(`${P}/timesheets/${id}/`, data),
   deleteTimesheet: (id) => api.delete(`${P}/timesheets/${id}/`),
+  // Grille hebdomadaire de saisie des temps (XPRJ6).
+  getGrilleSemaineTemps: (params) =>
+    api.get(`${P}/timesheets/semaine/`, { params }),
+  copierSemaineTimesheets: (data) =>
+    api.post(`${P}/timesheets/copier-semaine/`, data),
 
   // ── Budget & P&L (UX41) ───────────────────────────────────────────────────
   getBudgets: (params) => api.get(`${P}/budgets/`, { params }),
