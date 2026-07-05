@@ -12,6 +12,7 @@ from apps.stock.services import (  # noqa: F401
 from ..models import (  # noqa: F401
     Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
     Avoir, LigneAvoir, FollowupLevel, RelanceLog, EmailLog,
+    NoteDebit, LigneNoteDebit,
 )
 from ..serializers import (  # noqa: F401
     DevisSerializer,
@@ -23,6 +24,7 @@ from ..serializers import (  # noqa: F401
     LigneFactureSerializer,
     PaiementSerializer,
     AvoirSerializer,
+    NoteDebitSerializer,
     RelanceLogSerializer,
     DevisActivitySerializer,
 )
@@ -107,7 +109,7 @@ class FactureViewSet(viewsets.ModelViewSet):
             'dgi_export', 'dgi_conformite', 'dgi_transmettre',
             'bulk', 'lien_paiement', 'retour_client',
             'facturer_penalites', 'consolider', 'abandonner_solde',
-            'remettre_brouillon',
+            'remettre_brouillon', 'encaissement_groupe',
         ]:
             return [IsResponsableOrAdmin()]
         # Annuler une facture = réservé à l'admin/propriétaire (geste comptable).
@@ -972,7 +974,14 @@ class FactureViewSet(viewsets.ModelViewSet):
         """Crée un Avoir (note de crédit) depuis une facture ÉMISE — admin only
         (get_permissions par défaut). Total ou partiel : si `lignes` est fourni
         on crédite ces lignes ; sinon on crédite toute la facture. Lié à la
-        facture d'origine ; le PDF reprend le style facture."""
+        facture d'origine ; le PDF reprend le style facture.
+
+        ZFAC5 — ``mode`` ∈ {``correction`` (défaut, comportement ci-dessus
+        inchangé), ``contre_passation``} : en ``contre_passation`` l'avoir
+        reprend TOUTES les lignes de la facture à l'identique (les `lignes`
+        du corps sont ignorées) et, à son émission, la facture d'origine
+        passe ``annulee`` avec un ``FactureActivity`` liant les deux pièces.
+        Refusé (400) si la facture a déjà des paiements (dû négatif évité)."""
         facture = self.get_object()
         self._guard_periode_verrouillee(facture)
         if facture.statut not in ('emise', 'payee', 'en_retard'):
@@ -980,9 +989,20 @@ class FactureViewSet(viewsets.ModelViewSet):
                 {'detail': 'Un avoir ne peut être créé que depuis une '
                            'facture émise (ou payée/en retard).'},
                 status=status.HTTP_400_BAD_REQUEST)
+        mode = (request.data.get('mode') or 'correction').strip()
+        if mode not in ('correction', 'contre_passation'):
+            return Response(
+                {'detail': "mode doit être 'correction' ou 'contre_passation'."},
+                status=status.HTTP_400_BAD_REQUEST)
+        if mode == 'contre_passation' and facture.montant_paye > 0:
+            return Response(
+                {'detail': ("Contre-passation refusée : cette facture a déjà "
+                            "des paiements enregistrés.")},
+                status=status.HTTP_400_BAD_REQUEST)
         company = facture.company
         motif = (request.data.get('motif') or '').strip()
-        lignes = request.data.get('lignes')
+        lignes = None if mode == 'contre_passation' \
+            else request.data.get('lignes')
         # Plafond : un avoir ne peut pas dépasser le reste créditable de la
         # facture (TTC − avoirs actifs déjà émis). Mesuré AVANT création.
         from decimal import Decimal, InvalidOperation
@@ -1101,6 +1121,21 @@ class FactureViewSet(viewsets.ModelViewSet):
         # jamais lu du corps de la requête).
         from .. import activity
         activity.log_facture_avoir(facture, request.user, avoir)
+        if mode == 'contre_passation':
+            # ZFAC5 — annulation NETTE : la facture d'origine passe annulee,
+            # avec un FactureActivity liant les deux pièces (avoir miroir).
+            from ..models import FactureActivity
+            ancien_statut = facture.statut
+            facture.statut = Facture.Statut.ANNULEE
+            facture.save(update_fields=['statut'])
+            FactureActivity.objects.create(
+                company=company, facture=facture, user=request.user,
+                kind=FactureActivity.Kind.MODIFICATION,
+                field='statut', field_label='Statut',
+                old_value=ancien_statut, new_value=Facture.Statut.ANNULEE,
+                body=(f"Facture annulée par contre-passation — avoir miroir "
+                      f"{avoir.reference}."),
+            )
         # YLEDG1 — événement documentaire générique (pose du seam pour
         # compta.ecriture_pour_avoir, jamais d'import de son service ici).
         from core.events import avoir_cree
@@ -1112,6 +1147,121 @@ class FactureViewSet(viewsets.ModelViewSet):
         except Exception:
             pass
         return Response(AvoirSerializer(avoir).data,
+                        status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='creer-note-debit')
+    def creer_note_debit(self, request, pk=None):
+        """ZFAC4 — crée une NoteDebit (majoration d'une facture déjà émise) —
+        pendant de l'avoir. Total (copie des lignes de la facture) ou
+        personnalisé (`lignes` fourni) ; augmente ``Facture.montant_du``."""
+        facture = self.get_object()
+        self._guard_periode_verrouillee(facture)
+        if facture.statut not in ('emise', 'payee', 'en_retard'):
+            return Response(
+                {'detail': 'Une note de débit ne peut être créée que depuis '
+                           'une facture émise (ou payée/en retard).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        company = facture.company
+        motif = (request.data.get('motif') or '').strip()
+        lignes = request.data.get('lignes')
+
+        from decimal import Decimal, InvalidOperation
+        clean_lignes = None
+        if isinstance(lignes, list) and lignes:
+            clean_lignes = []
+            for i, ligne in enumerate(lignes, start=1):
+                if not isinstance(ligne, dict):
+                    return Response(
+                        {'detail': f'Ligne {i} invalide.'},
+                        status=status.HTTP_400_BAD_REQUEST)
+                designation = (ligne.get('designation') or '').strip()
+                if not designation:
+                    return Response(
+                        {'detail': f'Ligne {i} : désignation requise.'},
+                        status=status.HTTP_400_BAD_REQUEST)
+                try:
+                    qte = Decimal(str(ligne.get('quantite')))
+                    pu = Decimal(str(ligne.get('prix_unitaire')))
+                except (InvalidOperation, TypeError, ValueError):
+                    return Response(
+                        {'detail': (f'Ligne {i} : quantité et prix unitaire '
+                                    'numériques requis.')},
+                        status=status.HTTP_400_BAD_REQUEST)
+                if qte <= 0 or pu < 0:
+                    return Response(
+                        {'detail': (f'Ligne {i} : quantité > 0 et prix '
+                                    'unitaire ≥ 0 requis.')},
+                        status=status.HTTP_400_BAD_REQUEST)
+                try:
+                    remise = Decimal(str(ligne.get('remise') or 0))
+                except (InvalidOperation, TypeError, ValueError):
+                    return Response(
+                        {'detail': f'Ligne {i} : remise invalide.'},
+                        status=status.HTTP_400_BAD_REQUEST)
+                taux_tva = ligne.get('taux_tva')
+                if taux_tva not in (None, ''):
+                    try:
+                        taux_tva = Decimal(str(taux_tva))
+                    except (InvalidOperation, TypeError, ValueError):
+                        return Response(
+                            {'detail': f'Ligne {i} : taux TVA invalide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+                else:
+                    taux_tva = None
+                produit_id = ligne.get('produit') or None
+                if produit_id is None:
+                    return Response(
+                        {'detail': f'Ligne {i} : produit requis.'},
+                        status=status.HTTP_400_BAD_REQUEST)
+                from apps.stock.selectors import get_produit_scoped
+                if get_produit_scoped(company, produit_id) is None:
+                    return Response(
+                        {'detail': f'Ligne {i} : produit inconnu.'},
+                        status=status.HTTP_400_BAD_REQUEST)
+                clean_lignes.append({
+                    'produit_id': produit_id,
+                    'designation': designation[:255],
+                    'quantite': qte, 'prix_unitaire': pu,
+                    'remise': remise, 'taux_tva': taux_tva,
+                })
+
+        def _create(ref):
+            note_debit = NoteDebit.objects.create(
+                company=company, reference=ref, facture=facture,
+                client=facture.client, statut=NoteDebit.Statut.EMISE,
+                motif=motif, taux_tva=facture.taux_tva,
+                created_by=request.user)
+            if clean_lignes:
+                for ligne in clean_lignes:
+                    LigneNoteDebit.objects.create(
+                        note_debit=note_debit, **ligne)
+            else:
+                f_lignes = list(facture.lignes.all())
+                if f_lignes:
+                    for ligne in f_lignes:
+                        LigneNoteDebit.objects.create(
+                            note_debit=note_debit, produit=ligne.produit,
+                            designation=ligne.designation,
+                            quantite=ligne.quantite,
+                            prix_unitaire=ligne.prix_unitaire,
+                            remise=ligne.remise, taux_tva=ligne.taux_tva)
+                else:
+                    note_debit.montant_ht = facture.total_ht
+                    note_debit.montant_tva = facture.total_tva
+                    note_debit.montant_ttc = facture.total_ttc
+                    note_debit.save(update_fields=[
+                        'montant_ht', 'montant_tva', 'montant_ttc'])
+            return note_debit
+
+        note_debit = create_numbered(
+            NoteDebit, company, 'note_debit', _create)
+        try:
+            from ..utils.pdf import generate_note_debit_pdf
+            generate_note_debit_pdf(note_debit.id)
+            note_debit.refresh_from_db()
+        except Exception:
+            pass
+        return Response(NoteDebitSerializer(note_debit).data,
                         status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'], url_path='retour-client',
@@ -1421,6 +1571,84 @@ class FactureViewSet(viewsets.ModelViewSet):
             return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
         return Response(
             FactureSerializer(facture).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'], url_path='encaissement-groupe',
+            permission_classes=[IsResponsableOrAdmin])
+    def encaissement_groupe(self, request):
+        """ZFAC6 — un seul règlement client réparti sur PLUSIEURS factures
+        (virement global, chèque unique). Body : ``{client, montant, mode,
+        date, reference, factures:[ids]}`` — répartition FIFO par échéance
+        (la plus ancienne d'abord) sur les factures listées ; un solde
+        éventuel non affecté n'est PAS créé ici (XFAC1 le gère séparément
+        s'il est présent — le montant excédentaire est simplement refusé)."""
+        from decimal import Decimal, InvalidOperation
+
+        from apps.crm.selectors import get_company_client
+
+        company = request.user.company
+        client_id = request.data.get('client')
+        client = get_company_client(company, client_id)
+        if client is None:
+            return Response(
+                {'detail': 'Client introuvable.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            montant = Decimal(str(request.data.get('montant')))
+        except (InvalidOperation, TypeError, ValueError):
+            return Response(
+                {'detail': 'Montant invalide.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if montant <= 0:
+            return Response(
+                {'detail': 'Le montant doit être positif.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        mode = (request.data.get('mode') or 'virement').strip()
+        date_paiement = request.data.get('date') or timezone.now().date()
+        reference = (request.data.get('reference') or '').strip()
+        facture_ids = request.data.get('factures') or []
+        if not isinstance(facture_ids, list) or not facture_ids:
+            return Response(
+                {'detail': 'factures (liste d\'ids) requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        factures = list(
+            Facture.objects.filter(company=company, id__in=facture_ids))
+        if len(factures) != len(set(facture_ids)):
+            return Response(
+                {'detail': 'Une ou plusieurs factures sont introuvables '
+                           'pour cette société.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        autres_clients = [f for f in factures if f.client_id != client.id]
+        if autres_clients:
+            return Response(
+                {'detail': (
+                    f"La facture {autres_clients[0].reference} "
+                    "n'appartient pas à ce client."
+                )},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        repartition = request.data.get('repartition')
+        if repartition is not None and not isinstance(repartition, dict):
+            return Response(
+                {'detail': 'repartition doit être un objet {facture_id: montant}.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        from ..services import affecter_encaissement_groupe
+
+        try:
+            paiements = affecter_encaissement_groupe(
+                company=company, client=client, montant=montant, mode=mode,
+                date_paiement=date_paiement, user=request.user,
+                factures=factures, reference=reference,
+                repartition=repartition,
+            )
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(
+            PaiementSerializer(paiements, many=True).data,
+            status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['post'], url_path='bulk',
             permission_classes=[IsResponsableOrAdmin])

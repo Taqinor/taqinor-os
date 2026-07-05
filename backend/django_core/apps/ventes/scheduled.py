@@ -224,18 +224,27 @@ def relance_reminders():
     cours) : la relance reste suspendue jusqu'à la date promise ou la rupture
     de la promesse."""
     from datetime import timedelta
-    from .models import Facture, FollowupLevel, RelanceLog
+    from .models import Facture, FollowupLevel, ParametrageRelanceClient, RelanceLog
     from .email_service import send_relance_email
 
     today = casablanca_today()
     _check_promesses_expirees(today)
     sent = 0
+    # ZFAC8 — un client en mode MANUEL est ignoré par le cron automatique (son
+    # responsable le suit via la liste manuelle, pas cet envoi programmé).
+    clients_manuels = set(
+        ParametrageRelanceClient.objects.filter(
+            mode=ParametrageRelanceClient.Mode.MANUEL,
+        ).values_list('client_id', flat=True)
+    )
     factures = Facture.objects.filter(
         prochaine_relance__lte=today, exclu_relances=False,
     ).exclude(
         statut__in=['payee', 'annulee', 'brouillon'],
     ).exclude(
         exclu_relances_jusquau__gte=today,
+    ).exclude(
+        client_id__in=clients_manuels,
     ).select_related('client', 'company').prefetch_related(
         'lignes', 'paiements', 'avoirs')
 
@@ -483,3 +492,29 @@ def releve_mensuel_reminders():
 
     logger.info('releve_mensuel_reminders: %s relevé(s) envoyé(s)', sent)
     return sent
+
+
+@shared_task(name='ventes.devis_a_facturer_reminder')
+def devis_a_facturer_reminder(jours=7):
+    """ZFAC12 — rappel de courtoisie pré-échéance côté DEVIS accepté non
+    facturé (backlog à facturer). Pour chaque ``Devis`` ``accepte`` sans
+    ``Facture`` liée depuis > ``jours`` jours (défaut 7, réglable), pose une
+    entrée SYSTÈME dans son chatter (``DevisActivity``) — NO-OP d'envoi,
+    comme les autres rappels (aucun email/SMS). Un devis déjà facturé est
+    ignoré. Idempotent : une seule entrée par devis et par jour calendaire
+    même si le job tourne plusieurs fois. Renvoie le nombre de rappels posés."""
+    from . import activity
+    from .selectors import devis_a_facturer
+    from authentication.models import Company
+
+    total = 0
+    for company in Company.objects.all():
+        candidats = devis_a_facturer(company, jours=jours)
+        for devis in candidats:
+            jours_ecoules = (casablanca_today() - devis.date_acceptation).days
+            note = activity.log_devis_a_facturer_reminder(devis, jours_ecoules)
+            if note is not None:
+                total += 1
+
+    logger.info('devis_a_facturer_reminder: %s rappel(s) posé(s)', total)
+    return total

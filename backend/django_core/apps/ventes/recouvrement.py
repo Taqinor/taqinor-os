@@ -14,8 +14,11 @@ from authentication.permissions import (
     IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
 
-from .models import Facture, FollowupLevel, PromessePaiement
-from .serializers import FollowupLevelSerializer, PromessePaiementSerializer
+from .models import Facture, FollowupLevel, ParametrageRelanceClient, PromessePaiement
+from .serializers import (
+    FollowupLevelSerializer, ParametrageRelanceClientSerializer,
+    PromessePaiementSerializer,
+)
 
 
 def _s(x):
@@ -114,6 +117,33 @@ class FollowupLevelViewSet(viewsets.ModelViewSet):
             status=status.HTTP_201_CREATED)
 
 
+class ParametrageRelanceClientViewSet(viewsets.ModelViewSet):
+    """ZFAC8 — réglage par client du responsable/mode de relance. Lecture
+    tout rôle, écriture responsable/admin (même tier que les autres réglages
+    de recouvrement)."""
+    serializer_class = ParametrageRelanceClientSerializer
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        return _scope(
+            ParametrageRelanceClient.objects.select_related(
+                'client', 'responsable'),
+            self.request.user)
+
+    def perform_create(self, serializer):
+        company = self.request.user.company if self.request.user.company_id else None
+        client = serializer.validated_data.get('client')
+        if client is not None and client_base_qs(company).filter(
+                pk=client.pk).exists() is False:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({'client': 'Client introuvable.'})
+        serializer.save(company=company)
+
+
 def _facture_due_rows(user):
     """Factures ouvertes (dues) de la société, non exclues."""
     from authentication.scoping import scope_queryset
@@ -132,12 +162,28 @@ def _facture_due_rows(user):
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def relances_list(request):
-    """Impayés à relancer : factures dues, jours de retard, niveau courant."""
+    """Impayés à relancer : factures dues, jours de retard, niveau courant.
+
+    ZFAC8 — ``?mes_relances=1`` restreint aux clients dont le
+    ``ParametrageRelanceClient.responsable`` est l'utilisateur courant
+    (« mes relances »). Sans ce paramètre : comportement inchangé (toutes
+    les factures dues visibles à l'utilisateur)."""
     levels = _levels(request.user.company if request.user.company_id else None)
+    from .models import ParametrageRelanceClient
     from .selectors import comportement_paiement
     scores_cache = {}
+    param_par_client = {
+        p.client_id: p for p in ParametrageRelanceClient.objects.filter(
+            company_id=request.user.company_id)
+    }
+    mes_relances = str(request.GET.get('mes_relances') or '').strip() in (
+        '1', 'true', 'True')
     rows = []
     for f in _facture_due_rows(request.user):
+        param = param_par_client.get(f.client_id)
+        if mes_relances and (
+                param is None or param.responsable_id != request.user.id):
+            continue
         jr = f.jours_retard
         # XFAC5 — promesse de paiement active/rompue (priorité haute).
         promesse = f.promesses_paiement.filter(
@@ -171,6 +217,9 @@ def relances_list(request):
             } if promesse else None),
             # XFAC15 — badge de comportement de paiement (lettre A–E).
             'score_comportement': score['lettre'],
+            # ZFAC8 — mode de relance du client (auto par défaut) + responsable.
+            'relance_mode': param.mode if param else 'auto',
+            'relance_responsable_id': param.responsable_id if param else None,
         })
     rows.sort(key=lambda r: (
         r['promesse'] is not None and r['promesse']['statut'] == 'rompue',

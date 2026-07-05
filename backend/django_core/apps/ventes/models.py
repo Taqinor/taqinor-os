@@ -875,6 +875,19 @@ class Facture(models.Model):
             Decimal('0'))
 
     @property
+    def notes_debit_total(self):
+        """ZFAC4 — total TTC des notes de débit actives sur cette facture.
+
+        Une note de débit AUGMENTE ce que le client doit — symétrique
+        d'``avoirs_total``. Aucune note de débit → 0 → comportement
+        historique strictement inchangé."""
+        from decimal import Decimal
+        return sum(
+            (n.total_ttc for n in self.notes_debit.all()
+             if n.statut == 'emise'),
+            Decimal('0'))
+
+    @property
     def retenues_subies_total(self):
         """XFAC4 — total des retenues à la source SUBIES (RAS TVA/IS) que le
         client a retenues sur cette facture. Une retenue solde la facture au
@@ -891,9 +904,13 @@ class Facture(models.Model):
 
     @property
     def montant_du(self):
-        """Reste à payer (TTC − payé − retenues subies − avoirs), jamais négatif."""
+        """Reste à payer (TTC + notes de débit − payé − retenues subies −
+        avoirs), jamais négatif. ZFAC4 — les notes de débit actives
+        AUGMENTENT le reste à payer (symétrique des avoirs) ; aucune note de
+        débit → comportement historique strictement inchangé."""
         from decimal import Decimal
-        reste = (self.total_ttc - self.montant_paye_avec_retenues
+        reste = (self.total_ttc + self.notes_debit_total
+                 - self.montant_paye_avec_retenues
                  - self.avoirs_total)
         return reste if reste > 0 else Decimal('0')
 
@@ -1153,6 +1170,11 @@ class Paiement(models.Model):
     )
     reference = models.CharField(max_length=120, blank=True, null=True)
     note = models.TextField(blank=True, null=True)
+    # ZFAC7 — suivi métier des chèques (remise en banque, chèque impayé).
+    # Uniquement pertinent quand mode == CHEQUE ; laissés vides pour tout
+    # autre mode (comportement historique inchangé).
+    numero_cheque = models.CharField(max_length=50, blank=True, default='')
+    banque_tiree = models.CharField(max_length=120, blank=True, default='')
     # XFAC12 — escompte AUTOMATIQUEMENT appliqué à ce règlement (fenêtre
     # atteinte). 0/NULL = comportement actuel inchangé (aucun escompte, ou
     # règlement hors fenêtre).
@@ -1357,6 +1379,107 @@ class LigneAvoir(models.Model):
         return self.taux_tva if self.taux_tva is not None else self.avoir.taux_tva
 
 
+class NoteDebit(models.Model):
+    """ZFAC4 — note de débit : pendant de l'``Avoir`` qui MAJORE une facture
+    déjà émise (surfacturation régularisée, complément non prévu) au lieu de
+    la réduire. Miroir structurel d'``Avoir`` (mêmes champs), référence
+    préfixée ``ND-`` (jamais ``AVO-``)."""
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        EMISE = 'emise', 'Émise'
+        ANNULEE = 'annulee', 'Annulée'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='notes_debit')
+    reference = models.CharField(max_length=50)
+    facture = models.ForeignKey(
+        Facture, on_delete=models.PROTECT, related_name='notes_debit')
+    client = models.ForeignKey(
+        'crm.Client', on_delete=models.PROTECT, related_name='notes_debit')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.BROUILLON)
+    motif = models.TextField(blank=True, default='')
+    date_emission = models.DateField(auto_now_add=True)
+    taux_tva = models.DecimalField(max_digits=5, decimal_places=2, default=20.00)
+    # Montants figés (chemin simple, sans lignes détaillées) — utilisés quand
+    # aucune ligne n'est fournie.
+    montant_ht = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True)
+    montant_tva = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True)
+    montant_ttc = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        related_name='notes_debit_creees')
+    fichier_pdf = models.CharField(max_length=500, blank=True, null=True)
+
+    class Meta:
+        verbose_name = 'Note de débit'
+        verbose_name_plural = 'Notes de débit'
+        ordering = ['-date_emission', '-id']
+        unique_together = [('company', 'reference')]
+
+    def __str__(self):
+        return self.reference
+
+    @property
+    def total_ht(self):
+        if self.montant_ht is not None:
+            return self.montant_ht
+        return sum(ligne.total_ht for ligne in self.lignes.all())
+
+    @property
+    def total_tva(self):
+        if self.montant_tva is not None:
+            return self.montant_tva
+        from decimal import Decimal
+        return sum((b['montant'] for b in self.tva_par_taux), Decimal('0'))
+
+    @property
+    def tva_par_taux(self):
+        from .selectors import tva_buckets
+        frozen = None
+        if self.montant_tva is not None:
+            frozen = (self.taux_tva, self.total_ht, self.montant_tva)
+        return tva_buckets(
+            self.lignes.all(), fallback_taux=self.taux_tva, frozen=frozen)
+
+    @property
+    def total_ttc(self):
+        if self.montant_ttc is not None:
+            return self.montant_ttc
+        return self.total_ht + self.total_tva
+
+
+class LigneNoteDebit(models.Model):
+    note_debit = models.ForeignKey(
+        NoteDebit, on_delete=models.CASCADE, related_name='lignes')
+    produit = models.ForeignKey(
+        'stock.Produit', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='lignes_note_debit')
+    designation = models.CharField(max_length=255)
+    quantite = models.DecimalField(max_digits=10, decimal_places=2)
+    prix_unitaire = models.DecimalField(max_digits=10, decimal_places=2)
+    remise = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    taux_tva = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Ligne de note de débit'
+        verbose_name_plural = 'Lignes de note de débit'
+
+    @property
+    def total_ht(self):
+        return self.quantite * self.prix_unitaire * (1 - self.remise / 100)
+
+    @property
+    def taux_tva_effectif(self):
+        return (self.taux_tva if self.taux_tva is not None
+                else self.note_debit.taux_tva)
+
+
 class RetenueSubie(models.Model):
     """XFAC4 — Retenue à la source SUBIE par NOUS sur une facture client
     (RAS TVA / RAS honoraires, réforme TVA 2024) : un client (État, grande
@@ -1500,6 +1623,38 @@ class FollowupLevel(models.Model):
             Decimal(jours) / Decimal('365')
         return (interet + Decimal(frais)).quantize(
             Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+
+class ParametrageRelanceClient(models.Model):
+    """ZFAC8 — réglage PAR CLIENT du responsable de relance + du mode
+    (auto/manuel), lu par ``scheduled.relance_reminders``. En mode
+    ``manuel``, le cron n'envoie AUCUNE relance automatique pour ce client
+    (il apparaît seulement dans la liste manuelle de son responsable).
+    Défaut = ``auto`` → comportement historique inchangé pour tout client
+    non paramétré (absence de ligne = auto)."""
+    class Mode(models.TextChoices):
+        AUTO = 'auto', 'Automatique'
+        MANUEL = 'manuel', 'Manuel'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='parametrages_relance')
+    client = models.OneToOneField(
+        'crm.Client', on_delete=models.CASCADE,
+        related_name='parametrage_relance')
+    responsable = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='clients_relance_responsable')
+    mode = models.CharField(
+        max_length=10, choices=Mode.choices, default=Mode.AUTO)
+    prochaine_relance_manuelle = models.DateField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Paramétrage de relance client'
+        verbose_name_plural = 'Paramétrages de relance client'
+
+    def __str__(self):
+        return f'{self.client_id} — {self.mode}'
 
 
 class RelanceLog(models.Model):

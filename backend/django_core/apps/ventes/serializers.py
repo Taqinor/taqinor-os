@@ -549,6 +549,43 @@ class AvoirSerializer(serializers.ModelSerializer):
         return f"{c.nom} {c.prenom or ''}".strip() if c else None
 
 
+class LigneNoteDebitSerializer(serializers.ModelSerializer):
+    total_ht = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+
+    class Meta:
+        from .models import LigneNoteDebit
+        model = LigneNoteDebit
+        fields = ['id', 'produit', 'designation', 'quantite', 'prix_unitaire',
+                  'remise', 'taux_tva', 'total_ht']
+
+
+class NoteDebitSerializer(serializers.ModelSerializer):
+    lignes = LigneNoteDebitSerializer(many=True, read_only=True)
+    total_ht = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+    total_tva = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+    total_ttc = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    facture_reference = serializers.CharField(
+        source='facture.reference', read_only=True)
+    client_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        from .models import NoteDebit
+        model = NoteDebit
+        fields = '__all__'
+        read_only_fields = ['reference', 'created_by', 'fichier_pdf',
+                            'date_emission', 'company']
+
+    def get_client_nom(self, obj):
+        c = obj.client
+        return f"{c.nom} {c.prenom or ''}".strip() if c else None
+
+
 class PromessePaiementSerializer(serializers.ModelSerializer):
     """XFAC5 — engagement de paiement client (« je paie le 15 »)."""
     facture_reference = serializers.CharField(
@@ -571,6 +608,21 @@ class FollowupLevelSerializer(serializers.ModelSerializer):
         model = FollowupLevel
         fields = ['id', 'ordre', 'nom', 'delai_jours', 'message',
                   'taux_interet_annuel', 'frais_fixes', 'canal']
+
+
+class ParametrageRelanceClientSerializer(serializers.ModelSerializer):
+    """ZFAC8 — réglage par client du responsable/mode de relance."""
+    mode_display = serializers.CharField(
+        source='get_mode_display', read_only=True)
+    responsable_username = serializers.CharField(
+        source='responsable.username', read_only=True, default=None)
+
+    class Meta:
+        from .models import ParametrageRelanceClient
+        model = ParametrageRelanceClient
+        fields = ['id', 'client', 'responsable', 'responsable_username',
+                  'mode', 'mode_display', 'prochaine_relance_manuelle']
+        read_only_fields = ['company']
 
 
 class RelanceLogSerializer(serializers.ModelSerializer):

@@ -9,7 +9,7 @@ from .devis import DevisViewSet
 from .ligne_devis import LigneDevisViewSet
 from .bon_commande import BonCommandeViewSet
 from .facture import FactureViewSet
-from .avoir import AvoirViewSet
+from .avoir import AvoirViewSet, NoteDebitViewSet  # ZFAC4
 from .paiement import PaiementViewSet
 from .ligne_facture import LigneFactureViewSet
 from .email import email_config
@@ -43,6 +43,7 @@ __all__ = [
     'BonCommandeViewSet',
     'FactureViewSet',
     'AvoirViewSet',
+    'NoteDebitViewSet',
     'PaiementViewSet',
     'LigneFactureViewSet',
     'email_config',

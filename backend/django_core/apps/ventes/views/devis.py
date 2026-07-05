@@ -422,20 +422,30 @@ class DevisViewSet(viewsets.ModelViewSet):
         # Ajoute le lien de proposition tokenisé dans le corps si fourni.
         link = ShareLink.for_devis(devis)
         proposal_url = f'/proposition/{link.token}'
-        if not corps:
+        # ZSAL5 — gabarit ``envoi_devis`` (EmailTemplate) : sujet/corps
+        # explicitement fournis dans le corps de requête restent prioritaires
+        # (comportement historique) ; sinon on rend le gabarit effectif de la
+        # société (défaut = texte historique byte-identique tant que non édité).
+        if not sujet or not corps:
+            from apps.parametres.models_email import EmailTemplate
             client = devis.client
             nom_client = ''
+            civilite = ''
             if client:
                 nom_client = f"{client.nom} {getattr(client, 'prenom', '') or ''}".strip()
+                civilite = getattr(client, 'civilite', '') or ''
+            # ``{nom}`` porte le salut complet ("Bonjour X," / "Bonjour,")
+            # pour préserver EXACTEMENT le rendu historique par défaut.
             salut = f'Bonjour {nom_client},' if nom_client else 'Bonjour,'
-            corps = (
-                f"{salut}\n\n"
-                f"Veuillez trouver ci-joint votre devis {devis.reference}.\n\n"
-                f"Vous pouvez également consulter et signer votre proposition en ligne :\n"
-                f"{proposal_url}\n\n"
-                f"Nous restons à votre disposition pour toute question.\n\n"
-                f"Cordialement,\nL'équipe TAQINOR"
+            rendu = EmailTemplate.render(
+                devis.company, 'envoi_devis',
+                civilite=civilite, nom=salut,
+                reference=devis.reference or '', lien=proposal_url,
+                validite=(devis.date_validite.strftime('%d/%m/%Y')
+                          if devis.date_validite else ''),
             )
+            sujet = sujet or rendu['sujet']
+            corps = corps or rendu['corps']
 
         # Envoi + EmailLog via le service centralisé. attach_pdf=False car on
         # a déjà le contenu — on passe attachment/attachment_name directement.
@@ -479,6 +489,15 @@ class DevisViewSet(viewsets.ModelViewSet):
         # Marque le devis « envoyé » via le seul chemin autorisé (règle #4).
         # Idempotent : un devis déjà envoyé/accepté/refusé n'est pas régressé.
         mark_devis_sent(devis=devis, user=request.user)
+
+        # ZSAL5 — reflet de l'envoi dans le chatter du LEAD lié (best-effort,
+        # jamais un import des models crm depuis ventes).
+        if ok and devis.lead_id:
+            try:
+                from apps.crm.services import noter_devis_envoye
+                noter_devis_envoye(reference, devis.lead)
+            except Exception:  # noqa: BLE001 — best-effort, ne bloque jamais l'envoi
+                pass
 
         return Response({
             'detail': f'Email envoyé à {dest}.' if ok else f'Échec envoi email : {err}',
