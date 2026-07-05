@@ -5008,6 +5008,46 @@ class EvenementMarketingViewSet(_ComptaBaseViewSet):
         return resp
 
     @action(detail=False, methods=['get'])
+    def reporting(self, request):
+        """ZMKT20 — reporting événement (participants & billetterie),
+        groupable par ``?groupby=type|mois``."""
+        groupby = request.query_params.get('groupby')
+        return Response(
+            services.reporting_evenements(request.user.company, groupby=groupby))
+
+    @action(detail=False, methods=['get'], url_path='reporting/export')
+    def reporting_export(self, request):
+        """ZMKT20 — export XLSX du reporting événement."""
+        from openpyxl import Workbook
+        from openpyxl.styles import Font
+        from apps.records.xlsx import coerce_cell, XLSX_CONTENT_TYPE
+        import io
+
+        lignes = services.reporting_evenements(request.user.company)
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Reporting événements'
+        headers = [
+            'Événement', 'Type', 'Inscrits', 'Confirmés', 'Présents',
+            'Absents', 'Taux présence %', 'Recette théorique MAD', 'Leads',
+        ]
+        ws.append(headers)
+        for cell in ws[1]:
+            cell.font = Font(bold=True)
+        for ligne in lignes:
+            ws.append([coerce_cell(v) for v in [
+                ligne['nom'], ligne['type_evenement'], ligne['nb_inscrits'],
+                ligne['nb_confirmes'], ligne['nb_presents'],
+                ligne['nb_absents'], ligne['taux_presence_pct'],
+                ligne['recette_theorique_mad'], ligne['nb_leads'],
+            ]])
+        buf = io.BytesIO()
+        wb.save(buf)
+        resp = HttpResponse(buf.getvalue(), content_type=XLSX_CONTENT_TYPE)
+        resp['Content-Disposition'] = 'attachment; filename="reporting_evenements.xlsx"'
+        return resp
+
+    @action(detail=False, methods=['get'])
     def kanban(self, request):
         """ZMKT14 — Kanban par étape configurable."""
         return Response(services.evenements_par_etape(request.user.company))

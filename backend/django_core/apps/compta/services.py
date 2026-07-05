@@ -11126,6 +11126,60 @@ def pointer_presence(inscription):
     return inscription
 
 
+def reporting_evenements(company, *, groupby=None):
+    """ZMKT20 — reporting événement : inscrits/confirmés/présents/absents,
+    taux de présence, répartition par billet, recette théorique MAD (Σ prix
+    billet × inscrits), leads générés, groupable par type d'événement/mois.
+    """
+    resultats = []
+    qs = EvenementMarketing.objects.filter(company=company)
+    for evenement in qs:
+        inscriptions = evenement.inscriptions.all()
+        nb_inscrits = inscriptions.count()
+        nb_confirmes = inscriptions.filter(
+            statut=InscriptionEvenement.Statut.CONFIRME).count()
+        nb_presents = inscriptions.filter(
+            statut=InscriptionEvenement.Statut.PRESENT).count()
+        nb_absents = inscriptions.filter(
+            statut=InscriptionEvenement.Statut.ABSENT).count()
+        taux_presence = (
+            round(nb_presents / nb_inscrits * 100, 1) if nb_inscrits else 0.0)
+        recette = Decimal('0')
+        repartition_billets = {}
+        for billet in evenement.billets.all():
+            nb = billet.inscriptions.count()
+            repartition_billets[billet.libelle] = nb
+            recette += Decimal(str(billet.prix_ttc_mad)) * nb
+        nb_leads = inscriptions.exclude(lead_id__isnull=True).values(
+            'lead_id').distinct().count()
+        resultats.append({
+            'evenement_id': evenement.id,
+            'nom': evenement.nom,
+            'type_evenement': evenement.type_evenement,
+            'mois': evenement.date_debut.strftime('%Y-%m'),
+            'nb_inscrits': nb_inscrits,
+            'nb_confirmes': nb_confirmes,
+            'nb_presents': nb_presents,
+            'nb_absents': nb_absents,
+            'taux_presence_pct': taux_presence,
+            'repartition_billets': repartition_billets,
+            'recette_theorique_mad': str(recette),
+            'nb_leads': nb_leads,
+        })
+
+    if groupby == 'type':
+        groupes = {}
+        for r in resultats:
+            groupes.setdefault(r['type_evenement'], []).append(r)
+        return groupes
+    if groupby == 'mois':
+        groupes = {}
+        for r in resultats:
+            groupes.setdefault(r['mois'], []).append(r)
+        return groupes
+    return resultats
+
+
 def generer_badge_pdf(inscription):
     """ZMKT19 — badge PDF imprimable d'UN inscrit : nom, événement, société
     organisatrice, QR de check-in (via ``stock.selectors.qr_svg``)."""
