@@ -35,12 +35,12 @@ const {
   <ZelligeDivider />
   <div class="mx-auto mt-6 max-w-3xl border-2 border-azur-600 bg-blanc px-6 py-10 text-center sm:px-10">
     <p class="tech-label text-azur-600">{t('cta.eyebrow')}</p>
-    <h2 class="display v2-section-title mx-auto mt-3 max-w-2xl text-3xl sm:text-4xl">{title}</h2>
+    <h2 class="display v2-section-title mx-auto mt-3 max-w-2xl text-3xl sm:text-4xl"><span class="cta-band-bidi">{title}</span></h2>
     {/* W210 — .glow signature golden halo on the primary CTA */}
     <a
       href={href}
       class="glow mt-8 inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300"
-    >{buttonLabel}</a>
+    ><span class="cta-band-bidi">{buttonLabel}</span></a>
     {/* WJ37 — reassurance strip under the primary CTA: builds trust without
         adding a second competing action. Once per band, FR/EN/AR. This
         section is the light (blanc-azur) surface, so use the ink-scale
@@ -48,3 +48,16 @@ const {
     <p class="mt-3 text-sm text-encre-faint">{t('cta.reassurance')}</p>
   </div>
 </section>
+
+<style>
+  /*
+   * title/buttonLabel sont du texte simple fourni par l'appelant et
+   * peuvent contenir des nombres latins. `unicode-bidi: plaintext` fait
+   * que le navigateur applique l'algorithme bidi Unicode par élément à
+   * partir de son propre contenu, isolant les runs numériques latins en
+   * LTR même sous <html dir="rtl">, sans effet sur le rendu FR/EN déjà LTR.
+   */
+  .cta-band-bidi {
+    unicode-bidi: plaintext;
+  }
+</style>

@@ -24,9 +24,9 @@ Tous les modèles partagent le même socle : **≥ 6 000 cycles** et une **garan
 | **Tower T7** | 7,10 kWh | Haute tension empilable, 95 % DoD |
 | **Tower T10** | 10,66 kWh | Haute tension empilable, 95 % DoD |
 | **Tower T14** | 14,21 kWh | Haute tension empilable, 95 % DoD |
-| **PowerBrick** | 14,34 kWh | ≥ 8 000 cycles, rendement aller-retour **> 95 %** (confirmé datasheet), 55 °C max |
+| **PowerBrick** | 14,34 kWh | ≥ 8 000 cycles, rendement aller-retour **> 95 %**, 55 °C max |
 
-Le PowerBrick est le seul modèle dont le rendement aller-retour est explicitement confirmé par datasheet (> 95 %). Pour les autres modèles, la classe LFP offre **≈ 95 %** en conditions normales — mais nous préférons ne pas le citer comme valeur garantie fabricant.
+Sur l'ensemble de la gamme, la chimie LFP offre un rendement aller-retour de l'ordre de **≈ 95 %** en conditions normales, le PowerBrick affichant **> 95 %** en datasheet.
 
 ---
 
