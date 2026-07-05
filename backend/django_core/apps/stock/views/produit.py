@@ -87,10 +87,13 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
             return [HasPermissionOrLegacy('stock_modifier')()]
         elif self.action in ('destroy', 'force_delete'):
             return [IsAdminRole()]
-        elif self.action in ('analyse_achats', 'analyse_achats_export_xlsx'):
-            # XPUR24 — tableau de bord achats : Admin/Responsable uniquement
-            # (get_permissions prime sur le permission_classes de l'@action,
-            # d'où ce cas explicite — sinon repli IsAdminRole).
+        elif self.action in (
+                'analyse_achats', 'analyse_achats_export_xlsx',
+                'analyse_achats_pdf'):
+            # XPUR24/ZPUR9 — tableau de bord + rapport imprimable achats :
+            # Admin/Responsable uniquement (get_permissions prime sur le
+            # permission_classes de l'@action, d'où ce cas explicite —
+            # sinon repli IsAdminRole).
             return [IsResponsableOrAdmin()]
         # XSTK10 — `rapport_pertes` reste admin-only (valeur d'achat
         # interne, jamais client-facing) via le repli ci-dessous.
@@ -448,6 +451,30 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
             date_debut=request.query_params.get('date_debut'),
             date_fin=request.query_params.get('date_fin'),
             nb_mois=nb_mois)
+
+    @action(detail=False, methods=['get'], url_path='analyse-achats/pdf',
+            permission_classes=[IsResponsableOrAdmin])
+    def analyse_achats_pdf(self, request):
+        """ZPUR9 — rapport imprimable « analyse d'achats » (PDF, au-delà du
+        dashboard écran XPUR24) : dépenses par fournisseur/catégorie, top
+        produits, engagements ouverts, identité société (ICE/IF/RC).
+        Admin/Responsable uniquement — document INTERNE, jamais côté client.
+        Réutilise `analyse_achats_dashboard` (jamais recalculé)."""
+        from django.http import HttpResponse
+        from ..utils.pdf_analyse_achats import generate_analyse_achats_pdf
+        try:
+            nb_mois = int(request.query_params.get('nb_mois', 6))
+        except (TypeError, ValueError):
+            nb_mois = 6
+        pdf_bytes = generate_analyse_achats_pdf(
+            request.user.company,
+            date_debut=request.query_params.get('date_debut'),
+            date_fin=request.query_params.get('date_fin'),
+            nb_mois=nb_mois)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            'inline; filename="analyse-achats.pdf"')
+        return response
 
     @action(detail=False, methods=['get'], url_path='resolve',
             permission_classes=[IsAnyRole])
