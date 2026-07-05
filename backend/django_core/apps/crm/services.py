@@ -2477,3 +2477,55 @@ def creer_relance_lead(lead, user, *, relance_date, note=''):
         body += f' — {note}'
     activity.log_note(lead, user, body)
     return lead
+
+
+# ── XMKT28 — Lead depuis une inscription à un événement marketing ──────────
+
+def create_lead_from_evenement_marketing(
+        *, company, nom, telephone='', email='', evenement_nom='') -> Lead:
+    """XMKT28 — Crée (ou dédupe sur) un lead dès qu'un inscrit à un
+    ``EvenementMarketing`` (apps.compta) est capturé. Même pattern que
+    ``create_lead_from_livechat`` (XMKT37) : dédup par téléphone/email dans
+    la société avant de créer, canal ``AUTRE``, stage NEW (défaut du champ).
+    """
+    nom = (nom or '').strip()[:255] or 'Prospect événement'
+    telephone = (telephone or '').strip()[:20]
+    email = (email or '').strip()[:254]
+
+    lead = None
+    if telephone or email:
+        dupes = find_duplicates_by_contact(
+            company, phone=telephone or None, email=email or None)
+        if dupes:
+            lead = sorted(dupes, key=lambda d: d.date_creation, reverse=True)[0]
+
+    if lead is None:
+        extra = {}
+        default = default_responsable_for(company)
+        if default is not None:
+            extra['owner'] = default
+        lead = Lead.objects.create(
+            company=company,
+            nom=nom,
+            telephone=telephone or None,
+            email=email or None,
+            canal=Lead.Canal.AUTRE,
+            **extra,
+        )
+        activity.log_creation(lead, None)
+    else:
+        changed = False
+        if telephone and not lead.telephone:
+            lead.telephone = telephone
+            changed = True
+        if email and not lead.email:
+            lead.email = email
+            changed = True
+        if changed:
+            lead.save()
+
+    if evenement_nom:
+        activity.log_note(
+            lead, None, f'Inscrit à l\'événement « {evenement_nom} »')
+    recompute_lead_score(lead)
+    return lead

@@ -48,6 +48,7 @@ from .models import (
     Compensation, LigneCompensation,
     ApprobationEnvoiCampagne,
     Enquete, ReponseEnquete,
+    EvenementMarketing, InscriptionEvenement,
 )
 
 
@@ -2382,3 +2383,34 @@ class ReponseEnqueteSerializer(serializers.ModelSerializer):
         model = ReponseEnquete
         fields = ['id', 'enquete', 'contact_ref', 'reponses', 'date_creation']
         read_only_fields = fields
+
+
+class EvenementMarketingSerializer(serializers.ModelSerializer):
+    """XMKT28 — événement marketing léger (salon/porte ouverte/webinaire)."""
+    type_display = serializers.CharField(
+        source='get_type_evenement_display', read_only=True)
+    nb_inscrits = serializers.IntegerField(
+        source='inscriptions.count', read_only=True)
+
+    class Meta:
+        model = EvenementMarketing
+        fields = [
+            'id', 'nom', 'type_evenement', 'type_display', 'date_debut',
+            'date_fin', 'lieu', 'capacite', 'nb_inscrits', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class InscriptionEvenementSerializer(serializers.ModelSerializer):
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = InscriptionEvenement
+        fields = [
+            'id', 'evenement', 'nom', 'email', 'telephone', 'statut',
+            'statut_display', 'qr_token', 'lead_id', 'date_creation',
+            'date_pointage',
+        ]
+        read_only_fields = [
+            'qr_token', 'lead_id', 'date_creation', 'date_pointage']

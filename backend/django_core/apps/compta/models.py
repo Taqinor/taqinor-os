@@ -8716,3 +8716,96 @@ class ReponseEnquete(models.Model):
 
     def __str__(self):
         return f'{self.enquete_id} ← {self.contact_ref or "anonyme"}'
+
+
+# ── XMKT28 — Événements marketing légers (salons, portes ouvertes, webinaires)
+
+class EvenementMarketing(models.Model):
+    """Événement marketing léger (XMKT28) : salon (SIAM, foires agricoles),
+    porte ouverte, webinaire. L'inscription publique via un
+    ``FormulaireIntake`` lié crée un lead dédupliqué (via ``crm.services``) ;
+    présents/absents alimentent des segments (XMKT6).
+    """
+    class Type(models.TextChoices):
+        SALON = 'salon', 'Salon'
+        PORTE_OUVERTE = 'porte_ouverte', 'Porte ouverte'
+        WEBINAIRE = 'webinaire', 'Webinaire'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='evenements_marketing',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=200, verbose_name="Nom de l'événement")
+    type_evenement = models.CharField(
+        max_length=20, choices=Type.choices, default=Type.SALON,
+        verbose_name="Type d'événement")
+    date_debut = models.DateTimeField(verbose_name='Date de début')
+    date_fin = models.DateTimeField(
+        null=True, blank=True, verbose_name='Date de fin')
+    lieu = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Lieu (ou lien visio)')
+    capacite = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Capacité')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Événement marketing'
+        verbose_name_plural = 'Événements marketing'
+        ordering = ['-date_debut']
+
+    def __str__(self):
+        return self.nom
+
+
+class InscriptionEvenement(models.Model):
+    """Inscription à un ``EvenementMarketing`` (XMKT28) — nom/email/téléphone
+    normalisé, statut de présence + check-in sur place (option QR token par
+    inscrit). Chaque inscrit devient un lead via ``crm.services``
+    (dédupliqué), jamais de doublon."""
+    class Statut(models.TextChoices):
+        INSCRIT = 'inscrit', 'Inscrit'
+        CONFIRME = 'confirme', 'Confirmé'
+        PRESENT = 'present', 'Présent'
+        ABSENT = 'absent', 'Absent'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='inscriptions_evenement',
+        verbose_name='Société',
+    )
+    evenement = models.ForeignKey(
+        EvenementMarketing,
+        on_delete=models.CASCADE,
+        related_name='inscriptions',
+        verbose_name='Événement',
+    )
+    nom = models.CharField(max_length=200, verbose_name='Nom')
+    email = models.EmailField(blank=True, default='', verbose_name='Email')
+    telephone = models.CharField(
+        max_length=32, blank=True, default='',
+        verbose_name='Téléphone (normalisé)')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.INSCRIT,
+        verbose_name='Statut')
+    qr_token = models.CharField(
+        max_length=64, blank=True, default='', unique=True, null=True,
+        verbose_name='Jeton QR de check-in')
+    lead_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Lead créé (id crm)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Inscrit le')
+    date_pointage = models.DateTimeField(
+        null=True, blank=True, verbose_name='Pointé (check-in) le')
+
+    class Meta:
+        verbose_name = 'Inscription à un événement'
+        verbose_name_plural = 'Inscriptions à un événement'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'{self.nom} → {self.evenement_id} ({self.statut})'

@@ -63,6 +63,7 @@ from .models import (
     Compensation,
     ApprobationEnvoiCampagne,
     Enquete,
+    EvenementMarketing, InscriptionEvenement,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -73,6 +74,7 @@ from .serializers import (
     CodePromotionSerializer, EnvoiCampagneSerializer,
     ApprobationEnvoiCampagneSerializer,
     EnqueteSerializer,
+    EvenementMarketingSerializer, InscriptionEvenementSerializer,
     CommissionPayoutRunSerializer, CompteComptableSerializer,
     CompteTresorerieSerializer, ContratAvancementSerializer,
     DeclarationTVASerializer, DemandeApprobationConfigSerializer,
@@ -4767,6 +4769,63 @@ class EnqueteViewSet(_ComptaBaseViewSet):
         """XMKT27 — analytics agrégées par question + taux de complétion."""
         enquete = self.get_object()
         return Response(services.analytics_enquete(enquete))
+
+
+# ── XMKT28 — Événements marketing légers ────────────────────────────────────
+
+class EvenementMarketingViewSet(_ComptaBaseViewSet):
+    """CRUD des événements marketing (XMKT28)."""
+    queryset = EvenementMarketing.objects.all()
+    serializer_class = EvenementMarketingSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom']
+    ordering_fields = ['date_debut', 'date_creation']
+
+    @action(detail=True, methods=['post'], url_path='cloturer-presences')
+    def cloturer_presences(self, request, pk=None):
+        evenement = self.get_object()
+        nb = services.cloturer_presences_evenement(evenement)
+        return Response({'absents_marques': nb})
+
+
+class InscriptionEvenementViewSet(_ComptaBaseViewSet):
+    """Inscriptions à un événement (XMKT28)."""
+    queryset = InscriptionEvenement.objects.select_related('evenement').all()
+    serializer_class = InscriptionEvenementSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        evenement_id = self.request.query_params.get('evenement')
+        if evenement_id:
+            qs = qs.filter(evenement_id=evenement_id)
+        return qs
+
+    @action(detail=True, methods=['post'])
+    def pointer(self, request, pk=None):
+        inscription = self.get_object()
+        services.pointer_presence(inscription)
+        inscription.refresh_from_db()
+        return Response(InscriptionEvenementSerializer(inscription).data)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def evenement_inscription_publique(request, evenement_id):
+    """XMKT28 — Inscription publique à un événement (aucune auth)."""
+    evenement = EvenementMarketing.objects.filter(id=evenement_id).first()
+    if not evenement:
+        return Response({'detail': 'Événement introuvable.'}, status=404)
+    nom = (request.data.get('nom') or '').strip()
+    if not nom:
+        return Response({'detail': 'nom requis.'}, status=400)
+    inscription = services.inscrire_evenement(
+        evenement, nom=nom,
+        email=request.data.get('email', ''),
+        telephone=request.data.get('telephone', ''))
+    return Response(
+        {'id': inscription.id, 'qr_token': inscription.qr_token}, status=201)
 
 
 # ── XMKT5 — Listes de diffusion nommées + abonnements ───────────────────────

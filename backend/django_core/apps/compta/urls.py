@@ -5,6 +5,8 @@ from .views import (
     desinscription_publique, double_optin_confirmer,
     redirection_lien_tracke,
     enquete_publique, enquete_soumettre, EnqueteViewSet,
+    evenement_inscription_publique, EvenementMarketingViewSet,
+    InscriptionEvenementViewSet,
     webhook_brevo_campagne, webhook_sms_stop,
     portail_mon_releve, portail_mon_releve_pdf, portail_contester_facture,
     AppelTelephoniqueViewSet,
@@ -177,6 +179,9 @@ router.register(r'pistes-audit', PisteAuditComptableViewSet,
 router.register(r'compensations', CompensationViewSet)
 # ── XMKT27 — Constructeur d'enquêtes ────────────────────────────────────────
 router.register(r'enquetes', EnqueteViewSet)
+# ── XMKT28 — Événements marketing légers ────────────────────────────────────
+router.register(r'evenements-marketing', EvenementMarketingViewSet)
+router.register(r'inscriptions-evenement', InscriptionEvenementViewSet)
 
 urlpatterns = [
     path('webhooks/brevo/', webhook_brevo_campagne, name='webhook-brevo-campagne'),
@@ -191,6 +196,8 @@ urlpatterns = [
          name='enquete-publique'),
     path('enquetes-publiques/<str:token>/soumettre/', enquete_soumettre,
          name='enquete-soumettre'),
+    path('evenements-marketing/<int:evenement_id>/inscription-publique/',
+         evenement_inscription_publique, name='evenement-inscription-publique'),
     # XFAC26/27 — Portail client self-service (token, sans login).
     path('portail/<str:token>/mon-releve/', portail_mon_releve,
          name='portail-mon-releve'),

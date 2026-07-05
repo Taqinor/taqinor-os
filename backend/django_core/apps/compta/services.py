@@ -75,6 +75,7 @@ from .models import (
     StatutEngagementContact,
     ApprobationEnvoiCampagne,
     Enquete, ReponseEnquete,
+    InscriptionEvenement,
 )
 
 
@@ -7038,11 +7039,15 @@ def valider_regles_segment(regles):
     """Valide les règles JSON d'un segment (XMKT6) : lève ``ValueError`` sur
     une clé inconnue (champ lead OU clé d'activité marketing). Ne touche
     jamais à la base — appelée avant la sauvegarde ET avant l'évaluation.
+
+    XMKT28 — clés additives ``evenement_present``/``evenement_absent`` (id
+    d'``EvenementMarketing``) pour cibler les leads présents/absents à un
+    événement (suivi différencié post-événement).
     """
     from apps.crm.selectors import LEAD_SEGMENT_FIELDS
 
     regles = regles or {}
-    cles_activite = {'activite'}
+    cles_activite = {'activite', 'evenement_present', 'evenement_absent'}
     cles_connues = set(LEAD_SEGMENT_FIELDS) | cles_activite
     inconnues = set(regles) - cles_connues
     if inconnues:
@@ -7051,6 +7056,19 @@ def valider_regles_segment(regles):
     if activite and activite not in _SEGMENT_ACTIVITE_CHOICES:
         raise ValueError(f"Activité de segment inconnue : {activite}")
     return regles
+
+
+def _filtrer_par_evenement(company, lead_ids, evenement_id, *, statut):
+    """XMKT28 — filtre par présence/absence à un événement (via
+    ``InscriptionEvenement.lead_id``)."""
+    if not evenement_id or not lead_ids:
+        return lead_ids
+    lead_ids_evenement = set(
+        InscriptionEvenement.objects.filter(
+            company=company, evenement_id=evenement_id, statut=statut,
+            lead_id__isnull=False,
+        ).values_list('lead_id', flat=True))
+    return [lid for lid in lead_ids if lid in lead_ids_evenement]
 
 
 def _filtrer_par_activite(company, lead_ids, activite):
@@ -7087,11 +7105,21 @@ def evaluer_segment(segment):
     from apps.crm.selectors import leads_matching_regles
 
     regles = valider_regles_segment(segment.regles)
-    regles_lead = {k: v for k, v in regles.items() if k != 'activite'}
+    regles_lead = {
+        k: v for k, v in regles.items()
+        if k not in ('activite', 'evenement_present', 'evenement_absent')
+    }
     lead_ids = list(
         leads_matching_regles(segment.company, regles_lead)
         .values_list('id', flat=True))
-    return _filtrer_par_activite(segment.company, lead_ids, regles.get('activite'))
+    lead_ids = _filtrer_par_activite(segment.company, lead_ids, regles.get('activite'))
+    lead_ids = _filtrer_par_evenement(
+        segment.company, lead_ids, regles.get('evenement_present'),
+        statut=InscriptionEvenement.Statut.PRESENT)
+    lead_ids = _filtrer_par_evenement(
+        segment.company, lead_ids, regles.get('evenement_absent'),
+        statut=InscriptionEvenement.Statut.ABSENT)
+    return lead_ids
 
 
 def previsualiser_segment(segment, *, taille_echantillon=10):
@@ -10524,3 +10552,47 @@ def _est_nombre(v):
         return True
     except (TypeError, ValueError):
         return False
+
+
+# ── XMKT28 — Événements marketing légers ────────────────────────────────────
+
+def inscrire_evenement(evenement, *, nom, email='', telephone=''):
+    """XMKT28 — Inscription publique à un événement : crée l'inscription +
+    le lead dédupliqué (via ``crm.services``, jamais d'import direct du
+    modèle CRM), attribue un jeton QR de check-in par inscrit.
+    """
+    from apps.crm import services as crm_services
+
+    inscription = InscriptionEvenement.objects.create(
+        company=evenement.company, evenement=evenement,
+        nom=nom, email=email or '', telephone=telephone or '',
+        qr_token=uuid.uuid4().hex,
+    )
+    lead = crm_services.create_lead_from_evenement_marketing(
+        company=evenement.company, nom=nom, telephone=telephone,
+        email=email, evenement_nom=evenement.nom)
+    inscription.lead_id = lead.id
+    inscription.save(update_fields=['lead_id'])
+    return inscription
+
+
+def pointer_presence(inscription):
+    """XMKT28 — Check-in sur place : bascule le statut en présent
+    (horodaté)."""
+    if inscription.statut == InscriptionEvenement.Statut.PRESENT:
+        return inscription
+    inscription.statut = InscriptionEvenement.Statut.PRESENT
+    inscription.date_pointage = timezone.now()
+    inscription.save(update_fields=['statut', 'date_pointage'])
+    return inscription
+
+
+def cloturer_presences_evenement(evenement):
+    """XMKT28 — marque ``absent`` les inscrits confirmés/inscrits non pointés
+    à la fin de l'événement."""
+    qs = InscriptionEvenement.objects.filter(
+        company=evenement.company, evenement=evenement,
+    ).exclude(statut__in=[
+        InscriptionEvenement.Statut.PRESENT, InscriptionEvenement.Statut.ABSENT])
+    nb = qs.update(statut=InscriptionEvenement.Statut.ABSENT)
+    return nb
