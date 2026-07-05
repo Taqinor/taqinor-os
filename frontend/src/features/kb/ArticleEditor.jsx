@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { ArrowLeft, Save, Send } from 'lucide-react'
 import { Button, Input, Textarea, Label, toast } from '../../ui'
 import kbApi from '../../api/kbApi'
 import { KB_STATUT_MAP } from './kbStatus'
 import FilterSelect from './FilterSelect'
+import AiWritingToolbar from './AiWritingToolbar'
 
 /* ============================================================================
    UX43 — Éditeur d'article (création + édition, brouillon → publié).
@@ -27,6 +28,7 @@ export default function ArticleEditor({ article, onCancel, onSaved }) {
     statut: article?.statut ?? 'brouillon',
   })
   const [saving, setSaving] = useState(false)
+  const corpsRef = useRef(null)
 
   const set = (key) => (e) =>
     setForm((f) => ({ ...f, [key]: e?.target ? e.target.value : e }))
@@ -104,7 +106,16 @@ export default function ArticleEditor({ article, onCancel, onSaved }) {
 
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="kb-corps">Contenu</Label>
-          <Textarea id="kb-corps" rows={12} value={form.corps} onChange={set('corps')} />
+          {/* XKB23 — assistant IA d'écriture & résumé : générer/reformuler/
+              corriger/traduire FR↔AR/résumer, key-gated (dégrade proprement
+              sans clé LLM, cf. AiWritingToolbar). */}
+          <AiWritingToolbar
+            textareaRef={corpsRef}
+            corps={form.corps}
+            disabled={saving}
+            onApply={(next) => setForm((f) => ({ ...f, corps: next }))}
+          />
+          <Textarea id="kb-corps" ref={corpsRef} rows={12} value={form.corps} onChange={set('corps')} />
         </div>
 
         <div className="flex flex-wrap items-center gap-2">

@@ -88,6 +88,21 @@ const iaApi = {
   getSchema: () =>
     iaApi_instance.get('/sql-agent/schema'),
 
+  // XKB23 — Assistant IA d'écriture & résumé (éditeur KB). Réutilise la même
+  // clé LLM key-gated (GROQ/Anthropic) que le reste du service IA — aucun
+  // nouveau fournisseur payant. `action` ∈ {generer, reformuler, corriger,
+  // traduire_fr_ar, traduire_ar_fr, resumer}. `texte` est soit la sélection
+  // (reformuler/corriger/traduire), soit le corps entier (générer/résumer).
+  // BLOQUÉ : aucun endpoint FastAPI de rédaction/résumé n'existe encore
+  // (grep de `backend/fastapi_ia/app/api/endpoints/` : seuls ocr/sql-agent/
+  // chat/projets/transcription/voice sont montés) — câblé à l'URL
+  // conventionnelle `/kb/redaction` (même préfixage que /ocr, /projets) en
+  // attendant. Tant que le backend ne répond pas, l'appel échoue proprement
+  // (401/404/503 selon dégradation) et l'UI affiche un message clair au lieu
+  // de planter — jamais un no-op silencieux qui ferait croire à une écriture.
+  kbRedaction: ({ action, texte, contexte } = {}) =>
+    iaApi_instance.post('/kb/redaction', { action, texte, contexte }),
+
   getChatHistory: () =>
     iaApi_instance.get('/sql-agent/history'),
 
