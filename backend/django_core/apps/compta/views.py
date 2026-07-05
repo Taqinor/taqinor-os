@@ -65,6 +65,7 @@ from .models import (
     Enquete,
     EvenementMarketing, InscriptionEvenement,
     SupportOffline,
+    DomaineEnvoi,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -77,6 +78,7 @@ from .serializers import (
     EnqueteSerializer,
     EvenementMarketingSerializer, InscriptionEvenementSerializer,
     SupportOfflineSerializer,
+    DomaineEnvoiSerializer,
     CommissionPayoutRunSerializer, CompteComptableSerializer,
     CompteTresorerieSerializer, ContratAvancementSerializer,
     DeclarationTVASerializer, DemandeApprobationConfigSerializer,
@@ -4879,6 +4881,27 @@ class SupportOfflineViewSet(_ComptaBaseViewSet):
     def scans_par_support(self, request):
         return Response(
             services.tableau_scans_par_support(request.user.company))
+
+
+# ── XMKT33 — Assistant d'authentification du domaine d'envoi ──────────────
+
+class DomaineEnvoiViewSet(_ComptaBaseViewSet):
+    """Page Paramètres « Domaine d'envoi » (XMKT33)."""
+    queryset = DomaineEnvoi.objects.all()
+    serializer_class = DomaineEnvoiSerializer
+
+    @action(detail=True, methods=['get'], url_path='enregistrements-attendus')
+    def enregistrements_attendus(self, request, pk=None):
+        domaine_envoi = self.get_object()
+        return Response(
+            services.enregistrements_dns_attendus(domaine_envoi.domaine))
+
+    @action(detail=True, methods=['post'], url_path='verifier')
+    def verifier(self, request, pk=None):
+        domaine_envoi = self.get_object()
+        services.verifier_domaine_envoi(domaine_envoi)
+        domaine_envoi.refresh_from_db()
+        return Response(DomaineEnvoiSerializer(domaine_envoi).data)
 
 
 # ── XMKT5 — Listes de diffusion nommées + abonnements ───────────────────────

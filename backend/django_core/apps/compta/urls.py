@@ -8,6 +8,7 @@ from .views import (
     evenement_inscription_publique, EvenementMarketingViewSet,
     InscriptionEvenementViewSet,
     SupportOfflineViewSet,
+    DomaineEnvoiViewSet,
     webhook_brevo_campagne, webhook_sms_stop,
     portail_mon_releve, portail_mon_releve_pdf, portail_contester_facture,
     AppelTelephoniqueViewSet,
@@ -185,6 +186,8 @@ router.register(r'evenements-marketing', EvenementMarketingViewSet)
 router.register(r'inscriptions-evenement', InscriptionEvenementViewSet)
 # ── XMKT29 — Ponts QR pour supports offline ─────────────────────────────────
 router.register(r'supports-offline', SupportOfflineViewSet)
+# ── XMKT33 — Assistant d'authentification du domaine d'envoi ───────────────
+router.register(r'domaines-envoi', DomaineEnvoiViewSet)
 
 urlpatterns = [
     path('webhooks/brevo/', webhook_brevo_campagne, name='webhook-brevo-campagne'),

@@ -77,6 +77,7 @@ from .models import (
     Enquete, ReponseEnquete,
     InscriptionEvenement,
     SupportOffline,
+    DomaineEnvoi,
 )
 
 
@@ -7289,6 +7290,22 @@ def precheck_sante_campagne(campagne, *, verifier_liens=False):
     if segment_vide:
         avertissements.append('Aucun segment ni liste ciblée — 0 destinataire prévu.')
 
+    # XMKT33 — avertissement si le domaine d'envoi (email société) n'est pas
+    # authentifié (SPF/DKIM/DMARC). Best-effort, jamais bloquant.
+    if campagne.canal == Campagne.Canal.EMAIL:
+        try:
+            from apps.parametres.models_company import CompanyProfile
+            profil = CompanyProfile.objects.filter(company=campagne.company).first()
+            email_expediteur = (profil.email or '') if profil else ''
+        except Exception:  # pragma: no cover - défensif
+            email_expediteur = ''
+        if '@' in email_expediteur:
+            domaine = email_expediteur.split('@', 1)[1]
+            if not domaine_envoi_authentifie(campagne.company, domaine):
+                avertissements.append(
+                    f'Domaine d\'envoi « {domaine} » non authentifié '
+                    '(SPF/DKIM/DMARC) — risque de délivrabilité.')
+
     return {'bloque': bloque, 'avertissements': avertissements}
 
 
@@ -10699,3 +10716,75 @@ def kpi_campagne_mere(campagne_mere):
         'nb_signes': nb_signes_total,
         'rattachements': campagne_mere.rattachements or [],
     }
+
+
+# ── XMKT33 — Assistant d'authentification du domaine d'envoi ──────────────
+
+def enregistrements_dns_attendus(domaine):
+    """XMKT33 — enregistrements DNS ATTENDUS pour ``domaine`` (SPF/DKIM
+    Brevo/DMARC), affichés dans la page Paramètres avant vérification."""
+    return {
+        'spf': {
+            'type': 'TXT', 'hote': domaine,
+            'valeur_attendue': 'v=spf1 include:spf.brevo.com ~all',
+        },
+        'dkim': {
+            'type': 'CNAME', 'hote': f'mail._domainkey.{domaine}',
+            'valeur_attendue': f'mail._domainkey.{domaine}.brevo.com',
+        },
+        'dmarc': {
+            'type': 'TXT', 'hote': f'_dmarc.{domaine}',
+            'valeur_attendue': 'v=DMARC1; p=none;',
+        },
+    }
+
+
+def _lookup_txt(hote):
+    """Lookup DNS TXT best-effort (dnspython) ; renvoie une liste de chaînes,
+    liste vide si échec (jamais d'exception propagée — no-op réseau en
+    tests, mock)."""
+    try:
+        import dns.resolver
+        reponses = dns.resolver.resolve(hote, 'TXT')
+        return [str(r).strip('"') for r in reponses]
+    except Exception:  # pragma: no cover - défensif (réseau/DNS absent)
+        return []
+
+
+def _lookup_cname(hote):
+    """Lookup DNS CNAME best-effort (dnspython)."""
+    try:
+        import dns.resolver
+        reponses = dns.resolver.resolve(hote, 'CNAME')
+        return [str(r).rstrip('.') for r in reponses]
+    except Exception:  # pragma: no cover - défensif
+        return []
+
+
+def verifier_domaine_envoi(domaine_envoi):
+    """XMKT33 — relance la vérification DNS des 3 enregistrements pour
+    ``domaine_envoi`` (mutable, relançable). Renvoie l'objet mis à jour."""
+    attendus = enregistrements_dns_attendus(domaine_envoi.domaine)
+
+    spf_txts = _lookup_txt(attendus['spf']['hote'])
+    domaine_envoi.spf_verifie = any('v=spf1' in t for t in spf_txts)
+
+    dkim_cnames = _lookup_cname(attendus['dkim']['hote'])
+    domaine_envoi.dkim_verifie = bool(dkim_cnames)
+
+    dmarc_txts = _lookup_txt(attendus['dmarc']['hote'])
+    domaine_envoi.dmarc_verifie = any('v=dmarc1' in t.lower() for t in dmarc_txts)
+
+    domaine_envoi.derniere_verification_le = timezone.now()
+    domaine_envoi.save(update_fields=[
+        'spf_verifie', 'dkim_verifie', 'dmarc_verifie',
+        'derniere_verification_le'])
+    return domaine_envoi
+
+
+def domaine_envoi_authentifie(company, domaine):
+    """XMKT33 — True si le domaine est intégralement authentifié (utilisé
+    par le pré-check XMKT13). Domaine jamais enregistré = non authentifié
+    (avertissement, comportement conservateur)."""
+    obj = DomaineEnvoi.objects.filter(company=company, domaine=domaine).first()
+    return bool(obj and obj.authentifie)

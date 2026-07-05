@@ -8871,3 +8871,45 @@ class SupportOffline(models.Model):
 
     def __str__(self):
         return self.nom
+
+
+# ── XMKT33 — Assistant d'authentification du domaine d'envoi (SPF/DKIM/DMARC)
+
+class DomaineEnvoi(models.Model):
+    """Domaine d'envoi marketing + statut de vérification DNS (XMKT33).
+
+    Vérification par lookup DNS (dnspython, dépendance libre) — jamais
+    d'appel réseau en test (mocké). Statut par enregistrement stocké pour
+    affichage + pour le pré-check XMKT13 (avertissement domaine non
+    authentifié).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='domaines_envoi',
+        verbose_name='Société',
+    )
+    domaine = models.CharField(max_length=255, verbose_name='Domaine')
+    spf_verifie = models.BooleanField(default=False, verbose_name='SPF vérifié')
+    dkim_verifie = models.BooleanField(default=False, verbose_name='DKIM vérifié')
+    dmarc_verifie = models.BooleanField(default=False, verbose_name='DMARC vérifié')
+    derniere_verification_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Dernière vérification le')
+
+    class Meta:
+        verbose_name = "Domaine d'envoi"
+        verbose_name_plural = "Domaines d'envoi"
+        ordering = ['domaine']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'domaine'],
+                name='uniq_domaine_envoi_par_societe',
+            ),
+        ]
+
+    def __str__(self):
+        return self.domaine
+
+    @property
+    def authentifie(self):
+        return self.spf_verifie and self.dkim_verifie and self.dmarc_verifie

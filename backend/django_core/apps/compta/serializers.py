@@ -50,6 +50,7 @@ from .models import (
     Enquete, ReponseEnquete,
     EvenementMarketing, InscriptionEvenement,
     SupportOffline,
+    DomaineEnvoi,
 )
 
 
@@ -2426,3 +2427,18 @@ class SupportOfflineSerializer(serializers.ModelSerializer):
         model = SupportOffline
         fields = ['id', 'nom', 'url_cible', 'nb_scans', 'date_creation']
         read_only_fields = ['url_cible', 'nb_scans', 'date_creation']
+
+
+class DomaineEnvoiSerializer(serializers.ModelSerializer):
+    authentifie = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = DomaineEnvoi
+        fields = [
+            'id', 'domaine', 'spf_verifie', 'dkim_verifie', 'dmarc_verifie',
+            'authentifie', 'derniere_verification_le',
+        ]
+        read_only_fields = [
+            'spf_verifie', 'dkim_verifie', 'dmarc_verifie',
+            'derniere_verification_le',
+        ]
