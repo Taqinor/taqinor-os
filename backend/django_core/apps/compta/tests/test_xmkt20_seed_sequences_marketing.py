@@ -28,10 +28,12 @@ class SeedSequencesMarketingTests(TestCase):
             'seed_sequences_marketing', '--company-slug', 'xmkt20', stdout=out)
         return out.getvalue()
 
-    def test_cree_5_recettes_desactivees(self):
+    def test_cree_recettes_desactivees(self):
         self._run()
         sequences = SequenceRelance.objects.filter(company=self.co)
-        self.assertEqual(sequences.count(), 5)
+        # 5 recettes XMKT20 + 3 recettes ZMKT7 (double opt-in, tag hot
+        # contacts, prioriser leads chauds) = 8.
+        self.assertEqual(sequences.count(), 8)
         for seq in sequences:
             self.assertFalse(seq.actif)
 

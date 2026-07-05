@@ -1,9 +1,11 @@
-"""XMKT20 — Recettes de séquences marketing prêtes à l'emploi (seed).
+"""XMKT20/ZMKT7 — Recettes de séquences marketing prêtes à l'emploi (seed).
 
-Crée 5 flux type adaptés au solaire marocain, DÉSACTIVÉS par défaut
-(``actif=False`` — le founder les active en un clic) : idempotente et
-additive, ne touche JAMAIS une séquence déjà présente (matchée par nom +
-société). Ré-exécutable sans effet si déjà semée (aucun doublon).
+Crée 8 flux type adaptés au solaire marocain (5 XMKT20 + 3 ZMKT7 —
+« double opt-in », « taguer contacts chauds », « prioriser leads chauds »),
+DÉSACTIVÉS par défaut (``actif=False`` — le founder les active en un clic) :
+idempotente et additive, ne touche JAMAIS une séquence déjà présente
+(matchée par nom + société). Ré-exécutable sans effet si déjà semée (aucun
+doublon).
 
 Run:
   docker compose exec django_core python manage.py seed_sequences_marketing
@@ -82,6 +84,42 @@ RECETTES = [
     ),
 ]
 
+# ZMKT7 — recettes Odoo-style manquantes (double opt-in, tag hot contacts,
+# prioriser leads chauds). Format des étapes : (ordre, delai_jours, canal,
+# modele_message, condition, action_crm) — condition/action_crm par défaut
+# 'toujours'/{} pour les recettes XMKT20 ci-dessus (rétro-compatibles).
+RECETTES_ZMKT7 = [
+    (
+        'Double opt-in',
+        '',
+        [
+            (1, 0, EtapeSequence.Canal.EMAIL,
+             'Merci de confirmer votre inscription en cliquant sur le lien '
+             'de confirmation.', EtapeSequence.Condition.TOUJOURS, {}),
+            (2, 3, EtapeSequence.Canal.EMAIL,
+             'Vous n\'avez pas encore confirmé votre inscription. Cliquez '
+             'ici pour confirmer.', EtapeSequence.Condition.N_A_PAS_OUVERT, {}),
+        ],
+    ),
+    (
+        'Taguer contacts chauds',
+        '',
+        [
+            (1, 0, EtapeSequence.Canal.EMAIL, '', EtapeSequence.Condition.TOUJOURS,
+             {'action': 'tag', 'params': {'tag': 'chaud'}}),
+        ],
+    ),
+    (
+        'Prioriser leads chauds',
+        '',
+        [
+            (1, 0, EtapeSequence.Canal.EMAIL, '', EtapeSequence.Condition.A_CLIQUE,
+             {'action': 'tache',
+              'params': {'note': 'Lead chaud — a cliqué, relance prioritaire'}}),
+        ],
+    ),
+]
+
 
 class Command(BaseCommand):
     help = ("Seed les recettes de séquences marketing prêtes à l'emploi "
@@ -104,18 +142,28 @@ class Command(BaseCommand):
             raise CommandError(f"Company with slug '{slug}' not found.")
 
         created, skipped = [], []
-        for nom, stage_declencheur, etapes in RECETTES:
+        toutes_recettes = [
+            (nom, decl, [(o, d, c, m, EtapeSequence.Condition.TOUJOURS, {})
+                         for o, d, c, m in etapes])
+            for nom, decl, etapes in RECETTES
+        ] + RECETTES_ZMKT7
+
+        for nom, stage_declencheur, etapes in toutes_recettes:
             if SequenceRelance.objects.filter(company=company, nom=nom).exists():
                 skipped.append(nom)
                 continue
             sequence = SequenceRelance.objects.create(
                 company=company, nom=nom,
                 stage_declencheur=stage_declencheur, actif=False)
-            for ordre, delai_jours, canal, modele in etapes:
+            for ordre, delai_jours, canal, modele, condition, action_crm in etapes:
+                type_etape = (
+                    EtapeSequence.TypeEtape.ACTION_CRM if action_crm
+                    else EtapeSequence.TypeEtape.MESSAGE)
                 EtapeSequence.objects.create(
                     company=company, sequence=sequence, ordre=ordre,
                     delai_jours=delai_jours, canal=canal,
-                    modele_message=modele)
+                    modele_message=modele, condition=condition,
+                    type_etape=type_etape, action_crm=action_crm)
             created.append(nom)
 
         self.stdout.write(self.style.SUCCESS(
