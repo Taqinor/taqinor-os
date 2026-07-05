@@ -64,6 +64,7 @@ from .models import (
     ApprobationEnvoiCampagne,
     Enquete,
     EvenementMarketing, InscriptionEvenement,
+    SupportOffline,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -75,6 +76,7 @@ from .serializers import (
     ApprobationEnvoiCampagneSerializer,
     EnqueteSerializer,
     EvenementMarketingSerializer, InscriptionEvenementSerializer,
+    SupportOfflineSerializer,
     CommissionPayoutRunSerializer, CompteComptableSerializer,
     CompteTresorerieSerializer, ContratAvancementSerializer,
     DeclarationTVASerializer, DemandeApprobationConfigSerializer,
@@ -4826,6 +4828,37 @@ def evenement_inscription_publique(request, evenement_id):
         telephone=request.data.get('telephone', ''))
     return Response(
         {'id': inscription.id, 'qr_token': inscription.qr_token}, status=201)
+
+
+# ── XMKT29 — Ponts QR pour supports offline ─────────────────────────────────
+
+class SupportOfflineViewSet(_ComptaBaseViewSet):
+    """CRUD des supports offline avec QR téléchargeable (XMKT29)."""
+    queryset = SupportOffline.objects.select_related('lien_tracke').all()
+    serializer_class = SupportOfflineSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom']
+    ordering_fields = ['date_creation']
+
+    def perform_create(self, serializer):
+        nom = serializer.validated_data.get('nom')
+        url_cible = serializer.validated_data.get('url_cible')
+        support = services.creer_support_offline(
+            self.request.user.company, nom=nom, url_cible=url_cible)
+        serializer.instance = support
+
+    @action(detail=True, methods=['get'])
+    def qr(self, request, pk=None):
+        support = self.get_object()
+        svg = services.qr_svg_support_offline(support)
+        if svg is None:
+            return Response({'detail': 'QR indisponible.'}, status=404)
+        return HttpResponse(svg, content_type='image/svg+xml')
+
+    @action(detail=False, methods=['get'], url_path='scans-par-support')
+    def scans_par_support(self, request):
+        return Response(
+            services.tableau_scans_par_support(request.user.company))
 
 
 # ── XMKT5 — Listes de diffusion nommées + abonnements ───────────────────────

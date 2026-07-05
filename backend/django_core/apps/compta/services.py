@@ -76,6 +76,7 @@ from .models import (
     ApprobationEnvoiCampagne,
     Enquete, ReponseEnquete,
     InscriptionEvenement,
+    SupportOffline,
 )
 
 
@@ -6631,7 +6632,7 @@ def traiter_clic_lien(token, *, destinataire=''):
     destinataire = (destinataire or '').strip()
     ClicLien.objects.create(
         company=lien.company, lien=lien, destinataire=destinataire)
-    if destinataire:
+    if destinataire and lien.campagne_id:
         # XMKT22 — un clic réactive automatiquement un contact dormant
         # (chemin de re-permission).
         reactiver_contact(lien.company, destinataire)
@@ -10596,3 +10597,53 @@ def cloturer_presences_evenement(evenement):
         InscriptionEvenement.Statut.PRESENT, InscriptionEvenement.Statut.ABSENT])
     nb = qs.update(statut=InscriptionEvenement.Statut.ABSENT)
     return nb
+
+
+# ── XMKT29 — Ponts QR pour supports offline (flyers, bâches, véhicules) ────
+
+def _tagger_utm_offline(url, nom_support):
+    """XMKT29 — auto-tague l'URL cible utm_source=offline&utm_campaign=nom."""
+    from urllib.parse import urlencode, urlparse, parse_qsl, urlunparse
+
+    parsed = urlparse(url)
+    query = dict(parse_qsl(parsed.query))
+    query.setdefault('utm_source', 'offline')
+    query.setdefault('utm_campaign', nom_support)
+    return urlunparse(parsed._replace(query=urlencode(query)))
+
+
+def creer_support_offline(company, *, nom, url_cible):
+    """XMKT29 — crée un support offline avec son lien tracké (QR
+    téléchargeable). Réutilise ``LienTrackee``/``traiter_clic_lien``
+    (XMKT9) — ``campagne=None`` (lien issu d'un support, pas d'un envoi)."""
+    url_taguee = _tagger_utm_offline(url_cible, nom)
+    lien = LienTrackee.objects.create(
+        company=company, campagne=None, url_cible=url_taguee,
+        token=uuid.uuid4().hex)
+    return SupportOffline.objects.create(
+        company=company, nom=nom, url_cible=url_taguee, lien_tracke=lien)
+
+
+def qr_svg_support_offline(support):
+    """XMKT29 — SVG du QR téléchargeable pointant vers la redirection
+    tokenisée du support (compte les scans)."""
+    from apps.stock.selectors import qr_svg
+
+    if not support.lien_tracke:
+        return None
+    url_redirection = f'/api/django/compta/r/{support.lien_tracke.token}/'
+    return qr_svg(url_redirection)
+
+
+def tableau_scans_par_support(company):
+    """XMKT29 — tableau scans/leads par support (drill-down)."""
+    resultats = []
+    for support in SupportOffline.objects.filter(company=company):
+        lien = support.lien_tracke
+        nb_scans = lien.nb_clics if lien else 0
+        resultats.append({
+            'support_id': support.id,
+            'nom': support.nom,
+            'nb_scans': nb_scans,
+        })
+    return resultats

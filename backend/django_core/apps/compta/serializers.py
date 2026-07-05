@@ -49,6 +49,7 @@ from .models import (
     ApprobationEnvoiCampagne,
     Enquete, ReponseEnquete,
     EvenementMarketing, InscriptionEvenement,
+    SupportOffline,
 )
 
 
@@ -2414,3 +2415,13 @@ class InscriptionEvenementSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'qr_token', 'lead_id', 'date_creation', 'date_pointage']
+
+
+class SupportOfflineSerializer(serializers.ModelSerializer):
+    nb_scans = serializers.IntegerField(
+        source='lien_tracke.nb_clics', read_only=True, default=0)
+
+    class Meta:
+        model = SupportOffline
+        fields = ['id', 'nom', 'url_cible', 'nb_scans', 'date_creation']
+        read_only_fields = ['url_cible', 'nb_scans', 'date_creation']

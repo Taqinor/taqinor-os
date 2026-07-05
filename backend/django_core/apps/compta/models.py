@@ -5089,6 +5089,10 @@ class LienTrackee(models.Model):
     """Un lien du corps d'une campagne, réécrit en redirection tokenisée
     (XMKT9) : ``/r/<token>`` → ``url_cible`` auto-taguée
     utm_source/medium/campaign=nom de la campagne. Compte les clics PAR LIEN.
+
+    ``campagne`` NULL (XMKT29) : le lien tracké n'est pas issu d'un corps de
+    campagne mais d'un ``SupportOffline`` (QR flyer/bâche/véhicule) —
+    réutilise le même mécanisme de redirection tokenisée + comptage.
     """
     company = models.ForeignKey(
         'authentication.Company',
@@ -5101,6 +5105,7 @@ class LienTrackee(models.Model):
         on_delete=models.CASCADE,
         related_name='liens_trackes',
         verbose_name='Campagne',
+        null=True, blank=True,
     )
     token = models.CharField(
         max_length=64, unique=True, verbose_name='Jeton public')
@@ -8809,3 +8814,41 @@ class InscriptionEvenement(models.Model):
 
     def __str__(self):
         return f'{self.nom} → {self.evenement_id} ({self.statut})'
+
+
+# ── XMKT29 — Ponts QR pour supports offline (flyers, bâches, véhicules) ────
+
+class SupportOffline(models.Model):
+    """Support offline (flyer, bâche, véhicule) avec QR de scan (XMKT29).
+
+    ``url_cible`` = landing/FormulaireIntake auto-taguée
+    utm_source=offline&utm_campaign=<nom>. Le QR encode une redirection
+    tokenisée (réutilise ``LienTrackee`` XMKT9) → compte les scans ET
+    attribue les leads issus de l'impression papier au support précis.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='supports_offline',
+        verbose_name='Société',
+    )
+    nom = models.CharField(
+        max_length=200, verbose_name='Nom (ex. « Flyer SIAM 2026 »)')
+    url_cible = models.URLField(max_length=1000, verbose_name='URL cible')
+    lien_tracke = models.ForeignKey(
+        'compta.LienTrackee',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='supports_offline',
+        verbose_name='Lien tracké (QR)',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Support offline'
+        verbose_name_plural = 'Supports offline'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return self.nom
