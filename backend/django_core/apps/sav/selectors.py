@@ -19,7 +19,8 @@ CLAUDE.md — les lectures cross-app passent par les selectors de l'app cible).
 from django.utils import timezone
 
 from .models import (
-    Equipement, EquipeMaintenance, KbArticle, Ticket, TicketSatisfaction,
+    Equipement, EquipeMaintenance, KbArticle, Ticket, TicketActivity,
+    TicketSatisfaction,
 )
 
 
@@ -1039,7 +1040,16 @@ def file_action(company, *, today=None):
                     buckets['a_relancer'].append(t.id)
                     continue
         if t.statut == Ticket.Statut.RESOLU:
-            derniere = (t.activites.order_by('-created_at')
+            # XSAV24 journalise désormais TOUJOURS la création du ticket dans
+            # son chatter (kind=CREATION) — la dernière activité n'est donc
+            # plus jamais absente, mais cette entrée automatique ne prouve
+            # rien sur l'activité APRÈS résolution (elle précède toujours la
+            # résolution). On ne regarde que le chatter de SUIVI (notes,
+            # modifications) pour la dormance ; sans ticket suivi, on retombe
+            # sur la date de résolution elle-même.
+            derniere = (t.activites
+                        .exclude(kind=TicketActivity.Kind.CREATION)
+                        .order_by('-created_at')
                         .values_list('created_at', flat=True).first())
             reference_dt = (
                 timezone.localtime(derniere).date() if derniere
