@@ -723,7 +723,7 @@ class FactureViewSet(viewsets.ModelViewSet):
             )
         with transaction.atomic():
             locked = Facture.objects.select_for_update().get(pk=facture.pk)
-            if locked.montant_du <= 0:
+            if locked.statut == Facture.Statut.PAYEE or locked.montant_du <= 0:
                 return Response(
                     {'detail': 'Cette facture n\'a aucun résiduel à '
                                'abandonner.'},

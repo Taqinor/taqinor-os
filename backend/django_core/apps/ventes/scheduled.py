@@ -472,7 +472,7 @@ def releve_mensuel_reminders():
     for client in clients:
         # Idempotence : un seul envoi par client et par mois.
         deja_envoye = EmailLog.objects.filter(
-            client=client, reference__endswith=f'::{marker}',
+            client=client, reference=marker,
         ).exists()
         if deja_envoye:
             continue

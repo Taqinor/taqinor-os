@@ -905,13 +905,17 @@ class Facture(models.Model):
     @property
     def montant_du(self):
         """Reste à payer (TTC + notes de débit − payé − retenues subies −
-        avoirs), jamais négatif. ZFAC4 — les notes de débit actives
-        AUGMENTENT le reste à payer (symétrique des avoirs) ; aucune note de
-        débit → comportement historique strictement inchangé."""
+        avoirs − abandon de créance), jamais négatif. ZFAC4 — les notes de
+        débit actives AUGMENTENT le reste à payer (symétrique des avoirs) ;
+        aucune note de débit → comportement historique strictement inchangé.
+        XFAC13 — un abandon de créance (write-off, manuel ou automatique sous
+        tolérance) solde le résiduel abandonné ; aucun abandon → comportement
+        historique inchangé (abandon_montant vaut 0 par défaut)."""
         from decimal import Decimal
         reste = (self.total_ttc + self.notes_debit_total
                  - self.montant_paye_avec_retenues
-                 - self.avoirs_total)
+                 - self.avoirs_total
+                 - (self.abandon_montant or Decimal('0')))
         return reste if reste > 0 else Decimal('0')
 
     @property
