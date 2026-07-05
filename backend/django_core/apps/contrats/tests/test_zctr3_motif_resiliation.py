@@ -140,11 +140,16 @@ class MouvementsMrrChurnParMotifRefTests(TestCase):
 
     def _contrat_avec_mrr(self, montant_mensuel="1000"):
         contrat = make_contrat(self.co, montant=montant_mensuel)
+        # ``montant_total`` est un cache posé CÔTÉ SERVEUR (recalculé par
+        # ``services.recalculer_total_echeancier``/``ajouter_ligne_echeance`` —
+        # jamais dérivé automatiquement des ``LigneEcheance``) : on le pose
+        # directement à la création, comme ``test_mrr_mouvements.py``.
         EcheancierContrat.objects.create(
             company=self.co, contrat=contrat,
             periodicite=EcheancierContrat.Periodicite.MENSUELLE,
             facturation_active=True,
-            statut=EcheancierContrat.Statut.ACTIF)
+            statut=EcheancierContrat.Statut.ACTIF,
+            montant_total=Decimal(montant_mensuel))
         from apps.contrats.models import LigneEcheance
         LigneEcheance.objects.create(
             company=self.co, echeancier=contrat.echeanciers.first(),
