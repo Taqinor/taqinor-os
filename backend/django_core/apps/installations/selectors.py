@@ -184,6 +184,19 @@ def kit_map_for_produits_composes(company, produit_ids):
     return {pid: kid for pid, kid in rows}
 
 
+def materiel_consigne_quantite_totale(company):
+    """YSTCK8 — quantité TOTALE de matériel consigné DÉTENU (FG327,
+    `MaterielConsigne`, non possédé — jamais valorisé). Point d'entrée
+    cross-app pour `stock` (garde de valorisation
+    `stock_valuation_excludes_materiel_consigne`), lecture seule."""
+    from django.db.models import Sum
+    from .models_consignation import MaterielConsigne
+    agg = (MaterielConsigne.objects
+           .filter(company=company, statut=MaterielConsigne.Statut.DETENU)
+           .aggregate(total=Sum('quantite')))
+    return agg['total'] or 0
+
+
 def _active_reservations():
     from .models import StockReservation
     return StockReservation.objects.filter(active=True, consomme=False)

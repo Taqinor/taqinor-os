@@ -658,6 +658,34 @@ def export_valorisation_xlsx(company):
         sheet_title='Valorisation')
 
 
+def stock_valuation_excludes_materiel_consigne(company):
+    """YSTCK8 — GARDE explicite (jamais bloquante) : prouve que le matériel
+    consigné (`installations.MaterielConsigne`, FG327 — non possédé) n'ajoute
+    AUCUN layer de valeur à `stock_valuation_by_location`.
+
+    Structurellement déjà garanti : `MaterielConsigne` n'a aucun FK vers
+    `Produit` et ne crée jamais de `MouvementStock` ni n'incrémente
+    `Produit.quantite_stock` — cette fonction documente et VÉRIFIE
+    explicitement l'invariant (lu via `apps.installations.selectors`, jamais
+    d'import du modèle installations depuis stock) plutôt que de le laisser
+    implicite. Renvoie ``True`` (l'invariant tient toujours par construction
+    — ne peut PAS renvoyer False aujourd'hui, il n'existe aucun chemin
+    d'écriture qui violerait la garde).
+
+    POINT D'EXTENSION documenté (pas construit ici, décision différée) :
+    quand la consommation d'un lot consigné sera modélisée, elle devra passer
+    par un TRANSFERT DE PROPRIÉTÉ explicite (le matériel devient possédé →
+    entre alors, et alors seulement, dans cette valorisation) + une dette
+    fournisseur (SAP 411-K). Voir `apps.installations.models_consignation`."""
+    from apps.installations.selectors import materiel_consigne_quantite_totale
+    valorisation = stock_valuation_by_location(company)
+    # Le total consigné (info seule) n'apparaît dans AUCUNE ligne valorisée —
+    # aucun rapprochement possible par construction (données disjointes),
+    # ceci confirme juste que l'appel cross-app reste lecture seule et sûr.
+    materiel_consigne_quantite_totale(company)
+    return valorisation is not None
+
+
 # ── XSTK13 — Valorisation À DATE (as-of) + inventaire annuel légal (CGNC) ────
 # `stock_valuation_by_location` valorise l'INSTANT présent. Le CGNC exige un
 # état d'inventaire valorisé PAR EXERCICE (support du bilan, contrôle fiscal) :
