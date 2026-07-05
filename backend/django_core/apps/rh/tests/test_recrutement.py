@@ -94,7 +94,9 @@ class OuverturePosteCrudTests(TestCase):
         ouv = OuverturePoste.objects.get(id=resp.data['id'])
         self.assertEqual(ouv.company, self.co_a)
         self.assertEqual(ouv.nombre_postes, 2)
-        self.assertEqual(ouv.statut, 'ouvert')
+        # YHIRE14 — une ouverture créée via l'API naît désormais en
+        # 'brouillon' (cycle d'approbation amont), plus 'ouvert'.
+        self.assertEqual(ouv.statut, 'brouillon')
         self.assertEqual(ouv.poste_ref_id, self.poste_a.id)
 
     def test_poste_ref_autre_societe_refuse(self):
