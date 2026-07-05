@@ -216,4 +216,10 @@ app.conf.beat_schedule = {
         'task': 'stock.recompute_reordering',
         'schedule': crontab(hour=6, minute=15),
     },
+    # YSERV3 — balayage monitoring quotidien (synchro fournisseur + évaluation
+    # de sous-performance), heure creuse matinale.
+    'monitoring-balayage-quotidien': {
+        'task': 'monitoring.balayage_quotidien',
+        'schedule': crontab(hour=7, minute=35),
+    },
 }
