@@ -7,9 +7,11 @@ from .views import (
     AffectationRosterViewSet,
     AffectationVehiculeViewSet,
     AnalyseRisquesChantierViewSet,
+    AttributionBadgeViewSet,
     AvanceSalaireViewSet,
     AvantageSocialViewSet,
     AyantDroitViewSet,
+    BadgeReconnaissanceViewSet,
     BesoinFormationViewSet,
     BulletinPaieViewSet,
     CampagneEvaluationViewSet,
@@ -21,6 +23,7 @@ from .views import (
     CompetenceEmployeViewSet,
     CompetenceRequiseViewSet,
     CompetenceViewSet,
+    DemandeAllocationViewSet,
     DemandeCongeViewSet,
     DemandeRHViewSet,
     DepartementViewSet,
@@ -39,6 +42,7 @@ from .views import (
     EpiCatalogueViewSet,
     GabaritEmailRecrutementViewSet,
     GrilleSalarialeViewSet,
+    LigneParcoursViewSet,
     EvaluationEmployeViewSet,
     FeuilleTempsViewSet,
     HabilitationViewSet,
@@ -65,12 +69,14 @@ from .views import (
     RecrutementStatistiquesViewSet,
     ReglageRHViewSet,
     RemunerationViewSet,
+    RetourFeedback360ViewSet,
     SanctionViewSet,
     SessionFormationViewSet,
     SoldeCongeViewSet,
     TableauBordHseViewSet,
     TentativeQuizViewSet,
     TypeAbsenceViewSet,
+    TypeLigneParcoursViewSet,
     TypePrimeViewSet,
     VisiteMedicaleViewSet,
 )
@@ -94,6 +100,9 @@ router.register(
 router.register(r'types-absence', TypeAbsenceViewSet)
 router.register(r'soldes-conge', SoldeCongeViewSet)
 router.register(r'demandes-conge', DemandeCongeViewSet)
+router.register(r'demandes-allocation', DemandeAllocationViewSet)
+router.register(r'types-ligne-parcours', TypeLigneParcoursViewSet)
+router.register(r'lignes-parcours', LigneParcoursViewSet)
 router.register(r'jours-bloques-conge', JourBloqueCongeViewSet)
 router.register(r'periodes-fermeture', PeriodeFermetureViewSet)
 # NOTE : le kiosque (``pointages/kiosque``) DOIT être enregistré AVANT
@@ -145,6 +154,7 @@ router.register(r'campagnes-evaluation', CampagneEvaluationViewSet)
 router.register(r'campagnes-pulse', CampagnePulseViewSet)
 router.register(r'evaluations-employe', EvaluationEmployeViewSet)
 router.register(r'sanctions', SanctionViewSet)
+router.register(r'retours-feedback360', RetourFeedback360ViewSet)
 router.register(r'elements-variables-paie', ElementsVariablesPaieViewSet)
 router.register(r'types-prime', TypePrimeViewSet)
 router.register(r'primes-attribuees', PrimeAttribueeViewSet)
@@ -158,6 +168,8 @@ router.register(r'demandes-rh', DemandeRHViewSet)
 router.register(
     r'portail', PortailSelfServiceViewSet, basename='rh-portail')
 router.register(r'cockpit', CockpitRhViewSet, basename='rh-cockpit')
+router.register(r'badges-reconnaissance', BadgeReconnaissanceViewSet)
+router.register(r'attributions-badge', AttributionBadgeViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

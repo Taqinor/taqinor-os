@@ -12,9 +12,11 @@ from .models import (
     AffectationRoster,
     AffectationVehicule,
     AnalyseRisquesChantier,
+    AttributionBadge,
     AvanceSalaire,
     AvantageSocial,
     AyantDroit,
+    BadgeReconnaissance,
     BesoinFormation,
     BulletinPaie,
     CampagneEvaluation,
@@ -28,6 +30,7 @@ from .models import (
     CompetenceEmploye,
     CompetenceRequise,
     CorrectionPointage,
+    DemandeAllocation,
     DemandeConge,
     DemandeRH,
     Departement,
@@ -38,6 +41,7 @@ from .models import (
     EntretienSortie,
     GabaritEmailRecrutement,
     GrilleSalariale,
+    LigneParcours,
     NoteEntretien,
     PeriodeFermeture,
     PromesseEmbauche,
@@ -75,11 +79,13 @@ from .models import (
     QuizFormation,
     Remuneration,
     ReponsePulse,
+    RetourFeedback360,
     Sanction,
     SessionFormation,
     SoldeConge,
     TentativeQuiz,
     TypeAbsence,
+    TypeLigneParcours,
     TypePrime,
     VisiteMedicale,
 )
@@ -167,6 +173,8 @@ class DossierEmployeSerializer(serializers.ModelSerializer):
             'horaire',
             # XRH29 — compteurs ayants droit / avantages sociaux.
             'nombre_ayants_droit', 'nombre_avantages_sociaux',
+            # ZRH16 — localisation de télétravail par jour de semaine.
+            'localisation_hebdo',
             'date_creation',
         ]
         read_only_fields = ['date_creation', 'declaration_entree_date']
@@ -198,6 +206,9 @@ class AnnuaireEmployeSerializer(serializers.ModelSerializer):
     poste_nom = serializers.SerializerMethodField()
     departement_nom = serializers.SerializerMethodField()
     photo_key = serializers.SerializerMethodField()
+    # ZRH15 — timeline de parcours, triée chronologiquement (plus récent
+    # d'abord, cf. ``LigneParcours.Meta.ordering``), champs non sensibles.
+    lignes_parcours = serializers.SerializerMethodField()
 
     class Meta:
         model = DossierEmploye
@@ -205,7 +216,7 @@ class AnnuaireEmployeSerializer(serializers.ModelSerializer):
             'id', 'nom', 'prenom', 'photo_key',
             'poste', 'poste_ref', 'poste_nom',
             'departement', 'departement_nom',
-            'telephone', 'email',
+            'telephone', 'email', 'lignes_parcours',
         ]
 
     def get_poste_nom(self, obj):
@@ -216,6 +227,10 @@ class AnnuaireEmployeSerializer(serializers.ModelSerializer):
 
     def get_photo_key(self, obj):
         return obj.user.avatar_key if obj.user_id else ''
+
+    def get_lignes_parcours(self, obj):
+        return LigneParcoursAnnuaireSerializer(
+            obj.lignes_parcours.all(), many=True).data
 
 
 class HoraireTravailSerializer(serializers.ModelSerializer):
@@ -576,6 +591,44 @@ class DemandeCongeSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {'date_fin': 'La date de fin précède la date de début.'})
         return attrs
+
+
+class DemandeAllocationSerializer(serializers.ModelSerializer):
+    """ZRH13 — demande d'allocation de congés self-service. ``employe`` et
+    ``type_absence`` doivent appartenir à la société ; le workflow de
+    décision est posé côté serveur (jamais lu du corps)."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    type_absence_code = serializers.CharField(
+        source='type_absence.code', read_only=True)
+    employe_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DemandeAllocation
+        fields = [
+            'id', 'employe', 'employe_nom', 'type_absence',
+            'type_absence_code', 'jours', 'motif',
+            'statut', 'statut_display',
+            'decide_par', 'date_decision', 'date_creation',
+        ]
+        read_only_fields = [
+            'statut', 'decide_par', 'date_decision', 'date_creation',
+        ]
+
+    def get_employe_nom(self, obj):
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+    def validate_type_absence(self, value):
+        return _meme_societe(self, value, "Type d'absence")
+
+    def validate_jours(self, value):
+        if value <= 0:
+            raise serializers.ValidationError(
+                'Le nombre de jours doit être strictement positif.')
+        return value
 
 
 class FeuilleTempsSerializer(serializers.ModelSerializer):
@@ -2716,3 +2769,140 @@ class TentativeQuizSerializer(serializers.ModelSerializer):
 
     def get_employe_nom(self, obj):
         return f'{obj.employe.nom} {obj.employe.prenom}'
+
+
+class BadgeReconnaissanceSerializer(serializers.ModelSerializer):
+    """Catalogue des badges de reconnaissance (ZRH14). CRUD company-scopé."""
+    nombre_attributions = serializers.SerializerMethodField()
+
+    class Meta:
+        model = BadgeReconnaissance
+        fields = [
+            'id', 'nom', 'description', 'icone', 'actif',
+            'nombre_attributions', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_nombre_attributions(self, obj):
+        return obj.attributions.count()
+
+
+class AttributionBadgeSerializer(serializers.ModelSerializer):
+    """Attribution d'un badge à un collègue (ZRH14). ``attribue_par`` posé
+    côté serveur (jamais lu du corps) ; auto-attribution refusée (400,
+    contrôlé dans la vue)."""
+    badge_nom = serializers.CharField(source='badge.nom', read_only=True)
+    badge_icone = serializers.CharField(source='badge.icone', read_only=True)
+    beneficiaire_nom = serializers.SerializerMethodField()
+    attribue_par_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AttributionBadge
+        fields = [
+            'id', 'badge', 'badge_nom', 'badge_icone',
+            'beneficiaire', 'beneficiaire_nom',
+            'attribue_par', 'attribue_par_nom', 'message', 'date_creation',
+        ]
+        read_only_fields = ['attribue_par', 'date_creation']
+
+    def get_beneficiaire_nom(self, obj):
+        return f'{obj.beneficiaire.nom} {obj.beneficiaire.prenom}'
+
+    def get_attribue_par_nom(self, obj):
+        return obj.attribue_par.get_full_name() if obj.attribue_par_id else ''
+
+    def validate_badge(self, value):
+        return _meme_societe(self, value, 'Badge')
+
+    def validate_beneficiaire(self, value):
+        return _meme_societe(self, value, 'Bénéficiaire')
+
+
+class TypeLigneParcoursSerializer(serializers.ModelSerializer):
+    """ZRH15 — types de ligne de parcours configurables par société."""
+    class Meta:
+        model = TypeLigneParcours
+        fields = ['id', 'libelle', 'ordre']
+
+
+class LigneParcoursSerializer(serializers.ModelSerializer):
+    """ZRH15 — ligne de la timeline de parcours (fiche employé). ``employe``
+    et ``type`` doivent appartenir à la société."""
+    type_libelle = serializers.CharField(
+        source='type.libelle', read_only=True)
+
+    class Meta:
+        model = LigneParcours
+        fields = [
+            'id', 'employe', 'type', 'type_libelle', 'intitule',
+            'organisme', 'date_debut', 'date_fin', 'description',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+    def validate_type(self, value):
+        return _meme_societe(self, value, 'Type de ligne de parcours')
+
+
+class LigneParcoursAnnuaireSerializer(serializers.ModelSerializer):
+    """ZRH15 — ligne de parcours EXPOSÉE dans l'annuaire self-service
+    (XRH28) : champs non sensibles uniquement (aucun montant/donnée
+    interne)."""
+    type_libelle = serializers.CharField(
+        source='type.libelle', read_only=True)
+
+    class Meta:
+        model = LigneParcours
+        fields = [
+            'id', 'type', 'type_libelle', 'intitule', 'organisme',
+            'date_debut', 'date_fin', 'description',
+        ]
+
+
+class RetourFeedback360Serializer(serializers.ModelSerializer):
+    """ZRH9 — feedback 360° (gestion RH/manager) : invitation + relecture
+    de synthèse. Un répondant utilise l'endpoint self-service dédié pour
+    remplir/soumettre SON PROPRE retour (jamais celui d'un autre — géré
+    côté vue, pas ici). ``company``/``evaluation``/``repondant`` doivent
+    former un triplet cohérent société."""
+    repondant_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = RetourFeedback360
+        fields = [
+            'id', 'evaluation', 'repondant', 'repondant_nom', 'relation',
+            'reponses', 'commentaire', 'soumis',
+            'date_invitation', 'date_soumission',
+        ]
+        read_only_fields = [
+            'reponses', 'commentaire', 'soumis', 'date_invitation',
+            'date_soumission',
+        ]
+
+    def get_repondant_nom(self, obj):
+        return f'{obj.repondant.nom} {obj.repondant.prenom}'
+
+    def validate_evaluation(self, value):
+        return _meme_societe(self, value, 'Évaluation')
+
+    def validate_repondant(self, value):
+        return _meme_societe(self, value, 'Répondant')
+
+
+class MonFeedback360Serializer(serializers.ModelSerializer):
+    """ZRH9 — le RÉPONDANT remplit/soumet SON PROPRE retour (self-service).
+    Seuls ``reponses``/``commentaire``/``soumis`` sont éditables — tout le
+    reste (évaluation, répondant, relation) est posé à l'invitation et
+    reste en lecture seule ici."""
+    class Meta:
+        model = RetourFeedback360
+        fields = [
+            'id', 'evaluation', 'relation', 'reponses', 'commentaire',
+            'soumis', 'date_invitation', 'date_soumission',
+        ]
+        read_only_fields = [
+            'evaluation', 'relation', 'date_invitation', 'date_soumission',
+        ]

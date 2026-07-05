@@ -362,6 +362,12 @@ class DossierEmploye(models.Model):
     # exclu des serializers de listing — seul le endpoint kiosque le compare).
     code_pointage = models.CharField(
         max_length=12, blank=True, default='', verbose_name='Code pointage (PIN)')
+    # ZRH16 — localisation de télétravail par jour de semaine (« Remote Work »
+    # Odoo). Map jour->lieu parmi bureau/domicile/terrain/autre, TOUS
+    # optionnels (clé absente = bureau par défaut). Purement informatif,
+    # aucun impact paie/pointage. Clés attendues : 'lundi'..'dimanche'.
+    localisation_hebdo = models.JSONField(
+        blank=True, default=dict, verbose_name='Localisation hebdomadaire')
 
     class Meta:
         verbose_name = 'Dossier employé'
@@ -5750,3 +5756,367 @@ class JourBloqueConge(models.Model):
 
     def __str__(self):
         return f'{self.libelle} ({self.date_debut} → {self.date_fin})'
+
+
+class BadgeReconnaissance(models.Model):
+    """Badge de reconnaissance interne (ZRH14, « Employee badges » Odoo).
+
+    Catalogue par société des badges attribuables entre collègues
+    (gamification pair-à-pair/manager) — ex. « Esprit d'équipe », « Sécurité
+    exemplaire ». Purement additif, non lié à la paie. Multi-société :
+    ``company`` posée côté serveur (jamais lue du corps).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_badges_reconnaissance',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=80, verbose_name='Nom')
+    description = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Description')
+    icone = models.CharField(
+        max_length=8, blank=True, default='🏅', verbose_name='Icône/emoji')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Badge de reconnaissance'
+        verbose_name_plural = 'Badges de reconnaissance'
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
+
+
+class AttributionBadge(models.Model):
+    """Attribution d'un badge de reconnaissance à un collègue (ZRH14).
+
+    Tout utilisateur authentifié de la société peut attribuer un badge à un
+    collègue (jamais à lui-même — refusé côté service/vue, 400). Multi-
+    société : ``company`` posée côté serveur ; ``badge`` et ``beneficiaire``
+    doivent appartenir à la même société. ``attribue_par`` référence
+    ``AUTH_USER_MODEL`` (app foundation), posé CÔTÉ SERVEUR depuis la
+    requête (jamais lu du corps).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_attributions_badge',
+        verbose_name='Société',
+    )
+    badge = models.ForeignKey(
+        BadgeReconnaissance,
+        on_delete=models.CASCADE,
+        related_name='attributions',
+        verbose_name='Badge',
+    )
+    beneficiaire = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='badges_recus',
+        verbose_name='Bénéficiaire',
+    )
+    attribue_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rh_badges_attribues',
+        verbose_name='Attribué par',
+    )
+    message = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Message')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Attribution de badge'
+        verbose_name_plural = 'Attributions de badge'
+        ordering = ['-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'beneficiaire'],
+                name='rh_attrib_badge_benef_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.badge.nom} → {self.beneficiaire.matricule}'
+
+
+class DemandeAllocation(models.Model):
+    """Demande d'allocation de congés self-service (ZRH13, « My Allocations
+    / request allocation » Odoo).
+
+    Distincte de ``DemandeConge`` (FG163, une ABSENCE prise sur le solde
+    existant) : ici l'employé demande une allocation EXCEPTIONNELLE de jours
+    (RTT, congé d'ancienneté, don de jours…) qui, une fois VALIDÉE,
+    AUGMENTE le ``SoldeConge.acquis`` de l'année via un service dédié
+    (jamais écrit directement du corps). Multi-société : ``company`` posée
+    côté serveur ; ``employe`` et ``type_absence`` doivent appartenir à la
+    même société.
+    """
+    class Statut(models.TextChoices):
+        SOUMISE = 'soumise', 'Soumise'
+        VALIDEE = 'validee', 'Validée'
+        REFUSEE = 'refusee', 'Refusée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_demandes_allocation',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='demandes_allocation',
+        verbose_name='Employé',
+    )
+    type_absence = models.ForeignKey(
+        TypeAbsence,
+        on_delete=models.PROTECT,
+        related_name='demandes_allocation',
+        verbose_name="Type d'absence",
+    )
+    jours = models.DecimalField(
+        max_digits=6, decimal_places=2, verbose_name='Jours demandés')
+    motif = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Motif')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.SOUMISE,
+        verbose_name='Statut')
+    decide_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rh_allocations_decidees',
+        verbose_name='Décidé par',
+    )
+    date_decision = models.DateTimeField(
+        null=True, blank=True, verbose_name='Date de décision')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Demande d'allocation de congés"
+        verbose_name_plural = "Demandes d'allocation de congés"
+        ordering = ['-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'employe', 'statut'],
+                name='rh_demande_alloc_emp_st_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.employe.matricule} — {self.jours} j ({self.statut})'
+
+
+class TypeLigneParcours(models.Model):
+    """Type de ligne de parcours (ZRH15, « Resume Line Types » Odoo) —
+    catalogue configurable par société (ex. Expérience, Formation,
+    Certification interne). Distinct de ``Certification`` (FG174,
+    validité/organisme d'une certification EXTERNE) et de l'historique de
+    poste interne (XRH6, chatter) — simple timeline de parcours librement
+    saisie. Multi-société : ``company`` posée côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_types_ligne_parcours',
+        verbose_name='Société',
+    )
+    libelle = models.CharField(max_length=80, verbose_name='Libellé')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+
+    class Meta:
+        verbose_name = 'Type de ligne de parcours'
+        verbose_name_plural = 'Types de ligne de parcours'
+        ordering = ['ordre', 'libelle']
+
+    def __str__(self):
+        return self.libelle
+
+
+class LigneParcours(models.Model):
+    """Ligne de parcours (ZRH15) — timeline chronologique d'un employé
+    (expériences antérieures, diplômes, certifications internes…).
+    Affichée en lecture seule (champs non sensibles) dans l'annuaire
+    self-service (XRH28) et éditable sur la fiche employé. Multi-société :
+    ``company`` posée côté serveur ; ``employe`` et ``type`` doivent
+    appartenir à la même société.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_lignes_parcours',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='lignes_parcours',
+        verbose_name='Employé',
+    )
+    type = models.ForeignKey(
+        TypeLigneParcours,
+        on_delete=models.PROTECT,
+        related_name='lignes',
+        verbose_name='Type',
+    )
+    intitule = models.CharField(max_length=160, verbose_name='Intitulé')
+    organisme = models.CharField(
+        max_length=160, blank=True, default='',
+        verbose_name='Organisme/employeur')
+    date_debut = models.DateField(
+        null=True, blank=True, verbose_name='Date de début')
+    date_fin = models.DateField(
+        null=True, blank=True, verbose_name='Date de fin')
+    description = models.CharField(
+        max_length=500, blank=True, default='', verbose_name='Description')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Ligne de parcours'
+        verbose_name_plural = 'Lignes de parcours'
+        ordering = ['-date_debut', '-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'employe'],
+                name='rh_ligne_parcours_emp_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.employe.matricule} — {self.intitule}'
+
+
+class HistoriqueCompetence(models.Model):
+    """Historique des changements de niveau de compétence (ZRH10, « Skills
+    Evolution » Odoo).
+
+    Écrit AUTOMATIQUEMENT (jamais manuellement) à chaque changement de
+    ``CompetenceEmploye.niveau`` — via
+    ``services.enregistrer_niveau_competence``, appelé par TOUS les chemins
+    d'écriture du niveau : matrice manuelle (``CompetenceEmployeViewSet``),
+    session de formation réalisée (FG187,
+    ``SessionFormationViewSet.marquer_realisee``) et réussite de quiz
+    (XRH34, ``services.passer_tentative_quiz``). ``source`` distingue
+    l'origine. Multi-société : ``company`` posée côté serveur.
+    """
+    class Source(models.TextChoices):
+        MANUELLE = 'manuelle', 'Manuelle'
+        QUIZ = 'quiz', 'Quiz de formation'
+        FORMATION = 'formation', 'Session de formation'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_historiques_competence',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='historique_competences',
+        verbose_name='Employé',
+    )
+    competence = models.ForeignKey(
+        Competence,
+        on_delete=models.CASCADE,
+        related_name='historique',
+        verbose_name='Compétence',
+    )
+    ancien_niveau = models.PositiveSmallIntegerField(
+        verbose_name='Ancien niveau')
+    nouveau_niveau = models.PositiveSmallIntegerField(
+        verbose_name='Nouveau niveau')
+    source = models.CharField(
+        max_length=12, choices=Source.choices, default=Source.MANUELLE,
+        verbose_name='Source')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Historique de compétence'
+        verbose_name_plural = 'Historiques de compétence'
+        ordering = ['-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'employe', 'competence'],
+                name='rh_hist_comp_emp_comp_idx'),
+        ]
+
+    def __str__(self):
+        return (f'{self.employe.matricule} — {self.competence.code} : '
+                f'{self.ancien_niveau} → {self.nouveau_niveau}')
+
+
+class RetourFeedback360(models.Model):
+    """Feedback 360° — avis multi-sources sur un entretien (ZRH9).
+
+    ``EvaluationEmploye`` (FG190) ne porte que la note manager (+ l'auto-
+    éval XRH26). Ici, le RH/manager INVITE N répondants (pairs,
+    subordonnés, managers transversaux) sur une évaluation ; chaque
+    répondant ne voit et ne remplit QUE SON PROPRE retour — un autre
+    répondant reçoit 403/404 (contrôlé dans la vue). Le couple
+    (evaluation, repondant) est unique : une invitation crée une ligne NON
+    SOUMISE (``soumis=False``), le répondant la complète puis la soumet. Une
+    synthèse agrégée (côté selector) masque les retours individuels sous un
+    seuil de répondants pour préserver l'anonymat. Multi-société :
+    ``company`` posée côté serveur ; ``evaluation`` et ``repondant``
+    doivent appartenir à la même société.
+    """
+    class Relation(models.TextChoices):
+        PAIR = 'pair', 'Pair'
+        SUBORDONNE = 'subordonne', 'Subordonné'
+        MANAGER_TRANSVERSAL = 'manager_transversal', 'Manager transversal'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_retours_feedback360',
+        verbose_name='Société',
+    )
+    evaluation = models.ForeignKey(
+        EvaluationEmploye,
+        on_delete=models.CASCADE,
+        related_name='retours_360',
+        verbose_name='Évaluation',
+    )
+    repondant = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='retours_feedback360',
+        verbose_name='Répondant',
+    )
+    relation = models.CharField(
+        max_length=20, choices=Relation.choices,
+        default=Relation.PAIR, verbose_name='Relation')
+    reponses = models.JSONField(
+        blank=True, default=dict, verbose_name='Réponses')
+    commentaire = models.TextField(
+        blank=True, default='', verbose_name='Commentaire')
+    soumis = models.BooleanField(default=False, verbose_name='Soumis')
+    date_invitation = models.DateTimeField(
+        auto_now_add=True, verbose_name="Date d'invitation")
+    date_soumission = models.DateTimeField(
+        null=True, blank=True, verbose_name='Date de soumission')
+
+    class Meta:
+        verbose_name = 'Retour feedback 360°'
+        verbose_name_plural = 'Retours feedback 360°'
+        ordering = ['-date_invitation']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['evaluation', 'repondant'],
+                name='rh_feedback360_eval_repondant_uniq'),
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'evaluation'],
+                name='rh_feedback360_comp_eval_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.evaluation_id} — {self.repondant.matricule}'

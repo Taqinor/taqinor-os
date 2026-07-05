@@ -31,9 +31,11 @@ from .models import (
     AffectationRoster,
     AffectationVehicule,
     AnalyseRisquesChantier,
+    AttributionBadge,
     AvanceSalaire,
     AvantageSocial,
     AyantDroit,
+    BadgeReconnaissance,
     BesoinFormation,
     BulletinPaie,
     CampagneEvaluation,
@@ -47,6 +49,7 @@ from .models import (
     CompetenceEmploye,
     CompetenceRequise,
     CorrectionPointage,
+    DemandeAllocation,
     DemandeConge,
     DemandeRH,
     Departement,
@@ -56,6 +59,8 @@ from .models import (
     EntretienSortie,
     GabaritEmailRecrutement,
     GrilleSalariale,
+    HistoriqueCompetence,
+    LigneParcours,
     NoteEntretien,
     PeriodeFermeture,
     PromesseEmbauche,
@@ -88,11 +93,13 @@ from .models import (
     PrimeAttribuee,
     QuizFormation,
     Remuneration,
+    RetourFeedback360,
     Sanction,
     SessionFormation,
     SoldeConge,
     TentativeQuiz,
     TypeAbsence,
+    TypeLigneParcours,
     TypePrime,
     VisiteMedicale,
 )
@@ -102,10 +109,12 @@ from .serializers import (
     AffectationVehiculeSerializer,
     AnalyseRisquesChantierSerializer,
     AnnuaireEmployeSerializer,
+    AttributionBadgeSerializer,
     AutoEvaluationSerializer,
     AvantageSocialSerializer,
     AyantDroitSerializer,
     AvanceSalaireSerializer,
+    BadgeReconnaissanceSerializer,
     BesoinFormationSerializer,
     BulletinPaieSerializer,
     CampagneEvaluationSerializer,
@@ -120,6 +129,7 @@ from .serializers import (
     CompetenceRequiseSerializer,
     CompetenceSerializer,
     CorrectionPointageSerializer,
+    DemandeAllocationSerializer,
     DemandeCongeSerializer,
     DemandeRHSerializer,
     DepartementSerializer,
@@ -129,6 +139,7 @@ from .serializers import (
     EntretienSortieSerializer,
     GabaritEmailRecrutementSerializer,
     GrilleSalarialeSerializer,
+    LigneParcoursSerializer,
     NoteEntretienSerializer,
     PeriodeFermetureSerializer,
     PromesseEmbaucheSerializer,
@@ -165,12 +176,15 @@ from .serializers import (
     PrimeAttribueeSerializer,
     QuizFormationPortailSerializer,
     QuizFormationSerializer,
+    MonFeedback360Serializer,
     RemunerationSerializer,
+    RetourFeedback360Serializer,
     SanctionSerializer,
     SessionFormationSerializer,
     SoldeCongeSerializer,
     TentativeQuizSerializer,
     TypeAbsenceSerializer,
+    TypeLigneParcoursSerializer,
     TypePrimeSerializer,
     VisiteMedicaleSerializer,
 )
@@ -242,6 +256,11 @@ class DossierEmployeViewSet(_RhBaseViewSet):
         # ne fuit, donc élargir ici l'accès en lecture est sûr.
         if self.action == 'annuaire':
             return [IsAnyRole()]
+        # ZRH16 — savoir où l'équipe travaille aujourd'hui sert à tous, pas
+        # seulement responsable/admin ; aucun champ sensible n'est exposé
+        # (nom, jour, lieu).
+        if self.action == 'localisation_du_jour':
+            return [IsAnyRole()]
         return super().get_permissions()
 
     def perform_update(self, serializer):
@@ -295,6 +314,46 @@ class DossierEmployeViewSet(_RhBaseViewSet):
         return Response(
             {'detail': 'PIN mis à jour.'}, status=status.HTTP_200_OK)
 
+    @action(detail=False, methods=['get'], url_path='rapport-turnover')
+    def rapport_turnover(self, request):
+        """ZRH11 — rapport de rétention/turnover ANNUEL détaillé (« Employee
+        retention report » Odoo), DISTINCT du turnover 12 mois glissants du
+        cockpit RH FG200. ``?annee=`` (défaut année en cours). Gaté
+        ``IsResponsableOrAdmin`` (gate de classe par défaut)."""
+        annee = int(
+            request.query_params.get('annee')
+            or timezone.localdate().year)
+        return Response(selectors.rapport_turnover(request.user.company, annee))
+
+    @action(detail=True, methods=['get'], url_path='certificat-travail')
+    def certificat_travail(self, request, pk=None):
+        """ZRH12 — certificat de travail légal (art. 72) — PDF.
+
+        DISTINCT de l'attestation de travail (PAIE34) et du reçu STC
+        (XPAI1) — ne les duplique pas. 404 si l'employé n'est pas sorti
+        (aucun sens pour un actif). Gaté ``IsResponsableOrAdmin`` (gate de
+        classe par défaut)."""
+        from django.http import HttpResponse
+
+        from .pdf_sortie import render_certificat_travail_pdf
+
+        employe = self.get_object()
+        if employe.statut != DossierEmploye.Statut.SORTI or not employe.date_sortie:
+            return Response(
+                {'detail': "Certificat de travail indisponible : "
+                           "l'employé n'est pas sorti."},
+                status=status.HTTP_404_NOT_FOUND)
+        try:
+            pdf_bytes = render_certificat_travail_pdf(employe)
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'attachment; filename="certificat-travail-{employe.pk}.pdf"')
+        return response
+
     @action(detail=True, methods=['get'], url_path='compa-ratio')
     def compa_ratio(self, request, pk=None):
         """XRH16 — compa-ratio de l'employé (salaire vs bande de son poste).
@@ -344,6 +403,24 @@ class DossierEmployeViewSet(_RhBaseViewSet):
 
         return Response(
             AnnuaireEmployeSerializer(qs.distinct(), many=True).data)
+
+    @action(
+        detail=False, methods=['get'], url_path='localisation-du-jour')
+    def localisation_du_jour(self, request):
+        """ZRH16 — localisation de travail attendue de chaque employé actif
+        ce jour (« Remote Work » Odoo). ``?jour=YYYY-MM-DD`` (défaut
+        aujourd'hui)."""
+        from datetime import datetime
+        jour_str = request.query_params.get('jour')
+        if jour_str:
+            try:
+                jour = datetime.strptime(jour_str, '%Y-%m-%d').date()
+            except (TypeError, ValueError):
+                jour = timezone.localdate()
+        else:
+            jour = timezone.localdate()
+        return Response(
+            selectors.localisation_du_jour(request.user.company, jour))
 
     @action(detail=True, methods=['get'], url_path='ecart-competences')
     def ecart_competences(self, request, pk=None):
@@ -1125,6 +1202,93 @@ class DemandeCongeViewSet(_RhBaseViewSet):
         return Response(data)
 
 
+class DemandeAllocationViewSet(_RhBaseViewSet):
+    """Demandes d'allocation de congés self-service (ZRH13).
+
+    Un employé authentifié peut CRÉER une demande pour LUI-MÊME (via le
+    portail, voir ``PortailSelfServiceViewSet.demander_allocation``) ; la
+    liste/validation/refus restent réservées ``IsResponsableOrAdmin`` (gate
+    de classe par défaut). À la VALIDATION, ``services.valider_allocation``
+    crédite ``SoldeConge.acquis`` du nombre de jours — jamais écrit
+    directement du corps. Filtres : ``?employe=`` / ``?statut=``.
+    """
+    queryset = DemandeAllocation.objects.select_related(
+        'employe', 'type_absence', 'decide_par').all()
+    serializer_class = DemandeAllocationSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation', 'statut']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+    @action(detail=True, methods=['post'])
+    def valider(self, request, pk=None):
+        """Valide une demande soumise et crédite le solde disponible."""
+        demande = self.get_object()
+        try:
+            services.valider_allocation(demande, decide_par=request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(demande).data)
+
+    @action(detail=True, methods=['post'])
+    def refuser(self, request, pk=None):
+        """Refuse une demande soumise (aucun crédit de solde)."""
+        demande = self.get_object()
+        try:
+            services.refuser_allocation(demande, decide_par=request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(demande).data)
+
+
+class TypeLigneParcoursViewSet(_RhBaseViewSet):
+    """Types de ligne de parcours configurables par société (ZRH15)."""
+    queryset = TypeLigneParcours.objects.all()
+    serializer_class = TypeLigneParcoursSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['ordre', 'libelle']
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+
+class LigneParcoursViewSet(_RhBaseViewSet):
+    """Timeline de parcours d'un employé (ZRH15, « Resume Line Types »
+    Odoo). CRUD company-scopé ; ``company`` posée côté serveur. Affichée
+    triée par date (voir ``Meta.ordering``) sur la fiche employé et dans
+    l'annuaire self-service (XRH28, via
+    ``LigneParcoursAnnuaireSerializer`` — champs non sensibles
+    uniquement). Filtre : ``?employe=``.
+    """
+    queryset = LigneParcours.objects.select_related('type', 'employe').all()
+    serializer_class = LigneParcoursSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_debut', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+
 class JourBloqueCongeViewSet(_RhBaseViewSet):
     """Jours de blocage congés (ZRH4) — Mandatory/Stress Days.
 
@@ -1504,6 +1668,35 @@ class PointageViewSet(_RhBaseViewSet):
         return Response(
             IncidentPresenceSerializer(incident).data,
             status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'], url_path='rapport')
+    def rapport(self, request):
+        """ZRH18 — rapport de présence & heures supp. par employé/
+        département sur période (« Attendance reporting » Odoo).
+        ``?debut=&fin=`` (YYYY-MM-DD, requis) + filtres optionnels
+        ``?employe=&departement=``. Gaté ``IsResponsableOrAdmin`` (gate de
+        classe par défaut)."""
+        from datetime import datetime
+
+        debut_str = request.query_params.get('debut')
+        fin_str = request.query_params.get('fin')
+        if not debut_str or not fin_str:
+            return Response(
+                {'detail': "Les paramètres 'debut' et 'fin' sont requis."},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            debut = datetime.strptime(debut_str, '%Y-%m-%d').date()
+            fin = datetime.strptime(fin_str, '%Y-%m-%d').date()
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': "Format de date invalide (attendu YYYY-MM-DD)."},
+                status=status.HTTP_400_BAD_REQUEST)
+        employe_id = request.query_params.get('employe')
+        departement_id = request.query_params.get('departement')
+        data = selectors.rapport_presence(
+            request.user.company, debut, fin,
+            employe_id=employe_id, departement_id=departement_id)
+        return Response(data)
 
 
 class PeriodeFermetureViewSet(_RhBaseViewSet):
@@ -1990,9 +2183,61 @@ class CompetenceViewSet(_RhBaseViewSet):
             qs = qs.filter(actif=True)
         return qs
 
+    def get_permissions(self):
+        # ZRH17 — la recherche par compétence sert au staffing terrain
+        # (« qui maîtrise X ? ») : accessible à TOUT employé authentifié de
+        # la société, pas seulement Administrateur/Responsable. Le
+        # serializer annuaire dédié garantit qu'aucun champ sensible ne
+        # fuit, donc élargir ici l'accès en lecture est sûr (même pattern
+        # que XRH28 sur ``DossierEmployeViewSet.annuaire``).
+        if self.action == 'employes':
+            return [IsAnyRole()]
+        return super().get_permissions()
+
     def perform_create(self, serializer):
         """Company posée côté serveur, jamais lue du corps."""
         serializer.save(company=self.request.user.company)
+
+    @action(detail=True, methods=['get'], url_path='employes')
+    def employes(self, request, pk=None):
+        """ZRH17 — employés qualifiés sur CETTE compétence (« Skills
+        search/filter » Odoo). ``?niveau_min=`` (défaut 0). Multi-critères :
+        ``?competences=<id1>,<id2>`` ajoute une INTERSECTION (l'employé doit
+        satisfaire ``niveau_min`` sur toutes). Champs non sensibles
+        (serializer annuaire XRH28), lecture seule, société scopée."""
+        competence = self.get_object()
+        niveau_min = int(request.query_params.get('niveau_min', 0))
+        autres_raw = request.query_params.get('competences', '')
+        autres_ids = [
+            cid.strip() for cid in autres_raw.split(',') if cid.strip()]
+        employes = selectors.employes_par_competence(
+            request.user.company, competence.id,
+            niveau_min=niveau_min, competence_ids=autres_ids)
+        return Response(
+            AnnuaireEmployeSerializer(employes, many=True).data)
+
+    @action(detail=False, methods=['get'], url_path='evolution')
+    def evolution(self, request):
+        """ZRH10 — rapport d'évolution des compétences (« Skills Evolution »
+        Odoo). ``?employe=&competence=&debut=&fin=`` optionnels (YYYY-MM-DD).
+        Gaté ``IsResponsableOrAdmin`` (gate de classe par défaut)."""
+        from datetime import datetime
+
+        def _parse(name):
+            raw = request.query_params.get(name)
+            if not raw:
+                return None
+            try:
+                return datetime.strptime(raw, '%Y-%m-%d').date()
+            except (TypeError, ValueError):
+                return None
+
+        data = selectors.evolution_competences(
+            request.user.company,
+            employe_id=request.query_params.get('employe'),
+            competence_id=request.query_params.get('competence'),
+            debut=_parse('debut'), fin=_parse('fin'))
+        return Response(data)
 
 
 class CompetenceEmployeViewSet(_RhBaseViewSet):
@@ -2033,17 +2278,37 @@ class CompetenceEmployeViewSet(_RhBaseViewSet):
         return qs
 
     def perform_create(self, serializer):
-        """Company + traçabilité d'évaluation posées côté serveur."""
-        serializer.save(
+        """Company + traçabilité d'évaluation posées côté serveur.
+
+        ZRH10 — une CRÉATION avec niveau > 0 est un changement (0 -> niveau)
+        et écrit une ligne ``HistoriqueCompetence`` (source='manuelle').
+        """
+        instance = serializer.save(
             company=self.request.user.company,
             evalue_par=self.request.user,
             evalue_le=timezone.now())
+        if instance.niveau:
+            HistoriqueCompetence.objects.create(
+                company=instance.company, employe=instance.employe,
+                competence=instance.competence,
+                ancien_niveau=0, nouveau_niveau=instance.niveau,
+                source=HistoriqueCompetence.Source.MANUELLE)
 
     def perform_update(self, serializer):
-        """Réévaluation : on retrace l'auteur/date côté serveur."""
-        serializer.save(
+        """Réévaluation : on retrace l'auteur/date côté serveur.
+
+        ZRH10 — écrit ``HistoriqueCompetence`` (source='manuelle') si le
+        niveau change réellement."""
+        ancien_niveau = serializer.instance.niveau
+        instance = serializer.save(
             evalue_par=self.request.user,
             evalue_le=timezone.now())
+        if instance.niveau != ancien_niveau:
+            HistoriqueCompetence.objects.create(
+                company=instance.company, employe=instance.employe,
+                competence=instance.competence,
+                ancien_niveau=ancien_niveau, nouveau_niveau=instance.niveau,
+                source=HistoriqueCompetence.Source.MANUELLE)
 
     @action(detail=False, methods=['get'])
     def matrice(self, request):
@@ -3112,16 +3377,12 @@ class SessionFormationViewSet(_RhBaseViewSet):
             niveau = max(0, min(4, niveau))
             now = timezone.now()
             for inscr in session.inscriptions.filter(present=True):
-                CompetenceEmploye.objects.update_or_create(
-                    employe_id=inscr.participant_id,
-                    competence_id=session.competence_visee_id,
-                    defaults={
-                        'company': session.company,
-                        'niveau': niveau,
-                        'evalue_le': now,
-                        'evalue_par': request.user,
-                    },
-                )
+                # ZRH10 — passe par le point d'entrée unique (historise le
+                # changement de niveau, source='formation').
+                services.enregistrer_niveau_competence(
+                    inscr.participant, session.competence_visee_id, niveau,
+                    company=session.company, evalue_par=request.user,
+                    evalue_le=now, source='formation')
         return Response(
             self.get_serializer(session).data, status=status.HTTP_200_OK)
 
@@ -3282,6 +3543,63 @@ class TentativeQuizViewSet(_RhBaseViewSet):
         response['Content-Disposition'] = (
             f'attachment; filename="attestation-quiz-{tentative.pk}.pdf"')
         return response
+
+
+class BadgeReconnaissanceViewSet(_RhBaseViewSet):
+    """Catalogue des badges de reconnaissance interne (ZRH14).
+
+    Société scopée + Administrateur/Responsable (gate d'écriture du
+    catalogue). ``company`` posée côté serveur.
+    """
+    queryset = BadgeReconnaissance.objects.all()
+    serializer_class = BadgeReconnaissanceSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom', 'description']
+    ordering_fields = ['nom', 'date_creation']
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+
+class AttributionBadgeViewSet(_RhBaseViewSet):
+    """Attribution de badges de reconnaissance entre collègues (ZRH14).
+
+    Accessible en LECTURE+CRÉATION à TOUT employé authentifié de la société
+    (pas seulement Administrateur/Responsable) : la reconnaissance
+    pair-à-pair est le point de la fonctionnalité. ``company`` et
+    ``attribue_par`` sont posés côté serveur. Auto-attribution refusée
+    (400) : ``beneficiaire`` ne peut pas être le dossier employé de
+    l'auteur de la requête.
+    """
+    queryset = AttributionBadge.objects.select_related(
+        'badge', 'beneficiaire').all()
+    serializer_class = AttributionBadgeSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation']
+
+    def get_permissions(self):
+        return [IsAnyRole()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        beneficiaire = self.request.query_params.get('beneficiaire')
+        if beneficiaire:
+            qs = qs.filter(beneficiaire_id=beneficiaire)
+        return qs
+
+    def perform_create(self, serializer):
+        beneficiaire = serializer.validated_data.get('beneficiaire')
+        dossier_auteur = DossierEmploye.objects.filter(
+            company=self.request.user.company,
+            user=self.request.user).first()
+        if (dossier_auteur is not None and beneficiaire is not None
+                and beneficiaire.id == dossier_auteur.id):
+            raise serializers.ValidationError(
+                {'beneficiaire': "Impossible de s'attribuer un badge "
+                                 "à soi-même."})
+        serializer.save(
+            company=self.request.user.company,
+            attribue_par=self.request.user)
 
 
 class OuverturePosteViewSet(_RhBaseViewSet):
@@ -3824,6 +4142,51 @@ class EvaluationEmployeViewSet(_RhBaseViewSet):
 
         return Response(
             self.get_serializer(evaluation).data, status=status.HTTP_200_OK)
+
+
+class RetourFeedback360ViewSet(_RhBaseViewSet):
+    """Feedback 360° — gestion des invitations (ZRH9).
+
+    Société scopée + Administrateur/Responsable (le RH/manager invite N
+    répondants sur une évaluation — ``POST`` crée une ligne NON SOUMISE,
+    ``company``/``evaluation``/``repondant`` validés). Le répondant
+    lui-même utilise l'endpoint self-service dédié (portail,
+    ``mes-feedback360``) pour remplir/soumettre — jamais cette vue de
+    gestion, qui ne modifie pas ``reponses``/``commentaire``/``soumis``.
+    Filtres : ``?evaluation=``.
+
+    Action :
+    * ``GET .../synthese/?evaluation=`` — synthèse agrégée (moyennes par
+      critère, retours anonymisés sous le seuil de répondants).
+    """
+    queryset = RetourFeedback360.objects.select_related(
+        'evaluation', 'repondant').all()
+    serializer_class = RetourFeedback360Serializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_invitation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        evaluation = self.request.query_params.get('evaluation')
+        if evaluation:
+            qs = qs.filter(evaluation_id=evaluation)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+    @action(detail=False, methods=['get'], url_path='synthese')
+    def synthese(self, request):
+        """Synthèse agrégée des retours SOUMIS d'une évaluation.
+        ``?evaluation=`` requis."""
+        evaluation_id = request.query_params.get('evaluation')
+        evaluation = EvaluationEmploye.objects.filter(
+            company=request.user.company, pk=evaluation_id).first()
+        if evaluation is None:
+            return Response(
+                {'detail': "Paramètre 'evaluation' requis/introuvable."},
+                status=status.HTTP_404_NOT_FOUND)
+        return Response(selectors.synthese_feedback360(evaluation))
 
 
 class SanctionViewSet(_RhBaseViewSet):
@@ -4773,6 +5136,33 @@ class PortailSelfServiceViewSet(viewsets.ViewSet):
             'type_absence')
         return Response(DemandeCongeSerializer(qs, many=True).data)
 
+    @action(detail=False, methods=['get', 'post'], url_path='mes-allocations')
+    def mes_allocations(self, request):
+        """ZRH13 — allocation de congés self-service : ``GET`` liste les
+        demandes du collaborateur connecté (avec son solde disponible par
+        type) ; ``POST`` en crée une nouvelle pour LUI-MÊME. ``employe`` et
+        ``company`` sont posés CÔTÉ SERVEUR (jamais lus du corps)."""
+        dossier = self._dossier(request)
+        if dossier is None:
+            if request.method == 'POST':
+                return Response(
+                    {'detail': 'Aucun dossier employé lié à ce compte.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            return Response([])
+        if request.method == 'POST':
+            data = {
+                k: v for k, v in request.data.items() if k != 'employe'}
+            data['employe'] = dossier.id
+            ser = DemandeAllocationSerializer(
+                data=data, context={'request': request})
+            ser.is_valid(raise_exception=True)
+            ser.save(company=request.user.company)
+            return Response(ser.data, status=status.HTTP_201_CREATED)
+        qs = DemandeAllocation.objects.filter(
+            company=request.user.company, employe=dossier).select_related(
+            'type_absence')
+        return Response(DemandeAllocationSerializer(qs, many=True).data)
+
     @action(detail=False, methods=['post'], url_path='demander-conge')
     def demander_conge(self, request):
         """Crée une demande de congé pour le collaborateur connecté.
@@ -5063,6 +5453,43 @@ class PortailSelfServiceViewSet(viewsets.ViewSet):
             evaluation, data=request.data, partial=True)
         ser.is_valid(raise_exception=True)
         ser.save()
+        return Response(ser.data)
+
+    @action(detail=False, methods=['get'], url_path='mes-feedback360')
+    def mes_feedback360(self, request):
+        """ZRH9 — liste les invitations feedback 360° du collaborateur
+        connecté (celles où IL est le répondant)."""
+        dossier = self._dossier(request)
+        if dossier is None:
+            return Response([])
+        qs = RetourFeedback360.objects.filter(
+            company=request.user.company, repondant=dossier
+        ).select_related('evaluation')
+        return Response(MonFeedback360Serializer(qs, many=True).data)
+
+    @action(
+        detail=True, methods=['patch'], url_path='mon-feedback360')
+    def mon_feedback360(self, request, pk=None):
+        """ZRH9 — remplit/soumet SON PROPRE retour feedback 360°
+        (``pk`` = id du ``RetourFeedback360``). Un répondant ne voit ni ne
+        modifie JAMAIS le retour d'un autre — un id qui n'est pas le sien
+        (ou d'une autre société) renvoie 404."""
+        dossier = self._dossier(request)
+        if dossier is None:
+            return Response(
+                {'detail': 'Aucun dossier employé lié à ce compte.'},
+                status=status.HTTP_404_NOT_FOUND)
+        retour = RetourFeedback360.objects.filter(
+            company=request.user.company, pk=pk, repondant=dossier).first()
+        if retour is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        ser = MonFeedback360Serializer(
+            retour, data=request.data, partial=True)
+        ser.is_valid(raise_exception=True)
+        if request.data.get('soumis'):
+            ser.save(soumis=True, date_soumission=timezone.now())
+        else:
+            ser.save()
         return Response(ser.data)
 
 

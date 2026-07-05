@@ -2458,3 +2458,416 @@ def rapport_conges(company, annee, employe_id=None, departement_id=None):
         'par_employe': sorted(
             par_employe.values(), key=lambda e: -e['jours']),
     }
+
+
+def rapport_turnover(company, annee):
+    """ZRH11 — rapport de rétention / turnover ANNUEL détaillé.
+
+    DISTINCT du turnover 12 mois glissants du cockpit RH (FG200,
+    :func:`cockpit_rh`) — celui-ci reste inchangé. Pour l'année civile
+    ``annee`` (1er janvier -> 31 décembre), calcule :
+
+    * ``effectif_debut`` / ``effectif_fin`` — employés déjà embauchés
+      (``date_embauche`` <= borne) et pas encore sortis à cette date-là
+      (``date_sortie`` absente ou postérieure) ;
+    * ``par_mois`` — liste de 12 entrées ``{mois, entrees, sorties}`` ;
+    * ``taux_turnover_pct`` — sorties de l'année / effectif moyen
+      ((debut+fin)/2), 0 si effectif moyen nul ;
+    * ``anciennete_moyenne_ans`` — ancienneté moyenne (en années) des
+      employés présents à la fin de l'année (sur ``date_embauche``) ;
+    * ``retention_12m_pct`` — parmi les employés embauchés durant l'année
+      N-1, la part encore présente (non sortie) 12 mois après leur entrée
+      (ou toujours actifs si la fenêtre n'est pas encore écoulée -> exclus
+      du dénominateur tant que leurs 12 mois ne sont pas atteints à
+      aujourd'hui).
+
+    Lecture seule, société scopée, pas de migration.
+    """
+    from datetime import date
+
+    from django.utils import timezone as _tz
+
+    debut_annee = date(annee, 1, 1)
+    fin_annee = date(annee, 12, 31)
+    today = _tz.localdate()
+
+    base = DossierEmploye.objects.filter(company=company)
+
+    def present_a(d):
+        # Déjà embauché à la date ``d`` ET pas encore sorti à cette date-là
+        # (``date_sortie`` absente ou postérieure à ``d``).
+        return base.filter(
+            date_embauche__isnull=False, date_embauche__lte=d,
+        ).exclude(
+            date_sortie__isnull=False, date_sortie__lt=d,
+        )
+
+    effectif_debut = present_a(debut_annee).count()
+    effectif_fin = present_a(min(fin_annee, today)).count()
+
+    par_mois = []
+    total_entrees = 0
+    total_sorties = 0
+    for m in range(1, 13):
+        mois_debut = date(annee, m, 1)
+        mois_fin = date(annee, m, 28)
+        # Dernier jour du mois (sans dépendance externe).
+        if m == 12:
+            mois_fin = date(annee, 12, 31)
+        else:
+            mois_fin = date(annee, m + 1, 1) - timedelta(days=1)
+        entrees = base.filter(
+            date_embauche__gte=mois_debut, date_embauche__lte=mois_fin
+        ).count()
+        sorties = base.filter(
+            date_sortie__gte=mois_debut, date_sortie__lte=mois_fin
+        ).count()
+        total_entrees += entrees
+        total_sorties += sorties
+        par_mois.append({
+            'mois': m, 'entrees': entrees, 'sorties': sorties,
+        })
+
+    effectif_moyen = (effectif_debut + effectif_fin) / 2
+    taux_turnover_pct = (
+        round(total_sorties / effectif_moyen * 100, 1)
+        if effectif_moyen else 0.0)
+
+    presents_fin = present_a(min(fin_annee, today))
+    anciennetes = [
+        (min(fin_annee, today) - emp.date_embauche).days / 365.25
+        for emp in presents_fin if emp.date_embauche
+    ]
+    anciennete_moyenne_ans = (
+        round(sum(anciennetes) / len(anciennetes), 1)
+        if anciennetes else 0.0)
+
+    # Rétention 12 mois des embauchés de l'année N-1 : uniquement ceux dont
+    # les 12 mois sont déjà écoulés à aujourd'hui (sinon on ne peut pas
+    # encore juger — exclus du dénominateur).
+    annee_precedente = annee - 1
+    embauches_n1 = base.filter(
+        date_embauche__year=annee_precedente, date_embauche__isnull=False)
+    jugeables = []
+    encore_presents = 0
+    for emp in embauches_n1:
+        jalon = emp.date_embauche + timedelta(days=365)
+        if jalon > today:
+            continue
+        jugeables.append(emp)
+        if not emp.date_sortie or emp.date_sortie > jalon:
+            encore_presents += 1
+    retention_12m_pct = (
+        round(encore_presents / len(jugeables) * 100, 1)
+        if jugeables else None)
+
+    return {
+        'annee': annee,
+        'effectif_debut': effectif_debut,
+        'effectif_fin': effectif_fin,
+        'par_mois': par_mois,
+        'entrees_total': total_entrees,
+        'sorties_total': total_sorties,
+        'taux_turnover_pct': taux_turnover_pct,
+        'anciennete_moyenne_ans': anciennete_moyenne_ans,
+        'retention_12m_pct': retention_12m_pct,
+    }
+
+
+def employes_par_competence(
+        company, competence_id, niveau_min=0, actif=True,
+        competence_ids=None):
+    """ZRH17 — recherche transverse « qui maîtrise X au niveau >= N ? ».
+
+    Renvoie les ``DossierEmploye`` de la société dont le niveau sur
+    ``competence_id`` est >= ``niveau_min``, triés par niveau décroissant.
+    ``actif=True`` (défaut) exclut les employés sortis. Si
+    ``competence_ids`` (itérable d'IDs) est fourni en plus de
+    ``competence_id``, l'INTERSECTION est requise : l'employé doit
+    satisfaire ``niveau_min`` sur CHACUNE des compétences (celle passée en
+    premier + celles de ``competence_ids``). Lecture seule, société scopée.
+    """
+    from .models import CompetenceEmploye
+
+    toutes_competences = [competence_id]
+    if competence_ids:
+        toutes_competences += [
+            cid for cid in competence_ids if cid != competence_id]
+
+    base = DossierEmploye.objects.filter(company=company)
+    if actif:
+        base = base.exclude(statut=DossierEmploye.Statut.SORTI)
+
+    # Niveau de l'employé sur la compétence "primaire" — sert au tri.
+    niveaux_primaire = dict(
+        CompetenceEmploye.objects
+        .filter(
+            company=company, competence_id=competence_id,
+            niveau__gte=niveau_min)
+        .values_list('employe_id', 'niveau'))
+    qualifies_ids = set(niveaux_primaire.keys())
+
+    # Intersection : chaque compétence supplémentaire doit aussi être
+    # satisfaite par le même employé.
+    for autre_id in toutes_competences[1:]:
+        satisfait = set(
+            CompetenceEmploye.objects
+            .filter(
+                company=company, competence_id=autre_id,
+                niveau__gte=niveau_min)
+            .values_list('employe_id', flat=True))
+        qualifies_ids &= satisfait
+
+    employes = list(base.filter(id__in=qualifies_ids))
+    employes.sort(
+        key=lambda e: niveaux_primaire.get(e.id, 0), reverse=True)
+    return employes
+
+
+def rapport_presence(
+        company, date_debut, date_fin, employe_id=None,
+        departement_id=None):
+    """ZRH18 — rapport de présence & heures supp. par employé/département
+    sur période (« Attendance reporting » Odoo).
+
+    Pour chaque employé de la société ayant au moins un ``Pointage`` sur
+    ``[date_debut, date_fin]`` (bornes incluses sur ``heure_arrivee``) :
+
+    * ``jours_pointes`` — nombre de jours distincts pointés ;
+    * ``heures_totales`` — somme des ``duree_minutes`` (arrivée->départ)
+      convertie en heures (float, arrondi 2) ;
+    * ``heures_supp`` — total HS validées via :func:`heures_supp_pour_paie` ;
+    * ``jours_absence`` — nb d'``IncidentPresence`` de type
+      ``absence_injustifiee`` NON justifiés sur la période (FG171) ;
+    * ``taux_presence_pct`` — jours_pointes / jours ouvrés de la période
+      (jours calendaires hors dimanche, approximation simple), borné [0,
+      100].
+
+    ``totaux_departement`` agrège les mêmes métriques par département.
+    Filtres optionnels ``employe_id`` / ``departement_id`` (et ses
+    descendants). Divisions par zéro gardées. Lecture seule, société
+    scopée, pas de migration.
+    """
+    from .models import Pointage
+
+    if company is None or date_debut is None or date_fin is None:
+        return {'par_employe': [], 'totaux_departement': []}
+
+    base_emp = DossierEmploye.objects.filter(company=company)
+    if departement_id:
+        ids = departements_descendants(company, departement_id)
+        base_emp = base_emp.filter(departement_id__in=ids)
+    if employe_id:
+        base_emp = base_emp.filter(id=employe_id)
+
+    jours_ouvres = sum(
+        1 for n in range((date_fin - date_debut).days + 1)
+        if (date_debut + timedelta(days=n)).weekday() != 6
+    ) or 1
+
+    hs_par_employe = {
+        row['employe_id']: row['total_hs']
+        for row in heures_supp_pour_paie(company, date_debut, date_fin)
+    }
+
+    par_employe = []
+    for emp in base_emp:
+        pointages = Pointage.objects.filter(
+            company=company, employe=emp,
+            heure_arrivee__date__gte=date_debut,
+            heure_arrivee__date__lte=date_fin)
+        jours_pointes = pointages.dates('heure_arrivee', 'day').count()
+        minutes = sum(
+            p.duree_minutes or 0 for p in pointages)
+        jours_absence = IncidentPresence.objects.filter(
+            company=company, employe=emp,
+            type_incident=IncidentPresence.TypeIncident.ABSENCE_INJUSTIFIEE,
+            date__gte=date_debut, date__lte=date_fin,
+            justifie=False,
+        ).count()
+        if not jours_pointes and not jours_absence and emp.id not in hs_par_employe:
+            continue
+        par_employe.append({
+            'employe_id': emp.id,
+            'nom': f'{emp.nom} {emp.prenom}',
+            'departement_id': emp.departement_id,
+            'jours_pointes': jours_pointes,
+            'heures_totales': round(minutes / 60, 2),
+            'heures_supp': float(hs_par_employe.get(emp.id, 0)),
+            'jours_absence': jours_absence,
+            'taux_presence_pct': round(
+                min(jours_pointes / jours_ouvres, 1.0) * 100, 1),
+        })
+
+    totaux_par_dep = {}
+    for entry in par_employe:
+        dep_id = entry['departement_id']
+        agg = totaux_par_dep.setdefault(dep_id, {
+            'departement_id': dep_id,
+            'jours_pointes': 0, 'heures_totales': 0.0,
+            'heures_supp': 0.0, 'jours_absence': 0,
+        })
+        agg['jours_pointes'] += entry['jours_pointes']
+        agg['heures_totales'] += entry['heures_totales']
+        agg['heures_supp'] += entry['heures_supp']
+        agg['jours_absence'] += entry['jours_absence']
+
+    for dep_id, agg in totaux_par_dep.items():
+        agg['heures_totales'] = round(agg['heures_totales'], 2)
+        agg['heures_supp'] = round(agg['heures_supp'], 2)
+        if dep_id is not None:
+            dep = Departement.objects.filter(
+                company=company, id=dep_id).first()
+            agg['departement_nom'] = dep.nom if dep else ''
+        else:
+            agg['departement_nom'] = 'Sans département'
+
+    return {
+        'par_employe': par_employe,
+        'totaux_departement': sorted(
+            totaux_par_dep.values(),
+            key=lambda e: (e['departement_id'] is None, e['departement_nom'])),
+    }
+
+
+_JOURS_SEMAINE = [
+    'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche',
+]
+
+DEFAULT_LOCALISATION = 'bureau'
+
+
+def localisation_du_jour(company, jour):
+    """ZRH16 — localisation de travail attendue de chaque employé actif de
+    la société pour ``jour`` (objet ``date``).
+
+    Pour chaque employé (hors sortis) : lit ``localisation_hebdo`` (JSON
+    jour->lieu, clé absente = ``bureau`` par défaut, cf.
+    :data:`DEFAULT_LOCALISATION`) pour le jour de semaine de ``jour`` ; si
+    l'employé a une demande de congé VALIDÉE couvrant ``jour``, la
+    localisation devient ``absent`` (prend le pas sur le réglage). Purement
+    informatif — aucun impact paie/pointage. Lecture seule, société scopée.
+    """
+    from .models import DemandeConge
+
+    nom_jour = _JOURS_SEMAINE[jour.weekday()]
+    employes = DossierEmploye.objects.filter(
+        company=company).exclude(statut=DossierEmploye.Statut.SORTI)
+
+    en_conge_ids = set(
+        DemandeConge.objects.filter(
+            company=company, statut=DemandeConge.Statut.VALIDEE,
+            date_debut__lte=jour, date_fin__gte=jour,
+        ).values_list('employe_id', flat=True))
+
+    resultat = []
+    for emp in employes:
+        if emp.id in en_conge_ids:
+            lieu = 'absent'
+        else:
+            carte = emp.localisation_hebdo or {}
+            lieu = carte.get(nom_jour) or DEFAULT_LOCALISATION
+        resultat.append({
+            'employe_id': emp.id,
+            'nom': f'{emp.nom} {emp.prenom}',
+            'jour': nom_jour,
+            'localisation': lieu,
+        })
+    return resultat
+
+
+def evolution_competences(
+        company, *, employe_id=None, competence_id=None, debut=None,
+        fin=None):
+    """ZRH10 — rapport d'évolution des compétences (« Skills Evolution »
+    Odoo) : rejoue les changements de niveau (:class:`HistoriqueCompetence`,
+    écrits automatiquement à chaque upsert du niveau — voir
+    ``services.enregistrer_niveau_competence``) sur une période, société
+    scopée, filtrable par employé/compétence.
+
+    Renvoie une liste de dicts ``{employe_id, employe_nom, competence_id,
+    competence_libelle, ancien_niveau, nouveau_niveau, progression (bool),
+    source, date}`` triée la plus récente d'abord. ``progression`` distingue
+    une PROGRESSION (nouveau > ancien) d'une RÉGRESSION.
+    """
+    from .models import HistoriqueCompetence
+
+    qs = HistoriqueCompetence.objects.filter(
+        company=company).select_related('employe', 'competence')
+    if employe_id:
+        qs = qs.filter(employe_id=employe_id)
+    if competence_id:
+        qs = qs.filter(competence_id=competence_id)
+    if debut:
+        qs = qs.filter(date_creation__date__gte=debut)
+    if fin:
+        qs = qs.filter(date_creation__date__lte=fin)
+
+    return [
+        {
+            'employe_id': h.employe_id,
+            'employe_nom': f'{h.employe.nom} {h.employe.prenom}',
+            'competence_id': h.competence_id,
+            'competence_libelle': h.competence.libelle,
+            'ancien_niveau': h.ancien_niveau,
+            'nouveau_niveau': h.nouveau_niveau,
+            'progression': h.nouveau_niveau > h.ancien_niveau,
+            'source': h.source,
+            'date': h.date_creation,
+        }
+        for h in qs
+    ]
+
+
+SEUIL_ANONYMAT_360 = 3
+
+
+def synthese_feedback360(evaluation):
+    """ZRH9 — synthèse agrégée des retours SOUMIS d'un feedback 360°.
+
+    Agrège les réponses ``RetourFeedback360.reponses`` (JSON
+    ``{question: note}``) des retours SOUMIS de l'évaluation : moyenne par
+    critère/question. Les retours INDIVIDUELS ne sont RENVOYÉS
+    qu'au-dessus du seuil d'anonymat (:data:`SEUIL_ANONYMAT_360` — au
+    moins 3 répondants soumis) ; en-dessous, seule la moyenne agrégée est
+    exposée (aucun retour individuel, aucun nom de répondant identifiable
+    dans cette synthèse). Lecture seule.
+    """
+    soumis = list(
+        evaluation.retours_360.filter(soumis=True))
+    nb_reponses = len(soumis)
+    anonymise = nb_reponses < SEUIL_ANONYMAT_360
+
+    moyennes = {}
+    compteurs = {}
+    for retour in soumis:
+        for question, note in (retour.reponses or {}).items():
+            try:
+                valeur = float(note)
+            except (TypeError, ValueError):
+                continue
+            moyennes[question] = moyennes.get(question, 0.0) + valeur
+            compteurs[question] = compteurs.get(question, 0) + 1
+
+    moyennes_par_critere = {
+        question: round(total / compteurs[question], 2)
+        for question, total in moyennes.items()
+    }
+
+    result = {
+        'nb_invites': evaluation.retours_360.count(),
+        'nb_soumis': nb_reponses,
+        'anonymise': anonymise,
+        'moyennes_par_critere': moyennes_par_critere,
+    }
+    if not anonymise:
+        result['retours'] = [
+            {
+                'repondant_id': r.repondant_id,
+                'relation': r.relation,
+                'reponses': r.reponses,
+                'commentaire': r.commentaire,
+            }
+            for r in soumis
+        ]
+    return result
