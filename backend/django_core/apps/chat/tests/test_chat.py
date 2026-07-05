@@ -677,9 +677,10 @@ class XKB24ThreadTests(TestCase):
 
     @patch('apps.notifications.services.notify')
     def test_only_thread_followers_notified_not_whole_channel(self, mock_notify):
-        services.reply_in_thread(
-            root_message=self.root, sender=self.bob, company=self.company,
-            body='réponse')
+        with self.captureOnCommitCallbacks(execute=True):
+            services.reply_in_thread(
+                root_message=self.root, sender=self.bob, company=self.company,
+                body='réponse')
         notified_users = {call.args[0] for call in mock_notify.call_args_list}
         # alice (racine, auto-suivie) est notifiée ; carol (membre du canal,
         # pas du fil) ne l'est PAS ; bob (auteur) ne se notifie pas lui-même.
@@ -776,9 +777,10 @@ class XKB25NotificationLevelTests(TestCase):
         member = ConversationMember.objects.get(
             conversation=self.conv, user=self.bob)
         services.set_notification_level(member, 'mentions')
-        services.create_message(
-            conversation=self.conv, sender=self.alice, company=self.company,
-            body='@bob regarde ça')
+        with self.captureOnCommitCallbacks(execute=True):
+            services.create_message(
+                conversation=self.conv, sender=self.alice, company=self.company,
+                body='@bob regarde ça')
         notified = {call.args[0] for call in mock_notify.call_args_list}
         self.assertIn(self.bob, notified)
 
@@ -864,12 +866,13 @@ class XKB26StatusDndTests(TestCase):
             self.bob, self.company,
             start=timezone.now() - timedelta(hours=2),
             end=timezone.now() - timedelta(hours=1))
-        with patch('apps.notifications.services.notify') as mock_notify:
+        with patch('apps.notifications.services.notify') as mock_notify, \
+                self.captureOnCommitCallbacks(execute=True):
             services.create_message(
                 conversation=self.conv, sender=self.alice,
                 company=self.company, body='Bonjour')
-            notified = {call.args[0] for call in mock_notify.call_args_list}
-            self.assertIn(self.bob, notified)
+        notified = {call.args[0] for call in mock_notify.call_args_list}
+        self.assertIn(self.bob, notified)
 
     def test_dnd_invalid_window_rejected(self):
         from django.utils import timezone
@@ -1300,9 +1303,11 @@ class XKB32RetentionExportTests(TestCase):
         ConversationMember.objects.get_or_create(
             conversation=self.conv, user=self.admin)
         admin_api = auth(self.admin)
+        # ?export=csv — jamais ?format= (réservé DRF, renvoie 404 : garde-fou
+        # identique à compta/flotte/ged).
         r = admin_api.get(
             f'/api/django/chat/conversations/{self.conv.id}'
-            f'/export/?format=csv')
+            f'/export/?export=csv')
         self.assertEqual(r.status_code, 200)
         self.assertIn('text/csv', r['Content-Type'])
 
@@ -1379,12 +1384,13 @@ class ZCTR12ChannelEmailAliasTests(TestCase):
             user=self.bob, event_type=EventType.CHAT_MESSAGE,
             in_app=True, email=True)
         with patch('apps.notifications.services._dispatch_email',
-                   return_value=True) as mock_send:
+                   return_value=True) as mock_send, \
+                self.captureOnCommitCallbacks(execute=True):
             services.create_message(
                 conversation=self.conv, sender=self.alice,
                 company=self.company, body='Bonjour aliasé')
-            mock_send.assert_called_once()
-            self.assertEqual(mock_send.call_args.args[0], self.bob)
+        mock_send.assert_called_once()
+        self.assertEqual(mock_send.call_args.args[0], self.bob)
 
     @patch('apps.ventes.email_service.is_email_configured', return_value=True)
     def test_non_opted_in_member_not_emailed(self, _mock_cfg):
