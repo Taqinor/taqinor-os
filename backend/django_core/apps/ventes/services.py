@@ -3650,3 +3650,68 @@ def generer_facture_intervention(*, intervention, user):
         'ZFSM4: facture %s créée depuis intervention %s (company %s)',
         facture.reference, intervention.id, getattr(company, 'id', '?'))
     return facture
+
+
+# ── ZFSM5 — Devis d'upsell créé sur place depuis l'intervention ────────────
+# apps.installations ne peut PAS importer apps.ventes.models directement
+# (règle de modularité CLAUDE.md) : cette fonction est son unique porte
+# d'entrée pour générer un devis brouillon d'upsell depuis une intervention
+# (opportunité vue sur place — 2ᵉ site, batterie, extension) — DISTINCT de
+# XFSM18 (réserve → devis de RÉPARATION, reprise d'un défaut).
+
+def create_devis_upsell_from_intervention(*, intervention, user):
+    """ZFSM5 — crée un DEVIS brouillon d'upsell à partir d'une intervention,
+    pour le cas où le technicien voit une opportunité sur place. Le client
+    est celui du CHANTIER (`intervention.installation.client`, déjà résolu —
+    pattern `create_devis_from_reserve`, aucune re-résolution lead
+    nécessaire). La description est pré-remplie depuis le chantier/type
+    d'intervention ; aucune ligne n'est créée (une LigneDevis exige un
+    Produit du catalogue) — le devis brouillon est laissé à compléter dans
+    l'éditeur.
+
+    Le devis reste ``brouillon`` : ce service CRÉE, il ne change aucun statut
+    aval (règle #4). Aucun impact sur `/proposal`.
+
+    IDEMPOTENT : si ``intervention.devis_upsell_id`` pointe déjà vers un
+    devis existant, le renvoie tel quel plutôt que d'en créer un second.
+    Renvoie le ``Devis`` créé (ou réutilisé)."""
+    from .models import Devis
+    from .utils.references import create_with_reference
+
+    if intervention.devis_upsell_id:
+        existant = Devis.objects.filter(
+            pk=intervention.devis_upsell_id, company=intervention.company
+        ).first()
+        if existant is not None:
+            return existant
+
+    installation = intervention.installation
+    if installation is None or installation.client_id is None:
+        raise ValueError(
+            "create_devis_upsell_from_intervention requires an intervention "
+            "attached to a chantier with a resolved client")
+    client = installation.client
+    company = intervention.company or installation.company
+
+    note = (
+        "Devis d'upsell généré depuis une intervention sur place.\n"
+        f"Chantier : {installation.reference}\n"
+        f"Type d'intervention : {intervention.get_type_intervention_display()}")
+
+    def _create(ref):
+        return Devis.objects.create(
+            company=company,
+            reference=ref,
+            client=client,
+            statut=Devis.Statut.BROUILLON,
+            created_by=user,
+            note=note,
+        )
+
+    devis = create_with_reference(Devis, 'DEV', company, _create)
+    intervention.devis_upsell_id = devis.id
+    intervention.save(update_fields=['devis_upsell_id'])
+    logger.info(
+        'ZFSM5: devis upsell %s créé depuis intervention %s (company %s)',
+        devis.reference, intervention.id, getattr(company, 'id', '?'))
+    return devis

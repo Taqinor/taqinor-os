@@ -1649,6 +1649,30 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             'deja_existant': deja_existant,
         }, status=status.HTTP_200_OK if deja_existant else status.HTTP_201_CREATED)
 
+    # ── ZFSM5 — devis d'upsell créé sur place depuis l'intervention ─────────
+    @action(detail=True, methods=['post'], url_path='generer-devis',
+            permission_classes=[IsResponsableOrAdmin])
+    def generer_devis(self, request, pk=None):
+        """ZFSM5 — génère un devis brouillon d'upsell depuis cette
+        intervention (client résolu server-side depuis le chantier,
+        description pré-remplie). Idempotent : si l'intervention porte déjà
+        un `devis_upsell_id`, le renvoie sans en créer un second. DISTINCT de
+        `generer-devis-reserve` (XFSM18, réserve → devis de réparation)."""
+        interv = self.get_object()
+        from apps.ventes.services import create_devis_upsell_from_intervention
+        try:
+            devis = create_devis_upsell_from_intervention(
+                intervention=interv, user=request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        deja_existant = (interv.devis_upsell_id == devis.id)
+        return Response({
+            'intervention': interv.id, 'devis_id': devis.id,
+            'devis_reference': devis.reference,
+            'deja_existant': deja_existant,
+        }, status=status.HTTP_200_OK if deja_existant else status.HTTP_201_CREATED)
+
     # ── F23 — code court / QR de l'intervention ──────────────────────────────
     @action(detail=True, methods=['get'], url_path='code',
             permission_classes=[IsAnyRole])

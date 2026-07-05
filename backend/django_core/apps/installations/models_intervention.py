@@ -230,6 +230,15 @@ class Intervention(models.Model):
     # optionnelle ; posé une fois pour ne jamais double-facturer (idempotent).
     facture_id = models.PositiveIntegerField(null=True, blank=True)
 
+    # ── ZFSM5 — devis d'upsell créé sur place depuis l'intervention ─────────
+    # ID du ``ventes.Devis`` brouillon d'upsell (string-FK par id, jamais un
+    # import du modèle ``ventes.Devis`` — règle de modularité), pour la
+    # traçabilité DEPUIS l'intervention. DISTINCT de `Reserve.devis_repare_id`
+    # (XFSM18, réserve→devis de réparation) : ceci couvre l'opportunité vue
+    # sur place (2ᵉ site, batterie, extension), pas la reprise d'un défaut.
+    # Nullable : une seule action optionnelle par intervention.
+    devis_upsell_id = models.PositiveIntegerField(null=True, blank=True)
+
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, related_name='interventions_creees',
