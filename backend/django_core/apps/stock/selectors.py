@@ -496,3 +496,34 @@ def encours_fournisseurs_par_tiers(company):
         entry['encours'] += Decimal(du)
         entry['references'].append(facture.reference)
     return [v for v in par_fournisseur.values() if v['encours'] > 0]
+
+
+def lignes_import_depuis_bcf(company, bon_commande_id):
+    """XSTK19 — lignes candidates pour un dossier d'import ADII, pré-remplies
+    depuis les SKUs d'un bon de commande fournisseur (code SH + pays
+    d'origine du produit quand renseignés). Point d'entrée cross-app pour
+    ``installations.DossierImport`` — LECTURE SEULE, jamais d'instance
+    ``LigneBonCommandeFournisseur`` exposée en dehors de ce module.
+
+    Renvoie [{produit_id, sku, designation, quantite, code_sh, pays_origine}]
+    scopé société ; liste vide si le BCF n'existe pas / n'appartient pas à la
+    société. Les champs code_sh/pays_origine peuvent être vides (jamais
+    inventés)."""
+    from .models import LigneBonCommandeFournisseur
+    lignes = (LigneBonCommandeFournisseur.objects
+              .filter(bon_commande_id=bon_commande_id,
+                      bon_commande__company=company,
+                      produit__isnull=False)
+              .select_related('produit'))
+    out = []
+    for ligne in lignes:
+        p = ligne.produit
+        out.append({
+            'produit_id': p.id,
+            'sku': p.sku or '',
+            'designation': p.nom,
+            'quantite': ligne.quantite,
+            'code_sh': p.code_sh or '',
+            'pays_origine': p.pays_origine or '',
+        })
+    return out

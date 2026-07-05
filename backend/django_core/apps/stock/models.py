@@ -588,6 +588,33 @@ class Produit(models.Model):
         help_text='Code-barres imprimé par le fabricant (EAN-13, UPC, '
                   'GTIN…) — distinct du jeton interne de scan.')
 
+    # ── XSTK15 — Unité de mesure du stock ───────────────────────────────────
+    # Défaut « unité » = comportement historique inchangé (tout produit
+    # existant reste compté en entiers sans unité). Le câble solaire
+    # s'achète en touret de 100 m et se vend au mètre : le STOCK reste
+    # stocké dans UNE SEULE unité (jamais de double comptage) — les
+    # conditionnements d'achat (`ConditionnementProduit`) convertissent VERS
+    # cette unité à l'écriture du mouvement.
+    unite_stock = models.CharField(
+        max_length=20, default='unité',
+        verbose_name='Unité de stock',
+        help_text="Unité dans laquelle le stock est compté (unité/m/kg…).")
+
+    # ── XSTK19 — Code SH (HS) + pays d'origine → dossier d'import (ADII) ────
+    # Nullables : un produit sans ces champs garde le comportement historique
+    # (saisie manuelle du dossier d'import). Pré-remplit les lignes du
+    # dossier d'import (`installations.DossierImport`) depuis le BCF lié.
+    code_sh = models.CharField(
+        max_length=20, blank=True, null=True,
+        verbose_name='Code SH (HS)',
+        help_text="Code du Système Harmonisé (nomenclature douanière) — "
+                  'utilisé pour pré-remplir le dossier d\'import ADII.')
+    pays_origine = models.CharField(
+        max_length=100, blank=True, null=True,
+        verbose_name="Pays d'origine",
+        help_text="Pays d'origine du produit — utilisé pour pré-remplir le "
+                  'dossier d\'import ADII.')
+
     class Meta:
         verbose_name = "Produit"
         verbose_name_plural = "Produits"
@@ -602,6 +629,50 @@ class Produit(models.Model):
 
     def __str__(self):
         return self.nom
+
+
+# ── XSTK15 — Conditionnements d'achat (touret/carton…) ───────────────────────
+
+class ConditionnementProduit(models.Model):
+    """XSTK15 — un conditionnement d'ACHAT d'un produit (« Touret 100 m »,
+    « Carton 50 ») avec son facteur de conversion VERS l'unité de stock du
+    produit (`Produit.unite_stock`). Le stock reste stocké dans UNE SEULE
+    unité (jamais de double comptage) : recevoir « 2 tourets de 100 m »
+    incrémente 200 m via ``facteur``. Code-barres optionnel (résolution par
+    scan, XSTK3)."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='conditionnements_produit')
+    produit = models.ForeignKey(
+        Produit, on_delete=models.CASCADE, related_name='conditionnements')
+    nom = models.CharField(
+        max_length=100,
+        help_text='Ex. « Touret 100 m », « Carton 50 ».')
+    facteur = models.DecimalField(
+        max_digits=10, decimal_places=3,
+        help_text="Combien d'unités de stock ce conditionnement représente "
+                  '(ex. 100 pour un touret de 100 m).')
+    code_barres = models.CharField(
+        max_length=64, blank=True, null=True,
+        help_text='Code-barres du conditionnement (optionnel, résolution '
+                  'par scan).')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Conditionnement produit'
+        verbose_name_plural = 'Conditionnements produit'
+        ordering = ['produit__nom', 'nom']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'code_barres'],
+                condition=~models.Q(
+                    code_barres__isnull=True) & ~models.Q(code_barres=''),
+                name='stock_conditionnement_company_code_barres_uniq'),
+        ]
+
+    def __str__(self):
+        return f'{self.nom} ({self.produit.nom})'
 
 
 class LotEntrepot(models.Model):
@@ -1851,6 +1922,93 @@ class LigneInventaire(models.Model):
     @property
     def ecart(self):
         return self.quantite_comptee - self.quantite_theorique
+
+
+# ── XSTK13 — Inventaire annuel légal (CGNC), figé et immuable ────────────────
+
+class InventaireAnnuel(models.Model):
+    """XSTK13 — snapshot IMMUABLE de la valorisation du stock au 31/12 d'un
+    exercice comptable (CGNC : support du bilan, contrôle fiscal).
+
+    ``donnees`` porte le snapshot complet (même forme que
+    ``services.valorisation_a_date``) : une fois créé, un enregistrement
+    n'est plus jamais modifié (le service refuse un second figement pour le
+    même exercice+société). INTERNE — jamais client-facing."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='inventaires_annuels')
+    exercice = models.PositiveIntegerField(
+        help_text='Année de l\'exercice comptable (ex. 2026).')
+    date_reference = models.DateField(
+        help_text='Date de référence du figement (31/12 de l\'exercice).')
+    total_valeur = models.DecimalField(max_digits=16, decimal_places=2)
+    nb_lignes = models.PositiveIntegerField(default=0)
+    donnees = models.JSONField(
+        help_text='Snapshot complet et immuable de la valorisation.')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='inventaires_annuels_crees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Inventaire annuel'
+        verbose_name_plural = 'Inventaires annuels'
+        ordering = ['-exercice']
+        unique_together = [('company', 'exercice')]
+
+    def __str__(self):
+        return f'Inventaire {self.exercice} ({self.company_id})'
+
+
+# ── XSTK14 — Revalorisation manuelle du stock (document tracé) ──────────────
+
+class RevalorisationStock(models.Model):
+    """XSTK14 — corrige le COÛT MOYEN d'un produit (baisse mondiale du prix
+    des panneaux, dépréciation) sans bidouiller les réceptions.
+
+    À la VALIDATION, `nouveau_cout` devient la couche de départ du coût
+    moyen (`services.average_cost_with_source` ne compte plus que les
+    réceptions POSTÉRIEURES à `date_validation`) et le document est VERROUILLÉ
+    (jamais modifié après validation). INTERNE, admin-only, jamais
+    client-facing."""
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        VALIDEE = 'validee', 'Validée'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='revalorisations_stock')
+    produit = models.ForeignKey(
+        Produit, on_delete=models.PROTECT,
+        related_name='revalorisations')
+    ancien_cout = models.DecimalField(
+        max_digits=10, decimal_places=2,
+        help_text='Snapshot du coût moyen AVANT revalorisation.')
+    nouveau_cout = models.DecimalField(max_digits=10, decimal_places=2)
+    quantite_snapshot = models.IntegerField(
+        help_text='Quantité en stock au moment de la revalorisation.')
+    delta_valeur = models.DecimalField(
+        max_digits=14, decimal_places=2,
+        help_text='(nouveau_cout - ancien_cout) × quantite_snapshot.')
+    motif = models.TextField(help_text='Motif obligatoire.')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.BROUILLON)
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='revalorisations_stock')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_validation = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Revalorisation de stock'
+        verbose_name_plural = 'Revalorisations de stock'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return (f'Revalo {self.produit_id}: {self.ancien_cout} -> '
+                f'{self.nouveau_cout} ({self.statut})')
 
 
 # ── FG66 / DC36 — Kit / nomenclature (BOM) vendable ───────────────────────────

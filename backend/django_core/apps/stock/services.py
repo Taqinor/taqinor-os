@@ -431,18 +431,37 @@ def average_cost_with_source(produit):
     """Coût moyen d'achat pondéré + sa SOURCE.
 
     Renvoie (cout, source) où source vaut 'achats' (dérivé des réceptions de
-    bons de commande fournisseur) ou 'catalogue' (repli sur prix_achat quand
-    aucun achat reçu). INTERNE.
+    bons de commande fournisseur), 'revalorisation' (dernière revalorisation
+    manuelle validée servant de couche de départ, XSTK14) ou 'catalogue'
+    (repli sur prix_achat quand aucun achat reçu ni revalorisation). INTERNE.
 
     FG67/DC38 — le coût intègre les FRAIS ANNEXES (fret/douane/TVA import/
     transit) de chaque ligne via le coût débarqué unitaire : aucun champ de
     coût parallèle, les frais sont repliés dans CE même coût moyen. Une ligne
-    sans frais annexes (0) garde exactement le comportement historique."""
-    from .models import LigneBonCommandeFournisseur
-    lignes = LigneBonCommandeFournisseur.objects.filter(
-        produit=produit, quantite_recue__gt=0).values_list(
+    sans frais annexes (0) garde exactement le comportement historique.
+
+    XSTK14 — si une `RevalorisationStock` VALIDÉE existe pour ce produit, son
+    `nouveau_cout`/`quantite_snapshot` sert de couche de DÉPART (comme un
+    inventaire initial) et seules les réceptions POSTÉRIEURES à sa
+    validation entrent dans la moyenne pondérée — les réceptions
+    antérieures sont supplantées par la revalorisation (comportement
+    historique inchangé quand aucune revalorisation n'existe)."""
+    from .models import LigneBonCommandeFournisseur, RevalorisationStock
+    revalo = (RevalorisationStock.objects
+              .filter(produit=produit,
+                      statut=RevalorisationStock.Statut.VALIDEE)
+              .order_by('-date_validation', '-id').first())
+    lignes_qs = LigneBonCommandeFournisseur.objects.filter(
+        produit=produit, quantite_recue__gt=0)
+    if revalo is not None and revalo.date_validation is not None:
+        lignes_qs = lignes_qs.filter(
+            bon_commande__date_creation__gt=revalo.date_validation)
+    lignes = lignes_qs.values_list(
         'quantite_recue', 'prix_achat_unitaire', 'quantite', 'frais_annexes')
     total_q, total_v = 0, Decimal('0')
+    if revalo is not None:
+        total_q += revalo.quantite_snapshot
+        total_v += revalo.quantite_snapshot * revalo.nouveau_cout
     for q_recue, pu, q_ligne, frais in lignes:
         pu = pu or Decimal('0')
         frais = frais or Decimal('0')
@@ -453,7 +472,8 @@ def average_cost_with_source(produit):
         total_q += q_recue
         total_v += q_recue * pu
     if total_q:
-        return (total_v / total_q).quantize(Decimal('0.01')), 'achats'
+        source = 'achats' if revalo is None else 'revalorisation'
+        return (total_v / total_q).quantize(Decimal('0.01')), source
     return (produit.prix_achat or Decimal('0')), 'catalogue'
 
 
@@ -636,6 +656,155 @@ def export_valorisation_xlsx(company):
     return build_xlsx_response(
         'valorisation.xlsx', VALORISATION_EXPORT_HEADERS, rows,
         sheet_title='Valorisation')
+
+
+# ── XSTK13 — Valorisation À DATE (as-of) + inventaire annuel légal (CGNC) ────
+# `stock_valuation_by_location` valorise l'INSTANT présent. Le CGNC exige un
+# état d'inventaire valorisé PAR EXERCICE (support du bilan, contrôle fiscal) :
+# on reconstruit la quantité de chaque produit à une date passée depuis
+# l'historique des `MouvementStock` (dernier `quantite_apres` <= date), et le
+# coût moyen d'achat AVEC LES SEULES réceptions antérieures ou égales à cette
+# date (même formule débarquée que `average_cost_with_source`, bornée dans le
+# temps). INTERNE — jamais client-facing.
+
+def _quantite_produit_a_date(produit, date):
+    """Dernière `quantite_apres` connue du produit à la date donnée (incluse).
+
+    Aucun mouvement <= date -> 0 (le produit n'existait pas encore en stock à
+    cette date, comportement conservateur)."""
+    from .models import MouvementStock
+    mvt = (MouvementStock.objects
+           .filter(produit=produit, date__date__lte=date)
+           .order_by('-date', '-id').first())
+    return mvt.quantite_apres if mvt is not None else 0
+
+
+def _cout_moyen_produit_a_date(produit, date):
+    """Coût moyen d'achat débarqué du produit, en ne comptant QUE les
+    réceptions de BCF dont le bon de commande est daté <= date (cf.
+    `average_cost_with_source`, borné dans le temps). Repli catalogue si
+    aucun achat reçu avant cette date."""
+    from .models import LigneBonCommandeFournisseur
+    lignes = (LigneBonCommandeFournisseur.objects
+              .filter(produit=produit, quantite_recue__gt=0,
+                      bon_commande__date_creation__date__lte=date)
+              .values_list('quantite_recue', 'prix_achat_unitaire',
+                           'quantite', 'frais_annexes'))
+    total_q, total_v = 0, Decimal('0')
+    for q_recue, pu, q_ligne, frais in lignes:
+        pu = pu or Decimal('0')
+        frais = frais or Decimal('0')
+        if q_ligne and frais:
+            pu = pu + (frais / Decimal(str(q_ligne)))
+        total_q += q_recue
+        total_v += q_recue * pu
+    if total_q:
+        return (total_v / total_q).quantize(Decimal('0.01')), 'achats'
+    return (produit.prix_achat or Decimal('0')), 'catalogue'
+
+
+def valorisation_a_date(company, date):
+    """XSTK13 — valorisation du stock reconstruite À UNE DATE PASSÉE.
+
+    Renvoie {date, total, lignes:[{produit_id, sku, designation, quantite,
+    cout_moyen, valeur, source}]} — une ligne par produit dont la quantité
+    reconstruite à `date` est non nulle. INTERNE (admin) — jamais
+    client-facing."""
+    from .models import Produit
+    produits = Produit.objects.filter(company=company)
+    lignes = []
+    total = Decimal('0')
+    for p in produits:
+        quantite = _quantite_produit_a_date(p, date)
+        if quantite == 0:
+            continue
+        cout, source = _cout_moyen_produit_a_date(p, date)
+        valeur = (cout * quantite).quantize(Decimal('0.01'))
+        total += valeur
+        lignes.append({
+            'produit_id': p.id, 'sku': p.sku or '', 'designation': p.nom,
+            'quantite': quantite, 'cout_moyen': cout, 'valeur': valeur,
+            'source': source,
+        })
+    lignes.sort(key=lambda x: x['designation'].lower())
+    return {'date': date.isoformat() if hasattr(date, 'isoformat') else str(date),
+            'total': total, 'lignes': lignes}
+
+
+def figer_inventaire_annuel(company, exercice, user):
+    """XSTK13 — fige l'inventaire de l'exercice : archive un snapshot complet
+    et IMMUABLE de la valorisation au dernier jour de l'exercice (31/12).
+
+    Un `InventaireAnnuel` déjà figé pour cet exercice+société lève ValueError
+    (jamais deux figements pour le même exercice, jamais de ré-écriture)."""
+    import datetime
+    from .models import InventaireAnnuel
+    if InventaireAnnuel.objects.filter(
+            company=company, exercice=exercice).exists():
+        raise ValueError(
+            f"L'exercice {exercice} est déjà figé pour cette société.")
+    date_fin = datetime.date(exercice, 12, 31)
+    data = valorisation_a_date(company, date_fin)
+    return InventaireAnnuel.objects.create(
+        company=company, exercice=exercice,
+        date_reference=date_fin,
+        total_valeur=data['total'],
+        nb_lignes=len(data['lignes']),
+        donnees=data,
+        created_by=user,
+    )
+
+
+def export_inventaire_annuel_xlsx(inventaire):
+    """Export .xlsx de l'inventaire annuel FIGÉ (relit son snapshot JSON
+    immuable — jamais recalculé après figement). INTERNE."""
+    from apps.records.xlsx import build_xlsx_response
+    rows = [[
+        ligne['designation'], ligne['sku'], ligne['quantite'],
+        str(ligne['cout_moyen']), str(ligne['valeur']),
+        _SOURCE_LABELS.get(ligne.get('source'), ''),
+    ] for ligne in inventaire.donnees.get('lignes', [])]
+    return build_xlsx_response(
+        f'inventaire-{inventaire.exercice}.xlsx',
+        ['Produit', 'SKU', 'Quantité', 'Coût moyen (HT)', 'Valeur (HT)',
+         'Source du coût'],
+        rows, sheet_title=f'Inventaire {inventaire.exercice}')
+
+
+# ── XSTK14 — Revalorisation manuelle du stock (document tracé) ──────────────
+# INTERNE, admin-only, jamais client-facing.
+
+def creer_revalorisation(*, company, produit, nouveau_cout, motif, user):
+    """Crée une `RevalorisationStock` en BROUILLON : snapshot du coût moyen
+    actuel + de la quantité en stock, delta calculé. Motif obligatoire
+    (ValueError sinon)."""
+    from .models import RevalorisationStock
+    if not motif or not str(motif).strip():
+        raise ValueError('Le motif de la revalorisation est obligatoire.')
+    ancien_cout, _source = average_cost_with_source(produit)
+    nouveau_cout = Decimal(str(nouveau_cout))
+    quantite = produit.quantite_stock or 0
+    delta = (nouveau_cout - ancien_cout) * quantite
+    return RevalorisationStock.objects.create(
+        company=company, produit=produit, ancien_cout=ancien_cout,
+        nouveau_cout=nouveau_cout, quantite_snapshot=quantite,
+        delta_valeur=delta.quantize(Decimal('0.01')), motif=motif,
+        auteur=user)
+
+
+def valider_revalorisation(revalorisation):
+    """Valide une `RevalorisationStock` BROUILLON : verrouille le document
+    (statut VALIDEE + date_validation) — devient la nouvelle couche de
+    départ du coût moyen (`average_cost_with_source`). Une revalorisation
+    déjà validée lève ValueError (jamais re-validée, jamais modifiée)."""
+    from django.utils import timezone
+    from .models import RevalorisationStock
+    if revalorisation.statut == RevalorisationStock.Statut.VALIDEE:
+        raise ValueError('Cette revalorisation est déjà validée.')
+    revalorisation.statut = RevalorisationStock.Statut.VALIDEE
+    revalorisation.date_validation = timezone.now()
+    revalorisation.save(update_fields=['statut', 'date_validation'])
+    return revalorisation
 
 
 # ── XSTK8 — Contrôle du stock négatif (garde configurable) ──────────────────
@@ -2249,6 +2418,60 @@ def exploser_kit_par_id(company, kit_id, quantite_kit=1):
     if kit is None:
         return None
     return exploser_kit(kit, quantite_kit)
+
+
+# ── XMFG5 — Coût de revient du kit : roll-up + structure + stock potentiel ──
+# INTERNE — le coût/marge n'est visible qu'aux rôles responsable/admin
+# (gardé côté vue) ; le prix d'achat/coût n'apparaît JAMAIS sur un document
+# client ni dans un PDF.
+
+def structure_kit(kit):
+    """XMFG5 — nomenclature indentée d'un kit : par composant, quantité,
+    disponibilité (`quantite_disponible` = stock − réservé), coût unitaire
+    (DC28 `cout_achat_courant`) et coût total roll-up. Renvoie
+    {kit_id, kit_nom, composants:[{produit_id, sku, designation, quantite,
+    quantite_disponible, cout_unitaire, cout_total, prix_vente}],
+    cout_total_roll_up, marge, disponibilite_potentielle} où
+    `disponibilite_potentielle` = min(dispo composant ÷ quantité) (combien de
+    kits sont assemblables avec le stock actuel, 0 si un composant manque).
+    INTERNE (coût/marge) — jamais client-facing."""
+    from decimal import Decimal
+    reserves = reserved_quantities(kit.company)
+    composants = kit.composants.select_related('produit').order_by(
+        'produit__nom')
+    lignes = []
+    cout_total = Decimal('0')
+    prix_vente_total = Decimal('0')
+    disponibilite_potentielle = None
+    for c in composants:
+        p = c.produit
+        quantite = c.quantite or Decimal('0')
+        dispo = Decimal(str(p.quantite_stock)) - Decimal(
+            str(reserves.get(p.id, 0)))
+        cout_unitaire = cout_achat_courant(p)
+        cout_ligne = (cout_unitaire * quantite).quantize(Decimal('0.01'))
+        cout_total += cout_ligne
+        prix_vente_total += (p.prix_vente or Decimal('0')) * quantite
+        if quantite > 0:
+            kits_possibles = int((dispo / quantite).to_integral_value(
+                rounding='ROUND_FLOOR')) if dispo > 0 else 0
+            disponibilite_potentielle = kits_possibles if (
+                disponibilite_potentielle is None
+            ) else min(disponibilite_potentielle, kits_possibles)
+        lignes.append({
+            'produit_id': p.id, 'sku': p.sku or '', 'designation': p.nom,
+            'quantite': quantite, 'quantite_disponible': dispo,
+            'cout_unitaire': cout_unitaire, 'cout_total': cout_ligne,
+            'prix_vente': p.prix_vente,
+        })
+    marge = (prix_vente_total - cout_total).quantize(Decimal('0.01'))
+    return {
+        'kit_id': kit.id, 'kit_nom': kit.nom, 'composants': lignes,
+        'cout_total_roll_up': cout_total.quantize(Decimal('0.01')),
+        'prix_vente_total': prix_vente_total.quantize(Decimal('0.01')),
+        'marge': marge,
+        'disponibilite_potentielle': disponibilite_potentielle or 0,
+    }
 
 
 # ── XMFG1 — Backflush : clôture d'un ordre d'assemblage (installations) ──────
@@ -4453,3 +4676,112 @@ def creer_facture_fournisseur_depuis_ubl(*, company, user, xml_bytes):
 
     from apps.ventes.utils.references import create_with_reference
     return create_with_reference(FactureFournisseur, 'FF', company, _save)
+
+
+# ── XSTK15 — Unités de mesure & conditionnements (touret/carton…) ───────────
+# Le stock reste stocké dans UNE SEULE unité (`Produit.unite_stock`) : un
+# conditionnement d'achat convertit VERS cette unité à l'écriture du
+# mouvement — jamais de double comptage.
+
+def convertir_en_unites_stock(quantite_conditionnement, conditionnement):
+    """Convertit une quantité de CONDITIONNEMENTS (ex. 2 tourets) en unités
+    de stock (ex. 200 m), via `conditionnement.facteur`. Renvoie un int
+    (le stock reste compté en entiers) — arrondi à l'entier le plus proche."""
+    total = Decimal(str(quantite_conditionnement)) * conditionnement.facteur
+    return int(total.to_integral_value())
+
+
+def resoudre_conditionnement(company, *, conditionnement_id=None,
+                             code_barres=None):
+    """Résout un `ConditionnementProduit` scopé société, par id OU par
+    code-barres scanné (XSTK3). Renvoie None si aucun des deux n'est fourni
+    ou ne matche rien — jamais d'exception, laissé au comportement
+    historique (réception sans conditionnement)."""
+    from .models import ConditionnementProduit
+    if conditionnement_id:
+        return ConditionnementProduit.objects.filter(
+            company=company, id=conditionnement_id).first()
+    if code_barres:
+        return ConditionnementProduit.objects.filter(
+            company=company, code_barres=code_barres).first()
+    return None
+
+
+# ── XSTK16 — Découpe / reconditionnement (touret → coupes) ──────────────────
+# Débite le produit SOURCE (SORTIE) et crédite le produit CIBLE (ENTREE) en
+# UNE transaction, en transférant la valeur au coût moyen — aucune création
+# ni destruction de valeur. Propage numero_lot/date_peremption (XSTK6) quand
+# le lot source en porte. Référence commune sur les deux MouvementStock pour
+# la traçabilité (XMFG15 lit `reference`).
+
+def decouper_produit(*, company, produit_source, quantite_consommee,
+                     produit_cible, quantite_produite, user,
+                     emplacement=None, lot_source=None):
+    """XSTK16 — débite `quantite_consommee` unités de `produit_source` et
+    crédite `quantite_produite` unités de `produit_cible` (peut être le même
+    SKU), en transférant EXACTEMENT la valeur au coût moyen du produit
+    source (aucune création/destruction de valeur). Lève ValueError si la
+    quantité consommée dépasse le stock disponible. Si `lot_source` est
+    fourni, décrémente ce lot (XSTK6, garde péremption incluse) et propage
+    `numero_lot`/`date_peremption` sur un nouveau `LotEntrepot` du produit
+    cible quand celui-ci en a un."""
+    from django.db import transaction
+    from django.utils import timezone
+    from .models import LotEntrepot, Produit
+    if quantite_consommee <= 0 or quantite_produite <= 0:
+        raise ValueError('Les quantités doivent être positives.')
+    if quantite_consommee > (produit_source.quantite_stock or 0):
+        raise ValueError(
+            f'Stock insuffisant sur {produit_source.nom} '
+            f'({produit_source.quantite_stock} disponible).')
+    reference = f'DECOUPE-{timezone.now().strftime("%Y%m%d%H%M%S")}-{produit_source.pk}'
+    cout_unitaire, _source = average_cost_with_source(produit_source)
+    valeur_transferee = (cout_unitaire * quantite_consommee).quantize(
+        Decimal('0.01'))
+
+    with transaction.atomic():
+        avant_source = produit_source.quantite_stock
+        apres_source = avant_source - quantite_consommee
+        record_stock_movement(
+            company=company, produit=produit_source,
+            type_mouvement=mouvement_type_sortie(),
+            quantite=quantite_consommee, quantite_avant=avant_source,
+            quantite_apres=apres_source, reference=reference,
+            note=f'Découpe : consommation {produit_source.nom}',
+            created_by=user)
+
+        cible = Produit.objects.select_for_update().get(pk=produit_cible.pk)
+        avant_cible = cible.quantite_stock
+        apres_cible = avant_cible + quantite_produite
+        record_stock_movement(
+            company=company, produit=cible,
+            type_mouvement=mouvement_type_entree(),
+            quantite=quantite_produite, quantite_avant=avant_cible,
+            quantite_apres=apres_cible, reference=reference,
+            note=f'Découpe : production {cible.nom}',
+            created_by=user)
+
+        numero_lot = None
+        date_peremption = None
+        if lot_source is not None:
+            sortir_lot_entrepot(
+                company=company, lot=lot_source, quantite=quantite_consommee,
+                user=user)
+            numero_lot = lot_source.numero_lot
+            date_peremption = lot_source.date_peremption
+            LotEntrepot.objects.create(
+                company=company, produit=cible, numero_lot=numero_lot,
+                date_peremption=date_peremption,
+                emplacement=emplacement or lot_source.emplacement,
+                quantite_recue=quantite_produite,
+                quantite_restante=quantite_produite,
+                reference_reception=reference, created_by=user)
+
+    # Rafraîchit la source depuis la DB : si source == cible (même SKU), la
+    # copie mémoire de `produit_source` est stale après la 2e écriture.
+    produit_source.refresh_from_db()
+    return {
+        'reference': reference, 'valeur_transferee': valeur_transferee,
+        'cout_unitaire': cout_unitaire, 'produit_source': produit_source,
+        'produit_cible': cible, 'numero_lot': numero_lot,
+    }

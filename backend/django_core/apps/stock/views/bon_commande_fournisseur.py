@@ -64,7 +64,7 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
         # données que `retrieve` expose déjà à tout rôle authentifié. Le
         # laisser en IsResponsableOrAdmin faisait échouer (403) le bouton
         # « PDF (interne) » pour les rôles normaux qui voient pourtant le BCF.
-        if self.action in READ_ACTIONS + ['generer_pdf']:
+        if self.action in READ_ACTIONS + ['generer_pdf', 'lignes_import']:
             return [IsAnyRole()]
         elif self.action in ('whatsapp', 'envoyer_email'):
             # QS3 — envois fournisseur : permission fine stock_modifier (repli
@@ -453,6 +453,9 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
         # Index par id de ligne (scopé à ce BC uniquement).
         lignes = {ligne.id: ligne for ligne in bc.lignes.select_related(
             'produit')}
+        from ..services import (
+            convertir_en_unites_stock, resoudre_conditionnement,
+        )
         plan = []
         for rec in receptions:
             try:
@@ -471,6 +474,16 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
                 )
             if qte <= 0:
                 continue
+            # XSTK15 — conditionnement optionnel (touret/carton…) : la
+            # quantité saisie compte des CONDITIONNEMENTS, convertie en
+            # unités de stock avant tout plafonnement (comportement
+            # historique inchangé quand aucun conditionnement n'est fourni).
+            conditionnement = resoudre_conditionnement(
+                bc.company,
+                conditionnement_id=rec.get('conditionnement'),
+                code_barres=rec.get('conditionnement_code_barres'))
+            if conditionnement is not None:
+                qte = convertir_en_unites_stock(qte, conditionnement)
             # Plafonnement au reste dû — jamais plus que commandé (idempotence).
             qte = min(qte, ligne.quantite_restante)
             if qte > 0:
@@ -559,3 +572,11 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
         response['Content-Disposition'] = (
             f'inline; filename="{filename}"')
         return response
+
+    @action(detail=True, methods=['get'], url_path='lignes-import')
+    def lignes_import(self, request, pk=None):
+        """XSTK19 — lignes candidates pour un dossier d'import ADII,
+        pré-remplies (code SH + pays d'origine) depuis les SKUs de ce BCF."""
+        from ..selectors import lignes_import_depuis_bcf
+        bc = self.get_object()
+        return Response(lignes_import_depuis_bcf(request.user.company, bc.pk))

@@ -14,7 +14,7 @@ from .models import (
     EcheanceFactureFournisseur, AcompteFournisseur,
     AvoirFournisseur, ImputationAvoirFournisseur,
     PalierPrixFournisseur, PortailFournisseurToken,
-    LotEntrepot,
+    LotEntrepot, InventaireAnnuel, RevalorisationStock, ConditionnementProduit,
 )
 
 
@@ -246,6 +246,10 @@ class ProduitSerializer(serializers.ModelSerializer):
             'id', 'company', 'nom', 'description', 'sku', 'marque',
             # XSTK3 — code-barres fabricant (EAN/UPC/GTIN)
             'code_barres',
+            # XSTK19 — code SH (HS) + pays d'origine (dossier d'import ADII)
+            'code_sh', 'pays_origine',
+            # XSTK15 — unité de mesure du stock
+            'unite_stock',
             # Prix (prix_achat gardé par permission, cf. get_fields)
             'prix_achat', 'prix_vente', 'tva',
             # Stock
@@ -1290,3 +1294,51 @@ class LotEntrepotSerializer(serializers.ModelSerializer):
             'date_creation', 'date_modification',
         ]
         read_only_fields = fields
+
+
+class InventaireAnnuelSerializer(serializers.ModelSerializer):
+    """XSTK13 — inventaire annuel légal FIGÉ (LECTURE SEULE — créé
+    uniquement par l'action `figer`, jamais modifié ensuite)."""
+
+    class Meta:
+        model = InventaireAnnuel
+        fields = [
+            'id', 'exercice', 'date_reference', 'total_valeur', 'nb_lignes',
+            'donnees', 'date_creation',
+        ]
+        read_only_fields = fields
+
+
+class RevalorisationStockSerializer(serializers.ModelSerializer):
+    """XSTK14 — revalorisation manuelle du stock (document tracé). Créée en
+    BROUILLON via `produit`/`nouveau_cout`/`motif` ; verrouillée après
+    validation (`valider/`)."""
+    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
+
+    class Meta:
+        model = RevalorisationStock
+        fields = [
+            'id', 'produit', 'produit_nom', 'ancien_cout', 'nouveau_cout',
+            'quantite_snapshot', 'delta_valeur', 'motif', 'statut', 'auteur',
+            'date_creation', 'date_validation',
+        ]
+        read_only_fields = [
+            'id', 'produit_nom', 'ancien_cout', 'quantite_snapshot',
+            'delta_valeur', 'statut', 'auteur', 'date_creation',
+            'date_validation',
+        ]
+
+
+class ConditionnementProduitSerializer(serializers.ModelSerializer):
+    """XSTK15 — conditionnement d'achat d'un produit (Touret/Carton…),
+    convertit vers `Produit.unite_stock` via `facteur`."""
+    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
+    unite_stock = serializers.CharField(
+        source='produit.unite_stock', read_only=True)
+
+    class Meta:
+        model = ConditionnementProduit
+        fields = [
+            'id', 'produit', 'produit_nom', 'nom', 'facteur', 'code_barres',
+            'unite_stock', 'date_creation',
+        ]

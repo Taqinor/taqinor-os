@@ -185,6 +185,82 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
         from ..services import export_valorisation_xlsx
         return export_valorisation_xlsx(request.user.company)
 
+    @action(detail=False, methods=['get'], url_path='valorisation-a-date',
+            permission_classes=[IsAdminRole])
+    def valorisation_date(self, request):
+        """XSTK13 — valorisation du stock reconstruite à une date passée
+        (CGNC). Paramètre requis : ``date`` (YYYY-MM-DD). INTERNE (admin)."""
+        from datetime import datetime
+        from ..services import valorisation_a_date
+        raw = request.query_params.get('date')
+        if not raw:
+            return Response({'detail': 'Paramètre "date" requis (YYYY-MM-DD).'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            date = datetime.strptime(raw, '%Y-%m-%d').date()
+        except ValueError:
+            return Response({'detail': 'Date invalide (attendu YYYY-MM-DD).'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(valorisation_a_date(request.user.company, date))
+
+    @action(detail=False, methods=['post'], url_path='decoupes',
+            permission_classes=[HasPermissionOrLegacy('stock_modifier')])
+    def decoupes(self, request):
+        """XSTK16 — découpe/reconditionnement : débite `produit_source` et
+        crédite `produit_cible` (peut être le même SKU) en transférant la
+        valeur au coût moyen. Corps : {"produit_source", "quantite_consommee",
+        "produit_cible", "quantite_produite", "emplacement" (optionnel),
+        "lot_source" (optionnel, id LotEntrepot)}."""
+        from ..services import decouper_produit
+        company = request.user.company
+        source = Produit.objects.filter(
+            company=company, id=request.data.get('produit_source')).first()
+        cible = Produit.objects.filter(
+            company=company, id=request.data.get('produit_cible')).first()
+        if source is None or cible is None:
+            return Response(
+                {'detail': 'Produit source ou cible introuvable.'},
+                status=status.HTTP_404_NOT_FOUND)
+        try:
+            quantite_consommee = int(request.data.get('quantite_consommee'))
+            quantite_produite = int(request.data.get('quantite_produite'))
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': 'Quantités invalides.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        lot_source = None
+        lot_source_id = request.data.get('lot_source')
+        if lot_source_id:
+            from ..models import LotEntrepot
+            lot_source = LotEntrepot.objects.filter(
+                company=company, id=lot_source_id).first()
+            if lot_source is None:
+                return Response(
+                    {'detail': 'Lot source introuvable.'},
+                    status=status.HTTP_404_NOT_FOUND)
+        emplacement = None
+        emplacement_id = request.data.get('emplacement')
+        if emplacement_id:
+            emplacement = EmplacementStock.objects.filter(
+                company=company, id=emplacement_id).first()
+        try:
+            result = decouper_produit(
+                company=company, produit_source=source,
+                quantite_consommee=quantite_consommee, produit_cible=cible,
+                quantite_produite=quantite_produite, user=request.user,
+                emplacement=emplacement, lot_source=lot_source)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'reference': result['reference'],
+            'valeur_transferee': str(result['valeur_transferee']),
+            'cout_unitaire': str(result['cout_unitaire']),
+            'produit_source_quantite_stock': result['produit_source'].quantite_stock,
+            'produit_cible_quantite_stock': result['produit_cible'].quantite_stock,
+            'numero_lot': result['numero_lot'],
+        })
+
     @action(detail=True, methods=['get'], url_path='prix-fournisseurs',
             permission_classes=[IsAnyRole])
     def prix_fournisseurs(self, request, *args, **kwargs):
