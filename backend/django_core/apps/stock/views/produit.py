@@ -78,6 +78,11 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
             return [HasPermissionOrLegacy('stock_modifier')()]
         elif self.action in ('destroy', 'force_delete'):
             return [IsAdminRole()]
+        elif self.action in ('analyse_achats', 'analyse_achats_export_xlsx'):
+            # XPUR24 — tableau de bord achats : Admin/Responsable uniquement
+            # (get_permissions prime sur le permission_classes de l'@action,
+            # d'où ce cas explicite — sinon repli IsAdminRole).
+            return [IsResponsableOrAdmin()]
         # XSTK10 — `rapport_pertes` reste admin-only (valeur d'achat
         # interne, jamais client-facing) via le repli ci-dessous.
         return [IsAdminRole()]
