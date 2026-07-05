@@ -4914,6 +4914,42 @@ class EnqueteViewSet(_ComptaBaseViewSet):
         svg = services.qr_svg_enquete(enquete)
         return HttpResponse(svg, content_type='image/svg+xml')
 
+    @action(detail=True, methods=['get'])
+    def participations(self, request, pk=None):
+        """ZMKT13 — liste des soumissions individuelles, filtrable
+        réussi/échoué (``?reussi=true|false``)."""
+        enquete = self.get_object()
+        reussi_param = request.query_params.get('reussi')
+        reussi = None
+        if reussi_param is not None:
+            reussi = reussi_param.lower() == 'true'
+        return Response(services.participations_enquete(enquete, reussi=reussi))
+
+    @action(detail=True, methods=['get'], url_path='resultats/export')
+    def resultats_export(self, request, pk=None):
+        """ZMKT13 — export XLSX des participations."""
+        from openpyxl import Workbook
+        from openpyxl.styles import Font
+        from apps.records.xlsx import coerce_cell, XLSX_CONTENT_TYPE
+        import io
+
+        enquete = self.get_object()
+        participations = services.participations_enquete(enquete)
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Participations'
+        ws.append(['Contact', 'Score %', 'Réussi', 'Date'])
+        for cell in ws[1]:
+            cell.font = Font(bold=True)
+        for p in participations:
+            ws.append([coerce_cell(v) for v in [
+                p['contact'], p['score_pct'], p['reussi'], p['date_creation']]])
+        buf = io.BytesIO()
+        wb.save(buf)
+        resp = HttpResponse(buf.getvalue(), content_type=XLSX_CONTENT_TYPE)
+        resp['Content-Disposition'] = 'attachment; filename="participations.xlsx"'
+        return resp
+
     @action(detail=True, methods=['post'])
     def inviter(self, request, pk=None):
         """ZMKT12 — invitation email vers un segment (XMKT6) ou une liste

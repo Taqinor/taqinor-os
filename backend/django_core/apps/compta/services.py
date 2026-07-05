@@ -10952,6 +10952,33 @@ def inviter_enquete(enquete, *, segment=None, liste=None):
     return {'destinataires_cibles': len(cibles), 'envoye_reel': True}
 
 
+def participations_enquete(enquete, *, reussi=None):
+    """ZMKT13 — liste des soumissions individuelles (contact quand connu,
+    score, durée, date) filtrable réussi/échoué."""
+    from apps.crm.selectors import get_company_lead
+
+    qs = enquete.reponses.all()
+    if reussi is not None:
+        qs = qs.filter(reussi=reussi)
+    resultat = []
+    for reponse in qs:
+        contact_nom = reponse.contact_ref or 'Anonyme'
+        if reponse.contact_ref.startswith('lead:'):
+            lead_id = reponse.contact_ref.split(':', 1)[1]
+            lead = get_company_lead(
+                enquete.company, int(lead_id)) if lead_id.isdigit() else None
+            if lead is not None:
+                contact_nom = f'{lead.nom} {lead.prenom or ""}'.strip()
+        resultat.append({
+            'id': reponse.id,
+            'contact': contact_nom,
+            'score_pct': reponse.score_pct,
+            'reussi': reponse.reussi,
+            'date_creation': reponse.date_creation,
+        })
+    return resultat
+
+
 def tester_enquete(enquete):
     """ZMKT11 — ouvre l'enquête en mode aperçu (test) SANS enregistrer de
     ``ReponseEnquete`` — renvoie le rendu public tel qu'un vrai répondant le
