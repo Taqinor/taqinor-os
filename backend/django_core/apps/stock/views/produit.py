@@ -66,12 +66,14 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
         # Écritures Stock : permission ERP granulaire (rôles fins type
         # « Commerciale » = lecture seule) avec comportement historique
         # pour les comptes hérités sans rôle fin.
-        if self.action in READ_ACTIONS + ['export_xlsx', 'resolve']:
+        if self.action in READ_ACTIONS + [
+                'export_xlsx', 'resolve', 'previsionnel']:
             # XSTK3/XSTK4 — `resolve` (scan code-barres/GS1) est LECTURE
             # SEULE, accessible à tout rôle authentifié — même garde que
             # `@action(permission_classes=[IsAnyRole])` sur l'action
             # (`get_permissions` prime sur le `permission_classes` de
             # l'@action, d'où ce cas explicite — sinon repli IsAdminRole).
+            # ZSTK3 — `previsionnel` est LECTURE SEULE, même garde.
             return [IsAnyRole()]
         elif self.action in ('create', 'dupliquer'):
             # QG4 — création réservée à Directeur + Commercial responsable.
@@ -475,6 +477,16 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
         response['Content-Disposition'] = (
             'inline; filename="analyse-achats.pdf"')
         return response
+
+    @action(detail=True, methods=['get'], url_path='previsionnel',
+            permission_classes=[IsAnyRole])
+    def previsionnel(self, request, pk=None):
+        """ZSTK3 — rapport prévisionnel (Forecasted report) : disponible +
+        entrées attendues (BCF ouverts) + sorties attendues (réservations
+        chantier/assemblage) → solde projeté daté. INTERNE, lecture seule."""
+        from ..services import forecast_produit
+        produit = self.get_object()
+        return Response(forecast_produit(request.user.company, produit))
 
     @action(detail=False, methods=['get'], url_path='resolve',
             permission_classes=[IsAnyRole])
