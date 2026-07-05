@@ -91,6 +91,9 @@ class EventType(models.TextChoices):
     # YEVNT2 — un devis envoyé a expiré automatiquement (QJ5, date de
     # validité dépassée) sans action du propriétaire.
     DEVIS_EXPIRED = 'devis_expired', 'Devis expiré'
+    # YEVNT12 — un incident QHSE CRITIQUE est déclaré (au-delà de la note
+    # chatter existante QHSE32) : notifie les responsables QHSE.
+    INCIDENT_CRITICAL = 'incident_critical', 'Incident QHSE critique'
 
 
 class Channel(models.TextChoices):

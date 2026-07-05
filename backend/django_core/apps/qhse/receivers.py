@@ -34,6 +34,16 @@ chatter QHSE de l'incident (``QhseChatterEntry`` — historique style Odoo), afi
 que les responsables voient une trace explicite « à escalader ». La réaction est
 best-effort et idempotente : une erreur ne casse JAMAIS la création de
 l'incident, et le ``dispatch_uid`` empêche tout double-abonnement.
+
+YEVNT12 — en plus de la note chatter, un incident CRITIQUE notifie désormais
+les responsables QHSE (``notifications.services.notify_many`` /
+``resolve_recipients``, événement ``EventType.INCIDENT_CRITICAL``) et écrit une
+ligne d'audit (``apps.audit.recorder.record``). Frontière cross-app respectée :
+imports FONCTION-LOCAUX des seuls points d'entrée publics de ces deux apps
+(jamais leurs ``models``/``views``). Chaque appel reste best-effort et
+indépendant — une notif ou un audit qui échoue ne casse ni la création de
+l'incident ni la note chatter existante ; les incidents mineurs/majeurs restent
+inchangés (aucun appel).
 """
 import logging
 
@@ -69,8 +79,9 @@ def _escalader_incident_critique(sender, incident, company, user, gravite,
     # Import function-local pour éviter tout cycle d'import au démarrage.
     from apps.qhse import chatter as qhse_chatter
 
+    ref = getattr(incident, 'reference', '') or 'INC'
+
     try:
-        ref = getattr(incident, 'reference', '') or 'INC'
         qhse_chatter.log_note(
             incident, user,
             "⚠️ Incident CRITIQUE déclaré — escalade requise auprès des "
@@ -78,6 +89,41 @@ def _escalader_incident_critique(sender, incident, company, user, gravite,
     except Exception as exc:  # noqa: BLE001 — best-effort, ne casse jamais
         logger.warning(
             'QHSE32 : escalade incident critique échouée pour %s : %s',
+            getattr(incident, 'pk', '?'), exc)
+
+    # YEVNT12 — notifie les responsables QHSE (in-app + canaux configurés),
+    # en plus de la note chatter ci-dessus. Best-effort et indépendant : un
+    # échec ici ne doit affecter ni la création de l'incident ni la note.
+    try:
+        from apps.notifications.services import notify_many, resolve_recipients
+
+        recipients = resolve_recipients(company, 'incident_critical')
+        notify_many(
+            recipients, 'incident_critical',
+            'Incident QHSE critique déclaré',
+            body='Référence : %s.' % ref,
+            link='/qhse/incidents?incident=%s' % getattr(incident, 'pk', ''),
+            company=company)
+    except Exception as exc:  # noqa: BLE001 — best-effort, ne casse jamais
+        logger.warning(
+            'YEVNT12 : notification incident critique échouée pour %s : %s',
+            getattr(incident, 'pk', '?'), exc)
+
+    # YEVNT12 — laisse une entrée d'audit pour l'escalade.
+    try:
+        from apps.audit import recorder as audit_recorder
+
+        audit_recorder.record(
+            'notify',
+            instance=incident,
+            company=company,
+            user=user,
+            detail='Incident QHSE critique escaladé (référence %s) — '
+                   'notification envoyée aux responsables QHSE.' % ref,
+        )
+    except Exception as exc:  # noqa: BLE001 — best-effort, ne casse jamais
+        logger.warning(
+            'YEVNT12 : audit incident critique échoué pour %s : %s',
             getattr(incident, 'pk', '?'), exc)
 
 
