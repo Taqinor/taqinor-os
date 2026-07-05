@@ -306,6 +306,31 @@ class Rubrique(models.Model):
     # toucher au calcul du bulletin lui-même (jamais client-facing).
     apparait_cout_employeur = models.BooleanField(
         default=True, verbose_name='Apparaît au coût employeur')
+    # ZPAI8 — Règle d'arrondi des jours/heures pour une rubrique d'ABSENCE
+    # (façon Odoo « Display in Payslip » : pas d'arrondi / demi-journée /
+    # journée). Ignoré pour toute rubrique qui n'est pas rattachée à un
+    # ``ElementVariable`` de type ``absence``. ``aucun`` (défaut) = comportement
+    # historique inchangé (quantité brute, sans arrondi).
+    ARRONDI_AUCUN = 'aucun'
+    ARRONDI_DEMI_JOURNEE = 'demi_journee'
+    ARRONDI_JOURNEE = 'journee'
+    ARRONDI_CHOICES = [
+        (ARRONDI_AUCUN, 'Aucun'),
+        (ARRONDI_DEMI_JOURNEE, 'Demi-journée'),
+        (ARRONDI_JOURNEE, 'Journée'),
+    ]
+    SENS_SUP = 'sup'
+    SENS_INF = 'inf'
+    SENS_CHOICES = [
+        (SENS_SUP, 'Arrondi supérieur'),
+        (SENS_INF, 'Arrondi inférieur'),
+    ]
+    arrondi = models.CharField(
+        max_length=13, choices=ARRONDI_CHOICES, default=ARRONDI_AUCUN,
+        blank=True, verbose_name="Arrondi (jours d'absence)")
+    sens_arrondi = models.CharField(
+        max_length=3, choices=SENS_CHOICES, default=SENS_SUP,
+        blank=True, verbose_name='Sens de l\'arrondi')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -731,6 +756,12 @@ class PeriodePaie(models.Model):
         null=True, blank=True, verbose_name='Date de paiement')
     date_cloture = models.DateTimeField(
         null=True, blank=True, verbose_name='Clôturée le')
+    # ZPAI12 — Marqueur d'idempotence de l'alerte de clôture en retard (façon
+    # ``EcheanceDeclarative.date_notification``, XPAI6) : posé UNE SEULE FOIS
+    # par ``services.notifier_cloture_en_retard`` — un re-run le lendemain ne
+    # renotifie jamais la même période.
+    date_alerte_cloture_retard = models.DateTimeField(
+        null=True, blank=True, verbose_name='Alerte de clôture en retard envoyée le')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -875,6 +906,39 @@ class ElementVariable(models.Model):
         max_length=10, choices=CATEGORIE_ABSENCE_CHOICES,
         default=ABSENCE_AUCUNE, blank=True,
         verbose_name='Catégorie d\'absence')
+    # ZPAI9 — Type d'entrée ponctuelle du catalogue (facultatif). NULL
+    # (défaut) = comportement historique inchangé, piloté uniquement par
+    # ``type``/``categorie_hs``/``categorie_absence`` ci-dessus. Renseigné,
+    # les drapeaux fiscaux/sociaux du type catalogue (``imposable``/
+    # ``soumis_cnss``/``soumis_amo``) priment sur l'assiette par défaut de
+    # cet élément dans ``calculer_bulletin``.
+    type_entree = models.ForeignKey(
+        'TypeEntreePonctuelle',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='elements_variables',
+        verbose_name="Type d'entrée ponctuelle (catalogue)",
+    )
+    # ZPAI11 — Reconduction automatique vers la période suivante (défaut
+    # False = comportement historique inchangé : ressaisie chaque mois). Un
+    # élément ponctuel-mais-répétitif (ex. prime de transport saisie chaque
+    # mois) marqué ``reconduire=True`` est copié UNE fois vers M+1 par
+    # ``services.reporter_elements_periode`` — jamais automatiquement à la
+    # création de l'élément lui-même.
+    reconduire = models.BooleanField(
+        default=False, verbose_name='Reconduire vers la période suivante')
+    # ZPAI11 — Trace de reconduction : posé UNIQUEMENT sur la copie créée par
+    # ``services.reporter_elements_periode`` (jamais sur l'original saisi à la
+    # main). Sert de clé d'IDEMPOTENCE : un re-run de la reconduction ne
+    # duplique jamais la copie d'un même élément d'origine vers la même
+    # période cible (``unique_together`` ci-dessous).
+    reconduit_depuis = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='reconductions',
+        verbose_name='Reconduit depuis (élément M-1)',
+    )
     source = models.CharField(
         max_length=10, choices=SOURCE_CHOICES, default=SOURCE_MANUEL,
         verbose_name='Source')
@@ -885,6 +949,10 @@ class ElementVariable(models.Model):
         verbose_name = 'Élément variable'
         verbose_name_plural = 'Éléments variables'
         ordering = ['periode', 'profil', 'id']
+        # ZPAI11 — une même origine ne peut être reconduite qu'UNE fois vers
+        # une période cible donnée (NULL ``reconduit_depuis`` = saisie
+        # normale, jamais concerné par cette contrainte).
+        unique_together = [('periode', 'reconduit_depuis')]
 
     def __str__(self):
         return f'{self.get_type_display()} {self.quantite} → profil #{self.profil_id}'
@@ -932,12 +1000,17 @@ class BulletinPaie(models.Model):
     # XPAI4 — Bulletin de run hors-cycle (13e mois / prime de bilan), généré
     # sur une ``PeriodePaie`` de ``type_run == TYPE_RUN_HORS_CYCLE``.
     TYPE_GRATIFICATION = 'gratification'
+    # ZPAI4 — Bulletin d'ANNULATION (refund payslip) : contrepartie à montants
+    # NÉGATIFS d'un bulletin déjà traité, distincte du RECTIFICATIF qui
+    # remplace. Sert à extourner proprement un bulletin (cumul annuel/9421).
+    TYPE_ANNULATION = 'annulation'
     TYPE_BULLETIN_CHOICES = [
         (TYPE_NORMAL, 'Normal'),
         (TYPE_RECTIFICATIF, 'Rectificatif'),
         (TYPE_RAPPEL, 'Rappel'),
         (TYPE_STC, 'Solde de tout compte'),
         (TYPE_GRATIFICATION, '13e mois / gratification'),
+        (TYPE_ANNULATION, "Annulation (extourne)"),
     ]
 
     # Champs de montant figés au moment du calcul (snapshot). Modifiables tant
@@ -1400,6 +1473,20 @@ class SaisieArret(models.Model):
         (TYPE_CESSION, 'Cession volontaire'),
     ]
 
+    # ZPAI6 — Cycle de vie explicite (façon Odoo Running/Completed/Cancelled) :
+    # ``en_cours`` (défaut, sert encore des retenues), ``soldee`` (posée
+    # automatiquement quand ``solde_restant<=0`` à l'application d'une
+    # retenue), ``annulee`` (arrêt manuel des retenues futures, sans jamais
+    # effacer l'historique déjà retenu).
+    STATUT_EN_COURS = 'en_cours'
+    STATUT_SOLDEE = 'soldee'
+    STATUT_ANNULEE = 'annulee'
+    STATUT_CHOICES = [
+        (STATUT_EN_COURS, 'En cours'),
+        (STATUT_SOLDEE, 'Soldée'),
+        (STATUT_ANNULEE, 'Annulée'),
+    ]
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -1433,6 +1520,23 @@ class SaisieArret(models.Model):
         default=False, verbose_name='Prioritaire (ex. pension alimentaire)')
     date_debut = models.DateField(verbose_name='Date de début de retenue')
     actif = models.BooleanField(default=True, verbose_name='Actif')
+    # ZPAI6 — statut explicite du cycle de vie, en plus du booléen ``actif``
+    # historique (conservé, inchangé, pour compat rétro : ``actif`` continue
+    # de piloter ``retenues_saisies_periode``/``appliquer_saisies``).
+    statut = models.CharField(
+        max_length=10, choices=STATUT_CHOICES, default=STATUT_EN_COURS,
+        verbose_name='Statut')
+    date_annulation = models.DateTimeField(
+        null=True, blank=True, verbose_name='Annulée le')
+    motif_annulation = models.CharField(
+        max_length=200, blank=True, default='', verbose_name="Motif d'annulation")
+    # ZPAI7 — Clé de lot (facultative) : posée quand la saisie est créée par
+    # ``services.creer_saisies_arret_lot`` (éclatement multi-employés). Sert
+    # UNIQUEMENT à l'IDEMPOTENCE d'un re-run (même clé → aucune re-création),
+    # jamais affichée comme référence légale (distincte de ``reference``).
+    lot_reference = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='Référence de lot (idempotence)')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -1441,6 +1545,11 @@ class SaisieArret(models.Model):
         verbose_name_plural = 'Saisies-arrêts / cessions'
         # Saisies prioritaires d'abord, puis les plus anciennes.
         ordering = ['-prioritaire', 'date_debut', 'id']
+        indexes = [
+            models.Index(
+                fields=['company', 'lot_reference'],
+                name='paie_saisie_lot_idx'),
+        ]
 
     def __str__(self):
         return f'{self.get_type_display()} {self.montant_total} → profil #{self.profil_id}'
@@ -1968,3 +2077,58 @@ class ProvisionPaieMensuelle(models.Model):
     def __str__(self):
         return (f'{self.get_type_provision_display()} — profil #{self.profil_id} '
                 f'({self.periode})')
+
+
+# ── ZPAI9 — Catalogue de types d'entrées ponctuelles (Other Input Types) ───
+
+class TypeEntreePonctuelle(models.Model):
+    """Catalogue TYPÉ des entrées ponctuelles hors rubriques récurrentes (ZPAI9).
+
+    Façon Odoo « Other Input Types » : au lieu du ``type`` fixe à 5 valeurs
+    codées d'``ElementVariable`` (heures/HS/absence/prime/retenue), un
+    catalogue company-scoped pour typer finement des entrées ponctuelles
+    (pourboire, remboursement de frais non imposable, déduction ponctuelle…),
+    chacune avec ses propres drapeaux fiscaux/sociaux. Un ``ElementVariable``
+    peut référencer un type du catalogue via son FK nullable
+    ``type_entree`` — NULL (défaut) préserve exactement le comportement
+    historique piloté par ``ElementVariable.type`` seul.
+
+    Multi-société : ``company`` posée côté serveur. Le couple
+    ``(company, code)`` est unique.
+    """
+    SENS_GAIN = 'gain'
+    SENS_RETENUE = 'retenue'
+    SENS_CHOICES = [
+        (SENS_GAIN, 'Gain'),
+        (SENS_RETENUE, 'Retenue'),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='paie_types_entree_ponctuelle',
+        verbose_name='Société',
+    )
+    code = models.CharField(max_length=30, verbose_name='Code')
+    libelle = models.CharField(max_length=120, verbose_name='Libellé')
+    sens = models.CharField(
+        max_length=8, choices=SENS_CHOICES, default=SENS_GAIN,
+        verbose_name='Sens')
+    imposable = models.BooleanField(
+        default=True, verbose_name='Imposable (IR)')
+    soumis_cnss = models.BooleanField(
+        default=True, verbose_name='Soumis CNSS')
+    soumis_amo = models.BooleanField(
+        default=True, verbose_name='Soumis AMO')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Type d'entrée ponctuelle"
+        verbose_name_plural = "Types d'entrée ponctuelle"
+        ordering = ['libelle', 'code']
+        unique_together = [('company', 'code')]
+
+    def __str__(self):
+        return f'{self.code} — {self.libelle}'

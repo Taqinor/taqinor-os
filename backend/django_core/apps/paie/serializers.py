@@ -27,6 +27,7 @@ from .models import (
     StructurePaie,
     StructurePaieRubrique,
     TrancheIR,
+    TypeEntreePonctuelle,
 )
 
 
@@ -72,6 +73,8 @@ class RubriqueSerializer(serializers.ModelSerializer):
             # PAIE16 — avantage en nature + plafond mensuel d'exonération.
             'avantage_nature', 'plafond_exoneration',
             'compte', 'base', 'taux',
+            # ZPAI8 — règle d'arrondi des jours d'absence.
+            'arrondi', 'sens_arrondi',
             'montant_fixe', 'ordre', 'actif', 'date_creation',
         ]
         read_only_fields = ['date_creation']
@@ -93,6 +96,34 @@ class RubriqueSerializer(serializers.ModelSerializer):
         if qs.exists():
             raise serializers.ValidationError(
                 'Une rubrique avec ce code existe déjà.')
+        return value
+
+
+class TypeEntreePonctuelleSerializer(serializers.ModelSerializer):
+    """Type d'entrée ponctuelle du catalogue (ZPAI9), company-scoped.
+
+    ``company`` posée côté serveur. Le couple ``(company, code)`` étant
+    unique, l'unicité du ``code`` est validée ici pour un 400 propre.
+    """
+    class Meta:
+        model = TypeEntreePonctuelle
+        fields = [
+            'id', 'code', 'libelle', 'sens', 'imposable', 'soumis_cnss',
+            'soumis_amo', 'actif', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_code(self, value):
+        request = self.context.get('request')
+        if request is None:
+            return value
+        qs = TypeEntreePonctuelle.objects.filter(
+            company=request.user.company_id, code=value)
+        if self.instance is not None:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(
+                'Un type avec ce code existe déjà.')
         return value
 
 
@@ -360,9 +391,13 @@ class ElementVariableSerializer(serializers.ModelSerializer):
             # XPAI14 — catégorie d'absence : aucune/maladie/maternite (arrêt
             # CNSS, ignoré hors absence).
             'categorie_absence',
+            # ZPAI9 — type d'entrée ponctuelle du catalogue (facultatif).
+            'type_entree',
+            # ZPAI11 — reconduction auto vers la période suivante.
+            'reconduire', 'reconduit_depuis',
             'source', 'date_creation',
         ]
-        read_only_fields = ['date_creation']
+        read_only_fields = ['date_creation', 'reconduit_depuis']
 
     def validate_periode(self, value):
         return _meme_societe(self, value, 'Période')
@@ -372,6 +407,9 @@ class ElementVariableSerializer(serializers.ModelSerializer):
 
     def validate_rubrique(self, value):
         return _meme_societe(self, value, 'Rubrique')
+
+    def validate_type_entree(self, value):
+        return _meme_societe(self, value, "Type d'entrée ponctuelle")
 
 
 class LigneBulletinSerializer(serializers.ModelSerializer):
@@ -491,9 +529,15 @@ class SaisieArretSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'profil', 'type', 'creancier', 'reference', 'montant_total',
             'montant_echeance', 'montant_retenu', 'solde_restant', 'soldee',
-            'prioritaire', 'date_debut', 'actif', 'date_creation',
+            'prioritaire', 'date_debut', 'actif', 'statut', 'date_annulation',
+            'motif_annulation', 'date_creation',
         ]
-        read_only_fields = ['montant_retenu', 'date_creation']
+        # ZPAI6 — statut/date_annulation/motif_annulation ne s'écrivent QUE
+        # via l'action dédiée `annuler` (jamais en écriture CRUD directe).
+        read_only_fields = [
+            'montant_retenu', 'date_creation', 'statut', 'date_annulation',
+            'motif_annulation',
+        ]
 
     def validate_profil(self, value):
         return _meme_societe(self, value, 'Profil')

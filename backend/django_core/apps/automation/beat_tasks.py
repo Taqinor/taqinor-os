@@ -229,16 +229,38 @@ def _trigger_date_echeance_champ(company):
         return 0
 
 
+# ── ZPAI12 — Alerte de clôture de paie en retard ─────────────────────────────
+
+def _trigger_paie_cloture_retard(company):
+    """Notifie (best-effort) les ``PeriodePaie`` en retard de clôture (ZPAI12).
+
+    Délègue entièrement à ``apps.paie.services.notifier_cloture_en_retard``
+    (idempotence portée par ``PeriodePaie.date_alerte_cloture_retard``, côté
+    paie) — ce module ne fait que la brancher sur le balayage quotidien,
+    comme les autres déclencheurs temporels. No-op si l'app paie est absente.
+    """
+    try:
+        from apps.paie.services import notifier_cloture_en_retard
+
+        return len(notifier_cloture_en_retard(company))
+    except Exception:  # pragma: no cover
+        logger.warning(
+            'automation.beat: paie_cloture_retard société %s échouée',
+            getattr(company, 'pk', None), exc_info=True)
+        return 0
+
+
 # ── Tâche Celery Beat ─────────────────────────────────────────────────────────
 
 @shared_task(name='automation.time_triggers_daily')
 def time_triggers_daily():
     """Balayage quotidien des déclencheurs temporels de l'automation engine (FG2).
 
-    Pour chaque société active : évalue WARRANTY_EXPIRING, MAINTENANCE_DUE et
-    FACTURE_OVERDUE afin que les règles configurables sur ces déclencheurs
-    s'exécutent réellement. Best-effort par société ; renvoie le total
-    d'évaluations déclenchées (pas le nombre de règles exécutées)."""
+    Pour chaque société active : évalue WARRANTY_EXPIRING, MAINTENANCE_DUE,
+    FACTURE_OVERDUE et l'alerte de clôture de paie en retard (ZPAI12) afin
+    que les règles configurables sur ces déclencheurs s'exécutent réellement.
+    Best-effort par société ; renvoie le total d'évaluations déclenchées (pas
+    le nombre de règles exécutées)."""
     total = 0
     for company in _companies():
         try:
@@ -246,6 +268,7 @@ def time_triggers_daily():
             total += _trigger_maintenance_due(company)
             total += _trigger_facture_overdue(company)
             total += _trigger_date_echeance_champ(company)
+            total += _trigger_paie_cloture_retard(company)
         except Exception:  # pragma: no cover
             logger.warning('automation.beat: société %s échouée',
                            getattr(company, 'pk', None), exc_info=True)

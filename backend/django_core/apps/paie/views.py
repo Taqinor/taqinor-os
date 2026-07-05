@@ -43,6 +43,7 @@ from .models import (
     SaisieArret,
     StructurePaie,
     ProvisionPaieMensuelle,
+    TypeEntreePonctuelle,
 )
 from .serializers import (
     AdhesionMutuelleSerializer,
@@ -62,9 +63,11 @@ from .serializers import (
     RubriqueSerializer,
     SaisieArretSerializer,
     StructurePaieSerializer,
+    TypeEntreePonctuelleSerializer,
 )
 from .services import (
     TransitionPeriodeInterdite,
+    annuler_saisie_arret,
     appliquer_structure_a_profil,
     attestation_salaire_ij_cnss,
     bareme_en_vigueur,
@@ -78,7 +81,9 @@ from .services import (
     controle_ecarts,
     cout_employeur,
     cout_global_par_profil,
+    creer_bulletin_annulation,
     creer_bulletin_rectificatif,
+    creer_saisies_arret_lot,
     declaration_cimr,
     declaration_cnss,
     deposer_bds_complementaire,
@@ -86,6 +91,7 @@ from .services import (
     dry_run_reprise_cumuls,
     emettre_ordre_virement,
     ensure_defaults,
+    ensure_types_entree_ponctuelle_standard,
     ensure_rubriques_defaut,
     ensure_rubriques_standard,
     ensure_structures_standard,
@@ -119,10 +125,13 @@ from .services import (
     profils_hors_virement,
     rapprochement_paie_gl,
     rapprocher_affebds,
+    rattacher_bulletins,
     recalculer_cumul_annuel,
     reemettre_ligne_virement,
     registre_conges,
+    reporter_elements_periode,
     rejeter_ligne_virement,
+    saisies_arret_du_bulletin,
     simuler_bulletin,
     synchroniser_salaire,
     valider_bulletin,
@@ -223,6 +232,26 @@ class RubriqueViewSet(_PaieBaseViewSet):
         panier, ancienneté, CIMR…), sans écraser une rubrique déjà éditée.
         """
         created = ensure_rubriques_standard(request.user.company)
+        return Response(created, status=status.HTTP_200_OK)
+
+
+class TypeEntreePonctuelleViewSet(_PaieBaseViewSet):
+    """Catalogue des types d'entrées ponctuelles (ZPAI9), société scopée.
+
+    L'action ``seed-standard`` provisionne (idempotent, additif) les types
+    courants (pourboire, remboursement de frais non imposable, déduction
+    ponctuelle) sans jamais écraser un type déjà édité.
+    """
+    queryset = TypeEntreePonctuelle.objects.all()
+    serializer_class = TypeEntreePonctuelleSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code', 'libelle']
+    ordering_fields = ['libelle', 'code', 'id']
+
+    @action(detail=False, methods=['post'], url_path='seed-standard')
+    def seed_standard(self, request):
+        """Provisionne le catalogue standard de types (idempotent)."""
+        created = ensure_types_entree_ponctuelle_standard(request.user.company)
         return Response(created, status=status.HTTP_200_OK)
 
 
@@ -653,6 +682,21 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response({'importes': importes}, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['post'], url_path='reporter-elements')
+    def reporter_elements(self, request, pk=None):
+        """Reconduit les éléments récurrents de M-1 vers cette période (ZPAI11).
+
+        Copie les ``ElementVariable`` marqués ``reconduire=True`` de la
+        période calendaire précédente (même société/``type_run``) — no-op si
+        aucune période précédente. Idempotent : un re-run ne duplique jamais
+        une copie déjà faite.
+        """
+        periode = self.get_object()
+        copies = reporter_elements_periode(periode)
+        return Response(
+            {'reconduits': [c.id for c in copies], 'nombre': len(copies)},
+            status=status.HTTP_200_OK)
+
     @action(detail=True, methods=['get'], url_path='bulletin')
     def bulletin(self, request, pk=None):
         """Calcule (sans persister) le bulletin d'un profil pour la période.
@@ -992,6 +1036,51 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
         return Response(
             avertissements_periode(periode), status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['get'], url_path='bulletins-pdf')
+    def bulletins_pdf(self, request, pk=None):
+        """Impression en lot des bulletins VALIDÉS de la période (ZPAI5).
+
+        Fusionne (WeasyPrint + PyMuPDF) les PDF de tous les bulletins validés
+        de la période en un seul document, ordonné par matricule/nom ; les
+        brouillons sont exclus. 400 si aucun bulletin validé.
+        """
+        periode = self.get_object()
+        try:
+            pdf = builders.render_bulletins_periode_pdf(periode)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        nom = f'bulletins_{periode.annee}_{periode.mois:02d}.pdf'
+        return _pdf_response(pdf, nom)
+
+    @action(detail=True, methods=['post'], url_path='rattacher-bulletins')
+    def rattacher_bulletins_action(self, request, pk=None):
+        """Rattache des bulletins non affectés à cette période (ZPAI10).
+
+        Corps : ``bulletins`` (liste d'ids de ``BulletinPaie`` NON clôturés,
+        même société). Refuse si la période cible est clôturée, si un
+        bulletin est d'une autre société, déjà validé, ou créerait un doublon
+        ``(période, profil)``.
+        """
+        periode = self.get_object()
+        bulletin_ids = request.data.get('bulletins') or []
+        if not bulletin_ids:
+            return Response(
+                {'detail': 'Champ "bulletins" (liste d\'ids) requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            rattaches = rattacher_bulletins(periode, bulletin_ids)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            BulletinPaieSerializer(rattaches, many=True).data,
+            status=status.HTTP_200_OK)
+
     @action(detail=True, methods=['post'], url_path='journal-de-paie')
     def journal_de_paie(self, request, pk=None):
         """Passe l'écriture comptable du journal de paie (PAIE33).
@@ -1209,6 +1298,57 @@ class BulletinPaieViewSet(_PaieVoirOuGerer, TenantMixin,
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(
             self.get_serializer(rectif).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='annuler')
+    def annuler(self, request, pk=None):
+        """Crée un bulletin d'ANNULATION (refund payslip) de ce bulletin (ZPAI4).
+
+        Corps : ``periode_cible`` (id d'une période OUVERTE, même société)
+        requis. Recopie chaque ligne de ce bulletin à montant OPPOSÉ, sans
+        toucher au bulletin d'origine (qui reste figé). Le bulletin
+        d'annulation est renvoyé en brouillon (le valider fige/consolide dans
+        le cumul annuel).
+        """
+        origine = self.get_object()
+        periode_id = request.data.get('periode_cible')
+        if not periode_id:
+            return Response(
+                {'detail': 'Champ "periode_cible" requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            periode_cible = PeriodePaie.objects.get(
+                pk=periode_id, company=request.user.company)
+        except (PeriodePaie.DoesNotExist, ValueError):
+            return Response(
+                {'detail': 'Période cible inconnue.'},
+                status=status.HTTP_404_NOT_FOUND)
+        try:
+            annulation = creer_bulletin_annulation(origine, periode_cible)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(annulation).data,
+            status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='saisies-arret')
+    def saisies_arret(self, request, pk=None):
+        """Saisies-arrêt/cessions servies par ce bulletin (ZPAI6).
+
+        Lecture seule : relie les lignes ``SAISIE`` du bulletin figé à leur
+        ``SaisieArret`` d'origine.
+        """
+        bulletin = self.get_object()
+        resultats = saisies_arret_du_bulletin(bulletin)
+        data = [
+            {
+                'saisie_id': r['saisie'].id if r['saisie'] else None,
+                'creancier': r['ligne'].libelle,
+                'montant': str(r['montant']),
+            }
+            for r in resultats
+        ]
+        return Response(data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'], url_path='pdf')
     def pdf(self, request, pk=None):
@@ -1443,6 +1583,71 @@ class SaisieArretViewSet(_PaieBaseViewSet):
     serializer_class = SaisieArretSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_debut', 'prioritaire', 'date_creation', 'id']
+
+    @action(detail=True, methods=['post'], url_path='annuler')
+    def annuler(self, request, pk=None):
+        """Annule la saisie — stoppe les retenues futures, historique intact (ZPAI6).
+
+        Corps : ``motif`` facultatif. Refuse une saisie déjà soldée
+        (``400``) ; annuler une saisie déjà annulée est un no-op.
+        """
+        saisie = self.get_object()
+        try:
+            saisie = annuler_saisie_arret(
+                saisie, motif=request.data.get('motif', ''))
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(saisie).data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], url_path='creer-lot')
+    def creer_lot(self, request):
+        """Éclate une saisie en N fiches individuelles, une par profil (ZPAI7).
+
+        Corps : ``profils`` (liste d'ids, même société), ``montant_total``,
+        ``montant_echeance`` (facultatif), ``date_debut`` (YYYY-MM-DD),
+        ``creancier``/``reference``/``type``/``prioritaire`` (facultatifs),
+        ``cle_lot`` (requis — identifiant STABLE fourni par l'appelant pour
+        l'idempotence : un re-run avec la même clé ne duplique rien).
+        """
+        profil_ids = request.data.get('profils') or []
+        cle_lot = request.data.get('cle_lot')
+        if not profil_ids or not cle_lot:
+            return Response(
+                {'detail': 'Champs "profils" (liste) et "cle_lot" requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        profils = ProfilPaie.objects.filter(
+            company=request.user.company, id__in=profil_ids)
+        if profils.count() != len(set(profil_ids)):
+            return Response(
+                {'detail': "Un ou plusieurs profils sont introuvables ou "
+                           "d'une autre société."},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            date_debut = date.fromisoformat(request.data.get('date_debut'))
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': 'Champ "date_debut" requis (format YYYY-MM-DD).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            saisies = creer_saisies_arret_lot(
+                request.user.company, profils,
+                type_saisie=request.data.get('type'),
+                montant_total=request.data.get('montant_total'),
+                montant_echeance=request.data.get('montant_echeance'),
+                date_debut=date_debut,
+                creancier=request.data.get('creancier', ''),
+                reference=request.data.get('reference', ''),
+                prioritaire=bool(request.data.get('prioritaire', False)),
+                cle_lot=cle_lot,
+            )
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(saisies, many=True).data,
+            status=status.HTTP_200_OK)
 
 
 class CumulAnnuelViewSet(_PaieVoirOuGerer, TenantMixin,

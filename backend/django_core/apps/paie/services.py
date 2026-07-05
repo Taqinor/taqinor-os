@@ -38,6 +38,7 @@ from .models import (
     PeriodePaie,
     Rubrique,
     TrancheIR,
+    TypeEntreePonctuelle,
 )
 
 # ── Date d'effet des valeurs légales par défaut ────────────────────────────
@@ -344,6 +345,42 @@ def ensure_rubriques_standard(company):
     return {'rubriques': cree}
 
 
+# ── ZPAI9 — Catalogue de types d'entrées ponctuelles (Other Input Types) ───
+
+# Types COURANTS (DÉCISION — défaut éditable, consentement fondateur) :
+# (code, libelle, sens, imposable, soumis_cnss, soumis_amo).
+TYPES_ENTREE_PONCTUELLE_DEFAUT = [
+    ('POURBOIRE', 'Pourboire', 'gain', True, True, True),
+    ('REMB_FRAIS_NI', 'Remboursement de frais (non imposable)', 'gain',
+     False, False, False),
+    ('DEDUCTION_PONCT', 'Déduction ponctuelle', 'retenue', False, False, False),
+]
+
+
+def ensure_types_entree_ponctuelle_standard(company):
+    """Provisionne (idempotent) le catalogue standard de types d'entrées (ZPAI9).
+
+    Sème ``TYPES_ENTREE_PONCTUELLE_DEFAUT`` pour ``company`` — clé stable
+    ``(company, code)`` : un type déjà présent (éventuellement édité) n'est
+    JAMAIS modifié. Purement additif. Renvoie ``{'types': N}`` (nombre créé).
+    """
+    from .models import TypeEntreePonctuelle
+
+    cree = 0
+    for code, libelle, sens, imposable, cnss, amo in \
+            TYPES_ENTREE_PONCTUELLE_DEFAUT:
+        _, new = TypeEntreePonctuelle.objects.get_or_create(
+            company=company, code=code,
+            defaults={
+                'libelle': libelle, 'sens': sens, 'imposable': imposable,
+                'soumis_cnss': cnss, 'soumis_amo': amo,
+            },
+        )
+        if new:
+            cree += 1
+    return {'types': cree}
+
+
 # ── PAIE10 — Cycle de statuts d'une période de paie ────────────────────────
 
 class TransitionPeriodeInterdite(Exception):
@@ -441,6 +478,77 @@ def importer_elements_rh(periode):
         return importes
 
 
+# ── ZPAI11 — Duplication des rubriques récurrentes vers une nouvelle période ─
+
+def _mois_precedent(annee, mois):
+    """``(annee, mois)`` du mois précédent."""
+    if mois == 1:
+        return annee - 1, 12
+    return annee, mois - 1
+
+
+def reporter_elements_periode(periode_cible):
+    """Reconduit les éléments ``reconduire=True`` de M-1 vers ``periode_cible`` (ZPAI11).
+
+    Cherche la ``PeriodePaie`` du mois calendaire précédent, même société et
+    même ``type_run`` que ``periode_cible`` (aucune période précédente trouvée
+    → no-op, renvoie ``[]``). Pour chaque ``ElementVariable`` de cette période
+    marqué ``reconduire=True``, crée une COPIE dans ``periode_cible`` (même
+    profil/type/rubrique/libellé/quantité/montant/flags, ``source='manuel'``,
+    ``reconduit_depuis`` posé sur l'original) — IDEMPOTENT : la contrainte
+    ``(periode, reconduit_depuis)`` empêche toute double-copie d'un même
+    élément d'origine vers la même période cible (re-run silencieusement
+    ignoré). Un élément NON reconductible n'est jamais copié. Renvoie la
+    liste des nouvelles copies créées par CET appel (vide si toutes les
+    copies existaient déjà).
+    """
+    annee_prec, mois_prec = _mois_precedent(
+        periode_cible.annee, periode_cible.mois)
+    periode_precedente = (
+        PeriodePaie.objects
+        .filter(
+            company=periode_cible.company, annee=annee_prec, mois=mois_prec,
+            type_run=periode_cible.type_run)
+        .first()
+    )
+    if periode_precedente is None:
+        return []
+
+    a_reconduire = ElementVariable.objects.filter(
+        periode=periode_precedente, reconduire=True)
+    deja_copies = set(
+        ElementVariable.objects
+        .filter(periode=periode_cible, reconduit_depuis__isnull=False)
+        .values_list('reconduit_depuis_id', flat=True)
+    )
+
+    copies = []
+    with transaction.atomic():
+        for original in a_reconduire:
+            if original.id in deja_copies:
+                continue
+            copie = ElementVariable.objects.create(
+                company=periode_cible.company,
+                periode=periode_cible,
+                profil=original.profil,
+                type=original.type,
+                rubrique=original.rubrique,
+                libelle=original.libelle,
+                quantite=original.quantite,
+                categorie_hs=original.categorie_hs,
+                montant=original.montant,
+                remunere=original.remunere,
+                deduit_solde=original.deduit_solde,
+                categorie_absence=original.categorie_absence,
+                type_entree=original.type_entree,
+                reconduire=original.reconduire,
+                reconduit_depuis=original,
+                source=ElementVariable.SOURCE_MANUEL,
+            )
+            copies.append(copie)
+    return copies
+
+
 def _elements_rh_du_dossier(periode, dossier):
     """Éléments variables RH d'un dossier pour la période — liste de tuples.
 
@@ -525,6 +633,34 @@ def _elements_rh_du_dossier(periode, dossier):
     return elements
 
 
+# ── ZPAI8 — Règle d'arrondi des jours d'absence, par rubrique ───────────────
+
+def _arrondir_jours_absence(jours, rubrique):
+    """Applique la règle d'arrondi ``Rubrique.arrondi``/``sens_arrondi`` (ZPAI8).
+
+    ``rubrique`` peut être ``None`` (élément sans rubrique catalogue) → renvoie
+    ``jours`` inchangé (comportement historique). ``arrondi='aucun'`` (défaut)
+    → inchangé aussi. ``demi_journee``/``journee`` arrondissent au multiple de
+    0,5 ou 1 jour le plus proche dans le sens choisi (``sup``/``inf``).
+    """
+    from .models import Rubrique
+
+    jours = Decimal(jours or 0)
+    if rubrique is None or not getattr(rubrique, 'arrondi', None):
+        return jours
+    if rubrique.arrondi == Rubrique.ARRONDI_AUCUN:
+        return jours
+
+    pas = Decimal('1') if rubrique.arrondi == Rubrique.ARRONDI_JOURNEE \
+        else Decimal('0.5')
+    unites = jours / pas
+    if rubrique.sens_arrondi == Rubrique.SENS_INF:
+        unites_arrondies = unites.to_integral_value(rounding='ROUND_FLOOR')
+    else:
+        unites_arrondies = unites.to_integral_value(rounding='ROUND_CEILING')
+    return unites_arrondies * pas
+
+
 # ── PAIE13 — Calcul du salaire de base proraté selon le type de rémunération ─
 
 def calculer_salaire_base_periode(profil, periode, elements=None):
@@ -586,7 +722,10 @@ def calculer_salaire_base_periode(profil, periode, elements=None):
             if getattr(el, 'remunere', False):
                 continue
             # Les absences sont en jours par convention dans ElementVariable.
-            jours_absence += Decimal(el.quantite or 0)
+            # ZPAI8 — arrondi selon la rubrique catalogue de l'élément (si
+            # rattachée), sinon quantité brute (comportement historique).
+            jours_absence += _arrondir_jours_absence(
+                el.quantite, getattr(el, 'rubrique', None))
         elif el.type == ElementVariable.TYPE_HEURES:
             # Des heures travaillées déclarées explicitement.
             heures_travaillees_declares = (
@@ -1312,9 +1451,132 @@ def appliquer_saisies(profil, periode, net_a_payer):
             )
             verrou.montant_retenu = _q(
                 Decimal(verrou.montant_retenu or 0) + montant)
-            verrou.save(update_fields=['montant_retenu'])
+            champs = ['montant_retenu']
+            # ZPAI6 — bascule auto `en_cours` -> `soldee` dès que le solde
+            # restant est épuisé par cette imputation (jamais l'inverse : une
+            # saisie soldée ne redevient jamais `en_cours` automatiquement).
+            if verrou.soldee and verrou.statut == SaisieArret.STATUT_EN_COURS:
+                verrou.statut = SaisieArret.STATUT_SOLDEE
+                champs.append('statut')
+            verrou.save(update_fields=champs)
             total += montant
     return _q(total)
+
+
+# ── ZPAI6 — Cycle de vie explicite des saisies-arrêt ────────────────────────
+
+def annuler_saisie_arret(saisie, *, motif=''):
+    """Annule une saisie-arrêt/cession — stoppe les retenues futures (ZPAI6).
+
+    N'efface JAMAIS l'historique : ``montant_retenu`` déjà imputé reste
+    inchangé, seule la saisie passe ``actif=False`` + ``statut='annulee'``
+    (elle sort donc de ``retenues_saisies_periode``/``appliquer_saisies``).
+    Idempotent : annuler une saisie déjà annulée est un no-op. Refuse
+    d'annuler une saisie déjà ``soldee`` (rien à arrêter, historique clos).
+    Renvoie la saisie.
+    """
+    from .models import SaisieArret
+
+    if saisie.statut == SaisieArret.STATUT_ANNULEE:
+        return saisie
+    if saisie.statut == SaisieArret.STATUT_SOLDEE:
+        raise ValueError('Une saisie déjà soldée ne peut pas être annulée.')
+    saisie.statut = SaisieArret.STATUT_ANNULEE
+    saisie.actif = False
+    saisie.date_annulation = timezone.now()
+    saisie.motif_annulation = motif or ''
+    saisie.save(update_fields=[
+        'statut', 'actif', 'date_annulation', 'motif_annulation'])
+    return saisie
+
+
+def saisies_arret_du_bulletin(bulletin):
+    """Saisies-arrêt/cessions servies par un ``BulletinPaie`` donné (ZPAI6).
+
+    Relit les lignes ``SAISIE`` du bulletin (snapshot figé, ``LigneBulletin``)
+    et les relie à leur ``SaisieArret`` d'origine par correspondance
+    créancier/type (même clé que celle utilisée pour libeller la ligne dans
+    ``calculer_bulletin``) — lecture seule, aucun effet de bord. Renvoie une
+    liste de dicts ``{'saisie': SaisieArret, 'ligne': LigneBulletin,
+    'montant': Decimal}``.
+    """
+    from .models import SaisieArret
+
+    lignes_saisie = [
+        ligne for ligne in bulletin.lignes.all() if ligne.code == 'SAISIE']
+    if not lignes_saisie:
+        return []
+    saisies = list(
+        SaisieArret.objects.filter(
+            company=bulletin.company, profil=bulletin.profil)
+    )
+    by_label = {}
+    for saisie in saisies:
+        label = saisie.creancier or saisie.get_type_display()
+        by_label.setdefault(label, []).append(saisie)
+
+    resultats = []
+    for ligne in lignes_saisie:
+        candidats = by_label.get(ligne.libelle, [])
+        saisie = candidats[0] if candidats else None
+        resultats.append({
+            'saisie': saisie,
+            'ligne': ligne,
+            'montant': ligne.montant,
+        })
+    return resultats
+
+
+def creer_saisies_arret_lot(
+        company, profils, *, type_saisie=None, montant_total,
+        montant_echeance=None, date_debut, creancier='', reference='',
+        prioritaire=False, cle_lot):
+    """Éclate une saisie-arrêt en N fiches individuelles, une par profil (ZPAI7).
+
+    Façon Odoo « Create Individual Attachments » : au lieu d'une saisie
+    couvrant plusieurs employés, crée une ``SaisieArret`` DISTINCTE par
+    profil, mêmes montant/type/quotité, en UNE transaction. Toutes les
+    ``SaisieArret`` créées portent la même ``cle_lot`` (posée dans
+    ``lot_reference``) — IDEMPOTENT : un re-run avec la MÊME ``cle_lot`` ne
+    duplique rien, il renvoie les saisies déjà créées pour ce lot. Chaque
+    ``profil`` doit être de la MÊME société que ``company`` (sinon
+    ``ValueError``).
+
+    ``cle_lot`` est un identifiant STABLE fourni par l'appelant (jamais généré
+    ici par ``count()+1`` — cf. CLAUDE.md, la numérotation par comptage a déjà
+    causé des collisions en production). Renvoie la liste des ``SaisieArret``
+    du lot (nouvellement créées ou déjà existantes si re-run).
+    """
+    from .models import SaisieArret
+
+    if not cle_lot:
+        raise ValueError("cle_lot requis (idempotence du lot).")
+    if type_saisie is None:
+        type_saisie = SaisieArret.TYPE_SAISIE
+
+    existantes = list(
+        SaisieArret.objects.filter(company=company, lot_reference=cle_lot))
+    if existantes:
+        return existantes
+
+    profils = list(profils)
+    for profil in profils:
+        if profil.company_id != company.id:
+            raise ValueError("Un profil du lot appartient à une autre société.")
+
+    with transaction.atomic():
+        creees = [
+            SaisieArret.objects.create(
+                company=company, profil=profil, type=type_saisie,
+                creancier=creancier, reference=reference,
+                montant_total=montant_total,
+                montant_echeance=montant_echeance,
+                prioritaire=prioritaire, date_debut=date_debut,
+                lot_reference=cle_lot,
+            )
+            for profil in profils
+        ]
+    return creees
 
 
 # ── PAIE20 — Cotisation CIMR OPTIONNELLE (taux par employé adhérent) ─────────
@@ -1579,7 +1841,7 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
 
     elements = list(
         ElementVariable.objects.filter(periode=periode, profil=profil)
-        .select_related('rubrique')
+        .select_related('rubrique', 'type_entree')
     )
 
     # PAIE13 — salaire de base proraté selon le type de rémunération.
@@ -1587,6 +1849,10 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
     gains_variables = Decimal('0')
     retenues_variables = Decimal('0')
     gains_imposables = Decimal('0')
+    # ZPAI9 — cumul des entrées ponctuelles TYPÉES hors bases CNSS/IR
+    # (ex. remboursement de frais non imposable) : ajouté DIRECTEMENT au net,
+    # jamais à ``brut``/``brut_imposable``. Positif = gain, négatif = retenue.
+    hors_bases = Decimal('0')
     lignes = [{
         'code': 'SB', 'libelle': 'Salaire de base',
         'type': Rubrique.TYPE_GAIN, 'montant': _q(salaire_base),
@@ -1630,6 +1896,25 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
                 'code': el.rubrique.code if el.rubrique_id else el.type,
                 'libelle': el.libelle or el.get_type_display(),
                 'type': Rubrique.TYPE_RETENUE, 'montant': _q(montant),
+            })
+        elif (el.type_entree_id and not el.type_entree.imposable
+                and not el.type_entree.soumis_cnss):
+            # ZPAI9 — Entrée ponctuelle TYPÉE, hors bases CNSS/IR (ex. « frais
+            # non imposable ») : ne rejoint NI ``gains_variables`` (base
+            # CNSS/AMO) NI ``gains_imposables`` (base IR) — versée directement
+            # au net (comme le remboursement de frais XPAI25), qu'elle soit un
+            # gain ou une retenue (``sens`` du type catalogue).
+            if el.type_entree.sens == TypeEntreePonctuelle.SENS_RETENUE:
+                hors_bases -= montant
+            else:
+                hors_bases += montant
+            lignes.append({
+                'code': el.type_entree.code,
+                'libelle': el.libelle or el.type_entree.libelle,
+                'type': Rubrique.TYPE_GAIN
+                if el.type_entree.sens != TypeEntreePonctuelle.SENS_RETENUE
+                else Rubrique.TYPE_RETENUE,
+                'montant': _q(montant),
             })
         else:
             # PAIE14 — Heures supplémentaires : si la quantité est renseignée
@@ -1759,7 +2044,9 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
         })
 
     # 8. Net à payer (− retenues variables type avances, mutuelle incluse).
-    net_a_payer = brut - cnss - amo - cimr - ir - retenues_variables
+    # ZPAI9 — entrées ponctuelles hors bases CNSS/IR (+ gain / − retenue).
+    net_a_payer = brut - cnss - amo - cimr - ir - retenues_variables \
+        + hors_bases
     net_a_payer = _q(net_a_payer)
     # Net AVANT saisie : base de calcul de la quotité saisissable (conservé pour
     # rejouer la même allocation à la validation).
@@ -2159,6 +2446,116 @@ def creer_bulletin_rectificatif(bulletin_origine, periode_cible, *,
     return bulletin
 
 
+def creer_bulletin_annulation(bulletin_origine, periode_cible):
+    """Crée un bulletin d'ANNULATION (refund payslip) lié à l'origine (ZPAI4).
+
+    Contrairement au RECTIFICATIF (qui remplace en émettant un nouveau calcul),
+    l'annulation recopie EXACTEMENT les lignes/montants du bulletin d'origine
+    avec le signe OPPOSÉ — un simple extourne, sans rejouer le moteur de
+    calcul. Le bulletin d'origine reste figé et intact ; l'annulation est créée
+    en ``brouillon`` (immuable une fois validée, comme tout bulletin) et se
+    répercute dans ``CumulAnnuel``/le 9421 via la validation normale (les
+    montants négatifs s'additionnent aux positifs de l'origine).
+
+    ``periode_cible`` doit être de la même société que l'origine et ne PAS
+    être clôturée. Renvoie le bulletin d'annulation (en brouillon).
+    """
+    from .models import BulletinPaie, LigneBulletin
+
+    if periode_cible.company_id != bulletin_origine.company_id:
+        raise ValueError("Période cible d'une autre société.")
+    if periode_cible.statut == PeriodePaie.STATUT_CLOTUREE:
+        raise ValueError("La période cible est clôturée.")
+
+    with transaction.atomic():
+        annulation = BulletinPaie.objects.create(
+            company=bulletin_origine.company,
+            periode=periode_cible,
+            profil=bulletin_origine.profil,
+            type_bulletin=BulletinPaie.TYPE_ANNULATION,
+            rectifie=bulletin_origine,
+            motif=f"Annulation du bulletin #{bulletin_origine.id}",
+            personnes_a_charge=bulletin_origine.personnes_a_charge,
+        )
+        for champ in BulletinPaie.SNAPSHOT_FIELDS:
+            valeur = getattr(bulletin_origine, champ) or Decimal('0')
+            setattr(annulation, champ, _q(-Decimal(valeur)))
+        annulation.save()
+        for ligne in bulletin_origine.lignes.all():
+            LigneBulletin.objects.create(
+                company=ligne.company,
+                bulletin=annulation,
+                code=ligne.code,
+                libelle=f'{ligne.libelle} (annulation)',
+                type=ligne.type,
+                montant=_q(-Decimal(ligne.montant or 0)),
+                ordre=ligne.ordre,
+            )
+    return annulation
+
+
+# ── ZPAI10 — Assistant « Ajouter des bulletins existants à une période » ──
+
+def rattacher_bulletins(periode_cible, bulletin_ids):
+    """Rattache des bulletins NON affectés à une ``periode_cible`` (ZPAI10).
+
+    Façon Odoo « Add Payslips » : pose la FK ``periode`` de chaque bulletin
+    listé sur ``periode_cible`` (regroupement rétroactif — utile p. ex. pour
+    consolider un run hors-cycle XPAI4 dans le livre de paie du mois). Garde
+    même société stricte et refuse si la période cible est CLÔTURÉE. Un
+    bulletin qui laisserait un doublon ``(periode_cible, profil)`` (contrainte
+    ``unique_together``) est refusé explicitement (jamais d'IntegrityError
+    500). Opération atomique — soit tout rattache, soit rien. Renvoie la
+    liste des bulletins rattachés (rafraîchis).
+    """
+    from .models import BulletinPaie
+
+    if periode_cible.statut == PeriodePaie.STATUT_CLOTUREE:
+        raise ValueError("La période cible est clôturée.")
+    if not bulletin_ids:
+        raise ValueError("Aucun bulletin fourni.")
+
+    with transaction.atomic():
+        bulletins = list(
+            BulletinPaie.objects
+            .select_for_update()
+            .filter(id__in=bulletin_ids)
+        )
+        if len(bulletins) != len(set(bulletin_ids)):
+            raise ValueError("Un ou plusieurs bulletins sont introuvables.")
+        for bulletin in bulletins:
+            if bulletin.company_id != periode_cible.company_id:
+                raise ValueError(
+                    "Un bulletin appartient à une autre société.")
+        profils_deja_dans_cible = set(
+            BulletinPaie.objects
+            .filter(periode=periode_cible)
+            .exclude(id__in=[b.id for b in bulletins])
+            .values_list('profil_id', flat=True)
+        )
+        profils_du_lot = set()
+        for bulletin in bulletins:
+            if bulletin.profil_id in profils_deja_dans_cible:
+                raise ValueError(
+                    f"Le profil #{bulletin.profil_id} a déjà un bulletin "
+                    "sur la période cible.")
+            if bulletin.profil_id in profils_du_lot:
+                raise ValueError(
+                    f"Le profil #{bulletin.profil_id} apparaît plusieurs "
+                    "fois dans le lot.")
+            profils_du_lot.add(bulletin.profil_id)
+        for bulletin in bulletins:
+            if bulletin.statut == BulletinPaie.STATUT_VALIDE:
+                # Un bulletin VALIDÉ est figé (BulletinVerrouille) — le
+                # rattachement de période n'est permis que sur un brouillon.
+                raise ValueError(
+                    f"Le bulletin #{bulletin.id} est validé (figé) : "
+                    "impossible de le rattacher à une autre période.")
+            bulletin.periode = periode_cible
+            bulletin.save(update_fields=['periode'])
+    return bulletins
+
+
 def valider_bulletin(bulletin):
     """Valide un ``BulletinPaie`` → fige le snapshot (PAIE17).
 
@@ -2370,6 +2767,73 @@ def notifier_echeances_en_retard(company):
         echeance.date_notification = dj_timezone.now()
         echeance.save(update_fields=['date_notification'])
         notifiees.append(echeance)
+    return notifiees
+
+
+# ── ZPAI12 — Alerte de clôture de paie en retard (tâche planifiée) ─────────
+
+def periodes_cloture_en_retard(company):
+    """``PeriodePaie`` en ``brouillon``/``calculee`` dont le mois est écoulé (ZPAI12).
+
+    Une période M est « en retard » quand le mois SUIVANT (M+1) est déjà
+    ENTAMÉ (aujourd'hui ≥ le 1ᵉʳ de M+1) ET qu'elle n'est ni ``validee`` ni
+    ``cloturee``. Lecture pure (aucun effet de bord). Renvoie une liste de
+    ``PeriodePaie`` (comparaison faite en Python — ``(annee, mois)`` n'est
+    pas un DateField comparable directement en SQL ici).
+    """
+    from django.utils import timezone as dj_timezone
+
+    from .models import PeriodePaie
+
+    today = dj_timezone.localdate()
+    candidates = PeriodePaie.objects.filter(
+        company=company,
+        statut__in=[PeriodePaie.STATUT_BROUILLON, PeriodePaie.STATUT_CALCULEE],
+    )
+    en_retard = []
+    for periode in candidates:
+        annee_suivante, mois_suivant = _mois_suivant(periode.annee, periode.mois)
+        if date(annee_suivante, mois_suivant, 1) <= today:
+            en_retard.append(periode)
+    return en_retard
+
+
+def notifier_cloture_en_retard(company):
+    """Notifie (best-effort) le gestionnaire paie des clôtures en retard (ZPAI12).
+
+    Pour chaque ``PeriodePaie`` de ``periodes_cloture_en_retard`` non encore
+    alertée (``date_alerte_cloture_retard`` NULL), notifie le rôle
+    ``paie_gerer`` (repli Responsable/Admin via
+    ``apps.notifications.resolve_recipients``) — UNE SEULE FOIS
+    (``date_alerte_cloture_retard`` posée après envoi ; un re-run le
+    lendemain ne renotifie pas). Jamais bloquant : toute erreur de
+    notification est avalée. Renvoie la liste des périodes notifiées.
+    """
+    from django.utils import timezone as dj_timezone
+
+    en_retard = [
+        p for p in periodes_cloture_en_retard(company)
+        if p.date_alerte_cloture_retard is None
+    ]
+    notifiees = []
+    for periode in en_retard:
+        try:
+            from apps.notifications import services as notif_services
+
+            recipients = notif_services.resolve_recipients(
+                company, 'paie_cloture_retard')
+            notif_services.notify_many(
+                recipients, 'paie_cloture_retard',
+                title='Clôture de paie en retard',
+                body=(
+                    f'Période {periode.mois:02d}/{periode.annee} '
+                    f'({periode.get_statut_display()}) non clôturée.'),
+                company=company)
+        except Exception:  # pragma: no cover - défensif, best-effort
+            pass
+        periode.date_alerte_cloture_retard = dj_timezone.now()
+        periode.save(update_fields=['date_alerte_cloture_retard'])
+        notifiees.append(periode)
     return notifiees
 
 

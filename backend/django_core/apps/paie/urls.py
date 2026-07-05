@@ -20,12 +20,14 @@ from .views import (
     RubriqueViewSet,
     SaisieArretViewSet,
     StructurePaieViewSet,
+    TypeEntreePonctuelleViewSet,
 )
 
 router = DefaultRouter()
 router.register(r'parametres', ParametrePaieViewSet)
 router.register(r'baremes', BaremeIRViewSet)
 router.register(r'rubriques', RubriqueViewSet)
+router.register(r'types-entree-ponctuelle', TypeEntreePonctuelleViewSet)
 router.register(r'profils', ProfilPaieViewSet)
 router.register(r'rubriques-employe', RubriqueEmployeViewSet)
 router.register(r'structures', StructurePaieViewSet)
