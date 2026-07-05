@@ -294,6 +294,10 @@ const itemListJsonLd = {
   }
   .lightbox-arrow--prev { left: 1rem; }
   .lightbox-arrow--next { right: 1rem; }
+  /* WC3 — RTL mirror (defensive: this route is EN-only today, but the arrows
+     must not silently stay LTR-pinned if ever rendered under dir="rtl"). */
+  [dir="rtl"] .lightbox-arrow--prev { left: auto; right: 1rem; }
+  [dir="rtl"] .lightbox-arrow--next { right: auto; left: 1rem; }
   .lightbox-arrow:hover,
   .lightbox-arrow:focus-visible {
     color: var(--color-brass-300);
