@@ -729,9 +729,9 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             if contrat is not None and not contrat.couvre_equipement(inst.equipement):
                 activity.log_note(
                     inst, self.request.user,
-                    "Avertissement : cet équipement n'est pas dans le "
-                    'registre des équipements couverts par le contrat de '
-                    f'maintenance #{contrat.pk}.')
+                    'Avertissement : équipement non couvert par le '
+                    "registre des équipements du contrat de maintenance "
+                    f'#{contrat.pk}.')
         # XCTR3 — avertissement NON BLOQUANT si ce ticket dépasse le quota de
         # visites/déplacements inclus au contrat (droits_restants). NULL sur le
         # contrat = illimité : aucun avertissement possible dans ce cas.
