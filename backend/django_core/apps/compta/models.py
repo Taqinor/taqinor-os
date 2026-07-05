@@ -5102,6 +5102,25 @@ class ExecutionEtapeSequence(models.Model):
         max_length=20, blank=True, default='',
         verbose_name='Branche prise (XMKT18)')
 
+    # ── ZMKT5 — traces d'activité (planifié/traité/rejeté) + motif ──────────
+    class StatutTrace(models.TextChoices):
+        PLANIFIE = 'planifie', 'Planifié'
+        TRAITE = 'traite', 'Traité'
+        REJETE = 'rejete', 'Rejeté'
+
+    class MotifRejet(models.TextChoices):
+        SANS_CONSENTEMENT = 'sans_consentement', 'Pas de consentement'
+        SUPPRIME = 'supprime', 'Supprimé (liste de suppression)'
+        HORS_FENETRE = 'hors_fenetre', 'Hors fenêtre de silence'
+        ERREUR_ENVOI = 'erreur_envoi', "Erreur d'envoi"
+
+    statut_trace = models.CharField(
+        max_length=10, choices=StatutTrace.choices,
+        default=StatutTrace.TRAITE, verbose_name='Statut de trace')
+    motif_rejet = models.CharField(
+        max_length=20, choices=MotifRejet.choices, blank=True, default='',
+        verbose_name='Motif de rejet')
+
     class Meta:
         verbose_name = "Exécution d'étape de séquence"
         verbose_name_plural = "Exécutions d'étape de séquence"

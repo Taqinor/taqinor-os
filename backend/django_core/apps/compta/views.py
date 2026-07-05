@@ -5040,6 +5040,21 @@ class SequenceRelanceViewSet(_ComptaBaseViewSet):
         plan = services.planifier_etapes_sequence(sequence)
         return Response({'etapes': plan})
 
+    @action(detail=True, methods=['get'])
+    def traces(self, request, pk=None):
+        """ZMKT5 — traces filtrables par étape et statut."""
+        sequence = self.get_object()
+        etape_id = request.query_params.get('etape')
+        statut_trace = request.query_params.get('statut')
+        return Response(services.traces_sequence(
+            sequence, etape_id=etape_id, statut_trace=statut_trace))
+
+    @action(detail=True, methods=['get'], url_path='compteurs-par-etape')
+    def compteurs_par_etape(self, request, pk=None):
+        """ZMKT5 — compteurs Succès/Rejeté/Envoyé par étape."""
+        sequence = self.get_object()
+        return Response(services.compteurs_par_etape(sequence))
+
 
 class EtapeSequenceViewSet(_ComptaBaseViewSet):
     """Étapes d'une séquence de relance (FG202)."""

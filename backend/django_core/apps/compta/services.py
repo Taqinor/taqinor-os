@@ -7800,6 +7800,35 @@ def _executer_une_etape(inscription, etape):
             branche_prise=branche_prise,
         )
 
+    # ZMKT5 — rejet consentement/suppression/fenêtre AVANT tout envoi
+    # (email/whatsapp uniquement — l'appel n'a jamais lieu, comportement
+    # historique préservé pour l'appel téléphonique manuel).
+    if canal in (EtapeSequence.Canal.EMAIL, EtapeSequence.Canal.WHATSAPP):
+        from apps.crm.selectors import get_company_lead
+        lead = get_company_lead(inscription.company, inscription.lead_id)
+        destinataire = ''
+        if lead is not None:
+            destinataire = (
+                lead.email if canal == EtapeSequence.Canal.EMAIL
+                else (lead.whatsapp or lead.telephone)) or ''
+        motif_rejet = ''
+        if destinataire and est_supprime(inscription.company, destinataire):
+            motif_rejet = ExecutionEtapeSequence.MotifRejet.SUPPRIME
+        elif destinataire and not consentement_accorde(
+                inscription.company, destinataire, canal=canal):
+            motif_rejet = ExecutionEtapeSequence.MotifRejet.SANS_CONSENTEMENT
+        elif (canal == EtapeSequence.Canal.WHATSAPP
+                and _hors_fenetre_silence(inscription.company)):
+            motif_rejet = ExecutionEtapeSequence.MotifRejet.HORS_FENETRE
+        if motif_rejet:
+            return ExecutionEtapeSequence.objects.create(
+                company=inscription.company, inscription=inscription,
+                etape=etape, canal=canal, resultat='rejete',
+                branche_prise=branche_prise,
+                statut_trace=ExecutionEtapeSequence.StatutTrace.REJETE,
+                motif_rejet=motif_rejet,
+            )
+
     if canal == EtapeSequence.Canal.WHATSAPP and not whatsapp_actif():
         resultat = 'planifie'  # file manuelle FG31, aucun appel réseau
     elif canal == EtapeSequence.Canal.EMAIL and not email_marketing_actif():
@@ -7814,6 +7843,7 @@ def _executer_une_etape(inscription, etape):
         resultat=resultat,
         erreur=erreur,
         branche_prise=branche_prise,
+        statut_trace=ExecutionEtapeSequence.StatutTrace.TRAITE,
     )
     # XMKT16 — une ligne de chatter par étape exécutée (pas par batch).
     noter_touche_marketing_pour_lead(
@@ -7825,6 +7855,45 @@ def _executer_une_etape(inscription, etape):
 def email_marketing_actif():
     """Alias explicite de ``brevo_actif`` pour les séquences (XMKT1)."""
     return brevo_actif()
+
+
+# ── ZMKT5 — Traces d'activité de séquence + compteurs par étape ────────────
+
+def traces_sequence(sequence, *, etape_id=None, statut_trace=None):
+    """ZMKT5 — traces filtrables par étape et statut, company-scopées."""
+    qs = ExecutionEtapeSequence.objects.filter(
+        company=sequence.company, etape__sequence=sequence,
+    ).select_related('etape', 'inscription')
+    if etape_id:
+        qs = qs.filter(etape_id=etape_id)
+    if statut_trace:
+        qs = qs.filter(statut_trace=statut_trace)
+    return [
+        {
+            'id': t.id, 'etape_id': t.etape_id, 'etape_ordre': t.etape.ordre,
+            'inscription_id': t.inscription_id, 'lead_id': t.inscription.lead_id,
+            'statut_trace': t.statut_trace, 'motif_rejet': t.motif_rejet,
+            'resultat': t.resultat, 'execute_le': t.execute_le,
+        }
+        for t in qs.order_by('-execute_le')
+    ]
+
+
+def compteurs_par_etape(sequence):
+    """ZMKT5 — agrège par étape des compteurs Succès/Rejeté/Envoyé."""
+    resultat = []
+    for etape in sequence.etapes.order_by('ordre'):
+        executions = etape.executions.all()
+        resultat.append({
+            'etape_id': etape.id,
+            'ordre': etape.ordre,
+            'succes': executions.exclude(
+                statut_trace=ExecutionEtapeSequence.StatutTrace.REJETE).count(),
+            'rejete': executions.filter(
+                statut_trace=ExecutionEtapeSequence.StatutTrace.REJETE).count(),
+            'envoye': executions.filter(resultat='envoye').count(),
+        })
+    return resultat
 
 
 def sortir_inscription(inscription, *, motif=''):
