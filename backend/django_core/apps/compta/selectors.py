@@ -1872,7 +1872,8 @@ def _mouvements_groupe(company, numeros, *, date_debut=None, date_fin=None,
 
 def preparer_declaration_tva(company, *, date_debut, date_fin, regime='mensuel',
                              methode='debit', credit_anterieur=Decimal('0'),
-                             validees_seulement=False):
+                             validees_seulement=False, comparer=False,
+                             date_debut_m1=None, date_fin_m1=None):
     """Calcule la TVA à déclarer sur une période depuis le grand livre (FG137).
 
     TVA collectée = Σ crédit − Σ débit des comptes 4455… (passif : un avoir
@@ -1883,6 +1884,12 @@ def preparer_declaration_tva(company, *, date_debut, date_fin, regime='mensuel',
     trimestriel) et ``methode`` (débit / encaissement) qualifient le dépôt mais
     n'altèrent pas l'agrégation GL (la période en porte la portée). Lecture
     seule, scopée société. Renvoie un dict prêt à figer sur une ``DeclarationTVA``.
+
+    ZACC10 — ``comparer=True`` ajoute ``tva_collectee_m1``/
+    ``tva_deductible_m1``/``tva_a_declarer_m1`` + les écarts % correspondants,
+    calculés sur ``date_debut_m1``/``date_fin_m1`` (défaut : la période
+    immédiatement précédente, de même durée). Défaut = réponse actuelle
+    byte-identique — détection d'anomalie de collecte/déduction M-1.
     """
     debit_coll, credit_coll = _mouvements_groupe(
         company, _COMPTES_TVA_COLLECTEE, date_debut=date_debut,
@@ -1902,7 +1909,7 @@ def preparer_declaration_tva(company, *, date_debut, date_fin, regime='mensuel',
     net = collectee - deductible - anterieur
     a_declarer = net if net >= 0 else Decimal('0')
     reportable = -net if net < 0 else Decimal('0')
-    return {
+    resultat = {
         'date_debut': date_debut,
         'date_fin': date_fin,
         'regime': regime,
@@ -1913,6 +1920,40 @@ def preparer_declaration_tva(company, *, date_debut, date_fin, regime='mensuel',
         'tva_a_declarer': a_declarer,
         'credit_reportable': reportable,
     }
+    if comparer:
+        deb_m1, fin_m1 = _periode_m1(date_debut, date_fin, date_debut_m1,
+                                     date_fin_m1)
+        m1 = preparer_declaration_tva(
+            company, date_debut=deb_m1, date_fin=fin_m1, regime=regime,
+            methode=methode, validees_seulement=validees_seulement)
+        resultat['date_debut_m1'] = deb_m1
+        resultat['date_fin_m1'] = fin_m1
+        resultat['tva_collectee_m1'] = m1['tva_collectee']
+        resultat['tva_collectee_ecart_pct'] = _ecart_pct(
+            collectee, m1['tva_collectee'])
+        resultat['tva_deductible_m1'] = m1['tva_deductible']
+        resultat['tva_deductible_ecart_pct'] = _ecart_pct(
+            deductible, m1['tva_deductible'])
+        resultat['tva_a_declarer_m1'] = m1['tva_a_declarer']
+        resultat['tva_a_declarer_ecart_pct'] = _ecart_pct(
+            a_declarer, m1['tva_a_declarer'])
+    return resultat
+
+
+def _periode_m1(date_debut, date_fin, date_debut_m1=None, date_fin_m1=None):
+    """Résout la période M-1 (précédente) : bornes explicites priment, sinon
+    la période immédiatement AVANT ``date_debut`` de la MÊME durée en jours
+    (jamais d'erreur si aucune donnée M-1 n'existe — soldes nuls)."""
+    if date_debut_m1 or date_fin_m1:
+        return date_debut_m1, date_fin_m1
+    deb = _as_date(date_debut)
+    fin = _as_date(date_fin)
+    if deb is None or fin is None:
+        return None, None
+    duree = (fin - deb).days
+    fin_m1 = deb - timedelta(days=1)
+    deb_m1 = fin_m1 - timedelta(days=duree)
+    return deb_m1, fin_m1
 
 
 # ── FG138 — Relevé de déductions détaillé (annexe TVA, DGI) ────────────────

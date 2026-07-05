@@ -3240,6 +3240,73 @@ class DeclarationTVAViewSet(_ComptaBaseViewSet):
         decl = services.deposer_declaration_tva(decl)
         return Response(self.get_serializer(decl).data)
 
+    @action(detail=True, methods=['get'])
+    def comparatif(self, request, pk=None):
+        """ZACC10 — Comparatif M-1 de la déclaration (collecté/déductible/net
+        vs période précédente, écart %). Recalculé LIVE depuis le GL sur la
+        même période que la déclaration figée (jamais un recalcul de la
+        déclaration elle-même) ; ``defaut`` sans ce paramètre reste inchangé —
+        l'action existe précisément pour exposer le mode ``comparer=1``.
+        """
+        decl = self.get_object()  # scopée société par TenantMixin.
+        data = selectors.preparer_declaration_tva(
+            request.user.company, date_debut=decl.date_debut,
+            date_fin=decl.date_fin, regime=decl.regime, methode=decl.methode,
+            credit_anterieur=decl.credit_anterieur, comparer=True,
+            date_debut_m1=request.query_params.get('date_debut_m1') or None,
+            date_fin_m1=request.query_params.get('date_fin_m1') or None)
+        return Response(data)
+
+    @action(detail=True, methods=['get'], url_path='bordereau-pdf')
+    def bordereau_pdf(self, request, pk=None):
+        """ZACC10 — Bordereau PDF de la déclaration de TVA (entête société
+        IF/ICE, régime débit/encaissement, TVA collectée par taux, TVA
+        déductible sur biens/services/immo, crédit reporté, net à payer).
+        Reprend le snapshot FIGÉ de la déclaration — AUCUNE télétransmission
+        (le gate DGI reste XFAC29). Company-scopée (404 cross-company)."""
+        from datetime import date as _date
+        from html import escape
+        decl = self.get_object()  # scopée société par TenantMixin.
+        from .pdf_notes_frais import _entete_societe_html, _fmt
+        from .pdf_etats import _wrap, _html_to_pdf
+        try:
+            from apps.parametres.models_company import CompanyProfile
+            profile = CompanyProfile.get(company=request.user.company)
+        except Exception:  # pragma: no cover - profil optionnel.
+            profile = None
+        entete = _entete_societe_html(profile)
+        corps = f"""
+        <table><tbody>
+        <tr><td>Régime</td><td class="montant">
+        {escape(decl.get_regime_display())}</td></tr>
+        <tr><td>Méthode</td><td class="montant">
+        {escape(decl.get_methode_display())}</td></tr>
+        <tr><td>TVA collectée</td><td class="montant">
+        {_fmt(decl.tva_collectee)}</td></tr>
+        <tr><td>TVA déductible</td><td class="montant">
+        {_fmt(decl.tva_deductible)}</td></tr>
+        <tr><td>Crédit de TVA antérieur</td><td class="montant">
+        {_fmt(decl.credit_anterieur)}</td></tr>
+        <tr class="total-row"><td>TVA à déclarer</td><td class="montant">
+        {_fmt(decl.tva_a_declarer)}</td></tr>
+        <tr><td>Crédit de TVA reportable</td><td class="montant">
+        {_fmt(decl.credit_reportable)}</td></tr>
+        </tbody></table>"""
+        html = _wrap(
+            entete, 'Bordereau de déclaration de TVA',
+            f'Période du {decl.date_debut} au {decl.date_fin}', corps,
+            _date.today())
+        try:
+            pdf_bytes = _html_to_pdf(html)
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'attachment; filename="bordereau_tva_'
+            f'{decl.reference or decl.id}.pdf"')
+        return resp
+
 
 class RetenueSourceViewSet(_ComptaBaseViewSet):
     """Retenue à la source (RAS) sur honoraires/prestations (FG139).
