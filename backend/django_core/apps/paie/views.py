@@ -65,6 +65,7 @@ from .serializers import (
 )
 from .services import (
     TransitionPeriodeInterdite,
+    annuler_saisie_arret,
     appliquer_structure_a_profil,
     attestation_salaire_ij_cnss,
     bareme_en_vigueur,
@@ -124,6 +125,7 @@ from .services import (
     reemettre_ligne_virement,
     registre_conges,
     rejeter_ligne_virement,
+    saisies_arret_du_bulletin,
     simuler_bulletin,
     synchroniser_salaire,
     valider_bulletin,
@@ -1264,6 +1266,25 @@ class BulletinPaieViewSet(_PaieVoirOuGerer, TenantMixin,
             self.get_serializer(annulation).data,
             status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['get'], url_path='saisies-arret')
+    def saisies_arret(self, request, pk=None):
+        """Saisies-arrêt/cessions servies par ce bulletin (ZPAI6).
+
+        Lecture seule : relie les lignes ``SAISIE`` du bulletin figé à leur
+        ``SaisieArret`` d'origine.
+        """
+        bulletin = self.get_object()
+        resultats = saisies_arret_du_bulletin(bulletin)
+        data = [
+            {
+                'saisie_id': r['saisie'].id if r['saisie'] else None,
+                'creancier': r['ligne'].libelle,
+                'montant': str(r['montant']),
+            }
+            for r in resultats
+        ]
+        return Response(data, status=status.HTTP_200_OK)
+
     @action(detail=True, methods=['get'], url_path='pdf')
     def pdf(self, request, pk=None):
         """Bulletin de paie au format PDF conforme (PAIE34)."""
@@ -1497,6 +1518,23 @@ class SaisieArretViewSet(_PaieBaseViewSet):
     serializer_class = SaisieArretSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_debut', 'prioritaire', 'date_creation', 'id']
+
+    @action(detail=True, methods=['post'], url_path='annuler')
+    def annuler(self, request, pk=None):
+        """Annule la saisie — stoppe les retenues futures, historique intact (ZPAI6).
+
+        Corps : ``motif`` facultatif. Refuse une saisie déjà soldée
+        (``400``) ; annuler une saisie déjà annulée est un no-op.
+        """
+        saisie = self.get_object()
+        try:
+            saisie = annuler_saisie_arret(
+                saisie, motif=request.data.get('motif', ''))
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(saisie).data, status=status.HTTP_200_OK)
 
 
 class CumulAnnuelViewSet(_PaieVoirOuGerer, TenantMixin,

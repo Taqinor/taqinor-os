@@ -1405,6 +1405,20 @@ class SaisieArret(models.Model):
         (TYPE_CESSION, 'Cession volontaire'),
     ]
 
+    # ZPAI6 — Cycle de vie explicite (façon Odoo Running/Completed/Cancelled) :
+    # ``en_cours`` (défaut, sert encore des retenues), ``soldee`` (posée
+    # automatiquement quand ``solde_restant<=0`` à l'application d'une
+    # retenue), ``annulee`` (arrêt manuel des retenues futures, sans jamais
+    # effacer l'historique déjà retenu).
+    STATUT_EN_COURS = 'en_cours'
+    STATUT_SOLDEE = 'soldee'
+    STATUT_ANNULEE = 'annulee'
+    STATUT_CHOICES = [
+        (STATUT_EN_COURS, 'En cours'),
+        (STATUT_SOLDEE, 'Soldée'),
+        (STATUT_ANNULEE, 'Annulée'),
+    ]
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -1438,6 +1452,16 @@ class SaisieArret(models.Model):
         default=False, verbose_name='Prioritaire (ex. pension alimentaire)')
     date_debut = models.DateField(verbose_name='Date de début de retenue')
     actif = models.BooleanField(default=True, verbose_name='Actif')
+    # ZPAI6 — statut explicite du cycle de vie, en plus du booléen ``actif``
+    # historique (conservé, inchangé, pour compat rétro : ``actif`` continue
+    # de piloter ``retenues_saisies_periode``/``appliquer_saisies``).
+    statut = models.CharField(
+        max_length=10, choices=STATUT_CHOICES, default=STATUT_EN_COURS,
+        verbose_name='Statut')
+    date_annulation = models.DateTimeField(
+        null=True, blank=True, verbose_name='Annulée le')
+    motif_annulation = models.CharField(
+        max_length=200, blank=True, default='', verbose_name="Motif d'annulation")
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 

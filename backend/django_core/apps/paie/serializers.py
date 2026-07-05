@@ -491,9 +491,15 @@ class SaisieArretSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'profil', 'type', 'creancier', 'reference', 'montant_total',
             'montant_echeance', 'montant_retenu', 'solde_restant', 'soldee',
-            'prioritaire', 'date_debut', 'actif', 'date_creation',
+            'prioritaire', 'date_debut', 'actif', 'statut', 'date_annulation',
+            'motif_annulation', 'date_creation',
         ]
-        read_only_fields = ['montant_retenu', 'date_creation']
+        # ZPAI6 — statut/date_annulation/motif_annulation ne s'écrivent QUE
+        # via l'action dédiée `annuler` (jamais en écriture CRUD directe).
+        read_only_fields = [
+            'montant_retenu', 'date_creation', 'statut', 'date_annulation',
+            'motif_annulation',
+        ]
 
     def validate_profil(self, value):
         return _meme_societe(self, value, 'Profil')

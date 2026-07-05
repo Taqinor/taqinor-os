@@ -1312,9 +1312,80 @@ def appliquer_saisies(profil, periode, net_a_payer):
             )
             verrou.montant_retenu = _q(
                 Decimal(verrou.montant_retenu or 0) + montant)
-            verrou.save(update_fields=['montant_retenu'])
+            champs = ['montant_retenu']
+            # ZPAI6 — bascule auto `en_cours` -> `soldee` dès que le solde
+            # restant est épuisé par cette imputation (jamais l'inverse : une
+            # saisie soldée ne redevient jamais `en_cours` automatiquement).
+            if verrou.soldee and verrou.statut == SaisieArret.STATUT_EN_COURS:
+                verrou.statut = SaisieArret.STATUT_SOLDEE
+                champs.append('statut')
+            verrou.save(update_fields=champs)
             total += montant
     return _q(total)
+
+
+# ── ZPAI6 — Cycle de vie explicite des saisies-arrêt ────────────────────────
+
+def annuler_saisie_arret(saisie, *, motif=''):
+    """Annule une saisie-arrêt/cession — stoppe les retenues futures (ZPAI6).
+
+    N'efface JAMAIS l'historique : ``montant_retenu`` déjà imputé reste
+    inchangé, seule la saisie passe ``actif=False`` + ``statut='annulee'``
+    (elle sort donc de ``retenues_saisies_periode``/``appliquer_saisies``).
+    Idempotent : annuler une saisie déjà annulée est un no-op. Refuse
+    d'annuler une saisie déjà ``soldee`` (rien à arrêter, historique clos).
+    Renvoie la saisie.
+    """
+    from .models import SaisieArret
+
+    if saisie.statut == SaisieArret.STATUT_ANNULEE:
+        return saisie
+    if saisie.statut == SaisieArret.STATUT_SOLDEE:
+        raise ValueError('Une saisie déjà soldée ne peut pas être annulée.')
+    saisie.statut = SaisieArret.STATUT_ANNULEE
+    saisie.actif = False
+    saisie.date_annulation = timezone.now()
+    saisie.motif_annulation = motif or ''
+    saisie.save(update_fields=[
+        'statut', 'actif', 'date_annulation', 'motif_annulation'])
+    return saisie
+
+
+def saisies_arret_du_bulletin(bulletin):
+    """Saisies-arrêt/cessions servies par un ``BulletinPaie`` donné (ZPAI6).
+
+    Relit les lignes ``SAISIE`` du bulletin (snapshot figé, ``LigneBulletin``)
+    et les relie à leur ``SaisieArret`` d'origine par correspondance
+    créancier/type (même clé que celle utilisée pour libeller la ligne dans
+    ``calculer_bulletin``) — lecture seule, aucun effet de bord. Renvoie une
+    liste de dicts ``{'saisie': SaisieArret, 'ligne': LigneBulletin,
+    'montant': Decimal}``.
+    """
+    from .models import SaisieArret
+
+    lignes_saisie = [
+        ligne for ligne in bulletin.lignes.all() if ligne.code == 'SAISIE']
+    if not lignes_saisie:
+        return []
+    saisies = list(
+        SaisieArret.objects.filter(
+            company=bulletin.company, profil=bulletin.profil)
+    )
+    by_label = {}
+    for saisie in saisies:
+        label = saisie.creancier or saisie.get_type_display()
+        by_label.setdefault(label, []).append(saisie)
+
+    resultats = []
+    for ligne in lignes_saisie:
+        candidats = by_label.get(ligne.libelle, [])
+        saisie = candidats[0] if candidats else None
+        resultats.append({
+            'saisie': saisie,
+            'ligne': ligne,
+            'montant': ligne.montant,
+        })
+    return resultats
 
 
 # ── PAIE20 — Cotisation CIMR OPTIONNELLE (taux par employé adhérent) ─────────
