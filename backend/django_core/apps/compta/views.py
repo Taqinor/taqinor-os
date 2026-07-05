@@ -5017,8 +5017,11 @@ class RegleUpsellViewSet(_ComptaBaseViewSet):
 class AbonnementMonitoringViewSet(_ComptaBaseViewSet):
     """Abonnements de monitoring (supervision récurrente, FG244). La société est
     posée côté serveur ; la 1re échéance est calculée à la création ;
-    ``renouveler`` avance l'échéance ; ``suspendre`` / ``resilier`` changent le
-    statut ; ``a_echeance`` liste les abonnements arrivant à échéance."""
+    ``renouveler`` avance SEULEMENT l'échéance (YSUBS3 : découplé de la
+    facturation) ; ``facturer`` émet la facture standard de la période due
+    (YSUBS3) ; ``suspendre`` / ``resilier`` passent par les transitions
+    gardées de service (YSUBS4 — jamais un PATCH direct de ``statut``) ;
+    ``a_echeance`` liste les abonnements arrivant à échéance."""
     queryset = AbonnementMonitoring.objects.all()
     serializer_class = AbonnementMonitoringSerializer
     filter_backends = [filters.OrderingFilter]
@@ -5035,18 +5038,39 @@ class AbonnementMonitoringViewSet(_ComptaBaseViewSet):
         return Response(self.get_serializer(abonnement).data)
 
     @action(detail=True, methods=['post'])
+    def facturer(self, request, pk=None):
+        """YSUBS3 — Émet la facture standard de la période due (garde
+        d'idempotence par ``derniere_facturation`` — refuse de re-facturer
+        la même période)."""
+        abonnement = self.get_object()
+        try:
+            facture = services.facturer_abonnement_monitoring(
+                abonnement, user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {'facture_id': facture.id, 'reference': facture.reference,
+             'montant_ttc': str(facture.montant_ttc)},
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
     def suspendre(self, request, pk=None):
         abonnement = self.get_object()
-        if abonnement.statut == AbonnementMonitoring.Statut.ACTIF:
-            abonnement.statut = AbonnementMonitoring.Statut.SUSPENDU
-            abonnement.save(update_fields=['statut'])
+        services.suspendre_abonnement_monitoring(abonnement)
         return Response(self.get_serializer(abonnement).data)
 
     @action(detail=True, methods=['post'])
     def resilier(self, request, pk=None):
         abonnement = self.get_object()
-        abonnement.statut = AbonnementMonitoring.Statut.RESILIE
-        abonnement.save(update_fields=['statut'])
+        try:
+            services.resilier_abonnement_monitoring(
+                abonnement, motif=request.data.get('motif', ''))
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(abonnement).data)
 
     @action(detail=False, methods=['get'])

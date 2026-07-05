@@ -2172,10 +2172,12 @@ class AbonnementMonitoringSerializer(serializers.ModelSerializer):
         model = AbonnementMonitoring
         fields = [
             'id', 'client_id', 'installation_id', 'periodicite', 'montant',
-            'statut', 'date_debut', 'prochaine_echeance', 'date_creation',
+            'statut', 'date_debut', 'prochaine_echeance',
+            'derniere_facturation', 'motif_resiliation', 'date_creation',
         ]
         read_only_fields = [
-            'statut', 'date_debut', 'prochaine_echeance', 'date_creation',
+            'statut', 'date_debut', 'prochaine_echeance',
+            'derniere_facturation', 'motif_resiliation', 'date_creation',
         ]
 
 

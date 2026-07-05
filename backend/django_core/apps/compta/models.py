@@ -6854,6 +6854,17 @@ class AbonnementMonitoring(models.Model):
         null=True, blank=True, verbose_name='Prochaine échéance')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
+    # YSUBS3 — dernière période facturée (garde d'idempotence : ne re-facture
+    # jamais la même `prochaine_echeance`). NULL = jamais facturé
+    # (comportement historique intact tant que personne n'appelle
+    # `facturer`).
+    derniere_facturation = models.DateField(
+        null=True, blank=True, verbose_name='Dernière période facturée')
+    # YSUBS4 — motif de résiliation (obligatoire à la résiliation, posé par
+    # le service ``resilier_abonnement_monitoring``, jamais le viewset).
+    motif_resiliation = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Motif de résiliation')
 
     class Meta:
         verbose_name = 'Abonnement de monitoring'

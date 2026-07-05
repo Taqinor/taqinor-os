@@ -409,3 +409,11 @@ chantier_annule = django.dispatch.Signal()
 # le rejet de paiement existant (YLEDG5) pour rouvrir la facture ET tracer
 # les frais. ``compta`` n'importe jamais ``apps.ventes``.
 effet_rejete = django.dispatch.Signal()
+
+# YSUBS4 — un ``compta.AbonnementMonitoring`` est résilié
+# (``services.resilier_abonnement_monitoring``). Arguments : abonnement
+# (compta.AbonnementMonitoring), motif (str), company. Effet aval : arrêter
+# la supervision monitoring liée (``installation_id``) — aucun abonné dans
+# ce repo pour l'instant (monitoring reste satellite ; câblage futur via son
+# propre ``receivers.py``/``ready()`` sans jamais importer ``apps.compta``).
+abonnement_monitoring_resilie = django.dispatch.Signal()

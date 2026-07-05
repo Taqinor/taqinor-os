@@ -7321,6 +7321,117 @@ def renouveler_abonnement_monitoring(abonnement, *, today=None):
     return abonnement
 
 
+class AbonnementMonitoringError(ValidationError):
+    """Levée sans rien écrire quand la facturation/transition d'un
+    AbonnementMonitoring est refusée (déjà facturé pour la période,
+    résilié/suspendu, motif de résiliation absent)."""
+
+
+def facturer_abonnement_monitoring(abonnement, *, user=None):
+    """YSUBS3 — Émet la ``ventes.Facture`` standard de la période due d'un
+    abonnement monitoring ACTIF, DÉCOUPLÉ de ``renouveler`` (qui n'avance
+    plus que l'échéance — la facturation confondait les deux, anti-pattern
+    du blueprint).
+
+    Garde d'idempotence : refuse si ``derniere_facturation`` == la période
+    en cours de facturation (``prochaine_echeance``, ou aujourd'hui si
+    absente) — ne re-facture jamais la même période. Le client est résolu
+    via ``apps.crm.selectors.get_company_client`` (jamais un import de
+    ``apps.crm.models``) ; la Facture est créée EMISE, TVA 20 %, numérotée
+    via ``ventes.utils.references.create_with_reference`` (même patron que
+    ``ventes.services.creer_facture_contrat``), et émet ``facture_emise``
+    (YLEDG1/YSUBS6) pour que l'auto-écriture compta se déclenche comme
+    toute facture récurrente. Renvoie la Facture créée.
+    """
+    from apps.crm.selectors import get_company_client
+    from apps.ventes.models import Facture
+    from apps.ventes.utils.references import create_with_reference
+    from core.events import facture_emise
+    from .models import AbonnementMonitoring
+
+    if abonnement.statut != AbonnementMonitoring.Statut.ACTIF:
+        raise AbonnementMonitoringError(
+            "Seul un abonnement actif peut être facturé.")
+    if not abonnement.montant or abonnement.montant <= 0:
+        raise AbonnementMonitoringError(
+            "Le montant de l'abonnement doit être positif.")
+
+    company = abonnement.company
+    periode = abonnement.prochaine_echeance or timezone.localdate()
+    if abonnement.derniere_facturation == periode:
+        raise AbonnementMonitoringError(
+            f'La période {periode} a déjà été facturée pour cet abonnement.')
+
+    client = get_company_client(company, abonnement.client_id)
+    if client is None:
+        raise AbonnementMonitoringError(
+            "Client introuvable pour cet abonnement.")
+
+    tva_pct = Decimal('20')
+    prix_ttc = Decimal(str(abonnement.montant))
+    prix_ht = (prix_ttc / (1 + tva_pct / 100)).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
+    montant_tva = (prix_ttc - prix_ht).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
+    libelle = f'Supervision monitoring — abonnement #{abonnement.pk} ({periode})'
+
+    def _create(ref):
+        return Facture.objects.create(
+            reference=ref, company=company, client=client,
+            statut=Facture.Statut.EMISE, taux_tva=tva_pct,
+            montant_ht=prix_ht, montant_tva=montant_tva,
+            montant_ttc=prix_ttc, libelle=libelle, created_by=user,
+        )
+
+    facture = create_with_reference(Facture, 'FAC', company, _create)
+    facture_emise.send(sender=Facture, instance=facture, company=company)
+
+    abonnement.derniere_facturation = periode
+    abonnement.save(update_fields=['derniere_facturation'])
+    return facture
+
+
+def suspendre_abonnement_monitoring(abonnement):
+    """YSUBS4 — Suspend un abonnement ACTIF (transition gardée, service —
+    plus une écriture directe du viewset). Bloque la facturation récurrente
+    (``facturer_abonnement_monitoring`` refuse un abonnement non-actif) tant
+    que le statut reste ``suspendu``. Idempotent (un abonnement déjà
+    suspendu/résilié n'est pas re-transitionné). Renvoie l'abonnement."""
+    from .models import AbonnementMonitoring
+
+    if abonnement.statut != AbonnementMonitoring.Statut.ACTIF:
+        return abonnement
+    abonnement.statut = AbonnementMonitoring.Statut.SUSPENDU
+    abonnement.save(update_fields=['statut'])
+    return abonnement
+
+
+def resilier_abonnement_monitoring(abonnement, *, motif, user=None):
+    """YSUBS4 — Résilie un abonnement (transition gardée, motif OBLIGATOIRE
+    — capturé sur ``motif_resiliation``, jamais perdu comme avec l'ancien
+    PATCH direct du viewset). Bloque définitivement la facturation
+    récurrente. Émet ``abonnement_monitoring_resilie`` (core.events) pour
+    les effets aval (arrêt de la supervision monitoring — satellite, aucun
+    abonné dans ce repo pour l'instant). Idempotent (déjà résilié → no-op,
+    aucune ré-émission de l'événement). Renvoie l'abonnement."""
+    from core.events import abonnement_monitoring_resilie
+    from .models import AbonnementMonitoring
+
+    if abonnement.statut == AbonnementMonitoring.Statut.RESILIE:
+        return abonnement
+    motif = (motif or '').strip()
+    if not motif:
+        raise AbonnementMonitoringError(
+            'Le motif de résiliation est obligatoire.')
+    abonnement.statut = AbonnementMonitoring.Statut.RESILIE
+    abonnement.motif_resiliation = motif
+    abonnement.save(update_fields=['statut', 'motif_resiliation'])
+    abonnement_monitoring_resilie.send(
+        sender=AbonnementMonitoring, abonnement=abonnement, motif=motif,
+        company=abonnement.company)
+    return abonnement
+
+
 # ── COMPTA2 — Mapping document → compte comptable ──────────────────────────
 
 # Correspondances par défaut « clef documentaire → numéro de compte CGNC ».
