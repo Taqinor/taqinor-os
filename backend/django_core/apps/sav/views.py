@@ -799,11 +799,14 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             raise ValidationError({'statut': str(exc)})
         # YSERV12 — à la transition vers RESOLU, propose canal_resolution si
         # l'appelant n'en a pas déjà posé un explicitement (jamais écrasé).
+        # Dans les deux cas (posé explicitement par l'appelant AVANT cet
+        # appel, ou proposé automatiquement ici), le champ doit figurer dans
+        # `update_fields` sous peine d'être silencieusement perdu (un
+        # `save(update_fields=...)` n'écrit QUE les colonnes listées).
         update_fields = ['statut']
-        if (statut_cible == Ticket.Statut.RESOLU
-                and old.statut != Ticket.Statut.RESOLU
-                and not ticket.canal_resolution):
-            ticket.canal_resolution = old.canal_resolution_propose()
+        if statut_cible == Ticket.Statut.RESOLU and old.statut != Ticket.Statut.RESOLU:
+            if not ticket.canal_resolution:
+                ticket.canal_resolution = old.canal_resolution_propose()
             update_fields.append('canal_resolution')
         ticket.save(update_fields=update_fields)
         # FG81 — recalcule sla_breach après toute mise à jour de statut.
