@@ -135,11 +135,24 @@ def public_promesse_signer(request, token):
 
 class CareersApplyThrottle(AnonRateThrottle):
     """Throttle de la candidature publique — protège contre le spam/abus
-    (même ordre de grandeur que le formulaire de contact PARKÉ)."""
+    (même ordre de grandeur que le formulaire de contact PARKÉ).
+
+    DRF applique le throttle AVANT le corps de la vue (``initial()`` avant
+    le handler) : si on ne court-circuitait pas ici, un flag OFF pourrait
+    quand même renvoyer 429 (fuite d'info sur l'existence de l'endpoint, et
+    incohérent avec le contrat « 404 peu importe l'état ») dès que le
+    quota est déjà consommé. Laisse passer sans compter de requête tant que
+    la page carrières est désactivée — la vue renverra 404 elle-même.
+    """
     scope = 'rh_careers_apply'
 
     def get_rate(self):
         return '5/hour'
+
+    def allow_request(self, request, view):
+        if not getattr(settings, 'CAREERS_ENABLED', False):
+            return True
+        return super().allow_request(request, view)
 
 
 def _careers_or_404():
