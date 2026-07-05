@@ -169,7 +169,12 @@ def _notify_new_message(message, mentioned_users):
     Réutilise le point d'entrée `notify()` (in-app + Web Push). Respecte les
     préférences utilisateur ET le niveau PAR CONVERSATION (XKB25 : tout /
     mentions seulement / muet — l'existant `is_muted` reste préservé, il est
-    mappé vers `muted`)."""
+    mappé vers `muted`).
+
+    ZCTR12 : sur un canal ALIASÉ avec l'email réellement configuré,
+    `notify_channel_alias_email` est le SEUL canal email (format liste de
+    diffusion dédiée) — on n'envoie donc pas un second email générique ici
+    (in-app/WhatsApp/push restent inchangés)."""
     try:
         from apps.notifications.models import EventType
         from apps.notifications.services import notify
@@ -182,6 +187,7 @@ def _notify_new_message(message, mentioned_users):
     sender = message.sender
     company = message.company
     mentioned_ids = {u.pk for u in (mentioned_users or []) if u is not None}
+    skip_email = bool(conv.alias_email) and _email_gated()
 
     title = _conversation_title(conv, sender)
     preview = _preview(message)
@@ -214,7 +220,8 @@ def _notify_new_message(message, mentioned_users):
             event = EventType.CHAT_MESSAGE
             ntitle = title
         try:
-            notify(u, event, ntitle, body=preview, link=link, company=company)
+            notify(u, event, ntitle, body=preview, link=link, company=company,
+                   skip_email=skip_email)
         except Exception:  # pragma: no cover - défensif
             continue
 
