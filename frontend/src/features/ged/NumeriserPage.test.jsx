@@ -45,8 +45,8 @@ beforeEach(() => {
   gedApi.assemblerPhotos.mockResolvedValue(ok({ id: 99, nom: 'Chantier X' }))
   // jsdom ne fournit pas createObjectURL/revokeObjectURL — l'écran les
   // utilise pour l'aperçu miniature de chaque page capturée.
-  global.URL.createObjectURL = vi.fn(() => 'blob:fake')
-  global.URL.revokeObjectURL = vi.fn()
+  globalThis.URL.createObjectURL = vi.fn(() => 'blob:fake')
+  globalThis.URL.revokeObjectURL = vi.fn()
 })
 
 describe('NumeriserPage (XGED12)', () => {

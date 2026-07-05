@@ -82,7 +82,6 @@ export default function GedNavigator() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state
     loadCabinets()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only fetch
   }, [])
 
   // ── Chargement des dossiers du cabinet courant ──

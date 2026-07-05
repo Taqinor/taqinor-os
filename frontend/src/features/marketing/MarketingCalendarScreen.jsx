@@ -47,6 +47,7 @@ export default function MarketingCalendarScreen() {
       .finally(() => setLoading(false))
   }, [from, to, channel])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
   useEffect(() => { load() }, [load])
 
   const byDay = useMemo(

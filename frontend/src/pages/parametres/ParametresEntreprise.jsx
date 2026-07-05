@@ -280,6 +280,10 @@ export default function ParametresEntreprise() {
     loadMarques()
     loadCfDefs('lead')
     loadNumberingPreview()
+    // mount-only: one-time load of every reference list; the `load*` helpers
+    // are recreated each render and read via closure, so listing them would
+    // re-run every fetch on every render instead of once at mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch])
 
   const addEtape = async () => {

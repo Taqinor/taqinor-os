@@ -30,10 +30,16 @@ function ColisDetail({ colis, onClose, onChanged }) {
   const [busyLigneId, setBusyLigneId] = useState(null)
   const [designation, setDesignation] = useState('')
   const [quantite, setQuantite] = useState('')
-
-  useEffect(() => {
+  // XSTK1 — `ColisDetail` n'est pas remonté (pas de `key`) quand `selected`
+  // change de colis : on resynchronise `lignes` PENDANT le rendu (au lieu
+  // d'un effect qui déclenche un second rendu en cascade) en comparant le
+  // colis affiché au colis reçu — pattern recommandé par React pour "ajuster
+  // un state quand une prop change".
+  const [prevColis, setPrevColis] = useState(colis)
+  if (prevColis !== colis) {
+    setPrevColis(colis)
     setLignes(colis.lignes || [])
-  }, [colis])
+  }
 
   const progress = colisProgress(lignes)
 
@@ -158,6 +164,13 @@ export default function ColisageScreen() {
   useEffect(() => {
     if (!selected) return
     const fresh = data.find((c) => c.id === selected.id)
+    // XSTK1 — resynchronise le colis ouvert après un `reload()` de la liste
+    // (ex: changement de statut ailleurs). `data` vient de la liste (léger,
+    // externe) alors que `selected` vient de `getColis` (détail complet avec
+    // `lignes`) : un vrai refactor "render-time" perdrait les `lignes` déjà
+    // chargées, donc on garde l'effect + un disable ciblé plutôt que de
+    // changer ce comportement.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (fresh) setSelected(fresh)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data])

@@ -27,10 +27,16 @@ const STATUT_FILTERS = [
 function PickListDetail({ pickList, onClose, onChanged }) {
   const [lignes, setLignes] = useState(sortPickListLignesByBin(pickList.lignes))
   const [busyLigneId, setBusyLigneId] = useState(null)
-
-  useEffect(() => {
+  // XSTK1 — `PickListDetail` n'est pas remonté (pas de `key`) quand
+  // `selected` change de bon : on resynchronise `lignes` PENDANT le rendu
+  // (au lieu d'un effect qui déclenche un second rendu en cascade) en
+  // comparant le bon affiché au bon reçu — pattern recommandé par React pour
+  // "ajuster un state quand une prop change".
+  const [prevPickList, setPrevPickList] = useState(pickList)
+  if (prevPickList !== pickList) {
+    setPrevPickList(pickList)
     setLignes(sortPickListLignesByBin(pickList.lignes))
-  }, [pickList])
+  }
 
   const progress = pickListProgress(lignes)
 
@@ -122,6 +128,12 @@ export default function PickListScreen() {
   useEffect(() => {
     if (!selected) return
     const fresh = data.find((p) => p.id === selected.id)
+    // XSTK1 — resynchronise le bon ouvert après un `reload()` de la liste
+    // (ex: changement de statut ailleurs). `data` vient de la liste (léger,
+    // externe) alors que `selected` peut porter des `lignes` déjà chargées :
+    // un vrai refactor "render-time" perdrait ce détail, donc on garde
+    // l'effect + un disable ciblé plutôt que de changer ce comportement.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (fresh) setSelected(fresh)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data])

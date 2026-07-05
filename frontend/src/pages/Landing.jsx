@@ -424,32 +424,32 @@ export default function Landing() {
   useEffect(() => {
     if (statsVisible && statsRef.current)
       statsRef.current.querySelectorAll('.lp-anim').forEach(el => el.classList.add('lp-visible'))
-  }, [statsVisible])
+  }, [statsVisible, statsRef])
 
   useEffect(() => {
     if (iaVisible && iaRef.current)
       iaRef.current.querySelectorAll('.lp-anim-left, .lp-anim-right').forEach(el => el.classList.add('lp-visible'))
-  }, [iaVisible])
+  }, [iaVisible, iaRef])
 
   useEffect(() => {
     if (ctaVisible && ctaRef.current)
       ctaRef.current.querySelectorAll('.lp-anim').forEach(el => el.classList.add('lp-visible'))
-  }, [ctaVisible])
+  }, [ctaVisible, ctaRef])
 
   useEffect(() => {
     if (sectionFeatVis && sectionFeatRef.current)
       sectionFeatRef.current.querySelectorAll('.lp-anim').forEach(el => el.classList.add('lp-visible'))
-  }, [sectionFeatVis])
+  }, [sectionFeatVis, sectionFeatRef])
 
   useEffect(() => {
     if (sectionModVis && sectionModRef.current)
       sectionModRef.current.querySelectorAll('.lp-anim').forEach(el => el.classList.add('lp-visible'))
-  }, [sectionModVis])
+  }, [sectionModVis, sectionModRef])
 
   useEffect(() => {
     if (sectionTestVis && sectionTestRef.current)
       sectionTestRef.current.querySelectorAll('.lp-anim').forEach(el => el.classList.add('lp-visible'))
-  }, [sectionTestVis])
+  }, [sectionTestVis, sectionTestRef])
 
   const DELAYS = ['lp-d0', 'lp-d1', 'lp-d2', 'lp-d3', 'lp-d4']
 

@@ -138,6 +138,9 @@ export function useDataTable({
     [query, columnFilters],
   )
 
+  // TanStack Table's `useReactTable()` returns functions the React Compiler
+  // cannot safely memoize; this is inherent to the library, not fixable here.
+  // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
     data,
     columns: tableColumns,
