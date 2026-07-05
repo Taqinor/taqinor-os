@@ -831,6 +831,23 @@ class PaiementFournisseurSerializer(serializers.ModelSerializer):
                 'Facture hors de votre entreprise.')
         return value
 
+    def validate(self, attrs):
+        # ZACC9 — garde de SUR-PAIEMENT : un règlement ne doit jamais dépasser
+        # le solde dû de la facture (validate_montant refusait déjà un
+        # montant <= 0, mais n'empêchait PAS de payer plus que ce qui reste
+        # dû). Comparaison faite ici (object-level) car elle a besoin à la
+        # fois de `facture` et de `montant`.
+        facture = attrs.get('facture')
+        montant = attrs.get('montant')
+        if facture is not None and montant is not None:
+            if montant > facture.solde_du:
+                raise serializers.ValidationError({
+                    'montant': (
+                        'Le montant dépasse le solde dû '
+                        f'({facture.solde_du}).'),
+                })
+        return attrs
+
 
 class EcheanceFactureFournisseurSerializer(serializers.ModelSerializer):
     class Meta:
