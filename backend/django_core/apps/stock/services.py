@@ -1518,12 +1518,25 @@ def resolve_fournisseur(company, fournisseur_id, installation):
 
 def record_stock_movement(*, company, produit, type_mouvement, quantite,
                           quantite_avant, quantite_apres, reference, note,
-                          created_by, save_produit=True):
+                          created_by, save_produit=True, emplacement_source=None):
     """Crée UN MouvementStock et (par défaut) cale `produit.quantite_stock` sur
     `quantite_apres`. Renvoie le mouvement créé. Écriture identique au
     `MouvementStock.objects.create(...) + produit.save(update_fields=...)` que les
-    appelants faisaient inline. À utiliser dans la transaction de l'appelant."""
-    from .models import MouvementStock
+    appelants faisaient inline. À utiliser dans la transaction de l'appelant.
+
+    YSTCK3 — ``emplacement_source`` (optionnel, `EmplacementStock`) : quand un
+    SORTIE est imputée à un emplacement NON PRINCIPAL précis (ex. camionnette
+    d'un technicien), décrémente CE `StockEmplacement` au lieu de laisser le
+    principal absorber silencieusement toute la baisse (`stock_breakdown`
+    dérive le principal = total − Σ non-principaux, donc sans ce paramètre la
+    camionnette ne redescend JAMAIS quand un technicien consomme depuis son
+    van). Défaut ``None`` = comportement historique EXACT (aucun
+    `StockEmplacement` touché ; la dérivation absorbe la baisse au principal,
+    plafonnée à 0 par ERR94). Un `emplacement_source` PRINCIPAL est un no-op
+    (le principal est déjà dérivé, jamais stocké). Ne s'applique qu'aux
+    mouvements SORTIE (une ENTREE avec emplacement passe par
+    `credit_emplacement_destination`, jamais dupliquée ici)."""
+    from .models import MouvementStock, StockEmplacement
     mouvement = MouvementStock.objects.create(
         company=company,
         produit=produit,
@@ -1538,6 +1551,14 @@ def record_stock_movement(*, company, produit, type_mouvement, quantite,
     if save_produit:
         produit.quantite_stock = quantite_apres
         produit.save(update_fields=['quantite_stock'])
+    if (emplacement_source is not None
+            and not emplacement_source.is_principal
+            and type_mouvement == MouvementStock.TypeMouvement.SORTIE):
+        se, _created = StockEmplacement.objects.select_for_update().get_or_create(
+            produit=produit, emplacement=emplacement_source,
+            defaults={'company': company, 'quantite': 0})
+        se.quantite = max(se.quantite - quantite, 0)
+        se.save(update_fields=['quantite'])
     return mouvement
 
 
