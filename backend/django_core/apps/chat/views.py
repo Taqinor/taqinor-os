@@ -215,14 +215,17 @@ class ConversationViewSet(viewsets.ModelViewSet):
     def export(self, request, pk=None):
         """Export intégral (JSON ou CSV) d'une conversation — admin
         uniquement. Scopé société (déjà appliqué par le queryset : une
-        conversation d'une autre société est 404)."""
+        conversation d'une autre société est 404). Déclenché par
+        ``?export=csv`` — jamais ``?format=`` (réservé à la négociation de
+        contenu DRF ; une valeur hors json/api y renvoie 404, cf. le
+        garde-fou identique dans compta/flotte/ged)."""
         if not getattr(request.user, 'is_admin_role', False):
             return Response(
                 {'detail': 'Réservé aux administrateurs.'},
                 status=status.HTTP_403_FORBIDDEN)
         conv = self.get_object()
         data = services.export_conversation(conv)
-        fmt = request.query_params.get('format', 'json')
+        fmt = request.query_params.get('export', 'json')
         if fmt == 'csv':
             import csv
             import io as _io
@@ -753,6 +756,7 @@ class CannedResponseViewSet(viewsets.ModelViewSet):
     personnels d'un autre utilisateur."""
     serializer_class = CannedResponseSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = None
 
     def get_queryset(self):
         company = _company(self.request)
