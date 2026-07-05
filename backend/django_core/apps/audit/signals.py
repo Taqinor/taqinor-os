@@ -45,6 +45,16 @@ TRACKED_MODELS = [
     # FG15 — sécurité : émission/révocation de clés API et de webhooks.
     ('publicapi', 'ApiKey'),
     ('publicapi', 'Webhook'),
+    # XPAI23 — piste d'audit paie : constantes sociales/barèmes/rubriques/
+    # profils/avances/arrêts/périodes sont des écritures « argent » (FG15).
+    ('paie', 'ParametrePaie'),
+    ('paie', 'BaremeIR'),
+    ('paie', 'Rubrique'),
+    ('paie', 'ProfilPaie'),
+    ('paie', 'RubriqueEmploye'),
+    ('paie', 'AvanceSalarie'),
+    ('paie', 'SaisieArret'),
+    ('paie', 'PeriodePaie'),
 ]
 
 # Champs « statut » par modèle (libellé FR via get_<field>_display si dispo).
