@@ -289,16 +289,36 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
         # les raisons en français. Interrupteur : une société sans étapes
         # configurées garde exactement le comportement historique.
         nouveau_statut = serializer.validated_data.get('statut')
+        franchit_vers_planifie = (
+            nouveau_statut == Installation.Statut.PLANIFIE
+            and nouveau_statut != old.statut)
         if nouveau_statut and nouveau_statut != old.statut:
             from rest_framework.exceptions import ValidationError
             from ..services import verifier_transition_statut
             raisons = verifier_transition_statut(old, nouveau_statut)
             if raisons:
                 raise ValidationError({'statut': raisons})
+        # YSERV1 — Gate « acompte encaissé » avant planification. Toggle OFF
+        # (défaut) = comportement byte-identique. ON : un responsable/admin
+        # (seul rôle admis en écriture ici) peut forcer avec un `motif`
+        # obligatoire, journalisé au chatter.
+        motif_override = (self.request.data.get('motif_override_acompte')
+                          or '').strip()
+        if franchit_vers_planifie:
+            from rest_framework.exceptions import ValidationError
+            from ..services import verifier_gate_acompte_planification
+            raison = verifier_gate_acompte_planification(old)
+            if raison:
+                if not motif_override:
+                    raise ValidationError({'statut': [raison]})
         super().perform_update(serializer)
         inst = serializer.instance
         _stamp_statut_dates(inst, old.statut)
         activity.log_changes(old, inst, self.request.user)
+        if franchit_vers_planifie and motif_override:
+            activity.log_note(
+                inst, self.request.user,
+                f'Planifié sans acompte — motif : {motif_override}')
         # N7 — au passage à « Réceptionné », le chantier devient un système
         # installé actif (parc) : on trace l'événement dans le chatter.
         canon_old = Installation.canonical_statut(old.statut)
@@ -470,6 +490,26 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
                     inst, request.user,
                     f"Réservation de stock libérée — {nb} référence(s) "
                     f"(chantier annulé).")
+            # YSERV6 — solde les interventions non terminées (drapeau
+            # orthogonal, jamais un statut supplémentaire), notifie les
+            # techniciens assignés et les sort des vues kanban/calendrier.
+            from ..services import annuler_interventions_ouvertes
+            nb_interv = annuler_interventions_ouvertes(inst, request.user)
+            if nb_interv:
+                activity.log_note(
+                    inst, request.user,
+                    f"{nb_interv} intervention(s) ouverte(s) annulée(s) "
+                    "(chantier annulé).")
+            # YSERV9 — événement d'exception (best-effort, jamais de statut
+            # devis/facture changé) : ventes peut signaler le devis/acompte
+            # au responsable pour décider avoir vs retenue.
+            try:
+                from core.events import chantier_annule
+                chantier_annule.send(
+                    sender=inst.__class__, installation=inst,
+                    user=request.user, company=inst.company)
+            except Exception:  # pragma: no cover - défensif, best-effort
+                pass
         return Response(
             InstallationSerializer(inst, context={'request': request}).data)
 
@@ -482,6 +522,10 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
             inst.motif_annulation = None
             inst.save(update_fields=['annule', 'motif_annulation'])
             activity.log_note(inst, request.user, "Chantier réactivé")
+            # YSERV6 — lève le drapeau uniquement sur les interventions
+            # annulées PAR cette annulation (traçabilité de provenance).
+            from ..services import reactiver_interventions_annulees
+            reactiver_interventions_annulees(inst, request.user)
         return Response(
             InstallationSerializer(inst, context={'request': request}).data)
 

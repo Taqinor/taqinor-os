@@ -16,6 +16,15 @@ class CoreConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'core'
     verbose_name = 'Fondation'
+    module_manifest = {
+        'key': 'core',
+        'label': 'Fondation',
+        'icone': 'layers',
+        'depends': [],
+        'installable': False,
+        'description': 'Couche de fondation (modèles abstraits, bus, DSR…).',
+        'categorie': 'Technique',
+    }
 
     def ready(self):
         # FG396 — supervision d'erreurs (Sentry), gardée par DSN. No-op total

@@ -640,6 +640,49 @@ class Facture(models.Model):
         help_text="Nombre de jours depuis l'émission pour bénéficier de "
                   "l'escompte.")
 
+    # ── XFAC13 — abandon de créance (write-off) ──
+    # Trace un solde définitif d'une créance irrécouvrable/négligeable : la
+    # facture passe « payée » sans encaissement complémentaire. NULL/vide =
+    # comportement actuel inchangé (aucun abandon). ``abandon_auto`` distingue
+    # un abandon manuel (motif choisi par un responsable) d'un abandon proposé
+    # automatiquement sous la tolérance société à l'encaissement (XFAC13).
+    class MotifAbandon(models.TextChoices):
+        IRRECOUVRABLE = 'irrecouvrable', 'Irrécouvrable'
+        GESTE_COMMERCIAL = 'geste_commercial', 'Geste commercial'
+        ECART_REGLEMENT = 'ecart_reglement', 'Écart de règlement'
+        LIQUIDATION = 'liquidation', 'Liquidation'
+
+    abandon_motif = models.CharField(
+        max_length=20, choices=MotifAbandon.choices, blank=True, default='')
+    abandon_montant = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text='Résiduel soldé par abandon (MAD).')
+    abandon_date = models.DateTimeField(null=True, blank=True)
+    abandon_auto = models.BooleanField(
+        default=False,
+        help_text="Abandon proposé automatiquement sous la tolérance "
+                  "d'écart de règlement société (par opposition à un "
+                  "abandon manuel motivé).")
+    abandon_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='factures_abandonnees',
+    )
+
+    # ── XFAC18 — statut de REVUE (ségrégation des tâches, style Odoo 19) ──
+    # Statut de TRAVAIL additif, distinct du cycle ``Statut`` existant : quand
+    # le réglage société ``revue_factures_active`` est OFF (défaut), ce champ
+    # reste vide et n'affecte rien (comportement actuel byte-identique). ON,
+    # une facture créée par un utilisateur du tier limité démarre « à
+    # valider » et ``emettre`` exige un valideur DIFFÉRENT du créateur.
+    class RevueStatut(models.TextChoices):
+        A_VALIDER = 'a_valider', 'À valider'
+        VALIDEE = 'validee', 'Validée'
+
+    revue_statut = models.CharField(
+        max_length=15, choices=RevueStatut.choices, blank=True, default='')
+
     # ── Statut de télédéclaration DGI (N39) — purement INFORMATIF, posé à la
     # main. Prépare le modèle de données pour un futur flux DGI sans aucun
     # appel externe aujourd'hui. Défaut « Non soumise » = comportement actuel.
@@ -679,6 +722,43 @@ class Facture(models.Model):
         verbose_name='Taux de change',
         help_text='1 MAD = X devise (1 = MAD, sans conversion).',
     )
+
+    # ── XFAC29 — Transmission DGI SORTANTE (key-gated, additif) ──
+    # Distincte de `fichier_ubl` (export local N105, jamais transmis) : ces
+    # champs suivent le cycle de vie d'une VRAIE transmission signée à une
+    # plateforme agréée, une fois sa spec publiée. Défaut = jamais transmise
+    # (comportement actuel byte-identique tant qu'aucune transmission n'est
+    # déclenchée).
+    class DgiStatut(models.TextChoices):
+        A_TRANSMETTRE = 'a_transmettre', 'À transmettre'
+        TRANSMISE = 'transmise', 'Transmise'
+        ACCEPTEE = 'acceptee', 'Acceptée'
+        REJETEE = 'rejetee', 'Rejetée'
+
+    dgi_statut = models.CharField(
+        max_length=15, choices=DgiStatut.choices,
+        default=DgiStatut.A_TRANSMETTRE,
+        verbose_name='Statut transmission DGI',
+    )
+    dgi_reference = models.CharField(
+        max_length=100, blank=True, default='',
+        verbose_name='Référence DGI',
+    )
+    dgi_motif_rejet = models.TextField(
+        blank=True, default='',
+        verbose_name='Motif de rejet DGI',
+    )
+
+    # ── YSUBS9 — Période de service (du/au) des factures récurrentes ──
+    # NULL = comportement actuel (facture non récurrente ou pré-existante).
+    # Renseignés par `creer_facture_contrat` (ventes) et
+    # `facturer_ligne_echeance` (contrats) à partir de la période facturée —
+    # permet le calcul du revenu différé au prorata et prouve l'unicité
+    # (une facture par ligne par période).
+    periode_service_debut = models.DateField(
+        null=True, blank=True, verbose_name='Période de service — début')
+    periode_service_fin = models.DateField(
+        null=True, blank=True, verbose_name='Période de service — fin')
 
     class Meta:
         verbose_name = 'Facture'
@@ -765,11 +845,18 @@ class Facture(models.Model):
         XFAC12 — inclut aussi les escomptes automatiquement appliqués
         (``Paiement.escompte_montant``) : le règlement net + l'escompte
         SOLDENT ensemble la facture, exactement comme montant + retenue
-        (XFAC4). Sans escompte (0/NULL) → comportement inchangé."""
+        (XFAC4). Sans escompte (0/NULL) → comportement inchangé.
+
+        YLEDG5 — un paiement ``rejete`` (chèque impayé/virement rejeté) sort
+        de ce total : la facture redevient ouverte/en retard exactement
+        comme si le règlement n'avait jamais eu lieu (jamais supprimé —
+        piste d'audit conservée)."""
         from decimal import Decimal
-        direct = sum((p.montant for p in self.paiements.all()), Decimal('0'))
+        actifs = [p for p in self.paiements.all()
+                  if p.statut != Paiement.Statut.REJETE]
+        direct = sum((p.montant for p in actifs), Decimal('0'))
         escomptes = sum(
-            (p.escompte_montant or Decimal('0') for p in self.paiements.all()),
+            (p.escompte_montant or Decimal('0') for p in actifs),
             Decimal('0'))
         via_affectation = sum(
             (a.montant for a in self.affectations_paiement.all()), Decimal('0'))
@@ -1014,6 +1101,23 @@ class Paiement(models.Model):
         PARTIELLEMENT_AFFECTE = 'partiellement_affecte', 'Partiellement affecté'
         NON_AFFECTE = 'non_affecte', 'Non affecté'
 
+    # ── YLEDG5 — chemin d'exception « paiement rejeté » (additif) ──
+    # Un paiement rejeté (chèque impayé / virement rejeté) N'EST JAMAIS
+    # supprimé (piste d'audit) : il sort du calcul montant_paye/Facture.statut
+    # via ce statut plutôt que par suppression.
+    class Statut(models.TextChoices):
+        ENCAISSE = 'encaisse', 'Encaissé'
+        REJETE = 'rejete', 'Rejeté'
+
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.ENCAISSE)
+    motif_rejet = models.CharField(max_length=255, blank=True, default='')
+    frais_rejet = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text='Frais bancaires optionnels liés au rejet (ex. frais de '
+                  'chèque impayé), informatif.')
+    date_rejet = models.DateField(null=True, blank=True)
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -1163,6 +1267,14 @@ class Avoir(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
         related_name='avoirs_crees')
     fichier_pdf = models.CharField(max_length=500, blank=True, null=True)
+    # ── XPOS7 — Retour client avec re-stockage (additif) ──
+    # Un avoir « normal » (correction de facturation) laisse ces deux champs
+    # à leur valeur par défaut (False/'') — comportement historique intact.
+    # Un avoir créé depuis l'action `retour-client` pose `restocke=True` quand
+    # la marchandise a été remise en stock (option — un retour peut choisir de
+    # NE PAS re-stocker, ex. produit défectueux détruit) et exige un motif.
+    restocke = models.BooleanField(default=False)
+    motif_retour = models.CharField(max_length=255, blank=True, default='')
 
     class Meta:
         verbose_name = 'Avoir'
@@ -2251,3 +2363,167 @@ from .models_commissioning import (  # noqa: E402,F401
     TestPerformanceReception,   # FG278
     AttestationRE,              # FG287
 )
+
+
+# ── XFSM19 — Rapprochement des encaissements terrain par technicien ─────────
+# FG124 (compta.Caisse/MouvementCaisse) couvre les DÉPENSES de caisse ; rien
+# ne réconcilie les espèces/chèques COLLECTÉS SUR LE TERRAIN par un
+# technicien contre les factures — critique dans le résidentiel marocain
+# cash. Les Paiement lus/rapprochés ici vivent DÉJÀ dans ventes (même app,
+# import direct) : aucune frontière cross-app n'est franchie par ce modèle.
+class RemiseEncaissement(models.Model):
+    """Déclaration + clôture d'une collecte d'encaissements terrain.
+
+    Le technicien déclare sa collecte du jour (des ``Paiement`` déjà
+    enregistrés, mode espèces/chèque) ; le responsable la clôture avec un
+    bordereau PDF. ``montant_declare`` vs la somme des lignes donne l'écart —
+    jamais silencieux (alerté si ≠ 0)."""
+    class Statut(models.TextChoices):
+        OUVERTE = 'ouverte', 'Ouverte'
+        CLOTUREE = 'cloturee', 'Clôturée'
+        VALIDEE = 'validee', 'Validée'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='remises_encaissement')
+    technicien = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+        related_name='remises_encaissement')
+    reference = models.CharField(max_length=50, blank=True, default='')
+    date_collecte = models.DateField()
+    montant_declare = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        help_text=(
+            'Montant total déclaré par le technicien pour cette '
+            'collecte (avant rapprochement des lignes).'))
+    statut = models.CharField(
+        max_length=15, choices=Statut.choices, default=Statut.OUVERTE)
+    note = models.TextField(blank=True, default='')
+    fichier_pdf = models.CharField(max_length=500, blank=True, null=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        related_name='remises_encaissement_creees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    cloture_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='remises_encaissement_cloturees')
+    date_cloture = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Remise d\'encaissement terrain'
+        verbose_name_plural = 'Remises d\'encaissement terrain'
+        ordering = ['-date_collecte', '-id']
+
+    def __str__(self):
+        return f'Remise {self.reference or self.id} — {self.technicien}'
+
+    @property
+    def montant_lignes(self):
+        from decimal import Decimal
+        return sum(
+            (ligne.paiement.montant for ligne in self.lignes.select_related(
+                'paiement').all()), Decimal('0'))
+
+    @property
+    def ecart(self):
+        return self.montant_declare - self.montant_lignes
+
+
+class LigneRemiseEncaissement(models.Model):
+    """Une ligne = un ``Paiement`` (espèces/chèque) rattaché à cette remise.
+
+    Une fois la remise clôturée, ses lignes sont VERROUILLÉES (aucune
+    modification/suppression — appliqué côté service)."""
+    remise = models.ForeignKey(
+        RemiseEncaissement, on_delete=models.CASCADE, related_name='lignes')
+    paiement = models.ForeignKey(
+        Paiement, on_delete=models.PROTECT,
+        related_name='lignes_remise_encaissement')
+
+    class Meta:
+        verbose_name = 'Ligne de remise d\'encaissement'
+        verbose_name_plural = 'Lignes de remise d\'encaissement'
+        unique_together = [('remise', 'paiement')]
+
+    def __str__(self):
+        return f'{self.remise_id} — paiement {self.paiement_id}'
+
+
+# ── XCTR22 — Mandat de paiement récurrent (tokenisation carte) ──────────────
+# Key-gated OFF par défaut : tant qu'aucun mandat actif n'existe pour un
+# client (le cas par défaut, aucun fournisseur de tokenisation n'étant câblé),
+# rien ne change au cycle de facturation récurrente existant (XCTR5/XCTR20).
+class MandatPaiement(models.Model):
+    """Mandat de prélèvement carte (tokenisation), proposé depuis le portail
+    client (XCTR14). AUCUN PAN n'est jamais stocké — seul un token OPAQUE du
+    fournisseur (+ 4 derniers chiffres/expiration pour l'affichage)."""
+    class Statut(models.TextChoices):
+        ACTIF = 'actif', 'Actif'
+        EXPIRE = 'expire', 'Expiré'
+        REVOQUE = 'revoque', 'Révoqué'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='mandats_paiement')
+    client = models.ForeignKey(
+        'crm.Client', on_delete=models.PROTECT,
+        related_name='mandats_paiement')
+    provider = models.CharField(max_length=40, default='noop')
+    # Token OPAQUE renvoyé par le fournisseur — jamais un PAN.
+    token = models.CharField(max_length=200, blank=True, default='')
+    derniers_chiffres = models.CharField(max_length=4, blank=True, default='')
+    expiration_mois = models.CharField(
+        max_length=7, blank=True, default='',
+        help_text='MM/AAAA, affichage seulement.')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.ACTIF)
+    # Loi 09-08 — consentement horodaté explicite du client à la tokenisation.
+    consentement_horodate = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Mandat de paiement récurrent'
+        verbose_name_plural = 'Mandats de paiement récurrent'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Mandat {self.client_id} ({self.get_statut_display()})'
+
+    @property
+    def is_actif(self):
+        return self.statut == self.Statut.ACTIF and bool(self.token)
+
+
+class TentativeDebitMandat(models.Model):
+    """XCTR22 — file d'exceptions/dunning du débit automatique par mandat.
+
+    Une ligne par TENTATIVE de débit (succès ou échec) sur une période de
+    facturation donnée — garde anti double-débit : jamais deux débits
+    RÉUSSIS pour le même ``(mandat, periode)``."""
+    class Statut(models.TextChoices):
+        REUSSI = 'reussi', 'Réussi'
+        ECHEC = 'echec', 'Échec'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='tentatives_debit_mandat')
+    mandat = models.ForeignKey(
+        MandatPaiement, on_delete=models.CASCADE,
+        related_name='tentatives')
+    periode = models.CharField(max_length=20)
+    statut = models.CharField(max_length=10, choices=Statut.choices)
+    motif_echec = models.CharField(max_length=255, blank=True, default='')
+    paiement = models.ForeignKey(
+        Paiement, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='tentatives_debit_mandat')
+    date_tentative = models.DateTimeField(auto_now_add=True)
+    prochaine_retentative = models.DateField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Tentative de débit (mandat)'
+        verbose_name_plural = 'Tentatives de débit (mandat)'
+        ordering = ['-date_tentative']
+
+    def __str__(self):
+        return f'{self.mandat_id} / {self.periode} — {self.statut}'

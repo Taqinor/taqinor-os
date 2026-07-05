@@ -192,6 +192,12 @@ class CommissioningRecord(models.Model):
         related_name='commissioning_record')
     date_essai = models.DateField(null=True, blank=True)
     technicien = models.CharField(max_length=120, blank=True, null=True)
+    # ── XFSM12 — instrument de mesure utilisé (traçabilité d'étalonnage,
+    #    exigée par l'IEC 62446-1). String-FK vers ``outillage.Outillage`` (par
+    #    id, jamais un import du modèle pour la RELATION — l'app lit déjà
+    #    ``apps.outillage.models`` ailleurs, cf. field_services.py) : nullable,
+    #    additif, aucune fiche existante n'est affectée. ──
+    instrument_id = models.PositiveIntegerField(null=True, blank=True)
     # ── Documentation (IEC 62446-1 §4) ──
     doc_dossier_ok = models.BooleanField(null=True, blank=True)
     doc_schema_ok = models.BooleanField(null=True, blank=True)
@@ -246,6 +252,32 @@ class CommissioningRecord(models.Model):
         avec réserves."""
         return self.resultat in (self.Resultat.CONFORME, self.Resultat.RESERVES)
 
+    @property
+    def instrument(self):
+        """XFSM12 — instrument de mesure référencé (résolu par id, jamais un
+        import au niveau module — ``apps.outillage.models`` reste une lecture
+        locale à la fonction, cf. le patron déjà en place dans
+        ``field_services.py``). None si ``instrument_id`` est vide ou pointe
+        vers un outil supprimé."""
+        if not self.instrument_id:
+            return None
+        from apps.outillage.models import Outillage
+        return Outillage.objects.filter(pk=self.instrument_id).first()
+
+    @property
+    def instrument_etalonnage_expire(self):
+        """XFSM12 — True si l'instrument référencé a un étalonnage FG80 EXPIRÉ
+        (intervalle défini ET date de prochaine calibration dépassée ou jamais
+        calibré). None si aucun instrument n'est référencé, ou si l'instrument
+        n'est pas soumis à calibration périodique (intervalle = 0)."""
+        instrument = self.instrument
+        if instrument is None or not instrument.intervalle_calibration_mois:
+            return None
+        if instrument.date_prochaine_calibration is None:
+            return True
+        import datetime
+        return instrument.date_prochaine_calibration <= datetime.date.today()
+
 
 class CommissioningIVReading(models.Model):
     """CH3/FG275 — relevé I-V par string d'une fiche de recette : Voc/Isc/Pmax
@@ -288,6 +320,58 @@ class CommissioningIVReading(models.Model):
 
     def __str__(self):
         return f'I-V {self.string_label} (recette {self.record_id})'
+
+
+class ReverificationMesure(models.Model):
+    """XFSM13 — re-vérification périodique IEC 62446-2 : reprend les points
+    électriques de la RECETTE (``CommissioningRecord`` : Riso, continuité de
+    terre, Voc par string via ``CommissioningIVReading``) et calcule
+    automatiquement l'écart (dérive %) vs cette baseline du chantier.
+
+    Rattachée à une ``Intervention`` de type
+    ``Intervention.Type.REVERIFICATION_62446`` (string-FK par id — le modèle
+    ``Intervention`` n'est jamais importé ici pour éviter tout couplage inutile
+    entre les deux modules de ``models_*``, cf. le même patron déjà en place
+    pour ``StageModele``/``Installation.etape``). Un dépassement du seuil de
+    dérive (paramétrable, défaut 20 %) crée automatiquement une ``Reserve``
+    sur l'intervention (service `services.py`, jamais ici — modèle = données
+    pures). Additif — company posée côté serveur."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='reverifications')
+    intervention_id = models.PositiveIntegerField()
+    record_baseline = models.ForeignKey(
+        CommissioningRecord, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='reverifications')
+    # ── Points électriques repris de la recette (IEC 62446-1 §6) ──
+    isolement_mohm = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True)
+    continuite_terre_ohm = models.DecimalField(
+        max_digits=8, decimal_places=3, null=True, blank=True)
+    # ── Résultat de la comparaison, calculé côté serveur ──
+    # {"string_label": ..., "voc_baseline_v": ..., "voc_mesure_v": ...,
+    #  "ecart_pct": ...} par string.
+    voc_comparaison = models.JSONField(default=list, blank=True)
+    isolement_ecart_pct = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True)
+    seuil_alerte_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=20)
+    depassement_detecte = models.BooleanField(default=False)
+    reserve_id = models.PositiveIntegerField(null=True, blank=True)
+    observations = models.TextField(blank=True, null=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='reverifications_creees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Re-vérification IEC 62446-2'
+        verbose_name_plural = 'Re-vérifications IEC 62446-2'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'Re-vérification #{self.intervention_id}'
 
 
 class HandoverPack(models.Model):

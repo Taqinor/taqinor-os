@@ -5,30 +5,45 @@ La base est INTERNE : les viewsets filtrent par ``request.user.company``
 requête). Les versions d'article sont des instantanés numérotés côté serveur
 (``services.snapshot_article`` — max(version)+1, JAMAIS count()+1).
 """
+from django.http import HttpResponse
 from rest_framework import filters, viewsets
-from rest_framework.decorators import action
+from rest_framework.decorators import (
+    action, api_view, permission_classes, throttle_classes,
+)
 from rest_framework.exceptions import PermissionDenied
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework.throttling import SimpleRateThrottle
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsResponsableOrAdmin
 
 from . import selectors, services
 from .models import (
+    BlocReutilisable,
     KbArticle,
     KbArticleAcl,
     KbArticleLien,
     KbArticleVersion,
     KbFavori,
     KbLectureObligatoire,
+    KbParcours,
+    KbParcoursArticle,
+    KbParcoursAssignation,
+    PartageArticleKb,
 )
 from .serializers import (
+    BlocReutilisableSerializer,
     KbArticleAclSerializer,
     KbArticleLienSerializer,
     KbArticleSerializer,
     KbArticleVersionSerializer,
     KbFavoriSerializer,
     KbLectureObligatoireSerializer,
+    KbParcoursArticleSerializer,
+    KbParcoursAssignationSerializer,
+    KbParcoursSerializer,
+    PartageArticleKbSerializer,
 )
 
 
@@ -117,8 +132,16 @@ class KbArticleViewSet(_KbBaseViewSet):
                 "droit d'édition peut le modifier.")
         # Sauvegarde l'article (société re-posée côté serveur) puis fige un
         # instantané versionné du nouvel état.
+        etait_traduction = article.traduction_de_id is not None
         article = serializer.save(company=self.request.user.company)
         services.snapshot_article(article, auteur=self.request.user)
+        # XKB18 — la source qui avance périme ses traductions ; une
+        # traduction elle-même mise à jour redevient à jour.
+        if etait_traduction and article.traduction_perimee:
+            article.traduction_perimee = False
+            article.save(update_fields=['traduction_perimee'])
+        else:
+            services.marquer_traductions_perimees(article)
 
     @action(detail=True, methods=['post'], url_path='publier')
     def publier(self, request, pk=None):
@@ -168,6 +191,20 @@ class KbArticleViewSet(_KbBaseViewSet):
     def arbre(self, request):
         """XKB8 — Arbre des articles visibles (racines → enfants imbriqués)."""
         return Response(selectors.arbre_articles(self.get_queryset()))
+
+    @action(detail=True, methods=['get'], url_path='items')
+    def items(self, request, pk=None):
+        """ZGED11 — Sous-articles de cet article rendus comme une COLLECTION
+        structurée. ``?vue=kanban|cartes|liste|calendrier`` (défaut
+        ``liste``) ; ``?propriete=<code>`` sélectionne la propriété de
+        regroupement (kanban) ou de datation (calendrier)."""
+        article = self.get_object()
+        vue = request.query_params.get('vue', 'liste')
+        propriete = request.query_params.get('propriete')
+        enfants = self.get_queryset().filter(parent=article)
+        return Response(
+            selectors.items_parcours_vue(
+                enfants, vue=vue, propriete=propriete))
 
     @action(detail=True, methods=['get'], url_path='sommaire')
     def sommaire(self, request, pk=None):
@@ -291,6 +328,126 @@ class KbArticleViewSet(_KbBaseViewSet):
         ser.is_valid(raise_exception=True)
         ser.save(company=self.request.user.company)
         return Response(ser.data)
+
+    @action(detail=True, methods=['post'], url_path='dupliquer')
+    def dupliquer(self, request, pk=None):
+        """XKB21 — Duplique cet article en une copie BROUILLON indépendante.
+
+        Attend ``{"avec_sous_articles": true|false}`` (défaut false). Avec
+        ``avec_sous_articles=true``, clone récursivement tout le sous-arbre
+        sous la nouvelle copie (jamais sous l'original)."""
+        article = self.get_object()
+        avec_sous_articles = bool(request.data.get('avec_sous_articles', False))
+        copie = services.dupliquer_article(
+            article, auteur=request.user, company=request.user.company,
+            avec_sous_articles=avec_sous_articles)
+        return Response(self.get_serializer(copie).data, status=201)
+
+    @action(detail=True, methods=['post'], url_path='traduire')
+    def traduire(self, request, pk=None):
+        """XKB18 — Crée la traduction ``langue`` de cet article (brouillon,
+        rattachée à la source via ``traduction_de``). Attend
+        ``{"langue": "ar"|"en"|"fr"}``."""
+        article = self.get_object()
+        langue = request.data.get('langue')
+        if langue not in dict(KbArticle.LANGUE_CHOICES):
+            return Response(
+                {'detail': 'Langue invalide (fr, ar ou en attendu).'},
+                status=400)
+        traduction = services.creer_traduction(
+            article, langue=langue, auteur=request.user,
+            company=request.user.company)
+        return Response(
+            self.get_serializer(traduction).data, status=201)
+
+    @action(detail=True, methods=['get'], url_path='export-pdf')
+    def export_pdf(self, request, pk=None):
+        """XKB17 — Export PDF fidèle d'un article (WeasyPrint, jamais le
+        moteur devis premium — rule #4). Aucun statut n'est modifié."""
+        article = self.get_object()
+        pdf_bytes = services.article_to_pdf(article)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'attachment; filename="article-{article.id}.pdf"')
+        return response
+
+    @action(detail=True, methods=['get'], url_path='export-markdown')
+    def export_markdown(self, request, pk=None):
+        """XKB17 — Export Markdown fidèle d'un article."""
+        article = self.get_object()
+        contenu = services.article_to_markdown(article)
+        response = HttpResponse(contenu, content_type='text/markdown')
+        response['Content-Disposition'] = (
+            f'attachment; filename="article-{article.id}.md"')
+        return response
+
+    @action(detail=False, methods=['post'], url_path='importer-markdown')
+    def importer_markdown(self, request):
+        """XKB17 — Importe un fichier/texte Markdown comme nouvel article
+        BROUILLON. Attend soit un fichier ``fichier`` (multipart), soit un
+        champ texte ``contenu``."""
+        upload = request.FILES.get('fichier')
+        if upload is not None:
+            contenu = upload.read().decode('utf-8', errors='replace')
+        else:
+            contenu = request.data.get('contenu', '')
+        if not contenu:
+            return Response(
+                {'detail': 'Fournissez un fichier ou un contenu Markdown.'},
+                status=400)
+        article = services.importer_markdown(
+            contenu, company=request.user.company, auteur=request.user)
+        return Response(self.get_serializer(article).data, status=201)
+
+    @action(detail=False, methods=['get'], url_path='export-zip')
+    def export_zip(self, request):
+        """XKB17 — Export ZIP de TOUTE la base de la société (sauvegarde /
+        migration, contrôle des données loi 09-08) : articles + pièces
+        jointes, scopé STRICTEMENT à la société de l'utilisateur — jamais un
+        article d'une autre société."""
+        zip_bytes = services.exporter_zip_company(request.user.company)
+        response = HttpResponse(zip_bytes, content_type='application/zip')
+        response['Content-Disposition'] = (
+            'attachment; filename="kb-export.zip"')
+        return response
+
+    @action(detail=True, methods=['post', 'delete'], url_path='couverture')
+    def couverture(self, request, pk=None):
+        """ZGED10 — Téléverse (POST, multipart ``fichier``) ou retire
+        (DELETE) l'image de couverture de cet article. Validation
+        type/taille via ``records.storage.store_attachment`` — même
+        pipeline que les pièces jointes existantes ; le fichier vit
+        UNIQUEMENT dans MinIO, jamais en base (seule la clé l'est)."""
+        article = self.get_object()
+        if request.method == 'DELETE':
+            article.couverture_file_key = ''
+            article.save(update_fields=['couverture_file_key'])
+            return Response(self.get_serializer(article).data)
+
+        from apps.records.storage import store_attachment
+        upload = request.FILES.get('fichier')
+        if upload is None:
+            return Response({'detail': 'Fichier requis.'}, status=400)
+        meta, err = store_attachment(upload)
+        if err:
+            return Response({'detail': err}, status=400)
+        article.couverture_file_key = meta['file_key']
+        article.save(update_fields=['couverture_file_key'])
+        return Response(self.get_serializer(article).data)
+
+    @action(detail=True, methods=['get'], url_path='couverture-image')
+    def couverture_image(self, request, pk=None):
+        """ZGED10 — Relaie même-origine l'image de couverture (proxy, comme
+        les avatars) : le navigateur ne peut pas joindre l'hôte interne
+        MinIO."""
+        article = self.get_object()
+        if not article.couverture_file_key:
+            return Response({'detail': 'Aucune couverture.'}, status=404)
+        from apps.records.storage import fetch_attachment
+        data, err = fetch_attachment(article.couverture_file_key)
+        if err or data is None:
+            return Response({'detail': 'Couverture indisponible.'}, status=404)
+        return HttpResponse(data, content_type='image/*')
 
 
 class KbArticleVersionViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
@@ -430,3 +587,204 @@ class KbFavoriViewSet(_KbBaseViewSet):
     def perform_create(self, serializer):
         serializer.save(
             company=self.request.user.company, utilisateur=self.request.user)
+
+
+class PartageArticleKbViewSet(_KbBaseViewSet):
+    """XKB19 — Gestion des partages publics d'article (lien tokenisé, opt-in).
+
+    ``company``/``created_by`` posés côté serveur ; l'``article`` reçu est
+    validé même-société par le sérialiseur. Filtre optionnel ``?article=<id>``.
+    """
+    queryset = PartageArticleKb.objects.select_related('article').all()
+    serializer_class = PartageArticleKbSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        article = self.request.query_params.get('article')
+        if article:
+            qs = qs.filter(article_id=article)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, created_by=self.request.user)
+
+    @action(detail=True, methods=['post'], url_path='depublier')
+    def depublier(self, request, pk=None):
+        """XKB19 — Dépublication IMMÉDIATE (kill-switch) : le lien répond
+        404 dès cet appel (indistinct d'un jeton inconnu)."""
+        partage = self.get_object()
+        partage.actif = False
+        partage.save(update_fields=['actif'])
+        return Response(self.get_serializer(partage).data)
+
+
+class KbParcoursViewSet(_KbBaseViewSet):
+    """XKB22 — Parcours de lecture d'intégration (séquences ordonnées
+    d'articles). ``company``/``created_by`` posés côté serveur."""
+    queryset = KbParcours.objects.all()
+    serializer_class = KbParcoursSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'nom', 'date_creation']
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, created_by=self.request.user)
+
+    @action(detail=True, methods=['get'], url_path='articles')
+    def articles(self, request, pk=None):
+        """XKB22 — Articles ordonnés de ce parcours."""
+        parcours = self.get_object()
+        membres = selectors.articles_ordonnes_parcours(parcours)
+        return Response(KbParcoursArticleSerializer(membres, many=True).data)
+
+
+class KbParcoursArticleViewSet(_KbBaseViewSet):
+    """XKB22 — Articles ordonnés d'un parcours (CRUD). ``company`` posée côté
+    serveur ; ``parcours``/``article`` validés même-société par le
+    sérialiseur. Filtre optionnel ``?parcours=<id>``."""
+    queryset = KbParcoursArticle.objects.select_related(
+        'parcours', 'article').all()
+    serializer_class = KbParcoursArticleSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['ordre', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        parcours = self.request.query_params.get('parcours')
+        if parcours:
+            qs = qs.filter(parcours_id=parcours)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+
+class KbParcoursAssignationViewSet(_KbBaseViewSet):
+    """XKB22 — Assignations de parcours (article par article, par personne).
+
+    ``company`` posée côté serveur ; ``parcours``/``utilisateur`` validés
+    même-société par le sérialiseur. Filtres optionnels ``?parcours=<id>``
+    et ``?utilisateur=<id>``."""
+    queryset = KbParcoursAssignation.objects.select_related(
+        'parcours', 'utilisateur').all()
+    serializer_class = KbParcoursAssignationSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        parcours = params.get('parcours')
+        if parcours:
+            qs = qs.filter(parcours_id=parcours)
+        utilisateur = params.get('utilisateur')
+        if utilisateur:
+            qs = qs.filter(utilisateur_id=utilisateur)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+    @action(detail=True, methods=['get'], url_path='progression')
+    def progression(self, request, pk=None):
+        """XKB22 — Progression article par article + complétion de cette
+        assignation (déduite des ``KbLecture`` déjà existantes)."""
+        assignation = self.get_object()
+        return Response(selectors.progression_parcours(assignation))
+
+
+# ── XKB19 — Endpoint PUBLIC (sans login) servant un article par jeton ───────
+# AUTHENTIFIÉ UNIQUEMENT PAR LE JETON : aucune identité/société n'est lue de la
+# requête (même motif que ``ged.views.public_partage`` — GED20). Révoqué/
+# inconnu → 404 ; expiré → 410. Aucune autre donnée n'est atteignable.
+
+class PublicPartageArticleRateThrottle(SimpleRateThrottle):
+    """Limite le débit de l'accès public par IP + jeton (même motif que
+    ``ged.views.PublicPartageRateThrottle``)."""
+    scope = 'public_kb_partage'
+    rate = '30/minute'
+
+    def get_rate(self):
+        return self.rate
+
+    def get_cache_key(self, request, view):
+        token = (getattr(view, 'kwargs', None) or {}).get('token', '')
+        ident = self.get_ident(request)
+        return self.cache_format % {
+            'scope': self.scope,
+            'ident': f'{ident}:{token}',
+        }
+
+
+def _kb_noindex(response):
+    """Marque une réponse publique comme non-indexable par les moteurs."""
+    response['X-Robots-Tag'] = 'noindex, nofollow, noarchive'
+    return response
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicPartageArticleRateThrottle])
+def public_article(request, token):
+    """XKB19 — Sert un article partagé par jeton (PUBLIC, sans login).
+
+    `GET /api/django/kb/public/<token>/`. Le jeton est l'UNIQUE secret
+    d'accès ; aucune identité/société n'est lue de la requête — tout est
+    résolu DEPUIS le jeton (``services.resolve_partage_public``).
+
+    Codes :
+      - 404 : jeton inconnu OU partage dépublié (indistinct, pas de fuite).
+      - 410 : partage expiré.
+      - 200 : titre + corps de l'article (lecture seule), et le compteur
+        ``consultations`` est incrémenté atomiquement.
+    """
+    statut, partage = services.resolve_partage_public(token)
+    if statut == services.PARTAGE_INTROUVABLE:
+        return _kb_noindex(Response(
+            {'detail': "Ce lien est introuvable ou n'est plus disponible."},
+            status=404))
+    if statut == services.PARTAGE_EXPIRE:
+        return _kb_noindex(Response(
+            {'detail': "Ce lien a expiré."}, status=410))
+
+    services.consume_partage_consultation(partage)
+    article = partage.article
+    return _kb_noindex(Response({
+        'titre': article.titre,
+        'corps': article.corps,
+        'corps_format': article.corps_format,
+        'categorie': article.categorie,
+    }))
+
+
+class BlocReutilisableViewSet(_KbBaseViewSet):
+    """ZGED12 — Blocs de texte réutilisables (« presse-papiers Knowledge »).
+
+    Chaque utilisateur voit ses blocs PERSONNELS + tous les blocs SOCIÉTÉ
+    (``selectors.blocs_visibles``) ; ``company``/``created_by`` posés côté
+    serveur. Suppression réservée au CRÉATEUR ou à un admin — un autre
+    utilisateur responsable ne peut pas supprimer le bloc personnel d'un
+    tiers."""
+    queryset = BlocReutilisable.objects.all()
+    serializer_class = BlocReutilisableSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'nom', 'date_creation']
+
+    def get_queryset(self):
+        super().get_queryset()
+        return selectors.blocs_visibles(
+            self.request.user.company, self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, created_by=self.request.user)
+
+    def perform_destroy(self, instance):
+        tier = getattr(self.request.user, 'menu_tier', None)
+        if tier != 'admin' and instance.created_by_id != self.request.user.id:
+            raise PermissionDenied(
+                "Seul le créateur ou un administrateur peut supprimer ce bloc.")
+        instance.delete()

@@ -152,6 +152,69 @@ def affectations_du_conducteur(company, conducteur_id):
     )
 
 
+def avantages_en_nature(company, mois):
+    """XFLT29 — Avantages en nature véhicule dus pour ``mois`` (lecture seule).
+
+    Point d'accès CROSS-APP EN LECTURE : la paie (``rh``/``paie``, FG192)
+    intègre le résultat à ses éléments variables sans jamais importer les
+    modèles flotte — la flotte N'ÉCRIT JAMAIS dans le module paie.
+
+    ``mois`` est une chaîne ``'YYYY-MM'`` (même convention que
+    ``EcheanceContrat.period``, XFLT2). Retourne CHAQUE
+    ``AffectationConducteur`` marquée ``usage_prive=True`` dont la période
+    ``[date_debut, date_fin]`` CHEVAUCHE le mois demandé (``date_fin`` nulle
+    = affectation toujours en cours) et dont ``conducteur.user`` est lié (un
+    conducteur externe sans compte ERP ne peut pas être intégré à la paie).
+
+    La VALORISATION (``valeur_avantage_mensuelle``) est SAISIE/ÉDITABLE côté
+    flotte (les règles marocaines d'évaluation de l'avantage en nature
+    restent une DECISION fondateur/comptable) — ce sélecteur ne recalcule
+    rien, il expose la valeur telle que saisie.
+
+    Retourne une liste ``[{'affectation_id', 'conducteur_id', 'user_id',
+    'conducteur_nom', 'vehicule_id', 'vehicule_label',
+    'valeur_avantage_mensuelle'}, …]``, scopée société.
+    """
+    annee, mois_num = (int(p) for p in mois.split('-'))
+    debut_mois = datetime.date(annee, mois_num, 1)
+    if mois_num == 12:
+        fin_mois = datetime.date(annee + 1, 1, 1) - datetime.timedelta(days=1)
+    else:
+        fin_mois = (
+            datetime.date(annee, mois_num + 1, 1)
+            - datetime.timedelta(days=1))
+
+    affectations = (
+        AffectationConducteur.objects
+        .filter(
+            company=company,
+            usage_prive=True,
+            date_debut__lte=fin_mois,
+        )
+        .filter(
+            models.Q(date_fin__isnull=True) | models.Q(date_fin__gte=debut_mois)
+        )
+        .select_related('conducteur', 'vehicule')
+        .order_by('conducteur__nom')
+    )
+
+    resultat = []
+    for affectation in affectations:
+        conducteur = affectation.conducteur
+        if conducteur is None or conducteur.user_id is None:
+            continue
+        resultat.append({
+            'affectation_id': affectation.id,
+            'conducteur_id': conducteur.id,
+            'user_id': conducteur.user_id,
+            'conducteur_nom': conducteur.nom,
+            'vehicule_id': affectation.vehicule_id,
+            'vehicule_label': str(affectation.vehicule),
+            'valeur_avantage_mensuelle': affectation.valeur_avantage_mensuelle,
+        })
+    return resultat
+
+
 def reservations_de_la_societe(company, vehicule_id=None, actives_only=False):
     """FLOTTE10 — Réservations de véhicules d'une société (queryset scopé).
 
@@ -1864,6 +1927,22 @@ def alertes_echeances_reglementaires(company, today=None):
             f'{ctr.fournisseur}'.strip(' —'),
             ctr.date_fin)
 
+    # 7) XFLT27 — Conformité transport lourd : carte de conducteur
+    # professionnel et formation continue NARSA (documents CONDUCTEUR, pas
+    # actif — ``actif_flotte_id`` reste ``None``, ``actif_label`` porte le nom
+    # du conducteur). La calibration chronotachygraphe (échéance actif) est
+    # déjà couverte par la source #1 (``EcheanceReglementaire``, type
+    # ``chronotachygraphe``) : aucun doublon de logique ici.
+    for conducteur in Conducteur.objects.filter(company=company, actif=True):
+        _ajoute(
+            'carte_conducteur_pro', conducteur.id, None, conducteur.nom,
+            'carte_conducteur_pro', f'Carte de conducteur pro — {conducteur.nom}',
+            conducteur.carte_conducteur_pro_expiration)
+        _ajoute(
+            'formation_narsa', conducteur.id, None, conducteur.nom,
+            'formation_narsa', f'Formation continue NARSA — {conducteur.nom}',
+            conducteur.formation_continue_narsa_validite)
+
     # XFLT16 — Exclut les alertes portant sur un véhicule vendu/réformé (sortie
     # de parc) : l'historique reste consultable ailleurs, mais ces véhicules ne
     # doivent plus générer d'échéance à traiter.
@@ -2750,3 +2829,42 @@ def accessoires_non_rendus(company, conducteur_id):
             })
 
     return resultat
+
+
+# ── XQHS21 — Consommation carburant véhicules pour le bilan carbone QHSE ───
+
+def consommation_annuelle_flotte(company, annee):
+    """Carburant consommé par la flotte VÉHICULES sur une année (XQHS21).
+
+    Agrège ``PleinCarburant`` (déjà existant, FLOTTE12) par ``Vehicule.energie``
+    pour l'année donnée. QHSE lit CE sélecteur plutôt que de re-saisir le
+    carburant véhicules (le carnet de plein existe déjà côté flotte) — les
+    relevés QHSE (XQHS21) couvrent uniquement les sites/groupes électrogènes,
+    hors périmètre flotte.
+
+    Renvoie ``{'gasoil_litres': float, 'essence_litres': float,
+    'electrique_kwh': float}`` — toujours les 3 clés, à 0.0 si absent."""
+    qs = PleinCarburant.objects.filter(
+        company=company, date_plein__year=annee
+    ).select_related('vehicule')
+
+    gasoil = 0.0
+    essence = 0.0
+    kwh = 0.0
+    for plein in qs:
+        energie = getattr(plein.vehicule, 'energie', None)
+        quantite = float(plein.quantite or 0)
+        if plein.unite == PleinCarburant.Unite.KWH:
+            kwh += quantite
+        elif energie == Vehicule.Energie.ESSENCE:
+            essence += quantite
+        else:
+            # Diesel/hybride/inconnu en litres → comptés comme gasoil, le
+            # carburant liquide dominant du parc utilitaire marocain.
+            gasoil += quantite
+
+    return {
+        'gasoil_litres': gasoil,
+        'essence_litres': essence,
+        'electrique_kwh': kwh,
+    }

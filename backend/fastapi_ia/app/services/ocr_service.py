@@ -37,6 +37,8 @@ Format attendu :
     "date": null,
     "fournisseur": null,
     "client": null,
+    "ice": null,
+    "date_echeance": null,
     "montant_ht": null,
     "taux_tva": null,
     "montant_tva": null,
@@ -51,6 +53,8 @@ Regles :
 - Les montants sont des nombres (pas de chaines), null si absent.
 - Les dates au format YYYY-MM-DD, null si absente.
 - confiance reflète la lisibilite et completude (1.0 = parfait).
+- ice = Identifiant Commun de l'Entreprise du FOURNISSEUR (15 chiffres), null si absent.
+- date_echeance = date limite de paiement (souvent proche de "Echeance", "A payer avant le"), null si absente.
 - lignes : [{"description":"","quantite":null,"prix_unitaire":null,"montant":null}]
 """
 
@@ -68,6 +72,8 @@ Format attendu :
     "date": null,
     "fournisseur": null,
     "client": null,
+    "ice": null,
+    "date_echeance": null,
     "montant_ht": null,
     "taux_tva": null,
     "montant_tva": null,
@@ -77,6 +83,10 @@ Format attendu :
     "lignes": []
   }
 }
+
+Regles supplementaires :
+- ice = Identifiant Commun de l'Entreprise du FOURNISSEUR (15 chiffres), null si absent.
+- date_echeance = date limite de paiement, null si absente.
 
 Texte du document :
 """

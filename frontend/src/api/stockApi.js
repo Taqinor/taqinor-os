@@ -145,6 +145,16 @@ const stockApi = {
     api.get('/stock/factures-fournisseur/comptes-a-payer/', { params }),
   ajouterPaiementFournisseur: (factureId, data) =>
     api.post(`/stock/factures-fournisseur/${factureId}/paiements/`, data),
+  // XACC36 — SINK OCR → brouillon de facture d'achat. `file` optionnel (le
+  // scan d'origine, rattaché en pièce jointe côté serveur).
+  factureFournisseurDepuisOcr: ({ fields, file }) => {
+    const formData = new FormData()
+    formData.append('fields', JSON.stringify(fields ?? {}))
+    if (file) formData.append('file', file)
+    return api.post('/stock/factures-fournisseur/depuis-ocr/', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
 
   // WR3 — Pilotage stock (analytics INTERNES ; les valeurs au prix d'achat
   // ne sortent jamais vers un document client).

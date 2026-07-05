@@ -47,6 +47,10 @@ def cash_flow_forecast(request):
 
     Paramètres optionnels :
       - ?horizon=N  : nombre de jours à projeter (défaut 90)
+      - ?mode=comportement : XFAC15 — décale les buckets vers la date
+        d'encaissement PRÉVUE (échéance + retard moyen réel du client) au lieu
+        de la seule échéance théorique. Sans ce paramètre, comportement
+        strictement inchangé (buckets sur échéance théorique).
 
     Réponse :
     {
@@ -75,6 +79,10 @@ def cash_flow_forecast(request):
     from .models import Facture
     company = request.user.company
     today = timezone.now().date()
+    # XFAC15 — mode comportemental : décale les buckets vers la date
+    # d'encaissement prévue plutôt que l'échéance théorique.
+    mode_comportement = request.query_params.get('mode') == 'comportement'
+    scores_cache = {}
 
     # Bornes des buckets temporels.
     week_end = today + timedelta(days=6)
@@ -110,17 +118,29 @@ def cash_flow_forecast(request):
             if f.client else '—'
         )
 
-        if ech is None:
+        # XFAC15 — en mode comportemental, la date qui pilote le bucket est
+        # l'encaissement PRÉVU (échéance + retard moyen réel du client) ;
+        # sans le mode, ``ech`` reste l'échéance théorique inchangée.
+        ech_bucket = ech
+        if mode_comportement and ech is not None and f.client_id:
+            from .selectors import comportement_paiement, \
+                date_encaissement_prevue
+            if f.client_id not in scores_cache:
+                scores_cache[f.client_id] = comportement_paiement(f.client)
+            retard_moyen = scores_cache[f.client_id]['retard_moyen_jours']
+            ech_bucket = date_encaissement_prevue(f, retard_moyen) or ech
+
+        if ech_bucket is None:
             bucket = 'sans_echeance'
-        elif ech < today:
+        elif ech_bucket < today:
             bucket = 'en_retard'
-        elif ech <= week_end:
+        elif ech_bucket <= week_end:
             bucket = 'cette_semaine'
-        elif ech <= next_week_end:
+        elif ech_bucket <= next_week_end:
             bucket = 'semaine_suivante'
-        elif ech <= month_end:
+        elif ech_bucket <= month_end:
             bucket = 'ce_mois'
-        elif next_month_start <= ech <= next_month_end:
+        elif next_month_start <= ech_bucket <= next_month_end:
             bucket = 'mois_suivant'
         else:
             bucket = 'au_dela'

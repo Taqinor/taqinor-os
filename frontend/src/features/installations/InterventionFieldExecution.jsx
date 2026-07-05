@@ -234,9 +234,26 @@ export function TrajetPanel({ intervention, onChanged }) {
   }
 
   const dist = intervention.distance_site_km
+  // XFSM8 — notes d'accès du chantier, reprises telles quelles (jamais
+  // ressaisies) : contact sur site, horaires, consignes particulières.
+  const hasAcces = intervention.contact_site_nom || intervention.contact_site_telephone
+    || intervention.horaires_acces || intervention.acces_instructions
 
   return (
     <div className="flex flex-col gap-3 py-2 text-sm">
+      {hasAcces && (
+        <div className="flex flex-col gap-1 rounded border border-border bg-muted/40 p-2">
+          <span className="font-medium">Accès au site</span>
+          {(intervention.contact_site_nom || intervention.contact_site_telephone) && (
+            <span>
+              Contact : {intervention.contact_site_nom}
+              {intervention.contact_site_telephone ? ` (${intervention.contact_site_telephone})` : ''}
+            </span>
+          )}
+          {intervention.horaires_acces && <span>Horaires : {intervention.horaires_acces}</span>}
+          {intervention.acces_instructions && <span>{intervention.acces_instructions}</span>}
+        </div>
+      )}
       <Row label="Départ dépôt" value={intervention.depart_depot_le
         ? formatDateTime(intervention.depart_depot_le) : '—'} />
       <Row label="Arrivée sur site" value={intervention.arrivee_site_le
