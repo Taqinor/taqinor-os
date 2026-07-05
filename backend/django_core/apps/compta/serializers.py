@@ -1474,6 +1474,7 @@ class CampagneSerializer(serializers.ModelSerializer):
             'listes', 'sms_sender_id', 'statut', 'statut_display',
             'nb_destinataires', 'nb_envois', 'nb_ouvertures', 'nb_clics',
             'envoyee_le', 'date_creation',
+            'planifiee_le', 'debit_max_par_heure', 'variantes_langue',
         ]
         read_only_fields = [
             'statut', 'nb_destinataires', 'nb_envois', 'nb_ouvertures',

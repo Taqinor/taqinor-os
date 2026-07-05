@@ -6870,6 +6870,44 @@ def rendre_variables_fusion(corps, company, lead_id, *, fallback=''):
     return rendu
 
 
+# ── XMKT11 — Campagnes multilingues FR/AR/Darija avec variantes ────────────
+
+def variante_pour_langue(campagne, langue):
+    """Renvoie ``(objet, corps)`` pour ``langue`` (XMKT11) — fallback FR
+    (``campagne.objet``/``campagne.corps``) si la langue est absente de
+    ``variantes_langue`` ou vaut ``'fr'``.
+    """
+    langue = (langue or 'fr').strip().lower()
+    if langue == 'fr':
+        return campagne.objet, campagne.corps
+    variante = (campagne.variantes_langue or {}).get(langue)
+    if not variante:
+        return campagne.objet, campagne.corps
+    objet = variante.get('objet') or campagne.objet
+    corps = variante.get('corps') or campagne.corps
+    return objet, corps
+
+
+def rendre_pour_lead(campagne, company, lead_id):
+    """XMKT11 — Sélectionne la variante de langue selon
+    ``lead.langue_preferee`` (lu via ``apps.crm.selectors.get_company_lead``)
+    puis applique la fusion de variables (XMKT8). Renvoie
+    ``{'objet': ..., 'corps': ..., 'langue': ..., 'rtl': bool}``.
+    """
+    from apps.crm.selectors import get_company_lead
+
+    lead = get_company_lead(company, lead_id)
+    langue = getattr(lead, 'langue_preferee', None) or 'fr'
+    objet, corps = variante_pour_langue(campagne, langue)
+    corps_rendu = rendre_variables_fusion(corps, company, lead_id)
+    return {
+        'objet': objet,
+        'corps': corps_rendu,
+        'langue': langue,
+        'rtl': langue in ('ar',),
+    }
+
+
 # ── XMKT13 — Envoi test + aperçu fusionné + pré-check santé ─────────────────
 
 _URL_RE = re.compile(r'https?://[^\s<>"\')]+')

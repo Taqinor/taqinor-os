@@ -4562,6 +4562,14 @@ class Campagne(models.Model):
     debit_max_par_heure = models.PositiveIntegerField(
         null=True, blank=True,
         verbose_name='Débit max par heure (envoi par lots)')
+    # ── XMKT11 — variantes de contenu par langue (fr/ar/darija) ──────────────
+    # Vide par défaut = comportement actuel (un seul corps, ``objet``/``corps``
+    # ci-dessus servent de fallback FR). Structure :
+    # {"ar": {"objet": "...", "corps": "..."}, "darija": {...}}. Le FR n'a
+    # pas besoin d'entrée ici (déjà porté par les champs historiques).
+    variantes_langue = models.JSONField(
+        default=dict, blank=True,
+        verbose_name='Variantes de contenu par langue (JSON)')
 
     class Meta:
         verbose_name = 'Campagne email/SMS'

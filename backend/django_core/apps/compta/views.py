@@ -4654,6 +4654,21 @@ class CampagneViewSet(_ComptaBaseViewSet):
         campagne = self.get_object()
         return Response(services.clics_par_lien(campagne))
 
+    @action(detail=True, methods=['get'], url_path='rendu-lead')
+    def rendu_lead(self, request, pk=None):
+        """XMKT11 — Rendu final (variante de langue + fusion) pour un lead
+        donné (``?lead_id=``)."""
+        campagne = self.get_object()
+        lead_id = request.query_params.get('lead_id')
+        if not lead_id:
+            return Response({'detail': 'lead_id requis.'}, status=400)
+        try:
+            rendu = services.rendre_pour_lead(
+                campagne, request.user.company, lead_id)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(rendu)
+
 
 # ── XMKT2 — Journal d'envoi par destinataire (drill-down) ───────────────────
 
