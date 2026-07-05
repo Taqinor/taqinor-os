@@ -216,4 +216,10 @@ app.conf.beat_schedule = {
         'task': 'stock.recompute_reordering',
         'schedule': crontab(hour=6, minute=15),
     },
+    # ZPUR7 — brouillon de relance BCF en retard (gated OFF par défaut via
+    # `AchatsParametres.relance_bcf_actif`, no-op tant que non activé).
+    'stock-relancer-bcf-en-retard': {
+        'task': 'stock.relancer_bcf_en_retard',
+        'schedule': crontab(hour=7, minute=10),
+    },
 }

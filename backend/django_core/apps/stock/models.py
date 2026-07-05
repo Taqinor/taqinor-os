@@ -357,6 +357,12 @@ class AchatsParametres(models.Model):
     # historique inchangé (aucun garde, comme avant XSTK8) si activé
     # explicitement par la société.
     stock_negatif_autorise = models.BooleanField(default=False)
+    # ZPUR7 — quand actif, la tâche beat `stock.relancer_bcf_en_retard`
+    # PROPOSE un brouillon de relance (WhatsApp/email, jamais envoyé sans
+    # clic) pour les BCF ENVOYE en retard. OFF par défaut = no-op total (la
+    # tâche autodécouverte tourne mais ne fait rien tant que la société ne
+    # l'active pas).
+    relance_bcf_actif = models.BooleanField(default=False)
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
 
@@ -1280,6 +1286,11 @@ class BonCommandeFournisseur(models.Model):
                   'ce BCF réserve automatiquement les quantités reçues pour '
                   'ce chantier. Vide = comportement historique (stock '
                   'libre).')
+    # ZPUR7 — compteur de relances PROPOSÉES au fournisseur pour un BCF en
+    # retard (incrémenté par `stock.tasks.relancer_bcf_en_retard`, jamais un
+    # envoi automatique — le brouillon est proposé, l'utilisateur clique).
+    # 0 = comportement historique (jamais relancé).
+    nb_relances = models.PositiveIntegerField(default=0)
     note = models.TextField(blank=True, null=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,

@@ -99,3 +99,73 @@ def recompute_reordering_task():
                 company.id, exc_info=True)
             result[company.id] = 0
     return result
+
+
+@shared_task(name='stock.relancer_bcf_en_retard')
+def relancer_bcf_en_retard_task():
+    """ZPUR7 — pour CHAQUE société avec `AchatsParametres.relance_bcf_actif`
+    (OFF par défaut = no-op), PROPOSE un brouillon de relance pré-rempli
+    (réutilise l'infra WhatsApp/email QS3 — jamais un envoi automatique) pour
+    chaque BCF ENVOYE en retard (réutilise `bcf_en_retard_list` XPUR7 — jamais
+    de logique dupliquée) et incrémente `nb_relances` sur le BCF.
+
+    NE RE-NOTIFIE JAMAIS l'alerte buyer de XPUR7 (`BCF_LATE`) : émet un
+    événement DISTINCT (`BCF_RELANCE_PROPOSEE`). Idempotent : au plus une
+    proposition par jour par BCF (le lien encode le BCF + la date). Best-
+    effort : une société/un BCF en échec n'arrête jamais les suivants.
+    Renvoie {company_id: nb_bcf_relances_proposees}."""
+    from authentication.models import Company
+    from .models import AchatsParametres
+    from .services import bcf_en_retard_list
+    from apps.ventes.services import bcf_share_url
+
+    today = timezone.localdate()
+    result = {}
+    for company in Company.objects.all():
+        params = AchatsParametres.objects.filter(
+            company=company, relance_bcf_actif=True).first()
+        if params is None:
+            result[company.id] = 0
+            continue
+        try:
+            en_retard = bcf_en_retard_list(company)
+        except Exception:  # noqa: BLE001 — défensif, société suivante
+            logger.warning(
+                'stock.relancer_bcf_en_retard: échec calcul société %s',
+                company.id, exc_info=True)
+            continue
+        count = 0
+        for bc in en_retard:
+            link = f'stock-relance-bcf-{bc.id}-{today.isoformat()}'
+            if _deja_notifie_aujourdhui('bcf_relance_proposee', link):
+                continue
+            try:
+                from apps.notifications.services import notify_many
+                from apps.notifications.models import EventType
+                from django.contrib.auth import get_user_model
+                User = get_user_model()
+                recipients = list(User.objects.filter(
+                    company=company, is_active=True,
+                    role_legacy__in=['responsable', 'admin']))
+                fournisseur_nom = (
+                    bc.fournisseur.nom if bc.fournisseur_id else '')
+                url, _token = bcf_share_url(bc)
+                message = (
+                    f'Bonjour {fournisseur_nom},\n\n'
+                    f'Relance concernant notre bon de commande '
+                    f'{bc.reference}, toujours en attente de livraison. '
+                    f'Vous pouvez le consulter ici : {url}\n\n'
+                    f'Merci de nous indiquer une date de livraison.')
+                notify_many(
+                    recipients, EventType.BCF_RELANCE_PROPOSEE,
+                    title=f'Brouillon de relance proposé ({bc.reference})',
+                    body=message, link=link, company=company)
+                bc.nb_relances = (bc.nb_relances or 0) + 1
+                bc.save(update_fields=['nb_relances'])
+                count += 1
+            except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+                logger.warning(
+                    'stock.relancer_bcf_en_retard: échec pour BCF %s',
+                    bc.pk, exc_info=True)
+        result[company.id] = count
+    return result
