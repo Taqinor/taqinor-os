@@ -43,6 +43,7 @@ from .models import (
     SaisieArret,
     StructurePaie,
     ProvisionPaieMensuelle,
+    TypeEntreePonctuelle,
 )
 from .serializers import (
     AdhesionMutuelleSerializer,
@@ -62,6 +63,7 @@ from .serializers import (
     RubriqueSerializer,
     SaisieArretSerializer,
     StructurePaieSerializer,
+    TypeEntreePonctuelleSerializer,
 )
 from .services import (
     TransitionPeriodeInterdite,
@@ -89,6 +91,7 @@ from .services import (
     dry_run_reprise_cumuls,
     emettre_ordre_virement,
     ensure_defaults,
+    ensure_types_entree_ponctuelle_standard,
     ensure_rubriques_defaut,
     ensure_rubriques_standard,
     ensure_structures_standard,
@@ -227,6 +230,26 @@ class RubriqueViewSet(_PaieBaseViewSet):
         panier, ancienneté, CIMR…), sans écraser une rubrique déjà éditée.
         """
         created = ensure_rubriques_standard(request.user.company)
+        return Response(created, status=status.HTTP_200_OK)
+
+
+class TypeEntreePonctuelleViewSet(_PaieBaseViewSet):
+    """Catalogue des types d'entrées ponctuelles (ZPAI9), société scopée.
+
+    L'action ``seed-standard`` provisionne (idempotent, additif) les types
+    courants (pourboire, remboursement de frais non imposable, déduction
+    ponctuelle) sans jamais écraser un type déjà édité.
+    """
+    queryset = TypeEntreePonctuelle.objects.all()
+    serializer_class = TypeEntreePonctuelleSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code', 'libelle']
+    ordering_fields = ['libelle', 'code', 'id']
+
+    @action(detail=False, methods=['post'], url_path='seed-standard')
+    def seed_standard(self, request):
+        """Provisionne le catalogue standard de types (idempotent)."""
+        created = ensure_types_entree_ponctuelle_standard(request.user.company)
         return Response(created, status=status.HTTP_200_OK)
 
 

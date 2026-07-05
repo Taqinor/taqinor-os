@@ -27,6 +27,7 @@ from .models import (
     StructurePaie,
     StructurePaieRubrique,
     TrancheIR,
+    TypeEntreePonctuelle,
 )
 
 
@@ -95,6 +96,34 @@ class RubriqueSerializer(serializers.ModelSerializer):
         if qs.exists():
             raise serializers.ValidationError(
                 'Une rubrique avec ce code existe déjà.')
+        return value
+
+
+class TypeEntreePonctuelleSerializer(serializers.ModelSerializer):
+    """Type d'entrée ponctuelle du catalogue (ZPAI9), company-scoped.
+
+    ``company`` posée côté serveur. Le couple ``(company, code)`` étant
+    unique, l'unicité du ``code`` est validée ici pour un 400 propre.
+    """
+    class Meta:
+        model = TypeEntreePonctuelle
+        fields = [
+            'id', 'code', 'libelle', 'sens', 'imposable', 'soumis_cnss',
+            'soumis_amo', 'actif', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_code(self, value):
+        request = self.context.get('request')
+        if request is None:
+            return value
+        qs = TypeEntreePonctuelle.objects.filter(
+            company=request.user.company_id, code=value)
+        if self.instance is not None:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(
+                'Un type avec ce code existe déjà.')
         return value
 
 
@@ -362,6 +391,8 @@ class ElementVariableSerializer(serializers.ModelSerializer):
             # XPAI14 — catégorie d'absence : aucune/maladie/maternite (arrêt
             # CNSS, ignoré hors absence).
             'categorie_absence',
+            # ZPAI9 — type d'entrée ponctuelle du catalogue (facultatif).
+            'type_entree',
             'source', 'date_creation',
         ]
         read_only_fields = ['date_creation']
@@ -374,6 +405,9 @@ class ElementVariableSerializer(serializers.ModelSerializer):
 
     def validate_rubrique(self, value):
         return _meme_societe(self, value, 'Rubrique')
+
+    def validate_type_entree(self, value):
+        return _meme_societe(self, value, "Type d'entrée ponctuelle")
 
 
 class LigneBulletinSerializer(serializers.ModelSerializer):

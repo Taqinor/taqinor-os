@@ -38,6 +38,7 @@ from .models import (
     PeriodePaie,
     Rubrique,
     TrancheIR,
+    TypeEntreePonctuelle,
 )
 
 # ── Date d'effet des valeurs légales par défaut ────────────────────────────
@@ -342,6 +343,42 @@ def ensure_rubriques_standard(company):
     cree = _ensure_rubriques(company, RUBRIQUES_DEFAUT)
     cree += _ensure_rubriques(company, RUBRIQUES_STANDARD)
     return {'rubriques': cree}
+
+
+# ── ZPAI9 — Catalogue de types d'entrées ponctuelles (Other Input Types) ───
+
+# Types COURANTS (DÉCISION — défaut éditable, consentement fondateur) :
+# (code, libelle, sens, imposable, soumis_cnss, soumis_amo).
+TYPES_ENTREE_PONCTUELLE_DEFAUT = [
+    ('POURBOIRE', 'Pourboire', 'gain', True, True, True),
+    ('REMB_FRAIS_NI', 'Remboursement de frais (non imposable)', 'gain',
+     False, False, False),
+    ('DEDUCTION_PONCT', 'Déduction ponctuelle', 'retenue', False, False, False),
+]
+
+
+def ensure_types_entree_ponctuelle_standard(company):
+    """Provisionne (idempotent) le catalogue standard de types d'entrées (ZPAI9).
+
+    Sème ``TYPES_ENTREE_PONCTUELLE_DEFAUT`` pour ``company`` — clé stable
+    ``(company, code)`` : un type déjà présent (éventuellement édité) n'est
+    JAMAIS modifié. Purement additif. Renvoie ``{'types': N}`` (nombre créé).
+    """
+    from .models import TypeEntreePonctuelle
+
+    cree = 0
+    for code, libelle, sens, imposable, cnss, amo in \
+            TYPES_ENTREE_PONCTUELLE_DEFAUT:
+        _, new = TypeEntreePonctuelle.objects.get_or_create(
+            company=company, code=code,
+            defaults={
+                'libelle': libelle, 'sens': sens, 'imposable': imposable,
+                'soumis_cnss': cnss, 'soumis_amo': amo,
+            },
+        )
+        if new:
+            cree += 1
+    return {'types': cree}
 
 
 # ── PAIE10 — Cycle de statuts d'une période de paie ────────────────────────
@@ -1733,7 +1770,7 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
 
     elements = list(
         ElementVariable.objects.filter(periode=periode, profil=profil)
-        .select_related('rubrique')
+        .select_related('rubrique', 'type_entree')
     )
 
     # PAIE13 — salaire de base proraté selon le type de rémunération.
@@ -1741,6 +1778,10 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
     gains_variables = Decimal('0')
     retenues_variables = Decimal('0')
     gains_imposables = Decimal('0')
+    # ZPAI9 — cumul des entrées ponctuelles TYPÉES hors bases CNSS/IR
+    # (ex. remboursement de frais non imposable) : ajouté DIRECTEMENT au net,
+    # jamais à ``brut``/``brut_imposable``. Positif = gain, négatif = retenue.
+    hors_bases = Decimal('0')
     lignes = [{
         'code': 'SB', 'libelle': 'Salaire de base',
         'type': Rubrique.TYPE_GAIN, 'montant': _q(salaire_base),
@@ -1784,6 +1825,25 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
                 'code': el.rubrique.code if el.rubrique_id else el.type,
                 'libelle': el.libelle or el.get_type_display(),
                 'type': Rubrique.TYPE_RETENUE, 'montant': _q(montant),
+            })
+        elif (el.type_entree_id and not el.type_entree.imposable
+                and not el.type_entree.soumis_cnss):
+            # ZPAI9 — Entrée ponctuelle TYPÉE, hors bases CNSS/IR (ex. « frais
+            # non imposable ») : ne rejoint NI ``gains_variables`` (base
+            # CNSS/AMO) NI ``gains_imposables`` (base IR) — versée directement
+            # au net (comme le remboursement de frais XPAI25), qu'elle soit un
+            # gain ou une retenue (``sens`` du type catalogue).
+            if el.type_entree.sens == TypeEntreePonctuelle.SENS_RETENUE:
+                hors_bases -= montant
+            else:
+                hors_bases += montant
+            lignes.append({
+                'code': el.type_entree.code,
+                'libelle': el.libelle or el.type_entree.libelle,
+                'type': Rubrique.TYPE_GAIN
+                if el.type_entree.sens != TypeEntreePonctuelle.SENS_RETENUE
+                else Rubrique.TYPE_RETENUE,
+                'montant': _q(montant),
             })
         else:
             # PAIE14 — Heures supplémentaires : si la quantité est renseignée
@@ -1913,7 +1973,9 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
         })
 
     # 8. Net à payer (− retenues variables type avances, mutuelle incluse).
-    net_a_payer = brut - cnss - amo - cimr - ir - retenues_variables
+    # ZPAI9 — entrées ponctuelles hors bases CNSS/IR (+ gain / − retenue).
+    net_a_payer = brut - cnss - amo - cimr - ir - retenues_variables \
+        + hors_bases
     net_a_payer = _q(net_a_payer)
     # Net AVANT saisie : base de calcul de la quotité saisissable (conservé pour
     # rejouer la même allocation à la validation).

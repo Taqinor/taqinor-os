@@ -900,6 +900,19 @@ class ElementVariable(models.Model):
         max_length=10, choices=CATEGORIE_ABSENCE_CHOICES,
         default=ABSENCE_AUCUNE, blank=True,
         verbose_name='Catégorie d\'absence')
+    # ZPAI9 — Type d'entrée ponctuelle du catalogue (facultatif). NULL
+    # (défaut) = comportement historique inchangé, piloté uniquement par
+    # ``type``/``categorie_hs``/``categorie_absence`` ci-dessus. Renseigné,
+    # les drapeaux fiscaux/sociaux du type catalogue (``imposable``/
+    # ``soumis_cnss``/``soumis_amo``) priment sur l'assiette par défaut de
+    # cet élément dans ``calculer_bulletin``.
+    type_entree = models.ForeignKey(
+        'TypeEntreePonctuelle',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='elements_variables',
+        verbose_name="Type d'entrée ponctuelle (catalogue)",
+    )
     source = models.CharField(
         max_length=10, choices=SOURCE_CHOICES, default=SOURCE_MANUEL,
         verbose_name='Source')
@@ -2034,3 +2047,58 @@ class ProvisionPaieMensuelle(models.Model):
     def __str__(self):
         return (f'{self.get_type_provision_display()} — profil #{self.profil_id} '
                 f'({self.periode})')
+
+
+# ── ZPAI9 — Catalogue de types d'entrées ponctuelles (Other Input Types) ───
+
+class TypeEntreePonctuelle(models.Model):
+    """Catalogue TYPÉ des entrées ponctuelles hors rubriques récurrentes (ZPAI9).
+
+    Façon Odoo « Other Input Types » : au lieu du ``type`` fixe à 5 valeurs
+    codées d'``ElementVariable`` (heures/HS/absence/prime/retenue), un
+    catalogue company-scoped pour typer finement des entrées ponctuelles
+    (pourboire, remboursement de frais non imposable, déduction ponctuelle…),
+    chacune avec ses propres drapeaux fiscaux/sociaux. Un ``ElementVariable``
+    peut référencer un type du catalogue via son FK nullable
+    ``type_entree`` — NULL (défaut) préserve exactement le comportement
+    historique piloté par ``ElementVariable.type`` seul.
+
+    Multi-société : ``company`` posée côté serveur. Le couple
+    ``(company, code)`` est unique.
+    """
+    SENS_GAIN = 'gain'
+    SENS_RETENUE = 'retenue'
+    SENS_CHOICES = [
+        (SENS_GAIN, 'Gain'),
+        (SENS_RETENUE, 'Retenue'),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='paie_types_entree_ponctuelle',
+        verbose_name='Société',
+    )
+    code = models.CharField(max_length=30, verbose_name='Code')
+    libelle = models.CharField(max_length=120, verbose_name='Libellé')
+    sens = models.CharField(
+        max_length=8, choices=SENS_CHOICES, default=SENS_GAIN,
+        verbose_name='Sens')
+    imposable = models.BooleanField(
+        default=True, verbose_name='Imposable (IR)')
+    soumis_cnss = models.BooleanField(
+        default=True, verbose_name='Soumis CNSS')
+    soumis_amo = models.BooleanField(
+        default=True, verbose_name='Soumis AMO')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Type d'entrée ponctuelle"
+        verbose_name_plural = "Types d'entrée ponctuelle"
+        ordering = ['libelle', 'code']
+        unique_together = [('company', 'code')]
+
+    def __str__(self):
+        return f'{self.code} — {self.libelle}'
