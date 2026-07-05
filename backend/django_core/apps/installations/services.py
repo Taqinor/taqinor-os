@@ -212,6 +212,13 @@ def create_installation_from_devis(devis, user, company):
     l'événement ne duplique jamais le chantier. Le chantier porte la société du
     devis (``company``), jamais une valeur issue d'une requête.
     """
+    # Ce service est câblé au signal PARTAGÉ ``devis_accepted`` : un émetteur
+    # d'un autre domaine (ex. la séquence d'inscription XMKT1) peut envoyer un
+    # objet devis MINIMAL non persisté (sans pk). Un chantier ne peut exister
+    # que pour un vrai devis enregistré — on ignore proprement le stub plutôt
+    # que de laisser ``filter(devis=<objet non-modèle>)`` lever un TypeError.
+    if getattr(devis, 'pk', None) is None:
+        return None, False
     existing = Installation.objects.filter(
         devis=devis, company=company).first()
     if existing is not None:

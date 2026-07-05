@@ -87,8 +87,12 @@ class Xstk6Base(TestCase):
             self, quantite, numero_lot, date_peremption=None):
         bc = self._bcf(quantite=quantite)
         ligne = bc.lignes.first()
+        # Référence unique par appel : ce helper est invoqué plusieurs fois
+        # avec le MÊME numéro de lot (deux réceptions cumulées) ; la contrainte
+        # (company, reference) interdit de réutiliser la même référence.
+        n = ReceptionFournisseur.objects.filter(company=self.company).count()
         reception = ReceptionFournisseur.objects.create(
-            company=self.company, reference=f'REC-X6-{numero_lot}',
+            company=self.company, reference=f'REC-X6-{numero_lot}-{n}',
             bon_commande=bc)
         reception.lignes.create(
             ligne_commande=ligne, produit=self.produit, quantite=quantite,

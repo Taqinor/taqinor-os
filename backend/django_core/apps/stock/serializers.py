@@ -209,6 +209,12 @@ class ProduitSerializer(serializers.ModelSerializer):
     # DRF ne comprend pas la condition partielle de la contrainte DB.
     code_barres = serializers.CharField(
         required=False, allow_null=True, allow_blank=True, max_length=64)
+    # XSTK3 — `sku` a la MÊME contrainte partielle `(company, sku)` que
+    # `code_barres` : DRF en dérive un UniqueTogetherValidator qui le force à
+    # `required=True` à tort (champ nullable/optionnel au modèle). On le
+    # déclare donc explicitement optionnel ici aussi.
+    sku = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True, max_length=50)
 
     def validate_code_barres(self, value):
         # XSTK3 — doublon PROPRE (400) même société, plutôt qu'une

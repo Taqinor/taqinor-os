@@ -75,4 +75,11 @@ class KitProduitViewSet(TenantMixin, viewsets.ModelViewSet):
                 ligne.pop('cout_total', None)
             data.pop('cout_total_roll_up', None)
             data.pop('marge', None)
+        else:
+            # Le contrat d'API expose ces montants roll-up en CHAÎNE à 2
+            # décimales ('9500.00') ; un Decimal brut serait rendu en nombre
+            # JSON (9500.0). On les formate explicitement à la frontière vue.
+            for _cle in ('cout_total_roll_up', 'marge'):
+                if data.get(_cle) is not None:
+                    data[_cle] = f'{data[_cle]:.2f}'
         return Response(data)
