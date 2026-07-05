@@ -21,10 +21,10 @@ const { value, unit, label } = Astro.props;
 ---
 
 <figure class="key-figure" aria-label={`${label} : ${value}${unit ? ' ' + unit : ''}`}>
-  <p class="key-figure__kicker tech-label">{label}</p>
+  <p class="key-figure__kicker tech-label"><span class="key-figure__bidi">{label}</span></p>
   <p class="key-figure__value fig lum" aria-hidden="true">
-    {value}
-    {unit && <span class="key-figure__unit">{unit}</span>}
+    <span class="key-figure__bidi">{value}</span>
+    {unit && <span class="key-figure__unit key-figure__bidi">{unit}</span>}
   </p>
   {
     Astro.slots.has('default') && (
@@ -72,5 +72,17 @@ const { value, unit, label } = Astro.props;
     font-size: 0.875rem;
     line-height: 1.6;
     color: var(--color-lune-soft, #adb5cd);
+  }
+
+  /*
+   * value/unit/label sont du texte simple fourni par l'appelant et peuvent
+   * contenir des nombres latins (ex. "6 000", "10 ans"). `unicode-bidi:
+   * plaintext` fait que le navigateur applique l'algorithme bidi Unicode
+   * par élément à partir de son propre contenu, isolant les runs numériques
+   * latins en LTR même sous <html dir="rtl">, sans effet sur le rendu
+   * FR/EN déjà LTR.
+   */
+  .key-figure__bidi {
+    unicode-bidi: plaintext;
   }
 </style>

@@ -14,17 +14,17 @@ Quand un client me demande si « le solaire est rentable chez lui », ma premiè
 
 Tout commence par le **rendement de site**, c'est-à-dire le nombre de kWh produits par kWc installé et par an (on l'appelle PVOUT). Il dépend de l'ensoleillement local, de l'inclinaison des panneaux et des pertes système : câblage, onduleur, poussière sur le verre.
 
-Le tableau ci-dessous donne des fourchettes **estimées**, calculées à partir des données PVGIS, Global Solar Atlas et Solargis, avec un taux de perte système d'environ 14 % et une orientation plein sud. Une seule valeur est **confirmée** avec précision : Marrakech (étude MDPI Resources 2024, GTI mesuré).
+Le tableau ci-dessous donne des fourchettes estimées, calculées à partir des données PVGIS, Global Solar Atlas et Solargis, avec un taux de perte système d'environ 14 % et une orientation plein sud, inclinaison optimale estimée pour chaque ville.
 
-| Ville | PVOUT estimé (kWh/kWc/an) | Inclinaison optimale (plein sud) | Fiabilité |
-|---|---|---|---|
-| Tanger | ~1 550 – 1 650 | 31° | estimée |
-| Casablanca | ~1 620 – 1 700 | 29° | estimée |
-| Rabat-Salé | ~1 620 – 1 700 | 29° | estimée |
-| Fès | ~1 650 – 1 750 | ~32° | estimée |
-| Marrakech | **1 779** (point confirmé) | 28° | **haute** |
-| Agadir | ~1 750 – 1 820 | 27° | estimée |
-| Ouarzazate | ~1 850 – 1 950 | ~28–30° | estimée |
+| Ville | PVOUT estimé (kWh/kWc/an) | Inclinaison optimale estimée (plein sud) |
+|---|---|---|
+| Tanger | ~1 550 – 1 650 | 31° |
+| Casablanca | ~1 620 – 1 700 | 29° |
+| Rabat-Salé | ~1 620 – 1 700 | 29° |
+| Fès | ~1 650 – 1 750 | ~32° |
+| Marrakech | **1 779** | 28° |
+| Agadir | ~1 750 – 1 820 | 27° |
+| Ouarzazate | ~1 850 – 1 950 | ~28–30° |
 
 *Sources : PVGIS (Commission européenne) ; Global Solar Atlas (Banque mondiale / Solargis) ; MDPI Resources 2024 13(10):140 (Marrakech, PR 78 %). Les fourchettes des autres villes sont des estimations recalées sur le point Marrakech — non substituables à une simulation PVGIS à l'adresse exacte.*
 

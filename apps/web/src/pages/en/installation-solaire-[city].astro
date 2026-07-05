@@ -59,6 +59,12 @@ const closer = fillIntro(cc.closer);
 const pillarStudy = { heading: fillIntro(cc.pillars.study.heading), body: fillIntro(cc.pillars.study.body) };
 const pillarMeasure = { heading: fillIntro(cc.pillars.measure.heading), body: fillIntro(cc.pillars.measure.body) };
 const pillarCompliance = { heading: fillIntro(cc.pillars.compliance.heading), body: fillIntro(cc.pillars.compliance.body) };
+// W328 — same as FR: ROI nuance (derived from sunshine already committed,
+// never a new figure) + delegataire caution line; nearest-install note for
+// cities without a local install (W296).
+const roiNuance = fillIntro(cc.roiNuance);
+const delegataireNote = cc.delegataireNote ? fillIntro(cc.delegataireNote) : undefined;
+const nearestInstallNote = cc.nearestInstallNote ? fillIntro(cc.nearestInstallNote) : undefined;
 
 const title = fillIntro(cc.title);
 const description = fillIntro(cc.description);
@@ -126,7 +132,7 @@ const heroPhotoAlt = inCity[0] ? cardAlt(inCity[0]) : '';
         <dl class="grid grid-cols-2 gap-x-6 gap-y-10 border-l-2 border-brass-400/60 pl-6 sm:pl-10" data-stagger>
           <div class="v2-rise" style="--v2-i:0">
             {/* W211 — whitespace-nowrap removed: can overflow at 320 px in grid-cols-2 */}
-            <dd class="fig lum text-3xl sm:text-4xl" data-tally>60–90 %</dd>
+            <dd class="fig lum text-3xl sm:text-4xl" data-tally>50–100 %</dd>
             <dt class="tech-label mt-2 text-lune-faint">Of the bill covered</dt>
           </div>
           <div class="v2-rise" style="--v2-i:1">
@@ -143,6 +149,14 @@ const heroPhotoAlt = inCity[0] ? cardAlt(inCity[0]) : '';
           </div>
         </dl>
       </div>
+      {/* W328 — the 3–7 year band stays the site-wide figure; nuanced here per
+          city via the sunshine already committed, never a new invented figure. */}
+      <p class="mx-auto mt-8 max-w-3xl text-sm leading-relaxed text-lune-soft">{roiNuance}</p>
+      {delegataireNote && (
+        <p class="mx-auto mt-4 max-w-3xl border-l-2 border-brass-400/60 pl-4 text-sm leading-relaxed text-lune-soft">
+          {delegataireNote}
+        </p>
+      )}
     </section>
 
     <!-- Projects: real in-city, otherwise the closest -->
@@ -201,9 +215,12 @@ const heroPhotoAlt = inCity[0] ? cardAlt(inCity[0]) : '';
           <p class="tech-label v2-kicker rule-brass text-brass-300">Your city is covered</p>
           <h2 class="display v2-section-title mt-5 text-white">We work {intro} — and our projects speak for us</h2>
           <p class="v2-lead mt-5 text-lune-soft">
-            {c.name} is part of our service area. Our closest installations already in service are in
-            the Casablanca region — same assessment methods, same tier-1 equipment, same real-time
-            production monitoring. Here are our closest projects:
+            {/* W296 — city-specific geographic positioning (region, never an
+                invented km figure) instead of one generic sentence identical
+                across the 4 cities without a local install. */}
+            {nearestInstallNote ?? `${c.name} is part of our service area. Our closest installations already in service are in ` +
+              'the Casablanca region — same assessment methods, same tier-1 equipment, same real-time ' +
+              'production monitoring.'} Here are our closest projects:
           </p>
           <div class="mt-8 flex flex-wrap gap-3">
             {closest.map((r) => (

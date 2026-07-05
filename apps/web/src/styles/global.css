@@ -506,31 +506,49 @@ summary:focus-visible {
    `.hero-sweep-armed` n'est ajoutée que par le script après `load`, donc :
    sans JS, sans @supports, ou en reduced-motion → le titre reste blanc plein
    à l'identique d'avant (aucune régression, jamais de risque de texte
-   transparent sans le fallback background-clip). */
+   transparent sans le fallback background-clip).
+
+   WC7-FIX (2026-07-05) — BUG « le chiffre du héros disparaît ».
+   Cause racine : la base du dégradé était `currentColor`, MAIS le même bloc
+   pose `color: transparent` sur l'élément — or `currentColor` résout TOUJOURS
+   vers la valeur de `color` du même élément, donc `currentColor` valait
+   `transparent`. Seule la bande laiton (50 %) était opaque : dès qu'elle
+   balayait hors champ (état final `background-position: -50% 0`, conservé par
+   `both`), tout le texte était peint en transparent → il « apparaissait puis
+   disparaissait ». Le `text-shadow` défensif ne laissait qu'un fantôme.
+   Correctif : la base du dégradé est un blanc opaque EXPLICITE (`#fff`, la
+   vraie couleur du titre héros — la section porte `text-white`), et l'état
+   final de la keyframe est ce même blanc plein. La bande laiton ne fait plus
+   qu'AJOUTER un reflet qui balaye une fois sur un titre resté 100 % opaque et
+   lisible avant, pendant et après le balayage — dans toutes les langues. */
 @supports (background-clip: text) or (-webkit-background-clip: text) {
   @media (prefers-reduced-motion: no-preference) {
     .hero-title-sweep.hero-sweep-armed {
+      /* Base blanc opaque EXPLICITE — jamais `currentColor` (qui vaut
+         `transparent` ici, cf. la note ci-dessus). Le titre reste plein. */
       background-image: linear-gradient(
         100deg,
-        currentColor 0%,
-        currentColor 42%,
+        #fff 0%,
+        #fff 42%,
         var(--color-brass-300) 50%,
-        currentColor 58%,
-        currentColor 100%
+        #fff 58%,
+        #fff 100%
       );
       background-size: 260% 100%;
       background-position: 150% 0;
       -webkit-background-clip: text;
       background-clip: text;
+      /* Le remplissage vient du dégradé blanc opaque clippé au texte : le
+         texte de base reste `transparent` mais peint plein blanc via le
+         dégradé. -webkit-text-fill-color forcé transparent pour que Safari
+         n'affiche pas le blanc PAR-DESSUS le clip (redondant mais sûr). */
       color: transparent;
+      -webkit-text-fill-color: transparent;
       animation: heroTitleSweep 1.4s var(--ease-shimmer) 1 both;
     }
     @keyframes heroTitleSweep {
       from { background-position: 150% 0; }
-      to {
-        background-position: -50% 0;
-        color: transparent;
-      }
+      to { background-position: -50% 0; }
     }
   }
 }

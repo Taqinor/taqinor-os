@@ -62,9 +62,9 @@ const link = tone === 'dark' ? 'hover:text-encre' : 'hover:text-lune';
     {items.map((c, i) => (
       <li class="flex items-center gap-x-2">
         {c.href && i < items.length - 1 ? (
-          <a href={c.href} class={`transition-colors ${link}`}>{c.label}</a>
+          <a href={c.href} class={`breadcrumb-bidi transition-colors ${link}`}>{c.label}</a>
         ) : (
-          <span aria-current="page">{c.label}</span>
+          <span class="breadcrumb-bidi" aria-current="page">{c.label}</span>
         )}
         {i < items.length - 1 && (
           <svg
@@ -95,5 +95,17 @@ const link = tone === 'dark' ? 'hover:text-encre' : 'hover:text-lune';
   /* Flip the chevron in RTL contexts so it always points "forward" in reading direction */
   :global([dir="rtl"]) .breadcrumb-sep {
     transform: scaleX(-1);
+  }
+
+  /*
+   * Item labels are caller-supplied plain text and can contain Latin
+   * numbers (e.g. page-numbered breadcrumb segments). `unicode-bidi:
+   * plaintext` makes the browser apply the Unicode bidi algorithm per
+   * element based on its own content, isolating embedded Latin numeric
+   * runs into correct LTR order even under <html dir="rtl">, with no
+   * effect on already-LTR FR/EN rendering.
+   */
+  .breadcrumb-bidi {
+    unicode-bidi: plaintext;
   }
 </style>

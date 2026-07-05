@@ -40,8 +40,21 @@ const { links, mt = 'mt-10' } = Astro.props;
         class="related-links__chip border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brass-300"
         {...(link.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
       >
-        {link.label} →
+        <span class="related-links__label">{link.label}</span> →
       </a>
     ))
   }
 </nav>
+
+<style>
+  /*
+   * Les labels sont du texte simple fourni par l'appelant et peuvent
+   * contenir des nombres latins. `unicode-bidi: plaintext` fait que le
+   * navigateur applique l'algorithme bidi Unicode par élément à partir de
+   * son propre contenu, isolant les runs numériques latins en LTR même
+   * sous <html dir="rtl">, sans effet sur le rendu FR/EN déjà LTR.
+   */
+  .related-links__label {
+    unicode-bidi: plaintext;
+  }
+</style>
