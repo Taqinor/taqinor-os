@@ -87,7 +87,11 @@ export const POST: APIRoute = async ({ request }) => {
     waNumber,
     leadWhatsappText({
       fullName: lead.fullName,
-      city: lead.city,
+      // WJ97 (lib/lead.ts) — `city` est désormais optionnel dans ValidatedLead
+      // (chemin rappel rapide /contact) ; ce flux (simulate) ne l'utilise
+      // jamais sans ville (validateLead l'exige toujours ici), `?? ''` ne fait
+      // que satisfaire le type élargi, jamais un comportement différent.
+      city: lead.city ?? '',
       kwcLabel: band.kwcLabel,
       paybackLabel: band.paybackLabel,
     }),
