@@ -445,12 +445,13 @@ export function proposalPdfEndpoint(apiBase: string, token: string): string {
 
 // ── WJ29 · « Être contacté » / « Demander un rappel » — notification équipe ──
 //
-// Aujourd'hui, rappel/WhatsApp sont des liens wa.me / tel: purs côté client :
-// rien ne notifie le commercial en interne. Le backend n'expose PAS encore de
-// route de contact (PLAN2 QJ27, pas construite) — cette fonction construit
-// l'URL du chemin ATTENDU, symétrique de acceptEndpoint ; le proxy
-// /api/proposition-contact dégrade proprement (message FR clair) sur 404/5xx/
-// panne réseau, en gardant le lien wa.me instantané disponible en parallèle.
+// QW5 (2026-07-05) — la route backend EXISTE et est aliasée sous ce mount
+// (apps/ventes/urls.py, réutilisant les vues QJ27 déjà exposées sous
+// public/) : channel/message/revision_kind sont bien reçus et traités
+// (chatter + notification owner+supérieur, idempotence par lien+canal). Le
+// proxy /api/proposition-contact dégrade quand même proprement (message FR
+// clair) sur un éventuel 404/5xx/panne réseau, en gardant le lien wa.me
+// instantané disponible en parallèle.
 
 /** Construit l'URL backend de la demande de contact (même convention que /accept/). */
 export function contactEndpoint(apiBase: string, token: string): string {

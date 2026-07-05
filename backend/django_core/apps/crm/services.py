@@ -1517,31 +1517,67 @@ def notify_devis_opened(devis_reference: str, lead) -> None:
             getattr(lead, 'pk', '?'), devis_reference, exc)
 
 
+#: QW5 — libellés FR par canal de contact proposition (WJ85/WJ54 — le site
+#: envoie 'rappel'/'whatsapp'/'question'/'voice'/'revision', un vocabulaire
+#: plus large que ce que ce module connaissait (whatsapp/rappel seuls).
+_CONTACT_CANAL_LABELS = {
+    'whatsapp': 'par WhatsApp',
+    'rappel': 'par téléphone (rappel)',
+    'question': 'question avant signature',
+    'voice': 'orienté vers une note vocale WhatsApp',
+    'revision': 'demande de modification',
+}
+
+#: QW5 — libellés FR par type de modification demandée (WJ54, uniquement
+#: pertinent quand canal == 'revision').
+_REVISION_KIND_LABELS = {
+    'kwc': 'ajuster la puissance (kWc)',
+    'batterie': 'changer l’option batterie',
+    'autre': 'autre modification',
+}
+
+
 def notify_client_contact_request(devis_reference: str, lead,
-                                  canal='', message='') -> None:
-    """QJ27 — Le CLIENT demande à être contacté (depuis la proposition publique).
+                                  canal='', message='', revision_kind='') -> None:
+    """QJ27/QW5 — Le CLIENT demande à être contacté (proposition publique).
 
     Consigne la demande dans le chatter du lead (note SYSTÈME, user=None — ne
     fait donc jamais avancer le funnel QJ7) ET notifie le responsable du lead
     ET son supérieur (repli managers société quand l'un des deux manque), avec
     un lien wa.me « répondre maintenant ». Best-effort — jamais d'exception
     propagée. La société vient TOUJOURS du lead (jamais d'un corps de requête).
-    """
+
+    QW5 — ``revision_kind`` (WJ54, uniquement quand ``canal == 'revision'``)
+    est journalisé dans le chatter et le corps de notification. Le canal
+    ``rappel`` sur une demande CLIENT (proposition) est une obligation de
+    RAPPEL — même sémantique que QW4 (``contact_preference=phone_ok``) : si le
+    lead lié n'a pas encore cette préférence posée, on la pose ici aussi et on
+    déclenche la même notification distincte + SLA rappel (jamais dupliquée —
+    ``notify_lead_callback_requested`` est déjà idempotent par lead)."""
     try:
-        canal_label = {
-            'whatsapp': 'par WhatsApp',
-            'rappel': 'par téléphone (rappel)',
-        }.get((canal or '').strip(), '')
+        canal_key = (canal or '').strip()
+        canal_label = _CONTACT_CANAL_LABELS.get(canal_key, '')
         nom = (getattr(lead, 'nom', '') or '').strip() or 'Le client'
         # Note chatter (toujours, même sans destinataire notifiable).
         note = f'Le client demande à être contacté ({devis_reference})'
         if canal_label:
             note += f' — {canal_label}'
+        if canal_key == 'revision' and revision_kind:
+            note += f' [{_REVISION_KIND_LABELS.get(revision_kind, revision_kind)}]'
         if message:
-            note += f' : « {message[:500]} »'
+            note += f' : « {message[:2000]} »'
         LeadActivity.objects.create(
             company=lead.company, lead=lead, user=None,
             kind=LeadActivity.Kind.NOTE, body=note)
+
+        # QW5/QW4 — un rappel demandé DEPUIS LA PROPOSITION est la même
+        # obligation qu'un rappel demandé à la capture : pose la préférence si
+        # absente et route vers la notification distincte + SLA rappel.
+        if canal_key == 'rappel' and getattr(lead, 'contact_preference', None) != Lead.ContactPreference.PHONE_OK:
+            lead.contact_preference = Lead.ContactPreference.PHONE_OK
+            lead.save(update_fields=['contact_preference'])
+        if canal_key == 'rappel':
+            notify_lead_callback_requested(lead)
 
         recipients = lead_notification_recipients(lead)
         if not recipients:
@@ -1552,8 +1588,11 @@ def notify_client_contact_request(devis_reference: str, lead,
             f'{nom} demande à être contacté au sujet du devis '
             f'{devis_reference}'
             + (f' ({canal_label})' if canal_label else '') + '.']
+        if canal_key == 'revision' and revision_kind:
+            body_parts.append(
+                f'Type de modification : {_REVISION_KIND_LABELS.get(revision_kind, revision_kind)}')
         if message:
-            body_parts.append(f'Message : « {message[:500]} »')
+            body_parts.append(f'Message : « {message[:2000]} »')
         if wa_url:
             body_parts.append(f'Répondre maintenant : {wa_url}')
         notify_many(

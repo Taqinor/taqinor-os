@@ -553,7 +553,8 @@ def proposal_pdf(request, token):
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
 def proposal_contact_request(request, token):
-    """QJ27 — Le client demande à être contacté (« Être rappelé » côté client).
+    """QJ27/QW5 — Le client demande à être contacté (« Être rappelé » côté
+    client, ou une question/révision structurée avant signature).
 
     Endpoint PUBLIC tokenisé (même jeton ShareLink que la proposition — long,
     imprévisible, expirant). Consigne la demande dans le chatter du lead lié
@@ -563,23 +564,41 @@ def proposal_contact_request(request, token):
     le créateur du devis + son supérieur sont notifiés et la demande est
     consignée dans le chatter du devis.
 
+    QW5 — le site poste ``channel`` (pas ``canal`` — ``proposition.ts``/
+    ``proposition-contact.ts``, vocabulaire ``rappel``/``whatsapp``/
+    ``question``/``voice``/``revision``) : lu ici en ALIAS de ``canal``
+    (rétro-compat : ``canal`` reste accepté). ``revision_kind`` (WJ54,
+    ``kwc``/``batterie``/``autre``) est relayé au service crm. Le message est
+    tronqué à 2000 caractères — ALIGNÉ sur la troncature côté site
+    (``buildContactBody`` — ``proposition.ts``), plus que les 500 d'avant qui
+    coupaient silencieusement un message légitime.
+
     Idempotent / rate-sane : en plus du throttle par IP+jeton, une même
-    demande n'est transmise qu'une fois par heure et par lien (verrou cache) —
-    un double clic répond « déjà transmise » sans re-notifier.
+    demande n'est transmise qu'une fois par heure PAR LIEN **ET PAR CANAL**
+    (QW5 — avant, une "question" transmise verrouillait tout le lien pendant
+    1 h, empêchant un "rappel" distinct posé juste après d'être transmis) —
+    un double clic sur le MÊME canal répond « déjà transmise » sans
+    re-notifier ; un canal différent passe toujours.
     """
     link = _resolve_proposal_link(token)
     if link is None:
         return _not_found()
 
-    canal = (str(request.data.get('canal') or '')).strip()[:20]
-    message = (str(request.data.get('message') or '')).strip()[:500]
+    canal = (str(
+        request.data.get('channel') or request.data.get('canal') or ''
+    )).strip()[:20]
+    message = (str(request.data.get('message') or '')).strip()[:2000]
+    revision_kind = (str(request.data.get('revision_kind') or '')).strip()[:20]
 
-    # Verrou idempotence (1 h par lien) — cache.add est atomique : False si la
-    # demande a déjà été transmise récemment.
+    # Verrou idempotence (1 h par lien ET PAR CANAL) — cache.add est
+    # atomique : False si CETTE combinaison lien+canal a déjà été transmise
+    # récemment. Scopé par canal (QW5) pour qu'un canal distinct (ex. un
+    # "rappel" après une "question") ne soit jamais bloqué par l'autre.
     already = False
     try:
         from django.core.cache import cache
-        already = not cache.add(f'qj27-contact:{link.pk}', True, 3600)
+        cache_key = f'qj27-contact:{link.pk}:{canal or "default"}'
+        already = not cache.add(cache_key, True, 3600)
     except Exception:  # noqa: BLE001 — un cache indisponible ne bloque rien
         already = False
     if already:
@@ -595,7 +614,8 @@ def proposal_contact_request(request, token):
         if lead is not None:
             from apps.crm.services import notify_client_contact_request
             notify_client_contact_request(
-                devis.reference, lead, canal=canal, message=message)
+                devis.reference, lead, canal=canal, message=message,
+                revision_kind=revision_kind)
         else:
             # Pas de lead : chatter devis + notification créateur + supérieur.
             from apps.crm.services import user_and_superior_recipients
