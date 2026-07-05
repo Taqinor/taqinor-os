@@ -22,14 +22,17 @@ from apps.crm.models import Client, Lead
 from apps.ventes.models import Devis, LigneDevis, Facture, Paiement
 from apps.installations.models import Installation, Intervention
 from apps.sav.models import Ticket
-from apps.stock.models import Produit
+from apps.stock.models import Produit, Categorie
 
 from .constants import (
     SCOPE_READ_LEADS, SCOPE_READ_DEVIS, SCOPE_READ_FACTURES,
-    SCOPE_READ_CHANTIERS, EVENT_LEAD_CREATED, EVENT_FACTURE_PAID,
+    SCOPE_READ_CHANTIERS, SCOPE_READ_STOCK, EVENT_LEAD_CREATED,
+    EVENT_FACTURE_PAID,
     EVENT_LEAD_LOST, EVENT_LEAD_STAGE_CHANGED, EVENT_DEVIS_SENT,
     EVENT_FACTURE_CREATED, EVENT_PAIEMENT_RECORDED,
     EVENT_INTERVENTION_COMPLETED, EVENT_TICKET_CREATED, EVENT_TICKET_RESOLVED,
+    EVENT_STOCK_SEUIL_ATTEINT, EVENT_LIVRAISON_LIVREE,
+    SCOPE_WRITE_LEADS, SCOPE_WRITE_ACTIVITIES,
 )
 from .models import ApiKey, Webhook, WebhookDelivery, hash_key
 from . import delivery
@@ -273,7 +276,9 @@ class ManagementEndpointTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         data = resp.data
         self.assertIn('endpoints', data)
-        self.assertEqual(len(data['endpoints']), 4)
+        # XSTK23 a ajouté /produits/ (5ᵉ endpoint : leads/devis/factures/
+        # chantiers/produits).
+        self.assertEqual(len(data['endpoints']), 5)
         self.assertIn('authentification', data)
         self.assertIn('Api-Key', data['authentification']['entete'])
         self.assertIn('scopes', data)
@@ -847,3 +852,336 @@ class WebhookTestPingTests(TestCase):
         url = f'/api/django/publicapi/webhooks/{self.hook_b.id}/test/'
         resp = api.post(url)
         self.assertEqual(resp.status_code, 404)
+
+
+# ── XSTK23 — API publique stock + webhooks inventaire ───────────────────────
+
+class PublicStockScopeTests(TestCase):
+    """`read:stock` lit la disponibilité produit — jamais de coût, jamais
+    cross-tenant, les autres clés → 403."""
+
+    def setUp(self):
+        self.co_a = make_company('pa-stk-a', 'PA STK A')
+        self.co_b = make_company('pa-stk-b', 'PA STK B')
+        self.categorie = Categorie.objects.create(company=self.co_a, nom='Panneaux')
+        self.produit_a = Produit.objects.create(
+            company=self.co_a, nom='Panneau 450W', sku='PAN-450',
+            marque='Huawei', categorie=self.categorie,
+            prix_vente=1200, prix_achat=800, quantite_stock=50,
+            seuil_alerte=10,
+        )
+        self.produit_archive = Produit.objects.create(
+            company=self.co_a, nom='Ancien modèle', sku='OLD-1',
+            prix_vente=100, prix_achat=50, quantite_stock=5,
+            is_archived=True,
+        )
+        self.produit_b = Produit.objects.create(
+            company=self.co_b, nom='Onduleur B', sku='OND-B',
+            prix_vente=3000, prix_achat=2000, quantite_stock=20,
+        )
+        self.key_stock, self.raw_stock = ApiKey.issue(
+            company=self.co_a, label='stock', scopes=[SCOPE_READ_STOCK])
+        self.key_leads, self.raw_leads = ApiKey.issue(
+            company=self.co_a, label='leads', scopes=[SCOPE_READ_LEADS])
+
+    def test_scoped_key_reads_products(self):
+        resp = key_client(self.raw_stock).get('/api/public/produits/')
+        self.assertEqual(resp.status_code, 200)
+        skus = [r['sku'] for r in rows(resp)]
+        self.assertIn('PAN-450', skus)
+
+    def test_other_scope_key_is_403(self):
+        resp = key_client(self.raw_leads).get('/api/public/produits/')
+        self.assertEqual(resp.status_code, 403)
+
+    def test_no_cost_field_ever_leaks(self):
+        resp = key_client(self.raw_stock).get('/api/public/produits/')
+        payload = json.dumps(rows(resp))
+        self.assertNotIn('prix_achat', payload)
+        self.assertNotIn('prix_vente', payload)
+        row = rows(resp)[0]
+        expected_fields = {
+            'id', 'sku', 'nom', 'marque', 'categorie', 'quantite_disponible',
+        }
+        self.assertEqual(set(row.keys()), expected_fields)
+
+    def test_categorie_exposed_as_label(self):
+        resp = key_client(self.raw_stock).get('/api/public/produits/')
+        row = next(r for r in rows(resp) if r['sku'] == 'PAN-450')
+        self.assertEqual(row['categorie'], 'Panneaux')
+
+    def test_archived_product_not_exposed(self):
+        resp = key_client(self.raw_stock).get('/api/public/produits/')
+        skus = [r['sku'] for r in rows(resp)]
+        self.assertNotIn('OLD-1', skus)
+
+    def test_cross_tenant_isolation(self):
+        resp = key_client(self.raw_stock).get('/api/public/produits/')
+        skus = [r['sku'] for r in rows(resp)]
+        self.assertNotIn('OND-B', skus)
+
+    def test_filter_by_sku(self):
+        resp = key_client(self.raw_stock).get('/api/public/produits/?sku=PAN-450')
+        skus = [r['sku'] for r in rows(resp)]
+        self.assertEqual(skus, ['PAN-450'])
+
+    def test_unknown_filter_is_400(self):
+        resp = key_client(self.raw_stock).get('/api/public/produits/?prix_achat=1')
+        self.assertEqual(resp.status_code, 400)
+
+
+class StockThresholdWebhookTests(TestCase):
+    """`stock.seuil_atteint` : émis UNE SEULE FOIS au franchissement à la
+    baisse ; jamais redéclenché si déjà sous le seuil ; jamais à la remontée."""
+
+    def setUp(self):
+        self.co = make_company('pa-stk-wh', 'PA STK WH')
+        self.produit = Produit.objects.create(
+            company=self.co, nom='Onduleur 5kW', sku='OND-5K',
+            prix_vente=5000, prix_achat=3000,
+            quantite_stock=20, seuil_alerte=10,
+        )
+        self.hook = Webhook.objects.create(
+            company=self.co, target_url='https://example.com/hook',
+            secret='s3cret', events=[EVENT_STOCK_SEUIL_ATTEINT], enabled=True)
+
+    def _mouvement(self, avant, apres):
+        from apps.stock.services import record_stock_movement, mouvement_type_sortie
+        return record_stock_movement(
+            company=self.co, produit=self.produit,
+            type_mouvement=mouvement_type_sortie(),
+            quantite=avant - apres, quantite_avant=avant, quantite_apres=apres,
+            reference='TEST', note='', created_by=None,
+        )
+
+    def test_crossing_below_threshold_dispatches_once(self):
+        with mock.patch.object(delivery, 'dispatch_event') as m:
+            self._mouvement(20, 8)  # 20 > 10 (seuil) ; 8 <= 10 → franchissement
+        m.assert_called_once()
+        args, _kwargs = m.call_args
+        self.assertEqual(args[0], self.co.id)
+        self.assertEqual(args[1], EVENT_STOCK_SEUIL_ATTEINT)
+        self.assertEqual(args[2]['sku'], 'OND-5K')
+        self.assertNotIn('prix_achat', args[2])
+        self.assertNotIn('prix_vente', args[2])
+
+    def test_already_below_threshold_does_not_redispatch(self):
+        self.produit.quantite_stock = 8
+        self.produit.save(update_fields=['quantite_stock'])
+        with mock.patch.object(delivery, 'dispatch_event') as m:
+            self._mouvement(8, 5)  # déjà sous le seuil avant ce mouvement
+        m.assert_not_called()
+
+    def test_restock_above_threshold_does_not_dispatch(self):
+        with mock.patch.object(delivery, 'dispatch_event') as m:
+            self._mouvement(5, 25)  # remontée, pas une baisse
+        m.assert_not_called()
+
+    def test_zero_threshold_disables_alert(self):
+        self.produit.seuil_alerte = 0
+        self.produit.save(update_fields=['seuil_alerte'])
+        with mock.patch.object(delivery, 'dispatch_event') as m:
+            self._mouvement(20, 0)
+        m.assert_not_called()
+
+
+class LivraisonLivreeWebhookTests(TestCase):
+    """`livraison.livree` : POST /livraisons/{id}/livrer/ émet le webhook
+    (best-effort) — company résolue serveur, jamais du body."""
+
+    def setUp(self):
+        from apps.crm.models import Client as CrmClient
+        from apps.installations.models import Installation
+        from apps.installations.models_livraison import Livraison
+
+        self.co = make_company('pa-liv-wh', 'PA LIV WH')
+        self.admin = make_user(self.co, 'liv-admin', role='admin')
+        self.client_obj = CrmClient.objects.create(company=self.co, nom='Cli')
+        self.installation = Installation.objects.create(
+            company=self.co, reference='CH-LIV', client=self.client_obj)
+        self.livraison = Livraison.objects.create(
+            company=self.co, reference='LIV-1', installation=self.installation,
+            numero_suivi='TRACK-1',
+        )
+        self.hook = Webhook.objects.create(
+            company=self.co, target_url='https://example.com/hook',
+            secret='s3cret', events=[EVENT_LIVRAISON_LIVREE], enabled=True)
+
+    def test_livrer_dispatches_webhook(self):
+        api = session_auth(self.admin)
+        with mock.patch.object(delivery, 'dispatch_event') as m:
+            resp = api.post(f'/api/django/installations/livraisons/{self.livraison.id}/livrer/')
+        self.assertEqual(resp.status_code, 200)
+        m.assert_any_call(
+            self.co.id, EVENT_LIVRAISON_LIVREE,
+            mock.ANY,
+        )
+        # Vérifie le contenu de l'appel dédié à livraison.livree (parmi
+        # d'éventuels autres évènements XSTK22/notification déclenchés).
+        matching = [c for c in m.call_args_list if c.args[1] == EVENT_LIVRAISON_LIVREE]
+        self.assertEqual(len(matching), 1)
+        payload = matching[0].args[2]
+        self.assertEqual(payload['reference'], 'LIV-1')
+        self.assertEqual(payload['numero_suivi'], 'TRACK-1')
+
+
+# ── XPLT5 — API publique en ÉCRITURE (scopes write) + idempotence ───────────
+
+class PublicWriteScopeTests(TestCase):
+    """Une clé `leads:write` crée un lead ; une clé read-only → 403 ; jamais
+    de fuite cross-tenant sur PATCH/activité."""
+
+    def setUp(self):
+        self.co_a = make_company('pa-w-a', 'PA W A')
+        self.co_b = make_company('pa-w-b', 'PA W B')
+        self.lead_a = Lead.objects.create(company=self.co_a, nom='Existant A')
+        self.lead_b = Lead.objects.create(company=self.co_b, nom='Existant B')
+        self.key_write, self.raw_write = ApiKey.issue(
+            company=self.co_a, label='write',
+            scopes=[SCOPE_WRITE_LEADS, SCOPE_WRITE_ACTIVITIES])
+        self.key_ro, self.raw_ro = ApiKey.issue(
+            company=self.co_a, label='ro', scopes=[SCOPE_READ_LEADS])
+
+    def test_write_scoped_key_creates_lead(self):
+        resp = key_client(self.raw_write).post(
+            '/api/public/leads-write/', {'nom': 'Nouveau Lead'}, format='json')
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.data['nom'], 'Nouveau Lead')
+        self.assertTrue(
+            Lead.objects.filter(company=self.co_a, nom='Nouveau Lead').exists())
+
+    def test_read_only_key_is_403_on_write(self):
+        resp = key_client(self.raw_ro).post(
+            '/api/public/leads-write/', {'nom': 'Refusé'}, format='json')
+        self.assertEqual(resp.status_code, 403)
+        self.assertFalse(Lead.objects.filter(nom='Refusé').exists())
+
+    def test_company_forced_from_key_not_body(self):
+        # Même si le corps tentait de préciser une autre société, elle est
+        # ignorée : `create_lead_from_public_api` ne lit jamais `company` du
+        # payload — la vue le force depuis la clé.
+        resp = key_client(self.raw_write).post(
+            '/api/public/leads-write/',
+            {'nom': 'Forcé', 'company': self.co_b.id}, format='json')
+        self.assertEqual(resp.status_code, 201)
+        lead = Lead.objects.get(nom='Forcé')
+        self.assertEqual(lead.company_id, self.co_a.id)
+
+    def test_missing_nom_is_400(self):
+        resp = key_client(self.raw_write).post(
+            '/api/public/leads-write/', {}, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_invalid_stage_is_400(self):
+        resp = key_client(self.raw_write).post(
+            '/api/public/leads-write/',
+            {'nom': 'Mauvais stage', 'stage': 'NOT_A_STAGE'}, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_stage_from_stages_py_accepted(self):
+        resp = key_client(self.raw_write).post(
+            '/api/public/leads-write/',
+            {'nom': 'Contacté direct', 'stage': 'CONTACTED'}, format='json')
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.data['stage'], 'CONTACTED')
+
+    def test_update_own_lead(self):
+        resp = key_client(self.raw_write).patch(
+            f'/api/public/leads-write/{self.lead_a.id}/',
+            {'ville': 'Marrakech'}, format='json')
+        self.assertEqual(resp.status_code, 200)
+        self.lead_a.refresh_from_db()
+        self.assertEqual(self.lead_a.ville, 'Marrakech')
+
+    def test_update_cross_tenant_lead_is_404(self):
+        resp = key_client(self.raw_write).patch(
+            f'/api/public/leads-write/{self.lead_b.id}/',
+            {'ville': 'Ailleurs'}, format='json')
+        self.assertEqual(resp.status_code, 404)
+        self.lead_b.refresh_from_db()
+        self.assertNotEqual(self.lead_b.ville, 'Ailleurs')
+
+    def test_create_activity_on_own_lead(self):
+        resp = key_client(self.raw_write).post(
+            f'/api/public/leads-write/{self.lead_a.id}/activites/',
+            {'body': 'Appelé, intéressé.'}, format='json')
+        self.assertEqual(resp.status_code, 201)
+        self.assertTrue(
+            self.lead_a.activites.filter(body='Appelé, intéressé.').exists())
+
+    def test_create_activity_on_cross_tenant_lead_is_404(self):
+        resp = key_client(self.raw_write).post(
+            f'/api/public/leads-write/{self.lead_b.id}/activites/',
+            {'body': 'Ne devrait pas passer.'}, format='json')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_create_activity_read_only_key_is_403(self):
+        resp = key_client(self.raw_ro).post(
+            f'/api/public/leads-write/{self.lead_a.id}/activites/',
+            {'body': 'x'}, format='json')
+        self.assertEqual(resp.status_code, 403)
+
+    def test_leads_write_scope_does_not_grant_activities_write(self):
+        # Une clé qui n'a QUE leads:write ne peut pas créer d'activité.
+        key_leads_only, raw_leads_only = ApiKey.issue(
+            company=self.co_a, label='leads-only', scopes=[SCOPE_WRITE_LEADS])
+        resp = key_client(raw_leads_only).post(
+            f'/api/public/leads-write/{self.lead_a.id}/activites/',
+            {'body': 'x'}, format='json')
+        self.assertEqual(resp.status_code, 403)
+
+
+class PublicWriteIdempotencyTests(TestCase):
+    """`Idempotency-Key` : rejeu identique → même réponse, pas de doublon ;
+    corps différent sous la même clé → 409 ; sans en-tête → comportement
+    normal (toujours une nouvelle création)."""
+
+    def setUp(self):
+        self.co = make_company('pa-idem', 'PA IDEM')
+        self.key, self.raw = ApiKey.issue(
+            company=self.co, label='idem', scopes=[SCOPE_WRITE_LEADS])
+
+    def _post(self, body, idem_key=None):
+        api = key_client(self.raw)
+        headers = {}
+        if idem_key is not None:
+            headers['HTTP_IDEMPOTENCY_KEY'] = idem_key
+        return api.post('/api/public/leads-write/', body, format='json', **headers)
+
+    def test_replay_same_key_same_body_no_duplicate(self):
+        resp1 = self._post({'nom': 'Idem Lead'}, idem_key='abc-123')
+        self.assertEqual(resp1.status_code, 201)
+        resp2 = self._post({'nom': 'Idem Lead'}, idem_key='abc-123')
+        self.assertEqual(resp2.status_code, 201)
+        self.assertEqual(resp1.data['id'], resp2.data['id'])
+        self.assertEqual(
+            Lead.objects.filter(company=self.co, nom='Idem Lead').count(), 1)
+
+    def test_replay_different_body_is_409(self):
+        resp1 = self._post({'nom': 'Original'}, idem_key='dup-1')
+        self.assertEqual(resp1.status_code, 201)
+        resp2 = self._post({'nom': 'Différent'}, idem_key='dup-1')
+        self.assertEqual(resp2.status_code, 409)
+        self.assertFalse(Lead.objects.filter(nom='Différent').exists())
+
+    def test_without_header_always_creates(self):
+        resp1 = self._post({'nom': 'Sans Idem'})
+        resp2 = self._post({'nom': 'Sans Idem'})
+        self.assertEqual(resp1.status_code, 201)
+        self.assertEqual(resp2.status_code, 201)
+        self.assertNotEqual(resp1.data['id'], resp2.data['id'])
+        self.assertEqual(
+            Lead.objects.filter(company=self.co, nom='Sans Idem').count(), 2)
+
+    def test_idempotency_scoped_per_key_not_global(self):
+        # Une AUTRE clé de la même société avec la même Idempotency-Key crée
+        # bien un second lead (l'idempotence est scopée par clé, pas globale).
+        other_key, other_raw = ApiKey.issue(
+            company=self.co, label='autre', scopes=[SCOPE_WRITE_LEADS])
+        resp1 = self._post({'nom': 'Partagé'}, idem_key='shared-key')
+        resp2 = key_client(other_raw).post(
+            '/api/public/leads-write/', {'nom': 'Partagé'}, format='json',
+            HTTP_IDEMPOTENCY_KEY='shared-key')
+        self.assertEqual(resp1.status_code, 201)
+        self.assertEqual(resp2.status_code, 201)
+        self.assertNotEqual(resp1.data['id'], resp2.data['id'])

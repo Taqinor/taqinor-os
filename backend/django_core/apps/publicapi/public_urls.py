@@ -8,7 +8,10 @@ from rest_framework.routers import DefaultRouter
 
 from .public_views import (
     PublicLeadViewSet, PublicDevisViewSet,
-    PublicFactureViewSet, PublicChantierViewSet,
+    PublicFactureViewSet, PublicChantierViewSet, PublicProduitViewSet,
+)
+from .public_write_views import (
+    PublicLeadCreateView, PublicLeadUpdateView, PublicActivityCreateView,
 )
 
 router = DefaultRouter()
@@ -16,7 +19,16 @@ router.register(r'leads', PublicLeadViewSet, basename='public-lead')
 router.register(r'devis', PublicDevisViewSet, basename='public-devis')
 router.register(r'factures', PublicFactureViewSet, basename='public-facture')
 router.register(r'chantiers', PublicChantierViewSet, basename='public-chantier')
+router.register(r'produits', PublicProduitViewSet, basename='public-produit')
 
 urlpatterns = [
+    # XPLT5 — écriture (scopes leads:write / activities:write), distincte du
+    # routeur lecture seule ci-dessus.
+    path('leads-write/', PublicLeadCreateView.as_view(),
+         name='public-lead-write-create'),
+    path('leads-write/<int:pk>/', PublicLeadUpdateView.as_view(),
+         name='public-lead-write-update'),
+    path('leads-write/<int:pk>/activites/', PublicActivityCreateView.as_view(),
+         name='public-activity-write-create'),
     path('', include(router.urls)),
 ]

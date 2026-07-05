@@ -190,9 +190,51 @@ class WebhookDelivery(models.Model):
         return f'{self.event} → {self.status}'
 
 
+class IdempotencyRecord(models.Model):
+    """XPLT5 — mémorise la réponse d'un appel d'ÉCRITURE de l'API publique
+    pour un en-tête ``Idempotency-Key`` donné, scopé à (clé API, endpoint).
+
+    Rejouer le MÊME couple (clé, endpoint, Idempotency-Key) avec un corps
+    identique renvoie la réponse mémorisée SANS recréer l'objet ; avec un
+    corps différent → 409 (conflit). Distinct du futur `core.IdempotencyRecord`
+    générique (YAPIC9, POST internes JWT) — celui-ci ne couvre QUE l'API
+    publique par clé, jamais les endpoints internes."""
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='publicapi_idempotency_records',
+    )
+    api_key = models.ForeignKey(
+        ApiKey,
+        on_delete=models.CASCADE,
+        related_name='idempotency_records',
+    )
+    endpoint = models.CharField(max_length=100)
+    idempotency_key = models.CharField(max_length=255)
+    # Empreinte du corps de requête (hash) — détecte un rejeu avec un corps
+    # DIFFÉRENT sous la même clé d'idempotence (→ 409).
+    request_fingerprint = models.CharField(max_length=64)
+    response_status = models.IntegerField()
+    response_body = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Enregistrement d'idempotence (API publique)"
+        verbose_name_plural = "Enregistrements d'idempotence (API publique)"
+        ordering = ['-created_at']
+        unique_together = [('api_key', 'endpoint', 'idempotency_key')]
+        indexes = [
+            models.Index(fields=['company', 'created_at']),
+        ]
+
+    def __str__(self):
+        return f'{self.endpoint}:{self.idempotency_key}'
+
+
 # Re-export pour confort (utilisé par admin/serializers/tests).
 __all__ = [
-    'ApiKey', 'Webhook', 'WebhookDelivery',
+    'ApiKey', 'Webhook', 'WebhookDelivery', 'IdempotencyRecord',
     'hash_key', 'generate_raw_key',
     'API_KEY_PREFIX', 'SCOPE_CHOICES', 'EVENT_CHOICES',
 ]

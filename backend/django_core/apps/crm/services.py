@@ -2529,3 +2529,80 @@ def create_lead_from_evenement_marketing(
             lead, None, f'Inscrit à l\'événement « {evenement_nom} »')
     recompute_lead_score(lead)
     return lead
+
+
+# ── XPLT5 — API publique en ÉCRITURE (leads:write / activities:write) ───────
+# Point d'entrée cross-app sanctionné (services.py) pour `apps.publicapi` :
+# la société vient TOUJOURS de l'appelant (résolue depuis la clé API, jamais
+# du corps), jamais acceptée en argument depuis les données utilisateur.
+
+PUBLIC_LEAD_WRITABLE_FIELDS = (
+    'nom', 'prenom', 'societe', 'email', 'telephone', 'ville',
+    'canal', 'priorite', 'type_installation', 'stage',
+)
+
+
+def create_lead_from_public_api(*, company, fields):
+    """XPLT5 — crée un lead depuis l'API publique en écriture.
+
+    ``fields`` est filtré à la liste blanche ``PUBLIC_LEAD_WRITABLE_FIELDS``
+    (un champ non listé est silencieusement ignoré — jamais 500). ``stage``,
+    s'il est fourni, doit être une clé canonique STAGES.py valide (sinon
+    ``ValueError`` — jamais de nouvelle liste d'étapes, jamais hardcodée) ;
+    absent, le lead prend le défaut du modèle (NEW). ``nom`` est obligatoire.
+    Company forcée serveur, jamais du body. Journalise la création
+    (``LeadActivity``, acteur système) comme tout autre point d'entrée."""
+    clean = {k: v for k, v in (fields or {}).items()
+             if k in PUBLIC_LEAD_WRITABLE_FIELDS and v not in (None, '')}
+    nom = (clean.pop('nom', '') or '').strip()
+    if not nom:
+        raise ValueError("Le champ « nom » est obligatoire.")
+    stage = clean.pop('stage', None)
+    if stage is not None and stage not in stages.STAGES:
+        raise ValueError(
+            f'Étape inconnue : {stage!r} (STAGES.py = {stages.STAGES}).')
+    lead = Lead.objects.create(
+        company=company, nom=nom,
+        stage=stage or stages.NEW,
+        **clean,
+    )
+    activity.log_creation(lead, None)
+    return lead
+
+
+def update_lead_from_public_api(*, company, lead_id, fields):
+    """XPLT5 — met à jour un lead EXISTANT DE CETTE SOCIÉTÉ depuis l'API
+    publique en écriture. Lève ``Lead.DoesNotExist`` si le lead n'appartient
+    pas (ou plus) à ``company`` — jamais de fuite cross-tenant. Champs
+    filtrés à la même liste blanche que la création ; ``stage`` validé contre
+    STAGES.py. Journalise chaque champ changé (chatter, acteur système)."""
+    lead = Lead.objects.get(company=company, pk=lead_id)
+    clean = {k: v for k, v in (fields or {}).items()
+             if k in PUBLIC_LEAD_WRITABLE_FIELDS}
+    stage = clean.get('stage')
+    if stage is not None and stage not in stages.STAGES:
+        raise ValueError(
+            f'Étape inconnue : {stage!r} (STAGES.py = {stages.STAGES}).')
+    old = Lead.objects.get(pk=lead.pk)
+    changed_fields = []
+    for field, value in clean.items():
+        if value in (None, '') and field != 'stage':
+            continue
+        if getattr(lead, field) != value:
+            setattr(lead, field, value)
+            changed_fields.append(field)
+    if changed_fields:
+        lead.save(update_fields=changed_fields)
+        activity.log_changes(old, lead, None)
+    return lead
+
+
+def create_activity_from_public_api(*, company, lead_id, body):
+    """XPLT5 — ajoute une note (activité chatter) sur un lead DE CETTE
+    SOCIÉTÉ depuis l'API publique en écriture. Lève ``Lead.DoesNotExist`` si
+    hors société (jamais de fuite cross-tenant). ``body`` ne peut être vide."""
+    lead = Lead.objects.get(company=company, pk=lead_id)
+    body = (body or '').strip()
+    if not body:
+        raise ValueError("Le champ « body » est obligatoire.")
+    return activity.log_note(lead, None, body)

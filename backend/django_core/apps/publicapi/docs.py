@@ -34,9 +34,10 @@ def public_api_reference():
         'version': '1',
         'base_url': '/api/public/',
         'introduction': (
-            "API REST en lecture seule, authentifiée par clé d'API et scopée à "
-            "votre société. Les écritures ne sont pas exposées. Aucun prix "
-            "d'achat / marge n'est jamais renvoyé."
+            "API REST authentifiée par clé d'API et scopée à votre société. "
+            "Principalement en lecture seule ; un sous-ensemble d'écriture "
+            "existe (voir « endpoints_ecriture », scopes dédiés `*:write`). "
+            "Aucun prix d'achat / marge n'est jamais renvoyé."
         ),
         'authentification': {
             'methode': "Clé d'API dans l'en-tête HTTP Authorization.",
@@ -115,7 +116,48 @@ def public_api_reference():
                 'tri': ['date_creation', 'date_modification', 'id'],
                 'updated_since': 'date_modification',
             },
+            {
+                'chemin': '/api/public/produits/',
+                'scope': 'read:stock',
+                'description': (
+                    "Disponibilité produit (SKU/nom/marque/catégorie/quantité "
+                    "disponible). Jamais de prix d'achat ni de coût."
+                ),
+                'filtres': ['sku', 'marque', 'categorie'],
+                'tri': ['id', 'nom'],
+                'updated_since': None,
+            },
         ],
+        'endpoints_ecriture': {
+            'description': (
+                "XPLT5 — endpoints d'ÉCRITURE (scopes dédiés `leads:write` / "
+                "`activities:write`). Société forcée depuis la clé, jamais "
+                "du corps. En-tête optionnel `Idempotency-Key` : un rejeu "
+                "identique (même clé, même corps) renvoie la réponse "
+                "mémorisée sans recréer l'objet ; un corps différent → 409."
+            ),
+            'entete_idempotence': 'Idempotency-Key',
+            'liste': [
+                {
+                    'chemin': '/api/public/leads-write/',
+                    'methode': 'POST',
+                    'scope': 'leads:write',
+                    'description': "Crée un lead.",
+                },
+                {
+                    'chemin': '/api/public/leads-write/<id>/',
+                    'methode': 'PATCH',
+                    'scope': 'leads:write',
+                    'description': "Met à jour un lead existant.",
+                },
+                {
+                    'chemin': '/api/public/leads-write/<id>/activites/',
+                    'methode': 'POST',
+                    'scope': 'activities:write',
+                    'description': "Ajoute une note (chatter) sur un lead.",
+                },
+            ],
+        },
         'webhooks': {
             'description': (
                 "Notifications HTTP POST signées (HMAC-SHA256) vers une URL "

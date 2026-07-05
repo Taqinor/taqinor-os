@@ -1709,7 +1709,36 @@ def record_stock_movement(*, company, produit, type_mouvement, quantite,
             defaults={'company': company, 'quantite': 0})
         se.quantite = max(se.quantite - quantite, 0)
         se.save(update_fields=['quantite'])
+    _notify_seuil_atteint_si_franchi(
+        company=company, produit=produit,
+        quantite_avant=quantite_avant, quantite_apres=quantite_apres)
     return mouvement
+
+
+def _notify_seuil_atteint_si_franchi(*, company, produit, quantite_avant,
+                                     quantite_apres):
+    """XSTK23 — webhook `stock.seuil_atteint`, ÉMIS UNE SEULE FOIS au moment où
+    ce mouvement fait FRANCHIR le seuil effectif À LA BAISSE (avant > seuil,
+    après <= seuil). Un mouvement qui ne franchit rien (déjà sous seuil avant,
+    ou remontée) ne redéclenche rien. Best-effort : jamais bloquant, appelle le
+    SERVICE publicapi (jamais son modèle) — cross-app via services.py comme
+    l'exige la frontière inter-app."""
+    try:
+        seuil, _cible = seuil_effectif_produit(company, produit)
+        if seuil is None or seuil <= 0:
+            return
+        if quantite_avant > seuil and quantite_apres <= seuil:
+            from apps.publicapi.services import notify_stock_seuil_atteint
+            notify_stock_seuil_atteint(
+                company_id=company.id if company else None,
+                produit_id=produit.id,
+                sku=produit.sku,
+                nom=produit.nom,
+                quantite_disponible=quantite_apres,
+                seuil=seuil,
+            )
+    except Exception:  # noqa: BLE001 — jamais bloquant pour l'écriture stock
+        logger.exception('publicapi stock.seuil_atteint dispatch failed')
 
 
 def mouvement_type_sortie():

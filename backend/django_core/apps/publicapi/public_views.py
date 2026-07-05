@@ -22,15 +22,17 @@ from rest_framework.filters import OrderingFilter
 from apps.crm.models import Lead
 from apps.ventes.models import Devis, Facture
 from apps.installations.models import Installation
+from apps.stock.models import Produit
 
 from .auth import ApiKeyAuthentication, HasApiScope, ApiKeyRateThrottle
 from .constants import (
     SCOPE_READ_LEADS, SCOPE_READ_DEVIS,
-    SCOPE_READ_FACTURES, SCOPE_READ_CHANTIERS,
+    SCOPE_READ_FACTURES, SCOPE_READ_CHANTIERS, SCOPE_READ_STOCK,
 )
 from .public_serializers import (
     PublicLeadSerializer, PublicDevisSerializer,
     PublicFactureSerializer, PublicChantierSerializer,
+    PublicProduitSerializer,
 )
 
 # Paramètres de requête réservés à la pagination / au tri : jamais traités comme
@@ -147,3 +149,17 @@ class PublicChantierViewSet(PublicReadOnlyViewSet):
     )
     ordering_fields = ('date_creation', 'date_modification', 'id')
     sync_field = 'date_modification'
+
+
+class PublicProduitViewSet(PublicReadOnlyViewSet):
+    """XSTK23 — disponibilité produit en lecture seule. Jamais de coût."""
+    required_scope = SCOPE_READ_STOCK
+    serializer_class = PublicProduitSerializer
+    queryset = Produit.objects.filter(is_archived=False).select_related(
+        'categorie').order_by('-id')
+    filter_whitelist = ('sku', 'marque', 'categorie')
+    ordering_fields = ('id', 'nom')
+    # Produit n'a pas d'horodatage de modification dédié exposable ici :
+    # pas de synchro incrémentale pour cette ressource (comportement explicite,
+    # ?updated_since= reste inopérant plutôt que d'exposer un faux champ).
+    sync_field = None
