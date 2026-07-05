@@ -317,21 +317,45 @@ class ClauseSerializer(serializers.ModelSerializer):
     type_clause_display = serializers.CharField(
         source="get_type_clause_display", read_only=True
     )
+    # YHARD4 — variantes localisées (repli FR, cf. core/i18n_content.py) :
+    # cible via ``?locale=`` sur la requête, additif, jamais requis.
+    titre_localise = serializers.SerializerMethodField()
+    corps_localise = serializers.SerializerMethodField()
 
     class Meta:
         model = Clause
         fields = [
             "id",
             "titre",
+            "titre_localise",
             "categorie",
             "type_clause",
             "type_clause_display",
             "corps",
+            "corps_localise",
             "ordre",
             "actif",
             "date_creation",
         ]
         read_only_fields = ["date_creation"]
+
+    def _target_locale(self):
+        request = self.context.get('request')
+        locale = self.context.get('locale')
+        if not locale and request is not None:
+            locale = request.query_params.get('locale') if hasattr(
+                request, 'query_params') else request.GET.get('locale')
+        if locale and len(locale) <= 5:
+            return locale
+        return None
+
+    def get_titre_localise(self, obj):
+        from core.i18n_content import translated_value
+        return translated_value(obj, 'titre', self._target_locale())
+
+    def get_corps_localise(self, obj):
+        from core.i18n_content import translated_value
+        return translated_value(obj, 'corps', self._target_locale())
 
 
 class ModeleContratClauseSerializer(serializers.ModelSerializer):
