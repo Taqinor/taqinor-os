@@ -33,7 +33,10 @@ const L = (href: string) => localizeNavHref(href, locale);
 
 // WC5 (2026-07-05) — the aggregate "kWc installed" figure (sum across all
 // installations) is removed site-wide; only per-installation power remains.
-const villesCount = new Set(REALISATIONS.map((r) => r.ville)).size;
+// WN2 (2026-07-05) — a city count (~3) rendered as a monumental figure reads
+// as a small, underwhelming number; a qualitative list of real city names
+// (derived from REALISATIONS) carries the same information without a badge.
+const villesUniques = [...new Set(REALISATIONS.map((r) => r.ville))];
 
 // alt localisé (repli FR si absent dans la map de l'étude).
 const altOf = (r: typeof REALISATIONS[number]) => caseStudyBySlug(r.slug, locale).alts[r.photos[0].name] ?? r.photos[0].alt;
@@ -79,7 +82,7 @@ const itemListJsonLd = {
         <dl class="cine-in mt-8 flex flex-wrap gap-x-10 gap-y-4 [animation-delay:360ms]">
           <div>
             <dt class="tech-label text-lune-faint">Cities</dt>
-            <dd class="fig lum text-3xl">{villesCount}</dd>
+            <dd class="font-display text-2xl font-bold text-white">{villesUniques.join(' · ')}</dd>
           </div>
           <div>
             <dt class="tech-label text-lune-faint">Projects</dt>

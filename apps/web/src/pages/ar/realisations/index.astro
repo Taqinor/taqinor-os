@@ -34,7 +34,10 @@ const L = (href: string) => localizeNavHref(href, locale);
 
 // WC5 (2026-07-05) — يُزال الرقم الإجمالي « kWc installés » (مجموع كل
 // التركيبات) في كامل الموقع؛ تبقى فقط القدرة لكل تركيبة على حدة.
-const villesCount = new Set(REALISATIONS.map((r) => r.ville)).size;
+// WN2 (2026-07-05) — عرض عدد المدن (≈3) كرقم ضخم يُقرأ كعدد صغير مخيّب؛ لائحة
+// نوعية بأسماء المدن الحقيقية (مُشتقة من REALISATIONS) تنقل المعلومة نفسها
+// دون حصرها في شارة رقمية.
+const villesUniques = [...new Set(REALISATIONS.map((r) => r.ville))];
 
 const altOf = (r: typeof REALISATIONS[number]) => caseStudyBySlug(r.slug, locale).alts[r.photos[0].name] ?? r.photos[0].alt;
 
@@ -79,7 +82,7 @@ const itemListJsonLd = {
         <dl class="cine-in mt-8 flex flex-wrap gap-x-10 gap-y-4 [animation-delay:360ms]">
           <div>
             <dt class="tech-label text-lune-faint">المدن</dt>
-            <dd class="fig lum text-3xl" dir="ltr">{villesCount}</dd>
+            <dd class="font-display text-2xl font-bold text-white">{villesUniques.join(' · ')}</dd>
           </div>
           <div>
             <dt class="tech-label text-lune-faint">الأوراش</dt>
