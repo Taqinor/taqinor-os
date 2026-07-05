@@ -17,8 +17,46 @@ def normaliser_categorie_permis(categorie):
     return ''.join(str(categorie).split()).upper()
 
 
+def _controle_permis_rh(conducteur, requise, today):
+    """YHIRE11 — Contrôle RH du permis (``rh.selectors.peut_conduire``) pour
+    un conducteur LIÉ à un dossier employé (``conducteur.employe_id``).
+
+    PRIME sur les champs locaux quand applicable : renvoie ``(ok, code,
+    message)`` si le lien RH est exploitable, ou ``None`` si l'app ``rh``
+    est indisponible / le conducteur n'a pas de dossier lié (l'appelant
+    dégrade alors sur le contrôle local FLOTTE9, comportement historique
+    inchangé pour un conducteur externe).
+
+    Import LOCAL — la flotte ne lit jamais les modèles de ``rh``, uniquement
+    ``rh.selectors`` (cross-app, voir CLAUDE.md).
+    """
+    if not getattr(conducteur, 'employe_id', None):
+        return None
+    try:
+        from apps.rh import selectors as rh_selectors
+    except Exception:
+        return None
+
+    try:
+        peut = rh_selectors.peut_conduire(
+            conducteur.company, conducteur.employe_id, le=today,
+            categorie=requise)
+    except Exception:
+        return None
+
+    if peut:
+        return (True, '', '')
+    return (
+        False,
+        'permis_rh_invalide',
+        "Le dossier RH du conducteur ne porte aucun permis valide "
+        f"(catégorie {requise} requise par le véhicule).",
+    )
+
+
 def controle_permis(conducteur, vehicule, today=None):
-    """FLOTTE9 — Contrôle « permis valide / catégorie » à l'affectation.
+    """FLOTTE9/YHIRE11 — Contrôle « permis valide / catégorie » à
+    l'affectation.
 
     Vérifie qu'un ``Conducteur`` peut légalement conduire un ``Vehicule``. Le
     contrôle est **piloté par l'exigence du véhicule** : il ne se déclenche que
@@ -28,7 +66,15 @@ def controle_permis(conducteur, vehicule, today=None):
     un utilitaire léger sans contrainte saisie — n'impose rien), ce qui préserve
     le comportement historique de FLOTTE8.
 
-    Quand une catégorie EST requise :
+    YHIRE11 — Quand le conducteur est LIÉ à un dossier employé RH
+    (``conducteur.employe_id``), la validité du permis est contrôlée via
+    ``rh.selectors.peut_conduire`` (source de vérité RH,
+    ``rh.PermisConduire``) et PRIME sur les champs locaux du ``Conducteur``.
+    Un conducteur EXTERNE (``employe_id`` vide) garde le comportement
+    historique inchangé (champs locaux uniquement).
+
+    Quand une catégorie EST requise (contrôle LOCAL, conducteur non lié ou
+    RH indisponible) :
 
     1. **Permis renseigné** — le conducteur doit porter un numéro et une
        catégorie ; sinon → ``permis_manquant``.
@@ -50,6 +96,11 @@ def controle_permis(conducteur, vehicule, today=None):
     if not requise:
         # Le véhicule n'impose aucune catégorie → rien à contrôler.
         return (True, '', '')
+
+    # YHIRE11 — conducteur lié à un dossier RH : le permis RH PRIME.
+    resultat_rh = _controle_permis_rh(conducteur, requise, today)
+    if resultat_rh is not None:
+        return resultat_rh
 
     numero = (conducteur.numero_permis or '').strip()
     categorie_cond = normaliser_categorie_permis(conducteur.categorie_permis)

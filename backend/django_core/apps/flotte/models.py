@@ -884,6 +884,19 @@ class Conducteur(models.Model):
         related_name='conducteurs_flotte',
         verbose_name='Utilisateur ERP',
     )
+    # YHIRE11 — lien optionnel vers le dossier employé RH (``rh.DossierEmploye``,
+    # même société). STRING-FK (PositiveInteger), jamais un FK Django cross-app
+    # dur (modularité, voir CLAUDE.md) — la flotte ne lit ``rh`` que par
+    # ``rh.selectors`` (``peut_conduire``/``permis_expirant_bientot``). null =
+    # conducteur externe sans dossier employé (comportement historique
+    # inchangé, les champs de permis locaux restent la source de vérité).
+    # Quand renseigné, la validité du permis RH PRIME sur les champs locaux
+    # (conservés en repli) — voir ``services.controle_permis``.
+    employe_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Employé RH (id)',
+        help_text="Lien optionnel vers le dossier employé RH. Quand "
+        "renseigné, le permis RH (rh.PermisConduire) prime sur les champs "
+        "de permis locaux.")
     nom = models.CharField(max_length=120, verbose_name='Nom complet')
     telephone = models.CharField(
         max_length=30, blank=True, verbose_name='Téléphone')
@@ -922,6 +935,11 @@ class Conducteur(models.Model):
         verbose_name = 'Conducteur'
         verbose_name_plural = 'Conducteurs'
         ordering = ['nom']
+        indexes = [
+            models.Index(
+                fields=['company', 'employe_id'],
+                name='flotte_cond_co_emp_idx'),
+        ]
 
     def __str__(self):
         return self.nom

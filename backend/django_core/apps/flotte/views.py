@@ -107,7 +107,7 @@ READ_ACTIONS = ['list', 'retrieve', 'consommation', 'anomalies', 'echeances',
                 'tco', 'eco_conduite', 'documents', 'tableau_bord', 'journal',
                 'amortissement', 'expirants', 'ledger', 'historique',
                 'synthese_tva', 'detenteurs_courants', 'taux_completion',
-                'activites', 'ocr']
+                'activites', 'ocr', 'divergences_permis']
 
 
 def _parse_date_param(value):
@@ -476,6 +476,20 @@ class ConducteurViewSet(_FlotteBaseViewSet):
                 date_expiration__lte=horizon,
             )
         return qs
+
+    @action(detail=False, methods=['get'], url_path='divergences-permis')
+    def divergences_permis(self, request):
+        """YHIRE11 — Rapport de réconciliation « divergences permis
+        flotte↔RH » (lecture tout rôle), scopé société.
+
+        Compare, pour chaque conducteur LIÉ à un dossier RH, la validité
+        locale (champs ``Conducteur``) à la validité RH
+        (``rh.selectors.peut_conduire``, source de vérité quand un lien
+        existe). Voir ``selectors.divergences_permis_flotte_rh``.
+        """
+        from .selectors import divergences_permis_flotte_rh
+        return Response(
+            divergences_permis_flotte_rh(request.user.company))
 
 
 class ActifFlotteViewSet(_FlotteBaseViewSet):

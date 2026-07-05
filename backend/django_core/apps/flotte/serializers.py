@@ -210,7 +210,7 @@ class ConducteurSerializer(serializers.ModelSerializer):
     class Meta:
         model = Conducteur
         fields = [
-            'id', 'user', 'user_display', 'nom', 'telephone',
+            'id', 'user', 'user_display', 'employe_id', 'nom', 'telephone',
             'numero_permis', 'categorie_permis',
             'date_obtention', 'date_expiration',
             'actif', 'date_creation',

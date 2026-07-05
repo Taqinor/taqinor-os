@@ -1987,6 +1987,32 @@ def sortir_employe(dossier, *, date_sortie, motif, notes_avances=''):
         affectation.date_fin = date_sortie
         affectation.save(update_fields=['statut', 'date_fin', 'date_modification'])
 
+    # YHIRE11 — Affectations flotte OUVERTES du sortant (conducteur flotte
+    # lié à ce dossier, ``flotte.Conducteur.employe_id``) → note informative
+    # listant les véhicules encore ouverts. Distinct de l'``AffectationVehicule``
+    # RH ci-dessus (qui référence ``flotte.Vehicule`` par un string-FK
+    # indépendant) : un conducteur flotte peut avoir des affectations propres
+    # que le module RH ne connaissait pas jusqu'ici. Lecture cross-app UNIQUEMENT
+    # via le sélecteur flotte (jamais un import de ``apps.flotte.models``).
+    try:
+        from apps.flotte.selectors import affectations_ouvertes_pour_employe
+        affectations_flotte = affectations_ouvertes_pour_employe(
+            dossier.company, dossier.pk)
+    except Exception:
+        affectations_flotte = []
+    if affectations_flotte:
+        vehicules_labels = ', '.join(
+            a['vehicule_label'] for a in affectations_flotte)
+        ElementSortie.objects.create(
+            company=dossier.company,
+            employe=dossier,
+            libelle='Véhicules flotte encore ouverts'[:160],
+            type_element=ElementSortie.TypeElement.VEHICULE,
+            note=(
+                f'{len(affectations_flotte)} affectation(s) flotte '
+                f'ouverte(s) : {vehicules_labels}'[:255]),
+        )
+
     # Avances non soldées → note informative (pas de mouvement financier ici,
     # le solde reste porté par le module concerné — RH ou paie).
     avances_ouvertes = AvanceSalaire.objects.filter(

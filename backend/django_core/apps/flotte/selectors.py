@@ -103,6 +103,75 @@ def conducteurs_permis_expirant(company, jours=30):
     ).select_related('user')
 
 
+def divergences_permis_flotte_rh(company, today=None):
+    """YHIRE11 — Rapport de réconciliation « divergences permis flotte↔RH »
+    (lecture seule).
+
+    Pour chaque ``Conducteur`` LIÉ à un dossier RH (``employe_id`` renseigné),
+    compare la validité LOCALE (champs ``date_expiration``/``categorie_permis``
+    du ``Conducteur``) à la validité RH (``rh.selectors.peut_conduire``,
+    source de vérité quand le lien existe — voir ``services.controle_permis``)
+    et signale une divergence quand les deux désaccordent : le local dit
+    valide alors que le RH dit invalide, ou l'inverse. Un conducteur externe
+    (``employe_id`` vide) n'est jamais inclus (rien à réconcilier).
+
+    Import LOCAL de ``rh.selectors`` (cross-app, jamais ``rh.models``) — si
+    l'app ``rh`` est indisponible, renvoie un rapport vide plutôt que de lever.
+
+    Retourne un dict LECTURE SEULE ::
+
+        {
+          'nb_conducteurs_lies': <int>,
+          'nb_divergences': <int>,
+          'divergences': [
+            {'conducteur_id', 'employe_id', 'conducteur_nom',
+             'local_valide': <bool>, 'rh_valide': <bool>}, …
+          ],
+        }
+
+    Aucune écriture, aucun effet de bord.
+    """
+    if today is None:
+        today = datetime.date.today()
+
+    try:
+        from apps.rh import selectors as rh_selectors
+    except Exception:
+        return {'nb_conducteurs_lies': 0, 'nb_divergences': 0,
+                'divergences': []}
+
+    conducteurs = Conducteur.objects.filter(
+        company=company, employe_id__isnull=False)
+
+    divergences = []
+    nb_lies = 0
+    for conducteur in conducteurs:
+        nb_lies += 1
+        local_valide = not (
+            conducteur.date_expiration is not None
+            and conducteur.date_expiration < today)
+        try:
+            rh_valide = bool(rh_selectors.peut_conduire(
+                company, conducteur.employe_id, le=today))
+        except Exception:
+            continue
+
+        if local_valide != rh_valide:
+            divergences.append({
+                'conducteur_id': conducteur.id,
+                'employe_id': conducteur.employe_id,
+                'conducteur_nom': conducteur.nom,
+                'local_valide': local_valide,
+                'rh_valide': rh_valide,
+            })
+
+    return {
+        'nb_conducteurs_lies': nb_lies,
+        'nb_divergences': len(divergences),
+        'divergences': divergences,
+    }
+
+
 def conducteur_actuel_du_vehicule(company, vehicule_id):
     """FLOTTE8 — Retourne le conducteur actuellement actif pour un véhicule donné.
 
@@ -150,6 +219,49 @@ def affectations_du_conducteur(company, conducteur_id):
         .select_related("vehicule")
         .order_by("-date_debut")
     )
+
+
+def affectations_ouvertes_pour_employe(company, employe_id):
+    """YHIRE11 — Affectations OUVERTES (actif=True, sans date de fin passée)
+    du/des ``Conducteur`` flotte LIÉS à ``employe_id`` (dossier RH), scopées
+    société.
+
+    Point d'entrée CROSS-APP EN LECTURE pour ``rh`` : la checklist de sortie
+    (``rh.services.sortir_employe``, YHIRE2) appelle CETTE fonction pour
+    lister les véhicules flotte encore ouverts du sortant — ``rh`` n'importe
+    JAMAIS les modèles ``flotte`` (cross-app, voir CLAUDE.md).
+
+    Un ``Conducteur`` sans lien RH (``employe_id`` vide, conducteur externe)
+    n'est jamais retourné. Retourne une liste LECTURE SEULE ::
+
+        [{'affectation_id', 'conducteur_id', 'vehicule_id', 'vehicule_label',
+          'date_debut', 'date_fin'}, …]
+
+    Aucune écriture, aucun effet de bord.
+    """
+    if not employe_id:
+        return []
+
+    affectations = (
+        AffectationConducteur.objects
+        .filter(
+            company=company, actif=True,
+            conducteur__employe_id=employe_id,
+        )
+        .select_related('vehicule', 'conducteur')
+        .order_by('-date_debut')
+    )
+    return [
+        {
+            'affectation_id': affectation.id,
+            'conducteur_id': affectation.conducteur_id,
+            'vehicule_id': affectation.vehicule_id,
+            'vehicule_label': str(affectation.vehicule),
+            'date_debut': affectation.date_debut,
+            'date_fin': affectation.date_fin,
+        }
+        for affectation in affectations
+    ]
 
 
 def avantages_en_nature(company, mois):
