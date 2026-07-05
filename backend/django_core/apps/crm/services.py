@@ -167,7 +167,12 @@ def avancer_stage_pour_devis(devis, ancien_statut, nouveau_statut, user):
     cible = _STATUT_VERS_STAGE.get(nouveau_statut)
     if cible is None:
         return
-    lead = devis.lead
+    # `getattr` défensif : un vrai Devis résout son FK `lead` à l'identique
+    # (chargement paresseux), mais ce récepteur est câblé au signal partagé
+    # `devis_accepted` — un émetteur d'un autre domaine (ex. la séquence
+    # d'inscription XMKT1) peut envoyer un objet devis minimal ne portant que
+    # `lead_id` : on l'ignore alors proprement plutôt que de lever AttributeError.
+    lead = getattr(devis, 'lead', None)
     if lead is None:
         return
     if lead.perdu:
