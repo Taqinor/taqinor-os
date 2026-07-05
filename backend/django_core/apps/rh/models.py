@@ -6120,3 +6120,83 @@ class RetourFeedback360(models.Model):
 
     def __str__(self):
         return f'{self.evaluation_id} — {self.repondant.matricule}'
+
+
+# ── ZRH8 — Plans d'appréciation automatiques (jalons d'ancienneté) ─────────
+
+class PlanAppreciation(models.Model):
+    """Plan d'appréciation automatique par jalon d'ancienneté (ZRH8).
+
+    Définit, pour une société, les JALONS d'ancienneté (``mois_apres_
+    embauche``, ex. ``[3, 12, 24]``) auxquels un ``EvaluationEmploye``
+    « planifiée » doit être créée automatiquement pour chaque
+    ``DossierEmploye`` actif qui franchit le jalon — voir
+    ``manage.py planifier_appreciations``. ``campagne_cible`` (optionnelle)
+    pointe une ``CampagneEvaluation`` précise ; si absente, la commande crée/
+    réutilise une campagne annuelle par défaut pour l'année en cours (voir
+    ``services.campagne_annuelle_par_defaut``).
+
+    Multi-société : ``company`` posée CÔTÉ SERVEUR (jamais lue du corps de
+    requête) ; ``campagne_cible`` doit appartenir à la même société. Additif.
+
+    RUNTIME-SAFETY (leçon FG136) : ``libelle`` plafonné ; ``mois_apres_
+    embauche`` est un ``JSONField`` (liste d'entiers) — validé en Python
+    (``clean``), jamais une contrainte DB.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_plans_appreciation',
+        verbose_name='Société',
+    )
+    libelle = models.CharField(max_length=150, verbose_name='Libellé')
+    # Liste JSON d'entiers positifs (mois après l'embauche), ex. [3, 12, 24].
+    mois_apres_embauche = models.JSONField(
+        default=list, blank=True, verbose_name="Jalons (mois après embauche)",
+        help_text='Liste de nombres de mois, ex. [3, 12, 24].')
+    campagne_cible = models.ForeignKey(
+        'CampagneEvaluation',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='plans_appreciation',
+        verbose_name='Campagne cible',
+        help_text='Vide = une campagne annuelle par défaut est '
+        "créée/réutilisée à l'exécution.")
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = "Plan d'appréciation"
+        verbose_name_plural = "Plans d'appréciation"
+        ordering = ['libelle']
+        indexes = [
+            models.Index(
+                fields=['company', 'actif'],
+                name='rh_planappr_comp_actif_idx'),
+        ]
+
+    def clean(self):
+        """ZRH8 — ``mois_apres_embauche`` doit être une liste d'entiers > 0 ;
+        ``campagne_cible`` (si fournie) doit appartenir à la même société."""
+        from django.core.exceptions import ValidationError
+
+        if not isinstance(self.mois_apres_embauche, list):
+            raise ValidationError(
+                "Les jalons doivent être une liste de nombres de mois.")
+        for jalon in self.mois_apres_embauche:
+            if not isinstance(jalon, int) or isinstance(jalon, bool) \
+                    or jalon <= 0:
+                raise ValidationError(
+                    "Chaque jalon doit être un nombre entier de mois "
+                    "strictement positif.")
+        if self.campagne_cible_id is not None \
+                and self.campagne_cible.company_id != self.company_id:
+            raise ValidationError(
+                "La campagne cible n'appartient pas à la même société.")
+
+    def __str__(self):
+        return self.libelle
