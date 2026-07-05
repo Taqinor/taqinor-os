@@ -9,9 +9,13 @@ from rest_framework.decorators import api_view, permission_classes, parser_class
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
 
+from django.http import Http404
+
 from authentication.permissions import (
     IsResponsableOrAdmin, HasPermissionAndRole,
 )
+from core.selectors import get_company_object
+
 from . import services
 from .models import ImportJob
 
@@ -157,10 +161,11 @@ def save_mapping(request):
 def job_erreurs_csv(request, job_id):
     """XPLT2 — CSV des seules lignes en échec d'un ``ImportJob``, directement
     ré-importables (mêmes en-têtes que le fichier d'origine + ``_motif``).
-    Isolation tenant stricte : un job d'une autre société → 404."""
-    job = ImportJob.objects.filter(
-        pk=job_id, company=request.user.company).first()
-    if job is None:
+    Isolation tenant stricte : un job d'une autre société → 404 (YRBAC11 —
+    helper canonique ``core.selectors.get_company_object``)."""
+    try:
+        job = get_company_object(ImportJob, job_id, request.user)
+    except Http404:
         return Response({'detail': 'Import introuvable.'}, status=404)
     fieldnames, rows = services.erreurs_csv_rows(job)
     buf = io.StringIO()
