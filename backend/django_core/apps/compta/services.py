@@ -6055,6 +6055,90 @@ def brevo_actif():
                 and getattr(settings, 'BREVO_API_KEY', ''))
 
 
+# ── XMKT7 — Planification, throttling et fenêtres de silence d'envoi ───────
+
+def _hors_fenetre_silence(company):
+    """XMKT7 — True si l'instant présent tombe dans une fenêtre de silence
+    (nuit ou jour férié/non-ouvré) pour ``company``. Réutilise le selector de
+    ``notifications`` — jamais d'import direct de ses modèles.
+    """
+    from apps.notifications import selectors as notifications_selectors
+    return notifications_selectors.est_hors_fenetre_silence(
+        timezone.now(), company)
+
+
+def _plafond_pression_atteint(company, destinataire):
+    """XMKT7 — True si ``destinataire`` a déjà atteint le plafond de pression
+    marketing (tous canaux, campagnes + séquences confondus) sur la fenêtre
+    glissante société. Sans réglage (``pression_marketing_max_par_contact``
+    NULL), aucune limite (comportement actuel).
+    """
+    if not destinataire:
+        return False
+    try:
+        from apps.parametres.models_company import CompanyProfile
+        profil = CompanyProfile.objects.filter(company=company).first()
+    except Exception:  # pragma: no cover - défensif
+        profil = None
+    plafond = getattr(profil, 'pression_marketing_max_par_contact', None)
+    if not plafond:
+        return False
+    periode_jours = getattr(profil, 'pression_marketing_periode_jours', 7) or 7
+    depuis = timezone.now() - timezone.timedelta(days=periode_jours)
+    nb_campagnes = EnvoiCampagne.objects.filter(
+        company=company, destinataire=destinataire,
+        date_creation__gte=depuis,
+    ).exclude(statut=EnvoiCampagne.Statut.REBOND).count()
+    nb_sequences = ExecutionEtapeSequence.objects.filter(
+        company=company, execute_le__gte=depuis,
+        inscription__lead_reference=destinataire,
+    ).count() if destinataire else 0
+    return (nb_campagnes + nb_sequences) >= plafond
+
+
+def _destinataires_des_listes(campagne):
+    """XMKT7 — résout les destinataires INSCRITS des ``listes`` ciblées par
+    la campagne (XMKT5). Simple source stable pour l'envoi planifié beat —
+    ne duplique pas la résolution de segment (XMKT6, IDs de lead).
+    """
+    abonnements = AbonnementListe.objects.filter(
+        liste__in=campagne.listes.all(),
+        statut=AbonnementListe.Statut.INSCRIT,
+    ).values('destinataire', 'contact_ref').distinct()
+    vus = set()
+    resultat = []
+    for a in abonnements:
+        dest = a['destinataire']
+        if dest in vus:
+            continue
+        vus.add(dest)
+        resultat.append({'destinataire': dest, 'contact_ref': a['contact_ref'] or ''})
+    return resultat
+
+
+def envoyer_campagnes_planifiees(company, *, maintenant=None):
+    """XMKT7 — Enveloppe beat : envoie chaque campagne ``planifiee_le`` dont
+    l'échéance est atteinte, par lots throttlés si ``debit_max_par_heure``
+    est renseigné (le lot = les destinataires des listes ciblées, tronqué au
+    débit horaire ; le reliquat repart en file au prochain passage beat en
+    restant ``brouillon`` avec sa ``planifiee_le`` inchangée).
+    """
+    maintenant = maintenant or timezone.now()
+    campagnes = Campagne.objects.filter(
+        company=company, statut=Campagne.Statut.BROUILLON,
+        planifiee_le__isnull=False, planifiee_le__lte=maintenant,
+    )
+    envoyees = []
+    for campagne in campagnes:
+        destinataires = _destinataires_des_listes(campagne)
+        if campagne.debit_max_par_heure:
+            lot = destinataires[:campagne.debit_max_par_heure]
+        else:
+            lot = destinataires
+        envoyees.append(envoyer_campagne(campagne, destinataires=lot))
+    return envoyees
+
+
 def envoyer_campagne(campagne, *, destinataires=None):
     """Déclenche l'envoi groupé d'une campagne (FG201), idempotent.
 
@@ -6079,6 +6163,11 @@ def envoyer_campagne(campagne, *, destinataires=None):
         brute = cible.get('destinataire') if isinstance(cible, dict) else cible
         return (brute or '').strip()
 
+    # XMKT7 — fenêtre de silence : un SMS/WhatsApp ne part jamais la nuit ni
+    # un jour férié/non-ouvré (email non concerné par la fenêtre horaire).
+    if campagne.canal in ('sms', 'whatsapp') and _hors_fenetre_silence(campagne.company):
+        return campagne
+
     cibles = [
         cible for cible in brutes
         if not est_supprime(campagne.company, _adresse(cible))
@@ -6087,6 +6176,9 @@ def envoyer_campagne(campagne, *, destinataires=None):
         # entrée de consentement n'existe pour ce destinataire).
         and consentement_accorde(
             campagne.company, _adresse(cible), canal=campagne.canal)
+        # XMKT7 — un contact déjà au plafond de pression marketing sur la
+        # période est sauté (journalisé).
+        and not _plafond_pression_atteint(campagne.company, _adresse(cible))
     ]
     refuses_consentement = [
         _adresse(cible) for cible in brutes
@@ -6101,6 +6193,21 @@ def envoyer_campagne(campagne, *, destinataires=None):
                 destinataire=dest, contact_ref='',
                 statut=EnvoiCampagne.Statut.REBOND,
                 raison_smtp='consentement_refuse_ou_absent',
+            )
+    plafonnes = [
+        _adresse(cible) for cible in brutes
+        if not est_supprime(campagne.company, _adresse(cible))
+        and consentement_accorde(
+            campagne.company, _adresse(cible), canal=campagne.canal)
+        and _plafond_pression_atteint(campagne.company, _adresse(cible))
+    ]
+    for dest in plafonnes:
+        if dest:
+            EnvoiCampagne.objects.create(
+                company=campagne.company, campagne=campagne,
+                destinataire=dest, contact_ref='',
+                statut=EnvoiCampagne.Statut.REBOND,
+                raison_smtp='plafond_pression_marketing',
             )
     campagne.nb_destinataires = len(cibles)
     if brevo_actif() and cibles:

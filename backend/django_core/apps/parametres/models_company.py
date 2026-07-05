@@ -457,6 +457,20 @@ class CompanyProfile(models.Model):
                   "mailable seulement après clic) pour les inscriptions "
                   "publiques marketing. Désactivé par défaut.")
 
+    # ── XMKT7 — pression marketing (throttling + fenêtres de silence) ───────
+    # NULL/0 = comportement actuel (aucune limite), tous canaux confondus
+    # (campagnes + séquences), sur la fenêtre glissante de
+    # ``pression_marketing_periode_jours`` jours.
+    pression_marketing_max_par_contact = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Nombre maximum de messages marketing (campagnes + "
+                  "séquences, tous canaux) par contact sur la période. "
+                  "Vide = aucune limite (comportement actuel).")
+    pression_marketing_periode_jours = models.PositiveIntegerField(
+        default=7,
+        help_text="Fenêtre glissante (jours) sur laquelle le plafond de "
+                  "pression marketing est évalué.")
+
     class Meta:
         verbose_name = 'Profil entreprise'
 

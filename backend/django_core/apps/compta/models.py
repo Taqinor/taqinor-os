@@ -4555,6 +4555,13 @@ class Campagne(models.Model):
         null=True, blank=True, verbose_name='Envoyée le')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créée le')
+    # ── XMKT7 — planification, throttling, fenêtres de silence ──────────────
+    planifiee_le = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name='Envoi planifié le (Celery beat)')
+    debit_max_par_heure = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Débit max par heure (envoi par lots)')
 
     class Meta:
         verbose_name = 'Campagne email/SMS'
