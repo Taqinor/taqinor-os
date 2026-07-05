@@ -24,6 +24,16 @@ def factures_echues(company, *, today=None):
     ).select_related('client', 'created_by')
 
 
+def get_facture_scoped(company, facture_id):
+    """XFAC14 — Facture (AR) scopée société par id, ou ``None``. Point
+    d'entrée cross-app (compensation AR/AP) : lire une facture client sans
+    importer ``apps.ventes.models``. Lecture seule."""
+    from .models import Facture
+    return (Facture.objects
+            .select_related('client')
+            .filter(id=facture_id, company=company).first())
+
+
 def devis_for_lead(lead, ids):
     """Devis d'un lead (dans la société du lead), pour les ids donnés, triés par
     id. Liste matérialisée — comportement identique au filtre inline d'origine."""

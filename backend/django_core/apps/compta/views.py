@@ -57,6 +57,7 @@ from .models import (
     ModeleRapprochement,
     ObligationFiscale,
     FamilleTvaNonDeductible,
+    Compensation,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -110,6 +111,7 @@ from .serializers import (
     ModeleRapprochementSerializer,
     ObligationFiscaleSerializer,
     FamilleTvaNonDeductibleSerializer,
+    CompensationSerializer,
 )
 
 
@@ -4968,6 +4970,47 @@ class ModeleRapprochementViewSet(_ComptaBaseViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(
             {'ecriture_id': ecriture.id, 'reference': ecriture.reference})
+
+
+# ── XFAC14 — Compensation AR/AP (netting) ──────────────────────────────────
+
+class CompensationViewSet(_ComptaBaseViewSet):
+    """Compensation AR/AP pour un tiers à la fois client et fournisseur
+    (XFAC14). La création passe par ``services.creer_compensation`` (garde-
+    fous de sur-compensation) ; ``valider`` poste l'écriture 4411/3421 +
+    enregistre les règlements croisés. Société scopée ; Admin/Responsable."""
+    queryset = Compensation.objects.prefetch_related('lignes').all()
+    serializer_class = CompensationSerializer
+    http_method_names = ['get', 'post', 'head', 'options']
+
+    def create(self, request, *args, **kwargs):
+        data = request.data
+        try:
+            compensation = services.creer_compensation(
+                request.user.company,
+                client_id=data.get('client_id'),
+                fournisseur_id=data.get('fournisseur_id'),
+                lignes=data.get('lignes') or [],
+                user=request.user,
+            )
+        except (services.CompensationError, DjangoValidationError) as exc:
+            detail = exc.messages[0] if getattr(exc, 'messages', None) else str(exc)
+            return Response({'detail': detail}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(compensation).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def valider(self, request, pk=None):
+        """Valide la compensation : poste l'écriture équilibrée + les
+        règlements croisés (idempotent — déjà validée = no-op)."""
+        compensation = self.get_object()
+        try:
+            services.valider_compensation(compensation, user=request.user)
+        except (services.CompensationError, DjangoValidationError) as exc:
+            detail = exc.messages[0] if getattr(exc, 'messages', None) else str(exc)
+            return Response({'detail': detail}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(compensation).data)
 
 
 # ── COMPTA3 — Comptes auxiliaires tiers ────────────────────────────────────

@@ -45,6 +45,7 @@ from .models import (
     ModeleRapprochement,
     ObligationFiscale,
     FamilleTvaNonDeductible,
+    Compensation, LigneCompensation,
 )
 
 
@@ -2259,5 +2260,31 @@ class PisteAuditComptableSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'ecriture', 'ecriture_reference', 'sequence',
             'empreinte_contenu', 'hash_precedent', 'hash', 'date_creation',
+        ]
+        read_only_fields = fields
+
+
+class LigneCompensationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LigneCompensation
+        fields = [
+            'id', 'type_facture', 'facture_id', 'reference_facture',
+            'montant_impute',
+        ]
+        read_only_fields = fields
+
+
+class CompensationSerializer(serializers.ModelSerializer):
+    """XFAC14 — Compensation AR/AP (netting). Lecture seule : la création
+    passe par ``services.creer_compensation`` (garde-fous de sur-
+    compensation), jamais un ``.create()`` direct du serializer."""
+    lignes = LigneCompensationSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Compensation
+        fields = [
+            'id', 'reference', 'client_id', 'client_nom', 'fournisseur_id',
+            'fournisseur_nom', 'montant_compense', 'statut', 'ecriture_id',
+            'lignes', 'date_creation', 'date_validation',
         ]
         read_only_fields = fields

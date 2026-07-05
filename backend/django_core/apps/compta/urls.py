@@ -52,6 +52,7 @@ from .views import (
     ObligationFiscaleViewSet,
     FamilleTvaNonDeductibleViewSet,
     LettrageViewSet,
+    CompensationViewSet,
 )
 
 router = DefaultRouter()
@@ -164,6 +165,8 @@ router.register(r'comptes-auxiliaires', CompteAuxiliaireViewSet)
 router.register(r'pieces-justificatives', PieceJustificativeViewSet)
 router.register(r'pistes-audit', PisteAuditComptableViewSet,
                 basename='pisteaudit')
+# ── XFAC14 — Compensation AR/AP (netting) ───────────────────────────────────
+router.register(r'compensations', CompensationViewSet)
 
 urlpatterns = [
     path('webhooks/brevo/', webhook_brevo_campagne, name='webhook-brevo-campagne'),

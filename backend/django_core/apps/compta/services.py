@@ -69,6 +69,7 @@ from .models import (
     EtapeSequence, ExecutionEtapeSequence, InscriptionSequence,
     SequenceRelance, EnvoiCampagne, SuppressionMarketing,
     ListeDiffusion, AbonnementListe, RebondSoft,
+    Compensation, LigneCompensation,
 )
 
 
@@ -8912,3 +8913,182 @@ def refuser_demande_rib(demande, *, decideur, commentaire=''):
     demande.save(update_fields=[
         'statut', 'decideur', 'commentaire_decision', 'date_decision'])
     return demande
+
+
+# ── XFAC14 — Compensation AR/AP (netting) ──────────────────────────────────
+
+class CompensationError(ValidationError):
+    """Levée sans rien écrire (atomicité) quand une compensation est
+    impossible : sur-compensation, tiers non trouvé, factures d'un tiers
+    différent, etc."""
+
+
+def creer_compensation(company, *, client_id, fournisseur_id, lignes, user=None):
+    """XFAC14 — Crée une ``Compensation`` BROUILLON entre les factures AR
+    (client, ``apps.ventes``) et AP (fournisseur, ``apps.stock``) d'un même
+    tiers réel.
+
+    ``lignes`` : liste de ``{'type': 'ar'|'ap', 'facture_id': int,
+    'montant': Decimal}``. Chaque facture est relue via le sélecteur de
+    l'app cible (jamais un import de ses modèles) pour vérifier
+    l'appartenance société + résoudre le solde dû ; le montant imputé ne
+    peut jamais dépasser le solde dû de sa facture, et
+    ``montant_compense`` = min(Σ AR, Σ AP) (jamais plus que le plus petit des
+    deux soldes globaux — sur-compensation refusée). Lève
+    ``CompensationError`` sans rien créer si une garde échoue. Ne poste
+    AUCUNE écriture (fait par ``valider_compensation``)."""
+    from apps.crm.selectors import get_company_client
+    from apps.stock import selectors as stock_selectors
+    from apps.ventes import selectors as ventes_selectors
+
+    client = get_company_client(company, client_id)
+    if client is None:
+        raise CompensationError('Client introuvable dans votre société.')
+
+    fournisseur = stock_selectors.get_fournisseur_by_id(company, fournisseur_id)
+    if fournisseur is None:
+        raise CompensationError('Fournisseur introuvable dans votre société.')
+
+    if not lignes:
+        raise CompensationError(
+            'Sélectionnez au moins une facture AR et une facture AP.')
+
+    total_ar = Decimal('0')
+    total_ap = Decimal('0')
+    lignes_valides = []
+    for entree in lignes:
+        type_facture = entree.get('type')
+        facture_id = entree.get('facture_id')
+        montant = Decimal(str(entree.get('montant') or 0))
+        if montant <= 0:
+            raise CompensationError('Le montant imputé doit être positif.')
+        if type_facture == LigneCompensation.Type.AR:
+            facture = ventes_selectors.get_facture_scoped(company, facture_id)
+            if facture is None:
+                raise CompensationError(
+                    f'Facture client #{facture_id} introuvable.')
+            if facture.client_id != client.id:
+                raise CompensationError(
+                    "Cette facture n'appartient pas au client sélectionné.")
+            if montant > facture.montant_du:
+                raise CompensationError(
+                    f'Le montant imputé dépasse le solde dû de {facture.reference}.')
+            total_ar += montant
+            reference = facture.reference
+        elif type_facture == LigneCompensation.Type.AP:
+            facture = stock_selectors.facture_fournisseur_scoped(
+                company, facture_id)
+            if facture is None:
+                raise CompensationError(
+                    f'Facture fournisseur #{facture_id} introuvable.')
+            if facture.fournisseur_id != fournisseur.id:
+                raise CompensationError(
+                    "Cette facture n'appartient pas au fournisseur sélectionné.")
+            if montant > facture.solde_du:
+                raise CompensationError(
+                    f'Le montant imputé dépasse le solde dû de {facture.reference}.')
+            total_ap += montant
+            reference = facture.reference
+        else:
+            raise CompensationError(f"Type de facture invalide : {type_facture!r}.")
+        lignes_valides.append({
+            'type_facture': type_facture, 'facture_id': facture_id,
+            'reference_facture': reference, 'montant_impute': montant,
+        })
+
+    if total_ar <= 0 or total_ap <= 0:
+        raise CompensationError(
+            'Il faut au moins une facture AR et une facture AP.')
+
+    montant_compense = min(total_ar, total_ap)
+
+    with transaction.atomic():
+        compensation = Compensation.objects.create(
+            company=company, client_id=client.id,
+            client_nom=str(client), fournisseur_id=fournisseur.id,
+            fournisseur_nom=fournisseur.nom,
+            montant_compense=montant_compense, created_by=user,
+        )
+        compensation.reference = f'CMP-{compensation.id:06d}'
+        compensation.save(update_fields=['reference'])
+        for ligne in lignes_valides:
+            LigneCompensation.objects.create(compensation=compensation, **ligne)
+    return compensation
+
+
+def valider_compensation(compensation, *, user=None):
+    """XFAC14 — Valide une ``Compensation`` BROUILLON : poste l'écriture
+    équilibrée 4411 (fournisseur) / 3421 (client) du montant compensé et
+    enregistre les règlements croisés via les services de chaque app
+    (jamais un import de leurs modèles). Idempotente (une compensation déjà
+    validée n'est pas re-postée). Respecte le verrou de période (via
+    ``creer_ecriture_od``)."""
+    if compensation.statut == Compensation.Statut.VALIDEE:
+        return compensation
+
+    from apps.stock import selectors as stock_selectors
+    from apps.stock import services as stock_services
+    from apps.ventes import selectors as ventes_selectors
+    from apps.ventes import services as ventes_services
+
+    compte_clients = get_compte(compensation.company, '3421')
+    compte_fournisseurs = get_compte(compensation.company, '4411')
+    if compte_clients is None or compte_fournisseurs is None:
+        raise CompensationError(
+            'Comptes 3421/4411 introuvables — semez le plan comptable.')
+
+    with transaction.atomic():
+        ecriture = creer_ecriture_od(
+            compensation.company, timezone.localdate(),
+            f'Compensation {compensation.reference} — '
+            f'{compensation.client_nom} / {compensation.fournisseur_nom}',
+            [
+                {'compte': compte_fournisseurs,
+                 'debit': compensation.montant_compense, 'credit': Decimal('0'),
+                 'tiers_type': 'fournisseur',
+                 'tiers_id': compensation.fournisseur_id},
+                {'compte': compte_clients,
+                 'debit': Decimal('0'), 'credit': compensation.montant_compense,
+                 'tiers_type': 'client', 'tiers_id': compensation.client_id},
+            ],
+            reference=compensation.reference, created_by=user,
+        )
+
+        restant = compensation.montant_compense
+        for ligne in compensation.lignes.filter(
+                type_facture=LigneCompensation.Type.AR).order_by('id'):
+            if restant <= 0:
+                break
+            montant = min(ligne.montant_impute, restant)
+            facture = ventes_selectors.get_facture_scoped(
+                compensation.company, ligne.facture_id)
+            if facture is not None and montant > 0:
+                ventes_services.enregistrer_paiement(
+                    facture=facture, montant=montant, mode='autre',
+                    date_paiement=timezone.localdate(), user=user,
+                    reference=compensation.reference,
+                    note=f'Compensation AR/AP {compensation.reference}')
+            restant -= montant
+
+        restant = compensation.montant_compense
+        for ligne in compensation.lignes.filter(
+                type_facture=LigneCompensation.Type.AP).order_by('id'):
+            if restant <= 0:
+                break
+            montant = min(ligne.montant_impute, restant)
+            facture_ap = stock_selectors.facture_fournisseur_scoped(
+                compensation.company, ligne.facture_id)
+            if facture_ap is not None and montant > 0:
+                stock_services.add_paiement_sous_traitant(
+                    company=compensation.company, user=user,
+                    facture=facture_ap, montant=montant,
+                    date_paiement=timezone.localdate(), mode='autre',
+                    note=f'Compensation AR/AP {compensation.reference}')
+            restant -= montant
+
+        compensation.statut = Compensation.Statut.VALIDEE
+        compensation.ecriture_id = ecriture.id
+        compensation.date_validation = timezone.now()
+        compensation.save(update_fields=[
+            'statut', 'ecriture_id', 'date_validation'])
+    return compensation
