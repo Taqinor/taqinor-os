@@ -3308,6 +3308,21 @@ def rapprochement_auxiliaire_fournisseurs(company, date=None):
     return {'lignes': lignes, 'ecart_total': ecart_total}
 
 
+def exposition_69_21(company, periode=None):
+    """XFAC2 — Conformité loi 69-21 (délais de paiement légaux fournisseurs).
+
+    Thin wrapper company-scopé sur ``stock.selectors.exposition_69_21``
+    (lecture des factures fournisseur via le sélecteur de l'app cible —
+    jamais un import de ``apps.stock.models`` ici). ``periode`` optionnel
+    (``'YYYY-MM'``) borne au trimestre civil pour la déclaration DGI.
+    Renvoie ``{'lignes': [...], 'total_amende_estimee': Decimal}``."""
+    from apps.stock import selectors as stock_selectors
+
+    lignes = stock_selectors.exposition_69_21(company, periode=periode)
+    total = sum((ligne['amende_estimee'] for ligne in lignes), Decimal('0'))
+    return {'lignes': lignes, 'total_amende_estimee': total}
+
+
 def ecatalogue_public_par_token(token):
     """XPOS14 — E-catalogue public lu par son token (FG214), lecture seule.
 

@@ -498,6 +498,96 @@ def encours_fournisseurs_par_tiers(company):
     return [v for v in par_fournisseur.values() if v['encours'] > 0]
 
 
+def exposition_69_21(
+        company, periode=None, *, delai_defaut=60, delai_max=120):
+    """XFAC2 — Conformité loi 69-21 (délais de paiement légaux) : liste les
+    factures fournisseur IMPAYÉES (``solde_du`` > 0) dépassant leur délai
+    légal de paiement, avec l'amende estimée.
+
+    Délai applicable par facture = ``Fournisseur.delai_paiement_jours`` s'il
+    est renseigné (> 0 — XPUR6, sinon 0 = « comptant, échéance manuelle »),
+    sinon ``delai_defaut`` (60 j, le défaut légal 69-21) borné à
+    ``delai_max`` (120 j max même si un délai convenu plus long est saisi).
+    L'amende est estimée avec un taux annuel simplifié (majoration légale par
+    mois de dépassement) appliqué au montant TTC dû, prorata du nombre de
+    mois entiers de dépassement — lecture seule, aucune écriture, aucun
+    modèle exposé hors de ce module.
+
+    ``periode`` (optionnel, ``'YYYY-MM'``) filtre les factures dont
+    ``date_facture`` tombe dans le trimestre civil contenant ce mois (pour
+    la déclaration trimestrielle DGI) ; sans periode, toutes les factures
+    impayées sont considérées.
+
+    Renvoie une liste de dicts : ``{facture_id, reference, fournisseur_id,
+    fournisseur_nom, date_emission, delai_legal_jours, date_echeance_legale,
+    jours_depassement, montant_du, amende_estimee}`` — uniquement les
+    factures réellement en dépassement (jours_depassement > 0). Une facture
+    payée (solde_du == 0) est exclue."""
+    from datetime import timedelta
+    from decimal import Decimal
+
+    from django.utils import timezone
+
+    from .models import FactureFournisseur
+
+    today = timezone.localdate()
+
+    qs = (FactureFournisseur.objects
+          .filter(company=company, date_facture__isnull=False)
+          .select_related('fournisseur'))
+
+    if periode:
+        annee, mois = (int(part) for part in periode.split('-'))
+        trimestre_debut_mois = ((mois - 1) // 3) * 3 + 1
+        mois_fin = trimestre_debut_mois + 2
+        annee_fin = annee
+        if mois_fin > 12:
+            mois_fin -= 12
+            annee_fin += 1
+        from datetime import date as _date
+        borne_debut = _date(annee, trimestre_debut_mois, 1)
+        if mois_fin == 12:
+            borne_fin = _date(annee_fin, 12, 31)
+        else:
+            borne_fin = _date(annee_fin, mois_fin + 1, 1) - timedelta(days=1)
+        qs = qs.filter(date_facture__gte=borne_debut,
+                       date_facture__lte=borne_fin)
+
+    lignes = []
+    # Taux directeur BAM simplifié + majoration légale : 1 %/mois de
+    # dépassement (estimation, configurable côté founder si besoin plus fin).
+    taux_mensuel = Decimal('0.01')
+    for facture in qs:
+        solde = facture.solde_du
+        if not solde:
+            continue
+        fournisseur = facture.fournisseur
+        delai = fournisseur.delai_paiement_jours if fournisseur else 0
+        delai_legal = min(delai, delai_max) if delai else delai_defaut
+        date_echeance_legale = facture.date_facture + timedelta(days=delai_legal)
+        jours_depassement = (today - date_echeance_legale).days
+        if jours_depassement <= 0:
+            continue
+        mois_depassement = (jours_depassement // 30) + 1
+        amende_estimee = (
+            Decimal(solde) * taux_mensuel * mois_depassement
+        ).quantize(Decimal('0.01'))
+        lignes.append({
+            'facture_id': facture.id,
+            'reference': facture.reference,
+            'fournisseur_id': fournisseur.id if fournisseur else None,
+            'fournisseur_nom': fournisseur.nom if fournisseur else '',
+            'date_emission': facture.date_facture,
+            'delai_legal_jours': delai_legal,
+            'date_echeance_legale': date_echeance_legale,
+            'jours_depassement': jours_depassement,
+            'montant_du': Decimal(solde),
+            'amende_estimee': amende_estimee,
+        })
+    lignes.sort(key=lambda e: e['jours_depassement'], reverse=True)
+    return lignes
+
+
 def lignes_import_depuis_bcf(company, bon_commande_id):
     """XSTK19 — lignes candidates pour un dossier d'import ADII, pré-remplies
     depuis les SKUs d'un bon de commande fournisseur (code SH + pays

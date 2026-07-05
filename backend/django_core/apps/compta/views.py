@@ -931,6 +931,39 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
                 rapport, 'rapprochement_fournisseurs.csv')
         return Response(rapport)
 
+    @action(detail=False, methods=['get'], url_path='loi-69-21')
+    def loi_69_21(self, request):
+        """XFAC2 — Conformité loi 69-21 : factures fournisseur impayées au
+        delà du délai légal (60 j défaut, 120 j max), avec amende estimée.
+        ``?periode=YYYY-MM`` borne au trimestre civil (déclaration DGI) ;
+        ``?export=csv`` télécharge."""
+        periode = request.query_params.get('periode') or None
+        rapport = selectors.exposition_69_21(
+            request.user.company, periode=periode)
+        if request.query_params.get('export') == 'csv':
+            return self._loi_69_21_csv(rapport)
+        return Response(rapport)
+
+    @staticmethod
+    def _loi_69_21_csv(rapport):
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, delimiter=';', lineterminator='\r\n')
+        writer.writerow([
+            'facture_id', 'reference', 'fournisseur_id', 'fournisseur_nom',
+            'date_emission', 'delai_legal_jours', 'date_echeance_legale',
+            'jours_depassement', 'montant_du', 'amende_estimee'])
+        for ligne in rapport['lignes']:
+            writer.writerow([
+                ligne['facture_id'], ligne['reference'],
+                ligne['fournisseur_id'], ligne['fournisseur_nom'],
+                ligne['date_emission'], ligne['delai_legal_jours'],
+                ligne['date_echeance_legale'], ligne['jours_depassement'],
+                ligne['montant_du'], ligne['amende_estimee']])
+        resp = HttpResponse(
+            buffer.getvalue(), content_type='text/csv; charset=utf-8')
+        resp['Content-Disposition'] = 'attachment; filename="loi_69_21.csv"'
+        return resp
+
 
 # ── YLEDG6 — Lettrage / délettrage (FG112) ──────────────────────────────────
 
