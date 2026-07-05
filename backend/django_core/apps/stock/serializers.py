@@ -174,6 +174,11 @@ class ProduitSerializer(serializers.ModelSerializer):
         if user is not None and not getattr(user, 'can_view_marge', True):
             fields.pop('marge_pct', None)
         return fields
+    # YHARD4 — variantes localisées (repli FR octet-identique par défaut si
+    # aucun ``?locale=`` n'est demandé ou si aucune traduction n'existe pour
+    # cette langue). Additif : n'affecte jamais nom/description bruts.
+    nom_localise = serializers.SerializerMethodField()
+    description_localise = serializers.SerializerMethodField()
     # FG20 — marge brute en % ((vente − achat)/vente), arrondie à 1 décimale.
     # None si prix_vente nul/absent ou prix_achat à 0. Donnée sensible : le
     # champ est entièrement retiré pour les rôles sans ``marge_voir``.
@@ -268,6 +273,8 @@ class ProduitSerializer(serializers.ModelSerializer):
         fields = [
             # Identité & catalogue
             'id', 'company', 'nom', 'description', 'sku', 'marque',
+            # YHARD4 — variantes localisées (repli FR, cf. core/i18n_content.py)
+            'nom_localise', 'description_localise',
             # XSTK3 — code-barres fabricant (EAN/UPC/GTIN)
             'code_barres',
             # XSTK19 — code SH (HS) + pays d'origine (dossier d'import ADII)
@@ -324,6 +331,31 @@ class ProduitSerializer(serializers.ModelSerializer):
         cache = reserved_quantities(company) if company is not None else {}
         self._reserved_map_cache = cache
         return cache
+
+    def _target_locale(self):
+        """YHARD4 — langue cible pour les champs localisés : ``?locale=`` sur
+        la requête (ex. rendu PDF/proposition) sinon ``None`` (repli FR
+        octet-identique, comportement historique). Ne dérive JAMAIS d'une
+        entrée non fiable au-delà d'un simple code de langue à 2 lettres."""
+        request = self.context.get('request')
+        locale = self.context.get('locale')
+        if not locale and request is not None:
+            locale = request.query_params.get('locale') if hasattr(
+                request, 'query_params') else request.GET.get('locale')
+        if locale and len(locale) <= 5:
+            return locale
+        return None
+
+    def get_nom_localise(self, obj):
+        """YHARD4 — variante ``nom`` dans la langue cible, repli FR
+        (``ContentTranslation``, cf. core/i18n_content.py)."""
+        from core.i18n_content import translated_value
+        return translated_value(obj, 'nom', self._target_locale())
+
+    def get_description_localise(self, obj):
+        """YHARD4 — variante ``description`` dans la langue cible, repli FR."""
+        from core.i18n_content import translated_value
+        return translated_value(obj, 'description', self._target_locale())
 
     def get_marge_pct(self, obj):
         """Marge brute en % depuis prix_vente/prix_achat (None si indéfinie)."""

@@ -262,6 +262,33 @@ jobs:
         working-directory: frontend
         run: npm run test:coverage
 
+  # YHARD7 — budget de performance du bundle SPA ERP. Complète le
+  # `chunkSizeWarningLimit` (avertissement de build seulement) par un contrôle
+  # qui ÉCHOUE la CI si un chunk (ou le total gzippé) dépasse son budget.
+  # Dev-only (frontend/scripts/check_bundle_budget.mjs, Node stdlib pur —
+  # aucune dépendance ajoutée). Lighthouse-CI reste hors périmètre ici
+  # (optionnel/non bloquant) pour éviter la flakiness.
+  frontend-perf:
+    needs: changes
+    if: ${{ needs.changes.outputs.frontend == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+      - name: Check bundle budget
+        working-directory: frontend
+        run: npm run check-bundle-budget
+
   stage-names:
     # Intentionally UNGATED: this is the fast, broad drift guard. It must run on
     # docs/plan changes (plan fingerprint), on STAGES.py, and on any structural
@@ -454,6 +481,7 @@ jobs:
       - backend-lint
       - backend-tests
       - frontend-lint
+      - frontend-perf
       - stage-names
       - web-build-test
       - e2e
@@ -465,6 +493,7 @@ jobs:
           echo "backend-lint=${{ needs.backend-lint.result }}"
           echo "backend-tests=${{ needs.backend-tests.result }}"
           echo "frontend-lint=${{ needs.frontend-lint.result }}"
+          echo "frontend-perf=${{ needs.frontend-perf.result }}"
           echo "stage-names=${{ needs.stage-names.result }}"
           echo "web-build-test=${{ needs.web-build-test.result }}"
           echo "e2e=${{ needs.e2e.result }}"

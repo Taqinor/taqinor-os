@@ -15,12 +15,15 @@ bucketing et l'affichage se font en Africa/Casablanca.
 from datetime import datetime, timedelta, date as date_cls
 from zoneinfo import ZoneInfo
 
+from django.contrib.contenttypes.models import ContentType
+from django.utils.dateparse import parse_datetime
 from rest_framework import viewsets, filters
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
 
 from .models import AuditLog
+from .selectors import reconstruct_as_of
 from .serializers import AuditLogSerializer
 
 CASABLANCA = ZoneInfo('Africa/Casablanca')
@@ -261,3 +264,40 @@ def security_events(request):
         limit = 100
     data = AuditLogSerializer(qs[:limit], many=True).data
     return Response({'count': len(data), 'results': data})
+
+
+# YHARD3 — reconstruction as-of générique, lecture seule, admin/Directeur.
+# ``objets/<app_label>.<model>/<id>/as-of/?date=`` (content type désigné par
+# ``app_label.model`` dans l'URL, ex. ``crm.client``). Company-scopée : sans
+# société sur l'utilisateur (ni superuser), renvoie 404 plutôt qu'une fuite.
+@api_view(['GET'])
+@permission_classes([CanViewActivityLog])
+def object_as_of(request, content_type, object_id):
+    try:
+        app_label, model = content_type.split('.', 1)
+        ct = ContentType.objects.get(app_label=app_label, model=model)
+    except (ValueError, ContentType.DoesNotExist):
+        return Response({'detail': 'content_type invalide'}, status=404)
+
+    date_param = request.query_params.get('date')
+    dt = parse_datetime(date_param) if date_param else None
+    if date_param and dt is None:
+        # Accepte aussi une simple date ISO (YYYY-MM-DD) → minuit UTC.
+        parsed_date = _parse_date(date_param)
+        if parsed_date is None:
+            return Response({'detail': 'date invalide (ISO 8601 attendu)'}, status=400)
+        dt = datetime.combine(parsed_date, datetime.min.time(), CASABLANCA)
+
+    user = request.user
+    company = user.company if user.company_id else None
+    if company is None and not user.is_superuser:
+        return Response({'detail': 'Non autorisé.'}, status=404)
+
+    result = reconstruct_as_of(ct, object_id, dt=dt, company=company)
+    return Response({
+        'content_type': content_type,
+        'object_id': str(object_id),
+        'as_of': result['as_of'],
+        'fields': result['fields'],
+        'covered_changes': result['covered_changes'],
+    })

@@ -838,3 +838,72 @@ class ChangelogViewSet(viewsets.ModelViewSet):
             ChangelogRead.objects.get_or_create(
                 user=request.user, entry=entry)
         return Response({'non_lues': 0})
+
+
+# YHARD5 — tableau « Secrets & rotation », admin-only. Ne renvoie JAMAIS la
+# valeur d'un secret — seulement le fournisseur, le nom de variable
+# d'environnement (secret_ref) et l'échéance de rotation. Company-scopée.
+@api_view(['GET'])
+@permission_classes([IsAdminRole])
+def secrets_rotation_due(request):
+    """``GET /api/django/core/secrets/rotation/`` — intégrations échues."""
+    from . import integrations as integrations_infra
+
+    user = request.user
+    company = user.company if user.company_id else None
+    if company is None and not user.is_superuser:
+        return Response({'count': 0, 'results': []})
+
+    if company is not None:
+        due = integrations_infra.secrets_due_for_rotation(company)
+    else:
+        # Superuser sans société : agrège toutes les sociétés (vue globale).
+        from authentication.models import Company
+        due = []
+        for c in Company.objects.all():
+            due.extend(integrations_infra.secrets_due_for_rotation(c))
+
+    return Response({'count': len(due), 'results': due})
+
+
+def _client_ip(request):
+    forwarded = request.META.get('HTTP_X_FORWARDED_FOR', '')
+    if forwarded:
+        return forwarded.split(',')[0].strip()
+    return request.META.get('REMOTE_ADDR', '')
+
+
+# YHARD6 — endpoint /metrics (format texte Prometheus). JAMAIS public : soit un
+# utilisateur admin authentifié (session/JWT), soit l'IP du caller figure dans
+# ``settings.METRICS_ALLOWED_IPS`` (scrape Prometheus sans session). Vide par
+# défaut = admin-only (aucune IP autorisée). Ne plante jamais : une IP hors
+# liste + non-admin reçoit 403, jamais une 500.
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@authentication_classes([])
+def metrics_view(request):
+    from django.conf import settings
+    from django.http import HttpResponse
+
+    from authentication.cookie_auth import CookieJWTAuthentication
+
+    from . import metrics as metrics_infra
+
+    allowed_ips = set(getattr(settings, 'METRICS_ALLOWED_IPS', []) or [])
+    ip_ok = bool(allowed_ips) and _client_ip(request) in allowed_ips
+
+    admin_ok = False
+    if not ip_ok:
+        try:
+            auth_result = CookieJWTAuthentication().authenticate(request)
+        except Exception:  # noqa: BLE001 — jeton absent/invalide → non-admin
+            auth_result = None
+        if auth_result is not None:
+            user, _token = auth_result
+            admin_ok = bool(getattr(user, 'is_admin_role', False))
+
+    if not (ip_ok or admin_ok):
+        return Response({'detail': 'Accès /metrics non autorisé.'}, status=403)
+
+    body = metrics_infra.render_prometheus_text()
+    return HttpResponse(body, content_type='text/plain; version=0.0.4')

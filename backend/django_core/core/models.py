@@ -538,6 +538,19 @@ class IntegrationConfig(TimestampedModel):
         "Référence du secret", max_length=120, blank=True, default='',
         help_text="Nom de variable d'environnement contenant le secret.")
 
+    # YHARD5 — gouvernance des secrets & suivi de rotation (additif). Aucune
+    # valeur de secret n'est jamais stockée ici : seulement des métadonnées de
+    # suivi (échéance, propriétaire) ; ``secret_ref`` reste la seule
+    # indirection vers la valeur réelle.
+    secret_last_rotated_at = models.DateTimeField(
+        'Dernière rotation du secret', null=True, blank=True)
+    rotation_period_days = models.PositiveIntegerField(
+        'Période de rotation (jours)', null=True, blank=True,
+        help_text='Échéance = dernière rotation + cette période. Vide = pas de suivi.')
+    secret_owner = models.CharField(
+        'Propriétaire du secret', max_length=120, blank=True, default='',
+        help_text='Texte libre (personne/équipe responsable de la rotation).')
+
     class Meta:
         verbose_name = "Configuration d'intégration"
         verbose_name_plural = "Configurations d'intégration"
@@ -1850,3 +1863,66 @@ class RetentionRun(TimestampedModel):
 
     def __str__(self):
         return f'{self.policy_name} ({self.statut}, {self.count})'
+
+
+# ---------------------------------------------------------------------------
+# YHARD4 — traduction du CONTENU saisi (i18n des données MAÎTRES, ≠ i18n de
+# l'UI, déjà livrée par N93/N94 via frontend/src/i18n/ + parametres.
+# TranslationOverride).
+#
+# ``ContentTranslation`` est un modèle GÉNÉRIQUE réutilisable : n'importe
+# quelle app métier peut y stocker une variante de langue d'un de ses champs
+# texte (désignation produit, article KB, clause de contrat…) SANS que
+# ``core`` importe la moindre app de domaine — la cible est désignée par
+# ``content_type`` + ``object_id`` (contenttypes, fondation Django) exactement
+# comme ``AuditLog``/``EsignRequest``. Traduction MANUELLE stockée (aucun
+# appel machine ici) ; l'aide de lecture ``core.i18n_content.translated_value``
+# fait le fallback vers la langue par défaut (FR) quand la variante demandée
+# est absente.
+# ---------------------------------------------------------------------------
+
+
+class ContentTranslation(TimestampedModel):
+    """Variante de langue d'un champ texte d'un objet métier quelconque.
+
+    Multi-tenant : ``company`` forcée côté serveur. Une seule variante par
+    ``(company, content_type, object_id, locale, field)`` — un upsert écrase
+    la précédente plutôt que d'en accumuler des doublons.
+    """
+
+    class Locale(models.TextChoices):
+        FR = 'fr', 'Français'
+        EN = 'en', 'English'
+        AR = 'ar', 'العربية'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='content_translations', verbose_name='Société')
+
+    content_type = models.ForeignKey(
+        'contenttypes.ContentType', on_delete=models.CASCADE)
+    object_id = models.CharField(max_length=64)
+    content_object = GenericForeignKey('content_type', 'object_id')
+
+    locale = models.CharField(
+        'Langue', max_length=5, choices=Locale.choices)
+    field = models.CharField(
+        'Champ', max_length=100,
+        help_text='Nom du champ traduit (ex. « nom », « description », « titre », « corps »).')
+    value = models.TextField('Valeur traduite')
+
+    class Meta:
+        verbose_name = 'Traduction de contenu'
+        verbose_name_plural = 'Traductions de contenu'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'content_type', 'object_id', 'locale', 'field'],
+                name='core_contenttranslation_unique'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'content_type', 'object_id'],
+                         name='core_contenttrans_obj_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.content_type}#{self.object_id} [{self.locale}] {self.field}'

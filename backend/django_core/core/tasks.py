@@ -11,6 +11,9 @@
   * YOPSB10 — ``core.run_retention`` : sweep quotidien (02:00) de TOUTES les
     politiques de rétention enregistrées (``core.retention``), DRY-RUN tant
     que ``RETENTION_AUTO_APPLY`` n'est pas activé.
+  * YHARD6 — ``core.beat_heartbeat`` : tick fréquent (toutes les 5 min) qui
+    écrit un timestamp dans le cache (``core.metrics.mark_beat_heartbeat``) —
+    permet à ``/metrics`` et ``core/health.py`` de détecter un beat arrêté.
 
 Toute la logique vit dans ``core.backup``/``core.retention`` (testable sans
 Celery) ; ces tâches ne sont qu'une fine enveloppe planifiable, comme les
@@ -84,3 +87,16 @@ def run_retention_task():
     logger.info('core.run_retention: apply=%s policies=%d',
                 apply_, len(results))
     return results
+
+
+@shared_task(name='core.beat_heartbeat')
+def beat_heartbeat_task():
+    """YHARD6 — tick de heartbeat du beat (planifié toutes les 5 min).
+
+    Écrit best-effort un timestamp dans le cache ; consommé par
+    ``core.metrics.beat_heartbeat_age_seconds`` (endpoint ``/metrics``) et par
+    ``core/health.py`` (statut ``degraded`` si le beat est arrêté)."""
+    from . import metrics
+
+    metrics.mark_beat_heartbeat()
+    return {'ok': True}
