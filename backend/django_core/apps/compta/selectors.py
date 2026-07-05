@@ -845,6 +845,158 @@ def comptes_par_classe(company, classe):
         company=company, classe=classe).order_by('numero'))
 
 
+# ── ZACC3 — Tableau de financement / des flux de trésorerie CGNC (méthode
+# indirecte) ─────────────────────────────────────────────────────────────
+# 5e état CGNC (standard Odoo « Cash Flow Statement »), jamais couvert avant :
+# la position (FG122) donne un solde instantané, le prévisionnel (FG126) une
+# projection roulante éditable — ni l'un ni l'autre ne réconcilie le résultat
+# de l'exercice à la variation RÉELLE de trésorerie sur la période. On dérive
+# tout du grand livre (AUCUN import cross-app, AUCUN recalcul hors GL) :
+#
+#   * capacité d'autofinancement (CAF) = résultat net (ESG) + dotations aux
+#     amortissements/provisions (charges 619/659 — non décaissées) − reprises
+#     (produits 719/759 — non encaissées) ;
+#   * variation du BFR = variation NETTE des soldes des comptes de tiers/stock
+#     d'exploitation (classes 3 hors trésorerie 51/54, et 4 hors emprunts
+#     1481/1671) entre l'ouverture et la clôture — une hausse de créances/
+#     stock CONSOMME de la trésorerie (flux négatif), une hausse de dettes en
+#     LIBÈRE (flux positif) ;
+#   * flux d'investissement = variation NETTE des comptes d'immobilisations
+#     (classe 2) entre ouverture et clôture, signe inversé (une acquisition
+#     consomme de la trésorerie) ;
+#   * flux de financement = variation NETTE des comptes d'emprunts (1481,
+#     1671) + capital (111x) entre ouverture et clôture.
+#
+# Somme des 3 flux = variation nette de trésorerie, réconciliée avec la
+# position FG122 ouverture → clôture (comptes 51xx/54xx).
+
+_COMPTES_FINANCEMENT = ('1481', '1671', '1111', '1117')
+
+
+def _solde_classe(company, classe, *, date_fin=None, validees_seulement=False,
+                  exclure_prefixes=()):
+    """Solde net (débit − crédit) de TOUS les comptes d'une classe à une date,
+    en excluant les comptes dont le numéro commence par un préfixe exclu."""
+    qs = _lignes_qs(company, date_fin=date_fin,
+                    validees_seulement=validees_seulement).filter(
+        compte__classe=classe)
+    for prefixe in exclure_prefixes:
+        qs = qs.exclude(compte__numero__startswith=prefixe)
+    agg = qs.aggregate(debit=Sum('debit'), credit=Sum('credit'))
+    return (agg['debit'] or Decimal('0')) - (agg['credit'] or Decimal('0'))
+
+
+def tableau_flux_tresorerie(company, exercice, *, validees_seulement=False):
+    """Tableau de financement / des flux de trésorerie CGNC — méthode
+    indirecte (ZACC3).
+
+    Trois sections (exploitation / investissement / financement) dont la
+    somme réconcilie EXACTEMENT la variation nette de trésorerie de
+    l'exercice (position FG122 ouverture → clôture). Lecture seule, scopée
+    société ; aucune écriture n'est créée. Renvoie ``{'exercice',
+    'date_debut', 'date_fin', 'exploitation': {...}, 'investissement': {...},
+    'financement': {...}, 'variation_nette_tresorerie',
+    'tresorerie_ouverture', 'tresorerie_cloture', 'reconciliee'}``.
+    """
+    date_debut = exercice.date_debut
+    date_fin = exercice.date_fin
+    date_ouverture = date_debut - timedelta(days=1)
+
+    # ── Exploitation : CAF ± variation du BFR ──
+    resultat_exercice = cpc(
+        company, date_debut=date_debut, date_fin=date_fin,
+        validees_seulement=validees_seulement)['resultat']
+    dotations = _somme_prefixes(
+        company, ('619', '659'), sens='charge', date_debut=date_debut,
+        date_fin=date_fin, validees_seulement=validees_seulement)
+    reprises = _somme_prefixes(
+        company, ('719', '759'), sens='produit', date_debut=date_debut,
+        date_fin=date_fin, validees_seulement=validees_seulement)
+    caf = resultat_exercice + dotations - reprises
+
+    # Classe 3 (actif circulant) est déjà HORS trésorerie dans le plan CGNC
+    # (la trésorerie est en classe 5) ; classe 4 (passif circulant) exclut
+    # par précaution les comptes de financement (au cas où un compte 1481/
+    # 1671 serait mal classé) — sans effet dans le plan seedé standard.
+    bfr_ouverture = (
+        _solde_classe(company, 3, date_fin=date_ouverture,
+                      validees_seulement=validees_seulement)
+        - _solde_classe(company, 4, date_fin=date_ouverture,
+                        validees_seulement=validees_seulement,
+                        exclure_prefixes=_COMPTES_FINANCEMENT))
+    bfr_cloture = (
+        _solde_classe(company, 3, date_fin=date_fin,
+                      validees_seulement=validees_seulement)
+        - _solde_classe(company, 4, date_fin=date_fin,
+                        validees_seulement=validees_seulement,
+                        exclure_prefixes=_COMPTES_FINANCEMENT))
+    variation_bfr = bfr_cloture - bfr_ouverture
+    # Une hausse du BFR (plus de créances/stock net des dettes) CONSOME de la
+    # trésorerie : flux négatif.
+    flux_exploitation = caf - variation_bfr
+
+    # ── Investissement : variation des immobilisations (classe 2) ──
+    immo_ouverture = _solde_classe(
+        company, 2, date_fin=date_ouverture,
+        validees_seulement=validees_seulement)
+    immo_cloture = _solde_classe(
+        company, 2, date_fin=date_fin,
+        validees_seulement=validees_seulement)
+    # Une hausse du solde des immobilisations (acquisition nette) CONSOMME de
+    # la trésorerie : flux négatif (signe inversé de la variation).
+    flux_investissement = -(immo_cloture - immo_ouverture)
+
+    # ── Financement : variation des emprunts + capital ──
+    fin_ouverture = _solde_groupe(
+        company, _COMPTES_FINANCEMENT, date_fin=date_ouverture,
+        validees_seulement=validees_seulement)
+    fin_cloture = _solde_groupe(
+        company, _COMPTES_FINANCEMENT, date_fin=date_fin,
+        validees_seulement=validees_seulement)
+    # Ces comptes sont au PASSIF (soldes créditeurs négatifs en débit-crédit) :
+    # une hausse de l'encours (nouvel emprunt/apport) LIBÈRE de la trésorerie,
+    # d'où le signe inversé (même convention que le bilan : passif = -solde).
+    flux_financement = -(fin_cloture - fin_ouverture)
+
+    variation_nette = (
+        flux_exploitation + flux_investissement + flux_financement)
+
+    tresorerie_ouverture = _solde_classe(
+        company, 5, date_fin=date_ouverture,
+        validees_seulement=validees_seulement)
+    tresorerie_cloture = _solde_classe(
+        company, 5, date_fin=date_fin, validees_seulement=validees_seulement)
+
+    return {
+        'exercice': exercice.libelle or str(exercice.pk),
+        'date_debut': date_debut.isoformat(),
+        'date_fin': date_fin.isoformat(),
+        'exploitation': {
+            'resultat_net': resultat_exercice,
+            'dotations': dotations,
+            'reprises': reprises,
+            'capacite_autofinancement': caf,
+            'variation_bfr': variation_bfr,
+            'flux_net': flux_exploitation,
+        },
+        'investissement': {
+            'immobilisations_ouverture': immo_ouverture,
+            'immobilisations_cloture': immo_cloture,
+            'flux_net': flux_investissement,
+        },
+        'financement': {
+            'financement_ouverture': fin_ouverture,
+            'financement_cloture': fin_cloture,
+            'flux_net': flux_financement,
+        },
+        'variation_nette_tresorerie': variation_nette,
+        'tresorerie_ouverture': tresorerie_ouverture,
+        'tresorerie_cloture': tresorerie_cloture,
+        'reconciliee': (
+            tresorerie_ouverture + variation_nette == tresorerie_cloture),
+    }
+
+
 # ── FG122 — Position de trésorerie consolidée + projection nette ───────────
 
 # Comptes CGNC dont les soldes alimentent la projection nette. Tout se déduit du

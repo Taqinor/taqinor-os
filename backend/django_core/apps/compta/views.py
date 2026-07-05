@@ -894,6 +894,134 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             f'_{exercice.date_fin}.csv"')
         return resp
 
+    def _resolve_exercice(self, request):
+        """Résout ``?exercice=<id>`` scopé société : (exercice, erreur_response
+        ou None). Réutilisé par tous les états portant un paramètre exercice
+        (ZACC3, ZACC12, ZACC16)."""
+        company = request.user.company
+        exercice_id = request.query_params.get('exercice')
+        if not exercice_id:
+            return None, Response(
+                {'detail': "Le paramètre 'exercice' est requis."},
+                status=status.HTTP_400_BAD_REQUEST)
+        exercice = ExerciceComptable.objects.filter(
+            company=company, pk=exercice_id).first()
+        if exercice is None:
+            return None, Response(
+                {'detail': 'Exercice introuvable pour cette société.'},
+                status=status.HTTP_404_NOT_FOUND)
+        return exercice, None
+
+    @action(detail=False, methods=['get'], url_path='tableau-flux')
+    def tableau_flux(self, request):
+        """ZACC3 — Tableau de financement / des flux de trésorerie CGNC
+        (méthode indirecte).
+
+        5e état CGNC (standard Odoo « Cash Flow Statement ») jamais couvert
+        avant : réconcilie le résultat de l'exercice à la variation RÉELLE de
+        trésorerie via 3 sections (exploitation/investissement/financement).
+        Paramètres : ``exercice`` (id, requis), ``validees`` (1 → validées),
+        ``export`` (``csv``/``pdf`` via ZACC1). Lecture seule, scopée société,
+        Admin/Responsable.
+        """
+        exercice, err = self._resolve_exercice(request)
+        if err is not None:
+            return err
+        data = selectors.tableau_flux_tresorerie(
+            request.user.company, exercice,
+            validees_seulement=request.query_params.get('validees') == '1')
+        export = request.query_params.get('export')
+        if export == 'csv':
+            return self._export_tableau_flux_csv(exercice, data)
+        if export == 'pdf':
+            result = self._pdf_or_503(
+                lambda: self._render_tableau_flux_pdf(request, data))
+            if isinstance(result, Response):
+                return result
+            return self._pdf_response(
+                result, f'tableau_flux_exercice_{exercice.pk}.pdf')
+        return Response(data)
+
+    def _render_tableau_flux_pdf(self, request, data):
+        from .pdf_etats import _entete_societe_html, _fmt, _wrap
+        from datetime import date as _date
+        entete = _entete_societe_html(self._company_profile(request))
+        corps = f"""
+        <table><tbody>
+        <tr class="total-row"><td colspan="2">Exploitation</td></tr>
+        <tr><td>Résultat net</td><td class="montant">
+        {_fmt(data['exploitation']['resultat_net'])}</td></tr>
+        <tr><td>+ Dotations</td><td class="montant">
+        {_fmt(data['exploitation']['dotations'])}</td></tr>
+        <tr><td>- Reprises</td><td class="montant">
+        {_fmt(data['exploitation']['reprises'])}</td></tr>
+        <tr><td>= Capacité d'autofinancement</td><td class="montant">
+        {_fmt(data['exploitation']['capacite_autofinancement'])}</td></tr>
+        <tr><td>± Variation du BFR</td><td class="montant">
+        {_fmt(data['exploitation']['variation_bfr'])}</td></tr>
+        <tr class="total-row"><td>Flux net d'exploitation</td>
+        <td class="montant">{_fmt(data['exploitation']['flux_net'])}</td></tr>
+        <tr class="total-row"><td colspan="2">Investissement</td></tr>
+        <tr class="total-row"><td>Flux net d'investissement</td>
+        <td class="montant">
+        {_fmt(data['investissement']['flux_net'])}</td></tr>
+        <tr class="total-row"><td colspan="2">Financement</td></tr>
+        <tr class="total-row"><td>Flux net de financement</td>
+        <td class="montant">{_fmt(data['financement']['flux_net'])}</td></tr>
+        <tr class="total-row"><td>Variation nette de trésorerie</td>
+        <td class="montant">
+        {_fmt(data['variation_nette_tresorerie'])}</td></tr>
+        <tr><td>Trésorerie à l'ouverture</td><td class="montant">
+        {_fmt(data['tresorerie_ouverture'])}</td></tr>
+        <tr><td>Trésorerie à la clôture</td><td class="montant">
+        {_fmt(data['tresorerie_cloture'])}</td></tr>
+        </tbody></table>"""
+        html = _wrap(
+            entete, 'Tableau de financement / des flux de trésorerie',
+            f"Exercice du {data['date_debut']} au {data['date_fin']}",
+            corps, _date.today())
+        from .pdf_etats import _html_to_pdf
+        return _html_to_pdf(html)
+
+    @staticmethod
+    def _export_tableau_flux_csv(exercice, data):
+        """Sérialise le tableau de financement (ZACC3) en CSV."""
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, delimiter=';')
+        writer.writerow(['Tableau de financement / des flux de trésorerie'])
+        writer.writerow(
+            ['Exercice', f"{data['date_debut']} → {data['date_fin']}"])
+        writer.writerow([])
+        writer.writerow(['EXPLOITATION'])
+        expl = data['exploitation']
+        writer.writerow(['Résultat net', expl['resultat_net']])
+        writer.writerow(['Dotations', expl['dotations']])
+        writer.writerow(['Reprises', expl['reprises']])
+        writer.writerow(
+            ["Capacité d'autofinancement", expl['capacite_autofinancement']])
+        writer.writerow(['Variation du BFR', expl['variation_bfr']])
+        writer.writerow(['Flux net exploitation', expl['flux_net']])
+        writer.writerow([])
+        writer.writerow(['INVESTISSEMENT'])
+        writer.writerow(
+            ['Flux net investissement', data['investissement']['flux_net']])
+        writer.writerow([])
+        writer.writerow(['FINANCEMENT'])
+        writer.writerow(
+            ['Flux net financement', data['financement']['flux_net']])
+        writer.writerow([])
+        writer.writerow(
+            ['Variation nette de trésorerie',
+             data['variation_nette_tresorerie']])
+        writer.writerow(['Trésorerie ouverture', data['tresorerie_ouverture']])
+        writer.writerow(['Trésorerie clôture', data['tresorerie_cloture']])
+        resp = HttpResponse(
+            buffer.getvalue(), content_type='text/csv; charset=utf-8')
+        resp['Content-Disposition'] = (
+            'attachment; filename='
+            f'"tableau_flux_exercice_{exercice.pk}.csv"')
+        return resp
+
     @action(detail=False, methods=['get'], url_path='export-fiduciaire')
     def export_fiduciaire(self, request):
         """Export fiduciaire Sage/CEGID des écritures d'un exercice (COMPTA37).
