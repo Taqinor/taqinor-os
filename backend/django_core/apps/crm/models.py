@@ -890,12 +890,19 @@ class MessageTemplate(models.Model):
     def __str__(self):
         return f"{self.nom} ({self.get_langue_display()})"
 
-    def render(self, prenom='', ville='', lien='') -> str:
-        """Substitue les variables dans le corps du modèle."""
+    def render(self, prenom='', ville='', lien='', lien_rdv='') -> str:
+        """Substitue les variables dans le corps du modèle.
+
+        XSAL17 — ``lien_rdv`` (lien de réservation de visite) est résolu par
+        l'APPELANT (``services.resoudre_lien_rdv`` — nécessite le lead pour
+        créer/retrouver le ``BookingLink``) ; ce modèle reste une simple
+        substitution de chaîne. Un template SANS ``{lien_rdv}`` est rendu
+        strictement inchangé (aucun paramètre supplémentaire n'y change rien)."""
         return (self.corps
                 .replace('{prenom}', prenom or '')
                 .replace('{ville}', ville or '')
-                .replace('{lien}', lien or ''))
+                .replace('{lien}', lien or '')
+                .replace('{lien_rdv}', lien_rdv or ''))
 
 
 class Parrainage(models.Model):
@@ -1565,3 +1572,67 @@ class EquipeCommerciale(models.Model):
 
     def __str__(self):
         return self.nom
+
+
+# XSAL17 — Lien de réservation de RDV, tokenisé par lead + expirant.
+# Même patron que ``ventes.ShareLink`` (jeton long/imprévisible, expiration
+# par défaut), gardé DANS crm (pas d'import de ventes.models) : le placeholder
+# {lien_rdv} des messages/templates CRM résout vers un lien de CE type,
+# jamais vers un ShareLink devis/facture (domaines distincts).
+BOOKING_LINK_TTL_DAYS = 14
+
+
+def _default_booking_token():
+    import secrets
+    return secrets.token_urlsafe(32)
+
+
+def _default_booking_expiry():
+    from datetime import timedelta
+
+    from django.utils import timezone as _timezone
+    return _timezone.now() + timedelta(days=BOOKING_LINK_TTL_DAYS)
+
+
+class BookingLink(models.Model):
+    """XSAL17 — Lien PUBLIC, tokenisé et expirant (14 j), permettant à un
+    prospect de réserver un créneau de visite rattaché à SON lead sans
+    login. Résolu au moment de l'ENVOI d'un message contenant le placeholder
+    ``{lien_rdv}`` (voir ``services.resoudre_lien_rdv``) — jamais généré à
+    l'avance/en masse. Une réservation via ce lien crée un ``Appointment``
+    via le service ``book_appointment`` existant (même logique métier que la
+    création interne)."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='booking_links')
+    lead = models.ForeignKey(
+        'crm.Lead', on_delete=models.CASCADE, related_name='booking_links')
+    token = models.CharField(
+        max_length=64, unique=True, default=_default_booking_token,
+        editable=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(default=_default_booking_expiry)
+    # Posé dès qu'un Appointment a été créé via ce lien — un lien déjà
+    # utilisé reste résolvable (affiche « déjà réservé ») mais ne recrée
+    # jamais un second rendez-vous (idempotence).
+    used_at = models.DateTimeField(null=True, blank=True)
+    appointment = models.ForeignKey(
+        'crm.Appointment', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='booking_link_origine')
+
+    class Meta:
+        verbose_name = 'Lien de réservation RDV'
+        verbose_name_plural = 'Liens de réservation RDV'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'BookingLink lead#{self.lead_id} ({self.token[:8]}…)'
+
+    @property
+    def is_expired(self):
+        from django.utils import timezone as _timezone
+        return _timezone.now() >= self.expires_at
+
+    @property
+    def is_used(self):
+        return self.used_at is not None

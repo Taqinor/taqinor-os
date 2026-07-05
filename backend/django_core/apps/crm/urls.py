@@ -12,6 +12,7 @@ from .roof_views import lead_roof_footprint
 from .public_chat_views import (
     open_chat_session, post_chat_message, get_chat_session,
 )
+from .public_booking_views import public_booking_status, public_booking_reserve
 
 router = DefaultRouter()
 router.register(r'clients', ClientViewSet)
@@ -47,5 +48,11 @@ urlpatterns = [
          name='public-chat-post'),
     path('public/chat/sessions/<str:token>/', get_chat_session,
          name='public-chat-get'),
+    # XSAL17 — Réservation de visite publique tokenisée (voir
+    # public_booking_views.py) : {lien_rdv} des templates/messages pointe ici.
+    path('public/booking/<str:token>/', public_booking_status,
+         name='public-booking-status'),
+    path('public/booking/<str:token>/reserve/', public_booking_reserve,
+         name='public-booking-reserve'),
     path('', include(router.urls)),
 ]

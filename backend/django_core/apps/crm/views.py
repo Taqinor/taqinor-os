@@ -1411,15 +1411,32 @@ class MessageTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='render',
             permission_classes=[IsAnyRole])
     def render_template(self, request, pk=None):
-        """Applique les variables {prenom}/{ville}/{lien} et retourne le texte.
+        """Applique les variables {prenom}/{ville}/{lien}/{lien_rdv} et
+        retourne le texte.
 
-        Corps : {prenom, ville, lien} (tous optionnels).
+        Corps : {prenom, ville, lien, lead_id} (tous optionnels). XSAL17 —
+        ``lead_id`` (scopé société) résout {lien_rdv} en un lien de
+        réservation réel ; sans lead_id (ou template sans le placeholder),
+        aucun BookingLink n'est créé (no-op — le placeholder disparaît
+        simplement s'il est présent sans lead_id fourni).
         """
         tmpl = self.get_object()
         prenom = request.data.get('prenom', '')
         ville = request.data.get('ville', '')
         lien = request.data.get('lien', '')
-        return Response({'texte': tmpl.render(prenom=prenom, ville=ville, lien=lien)})
+        lien_rdv = ''
+        lead_id = request.data.get('lead_id')
+        if lead_id and '{lien_rdv}' in (tmpl.corps or ''):
+            from .services import public_booking_url
+            lead = Lead.objects.filter(
+                pk=lead_id, company=request.user.company).first()
+            if lead is not None:
+                try:
+                    lien_rdv = public_booking_url(lead, request=request)
+                except Exception:  # noqa: BLE001 — jamais bloquer l'aperçu
+                    lien_rdv = ''
+        return Response({'texte': tmpl.render(
+            prenom=prenom, ville=ville, lien=lien, lien_rdv=lien_rdv)})
 
 
 # ── QJ20 — Rendez-vous (visites commerciales/techniques) ──────────────────────

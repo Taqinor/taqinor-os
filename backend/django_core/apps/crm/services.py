@@ -2308,6 +2308,94 @@ def book_appointment(*, lead, scheduled_at, notes=None, user=None):
     return appointment
 
 
+# ── XSAL17 — Placeholder {lien_rdv} : lien de réservation dans les messages ──
+
+def public_booking_url(lead, *, request=None):
+    """XSAL17 — Crée (ou réutilise) un ``BookingLink`` NON expiré/NON utilisé
+    pour ``lead`` et renvoie son URL PUBLIQUE complète. Réutilise un lien
+    existant tant qu'il n'est ni expiré ni déjà utilisé (évite de multiplier
+    les jetons à chaque envoi) ; en crée un nouveau sinon. Company-scopé
+    (le lien porte la société du lead, jamais du corps de requête)."""
+    from django.conf import settings
+    from django.utils import timezone as _timezone
+
+    from .models import BookingLink
+
+    now = _timezone.now()
+    link = (
+        BookingLink.objects
+        .filter(lead=lead, used_at__isnull=True, expires_at__gt=now)
+        .order_by('-created_at')
+        .first()
+    )
+    if link is None:
+        link = BookingLink.objects.create(company=lead.company, lead=lead)
+
+    if request is not None:
+        base = request.build_absolute_uri('/')[:-1]
+    else:
+        base = (getattr(settings, 'PUBLIC_SITE_URL', '') or '').rstrip('/')
+    return f'{base}/rdv/{link.token}'
+
+
+def resoudre_lien_rdv(text, lead, *, request=None) -> str:
+    """XSAL17 — Résout le placeholder ``{lien_rdv}`` dans ``text`` au moment
+    de l'ENVOI (jamais généré à l'avance/en masse) : un template SANS le
+    placeholder est renvoyé INCHANGÉ (aucun jeton créé — no-op, jamais de
+    coût inutile). Best-effort : une erreur de génération de lien ne casse
+    jamais l'envoi — le placeholder est alors simplement retiré."""
+    if '{lien_rdv}' not in (text or ''):
+        return text
+    try:
+        url = public_booking_url(lead, request=request)
+    except Exception:  # noqa: BLE001 — jamais bloquer l'envoi d'un message
+        url = ''
+    return text.replace('{lien_rdv}', url)
+
+
+class BookingLinkUnavailable(Exception):
+    """XSAL17 — levée quand un jeton de réservation est invalide, expiré ou
+    déjà utilisé (l'appelant — la vue publique — traduit en 404/410 douce)."""
+
+
+def resolve_booking_link(token):
+    """XSAL17 — Résout un jeton de réservation PUBLIC : renvoie le
+    ``BookingLink`` s'il existe, n'est ni expiré ni déjà utilisé. Lève
+    :class:`BookingLinkUnavailable` sinon (message explicite). Lecture
+    seule — ne réserve rien elle-même."""
+    from .models import BookingLink
+
+    link = BookingLink.objects.select_related('lead', 'company').filter(
+        token=token).first()
+    if link is None:
+        raise BookingLinkUnavailable('Lien de réservation introuvable.')
+    if link.is_used:
+        raise BookingLinkUnavailable('Ce créneau a déjà été réservé.')
+    if link.is_expired:
+        raise BookingLinkUnavailable('Ce lien de réservation a expiré.')
+    return link
+
+
+def reserver_creneau_public(token, *, scheduled_at, notes=None):
+    """XSAL17 — Réservation PUBLIQUE d'un créneau via un jeton
+    ``BookingLink`` : crée l'``Appointment`` (via ``book_appointment``,
+    même logique métier que la création interne — user=None, un visiteur
+    anonyme n'est jamais un utilisateur ERP) et marque le lien comme
+    UTILISÉ (idempotent : un second appel avec le même jeton lève
+    :class:`BookingLinkUnavailable`, jamais un second rendez-vous).
+    Le lead atterrit toujours sur SON lead d'origine (booking-to-lead) —
+    jamais un autre, jamais choisi par le visiteur."""
+    from django.utils import timezone as _timezone
+
+    link = resolve_booking_link(token)
+    appointment = book_appointment(
+        lead=link.lead, scheduled_at=scheduled_at, notes=notes, user=None)
+    link.used_at = _timezone.now()
+    link.appointment = appointment
+    link.save(update_fields=['used_at', 'appointment'])
+    return appointment
+
+
 def dispatch_appointment_reminder(appointment) -> bool:
     """QJ20 — Envoie le rappel de visite pour un rendez-vous à venir.
 

@@ -15,9 +15,11 @@ from .phone import normalize_ma_phone
 def render_message_template(text, ctx):
     """Remplace {placeholders} et nettoie les espaces parasites.
 
-    Les placeholders connus : {civilite} {nom} {reference} {lien} {n}. Un
-    placeholder vide (ex. civilité inconnue) ne doit pas laisser de double
-    espace ni d'espace avant une ponctuation.
+    Les placeholders connus : {civilite} {nom} {reference} {lien} {n}
+    {lien_rdv} (XSAL17 — lien de réservation de visite, résolu par
+    l'appelant via ``apps.crm.services.resoudre_lien_rdv``). Un placeholder
+    vide (ex. civilité inconnue) ne doit pas laisser de double espace ni
+    d'espace avant une ponctuation.
     """
     out = text
     for key, val in ctx.items():
@@ -52,10 +54,24 @@ def _nom_complet(prenom, nom):
     return f'{prenom} {nom}'.strip() if prenom else nom
 
 
+def _lien_rdv_for(lead, request):
+    """XSAL17 — Résout le lien de réservation de visite d'un lead, best-effort
+    (jamais bloquant pour l'envoi d'un devis). Lazy import : ventes lit crm
+    via son services.py, jamais crm.models directement."""
+    try:
+        from apps.crm.services import public_booking_url
+        return public_booking_url(lead, request=request)
+    except Exception:  # noqa: BLE001 — jamais bloquer l'envoi du devis
+        return ''
+
+
 def build_devis_whatsapp(request, lead, devis_list, langue='fr'):
     """Construit le message WhatsApp pour un ou plusieurs devis d'un lead.
 
     Renvoie (message, links). Crée/réutilise un lien public par devis.
+    XSAL17 — {lien_rdv} est résolu paresseusement (une seule fois) SEULEMENT
+    si le gabarit configuré le contient, pour ne jamais créer de
+    ``BookingLink`` inutile sur un template qui ne l'utilise pas.
     """
     from apps.ventes.models import ShareLink
     from apps.parametres.models import MessageTemplate
@@ -72,19 +88,25 @@ def build_devis_whatsapp(request, lead, devis_list, langue='fr'):
 
     if len(devis_list) == 1:
         tpl = MessageTemplate.get_corps(company, 'devis_unique', langue)
+        lien_rdv = _lien_rdv_for(lead, request) if '{lien_rdv}' in tpl else ''
         message = render_message_template(tpl, {
             'civilite': '', 'nom': nom,
-            'reference': links[0]['reference'], 'lien': links[0]['url']})
+            'reference': links[0]['reference'], 'lien': links[0]['url'],
+            'lien_rdv': lien_rdv})
     else:
         entete = MessageTemplate.get_corps(
             company, 'devis_multi_entete', langue)
         ligne = MessageTemplate.get_corps(
             company, 'devis_multi_ligne', langue)
+        lien_rdv = (_lien_rdv_for(lead, request)
+                    if ('{lien_rdv}' in entete or '{lien_rdv}' in ligne) else '')
         head = render_message_template(entete, {
-            'civilite': '', 'nom': nom, 'n': len(devis_list)})
+            'civilite': '', 'nom': nom, 'n': len(devis_list),
+            'lien_rdv': lien_rdv})
         body = '\n'.join(
             render_message_template(ligne, {
-                'reference': ln['reference'], 'lien': ln['url']})
+                'reference': ln['reference'], 'lien': ln['url'],
+                'lien_rdv': lien_rdv})
             for ln in links)
         message = f'{head}\n{body}'
     return message, links
