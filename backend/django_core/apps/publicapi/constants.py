@@ -14,6 +14,12 @@ SCOPE_READ_CHANTIERS = 'read:chantiers'
 # disponible UNIQUEMENT. Ni prix_achat ni prix_vente ni aucun coût.
 SCOPE_READ_STOCK = 'read:stock'
 
+# XPLT5 — scopes d'ÉCRITURE (créer/mettre à jour un lead, créer une activité).
+# La société est TOUJOURS forcée depuis la clé (jamais du body) ; les stages
+# viennent de STAGES.py (jamais hardcodés).
+SCOPE_WRITE_LEADS = 'leads:write'
+SCOPE_WRITE_ACTIVITIES = 'activities:write'
+
 # Ordre = ordre d'affichage dans l'écran Paramètres.
 SCOPE_CHOICES = [
     (SCOPE_READ_LEADS, 'Lire les leads'),
@@ -21,6 +27,8 @@ SCOPE_CHOICES = [
     (SCOPE_READ_FACTURES, 'Lire les factures'),
     (SCOPE_READ_CHANTIERS, 'Lire les chantiers'),
     (SCOPE_READ_STOCK, 'Lire le stock (disponibilité, sans coûts)'),
+    (SCOPE_WRITE_LEADS, 'Créer/mettre à jour des leads'),
+    (SCOPE_WRITE_ACTIVITIES, 'Créer des activités (notes) sur un lead'),
 ]
 ALL_SCOPES = [code for code, _ in SCOPE_CHOICES]
 

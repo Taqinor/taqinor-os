@@ -32,6 +32,7 @@ from .constants import (
     EVENT_FACTURE_CREATED, EVENT_PAIEMENT_RECORDED,
     EVENT_INTERVENTION_COMPLETED, EVENT_TICKET_CREATED, EVENT_TICKET_RESOLVED,
     EVENT_STOCK_SEUIL_ATTEINT, EVENT_LIVRAISON_LIVREE,
+    SCOPE_WRITE_LEADS, SCOPE_WRITE_ACTIVITIES,
 )
 from .models import ApiKey, Webhook, WebhookDelivery, hash_key
 from . import delivery
@@ -1022,3 +1023,165 @@ class LivraisonLivreeWebhookTests(TestCase):
         payload = matching[0].args[2]
         self.assertEqual(payload['reference'], 'LIV-1')
         self.assertEqual(payload['numero_suivi'], 'TRACK-1')
+
+
+# ── XPLT5 — API publique en ÉCRITURE (scopes write) + idempotence ───────────
+
+class PublicWriteScopeTests(TestCase):
+    """Une clé `leads:write` crée un lead ; une clé read-only → 403 ; jamais
+    de fuite cross-tenant sur PATCH/activité."""
+
+    def setUp(self):
+        self.co_a = make_company('pa-w-a', 'PA W A')
+        self.co_b = make_company('pa-w-b', 'PA W B')
+        self.lead_a = Lead.objects.create(company=self.co_a, nom='Existant A')
+        self.lead_b = Lead.objects.create(company=self.co_b, nom='Existant B')
+        self.key_write, self.raw_write = ApiKey.issue(
+            company=self.co_a, label='write',
+            scopes=[SCOPE_WRITE_LEADS, SCOPE_WRITE_ACTIVITIES])
+        self.key_ro, self.raw_ro = ApiKey.issue(
+            company=self.co_a, label='ro', scopes=[SCOPE_READ_LEADS])
+
+    def test_write_scoped_key_creates_lead(self):
+        resp = key_client(self.raw_write).post(
+            '/api/public/leads-write/', {'nom': 'Nouveau Lead'}, format='json')
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.data['nom'], 'Nouveau Lead')
+        self.assertTrue(
+            Lead.objects.filter(company=self.co_a, nom='Nouveau Lead').exists())
+
+    def test_read_only_key_is_403_on_write(self):
+        resp = key_client(self.raw_ro).post(
+            '/api/public/leads-write/', {'nom': 'Refusé'}, format='json')
+        self.assertEqual(resp.status_code, 403)
+        self.assertFalse(Lead.objects.filter(nom='Refusé').exists())
+
+    def test_company_forced_from_key_not_body(self):
+        # Même si le corps tentait de préciser une autre société, elle est
+        # ignorée : `create_lead_from_public_api` ne lit jamais `company` du
+        # payload — la vue le force depuis la clé.
+        resp = key_client(self.raw_write).post(
+            '/api/public/leads-write/',
+            {'nom': 'Forcé', 'company': self.co_b.id}, format='json')
+        self.assertEqual(resp.status_code, 201)
+        lead = Lead.objects.get(nom='Forcé')
+        self.assertEqual(lead.company_id, self.co_a.id)
+
+    def test_missing_nom_is_400(self):
+        resp = key_client(self.raw_write).post(
+            '/api/public/leads-write/', {}, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_invalid_stage_is_400(self):
+        resp = key_client(self.raw_write).post(
+            '/api/public/leads-write/',
+            {'nom': 'Mauvais stage', 'stage': 'NOT_A_STAGE'}, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_stage_from_stages_py_accepted(self):
+        resp = key_client(self.raw_write).post(
+            '/api/public/leads-write/',
+            {'nom': 'Contacté direct', 'stage': 'CONTACTED'}, format='json')
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.data['stage'], 'CONTACTED')
+
+    def test_update_own_lead(self):
+        resp = key_client(self.raw_write).patch(
+            f'/api/public/leads-write/{self.lead_a.id}/',
+            {'ville': 'Marrakech'}, format='json')
+        self.assertEqual(resp.status_code, 200)
+        self.lead_a.refresh_from_db()
+        self.assertEqual(self.lead_a.ville, 'Marrakech')
+
+    def test_update_cross_tenant_lead_is_404(self):
+        resp = key_client(self.raw_write).patch(
+            f'/api/public/leads-write/{self.lead_b.id}/',
+            {'ville': 'Ailleurs'}, format='json')
+        self.assertEqual(resp.status_code, 404)
+        self.lead_b.refresh_from_db()
+        self.assertNotEqual(self.lead_b.ville, 'Ailleurs')
+
+    def test_create_activity_on_own_lead(self):
+        resp = key_client(self.raw_write).post(
+            f'/api/public/leads-write/{self.lead_a.id}/activites/',
+            {'body': 'Appelé, intéressé.'}, format='json')
+        self.assertEqual(resp.status_code, 201)
+        self.assertTrue(
+            self.lead_a.activites.filter(body='Appelé, intéressé.').exists())
+
+    def test_create_activity_on_cross_tenant_lead_is_404(self):
+        resp = key_client(self.raw_write).post(
+            f'/api/public/leads-write/{self.lead_b.id}/activites/',
+            {'body': 'Ne devrait pas passer.'}, format='json')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_create_activity_read_only_key_is_403(self):
+        resp = key_client(self.raw_ro).post(
+            f'/api/public/leads-write/{self.lead_a.id}/activites/',
+            {'body': 'x'}, format='json')
+        self.assertEqual(resp.status_code, 403)
+
+    def test_leads_write_scope_does_not_grant_activities_write(self):
+        # Une clé qui n'a QUE leads:write ne peut pas créer d'activité.
+        key_leads_only, raw_leads_only = ApiKey.issue(
+            company=self.co_a, label='leads-only', scopes=[SCOPE_WRITE_LEADS])
+        resp = key_client(raw_leads_only).post(
+            f'/api/public/leads-write/{self.lead_a.id}/activites/',
+            {'body': 'x'}, format='json')
+        self.assertEqual(resp.status_code, 403)
+
+
+class PublicWriteIdempotencyTests(TestCase):
+    """`Idempotency-Key` : rejeu identique → même réponse, pas de doublon ;
+    corps différent sous la même clé → 409 ; sans en-tête → comportement
+    normal (toujours une nouvelle création)."""
+
+    def setUp(self):
+        self.co = make_company('pa-idem', 'PA IDEM')
+        self.key, self.raw = ApiKey.issue(
+            company=self.co, label='idem', scopes=[SCOPE_WRITE_LEADS])
+
+    def _post(self, body, idem_key=None):
+        api = key_client(self.raw)
+        headers = {}
+        if idem_key is not None:
+            headers['HTTP_IDEMPOTENCY_KEY'] = idem_key
+        return api.post('/api/public/leads-write/', body, format='json', **headers)
+
+    def test_replay_same_key_same_body_no_duplicate(self):
+        resp1 = self._post({'nom': 'Idem Lead'}, idem_key='abc-123')
+        self.assertEqual(resp1.status_code, 201)
+        resp2 = self._post({'nom': 'Idem Lead'}, idem_key='abc-123')
+        self.assertEqual(resp2.status_code, 201)
+        self.assertEqual(resp1.data['id'], resp2.data['id'])
+        self.assertEqual(
+            Lead.objects.filter(company=self.co, nom='Idem Lead').count(), 1)
+
+    def test_replay_different_body_is_409(self):
+        resp1 = self._post({'nom': 'Original'}, idem_key='dup-1')
+        self.assertEqual(resp1.status_code, 201)
+        resp2 = self._post({'nom': 'Différent'}, idem_key='dup-1')
+        self.assertEqual(resp2.status_code, 409)
+        self.assertFalse(Lead.objects.filter(nom='Différent').exists())
+
+    def test_without_header_always_creates(self):
+        resp1 = self._post({'nom': 'Sans Idem'})
+        resp2 = self._post({'nom': 'Sans Idem'})
+        self.assertEqual(resp1.status_code, 201)
+        self.assertEqual(resp2.status_code, 201)
+        self.assertNotEqual(resp1.data['id'], resp2.data['id'])
+        self.assertEqual(
+            Lead.objects.filter(company=self.co, nom='Sans Idem').count(), 2)
+
+    def test_idempotency_scoped_per_key_not_global(self):
+        # Une AUTRE clé de la même société avec la même Idempotency-Key crée
+        # bien un second lead (l'idempotence est scopée par clé, pas globale).
+        other_key, other_raw = ApiKey.issue(
+            company=self.co, label='autre', scopes=[SCOPE_WRITE_LEADS])
+        resp1 = self._post({'nom': 'Partagé'}, idem_key='shared-key')
+        resp2 = key_client(other_raw).post(
+            '/api/public/leads-write/', {'nom': 'Partagé'}, format='json',
+            HTTP_IDEMPOTENCY_KEY='shared-key')
+        self.assertEqual(resp1.status_code, 201)
+        self.assertEqual(resp2.status_code, 201)
+        self.assertNotEqual(resp1.data['id'], resp2.data['id'])
