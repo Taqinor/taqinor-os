@@ -67,13 +67,15 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
         # « Commerciale » = lecture seule) avec comportement historique
         # pour les comptes hérités sans rôle fin.
         if self.action in READ_ACTIONS + [
-                'export_xlsx', 'resolve', 'previsionnel']:
+                'export_xlsx', 'resolve', 'previsionnel', 'tracer']:
             # XSTK3/XSTK4 — `resolve` (scan code-barres/GS1) est LECTURE
             # SEULE, accessible à tout rôle authentifié — même garde que
             # `@action(permission_classes=[IsAnyRole])` sur l'action
             # (`get_permissions` prime sur le `permission_classes` de
             # l'@action, d'où ce cas explicite — sinon repli IsAdminRole).
             # ZSTK3 — `previsionnel` est LECTURE SEULE, même garde.
+            # XSTK7 — `tracer` (rapport de traçabilité) est LECTURE SEULE,
+            # même garde.
             return [IsAnyRole()]
         elif self.action in ('create', 'dupliquer'):
             # QG4 — création réservée à Directeur + Commercial responsable.
@@ -487,6 +489,31 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
         from ..services import forecast_produit
         produit = self.get_object()
         return Response(forecast_produit(request.user.company, produit))
+
+    @action(detail=False, methods=['get'], url_path='tracer',
+            permission_classes=[IsAnyRole])
+    def tracer(self, request):
+        """XSTK7 — rapport de traçabilité bout-en-bout (rappel fabricant) :
+        `?serie=<numero>` ou `?lot=<numero>`. Remonte réception fournisseur
+        → emplacement entrepôt → équipement installé/client en un appel.
+        Numéro inconnu / hors société → 404. INTERNE, lecture seule."""
+        from ..selectors import trace_serie
+
+        numero_serie = (request.query_params.get('serie') or '').strip()
+        numero_lot = (request.query_params.get('lot') or '').strip()
+        if not numero_serie and not numero_lot:
+            return Response(
+                {'detail': 'Paramètre serie ou lot requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        result = trace_serie(
+            request.user.company,
+            numero_serie=numero_serie or None,
+            numero_lot=numero_lot or None)
+        if result is None:
+            return Response(
+                {'detail': 'Aucune traçabilité trouvée pour ce numéro.'},
+                status=status.HTTP_404_NOT_FOUND)
+        return Response(result)
 
     @action(detail=False, methods=['get'], url_path='resolve',
             permission_classes=[IsAnyRole])

@@ -830,3 +830,118 @@ def resolve_via_nomenclature(company, code):
         if regle.matches(code):
             return regle.encode, regle
     return None
+
+
+def trace_serie(company, *, numero_serie=None, numero_lot=None):
+    """XSTK7 — rapport de traçabilité bout-en-bout (rappel fabricant) : pour
+    un numéro de série (ou de lot XSTK6), remonte EN UN APPEL la chaîne
+    réception fournisseur (BCF/réception/fournisseur/date) → emplacements
+    (LotEntrepot/SerieEntrepot) → livraison/chantier → équipement installé/
+    client. Lit `installations`/`sav` via LEURS selectors (jamais leurs
+    models). LECTURE SEULE, INTERNE.
+
+    Exactement un de ``numero_serie``/``numero_lot`` doit être fourni.
+    Renvoie ``None`` si rien n'est trouvé (numéro inconnu / hors société —
+    l'appelant renvoie 404)."""
+    from .models import LigneReceptionFournisseur, LotEntrepot
+
+    if not numero_serie and not numero_lot:
+        return None
+
+    chaine = {
+        'numero_serie': numero_serie,
+        'numero_lot': numero_lot,
+        'reception': None,
+        'emplacement': None,
+        'equipement': None,
+    }
+    found = False
+
+    if numero_serie:
+        # ── Maillon 1 : réception fournisseur (série capturée FG61) ───────
+        lignes = (LigneReceptionFournisseur.objects
+                  .filter(reception__company=company,
+                          numeros_serie__isnull=False)
+                  .select_related(
+                      'reception', 'reception__bon_commande',
+                      'reception__bon_commande__fournisseur', 'produit'))
+        for ligne in lignes:
+            valeurs = [str(v).strip() for v in (ligne.numeros_serie or [])]
+            if numero_serie.strip() in valeurs:
+                bc = (ligne.reception.bon_commande
+                      if ligne.reception.bon_commande_id else None)
+                chaine['reception'] = {
+                    'reception_reference': ligne.reception.reference,
+                    'bcf_reference': bc.reference if bc else None,
+                    'fournisseur_nom': (
+                        bc.fournisseur.nom
+                        if bc and bc.fournisseur_id else None),
+                    'date': (
+                        ligne.reception.date_creation.isoformat()
+                        if ligne.reception.date_creation else None),
+                    'produit_id': ligne.produit_id,
+                    'produit_nom': (
+                        ligne.produit.nom if ligne.produit_id else None),
+                }
+                found = True
+                break
+
+        # ── Maillon 2 : emplacement entrepôt (SerieEntrepot, installations)
+        from apps.installations.selectors import serie_entrepot_scoped_by_serial
+        produit_id = (chaine['reception']['produit_id']
+                      if chaine['reception'] else None)
+        serie_ent = None
+        if produit_id is not None:
+            serie_ent = serie_entrepot_scoped_by_serial(
+                company, produit_id, numero_serie)
+        if serie_ent is not None:
+            chaine['emplacement'] = {
+                'statut': serie_ent.statut,
+                'emplacement_id': serie_ent.emplacement_id,
+            }
+            found = True
+
+        # ── Maillon 3+4 : équipement installé (sav.Equipement) → chantier/
+        # client (via Equipement.installation, déjà porté par le selector).
+        from apps.sav.selectors import equipement_scoped_by_serial
+        equipement = equipement_scoped_by_serial(company, numero_serie)
+        if equipement is not None:
+            found = True
+            installation = equipement.installation
+            client_nom = ''
+            if installation is not None and installation.client_id:
+                c = installation.client
+                client_nom = f'{c.nom} {c.prenom or ""}'.strip()
+            chaine['equipement'] = {
+                'equipement_id': equipement.id,
+                'statut': equipement.statut,
+                'chantier_reference': (
+                    installation.reference if installation else None),
+                'client_nom': client_nom or None,
+            }
+
+    if numero_lot:
+        lot = (LotEntrepot.objects
+               .filter(company=company, numero_lot=numero_lot)
+               .select_related('produit', 'emplacement')
+               .order_by('-date_creation')
+               .first())
+        if lot is not None:
+            found = True
+            chaine['reception'] = {
+                'reception_reference': lot.reference_reception,
+                'bcf_reference': None,
+                'fournisseur_nom': None,
+                'date': None,
+                'produit_id': lot.produit_id,
+                'produit_nom': lot.produit.nom if lot.produit_id else None,
+            }
+            chaine['emplacement'] = {
+                'statut': (
+                    'epuise' if lot.quantite_restante <= 0 else 'en_stock'),
+                'emplacement_id': lot.emplacement_id,
+            }
+
+    if not found:
+        return None
+    return chaine
