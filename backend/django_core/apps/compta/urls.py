@@ -11,6 +11,7 @@ from .views import (
     DomaineEnvoiViewSet,
     TypeEvenementViewSet,
     BilletEvenementViewSet,
+    QuestionEvenementViewSet,
     webhook_brevo_campagne, webhook_sms_stop,
     portail_mon_releve, portail_mon_releve_pdf, portail_contester_facture,
     AppelTelephoniqueViewSet,
@@ -188,6 +189,7 @@ router.register(r'evenements-marketing', EvenementMarketingViewSet)
 router.register(r'inscriptions-evenement', InscriptionEvenementViewSet)
 router.register(r'types-evenement', TypeEvenementViewSet)
 router.register(r'billets-evenement', BilletEvenementViewSet)
+router.register(r'questions-evenement', QuestionEvenementViewSet)
 # ── XMKT29 — Ponts QR pour supports offline ─────────────────────────────────
 router.register(r'supports-offline', SupportOfflineViewSet)
 # ── XMKT33 — Assistant d'authentification du domaine d'envoi ───────────────

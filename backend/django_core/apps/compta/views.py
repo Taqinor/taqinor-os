@@ -68,6 +68,7 @@ from .models import (
     DomaineEnvoi,
     TypeEvenement,
     BilletEvenement,
+    QuestionEvenement,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -83,6 +84,7 @@ from .serializers import (
     DomaineEnvoiSerializer,
     TypeEvenementSerializer,
     BilletEvenementSerializer,
+    QuestionEvenementSerializer,
     CommissionPayoutRunSerializer, CompteComptableSerializer,
     CompteTresorerieSerializer, ContratAvancementSerializer,
     DeclarationTVASerializer, DemandeApprobationConfigSerializer,
@@ -5031,6 +5033,19 @@ class BilletEvenementViewSet(_ComptaBaseViewSet):
         return qs
 
 
+class QuestionEvenementViewSet(_ComptaBaseViewSet):
+    """Questions d'inscription par événement (ZMKT16)."""
+    queryset = QuestionEvenement.objects.select_related('evenement').all()
+    serializer_class = QuestionEvenementSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        evenement_id = self.request.query_params.get('evenement')
+        if evenement_id:
+            qs = qs.filter(evenement_id=evenement_id)
+        return qs
+
+
 class InscriptionEvenementViewSet(_ComptaBaseViewSet):
     """Inscriptions à un événement (XMKT28)."""
     queryset = InscriptionEvenement.objects.select_related('evenement').all()
@@ -5074,7 +5089,8 @@ def evenement_inscription_publique(request, evenement_id):
         inscription = services.inscrire_evenement(
             evenement, nom=nom,
             email=request.data.get('email', ''),
-            telephone=request.data.get('telephone', ''), billet=billet)
+            telephone=request.data.get('telephone', ''), billet=billet,
+            reponses_questions=request.data.get('reponses_questions'))
     except ValueError as exc:
         return Response({'detail': str(exc)}, status=400)
     return Response(

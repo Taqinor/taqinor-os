@@ -11071,13 +11071,19 @@ def _est_nombre(v):
 
 # ── XMKT28 — Événements marketing légers ────────────────────────────────────
 
-def inscrire_evenement(evenement, *, nom, email='', telephone='', billet=None):
+def inscrire_evenement(
+        evenement, *, nom, email='', telephone='', billet=None,
+        reponses_questions=None):
     """XMKT28 — Inscription publique à un événement : crée l'inscription +
     le lead dédupliqué (via ``crm.services``, jamais d'import direct du
     modèle CRM), attribue un jeton QR de check-in par inscrit.
 
     ZMKT15 — si ``billet`` est fourni : refuse (ValueError) au-delà du
     quota, ou hors fenêtre de vente.
+
+    ZMKT16 — ``reponses_questions`` (JSON) refusé (ValueError) si une
+    question obligatoire de l'événement est absente ; stocké sur
+    l'inscription et reporté (note chatter) sur le lead créé.
     """
     from apps.crm import services as crm_services
 
@@ -11087,10 +11093,18 @@ def inscrire_evenement(evenement, *, nom, email='', telephone='', billet=None):
         if billet.places_restantes is not None and billet.places_restantes <= 0:
             raise ValueError('Quota de places atteint pour ce billet.')
 
+    reponses_questions = reponses_questions or {}
+    questions_obligatoires = evenement.questions.filter(obligatoire=True)
+    for question in questions_obligatoires:
+        if not reponses_questions.get(str(question.id)):
+            raise ValueError(
+                f'question obligatoire manquante : {question.libelle}')
+
     inscription = InscriptionEvenement.objects.create(
         company=evenement.company, evenement=evenement,
         nom=nom, email=email or '', telephone=telephone or '',
         qr_token=uuid.uuid4().hex, billet=billet,
+        reponses_questions=reponses_questions,
     )
     lead = crm_services.create_lead_from_evenement_marketing(
         company=evenement.company, nom=nom, telephone=telephone,

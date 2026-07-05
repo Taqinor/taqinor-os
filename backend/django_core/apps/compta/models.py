@@ -8992,6 +8992,52 @@ class BilletEvenement(models.Model):
         return max(0, self.quota - self.inscriptions.count())
 
 
+# ── ZMKT16 — Questions d'inscription par événement ──────────────────────────
+
+class QuestionEvenement(models.Model):
+    """Question de capture de données à l'inscription (ZMKT16), au-delà de
+    nom/email/téléphone. Réponses stockées en JSON sur
+    ``InscriptionEvenement.reponses_questions`` (portée par_commande ou
+    par_inscrit)."""
+    class Type(models.TextChoices):
+        CHOIX = 'choix', 'Choix'
+        TEXTE = 'texte', 'Texte'
+        BOOLEEN = 'booleen', 'Booléen'
+
+    class Portee(models.TextChoices):
+        PAR_INSCRIT = 'par_inscrit', 'Par inscrit'
+        PAR_COMMANDE = 'par_commande', 'Par commande'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='questions_evenement',
+        verbose_name='Société',
+    )
+    evenement = models.ForeignKey(
+        EvenementMarketing,
+        on_delete=models.CASCADE,
+        related_name='questions',
+        verbose_name='Événement',
+    )
+    libelle = models.CharField(max_length=255, verbose_name='Libellé')
+    type_question = models.CharField(
+        max_length=10, choices=Type.choices, default=Type.TEXTE,
+        verbose_name='Type')
+    obligatoire = models.BooleanField(default=False, verbose_name='Obligatoire')
+    portee = models.CharField(
+        max_length=15, choices=Portee.choices, default=Portee.PAR_INSCRIT,
+        verbose_name='Portée')
+
+    class Meta:
+        verbose_name = "Question d'inscription (événement)"
+        verbose_name_plural = "Questions d'inscription (événement)"
+        ordering = ['id']
+
+    def __str__(self):
+        return self.libelle
+
+
 class InscriptionEvenement(models.Model):
     """Inscription à un ``EvenementMarketing`` (XMKT28) — nom/email/téléphone
     normalisé, statut de présence + check-in sur place (option QR token par
@@ -9040,6 +9086,10 @@ class InscriptionEvenement(models.Model):
         related_name='inscriptions',
         verbose_name='Billet',
     )
+    # ── ZMKT16 — réponses aux questions d'inscription (JSON) ────────────────
+    reponses_questions = models.JSONField(
+        default=dict, blank=True,
+        verbose_name="Réponses aux questions d'inscription (JSON)")
 
     class Meta:
         verbose_name = 'Inscription à un événement'

@@ -53,6 +53,7 @@ from .models import (
     DomaineEnvoi,
     TypeEvenement,
     BilletEvenement,
+    QuestionEvenement,
 )
 
 
@@ -2476,10 +2477,19 @@ class InscriptionEvenementSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'evenement', 'nom', 'email', 'telephone', 'statut',
             'statut_display', 'qr_token', 'lead_id', 'date_creation',
-            'date_pointage',
+            'date_pointage', 'billet', 'reponses_questions',
         ]
         read_only_fields = [
             'qr_token', 'lead_id', 'date_creation', 'date_pointage']
+
+
+class QuestionEvenementSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = QuestionEvenement
+        fields = [
+            'id', 'evenement', 'libelle', 'type_question', 'obligatoire',
+            'portee',
+        ]
 
 
 class SupportOfflineSerializer(serializers.ModelSerializer):
