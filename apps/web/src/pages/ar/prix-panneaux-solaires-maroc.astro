@@ -107,15 +107,15 @@ const jsonLd = {
           <tbody>
             {fourchettes.map((f) => (
               <tr class="border-b border-white/10">
-                <td class="py-3 pr-4 font-bold text-white">{f.kwc}</td>
-                <td class="py-3">{f.prix}</td>
+                <td class="py-3 pr-4 font-bold text-white" dir="ltr">{f.kwc}</td>
+                <td class="py-3" dir="ltr">{f.prix}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
       <p class="v2-lead mt-5 text-lune-soft">
-        <strong class="text-white">الكلفة المتوسطة جاهزة: حوالي 10 000 – 14 000 درهم/kWc</strong>
+        <strong class="text-white">الكلفة المتوسطة جاهزة: حوالي <span dir="ltr" style="unicode-bidi:isolate">10 000 – 14 000 درهم/kWc</span></strong>
         (عتاد + يد عاملة — مصادر: solaropeak.com، ecovolt.ma، electrosolarplus.ma، lechantier.ma).
         التشتّت يعكس نوع السقف، المسافة إلى اللوحات الكهربائية، ماركة العاكس، وهوامش ربح متفاوتة حسب
         المُركِّب. عرض أسعار ميداني يبقى ضرورياً.
@@ -123,7 +123,7 @@ const jsonLd = {
 
       <h2 class="display v2-section-title mt-12 text-white">احذروا من أثمنة «4 700 درهم/kWc»</h2>
       <p class="v2-lead mt-5 text-lune-soft">
-        كثيراً ما يتردّد ثمن حوالي <strong class="text-white">4 700 درهم/kWc</strong> أو أقل. هذا الرقم
+        كثيراً ما يتردّد ثمن حوالي <strong class="text-white"><span dir="ltr" style="unicode-bidi:isolate">4 700 درهم/kWc</span></strong> أو أقل. هذا الرقم
         يقابل <strong class="text-white">كلفة عتاد التركيبة وحده</strong> (ألواح + عاكس، دون التركيب،
         دون الأسلاك، دون البنية، دون الربط) — منخفض بشكل غير معقول لتركيبة جاهزة ومنجَزة. لا تقارنوا هذا
         الرقم بالهوامش أعلاه: إنهما واقعان مختلفان.
@@ -134,8 +134,8 @@ const jsonLd = {
         لا تتشابه كل الأسقف. بعض التهيئات تضيف تكاليف معتبرة إلى الهامش الأساسي:
       </p>
       <ul class="v2-lead mt-5 list-disc space-y-3 pr-6 text-lune-soft">
-        <li><strong class="text-white">سقف من القرميد أو الصفيح المموّج</strong> (تركيب أكثر تقنية): +6 000 – 12 000 درهم</li>
-        <li><strong class="text-white">ميلان قوي (أكثر من 30°)</strong>: +4 000 – 8 000 درهم لأجهزة السلامة وتعقيد التركيب</li>
+        <li><strong class="text-white">سقف من القرميد أو الصفيح المموّج</strong> (تركيب أكثر تقنية): <span dir="ltr" style="unicode-bidi:isolate">+6 000 – 12 000 درهم</span></li>
+        <li><strong class="text-white">ميلان قوي (أكثر من <span dir="ltr" style="unicode-bidi:isolate">30°</span>)</strong>: <span dir="ltr" style="unicode-bidi:isolate">+4 000 – 8 000 درهم</span> لأجهزة السلامة وتعقيد التركيب</li>
       </ul>
       <p class="v2-lead mt-5 text-lune-soft">
         السطح الخرساني سهل الولوج يبقى التهيئة الأقل كلفة. إن كان سقفكم منحدراً أو من مواد هشّة،
@@ -150,8 +150,8 @@ const jsonLd = {
         تضيف بطارية LFP كلفة معتبرة:
       </p>
       <ul class="v2-lead mt-5 list-disc space-y-3 pr-6 text-lune-soft">
-        <li><strong class="text-white">بطارية LFP بسعة 5 – 15 kWh: +22 000 – 60 000 درهم</strong> حسب السعة والماركة</li>
-        <li>تُطيل فترة استرجاع الكلفة بـ <strong class="text-white">1 إلى 3 سنوات</strong> مع البطارية</li>
+        <li><strong class="text-white">بطارية LFP بسعة <span dir="ltr" style="unicode-bidi:isolate">5 – 15 kWh</span>: <span dir="ltr" style="unicode-bidi:isolate">+22 000 – 60 000 درهم</span></strong> حسب السعة والماركة</li>
+        <li>تُطيل فترة استرجاع الكلفة بـ <strong class="text-white"><span dir="ltr" style="unicode-bidi:isolate">1</span> إلى <span dir="ltr" style="unicode-bidi:isolate">3 سنوات</span></strong> مع البطارية</li>
       </ul>
       <p class="v2-lead mt-5 text-lune-soft">
         دليلنا <a href={L('/guides/quelle-taille-de-batterie')} class="border-b border-azur-200/60 pb-0.5 font-semibold text-azur-200 transition-colors hover:text-white">أي حجم بطارية؟</a> يفصّل مراحل التحجيم ولماذا التخزين، بالمغرب، يربح أكثر من التصدير.
@@ -160,15 +160,15 @@ const jsonLd = {
       <h2 class="display v2-section-title mt-12 text-white">الضريبة على القيمة المضافة والرسوم الجمركية</h2>
       <p class="v2-lead mt-5 text-lune-soft">
         النظام الضريبي غير موحّد: الألواح العارية مُعفاة من الضريبة على القيمة المضافة (دون حق خصم)،
-        والتركيبة الجاهزة (توريد + تركيب) خاضعة <strong class="text-white"> لضريبة 20 %</strong> —
+        والتركيبة الجاهزة (توريد + تركيب) خاضعة <strong class="text-white"> لضريبة <span dir="ltr" style="unicode-bidi:isolate">20 %</span></strong> —
         الهوامش في هذه الصفحة مُحتَسَبة شاملة الضريبة للأفراد. الرسوم الجمركية على العاكسات المستوردة
-        انخفضت من 17,5 % إلى 2,5 %، ما ساهم في خفض كلفتها في السوق.
+        انخفضت من <span dir="ltr" style="unicode-bidi:isolate">17,5 %</span> إلى <span dir="ltr" style="unicode-bidi:isolate">2,5 %</span>، ما ساهم في خفض كلفتها في السوق.
       </p>
 
       <h2 class="display v2-section-title mt-12 text-white">العائد على الاستثمار: 5 إلى 7 سنوات في السكني</h2>
       <p class="v2-lead mt-5 text-lune-soft">
         فترة الاسترجاع الأكثر ذكراً من طرف المُركِّبين المغاربة لتركيبة سكنية قياسية (دون بطارية) هي
-        <strong class="text-white"> 5 إلى 7 سنوات</strong>. مع بطارية، أضيفوا 1 إلى 3 سنوات. يعتمد هذا
+        <strong class="text-white"> <span dir="ltr" style="unicode-bidi:isolate">5</span> إلى <span dir="ltr" style="unicode-bidi:isolate">7 سنوات</span></strong>. مع بطارية، أضيفوا <span dir="ltr" style="unicode-bidi:isolate">1</span> إلى <span dir="ltr" style="unicode-bidi:isolate">3 سنوات</span>. يعتمد هذا
         الحساب بشدة على استهلاككم الفعلي وشطركم التعريفي لدى ONEE — انظروا صفحتنا
         <a href={L('/financement')} class="border-b border-azur-200/60 pb-0.5 font-semibold text-azur-200 transition-colors hover:text-white">التمويل والربحية</a>
         للتفصيل، ومقالنا
@@ -178,8 +178,8 @@ const jsonLd = {
 
       <h2 class="display v2-section-title mt-12 text-white">كم لوحاً تحتاجون؟</h2>
       <p class="v2-lead mt-5 text-lune-soft">
-        قبل مقارنة الأثمنة، يجب معرفة القدرة المناسبة لبيتكم. أسرة تستهلك بين 4 000 و6 000 kWh/سنة
-        تحتاج عموماً 3 إلى 5 kWc؛ بين 6 000 و10 000 kWh/سنة، بالأحرى 5 إلى 8 kWc. دليلنا المخصّص يفصّل
+        قبل مقارنة الأثمنة، يجب معرفة القدرة المناسبة لبيتكم. أسرة تستهلك بين <span dir="ltr" style="unicode-bidi:isolate">4 000</span> و<span dir="ltr" style="unicode-bidi:isolate">6 000 kWh/سنة</span>
+        تحتاج عموماً <span dir="ltr" style="unicode-bidi:isolate">3</span> إلى <span dir="ltr" style="unicode-bidi:isolate">5 kWc</span>؛ بين <span dir="ltr" style="unicode-bidi:isolate">6 000</span> و<span dir="ltr" style="unicode-bidi:isolate">10 000 kWh/سنة</span>، بالأحرى <span dir="ltr" style="unicode-bidi:isolate">5</span> إلى <span dir="ltr" style="unicode-bidi:isolate">8 kWc</span>. دليلنا المخصّص يفصّل
         المنهجية الكاملة:
         <a href={L('/guides/combien-de-panneaux-pour-ma-maison')} class="border-b border-azur-200/60 pb-0.5 font-semibold text-azur-200 transition-colors hover:text-white">كم لوحاً لبيتي؟</a>
       </p>
