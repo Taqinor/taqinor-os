@@ -4570,6 +4570,17 @@ class Campagne(models.Model):
     variantes_langue = models.JSONField(
         default=dict, blank=True,
         verbose_name='Variantes de contenu par langue (JSON)')
+    # ── XMKT14 — Test A/B avec gagnant automatique ──────────────────────────
+    # Vide par défaut = pas de test A/B (comportement actuel, un seul envoi).
+    # Structure : {"objet": "...", "corps": "...", "pct_echantillon": 20,
+    # "fenetre_heures": 4, "critere": "ouvertures"|"clics"}.
+    ab_test = models.JSONField(
+        default=dict, blank=True, verbose_name='Configuration test A/B (JSON)')
+    ab_gagnant = models.CharField(
+        max_length=1, blank=True, default='',
+        verbose_name='Variante gagnante (A/B)')
+    ab_decide_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Décision A/B prise le')
 
     class Meta:
         verbose_name = 'Campagne email/SMS'
@@ -4628,6 +4639,10 @@ class EnvoiCampagne(models.Model):
                                      verbose_name='Cliqué le')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créée le')
+    # XMKT14 — variante A/B reçue par ce destinataire ('a'/'b'), vide = hors
+    # test A/B ou envoi au reste après décision du gagnant.
+    variante_ab = models.CharField(
+        max_length=1, blank=True, default='', verbose_name='Variante A/B')
 
     class Meta:
         verbose_name = "Envoi de campagne (destinataire)"

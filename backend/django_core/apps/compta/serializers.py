@@ -1475,10 +1475,12 @@ class CampagneSerializer(serializers.ModelSerializer):
             'nb_destinataires', 'nb_envois', 'nb_ouvertures', 'nb_clics',
             'envoyee_le', 'date_creation',
             'planifiee_le', 'debit_max_par_heure', 'variantes_langue',
+            'ab_test', 'ab_gagnant', 'ab_decide_le',
         ]
         read_only_fields = [
             'statut', 'nb_destinataires', 'nb_envois', 'nb_ouvertures',
             'nb_clics', 'envoyee_le', 'date_creation',
+            'ab_gagnant', 'ab_decide_le',
         ]
 
     def validate_listes(self, value):

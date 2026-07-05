@@ -6228,7 +6228,16 @@ def envoyer_campagne(campagne, *, destinataires=None):
     campagne.save(update_fields=[
         'nb_destinataires', 'nb_envois', 'statut', 'envoyee_le', 'corps'])
     maintenant = timezone.now() if campagne.nb_envois else None
-    for cible in cibles:
+    # XMKT14 — répartition A/B sans chevauchement ni doublon (échantillon =
+    # les N premiers destinataires, moitié A / moitié B) si un test A/B est
+    # configuré et pas encore décidé.
+    ab_config = campagne.ab_test or {}
+    ab_actif = bool(ab_config) and not campagne.ab_gagnant
+    pct_echantillon = int(ab_config.get('pct_echantillon', 0) or 0) if ab_actif else 0
+    taille_echantillon = (len(cibles) * pct_echantillon) // 100 if ab_actif else 0
+    moitie = taille_echantillon // 2
+
+    for index, cible in enumerate(cibles):
         if isinstance(cible, dict):
             destinataire = (cible.get('destinataire') or '').strip()
             contact_ref = cible.get('contact_ref') or ''
@@ -6237,6 +6246,9 @@ def envoyer_campagne(campagne, *, destinataires=None):
             contact_ref = ''
         if not destinataire:
             continue
+        variante_ab = ''
+        if ab_actif and index < taille_echantillon:
+            variante_ab = 'a' if index < moitie else 'b'
         EnvoiCampagne.objects.create(
             company=campagne.company,
             campagne=campagne,
@@ -6245,12 +6257,55 @@ def envoyer_campagne(campagne, *, destinataires=None):
             statut=(EnvoiCampagne.Statut.ENVOYE if maintenant
                     else EnvoiCampagne.Statut.QUEUED),
             envoye_le=maintenant,
+            variante_ab=variante_ab,
         )
         # XMKT16 — une ligne de chatter par lead ciblé, jamais par batch.
         noter_touche_marketing_pour_lead(
             campagne.company, contact_ref,
             f'Campagne « {campagne.nom} » envoyée')
     return campagne
+
+
+def _metrique_ab(campagne, variante, critere):
+    """XMKT14 — mesure (nb d'ouvertures ou de clics) pour une variante A/B,
+    lue sur les traces ``EnvoiCampagne`` (XMKT2)."""
+    qs = campagne.envois.filter(variante_ab=variante)
+    if critere == 'clics':
+        return qs.filter(clique_le__isnull=False).count()
+    return qs.filter(ouvert_le__isnull=False).count()
+
+
+def decider_gagnant_ab(campagne, *, maintenant=None):
+    """XMKT14 — Compare les métriques A vs B à l'issue de la fenêtre de
+    décision et envoie la variante gagnante au reste (destinataires non
+    échantillonnés, encore ``queued``). Égalité → A. No-op si aucun test A/B
+    configuré, déjà décidé, ou fenêtre pas encore écoulée. Renvoie le
+    gagnant ('a'/'b') ou ``None``.
+    """
+    maintenant = maintenant or timezone.now()
+    ab_config = campagne.ab_test or {}
+    if not ab_config or campagne.ab_gagnant:
+        return None
+    if not campagne.envoyee_le:
+        return None
+    fenetre_heures = int(ab_config.get('fenetre_heures', 4) or 4)
+    echeance = campagne.envoyee_le + timezone.timedelta(hours=fenetre_heures)
+    if maintenant < echeance:
+        return None
+    critere = ab_config.get('critere', 'ouvertures')
+    metrique_a = _metrique_ab(campagne, 'a', critere)
+    metrique_b = _metrique_ab(campagne, 'b', critere)
+    gagnant = 'b' if metrique_b > metrique_a else 'a'
+    campagne.ab_gagnant = gagnant
+    campagne.ab_decide_le = maintenant
+    campagne.save(update_fields=['ab_gagnant', 'ab_decide_le'])
+    # Envoie le contenu gagnant au reste (destinataires jamais échantillonnés,
+    # toujours en file d'attente).
+    reste = campagne.envois.filter(variante_ab='', statut=EnvoiCampagne.Statut.QUEUED)
+    reste.update(
+        statut=EnvoiCampagne.Statut.ENVOYE, envoye_le=maintenant,
+        variante_ab=gagnant)
+    return gagnant
 
 
 def webhook_brevo_evenement(company, *, campagne_id, destinataire, evenement,

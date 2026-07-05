@@ -3,7 +3,10 @@
 """
 from celery import shared_task
 
-from .services import envoyer_campagnes_planifiees, executer_etapes_dues
+from .models import Campagne
+from .services import (
+    decider_gagnant_ab, envoyer_campagnes_planifiees, executer_etapes_dues,
+)
 
 
 @shared_task(name='compta.executer_sequences_relance')
@@ -32,3 +35,17 @@ def envoyer_campagnes_planifiees_task():
     for company in Company.objects.all():
         total += len(envoyer_campagnes_planifiees(company))
     return {'campagnes_envoyees': total}
+
+
+@shared_task(name='compta.decider_gagnants_ab')
+def decider_gagnants_ab_task():
+    """XMKT14 — Enveloppe Celery Beat : décide le gagnant A/B de chaque
+    campagne envoyée avec un test A/B en cours dont la fenêtre est écoulée.
+    """
+    decisions = 0
+    qs = Campagne.objects.filter(
+        statut=Campagne.Statut.ENVOYEE, ab_gagnant='').exclude(ab_test={})
+    for campagne in qs:
+        if decider_gagnant_ab(campagne):
+            decisions += 1
+    return {'decisions': decisions}
