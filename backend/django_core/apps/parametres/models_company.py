@@ -432,6 +432,15 @@ class CompanyProfile(models.Model):
                   "chantier (défaut, comportement historique) ou "
                   "manuellement via un bouton explicite.")
 
+    # ── ZSTK2 — fenêtre d'alerte de péremption (jours) pour la tâche beat
+    # `stock.expiration_alerts` (Odoo "expiration alerts" scheduled action).
+    # Défaut 30 — réutilise `produits_expirant_bientot` (FG64) tel quel, sans
+    # dupliquer la logique d'expiry.
+    jours_alerte_peremption = models.PositiveIntegerField(
+        default=30,
+        help_text='Fenêtre (jours) au-delà de laquelle un lot proche de sa '
+                  'péremption déclenche une alerte automatique quotidienne.')
+
     class Meta:
         verbose_name = 'Profil entreprise'
 

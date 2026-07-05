@@ -357,6 +357,12 @@ class AchatsParametres(models.Model):
     # historique inchangé (aucun garde, comme avant XSTK8) si activé
     # explicitement par la société.
     stock_negatif_autorise = models.BooleanField(default=False)
+    # ZPUR7 — quand actif, la tâche beat `stock.relancer_bcf_en_retard`
+    # PROPOSE un brouillon de relance (WhatsApp/email, jamais envoyé sans
+    # clic) pour les BCF ENVOYE en retard. OFF par défaut = no-op total (la
+    # tâche autodécouverte tourne mais ne fait rien tant que la société ne
+    # l'active pas).
+    relance_bcf_actif = models.BooleanField(default=False)
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
 
@@ -1280,6 +1286,39 @@ class BonCommandeFournisseur(models.Model):
                   'ce BCF réserve automatiquement les quantités reçues pour '
                   'ce chantier. Vide = comportement historique (stock '
                   'libre).')
+    # ZPUR7 — compteur de relances PROPOSÉES au fournisseur pour un BCF en
+    # retard (incrémenté par `stock.tasks.relancer_bcf_en_retard`, jamais un
+    # envoi automatique — le brouillon est proposé, l'utilisateur clique).
+    # 0 = comportement historique (jamais relancé).
+    nb_relances = models.PositiveIntegerField(default=0)
+    # ── ZPUR8 — onglet « Other Information » Odoo, au niveau du DOCUMENT ────
+    # Acheteur (défaut = created_by, alimente l'analyse achats XPUR24 par
+    # acheteur + l'OTD par acheteur), référence de commande côté fournisseur
+    # (texte libre) et mentions imprimées sur le PDF. Additif — vide/nul =
+    # comportement historique inchangé.
+    acheteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='bons_commande_fournisseur_acheteur',
+        help_text="Acheteur responsable du BCF (défaut = created_by).")
+    ref_fournisseur = models.CharField(
+        max_length=100, blank=True, null=True,
+        help_text='Référence de la commande côté fournisseur (texte libre).')
+    note_bas_page = models.TextField(
+        blank=True, null=True,
+        help_text='Mentions imprimées en bas de page du PDF BCF.')
+    # Report éditable des défauts fournisseur (XPUR5 incoterm, XPUR6
+    # conditions de paiement) AU NIVEAU DU DOCUMENT — sans redéfinir ces
+    # référentiels. Vide = comportement historique (rien reporté).
+    incoterm = models.CharField(max_length=10, blank=True, null=True)
+    conditions_paiement = models.CharField(
+        max_length=200, blank=True, null=True,
+        help_text='Conditions de paiement reportées du fournisseur '
+                  '(éditables au document), dérivées de delai_paiement_jours.')
+    # ZPUR11 — motif OBLIGATOIRE à l'annulation (texte, requis — 400 si vide),
+    # horodaté + acteur tracés via `records.Comment` (chatter). Vide = jamais
+    # annulé (comportement historique).
+    motif_annulation = models.TextField(blank=True, null=True)
     note = models.TextField(blank=True, null=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -2256,3 +2295,79 @@ class ModeleBonCommandeFournisseurLigne(models.Model):
 
     def __str__(self):
         return f'{self.modele_id}: {self.produit_id} × {self.quantite}'
+
+
+class NomenclatureCodeBarres(models.Model):
+    """ZSTK12 — nomenclature de code-barres (Odoo « Barcode Nomenclatures »),
+    par société. XSTK4 parse GS1 en dur ; ceci permet à une société qui
+    imprime ses PROPRES codes internes (préfixe magasin) de les faire router
+    vers le bon type d'entité, sans toucher au parsing GS1/EAN existant.
+
+    Repli : sans nomenclature ACTIVE, le résolveur de scan se comporte
+    EXACTEMENT comme aujourd'hui (jetons internes puis GS1 puis EAN) —
+    comportement historique inchangé."""
+
+    class Type(models.TextChoices):
+        DEFAULT = 'default', 'Défaut (EAN/UPC)'
+        GS1 = 'gs1', 'GS1'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='nomenclatures_code_barres')
+    nom = models.CharField(max_length=100)
+    type_nomenclature = models.CharField(
+        max_length=10, choices=Type.choices, default=Type.DEFAULT)
+    actif = models.BooleanField(default=False)
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_mise_a_jour = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Nomenclature de code-barres'
+        verbose_name_plural = 'Nomenclatures de code-barres'
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
+
+
+class RegleCodeBarres(models.Model):
+    """ZSTK12 — règle d'une nomenclature : un motif (regex ou préfixe simple)
+    matché contre le code scanné route vers le type d'entité configuré
+    (produit/lot/série/emplacement/quantité). Triées par ``priorite``
+    (plus petit = évalué en premier)."""
+
+    class Encode(models.TextChoices):
+        PRODUIT = 'produit', 'Produit'
+        LOT = 'lot', 'Lot'
+        SERIE = 'serie', 'Série'
+        EMPLACEMENT = 'emplacement', 'Emplacement'
+        QUANTITE = 'quantite', 'Quantité'
+
+    nomenclature = models.ForeignKey(
+        NomenclatureCodeBarres, on_delete=models.CASCADE,
+        related_name='regles')
+    # Regex (compilée avec `re.match`) OU préfixe simple selon
+    # `est_regex` — un préfixe simple `"22"` matche tout code commençant
+    # par ces caractères (cas d'usage le plus fréquent, pas besoin de regex).
+    motif = models.CharField(max_length=200)
+    est_regex = models.BooleanField(default=False)
+    encode = models.CharField(max_length=20, choices=Encode.choices)
+    priorite = models.PositiveIntegerField(default=100)
+
+    class Meta:
+        verbose_name = 'Règle de code-barres'
+        verbose_name_plural = 'Règles de code-barres'
+        ordering = ['priorite', 'id']
+
+    def __str__(self):
+        return f'{self.motif} → {self.encode}'
+
+    def matches(self, code):
+        if self.est_regex:
+            import re
+            try:
+                return bool(re.match(self.motif, code))
+            except re.error:
+                return False
+        return code.startswith(self.motif)

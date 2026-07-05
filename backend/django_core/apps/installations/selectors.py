@@ -127,6 +127,19 @@ def reserved_quantity_for_produit(produit):
     return (agg['total'] or 0) + (agg_asm['total'] or 0)
 
 
+def serie_entrepot_scoped_by_serial(company, produit_id, numero_serie):
+    """ZSTK6 — `SerieEntrepot` (FG323) scopée société, par (produit, n° de
+    série), avec chantier + client préchargés. Point d'entrée cross-app pour
+    le résolveur de scan de `apps.stock` (jamais son modèle importé
+    directement) — LECTURE SEULE, None si introuvable/hors société."""
+    from .models import SerieEntrepot
+    return (SerieEntrepot.objects
+            .filter(company=company, produit_id=produit_id,
+                    numero_serie=numero_serie)
+            .select_related('installation', 'installation__client')
+            .first())
+
+
 def reserved_quantities_for_company(company):
     """Map {produit_id: quantité réservée active} pour toute la société —
     chantier (N14) + ordre d'assemblage (XMFG2), un seul agrégat par source

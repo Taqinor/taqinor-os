@@ -99,6 +99,30 @@
       <strong>Statut</strong>
       <span>{{ bc.get_statut_display() }}</span>
     </div>
+    {% if acheteur_nom %}
+    <div class="meta-item">
+      <strong>Acheteur</strong>
+      <span>{{ acheteur_nom }}</span>
+    </div>
+    {% endif %}
+    {% if ref_fournisseur %}
+    <div class="meta-item">
+      <strong>Réf. fournisseur</strong>
+      <span>{{ ref_fournisseur }}</span>
+    </div>
+    {% endif %}
+    {% if incoterm %}
+    <div class="meta-item">
+      <strong>Incoterm</strong>
+      <span>{{ incoterm }}</span>
+    </div>
+    {% endif %}
+    {% if conditions_paiement %}
+    <div class="meta-item">
+      <strong>Conditions de paiement</strong>
+      <span>{{ conditions_paiement }}</span>
+    </div>
+    {% endif %}
   </div>
 
   <!-- Lignes -->
@@ -132,6 +156,9 @@
   <!-- Note -->
   {% if bc.note %}
   <div class="note-block"><strong>Note :</strong> {{ bc.note }}</div>
+  {% endif %}
+  {% if note_bas_page %}
+  <div class="note-block"><strong>Mentions :</strong> {{ note_bas_page }}</div>
   {% endif %}
 
   <!-- Total -->

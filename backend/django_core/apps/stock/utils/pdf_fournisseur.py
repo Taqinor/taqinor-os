@@ -33,6 +33,18 @@ def build_bcf_context(bon_commande):
     context['ref_produit_fournisseur'] = {
         ligne.id: refs.get(ligne.produit_id, '') for ligne in lignes
     }
+    # ZPUR8 — champs « Other Information » imprimés sur le PDF BCF (acheteur,
+    # réf. fournisseur, incoterm/conditions de paiement, note de bas de
+    # page). Vide = comportement historique inchangé (rien à afficher).
+    acheteur_nom = ''
+    if bon_commande.acheteur_id:
+        acheteur = bon_commande.acheteur
+        acheteur_nom = acheteur.get_full_name() or acheteur.username
+    context['acheteur_nom'] = acheteur_nom
+    context['ref_fournisseur'] = bon_commande.ref_fournisseur or ''
+    context['incoterm'] = bon_commande.incoterm or ''
+    context['conditions_paiement'] = bon_commande.conditions_paiement or ''
+    context['note_bas_page'] = bon_commande.note_bas_page or ''
     return context
 
 

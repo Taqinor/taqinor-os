@@ -50,6 +50,10 @@ class EventType(models.TextChoices):
     WARRANTY_EXPIRING = 'warranty_expiring', 'Garantie bientôt expirée'
     MAINTENANCE_DUE = 'maintenance_due', 'Visite de maintenance due'
     STOCK_LOW = 'stock_low', 'Stock bas'
+    # ZSTK2 — un lot/réception approche de sa date de péremption (fenêtre
+    # configurable par société, cron quotidien).
+    STOCK_EXPIRATION_SOON = (
+        'stock_expiration_soon', 'Lot bientôt périmé')
     SAV_TICKET_OPENED = 'sav_ticket_opened', 'Ticket SAV ouvert'
     SAV_TICKET_BREACHING = 'sav_ticket_breaching', 'Ticket SAV proche de son délai'
     # ZSAV3 — activité planifiée à échéance sur un ticket SAV (échue, pas faite).
@@ -83,6 +87,11 @@ class EventType(models.TextChoices):
     BCF_LATE = 'bcf_late', 'Bon de commande fournisseur en retard'
     # YPROC7 — un BCF est annulé (cascade sur ses réceptions brouillon).
     BCF_CANCELLED = 'bcf_cancelled', 'Bon de commande fournisseur annulé'
+    # ZPUR7 — brouillon de relance PROPOSÉ (jamais envoyé) pour un BCF en
+    # retard, distinct de BCF_LATE (l'alerte buyer XPUR7) : jamais de
+    # doublon de notification.
+    BCF_RELANCE_PROPOSEE = (
+        'bcf_relance_proposee', 'Brouillon de relance BCF proposé')
     # XPRJ22 — retard/risque de planning sur un projet (gestion_projet).
     PROJET_RETARD = 'projet_retard', 'Retard planning projet'
     # XFLT18 — dépassement de budget flotte annuel (par catégorie de coût).

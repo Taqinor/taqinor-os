@@ -62,7 +62,7 @@ class ReceptionFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
     ordering = ['-date_creation']
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['scan_gs1']:
+        if self.action in READ_ACTIONS + ['scan_gs1', 'etiquettes']:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + ['confirmer', 'annuler']:
             return [IsResponsableOrAdmin()]
@@ -130,6 +130,58 @@ class ReceptionFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
                 parsed['date_peremption'].isoformat()
                 if parsed.get('date_peremption') else None),
         })
+
+    @action(detail=True, methods=['get'], url_path='etiquettes')
+    def etiquettes(self, request, pk=None):
+        """ZSTK6 — planche d'étiquettes lot/série depuis les lignes de CETTE
+        réception : une étiquette PAR série reçue (`numeros_serie`, jeton
+        `SERIE:<produit>:<valeur>`) + une PAR lot renseigné (`numero_lot`,
+        jeton `LOT:<produit>:<valeur>`). Réutilise le moteur N20
+        (`labels.render_labels_html`) — jamais de prix affiché.
+
+        Paramètres : ``symbology`` (qr défaut | code128), ``sortie`` (pdf
+        défaut | html)."""
+        from .. import labels
+        from apps.ventes.utils.pdf import _html_to_pdf
+
+        reception = self.get_object()
+        symbology = request.query_params.get('symbology', 'qr')
+        if symbology not in ('qr', 'code128'):
+            symbology = 'qr'
+
+        items = []
+        for ligne in reception.lignes.select_related('produit').all():
+            if ligne.produit_id is None:
+                continue
+            nom = ligne.produit.nom
+            for serie in (ligne.numeros_serie or []):
+                if not serie:
+                    continue
+                items.append({
+                    'token': labels.serie_token(ligne.produit_id, serie),
+                    'titre': nom,
+                    'sous_titre': f'N° série {serie}',
+                })
+            if ligne.numero_lot:
+                items.append({
+                    'token': labels.lot_token(
+                        ligne.produit_id, ligne.numero_lot),
+                    'titre': nom,
+                    'sous_titre': f'Lot {ligne.numero_lot}',
+                })
+        if not items:
+            return Response(
+                {'detail': 'Aucun n° de série/lot sur cette réception.'},
+                status=status.HTTP_404_NOT_FOUND)
+
+        html = labels.render_labels_html(items, symbology=symbology)
+        if request.query_params.get('sortie') == 'html':
+            return HttpResponse(html, content_type='text/html; charset=utf-8')
+        pdf_bytes = _html_to_pdf(html)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'inline; filename="etiquettes-{reception.reference}.pdf"')
+        return response
 
     @action(detail=True, methods=['post'], url_path='confirmer')
     def confirmer(self, request, pk=None):

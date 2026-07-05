@@ -460,6 +460,11 @@ SYSTEME_PREFIX = 'SYSTEME'
 INTERVENTION_PREFIX = 'INTERV'
 # FG85 — jeton d'équipement SAV : EQUIP:<equipement_id>
 EQUIP_PREFIX = 'EQUIP'
+# ZSTK6 — jetons lot/série scannables : `SERIE:<produit_id>:<valeur>` /
+# `LOT:<produit_id>:<valeur>` (le produit est nécessaire pour désambiguïser —
+# deux produits différents peuvent partager un n° de série/lot).
+SERIE_PREFIX = 'SERIE'
+LOT_PREFIX = 'LOT'
 
 
 def produit_token(produit_id) -> str:
@@ -476,6 +481,14 @@ def intervention_token(intervention_id) -> str:
 
 def equip_token(equipement_id) -> str:
     return f'{EQUIP_PREFIX}:{equipement_id}'
+
+
+def serie_token(produit_id, numero_serie) -> str:
+    return f'{SERIE_PREFIX}:{produit_id}:{numero_serie}'
+
+
+def lot_token(produit_id, numero_lot) -> str:
+    return f'{LOT_PREFIX}:{produit_id}:{numero_lot}'
 
 
 def _esc(value) -> str:

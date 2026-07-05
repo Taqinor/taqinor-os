@@ -882,6 +882,18 @@ def ticket_scoped(company, ticket_id):
     return Ticket.objects.filter(company=company, id=ticket_id).first()
 
 
+def equipement_scoped_by_serial(company, numero_serie):
+    """XSTK7 — un ``sav.Equipement`` scopé société, par n° de série (lecture
+    seule). Point d'entrée cross-app pour le rapport de traçabilité
+    bout-en-bout de ``apps.stock`` (jamais son modèle importé directement).
+    Renvoie ``None`` si aucun équipement ne porte ce n° de série dans la
+    société."""
+    return (Equipement.objects
+            .filter(company=company, numero_serie=numero_serie)
+            .select_related('produit', 'installation', 'installation__client')
+            .first())
+
+
 def produits_par_tickets(company, ticket_ids):
     """XQHS23 — map ``{ticket_id: {'produit_id': int|None, 'produit_nom':
     str|None}}`` pour un lot de tickets SAV, via leur équipement lié.
