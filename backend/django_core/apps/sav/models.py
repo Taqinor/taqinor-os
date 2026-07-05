@@ -1259,6 +1259,26 @@ class ContratMaintenance(models.Model):
     )
     date_creation = models.DateTimeField(auto_now_add=True)
 
+    # ── XCTR16 — Facturation à l'usage depuis le monitoring ─────────────────
+    # Tous optionnels : NULL/vide = comportement actuel inchangé (aucune ligne
+    # d'usage sur un contrat qui ne renseigne pas ``tarif_usage``).
+    class UniteUsage(models.TextChoices):
+        KWH = 'kwh', 'kWh'
+        M3 = 'm3', 'm³'
+
+    tarif_usage = models.DecimalField(
+        max_digits=10, decimal_places=4, null=True, blank=True,
+        verbose_name='Tarif à l\'usage (MAD/unité)',
+        help_text='Vide = pas de facturation à l\'usage (comportement actuel).')
+    franchise_incluse = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Franchise incluse (unités/période)',
+        help_text='Quantité incluse par période avant facturation (0 si vide).')
+    unite_usage = models.CharField(
+        max_length=5, choices=UniteUsage.choices, null=True, blank=True,
+        verbose_name='Unité d\'usage',
+        help_text='kWh (monitoring PV) ou m³ (pompage). Vide = pas d\'usage.')
+
     class Meta:
         ordering = ['-date_creation']
         verbose_name = 'Contrat de maintenance'

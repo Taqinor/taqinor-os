@@ -195,3 +195,25 @@ def client_environmental_dashboard(company, client_id, *,
         'tarif_mad_par_kwh': tarif,
         'co2_kg_par_kwh': factor,
     }
+
+
+def usage_kwh_periode(company, installation, periode_debut, periode_fin):
+    """XCTR16 — kWh supervisés (``ProductionReading``) d'un système sur une
+    période [``periode_debut``, ``periode_fin``) — borne de fin EXCLUSIVE pour
+    ne jamais compter le premier jour du cycle suivant.
+
+    Renvoie ``None`` (pas ``Decimal('0')``) quand AUCUN relevé n'existe sur la
+    période : l'appelant (facturation à l'usage, XCTR16) distingue ainsi
+    « aucune lecture disponible » (ligne omise + motif tracé) de « 0 kWh
+    consommés » (ligne facturée à 0, franchise non dépassée). Lecture seule,
+    scoping société assuré par le filtre ``company``.
+    """
+    if installation is None or periode_debut is None or periode_fin is None:
+        return None
+    qs = ProductionReading.objects.filter(
+        company=company, installation=installation,
+        date__gte=periode_debut, date__lt=periode_fin)
+    if not qs.exists():
+        return None
+    total = qs.aggregate(s=Sum('energy_kwh'))['s'] or Decimal('0')
+    return Decimal(str(total))

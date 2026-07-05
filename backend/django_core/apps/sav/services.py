@@ -380,7 +380,11 @@ def facturer_contrat_maintenance_beat(contrat, *, user=None):
     bloquant). Renvoie la ``Facture`` créée ; lève ``ValueError`` si la
     facturation échoue (prix manquant…) — l'appelant (le beat) capture
     l'exception PAR contrat pour ne jamais bloquer les suivants.
-    """
+
+    XCTR16 — si le contrat renseigne ``tarif_usage``, ajoute une ligne
+    dédiée « facturation à l'usage » (voir ``calculer_ligne_usage_contrat``)
+    APRÈS la création de la facture (best-effort, ne bloque jamais l'émission
+    de la facture forfaitaire elle-même)."""
     from django.utils import timezone as _timezone
 
     from apps.ventes.services import creer_facture_contrat
@@ -394,18 +398,92 @@ def facturer_contrat_maintenance_beat(contrat, *, user=None):
             contrat.company, contrat.pk, periode, statut_echec=True)
         raise
 
+    motif_usage = ''
+    if contrat.tarif_usage is not None:
+        motif_usage = _ajouter_ligne_usage_contrat(contrat, facture)
+
     _journaliser_cycle_maintenance_beat(
         contrat.company, contrat.pk, periode, statut_echec=False,
-        facture_id=facture.id)
+        facture_id=facture.id, motif=motif_usage)
     return facture
 
 
+# ── XCTR16 — Facturation à l'usage depuis le monitoring ─────────────────────
+
+def calculer_ligne_usage_contrat(contrat, periode_debut, periode_fin):
+    """Calcule la ligne de facturation à l'usage d'un ``ContratMaintenance``
+    sur ``[periode_debut, periode_fin)`` (borne de fin exclusive).
+
+    Renvoie ``(montant_ht, description)`` quand une lecture d'usage existe
+    (``max(0, usage − franchise) × tarif`` — jamais négatif), ou
+    ``(None, motif)`` quand la ligne doit être OMISE : contrat sans
+    ``tarif_usage``/``installation``, ou aucune lecture disponible sur la
+    période (le motif est destiné au journal XCTR5, jamais une exception —
+    l'absence de lecture est un cas attendu, pas une erreur)."""
+    from decimal import Decimal
+
+    if contrat.tarif_usage is None:
+        return None, 'Pas de tarif à l\'usage sur ce contrat.'
+    if contrat.installation_id is None:
+        return None, 'Contrat sans installation liée — usage non calculable.'
+
+    from apps.monitoring.selectors import usage_kwh_periode
+
+    usage = usage_kwh_periode(
+        contrat.company, contrat.installation, periode_debut, periode_fin)
+    if usage is None:
+        return None, (
+            f"Aucun relevé de production sur la période {periode_debut}"
+            f"–{periode_fin} — ligne d'usage omise.")
+
+    franchise = contrat.franchise_incluse or Decimal('0')
+    facturable = max(Decimal('0'), usage - franchise)
+    montant = (facturable * contrat.tarif_usage).quantize(Decimal('0.01'))
+    unite = contrat.get_unite_usage_display() if contrat.unite_usage else 'kWh'
+    description = (
+        f'Facturation à l\'usage — {usage} {unite} relevés, '
+        f'franchise {franchise} {unite}, {facturable} {unite} facturés '
+        f'à {contrat.tarif_usage} MAD/{unite}.')
+    return montant, description
+
+
+def _ajouter_ligne_usage_contrat(contrat, facture):
+    """Ajoute (best-effort) la ligne d'usage calculée sur la ``Facture``
+    récurrente déjà émise, via le hook cross-app générique déjà exposé par
+    ``ventes`` (``ajouter_lignes_frais_refactures`` — même mécanisme que
+    ``apps.compta`` pour les frais refacturés, aucun nouveau couplage).
+    Renvoie le motif (chaîne vide si une ligne a bien été ajoutée) destiné au
+    journal XCTR5."""
+    periode_debut = facture.periode_service_debut
+    periode_fin = facture.periode_service_fin
+    if periode_debut is None or periode_fin is None:
+        return 'Période de service absente sur la facture — usage non calculé.'
+
+    montant, description = calculer_ligne_usage_contrat(
+        contrat, periode_debut, periode_fin)
+    if montant is None:
+        return description
+
+    from apps.ventes.services import ajouter_lignes_frais_refactures
+
+    ajouter_lignes_frais_refactures(
+        facture=facture,
+        lignes=[{'designation': description, 'montant_ht': montant}],
+    )
+    return ''
+
+
 def _journaliser_cycle_maintenance_beat(company, contrat_id, periode, *,
-                                        statut_echec, facture_id=None):
+                                        statut_echec, facture_id=None,
+                                        motif=''):
     """Journalise un cycle de facturation SAV dans le journal contrats —
     XCTR5/YSUBS1. Même patron que
     ``maintenance.ContratMaintenanceViewSet._journaliser_cycle_best_effort``
-    (frontière cross-app : import fonction-local, best-effort)."""
+    (frontière cross-app : import fonction-local, best-effort).
+
+    XCTR16 — ``motif`` trace la ligne d'usage omise (aucune lecture
+    disponible) même quand la facture forfaitaire, elle, a bien été générée
+    (le statut reste ``GENERE`` — seule la ligne d'usage est absente)."""
     try:
         from apps.contrats import services as contrats_services
         from apps.contrats.models import CycleFacturationLog
@@ -420,6 +498,7 @@ def _journaliser_cycle_maintenance_beat(company, contrat_id, periode, *,
             periode=periode,
             statut=statut,
             facture_id=facture_id,
+            motif=motif or '',
         )
     except Exception:  # pragma: no cover - défensif (best-effort)
         pass
