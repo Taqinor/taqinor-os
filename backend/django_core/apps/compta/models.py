@@ -2305,6 +2305,14 @@ class PaymentRunLine(models.Model):
         max_length=40, blank=True, default='', verbose_name='RIB')
     iban = models.CharField(
         max_length=40, blank=True, default='', verbose_name='IBAN')
+    # YLEDG8 — référence LÂCHE (id opaque, jamais un FK) vers la
+    # ``stock.FactureFournisseur`` réglée par cette ligne. NULL = ligne libre
+    # (comportement historique intact) : au post du run, seules les lignes
+    # référencées créent leur ``PaiementFournisseur`` + recalculent le statut
+    # de la facture (jamais un import de ``apps.stock.models``).
+    facture_fournisseur_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Facture fournisseur réglée (id stock)')
 
     class Meta:
         verbose_name = 'Ligne de règlement fournisseur'
@@ -6846,6 +6854,17 @@ class AbonnementMonitoring(models.Model):
         null=True, blank=True, verbose_name='Prochaine échéance')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
+    # YSUBS3 — dernière période facturée (garde d'idempotence : ne re-facture
+    # jamais la même `prochaine_echeance`). NULL = jamais facturé
+    # (comportement historique intact tant que personne n'appelle
+    # `facturer`).
+    derniere_facturation = models.DateField(
+        null=True, blank=True, verbose_name='Dernière période facturée')
+    # YSUBS4 — motif de résiliation (obligatoire à la résiliation, posé par
+    # le service ``resilier_abonnement_monitoring``, jamais le viewset).
+    motif_resiliation = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Motif de résiliation')
 
     class Meta:
         verbose_name = 'Abonnement de monitoring'
@@ -8150,3 +8169,94 @@ class DemandeApprobationRib(models.Model):
         if self.statut == self.Statut.APPROUVEE:
             return self.nouveau_rib
         return self.ancien_rib
+
+
+# ── XFAC14 — Compensation AR/AP (netting) pour un tiers client + fournisseur ─
+
+class Compensation(models.Model):
+    """XFAC14 — Compense les factures AR (clients, ventes) et AP
+    (fournisseurs, stock) d'un MÊME tiers réel exploité à la fois comme
+    client et fournisseur (installateur revendeur, sous-traitant).
+
+    ``client_id``/``fournisseur_id`` référencent ``apps.crm.Client`` /
+    ``apps.stock.Fournisseur`` par id opaque (string-ref, jamais un FK
+    cross-app — CLAUDE.md). Les factures compensées vivent sur
+    ``LigneCompensation`` (même principe). Une compensation ``brouillon`` ne
+    touche rien ; sa validation (``services.valider_compensation``) poste
+    l'écriture équilibrée 4411/3421 et enregistre les règlements croisés
+    (``Paiement`` côté ventes, ``PaiementFournisseur`` côté stock) via les
+    services de chaque app — jamais un import de leurs modèles.
+    """
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        VALIDEE = 'validee', 'Validée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='compensations',
+        verbose_name='Société',
+    )
+    reference = models.CharField(
+        max_length=50, blank=True, default='', verbose_name='Référence')
+    client_id = models.PositiveIntegerField(verbose_name='Client (id crm)')
+    client_nom = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Client')
+    fournisseur_id = models.PositiveIntegerField(
+        verbose_name='Fournisseur (id stock)')
+    fournisseur_nom = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Fournisseur')
+    montant_compense = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant compensé')
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices, default=Statut.BROUILLON,
+        verbose_name='Statut')
+    ecriture_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="ID de l'écriture GL")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='compensations_creees',
+        verbose_name='Créée par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+    date_validation = models.DateTimeField(
+        null=True, blank=True, verbose_name='Validée le')
+
+    class Meta:
+        verbose_name = 'Compensation AR/AP'
+        verbose_name_plural = 'Compensations AR/AP'
+        ordering = ['-date_creation', '-id']
+
+    def __str__(self):
+        return f'Compensation {self.reference or self.pk} ({self.statut})'
+
+
+class LigneCompensation(models.Model):
+    """Une facture (AR ou AP) imputée sur une ``Compensation`` (XFAC14),
+    avec le montant retenu pour cette compensation (jamais plus que le
+    solde dû à la création)."""
+    class Type(models.TextChoices):
+        AR = 'ar', 'Facture client (AR)'
+        AP = 'ap', 'Facture fournisseur (AP)'
+
+    compensation = models.ForeignKey(
+        Compensation, on_delete=models.CASCADE, related_name='lignes')
+    type_facture = models.CharField(max_length=2, choices=Type.choices)
+    facture_id = models.PositiveIntegerField(
+        verbose_name='Facture (id ventes ou stock selon type)')
+    reference_facture = models.CharField(
+        max_length=50, blank=True, default='', verbose_name='Référence')
+    montant_impute = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant imputé')
+
+    class Meta:
+        verbose_name = 'Ligne de compensation'
+        verbose_name_plural = 'Lignes de compensation'
+        ordering = ['id']
+
+    def __str__(self):
+        return f'{self.get_type_facture_display()} {self.reference_facture}'

@@ -399,3 +399,21 @@ paiement_fournisseur_enregistre = django.dispatch.Signal()
 # sur le devis lié au chantier quand il existe. ``installations`` n'importe
 # jamais ``apps.ventes`` — même patron que ``devis_accepted`` → installations.
 chantier_annule = django.dispatch.Signal()
+
+# YLEDG10 — un effet À RECEVOIR créé depuis un règlement chèque client
+# (``compta.services.enregistrer_effet_pour_paiement_cheque``) est rejeté par
+# la banque (``compta.services.rejeter_effet``). Arguments : effet
+# (compta.Effet), paiement_id (id du ventes.Paiement d'origine, jamais
+# l'instance — cross-app string-ref), frais (Decimal, peut être 0), company.
+# Abonné dans ce repo : ventes (``apps/ventes/receivers.py``), qui route vers
+# le rejet de paiement existant (YLEDG5) pour rouvrir la facture ET tracer
+# les frais. ``compta`` n'importe jamais ``apps.ventes``.
+effet_rejete = django.dispatch.Signal()
+
+# YSUBS4 — un ``compta.AbonnementMonitoring`` est résilié
+# (``services.resilier_abonnement_monitoring``). Arguments : abonnement
+# (compta.AbonnementMonitoring), motif (str), company. Effet aval : arrêter
+# la supervision monitoring liée (``installation_id``) — aucun abonné dans
+# ce repo pour l'instant (monitoring reste satellite ; câblage futur via son
+# propre ``receivers.py``/``ready()`` sans jamais importer ``apps.compta``).
+abonnement_monitoring_resilie = django.dispatch.Signal()

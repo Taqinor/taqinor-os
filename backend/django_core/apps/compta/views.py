@@ -13,11 +13,14 @@ from django.db import IntegrityError
 from django.http import HttpResponse
 
 from rest_framework import filters, status, viewsets
-from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.decorators import (
+    action, api_view, permission_classes, throttle_classes,
+)
 from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework.throttling import SimpleRateThrottle
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsResponsableOrAdmin
@@ -57,6 +60,7 @@ from .models import (
     ModeleRapprochement,
     ObligationFiscale,
     FamilleTvaNonDeductible,
+    Compensation,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -110,6 +114,7 @@ from .serializers import (
     ModeleRapprochementSerializer,
     ObligationFiscaleSerializer,
     FamilleTvaNonDeductibleSerializer,
+    CompensationSerializer,
 )
 
 
@@ -930,6 +935,134 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             return self._rapprochement_csv(
                 rapport, 'rapprochement_fournisseurs.csv')
         return Response(rapport)
+
+    @action(detail=False, methods=['get'], url_path='loi-69-21')
+    def loi_69_21(self, request):
+        """XFAC2 — Conformité loi 69-21 : factures fournisseur impayées au
+        delà du délai légal (60 j défaut, 120 j max), avec amende estimée.
+        ``?periode=YYYY-MM`` borne au trimestre civil (déclaration DGI) ;
+        ``?export=csv`` télécharge."""
+        periode = request.query_params.get('periode') or None
+        rapport = selectors.exposition_69_21(
+            request.user.company, periode=periode)
+        if request.query_params.get('export') == 'csv':
+            return self._loi_69_21_csv(rapport)
+        return Response(rapport)
+
+    @staticmethod
+    def _loi_69_21_csv(rapport):
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, delimiter=';', lineterminator='\r\n')
+        writer.writerow([
+            'facture_id', 'reference', 'fournisseur_id', 'fournisseur_nom',
+            'date_emission', 'delai_legal_jours', 'date_echeance_legale',
+            'jours_depassement', 'montant_du', 'amende_estimee'])
+        for ligne in rapport['lignes']:
+            writer.writerow([
+                ligne['facture_id'], ligne['reference'],
+                ligne['fournisseur_id'], ligne['fournisseur_nom'],
+                ligne['date_emission'], ligne['delai_legal_jours'],
+                ligne['date_echeance_legale'], ligne['jours_depassement'],
+                ligne['montant_du'], ligne['amende_estimee']])
+        resp = HttpResponse(
+            buffer.getvalue(), content_type='text/csv; charset=utf-8')
+        resp['Content-Disposition'] = 'attachment; filename="loi_69_21.csv"'
+        return resp
+
+    @action(detail=False, methods=['get'], url_path='journal-items')
+    def journal_items(self, request):
+        """ZACC4 — Vue « Journal Items » : ledger PLAT ligne-à-ligne, toutes
+        écritures confondues, filtrable par ``journal``/``compte``/
+        ``tiers_type``+``tiers_id``/``date_debut``/``date_fin``/
+        ``lettrage`` (``lettrees``/``non_lettrees``)/``validees`` (``1``/
+        ``0``). Paginé (``?limit=``/``?offset=``, défaut 200/0) ;
+        ``?export=csv``/``?export=xlsx`` télécharge TOUT (non paginé)."""
+        params = request.query_params
+        validees = params.get('validees')
+        if validees == '1':
+            validees_bool = True
+        elif validees == '0':
+            validees_bool = False
+        else:
+            validees_bool = None
+        lignes = selectors.journal_items(
+            request.user.company,
+            journal=params.get('journal') or None,
+            compte=params.get('compte') or None,
+            tiers_type=params.get('tiers_type') or None,
+            tiers_id=params.get('tiers_id') or None,
+            date_debut=params.get('date_debut') or None,
+            date_fin=params.get('date_fin') or None,
+            lettrage=params.get('lettrage') or None,
+            validees=validees_bool,
+        )
+        export = params.get('export')
+        if export in ('csv', 'xlsx'):
+            return self._journal_items_export(lignes, export)
+        try:
+            limit = int(params.get('limit', 200))
+        except (TypeError, ValueError):
+            limit = 200
+        try:
+            offset = int(params.get('offset', 0))
+        except (TypeError, ValueError):
+            offset = 0
+        limit = max(1, min(limit, 1000))
+        offset = max(0, offset)
+        page = lignes[offset:offset + limit]
+        return Response({'count': len(lignes), 'results': page})
+
+    @staticmethod
+    def _journal_items_export(lignes, export):
+        headers = [
+            'id', 'date_ecriture', 'journal_code', 'ecriture_reference',
+            'compte_numero', 'compte_intitule', 'libelle', 'tiers_type',
+            'tiers_id', 'debit', 'credit', 'lettrage', 'statut',
+        ]
+        rows = [[ligne[h] for h in headers] for ligne in lignes]
+        if export == 'xlsx':
+            from apps.records.xlsx import build_xlsx_response
+            return build_xlsx_response(
+                'journal-items.xlsx', headers, rows,
+                sheet_title='Journal Items')
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, delimiter=';', lineterminator='\r\n')
+        writer.writerow(headers)
+        for row in rows:
+            writer.writerow(row)
+        resp = HttpResponse(
+            buffer.getvalue(), content_type='text/csv; charset=utf-8')
+        resp['Content-Disposition'] = (
+            'attachment; filename="journal-items.csv"')
+        return resp
+
+    @action(detail=False, methods=['get'], url_path='controle-ice')
+    def controle_ice(self, request):
+        """ZACC14 — Tiers (clients entreprise + fournisseurs) à ICE manquant
+        ou de format invalide (≠ 15 chiffres). ``?export=csv`` télécharge."""
+        rapport = selectors.controle_identifiants_tiers(request.user.company)
+        if request.query_params.get('export') == 'csv':
+            return self._controle_ice_csv(rapport)
+        return Response(rapport)
+
+    @staticmethod
+    def _controle_ice_csv(rapport):
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, delimiter=';', lineterminator='\r\n')
+        writer.writerow(['type_tiers', 'id', 'nom', 'ice', 'if_fiscal', 'motif'])
+        for tiers in rapport['clients']:
+            writer.writerow([
+                'client', tiers['id'], tiers['nom'], tiers['ice'],
+                tiers['if_fiscal'], tiers['motif']])
+        for tiers in rapport['fournisseurs']:
+            writer.writerow([
+                'fournisseur', tiers['id'], tiers['nom'], tiers['ice'],
+                tiers['if_fiscal'], tiers['motif']])
+        resp = HttpResponse(
+            buffer.getvalue(), content_type='text/csv; charset=utf-8')
+        resp['Content-Disposition'] = (
+            'attachment; filename="controle_ice.csv"')
+        return resp
 
 
 # ── YLEDG6 — Lettrage / délettrage (FG112) ──────────────────────────────────
@@ -2094,6 +2227,22 @@ class PaymentRunViewSet(_ComptaBaseViewSet):
         return super().destroy(request, *args, **kwargs)
 
     @action(detail=True, methods=['post'])
+    def proposer(self, request, pk=None):
+        """YLEDG8 — Remplit la campagne BROUILLON depuis les échéances
+        fournisseur dues (``?date_limite=YYYY-MM-DD`` optionnel). Idempotent :
+        n'ajoute jamais deux fois la même facture fournisseur."""
+        run = self.get_object()  # scopé société par TenantMixin.
+        try:
+            services.proposer_lignes_payment_run(
+                run, date_limite=request.data.get('date_limite') or None)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        run.refresh_from_db()
+        return Response(self.get_serializer(run).data)
+
+    @action(detail=True, methods=['post'])
     def figer(self, request, pk=None):
         """Fige la proposition de règlement (brouillon → proposée, FG133)."""
         run = self.get_object()  # scopé société par TenantMixin.
@@ -2360,6 +2509,31 @@ class NoteFraisViewSet(_ComptaBaseViewSet):
                 {'detail': exc.messages[0] if exc.messages else str(exc)},
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(note).data)
+
+    @action(detail=False, methods=['get'])
+    def analyse(self, request):
+        """ZACC7 — Pivot des frais par employé/catégorie/mois
+        (``?group_by=employe|categorie|mois``, défaut employe) sur la
+        période ``?date_debut=``/``?date_fin=``. ``?export=xlsx`` télécharge."""
+        params = request.query_params
+        group_by = params.get('group_by') or 'employe'
+        if group_by not in ('employe', 'categorie', 'mois'):
+            group_by = 'employe'
+        rapport = selectors.analyse_notes_frais(
+            request.user.company,
+            date_debut=params.get('date_debut') or None,
+            date_fin=params.get('date_fin') or None,
+            group_by=group_by)
+        if params.get('export') == 'xlsx':
+            from apps.records.xlsx import build_xlsx_response
+            headers = [
+                'cle', 'libelle', 'total', 'nombre', 'hors_politique_total']
+            rows = [[ligne[h] for h in headers]
+                    for ligne in rapport['lignes']]
+            return build_xlsx_response(
+                'analyse-notes-frais.xlsx', headers, rows,
+                sheet_title='Analyse frais')
+        return Response(rapport)
 
 
 class PlafondNoteFraisViewSet(_ComptaBaseViewSet):
@@ -4009,6 +4183,143 @@ def desinscription_publique(request, token):
     return Response({'desinscrit': True, 'destinataire': resultat})
 
 
+# ── XFAC26/27 — Portail client self-service : relevé + contestation ───────
+# Le client s'identifie par le token du portail EXISTANT
+# (``ComptePortailClient.token_acces``, FG228) — jamais une 2ᵉ auth. Les
+# données de facturation (relevé, factures) sont lues via
+# ``apps.ventes.selectors`` (jamais un import de ``apps.ventes.models``).
+
+class _PortailComptaThrottle(SimpleRateThrottle):
+    """Débit du portail compta par IP (même patron que
+    ``contrats.public_views.ContratsPortailThrottle`` — sans dépendance
+    externe)."""
+    scope = 'compta_portail'
+    rate = '30/minute'
+
+    def get_rate(self):
+        return self.rate
+
+    def get_cache_key(self, request, view):
+        ident = self.get_ident(request)
+        return self.cache_format % {'scope': self.scope, 'ident': ident}
+
+
+def _portail_noindex(response):
+    response['X-Robots-Tag'] = 'noindex, nofollow, noarchive'
+    return response
+
+
+def _portail_not_found():
+    return _portail_noindex(Response(
+        {'detail': "Ce lien de portail est invalide ou n'existe pas."},
+        status=status.HTTP_404_NOT_FOUND,
+    ))
+
+
+def _resoudre_compte_portail(token):
+    return selectors.compte_portail_par_token(token)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([_PortailComptaThrottle])
+def portail_mon_releve(request, token):
+    """XFAC26 — Relevé de compte self-service : postes ouverts, solde
+    courant, mini balance âgée (0-30/31-60/61-90/90+).
+
+    GET /api/django/compta/portail/<token>/mon-releve/
+
+    Résout le compte portail par token (404 si invalide/inconnu, sans fuite
+    d'existence) puis lit le relevé via ``apps.ventes.selectors`` — jamais un
+    import de ``apps.ventes.models``. Le client ne voit JAMAIS le compte
+    d'un autre (le sélecteur est borné à ``compte.client_id``)."""
+    compte = _resoudre_compte_portail(token)
+    if compte is None:
+        return _portail_not_found()
+
+    from apps.ventes import selectors as ventes_selectors
+    client = compte.client
+    if client is None or client.company_id != compte.company_id:
+        return _portail_not_found()
+
+    data = ventes_selectors.releve_client_portail(client)
+    return _portail_noindex(Response(data))
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([_PortailComptaThrottle])
+def portail_mon_releve_pdf(request, token):
+    """XFAC26 — Téléchargement du relevé de compte PDF (même rendu que
+    l'écran interne)."""
+    compte = _resoudre_compte_portail(token)
+    if compte is None:
+        return _portail_not_found()
+
+    from apps.ventes import selectors as ventes_selectors
+    client = compte.client
+    if client is None or client.company_id != compte.company_id:
+        return _portail_not_found()
+
+    try:
+        pdf_bytes = ventes_selectors.releve_client_pdf_bytes(client)
+    except Exception as exc:
+        return _portail_noindex(Response(
+            {'detail': f'PDF indisponible : {exc}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR))
+    resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+    resp['Content-Disposition'] = (
+        f'inline; filename="Releve_{client.nom}.pdf"')
+    return _portail_noindex(resp)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@throttle_classes([_PortailComptaThrottle])
+def portail_contester_facture(request, token, facture_id):
+    """XFAC27 — Le client conteste UNE de ses factures depuis le portail.
+
+    POST /api/django/compta/portail/<token>/factures/<facture_id>/contester/
+    body: {"motif": "montant"|"prestation"|"deja_payee"|"autre",
+           "commentaire": str (optionnel)}
+
+    Crée une ``litiges.Reclamation`` (type FINANCIER, ``bloque_relances``
+    True — LITIGE3 suspend automatiquement les relances de cette facture),
+    trace la contestation sur le chatter de la facture (``apps.ventes``) et
+    notifie best-effort le créateur de la facture. La facture DOIT
+    appartenir au client résolu par le token (sinon 404, aucune fuite)."""
+    compte = _resoudre_compte_portail(token)
+    if compte is None:
+        return _portail_not_found()
+
+    from apps.ventes import selectors as ventes_selectors
+    from apps.ventes import services as ventes_services
+
+    facture = ventes_selectors.get_facture_scoped(compte.company, facture_id)
+    if facture is None or facture.client_id != compte.client_id:
+        return _portail_not_found()
+
+    motifs = {
+        'montant': 'Montant contesté',
+        'prestation': 'Prestation contestée',
+        'deja_payee': 'Facture déjà payée',
+        'autre': 'Autre motif',
+    }
+    motif = (request.data.get('motif') or '').strip()
+    motif_label = motifs.get(motif, motifs['autre'])
+    commentaire = (request.data.get('commentaire') or '').strip()
+
+    reclamation = services.creer_reclamation_portail(
+        facture, motif_label=motif_label, commentaire=commentaire)
+
+    ventes_services.enregistrer_contestation_portail(
+        facture, motif_label=motif_label, commentaire=commentaire)
+
+    return _portail_noindex(Response(
+        {'reclamation_id': reclamation.id, 'reference': reclamation.reference},
+        status=status.HTTP_201_CREATED))
+
+
 # ── FG203 — Récupération des devis abandonnés ──────────────────────────────
 
 class RelanceDevisAbandonneViewSet(_ComptaBaseViewSet):
@@ -4826,8 +5137,11 @@ class RegleUpsellViewSet(_ComptaBaseViewSet):
 class AbonnementMonitoringViewSet(_ComptaBaseViewSet):
     """Abonnements de monitoring (supervision récurrente, FG244). La société est
     posée côté serveur ; la 1re échéance est calculée à la création ;
-    ``renouveler`` avance l'échéance ; ``suspendre`` / ``resilier`` changent le
-    statut ; ``a_echeance`` liste les abonnements arrivant à échéance."""
+    ``renouveler`` avance SEULEMENT l'échéance (YSUBS3 : découplé de la
+    facturation) ; ``facturer`` émet la facture standard de la période due
+    (YSUBS3) ; ``suspendre`` / ``resilier`` passent par les transitions
+    gardées de service (YSUBS4 — jamais un PATCH direct de ``statut``) ;
+    ``a_echeance`` liste les abonnements arrivant à échéance."""
     queryset = AbonnementMonitoring.objects.all()
     serializer_class = AbonnementMonitoringSerializer
     filter_backends = [filters.OrderingFilter]
@@ -4844,18 +5158,39 @@ class AbonnementMonitoringViewSet(_ComptaBaseViewSet):
         return Response(self.get_serializer(abonnement).data)
 
     @action(detail=True, methods=['post'])
+    def facturer(self, request, pk=None):
+        """YSUBS3 — Émet la facture standard de la période due (garde
+        d'idempotence par ``derniere_facturation`` — refuse de re-facturer
+        la même période)."""
+        abonnement = self.get_object()
+        try:
+            facture = services.facturer_abonnement_monitoring(
+                abonnement, user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {'facture_id': facture.id, 'reference': facture.reference,
+             'montant_ttc': str(facture.montant_ttc)},
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
     def suspendre(self, request, pk=None):
         abonnement = self.get_object()
-        if abonnement.statut == AbonnementMonitoring.Statut.ACTIF:
-            abonnement.statut = AbonnementMonitoring.Statut.SUSPENDU
-            abonnement.save(update_fields=['statut'])
+        services.suspendre_abonnement_monitoring(abonnement)
         return Response(self.get_serializer(abonnement).data)
 
     @action(detail=True, methods=['post'])
     def resilier(self, request, pk=None):
         abonnement = self.get_object()
-        abonnement.statut = AbonnementMonitoring.Statut.RESILIE
-        abonnement.save(update_fields=['statut'])
+        try:
+            services.resilier_abonnement_monitoring(
+                abonnement, motif=request.data.get('motif', ''))
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(abonnement).data)
 
     @action(detail=False, methods=['get'])
@@ -4935,6 +5270,47 @@ class ModeleRapprochementViewSet(_ComptaBaseViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(
             {'ecriture_id': ecriture.id, 'reference': ecriture.reference})
+
+
+# ── XFAC14 — Compensation AR/AP (netting) ──────────────────────────────────
+
+class CompensationViewSet(_ComptaBaseViewSet):
+    """Compensation AR/AP pour un tiers à la fois client et fournisseur
+    (XFAC14). La création passe par ``services.creer_compensation`` (garde-
+    fous de sur-compensation) ; ``valider`` poste l'écriture 4411/3421 +
+    enregistre les règlements croisés. Société scopée ; Admin/Responsable."""
+    queryset = Compensation.objects.prefetch_related('lignes').all()
+    serializer_class = CompensationSerializer
+    http_method_names = ['get', 'post', 'head', 'options']
+
+    def create(self, request, *args, **kwargs):
+        data = request.data
+        try:
+            compensation = services.creer_compensation(
+                request.user.company,
+                client_id=data.get('client_id'),
+                fournisseur_id=data.get('fournisseur_id'),
+                lignes=data.get('lignes') or [],
+                user=request.user,
+            )
+        except (services.CompensationError, DjangoValidationError) as exc:
+            detail = exc.messages[0] if getattr(exc, 'messages', None) else str(exc)
+            return Response({'detail': detail}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(compensation).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def valider(self, request, pk=None):
+        """Valide la compensation : poste l'écriture équilibrée + les
+        règlements croisés (idempotent — déjà validée = no-op)."""
+        compensation = self.get_object()
+        try:
+            services.valider_compensation(compensation, user=request.user)
+        except (services.CompensationError, DjangoValidationError) as exc:
+            detail = exc.messages[0] if getattr(exc, 'messages', None) else str(exc)
+            return Response({'detail': detail}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(compensation).data)
 
 
 # ── COMPTA3 — Comptes auxiliaires tiers ────────────────────────────────────

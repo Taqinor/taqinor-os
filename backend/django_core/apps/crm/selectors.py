@@ -25,6 +25,29 @@ def find_client_by_email(from_email, company=None):
         email__iexact=from_email.strip()).first()
 
 
+def clients_pour_controle_ice(company):
+    """ZACC14 — Clients ENTREPRISE de la société, pour le contrôle
+    d'identifiants légaux (ICE/IF) côté compta. Point d'entrée cross-app
+    (jamais un import de ``apps.crm.models`` en dehors de ce module) :
+    seuls les clients de type ``entreprise`` sont pertinents (un particulier
+    n'a pas d'ICE). Lecture seule ; renvoie une liste de dicts ``{'id',
+    'nom', 'ice', 'if_fiscal'}``."""
+    from .models import Client
+
+    qs = (Client.objects
+          .filter(company=company, type_client=Client.TypeClient.ENTREPRISE)
+          .order_by('id'))
+    return [
+        {
+            'id': client.id,
+            'nom': f'{client.nom} {client.prenom or ""}'.strip(),
+            'ice': client.ice or '',
+            'if_fiscal': client.if_fiscal or '',
+        }
+        for client in qs
+    ]
+
+
 def find_client_by_phone(company, telephone):
     """XSAV26 — Client de `company` dont le téléphone correspond au numéro
     donné, normalisé via `apps.ventes.utils.phone.normalize_ma_phone`.

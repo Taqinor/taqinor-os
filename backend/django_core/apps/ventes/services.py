@@ -1932,6 +1932,16 @@ def creer_facture_contrat(*, contrat, user, company):
     contrat.derniere_facturation = today
     contrat.save(update_fields=['derniere_facturation'])
 
+    # YSUBS6 — cette facture est créée EMISE directement (redevance de
+    # maintenance récurrente, jamais de passage par brouillon/`emettre`) : le
+    # bus documentaire de YLEDG1 ne la voit donc jamais sans émission
+    # explicite ici. Émettre `facture_emise` pour que l'auto-écriture
+    # compta (togglée par COMPTA_AUTO_ECRITURES, OFF par défaut) se déclenche
+    # comme sur une facture émise via l'écran (comportement inchangé si le
+    # toggle reste OFF).
+    from core.events import facture_emise
+    facture_emise.send(sender=Facture, instance=facture, company=company)
+
     logger.info(
         'FG40: facture %s créée pour contrat #%s (company %s)',
         facture.reference, contrat.pk, company.id)
@@ -2269,6 +2279,17 @@ def _creer_paiement_groupe(facture, montant, mode, date_paiement, user,
     paiement_enregistre.send(
         sender=Paiement, instance=paiement, company=facture.company)
     return paiement
+
+
+def enregistrer_contestation_portail(facture, *, motif_label, commentaire=''):
+    """XFAC27 — Trace côté ventes la contestation d'une facture ouverte par
+    le client depuis le portail self-service (``apps.compta`` appelle CETTE
+    fonction, jamais un import direct de ``apps.ventes.models``/``activity``).
+    Ne change AUCUN statut de la facture — seule la réclamation créée côté
+    ``apps.litiges`` suspend les relances (LITIGE3)."""
+    from . import activity
+    return activity.log_facture_contestation_portail(
+        facture, motif_label, commentaire=commentaire)
 
 
 def calculer_date_echeance(*, client, date_emission):

@@ -66,6 +66,38 @@ def valid_produit_ids(company, ids):
     )
 
 
+def factures_fournisseur_ouvertes(company, *, date_limite=None):
+    """YLEDG8 — Factures fournisseur à solde dû > 0, pour proposer les
+    échéances d'un ``compta.PaymentRun``. Triées par ``date_echeance``
+    (échéances les plus proches / sans date d'abord — comme la balance
+    âgée). ``date_limite`` (optionnel) ne retient que les échéances à cette
+    date ou avant. Lecture seule ; renvoie une liste de dicts."""
+    from .models import FactureFournisseur
+
+    qs = (FactureFournisseur.objects
+          .filter(company=company)
+          .select_related('fournisseur')
+          .order_by('date_echeance', 'id'))
+    if date_limite:
+        qs = qs.filter(date_echeance__lte=date_limite)
+    out = []
+    for facture in qs:
+        solde = facture.solde_du
+        if not solde:
+            continue
+        out.append({
+            'facture_id': facture.id,
+            'reference': facture.reference,
+            'fournisseur_id': facture.fournisseur_id,
+            'fournisseur_nom': (
+                facture.fournisseur.nom if facture.fournisseur else ''),
+            'date_echeance': facture.date_echeance,
+            'montant': solde,
+            'rib': getattr(facture.fournisseur, 'rib', '') or '',
+        })
+    return out
+
+
 def get_fournisseur_by_id(company, fournisseur_id):
     """FG83 — Renvoie un Fournisseur scopé société par son id, ou None.
     Point d'accès cross-app : SAV utilise ce sélecteur pour ne pas importer
@@ -73,6 +105,25 @@ def get_fournisseur_by_id(company, fournisseur_id):
     from .models import Fournisseur
     return Fournisseur.objects.filter(
         id=fournisseur_id, company=company).first()
+
+
+def fournisseurs_pour_controle_ice(company):
+    """ZACC14 — Fournisseurs de la société, pour le contrôle d'identifiants
+    légaux (ICE/IF) côté compta. Point d'entrée cross-app (jamais un import
+    de ``apps.stock.models`` en dehors de ce module). Lecture seule ;
+    renvoie une liste de dicts ``{'id', 'nom', 'ice', 'if_fiscal'}``."""
+    from .models import Fournisseur
+
+    qs = Fournisseur.objects.filter(company=company).order_by('id')
+    return [
+        {
+            'id': fournisseur.id,
+            'nom': fournisseur.nom,
+            'ice': fournisseur.ice or '',
+            'if_fiscal': fournisseur.identifiant_fiscal or '',
+        }
+        for fournisseur in qs
+    ]
 
 
 def search_fournisseurs(company, q, *, limit=12):
@@ -496,6 +547,96 @@ def encours_fournisseurs_par_tiers(company):
         entry['encours'] += Decimal(du)
         entry['references'].append(facture.reference)
     return [v for v in par_fournisseur.values() if v['encours'] > 0]
+
+
+def exposition_69_21(
+        company, periode=None, *, delai_defaut=60, delai_max=120):
+    """XFAC2 — Conformité loi 69-21 (délais de paiement légaux) : liste les
+    factures fournisseur IMPAYÉES (``solde_du`` > 0) dépassant leur délai
+    légal de paiement, avec l'amende estimée.
+
+    Délai applicable par facture = ``Fournisseur.delai_paiement_jours`` s'il
+    est renseigné (> 0 — XPUR6, sinon 0 = « comptant, échéance manuelle »),
+    sinon ``delai_defaut`` (60 j, le défaut légal 69-21) borné à
+    ``delai_max`` (120 j max même si un délai convenu plus long est saisi).
+    L'amende est estimée avec un taux annuel simplifié (majoration légale par
+    mois de dépassement) appliqué au montant TTC dû, prorata du nombre de
+    mois entiers de dépassement — lecture seule, aucune écriture, aucun
+    modèle exposé hors de ce module.
+
+    ``periode`` (optionnel, ``'YYYY-MM'``) filtre les factures dont
+    ``date_facture`` tombe dans le trimestre civil contenant ce mois (pour
+    la déclaration trimestrielle DGI) ; sans periode, toutes les factures
+    impayées sont considérées.
+
+    Renvoie une liste de dicts : ``{facture_id, reference, fournisseur_id,
+    fournisseur_nom, date_emission, delai_legal_jours, date_echeance_legale,
+    jours_depassement, montant_du, amende_estimee}`` — uniquement les
+    factures réellement en dépassement (jours_depassement > 0). Une facture
+    payée (solde_du == 0) est exclue."""
+    from datetime import timedelta
+    from decimal import Decimal
+
+    from django.utils import timezone
+
+    from .models import FactureFournisseur
+
+    today = timezone.localdate()
+
+    qs = (FactureFournisseur.objects
+          .filter(company=company, date_facture__isnull=False)
+          .select_related('fournisseur'))
+
+    if periode:
+        annee, mois = (int(part) for part in periode.split('-'))
+        trimestre_debut_mois = ((mois - 1) // 3) * 3 + 1
+        mois_fin = trimestre_debut_mois + 2
+        annee_fin = annee
+        if mois_fin > 12:
+            mois_fin -= 12
+            annee_fin += 1
+        from datetime import date as _date
+        borne_debut = _date(annee, trimestre_debut_mois, 1)
+        if mois_fin == 12:
+            borne_fin = _date(annee_fin, 12, 31)
+        else:
+            borne_fin = _date(annee_fin, mois_fin + 1, 1) - timedelta(days=1)
+        qs = qs.filter(date_facture__gte=borne_debut,
+                       date_facture__lte=borne_fin)
+
+    lignes = []
+    # Taux directeur BAM simplifié + majoration légale : 1 %/mois de
+    # dépassement (estimation, configurable côté founder si besoin plus fin).
+    taux_mensuel = Decimal('0.01')
+    for facture in qs:
+        solde = facture.solde_du
+        if not solde:
+            continue
+        fournisseur = facture.fournisseur
+        delai = fournisseur.delai_paiement_jours if fournisseur else 0
+        delai_legal = min(delai, delai_max) if delai else delai_defaut
+        date_echeance_legale = facture.date_facture + timedelta(days=delai_legal)
+        jours_depassement = (today - date_echeance_legale).days
+        if jours_depassement <= 0:
+            continue
+        mois_depassement = (jours_depassement // 30) + 1
+        amende_estimee = (
+            Decimal(solde) * taux_mensuel * mois_depassement
+        ).quantize(Decimal('0.01'))
+        lignes.append({
+            'facture_id': facture.id,
+            'reference': facture.reference,
+            'fournisseur_id': fournisseur.id if fournisseur else None,
+            'fournisseur_nom': fournisseur.nom if fournisseur else '',
+            'date_emission': facture.date_facture,
+            'delai_legal_jours': delai_legal,
+            'date_echeance_legale': date_echeance_legale,
+            'jours_depassement': jours_depassement,
+            'montant_du': Decimal(solde),
+            'amende_estimee': amende_estimee,
+        })
+    lignes.sort(key=lambda e: e['jours_depassement'], reverse=True)
+    return lignes
 
 
 def lignes_import_depuis_bcf(company, bon_commande_id):

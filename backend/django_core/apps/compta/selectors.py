@@ -92,6 +92,73 @@ def grand_livre(company, *, compte=None, date_debut=None, date_fin=None,
     return sorted(resultat.values(), key=lambda b: b['numero'])
 
 
+# ── ZACC4 — Journal Items : ledger PLAT ligne-à-ligne (toutes écritures) ────
+
+def journal_items(company, *, journal=None, compte=None, tiers_type=None,
+                  tiers_id=None, date_debut=None, date_fin=None,
+                  lettrage=None, validees=None):
+    """Vue plate de CHAQUE ``LigneEcriture`` (débit/crédit), toutes écritures
+    confondues, filtrable par journal/compte/tiers/période/lettrage/statut —
+    le « Journal Items » d'Odoo (indispensable pour l'audit et le pointage
+    transversal, complète ``grand_livre`` qui GROUPE par compte).
+
+    ``journal`` : code du journal (ex. 'BNK', 'VTE') ou instance ``Journal``.
+    ``lettrage`` : ``'lettrees'`` (lettrage non vide), ``'non_lettrees'``
+    (lettrage vide), ou ``None`` (toutes).
+    ``validees`` : ``True``/``False``/``None`` (toutes, défaut).
+
+    Renvoie une liste de dicts triée par date pièce puis id : ``{'id',
+    'date_ecriture', 'journal_code', 'ecriture_reference', 'compte_numero',
+    'compte_intitule', 'libelle', 'tiers_type', 'tiers_id', 'debit',
+    'credit', 'lettrage', 'statut'}``. Lecture seule, company-scopée."""
+    qs = (LigneEcriture.objects
+          .filter(company=company)
+          .select_related('compte', 'ecriture', 'ecriture__journal')
+          .order_by('ecriture__date_ecriture', 'id'))
+    if date_debut:
+        qs = qs.filter(ecriture__date_ecriture__gte=_as_date(date_debut))
+    if date_fin:
+        qs = qs.filter(ecriture__date_ecriture__lte=_as_date(date_fin))
+    if journal:
+        code = getattr(journal, 'code', journal)
+        qs = qs.filter(ecriture__journal__code=code)
+    if compte:
+        numero = getattr(compte, 'numero', compte)
+        qs = qs.filter(compte__numero=numero)
+    if tiers_type:
+        qs = qs.filter(tiers_type=tiers_type)
+    if tiers_id:
+        qs = qs.filter(tiers_id=tiers_id)
+    if lettrage == 'lettrees':
+        qs = qs.exclude(lettrage='')
+    elif lettrage == 'non_lettrees':
+        qs = qs.filter(lettrage='')
+    if validees is True:
+        qs = qs.filter(ecriture__statut=EcritureComptable.Statut.VALIDEE)
+    elif validees is False:
+        qs = qs.exclude(ecriture__statut=EcritureComptable.Statut.VALIDEE)
+
+    out = []
+    for ligne in qs:
+        ecriture = ligne.ecriture
+        out.append({
+            'id': ligne.id,
+            'date_ecriture': ecriture.date_ecriture,
+            'journal_code': ecriture.journal.code if ecriture.journal else '',
+            'ecriture_reference': ecriture.reference,
+            'compte_numero': ligne.compte.numero,
+            'compte_intitule': ligne.compte.intitule,
+            'libelle': ligne.libelle or ecriture.libelle,
+            'tiers_type': ligne.tiers_type,
+            'tiers_id': ligne.tiers_id,
+            'debit': ligne.debit,
+            'credit': ligne.credit,
+            'lettrage': ligne.lettrage,
+            'statut': ecriture.statut,
+        })
+    return out
+
+
 # ── FG111 / COMPTA20 — Balance générale (trial balance) ────────────────────
 
 def balance_generale(company, *, date_debut=None, date_fin=None,
@@ -3120,6 +3187,61 @@ def frais_refacturables_non_factures(company, *, client_id=None):
     return qs.order_by('date_frais', 'id')
 
 
+# ── ZACC7 — Analyse des frais (pivot employé × catégorie × période) ───────
+
+def analyse_notes_frais(company, *, date_debut=None, date_fin=None,
+                        group_by='employe'):
+    """ZACC7 — Agrège les ``NoteFrais`` (non brouillon) de la période par
+    ``group_by`` ∈ {'employe', 'categorie', 'mois'} — le pivot « Expense
+    Analysis » qui manquait (l'écran ne listait que les notes une par une).
+
+    Renvoie ``{'lignes': [{'cle', 'libelle', 'total', 'nombre',
+    'hors_politique_total'}], 'total_general'}`` — ``hors_politique_total``
+    (XACC27, best-effort : 0 si le champ est absent d'anciennes notes) est
+    la part des montants flaggés hors politique dans ce groupe. Exclut les
+    notes ``brouillon`` (jamais soumises — pas encore une dépense engagée
+    validable). Lecture seule ; company-scopée."""
+    qs = (NoteFrais.objects
+          .filter(company=company)
+          .exclude(statut=NoteFrais.Statut.BROUILLON)
+          .select_related('employe'))
+    if date_debut:
+        qs = qs.filter(date_frais__gte=_as_date(date_debut))
+    if date_fin:
+        qs = qs.filter(date_frais__lte=_as_date(date_fin))
+
+    def _cle_libelle(note):
+        if group_by == 'categorie':
+            return note.categorie, note.get_categorie_display()
+        if group_by == 'mois':
+            mois = note.date_frais.strftime('%Y-%m') if note.date_frais else ''
+            return mois, mois
+        # défaut : 'employe'
+        emp = note.employe
+        nom = getattr(emp, 'get_full_name', lambda: '')() or (
+            getattr(emp, 'username', '') if emp else '')
+        return (emp.id if emp else None), (nom or '—')
+
+    buckets = {}
+    total_general = Decimal('0')
+    for note in qs:
+        cle, libelle = _cle_libelle(note)
+        bucket = buckets.setdefault(cle, {
+            'cle': cle, 'libelle': libelle, 'total': Decimal('0'),
+            'nombre': 0, 'hors_politique_total': Decimal('0'),
+        })
+        montant = note.montant or Decimal('0')
+        bucket['total'] += montant
+        bucket['nombre'] += 1
+        if getattr(note, 'hors_politique', False):
+            bucket['hors_politique_total'] += montant
+        total_general += montant
+
+    lignes = sorted(
+        buckets.values(), key=lambda b: b['total'], reverse=True)
+    return {'lignes': lignes, 'total_general': total_general}
+
+
 # ── XACC29 — Rapport de continuité des séquences (gap detection) ──────────
 
 _SEQ_SUFFIX_RE = re.compile(r'^(.*?)-(\d+)$')
@@ -3306,6 +3428,61 @@ def rapprochement_auxiliaire_fournisseurs(company, date=None):
         ecart_total += ecart
     lignes.sort(key=lambda e: abs(e['ecart']), reverse=True)
     return {'lignes': lignes, 'ecart_total': ecart_total}
+
+
+def exposition_69_21(company, periode=None):
+    """XFAC2 — Conformité loi 69-21 (délais de paiement légaux fournisseurs).
+
+    Thin wrapper company-scopé sur ``stock.selectors.exposition_69_21``
+    (lecture des factures fournisseur via le sélecteur de l'app cible —
+    jamais un import de ``apps.stock.models`` ici). ``periode`` optionnel
+    (``'YYYY-MM'``) borne au trimestre civil pour la déclaration DGI.
+    Renvoie ``{'lignes': [...], 'total_amende_estimee': Decimal}``."""
+    from apps.stock import selectors as stock_selectors
+
+    lignes = stock_selectors.exposition_69_21(company, periode=periode)
+    total = sum((ligne['amende_estimee'] for ligne in lignes), Decimal('0'))
+    return {'lignes': lignes, 'total_amende_estimee': total}
+
+
+_ICE_RE = re.compile(r'^\d{15}$')
+
+
+def controle_identifiants_tiers(company):
+    """ZACC14 — Liste les tiers (clients ENTREPRISE + fournisseurs) dont
+    l'ICE est vide ou de format invalide (≠ 15 chiffres) — miroir marocain
+    du contrôle VIES, utile pour la conformité facture/déclaration DGI et
+    l'e-invoicing. Lecture via ``apps.crm.selectors`` /
+    ``apps.stock.selectors`` (jamais un import de leurs modèles). Pas de
+    service externe de vérification (aucune API publique ICE au Maroc à ce
+    jour) : contrôle de FORMAT uniquement.
+
+    Renvoie ``{'clients': [...], 'fournisseurs': [...]}`` où chaque entrée
+    est ``{'id', 'nom', 'ice', 'if_fiscal', 'motif'}`` — motif ∈
+    {'ice_absent', 'ice_invalide'}. Les tiers conformes sont exclus."""
+    from apps.crm import selectors as crm_selectors
+    from apps.stock import selectors as stock_selectors
+
+    def _motif(ice):
+        if not ice:
+            return 'ice_absent'
+        if not _ICE_RE.match(ice):
+            return 'ice_invalide'
+        return None
+
+    clients = []
+    for tiers in crm_selectors.clients_pour_controle_ice(company):
+        motif = _motif(tiers['ice'])
+        if motif:
+            clients.append({**tiers, 'motif': motif})
+
+    fournisseurs = []
+    for tiers in stock_selectors.fournisseurs_pour_controle_ice(company):
+        motif = _motif(tiers['ice'])
+        if motif:
+            fournisseurs.append({**tiers, 'motif': motif})
+
+    return {'clients': clients, 'fournisseurs': fournisseurs}
 
 
 def ecatalogue_public_par_token(token):

@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     desinscription_publique, webhook_brevo_campagne, webhook_sms_stop,
+    portail_mon_releve, portail_mon_releve_pdf, portail_contester_facture,
     AppelTelephoniqueViewSet,
     BaremeIndemniteViewSet, BordereauRemiseViewSet, BudgetViewSet,
     CaisseViewSet, CampagneViewSet, CautionBancaireViewSet, CentreCoutViewSet,
@@ -52,6 +53,7 @@ from .views import (
     ObligationFiscaleViewSet,
     FamilleTvaNonDeductibleViewSet,
     LettrageViewSet,
+    CompensationViewSet,
 )
 
 router = DefaultRouter()
@@ -164,11 +166,20 @@ router.register(r'comptes-auxiliaires', CompteAuxiliaireViewSet)
 router.register(r'pieces-justificatives', PieceJustificativeViewSet)
 router.register(r'pistes-audit', PisteAuditComptableViewSet,
                 basename='pisteaudit')
+# ── XFAC14 — Compensation AR/AP (netting) ───────────────────────────────────
+router.register(r'compensations', CompensationViewSet)
 
 urlpatterns = [
     path('webhooks/brevo/', webhook_brevo_campagne, name='webhook-brevo-campagne'),
     path('webhooks/sms-stop/', webhook_sms_stop, name='webhook-sms-stop'),
     path('desinscription/<str:token>/', desinscription_publique,
          name='desinscription-publique'),
+    # XFAC26/27 — Portail client self-service (token, sans login).
+    path('portail/<str:token>/mon-releve/', portail_mon_releve,
+         name='portail-mon-releve'),
+    path('portail/<str:token>/mon-releve/pdf/', portail_mon_releve_pdf,
+         name='portail-mon-releve-pdf'),
+    path('portail/<str:token>/factures/<int:facture_id>/contester/',
+         portail_contester_facture, name='portail-contester-facture'),
     path('', include(router.urls)),
 ]

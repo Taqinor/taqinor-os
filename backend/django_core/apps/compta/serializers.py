@@ -45,6 +45,7 @@ from .models import (
     ModeleRapprochement,
     ObligationFiscale,
     FamilleTvaNonDeductible,
+    Compensation, LigneCompensation,
 )
 
 
@@ -738,7 +739,9 @@ class PaymentRunLineSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'tiers_type', 'tiers_id', 'beneficiaire', 'reference',
             'montant', 'date_echeance', 'rib', 'iban',
+            'facture_fournisseur_id',
         ]
+        read_only_fields = ['facture_fournisseur_id']
 
     def validate_montant(self, value):
         if value is not None and value <= 0:
@@ -2169,10 +2172,12 @@ class AbonnementMonitoringSerializer(serializers.ModelSerializer):
         model = AbonnementMonitoring
         fields = [
             'id', 'client_id', 'installation_id', 'periodicite', 'montant',
-            'statut', 'date_debut', 'prochaine_echeance', 'date_creation',
+            'statut', 'date_debut', 'prochaine_echeance',
+            'derniere_facturation', 'motif_resiliation', 'date_creation',
         ]
         read_only_fields = [
-            'statut', 'date_debut', 'prochaine_echeance', 'date_creation',
+            'statut', 'date_debut', 'prochaine_echeance',
+            'derniere_facturation', 'motif_resiliation', 'date_creation',
         ]
 
 
@@ -2259,5 +2264,31 @@ class PisteAuditComptableSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'ecriture', 'ecriture_reference', 'sequence',
             'empreinte_contenu', 'hash_precedent', 'hash', 'date_creation',
+        ]
+        read_only_fields = fields
+
+
+class LigneCompensationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LigneCompensation
+        fields = [
+            'id', 'type_facture', 'facture_id', 'reference_facture',
+            'montant_impute',
+        ]
+        read_only_fields = fields
+
+
+class CompensationSerializer(serializers.ModelSerializer):
+    """XFAC14 — Compensation AR/AP (netting). Lecture seule : la création
+    passe par ``services.creer_compensation`` (garde-fous de sur-
+    compensation), jamais un ``.create()`` direct du serializer."""
+    lignes = LigneCompensationSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Compensation
+        fields = [
+            'id', 'reference', 'client_id', 'client_nom', 'fournisseur_id',
+            'fournisseur_nom', 'montant_compense', 'statut', 'ecriture_id',
+            'lignes', 'date_creation', 'date_validation',
         ]
         read_only_fields = fields

@@ -6,7 +6,7 @@ Câblé au démarrage par ``VentesConfig.ready()``.
 """
 from django.dispatch import receiver
 
-from core.events import payment_captured, chantier_annule
+from core.events import payment_captured, chantier_annule, effet_rejete
 
 
 @receiver(chantier_annule, dispatch_uid="ventes_alert_on_chantier_annule")
@@ -33,6 +33,32 @@ def _alert_devis_on_chantier_annule(sender, installation, user, company,
         user=user,
         body=(f'Chantier {ref} annulé — vérifier un éventuel avoir/retenue '
               "sur l'acompte encaissé."))
+
+
+@receiver(effet_rejete, dispatch_uid="ventes_reopen_facture_on_effet_rejete")
+def _reopen_facture_on_effet_rejete(sender, effet, paiement_id, frais,
+                                    company, **kwargs):
+    """YLEDG10 — un effet À RECEVOIR (chèque client) rejeté par la banque
+    route vers le rejet de paiement existant (YLEDG5,
+    ``services.rejeter_paiement``) : rouvre la facture, trace les frais,
+    émet ``paiement_rejete`` (que compta consomme déjà pour délettrer,
+    YLEDG6). Idempotent (``rejeter_paiement`` refuse un 2ᵉ rejet du même
+    paiement — best-effort, ne remonte jamais d'exception ici). No-op si le
+    paiement n'existe plus / n'est pas de cette société."""
+    from .models import Paiement
+    from . import services as ventes_services
+
+    paiement = Paiement.objects.filter(
+        id=paiement_id, company=company).first()
+    if paiement is None or paiement.statut == Paiement.Statut.REJETE:
+        return
+    try:
+        ventes_services.rejeter_paiement(
+            paiement=paiement,
+            motif=f"Chèque rejeté (effet #{effet.id})",
+            frais=frais or None)
+    except ventes_services.PaiementRejectError:
+        pass
 
 
 @receiver(payment_captured, dispatch_uid="ventes_materialize_paiement_on_payment_captured")

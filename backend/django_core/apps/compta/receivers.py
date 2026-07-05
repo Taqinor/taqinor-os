@@ -39,6 +39,9 @@ from .services import (  # noqa: F401  (ré-export du point d'intégration)
     ecriture_pour_paiement,
     ecriture_pour_paiement_especes_via_caisse,
     ecriture_pour_paiement_fournisseur,
+    # YLEDG10 — chèques clients reçus → portefeuille d'effets (3425), jamais
+    # directement en banque (l'argent n'y est pas encore).
+    enregistrer_effet_pour_paiement_cheque,
     extourner_ecriture,
     # XACC1 — transfert TVA attente→définitif (régime encaissement). Même
     # point d'ancrage : appel de service explicite depuis ``ventes`` tant
@@ -63,11 +66,20 @@ def _ecriture_pour_facture_emise(sender, instance, company, **kwargs):
 
 @receiver(paiement_enregistre, dispatch_uid="compta_ecriture_pour_paiement")
 def _ecriture_pour_paiement_enregistre(sender, instance, company, **kwargs):
+    mode = getattr(instance, 'mode', '')
+    # YLEDG10 — un règlement CHÈQUE ne va pas directement en banque (5141) :
+    # l'argent n'y est pas encore. Router vers le portefeuille d'effets
+    # (3425 « effets à recevoir ») ; l'encaissement réel se fera au bordereau
+    # de remise existant (poster_bordereau, qui crédite 3425 → banque). Jamais
+    # `ecriture_pour_paiement` sur ce mode (une seule matérialisation du
+    # règlement — le portefeuille, pas l'écriture banque directe).
+    if mode == 'cheque':
+        enregistrer_effet_pour_paiement_cheque(instance)
     # YLEDG9 — un règlement ESPÈCES route par le module caisse (mouvement +
     # timbre fiscal) au lieu de l'écriture banque directe ; jamais les deux
     # (une seule écriture par paiement). Sans caisse configurée : fallback
     # inchangé sur ``ecriture_pour_paiement``.
-    if getattr(instance, 'mode', '') == 'especes':
+    elif mode == 'especes':
         ecriture = ecriture_pour_paiement_especes_via_caisse(instance)
         if ecriture is None:
             ecriture_pour_paiement(instance)
@@ -75,7 +87,9 @@ def _ecriture_pour_paiement_enregistre(sender, instance, company, **kwargs):
         ecriture_pour_paiement(instance)
     # YLEDG6 — auto-lettrage à l'encaissement : uniquement quand la facture
     # est désormais intégralement réglée (résiduel→0, comme YDOCF4) ; un
-    # règlement partiel laisse le lot ouvert (comportement inchangé).
+    # règlement partiel laisse le lot ouvert (comportement inchangé). Un
+    # règlement chèque encore en portefeuille (aucune écriture 3421 postée)
+    # ne trouve rien à lettrer — no-op silencieux (attendu, YLEDG6).
     facture = getattr(instance, 'facture', None)
     if facture is not None and getattr(facture, 'montant_du', None) is not None \
             and facture.montant_du <= 0:

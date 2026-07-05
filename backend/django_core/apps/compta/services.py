@@ -69,6 +69,7 @@ from .models import (
     EtapeSequence, ExecutionEtapeSequence, InscriptionSequence,
     SequenceRelance, EnvoiCampagne, SuppressionMarketing,
     ListeDiffusion, AbonnementListe, RebondSoft,
+    Compensation, LigneCompensation,
 )
 
 
@@ -656,6 +657,43 @@ def ecriture_pour_paiement_especes_via_caisse(paiement, *, user=None):
             libelle=f'Timbre fiscal encaissement {ref}', user=user,
         )
     return ecriture
+
+
+def enregistrer_effet_pour_paiement_cheque(paiement, *, user=None):
+    """YLEDG10 — un règlement CHÈQUE client route par le portefeuille
+    d'effets (``enregistrer_effet``, sens ``recevoir``) au lieu de l'écriture
+    banque directe de ``ecriture_pour_paiement`` : l'argent n'est PAS encore
+    en banque tant que le chèque n'a pas été remis puis encaissé.
+
+    Idempotent (référence au paiement dans le commentaire + garde par
+    ``numero``) : si un ``Effet`` existe déjà pour ce paiement (rejoué sur
+    best-effort), on le renvoie sans en créer un second. Aucune écriture GL
+    n'est postée ici (elle vient du bordereau de remise existant,
+    ``poster_bordereau``, qui crédite 3425 → banque) : ce n'est PAS une
+    régression de YLEDG6 — l'auto-lettrage no-op tant que rien n'est
+    comptabilisé, exactement comme un document jamais émis. Renvoie l'Effet,
+    ou ``None`` si le paiement ne porte aucune facture exploitable."""
+    facture = getattr(paiement, 'facture', None)
+    if facture is None:
+        return None
+    company = facture.company
+    if company is None:
+        return None
+    reference_paiement = f'PAIEMENT-{paiement.id}'
+    existant = Effet.objects.filter(
+        company=company, commentaire=reference_paiement).first()
+    if existant is not None:
+        return existant
+    date_emission = paiement.date_paiement or timezone.localdate()
+    return enregistrer_effet(
+        company, sens=Effet.Sens.RECEVOIR,
+        montant=Decimal(paiement.montant or 0),
+        date_emission=date_emission, date_echeance=date_emission,
+        type_effet=Effet.TypeEffet.CHEQUE,
+        numero=getattr(paiement, 'reference', '') or '',
+        tiers_type='client', tiers_id=facture.client_id,
+        commentaire=reference_paiement, user=user,
+    )
 
 
 # ── XACC1 — TVA sur encaissement : transfert du compte d'attente ───────────
@@ -3371,11 +3409,30 @@ def rejeter_effet(effet, *, date_rejet=None, frais_rejet=None, commentaire='',
             reference=effet.numero or f'EFFET-{effet.id}',
             source_type='effet_frais_rejet', source_id=effet.id,
             created_by=user, statut=EcritureComptable.Statut.VALIDEE)
+    ancien_commentaire = effet.commentaire
     effet.statut = Effet.Statut.IMPAYE
     effet.frais_rejet = frais
     if commentaire:
         effet.commentaire = commentaire
     effet.save(update_fields=['statut', 'frais_rejet', 'commentaire'])
+
+    # YLEDG10 — un effet À RECEVOIR créé depuis un règlement chèque client
+    # (``enregistrer_effet_pour_paiement_cheque``, commentaire
+    # 'PAIEMENT-<id>') dont le rejet doit rouvrir la facture ventes : émettre
+    # `effet_rejete` pour que `ventes` consomme (jamais un import cross-app de
+    # modèle). Un effet sans cette origine (fournisseur, ou saisi à la main)
+    # ne matche aucun préfixe → no-op côté abonné.
+    if effet.sens == Effet.Sens.RECEVOIR and (
+            ancien_commentaire or '').startswith('PAIEMENT-'):
+        try:
+            paiement_id = int(ancien_commentaire.split('-', 1)[1])
+        except (ValueError, IndexError):
+            paiement_id = None
+        if paiement_id:
+            from core.events import effet_rejete
+            effet_rejete.send(
+                sender=Effet, effet=effet, paiement_id=paiement_id,
+                frais=frais, company=company)
     return effet
 
 
@@ -3685,7 +3742,57 @@ def poster_payment_run(run, *, user=None):
     run.ecriture = ecriture
     run.statut = PaymentRun.Statut.POSTEE
     run.save(update_fields=['posted', 'ecriture', 'statut'])
+
+    # YLEDG8 — pour chaque ligne référençant une FactureFournisseur (posée par
+    # `proposer_lignes_payment_run` ou saisie manuellement), créer SON
+    # PaiementFournisseur (mode virement, date du run) via le service dédié de
+    # stock — jamais un import de ses modèles. Une ligne SANS référence (achat
+    # libre / hors AP standard) reste inchangée (comportement historique).
+    from apps.stock import services as stock_services
+    for ligne in lignes:
+        if not ligne.facture_fournisseur_id:
+            continue
+        stock_services.enregistrer_paiement_fournisseur_depuis_run(
+            company=company, facture_id=ligne.facture_fournisseur_id,
+            montant=ligne.montant, date_paiement=run.date_paiement,
+            user=user)
     return ecriture
+
+
+def proposer_lignes_payment_run(run, *, date_limite=None):
+    """YLEDG8 — Remplit une campagne BROUILLON depuis les échéances
+    fournisseur dues (``stock.selectors.factures_fournisseur_ouvertes`` —
+    jamais un import de ses modèles), triées par date d'échéance. N'ajoute
+    QUE les factures pas déjà référencées par une ligne existante de CETTE
+    campagne (idempotent si appelé deux fois). Renvoie la liste des lignes
+    ajoutées."""
+    from apps.stock import selectors as stock_selectors
+
+    if run.statut != PaymentRun.Statut.BROUILLON:
+        raise ValidationError(
+            "Une campagne figée ou postée ne peut plus être modifiée.")
+    deja_references = set(
+        run.lignes.exclude(facture_fournisseur_id__isnull=True)
+        .values_list('facture_fournisseur_id', flat=True))
+    candidates = stock_selectors.factures_fournisseur_ouvertes(
+        run.company, date_limite=date_limite)
+    ajoutees = []
+    for candidate in candidates:
+        if candidate['facture_id'] in deja_references:
+            continue
+        ligne = PaymentRunLine.objects.create(
+            company=run.company, payment_run=run,
+            tiers_type='fournisseur', tiers_id=candidate['fournisseur_id'],
+            beneficiaire=candidate['fournisseur_nom'],
+            reference=candidate['reference'], montant=candidate['montant'],
+            date_echeance=candidate['date_echeance'],
+            rib=candidate['rib'],
+            facture_fournisseur_id=candidate['facture_id'],
+        )
+        ajoutees.append(ligne)
+    if ajoutees:
+        _recalc_total_payment_run(run)
+    return ajoutees
 
 
 # ── FG134 — Génération de fichier de virement bancaire ─────────────────────
@@ -7214,6 +7321,117 @@ def renouveler_abonnement_monitoring(abonnement, *, today=None):
     return abonnement
 
 
+class AbonnementMonitoringError(ValidationError):
+    """Levée sans rien écrire quand la facturation/transition d'un
+    AbonnementMonitoring est refusée (déjà facturé pour la période,
+    résilié/suspendu, motif de résiliation absent)."""
+
+
+def facturer_abonnement_monitoring(abonnement, *, user=None):
+    """YSUBS3 — Émet la ``ventes.Facture`` standard de la période due d'un
+    abonnement monitoring ACTIF, DÉCOUPLÉ de ``renouveler`` (qui n'avance
+    plus que l'échéance — la facturation confondait les deux, anti-pattern
+    du blueprint).
+
+    Garde d'idempotence : refuse si ``derniere_facturation`` == la période
+    en cours de facturation (``prochaine_echeance``, ou aujourd'hui si
+    absente) — ne re-facture jamais la même période. Le client est résolu
+    via ``apps.crm.selectors.get_company_client`` (jamais un import de
+    ``apps.crm.models``) ; la Facture est créée EMISE, TVA 20 %, numérotée
+    via ``ventes.utils.references.create_with_reference`` (même patron que
+    ``ventes.services.creer_facture_contrat``), et émet ``facture_emise``
+    (YLEDG1/YSUBS6) pour que l'auto-écriture compta se déclenche comme
+    toute facture récurrente. Renvoie la Facture créée.
+    """
+    from apps.crm.selectors import get_company_client
+    from apps.ventes.models import Facture
+    from apps.ventes.utils.references import create_with_reference
+    from core.events import facture_emise
+    from .models import AbonnementMonitoring
+
+    if abonnement.statut != AbonnementMonitoring.Statut.ACTIF:
+        raise AbonnementMonitoringError(
+            "Seul un abonnement actif peut être facturé.")
+    if not abonnement.montant or abonnement.montant <= 0:
+        raise AbonnementMonitoringError(
+            "Le montant de l'abonnement doit être positif.")
+
+    company = abonnement.company
+    periode = abonnement.prochaine_echeance or timezone.localdate()
+    if abonnement.derniere_facturation == periode:
+        raise AbonnementMonitoringError(
+            f'La période {periode} a déjà été facturée pour cet abonnement.')
+
+    client = get_company_client(company, abonnement.client_id)
+    if client is None:
+        raise AbonnementMonitoringError(
+            "Client introuvable pour cet abonnement.")
+
+    tva_pct = Decimal('20')
+    prix_ttc = Decimal(str(abonnement.montant))
+    prix_ht = (prix_ttc / (1 + tva_pct / 100)).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
+    montant_tva = (prix_ttc - prix_ht).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
+    libelle = f'Supervision monitoring — abonnement #{abonnement.pk} ({periode})'
+
+    def _create(ref):
+        return Facture.objects.create(
+            reference=ref, company=company, client=client,
+            statut=Facture.Statut.EMISE, taux_tva=tva_pct,
+            montant_ht=prix_ht, montant_tva=montant_tva,
+            montant_ttc=prix_ttc, libelle=libelle, created_by=user,
+        )
+
+    facture = create_with_reference(Facture, 'FAC', company, _create)
+    facture_emise.send(sender=Facture, instance=facture, company=company)
+
+    abonnement.derniere_facturation = periode
+    abonnement.save(update_fields=['derniere_facturation'])
+    return facture
+
+
+def suspendre_abonnement_monitoring(abonnement):
+    """YSUBS4 — Suspend un abonnement ACTIF (transition gardée, service —
+    plus une écriture directe du viewset). Bloque la facturation récurrente
+    (``facturer_abonnement_monitoring`` refuse un abonnement non-actif) tant
+    que le statut reste ``suspendu``. Idempotent (un abonnement déjà
+    suspendu/résilié n'est pas re-transitionné). Renvoie l'abonnement."""
+    from .models import AbonnementMonitoring
+
+    if abonnement.statut != AbonnementMonitoring.Statut.ACTIF:
+        return abonnement
+    abonnement.statut = AbonnementMonitoring.Statut.SUSPENDU
+    abonnement.save(update_fields=['statut'])
+    return abonnement
+
+
+def resilier_abonnement_monitoring(abonnement, *, motif, user=None):
+    """YSUBS4 — Résilie un abonnement (transition gardée, motif OBLIGATOIRE
+    — capturé sur ``motif_resiliation``, jamais perdu comme avec l'ancien
+    PATCH direct du viewset). Bloque définitivement la facturation
+    récurrente. Émet ``abonnement_monitoring_resilie`` (core.events) pour
+    les effets aval (arrêt de la supervision monitoring — satellite, aucun
+    abonné dans ce repo pour l'instant). Idempotent (déjà résilié → no-op,
+    aucune ré-émission de l'événement). Renvoie l'abonnement."""
+    from core.events import abonnement_monitoring_resilie
+    from .models import AbonnementMonitoring
+
+    if abonnement.statut == AbonnementMonitoring.Statut.RESILIE:
+        return abonnement
+    motif = (motif or '').strip()
+    if not motif:
+        raise AbonnementMonitoringError(
+            'Le motif de résiliation est obligatoire.')
+    abonnement.statut = AbonnementMonitoring.Statut.RESILIE
+    abonnement.motif_resiliation = motif
+    abonnement.save(update_fields=['statut', 'motif_resiliation'])
+    abonnement_monitoring_resilie.send(
+        sender=AbonnementMonitoring, abonnement=abonnement, motif=motif,
+        company=abonnement.company)
+    return abonnement
+
+
 # ── COMPTA2 — Mapping document → compte comptable ──────────────────────────
 
 # Correspondances par défaut « clef documentaire → numéro de compte CGNC ».
@@ -8912,3 +9130,208 @@ def refuser_demande_rib(demande, *, decideur, commentaire=''):
     demande.save(update_fields=[
         'statut', 'decideur', 'commentaire_decision', 'date_decision'])
     return demande
+
+
+# ── XFAC14 — Compensation AR/AP (netting) ──────────────────────────────────
+
+class CompensationError(ValidationError):
+    """Levée sans rien écrire (atomicité) quand une compensation est
+    impossible : sur-compensation, tiers non trouvé, factures d'un tiers
+    différent, etc."""
+
+
+def creer_compensation(company, *, client_id, fournisseur_id, lignes, user=None):
+    """XFAC14 — Crée une ``Compensation`` BROUILLON entre les factures AR
+    (client, ``apps.ventes``) et AP (fournisseur, ``apps.stock``) d'un même
+    tiers réel.
+
+    ``lignes`` : liste de ``{'type': 'ar'|'ap', 'facture_id': int,
+    'montant': Decimal}``. Chaque facture est relue via le sélecteur de
+    l'app cible (jamais un import de ses modèles) pour vérifier
+    l'appartenance société + résoudre le solde dû ; le montant imputé ne
+    peut jamais dépasser le solde dû de sa facture, et
+    ``montant_compense`` = min(Σ AR, Σ AP) (jamais plus que le plus petit des
+    deux soldes globaux — sur-compensation refusée). Lève
+    ``CompensationError`` sans rien créer si une garde échoue. Ne poste
+    AUCUNE écriture (fait par ``valider_compensation``)."""
+    from apps.crm.selectors import get_company_client
+    from apps.stock import selectors as stock_selectors
+    from apps.ventes import selectors as ventes_selectors
+
+    client = get_company_client(company, client_id)
+    if client is None:
+        raise CompensationError('Client introuvable dans votre société.')
+
+    fournisseur = stock_selectors.get_fournisseur_by_id(company, fournisseur_id)
+    if fournisseur is None:
+        raise CompensationError('Fournisseur introuvable dans votre société.')
+
+    if not lignes:
+        raise CompensationError(
+            'Sélectionnez au moins une facture AR et une facture AP.')
+
+    total_ar = Decimal('0')
+    total_ap = Decimal('0')
+    lignes_valides = []
+    for entree in lignes:
+        type_facture = entree.get('type')
+        facture_id = entree.get('facture_id')
+        montant = Decimal(str(entree.get('montant') or 0))
+        if montant <= 0:
+            raise CompensationError('Le montant imputé doit être positif.')
+        if type_facture == LigneCompensation.Type.AR:
+            facture = ventes_selectors.get_facture_scoped(company, facture_id)
+            if facture is None:
+                raise CompensationError(
+                    f'Facture client #{facture_id} introuvable.')
+            if facture.client_id != client.id:
+                raise CompensationError(
+                    "Cette facture n'appartient pas au client sélectionné.")
+            if montant > facture.montant_du:
+                raise CompensationError(
+                    f'Le montant imputé dépasse le solde dû de {facture.reference}.')
+            total_ar += montant
+            reference = facture.reference
+        elif type_facture == LigneCompensation.Type.AP:
+            facture = stock_selectors.facture_fournisseur_scoped(
+                company, facture_id)
+            if facture is None:
+                raise CompensationError(
+                    f'Facture fournisseur #{facture_id} introuvable.')
+            if facture.fournisseur_id != fournisseur.id:
+                raise CompensationError(
+                    "Cette facture n'appartient pas au fournisseur sélectionné.")
+            if montant > facture.solde_du:
+                raise CompensationError(
+                    f'Le montant imputé dépasse le solde dû de {facture.reference}.')
+            total_ap += montant
+            reference = facture.reference
+        else:
+            raise CompensationError(f"Type de facture invalide : {type_facture!r}.")
+        lignes_valides.append({
+            'type_facture': type_facture, 'facture_id': facture_id,
+            'reference_facture': reference, 'montant_impute': montant,
+        })
+
+    if total_ar <= 0 or total_ap <= 0:
+        raise CompensationError(
+            'Il faut au moins une facture AR et une facture AP.')
+
+    montant_compense = min(total_ar, total_ap)
+
+    with transaction.atomic():
+        compensation = Compensation.objects.create(
+            company=company, client_id=client.id,
+            client_nom=str(client), fournisseur_id=fournisseur.id,
+            fournisseur_nom=fournisseur.nom,
+            montant_compense=montant_compense, created_by=user,
+        )
+        compensation.reference = f'CMP-{compensation.id:06d}'
+        compensation.save(update_fields=['reference'])
+        for ligne in lignes_valides:
+            LigneCompensation.objects.create(compensation=compensation, **ligne)
+    return compensation
+
+
+def valider_compensation(compensation, *, user=None):
+    """XFAC14 — Valide une ``Compensation`` BROUILLON : poste l'écriture
+    équilibrée 4411 (fournisseur) / 3421 (client) du montant compensé et
+    enregistre les règlements croisés via les services de chaque app
+    (jamais un import de leurs modèles). Idempotente (une compensation déjà
+    validée n'est pas re-postée). Respecte le verrou de période (via
+    ``creer_ecriture_od``)."""
+    if compensation.statut == Compensation.Statut.VALIDEE:
+        return compensation
+
+    from apps.stock import selectors as stock_selectors
+    from apps.stock import services as stock_services
+    from apps.ventes import selectors as ventes_selectors
+    from apps.ventes import services as ventes_services
+
+    compte_clients = get_compte(compensation.company, '3421')
+    compte_fournisseurs = get_compte(compensation.company, '4411')
+    if compte_clients is None or compte_fournisseurs is None:
+        raise CompensationError(
+            'Comptes 3421/4411 introuvables — semez le plan comptable.')
+
+    with transaction.atomic():
+        ecriture = creer_ecriture_od(
+            compensation.company, timezone.localdate(),
+            f'Compensation {compensation.reference} — '
+            f'{compensation.client_nom} / {compensation.fournisseur_nom}',
+            [
+                {'compte': compte_fournisseurs,
+                 'debit': compensation.montant_compense, 'credit': Decimal('0'),
+                 'tiers_type': 'fournisseur',
+                 'tiers_id': compensation.fournisseur_id},
+                {'compte': compte_clients,
+                 'debit': Decimal('0'), 'credit': compensation.montant_compense,
+                 'tiers_type': 'client', 'tiers_id': compensation.client_id},
+            ],
+            reference=compensation.reference, created_by=user,
+        )
+
+        restant = compensation.montant_compense
+        for ligne in compensation.lignes.filter(
+                type_facture=LigneCompensation.Type.AR).order_by('id'):
+            if restant <= 0:
+                break
+            montant = min(ligne.montant_impute, restant)
+            facture = ventes_selectors.get_facture_scoped(
+                compensation.company, ligne.facture_id)
+            if facture is not None and montant > 0:
+                ventes_services.enregistrer_paiement(
+                    facture=facture, montant=montant, mode='autre',
+                    date_paiement=timezone.localdate(), user=user,
+                    reference=compensation.reference,
+                    note=f'Compensation AR/AP {compensation.reference}')
+            restant -= montant
+
+        restant = compensation.montant_compense
+        for ligne in compensation.lignes.filter(
+                type_facture=LigneCompensation.Type.AP).order_by('id'):
+            if restant <= 0:
+                break
+            montant = min(ligne.montant_impute, restant)
+            facture_ap = stock_selectors.facture_fournisseur_scoped(
+                compensation.company, ligne.facture_id)
+            if facture_ap is not None and montant > 0:
+                stock_services.add_paiement_sous_traitant(
+                    company=compensation.company, user=user,
+                    facture=facture_ap, montant=montant,
+                    date_paiement=timezone.localdate(), mode='autre',
+                    note=f'Compensation AR/AP {compensation.reference}')
+            restant -= montant
+
+        compensation.statut = Compensation.Statut.VALIDEE
+        compensation.ecriture_id = ecriture.id
+        compensation.date_validation = timezone.now()
+        compensation.save(update_fields=[
+            'statut', 'ecriture_id', 'date_validation'])
+    return compensation
+
+
+# ── XFAC27 — Portail client : contester une facture ─────────────────────────
+
+def creer_reclamation_portail(facture, *, motif_label, commentaire=''):
+    """XFAC27 — Ouvre la ``litiges.Reclamation`` d'une contestation de
+    facture initiée par le CLIENT depuis le portail self-service (jamais un
+    import de ``apps.litiges.models`` — passe par son ``services.py``, le
+    type ``'financier'`` est la valeur stable de
+    ``Reclamation.TypeReclamation.FINANCIER``).
+    ``bloque_relances=True`` (défaut) : LITIGE3 suspend automatiquement les
+    relances de cette facture tant que la réclamation reste ouverte."""
+    from apps.litiges import services as litiges_services
+
+    objet = f'Facture {facture.reference} contestée par le client (portail)'
+    description = motif_label
+    if commentaire:
+        description += f' — {commentaire}'
+    return litiges_services.creer_reclamation(
+        company=facture.company,
+        type_reclamation='financier',
+        source_type='facture', source_id=facture.id,
+        objet=objet, description=description,
+        montant_conteste=facture.montant_du,
+        bloque_relances=True,
+    )

@@ -9,6 +9,33 @@ référence à un document d'une autre app passe par le couple souple
 from decimal import Decimal
 
 
+def creer_reclamation(*, company, type_reclamation, source_type, source_id,
+                      objet, description='', montant_conteste=None,
+                      gravite=None, bloque_relances=True, user=None):
+    """XFAC27 — Ouvre une ``Reclamation`` générique (type au choix de
+    l'appelant, contrairement à ``creer_dossier_recouvrement`` qui est figé
+    sur ``RECOUVREMENT``). Utilisé par le pont portail client « contester une
+    facture » (``apps.compta`` — jamais un import de ``apps.litiges.models``
+    en dehors de ce module). ``bloque_relances`` (défaut True, LITIGE3)
+    suspend les relances automatiques de la facture liée tant que le litige
+    est ouvert. Renvoie l'instance ``Reclamation`` créée."""
+    from .models import Reclamation
+
+    return Reclamation.objects.create(
+        company=company,
+        type_reclamation=type_reclamation,
+        gravite=gravite or Reclamation.Gravite.MOYENNE,
+        objet=objet,
+        description=description or '',
+        source_type=source_type or '',
+        source_id=source_id,
+        montant_conteste=Decimal(montant_conteste or 0),
+        bloque_relances=bloque_relances,
+        created_by=user if (
+            user and getattr(user, 'is_authenticated', False)) else None,
+    )
+
+
 def creer_dossier_recouvrement(*, company, source_type, source_id, objet,
                                montant_conteste=None, description='',
                                user=None):
