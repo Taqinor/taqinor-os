@@ -969,6 +969,73 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
         resp['Content-Disposition'] = 'attachment; filename="loi_69_21.csv"'
         return resp
 
+    @action(detail=False, methods=['get'], url_path='journal-items')
+    def journal_items(self, request):
+        """ZACC4 — Vue « Journal Items » : ledger PLAT ligne-à-ligne, toutes
+        écritures confondues, filtrable par ``journal``/``compte``/
+        ``tiers_type``+``tiers_id``/``date_debut``/``date_fin``/
+        ``lettrage`` (``lettrees``/``non_lettrees``)/``validees`` (``1``/
+        ``0``). Paginé (``?limit=``/``?offset=``, défaut 200/0) ;
+        ``?export=csv``/``?export=xlsx`` télécharge TOUT (non paginé)."""
+        params = request.query_params
+        validees = params.get('validees')
+        if validees == '1':
+            validees_bool = True
+        elif validees == '0':
+            validees_bool = False
+        else:
+            validees_bool = None
+        lignes = selectors.journal_items(
+            request.user.company,
+            journal=params.get('journal') or None,
+            compte=params.get('compte') or None,
+            tiers_type=params.get('tiers_type') or None,
+            tiers_id=params.get('tiers_id') or None,
+            date_debut=params.get('date_debut') or None,
+            date_fin=params.get('date_fin') or None,
+            lettrage=params.get('lettrage') or None,
+            validees=validees_bool,
+        )
+        export = params.get('export')
+        if export in ('csv', 'xlsx'):
+            return self._journal_items_export(lignes, export)
+        try:
+            limit = int(params.get('limit', 200))
+        except (TypeError, ValueError):
+            limit = 200
+        try:
+            offset = int(params.get('offset', 0))
+        except (TypeError, ValueError):
+            offset = 0
+        limit = max(1, min(limit, 1000))
+        offset = max(0, offset)
+        page = lignes[offset:offset + limit]
+        return Response({'count': len(lignes), 'results': page})
+
+    @staticmethod
+    def _journal_items_export(lignes, export):
+        headers = [
+            'id', 'date_ecriture', 'journal_code', 'ecriture_reference',
+            'compte_numero', 'compte_intitule', 'libelle', 'tiers_type',
+            'tiers_id', 'debit', 'credit', 'lettrage', 'statut',
+        ]
+        rows = [[ligne[h] for h in headers] for ligne in lignes]
+        if export == 'xlsx':
+            from apps.records.xlsx import build_xlsx_response
+            return build_xlsx_response(
+                'journal-items.xlsx', headers, rows,
+                sheet_title='Journal Items')
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, delimiter=';', lineterminator='\r\n')
+        writer.writerow(headers)
+        for row in rows:
+            writer.writerow(row)
+        resp = HttpResponse(
+            buffer.getvalue(), content_type='text/csv; charset=utf-8')
+        resp['Content-Disposition'] = (
+            'attachment; filename="journal-items.csv"')
+        return resp
+
 
 # ── YLEDG6 — Lettrage / délettrage (FG112) ──────────────────────────────────
 

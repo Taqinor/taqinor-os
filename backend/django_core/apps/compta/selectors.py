@@ -92,6 +92,73 @@ def grand_livre(company, *, compte=None, date_debut=None, date_fin=None,
     return sorted(resultat.values(), key=lambda b: b['numero'])
 
 
+# ── ZACC4 — Journal Items : ledger PLAT ligne-à-ligne (toutes écritures) ────
+
+def journal_items(company, *, journal=None, compte=None, tiers_type=None,
+                  tiers_id=None, date_debut=None, date_fin=None,
+                  lettrage=None, validees=None):
+    """Vue plate de CHAQUE ``LigneEcriture`` (débit/crédit), toutes écritures
+    confondues, filtrable par journal/compte/tiers/période/lettrage/statut —
+    le « Journal Items » d'Odoo (indispensable pour l'audit et le pointage
+    transversal, complète ``grand_livre`` qui GROUPE par compte).
+
+    ``journal`` : code du journal (ex. 'BNK', 'VTE') ou instance ``Journal``.
+    ``lettrage`` : ``'lettrees'`` (lettrage non vide), ``'non_lettrees'``
+    (lettrage vide), ou ``None`` (toutes).
+    ``validees`` : ``True``/``False``/``None`` (toutes, défaut).
+
+    Renvoie une liste de dicts triée par date pièce puis id : ``{'id',
+    'date_ecriture', 'journal_code', 'ecriture_reference', 'compte_numero',
+    'compte_intitule', 'libelle', 'tiers_type', 'tiers_id', 'debit',
+    'credit', 'lettrage', 'statut'}``. Lecture seule, company-scopée."""
+    qs = (LigneEcriture.objects
+          .filter(company=company)
+          .select_related('compte', 'ecriture', 'ecriture__journal')
+          .order_by('ecriture__date_ecriture', 'id'))
+    if date_debut:
+        qs = qs.filter(ecriture__date_ecriture__gte=_as_date(date_debut))
+    if date_fin:
+        qs = qs.filter(ecriture__date_ecriture__lte=_as_date(date_fin))
+    if journal:
+        code = getattr(journal, 'code', journal)
+        qs = qs.filter(ecriture__journal__code=code)
+    if compte:
+        numero = getattr(compte, 'numero', compte)
+        qs = qs.filter(compte__numero=numero)
+    if tiers_type:
+        qs = qs.filter(tiers_type=tiers_type)
+    if tiers_id:
+        qs = qs.filter(tiers_id=tiers_id)
+    if lettrage == 'lettrees':
+        qs = qs.exclude(lettrage='')
+    elif lettrage == 'non_lettrees':
+        qs = qs.filter(lettrage='')
+    if validees is True:
+        qs = qs.filter(ecriture__statut=EcritureComptable.Statut.VALIDEE)
+    elif validees is False:
+        qs = qs.exclude(ecriture__statut=EcritureComptable.Statut.VALIDEE)
+
+    out = []
+    for ligne in qs:
+        ecriture = ligne.ecriture
+        out.append({
+            'id': ligne.id,
+            'date_ecriture': ecriture.date_ecriture,
+            'journal_code': ecriture.journal.code if ecriture.journal else '',
+            'ecriture_reference': ecriture.reference,
+            'compte_numero': ligne.compte.numero,
+            'compte_intitule': ligne.compte.intitule,
+            'libelle': ligne.libelle or ecriture.libelle,
+            'tiers_type': ligne.tiers_type,
+            'tiers_id': ligne.tiers_id,
+            'debit': ligne.debit,
+            'credit': ligne.credit,
+            'lettrage': ligne.lettrage,
+            'statut': ecriture.statut,
+        })
+    return out
+
+
 # ── FG111 / COMPTA20 — Balance générale (trial balance) ────────────────────
 
 def balance_generale(company, *, date_debut=None, date_fin=None,
