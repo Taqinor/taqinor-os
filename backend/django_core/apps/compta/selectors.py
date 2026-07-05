@@ -3390,6 +3390,46 @@ def exposition_69_21(company, periode=None):
     return {'lignes': lignes, 'total_amende_estimee': total}
 
 
+_ICE_RE = re.compile(r'^\d{15}$')
+
+
+def controle_identifiants_tiers(company):
+    """ZACC14 — Liste les tiers (clients ENTREPRISE + fournisseurs) dont
+    l'ICE est vide ou de format invalide (≠ 15 chiffres) — miroir marocain
+    du contrôle VIES, utile pour la conformité facture/déclaration DGI et
+    l'e-invoicing. Lecture via ``apps.crm.selectors`` /
+    ``apps.stock.selectors`` (jamais un import de leurs modèles). Pas de
+    service externe de vérification (aucune API publique ICE au Maroc à ce
+    jour) : contrôle de FORMAT uniquement.
+
+    Renvoie ``{'clients': [...], 'fournisseurs': [...]}`` où chaque entrée
+    est ``{'id', 'nom', 'ice', 'if_fiscal', 'motif'}`` — motif ∈
+    {'ice_absent', 'ice_invalide'}. Les tiers conformes sont exclus."""
+    from apps.crm import selectors as crm_selectors
+    from apps.stock import selectors as stock_selectors
+
+    def _motif(ice):
+        if not ice:
+            return 'ice_absent'
+        if not _ICE_RE.match(ice):
+            return 'ice_invalide'
+        return None
+
+    clients = []
+    for tiers in crm_selectors.clients_pour_controle_ice(company):
+        motif = _motif(tiers['ice'])
+        if motif:
+            clients.append({**tiers, 'motif': motif})
+
+    fournisseurs = []
+    for tiers in stock_selectors.fournisseurs_pour_controle_ice(company):
+        motif = _motif(tiers['ice'])
+        if motif:
+            fournisseurs.append({**tiers, 'motif': motif})
+
+    return {'clients': clients, 'fournisseurs': fournisseurs}
+
+
 def ecatalogue_public_par_token(token):
     """XPOS14 — E-catalogue public lu par son token (FG214), lecture seule.
 

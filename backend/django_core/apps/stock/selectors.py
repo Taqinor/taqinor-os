@@ -107,6 +107,25 @@ def get_fournisseur_by_id(company, fournisseur_id):
         id=fournisseur_id, company=company).first()
 
 
+def fournisseurs_pour_controle_ice(company):
+    """ZACC14 — Fournisseurs de la société, pour le contrôle d'identifiants
+    légaux (ICE/IF) côté compta. Point d'entrée cross-app (jamais un import
+    de ``apps.stock.models`` en dehors de ce module). Lecture seule ;
+    renvoie une liste de dicts ``{'id', 'nom', 'ice', 'if_fiscal'}``."""
+    from .models import Fournisseur
+
+    qs = Fournisseur.objects.filter(company=company).order_by('id')
+    return [
+        {
+            'id': fournisseur.id,
+            'nom': fournisseur.nom,
+            'ice': fournisseur.ice or '',
+            'if_fiscal': fournisseur.identifiant_fiscal or '',
+        }
+        for fournisseur in qs
+    ]
+
+
 def search_fournisseurs(company, q, *, limit=12):
     """QC1 — Recherche floue de fournisseurs (nom) scopée société. Point d'accès
     cross-app : l'autocomplete entreprise de CRM lit le référentiel fournisseur

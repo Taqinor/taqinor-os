@@ -1036,6 +1036,34 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             'attachment; filename="journal-items.csv"')
         return resp
 
+    @action(detail=False, methods=['get'], url_path='controle-ice')
+    def controle_ice(self, request):
+        """ZACC14 — Tiers (clients entreprise + fournisseurs) à ICE manquant
+        ou de format invalide (≠ 15 chiffres). ``?export=csv`` télécharge."""
+        rapport = selectors.controle_identifiants_tiers(request.user.company)
+        if request.query_params.get('export') == 'csv':
+            return self._controle_ice_csv(rapport)
+        return Response(rapport)
+
+    @staticmethod
+    def _controle_ice_csv(rapport):
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, delimiter=';', lineterminator='\r\n')
+        writer.writerow(['type_tiers', 'id', 'nom', 'ice', 'if_fiscal', 'motif'])
+        for tiers in rapport['clients']:
+            writer.writerow([
+                'client', tiers['id'], tiers['nom'], tiers['ice'],
+                tiers['if_fiscal'], tiers['motif']])
+        for tiers in rapport['fournisseurs']:
+            writer.writerow([
+                'fournisseur', tiers['id'], tiers['nom'], tiers['ice'],
+                tiers['if_fiscal'], tiers['motif']])
+        resp = HttpResponse(
+            buffer.getvalue(), content_type='text/csv; charset=utf-8')
+        resp['Content-Disposition'] = (
+            'attachment; filename="controle_ice.csv"')
+        return resp
+
 
 # ── YLEDG6 — Lettrage / délettrage (FG112) ──────────────────────────────────
 
