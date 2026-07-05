@@ -8,6 +8,8 @@ from decimal import Decimal, ROUND_HALF_UP
 import logging
 import re
 
+from apps.stock.services import qr_svg_for
+
 logger = logging.getLogger(__name__)
 
 
@@ -2399,7 +2401,6 @@ def qr_svg_for_facture_pdf(facture):
     d'import direct de ``apps.stock.labels``)."""
     from django.utils import timezone
     from .models import PaymentLink, ShareLink
-    from apps.stock.services import qr_svg_for
 
     active_link = (
         PaymentLink.objects.filter(
