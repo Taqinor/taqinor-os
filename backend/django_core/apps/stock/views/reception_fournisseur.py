@@ -147,12 +147,20 @@ class ReceptionFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='annuler')
     def annuler(self, request, pk=None):
+        """YSTCK6 — une réception CONFIRMÉE est annulée par CONTRE-PASSATION
+        (mouvement de reversal référencé à l'original, jamais un blocage) via
+        `annuler_reception_confirmee`. Une réception encore en brouillon
+        garde le chemin historique (simple passage à ANNULE, rien à
+        contre-passer)."""
+        from ..services import annuler_reception_confirmee
         reception = self.get_object()
         if reception.statut == ReceptionFournisseur.Statut.CONFIRME:
-            return Response(
-                {'detail': 'Une réception confirmée ne peut pas être annulée '
-                           '(le stock a déjà été incrémenté).'},
-                status=status.HTTP_400_BAD_REQUEST)
+            try:
+                annuler_reception_confirmee(reception, request.user)
+            except ValueError as exc:
+                return Response({'detail': str(exc)},
+                                status=status.HTTP_400_BAD_REQUEST)
+            return Response(self.get_serializer(reception).data)
         reception.statut = ReceptionFournisseur.Statut.ANNULE
         reception.save(update_fields=['statut'])
         return Response(self.get_serializer(reception).data)

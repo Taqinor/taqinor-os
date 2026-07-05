@@ -1055,6 +1055,78 @@ def confirm_reception_fournisseur(reception, user):
     return reception
 
 
+def annuler_reception_confirmee(reception, user):
+    """YSTCK6 — annule une réception CONFIRMÉE par une CONTRE-PASSATION
+    (reversal référencé, jamais un blocage ni une suppression — pattern SAP
+    102). Pour chaque ligne de la réception, crée un `MouvementStock` SORTIE
+    référencé ``ANNUL-<REC>`` (traçable à l'original), décrémente
+    `quantite_recue` de la ligne BCF correspondante (plafonné à sa quantité
+    reçue, jamais négatif) et rétrograde le statut du BCF de RECU à ENVOYE si
+    ``est_entierement_recu`` devient faux. La sortie est plafonnée au stock en
+    main (garde XSTK8 — jamais négatif). IDEMPOTENTE : seule une réception
+    CONFIRME peut être annulée ; ré-annuler une réception déjà ANNULE lève
+    ValueError (rien à rejouer). Renvoie la réception."""
+    from django.db import transaction
+    from django.utils import timezone
+    from .models import (
+        ReceptionFournisseur, BonCommandeFournisseur, MouvementStock,
+    )
+
+    if reception.statut != ReceptionFournisseur.Statut.CONFIRME:
+        raise ValueError(
+            'Seule une réception confirmée peut être annulée par '
+            'contre-passation.')
+
+    lignes = list(reception.lignes.select_related('ligne_commande', 'produit'))
+    bc = reception.bon_commande
+    with transaction.atomic():
+        for ligne in lignes:
+            qte = int(ligne.quantite or 0)
+            if qte <= 0 or ligne.produit_id is None:
+                continue
+            produit = ligne.produit
+            produit.refresh_from_db()
+            qte_avant = produit.quantite_stock
+            # XSTK8 — jamais négatif : la contre-passation ne sort jamais
+            # plus que le stock en main (une partie a pu être déjà consommée
+            # ailleurs entre-temps).
+            qte_sortie = min(qte, qte_avant) if qte_avant > 0 else 0
+            qte_apres = qte_avant - qte_sortie
+            if qte_sortie > 0:
+                MouvementStock.objects.create(
+                    company=reception.company, produit=produit,
+                    type_mouvement=MouvementStock.TypeMouvement.SORTIE,
+                    quantite=qte_sortie, quantite_avant=qte_avant,
+                    quantite_apres=qte_apres,
+                    reference=f'ANNUL-{reception.reference}',
+                    note=(f'Contre-passation annulation réception '
+                          f'{reception.reference}'),
+                    created_by=user)
+                produit.quantite_stock = qte_apres
+                produit.save(update_fields=['quantite_stock'])
+            ligne_cmd = ligne.ligne_commande
+            if ligne_cmd is not None:
+                ligne_cmd.refresh_from_db()
+                ligne_cmd.quantite_recue = max(
+                    ligne_cmd.quantite_recue - qte, 0)
+                ligne_cmd.save(update_fields=['quantite_recue'])
+        reception.statut = ReceptionFournisseur.Statut.ANNULE
+        reception.note = (
+            f'{reception.note}\n[{timezone.now().date().isoformat()}] '
+            f'Annulée par contre-passation.'.strip()
+            if reception.note else
+            f'[{timezone.now().date().isoformat()}] '
+            'Annulée par contre-passation.')
+        reception.save(update_fields=['statut', 'note'])
+        if bc is not None:
+            bc.refresh_from_db()
+            if (bc.statut == BonCommandeFournisseur.Statut.RECU
+                    and not bc.est_entierement_recu):
+                bc.statut = BonCommandeFournisseur.Statut.ENVOYE
+                bc.save(update_fields=['statut'])
+    return reception
+
+
 # ── XSTK6 — Registre de lots en entrepôt + sortie FEFO + garde périmé ───────
 # Miroir d'`installations.SerieEntrepot` (FG323) mais pour du stock suivi PAR
 # LOT (non sérialisé). Alimenté à la confirmation d'une réception ; décrémenté
