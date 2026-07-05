@@ -257,6 +257,11 @@ function TicketDetail({ ticket, onClose, onSaved }) {
   // serveur correspondante ; une transition hors machine d'états renvoie 400
   // (message clair remonté par `frError`).
   const STATUT_ACTION = {
+    // XSAV11 — « nouveau » est une RÉOUVERTURE gardée (pas un PATCH direct),
+    // sinon le choix « Nouveau » était un no-op silencieux qui laissait l'UI
+    // afficher un statut périmé. Le backend refuse (400) une transition
+    // illégale (ex. en_cours → nouveau), remontée dans setSaveError.
+    nouveau: savApi.reouvrirTicket,
     planifie: savApi.planifierTicket,
     en_cours: savApi.demarrerTicket,
     resolu: savApi.resoudreTicket,

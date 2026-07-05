@@ -552,7 +552,7 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
                 'prets_equipement', 'retourner_pret', 'creer_lead',
                 'checklist',
                 # YDOCF1 — actions guardées de la machine d'états.
-                'planifier', 'demarrer', 'resoudre', 'cloturer',
+                'planifier', 'demarrer', 'resoudre', 'cloturer', 'reouvrir',
                 # ZSAV3 — activités planifiées à échéance.
                 'activites', 'cocher_activite',
                 # ZSAV10 — endpoint d'actions groupées.
@@ -859,6 +859,20 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         """YDOCF1 — Transition gardée → CLOTURE (garde YSERV2 conservée)."""
         ticket = self.get_object()
         self._appliquer_transition_statut(ticket, Ticket.Statut.CLOTURE)
+        return Response(
+            TicketSerializer(ticket, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='reouvrir',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def reouvrir(self, request, pk=None):
+        """XSAV11/YDOCF1 — Réouverture GARDÉE → NOUVEAU depuis PLANIFIE/RESOLU/
+        CLOTURE (le graphe machine_etats l'autorise ; EN_COURS → NOUVEAU est
+        refusé et renvoie 400). C'est l'unique point d'entrée pour ramener un
+        ticket à « nouveau » depuis l'UI (le PATCH direct de statut est
+        read-only depuis YDOCF1). ``_appliquer_transition_statut`` incrémente
+        ``reopen_count`` quand on rouvre depuis un statut clôturé/résolu."""
+        ticket = self.get_object()
+        self._appliquer_transition_statut(ticket, Ticket.Statut.NOUVEAU)
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
 
