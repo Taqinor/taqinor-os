@@ -1,7 +1,7 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from .public_views import portail_avancement
+from .public_views import evaluation_projet, portail_avancement
 from .views import (
     ActionProjetViewSet,
     AffectationRessourceViewSet,
@@ -33,6 +33,7 @@ from .views import (
     ProjetLienViewSet,
     ProjetViewSet,
     RecurrenceTacheViewSet,
+    ReglageTempsViewSet,
     RessourceProfilViewSet,
     RisqueViewSet,
     SousTraitantViewSet,
@@ -76,11 +77,16 @@ router.register(r'clotures', ClotureProjetViewSet)
 router.register(r'situations', SituationTravauxViewSet)
 router.register(r'lignes-situation', LigneSituationViewSet)
 router.register(r'chrono-actif', ChronoActifViewSet, basename='chrono-actif')
+router.register(
+    r'reglages-temps', ReglageTempsViewSet, basename='reglages-temps')
 
 urlpatterns = [
     # Portail PUBLIC (non authentifié) — placé AVANT le routeur pour éviter
     # toute capture par un viewset ; expose uniquement l'avancement non
     # financier d'un projet (PROJ37).
     path('portail/<str:token>/', portail_avancement, name='portail-avancement'),
+    # Enquête de satisfaction client (CSAT, ZPRJ7) — public, GET+POST par jeton.
+    path('portail/evaluation/<str:token>/', evaluation_projet,
+         name='portail-evaluation'),
     path('', include(router.urls)),
 ]

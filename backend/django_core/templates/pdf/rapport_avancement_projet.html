@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 12px; color: #333; }
+    .page { padding: 40px; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
+    .header-left { display: flex; flex-direction: column; gap: 6px; }
+    .logo img { max-height: 70px; max-width: 200px; object-fit: contain; }
+    .doc-title { font-size: 22px; font-weight: bold; color: {{ couleur_principale }}; margin-top: 8px; }
+    .doc-sub { font-size: 12px; color: #666; }
+    .company-info { text-align: right; font-size: 11px; color: #555; line-height: 1.6; }
+    .internal-tag { background: #fef2f2; color: #991b1b; font-size: 10px; text-transform: uppercase;
+      padding: 4px 8px; border-radius: 4px; display: inline-block; margin-top: 6px; font-weight: bold; }
+    .section { margin-bottom: 18px; }
+    .section-title { font-size: 13px; font-weight: bold; color: {{ couleur_principale }};
+      border-bottom: 2px solid {{ couleur_principale }}; padding-bottom: 4px; margin-bottom: 8px; }
+    .meta-row { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+    .meta-item { background: #f0fdf4; border-radius: 4px; padding: 8px 14px; min-width: 100px; }
+    .meta-item strong { display: block; color: #555; font-size: 10px; text-transform: uppercase; margin-bottom: 2px; }
+    .meta-item span { font-size: 12px; color: #1e293b; font-weight: 500; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+    thead tr { background: {{ couleur_principale }}; color: white; }
+    thead th { padding: 6px 10px; text-align: left; font-size: 11px; text-transform: uppercase; }
+    tbody tr:nth-child(even) { background: #f9fafb; }
+    tbody td { padding: 6px 10px; border-bottom: 1px solid #e5e7eb; font-size: 12px; }
+    .muted { color: #999; font-style: italic; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="header">
+      <div class="header-left">
+        <div class="logo">
+          {% if logo_uri %}<img src="{{ logo_uri }}" alt="logo" />{% endif %}
+        </div>
+        <div class="doc-title">Point d'avancement projet</div>
+        <div class="doc-sub">{{ projet.code }} — {{ projet.nom }}</div>
+        <div class="internal-tag">Document interne — ne pas transmettre au client</div>
+      </div>
+      <div class="company-info">
+        <strong>{{ entreprise_nom }}</strong><br/>
+        {{ entreprise_adresse }}<br/>
+        {{ entreprise_telephone }} — {{ entreprise_email }}
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Avancement</div>
+      <div class="meta-row">
+        <div class="meta-item"><strong>Avancement</strong><span>{{ avancement.avancement_pct }}%</span></div>
+        {% if evm %}
+        <div class="meta-item"><strong>SPI</strong><span>{{ evm.spi|default("—") }}</span></div>
+        <div class="meta-item"><strong>CPI</strong><span>{{ evm.cpi|default("—") }}</span></div>
+        <div class="meta-item"><strong>EV</strong><span>{{ evm.ev }}</span></div>
+        <div class="meta-item"><strong>AC</strong><span>{{ evm.ac }}</span></div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Jalons atteints</div>
+      {% if jalons_atteints %}
+      <table>
+        <thead><tr><th>Libellé</th><th>Date prévue</th><th>Statut</th></tr></thead>
+        <tbody>
+          {% for j in jalons_atteints %}
+          <tr><td>{{ j.libelle }}</td><td>{{ j.date_prevue }}</td><td>{{ j.statut }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="muted">Aucun jalon atteint.</p>
+      {% endif %}
+    </div>
+
+    <div class="section">
+      <div class="section-title">Jalons à venir</div>
+      {% if jalons_a_venir %}
+      <table>
+        <thead><tr><th>Libellé</th><th>Date prévue</th><th>Statut</th></tr></thead>
+        <tbody>
+          {% for j in jalons_a_venir %}
+          <tr><td>{{ j.libelle }}</td><td>{{ j.date_prevue }}</td><td>{{ j.statut }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="muted">Aucun jalon à venir.</p>
+      {% endif %}
+    </div>
+
+    <div class="section">
+      <div class="section-title">Retards</div>
+      {% if retards.nb_taches_en_retard or retards.nb_jalons_en_retard %}
+      <table>
+        <thead><tr><th>Élément</th><th>Retard (j)</th></tr></thead>
+        <tbody>
+          {% for t in retards.taches_en_retard %}
+          <tr><td>{{ t.libelle }}</td><td>{{ t.retard_jours }}</td></tr>
+          {% endfor %}
+          {% for j in retards.jalons_en_retard %}
+          <tr><td>{{ j.libelle }}</td><td>{{ j.retard_jours }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="muted">Aucun retard signalé.</p>
+      {% endif %}
+    </div>
+
+    <div class="section">
+      <div class="section-title">Synthèse des temps</div>
+      {% if synthese_temps %}
+      <div class="meta-row">
+        <div class="meta-item"><strong>Total heures</strong><span>{{ synthese_temps.total_heures|default("0") }}</span></div>
+      </div>
+      {% else %}
+      <p class="muted">Aucune donnée de temps disponible.</p>
+      {% endif %}
+    </div>
+  </div>
+</body>
+</html>

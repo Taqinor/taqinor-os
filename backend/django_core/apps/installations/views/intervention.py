@@ -24,10 +24,12 @@ from ..serializers import (  # noqa: F401
     ComponentSerialSerializer, MaterielConsommationSerializer,
     ConsommationLigneSerializer, VoiceMemoSerializer, ReserveSerializer,
     ToolReturnSerializer, SafetyChecklistSlotSerializer, SafetySignoffSerializer,
+    ReverificationMesureSerializer,
 )
 from ..services import (  # noqa: F401
     create_installation_from_devis, seed_checklist_etapes,
     ensure_checklist_items, ensure_default_template,
+    enregistrer_reverification,
 )
 from .. import field_services  # noqa: F401
 from .. import field_capture  # noqa: F401
@@ -117,11 +119,28 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         'technicien', 'camionnette').prefetch_related('equipe').all()
     serializer_class = InterventionSerializer
     filter_backends = [filters.OrderingFilter]
-    ordering_fields = ['date_prevue', 'date_realisee', 'date_creation', 'statut']
-    ordering = ['-date_prevue']
+    ordering_fields = [
+        'date_prevue', 'date_realisee', 'date_creation', 'statut',
+        'priorite_rang']
+    # XFSM4 — tri par défaut : priorité (urgente d'abord) PUIS date.
+    ordering = ['priorite_rang', '-date_prevue']
+
+    # XFSM4 — rang numérique de tri (urgente < haute < normale) pour trier
+    # les 3 vues (kanban F4, calendrier FG68, « Ma journée » F22) par priorité
+    # PUIS date, sans dépendre de l'ordre alphabétique des choix.
+    _PRIORITE_RANG = {
+        Intervention.Priorite.URGENTE: 0,
+        Intervention.Priorite.HAUTE: 1,
+        Intervention.Priorite.NORMALE: 2,
+    }
 
     def get_queryset(self):
+        from django.db.models import Case, When, IntegerField
         qs = super().get_queryset()
+        qs = qs.annotate(priorite_rang=Case(
+            *[When(priorite=val, then=rang)
+              for val, rang in self._PRIORITE_RANG.items()],
+            default=2, output_field=IntegerField()))
         # Portée de visibilité (Feature F) — interventions du technicien / de
         # son équipe. 'all' → inchangé.
         from authentication.scoping import scope_queryset
@@ -131,6 +150,7 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         ticket = params.get('ticket')
         statut = params.get('statut')
         type_interv = params.get('type_intervention')
+        priorite = params.get('priorite')
         if installation:
             qs = qs.filter(installation_id=installation)
         if ticket:
@@ -139,6 +159,8 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             qs = qs.filter(statut=statut)
         if type_interv:
             qs = qs.filter(type_intervention=type_interv)
+        if priorite:
+            qs = qs.filter(priorite=priorite)
         # FG68 — filtre plage de dates sur date_prevue (calendrier dispatch).
         date_from = params.get('date_from')
         date_to = params.get('date_to')
@@ -146,7 +168,48 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             qs = qs.filter(date_prevue__gte=date_from)
         if date_to:
             qs = qs.filter(date_prevue__lte=date_to)
+        # YSERV6 — une intervention annulée (chantier annulé) sort des vues
+        # kanban/calendrier/charge (list) par défaut ; `?annulee=true` la
+        # réaffiche (audit/historique). Ne s'applique jamais aux actions
+        # détail (retrieve/actions) — une intervention déjà annulée reste
+        # consultable/gérable individuellement par son id.
+        if self.action == 'list':
+            annulee_param = params.get('annulee')
+            if annulee_param is not None and annulee_param.lower() in (
+                    '1', 'true', 'vrai', 'oui'):
+                qs = qs.filter(annulee=True)
+            else:
+                qs = qs.filter(annulee=False)
         return qs
+
+    def list(self, request, *args, **kwargs):
+        """ZFSM7 — ``?export=xlsx`` télécharge la liste FILTRÉE (mêmes filtres
+        `statut`/`type_intervention`/`priorite`/plage de dates) en xlsx
+        (colonnes chantier/client/ville/type/statut/priorité/dates/technicien/
+        équipe/durée réelle — SANS aucun coût interne ni marge). Le format
+        DRF ``?format=`` reste réservé — jamais utilisé ici."""
+        if request.query_params.get('export') == 'xlsx':
+            role = getattr(request.user, 'role_legacy', None)
+            if role not in ('responsable', 'admin') and not (
+                    request.user.is_superuser):
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied(
+                    "Export réservé aux rôles responsable/admin.")
+            from apps.records.xlsx import build_xlsx_response
+            from .. import selectors as _selectors
+
+            qs = self.filter_queryset(self.get_queryset())
+            headers = [
+                'Chantier', 'Client', 'Ville', 'Type', 'Statut', 'Priorité',
+                'Date prévue', 'Date réalisée', 'Technicien', 'Équipe',
+                'Durée réelle (min)',
+            ]
+            rows = [_selectors.intervention_export_row(interv)
+                    for interv in qs]
+            return build_xlsx_response(
+                'interventions.xlsx', headers, rows,
+                sheet_title='Interventions')
+        return super().list(request, *args, **kwargs)
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + [
@@ -165,10 +228,18 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             'conflits_affectation',
             # FG301 — nivellement de charge (resource levelling).
             'nivellement_charge',
+            # XFSM5 — KPI taux d'arrivée à l'heure.
+            'taux_ponctualite',
+            # XFSM2 — assistant de planification (meilleur créneau).
+            'suggerer_creneau',
             # FG303 — planning des camionnettes (capacité véhicule).
             'planning_camionnettes',
             # FG69 — signature client.
             'signer_client',
+            # XFSM13 — historique des re-vérifications (lecture).
+            'reverifications',
+            # XFSM22 — durée & pièces suggérées par l'historique.
+            'suggestions_creation',
         ]:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
@@ -186,6 +257,14 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             'cocher_safety', 'signer_safety',
             # FG78 — confirmation RDV.
             'confirmer_rdv',
+            # XFSM3 — replanification en masse d'une journée.
+            'replanifier_en_masse',
+            # XFSM13 — enregistrement d'une re-vérification (écriture).
+            'enregistrer_reverification_view',
+            # XFSM18 — réserve → devis de réparation.
+            'generer_devis_reserve',
+            # XFSM7 — lien public « technicien en route ».
+            'lien_client',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -208,11 +287,89 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         if camionnette is not None and camionnette.company_id != cid:
             raise ValidationError({'camionnette': 'Emplacement inconnu.'})
 
+    def create(self, request, *args, **kwargs):
+        response = super().create(request, *args, **kwargs)
+        if response.status_code == status.HTTP_201_CREATED:
+            avertissements = getattr(self, '_yhire9_avertissements', None)
+            if avertissements:
+                response.data['avertissements'] = avertissements
+        return response
+
+    def update(self, request, *args, **kwargs):
+        response = super().update(request, *args, **kwargs)
+        if response.status_code == status.HTTP_200_OK:
+            avertissements = getattr(self, '_yhire9_avertissements', None)
+            if avertissements:
+                response.data['avertissements'] = avertissements
+        return response
+
+    def _verifier_habilitation_ou_lever(self, company, technicien,
+                                        type_intervention):
+        """YHIRE9 — garde d'habilitation à l'affectation : mémorise les
+        avertissements pour la réponse (`create`/`update`) et lève en mode
+        'block'."""
+        from rest_framework.exceptions import ValidationError
+        from ..services import verifier_habilitation_affectation
+        bloquant, avertissements = verifier_habilitation_affectation(
+            company, technicien, type_intervention)
+        if avertissements:
+            self._yhire9_avertissements = avertissements
+        if bloquant:
+            raise ValidationError({'technicien': avertissements})
+
     def perform_create(self, serializer):
         self._check_tenant(serializer)
         company = self.request.user.company
         installation = serializer.validated_data.get('installation')
+        # YSERV6 — un chantier annulé refuse toute nouvelle intervention.
+        if installation is not None and installation.annule:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError(
+                {'installation': 'Ce chantier est annulé — impossible de '
+                                 'créer une nouvelle intervention.'})
+        # YSERV1 — Gate « acompte encaissé » avant planification : une
+        # Intervention de type POSE DATÉE sur un chantier dont l'acompte
+        # n'est pas encaissé (toggle société ON) est refusée, sauf override
+        # responsable/admin (seul rôle admis en écriture ici) avec `motif`.
+        type_intervention = serializer.validated_data.get('type_intervention')
+        date_prevue = serializer.validated_data.get('date_prevue')
+        if (installation is not None
+                and type_intervention == Intervention.Type.POSE
+                and date_prevue):
+            from rest_framework.exceptions import ValidationError
+            from ..services import verifier_gate_acompte_planification
+            raison = verifier_gate_acompte_planification(installation)
+            if raison:
+                motif_override = (
+                    self.request.data.get('motif_override_acompte')
+                    or '').strip()
+                if not motif_override:
+                    raise ValidationError({'date_prevue': [raison]})
+                activity.log_note(
+                    installation, self.request.user,
+                    'Intervention de pose planifiée sans acompte — motif : '
+                    f'{motif_override}')
+        # YHIRE9 — garde d'habilitation à l'AFFECTATION (création) : un
+        # technicien sans l'habilitation requise déclenche un avertissement
+        # (mode 'warn', défaut) ou un refus (mode 'block').
+        technicien = serializer.validated_data.get('technicien')
+        if technicien is not None:
+            self._verifier_habilitation_ou_lever(
+                company, technicien, type_intervention)
         interv = serializer.save(company=company, created_by=self.request.user)
+        # XFSM4 — priorité héritée du ticket SAV lié quand fournie explicitement
+        # aucune priorité (défaut NORMALE côté modèle = « non fournie » ici).
+        # sav.Ticket.Priorite a une valeur BASSE que Intervention n'a pas :
+        # repli sur NORMALE (comportement le plus proche de l'existant).
+        if interv.ticket_id is not None and \
+                'priorite' not in serializer.validated_data:
+            ticket_priorite = getattr(interv.ticket, 'priorite', None)
+            mapped = ticket_priorite if ticket_priorite in (
+                Intervention.Priorite.URGENTE, Intervention.Priorite.HAUTE,
+                Intervention.Priorite.NORMALE) else Intervention.Priorite.NORMALE
+            if mapped != interv.priorite:
+                interv.priorite = mapped
+                interv.save(update_fields=['priorite'])
         # Auto-tampon date_realisee : un compte rendu rempli (ou un statut
         # « Terminée »/« Validée ») sans date réalisée la pose à aujourd'hui,
         # côté serveur (miroir de _stamp_statut_dates du chantier).
@@ -244,6 +401,17 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             reason = field_services.transition_block_reason(old, new_statut)
             if reason:
                 raise ValidationError({'statut': reason})
+        # YHIRE9 — garde d'habilitation à l'AFFECTATION : seulement quand le
+        # technicien CHANGE (pas de bruit sur une simple modification d'une
+        # intervention déjà correctement affectée).
+        new_technicien = serializer.validated_data.get(
+            'technicien', old.technicien)
+        if (new_technicien is not None
+                and new_technicien.id != old.technicien_id):
+            self._verifier_habilitation_ou_lever(
+                self.request.user.company, new_technicien,
+                serializer.validated_data.get(
+                    'type_intervention', old.type_intervention))
         interv = serializer.save()
         # Auto-tampon date_realisee (compte rendu rempli / terminée) si vide.
         self._stamp_date_realisee(interv)
@@ -257,6 +425,15 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
                 interv.installation, self.request.user,
                 f"Intervention modifiée : "
                 f"{interv.get_type_intervention_display()}")
+        # YSERV2 — passage à TERMINEE/VALIDEE (nouveau) : émet
+        # intervention_completed sur le bus (core/events.py). sav s'y abonne
+        # pour avancer un ticket lié — installations n'importe jamais sav.
+        if (old.statut not in (Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE)
+                and interv.statut in (Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE)):
+            from core.events import intervention_completed
+            intervention_completed.send(
+                sender=Intervention, intervention=interv,
+                company=self.request.user.company, user=self.request.user)
 
     def perform_destroy(self, instance):
         # Suppression d'intervention → trace au chatter du CHANTIER.
@@ -433,14 +610,36 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='depart-depot',
             permission_classes=[IsResponsableOrAdmin])
     def depart_depot(self, request, pk=None):
-        """F6 — horodate le départ du dépôt (début du trajet)."""
+        """F6 — horodate le départ du dépôt (début du trajet). XFSM7 : si le
+        navigateur fournit lat/lng, les pose aussi (sert uniquement à l'ETA du
+        lien public « technicien en route » — aucune autre logique n'en
+        dépend)."""
         interv = self.get_object()
         interv.depart_depot_le = timezone.now()
-        interv.save(update_fields=['depart_depot_le'])
+        fields = ['depart_depot_le']
+        lat, lng = request.data.get('lat'), request.data.get('lng')
+        if lat not in (None, '') and lng not in (None, ''):
+            try:
+                interv.depart_gps_lat = round(float(lat), 6)
+                interv.depart_gps_lng = round(float(lng), 6)
+                fields += ['depart_gps_lat', 'depart_gps_lng']
+            except (TypeError, ValueError):
+                pass
+        interv.save(update_fields=fields)
         intervention_activity.log_note(
             interv, request.user, "Départ dépôt enregistré.")
         return Response(InterventionSerializer(
             interv, context={'request': request}).data)
+
+    @action(detail=True, methods=['get'], url_path='lien-client',
+            permission_classes=[IsResponsableOrAdmin])
+    def lien_client(self, request, pk=None):
+        """XFSM7 — génère (lazily) et renvoie l'URL publique « technicien en
+        route » de cette intervention, à partager par WhatsApp/SMS (pattern
+        FG86/liens WhatsApp)."""
+        interv = self.get_object()
+        token = interv.ensure_lien_client_token()
+        return Response({'token': token, 'path': f'/public/installations/intervention/{token}/'})
 
     @action(detail=True, methods=['post'], url_path='checkin',
             permission_classes=[IsResponsableOrAdmin])
@@ -451,7 +650,8 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         interv = self.get_object()
         lat = request.data.get('lat')
         lng = request.data.get('lng')
-        interv.arrivee_site_le = timezone.now()
+        now = timezone.now()
+        interv.arrivee_site_le = now
         fields = ['arrivee_site_le']
         if lat not in (None, '') and lng not in (None, ''):
             try:
@@ -461,6 +661,14 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             except (TypeError, ValueError):
                 return Response({'detail': 'Coordonnées invalides.'},
                                 status=status.HTTP_400_BAD_REQUEST)
+        # XFSM5 — ponctualité : dérivée de l'arrivée réelle vs la fenêtre
+        # promise (heure locale du serveur — cohérent avec `date_prevue`).
+        # None si aucune fenêtre n'est promise (comportement actuel inchangé).
+        if interv.fenetre_debut is not None and interv.fenetre_fin is not None:
+            heure_arrivee = timezone.localtime(now).time()
+            interv.arrivee_dans_fenetre = (
+                interv.fenetre_debut <= heure_arrivee <= interv.fenetre_fin)
+            fields.append('arrivee_dans_fenetre')
         interv.save(update_fields=fields)
         dist = field_services.distance_to_site(interv)
         intervention_activity.log_note(
@@ -872,6 +1080,36 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             f"Matériel consommé validé — {nb} référence(s) sortie(s) du stock.")
         return self._consommation_response(interv)
 
+    # ── XFSM22 — durée & pièces suggérées par l'historique ──────────────────
+    @action(detail=False, methods=['get'], url_path='suggestions-creation',
+            permission_classes=[IsAnyRole])
+    def suggestions_creation(self, request):
+        """XFSM22 — suggestions affichées à la CRÉATION d'une intervention
+        (jamais forcées) : durée médiane (F15) + pièces les plus consommées
+        (F11) sur l'historique similaire. Query params : `type_intervention`
+        (requis), `technicien` (id, optionnel), `type_installation` (optionnel).
+        Silencieux sous le seuil d'historique."""
+        from ..selectors import (
+            suggestion_duree_intervention, suggestion_pieces_intervention,
+        )
+        company = request.user.company
+        type_intervention = request.query_params.get('type_intervention')
+        if not type_intervention:
+            return Response(
+                {'detail': 'type_intervention est requis.'}, status=400)
+        technicien = None
+        technicien_id = request.query_params.get('technicien')
+        if technicien_id:
+            from authentication.models import CustomUser
+            technicien = CustomUser.objects.filter(
+                id=technicien_id, company=company).first()
+        duree = suggestion_duree_intervention(
+            company, type_intervention, technicien=technicien)
+        pieces = suggestion_pieces_intervention(
+            company, type_intervention,
+            type_installation=request.query_params.get('type_installation'))
+        return Response({'duree': duree, 'pieces': pieces})
+
     @action(detail=False, methods=['get'], url_path='overage-review',
             permission_classes=[IsAnyRole])
     def overage_review(self, request):
@@ -1052,6 +1290,37 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             description=reserve.description or 'Réserve d\'intervention',
             created_by=user)
 
+    # ── XFSM13 — re-vérification IEC 62446-2 vs baseline de recette ─────────
+    @action(detail=True, methods=['post'], url_path='enregistrer-reverification',
+            permission_classes=[IsResponsableOrAdmin])
+    def enregistrer_reverification_view(self, request, pk=None):
+        """XFSM13 — enregistre une re-vérification IEC 62446-2 (points
+        électriques comparés à la baseline de recette du chantier). Corps :
+        {"isolement_mohm": ..., "continuite_terre_ohm": ...,
+        "voc_par_string": {"A": 620.5, ...}, "observations": ...,
+        ["seuil_alerte_pct"]}. Un dépassement du seuil crée une Reserve."""
+        interv = self.get_object()
+        seuil = request.data.get('seuil_alerte_pct', 20)
+        try:
+            seuil = float(seuil)
+        except (TypeError, ValueError):
+            seuil = 20
+        reverif = enregistrer_reverification(
+            interv, request.data, user=request.user, seuil_alerte_pct=seuil)
+        return Response(
+            ReverificationMesureSerializer(reverif).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'], url_path='reverifications',
+            permission_classes=[IsAnyRole])
+    def reverifications(self, request, pk=None):
+        """XFSM13 — historique des re-vérifications de l'intervention."""
+        interv = self.get_object()
+        from ..models import ReverificationMesure
+        qs = ReverificationMesure.objects.filter(
+            intervention_id=interv.id).order_by('-date_creation')
+        return Response(ReverificationMesureSerializer(qs, many=True).data)
+
     @action(detail=True, methods=['post'], url_path='modifier-reserve',
             permission_classes=[IsResponsableOrAdmin])
     def modifier_reserve(self, request, pk=None):
@@ -1093,6 +1362,38 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         reserve.save(update_fields=['statut', 'resolution', 'resolue_le'])
         return Response(ReserveSerializer(
             reserve, context={'request': request}).data)
+
+    # ── XFSM18 — réserve → devis de réparation ──────────────────────────────
+    @action(detail=True, methods=['post'], url_path='generer-devis-reserve',
+            permission_classes=[IsResponsableOrAdmin])
+    def generer_devis_reserve(self, request, pk=None):
+        """XFSM18 — génère un devis brouillon de réparation à partir d'une
+        réserve (client du chantier résolu côté serveur, description
+        pré-remplie). Idempotent : si la réserve porte déjà un
+        `devis_repare_id`, le renvoie sans en créer un second. Corps :
+        {"reserve": <id>}."""
+        interv = self.get_object()
+        reserve = interv.reserves.filter(id=request.data.get('reserve')).first()
+        if reserve is None:
+            return Response({'detail': 'Réserve inconnue.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if reserve.devis_repare_id:
+            return Response({
+                'reserve': reserve.id, 'devis_id': reserve.devis_repare_id,
+                'deja_existant': True,
+            })
+        from apps.ventes.services import create_devis_from_reserve
+        try:
+            devis = create_devis_from_reserve(reserve=reserve, user=request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        reserve.devis_repare_id = devis.id
+        reserve.save(update_fields=['devis_repare_id'])
+        return Response({
+            'reserve': reserve.id, 'devis_id': devis.id,
+            'devis_reference': devis.reference, 'deja_existant': False,
+        }, status=status.HTTP_201_CREATED)
 
     # ── F17 — réconciliation du retour d'outillage ──────────────────────────
     @action(detail=True, methods=['get', 'post'], url_path='tool-return',
@@ -1349,7 +1650,7 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         params = request.query_params
         date_from = params.get('date_from')
         date_to = params.get('date_to')
-        qs = Intervention.objects.filter(company=company)
+        qs = Intervention.objects.filter(company=company, annulee=False)
         if date_from:
             qs = qs.filter(date_prevue__gte=date_from)
         if date_to:
@@ -1364,6 +1665,13 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         for interv in qs:
             key = interv.technicien_id or 'non_assigne'
             by_tech[key].append(interv)
+        # XFSM4 — au sein d'un même technicien, priorité (urgente d'abord)
+        # PUIS date (le regroupement ci-dessus est déjà trié par date).
+        from datetime import date as _date
+        for intervs in by_tech.values():
+            intervs.sort(key=lambda iv: (
+                self._PRIORITE_RANG.get(iv.priorite, 2),
+                iv.date_prevue or _date.min))
         result = []
         # Techniciens assignés
         tech_ids = [k for k in by_tech if k != 'non_assigne']
@@ -1589,6 +1897,100 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             heures = 8.0
         data = selectors.nivellement_charge(
             request.user.company, debut, fin, heures_par_jour=heures)
+        return Response(data)
+
+    # ── XFSM5 — KPI taux d'arrivée à l'heure (fenêtres de RDV promises) ──────
+    @action(detail=False, methods=['get'], url_path='taux-ponctualite',
+            permission_classes=[IsAnyRole])
+    def taux_ponctualite(self, request):
+        """XFSM5 — proportion des arrivées dans la fenêtre promise
+        (`fenetre_debut`/`fenetre_fin`), calculée au check-in GPS F6. Filtrable
+        par `debut`/`fin` (bornes de `arrivee_site_le`) et `technicien`."""
+        from datetime import datetime
+        from .. import selectors
+
+        def _parse(value):
+            try:
+                return datetime.strptime(value, '%Y-%m-%d').date()
+            except (TypeError, ValueError):
+                return None
+
+        params = request.query_params
+        data = selectors.taux_ponctualite(
+            request.user.company,
+            debut=_parse(params.get('debut')),
+            fin=_parse(params.get('fin')),
+            technicien_id=params.get('technicien'))
+        return Response(data)
+
+    # ── XFSM2 — Assistant de planification (meilleur créneau + technicien) ──
+    @action(detail=False, methods=['post'], url_path='suggerer-creneau',
+            permission_classes=[IsAnyRole])
+    def suggerer_creneau(self, request):
+        """XFSM2 — les 3 meilleures propositions (technicien, date) pour un
+        chantier/type/durée cible. Lecture seule, NE MUTE RIEN. Corps :
+        {chantier, type_intervention, [duree_jours], [date_cible]}."""
+        from datetime import datetime
+        from rest_framework.exceptions import ValidationError
+        from .. import selectors
+
+        chantier_id = request.data.get('chantier')
+        if not chantier_id:
+            raise ValidationError({'chantier': 'Chantier requis.'})
+        type_intervention = request.data.get('type_intervention') or ''
+        duree_jours = request.data.get('duree_jours') or 1
+        date_cible_raw = request.data.get('date_cible')
+        date_cible = None
+        if date_cible_raw:
+            try:
+                date_cible = datetime.strptime(
+                    date_cible_raw, '%Y-%m-%d').date()
+            except (TypeError, ValueError):
+                raise ValidationError({'date_cible': 'Date invalide.'})
+        data = selectors.suggerer_creneau(
+            request.user.company, chantier_id=chantier_id,
+            type_intervention=type_intervention, duree_jours=duree_jours,
+            date_cible=date_cible)
+        return Response(data)
+
+    # ── XFSM3 — Replanification en masse d'une journée ──────────────────────
+    @action(detail=False, methods=['post'], url_path='replanifier-en-masse',
+            permission_classes=[IsResponsableOrAdmin])
+    def replanifier_en_masse(self, request):
+        """XFSM3 — re-slotte en UN appel les interventions d'un jour (toutes
+        celles d'un `technicien` absent, et/ou une liste `intervention_ids`).
+        `?simuler=1` (ou body `simuler`) ne mute rien — dry-run des
+        propositions XFSM2. Sans dry-run, applique + trace FG78 + notifie.
+        Corps : {jour, [technicien], [intervention_ids], [motif]}."""
+        from datetime import datetime
+        from rest_framework.exceptions import ValidationError
+        from .. import services
+
+        jour_raw = request.data.get('jour')
+        if not jour_raw:
+            raise ValidationError({'jour': 'Jour requis.'})
+        try:
+            jour = datetime.strptime(jour_raw, '%Y-%m-%d').date()
+        except (TypeError, ValueError):
+            raise ValidationError({'jour': 'Date invalide.'})
+
+        technicien_id = request.data.get('technicien')
+        intervention_ids = request.data.get('intervention_ids')
+        simuler = str(
+            request.data.get('simuler')
+            or request.query_params.get('simuler') or '').lower() in (
+            '1', 'true', 'yes')
+
+        if simuler:
+            data = services.previsualiser_replanification_masse(
+                request.user.company, jour=jour, technicien_id=technicien_id,
+                intervention_ids=intervention_ids)
+            return Response(data)
+
+        motif = request.data.get('motif')
+        data = services.appliquer_replanification_masse(
+            request.user.company, jour=jour, motif=motif, user=request.user,
+            technicien_id=technicien_id, intervention_ids=intervention_ids)
         return Response(data)
 
     # ── FG303 — planning des camionnettes (capacité véhicule) ────────────────

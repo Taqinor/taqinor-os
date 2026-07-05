@@ -28,6 +28,9 @@ Lecture EXCLUSIVEMENT via les selectors des apps cibles ; écriture
 EXCLUSIVEMENT via leurs services. Jamais d'import de ``models``/``views``
 d'une autre app (contrat import-linter). ``core`` est fondation, importable
 directement (``core.workflow``)."""
+import datetime
+
+from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
@@ -51,6 +54,7 @@ def _automation_items(company):
                 approval.rule.nom if approval.rule_id else 'Automatisation'),
             'cree_le': approval.date_creation,
             'demandeur': getattr(approval.requested_by, 'username', None),
+            'priorite': None,
         })
     return out
 
@@ -65,8 +69,11 @@ def _contrats_items(company):
             'libelle': f'Contrat {etape.contrat.reference} — étape {etape.niveau}'
             if getattr(etape.contrat, 'reference', None)
             else f'Contrat #{etape.contrat_id} — étape {etape.niveau}',
-            'cree_le': None,
+            # ZCTR9 — expose la vraie date de création (le champ existe déjà
+            # sur EtapeApprobation, il n'était simplement pas remonté avant).
+            'cree_le': etape.date_creation,
             'demandeur': None,
+            'priorite': None,
         })
     return out
 
@@ -81,6 +88,7 @@ def _ged_items(company):
             'libelle': f'Document {getattr(demande.document, "nom", demande.document_id)}',
             'cree_le': demande.created_at,
             'demandeur': getattr(demande.demandeur, 'username', None),
+            'priorite': None,
         })
     return out
 
@@ -93,8 +101,11 @@ def _installations_items(company):
             'source': 'installations',
             'id': da.id,
             'libelle': f'Réquisition {da.reference}',
-            'cree_le': None,
+            # ZCTR9 — DemandeAchat.date_creation existe déjà (auto_now_add).
+            'cree_le': da.date_creation,
             'demandeur': None,
+            # ZCTR9 — seule source à porter une vraie priorité aujourd'hui.
+            'priorite': da.priorite or None,
         })
     return out
 
@@ -107,8 +118,10 @@ def _core_workflow_items(company):
             'source': 'workflow',
             'id': step.id,
             'libelle': step.step_def.nom if step.step_def_id else 'Étape workflow',
-            'cree_le': None,
+            # ZCTR9 — WorkflowStepInstance hérite de TimestampedModel.
+            'cree_le': step.created_at,
             'demandeur': getattr(step.assignee, 'username', None),
+            'priorite': None,
         })
     return out
 
@@ -122,20 +135,100 @@ _SOURCE_LOADERS = {
 }
 
 
+def _jours_ouvres_ecoules(depuis, company, *, aujourdhui=None):
+    """ZCTR9 — nombre de jours OUVRÉS écoulés entre ``depuis`` (datetime/date)
+    et aujourd'hui (borne société via ``notifications.calendar_utils``,
+    FG5). ``depuis`` non-borné (None) renvoie 0. Le jour de création
+    lui-même n'est pas compté (symétrique à ``ajouter_jours_ouvres``)."""
+    if depuis is None:
+        return 0
+    from apps.notifications import calendar_utils
+
+    d = depuis.date() if hasattr(depuis, 'date') else depuis
+    today = aujourdhui or timezone.localdate()
+    if d >= today:
+        return 0
+    count = 0
+    current = d
+    # Borné par construction : une demande en attente ne vit pas des années ;
+    # garde-fou dur pour éviter toute boucle pathologique.
+    for _ in range(3660):
+        current += datetime.timedelta(days=1)
+        if current > today:
+            break
+        if calendar_utils.is_jour_ouvre(current, company):
+            count += 1
+    return count
+
+
+def _enrichir_urgence(items, company):
+    """ZCTR9 — ajoute ``anciennete_jours`` (jours ouvrés en attente) et
+    ``en_retard`` (au-delà du SLA société, défaut 3 j ouvrés — FG5 jours
+    ouvrés) à chaque item, en place. Retourne la liste enrichie."""
+    from apps.reporting.models import ApprobationSlaConfig
+
+    sla_jours = ApprobationSlaConfig.sla_jours_pour(company)
+    for it in items:
+        anciennete = _jours_ouvres_ecoules(it.get('cree_le'), company)
+        it['anciennete_jours'] = anciennete
+        it['en_retard'] = anciennete >= sla_jours
+    return items
+
+
+_TRI_URGENCE = 'urgence'
+_TRI_ANCIENNETE = 'anciennete'
+_TRI_MONTANT = 'montant'
+_TRIS_VALIDES = {_TRI_URGENCE, _TRI_ANCIENNETE, _TRI_MONTANT}
+
+
+def _trier_items(items, trier):
+    """ZCTR9 — tri des items agrégés selon ``?trier=``.
+
+    - ``urgence`` : en retard d'abord, puis ancienneté décroissante.
+    - ``anciennete`` : ancienneté décroissante (plus vieux en premier).
+    - ``montant`` : demandes avec un montant connu d'abord (décroissant),
+      celles sans montant (aucune source homogène ne l'expose aujourd'hui)
+      en dernier, triées par ancienneté à défaut.
+    Tri stable : conserve l'ordre source/id existant à valeur égale."""
+    if trier == _TRI_URGENCE:
+        items.sort(key=lambda it: (
+            0 if it.get('en_retard') else 1, -it.get('anciennete_jours', 0)))
+    elif trier == _TRI_ANCIENNETE:
+        items.sort(key=lambda it: -it.get('anciennete_jours', 0))
+    elif trier == _TRI_MONTANT:
+        items.sort(key=lambda it: (
+            it.get('montant') is None,
+            -(it.get('montant') or 0),
+            -it.get('anciennete_jours', 0)))
+    return items
+
+
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def approbations_en_attente(request):
     """XKB1 — ``GET reporting/approbations-en-attente/``.
 
     Renvoie les demandes multi-modules EN ATTENTE, scopées à la société de
-    l'utilisateur (jamais une autre société). ``?source=`` filtre à une seule
-    source (``automation``/``contrats``/``ged``/``installations``/
-    ``workflow``)."""
+    l'utilisateur (jamais une autre société). Filtres :
+      - ``?source=`` — une seule source (``automation``/``contrats``/``ged``/
+        ``installations``/``workflow``).
+      - ``?categorie=`` — ZCTR9, alias de ``source`` (la seule facette de
+        catégorie homogène à travers les sources aujourd'hui).
+      - ``?priorite=`` — ZCTR9, ne retient que les items portant cette
+        priorité exacte (seule ``installations`` en expose une aujourd'hui ;
+        les autres sources n'ont pas de champ priorité — aucune fabrication
+        de donnée, elles sont simplement exclues du filtre).
+      - ``?trier=urgence|anciennete|montant`` — ZCTR9, voir ``_trier_items``.
+    Chaque item porte désormais ``anciennete_jours`` (jours ouvrés en
+    attente, FG5) et ``en_retard`` (au-delà du SLA société paramétrable,
+    ``ApprobationSlaConfig``, défaut 3 j ouvrés)."""
     company = _co(request.user)
     if company is None:
         return Response({'items': [], 'total': 0})
 
-    source_filter = request.query_params.get('source')
+    source_filter = (
+        request.query_params.get('source')
+        or request.query_params.get('categorie'))
     sources = ([source_filter] if source_filter in _SOURCE_LOADERS
                else list(_SOURCE_LOADERS))
 
@@ -143,7 +236,18 @@ def approbations_en_attente(request):
     for source in sources:
         items.extend(_SOURCE_LOADERS[source](company))
 
+    items = _enrichir_urgence(items, company)
+
+    priorite_filter = request.query_params.get('priorite')
+    if priorite_filter:
+        items = [it for it in items if it.get('priorite') == priorite_filter]
+
     items.sort(key=lambda it: (it['source'], it['id']))
+
+    trier = request.query_params.get('trier')
+    if trier in _TRIS_VALIDES:
+        items = _trier_items(items, trier)
+
     return Response({'items': items, 'total': len(items)})
 
 

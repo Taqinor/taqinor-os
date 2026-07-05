@@ -47,6 +47,20 @@ def _company_qs(qs, user):
         return qs
     return qs.none()
 
+
+def _reserver_stock_bc_actif(company):
+    """YDOCF7 — état du toggle société `reserver_stock_bc` (défaut OFF).
+
+    Lecture robuste : société absente/config absente ⇒ False (comportement
+    actuel intact), jamais d'exception."""
+    if company is None:
+        return False
+    try:
+        from apps.parametres.models import CompanyProfile
+        return bool(CompanyProfile.get(company=company).reserver_stock_bc)
+    except Exception:  # pragma: no cover - défensif
+        return False
+
 # NOTE: ce module fait partie du découpage de l'ancien views.py monolithe
 # (un module par ressource). Comportement et symboles inchangés : le
 # package __init__ ré-exporte toutes les vues publiques.
@@ -66,7 +80,7 @@ class BonCommandeViewSet(viewsets.ModelViewSet):
         return _company_qs(super().get_queryset(), self.request.user)
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS:
+        if self.action in READ_ACTIONS + ['pdf']:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
             'confirmer', 'marquer_livre', 'annuler', 'creer_facture'
@@ -104,6 +118,12 @@ class BonCommandeViewSet(viewsets.ModelViewSet):
             )
         bc.statut = BonCommande.Statut.CONFIRME
         bc.save()
+        # YDOCF7 — toggle société (défaut OFF = comportement actuel intact) :
+        # réserve le stock des lignes du BC (StockReservation N14, via
+        # installations.services — jamais d'import de son modèle ici).
+        if _reserver_stock_bc_actif(bc.company):
+            from apps.installations.services import reserver_stock_depuis_bc
+            reserver_stock_depuis_bc(bc)
         return Response(BonCommandeSerializer(bc).data)
 
     @action(detail=True, methods=['post'], url_path='marquer-livre',
@@ -144,8 +164,12 @@ class BonCommandeViewSet(viewsets.ModelViewSet):
         if pv:
             pv['signed_at'] = _tz.now().isoformat()
         from decimal import Decimal, ROUND_HALF_UP
+        # YDOCF7 — toggle ON : la réservation créée à `confirmer` est SOLDÉE
+        # (consommée) ici au lieu d'un second décrément direct — jamais les
+        # deux (double décompte). Toggle OFF : chemin historique inchangé.
+        toggle_bc_stock = _reserver_stock_bc_actif(bc.company)
         with transaction.atomic():
-            if bc.devis:
+            if bc.devis and not toggle_bc_stock:
                 for ligne in bc.devis.lignes.select_related('produit'):
                     produit = ligne.produit
                     produit.refresh_from_db()
@@ -185,6 +209,9 @@ class BonCommandeViewSet(viewsets.ModelViewSet):
             if pv:
                 bc.pv_livraison = pv
             bc.save()
+        if toggle_bc_stock:
+            from apps.installations.services import consommer_reservation_bc
+            consommer_reservation_bc(bc, request.user)
         return Response(BonCommandeSerializer(bc).data)
 
     @action(detail=True, methods=['post'], url_path='annuler',
@@ -198,6 +225,11 @@ class BonCommandeViewSet(viewsets.ModelViewSet):
             )
         bc.statut = BonCommande.Statut.ANNULE
         bc.save()
+        # YDOCF7 — toggle ON : libère la réservation posée à `confirmer`
+        # (no-op si le BC n'avait pas encore été confirmé/réservé).
+        if _reserver_stock_bc_actif(bc.company):
+            from apps.installations.services import liberer_reservation_bc
+            liberer_reservation_bc(bc)
         return Response(BonCommandeSerializer(bc).data)
 
     @action(detail=True, methods=['post'], url_path='creer-facture',
@@ -266,3 +298,20 @@ class BonCommandeViewSet(viewsets.ModelViewSet):
             data,
             status=status.HTTP_201_CREATED,
         )
+
+    @action(detail=True, methods=['get'], url_path='pdf')
+    def pdf(self, request, pk=None):
+        """ZSAL8 — PDF imprimable du bon de commande client (layout legacy
+        WeasyPrint, jamais le moteur devis premium — règle #4). Rendu à la
+        volée, non stocké."""
+        bc = self.get_object()
+        from ..utils.pdf import generate_bon_commande_pdf
+        pdf_bytes = generate_bon_commande_pdf(bc.id)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        from ..utils.filenames import document_filename
+        filename = document_filename(
+            'BonCommande', bc.reference,
+            client=bc.client if bc.client_id else None,
+            company=bc.company)
+        response['Content-Disposition'] = f'inline; filename="{filename}"'
+        return response

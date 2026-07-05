@@ -65,6 +65,10 @@
       line-height: 1.8;
     }
     .footer .footer-legal { font-size: 9.5px; color: #b0bec5; margin-top: 4px; }
+    /* XFAC19 — QR paiement/vérification, coin pied de page (zone silencieuse,
+       n'affecte jamais la mise en page existante quand absent). */
+    .footer-qr { display: flex; justify-content: center; margin-bottom: 8px; }
+    .footer-qr img, .footer-qr svg { width: 64px; height: 64px; }
   </style>
 </head>
 <body>
@@ -127,6 +131,12 @@
       <strong>Statut</strong>
       <span class="statut-badge">{{ facture.get_statut_display() }}</span>
     </div>
+    {% if facture.periode_service_debut and facture.periode_service_fin %}
+    <div class="meta-item">
+      <strong>Période de service</strong>
+      <span>{{ facture.periode_service_debut.strftime('%d/%m/%Y') }} — {{ facture.periode_service_fin.strftime('%d/%m/%Y') }}</span>
+    </div>
+    {% endif %}
   </div>
 
   <!-- Lignes -->
@@ -241,6 +251,9 @@
 
   <!-- Pied de page -->
   <div class="footer">
+    {% if facture_qr_svg %}
+    <div class="footer-qr">{{ facture_qr_svg|safe }}</div>
+    {% endif %}
     <strong>{{ entreprise_nom }}</strong>
     {% if entreprise_adresse %} — {{ entreprise_adresse }}{% endif %}
     {% if entreprise_email %} — {{ entreprise_email }}{% endif %}

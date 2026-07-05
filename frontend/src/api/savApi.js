@@ -22,6 +22,21 @@ const savApi = {
   noterTicket: (id, body) => api.post(`/sav/tickets/${id}/noter/`, { body }),
   annulerTicket: (id, motif) => api.post(`/sav/tickets/${id}/annuler/`, { motif }),
   reactiverTicket: (id) => api.post(`/sav/tickets/${id}/reactiver/`),
+  // ZSAV10 — actions groupées atomiques (statut/technicien/priorite/annuler)
+  // en une seule requête, remplace le fan-out de PATCH par ligne.
+  actionsGroupeesTickets: (ids, operation, extra = {}) =>
+    api.post('/sav/tickets/actions-groupees/', { ids, operation, ...extra }),
+  // YDOCF1 — machine d'états gardée : `statut` n'est plus PATCHable
+  // directement, les transitions passent par ces actions dédiées.
+  planifierTicket: (id) => api.post(`/sav/tickets/${id}/planifier/`),
+  demarrerTicket: (id) => api.post(`/sav/tickets/${id}/demarrer/`),
+  resoudreTicket: (id, canalResolution) =>
+    api.post(`/sav/tickets/${id}/resoudre/`,
+      canalResolution ? { canal_resolution: canalResolution } : {}),
+  cloturerTicket: (id) => api.post(`/sav/tickets/${id}/cloturer/`),
+  // XSAV11 — réouverture d'un ticket vers « nouveau » (transition gardée ;
+  // autorisée depuis planifié/résolu/clôturé, refusée depuis en_cours).
+  reouvrirTicket: (id) => api.post(`/sav/tickets/${id}/reouvrir/`),
   // N45 — rapport d'intervention (PDF régénéré à la demande, sans prix d'achat).
   rapportPdf: (id) => api.get(`/sav/tickets/${id}/rapport-pdf/`, { responseType: 'blob' }),
   // N46 — pièces consommées sur un ticket (le stock peut être décrémenté).

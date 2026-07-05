@@ -67,8 +67,12 @@ METTRE_A_JOUR_TICKET = AgentAction(
     key='sav.ticket.update',
     label='Mettre à jour un ticket SAV',
     description=(
-        "Met à jour un ticket SAV existant (statut, priorité, description, "
-        "technicien responsable…). La société reste celle du ticket."
+        "Met à jour un ticket SAV existant (priorité, description, "
+        "technicien responsable…). La société reste celle du ticket. "
+        "YDOCF1 — le statut ne se change plus par ce PATCH (machine d'états "
+        "gardée) : utiliser les actions dédiées "
+        "planifier/demarrer/resoudre/cloturer sur "
+        "/api/django/sav/tickets/{id}/<action>/."
     ),
     endpoint='/api/django/sav/tickets/{id}/',
     method='PATCH',
@@ -79,7 +83,6 @@ METTRE_A_JOUR_TICKET = AgentAction(
                 'type': 'integer',
                 'description': 'Identifiant du ticket à mettre à jour.',
             },
-            'statut': {'type': 'string'},
             'priorite': {'type': 'string'},
             'description': {'type': 'string'},
             'technicien_responsable': {'type': 'integer'},

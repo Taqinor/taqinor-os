@@ -8,7 +8,26 @@ from decimal import Decimal, ROUND_HALF_UP
 import logging
 import re
 
+from apps.stock.services import qr_svg_for
+
 logger = logging.getLogger(__name__)
+
+
+def _add_months(d, months):
+    """YSUBS9 — `d` décalée de `months` mois (jour recadré fin de mois).
+
+    Fonction pure stdlib (pas de dépendance ajoutée), même calcul que
+    `apps.sav.dateutils.add_months` mais gardée locale pour ne pas coupler
+    `ventes` à `sav` pour une simple arithmétique de date."""
+    if d is None or months is None:
+        return None
+    import calendar
+    total = d.month - 1 + int(months)
+    year = d.year + total // 12
+    month = total % 12 + 1
+    day = min(d.day, calendar.monthrange(year, month)[1])
+    from datetime import date
+    return date(year, month, day)
 
 
 def create_draft_devis_from_ocr(*, company, user, lead, fields):
@@ -57,6 +76,56 @@ def create_draft_devis_from_ocr(*, company, user, lead, fields):
     devis = create_with_reference(Devis, 'DEV', company, _create)
     logger.info('FG106: devis brouillon %s créé depuis OCR (company %s)',
                 devis.reference, getattr(company, 'id', '?'))
+    return devis
+
+
+def create_devis_from_reserve(*, reserve, user):
+    """XFSM18 — crée un DEVIS brouillon de réparation à partir d'une réserve
+    d'intervention (`installations.Reserve`), pour donner un chemin de devis
+    payant au pipeline de réparation.
+
+    Le client est celui du CHANTIER (`reserve.intervention.installation.client`,
+    déjà résolu — aucune re-résolution lead nécessaire ici, à la différence de
+    `create_draft_devis_from_ocr`). La description est pré-remplie depuis la
+    réserve ; aucune ligne n'est créée (une LigneDevis exige un Produit du
+    catalogue) — le devis brouillon est laissé à compléter dans l'éditeur.
+
+    Le devis reste ``brouillon`` : ce service CRÉE, il ne change aucun statut
+    aval (règle #4). Aucun impact sur `/proposal`.
+    """
+    from apps.ventes.models import Devis
+    from apps.ventes.utils.references import create_with_reference
+
+    installation = reserve.intervention.installation
+    if installation is None or installation.client_id is None:
+        raise ValueError(
+            "create_devis_from_reserve requires a reserve whose intervention "
+            "is attached to a chantier with a resolved client")
+    client = installation.client
+    company = reserve.company or installation.company
+
+    description = (reserve.description or '').strip()
+    note_lines = ["Devis de réparation généré depuis une réserve d'intervention."]
+    if description:
+        note_lines.append(f"Description : {description}")
+    if reserve.photo_id:
+        note_lines.append(f"Photo référencée : pièce jointe #{reserve.photo_id}")
+    note = "\n".join(note_lines)
+
+    def _create(ref):
+        return Devis.objects.create(
+            company=company,
+            reference=ref,
+            client=client,
+            statut=Devis.Statut.BROUILLON,
+            created_by=user,
+            note=note,
+        )
+
+    devis = create_with_reference(Devis, 'DEV', company, _create)
+    logger.info(
+        'XFSM18: devis de réparation %s créé depuis la réserve %s (company %s)',
+        devis.reference, reserve.id, getattr(company, 'id', '?'))
     return devis
 
 
@@ -1174,6 +1243,29 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         logger.warning('QJ10: _send_acceptance_emails échoué pour devis %s : %s',
                        getattr(devis, 'reference', '?'), exc)
 
+    # YDOCF3 — variantes (QJ15 dupliquer-variante) : accepter l'une d'elles
+    # doit effondrer ses SŒURS (même groupe version_parent=root) plutôt que
+    # de les laisser is_active=True et elles-mêmes acceptables (double
+    # comptage du funnel). Ne touche jamais un devis d'un autre groupe ni les
+    # révisions déjà terminales. Un devis sans variante est inchangé.
+    from django.db.models import Q
+    root = devis.version_parent_id or devis.id
+    siblings = Devis.objects.filter(
+        company=devis.company, is_active=True,
+        statut__in=(Devis.Statut.BROUILLON, Devis.Statut.ENVOYE),
+    ).filter(
+        Q(version_parent_id=root) | Q(pk=root)
+    ).exclude(pk=devis.pk)
+    for sibling in siblings:
+        sibling.statut = Devis.Statut.REFUSE
+        sibling.date_refus = date_acc
+        sibling.motif_refus = 'variante non retenue'
+        sibling.is_active = False
+        sibling.save(update_fields=[
+            'statut', 'date_refus', 'motif_refus', 'is_active'])
+        activity.log_devis_refusal(
+            sibling, user, 'variante non retenue', date_acc)
+
     devis_accepted.send(
         sender=Devis, devis=devis, user=user, ancien_statut=ancien)
     # QJ9 — CAPI SignedQuote event (gated on META_CAPI_ACCESS_TOKEN).
@@ -1339,6 +1431,347 @@ def reset_relance_escalation(facture):
     return changed
 
 
+class PaiementRejectError(Exception):
+    """YLEDG5 — erreur métier au rejet d'un paiement (message + conflict)."""
+
+    def __init__(self, message, conflict=False):
+        super().__init__(message)
+        self.message = message
+        self.conflict = conflict
+
+
+def rejeter_paiement(*, paiement, motif, frais=None, date_rejet=None, user=None):
+    """YLEDG5 — chemin d'exception « paiement rejeté » (chèque impayé /
+    virement rejeté).
+
+    Le paiement N'EST JAMAIS supprimé (piste d'audit) : il passe
+    ``statut=rejete`` et sort du calcul ``Facture.montant_paye``/``statut`` —
+    la facture redevient ouverte/en retard (recalculée : émise si l'échéance
+    n'est pas dépassée, sinon en retard) et les relances existantes sont
+    ré-armées (symétrique de ``reset_relance_escalation``). Émet
+    ``paiement_rejete`` sur le bus core pour que compta contre-passe
+    l'écriture d'encaissement (YLEDG4) et délettre (YLEDG6). Idempotent côté
+    garde : rejeter un paiement déjà rejeté est refusé (jamais un double
+    rejet)."""
+    from django.utils import timezone
+    from django.db import transaction
+    from .models import Facture, Paiement
+    from core.events import paiement_rejete
+
+    motif = (motif or '').strip()
+    if not motif:
+        raise PaiementRejectError('Le motif du rejet est obligatoire.')
+    if paiement.statut == Paiement.Statut.REJETE:
+        raise PaiementRejectError(
+            'Ce paiement est déjà marqué rejeté.', conflict=True)
+
+    with transaction.atomic():
+        paiement.statut = Paiement.Statut.REJETE
+        paiement.motif_rejet = motif[:255]
+        paiement.frais_rejet = frais
+        paiement.date_rejet = date_rejet or timezone.now().date()
+        paiement.save(update_fields=[
+            'statut', 'motif_rejet', 'frais_rejet', 'date_rejet'])
+
+        facture = paiement.facture
+        if facture is not None:
+            facture.refresh_from_db()
+            # Rouvre la facture : reste dû > 0 → repasse émise (ou en
+            # retard si l'échéance est déjà dépassée), jamais « payée » ni
+            # « annulée » (états terminaux préservés à part la réouverture).
+            if facture.statut not in (
+                    Facture.Statut.ANNULEE,) and facture.montant_du > 0:
+                today = timezone.now().date()
+                if facture.date_echeance and facture.date_echeance < today:
+                    facture.statut = Facture.Statut.EN_RETARD
+                else:
+                    facture.statut = Facture.Statut.EMISE
+                facture.save(update_fields=['statut'])
+            from . import activity
+            activity.log_facture_paiement_rejete(facture, user, paiement, motif)
+
+        paiement_rejete.send(
+            sender=Paiement, paiement=paiement, facture=facture,
+            montant=paiement.montant, company=paiement.company)
+    return paiement
+
+
+def abandonner_solde_facture(facture, *, motif, user=None, auto=False,
+                             date_abandon=None):
+    """XFAC13 — abandonne le résiduel dû sur une facture (write-off).
+
+    Passe la facture ``payee``, trace l'abandon (motif + montant + auteur +
+    auto/manuel), délègue l'écriture comptable (6585/créance + reprise de
+    provision FG152 le cas échéant) à ``apps.compta.services`` (jamais
+    d'import direct de ses modèles) et consigne le chatter. Idempotent : ne
+    fait rien si le résiduel est déjà nul. Renvoie le montant abandonné
+    (``Decimal('0')`` si rien à faire)."""
+    from decimal import Decimal
+    from django.utils import timezone
+    from .models import Facture
+    reste = facture.montant_du
+    if reste <= 0:
+        return Decimal('0')
+    from apps.compta import services as compta_services
+    compta_services.abandonner_creance(
+        facture.company, montant=reste, date_abandon=date_abandon,
+        tiers_type='client', tiers_id=facture.client_id,
+        tiers_nom=getattr(facture.client, 'nom', '') or '',
+        libelle=f'Abandon créance facture {facture.reference}',
+        user=user,
+    )
+    facture.abandon_motif = motif
+    facture.abandon_montant = reste
+    facture.abandon_date = timezone.now()
+    facture.abandon_auto = bool(auto)
+    facture.abandon_par = user if (
+        user and getattr(user, 'is_authenticated', False)) else None
+    facture.statut = Facture.Statut.PAYEE
+    facture.save(update_fields=[
+        'abandon_motif', 'abandon_montant', 'abandon_date', 'abandon_auto',
+        'abandon_par', 'statut',
+    ])
+    from . import activity
+    motif_label = dict(Facture.MotifAbandon.choices).get(motif, motif)
+    activity.log_facture_abandon(facture, user, reste, motif_label, auto=auto)
+    reset_relance_escalation(facture)
+    return reste
+
+
+def anomalies_emission_facture(facture):
+    """XFAC18 — anomalies à contrôler avant l'émission d'une facture.
+
+    Liste (jamais bloquante — informative pour le valideur) :
+      * doublon probable (même client + montant TTC à ±1 % sous 15 jours) ;
+      * remise globale au-delà de ``remise_max_pct`` (réglage société) ;
+      * client au-delà du plafond d'encours FG41.
+
+    Renvoie une liste de dicts ``{'code', 'message'}`` (vide si rien à
+    signaler)."""
+    from datetime import timedelta
+    from decimal import Decimal
+    from django.utils import timezone
+    from .models import Facture
+
+    anomalies = []
+
+    # Doublon probable : même client, montant TTC proche, facture récente.
+    montant = facture.total_ttc
+    if montant and facture.client_id:
+        seuil_jours = timezone.now().date() - timedelta(days=15)
+        marge = montant * Decimal('0.01')
+        doublons = Facture.objects.filter(
+            client_id=facture.client_id, company=facture.company,
+            date_emission__gte=seuil_jours,
+        ).exclude(pk=facture.pk).exclude(
+            statut=Facture.Statut.ANNULEE)
+        for autre in doublons:
+            if abs(autre.total_ttc - montant) <= marge:
+                anomalies.append({
+                    'code': 'doublon_probable',
+                    'message': (
+                        f'Doublon probable : facture {autre.reference} '
+                        f'({autre.total_ttc} MAD) du même client, émise le '
+                        f'{autre.date_emission}.'),
+                })
+                break
+
+    # Remise globale au-delà du seuil société.
+    from apps.parametres.models import CompanyProfile
+    profile = CompanyProfile.get(company=facture.company)
+    remise_max = getattr(profile, 'remise_max_pct', None)
+    if remise_max is not None and (facture.remise_globale or 0) > remise_max:
+        anomalies.append({
+            'code': 'remise_excessive',
+            'message': (
+                f'Remise globale ({facture.remise_globale} %) supérieure au '
+                f'seuil société ({remise_max} %).'),
+        })
+
+    # Client au-delà de son plafond d'encours (FG41).
+    if facture.client_id:
+        from apps.crm.selectors import client_credit_warning
+        warning = client_credit_warning(facture.client)
+        if warning['depasse']:
+            anomalies.append({
+                'code': 'plafond_credit_depasse',
+                'message': (
+                    f"Encours client ({warning['encours']} MAD) au-delà du "
+                    f"plafond ({warning['plafond']} MAD)."),
+            })
+
+    return anomalies
+
+
+class CreditHoldError(Exception):
+    """XFAC28 — levée quand un client est en hold crédit dur (sans override).
+
+    Porte le détail chiffré (``motif``) pour un message 403 explicite."""
+
+    def __init__(self, motif):
+        super().__init__(motif)
+        self.motif = motif
+
+
+def verifier_credit_hold(client, *, override=False, user=None,
+                         chatter_target=None, contexte=''):
+    """XFAC28 — vérifie le hold crédit dur (étend FG41) avant une action
+    sensible (accepter un devis, générer une facture).
+
+    Flag OFF (``CompanyProfile.credit_hold_actif``) → no-op, comportement FG41
+    intact (avertissement seul, jamais consulté ici). Flag ON et le client est
+    en dépassement (plafond et/ou retard, voir
+    ``apps.crm.selectors.credit_hold_check``) : lève ``CreditHoldError`` SAUF
+    si ``override=True`` (responsable/admin explicite) — l'override est
+    journalisé (chatter du devis si fourni + audit) mais laisse passer
+    l'action. Ne renvoie rien ; lève ou passe silencieusement."""
+    from apps.parametres.models import CompanyProfile
+    profile = CompanyProfile.get(company=client.company)
+    if not getattr(profile, 'credit_hold_actif', False):
+        return
+
+    from apps.crm.selectors import credit_hold_check
+    seuil = getattr(profile, 'credit_hold_retard_jours', 0) or 0
+    result = credit_hold_check(client, retard_jours_seuil=seuil)
+    if not result['bloque']:
+        return
+
+    if not override:
+        raise CreditHoldError(result['motif'])
+
+    # Override responsable/admin : journalise (chatter + audit société).
+    from apps.parametres.models_audit import SettingsAuditLog
+    qui = getattr(user, 'username', '?') if user else '?'
+    SettingsAuditLog.log_change(
+        company=client.company, user=user, section='credit_hold',
+        field='override', field_label='Blocage crédit — override',
+        old='bloque', new=f'débloqué par {qui} ({contexte})',
+    )
+    if chatter_target is not None:
+        from . import activity
+        activity.log_devis_credit_hold_override(
+            chatter_target, user, result['motif'])
+
+
+def _s2(x):
+    from decimal import Decimal
+    return str(Decimal(x or 0).quantize(Decimal('0.01')))
+
+
+def dossier_contentieux_data(factures):
+    """XFAC21 — assemble les données du pack contentieux pour un jeu de
+    factures en souffrance (toutes du MÊME client — vérifié par l'appelant).
+
+    Renvoie un dict prêt pour le template ``dossier_contentieux.html`` :
+    factures concernées, total réclamé, historique des relances (RelanceLog) +
+    emails (EmailLog), promesses de paiement ROMPUES (PromessePaiement).
+    Lecture seule."""
+    from django.utils import timezone
+    from .models import PromessePaiement
+
+    factures = list(factures)
+    client = factures[0].client if factures else None
+
+    lignes_factures = []
+    total_du = 0
+    relances = []
+    emails = []
+    promesses_rompues = []
+
+    for f in factures:
+        total_du += f.montant_du
+        lignes_factures.append({
+            'reference': f.reference,
+            'date_echeance': (
+                f.date_echeance.isoformat() if f.date_echeance else ''),
+            'jours_retard': f.jours_retard,
+            'total_ttc': _s2(f.total_ttc),
+            'du': _s2(f.montant_du),
+        })
+        for r in f.relances.all().order_by('-date', '-id'):
+            relances.append({
+                'date': r.date.isoformat() if r.date else '',
+                'facture_reference': f.reference,
+                'niveau_nom': r.niveau_nom or '',
+                'note': r.note or '',
+            })
+        for e in f.email_logs.all().order_by('-created_at'):
+            emails.append({
+                'date': e.created_at.isoformat() if e.created_at else '',
+                'direction': e.get_direction_display(),
+                'sujet': e.sujet or '',
+            })
+        for p in f.promesses_paiement.filter(
+                statut=PromessePaiement.Statut.ROMPUE):
+            promesses_rompues.append({
+                'facture_reference': f.reference,
+                'date_promise': p.date_promise.isoformat(),
+                'montant_promis': _s2(p.montant_promis),
+            })
+
+    return {
+        'client': {
+            'nom': f'{client.nom} {client.prenom or ""}'.strip() if client else '',
+            'email': getattr(client, 'email', '') or '',
+            'telephone': getattr(client, 'telephone', '') or '',
+            'adresse': getattr(client, 'adresse', '') or '',
+        },
+        'factures': lignes_factures,
+        'total_du': _s2(total_du),
+        'relances': relances,
+        'emails': emails,
+        'promesses_rompues': promesses_rompues,
+        'date_creation': timezone.now().date().isoformat(),
+    }
+
+
+def ouvrir_dossier_contentieux(*, factures, user=None):
+    """XFAC21 — passage en recouvrement externe pour un jeu de factures.
+
+    (a) assemble les données du pack (voir ``dossier_contentieux_data``) ;
+    (b) ouvre une ``litiges.Reclamation`` de type recouvrement via
+        ``apps.litiges.services.creer_dossier_recouvrement`` (jamais un import
+        de son modèle) ;
+    (c) marque les factures ``exclu_relances`` (comms ordinaires gelées) avec
+        trace chatter « passé au contentieux le … ».
+
+    Toutes les factures DOIVENT appartenir au même client + à la même société
+    (vérifié par l'appelant — la vue scope déjà par client). Renvoie
+    ``(dossier_data, reclamation)``."""
+    from django.utils import timezone
+    from .models import Facture
+
+    factures = list(factures)
+    if not factures:
+        raise ValueError('Aucune facture sélectionnée.')
+    client = factures[0].client
+    company = factures[0].company
+
+    dossier = dossier_contentieux_data(factures)
+
+    from apps.litiges.services import creer_dossier_recouvrement
+    references = ', '.join(f.reference for f in factures)
+    reclamation = creer_dossier_recouvrement(
+        company=company, source_type='client', source_id=client.id,
+        objet=f'Recouvrement externe — {client.nom} ({references})',
+        montant_conteste=sum((f.montant_du for f in factures), 0),
+        description=f'Factures concernées : {references}.',
+        user=user,
+    )
+
+    from . import activity
+    qui = getattr(user, 'username', '?') if user else 'automatique'
+    today = timezone.now().date().isoformat()
+    for f in factures:
+        if f.statut == Facture.Statut.ANNULEE:
+            continue
+        f.exclu_relances = True
+        f.save(update_fields=['exclu_relances'])
+        activity.log_facture_activity_contentieux(f, user, qui, today)
+
+    return dossier, reclamation
+
+
 class StockInsuffisantError(Exception):
     """Levée quand une réservation de stock dépasserait le disponible (U9)."""
 
@@ -1466,6 +1899,18 @@ def creer_facture_contrat(*, contrat, user, company):
     )
     libelle = f'Maintenance — contrat #{contrat.pk} ({periodicite_label})'
 
+    # YSUBS9 — période de service couverte par CETTE facture : du dernier
+    # cycle facturé (ou date_debut si jamais facturé) à aujourd'hui + la
+    # durée de la périodicité (mois, table MONTHS déjà utilisée pour les
+    # visites). Best-effort : une périodicité/date absente laisse les deux
+    # champs à NULL (comportement actuel intact).
+    periode_debut = contrat.derniere_facturation or contrat.date_debut
+    periode_fin = None
+    if periode_debut is not None:
+        mois = getattr(contrat, 'MONTHS', {}).get(contrat.periodicite)
+        if mois:
+            periode_fin = _add_months(periode_debut, mois)
+
     def _create(ref):
         return Facture.objects.create(
             reference=ref,
@@ -1478,6 +1923,8 @@ def creer_facture_contrat(*, contrat, user, company):
             montant_ttc=prix_ttc,
             libelle=libelle,
             created_by=user,
+            periode_service_debut=periode_debut,
+            periode_service_fin=periode_fin,
         )
 
     facture = create_with_reference(Facture, 'FAC', company, _create)
@@ -1486,6 +1933,16 @@ def creer_facture_contrat(*, contrat, user, company):
     today = timezone.localdate()
     contrat.derniere_facturation = today
     contrat.save(update_fields=['derniere_facturation'])
+
+    # YSUBS6 — cette facture est créée EMISE directement (redevance de
+    # maintenance récurrente, jamais de passage par brouillon/`emettre`) : le
+    # bus documentaire de YLEDG1 ne la voit donc jamais sans émission
+    # explicite ici. Émettre `facture_emise` pour que l'auto-écriture
+    # compta (togglée par COMPTA_AUTO_ECRITURES, OFF par défaut) se déclenche
+    # comme sur une facture émise via l'écran (comportement inchangé si le
+    # toggle reste OFF).
+    from core.events import facture_emise
+    facture_emise.send(sender=Facture, instance=facture, company=company)
 
     logger.info(
         'FG40: facture %s créée pour contrat #%s (company %s)',
@@ -1631,6 +2088,76 @@ def creer_facture_classique(*, company, client, user, taux_tva, montant_ht,
     return create_with_reference(Facture, 'FAC', company, _create)
 
 
+# ── XACC28 — Refacturation des frais au client (billable expenses) ────────
+# Thin service exposé pour apps.compta (frontière cross-app, CLAUDE.md) :
+# compta connaît le montant/la marge déjà calculés côté frais, jamais les
+# détails de facturation — il pousse juste des lignes sur une facture
+# EXISTANTE du client. Un produit générique « Frais refacturés » (service,
+# sans stock) est créé une fois par société (idempotent) pour porter ces
+# lignes, à l'image du produit catalogue utilisé pour les lignes classiques.
+
+_PRODUIT_FRAIS_REFACTURES_NOM = 'Frais refacturés'
+
+
+def _produit_frais_refactures(company):
+    from apps.stock.models import Produit
+
+    produit, _ = Produit.objects.get_or_create(
+        company=company, nom=_PRODUIT_FRAIS_REFACTURES_NOM,
+        defaults={'prix_vente': Decimal('0'), 'quantite_stock': 0,
+                  'seuil_alerte': 0})
+    return produit
+
+
+def ajouter_lignes_frais_refactures(*, facture, lignes, user=None):
+    """Ajoute des lignes de frais refacturés sur une ``Facture`` EXISTANTE.
+
+    ``lignes`` est une liste de dicts ``{'designation', 'montant_ht',
+    'taux_tva'?}`` (montant déjà majoré de la marge, calculé côté appelant —
+    ``apps.compta``). Chaque ligne devient une ``LigneFacture`` (quantité=1,
+    prix_unitaire=montant_ht) rattachée au produit générique « Frais
+    refacturés » de la société de la facture ; les totaux de la facture sont
+    recalculés. Renvoie la liste des ``LigneFacture`` créées. Ne vérifie PAS
+    l'anti-doublon (fait côté appelant, sur les frais eux-mêmes)."""
+    from apps.ventes.models import LigneFacture
+
+    if not lignes:
+        return []
+    produit = _produit_frais_refactures(facture.company)
+    creees = []
+    for ligne in lignes:
+        creees.append(LigneFacture.objects.create(
+            facture=facture,
+            produit=produit,
+            designation=ligne.get('designation', '') or _PRODUIT_FRAIS_REFACTURES_NOM,
+            quantite=Decimal('1'),
+            prix_unitaire=Decimal(ligne.get('montant_ht') or 0),
+            taux_tva=ligne.get('taux_tva'),
+        ))
+    _recalculer_totaux_facture(facture)
+    return creees
+
+
+def _recalculer_totaux_facture(facture):
+    """Recalcule les totaux HT/TVA/TTC d'une facture depuis ses lignes.
+
+    Réutilisé par XACC28 après ajout de lignes de frais refacturés — même
+    logique de sommation que les autres chemins de création de ligne (taux
+    TVA par ligne si renseigné, sinon le taux global de la facture)."""
+    total_ht = Decimal('0')
+    total_tva = Decimal('0')
+    for ligne in facture.lignes.all():
+        ht_ligne = ligne.total_ht
+        taux = ligne.taux_tva if ligne.taux_tva is not None else facture.taux_tva
+        total_ht += ht_ligne
+        total_tva += (ht_ligne * Decimal(taux or 0) / Decimal('100'))
+    facture.montant_ht = total_ht.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    facture.montant_tva = total_tva.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    facture.montant_ttc = facture.montant_ht + facture.montant_tva
+    facture.save(update_fields=['montant_ht', 'montant_tva', 'montant_ttc'])
+    return facture
+
+
 def enregistrer_paiement(*, facture, montant, mode, date_paiement, user,
                          reference='', note=''):
     """Enregistre un ``Paiement`` MANUEL sur une facture EXISTANTE.
@@ -1639,7 +2166,7 @@ def enregistrer_paiement(*, facture, montant, mode, date_paiement, user,
     même modèle/table que le paiement enregistré depuis l'écran facture,
     aucune duplication de logique."""
     from apps.ventes.models import Paiement
-    return Paiement.objects.create(
+    paiement = Paiement.objects.create(
         company=facture.company,
         facture=facture,
         montant=montant,
@@ -1649,11 +2176,152 @@ def enregistrer_paiement(*, facture, montant, mode, date_paiement, user,
         note=note or '',
         created_by=user,
     )
+    # YLEDG1 — événement documentaire générique (pose du seam pour
+    # compta.ecriture_pour_paiement, jamais d'import de son service ici).
+    from core.events import paiement_enregistre
+    paiement_enregistre.send(
+        sender=Paiement, instance=paiement, company=facture.company)
+    return paiement
 
 
 def facture_montant_du(facture):
     """Solde restant dû d'une facture (lecture, thin service pour apps.pos)."""
     return facture.montant_du
+
+
+def affecter_encaissement_groupe(
+        *, company, client, montant, mode, date_paiement, user, factures,
+        reference='', repartition=None):
+    """ZFAC6 — un seul règlement client réparti sur PLUSIEURS factures.
+
+    Crée un ``Paiement`` par facture réglée : par défaut FIFO (la facture à
+    l'échéance la plus ancienne d'abord, jusqu'à épuisement du montant) ; ou
+    une répartition EXPLICITE si ``repartition`` (dict facture_id -> montant)
+    est fournie. Toutes les factures doivent appartenir à ``company`` ET
+    ``client`` (sinon ValueError — le viewset traduit en 400). Atomique :
+    échec partiel = rollback total. Bascule le statut « Payée » sur toute
+    facture intégralement soldée par ce geste (comportement identique à un
+    encaissement facture-par-facture)."""
+    from decimal import Decimal
+
+    from django.db import transaction
+
+    from apps.ventes.models import Facture
+
+    montant = Decimal(str(montant))
+    if montant <= 0:
+        raise ValueError("Le montant doit être positif.")
+    if not factures:
+        raise ValueError("Aucune facture fournie.")
+
+    for f in factures:
+        if f.company_id != company.id or f.client_id != client.id:
+            raise ValueError(
+                f"La facture {f.reference} n'appartient pas à ce client.")
+
+    paiements = []
+    with transaction.atomic():
+        locked = list(
+            Facture.objects.select_for_update()
+            .filter(id__in=[f.id for f in factures])
+        )
+        by_id = {f.id: f for f in locked}
+
+        if isinstance(repartition, dict) and repartition:
+            # Répartition explicite fournie par l'appelant.
+            for fid, part in repartition.items():
+                facture = by_id.get(int(fid))
+                if facture is None:
+                    raise ValueError(f"Facture {fid} inconnue dans ce lot.")
+                part = Decimal(str(part))
+                if part <= 0:
+                    continue
+                paiements.append(_creer_paiement_groupe(
+                    facture, part, mode, date_paiement, user, reference))
+        else:
+            # FIFO : échéance la plus ancienne d'abord (None en dernier).
+            ordonnees = sorted(
+                locked,
+                key=lambda f: (f.date_echeance is None, f.date_echeance))
+            restant = montant
+            for facture in ordonnees:
+                if restant <= 0:
+                    break
+                reste_facture = facture.montant_du
+                if reste_facture <= 0:
+                    continue
+                part = min(restant, reste_facture)
+                paiements.append(_creer_paiement_groupe(
+                    facture, part, mode, date_paiement, user, reference))
+                restant -= part
+
+        for facture in locked:
+            facture.refresh_from_db()
+            if facture.montant_du <= Decimal('0') and \
+                    facture.statut not in (
+                        Facture.Statut.ANNULEE, Facture.Statut.PAYEE):
+                facture.statut = Facture.Statut.PAYEE
+                facture.save(update_fields=['statut'])
+
+    return paiements
+
+
+def _creer_paiement_groupe(facture, montant, mode, date_paiement, user,
+                           reference):
+    from apps.ventes.models import Paiement
+
+    paiement = Paiement.objects.create(
+        company=facture.company, facture=facture, montant=montant,
+        date_paiement=date_paiement, mode=mode,
+        reference=reference or '', created_by=user,
+    )
+    # YLEDG1 — événement documentaire générique (même seam que
+    # enregistrer_paiement / le geste facture-par-facture).
+    from core.events import paiement_enregistre
+    paiement_enregistre.send(
+        sender=Paiement, instance=paiement, company=facture.company)
+    return paiement
+
+
+def enregistrer_contestation_portail(facture, *, motif_label, commentaire=''):
+    """XFAC27 — Trace côté ventes la contestation d'une facture ouverte par
+    le client depuis le portail self-service (``apps.compta`` appelle CETTE
+    fonction, jamais un import direct de ``apps.ventes.models``/``activity``).
+    Ne change AUCUN statut de la facture — seule la réclamation créée côté
+    ``apps.litiges`` suspend les relances (LITIGE3)."""
+    from . import activity
+    return activity.log_facture_contestation_portail(
+        facture, motif_label, commentaire=commentaire)
+
+
+def calculer_date_echeance(*, client, date_emission):
+    """XFAC23 — dérive la date d'échéance depuis les conditions de paiement du
+    client (délai en jours + report fin de mois).
+
+    Renvoie ``None`` quand le client n'a pas de délai négocié (``crm.Client.
+    delai_paiement_jours`` vide) — l'appelant retombe alors sur le comportement
+    historique (repli +30 j calculé ailleurs, ex. ``scheduled.
+    _echeance_effective``). Ne calcule JAMAIS à la place d'une échéance déjà
+    saisie manuellement — c'est à l'appelant de ne pas écraser une valeur
+    existante (input freedom).
+
+    Cross-app lecture seule via ``apps.crm.selectors`` (jamais d'import de
+    ``apps.crm.models``).
+    """
+    if client is None or date_emission is None:
+        return None
+    from apps.crm.selectors import delai_paiement_client
+    reglage = delai_paiement_client(client)
+    delai = reglage.get('delai_jours')
+    if not delai:
+        return None
+    from datetime import timedelta
+    echeance = date_emission + timedelta(days=int(delai))
+    if reglage.get('fin_de_mois'):
+        import calendar
+        last_day = calendar.monthrange(echeance.year, echeance.month)[1]
+        echeance = echeance.replace(day=last_day)
+    return echeance
 
 
 def get_facture_or_none(*, company, facture_id):
@@ -1705,6 +2373,49 @@ def create_payment_link(*, facture, provider=None):
         provider=(provider or 'noop'),
         montant=montant,
     )
+
+
+def _public_url(path):
+    """Construit une URL publique absolue à partir d'un chemin ``/api/...``.
+
+    Réutilise ``settings.PUBLIC_BASE_URL`` (même pattern que
+    ``bcf_share_url``) ; sans réglage, renvoie le chemin relatif tel quel (le
+    QR reste valide une fois servi depuis le même domaine)."""
+    from django.conf import settings
+    base = getattr(settings, 'PUBLIC_BASE_URL', '') or ''
+    if base:
+        return base.rstrip('/') + path
+    return path
+
+
+def qr_svg_for_facture_pdf(facture):
+    """XFAC19 — QR de paiement/vérification pour le PDF facture LEGACY (jamais
+    le moteur devis premium — voir RULE #4).
+
+    Si un ``PaymentLink`` actif (en attente, non expiré) existe déjà pour la
+    facture, le QR pointe vers sa page « Payer en ligne » publique. Sinon, il
+    pointe vers le ``ShareLink`` public (lecture seule) du document. Ajout
+    SILENCIEUX : renvoie ``None`` si aucun lien ne peut être établi (comportement
+    actuel inchangé — pas de QR, pas d'erreur). Le rendu SVG délègue au
+    générateur QR pur de N20 via ``apps.stock.services.qr_svg_for`` (jamais
+    d'import direct de ``apps.stock.labels``)."""
+    from django.utils import timezone
+    from .models import PaymentLink, ShareLink
+
+    active_link = (
+        PaymentLink.objects.filter(
+            facture=facture, statut=PaymentLink.Statut.EN_ATTENTE,
+            expires_at__gt=timezone.now(),
+        ).order_by('-created_at').first())
+    if active_link is not None:
+        url = _public_url(f'/api/django/public/pay/{active_link.token}/')
+    else:
+        share = ShareLink.for_facture(facture)
+        url = _public_url(f'/api/django/public/document/{share.token}/')
+
+    if not url:
+        return None
+    return qr_svg_for(url)
 
 
 def record_payment_from_link(*, link, payload=None):
@@ -1764,6 +2475,11 @@ def record_payment_from_link(*, link, payload=None):
             reference=(result.get('provider_ref') or '')[:120],
             note='Paiement en ligne (lien « Payer en ligne »).',
         )
+        # YLEDG1 — événement documentaire générique (pose du seam pour
+        # compta.ecriture_pour_paiement).
+        from core.events import paiement_enregistre
+        paiement_enregistre.send(
+            sender=Paiement, instance=paiement, company=facture.company)
         locked_link.statut = PaymentLink.Statut.PAYE
         locked_link.paiement = paiement
         locked_link.provider_ref = (result.get('provider_ref') or '')[:200]
@@ -1775,6 +2491,15 @@ def record_payment_from_link(*, link, payload=None):
                 and facture.statut != Facture.Statut.ANNULEE:
             facture.statut = Facture.Statut.PAYEE
             facture.save(update_fields=['statut'])
+            # YDOCF4 — facture_paid, exactement une fois au passage
+            # résiduel→0 via le webhook de lien de paiement.
+            from core.events import facture_paid, facture_payee
+            facture_paid.send(
+                sender=Facture, facture=facture, montant=montant,
+                company=facture.company)
+            # YEVNT6 — événement documentaire générique (même transition).
+            facture_payee.send(
+                sender=Facture, instance=facture, company=facture.company)
     return paiement, None
 
 
@@ -2182,6 +2907,24 @@ def expire_stale_devis():
                 'Devis expiré automatiquement (date de validité dépassée).')
         except Exception as exc:  # noqa: BLE001
             logger.warning('QJ5: log chatter échec devis %s : %s',
+                           devis.reference, exc)
+
+        # YEVNT10 — une mutation AUTOMATIQUE (cron, hors requête HTTP) échappe
+        # à l'audit par signaux request-scopé. Cette expiration est journalisée
+        # « système » CÔTÉ audit, via un abonnement à l'événement
+        # `devis_expired` émis ci-dessous (apps/audit/receivers.py) — jamais par
+        # un import direct ventes→audit (M4 : les réactions passent par
+        # core.events).
+
+        # YEVNT2 — événement métier (notifications/audit s'abonnent), jamais
+        # réémis pour un devis déjà expiré (garde amont via le queryset ENVOYE
+        # + is_expired). Best-effort : ne casse jamais le sweep.
+        try:
+            from core.events import devis_expired
+            devis_expired.send(
+                sender=Devis, devis=devis, ancien_statut='envoye')
+        except Exception as exc:  # noqa: BLE001
+            logger.warning('YEVNT2: devis_expired échoué pour devis %s : %s',
                            devis.reference, exc)
 
         expired += 1
@@ -2599,3 +3342,214 @@ def consolider_factures(*, company, devis_ids, user, created_by=None):
             )
 
     return facture
+
+
+# ── XFSM1 — Facturation SAV hors garantie depuis le ticket ──────────────────
+# apps.sav ne peut PAS importer apps.ventes.models directement (règle de
+# modularité CLAUDE.md) : cette fonction est son unique porte d'entrée pour
+# générer une facture brouillon depuis un ticket SAV.
+
+def _main_oeuvre_produit(company):
+    """Produit catalogue (service, non stocké) porteur de la ligne
+    main-d'œuvre SAV — get-or-create idempotent, un seul par société.
+    Jamais décrémenté (aucun mouvement de stock ne le référence)."""
+    from apps.stock.models import Produit
+    produit, _created = Produit.objects.get_or_create(
+        company=company, sku='SAV-MO', defaults={
+            'nom': "Main-d'œuvre SAV",
+            'prix_vente': Decimal('0'),
+            'quantite_stock': 0,
+        })
+    return produit
+
+
+def generer_facture_ticket_sav(*, ticket, sous_garantie, pieces, user):
+    """XFSM1 — construit une ``Facture`` BROUILLON pour un ticket SAV hors
+    garantie (réels → facture) : lignes pièces (prix de VENTE catalogue,
+    jamais ``prix_achat``) + ligne main-d'œuvre (taux horaire
+    ``CompanyProfile.taux_horaire_sav`` × ``ticket.heures_main_oeuvre``).
+
+    Quand ``sous_garantie`` est vrai (ticket sous garantie ou contrat actif
+    couvrant), TOUTES les lignes sont posées à 0 DH avec la mention
+    « couvert garantie/contrat » dans leur désignation — le document reste
+    traçable sans jamais facturer un client couvert.
+
+    ``pieces`` : itérable d'objets exposant ``produit`` (stock.Produit) et
+    ``quantite`` (déjà scopés société par l'appelant — sav.views). Référence
+    via ``apps.ventes.utils.references`` (jamais count()+1).
+
+    IDEMPOTENT : si ``ticket.facture_id_ext`` pointe déjà vers une facture
+    non annulée, la renvoie telle quelle plutôt que d'en créer une seconde.
+    Renvoie la ``Facture`` créée (ou réutilisée)."""
+    from .models import Facture, LigneFacture
+    from .utils.company_settings import tva_standard
+    from .utils.references import create_with_reference
+
+    if ticket.facture_id_ext:
+        existante = Facture.objects.filter(
+            pk=ticket.facture_id_ext, company=ticket.company
+        ).exclude(statut=Facture.Statut.ANNULEE).first()
+        if existante is not None:
+            return existante
+
+    company = ticket.company
+    taux_tva_defaut = tva_standard(company)
+
+    def _create(ref):
+        return Facture.objects.create(
+            reference=ref, company=company, client=ticket.client,
+            statut=Facture.Statut.BROUILLON,
+            type_facture=Facture.TypeFacture.COMPLETE,
+            libelle=f'SAV {ticket.reference} — hors garantie',
+            created_by=user,
+        )
+
+    facture = create_with_reference(Facture, 'FAC', company, _create)
+
+    suffixe_couvert = ' (couvert garantie/contrat)' if sous_garantie else ''
+
+    for piece in pieces:
+        produit = piece.produit
+        quantite = piece.quantite
+        prix_unitaire = (
+            Decimal('0') if sous_garantie
+            else Decimal(str(produit.prix_vente or 0)))
+        LigneFacture.objects.create(
+            facture=facture, produit=produit,
+            designation=f'{produit.nom}{suffixe_couvert}',
+            quantite=quantite, prix_unitaire=prix_unitaire,
+            taux_tva=(produit.tva if produit.tva is not None
+                      else taux_tva_defaut),
+        )
+
+    heures = ticket.heures_main_oeuvre
+    if heures:
+        profile_taux = None
+        try:
+            from apps.parametres.models import CompanyProfile
+            profile_taux = CompanyProfile.get(company).taux_horaire_sav
+        except Exception:  # pragma: no cover - défensif
+            profile_taux = None
+        taux_horaire = (
+            Decimal('0') if sous_garantie
+            else Decimal(str(profile_taux)) if profile_taux is not None
+            else None)
+        if taux_horaire is not None:
+            mo_produit = _main_oeuvre_produit(company)
+            LigneFacture.objects.create(
+                facture=facture, produit=mo_produit,
+                designation=f"Main-d'œuvre{suffixe_couvert}",
+                quantite=heures, prix_unitaire=taux_horaire,
+                taux_tva=taux_tva_defaut,
+            )
+
+    ticket.facture_id_ext = facture.id
+    ticket.save(update_fields=['facture_id_ext'])
+    return facture
+
+
+# ── XCTR22 — Encaissement récurrent automatique (tokenisation / mandat) ────
+
+def mandat_actif_pour_client(client):
+    """Renvoie le ``MandatPaiement`` ACTIF du client, ou None.
+
+    Lecture pure ; jamais d'effet de bord. Sert de garde d'entrée pour
+    ``debiter_mandat_pour_facture`` — un client sans mandat actif (le cas
+    par défaut) fait strictement l'encaissement manuel actuel."""
+    from apps.ventes.models import MandatPaiement
+    return (
+        MandatPaiement.objects
+        .filter(client=client, statut=MandatPaiement.Statut.ACTIF)
+        .exclude(token='')
+        .order_by('-created_at')
+        .first()
+    )
+
+
+DUNNING_RETRY_DAYS = (1, 3, 7)
+
+
+def debiter_mandat_pour_facture(*, facture, periode, retry_index=0):
+    """XCTR22 — débite le mandat actif du client de ``facture`` pour la
+    période donnée, via `payments.providers`.
+
+    Appelé APRÈS la création d'une facture de cycle récurrent
+    (`creer_facture_contrat`/`facturer_ligne_echeance` — contrats/sav restent
+    les points d'entrée existants ; ceci est un branchement ADDITIF appelé
+    depuis leurs services). Sans mandat actif → no-op silencieux (retourne
+    None, comportement actuel intact). Avec mandat :
+      - succès → crée un `Paiement` rapproché (comme un encaissement manuel)
+        + une `TentativeDebitMandat` `reussi` ; jamais deux débits RÉUSSIS
+        pour la même (mandat, periode) — idempotent.
+      - échec → `TentativeDebitMandat` `echec` avec motif + programme la
+        prochaine retentative (`DUNNING_RETRY_DAYS`, défaut J+1/J+3/J+7) et
+        notifie le client (lien de mise à jour de carte — best-effort).
+
+    Renvoie le `Paiement` créé en cas de succès, sinon None.
+    """
+    from django.db import transaction
+    from django.utils import timezone
+    from datetime import timedelta
+    from apps.ventes.models import TentativeDebitMandat, Paiement
+    from apps.ventes.payments.providers import get_provider
+
+    mandat = mandat_actif_pour_client(facture.client)
+    if mandat is None:
+        return None
+
+    # Jamais deux débits RÉUSSIS pour la même période — idempotence.
+    deja_reussi = TentativeDebitMandat.objects.filter(
+        mandat=mandat, periode=periode,
+        statut=TentativeDebitMandat.Statut.REUSSI).exists()
+    if deja_reussi:
+        return None
+
+    provider = get_provider(mandat.provider)
+    result = provider.charge(token=mandat.token, montant=facture.montant_ttc)
+
+    with transaction.atomic():
+        if result.get('ok'):
+            paiement = Paiement.objects.create(
+                company=facture.company, facture=facture,
+                montant=facture.montant_ttc,
+                date_paiement=timezone.localdate(),
+                mode=Paiement.Mode.CARTE,
+                reference=(result.get('provider_ref') or '')[:120],
+                note='Débit automatique (mandat de paiement récurrent).',
+            )
+            TentativeDebitMandat.objects.create(
+                company=facture.company, mandat=mandat, periode=periode,
+                statut=TentativeDebitMandat.Statut.REUSSI,
+                paiement=paiement,
+            )
+            return paiement
+
+        tentatives_precedentes = TentativeDebitMandat.objects.filter(
+            mandat=mandat, periode=periode,
+            statut=TentativeDebitMandat.Statut.ECHEC).count()
+        idx = min(tentatives_precedentes, len(DUNNING_RETRY_DAYS) - 1)
+        prochaine = (
+            timezone.localdate() + timedelta(days=DUNNING_RETRY_DAYS[idx]))
+        TentativeDebitMandat.objects.create(
+            company=facture.company, mandat=mandat, periode=periode,
+            statut=TentativeDebitMandat.Statut.ECHEC,
+            motif_echec=(result.get('motif_echec') or '')[:255],
+            prochaine_retentative=prochaine,
+        )
+
+    try:
+        from apps.notifications.services import notify
+        client = facture.client
+        if client is not None and getattr(client, 'created_by', None):
+            notify(
+                client.created_by, 'mandat_debit_echec',
+                f'Débit automatique échoué — {facture.reference}',
+                body=(f'Le débit automatique de {facture.montant_ttc} MAD '
+                      f'a échoué pour {client.nom}. Mettez à jour la carte.'),
+                link='/ventes/factures',
+                company=facture.company,
+            )
+    except Exception:  # noqa: BLE001 — best-effort
+        pass
+
+    return None

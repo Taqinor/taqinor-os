@@ -25,6 +25,48 @@ def find_client_by_email(from_email, company=None):
         email__iexact=from_email.strip()).first()
 
 
+def clients_pour_controle_ice(company):
+    """ZACC14 — Clients ENTREPRISE de la société, pour le contrôle
+    d'identifiants légaux (ICE/IF) côté compta. Point d'entrée cross-app
+    (jamais un import de ``apps.crm.models`` en dehors de ce module) :
+    seuls les clients de type ``entreprise`` sont pertinents (un particulier
+    n'a pas d'ICE). Lecture seule ; renvoie une liste de dicts ``{'id',
+    'nom', 'ice', 'if_fiscal'}``."""
+    from .models import Client
+
+    qs = (Client.objects
+          .filter(company=company, type_client=Client.TypeClient.ENTREPRISE)
+          .order_by('id'))
+    return [
+        {
+            'id': client.id,
+            'nom': f'{client.nom} {client.prenom or ""}'.strip(),
+            'ice': client.ice or '',
+            'if_fiscal': client.if_fiscal or '',
+        }
+        for client in qs
+    ]
+
+
+def find_client_by_phone(company, telephone):
+    """XSAV26 — Client de `company` dont le téléphone correspond au numéro
+    donné, normalisé via `apps.ventes.utils.phone.normalize_ma_phone`.
+
+    Point d'entrée cross-app sanctionné pour `apps.notifications` (webhook
+    BSP WhatsApp) : matching par numéro SANS jamais exposer les modèles crm.
+    Renvoie le client le plus récemment créé en cas de doublon, ou None."""
+    from apps.ventes.utils.phone import normalize_ma_phone
+
+    key = normalize_ma_phone(telephone)
+    if not key:
+        return None
+    candidates = [
+        c for c in client_base_qs(company).order_by('-id')
+        if normalize_ma_phone(c.telephone) == key
+    ]
+    return candidates[0] if candidates else None
+
+
 def client_credit_warning(client, montant_ttc_nouveau=None):
     """FG41 — encours client + avertissement plafond.
 
@@ -92,6 +134,49 @@ def client_credit_warning(client, montant_ttc_nouveau=None):
     }
 
 
+def credit_hold_check(client, *, retard_jours_seuil=0):
+    """XFAC28 — blocage crédit DUR (étend FG41, qui reste un simple warning).
+
+    Réutilise ``client_credit_warning`` pour le critère plafond (jamais de
+    logique dupliquée) et ajoute le critère retard : au moins une facture
+    ouverte (émise/en_retard, non annulée) en retard de plus de
+    ``retard_jours_seuil`` jours (0 = ce critère est ignoré). Renvoie
+    ``{'bloque': bool, 'motif': str, 'encours': Decimal, 'plafond': Decimal|
+    None, 'jours_retard_max': int}``. Lecture seule ; ne bloque RIEN par
+    elle-même — c'est l'appelant (ventes) qui décide de refuser l'action
+    selon ``CompanyProfile.credit_hold_actif``."""
+    from apps.ventes.models import Facture
+    warning = client_credit_warning(client)
+
+    jours_retard_max = 0
+    if retard_jours_seuil and retard_jours_seuil > 0:
+        ouvertes = Facture.objects.filter(
+            client=client,
+            statut__in=(Facture.Statut.EMISE, Facture.Statut.EN_RETARD),
+        ).prefetch_related('paiements', 'avoirs')
+        for f in ouvertes:
+            if f.montant_du > 0:
+                jours_retard_max = max(jours_retard_max, f.jours_retard)
+
+    motifs = []
+    if warning['depasse']:
+        motifs.append(
+            f"encours {warning['encours']:.2f} MAD > plafond "
+            f"{warning['plafond']:.2f} MAD")
+    if retard_jours_seuil and jours_retard_max > retard_jours_seuil:
+        motifs.append(
+            f'{jours_retard_max} jour(s) de retard '
+            f'(seuil {retard_jours_seuil})')
+
+    return {
+        'bloque': bool(motifs),
+        'motif': ' ; '.join(motifs),
+        'encours': warning['encours'],
+        'plafond': warning['plafond'],
+        'jours_retard_max': jours_retard_max,
+    }
+
+
 def get_company_lead(company, lead_id):
     """B1 — Lead borné à la société, ou None. Point d'entrée cross-app pour que
     ventes résolve un lead par id sans importer ``apps.crm.models`` (un id d'une
@@ -107,6 +192,21 @@ def get_company_client(company, client_id):
     if not client_id:
         return None
     return client_base_qs(company).filter(pk=client_id).first()
+
+
+def client_label(company, client_id):
+    """ZGED5 — Libellé lisible d'un client borné société, ou None.
+
+    Point d'entrée cross-app LECTURE SEULE pour qu'une autre app (ex. `ged`
+    « contact assigné » sur un document) affiche un nom sans jamais importer
+    `apps.crm.models` ni faire de FK dure. Dégrade proprement (None) si le
+    client n'existe pas ou appartient à une autre société."""
+    client = get_company_client(company, client_id)
+    if client is None:
+        return None
+    if client.prenom:
+        return f'{client.prenom} {client.nom}'.strip()
+    return client.nom
 
 
 def get_latest_lead_for_client(company, client_id):
@@ -357,6 +457,267 @@ SITE_PROFILE_FIELDS = (
 )
 
 
+def _lignes_pipeline_ouvertes(company, membre_ids=None):
+    """Leads ouverts (hors SIGNED/COLD/perdu) de la société, optionnellement
+    restreints à un sous-ensemble de owners. Toujours les étapes de
+    STAGES.py — jamais une liste inventée (règle #2)."""
+    from . import stages as stage_mod
+    from .models import Lead
+    ouvertes = [
+        k for k in stage_mod.STAGES if k not in (stage_mod.SIGNED, stage_mod.COLD)
+    ]
+    qs = Lead.objects.filter(
+        company=company, is_archived=False, perdu=False, stage__in=ouvertes,
+    ).prefetch_related('devis')
+    if membre_ids is not None:
+        qs = qs.filter(owner_id__in=membre_ids)
+    return qs
+
+
+def _valeur_ponderee_leads(leads):
+    """Valeur pipeline pondérée (FG362/XSAL15) : réutilise le même calcul que
+    `apps.reporting.pipeline` (valeur du devis le plus récent × probabilité de
+    gain du lead), sans dupliquer la logique."""
+    from decimal import Decimal
+    from apps.reporting.pipeline import _lead_value, _lead_win_weight
+    valeur = Decimal('0')
+    ponderee = Decimal('0')
+    for lead in leads:
+        v = _lead_value(lead)
+        valeur += v
+        ponderee += v * _lead_win_weight(lead)
+    return valeur, ponderee
+
+
+def _activites_en_retard(company, membre_ids, today=None):
+    """Nombre d'activités (records.Activity) en retard, assignées à l'un des
+    membres. Scopé société. Lecture seule."""
+    import datetime
+    from apps.records.models import Activity
+    today = today or datetime.date.today()
+    if not membre_ids:
+        return 0
+    return Activity.objects.filter(
+        company=company, assigned_to_id__in=membre_ids, done=False,
+        due_date__isnull=False, due_date__lt=today,
+    ).count()
+
+
+def _ca_signe_mois(company, membre_ids, today=None):
+    """CA TTC signé (Devis acceptés) ce mois-ci, par owner du lead source,
+    pour les membres donnés. Lecture seule — traverse Lead.devis (reverse FK
+    ventes → crm), jamais un import de apps.ventes.models."""
+    import datetime
+    from decimal import Decimal
+    today = today or datetime.date.today()
+    debut_mois = today.replace(day=1)
+    if not membre_ids:
+        return Decimal('0')
+    from .models import Lead
+    leads = (Lead.objects
+             .filter(company=company, owner_id__in=membre_ids)
+             .prefetch_related('devis'))
+    total = Decimal('0')
+    for lead in leads:
+        for devis in lead.devis.all():
+            if devis.statut != 'accepte':
+                continue
+            d = devis.date_acceptation
+            if d is None or d < debut_mois or d > today:
+                continue
+            try:
+                total += Decimal(str(devis.total_ttc or 0))
+            except Exception:
+                continue
+    return total
+
+
+def stats_equipe(company):
+    """ZSAL3 — Tableau de bord « Mes équipes » : pour chaque
+    ``crm.EquipeCommerciale`` actives de la société, agrège pipeline ouvert
+    (count + valeur), valeur pondérée (FG362/XSAL15), activités en retard
+    (assignées aux membres), et CA signé du mois vs cible ``ObjectifCommercial``
+    (métrique ``ca_signe``) rattachée aux membres.
+
+    Un commercial sans équipe n'apparaît dans AUCUNE carte (comportement
+    voulu — pas un dashboard global). Lecture seule, scopée société.
+    """
+    from decimal import Decimal
+    from django.db.models import Sum
+    from .models import EquipeCommerciale, ObjectifCommercial
+    import datetime
+
+    today = datetime.date.today()
+    equipes = (EquipeCommerciale.objects
+               .filter(company=company, actif=True)
+               .prefetch_related('membres'))
+
+    result = []
+    for equipe in equipes:
+        membre_ids = list(equipe.membres.values_list('id', flat=True))
+        leads = list(_lignes_pipeline_ouvertes(company, membre_ids))
+        valeur, ponderee = _valeur_ponderee_leads(leads)
+        activites_retard = _activites_en_retard(company, membre_ids, today)
+        ca_signe = _ca_signe_mois(company, membre_ids, today)
+
+        cible = (ObjectifCommercial.objects
+                 .filter(company=company, owner_id__in=membre_ids,
+                         metric=ObjectifCommercial.Metric.CA_SIGNE,
+                         period_type='month',
+                         period_year=today.year, period_month=today.month)
+                 .aggregate(total=Sum('cible'))['total'] or Decimal('0'))
+        avancement_pct = (
+            round(float(ca_signe) / float(cible) * 100, 1) if cible else None
+        )
+
+        result.append({
+            'id': equipe.id,
+            'nom': equipe.nom,
+            'responsable': getattr(equipe.responsable, 'username', None),
+            'nb_membres': len(membre_ids),
+            'pipeline_ouvert_count': len(leads),
+            'pipeline_ouvert_valeur': str(valeur),
+            'pipeline_pondere': str(ponderee),
+            'activites_en_retard': activites_retard,
+            'ca_signe_mois': str(ca_signe),
+            'cible_ca_signe_mois': str(cible),
+            'avancement_pct': avancement_pct,
+        })
+    return result
+
+
+def attribution_leads(company, debut=None, fin=None):
+    """ZSAL6 — Rapport d'attribution des leads : par COMMERCIAL et par
+    CANAL/SOURCE, croisés avec le résultat (conversion en SIGNED, CA signé).
+
+    Croise ce que win/loss-par-source (QJ19) et le leaderboard commercial
+    (FG93) exposent séparément. Lecture seule, aucune migration, jamais de
+    ``prix_achat``. ``debut``/``fin`` (date, inclus) filtrent
+    ``Lead.date_creation`` ; ``None`` = pas de borne sur ce côté.
+
+    Renvoie ``{'par_commercial': [...], 'par_source': [...]}`` :
+      - par_commercial: {commercial, nb_leads, par_canal: {canal: count},
+        nb_signes, taux_conversion_pct, ca_signe}
+      - par_source: {canal, canal_label, nb_leads, nb_signes,
+        taux_conversion_pct, ca_signe}
+
+    Toujours des gardes division-par-zéro (0.0, jamais une exception). Scopé
+    société — jamais d'accès cross-tenant.
+    """
+    from decimal import Decimal
+    from . import stages as stage_mod
+    from .models import Lead
+
+    qs = Lead.objects.filter(company=company, is_archived=False)
+    if debut is not None:
+        qs = qs.filter(date_creation__date__gte=debut)
+    if fin is not None:
+        qs = qs.filter(date_creation__date__lte=fin)
+    leads = list(qs.prefetch_related('devis').select_related('owner'))
+
+    # Lead.Canal (TextChoices statique) : labels français prêts pour l'UI.
+    # Un canal libre non listé (ex. valeur legacy) retombe sur sa propre clé.
+    canal_labels = dict(Lead.Canal.choices)
+
+    def _ca_signe_lead(lead):
+        total = Decimal('0')
+        for devis in lead.devis.all():
+            if devis.statut == 'accepte':
+                try:
+                    total += Decimal(str(devis.total_ttc or 0))
+                except Exception:
+                    continue
+        return total
+
+    par_commercial = {}
+    par_source = {}
+
+    for lead in leads:
+        commercial_key = lead.owner_id or 0
+        commercial_nom = getattr(lead.owner, 'username', None) or 'Non assigné'
+        slot_com = par_commercial.setdefault(commercial_key, {
+            'commercial': commercial_nom,
+            'nb_leads': 0,
+            'par_canal': {},
+            'nb_signes': 0,
+            'ca_signe': Decimal('0'),
+        })
+        slot_com['nb_leads'] += 1
+        canal_key = lead.canal or 'inconnu'
+        slot_com['par_canal'][canal_key] = slot_com['par_canal'].get(canal_key, 0) + 1
+
+        slot_src = par_source.setdefault(canal_key, {
+            'canal': canal_key,
+            'canal_label': canal_labels.get(canal_key, canal_key),
+            'nb_leads': 0,
+            'nb_signes': 0,
+            'ca_signe': Decimal('0'),
+        })
+        slot_src['nb_leads'] += 1
+
+        est_signe = lead.stage == stage_mod.SIGNED and not lead.perdu
+        if est_signe:
+            ca = _ca_signe_lead(lead)
+            slot_com['nb_signes'] += 1
+            slot_com['ca_signe'] += ca
+            slot_src['nb_signes'] += 1
+            slot_src['ca_signe'] += ca
+
+    def _finalize_commercial(slot):
+        taux = (
+            round(slot['nb_signes'] / slot['nb_leads'] * 100, 1)
+            if slot['nb_leads'] else 0.0
+        )
+        return {
+            'commercial': slot['commercial'],
+            'nb_leads': slot['nb_leads'],
+            'par_canal': slot['par_canal'],
+            'nb_signes': slot['nb_signes'],
+            'taux_conversion_pct': taux,
+            'ca_signe': str(slot['ca_signe']),
+        }
+
+    def _finalize_source(slot):
+        taux = (
+            round(slot['nb_signes'] / slot['nb_leads'] * 100, 1)
+            if slot['nb_leads'] else 0.0
+        )
+        return {
+            'canal': slot['canal'],
+            'canal_label': slot['canal_label'],
+            'nb_leads': slot['nb_leads'],
+            'nb_signes': slot['nb_signes'],
+            'taux_conversion_pct': taux,
+            'ca_signe': str(slot['ca_signe']),
+        }
+
+    return {
+        'par_commercial': sorted(
+            (_finalize_commercial(s) for s in par_commercial.values()),
+            key=lambda r: r['commercial']),
+        'par_source': sorted(
+            (_finalize_source(s) for s in par_source.values()),
+            key=lambda r: r['canal']),
+    }
+
+
+def delai_paiement_client(client):
+    """XFAC23 — conditions de paiement négociées d'un client, en dict.
+
+    Renvoie ``{'delai_jours': int | None, 'fin_de_mois': bool}``. ``client``
+    peut être ``None`` (devis/facture sans client résolu) — renvoie alors le
+    réglage par défaut (aucun délai négocié). Point d'entrée cross-app LECTURE
+    SEULE pour que ``ventes`` dérive la date d'échéance sans importer
+    ``apps.crm.models``.
+    """
+    if client is None:
+        return {'delai_jours': None, 'fin_de_mois': False}
+    return {
+        'delai_jours': getattr(client, 'delai_paiement_jours', None),
+        'fin_de_mois': bool(getattr(client, 'fin_de_mois', False)),
+    }
+
+
 def site_profile_for_client(client_id, company=None):
     """DC12 — profil site/énergie réutilisable d'un client, en dict.
 
@@ -526,4 +887,87 @@ def site_location_for_devis(devis):
         'site_ville': None,
         'gps_lat': None,
         'gps_lng': None,
+    }
+
+
+# Champs Lead autorisés dans les règles JSON d'un segment marketing (XMKT6,
+# apps.compta). Whitelist stricte — toute clé inconnue est rejetée côté
+# validation, jamais évaluée à l'aveugle.
+LEAD_SEGMENT_FIELDS = (
+    'ville', 'type_installation', 'tags', 'canal', 'score', 'facture_energie',
+)
+
+
+def leads_matching_regles(company, regles):
+    """XMKT6 — Renvoie le queryset de ``Lead`` correspondant aux règles JSON
+    d'un segment marketing. LECTURE SEULE, point d'entrée cross-app pour
+    ``apps.compta`` (jamais d'import direct de ``apps.crm.models`` ailleurs).
+
+    ``regles`` est un dict dont les clés viennent de ``LEAD_SEGMENT_FIELDS`` :
+
+    * ``ville`` — égalité insensible à la casse ;
+    * ``type_installation`` — égalité (valeur de choix) ;
+    * ``tags`` — le tag apparaît dans la liste séparée par virgules ;
+    * ``canal`` — égalité (valeur de choix) ;
+    * ``score`` — dict ``{'gte': int, 'lte': int}`` (au moins une borne) ;
+    * ``facture_energie`` — dict ``{'gte': num, 'lte': num}`` (sur
+      ``facture_hiver``, la facture de référence du lead).
+
+    Une clé absente de ``LEAD_SEGMENT_FIELDS`` lève ``ValueError`` — la
+    validation stricte vit ici, appelée par ``apps.compta.services`` avant
+    tout enregistrement/évaluation.
+    """
+    from .models import Lead
+
+    inconnues = set(regles or {}) - set(LEAD_SEGMENT_FIELDS)
+    if inconnues:
+        raise ValueError(f"Règle(s) de segment inconnue(s) : {sorted(inconnues)}")
+
+    qs = Lead.objects.filter(company=company, is_archived=False, perdu=False)
+    if 'ville' in regles and regles['ville']:
+        qs = qs.filter(ville__iexact=regles['ville'])
+    if 'type_installation' in regles and regles['type_installation']:
+        qs = qs.filter(type_installation=regles['type_installation'])
+    if 'tags' in regles and regles['tags']:
+        qs = qs.filter(tags__icontains=regles['tags'])
+    if 'canal' in regles and regles['canal']:
+        qs = qs.filter(canal=regles['canal'])
+    if 'score' in regles and isinstance(regles['score'], dict):
+        borne = regles['score']
+        if borne.get('gte') is not None:
+            qs = qs.filter(score__gte=borne['gte'])
+        if borne.get('lte') is not None:
+            qs = qs.filter(score__lte=borne['lte'])
+    if 'facture_energie' in regles and isinstance(regles['facture_energie'], dict):
+        borne = regles['facture_energie']
+        if borne.get('gte') is not None:
+            qs = qs.filter(facture_hiver__gte=borne['gte'])
+        if borne.get('lte') is not None:
+            qs = qs.filter(facture_hiver__lte=borne['lte'])
+    return qs
+
+
+def lead_merge_fields(company, lead_id):
+    """XMKT8 — Champs LECTURE SEULE d'un lead pour la substitution de
+    variables de fusion dans une campagne marketing (``apps.compta``, jamais
+    d'import direct de ``apps.crm.models``). Renvoie ``None`` si le lead
+    n'appartient pas à la société (jamais d'accès cross-tenant).
+
+    Ne renvoie JAMAIS ``prix_achat`` ni aucune donnée interne — uniquement
+    les champs de contact/adresse déjà publics dans la fiche lead.
+    """
+    from .models import Lead
+    lead = Lead.objects.select_related('owner').filter(
+        pk=lead_id, company=company).first()
+    if lead is None:
+        return None
+    proprietaire = ''
+    if lead.owner_id:
+        proprietaire = lead.owner.get_full_name() or lead.owner.username
+    return {
+        'prenom': lead.prenom or '',
+        'nom': lead.nom or '',
+        'ville': lead.ville or '',
+        'societe': lead.societe or '',
+        'proprietaire_lead': proprietaire,
     }

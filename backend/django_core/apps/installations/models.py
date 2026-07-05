@@ -38,6 +38,7 @@ from .models_chantier import (
     StageModele,
     CommissioningRecord,
     CommissioningIVReading,
+    ReverificationMesure,
     HandoverPack,
     StockReservation,
     ChantierChecklistItem,
@@ -82,6 +83,9 @@ from .models_program import (
 from .models_indispo import (
     IndisponibiliteRessource,
 )
+from .models_astreinte import (
+    Astreinte,
+)
 # DC34 — l'ancien référentiel parallèle (installations.SousTraitant, FG304) et
 # l'AP dédiée (installations.FactureSousTraitant/PaiementSousTraitant, FG306) sont
 # supprimés : un sous-traitant est un stock.Fournisseur(type='service') et son AP
@@ -105,6 +109,7 @@ from .models_demande_achat import (
 from .models_rfq import (
     RFQ,
     RFQOffre,
+    RFQConsultation,
 )
 from .models_approbation_bcf import (
     SeuilApprobationBCF,
@@ -186,6 +191,21 @@ from .models_pod import (
 from .models_transporteur import (
     Transporteur,
 )
+from .models_retour_materiel import (
+    RetourMateriel,
+    RetourMaterielLigne,
+)
+from .models_retour_livraison import (
+    RetourLivraison,
+    RetourLivraisonLigne,
+)
+from .models_storage_rules import (
+    CategorieStockage,
+    RegleRangement,
+)
+from .models_lot_prelevement import (
+    LotPrelevement,
+)
 
 __all__ = [
     'Installation',
@@ -200,6 +220,7 @@ __all__ = [
     'StageModele',
     'CommissioningRecord',
     'CommissioningIVReading',
+    'ReverificationMesure',
     'HandoverPack',
     'StockReservation',
     'ChantierChecklistItem',
@@ -233,6 +254,7 @@ __all__ = [
     'BudgetProjet',
     'BudgetEngagement',
     'IndisponibiliteRessource',
+    'Astreinte',
     'OrdreSousTraitance',
     'AttestationSousTraitant',
     'EvaluationSousTraitant',
@@ -241,6 +263,7 @@ __all__ = [
     'DemandeAchatLigne',
     'RFQ',
     'RFQOffre',
+    'RFQConsultation',
     'SeuilApprobationBCF',
     'ApprobationBCF',
     'CommandeCadre',
@@ -283,4 +306,11 @@ __all__ = [
     'LivraisonLigne',
     'PreuveLivraison',
     'Transporteur',
+    'RetourMateriel',
+    'RetourMaterielLigne',
+    'RetourLivraison',
+    'RetourLivraisonLigne',
+    'CategorieStockage',
+    'RegleRangement',
+    'LotPrelevement',
 ]

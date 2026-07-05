@@ -2,10 +2,10 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
     AppointmentViewSet, ClientViewSet, ConcurrentPerteViewSet, LeadViewSet,
-    assignable_users,
+    assignable_users, equipes_statistiques, rapport_attribution,
     LeadTagViewSet, MotifPerteViewSet, CanalViewSet, ParrainageViewSet,
-    MessageTemplateViewSet, ObjectifCommercialViewSet, PointContactViewSet,
-    SiteProfileViewSet,
+    MessageTemplateViewSet, ObjectifCommercialViewSet, PlanActiviteViewSet,
+    PointContactViewSet, SiteProfileViewSet,
 )
 from .webhooks import website_lead_webhook, meta_lead_ads_webhook
 from .roof_views import lead_roof_footprint
@@ -26,6 +26,7 @@ router.register(r'objectifs', ObjectifCommercialViewSet)  # FG39
 router.register(r'concurrents-perte', ConcurrentPerteViewSet)  # FG242
 router.register(r'points-contact', PointContactViewSet)  # FG204
 router.register(r'site-profiles', SiteProfileViewSet)  # DC12
+router.register(r'plans-activite', PlanActiviteViewSet)  # ZSAL2
 
 urlpatterns = [
     # Récepteur des leads du site public (secret statique, voir webhooks.py)
@@ -34,6 +35,10 @@ urlpatterns = [
     path('webhooks/meta-lead-ads/', meta_lead_ads_webhook, name='meta-lead-ads-webhook'),
     # Employés assignables (sélecteur de responsable) — ouvert à la Commerciale.
     path('assignable-users/', assignable_users, name='assignable-users'),
+    # ZSAL3 — Tableau de bord « Mes équipes ».
+    path('equipes/statistiques/', equipes_statistiques, name='equipes-statistiques'),
+    # ZSAL6 — Rapport d'attribution des leads (par commercial + par source).
+    path('rapports/attribution/', rapport_attribution, name='rapport-attribution'),
     # QJ25 — Contour OSM du bâtiment épinglé (free, sans clé API)
     path('leads/<int:lead_id>/roof-footprint/', lead_roof_footprint, name='lead-roof-footprint'),
     # XMKT37 — Livechat public tokenisé (voir public_chat_views.py)

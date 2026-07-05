@@ -316,7 +316,11 @@ class TestMessagesSettingsApi(TestCase):
             'devis_unique', 'devis_multi_entete', 'devis_multi_ligne',
             'facture', 'relance',
             # XSAV4 — notifications client aux transitions du ticket SAV.
-            'ticket_recu', 'ticket_planifie', 'ticket_resolu'})
+            'ticket_recu', 'ticket_planifie', 'ticket_resolu',
+            # XSTK22 — notifications client aux transitions de livraison.
+            'livraison_en_transit', 'livraison_livree',
+            # XFSM6 — rappel client J-1 (RDV planifié demain, non confirmé).
+            'rappel_rdv'})
         unique = next(r for r in resp.data if r['cle'] == 'devis_unique')
         self.assertIn('{reference}', unique['corps_fr'])
         self.assertIn('placeholders', unique)

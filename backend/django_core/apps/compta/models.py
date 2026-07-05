@@ -873,9 +873,25 @@ class Immobilisation(models.Model):
         max_digits=5, decimal_places=2, default=Decimal('20.00'),
         verbose_name='Taux de TVA (%)')
     date_acquisition = models.DateField(verbose_name="Date d'acquisition")
+    # XACC32 — Prorata temporis (CGI marocain) : la 1re dotation linéaire se
+    # calcule au prorata des mois depuis la MISE EN SERVICE (pas
+    # l'acquisition). NULL = pas encore renseignée → défaut = date_acquisition
+    # (comportement actuel byte-identique, cf. save() ci-dessous).
+    date_mise_en_service = models.DateField(
+        null=True, blank=True, verbose_name='Date de mise en service')
     actif = models.BooleanField(default=True, verbose_name='Actif')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
+    # ── XACC33 — Capitalisation depuis une ligne de facture fournisseur ──
+    # String-ref (id stock, jamais un FK cross-app) : pièce d'origine +
+    # anti-doublon (une ligne ne peut capitaliser qu'UNE seule immobilisation).
+    piece_origine_facture_fournisseur_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Facture fournisseur d\'origine (id stock, string-ref)')
+    piece_origine_ligne_facture_fournisseur_id = models.PositiveIntegerField(
+        null=True, blank=True, unique=True,
+        verbose_name='Ligne de facture fournisseur d\'origine (id stock, '
+                     'string-ref)')
 
     class Meta:
         verbose_name = 'Immobilisation'
@@ -893,6 +909,15 @@ class Immobilisation(models.Model):
         if self.taux_tva is not None and self.taux_tva < 0:
             raise ValidationError(
                 "Le taux de TVA doit être positif.")
+
+    @property
+    def date_mise_en_service_effective(self):
+        """XACC32 — Date de mise en service, ou ``date_acquisition`` si vide.
+
+        Utilisée par le calcul du prorata temporis : une immobilisation sans
+        date de mise en service renseignée se comporte EXACTEMENT comme avant
+        (mise en service = acquisition, prorata = 12/12 dès la 1re année)."""
+        return self.date_mise_en_service or self.date_acquisition
 
     @property
     def montant_tva(self):
@@ -1859,6 +1884,9 @@ class Effet(models.Model):
         ENCAISSE = 'encaisse', 'Encaissé'
         PAYE = 'paye', 'Payé'
         IMPAYE = 'impaye', 'Impayé / rejeté'
+        # ── XACC34 — Mobilisation avant échéance (omniprésente au Maroc) ──
+        ESCOMPTE = 'escompte', "Remis à l'escompte"
+        ENDOSSE = 'endosse', 'Endossé à un tiers'
 
     company = models.ForeignKey(
         'authentication.Company',
@@ -1916,6 +1944,26 @@ class Effet(models.Model):
     )
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
+    # ── XACC34 — Escompte (mobilisation avant échéance) ──
+    agios_escompte = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name="Agios de l'escompte")
+    interets_escompte = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name="Intérêts de l'escompte")
+    date_escompte = models.DateField(
+        null=True, blank=True, verbose_name="Date de l'escompte")
+    ecriture_escompte_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="ID de l'écriture d'escompte")
+    ecriture_apurement_escompte_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name="ID de l'écriture d'apurement de l'escompte")
+    # ── XACC34 — Endossement (transfert à un tiers) ──
+    beneficiaire_endossement = models.CharField(
+        max_length=160, blank=True, default='',
+        verbose_name="Bénéficiaire de l'endossement")
+    date_endossement = models.DateField(
+        null=True, blank=True, verbose_name="Date de l'endossement")
 
     class Meta:
         verbose_name = 'Effet (chèque / traite)'
@@ -2257,6 +2305,14 @@ class PaymentRunLine(models.Model):
         max_length=40, blank=True, default='', verbose_name='RIB')
     iban = models.CharField(
         max_length=40, blank=True, default='', verbose_name='IBAN')
+    # YLEDG8 — référence LÂCHE (id opaque, jamais un FK) vers la
+    # ``stock.FactureFournisseur`` réglée par cette ligne. NULL = ligne libre
+    # (comportement historique intact) : au post du run, seules les lignes
+    # référencées créent leur ``PaiementFournisseur`` + recalculent le statut
+    # de la facture (jamais un import de ``apps.stock.models``).
+    facture_fournisseur_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Facture fournisseur réglée (id stock)')
 
     class Meta:
         verbose_name = 'Ligne de règlement fournisseur'
@@ -2414,6 +2470,25 @@ class NoteFrais(models.Model):
     )
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
+    # ── XACC27 — Politique de plafonds par catégorie ──
+    hors_politique = models.BooleanField(
+        default=False,
+        verbose_name='Hors politique (dépasse le plafond)')
+    # ── XACC28 — Refacturation au client (billable expense) ──
+    refacturable = models.BooleanField(
+        default=False, verbose_name='Refacturable au client')
+    taux_marge = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('0'),
+        verbose_name='Taux de marge à la refacturation (%)')
+    client_refacturation_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Client à refacturer (id crm, string-ref)')
+    chantier_refacturation = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Chantier (référence libre)')
+    facture_refacturation_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Facture de refacturation (id ventes, string-ref)')
 
     class Meta:
         verbose_name = 'Note de frais'
@@ -2446,6 +2521,59 @@ class NoteFrais(models.Model):
     def est_terminee(self):
         """Vrai si la note est dans un état terminal (remboursée ou rejetée)."""
         return self.statut in (self.Statut.REMBOURSEE, self.Statut.REJETEE)
+
+
+# ── XACC27 — Plafonds de notes de frais par catégorie ──────────────────────
+
+class PlafondNoteFrais(models.Model):
+    """Plafond de dépense par catégorie de note de frais (XACC27).
+
+    Référentiel company-scopé adossé au champ ``NoteFrais.categorie``
+    EXISTANT : au-delà de ``montant_max``, la note est flaggée
+    ``hors_politique`` (warning visible au valideur, jamais de blocage). Au-delà
+    de ``seuil_justificatif_obligatoire`` (optionnel), un justificatif devient
+    obligatoire pour valider. Une catégorie sans plafond configuré n'est jamais
+    flaggée. ``company`` posée côté serveur ; purement additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='plafonds_notes_frais',
+        verbose_name='Société',
+    )
+    categorie = models.CharField(
+        max_length=15, choices=NoteFrais.Categorie.choices,
+        verbose_name='Catégorie')
+    montant_max = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Plafond (montant max)')
+    seuil_justificatif_obligatoire = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name='Seuil au-delà duquel le justificatif est obligatoire')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Plafond de note de frais'
+        verbose_name_plural = 'Plafonds de notes de frais'
+        ordering = ['categorie']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'categorie'],
+                name='uniq_plafond_notefrais_categorie',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.get_categorie_display()} ≤ {self.montant_max}'
+
+    def clean(self):
+        super().clean()
+        if self.montant_max is not None and self.montant_max < 0:
+            raise ValidationError("Le plafond ne peut pas être négatif.")
+        if (self.seuil_justificatif_obligatoire is not None
+                and self.seuil_justificatif_obligatoire < 0):
+            raise ValidationError("Le seuil ne peut pas être négatif.")
 
 
 # ── FG136 — Indemnités kilométriques & per-diem chantier ───────────────────
@@ -3775,6 +3903,23 @@ class Budget(models.Model):
         APPROUVE = 'approuve', 'Approuvé'
         CLOTURE = 'cloture', 'Clôturé'
 
+    # XACC21 — mode de contrôle à l'engagement (BCF, notes de frais…).
+    # ``warning`` (défaut, comportement actuel INCHANGÉ) : un dépassement du
+    # budget restant est signalé mais n'empêche rien. ``bloquant`` : un
+    # dépassement REFUSE la création (400) sauf override du responsable.
+    class Controle(models.TextChoices):
+        WARNING = 'warning', 'Avertissement (non bloquant)'
+        BLOQUANT = 'bloquant', 'Bloquant (override responsable)'
+
+    # XACC22 — scénario budgétaire. ``engage`` (défaut, comportement actuel
+    # INCHANGÉ) est LE budget consommé par le contrôle d'engagement (XACC21)
+    # et le suivi budget-vs-réel (FG149). ``optimiste``/``pessimiste`` sont des
+    # what-if PUREMENT informatifs, jamais utilisés pour le contrôle.
+    class Scenario(models.TextChoices):
+        ENGAGE = 'engage', 'Budget engagé (officiel)'
+        OPTIMISTE = 'optimiste', 'Scénario optimiste'
+        PESSIMISTE = 'pessimiste', 'Scénario pessimiste'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -3787,6 +3932,24 @@ class Budget(models.Model):
     statut = models.CharField(
         max_length=10, choices=Statut.choices, default=Statut.BROUILLON,
         verbose_name='Statut')
+    controle = models.CharField(
+        max_length=10, choices=Controle.choices, default=Controle.WARNING,
+        verbose_name="Mode de contrôle à l'engagement")
+    # XACC22 — révisions conservées : version 1 = original, version N = la
+    # révision courante. Une version FIGÉE (``figee=True``) reste en LECTURE
+    # SEULE pour toujours (comparaison côte-à-côte). ``version=1`` par défaut
+    # = comportement actuel intact (mono-version).
+    version = models.PositiveIntegerField(default=1, verbose_name='Version')
+    figee = models.BooleanField(
+        default=False, verbose_name='Version figée (lecture seule)')
+    budget_parent = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='revisions',
+        verbose_name='Budget révisé (version précédente)')
+    scenario = models.CharField(
+        max_length=12, choices=Scenario.choices, default=Scenario.ENGAGE,
+        verbose_name='Scénario')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL, null=True, blank=True,
@@ -3798,16 +3961,28 @@ class Budget(models.Model):
     class Meta:
         verbose_name = 'Budget'
         verbose_name_plural = 'Budgets'
-        ordering = ['-annee', '-id']
+        ordering = ['-annee', '-version', '-id']
         constraints = [
             models.UniqueConstraint(
-                fields=['company', 'annee', 'libelle'],
-                name='uniq_budget_an_lib',
+                fields=['company', 'annee', 'libelle', 'version', 'scenario'],
+                name='uniq_budget_an_lib_version_scenario',
             ),
         ]
 
     def __str__(self):
-        return f'Budget {self.annee} — {self.libelle}'
+        return f'Budget {self.annee} — {self.libelle} (v{self.version}/{self.scenario})'
+
+    def save(self, *args, **kwargs):
+        # Une version figée est en lecture seule pour toujours : une fois
+        # persistée avec ``figee=True``, on refuse toute modification ultérieure
+        # (SAUF la création initiale). Comparaison côte-à-côte fiable.
+        if self.pk is not None and self.figee:
+            existant = Budget.objects.filter(pk=self.pk).first()
+            if existant is not None and existant.figee:
+                raise ValidationError(
+                    "Ce budget est une version figée : lecture seule, "
+                    "révisez-le plutôt (nouvelle version).")
+        super().save(*args, **kwargs)
 
 
 class BudgetLigne(models.Model):
@@ -4029,6 +4204,97 @@ class ProvisionCreance(models.Model):
         return self
 
 
+# ── XACC26 — Provisions pour risques & charges + dépréciation des stocks ───
+
+class Provision(models.Model):
+    """Provision générique risques/charges ou dépréciation stock/immo (XACC26).
+
+    ``ProvisionCreance`` (FG152) ne couvre que les créances clients (39x). Ce
+    modèle couvre les AUTRES natures de provisions marocaines : risques &
+    charges (15x — litiges, garanties…), dépréciation des stocks (39x hors
+    créances) et dépréciation d'immobilisations (29x). Une dotation puis une
+    reprise (partielle ou totale) postent chacune une écriture OD équilibrée
+    liée (``ecriture_dotation_id`` / lignes de reprise cumulées via
+    ``ReprisesProvision`` — ici simplifiée en compteur ``montant_repris`` +
+    horodatage de la dernière reprise, une provision pouvant être reprise en
+    plusieurs fois). ``company`` posée côté serveur ; purement additif.
+    """
+    class Nature(models.TextChoices):
+        RISQUES_CHARGES = 'risques_charges', 'Provisions pour risques & charges (15x)'
+        DEPRECIATION_STOCK = 'depreciation_stock', 'Dépréciation des stocks (39x)'
+        DEPRECIATION_IMMO = 'depreciation_immo', 'Dépréciation des immobilisations (29x)'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='provisions',
+        verbose_name='Société',
+    )
+    reference = models.CharField(
+        max_length=50, blank=True, default='', verbose_name='Référence')
+    nature = models.CharField(
+        max_length=20, choices=Nature.choices, verbose_name='Nature')
+    motif = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Motif')
+    montant_dotation = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant de la dotation')
+    montant_repris = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant déjà repris')
+    date_echeance_revue = models.DateField(
+        null=True, blank=True, verbose_name="Échéance de revue")
+    date_dotation = models.DateField(verbose_name='Date de dotation')
+    ecriture_dotation_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="ID de l'écriture de dotation")
+    date_derniere_reprise = models.DateField(
+        null=True, blank=True, verbose_name='Date de la dernière reprise')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='provisions_creees',
+        verbose_name='Créé par')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Provision (risques/charges/stock/immo)'
+        verbose_name_plural = 'Provisions (risques/charges/stock/immo)'
+        ordering = ['-date_dotation', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                condition=models.Q(reference__gt=''),
+                name='uniq_provision_ref',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.reference or "PROV"} — {self.get_nature_display()} ({self.montant_dotation})'
+
+    def clean(self):
+        super().clean()
+        if self.montant_dotation is not None and self.montant_dotation < 0:
+            raise ValidationError(
+                "Le montant de la dotation ne peut pas être négatif.")
+        if self.montant_repris is not None and self.montant_repris < 0:
+            raise ValidationError(
+                "Le montant repris ne peut pas être négatif.")
+        if (self.montant_repris or Decimal('0')) > (
+                self.montant_dotation or Decimal('0')):
+            raise ValidationError(
+                "Le montant repris ne peut pas dépasser la dotation.")
+
+    @property
+    def solde(self):
+        return (self.montant_dotation or Decimal('0')) - (
+            self.montant_repris or Decimal('0'))
+
+    @property
+    def est_soldee(self):
+        return self.solde <= 0
+
+
 # ── FG153 — Inter-sociétés / consolidation multi-entités ───────────────────
 
 class EntiteConsolidation(models.Model):
@@ -4132,6 +4398,12 @@ class Campagne(models.Model):
     segment = models.JSONField(
         default=dict, blank=True,
         verbose_name='Critères de segment (JSON)')
+    listes = models.ManyToManyField(
+        'compta.ListeDiffusion', blank=True, related_name='campagnes',
+        verbose_name='Listes de diffusion ciblées (XMKT5)')
+    sms_sender_id = models.CharField(
+        max_length=11, blank=True, default='',
+        verbose_name="Sender-ID SMS déclaré (XMKT15)")
     statut = models.CharField(
         max_length=12, choices=Statut.choices, default=Statut.BROUILLON,
         verbose_name='Statut')
@@ -4154,6 +4426,252 @@ class Campagne(models.Model):
 
     def __str__(self):
         return f'{self.nom} ({self.canal})'
+
+
+# ── XMKT2 — Journal d'envoi par destinataire (trace de campagne) ───────────
+
+class EnvoiCampagne(models.Model):
+    """Une ligne par destinataire réel d'une campagne (XMKT2).
+
+    Les compteurs agrégés de ``Campagne`` (FG201) sont dérivés de ces lignes ;
+    permet le drill-down depuis chaque KPI vers la liste exacte des
+    destinataires, et alimente les webhooks Brevo (gated).
+    """
+    class Statut(models.TextChoices):
+        QUEUED = 'queued', 'En file'
+        ENVOYE = 'envoye', 'Envoyé'
+        DELIVRE = 'delivre', 'Délivré'
+        OUVERT = 'ouvert', 'Ouvert'
+        CLIQUE = 'clique', 'Cliqué'
+        REBOND = 'rebond', 'Rebond'
+        DESINSCRIT = 'desinscrit', 'Désinscrit'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='envois_campagne',
+        verbose_name='Société',
+    )
+    campagne = models.ForeignKey(
+        Campagne,
+        on_delete=models.CASCADE,
+        related_name='envois',
+        verbose_name='Campagne',
+    )
+    destinataire = models.CharField(
+        max_length=255, verbose_name='Destinataire (email/téléphone)')
+    contact_ref = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Référence contact (lead/client, opaque)')
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices, default=Statut.QUEUED,
+        db_index=True, verbose_name='Statut')
+    raison_smtp = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Raison SMTP')
+    envoye_le = models.DateTimeField(null=True, blank=True,
+                                     verbose_name='Envoyé le')
+    ouvert_le = models.DateTimeField(null=True, blank=True,
+                                     verbose_name='Ouvert le')
+    clique_le = models.DateTimeField(null=True, blank=True,
+                                     verbose_name='Cliqué le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = "Envoi de campagne (destinataire)"
+        verbose_name_plural = "Envois de campagne (destinataires)"
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'{self.campagne_id} → {self.destinataire} ({self.statut})'
+
+
+# ── XMKT3 — Désinscription un clic + liste de suppression globale ──────────
+
+class SuppressionMarketing(models.Model):
+    """Un destinataire jamais ciblé par une campagne/séquence (XMKT3, preuve
+    loi 09-08). Vérifiée AU MOMENT DE L'ENVOI — jamais appliquée aux messages
+    transactionnels (devis/factures/tickets, canal inchangé).
+    """
+    class Motif(models.TextChoices):
+        DESINSCRIT = 'desinscrit', 'Désinscription volontaire'
+        REBOND_DUR = 'rebond_dur', 'Rebond dur'
+        PLAINTE = 'plainte', 'Plainte spam'
+        IMPORT = 'import', "Liste d'opposition importée"
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='suppressions_marketing',
+        verbose_name='Société',
+    )
+    destinataire = models.CharField(
+        max_length=255, verbose_name='Destinataire (email/téléphone normalisé)')
+    motif = models.CharField(
+        max_length=12, choices=Motif.choices, default=Motif.DESINSCRIT,
+        verbose_name='Motif')
+    source = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Source')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Suppression marketing'
+        verbose_name_plural = 'Suppressions marketing'
+        ordering = ['-date_creation']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'destinataire'],
+                name='uniq_suppression_marketing_par_destinataire',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.destinataire} ({self.motif})'
+
+
+# ── XMKT5 — Listes de diffusion nommées + abonnements ───────────────────────
+
+class ListeDiffusion(models.Model):
+    """Liste de diffusion nommée et réutilisable (XMKT5), cible additionnelle
+    d'une ``Campagne`` en plus du segment JSON libre.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='listes_diffusion',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=200, verbose_name='Nom de la liste')
+    description = models.TextField(blank=True, default='',
+                                   verbose_name='Description')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Liste de diffusion'
+        verbose_name_plural = 'Listes de diffusion'
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
+
+
+class AbonnementListe(models.Model):
+    """Abonnement d'un contact à une ``ListeDiffusion`` (XMKT5).
+
+    ``contact_ref`` est une référence OPAQUE lead/client (jamais d'import des
+    modèles crm/ventes). Dédoublonnage par destinataire normalisé à
+    l'import ; l'historique d'adhésion horodaté vit sur ce même enregistrement
+    (``date_creation``/``date_maj``).
+    """
+    class Statut(models.TextChoices):
+        INSCRIT = 'inscrit', 'Inscrit'
+        DESINSCRIT = 'desinscrit', 'Désinscrit'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='abonnements_liste',
+        verbose_name='Société',
+    )
+    liste = models.ForeignKey(
+        ListeDiffusion,
+        on_delete=models.CASCADE,
+        related_name='abonnements',
+        verbose_name='Liste',
+    )
+    destinataire = models.CharField(
+        max_length=255, verbose_name='Destinataire (email/téléphone normalisé)')
+    contact_ref = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Référence contact (lead/client, opaque)')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.INSCRIT,
+        verbose_name='Statut')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+    date_maj = models.DateTimeField(
+        auto_now=True, verbose_name='Mis à jour le')
+
+    class Meta:
+        verbose_name = 'Abonnement à une liste'
+        verbose_name_plural = 'Abonnements à une liste'
+        ordering = ['-date_creation']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['liste', 'destinataire'],
+                name='uniq_abonnement_par_destinataire_liste',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.destinataire} → {self.liste_id} ({self.statut})'
+
+
+# ── XMKT6 — Segments dynamiques enregistrés et réutilisables ────────────────
+
+class SegmentMarketing(models.Model):
+    """Segment NOMMÉ et réutilisable, auto-actualisé à chaque usage (XMKT6).
+
+    ``regles`` est un JSON validé (champs lead whitelistés, lus via
+    ``apps.crm.selectors.leads_matching_regles`` — jamais d'import du modèle
+    CRM) + des règles d'activité marketing optionnelles évaluées sur
+    ``EnvoiCampagne`` (XMKT2) : ``activite: 'a_ouvert' | 'a_clique' |
+    'jamais_ouvert'``. Utilisable par les campagnes ET les séquences.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='segments_marketing',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=200, verbose_name='Nom du segment')
+    regles = models.JSONField(
+        default=dict, blank=True, verbose_name='Règles (JSON)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Segment marketing'
+        verbose_name_plural = 'Segments marketing'
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
+
+
+# ── XMKT12 — Gestion des rebonds hard/soft ──────────────────────────────────
+
+class RebondSoft(models.Model):
+    """Compteur de rebonds SOFT par destinataire (XMKT12), à travers TOUTES
+    les campagnes — un rebond soft persiste au-delà d'un seul envoi. Une fois
+    ``compte`` >= au seuil société (défaut 3, paramétrable par l'appelant),
+    le destinataire est supprimé (XMKT3) comme un rebond dur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rebonds_soft',
+        verbose_name='Société',
+    )
+    destinataire = models.CharField(max_length=255, verbose_name='Destinataire')
+    compte = models.PositiveIntegerField(default=0, verbose_name='Nombre de rebonds soft')
+    date_maj = models.DateTimeField(auto_now=True, verbose_name='Mis à jour le')
+
+    class Meta:
+        verbose_name = 'Rebond soft'
+        verbose_name_plural = 'Rebonds soft'
+        ordering = ['-date_maj']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'destinataire'],
+                name='uniq_rebond_soft_par_destinataire',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.destinataire} ({self.compte})'
 
 
 # ── FG202 — Séquences de relance automatisées (drip / nurture) ─────────────
@@ -4238,6 +4756,114 @@ class EtapeSequence(models.Model):
 
     def __str__(self):
         return f'{self.sequence_id} #{self.ordre} ({self.canal}, J+{self.delai_jours})'
+
+
+# ── XMKT1 — Moteur d'exécution réel des séquences de relance ───────────────
+
+class InscriptionSequence(models.Model):
+    """Un lead inscrit dans une séquence de relance (FG202), en cours d'exécution.
+
+    ``lead_id`` est une référence OPAQUE vers ``crm.Lead`` (jamais d'import du
+    modèle CRM — lu via ``apps/crm/selectors.get_company_lead``). L'inscription
+    avance étape par étape ; ``etape_courante`` pointe la prochaine étape à
+    exécuter (``None`` = toutes les étapes sont passées → statut ``termine``).
+    """
+    class Statut(models.TextChoices):
+        ACTIF = 'actif', 'Actif'
+        SORTI = 'sorti', 'Sorti'
+        TERMINE = 'termine', 'Terminé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='inscriptions_sequence',
+        verbose_name='Société',
+    )
+    sequence = models.ForeignKey(
+        SequenceRelance,
+        on_delete=models.CASCADE,
+        related_name='inscriptions',
+        verbose_name='Séquence',
+    )
+    lead_id = models.PositiveIntegerField(verbose_name='Lead (référence opaque)')
+    lead_reference = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Référence lisible du lead')
+    etape_courante = models.ForeignKey(
+        EtapeSequence,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='inscriptions_en_cours',
+        verbose_name='Étape courante',
+    )
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.ACTIF,
+        verbose_name='Statut')
+    motif_sortie = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Motif de sortie')
+    declenchee_le = models.DateTimeField(
+        auto_now_add=True, verbose_name="Déclenchée le")
+    sortie_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Sortie le')
+
+    class Meta:
+        verbose_name = 'Inscription à une séquence'
+        verbose_name_plural = 'Inscriptions à une séquence'
+        ordering = ['-declenchee_le']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['sequence', 'lead_id'],
+                condition=models.Q(statut='actif'),
+                name='uniq_inscription_active_par_lead',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Lead {self.lead_id} → {self.sequence_id} ({self.statut})'
+
+
+class ExecutionEtapeSequence(models.Model):
+    """Trace d'une exécution d'étape pour une inscription (XMKT1).
+
+    Une ligne par étape effectivement traitée (envoyée ou planifiée en manuel
+    faute de clé d'intégration — cf. FG31), pour un journal lisible par
+    participant : quel nœud, quand, quoi envoyé, erreur éventuelle.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='executions_etape_sequence',
+        verbose_name='Société',
+    )
+    inscription = models.ForeignKey(
+        InscriptionSequence,
+        on_delete=models.CASCADE,
+        related_name='executions',
+        verbose_name='Inscription',
+    )
+    etape = models.ForeignKey(
+        EtapeSequence,
+        on_delete=models.CASCADE,
+        related_name='executions',
+        verbose_name='Étape',
+    )
+    execute_le = models.DateTimeField(
+        auto_now_add=True, verbose_name='Exécutée le')
+    canal = models.CharField(max_length=10, blank=True, default='',
+                             verbose_name='Canal')
+    resultat = models.CharField(
+        max_length=20, default='planifie',
+        verbose_name='Résultat (planifie/envoye/erreur)')
+    erreur = models.CharField(max_length=500, blank=True, default='',
+                              verbose_name='Erreur')
+
+    class Meta:
+        verbose_name = "Exécution d'étape de séquence"
+        verbose_name_plural = "Exécutions d'étape de séquence"
+        ordering = ['-execute_le']
+
+    def __str__(self):
+        return f'{self.inscription_id} · étape {self.etape_id} ({self.resultat})'
 
 
 # ── FG203 — Récupération des devis abandonnés ──────────────────────────────
@@ -6228,6 +6854,17 @@ class AbonnementMonitoring(models.Model):
         null=True, blank=True, verbose_name='Prochaine échéance')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
+    # YSUBS3 — dernière période facturée (garde d'idempotence : ne re-facture
+    # jamais la même `prochaine_echeance`). NULL = jamais facturé
+    # (comportement historique intact tant que personne n'appelle
+    # `facturer`).
+    derniere_facturation = models.DateField(
+        null=True, blank=True, verbose_name='Dernière période facturée')
+    # YSUBS4 — motif de résiliation (obligatoire à la résiliation, posé par
+    # le service ``resilier_abonnement_monitoring``, jamais le viewset).
+    motif_resiliation = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Motif de résiliation')
 
     class Meta:
         verbose_name = 'Abonnement de monitoring'
@@ -6455,3 +7092,1171 @@ class PisteAuditComptable(models.Model):
                 "La piste d'audit est inaltérable : un maillon déjà scellé "
                 "ne peut pas être modifié.")
         super().save(*args, **kwargs)
+
+
+# ── XACC14 — Emprunts & crédits-bails (financements de la société) ─────────
+
+class Emprunt(models.Model):
+    """Financement CONTRACTÉ par la société (emprunt bancaire ou leasing) — XACC14.
+
+    À distinguer de ``SimulationFinancement`` (FG217, financement affiché au
+    CLIENT sur un devis) : ici c'est la société elle-même qui emprunte. Le
+    tableau d'amortissement complet (une ``EcheanceEmprunt`` par mois) est
+    généré côté serveur par ``services.generer_tableau_amortissement`` en
+    réutilisant la même maths d'annuité que FG217
+    (``services.calcul_mensualite``). Chaque échéance est postable au grand
+    livre (principal 1481/1671, intérêts 6311, banque 5141) et respecte le
+    verrou de période (FG115). ``company`` posée côté serveur ; strictement
+    additif.
+    """
+    class Type(models.TextChoices):
+        EMPRUNT = 'emprunt', 'Emprunt bancaire'
+        LEASING = 'leasing', 'Crédit-bail / leasing'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='emprunts',
+        verbose_name='Société',
+    )
+    reference = models.CharField(
+        max_length=80, blank=True, default='', verbose_name='Référence')
+    banque = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Banque / bailleur')
+    type_financement = models.CharField(
+        max_length=10, choices=Type.choices, default=Type.EMPRUNT,
+        verbose_name='Type')
+    capital = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0.00'),
+        verbose_name='Capital emprunté (MAD)')
+    taux_annuel = models.DecimalField(
+        max_digits=6, decimal_places=3, default=Decimal('0.000'),
+        verbose_name='Taux annuel (%)')
+    duree_mois = models.PositiveIntegerField(
+        default=12, verbose_name='Durée (mois)')
+    date_debut = models.DateField(verbose_name='Date de départ')
+    # Comptes GL : classe 1 (capital restant dû) et classe 6 (intérêts). Le
+    # compte de capital diffère selon le type (1481 emprunt / 1671 leasing) ;
+    # optionnels : un défaut est déterminé côté service selon le type.
+    compte_capital = models.ForeignKey(
+        CompteComptable,
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name='emprunts_capital',
+        verbose_name='Compte de capital restant dû (classe 1)',
+    )
+    compte_interets = models.ForeignKey(
+        CompteComptable,
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name='emprunts_interets',
+        verbose_name='Compte de charges financières (classe 6)',
+    )
+    compte_tresorerie = models.ForeignKey(
+        CompteTresorerie,
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name='emprunts',
+        verbose_name='Compte de trésorerie (payeur)',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Emprunt / crédit-bail'
+        verbose_name_plural = 'Emprunts / crédits-bails'
+        ordering = ['-date_debut', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                condition=models.Q(reference__gt=''),
+                name='uniq_emprunt_reference',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.reference or "EMPRUNT"} — {self.banque} ({self.capital})'
+
+    def clean(self):
+        super().clean()
+        if self.capital is not None and self.capital <= 0:
+            raise ValidationError(
+                "Le capital emprunté doit être strictement positif.")
+        if self.duree_mois is not None and self.duree_mois <= 0:
+            raise ValidationError("La durée doit être strictement positive.")
+        if self.taux_annuel is not None and self.taux_annuel < 0:
+            raise ValidationError("Le taux annuel ne peut pas être négatif.")
+
+    @property
+    def encours_restant_du(self):
+        """Capital restant dû = capital initial − Σ principal des échéances DÉJÀ
+        POSTÉES au grand livre (un remboursement non postée n'a pas encore
+        réduit la dette réelle). Source pour la liasse / position de
+        trésorerie."""
+        rembourse = self.echeances.filter(posted=True).aggregate(
+            s=models.Sum('principal'))['s'] or Decimal('0')
+        reste = (self.capital or Decimal('0')) - rembourse
+        return reste if reste > 0 else Decimal('0.00')
+
+
+class EcheanceEmprunt(models.Model):
+    """Échéance mensuelle du tableau d'amortissement d'un ``Emprunt`` (XACC14).
+
+    Une ligne par mois : mensualité = principal + intérêts (calcul d'annuité
+    constante, cf. ``services.generer_tableau_amortissement``). ``posted``
+    + ``ecriture`` tracent le posting au grand livre (idempotent). Unicité
+    ``(emprunt, numero)`` : un rang du tableau n'a qu'une échéance.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='echeances_emprunt',
+        verbose_name='Société',
+    )
+    emprunt = models.ForeignKey(
+        Emprunt,
+        on_delete=models.CASCADE,
+        related_name='echeances',
+        verbose_name='Emprunt',
+    )
+    numero = models.PositiveIntegerField(verbose_name='Rang (1..N)')
+    date_echeance = models.DateField(verbose_name="Date d'échéance")
+    principal = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0.00'),
+        verbose_name='Part de principal')
+    interets = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0.00'),
+        verbose_name="Part d'intérêts")
+    mensualite = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0.00'),
+        verbose_name='Mensualité')
+    capital_restant_du = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0.00'),
+        verbose_name='Capital restant dû après échéance')
+    posted = models.BooleanField(
+        default=False, verbose_name='Postée au grand livre')
+    ecriture = models.ForeignKey(
+        EcritureComptable,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='echeances_emprunt',
+        verbose_name='Écriture comptable',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Échéance d'emprunt"
+        verbose_name_plural = "Échéances d'emprunt"
+        ordering = ['emprunt_id', 'numero']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['emprunt', 'numero'],
+                name='uniq_echeance_emprunt_numero',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Échéance {self.numero} — {self.mensualite}'
+
+
+# ── XACC15 — Charges constatées d'avance (étalement des charges prépayées) ──
+
+class ChargeConstateeAvance(models.Model):
+    """Charge prépayée à étaler sur plusieurs mois (symétrique du PCA, XACC15).
+
+    Une charge payée d'un coup (assurance annuelle, loyer payé d'avance…) doit
+    être rattachée au bon exercice : à l'origine, on porte le montant total au
+    compte 3491 « charges constatées d'avance » (débit 3491 / crédit 6xx —
+    neutralise la charge prématurée), puis on génère une dotation mensuelle
+    (débit 6xx / crédit 3491) pour chaque mois de la période d'étalement,
+    via ``services.etaler_charge_avance`` (idempotent). Origine : une facture
+    fournisseur ou une OD, référencée par id opaque (jamais un FK cross-app).
+    ``company`` posée côté serveur ; strictement additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='charges_constatees_avance',
+        verbose_name='Société',
+    )
+    reference = models.CharField(
+        max_length=80, blank=True, default='', verbose_name='Référence')
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    facture_fournisseur_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID de la facture fournisseur')
+    montant_total = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0.00'),
+        verbose_name='Montant total à étaler')
+    date_debut = models.DateField(verbose_name="Début de l'étalement")
+    nb_mois = models.PositiveIntegerField(
+        default=12, verbose_name="Nombre de mois d'étalement")
+    # Compte de charge (classe 6) d'origine — optionnel : 61xx par défaut si
+    # non fourni côté service.
+    compte_charge = models.ForeignKey(
+        CompteComptable,
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name='charges_constatees_avance',
+        verbose_name='Compte de charge (classe 6)',
+    )
+    ecriture_origine = models.ForeignKey(
+        EcritureComptable,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='charges_constatees_avance_origine',
+        verbose_name="Écriture d'origine (3491)",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='charges_constatees_avance_creees',
+        verbose_name='Créée par')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Charge constatée d'avance"
+        verbose_name_plural = "Charges constatées d'avance"
+        ordering = ['-date_debut', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                condition=models.Q(reference__gt=''),
+                name='uniq_cca_reference',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.reference or "CCA"} — {self.libelle} ({self.montant_total})'
+
+    def clean(self):
+        super().clean()
+        if self.montant_total is not None and self.montant_total <= 0:
+            raise ValidationError(
+                "Le montant à étaler doit être strictement positif.")
+        if self.nb_mois is not None and self.nb_mois < 1:
+            raise ValidationError(
+                "L'étalement doit porter sur au moins 1 mois.")
+
+    @property
+    def solde_restant_a_etaler(self):
+        """Solde 3491 restant = montant total − Σ des dotations déjà postées."""
+        dote = self.dotations.filter(posted=True).aggregate(
+            s=models.Sum('montant'))['s'] or Decimal('0')
+        reste = (self.montant_total or Decimal('0')) - dote
+        return reste if reste > 0 else Decimal('0.00')
+
+
+class DotationEtalement(models.Model):
+    """Dotation mensuelle d'étalement d'une ``ChargeConstateeAvance`` (XACC15).
+
+    Une ligne par mois : ``montant`` égal au montant total / nb_mois, la
+    DERNIÈRE ligne absorbant l'écart d'arrondi (Σ dotations = montant total,
+    exact au centime). ``posted`` + ``ecriture`` tracent le posting (débit 6xx
+    / crédit 3491), idempotent. Unicité ``(charge, numero)``.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='dotations_etalement',
+        verbose_name='Société',
+    )
+    charge = models.ForeignKey(
+        ChargeConstateeAvance,
+        on_delete=models.CASCADE,
+        related_name='dotations',
+        verbose_name='Charge constatée d\'avance',
+    )
+    numero = models.PositiveIntegerField(verbose_name='Rang (1..N)')
+    date_dotation = models.DateField(verbose_name='Date de dotation')
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0.00'),
+        verbose_name='Dotation')
+    posted = models.BooleanField(
+        default=False, verbose_name='Postée au grand livre')
+    ecriture = models.ForeignKey(
+        EcritureComptable,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='dotations_etalement',
+        verbose_name='Écriture comptable',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Dotation d'étalement"
+        verbose_name_plural = "Dotations d'étalement"
+        ordering = ['charge_id', 'numero']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['charge', 'numero'],
+                name='uniq_dotation_etalement_charge_numero',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Dotation {self.numero} — {self.montant}'
+
+
+# ── XACC16 — Amortissements dérogatoires (double plan comptable / fiscal) ───
+
+class PlanAmortissementFiscal(models.Model):
+    """Plan FISCAL parallèle optionnel d'une immobilisation (XACC16).
+
+    ``PlanAmortissement`` (FG119) reste le plan COMPTABLE (mono-livre). Ce
+    plan porte le mode/durée FISCAUX quand ils diffèrent du comptable (cas
+    classique marocain : dégressif fiscal / linéaire comptable, ou durées
+    différentes). La différence annuelle entre les deux dotations donne
+    l'amortissement DÉROGATOIRE, posté par
+    ``services.generer_dotations_derogatoires`` (dotation 65941 si le fiscal
+    excède le comptable en début de vie, reprise 7594 inverse en fin de vie —
+    Σ des dérogatoires = 0 sur la vie totale). Absence de plan fiscal = le
+    comportement actuel (FG119 seul) reste intact.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='plans_amortissement_fiscaux',
+        verbose_name='Société',
+    )
+    plan_comptable = models.OneToOneField(
+        PlanAmortissement,
+        on_delete=models.CASCADE,
+        related_name='plan_fiscal',
+        verbose_name='Plan comptable (FG119)',
+    )
+    mode = models.CharField(
+        max_length=10, choices=PlanAmortissement.Mode.choices,
+        default=PlanAmortissement.Mode.DEGRESSIF,
+        verbose_name='Mode fiscal')
+    duree_annees = models.PositiveIntegerField(
+        verbose_name='Durée fiscale (années)')
+    coefficient_degressif = models.DecimalField(
+        max_digits=4, decimal_places=2, null=True, blank=True,
+        verbose_name='Coefficient dégressif fiscal')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Plan d\'amortissement fiscal'
+        verbose_name_plural = 'Plans d\'amortissement fiscaux'
+        ordering = ['-date_creation', '-id']
+
+    def __str__(self):
+        return f"Plan fiscal {self.get_mode_display()} — {self.plan_comptable}"
+
+    def clean(self):
+        super().clean()
+        if self.duree_annees is not None and self.duree_annees < 1:
+            raise ValidationError(
+                "La durée fiscale doit être d'au moins 1 an.")
+
+
+class DotationDerogatoire(models.Model):
+    """Différence annuelle comptable-vs-fiscal (amortissement dérogatoire) —
+    XACC16.
+
+    Une ligne par exercice : ``dotation_comptable``/``dotation_fiscale`` (les
+    montants des deux plans pour cet exercice) et ``difference`` SIGNÉE
+    (fiscal − comptable). ``difference`` > 0 → DOTATION dérogatoire (charge
+    65941 / provision réglementée 1351) ; < 0 → REPRISE inverse (1351 /
+    produit 7594). Postable au grand livre, idempotent. Unicité
+    ``(plan_fiscal, annee)``.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='dotations_derogatoires',
+        verbose_name='Société',
+    )
+    plan_fiscal = models.ForeignKey(
+        PlanAmortissementFiscal,
+        on_delete=models.CASCADE,
+        related_name='dotations_derogatoires',
+        verbose_name='Plan fiscal',
+    )
+    annee = models.PositiveIntegerField(verbose_name='Exercice (année)')
+    date_dotation = models.DateField(verbose_name='Date de dotation')
+    dotation_comptable = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Dotation comptable')
+    dotation_fiscale = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Dotation fiscale')
+    # SIGNÉ : fiscal − comptable. > 0 dotation dérogatoire, < 0 reprise.
+    difference = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Différence (dérogatoire)')
+    posted = models.BooleanField(
+        default=False, verbose_name='Postée au grand livre')
+    ecriture = models.ForeignKey(
+        EcritureComptable,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='dotations_derogatoires',
+        verbose_name='Écriture comptable',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Dotation dérogatoire'
+        verbose_name_plural = 'Dotations dérogatoires'
+        ordering = ['plan_fiscal_id', 'annee']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['plan_fiscal', 'annee'],
+                name='uniq_dotation_derogatoire_plan_annee',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Dérogatoire {self.annee} — {self.difference}'
+
+
+# ── XACC17 — Table de taux de change + contre-valeur MAD ───────────────────
+
+class TauxDevise(models.Model):
+    """Taux de change quotidien ``devise`` → MAD (XACC17).
+
+    Comble l'absence totale de référentiel FX (les documents FG52/DC25
+    portent ``devise``/``taux_change`` mais aucune table n'existe). Une ligne
+    par ``(company, devise, date)`` : ``taux_vers_mad`` = 1 unité de
+    ``devise`` en MAD (ex. EUR au 2026-06-01 → 10.85 → 1 EUR = 10,85 MAD).
+    ``source`` distingue une saisie manuelle d'un feed automatique (BKAM/ECB,
+    key-gated, no-op sans clé — RÈGLE #1 CLAUDE.md n'est PAS concernée, aucune
+    écriture Odoo ici). Un taux SAISI reste prioritaire sur le feed (jamais de
+    snap, cf. ``selectors.taux_du_jour``). ``company`` posée côté serveur ;
+    strictement additif — l'absence de table laisse le repli actuel (taux=1,
+    MAD) intact.
+    """
+    class Source(models.TextChoices):
+        MANUEL = 'manuel', 'Saisie manuelle'
+        BKAM = 'bkam', 'Bank Al-Maghrib (feed)'
+        ECB = 'ecb', 'Banque Centrale Européenne (feed)'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='taux_devise',
+        verbose_name='Société',
+    )
+    devise = models.CharField(
+        max_length=10, verbose_name='Devise (ISO 4217)')
+    date_taux = models.DateField(verbose_name='Date du taux')
+    taux_vers_mad = models.DecimalField(
+        max_digits=14, decimal_places=6, default=Decimal('1.000000'),
+        verbose_name='Taux vers MAD (1 devise = X MAD)')
+    source = models.CharField(
+        max_length=10, choices=Source.choices, default=Source.MANUEL,
+        verbose_name='Source')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Taux de change'
+        verbose_name_plural = 'Taux de change'
+        ordering = ['-date_taux', 'devise']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'devise', 'date_taux'],
+                name='uniq_taux_devise_par_jour',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.devise} {self.date_taux} = {self.taux_vers_mad} MAD'
+
+    def clean(self):
+        super().clean()
+        if self.taux_vers_mad is not None and self.taux_vers_mad <= 0:
+            raise ValidationError(
+                "Le taux vers MAD doit être strictement positif.")
+
+
+# ── XACC18 — Écarts de change réalisés & réévaluation de clôture ───────────
+
+class ItemOuvertDevise(models.Model):
+    """Poste ouvert (facture) en devise à suivre pour l'écart de change (XACC18).
+
+    Fige, à l'émission, la devise/le taux d'ORIGINE et le montant en devise
+    d'un document (facture client ou fournisseur) référencé par id opaque
+    (jamais un FK cross-app). Au règlement, ``services.constater_ecart_change``
+    compare le taux d'origine au taux du jour du règlement et poste l'écart
+    RÉALISÉ (733 gain / 633 perte). Un document 100 % MAD n'a jamais besoin de
+    cette table (comportement actuel intact). ``company`` posée côté serveur.
+    """
+    class TypeDocument(models.TextChoices):
+        FACTURE_CLIENT = 'facture_client', 'Facture client'
+        FACTURE_FOURNISSEUR = 'facture_fournisseur', 'Facture fournisseur'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='items_ouverts_devise',
+        verbose_name='Société',
+    )
+    type_document = models.CharField(
+        max_length=25, choices=TypeDocument.choices,
+        default=TypeDocument.FACTURE_CLIENT, verbose_name='Type de document')
+    document_id = models.PositiveIntegerField(verbose_name='ID du document')
+    document_reference = models.CharField(
+        max_length=60, blank=True, default='', verbose_name='Référence document')
+    devise = models.CharField(max_length=10, verbose_name='Devise (ISO 4217)')
+    montant_devise = models.DecimalField(
+        max_digits=14, decimal_places=2, verbose_name='Montant en devise')
+    taux_origine = models.DecimalField(
+        max_digits=14, decimal_places=6,
+        verbose_name="Taux d'origine (devise → MAD)")
+    date_origine = models.DateField(verbose_name="Date d'émission")
+    solde = models.BooleanField(
+        default=False, verbose_name='Soldé (réglé intégralement)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Poste ouvert en devise'
+        verbose_name_plural = 'Postes ouverts en devise'
+        ordering = ['-date_origine', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'type_document', 'document_id'],
+                name='uniq_item_ouvert_devise_document',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.document_reference or self.document_id} — {self.devise} {self.montant_devise}'
+
+    def clean(self):
+        super().clean()
+        if self.montant_devise is not None and self.montant_devise <= 0:
+            raise ValidationError('Le montant en devise doit être strictement positif.')
+        if self.taux_origine is not None and self.taux_origine <= 0:
+            raise ValidationError("Le taux d'origine doit être strictement positif.")
+
+    @property
+    def contre_valeur_origine(self):
+        return (Decimal(self.montant_devise) * Decimal(self.taux_origine)).quantize(
+            Decimal('0.01'))
+
+
+class EcartChange(models.Model):
+    """Écart de change RÉALISÉ constaté au règlement d'un item ouvert (XACC18).
+
+    ``difference`` SIGNÉE = contre-valeur au taux de règlement − contre-valeur
+    au taux d'origine. > 0 → GAIN de change (crédit 733) ; < 0 → PERTE de
+    change (débit 633). Postable au grand livre, idempotent (un item ne peut
+    avoir qu'un seul écart réalisé — unicité ``item``).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='ecarts_change',
+        verbose_name='Société',
+    )
+    item = models.OneToOneField(
+        ItemOuvertDevise,
+        on_delete=models.CASCADE,
+        related_name='ecart_change',
+        verbose_name='Poste ouvert en devise',
+    )
+    date_reglement = models.DateField(verbose_name='Date de règlement')
+    taux_reglement = models.DecimalField(
+        max_digits=14, decimal_places=6,
+        verbose_name='Taux de règlement (devise → MAD)')
+    difference = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Écart (signé, MAD)')
+    posted = models.BooleanField(
+        default=False, verbose_name='Posté au grand livre')
+    ecriture = models.ForeignKey(
+        EcritureComptable,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='ecarts_change',
+        verbose_name='Écriture comptable',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Écart de change réalisé'
+        verbose_name_plural = 'Écarts de change réalisés'
+        ordering = ['-date_reglement', '-id']
+
+    def __str__(self):
+        return f'Écart {self.item_id} — {self.difference}'
+
+
+class ReevaluationCloture(models.Model):
+    """Run de réévaluation de clôture des items ouverts en devise (XACC18).
+
+    À la clôture d'exercice, chaque item OUVERT (non soldé) est réévalué au
+    taux de clôture : l'écart de conversion (latent, non réalisé) est posté en
+    27 (écart actif, perte latente) ou 17 (écart passif, gain latent) — JAMAIS
+    en 733/633 (ceux-là sont RÉALISÉS uniquement). L'écriture est EXTOURNÉE
+    (inversée) à l'ouverture suivante, idempotent. ``company`` posée côté
+    serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='reevaluations_cloture',
+        verbose_name='Société',
+    )
+    date_cloture = models.DateField(verbose_name='Date de clôture')
+    date_extourne = models.DateField(
+        null=True, blank=True, verbose_name="Date d'extourne (ouverture N+1)")
+    ecriture = models.ForeignKey(
+        EcritureComptable,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='reevaluations_cloture',
+        verbose_name='Écriture de réévaluation',
+    )
+    ecriture_extourne = models.ForeignKey(
+        EcritureComptable,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='reevaluations_cloture_extourne',
+        verbose_name="Écriture d'extourne",
+    )
+    total_ecart = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Total des écarts latents (signé, MAD)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Réévaluation de clôture (change)'
+        verbose_name_plural = 'Réévaluations de clôture (change)'
+        ordering = ['-date_cloture', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'date_cloture'],
+                name='uniq_reevaluation_cloture_par_date',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Réévaluation {self.date_cloture} — {self.total_ecart}'
+
+
+class LigneReevaluation(models.Model):
+    """Détail par item d'un run ``ReevaluationCloture`` (XACC18)."""
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='lignes_reevaluation',
+        verbose_name='Société',
+    )
+    reevaluation = models.ForeignKey(
+        ReevaluationCloture,
+        on_delete=models.CASCADE,
+        related_name='lignes',
+        verbose_name='Réévaluation',
+    )
+    item = models.ForeignKey(
+        ItemOuvertDevise,
+        on_delete=models.CASCADE,
+        related_name='lignes_reevaluation',
+        verbose_name='Poste ouvert en devise',
+    )
+    taux_cloture = models.DecimalField(
+        max_digits=14, decimal_places=6,
+        verbose_name='Taux de clôture (devise → MAD)')
+    ecart = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Écart latent (signé, MAD)')
+
+    class Meta:
+        verbose_name = 'Ligne de réévaluation'
+        verbose_name_plural = 'Lignes de réévaluation'
+        ordering = ['reevaluation_id', 'id']
+
+    def __str__(self):
+        return f'{self.item_id} — {self.ecart}'
+
+
+# ── XACC19 — Générateur d'états financiers personnalisés ───────────────────
+
+class EtatPersonnalise(models.Model):
+    """État financier PERSONNALISÉ, défini en données (sans code) — XACC19.
+
+    Les états figés (GL/balance/CPC/bilan/ESG, FG110-114) restent inchangés :
+    ceci est un état ADDITIONNEL, entièrement paramétrable par l'utilisateur.
+    Composé de ``LigneEtatPersonnalise`` (une formule = plages/sommes de
+    comptes avec signe) et de ``ColonneEtatPersonnalise`` (périodes,
+    comparatif N-1, budget FG149, écart %). Évalué côté serveur depuis la
+    balance générale (``selectors.evaluer_etat_personnalise``). ``company``
+    posée côté serveur ; strictement additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='etats_personnalises',
+        verbose_name='Société',
+    )
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    description = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Description')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='etats_personnalises_crees',
+        verbose_name='Créé par')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'État personnalisé'
+        verbose_name_plural = 'États personnalisés'
+        ordering = ['libelle', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'libelle'],
+                name='uniq_etat_personnalise_libelle',
+            ),
+        ]
+
+    def __str__(self):
+        return self.libelle
+
+
+class LigneEtatPersonnalise(models.Model):
+    """Ligne d'un ``EtatPersonnalise`` : libellé + formule (XACC19).
+
+    ``formule`` est une liste de TERMES séparés par des virgules, chacun
+    ``[+-]prefixe`` (ex. ``+70,+71,-60,-61``) où ``prefixe`` matche le début
+    du numéro de compte (``compte.numero.startswith(prefixe)``) — pas de
+    code, juste des plages/sommes signées. ``type_ligne`` distingue un
+    TITRE (aucune valeur, juste un intitulé de section) d'un TOTAL (formule
+    évaluée).
+    """
+    class TypeLigne(models.TextChoices):
+        TITRE = 'titre', 'Titre de section'
+        TOTAL = 'total', 'Ligne calculée (formule)'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='lignes_etat_personnalise',
+        verbose_name='Société',
+    )
+    etat = models.ForeignKey(
+        EtatPersonnalise,
+        on_delete=models.CASCADE,
+        related_name='lignes',
+        verbose_name='État personnalisé',
+    )
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    type_ligne = models.CharField(
+        max_length=10, choices=TypeLigne.choices, default=TypeLigne.TOTAL,
+        verbose_name='Type de ligne')
+    formule = models.CharField(
+        max_length=500, blank=True, default='',
+        verbose_name='Formule (plages de comptes signées)')
+
+    class Meta:
+        verbose_name = "Ligne d'état personnalisé"
+        verbose_name_plural = "Lignes d'état personnalisé"
+        ordering = ['etat_id', 'ordre', 'id']
+
+    def __str__(self):
+        return f'{self.libelle} ({self.formule})'
+
+    def clean(self):
+        super().clean()
+        if self.type_ligne == self.TypeLigne.TOTAL and not (self.formule or '').strip():
+            raise ValidationError(
+                "Une ligne calculée doit porter une formule non vide.")
+
+
+class ColonneEtatPersonnalise(models.Model):
+    """Colonne d'un ``EtatPersonnalise`` : période, comparatif ou budget — XACC19.
+
+    ``type_colonne`` détermine ce qui est évalué pour cette colonne :
+    ``periode`` (bornes date_debut/date_fin explicites), ``comparatif_n1``
+    (même période, exercice précédent) ou ``budget`` (référence un
+    ``Budget`` FG149 — colonne informative comparée à la période).
+    """
+    class Type(models.TextChoices):
+        PERIODE = 'periode', 'Période'
+        COMPARATIF_N1 = 'comparatif_n1', 'Comparatif N-1'
+        BUDGET = 'budget', 'Budget'
+        ECART_PCT = 'ecart_pct', 'Écart % (vs colonne précédente)'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='colonnes_etat_personnalise',
+        verbose_name='Société',
+    )
+    etat = models.ForeignKey(
+        EtatPersonnalise,
+        on_delete=models.CASCADE,
+        related_name='colonnes',
+        verbose_name='État personnalisé',
+    )
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    libelle = models.CharField(max_length=100, verbose_name='Libellé')
+    type_colonne = models.CharField(
+        max_length=15, choices=Type.choices, default=Type.PERIODE,
+        verbose_name='Type de colonne')
+    date_debut = models.DateField(null=True, blank=True, verbose_name='Début')
+    date_fin = models.DateField(null=True, blank=True, verbose_name='Fin')
+    budget = models.ForeignKey(
+        'compta.Budget',
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='colonnes_etat_personnalise',
+        verbose_name='Budget (FG149)')
+
+    class Meta:
+        verbose_name = "Colonne d'état personnalisé"
+        verbose_name_plural = "Colonnes d'état personnalisé"
+        ordering = ['etat_id', 'ordre', 'id']
+
+    def __str__(self):
+        return f'{self.libelle} ({self.type_colonne})'
+
+
+# ── XACC20 — Ventilation analytique %  & règles d'auto-imputation ──────────
+
+class VentilationAnalytique(models.Model):
+    """Ventilation en % d'une ``LigneEcriture`` sur plusieurs sections (XACC20).
+
+    ``LigneEcriture.centre_cout`` (FG150) reste mono-axe 1:1 — INCHANGÉ et
+    toujours utilisable. Cette table est une distribution ADDITIONNELLE en
+    pourcentage sur PLUSIEURS ``CentreCout`` (une ligne ``LigneVentilation``
+    par section, Σ pourcentage = 100 % validé en ``clean()``). Les rapports
+    par centre de coût lisent CETTE table en priorité si elle existe pour la
+    ligne, sinon retombent sur ``centre_cout`` simple (rétro-compatible).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='ventilations_analytiques',
+        verbose_name='Société',
+    )
+    ligne_ecriture = models.OneToOneField(
+        LigneEcriture,
+        on_delete=models.CASCADE,
+        related_name='ventilation_analytique',
+        verbose_name="Ligne d'écriture",
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Ventilation analytique'
+        verbose_name_plural = 'Ventilations analytiques'
+        ordering = ['-date_creation', '-id']
+
+    def __str__(self):
+        return f'Ventilation ligne #{self.ligne_ecriture_id}'
+
+    @property
+    def total_pourcentage(self):
+        return sum(
+            (d.pourcentage for d in self.distributions.all()), Decimal('0'))
+
+
+class LigneVentilation(models.Model):
+    """Part (%) d'une ``VentilationAnalytique`` affectée à un ``CentreCout``
+    (XACC20)."""
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='lignes_ventilation',
+        verbose_name='Société',
+    )
+    ventilation = models.ForeignKey(
+        VentilationAnalytique,
+        on_delete=models.CASCADE,
+        related_name='distributions',
+        verbose_name='Ventilation',
+    )
+    centre_cout = models.ForeignKey(
+        CentreCout,
+        on_delete=models.PROTECT,
+        related_name='lignes_ventilation',
+        verbose_name='Centre de coût',
+    )
+    pourcentage = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('0'),
+        verbose_name='Pourcentage (%)')
+
+    class Meta:
+        verbose_name = 'Ligne de ventilation'
+        verbose_name_plural = 'Lignes de ventilation'
+        ordering = ['ventilation_id', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['ventilation', 'centre_cout'],
+                name='uniq_ventilation_centre_cout',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.centre_cout.code} — {self.pourcentage}%'
+
+    def clean(self):
+        super().clean()
+        if self.pourcentage is not None and not (0 < self.pourcentage <= 100):
+            raise ValidationError(
+                "Le pourcentage doit être strictement compris entre 0 et 100.")
+
+
+class RegleImputation(models.Model):
+    """Règle d'auto-imputation analytique par compte/tiers/produit (XACC20).
+
+    Appliquée à la CRÉATION d'une écriture (``services.creer_ecriture``,
+    additif) : si une ligne matche le ``prefixe_compte`` de la règle (et,
+    quand renseigné, le ``tiers_id`` ou ``produit_id``), la distribution en %
+    de la règle est copiée dans une ``VentilationAnalytique`` pour cette
+    ligne — sans jamais imposer de saisie manuelle. Plusieurs règles peuvent
+    matcher ; la première par ``priorite`` (plus petit = prioritaire) gagne.
+    ``produit_id`` référence ``apps.stock.Produit`` par id opaque (jamais un
+    FK cross-app).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='regles_imputation',
+        verbose_name='Société',
+    )
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    prefixe_compte = models.CharField(
+        max_length=20, verbose_name='Préfixe de compte (ou plage)')
+    tiers_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Tiers (optionnel)')
+    produit_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Produit (optionnel)')
+    priorite = models.PositiveIntegerField(
+        default=100, verbose_name='Priorité (plus petit = prioritaire)')
+    actif = models.BooleanField(default=True, verbose_name='Active')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Règle d'imputation analytique"
+        verbose_name_plural = "Règles d'imputation analytique"
+        ordering = ['priorite', 'id']
+
+    def __str__(self):
+        return f'{self.libelle} ({self.prefixe_compte})'
+
+    @property
+    def total_pourcentage(self):
+        return sum(
+            (d.pourcentage for d in self.distributions.all()), Decimal('0'))
+
+
+class LigneRegleImputation(models.Model):
+    """Part (%) d'une ``RegleImputation`` affectée à un ``CentreCout`` (XACC20)."""
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='lignes_regle_imputation',
+        verbose_name='Société',
+    )
+    regle = models.ForeignKey(
+        RegleImputation,
+        on_delete=models.CASCADE,
+        related_name='distributions',
+        verbose_name='Règle',
+    )
+    centre_cout = models.ForeignKey(
+        CentreCout,
+        on_delete=models.PROTECT,
+        related_name='lignes_regle_imputation',
+        verbose_name='Centre de coût',
+    )
+    pourcentage = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('0'),
+        verbose_name='Pourcentage (%)')
+
+    class Meta:
+        verbose_name = "Ligne de règle d'imputation"
+        verbose_name_plural = "Lignes de règle d'imputation"
+        ordering = ['regle_id', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['regle', 'centre_cout'],
+                name='uniq_regle_imputation_centre_cout',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.centre_cout.code} — {self.pourcentage}%'
+
+    def clean(self):
+        super().clean()
+        if self.pourcentage is not None and not (0 < self.pourcentage <= 100):
+            raise ValidationError(
+                "Le pourcentage doit être strictement compris entre 0 et 100.")
+
+
+# ── XACC24 — Approbation des changements de coordonnées bancaires ──────────
+
+class DemandeApprobationRib(models.Model):
+    """Demande d'approbation d'un CHANGEMENT de RIB fournisseur (XACC24).
+
+    Le RIB lui-même vit sur ``apps.stock.Fournisseur`` (DC15, hors périmètre
+    compta) : cette table ne DUPLIQUE pas le référentiel, elle trace le
+    workflow d'approbation d'un changement (principe 4-yeux, réutilise le
+    pattern ``DemandeApprobationConfig``, FG213). Tant que ``statut`` n'est
+    pas ``approuvee``, ``services._coordonnees_fournisseur`` (payment run,
+    FG133) continue d'utiliser ``ancien_rib`` — jamais le nouveau tant qu'il
+    n'est pas approuvé. ``fournisseur_id`` référence
+    ``apps.stock.Fournisseur`` par id opaque (jamais un FK cross-app).
+    """
+    class Statut(models.TextChoices):
+        EN_ATTENTE = 'en_attente', 'En attente'
+        APPROUVEE = 'approuvee', 'Approuvée'
+        REFUSEE = 'refusee', 'Refusée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='demandes_approbation_rib',
+        verbose_name='Société',
+    )
+    fournisseur_id = models.PositiveIntegerField(
+        verbose_name='Fournisseur (id stock)')
+    fournisseur_nom = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Fournisseur')
+    ancien_rib = models.CharField(
+        max_length=40, blank=True, default='', verbose_name='Ancien RIB')
+    nouveau_rib = models.CharField(max_length=40, verbose_name='Nouveau RIB')
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices, default=Statut.EN_ATTENTE,
+        verbose_name='Statut')
+    demandeur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='demandes_rib_demandees',
+        verbose_name='Demandeur')
+    decideur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='demandes_rib_decidees',
+        verbose_name='Décideur')
+    commentaire_decision = models.TextField(
+        blank=True, default='', verbose_name='Commentaire de décision')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+    date_decision = models.DateTimeField(
+        null=True, blank=True, verbose_name='Décidée le')
+
+    class Meta:
+        verbose_name = "Demande d'approbation de RIB"
+        verbose_name_plural = "Demandes d'approbation de RIB"
+        ordering = ['-date_creation', '-id']
+
+    def __str__(self):
+        return f'RIB {self.fournisseur_nom or self.fournisseur_id} ({self.statut})'
+
+    @property
+    def rib_actif(self):
+        """RIB à utiliser TANT QUE la demande n'est pas approuvée : l'ancien.
+        Une fois approuvée, le nouveau devient actif."""
+        if self.statut == self.Statut.APPROUVEE:
+            return self.nouveau_rib
+        return self.ancien_rib
+
+
+# ── XFAC14 — Compensation AR/AP (netting) pour un tiers client + fournisseur ─
+
+class Compensation(models.Model):
+    """XFAC14 — Compense les factures AR (clients, ventes) et AP
+    (fournisseurs, stock) d'un MÊME tiers réel exploité à la fois comme
+    client et fournisseur (installateur revendeur, sous-traitant).
+
+    ``client_id``/``fournisseur_id`` référencent ``apps.crm.Client`` /
+    ``apps.stock.Fournisseur`` par id opaque (string-ref, jamais un FK
+    cross-app — CLAUDE.md). Les factures compensées vivent sur
+    ``LigneCompensation`` (même principe). Une compensation ``brouillon`` ne
+    touche rien ; sa validation (``services.valider_compensation``) poste
+    l'écriture équilibrée 4411/3421 et enregistre les règlements croisés
+    (``Paiement`` côté ventes, ``PaiementFournisseur`` côté stock) via les
+    services de chaque app — jamais un import de leurs modèles.
+    """
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        VALIDEE = 'validee', 'Validée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='compensations',
+        verbose_name='Société',
+    )
+    reference = models.CharField(
+        max_length=50, blank=True, default='', verbose_name='Référence')
+    client_id = models.PositiveIntegerField(verbose_name='Client (id crm)')
+    client_nom = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Client')
+    fournisseur_id = models.PositiveIntegerField(
+        verbose_name='Fournisseur (id stock)')
+    fournisseur_nom = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Fournisseur')
+    montant_compense = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant compensé')
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices, default=Statut.BROUILLON,
+        verbose_name='Statut')
+    ecriture_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="ID de l'écriture GL")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='compensations_creees',
+        verbose_name='Créée par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+    date_validation = models.DateTimeField(
+        null=True, blank=True, verbose_name='Validée le')
+
+    class Meta:
+        verbose_name = 'Compensation AR/AP'
+        verbose_name_plural = 'Compensations AR/AP'
+        ordering = ['-date_creation', '-id']
+
+    def __str__(self):
+        return f'Compensation {self.reference or self.pk} ({self.statut})'
+
+
+class LigneCompensation(models.Model):
+    """Une facture (AR ou AP) imputée sur une ``Compensation`` (XFAC14),
+    avec le montant retenu pour cette compensation (jamais plus que le
+    solde dû à la création)."""
+    class Type(models.TextChoices):
+        AR = 'ar', 'Facture client (AR)'
+        AP = 'ap', 'Facture fournisseur (AP)'
+
+    compensation = models.ForeignKey(
+        Compensation, on_delete=models.CASCADE, related_name='lignes')
+    type_facture = models.CharField(max_length=2, choices=Type.choices)
+    facture_id = models.PositiveIntegerField(
+        verbose_name='Facture (id ventes ou stock selon type)')
+    reference_facture = models.CharField(
+        max_length=50, blank=True, default='', verbose_name='Référence')
+    montant_impute = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant imputé')
+
+    class Meta:
+        verbose_name = 'Ligne de compensation'
+        verbose_name_plural = 'Lignes de compensation'
+        ordering = ['id']
+
+    def __str__(self):
+        return f'{self.get_type_facture_display()} {self.reference_facture}'

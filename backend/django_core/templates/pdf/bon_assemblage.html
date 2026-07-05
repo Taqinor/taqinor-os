@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 12px; color: #333; }
+    .page { padding: 40px; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 32px; }
+    .header-left { display: flex; flex-direction: column; gap: 6px; }
+    .logo img { max-height: 90px; max-width: 240px; object-fit: contain; }
+    .doc-title { font-size: 24px; font-weight: bold; color: {{ couleur_principale }}; margin-top: 8px; }
+    .doc-ref { font-size: 12px; color: #666; }
+    .company-info { text-align: right; font-size: 11px; color: #555; line-height: 1.6; }
+    .company-info strong { font-size: 13px; color: #222; }
+
+    .meta-row { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+    .meta-item { background: #f8fafc; border-radius: 4px; padding: 8px 14px; min-width: 130px; }
+    .meta-item strong { display: block; color: #555; font-size: 10px; text-transform: uppercase; margin-bottom: 2px; }
+    .meta-item span { font-size: 12px; color: #1e293b; font-weight: 500; }
+
+    h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; color: {{ couleur_principale }}; margin: 20px 0 8px; }
+
+    table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+    thead tr { background: {{ couleur_principale }}; color: white; }
+    thead th { padding: 8px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+    tbody tr:nth-child(even) { background: #f9fafb; }
+    tbody td { padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 11.5px; }
+    .text-right { text-align: right; }
+    .check-box { width: 14px; height: 14px; border: 1.5px solid #94a3b8; display: inline-block; border-radius: 2px; }
+
+    .serie-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+    .serie-box { border: 1px solid #cbd5e1; border-radius: 4px; padding: 8px 12px; font-size: 10px; color: #64748b; min-width: 150px; }
+
+    .signature-block { margin-top: 32px; display: flex; justify-content: space-between; }
+    .signature-box { width: 45%; }
+    .signature-box .label { font-size: 11px; color: #555; margin-bottom: 36px; }
+    .signature-box .line { border-top: 1px solid #94a3b8; padding-top: 4px; font-size: 10px; color: #94a3b8; }
+
+    .footer { margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 14px; font-size: 10px; color: #94a3b8; text-align: center; line-height: 1.8; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="header">
+    <div class="header-left">
+      {% if logo_uri %}<div class="logo"><img src="{{ logo_uri }}" alt="Logo" /></div>{% endif %}
+      <div class="doc-title">BON D'ASSEMBLAGE</div>
+      <div class="doc-ref">Ordre n° {{ reference }}</div>
+    </div>
+    <div class="company-info">
+      <strong>{{ entreprise_nom }}</strong><br />
+      Document interne — usage atelier uniquement
+    </div>
+  </div>
+
+  <div class="meta-row">
+    <div class="meta-item">
+      <strong>Kit</strong>
+      <span>{{ kit_nom }}</span>
+    </div>
+    <div class="meta-item">
+      <strong>Quantité</strong>
+      <span>{{ quantite }}</span>
+    </div>
+    <div class="meta-item">
+      <strong>Date prévue</strong>
+      <span>{{ date_prevue.strftime('%d/%m/%Y') if date_prevue else 'N/A' }}</span>
+    </div>
+    <div class="meta-item">
+      <strong>Responsable</strong>
+      <span>{{ responsable or '—' }}</span>
+    </div>
+    <div class="meta-item">
+      <strong>Statut</strong>
+      <span>{{ statut }}</span>
+    </div>
+  </div>
+
+  <h2>Nomenclature à préparer</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Composant</th>
+        <th class="text-right">Quantité</th>
+        <th>Disponibilité</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in composants %}
+      <tr>
+        <td>{{ c.designation }}</td>
+        <td class="text-right">{{ c.quantite }}</td>
+        <td>{{ c.statut or '—' }}{% if c.disponible is not none %} ({{ c.disponible }} dispo){% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if etapes %}
+  <h2>Gamme opératoire</h2>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:30px;"></th>
+        <th>Étape</th>
+        <th>Instructions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in etapes %}
+      <tr>
+        <td><span class="check-box"></span></td>
+        <td>{{ e.libelle }}</td>
+        <td>{{ e.instructions }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if series_attendues %}
+  <h2>Numéros de série</h2>
+  <div class="serie-grid">
+    {% for n in series_attendues %}
+    <div class="serie-box">Unité {{ n }} — N° série : ________________</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="signature-block">
+    <div class="signature-box">
+      <div class="label">Assemblé par</div>
+      <div class="line">Nom / Signature / Date</div>
+    </div>
+    <div class="signature-box">
+      <div class="label">Contrôlé par</div>
+      <div class="line">Nom / Signature / Date</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    Document interne généré automatiquement le {{ now.strftime('%d/%m/%Y à %H:%M') }} — ne jamais transmettre au client.
+  </div>
+
+</div>
+</body>
+</html>

@@ -70,9 +70,11 @@ class PutAwayViewSet(TenantMixin, viewsets.ModelViewSet):
         self._check_tenant(serializer)
         produit = serializer.validated_data.get('produit')
         emplacement = serializer.validated_data.get('emplacement')
+        quantite = serializer.validated_data.get('quantite') or 0
         suggestion = selectors.suggerer_bin_putaway(
             company, getattr(produit, 'id', None),
-            emplacement_id=getattr(emplacement, 'id', None))
+            emplacement_id=getattr(emplacement, 'id', None),
+            quantite=quantite)
         serializer.save(
             company=company, created_by=self.request.user,
             bin_suggere=suggestion)

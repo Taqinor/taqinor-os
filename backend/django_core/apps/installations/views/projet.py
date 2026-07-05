@@ -22,7 +22,7 @@ from ..models import (
 from ..serializers import (
     JalonProjetSerializer, ModeleProjetSerializer, ReunionChantierSerializer,
 )
-from ..services import instantiate_modele_projet
+from ..services import instantiate_modele_projet, notifier_jalon_a_facturer
 
 READ_ACTIONS = ['list', 'retrieve']
 
@@ -60,7 +60,16 @@ class JalonProjetViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         _check_installation_tenant(serializer, self.request.user.company)
+        old_atteint = serializer.instance.atteint
         serializer.save(company=self.request.user.company)
+        jalon = serializer.instance
+        # YSERV7 — au passage à `atteint=True`, nudge de facturation
+        # (best-effort, idempotent — ne bloque jamais l'update du jalon).
+        if jalon.atteint and not old_atteint:
+            try:
+                notifier_jalon_a_facturer(jalon, self.request.user)
+            except Exception:  # pragma: no cover - défensif
+                pass
 
 
 class ModeleProjetViewSet(TenantMixin, viewsets.ModelViewSet):

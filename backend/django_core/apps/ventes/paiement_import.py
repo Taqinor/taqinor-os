@@ -302,6 +302,11 @@ def commit(file_bytes, filename, company, user):
                     note=f'Import relevé bancaire (ligne {i + 2})',
                     created_by=user)
                 activity.log_facture_paiement(locked, user, paiement)
+                # YLEDG1 — événement documentaire générique (pose du seam
+                # pour compta.ecriture_pour_paiement).
+                from core.events import paiement_enregistre
+                paiement_enregistre.send(
+                    sender=Paiement, instance=paiement, company=company)
                 locked.refresh_from_db()
                 if locked.montant_du <= Decimal('0') and \
                         locked.statut != Facture.Statut.ANNULEE.value:

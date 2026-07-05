@@ -13,6 +13,9 @@ from .models import (
     CategorieFournisseur, ContactFournisseur,
     EcheanceFactureFournisseur, AcompteFournisseur,
     AvoirFournisseur, ImputationAvoirFournisseur,
+    PalierPrixFournisseur, PortailFournisseurToken,
+    LotEntrepot, InventaireAnnuel, RevalorisationStock, ConditionnementProduit,
+    ModeleBonCommandeFournisseur, ModeleBonCommandeFournisseurLigne,
 )
 
 
@@ -53,6 +56,23 @@ class CategorieFournisseurSerializer(serializers.ModelSerializer):
     class Meta:
         model = CategorieFournisseur
         fields = ['id', 'nom', 'archived']
+
+
+class PortailFournisseurTokenSerializer(serializers.ModelSerializer):
+    """XPUR22 — jeton portail fournisseur (INTERNE, admin/responsable
+    uniquement). Le token en clair n'apparaît que dans cette réponse — le
+    lien public complet est construit côté frontend."""
+    est_valide = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = PortailFournisseurToken
+        fields = [
+            'id', 'fournisseur', 'token', 'expires_at', 'revoked',
+            'est_valide', 'created_at', 'last_used_at',
+        ]
+        read_only_fields = [
+            'token', 'created_at', 'last_used_at', 'est_valide',
+        ]
 
 
 class FournisseurSerializer(serializers.ModelSerializer):
@@ -180,6 +200,40 @@ class ProduitSerializer(serializers.ModelSerializer):
     # Transfert. Map calculée UNE fois par sérialisation (pas de N+1).
     stock_par_emplacement = serializers.SerializerMethodField()
 
+    # XSTK3 — déclaré explicitement `required=False` : DRF (≥ 3.14) dérive un
+    # validateur "unique together" depuis la `UniqueConstraint` conditionnelle
+    # `(company, code_barres)` du modèle et force sinon ce champ à
+    # `required=True`, cassant la création SANS code-barres (comportement
+    # historique, champ nullable). L'unicité PROPRE (400, scopée société,
+    # NULL/'' exclus) reste assurée par `validate_code_barres` ci-dessous —
+    # DRF ne comprend pas la condition partielle de la contrainte DB.
+    code_barres = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True, max_length=64)
+    # XSTK3 — `sku` a la MÊME contrainte partielle `(company, sku)` que
+    # `code_barres` : DRF en dérive un UniqueTogetherValidator qui le force à
+    # `required=True` à tort (champ nullable/optionnel au modèle). On le
+    # déclare donc explicitement optionnel ici aussi.
+    sku = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True, max_length=50)
+
+    def validate_code_barres(self, value):
+        # XSTK3 — doublon PROPRE (400) même société, plutôt qu'une
+        # IntegrityError 500 sur la contrainte DB. Vide/None reste toléré
+        # (comportement historique inchangé pour un produit sans code-barres).
+        value = (value or '').strip() or None
+        if value is None:
+            return value
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is not None:
+            qs = Produit.objects.filter(company=company, code_barres=value)
+            if self.instance is not None:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    'Ce code-barres est déjà utilisé par un autre produit.')
+        return value
+
     def validate(self, attrs):
         # Champs personnalisés (T11, L808) : valider/nettoyer le custom_data du
         # produit contre les définitions du module « produit », même chemin que
@@ -207,14 +261,25 @@ class ProduitSerializer(serializers.ModelSerializer):
         fields = [
             # Identité & catalogue
             'id', 'company', 'nom', 'description', 'sku', 'marque',
+            # XSTK3 — code-barres fabricant (EAN/UPC/GTIN)
+            'code_barres',
+            # XSTK19 — code SH (HS) + pays d'origine (dossier d'import ADII)
+            'code_sh', 'pays_origine',
+            # XSTK15 — unité de mesure du stock
+            'unite_stock',
             # Prix (prix_achat gardé par permission, cf. get_fields)
             'prix_achat', 'prix_vente', 'tva',
+            # ZPUR1 — politique de facturation d'achat (sur_reception/
+            # sur_commande) — INTERNE, jamais client-facing (achat).
+            'politique_facturation_achat',
             # Stock
             'quantite_stock', 'seuil_alerte', 'is_archived',
             # Relations (lecture imbriquée + écriture par *_id)
             'categorie', 'categorie_id', 'fournisseur', 'fournisseur_id',
             # Garanties
             'garantie', 'garantie_mois', 'garantie_production_mois',
+            # XPOS9 — suivi par n° de série à la vente comptoir
+            'suivi_serie',
             # Spécifications pompage
             'pompe_cv', 'hmt_m', 'debit_m3j', 'pompe_kw', 'tension_v',
             'courbe_pompe',
@@ -231,6 +296,12 @@ class ProduitSerializer(serializers.ModelSerializer):
         ]
         # company est posé côté serveur (TenantMixin) — jamais accepté du corps.
         read_only_fields = ['company', 'date_creation', 'date_mise_a_jour']
+        # XSTK3 — l'optionalité de `code_barres` (que DRF forcerait à tort à
+        # `required=True` via l'UniqueTogetherValidator dérivé de la contrainte
+        # partielle) est restaurée par la déclaration EXPLICITE du champ
+        # ci-dessus (``code_barres = serializers.CharField(required=False…)`` +
+        # ``validate_code_barres``). Ne PAS la répéter dans ``extra_kwargs`` :
+        # DRF interdit de déclarer un champ ET de le lister dans extra_kwargs.
 
     def _reserved_map(self):
         """Map {produit_id: quantité réservée} calculée UNE fois par sérialisation
@@ -401,24 +472,36 @@ class RetourFournisseurSerializer(serializers.ModelSerializer):
         return retour
 
 
+class PalierPrixFournisseurSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PalierPrixFournisseur
+        fields = ['id', 'qte_min', 'prix']
+
+
 class PrixFournisseurSerializer(serializers.ModelSerializer):
     """N17 — prix d'achat par (produit, fournisseur). INTERNE."""
     fournisseur_nom = serializers.CharField(
         source='fournisseur.nom', read_only=True)
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
+    # XPUR14 — paliers de quantité (lecture ; gestion CRUD via l'endpoint
+    # dédié / l'import xlsx, pas en écriture imbriquée ici).
+    paliers = PalierPrixFournisseurSerializer(many=True, read_only=True)
 
     class Meta:
         model = PrixFournisseur
         fields = [
             'id', 'produit', 'produit_nom', 'fournisseur', 'fournisseur_nom',
             'prix_achat', 'date_dernier_achat', 'delai_livraison_jours',
+            'ref_produit_fournisseur', 'date_debut', 'date_fin', 'paliers',
         ]
         # company posé côté serveur.
 
 
 class LigneBonCommandeFournisseurSerializer(serializers.ModelSerializer):
-    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
-    produit_sku = serializers.CharField(source='produit.sku', read_only=True)
+    # XPUR16 — SerializerMethodField (pas ``source='produit.nom'``) : une
+    # ligne libre/service n'a pas de produit, `produit` peut être None.
+    produit_nom = serializers.SerializerMethodField()
+    produit_sku = serializers.SerializerMethodField()
     quantite_restante = serializers.IntegerField(read_only=True)
     total_achat = serializers.DecimalField(
         max_digits=14, decimal_places=2, read_only=True)
@@ -426,19 +509,42 @@ class LigneBonCommandeFournisseurSerializer(serializers.ModelSerializer):
     class Meta:
         model = LigneBonCommandeFournisseur
         fields = [
-            'id', 'produit', 'produit_nom', 'produit_sku', 'quantite',
-            'prix_achat_unitaire', 'prix_achat_unitaire_devise',
+            'id', 'produit', 'produit_nom', 'produit_sku',
+            # XPUR16 — ligne libre/service : désignation libre + flag.
+            'designation', 'sans_stock',
+            'quantite', 'prix_achat_unitaire', 'prix_achat_unitaire_devise',
             'frais_annexes', 'quantite_recue',
             'quantite_restante', 'total_achat',
         ]
+        # produit devient optionnel (XPUR16 — ligne libre/service) ;
+        # sans_stock reste dérivé côté modèle (auto quand produit est vide),
+        # jamais imposé arbitrairement en écriture.
+        extra_kwargs = {'produit': {'required': False, 'allow_null': True}}
         # quantite_recue n'est jamais posée librement : elle évolue uniquement
         # via l'action de réception (perform_create n'accepte que le reste).
-        read_only_fields = ['quantite_recue']
+        read_only_fields = ['quantite_recue', 'sans_stock']
+
+    def get_produit_nom(self, obj):
+        return obj.produit.nom if obj.produit_id else None
+
+    def get_produit_sku(self, obj):
+        return obj.produit.sku if obj.produit_id else None
 
     def validate_quantite(self, value):
         if value is None or value <= 0:
             raise serializers.ValidationError('La quantité doit être positive.')
         return value
+
+    def validate(self, attrs):
+        # XPUR16 — une ligne sans produit catalogue DOIT porter une
+        # désignation libre (sinon rien n'identifie ce qui est commandé).
+        produit = attrs.get('produit')
+        designation = (attrs.get('designation') or '').strip()
+        if produit is None and not designation:
+            raise serializers.ValidationError(
+                'Une ligne sans produit doit porter une désignation libre '
+                '(ex. « Transport Casablanca »).')
+        return attrs
 
 
 class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
@@ -464,6 +570,10 @@ class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
             'statut_display', 'date_commande', 'note', 'devise',
             'taux_change', 'date_livraison_prevue',
             'date_confirmee_fournisseur', 'numero_confirmation_fournisseur',
+            'revision',
+            # XPUR23 — destination de réception (dépôt cible OU chantier
+            # de livraison directe ; défaut = dépôt principal, inchangé).
+            'emplacement_destination', 'chantier_livraison',
             'created_by',
             'created_by_username', 'date_creation', 'date_mise_a_jour',
             'lignes', 'total_achat', 'est_entierement_recu', 'acomptes',
@@ -471,9 +581,11 @@ class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
         # company + reference + created_by sont posés côté serveur. La date
         # confirmée/numéro d'accusé n'est modifiable QUE via l'action
         # `confirmer` (XPUR7) — jamais en écriture libre sur le document.
+        # `revision` n'avance QUE via l'action `reviser` (XPUR18).
         read_only_fields = [
             'reference', 'created_by', 'date_creation', 'date_mise_a_jour',
             'date_confirmee_fournisseur', 'numero_confirmation_fournisseur',
+            'revision',
         ]
 
     def get_acomptes(self, obj):
@@ -493,14 +605,35 @@ class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
                 'Fournisseur hors de votre entreprise.')
         return value
 
+    def validate_emplacement_destination(self, value):
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if value is not None and company is not None \
+                and value.company_id != company.id:
+            raise serializers.ValidationError(
+                'Emplacement hors de votre entreprise.')
+        return value
+
+    def validate_chantier_livraison(self, value):
+        # XPUR23 — string-FK cross-app : on lit `company_id` (présent sur
+        # tout modèle installations.Installation) sans importer son modèle.
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if value is not None and company is not None \
+                and getattr(value, 'company_id', None) != company.id:
+            raise serializers.ValidationError(
+                'Chantier hors de votre entreprise.')
+        return value
+
     def _validate_company_produits(self, lignes_data):
         request = self.context.get('request')
         company = getattr(getattr(request, 'user', None), 'company', None)
         if company is None:
             return
         for ligne in lignes_data:
-            produit = ligne['produit']
-            if produit.company_id != company.id:
+            # XPUR16 — une ligne libre/service n'a pas de produit à vérifier.
+            produit = ligne.get('produit')
+            if produit is not None and produit.company_id != company.id:
                 raise serializers.ValidationError(
                     {'lignes': 'Produit hors de votre entreprise.'})
 
@@ -553,14 +686,17 @@ class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
 # ── G5 — Réception fournisseur (goods-in) ────────────────────────────────────
 
 class LigneReceptionFournisseurSerializer(serializers.ModelSerializer):
-    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
-    produit_sku = serializers.CharField(source='produit.sku', read_only=True)
+    # XPUR16 — SerializerMethodField (pas ``source='produit.nom'``) : une
+    # ligne libre/service n'a pas de produit, `produit` peut être None.
+    produit_nom = serializers.SerializerMethodField()
+    produit_sku = serializers.SerializerMethodField()
+    designation = serializers.SerializerMethodField()
 
     class Meta:
         model = LigneReceptionFournisseur
         fields = [
             'id', 'ligne_commande', 'produit', 'produit_nom', 'produit_sku',
-            'quantite',
+            'designation', 'quantite',
             # FG61 — numéros de série à la réception
             'numeros_serie',
             # FG64 — traçabilité lot / péremption
@@ -568,6 +704,19 @@ class LigneReceptionFournisseurSerializer(serializers.ModelSerializer):
         ]
         # produit est dérivé de la ligne de commande côté serveur.
         read_only_fields = ['produit']
+
+    def get_produit_nom(self, obj):
+        return obj.produit.nom if obj.produit_id else None
+
+    def get_produit_sku(self, obj):
+        return obj.produit.sku if obj.produit_id else None
+
+    def get_designation(self, obj):
+        """XPUR16 — désignation libre de la ligne BCF d'origine quand cette
+        ligne de réception n'a pas de produit catalogue."""
+        if obj.produit_id:
+            return None
+        return obj.ligne_commande.designation if obj.ligne_commande_id else None
 
     def validate_quantite(self, value):
         if value is None or value <= 0:
@@ -652,15 +801,22 @@ class ReceptionFournisseurSerializer(serializers.ModelSerializer):
 # ── G5 — Facture fournisseur / comptes à payer (AP) ──────────────────────────
 
 class LigneFactureFournisseurSerializer(serializers.ModelSerializer):
-    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
+    # produit est optionnel (ligne libre/service, XPUR16) — default=None
+    # évite une AttributeError DRF quand produit est vide.
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
     total_ht = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+    # XPUR17 — TVA par ligne (taux marocains). total_tva = 0 si taux_tva vide
+    # (ligne historique, suit le taux global agrégé de la facture).
+    total_tva = serializers.DecimalField(
         max_digits=14, decimal_places=2, read_only=True)
 
     class Meta:
         model = LigneFactureFournisseur
         fields = [
             'id', 'produit', 'produit_nom', 'designation', 'quantite',
-            'prix_unitaire_ht', 'total_ht',
+            'prix_unitaire_ht', 'total_ht', 'taux_tva', 'total_tva',
         ]
 
 
@@ -701,6 +857,32 @@ class PaiementFournisseurSerializer(serializers.ModelSerializer):
                 'Facture hors de votre entreprise.')
         return value
 
+    def validate(self, attrs):
+        # ZACC9 — garde de SUR-PAIEMENT : un règlement ne doit jamais dépasser
+        # le solde dû de la facture (validate_montant refusait déjà un
+        # montant <= 0, mais n'empêchait PAS de payer plus que ce qui reste
+        # dû). Comparaison faite ici (object-level) car elle a besoin à la
+        # fois de `facture` et de `montant`.
+        facture = attrs.get('facture')
+        montant = attrs.get('montant')
+        if facture is not None and montant is not None:
+            if montant > facture.solde_du:
+                raise serializers.ValidationError({
+                    'montant': (
+                        'Le montant dépasse le solde dû '
+                        f'({facture.solde_du}).'),
+                })
+        # ZACC9 — `date_paiement` reste nullable (saisie « date à confirmer »
+        # tolérée historiquement), mais l'événement `paiement_fournisseur_
+        # enregistre` (YLEDG2) peut poser une écriture comptable AUTO
+        # (COMPTA_AUTO_ECRITURES) qui exige une date non NULL. Défaut serveur
+        # = aujourd'hui quand omis, jamais None — pas de régression pour un
+        # appelant qui fournit déjà la date.
+        if not attrs.get('date_paiement'):
+            from django.utils import timezone
+            attrs['date_paiement'] = timezone.localdate()
+        return attrs
+
 
 class EcheanceFactureFournisseurSerializer(serializers.ModelSerializer):
     class Meta:
@@ -737,6 +919,13 @@ class FactureFournisseurSerializer(serializers.ModelSerializer):
         source='get_statut_controle_display', read_only=True)
     resolu_par_username = serializers.CharField(
         source='resolu_par.username', read_only=True)
+    # XPUR17 — sous-totaux HT/TVA PAR TAUX (20/14/10/7 %/exonéré), dérivés des
+    # lignes. Vide si la facture n'a pas de lignes ventilées (comportement
+    # historique inchangé : montant_tva global reste la source de vérité).
+    sous_totaux_par_taux = serializers.SerializerMethodField()
+    # XPUR26 — e-facturation DGI 2026 (entrant, préparation mandat).
+    statut_conformite_dgi_display = serializers.CharField(
+        source='get_statut_conformite_dgi_display', read_only=True)
 
     class Meta:
         model = FactureFournisseur
@@ -751,17 +940,27 @@ class FactureFournisseurSerializer(serializers.ModelSerializer):
             'statut_controle', 'statut_controle_display', 'motif_ecart',
             'resolu_par', 'resolu_par_username', 'resolu_le',
             'lignes', 'paiements', 'echeances', 'total_paye', 'solde_du',
+            'sous_totaux_par_taux',
+            'numero_clearance_dgi', 'statut_conformite_dgi',
+            'statut_conformite_dgi_display',
         ]
         # company + reference + statut + created_by sont posés côté serveur.
         # Le statut découle des paiements (recompute_facture_fournisseur_statut).
         # statut_controle/motif_ecart/resolu_par/resolu_le sont posés
         # UNIQUEMENT par evaluate_facture_exception / resoudre_exception_facture
         # (XPUR10) — jamais en écriture libre sur le document.
+        # numero_clearance_dgi/statut_conformite_dgi (XPUR26) sont posés
+        # UNIQUEMENT par l'import UBL — jamais en écriture libre.
         read_only_fields = [
             'reference', 'statut', 'created_by', 'date_creation',
             'date_mise_a_jour', 'statut_controle', 'motif_ecart',
             'resolu_par', 'resolu_le',
+            'numero_clearance_dgi', 'statut_conformite_dgi',
         ]
+
+    def get_sous_totaux_par_taux(self, obj):
+        from .selectors import sous_totaux_tva_facture_fournisseur
+        return sous_totaux_tva_facture_fournisseur(obj)
 
     def validate_fournisseur(self, value):
         request = self.context.get('request')
@@ -1126,3 +1325,116 @@ class AvoirFournisseurSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'Fournisseur hors de votre entreprise.')
         return value
+
+
+class LotEntrepotSerializer(serializers.ModelSerializer):
+    """XSTK6 — registre de lots en entrepôt (LECTURE — alimenté/décrémenté
+    uniquement par les services de réception/sortie, jamais en écriture
+    libre)."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True)
+    emplacement_nom = serializers.CharField(
+        source='emplacement.nom', read_only=True)
+    est_perime = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = LotEntrepot
+        fields = [
+            'id', 'produit', 'produit_nom', 'numero_lot', 'date_peremption',
+            'emplacement', 'emplacement_nom', 'quantite_recue',
+            'quantite_restante', 'reference_reception', 'est_perime',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = fields
+
+
+class InventaireAnnuelSerializer(serializers.ModelSerializer):
+    """XSTK13 — inventaire annuel légal FIGÉ (LECTURE SEULE — créé
+    uniquement par l'action `figer`, jamais modifié ensuite)."""
+
+    class Meta:
+        model = InventaireAnnuel
+        fields = [
+            'id', 'exercice', 'date_reference', 'total_valeur', 'nb_lignes',
+            'donnees', 'date_creation',
+        ]
+        read_only_fields = fields
+
+
+class RevalorisationStockSerializer(serializers.ModelSerializer):
+    """XSTK14 — revalorisation manuelle du stock (document tracé). Créée en
+    BROUILLON via `produit`/`nouveau_cout`/`motif` ; verrouillée après
+    validation (`valider/`)."""
+    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
+
+    class Meta:
+        model = RevalorisationStock
+        fields = [
+            'id', 'produit', 'produit_nom', 'ancien_cout', 'nouveau_cout',
+            'quantite_snapshot', 'delta_valeur', 'motif', 'statut', 'auteur',
+            'date_creation', 'date_validation',
+        ]
+        read_only_fields = [
+            'id', 'produit_nom', 'ancien_cout', 'quantite_snapshot',
+            'delta_valeur', 'statut', 'auteur', 'date_creation',
+            'date_validation',
+        ]
+
+
+class ConditionnementProduitSerializer(serializers.ModelSerializer):
+    """XSTK15 — conditionnement d'achat d'un produit (Touret/Carton…),
+    convertit vers `Produit.unite_stock` via `facteur`."""
+    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
+    unite_stock = serializers.CharField(
+        source='produit.unite_stock', read_only=True)
+
+    class Meta:
+        model = ConditionnementProduit
+        fields = [
+            'id', 'produit', 'produit_nom', 'nom', 'facteur', 'code_barres',
+            'unite_stock', 'date_creation',
+        ]
+
+
+class ModeleBonCommandeFournisseurLigneSerializer(serializers.ModelSerializer):
+    """ZPUR3 — ligne d'un modèle de BCF : produit + quantité par défaut."""
+    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
+    produit_sku = serializers.CharField(source='produit.sku', read_only=True)
+
+    class Meta:
+        model = ModeleBonCommandeFournisseurLigne
+        fields = ['id', 'produit', 'produit_nom', 'produit_sku', 'quantite']
+
+
+class ModeleBonCommandeFournisseurSerializer(serializers.ModelSerializer):
+    """ZPUR3 — modèle de BCF réutilisable (purchase template)."""
+    lignes = ModeleBonCommandeFournisseurLigneSerializer(many=True, required=False)
+    fournisseur_nom = serializers.CharField(
+        source='fournisseur.nom', read_only=True)
+
+    class Meta:
+        model = ModeleBonCommandeFournisseur
+        fields = [
+            'id', 'nom', 'fournisseur', 'fournisseur_nom', 'note', 'lignes',
+            'date_creation', 'date_mise_a_jour',
+        ]
+
+    def create(self, validated_data):
+        lignes_data = validated_data.pop('lignes', [])
+        modele = ModeleBonCommandeFournisseur.objects.create(**validated_data)
+        for ligne in lignes_data:
+            ModeleBonCommandeFournisseurLigne.objects.create(
+                modele=modele, **ligne)
+        return modele
+
+    def update(self, instance, validated_data):
+        lignes_data = validated_data.pop('lignes', None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        if lignes_data is not None:
+            instance.lignes.all().delete()
+            for ligne in lignes_data:
+                ModeleBonCommandeFournisseurLigne.objects.create(
+                    modele=instance, **ligne)
+        return instance

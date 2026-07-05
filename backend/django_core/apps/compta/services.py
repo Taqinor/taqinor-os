@@ -23,13 +23,16 @@ Trois blocs :
 import csv
 import hashlib
 import io
+import re
+import urllib.request
 from decimal import ROUND_HALF_UP, Decimal
 from math import asin, cos, radians, sin, sqrt
 
 from django.conf import settings
+from django.core import signing
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.utils import timezone
 
 from .models import (
@@ -41,11 +44,17 @@ from .models import (
     DemandeApprobationConfig, DotationAmortissement,
     ECatalogue, EcritureComptable, Effet, EntiteConsolidation,
     ExerciceComptable, MessageWhatsAppEntrant,
+    Emprunt, EcheanceEmprunt, ChargeConstateeAvance, DotationEtalement,
+    PlanAmortissementFiscal, DotationDerogatoire, TauxDevise,
+    ItemOuvertDevise, EcartChange, ReevaluationCloture, LigneReevaluation,
+    EtatPersonnalise, LigneEtatPersonnalise, ColonneEtatPersonnalise,
+    VentilationAnalytique, LigneVentilation, RegleImputation,
+    LigneRegleImputation, DemandeApprobationRib,
     Immobilisation, IndemniteChantier, Journal, LigneEcriture,
     LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, NoteFrais,
-    OuverturePartage,
+    OuverturePartage, PlafondNoteFrais,
     PaymentRun, PaymentRunLine, PeriodeComptable, PlanAmortissement,
-    PlanComptable, PointageReleve, ProvisionCreance, Rapprochement,
+    PlanComptable, PointageReleve, Provision, ProvisionCreance, Rapprochement,
     RapprochementBancaire, RelanceDevisAbandonne, RetenueSource,
     RetenueGarantie, TimbreFiscal,
     TravauxEnCours, VirementInterne,
@@ -57,6 +66,10 @@ from .models import (
     AbonnementEcriture,
     ObligationFiscale,
     FamilleTvaNonDeductible,
+    EtapeSequence, ExecutionEtapeSequence, InscriptionSequence,
+    SequenceRelance, EnvoiCampagne, SuppressionMarketing,
+    ListeDiffusion, AbonnementListe, RebondSoft,
+    Compensation, LigneCompensation,
 )
 
 
@@ -100,6 +113,10 @@ _COMPTES_CGNC = [
     # Classe 4 — Passif circulant
     ('4411', 'Fournisseurs', True, True, 'passif'),
     ('4415', 'Fournisseurs - effets à payer', True, True, 'passif'),
+    # YLEDG11 — avances/acomptes clients (jamais un produit avant livraison ;
+    # apuré à la facture de solde/complete du même devis, cf.
+    # ecriture_pour_facture).
+    ('4421', 'Clients - avances et acomptes reçus', True, True, 'passif'),
     ('4455', 'État - TVA facturée', False, False, 'passif'),
     # XACC1 — TVA facturée EN ATTENTE (régime encaissement) : la TVA d'une
     # vente non encore encaissée transite ici avant de basculer sur 4455 au
@@ -116,10 +133,17 @@ _COMPTES_CGNC = [
     ('4443', 'Caisses de retraite (CIMR)', False, False, 'passif'),
     ('4452', 'État - Impôts sur les rémunérations (IR)', False, False,
      'passif'),
+    # XPAI20 — Provisions pour charges de personnel (gratification 13e mois /
+    # indemnité de fin de carrière), constituées mensuellement et reprises
+    # (extourne) au paiement — même patron que la provision CP (PAIE25).
+    ('4506', 'Provisions pour charges de personnel', False, False, 'passif'),
     # Classe 5 — Trésorerie
     ('5113', 'Effets à encaisser ou à l\'encaissement', False, False, 'actif'),
     ('5141', 'Banque', False, False, 'actif'),
     ('5161', 'Caisse', False, False, 'actif'),
+    # XACC34 — Crédits d'escompte (mobilisation d'effets avant échéance) :
+    # crédité au tirage de l'escompte, débité à l'apurement l'échéance venue.
+    ('5520', "Crédits d'escompte", False, False, 'passif'),
     ('6147', 'Services bancaires (frais de rejet/effets)', False, False,
      'charge'),
     # Classe 6 — Charges
@@ -139,6 +163,10 @@ _COMPTES_CGNC = [
      'corporelles', False, False, 'charge'),
     ('6196', 'Dotations aux provisions pour dépréciation de l\'actif '
      'circulant', False, False, 'charge'),
+    # XPAI20 — Dotation de la provision pour charges de personnel (contre-
+    # partie du crédit 4506 ci-dessus).
+    ('6195', 'Dotations aux provisions pour risques et charges', False,
+     False, 'charge'),
     # Classe 7 — Produits
     ('7111', 'Ventes de marchandises', False, False, 'produit'),
     ('7121', 'Ventes de biens et services produits', False, False, 'produit'),
@@ -215,6 +243,20 @@ def get_compte(company, numero):
         company=company, numero=numero).first()
 
 
+def get_centre_cout(company, centre_cout_id):
+    """``CentreCout`` de la société par id (ou None). Lecture seule.
+
+    Utilisé par les appelants cross-app (ex. ``paie.journal_de_paie_ventile``,
+    XPAI17) qui ne connaissent qu'un id résolu via ``creer_centre_cout`` et
+    doivent le repasser en INSTANCE à ``creer_ecriture`` (la FK
+    ``LigneEcriture.centre_cout`` n'accepte pas un entier brut).
+    """
+    if not centre_cout_id:
+        return None
+    return CentreCout.objects.filter(
+        company=company, pk=centre_cout_id).first()
+
+
 # ── FG108 / COMPTA7 — Fabrique d'écriture en partie double ─────────────────
 
 @transaction.atomic
@@ -250,7 +292,7 @@ def creer_ecriture(company, journal, date_ecriture, libelle, lignes, *,
         statut=statut or EcritureComptable.Statut.BROUILLON,
     )
     for ligne in lignes:
-        LigneEcriture.objects.create(
+        ligne_ecriture = LigneEcriture.objects.create(
             company=company,
             ecriture=ecriture,
             compte=ligne['compte'],
@@ -261,6 +303,13 @@ def creer_ecriture(company, journal, date_ecriture, libelle, lignes, *,
             tiers_id=ligne.get('tiers_id'),
             centre_cout=ligne.get('centre_cout'),
         )
+        # XACC20 — auto-imputation analytique : si aucune ventilation/centre de
+        # coût n'est déjà fourni sur la ligne ET qu'une règle matche, on
+        # applique automatiquement sa distribution (additif, jamais bloquant).
+        if not ligne.get('centre_cout') and 'ventilation' not in ligne:
+            _appliquer_regle_imputation_si_match(
+                company, ligne_ecriture, tiers_id=ligne.get('tiers_id'),
+                produit_id=ligne.get('produit_id'))
     # Garde-fou final : revalide l'équilibre côté modèle.
     ecriture.clean()
     return ecriture
@@ -355,6 +404,17 @@ def ecriture_pour_facture(facture, *, force=False, user=None):
     ``facture`` est une instance ``ventes.Facture`` ; on lit ses montants via
     ses propriétés publiques (total_ht/total_tva/total_ttc) — pas d'import de
     modèle d'une autre app dans la signature, seulement la donnée passée.
+
+    YLEDG11 — ``type_facture='acompte'`` (CGNC : pas de produit avant
+    livraison) crédite 4421 « Clients — avances et acomptes » au lieu de
+    71xx (zéro TVA facturée constatée en produit — le HT+TVA entier part en
+    avance). Une facture ``solde``/``intermediaire``/``complete`` du MÊME
+    devis débite alors 4421 du cumul des acomptes déjà comptabilisés de ce
+    devis (apurement, jamais plus que le cumul disponible) en plus du crédit
+    71xx habituel sur la totalité HT de CETTE facture — le produit total est
+    donc constaté normalement, et le solde de 4421 du dossier retombe à 0
+    une fois tous les acomptes apurés. Une facture ``complete`` SANS acompte
+    au devis est inchangée (apurement = 0).
     """
     if not force and not auto_ecritures_actif():
         return None
@@ -370,6 +430,32 @@ def ecriture_pour_facture(facture, *, force=False, user=None):
     tva = Decimal(facture.total_tva)
     ttc = Decimal(facture.total_ttc)
     client_id = getattr(facture, 'client_id', None)
+    type_facture = getattr(facture, 'type_facture', None) or 'complete'
+    compte_avances = _assurer_compte(company, '4421')
+
+    if type_facture == 'acompte':
+        # CGNC : un acompte ne constate JAMAIS de produit — tout le TTC part
+        # en avance (4421), zéro ligne 71xx/4455 ici (comportement documenté
+        # dans la docstring, ce N'EST PAS un oubli de TVA : la TVA facturée
+        # à l'acompte reste due normalement au moment de l'émission, seule
+        # la contrepartie produit est différée — la ligne TVA suit le régime
+        # habituel de l'entreprise, portée par le crédit 4421 au TTC).
+        lignes = [
+            {'compte': comptes['clients'], 'debit': ttc, 'credit': Decimal('0'),
+             'libelle': f'Facture {facture.reference}',
+             'tiers_type': 'client', 'tiers_id': client_id},
+            {'compte': compte_avances, 'debit': Decimal('0'), 'credit': ttc,
+             'libelle': f'Acompte {facture.reference}',
+             'tiers_type': 'client', 'tiers_id': client_id},
+        ]
+        return creer_ecriture(
+            company, journal, facture.date_emission,
+            f'Facture acompte {facture.reference}', lignes,
+            reference=facture.reference, source_type='facture',
+            source_id=facture.id, created_by=user,
+            statut=EcritureComptable.Statut.VALIDEE,
+        )
+
     lignes = [
         {'compte': comptes['clients'], 'debit': ttc, 'credit': Decimal('0'),
          'libelle': f'Facture {facture.reference}',
@@ -381,6 +467,38 @@ def ecriture_pour_facture(facture, *, force=False, user=None):
         lignes.append({
             'compte': comptes['tva_facturee'], 'debit': Decimal('0'),
             'credit': tva, 'libelle': f'TVA {facture.reference}'})
+
+    # YLEDG11 — apurement des acomptes déjà comptabilisés du MÊME devis
+    # (jamais plus que le cumul disponible — un devis sans acompte apure 0).
+    # Un devis n'a qu'UNE facture de solde/complete par construction du
+    # parcours vente (échéancier FG46/FG220) : pas de risque de compter le
+    # même cumul deux fois — l'idempotence de CETTE écriture (garde
+    # ``_ecriture_existante`` en tête de fonction) couvre le reste.
+    devis = getattr(facture, 'devis', None)
+    if devis is not None and type_facture in ('solde', 'intermediaire',
+                                              'complete'):
+        cumul_acomptes = Decimal('0')
+        for soeur in devis.factures.all():
+            if soeur.id == facture.id:
+                continue
+            if getattr(soeur, 'type_facture', None) != 'acompte':
+                continue
+            eco_acompte = _ecriture_existante(company, 'facture', soeur.id)
+            if eco_acompte is None:
+                continue
+            cumul_acomptes += Decimal(soeur.total_ttc)
+        if cumul_acomptes > 0:
+            lignes.append({
+                'compte': compte_avances, 'debit': cumul_acomptes,
+                'credit': Decimal('0'),
+                'libelle': f'Apurement acompte(s) {facture.reference}',
+                'tiers_type': 'client', 'tiers_id': client_id})
+            lignes.append({
+                'compte': comptes['clients'], 'debit': Decimal('0'),
+                'credit': cumul_acomptes,
+                'libelle': f'Apurement acompte(s) {facture.reference}',
+                'tiers_type': 'client', 'tiers_id': client_id})
+
     return creer_ecriture(
         company, journal, facture.date_emission,
         f'Facture client {facture.reference}', lignes,
@@ -441,6 +559,162 @@ def ecriture_pour_paiement(paiement, *, force=False, user=None):
         f'Encaissement facture {ref}', lignes,
         reference=ref, source_type='paiement', source_id=paiement.id,
         created_by=user, statut=EcritureComptable.Statut.VALIDEE,
+    )
+
+
+@transaction.atomic
+def auto_lettrer_facture_soldee(facture):
+    """YLEDG6 — lettre automatiquement le compte clients (3421) d'une facture
+    INTÉGRALEMENT réglée.
+
+    Rassemble les lignes 3421 non lettrées des écritures liées à cette
+    facture (la vente elle-même, tous ses règlements, tous ses avoirs — via
+    ``source_type``/``source_id``, jamais un import du modèle ``ventes`` :
+    ``facture`` est lu par attribut/relation, comme le reste du bloc
+    ``ecriture_pour_*``) et pose un même code de lettrage SSI elles
+    s'équilibrent. No-op silencieux si le lot ne solde pas (ex. génération
+    désactivée pour une partie du dossier) — jamais d'exception qui casserait
+    le flux d'encaissement appelant.
+
+    Un paiement PARTIEL n'appelle jamais cette fonction (le receveur ne
+    l'invoque qu'au passage résiduel→0, comme YDOCF4) : le lot reste ouvert.
+    """
+    company = facture.company
+    if company is None:
+        return None
+    compte_clients = get_compte(company, '3421')
+    source_ids = {
+        'facture': [facture.id],
+        'paiement': [p.id for p in facture.paiements.all()],
+        'avoir': [a.id for a in facture.avoirs.all()],
+    }
+    q_sources = Q()
+    for source_type, ids in source_ids.items():
+        if ids:
+            q_sources |= Q(ecriture__source_type=source_type,
+                           ecriture__source_id__in=ids)
+    if not q_sources:
+        return None
+    lignes = list(
+        LigneEcriture.objects.filter(
+            q_sources, company=company, compte=compte_clients, lettrage='',
+        ).values_list('id', flat=True))
+    if len(lignes) < 2:
+        # Rien à apparier (une seule ligne, ou déjà lettré).
+        return None
+    from . import selectors
+    code = selectors.prochain_code_lettrage(company, compte_clients)
+    try:
+        return selectors.lettrer(company, lignes, code)
+    except ValueError:
+        # Lot déséquilibré (ex. génération partielle désactivée) : on laisse
+        # le lettrage manuel s'en charger, jamais d'exception ici.
+        return None
+
+
+@transaction.atomic
+def ecriture_pour_paiement_especes_via_caisse(paiement, *, force=False,
+                                              user=None):
+    """YLEDG9 — route un encaissement ESPÈCES via le module caisse (COMPTA24)
+    au lieu de l'écriture banque directe de ``ecriture_pour_paiement`` :
+    crée + poste un ``MouvementCaisse`` ENTREE (compte de caisse en débit,
+    3421 Clients en contrepartie créditée — solde la créance comme un
+    encaissement normal) sur la PREMIÈRE caisse active de la société, et
+    enregistre le droit de timbre fiscal dû (FG144, exonéré si le montant
+    de base est nul). Idempotent via la garde ``source_type='paiement'``
+    déjà posée par ``creer_ecriture`` (jamais deux écritures pour le même
+    paiement — le receveur n'appelle JAMAIS ``ecriture_pour_paiement`` en
+    plus de celle-ci sur le même événement). Gardée par le même toggle maître
+    que ses sœurs (``auto_ecritures_actif``, OFF par défaut) : sans cela, un
+    règlement espèces posté explicitement par un appelant (ex. POS,
+    ``pos.services.valider_vente``) se retrouvait DOUBLE-compté par ce
+    récepteur d'événement même quand l'auto-génération comptable est
+    désactivée. Renvoie l'écriture du mouvement de caisse, ou ``None`` si
+    désactivé ou si aucune caisse n'est configurée (fallback : l'appelant
+    retombe sur ``ecriture_pour_paiement``)."""
+    if not force and not auto_ecritures_actif():
+        return None
+    company = paiement.company
+    if company is None:
+        return None
+    existante = _ecriture_existante(company, 'paiement', paiement.id)
+    if existante:
+        return existante
+    caisse = Caisse.objects.filter(company=company).order_by('id').first()
+    if caisse is None:
+        return None
+    comptes = _comptes_requis(company)
+    montant = Decimal(paiement.montant)
+    facture = paiement.facture
+    client_id = getattr(facture, 'client_id', None)
+    ref = getattr(facture, 'reference', '')
+
+    mouvement = MouvementCaisse(
+        company=company, caisse=caisse,
+        sens=MouvementCaisse.Sens.ENTREE,
+        date_mouvement=paiement.date_paiement,
+        montant=montant, motif=f'Encaissement facture {ref}',
+        justificatif=ref, compte_contrepartie=comptes['clients'],
+        created_by=user,
+    )
+    mouvement.full_clean(exclude=['ecriture'])
+    mouvement.save()
+    ecriture = poster_mouvement_caisse(mouvement, user=user)
+    # L'écriture du mouvement de caisse est source_type='mouvement_caisse' —
+    # on l'enregistre AUSSI comme l'écriture DU PAIEMENT (source_type=
+    # 'paiement') pour que l'idempotence/le rapprochement YLEDG13 la
+    # retrouvent comme n'importe quel encaissement.
+    EcritureComptable.objects.filter(pk=ecriture.pk).update(
+        source_type='paiement', source_id=paiement.id)
+    ecriture.refresh_from_db()
+
+    if montant > 0:
+        enregistrer_timbre_fiscal(
+            company, date_encaissement=paiement.date_paiement,
+            base=montant, mode_reglement=MODE_ESPECES,
+            paiement_id=paiement.id, facture_ref=ref,
+            tiers_type='client', tiers_id=client_id,
+            tiers_nom=getattr(facture.client, 'nom', '') or '' if facture
+            else '',
+            libelle=f'Timbre fiscal encaissement {ref}', user=user,
+        )
+    return ecriture
+
+
+def enregistrer_effet_pour_paiement_cheque(paiement, *, user=None):
+    """YLEDG10 — un règlement CHÈQUE client route par le portefeuille
+    d'effets (``enregistrer_effet``, sens ``recevoir``) au lieu de l'écriture
+    banque directe de ``ecriture_pour_paiement`` : l'argent n'est PAS encore
+    en banque tant que le chèque n'a pas été remis puis encaissé.
+
+    Idempotent (référence au paiement dans le commentaire + garde par
+    ``numero``) : si un ``Effet`` existe déjà pour ce paiement (rejoué sur
+    best-effort), on le renvoie sans en créer un second. Aucune écriture GL
+    n'est postée ici (elle vient du bordereau de remise existant,
+    ``poster_bordereau``, qui crédite 3425 → banque) : ce n'est PAS une
+    régression de YLEDG6 — l'auto-lettrage no-op tant que rien n'est
+    comptabilisé, exactement comme un document jamais émis. Renvoie l'Effet,
+    ou ``None`` si le paiement ne porte aucune facture exploitable."""
+    facture = getattr(paiement, 'facture', None)
+    if facture is None:
+        return None
+    company = facture.company
+    if company is None:
+        return None
+    reference_paiement = f'PAIEMENT-{paiement.id}'
+    existant = Effet.objects.filter(
+        company=company, commentaire=reference_paiement).first()
+    if existant is not None:
+        return existant
+    date_emission = paiement.date_paiement or timezone.localdate()
+    return enregistrer_effet(
+        company, sens=Effet.Sens.RECEVOIR,
+        montant=Decimal(paiement.montant or 0),
+        date_emission=date_emission, date_echeance=date_emission,
+        type_effet=Effet.TypeEffet.CHEQUE,
+        numero=getattr(paiement, 'reference', '') or '',
+        tiers_type='client', tiers_id=facture.client_id,
+        commentaire=reference_paiement, user=user,
     )
 
 
@@ -1432,15 +1706,23 @@ def _arrondi(montant):
     return Decimal(montant).quantize(Decimal('0.01'))
 
 
-def _calcul_annuites(base, duree, mode, coefficient):
+def _calcul_annuites(base, duree, mode, coefficient, *, mois_premiere_annee=12):
     """Renvoie la liste des annuités (Decimal arrondies) pour ``duree`` années.
 
     * LINÉAIRE : base / durée chaque année ; la dernière année absorbe l'écart
-      d'arrondi pour solder exactement la base.
+      d'arrondi pour solder exactement la base. XACC32 — ``mois_premiere_
+      annee`` (1-12) proratise la 1re annuité (CGI marocain : prorata au mois
+      depuis la mise en service) ; la fraction non dotée en 1re année (12 −
+      mois_premiere_annee) est reportée en ANNUITÉ COMPLÉMENTAIRE ajoutée à
+      la DERNIÈRE année — la durée totale (nombre d'exercices) reste
+      ``duree``, seule la répartition change. ``mois_premiere_annee=12``
+      (défaut) reproduit EXACTEMENT le comportement historique (années
+      pleines, aucun prorata).
     * DÉGRESSIF : taux dégressif = (100/durée) × coefficient, appliqué à la
       valeur nette résiduelle ; bascule sur le linéaire du résiduel dès que
       celui-ci devient supérieur ou égal à l'annuité dégressive (règle CGI).
-      La dernière année solde le résiduel.
+      La dernière année solde le résiduel. Le prorata temporis ne s'applique
+      PAS au dégressif (garde sa règle actuelle, XACC32).
     """
     base = Decimal(base)
     if duree < 1 or base <= 0:
@@ -1448,14 +1730,28 @@ def _calcul_annuites(base, duree, mode, coefficient):
     annuites = []
     if mode == PlanAmortissement.Mode.LINEAIRE:
         annuite = _arrondi(base / Decimal(duree))
-        cumul = Decimal('0')
-        for an in range(duree):
-            if an == duree - 1:
-                montant = base - cumul  # solde exact la dernière année.
-            else:
-                montant = annuite
-            cumul += montant
-            annuites.append(_arrondi(montant))
+        mois = max(1, min(12, int(mois_premiere_annee or 12)))
+        if mois == 12 or duree == 1:
+            cumul = Decimal('0')
+            for an in range(duree):
+                if an == duree - 1:
+                    montant = base - cumul  # solde exact la dernière année.
+                else:
+                    montant = annuite
+                cumul += montant
+                annuites.append(_arrondi(montant))
+            return annuites
+        # Prorata temporis : 1re année = annuite × mois/12 ; la fraction
+        # différée est reportée en annuité complémentaire sur la dernière
+        # année (durée totale — nombre d'exercices — inchangée).
+        premiere = _arrondi(annuite * Decimal(mois) / Decimal('12'))
+        cumul = premiere
+        annuites.append(premiere)
+        for an in range(1, duree - 1):
+            cumul += annuite
+            annuites.append(_arrondi(annuite))
+        derniere = base - cumul  # absorbe pleine annuité + fraction différée.
+        annuites.append(_arrondi(derniere))
         return annuites
 
     # Dégressif : taux dégressif sur la valeur nette résiduelle.
@@ -1523,8 +1819,18 @@ def generer_plan_amortissement(immobilisation, *, mode=None, duree_annees=None,
     plan.save()
 
     coefficient = plan.coefficient_degressif or Decimal('1')
+    # XACC32 — prorata temporis LINÉAIRE uniquement : mois restants depuis la
+    # mise en service (défaut = date d'acquisition, comportement inchangé si
+    # la mise en service n'est pas renseignée). Le dégressif garde sa règle
+    # actuelle (aucun prorata).
+    mois_premiere_annee = 12
+    if plan.mode == PlanAmortissement.Mode.LINEAIRE:
+        mise_en_service = immobilisation.date_mise_en_service_effective
+        if mise_en_service and mise_en_service.year == plan.date_debut.year:
+            mois_premiere_annee = 13 - mise_en_service.month
     annuites = _calcul_annuites(
-        plan.base_amortissable, plan.duree_annees, plan.mode, coefficient)
+        plan.base_amortissable, plan.duree_annees, plan.mode, coefficient,
+        mois_premiere_annee=mois_premiere_annee)
 
     annee_debut = plan.date_debut.year
     cumul = Decimal('0')
@@ -1559,6 +1865,58 @@ def generer_plan_amortissement(immobilisation, *, mode=None, duree_annees=None,
         plan=plan, posted=False).exclude(
         annee__in=annees_calculees).delete()
     return plan
+
+
+# ── XACC33 — "Immobiliser" une ligne de facture fournisseur ────────────────
+
+@transaction.atomic
+def capitaliser_ligne_facture_fournisseur(company, *, facture_id, ligne_id,
+                                          categorie=None, duree_annees=5,
+                                          mode=None, user=None):
+    """Capitalise une ligne de facture fournisseur en immobilisation (XACC33).
+
+    Lit la ligne via ``apps.stock.selectors.ligne_facture_fournisseur_scoped``
+    (company-scopée, JAMAIS un import de ``apps.stock.models``) et crée
+    l'``Immobilisation`` pré-remplie (libellé = désignation de la ligne, coût
+    = son total HT, TVA = son taux — ou celui de la facture si vide, date =
+    date de la facture, pièce d'origine en string-ref) + son
+    ``PlanAmortissement`` en un seul geste. Anti-doublon : une ligne ne peut
+    capitaliser qu'UNE seule immobilisation (contrainte d'unicité sur
+    ``piece_origine_ligne_facture_fournisseur_id`` — une 2e tentative lève
+    ``ValidationError``). Lève ``ValidationError`` si la ligne est introuvable
+    pour cette société (l'appelant traduit en 404). Renvoie l'``Immobilisation``
+    créée."""
+    from apps.stock.selectors import ligne_facture_fournisseur_scoped
+
+    ligne = ligne_facture_fournisseur_scoped(company, facture_id, ligne_id)
+    if ligne is None:
+        raise ValidationError(
+            "Ligne de facture fournisseur introuvable pour cette société.")
+    if Immobilisation.objects.filter(
+            company=company,
+            piece_origine_ligne_facture_fournisseur_id=ligne.id).exists():
+        raise ValidationError(
+            "Cette ligne a déjà été immobilisée (une ligne ne peut "
+            "capitaliser qu'une seule immobilisation).")
+    facture = ligne.facture
+    taux_tva = ligne.taux_tva if ligne.taux_tva is not None else Decimal('20')
+    immo = Immobilisation(
+        company=company,
+        libelle=ligne.designation or f'Immobilisation (facture {facture.reference})',
+        categorie=categorie or Immobilisation.Categorie.MATERIEL,
+        cout=Decimal(ligne.total_ht or 0).quantize(
+            Decimal('0.01'), rounding=ROUND_HALF_UP),
+        taux_tva=taux_tva,
+        date_acquisition=facture.date_facture or timezone.now().date(),
+        piece_origine_facture_fournisseur_id=facture.id,
+        piece_origine_ligne_facture_fournisseur_id=ligne.id,
+    )
+    immo.full_clean(exclude=[
+        'piece_origine_facture_fournisseur_id',
+        'piece_origine_ligne_facture_fournisseur_id'])
+    immo.save()
+    generer_plan_amortissement(immo, mode=mode, duree_annees=duree_annees)
+    return immo
 
 
 def _intitule_compte(numero):
@@ -1943,6 +2301,98 @@ def ajouter_ligne_releve(rapprochement, *, date_operation, libelle, montant,
         reference=reference or '',
         montant=Decimal(montant or 0),
     )
+
+
+# ── XACC30 — OCR de relevé bancaire (KEY-GATED) ────────────────────────────
+#
+# Réutilise le SERVICE OCR existant (``backend/fastapi_ia``, Zhipu AI, no-op
+# tant que sans clé), à l'image de ``apps.flotte.services.extraire_recu_
+# carburant`` (XFLT23) et de l'OCR notes de frais (XACC27). AUCUNE
+# intégration silencieuse : les lignes extraites sont PROPOSÉES (jamais
+# injectées automatiquement) et un contrôle de solde (solde initial + Σ
+# mouvements = solde final déclaré) est calculé AVANT toute acceptation.
+
+def ocr_releve_bancaire_active():
+    """XACC30 — True si l'OCR de relevé bancaire est activé (clé configurée).
+
+    KEY-GATED : sans ``settings.COMPTA_OCR_RELEVE_ENABLED`` (posé par le
+    founder aux côtés de ``ZHIPU_API_KEY``), reste désactivé. Ne lève jamais.
+    """
+    from django.conf import settings
+    return bool(getattr(settings, 'COMPTA_OCR_RELEVE_ENABLED', False))
+
+
+def extraire_releve_bancaire(file_bytes, *, mime=''):
+    """XACC30 — Extrait les lignes d'un relevé bancaire (PDF/scan) par OCR.
+
+    NO-OP tant que ``ocr_releve_bancaire_active()`` est faux : lève
+    ``RuntimeError`` (la vue traduit en 503, message FR clair). Une fois
+    activé, délègue à un module fournisseur isolé (``releve_ocr_provider``,
+    non câblé dans ce dépôt) qui appelle le service OCR ``backend/fastapi_ia``
+    et renvoie ``{'solde_initial', 'solde_final', 'lignes': [{'date',
+    'libelle', 'montant'}, ...]}``. Toute erreur provider est avalée (dict
+    vide) — jamais de crash de l'écran d'import.
+    """
+    if not ocr_releve_bancaire_active():
+        raise RuntimeError('OCR indisponible (configuration manquante).')
+    if not file_bytes:
+        return {}
+    try:  # pragma: no cover - dépend d'un provider externe non câblé ici.
+        from . import releve_ocr_provider as provider  # noqa: F401
+    except ImportError:  # pragma: no cover
+        return {}
+    try:  # pragma: no cover
+        return provider.extraire_releve(file_bytes, mime=mime) or {}
+    except Exception:  # pragma: no cover - jamais casser l'écran d'import.
+        return {}
+
+
+def controler_solde_releve_ocr(champs_bruts):
+    """XACC30 — Contrôle solde initial + Σ mouvements == solde final déclaré.
+
+    ``champs_bruts`` est le dict renvoyé par ``extraire_releve_bancaire``
+    (ou un mock en test). Renvoie
+    ``{'lignes', 'solde_initial', 'solde_final_declare', 'solde_calcule',
+    'ecart', 'concordant'}`` — ``concordant`` est vrai si l'écart est nul (à 1
+    centime près). Ne lève jamais : des champs manquants donnent des zéros
+    et ``concordant=False`` plutôt qu'un crash."""
+    lignes = champs_bruts.get('lignes') or []
+    solde_initial = Decimal(str(champs_bruts.get('solde_initial') or 0))
+    solde_final_declare = Decimal(str(champs_bruts.get('solde_final') or 0))
+    somme_mouvements = sum(
+        (Decimal(str(ligne.get('montant') or 0)) for ligne in lignes),
+        Decimal('0'))
+    solde_calcule = solde_initial + somme_mouvements
+    ecart = (solde_final_declare - solde_calcule).quantize(Decimal('0.01'))
+    return {
+        'lignes': lignes,
+        'solde_initial': solde_initial,
+        'solde_final_declare': solde_final_declare,
+        'solde_calcule': solde_calcule.quantize(Decimal('0.01')),
+        'ecart': ecart,
+        'concordant': abs(ecart) < Decimal('0.01'),
+    }
+
+
+@transaction.atomic
+def accepter_lignes_releve_ocr(rapprochement, lignes):
+    """XACC30 — Injecte des lignes de relevé PROPOSÉES (post-acceptation).
+
+    Appelée UNIQUEMENT après acceptation explicite côté utilisateur (jamais
+    automatique) : chaque ``ligne`` de ``{'date'/'date_operation', 'libelle',
+    'montant', 'reference'?}`` devient une ``LigneReleve`` via
+    ``ajouter_ligne_releve`` (même garde-fous : rapprochement non clôturé,
+    date obligatoire). Renvoie la liste des ``LigneReleve`` créées."""
+    creees = []
+    for ligne in lignes or []:
+        creees.append(ajouter_ligne_releve(
+            rapprochement,
+            date_operation=ligne.get('date_operation') or ligne.get('date'),
+            libelle=ligne.get('libelle', '') or '',
+            montant=ligne.get('montant'),
+            reference=ligne.get('reference', '') or '',
+        ))
+    return creees
 
 
 @transaction.atomic
@@ -2604,6 +3054,152 @@ def encaisser_effet(effet, *, date_encaissement=None, user=None):
     return effet
 
 
+def _compte_credits_escompte(company):
+    return _assurer_compte(company, '5520')
+
+
+_TRANSITIONS_ESCOMPTABLES = (Effet.Statut.PORTEFEUILLE, Effet.Statut.REMIS)
+
+
+@transaction.atomic
+def escompter_effet(effet, *, compte_tresorerie, agios=None, interets=None,
+                    date_escompte=None, user=None):
+    """XACC34 — Remise à l'escompte d'un effet à recevoir avant échéance.
+
+    Mobilisation bancaire : la banque avance le NET (montant − agios −
+    intérêts) avant l'échéance. Poste UNE écriture équilibrée : débit
+    ``compte_tresorerie`` du net + débit 6147/6311 (agios/intérêts, ici
+    regroupés sur 6147 « services bancaires ») / crédit 5520 « crédits
+    d'escompte » du montant BRUT de l'effet. Seul un effet ``portefeuille``
+    ou ``remis`` peut être escompté (jamais un effet déjà soldé/impayé/
+    escompté). Refusé en période close. Renvoie l'effet (``statut`` =
+    ``escompte``).
+    """
+    if effet.sens != Effet.Sens.RECEVOIR:
+        raise ValidationError("Seul un effet à recevoir peut être escompté.")
+    if effet.statut not in _TRANSITIONS_ESCOMPTABLES:
+        raise ValidationError(
+            "Cet effet ne peut pas être escompté dans son état actuel.")
+    company = effet.company
+    if compte_tresorerie.company_id != company.id:
+        raise ValidationError('Compte de trésorerie inconnu.')
+    date_esc = date_escompte or timezone.now().date()
+    if PeriodeComptable.date_verrouillee(company.id, date_esc):
+        raise ValidationError(
+            "Période comptable clôturée : impossible d'escompter l'effet du "
+            f"{date_esc}.")
+    montant = Decimal(effet.montant or 0)
+    agios_dec = Decimal(agios or 0)
+    interets_dec = Decimal(interets or 0)
+    frais_total = agios_dec + interets_dec
+    if frais_total < 0 or frais_total >= montant:
+        raise ValidationError(
+            "Les agios + intérêts doivent être positifs et inférieurs au "
+            "montant de l'effet.")
+    net = montant - frais_total
+    compte_treso_comptable = compte_tresorerie.compte_comptable
+    compte_5520 = _compte_credits_escompte(company)
+    journal = _journal(company, Journal.Type.BANQUE)
+    if journal is None:
+        seed_journaux(company)
+        journal = _journal(company, Journal.Type.BANQUE)
+    libelle = f'Escompte effet {effet.numero or effet.id}'
+    lignes = [
+        {'compte': compte_treso_comptable, 'debit': net, 'credit': Decimal('0'),
+         'libelle': libelle},
+    ]
+    if frais_total > 0:
+        compte_frais = _compte_frais_bancaires(company)
+        lignes.append({
+            'compte': compte_frais, 'debit': frais_total, 'credit': Decimal('0'),
+            'libelle': f'Agios/intérêts escompte {effet.numero or effet.id}'})
+    lignes.append({
+        'compte': compte_5520, 'debit': Decimal('0'), 'credit': montant,
+        'libelle': libelle,
+        'tiers_type': effet.tiers_type, 'tiers_id': effet.tiers_id})
+    ecriture = creer_ecriture(
+        company, journal, date_esc, libelle, lignes,
+        reference=effet.numero or f'EFFET-{effet.id}',
+        source_type='effet_escompte', source_id=effet.id,
+        created_by=user, statut=EcritureComptable.Statut.VALIDEE)
+    effet.statut = Effet.Statut.ESCOMPTE
+    effet.agios_escompte = agios_dec
+    effet.interets_escompte = interets_dec
+    effet.date_escompte = date_esc
+    effet.ecriture_escompte_id = ecriture.id
+    effet.save(update_fields=[
+        'statut', 'agios_escompte', 'interets_escompte', 'date_escompte',
+        'ecriture_escompte_id'])
+    return effet
+
+
+@transaction.atomic
+def apurer_escompte_effet(effet, *, date_apurement=None, user=None):
+    """XACC34 — Apure le crédit d'escompte à l'échéance (5520 ↔ 3425).
+
+    À l'échéance, la banque encaisse effectivement l'effet pour son propre
+    compte : le crédit d'escompte (5520) est soldé contre la sortie de
+    l'effet à recevoir (3425). Idempotent (un effet non-escompté ou déjà
+    apuré/soldé ne bouge plus). Refusé en période close.
+    """
+    if effet.statut != Effet.Statut.ESCOMPTE:
+        return effet
+    company = effet.company
+    date_ap = date_apurement or effet.date_echeance
+    if PeriodeComptable.date_verrouillee(company.id, date_ap):
+        raise ValidationError(
+            "Période comptable clôturée : impossible d'apurer l'escompte du "
+            f"{date_ap}.")
+    montant = Decimal(effet.montant or 0)
+    compte_5520 = _compte_credits_escompte(company)
+    compte_eff = _compte_effets_recevoir(company)
+    journal = _journal(company, Journal.Type.BANQUE)
+    if journal is None:
+        seed_journaux(company)
+        journal = _journal(company, Journal.Type.BANQUE)
+    libelle = f'Apurement escompte effet {effet.numero or effet.id}'
+    lignes = [
+        {'compte': compte_5520, 'debit': montant, 'credit': Decimal('0'),
+         'libelle': libelle},
+        {'compte': compte_eff, 'debit': Decimal('0'), 'credit': montant,
+         'libelle': libelle,
+         'tiers_type': effet.tiers_type, 'tiers_id': effet.tiers_id},
+    ]
+    ecriture = creer_ecriture(
+        company, journal, date_ap, libelle, lignes,
+        reference=effet.numero or f'EFFET-{effet.id}',
+        source_type='effet_apurement_escompte', source_id=effet.id,
+        created_by=user, statut=EcritureComptable.Statut.VALIDEE)
+    effet.statut = Effet.Statut.ENCAISSE
+    effet.ecriture_apurement_escompte_id = ecriture.id
+    effet.save(update_fields=['statut', 'ecriture_apurement_escompte_id'])
+    return effet
+
+
+def endosser_effet(effet, *, beneficiaire, date_endossement=None, user=None):
+    """XACC34 — Endosse un effet à recevoir à un tiers bénéficiaire.
+
+    Transfert (sans mobilisation bancaire) : la créance de l'entreprise sur
+    le tiré est SOLDÉE côté entreprise, le bénéficiaire devenant seul
+    porteur. Aucune écriture comptable propre à ce module (le paiement au
+    tiers via l'effet endossé se règle hors de ce système) — seul le statut
+    et le bénéficiaire sont tracés pour l'audit. Refuse les transitions
+    illégales (effet déjà soldé/escompté/impayé)."""
+    if effet.sens != Effet.Sens.RECEVOIR:
+        raise ValidationError("Seul un effet à recevoir peut être endossé.")
+    if effet.statut not in _TRANSITIONS_ESCOMPTABLES:
+        raise ValidationError(
+            "Cet effet ne peut pas être endossé dans son état actuel.")
+    if not beneficiaire:
+        raise ValidationError("Le bénéficiaire de l'endossement est obligatoire.")
+    effet.statut = Effet.Statut.ENDOSSE
+    effet.beneficiaire_endossement = beneficiaire
+    effet.date_endossement = date_endossement or timezone.now().date()
+    effet.save(update_fields=[
+        'statut', 'beneficiaire_endossement', 'date_endossement'])
+    return effet
+
+
 @transaction.atomic
 def payer_effet(effet, *, date_paiement=None, user=None):
     """Paie un effet à payer fournisseur : portefeuille → payé (FG128).
@@ -2760,7 +3356,10 @@ def rejeter_effet(effet, *, date_rejet=None, frais_rejet=None, commentaire='',
     remis : débit 3425 effets à recevoir / crédit 5113 à l'encaissement) et,
     si des ``frais_rejet`` bancaires sont saisis, les comptabilise (débit 6147
     frais bancaires / crédit 5141 banque). L'effet passe ``impaye``, ses frais
-    sont figés. Refusé en période close. Renvoie l'effet.
+    sont figés. XACC34 — un effet ``escompte`` impayé (rejeté par le tiré après
+    mobilisation bancaire) RÉ-OUVRE la créance (débit 3425 / crédit 5520,
+    réutilisant cette même contre-passation FG130) au lieu de la contre-
+    passation « remis » classique. Refusé en période close. Renvoie l'effet.
     """
     if effet.statut == Effet.Statut.IMPAYE:
         return effet
@@ -2799,6 +3398,24 @@ def rejeter_effet(effet, *, date_rejet=None, frais_rejet=None, commentaire='',
             reference=effet.numero or f'EFFET-{effet.id}',
             source_type='effet_rejet', source_id=effet.id,
             created_by=user, statut=EcritureComptable.Statut.VALIDEE)
+    elif effet.sens == Effet.Sens.RECEVOIR and effet.statut == Effet.Statut.ESCOMPTE:
+        # Impayé POST-escompte : le tiré n'a pas payé — la banque contre-passe
+        # le crédit d'escompte et notre créance sur le client rouvre.
+        montant = Decimal(effet.montant or 0)
+        compte_eff = _compte_effets_recevoir(company)
+        compte_5520 = _compte_credits_escompte(company)
+        lignes = [
+            {'compte': compte_eff, 'debit': montant, 'credit': Decimal('0'),
+             'libelle': libelle,
+             'tiers_type': effet.tiers_type, 'tiers_id': effet.tiers_id},
+            {'compte': compte_5520, 'debit': Decimal('0'), 'credit': montant,
+             'libelle': libelle},
+        ]
+        creer_ecriture(
+            company, journal, date_r, libelle, lignes,
+            reference=effet.numero or f'EFFET-{effet.id}',
+            source_type='effet_rejet', source_id=effet.id,
+            created_by=user, statut=EcritureComptable.Statut.VALIDEE)
     # Frais de rejet bancaires (le cas échéant), écriture distincte.
     if frais > 0:
         compte_frais = _compte_frais_bancaires(company)
@@ -2815,11 +3432,30 @@ def rejeter_effet(effet, *, date_rejet=None, frais_rejet=None, commentaire='',
             reference=effet.numero or f'EFFET-{effet.id}',
             source_type='effet_frais_rejet', source_id=effet.id,
             created_by=user, statut=EcritureComptable.Statut.VALIDEE)
+    ancien_commentaire = effet.commentaire
     effet.statut = Effet.Statut.IMPAYE
     effet.frais_rejet = frais
     if commentaire:
         effet.commentaire = commentaire
     effet.save(update_fields=['statut', 'frais_rejet', 'commentaire'])
+
+    # YLEDG10 — un effet À RECEVOIR créé depuis un règlement chèque client
+    # (``enregistrer_effet_pour_paiement_cheque``, commentaire
+    # 'PAIEMENT-<id>') dont le rejet doit rouvrir la facture ventes : émettre
+    # `effet_rejete` pour que `ventes` consomme (jamais un import cross-app de
+    # modèle). Un effet sans cette origine (fournisseur, ou saisi à la main)
+    # ne matche aucun préfixe → no-op côté abonné.
+    if effet.sens == Effet.Sens.RECEVOIR and (
+            ancien_commentaire or '').startswith('PAIEMENT-'):
+        try:
+            paiement_id = int(ancien_commentaire.split('-', 1)[1])
+        except (ValueError, IndexError):
+            paiement_id = None
+        if paiement_id:
+            from core.events import effet_rejete
+            effet_rejete.send(
+                sender=Effet, effet=effet, paiement_id=paiement_id,
+                frais=frais, company=company)
     return effet
 
 
@@ -2902,6 +3538,29 @@ def evaluer_rapprochement(rapprochement):
     return rapprochement
 
 
+def refresh_rapprochements_ouverts_pour_bcf(company, bon_commande_id):
+    """YPROC8 — rafraîchit (ré-évalue) tous les rapprochements 3 voies OUVERTS
+    (statut différent de VALIDE) d'un BCF donné, après un événement stock qui
+    change le montant reçu (ex. retour fournisseur qui rouvre du reçu). Un
+    rapprochement déjà VALIDÉ (bon-à-payer explicite) n'est PAS touché — le
+    bon-à-payer n'est jamais écrasé silencieusement.
+
+    Point d'entrée cross-app dédié : ``apps.stock`` appelle CETTE fonction
+    (jamais le modèle ``Rapprochement`` directement) pour respecter le sens
+    d'import autorisé (stock → compta via service, jamais l'inverse). Best-
+    effort côté appelant recommandé ; ne lève que si le BCF n'appartient pas à
+    la société (garantie multi-tenant). Renvoie le nombre de rapprochements
+    rafraîchis."""
+    qs = Rapprochement.objects.filter(
+        company=company, bon_commande_id=bon_commande_id,
+    ).exclude(statut=Rapprochement.Statut.VALIDE)
+    count = 0
+    for rapprochement in qs:
+        evaluer_rapprochement(rapprochement)
+        count += 1
+    return count
+
+
 @transaction.atomic
 def valider_rapprochement(rapprochement, *, user=None, commentaire=''):
     """Marque un rapprochement « bon à payer » (FG131).
@@ -2944,6 +3603,11 @@ def _coordonnees_fournisseur(company, tiers_id):
     N'importe JAMAIS ``apps.stock.models`` : passe par
     ``apps.stock.selectors.get_fournisseur_by_id``. Renvoie un dict
     ``{'nom', 'rib', 'iban'}`` (valeurs vides si le tiers/champ est inconnu).
+
+    XACC24 — si une ``DemandeApprobationRib`` NON approuvée existe pour ce
+    fournisseur, le RIB retourné est l'ANCIEN (``rib_actif``) et non celui
+    actuellement sur le référentiel stock : le fichier de virement ne doit
+    JAMAIS utiliser un RIB fournisseur en cours d'approbation.
     """
     nom = rib = iban = ''
     if tiers_id is not None:
@@ -2956,6 +3620,13 @@ def _coordonnees_fournisseur(company, tiers_id):
             nom = getattr(fournisseur, 'nom', '') or ''
             rib = getattr(fournisseur, 'rib', '') or ''
             iban = getattr(fournisseur, 'iban', '') or ''
+        demande_en_cours = DemandeApprobationRib.objects.filter(
+            company=company, fournisseur_id=tiers_id,
+        ).exclude(statut=DemandeApprobationRib.Statut.REFUSEE).order_by(
+            '-date_creation').first()
+        if demande_en_cours is not None and (
+                demande_en_cours.statut != DemandeApprobationRib.Statut.APPROUVEE):
+            rib = demande_en_cours.ancien_rib
     return {'nom': nom, 'rib': rib, 'iban': iban}
 
 
@@ -3117,7 +3788,57 @@ def poster_payment_run(run, *, user=None):
     run.ecriture = ecriture
     run.statut = PaymentRun.Statut.POSTEE
     run.save(update_fields=['posted', 'ecriture', 'statut'])
+
+    # YLEDG8 — pour chaque ligne référençant une FactureFournisseur (posée par
+    # `proposer_lignes_payment_run` ou saisie manuellement), créer SON
+    # PaiementFournisseur (mode virement, date du run) via le service dédié de
+    # stock — jamais un import de ses modèles. Une ligne SANS référence (achat
+    # libre / hors AP standard) reste inchangée (comportement historique).
+    from apps.stock import services as stock_services
+    for ligne in lignes:
+        if not ligne.facture_fournisseur_id:
+            continue
+        stock_services.enregistrer_paiement_fournisseur_depuis_run(
+            company=company, facture_id=ligne.facture_fournisseur_id,
+            montant=ligne.montant, date_paiement=run.date_paiement,
+            user=user)
     return ecriture
+
+
+def proposer_lignes_payment_run(run, *, date_limite=None):
+    """YLEDG8 — Remplit une campagne BROUILLON depuis les échéances
+    fournisseur dues (``stock.selectors.factures_fournisseur_ouvertes`` —
+    jamais un import de ses modèles), triées par date d'échéance. N'ajoute
+    QUE les factures pas déjà référencées par une ligne existante de CETTE
+    campagne (idempotent si appelé deux fois). Renvoie la liste des lignes
+    ajoutées."""
+    from apps.stock import selectors as stock_selectors
+
+    if run.statut != PaymentRun.Statut.BROUILLON:
+        raise ValidationError(
+            "Une campagne figée ou postée ne peut plus être modifiée.")
+    deja_references = set(
+        run.lignes.exclude(facture_fournisseur_id__isnull=True)
+        .values_list('facture_fournisseur_id', flat=True))
+    candidates = stock_selectors.factures_fournisseur_ouvertes(
+        run.company, date_limite=date_limite)
+    ajoutees = []
+    for candidate in candidates:
+        if candidate['facture_id'] in deja_references:
+            continue
+        ligne = PaymentRunLine.objects.create(
+            company=run.company, payment_run=run,
+            tiers_type='fournisseur', tiers_id=candidate['fournisseur_id'],
+            beneficiaire=candidate['fournisseur_nom'],
+            reference=candidate['reference'], montant=candidate['montant'],
+            date_echeance=candidate['date_echeance'],
+            rib=candidate['rib'],
+            facture_fournisseur_id=candidate['facture_id'],
+        )
+        ajoutees.append(ligne)
+    if ajoutees:
+        _recalc_total_payment_run(run)
+    return ajoutees
 
 
 # ── FG134 — Génération de fichier de virement bancaire ─────────────────────
@@ -3193,25 +3914,188 @@ _COMPTE_NOTE_FRAIS_DEFAUT = '6143'
 _COMPTE_PERSONNEL_CREDITEUR = '4432'
 
 
+def plafond_note_frais_pour(company, categorie):
+    """Plafond configuré (XACC27) pour ``categorie``, ou ``None`` si absent."""
+    return PlafondNoteFrais.objects.filter(
+        company=company, categorie=categorie).first()
+
+
+def note_frais_hors_politique(company, *, categorie, montant):
+    """XACC27 — Vrai si ``montant`` dépasse le plafond de ``categorie``.
+
+    Une catégorie sans plafond configuré n'est jamais hors politique (pas de
+    référentiel = pas de contrôle, jamais bloquant)."""
+    plafond = plafond_note_frais_pour(company, categorie)
+    if plafond is None or not plafond.montant_max:
+        return False
+    return Decimal(montant or 0) > plafond.montant_max
+
+
+def note_frais_doublon_possible(company, *, employe, date_frais, montant,
+                                exclude_id=None):
+    """XACC27 — Notes existantes du même employé/date/montant (doublon).
+
+    Renvoie le queryset des notes candidates (jamais bloquant : l'appelant
+    décide d'afficher un warning). Exclut la note ``exclude_id`` elle-même
+    (utile lors d'une mise à jour)."""
+    qs = NoteFrais.objects.filter(
+        company=company, employe=employe, date_frais=date_frais,
+        montant=Decimal(montant or 0))
+    if exclude_id:
+        qs = qs.exclude(id=exclude_id)
+    return qs
+
+
+# ── XACC27 — OCR du justificatif → pré-remplissage (KEY-GATED) ─────────────
+#
+# Réutilise le SERVICE OCR existant (``backend/fastapi_ia``, Zhipu AI, no-op
+# tant que sans clé), à l'image de ``apps.flotte.services.extraire_recu_carburant``
+# (XFLT23). Ne crée JAMAIS de note de frais : ne fait QUE lire/renvoyer des
+# champs pour pré-remplir le formulaire — l'utilisateur valide toujours.
+
+def ocr_notes_frais_active():
+    """XACC27 — True si l'OCR du justificatif de note de frais est activé.
+
+    KEY-GATED : sans ``settings.COMPTA_OCR_NOTES_FRAIS_ENABLED`` (posé par le
+    founder aux côtés de ``ZHIPU_API_KEY``), reste désactivé. Ne lève jamais.
+    """
+    from django.conf import settings
+    return bool(getattr(settings, 'COMPTA_OCR_NOTES_FRAIS_ENABLED', False))
+
+
+def extraire_justificatif_note_frais(file_bytes, *, mime=''):
+    """XACC27 — Extrait montant/date/fournisseur d'un justificatif (photo).
+
+    NO-OP tant que ``ocr_notes_frais_active()`` est faux : lève
+    ``RuntimeError`` (la vue traduit en 503, message FR clair). Une fois
+    activé, délègue à un module fournisseur isolé (``notes_frais_ocr_provider``,
+    non câblé dans ce dépôt) qui appelle le service OCR ``backend/fastapi_ia``.
+    Toute erreur provider est avalée (dict vide) — jamais de crash de l'écran
+    de saisie.
+    """
+    if not ocr_notes_frais_active():
+        raise RuntimeError('OCR indisponible (configuration manquante).')
+    if not file_bytes:
+        return {}
+    try:  # pragma: no cover - dépend d'un provider externe non câblé ici.
+        from . import notes_frais_ocr_provider as provider  # noqa: F401
+    except ImportError:  # pragma: no cover
+        return {}
+    try:  # pragma: no cover
+        return provider.extraire_justificatif(file_bytes, mime=mime) or {}
+    except Exception:  # pragma: no cover - jamais casser l'écran de saisie.
+        return {}
+
+
+def mapper_justificatif_vers_note_frais(champs_bruts):
+    """XACC27 — Normalise les champs OCR bruts vers les clés du formulaire
+    ``NoteFrais`` (lecture seule, aucun effet de bord).
+
+    Accepte ``montant``/``date``/``fournisseur`` (clés FR du provider) et
+    projette vers ``montant``/``date_frais``/``motif``. Une clé absente est
+    omise (l'utilisateur complète le reste à la main) ; NE remplace JAMAIS une
+    saisie manuelle déjà présente — c'est l'appelant (vue/frontend) qui décide
+    de fusionner sans écraser."""
+    if not champs_bruts:
+        return {}
+    resultat = {}
+    if champs_bruts.get('montant') is not None:
+        resultat['montant'] = champs_bruts['montant']
+    if champs_bruts.get('date'):
+        resultat['date_frais'] = champs_bruts['date']
+    if champs_bruts.get('fournisseur'):
+        resultat['motif'] = champs_bruts['fournisseur']
+    return resultat
+
+
+# ── XACC28 — Refacturation des frais au client (billable expenses) ────────
+
+@transaction.atomic
+def refacturer_frais_client(company, *, facture, note_frais_ids, user=None):
+    """Génère des lignes de refacturation sur une ``Facture`` EXISTANTE (XACC28).
+
+    ``facture`` est l'objet ``ventes.Facture`` déjà résolu et vérifié
+    company-scopé par l'APPELANT (la vue) — ce service ne fait AUCUN import de
+    ``ventes.models`` : il délègue la création des lignes à
+    ``apps.ventes.services.ajouter_lignes_frais_refactures`` (frontière
+    cross-app). Chaque ``NoteFrais`` : (a) doit être ``refacturable`` et
+    ``VALIDEE``, (b) ne doit pas déjà avoir été refacturée
+    (``facture_refacturation_id`` vide) — sinon levée ``ValidationError``
+    listant les références en défaut (jamais de refacturation silencieuse
+    deux fois). Le montant de ligne = ``montant`` × (1 + ``taux_marge`` %).
+    Marque chaque note ``facture_refacturation_id`` = facture. Renvoie la
+    liste des ``LigneFacture`` créées (objets ``ventes``, opaques ici)."""
+    from apps.ventes.services import ajouter_lignes_frais_refactures
+
+    notes = list(NoteFrais.objects.filter(
+        company=company, id__in=note_frais_ids or []))
+    trouvees = {n.id for n in notes}
+    manquantes = set(note_frais_ids or []) - trouvees
+    if manquantes:
+        raise ValidationError(
+            f"Notes de frais introuvables pour cette société : {sorted(manquantes)}.")
+    invalides = [
+        n.reference or str(n.id) for n in notes
+        if not n.refacturable or n.statut != NoteFrais.Statut.VALIDEE
+        or n.facture_refacturation_id
+    ]
+    if invalides:
+        raise ValidationError(
+            "Notes non refacturables (non validées, non marquées "
+            f"refacturables, ou déjà refacturées) : {', '.join(invalides)}.")
+    lignes_payload = []
+    for note in notes:
+        taux_marge = Decimal(note.taux_marge or 0)
+        montant_avec_marge = (
+            Decimal(note.montant or 0) * (1 + taux_marge / Decimal('100'))
+        ).quantize(Decimal('0.01'))
+        lignes_payload.append({
+            'designation': f'Frais refacturé — {note.motif or note.reference}',
+            'montant_ht': montant_avec_marge,
+        })
+    lignes_creees = ajouter_lignes_frais_refactures(
+        facture=facture, lignes=lignes_payload, user=user)
+    for note in notes:
+        note.facture_refacturation_id = facture.id
+        note.save(update_fields=['facture_refacturation_id'])
+    return lignes_creees
+
+
 def creer_note_frais(company, *, employe, date_frais, montant, motif,
                      categorie=None, justificatif=None, compte_charge=None,
-                     user=None):
+                     refacturable=False, taux_marge=None,
+                     client_refacturation_id=None,
+                     chantier_refacturation='', user=None):
     """Crée une note de frais (FG135) en BROUILLON, référence posée côté serveur.
 
     ``montant`` doit être strictement positif (validé par ``clean``). La
     ``reference`` (NDF-YYYYMM-NNNN) est attribuée via la fabrique gap-free
-    race-safe (``apps.ventes.utils.references`` — jamais count()+1). ``company``
+    race-safe (``apps.ventes.utils.references`` — jamais count()+1). XACC27 :
+    ``hors_politique`` est calculé côté serveur (jamais imposable) depuis le
+    plafond de la catégorie — c'est un warning affiché au valideur, jamais un
+    blocage à la création. XACC28 : ``refacturable``/``taux_marge``/
+    ``client_refacturation_id``/``chantier_refacturation`` rattachent la note à
+    un client/chantier (string-ref) pour une refacturation ultérieure —
+    ``facture_refacturation_id`` reste toujours vide à la création. ``company``
     posée côté serveur. Renvoie la note.
     """
+    categorie = categorie or NoteFrais.Categorie.AUTRE
+    montant_dec = Decimal(montant or 0)
     note = NoteFrais(
         company=company,
         employe=employe,
         date_frais=date_frais,
-        montant=Decimal(montant or 0),
+        montant=montant_dec,
         motif=motif or '',
-        categorie=categorie or NoteFrais.Categorie.AUTRE,
+        categorie=categorie,
         compte_charge=compte_charge,
         created_by=user,
+        hors_politique=note_frais_hors_politique(
+            company, categorie=categorie, montant=montant_dec),
+        refacturable=bool(refacturable),
+        taux_marge=Decimal(taux_marge) if taux_marge is not None else Decimal('0'),
+        client_refacturation_id=client_refacturation_id,
+        chantier_refacturation=chantier_refacturation or '',
     )
     if justificatif is not None:
         note.justificatif = justificatif
@@ -3265,6 +4149,15 @@ def valider_note_frais(note, *, user=None, compte_charge=None):
         raise ValidationError(
             "Période comptable clôturée : impossible de valider la note de "
             f"frais du {note.date_frais}.")
+    # XACC27 — au-delà du seuil configuré, le justificatif devient obligatoire.
+    plafond = plafond_note_frais_pour(company, note.categorie)
+    if (plafond is not None
+            and plafond.seuil_justificatif_obligatoire is not None
+            and montant > plafond.seuil_justificatif_obligatoire
+            and not note.justificatif):
+        raise ValidationError(
+            "Justificatif obligatoire : le montant dépasse le seuil de "
+            f"{plafond.seuil_justificatif_obligatoire} pour cette catégorie.")
     charge = compte_charge or note.compte_charge or _assurer_compte(
         company, _COMPTE_NOTE_FRAIS_DEFAUT)
     personnel = _assurer_compte(company, _COMPTE_PERSONNEL_CREDITEUR)
@@ -3670,6 +4563,37 @@ def rembourser_indemnite_chantier(indem, *, compte_tresorerie,
     indem.save(update_fields=[
         'statut', 'compte_tresorerie', 'date_remboursement',
         'rembourse_par', 'ecriture_remboursement'])
+    return indem
+
+
+# ── XPAI25 — Remboursement d'une indemnité chantier VIA LA PAIE ────────────
+# Fonction fine dédiée : distincte de ``rembourser_indemnite_chantier``
+# (paiement par trésorerie, FG136) — ici le montant est versé AVEC le net du
+# bulletin de salaire (aucun compte de trésorerie ni écriture GL séparée côté
+# compta : la ligne « Remboursement frais » du bulletin ET l'écriture du
+# journal de paie portent déjà le montant, cf. ``apps.paie.services``).
+
+def marquer_indemnite_remboursee_par_paie(indem, *, user=None,
+                                          date_remboursement=None):
+    """Marque une indemnité chantier REMBOURSÉE via la paie (XPAI25).
+
+    Idempotent : une indemnité déjà ``REMBOURSEE`` est renvoyée telle quelle
+    (jamais retraitée — double comptage impossible). Refuse une indemnité pas
+    encore ``VALIDEE``. Aucune écriture de trésorerie n'est postée ici (le
+    montant est déjà porté par le bulletin de paie qui appelle cette
+    fonction) — ``compte_tresorerie``/``ecriture_remboursement`` restent
+    vides, ce qui distingue ce remboursement du remboursement par trésorerie
+    (``rembourser_indemnite_chantier``). Renvoie l'indemnité.
+    """
+    if indem.statut == IndemniteChantier.Statut.REMBOURSEE:
+        return indem
+    if indem.statut != IndemniteChantier.Statut.VALIDEE:
+        raise ValidationError(
+            "Seule une indemnité validée peut être remboursée.")
+    indem.statut = IndemniteChantier.Statut.REMBOURSEE
+    indem.date_remboursement = date_remboursement or indem.date_deplacement
+    indem.rembourse_par = user
+    indem.save(update_fields=['statut', 'date_remboursement', 'rembourse_par'])
     return indem
 
 
@@ -4696,6 +5620,179 @@ def reprendre_provision_creance(prov, *, date_reprise=None, poster=True,
     return prov
 
 
+# ── XACC26 — Provisions risques & charges / dépréciation stock / immo ─────
+
+_COMPTES_PROVISION_PAR_NATURE = {
+    Provision.Nature.RISQUES_CHARGES: {
+        'passif': '1516', 'charge': '6195', 'produit': '7195',
+    },
+    Provision.Nature.DEPRECIATION_STOCK: {
+        'passif': '3910', 'charge': '6196', 'produit': '7196',
+    },
+    Provision.Nature.DEPRECIATION_IMMO: {
+        'passif': '2911', 'charge': '6392', 'produit': '7392',
+    },
+}
+
+
+def _comptes_provision(company, nature):
+    numeros = _COMPTES_PROVISION_PAR_NATURE.get(
+        nature, _COMPTES_PROVISION_PAR_NATURE[Provision.Nature.RISQUES_CHARGES])
+    return {
+        key: _assurer_compte(company, numero)
+        for key, numero in numeros.items()
+    }
+
+
+@transaction.atomic
+def enregistrer_provision(company, *, nature, date_dotation, montant, motif='',
+                          date_echeance_revue=None, poster=True, user=None):
+    """Enregistre une dotation de provision risques/charges/stock/immo (XACC26).
+
+    Poste (sauf ``poster=false``) l'écriture OD : débit compte de charge (6195
+    risques&charges / 6196 dépréciation stock / 6392 dépréciation immo) / crédit
+    compte de passif (1516 / 3910 / 2911 selon ``nature``). ``reference``
+    (PROV-YYYYMM-NNNN) et ``company`` posées côté serveur. Renvoie la provision.
+    """
+    from apps.ventes.utils.references import create_with_reference
+
+    montant = Decimal(montant or 0)
+    prov = Provision(
+        company=company,
+        nature=nature,
+        date_dotation=date_dotation,
+        montant_dotation=montant,
+        motif=motif or '',
+        date_echeance_revue=date_echeance_revue,
+        created_by=user,
+    )
+    prov.full_clean(exclude=['reference', 'created_by'])
+
+    def _save(reference):
+        prov.reference = reference
+        prov.save()
+        return prov
+
+    prov = create_with_reference(Provision, 'PROV', company, _save)
+    if poster and prov.montant_dotation > 0:
+        comptes = _comptes_provision(company, prov.nature)
+        ecriture = creer_ecriture_od(
+            company, date_dotation,
+            f'Dotation provision {prov.get_nature_display()} {prov.reference}',
+            [
+                {'compte': comptes['charge'], 'debit': prov.montant_dotation,
+                 'credit': Decimal('0'), 'libelle': prov.motif or prov.reference},
+                {'compte': comptes['passif'], 'debit': Decimal('0'),
+                 'credit': prov.montant_dotation,
+                 'libelle': prov.motif or prov.reference},
+            ],
+            created_by=user)
+        prov.ecriture_dotation_id = ecriture.id
+        prov.save(update_fields=['ecriture_dotation_id'])
+    return prov
+
+
+@transaction.atomic
+def reprendre_provision(prov, *, montant=None, date_reprise=None, poster=True,
+                        user=None):
+    """Reprend (partiellement ou totalement) une provision XACC26.
+
+    ``montant`` par défaut = solde restant (reprise totale). Poste l'écriture
+    OD inverse (débit passif / crédit produit de reprise) et cumule
+    ``montant_repris``. Refuse une reprise qui dépasserait le solde. Idempotent
+    au sens où une provision déjà soldée ne peut plus être reprise (400 côté
+    vue). Renvoie la provision.
+    """
+    if prov.est_soldee:
+        raise ValidationError("Cette provision est déjà entièrement reprise.")
+    solde = prov.solde
+    montant = Decimal(montant) if montant is not None else solde
+    if montant <= 0 or montant > solde:
+        raise ValidationError(
+            f"Le montant de reprise doit être compris entre 0 et le solde "
+            f"({solde}).")
+    date_reprise = date_reprise or timezone.now().date()
+    if poster:
+        comptes = _comptes_provision(prov.company, prov.nature)
+        creer_ecriture_od(
+            prov.company, date_reprise,
+            f'Reprise provision {prov.get_nature_display()} {prov.reference}',
+            [
+                {'compte': comptes['passif'], 'debit': montant,
+                 'credit': Decimal('0'), 'libelle': prov.motif or prov.reference},
+                {'compte': comptes['produit'], 'debit': Decimal('0'),
+                 'credit': montant, 'libelle': prov.motif or prov.reference},
+            ],
+            created_by=user)
+    prov.montant_repris = (prov.montant_repris or Decimal('0')) + montant
+    prov.date_derniere_reprise = date_reprise
+    prov.save(update_fields=['montant_repris', 'date_derniere_reprise'])
+    return prov
+
+
+# ── XFAC13 — Abandon de créance (write-off) ────────────────────────────────
+
+def provisions_ouvertes_pour_tiers(company, *, tiers_type='client', tiers_id):
+    """Provisions FG152 encore en dotation pour ce tiers (lecture seule).
+
+    Utilisé par ``ventes`` pour reprendre automatiquement une provision
+    existante quand la créance qu'elle couvrait est abandonnée (soldée), sans
+    dupliquer la logique de reprise. Jamais d'import du modèle ``ventes`` ici :
+    le tiers est référencé par ``(tiers_type, tiers_id)``.
+    """
+    return list(ProvisionCreance.objects.filter(
+        company=company, tiers_type=tiers_type, tiers_id=tiers_id,
+        statut=ProvisionCreance.Statut.DOTATION,
+    ))
+
+
+@transaction.atomic
+def abandonner_creance(company, *, montant, date_abandon=None,
+                       tiers_type='client', tiers_id=None, tiers_nom='',
+                       libelle='', reprendre_provisions=True, poster=True,
+                       user=None):
+    """Écriture d'abandon de créance (write-off) — XFAC13.
+
+    Solde une créance irrécouvrable/négligeable : débit 6585 « pertes sur
+    créances irrécouvrables » / crédit 3421 « clients » (le compte 6585 est
+    assuré à la volée s'il n'a pas encore été semé — barème CGNC). Si
+    ``reprendre_provisions``, reprend aussi toute provision FG152 encore
+    ouverte pour ce tiers (la créance provisionnée est maintenant définitivement
+    perdue, pas juste recouvrée). Respecte le verrou de période (via
+    ``creer_ecriture_od``). Renvoie l'écriture (ou ``None`` si ``montant`` est
+    nul/négatif — rien n'est posté).
+    """
+    montant = Decimal(montant or 0)
+    if montant <= 0:
+        return None
+    date_abandon = date_abandon or timezone.now().date()
+    ecriture = None
+    if poster:
+        _comptes_requis(company)
+        compte_perte = _assurer_compte(company, '6585')
+        compte_clients = get_compte(company, '3421')
+        if compte_clients is None:
+            compte_clients = _assurer_compte(company, '3421')
+        ecriture = creer_ecriture_od(
+            company, date_abandon,
+            libelle or f'Abandon de créance {tiers_nom}'.strip(),
+            [
+                {'compte': compte_perte, 'debit': montant,
+                 'credit': Decimal('0'), 'libelle': tiers_nom,
+                 'tiers_type': tiers_type, 'tiers_id': tiers_id},
+                {'compte': compte_clients, 'debit': Decimal('0'),
+                 'credit': montant, 'libelle': tiers_nom,
+                 'tiers_type': tiers_type, 'tiers_id': tiers_id},
+            ],
+            created_by=user)
+    if reprendre_provisions and tiers_id is not None:
+        for prov in provisions_ouvertes_pour_tiers(
+                company, tiers_type=tiers_type, tiers_id=tiers_id):
+            reprendre_provision_creance(
+                prov, date_reprise=date_abandon, poster=poster, user=user)
+    return ecriture
+
+
 # ── FG153 — Inter-sociétés / consolidation multi-entités ───────────────────
 
 def ajouter_entite_consolidation(company, *, entite, pourcentage_interet=None,
@@ -4738,15 +5835,31 @@ def brevo_actif():
 def envoyer_campagne(campagne, *, destinataires=None):
     """Déclenche l'envoi groupé d'une campagne (FG201), idempotent.
 
-    ``destinataires`` = liste d'adresses/numéros (optionnelle, sinon 0). Si
-    l'intégration Brevo est inactive (défaut), c'est un NO-OP : on marque la
-    campagne ``envoyee`` et on enregistre le nombre de destinataires SANS
-    aucun appel réseau. Renvoie la campagne. Une campagne déjà envoyée ou
-    annulée n'est pas ré-envoyée.
+    ``destinataires`` = liste d'adresses/numéros (optionnelle, sinon 0), ou de
+    dicts ``{'destinataire': ..., 'contact_ref': ...}`` pour porter la
+    référence contact opaque (XMKT2). Si l'intégration Brevo est inactive
+    (défaut), c'est un NO-OP : on marque la campagne ``envoyee`` et on
+    enregistre le nombre de destinataires SANS aucun appel réseau. Renvoie la
+    campagne. Une campagne déjà envoyée ou annulée n'est pas ré-envoyée.
+
+    Un destinataire présent sur la liste de suppression marketing (XMKT3,
+    ``SuppressionMarketing``) est filtré AVANT l'envoi — jamais ciblé, même
+    après ré-import de contacts. Chaque destinataire restant obtient sa ligne
+    ``EnvoiCampagne`` (XMKT2), point de départ du drill-down par KPI et du
+    suivi webhook Brevo.
     """
     if campagne.statut != Campagne.Statut.BROUILLON:
         return campagne
-    cibles = list(destinataires or [])
+    brutes = list(destinataires or [])
+
+    def _adresse(cible):
+        brute = cible.get('destinataire') if isinstance(cible, dict) else cible
+        return (brute or '').strip()
+
+    cibles = [
+        cible for cible in brutes
+        if not est_supprime(campagne.company, _adresse(cible))
+    ]
     campagne.nb_destinataires = len(cibles)
     if brevo_actif() and cibles:
         # Intégration réelle (future) — jamais appelée tant que le flag est OFF.
@@ -4757,7 +5870,656 @@ def envoyer_campagne(campagne, *, destinataires=None):
     campagne.envoyee_le = timezone.now()
     campagne.save(update_fields=[
         'nb_destinataires', 'nb_envois', 'statut', 'envoyee_le'])
+    maintenant = timezone.now() if campagne.nb_envois else None
+    for cible in cibles:
+        if isinstance(cible, dict):
+            destinataire = (cible.get('destinataire') or '').strip()
+            contact_ref = cible.get('contact_ref') or ''
+        else:
+            destinataire = (cible or '').strip()
+            contact_ref = ''
+        if not destinataire:
+            continue
+        EnvoiCampagne.objects.create(
+            company=campagne.company,
+            campagne=campagne,
+            destinataire=destinataire,
+            contact_ref=contact_ref,
+            statut=(EnvoiCampagne.Statut.ENVOYE if maintenant
+                    else EnvoiCampagne.Statut.QUEUED),
+            envoye_le=maintenant,
+        )
+        # XMKT16 — une ligne de chatter par lead ciblé, jamais par batch.
+        noter_touche_marketing_pour_lead(
+            campagne.company, contact_ref,
+            f'Campagne « {campagne.nom} » envoyée')
     return campagne
+
+
+def webhook_brevo_evenement(company, *, campagne_id, destinataire, evenement,
+                            raison_smtp='', bounce_type='', max_rebonds_soft=3):
+    """Traite un événement webhook Brevo (XMKT2/XMKT12), gated/no-op sans clé.
+
+    ``evenement`` ∈ delivered/opened/click/bounce/unsubscribed/complaint. Met
+    à jour LA ligne ``EnvoiCampagne`` correspondante (company+campagne+
+    destinataire) et laisse les compteurs agrégés de ``Campagne`` dérivables
+    (recalculés par ``recalculer_compteurs_campagne``). Idempotent : rejouer
+    le même événement ne fait qu'écraser l'horodatage, jamais dupliquer de
+    ligne.
+
+    XMKT12 — classification des rebonds : ``bounce_type='hard'`` supprime
+    IMMÉDIATEMENT le destinataire (XMKT3, motif rebond_dur, raison SMTP
+    stockée sur la trace) ; ``bounce_type='soft'`` incrémente un compteur
+    persistant (``RebondSoft``, à travers toutes les campagnes) et ne
+    supprime qu'après ``max_rebonds_soft`` occurrences (paramètre société,
+    défaut 3) ; ``evenement='complaint'`` (plainte spam) supprime
+    immédiatement, comme un rebond dur.
+    """
+    envoi = EnvoiCampagne.objects.filter(
+        company=company, campagne_id=campagne_id,
+        destinataire=destinataire).order_by('-date_creation').first()
+    if not envoi:
+        return None
+    maintenant = timezone.now()
+    mapping = {
+        'delivered': EnvoiCampagne.Statut.DELIVRE,
+        'opened': EnvoiCampagne.Statut.OUVERT,
+        'click': EnvoiCampagne.Statut.CLIQUE,
+        'bounce': EnvoiCampagne.Statut.REBOND,
+        'unsubscribed': EnvoiCampagne.Statut.DESINSCRIT,
+        'complaint': EnvoiCampagne.Statut.DESINSCRIT,
+    }
+    nouveau_statut = mapping.get(evenement)
+    if not nouveau_statut:
+        return envoi
+    envoi.statut = nouveau_statut
+    update_fields = ['statut']
+    if evenement == 'opened' and not envoi.ouvert_le:
+        envoi.ouvert_le = maintenant
+        update_fields.append('ouvert_le')
+        # XMKT16 — chatter uniquement à la PREMIÈRE ouverture (pas par rejeu).
+        noter_touche_marketing_pour_lead(
+            company, envoi.contact_ref,
+            f'Campagne « {envoi.campagne.nom} » ouverte')
+    if evenement == 'click' and not envoi.clique_le:
+        envoi.clique_le = maintenant
+        update_fields.append('clique_le')
+        noter_touche_marketing_pour_lead(
+            company, envoi.contact_ref,
+            f'Campagne « {envoi.campagne.nom} » cliquée')
+    if evenement in ('bounce', 'complaint') and raison_smtp:
+        envoi.raison_smtp = raison_smtp[:255]
+        update_fields.append('raison_smtp')
+    envoi.save(update_fields=update_fields)
+    recalculer_compteurs_campagne(envoi.campagne)
+
+    if evenement == 'complaint':
+        supprimer_destinataire(
+            company, destinataire, motif=SuppressionMarketing.Motif.PLAINTE,
+            source='webhook_brevo')
+    elif evenement == 'bounce' and bounce_type == 'hard':
+        supprimer_destinataire(
+            company, destinataire, motif=SuppressionMarketing.Motif.REBOND_DUR,
+            source=raison_smtp or 'webhook_brevo')
+    elif evenement == 'bounce' and bounce_type == 'soft':
+        compteur, _cree = RebondSoft.objects.get_or_create(
+            company=company, destinataire=destinataire)
+        compteur.compte += 1
+        compteur.save(update_fields=['compte', 'date_maj'])
+        if compteur.compte >= max_rebonds_soft:
+            supprimer_destinataire(
+                company, destinataire,
+                motif=SuppressionMarketing.Motif.REBOND_DUR,
+                source=raison_smtp or 'webhook_brevo_soft_repete')
+    return envoi
+
+
+def recalculer_compteurs_campagne(campagne):
+    """Recalcule ``nb_ouvertures``/``nb_clics`` d'une ``Campagne`` (XMKT2) à
+    partir des lignes ``EnvoiCampagne`` — les compteurs deviennent dérivés.
+    """
+    envois = campagne.envois.all()
+    campagne.nb_ouvertures = envois.filter(
+        ouvert_le__isnull=False).count()
+    campagne.nb_clics = envois.filter(clique_le__isnull=False).count()
+    campagne.save(update_fields=['nb_ouvertures', 'nb_clics'])
+    return campagne
+
+
+# ── XMKT3 — Désinscription un clic + liste de suppression globale ──────────
+
+_DESINSCRIPTION_SALT = 'compta.xmkt3.desinscription'
+
+
+def est_supprime(company, destinataire):
+    """Le destinataire est-il sur la liste de suppression marketing (XMKT3) ?
+    Vérifiée AU MOMENT DE L'ENVOI — jamais pour un message transactionnel.
+    """
+    return SuppressionMarketing.objects.filter(
+        company=company, destinataire=destinataire).exists()
+
+
+def supprimer_destinataire(company, destinataire, *, motif=SuppressionMarketing.Motif.DESINSCRIT,
+                           source=''):
+    """Ajoute (idempotent) un destinataire à la liste de suppression (XMKT3).
+
+    Immune au ré-import de contacts : une fois supprimé, un destinataire le
+    reste tant qu'il n'est pas retiré manuellement — aucun import ne
+    l'écrase.
+    """
+    obj, _cree = SuppressionMarketing.objects.get_or_create(
+        company=company, destinataire=destinataire,
+        defaults={'motif': motif, 'source': source or ''},
+    )
+    return obj
+
+
+def generer_token_desinscription(company_id, destinataire):
+    """Jeton signé (XMKT3) pour le lien public de désinscription un clic —
+    non expirant (comme le pattern ``reporting.calendar``), signé par
+    destinataire donc invalidable en changeant le sel serait excessif ; la
+    sécurité repose sur la clé secrète Django (``SECRET_KEY``).
+    """
+    return signing.dumps(
+        {'company_id': company_id, 'destinataire': destinataire},
+        salt=_DESINSCRIPTION_SALT)
+
+
+def desinscrire_via_token(token, *, source='desinscription_publique'):
+    """Traite un clic sur le lien public de désinscription (XMKT3).
+
+    Renvoie ``(ok, destinataire_ou_message_erreur)``. Un jeton invalide/
+    corrompu ne fait rien (pas d'exception, pas de suppression).
+    """
+    try:
+        payload = signing.loads(token, salt=_DESINSCRIPTION_SALT)
+    except signing.BadSignature:
+        return False, 'Lien invalide.'
+    from authentication.models import Company
+    company = Company.objects.filter(id=payload.get('company_id')).first()
+    if not company:
+        return False, 'Lien invalide.'
+    destinataire = payload.get('destinataire') or ''
+    if not destinataire:
+        return False, 'Lien invalide.'
+    supprimer_destinataire(
+        company, destinataire, motif=SuppressionMarketing.Motif.DESINSCRIT,
+        source=source)
+    return True, destinataire
+
+
+def importer_liste_opposition(company, destinataires, *, source='import_csv'):
+    """Importe une liste d'opposition externe (XMKT3), idempotent : les
+    entrées déjà supprimées ne sont jamais écrasées (get_or_create).
+    """
+    ajoutes = 0
+    for destinataire in destinataires:
+        destinataire = (destinataire or '').strip()
+        if not destinataire:
+            continue
+        _obj, cree = SuppressionMarketing.objects.get_or_create(
+            company=company, destinataire=destinataire,
+            defaults={
+                'motif': SuppressionMarketing.Motif.IMPORT,
+                'source': source,
+            },
+        )
+        if cree:
+            ajoutes += 1
+    return ajoutes
+
+
+# ── XMKT5 — Listes de diffusion nommées + abonnements ───────────────────────
+
+def _normaliser_destinataire(brut):
+    """Normalise un destinataire (XMKT5) : email en minuscules, téléphone
+    marocain en ``212XXXXXXXXX`` (même convention que le lien wa.me
+    ``ventes.utils.phone.normalize_ma_phone`` — dupliqué ici pour garder
+    ``apps.compta`` autonome, sans import cross-app).
+    """
+    brut = (brut or '').strip()
+    if not brut:
+        return ''
+    if '@' in brut:
+        return brut.lower()
+    digits = re.sub(r'\D', '', brut)
+    if not digits:
+        return brut
+    if digits.startswith('00'):
+        digits = digits[2:]
+    if digits.startswith('212'):
+        local = digits[3:]
+    elif digits.startswith('0'):
+        local = digits[1:]
+    else:
+        local = digits
+    local = local.lstrip('0')
+    if not local:
+        return brut
+    return '212' + local
+
+
+def creer_liste_diffusion(company, *, nom, description=''):
+    """Crée une liste de diffusion nommée (XMKT5)."""
+    return ListeDiffusion.objects.create(
+        company=company, nom=nom, description=description or '')
+
+
+def inscrire_dans_liste(liste, destinataire, *, contact_ref=''):
+    """Inscrit (idempotent) un destinataire dans une liste (XMKT5).
+
+    Dédoublonne par destinataire NORMALISÉ. Un destinataire déjà désinscrit
+    de CETTE liste n'est jamais ré-inscrit silencieusement par un import — un
+    import qui referait `get_or_create` laisserait le statut existant intact
+    (voir ``importer_abonnements_liste``) ; cette fonction, elle, réinscrit
+    explicitement à la demande (action manuelle).
+    """
+    destinataire = _normaliser_destinataire(destinataire)
+    if not destinataire:
+        return None
+    obj, cree = AbonnementListe.objects.get_or_create(
+        liste=liste, destinataire=destinataire,
+        defaults={
+            'company': liste.company,
+            'contact_ref': contact_ref or '',
+            'statut': AbonnementListe.Statut.INSCRIT,
+        },
+    )
+    if not cree and obj.statut != AbonnementListe.Statut.INSCRIT:
+        obj.statut = AbonnementListe.Statut.INSCRIT
+        obj.save(update_fields=['statut'])
+    return obj
+
+
+def desinscrire_de_liste(liste, destinataire):
+    """Désinscrit un destinataire d'UNE liste (XMKT5), sans toucher la liste
+    globale de suppression (XMKT3, portée différente)."""
+    destinataire = _normaliser_destinataire(destinataire)
+    abonnement = AbonnementListe.objects.filter(
+        liste=liste, destinataire=destinataire).first()
+    if not abonnement:
+        return None
+    abonnement.statut = AbonnementListe.Statut.DESINSCRIT
+    abonnement.save(update_fields=['statut'])
+    return abonnement
+
+
+def importer_abonnements_liste(liste, lignes, *, colonne_destinataire='destinataire',
+                               colonne_contact_ref='contact_ref'):
+    """Importe des abonnements dans une liste depuis des lignes CSV/XLSX déjà
+    parsées (XMKT5) : ``lignes`` = liste de dicts (mapping de colonnes fait
+    par l'appelant). Renvoie un rapport ``{ajoutes, doublons, ignores_supprimes}``.
+
+    Ne réinscrit JAMAIS un destinataire déjà désinscrit de cette liste (les
+    doublons sont comptés, pas les lignes qui matchent un désinscrit — celles-
+    ci sont comptées séparément dans ``ignores_supprimes``).
+    """
+    rapport = {'ajoutes': 0, 'doublons': 0, 'ignores_supprimes': 0}
+    vus = set()
+    for ligne in lignes:
+        brut = ligne.get(colonne_destinataire) if isinstance(ligne, dict) else ligne
+        destinataire = _normaliser_destinataire(brut)
+        if not destinataire:
+            continue
+        if destinataire in vus:
+            rapport['doublons'] += 1
+            continue
+        vus.add(destinataire)
+        existant = AbonnementListe.objects.filter(
+            liste=liste, destinataire=destinataire).first()
+        if existant:
+            if existant.statut == AbonnementListe.Statut.DESINSCRIT:
+                rapport['ignores_supprimes'] += 1
+            else:
+                rapport['doublons'] += 1
+            continue
+        contact_ref = (
+            ligne.get(colonne_contact_ref, '') if isinstance(ligne, dict) else '')
+        AbonnementListe.objects.create(
+            company=liste.company, liste=liste, destinataire=destinataire,
+            contact_ref=contact_ref or '',
+            statut=AbonnementListe.Statut.INSCRIT,
+        )
+        rapport['ajoutes'] += 1
+    return rapport
+
+
+# ── XMKT6 — Segments dynamiques enregistrés et réutilisables ────────────────
+
+_SEGMENT_ACTIVITE_CHOICES = ('a_ouvert', 'a_clique', 'jamais_ouvert')
+
+
+def valider_regles_segment(regles):
+    """Valide les règles JSON d'un segment (XMKT6) : lève ``ValueError`` sur
+    une clé inconnue (champ lead OU clé d'activité marketing). Ne touche
+    jamais à la base — appelée avant la sauvegarde ET avant l'évaluation.
+    """
+    from apps.crm.selectors import LEAD_SEGMENT_FIELDS
+
+    regles = regles or {}
+    cles_activite = {'activite'}
+    cles_connues = set(LEAD_SEGMENT_FIELDS) | cles_activite
+    inconnues = set(regles) - cles_connues
+    if inconnues:
+        raise ValueError(f"Règle(s) de segment inconnue(s) : {sorted(inconnues)}")
+    activite = regles.get('activite')
+    if activite and activite not in _SEGMENT_ACTIVITE_CHOICES:
+        raise ValueError(f"Activité de segment inconnue : {activite}")
+    return regles
+
+
+def _filtrer_par_activite(company, lead_ids, activite):
+    """Filtre une liste d'IDs de lead par activité marketing (XMKT6),
+    évaluée sur les traces ``EnvoiCampagne`` (XMKT2) via ``contact_ref``.
+    """
+    if not activite or not lead_ids:
+        return lead_ids
+    refs = {f'lead:{lid}' for lid in lead_ids}
+    if activite == 'a_ouvert':
+        matches = EnvoiCampagne.objects.filter(
+            company=company, contact_ref__in=refs,
+            ouvert_le__isnull=False).values_list('contact_ref', flat=True)
+    elif activite == 'a_clique':
+        matches = EnvoiCampagne.objects.filter(
+            company=company, contact_ref__in=refs,
+            clique_le__isnull=False).values_list('contact_ref', flat=True)
+    elif activite == 'jamais_ouvert':
+        ont_ouvert = set(EnvoiCampagne.objects.filter(
+            company=company, contact_ref__in=refs,
+            ouvert_le__isnull=False).values_list('contact_ref', flat=True))
+        return [lid for lid in lead_ids if f'lead:{lid}' not in ont_ouvert]
+    else:
+        return lead_ids
+    matches = set(matches)
+    return [lid for lid in lead_ids if f'lead:{lid}' in matches]
+
+
+def evaluer_segment(segment):
+    """Ré-évalue un ``SegmentMarketing`` AU MOMENT DE L'APPEL (XMKT6) — jamais
+    mis en cache : une campagne/séquence ciblant le segment prend toujours
+    les contacts du moment. Renvoie la liste des IDs de lead correspondants.
+    """
+    from apps.crm.selectors import leads_matching_regles
+
+    regles = valider_regles_segment(segment.regles)
+    regles_lead = {k: v for k, v in regles.items() if k != 'activite'}
+    lead_ids = list(
+        leads_matching_regles(segment.company, regles_lead)
+        .values_list('id', flat=True))
+    return _filtrer_par_activite(segment.company, lead_ids, regles.get('activite'))
+
+
+def previsualiser_segment(segment, *, taille_echantillon=10):
+    """Prévisualisation d'un segment (XMKT6) : compte exact + échantillon
+    d'IDs de lead (pas de données PII fabriquées ici — l'appelant résout
+    l'affichage via les selectors crm existants)."""
+    lead_ids = evaluer_segment(segment)
+    return {
+        'count': len(lead_ids),
+        'echantillon': lead_ids[:taille_echantillon],
+    }
+
+
+# ── XMKT8 — Variables de fusion dans les campagnes avec fallback ───────────
+
+# Variables disponibles au rendu — jamais ``prix_achat`` ni aucune donnée
+# interne (règle explicite de la tâche). Whitelist stricte : une variable
+# ``{inconnue}`` dans un corps de campagne est une ERREUR de validation.
+MERGE_VARIABLES = (
+    'prenom', 'nom', 'ville', 'societe', 'proprietaire_lead',
+)
+
+_MERGE_VAR_RE = re.compile(r'\{([a-zA-Z_]+)\}')
+
+
+def variables_du_corps(corps):
+    """Renvoie l'ensemble des noms de variables ``{xxx}`` présentes dans un
+    corps de campagne (XMKT8), pour la validation à l'édition."""
+    return set(_MERGE_VAR_RE.findall(corps or ''))
+
+
+def valider_variables_fusion(corps):
+    """Lève ``ValueError`` si ``corps`` référence une variable de fusion
+    inconnue (XMKT8) — erreur claire à la validation, comme demandé."""
+    inconnues = variables_du_corps(corps) - set(MERGE_VARIABLES)
+    if inconnues:
+        raise ValueError(
+            f"Variable(s) de fusion inconnue(s) : {sorted(inconnues)}")
+    return corps
+
+
+def rendre_variables_fusion(corps, company, lead_id, *, fallback=''):
+    """Substitue les variables de fusion d'un corps de campagne (XMKT8) avec
+    les champs du lead ciblé (lus via ``apps.crm.selectors.lead_merge_fields``
+    — jamais d'import direct de ``apps.crm.models``). Une variable vide sur
+    le contact retombe sur ``fallback`` (par variable, comme
+    ``crm.MessageTemplate.render``).
+    """
+    from apps.crm.selectors import lead_merge_fields
+
+    valider_variables_fusion(corps)
+    champs = lead_merge_fields(company, lead_id) or {}
+    rendu = corps or ''
+    for variable in MERGE_VARIABLES:
+        valeur = champs.get(variable) or fallback
+        rendu = rendu.replace('{' + variable + '}', valeur)
+    return rendu
+
+
+# ── XMKT13 — Envoi test + aperçu fusionné + pré-check santé ─────────────────
+
+_URL_RE = re.compile(r'https?://[^\s<>"\')]+')
+_IMG_URL_RE = re.compile(r'\.(?:jpg|jpeg|png|gif|webp)(?:\?\S*)?$', re.IGNORECASE)
+
+
+def envoyer_test_campagne(campagne, *, adresses_seed, lead_id_exemple=None):
+    """XMKT13 — Envoi de test d'une campagne (jamais vers de vrais
+    destinataires) : corps fusionné pour un contact d'exemple si fourni, sinon
+    le corps brut. NE modifie ni le statut ni les compteurs de la campagne
+    (contrairement à ``envoyer_campagne``) — c'est un test, pas un envoi réel.
+    Renvoie ``{'seeds': [...], 'corps_fusionne': ...}``.
+    """
+    corps = campagne.corps
+    if lead_id_exemple:
+        corps = rendre_variables_fusion(
+            campagne.corps, campagne.company, lead_id_exemple)
+    return {
+        'seeds': [a for a in (adresses_seed or []) if a],
+        'corps_fusionne': corps,
+    }
+
+
+def _lien_casse(url, timeout=3):
+    """HEAD best-effort (XMKT13) : renvoie True si le lien semble cassé.
+    Toute erreur réseau/timeout est traitée comme "on ne sait pas" (False) —
+    un pré-check ne doit jamais planter sur un problème réseau transitoire.
+    """
+    try:
+        req = urllib.request.Request(url, method='HEAD')
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status >= 400
+    except Exception:
+        return False
+
+
+def precheck_sante_campagne(campagne, *, verifier_liens=False):
+    """Pré-check bloquant/avertissant avant l'envoi de masse d'une campagne
+    (XMKT13). Renvoie ``{'bloque': bool, 'avertissements': [...]}``.
+
+    BLOQUE (email marketing) si le lien de désinscription (XMKT3) est absent
+    du corps. Le reste (liens cassés, poids d'images, segment vide) est un
+    AVERTISSEMENT non bloquant. ``verifier_liens`` est OFF par défaut (le HEAD
+    réseau n'est fait qu'à la demande explicite, jamais en arrière-plan).
+    """
+    avertissements = []
+    bloque = False
+    corps = campagne.corps or ''
+    urls = _URL_RE.findall(corps)
+
+    if campagne.canal == Campagne.Canal.EMAIL:
+        a_lien_desinscription = (
+            '/desinscription/' in corps or '{lien_desinscription}' in corps)
+        if not a_lien_desinscription:
+            bloque = True
+            avertissements.append(
+                'Lien de désinscription manquant — envoi email bloqué (loi 09-08).')
+
+    if verifier_liens:
+        for url in urls:
+            if _lien_casse(url):
+                avertissements.append(f'Lien possiblement cassé : {url}')
+
+    for url in urls:
+        if _IMG_URL_RE.search(url):
+            avertissements.append(f"Image dans le corps : {url} (vérifier le poids).")
+
+    segment_vide = not (campagne.segment or {}) and not campagne.listes.exists()
+    if segment_vide:
+        avertissements.append('Aucun segment ni liste ciblée — 0 destinataire prévu.')
+
+    return {'bloque': bloque, 'avertissements': avertissements}
+
+
+# ── XMKT15 — Conformité SMS Maroc : comptage, coût, sender-ID, STOP ─────────
+
+_GSM7_BASIC = (
+    "@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞ\x1bÆæßÉ"
+    " !\"#¤%&'()*+,-./0123456789:;<=>?"
+    "¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§"
+    "¿abcdefghijklmnopqrstuvwxyzäöñüà"
+)
+_GSM7_EXTENDED = '^{}\\[~]|€'
+
+SMS_STOP_SUFFIX = ' STOP au 00000'
+SMS_PRIX_MAD_DEFAUT = Decimal('0.35')
+
+
+def _est_gsm7(texte):
+    """Un caractère hors du jeu GSM-7 (de base + étendu) force l'encodage
+    UCS-2 (XMKT15) — chaque caractère spécial étendu compte pour 2 dans un
+    SMS GSM-7 mais on reste en GSM-7 tant que TOUS les caractères y sont."""
+    jeu = set(_GSM7_BASIC) | set(_GSM7_EXTENDED)
+    return all(c in jeu for c in (texte or ''))
+
+
+def compter_segments_sms(texte):
+    """XMKT15 — Compte les segments SMS d'un corps (GSM-7 vs UCS-2).
+
+    Limites usuelles opérateur : GSM-7 = 160 caractères (1 segment) / 153 par
+    segment au-delà (en-tête UDH multi-part) ; UCS-2 = 70 / 67. Renvoie
+    ``{'encodage': 'gsm7'|'ucs2', 'nb_caracteres': int, 'nb_segments': int}``.
+    """
+    texte = texte or ''
+    nb = len(texte)
+    if nb == 0:
+        return {'encodage': 'gsm7', 'nb_caracteres': 0, 'nb_segments': 0}
+    if _est_gsm7(texte):
+        encodage = 'gsm7'
+        limite_seul, limite_multi = 160, 153
+    else:
+        encodage = 'ucs2'
+        limite_seul, limite_multi = 70, 67
+    if nb <= limite_seul:
+        segments = 1
+    else:
+        segments = -(-nb // limite_multi)  # ceil division
+    return {'encodage': encodage, 'nb_caracteres': nb, 'nb_segments': segments}
+
+
+def estimer_cout_sms(texte, *, prix_unitaire_mad=SMS_PRIX_MAD_DEFAUT,
+                     nb_destinataires=1):
+    """XMKT15 — Aperçu du coût multi-part avant envoi (MAD), prix unitaire
+    paramétrable société (défaut ``SMS_PRIX_MAD_DEFAUT``)."""
+    info = compter_segments_sms(texte)
+    prix_unitaire_mad = Decimal(str(prix_unitaire_mad))
+    cout_par_destinataire = info['nb_segments'] * prix_unitaire_mad
+    return {
+        **info,
+        'prix_unitaire_mad': prix_unitaire_mad,
+        'cout_par_destinataire_mad': cout_par_destinataire,
+        'cout_total_mad': cout_par_destinataire * nb_destinataires,
+    }
+
+
+def ajouter_mention_stop(corps):
+    """XMKT15 — Ajoute la mention STOP obligatoire si absente (idempotent)."""
+    corps = corps or ''
+    if 'stop' in corps.lower():
+        return corps
+    return corps + SMS_STOP_SUFFIX
+
+
+def valider_numero_sms(numero):
+    """XMKT15 — Valide un numéro mobile marocain E.164 avant envoi SMS
+    (préfixes 06/07 uniquement — un fixe/invalide est exclu pour ne pas payer
+    un SMS mort). Renvoie ``(numero_normalise_ou_None, motif_si_exclu)``.
+    """
+    normalise = _normaliser_destinataire(numero)
+    if not normalise or '@' in normalise:
+        return None, 'Non un numéro de téléphone.'
+    if not normalise.startswith('212'):
+        return None, 'Préfixe international inattendu.'
+    local = normalise[3:]
+    if not (local.startswith('6') or local.startswith('7')):
+        return None, 'Numéro fixe (préfixe 05) exclu — mobile requis.'
+    if len(local) != 9:
+        return None, 'Longueur de numéro invalide.'
+    return normalise, ''
+
+
+def filtrer_destinataires_sms(numeros):
+    """XMKT15 — Filtre une liste de numéros pour un envoi SMS. Renvoie
+    ``{'valides': [...], 'exclus': [{'numero':..., 'motif':...}]}``."""
+    valides, exclus = [], []
+    for numero in numeros or []:
+        normalise, motif = valider_numero_sms(numero)
+        if normalise:
+            valides.append(normalise)
+        else:
+            exclus.append({'numero': numero, 'motif': motif})
+    return {'valides': valides, 'exclus': exclus}
+
+
+def traiter_stop_entrant(company, numero, *, source='webhook_agregateur_sms'):
+    """XMKT15 — Traite le mot-clé STOP entrant (webhook agrégateur, gated) :
+    désinscrit immédiatement le numéro (XMKT3)."""
+    normalise, _motif = valider_numero_sms(numero)
+    destinataire = normalise or (numero or '').strip()
+    if not destinataire:
+        return None
+    return supprimer_destinataire(
+        company, destinataire, motif=SuppressionMarketing.Motif.DESINSCRIT,
+        source=source)
+
+
+# ── XMKT16 — Touches marketing sur le chatter du lead (vue 360°) ───────────
+
+def _lead_id_depuis_contact_ref(contact_ref):
+    """``contact_ref`` porte la convention ``lead:<id>`` utilisée par
+    l'attribution segment (XMKT6). Renvoie l'ID ou ``None`` si le format ne
+    correspond pas (contact_ref d'un client, ou vide)."""
+    if not contact_ref or not contact_ref.startswith('lead:'):
+        return None
+    suffixe = contact_ref[len('lead:'):]
+    return int(suffixe) if suffixe.isdigit() else None
+
+
+def noter_touche_marketing_pour_lead(company, contact_ref, message, *, ordre=0):
+    """XMKT16 — Écrit une touche marketing sur le chatter d'un lead (via
+    ``apps.crm.services.noter_touche_marketing`` — jamais d'import du modèle
+    CRM depuis compta). No-op silencieux si ``contact_ref`` ne pointe pas un
+    lead (ex. contact_ref vide ou format client) — une ligne par événement
+    clé, jamais par batch.
+    """
+    lead_id = _lead_id_depuis_contact_ref(contact_ref)
+    if not lead_id:
+        return None
+    from apps.crm.selectors import get_company_lead
+    from apps.crm.services import noter_touche_marketing
+    lead = get_company_lead(company, lead_id)
+    if not lead:
+        return None
+    return noter_touche_marketing(lead, message, ordre=ordre)
 
 
 # ── FG202 — Déclenchement d'une séquence de relance (GATED, NO-OP) ──────────
@@ -4795,6 +6557,140 @@ def planifier_etapes_sequence(sequence, *, declenchee_le=None):
             'envoye': False,  # gated : jamais d'envoi réel ici
         })
     return plan
+
+
+# ── XMKT1 — Inscription + exécution réelle des séquences de relance ────────
+
+def inscrire_lead_sequence(company, sequence, *, lead_id, lead_reference=''):
+    """Inscrit un lead dans une séquence (XMKT1), idempotent.
+
+    Si le lead a déjà une inscription ACTIVE pour cette séquence, la renvoie
+    sans en créer une seconde (contrainte d'unicité en base). Pointe
+    ``etape_courante`` sur la première étape (ordre le plus bas) si la
+    séquence en a au moins une.
+    """
+    existante = InscriptionSequence.objects.filter(
+        company=company, sequence=sequence, lead_id=lead_id,
+        statut=InscriptionSequence.Statut.ACTIF,
+    ).first()
+    if existante:
+        return existante
+    premiere_etape = sequence.etapes.order_by('ordre').first()
+    return InscriptionSequence.objects.create(
+        company=company,
+        sequence=sequence,
+        lead_id=lead_id,
+        lead_reference=lead_reference or '',
+        etape_courante=premiere_etape,
+        statut=InscriptionSequence.Statut.ACTIF,
+    )
+
+
+def inscrire_leads_pour_stage(company, stage_key, *, lead_id, lead_reference=''):
+    """Inscrit un lead entrant dans ``stage_key`` sur toute séquence active
+    déclenchée par cette étape (XMKT1). ``stage_key`` vient de ``STAGES.py``
+    côté appelant — jamais recalculé/hardcodé ici.
+    """
+    sequences = SequenceRelance.objects.filter(
+        company=company, actif=True, stage_declencheur=stage_key)
+    return [
+        inscrire_lead_sequence(
+            company, seq, lead_id=lead_id, lead_reference=lead_reference)
+        for seq in sequences
+    ]
+
+
+def _executer_une_etape(inscription, etape):
+    """Exécute (ou planifie, gated) une étape pour une inscription et trace
+    le résultat. N'envoie jamais réellement ici : réutilise le comportement
+    NO-OP existant des intégrations (FG31 — file de relance manuelle quand
+    aucune intégration n'est active).
+    """
+    resultat = 'planifie'
+    erreur = ''
+    canal = etape.canal
+    if canal == EtapeSequence.Canal.WHATSAPP and not whatsapp_actif():
+        resultat = 'planifie'  # file manuelle FG31, aucun appel réseau
+    elif canal == EtapeSequence.Canal.EMAIL and not email_marketing_actif():
+        resultat = 'planifie'
+    else:
+        resultat = 'planifie'  # gated par défaut, tant qu'aucune clé n'existe
+    execution = ExecutionEtapeSequence.objects.create(
+        company=inscription.company,
+        inscription=inscription,
+        etape=etape,
+        canal=canal,
+        resultat=resultat,
+        erreur=erreur,
+    )
+    # XMKT16 — une ligne de chatter par étape exécutée (pas par batch).
+    noter_touche_marketing_pour_lead(
+        inscription.company, f'lead:{inscription.lead_id}',
+        f'Séquence « {inscription.sequence.nom} » — étape {etape.ordre} exécutée')
+    return execution
+
+
+def email_marketing_actif():
+    """Alias explicite de ``brevo_actif`` pour les séquences (XMKT1)."""
+    return brevo_actif()
+
+
+def sortir_inscription(inscription, *, motif=''):
+    """Sort une inscription de sa séquence (XMKT1) : refus/acceptation devis,
+    désinscription. Idempotent — une inscription déjà sortie/terminée n'est
+    pas re-modifiée.
+    """
+    if inscription.statut != InscriptionSequence.Statut.ACTIF:
+        return inscription
+    inscription.statut = InscriptionSequence.Statut.SORTI
+    inscription.motif_sortie = (motif or '')[:255]
+    inscription.sortie_le = timezone.now()
+    inscription.save(update_fields=['statut', 'motif_sortie', 'sortie_le'])
+    return inscription
+
+
+def sortir_inscriptions_pour_lead(company, lead_id, *, motif=''):
+    """Sort TOUTES les inscriptions actives d'un lead (tous séquences), p.ex.
+    à l'acceptation/refus d'un devis (XMKT1, câblé via ``receivers.py``).
+    """
+    inscriptions = InscriptionSequence.objects.filter(
+        company=company, lead_id=lead_id,
+        statut=InscriptionSequence.Statut.ACTIF)
+    return [sortir_inscription(insc, motif=motif) for insc in inscriptions]
+
+
+def executer_etapes_dues(company, *, maintenant=None):
+    """Exécute, pour toute inscription ACTIVE de la société, l'étape courante
+    si son échéance (J+delai depuis ``declenchee_le``) est atteinte (XMKT1).
+
+    Appelée par la tâche Celery beat ``compta.executer_sequences_relance``.
+    Après exécution, avance ``etape_courante`` vers la prochaine étape (par
+    ``ordre``) ou termine l'inscription si c'était la dernière. Renvoie la
+    liste des ``ExecutionEtapeSequence`` créées.
+    """
+    maintenant = maintenant or timezone.now()
+    executions = []
+    qs = InscriptionSequence.objects.filter(
+        company=company, statut=InscriptionSequence.Statut.ACTIF,
+        etape_courante__isnull=False,
+    ).select_related('etape_courante', 'sequence')
+    for inscription in qs:
+        etape = inscription.etape_courante
+        echeance = inscription.declenchee_le + timezone.timedelta(
+            days=etape.delai_jours)
+        if maintenant < echeance:
+            continue
+        executions.append(_executer_une_etape(inscription, etape))
+        suivante = inscription.sequence.etapes.filter(
+            ordre__gt=etape.ordre).order_by('ordre').first()
+        if suivante:
+            inscription.etape_courante = suivante
+            inscription.save(update_fields=['etape_courante'])
+        else:
+            inscription.etape_courante = None
+            inscription.statut = InscriptionSequence.Statut.TERMINE
+            inscription.save(update_fields=['etape_courante', 'statut'])
+    return executions
 
 
 # ── FG203 — Relance d'un devis abandonné ───────────────────────────────────
@@ -5471,6 +7367,117 @@ def renouveler_abonnement_monitoring(abonnement, *, today=None):
     return abonnement
 
 
+class AbonnementMonitoringError(ValidationError):
+    """Levée sans rien écrire quand la facturation/transition d'un
+    AbonnementMonitoring est refusée (déjà facturé pour la période,
+    résilié/suspendu, motif de résiliation absent)."""
+
+
+def facturer_abonnement_monitoring(abonnement, *, user=None):
+    """YSUBS3 — Émet la ``ventes.Facture`` standard de la période due d'un
+    abonnement monitoring ACTIF, DÉCOUPLÉ de ``renouveler`` (qui n'avance
+    plus que l'échéance — la facturation confondait les deux, anti-pattern
+    du blueprint).
+
+    Garde d'idempotence : refuse si ``derniere_facturation`` == la période
+    en cours de facturation (``prochaine_echeance``, ou aujourd'hui si
+    absente) — ne re-facture jamais la même période. Le client est résolu
+    via ``apps.crm.selectors.get_company_client`` (jamais un import de
+    ``apps.crm.models``) ; la Facture est créée EMISE, TVA 20 %, numérotée
+    via ``ventes.utils.references.create_with_reference`` (même patron que
+    ``ventes.services.creer_facture_contrat``), et émet ``facture_emise``
+    (YLEDG1/YSUBS6) pour que l'auto-écriture compta se déclenche comme
+    toute facture récurrente. Renvoie la Facture créée.
+    """
+    from apps.crm.selectors import get_company_client
+    from apps.ventes.models import Facture
+    from apps.ventes.utils.references import create_with_reference
+    from core.events import facture_emise
+    from .models import AbonnementMonitoring
+
+    if abonnement.statut != AbonnementMonitoring.Statut.ACTIF:
+        raise AbonnementMonitoringError(
+            "Seul un abonnement actif peut être facturé.")
+    if not abonnement.montant or abonnement.montant <= 0:
+        raise AbonnementMonitoringError(
+            "Le montant de l'abonnement doit être positif.")
+
+    company = abonnement.company
+    periode = abonnement.prochaine_echeance or timezone.localdate()
+    if abonnement.derniere_facturation == periode:
+        raise AbonnementMonitoringError(
+            f'La période {periode} a déjà été facturée pour cet abonnement.')
+
+    client = get_company_client(company, abonnement.client_id)
+    if client is None:
+        raise AbonnementMonitoringError(
+            "Client introuvable pour cet abonnement.")
+
+    tva_pct = Decimal('20')
+    prix_ttc = Decimal(str(abonnement.montant))
+    prix_ht = (prix_ttc / (1 + tva_pct / 100)).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
+    montant_tva = (prix_ttc - prix_ht).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
+    libelle = f'Supervision monitoring — abonnement #{abonnement.pk} ({periode})'
+
+    def _create(ref):
+        return Facture.objects.create(
+            reference=ref, company=company, client=client,
+            statut=Facture.Statut.EMISE, taux_tva=tva_pct,
+            montant_ht=prix_ht, montant_tva=montant_tva,
+            montant_ttc=prix_ttc, libelle=libelle, created_by=user,
+        )
+
+    facture = create_with_reference(Facture, 'FAC', company, _create)
+    facture_emise.send(sender=Facture, instance=facture, company=company)
+
+    abonnement.derniere_facturation = periode
+    abonnement.save(update_fields=['derniere_facturation'])
+    return facture
+
+
+def suspendre_abonnement_monitoring(abonnement):
+    """YSUBS4 — Suspend un abonnement ACTIF (transition gardée, service —
+    plus une écriture directe du viewset). Bloque la facturation récurrente
+    (``facturer_abonnement_monitoring`` refuse un abonnement non-actif) tant
+    que le statut reste ``suspendu``. Idempotent (un abonnement déjà
+    suspendu/résilié n'est pas re-transitionné). Renvoie l'abonnement."""
+    from .models import AbonnementMonitoring
+
+    if abonnement.statut != AbonnementMonitoring.Statut.ACTIF:
+        return abonnement
+    abonnement.statut = AbonnementMonitoring.Statut.SUSPENDU
+    abonnement.save(update_fields=['statut'])
+    return abonnement
+
+
+def resilier_abonnement_monitoring(abonnement, *, motif, user=None):
+    """YSUBS4 — Résilie un abonnement (transition gardée, motif OBLIGATOIRE
+    — capturé sur ``motif_resiliation``, jamais perdu comme avec l'ancien
+    PATCH direct du viewset). Bloque définitivement la facturation
+    récurrente. Émet ``abonnement_monitoring_resilie`` (core.events) pour
+    les effets aval (arrêt de la supervision monitoring — satellite, aucun
+    abonné dans ce repo pour l'instant). Idempotent (déjà résilié → no-op,
+    aucune ré-émission de l'événement). Renvoie l'abonnement."""
+    from core.events import abonnement_monitoring_resilie
+    from .models import AbonnementMonitoring
+
+    if abonnement.statut == AbonnementMonitoring.Statut.RESILIE:
+        return abonnement
+    motif = (motif or '').strip()
+    if not motif:
+        raise AbonnementMonitoringError(
+            'Le motif de résiliation est obligatoire.')
+    abonnement.statut = AbonnementMonitoring.Statut.RESILIE
+    abonnement.motif_resiliation = motif
+    abonnement.save(update_fields=['statut', 'motif_resiliation'])
+    abonnement_monitoring_resilie.send(
+        sender=AbonnementMonitoring, abonnement=abonnement, motif=motif,
+        company=abonnement.company)
+    return abonnement
+
+
 # ── COMPTA2 — Mapping document → compte comptable ──────────────────────────
 
 # Correspondances par défaut « clef documentaire → numéro de compte CGNC ».
@@ -6062,3 +8069,1315 @@ def construire_dossier_cgnc(company):
         'controles': anomalies,
         'a_valider_fiduciaire': a_valider_fiduciaire,
     }
+
+
+# ── XACC14 — Emprunts & crédits-bails (financements de la société) ─────────
+
+_COMPTE_CAPITAL_PAR_TYPE = {
+    Emprunt.Type.EMPRUNT: '1481',
+    Emprunt.Type.LEASING: '1671',
+}
+
+
+def _mois_suivant(une_date, n):
+    """Ajoute ``n`` mois à ``une_date`` (jour conservé, borné à fin de mois)."""
+    import calendar
+    mois_total = une_date.month - 1 + n
+    annee = une_date.year + mois_total // 12
+    mois = mois_total % 12 + 1
+    jour = min(une_date.day, calendar.monthrange(annee, mois)[1])
+    return une_date.replace(year=annee, month=mois, day=jour)
+
+
+def generer_tableau_amortissement(emprunt):
+    """Génère (persiste) le tableau d'amortissement complet d'un emprunt (XACC14).
+
+    Réutilise la maths d'annuité constante de FG217 (``calcul_mensualite``)
+    pour obtenir la mensualité, puis ventile chaque échéance en part de
+    principal / intérêts (intérêts = capital restant dû × taux mensuel ;
+    principal = mensualité − intérêts) — méthode classique d'un tableau
+    d'amortissement français/marocain. La DERNIÈRE échéance absorbe l'écart
+    d'arrondi pour que la somme des principaux soit EXACTEMENT le capital.
+    Idempotent : si des échéances existent déjà, elles sont supprimées et
+    régénérées (seulement pour celles NON postées ; refuse si une échéance
+    déjà postée existerait — on ne régénère jamais un historique posté).
+    Renvoie la liste des échéances créées.
+    """
+    if emprunt.echeances.filter(posted=True).exists():
+        raise ValidationError(
+            "Impossible de régénérer le tableau : des échéances sont déjà "
+            "postées au grand livre.")
+    emprunt.echeances.all().delete()
+
+    capital = Decimal(emprunt.capital or 0)
+    n = int(emprunt.duree_mois or 0)
+    taux_annuel = Decimal(emprunt.taux_annuel or 0)
+    mensualite, _ = calcul_mensualite(capital, n, taux_annuel)
+    taux_mensuel = taux_annuel / Decimal('100') / Decimal('12')
+
+    echeances = []
+    solde = capital
+    for i in range(1, n + 1):
+        interets = (solde * taux_mensuel).quantize(
+            Decimal('0.01'), rounding=ROUND_HALF_UP) if taux_mensuel else Decimal('0.00')
+        if i == n:
+            # Dernière échéance : absorbe l'écart d'arrondi pour solder EXACTEMENT.
+            principal = solde
+        else:
+            principal = (mensualite - interets).quantize(
+                Decimal('0.01'), rounding=ROUND_HALF_UP)
+            if principal > solde:
+                principal = solde
+        solde = (solde - principal).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        echeances.append(EcheanceEmprunt(
+            company=emprunt.company,
+            emprunt=emprunt,
+            numero=i,
+            date_echeance=_mois_suivant(emprunt.date_debut, i),
+            principal=principal,
+            interets=interets,
+            mensualite=(principal + interets).quantize(
+                Decimal('0.01'), rounding=ROUND_HALF_UP),
+            capital_restant_du=solde,
+        ))
+    EcheanceEmprunt.objects.bulk_create(echeances)
+    return list(emprunt.echeances.order_by('numero'))
+
+
+def _compte_capital_emprunt(company, emprunt):
+    if emprunt.compte_capital_id:
+        return emprunt.compte_capital
+    numero = _COMPTE_CAPITAL_PAR_TYPE.get(emprunt.type_financement, '1481')
+    return _assurer_compte(company, numero)
+
+
+def _compte_interets_emprunt(company, emprunt):
+    if emprunt.compte_interets_id:
+        return emprunt.compte_interets
+    return _assurer_compte(company, '6311')
+
+
+@transaction.atomic
+def poster_echeance_emprunt(echeance, *, user=None):
+    """Poste une échéance d'emprunt au grand livre (XACC14).
+
+    Écriture ÉQUILIBRÉE (journal OD) : débit du compte de capital restant dû
+    (part de principal) + débit du compte de charges financières (part
+    d'intérêts) / crédit banque (5141, mensualité totale). Idempotente
+    (renvoie l'écriture existante si déjà postée). RESPECTE LE VERROU DE
+    PÉRIODE (FG115) : refuse si la date d'échéance tombe dans une période
+    verrouillée.
+    """
+    emprunt = echeance.emprunt
+    company = echeance.company
+    if echeance.posted and echeance.ecriture_id:
+        return echeance.ecriture
+    mensualite = Decimal(echeance.mensualite)
+    if mensualite <= 0:
+        raise ValidationError("Impossible de poster une échéance nulle.")
+    if PeriodeComptable.date_verrouillee(company.id, echeance.date_echeance):
+        raise ValidationError(
+            "Période comptable clôturée : impossible de poster l'échéance "
+            f"du {echeance.date_echeance}.")
+    compte_capital = _compte_capital_emprunt(company, emprunt)
+    compte_interets = _compte_interets_emprunt(company, emprunt)
+    compte_banque = _assurer_compte(company, '5141')
+    journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+    if journal is None:
+        seed_journaux(company)
+        journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+    libelle = (
+        f"Échéance {echeance.numero} — {emprunt.banque or emprunt.reference}")
+    lignes = [
+        {'compte': compte_capital, 'debit': echeance.principal,
+         'credit': Decimal('0'), 'libelle': libelle},
+    ]
+    if echeance.interets and echeance.interets > 0:
+        lignes.append({
+            'compte': compte_interets, 'debit': echeance.interets,
+            'credit': Decimal('0'), 'libelle': libelle,
+        })
+    lignes.append({
+        'compte': compte_banque, 'debit': Decimal('0'),
+        'credit': mensualite, 'libelle': libelle,
+    })
+    ecriture = creer_ecriture(
+        company, journal, echeance.date_echeance, libelle, lignes,
+        reference=f'EMPR-{emprunt.id}-{echeance.numero}',
+        source_type='echeance_emprunt', source_id=echeance.id,
+        created_by=user, statut=EcritureComptable.Statut.VALIDEE,
+    )
+    echeance.posted = True
+    echeance.ecriture = ecriture
+    echeance.save(update_fields=['posted', 'ecriture'])
+    return ecriture
+
+
+def injecter_echeances_previsionnel(company, *, date_debut=None, nb_semaines=13):
+    """Échéances d'emprunt FUTURES à injecter dans le prévisionnel 13 semaines
+    (FG126) — lecture seule, pure. Renvoie une liste de dicts compatibles avec
+    les lignes du prévisionnel : ``{'libelle', 'date_prevue', 'montant'}``
+    (montant NÉGATIF = décaissement). Ne persiste rien : c'est
+    ``selectors.previsionnel_tresorerie`` qui les agrège à l'existant.
+    """
+    from datetime import timedelta
+    debut = date_debut or timezone.now().date()
+    fin = debut + timedelta(weeks=nb_semaines)
+    qs = EcheanceEmprunt.objects.filter(
+        company=company, date_echeance__gte=debut, date_echeance__lte=fin,
+    ).select_related('emprunt').order_by('date_echeance')
+    return [
+        {
+            'libelle': f'Échéance emprunt {e.emprunt.banque or e.emprunt.reference}',
+            'date_prevue': e.date_echeance,
+            'montant': -Decimal(e.mensualite),
+        }
+        for e in qs
+    ]
+
+
+# ── XACC15 — Charges constatées d'avance (étalement des charges prépayées) ──
+
+_COMPTE_CCA = '3491'
+
+
+@transaction.atomic
+def etaler_charge_avance(company, *, montant_total, date_debut, nb_mois,
+                         libelle='', facture_fournisseur_id=None,
+                         compte_charge=None, poster_origine=True, user=None):
+    """Crée l'échéancier d'étalement d'une charge prépayée (XACC15).
+
+    Porte le montant total au débit de 3491 (crédit du compte de charge
+    d'origine, 61xx par défaut) SAUF si ``poster_origine=False`` (l'écriture
+    d'origine existe déjà, ex. saisie directe depuis une facture fournisseur
+    qui a déjà débité 3491), puis génère ``nb_mois`` ``DotationEtalement``
+    NON postées (à poster mois par mois via ``poster_dotation_etalement``).
+    La DERNIÈRE dotation absorbe l'écart d'arrondi (Σ dotations = montant
+    total, exact). ``reference`` et ``company`` posés côté serveur. Renvoie
+    la charge créée.
+    """
+    from apps.ventes.utils.references import create_with_reference
+
+    montant_total = Decimal(montant_total or 0)
+    nb_mois = int(nb_mois or 0)
+    compte = compte_charge or _assurer_compte(company, '6132')
+
+    charge = ChargeConstateeAvance(
+        company=company,
+        libelle=libelle or '',
+        facture_fournisseur_id=facture_fournisseur_id,
+        montant_total=montant_total,
+        date_debut=date_debut,
+        nb_mois=nb_mois,
+        compte_charge=compte,
+        created_by=user,
+    )
+    charge.full_clean(exclude=['reference', 'created_by', 'libelle'])
+
+    def _save(reference):
+        charge.reference = reference
+        charge.save()
+        return charge
+
+    charge = create_with_reference(ChargeConstateeAvance, 'CCA', company, _save)
+
+    if poster_origine:
+        compte_cca = _assurer_compte(company, _COMPTE_CCA)
+        journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+        if journal is None:
+            seed_journaux(company)
+            journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+        libelle_ecr = f'Constat charge à étaler {charge.reference}'
+        ecriture = creer_ecriture_od(
+            company, date_debut, libelle_ecr,
+            [
+                {'compte': compte_cca, 'debit': montant_total,
+                 'credit': Decimal('0'), 'libelle': libelle_ecr},
+                {'compte': compte, 'debit': Decimal('0'),
+                 'credit': montant_total, 'libelle': libelle_ecr},
+            ],
+            created_by=user)
+        charge.ecriture_origine = ecriture
+        charge.save(update_fields=['ecriture_origine'])
+
+    # Génère les dotations mensuelles (montants égaux, arrondi sur la dernière).
+    montant_mensuel = (montant_total / Decimal(nb_mois)).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP) if nb_mois else Decimal('0.00')
+    dotations = []
+    cumul = Decimal('0.00')
+    for i in range(1, nb_mois + 1):
+        if i == nb_mois:
+            montant = (montant_total - cumul).quantize(
+                Decimal('0.01'), rounding=ROUND_HALF_UP)
+        else:
+            montant = montant_mensuel
+        cumul += montant
+        dotations.append(DotationEtalement(
+            company=company,
+            charge=charge,
+            numero=i,
+            date_dotation=_mois_suivant(date_debut, i - 1),
+            montant=montant,
+        ))
+    DotationEtalement.objects.bulk_create(dotations)
+    return charge
+
+
+@transaction.atomic
+def poster_dotation_etalement(dotation, *, user=None):
+    """Poste une dotation d'étalement au grand livre (XACC15).
+
+    Écriture ÉQUILIBRÉE (journal OD) : débit du compte de charge (classe 6) /
+    crédit 3491 « charges constatées d'avance ». Idempotente. RESPECTE LE
+    VERROU DE PÉRIODE (FG115).
+    """
+    charge = dotation.charge
+    company = dotation.company
+    if dotation.posted and dotation.ecriture_id:
+        return dotation.ecriture
+    montant = Decimal(dotation.montant)
+    if montant <= 0:
+        raise ValidationError("Impossible de poster une dotation nulle.")
+    if PeriodeComptable.date_verrouillee(company.id, dotation.date_dotation):
+        raise ValidationError(
+            "Période comptable clôturée : impossible de poster la dotation "
+            f"d'étalement du {dotation.date_dotation}.")
+    compte_charge = charge.compte_charge or _assurer_compte(company, '6132')
+    compte_cca = _assurer_compte(company, _COMPTE_CCA)
+    libelle = f'Dotation étalement {dotation.numero} — {charge.reference}'
+    ecriture = creer_ecriture_od(
+        company, dotation.date_dotation, libelle,
+        [
+            {'compte': compte_charge, 'debit': montant,
+             'credit': Decimal('0'), 'libelle': libelle},
+            {'compte': compte_cca, 'debit': Decimal('0'),
+             'credit': montant, 'libelle': libelle},
+        ],
+        reference=f'CCA-{charge.id}-{dotation.numero}',
+        created_by=user)
+    dotation.posted = True
+    dotation.ecriture = ecriture
+    dotation.save(update_fields=['posted', 'ecriture'])
+    return ecriture
+
+
+# ── XACC16 — Amortissements dérogatoires (double plan comptable / fiscal) ───
+
+_COMPTE_DOTATION_DEROGATOIRE = '65941'   # dotation aux provisions réglementées.
+_COMPTE_PROVISION_REGLEMENTEE = '1351'   # provisions pour amortissements dérog.
+_COMPTE_REPRISE_DEROGATOIRE = '7594'     # reprise sur provisions réglementées.
+
+
+def creer_plan_amortissement_fiscal(plan_comptable, *, mode=None,
+                                    duree_annees, coefficient_degressif=None):
+    """Crée (ou met à jour) le plan FISCAL parallèle d'un plan comptable (XACC16).
+
+    ``duree_annees`` requis explicitement (le fiscal peut différer du
+    comptable). Le coefficient dégressif est déduit du barème marocain si le
+    mode est dégressif et qu'aucun coefficient explicite n'est fourni. Idempotent
+    (get_or_create + mise à jour des champs fournis). Renvoie le plan fiscal.
+    """
+    company = plan_comptable.company
+    plan_fiscal, _ = PlanAmortissementFiscal.objects.get_or_create(
+        company=company, plan_comptable=plan_comptable,
+        defaults={
+            'mode': mode or PlanAmortissement.Mode.DEGRESSIF,
+            'duree_annees': duree_annees,
+        },
+    )
+    if mode is not None:
+        plan_fiscal.mode = mode
+    if duree_annees is not None:
+        plan_fiscal.duree_annees = duree_annees
+    if plan_fiscal.mode == PlanAmortissement.Mode.DEGRESSIF:
+        plan_fiscal.coefficient_degressif = (
+            Decimal(coefficient_degressif) if coefficient_degressif is not None
+            else coefficient_degressif_maroc(plan_fiscal.duree_annees))
+    else:
+        plan_fiscal.coefficient_degressif = None
+    plan_fiscal.full_clean()
+    plan_fiscal.save()
+    return plan_fiscal
+
+
+def generer_dotations_derogatoires(plan_fiscal):
+    """Calcule/matérialise les différences comptable-vs-fiscal par exercice
+    (XACC16).
+
+    Recalcule les deux annuités (comptable via ``plan_comptable.mode``/
+    ``duree_annees``, fiscal via ``plan_fiscal.mode``/``duree_annees``) sur la
+    même base amortissable, année par année, et fige la différence SIGNÉE
+    (fiscal − comptable) dans une ``DotationDerogatoire``. Une différence déjà
+    POSTÉE n'est jamais recalculée (immutabilité comptable — même garde-fou que
+    ``generer_plan_amortissement``). Renvoie la liste des dotations
+    dérogatoires (créées ou déjà existantes).
+    """
+    plan_comptable = plan_fiscal.plan_comptable
+    base = plan_comptable.base_amortissable
+    coeff_compt = plan_comptable.coefficient_degressif or Decimal('1')
+    coeff_fisc = plan_fiscal.coefficient_degressif or Decimal('1')
+
+    annuites_comptables = _calcul_annuites(
+        base, plan_comptable.duree_annees, plan_comptable.mode, coeff_compt)
+    annuites_fiscales = _calcul_annuites(
+        base, plan_fiscal.duree_annees, plan_fiscal.mode, coeff_fisc)
+
+    annee_debut = plan_comptable.date_debut.year
+    nb_annees = max(len(annuites_comptables), len(annuites_fiscales))
+    resultat = []
+    for idx in range(nb_annees):
+        annee = annee_debut + idx
+        dot_compt = (annuites_comptables[idx] if idx < len(annuites_comptables)
+                     else Decimal('0'))
+        dot_fisc = (annuites_fiscales[idx] if idx < len(annuites_fiscales)
+                    else Decimal('0'))
+        difference = _arrondi(dot_fisc - dot_compt)
+        existante = DotationDerogatoire.objects.filter(
+            plan_fiscal=plan_fiscal, annee=annee).first()
+        if existante and existante.posted:
+            resultat.append(existante)
+            continue
+        from datetime import date as _date
+        date_dotation = _date(annee, 12, 31)
+        if existante is None:
+            existante = DotationDerogatoire.objects.create(
+                company=plan_fiscal.company, plan_fiscal=plan_fiscal,
+                annee=annee, date_dotation=date_dotation,
+                dotation_comptable=dot_compt, dotation_fiscale=dot_fisc,
+                difference=difference)
+        else:
+            existante.dotation_comptable = dot_compt
+            existante.dotation_fiscale = dot_fisc
+            existante.difference = difference
+            existante.date_dotation = date_dotation
+            existante.save(update_fields=[
+                'dotation_comptable', 'dotation_fiscale', 'difference',
+                'date_dotation'])
+        resultat.append(existante)
+    return resultat
+
+
+@transaction.atomic
+def poster_dotation_derogatoire(dotation, *, user=None):
+    """Poste une différence dérogatoire au grand livre (XACC16).
+
+    ``difference`` > 0 (fiscal > comptable) → DOTATION : débit 65941 / crédit
+    1351. ``difference`` < 0 (comptable > fiscal, fin de vie) → REPRISE
+    inverse : débit 1351 / crédit 7594. ``difference`` == 0 → rien à poster
+    (marque quand même ``posted`` pour ne plus y revenir). Idempotente.
+    RESPECTE LE VERROU DE PÉRIODE (FG115).
+    """
+    company = dotation.company
+    if dotation.posted:
+        return dotation.ecriture
+    if PeriodeComptable.date_verrouillee(company.id, dotation.date_dotation):
+        raise ValidationError(
+            "Période comptable clôturée : impossible de poster la dotation "
+            f"dérogatoire du {dotation.date_dotation}.")
+    difference = Decimal(dotation.difference)
+    if difference == 0:
+        dotation.posted = True
+        dotation.save(update_fields=['posted'])
+        return None
+    compte_provision = _assurer_compte(company, _COMPTE_PROVISION_REGLEMENTEE)
+    libelle = f'Amortissement dérogatoire {dotation.annee} — plan #{dotation.plan_fiscal_id}'
+    if difference > 0:
+        compte_dotation = _assurer_compte(company, _COMPTE_DOTATION_DEROGATOIRE)
+        lignes = [
+            {'compte': compte_dotation, 'debit': difference,
+             'credit': Decimal('0'), 'libelle': libelle},
+            {'compte': compte_provision, 'debit': Decimal('0'),
+             'credit': difference, 'libelle': libelle},
+        ]
+    else:
+        montant = -difference
+        compte_reprise = _assurer_compte(company, _COMPTE_REPRISE_DEROGATOIRE)
+        lignes = [
+            {'compte': compte_provision, 'debit': montant,
+             'credit': Decimal('0'), 'libelle': libelle},
+            {'compte': compte_reprise, 'debit': Decimal('0'),
+             'credit': montant, 'libelle': libelle},
+        ]
+    ecriture = creer_ecriture_od(
+        company, dotation.date_dotation, libelle, lignes,
+        reference=f'DEROG-{dotation.plan_fiscal_id}-{dotation.annee}',
+        created_by=user)
+    dotation.posted = True
+    dotation.ecriture = ecriture
+    dotation.save(update_fields=['posted', 'ecriture'])
+    return ecriture
+
+
+# ── XACC17 — Table de taux de change + contre-valeur MAD ───────────────────
+
+def enregistrer_taux_devise(company, *, devise, date_taux, taux_vers_mad,
+                            source=None):
+    """Enregistre (upsert) le taux du jour ``devise`` → MAD (XACC17).
+
+    Idempotent sur ``(company, devise, date_taux)`` : une saisie MANUELLE
+    écrase toujours un feed automatique existant pour le même jour (RÈGLE
+    « never snap » : un taux SAISI par l'utilisateur reste prioritaire — on ne
+    l'écrase JAMAIS avec un feed). Renvoie le ``TauxDevise``.
+    """
+    devise = (devise or '').upper()
+    if not devise or devise == 'MAD':
+        raise ValidationError("MAD n'a pas besoin de table de taux (1:1).")
+    source = source or TauxDevise.Source.MANUEL
+    existant = TauxDevise.objects.filter(
+        company=company, devise=devise, date_taux=date_taux).first()
+    if existant is not None:
+        if (existant.source == TauxDevise.Source.MANUEL
+                and source != TauxDevise.Source.MANUEL):
+            # Un feed ne doit JAMAIS écraser une saisie manuelle du même jour.
+            return existant
+        existant.taux_vers_mad = Decimal(taux_vers_mad)
+        existant.source = source
+        existant.full_clean()
+        existant.save()
+        return existant
+    taux = TauxDevise(
+        company=company, devise=devise, date_taux=date_taux,
+        taux_vers_mad=Decimal(taux_vers_mad), source=source)
+    taux.full_clean()
+    taux.save()
+    return taux
+
+
+def feed_taux_bkam(company, *, devise, date_taux=None):
+    """Feed automatique BKAM (gratuit) — NO-OP tant qu'aucune clé n'est
+    configurée (XACC17, key-gated). Renvoie ``None`` si le feed est
+    indisponible (pas de clé/URL) : le repli est alors la dernière saisie
+    manuelle existante (``selectors.taux_du_jour``), jamais une erreur. Une
+    fois une clé ``BKAM_FX_API_KEY`` configurée dans les settings, cette
+    fonction ferait l'appel réel — non implémenté ici (aucune clé fournie).
+    """
+    api_key = getattr(settings, 'BKAM_FX_API_KEY', '') or ''
+    if not api_key:
+        return None
+    return None  # pragma: no cover - intégration réelle hors périmètre sans clé.
+
+
+def contre_valeur_mad(montant_devise, devise, company=None, *, une_date=None,
+                      taux_vers_mad=None):
+    """Contre-valeur MAD d'un montant en devise (XACC17), pur calcul.
+
+    Priorité : ``taux_vers_mad`` explicite (un taux SAISI sur le document,
+    jamais snappé) > le taux du jour de la table (``selectors.taux_du_jour``,
+    nécessite ``company``) > repli 1:1 si ``devise`` est MAD ou si aucune
+    table n'existe (comportement actuel intact). Renvoie un Decimal arrondi au
+    centime.
+    """
+    devise = (devise or 'MAD').upper()
+    montant = Decimal(montant_devise or 0)
+    if devise == 'MAD':
+        return _arrondi(montant)
+    if taux_vers_mad is not None:
+        taux = Decimal(taux_vers_mad)
+    elif company is not None:
+        from apps.compta.selectors import taux_du_jour as _taux_du_jour
+        enregistrement = _taux_du_jour(company, devise, une_date)
+        taux = enregistrement.taux_vers_mad if enregistrement else Decimal('1')
+    else:
+        taux = Decimal('1')
+    return _arrondi(montant * taux)
+
+
+# ── XACC18 — Écarts de change réalisés & réévaluation de clôture ───────────
+
+_COMPTE_GAIN_CHANGE = '733'    # produit financier — gains de change réalisés.
+_COMPTE_PERTE_CHANGE = '633'   # charge financière — pertes de change réalisées.
+_COMPTE_ECART_ACTIF_CLOTURE = '2701'   # écart de conversion actif (perte latente).
+_COMPTE_ECART_PASSIF_CLOTURE = '1701'  # écart de conversion passif (gain latent).
+
+
+def enregistrer_item_ouvert_devise(company, *, type_document, document_id,
+                                   document_reference='', devise,
+                                   montant_devise, taux_origine, date_origine):
+    """Enregistre (idempotent) un poste ouvert en devise à suivre (XACC18).
+
+    Un document 100 % MAD (``devise == 'MAD'``) n'a jamais besoin de cette
+    table — lève ``ValidationError`` pour éviter une saisie inutile. Unicité
+    ``(company, type_document, document_id)`` : ré-appeler avec le même
+    document renvoie l'item existant SANS l'écraser (le taux d'origine reste
+    figé une fois créé). Renvoie l'``ItemOuvertDevise``.
+    """
+    devise = (devise or '').upper()
+    if not devise or devise == 'MAD':
+        raise ValidationError(
+            "Un document en MAD n'a pas besoin de suivi de change.")
+    existant = ItemOuvertDevise.objects.filter(
+        company=company, type_document=type_document,
+        document_id=document_id).first()
+    if existant is not None:
+        return existant
+    item = ItemOuvertDevise(
+        company=company, type_document=type_document,
+        document_id=document_id, document_reference=document_reference or '',
+        devise=devise, montant_devise=Decimal(montant_devise),
+        taux_origine=Decimal(taux_origine), date_origine=date_origine,
+    )
+    item.full_clean()
+    item.save()
+    return item
+
+
+@transaction.atomic
+def constater_ecart_change(item, *, date_reglement, taux_reglement=None,
+                           user=None):
+    """Constate l'écart de change RÉALISÉ au règlement d'un item ouvert (XACC18).
+
+    ``taux_reglement`` (devise → MAD) explicite ou déduit de la table
+    (``selectors.taux_du_jour`` à ``date_reglement``, repli = taux d'origine
+    si aucune table). ``difference`` = contre-valeur au taux de règlement −
+    contre-valeur au taux d'origine : > 0 GAIN (crédit 733) ; < 0 PERTE (débit
+    633). Marque l'item ``solde``. Idempotente (un item n'a qu'un seul écart,
+    OneToOne). Si ``difference == 0`` (tout est resté en MAD ou même taux),
+    AUCUNE écriture n'est postée. RESPECTE LE VERROU DE PÉRIODE (FG115).
+    """
+    company = item.company
+    existant = getattr(item, 'ecart_change', None)
+    if existant is not None and existant.posted:
+        return existant
+    if taux_reglement is None:
+        from apps.compta.selectors import taux_du_jour as _taux_du_jour
+        enregistrement = _taux_du_jour(company, item.devise, date_reglement)
+        taux_reglement = (
+            enregistrement.taux_vers_mad if enregistrement
+            else item.taux_origine)
+    taux_reglement = Decimal(taux_reglement)
+    cv_origine = item.contre_valeur_origine
+    cv_reglement = (Decimal(item.montant_devise) * taux_reglement).quantize(
+        Decimal('0.01'))
+    difference = cv_reglement - cv_origine
+
+    ecart = existant or EcartChange(company=company, item=item)
+    ecart.date_reglement = date_reglement
+    ecart.taux_reglement = taux_reglement
+    ecart.difference = difference
+
+    if difference != 0:
+        if PeriodeComptable.date_verrouillee(company.id, date_reglement):
+            raise ValidationError(
+                "Période comptable clôturée : impossible de constater "
+                f"l'écart de change du {date_reglement}.")
+        libelle = (
+            f'Écart de change {item.document_reference or item.document_id}')
+        if difference > 0:
+            compte_gain = _assurer_compte(company, _COMPTE_GAIN_CHANGE)
+            compte_client = _compte_fournisseurs(company) if (
+                item.type_document == ItemOuvertDevise.TypeDocument.FACTURE_FOURNISSEUR
+            ) else _assurer_compte(company, '3421')
+            lignes = [
+                {'compte': compte_client, 'debit': difference,
+                 'credit': Decimal('0'), 'libelle': libelle},
+                {'compte': compte_gain, 'debit': Decimal('0'),
+                 'credit': difference, 'libelle': libelle},
+            ]
+        else:
+            montant = -difference
+            compte_perte = _assurer_compte(company, _COMPTE_PERTE_CHANGE)
+            compte_client = _compte_fournisseurs(company) if (
+                item.type_document == ItemOuvertDevise.TypeDocument.FACTURE_FOURNISSEUR
+            ) else _assurer_compte(company, '3421')
+            lignes = [
+                {'compte': compte_perte, 'debit': montant,
+                 'credit': Decimal('0'), 'libelle': libelle},
+                {'compte': compte_client, 'debit': Decimal('0'),
+                 'credit': montant, 'libelle': libelle},
+            ]
+        ecriture = creer_ecriture_od(
+            company, date_reglement, libelle, lignes,
+            reference=f'FX-{item.id}', created_by=user)
+        ecart.ecriture = ecriture
+    ecart.posted = True
+    ecart.full_clean()
+    ecart.save()
+    item.solde = True
+    item.save(update_fields=['solde'])
+    return ecart
+
+
+@transaction.atomic
+def reevaluer_cloture(company, *, date_cloture, user=None):
+    """Run de réévaluation de clôture des items ouverts en devise (XACC18).
+
+    Réévalue chaque item NON soldé au taux de clôture (``taux_du_jour`` à
+    ``date_cloture`` ; item ignoré si aucune table n'existe pour sa devise —
+    aucun écart latent calculable). Poste l'écart de conversion LATENT en une
+    seule écriture : > 0 (contre-valeur au taux de clôture > origine, gain
+    latent) → crédit 1701 ; < 0 (perte latente) → débit 2701, contrepartie sur
+    le compte client/fournisseur de l'item. AUCUNE écriture si tout est en MAD
+    ou si aucun item n'a d'écart. Génère aussi l'écriture d'EXTOURNE (inverse)
+    datée du lendemain (ouverture suivante). Idempotent (unicité
+    ``(company, date_cloture)``). Renvoie le run.
+    """
+    from apps.compta.selectors import taux_du_jour as _taux_du_jour
+
+    existant = ReevaluationCloture.objects.filter(
+        company=company, date_cloture=date_cloture).first()
+    if existant is not None and existant.ecriture_id:
+        return existant
+
+    items = ItemOuvertDevise.objects.filter(company=company, solde=False)
+    lignes_gl = []
+    total_ecart = Decimal('0')
+    run = existant or ReevaluationCloture(
+        company=company, date_cloture=date_cloture)
+    run.save()
+
+    for item in items:
+        enregistrement = _taux_du_jour(company, item.devise, date_cloture)
+        if enregistrement is None:
+            continue
+        taux_cloture = enregistrement.taux_vers_mad
+        cv_cloture = (Decimal(item.montant_devise) * taux_cloture).quantize(
+            Decimal('0.01'))
+        ecart = cv_cloture - item.contre_valeur_origine
+        if ecart == 0:
+            continue
+        total_ecart += ecart
+        LigneReevaluation.objects.update_or_create(
+            reevaluation=run, item=item,
+            defaults={
+                'company': company, 'taux_cloture': taux_cloture,
+                'ecart': ecart,
+            },
+        )
+        compte_tiers = _compte_fournisseurs(company) if (
+            item.type_document == ItemOuvertDevise.TypeDocument.FACTURE_FOURNISSEUR
+        ) else _assurer_compte(company, '3421')
+        libelle = f'Réévaluation clôture {item.document_reference or item.document_id}'
+        if ecart > 0:
+            compte_ecart = _assurer_compte(company, _COMPTE_ECART_PASSIF_CLOTURE)
+            lignes_gl.append({'compte': compte_tiers, 'debit': ecart,
+                              'credit': Decimal('0'), 'libelle': libelle})
+            lignes_gl.append({'compte': compte_ecart, 'debit': Decimal('0'),
+                              'credit': ecart, 'libelle': libelle})
+        else:
+            montant = -ecart
+            compte_ecart = _assurer_compte(company, _COMPTE_ECART_ACTIF_CLOTURE)
+            lignes_gl.append({'compte': compte_ecart, 'debit': montant,
+                              'credit': Decimal('0'), 'libelle': libelle})
+            lignes_gl.append({'compte': compte_tiers, 'debit': Decimal('0'),
+                              'credit': montant, 'libelle': libelle})
+
+    run.total_ecart = total_ecart
+    if lignes_gl:
+        if PeriodeComptable.date_verrouillee(company.id, date_cloture):
+            raise ValidationError(
+                "Période comptable clôturée : impossible de poster la "
+                f"réévaluation de change du {date_cloture}.")
+        libelle_run = f'Réévaluation de clôture (change) {date_cloture}'
+        ecriture = creer_ecriture_od(
+            company, date_cloture, libelle_run, lignes_gl,
+            reference=f'FXCLOT-{run.id}', created_by=user)
+        run.ecriture = ecriture
+        from datetime import timedelta
+        date_extourne = date_cloture + timedelta(days=1)
+        lignes_inverse = [
+            {'compte': ligne['compte'], 'debit': ligne['credit'],
+             'credit': ligne['debit'], 'libelle': ligne['libelle']}
+            for ligne in lignes_gl
+        ]
+        ecriture_extourne = creer_ecriture_od(
+            company, date_extourne, f'Extourne {libelle_run}', lignes_inverse,
+            reference=f'FXCLOT-{run.id}-EXT', created_by=user)
+        run.ecriture_extourne = ecriture_extourne
+        run.date_extourne = date_extourne
+    run.save()
+    return run
+
+
+# ── XACC19 — Générateur d'états financiers personnalisés ───────────────────
+
+@transaction.atomic
+def creer_etat_personnalise(company, *, libelle, description='', lignes=None,
+                            colonnes=None, user=None):
+    """Crée un ``EtatPersonnalise`` avec ses lignes/colonnes en un appel (XACC19).
+
+    ``lignes`` : liste de dicts ``{'libelle', 'type_ligne'?, 'formule'?,
+    'ordre'?}``. ``colonnes`` : liste de dicts ``{'libelle', 'type_colonne'?,
+    'date_debut'?, 'date_fin'?, 'budget'?, 'ordre'?}``. Valide chaque formule
+    (``selectors._parser_formule``) AVANT toute création : une formule
+    invalide lève ``ValidationError`` (400 explicite côté vue), rien n'est
+    persisté. ``company`` posée côté serveur. Renvoie l'état créé.
+    """
+    from apps.compta.selectors import (
+        FormuleEtatInvalideError, _parser_formule as _valider_formule)
+
+    for spec in (lignes or []):
+        if spec.get('type_ligne', LigneEtatPersonnalise.TypeLigne.TOTAL) == \
+                LigneEtatPersonnalise.TypeLigne.TOTAL:
+            try:
+                _valider_formule(spec.get('formule', ''))
+            except FormuleEtatInvalideError as exc:
+                raise ValidationError(str(exc))
+
+    etat = EtatPersonnalise(
+        company=company, libelle=libelle, description=description or '',
+        created_by=user)
+    etat.full_clean()
+    etat.save()
+
+    for idx, spec in enumerate(lignes or []):
+        LigneEtatPersonnalise.objects.create(
+            company=company, etat=etat, ordre=spec.get('ordre', idx),
+            libelle=spec['libelle'],
+            type_ligne=spec.get(
+                'type_ligne', LigneEtatPersonnalise.TypeLigne.TOTAL),
+            formule=spec.get('formule', '') or '',
+        )
+    for idx, spec in enumerate(colonnes or []):
+        ColonneEtatPersonnalise.objects.create(
+            company=company, etat=etat, ordre=spec.get('ordre', idx),
+            libelle=spec['libelle'],
+            type_colonne=spec.get(
+                'type_colonne', ColonneEtatPersonnalise.Type.PERIODE),
+            date_debut=spec.get('date_debut'), date_fin=spec.get('date_fin'),
+            budget=spec.get('budget'),
+        )
+    return etat
+
+
+# ── XACC20 — Ventilation analytique %  & règles d'auto-imputation ──────────
+
+@transaction.atomic
+def ventiler_ligne_ecriture(ligne_ecriture, distributions):
+    """Ventile une ``LigneEcriture`` sur plusieurs ``CentreCout`` en % (XACC20).
+
+    ``distributions`` : liste de dicts ``{'centre_cout', 'pourcentage'}``. La
+    somme des pourcentages DOIT valoir exactement 100 (sinon
+    ``ValidationError``, rien n'est persisté). Idempotent : ré-appeler sur la
+    même ligne remplace la distribution précédente (OneToOne). Le champ
+    ``centre_cout`` simple (FG150) de la ligne reste INTACT — c'est une
+    information ADDITIONNELLE, jamais un remplacement destructif. Renvoie la
+    ``VentilationAnalytique``.
+    """
+    total = sum(
+        (Decimal(d['pourcentage']) for d in distributions), Decimal('0'))
+    if total != Decimal('100'):
+        raise ValidationError(
+            f"La ventilation doit sommer à 100 % (reçu {total} %).")
+    ventilation, _ = VentilationAnalytique.objects.get_or_create(
+        company=ligne_ecriture.company, ligne_ecriture=ligne_ecriture)
+    ventilation.distributions.all().delete()
+    for d in distributions:
+        LigneVentilation.objects.create(
+            company=ligne_ecriture.company, ventilation=ventilation,
+            centre_cout=d['centre_cout'],
+            pourcentage=Decimal(d['pourcentage']))
+    return ventilation
+
+
+def creer_regle_imputation(company, *, libelle, prefixe_compte,
+                           distributions, tiers_id=None, produit_id=None,
+                           priorite=100):
+    """Crée une règle d'auto-imputation analytique (XACC20).
+
+    ``distributions`` (même contrat que ``ventiler_ligne_ecriture``) doit
+    sommer à 100 %. La règle s'applique aux NOUVELLES écritures dont un
+    compte commence par ``prefixe_compte`` (et, si fournis, dont le
+    ``tiers_id``/``produit_id`` matchent). Renvoie la règle créée.
+    """
+    total = sum(
+        (Decimal(d['pourcentage']) for d in distributions), Decimal('0'))
+    if total != Decimal('100'):
+        raise ValidationError(
+            f"La distribution de la règle doit sommer à 100 % (reçu {total} %).")
+    regle = RegleImputation.objects.create(
+        company=company, libelle=libelle, prefixe_compte=prefixe_compte,
+        tiers_id=tiers_id, produit_id=produit_id, priorite=priorite,
+    )
+    for d in distributions:
+        LigneRegleImputation.objects.create(
+            company=company, regle=regle, centre_cout=d['centre_cout'],
+            pourcentage=Decimal(d['pourcentage']))
+    return regle
+
+
+def _appliquer_regle_imputation_si_match(company, ligne_ecriture, *,
+                                         tiers_id=None, produit_id=None):
+    """Applique, si une règle matche, sa distribution à ``ligne_ecriture``
+    (XACC20). Silencieuse et non bloquante : aucune règle qui matche = rien ne
+    se passe (comportement de saisie manuelle actuel intact). La première
+    règle active par ``priorite`` dont le compte commence par
+    ``prefixe_compte`` (et dont ``tiers_id``/``produit_id``, si renseignés sur
+    la règle, correspondent) gagne.
+    """
+    numero = ligne_ecriture.compte.numero
+    regles = RegleImputation.objects.filter(
+        company=company, actif=True).order_by('priorite', 'id')
+    for regle in regles:
+        if not numero.startswith(regle.prefixe_compte):
+            continue
+        if regle.tiers_id is not None and regle.tiers_id != tiers_id:
+            continue
+        if regle.produit_id is not None and regle.produit_id != produit_id:
+            continue
+        distributions_regle = list(regle.distributions.all())
+        if not distributions_regle:
+            continue
+        ventiler_ligne_ecriture(ligne_ecriture, [
+            {'centre_cout': d.centre_cout, 'pourcentage': d.pourcentage}
+            for d in distributions_regle
+        ])
+        return regle
+    return None
+
+
+# ── XACC21 — Contrôle du budget COMPTABLE à l'engagement ───────────────────
+
+def verifier_engagement_budgetaire(company, *, montant_engage, periode,
+                                   centre_cout=None, compte=None,
+                                   est_responsable=False):
+    """Contrôle un engagement (BCF stock, note de frais…) contre le budget
+    COMPTABLE restant (XACC21) — EN COMPLÉMENT du contrôle PROJET FG313
+    (``installations.selectors``, jamais dupliqué ici). Consommé par
+    ``apps.stock``/``apps.rh`` via ce service (jamais un import de modèle
+    compta).
+
+    Renvoie un dict ``{'autorise': bool, 'warning': str|None,
+    'budget_restant': Decimal|None}`` :
+
+    * aucun budget défini pour le centre/compte/année → ``autorise=True``,
+      ``warning=None`` (aucun contrôle possible, comportement actuel intact) ;
+    * budget en mode ``warning`` (défaut) → TOUJOURS ``autorise=True``, avec
+      un ``warning`` texte si l'engagement dépasse le restant (montants
+      inclus) ;
+    * budget en mode ``bloquant`` → un dépassement REFUSE
+      (``autorise=False``) SAUF si ``est_responsable=True`` (override
+      responsable, alors autorisé avec un ``warning`` traçant l'override).
+    """
+    from apps.compta.selectors import budget_restant as _budget_restant
+
+    info = _budget_restant(
+        company, centre_cout=centre_cout, compte=compte, periode=periode)
+    if info is None:
+        return {'autorise': True, 'warning': None, 'budget_restant': None}
+
+    montant_engage = Decimal(montant_engage or 0)
+    nouveau_restant = info['restant'] - montant_engage
+    if nouveau_restant >= 0:
+        return {
+            'autorise': True, 'warning': None,
+            'budget_restant': nouveau_restant,
+        }
+
+    depassement = -nouveau_restant
+    message = (
+        f"Dépassement du budget comptable restant : engagement de "
+        f"{montant_engage} MAD, restant disponible {info['restant']} MAD "
+        f"(dépassement de {depassement} MAD).")
+    if info['controle'] == Budget.Controle.BLOQUANT and not est_responsable:
+        return {
+            'autorise': False, 'warning': message,
+            'budget_restant': nouveau_restant,
+        }
+    if info['controle'] == Budget.Controle.BLOQUANT and est_responsable:
+        message += " Autorisé par override responsable."
+    return {
+        'autorise': True, 'warning': message,
+        'budget_restant': nouveau_restant,
+    }
+
+
+# ── XACC22 — Révisions & scénarios budgétaires ─────────────────────────────
+
+@transaction.atomic
+def reviser_budget(budget, *, nouveau_libelle=None, user=None):
+    """Révise un budget : fige la version courante, crée la V+1 éditable
+    (XACC22).
+
+    La version N est marquée ``figee=True`` (lecture seule pour toujours) et
+    reste consultable pour la comparaison côte-à-côte. La nouvelle version
+    (N+1) est une COPIE éditable de toutes les ``BudgetLigne`` de N, avec
+    ``budget_parent`` pointant vers N. Refuse de réviser une version déjà
+    figée SANS créer de nouvelle version (une version figée ne se révise
+    qu'une fois — la révision suivante part de la dernière version éditable).
+    Renvoie la nouvelle version.
+    """
+    if budget.figee:
+        raise ValidationError(
+            "Ce budget est déjà figé : révisez plutôt sa dernière révision.")
+    budget.figee = True
+    Budget.objects.filter(pk=budget.pk).update(figee=True)
+
+    nouvelle = Budget.objects.create(
+        company=budget.company, annee=budget.annee,
+        libelle=nouveau_libelle or budget.libelle,
+        statut=Budget.Statut.BROUILLON, controle=budget.controle,
+        version=budget.version + 1, figee=False,
+        budget_parent=budget, scenario=budget.scenario, created_by=user,
+    )
+    for bl in budget.lignes.all():
+        BudgetLigne.objects.create(
+            company=nouvelle.company, budget=nouvelle, compte=bl.compte,
+            centre_cout=bl.centre_cout, libelle=bl.libelle,
+            m01=bl.m01, m02=bl.m02, m03=bl.m03, m04=bl.m04, m05=bl.m05,
+            m06=bl.m06, m07=bl.m07, m08=bl.m08, m09=bl.m09, m10=bl.m10,
+            m11=bl.m11, m12=bl.m12,
+        )
+    return nouvelle
+
+
+def creer_scenario_what_if(budget_engage, *, scenario, user=None):
+    """Crée un scénario what-if (optimiste/pessimiste) à partir du budget
+    ENGAGÉ (XACC22) — une COPIE indépendante, jamais consommée par le
+    contrôle d'engagement (XACC21) ni le suivi budget-vs-réel (FG149) qui
+    restent sur ``Scenario.ENGAGE`` uniquement. Renvoie le scénario créé.
+    """
+    if scenario == Budget.Scenario.ENGAGE:
+        raise ValidationError(
+            "Un scénario what-if doit être optimiste ou pessimiste "
+            "(le scénario 'engage' est LE budget officiel).")
+    nouveau = Budget.objects.create(
+        company=budget_engage.company, annee=budget_engage.annee,
+        libelle=budget_engage.libelle, statut=Budget.Statut.BROUILLON,
+        controle=budget_engage.controle, version=1, figee=False,
+        scenario=scenario, created_by=user,
+    )
+    for bl in budget_engage.lignes.all():
+        BudgetLigne.objects.create(
+            company=nouveau.company, budget=nouveau, compte=bl.compte,
+            centre_cout=bl.centre_cout, libelle=bl.libelle,
+            m01=bl.m01, m02=bl.m02, m03=bl.m03, m04=bl.m04, m05=bl.m05,
+            m06=bl.m06, m07=bl.m07, m08=bl.m08, m09=bl.m09, m10=bl.m10,
+            m11=bl.m11, m12=bl.m12,
+        )
+    return nouveau
+
+
+# Courbes de répartition usuelles (XACC22) : poids relatif par mois (1..12),
+# normalisés à 1.0 par ``repartir_montant_annuel``. « saisonniere » modélise
+# une activité solaire marocaine (pic printemps/été).
+_COURBE_EGALE = [Decimal('1')] * 12
+_COURBE_SAISONNIERE = [
+    Decimal('0.05'), Decimal('0.05'), Decimal('0.08'), Decimal('0.10'),
+    Decimal('0.12'), Decimal('0.12'), Decimal('0.11'), Decimal('0.10'),
+    Decimal('0.09'), Decimal('0.07'), Decimal('0.06'), Decimal('0.05'),
+]
+
+
+def repartir_montant_annuel(montant_annuel, *, courbe='egale', poids=None):
+    """Répartit ``montant_annuel`` sur 12 mois selon une courbe (XACC22).
+
+    ``courbe`` : ``egale`` (1/12 chacun), ``saisonniere`` (barème solaire
+    marocain figé ci-dessus) ou ``pourcentage`` (``poids`` = liste de 12 %
+    fournie explicitement, DOIT sommer à 100). La répartition somme
+    EXACTEMENT ``montant_annuel`` (le douzième/dernier mois absorbe l'écart
+    d'arrondi). Renvoie une liste de 12 ``Decimal``.
+    """
+    montant_annuel = Decimal(montant_annuel or 0)
+    if courbe == 'egale':
+        poids_mois = _COURBE_EGALE
+    elif courbe == 'saisonniere':
+        poids_mois = _COURBE_SAISONNIERE
+    elif courbe == 'pourcentage':
+        if not poids or len(poids) != 12:
+            raise ValidationError(
+                "La courbe 'pourcentage' requiert exactement 12 poids.")
+        total_poids = sum((Decimal(p) for p in poids), Decimal('0'))
+        if total_poids != Decimal('100'):
+            raise ValidationError(
+                f"Les poids doivent sommer à 100 % (reçu {total_poids} %).")
+        poids_mois = [Decimal(p) / Decimal('100') for p in poids]
+    else:
+        raise ValidationError(f"Courbe de répartition inconnue : {courbe}.")
+
+    total_poids_brut = sum(poids_mois, Decimal('0'))
+    montants = []
+    cumul = Decimal('0.00')
+    for idx, poids_m in enumerate(poids_mois):
+        if idx == 11:
+            montant = (montant_annuel - cumul).quantize(
+                Decimal('0.01'), rounding=ROUND_HALF_UP)
+        else:
+            montant = (
+                montant_annuel * poids_m / total_poids_brut
+            ).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        cumul += montant
+        montants.append(montant)
+    return montants
+
+
+def generer_ligne_budget_repartie(budget, *, compte, montant_annuel,
+                                  centre_cout=None, libelle='',
+                                  courbe='egale', poids=None):
+    """Crée une ``BudgetLigne`` avec ses 12 montants générés par une courbe de
+    répartition (XACC22), au lieu d'une saisie manuelle par période. Renvoie
+    la ligne créée.
+    """
+    montants = repartir_montant_annuel(montant_annuel, courbe=courbe, poids=poids)
+    ligne = BudgetLigne.objects.create(
+        company=budget.company, budget=budget, compte=compte,
+        centre_cout=centre_cout, libelle=libelle or '',
+        m01=montants[0], m02=montants[1], m03=montants[2], m04=montants[3],
+        m05=montants[4], m06=montants[5], m07=montants[6], m08=montants[7],
+        m09=montants[8], m10=montants[9], m11=montants[10], m12=montants[11],
+    )
+    return ligne
+
+
+# ── XACC24 — Validation RIB marocain + approbation des changements de RIB ──
+
+def diagnostic_rib(rib):
+    """Diagnostic RIB marocain (mod 97) via ``core.rib`` (XACC24), pur.
+
+    Renvoie ``{'rib', 'valide', 'erreurs'}`` — jamais d'exception, jamais de
+    blocage de saisie historique : c'est un WARNING d'affichage laissé à
+    l'appelant (``apps.stock`` Fournisseur, ``CompteTresorerie`` ici,
+    ``apps.rh`` DossierEmploye).
+    """
+    from core.rib import valider_rib
+    return valider_rib(rib)
+
+
+def demander_changement_rib(company, *, fournisseur_id, fournisseur_nom='',
+                            ancien_rib, nouveau_rib, user=None):
+    """Ouvre une demande d'approbation pour un CHANGEMENT de RIB fournisseur
+    (XACC24, principe 4-yeux). Tant qu'elle n'est pas approuvée, le payment
+    run (FG133, via ``_coordonnees_fournisseur``) continue d'utiliser
+    ``ancien_rib``. Renvoie la demande créée (statut ``en_attente``).
+    """
+    demande = DemandeApprobationRib(
+        company=company, fournisseur_id=fournisseur_id,
+        fournisseur_nom=fournisseur_nom or '', ancien_rib=ancien_rib or '',
+        nouveau_rib=nouveau_rib, demandeur=user,
+    )
+    demande.full_clean()
+    demande.save()
+    return demande
+
+
+def approuver_demande_rib(demande, *, decideur, commentaire=''):
+    """Approuve une demande de changement de RIB (XACC24) : à partir de là,
+    le nouveau RIB devient actif (``rib_actif``) pour le payment run. Idempotente
+    (une demande déjà décidée n'est pas re-décidée)."""
+    if demande.statut != DemandeApprobationRib.Statut.EN_ATTENTE:
+        return demande
+    demande.statut = DemandeApprobationRib.Statut.APPROUVEE
+    demande.decideur = decideur
+    demande.commentaire_decision = commentaire or ''
+    demande.date_decision = timezone.now()
+    demande.save(update_fields=[
+        'statut', 'decideur', 'commentaire_decision', 'date_decision'])
+    return demande
+
+
+def refuser_demande_rib(demande, *, decideur, commentaire=''):
+    """Refuse une demande de changement de RIB (XACC24) : l'ancien RIB reste
+    actif définitivement pour cette demande. Idempotente."""
+    if demande.statut != DemandeApprobationRib.Statut.EN_ATTENTE:
+        return demande
+    demande.statut = DemandeApprobationRib.Statut.REFUSEE
+    demande.decideur = decideur
+    demande.commentaire_decision = commentaire or ''
+    demande.date_decision = timezone.now()
+    demande.save(update_fields=[
+        'statut', 'decideur', 'commentaire_decision', 'date_decision'])
+    return demande
+
+
+# ── XFAC14 — Compensation AR/AP (netting) ──────────────────────────────────
+
+class CompensationError(ValidationError):
+    """Levée sans rien écrire (atomicité) quand une compensation est
+    impossible : sur-compensation, tiers non trouvé, factures d'un tiers
+    différent, etc."""
+
+
+def creer_compensation(company, *, client_id, fournisseur_id, lignes, user=None):
+    """XFAC14 — Crée une ``Compensation`` BROUILLON entre les factures AR
+    (client, ``apps.ventes``) et AP (fournisseur, ``apps.stock``) d'un même
+    tiers réel.
+
+    ``lignes`` : liste de ``{'type': 'ar'|'ap', 'facture_id': int,
+    'montant': Decimal}``. Chaque facture est relue via le sélecteur de
+    l'app cible (jamais un import de ses modèles) pour vérifier
+    l'appartenance société + résoudre le solde dû ; le montant imputé ne
+    peut jamais dépasser le solde dû de sa facture, et
+    ``montant_compense`` = min(Σ AR, Σ AP) (jamais plus que le plus petit des
+    deux soldes globaux — sur-compensation refusée). Lève
+    ``CompensationError`` sans rien créer si une garde échoue. Ne poste
+    AUCUNE écriture (fait par ``valider_compensation``)."""
+    from apps.crm.selectors import get_company_client
+    from apps.stock import selectors as stock_selectors
+    from apps.ventes import selectors as ventes_selectors
+
+    client = get_company_client(company, client_id)
+    if client is None:
+        raise CompensationError('Client introuvable dans votre société.')
+
+    fournisseur = stock_selectors.get_fournisseur_by_id(company, fournisseur_id)
+    if fournisseur is None:
+        raise CompensationError('Fournisseur introuvable dans votre société.')
+
+    if not lignes:
+        raise CompensationError(
+            'Sélectionnez au moins une facture AR et une facture AP.')
+
+    total_ar = Decimal('0')
+    total_ap = Decimal('0')
+    lignes_valides = []
+    for entree in lignes:
+        type_facture = entree.get('type')
+        facture_id = entree.get('facture_id')
+        montant = Decimal(str(entree.get('montant') or 0))
+        if montant <= 0:
+            raise CompensationError('Le montant imputé doit être positif.')
+        if type_facture == LigneCompensation.Type.AR:
+            facture = ventes_selectors.get_facture_scoped(company, facture_id)
+            if facture is None:
+                raise CompensationError(
+                    f'Facture client #{facture_id} introuvable.')
+            if facture.client_id != client.id:
+                raise CompensationError(
+                    "Cette facture n'appartient pas au client sélectionné.")
+            if montant > facture.montant_du:
+                raise CompensationError(
+                    f'Le montant imputé dépasse le solde dû de {facture.reference}.')
+            total_ar += montant
+            reference = facture.reference
+        elif type_facture == LigneCompensation.Type.AP:
+            facture = stock_selectors.facture_fournisseur_scoped(
+                company, facture_id)
+            if facture is None:
+                raise CompensationError(
+                    f'Facture fournisseur #{facture_id} introuvable.')
+            if facture.fournisseur_id != fournisseur.id:
+                raise CompensationError(
+                    "Cette facture n'appartient pas au fournisseur sélectionné.")
+            if montant > facture.solde_du:
+                raise CompensationError(
+                    f'Le montant imputé dépasse le solde dû de {facture.reference}.')
+            total_ap += montant
+            reference = facture.reference
+        else:
+            raise CompensationError(f"Type de facture invalide : {type_facture!r}.")
+        lignes_valides.append({
+            'type_facture': type_facture, 'facture_id': facture_id,
+            'reference_facture': reference, 'montant_impute': montant,
+        })
+
+    if total_ar <= 0 or total_ap <= 0:
+        raise CompensationError(
+            'Il faut au moins une facture AR et une facture AP.')
+
+    montant_compense = min(total_ar, total_ap)
+
+    with transaction.atomic():
+        compensation = Compensation.objects.create(
+            company=company, client_id=client.id,
+            client_nom=str(client), fournisseur_id=fournisseur.id,
+            fournisseur_nom=fournisseur.nom,
+            montant_compense=montant_compense, created_by=user,
+        )
+        compensation.reference = f'CMP-{compensation.id:06d}'
+        compensation.save(update_fields=['reference'])
+        for ligne in lignes_valides:
+            LigneCompensation.objects.create(compensation=compensation, **ligne)
+    return compensation
+
+
+def valider_compensation(compensation, *, user=None):
+    """XFAC14 — Valide une ``Compensation`` BROUILLON : poste l'écriture
+    équilibrée 4411 (fournisseur) / 3421 (client) du montant compensé et
+    enregistre les règlements croisés via les services de chaque app
+    (jamais un import de leurs modèles). Idempotente (une compensation déjà
+    validée n'est pas re-postée). Respecte le verrou de période (via
+    ``creer_ecriture_od``)."""
+    if compensation.statut == Compensation.Statut.VALIDEE:
+        return compensation
+
+    from apps.stock import selectors as stock_selectors
+    from apps.stock import services as stock_services
+    from apps.ventes import selectors as ventes_selectors
+    from apps.ventes import services as ventes_services
+
+    compte_clients = get_compte(compensation.company, '3421')
+    compte_fournisseurs = get_compte(compensation.company, '4411')
+    if compte_clients is None or compte_fournisseurs is None:
+        raise CompensationError(
+            'Comptes 3421/4411 introuvables — semez le plan comptable.')
+
+    with transaction.atomic():
+        ecriture = creer_ecriture_od(
+            compensation.company, timezone.localdate(),
+            f'Compensation {compensation.reference} — '
+            f'{compensation.client_nom} / {compensation.fournisseur_nom}',
+            [
+                {'compte': compte_fournisseurs,
+                 'debit': compensation.montant_compense, 'credit': Decimal('0'),
+                 'tiers_type': 'fournisseur',
+                 'tiers_id': compensation.fournisseur_id},
+                {'compte': compte_clients,
+                 'debit': Decimal('0'), 'credit': compensation.montant_compense,
+                 'tiers_type': 'client', 'tiers_id': compensation.client_id},
+            ],
+            reference=compensation.reference, created_by=user,
+        )
+
+        restant = compensation.montant_compense
+        for ligne in compensation.lignes.filter(
+                type_facture=LigneCompensation.Type.AR).order_by('id'):
+            if restant <= 0:
+                break
+            montant = min(ligne.montant_impute, restant)
+            facture = ventes_selectors.get_facture_scoped(
+                compensation.company, ligne.facture_id)
+            if facture is not None and montant > 0:
+                ventes_services.enregistrer_paiement(
+                    facture=facture, montant=montant, mode='autre',
+                    date_paiement=timezone.localdate(), user=user,
+                    reference=compensation.reference,
+                    note=f'Compensation AR/AP {compensation.reference}')
+            restant -= montant
+
+        restant = compensation.montant_compense
+        for ligne in compensation.lignes.filter(
+                type_facture=LigneCompensation.Type.AP).order_by('id'):
+            if restant <= 0:
+                break
+            montant = min(ligne.montant_impute, restant)
+            facture_ap = stock_selectors.facture_fournisseur_scoped(
+                compensation.company, ligne.facture_id)
+            if facture_ap is not None and montant > 0:
+                stock_services.add_paiement_sous_traitant(
+                    company=compensation.company, user=user,
+                    facture=facture_ap, montant=montant,
+                    date_paiement=timezone.localdate(), mode='autre',
+                    note=f'Compensation AR/AP {compensation.reference}')
+            restant -= montant
+
+        compensation.statut = Compensation.Statut.VALIDEE
+        compensation.ecriture_id = ecriture.id
+        compensation.date_validation = timezone.now()
+        compensation.save(update_fields=[
+            'statut', 'ecriture_id', 'date_validation'])
+    return compensation
+
+
+# ── XFAC27 — Portail client : contester une facture ─────────────────────────
+
+def creer_reclamation_portail(facture, *, motif_label, commentaire=''):
+    """XFAC27 — Ouvre la ``litiges.Reclamation`` d'une contestation de
+    facture initiée par le CLIENT depuis le portail self-service (jamais un
+    import de ``apps.litiges.models`` — passe par son ``services.py``, le
+    type ``'financier'`` est la valeur stable de
+    ``Reclamation.TypeReclamation.FINANCIER``).
+    ``bloque_relances=True`` (défaut) : LITIGE3 suspend automatiquement les
+    relances de cette facture tant que la réclamation reste ouverte."""
+    from apps.litiges import services as litiges_services
+
+    objet = f'Facture {facture.reference} contestée par le client (portail)'
+    description = motif_label
+    if commentaire:
+        description += f' — {commentaire}'
+    return litiges_services.creer_reclamation(
+        company=facture.company,
+        type_reclamation='financier',
+        source_type='facture', source_id=facture.id,
+        objet=objet, description=description,
+        montant_conteste=facture.montant_du,
+        bloque_relances=True,
+    )

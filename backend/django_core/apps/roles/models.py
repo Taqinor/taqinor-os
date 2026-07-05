@@ -81,6 +81,10 @@ ALL_PERMISSIONS = [
     # (prix d'achat brut), qui reste la garde du prix d'achat lui-même.
     'client_pii_voir',
     'marge_voir',
+    # XQHS22 — voir les montants du coût de la non-qualité (CoQ) QHSE (NCR/
+    # CAPA/incident). Donnée financière interne, jamais client-facing (même
+    # règle que `prix_achat`/`marge_voir`). Élevée (cf. ELEVATED_PERMISSIONS).
+    'cout_non_qualite_voir',
     # ── Portée de visibilité des enregistrements (Feature F) ──
     # Marqueurs de RÔLE (pas des cases « action ») : narrowing OPT-IN. Un rôle
     # SANS l'un de ces marqueurs voit tous les enregistrements de sa société
@@ -113,6 +117,8 @@ ELEVATED_PERMISSIONS = frozenset({
     # coordonnées d'un client est un besoin opérationnel courant (commercial),
     # donc ``client_pii_voir`` reste octroyable par un Responsable.
     'marge_voir',
+    # XQHS22 — coût de la non-qualité : même palier que marge/prix d'achat.
+    'cout_non_qualite_voir',
 })
 
 RESPONSABLE_PERMISSIONS = [

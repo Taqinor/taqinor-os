@@ -50,6 +50,30 @@ def _pieces_payload(ticket):
     return rows
 
 
+def _worksheet_payload(ticket):
+    """ZMFG6 — Champs typés remplis (avec leur valeur) de la feuille de
+    maintenance du ticket, s'il en existe une. Renvoie ``None`` (section
+    omise du PDF) si aucune feuille n'est attachée — comportement inchangé
+    pour tout ticket sans worksheet (fonctionnalité gatée)."""
+    worksheet = getattr(ticket, 'worksheet', None)
+    if worksheet is None:
+        return None
+    valeurs = worksheet.valeurs or {}
+    rows = []
+    for champ in (worksheet.modele.champs or []):
+        cle = champ.get('cle')
+        rows.append({
+            'libelle': champ.get('libelle', cle),
+            'type': champ.get('type', 'texte'),
+            'valeur': valeurs.get(cle),
+        })
+    return {
+        'modele_nom': worksheet.modele.nom,
+        'complete': worksheet.complete,
+        'champs': rows,
+    }
+
+
 def rapport_intervention_pdf(ticket):
     """Génère le PDF du rapport d'intervention (N45). Renvoie des octets PDF."""
     context = _company_context(company=ticket.company)
@@ -70,6 +94,8 @@ def rapport_intervention_pdf(ticket):
         'garantie_legale_seule': garantie_legale_seule,
         'interventions': _interventions_payload(ticket),
         'pieces': _pieces_payload(ticket),
+        # ZMFG6 — section conditionnelle : None quand pas de worksheet.
+        'worksheet': _worksheet_payload(ticket),
     })
     html = _render_html('sav_intervention.html', context)
     return _html_to_pdf(html)

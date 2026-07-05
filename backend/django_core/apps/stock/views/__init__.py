@@ -28,6 +28,11 @@ from .conformite_fournisseur import (
 )
 from .acompte_fournisseur import AcompteFournisseurViewSet
 from .avoir_fournisseur import AvoirFournisseurViewSet
+from .lot_entrepot import LotEntrepotViewSet
+from .inventaire_annuel import InventaireAnnuelViewSet
+from .revalorisation_stock import RevalorisationStockViewSet
+from .conditionnement_produit import ConditionnementProduitViewSet
+from .modele_bcf import ModeleBonCommandeFournisseurViewSet
 
 __all__ = [
     'ProduitViewSet',
@@ -53,4 +58,9 @@ __all__ = [
     'CategorieFournisseurViewSet',
     'AcompteFournisseurViewSet',
     'AvoirFournisseurViewSet',
+    'LotEntrepotViewSet',
+    'InventaireAnnuelViewSet',
+    'RevalorisationStockViewSet',
+    'ConditionnementProduitViewSet',
+    'ModeleBonCommandeFournisseurViewSet',
 ]

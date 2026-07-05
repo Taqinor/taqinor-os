@@ -821,8 +821,10 @@ def mouvements_mrr(company, debut, fin):
       MOMENT de la résiliation (``mrr_contrat_actif`` avant résiliation n'étant
       plus recalculable après coup, on utilise le MRR courant du contrat comme
       meilleure approximation disponible — cohérent avec CONTRAT33) ;
-    - ``churn_par_motif`` : ventilation de ``churn`` par ``Resiliation.motif``
-      (motif vide groupé sous ``''``) ;
+    - ``churn_par_motif`` : ventilation de ``churn`` par motif — ZCTR3 : utilise
+      ``Resiliation.motif_ref.libelle`` (normalisé) quand présent, sinon replie
+      sur le texte libre ``Resiliation.motif`` (motif vide groupé sous ``''``)
+      — rétrocompatible avec les résiliations sans motif référentiel ;
     - ``net`` : ``new + expansion + contraction + churn`` (contraction et churn
       étant déjà négatifs, ``net`` est une simple somme algébrique — la garde
       ``somme new+expansion−contraction−churn = variation du MRR`` du Done= se
@@ -911,7 +913,7 @@ def mouvements_mrr(company, debut, fin):
     resiliations = (
         Resiliation.objects.filter(company=company)
         .exclude(statut=Resiliation.Statut.ANNULEE)
-        .select_related('contrat')
+        .select_related('contrat', 'motif_ref')
     )
     for resiliation in resiliations:
         date_ref = resiliation.date_effet or resiliation.date_demande
@@ -920,7 +922,11 @@ def mouvements_mrr(company, debut, fin):
         perte = mrr_contrat_actif(resiliation.contrat)
         if perte <= 0:
             continue
-        motif = (resiliation.motif or '').strip()
+        # ZCTR3 — motif normalisé prioritaire (référentiel), repli texte libre.
+        if resiliation.motif_ref_id:
+            motif = resiliation.motif_ref.libelle
+        else:
+            motif = (resiliation.motif or '').strip()
         churn -= perte
         churn_par_motif[motif] = churn_par_motif.get(
             motif, Decimal('0')) - perte
@@ -1173,3 +1179,281 @@ def clv_client(company, client_id, *, within_days=90):
     arpc = mrr_client(company, client_id)
     taux = taux_churn_mensuel_company(company, within_days=within_days)
     return _clv(arpc, taux)
+
+
+# ---------------------------------------------------------------------------
+# XCTR14 — Portail client : « Mes contrats & abonnements »
+# ---------------------------------------------------------------------------
+
+
+def contrats_portail_client(company, client_id):
+    """Contrats d'UN client, projetés pour le portail public (XCTR14).
+
+    Lecture minimisée (loi 09-08) : seuls les champs nécessaires au client
+    sont exposés (statut, dates, périodicité, montant, prochaine échéance) —
+    jamais ``confidentialite``, ``responsable``, ni aucun champ interne. Le
+    client ne voit QUE ses propres contrats (filtré par ``client_id`` ET
+    ``company`` — jamais un contrat d'un autre client ou d'une autre société).
+    Renvoie une liste de dicts triés par échéance la plus proche.
+    """
+    contrats = (
+        Contrat.objects
+        .filter(company=company, client_id=client_id)
+        .prefetch_related('echeanciers__lignes')
+        .order_by('-date_creation')
+    )
+    rows = []
+    for contrat in contrats:
+        prochaine = None
+        factures_liees = []
+        for echeancier in contrat.echeanciers.all():
+            for ligne in echeancier.lignes.all():
+                if ligne.statut in ('a_venir', 'en_retard') and (
+                        prochaine is None or ligne.date_echeance < prochaine):
+                    prochaine = ligne.date_echeance
+                if ligne.facture_id:
+                    factures_liees.append(ligne.facture_id)
+        rows.append({
+            'id': contrat.id,
+            'reference': contrat.reference,
+            'objet': contrat.objet,
+            'type_contrat': contrat.type_contrat,
+            'statut': contrat.statut,
+            'statut_display': contrat.get_statut_display(),
+            'date_debut': contrat.date_debut,
+            'date_fin': contrat.date_fin,
+            'montant': contrat.montant,
+            'devise': contrat.devise,
+            'prochaine_echeance': prochaine,
+            'factures_ids': factures_liees,
+        })
+    return rows
+
+
+# ---------------------------------------------------------------------------
+# XCTR17 — Location de matériel SORTANTE : disponibilité
+# ---------------------------------------------------------------------------
+
+
+def disponibilite_produit(company, produit_id, *, numero_serie=None,
+                          date_debut=None, date_fin=None):
+    """Disponibilité d'un produit louable (XCTR17) — lecture seule.
+
+    Sans fenêtre de dates (``date_debut``/``date_fin`` absents) : renvoie la
+    liste des ordres ACTIFS (réservée/enlevée) du produit (occupé quand), en
+    triant par date d'enlèvement prévue. Avec une fenêtre : renvoie en plus
+    ``disponible`` (``True`` si AUCUN ordre actif — filtré éventuellement par
+    ``numero_serie`` — ne chevauche la fenêtre demandée).
+    """
+    from .models import OrdreLocation
+
+    qs = OrdreLocation.objects.filter(
+        company=company, produit_id=produit_id,
+        statut__in=OrdreLocation.STATUTS_ACTIFS,
+    )
+    if numero_serie is not None:
+        qs = qs.filter(numero_serie=numero_serie)
+    qs = qs.order_by('date_enlevement_prevue', 'id')
+
+    occupations = [
+        {
+            'id': o.id,
+            'numero_serie': o.numero_serie,
+            'statut': o.statut,
+            'date_enlevement_prevue': o.date_enlevement_prevue,
+            'date_retour_prevue': o.date_retour_prevue,
+        }
+        for o in qs
+    ]
+
+    result = {'produit_id': produit_id, 'occupations': occupations}
+    if date_debut is not None and date_fin is not None:
+        result['disponible'] = not any(
+            o.chevauche(date_debut, date_fin) for o in qs)
+        result['date_debut'] = date_debut
+        result['date_fin'] = date_fin
+    return result
+
+
+# ---------------------------------------------------------------------------
+# XCTR19 — Retour de location : ordres en retard
+# ---------------------------------------------------------------------------
+
+
+def ordres_location_en_retard(company, today=None):
+    """Ordres de location ENLEVÉS dont le retour prévu est dépassé sans
+    retour effectif — XCTR19. Lecture seule, scopée société."""
+    from .models import OrdreLocation
+
+    if today is None:
+        today = timezone.localdate()
+    return (
+        OrdreLocation.objects
+        .filter(company=company, statut=OrdreLocation.Statut.ENLEVEE,
+                date_retour_prevue__lt=today)
+        .order_by('date_retour_prevue', 'id')
+    )
+
+
+# ---------------------------------------------------------------------------
+# XCTR21 — Utilisation & ROI du parc de location
+# ---------------------------------------------------------------------------
+
+
+def _jours_loues_dans_periode(ordre, periode_debut, periode_fin):
+    """Nombre de jours (bornes incluses) où ``ordre`` occupe le produit, BORNÉ
+    à ``[periode_debut, periode_fin]`` — XCTR21. Utilise la fenêtre
+    PRÉVUE (cohérent avec la détection de conflit XCTR17) ; un ordre hors
+    fenêtre renvoie 0 (jamais négatif)."""
+    debut = max(ordre.date_enlevement_prevue, periode_debut)
+    fin = min(ordre.date_retour_prevue, periode_fin)
+    if fin < debut:
+        return 0
+    return (fin - debut).days + 1
+
+
+def utilisation_parc_location(company, *, periode_debut, periode_fin,
+                              admin=False):
+    """Rapport d'utilisation/ROI du parc de location, PAR produit — XCTR21.
+
+    Pour chaque produit louable ayant AU MOINS un ordre de location (actif ou
+    non — un ordre annulé/clôturé compte pour l'historique), calcule sur la
+    période ``[periode_debut, periode_fin]`` (bornes incluses) :
+
+    - ``jours_disponibles`` : durée de la période (jours) ;
+    - ``jours_loues`` : Σ des jours occupés par des ordres NON annulés,
+      BORNÉE à la période (un ordre chevauchant partiellement ne compte que
+      sa portion dans la fenêtre — jamais au-delà) ;
+    - ``taux_utilisation`` : ``jours_loues / jours_disponibles`` (0..1) ;
+    - ``revenu_locatif`` : Σ ``montant_estime`` des ordres NON annulés dont la
+      fenêtre chevauche la période ;
+    - ``dormant`` : ``True`` si ``jours_loues == 0`` sur la période (aucune
+      location sur N jours).
+
+    ``payback`` (revenu locatif cumulé ÷ ``prix_achat`` du produit) n'est
+    inclus QUE si ``admin=True`` (ADMIN-ONLY — ``prix_achat`` ne doit JAMAIS
+    apparaître pour un autre rôle ni dans un PDF/export client-facing).
+    Lecture seule, scopée société.
+    """
+    from decimal import Decimal
+
+    from .models import OrdreLocation
+
+    nb_jours_periode = (periode_fin - periode_debut).days + 1
+    if nb_jours_periode <= 0:
+        return []
+
+    ordres = (
+        OrdreLocation.objects
+        .filter(
+            company=company,
+            date_enlevement_prevue__lte=periode_fin,
+            date_retour_prevue__gte=periode_debut,
+        )
+        .exclude(statut=OrdreLocation.Statut.ANNULEE)
+        .select_related('produit')
+    )
+
+    par_produit = {}
+    for ordre in ordres:
+        entry = par_produit.setdefault(ordre.produit_id, {
+            'produit_id': ordre.produit_id,
+            'produit_nom': ordre.produit.nom,
+            'prix_achat': ordre.produit.prix_achat,
+            'jours_loues': 0,
+            'revenu_locatif': Decimal('0'),
+        })
+        entry['jours_loues'] += _jours_loues_dans_periode(
+            ordre, periode_debut, periode_fin)
+        entry['revenu_locatif'] += (ordre.montant_estime or Decimal('0'))
+
+    rows = []
+    for entry in par_produit.values():
+        taux = Decimal(entry['jours_loues']) / Decimal(nb_jours_periode)
+        row = {
+            'produit_id': entry['produit_id'],
+            'produit_nom': entry['produit_nom'],
+            'jours_disponibles': nb_jours_periode,
+            'jours_loues': entry['jours_loues'],
+            'taux_utilisation': taux,
+            'revenu_locatif': entry['revenu_locatif'],
+            'dormant': entry['jours_loues'] == 0,
+        }
+        if admin:
+            prix_achat = entry['prix_achat'] or Decimal('0')
+            row['prix_achat'] = prix_achat
+            row['payback'] = (
+                (entry['revenu_locatif'] / prix_achat)
+                if prix_achat > 0 else None)
+        rows.append(row)
+
+    rows.sort(key=lambda r: r['produit_nom'])
+    return rows
+
+
+# ---------------------------------------------------------------------------
+# YSUBS5 — Résiliation : résolution du ContratMaintenance SAV lié
+# ---------------------------------------------------------------------------
+
+
+def contrat_maintenance_lie_id(company, contrat_id):
+    """ID du ``sav.ContratMaintenance`` lié à un ``Contrat``, ou ``None`` —
+    YSUBS5. Point d'entrée LECTURE SEULE pour les apps consommatrices (ex.
+    ``apps.sav.receivers`` sur l'événement ``contrat_resilie``) : jamais un
+    import du modèle ``Contrat`` en dehors de ``contrats``.
+
+    Résolution dans l'ORDRE : (1) ``Contrat.sav_contrat_maintenance_id``
+    (lien direct, le plus courant) ; (2) à défaut, un ``ContratLien`` de
+    type ``maintenance`` pour ce contrat (premier trouvé). ``None`` si le
+    contrat n'existe pas dans la société ou n'a aucun lien maintenance."""
+    from .models import Contrat, ContratLien
+
+    contrat = Contrat.objects.filter(id=contrat_id, company=company).first()
+    if contrat is None:
+        return None
+    if contrat.sav_contrat_maintenance_id:
+        return contrat.sav_contrat_maintenance_id
+
+    lien = (
+        ContratLien.objects
+        .filter(
+            company=company, contrat=contrat,
+            type_cible=ContratLien.TypeCible.MAINTENANCE,
+        )
+        .order_by('id')
+        .first()
+    )
+    return lien.cible_id if lien is not None else None
+
+
+# ---------------------------------------------------------------------------
+# ZCTR1 — Plan de facturation récurrente réutilisable (RecurringPlan config)
+# ---------------------------------------------------------------------------
+
+
+def plans_recurrents_actifs(company):
+    """Plans de facturation récurrente ACTIFS d'une société, scopés — ZCTR1."""
+    from .models import PlanRecurrent
+
+    return PlanRecurrent.objects.filter(company=company, actif=True)
+
+
+def mois_par_cycle_contrat(contrat):
+    """Nombre de mois d'un cycle de facturation pour un contrat — ZCTR1.
+
+    Lit ``Contrat.plan_recurrent.mois_par_cycle()`` quand un plan ACTIF est
+    rattaché ; sinon retombe sur le pas de périodicité de son
+    ``EcheancierContrat`` le plus récent (même table que YSUBS8) ; ``None`` si
+    ni l'un ni l'autre n'est déterminable (comportement actuel inchangé —
+    aucune décision prise à la place de l'appelant)."""
+    if contrat.plan_recurrent_id and contrat.plan_recurrent.actif:
+        return contrat.plan_recurrent.mois_par_cycle()
+
+    echeancier = contrat.echeanciers.order_by('-id').first()
+    if echeancier is None:
+        return None
+
+    mois_par_periodicite = {
+        'mensuelle': 1, 'trimestrielle': 3, 'semestrielle': 6, 'annuelle': 12,
+    }
+    return mois_par_periodicite.get(echeancier.periodicite)

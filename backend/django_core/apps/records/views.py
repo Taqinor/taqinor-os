@@ -4,6 +4,9 @@ Tout est scopé société côté serveur. Lecture : tout rôle. Écriture d'acti
 et ajout de pièces jointes : Responsable (Commerciale) ou Admin. Suppression de
 pièce jointe et gestion des types d'activité : Admin.
 """
+from datetime import timedelta
+
+from django.db import models
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import status, viewsets
@@ -17,10 +20,13 @@ from authentication.permissions import (
     IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
 
-from .models import Activity, ActivityType, Attachment, Comment, Tag, TaggedItem
+from .models import (
+    Activity, ActivityType, Attachment, Comment, Follower, Tag, TaggedItem,
+)
 from .serializers import (
     ActivitySerializer, ActivityTypeSerializer, AttachmentSerializer,
-    CommentSerializer, TaggedItemSerializer, TagSerializer, resolve_target,
+    CommentSerializer, FollowerSerializer, TaggedItemSerializer,
+    TagSerializer, resolve_target,
 )
 from .storage import delete_attachment, fetch_attachment, store_attachment
 
@@ -67,6 +73,10 @@ class ActivityViewSet(viewsets.ModelViewSet):
             Activity.objects.select_related(
                 'activity_type', 'assigned_to', 'content_type'),
             self.request.user)
+        # XKB4 — un à-faire personnel n'est JAMAIS visible d'un collègue,
+        # même admin/superviseur : on l'exclut sauf pour son créateur.
+        qs = qs.exclude(
+            models.Q(personnelle=True) & ~models.Q(created_by=self.request.user))
         model = self.request.query_params.get('model')
         oid = self.request.query_params.get('id')
         if model and oid:
@@ -75,15 +85,29 @@ class ActivityViewSet(viewsets.ModelViewSet):
             except ValueError:
                 return qs.none()
             qs = qs.filter(content_type=ct, object_id=oid)
+        elif self.request.query_params.get('personnelle') == '1':
+            qs = qs.filter(personnelle=True, created_by=self.request.user)
         if self.request.query_params.get('open') == '1':
             qs = qs.filter(done=False)
         return qs
 
     def create(self, request, *args, **kwargs):
         company = _company(request)
+        model = request.data.get('model')
+        oid = request.data.get('id')
+        # XKB4 — à-faire personnel : pas de cible métier (model/id absents).
+        if not model and not oid:
+            ser = self.get_serializer(data=request.data)
+            ser.is_valid(raise_exception=True)
+            ser.save(
+                company=company, content_type=None, object_id=None,
+                personnelle=True,
+                created_by=request.user,
+                assigned_to=ser.validated_data.get('assigned_to') or request.user,
+            )
+            return Response(ser.data, status=status.HTTP_201_CREATED)
         try:
-            ct, _obj = resolve_target(
-                request.data.get('model'), request.data.get('id'), company)
+            ct, _obj = resolve_target(model, oid, company)
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -91,11 +115,41 @@ class ActivityViewSet(viewsets.ModelViewSet):
         ser.is_valid(raise_exception=True)
         ser.save(
             company=company, content_type=ct,
-            object_id=request.data.get('id'),
+            object_id=oid,
             created_by=request.user,
             assigned_to=ser.validated_data.get('assigned_to') or request.user,
         )
         return Response(ser.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='vers-tache-projet')
+    def vers_tache_projet(self, request, pk=None):
+        """XKB4 — convertit un à-faire personnel en tâche projet réelle.
+
+        Passe EXCLUSIVEMENT par ``gestion_projet.services`` (jamais un import
+        de ses ``models``) : préserve la frontière cross-app (CLAUDE.md). Le
+        contenu (résumé/note/échéance/assigné) est reporté sur la tâche créée.
+        L'activité d'origine est marquée faite pour ne plus polluer « Mes
+        activités » (mais n'est jamais supprimée)."""
+        act = self.get_object()
+        projet_id = request.data.get('projet_id') or request.data.get('projet')
+        if not projet_id:
+            return Response({'detail': 'projet_id requis.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        from apps.gestion_projet import services as gp_services
+        try:
+            tache = gp_services.creer_tache_depuis_activite(
+                act, projet_id=projet_id, company=act.company or _company(request))
+        except gp_services.ConversionActiviteError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        act.done = True
+        act.done_at = timezone.now()
+        act.done_by = request.user
+        act.save(update_fields=['done', 'done_at', 'done_by'])
+        return Response({
+            'activity': ActivitySerializer(act).data,
+            'tache_id': tache.id,
+        }, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['get'])
     def mine(self, request):
@@ -120,13 +174,20 @@ class ActivityViewSet(viewsets.ModelViewSet):
             permission_classes=[IsResponsableOrAdmin])
     def marquer_fait(self, request, pk=None):
         act = self.get_object()
-        if not act.done:
+        chained = None
+        suggestion = None
+        first_close = not act.done
+        if first_close:
             act.done = True
             act.done_at = timezone.now()
             act.done_by = request.user
             act.save(update_fields=['done', 'done_at', 'done_by'])
             _log_done_to_chatter(act, request.user)
-        # Planifier la suite si demandé.
+            # ZSAL1 — enchaînement du type d'activité, UNIQUEMENT à la
+            # PREMIÈRE clôture (re-clôturer une activité déjà faite ne
+            # déclenche/ne suggère jamais une 2ᵉ fois — idempotence).
+            chained, suggestion = _appliquer_enchainement(act, request.user)
+        # Planifier la suite si demandé explicitement par le front.
         nxt = request.data.get('next')
         created = None
         if isinstance(nxt, dict) and nxt.get('activity_type'):
@@ -145,6 +206,8 @@ class ActivityViewSet(viewsets.ModelViewSet):
         return Response({
             'activity': ActivitySerializer(act).data,
             'next': ActivitySerializer(created).data if created else None,
+            'chained': ActivitySerializer(chained).data if chained else None,
+            'suggestion': suggestion,
         })
 
     def perform_update(self, serializer):
@@ -177,6 +240,46 @@ def _log_done_to_chatter(activity, user):
                 sav_activity.log_note(target, user, body)
     except Exception:
         pass
+
+
+def _appliquer_enchainement(activity, user):
+    """ZSAL1 — applique le `mode_enchainement` du type d'activité clôturée.
+
+    Renvoie ``(activite_creee_ou_None, suggestion_dict_ou_None)`` :
+    - ``mode_enchainement == 'aucun'`` (défaut) : rien ne change, renvoie
+      ``(None, None)`` — comportement inchangé pour tous les types existants ;
+    - ``'suggerer'`` : ne crée RIEN, renvoie juste la proposition au front ;
+    - ``'declencher'`` : crée EXACTEMENT une activité de suivi (même cible,
+      échéance = aujourd'hui + `delai_jours`, assignée au même utilisateur).
+      Appelé une seule fois par la vue (à la PREMIÈRE clôture uniquement), ce
+      qui garantit l'idempotence — re-clôturer n'en crée jamais une 2ᵉ.
+    """
+    atype = activity.activity_type
+    type_suivant = atype.type_suivant
+    if not type_suivant or atype.mode_enchainement == ActivityType.ModeEnchainement.AUCUN:
+        return None, None
+
+    if atype.mode_enchainement == ActivityType.ModeEnchainement.SUGGERER:
+        return None, {
+            'activity_type': type_suivant.id,
+            'activity_type_nom': type_suivant.nom,
+            'delai_jours': atype.delai_jours,
+        }
+
+    if atype.mode_enchainement == ActivityType.ModeEnchainement.DECLENCHER:
+        echeance = timezone.now().date() + timedelta(days=atype.delai_jours)
+        created = Activity.objects.create(
+            company=activity.company,
+            content_type=activity.content_type, object_id=activity.object_id,
+            activity_type=type_suivant,
+            summary=type_suivant.nom,
+            personnelle=activity.personnelle,
+            due_date=echeance,
+            assigned_to=activity.assigned_to or user,
+            created_by=user)
+        return created, None
+
+    return None, None
 
 
 # ── Commentaires (FG7) ──────────────────────────────────────────────
@@ -269,6 +372,13 @@ class CommentViewSet(viewsets.ModelViewSet):
             author=request.user)
         # Notifie les @mentions (best-effort, jamais d'erreur remontée).
         _notify_mentions(comment.body, request.user, company)
+        # XKB34 — notifie les followers de la cible sur une nouvelle note de
+        # chatter (best-effort, jamais l'auteur lui-même).
+        from .services import notify_followers
+        notify_followers(
+            content_type=ct, object_id=comment.object_id,
+            title=f'{request.user.username} a ajouté une note',
+            body=comment.body[:200], exclude_user=request.user)
         return Response(CommentSerializer(comment).data,
                         status=status.HTTP_201_CREATED)
 
@@ -443,6 +553,61 @@ class TaggedItemViewSet(viewsets.ModelViewSet):
             tag=tag, content_type=ct, object_id=request.data.get('id'))
         code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
         return Response(TaggedItemSerializer(item).data, status=code)
+
+
+# ── Followers (XKB34) ────────────────────────────────────────────────
+class FollowerViewSet(viewsets.ModelViewSet):
+    """XKB34 — S'abonner/se désabonner d'un enregistrement.
+
+    Lecture : tout rôle (filtrage par model+id, ou `?mine=1` pour ses propres
+    abonnements). Création : tout rôle (suivre est une action personnelle,
+    jamais restreinte à un rôle). Suppression : seulement son propre abonnement.
+    Company posée côté serveur, jamais lue du corps de requête."""
+    serializer_class = FollowerSerializer
+
+    def get_permissions(self):
+        return [IsAnyRole()]
+
+    def get_queryset(self):
+        qs = _scoped(
+            Follower.objects.select_related('user', 'content_type'),
+            self.request.user)
+        model = self.request.query_params.get('model')
+        oid = self.request.query_params.get('id')
+        if model and oid:
+            try:
+                ct, _ = resolve_target(model, oid, _company(self.request))
+            except ValueError:
+                return qs.none()
+            qs = qs.filter(content_type=ct, object_id=oid)
+        if self.request.query_params.get('mine') == '1':
+            qs = qs.filter(user=self.request.user)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        company = _company(request)
+        try:
+            ct, _obj = resolve_target(
+                request.data.get('model'), request.data.get('id'), company)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        from .services import follow
+        obj = follow(
+            company=company, content_type=ct,
+            object_id=request.data.get('id'), user=request.user,
+            sous_type=(request.data.get('sous_type') or ''))
+        return Response(FollowerSerializer(obj).data,
+                        status=status.HTTP_201_CREATED)
+
+    def destroy(self, request, *args, **kwargs):
+        follower = self.get_object()
+        if follower.user_id != request.user.id:
+            return Response(
+                {'detail': "Vous ne pouvez désabonner que vous-même."},
+                status=status.HTTP_403_FORBIDDEN)
+        follower.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 @api_view(['GET'])

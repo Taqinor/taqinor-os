@@ -12,17 +12,21 @@ from .models import (
     AppelTelephonique, AvancementRevenu, BaremeIndemnite, BordereauRemise,
     Budget, BudgetLigne,
     Caisse, Campagne, CautionBancaire, CentreCout, CessionImmobilisation,
+    EnvoiCampagne,
     ClotureCaisse, CodePromotion,
     CommissionPayoutLine, CommissionPayoutRun, CompteComptable,
     CompteTresorerie, ContratAvancement, DeclarationTVA,
     DemandeApprobationConfig, DotationAmortissement,
     ECatalogue, EcritureComptable, Effet, EntiteConsolidation, EtapeSequence,
+    ExecutionEtapeSequence, InscriptionSequence,
+    ListeDiffusion, AbonnementListe, SegmentMarketing,
     ExerciceComptable, FormulaireIntake,
     Immobilisation, IndemniteChantier, Journal, LigneEcriture,
     LignePrevisionnelTresorerie, LigneReleve, MessageWhatsAppEntrant,
     ModeleDevis, MouvementCaisse, NoteFrais, OuverturePartage,
-    PaymentRun, PaymentRunLine, PeriodeComptable, PlanAmortissement,
-    PlanComptable, ProvisionCreance, Rapprochement, RapprochementBancaire,
+    PaymentRun, PaymentRunLine, PeriodeComptable, PlafondNoteFrais,
+    PlanAmortissement,
+    PlanComptable, Provision, ProvisionCreance, Rapprochement, RapprochementBancaire,
     RelanceDevisAbandonne, RetenueGarantie, RetenueSource, SequenceRelance,
     SessionGuidedSelling, TimbreFiscal, TravauxEnCours,
     VirementInterne,
@@ -41,6 +45,7 @@ from .models import (
     ModeleRapprochement,
     ObligationFiscale,
     FamilleTvaNonDeductible,
+    Compensation, LigneCompensation,
 )
 
 
@@ -267,10 +272,15 @@ class ImmobilisationSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'reference', 'libelle', 'categorie', 'categorie_display',
             'cout', 'taux_tva', 'montant_tva', 'cout_ttc', 'date_acquisition',
-            'actif', 'date_creation',
+            'date_mise_en_service', 'actif', 'date_creation',
+            'piece_origine_facture_fournisseur_id',
+            'piece_origine_ligne_facture_fournisseur_id',
         ]
         read_only_fields = [
-            'montant_tva', 'cout_ttc', 'date_creation']
+            'montant_tva', 'cout_ttc', 'date_creation',
+            'piece_origine_facture_fournisseur_id',
+            'piece_origine_ligne_facture_fournisseur_id',
+        ]
 
     def validate_cout(self, value):
         if value is not None and value < 0:
@@ -612,9 +622,16 @@ class EffetSerializer(serializers.ModelSerializer):
             'numero', 'montant', 'date_emission', 'date_echeance', 'banque',
             'tireur', 'statut', 'statut_display', 'tiers_type', 'tiers_id',
             'bordereau', 'frais_rejet', 'commentaire', 'date_creation',
+            'agios_escompte', 'interets_escompte', 'date_escompte',
+            'ecriture_escompte_id', 'ecriture_apurement_escompte_id',
+            'beneficiaire_endossement', 'date_endossement',
         ]
         read_only_fields = [
-            'statut', 'bordereau', 'frais_rejet', 'date_creation']
+            'statut', 'bordereau', 'frais_rejet', 'date_creation',
+            'agios_escompte', 'interets_escompte', 'date_escompte',
+            'ecriture_escompte_id', 'ecriture_apurement_escompte_id',
+            'beneficiaire_endossement', 'date_endossement',
+        ]
 
     def validate_montant(self, value):
         if value is not None and value <= 0:
@@ -722,7 +739,9 @@ class PaymentRunLineSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'tiers_type', 'tiers_id', 'beneficiaire', 'reference',
             'montant', 'date_echeance', 'rib', 'iban',
+            'facture_fournisseur_id',
         ]
+        read_only_fields = ['facture_fournisseur_id']
 
     def validate_montant(self, value):
         if value is not None and value <= 0:
@@ -793,12 +812,15 @@ class NoteFraisSerializer(serializers.ModelSerializer):
             'valide_par', 'date_validation', 'ecriture_charge', 'motif_rejet',
             'mode_remboursement', 'compte_tresorerie', 'date_remboursement',
             'rembourse_par', 'ecriture_remboursement', 'date_creation',
+            'hors_politique',
+            'refacturable', 'taux_marge', 'client_refacturation_id',
+            'chantier_refacturation', 'facture_refacturation_id',
         ]
         read_only_fields = [
             'reference', 'statut', 'valide_par', 'date_validation',
             'ecriture_charge', 'motif_rejet', 'compte_tresorerie',
             'date_remboursement', 'rembourse_par', 'ecriture_remboursement',
-            'date_creation',
+            'date_creation', 'hors_politique', 'facture_refacturation_id',
         ]
 
     def validate_employe(self, value):
@@ -811,6 +833,29 @@ class NoteFraisSerializer(serializers.ModelSerializer):
         if value is not None and value <= 0:
             raise serializers.ValidationError(
                 "Le montant d'une note de frais doit être strictement positif.")
+        return value
+
+
+# ── XACC27 — Plafonds de notes de frais par catégorie ──────────────────────
+
+class PlafondNoteFraisSerializer(serializers.ModelSerializer):
+    """Plafond par catégorie de note de frais (XACC27). ``company`` posée
+    côté serveur."""
+    categorie_display = serializers.CharField(
+        source='get_categorie_display', read_only=True)
+
+    class Meta:
+        model = PlafondNoteFrais
+        fields = [
+            'id', 'categorie', 'categorie_display', 'montant_max',
+            'seuil_justificatif_obligatoire', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_montant_max(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "Le plafond ne peut pas être négatif.")
         return value
 
 
@@ -1321,6 +1366,39 @@ class ProvisionCreanceSerializer(serializers.ModelSerializer):
         return value
 
 
+# ── XACC26 — Provisions risques & charges / dépréciation stock / immo ─────
+
+class ProvisionSerializer(serializers.ModelSerializer):
+    """Provision générique risques/charges/stock/immo (XACC26).
+
+    ``company`` / ``reference`` / ``montant_repris`` / écriture(s) restent en
+    lecture seule (posés côté service).
+    """
+    nature_display = serializers.CharField(
+        source='get_nature_display', read_only=True)
+    solde = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = Provision
+        fields = [
+            'id', 'reference', 'nature', 'nature_display', 'motif',
+            'montant_dotation', 'montant_repris', 'solde',
+            'date_echeance_revue', 'date_dotation', 'ecriture_dotation_id',
+            'date_derniere_reprise', 'created_by', 'date_creation',
+        ]
+        read_only_fields = [
+            'reference', 'montant_repris', 'ecriture_dotation_id',
+            'date_derniere_reprise', 'created_by', 'date_creation',
+        ]
+
+    def validate_montant_dotation(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "Le montant de la dotation ne peut pas être négatif.")
+        return value
+
+
 # ── FG153 — Inter-sociétés / consolidation multi-entités ───────────────────
 
 class EntiteConsolidationSerializer(serializers.ModelSerializer):
@@ -1356,13 +1434,98 @@ class CampagneSerializer(serializers.ModelSerializer):
         model = Campagne
         fields = [
             'id', 'nom', 'canal', 'canal_display', 'objet', 'corps', 'segment',
-            'statut', 'statut_display', 'nb_destinataires', 'nb_envois',
-            'nb_ouvertures', 'nb_clics', 'envoyee_le', 'date_creation',
+            'listes', 'sms_sender_id', 'statut', 'statut_display',
+            'nb_destinataires', 'nb_envois', 'nb_ouvertures', 'nb_clics',
+            'envoyee_le', 'date_creation',
         ]
         read_only_fields = [
             'statut', 'nb_destinataires', 'nb_envois', 'nb_ouvertures',
             'nb_clics', 'envoyee_le', 'date_creation',
         ]
+
+    def validate_listes(self, value):
+        request = self.context.get('request')
+        if request is not None:
+            for liste in value:
+                if liste.company_id != request.user.company_id:
+                    raise serializers.ValidationError('Liste inconnue.')
+        return value
+
+    def validate_corps(self, value):
+        from apps.compta.services import valider_variables_fusion
+        try:
+            valider_variables_fusion(value)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc))
+        return value
+
+
+# ── XMKT2 — Journal d'envoi par destinataire ────────────────────────────────
+
+class EnvoiCampagneSerializer(serializers.ModelSerializer):
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = EnvoiCampagne
+        fields = [
+            'id', 'campagne', 'destinataire', 'contact_ref', 'statut',
+            'statut_display', 'raison_smtp', 'envoye_le', 'ouvert_le',
+            'clique_le', 'date_creation',
+        ]
+        read_only_fields = [
+            'statut', 'raison_smtp', 'envoye_le', 'ouvert_le', 'clique_le',
+            'date_creation',
+        ]
+
+
+# ── XMKT5 — Listes de diffusion nommées + abonnements ───────────────────────
+
+class AbonnementListeSerializer(serializers.ModelSerializer):
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = AbonnementListe
+        fields = [
+            'id', 'liste', 'destinataire', 'contact_ref', 'statut',
+            'statut_display', 'date_creation', 'date_maj',
+        ]
+        read_only_fields = ['date_creation', 'date_maj']
+
+    def validate_liste(self, value):
+        return _meme_societe(self, value, 'liste')
+
+
+class ListeDiffusionSerializer(serializers.ModelSerializer):
+    nb_abonnes = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ListeDiffusion
+        fields = [
+            'id', 'nom', 'description', 'nb_abonnes', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_nb_abonnes(self, obj):
+        return obj.abonnements.filter(statut='inscrit').count()
+
+
+# ── XMKT6 — Segments dynamiques enregistrés et réutilisables ────────────────
+
+class SegmentMarketingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SegmentMarketing
+        fields = ['id', 'nom', 'regles', 'date_creation']
+        read_only_fields = ['date_creation']
+
+    def validate_regles(self, value):
+        from apps.compta.services import valider_regles_segment
+        try:
+            valider_regles_segment(value)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc))
+        return value
 
 
 # ── FG202 — Séquences de relance automatisées ──────────────────────────────
@@ -1392,6 +1555,34 @@ class SequenceRelanceSerializer(serializers.ModelSerializer):
             'etapes',
         ]
         read_only_fields = ['date_creation']
+
+
+# ── XMKT1 — Inscriptions & exécution réelle des séquences ──────────────────
+
+class ExecutionEtapeSequenceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ExecutionEtapeSequence
+        fields = [
+            'id', 'inscription', 'etape', 'execute_le', 'canal', 'resultat',
+            'erreur',
+        ]
+        read_only_fields = ['execute_le']
+
+
+class InscriptionSequenceSerializer(serializers.ModelSerializer):
+    executions = ExecutionEtapeSequenceSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = InscriptionSequence
+        fields = [
+            'id', 'sequence', 'lead_id', 'lead_reference', 'etape_courante',
+            'statut', 'motif_sortie', 'declenchee_le', 'sortie_le',
+            'executions',
+        ]
+        read_only_fields = ['declenchee_le', 'sortie_le']
+
+    def validate_sequence(self, value):
+        return _meme_societe(self, value, 'séquence')
 
 
 # ── FG203 — Récupération des devis abandonnés ──────────────────────────────
@@ -1981,10 +2172,12 @@ class AbonnementMonitoringSerializer(serializers.ModelSerializer):
         model = AbonnementMonitoring
         fields = [
             'id', 'client_id', 'installation_id', 'periodicite', 'montant',
-            'statut', 'date_debut', 'prochaine_echeance', 'date_creation',
+            'statut', 'date_debut', 'prochaine_echeance',
+            'derniere_facturation', 'motif_resiliation', 'date_creation',
         ]
         read_only_fields = [
-            'statut', 'date_debut', 'prochaine_echeance', 'date_creation',
+            'statut', 'date_debut', 'prochaine_echeance',
+            'derniere_facturation', 'motif_resiliation', 'date_creation',
         ]
 
 
@@ -2071,5 +2264,31 @@ class PisteAuditComptableSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'ecriture', 'ecriture_reference', 'sequence',
             'empreinte_contenu', 'hash_precedent', 'hash', 'date_creation',
+        ]
+        read_only_fields = fields
+
+
+class LigneCompensationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LigneCompensation
+        fields = [
+            'id', 'type_facture', 'facture_id', 'reference_facture',
+            'montant_impute',
+        ]
+        read_only_fields = fields
+
+
+class CompensationSerializer(serializers.ModelSerializer):
+    """XFAC14 — Compensation AR/AP (netting). Lecture seule : la création
+    passe par ``services.creer_compensation`` (garde-fous de sur-
+    compensation), jamais un ``.create()`` direct du serializer."""
+    lignes = LigneCompensationSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Compensation
+        fields = [
+            'id', 'reference', 'client_id', 'client_nom', 'fournisseur_id',
+            'fournisseur_nom', 'montant_compense', 'statut', 'ecriture_id',
+            'lignes', 'date_creation', 'date_validation',
         ]
         read_only_fields = fields

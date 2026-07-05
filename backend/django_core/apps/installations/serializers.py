@@ -8,6 +8,7 @@ from .models import (
     PreparationMaterielLigne, PreparationOutilLigne,
     ComponentSerial, PhotoAnnotation, MaterielConsommation, ConsommationLigne,
     VoiceMemo, Reserve, ToolReturn, SafetyChecklistSlot, SafetySignoff,
+    ReverificationMesure,
     SafetyCheckItem,
     TypeInterventionPlan,
     JalonProjet, ModeleProjet, ModeleProjetJalon, ModeleProjetBomLigne,
@@ -16,6 +17,7 @@ from .models import (
     Projet, ProjetTache, ProjetChantier, ProjetDevis, ProjetTicket,
     BudgetProjet, BudgetEngagement,
     IndisponibiliteRessource,
+    Astreinte,
     OrdreSousTraitance,
     AttestationSousTraitant,
     EvaluationSousTraitant,
@@ -24,6 +26,7 @@ from .models import (
     DemandeAchatLigne,
     RFQ,
     RFQOffre,
+    RFQConsultation,
     SeuilApprobationBCF,
     ApprobationBCF,
     CommandeCadre,
@@ -65,6 +68,13 @@ from .models import (
     LivraisonLigne,
     PreuveLivraison,
     Transporteur,
+    RetourMateriel,
+    RetourMaterielLigne,
+    RetourLivraison,
+    RetourLivraisonLigne,
+    CategorieStockage,
+    RegleRangement,
+    LotPrelevement,
 )
 
 
@@ -181,6 +191,17 @@ class InterventionSerializer(serializers.ModelSerializer):
     gps_lng = serializers.DecimalField(
         source='installation.gps_lng', max_digits=9, decimal_places=6,
         read_only=True, default=None)
+    # XFSM8 — notes d'accès du chantier, reprises en lecture sur chaque
+    # intervention (jamais ressaisies) : affichées sur « Ma journée » F22 et
+    # le compte-rendu F19.
+    contact_site_nom = serializers.CharField(
+        source='installation.contact_site_nom', read_only=True, default=None)
+    contact_site_telephone = serializers.CharField(
+        source='installation.contact_site_telephone', read_only=True, default=None)
+    acces_instructions = serializers.CharField(
+        source='installation.acces_instructions', read_only=True, default=None)
+    horaires_acces = serializers.CharField(
+        source='installation.horaires_acces', read_only=True, default=None)
     # F6 — distance (km) entre la position d'arrivée et le GPS du chantier.
     distance_site_km = serializers.SerializerMethodField()
     # F5 — avancement de la préparation (0–100, ou null si pas de préparation).
@@ -203,6 +224,11 @@ class InterventionSerializer(serializers.ModelSerializer):
             'company', 'created_by', 'date_creation',
             'depart_depot_le', 'arrivee_site_le', 'retour_depot_le',
             'arrivee_gps_lat', 'arrivee_gps_lng',
+            # XFSM21 — posé uniquement par le sweep Beat météo, jamais du corps.
+            'meteo_risque', 'meteo_verifie_le',
+            # YSERV6 — posés uniquement par le chemin d'annulation chantier
+            # (annuler/reactiver), jamais par un PATCH générique.
+            'annulee', 'motif_annulation',
         ]
 
     def get_statut_ordre(self, obj):
@@ -562,9 +588,9 @@ class ReserveSerializer(serializers.ModelSerializer):
         fields = ['id', 'intervention', 'description', 'photo', 'photo_url',
                   'memo', 'assignee', 'assignee_nom', 'statut', 'statut_display',
                   'resolution', 'resolue_le', 'suivi_intervention', 'ticket',
-                  'date_creation']
+                  'devis_repare_id', 'date_creation']
         read_only_fields = ['intervention', 'suivi_intervention', 'ticket',
-                            'resolue_le', 'date_creation']
+                            'devis_repare_id', 'resolue_le', 'date_creation']
 
     def get_assignee_nom(self, obj):
         return getattr(obj.assignee, 'username', None)
@@ -573,6 +599,23 @@ class ReserveSerializer(serializers.ModelSerializer):
         if not obj.photo_id:
             return None
         return f'/api/django/records/attachments/{obj.photo_id}/download/'
+
+
+# ── XFSM13 — re-vérification IEC 62446-2 vs baseline ────────────────────────
+class ReverificationMesureSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ReverificationMesure
+        fields = [
+            'id', 'intervention_id', 'record_baseline',
+            'isolement_mohm', 'continuite_terre_ohm', 'voc_comparaison',
+            'isolement_ecart_pct', 'seuil_alerte_pct', 'depassement_detecte',
+            'reserve_id', 'observations', 'date_creation',
+        ]
+        read_only_fields = [
+            'intervention_id', 'record_baseline', 'voc_comparaison',
+            'isolement_ecart_pct', 'depassement_detecte', 'reserve_id',
+            'date_creation',
+        ]
 
 
 # ── F17 — retour d'outil ─────────────────────────────────────────────────────
@@ -659,10 +702,13 @@ class JalonProjetSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'installation', 'phase', 'phase_display', 'libelle', 'ordre',
             'date_cible', 'date_reelle', 'atteint', 'notes',
+            'tranche_echeancier', 'rappel_facturation_envoye',
             'date_creation', 'date_modification',
         ]
         # company posée côté serveur ; jamais lue du corps.
-        read_only_fields = ['date_creation', 'date_modification']
+        read_only_fields = [
+            'date_creation', 'date_modification', 'rappel_facturation_envoye',
+        ]
 
 
 # ── FG296 — Modèles de projet (templates de chantier-type) ───────────────────
@@ -1062,6 +1108,42 @@ class IndisponibiliteRessourceSerializer(serializers.ModelSerializer):
         return attrs
 
 
+class AstreinteSerializer(serializers.ModelSerializer):
+    """XFSM10 — période d'astreinte d'un technicien. Société + `created_by`
+    posés côté serveur ; le chevauchement de périodes est validé au niveau
+    modèle (`clean()`, remonté en 400 par la vue)."""
+    technicien_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Astreinte
+        fields = [
+            'id', 'technicien', 'technicien_nom', 'date_debut', 'date_fin',
+            'telephone_astreinte', 'created_by', 'date_creation',
+        ]
+        read_only_fields = ['created_by', 'date_creation']
+
+    def get_technicien_nom(self, obj):
+        user = getattr(obj, 'technicien', None)
+        if user is None:
+            return None
+        getter = getattr(user, 'get_full_name', None)
+        nom = (getter() or '').strip() if callable(getter) else ''
+        return nom or getattr(user, 'username', None)
+
+    def validate(self, attrs):
+        def _resolved(field):
+            if field in attrs:
+                return attrs[field]
+            return getattr(self.instance, field, None)
+
+        debut = _resolved('date_debut')
+        fin = _resolved('date_fin')
+        if debut is not None and fin is not None and fin <= debut:
+            raise serializers.ValidationError(
+                {'date_fin': "La date de fin doit être après la date de début."})
+        return attrs
+
+
 class SousTraitantSerializer(serializers.Serializer):
     """DC34 — façade de l'annuaire des sous-traitants. Un sous-traitant N'EST
     PLUS un modèle parallèle : c'est un ``stock.Fournisseur`` de type « service »
@@ -1347,15 +1429,17 @@ class DemandeAchatSerializer(serializers.ModelSerializer):
         model = DemandeAchat
         fields = [
             'id', 'reference', 'objet', 'chantier', 'programme',
-            'fournisseur_suggere', 'priorite', 'priorite_display',
+            'fournisseur_suggere', 'bon_commande', 'priorite',
+            'priorite_display',
             'date_besoin', 'statut', 'statut_display', 'motif_refus',
             'approuvee_par', 'date_decision', 'note', 'lignes',
             'montant_estime',
             'created_by', 'date_creation', 'date_modification',
         ]
         read_only_fields = [
-            'reference', 'statut', 'approuvee_par', 'date_decision',
-            'motif_refus', 'created_by', 'date_creation', 'date_modification',
+            'reference', 'statut', 'bon_commande', 'approuvee_par',
+            'date_decision', 'motif_refus', 'created_by', 'date_creation',
+            'date_modification',
         ]
 
     def validate_objet(self, value):
@@ -1400,26 +1484,57 @@ class RFQOffreSerializer(serializers.ModelSerializer):
         return value
 
 
+class RFQConsultationSerializer(serializers.ModelSerializer):
+    """XPUR20/21 — fournisseur consulté sur une RFQ : traçabilité d'envoi
+    email/WhatsApp par destinataire + statut de réponse. Le `token` n'est
+    JAMAIS exposé ici (le lien public se construit côté vue `envoyer`) — seul
+    un flag `a_repondu` renseigne l'appelant."""
+    fournisseur_nom = serializers.CharField(
+        source='fournisseur.nom', read_only=True, default=None)
+    fournisseur_email = serializers.CharField(
+        source='fournisseur.email', read_only=True, default=None)
+    fournisseur_telephone = serializers.CharField(
+        source='fournisseur.telephone', read_only=True, default=None)
+    a_repondu = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = RFQConsultation
+        fields = [
+            'id', 'rfq', 'fournisseur', 'fournisseur_nom',
+            'fournisseur_email', 'fournisseur_telephone',
+            'email_envoye_le', 'whatsapp_envoye_le', 'derniere_relance_le',
+            'nb_relances', 'a_repondu', 'offre',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'email_envoye_le', 'whatsapp_envoye_le', 'derniere_relance_le',
+            'nb_relances', 'offre', 'date_creation', 'date_modification',
+        ]
+
+
 class RFQSerializer(serializers.ModelSerializer):
     """FG311 — demande de prix multi-fournisseurs. La référence et la société
     sont posées CÔTÉ SERVEUR ; `reference` est anti-collision
     (`RFQ-YYYYMM-NNNN`). Le `statut` avance via `envoyer`/`cloturer`. Les offres
     sont imbriquées en lecture ; `comparatif` résume moins-chère / plus-rapide /
-    retenue."""
+    retenue. XPUR20 — `consultations` liste les fournisseurs invités + leur
+    statut d'envoi/réponse."""
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True, default=None)
     offres = RFQOffreSerializer(many=True, read_only=True)
+    consultations = RFQConsultationSerializer(many=True, read_only=True)
     comparatif = serializers.SerializerMethodField()
 
     class Meta:
         model = RFQ
         fields = [
             'id', 'reference', 'objet', 'demande', 'date_limite_reponse',
-            'statut', 'statut_display', 'note', 'offres', 'comparatif',
+            'statut', 'statut_display', 'bon_commande', 'note', 'offres',
+            'consultations', 'comparatif',
             'created_by', 'date_creation', 'date_modification',
         ]
         read_only_fields = [
-            'reference', 'statut', 'created_by',
+            'reference', 'statut', 'bon_commande', 'created_by',
             'date_creation', 'date_modification',
         ]
 
@@ -1737,13 +1852,16 @@ class BinLocationSerializer(serializers.ModelSerializer):
     sont imbriquees en lecture."""
     emplacement_nom = serializers.CharField(
         source='emplacement.nom', read_only=True, default=None)
+    categorie_nom = serializers.CharField(
+        source='categorie.nom', read_only=True, default=None)
     affectations = BinAffectationSerializer(many=True, read_only=True)
 
     class Meta:
         model = BinLocation
         fields = [
             'id', 'emplacement', 'emplacement_nom', 'code', 'zone', 'allee',
-            'casier', 'ordre', 'note', 'archived', 'affectations',
+            'casier', 'ordre', 'categorie', 'categorie_nom', 'note',
+            'archived', 'affectations',
             'created_by', 'date_creation', 'date_modification',
         ]
         read_only_fields = [
@@ -2148,6 +2266,8 @@ class OrdreAssemblageSerializer(serializers.ModelSerializer):
             'date_prevue', 'responsable', 'responsable_nom',
             'motif_annulation', 'lignes', 'cout_prevu',
             'temps_prevu_min', 'temps_reel_min',
+            # XMFG16 — assemblage sous-traité (façon).
+            'sous_traitant', 'ordre_sous_traitance',
             'created_by', 'date_creation', 'date_modification',
         ]
         read_only_fields = [
@@ -2383,12 +2503,13 @@ class LivraisonSerializer(serializers.ModelSerializer):
             'id', 'reference', 'installation', 'installation_reference',
             'depot', 'depot_nom', 'transporteur_nom', 'transporteur',
             'transporteur_obj_nom', 'cout_transport', 'mode_acheminement',
-            'mode_acheminement_display', 'date_prevue', 'statut',
-            'statut_display', 'adresse_site', 'note', 'lignes',
+            'mode_acheminement_display', 'date_prevue', 'numero_suivi',
+            'statut', 'statut_display', 'adresse_site', 'note', 'lignes',
+            'stock_mouvemente',
             'created_by', 'date_creation', 'date_modification',
         ]
         read_only_fields = [
-            'reference', 'statut', 'created_by',
+            'reference', 'statut', 'created_by', 'stock_mouvemente',
             'date_creation', 'date_modification',
         ]
 
@@ -2432,3 +2553,165 @@ class TransporteurSerializer(serializers.ModelSerializer):
         if not value:
             raise serializers.ValidationError('Le nom du transporteur est requis.')
         return value
+
+
+class RetourMaterielLigneSerializer(serializers.ModelSerializer):
+    """YSTCK4 - ligne d'un retour de materiel chantier (SKU + quantite)."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+
+    class Meta:
+        model = RetourMaterielLigne
+        fields = [
+            'id', 'retour', 'produit', 'produit_nom', 'designation',
+            'quantite', 'stock_applique',
+        ]
+        read_only_fields = ['stock_applique']
+
+
+class RetourMaterielSerializer(serializers.ModelSerializer):
+    """YSTCK4 - retour de materiel non pose, d'un chantier vers le depot.
+    Societe/`created_by` poses COTE SERVEUR ; le statut avance via l'action
+    `valider`. Lignes imbriquees en lecture."""
+    installation_reference = serializers.CharField(
+        source='installation.reference', read_only=True, default=None)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True, default=None)
+    lignes = RetourMaterielLigneSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = RetourMateriel
+        fields = [
+            'id', 'installation', 'installation_reference', 'statut',
+            'statut_display', 'note', 'lignes', 'created_by', 'valide_par',
+            'valide_le', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'statut', 'created_by', 'valide_par', 'valide_le',
+            'date_creation', 'date_modification',
+        ]
+
+
+class RetourLivraisonLigneSerializer(serializers.ModelSerializer):
+    """ZSTK8 - ligne d'un retour de livraison (SKU, livre vs retourne)."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+
+    class Meta:
+        model = RetourLivraisonLigne
+        fields = [
+            'id', 'retour', 'produit', 'produit_nom', 'designation',
+            'quantite_livree', 'quantite_retournee', 'stock_applique',
+        ]
+        read_only_fields = ['quantite_livree', 'stock_applique']
+
+    def validate(self, attrs):
+        instance = self.instance
+        qte_livree = attrs.get(
+            'quantite_livree',
+            getattr(instance, 'quantite_livree', None))
+        qte_retournee = attrs.get(
+            'quantite_retournee',
+            getattr(instance, 'quantite_retournee', 0))
+        if qte_livree is not None and qte_retournee > qte_livree:
+            raise serializers.ValidationError(
+                {'quantite_retournee':
+                 'La quantité retournée ne peut pas dépasser la quantité '
+                 'livrée.'})
+        return attrs
+
+
+class RetourLivraisonSerializer(serializers.ModelSerializer):
+    """ZSTK8 - retour client genere depuis une Livraison livree. Societe/
+    `created_by` poses COTE SERVEUR ; le statut avance via l'action
+    `valider`. Lignes imbriquees en lecture, pre-remplies a la generation."""
+    livraison_reference = serializers.CharField(
+        source='livraison.reference', read_only=True, default=None)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True, default=None)
+    lignes = RetourLivraisonLigneSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = RetourLivraison
+        fields = [
+            'id', 'livraison', 'livraison_reference', 'statut',
+            'statut_display', 'motif', 'lignes', 'created_by', 'valide_par',
+            'valide_le', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'statut', 'created_by', 'valide_par', 'valide_le',
+            'date_creation', 'date_modification',
+        ]
+
+
+class CategorieStockageSerializer(serializers.ModelSerializer):
+    """ZSTK9 - categorie de stockage (capacite/compatibilite) posable sur un
+    BinLocation. Societe posee COTE SERVEUR."""
+
+    class Meta:
+        model = CategorieStockage
+        fields = [
+            'id', 'nom', 'poids_max_kg', 'qte_max', 'melange_autorise',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+    def validate_nom(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError(
+                'Le nom de la categorie est requis.')
+        return value
+
+
+class RegleRangementSerializer(serializers.ModelSerializer):
+    """ZSTK9 - regle de rangement configurable (produit ou categorie produit
+    -> casier cible, par priorite). Societe posee COTE SERVEUR."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+    bin_cible_code = serializers.CharField(
+        source='bin_cible.code', read_only=True, default=None)
+
+    class Meta:
+        model = RegleRangement
+        fields = [
+            'id', 'produit', 'produit_nom', 'categorie_produit', 'bin_cible',
+            'bin_cible_code', 'priorite', 'actif',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+    def validate(self, attrs):
+        produit = attrs.get('produit') if 'produit' in attrs else getattr(
+            self.instance, 'produit', None)
+        categorie_produit = (
+            attrs.get('categorie_produit')
+            if 'categorie_produit' in attrs
+            else getattr(self.instance, 'categorie_produit', None))
+        if produit is None and not (categorie_produit or '').strip():
+            raise serializers.ValidationError(
+                'Indiquez un produit ou une categorie produit.')
+        return attrs
+
+
+class LotPrelevementSerializer(serializers.ModelSerializer):
+    """ZSTK10 - lot de prelevement regroupant plusieurs pick-lists du meme
+    depot. Societe/`created_by`/reference poses COTE SERVEUR."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True, default=None)
+    operateur_nom = serializers.CharField(
+        source='operateur.username', read_only=True, default=None)
+    pick_list_ids = serializers.PrimaryKeyRelatedField(
+        source='pick_lists', many=True, read_only=True)
+
+    class Meta:
+        model = LotPrelevement
+        fields = [
+            'id', 'reference', 'statut', 'statut_display', 'operateur',
+            'operateur_nom', 'pick_list_ids',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'reference', 'statut', 'created_by',
+            'date_creation', 'date_modification',
+        ]

@@ -16,8 +16,16 @@ string-FK uniquement — aucun import du modèle ``stock`` au chargement.
 Cycle de vie PROPRE (brouillon → envoyée → clôturée), distinct des autres couches
 de statut de l'OS. Additif & multi-tenant : FK ``company`` posée côté serveur.
 """
+import secrets
+
 from django.conf import settings
 from django.db import models
+
+
+def _default_rfq_token():
+    """XPUR20/21 — jeton public long et imprévisible (même patron que
+    ``Ticket.share_token`` FG86), UN par (RFQ, fournisseur)."""
+    return secrets.token_urlsafe(32)
 
 
 class RFQ(models.Model):
@@ -43,6 +51,12 @@ class RFQ(models.Model):
     date_limite_reponse = models.DateField(null=True, blank=True)
     statut = models.CharField(
         max_length=20, choices=Statut.choices, default=Statut.BROUILLON)
+    # YPROC6 — BCF brouillon créé chez le fournisseur dont l'offre a été
+    # retenue (adjudication). String-FK, nullable = comportement historique
+    # inchangé (aucune adjudication encore faite pour cette RFQ).
+    bon_commande = models.ForeignKey(
+        'stock.BonCommandeFournisseur', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='installations_rfqs')
     note = models.TextField(blank=True, null=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
@@ -104,3 +118,74 @@ class RFQOffre(models.Model):
     def __str__(self):
         nom = self.fournisseur_nom_libre or self.fournisseur_id
         return f'{nom} · {self.montant_ht}'
+
+
+class RFQConsultation(models.Model):
+    """XPUR20/21 — un fournisseur CONSULTÉ pour une RFQ (invité à répondre),
+    distinct de ``RFQOffre`` (créée seulement quand il répond). Porte le jeton
+    public unique par (RFQ, fournisseur) utilisé par la page de réponse SANS
+    LOGIN (XPUR21) et la traçabilité d'envoi email/WhatsApp (XPUR20).
+
+    Un fournisseur SANS email ni téléphone catalogué peut quand même être
+    consulté (les boutons d'envoi sont grisés côté frontend) — la relance ne
+    cible que les non-répondants (``a_repondu=False``) avant
+    ``rfq.date_limite_reponse``. Additif & multi-tenant : société posée côté
+    serveur, jamais depuis le corps de la requête."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='installations_rfq_consultations')
+    rfq = models.ForeignKey(
+        RFQ, on_delete=models.CASCADE, related_name='consultations')
+    # Fournisseur consulté (string-FK vers stock, jamais d'import de modèle).
+    fournisseur = models.ForeignKey(
+        'stock.Fournisseur', on_delete=models.CASCADE,
+        related_name='installations_rfq_consultations')
+    token = models.CharField(
+        max_length=64, unique=True, default=_default_rfq_token,
+        editable=False)
+    revoque = models.BooleanField(default=False)
+    # Traçabilité d'envoi PAR CANAL — jamais un envoi automatique WhatsApp
+    # (manuel-first, cohérent avec la politique existante) : on trace
+    # seulement que le lien a été OUVERT/COPIÉ pour le brouillon wa.me.
+    email_envoye_le = models.DateTimeField(null=True, blank=True)
+    whatsapp_envoye_le = models.DateTimeField(null=True, blank=True)
+    derniere_relance_le = models.DateTimeField(null=True, blank=True)
+    nb_relances = models.PositiveIntegerField(default=0)
+    # Offre soumise par ce fournisseur (posée quand il répond, XPUR21).
+    offre = models.ForeignKey(
+        RFQOffre, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='consultation_source')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Consultation RFQ'
+        verbose_name_plural = 'Consultations RFQ'
+        ordering = ['-date_creation']
+        unique_together = [('rfq', 'fournisseur')]
+        indexes = [
+            models.Index(fields=['company', 'rfq'],
+                         name='idx_rfqc_co_rfq'),
+            models.Index(fields=['token'], name='idx_rfqc_token'),
+        ]
+
+    def __str__(self):
+        return f'RFQ#{self.rfq_id} · fournisseur#{self.fournisseur_id}'
+
+    @property
+    def a_repondu(self):
+        return self.offre_id is not None
+
+    def expire(self):
+        """XPUR21 — vrai si la date limite de réponse de la RFQ est dépassée."""
+        from django.utils import timezone
+        limite = self.rfq.date_limite_reponse
+        if limite is None:
+            return False
+        return timezone.localdate() > limite
+
+    @property
+    def is_valid(self):
+        return not self.revoque and not self.expire()

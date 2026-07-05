@@ -42,6 +42,26 @@ app.conf.enable_utc = False
 #   - YLEAD14 : recyclage des leads non travaillés (SLA dépassé → escalade,
 #     désassignation optionnelle au 2e seuil), toutes les heures — apps/crm/tasks.py
 #     (best-effort, no-op société par société tant que lead_sla_hours=0).
+#   - YSUBS1 : facturation récurrente auto (échéanciers contrats +
+#     maintenance SAV dus), quotidien (02:00) — apps/contrats/scheduled.py.
+#   - YSUBS2 : reconductions tacites + diffusion des alertes contrat
+#     (préavis/échéance), quotidien (07:15) — apps/contrats/scheduled.py.
+#   - XKB27 : messages chat programmés + rappels dus, toutes les 5 min —
+#     apps/chat/tasks.py (n'envoie jamais avant l'heure choisie).
+#   - XKB32 : sweep de rétention des conversations chat (02:45) —
+#     apps/chat/tasks.py (sans politique active = aucune purge, journalisé
+#     quand même pour traçabilité CNDP).
+#   - XFAC25 : relevé de compte mensuel automatique (opt-in par client),
+#     1er du mois 08:00 — apps/ventes/scheduled.py.
+#   - XFSM6 : rappel client J-1 pour les interventions non confirmées
+#     (07:45) — apps/installations/tasks.py (brouillon wa.me responsable +
+#     email client, key-gated, jamais d'envoi WhatsApp automatique).
+#   - YHIRE8 : alertes d'expiration RH (habilitations/certifs/docs/visites/EPI,
+#     07:50) et alerte fin de CDD (07:55) — apps/rh/tasks.py (idempotent par
+#     jour+échéance, jamais avant branché sur le beat).
+#   - YSERV5 : génération automatique des visites préventives dues (07:45) —
+#     apps/sav/tasks.py (opt-in par société, OFF par défaut = no-op ;
+#     réutilise generer_visites_dues, idempotent).
 app.conf.beat_schedule = {
     'ventes-check-overdue-factures': {
         'task': 'ventes.check_overdue_factures',
@@ -103,6 +123,12 @@ app.conf.beat_schedule = {
         'task': 'ged.verifier_integrite_archives',
         'schedule': crontab(hour=3, minute=15),
     },
+    # ZGED14 — notifie les ÉMETTEURS de demandes de signature dont
+    # l'expiration approche (versant émetteur, complète XGED2 ci-dessus).
+    'ged-notifier-emetteurs-expiration-signature': {
+        'task': 'ged.notifier_emetteurs_expiration_signature',
+        'schedule': crontab(hour=8, minute=0),
+    },
     'crm-recycler-leads-non-travailles': {
         'task': 'crm.recycler_leads_non_travailles',
         'schedule': crontab(minute=0),  # every hour
@@ -117,5 +143,77 @@ app.conf.beat_schedule = {
     'reporting-controle-integrite-hebdo': {
         'task': 'reporting.controle_integrite',
         'schedule': crontab(hour=3, minute=0, day_of_week=1),
+    },
+    # YSUBS1 — facturation récurrente auto (échéanciers contrats +
+    # maintenance SAV dus), quotidien (heure creuse).
+    'contrats-generer-factures-recurrentes-dues': {
+        'task': 'contrats.generer_factures_recurrentes_dues',
+        'schedule': crontab(hour=2, minute=0),
+    },
+    # YSUBS2 — reconductions tacites + diffusion des alertes contrat
+    # (préavis/échéance), quotidien.
+    'contrats-reconductions-et-alertes-daily': {
+        'task': 'contrats.reconductions_et_alertes_daily',
+        'schedule': crontab(hour=7, minute=15),
+    },
+    # XKB27 — envoie les messages chat programmés dus + notifie les rappels
+    # dus (« me rappeler ce message »). Cadence fine (toutes les 5 min) pour
+    # qu'un message programmé parte proche de l'heure choisie, sans surcharger
+    # le worker (sweep court, requêtes indexées sur `status`+date).
+    'chat-send-scheduled-messages': {
+        'task': 'chat.send_scheduled_messages',
+        'schedule': crontab(minute='*/5'),
+    },
+    'chat-send-due-reminders': {
+        'task': 'chat.send_due_reminders',
+        'schedule': crontab(minute='*/5'),
+    },
+    # XKB32 — sweep de rétention des conversations (loi 09-08 / CNDP), une
+    # fois par jour, heure creuse. Sans politique active, ne purge rien mais
+    # journalise quand même l'exécution.
+    'chat-retention-sweep': {
+        'task': 'chat.retention_sweep',
+        'schedule': crontab(hour=2, minute=45),
+    },
+    # XFAC25 — relevé de compte mensuel automatique (opt-in par client),
+    # 1er du mois 08:00 Africa/Casablanca.
+    'ventes-releve-mensuel-reminders': {
+        'task': 'ventes.releve_mensuel_reminders',
+        'schedule': crontab(hour=8, minute=0, day_of_month=1),
+    },
+    # XFSM6 — rappel client J-1 (interventions non confirmées, demain).
+    'installations-rappel-rdv-j1': {
+        'task': 'installations.rappel_rdv_j1',
+        'schedule': crontab(hour=7, minute=45),
+    },
+    # YHIRE8 — alertes d'expiration RH (habilitations/certifs/docs/visites/
+    # EPI), quotidien, heure creuse matinale.
+    'rh-alertes-expiration': {
+        'task': 'rh.alertes_expiration',
+        'schedule': crontab(hour=7, minute=50),
+    },
+    # YHIRE8 — alerte fin de CDD (J-30 par défaut), quotidien.
+    'rh-alertes-cdd': {
+        'task': 'rh.alertes_cdd',
+        'schedule': crontab(hour=7, minute=55),
+    },
+    # YSERV5 — génération automatique des visites préventives dues (opt-in
+    # par société via SavSlaSettings.generation_auto_visites), quotidien.
+    'sav-generer-visites-dues-quotidien': {
+        'task': 'sav.generer_visites_dues_quotidien',
+        'schedule': crontab(hour=7, minute=45),
+    },
+    # XFSM21 — météo J+3 sur les poses planifiées (Open-Meteo, gratuit,
+    # sans clé), quotidien, heure creuse matinale.
+    'installations-meteo-planning-j3': {
+        'task': 'installations.meteo_planning_j3',
+        'schedule': crontab(hour=6, minute=30),
+    },
+    # ZSTK1 — recompute réappro + alertes de rupture (« reordering rules
+    # run » façon Odoo), quotidien, heure creuse matinale. Suggestion
+    # seulement (aucun BCF créé automatiquement), idempotent par société.
+    'stock-recompute-reordering': {
+        'task': 'stock.recompute_reordering',
+        'schedule': crontab(hour=6, minute=15),
     },
 }

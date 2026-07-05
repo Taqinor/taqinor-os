@@ -107,13 +107,28 @@ class DemandeTransfertViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def executer(self, request, pk=None):
-        """FG325 — marque la demande exécutée (approuvé → exécuté). Le mouvement
-        physique reste piloté par le module stock."""
+        """FG325/YSTCK2 — marque la demande exécutée (approuvé → exécuté) ET
+        exécute RÉELLEMENT le mouvement via `stock.services.transfer_stock`
+        (ventile source→destination, total inchangé). Une source insuffisante
+        échoue en 409 (aucun changement de statut). IDEMPOTENTE : la garde de
+        statut (seule une demande APPROUVÉE peut être exécutée) empêche tout
+        second transfert."""
+        from apps.stock.services import transfer_stock
+
         dt = self.get_object()
         if dt.statut != DemandeTransfert.Statut.APPROUVE:
             return Response(
                 {'statut': 'Seule une demande approuvée peut être exécutée.'},
                 status=status.HTTP_409_CONFLICT)
+        try:
+            transfer_stock(
+                company=request.user.company, user=request.user,
+                produit_id=dt.produit_id, source_id=dt.source_id,
+                destination_id=dt.destination_id, quantite=dt.quantite,
+                note=f'Demande de transfert {dt.reference}')
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_409_CONFLICT)
         dt.statut = DemandeTransfert.Statut.EXECUTE
         dt.date_execution = timezone.now()
         dt.save(update_fields=[

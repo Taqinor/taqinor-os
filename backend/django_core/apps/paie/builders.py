@@ -306,3 +306,143 @@ def render_stc_html(bulletin, *, today=None):
 def render_stc_pdf(bulletin, *, today=None):
     """Reçu pour solde de tout compte → octets PDF (XPAI1)."""
     return _html_to_pdf(render_stc_html(bulletin, today=today))
+
+
+# ── XPAI26 — Registres d'inspection du travail ─────────────────────────────
+
+def render_registre_conges_html(registre, *, today=None):
+    """Construit le HTML du registre des congés annuel (XPAI26).
+
+    ``registre`` = le dict renvoyé par ``services.registre_conges`` (année +
+    lignes ``{'matricule', 'nom', 'droits', 'pris', 'solde'}``). Format
+    conforme à l'inspection du travail (registre récapitulatif annuel).
+    """
+    if today is None:
+        today = date.today()
+    date_txt = f'{today.day} {MOIS_FR[today.month]} {today.year}'
+    lignes_html = ''.join(
+        f"<tr><td>{escape(str(lig['matricule']))}</td>"
+        f"<td>{escape(str(lig['nom']))}</td>"
+        f"<td>{_fmt(lig['droits'])}</td>"
+        f"<td>{_fmt(lig['pris'])}</td>"
+        f"<td>{_fmt(lig['solde'])}</td></tr>"
+        for lig in registre['lignes'])
+    return f"""<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">
+<style>
+  body {{ font-family: sans-serif; font-size: 11px; color: #222; margin: 30px; }}
+  h1 {{ font-size: 16px; text-align: center; }}
+  table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
+  th, td {{ border: 1px solid #999; padding: 4px 6px; text-align: right; }}
+  th:nth-child(1), th:nth-child(2), td:nth-child(1), td:nth-child(2)
+    {{ text-align: left; }}
+  .date {{ text-align: right; margin-top: 20px; }}
+</style></head><body>
+  <h1>Registre des congés — année {registre['annee']}</h1>
+  <table>
+    <thead><tr><th>Matricule</th><th>Nom</th>
+      <th>Droits (j)</th><th>Pris (j)</th><th>Solde (j)</th></tr></thead>
+    <tbody>{lignes_html}</tbody>
+  </table>
+  <p class="date">Édité le {escape(date_txt)}.</p>
+</body></html>"""
+
+
+def render_registre_conges_pdf(registre, *, today=None):
+    """Registre des congés → octets PDF (XPAI26)."""
+    return _html_to_pdf(render_registre_conges_html(registre, today=today))
+
+
+def render_historique_carriere_html(historique, *, today=None):
+    """Construit le HTML de la fiche historique carrière/salaire (XPAI26).
+
+    ``historique`` = le dict renvoyé par ``services.historique_carriere``
+    (identité + poste + liste ``annees`` ``{'annee', 'brut'}``).
+    """
+    if today is None:
+        today = date.today()
+    date_txt = f'{today.day} {MOIS_FR[today.month]} {today.year}'
+    lignes_html = ''.join(
+        f"<tr><td>{a['annee']}</td><td>{_fmt(a['brut'])}</td></tr>"
+        for a in historique['annees'])
+    embauche = historique.get('date_embauche')
+    embauche_txt = embauche.isoformat() if embauche else '—'
+    return f"""<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">
+<style>
+  body {{ font-family: sans-serif; font-size: 12px; color: #222; margin: 40px; }}
+  h1 {{ font-size: 18px; text-align: center; }}
+  table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
+  th, td {{ border: 1px solid #999; padding: 4px 8px; text-align: right; }}
+  th:first-child, td:first-child {{ text-align: left; }}
+  .date {{ text-align: right; margin-top: 20px; }}
+</style></head><body>
+  <h1>Fiche historique de carrière</h1>
+  <p><strong>Matricule :</strong> {escape(str(historique['matricule']))}
+     &nbsp; <strong>Nom :</strong> {escape(historique['nom'])}
+     {escape(historique['prenom'])}</p>
+  <p><strong>Poste :</strong> {escape(historique['poste'] or '—')}
+     &nbsp; <strong>Type de contrat :</strong>
+     {escape(historique['type_contrat'])}</p>
+  <p><strong>Date d'embauche :</strong> {escape(embauche_txt)}</p>
+  <table>
+    <thead><tr><th>Année</th><th>Rémunération brute (MAD)</th></tr></thead>
+    <tbody>{lignes_html}</tbody>
+  </table>
+  <p class="date">Édité le {escape(date_txt)}.</p>
+</body></html>"""
+
+
+def render_historique_carriere_pdf(historique, *, today=None):
+    """Fiche historique de carrière → octets PDF (XPAI26)."""
+    return _html_to_pdf(
+        render_historique_carriere_html(historique, today=today))
+
+
+# ── ZPAI5 — Impression en lot des bulletins d'une période (PDF fusionné) ────
+
+def render_bulletins_periode_pdf(periode):
+    """Fusionne les PDF des bulletins VALIDÉS d'une période en un seul flux (ZPAI5).
+
+    Réutilise ``render_bulletin_pdf``/WeasyPrint pour chaque bulletin (les
+    brouillons sont exclus), puis concatène les pages via PyMuPDF (``fitz``,
+    déjà une dépendance de l'ERP) — une page-break naturelle entre chaque
+    bulletin, dans l'ordre matricule/nom. Self-contained : aucune dépendance à
+    une autre app. Lève ``ValueError`` si la période n'a AUCUN bulletin
+    validé. Renvoie les octets du PDF fusionné.
+    """
+    from .models import BulletinPaie
+
+    bulletins = list(
+        BulletinPaie.objects
+        .filter(company=periode.company, periode=periode,
+                statut=BulletinPaie.STATUT_VALIDE)
+        .select_related('profil', 'profil__employe')
+    )
+    if not bulletins:
+        raise ValueError("Aucun bulletin validé pour cette période.")
+
+    def _tri_matricule_nom(bulletin):
+        employe = getattr(bulletin.profil, 'employe', None)
+        matricule = getattr(employe, 'matricule', '') or ''
+        nom = _nom_employe(bulletin.profil)
+        return (matricule, nom)
+
+    bulletins.sort(key=_tri_matricule_nom)
+
+    try:
+        import fitz  # PyMuPDF
+    except ImportError as exc:  # pragma: no cover - dépend de l'environnement
+        raise RuntimeError(
+            "WeasyPrint/PyMuPDF ne sont pas installés : génération PDF "
+            "indisponible."
+        ) from exc
+
+    out = fitz.open()
+    try:
+        for bulletin in bulletins:
+            pdf_bytes = render_bulletin_pdf(bulletin)
+            seg = fitz.open(stream=pdf_bytes, filetype='pdf')
+            out.insert_pdf(seg)
+            seg.close()
+        return out.tobytes()
+    finally:
+        out.close()

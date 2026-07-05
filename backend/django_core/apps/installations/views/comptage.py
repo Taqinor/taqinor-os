@@ -113,10 +113,20 @@ class SessionComptageViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def terminer(self, request, pk=None):
-        """FG324 — clôture la session (→ terminé)."""
+        """FG324/YSTCK1 — clôture la session (→ terminé) ET poste l'écart
+        constaté en `MouvementStock` AJUSTEMENT (couche de CONSTAT → le
+        stock canonique s'aligne enfin sur le compté). IDEMPOTENTE : une
+        session déjà TERMINE ne re-poste jamais."""
         session = self.get_object()
+        deja_terminee = session.statut == SessionComptage.Statut.TERMINE
         session.statut = SessionComptage.Statut.TERMINE
         session.save(update_fields=['statut', 'date_modification'])
+        if not deja_terminee:
+            from apps.stock.services import appliquer_ecarts_comptage
+            appliquer_ecarts_comptage(
+                company=request.user.company,
+                lignes=list(session.lignes.all()),
+                user=request.user, reference=session.reference)
         return Response(self.get_serializer(session).data)
 
 

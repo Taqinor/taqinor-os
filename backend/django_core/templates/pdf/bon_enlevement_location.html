@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 12px; color: #333; }
+    .page { padding: 40px; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 32px; }
+    .doc-title { font-size: 24px; font-weight: bold; color: #2b5cab; }
+    .doc-ref { font-size: 12px; color: #666; margin-top: 4px; }
+    .company-info { text-align: right; font-size: 11px; color: #555; line-height: 1.6; }
+    .company-info strong { font-size: 13px; color: #222; }
+
+    .partie-block { background: #f8fafc; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px; }
+    .partie-label { font-size: 10px; text-transform: uppercase; color: #888; margin-bottom: 6px; letter-spacing: 1px; }
+    .partie-nom { font-weight: bold; font-size: 13px; color: #1e293b; }
+
+    .meta-row { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+    .meta-item { background: #f8fafc; border-radius: 4px; padding: 8px 14px; min-width: 140px; }
+    .meta-item strong { display: block; color: #555; font-size: 10px; text-transform: uppercase; margin-bottom: 2px; }
+    .meta-item span { font-size: 12px; color: #1e293b; font-weight: 500; }
+
+    .caution-block { background: #fff7ed; border-left: 4px solid #f59e0b; border-radius: 6px; padding: 12px 16px; margin-bottom: 20px; }
+
+    .signature-section { display: flex; justify-content: space-between; margin-top: 60px; }
+    .signature-block { width: 45%; }
+    .signature-label { font-size: 10px; text-transform: uppercase; color: #888; margin-bottom: 30px; letter-spacing: 1px; }
+    .signature-line { border-top: 1px solid #cbd5e1; padding-top: 6px; font-size: 10px; color: #555; }
+
+    .footer { margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 14px; font-size: 10px; color: #94a3b8; text-align: center; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="header">
+    <div>
+      <div class="doc-title">BON D'ENLÈVEMENT</div>
+      <div class="doc-ref">Ordre de location n° {{ ordre.id }}</div>
+    </div>
+    <div class="company-info">
+      <strong>{{ entreprise_nom }}</strong><br />
+      {% if entreprise_adresse %}{{ entreprise_adresse }}<br />{% endif %}
+      {% if entreprise_telephone %}Tél : {{ entreprise_telephone }}<br />{% endif %}
+      {% if entreprise_email %}{{ entreprise_email }}{% endif %}
+    </div>
+  </div>
+
+  <div class="partie-block">
+    <div class="partie-label">Client</div>
+    <div class="partie-nom">{{ client_nom }}</div>
+  </div>
+
+  <div class="meta-row">
+    <div class="meta-item">
+      <strong>Produit</strong>
+      <span>{{ produit_nom }}</span>
+    </div>
+    <div class="meta-item">
+      <strong>N° de série / unité</strong>
+      <span>{{ numero_serie }}</span>
+    </div>
+  </div>
+
+  <div class="meta-row">
+    <div class="meta-item">
+      <strong>Date de réservation</strong>
+      <span>{{ ordre.date_reservation.strftime('%d/%m/%Y') if ordre.date_reservation else '—' }}</span>
+    </div>
+    <div class="meta-item">
+      <strong>Date d'enlèvement prévue</strong>
+      <span>{{ ordre.date_enlevement_prevue.strftime('%d/%m/%Y') if ordre.date_enlevement_prevue else '—' }}</span>
+    </div>
+    <div class="meta-item">
+      <strong>Date de retour prévue</strong>
+      <span>{{ ordre.date_retour_prevue.strftime('%d/%m/%Y') if ordre.date_retour_prevue else '—' }}</span>
+    </div>
+  </div>
+
+  {% if ordre.caution_montant %}
+  <div class="caution-block">
+    <strong>Caution (dépôt de garantie) : {{ "%.2f"|format(ordre.caution_montant) }} MAD</strong>
+    — statut : {{ ordre.get_caution_statut_display() }}
+  </div>
+  {% endif %}
+
+  <div class="signature-section">
+    <div class="signature-block">
+      <div class="signature-label">Remis par</div>
+      <div class="signature-line">{{ entreprise_nom }}</div>
+    </div>
+    <div class="signature-block">
+      <div class="signature-label">Reçu par (nom et signature)</div>
+      <div class="signature-line">{{ client_nom }}</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    Bon d'enlèvement généré automatiquement — {{ entreprise_nom }}
+  </div>
+
+</div>
+</body>
+</html>

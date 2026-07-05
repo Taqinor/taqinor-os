@@ -322,7 +322,8 @@ def notify_many(recipients, event_type, title, body='', link=None, company=None)
     return created
 
 
-def notify(user, event_type, title, body='', link=None, company=None):
+def notify(user, event_type, title, body='', link=None, company=None,
+           skip_email=False):
     """Émet une notification pour `user` en respectant ses préférences.
 
     - Crée la ligne in-app si le canal in-app est activé (défaut : oui).
@@ -332,6 +333,11 @@ def notify(user, event_type, title, body='', link=None, company=None):
     `event_type` doit appartenir à `EventType`. La société est déduite de
     l'utilisateur (jamais du corps de requête) sauf override explicite côté
     serveur. Renvoie la `Notification` créée, ou None si in-app désactivé.
+
+    `skip_email` (ZCTR12) : permet à un appelant qui gère DÉJÀ sa propre
+    diffusion email pour ce même événement (ex. le fan-out canal-aliasé
+    e-mail du chat) d'éviter un double envoi — in-app/WhatsApp/push
+    restent inchangés.
     """
     if user is None or not getattr(user, 'pk', None):
         return None
@@ -358,7 +364,7 @@ def notify(user, event_type, title, body='', link=None, company=None):
                 instance=created)
 
     # Diffusions hors-app : best-effort, chacune isolée.
-    if prefs.get('email'):
+    if prefs.get('email') and not skip_email:
         email_ok = False
         try:
             email_ok = _dispatch_email(user, str(title), str(body or ''))
