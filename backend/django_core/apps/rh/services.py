@@ -110,9 +110,16 @@ def accruer_conges_mensuel(dossier, *, annee, mois, apply=False):
     """
     from .models import SoldeConge
 
-    solde, _ = SoldeConge.objects.select_for_update().get_or_create(
-        company=dossier.company, employe=dossier, annee=annee)
-    if solde.mois_acquis >= 12 or solde.mois_acquis >= mois:
+    if apply:
+        solde, _ = SoldeConge.objects.select_for_update().get_or_create(
+            company=dossier.company, employe=dossier, annee=annee)
+    else:
+        # Dry-run : ne JAMAIS créer la ligne SoldeConge (elle ne doit
+        # exister qu'après une acquisition réellement appliquée).
+        solde = SoldeConge.objects.filter(
+            company=dossier.company, employe=dossier, annee=annee).first()
+    mois_acquis = solde.mois_acquis if solde else 0
+    if mois_acquis >= 12 or mois_acquis >= mois:
         # Déjà crédité pour ce mois (ou l'année est déjà pleinement créditée).
         return {'credite': Decimal('0'), 'deja_acquis': True}
 
