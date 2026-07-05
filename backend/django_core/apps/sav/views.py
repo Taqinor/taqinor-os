@@ -340,7 +340,16 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
         from .selectors import estimations_maintenance as _estimations_maintenance
 
         equipement = self.get_object()
-        return Response(_estimations_maintenance(equipement))
+        data = _estimations_maintenance(equipement)
+        # Le sélecteur renvoie des `date` Python brutes (utile aux appelants
+        # internes, ex. comparaison directe à `contrat.prochaine_visite()`) —
+        # la frontière API suit ici la même convention que le reste du
+        # module (`.isoformat()` explicite) plutôt que de compter sur
+        # `Response.data` pour les convertir (il ne le fait pas).
+        for champ in ('prochaine_defaillance_estimee', 'prochain_entretien_du'):
+            if data.get(champ) is not None:
+                data[champ] = data[champ].isoformat()
+        return Response(data)
 
     @action(detail=True, methods=['get', 'post'], url_path='downtime',
             permission_classes=[HasPermissionOrLegacy('equipement_gerer')])
