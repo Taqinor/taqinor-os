@@ -10,7 +10,7 @@ from ..models import (  # noqa: F401
     Produit, Categorie, Fournisseur, MouvementStock, Marque,
     BonCommandeFournisseur, EmplacementStock, TransfertStock, PrixFournisseur,
     RetourFournisseur, ReceptionFournisseur, FactureFournisseur,
-    PaiementFournisseur,
+    PaiementFournisseur, RegleCodeBarres,
 )
 from ..serializers import (  # noqa: F401
     ProduitSerializer,
@@ -505,6 +505,49 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response(
                 {'detail': 'Code illisible.'},
                 status=status.HTTP_400_BAD_REQUEST)
+
+        # ZSTK12 — la nomenclature de code-barres ACTIVE de la société (s'il
+        # y en a une) est consultée AVANT tout parsing GS1/EAN en dur. Sans
+        # nomenclature définie, ce bloc est un no-op total (repli byte-
+        # identique au comportement historique ci-dessous).
+        from ..selectors import resolve_via_nomenclature
+        matched = resolve_via_nomenclature(request.user.company, code)
+        if matched is not None:
+            encode, regle = matched
+            remainder = (
+                code[len(regle.motif):] if not regle.est_regex else code)
+            remainder = remainder.strip(':').strip()
+            if encode == RegleCodeBarres.Encode.EMPLACEMENT and \
+                    remainder.isdigit():
+                emplacement = (EmplacementStock.objects
+                               .filter(company=request.user.company,
+                                       id=int(remainder))
+                               .first())
+                if emplacement is not None:
+                    return Response({
+                        'type': 'emplacement',
+                        'id': emplacement.id,
+                        'label': emplacement.nom,
+                        'route': '/stock',
+                    })
+            elif encode == RegleCodeBarres.Encode.PRODUIT and \
+                    remainder.isdigit():
+                produit = (Produit.objects
+                           .filter(company=request.user.company,
+                                   id=int(remainder))
+                           .first())
+                if produit is not None:
+                    return Response({
+                        'type': 'produit',
+                        'id': produit.id,
+                        'label': produit.nom,
+                        'sku': produit.sku or '',
+                        'route': '/stock',
+                    })
+            # Une règle a matché mais la cible n'existe pas (ou le type
+            # encode/lot/série n'a pas encore de résolveur dédié) : repli
+            # sur le comportement historique ci-dessous plutôt qu'un 404
+            # prématuré — un futur module peut compléter ce routage.
 
         # XSTK3 — un EAN/UPC/GTIN imprimé par le FABRICANT n'a pas de ':'
         # (contrairement aux jetons internes `PRODUIT:<id>`). On matche

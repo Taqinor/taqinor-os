@@ -809,3 +809,24 @@ def mouvements_agreges(company, *, group_by, date_min=None, date_max=None):
         })
     out.sort(key=lambda e: e['libelle'] or '')
     return out
+
+
+def resolve_via_nomenclature(company, code):
+    """ZSTK12 — consulte la nomenclature de code-barres ACTIVE de la société
+    (s'il y en a une) et renvoie ``(encode, regle)`` pour la PREMIÈRE règle
+    (triée par priorité) dont le motif matche ``code``, ou ``None`` si
+    aucune nomenclature active / aucune règle ne matche — repli : le
+    résolveur de scan continue alors son comportement HISTORIQUE (jetons
+    internes → GS1 → EAN), byte-identique à avant ZSTK12."""
+    from .models import NomenclatureCodeBarres
+
+    nomenclature = (NomenclatureCodeBarres.objects
+                    .filter(company=company, actif=True)
+                    .prefetch_related('regles')
+                    .first())
+    if nomenclature is None:
+        return None
+    for regle in nomenclature.regles.all():
+        if regle.matches(code):
+            return regle.encode, regle
+    return None

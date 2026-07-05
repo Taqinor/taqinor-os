@@ -33,6 +33,9 @@ from .inventaire_annuel import InventaireAnnuelViewSet
 from .revalorisation_stock import RevalorisationStockViewSet
 from .conditionnement_produit import ConditionnementProduitViewSet
 from .modele_bcf import ModeleBonCommandeFournisseurViewSet
+from .nomenclature_code_barres import (
+    NomenclatureCodeBarresViewSet, RegleCodeBarresViewSet,
+)
 
 __all__ = [
     'ProduitViewSet',
@@ -63,4 +66,6 @@ __all__ = [
     'RevalorisationStockViewSet',
     'ConditionnementProduitViewSet',
     'ModeleBonCommandeFournisseurViewSet',
+    'NomenclatureCodeBarresViewSet',
+    'RegleCodeBarresViewSet',
 ]

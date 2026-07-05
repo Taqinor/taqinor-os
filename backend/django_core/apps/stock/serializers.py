@@ -16,6 +16,7 @@ from .models import (
     PalierPrixFournisseur, PortailFournisseurToken,
     LotEntrepot, InventaireAnnuel, RevalorisationStock, ConditionnementProduit,
     ModeleBonCommandeFournisseur, ModeleBonCommandeFournisseurLigne,
+    NomenclatureCodeBarres, RegleCodeBarres,
 )
 
 
@@ -1475,3 +1476,26 @@ class ModeleBonCommandeFournisseurSerializer(serializers.ModelSerializer):
                 ModeleBonCommandeFournisseurLigne.objects.create(
                     modele=instance, **ligne)
         return instance
+
+
+class RegleCodeBarresSerializer(serializers.ModelSerializer):
+    """ZSTK12 — règle d'une nomenclature de code-barres."""
+
+    class Meta:
+        model = RegleCodeBarres
+        fields = [
+            'id', 'nomenclature', 'motif', 'est_regex', 'encode', 'priorite',
+        ]
+
+
+class NomenclatureCodeBarresSerializer(serializers.ModelSerializer):
+    """ZSTK12 — nomenclature de code-barres (Default/GS1) + ses règles."""
+    regles = RegleCodeBarresSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = NomenclatureCodeBarres
+        fields = [
+            'id', 'nom', 'type_nomenclature', 'actif', 'regles',
+            'date_creation', 'date_mise_a_jour',
+        ]
+        read_only_fields = ['date_creation', 'date_mise_a_jour']
