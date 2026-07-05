@@ -11,6 +11,23 @@ import re
 logger = logging.getLogger(__name__)
 
 
+def _add_months(d, months):
+    """YSUBS9 — `d` décalée de `months` mois (jour recadré fin de mois).
+
+    Fonction pure stdlib (pas de dépendance ajoutée), même calcul que
+    `apps.sav.dateutils.add_months` mais gardée locale pour ne pas coupler
+    `ventes` à `sav` pour une simple arithmétique de date."""
+    if d is None or months is None:
+        return None
+    import calendar
+    total = d.month - 1 + int(months)
+    year = d.year + total // 12
+    month = total % 12 + 1
+    day = min(d.day, calendar.monthrange(year, month)[1])
+    from datetime import date
+    return date(year, month, day)
+
+
 def create_draft_devis_from_ocr(*, company, user, lead, fields):
     """FG106 — crée un DEVIS brouillon (sans lignes) à partir d'un document OCR.
 
@@ -1880,6 +1897,18 @@ def creer_facture_contrat(*, contrat, user, company):
     )
     libelle = f'Maintenance — contrat #{contrat.pk} ({periodicite_label})'
 
+    # YSUBS9 — période de service couverte par CETTE facture : du dernier
+    # cycle facturé (ou date_debut si jamais facturé) à aujourd'hui + la
+    # durée de la périodicité (mois, table MONTHS déjà utilisée pour les
+    # visites). Best-effort : une périodicité/date absente laisse les deux
+    # champs à NULL (comportement actuel intact).
+    periode_debut = contrat.derniere_facturation or contrat.date_debut
+    periode_fin = None
+    if periode_debut is not None:
+        mois = getattr(contrat, 'MONTHS', {}).get(contrat.periodicite)
+        if mois:
+            periode_fin = _add_months(periode_debut, mois)
+
     def _create(ref):
         return Facture.objects.create(
             reference=ref,
@@ -1892,6 +1921,8 @@ def creer_facture_contrat(*, contrat, user, company):
             montant_ttc=prix_ttc,
             libelle=libelle,
             created_by=user,
+            periode_service_debut=periode_debut,
+            periode_service_fin=periode_fin,
         )
 
     facture = create_with_reference(Facture, 'FAC', company, _create)
@@ -3308,3 +3339,110 @@ def generer_facture_ticket_sav(*, ticket, sous_garantie, pieces, user):
     ticket.facture_id_ext = facture.id
     ticket.save(update_fields=['facture_id_ext'])
     return facture
+
+
+# ── XCTR22 — Encaissement récurrent automatique (tokenisation / mandat) ────
+
+def mandat_actif_pour_client(client):
+    """Renvoie le ``MandatPaiement`` ACTIF du client, ou None.
+
+    Lecture pure ; jamais d'effet de bord. Sert de garde d'entrée pour
+    ``debiter_mandat_pour_facture`` — un client sans mandat actif (le cas
+    par défaut) fait strictement l'encaissement manuel actuel."""
+    from apps.ventes.models import MandatPaiement
+    return (
+        MandatPaiement.objects
+        .filter(client=client, statut=MandatPaiement.Statut.ACTIF)
+        .exclude(token='')
+        .order_by('-created_at')
+        .first()
+    )
+
+
+DUNNING_RETRY_DAYS = (1, 3, 7)
+
+
+def debiter_mandat_pour_facture(*, facture, periode, retry_index=0):
+    """XCTR22 — débite le mandat actif du client de ``facture`` pour la
+    période donnée, via `payments.providers`.
+
+    Appelé APRÈS la création d'une facture de cycle récurrent
+    (`creer_facture_contrat`/`facturer_ligne_echeance` — contrats/sav restent
+    les points d'entrée existants ; ceci est un branchement ADDITIF appelé
+    depuis leurs services). Sans mandat actif → no-op silencieux (retourne
+    None, comportement actuel intact). Avec mandat :
+      - succès → crée un `Paiement` rapproché (comme un encaissement manuel)
+        + une `TentativeDebitMandat` `reussi` ; jamais deux débits RÉUSSIS
+        pour la même (mandat, periode) — idempotent.
+      - échec → `TentativeDebitMandat` `echec` avec motif + programme la
+        prochaine retentative (`DUNNING_RETRY_DAYS`, défaut J+1/J+3/J+7) et
+        notifie le client (lien de mise à jour de carte — best-effort).
+
+    Renvoie le `Paiement` créé en cas de succès, sinon None.
+    """
+    from django.db import transaction
+    from django.utils import timezone
+    from datetime import timedelta
+    from apps.ventes.models import TentativeDebitMandat, Paiement
+    from apps.ventes.payments.providers import get_provider
+
+    mandat = mandat_actif_pour_client(facture.client)
+    if mandat is None:
+        return None
+
+    # Jamais deux débits RÉUSSIS pour la même période — idempotence.
+    deja_reussi = TentativeDebitMandat.objects.filter(
+        mandat=mandat, periode=periode,
+        statut=TentativeDebitMandat.Statut.REUSSI).exists()
+    if deja_reussi:
+        return None
+
+    provider = get_provider(mandat.provider)
+    result = provider.charge(token=mandat.token, montant=facture.montant_ttc)
+
+    with transaction.atomic():
+        if result.get('ok'):
+            paiement = Paiement.objects.create(
+                company=facture.company, facture=facture,
+                montant=facture.montant_ttc,
+                date_paiement=timezone.localdate(),
+                mode=Paiement.Mode.CARTE,
+                reference=(result.get('provider_ref') or '')[:120],
+                note='Débit automatique (mandat de paiement récurrent).',
+            )
+            TentativeDebitMandat.objects.create(
+                company=facture.company, mandat=mandat, periode=periode,
+                statut=TentativeDebitMandat.Statut.REUSSI,
+                paiement=paiement,
+            )
+            return paiement
+
+        tentatives_precedentes = TentativeDebitMandat.objects.filter(
+            mandat=mandat, periode=periode,
+            statut=TentativeDebitMandat.Statut.ECHEC).count()
+        idx = min(tentatives_precedentes, len(DUNNING_RETRY_DAYS) - 1)
+        prochaine = (
+            timezone.localdate() + timedelta(days=DUNNING_RETRY_DAYS[idx]))
+        TentativeDebitMandat.objects.create(
+            company=facture.company, mandat=mandat, periode=periode,
+            statut=TentativeDebitMandat.Statut.ECHEC,
+            motif_echec=(result.get('motif_echec') or '')[:255],
+            prochaine_retentative=prochaine,
+        )
+
+    try:
+        from apps.notifications.services import notify
+        client = facture.client
+        if client is not None and getattr(client, 'created_by', None):
+            notify(
+                client.created_by, 'mandat_debit_echec',
+                f'Débit automatique échoué — {facture.reference}',
+                body=(f'Le débit automatique de {facture.montant_ttc} MAD '
+                      f'a échoué pour {client.nom}. Mettez à jour la carte.'),
+                link='/ventes/factures',
+                company=facture.company,
+            )
+    except Exception:  # noqa: BLE001 — best-effort
+        pass
+
+    return None

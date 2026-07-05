@@ -131,6 +131,12 @@
       <strong>Statut</strong>
       <span class="statut-badge">{{ facture.get_statut_display() }}</span>
     </div>
+    {% if facture.periode_service_debut and facture.periode_service_fin %}
+    <div class="meta-item">
+      <strong>Période de service</strong>
+      <span>{{ facture.periode_service_debut.strftime('%d/%m/%Y') }} — {{ facture.periode_service_fin.strftime('%d/%m/%Y') }}</span>
+    </div>
+    {% endif %}
   </div>
 
   <!-- Lignes -->

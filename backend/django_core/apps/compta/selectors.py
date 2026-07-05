@@ -3306,3 +3306,33 @@ def rapprochement_auxiliaire_fournisseurs(company, date=None):
         ecart_total += ecart
     lignes.sort(key=lambda e: abs(e['ecart']), reverse=True)
     return {'lignes': lignes, 'ecart_total': ecart_total}
+
+
+def ecatalogue_public_par_token(token):
+    """XPOS14 — E-catalogue public lu par son token (FG214), lecture seule.
+
+    Utilisé par ``apps.ventes.public_views`` (frontière selectors — jamais
+    d'import de ``compta.models`` côté ventes). Renvoie ``None`` si le token
+    est inconnu, l'e-catalogue est inactif, ou expiré — un appelant public
+    traite ``None`` comme 404, sans jamais fuiter d'information sur l'état
+    réel (existe mais expiré / n'existe pas)."""
+    from .models import ECatalogue
+    try:
+        cat = ECatalogue.objects.get(token=token, actif=True)
+    except ECatalogue.DoesNotExist:
+        return None
+    if cat.expire_le and cat.expire_le < timezone.now():
+        return None
+    return cat
+
+
+def produits_publics_du_catalogue(ecatalogue):
+    """Produits exposés par un e-catalogue (prix public TTC uniquement,
+    jamais `prix_achat`). Lecture seule, scopée à la société du catalogue."""
+    from apps.stock.models import Produit
+    return list(
+        Produit.objects.filter(
+            company_id=ecatalogue.company_id,
+            id__in=ecatalogue.produit_ids or [],
+        )
+    )

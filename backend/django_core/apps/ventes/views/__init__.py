@@ -34,6 +34,8 @@ from .commissioning import (  # FG274-FG278, FG287
     TestPerformanceReceptionViewSet,
     AttestationREViewSet,
 )
+from .remise_encaissement import RemiseEncaissementViewSet  # XFSM19
+from .mandat_paiement import MandatPaiementViewSet  # XCTR22
 
 __all__ = [
     'DevisViewSet',
@@ -62,4 +64,6 @@ __all__ = [
     'AttestationConformiteViewSet',
     'TestPerformanceReceptionViewSet',
     'AttestationREViewSet',
+    'RemiseEncaissementViewSet',
+    'MandatPaiementViewSet',
 ]

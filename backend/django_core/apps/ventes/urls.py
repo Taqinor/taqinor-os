@@ -27,6 +27,8 @@ from .views import (
     AttestationConformiteViewSet,  # FG277
     TestPerformanceReceptionViewSet,  # FG278
     AttestationREViewSet,  # FG287
+    RemiseEncaissementViewSet,  # XFSM19
+    MandatPaiementViewSet,  # XCTR22
 )
 from .recouvrement import (
     FollowupLevelViewSet,
@@ -103,6 +105,12 @@ router.register(r'tests-pr-reception', TestPerformanceReceptionViewSet,
 # FG287 — attestations d'énergie renouvelable.
 router.register(r'attestations-re', AttestationREViewSet,
                 basename='attestation-re')
+# XFSM19 — rapprochement des encaissements terrain par technicien.
+router.register(r'remises-encaissement', RemiseEncaissementViewSet,
+                basename='remise-encaissement')
+# XCTR22 — mandats de paiement récurrent (tokenisation carte).
+router.register(r'mandats-paiement', MandatPaiementViewSet,
+                basename='mandat-paiement')
 
 urlpatterns = [
     # Q6/Q7 — Proposition web tokenisée (données JSON + e-signature). Jeton

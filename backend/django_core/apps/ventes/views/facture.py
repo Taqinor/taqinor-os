@@ -7,7 +7,7 @@ from rest_framework.decorators import action, api_view, permission_classes  # no
 from rest_framework.exceptions import ValidationError  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
 from apps.stock.services import (  # noqa: F401
-    mouvement_type_sortie, record_stock_movement,
+    mouvement_type_sortie, mouvement_type_entree, record_stock_movement,
 )
 from ..models import (  # noqa: F401
     Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
@@ -104,7 +104,8 @@ class FactureViewSet(viewsets.ModelViewSet):
             'emettre', 'marquer_payee', 'enregistrer_paiement',
             'generer_pdf', 'telecharger_pdf', 'envoyer_email',
             'relancer', 'exclure_relance', 'whatsapp', 'ubl',
-            'dgi_export', 'dgi_conformite', 'bulk', 'lien_paiement',
+            'dgi_export', 'dgi_conformite', 'dgi_transmettre',
+            'bulk', 'lien_paiement', 'retour_client',
             'facturer_penalites', 'consolider', 'abandonner_solde',
             'remettre_brouillon',
         ]:
@@ -846,6 +847,31 @@ class FactureViewSet(viewsets.ModelViewSet):
         return Response(
             {'conforme': not problemes, 'problemes': problemes})
 
+    @action(detail=True, methods=['post'], url_path='dgi-transmettre',
+            permission_classes=[IsResponsableOrAdmin])
+    def dgi_transmettre(self, request, pk=None):
+        """XFAC29 — Transmet (ou retransmet) la facture à la plateforme DGI
+        agréée configurée. GARDÉ par l'interrupteur maître
+        ``dgi_transmission_actif`` (défaut OFF) : tant qu'il est OFF pour la
+        société, cet endpoint se comporte comme introuvable (404) — la
+        capacité reste invisible, symétrique de `dgi_export`/`dgi_conformite`.
+        Un rejet peut être rejoué (nouvelle tentative) ; une facture déjà
+        ACCEPTÉE n'est jamais retransmise (idempotence)."""
+        facture = self.get_object()
+        from apps.ventes.dgi.transmission import (
+            is_dgi_transmission_enabled, transmettre_facture,
+        )
+        if not is_dgi_transmission_enabled(facture.company):
+            return Response(
+                {'detail': 'Introuvable.'},
+                status=status.HTTP_404_NOT_FOUND)
+        facture = transmettre_facture(facture)
+        return Response({
+            'dgi_statut': facture.dgi_statut,
+            'dgi_reference': facture.dgi_reference,
+            'dgi_motif_rejet': facture.dgi_motif_rejet,
+        })
+
     @action(detail=True, methods=['post'], url_path='whatsapp',
             permission_classes=[IsResponsableOrAdmin])
     def whatsapp(self, request, pk=None):
@@ -1079,6 +1105,160 @@ class FactureViewSet(viewsets.ModelViewSet):
         # compta.ecriture_pour_avoir, jamais d'import de son service ici).
         from core.events import avoir_cree
         avoir_cree.send(sender=Avoir, instance=avoir, company=company)
+        try:
+            from ..utils.pdf import generate_avoir_pdf
+            generate_avoir_pdf(avoir.id)
+            avoir.refresh_from_db()
+        except Exception:
+            pass
+        return Response(AvoirSerializer(avoir).data,
+                        status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='retour-client',
+            permission_classes=[IsResponsableOrAdmin])
+    def retour_client(self, request, pk=None):
+        """XPOS7 — Retour client avec re-stockage (contre ticket/facture
+        d'origine). Sélectionne des lignes + quantités retournées → crée
+        l'avoir référençant la facture d'origine (même chemin Avoir que
+        `creer_avoir`, inchangé) + option « remettre en stock » (MouvementStock
+        ENTREE via `stock.services`). Motif de retour OBLIGATOIRE. Une
+        quantité retournée supérieure à ce qui a été vendu (moins les retours
+        déjà actés) est refusée."""
+        facture = self.get_object()
+        self._guard_periode_verrouillee(facture)
+        if facture.statut not in ('emise', 'payee', 'en_retard'):
+            return Response(
+                {'detail': 'Un retour ne peut être créé que depuis une '
+                           'facture émise (ou payée/en retard).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        company = facture.company
+        motif = (request.data.get('motif') or '').strip()
+        if not motif:
+            return Response(
+                {'detail': 'Le motif du retour est obligatoire.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        restocker = bool(request.data.get('restocker', False))
+        lignes = request.data.get('lignes')
+        if not isinstance(lignes, list) or not lignes:
+            return Response(
+                {'detail': 'Au moins une ligne retournée est requise.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+        reste_creditable = facture.total_ttc - facture.avoirs_total
+
+        # Quantité déjà retournée par produit (avoirs actifs déjà émis sur
+        # cette facture) — pour ne jamais accepter un retour au-delà du vendu.
+        deja_retourne = {}
+        for a in facture.avoirs.filter(statut=Avoir.Statut.EMISE):
+            for lig in a.lignes.all():
+                if lig.produit_id:
+                    deja_retourne[lig.produit_id] = (
+                        deja_retourne.get(lig.produit_id, Decimal('0'))
+                        + lig.quantite)
+
+        vendu_par_produit = {}
+        for lig in facture.lignes.all():
+            if lig.produit_id:
+                vendu_par_produit[lig.produit_id] = (
+                    vendu_par_produit.get(lig.produit_id, Decimal('0'))
+                    + lig.quantite)
+
+        clean_lignes = []
+        for i, ligne in enumerate(lignes, start=1):
+            if not isinstance(ligne, dict):
+                return Response(
+                    {'detail': f'Ligne {i} invalide.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            produit_id = ligne.get('produit') or None
+            if produit_id is None:
+                return Response(
+                    {'detail': f'Ligne {i} : produit requis.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            from apps.stock.selectors import get_produit_scoped
+            produit = get_produit_scoped(company, produit_id)
+            if produit is None:
+                return Response(
+                    {'detail': f'Ligne {i} : produit inconnu.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            try:
+                qte = Decimal(str(ligne.get('quantite')))
+            except (InvalidOperation, TypeError, ValueError):
+                return Response(
+                    {'detail': f'Ligne {i} : quantité numérique requise.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            if qte <= 0:
+                return Response(
+                    {'detail': f'Ligne {i} : quantité > 0 requise.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            vendu = vendu_par_produit.get(produit_id, Decimal('0'))
+            deja = deja_retourne.get(produit_id, Decimal('0'))
+            disponible_retour = vendu - deja
+            if qte > disponible_retour:
+                return Response(
+                    {'detail': (
+                        f'Ligne {i} : quantité retournée ({qte}) supérieure '
+                        f'à la quantité vendue restant retournable '
+                        f'({disponible_retour}) pour « {produit.nom} ».')},
+                    status=status.HTTP_400_BAD_REQUEST)
+            f_ligne = next(
+                (lig for lig in facture.lignes.all()
+                 if lig.produit_id == produit_id), None)
+            prix_unitaire = f_ligne.prix_unitaire if f_ligne else Decimal('0')
+            remise = f_ligne.remise if f_ligne else Decimal('0')
+            taux_tva = f_ligne.taux_tva if f_ligne else None
+            designation = (
+                f_ligne.designation if f_ligne else produit.nom)[:255]
+            clean_lignes.append({
+                'produit': produit, 'produit_id': produit_id,
+                'designation': designation, 'quantite': qte,
+                'prix_unitaire': prix_unitaire, 'remise': remise,
+                'taux_tva': taux_tva,
+            })
+
+        def _create(ref):
+            avoir = Avoir.objects.create(
+                company=company, reference=ref, facture=facture,
+                client=facture.client, statut=Avoir.Statut.EMISE,
+                motif=motif, motif_retour=motif, restocke=restocker,
+                taux_tva=facture.taux_tva, created_by=request.user)
+            for ligne in clean_lignes:
+                LigneAvoir.objects.create(
+                    avoir=avoir, produit=ligne['produit'],
+                    designation=ligne['designation'],
+                    quantite=ligne['quantite'],
+                    prix_unitaire=ligne['prix_unitaire'],
+                    remise=ligne['remise'], taux_tva=ligne['taux_tva'])
+            return avoir
+
+        avoir = create_numbered(Avoir, company, 'avoir', _create)
+        if avoir.total_ttc - reste_creditable > Decimal('0.01'):
+            avoir.lignes.all().delete()
+            avoir.delete()
+            return Response(
+                {'detail': "Le retour dépasse le montant restant de la "
+                           f"facture ({reste_creditable:.2f} MAD)."},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        if restocker:
+            for ligne in clean_lignes:
+                produit = ligne['produit']
+                produit.refresh_from_db()
+                qte_entiere = int(Decimal(ligne['quantite']).quantize(
+                    Decimal('1'), rounding=ROUND_HALF_UP))
+                qte_avant = produit.quantite_stock
+                qte_apres = qte_avant + qte_entiere
+                record_stock_movement(
+                    company=company, produit=produit,
+                    type_mouvement=mouvement_type_entree(),
+                    quantite=qte_entiere, quantite_avant=qte_avant,
+                    quantite_apres=qte_apres, reference=avoir.reference,
+                    note=f'Retour client — {motif} (facture {facture.reference})',
+                    created_by=request.user,
+                )
+
+        from .. import activity
+        activity.log_facture_avoir(facture, request.user, avoir)
         try:
             from ..utils.pdf import generate_avoir_pdf
             generate_avoir_pdf(avoir.id)
