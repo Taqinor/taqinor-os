@@ -8643,3 +8643,76 @@ class LigneCompensation(models.Model):
 
     def __str__(self):
         return f'{self.get_type_facture_display()} {self.reference_facture}'
+
+
+# ── XMKT27 — Constructeur d'enquêtes avec logique conditionnelle ───────────
+
+class Enquete(models.Model):
+    """Enquête configurable au-delà du NPS figé (XMKT27, FG238).
+
+    ``questions`` est un JSON validé : liste de
+    ``{"id": "q1", "type": "choix"|"echelle"|"texte"|"nps", "libelle": ...,
+    "options": [...], "obligatoire": bool,
+    "condition": {"question_id": "q0", "valeur": ...}}`` — affichage
+    conditionnel « question B si réponse A ». Lien public tokenisé
+    (``token``), aucune authentification requise pour répondre.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='enquetes',
+        verbose_name='Société',
+    )
+    titre = models.CharField(max_length=200, verbose_name='Titre')
+    questions = models.JSONField(
+        default=list, blank=True, verbose_name='Questions (JSON)')
+    token = models.CharField(
+        max_length=64, unique=True, verbose_name='Jeton public')
+    actif = models.BooleanField(default=True, verbose_name='Active')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Enquête'
+        verbose_name_plural = 'Enquêtes'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return self.titre
+
+
+class ReponseEnquete(models.Model):
+    """Une soumission de réponses à une ``Enquete`` (XMKT27).
+
+    ``reponses`` est un JSON ``{"q1": "valeur", ...}``. ``contact_ref`` est
+    une référence OPAQUE lead/client (``lead:<id>``/``client:<id>``, jamais
+    d'import direct des modèles crm/ventes) — vide si le répondant n'est pas
+    identifié (lien public anonyme).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='reponses_enquete',
+        verbose_name='Société',
+    )
+    enquete = models.ForeignKey(
+        Enquete,
+        on_delete=models.CASCADE,
+        related_name='reponses',
+        verbose_name='Enquête',
+    )
+    contact_ref = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Référence contact (lead/client, opaque)')
+    reponses = models.JSONField(
+        default=dict, blank=True, verbose_name='Réponses (JSON)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Soumise le')
+
+    class Meta:
+        verbose_name = 'Réponse à une enquête'
+        verbose_name_plural = 'Réponses à une enquête'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'{self.enquete_id} ← {self.contact_ref or "anonyme"}'

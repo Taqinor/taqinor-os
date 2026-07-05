@@ -47,6 +47,7 @@ from .models import (
     FamilleTvaNonDeductible,
     Compensation, LigneCompensation,
     ApprobationEnvoiCampagne,
+    Enquete, ReponseEnquete,
 )
 
 
@@ -2355,4 +2356,29 @@ class CompensationSerializer(serializers.ModelSerializer):
             'fournisseur_nom', 'montant_compense', 'statut', 'ecriture_id',
             'lignes', 'date_creation', 'date_validation',
         ]
+        read_only_fields = fields
+
+
+class EnqueteSerializer(serializers.ModelSerializer):
+    """XMKT27 — Enquête configurable (constructeur avec logique
+    conditionnelle)."""
+    class Meta:
+        model = Enquete
+        fields = ['id', 'titre', 'questions', 'token', 'actif', 'date_creation']
+        read_only_fields = ['token', 'date_creation']
+
+    def validate_questions(self, value):
+        from . import services
+        try:
+            return services.valider_questions_enquete(value)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc))
+
+
+class ReponseEnqueteSerializer(serializers.ModelSerializer):
+    """XMKT27 — soumission (lecture seule côté admin — la création publique
+    passe par ``enquete_soumettre``)."""
+    class Meta:
+        model = ReponseEnquete
+        fields = ['id', 'enquete', 'contact_ref', 'reponses', 'date_creation']
         read_only_fields = fields

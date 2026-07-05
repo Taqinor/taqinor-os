@@ -4,6 +4,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     desinscription_publique, double_optin_confirmer,
     redirection_lien_tracke,
+    enquete_publique, enquete_soumettre, EnqueteViewSet,
     webhook_brevo_campagne, webhook_sms_stop,
     portail_mon_releve, portail_mon_releve_pdf, portail_contester_facture,
     AppelTelephoniqueViewSet,
@@ -174,6 +175,8 @@ router.register(r'pistes-audit', PisteAuditComptableViewSet,
                 basename='pisteaudit')
 # ── XFAC14 — Compensation AR/AP (netting) ───────────────────────────────────
 router.register(r'compensations', CompensationViewSet)
+# ── XMKT27 — Constructeur d'enquêtes ────────────────────────────────────────
+router.register(r'enquetes', EnqueteViewSet)
 
 urlpatterns = [
     path('webhooks/brevo/', webhook_brevo_campagne, name='webhook-brevo-campagne'),
@@ -184,6 +187,10 @@ urlpatterns = [
          name='double-optin-confirmer'),
     path('r/<str:token>/', redirection_lien_tracke,
          name='redirection-lien-tracke'),
+    path('enquetes-publiques/<str:token>/', enquete_publique,
+         name='enquete-publique'),
+    path('enquetes-publiques/<str:token>/soumettre/', enquete_soumettre,
+         name='enquete-soumettre'),
     # XFAC26/27 — Portail client self-service (token, sans login).
     path('portail/<str:token>/mon-releve/', portail_mon_releve,
          name='portail-mon-releve'),

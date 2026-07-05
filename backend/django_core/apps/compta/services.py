@@ -74,6 +74,7 @@ from .models import (
     LienTrackee, ClicLien,
     StatutEngagementContact,
     ApprobationEnvoiCampagne,
+    Enquete, ReponseEnquete,
 )
 
 
@@ -10395,3 +10396,131 @@ def creer_reclamation_portail(facture, *, motif_label, commentaire=''):
         montant_conteste=facture.montant_du,
         bloque_relances=True,
     )
+
+
+# ── XMKT27 — Constructeur d'enquêtes avec logique conditionnelle ───────────
+
+_TYPES_QUESTION_VALIDES = {'choix', 'echelle', 'texte', 'nps'}
+
+
+def valider_questions_enquete(questions):
+    """XMKT27 — valide la structure JSON des questions d'une enquête.
+    Lève ``ValueError`` sur un type/format inconnu."""
+    if not isinstance(questions, list):
+        raise ValueError('questions doit être une liste.')
+    ids_vus = set()
+    for q in questions:
+        if not isinstance(q, dict):
+            raise ValueError('chaque question doit être un objet.')
+        qid = q.get('id')
+        if not qid:
+            raise ValueError('chaque question doit avoir un id.')
+        if qid in ids_vus:
+            raise ValueError(f'id de question dupliqué : {qid}')
+        ids_vus.add(qid)
+        qtype = q.get('type')
+        if qtype not in _TYPES_QUESTION_VALIDES:
+            raise ValueError(f'type de question inconnu : {qtype}')
+        condition = q.get('condition')
+        if condition is not None:
+            if not isinstance(condition, dict) or 'question_id' not in condition:
+                raise ValueError(
+                    f'condition invalide pour la question {qid}.')
+    return questions
+
+
+def creer_enquete(company, *, titre, questions=None):
+    """XMKT27 — crée une enquête avec un jeton public unique."""
+    questions = valider_questions_enquete(questions or [])
+    return Enquete.objects.create(
+        company=company, titre=titre, questions=questions,
+        token=uuid.uuid4().hex)
+
+
+def questions_visibles(enquete, reponses_partielles):
+    """XMKT27 — filtre les questions visibles selon la logique conditionnelle
+    « question B si réponse A », évaluée sur les réponses déjà données."""
+    visibles = []
+    for q in enquete.questions or []:
+        condition = q.get('condition')
+        if not condition:
+            visibles.append(q)
+            continue
+        valeur_attendue = condition.get('valeur')
+        valeur_donnee = reponses_partielles.get(condition.get('question_id'))
+        if valeur_donnee == valeur_attendue:
+            visibles.append(q)
+    return visibles
+
+
+def soumettre_reponse_enquete(enquete, *, reponses, contact_ref=''):
+    """XMKT27 — soumission publique d'une enquête (sans auth). Ne valide QUE
+    les questions effectivement visibles (logique conditionnelle) : une
+    question masquée n'est jamais requise. Lève ``ValueError`` si une
+    question obligatoire visible est absente."""
+    reponses = reponses or {}
+    visibles = questions_visibles(enquete, reponses)
+    for q in visibles:
+        if q.get('obligatoire') and not reponses.get(q['id']):
+            raise ValueError(f'question obligatoire manquante : {q["id"]}')
+    return ReponseEnquete.objects.create(
+        company=enquete.company, enquete=enquete,
+        contact_ref=contact_ref or '', reponses=reponses)
+
+
+def taux_completion_enquete(enquete):
+    """XMKT27 — taux de complétion vs abandon : une réponse est « complète »
+    si toutes les questions obligatoires VISIBLES pour elle ont une valeur."""
+    total = enquete.reponses.count()
+    if not total:
+        return {'total': 0, 'completes': 0, 'taux_completion_pct': 0.0}
+    completes = 0
+    for reponse in enquete.reponses.all():
+        visibles = questions_visibles(enquete, reponse.reponses or {})
+        obligatoires_ok = all(
+            reponse.reponses.get(q['id']) for q in visibles if q.get('obligatoire'))
+        if obligatoires_ok:
+            completes += 1
+    return {
+        'total': total,
+        'completes': completes,
+        'taux_completion_pct': round(completes / total * 100, 1),
+    }
+
+
+def analytics_enquete(enquete):
+    """XMKT27 — analytics agrégées par question : répartition des choix,
+    moyenne/distribution des échelles, nuage des réponses texte, NPS
+    consolidé si question NPS."""
+    reponses = list(enquete.reponses.all())
+    resultats = {}
+    for q in (enquete.questions or []):
+        qid = q['id']
+        valeurs = [r.reponses.get(qid) for r in reponses if r.reponses.get(qid) is not None]
+        if q['type'] == 'choix':
+            repartition = {}
+            for v in valeurs:
+                repartition[v] = repartition.get(v, 0) + 1
+            resultats[qid] = {'type': 'choix', 'repartition': repartition}
+        elif q['type'] in ('echelle', 'nps'):
+            nombres = [float(v) for v in valeurs if _est_nombre(v)]
+            moyenne = round(sum(nombres) / len(nombres), 2) if nombres else 0.0
+            entry = {'type': q['type'], 'moyenne': moyenne, 'n': len(nombres)}
+            if q['type'] == 'nps' and nombres:
+                promoteurs = sum(1 for n in nombres if n >= 9)
+                detracteurs = sum(1 for n in nombres if n <= 6)
+                entry['nps'] = round(
+                    (promoteurs - detracteurs) / len(nombres) * 100, 1)
+            resultats[qid] = entry
+        else:
+            resultats[qid] = {'type': 'texte', 'reponses': valeurs}
+    resultats['_completion'] = taux_completion_enquete(enquete)
+    return resultats
+
+
+def _est_nombre(v):
+    try:
+        float(v)
+        return True
+    except (TypeError, ValueError):
+        return False

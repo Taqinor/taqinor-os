@@ -62,6 +62,7 @@ from .models import (
     FamilleTvaNonDeductible,
     Compensation,
     ApprobationEnvoiCampagne,
+    Enquete,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -71,6 +72,7 @@ from .serializers import (
     CessionImmobilisationSerializer, ClotureCaisseSerializer,
     CodePromotionSerializer, EnvoiCampagneSerializer,
     ApprobationEnvoiCampagneSerializer,
+    EnqueteSerializer,
     CommissionPayoutRunSerializer, CompteComptableSerializer,
     CompteTresorerieSerializer, ContratAvancementSerializer,
     DeclarationTVASerializer, DemandeApprobationConfigSerializer,
@@ -4745,6 +4747,28 @@ class ApprobationEnvoiCampagneViewSet(_ComptaBaseViewSet):
             services.journal_audit_envois(request.user.company))
 
 
+# ── XMKT27 — Constructeur d'enquêtes avec logique conditionnelle ───────────
+
+class EnqueteViewSet(_ComptaBaseViewSet):
+    """CRUD des enquêtes (XMKT27)."""
+    queryset = Enquete.objects.all()
+    serializer_class = EnqueteSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['titre']
+    ordering_fields = ['date_creation', 'titre']
+
+    def perform_create(self, serializer):
+        import uuid
+        serializer.save(
+            company=self.request.user.company, token=uuid.uuid4().hex)
+
+    @action(detail=True, methods=['get'])
+    def resultats(self, request, pk=None):
+        """XMKT27 — analytics agrégées par question + taux de complétion."""
+        enquete = self.get_object()
+        return Response(services.analytics_enquete(enquete))
+
+
 # ── XMKT5 — Listes de diffusion nommées + abonnements ───────────────────────
 
 class ListeDiffusionViewSet(_ComptaBaseViewSet):
@@ -4981,6 +5005,48 @@ def redirection_lien_tracke(request, token):
     if not ok:
         return Response({'detail': resultat}, status=404)
     return HttpResponseRedirect(resultat)
+
+
+# ── XMKT27 — Enquêtes (public, tokenisé, aucune auth) ───────────────────────
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def enquete_publique(request, token):
+    """Récupère les questions VISIBLES d'une enquête via son lien public
+    (XMKT27). Jeton invalide/enquête inactive → 404 (aucune fuite
+    d'existence). Les réponses déjà données (``?reponses=`` JSON encodé) sont
+    prises en compte pour la logique conditionnelle."""
+    import json as _json
+
+    enquete = Enquete.objects.filter(token=token, actif=True).first()
+    if not enquete:
+        return Response({'detail': 'Enquête introuvable.'}, status=404)
+    reponses_partielles = {}
+    brut = request.GET.get('reponses')
+    if brut:
+        try:
+            reponses_partielles = _json.loads(brut)
+        except (ValueError, TypeError):
+            reponses_partielles = {}
+    questions = services.questions_visibles(enquete, reponses_partielles)
+    return Response({'titre': enquete.titre, 'questions': questions})
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def enquete_soumettre(request, token):
+    """Soumission publique d'une enquête (XMKT27), aucune authentification."""
+    enquete = Enquete.objects.filter(token=token, actif=True).first()
+    if not enquete:
+        return Response({'detail': 'Enquête introuvable.'}, status=404)
+    reponses = request.data.get('reponses') or {}
+    contact_ref = request.data.get('contact_ref', '')
+    try:
+        reponse = services.soumettre_reponse_enquete(
+            enquete, reponses=reponses, contact_ref=contact_ref)
+    except ValueError as exc:
+        return Response({'detail': str(exc)}, status=400)
+    return Response({'id': reponse.id}, status=201)
 
 
 # ── XFAC26/27 — Portail client self-service : relevé + contestation ───────
