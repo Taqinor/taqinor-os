@@ -1953,24 +1953,23 @@ export function objectionFaq(): FaqItem[] {
   ];
 }
 
-// ── WJ55 · Télémétrie de vue/engagement de la proposition ────────────────────
+// ── WJ55/WJ109 · Télémétrie de vue/engagement de la proposition ──────────────
 //
 // « Le CRM sait QUE le client a lu, mais pas QUAND » : un follow-up envoyé au
 // moment où le client rouvre sa proposition (ou vient de faire défiler jusqu'au
-// bloc financement) convertit bien mieux qu'une relance calendaire aveugle. On
-// réutilise EXACTEMENT le fil lead existant (proxy same-origin →
-// LEAD_WEBHOOK_URL, même secret X-Webhook-Secret) — AUCUN nouvel endpoint,
-// AUCUN nouveau secret.
+// bloc financement) convertit bien mieux qu'une relance calendaire aveugle.
 //
-// GARDE-FOU ANTI-POLLUTION (CRM) : `apps/crm/webhooks.py` est un webhook de
-// LEAD, pas un bus d'événements générique — sans téléphone/email exploitable,
-// sa couche de déduplication (`find_duplicates_by_contact`) ne trouve jamais de
-// lead existant et CRÉERAIT un lead fantôme par ping. On n'émet donc UN
-// événement que lorsque la proposition porte un `client_phone` réel (le devis a
-// déjà un contact) : le backend le fera correspondre à un lead déjà connu via
-// son téléphone plutôt que d'en fabriquer un nouveau. Sans téléphone, on
-// n'émet rien — jamais un lead vide « Lead site web » créé pour un simple
-// événement de lecture.
+// WJ109 — [CORRECTIF DE CORRUPTION DE DONNÉES EN PRODUCTION] Cette télémétrie
+// postait auparavant vers le fil lead CRM (`LEAD_WEBHOOK_URL`,
+// `apps/crm/webhooks.py`) avec l'idée que le backend « ferait correspondre »
+// l'événement à un lead existant via son téléphone. En réalité ce webhook
+// traite CHAQUE payload comme une mise à jour de lead : sans nom exploitable
+// dans l'événement, il écrase le NOM RÉEL du lead existant par « Lead site
+// web » et le retague — donc un client qui se contente d'OUVRIR sa proposition
+// corrompait sa propre fiche CRM. Cette télémétrie doit désormais transiter
+// EXCLUSIVEMENT par le canal télémétrie/funnel dédié (`FUNNEL_WEBHOOK_URL`,
+// le même que `lib/funnelBeacon.ts`), jamais par le webhook de capture de
+// lead — voir `pages/api/proposition-track.ts`.
 
 /** Les deux moments suivis (WJ55) : première vue, et défilement jusqu'au bloc financement. */
 export type ProposalEngagementEvent = 'proposal_first_view' | 'proposal_scrolled_financing';
@@ -1981,33 +1980,38 @@ export interface ProposalTrackContext {
   clientPhone?: string | null;
 }
 
+/**
+ * WJ109 — Payload de TÉLÉMÉTRIE pure (jamais un objet « lead ») : aucun champ
+ * qui ressemble à un contact (nom/téléphone) n'y voyage plus — seul un
+ * identifiant de corrélation non qualifiant (référence ou token) est inclus,
+ * pour permettre un futur rapprochement CÔTÉ LECTURE (jamais une écriture) au
+ * moment de l'analyse, sans jamais risquer une écriture de lead par ping.
+ */
 export interface ProposalTrackPayload {
-  qualified: false;
   event_type: ProposalEngagementEvent;
-  phoneE164: string;
-  utm: { utm_source: 'proposal_engagement'; utm_campaign: string; utm_content: ProposalEngagementEvent };
+  reference: string;
+  token: string;
   page: string;
 }
 
 /**
- * WJ55 — Construit le payload envoyé au proxy `/api/proposition-track`, ou
- * `null` quand aucun téléphone client n'est disponible (garde-fou ci-dessus :
- * l'événement est alors silencieusement abandonné, jamais envoyé sans contact
- * exploitable). `qualified: false` fige le comportement déjà tolérant du
- * backend (`forwardLead`/webhook) : un lead « sous le seuil » est accepté et
- * étiqueté, jamais un flux qui casse.
+ * WJ55/WJ109 — Construit le payload envoyé au proxy `/api/proposition-track`,
+ * ou `null` quand ni référence ni token ne sont disponibles (rien de
+ * corrélable à journaliser). Ce payload est PUREMENT télémétrique : il ne
+ * porte plus de téléphone/contact et ne doit JAMAIS être posté vers le webhook
+ * de capture de lead (voir la note ci-dessus).
  */
 export function buildProposalTrackPayload(
   ctx: ProposalTrackContext,
   event: ProposalEngagementEvent,
 ): ProposalTrackPayload | null {
-  const phone = (ctx.clientPhone ?? '').trim();
-  if (!phone) return null;
+  const reference = (ctx.reference ?? '').trim();
+  const token = (ctx.token ?? '').trim();
+  if (!reference && !token) return null;
   return {
-    qualified: false,
     event_type: event,
-    phoneE164: phone,
-    utm: { utm_source: 'proposal_engagement', utm_campaign: ctx.reference || ctx.token, utm_content: event },
-    page: `/proposition/${ctx.token}`,
+    reference,
+    token,
+    page: `/proposition/${token}`,
   };
 }
