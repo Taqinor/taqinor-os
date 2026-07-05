@@ -36,12 +36,19 @@ def _marquer_renouvellement_accepte_on_devis_accepted(
     company = getattr(devis, 'company', None)
     if company is None:
         return
+    # `devis_accepted` est un signal PARTAGÉ : un émetteur d'un autre domaine
+    # (ex. la séquence d'inscription XMKT1) peut envoyer un objet devis minimal
+    # non persisté (sans pk). Aucun ContratLien ne peut pointer un devis sans
+    # pk — on sort proprement plutôt que de lever AttributeError sur `.pk`.
+    devis_pk = getattr(devis, 'pk', None)
+    if devis_pk is None:
+        return
 
     from .models import ContratLien
 
     lien = ContratLien.objects.filter(
         company=company, type_cible=ContratLien.TypeCible.DEVIS,
-        cible_id=devis.pk,
+        cible_id=devis_pk,
     ).select_related('contrat').first()
     if lien is None:
         return
