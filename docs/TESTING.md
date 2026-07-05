@@ -125,6 +125,26 @@ lien inter-sociétés planté, ignore les données propres). C'est le filet « q
 ajoute une fonctionnalité, la donnée reste connectée DANS sa société » — il s'étend
 tout seul aux nouveaux modèles.
 
+## Base partagée — `testkit/` (factories + auth multi-tenant)
+
+`backend/django_core/testkit/` (dép DEV `factory_boy`, jamais en prod) fournit :
+
+* `testkit/factories.py` — `CompanyFactory`, `UserFactory`, `ClientFactory`,
+  `ProduitFactory`, `DevisFactory`/`LigneDevisFactory` : chaque factory
+  attache une `company` par défaut et garde le graphe cohérent (le client
+  d'un devis est TOUJOURS dans la même société que le devis). `build()` =
+  instance en mémoire, sans requête DB (logique pure/serializers) ; `create()`
+  = persistance réelle (querysets/contraintes). `another_tenant()` construit
+  une 2ᵉ société + utilisateur pour les tests d'isolation.
+* `testkit/base.py` — `TenantAPITestCase(TestCase)` : `setUp` monte
+  `self.company`/`self.user` + `self.other_company`/`self.other_user`, et
+  `self.client_as(user=None, role=None)` renvoie un `APIClient` authentifié
+  (JWT réel via `AccessToken.for_user`).
+
+**Convention : tout nouveau test API hérite de `TenantAPITestCase` ; on
+construit les objets via les factories `testkit`, jamais `objects.create` à la
+main.** Exemple d'usage : `core/tests/test_testkit.py`.
+
 ## Pistes restantes
 * Parcours e2e par fonctionnalité pour les flux encore non couverts (stock,
   installations, SAV, reporting) : **scaffolds prêts** (`frontend/e2e/{stock,
