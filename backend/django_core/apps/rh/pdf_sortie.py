@@ -108,8 +108,8 @@ def render_certificat_travail_html(employe, *, today=None):
   <strong>{postes_txt}</strong>.</p>
   <p>Le/la salarié(e) est libre de tout engagement à l'égard de notre
   société à compter de cette date.</p>
-  <p>Le présent certificat de travail est délivré conformément à l'article
-  72 du Code du travail, pour servir et valoir ce que de droit.</p>
+  <p>Le présent certificat de travail est délivré conformément à l'article 72
+  du Code du travail, pour servir et valoir ce que de droit.</p>
   <p class="date">Fait le {escape(date_txt)}.</p>
 </body></html>"""
 

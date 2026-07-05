@@ -82,7 +82,7 @@ class Feedback360Tests(TestCase):
             f'{PORTAIL}{retour.id}/mon-feedback360/', {
                 'reponses': {'communication': 4}, 'commentaire': 'Bien',
                 'soumis': True,
-            })
+            }, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         retour.refresh_from_db()
         self.assertTrue(retour.soumis)
@@ -93,7 +93,7 @@ class Feedback360Tests(TestCase):
         resp = auth(self.rep_users[0]).patch(
             f'{PORTAIL}{retour_autre.id}/mon-feedback360/', {
                 'reponses': {'communication': 5},
-            })
+            }, format='json')
         self.assertEqual(resp.status_code, 404)
 
     def test_synthese_masque_sous_seuil(self):
