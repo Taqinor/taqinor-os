@@ -68,6 +68,8 @@ from .models import (
     LivraisonLigne,
     PreuveLivraison,
     Transporteur,
+    RetourMateriel,
+    RetourMaterielLigne,
 )
 
 
@@ -2542,3 +2544,40 @@ class TransporteurSerializer(serializers.ModelSerializer):
         if not value:
             raise serializers.ValidationError('Le nom du transporteur est requis.')
         return value
+
+
+class RetourMaterielLigneSerializer(serializers.ModelSerializer):
+    """YSTCK4 - ligne d'un retour de materiel chantier (SKU + quantite)."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+
+    class Meta:
+        model = RetourMaterielLigne
+        fields = [
+            'id', 'retour', 'produit', 'produit_nom', 'designation',
+            'quantite', 'stock_applique',
+        ]
+        read_only_fields = ['stock_applique']
+
+
+class RetourMaterielSerializer(serializers.ModelSerializer):
+    """YSTCK4 - retour de materiel non pose, d'un chantier vers le depot.
+    Societe/`created_by` poses COTE SERVEUR ; le statut avance via l'action
+    `valider`. Lignes imbriquees en lecture."""
+    installation_reference = serializers.CharField(
+        source='installation.reference', read_only=True, default=None)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True, default=None)
+    lignes = RetourMaterielLigneSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = RetourMateriel
+        fields = [
+            'id', 'installation', 'installation_reference', 'statut',
+            'statut_display', 'note', 'lignes', 'created_by', 'valide_par',
+            'valide_le', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'statut', 'created_by', 'valide_par', 'valide_le',
+            'date_creation', 'date_modification',
+        ]

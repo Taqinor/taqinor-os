@@ -376,6 +376,117 @@ def release_reservations(installation):
             .update(active=False))
 
 
+# ── YSTCK4 — retour chantier : matériel non posé rapporté au dépôt ─────────
+# La consommation (N14/F11) est à SENS UNIQUE : rien ne permettait de faire
+# remonter le surplus non installé vers le dépôt. `RetourMateriel`/
+# `RetourMaterielLigne` matérialisent le blueprint « retour = mouvement
+# ENTRÉE référencé à la sortie d'origine, plafonné à ce qui a RÉELLEMENT été
+# sorti pour ce chantier, jamais un ajustement positif libre ».
+
+def _quantite_sortie_chantier(installation, produit_id):
+    """Quantité TOTALE réellement sortie pour ce chantier pour ce produit :
+    somme des `ConsommationLigne.quantite_utilisee` validées (stock_applique)
+    de TOUTES les interventions du chantier (F11 — la seule source qui bouge
+    réellement le stock ; la réservation N14 estimée n'en fait pas partie)."""
+    from decimal import Decimal
+    from django.db.models import Sum
+    from .models import ConsommationLigne
+    total = (
+        ConsommationLigne.objects
+        .filter(consommation__intervention__installation=installation,
+                produit_id=produit_id, stock_applique=True)
+        .aggregate(total=Sum('quantite_utilisee'))['total']
+    )
+    return total or Decimal('0')
+
+
+def _quantite_deja_retournee(installation, produit_id):
+    """Quantité déjà retournée (retours VALIDÉS uniquement) pour ce produit
+    sur ce chantier — un brouillon non validé ne compte pas encore."""
+    from decimal import Decimal
+    from django.db.models import Sum
+    from .models_retour_materiel import RetourMateriel, RetourMaterielLigne
+    total = (
+        RetourMaterielLigne.objects
+        .filter(retour__installation=installation, produit_id=produit_id,
+                retour__statut=RetourMateriel.Statut.VALIDE)
+        .aggregate(total=Sum('quantite'))['total']
+    )
+    return total or Decimal('0')
+
+
+def quantite_retournable(installation, produit_id):
+    """Solde encore retournable pour ce produit sur ce chantier = sorti −
+    déjà retourné (jamais négatif)."""
+    from decimal import Decimal
+    sortie = _quantite_sortie_chantier(installation, produit_id)
+    retournee = _quantite_deja_retournee(installation, produit_id)
+    return max(sortie - retournee, Decimal('0'))
+
+
+def valider_retour_materiel(retour, user):
+    """YSTCK4 — valide un retour BROUILLON : pour chaque ligne {produit,
+    quantité}, refuse si la quantité dépasse le solde retournable (sorti −
+    déjà retourné), puis poste UN `MouvementStock` ENTREE référencé
+    `RETOUR-<reference-chantier>` (idempotent via `stock_applique`).
+    Lève ValueError si une ligne dépasse le retournable. Renvoie le nombre de
+    lignes appliquées au stock."""
+    from decimal import Decimal
+    from django.db import transaction
+    from apps.stock.selectors import lock_produit
+    from apps.stock.services import (
+        mouvement_type_entree, record_stock_movement,
+    )
+    from .models_retour_materiel import RetourMateriel
+
+    if retour.statut == RetourMateriel.Statut.VALIDE:
+        raise ValueError('Retour déjà validé.')
+
+    installation = retour.installation
+    lignes = list(retour.lignes.select_related('produit').all())
+    for ligne in lignes:
+        if ligne.produit_id is None:
+            continue
+        qte = ligne.quantite or Decimal('0')
+        retournable = quantite_retournable(installation, ligne.produit_id)
+        if qte > retournable:
+            raise ValueError(
+                f'Quantité retournée ({qte}) supérieure à la quantité '
+                f'réellement sortie pour ce chantier ({retournable}) pour '
+                f'« {ligne.designation or ligne.produit_id} ».')
+
+    applied = 0
+    with transaction.atomic():
+        for ligne in lignes:
+            if ligne.stock_applique or ligne.produit_id is None:
+                continue
+            qte = ligne.quantite or Decimal('0')
+            if qte <= 0:
+                ligne.stock_applique = True
+                ligne.save(update_fields=['stock_applique'])
+                continue
+            produit = lock_produit(ligne.produit_id)
+            qte_avant = produit.quantite_stock
+            qte_apres = qte_avant + qte
+            record_stock_movement(
+                company=installation.company, produit=produit,
+                type_mouvement=mouvement_type_entree(),
+                quantite=qte,
+                quantite_avant=qte_avant, quantite_apres=qte_apres,
+                reference=f'RETOUR-{installation.reference}',
+                note=f'Retour chantier {installation.reference}',
+                created_by=user)
+            ligne.stock_applique = True
+            ligne.save(update_fields=['stock_applique'])
+            applied += 1
+        retour.statut = RetourMateriel.Statut.VALIDE
+        retour.valide_par = user
+        from django.utils import timezone as _tz
+        retour.valide_le = _tz.now()
+        retour.save(update_fields=['statut', 'valide_par', 'valide_le'])
+    return applied
+
+
 # ── YDOCF7 — Réservation de stock DEPUIS UN BonCommande (BC) ────────────────
 # `bons-commande/{id}/confirmer` ne réservait rien (le stock n'était touché
 # qu'à `marquer-livre`, décrément direct) : entre confirmation et livraison,

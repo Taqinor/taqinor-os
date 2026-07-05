@@ -191,6 +191,10 @@ from .models_pod import (
 from .models_transporteur import (
     Transporteur,
 )
+from .models_retour_materiel import (
+    RetourMateriel,
+    RetourMaterielLigne,
+)
 
 __all__ = [
     'Installation',
@@ -291,4 +295,6 @@ __all__ = [
     'LivraisonLigne',
     'PreuveLivraison',
     'Transporteur',
+    'RetourMateriel',
+    'RetourMaterielLigne',
 ]

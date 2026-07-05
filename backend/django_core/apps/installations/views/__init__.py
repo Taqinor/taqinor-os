@@ -69,6 +69,7 @@ from .pod import PreuveLivraisonViewSet
 from .transporteur import TransporteurViewSet
 from .tournee import TourneeLivraisonView
 from .field_sync import FieldSyncView
+from .retour_materiel import RetourMaterielViewSet, RetourMaterielLigneViewSet
 
 __all__ = [
     'TypeInterventionViewSet',
@@ -147,4 +148,6 @@ __all__ = [
     'TransporteurViewSet',
     'TourneeLivraisonView',
     'FieldSyncView',
+    'RetourMaterielViewSet',
+    'RetourMaterielLigneViewSet',
 ]
