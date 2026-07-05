@@ -78,6 +78,7 @@ from .services import (
     controle_ecarts,
     cout_employeur,
     cout_global_par_profil,
+    creer_bulletin_annulation,
     creer_bulletin_rectificatif,
     declaration_cimr,
     declaration_cnss,
@@ -1209,6 +1210,38 @@ class BulletinPaieViewSet(_PaieVoirOuGerer, TenantMixin,
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(
             self.get_serializer(rectif).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='annuler')
+    def annuler(self, request, pk=None):
+        """Crée un bulletin d'ANNULATION (refund payslip) de ce bulletin (ZPAI4).
+
+        Corps : ``periode_cible`` (id d'une période OUVERTE, même société)
+        requis. Recopie chaque ligne de ce bulletin à montant OPPOSÉ, sans
+        toucher au bulletin d'origine (qui reste figé). Le bulletin
+        d'annulation est renvoyé en brouillon (le valider fige/consolide dans
+        le cumul annuel).
+        """
+        origine = self.get_object()
+        periode_id = request.data.get('periode_cible')
+        if not periode_id:
+            return Response(
+                {'detail': 'Champ "periode_cible" requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            periode_cible = PeriodePaie.objects.get(
+                pk=periode_id, company=request.user.company)
+        except (PeriodePaie.DoesNotExist, ValueError):
+            return Response(
+                {'detail': 'Période cible inconnue.'},
+                status=status.HTTP_404_NOT_FOUND)
+        try:
+            annulation = creer_bulletin_annulation(origine, periode_cible)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(annulation).data,
+            status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'], url_path='pdf')
     def pdf(self, request, pk=None):

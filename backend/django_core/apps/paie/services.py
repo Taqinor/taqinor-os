@@ -2159,6 +2159,54 @@ def creer_bulletin_rectificatif(bulletin_origine, periode_cible, *,
     return bulletin
 
 
+def creer_bulletin_annulation(bulletin_origine, periode_cible):
+    """Crée un bulletin d'ANNULATION (refund payslip) lié à l'origine (ZPAI4).
+
+    Contrairement au RECTIFICATIF (qui remplace en émettant un nouveau calcul),
+    l'annulation recopie EXACTEMENT les lignes/montants du bulletin d'origine
+    avec le signe OPPOSÉ — un simple extourne, sans rejouer le moteur de
+    calcul. Le bulletin d'origine reste figé et intact ; l'annulation est créée
+    en ``brouillon`` (immuable une fois validée, comme tout bulletin) et se
+    répercute dans ``CumulAnnuel``/le 9421 via la validation normale (les
+    montants négatifs s'additionnent aux positifs de l'origine).
+
+    ``periode_cible`` doit être de la même société que l'origine et ne PAS
+    être clôturée. Renvoie le bulletin d'annulation (en brouillon).
+    """
+    from .models import BulletinPaie, LigneBulletin
+
+    if periode_cible.company_id != bulletin_origine.company_id:
+        raise ValueError("Période cible d'une autre société.")
+    if periode_cible.statut == PeriodePaie.STATUT_CLOTUREE:
+        raise ValueError("La période cible est clôturée.")
+
+    with transaction.atomic():
+        annulation = BulletinPaie.objects.create(
+            company=bulletin_origine.company,
+            periode=periode_cible,
+            profil=bulletin_origine.profil,
+            type_bulletin=BulletinPaie.TYPE_ANNULATION,
+            rectifie=bulletin_origine,
+            motif=f"Annulation du bulletin #{bulletin_origine.id}",
+            personnes_a_charge=bulletin_origine.personnes_a_charge,
+        )
+        for champ in BulletinPaie.SNAPSHOT_FIELDS:
+            valeur = getattr(bulletin_origine, champ) or Decimal('0')
+            setattr(annulation, champ, _q(-Decimal(valeur)))
+        annulation.save()
+        for ligne in bulletin_origine.lignes.all():
+            LigneBulletin.objects.create(
+                company=ligne.company,
+                bulletin=annulation,
+                code=ligne.code,
+                libelle=f'{ligne.libelle} (annulation)',
+                type=ligne.type,
+                montant=_q(-Decimal(ligne.montant or 0)),
+                ordre=ligne.ordre,
+            )
+    return annulation
+
+
 def valider_bulletin(bulletin):
     """Valide un ``BulletinPaie`` → fige le snapshot (PAIE17).
 

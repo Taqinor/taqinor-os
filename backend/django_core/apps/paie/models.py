@@ -932,12 +932,17 @@ class BulletinPaie(models.Model):
     # XPAI4 — Bulletin de run hors-cycle (13e mois / prime de bilan), généré
     # sur une ``PeriodePaie`` de ``type_run == TYPE_RUN_HORS_CYCLE``.
     TYPE_GRATIFICATION = 'gratification'
+    # ZPAI4 — Bulletin d'ANNULATION (refund payslip) : contrepartie à montants
+    # NÉGATIFS d'un bulletin déjà traité, distincte du RECTIFICATIF qui
+    # remplace. Sert à extourner proprement un bulletin (cumul annuel/9421).
+    TYPE_ANNULATION = 'annulation'
     TYPE_BULLETIN_CHOICES = [
         (TYPE_NORMAL, 'Normal'),
         (TYPE_RECTIFICATIF, 'Rectificatif'),
         (TYPE_RAPPEL, 'Rappel'),
         (TYPE_STC, 'Solde de tout compte'),
         (TYPE_GRATIFICATION, '13e mois / gratification'),
+        (TYPE_ANNULATION, "Annulation (extourne)"),
     ]
 
     # Champs de montant figés au moment du calcul (snapshot). Modifiables tant
