@@ -26,6 +26,7 @@ from .kpi_alertes import KpiAlerteViewSet
 from .classeur import ClasseurViewSet
 from .integrity_views import integrite_insight
 from .sav_pivot import sav_tickets_pivot, sav_tickets_cout_moyen
+from .reports_field import field_service_report
 
 # N79 — CRUD des rapports sauvegardés (router DRF, ajouté en additif).
 # FG96 — CRUD + effective/ pour la config tableau de bord.
@@ -104,4 +105,7 @@ urlpatterns = [
          name='insights-sav-tickets-pivot'),
     path('insights/sav-tickets-cout-moyen/', sav_tickets_cout_moyen,
          name='insights-sav-tickets-cout-moyen'),
+    # XFSM16 — analytics field service consolidés (FTF, MTTR, ponctualité,
+    # récidive, trajet vs sur site, interventions par type/statut).
+    path('reports/field/', field_service_report, name='report-field-service'),
 ]
