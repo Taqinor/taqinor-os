@@ -20,31 +20,33 @@ beforeAll(() => {
    plante pas sur des données vides/undefined ; (2) rendu de base (titre,
    filtres, état vide). API mockée pour rester hors réseau. */
 
-const emptyList = () => Promise.resolve({ data: [] })
-
+// NB : la factory `vi.mock` est hoistée en tête de fichier — elle ne peut
+// référencer aucune variable top-level déclarée après (ex. un `emptyList`
+// partagé). On inline donc `() => Promise.resolve({ data: [] })` à chaque
+// endpoint de liste plutôt que de le factoriser dans une const externe.
 vi.mock('../../api/installationsApi', () => ({
   default: {
-    getBinLocations: vi.fn(emptyList),
-    getBinAffectations: vi.fn(emptyList),
+    getBinLocations: vi.fn(() => Promise.resolve({ data: [] })),
+    getBinAffectations: vi.fn(() => Promise.resolve({ data: [] })),
     createBinLocation: vi.fn(),
-    getPutAways: vi.fn(emptyList),
+    getPutAways: vi.fn(() => Promise.resolve({ data: [] })),
     getPutAway: vi.fn(),
     createPutAway: vi.fn(),
     rangerPutAway: vi.fn(),
-    getPickLists: vi.fn(emptyList),
+    getPickLists: vi.fn(() => Promise.resolve({ data: [] })),
     getPickList: vi.fn(),
     createPickList: vi.fn(),
     demarrerPickList: vi.fn(),
     terminerPickList: vi.fn(),
-    getPickListLignes: vi.fn(emptyList),
+    getPickListLignes: vi.fn(() => Promise.resolve({ data: [] })),
     updatePickListLigne: vi.fn(),
-    getColisList: vi.fn(emptyList),
+    getColisList: vi.fn(() => Promise.resolve({ data: [] })),
     getColis: vi.fn(),
     createColis: vi.fn(),
     updateColis: vi.fn(),
     controlerColis: vi.fn(),
     expedierColis: vi.fn(),
-    getColisLignes: vi.fn(emptyList),
+    getColisLignes: vi.fn(() => Promise.resolve({ data: [] })),
     createColisLigne: vi.fn(),
     updateColisLigne: vi.fn(),
     deleteColisLigne: vi.fn(),
