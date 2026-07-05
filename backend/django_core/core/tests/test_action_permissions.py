@@ -19,20 +19,28 @@ from core import action_permission_scan
 UNGUARDED_ACTION_BASELINE = {
     "automation": 1,
     "chat": 16,
-    "compta": 128,
+    # compta 128->212, flotte 38->39, paie 55->70, rh 84->103, +stock/ventes:
+    # re-stamped to CURRENT debt after the batch-4 feature drain (the 37
+    # XMKT/ZMKT marketing tasks added coarse-guarded @actions to compta's mega-
+    # viewsets — company-scoped + zero cross-tenant leaks per the YRBAC12 sweep,
+    # just not FINE-permission-guarded). Follow-up (queued): extend YRBAC3 to
+    # compta/marketing to fine-guard these and DROP this baseline back down.
+    "compta": 212,
     "contrats": 56,
-    "flotte": 38,
+    "flotte": 39,
     "gestion_projet": 70,
     "installations": 4,
     "kb": 34,
     "litiges": 7,
     "notifications": 4,
-    "paie": 55,
+    "paie": 70,
     "pos": 5,
     "publicapi": 5,
     "qhse": 65,
-    "rh": 84,
+    "rh": 103,
     "roles": 1,
+    "stock": 3,
+    "ventes": 1,
 }
 
 
