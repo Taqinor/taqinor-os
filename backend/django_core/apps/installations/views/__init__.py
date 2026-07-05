@@ -14,6 +14,7 @@ from .checklist_etape import ChecklistEtapeModeleViewSet
 from .fiche_intervention import (
     FicheInterventionTemplateViewSet, FicheInterventionChampViewSet,
 )
+from .recurrence_intervention import RecurrenceInterventionViewSet
 from .intervention import InterventionViewSet
 from .shotlist import ShotListSlotViewSet
 from .safety import SafetyChecklistSlotViewSet
@@ -91,6 +92,7 @@ __all__ = [
     'ChecklistEtapeModeleViewSet',
     'FicheInterventionTemplateViewSet',
     'FicheInterventionChampViewSet',
+    'RecurrenceInterventionViewSet',
     'InterventionViewSet',
     'ShotListSlotViewSet',
     'SafetyChecklistSlotViewSet',

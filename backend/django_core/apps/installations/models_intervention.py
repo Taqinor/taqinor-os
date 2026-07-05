@@ -388,3 +388,60 @@ class TypeInterventionPlan(models.Model):
     def __str__(self):
         return (f'{self.get_type_installation_display()} — '
                 f'{self.type_intervention_cle} (#{self.ordre})')
+
+
+# ── ZFSM3 — Interventions récurrentes autonomes ──────────────────────────────
+class RecurrenceIntervention(models.Model):
+    """ZFSM3 — gabarit de RÉCURRENCE temporelle pour une prestation périodique
+    SANS contrat de maintenance (ex. nettoyage trimestriel des panneaux,
+    contrôle semestriel d'un site). DISTINCT de `ContratMaintenance`
+    (FG40/FG82/FG88, récurrence PORTÉE PAR un contrat) et de
+    `TypeInterventionPlan` (FG79, une CHAÎNE ponctuelle matérialisée une seule
+    fois à la création du chantier, pas une récurrence temporelle).
+
+    Génère la PROCHAINE `Intervention` à échéance via
+    `manage.py generer_interventions_recurrentes` (branchable Celery beat,
+    pattern FG1/XPRJ13 — voir `apps.gestion_projet.models.RecurrenceTache` /
+    `services.generer_taches_recurrentes`). `prochaine_echeance` avance à
+    chaque génération ; la récurrence s'arrête à `date_fin` OU après
+    `nb_occurrences` (optionnels ; ni l'un ni l'autre = récurrence sans fin).
+    Additif — company-scopé."""
+
+    class Regle(models.TextChoices):
+        MENSUELLE = 'mensuelle', 'Mensuelle'
+        TRIMESTRIELLE = 'trimestrielle', 'Trimestrielle'
+        SEMESTRIELLE = 'semestrielle', 'Semestrielle'
+        ANNUELLE = 'annuelle', 'Annuelle'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='recurrences_intervention')
+    installation = models.ForeignKey(
+        Installation, on_delete=models.CASCADE,
+        related_name='recurrences_intervention')
+    # Clé du type d'intervention (texte, pattern TypeInterventionPlan — pas de
+    # FK rigide pour permettre la création avant que le type existe).
+    type_intervention = models.CharField(max_length=20)
+    technicien_defaut = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='recurrences_intervention_defaut')
+    regle = models.CharField(max_length=15, choices=Regle.choices)
+    intervalle = models.PositiveSmallIntegerField(default=1)
+    prochaine_echeance = models.DateField()
+    date_fin = models.DateField(null=True, blank=True)
+    nb_occurrences = models.PositiveIntegerField(null=True, blank=True)
+    nb_generees = models.PositiveIntegerField(default=0)
+    actif = models.BooleanField(default=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Récurrence d'intervention"
+        verbose_name_plural = "Récurrences d'intervention"
+        ordering = ['prochaine_echeance', 'id']
+        indexes = [
+            models.Index(fields=['actif', 'prochaine_echeance'],
+                         name='inst_recur_actif_echeance_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.type_intervention} ({self.get_regle_display()})'

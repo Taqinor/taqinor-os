@@ -12,6 +12,7 @@ from .models import (
     SafetyCheckItem,
     FicheInterventionTemplate, FicheInterventionChamp,
     FicheInterventionReleve, FicheInterventionValeur,
+    RecurrenceIntervention,
     TypeInterventionPlan,
     JalonProjet, ModeleProjet, ModeleProjetJalon, ModeleProjetBomLigne,
     ReunionChantier,
@@ -743,6 +744,30 @@ class TypeInterventionPlanSerializer(serializers.ModelSerializer):
         ]
         # company posée côté serveur.
         read_only_fields = []
+
+
+# ── ZFSM3 — Interventions récurrentes autonomes ──────────────────────────────
+
+class RecurrenceInterventionSerializer(serializers.ModelSerializer):
+    """ZFSM3 — récurrence temporelle d'intervention (sans contrat). La
+    société/l'installation sont scopées côté serveur ; `nb_generees` et
+    `actif` sont dérivés par le générateur (lecture seule)."""
+    regle_display = serializers.CharField(
+        source='get_regle_display', read_only=True)
+    installation_reference = serializers.CharField(
+        source='installation.reference', read_only=True, default=None)
+    technicien_defaut_nom = serializers.CharField(
+        source='technicien_defaut.username', read_only=True, default=None)
+
+    class Meta:
+        model = RecurrenceIntervention
+        fields = [
+            'id', 'installation', 'installation_reference', 'type_intervention',
+            'technicien_defaut', 'technicien_defaut_nom', 'regle', 'regle_display',
+            'intervalle', 'prochaine_echeance', 'date_fin', 'nb_occurrences',
+            'nb_generees', 'actif', 'date_creation',
+        ]
+        read_only_fields = ['nb_generees']
 
 
 # ── FG293 — Jalons & phases de projet ────────────────────────────────────────

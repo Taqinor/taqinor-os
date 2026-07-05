@@ -31,6 +31,7 @@ from .models_intervention import (
     InterventionActivity,
     InstallationActivity,
     TypeInterventionPlan,
+    RecurrenceIntervention,
 )
 from .models_chantier import (
     ChecklistTemplate,
@@ -219,6 +220,7 @@ __all__ = [
     'InterventionActivity',
     'InstallationActivity',
     'TypeInterventionPlan',
+    'RecurrenceIntervention',
     'ChecklistTemplate',
     'ChecklistEtapeModele',
     'StageModele',
