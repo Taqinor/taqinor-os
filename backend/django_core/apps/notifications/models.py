@@ -70,6 +70,8 @@ class EventType(models.TextChoices):
         'supplier_doc_expiring', 'Document fournisseur bientôt expiré')
     # XPUR7 — BCF envoyé en retard (prévue/confirmée dépassée, non reçu).
     BCF_LATE = 'bcf_late', 'Bon de commande fournisseur en retard'
+    # YPROC7 — un BCF est annulé (cascade sur ses réceptions brouillon).
+    BCF_CANCELLED = 'bcf_cancelled', 'Bon de commande fournisseur annulé'
     # XPRJ22 — retard/risque de planning sur un projet (gestion_projet).
     PROJET_RETARD = 'projet_retard', 'Retard planning projet'
     # XFLT18 — dépassement de budget flotte annuel (par catégorie de coût).

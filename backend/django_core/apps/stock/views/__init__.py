@@ -32,6 +32,7 @@ from .lot_entrepot import LotEntrepotViewSet
 from .inventaire_annuel import InventaireAnnuelViewSet
 from .revalorisation_stock import RevalorisationStockViewSet
 from .conditionnement_produit import ConditionnementProduitViewSet
+from .modele_bcf import ModeleBonCommandeFournisseurViewSet
 
 __all__ = [
     'ProduitViewSet',
@@ -61,4 +62,5 @@ __all__ = [
     'InventaireAnnuelViewSet',
     'RevalorisationStockViewSet',
     'ConditionnementProduitViewSet',
+    'ModeleBonCommandeFournisseurViewSet',
 ]

@@ -72,6 +72,7 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
             return [HasPermissionOrLegacy('stock_modifier')()]
         elif self.action in WRITE_ACTIONS + [
             'envoyer', 'recevoir', 'annuler', 'confirmer', 'reviser',
+            'facturer', 'dupliquer', 'fusionner',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'en_retard':
@@ -326,6 +327,24 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
                 {'detail': 'Seul un BCF en brouillon peut être envoyé.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # YPROC4 — l'approbation par palier (FG312) doit BLOQUER l'envoi :
+        # sans seuil configuré pour la société, comportement strictement
+        # inchangé (le sélecteur renvoie True). Import paresseux (précédent
+        # existant : stock.services.reserved_quantity importe déjà
+        # apps.installations.selectors en lazy).
+        from apps.installations.selectors import (
+            bcf_approbation_valide, palier_manquant_bcf_detail,
+        )
+        if not bcf_approbation_valide(bc.company, bc.id, bc.total_achat):
+            palier = palier_manquant_bcf_detail(bc.company, bc.total_achat)
+            return Response(
+                {'detail': (
+                    "Ce BCF dépasse le seuil d'approbation : une "
+                    f"approbation au palier « {palier} » est requise avant "
+                    'envoi (le montant a peut-être augmenté depuis une '
+                    'approbation existante).')},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         bc.statut = BonCommandeFournisseur.Statut.ENVOYE
         bc.save(update_fields=['statut'])
         return Response(self.get_serializer(bc).data)
@@ -340,7 +359,16 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
             )
         bc.statut = BonCommandeFournisseur.Statut.ANNULE
         bc.save(update_fields=['statut'])
-        return Response(self.get_serializer(bc).data)
+        # YPROC7 — cascade : les réceptions brouillon de ce BCF ne doivent
+        # plus jamais être confirmables, et le créateur est notifié
+        # (best-effort). Un BCF partiellement reçu reste annulable
+        # (comportement inchangé) ; le détail des quantités déjà entrées en
+        # stock est renvoyé pour décision (retour fournisseur éventuel).
+        from ..services import annuler_bcf_cascade
+        detail_cascade = annuler_bcf_cascade(bc, user=request.user)
+        data = self.get_serializer(bc).data
+        data['cascade'] = detail_cascade
+        return Response(data)
 
     @action(detail=True, methods=['post'], url_path='confirmer')
     def confirmer(self, request, pk=None):
@@ -580,3 +608,55 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
         from ..selectors import lignes_import_depuis_bcf
         bc = self.get_object()
         return Response(lignes_import_depuis_bcf(request.user.company, bc.pk))
+
+    @action(detail=True, methods=['post'], url_path='dupliquer')
+    def dupliquer(self, request, pk=None):
+        """ZPUR4 — clone ce BCF en un nouveau BROUILLON (nouvelle référence,
+        quantités reçues à zéro, statut réinitialisé), copiant fournisseur +
+        lignes. La source n'est jamais modifiée."""
+        from ..services import dupliquer_bcf
+        bc = self.get_object()
+        clone = dupliquer_bcf(request.user.company, request.user, bc)
+        return Response(
+            self.get_serializer(clone).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'], url_path='fusionner')
+    def fusionner(self, request):
+        """ZPUR6 — fusionne plusieurs BCF BROUILLON du MÊME fournisseur (et
+        de cette société) en un BCF cible unique aux quantités cumulées par
+        produit ; les BCF sources passent en `annule` avec une note de
+        fusion. Corps : ``{"bons_commande": [id, id, ...]}`` (≥ 2 requis)."""
+        from ..services import fusionner_bcf
+        ids = request.data.get('bons_commande') or []
+        if not isinstance(ids, list):
+            return Response(
+                {'detail': 'bons_commande doit être une liste d\'ids.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            cible = fusionner_bcf(request.user.company, request.user, ids)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(cible).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='facturer')
+    def facturer(self, request, pk=None):
+        """ZPUR1 — facture DIRECTEMENT ce BCF depuis ses lignes « sur
+        commande » (`Produit.politique_facturation_achat`), SANS exiger de
+        réception préalable. Les lignes « sur réception » (défaut) restent
+        hors de ce chemin — elles ne se facturent que via FG56
+        (`receptions-fournisseur/{id}/facturer/`)."""
+        from ..services import facturer_bcf_sur_commande
+        bc = self.get_object()
+        try:
+            facture = facturer_bcf_sur_commande(
+                company=request.user.company, user=request.user,
+                bon_commande=bc)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            FactureFournisseurSerializer(
+                facture, context={'request': request}).data,
+            status=status.HTTP_201_CREATED)

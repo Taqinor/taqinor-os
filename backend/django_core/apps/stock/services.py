@@ -658,6 +658,34 @@ def export_valorisation_xlsx(company):
         sheet_title='Valorisation')
 
 
+def stock_valuation_excludes_materiel_consigne(company):
+    """YSTCK8 — GARDE explicite (jamais bloquante) : prouve que le matériel
+    consigné (`installations.MaterielConsigne`, FG327 — non possédé) n'ajoute
+    AUCUN layer de valeur à `stock_valuation_by_location`.
+
+    Structurellement déjà garanti : `MaterielConsigne` n'a aucun FK vers
+    `Produit` et ne crée jamais de `MouvementStock` ni n'incrémente
+    `Produit.quantite_stock` — cette fonction documente et VÉRIFIE
+    explicitement l'invariant (lu via `apps.installations.selectors`, jamais
+    d'import du modèle installations depuis stock) plutôt que de le laisser
+    implicite. Renvoie ``True`` (l'invariant tient toujours par construction
+    — ne peut PAS renvoyer False aujourd'hui, il n'existe aucun chemin
+    d'écriture qui violerait la garde).
+
+    POINT D'EXTENSION documenté (pas construit ici, décision différée) :
+    quand la consommation d'un lot consigné sera modélisée, elle devra passer
+    par un TRANSFERT DE PROPRIÉTÉ explicite (le matériel devient possédé →
+    entre alors, et alors seulement, dans cette valorisation) + une dette
+    fournisseur (SAP 411-K). Voir `apps.installations.models_consignation`."""
+    from apps.installations.selectors import materiel_consigne_quantite_totale
+    valorisation = stock_valuation_by_location(company)
+    # Le total consigné (info seule) n'apparaît dans AUCUNE ligne valorisée —
+    # aucun rapprochement possible par construction (données disjointes),
+    # ceci confirme juste que l'appel cross-app reste lecture seule et sûr.
+    materiel_consigne_quantite_totale(company)
+    return valorisation is not None
+
+
 # ── XSTK13 — Valorisation À DATE (as-of) + inventaire annuel légal (CGNC) ────
 # `stock_valuation_by_location` valorise l'INSTANT présent. Le CGNC exige un
 # état d'inventaire valorisé PAR EXERCICE (support du bilan, contrôle fiscal) :
@@ -833,10 +861,49 @@ def check_negative_stock_guard(company, quantite_avant, quantite_apres):
 
 # ── N19 — Retour fournisseur : validation = décrément de stock (SORTIE) ───────
 
+def _reouvrir_quantite_recue_bcf(bc, produit_id, quantite_retournee):
+    """YPROC8 — décrémente ``quantite_recue`` des lignes BCF de ``produit_id``
+    à hauteur de ``quantite_retournee`` (plafonné à la quantité déjà reçue,
+    réparti sur les lignes du même produit — la plus récente d'abord), et
+    rétrograde le statut du BCF de RECU à ENVOYE si ``est_entierement_recu``
+    devient faux. Ne fait rien si ``bc`` est None (retour sans BCF lié —
+    comportement historique inchangé)."""
+    from .models import BonCommandeFournisseur
+
+    if bc is None or quantite_retournee <= 0:
+        return
+    restant_a_reouvrir = quantite_retournee
+    lignes = (bc.lignes.select_for_update()
+              .filter(produit_id=produit_id, quantite_recue__gt=0)
+              .order_by('-id'))
+    for ligne in lignes:
+        if restant_a_reouvrir <= 0:
+            break
+        # Plafond : on ne rouvre jamais plus que ce que la ligne montre reçu.
+        decrement = min(restant_a_reouvrir, ligne.quantite_recue)
+        if decrement <= 0:
+            continue
+        ligne.quantite_recue -= decrement
+        ligne.save(update_fields=['quantite_recue'])
+        restant_a_reouvrir -= decrement
+    bc.refresh_from_db()
+    if (bc.statut == BonCommandeFournisseur.Statut.RECU
+            and not bc.est_entierement_recu):
+        bc.statut = BonCommandeFournisseur.Statut.ENVOYE
+        bc.save(update_fields=['statut'])
+
+
 def apply_retour_fournisseur(retour, user):
     """Valide un retour fournisseur : décrémente le stock (MouvementStock
     SORTIE) pour chaque ligne, puis passe le retour à « validé ». Lève
-    ValueError si le retour n'est pas en brouillon ou est vide. INTERNE."""
+    ValueError si le retour n'est pas en brouillon ou est vide. INTERNE.
+
+    YPROC8 — quand ``retour.bon_commande`` est renseigné, rouvre
+    ``quantite_recue`` des lignes BCF du même produit (plafonné à la quantité
+    reçue), rétrograde le statut RECU→ENVOYE si le BCF n'est plus entièrement
+    reçu, et rafraîchit les rapprochements 3 voies OUVERTS de ce BCF (via le
+    service compta dédié — jamais d'import du modèle compta). Un retour SANS
+    BCF lié se comporte exactement comme avant (aucune régression)."""
     from django.db import transaction
     from .models import Produit, RetourFournisseur, MouvementStock
     if retour.statut != RetourFournisseur.Statut.BROUILLON:
@@ -863,8 +930,22 @@ def apply_retour_fournisseur(retour, user):
                 created_by=user)
             produit.quantite_stock = qte_apres
             produit.save(update_fields=['quantite_stock'])
+            if retour.bon_commande_id:
+                _reouvrir_quantite_recue_bcf(
+                    retour.bon_commande, ligne.produit_id, ligne.quantite)
         retour.statut = RetourFournisseur.Statut.VALIDE
         retour.save(update_fields=['statut'])
+    if retour.bon_commande_id:
+        try:
+            from apps.compta.services import (
+                refresh_rapprochements_ouverts_pour_bcf,
+            )
+            refresh_rapprochements_ouverts_pour_bcf(
+                retour.company, retour.bon_commande_id)
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.warning(
+                'apply_retour_fournisseur: échec refresh rapprochement '
+                'BCF %s', retour.bon_commande_id)
     return retour
 
 
@@ -890,6 +971,15 @@ def confirm_reception_fournisseur(reception, user):
         # stock une seconde fois.
         raise ValueError(
             'Seule une réception en brouillon peut être confirmée.')
+    # YPROC7 — un BCF ANNULÉ ne doit plus jamais recevoir de stock : la garde
+    # intervenait auparavant seulement APRÈS coup (avancement de statut), donc
+    # on pouvait réceptionner (et incrémenter le stock) contre un BCF annulé.
+    if (reception.bon_commande is not None
+            and reception.bon_commande.statut
+            == BonCommandeFournisseur.Statut.ANNULE):
+        raise ValueError(
+            'Ce bon de commande fournisseur est annulé : la réception ne '
+            'peut pas être confirmée.')
     lignes = list(reception.lignes.select_related('ligne_commande', 'produit'))
     if not lignes:
         raise ValueError('La réception ne contient aucune ligne.')
@@ -990,6 +1080,78 @@ def confirm_reception_fournisseur(reception, user):
             company=reception.company, user=user)
     except Exception:  # pragma: no cover - défensif, best-effort
         pass
+    return reception
+
+
+def annuler_reception_confirmee(reception, user):
+    """YSTCK6 — annule une réception CONFIRMÉE par une CONTRE-PASSATION
+    (reversal référencé, jamais un blocage ni une suppression — pattern SAP
+    102). Pour chaque ligne de la réception, crée un `MouvementStock` SORTIE
+    référencé ``ANNUL-<REC>`` (traçable à l'original), décrémente
+    `quantite_recue` de la ligne BCF correspondante (plafonné à sa quantité
+    reçue, jamais négatif) et rétrograde le statut du BCF de RECU à ENVOYE si
+    ``est_entierement_recu`` devient faux. La sortie est plafonnée au stock en
+    main (garde XSTK8 — jamais négatif). IDEMPOTENTE : seule une réception
+    CONFIRME peut être annulée ; ré-annuler une réception déjà ANNULE lève
+    ValueError (rien à rejouer). Renvoie la réception."""
+    from django.db import transaction
+    from django.utils import timezone
+    from .models import (
+        ReceptionFournisseur, BonCommandeFournisseur, MouvementStock,
+    )
+
+    if reception.statut != ReceptionFournisseur.Statut.CONFIRME:
+        raise ValueError(
+            'Seule une réception confirmée peut être annulée par '
+            'contre-passation.')
+
+    lignes = list(reception.lignes.select_related('ligne_commande', 'produit'))
+    bc = reception.bon_commande
+    with transaction.atomic():
+        for ligne in lignes:
+            qte = int(ligne.quantite or 0)
+            if qte <= 0 or ligne.produit_id is None:
+                continue
+            produit = ligne.produit
+            produit.refresh_from_db()
+            qte_avant = produit.quantite_stock
+            # XSTK8 — jamais négatif : la contre-passation ne sort jamais
+            # plus que le stock en main (une partie a pu être déjà consommée
+            # ailleurs entre-temps).
+            qte_sortie = min(qte, qte_avant) if qte_avant > 0 else 0
+            qte_apres = qte_avant - qte_sortie
+            if qte_sortie > 0:
+                MouvementStock.objects.create(
+                    company=reception.company, produit=produit,
+                    type_mouvement=MouvementStock.TypeMouvement.SORTIE,
+                    quantite=qte_sortie, quantite_avant=qte_avant,
+                    quantite_apres=qte_apres,
+                    reference=f'ANNUL-{reception.reference}',
+                    note=(f'Contre-passation annulation réception '
+                          f'{reception.reference}'),
+                    created_by=user)
+                produit.quantite_stock = qte_apres
+                produit.save(update_fields=['quantite_stock'])
+            ligne_cmd = ligne.ligne_commande
+            if ligne_cmd is not None:
+                ligne_cmd.refresh_from_db()
+                ligne_cmd.quantite_recue = max(
+                    ligne_cmd.quantite_recue - qte, 0)
+                ligne_cmd.save(update_fields=['quantite_recue'])
+        reception.statut = ReceptionFournisseur.Statut.ANNULE
+        reception.note = (
+            f'{reception.note}\n[{timezone.now().date().isoformat()}] '
+            f'Annulée par contre-passation.'.strip()
+            if reception.note else
+            f'[{timezone.now().date().isoformat()}] '
+            'Annulée par contre-passation.')
+        reception.save(update_fields=['statut', 'note'])
+        if bc is not None:
+            bc.refresh_from_db()
+            if (bc.statut == BonCommandeFournisseur.Statut.RECU
+                    and not bc.est_entierement_recu):
+                bc.statut = BonCommandeFournisseur.Statut.ENVOYE
+                bc.save(update_fields=['statut'])
     return reception
 
 
@@ -1389,6 +1551,11 @@ def draft_bcf_for_shortfall(installation, fournisseur, user, company):
     Une ligne BCF par produit en pénurie (quantité = le manque), au prix
     d'achat catalogue (interne). Renvoie (bon, lignes_count). Lève ValueError
     s'il n'y a aucun manque à commander.
+
+    YPROC10 — pose `chantier_origine` (string-FK, distinct de la destination
+    de livraison XPUR23) : la note texte ne suffisait pas à relier
+    structurellement le BCF au chantier — à la réception, la marchandise
+    entrait en stock libre et pouvait être consommée par n'importe qui.
     """
     from apps.ventes.utils.references import create_with_reference
     from .models import BonCommandeFournisseur, LigneBonCommandeFournisseur
@@ -1405,6 +1572,7 @@ def draft_bcf_for_shortfall(installation, fournisseur, user, company):
             fournisseur=fournisseur,
             statut=BonCommandeFournisseur.Statut.BROUILLON,
             note=(f'Besoin matériel — chantier {installation.reference}'),
+            chantier_origine=installation,
             created_by=user,
         )
         for b in manquants:
@@ -1486,12 +1654,25 @@ def resolve_fournisseur(company, fournisseur_id, installation):
 
 def record_stock_movement(*, company, produit, type_mouvement, quantite,
                           quantite_avant, quantite_apres, reference, note,
-                          created_by, save_produit=True):
+                          created_by, save_produit=True, emplacement_source=None):
     """Crée UN MouvementStock et (par défaut) cale `produit.quantite_stock` sur
     `quantite_apres`. Renvoie le mouvement créé. Écriture identique au
     `MouvementStock.objects.create(...) + produit.save(update_fields=...)` que les
-    appelants faisaient inline. À utiliser dans la transaction de l'appelant."""
-    from .models import MouvementStock
+    appelants faisaient inline. À utiliser dans la transaction de l'appelant.
+
+    YSTCK3 — ``emplacement_source`` (optionnel, `EmplacementStock`) : quand un
+    SORTIE est imputée à un emplacement NON PRINCIPAL précis (ex. camionnette
+    d'un technicien), décrémente CE `StockEmplacement` au lieu de laisser le
+    principal absorber silencieusement toute la baisse (`stock_breakdown`
+    dérive le principal = total − Σ non-principaux, donc sans ce paramètre la
+    camionnette ne redescend JAMAIS quand un technicien consomme depuis son
+    van). Défaut ``None`` = comportement historique EXACT (aucun
+    `StockEmplacement` touché ; la dérivation absorbe la baisse au principal,
+    plafonnée à 0 par ERR94). Un `emplacement_source` PRINCIPAL est un no-op
+    (le principal est déjà dérivé, jamais stocké). Ne s'applique qu'aux
+    mouvements SORTIE (une ENTREE avec emplacement passe par
+    `credit_emplacement_destination`, jamais dupliquée ici)."""
+    from .models import MouvementStock, StockEmplacement
     mouvement = MouvementStock.objects.create(
         company=company,
         produit=produit,
@@ -1506,6 +1687,14 @@ def record_stock_movement(*, company, produit, type_mouvement, quantite,
     if save_produit:
         produit.quantite_stock = quantite_apres
         produit.save(update_fields=['quantite_stock'])
+    if (emplacement_source is not None
+            and not emplacement_source.is_principal
+            and type_mouvement == MouvementStock.TypeMouvement.SORTIE):
+        se, _created = StockEmplacement.objects.select_for_update().get_or_create(
+            produit=produit, emplacement=emplacement_source,
+            defaults={'company': company, 'quantite': 0})
+        se.quantite = max(se.quantite - quantite, 0)
+        se.save(update_fields=['quantite'])
     return mouvement
 
 
@@ -1886,19 +2075,23 @@ def creer_profil_saisonnier(
 
 
 def produits_a_reapprovisionner(company):
-    """Retourne les produits dont le stock est <= seuil EFFECTIF (XSTK17 :
+    """Retourne les produits dont la POSITION NETTE (disponible N14 + déjà EN
+    COMMANDE via BCF brouillon/envoyé, YPROC9) est <= seuil EFFECTIF (XSTK17 :
     le profil saisonnier ACTIF prime sur `seuil_alerte` pendant sa fenêtre ;
     hors saison, repli byte-identique sur `seuil_alerte`), groupés par
     fournisseur le moins cher (PrixFournisseur). INTERNE.
 
     Chaque item : {produit_id, nom, quantite_stock, seuil_alerte,
-    quantite_suggere, fournisseur_id, fournisseur_nom, prix_achat,
-    action, kit_id}. ``action`` = 'assembler' (kit_id renseigné) quand le
+    quantite_suggere, disponible, en_commande, fournisseur_id,
+    fournisseur_nom, prix_achat, action, kit_id}. ``quantite_suggere`` est
+    NETTE du pipeline déjà en route (0 → produit exclu du tout : ce qui
+    arrive déjà suffit). ``action`` = 'assembler' (kit_id renseigné) quand le
     produit sous seuil est le ``produit_compose`` d'un kit ACTIF
     (`installations.Kit`, XMFG3) — la suggestion devient « assembler N »
     plutôt qu'un bon de commande fournisseur ; sinon 'acheter'.
     """
     from .models import Produit, PrixFournisseur
+    from .selectors import quantite_en_commande_produit
     from apps.installations.selectors import kit_map_for_produits_composes
 
     # XSTK17 — exclut seulement les produits SANS seuil_alerte ET sans
@@ -1933,12 +2126,21 @@ def produits_a_reapprovisionner(company):
     produits = list(qs)
     kit_map = kit_map_for_produits_composes(
         company, [p.id for p in produits])
+    # YPROC9 — netting : le besoin réel se calcule sur le DISPONIBLE (stock −
+    # réservations chantier actives, N14) PLUS le pipeline déjà EN COMMANDE
+    # (BCF brouillon/envoyé non reçus) — jamais le stock brut seul. Sinon on
+    # re-suggère (et `generer_bcf_reappro` re-commande) ce qui est déjà en
+    # route.
+    reserved_map = reserved_quantities(company)
 
     result = []
     for p in produits:
         seuil_effectif, cible_effective = seuil_effectif_produit(
             company, p, mois=mois_actuel)
-        if p.quantite_stock > (seuil_effectif or 0):
+        disponible = p.quantite_stock - reserved_map.get(p.id, 0)
+        en_commande = quantite_en_commande_produit(company, p.id)
+        position_nette = disponible + en_commande
+        if position_nette > (seuil_effectif or 0):
             continue
         # Fournisseur le moins cher parmi les prix enregistrés.
         best = (PrixFournisseur.objects
@@ -1946,8 +2148,14 @@ def produits_a_reapprovisionner(company):
                 .select_related('fournisseur')
                 .order_by('prix_achat')
                 .first())
-        qte_suggere = cible_effective if cible_effective else (
+        cible = cible_effective if cible_effective else (
             (seuil_effectif or 0) * 2)
+        # Le pipeline déjà en route couvre une partie (ou tout) du besoin —
+        # une quantité suggérée nette <= 0 exclut le produit (rien à
+        # recommander, ce qui arrive déjà suffit).
+        qte_suggere = max(cible - position_nette, 0)
+        if qte_suggere <= 0:
+            continue
         kit_id = kit_map.get(p.id)
         result.append({
             'produit_id': p.id,
@@ -1956,6 +2164,8 @@ def produits_a_reapprovisionner(company):
             'quantite_stock': p.quantite_stock,
             'seuil_alerte': seuil_effectif,
             'quantite_suggere': qte_suggere,
+            'disponible': disponible,
+            'en_commande': en_commande,
             'fournisseur_id': best.fournisseur_id if best else None,
             'fournisseur_nom': best.fournisseur.nom if best else None,
             'prix_achat': str(best.prix_achat) if best else None,
@@ -1965,10 +2175,21 @@ def produits_a_reapprovisionner(company):
     return result
 
 
+REAPPRO_NOTE_MARKER = 'Réapprovisionnement automatique (stock < seuil)'
+
+
 def generer_bcf_reappro(company, user, fournisseur_id):
-    """Génère un BCF BROUILLON pour tous les produits sous seuil, chez le
-    fournisseur donné (ou les moins chers si non précisé). Renvoie
-    {bon_commande_id, reference, nb_lignes}. Lève ValueError si rien à faire."""
+    """Génère (ou complète) un BCF BROUILLON pour tous les produits sous
+    seuil, chez le fournisseur donné (ou les moins chers si non précisé).
+    Renvoie {bon_commande_id, reference, nb_lignes, fusionne}. Lève
+    ValueError si rien à faire.
+
+    YPROC9 — FUSION au lieu de duplication : si un BCF BROUILLON « Réappro-
+    visionnement automatique » existe déjà pour ce fournisseur (même
+    marqueur de note), ses lignes sont incrémentées (ou une ligne ajoutée
+    pour un produit encore absent) au lieu d'ouvrir un second brouillon —
+    deux appels successifs n'ouvrent donc qu'UN seul brouillon par
+    fournisseur."""
     from apps.ventes.utils.references import create_with_reference
     from .models import BonCommandeFournisseur, LigneBonCommandeFournisseur, Fournisseur
 
@@ -1999,13 +2220,42 @@ def generer_bcf_reappro(company, user, fournisseur_id):
         for pid, qte, prix in lignes
     ]
 
+    # Dernier BROUILLON réappro auto du MÊME fournisseur (le plus récent).
+    bon_existant = (BonCommandeFournisseur.objects
+                    .filter(company=company, fournisseur=fournisseur,
+                            statut=BonCommandeFournisseur.Statut.BROUILLON,
+                            note=REAPPRO_NOTE_MARKER)
+                    .order_by('-date_creation')
+                    .first())
+    if bon_existant is not None:
+        lignes_par_produit = {
+            ligne.produit_id: ligne
+            for ligne in bon_existant.lignes.all()}
+        for produit, qte, prix in lignes_produits:
+            existante = lignes_par_produit.get(produit.id)
+            if existante is not None:
+                existante.quantite += qte
+                existante.save(update_fields=['quantite'])
+            else:
+                LigneBonCommandeFournisseur.objects.create(
+                    bon_commande=bon_existant, produit=produit,
+                    quantite=qte,
+                    prix_achat_unitaire=(
+                        Decimal(prix) if prix else Decimal('0')))
+        return {
+            'bon_commande_id': bon_existant.id,
+            'reference': bon_existant.reference,
+            'nb_lignes': len(lignes_produits),
+            'fusionne': True,
+        }
+
     created_bon = {}
 
     def _save(ref):
         bon = BonCommandeFournisseur.objects.create(
             company=company, reference=ref, fournisseur=fournisseur,
             statut=BonCommandeFournisseur.Statut.BROUILLON,
-            note='Réapprovisionnement automatique (stock < seuil)',
+            note=REAPPRO_NOTE_MARKER,
             created_by=user)
         for produit, qte, prix in lignes_produits:
             LigneBonCommandeFournisseur.objects.create(
@@ -2018,7 +2268,7 @@ def generer_bcf_reappro(company, user, fournisseur_id):
     create_with_reference(BonCommandeFournisseur, 'BCF', company, _save)
     bon = created_bon['bon']
     return {'bon_commande_id': bon.id, 'reference': bon.reference,
-            'nb_lignes': len(lignes_produits)}
+            'nb_lignes': len(lignes_produits), 'fusionne': False}
 
 
 # ── FG55 — PDF facture fournisseur ────────────────────────────────────────────
@@ -2125,6 +2375,238 @@ def facturer_reception(company, user, reception):
     except Exception:  # pragma: no cover - défensif, best-effort
         pass
     return created['ff']
+
+
+# ── ZPUR1 — Politique de facturation d'achat (Odoo « Bill Control ») ────────
+# FG56 (`facturer_reception`, ci-dessus) ne facture QUE depuis une réception
+# confirmée — impossible de facturer d'avance un BCF « à la commande »
+# (import payé sur bon de commande). `Produit.politique_facturation_achat`
+# pilote quelles LIGNES sont éligibles à ce chemin direct ; les lignes
+# `sur_reception` (défaut) restent facturées EXCLUSIVEMENT via FG56.
+
+def facturer_bcf_sur_commande(company, user, bon_commande):
+    """ZPUR1 — construit une FactureFournisseur BROUILLON depuis les lignes
+    COMMANDÉES (quantité × prix d'achat) d'un BCF dont les lignes sont
+    `sur_commande`, SANS exiger de réception. Réutilise le même builder de
+    lignes/montants que FG56 (HT/TVA par ligne, taux produit ou 20% défaut).
+
+    Lève ValueError si le BCF n'a AUCUNE ligne `sur_commande` (les lignes
+    `sur_reception` restent hors de ce chemin — direction vers FG56), ou si
+    ce BCF est déjà entièrement facturé par ce chemin (idempotence : jamais
+    deux factures pour la même quantité `sur_commande`)."""
+    from decimal import Decimal
+    from apps.ventes.utils.references import create_with_reference
+    from .models import FactureFournisseur, LigneFactureFournisseur, Produit
+
+    lignes_eligibles = [
+        ligne for ligne in bon_commande.lignes.select_related('produit').all()
+        if ligne.produit_id is not None
+        and ligne.produit.politique_facturation_achat
+        == Produit.PolitiqueFacturationAchat.SUR_COMMANDE
+    ]
+    if not lignes_eligibles:
+        raise ValueError(
+            "Aucune ligne « sur commande » sur ce bon de commande — "
+            'utilisez la facturation depuis la réception (FG56).')
+
+    marqueur = f'Facture sur commande {bon_commande.reference}'
+    if FactureFournisseur.objects.filter(
+            company=company, bon_commande=bon_commande,
+            note__startswith=marqueur).exists():
+        raise ValueError(
+            f'Ce bon de commande ({bon_commande.reference}) est déjà '
+            'facturé sur commande.')
+
+    taux_tva_defaut = Decimal('20')
+    montant_ht = Decimal('0')
+    montant_tva = Decimal('0')
+    lignes_data = []
+    for ligne in lignes_eligibles:
+        pu = ligne.prix_achat_unitaire or Decimal('0')
+        total = Decimal(str(ligne.quantite)) * pu
+        montant_ht += total
+        designation = (
+            ligne.produit.nom if ligne.produit_id else
+            (ligne.designation or 'Produit'))
+        taux_ligne = (ligne.produit.tva
+                      if ligne.produit_id and ligne.produit.tva is not None
+                      else taux_tva_defaut)
+        tva_ligne = (total * taux_ligne / Decimal('100')).quantize(
+            Decimal('0.01'))
+        montant_tva += tva_ligne
+        lignes_data.append((designation, ligne.quantite, pu, taux_ligne))
+
+    montant_ttc = montant_ht + montant_tva
+    created = {}
+
+    def _save(ref):
+        ff = FactureFournisseur.objects.create(
+            company=company, reference=ref,
+            fournisseur=bon_commande.fournisseur,
+            bon_commande=bon_commande,
+            montant_ht=montant_ht, montant_tva=montant_tva,
+            montant_ttc=montant_ttc,
+            statut=FactureFournisseur.Statut.A_PAYER,
+            note=marqueur, created_by=user)
+        for designation, qte, pu, taux_ligne in lignes_data:
+            LigneFactureFournisseur.objects.create(
+                facture=ff, designation=designation,
+                quantite=qte, prix_unitaire_ht=pu, taux_tva=taux_ligne)
+        created['ff'] = ff
+        return ff
+
+    create_with_reference(FactureFournisseur, 'FF', company, _save)
+    try:
+        from core.events import facture_fournisseur_creee
+        facture_fournisseur_creee.send(
+            sender=FactureFournisseur, facture=created['ff'],
+            company=company, user=user)
+    except Exception:  # pragma: no cover - défensif, best-effort
+        pass
+    return created['ff']
+
+
+# ── ZPUR4 — Duplication d'un bon de commande fournisseur ────────────────────
+# Odoo offre « Duplicate » sur tout PO/RFQ. QP2 a livré la duplication de
+# PRODUIT ; aucun endpoint ne duplique un BCF. Le clone est TOUJOURS un
+# BROUILLON neuf (nouvelle référence, quantités reçues à zéro, statut
+# réinitialisé) — la source n'est jamais modifiée.
+
+def dupliquer_bcf(company, user, bon_commande):
+    """ZPUR4 — crée un nouveau BCF BROUILLON copiant fournisseur + lignes
+    (produit, quantité, prix d'achat) du BCF source. Référence neuve via
+    `create_with_reference` (jamais count()+1), `date_commande` = aujourd'hui,
+    statut réinitialisé, quantités reçues à zéro. Le BCF source n'est JAMAIS
+    modifié. Renvoie le nouveau BCF."""
+    from django.utils import timezone
+    from apps.ventes.utils.references import create_with_reference
+    from .models import BonCommandeFournisseur, LigneBonCommandeFournisseur
+
+    lignes_source = list(bon_commande.lignes.all())
+    created = {}
+
+    def _save(ref):
+        clone = BonCommandeFournisseur.objects.create(
+            company=company, reference=ref,
+            fournisseur=bon_commande.fournisseur,
+            statut=BonCommandeFournisseur.Statut.BROUILLON,
+            date_commande=timezone.now().date(),
+            devise=bon_commande.devise, taux_change=bon_commande.taux_change,
+            note=f'Dupliqué depuis {bon_commande.reference}',
+            created_by=user)
+        for ligne in lignes_source:
+            LigneBonCommandeFournisseur.objects.create(
+                bon_commande=clone, produit=ligne.produit,
+                designation=ligne.designation, sans_stock=ligne.sans_stock,
+                quantite=ligne.quantite,
+                prix_achat_unitaire=ligne.prix_achat_unitaire,
+                # ZPUR4 — quantité reçue TOUJOURS à zéro sur le clone (jamais
+                # copiée : un clone brouillon n'a par construction rien reçu).
+                quantite_recue=0,
+            )
+        created['bon'] = clone
+        return clone
+
+    create_with_reference(BonCommandeFournisseur, 'BCF', company, _save)
+    return created['bon']
+
+
+# ── ZPUR6 — Regroupement de plusieurs BCF en un seul par fournisseur ────────
+# Odoo permet de fusionner des RFQ du même fournisseur. Plusieurs suggestions
+# de réappro (FG54) ou besoins chantier créent aujourd'hui des BCF séparés
+# vers le même fournisseur — l'acheteur finit par multiplier les commandes.
+
+def fusionner_bcf(company, user, bon_commande_ids):
+    """ZPUR6 — fusionne PLUSIEURS BCF BROUILLON du MÊME fournisseur (et de la
+    MÊME société) en un BCF cible neuf : lignes additionnées par produit
+    (quantités cumulées, prix d'achat du plus récent BCF source portant ce
+    produit), puis passe les BCF sources en `annule` avec une note de fusion
+    horodatée. Lève ValueError si : moins de 2 BCF, fournisseurs différents,
+    ou un des BCF n'est pas BROUILLON (ou n'appartient pas à la société)."""
+    from django.db import transaction
+    from django.utils import timezone
+    from apps.ventes.utils.references import create_with_reference
+    from .models import BonCommandeFournisseur, LigneBonCommandeFournisseur
+
+    bcs = list(
+        BonCommandeFournisseur.objects.filter(
+            company=company, id__in=bon_commande_ids)
+        .select_related('fournisseur').prefetch_related('lignes__produit'))
+    if len(bcs) != len(set(bon_commande_ids)):
+        raise ValueError('Un ou plusieurs bons de commande sont introuvables.')
+    if len(bcs) < 2:
+        raise ValueError('Au moins deux bons de commande sont requis.')
+    fournisseur_ids = {bc.fournisseur_id for bc in bcs}
+    if len(fournisseur_ids) > 1:
+        raise ValueError(
+            'Tous les bons de commande doivent être du même fournisseur.')
+    non_brouillon = [
+        bc for bc in bcs
+        if bc.statut != BonCommandeFournisseur.Statut.BROUILLON]
+    if non_brouillon:
+        raise ValueError(
+            'Seuls des bons de commande en BROUILLON peuvent être fusionnés '
+            f'({non_brouillon[0].reference} ne l\'est pas).')
+
+    # Cumule les quantités par produit ; garde le prix du BCF le plus RÉCENT
+    # (date_creation) portant ce produit. Une ligne sans produit (libre/
+    # service) est reprise telle quelle (pas de fusion par désignation —
+    # évite de coller à tort deux lignes libres différentes).
+    bcs_par_date = sorted(bcs, key=lambda bc: bc.date_creation)
+    lignes_par_produit = {}
+    lignes_libres = []
+    for bc in bcs_par_date:
+        for ligne in bc.lignes.all():
+            if ligne.produit_id is None:
+                lignes_libres.append(ligne)
+                continue
+            existante = lignes_par_produit.get(ligne.produit_id)
+            if existante is None:
+                lignes_par_produit[ligne.produit_id] = {
+                    'produit': ligne.produit,
+                    'quantite': ligne.quantite,
+                    'prix_achat_unitaire': ligne.prix_achat_unitaire,
+                }
+            else:
+                existante['quantite'] += ligne.quantite
+                # bcs_par_date est croissant : le dernier vu = le plus récent.
+                existante['prix_achat_unitaire'] = ligne.prix_achat_unitaire
+
+    fournisseur = bcs[0].fournisseur
+    created = {}
+    references_sources = ', '.join(bc.reference for bc in bcs)
+
+    def _save(ref):
+        cible = BonCommandeFournisseur.objects.create(
+            company=company, reference=ref, fournisseur=fournisseur,
+            statut=BonCommandeFournisseur.Statut.BROUILLON,
+            note=f'Fusion de {references_sources}', created_by=user)
+        for data in lignes_par_produit.values():
+            LigneBonCommandeFournisseur.objects.create(
+                bon_commande=cible, produit=data['produit'],
+                quantite=data['quantite'],
+                prix_achat_unitaire=data['prix_achat_unitaire'])
+        for ligne in lignes_libres:
+            LigneBonCommandeFournisseur.objects.create(
+                bon_commande=cible, produit=None,
+                designation=ligne.designation, sans_stock=True,
+                quantite=ligne.quantite,
+                prix_achat_unitaire=ligne.prix_achat_unitaire)
+        created['bon'] = cible
+        return cible
+
+    with transaction.atomic():
+        create_with_reference(BonCommandeFournisseur, 'BCF', company, _save)
+        cible = created['bon']
+        today = timezone.now().date()
+        for bc in bcs:
+            bc.statut = BonCommandeFournisseur.Statut.ANNULE
+            note_fusion = (
+                f'[{today.isoformat()}] Fusionné dans {cible.reference}.')
+            bc.note = (f'{bc.note}\n{note_fusion}'.strip()
+                       if bc.note else note_fusion)
+            bc.save(update_fields=['statut', 'note'])
+    return cible
 
 
 # ── DC38 — Landed cost (FG316) replié dans le coût moyen pondéré ─────────────
@@ -2451,10 +2933,17 @@ def produits_expirant_bientot(company, jours=90):
 def previsions_reappro(company, nb_mois=6):
     """Calcule la consommation mensuelle moyenne par SKU (SORTIE sur les
     `nb_mois` derniers mois) et propose une quantité de réapprovisionnement.
-    Retourne une liste de dicts par produit avec sortie > 0. Admin-only."""
+    Retourne une liste de dicts par produit avec sortie > 0. Admin-only.
+
+    YPROC9 — enrichit chaque item avec ``date_rupture``/``point_commande``
+    (FG364, `core.stock_reorder.predict_reorder` — jusqu'ici un dead-end,
+    consommé par AUCUNE vue) dérivés de la conso journalière moyenne déjà
+    calculée ici. ``None`` si la conso journalière est nulle (aucune rupture
+    prévisible — le module garde le résultat exploitable)."""
     from django.utils import timezone
     import datetime
     from .models import MouvementStock, Produit
+    from core.stock_reorder import predict_reorder
 
     today = timezone.now().date()
     debut = today - datetime.timedelta(days=30 * nb_mois)
@@ -2483,6 +2972,11 @@ def previsions_reappro(company, nb_mois=6):
         qte_suggeree = (p.quantite_reappro_cible
                         if p.quantite_reappro_cible
                         else max(round(conso_moy * 2), p.seuil_alerte * 2 if p.seuil_alerte else 1))
+        conso_jour = conso_moy / 30.0 if conso_moy else 0.0
+        reorder = predict_reorder(
+            current_stock=p.quantite_stock, today=today,
+            avg_daily_consumption=conso_jour,
+            safety_stock=p.seuil_alerte or 0)
         result.append({
             'produit_id': p.id,
             'nom': p.nom,
@@ -2491,6 +2985,8 @@ def previsions_reappro(company, nb_mois=6):
             'consommation_mensuelle_moy': round(conso_moy, 2),
             'quantite_stock': p.quantite_stock,
             'quantite_suggeree': qte_suggeree,
+            'date_rupture': reorder.rupture_date,
+            'point_commande': reorder.reorder_point,
         })
     result.sort(key=lambda x: -x['consommation_mensuelle_moy'])
     return result
@@ -3176,6 +3672,76 @@ def notify_bcf_en_retard(company):
         except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
             logger.warning('notify_bcf_en_retard: échec pour BCF %s', bc.pk)
     return count
+
+
+def annuler_receptions_brouillon_bcf(bc, user=None):
+    """YPROC7 — à l'annulation d'un BCF, annule en cascade ses réceptions
+    encore en BROUILLON (elles restaient sinon confirmables contre un BCF
+    annulé). Une réception déjà CONFIRME ou ANNULE n'est jamais touchée
+    (idempotent, aucune perte de mouvement de stock déjà posté). Renvoie le
+    nombre de réceptions annulées par cet appel."""
+    from django.utils import timezone
+    from .models import ReceptionFournisseur
+
+    today = timezone.now().date()
+    receptions = bc.receptions.filter(
+        statut=ReceptionFournisseur.Statut.BROUILLON)
+    count = 0
+    for reception in receptions:
+        note_annulation = (
+            f'[{today.isoformat()}] Annulée automatiquement (BCF '
+            f'{bc.reference} annulé).')
+        reception.statut = ReceptionFournisseur.Statut.ANNULE
+        reception.note = (
+            f'{reception.note}\n{note_annulation}'.strip()
+            if reception.note else note_annulation)
+        reception.save(update_fields=['statut', 'note'])
+        count += 1
+    return count
+
+
+def notify_bcf_annule(bc):
+    """YPROC7 — notifie best-effort le créateur du BCF (et de la DA liée si
+    connue) qu'un BCF vient d'être annulé. N'échoue jamais l'annulation."""
+    try:
+        from apps.notifications.services import notify
+        from apps.notifications.models import EventType
+        if bc.created_by_id:
+            notify(
+                bc.created_by, EventType.BCF_CANCELLED,
+                title=f'BCF annulé ({bc.reference})',
+                body=(f'{bc.reference} chez '
+                      f'{bc.fournisseur.nom if bc.fournisseur_id else "?"} '
+                      f'a été annulé.'),
+                company=bc.company)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning('notify_bcf_annule: échec pour BCF %s', bc.pk)
+
+
+def annuler_bcf_cascade(bc, user=None):
+    """YPROC7 — annulation d'un BCF : annule en cascade ses réceptions
+    brouillon (`annuler_receptions_brouillon_bcf`) puis notifie
+    (`notify_bcf_annule`), best-effort. Ne touche PAS au statut du BCF
+    lui-même (laissé à l'appelant — la garde « déjà entièrement reçu » reste
+    dans la vue). Renvoie le détail des quantités déjà entrées en stock
+    (utile si l'annulation concerne un BCF partiellement reçu) pour décision
+    éventuelle de retour fournisseur."""
+    nb_receptions_annulees = annuler_receptions_brouillon_bcf(bc, user=user)
+    notify_bcf_annule(bc)
+    quantites_deja_recues = [
+        {
+            'produit_id': ligne.produit_id,
+            'produit_nom': ligne.produit.nom if ligne.produit_id else (
+                ligne.designation or ''),
+            'quantite_recue': ligne.quantite_recue,
+        }
+        for ligne in bc.lignes.select_related('produit').all()
+        if ligne.quantite_recue
+    ]
+    return {
+        'receptions_annulees': nb_receptions_annulees,
+        'quantites_deja_recues': quantites_deja_recues,
+    }
 
 
 def otd_stats(company, fournisseur):

@@ -514,6 +514,73 @@ def valider_retour_materiel(retour, user):
     return applied
 
 
+def reserver_stock_recu_pour_chantier(*, reception):
+    """YPROC10 — à la confirmation d'une réception fournisseur dont le BCF
+    porte un ``chantier_origine`` (distinct de la destination de livraison
+    XPUR23), crée/complète les ``StockReservation`` actives du chantier pour
+    les produits/quantités REÇUS sur cette réception.
+
+    Plafonné au MANQUE recalculé du chantier (`compute_besoin_materiel`,
+    apps.stock.services — jamais de sur-réservation) et à la quantité reçue
+    sur CETTE réception. Idempotent : re-confirmer une réception déjà traitée
+    ne double jamais la réservation (get_or_create + réalignement, même
+    schéma que ``seed_reservations``). No-op silencieux si le BCF n'a aucun
+    ``chantier_origine`` (comportement historique inchangé). Renvoie le
+    nombre de réservations créées/augmentées."""
+    from apps.stock.services import compute_besoin_materiel
+
+    bc = reception.bon_commande
+    if bc is None or not getattr(bc, 'chantier_origine_id', None):
+        return 0
+    installation = bc.chantier_origine
+    if installation is None:
+        return 0
+
+    besoins = {
+        b['produit_id']: b['manque'] for b in compute_besoin_materiel(
+            installation)}
+    if not besoins:
+        return 0
+
+    # Quantités REÇUES sur CETTE réception, par produit (ignore les lignes
+    # libres/service sans produit catalogue).
+    recu_par_produit = {}
+    for ligne in reception.lignes.all():
+        if ligne.produit_id is None:
+            continue
+        recu_par_produit[ligne.produit_id] = (
+            recu_par_produit.get(ligne.produit_id, 0) + (ligne.quantite or 0))
+
+    count = 0
+    for produit_id, qte_recue in recu_par_produit.items():
+        manque = besoins.get(produit_id, 0)
+        if manque <= 0 or qte_recue <= 0:
+            continue
+        qte_a_reserver = min(qte_recue, manque)
+        resa, created = StockReservation.objects.get_or_create(
+            installation=installation, produit_id=produit_id,
+            defaults={'company': installation.company,
+                      'quantite': qte_a_reserver})
+        if created:
+            count += 1
+            continue
+        if resa.consomme:
+            # Réservation déjà consommée : ne jamais la rouvrir ici (le
+            # stock a déjà été décrémenté pour ce chantier).
+            continue
+        # Idempotence : n'augmente jamais au-delà du manque courant, et
+        # n'ajoute que la part pas déjà réservée (re-confirmer la même
+        # réception, ou une confirmation partielle suivie d'une autre, ne
+        # double jamais la réservation).
+        nouvelle_quantite = min(resa.quantite + qte_a_reserver, manque)
+        if nouvelle_quantite != resa.quantite:
+            resa.quantite = nouvelle_quantite
+            resa.active = True
+            resa.save(update_fields=['quantite', 'active'])
+            count += 1
+    return count
+
+
 # ── YDOCF7 — Réservation de stock DEPUIS UN BonCommande (BC) ────────────────
 # `bons-commande/{id}/confirmer` ne réservait rien (le stock n'était touché
 # qu'à `marquer-livre`, décrément direct) : entre confirmation et livraison,

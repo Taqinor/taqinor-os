@@ -307,11 +307,22 @@ class FactureFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
             montant = serializer.validated_data['montant']
             taux, montant_ras = compute_ras_tva(
                 request.user.company, facture, montant)
-            serializer.save(
+            paiement = serializer.save(
                 company=request.user.company, created_by=request.user,
                 taux_ras=taux, montant_ras_tva=montant_ras)
             facture.refresh_from_db()
             recompute_facture_fournisseur_statut(facture)
+            # ZACC9 — ce POST enregistrait déjà le paiement mais ne postait
+            # AUCUNE écriture comptable (contrairement au chemin
+            # PaiementFournisseurViewSet.create qui émet déjà cet événement,
+            # YLEDG2). Même seam générique, jamais d'import direct du
+            # service compta : idempotent côté récepteur
+            # (`ecriture_pour_paiement_fournisseur` vérifie l'existence
+            # avant de poster).
+            from core.events import paiement_fournisseur_enregistre
+            paiement_fournisseur_enregistre.send(
+                sender=paiement.__class__, instance=paiement,
+                company=request.user.company)
         return Response(self.get_serializer(facture).data,
                         status=status.HTTP_201_CREATED)
 

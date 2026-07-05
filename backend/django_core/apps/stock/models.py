@@ -615,6 +615,26 @@ class Produit(models.Model):
         help_text="Pays d'origine du produit — utilisé pour pré-remplir le "
                   'dossier d\'import ADII.')
 
+    # ── ZPUR1 — Politique de facturation d'achat (parité « Bill Control »
+    # Odoo : Ordered vs Received quantities) ───────────────────────────────
+    # Défaut `sur_reception` = comportement HISTORIQUE inchangé (FG56 :
+    # `receptions-fournisseur/{id}/facturer/` reste l'unique chemin). Un
+    # produit `sur_commande` peut en plus être facturé DIRECTEMENT depuis un
+    # BCF (`bons-commande-fournisseur/{id}/facturer/`, ZPUR1) sans exiger de
+    # réception au préalable — utile pour un import payé à la commande.
+    class PolitiqueFacturationAchat(models.TextChoices):
+        SUR_RECEPTION = 'sur_reception', 'Sur réception'
+        SUR_COMMANDE = 'sur_commande', 'Sur commande'
+
+    politique_facturation_achat = models.CharField(
+        max_length=20, choices=PolitiqueFacturationAchat.choices,
+        default=PolitiqueFacturationAchat.SUR_RECEPTION,
+        verbose_name="Politique de facturation d'achat",
+        help_text='« Sur réception » = comportement historique (FG56, '
+                  'facturé depuis la réception). « Sur commande » = peut '
+                  "être facturé directement depuis le BCF, sans exiger de "
+                  'réception préalable (ZPUR1).')
+
     class Meta:
         verbose_name = "Produit"
         verbose_name_plural = "Produits"
@@ -1220,6 +1240,21 @@ class BonCommandeFournisseur(models.Model):
                   "d'origine) : la réception est suivie d'une affectation "
                   "chantier tracée (n'entre jamais en stock libre). "
                   'Vide = comportement historique.')
+    # ── YPROC10 — chantier D'ORIGINE du besoin (distinct de chantier_livraison
+    # ci-dessus, qui trace la LIVRAISON). Posé par `draft_bcf_for_shortfall` ;
+    # à la confirmation de réception, `installations` (abonné à l'événement
+    # `reception_fournisseur_confirmee`) crée/complète les `StockReservation`
+    # actives du chantier pour les quantités reçues — la chaîne MTO (« Made
+    # To Order ») n'est plus cassée à la réception. Nullable = comportement
+    # historique inchangé (la marchandise entre en stock libre).
+    chantier_origine = models.ForeignKey(
+        'installations.Installation', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='bons_commande_besoin_origine',
+        help_text="Chantier D'ORIGINE du besoin matériel (distinct de "
+                  'chantier_livraison, qui trace la LIVRAISON) : réceptionner '
+                  'ce BCF réserve automatiquement les quantités reçues pour '
+                  'ce chantier. Vide = comportement historique (stock '
+                  'libre).')
     note = models.TextField(blank=True, null=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -2137,3 +2172,61 @@ class FicheTechnique(models.Model):
 
     def __str__(self):
         return f'Fiche technique — {self.produit_id}'
+
+
+# ── ZPUR3 — Modèle de BCF réutilisable (purchase template) ──────────────────
+# Odoo permet des « Purchase Templates » pré-remplissant produits/quantités
+# pour des RFQ répétées. Chaque BCF de réappro récurrent (câble, MC4,
+# visserie) se re-saisit aujourd'hui à la main — un modèle nommé matérialise
+# un BCF BROUILLON pré-rempli en un clic.
+
+class ModeleBonCommandeFournisseur(models.Model):
+    """ZPUR3 — modèle de BCF réutilisable : un nom + un fournisseur optionnel
+    + des lignes (produit + quantité par défaut). L'action `generer` (vue)
+    matérialise un BCF BROUILLON pré-rempli à partir de ces lignes, éditable
+    avant envoi. Le modèle lui-même ne bouge jamais aucun stock/mouvement."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='modeles_bcf')
+    nom = models.CharField(max_length=150)
+    fournisseur = models.ForeignKey(
+        Fournisseur, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='modeles_bcf',
+        help_text='Fournisseur par défaut du BCF généré (optionnel — peut '
+                  "être choisi/changé à la génération si absent ici).")
+    note = models.TextField(blank=True, null=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='modeles_bcf_crees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_mise_a_jour = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Modèle de bon de commande fournisseur'
+        verbose_name_plural = 'Modèles de bon de commande fournisseur'
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
+
+
+class ModeleBonCommandeFournisseurLigne(models.Model):
+    """ZPUR3 — ligne d'un modèle de BCF : produit + quantité par défaut."""
+
+    modele = models.ForeignKey(
+        ModeleBonCommandeFournisseur, on_delete=models.CASCADE,
+        related_name='lignes')
+    produit = models.ForeignKey(
+        Produit, on_delete=models.CASCADE,
+        related_name='lignes_modele_bcf')
+    quantite = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        verbose_name = 'Ligne de modèle de BCF'
+        verbose_name_plural = 'Lignes de modèle de BCF'
+        unique_together = [('modele', 'produit')]
+        ordering = ['id']
+
+    def __str__(self):
+        return f'{self.modele_id}: {self.produit_id} × {self.quantite}'

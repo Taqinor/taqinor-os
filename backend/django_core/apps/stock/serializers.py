@@ -15,6 +15,7 @@ from .models import (
     AvoirFournisseur, ImputationAvoirFournisseur,
     PalierPrixFournisseur, PortailFournisseurToken,
     LotEntrepot, InventaireAnnuel, RevalorisationStock, ConditionnementProduit,
+    ModeleBonCommandeFournisseur, ModeleBonCommandeFournisseurLigne,
 )
 
 
@@ -252,6 +253,9 @@ class ProduitSerializer(serializers.ModelSerializer):
             'unite_stock',
             # Prix (prix_achat gardé par permission, cf. get_fields)
             'prix_achat', 'prix_vente', 'tva',
+            # ZPUR1 — politique de facturation d'achat (sur_reception/
+            # sur_commande) — INTERNE, jamais client-facing (achat).
+            'politique_facturation_achat',
             # Stock
             'quantite_stock', 'seuil_alerte', 'is_archived',
             # Relations (lecture imbriquée + écriture par *_id)
@@ -831,6 +835,23 @@ class PaiementFournisseurSerializer(serializers.ModelSerializer):
                 'Facture hors de votre entreprise.')
         return value
 
+    def validate(self, attrs):
+        # ZACC9 — garde de SUR-PAIEMENT : un règlement ne doit jamais dépasser
+        # le solde dû de la facture (validate_montant refusait déjà un
+        # montant <= 0, mais n'empêchait PAS de payer plus que ce qui reste
+        # dû). Comparaison faite ici (object-level) car elle a besoin à la
+        # fois de `facture` et de `montant`.
+        facture = attrs.get('facture')
+        montant = attrs.get('montant')
+        if facture is not None and montant is not None:
+            if montant > facture.solde_du:
+                raise serializers.ValidationError({
+                    'montant': (
+                        'Le montant dépasse le solde dû '
+                        f'({facture.solde_du}).'),
+                })
+        return attrs
+
 
 class EcheanceFactureFournisseurSerializer(serializers.ModelSerializer):
     class Meta:
@@ -1342,3 +1363,47 @@ class ConditionnementProduitSerializer(serializers.ModelSerializer):
             'id', 'produit', 'produit_nom', 'nom', 'facteur', 'code_barres',
             'unite_stock', 'date_creation',
         ]
+
+
+class ModeleBonCommandeFournisseurLigneSerializer(serializers.ModelSerializer):
+    """ZPUR3 — ligne d'un modèle de BCF : produit + quantité par défaut."""
+    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
+    produit_sku = serializers.CharField(source='produit.sku', read_only=True)
+
+    class Meta:
+        model = ModeleBonCommandeFournisseurLigne
+        fields = ['id', 'produit', 'produit_nom', 'produit_sku', 'quantite']
+
+
+class ModeleBonCommandeFournisseurSerializer(serializers.ModelSerializer):
+    """ZPUR3 — modèle de BCF réutilisable (purchase template)."""
+    lignes = ModeleBonCommandeFournisseurLigneSerializer(many=True, required=False)
+    fournisseur_nom = serializers.CharField(
+        source='fournisseur.nom', read_only=True)
+
+    class Meta:
+        model = ModeleBonCommandeFournisseur
+        fields = [
+            'id', 'nom', 'fournisseur', 'fournisseur_nom', 'note', 'lignes',
+            'date_creation', 'date_mise_a_jour',
+        ]
+
+    def create(self, validated_data):
+        lignes_data = validated_data.pop('lignes', [])
+        modele = ModeleBonCommandeFournisseur.objects.create(**validated_data)
+        for ligne in lignes_data:
+            ModeleBonCommandeFournisseurLigne.objects.create(
+                modele=modele, **ligne)
+        return modele
+
+    def update(self, instance, validated_data):
+        lignes_data = validated_data.pop('lignes', None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        if lignes_data is not None:
+            instance.lignes.all().delete()
+            for ligne in lignes_data:
+                ModeleBonCommandeFournisseurLigne.objects.create(
+                    modele=instance, **ligne)
+        return instance

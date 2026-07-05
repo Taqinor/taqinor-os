@@ -170,7 +170,13 @@ def validate_consommation(cons, user):
                 reference=installation.reference,
                 note=(f'Consommation réelle intervention '
                       f'{cons.intervention_id} ({installation.reference})'),
-                created_by=user)
+                created_by=user,
+                # YSTCK3 — consommation DEPUIS la camionnette assignée à
+                # l'intervention (si posée) : décrémente CE StockEmplacement
+                # plutôt que de laisser le principal absorber la baisse à
+                # tort. Sans camionnette assignée : comportement historique
+                # inchangé (défaut None).
+                emplacement_source=cons.intervention.camionnette)
             li.stock_applique = True
             li.save(update_fields=['stock_applique'])
             applied += 1
