@@ -180,6 +180,27 @@ COURT (~5 min, `browse.js` seul) en nightly + bouton, `continue-on-error`
 `spike.js` restent manuels. Lancer en local : `k6 run -e
 BASE_URL=http://localhost:8000 loadtests/browse.js`.
 
+## Déterminisme — temps figé + Faker seedé
+
+Tout test dépendant de la date/heure ou de l'aléatoire doit être déterministe :
+* **Temps** — `testkit/time.py` expose `frozen(when)` (enrobe `freezegun`, dép
+  DEV) : `with frozen('2026-01-01 10:00:00'): …` ou en décorateur. Jamais de
+  test qui compare à un `timezone.now()` VIVANT dans une assertion (flaky près
+  d'une frontière d'horloge) — figer le temps à la place.
+* **Aléatoire** — `Faker.seed(1234)` (ou `faker.Faker().seed_instance(1234)`)
+  pour toute donnée « réaliste mais aléatoire » ; ne jamais compter sur la
+  seed par défaut de Faker (change à chaque run).
+* **Jamais de `sleep` fixe** — ni `time.sleep(` côté backend, ni
+  `page.waitForTimeout(`/`sleep(` fixe côté Playwright (attendre une
+  condition explicite à la place).
+
+Gardé par `scripts/check_test_determinism.py` (job `stage-names`, toujours
+actif) : échoue sur un `time.sleep(` backend, un `page.waitForTimeout(` e2e,
+ou une assertion comparant à un `timezone.now()` non figé. Les infractions
+préexistantes (2026-07, apps `compta`/`kb`/`ventes` — hors périmètre de cette
+lane) sont whitelistées explicitement dans le script avec la justification ;
+toute NOUVELLE infraction fait échouer le build.
+
 ## Pistes restantes
 * Parcours e2e par fonctionnalité pour les flux encore non couverts (stock,
   installations, SAV, reporting) : **scaffolds prêts** (`frontend/e2e/{stock,

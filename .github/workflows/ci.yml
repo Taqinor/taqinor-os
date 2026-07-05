@@ -270,6 +270,8 @@ jobs:
         run: python scripts/check_stages.py
       - name: Check module registry <-> frontend consistency (ODX21)
         run: python scripts/check_modules.py
+      - name: Check test determinism (no sleeps / unfrozen live-clock assertions)
+        run: python scripts/check_test_determinism.py
       - name: Check CODEMAP structural fingerprint
         run: python scripts/codemap_fingerprint.py --check
 
