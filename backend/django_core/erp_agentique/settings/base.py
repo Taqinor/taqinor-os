@@ -299,6 +299,33 @@ CELERY_RESULT_BACKEND = CELERY_BROKER_URL
 CELERY_TIMEZONE = 'Africa/Casablanca'
 CELERY_ENABLE_UTC = False
 
+# YOPSB8 — réglages de production durcis. Sans limite de temps ni garde de
+# perte de worker, une tâche bloquée (ex. rendu PDF WeasyPrint qui hangs)
+# épingle un worker indéfiniment. Le rendu PDF mesuré est ~3-4,5s : marge
+# large avec 120s/180s.
+#   * CELERY_TASK_SOFT_TIME_LIMIT — lève SoftTimeLimitExceeded dans la tâche
+#     (peut être attrapée pour un nettoyage propre) après 120s ;
+#   * CELERY_TASK_TIME_LIMIT — tue le worker process après 180s (dur) ;
+#   * CELERY_TASK_ACKS_LATE — ack APRÈS exécution (pas avant) : une tâche
+#     interrompue par un crash worker est re-livrée, jamais perdue ;
+#   * CELERY_TASK_REJECT_ON_WORKER_LOST — si le worker meurt EN COURS
+#     d'exécution, la tâche est explicitement REJETÉE (donc re-livrée via
+#     acks_late) plutôt que silencieusement perdue ;
+#   * CELERY_WORKER_PREFETCH_MULTIPLIER=1 — équité : un worker ne pré-charge
+#     qu'UNE tâche à la fois (pas de accaparement de la queue par un worker
+#     lent pendant qu'un autre est inactif).
+#
+# IMPORTANT (documenté aussi dans docs/CODEMAP.md) : `acks_late` +
+# `reject_on_worker_lost` signifient qu'UNE tâche à effet de bord PEUT être
+# relancée après un crash worker — toute tâche Celery DOIT donc rester
+# idempotente (les tâches ventes existantes le sont déjà via
+# `_idempotent_cached_key`).
+CELERY_TASK_SOFT_TIME_LIMIT = 120
+CELERY_TASK_TIME_LIMIT = 180
+CELERY_TASK_ACKS_LATE = True
+CELERY_TASK_REJECT_ON_WORKER_LOST = True
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+
 # Email — django-anymail (N87). Compte d'envoi configurable : Brevo (ex-
 # Sendinblue) via BREVO_API_KEY, ou SendGrid (héritage), ou SMTP. SANS clé,
 # EMAIL_BACKEND reste le backend console → l'envoi est un NO-OP qui préserve le
