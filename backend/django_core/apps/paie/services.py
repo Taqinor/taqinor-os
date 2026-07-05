@@ -2770,6 +2770,73 @@ def notifier_echeances_en_retard(company):
     return notifiees
 
 
+# ── ZPAI12 — Alerte de clôture de paie en retard (tâche planifiée) ─────────
+
+def periodes_cloture_en_retard(company):
+    """``PeriodePaie`` en ``brouillon``/``calculee`` dont le mois est écoulé (ZPAI12).
+
+    Une période M est « en retard » quand le mois SUIVANT (M+1) est déjà
+    ENTAMÉ (aujourd'hui ≥ le 1ᵉʳ de M+1) ET qu'elle n'est ni ``validee`` ni
+    ``cloturee``. Lecture pure (aucun effet de bord). Renvoie une liste de
+    ``PeriodePaie`` (comparaison faite en Python — ``(annee, mois)`` n'est
+    pas un DateField comparable directement en SQL ici).
+    """
+    from django.utils import timezone as dj_timezone
+
+    from .models import PeriodePaie
+
+    today = dj_timezone.localdate()
+    candidates = PeriodePaie.objects.filter(
+        company=company,
+        statut__in=[PeriodePaie.STATUT_BROUILLON, PeriodePaie.STATUT_CALCULEE],
+    )
+    en_retard = []
+    for periode in candidates:
+        annee_suivante, mois_suivant = _mois_suivant(periode.annee, periode.mois)
+        if date(annee_suivante, mois_suivant, 1) <= today:
+            en_retard.append(periode)
+    return en_retard
+
+
+def notifier_cloture_en_retard(company):
+    """Notifie (best-effort) le gestionnaire paie des clôtures en retard (ZPAI12).
+
+    Pour chaque ``PeriodePaie`` de ``periodes_cloture_en_retard`` non encore
+    alertée (``date_alerte_cloture_retard`` NULL), notifie le rôle
+    ``paie_gerer`` (repli Responsable/Admin via
+    ``apps.notifications.resolve_recipients``) — UNE SEULE FOIS
+    (``date_alerte_cloture_retard`` posée après envoi ; un re-run le
+    lendemain ne renotifie pas). Jamais bloquant : toute erreur de
+    notification est avalée. Renvoie la liste des périodes notifiées.
+    """
+    from django.utils import timezone as dj_timezone
+
+    en_retard = [
+        p for p in periodes_cloture_en_retard(company)
+        if p.date_alerte_cloture_retard is None
+    ]
+    notifiees = []
+    for periode in en_retard:
+        try:
+            from apps.notifications import services as notif_services
+
+            recipients = notif_services.resolve_recipients(
+                company, 'paie_cloture_retard')
+            notif_services.notify_many(
+                recipients, 'paie_cloture_retard',
+                title='Clôture de paie en retard',
+                body=(
+                    f'Période {periode.mois:02d}/{periode.annee} '
+                    f'({periode.get_statut_display()}) non clôturée.'),
+                company=company)
+        except Exception:  # pragma: no cover - défensif, best-effort
+            pass
+        periode.date_alerte_cloture_retard = dj_timezone.now()
+        periode.save(update_fields=['date_alerte_cloture_retard'])
+        notifiees.append(periode)
+    return notifiees
+
+
 # ── PAIE30 — Ordre de virement + fichier de virement banque ────────────────
 
 FICHIER_VIREMENT_PAIE_HEADERS = [

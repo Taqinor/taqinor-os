@@ -756,6 +756,12 @@ class PeriodePaie(models.Model):
         null=True, blank=True, verbose_name='Date de paiement')
     date_cloture = models.DateTimeField(
         null=True, blank=True, verbose_name='Clôturée le')
+    # ZPAI12 — Marqueur d'idempotence de l'alerte de clôture en retard (façon
+    # ``EcheanceDeclarative.date_notification``, XPAI6) : posé UNE SEULE FOIS
+    # par ``services.notifier_cloture_en_retard`` — un re-run le lendemain ne
+    # renotifie jamais la même période.
+    date_alerte_cloture_retard = models.DateTimeField(
+        null=True, blank=True, verbose_name='Alerte de clôture en retard envoyée le')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
