@@ -13,6 +13,11 @@ Couvre :
   isolation multi-tenant.
 * API : action ``employes/{id}/sortir/`` (validations 400), rapport
   ``employes/comptes-actifs-sortis/``.
+* YHIRE11 — les affectations flotte OUVERTES du conducteur flotte LIÉ au
+  dossier (``flotte.Conducteur.employe_id``, distinctes de
+  ``rh.AffectationVehicule``) remontent dans la checklist via
+  ``flotte.selectors.affectations_ouvertes_pour_employe`` (lecture cross-app
+  UNIQUEMENT — jamais un import de ``apps.flotte.models``).
 """
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -95,6 +100,34 @@ class SortirEmployeServiceTests(TestCase):
 
         self.compte.refresh_from_db()
         self.assertFalse(self.compte.is_active)
+
+    def test_yhire11_affectations_flotte_ouvertes_remontent_en_checklist(self):
+        """YHIRE11 — un conducteur FLOTTE lié à ce dossier avec une
+        affectation OUVERTE ajoute une ligne informative à la checklist de
+        sortie, distincte de la ligne ``AffectationVehicule`` RH."""
+        try:
+            from apps.flotte.models import AffectationConducteur, Conducteur, Vehicule
+        except Exception:  # pragma: no cover - app flotte absente
+            self.skipTest('apps.flotte indisponible')
+
+        vehicule = Vehicule.objects.create(
+            company=self.company, immatriculation='YH11-SORTIE',
+            energie='diesel')
+        conducteur = Conducteur.objects.create(
+            company=self.company, employe_id=self.employe.pk, nom='Sortant')
+        AffectationConducteur.objects.create(
+            company=self.company, conducteur=conducteur, vehicule=vehicule,
+            date_debut=timezone.localdate(), actif=True)
+
+        services.sortir_employe(
+            self.employe, date_sortie=timezone.localdate(),
+            motif=DossierEmploye.MotifSortie.DEMISSION)
+
+        note = ElementSortie.objects.filter(
+            employe=self.employe,
+            libelle='Véhicules flotte encore ouverts').first()
+        self.assertIsNotNone(note)
+        self.assertIn('YH11-SORTIE', note.note)
 
     def test_avances_non_soldees_notees(self):
         AvanceSalaire.objects.create(

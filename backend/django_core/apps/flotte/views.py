@@ -107,7 +107,7 @@ READ_ACTIONS = ['list', 'retrieve', 'consommation', 'anomalies', 'echeances',
                 'tco', 'eco_conduite', 'documents', 'tableau_bord', 'journal',
                 'amortissement', 'expirants', 'ledger', 'historique',
                 'synthese_tva', 'detenteurs_courants', 'taux_completion',
-                'activites', 'ocr']
+                'activites', 'ocr', 'divergences_permis']
 
 
 def _parse_date_param(value):
@@ -153,9 +153,10 @@ class VehiculeViewSet(_FlotteBaseViewSet):
         return qs
 
     def perform_create(self, serializer):
-        # XFLT12 — À la sélection d'un ``modele_ref``, pré-remplit les champs
-        # vides (energie/puissance_fiscale/valeur) SANS écraser une saisie
-        # déjà présente dans le body.
+        # XFLT12/ZCTR11 — À la sélection d'un ``modele_ref``, pré-remplit les
+        # champs vides (energie/puissance_fiscale/valeur/valeur_residuelle/
+        # pct_charges_non_deductibles) SANS écraser une saisie déjà présente
+        # dans le body.
         from .services import prefill_depuis_modele
 
         modele = serializer.validated_data.get('modele_ref')
@@ -475,6 +476,20 @@ class ConducteurViewSet(_FlotteBaseViewSet):
                 date_expiration__lte=horizon,
             )
         return qs
+
+    @action(detail=False, methods=['get'], url_path='divergences-permis')
+    def divergences_permis(self, request):
+        """YHIRE11 — Rapport de réconciliation « divergences permis
+        flotte↔RH » (lecture tout rôle), scopé société.
+
+        Compare, pour chaque conducteur LIÉ à un dossier RH, la validité
+        locale (champs ``Conducteur``) à la validité RH
+        (``rh.selectors.peut_conduire``, source de vérité quand un lien
+        existe). Voir ``selectors.divergences_permis_flotte_rh``.
+        """
+        from .selectors import divergences_permis_flotte_rh
+        return Response(
+            divergences_permis_flotte_rh(request.user.company))
 
 
 class ActifFlotteViewSet(_FlotteBaseViewSet):
@@ -1262,7 +1277,7 @@ class OrdreReparationViewSet(_FlotteBaseViewSet):
     """
     queryset = OrdreReparation.objects.select_related(
         'actif_flotte', 'actif_flotte__vehicule', 'actif_flotte__engin',
-        'garage', 'echeance')
+        'garage', 'echeance', 'type_service')
     serializer_class = OrdreReparationSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['description', 'notes']
@@ -1284,6 +1299,13 @@ class OrdreReparationViewSet(_FlotteBaseViewSet):
         if garage:
             try:
                 qs = qs.filter(garage_id=int(garage))
+            except (ValueError, TypeError):
+                pass
+
+        type_service = params.get('type_service')
+        if type_service:
+            try:
+                qs = qs.filter(type_service_id=int(type_service))
             except (ValueError, TypeError):
                 pass
 
@@ -2697,7 +2719,8 @@ class InspectionVehiculeViewSet(_FlotteBaseViewSet):
 
 # ── XFLT7 — Rapport d'analyse des coûts (pivot + benchmark) ────────────────────
 
-GROUP_BY_VALIDES = ('vehicule', 'categorie', 'mois', 'conducteur', 'garage')
+GROUP_BY_VALIDES = (
+    'vehicule', 'categorie', 'mois', 'conducteur', 'garage', 'type_service')
 
 
 @api_view(['GET'])
@@ -2705,7 +2728,7 @@ GROUP_BY_VALIDES = ('vehicule', 'categorie', 'mois', 'conducteur', 'garage')
 def rapport_couts(request):
     """XFLT7 — Rapport d'analyse des coûts (pivot + benchmark), lecture seule.
 
-    ``GET /flotte/rapports/couts/?group_by=vehicule|categorie|mois|conducteur|garage``
+    ``GET /flotte/rapports/couts/?group_by=vehicule|categorie|mois|conducteur|garage|type_service``
     (défaut ``vehicule`` ; une valeur inconnue retombe sur ``vehicule``).
     Construit sur le ledger unifié (XFLT3, ``selectors.analyse_couts_report``) :
     matrice coûts, coût/km par véhicule, dépense par garage, outliers de

@@ -72,6 +72,8 @@ export default function VehiculeDetail({ vehicule, onClose }) {
     { term: 'Catégorie de permis requise', description: v?.categorie_permis_requise || '— (aucune)' },
     { term: 'Emplacement de stock', description: v?.emplacement_stock_label || '—' },
     { term: 'Valeur (immobilisation)', description: v?.valeur != null ? formatMAD(v.valeur, { decimals: 0 }) : '—' },
+    // ZCTR11 — carte mobilité affichée sur la fiche véhicule.
+    { term: 'Carte mobilité', description: v?.carte_mobilite || '—' },
   ]
 
   return (

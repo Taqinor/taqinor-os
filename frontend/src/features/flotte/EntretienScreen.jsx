@@ -115,6 +115,8 @@ function OrdresTab() {
   const columns = useMemo(() => [
     { id: 'actif', header: 'Actif', width: 180, accessor: (r) => r.actif_label, cell: (v) => v || '—' },
     { id: 'garage', header: 'Garage', width: 160, accessor: (r) => r.garage_nom, cell: (v) => v || '—' },
+    // ZCTR10 — type de service/entretien (référentiel éditable) ; absence = "non catégorisé".
+    { id: 'type_service', header: 'Type de service', width: 160, accessor: (r) => r.type_service_libelle, cell: (v) => v || 'Non catégorisé' },
     { id: 'description', header: 'Description', width: 220, accessor: (r) => r.description, cell: (v) => v || '—' },
     { id: 'date_ouverture', header: 'Ouvert le', width: 130, accessor: (r) => r.date_ouverture, cell: (v) => (v ? formatDate(v) : '—') },
     {
