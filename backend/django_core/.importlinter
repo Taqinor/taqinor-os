@@ -143,3 +143,12 @@ ignore_imports =
     core.tests.test_public_endpoint_hardening -> apps.ventes.models
     core.tests.test_public_endpoint_hardening -> apps.crm.models
     core.tests.test_registre_traitements -> apps.crm.models
+# YHARD4/YHARD10 — two more core cross-layer INTEGRATION tests: YHARD4 asserts
+# the i18n content-translation layer round-trips a real domain serializer, and
+# YHARD10's export-anonymise UAT-clone command is proven against a real
+# crm.Client. Same rationale as the YRBAC6/9 exceptions above — test-only
+# cross-layer edges, not production `core` coupling (core prod code imports
+# downward only). Ignore just these specific test→domain edges.
+    core.tests.test_yhard4_i18n_content -> apps.stock.models
+    core.tests.test_yhard4_i18n_content -> apps.stock.serializers
+    core.tests.test_yhard10_export_anonymise -> apps.crm.models
