@@ -5867,10 +5867,14 @@ def journal_de_paie_ventile(periode, *, created_by=None):
             ventilation_par_centre.items(), key=lambda kv: (kv[0] is None, kv[0] or 0)):
         libelle = ('Rémunération + charges patronales'
                    + (f' — centre #{centre_id}' if centre_id else ' — non ventilé'))
+        # ``LigneEcriture.centre_cout`` est une FK : ``creer_ecriture`` assigne
+        # ``ligne['centre_cout']`` tel quel, il faut donc une INSTANCE
+        # ``CentreCout`` (jamais l'id brut) — résolue en lecture seule via
+        # ``compta_services.get_centre_cout``.
         lignes.append({
             'compte': compte(_COMPTE_REMUNERATION),
             'libelle': libelle, 'debit': montant, 'credit': 0,
-            'centre_cout': centre_id,
+            'centre_cout': compta_services.get_centre_cout(company, centre_id),
         })
     if cnss_amo > 0:
         lignes.append({
