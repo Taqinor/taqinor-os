@@ -1130,6 +1130,129 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             f'"tableau_immobilisations_exercice_{exercice.pk}.csv"')
         return resp
 
+    @action(detail=False, methods=['get'], url_path='dossier-cloture')
+    def dossier_cloture(self, request):
+        """ZACC16 — Dossier de clôture xlsx multi-onglets (bilan/CPC/
+        balance/grand-livre/balance-âgée/tableau-immos ZACC12/tableau-flux
+        ZACC3) en UN seul fichier remis au fiduciaire.
+
+        Assemble les sélecteurs EXISTANTS (aucun recalcul). Paramètres :
+        ``exercice`` (id, requis), ``validees`` (1 → validées),
+        ``export=xlsx`` (seul format supporté — sinon 400 explicite : ce
+        dossier n'a pas de rendu JSON, il n'existe qu'en xlsx). Company-
+        scopé, Admin/Responsable.
+        """
+        exercice, err = self._resolve_exercice(request)
+        if err is not None:
+            return err
+        if request.query_params.get('export') != 'xlsx':
+            return Response(
+                {'detail': "Seul 'export=xlsx' est supporté pour le "
+                           "dossier de clôture."},
+                status=status.HTTP_400_BAD_REQUEST)
+        company = request.user.company
+        validees = request.query_params.get('validees') == '1'
+        date_debut = exercice.date_debut.isoformat()
+        date_fin = exercice.date_fin.isoformat()
+
+        bilan = selectors.bilan(
+            company, date_fin=date_fin, validees_seulement=validees)
+        cpc_data = selectors.cpc(
+            company, date_debut=date_debut, date_fin=date_fin,
+            validees_seulement=validees)
+        balance = selectors.balance_generale(
+            company, date_debut=date_debut, date_fin=date_fin,
+            validees_seulement=validees)
+        grand_livre_data = selectors.grand_livre(
+            company, date_debut=date_debut, date_fin=date_fin,
+            validees_seulement=validees)
+        balance_agee = selectors.balance_agee_fournisseurs(
+            company, date_reference=date_fin, validees_seulement=validees)
+        tableau_immos = selectors.tableau_immobilisations(
+            company, exercice, validees_seulement=validees)
+        tableau_flux = selectors.tableau_flux_tresorerie(
+            company, exercice, validees_seulement=validees)
+
+        from openpyxl import Workbook
+        from openpyxl.styles import Font
+        from apps.records.xlsx import coerce_cell, XLSX_CONTENT_TYPE
+
+        def _feuille(wb, titre, headers, rows, first=False):
+            ws = wb.active if first else wb.create_sheet()
+            ws.title = titre[:31]
+            ws.append(list(headers))
+            bold = Font(bold=True)
+            for cell in ws[1]:
+                cell.font = bold
+            for row in rows:
+                ws.append([coerce_cell(v) for v in row])
+            return ws
+
+        wb = Workbook()
+        _feuille(
+            wb, 'Bilan', ['Section', 'N°', 'Intitulé', 'Montant'],
+            [['Actif', p['numero'], p['intitule'], p['montant']]
+             for p in bilan['actif']]
+            + [['Passif', p['numero'], p['intitule'], p['montant']]
+               for p in bilan['passif']]
+            + [['Résultat', '', '', bilan['resultat']]],
+            first=True)
+        _feuille(
+            wb, 'CPC', ['Section', 'N°', 'Intitulé', 'Montant'],
+            [['Produit', p['numero'], p['intitule'], p['montant']]
+             for p in cpc_data['produits']]
+            + [['Charge', p['numero'], p['intitule'], p['montant']]
+               for p in cpc_data['charges']]
+            + [['Résultat', '', '', cpc_data['resultat']]])
+        _feuille(
+            wb, 'Balance',
+            ['N°', 'Intitulé', 'Débit', 'Crédit', 'Solde débiteur',
+             'Solde créditeur'],
+            [[li['numero'], li['intitule'], li['debit'], li['credit'],
+              li['solde_debiteur'], li['solde_crediteur']]
+             for li in balance['lignes']])
+        _feuille(
+            wb, 'Grand livre',
+            ['Compte', 'Date', 'Journal', 'Référence', 'Libellé', 'Débit',
+             'Crédit'],
+            [[compte['numero'], li['date'], li['journal'], li['reference'],
+              li['libelle'], li['debit'], li['credit']]
+             for compte in grand_livre_data for li in compte['lignes']])
+        _feuille(
+            wb, 'Balance âgée fournisseurs',
+            ['Fournisseur', '0-30j', '31-60j', '61-90j', '90j+', 'Total'],
+            [[li['fournisseur_nom'], li['b0_30'], li['b31_60'],
+              li['b61_90'], li['b90_plus'], li['total']]
+             for li in balance_agee])
+        _feuille(
+            wb, 'Tableau immobilisations',
+            ['Immobilisation', 'Brut ouverture', 'Acquisitions', 'Cessions',
+             'Brut clôture', 'Amort. ouverture', 'Dotations', 'Reprises',
+             'Amort. clôture', 'VNC'],
+            [[li['libelle'], li['brut_ouverture'], li['acquisitions'],
+              li['cessions'], li['brut_cloture'], li['amort_ouverture'],
+              li['dotations'], li['reprises'], li['amort_cloture'],
+              li['valeur_nette_comptable']]
+             for li in tableau_immos['lignes']])
+        _feuille(
+            wb, 'Tableau des flux',
+            ['Section', 'Poste', 'Montant'],
+            [['Exploitation', k, v]
+             for k, v in tableau_flux['exploitation'].items()]
+            + [['Investissement', k, v]
+               for k, v in tableau_flux['investissement'].items()]
+            + [['Financement', k, v]
+               for k, v in tableau_flux['financement'].items()]
+            + [['Synthèse', 'variation_nette_tresorerie',
+                tableau_flux['variation_nette_tresorerie']]])
+
+        response = HttpResponse(content_type=XLSX_CONTENT_TYPE)
+        response['Content-Disposition'] = (
+            'attachment; filename='
+            f'"dossier_cloture_exercice_{exercice.pk}.xlsx"')
+        wb.save(response)
+        return response
+
     @action(detail=False, methods=['get'], url_path='export-fiduciaire')
     def export_fiduciaire(self, request):
         """Export fiduciaire Sage/CEGID des écritures d'un exercice (COMPTA37).
