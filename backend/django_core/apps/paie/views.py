@@ -81,6 +81,7 @@ from .services import (
     cout_global_par_profil,
     creer_bulletin_annulation,
     creer_bulletin_rectificatif,
+    creer_saisies_arret_lot,
     declaration_cimr,
     declaration_cnss,
     deposer_bds_complementaire,
@@ -1535,6 +1536,54 @@ class SaisieArretViewSet(_PaieBaseViewSet):
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(
             self.get_serializer(saisie).data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], url_path='creer-lot')
+    def creer_lot(self, request):
+        """Éclate une saisie en N fiches individuelles, une par profil (ZPAI7).
+
+        Corps : ``profils`` (liste d'ids, même société), ``montant_total``,
+        ``montant_echeance`` (facultatif), ``date_debut`` (YYYY-MM-DD),
+        ``creancier``/``reference``/``type``/``prioritaire`` (facultatifs),
+        ``cle_lot`` (requis — identifiant STABLE fourni par l'appelant pour
+        l'idempotence : un re-run avec la même clé ne duplique rien).
+        """
+        profil_ids = request.data.get('profils') or []
+        cle_lot = request.data.get('cle_lot')
+        if not profil_ids or not cle_lot:
+            return Response(
+                {'detail': 'Champs "profils" (liste) et "cle_lot" requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        profils = ProfilPaie.objects.filter(
+            company=request.user.company, id__in=profil_ids)
+        if profils.count() != len(set(profil_ids)):
+            return Response(
+                {'detail': "Un ou plusieurs profils sont introuvables ou "
+                           "d'une autre société."},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            date_debut = date.fromisoformat(request.data.get('date_debut'))
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': 'Champ "date_debut" requis (format YYYY-MM-DD).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            saisies = creer_saisies_arret_lot(
+                request.user.company, profils,
+                type_saisie=request.data.get('type'),
+                montant_total=request.data.get('montant_total'),
+                montant_echeance=request.data.get('montant_echeance'),
+                date_debut=date_debut,
+                creancier=request.data.get('creancier', ''),
+                reference=request.data.get('reference', ''),
+                prioritaire=bool(request.data.get('prioritaire', False)),
+                cle_lot=cle_lot,
+            )
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(saisies, many=True).data,
+            status=status.HTTP_200_OK)
 
 
 class CumulAnnuelViewSet(_PaieVoirOuGerer, TenantMixin,

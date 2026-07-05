@@ -1388,6 +1388,58 @@ def saisies_arret_du_bulletin(bulletin):
     return resultats
 
 
+def creer_saisies_arret_lot(
+        company, profils, *, type_saisie=None, montant_total,
+        montant_echeance=None, date_debut, creancier='', reference='',
+        prioritaire=False, cle_lot):
+    """Éclate une saisie-arrêt en N fiches individuelles, une par profil (ZPAI7).
+
+    Façon Odoo « Create Individual Attachments » : au lieu d'une saisie
+    couvrant plusieurs employés, crée une ``SaisieArret`` DISTINCTE par
+    profil, mêmes montant/type/quotité, en UNE transaction. Toutes les
+    ``SaisieArret`` créées portent la même ``cle_lot`` (posée dans
+    ``lot_reference``) — IDEMPOTENT : un re-run avec la MÊME ``cle_lot`` ne
+    duplique rien, il renvoie les saisies déjà créées pour ce lot. Chaque
+    ``profil`` doit être de la MÊME société que ``company`` (sinon
+    ``ValueError``).
+
+    ``cle_lot`` est un identifiant STABLE fourni par l'appelant (jamais généré
+    ici par ``count()+1`` — cf. CLAUDE.md, la numérotation par comptage a déjà
+    causé des collisions en production). Renvoie la liste des ``SaisieArret``
+    du lot (nouvellement créées ou déjà existantes si re-run).
+    """
+    from .models import SaisieArret
+
+    if not cle_lot:
+        raise ValueError("cle_lot requis (idempotence du lot).")
+    if type_saisie is None:
+        type_saisie = SaisieArret.TYPE_SAISIE
+
+    existantes = list(
+        SaisieArret.objects.filter(company=company, lot_reference=cle_lot))
+    if existantes:
+        return existantes
+
+    profils = list(profils)
+    for profil in profils:
+        if profil.company_id != company.id:
+            raise ValueError("Un profil du lot appartient à une autre société.")
+
+    with transaction.atomic():
+        creees = [
+            SaisieArret.objects.create(
+                company=company, profil=profil, type=type_saisie,
+                creancier=creancier, reference=reference,
+                montant_total=montant_total,
+                montant_echeance=montant_echeance,
+                prioritaire=prioritaire, date_debut=date_debut,
+                lot_reference=cle_lot,
+            )
+            for profil in profils
+        ]
+    return creees
+
+
 # ── PAIE20 — Cotisation CIMR OPTIONNELLE (taux par employé adhérent) ─────────
 
 def cimr_salariale(brut, affilie=False, taux=Decimal('0')):

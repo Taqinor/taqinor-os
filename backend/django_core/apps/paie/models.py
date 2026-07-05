@@ -1462,6 +1462,13 @@ class SaisieArret(models.Model):
         null=True, blank=True, verbose_name='Annulée le')
     motif_annulation = models.CharField(
         max_length=200, blank=True, default='', verbose_name="Motif d'annulation")
+    # ZPAI7 — Clé de lot (facultative) : posée quand la saisie est créée par
+    # ``services.creer_saisies_arret_lot`` (éclatement multi-employés). Sert
+    # UNIQUEMENT à l'IDEMPOTENCE d'un re-run (même clé → aucune re-création),
+    # jamais affichée comme référence légale (distincte de ``reference``).
+    lot_reference = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='Référence de lot (idempotence)')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -1470,6 +1477,11 @@ class SaisieArret(models.Model):
         verbose_name_plural = 'Saisies-arrêts / cessions'
         # Saisies prioritaires d'abord, puis les plus anciennes.
         ordering = ['-prioritaire', 'date_debut', 'id']
+        indexes = [
+            models.Index(
+                fields=['company', 'lot_reference'],
+                name='paie_saisie_lot_idx'),
+        ]
 
     def __str__(self):
         return f'{self.get_type_display()} {self.montant_total} → profil #{self.profil_id}'
