@@ -113,7 +113,7 @@ def _ecriture_pour_facture_fournisseur_creee(sender, instance, company,
 @receiver(paiement_fournisseur_enregistre,
           dispatch_uid="compta_ecriture_pour_paiement_fournisseur")
 def _ecriture_pour_paiement_fournisseur_enregistre(sender, instance, company,
-                                                    **kwargs):
+                                                   **kwargs):
     ecriture_pour_paiement_fournisseur(instance)
 
 

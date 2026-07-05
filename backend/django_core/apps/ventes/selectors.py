@@ -543,8 +543,8 @@ def encours_clients_par_tiers(company):
         client = facture.client
         entry = par_client.setdefault(client.id, {
             'tiers_id': client.id,
-            'nom': f'{client.prenom} {client.nom}'.strip()
-                  if hasattr(client, 'prenom') else str(client),
+            'nom': (f'{client.prenom} {client.nom}'.strip()
+                    if hasattr(client, 'prenom') else str(client)),
             'encours': Decimal('0'),
             'references': [],
         })

@@ -634,6 +634,7 @@ class Produit(models.Model):
                   'facturé depuis la réception). « Sur commande » = peut '
                   "être facturé directement depuis le BCF, sans exiger de "
                   'réception préalable (ZPUR1).')
+
     # ── XCTR1 — Produit récurrent (abonnement) → conversion auto en contrat de
     # maintenance à l'acceptation d'un devis. `est_recurrent` = False par
     # défaut : AUCUN produit existant ne devient récurrent tant que cette case
