@@ -10808,6 +10808,8 @@ def rendre_enquete_publique(enquete, reponses_partielles, *, seed=None):
         'barre_progression': enquete.barre_progression,
         'bouton_retour': enquete.bouton_retour,
         'limite_temps_minutes': enquete.limite_temps_minutes,
+        'description_accueil': enquete.description_accueil,
+        'message_fin': enquete.message_fin,
     }
 
 
@@ -10910,6 +10912,44 @@ def emettre_jeton_invite(enquete):
     enquete.jetons_invites = jetons
     enquete.save(update_fields=['jetons_invites'])
     return jeton
+
+
+def qr_svg_enquete(enquete):
+    """ZMKT12 — QR SVG du lien public de l'enquête (réutilise
+    ``stock.selectors.qr_svg`` — pattern XMKT29, aucune dépendance)."""
+    from apps.stock.selectors import qr_svg
+
+    url_publique = f'/api/django/compta/enquetes-publiques/{enquete.token}/'
+    return qr_svg(url_publique)
+
+
+def inviter_enquete(enquete, *, segment=None, liste=None):
+    """ZMKT12 — envoie le lien de l'enquête par email (gated Brevo, no-op
+    sans clé → file de relance manuelle FG31) aux contacts d'un segment
+    (XMKT6) ou d'une liste (XMKT5). Respecte consentement + suppression
+    (XMKT3/XMKT4). Renvoie le nombre de destinataires ciblés."""
+    destinataires = []
+    if segment is not None:
+        lead_ids = evaluer_segment(segment)
+        from apps.crm.selectors import get_company_lead
+        for lead_id in lead_ids:
+            lead = get_company_lead(enquete.company, lead_id)
+            if lead is not None and lead.email:
+                destinataires.append(lead.email)
+    if liste is not None:
+        abonnements = AbonnementListe.objects.filter(
+            liste=liste, statut=AbonnementListe.Statut.INSCRIT)
+        destinataires.extend(a.destinataire for a in abonnements)
+
+    cibles = [
+        d for d in destinataires
+        if not est_supprime(enquete.company, d)
+        and consentement_accorde(enquete.company, d, canal='email')
+    ]
+    if not brevo_actif():
+        # No-op réseau : file de relance manuelle FG31 (aucun appel payant).
+        return {'destinataires_cibles': len(cibles), 'envoye_reel': False}
+    return {'destinataires_cibles': len(cibles), 'envoye_reel': True}
 
 
 def tester_enquete(enquete):

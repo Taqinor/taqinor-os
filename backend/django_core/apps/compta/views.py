@@ -4907,6 +4907,29 @@ class EnqueteViewSet(_ComptaBaseViewSet):
         jeton = services.emettre_jeton_invite(enquete)
         return Response({'jeton': jeton})
 
+    @action(detail=True, methods=['get'])
+    def qr(self, request, pk=None):
+        """ZMKT12 — QR SVG téléchargeable du lien public de l'enquête."""
+        enquete = self.get_object()
+        svg = services.qr_svg_enquete(enquete)
+        return HttpResponse(svg, content_type='image/svg+xml')
+
+    @action(detail=True, methods=['post'])
+    def inviter(self, request, pk=None):
+        """ZMKT12 — invitation email vers un segment (XMKT6) ou une liste
+        (XMKT5), consentement + suppression respectés."""
+        enquete = self.get_object()
+        segment_id = request.data.get('segment_id')
+        liste_id = request.data.get('liste_id')
+        segment = (SegmentMarketing.objects.filter(
+            id=segment_id, company=request.user.company).first()
+            if segment_id else None)
+        liste = (ListeDiffusion.objects.filter(
+            id=liste_id, company=request.user.company).first()
+            if liste_id else None)
+        resultat = services.inviter_enquete(enquete, segment=segment, liste=liste)
+        return Response(resultat)
+
 
 # ── XMKT28 — Événements marketing légers ────────────────────────────────────
 

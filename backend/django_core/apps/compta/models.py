@@ -8779,6 +8779,13 @@ class Enquete(models.Model):
     jetons_invites = models.JSONField(
         default=list, blank=True, verbose_name="Jetons d'invitation (JSON)")
 
+    # ── ZMKT12 — partage par lien / email / QR ──────────────────────────────
+    description_accueil = models.TextField(
+        blank=True, default='',
+        verbose_name="Description d'accueil (avant de commencer)")
+    message_fin = models.TextField(
+        blank=True, default='', verbose_name='Message de fin (complétion)')
+
     class Meta:
         verbose_name = 'Enquête'
         verbose_name_plural = 'Enquêtes'

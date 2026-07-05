@@ -2403,6 +2403,7 @@ class EnqueteSerializer(serializers.ModelSerializer):
             'limite_temps_minutes', 'ordre_aleatoire',
             'mode_scoring', 'score_requis_pct', 'est_certification',
             'mode_acces', 'connexion_requise', 'tentatives_max',
+            'description_accueil', 'message_fin',
         ]
         read_only_fields = ['token', 'date_creation']
 
