@@ -222,4 +222,10 @@ app.conf.beat_schedule = {
         'task': 'stock.relancer_bcf_en_retard',
         'schedule': crontab(hour=7, minute=10),
     },
+    # ZSTK2 — alertes de péremption des lots (fenêtre configurable par
+    # société, `CompanyProfile.jours_alerte_peremption`, défaut 30).
+    'stock-expiration-alerts': {
+        'task': 'stock.expiration_alerts',
+        'schedule': crontab(hour=6, minute=20),
+    },
 }

@@ -42,6 +42,10 @@ class EventType(models.TextChoices):
     WARRANTY_EXPIRING = 'warranty_expiring', 'Garantie bientôt expirée'
     MAINTENANCE_DUE = 'maintenance_due', 'Visite de maintenance due'
     STOCK_LOW = 'stock_low', 'Stock bas'
+    # ZSTK2 — un lot/réception approche de sa date de péremption (fenêtre
+    # configurable par société, cron quotidien).
+    STOCK_EXPIRATION_SOON = (
+        'stock_expiration_soon', 'Lot bientôt périmé')
     SAV_TICKET_OPENED = 'sav_ticket_opened', 'Ticket SAV ouvert'
     SAV_TICKET_BREACHING = 'sav_ticket_breaching', 'Ticket SAV proche de son délai'
     # ZSAV3 — activité planifiée à échéance sur un ticket SAV (échue, pas faite).

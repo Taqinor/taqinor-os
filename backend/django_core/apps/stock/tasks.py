@@ -169,3 +169,54 @@ def relancer_bcf_en_retard_task():
                     bc.pk, exc_info=True)
         result[company.id] = count
     return result
+
+
+@shared_task(name='stock.expiration_alerts')
+def expiration_alerts_task():
+    """ZSTK2 — pour CHAQUE société, notifie (best-effort, une fois par jour)
+    les produits/lots dont une réception a une date de péremption dans la
+    fenêtre configurable `CompanyProfile.jours_alerte_peremption` (défaut 30).
+    Réutilise `produits_expirant_bientot` (FG64) tel quel — jamais de logique
+    d'expiry dupliquée. Renvoie {company_id: nb_produits_notifies}."""
+    from authentication.models import Company
+    from apps.parametres.models import CompanyProfile
+    from .services import produits_expirant_bientot
+
+    today = timezone.localdate()
+    result = {}
+    for company in Company.objects.all():
+        try:
+            profile = CompanyProfile.get(company=company)
+            jours = profile.jours_alerte_peremption or 30
+            expirants = produits_expirant_bientot(company, jours=jours)
+        except Exception:  # noqa: BLE001 — société suivante
+            logger.warning(
+                'stock.expiration_alerts: échec calcul société %s',
+                company.id, exc_info=True)
+            continue
+        if not expirants:
+            result[company.id] = 0
+            continue
+        link = f'stock-expiration-{company.id}-{today.isoformat()}'
+        if _deja_notifie_aujourdhui('stock_expiration_soon', link):
+            result[company.id] = 0
+            continue
+        try:
+            from apps.notifications.services import notify_many
+            from apps.notifications.models import EventType
+            recipients = _recipients_reappro(company)
+            noms = ', '.join(
+                e['produit_nom'] for e in expirants[:10])
+            suffixe = '…' if len(expirants) > 10 else ''
+            notify_many(
+                recipients, EventType.STOCK_EXPIRATION_SOON,
+                title=f'{len(expirants)} lot(s) bientôt périmé(s)',
+                body=f'Péremption proche : {noms}{suffixe}.',
+                link=link, company=company)
+            result[company.id] = len(expirants)
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.warning(
+                'stock.expiration_alerts: notification échouée société %s',
+                company.id, exc_info=True)
+            result[company.id] = 0
+    return result
