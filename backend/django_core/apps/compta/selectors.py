@@ -159,14 +159,77 @@ def journal_items(company, *, journal=None, compte=None, tiers_type=None,
     return out
 
 
+# ── ZACC2 — Colonne comparative N-1 sur les états STANDARD (bilan/CPC/
+# balance/ESG). L'existant (XACC19) porte le N-1 sur les états PERSONNALISÉS
+# uniquement ; les états CGNC natifs ne comparaient rien. On ajoute un mode
+# comparatif OPTIONNEL : sans paramètre, chaque selector renvoie EXACTEMENT
+# son dict actuel (aucune régression) ; ``comparer=True`` (vue) enrichit
+# chaque ligne par clé (``numero`` pour bilan/balance, ``code`` pour l'ESG)
+# avec la valeur N-1, l'écart absolu et l'écart % — un exercice sans N-1
+# renvoie 0 (jamais d'erreur).
+
+def _decalage_un_an(valeur):
+    """Décale une date d'exactement un an en arrière (29 fév -> 28 fév)."""
+    d = _as_date(valeur)
+    if d is None:
+        return None
+    try:
+        return d.replace(year=d.year - 1)
+    except ValueError:  # 29 février d'une année bissextile.
+        return d.replace(year=d.year - 1, day=28)
+
+
+def _periode_n1(date_debut, date_fin, date_debut_n1=None, date_fin_n1=None):
+    """Résout la période N-1 : les bornes explicites priment, sinon la même
+    période décalée d'un an (jamais d'erreur si aucune période N-1 n'existe —
+    l'appelant reçoit simplement des soldes nuls)."""
+    deb_n1 = date_debut_n1 or _decalage_un_an(date_debut)
+    fin_n1 = date_fin_n1 or _decalage_un_an(date_fin)
+    return deb_n1, fin_n1
+
+
+def _ecart_pct(valeur_n, valeur_n1):
+    """Écart % = (N − N-1) / |N-1| × 100, ``None`` si N-1 = 0 (indéterminé)."""
+    if not valeur_n1:
+        return None
+    return ((valeur_n - valeur_n1) / abs(valeur_n1) * Decimal('100')
+            ).quantize(Decimal('0.01'))
+
+
+def _fusionner_comparatif(lignes_n, lignes_n1, cle):
+    """Fusionne deux listes de lignes (dicts) par ``cle`` : ajoute
+    ``montant_n1``/``ecart``/``ecart_pct`` sur chaque ligne de ``lignes_n``
+    (une ligne présente seulement en N-1 n'est pas ajoutée — l'état N reste le
+    référentiel de lignes affichées, comme le veut le menu « Comparison »)."""
+    par_cle = {ligne[cle]: ligne for ligne in lignes_n1}
+    out = []
+    for ligne in lignes_n:
+        ligne = dict(ligne)
+        n1 = par_cle.get(ligne[cle])
+        montant_n1 = (n1['montant'] if n1 is not None
+                      else Decimal('0'))
+        ligne['montant_n1'] = montant_n1
+        ligne['ecart'] = ligne['montant'] - montant_n1
+        ligne['ecart_pct'] = _ecart_pct(ligne['montant'], montant_n1)
+        out.append(ligne)
+    return out
+
+
 # ── FG111 / COMPTA20 — Balance générale (trial balance) ────────────────────
 
 def balance_generale(company, *, date_debut=None, date_fin=None,
-                     validees_seulement=False):
+                     validees_seulement=False, comparer=False,
+                     date_debut_n1=None, date_fin_n1=None):
     """Débit/crédit/solde par compte sur une période (≠ balance âgée clients).
 
     Renvoie une liste de dicts triée par numéro + des totaux globaux. La somme
     des débits doit égaler la somme des crédits (le grand livre est équilibré).
+
+    ZACC2 — ``comparer=True`` ajoute, par ligne, le solde débiteur N-1
+    (``solde_debiteur_n1``) et l'écart (``ecart_solde_debiteur``,
+    ``ecart_solde_debiteur_pct``), calculés sur ``date_debut_n1``/
+    ``date_fin_n1`` (défaut : même intervalle décalé d'un an). Défaut
+    (``comparer`` omis) = réponse actuelle byte-identique.
     """
     qs = _lignes_qs(company, date_debut=date_debut, date_fin=date_fin,
                     validees_seulement=validees_seulement)
@@ -193,12 +256,32 @@ def balance_generale(company, *, date_debut=None, date_fin=None,
             'solde_debiteur': solde if solde > 0 else Decimal('0'),
             'solde_crediteur': -solde if solde < 0 else Decimal('0'),
         })
-    return {
+    resultat = {
         'lignes': lignes,
         'total_debit': total_debit,
         'total_credit': total_credit,
         'equilibree': total_debit == total_credit,
     }
+    if comparer:
+        deb_n1, fin_n1 = _periode_n1(date_debut, date_fin, date_debut_n1,
+                                     date_fin_n1)
+        n1 = balance_generale(
+            company, date_debut=deb_n1, date_fin=fin_n1,
+            validees_seulement=validees_seulement)
+        lignes_n1 = [
+            {'numero': li['numero'], 'montant': li['solde_debiteur']}
+            for li in n1['lignes']]
+        fusion = _fusionner_comparatif(
+            [{'numero': li['numero'], 'montant': li['solde_debiteur'],
+              **li} for li in lignes],
+            lignes_n1, 'numero')
+        for li, f in zip(lignes, fusion):
+            li['solde_debiteur_n1'] = f['montant_n1']
+            li['ecart_solde_debiteur'] = f['ecart']
+            li['ecart_solde_debiteur_pct'] = f['ecart_pct']
+        resultat['date_debut_n1'] = deb_n1
+        resultat['date_fin_n1'] = fin_n1
+    return resultat
 
 
 # ── FG141 — Export FEC (Fichier des Écritures Comptables, format DGI) ───────
@@ -392,11 +475,17 @@ def delettrer(company, code):
 
 # ── FG113 / COMPTA27 — CPC (Compte de Produits et Charges) ─────────────────
 
-def cpc(company, *, date_debut=None, date_fin=None, validees_seulement=False):
+def cpc(company, *, date_debut=None, date_fin=None, validees_seulement=False,
+        comparer=False, date_debut_n1=None, date_fin_n1=None):
     """État de résultat (CPC) : produits (classe 7) − charges (classe 6).
 
     Renvoie ``{'produits', 'total_produits', 'charges', 'total_charges',
     'resultat'}``. Le résultat positif = bénéfice, négatif = perte.
+
+    ZACC2 — ``comparer=True`` ajoute ``montant_n1``/``ecart``/``ecart_pct``
+    sur chaque poste (produit et charge) + ``resultat_n1``/``resultat_ecart``
+    de tête, calculés sur ``date_debut_n1``/``date_fin_n1`` (défaut : même
+    intervalle décalé d'un an). Défaut = réponse actuelle byte-identique.
     """
     qs = _lignes_qs(company, date_debut=date_debut, date_fin=date_fin,
                     validees_seulement=validees_seulement).filter(
@@ -427,24 +516,51 @@ def cpc(company, *, date_debut=None, date_fin=None, validees_seulement=False):
             item['montant'] = montant
             total_charges += montant
             charges.append(item)
-    return {
+    resultat = {
         'produits': produits,
         'total_produits': total_produits,
         'charges': charges,
         'total_charges': total_charges,
         'resultat': total_produits - total_charges,
     }
+    if comparer:
+        deb_n1, fin_n1 = _periode_n1(date_debut, date_fin, date_debut_n1,
+                                     date_fin_n1)
+        n1 = cpc(company, date_debut=deb_n1, date_fin=fin_n1,
+                 validees_seulement=validees_seulement)
+        n1_produits = {li['numero']: li['montant'] for li in n1['produits']}
+        n1_charges = {li['numero']: li['montant'] for li in n1['charges']}
+        for item in produits:
+            montant_n1 = n1_produits.get(item['numero'], Decimal('0'))
+            item['montant_n1'] = montant_n1
+            item['ecart'] = item['montant'] - montant_n1
+            item['ecart_pct'] = _ecart_pct(item['montant'], montant_n1)
+        for item in charges:
+            montant_n1 = n1_charges.get(item['numero'], Decimal('0'))
+            item['montant_n1'] = montant_n1
+            item['ecart'] = item['montant'] - montant_n1
+            item['ecart_pct'] = _ecart_pct(item['montant'], montant_n1)
+        resultat['resultat_n1'] = n1['resultat']
+        resultat['resultat_ecart'] = resultat['resultat'] - n1['resultat']
+        resultat['date_debut_n1'] = deb_n1
+        resultat['date_fin_n1'] = fin_n1
+    return resultat
 
 
 # ── FG114 / COMPTA28 — Bilan (format CGNC) ─────────────────────────────────
 
-def bilan(company, *, date_fin=None, validees_seulement=False):
+def bilan(company, *, date_fin=None, validees_seulement=False,
+          comparer=False, date_fin_n1=None):
     """Bilan : actif (classes 2,3,5) / passif (classes 1,4) depuis les soldes.
 
     Le résultat de l'exercice (CPC) est porté au passif pour équilibrer
     (équation comptable : Actif = Passif + Résultat). Renvoie
     ``{'actif', 'total_actif', 'passif', 'total_passif', 'resultat',
     'equilibre'}``.
+
+    ZACC2 — ``comparer=True`` ajoute ``montant_n1``/``ecart``/``ecart_pct``
+    sur chaque poste d'actif/passif, calculés à ``date_fin_n1`` (défaut :
+    ``date_fin`` décalée d'un an). Défaut = réponse actuelle byte-identique.
     """
     qs = _lignes_qs(company, date_fin=date_fin,
                     validees_seulement=validees_seulement).filter(
@@ -472,17 +588,36 @@ def bilan(company, *, date_fin=None, validees_seulement=False):
             item['montant'] = -solde
             total_passif += -solde
             passif.append(item)
-    resultat = cpc(
+    resultat_exercice = cpc(
         company, date_fin=date_fin,
         validees_seulement=validees_seulement)['resultat']
-    return {
+    out = {
         'actif': actif,
         'total_actif': total_actif,
         'passif': passif,
         'total_passif': total_passif,
-        'resultat': resultat,
-        'equilibre': total_actif == (total_passif + resultat),
+        'resultat': resultat_exercice,
+        'equilibre': total_actif == (total_passif + resultat_exercice),
     }
+    if comparer:
+        _, fin_n1 = _periode_n1(None, date_fin, None, date_fin_n1)
+        n1 = bilan(company, date_fin=fin_n1,
+                   validees_seulement=validees_seulement)
+        n1_actif = {li['numero']: li['montant'] for li in n1['actif']}
+        n1_passif = {li['numero']: li['montant'] for li in n1['passif']}
+        for item in actif:
+            montant_n1 = n1_actif.get(item['numero'], Decimal('0'))
+            item['montant_n1'] = montant_n1
+            item['ecart'] = item['montant'] - montant_n1
+            item['ecart_pct'] = _ecart_pct(item['montant'], montant_n1)
+        for item in passif:
+            montant_n1 = n1_passif.get(item['numero'], Decimal('0'))
+            item['montant_n1'] = montant_n1
+            item['ecart'] = item['montant'] - montant_n1
+            item['ecart_pct'] = _ecart_pct(item['montant'], montant_n1)
+        out['resultat_n1'] = n1['resultat']
+        out['date_fin_n1'] = fin_n1
+    return out
 
 
 # ── COMPTA29 — ESG (état des soldes de gestion) + ETIC ─────────────────────
@@ -516,7 +651,8 @@ def _somme_prefixes(company, prefixes, *, sens, date_debut=None,
     return (credit - debit) if sens == 'produit' else (debit - credit)
 
 
-def esg(company, *, date_debut=None, date_fin=None, validees_seulement=False):
+def esg(company, *, date_debut=None, date_fin=None, validees_seulement=False,
+        comparer=False, date_debut_n1=None, date_fin_n1=None):
     """État des soldes de gestion (ESG / SIG) au format CGNC marocain.
 
     Cascade des soldes intermédiaires de gestion, chacun déduit des soldes de
@@ -539,6 +675,11 @@ def esg(company, *, date_debut=None, date_fin=None, validees_seulement=False):
 
     Renvoie ``{'soldes': [{'code', 'libelle', 'montant'} …], 'resultat_net'}``.
     Lecture seule ; aucun état n'est persisté.
+
+    ZACC2 — ``comparer=True`` ajoute ``montant_n1``/``ecart``/``ecart_pct``
+    sur chaque solde + ``resultat_net_n1``, calculés sur ``date_debut_n1``/
+    ``date_fin_n1`` (défaut : même intervalle décalé d'un an). Défaut =
+    réponse actuelle byte-identique.
     """
     def prod(*prefixes):
         return _somme_prefixes(
@@ -591,7 +732,22 @@ def esg(company, *, date_debut=None, date_fin=None, validees_seulement=False):
         {'code': 'RN', 'libelle': 'Résultat net de l’exercice',
          'montant': resultat_net},
     ]
-    return {'soldes': soldes, 'resultat_net': resultat_net}
+    out = {'soldes': soldes, 'resultat_net': resultat_net}
+    if comparer:
+        deb_n1, fin_n1 = _periode_n1(date_debut, date_fin, date_debut_n1,
+                                     date_fin_n1)
+        n1 = esg(company, date_debut=deb_n1, date_fin=fin_n1,
+                 validees_seulement=validees_seulement)
+        n1_soldes = {s['code']: s['montant'] for s in n1['soldes']}
+        for solde in soldes:
+            montant_n1 = n1_soldes.get(solde['code'], Decimal('0'))
+            solde['montant_n1'] = montant_n1
+            solde['ecart'] = solde['montant'] - montant_n1
+            solde['ecart_pct'] = _ecart_pct(solde['montant'], montant_n1)
+        out['resultat_net_n1'] = n1['resultat_net']
+        out['date_debut_n1'] = deb_n1
+        out['date_fin_n1'] = fin_n1
+    return out
 
 
 # Sections normalisées de l'ETIC (ordre figé du paquet d'informations

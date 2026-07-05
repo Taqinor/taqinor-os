@@ -305,6 +305,20 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
+    def _comparatif_kwargs(self, request):
+        """ZACC2 — kwargs du mode comparatif N-1 (``comparer=1`` ou bornes
+        explicites ``date_debut_n1``/``date_fin_n1``). Défaut = comportement
+        actuel intact (``comparer=False``)."""
+        params = request.query_params
+        comparer = (params.get('comparer') == '1'
+                    or bool(params.get('date_debut_n1'))
+                    or bool(params.get('date_fin_n1')))
+        return {
+            'comparer': comparer,
+            'date_debut_n1': params.get('date_debut_n1') or None,
+            'date_fin_n1': params.get('date_fin_n1') or None,
+        }
+
     @action(detail=False, methods=['get'])
     def grand_livre(self, request):
         company = request.user.company
@@ -328,7 +342,9 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['get'])
     def balance(self, request):
         periode = self._periode(request)
-        data = selectors.balance_generale(request.user.company, **periode)
+        data = selectors.balance_generale(
+            request.user.company, **periode,
+            **self._comparatif_kwargs(request))
         if request.query_params.get('export') == 'pdf':
             from .pdf_etats import render_balance_pdf
             result = self._pdf_or_503(lambda: render_balance_pdf(
@@ -342,7 +358,9 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['get'])
     def cpc(self, request):
         periode = self._periode(request)
-        data = selectors.cpc(request.user.company, **periode)
+        data = selectors.cpc(
+            request.user.company, **periode,
+            **self._comparatif_kwargs(request))
         if request.query_params.get('export') == 'pdf':
             from .pdf_etats import render_cpc_pdf
             result = self._pdf_or_503(lambda: render_cpc_pdf(
@@ -356,9 +374,12 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['get'])
     def bilan(self, request):
         periode = self._periode(request)
+        comparatif = self._comparatif_kwargs(request)
         data = selectors.bilan(
             request.user.company, date_fin=periode['date_fin'],
-            validees_seulement=periode['validees_seulement'])
+            validees_seulement=periode['validees_seulement'],
+            comparer=comparatif['comparer'],
+            date_fin_n1=comparatif['date_fin_n1'])
         if request.query_params.get('export') == 'pdf':
             from .pdf_etats import render_bilan_pdf
             result = self._pdf_or_503(lambda: render_bilan_pdf(
@@ -375,10 +396,13 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
 
         Cascade marge → valeur ajoutée → EBE → résultat courant → résultat net,
         déduite du grand livre (comptes de gestion classes 6 & 7). Paramètres :
-        ``date_debut``/``date_fin`` (bornes), ``validees`` (1 → validées).
-        Lecture seule, scopée société, Admin/Responsable.
+        ``date_debut``/``date_fin`` (bornes), ``validees`` (1 → validées),
+        ``comparer`` (1 → colonne N-1, ZACC2). Lecture seule, scopée société,
+        Admin/Responsable.
         """
-        data = selectors.esg(request.user.company, **self._periode(request))
+        data = selectors.esg(
+            request.user.company, **self._periode(request),
+            **self._comparatif_kwargs(request))
         return Response(data)
 
     @action(detail=False, methods=['get'])
