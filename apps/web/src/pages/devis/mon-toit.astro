@@ -816,21 +816,35 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
                 <span data-i18n data-fr="Un conseiller peut m'appeler" data-ar="يمكن لمستشار الاتصال بي">Un conseiller peut m'appeler</span>
               </label>
             </div>
+            <!-- WJ105 — SLA concret, affiché UNIQUEMENT quand « Un conseiller
+                 peut m'appeler » est choisi (jamais un engagement affiché à
+                 qui a choisi WhatsApp). Toggle câblé plus bas (mt-contact-phone
+                 change). Le créneau de rappel réutilise le contrôle W353
+                 ci-dessous — jamais un second sélecteur dupliqué. -->
+            <p id="mt-callback-sla" hidden class="mt-2 flex items-center gap-1.5 text-xs text-brass-300" data-i18n
+              data-fr="Un conseiller vous rappelle sous ~1 h ouvrée. Choisissez aussi un créneau préféré ci-dessous."
+              data-ar="سيتصل بكم مستشار خلال حوالي ساعة عمل واحدة. اختاروا أيضاً الوقت المفضل أدناه.">
+              Un conseiller vous rappelle sous ~1 h ouvrée. Choisissez aussi un créneau préféré ci-dessous.
+            </p>
           </fieldset>
 
-          <!-- W353 — « Réserver un créneau de visite technique » v1 : préférence
-               STATIQUE et FACULTATIVE (moment + semaine), forwardée telle quelle au
-               webhook — jamais une réservation confirmée, aucune dépendance
-               calendrier, aucun paiement/dépôt (la question du dépôt en ligne reste
-               une décision fondateur WG13, non construite ici). Un humain confirme
-               le créneau réel après contact. -->
+          <!-- W353/WJ105 — « Réserver un créneau de visite technique » v1 :
+               préférence STATIQUE et FACULTATIVE (moment + semaine), forwardée
+               telle quelle au webhook — jamais une réservation confirmée,
+               aucune dépendance calendrier, aucun paiement/dépôt (la question
+               du dépôt en ligne reste une décision fondateur WG13, non
+               construite ici). Un humain confirme le créneau réel après
+               contact. WJ105 — ce MÊME contrôle sert aussi de « créneau de
+               rappel préféré » quand phone_ok est choisi (jamais un second
+               contrôle dupliqué) : la légende reste générique, le lien est
+               fait par la phrase SLA ci-dessus. -->
           <fieldset class="mt-1">
-            <legend class="text-sm text-lune-soft" data-i18n
+            <legend id="mt-visit-legend" class="text-sm text-lune-soft" data-i18n
               data-fr="Créneau de visite technique préféré (facultatif)"
               data-ar="الوقت المفضل للزيارة التقنية (اختياري)">
               Créneau de visite technique préféré (facultatif)
             </legend>
-            <p class="mt-1 text-xs text-lune-faint" data-i18n
+            <p id="mt-visit-help" class="mt-1 text-xs text-lune-faint" data-i18n
               data-fr="Une préférence, pas une réservation — nous confirmons le créneau exact avec vous."
               data-ar="تفضيل وليس حجزاً — سنؤكد الموعد الدقيق معكم.">
               Une préférence, pas une réservation — nous confirmons le créneau exact avec vous.
@@ -1669,6 +1683,20 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     if (!on && eteInput) eteInput.value = '';
   });
 
+  // WJ105 — SLA de rappel concret : visible UNIQUEMENT quand « Un conseiller
+  // peut m'appeler » est la préférence active. `sync` est ré-appelée après une
+  // éventuelle réhydratation (WJ61, plus bas) : affecter `.checked` par script
+  // ne déclenche pas l'événement `change` natif.
+  const contactPhoneRadio = $('mt-contact-phone') as HTMLInputElement | null;
+  const contactWhatsappRadio = $('mt-contact-whatsapp') as HTMLInputElement | null;
+  const callbackSla = $('mt-callback-sla') as HTMLElement | null;
+  function syncCallbackSla(): void {
+    if (callbackSla) callbackSla.hidden = contactPhoneRadio?.checked !== true;
+  }
+  contactPhoneRadio?.addEventListener('change', syncCallbackSla);
+  contactWhatsappRadio?.addEventListener('change', syncCallbackSla);
+  syncCallbackSla();
+
   // WJ61 — réhydratation des champs de saisie + du repère/contour de carte à
   // partir de l'instantané (AVANT le boot de la carte : `hydrate` plus bas sème
   // le pin/contour directement dans captureBoot, sans attendre un premier
@@ -1691,6 +1719,10 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     // sur la carte écraserait silencieusement la ville qu'on vient de restaurer.
     if (savedWizard.fields?.['mt-city']) cityTouched = true;
     if (eteToggle?.checked && eteWrap) eteWrap.hidden = false;
+    // WJ105 — une préférence de contact restaurée doit re-synchroniser la
+    // visibilité de la SLA de rappel (affecter `.checked` par script ne
+    // déclenche pas `change`).
+    syncCallbackSla();
     if (savedWizard.capturePin) capturePin = savedWizard.capturePin;
     if (savedWizard.captureOutline?.length) captureOutline = savedWizard.captureOutline;
     if (Object.keys(savedWizard.fields ?? {}).length > 0 || savedWizard.capturePin) markDataEntered();

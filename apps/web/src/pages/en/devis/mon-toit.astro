@@ -730,14 +730,22 @@ const noscriptTelHref = `tel:${NAP.phone}`;
                 <span>An advisor may call me</span>
               </label>
             </div>
+            <!-- WJ105 — concrete callback SLA, shown ONLY when "An advisor may
+                 call me" is selected. The preferred callback window reuses the
+                 W353 slot control below — never a second, duplicate picker. -->
+            <p id="mt-callback-sla" hidden class="mt-2 flex items-center gap-1.5 text-xs text-brass-300">
+              An advisor calls you back within ~1 business hour. Pick a preferred window below too.
+            </p>
           </fieldset>
 
-          <!-- W353 — "Book a technical visit slot" v1: a STATIC, OPTIONAL
+          <!-- W353/WJ105 — "Book a technical visit slot" v1: a STATIC, OPTIONAL
                preference (time of day + week) forwarded as-is to the webhook —
                never a confirmed booking, no calendar dependency, no online
                payment/deposit (the online-deposit question stays a WG13
                founder decision, not built here). A human confirms the real
-               slot after contact. -->
+               slot after contact. WJ105 — this SAME control also serves as the
+               "preferred callback window" when phone_ok is chosen (linked by
+               the SLA sentence above, never a duplicate control). -->
           <fieldset class="mt-1">
             <legend class="text-sm text-lune-soft">Preferred technical visit slot (optional)</legend>
             <p class="mt-1 text-xs text-lune-faint">A preference, not a booking — we confirm the exact slot with you.</p>
@@ -1478,6 +1486,19 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     if (!on && eteInput) eteInput.value = '';
   });
 
+  // WJ105 — concrete callback SLA: visible ONLY when "An advisor may call me"
+  // is the active preference. `sync` is re-called after rehydration (WJ61,
+  // below): setting `.checked` via script never fires the native `change` event.
+  const contactPhoneRadio = $('mt-contact-phone') as HTMLInputElement | null;
+  const contactWhatsappRadio = $('mt-contact-whatsapp') as HTMLInputElement | null;
+  const callbackSla = $('mt-callback-sla') as HTMLElement | null;
+  function syncCallbackSla(): void {
+    if (callbackSla) callbackSla.hidden = contactPhoneRadio?.checked !== true;
+  }
+  contactPhoneRadio?.addEventListener('change', syncCallbackSla);
+  contactWhatsappRadio?.addEventListener('change', syncCallbackSla);
+  syncCallbackSla();
+
   // WJ61 — rehydrate input fields + map pin/outline from the snapshot (BEFORE
   // the map boot: `hydrate` below seeds the pin/outline directly into
   // captureBoot, without waiting for a first click). `restoring` prevents
@@ -1500,6 +1521,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     // would silently overwrite the city we just restored.
     if (savedWizard.fields?.['mt-city']) cityTouched = true;
     if (eteToggle?.checked && eteWrap) eteWrap.hidden = false;
+    // WJ105 — a restored contact preference must re-sync the callback SLA
+    // visibility (assigning `.checked` via script never fires `change`).
+    syncCallbackSla();
     if (savedWizard.capturePin) capturePin = savedWizard.capturePin;
     if (savedWizard.captureOutline?.length) captureOutline = savedWizard.captureOutline;
     if (Object.keys(savedWizard.fields ?? {}).length > 0 || savedWizard.capturePin) markDataEntered();
