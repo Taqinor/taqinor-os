@@ -1139,9 +1139,18 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
    *  avec repli fetch(keepalive) si sendBeacon est indisponible. Aucune PII
    *  possible dans ce corps (4 champs seulement — cf. lib/funnelBeacon.ts).
    *  WB30 : n'émet rien avant que l'étape de consentement (panneau 2) soit
-   *  atteinte — voir hasReachedConsentStep, vérifiée par chaque appelant. */
-  function sendFunnelBeacon(step: 'toit' | 'facture' | 'estimation' | 'contact', action: 'reached' | 'abandoned') {
-    if (action === 'reached') {
+   *  atteinte — voir hasReachedConsentStep, vérifiée par chaque appelant.
+   *  WJ104 — `action` élargi à `viewed`/`callback_requested` (delta
+   *  d'instrumentation, cf. lib/telemetryEvents.ts toFunnelWire) ; `reached`/
+   *  `abandoned` restent inchangés pour tout appelant existant. */
+  function sendFunnelBeacon(
+    step: 'toit' | 'facture' | 'estimation' | 'contact',
+    action: 'reached' | 'abandoned' | 'viewed' | 'callback_requested',
+  ) {
+    // WJ104 — même discipline de déduplication que « reached » : un événement
+    // « atteint une fois » ne doit jamais être renvoyé en boucle (ex. l'estimation
+    // qui se recalcule plusieurs fois pendant que le visiteur ajuste sa facture).
+    if (action === 'reached' || action === 'viewed' || action === 'callback_requested') {
       const key = `${step}:${action}`;
       if (funnelStepReached.has(key)) return;
       funnelStepReached.add(key);
@@ -1794,6 +1803,11 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     if (card) card.hidden = false;
     if (note) note.hidden = false;
     if (unavail) unavail.hidden = true;
+    // WJ104 — « estimation VUE » : l'estimation instantanée vient de rendre un
+    // résultat réel à l'écran (distinct du simple « étape atteinte » émis par
+    // ailleurs — celui-ci dit rien du succès du calcul). Dédupliqué une fois
+    // par visite (sendFunnelBeacon), jamais avant le consentement (WB30).
+    if (hasReachedConsentStep()) sendFunnelBeacon('estimation', 'viewed');
     const kwcEl = $('mt-est-kwc');
     const savEl = $('mt-est-savings');
     const payEl = $('mt-est-payback');
@@ -2292,6 +2306,13 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
         submitted = true;
         hasEnteredData = false; // WJ61 — succès : plus besoin du garde-fou beforeunload.
         clearWizardState(); // WJ61 — la demande a abouti : l'instantané n'a plus lieu d'être.
+        // WJ104 — « rappel demandé » : signal DISTINCT d'un opt-in WhatsApp,
+        // émis UNIQUEMENT quand la préférence de contact choisie est « on
+        // m'appelle » (mt-contact-phone), jamais pour le repli WhatsApp par
+        // défaut. Dédupliqué comme les autres beacons de cette page.
+        if (($('mt-contact-phone') as HTMLInputElement | null)?.checked === true) {
+          sendFunnelBeacon('contact', 'callback_requested');
+        }
         const waUrl = buildWaUrl();
         // WJ5 — réponse HONNÊTE selon le seuil 1 000 MAD (qualified renvoyé par le serveur).
         if (data.qualified) {

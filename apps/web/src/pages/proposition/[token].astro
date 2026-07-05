@@ -2275,6 +2275,49 @@ const signConfig = ok
       financingIo.observe(financingSection);
     }
 
+    // ── WJ104 — DELTA d'instrumentation funnel : `proposal_viewed`/
+    // `proposal_signed` via le MÊME beacon step-level que /devis/mon-toit
+    // (WJ59 `pages/api/funnel-beacon.ts` → FUNNEL_WEBHOOK_URL, log-only sinon)
+    // — jamais le fil lead (voir WJ109 ci-dessus pour la distinction), jamais
+    // un second canal. Session token anonyme PAR ONGLET, même contrat privacy
+    // que mon-toit.astro (lib/funnelBeacon.ts : 4 champs seulement, aucune PII).
+    const PROPOSAL_FUNNEL_TOKEN_KEY = 'prop-funnel-token-v1';
+    function getProposalFunnelToken(): string {
+      try {
+        let t = sessionStorage.getItem(PROPOSAL_FUNNEL_TOKEN_KEY);
+        if (!t) {
+          t = Math.random().toString(36).slice(2) + Date.now().toString(36);
+          sessionStorage.setItem(PROPOSAL_FUNNEL_TOKEN_KEY, t);
+        }
+        return t;
+      } catch {
+        return Math.random().toString(36).slice(2);
+      }
+    }
+    const proposalFunnelToken = getProposalFunnelToken();
+    const proposalFunnelSent = new Set<string>();
+    function sendProposalFunnelBeacon(action: 'viewed' | 'signed'): void {
+      const key = `proposal:${action}`;
+      if (proposalFunnelSent.has(key)) return;
+      proposalFunnelSent.add(key);
+      try {
+        const payload = JSON.stringify({
+          step: 'proposal',
+          action,
+          sessionToken: proposalFunnelToken,
+          path: location.pathname,
+        });
+        if (navigator.sendBeacon) {
+          navigator.sendBeacon('/api/funnel-beacon', new Blob([payload], { type: 'application/json' }));
+        } else {
+          void fetch('/api/funnel-beacon', { method: 'POST', headers: { 'content-type': 'application/json' }, body: payload, keepalive: true }).catch(() => {});
+        }
+      } catch {
+        // Mesure best-effort seulement — ne doit jamais perturber le parcours.
+      }
+    }
+    sendProposalFunnelBeacon('viewed');
+
     const form = document.getElementById('sign-form') as HTMLFormElement | null;
     const success = document.getElementById('sign-success');
     const successName = document.getElementById('sign-success-name');
@@ -2406,6 +2449,10 @@ const signConfig = ok
     // demande explicitement un comportement 'auto' — pas de smooth-scroll
     // forcé — quand le client préfère un mouvement réduit).
     function showSuccess(name: string, when?: Date, signatureDataUrl?: string, scrollIntoView = false): void {
+      // WJ104 — « proposition signée » : émis à chaque affichage de l'état
+      // confirmé (chargement déjà accepté OU signature qui vient d'aboutir),
+      // dédupliqué comme les autres beacons (une fois par onglet/session).
+      sendProposalFunnelBeacon('signed');
       if (form) form.hidden = true;
       if (sticky) sticky.hidden = true;
       if (successName) successName.textContent = name || '';

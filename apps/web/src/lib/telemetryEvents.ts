@@ -32,6 +32,14 @@
  * `proposal_first_view`/`proposal_scrolled_financing` de `proposition.ts` —
  * un futur repointage est donc un simple remplacement de littéral, jamais un
  * changement de forme de payload.
+ *
+ * WJ104 — DELTA branché : `estimate_viewed`, `callback_requested`,
+ * `proposal_viewed`, `proposal_signed` sont désormais RÉELLEMENT envoyés,
+ * via le canal beacon existant (WJ59 `pages/api/funnel-beacon.ts` →
+ * `FUNNEL_WEBHOOK_URL`, log-only sinon) — jamais un second canal. `toFunnelWire`
+ * ci-dessous traduit un nom d'événement de ce vocabulaire vers le couple
+ * {step, action} qu'attend `funnelBeacon.ts` (désormais élargi, WJ104, avec
+ * l'étape `proposal` et les actions `viewed`/`callback_requested`/`signed`).
  */
 
 /**
@@ -72,13 +80,24 @@ export type TelemetryLocale = (typeof TELEMETRY_LOCALES)[number];
  *    — cycle de vie de /proposition/[token] (repoint visé : WJ55 proposition.ts,
  *    qui utilise aujourd'hui proposal_first_view/proposal_scrolled_financing ;
  *    proposal_signed est NOUVEAU, pour le moment de signature électronique).
+ *  - `estimate_viewed` (WJ104) — l'estimation instantanée (billEstimate) vient
+ *    d'être RENDUE À L'ÉCRAN sur /devis/mon-toit — synonyme intentionnel
+ *    d'`estimate_rendered` (même moment), nommé pour matcher le vocabulaire
+ *    demandé par le suivi de funnel WJ104 ; branché sur le beacon WJ59 via
+ *    `toFunnelWire` ci-dessous (step `estimation`, action `viewed`).
+ *  - `callback_requested` (WJ104) — une demande de rappel EXPLICITE (WJ97,
+ *    /contact « on vous rappelle » ou l'équivalent sur mon-toit), DISTINCTE
+ *    d'un simple opt-in WhatsApp (`whatsapp_clicked`) — branché sur (step
+ *    `contact`, action `callback_requested`).
  */
 export const TELEMETRY_EVENTS = [
   'journey_step_viewed',
   'journey_step_completed',
   'journey_step_abandoned',
   'estimate_rendered',
+  'estimate_viewed',
   'whatsapp_clicked',
+  'callback_requested',
   'proposal_viewed',
   'proposal_scrolled_to_financing',
   'proposal_signed',
@@ -166,4 +185,42 @@ export function buildTelemetryEvent(
 /** `true` ssi `name` est un nom d'événement du vocabulaire fermé. */
 export function isTelemetryEventName(name: unknown): name is TelemetryEventName {
   return isEnum(name, TELEMETRY_EVENTS);
+}
+
+// ── WJ104 · Pont vers le beacon step-level existant (WJ59 funnelBeacon.ts) ──
+//
+// `funnel-beacon.ts` (le SEUL transport câblé aujourd'hui, `FUNNEL_WEBHOOK_URL`)
+// attend un couple fermé {step, action} — pas un nom d'événement libre. Plutôt
+// qu'un second canal/endpoint pour ce vocabulaire de plus haut niveau, ce
+// module se contente de TRADUIRE les 4 événements DELTA de WJ104 vers ce
+// couple ; `journey_step_*`/`estimate_rendered`/`whatsapp_clicked` restent des
+// noms DÉCLARÉS mais NON câblés (statut d'adoption inchangé, cf. l'en-tête).
+
+/** Couple {step, action} au format attendu par `validateBeaconEvent` (funnelBeacon.ts). */
+export interface FunnelWireEvent {
+  step: 'toit' | 'facture' | 'estimation' | 'contact' | 'proposal';
+  action: 'reached' | 'abandoned' | 'viewed' | 'callback_requested' | 'signed';
+}
+
+/**
+ * WJ104 — Traduit un événement du vocabulaire DELTA (`estimate_viewed`,
+ * `callback_requested`, `proposal_viewed`, `proposal_signed`) vers le couple
+ * {step, action} du beacon WJ59. Renvoie `null` pour tout autre nom
+ * (`journey_step_*`/`estimate_rendered`/`whatsapp_clicked`/
+ * `proposal_scrolled_to_financing`) — non câblés aujourd'hui, jamais un envoi
+ * silencieusement mal formé.
+ */
+export function toFunnelWire(event: TelemetryEventName): FunnelWireEvent | null {
+  switch (event) {
+    case 'estimate_viewed':
+      return { step: 'estimation', action: 'viewed' };
+    case 'callback_requested':
+      return { step: 'contact', action: 'callback_requested' };
+    case 'proposal_viewed':
+      return { step: 'proposal', action: 'viewed' };
+    case 'proposal_signed':
+      return { step: 'proposal', action: 'signed' };
+    default:
+      return null;
+  }
 }
