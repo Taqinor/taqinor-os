@@ -5976,68 +5976,15 @@ class TerritoireCommercial(models.Model):
         return False
 
 
-# ── FG244 — Abonnements de monitoring (revenu récurrent) ───────────────────
-
-class AbonnementMonitoring(models.Model):
-    """Abonnement de supervision (monitoring) mensuel/annuel (FG244).
-
-    Offre de revenu récurrent adossée au module monitoring : le client paie une
-    supervision périodique de son installation. Client/installation référencés
-    par id (cross-app — jamais d'import monitoring/crm). ``prochaine_echeance``
-    est recalculée à chaque renouvellement selon la périodicité. Scopé société.
-    """
-    class Periodicite(models.TextChoices):
-        MENSUEL = 'mensuel', 'Mensuel'
-        ANNUEL = 'annuel', 'Annuel'
-
-    class Statut(models.TextChoices):
-        ACTIF = 'actif', 'Actif'
-        SUSPENDU = 'suspendu', 'Suspendu'
-        RESILIE = 'resilie', 'Résilié'
-
-    company = models.ForeignKey(
-        'authentication.Company',
-        on_delete=models.CASCADE,
-        related_name='abonnements_monitoring',
-        verbose_name='Société',
-    )
-    client_id = models.PositiveIntegerField(verbose_name='Id du client')
-    installation_id = models.PositiveIntegerField(
-        null=True, blank=True, verbose_name="Id de l'installation")
-    periodicite = models.CharField(
-        max_length=8, choices=Periodicite.choices, default=Periodicite.MENSUEL,
-        verbose_name='Périodicité')
-    montant = models.DecimalField(
-        max_digits=12, decimal_places=2, default=0,
-        verbose_name='Montant par période (MAD)')
-    statut = models.CharField(
-        max_length=8, choices=Statut.choices, default=Statut.ACTIF,
-        verbose_name='Statut')
-    date_debut = models.DateField(
-        null=True, blank=True, verbose_name='Date de début')
-    prochaine_echeance = models.DateField(
-        null=True, blank=True, verbose_name='Prochaine échéance')
-    date_creation = models.DateTimeField(
-        auto_now_add=True, verbose_name='Créé le')
-    # YSUBS3 — dernière période facturée (garde d'idempotence : ne re-facture
-    # jamais la même `prochaine_echeance`). NULL = jamais facturé
-    # (comportement historique intact tant que personne n'appelle
-    # `facturer`).
-    derniere_facturation = models.DateField(
-        null=True, blank=True, verbose_name='Dernière période facturée')
-    # YSUBS4 — motif de résiliation (obligatoire à la résiliation, posé par
-    # le service ``resilier_abonnement_monitoring``, jamais le viewset).
-    motif_resiliation = models.CharField(
-        max_length=255, blank=True, default='',
-        verbose_name='Motif de résiliation')
-
-    class Meta:
-        verbose_name = 'Abonnement de monitoring'
-        verbose_name_plural = 'Abonnements de monitoring'
-        ordering = ['prochaine_echeance', 'id']
-
-    def __str__(self):
-        return f'Monitoring client #{self.client_id} ({self.periodicite})'
+# ── FG244 — Abonnements de monitoring (revenu récurrent) — RELOGÉ (ODX16) ──
+# ``AbonnementMonitoring`` vit désormais dans ``apps.monitoring`` (revenu
+# récurrent adossé aux configs de supervision). ODX16 l'a sorti de compta en
+# préservant à l'IDENTIQUE sa table (``db_table = 'compta_abonnementmonitoring'``)
+# via des migrations ``SeparateDatabaseAndState`` (state-only, zéro SQL). Ce
+# ré-export garde le code/services/migrations historiques
+# (``from apps.compta.models import AbonnementMonitoring``, viewset, serializer)
+# fonctionnels ; à retirer en ODX22 une fois tous les appelants re-pointés.
+from apps.monitoring.models import AbonnementMonitoring  # noqa: E402,F401
 
 
 # ── COMPTA2 — Mapping document → compte comptable par société ──────────────

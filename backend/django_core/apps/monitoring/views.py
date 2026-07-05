@@ -396,3 +396,14 @@ class MonitoringSettingsViewSet(TenantMixin, viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save(company=company)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+# ── ODX16 — Abonnements de monitoring (revenu récurrent, FG244) ────────────
+# Ré-export TRANSITOIRE du ViewSet qui vit encore dans ``apps.compta.views``
+# (adossé à ``_ComptaBaseViewSet`` = TenantMixin + scoping company + la logique
+# de facturation compta/ventes des actions ``facturer``/``renouveler``/…). Ce
+# ré-export donne à la nouvelle route ``/api/django/monitoring/abonnements-
+# monitoring/`` un point d'entrée stable ; l'ancienne route
+# ``/api/django/compta/abonnements-monitoring/`` sert la MÊME classe. ODX22
+# re-logera le corps ici.
+from apps.compta.views import AbonnementMonitoringViewSet  # noqa: E402,F401

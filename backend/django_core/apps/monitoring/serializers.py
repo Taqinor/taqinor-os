@@ -6,6 +6,15 @@ from .models import (
 )
 from .providers import available_providers
 
+# ODX16 — ré-export TRANSITOIRE du serializer d'``AbonnementMonitoring`` qui vit
+# encore dans ``apps.compta.serializers`` (interleavé avec les serializers
+# comptables, adossé à la logique de facturation compta/ventes). Ce ré-export
+# donne à la nouvelle route ``/api/django/monitoring/abonnements-monitoring/`` un
+# point d'entrée stable ; ODX22 re-logera le corps ici.
+from apps.compta.serializers import (  # noqa: E402,F401
+    AbonnementMonitoringSerializer,
+)
+
 
 class MonitoringConfigSerializer(serializers.ModelSerializer):
     provider_label = serializers.SerializerMethodField()

@@ -926,3 +926,55 @@ class TestBalayageQuotidien(TestCase):
         self.assertEqual(r.status_code, 200, r.data)
         self.assertTrue(r.data['sent'])
         self.assertEqual(len(mail.outbox), 1)
+
+
+class TestODX16AbonnementMonitoringRelocation(TestCase):
+    """ODX16 — ``AbonnementMonitoring`` relogé de compta vers monitoring, table
+    physique préservée (``compta_abonnementmonitoring``), nouvelle route
+    ``/api/django/monitoring/abonnements-monitoring/`` + ancienne route compta
+    conservée, scoping société côté serveur."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = User.objects.create_user(
+            username='mon_subs_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = auth(self.user)
+        self.inst, self.client_obj = make_installation(
+            self.company, ref='CHT-SUBS-1')
+
+    def test_model_lives_in_monitoring_with_preserved_db_table(self):
+        from apps.monitoring.models import AbonnementMonitoring
+        from apps.compta.models import (
+            AbonnementMonitoring as ComptaShimAbonnement)
+        # Le shim compta ré-exporte EXACTEMENT la même classe (ODX22 le retirera).
+        self.assertIs(AbonnementMonitoring, ComptaShimAbonnement)
+        self.assertEqual(
+            AbonnementMonitoring._meta.db_table,
+            'compta_abonnementmonitoring')
+        self.assertEqual(
+            AbonnementMonitoring._meta.app_label, 'monitoring')
+
+    def test_new_monitoring_route_creates_scoped_and_computes_echeance(self):
+        r = self.api.post(
+            '/api/django/monitoring/abonnements-monitoring/', {
+                'client_id': self.client_obj.id,
+                'installation_id': self.inst.id,
+                'periodicite': 'mensuel', 'montant': '199.00',
+            }, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        from apps.monitoring.models import AbonnementMonitoring
+        obj = AbonnementMonitoring.objects.get(id=r.data['id'])
+        self.assertEqual(obj.company_id, self.company.id)
+        # ``renouveler_abonnement_monitoring`` (perform_create) calcule la 1re
+        # échéance à la création.
+        self.assertIsNotNone(obj.prochaine_echeance)
+
+    def test_legacy_compta_route_still_serves_same_data(self):
+        from apps.monitoring.models import AbonnementMonitoring
+        obj = AbonnementMonitoring.objects.create(
+            company=self.company, client_id=self.client_obj.id,
+            periodicite='mensuel', montant=Decimal('50.00'))
+        r = self.api.get('/api/django/compta/abonnements-monitoring/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertIn(obj.id, ids_of(r))
