@@ -313,6 +313,10 @@ class ReferentielFlotte(models.Model):
         # (``critique``/``moyenne``/``faible`` — voir
         # ``services.criticite_dtc``, qui lit ce référentiel).
         CODE_DTC = 'code_dtc', 'Criticité des codes défaut (DTC)'
+        # ZCTR10 — types de service / entretien flotte, éditable par société
+        # (vidange, freins, pneus, révision, carrosserie…). Référencé par
+        # ``OrdreReparation.type_service`` — jamais un domaine hardcodé.
+        TYPE_SERVICE = 'type_service', "Type de service / entretien"
 
     company = models.ForeignKey(
         'authentication.Company',
@@ -1284,6 +1288,19 @@ class OrdreReparation(models.Model):
         related_name='flotte_ordres_reparation',
         verbose_name="Échéance d'entretien liée",
     )
+    # ZCTR10 — type de service/entretien (vidange, freins, pneus, révision,
+    # carrosserie…), tiré du référentiel ÉDITABLE par société
+    # (``ReferentielFlotte.Domaine.TYPE_SERVICE``) — JAMAIS un domaine
+    # hardcodé. Nullable : un OR sans type reste "non catégorisé" (aucune
+    # régression sur les OR existants). Validé même-société dans ``clean``.
+    type_service = models.ForeignKey(
+        'ReferentielFlotte',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='flotte_ordres_reparation',
+        verbose_name='Type de service',
+    )
     description = models.TextField(
         blank=True, verbose_name='Description des travaux')
     date_ouverture = models.DateField(verbose_name="Date d'ouverture")
@@ -1365,6 +1382,14 @@ class OrdreReparation(models.Model):
                 and self.echeance.company_id != self.company_id:
             raise ValidationError(
                 "L'échéance d'entretien n'appartient pas à la même société.")
+        if self.type_service_id is not None:
+            if self.type_service.company_id != self.company_id:
+                raise ValidationError(
+                    "Le type de service n'appartient pas à la même société.")
+            if self.type_service.domaine != ReferentielFlotte.Domaine.TYPE_SERVICE:
+                raise ValidationError(
+                    "Le type de service doit provenir du référentiel "
+                    "« Type de service / entretien ».")
         if self.date_ouverture is not None and self.date_cloture is not None \
                 and self.date_cloture < self.date_ouverture:
             raise ValidationError(

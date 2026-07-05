@@ -1,8 +1,9 @@
 """Seed the standard fleet reference lists (FLOTTE6) per company.
 
 Creates the standard ``ReferentielFlotte`` entries for every company (or a single
-``--company`` slug): énergie, catégorie de permis, type de véhicule and type
-d'engin. The ``énergie`` and ``type_engin`` values deliberately MIRROR the frozen
+``--company`` slug): énergie, catégorie de permis, type de véhicule, type
+d'engin and (ZCTR10) type de service/entretien. The ``énergie`` and
+``type_engin`` values deliberately MIRROR the frozen
 ``TextChoices`` carried by ``Vehicule``/``EnginRoulant`` so the editable list is a
 faithful parallel of the hardcoded choices (which stay untouched).
 
@@ -49,6 +50,18 @@ DEFAULTS = {
         ('nacelle', 'Nacelle'),
         ('groupe_electrogene', 'Groupe électrogène'),
         ('chariot', 'Chariot'),
+    ],
+    # ZCTR10 — types de service/entretien standard (référentiel éditable,
+    # référencé par ``OrdreReparation.type_service``).
+    ReferentielFlotte.Domaine.TYPE_SERVICE: [
+        ('vidange', 'Vidange'),
+        ('freins', 'Freins'),
+        ('pneus', 'Pneus'),
+        ('revision', 'Révision'),
+        ('carrosserie', 'Carrosserie'),
+        ('climatisation', 'Climatisation'),
+        ('batterie', 'Batterie'),
+        ('controle_technique', 'Contrôle technique'),
     ],
 }
 

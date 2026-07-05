@@ -1465,7 +1465,8 @@ def ledger_vehicule(company, vehicule_id, periode=None):
     if actif_flotte_id is not None:
         # 2) Réparations.
         for ordre in OrdreReparation.objects.filter(
-                company=company, actif_flotte_id=actif_flotte_id):
+                company=company, actif_flotte_id=actif_flotte_id
+        ).select_related('type_service'):
             if not _dans_periode(ordre.date_ouverture):
                 continue
             lignes.append({
@@ -1475,6 +1476,12 @@ def ledger_vehicule(company, vehicule_id, periode=None):
                 'libelle': f'OR — {ordre.garage}'.strip(' —') if
                 ordre.garage_id else 'Ordre de réparation',
                 'conducteur_id': None, 'objet_id': ordre.id,
+                # ZCTR10 — type de service (référentiel éditable) ; ``None``
+                # = OR non catégorisé (aucune régression sur les OR existants).
+                'type_service_id': ordre.type_service_id,
+                'type_service_libelle': (
+                    ordre.type_service.libelle if ordre.type_service_id
+                    else None),
             })
 
         # 3) Assurances (franchise, datée au début de couverture).
@@ -1553,7 +1560,12 @@ def analyse_couts_report(company, group_by='vehicule', periode=None):
     * ``'mois'``      — total par mois (``'YYYY-MM'``) ;
     * ``'conducteur'``— total par conducteur (lignes sans conducteur exclues) ;
     * ``'garage'``    — total par garage des ``OrdreReparation`` (lignes hors
-      réparation exclues).
+      réparation exclues) ;
+    * ``'type_service'`` — ZCTR10 : total par type de service/entretien des
+      ``OrdreReparation`` (référentiel éditable ``ReferentielFlotte``,
+      domaine ``type_service``) — un OR sans type est regroupé sous la clé
+      ``'non_categorise'`` ; lignes hors réparation exclues (même patron que
+      ``'garage'``).
 
     ``periode`` (optionnel) est un tuple ``(date_debut, date_fin)`` transmis
     tel quel à ``ledger_vehicule``.
@@ -1602,6 +1614,14 @@ def analyse_couts_report(company, group_by='vehicule', periode=None):
             elif group_by == 'conducteur':
                 if ligne['conducteur_id'] is not None:
                     cle = ligne['conducteur_id']
+                    pivot_totaux[cle] = pivot_totaux.get(cle, 0.0) + montant
+            elif group_by == 'type_service':
+                # ZCTR10 — uniquement les lignes de réparation (les autres
+                # sources n'ont pas de type de service) ; un OR sans type est
+                # regroupé sous 'non_categorise'.
+                if ligne['source'] == 'reparation':
+                    libelle = ligne.get('type_service_libelle')
+                    cle = libelle if libelle else 'non_categorise'
                     pivot_totaux[cle] = pivot_totaux.get(cle, 0.0) + montant
 
             if ligne['source'] == 'reparation' and ligne['objet_id']:
