@@ -5010,6 +5010,72 @@ class ExecutionEtapeSequence(models.Model):
         return f'{self.inscription_id} · étape {self.etape_id} ({self.resultat})'
 
 
+# ── XMKT9 — Tracker de liens + auto-tag UTM ─────────────────────────────────
+
+class LienTrackee(models.Model):
+    """Un lien du corps d'une campagne, réécrit en redirection tokenisée
+    (XMKT9) : ``/r/<token>`` → ``url_cible`` auto-taguée
+    utm_source/medium/campaign=nom de la campagne. Compte les clics PAR LIEN.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='liens_trackes',
+        verbose_name='Société',
+    )
+    campagne = models.ForeignKey(
+        Campagne,
+        on_delete=models.CASCADE,
+        related_name='liens_trackes',
+        verbose_name='Campagne',
+    )
+    token = models.CharField(
+        max_length=64, unique=True, verbose_name='Jeton public')
+    url_cible = models.URLField(max_length=1000, verbose_name='URL cible')
+    nb_clics = models.PositiveIntegerField(default=0, verbose_name='Clics')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Lien tracké'
+        verbose_name_plural = 'Liens trackés'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'{self.campagne_id} → {self.url_cible[:60]} ({self.nb_clics})'
+
+
+class ClicLien(models.Model):
+    """Un clic sur un ``LienTrackee``, par destinataire (XMKT9) — alimente le
+    drill-down « clics par lien » sur le détail campagne.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='clics_lien',
+        verbose_name='Société',
+    )
+    lien = models.ForeignKey(
+        LienTrackee,
+        on_delete=models.CASCADE,
+        related_name='clics',
+        verbose_name='Lien tracké',
+    )
+    destinataire = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Destinataire (email/téléphone, si connu)')
+    clique_le = models.DateTimeField(
+        auto_now_add=True, verbose_name='Cliqué le')
+
+    class Meta:
+        verbose_name = 'Clic de lien'
+        verbose_name_plural = 'Clics de lien'
+        ordering = ['-clique_le']
+
+    def __str__(self):
+        return f'{self.lien_id} ← {self.destinataire or "?"}'
+
+
 # ── FG203 — Récupération des devis abandonnés ──────────────────────────────
 
 class RelanceDevisAbandonne(models.Model):

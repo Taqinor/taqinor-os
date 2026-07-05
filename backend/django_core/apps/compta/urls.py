@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     desinscription_publique, double_optin_confirmer,
+    redirection_lien_tracke,
     webhook_brevo_campagne, webhook_sms_stop,
     portail_mon_releve, portail_mon_releve_pdf, portail_contester_facture,
     AppelTelephoniqueViewSet,
@@ -179,6 +180,8 @@ urlpatterns = [
          name='desinscription-publique'),
     path('double-optin/<str:token>/', double_optin_confirmer,
          name='double-optin-confirmer'),
+    path('r/<str:token>/', redirection_lien_tracke,
+         name='redirection-lien-tracke'),
     # XFAC26/27 — Portail client self-service (token, sans login).
     path('portail/<str:token>/mon-releve/', portail_mon_releve,
          name='portail-mon-releve'),

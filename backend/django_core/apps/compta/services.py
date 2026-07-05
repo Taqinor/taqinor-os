@@ -25,6 +25,7 @@ import hashlib
 import io
 import re
 import urllib.request
+import uuid
 from decimal import ROUND_HALF_UP, Decimal
 from math import asin, cos, radians, sin, sqrt
 
@@ -70,6 +71,7 @@ from .models import (
     SequenceRelance, EnvoiCampagne, SuppressionMarketing,
     ListeDiffusion, AbonnementListe, RebondSoft,
     Compensation, LigneCompensation,
+    LienTrackee, ClicLien,
 )
 
 
@@ -6215,10 +6217,16 @@ def envoyer_campagne(campagne, *, destinataires=None):
         # On laisse le compteur d'envois aligné sur les destinataires ; les
         # ouvertures/clics seront remontés par les webhooks Brevo.
         campagne.nb_envois = len(cibles)
+    # XMKT9 — réécrit les liens du corps en redirections tokenisées AU MOMENT
+    # DE L'ENVOI (une seule fois, jamais si aucun lien HTTP(S) présent).
+    if cibles:
+        corps_reecrit, _liens = envelopper_liens_campagne(campagne)
+        if corps_reecrit != campagne.corps:
+            campagne.corps = corps_reecrit
     campagne.statut = Campagne.Statut.ENVOYEE
     campagne.envoyee_le = timezone.now()
     campagne.save(update_fields=[
-        'nb_destinataires', 'nb_envois', 'statut', 'envoyee_le'])
+        'nb_destinataires', 'nb_envois', 'statut', 'envoyee_le', 'corps'])
     maintenant = timezone.now() if campagne.nb_envois else None
     for cible in cibles:
         if isinstance(cible, dict):
@@ -6333,6 +6341,88 @@ def recalculer_compteurs_campagne(campagne):
     campagne.nb_clics = envois.filter(clique_le__isnull=False).count()
     campagne.save(update_fields=['nb_ouvertures', 'nb_clics'])
     return campagne
+
+
+# ── XMKT9 — Tracker de liens + auto-tag UTM ─────────────────────────────────
+
+_LIEN_URL_RE = re.compile(r'https?://[^\s<>"\')]+')
+
+
+def _tagger_utm(url, campagne):
+    """Ajoute utm_source/medium/campaign à ``url`` (XMKT9). Ne casse jamais
+    une URL déjà taguée (les paramètres existants sont préservés en tête).
+    """
+    from urllib.parse import urlencode, urlparse, parse_qsl, urlunparse
+
+    parsed = urlparse(url)
+    query = dict(parse_qsl(parsed.query))
+    query.setdefault('utm_source', 'campagne')
+    query.setdefault('utm_medium', campagne.canal)
+    query.setdefault('utm_campaign', campagne.nom)
+    nouvelle_query = urlencode(query)
+    return urlunparse(parsed._replace(query=nouvelle_query))
+
+
+def envelopper_liens_campagne(campagne):
+    """XMKT9 — Enveloppe chaque lien HTTP(S) du corps de la campagne dans une
+    redirection tokenisée company-scoped (créant un ``LienTrackee`` par URL
+    distincte trouvée), et renvoie le corps avec les liens réécrits en
+    ``/api/django/compta/r/<token>/``. Idempotent : rejouer sur un corps déjà
+    réécrit ne recrée pas de doublon (dédoublonné par URL cible taguée).
+    """
+    corps = campagne.corps or ''
+    urls = set(_LIEN_URL_RE.findall(corps))
+    corps_reecrit = corps
+    liens = []
+    for url in urls:
+        url_taguee = _tagger_utm(url, campagne)
+        lien = LienTrackee.objects.filter(
+            company=campagne.company, campagne=campagne,
+            url_cible=url_taguee).first()
+        if lien is None:
+            lien = LienTrackee.objects.create(
+                company=campagne.company, campagne=campagne,
+                url_cible=url_taguee, token=uuid.uuid4().hex)
+        liens.append(lien)
+        corps_reecrit = corps_reecrit.replace(
+            url, f'/api/django/compta/r/{lien.token}/')
+    return corps_reecrit, liens
+
+
+def traiter_clic_lien(token, *, destinataire=''):
+    """XMKT9 — Traite un clic sur un lien tracké : incrémente le lien +
+    crée la ligne ``ClicLien`` par destinataire, met à jour l'``EnvoiCampagne``
+    correspondant (``clique_le`` — alimente XMKT2) et crée le point de
+    contact (``crm.PointContact`` FG204) si le destinataire est connu.
+    Renvoie ``(ok, url_cible_ou_message_erreur)``.
+    """
+    lien = LienTrackee.objects.filter(token=token).first()
+    if not lien:
+        return False, 'Lien invalide.'
+    lien.nb_clics += 1
+    lien.save(update_fields=['nb_clics'])
+    destinataire = (destinataire or '').strip()
+    ClicLien.objects.create(
+        company=lien.company, lien=lien, destinataire=destinataire)
+    if destinataire:
+        envoi = webhook_brevo_evenement(
+            lien.company, campagne_id=lien.campagne_id,
+            destinataire=destinataire, evenement='click')
+        if envoi and envoi.contact_ref:
+            noter_touche_marketing_pour_lead(
+                lien.company, envoi.contact_ref,
+                f'Lien « {lien.url_cible[:80]} » cliqué (campagne '
+                f'« {lien.campagne.nom} »)')
+    return True, lien.url_cible
+
+
+def clics_par_lien(campagne):
+    """XMKT9 — Page « clics par lien » du détail campagne : compte par URL
+    cible."""
+    return [
+        {'lien_id': lien.id, 'url_cible': lien.url_cible, 'nb_clics': lien.nb_clics}
+        for lien in campagne.liens_trackes.all()
+    ]
 
 
 # ── XMKT3 — Désinscription un clic + liste de suppression globale ──────────

@@ -4648,6 +4648,12 @@ class CampagneViewSet(_ComptaBaseViewSet):
             campagne.corps, nb_destinataires=nb_destinataires, **kwargs)
         return Response(estimation)
 
+    @action(detail=True, methods=['get'], url_path='clics-par-lien')
+    def clics_par_lien(self, request, pk=None):
+        """XMKT9 — Page « clics par lien » du détail campagne."""
+        campagne = self.get_object()
+        return Response(services.clics_par_lien(campagne))
+
 
 # ── XMKT2 — Journal d'envoi par destinataire (drill-down) ───────────────────
 
@@ -4891,6 +4897,23 @@ def double_optin_confirmer(request, token):
     if not ok:
         return Response({'detail': resultat}, status=400)
     return Response({'confirme': True, 'destinataire': resultat})
+
+
+# ── XMKT9 — Redirection tokenisée (public, tracking de clics) ──────────────
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def redirection_lien_tracke(request, token):
+    """Redirige vers l'URL cible d'un ``LienTrackee`` (XMKT9), en comptant le
+    clic (par lien + par destinataire via ``?d=`` si fourni par l'appelant
+    email/SMS). Jeton invalide → 404 (aucune fuite d'existence)."""
+    from django.http import HttpResponseRedirect
+
+    destinataire = (request.GET.get('d') or '').strip()
+    ok, resultat = services.traiter_clic_lien(token, destinataire=destinataire)
+    if not ok:
+        return Response({'detail': resultat}, status=404)
+    return HttpResponseRedirect(resultat)
 
 
 # ── XFAC26/27 — Portail client self-service : relevé + contestation ───────
