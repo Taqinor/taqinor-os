@@ -1,0 +1,61 @@
+name: mutation (nightly, non-blocking)
+
+# YTEST9 — mutation testing measures ASSERTION QUALITY (coverage only proves
+# a line executed, not that a wrong result would be caught). Runs on a small,
+# hand-picked set of high-risk modules (quote_engine builder, reference
+# numbering, roles model) — never the whole repo, and NEVER as a per-commit
+# gate (mutmut is O(mutants x full test run); see setup.cfg [mutmut]).
+# Surviving-mutant triage: docs/testing.md.
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: '30 3 * * *'   # nightly, after release-verify's 03:00 run
+
+jobs:
+  mutation-score:
+    runs-on: ubuntu-latest
+    # Informational only — a low/regressed score never blocks a merge.
+    continue-on-error: true
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: erp_db
+          POSTGRES_USER: erp_user
+          POSTGRES_PASSWORD: ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U erp_user"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DJANGO_SETTINGS_MODULE: erp_agentique.settings.dev
+      DJANGO_SECRET_KEY: ci-only-secret-key-not-used-in-production
+      DJANGO_DEBUG: 'True'
+      DB_NAME: erp_db
+      DB_USER: erp_user
+      DB_PASSWORD: ci_password
+      DB_HOST: localhost
+      DB_PORT: '5432'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies (incl. mutmut)
+        working-directory: backend/django_core
+        run: pip install -r requirements.txt -r requirements-dev.txt
+      - name: Run mutmut on high-risk modules
+        working-directory: backend/django_core
+        run: |
+          mutmut run --CI || true
+          mutmut junitxml > mutmut-results.xml || true
+          mutmut results || true
+      - name: Upload mutation report
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report
+          path: backend/django_core/mutmut-results.xml
+          if-no-files-found: ignore
