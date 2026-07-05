@@ -1263,6 +1263,15 @@ class ConsentRecord(TimestampedModel):
         'Horodatage', null=True, blank=True,
         help_text='Date/heure du consentement (sur le consent_timestamp '
                   'existant côté métier).')
+    # ── XMKT4 — version du texte + preuve de double opt-in (loi 09-08/CNDP) ──
+    version_texte = models.CharField(
+        'Version du texte de consentement', max_length=40, blank=True,
+        default='', help_text='Version du texte présenté à la personne '
+                              '(ex. « v1-2026-07 »).')
+    ip_confirmation = models.GenericIPAddressField(
+        'IP de confirmation', null=True, blank=True,
+        help_text='IP du clic de confirmation (double opt-in), preuve '
+                  'loi 09-08.')
 
     class Meta:
         verbose_name = 'Consentement'

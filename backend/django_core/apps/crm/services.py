@@ -2356,3 +2356,176 @@ def create_lead_depuis_ticket(*, company, user, client, contexte=''):
         # QJ7 ignore les activités système), tout en traçant l'origine.
         activity.log_note(lead, None, contexte)
     return lead, True
+
+
+# ── XMKT4 — écriture de consentement marketing pour un lead ────────────────
+# Point d'entrée UNIQUE pour poser un ``core.ConsentRecord`` depuis un lead
+# (jamais d'écriture directe de compta/parametres dans core.ConsentRecord au
+# nom d'un lead — cette fonction reste la porte d'entrée crm).
+
+def enregistrer_consentement_lead(
+        lead, *, purpose, granted=True, source='', version_texte='',
+        ip_confirmation=None):
+    """Pose (ou met à jour) le consentement d'un lead pour un canal donné.
+
+    ``purpose`` ∈ 'marketing' / 'email' / 'sms' / 'whatsapp'…
+    ``lead.email`` est utilisé comme identifiant si présent, sinon
+    ``lead.telephone``. Crée une NOUVELLE entrée à chaque appel (le registre
+    ``ConsentRecord`` est un historique append-only, cf. FG394) — la lecture
+    de l'état courant prend toujours la ligne la plus récente.
+    """
+    from core.models import ConsentRecord
+
+    identifiant = (lead.email or lead.telephone or '').strip()
+    if not identifiant:
+        return None
+    return ConsentRecord.objects.create(
+        company=lead.company,
+        subject_identifier=identifiant,
+        purpose=purpose,
+        granted=granted,
+        source=source or '',
+        occurred_at=timezone.now(),
+        version_texte=version_texte or '',
+        ip_confirmation=ip_confirmation,
+    )
+
+
+# ── XMKT19 — Actions CRM exécutables depuis une étape de séquence ──────────
+# Point d'entrée UNIQUE pour qu'une ``EtapeSequence`` (apps.compta) exécute
+# une action CRM au lieu d'un message — jamais d'import direct du modèle
+# crm depuis compta ; chaque fonction journalise le chatter (``LeadActivity``)
+# via ``activity``, jamais silencieuse.
+
+def avancer_stage_lead_vers(lead, user, stage_cible):
+    """XMKT19 — avance ``lead`` vers ``stage_cible`` (clé canonique
+    STAGES.py, jamais hardcodée par l'appelant). Refuse un recul (même règle
+    que le bulk edit, ``_bulk_stage_allowed``). Renvoie True si appliqué.
+    """
+    if not _bulk_stage_allowed(lead.stage, stage_cible):
+        return False
+    ancien = lead.stage
+    lead.stage = stage_cible
+    lead.save(update_fields=['stage'])
+    activity.log_bulk_change(lead, user, 'stage', ancien, stage_cible)
+    return True
+
+
+def assigner_lead_a(lead, user, owner_id):
+    """XMKT19 — assigne (ou vide) le propriétaire du lead."""
+    nouveau = _resolve_owner(lead.company, owner_id)
+    ancien = lead.owner
+    lead.owner = nouveau
+    lead.save(update_fields=['owner'])
+    activity.log_bulk_change(
+        lead, user,
+        'owner',
+        getattr(ancien, 'username', '') if ancien else '',
+        getattr(nouveau, 'username', '') if nouveau else '')
+    return lead
+
+
+def poser_tag_lead(lead, user, tag):
+    """XMKT19 — ajoute (idempotent) un tag au lead."""
+    tag = (tag or '').strip()
+    if not tag:
+        return lead
+    current = [t.strip() for t in (lead.tags or '').split(',') if t.strip()]
+    if tag in current:
+        return lead
+    old = lead.tags or ''
+    current.append(tag)
+    lead.tags = ', '.join(current)[:500]
+    lead.save(update_fields=['tags'])
+    activity.log_bulk_change(lead, user, 'tags', old, lead.tags)
+    return lead
+
+
+def retirer_tag_lead(lead, user, tag):
+    """XMKT19 — retire (idempotent) un tag du lead."""
+    tag = (tag or '').strip()
+    if not tag:
+        return lead
+    current = [t.strip() for t in (lead.tags or '').split(',') if t.strip()]
+    if tag not in current:
+        return lead
+    old = lead.tags or ''
+    current.remove(tag)
+    lead.tags = ', '.join(current)[:500]
+    lead.save(update_fields=['tags'])
+    activity.log_bulk_change(lead, user, 'tags', old, lead.tags)
+    return lead
+
+
+def ajuster_score_lead(lead, user, delta):
+    """XMKT19 — ajuste le score du lead de ``delta`` (peut être négatif),
+    borné à [0, 100]."""
+    ancien = lead.score or 0
+    nouveau = max(0, min(100, ancien + int(delta)))
+    lead.score = nouveau
+    lead.save(update_fields=['score'])
+    activity.log_bulk_change(lead, user, 'score', ancien, nouveau)
+    return lead
+
+
+def creer_relance_lead(lead, user, *, relance_date, note=''):
+    """XMKT19 — crée/pose une relance/tâche (FG31) sur le lead."""
+    lead.relance_date = relance_date
+    lead.save(update_fields=['relance_date'])
+    body = f'Relance planifiée le {relance_date}'
+    if note:
+        body += f' — {note}'
+    activity.log_note(lead, user, body)
+    return lead
+
+
+# ── XMKT28 — Lead depuis une inscription à un événement marketing ──────────
+
+def create_lead_from_evenement_marketing(
+        *, company, nom, telephone='', email='', evenement_nom='') -> Lead:
+    """XMKT28 — Crée (ou dédupe sur) un lead dès qu'un inscrit à un
+    ``EvenementMarketing`` (apps.compta) est capturé. Même pattern que
+    ``create_lead_from_livechat`` (XMKT37) : dédup par téléphone/email dans
+    la société avant de créer, canal ``AUTRE``, stage NEW (défaut du champ).
+    """
+    nom = (nom or '').strip()[:255] or 'Prospect événement'
+    telephone = (telephone or '').strip()[:20]
+    email = (email or '').strip()[:254]
+
+    lead = None
+    if telephone or email:
+        dupes = find_duplicates_by_contact(
+            company, phone=telephone or None, email=email or None)
+        if dupes:
+            lead = sorted(dupes, key=lambda d: d.date_creation, reverse=True)[0]
+
+    if lead is None:
+        extra = {}
+        default = default_responsable_for(company)
+        if default is not None:
+            extra['owner'] = default
+        lead = Lead.objects.create(
+            company=company,
+            nom=nom,
+            telephone=telephone or None,
+            email=email or None,
+            canal=Lead.Canal.AUTRE,
+            **extra,
+        )
+        activity.log_creation(lead, None)
+    else:
+        changed = False
+        if telephone and not lead.telephone:
+            lead.telephone = telephone
+            changed = True
+        if email and not lead.email:
+            lead.email = email
+            changed = True
+        if changed:
+            lead.save()
+
+    if evenement_nom:
+        activity.log_note(
+            lead, None, f'Inscrit à l\'événement « {evenement_nom} »')
+    recompute_lead_score(lead)
+    return lead

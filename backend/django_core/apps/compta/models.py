@@ -4515,6 +4515,11 @@ class Campagne(models.Model):
 
     class Statut(models.TextChoices):
         BROUILLON = 'brouillon', 'Brouillon'
+        # ZMKT1 — pipeline d'envoi (Draft → In Queue → Sending → Sent, style
+        # Odoo) : `en_file` = planifiée, en attente du beat (XMKT7) ;
+        # `envoi_en_cours` = lot en cours d'envoi (throttle par lots XMKT7).
+        EN_FILE = 'en_file', 'En file'
+        ENVOI_EN_COURS = 'envoi_en_cours', 'Envoi en cours'
         ENVOYEE = 'envoyee', 'Envoyée'
         ANNULEE = 'annulee', 'Annulée'
 
@@ -4542,7 +4547,7 @@ class Campagne(models.Model):
         max_length=11, blank=True, default='',
         verbose_name="Sender-ID SMS déclaré (XMKT15)")
     statut = models.CharField(
-        max_length=12, choices=Statut.choices, default=Statut.BROUILLON,
+        max_length=15, choices=Statut.choices, default=Statut.BROUILLON,
         verbose_name='Statut')
     # Compteurs de réveil — alimentés par les webhooks Brevo (gated).
     nb_destinataires = models.PositiveIntegerField(
@@ -4555,6 +4560,65 @@ class Campagne(models.Model):
         null=True, blank=True, verbose_name='Envoyée le')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créée le')
+    # ── XMKT7 — planification, throttling, fenêtres de silence ──────────────
+    planifiee_le = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name='Envoi planifié le (Celery beat)')
+    debit_max_par_heure = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Débit max par heure (envoi par lots)')
+    # ── XMKT11 — variantes de contenu par langue (fr/ar/darija) ──────────────
+    # Vide par défaut = comportement actuel (un seul corps, ``objet``/``corps``
+    # ci-dessus servent de fallback FR). Structure :
+    # {"ar": {"objet": "...", "corps": "..."}, "darija": {...}}. Le FR n'a
+    # pas besoin d'entrée ici (déjà porté par les champs historiques).
+    variantes_langue = models.JSONField(
+        default=dict, blank=True,
+        verbose_name='Variantes de contenu par langue (JSON)')
+    # ── XMKT14 — Test A/B avec gagnant automatique ──────────────────────────
+    # Vide par défaut = pas de test A/B (comportement actuel, un seul envoi).
+    # Structure : {"objet": "...", "corps": "...", "pct_echantillon": 20,
+    # "fenetre_heures": 4, "critere": "ouvertures"|"clics"}.
+    ab_test = models.JSONField(
+        default=dict, blank=True, verbose_name='Configuration test A/B (JSON)')
+    ab_gagnant = models.CharField(
+        max_length=1, blank=True, default='',
+        verbose_name='Variante gagnante (A/B)')
+    ab_decide_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Décision A/B prise le')
+    # ── XMKT17 — Coût & ROI MAD par campagne ────────────────────────────────
+    budget_mad = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Budget prévu (MAD)')
+    cout_reel_mad = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Coût réel (MAD)')
+    # Lignes de coût libres : [{"libelle": "Ads Meta", "montant_mad": 500}, …].
+    lignes_cout = models.JSONField(
+        default=list, blank=True, verbose_name='Lignes de coût (JSON)')
+    # ── XMKT31 — conteneur de campagne multi-canal ──────────────────────────
+    # NULL = campagne autonome (comportement actuel). Une campagne "mère"
+    # regroupe emails/SMS/WhatsApp/séquences d'une même opération marketing ;
+    # les événements (XMKT28) et codes promo (FG209) se rattachent par leur
+    # propre FK/référence, pas ici.
+    parente = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='enfants',
+        verbose_name='Campagne mère',
+    )
+    # Rattachements OPAQUES d'objets non-Campagne (séquences, formulaires,
+    # codes promo FG209, événements XMKT28) à cette campagne — uniquement
+    # pertinent sur une campagne MÈRE (parente=None). Format :
+    # [{"type": "sequence"|"formulaire"|"code_promo"|"evenement", "id": N}].
+    rattachements = models.JSONField(
+        default=list, blank=True,
+        verbose_name='Rattachements (JSON, campagne mère)')
+    # ── ZMKT3 — enregistrer une campagne comme modèle réutilisable ──────────
+    est_modele = models.BooleanField(
+        default=False,
+        verbose_name='Modèle réutilisable (jamais envoyé)')
 
     class Meta:
         verbose_name = 'Campagne email/SMS'
@@ -4613,6 +4677,10 @@ class EnvoiCampagne(models.Model):
                                      verbose_name='Cliqué le')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créée le')
+    # XMKT14 — variante A/B reçue par ce destinataire ('a'/'b'), vide = hors
+    # test A/B ou envoi au reste après décision du gagnant.
+    variante_ab = models.CharField(
+        max_length=1, blank=True, default='', verbose_name='Variante A/B')
 
     class Meta:
         verbose_name = "Envoi de campagne (destinataire)"
@@ -4880,6 +4948,40 @@ class EtapeSequence(models.Model):
     modele_message = models.TextField(
         blank=True, default='', verbose_name='Modèle de message')
 
+    # ── XMKT18 — condition d'exécution + action alternative ─────────────────
+    class Condition(models.TextChoices):
+        TOUJOURS = 'toujours', 'Toujours'
+        A_OUVERT = 'a_ouvert', 'A ouvert'
+        A_CLIQUE = 'a_clique', 'A cliqué'
+        N_A_PAS_OUVERT = 'n_a_pas_ouvert', "N'a pas ouvert"
+        A_REPONDU = 'a_repondu', 'A répondu (WhatsApp)'
+
+    condition = models.CharField(
+        max_length=20, choices=Condition.choices, default=Condition.TOUJOURS,
+        verbose_name="Condition d'exécution")
+    # Action alternative si la condition est fausse (ex. non-ouvert après 3j
+    # → renvoyer avec un autre objet ; cliqué → tâche commerciale). Vide =
+    # aucune action alternative (comportement actuel : étape simplement
+    # sautée si la condition n'est pas vraie).
+    action_alternative = models.CharField(
+        max_length=30, blank=True, default='',
+        verbose_name='Action alternative si condition fausse')
+
+    # ── XMKT19 — actions CRM dans les étapes de séquence ────────────────────
+    class TypeEtape(models.TextChoices):
+        MESSAGE = 'message', 'Message (canal)'
+        ACTION_CRM = 'action_crm', 'Action CRM'
+
+    type_etape = models.CharField(
+        max_length=12, choices=TypeEtape.choices, default=TypeEtape.MESSAGE,
+        verbose_name="Type d'étape")
+    # Config de l'action CRM si ``type_etape == 'action_crm'`` :
+    # {"action": "avancer_stage"|"assigner"|"tag"|"score"|"tache",
+    #  "params": {...}} — jamais de clé de stage hardcodée, la valeur vient
+    # toujours de STAGES.py côté appelant (crm.services).
+    action_crm = models.JSONField(
+        default=dict, blank=True, verbose_name='Action CRM (JSON)')
+
     class Meta:
         verbose_name = 'Étape de séquence'
         verbose_name_plural = 'Étapes de séquence'
@@ -4993,6 +5095,31 @@ class ExecutionEtapeSequence(models.Model):
         verbose_name='Résultat (planifie/envoye/erreur)')
     erreur = models.CharField(max_length=500, blank=True, default='',
                               verbose_name='Erreur')
+    # XMKT18 — branche prise à l'exécution : vide (pas de condition/toujours),
+    # 'condition' (condition vraie, étape normale exécutée) ou 'alternative'
+    # (condition fausse, action alternative exécutée à la place).
+    branche_prise = models.CharField(
+        max_length=20, blank=True, default='',
+        verbose_name='Branche prise (XMKT18)')
+
+    # ── ZMKT5 — traces d'activité (planifié/traité/rejeté) + motif ──────────
+    class StatutTrace(models.TextChoices):
+        PLANIFIE = 'planifie', 'Planifié'
+        TRAITE = 'traite', 'Traité'
+        REJETE = 'rejete', 'Rejeté'
+
+    class MotifRejet(models.TextChoices):
+        SANS_CONSENTEMENT = 'sans_consentement', 'Pas de consentement'
+        SUPPRIME = 'supprime', 'Supprimé (liste de suppression)'
+        HORS_FENETRE = 'hors_fenetre', 'Hors fenêtre de silence'
+        ERREUR_ENVOI = 'erreur_envoi', "Erreur d'envoi"
+
+    statut_trace = models.CharField(
+        max_length=10, choices=StatutTrace.choices,
+        default=StatutTrace.TRAITE, verbose_name='Statut de trace')
+    motif_rejet = models.CharField(
+        max_length=20, choices=MotifRejet.choices, blank=True, default='',
+        verbose_name='Motif de rejet')
 
     class Meta:
         verbose_name = "Exécution d'étape de séquence"
@@ -5001,6 +5128,177 @@ class ExecutionEtapeSequence(models.Model):
 
     def __str__(self):
         return f'{self.inscription_id} · étape {self.etape_id} ({self.resultat})'
+
+
+# ── XMKT9 — Tracker de liens + auto-tag UTM ─────────────────────────────────
+
+class LienTrackee(models.Model):
+    """Un lien du corps d'une campagne, réécrit en redirection tokenisée
+    (XMKT9) : ``/r/<token>`` → ``url_cible`` auto-taguée
+    utm_source/medium/campaign=nom de la campagne. Compte les clics PAR LIEN.
+
+    ``campagne`` NULL (XMKT29) : le lien tracké n'est pas issu d'un corps de
+    campagne mais d'un ``SupportOffline`` (QR flyer/bâche/véhicule) —
+    réutilise le même mécanisme de redirection tokenisée + comptage.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='liens_trackes',
+        verbose_name='Société',
+    )
+    campagne = models.ForeignKey(
+        Campagne,
+        on_delete=models.CASCADE,
+        related_name='liens_trackes',
+        verbose_name='Campagne',
+        null=True, blank=True,
+    )
+    token = models.CharField(
+        max_length=64, unique=True, verbose_name='Jeton public')
+    url_cible = models.URLField(max_length=1000, verbose_name='URL cible')
+    nb_clics = models.PositiveIntegerField(default=0, verbose_name='Clics')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Lien tracké'
+        verbose_name_plural = 'Liens trackés'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'{self.campagne_id} → {self.url_cible[:60]} ({self.nb_clics})'
+
+
+class ClicLien(models.Model):
+    """Un clic sur un ``LienTrackee``, par destinataire (XMKT9) — alimente le
+    drill-down « clics par lien » sur le détail campagne.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='clics_lien',
+        verbose_name='Société',
+    )
+    lien = models.ForeignKey(
+        LienTrackee,
+        on_delete=models.CASCADE,
+        related_name='clics',
+        verbose_name='Lien tracké',
+    )
+    destinataire = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Destinataire (email/téléphone, si connu)')
+    clique_le = models.DateTimeField(
+        auto_now_add=True, verbose_name='Cliqué le')
+
+    class Meta:
+        verbose_name = 'Clic de lien'
+        verbose_name_plural = 'Clics de lien'
+        ordering = ['-clique_le']
+
+    def __str__(self):
+        return f'{self.lien_id} ← {self.destinataire or "?"}'
+
+
+# ── XMKT22 — Politique « sunset » d'engagement ──────────────────────────────
+
+class StatutEngagementContact(models.Model):
+    """Statut d'engagement d'un destinataire marketing (XMKT22) : ``dormant``
+    quand il n'a ouvert/cliqué aucun envoi sur une fenêtre paramétrable
+    (90-180 j). Un contact dormant est sauté aux envois (journalisé XMKT2)
+    tant qu'il n'a pas cliqué une campagne de re-permission.
+    """
+    class Statut(models.TextChoices):
+        ACTIF = 'actif', 'Actif'
+        DORMANT = 'dormant', 'Dormant'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='statuts_engagement',
+        verbose_name='Société',
+    )
+    destinataire = models.CharField(
+        max_length=255, verbose_name='Destinataire (email/téléphone normalisé)')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.ACTIF,
+        verbose_name='Statut')
+    date_maj = models.DateTimeField(auto_now=True, verbose_name='Mis à jour le')
+
+    class Meta:
+        verbose_name = "Statut d'engagement (contact)"
+        verbose_name_plural = "Statuts d'engagement (contacts)"
+        ordering = ['-date_maj']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'destinataire'],
+                name='uniq_statut_engagement_par_destinataire',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.destinataire} ({self.statut})'
+
+
+# ── XMKT23 — Approbation avant envoi de masse + journal d'audit ────────────
+
+class ApprobationEnvoiCampagne(models.Model):
+    """Demande d'approbation d'un envoi de masse (XMKT23), pattern identique à
+    ``automation.AutomationApproval`` (pending/approved/rejected) mais local à
+    compta — au-delà d'un seuil société de destinataires, l'envoi reste
+    bloqué tant qu'un Responsable/Directeur n'a pas approuvé.
+    """
+    class Statut(models.TextChoices):
+        EN_ATTENTE = 'en_attente', 'En attente'
+        APPROUVE = 'approuve', 'Approuvé'
+        REJETE = 'rejete', 'Rejeté'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='approbations_envoi_campagne',
+        verbose_name='Société',
+    )
+    campagne = models.ForeignKey(
+        Campagne,
+        on_delete=models.CASCADE,
+        related_name='approbations_envoi',
+        verbose_name='Campagne',
+    )
+    nb_destinataires_demandes = models.PositiveIntegerField(
+        default=0, verbose_name='Nb destinataires demandés')
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices, default=Statut.EN_ATTENTE,
+        verbose_name='Statut')
+    demande_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='approbations_envoi_demandees',
+        verbose_name='Demandé par',
+    )
+    decide_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='approbations_envoi_decidees',
+        verbose_name='Décidé par',
+    )
+    motif_rejet = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Motif de rejet')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+    date_decision = models.DateTimeField(
+        null=True, blank=True, verbose_name='Décidée le')
+
+    class Meta:
+        verbose_name = "Approbation d'envoi de campagne"
+        verbose_name_plural = "Approbations d'envoi de campagne"
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'{self.campagne_id} ({self.statut})'
 
 
 # ── FG203 — Récupération des devis abandonnés ──────────────────────────────
@@ -8397,3 +8695,545 @@ class LigneCompensation(models.Model):
 
     def __str__(self):
         return f'{self.get_type_facture_display()} {self.reference_facture}'
+
+
+# ── XMKT27 — Constructeur d'enquêtes avec logique conditionnelle ───────────
+
+class Enquete(models.Model):
+    """Enquête configurable au-delà du NPS figé (XMKT27, FG238).
+
+    ``questions`` est un JSON validé : liste de
+    ``{"id": "q1", "type": "choix"|"echelle"|"texte"|"nps", "libelle": ...,
+    "options": [...], "obligatoire": bool,
+    "condition": {"question_id": "q0", "valeur": ...}}`` — affichage
+    conditionnel « question B si réponse A ». Lien public tokenisé
+    (``token``), aucune authentification requise pour répondre.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='enquetes',
+        verbose_name='Société',
+    )
+    titre = models.CharField(max_length=200, verbose_name='Titre')
+    questions = models.JSONField(
+        default=list, blank=True, verbose_name='Questions (JSON)')
+    token = models.CharField(
+        max_length=64, unique=True, verbose_name='Jeton public')
+    actif = models.BooleanField(default=True, verbose_name='Active')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    # ── ZMKT9 — options de mise en page & anti-biais ────────────────────────
+    class ModePagination(models.TextChoices):
+        UNE_PAGE = 'une_page', 'Une page'
+        UNE_PAGE_PAR_SECTION = 'une_page_par_section', 'Une page par section'
+        UNE_PAGE_PAR_QUESTION = 'une_page_par_question', 'Une page par question'
+
+    class BarreProgression(models.TextChoices):
+        AUCUNE = 'aucune', 'Aucune'
+        POURCENTAGE = 'pourcentage', 'Pourcentage'
+        NOMBRE = 'nombre', 'Nombre'
+
+    mode_pagination = models.CharField(
+        max_length=25, choices=ModePagination.choices,
+        default=ModePagination.UNE_PAGE, verbose_name='Mode de pagination')
+    barre_progression = models.CharField(
+        max_length=12, choices=BarreProgression.choices,
+        default=BarreProgression.AUCUNE, verbose_name='Barre de progression')
+    bouton_retour = models.BooleanField(
+        default=False, verbose_name='Bouton retour')
+    limite_temps_minutes = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Limite de temps (minutes)')
+    ordre_aleatoire = models.BooleanField(
+        default=False, verbose_name='Ordre aléatoire des questions')
+
+    # ── ZMKT10 — scoring d'enquête + mode certification ─────────────────────
+    class ModeScoring(models.TextChoices):
+        AUCUN = 'aucun', 'Aucun'
+        AVEC_REPONSES = 'avec_reponses_a_la_fin', 'Avec réponses à la fin'
+        SANS_REPONSES = 'sans_reponses', 'Sans réponses'
+
+    mode_scoring = models.CharField(
+        max_length=25, choices=ModeScoring.choices,
+        default=ModeScoring.AUCUN, verbose_name='Mode de scoring')
+    score_requis_pct = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name='Score requis (%)')
+    est_certification = models.BooleanField(
+        default=False, verbose_name='Est une certification')
+
+    # ── ZMKT11 — mode d'accès, connexion requise, tentatives max ────────────
+    class ModeAcces(models.TextChoices):
+        LIEN_PUBLIC = 'lien_public', 'Lien public'
+        INVITES_SEULEMENT = 'invites_seulement', 'Invités seulement'
+
+    mode_acces = models.CharField(
+        max_length=20, choices=ModeAcces.choices,
+        default=ModeAcces.LIEN_PUBLIC, verbose_name="Mode d'accès")
+    connexion_requise = models.BooleanField(
+        default=False, verbose_name='Connexion requise (email de contact)')
+    tentatives_max = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name='Tentatives max par répondant')
+    # Jetons d'invitation valides (ZMKT11, mode invités-seulement) : liste de
+    # jetons émis explicitement, jamais un lien public ouvert.
+    jetons_invites = models.JSONField(
+        default=list, blank=True, verbose_name="Jetons d'invitation (JSON)")
+
+    # ── ZMKT12 — partage par lien / email / QR ──────────────────────────────
+    description_accueil = models.TextField(
+        blank=True, default='',
+        verbose_name="Description d'accueil (avant de commencer)")
+    message_fin = models.TextField(
+        blank=True, default='', verbose_name='Message de fin (complétion)')
+
+    class Meta:
+        verbose_name = 'Enquête'
+        verbose_name_plural = 'Enquêtes'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return self.titre
+
+
+class ReponseEnquete(models.Model):
+    """Une soumission de réponses à une ``Enquete`` (XMKT27).
+
+    ``reponses`` est un JSON ``{"q1": "valeur", ...}``. ``contact_ref`` est
+    une référence OPAQUE lead/client (``lead:<id>``/``client:<id>``, jamais
+    d'import direct des modèles crm/ventes) — vide si le répondant n'est pas
+    identifié (lien public anonyme).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='reponses_enquete',
+        verbose_name='Société',
+    )
+    enquete = models.ForeignKey(
+        Enquete,
+        on_delete=models.CASCADE,
+        related_name='reponses',
+        verbose_name='Enquête',
+    )
+    contact_ref = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Référence contact (lead/client, opaque)')
+    reponses = models.JSONField(
+        default=dict, blank=True, verbose_name='Réponses (JSON)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Soumise le')
+
+    # ── ZMKT10 — score calculé + certificat ─────────────────────────────────
+    score_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        verbose_name='Score obtenu (%)')
+    reussi = models.BooleanField(
+        null=True, blank=True, verbose_name='Réussi (si scoring/certification)')
+    certificat_genere = models.BooleanField(
+        default=False, verbose_name='Certificat généré')
+
+    class Meta:
+        verbose_name = 'Réponse à une enquête'
+        verbose_name_plural = 'Réponses à une enquête'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'{self.enquete_id} ← {self.contact_ref or "anonyme"}'
+
+
+# ── ZMKT14 — Types d'événements + modèles réutilisables ─────────────────────
+
+class TypeEvenement(models.Model):
+    """Modèle réutilisable pour créer un ``EvenementMarketing`` (ZMKT14) :
+    « créer depuis modèle » recopie sa config par défaut (billets ZMKT15,
+    questions ZMKT16, communications ZMKT17 — pré-chargés au moment de leur
+    implémentation ; ``config_defaut`` sert de socle générique en attendant).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='types_evenement',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=200, verbose_name='Nom du modèle')
+    type_evenement_defaut = models.CharField(
+        max_length=20, default='salon',
+        verbose_name="Type d'événement par défaut")
+    config_defaut = models.JSONField(
+        default=dict, blank=True,
+        verbose_name='Configuration par défaut (JSON)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Type d'événement (modèle)"
+        verbose_name_plural = "Types d'événement (modèles)"
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
+
+
+# ── XMKT28 — Événements marketing légers (salons, portes ouvertes, webinaires)
+
+class EvenementMarketing(models.Model):
+    """Événement marketing léger (XMKT28) : salon (SIAM, foires agricoles),
+    porte ouverte, webinaire. L'inscription publique via un
+    ``FormulaireIntake`` lié crée un lead dédupliqué (via ``crm.services``) ;
+    présents/absents alimentent des segments (XMKT6).
+    """
+    class Type(models.TextChoices):
+        SALON = 'salon', 'Salon'
+        PORTE_OUVERTE = 'porte_ouverte', 'Porte ouverte'
+        WEBINAIRE = 'webinaire', 'Webinaire'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='evenements_marketing',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=200, verbose_name="Nom de l'événement")
+    type_evenement = models.CharField(
+        max_length=20, choices=Type.choices, default=Type.SALON,
+        verbose_name="Type d'événement")
+    date_debut = models.DateTimeField(verbose_name='Date de début')
+    date_fin = models.DateTimeField(
+        null=True, blank=True, verbose_name='Date de fin')
+    lieu = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Lieu (ou lien visio)')
+    capacite = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Capacité')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    # ── ZMKT14 — pipeline d'étapes configurable (JAMAIS les clés STAGES.py) ─
+    class Etape(models.TextChoices):
+        NOUVEAU = 'nouveau', 'Nouveau'
+        CONFIRME = 'confirme', 'Confirmé'
+        ANNONCE = 'annonce', 'Annoncé'
+        TERMINE = 'termine', 'Terminé'
+
+    etape = models.CharField(
+        max_length=12, choices=Etape.choices, default=Etape.NOUVEAU,
+        verbose_name="Étape (pipeline événement, PAS le funnel CRM)")
+    # Type d'événement source (modèle réutilisable, ZMKT14) — nullable, un
+    # événement créé sans modèle reste comme aujourd'hui.
+    type_modele = models.ForeignKey(
+        'compta.TypeEvenement',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='evenements_crees',
+        verbose_name='Créé depuis le modèle',
+    )
+
+    class Meta:
+        verbose_name = 'Événement marketing'
+        verbose_name_plural = 'Événements marketing'
+        ordering = ['-date_debut']
+
+    def __str__(self):
+        return self.nom
+
+
+# ── ZMKT15 — Billets d'événement (types, prix MAD, quotas, fenêtre de vente)
+
+class BilletEvenement(models.Model):
+    """Billet d'un ``EvenementMarketing`` (ZMKT15) : libellé, prix TTC MAD,
+    fenêtre de vente, quota de places. Descripteur de capacité/tarif —
+    AUCUN encaissement en ligne ici (le paiement CMI reste la surface
+    portail existante).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='billets_evenement',
+        verbose_name='Société',
+    )
+    evenement = models.ForeignKey(
+        EvenementMarketing,
+        on_delete=models.CASCADE,
+        related_name='billets',
+        verbose_name='Événement',
+    )
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    prix_ttc_mad = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('0'),
+        verbose_name='Prix TTC (MAD)')
+    date_debut_vente = models.DateTimeField(
+        null=True, blank=True, verbose_name='Début de vente')
+    date_fin_vente = models.DateTimeField(
+        null=True, blank=True, verbose_name='Fin de vente')
+    quota = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Quota de places')
+
+    class Meta:
+        verbose_name = "Billet d'événement"
+        verbose_name_plural = "Billets d'événement"
+        ordering = ['libelle']
+
+    def __str__(self):
+        return f'{self.libelle} ({self.prix_ttc_mad} MAD)'
+
+    def dans_fenetre_vente(self, *, maintenant=None):
+        from django.utils import timezone
+        maintenant = maintenant or timezone.now()
+        if self.date_debut_vente and maintenant < self.date_debut_vente:
+            return False
+        if self.date_fin_vente and maintenant > self.date_fin_vente:
+            return False
+        return True
+
+    @property
+    def places_restantes(self):
+        if self.quota is None:
+            return None
+        return max(0, self.quota - self.inscriptions.count())
+
+
+# ── ZMKT16 — Questions d'inscription par événement ──────────────────────────
+
+class QuestionEvenement(models.Model):
+    """Question de capture de données à l'inscription (ZMKT16), au-delà de
+    nom/email/téléphone. Réponses stockées en JSON sur
+    ``InscriptionEvenement.reponses_questions`` (portée par_commande ou
+    par_inscrit)."""
+    class Type(models.TextChoices):
+        CHOIX = 'choix', 'Choix'
+        TEXTE = 'texte', 'Texte'
+        BOOLEEN = 'booleen', 'Booléen'
+
+    class Portee(models.TextChoices):
+        PAR_INSCRIT = 'par_inscrit', 'Par inscrit'
+        PAR_COMMANDE = 'par_commande', 'Par commande'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='questions_evenement',
+        verbose_name='Société',
+    )
+    evenement = models.ForeignKey(
+        EvenementMarketing,
+        on_delete=models.CASCADE,
+        related_name='questions',
+        verbose_name='Événement',
+    )
+    libelle = models.CharField(max_length=255, verbose_name='Libellé')
+    type_question = models.CharField(
+        max_length=10, choices=Type.choices, default=Type.TEXTE,
+        verbose_name='Type')
+    obligatoire = models.BooleanField(default=False, verbose_name='Obligatoire')
+    portee = models.CharField(
+        max_length=15, choices=Portee.choices, default=Portee.PAR_INSCRIT,
+        verbose_name='Portée')
+
+    class Meta:
+        verbose_name = "Question d'inscription (événement)"
+        verbose_name_plural = "Questions d'inscription (événement)"
+        ordering = ['id']
+
+    def __str__(self):
+        return self.libelle
+
+
+# ── ZMKT17 — Communications programmées d'événement ─────────────────────────
+
+class CommunicationEvenement(models.Model):
+    """Communication programmée attachée à un événement (ZMKT17) — rappel
+    avant / relance après, à échéance relative au début de l'événement.
+    Envoi gated comme FG201 (no-op sans clé → file de relance manuelle
+    FG31), consentement + suppression respectés (XMKT3/XMKT4).
+    """
+    class Canal(models.TextChoices):
+        EMAIL = 'email', 'Email'
+        SMS = 'sms', 'SMS'
+        WHATSAPP = 'whatsapp', 'WhatsApp'
+
+    class UniteIntervalle(models.TextChoices):
+        HEURES = 'heures', 'Heures'
+        JOURS = 'jours', 'Jours'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='communications_evenement',
+        verbose_name='Société',
+    )
+    evenement = models.ForeignKey(
+        EvenementMarketing,
+        on_delete=models.CASCADE,
+        related_name='communications',
+        verbose_name='Événement',
+    )
+    canal = models.CharField(
+        max_length=10, choices=Canal.choices, default=Canal.EMAIL,
+        verbose_name='Canal')
+    gabarit = models.TextField(blank=True, default='', verbose_name='Corps')
+    # Intervalle SIGNÉ relatif au début de l'événement (ex. -2 j confirmation,
+    # -2 h rappel, +1 j remerciement).
+    intervalle = models.IntegerField(verbose_name='Intervalle (signé)')
+    unite_intervalle = models.CharField(
+        max_length=10, choices=UniteIntervalle.choices,
+        default=UniteIntervalle.JOURS, verbose_name='Unité')
+    envoyee_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Envoyée le')
+
+    class Meta:
+        verbose_name = "Communication d'événement"
+        verbose_name_plural = "Communications d'événement"
+        ordering = ['intervalle']
+
+    def __str__(self):
+        signe = '+' if self.intervalle >= 0 else ''
+        return f'{self.evenement_id} ({signe}{self.intervalle} {self.unite_intervalle})'
+
+    def echeance(self):
+        import datetime
+        delta = datetime.timedelta(**{
+            'hours' if self.unite_intervalle == self.UniteIntervalle.HEURES
+            else 'days': self.intervalle})
+        return self.evenement.date_debut + delta
+
+
+class InscriptionEvenement(models.Model):
+    """Inscription à un ``EvenementMarketing`` (XMKT28) — nom/email/téléphone
+    normalisé, statut de présence + check-in sur place (option QR token par
+    inscrit). Chaque inscrit devient un lead via ``crm.services``
+    (dédupliqué), jamais de doublon."""
+    class Statut(models.TextChoices):
+        INSCRIT = 'inscrit', 'Inscrit'
+        CONFIRME = 'confirme', 'Confirmé'
+        PRESENT = 'present', 'Présent'
+        ABSENT = 'absent', 'Absent'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='inscriptions_evenement',
+        verbose_name='Société',
+    )
+    evenement = models.ForeignKey(
+        EvenementMarketing,
+        on_delete=models.CASCADE,
+        related_name='inscriptions',
+        verbose_name='Événement',
+    )
+    nom = models.CharField(max_length=200, verbose_name='Nom')
+    email = models.EmailField(blank=True, default='', verbose_name='Email')
+    telephone = models.CharField(
+        max_length=32, blank=True, default='',
+        verbose_name='Téléphone (normalisé)')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.INSCRIT,
+        verbose_name='Statut')
+    qr_token = models.CharField(
+        max_length=64, blank=True, default='', unique=True, null=True,
+        verbose_name='Jeton QR de check-in')
+    lead_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Lead créé (id crm)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Inscrit le')
+    date_pointage = models.DateTimeField(
+        null=True, blank=True, verbose_name='Pointé (check-in) le')
+    # ── ZMKT15 — billet optionnel (descripteur capacité/tarif) ──────────────
+    billet = models.ForeignKey(
+        'compta.BilletEvenement',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='inscriptions',
+        verbose_name='Billet',
+    )
+    # ── ZMKT16 — réponses aux questions d'inscription (JSON) ────────────────
+    reponses_questions = models.JSONField(
+        default=dict, blank=True,
+        verbose_name="Réponses aux questions d'inscription (JSON)")
+
+    class Meta:
+        verbose_name = 'Inscription à un événement'
+        verbose_name_plural = 'Inscriptions à un événement'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'{self.nom} → {self.evenement_id} ({self.statut})'
+
+
+# ── XMKT29 — Ponts QR pour supports offline (flyers, bâches, véhicules) ────
+
+class SupportOffline(models.Model):
+    """Support offline (flyer, bâche, véhicule) avec QR de scan (XMKT29).
+
+    ``url_cible`` = landing/FormulaireIntake auto-taguée
+    utm_source=offline&utm_campaign=<nom>. Le QR encode une redirection
+    tokenisée (réutilise ``LienTrackee`` XMKT9) → compte les scans ET
+    attribue les leads issus de l'impression papier au support précis.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='supports_offline',
+        verbose_name='Société',
+    )
+    nom = models.CharField(
+        max_length=200, verbose_name='Nom (ex. « Flyer SIAM 2026 »)')
+    url_cible = models.URLField(max_length=1000, verbose_name='URL cible')
+    lien_tracke = models.ForeignKey(
+        'compta.LienTrackee',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='supports_offline',
+        verbose_name='Lien tracké (QR)',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Support offline'
+        verbose_name_plural = 'Supports offline'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return self.nom
+
+
+# ── XMKT33 — Assistant d'authentification du domaine d'envoi (SPF/DKIM/DMARC)
+
+class DomaineEnvoi(models.Model):
+    """Domaine d'envoi marketing + statut de vérification DNS (XMKT33).
+
+    Vérification par lookup DNS (dnspython, dépendance libre) — jamais
+    d'appel réseau en test (mocké). Statut par enregistrement stocké pour
+    affichage + pour le pré-check XMKT13 (avertissement domaine non
+    authentifié).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='domaines_envoi',
+        verbose_name='Société',
+    )
+    domaine = models.CharField(max_length=255, verbose_name='Domaine')
+    spf_verifie = models.BooleanField(default=False, verbose_name='SPF vérifié')
+    dkim_verifie = models.BooleanField(default=False, verbose_name='DKIM vérifié')
+    dmarc_verifie = models.BooleanField(default=False, verbose_name='DMARC vérifié')
+    derniere_verification_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Dernière vérification le')
+
+    class Meta:
+        verbose_name = "Domaine d'envoi"
+        verbose_name_plural = "Domaines d'envoi"
+        ordering = ['domaine']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'domaine'],
+                name='uniq_domaine_envoi_par_societe',
+            ),
+        ]
+
+    def __str__(self):
+        return self.domaine
+
+    @property
+    def authentifie(self):
+        return self.spf_verifie and self.dkim_verifie and self.dmarc_verifie

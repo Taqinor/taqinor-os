@@ -200,7 +200,8 @@ class ConsentRecordSerializer(serializers.ModelSerializer):
         model = ConsentRecord
         fields = [
             'id', 'subject_identifier', 'purpose', 'granted', 'source',
-            'occurred_at', 'created_at', 'updated_at',
+            'occurred_at', 'version_texte', 'ip_confirmation',
+            'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 

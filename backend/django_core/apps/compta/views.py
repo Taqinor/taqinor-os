@@ -61,6 +61,15 @@ from .models import (
     ObligationFiscale,
     FamilleTvaNonDeductible,
     Compensation,
+    ApprobationEnvoiCampagne,
+    Enquete, ReponseEnquete,
+    EvenementMarketing, InscriptionEvenement,
+    SupportOffline,
+    DomaineEnvoi,
+    TypeEvenement,
+    BilletEvenement,
+    QuestionEvenement,
+    CommunicationEvenement,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -69,6 +78,15 @@ from .serializers import (
     CampagneSerializer, CautionBancaireSerializer, CentreCoutSerializer,
     CessionImmobilisationSerializer, ClotureCaisseSerializer,
     CodePromotionSerializer, EnvoiCampagneSerializer,
+    ApprobationEnvoiCampagneSerializer,
+    EnqueteSerializer,
+    EvenementMarketingSerializer, InscriptionEvenementSerializer,
+    SupportOfflineSerializer,
+    DomaineEnvoiSerializer,
+    TypeEvenementSerializer,
+    BilletEvenementSerializer,
+    QuestionEvenementSerializer,
+    CommunicationEvenementSerializer,
     CommissionPayoutRunSerializer, CompteComptableSerializer,
     CompteTresorerieSerializer, ContratAvancementSerializer,
     DeclarationTVASerializer, DemandeApprobationConfigSerializer,
@@ -4590,14 +4608,35 @@ class CampagneViewSet(_ComptaBaseViewSet):
     serializer_class = CampagneSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['nom', 'objet']
-    ordering_fields = ['date_creation', 'nom']
+    # ZMKT2 — tri par les mesures agrégées (les taux dérivés se recalculent
+    # depuis ces champs bruts — DRF ne peut trier que sur des champs réels).
+    ordering_fields = [
+        'date_creation', 'nom', 'envoyee_le', 'nb_envois', 'nb_ouvertures',
+        'nb_clics', 'nb_destinataires',
+    ]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        # ZMKT2 — Group By statut/canal/mois d'envoi (réutilisé par le
+        # frontend pour le regroupement de liste).
+        groupby = self.request.query_params.get('groupby')
+        if groupby in ('statut', 'canal'):
+            qs = qs.order_by(groupby, '-date_creation')
+        return qs
 
     @action(detail=True, methods=['post'])
     def envoyer(self, request, pk=None):
         campagne = self.get_object()
         destinataires = request.data.get('destinataires') or []
-        services.envoyer_campagne(campagne, destinataires=destinataires)
-        return Response(CampagneSerializer(campagne).data)
+        # XMKT23 — au-delà du seuil société, l'envoi reste bloqué en attente
+        # d'approbation (comportement inchangé sous le seuil).
+        _campagne, approbation = services.demander_ou_envoyer_campagne(
+            campagne, destinataires=destinataires, user=request.user)
+        data = CampagneSerializer(campagne).data
+        if approbation is not None:
+            data['approbation_requise'] = True
+            data['approbation_id'] = approbation.id
+        return Response(data)
 
     @action(detail=True, methods=['get'])
     def apercu_fusion(self, request, pk=None):
@@ -4648,6 +4687,145 @@ class CampagneViewSet(_ComptaBaseViewSet):
             campagne.corps, nb_destinataires=nb_destinataires, **kwargs)
         return Response(estimation)
 
+    @action(detail=True, methods=['get'], url_path='clics-par-lien')
+    def clics_par_lien(self, request, pk=None):
+        """XMKT9 — Page « clics par lien » du détail campagne."""
+        campagne = self.get_object()
+        return Response(services.clics_par_lien(campagne))
+
+    @action(detail=True, methods=['get'], url_path='roi')
+    def roi(self, request, pk=None):
+        """XMKT17 — ROI MAD : dépensé vs revenu signé attribué + coût/lead."""
+        campagne = self.get_object()
+        return Response(services.roi_campagne(campagne))
+
+    @action(detail=True, methods=['get'], url_path='roi/leads-sources')
+    def roi_leads_sources(self, request, pk=None):
+        """XMKT17 — Drill-down vers les leads sources du ROI."""
+        campagne = self.get_object()
+        return Response(services.leads_source_roi(campagne))
+
+    @action(detail=True, methods=['get'], url_path='kpi-mere')
+    def kpi_mere(self, request, pk=None):
+        """XMKT31 — agrège KPI/coûts/ROI de tous les enfants d'une campagne
+        mère (conteneur multi-canal)."""
+        campagne = self.get_object()
+        return Response(services.kpi_campagne_mere(campagne))
+
+    @action(detail=False, methods=['get'])
+    def kanban(self, request):
+        """ZMKT1 — campagnes groupées par statut (pipeline Odoo-style)."""
+        return Response(services.campagnes_par_statut(request.user.company))
+
+    @action(detail=False, methods=['get'])
+    def reporting(self, request):
+        """ZMKT8 — reporting multi-vue (Graph/Pivot/Cohorte) : mesures
+        délivrés/ouverts/cliqués/rebonds/désinscrits + CTR/CTOR/
+        délivrabilité, groupable par ``?groupby=canal|mois|campagne``."""
+        groupby = request.query_params.get('groupby', 'canal')
+        return Response(
+            services.reporting_campagnes(request.user.company, groupby=groupby))
+
+    @action(detail=False, methods=['get'], url_path='reporting/export')
+    def reporting_export(self, request):
+        """ZMKT8 — export XLSX du reporting multi-vue."""
+        from openpyxl import Workbook
+        from openpyxl.styles import Font
+        from apps.records.xlsx import coerce_cell, XLSX_CONTENT_TYPE
+
+        groupby = request.query_params.get('groupby', 'canal')
+        lignes = services.reporting_campagnes(request.user.company, groupby=groupby)
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Reporting campagnes'
+        headers = [
+            'Groupe', 'Délivrés', 'Ouverts', 'Clics', 'Rebonds',
+            'Désinscrits', 'CTR %', 'CTOR %', 'Délivrabilité %',
+        ]
+        ws.append(headers)
+        for cell in ws[1]:
+            cell.font = Font(bold=True)
+        for ligne in lignes:
+            ws.append([coerce_cell(v) for v in [
+                ligne['groupe'], ligne['delivres'], ligne['ouverts'],
+                ligne['cliques'], ligne['rebonds'], ligne['desinscrits'],
+                ligne['ctr_pct'], ligne['ctor_pct'], ligne['delivrabilite_pct'],
+            ]])
+        import io
+        buf = io.BytesIO()
+        wb.save(buf)
+        resp = HttpResponse(buf.getvalue(), content_type=XLSX_CONTENT_TYPE)
+        resp['Content-Disposition'] = 'attachment; filename="reporting_campagnes.xlsx"'
+        return resp
+
+    @action(detail=False, methods=['get'], url_path='modeles')
+    def modeles(self, request):
+        """ZMKT3 — liste des modèles company-scopés."""
+        qs = self.get_queryset().filter(est_modele=True)
+        return Response(CampagneSerializer(qs, many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='creer-depuis-modele')
+    def creer_depuis_modele(self, request, pk=None):
+        """ZMKT3 — clone un modèle en une nouvelle campagne brouillon."""
+        modele = self.get_object()
+        if not modele.est_modele:
+            return Response(
+                {'detail': "Cette campagne n'est pas un modèle."}, status=400)
+        clone = services.creer_depuis_modele(modele)
+        return Response(CampagneSerializer(clone).data, status=201)
+
+    @action(detail=True, methods=['post'])
+    def dupliquer(self, request, pk=None):
+        """ZMKT4 — duplique une campagne en brouillon indépendant."""
+        campagne = self.get_object()
+        clone = services.dupliquer_campagne(campagne)
+        return Response(CampagneSerializer(clone).data, status=201)
+
+    @action(detail=True, methods=['post'])
+    def annuler(self, request, pk=None):
+        """ZMKT4 — annule une campagne en file/en cours d'envoi."""
+        campagne = self.get_object()
+        services.annuler_campagne(campagne)
+        campagne.refresh_from_db()
+        return Response(CampagneSerializer(campagne).data)
+
+    @action(detail=True, methods=['post'], url_path='renvoyer-echecs')
+    def renvoyer_echecs(self, request, pk=None):
+        """ZMKT4 — recrée l'envoi vers les destinataires en échec
+        récupérable uniquement."""
+        campagne = self.get_object()
+        nouvelles = services.renvoyer_echecs_campagne(campagne)
+        return Response(
+            {'campagnes_creees': [c.id for c in nouvelles]}, status=201)
+
+    @action(detail=True, methods=['post'], url_path='rattacher')
+    def rattacher(self, request, pk=None):
+        """XMKT31 — rattache un objet (séquence/formulaire/code promo/
+        événement) à cette campagne mère."""
+        campagne = self.get_object()
+        type_objet = request.data.get('type')
+        objet_id = request.data.get('id')
+        if not type_objet or not objet_id:
+            return Response({'detail': 'type et id requis.'}, status=400)
+        services.rattacher_a_campagne_mere(
+            campagne, type_objet=type_objet, objet_id=objet_id)
+        return Response(CampagneSerializer(campagne).data)
+
+    @action(detail=True, methods=['get'], url_path='rendu-lead')
+    def rendu_lead(self, request, pk=None):
+        """XMKT11 — Rendu final (variante de langue + fusion) pour un lead
+        donné (``?lead_id=``)."""
+        campagne = self.get_object()
+        lead_id = request.query_params.get('lead_id')
+        if not lead_id:
+            return Response({'detail': 'lead_id requis.'}, status=400)
+        try:
+            rendu = services.rendre_pour_lead(
+                campagne, request.user.company, lead_id)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(rendu)
+
 
 # ── XMKT2 — Journal d'envoi par destinataire (drill-down) ───────────────────
 
@@ -4670,6 +4848,385 @@ class EnvoiCampagneViewSet(_ComptaBaseViewSet):
         if statut:
             qs = qs.filter(statut=statut)
         return qs
+
+
+# ── XMKT23 — Approbation avant envoi de masse + journal d'audit ────────────
+
+class ApprobationEnvoiCampagneViewSet(_ComptaBaseViewSet):
+    """Demandes d'approbation d'envoi de masse (XMKT23)."""
+    http_method_names = ['get', 'post', 'head', 'options']
+    queryset = ApprobationEnvoiCampagne.objects.select_related('campagne').all()
+    serializer_class = ApprobationEnvoiCampagneSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation']
+
+    @action(detail=True, methods=['post'])
+    def approuver(self, request, pk=None):
+        approbation = self.get_object()
+        services.approuver_envoi_campagne(approbation, user=request.user)
+        approbation.refresh_from_db()
+        return Response(ApprobationEnvoiCampagneSerializer(approbation).data)
+
+    @action(detail=True, methods=['post'])
+    def rejeter(self, request, pk=None):
+        approbation = self.get_object()
+        motif = request.data.get('motif', '')
+        services.rejeter_envoi_campagne(approbation, motif=motif, user=request.user)
+        approbation.refresh_from_db()
+        return Response(ApprobationEnvoiCampagneSerializer(approbation).data)
+
+    @action(detail=False, methods=['get'], url_path='journal-audit')
+    def journal_audit(self, request):
+        return Response(
+            services.journal_audit_envois(request.user.company))
+
+
+# ── XMKT27 — Constructeur d'enquêtes avec logique conditionnelle ───────────
+
+class EnqueteViewSet(_ComptaBaseViewSet):
+    """CRUD des enquêtes (XMKT27)."""
+    queryset = Enquete.objects.all()
+    serializer_class = EnqueteSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['titre']
+    ordering_fields = ['date_creation', 'titre']
+
+    def perform_create(self, serializer):
+        import uuid
+        serializer.save(
+            company=self.request.user.company, token=uuid.uuid4().hex)
+
+    @action(detail=True, methods=['get'])
+    def resultats(self, request, pk=None):
+        """XMKT27 — analytics agrégées par question + taux de complétion."""
+        enquete = self.get_object()
+        return Response(services.analytics_enquete(enquete))
+
+    @action(detail=True, methods=['get'])
+    def tester(self, request, pk=None):
+        """ZMKT11 — aperçu SANS enregistrer de réponse."""
+        enquete = self.get_object()
+        return Response(services.tester_enquete(enquete))
+
+    @action(detail=True, methods=['post'], url_path='emettre-jeton-invite')
+    def emettre_jeton_invite(self, request, pk=None):
+        """ZMKT11 — émet un jeton d'invitation (mode invités-seulement)."""
+        enquete = self.get_object()
+        jeton = services.emettre_jeton_invite(enquete)
+        return Response({'jeton': jeton})
+
+    @action(detail=True, methods=['get'])
+    def qr(self, request, pk=None):
+        """ZMKT12 — QR SVG téléchargeable du lien public de l'enquête."""
+        enquete = self.get_object()
+        svg = services.qr_svg_enquete(enquete)
+        return HttpResponse(svg, content_type='image/svg+xml')
+
+    @action(detail=True, methods=['get'])
+    def participations(self, request, pk=None):
+        """ZMKT13 — liste des soumissions individuelles, filtrable
+        réussi/échoué (``?reussi=true|false``)."""
+        enquete = self.get_object()
+        reussi_param = request.query_params.get('reussi')
+        reussi = None
+        if reussi_param is not None:
+            reussi = reussi_param.lower() == 'true'
+        return Response(services.participations_enquete(enquete, reussi=reussi))
+
+    @action(detail=True, methods=['get'], url_path='resultats/export')
+    def resultats_export(self, request, pk=None):
+        """ZMKT13 — export XLSX des participations."""
+        from openpyxl import Workbook
+        from openpyxl.styles import Font
+        from apps.records.xlsx import coerce_cell, XLSX_CONTENT_TYPE
+        import io
+
+        enquete = self.get_object()
+        participations = services.participations_enquete(enquete)
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Participations'
+        ws.append(['Contact', 'Score %', 'Réussi', 'Date'])
+        for cell in ws[1]:
+            cell.font = Font(bold=True)
+        for p in participations:
+            ws.append([coerce_cell(v) for v in [
+                p['contact'], p['score_pct'], p['reussi'], p['date_creation']]])
+        buf = io.BytesIO()
+        wb.save(buf)
+        resp = HttpResponse(buf.getvalue(), content_type=XLSX_CONTENT_TYPE)
+        resp['Content-Disposition'] = 'attachment; filename="participations.xlsx"'
+        return resp
+
+    @action(detail=True, methods=['post'])
+    def inviter(self, request, pk=None):
+        """ZMKT12 — invitation email vers un segment (XMKT6) ou une liste
+        (XMKT5), consentement + suppression respectés."""
+        enquete = self.get_object()
+        segment_id = request.data.get('segment_id')
+        liste_id = request.data.get('liste_id')
+        segment = (SegmentMarketing.objects.filter(
+            id=segment_id, company=request.user.company).first()
+            if segment_id else None)
+        liste = (ListeDiffusion.objects.filter(
+            id=liste_id, company=request.user.company).first()
+            if liste_id else None)
+        resultat = services.inviter_enquete(enquete, segment=segment, liste=liste)
+        return Response(resultat)
+
+
+# ── XMKT28 — Événements marketing légers ────────────────────────────────────
+
+class EvenementMarketingViewSet(_ComptaBaseViewSet):
+    """CRUD des événements marketing (XMKT28)."""
+    queryset = EvenementMarketing.objects.all()
+    serializer_class = EvenementMarketingSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom']
+    ordering_fields = ['date_debut', 'date_creation']
+
+    @action(detail=True, methods=['post'], url_path='cloturer-presences')
+    def cloturer_presences(self, request, pk=None):
+        evenement = self.get_object()
+        nb = services.cloturer_presences_evenement(evenement)
+        return Response({'absents_marques': nb})
+
+    @action(detail=True, methods=['get'])
+    def borne(self, request, pk=None):
+        """ZMKT18 — recherche par nom/email parmi les inscrits."""
+        evenement = self.get_object()
+        terme = request.query_params.get('q', '')
+        return Response(services.rechercher_inscrits_borne(evenement, terme))
+
+    @action(detail=True, methods=['get'])
+    def badges(self, request, pk=None):
+        """ZMKT19 — impression en lot des badges (PDF multi-pages)."""
+        evenement = self.get_object()
+        pdf_bytes = services.generer_badges_pdf_lot(evenement)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = 'inline; filename="badges.pdf"'
+        return resp
+
+    @action(detail=False, methods=['get'])
+    def reporting(self, request):
+        """ZMKT20 — reporting événement (participants & billetterie),
+        groupable par ``?groupby=type|mois``."""
+        groupby = request.query_params.get('groupby')
+        return Response(
+            services.reporting_evenements(request.user.company, groupby=groupby))
+
+    @action(detail=False, methods=['get'], url_path='reporting/export')
+    def reporting_export(self, request):
+        """ZMKT20 — export XLSX du reporting événement."""
+        from openpyxl import Workbook
+        from openpyxl.styles import Font
+        from apps.records.xlsx import coerce_cell, XLSX_CONTENT_TYPE
+        import io
+
+        lignes = services.reporting_evenements(request.user.company)
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Reporting événements'
+        headers = [
+            'Événement', 'Type', 'Inscrits', 'Confirmés', 'Présents',
+            'Absents', 'Taux présence %', 'Recette théorique MAD', 'Leads',
+        ]
+        ws.append(headers)
+        for cell in ws[1]:
+            cell.font = Font(bold=True)
+        for ligne in lignes:
+            ws.append([coerce_cell(v) for v in [
+                ligne['nom'], ligne['type_evenement'], ligne['nb_inscrits'],
+                ligne['nb_confirmes'], ligne['nb_presents'],
+                ligne['nb_absents'], ligne['taux_presence_pct'],
+                ligne['recette_theorique_mad'], ligne['nb_leads'],
+            ]])
+        buf = io.BytesIO()
+        wb.save(buf)
+        resp = HttpResponse(buf.getvalue(), content_type=XLSX_CONTENT_TYPE)
+        resp['Content-Disposition'] = 'attachment; filename="reporting_evenements.xlsx"'
+        return resp
+
+    @action(detail=False, methods=['get'])
+    def kanban(self, request):
+        """ZMKT14 — Kanban par étape configurable."""
+        return Response(services.evenements_par_etape(request.user.company))
+
+    @action(detail=True, methods=['post'], url_path='avancer-etape')
+    def avancer_etape(self, request, pk=None):
+        evenement = self.get_object()
+        nouvelle_etape = request.data.get('etape')
+        services.avancer_etape_evenement(evenement, nouvelle_etape)
+        evenement.refresh_from_db()
+        return Response(EvenementMarketingSerializer(evenement).data)
+
+
+class TypeEvenementViewSet(_ComptaBaseViewSet):
+    """Modèles réutilisables d'événement (ZMKT14)."""
+    queryset = TypeEvenement.objects.all()
+    serializer_class = TypeEvenementSerializer
+
+    @action(detail=True, methods=['post'], url_path='creer-evenement')
+    def creer_evenement(self, request, pk=None):
+        type_evenement = self.get_object()
+        nom = request.data.get('nom')
+        date_debut = request.data.get('date_debut')
+        if not nom or not date_debut:
+            return Response({'detail': 'nom et date_debut requis.'}, status=400)
+        evenement = services.creer_evenement_depuis_type(
+            type_evenement, nom=nom, date_debut=date_debut)
+        return Response(EvenementMarketingSerializer(evenement).data, status=201)
+
+
+class BilletEvenementViewSet(_ComptaBaseViewSet):
+    """Billets d'événement (ZMKT15)."""
+    queryset = BilletEvenement.objects.select_related('evenement').all()
+    serializer_class = BilletEvenementSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        evenement_id = self.request.query_params.get('evenement')
+        if evenement_id:
+            qs = qs.filter(evenement_id=evenement_id)
+        return qs
+
+
+class QuestionEvenementViewSet(_ComptaBaseViewSet):
+    """Questions d'inscription par événement (ZMKT16)."""
+    queryset = QuestionEvenement.objects.select_related('evenement').all()
+    serializer_class = QuestionEvenementSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        evenement_id = self.request.query_params.get('evenement')
+        if evenement_id:
+            qs = qs.filter(evenement_id=evenement_id)
+        return qs
+
+
+class CommunicationEvenementViewSet(_ComptaBaseViewSet):
+    """Communications programmées d'événement (ZMKT17)."""
+    queryset = CommunicationEvenement.objects.select_related('evenement').all()
+    serializer_class = CommunicationEvenementSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        evenement_id = self.request.query_params.get('evenement')
+        if evenement_id:
+            qs = qs.filter(evenement_id=evenement_id)
+        return qs
+
+
+class InscriptionEvenementViewSet(_ComptaBaseViewSet):
+    """Inscriptions à un événement (XMKT28)."""
+    queryset = InscriptionEvenement.objects.select_related('evenement').all()
+    serializer_class = InscriptionEvenementSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        evenement_id = self.request.query_params.get('evenement')
+        if evenement_id:
+            qs = qs.filter(evenement_id=evenement_id)
+        return qs
+
+    @action(detail=True, methods=['post'])
+    def pointer(self, request, pk=None):
+        inscription = self.get_object()
+        services.pointer_presence(inscription)
+        inscription.refresh_from_db()
+        return Response(InscriptionEvenementSerializer(inscription).data)
+
+    @action(detail=True, methods=['get'])
+    def badge(self, request, pk=None):
+        """ZMKT19 — badge PDF imprimable d'un inscrit."""
+        inscription = self.get_object()
+        pdf_bytes = services.generer_badge_pdf(inscription)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = 'inline; filename="badge.pdf"'
+        return resp
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def evenement_inscription_publique(request, evenement_id):
+    """XMKT28 — Inscription publique à un événement (aucune auth)."""
+    evenement = EvenementMarketing.objects.filter(id=evenement_id).first()
+    if not evenement:
+        return Response({'detail': 'Événement introuvable.'}, status=404)
+    nom = (request.data.get('nom') or '').strip()
+    if not nom:
+        return Response({'detail': 'nom requis.'}, status=400)
+    billet = None
+    billet_id = request.data.get('billet_id')
+    if billet_id:
+        billet = BilletEvenement.objects.filter(
+            id=billet_id, evenement=evenement).first()
+        if not billet:
+            return Response({'detail': 'Billet introuvable.'}, status=404)
+    try:
+        inscription = services.inscrire_evenement(
+            evenement, nom=nom,
+            email=request.data.get('email', ''),
+            telephone=request.data.get('telephone', ''), billet=billet,
+            reponses_questions=request.data.get('reponses_questions'))
+    except ValueError as exc:
+        return Response({'detail': str(exc)}, status=400)
+    return Response(
+        {'id': inscription.id, 'qr_token': inscription.qr_token}, status=201)
+
+
+# ── XMKT29 — Ponts QR pour supports offline ─────────────────────────────────
+
+class SupportOfflineViewSet(_ComptaBaseViewSet):
+    """CRUD des supports offline avec QR téléchargeable (XMKT29)."""
+    queryset = SupportOffline.objects.select_related('lien_tracke').all()
+    serializer_class = SupportOfflineSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom']
+    ordering_fields = ['date_creation']
+
+    def perform_create(self, serializer):
+        nom = serializer.validated_data.get('nom')
+        url_cible = serializer.validated_data.get('url_cible')
+        support = services.creer_support_offline(
+            self.request.user.company, nom=nom, url_cible=url_cible)
+        serializer.instance = support
+
+    @action(detail=True, methods=['get'])
+    def qr(self, request, pk=None):
+        support = self.get_object()
+        svg = services.qr_svg_support_offline(support)
+        if svg is None:
+            return Response({'detail': 'QR indisponible.'}, status=404)
+        return HttpResponse(svg, content_type='image/svg+xml')
+
+    @action(detail=False, methods=['get'], url_path='scans-par-support')
+    def scans_par_support(self, request):
+        return Response(
+            services.tableau_scans_par_support(request.user.company))
+
+
+# ── XMKT33 — Assistant d'authentification du domaine d'envoi ──────────────
+
+class DomaineEnvoiViewSet(_ComptaBaseViewSet):
+    """Page Paramètres « Domaine d'envoi » (XMKT33)."""
+    queryset = DomaineEnvoi.objects.all()
+    serializer_class = DomaineEnvoiSerializer
+
+    @action(detail=True, methods=['get'], url_path='enregistrements-attendus')
+    def enregistrements_attendus(self, request, pk=None):
+        domaine_envoi = self.get_object()
+        return Response(
+            services.enregistrements_dns_attendus(domaine_envoi.domaine))
+
+    @action(detail=True, methods=['post'], url_path='verifier')
+    def verifier(self, request, pk=None):
+        domaine_envoi = self.get_object()
+        services.verifier_domaine_envoi(domaine_envoi)
+        domaine_envoi.refresh_from_db()
+        return Response(DomaineEnvoiSerializer(domaine_envoi).data)
 
 
 # ── XMKT5 — Listes de diffusion nommées + abonnements ───────────────────────
@@ -4748,6 +5305,32 @@ class SequenceRelanceViewSet(_ComptaBaseViewSet):
         sequence = self.get_object()
         plan = services.planifier_etapes_sequence(sequence)
         return Response({'etapes': plan})
+
+    @action(detail=True, methods=['get'])
+    def traces(self, request, pk=None):
+        """ZMKT5 — traces filtrables par étape et statut."""
+        sequence = self.get_object()
+        etape_id = request.query_params.get('etape')
+        statut_trace = request.query_params.get('statut')
+        return Response(services.traces_sequence(
+            sequence, etape_id=etape_id, statut_trace=statut_trace))
+
+    @action(detail=True, methods=['get'], url_path='compteurs-par-etape')
+    def compteurs_par_etape(self, request, pk=None):
+        """ZMKT5 — compteurs Succès/Rejeté/Envoyé par étape."""
+        sequence = self.get_object()
+        return Response(services.compteurs_par_etape(sequence))
+
+    @action(detail=True, methods=['get'])
+    def participants(self, request, pk=None):
+        """ZMKT6 — liste des participants (nœud courant + prochaine
+        échéance), filtrable par statut, + compteur actifs."""
+        sequence = self.get_object()
+        statut = request.query_params.get('statut')
+        return Response({
+            'participants': services.participants_sequence(sequence, statut=statut),
+            'nb_actifs': services.nb_participants_actifs(sequence),
+        })
 
 
 class EtapeSequenceViewSet(_ComptaBaseViewSet):
@@ -4875,6 +5458,117 @@ def desinscription_publique(request, token):
     if not ok:
         return Response({'detail': resultat}, status=400)
     return Response({'desinscrit': True, 'destinataire': resultat})
+
+
+# ── XMKT4 — Confirmation double opt-in (public, tokenisé, aucune auth) ─────
+
+@api_view(['GET', 'POST'])
+@permission_classes([AllowAny])
+def double_optin_confirmer(request, token):
+    """Clic de confirmation du double opt-in (XMKT4, loi 09-08).
+
+    Pose un ``core.ConsentRecord`` accordé pour la finalité marketing, preuve
+    IP + horodatage. Jeton invalide → 400 sans effet.
+    """
+    ok, resultat = services.confirmer_double_optin_via_token(token)
+    if not ok:
+        return Response({'detail': resultat}, status=400)
+    return Response({'confirme': True, 'destinataire': resultat})
+
+
+# ── XMKT9 — Redirection tokenisée (public, tracking de clics) ──────────────
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def redirection_lien_tracke(request, token):
+    """Redirige vers l'URL cible d'un ``LienTrackee`` (XMKT9), en comptant le
+    clic (par lien + par destinataire via ``?d=`` si fourni par l'appelant
+    email/SMS). Jeton invalide → 404 (aucune fuite d'existence)."""
+    from django.http import HttpResponseRedirect
+
+    destinataire = (request.GET.get('d') or '').strip()
+    ok, resultat = services.traiter_clic_lien(token, destinataire=destinataire)
+    if not ok:
+        return Response({'detail': resultat}, status=404)
+    return HttpResponseRedirect(resultat)
+
+
+# ── XMKT27 — Enquêtes (public, tokenisé, aucune auth) ───────────────────────
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def enquete_publique(request, token):
+    """Récupère les questions VISIBLES d'une enquête via son lien public
+    (XMKT27). Jeton invalide/enquête inactive → 404 (aucune fuite
+    d'existence). Les réponses déjà données (``?reponses=`` JSON encodé) sont
+    prises en compte pour la logique conditionnelle."""
+    import json as _json
+
+    enquete = Enquete.objects.filter(token=token, actif=True).first()
+    if not enquete:
+        return Response({'detail': 'Enquête introuvable.'}, status=404)
+    jeton_invite = request.GET.get('invite')
+    if not services.acces_enquete_autorise(enquete, jeton_invite=jeton_invite):
+        return Response({'detail': 'Enquête introuvable.'}, status=404)
+    reponses_partielles = {}
+    brut = request.GET.get('reponses')
+    if brut:
+        try:
+            reponses_partielles = _json.loads(brut)
+        except (ValueError, TypeError):
+            reponses_partielles = {}
+    rendu = services.rendre_enquete_publique(enquete, reponses_partielles)
+    return Response(rendu)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def enquete_soumettre(request, token):
+    """Soumission publique d'une enquête (XMKT27), aucune authentification.
+
+    ZMKT9 — ``debute_le`` (ISO datetime, optionnel) permet de vérifier la
+    limite de temps de l'enquête ; sans elle, aucune vérification (illimité,
+    comportement actuel)."""
+    from django.utils.dateparse import parse_datetime
+
+    enquete = Enquete.objects.filter(token=token, actif=True).first()
+    if not enquete:
+        return Response({'detail': 'Enquête introuvable.'}, status=404)
+    debute_le_brut = request.data.get('debute_le')
+    if debute_le_brut:
+        debute_le = parse_datetime(debute_le_brut)
+        if debute_le and services.limite_temps_depassee(enquete, debute_le=debute_le):
+            return Response({'detail': 'Temps limite dépassé.'}, status=400)
+    reponses = request.data.get('reponses') or {}
+    contact_ref = request.data.get('contact_ref', '')
+    try:
+        reponse = services.soumettre_reponse_enquete(
+            enquete, reponses=reponses, contact_ref=contact_ref,
+            nom_repondant=request.data.get('nom_repondant', ''))
+    except ValueError as exc:
+        return Response({'detail': str(exc)}, status=400)
+    return Response({
+        'id': reponse.id,
+        'score_pct': reponse.score_pct,
+        'reussi': reponse.reussi,
+        'certificat_genere': reponse.certificat_genere,
+    }, status=201)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def enquete_certificat_pdf(request, reponse_id):
+    """ZMKT10 — téléchargement du certificat PDF (répondant), 404 si non
+    certifié/échoué (aucune fuite d'existence)."""
+    reponse = ReponseEnquete.objects.filter(id=reponse_id).first()
+    if not reponse or not reponse.certificat_genere:
+        return Response({'detail': 'Certificat indisponible.'}, status=404)
+    pdf_bytes = services.generer_certificat_pdf(reponse)
+    if pdf_bytes is None:
+        return Response({'detail': 'Certificat indisponible.'}, status=404)
+    resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+    resp['Content-Disposition'] = 'inline; filename="certificat.pdf"'
+    return resp
 
 
 # ── XFAC26/27 — Portail client self-service : relevé + contestation ───────

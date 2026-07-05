@@ -46,6 +46,15 @@ from .models import (
     ObligationFiscale,
     FamilleTvaNonDeductible,
     Compensation, LigneCompensation,
+    ApprobationEnvoiCampagne,
+    Enquete, ReponseEnquete,
+    EvenementMarketing, InscriptionEvenement,
+    SupportOffline,
+    DomaineEnvoi,
+    TypeEvenement,
+    BilletEvenement,
+    QuestionEvenement,
+    CommunicationEvenement,
 )
 
 
@@ -1466,6 +1475,11 @@ class CampagneSerializer(serializers.ModelSerializer):
         source='get_canal_display', read_only=True)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
+    # ZMKT2 — colonnes de performance dérivées (0 si division par zéro).
+    taux_delivre_pct = serializers.SerializerMethodField()
+    taux_ouverture_pct = serializers.SerializerMethodField()
+    taux_clic_pct = serializers.SerializerMethodField()
+    taux_desinscription_pct = serializers.SerializerMethodField()
 
     class Meta:
         model = Campagne
@@ -1474,11 +1488,40 @@ class CampagneSerializer(serializers.ModelSerializer):
             'listes', 'sms_sender_id', 'statut', 'statut_display',
             'nb_destinataires', 'nb_envois', 'nb_ouvertures', 'nb_clics',
             'envoyee_le', 'date_creation',
+            'planifiee_le', 'debit_max_par_heure', 'variantes_langue',
+            'ab_test', 'ab_gagnant', 'ab_decide_le',
+            'budget_mad', 'cout_reel_mad', 'lignes_cout',
+            'parente', 'rattachements', 'est_modele',
+            'taux_delivre_pct', 'taux_ouverture_pct', 'taux_clic_pct',
+            'taux_desinscription_pct',
         ]
         read_only_fields = [
             'statut', 'nb_destinataires', 'nb_envois', 'nb_ouvertures',
             'nb_clics', 'envoyee_le', 'date_creation',
+            'ab_gagnant', 'ab_decide_le',
         ]
+
+    def _pct(self, numerateur, denominateur):
+        if not denominateur:
+            return 0.0
+        return round(numerateur / denominateur * 100, 1)
+
+    def get_taux_delivre_pct(self, obj):
+        delivres = obj.envois.exclude(
+            statut__in=['rebond']).count() if obj.pk else 0
+        return self._pct(delivres, obj.nb_envois)
+
+    def get_taux_ouverture_pct(self, obj):
+        return self._pct(obj.nb_ouvertures, obj.nb_envois)
+
+    def get_taux_clic_pct(self, obj):
+        return self._pct(obj.nb_clics, obj.nb_envois)
+
+    def get_taux_desinscription_pct(self, obj):
+        if not obj.pk:
+            return 0.0
+        nb_desinscrits = obj.envois.filter(statut='desinscrit').count()
+        return self._pct(nb_desinscrits, obj.nb_envois)
 
     def validate_listes(self, value):
         request = self.context.get('request')
@@ -1513,6 +1556,28 @@ class EnvoiCampagneSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'statut', 'raison_smtp', 'envoye_le', 'ouvert_le', 'clique_le',
             'date_creation',
+        ]
+
+
+class ApprobationEnvoiCampagneSerializer(serializers.ModelSerializer):
+    """XMKT23 — demande d'approbation d'un envoi de masse."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    demande_par_nom = serializers.CharField(
+        source='demande_par.username', read_only=True, default='')
+    decide_par_nom = serializers.CharField(
+        source='decide_par.username', read_only=True, default='')
+
+    class Meta:
+        model = ApprobationEnvoiCampagne
+        fields = [
+            'id', 'campagne', 'nb_destinataires_demandes', 'statut',
+            'statut_display', 'demande_par_nom', 'decide_par_nom',
+            'motif_rejet', 'date_creation', 'date_decision',
+        ]
+        read_only_fields = [
+            'campagne', 'nb_destinataires_demandes', 'statut',
+            'date_creation', 'date_decision',
         ]
 
 
@@ -2329,3 +2394,135 @@ class CompensationSerializer(serializers.ModelSerializer):
             'lignes', 'date_creation', 'date_validation',
         ]
         read_only_fields = fields
+
+
+class EnqueteSerializer(serializers.ModelSerializer):
+    """XMKT27 — Enquête configurable (constructeur avec logique
+    conditionnelle)."""
+    class Meta:
+        model = Enquete
+        fields = [
+            'id', 'titre', 'questions', 'token', 'actif', 'date_creation',
+            'mode_pagination', 'barre_progression', 'bouton_retour',
+            'limite_temps_minutes', 'ordre_aleatoire',
+            'mode_scoring', 'score_requis_pct', 'est_certification',
+            'mode_acces', 'connexion_requise', 'tentatives_max',
+            'description_accueil', 'message_fin',
+        ]
+        read_only_fields = ['token', 'date_creation']
+
+    def validate_questions(self, value):
+        from . import services
+        try:
+            return services.valider_questions_enquete(value)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc))
+
+
+class ReponseEnqueteSerializer(serializers.ModelSerializer):
+    """XMKT27 — soumission (lecture seule côté admin — la création publique
+    passe par ``enquete_soumettre``)."""
+    class Meta:
+        model = ReponseEnquete
+        fields = ['id', 'enquete', 'contact_ref', 'reponses', 'date_creation']
+        read_only_fields = fields
+
+
+class EvenementMarketingSerializer(serializers.ModelSerializer):
+    """XMKT28 — événement marketing léger (salon/porte ouverte/webinaire)."""
+    type_display = serializers.CharField(
+        source='get_type_evenement_display', read_only=True)
+    nb_inscrits = serializers.IntegerField(
+        source='inscriptions.count', read_only=True)
+
+    class Meta:
+        model = EvenementMarketing
+        fields = [
+            'id', 'nom', 'type_evenement', 'type_display', 'date_debut',
+            'date_fin', 'lieu', 'capacite', 'nb_inscrits', 'date_creation',
+            'etape', 'type_modele',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class TypeEvenementSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TypeEvenement
+        fields = [
+            'id', 'nom', 'type_evenement_defaut', 'config_defaut',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class BilletEvenementSerializer(serializers.ModelSerializer):
+    places_restantes = serializers.IntegerField(read_only=True)
+    nb_inscrits = serializers.IntegerField(
+        source='inscriptions.count', read_only=True)
+
+    class Meta:
+        model = BilletEvenement
+        fields = [
+            'id', 'evenement', 'libelle', 'prix_ttc_mad',
+            'date_debut_vente', 'date_fin_vente', 'quota',
+            'places_restantes', 'nb_inscrits',
+        ]
+
+
+class InscriptionEvenementSerializer(serializers.ModelSerializer):
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = InscriptionEvenement
+        fields = [
+            'id', 'evenement', 'nom', 'email', 'telephone', 'statut',
+            'statut_display', 'qr_token', 'lead_id', 'date_creation',
+            'date_pointage', 'billet', 'reponses_questions',
+        ]
+        read_only_fields = [
+            'qr_token', 'lead_id', 'date_creation', 'date_pointage']
+
+
+class QuestionEvenementSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = QuestionEvenement
+        fields = [
+            'id', 'evenement', 'libelle', 'type_question', 'obligatoire',
+            'portee',
+        ]
+
+
+class CommunicationEvenementSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CommunicationEvenement
+        fields = [
+            'id', 'evenement', 'canal', 'gabarit', 'intervalle',
+            'unite_intervalle', 'envoyee_le',
+        ]
+        read_only_fields = ['envoyee_le']
+
+
+class SupportOfflineSerializer(serializers.ModelSerializer):
+    nb_scans = serializers.IntegerField(
+        source='lien_tracke.nb_clics', read_only=True, default=0)
+
+    class Meta:
+        model = SupportOffline
+        fields = ['id', 'nom', 'url_cible', 'nb_scans', 'date_creation']
+        read_only_fields = ['url_cible', 'nb_scans', 'date_creation']
+
+
+class DomaineEnvoiSerializer(serializers.ModelSerializer):
+    authentifie = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = DomaineEnvoi
+        fields = [
+            'id', 'domaine', 'spf_verifie', 'dkim_verifie', 'dmarc_verifie',
+            'authentifie', 'derniere_verification_le',
+        ]
+        read_only_fields = [
+            'spf_verifie', 'dkim_verifie', 'dmarc_verifie',
+            'derniere_verification_le',
+        ]

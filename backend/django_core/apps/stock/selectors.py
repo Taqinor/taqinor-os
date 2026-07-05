@@ -945,3 +945,15 @@ def trace_serie(company, *, numero_serie=None, numero_lot=None):
     if not found:
         return None
     return chaine
+
+
+# ── XMKT29 — Exposition de l'encodeur QR maison (N20) aux autres apps ──────
+
+def qr_svg(text, *, box=4, quiet=4):
+    """XMKT29 — encodeur QR SANS dépendance (``apps.stock.labels.qr_svg``),
+    exposé ici pour que d'autres apps (compta : SupportOffline XMKT29,
+    badges ZMKT19, enquêtes ZMKT12) génèrent un QR SVG sans jamais importer
+    ``apps.stock.labels``/``apps.stock.views`` directement — AUCUNE nouvelle
+    dépendance (pattern N20)."""
+    from .labels import qr_svg as _qr_svg
+    return _qr_svg(text, box=box, quiet=quiet)
