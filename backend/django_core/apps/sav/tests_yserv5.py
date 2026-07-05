@@ -71,7 +71,7 @@ class YSERV5GenerationAutoTest(TestCase):
                 company=self.company, type=Ticket.Type.PREVENTIF).exists())
         self.assertTrue(
             Notification.objects.filter(
-                user=self.admin, event_type='sav_visites_auto_generees',
+                recipient=self.admin, event_type='sav_visites_auto_generees',
             ).exists())
 
     def test_idempotent_pas_de_doublon_meme_jour(self):

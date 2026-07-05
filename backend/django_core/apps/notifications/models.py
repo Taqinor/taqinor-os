@@ -49,6 +49,9 @@ class EventType(models.TextChoices):
     # ZSAV9 — notification d'un suiveur de ticket (note ou transition).
     SAV_TICKET_FOLLOWED_UPDATE = (
         'sav_ticket_followed_update', 'Mise à jour sur un ticket suivi')
+    # YSERV5 — génération automatique nocturne de visites préventives dues.
+    SAV_VISITES_AUTO_GENEREES = (
+        'sav_visites_auto_generees', 'Visites préventives générées automatiquement')
     # Group S — messagerie interne (« Discuss »).
     CHAT_MESSAGE = 'chat_message', 'Nouveau message'
     CHAT_MENTION = 'chat_mention', 'Vous avez été mentionné'
