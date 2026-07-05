@@ -224,18 +224,27 @@ def relance_reminders():
     cours) : la relance reste suspendue jusqu'à la date promise ou la rupture
     de la promesse."""
     from datetime import timedelta
-    from .models import Facture, FollowupLevel, RelanceLog
+    from .models import Facture, FollowupLevel, ParametrageRelanceClient, RelanceLog
     from .email_service import send_relance_email
 
     today = casablanca_today()
     _check_promesses_expirees(today)
     sent = 0
+    # ZFAC8 — un client en mode MANUEL est ignoré par le cron automatique (son
+    # responsable le suit via la liste manuelle, pas cet envoi programmé).
+    clients_manuels = set(
+        ParametrageRelanceClient.objects.filter(
+            mode=ParametrageRelanceClient.Mode.MANUEL,
+        ).values_list('client_id', flat=True)
+    )
     factures = Facture.objects.filter(
         prochaine_relance__lte=today, exclu_relances=False,
     ).exclude(
         statut__in=['payee', 'annulee', 'brouillon'],
     ).exclude(
         exclu_relances_jusquau__gte=today,
+    ).exclude(
+        client_id__in=clients_manuels,
     ).select_related('client', 'company').prefetch_related(
         'lignes', 'paiements', 'avoirs')
 

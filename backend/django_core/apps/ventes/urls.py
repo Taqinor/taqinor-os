@@ -8,6 +8,7 @@ from .views import (
     LigneFactureViewSet,
     PaiementViewSet,
     AvoirViewSet,
+    NoteDebitViewSet,  # ZFAC4
     email_config,
     client_credit_warning,
     releve_dry_run,
@@ -32,6 +33,7 @@ from .views import (
 )
 from .recouvrement import (
     FollowupLevelViewSet,
+    ParametrageRelanceClientViewSet,  # ZFAC8
     PromessePaiementViewSet,
     relances_list,
     balance_agee,
@@ -60,6 +62,7 @@ router.register(r'factures', FactureViewSet)
 router.register(r'factures-lignes', LigneFactureViewSet)
 router.register(r'paiements', PaiementViewSet)
 router.register(r'avoirs', AvoirViewSet)
+router.register(r'notes-debit', NoteDebitViewSet, basename='note-debit')
 # FG245 — calepinage toiture (placement panneaux), compte calculé serveur.
 router.register(r'calepinages', RoofLayoutViewSet, basename='calepinage')
 # FG254 / DC35 — bibliothèque de fiches techniques normalisées (datasheets).
@@ -67,6 +70,9 @@ router.register(r'fiches-techniques', FicheTechniqueViewSet,
                 basename='fiche-technique')
 router.register(r'niveaux-relance', FollowupLevelViewSet,
                 basename='niveau-relance')
+# ZFAC8 — réglage responsable/mode de relance par client.
+router.register(r'parametrages-relance-client', ParametrageRelanceClientViewSet,
+                basename='parametrage-relance-client')
 # XFAC5 — promesses de paiement (suspendent la relance auto jusqu'à échéance).
 router.register(r'promesses-paiement', PromessePaiementViewSet,
                 basename='promesse-paiement')

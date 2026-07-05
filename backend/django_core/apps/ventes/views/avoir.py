@@ -10,6 +10,7 @@ from apps.stock.services import (  # noqa: F401
 from ..models import (  # noqa: F401
     Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
     Avoir, LigneAvoir, FollowupLevel, RelanceLog, EmailLog,
+    NoteDebit,
 )
 from ..serializers import (  # noqa: F401
     DevisSerializer,
@@ -21,6 +22,7 @@ from ..serializers import (  # noqa: F401
     LigneFactureSerializer,
     PaiementSerializer,
     AvoirSerializer,
+    NoteDebitSerializer,
     RelanceLogSerializer,
     DevisActivitySerializer,
 )
@@ -124,6 +126,54 @@ class AvoirViewSet(viewsets.ReadOnlyModelViewSet):
             'Avoir', avoir.reference,
             client=avoir.client if avoir.client_id else None,
             company=avoir.company)
+        response['Content-Disposition'] = (
+            f'inline; filename="{filename}"')
+        return response
+
+
+class NoteDebitViewSet(viewsets.ReadOnlyModelViewSet):
+    """ZFAC4 — notes de débit : lecture pour tout rôle ; PDF pour
+    Responsable/Admin. Création via la facture (creer-note-debit), jamais
+    directement — même patron qu'``AvoirViewSet``."""
+    queryset = NoteDebit.objects.select_related(
+        'client', 'facture', 'created_by').prefetch_related('lignes').all()
+    serializer_class = NoteDebitSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'facture__reference', 'client__nom']
+    ordering_fields = ['date_emission', 'reference']
+    ordering = ['-date_emission']
+
+    def get_queryset(self):
+        qs = _company_qs(super().get_queryset(), self.request.user)
+        qs = scope_queryset(qs, self.request.user, ['created_by'])
+        facture_id = self.request.query_params.get('facture')
+        if facture_id:
+            qs = qs.filter(facture_id=facture_id)
+        return qs
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    @action(detail=True, methods=['get'], url_path='telecharger-pdf')
+    def telecharger_pdf(self, request, pk=None):
+        note_debit = self.get_object()
+        from ..utils.pdf import download_pdf, generate_note_debit_pdf
+        try:
+            if not note_debit.fichier_pdf:
+                generate_note_debit_pdf(note_debit.id)
+                note_debit.refresh_from_db()
+            pdf_bytes = download_pdf(note_debit.fichier_pdf)
+        except Exception:
+            return Response({'detail': 'PDF indisponible.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        from ..utils.filenames import document_filename
+        filename = document_filename(
+            'NoteDebit', note_debit.reference,
+            client=note_debit.client if note_debit.client_id else None,
+            company=note_debit.company)
         response['Content-Disposition'] = (
             f'inline; filename="{filename}"')
         return response

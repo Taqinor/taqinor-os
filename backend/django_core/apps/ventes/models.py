@@ -1625,6 +1625,38 @@ class FollowupLevel(models.Model):
             Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 
+class ParametrageRelanceClient(models.Model):
+    """ZFAC8 — réglage PAR CLIENT du responsable de relance + du mode
+    (auto/manuel), lu par ``scheduled.relance_reminders``. En mode
+    ``manuel``, le cron n'envoie AUCUNE relance automatique pour ce client
+    (il apparaît seulement dans la liste manuelle de son responsable).
+    Défaut = ``auto`` → comportement historique inchangé pour tout client
+    non paramétré (absence de ligne = auto)."""
+    class Mode(models.TextChoices):
+        AUTO = 'auto', 'Automatique'
+        MANUEL = 'manuel', 'Manuel'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='parametrages_relance')
+    client = models.OneToOneField(
+        'crm.Client', on_delete=models.CASCADE,
+        related_name='parametrage_relance')
+    responsable = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='clients_relance_responsable')
+    mode = models.CharField(
+        max_length=10, choices=Mode.choices, default=Mode.AUTO)
+    prochaine_relance_manuelle = models.DateField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Paramétrage de relance client'
+        verbose_name_plural = 'Paramétrages de relance client'
+
+    def __str__(self):
+        return f'{self.client_id} — {self.mode}'
+
+
 class RelanceLog(models.Model):
     """Trace d'une relance effectuée sur une facture (consigne, jamais envoi)."""
     company = models.ForeignKey(

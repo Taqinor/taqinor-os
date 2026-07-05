@@ -610,6 +610,21 @@ class FollowupLevelSerializer(serializers.ModelSerializer):
                   'taux_interet_annuel', 'frais_fixes', 'canal']
 
 
+class ParametrageRelanceClientSerializer(serializers.ModelSerializer):
+    """ZFAC8 — réglage par client du responsable/mode de relance."""
+    mode_display = serializers.CharField(
+        source='get_mode_display', read_only=True)
+    responsable_username = serializers.CharField(
+        source='responsable.username', read_only=True, default=None)
+
+    class Meta:
+        from .models import ParametrageRelanceClient
+        model = ParametrageRelanceClient
+        fields = ['id', 'client', 'responsable', 'responsable_username',
+                  'mode', 'mode_display', 'prochaine_relance_manuelle']
+        read_only_fields = ['company']
+
+
 class RelanceLogSerializer(serializers.ModelSerializer):
     created_by_nom = serializers.CharField(
         source='created_by.username', read_only=True, default=None)
