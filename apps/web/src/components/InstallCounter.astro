@@ -1,14 +1,11 @@
 ---
 /**
- * WJ35 — InstallCounter : compteur d'installations animé, chiffres RÉELS
- * uniquement — dérivés de src/lib/realisations.ts (source unique de vérité,
- * déjà publiée sur l'accueil : « 43,48 kWc installés »). Aucun nombre n'est
- * fabriqué ici ; si REALISATIONS devient vide un jour, ce composant ne rend
- * rien (même discipline que <Testimonials/> / <StarRating/>).
- *
- * RULE B (2026-07-04) : le compteur brut d'installations (count) n'est plus
- * un chiffre public mis en avant — seul le kWc installés reste affiché
- * (partiellement supersède W280/W284).
+ * WJ35 / WC5-WC6 — InstallCounter : compteur animé, chiffre RÉEL uniquement.
+ * Depuis 2026-07-05 il affiche la PRODUCTION mesurée cumulée de la flotte
+ * suivie (MEASURED_FLEET_LIFETIME_MWH, realisations.ts) — plus la capacité
+ * installée (le total de puissance posée a été retiré du site par le
+ * fondateur). Aucun nombre fabriqué ; si la flotte mesurée est vide, le
+ * composant ne rend rien (même discipline que <Testimonials/> / <StarRating/>).
  *
  * Reduced-motion : le compte-up (0 → valeur finale) est gated
  * `prefers-reduced-motion: no-preference` — sous reduced-motion la valeur
