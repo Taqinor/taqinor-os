@@ -1057,3 +1057,40 @@ def file_action(company, *, today=None):
             for cle, ids in buckets.items()
         }
     }
+
+
+# ── ZMFG8 — Affichage unifié des pièces (ajout/retrait/recyclage) ───────────
+
+def pieces_unifiees(ticket):
+    """ZMFG8 — Liste UNIFIÉE des pièces d'un ticket, regroupant
+    ``PieceConsommee`` (ajout) et ``PieceRetiree`` (retrait/recyclage) en une
+    seule structure typée par ``operation``, avec sous-totaux par type de
+    quantité. Pure lecture — aucun mouvement de stock déclenché ici (délégué
+    à `services.retirer_piece`/l'enregistrement de consommation existant)."""
+    from decimal import Decimal
+
+    rows = []
+    for piece in ticket.pieces.select_related('produit').all():
+        rows.append({
+            'id': piece.id,
+            'operation': piece.operation,
+            'produit_id': piece.produit_id,
+            'produit_nom': getattr(piece.produit, 'nom', None),
+            'quantite': piece.quantite,
+        })
+    for piece in ticket.pieces_retirees.select_related('produit').all():
+        rows.append({
+            'id': piece.id,
+            'operation': piece.operation,
+            'produit_id': piece.produit_id,
+            'produit_nom': getattr(piece.produit, 'nom', None),
+            'quantite': piece.quantite,
+            'destination': piece.destination,
+        })
+
+    sous_totaux = {'ajout': Decimal('0'), 'retrait': Decimal('0'),
+                   'recyclage': Decimal('0')}
+    for row in rows:
+        sous_totaux[row['operation']] += Decimal(str(row['quantite']))
+
+    return {'lignes': rows, 'sous_totaux': sous_totaux}

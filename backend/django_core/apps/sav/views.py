@@ -1314,7 +1314,7 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         from apps.stock.selectors import (
             get_produit_or_raise, produit_does_not_exist,
         )
-        from .services import retirer_piece
+        from .services import OperationDestinationIncoherenteError, retirer_piece
         try:
             quantite = Decimal(str(request.data.get('quantite') or '1'))
         except (InvalidOperation, TypeError):
@@ -1329,21 +1329,39 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         destination = request.data.get('destination') or PieceRetiree.Destination.REBUT
         if destination not in PieceRetiree.Destination.values:
             return Response({'detail': 'Destination invalide.'}, status=400)
+        # ZMFG8 — typage opérationnel explicite (retrait/recyclage).
+        operation = request.data.get('operation') or PieceRetiree.Operation.RETRAIT
+        if operation not in PieceRetiree.Operation.values:
+            return Response({'detail': 'Opération invalide.'}, status=400)
         numero_serie = (request.data.get('numero_serie') or '').strip()
-        with transaction.atomic():
-            piece = retirer_piece(
-                company=ticket.company, ticket=ticket, produit=produit,
-                quantite=quantite, numero_serie=numero_serie,
-                destination=destination, user=request.user)
-            suffixe = {
-                PieceRetiree.Destination.STOCK_OCCASION: ' (stock occasion +)',
-                PieceRetiree.Destination.RETOUR_FOURNISSEUR: ' (RMA)',
-                PieceRetiree.Destination.REBUT: ' (rebut)',
-            }.get(destination, '')
-            activity.log_note(
-                ticket, request.user,
-                f'Pièce {produit.nom} ×{quantite} retirée{suffixe}')
+        try:
+            with transaction.atomic():
+                piece = retirer_piece(
+                    company=ticket.company, ticket=ticket, produit=produit,
+                    quantite=quantite, numero_serie=numero_serie,
+                    destination=destination, operation=operation,
+                    user=request.user)
+        except OperationDestinationIncoherenteError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        suffixe = {
+            PieceRetiree.Destination.STOCK_OCCASION: ' (stock occasion +)',
+            PieceRetiree.Destination.RETOUR_FOURNISSEUR: ' (RMA)',
+            PieceRetiree.Destination.REBUT: ' (rebut)',
+        }.get(destination, '')
+        activity.log_note(
+            ticket, request.user,
+            f'Pièce {produit.nom} ×{quantite} retirée{suffixe}')
         return Response(PieceRetireeSerializer(piece).data, status=201)
+
+    @action(detail=True, methods=['get'], url_path='pieces-unifiees',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def pieces_unifiees(self, request, pk=None):
+        """ZMFG8 — Affichage unifié Ajout/Retrait/Recyclage des pièces du
+        ticket (`PieceConsommee` + `PieceRetiree`), avec sous-totaux."""
+        from .selectors import pieces_unifiees as _pieces_unifiees
+
+        ticket = self.get_object()
+        return Response(_pieces_unifiees(ticket))
 
     @action(detail=True, methods=['post'], url_path='generer-facture',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])

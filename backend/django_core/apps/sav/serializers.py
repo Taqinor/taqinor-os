@@ -168,12 +168,16 @@ class PieceRetireeSerializer(serializers.ModelSerializer):
         source='produit.sku', read_only=True, default=None)
     destination_display = serializers.CharField(
         source='get_destination_display', read_only=True)
+    # ZMFG8 — typage opérationnel explicite (ajout/retrait/recyclage).
+    operation_display = serializers.CharField(
+        source='get_operation_display', read_only=True)
 
     class Meta:
         model = PieceRetiree
         fields = [
             'id', 'produit', 'produit_nom', 'produit_marque', 'produit_sku',
             'quantite', 'numero_serie', 'destination', 'destination_display',
+            'operation', 'operation_display',
             'restockee', 'warranty_claim', 'equipement_remplace',
             'date_creation',
         ]

@@ -548,8 +548,13 @@ def creer_intervention_depuis_installation(
 
 # ── XMFG10 — Pièces retirées / récupérées sur ticket SAV ─────────────────────
 
+class OperationDestinationIncoherenteError(ValueError):
+    """ZMFG8 — une pièce en ``recyclage`` doit avoir ``destination`` =
+    ``stock_occasion`` (cohérence avec le restock XMFG10)."""
+
+
 def retirer_piece(*, company, ticket, produit, quantite, numero_serie,
-                  destination, user):
+                  destination, user, operation=None):
     """Trace une pièce RETIRÉE du ticket (`PieceRetiree`) et applique les
     effets de bord de sa `destination` :
 
@@ -559,9 +564,22 @@ def retirer_piece(*, company, ticket, produit, quantite, numero_serie,
         à l'équipement si `numero_serie` matche un équipement de la société ;
       * ``rebut`` → aucun mouvement de stock.
 
+    ``operation`` (ZMFG8) — ``retrait`` (défaut) ou ``recyclage`` ; lève
+    ``OperationDestinationIncoherenteError`` si ``recyclage`` est demandé
+    sans ``destination='stock_occasion'`` (garde de cohérence, aucun
+    nouveau mouvement de stock au-delà de celui déjà déclenché par
+    `stock_occasion`).
+
     Si `numero_serie` correspond à un `sav.Equipement` existant (société
     scoped), il est marqué REMPLACÉ. Renvoie la `PieceRetiree` créée."""
     from .models import Equipement, PieceRetiree, WarrantyClaim
+
+    operation = operation or PieceRetiree.Operation.RETRAIT
+    if (operation == PieceRetiree.Operation.RECYCLAGE
+            and destination != PieceRetiree.Destination.STOCK_OCCASION):
+        raise OperationDestinationIncoherenteError(
+            "Une pièce en recyclage doit avoir une destination "
+            "'stock_occasion'.")
 
     equipement_remplace = None
     if numero_serie:
@@ -576,6 +594,7 @@ def retirer_piece(*, company, ticket, produit, quantite, numero_serie,
     piece = PieceRetiree.objects.create(
         company=company, ticket=ticket, produit=produit, quantite=quantite,
         numero_serie=numero_serie or '', destination=destination,
+        operation=operation,
         equipement_remplace=equipement_remplace, created_by=user)
 
     if destination == PieceRetiree.Destination.STOCK_OCCASION:

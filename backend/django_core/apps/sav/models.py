@@ -1666,6 +1666,12 @@ class PieceConsommee(models.Model):
     def __str__(self):
         return f'{self.produit_id} ×{self.quantite} (ticket {self.ticket_id})'
 
+    @property
+    def operation(self):
+        """ZMFG8 — une `PieceConsommee` est toujours un AJOUT (parité
+        affichage unifié avec `PieceRetiree.operation` retrait/recyclage)."""
+        return 'ajout'
+
 
 # ── XSAV16 — Journal d'immobilisation (downtime) + disponibilité % ──────────
 
@@ -1789,6 +1795,15 @@ class PieceRetiree(models.Model):
         RETOUR_FOURNISSEUR = 'retour_fournisseur', 'Retour fournisseur'
         STOCK_OCCASION = 'stock_occasion', 'Stock occasion'
 
+    # ── ZMFG8 — Typage opérationnel explicite (parité Repair Parts Odoo) ────
+    # `operation` distingue RETRAIT (rebut/retour_fournisseur) de RECYCLAGE
+    # (remise en circulation via `stock_occasion`) — affichage unifié avec
+    # PieceConsommee (AJOUT). Défaut RETRAIT : rétro-compatible avec toute
+    # ligne existante (aucune n'était étiquetée recyclage jusqu'ici).
+    class Operation(models.TextChoices):
+        RETRAIT = 'retrait', 'Retrait'
+        RECYCLAGE = 'recyclage', 'Recyclage'
+
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='pieces_retirees_sav')
@@ -1802,6 +1817,10 @@ class PieceRetiree(models.Model):
     numero_serie = models.CharField(max_length=120, blank=True, default='')
     destination = models.CharField(
         max_length=20, choices=Destination.choices, default=Destination.REBUT)
+    operation = models.CharField(
+        max_length=10, choices=Operation.choices, default=Operation.RETRAIT,
+        help_text='Retrait (rebut/RMA) ou recyclage (remise en circulation '
+                  '— exige destination=stock_occasion).')
     restockee = models.BooleanField(
         default=False,
         help_text=('True une fois le MouvementStock ENTRÉE (stock_occasion) '
