@@ -99,6 +99,10 @@ INSTALLED_APPS = [
     # Chargé AVANT compta : le shim de ré-export de compta.models importe
     # apps.ao.models.
     'apps.ao',
+    # ODX12 — Portail self-service client (FG228–233). Sorti de compta en
+    # préservant les tables physiques (SeparateDatabaseAndState). Chargé AVANT
+    # compta : le shim de ré-export de compta.models importe apps.portail.models.
+    'apps.portail',
     # FG107-FG121 — Comptabilité générale (plan CGNC, journaux, écritures en
     # partie double, états de synthèse). Auto-écritures OFF par défaut.
     'apps.compta',
