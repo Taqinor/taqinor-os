@@ -525,6 +525,34 @@ def _elements_rh_du_dossier(periode, dossier):
     return elements
 
 
+# ── ZPAI8 — Règle d'arrondi des jours d'absence, par rubrique ───────────────
+
+def _arrondir_jours_absence(jours, rubrique):
+    """Applique la règle d'arrondi ``Rubrique.arrondi``/``sens_arrondi`` (ZPAI8).
+
+    ``rubrique`` peut être ``None`` (élément sans rubrique catalogue) → renvoie
+    ``jours`` inchangé (comportement historique). ``arrondi='aucun'`` (défaut)
+    → inchangé aussi. ``demi_journee``/``journee`` arrondissent au multiple de
+    0,5 ou 1 jour le plus proche dans le sens choisi (``sup``/``inf``).
+    """
+    from .models import Rubrique
+
+    jours = Decimal(jours or 0)
+    if rubrique is None or not getattr(rubrique, 'arrondi', None):
+        return jours
+    if rubrique.arrondi == Rubrique.ARRONDI_AUCUN:
+        return jours
+
+    pas = Decimal('1') if rubrique.arrondi == Rubrique.ARRONDI_JOURNEE \
+        else Decimal('0.5')
+    unites = jours / pas
+    if rubrique.sens_arrondi == Rubrique.SENS_INF:
+        unites_arrondies = unites.to_integral_value(rounding='ROUND_FLOOR')
+    else:
+        unites_arrondies = unites.to_integral_value(rounding='ROUND_CEILING')
+    return unites_arrondies * pas
+
+
 # ── PAIE13 — Calcul du salaire de base proraté selon le type de rémunération ─
 
 def calculer_salaire_base_periode(profil, periode, elements=None):
@@ -586,7 +614,10 @@ def calculer_salaire_base_periode(profil, periode, elements=None):
             if getattr(el, 'remunere', False):
                 continue
             # Les absences sont en jours par convention dans ElementVariable.
-            jours_absence += Decimal(el.quantite or 0)
+            # ZPAI8 — arrondi selon la rubrique catalogue de l'élément (si
+            # rattachée), sinon quantité brute (comportement historique).
+            jours_absence += _arrondir_jours_absence(
+                el.quantite, getattr(el, 'rubrique', None))
         elif el.type == ElementVariable.TYPE_HEURES:
             # Des heures travaillées déclarées explicitement.
             heures_travaillees_declares = (

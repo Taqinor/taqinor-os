@@ -306,6 +306,31 @@ class Rubrique(models.Model):
     # toucher au calcul du bulletin lui-même (jamais client-facing).
     apparait_cout_employeur = models.BooleanField(
         default=True, verbose_name='Apparaît au coût employeur')
+    # ZPAI8 — Règle d'arrondi des jours/heures pour une rubrique d'ABSENCE
+    # (façon Odoo « Display in Payslip » : pas d'arrondi / demi-journée /
+    # journée). Ignoré pour toute rubrique qui n'est pas rattachée à un
+    # ``ElementVariable`` de type ``absence``. ``aucun`` (défaut) = comportement
+    # historique inchangé (quantité brute, sans arrondi).
+    ARRONDI_AUCUN = 'aucun'
+    ARRONDI_DEMI_JOURNEE = 'demi_journee'
+    ARRONDI_JOURNEE = 'journee'
+    ARRONDI_CHOICES = [
+        (ARRONDI_AUCUN, 'Aucun'),
+        (ARRONDI_DEMI_JOURNEE, 'Demi-journée'),
+        (ARRONDI_JOURNEE, 'Journée'),
+    ]
+    SENS_SUP = 'sup'
+    SENS_INF = 'inf'
+    SENS_CHOICES = [
+        (SENS_SUP, 'Arrondi supérieur'),
+        (SENS_INF, 'Arrondi inférieur'),
+    ]
+    arrondi = models.CharField(
+        max_length=13, choices=ARRONDI_CHOICES, default=ARRONDI_AUCUN,
+        blank=True, verbose_name="Arrondi (jours d'absence)")
+    sens_arrondi = models.CharField(
+        max_length=3, choices=SENS_CHOICES, default=SENS_SUP,
+        blank=True, verbose_name='Sens de l\'arrondi')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
