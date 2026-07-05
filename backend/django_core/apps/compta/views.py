@@ -4681,6 +4681,26 @@ class CampagneViewSet(_ComptaBaseViewSet):
         campagne = self.get_object()
         return Response(services.leads_source_roi(campagne))
 
+    @action(detail=True, methods=['get'], url_path='kpi-mere')
+    def kpi_mere(self, request, pk=None):
+        """XMKT31 — agrège KPI/coûts/ROI de tous les enfants d'une campagne
+        mère (conteneur multi-canal)."""
+        campagne = self.get_object()
+        return Response(services.kpi_campagne_mere(campagne))
+
+    @action(detail=True, methods=['post'], url_path='rattacher')
+    def rattacher(self, request, pk=None):
+        """XMKT31 — rattache un objet (séquence/formulaire/code promo/
+        événement) à cette campagne mère."""
+        campagne = self.get_object()
+        type_objet = request.data.get('type')
+        objet_id = request.data.get('id')
+        if not type_objet or not objet_id:
+            return Response({'detail': 'type et id requis.'}, status=400)
+        services.rattacher_a_campagne_mere(
+            campagne, type_objet=type_objet, objet_id=objet_id)
+        return Response(CampagneSerializer(campagne).data)
+
     @action(detail=True, methods=['get'], url_path='rendu-lead')
     def rendu_lead(self, request, pk=None):
         """XMKT11 — Rendu final (variante de langue + fusion) pour un lead

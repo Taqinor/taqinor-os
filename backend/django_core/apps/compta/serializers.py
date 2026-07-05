@@ -1481,6 +1481,7 @@ class CampagneSerializer(serializers.ModelSerializer):
             'planifiee_le', 'debit_max_par_heure', 'variantes_langue',
             'ab_test', 'ab_gagnant', 'ab_decide_le',
             'budget_mad', 'cout_reel_mad', 'lignes_cout',
+            'parente', 'rattachements',
         ]
         read_only_fields = [
             'statut', 'nb_destinataires', 'nb_envois', 'nb_ouvertures',

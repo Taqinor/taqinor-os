@@ -4591,6 +4591,25 @@ class Campagne(models.Model):
     # Lignes de coût libres : [{"libelle": "Ads Meta", "montant_mad": 500}, …].
     lignes_cout = models.JSONField(
         default=list, blank=True, verbose_name='Lignes de coût (JSON)')
+    # ── XMKT31 — conteneur de campagne multi-canal ──────────────────────────
+    # NULL = campagne autonome (comportement actuel). Une campagne "mère"
+    # regroupe emails/SMS/WhatsApp/séquences d'une même opération marketing ;
+    # les événements (XMKT28) et codes promo (FG209) se rattachent par leur
+    # propre FK/référence, pas ici.
+    parente = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='enfants',
+        verbose_name='Campagne mère',
+    )
+    # Rattachements OPAQUES d'objets non-Campagne (séquences, formulaires,
+    # codes promo FG209, événements XMKT28) à cette campagne — uniquement
+    # pertinent sur une campagne MÈRE (parente=None). Format :
+    # [{"type": "sequence"|"formulaire"|"code_promo"|"evenement", "id": N}].
+    rattachements = models.JSONField(
+        default=list, blank=True,
+        verbose_name='Rattachements (JSON, campagne mère)')
 
     class Meta:
         verbose_name = 'Campagne email/SMS'

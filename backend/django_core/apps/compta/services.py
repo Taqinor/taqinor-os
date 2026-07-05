@@ -10647,3 +10647,55 @@ def tableau_scans_par_support(company):
             'nb_scans': nb_scans,
         })
     return resultats
+
+
+# ── XMKT31 — Conteneur de campagne multi-canal ──────────────────────────────
+
+def rattacher_a_campagne_mere(campagne_mere, *, type_objet, objet_id):
+    """XMKT31 — rattache un objet OPAQUE (séquence/formulaire/code promo/
+    événement) à une campagne mère. Idempotent."""
+    rattachements = list(campagne_mere.rattachements or [])
+    entree = {'type': type_objet, 'id': objet_id}
+    if entree not in rattachements:
+        rattachements.append(entree)
+        campagne_mere.rattachements = rattachements
+        campagne_mere.save(update_fields=['rattachements'])
+    return campagne_mere
+
+
+def kpi_campagne_mere(campagne_mere):
+    """XMKT31 — agrège KPI/coûts/ROI de TOUS les enfants (canaux) d'une
+    campagne mère. Renvoie les totaux + le détail par enfant."""
+    enfants = list(campagne_mere.enfants.all())
+    nb_destinataires = sum(e.nb_destinataires for e in enfants)
+    nb_envois = sum(e.nb_envois for e in enfants)
+    nb_ouvertures = sum(e.nb_ouvertures for e in enfants)
+    nb_clics = sum(e.nb_clics for e in enfants)
+    cout_total = cout_total_campagne(campagne_mere)
+    for enfant in enfants:
+        cout_total += cout_total_campagne(enfant)
+    revenu_total = Decimal('0')
+    nb_leads_total = 0
+    nb_signes_total = 0
+    for campagne in [campagne_mere] + enfants:
+        roi = roi_campagne(campagne)
+        revenu_total += Decimal(roi['revenu_ttc_mad'])
+        nb_leads_total += roi['nb_leads']
+        nb_signes_total += roi['nb_signes']
+    roi_pct = 0.0
+    if cout_total > 0:
+        roi_pct = round(float((revenu_total - cout_total) / cout_total * 100), 1)
+    return {
+        'campagne_mere_id': campagne_mere.id,
+        'nb_enfants': len(enfants),
+        'nb_destinataires': nb_destinataires,
+        'nb_envois': nb_envois,
+        'nb_ouvertures': nb_ouvertures,
+        'nb_clics': nb_clics,
+        'cout_total_mad': str(cout_total),
+        'revenu_total_ttc_mad': str(revenu_total),
+        'roi_pct': roi_pct,
+        'nb_leads': nb_leads_total,
+        'nb_signes': nb_signes_total,
+        'rattachements': campagne_mere.rattachements or [],
+    }
