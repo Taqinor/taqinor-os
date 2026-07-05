@@ -458,7 +458,7 @@ def importer_elements_rh(periode):
             profil = profils.get(dossier.id)
             if profil is None:
                 continue
-            elements = _elements_rh_du_dossier(periode, dossier)
+            elements = _elements_rh_du_dossier(periode, dossier, profil)
             for el in elements:
                 ElementVariable.objects.create(
                     company=periode.company,
@@ -549,7 +549,7 @@ def reporter_elements_periode(periode_cible):
     return copies
 
 
-def _elements_rh_du_dossier(periode, dossier):
+def _elements_rh_du_dossier(periode, dossier, profil=None):
     """Éléments variables RH d'un dossier pour la période — liste de tuples.
 
     YHIRE1 — câble réellement l'import (l'ancien stub renvoyait toujours
@@ -558,7 +558,12 @@ def _elements_rh_du_dossier(periode, dossier):
 
     * heures supplémentaires VALORISÉES (``heures_supp_pour_paie``, FG192) →
       une ligne ``TYPE_HS`` par tranche non nulle (jour/nuit/férié),
-      ``montant`` déjà majoré ;
+      ``montant`` déjà majoré. Si RH renvoie un ``montant_majore`` à 0 (le
+      ``cout_horaire`` interne du dossier RH n'est pas configuré — donnée
+      RH facultative) alors que des heures existent bel et bien, on retombe
+      sur le taux horaire dérivé du PROFIL DE PAIE lui-même
+      (``taux_horaire_base_profil`` + ``taux_majoration_hs``, PAIE14) : le
+      salarié a un salaire de paie même sans coût horaire RH renseigné ;
     * demandes de congé VALIDÉES d'un ``TypeAbsence.remunere = False``
       (``absences_non_remunerees_pour_paie``) → une ligne ``TYPE_ABSENCE``
       (``remunere=False``, ``deduit_solde`` reprise du type) — la proration
@@ -589,6 +594,9 @@ def _elements_rh_du_dossier(periode, dossier):
         ('hs_100', ElementVariable.HS_FERIE,
          'Heures sup férié/dimanche (100 %)'),
     )
+    parametre = parametre_en_vigueur(dossier.company, date_fin)
+    taux_h_base_profil = (
+        taux_horaire_base_profil(profil) if profil is not None else None)
     for ligne in rh_selectors.heures_supp_pour_paie(
             dossier.company, date_debut, date_fin, employe_id=dossier.id):
         total_tranches = sum(
@@ -603,6 +611,13 @@ def _elements_rh_du_dossier(periode, dossier):
             if total_tranches > 0:
                 montant = _q(
                     ligne['montant_majore'] * quantite / total_tranches)
+            if (not montant) and parametre is not None \
+                    and taux_h_base_profil:
+                # RH n'a pas de coût horaire configuré pour ce dossier —
+                # dérive le gain majoré du taux horaire du PROFIL DE PAIE.
+                taux_maj = taux_majoration_hs(parametre, categorie)
+                montant = calculer_gain_hs(
+                    quantite, taux_h_base_profil, taux_maj)
             elements.append({
                 'type': ElementVariable.TYPE_HS, 'libelle': libelle,
                 'quantite': quantite, 'montant': montant,
