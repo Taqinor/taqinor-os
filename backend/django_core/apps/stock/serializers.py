@@ -199,6 +199,12 @@ class ProduitSerializer(serializers.ModelSerializer):
     # (lecture seule) pour afficher dépôt/camionnette sans ouvrir le modal
     # Transfert. Map calculée UNE fois par sérialisation (pas de N+1).
     stock_par_emplacement = serializers.SerializerMethodField()
+    # ZPUR10 — quantité déjà « en commande » chez un fournisseur (Σ des
+    # restants sur BCF non annulés/non entièrement reçus) + le détail des BCF
+    # sources, exposés sur la fiche produit à côté de disponible/réservé.
+    # Réutilise le sélecteur YPROC9 existant (jamais de logique dupliquée).
+    quantite_en_commande = serializers.SerializerMethodField()
+    bcf_sources_en_commande = serializers.SerializerMethodField()
 
     # XSTK3 — déclaré explicitement `required=False` : DRF (≥ 3.14) dérive un
     # validateur "unique together" depuis la `UniqueConstraint` conditionnelle
@@ -293,6 +299,8 @@ class ProduitSerializer(serializers.ModelSerializer):
             'is_low_stock_disponible', 'nb_mouvements',
             'premiere_date_mouvement', 'derniere_date_mouvement',
             'stock_par_emplacement',
+            # ZPUR10 — en-commande (fiche produit) + BCF sources
+            'quantite_en_commande', 'bcf_sources_en_commande',
         ]
         # company est posé côté serveur (TenantMixin) — jamais accepté du corps.
         read_only_fields = ['company', 'date_creation', 'date_mise_a_jour']
@@ -368,6 +376,25 @@ class ProduitSerializer(serializers.ModelSerializer):
         # alourdir la liste. La camionnette à 0 n'apparaît donc pas.
         rows = self._breakdown_map().get(obj.id, [])
         return [r for r in rows if r['quantite']]
+
+    def get_quantite_en_commande(self, obj):
+        # ZPUR10 — évite le calcul hors contexte requête (pas de company
+        # connue) ; réutilise le sélecteur YPROC9 (jamais de logique
+        # dupliquée).
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is None:
+            return 0
+        from .selectors import quantite_en_commande_produit
+        return quantite_en_commande_produit(company, obj.id)
+
+    def get_bcf_sources_en_commande(self, obj):
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is None:
+            return []
+        from .selectors import bcf_sources_en_commande_produit
+        return bcf_sources_en_commande_produit(company, obj.id)
 
     def get_nb_mouvements(self, obj):
         return getattr(obj, 'nb_mouvements', None)
