@@ -993,6 +993,27 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
         return Response(
             avertissements_periode(periode), status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['get'], url_path='bulletins-pdf')
+    def bulletins_pdf(self, request, pk=None):
+        """Impression en lot des bulletins VALIDÉS de la période (ZPAI5).
+
+        Fusionne (WeasyPrint + PyMuPDF) les PDF de tous les bulletins validés
+        de la période en un seul document, ordonné par matricule/nom ; les
+        brouillons sont exclus. 400 si aucun bulletin validé.
+        """
+        periode = self.get_object()
+        try:
+            pdf = builders.render_bulletins_periode_pdf(periode)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        nom = f'bulletins_{periode.annee}_{periode.mois:02d}.pdf'
+        return _pdf_response(pdf, nom)
+
     @action(detail=True, methods=['post'], url_path='journal-de-paie')
     def journal_de_paie(self, request, pk=None):
         """Passe l'écriture comptable du journal de paie (PAIE33).

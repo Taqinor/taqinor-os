@@ -395,3 +395,54 @@ def render_historique_carriere_pdf(historique, *, today=None):
     """Fiche historique de carrière → octets PDF (XPAI26)."""
     return _html_to_pdf(
         render_historique_carriere_html(historique, today=today))
+
+
+# ── ZPAI5 — Impression en lot des bulletins d'une période (PDF fusionné) ────
+
+def render_bulletins_periode_pdf(periode):
+    """Fusionne les PDF des bulletins VALIDÉS d'une période en un seul flux (ZPAI5).
+
+    Réutilise ``render_bulletin_pdf``/WeasyPrint pour chaque bulletin (les
+    brouillons sont exclus), puis concatène les pages via PyMuPDF (``fitz``,
+    déjà une dépendance de l'ERP) — une page-break naturelle entre chaque
+    bulletin, dans l'ordre matricule/nom. Self-contained : aucune dépendance à
+    une autre app. Lève ``ValueError`` si la période n'a AUCUN bulletin
+    validé. Renvoie les octets du PDF fusionné.
+    """
+    from .models import BulletinPaie
+
+    bulletins = list(
+        BulletinPaie.objects
+        .filter(company=periode.company, periode=periode,
+                statut=BulletinPaie.STATUT_VALIDE)
+        .select_related('profil', 'profil__employe')
+    )
+    if not bulletins:
+        raise ValueError("Aucun bulletin validé pour cette période.")
+
+    def _tri_matricule_nom(bulletin):
+        employe = getattr(bulletin.profil, 'employe', None)
+        matricule = getattr(employe, 'matricule', '') or ''
+        nom = _nom_employe(bulletin.profil)
+        return (matricule, nom)
+
+    bulletins.sort(key=_tri_matricule_nom)
+
+    try:
+        import fitz  # PyMuPDF
+    except ImportError as exc:  # pragma: no cover - dépend de l'environnement
+        raise RuntimeError(
+            "WeasyPrint/PyMuPDF ne sont pas installés : génération PDF "
+            "indisponible."
+        ) from exc
+
+    out = fitz.open()
+    try:
+        for bulletin in bulletins:
+            pdf_bytes = render_bulletin_pdf(bulletin)
+            seg = fitz.open(stream=pdf_bytes, filetype='pdf')
+            out.insert_pdf(seg)
+            seg.close()
+        return out.tobytes()
+    finally:
+        out.close()
