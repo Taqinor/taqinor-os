@@ -88,7 +88,14 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   <link rel="preconnect" href="https://api.maptiler.com" crossorigin />
   <link rel="preconnect" href="https://api.mapbox.com" crossorigin />
   <section class="bg-nuit px-4 py-8 sm:py-12">
-    <div class="mx-auto max-w-2xl">
+    <!-- WJ98 — au-delà de `lg` (≥1024 px), le formulaire restait figé à
+         `max-w-2xl` (672 px) : sur un écran de bureau, l'assistant flottait
+         dans une colonne étroite avec un vide énorme des deux côtés — aucune
+         mise en page « desktop » réelle. On élargit à `lg:max-w-4xl` (896 px)
+         UNIQUEMENT à partir de `lg` (le mobile/tablette garde `max-w-2xl`,
+         inchangé) ; la largeur récupérée profite directement à la carte
+         (hauteur augmentée ci-dessous) et aux formulaires en grille. -->
+    <div class="mx-auto max-w-2xl lg:max-w-4xl">
       <!-- WJ65 — sortie honnête SANS JavaScript : cette page est entièrement
            pilotée par script (carte, calcul, envoi) — sans JS elle resterait
            muette. On propose ici même une sortie qui ne demande AUCUN JS. -->
@@ -128,7 +135,16 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
         </span>
       </div>
 
-      <!-- En-tête + bascule de langue FR/AR (WJ6) -->
+      <!-- WJ106 — la bascule de langue FR/AR EN PLACE (boutons FR/عربي, WJ6)
+           est retirée : `/ar/devis/mon-toit` est désormais la route arabe
+           CANONIQUE (dédiée, indexable séparément), rendant ce toggle en
+           place redondant — un visiteur arabophone arrive directement sur la
+           bonne route plutôt que de re-basculer une page FR en place. La
+           plomberie `data-i18n`/`applyLang` sous-jacente reste EN PLACE
+           (retrait complet hors périmètre, risque de régression élevé sur un
+           mécanisme qui couvre 140+ nœuds) — cette page reste donc figée en
+           français, comme le contenu affiché par défaut avant tout clic sur
+           l'ancien bouton. -->
       <div class="flex items-start justify-between gap-3">
         <div>
           <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Estimation solaire · gratuit · sans engagement" data-ar="تقدير شمسي · مجاني · بدون التزام">
@@ -137,12 +153,6 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
           <h1 class="display mt-4 text-2xl text-white sm:text-3xl" data-i18n data-fr="Recevez votre estimation solaire" data-ar="استلم تقديرك الشمسي">
             Recevez votre estimation solaire
           </h1>
-        </div>
-        <div class="flex flex-none gap-1 rounded-sm border border-white/15 p-0.5" role="group" aria-label="Langue">
-          <button type="button" id="mt-lang-fr" aria-pressed="true"
-            class="px-3 py-1.5 text-sm font-semibold text-azur-950 bg-brass-400 transition-colors">FR</button>
-          <button type="button" id="mt-lang-ar" aria-pressed="false"
-            class="px-3 py-1.5 text-sm font-semibold text-lune-soft transition-colors hover:text-white">عربي</button>
         </div>
       </div>
 
@@ -278,7 +288,14 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
                clavier propre (le pin/tracé est à la souris/au tactile ; la
                recherche d'adresse au-dessus reste un vrai formulaire
                accessible). aria-label seul suffit à la nommer. -->
-          <div id="rp9-map" class="mt-skeleton-shimmer mt-0 h-[44dvh] min-h-[280px] w-full bg-nuit-700"
+          <!-- WJ98 — la bande `44dvh` était un compromis TÉLÉPHONE (garder la
+               recherche + les boutons visibles sans défiler) ; sur un viewport
+               desktop `lg:`, la même hauteur relative laisse une carte trop
+               courte pour tracer un contour de toit confortablement. `lg:h-[62vh]`
+               (plafonné à 640 px) donne une zone de travail nettement plus
+               généreuse dès que l'écran a la place, sans toucher au comportement
+               téléphone/tablette (`h-[44dvh]` inchangé en dessous de `lg`). -->
+          <div id="rp9-map" class="mt-skeleton-shimmer mt-0 h-[44dvh] min-h-[280px] w-full bg-nuit-700 lg:h-[62vh] lg:max-h-[640px]"
             aria-label="Carte satellite pour repérer votre toit"></div>
 
           <div class="flex flex-wrap items-center gap-3 border-t border-white/10 p-4">
@@ -802,21 +819,35 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
                 <span data-i18n data-fr="Un conseiller peut m'appeler" data-ar="يمكن لمستشار الاتصال بي">Un conseiller peut m'appeler</span>
               </label>
             </div>
+            <!-- WJ105 — SLA concret, affiché UNIQUEMENT quand « Un conseiller
+                 peut m'appeler » est choisi (jamais un engagement affiché à
+                 qui a choisi WhatsApp). Toggle câblé plus bas (mt-contact-phone
+                 change). Le créneau de rappel réutilise le contrôle W353
+                 ci-dessous — jamais un second sélecteur dupliqué. -->
+            <p id="mt-callback-sla" hidden class="mt-2 flex items-center gap-1.5 text-xs text-brass-300" data-i18n
+              data-fr="Un conseiller vous rappelle sous ~1 h ouvrée. Choisissez aussi un créneau préféré ci-dessous."
+              data-ar="سيتصل بكم مستشار خلال حوالي ساعة عمل واحدة. اختاروا أيضاً الوقت المفضل أدناه.">
+              Un conseiller vous rappelle sous ~1 h ouvrée. Choisissez aussi un créneau préféré ci-dessous.
+            </p>
           </fieldset>
 
-          <!-- W353 — « Réserver un créneau de visite technique » v1 : préférence
-               STATIQUE et FACULTATIVE (moment + semaine), forwardée telle quelle au
-               webhook — jamais une réservation confirmée, aucune dépendance
-               calendrier, aucun paiement/dépôt (la question du dépôt en ligne reste
-               une décision fondateur WG13, non construite ici). Un humain confirme
-               le créneau réel après contact. -->
+          <!-- W353/WJ105 — « Réserver un créneau de visite technique » v1 :
+               préférence STATIQUE et FACULTATIVE (moment + semaine), forwardée
+               telle quelle au webhook — jamais une réservation confirmée,
+               aucune dépendance calendrier, aucun paiement/dépôt (la question
+               du dépôt en ligne reste une décision fondateur WG13, non
+               construite ici). Un humain confirme le créneau réel après
+               contact. WJ105 — ce MÊME contrôle sert aussi de « créneau de
+               rappel préféré » quand phone_ok est choisi (jamais un second
+               contrôle dupliqué) : la légende reste générique, le lien est
+               fait par la phrase SLA ci-dessus. -->
           <fieldset class="mt-1">
-            <legend class="text-sm text-lune-soft" data-i18n
+            <legend id="mt-visit-legend" class="text-sm text-lune-soft" data-i18n
               data-fr="Créneau de visite technique préféré (facultatif)"
               data-ar="الوقت المفضل للزيارة التقنية (اختياري)">
               Créneau de visite technique préféré (facultatif)
             </legend>
-            <p class="mt-1 text-xs text-lune-faint" data-i18n
+            <p id="mt-visit-help" class="mt-1 text-xs text-lune-faint" data-i18n
               data-fr="Une préférence, pas une réservation — nous confirmons le créneau exact avec vous."
               data-ar="تفضيل وليس حجزاً — سنؤكد الموعد الدقيق معكم.">
               Une préférence, pas une réservation — nous confirmons le créneau exact avec vous.
@@ -1125,9 +1156,18 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
    *  avec repli fetch(keepalive) si sendBeacon est indisponible. Aucune PII
    *  possible dans ce corps (4 champs seulement — cf. lib/funnelBeacon.ts).
    *  WB30 : n'émet rien avant que l'étape de consentement (panneau 2) soit
-   *  atteinte — voir hasReachedConsentStep, vérifiée par chaque appelant. */
-  function sendFunnelBeacon(step: 'toit' | 'facture' | 'estimation' | 'contact', action: 'reached' | 'abandoned') {
-    if (action === 'reached') {
+   *  atteinte — voir hasReachedConsentStep, vérifiée par chaque appelant.
+   *  WJ104 — `action` élargi à `viewed`/`callback_requested` (delta
+   *  d'instrumentation, cf. lib/telemetryEvents.ts toFunnelWire) ; `reached`/
+   *  `abandoned` restent inchangés pour tout appelant existant. */
+  function sendFunnelBeacon(
+    step: 'toit' | 'facture' | 'estimation' | 'contact',
+    action: 'reached' | 'abandoned' | 'viewed' | 'callback_requested',
+  ) {
+    // WJ104 — même discipline de déduplication que « reached » : un événement
+    // « atteint une fois » ne doit jamais être renvoyé en boucle (ex. l'estimation
+    // qui se recalcule plusieurs fois pendant que le visiteur ajuste sa facture).
+    if (action === 'reached' || action === 'viewed' || action === 'callback_requested') {
       const key = `${step}:${action}`;
       if (funnelStepReached.has(key)) return;
       funnelStepReached.add(key);
@@ -1617,6 +1657,15 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   // tout premier « retour » ait un état `mtStep` à consulter.
   history.replaceState({ mtStep: step }, '', location.href);
   renderStep();
+  // WJ96(c) — un visiteur qui REPREND son parcours (instantané sessionStorage
+  // WJ61) directement à l'étape 1/2 ne déclenche PAS `ensureMapBooted()` via
+  // `renderStep()` (qui ne boote qu'à `step === 0`) : cliquer « Retour » vers
+  // l'étape carte affichait alors le squelette de chargement à chaque fois,
+  // au lieu d'une carte déjà prête. On préchauffe la config/carte en arrière-
+  // plan dès que l'on sait que ce visiteur a déjà une étape restaurée > 0 —
+  // sans jamais bloquer le rendu de l'étape actuelle (best-effort, idempotent
+  // via `mapFetchDone`).
+  if (savedWizard?.step != null && savedWizard.step > 0) ensureMapBooted();
 
   // ——— helpers de saisie ———
   const val = (id: string) => (($(id) as HTMLInputElement | HTMLSelectElement | null)?.value ?? '');
@@ -1636,6 +1685,20 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     if (eteWrap) eteWrap.hidden = !on;
     if (!on && eteInput) eteInput.value = '';
   });
+
+  // WJ105 — SLA de rappel concret : visible UNIQUEMENT quand « Un conseiller
+  // peut m'appeler » est la préférence active. `sync` est ré-appelée après une
+  // éventuelle réhydratation (WJ61, plus bas) : affecter `.checked` par script
+  // ne déclenche pas l'événement `change` natif.
+  const contactPhoneRadio = $('mt-contact-phone') as HTMLInputElement | null;
+  const contactWhatsappRadio = $('mt-contact-whatsapp') as HTMLInputElement | null;
+  const callbackSla = $('mt-callback-sla') as HTMLElement | null;
+  function syncCallbackSla(): void {
+    if (callbackSla) callbackSla.hidden = contactPhoneRadio?.checked !== true;
+  }
+  contactPhoneRadio?.addEventListener('change', syncCallbackSla);
+  contactWhatsappRadio?.addEventListener('change', syncCallbackSla);
+  syncCallbackSla();
 
   // WJ61 — réhydratation des champs de saisie + du repère/contour de carte à
   // partir de l'instantané (AVANT le boot de la carte : `hydrate` plus bas sème
@@ -1659,6 +1722,10 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     // sur la carte écraserait silencieusement la ville qu'on vient de restaurer.
     if (savedWizard.fields?.['mt-city']) cityTouched = true;
     if (eteToggle?.checked && eteWrap) eteWrap.hidden = false;
+    // WJ105 — une préférence de contact restaurée doit re-synchroniser la
+    // visibilité de la SLA de rappel (affecter `.checked` par script ne
+    // déclenche pas `change`).
+    syncCallbackSla();
     if (savedWizard.capturePin) capturePin = savedWizard.capturePin;
     if (savedWizard.captureOutline?.length) captureOutline = savedWizard.captureOutline;
     if (Object.keys(savedWizard.fields ?? {}).length > 0 || savedWizard.capturePin) markDataEntered();
@@ -1771,6 +1838,11 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     if (card) card.hidden = false;
     if (note) note.hidden = false;
     if (unavail) unavail.hidden = true;
+    // WJ104 — « estimation VUE » : l'estimation instantanée vient de rendre un
+    // résultat réel à l'écran (distinct du simple « étape atteinte » émis par
+    // ailleurs — celui-ci dit rien du succès du calcul). Dédupliqué une fois
+    // par visite (sendFunnelBeacon), jamais avant le consentement (WB30).
+    if (hasReachedConsentStep()) sendFunnelBeacon('estimation', 'viewed');
     const kwcEl = $('mt-est-kwc');
     const savEl = $('mt-est-savings');
     const payEl = $('mt-est-payback');
@@ -2269,6 +2341,13 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
         submitted = true;
         hasEnteredData = false; // WJ61 — succès : plus besoin du garde-fou beforeunload.
         clearWizardState(); // WJ61 — la demande a abouti : l'instantané n'a plus lieu d'être.
+        // WJ104 — « rappel demandé » : signal DISTINCT d'un opt-in WhatsApp,
+        // émis UNIQUEMENT quand la préférence de contact choisie est « on
+        // m'appelle » (mt-contact-phone), jamais pour le repli WhatsApp par
+        // défaut. Dédupliqué comme les autres beacons de cette page.
+        if (($('mt-contact-phone') as HTMLInputElement | null)?.checked === true) {
+          sendFunnelBeacon('contact', 'callback_requested');
+        }
         const waUrl = buildWaUrl();
         // WJ5 — réponse HONNÊTE selon le seuil 1 000 MAD (qualified renvoyé par le serveur).
         if (data.qualified) {
@@ -2350,6 +2429,33 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     return whatsappLink(WHATSAPP_LEADS, text);
   }
 
+  // WJ102 — pendant que la modale d'abandon est ouverte, le RESTE du document
+  // (en-tête, pied de page, l'assistant lui-même derrière l'overlay) doit
+  // devenir réellement inatteignable — pas seulement masqué visuellement.
+  // Sans ça, un utilisateur au clavier/lecteur d'écran pouvait Tab-cycler
+  // jusqu'à des liens du header/footer DERRIÈRE l'overlay semi-transparent,
+  // alors que le piège de focus (Tab/Shift+Tab plus bas) ne couvre que le
+  // DERNIER Tab avant de reboucler — pas les liens hors de la modale
+  // atteignables par un clic direct/VoiceOver rotor. Même idiome que
+  // Header.astro (menu mobile) : `inert` posé sur chaque enfant DIRECT de
+  // <body> qui ne contient PAS la modale elle-même.
+  const inertedSiblings: HTMLElement[] = [];
+  function setBackgroundInert(on: boolean): void {
+    if (on) {
+      inertedSiblings.length = 0;
+      for (const child of Array.from(document.body.children)) {
+        if (!(child instanceof HTMLElement)) continue;
+        if (child.contains(exitModal)) continue; // ne jamais rendre la modale elle-même inerte
+        if (child.hasAttribute('inert')) continue; // déjà inerte pour une autre raison : ne pas y toucher à la fermeture
+        child.setAttribute('inert', '');
+        inertedSiblings.push(child);
+      }
+    } else {
+      for (const el of inertedSiblings) el.removeAttribute('inert');
+      inertedSiblings.length = 0;
+    }
+  }
+
   /** WJ46 — affiche l'offre WhatsApp (exit-intent OU pic d'intérêt). Ne
    *  s'affiche qu'une fois par visite (`exitShown`), jamais après soumission. */
   function showWhatsappOffer(triggerEl: HTMLElement | null = null) {
@@ -2359,6 +2465,8 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     if (exitWaLink) exitWaLink.href = buildExitWaHref();
     if (exitModal) {
       exitModal.hidden = false;
+      // WJ102 — le reste du document devient inerte tant que la modale est ouverte.
+      setBackgroundInert(true);
       // WJ33 — focus initial DANS la modale (premier champ interactif).
       exitPhoneInput?.focus();
     }
@@ -2387,6 +2495,9 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   function closeExit() {
     if (!exitModal || exitModal.hidden) return;
     exitModal.hidden = true;
+    // WJ102 — restaure l'accessibilité du reste du document AVANT de rendre le
+    // focus (sinon la cible de focus ci-dessous pourrait encore être inerte).
+    setBackgroundInert(false);
     // WJ33 — restauration du focus vers l'élément qui a déclenché l'ouverture
     // (ou, à défaut, un point d'ancrage stable de la page).
     (exitTriggerEl && document.contains(exitTriggerEl) ? exitTriggerEl : $('mt-lang-fr'))?.focus();

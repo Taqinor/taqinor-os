@@ -23,6 +23,10 @@ import {
   acceptEndpoint,
   proposalEndpoint,
   normalizeAcceptResponse,
+  isOtpRequiredDetail,
+  isOtpIncorrectDetail,
+  otpRequestEndpoint,
+  buildAcceptBodyRich,
   type ProposalResponse,
 } from '../src/lib/proposition';
 
@@ -261,5 +265,53 @@ describe('normalisation des réponses backend', () => {
     expect(normalizeAcceptResponse(409, {}).detail).toMatch(/déjà/i);
     expect(normalizeAcceptResponse(400, {}).detail).toMatch(/invalide/i);
     expect(normalizeAcceptResponse(502, {}).detail).toMatch(/erreur/i);
+  });
+});
+
+// WJ108 — OTP e-signature LATENTE (backend toggle ESIGN_OTP_ENABLED). Ces
+// fonctions ne changent AUCUN comportement aujourd'hui (toggle OFF par
+// défaut) : elles ne font que reconnaître les 3 messages backend EXACTS de
+// `apps/ventes/services.py validate_esign_otp` quand le toggle est un jour activé.
+describe('WJ108 — isOtpRequiredDetail / isOtpIncorrectDetail', () => {
+  it('reconnaît les 3 messages OTP exacts renvoyés par le backend', () => {
+    expect(isOtpRequiredDetail('Un code de confirmation est requis. Demandez-le via le bouton « Envoyer le code ».')).toBe(true);
+    expect(isOtpRequiredDetail('Le code de confirmation a expiré ou n\'a pas été demandé. Redemandez un nouveau code.')).toBe(true);
+    expect(isOtpRequiredDetail('Code de confirmation incorrect. Vérifiez le code reçu et réessayez.')).toBe(true);
+  });
+
+  it('ne reconnaît PAS une autre erreur de validation (jamais un faux positif)', () => {
+    expect(isOtpRequiredDetail('Votre nom est requis pour signer la proposition.')).toBe(false);
+    expect(isOtpRequiredDetail('Devis déjà accepté.')).toBe(false);
+    expect(isOtpRequiredDetail(undefined)).toBe(false);
+    expect(isOtpRequiredDetail(null)).toBe(false);
+    expect(isOtpRequiredDetail('')).toBe(false);
+  });
+
+  it('isOtpIncorrectDetail distingue "incorrect" de "requis"/"expiré"', () => {
+    expect(isOtpIncorrectDetail('Code de confirmation incorrect. Vérifiez le code reçu et réessayez.')).toBe(true);
+    expect(isOtpIncorrectDetail('Un code de confirmation est requis. Demandez-le via le bouton « Envoyer le code ».')).toBe(false);
+  });
+});
+
+describe('WJ108 — otpRequestEndpoint', () => {
+  it('construit l\'URL backend otp/, encode le token', () => {
+    expect(otpRequestEndpoint('https://api.taqinor.ma', 'abc123')).toBe(
+      'https://api.taqinor.ma/api/django/ventes/proposal/abc123/otp/',
+    );
+    expect(otpRequestEndpoint('', 'a b')).toBe(
+      'https://api.taqinor.ma/api/django/ventes/proposal/a%20b/otp/',
+    );
+  });
+});
+
+describe('WJ108 — buildAcceptBodyRich porte otp_code de façon additive', () => {
+  it('omet otp_code quand absent/vide (contrat de base inchangé)', () => {
+    const body = buildAcceptBodyRich({ nom: 'Reda', option: null }, false, {});
+    expect(body).not.toHaveProperty('otp_code');
+  });
+
+  it('inclut otp_code trim quand fourni', () => {
+    const body = buildAcceptBodyRich({ nom: 'Reda', option: null }, false, { otp_code: '  123456  ' });
+    expect(body.otp_code).toBe('123456');
   });
 });

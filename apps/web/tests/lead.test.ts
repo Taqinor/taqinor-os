@@ -85,6 +85,35 @@ describe('validateLead', () => {
   });
 });
 
+// ——— WJ97 — chemin « rappel rapide » (/contact) : nom + téléphone SEULEMENT ———
+describe('WJ97 — validateLead : quickCallback relâche city/roofType/billRange', () => {
+  it('accepte nom + téléphone + consentement seuls quand quickCallback est vrai', () => {
+    const r = validateLead({
+      fullName: 'Karim Benali',
+      phone: '06 12 34 56 78',
+      consent: true,
+      quickCallback: true,
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.lead.city).toBeUndefined();
+    expect(r.lead.roofType).toBeUndefined();
+    expect(r.lead.billRange).toBeUndefined();
+    expect(r.lead.quickCallback).toBe(true);
+  });
+
+  it('exige quand même le nom, le téléphone et le consentement sur ce chemin', () => {
+    expect(validateLead({ phone: '0612345678', consent: true, quickCallback: true }).ok).toBe(false);
+    expect(validateLead({ fullName: 'Karim', consent: true, quickCallback: true }).ok).toBe(false);
+    expect(validateLead({ fullName: 'Karim', phone: '0612345678', consent: false, quickCallback: true }).ok).toBe(false);
+  });
+
+  it('sans quickCallback, city/roofType/billRange restent requis (contrat inchangé)', () => {
+    const { city, ...rest } = validBody;
+    expect(validateLead(rest).ok).toBe(false);
+  });
+});
+
 // ——— WJ30 — validateLead ne JETTE plus les champs capturés : pass-through validé ———
 describe('WJ30 — validateLead élargi : les champs capturés passent, le garbage tombe', () => {
   const widened = {
@@ -320,6 +349,15 @@ describe('buildLeadRecord', () => {
     const record = buildLeadRecord(makeLead({ billRange: '800-1000' }), { kwcMin: 2, kwcMax: 4, kwcLabel: '2 à 4 kWc', paybackLabel: '5 à 7 ans', source: 'local' }, new Date());
     expect(record.qualified).toBe(false);
   });
+
+  // WJ97 — un rappel rapide n'a pas de billRange connu : toujours qualifié
+  // (une demande explicite de rappel n'est jamais filtrée sous un seuil de
+  // facture qu'on n'a même pas mesuré).
+  it('WJ97 — un lead quickCallback (sans billRange) est toujours qualifié', () => {
+    const lead = makeLead({ billRange: undefined, city: undefined, roofType: undefined, quickCallback: true });
+    const record = buildLeadRecord(lead, { kwcMin: 0, kwcMax: 0, kwcLabel: '', paybackLabel: '', source: 'local' }, new Date());
+    expect(record.qualified).toBe(true);
+  });
 });
 
 describe('runSimulation', () => {
@@ -344,6 +382,16 @@ describe('runSimulation', () => {
       throw new Error('down');
     }) as unknown as typeof fetch;
     const band = await runSimulation(makeLead(), { SIMULATOR_API_URL: 'https://sim.example/api' }, fetchFn);
+    expect(band.source).toBe('local');
+  });
+
+  // WJ97 — sans billRange (chemin rappel rapide), aucune fourchette n'est
+  // fabriquée : bande vide, honnête, jamais un devis basé sur une hypothèse.
+  it('WJ97 — sans billRange, renvoie une bande vide honnête (jamais un chiffre inventé)', async () => {
+    const lead = makeLead({ billRange: undefined, city: undefined, roofType: undefined, quickCallback: true });
+    const band = await runSimulation(lead, {});
+    expect(band.kwcLabel).toBe('');
+    expect(band.paybackLabel).toBe('');
     expect(band.source).toBe('local');
   });
 });

@@ -24,14 +24,23 @@ const CERT_LOGO_ROW = read('../src/components/CertLogoRow.astro');
 const MON_TOIT = read('../src/pages/devis/mon-toit.astro');
 const PROPOSITION = read('../src/pages/proposition/[token].astro');
 
-describe('WJ35 — StarRating : jamais de note/avis fabriqués', () => {
+describe('WJ35/WN6 — StarRating : jamais de note/avis fabriqués, jamais un scaffold "bientôt"', () => {
   it('ne rend une note QUE si GOOGLE_RATING est réel (hasRating())', () => {
     expect(STAR_RATING).toContain('hasRating()');
-    expect(STAR_RATING).toContain('pending real content from Reda');
   });
-  it("aujourd'hui GOOGLE_RATING est null → le composant montre le scaffold, jamais une note inventée", () => {
+  // WN6 — « Avis clients — bientôt disponibles » retiré (checked-facts-only :
+  // pas de note → on OMET le composant entièrement, jamais un "coming soon").
+  it('WN6 — plus de scaffold "bientôt disponibles" : le composant ne rend RIEN sans note réelle', () => {
+    expect(STAR_RATING).not.toContain('bientôt disponibles');
+    expect(STAR_RATING).not.toContain('pending real content from Reda');
+  });
+  it("aujourd'hui GOOGLE_RATING est null → le composant ne rend rien, jamais une note inventée", () => {
     expect(hasRating()).toBe(false);
     expect(GOOGLE_RATING).toBeNull();
+  });
+  // WJ99 — proposal page must not silently fall back to French under EN/AR.
+  it('WJ99 — le libellé "avis Google" porte une variante anglaise (data-en)', () => {
+    expect(STAR_RATING).toContain('data-en="Google reviews"');
   });
 });
 
@@ -73,6 +82,46 @@ describe('WJ35 — CertLogoRow : faits vérifiables uniquement, aucun logo fabri
     expect(CERT_LOGO_ROW).toContain('pending real content from Reda');
     expect(CERT_LOGO_ROW).toContain('IEC 61215');
     expect(CERT_LOGO_ROW).toContain('Loi 82-21');
+  });
+  // WJ99 — le libellé de détail porte désormais une variante anglaise, et
+  // l'aria-label racine (statique auparavant) porte les 3 traductions en
+  // data-attrs pour que la page hôte (proposition/[token].astro) le retraduise.
+  it('WJ99 — detail data-i18n porte data-en, aria-label racine porte les 3 data-aria-label-*', () => {
+    expect(CERT_LOGO_ROW).toContain('detailEn:');
+    expect(CERT_LOGO_ROW).toMatch(/data-en=\{c\.detailEn\}/);
+    expect(CERT_LOGO_ROW).toContain('data-aria-label-fr="Certifications et garanties"');
+    expect(CERT_LOGO_ROW).toContain('data-aria-label-en="Certifications and warranties"');
+    expect(CERT_LOGO_ROW).toContain('data-aria-label-ar="الشهادات والضمانات"');
+  });
+});
+
+describe('WJ99 — proposition/[token].astro : aria-label retranslated on language switch', () => {
+  it('the signature canvas aria-label carries all 3 languages, not a static FR string', () => {
+    expect(PROPOSITION).toContain('data-aria-label-fr="Zone de signature manuscrite');
+    expect(PROPOSITION).toContain('data-aria-label-en="Handwritten signature area');
+    expect(PROPOSITION).toContain('data-aria-label-ar="منطقة التوقيع اليدوي');
+  });
+
+  it('applyLang() retranslates [data-aria-label-fr] elements on every language switch', () => {
+    expect(PROPOSITION).toContain("querySelectorAll<HTMLElement>('[data-aria-label-fr]')");
+    expect(PROPOSITION).toContain('el.dataset.ariaLabelAr');
+    expect(PROPOSITION).toContain('el.dataset.ariaLabelEn');
+    expect(PROPOSITION).toContain('el.dataset.ariaLabelFr');
+  });
+});
+
+describe('WJ101 — keyboard-accessible signature step on proposition/[token].astro', () => {
+  it('the signature canvas is keyboard-focusable (tabindex) with a visible focus style', () => {
+    expect(PROPOSITION).toMatch(/id="sign-pad"\s*\n\s*tabindex="0"/);
+    expect(PROPOSITION).toContain('.sign-pad:focus-visible');
+  });
+
+  it('an explicit "skip signature" affordance exists, in FR/EN/AR, and moves focus to the name field', () => {
+    expect(PROPOSITION).toContain('id="sign-pad-skip"');
+    expect(PROPOSITION).toContain('data-fr="Signature non nécessaire — passer au nom"');
+    expect(PROPOSITION).toContain('data-en="Signature not needed — skip to name"');
+    expect(PROPOSITION).toContain('data-ar="لا حاجة للتوقيع — الانتقال إلى الاسم"');
+    expect(PROPOSITION).toMatch(/getElementById\('sign-pad-skip'\)\?\.addEventListener\('click', \(\) => \{\s*\n\s*\(document\.getElementById\('sign-nom'\)/);
   });
 });
 

@@ -1805,7 +1805,15 @@ const signConfig = ok
               />
             </div>
 
-            <!-- WJ11 · SIGNATURE MANUSCRITE (canvas natif, tactile + souris) ── -->
+            <!-- WJ11/WJ101 · SIGNATURE MANUSCRITE (canvas natif, tactile + souris)
+                 — le canvas lui-même reste POINTEUR-SEUL (dessiner un trait au
+                 clavier n'a pas de sens ergonomique), mais WJ101 rend l'étape
+                 elle-même keyboard-OPÉRABLE : le canvas est focusable
+                 (tabindex, annonce son statut facultatif au focus) et un
+                 bouton dédié permet d'ignorer explicitement le dessin — le
+                 flux légal fonctionne déjà uniquement par nom + cases à
+                 cocher (voir plus bas), donc « ignorer » ne bloque jamais la
+                 signature électronique. ── -->
             <div class="mt-6">
               <div class="flex items-baseline justify-between gap-3">
                 <label for="sign-pad" class="tech-label text-lune-faint" data-i18n data-fr="Votre signature" data-en="Your signature" data-ar="توقيعكم">Votre signature</label>
@@ -1819,17 +1827,35 @@ const signConfig = ok
               <div class="sign-pad-wrap mt-2 rounded-xl border border-white/15 bg-nuit-800">
                 <canvas
                   id="sign-pad"
+                  tabindex="0"
                   width="640"
                   height="180"
                   class="sign-pad block w-full touch-none rounded-xl"
                   role="img"
-                  aria-label="Zone de signature manuscrite — dessinez votre signature au doigt ou à la souris"
+                  aria-label="Zone de signature manuscrite — dessinez votre signature au doigt ou à la souris. Facultative : utilisez le bouton « Signature non nécessaire » si vous êtes au clavier."
+                  data-aria-label-fr="Zone de signature manuscrite — dessinez votre signature au doigt ou à la souris. Facultative : utilisez le bouton « Signature non nécessaire » si vous êtes au clavier."
+                  data-aria-label-en="Handwritten signature area — draw your signature with your finger or mouse. Optional: use the “Signature not needed” button if you're on a keyboard."
+                  data-aria-label-ar="منطقة التوقيع اليدوي — ارسموا توقيعكم بإصبعكم أو بالفأرة. اختيارية: استخدموا زر «لا حاجة للتوقيع» إذا كنتم تستخدمون لوحة المفاتيح."
                 ></canvas>
               </div>
-              <p class="mt-1.5 text-xs text-lune-faint" data-i18n
-                data-fr="Dessinez votre signature ci-dessus (facultatif mais recommandé). Votre nom et votre accord ci-dessous valent signature électronique (loi 53-05)."
-                data-en="Draw your signature above (optional but recommended). Your name and your agreement below constitute an electronic signature (law 53-05)."
-                data-ar="ارسموا توقيعكم أعلاه (اختياري لكن مستحسن). اسمكم وموافقتكم أدناه بمثابة توقيع إلكتروني (القانون 53-05).">Dessinez votre signature ci-dessus (facultatif mais recommandé). Votre nom et votre accord ci-dessous valent signature électronique (loi 53-05).</p>
+              <div class="mt-2 flex flex-wrap items-center justify-between gap-2">
+                <p class="text-xs text-lune-faint" data-i18n
+                  data-fr="Dessinez votre signature ci-dessus (facultatif mais recommandé). Votre nom et votre accord ci-dessous valent signature électronique (loi 53-05)."
+                  data-en="Draw your signature above (optional but recommended). Your name and your agreement below constitute an electronic signature (law 53-05)."
+                  data-ar="ارسموا توقيعكم أعلاه (اختياري لكن مستحسن). اسمكم وموافقتكم أدناه بمثابة توقيع إلكتروني (القانون 53-05).">Dessinez votre signature ci-dessus (facultatif mais recommandé). Votre nom et votre accord ci-dessous valent signature électronique (loi 53-05).</p>
+                <!-- WJ101 — affordance clavier explicite : un visiteur au
+                     clavier n'a pas à deviner qu'il peut passer cette étape
+                     (le canvas ne peut pas se "remplir" au clavier). Cliquer
+                     ce bouton avance simplement le focus vers le champ nom —
+                     aucun état à gérer, la signature restait déjà facultative
+                     côté backend/validation. -->
+                <button
+                  type="button"
+                  id="sign-pad-skip"
+                  class="flex-none py-2 px-3 text-xs font-semibold text-brass-300 underline-offset-2 hover:underline"
+                  data-i18n data-fr="Signature non nécessaire — passer au nom" data-en="Signature not needed — skip to name" data-ar="لا حاجة للتوقيع — الانتقال إلى الاسم"
+                >Signature non nécessaire — passer au nom</button>
+              </div>
             </div>
 
             <!-- ── WJ87 · SIGNER AU NOM DU FOYER (optionnel) ─────────────────────
@@ -1902,6 +1928,40 @@ const signConfig = ok
             <p id="sign-stamp" class="mt-4 text-xs text-lune-faint">
               <span data-i18n data-fr="Réf." data-en="Ref." data-ar="المرجع">Réf.</span> <span dir="ltr">{reference}</span> · <span data-i18n data-fr="l’horodatage de votre signature s’affichera ici." data-en="your signature's timestamp will appear here." data-ar="سيظهر توقيت توقيعكم هنا.">l’horodatage de votre signature s’affichera ici.</span>
             </p>
+
+            <!-- WJ108 — étape OTP LATENTE : le backend porte un toggle
+                 (ESIGN_OTP_ENABLED) qui, une fois activé côté ERP, exige un
+                 code de confirmation avant l'acceptation — sans ce bloc web,
+                 flipper ce toggle aurait BRIQUÉ toute signature publique (le
+                 backend renvoie une erreur qu'aucun champ ne pouvait
+                 satisfaire). Ce bloc reste MASQUÉ et n'affecte RIEN tant que
+                 le toggle est OFF (comportement d'aujourd'hui, inchangé) : il
+                 n'apparaît QUE si la réponse d'acceptation signale
+                 explicitement un besoin d'OTP (isOtpRequiredDetail,
+                 lib/proposition.ts), jamais de manière proactive. -->
+            <div id="sign-otp-block" hidden class="mt-4 border border-brass-400/40 bg-brass-400/10 p-4">
+              <label for="sign-otp-code" class="tech-label text-brass-300" data-i18n
+                data-fr="Code de confirmation" data-en="Confirmation code" data-ar="رمز التأكيد">
+                Code de confirmation
+              </label>
+              <p class="mt-1 text-xs text-lune-soft" data-i18n
+                data-fr="Pour finaliser votre signature, saisissez le code à 6 chiffres envoyé par WhatsApp ou e-mail."
+                data-en="To finalize your signature, enter the 6-digit code sent by WhatsApp or email."
+                data-ar="لإتمام توقيعكم، أدخلوا الرمز المكون من 6 أرقام المُرسل عبر واتساب أو البريد الإلكتروني.">
+                Pour finaliser votre signature, saisissez le code à 6 chiffres envoyé par WhatsApp ou e-mail.
+              </p>
+              <div class="mt-3 flex flex-wrap items-center gap-2">
+                <input id="sign-otp-code" name="otp_code" type="text" inputmode="numeric" autocomplete="one-time-code"
+                  maxlength="6" placeholder="123456"
+                  class="w-32 border border-white/15 bg-nuit-800 px-3 py-2.5 text-base tracking-widest text-white outline-none focus:border-brass-400" />
+                <button type="button" id="sign-otp-request"
+                  class="py-2.5 px-4 text-sm font-semibold text-brass-300 underline-offset-2 hover:underline" data-i18n
+                  data-fr="Envoyer le code" data-en="Send the code" data-ar="إرسال الرمز">
+                  Envoyer le code
+                </button>
+              </div>
+              <p id="sign-otp-status" class="mt-2 text-xs text-lune-faint" role="status" aria-live="polite" hidden></p>
+            </div>
 
             <p id="sign-error" class="mt-4 text-sm text-alert-300" role="alert" hidden></p>
 
@@ -2098,6 +2158,8 @@ const signConfig = ok
     buildAcceptBodyRich,
     signStampLabel,
     localizedStamp,
+    isOtpRequiredDetail,
+    isOtpIncorrectDetail,
     type OptionKey,
     type SignFormState,
     type PropLang as SignPropLang,
@@ -2200,6 +2262,16 @@ const signConfig = ok
       const value = isAr ? el.dataset.placeholderAr : isEn ? el.dataset.placeholderEn : el.dataset.placeholderFr;
       if (typeof value === 'string') el.placeholder = value;
     });
+    // WJ99 — même registre que les placeholders ci-dessus, mais pour
+    // `aria-label` : cet attribut n'est PAS couvert par le mécanisme data-i18n
+    // (qui ne touche que le contenu affiché des nœuds `data-i18n`) — sans ce
+    // retraduction, un `aria-label` posé au premier rendu restait figé en
+    // français même après bascule EN/AR (CertLogoRow.astro `data-aria-label-*`,
+    // le canevas de signature `data-aria-label-*` ci-dessous).
+    document.querySelectorAll<HTMLElement>('[data-aria-label-fr]').forEach((el) => {
+      const value = isAr ? el.dataset.ariaLabelAr : isEn ? el.dataset.ariaLabelEn : el.dataset.ariaLabelFr;
+      if (typeof value === 'string') el.setAttribute('aria-label', value);
+    });
   }
   prepareI18n();
   document.getElementById('prop-lang-fr')?.addEventListener('click', () => applyLang('fr'));
@@ -2274,6 +2346,49 @@ const signConfig = ok
       );
       financingIo.observe(financingSection);
     }
+
+    // ── WJ104 — DELTA d'instrumentation funnel : `proposal_viewed`/
+    // `proposal_signed` via le MÊME beacon step-level que /devis/mon-toit
+    // (WJ59 `pages/api/funnel-beacon.ts` → FUNNEL_WEBHOOK_URL, log-only sinon)
+    // — jamais le fil lead (voir WJ109 ci-dessus pour la distinction), jamais
+    // un second canal. Session token anonyme PAR ONGLET, même contrat privacy
+    // que mon-toit.astro (lib/funnelBeacon.ts : 4 champs seulement, aucune PII).
+    const PROPOSAL_FUNNEL_TOKEN_KEY = 'prop-funnel-token-v1';
+    function getProposalFunnelToken(): string {
+      try {
+        let t = sessionStorage.getItem(PROPOSAL_FUNNEL_TOKEN_KEY);
+        if (!t) {
+          t = Math.random().toString(36).slice(2) + Date.now().toString(36);
+          sessionStorage.setItem(PROPOSAL_FUNNEL_TOKEN_KEY, t);
+        }
+        return t;
+      } catch {
+        return Math.random().toString(36).slice(2);
+      }
+    }
+    const proposalFunnelToken = getProposalFunnelToken();
+    const proposalFunnelSent = new Set<string>();
+    function sendProposalFunnelBeacon(action: 'viewed' | 'signed'): void {
+      const key = `proposal:${action}`;
+      if (proposalFunnelSent.has(key)) return;
+      proposalFunnelSent.add(key);
+      try {
+        const payload = JSON.stringify({
+          step: 'proposal',
+          action,
+          sessionToken: proposalFunnelToken,
+          path: location.pathname,
+        });
+        if (navigator.sendBeacon) {
+          navigator.sendBeacon('/api/funnel-beacon', new Blob([payload], { type: 'application/json' }));
+        } else {
+          void fetch('/api/funnel-beacon', { method: 'POST', headers: { 'content-type': 'application/json' }, body: payload, keepalive: true }).catch(() => {});
+        }
+      } catch {
+        // Mesure best-effort seulement — ne doit jamais perturber le parcours.
+      }
+    }
+    sendProposalFunnelBeacon('viewed');
 
     const form = document.getElementById('sign-form') as HTMLFormElement | null;
     const success = document.getElementById('sign-success');
@@ -2361,6 +2476,64 @@ const signConfig = ok
     }
     clearBtn?.addEventListener('click', clearSignature);
 
+    // WJ101 — affordance clavier explicite : le canvas de signature reste
+    // pointeur-seul (dessiner au clavier n'a pas de sens), mais un visiteur au
+    // clavier ne doit pas rester bloqué à se demander comment continuer. Ce
+    // bouton avance simplement le focus vers le champ nom — aucune signature
+    // n'est requise : la validation (validateSign, lib/proposition.ts) n'a
+    // jamais exigé de trait dessiné, seulement le nom + (si deux options)
+    // l'option choisie.
+    document.getElementById('sign-pad-skip')?.addEventListener('click', () => {
+      (document.getElementById('sign-nom') as HTMLInputElement | null)?.focus();
+    });
+
+    // ── WJ108 · OTP e-signature — LATENT tant que le backend n'exige rien ────
+    // (ESIGN_OTP_ENABLED côté ERP). Ce bloc reste masqué et n'affecte AUCUNE
+    // soumission tant que /accept/ ne renvoie pas l'un des 3 messages
+    // reconnus par isOtpRequiredDetail (lib/proposition.ts) — comportement
+    // d'aujourd'hui inchangé.
+    const otpBlock = document.getElementById('sign-otp-block');
+    const otpCodeInput = document.getElementById('sign-otp-code') as HTMLInputElement | null;
+    const otpRequestBtn = document.getElementById('sign-otp-request') as HTMLButtonElement | null;
+    const otpStatusEl = document.getElementById('sign-otp-status');
+    const OTP_SENT_MSG: Record<PropLang, string> = {
+      fr: 'Code envoyé — vérifiez WhatsApp ou vos e-mails.',
+      en: 'Code sent — check WhatsApp or your email.',
+      ar: 'تم إرسال الرمز — تحققوا من واتساب أو بريدكم الإلكتروني.',
+    };
+    const OTP_SEND_FAILED_MSG: Record<PropLang, string> = {
+      fr: 'Impossible d\'envoyer le code pour le moment. Réessayez.',
+      en: 'Could not send the code right now. Please try again.',
+      ar: 'تعذر إرسال الرمز حالياً. يرجى إعادة المحاولة.',
+    };
+    function revealOtpBlock(): void {
+      if (otpBlock) otpBlock.hidden = false;
+      otpCodeInput?.focus();
+    }
+    otpRequestBtn?.addEventListener('click', async () => {
+      if (!otpRequestBtn) return;
+      otpRequestBtn.disabled = true;
+      try {
+        const res = await fetch('/api/proposition-otp', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ token: cfg.token }),
+        });
+        const data = (await res.json().catch(() => ({}))) as { ok?: boolean };
+        if (otpStatusEl) {
+          otpStatusEl.textContent = data.ok ? OTP_SENT_MSG[currentLang] : OTP_SEND_FAILED_MSG[currentLang];
+          otpStatusEl.hidden = false;
+        }
+      } catch {
+        if (otpStatusEl) {
+          otpStatusEl.textContent = OTP_SEND_FAILED_MSG[currentLang];
+          otpStatusEl.hidden = false;
+        }
+      } finally {
+        otpRequestBtn.disabled = false;
+      }
+    });
+
     // ── WJ42 — Horodatage localisé (FR/EN/AR), affiché en direct dans le récap.
     // AVANT : `stampEl.textContent = frenchStamp(now)` écrasait le markup
     // tri-node data-i18n du <p id="sign-stamp"> (ses deux <span data-i18n>
@@ -2406,6 +2579,10 @@ const signConfig = ok
     // demande explicitement un comportement 'auto' — pas de smooth-scroll
     // forcé — quand le client préfère un mouvement réduit).
     function showSuccess(name: string, when?: Date, signatureDataUrl?: string, scrollIntoView = false): void {
+      // WJ104 — « proposition signée » : émis à chaque affichage de l'état
+      // confirmé (chargement déjà accepté OU signature qui vient d'aboutir),
+      // dédupliqué comme les autres beacons (une fois par onglet/session).
+      sendProposalFunnelBeacon('signed');
       if (form) form.hidden = true;
       if (sticky) sticky.hidden = true;
       if (successName) successName.textContent = name || '';
@@ -2497,13 +2674,18 @@ const signConfig = ok
       const submitController = new AbortController();
       const submitTimer = window.setTimeout(() => submitController.abort(), SIGN_SUBMIT_TIMEOUT_MS);
       try {
+        // WJ108 — code OTP OPTIONNEL : vide tant que le bloc n'a jamais été
+        // révélé (backend/toggle OFF ignore le champ vide, comportement
+        // inchangé). Une fois révélé, le client peut le remplir et resoumettre.
+        const otpCode = otpCodeInput?.value.trim() ?? '';
         // Corps RÉTRO-COMPATIBLE : base (token/nom/option) + champs optionnels
-        // (signature, consentement, horodatage) que le backend peut ignorer.
+        // (signature, consentement, horodatage, otp_code) que le backend peut ignorer.
         const richBody = buildAcceptBodyRich(state, cfg.twoOptions, {
           signature_data_url: signatureDataUrl,
           consent_esign: true,
           signed_at_client: signedAtIso,
           on_behalf_of: onBehalfOf,
+          otp_code: otpCode,
         });
         const res = await fetch('/api/proposition-accept', {
           method: 'POST',
@@ -2528,6 +2710,22 @@ const signConfig = ok
         // on bascule quand même sur l'état confirmé (double-clic sûr).
         if (res.status === 409) {
           showSuccess(data.accepte_par_nom || nom.trim(), undefined, signatureDataUrl, true);
+          return;
+        }
+        // WJ108 — LATENT : ce chemin ne se déclenche QUE si le backend a le
+        // toggle ESIGN_OTP_ENABLED actif et renvoie l'un des 3 messages OTP
+        // reconnus (isOtpRequiredDetail) — jamais aujourd'hui (toggle OFF par
+        // défaut). Révèle le bloc de saisie au lieu d'un message d'erreur
+        // générique, et lance automatiquement l'envoi du code la première fois.
+        if (isOtpRequiredDetail(data.detail)) {
+          const firstReveal = otpBlock?.hidden !== false;
+          revealOtpBlock();
+          showError(
+            isOtpIncorrectDetail(data.detail)
+              ? (data.detail ?? '')
+              : 'Un code de confirmation vous a été envoyé — saisissez-le ci-dessus pour finaliser votre signature.',
+          );
+          if (firstReveal) otpRequestBtn?.click();
           return;
         }
         showError(data.detail || 'Une erreur est survenue. Veuillez réessayer.');
@@ -3081,10 +3279,16 @@ const signConfig = ok
   }
 
   /* WJ11 — pad de signature : hauteur fixe (zéro CLS) ; pas de débordement.
-     touch-none (classe utilitaire) empêche le scroll pendant le tracé. */
+     touch-none (classe utilitaire) empêche le scroll pendant le tracé.
+     WJ101 — le canvas est désormais focusable (tabindex="0") : un contour de
+     focus visible est requis (WCAG 2.4.7), jamais un `outline: none` implicite. */
   .sign-pad {
     height: 160px;
     cursor: crosshair;
+  }
+  .sign-pad:focus-visible {
+    outline: 2px solid var(--color-brass-400, #e8b54a);
+    outline-offset: 2px;
   }
 
   /* WJ25/WJ27 — scène 3D : ratio RÉSERVÉ avant tout chargement (zéro CLS).

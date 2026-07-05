@@ -166,10 +166,22 @@ export interface ValidatedLead {
   fullName: string;
   phoneE164: string;
   whatsappOptIn: boolean;
-  city: string;
-  roofType: RoofTypeId;
-  billRange: BillRangeId;
+  // — WJ97 : `city`/`roofType`/`billRange` restent REQUIS pour toute soumission
+  //   /devis/mon-toit (le seul appelant historique construit toujours les
+  //   trois) ; ils deviennent absents UNIQUEMENT pour le chemin `quickCallback`
+  //   ci-dessous (rappel rapide /contact — nom + téléphone seulement, aucune
+  //   facture/toiture connue à ce stade). Marqués `?:` pour permettre cette
+  //   absence honnête, jamais une valeur fabriquée à leur place.
+  city?: string;
+  roofType?: RoofTypeId;
+  billRange?: BillRangeId;
   consent: true;
+  // — WJ97 : demande de rappel RAPIDE depuis /contact (nom + téléphone
+  //   seulement, AUCUNE facture/toiture connue à ce stade) — présent et `true`
+  //   UNIQUEMENT pour ce chemin allégé (cf. `quickCallback` dans validateLead
+  //   ci-dessous). Absent pour toute soumission /devis/mon-toit existante —
+  //   contrat de fil inchangé octet pour octet pour elles.
+  quickCallback?: true;
   fbclid: string | null;
   utm: Partial<Record<UtmKey, string>>;
   // — WJ30 : champs FACULTATIFS élargis. Présents UNIQUEMENT si la valeur reçue
@@ -451,14 +463,21 @@ export function validateLead(body: unknown): ValidationResult {
   const phone = normalizeMoroccanPhone(cleanStr(b.phone, 30));
   if (!phone.ok) errors.phone = phone.error ?? 'Numéro invalide';
 
+  // — WJ97 : chemin RAPPEL RAPIDE (/contact « Demander un rappel ») — nom +
+  //   téléphone SEULEMENT, aucune ville/toiture/facture connue à ce stade. Ce
+  //   flag n'existe QUE sur ce nouveau chemin ; toute soumission existante
+  //   (mon-toit) ne l'envoie jamais et retombe donc exactement sur les mêmes
+  //   3 champs requis qu'avant — contrat inchangé octet pour octet pour elles.
+  const quickCallback = b.quickCallback === true;
+
   const city = cleanStr(b.city, 100);
-  if (city.length < 2) errors.city = 'Ville / commune requise';
+  if (!quickCallback && city.length < 2) errors.city = 'Ville / commune requise';
 
   const roofType = cleanStr(b.roofType, 20);
-  if (!ROOF_TYPES.some((r) => r.id === roofType)) errors.roofType = 'Type de toiture requis';
+  if (!quickCallback && !ROOF_TYPES.some((r) => r.id === roofType)) errors.roofType = 'Type de toiture requis';
 
   const billRange = cleanStr(b.billRange, 20);
-  if (!isBillRangeId(billRange)) errors.billRange = 'Tranche de facture requise';
+  if (!quickCallback && !isBillRangeId(billRange)) errors.billRange = 'Tranche de facture requise';
 
   if (b.consent !== true) errors.consent = 'Le consentement est requis pour être recontacté';
 
@@ -481,9 +500,11 @@ export function validateLead(body: unknown): ValidationResult {
       // pour tout champ facultatif WJ30/WJ31 ci-dessous).
       ...(phone.phoneIsForeign ? { phoneIsForeign: true as const } : {}),
       whatsappOptIn: b.whatsappOptIn === true,
-      city,
-      roofType: roofType as RoofTypeId,
-      billRange: billRange as BillRangeId,
+      // WJ97 — honnête : sur le chemin rappel rapide, ces trois champs restent
+      // ABSENTS (jamais une valeur fabriquée) plutôt que forcés à une chaîne
+      // vide/enum arbitraire.
+      ...(quickCallback ? {} : { city, roofType: roofType as RoofTypeId, billRange: billRange as BillRangeId }),
+      ...(quickCallback ? { quickCallback: true as const } : {}),
       consent: true,
       fbclid,
       utm,
@@ -504,6 +525,12 @@ export async function runSimulation(
   env: LeadEnv,
   fetchFn: typeof fetch = fetch,
 ): Promise<EstimateBand> {
+  // WJ97 — un rappel rapide n'a pas de `billRange` : aucune fourchette kWc/ROI
+  // à estimer (on ne fabrique jamais un chiffre sans facture connue) — bande
+  // vide, honnête, jamais un devis local basé sur une hypothèse.
+  if (!lead.billRange) {
+    return { kwcMin: 0, kwcMax: 0, kwcLabel: '', paybackLabel: '', source: 'local' };
+  }
   const fallback = localEstimateBand(lead.billRange);
   const url = env.SIMULATOR_API_URL?.trim();
   if (!url) return fallback;
@@ -548,7 +575,11 @@ export function buildLeadRecord(
     ...lead,
     consentTimestamp: iso,
     submittedAt: iso,
-    qualified: qualifiesForCrm(lead.billRange),
+    // WJ97 — un rappel rapide n'a pas de `billRange` connu (aucun seuil de
+    // facture à appliquer) : un visiteur qui demande EXPLICITEMENT à être
+    // rappelé par téléphone est par nature un lead qualifié, jamais filtré
+    // sous un seuil qu'on n'a même pas mesuré.
+    qualified: lead.quickCallback === true ? true : qualifiesForCrm(lead.billRange!),
     band,
     page,
   };
@@ -623,7 +654,9 @@ export function redactLeadForLog(record: LeadRecord): Record<string, unknown> {
     roofType: record.roofType,
     whatsappOptIn: record.whatsappOptIn,
     hasName: record.fullName.length > 0,
-    hasCity: record.city.length > 0,
+    // WJ97 — `city` est absent sur le chemin rappel rapide (jamais un `.length`
+    // sur `undefined`).
+    hasCity: (record.city?.length ?? 0) > 0,
     bandSource: record.band.source,
     kwcLabel: record.band.kwcLabel,
     fbclid: record.fbclid ? 'present' : 'absent',
@@ -809,7 +842,9 @@ export async function fireCapi(
   try {
     const [ph, ct, em] = await Promise.all([
       hashPhoneForCapi(record.phoneE164),
-      hashCityForCapi(record.city),
+      // WJ97 — `city` est absent sur le chemin rappel rapide : pas de hash de
+      // correspondance ville dans ce cas (jamais une ville fabriquée).
+      record.city ? hashCityForCapi(record.city) : Promise.resolve(undefined),
       record.email ? hashEmailForCapi(record.email) : Promise.resolve(undefined),
     ]);
     const eventId = record.eventId || `${leadLogId(record.phoneE164)}-${record.submittedAt}`;
@@ -823,7 +858,7 @@ export async function fireCapi(
         utm: record.utm,
         // PII hachée SHA-256 (jamais en clair) — noms `ph`/`ct`/`em` de la spec Meta.
         ph,
-        ct,
+        ...(ct ? { ct } : {}),
         ...(em ? { em } : {}),
         billRange: record.billRange,
         timestamp: record.submittedAt,

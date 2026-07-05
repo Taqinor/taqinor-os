@@ -135,6 +135,26 @@ describe('POST /api/proposition-accept — relais au backend', () => {
     expect(relayed.consent_esign).toBe(true);
   });
 
+  // WJ108 — code OTP optionnel (backend validate_esign_otp, toggle ESIGN_OTP_ENABLED).
+  it('WJ108 — relaie otp_code quand fourni', async () => {
+    const fn = vi.fn().mockResolvedValue(upstream(200, { detail: 'OK', accepte_par_nom: 'Reda' }));
+    vi.stubGlobal('fetch', fn);
+
+    await call({ token: 'tok', nom: 'Reda', twoOptions: false, otp_code: '123456' });
+    const [, init] = fn.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({ nom: 'Reda', otp_code: '123456' });
+  });
+
+  it('WJ108 — otp_code absent/vide n\'est jamais relayé (comportement inchangé, toggle OFF)', async () => {
+    const fn = vi.fn().mockResolvedValue(upstream(200, { detail: 'OK', accepte_par_nom: 'Reda' }));
+    vi.stubGlobal('fetch', fn);
+
+    await call({ token: 'tok', nom: 'Reda', twoOptions: false, otp_code: '' });
+    const [, init] = fn.mock.calls[0] as [string, RequestInit];
+    const relayed = JSON.parse(init.body as string) as Record<string, unknown>;
+    expect(relayed.otp_code).toBeUndefined();
+  });
+
   it('400 backend → reflète le statut + detail', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(upstream(400, { detail: 'Le nom est requis.' })));
     const { status, json } = await call({ token: 'tok', nom: '', twoOptions: false });
