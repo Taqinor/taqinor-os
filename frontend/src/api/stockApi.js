@@ -128,6 +128,10 @@ const stockApi = {
     api.post(`/stock/receptions-fournisseur/${id}/confirmer/`),
   annulerReceptionFournisseur: (id) =>
     api.post(`/stock/receptions-fournisseur/${id}/annuler/`),
+  // XSTK4/XSTK5 — décompose un code GS1-128/DataMatrix scanné et résout le
+  // produit + série/lot/péremption préremplis pour la réception scan-first.
+  scanGs1ReceptionFournisseur: (code) =>
+    api.get('/stock/receptions-fournisseur/scan-gs1/', { params: { code } }),
 
   // G5 — Factures fournisseur / comptes à payer (AP). Solde dû = TTC − Σ
   // paiements ; statut recalculé à chaque paiement. Usage INTERNE.
