@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("parametres", "0045_yhire9_mode_garde_habilitation"),
+        ("parametres", "0046_zsal5_emailtemplate_envoi_devis"),
     ]
 
     operations = [
