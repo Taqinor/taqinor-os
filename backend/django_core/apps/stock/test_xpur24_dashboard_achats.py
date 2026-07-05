@@ -70,8 +70,13 @@ class Xpur24Base(TestCase):
 
     def _bcf(self, statut, date_creation=None, prix=Decimal('1200'),
              quantite=2):
+        # Compteur par-instance : deux appels avec le même statut/prix dans
+        # un même test ne doivent jamais collisionner sur la référence
+        # unique (company_id, reference) — cf. IntegrityError observé en CI.
+        self._bcf_seq = getattr(self, '_bcf_seq', 0) + 1
         bc = BonCommandeFournisseur.objects.create(
-            company=self.company, reference=f'BCF-X24-{statut}-{prix}',
+            company=self.company,
+            reference=f'BCF-X24-{statut}-{prix}-{self._bcf_seq}',
             fournisseur=self.fournisseur, statut=statut)
         if date_creation:
             BonCommandeFournisseur.objects.filter(pk=bc.pk).update(
