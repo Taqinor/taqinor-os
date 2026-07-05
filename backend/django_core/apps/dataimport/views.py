@@ -86,9 +86,15 @@ def commit(request):
             {'detail': 'La création de produits est réservée aux rôles '
                        'Directeur et Commercial responsable.'},
             status=403)
+    # XPLT1 — mode d'import optionnel (creer=défaut, maj, upsert), jamais lu
+    # ailleurs que le body du formulaire (la société, elle, reste forcée
+    # côté serveur via request.user.company).
+    mode = (request.data.get('mode') or 'creer').strip().lower()
+    external_system = request.data.get('external_system') or None
     try:
         result = services.commit(
-            f.read(), f.name, target, request.user.company, request.user)
+            f.read(), f.name, target, request.user.company, request.user,
+            mode=mode, external_system=external_system)
     except ValueError as exc:
         # Erreur attendue (cible inconnue, plafond de lignes…) : message clair.
         return Response({'detail': str(exc)}, status=400)
