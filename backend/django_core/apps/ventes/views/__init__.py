@@ -36,7 +36,7 @@ from .commissioning import (  # FG274-FG278, FG287
 )
 from .remise_encaissement import RemiseEncaissementViewSet  # XFSM19
 from .mandat_paiement import MandatPaiementViewSet  # XCTR22
-from .liste_prix import ListePrixViewSet  # XSAL1
+from .liste_prix import ListePrixViewSet, prix_applicable_view  # XSAL1-3
 
 __all__ = [
     'DevisViewSet',
@@ -69,4 +69,5 @@ __all__ = [
     'RemiseEncaissementViewSet',
     'MandatPaiementViewSet',
     'ListePrixViewSet',
+    'prix_applicable_view',
 ]

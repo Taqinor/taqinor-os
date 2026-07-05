@@ -31,6 +31,7 @@ from .views import (
     RemiseEncaissementViewSet,  # XFSM19
     MandatPaiementViewSet,  # XCTR22
     ListePrixViewSet,  # XSAL1-2
+    prix_applicable_view,  # XSAL3
 )
 from .recouvrement import (
     FollowupLevelViewSet,
@@ -207,5 +208,7 @@ urlpatterns = [
     # FG273 — calendrier réglementaire & alertes d'expiration (lecture seule).
     path('calendrier-reglementaire/', calendrier_reglementaire,
          name='calendrier-reglementaire'),
+    # XSAL3 — résolution de prix (liste client + règles/paliers XSAL1-2).
+    path('prix-applicable/', prix_applicable_view, name='prix-applicable'),
     path('', include(router.urls)),
 ]
