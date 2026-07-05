@@ -1,13 +1,16 @@
 from rest_framework import serializers
 
 from .models import (
-    AnnotationDocument, ArchivageLegal, Cabinet, ChampSignature, Coffre,
-    DemandeApprobation, DemandeDocument, DemandeSignatureDocument, DepotPublic,
+    AnnotationDocument, ArchivageLegal, Cabinet, CertificatDestruction,
+    ChampSignature, Coffre, DemandeApprobation, DemandeDisposition,
+    DemandeDocument, DemandeSignatureDocument, DepotPublic,
     Document, DocumentLien, DocumentTag, DocumentTagAssignment, DocumentVersion,
-    ExigenceDossier, Folder, JournalAcces, LegalHold, ModeleDocument,
+    ExigenceDossier, FavoriGed, Folder, JournalAcces, LegalHold, LotEnvoi,
+    ModeleDocument,
     PartageGed, PlanificationDocument, PolitiqueRetention,
-    RegleApprobationGed, RegleDossier, QuotaStockage, SignataireDemande,
-    ValidationOcrDocument,
+    RegleAclMetadonnee, RegleApprobationGed, RegleDossier, RoleSignataire,
+    RoutageDocumentaire, QuotaStockage, SignataireDemande, TypeChampSignature,
+    ValidationOcrDocument, VueGedEnregistree,
 )
 from . import services
 
@@ -223,12 +226,21 @@ class DocumentSerializer(serializers.ModelSerializer):
     # seule (dérivé de `url_externe`) pour que le frontend adapte l'aperçu et
     # désactive les actions fichier sans devoir réimplémenter la règle.
     est_document_lien = serializers.BooleanField(read_only=True)
+    # ZGED5 — panneau d'informations : propriétaire + contact assigné.
+    proprietaire_nom = serializers.CharField(
+        source='proprietaire.username', read_only=True, default=None)
+    contact_label = serializers.SerializerMethodField()
+    # ZGED9 — verrou d'avertissement (léger, distinct du check-out GED16).
+    verrou_avertissement_par_nom = serializers.CharField(
+        source='verrou_avertissement_par.username', read_only=True, default=None)
+    est_verrouille_avertissement = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = Document
         # `company` + `created_by` posés côté serveur.
         fields = [
-            'id', 'folder', 'folder_nom', 'coffre', 'nom', 'description',
+            'id', 'reference', 'folder', 'folder_nom', 'coffre', 'nom',
+            'description',
             'custom_data', 'created_by', 'created_by_nom', 'version_count',
             'derniere_version', 'tags',
             'locked_by', 'locked_by_nom', 'locked_at', 'is_locked',
@@ -240,15 +252,36 @@ class DocumentSerializer(serializers.ModelSerializer):
             'est_dans_corbeille',
             # XGED18 — document-lien.
             'url_externe', 'est_document_lien',
+            # ZGED5 — propriétaire + contact assigné (réassignables via
+            # l'action `assigner`, jamais un PATCH direct sur `proprietaire`).
+            'proprietaire', 'proprietaire_nom', 'contact_id', 'contact_label',
+            # ZGED9 — verrou d'avertissement (posé/levé via les actions
+            # dédiées, jamais un PATCH direct).
+            'verrou_avertissement_par', 'verrou_avertissement_par_nom',
+            'verrou_avertissement_le', 'verrou_avertissement_motif',
+            'est_verrouille_avertissement',
             'created_at', 'updated_at',
         ]
         read_only_fields = [
-            'created_by', 'created_at', 'updated_at',
+            'reference', 'created_by', 'created_at', 'updated_at',
             'locked_by', 'locked_at', 'is_locked',
             'statut', 'transitions_autorisees',
             'supprime_le', 'supprime_par', 'est_dans_corbeille',
             'est_document_lien',
+            'proprietaire', 'contact_id',
+            'verrou_avertissement_par', 'verrou_avertissement_le',
+            'verrou_avertissement_motif', 'est_verrouille_avertissement',
         ]
+
+    def get_contact_label(self, obj):
+        if not obj.contact_id:
+            return None
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is None:
+            return None
+        from apps.crm.selectors import client_label
+        return client_label(company, obj.contact_id)
 
     def get_version_count(self, obj):
         return obj.versions.count()
@@ -610,6 +643,10 @@ class DemandeSignatureDocumentSerializer(serializers.ModelSerializer):
             # XGED2 — circuit multi-signataires.
             'routage', 'relance_cadence_jours', 'annule_le', 'annule_par',
             'signataires',
+            # ZGED14 — traçabilité anti-doublon des notifications émetteur
+            # (posée/réarmée par le sweep/`prolonger`, jamais mutée par un
+            # PATCH direct).
+            'emetteur_notifie_expiration_le',
             'created_by', 'created_by_nom', 'created_at', 'updated_at',
         ]
         read_only_fields = [
@@ -620,6 +657,7 @@ class DemandeSignatureDocumentSerializer(serializers.ModelSerializer):
             'signature_texte', 'signature_tracee',
             'motif_refus', 'refuse_le',
             'annule_le', 'annule_par',
+            'emetteur_notifie_expiration_le',
             'created_by', 'created_at', 'updated_at',
         ]
 
@@ -633,15 +671,37 @@ class ChampSignatureSerializer(serializers.ModelSerializer):
     exactement l'un des deux). `company` posée CÔTÉ SERVEUR (jamais lue du
     corps). `valeur` reste modifiable par cette API de GESTION (édition d'un
     placement) — le remplissage PUBLIC passe par `services.
-    enregistrer_valeurs_champs`, jamais par cette route authentifiée."""
+    enregistrer_valeurs_champs`, jamais par cette route authentifiée.
+
+    ZGED4 — `type_champ_ref` référence optionnellement un `TypeChampSignature`
+    du catalogue personnalisé ; `type_champ_ref_detail` expose mode/largeur/
+    hauteur/placeholder/astuce pour le rendu public sans requête supplémentaire.
+    """
+    type_champ_ref_detail = serializers.SerializerMethodField()
+
     class Meta:
         model = ChampSignature
         fields = [
-            'id', 'demande', 'modele', 'type_champ', 'page',
+            'id', 'demande', 'modele', 'type_champ', 'type_champ_ref',
+            'type_champ_ref_detail', 'page',
             'x', 'y', 'largeur', 'hauteur', 'role', 'requis', 'valeur',
             'created_at', 'updated_at',
         ]
         read_only_fields = ['created_at', 'updated_at']
+
+    def get_type_champ_ref_detail(self, obj):
+        t = obj.type_champ_ref
+        if t is None:
+            return None
+        return {
+            'id': t.pk, 'code': t.code, 'libelle': t.libelle,
+            'mode_saisie': t.mode_saisie,
+            'largeur_defaut': str(t.largeur_defaut),
+            'hauteur_defaut': str(t.hauteur_defaut),
+            'placeholder': t.placeholder, 'astuce': t.astuce,
+            'options': t.options, 'auto_remplir': t.auto_remplir,
+            'lecture_seule': t.lecture_seule,
+        }
 
     def validate(self, attrs):
         demande = attrs.get('demande', getattr(self.instance, 'demande', None))
@@ -658,20 +718,176 @@ class ChampSignatureSerializer(serializers.ModelSerializer):
             if modele is not None and modele.company_id != company.id:
                 raise serializers.ValidationError(
                     {'modele': 'Modèle inconnu.'})
+            type_champ_ref = attrs.get(
+                'type_champ_ref', getattr(self.instance, 'type_champ_ref', None))
+            if type_champ_ref is not None and type_champ_ref.company_id != company.id:
+                raise serializers.ValidationError(
+                    {'type_champ_ref': 'Type de champ inconnu.'})
         return attrs
+
+
+class TypeChampSignatureSerializer(serializers.ModelSerializer):
+    """ZGED4 — Type de champ de signature personnalisé (catalogue éditable).
+
+    `company`/`created_by` posés côté serveur. `code` unique par société
+    (garde base + validation applicative pour un message FR clair)."""
+    class Meta:
+        model = TypeChampSignature
+        fields = [
+            'id', 'code', 'libelle', 'mode_saisie', 'largeur_defaut',
+            'hauteur_defaut', 'placeholder', 'astuce', 'options',
+            'auto_remplir', 'lecture_seule', 'actif',
+            'created_by', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_by', 'created_at', 'updated_at']
+
+    def validate_code(self, value):
+        request = self.context.get('request')
+        if request is not None:
+            company = request.user.company
+            qs = TypeChampSignature.objects.filter(company=company, code=value)
+            if self.instance is not None:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    "Un type de champ avec ce code existe déjà pour cette société.")
+        return value
+
+
+class RoutageDocumentaireSerializer(serializers.ModelSerializer):
+    """ZGED6 — Réglage de centralisation des fichiers d'un autre module.
+
+    `company`/`created_by` posés côté serveur. `source` unique par société
+    (garde base + message FR clair)."""
+    cabinet_cible_nom = serializers.CharField(
+        source='cabinet_cible.nom', read_only=True)
+
+    class Meta:
+        model = RoutageDocumentaire
+        fields = [
+            'id', 'source', 'cabinet_cible', 'cabinet_cible_nom',
+            'dossier_cible', 'tags_defaut', 'actif',
+            'created_by', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_by', 'created_at', 'updated_at']
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        cabinet = attrs.get(
+            'cabinet_cible', getattr(self.instance, 'cabinet_cible', None))
+        if request is not None and cabinet is not None:
+            if cabinet.company_id != request.user.company_id:
+                raise serializers.ValidationError(
+                    {'cabinet_cible': 'Cabinet inconnu.'})
+        return attrs
+
+    def validate_source(self, value):
+        request = self.context.get('request')
+        if request is not None:
+            company = request.user.company
+            qs = RoutageDocumentaire.objects.filter(company=company, source=value)
+            if self.instance is not None:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    "Un routage existe déjà pour cette source dans cette société.")
+        return value
+
+
+class FavoriGedSerializer(serializers.ModelSerializer):
+    """ZGED7 — Favori d'un dossier ou document (personnel, jamais partagé).
+
+    `company`/`utilisateur` posés côté serveur — jamais lus du corps."""
+    folder_nom = serializers.CharField(
+        source='folder.nom', read_only=True, default=None)
+    document_nom = serializers.CharField(
+        source='document.nom', read_only=True, default=None)
+
+    class Meta:
+        model = FavoriGed
+        fields = [
+            'id', 'folder', 'folder_nom', 'document', 'document_nom',
+            'created_at',
+        ]
+        read_only_fields = ['created_at']
+
+    def validate(self, attrs):
+        folder = attrs.get('folder', getattr(self.instance, 'folder', None))
+        document = attrs.get('document', getattr(self.instance, 'document', None))
+        if bool(folder) == bool(document):
+            raise serializers.ValidationError(
+                "Un favori cible exactement un dossier OU un document.")
+        request = self.context.get('request')
+        if request is not None:
+            company = request.user.company
+            if folder is not None and folder.company_id != company.id:
+                raise serializers.ValidationError({'folder': 'Dossier inconnu.'})
+            if document is not None and document.company_id != company.id:
+                raise serializers.ValidationError(
+                    {'document': 'Document inconnu.'})
+        return attrs
+
+
+class VueGedEnregistreeSerializer(serializers.ModelSerializer):
+    """ZGED8 — Recherche/filtre GED enregistré, partageable.
+
+    `company`/`utilisateur` posés côté serveur — jamais lus du corps."""
+    utilisateur_nom = serializers.CharField(
+        source='utilisateur.username', read_only=True)
+    est_a_moi = serializers.SerializerMethodField()
+
+    class Meta:
+        model = VueGedEnregistree
+        fields = [
+            'id', 'nom', 'criteres', 'partagee',
+            'utilisateur', 'utilisateur_nom', 'est_a_moi',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['utilisateur', 'created_at', 'updated_at']
+
+    def get_est_a_moi(self, obj):
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        return bool(user) and obj.utilisateur_id == user.id
+
+
+class RoleSignataireSerializer(serializers.ModelSerializer):
+    """ZGED1 — Rôle signataire réutilisable (couleur + auth extra + peut
+    changer de signataire). `company`/`created_by` posés côté serveur."""
+    class Meta:
+        model = RoleSignataire
+        fields = [
+            'id', 'nom', 'couleur', 'auth_extra', 'peut_changer_signataire',
+            'created_by', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_by', 'created_at', 'updated_at']
 
 
 class SignataireDemandeSerializer(serializers.ModelSerializer):
     """XGED2 — Destinataire (signataire/copie/approbateur) d'une demande de
     signature multi-parties. LECTURE SEULE via l'API — créé/muté uniquement
     par `services` (création groupée, signature/refus par jeton public,
-    notifications/relances)."""
+    notifications/relances).
+
+    ZGED1 — `role_signataire` (optionnel) référence le catalogue de rôles
+    réutilisables ; `role_couleur`/`role_auth_extra` exposent les valeurs
+    HÉRITÉES du rôle référencé pour préremplir l'UI (couleur du champ de
+    signature, authentification extra ZGED2)."""
+    role_signataire_nom = serializers.CharField(
+        source='role_signataire.nom', read_only=True, default=None)
+    role_couleur = serializers.CharField(
+        source='role_signataire.couleur', read_only=True, default=None)
+    role_auth_extra = serializers.CharField(
+        source='role_signataire.auth_extra', read_only=True, default=None)
+
     class Meta:
         model = SignataireDemande
         fields = [
             'id', 'demande', 'nom', 'email', 'telephone', 'ordre', 'role',
-            'statut', 'notifie_le', 'derniere_relance_le', 'nb_relances',
-            'date_action', 'motif_refus', 'created_at', 'updated_at',
+            'role_signataire', 'role_signataire_nom', 'role_couleur',
+            'role_auth_extra', 'statut', 'notifie_le', 'derniere_relance_le',
+            'nb_relances', 'date_action', 'motif_refus', 'created_at',
+            'updated_at',
         ]
         read_only_fields = fields
 
@@ -857,6 +1073,78 @@ class RegleApprobationGedSerializer(serializers.ModelSerializer):
             'actif', 'created_by', 'created_at', 'updated_at',
         ]
         read_only_fields = ['created_by', 'created_at', 'updated_at']
+
+
+class RegleAclMetadonneeSerializer(serializers.ModelSerializer):
+    """XGED21 — ACL automatique pilotée par métadonnées (couche dynamique,
+    évaluée à chaque lecture par `selectors.acl_effective` — jamais de ligne
+    `AclGed` matérialisée)."""
+    role_nom = serializers.CharField(
+        source='role.nom', read_only=True, default=None)
+
+    class Meta:
+        model = RegleAclMetadonnee
+        fields = [
+            'id', 'nom', 'condition_group', 'role', 'role_nom', 'niveau',
+            'priorite', 'actif', 'created_by', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_by', 'created_at', 'updated_at']
+
+
+class CertificatDestructionSerializer(serializers.ModelSerializer):
+    """XGED23 — Certificat immuable de destruction (lecture seule)."""
+    detruit_par_nom = serializers.CharField(
+        source='detruit_par.username', read_only=True, default=None)
+
+    class Meta:
+        model = CertificatDestruction
+        fields = [
+            'id', 'demande', 'document_id_origine', 'document_nom',
+            'politique_appliquee', 'hash_metadonnees', 'detruit_le',
+            'detruit_par', 'detruit_par_nom',
+        ]
+        read_only_fields = fields
+
+
+class DemandeDispositionSerializer(serializers.ModelSerializer):
+    """XGED23 — Demande de disposition fin de rétention (revue humaine).
+
+    `documents` porte les ids proposés (résolus/filtrés côté serveur à la
+    création — jamais lus tels quels sans validation)."""
+    demandeur_nom = serializers.CharField(
+        source='demandeur.username', read_only=True, default=None)
+    approbateur_nom = serializers.CharField(
+        source='approbateur.username', read_only=True, default=None)
+    certificats = CertificatDestructionSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = DemandeDisposition
+        fields = [
+            'id', 'libelle', 'action', 'documents', 'statut',
+            'demandeur', 'demandeur_nom', 'approbateur', 'approbateur_nom',
+            'commentaire', 'decision_le', 'executee_le', 'certificats',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'statut', 'demandeur', 'approbateur', 'decision_le',
+            'executee_le', 'certificats', 'created_at', 'updated_at',
+        ]
+
+
+class LotEnvoiSerializer(serializers.ModelSerializer):
+    """XGED27 — Lot d'envoi en masse de demandes de signature (suivi groupé,
+    lecture seule côté API — créé uniquement via l'action dédiée)."""
+    modele_nom = serializers.CharField(
+        source='modele.nom', read_only=True, default=None)
+
+    class Meta:
+        model = LotEnvoi
+        fields = [
+            'id', 'modele', 'modele_nom', 'libelle', 'resultats', 'total',
+            'nb_envoyes', 'nb_vus', 'nb_signes', 'nb_refuses', 'nb_erreurs',
+            'created_by', 'created_at', 'updated_at',
+        ]
+        read_only_fields = fields
 
 
 class PlanificationDocumentSerializer(serializers.ModelSerializer):

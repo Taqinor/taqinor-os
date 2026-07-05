@@ -297,6 +297,40 @@ class Rubrique(models.Model):
         verbose_name='Montant fixe')
     ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
     actif = models.BooleanField(default=True, verbose_name='Actif')
+    # ZPAI3 — pilote l'inclusion de cette rubrique de COTISATION PATRONALE
+    # dans le rapport « coût employeur » consolidé (``services.cout_employeur``).
+    # Par défaut vrai pour une cotisation (comportement historique inchangé :
+    # toutes les cotisations patronales connues entrent dans le total) ; un
+    # gain/une retenue n'entre jamais dans ce total (le drapeau est ignoré
+    # pour ces types). Dé-flagger une rubrique la sort de l'agrégat SANS
+    # toucher au calcul du bulletin lui-même (jamais client-facing).
+    apparait_cout_employeur = models.BooleanField(
+        default=True, verbose_name='Apparaît au coût employeur')
+    # ZPAI8 — Règle d'arrondi des jours/heures pour une rubrique d'ABSENCE
+    # (façon Odoo « Display in Payslip » : pas d'arrondi / demi-journée /
+    # journée). Ignoré pour toute rubrique qui n'est pas rattachée à un
+    # ``ElementVariable`` de type ``absence``. ``aucun`` (défaut) = comportement
+    # historique inchangé (quantité brute, sans arrondi).
+    ARRONDI_AUCUN = 'aucun'
+    ARRONDI_DEMI_JOURNEE = 'demi_journee'
+    ARRONDI_JOURNEE = 'journee'
+    ARRONDI_CHOICES = [
+        (ARRONDI_AUCUN, 'Aucun'),
+        (ARRONDI_DEMI_JOURNEE, 'Demi-journée'),
+        (ARRONDI_JOURNEE, 'Journée'),
+    ]
+    SENS_SUP = 'sup'
+    SENS_INF = 'inf'
+    SENS_CHOICES = [
+        (SENS_SUP, 'Arrondi supérieur'),
+        (SENS_INF, 'Arrondi inférieur'),
+    ]
+    arrondi = models.CharField(
+        max_length=13, choices=ARRONDI_CHOICES, default=ARRONDI_AUCUN,
+        blank=True, verbose_name="Arrondi (jours d'absence)")
+    sens_arrondi = models.CharField(
+        max_length=3, choices=SENS_CHOICES, default=SENS_SUP,
+        blank=True, verbose_name='Sens de l\'arrondi')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -449,6 +483,41 @@ class ProfilPaie(models.Model):
         max_length=10, choices=MODE_PAIEMENT_CHOICES,
         default=MODE_PAIEMENT_VIREMENT, verbose_name='Mode de paiement')
     actif = models.BooleanField(default=True, verbose_name='Actif')
+    # XPAI24 — Structure de paie appliquée à la création (gabarit de
+    # rubriques par catégorie). Informatif : aucun lien vivant après
+    # application, les rubriques copiées restent modifiables librement.
+    structure = models.ForeignKey(
+        'StructurePaie',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='profils',
+        verbose_name='Structure de paie appliquée',
+    )
+    # XPAI18 — Régime d'exonération IR (stagiaire / ANAPEC / TAHFIZ), fenêtre
+    # d'éligibilité et plafond mensuel exonéré. ``REGIME_AUCUN`` (défaut) =
+    # comportement historique inchangé (aucune exonération). La bascule
+    # automatique au régime normal à l'expiration est faite par
+    # ``services.expirer_regimes_echus`` (jamais en lecture — un cron/action).
+    REGIME_AUCUN = 'aucun'
+    REGIME_STAGIAIRE = 'stagiaire'
+    REGIME_ANAPEC = 'anapec'
+    REGIME_TAHFIZ = 'tahfiz'
+    REGIME_EXONERATION_CHOICES = [
+        (REGIME_AUCUN, 'Aucun'),
+        (REGIME_STAGIAIRE, 'Stagiaire'),
+        (REGIME_ANAPEC, 'ANAPEC'),
+        (REGIME_TAHFIZ, 'TAHFIZ'),
+    ]
+    regime_exoneration = models.CharField(
+        max_length=10, choices=REGIME_EXONERATION_CHOICES,
+        default=REGIME_AUCUN, verbose_name="Régime d'exonération IR")
+    regime_date_debut = models.DateField(
+        null=True, blank=True, verbose_name="Régime — date de début")
+    regime_date_fin = models.DateField(
+        null=True, blank=True, verbose_name="Régime — date de fin (fenêtre)")
+    regime_plafond_mensuel = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('6000'),
+        verbose_name="Régime — plafond mensuel exonéré")
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -687,6 +756,12 @@ class PeriodePaie(models.Model):
         null=True, blank=True, verbose_name='Date de paiement')
     date_cloture = models.DateTimeField(
         null=True, blank=True, verbose_name='Clôturée le')
+    # ZPAI12 — Marqueur d'idempotence de l'alerte de clôture en retard (façon
+    # ``EcheanceDeclarative.date_notification``, XPAI6) : posé UNE SEULE FOIS
+    # par ``services.notifier_cloture_en_retard`` — un re-run le lendemain ne
+    # renotifie jamais la même période.
+    date_alerte_cloture_retard = models.DateTimeField(
+        null=True, blank=True, verbose_name='Alerte de clôture en retard envoyée le')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -831,6 +906,39 @@ class ElementVariable(models.Model):
         max_length=10, choices=CATEGORIE_ABSENCE_CHOICES,
         default=ABSENCE_AUCUNE, blank=True,
         verbose_name='Catégorie d\'absence')
+    # ZPAI9 — Type d'entrée ponctuelle du catalogue (facultatif). NULL
+    # (défaut) = comportement historique inchangé, piloté uniquement par
+    # ``type``/``categorie_hs``/``categorie_absence`` ci-dessus. Renseigné,
+    # les drapeaux fiscaux/sociaux du type catalogue (``imposable``/
+    # ``soumis_cnss``/``soumis_amo``) priment sur l'assiette par défaut de
+    # cet élément dans ``calculer_bulletin``.
+    type_entree = models.ForeignKey(
+        'TypeEntreePonctuelle',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='elements_variables',
+        verbose_name="Type d'entrée ponctuelle (catalogue)",
+    )
+    # ZPAI11 — Reconduction automatique vers la période suivante (défaut
+    # False = comportement historique inchangé : ressaisie chaque mois). Un
+    # élément ponctuel-mais-répétitif (ex. prime de transport saisie chaque
+    # mois) marqué ``reconduire=True`` est copié UNE fois vers M+1 par
+    # ``services.reporter_elements_periode`` — jamais automatiquement à la
+    # création de l'élément lui-même.
+    reconduire = models.BooleanField(
+        default=False, verbose_name='Reconduire vers la période suivante')
+    # ZPAI11 — Trace de reconduction : posé UNIQUEMENT sur la copie créée par
+    # ``services.reporter_elements_periode`` (jamais sur l'original saisi à la
+    # main). Sert de clé d'IDEMPOTENCE : un re-run de la reconduction ne
+    # duplique jamais la copie d'un même élément d'origine vers la même
+    # période cible (``unique_together`` ci-dessous).
+    reconduit_depuis = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='reconductions',
+        verbose_name='Reconduit depuis (élément M-1)',
+    )
     source = models.CharField(
         max_length=10, choices=SOURCE_CHOICES, default=SOURCE_MANUEL,
         verbose_name='Source')
@@ -841,6 +949,10 @@ class ElementVariable(models.Model):
         verbose_name = 'Élément variable'
         verbose_name_plural = 'Éléments variables'
         ordering = ['periode', 'profil', 'id']
+        # ZPAI11 — une même origine ne peut être reconduite qu'UNE fois vers
+        # une période cible donnée (NULL ``reconduit_depuis`` = saisie
+        # normale, jamais concerné par cette contrainte).
+        unique_together = [('periode', 'reconduit_depuis')]
 
     def __str__(self):
         return f'{self.get_type_display()} {self.quantite} → profil #{self.profil_id}'
@@ -888,12 +1000,17 @@ class BulletinPaie(models.Model):
     # XPAI4 — Bulletin de run hors-cycle (13e mois / prime de bilan), généré
     # sur une ``PeriodePaie`` de ``type_run == TYPE_RUN_HORS_CYCLE``.
     TYPE_GRATIFICATION = 'gratification'
+    # ZPAI4 — Bulletin d'ANNULATION (refund payslip) : contrepartie à montants
+    # NÉGATIFS d'un bulletin déjà traité, distincte du RECTIFICATIF qui
+    # remplace. Sert à extourner proprement un bulletin (cumul annuel/9421).
+    TYPE_ANNULATION = 'annulation'
     TYPE_BULLETIN_CHOICES = [
         (TYPE_NORMAL, 'Normal'),
         (TYPE_RECTIFICATIF, 'Rectificatif'),
         (TYPE_RAPPEL, 'Rappel'),
         (TYPE_STC, 'Solde de tout compte'),
         (TYPE_GRATIFICATION, '13e mois / gratification'),
+        (TYPE_ANNULATION, "Annulation (extourne)"),
     ]
 
     # Champs de montant figés au moment du calcul (snapshot). Modifiables tant
@@ -904,7 +1021,7 @@ class BulletinPaie(models.Model):
         'formation_professionnelle',
         'cimr_salariale', 'frais_professionnels', 'net_imposable', 'ir',
         'retenues', 'prime_anciennete', 'charges_patronales', 'net_a_payer',
-        'personnes_a_charge', 'provision_conges',
+        'personnes_a_charge', 'provision_conges', 'montant_exonere_regime',
     ]
 
     class BulletinVerrouille(Exception):
@@ -995,6 +1112,12 @@ class BulletinPaie(models.Model):
     ir = models.DecimalField(
         max_digits=14, decimal_places=2, default=Decimal('0'),
         verbose_name='IR')
+    # XPAI18 — Montant EXONÉRÉ d'IR au titre du régime stagiaire/ANAPEC/TAHFIZ
+    # du profil (fraction du net imposable sous le plafond mensuel, dans la
+    # fenêtre d'éligibilité). 0 par défaut (régime normal). Tracé pour le 9421.
+    montant_exonere_regime = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name="Montant exonéré (régime stagiaire/ANAPEC/TAHFIZ)")
     retenues = models.DecimalField(
         max_digits=14, decimal_places=2, default=Decimal('0'),
         verbose_name='Retenues')
@@ -1016,6 +1139,12 @@ class BulletinPaie(models.Model):
     paye = models.BooleanField(default=False, verbose_name='Payé')
     date_paiement = models.DateTimeField(
         null=True, blank=True, verbose_name='Payé le')
+    # XPAI21 — Accusé de lecture (coffre-fort employé, PAIE35) : horodate la
+    # PREMIÈRE consultation du bulletin par le salarié. Posé une seule fois
+    # (jamais réécrit — cf. ``_CHAMPS_AUTORISES_APRES_VALIDATION`` ci-dessous
+    # et la garde côté service ``marquer_bulletin_lu``).
+    lu_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Lu le (accusé de lecture)')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -1037,10 +1166,11 @@ class BulletinPaie(models.Model):
     # (PAIE17) : la transition de validation elle-même (statut/
     # date_validation) et le suivi de paiement (XPAI9 — un bulletin est
     # toujours validé AVANT d'être payé, donc ``paye``/``date_paiement``
-    # se posent forcément APRÈS le gel). Les montants/lignes de paie
-    # restent, eux, strictement figés.
+    # se posent forcément APRÈS le gel). ``lu_le`` (XPAI21) se pose de la
+    # même façon, après coup, à la première consultation employé. Les
+    # montants/lignes de paie restent, eux, strictement figés.
     _CHAMPS_AUTORISES_APRES_VALIDATION = frozenset(
-        {'statut', 'date_validation', 'paye', 'date_paiement'})
+        {'statut', 'date_validation', 'paye', 'date_paiement', 'lu_le'})
 
     def save(self, *args, **kwargs):
         """Garde d'immuabilité (PAIE17).
@@ -1343,6 +1473,20 @@ class SaisieArret(models.Model):
         (TYPE_CESSION, 'Cession volontaire'),
     ]
 
+    # ZPAI6 — Cycle de vie explicite (façon Odoo Running/Completed/Cancelled) :
+    # ``en_cours`` (défaut, sert encore des retenues), ``soldee`` (posée
+    # automatiquement quand ``solde_restant<=0`` à l'application d'une
+    # retenue), ``annulee`` (arrêt manuel des retenues futures, sans jamais
+    # effacer l'historique déjà retenu).
+    STATUT_EN_COURS = 'en_cours'
+    STATUT_SOLDEE = 'soldee'
+    STATUT_ANNULEE = 'annulee'
+    STATUT_CHOICES = [
+        (STATUT_EN_COURS, 'En cours'),
+        (STATUT_SOLDEE, 'Soldée'),
+        (STATUT_ANNULEE, 'Annulée'),
+    ]
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -1376,6 +1520,23 @@ class SaisieArret(models.Model):
         default=False, verbose_name='Prioritaire (ex. pension alimentaire)')
     date_debut = models.DateField(verbose_name='Date de début de retenue')
     actif = models.BooleanField(default=True, verbose_name='Actif')
+    # ZPAI6 — statut explicite du cycle de vie, en plus du booléen ``actif``
+    # historique (conservé, inchangé, pour compat rétro : ``actif`` continue
+    # de piloter ``retenues_saisies_periode``/``appliquer_saisies``).
+    statut = models.CharField(
+        max_length=10, choices=STATUT_CHOICES, default=STATUT_EN_COURS,
+        verbose_name='Statut')
+    date_annulation = models.DateTimeField(
+        null=True, blank=True, verbose_name='Annulée le')
+    motif_annulation = models.CharField(
+        max_length=200, blank=True, default='', verbose_name="Motif d'annulation")
+    # ZPAI7 — Clé de lot (facultative) : posée quand la saisie est créée par
+    # ``services.creer_saisies_arret_lot`` (éclatement multi-employés). Sert
+    # UNIQUEMENT à l'IDEMPOTENCE d'un re-run (même clé → aucune re-création),
+    # jamais affichée comme référence légale (distincte de ``reference``).
+    lot_reference = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='Référence de lot (idempotence)')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -1384,6 +1545,11 @@ class SaisieArret(models.Model):
         verbose_name_plural = 'Saisies-arrêts / cessions'
         # Saisies prioritaires d'abord, puis les plus anciennes.
         ordering = ['-prioritaire', 'date_debut', 'id']
+        indexes = [
+            models.Index(
+                fields=['company', 'lot_reference'],
+                name='paie_saisie_lot_idx'),
+        ]
 
     def __str__(self):
         return f'{self.get_type_display()} {self.montant_total} → profil #{self.profil_id}'
@@ -1473,6 +1639,16 @@ class OrdreVirement(models.Model):
         null=True, blank=True, verbose_name='Émis le')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
+    # YLEDG7 — écriture de règlement (débit 4432 / crédit trésorerie) postée
+    # par ``services.payer_ordre_virement``. String-ref vers
+    # ``compta.EcritureComptable`` (jamais d'import de compta.models depuis
+    # paie) : posée une seule fois, garantit l'idempotence du paiement de
+    # l'ordre.
+    ecriture_reglement_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Écriture de règlement (compta)')
+    date_reglement = models.DateTimeField(
+        null=True, blank=True, verbose_name='Réglé le')
 
     class Meta:
         verbose_name = 'Ordre de virement'
@@ -1620,6 +1796,13 @@ class EcheanceDeclarative(models.Model):
         verbose_name='Rappel envoyé le')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
+    # YLEDG7 — écriture de règlement (débit 4441/4452/4443 / crédit
+    # trésorerie) postée par ``services.payer_organismes`` au règlement
+    # effectif de la déclaration. String-ref vers
+    # ``compta.EcritureComptable`` : posée une seule fois (idempotence).
+    ecriture_reglement_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Écriture de règlement (compta)')
 
     class Meta:
         verbose_name = 'Échéance déclarative'
@@ -1697,3 +1880,255 @@ class DepotBDS(models.Model):
 
     def __str__(self):
         return f'Dépôt BDS {self.get_type_depot_display()} — {self.periode}'
+
+
+# ── XPAI24 — Structures de paie par catégorie (modèles de rubriques) ───────
+
+class StructurePaie(models.Model):
+    """Modèle de rubriques par catégorie de personnel (XPAI24), company-scoped.
+
+    Un jeu de ``Rubrique`` par défaut (cadre/employé/ouvrier/technicien
+    chantier…) appliqué en une fois à un ``ProfilPaie`` à sa création : au lieu
+    d'affecter les rubriques récurrentes une à une (``RubriqueEmploye``), on
+    choisit une structure et ses rubriques sont copiées (chacune reste
+    modifiable individuellement ensuite — la structure n'est qu'un GABARIT,
+    aucun lien n'est conservé après application).
+
+    Multi-société : ``company`` posée côté serveur. Le couple ``(company,
+    code)`` est unique.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='paie_structures',
+        verbose_name='Société',
+    )
+    code = models.CharField(max_length=30, verbose_name='Code')
+    libelle = models.CharField(max_length=120, verbose_name='Libellé')
+    description = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Description')
+    actif = models.BooleanField(default=True, verbose_name='Active')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Structure de paie'
+        verbose_name_plural = 'Structures de paie'
+        ordering = ['libelle']
+        unique_together = [('company', 'code')]
+
+    def __str__(self):
+        return f'{self.code} — {self.libelle}'
+
+
+class StructurePaieRubrique(models.Model):
+    """Rubrique DÉFAUT d'une ``StructurePaie`` (XPAI24) — ligne du gabarit.
+
+    Porte une surcharge optionnelle du ``montant``/``taux`` (mêmes champs que
+    ``RubriqueEmploye``, dont la ligne sera la copie lors de l'application).
+    Multi-société : ``company`` posée côté serveur. Le couple ``(structure,
+    rubrique)`` est unique.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='paie_structure_rubriques',
+        verbose_name='Société',
+    )
+    structure = models.ForeignKey(
+        StructurePaie,
+        on_delete=models.CASCADE,
+        related_name='rubriques_defaut',
+        verbose_name='Structure',
+    )
+    rubrique = models.ForeignKey(
+        Rubrique,
+        on_delete=models.PROTECT,
+        related_name='structures_defaut',
+        verbose_name='Rubrique',
+    )
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name='Montant (surcharge)')
+    taux = models.DecimalField(
+        max_digits=8, decimal_places=4, null=True, blank=True,
+        verbose_name='Taux % (surcharge)')
+
+    class Meta:
+        verbose_name = 'Rubrique de structure'
+        verbose_name_plural = 'Rubriques de structure'
+        ordering = ['rubrique__ordre', 'id']
+        unique_together = [('structure', 'rubrique')]
+
+    def __str__(self):
+        return f'{self.rubrique.code} → {self.structure.code}'
+
+
+# ── XPAI17 — Ventilation analytique de la masse salariale ──────────────────
+
+class VentilationAnalytiquePaie(models.Model):
+    """Clé de ventilation analytique FIXE par profil (XPAI17), company-scoped.
+
+    Repli quand aucune heure ``rh.FeuilleTemps`` n'est disponible pour la
+    période : répartit le coût employeur du profil sur un ``centre_cout``
+    (``compta.CentreCout``, référencé en STRING-FK — la paie n'importe jamais
+    ``compta.models``) au ``pourcentage`` indiqué. Plusieurs clés peuvent
+    coexister pour un même profil (ex. 60 % chantier A / 40 % chantier B) ;
+    aucune contrainte de somme à 100 % n'est imposée en base (validée côté
+    service au moment de l'usage — un total ≠ 100 % laisse un reliquat non
+    ventilé, jamais une erreur bloquante).
+
+    Multi-société : ``company`` posée côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='paie_ventilations_analytiques',
+        verbose_name='Société',
+    )
+    profil = models.ForeignKey(
+        ProfilPaie,
+        on_delete=models.CASCADE,
+        related_name='ventilations_analytiques',
+        verbose_name='Profil de paie',
+    )
+    # STRING-FK cross-app vers compta.CentreCout — jamais compta.models direct.
+    centre_cout_id = models.PositiveIntegerField(
+        verbose_name='Centre de coût (ID, compta.CentreCout)')
+    pourcentage = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('100'),
+        verbose_name='Pourcentage')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Ventilation analytique (clé fixe)'
+        verbose_name_plural = 'Ventilations analytiques (clés fixes)'
+        ordering = ['profil', 'id']
+
+    def __str__(self):
+        return (f'Profil #{self.profil_id} → '
+                f'centre#{self.centre_cout_id} ({self.pourcentage}%)')
+
+
+# ── XPAI20 — Provisions gratifications (13e mois) & IFC ────────────────────
+
+class ProvisionPaieMensuelle(models.Model):
+    """Provision mensuelle 13e mois / IFC d'un profil (XPAI20), auditable.
+
+    Une ligne PAR PROFIL et par mois de clôture, matérialisant le montant
+    provisionné (1/12ᵉ du 13e mois pour ``TYPE_GRATIFICATION``, quote-part
+    mensuelle de l'indemnité de fin de carrière — barème art. 53 — pour
+    ``TYPE_IFC``). Postée en écriture réversible via ``compta.services``
+    (même patron que la provision CP, PAIE25) — ``ecriture_id`` référence
+    l'``EcritureComptable`` (STRING-FK, jamais ``compta.models`` direct).
+    ``extournee`` passe à vrai quand le run 13e mois (XPAI4) ou la sortie
+    (STC) reprend la provision. Multi-société : ``company`` posée côté
+    serveur. Clé stable ``(company, profil, periode, type_provision)``.
+    """
+    TYPE_GRATIFICATION = 'gratification'
+    TYPE_IFC = 'ifc'
+    TYPE_CHOICES = [
+        (TYPE_GRATIFICATION, '13e mois / prime de bilan'),
+        (TYPE_IFC, 'Indemnité de fin de carrière'),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='paie_provisions_mensuelles',
+        verbose_name='Société',
+    )
+    profil = models.ForeignKey(
+        ProfilPaie,
+        on_delete=models.CASCADE,
+        related_name='provisions_mensuelles',
+        verbose_name='Profil de paie',
+    )
+    periode = models.ForeignKey(
+        PeriodePaie,
+        on_delete=models.CASCADE,
+        related_name='provisions_mensuelles',
+        verbose_name='Période',
+    )
+    type_provision = models.CharField(
+        max_length=14, choices=TYPE_CHOICES, verbose_name='Type de provision')
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant provisionné')
+    # STRING-FK cross-app vers compta.EcritureComptable — jamais
+    # compta.models direct.
+    ecriture_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Écriture (ID, compta)')
+    extournee = models.BooleanField(
+        default=False, verbose_name='Extournée (reprise)')
+    date_extourne = models.DateTimeField(
+        null=True, blank=True, verbose_name='Extournée le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Provision mensuelle (13e mois / IFC)'
+        verbose_name_plural = 'Provisions mensuelles (13e mois / IFC)'
+        ordering = ['-periode__annee', '-periode__mois', 'profil']
+        unique_together = [('company', 'profil', 'periode', 'type_provision')]
+
+    def __str__(self):
+        return (f'{self.get_type_provision_display()} — profil #{self.profil_id} '
+                f'({self.periode})')
+
+
+# ── ZPAI9 — Catalogue de types d'entrées ponctuelles (Other Input Types) ───
+
+class TypeEntreePonctuelle(models.Model):
+    """Catalogue TYPÉ des entrées ponctuelles hors rubriques récurrentes (ZPAI9).
+
+    Façon Odoo « Other Input Types » : au lieu du ``type`` fixe à 5 valeurs
+    codées d'``ElementVariable`` (heures/HS/absence/prime/retenue), un
+    catalogue company-scoped pour typer finement des entrées ponctuelles
+    (pourboire, remboursement de frais non imposable, déduction ponctuelle…),
+    chacune avec ses propres drapeaux fiscaux/sociaux. Un ``ElementVariable``
+    peut référencer un type du catalogue via son FK nullable
+    ``type_entree`` — NULL (défaut) préserve exactement le comportement
+    historique piloté par ``ElementVariable.type`` seul.
+
+    Multi-société : ``company`` posée côté serveur. Le couple
+    ``(company, code)`` est unique.
+    """
+    SENS_GAIN = 'gain'
+    SENS_RETENUE = 'retenue'
+    SENS_CHOICES = [
+        (SENS_GAIN, 'Gain'),
+        (SENS_RETENUE, 'Retenue'),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='paie_types_entree_ponctuelle',
+        verbose_name='Société',
+    )
+    code = models.CharField(max_length=30, verbose_name='Code')
+    libelle = models.CharField(max_length=120, verbose_name='Libellé')
+    sens = models.CharField(
+        max_length=8, choices=SENS_CHOICES, default=SENS_GAIN,
+        verbose_name='Sens')
+    imposable = models.BooleanField(
+        default=True, verbose_name='Imposable (IR)')
+    soumis_cnss = models.BooleanField(
+        default=True, verbose_name='Soumis CNSS')
+    soumis_amo = models.BooleanField(
+        default=True, verbose_name='Soumis AMO')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Type d'entrée ponctuelle"
+        verbose_name_plural = "Types d'entrée ponctuelle"
+        ordering = ['libelle', 'code']
+        unique_together = [('company', 'code')]
+
+    def __str__(self):
+        return f'{self.code} — {self.libelle}'

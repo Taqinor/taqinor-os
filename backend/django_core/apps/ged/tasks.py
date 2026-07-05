@@ -97,6 +97,32 @@ def verifier_integrite_archives_task():
     return total
 
 
+@shared_task(name='ged.notifier_emetteurs_expiration_signature')
+def notifier_emetteurs_expiration_signature():
+    """ZGED14 — Balayage quotidien : notifie les ÉMETTEURS de demandes de
+    signature `en_attente` dont l'expiration approche (une société à la
+    fois, jamais destructif — complète XGED2 qui ne couvre que le SIGNATAIRE).
+    Best-effort par société : une société KO n'interrompt jamais les
+    suivantes."""
+    from authentication.models import Company
+
+    from . import services
+
+    total = 0
+    for company in Company.objects.filter(actif=True):
+        try:
+            total += services.notifier_emetteur_expiration_proche(company)
+        except Exception:  # pragma: no cover - défensif, une société KO
+            # n'interrompt jamais les suivantes.
+            logger.warning(
+                'ged.notifier_emetteurs_expiration_signature: échec société %s',
+                company.pk, exc_info=True)
+    logger.info(
+        'ged.notifier_emetteurs_expiration_signature: %d notification(s)',
+        total)
+    return {'notifications': total}
+
+
 @shared_task(name='ged.poll_mail_intake')
 def poll_mail_intake_task():
     """XGED9 — Relève l'ingestion email→GED de chaque société active.

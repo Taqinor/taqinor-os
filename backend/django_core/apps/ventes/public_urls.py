@@ -3,6 +3,7 @@ from .public_views import (
     public_document, public_bcf_document, pay_page, pay_webhook,
     proposal_data, proposal_pdf, proposal_accept,
     proposal_contact_request, proposal_request_otp,
+    ecatalogue_public, ecatalogue_demander_devis,
 )
 
 urlpatterns = [
@@ -23,4 +24,9 @@ urlpatterns = [
     # FG53 — page publique « Payer en ligne » + webhook (jeton PaymentLink).
     path('pay/<str:token>/', pay_page, name='public-pay-page'),
     path('pay/<str:token>/webhook/', pay_webhook, name='public-pay-webhook'),
+    # XPOS14 — e-catalogue public (lecture) + panier « Demander un devis ».
+    path('ecatalogue/<str:token>/', ecatalogue_public,
+         name='public-ecatalogue'),
+    path('ecatalogue/<str:token>/demander-devis/', ecatalogue_demander_devis,
+         name='public-ecatalogue-demander-devis'),
 ]

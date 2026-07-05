@@ -4,6 +4,7 @@ Grand livre (FG110), balance générale (FG111), lettrage (FG112), CPC (FG113) e
 bilan (FG114) se déduisent tous des ``LigneEcriture`` du grand livre. Aucune
 écriture n'est modifiée ici. Toutes les fonctions sont scopées par société.
 """
+import re
 from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -11,12 +12,17 @@ from django.db.models import Q, Sum
 from django.utils import timezone
 
 from .models import (
-    Caisse, CautionBancaire, CompteComptable, CompteTresorerie, Effet,
-    EntiteConsolidation, LigneEcriture, LignePrevisionnelTresorerie,
+    Budget, BudgetLigne, Caisse, CautionBancaire, CessionImmobilisation,
+    ChargeConstateeAvance,
+    CompteComptable,
+    CompteTresorerie, EcheanceEmprunt,
+    Effet, Emprunt,
+    EntiteConsolidation, Immobilisation, IndemniteChantier, LigneEcriture,
+    LignePrevisionnelTresorerie,
     MouvementCaisse, Rapprochement, RetenueGarantie, RetenueSource,
-    TimbreFiscal,
+    TauxDevise, TimbreFiscal,
     ClotureCaisse, DotationAmortissement, EcritureComptable,
-    RapprochementBancaire,
+    NoteFrais, Provision, RapprochementBancaire,
 )
 
 
@@ -87,14 +93,144 @@ def grand_livre(company, *, compte=None, date_debut=None, date_fin=None,
     return sorted(resultat.values(), key=lambda b: b['numero'])
 
 
+# ── ZACC4 — Journal Items : ledger PLAT ligne-à-ligne (toutes écritures) ────
+
+def journal_items(company, *, journal=None, compte=None, tiers_type=None,
+                  tiers_id=None, date_debut=None, date_fin=None,
+                  lettrage=None, validees=None):
+    """Vue plate de CHAQUE ``LigneEcriture`` (débit/crédit), toutes écritures
+    confondues, filtrable par journal/compte/tiers/période/lettrage/statut —
+    le « Journal Items » d'Odoo (indispensable pour l'audit et le pointage
+    transversal, complète ``grand_livre`` qui GROUPE par compte).
+
+    ``journal`` : code du journal (ex. 'BNK', 'VTE') ou instance ``Journal``.
+    ``lettrage`` : ``'lettrees'`` (lettrage non vide), ``'non_lettrees'``
+    (lettrage vide), ou ``None`` (toutes).
+    ``validees`` : ``True``/``False``/``None`` (toutes, défaut).
+
+    Renvoie une liste de dicts triée par date pièce puis id : ``{'id',
+    'date_ecriture', 'journal_code', 'ecriture_reference', 'compte_numero',
+    'compte_intitule', 'libelle', 'tiers_type', 'tiers_id', 'debit',
+    'credit', 'lettrage', 'statut'}``. Lecture seule, company-scopée."""
+    qs = (LigneEcriture.objects
+          .filter(company=company)
+          .select_related('compte', 'ecriture', 'ecriture__journal')
+          .order_by('ecriture__date_ecriture', 'id'))
+    if date_debut:
+        qs = qs.filter(ecriture__date_ecriture__gte=_as_date(date_debut))
+    if date_fin:
+        qs = qs.filter(ecriture__date_ecriture__lte=_as_date(date_fin))
+    if journal:
+        code = getattr(journal, 'code', journal)
+        qs = qs.filter(ecriture__journal__code=code)
+    if compte:
+        numero = getattr(compte, 'numero', compte)
+        qs = qs.filter(compte__numero=numero)
+    if tiers_type:
+        qs = qs.filter(tiers_type=tiers_type)
+    if tiers_id:
+        qs = qs.filter(tiers_id=tiers_id)
+    if lettrage == 'lettrees':
+        qs = qs.exclude(lettrage='')
+    elif lettrage == 'non_lettrees':
+        qs = qs.filter(lettrage='')
+    if validees is True:
+        qs = qs.filter(ecriture__statut=EcritureComptable.Statut.VALIDEE)
+    elif validees is False:
+        qs = qs.exclude(ecriture__statut=EcritureComptable.Statut.VALIDEE)
+
+    out = []
+    for ligne in qs:
+        ecriture = ligne.ecriture
+        out.append({
+            'id': ligne.id,
+            'date_ecriture': ecriture.date_ecriture,
+            'journal_code': ecriture.journal.code if ecriture.journal else '',
+            'ecriture_reference': ecriture.reference,
+            'compte_numero': ligne.compte.numero,
+            'compte_intitule': ligne.compte.intitule,
+            'libelle': ligne.libelle or ecriture.libelle,
+            'tiers_type': ligne.tiers_type,
+            'tiers_id': ligne.tiers_id,
+            'debit': ligne.debit,
+            'credit': ligne.credit,
+            'lettrage': ligne.lettrage,
+            'statut': ecriture.statut,
+        })
+    return out
+
+
+# ── ZACC2 — Colonne comparative N-1 sur les états STANDARD (bilan/CPC/
+# balance/ESG). L'existant (XACC19) porte le N-1 sur les états PERSONNALISÉS
+# uniquement ; les états CGNC natifs ne comparaient rien. On ajoute un mode
+# comparatif OPTIONNEL : sans paramètre, chaque selector renvoie EXACTEMENT
+# son dict actuel (aucune régression) ; ``comparer=True`` (vue) enrichit
+# chaque ligne par clé (``numero`` pour bilan/balance, ``code`` pour l'ESG)
+# avec la valeur N-1, l'écart absolu et l'écart % — un exercice sans N-1
+# renvoie 0 (jamais d'erreur).
+
+def _decalage_un_an(valeur):
+    """Décale une date d'exactement un an en arrière (29 fév -> 28 fév)."""
+    d = _as_date(valeur)
+    if d is None:
+        return None
+    try:
+        return d.replace(year=d.year - 1)
+    except ValueError:  # 29 février d'une année bissextile.
+        return d.replace(year=d.year - 1, day=28)
+
+
+def _periode_n1(date_debut, date_fin, date_debut_n1=None, date_fin_n1=None):
+    """Résout la période N-1 : les bornes explicites priment, sinon la même
+    période décalée d'un an (jamais d'erreur si aucune période N-1 n'existe —
+    l'appelant reçoit simplement des soldes nuls)."""
+    deb_n1 = date_debut_n1 or _decalage_un_an(date_debut)
+    fin_n1 = date_fin_n1 or _decalage_un_an(date_fin)
+    return deb_n1, fin_n1
+
+
+def _ecart_pct(valeur_n, valeur_n1):
+    """Écart % = (N − N-1) / |N-1| × 100, ``None`` si N-1 = 0 (indéterminé)."""
+    if not valeur_n1:
+        return None
+    return ((valeur_n - valeur_n1) / abs(valeur_n1) * Decimal('100')
+            ).quantize(Decimal('0.01'))
+
+
+def _fusionner_comparatif(lignes_n, lignes_n1, cle):
+    """Fusionne deux listes de lignes (dicts) par ``cle`` : ajoute
+    ``montant_n1``/``ecart``/``ecart_pct`` sur chaque ligne de ``lignes_n``
+    (une ligne présente seulement en N-1 n'est pas ajoutée — l'état N reste le
+    référentiel de lignes affichées, comme le veut le menu « Comparison »)."""
+    par_cle = {ligne[cle]: ligne for ligne in lignes_n1}
+    out = []
+    for ligne in lignes_n:
+        ligne = dict(ligne)
+        n1 = par_cle.get(ligne[cle])
+        montant_n1 = (n1['montant'] if n1 is not None
+                      else Decimal('0'))
+        ligne['montant_n1'] = montant_n1
+        ligne['ecart'] = ligne['montant'] - montant_n1
+        ligne['ecart_pct'] = _ecart_pct(ligne['montant'], montant_n1)
+        out.append(ligne)
+    return out
+
+
 # ── FG111 / COMPTA20 — Balance générale (trial balance) ────────────────────
 
 def balance_generale(company, *, date_debut=None, date_fin=None,
-                     validees_seulement=False):
+                     validees_seulement=False, comparer=False,
+                     date_debut_n1=None, date_fin_n1=None):
     """Débit/crédit/solde par compte sur une période (≠ balance âgée clients).
 
     Renvoie une liste de dicts triée par numéro + des totaux globaux. La somme
     des débits doit égaler la somme des crédits (le grand livre est équilibré).
+
+    ZACC2 — ``comparer=True`` ajoute, par ligne, le solde débiteur N-1
+    (``solde_debiteur_n1``) et l'écart (``ecart_solde_debiteur``,
+    ``ecart_solde_debiteur_pct``), calculés sur ``date_debut_n1``/
+    ``date_fin_n1`` (défaut : même intervalle décalé d'un an). Défaut
+    (``comparer`` omis) = réponse actuelle byte-identique.
     """
     qs = _lignes_qs(company, date_debut=date_debut, date_fin=date_fin,
                     validees_seulement=validees_seulement)
@@ -121,12 +257,32 @@ def balance_generale(company, *, date_debut=None, date_fin=None,
             'solde_debiteur': solde if solde > 0 else Decimal('0'),
             'solde_crediteur': -solde if solde < 0 else Decimal('0'),
         })
-    return {
+    resultat = {
         'lignes': lignes,
         'total_debit': total_debit,
         'total_credit': total_credit,
         'equilibree': total_debit == total_credit,
     }
+    if comparer:
+        deb_n1, fin_n1 = _periode_n1(date_debut, date_fin, date_debut_n1,
+                                     date_fin_n1)
+        n1 = balance_generale(
+            company, date_debut=deb_n1, date_fin=fin_n1,
+            validees_seulement=validees_seulement)
+        lignes_n1 = [
+            {'numero': li['numero'], 'montant': li['solde_debiteur']}
+            for li in n1['lignes']]
+        fusion = _fusionner_comparatif(
+            [{'numero': li['numero'], 'montant': li['solde_debiteur'],
+              **li} for li in lignes],
+            lignes_n1, 'numero')
+        for li, f in zip(lignes, fusion):
+            li['solde_debiteur_n1'] = f['montant_n1']
+            li['ecart_solde_debiteur'] = f['ecart']
+            li['ecart_solde_debiteur_pct'] = f['ecart_pct']
+        resultat['date_debut_n1'] = deb_n1
+        resultat['date_fin_n1'] = fin_n1
+    return resultat
 
 
 # ── FG141 — Export FEC (Fichier des Écritures Comptables, format DGI) ───────
@@ -280,13 +436,57 @@ def lettrer(company, ligne_ids, code):
     return qs.update(lettrage=code)
 
 
+def prochain_code_lettrage(company, compte):
+    """YLEDG6 — code de lettrage séquentiel A, B, …, Z, AA, AB… pour un
+    compte lettrable donné (jamais réutilisé, même après délettrage — le
+    prochain code repart toujours après le plus haut déjà vu)."""
+    codes = (LigneEcriture.objects
+             .filter(company=company, compte=compte)
+             .exclude(lettrage='')
+             .values_list('lettrage', flat=True).distinct())
+
+    def _rang(code):
+        rang = 0
+        for ch in code:
+            rang = rang * 26 + (ord(ch) - ord('A') + 1)
+        return rang
+
+    def _code(rang):
+        lettres = ''
+        while rang > 0:
+            rang, reste = divmod(rang - 1, 26)
+            lettres = chr(ord('A') + reste) + lettres
+        return lettres
+
+    valides = [c for c in codes if c and c.isalpha() and c.isupper()]
+    dernier_rang = max((_rang(c) for c in valides), default=0)
+    return _code(dernier_rang + 1)
+
+
+def delettrer(company, code):
+    """YLEDG6 — retire le code de lettrage ``code`` d'un lot de lignes (rouvre
+    le lot : la balance âgée / l'encours ré-incluent les lignes). Renvoie le
+    nombre de lignes délettrées. Journalisé côté appelant (jamais silencieux)
+    — cette fonction, LECTURE-ÉCRITURE ciblée, ne touche jamais aux montants
+    ni aux écritures elles-mêmes (COMPTA11 : jamais de suppression/altération
+    d'une écriture validée)."""
+    qs = LigneEcriture.objects.filter(company=company, lettrage=code)
+    return qs.update(lettrage='')
+
+
 # ── FG113 / COMPTA27 — CPC (Compte de Produits et Charges) ─────────────────
 
-def cpc(company, *, date_debut=None, date_fin=None, validees_seulement=False):
+def cpc(company, *, date_debut=None, date_fin=None, validees_seulement=False,
+        comparer=False, date_debut_n1=None, date_fin_n1=None):
     """État de résultat (CPC) : produits (classe 7) − charges (classe 6).
 
     Renvoie ``{'produits', 'total_produits', 'charges', 'total_charges',
     'resultat'}``. Le résultat positif = bénéfice, négatif = perte.
+
+    ZACC2 — ``comparer=True`` ajoute ``montant_n1``/``ecart``/``ecart_pct``
+    sur chaque poste (produit et charge) + ``resultat_n1``/``resultat_ecart``
+    de tête, calculés sur ``date_debut_n1``/``date_fin_n1`` (défaut : même
+    intervalle décalé d'un an). Défaut = réponse actuelle byte-identique.
     """
     qs = _lignes_qs(company, date_debut=date_debut, date_fin=date_fin,
                     validees_seulement=validees_seulement).filter(
@@ -317,24 +517,51 @@ def cpc(company, *, date_debut=None, date_fin=None, validees_seulement=False):
             item['montant'] = montant
             total_charges += montant
             charges.append(item)
-    return {
+    resultat = {
         'produits': produits,
         'total_produits': total_produits,
         'charges': charges,
         'total_charges': total_charges,
         'resultat': total_produits - total_charges,
     }
+    if comparer:
+        deb_n1, fin_n1 = _periode_n1(date_debut, date_fin, date_debut_n1,
+                                     date_fin_n1)
+        n1 = cpc(company, date_debut=deb_n1, date_fin=fin_n1,
+                 validees_seulement=validees_seulement)
+        n1_produits = {li['numero']: li['montant'] for li in n1['produits']}
+        n1_charges = {li['numero']: li['montant'] for li in n1['charges']}
+        for item in produits:
+            montant_n1 = n1_produits.get(item['numero'], Decimal('0'))
+            item['montant_n1'] = montant_n1
+            item['ecart'] = item['montant'] - montant_n1
+            item['ecart_pct'] = _ecart_pct(item['montant'], montant_n1)
+        for item in charges:
+            montant_n1 = n1_charges.get(item['numero'], Decimal('0'))
+            item['montant_n1'] = montant_n1
+            item['ecart'] = item['montant'] - montant_n1
+            item['ecart_pct'] = _ecart_pct(item['montant'], montant_n1)
+        resultat['resultat_n1'] = n1['resultat']
+        resultat['resultat_ecart'] = resultat['resultat'] - n1['resultat']
+        resultat['date_debut_n1'] = deb_n1
+        resultat['date_fin_n1'] = fin_n1
+    return resultat
 
 
 # ── FG114 / COMPTA28 — Bilan (format CGNC) ─────────────────────────────────
 
-def bilan(company, *, date_fin=None, validees_seulement=False):
+def bilan(company, *, date_fin=None, validees_seulement=False,
+          comparer=False, date_fin_n1=None):
     """Bilan : actif (classes 2,3,5) / passif (classes 1,4) depuis les soldes.
 
     Le résultat de l'exercice (CPC) est porté au passif pour équilibrer
     (équation comptable : Actif = Passif + Résultat). Renvoie
     ``{'actif', 'total_actif', 'passif', 'total_passif', 'resultat',
     'equilibre'}``.
+
+    ZACC2 — ``comparer=True`` ajoute ``montant_n1``/``ecart``/``ecart_pct``
+    sur chaque poste d'actif/passif, calculés à ``date_fin_n1`` (défaut :
+    ``date_fin`` décalée d'un an). Défaut = réponse actuelle byte-identique.
     """
     qs = _lignes_qs(company, date_fin=date_fin,
                     validees_seulement=validees_seulement).filter(
@@ -362,17 +589,36 @@ def bilan(company, *, date_fin=None, validees_seulement=False):
             item['montant'] = -solde
             total_passif += -solde
             passif.append(item)
-    resultat = cpc(
+    resultat_exercice = cpc(
         company, date_fin=date_fin,
         validees_seulement=validees_seulement)['resultat']
-    return {
+    out = {
         'actif': actif,
         'total_actif': total_actif,
         'passif': passif,
         'total_passif': total_passif,
-        'resultat': resultat,
-        'equilibre': total_actif == (total_passif + resultat),
+        'resultat': resultat_exercice,
+        'equilibre': total_actif == (total_passif + resultat_exercice),
     }
+    if comparer:
+        _, fin_n1 = _periode_n1(None, date_fin, None, date_fin_n1)
+        n1 = bilan(company, date_fin=fin_n1,
+                   validees_seulement=validees_seulement)
+        n1_actif = {li['numero']: li['montant'] for li in n1['actif']}
+        n1_passif = {li['numero']: li['montant'] for li in n1['passif']}
+        for item in actif:
+            montant_n1 = n1_actif.get(item['numero'], Decimal('0'))
+            item['montant_n1'] = montant_n1
+            item['ecart'] = item['montant'] - montant_n1
+            item['ecart_pct'] = _ecart_pct(item['montant'], montant_n1)
+        for item in passif:
+            montant_n1 = n1_passif.get(item['numero'], Decimal('0'))
+            item['montant_n1'] = montant_n1
+            item['ecart'] = item['montant'] - montant_n1
+            item['ecart_pct'] = _ecart_pct(item['montant'], montant_n1)
+        out['resultat_n1'] = n1['resultat']
+        out['date_fin_n1'] = fin_n1
+    return out
 
 
 # ── COMPTA29 — ESG (état des soldes de gestion) + ETIC ─────────────────────
@@ -406,7 +652,8 @@ def _somme_prefixes(company, prefixes, *, sens, date_debut=None,
     return (credit - debit) if sens == 'produit' else (debit - credit)
 
 
-def esg(company, *, date_debut=None, date_fin=None, validees_seulement=False):
+def esg(company, *, date_debut=None, date_fin=None, validees_seulement=False,
+        comparer=False, date_debut_n1=None, date_fin_n1=None):
     """État des soldes de gestion (ESG / SIG) au format CGNC marocain.
 
     Cascade des soldes intermédiaires de gestion, chacun déduit des soldes de
@@ -429,6 +676,11 @@ def esg(company, *, date_debut=None, date_fin=None, validees_seulement=False):
 
     Renvoie ``{'soldes': [{'code', 'libelle', 'montant'} …], 'resultat_net'}``.
     Lecture seule ; aucun état n'est persisté.
+
+    ZACC2 — ``comparer=True`` ajoute ``montant_n1``/``ecart``/``ecart_pct``
+    sur chaque solde + ``resultat_net_n1``, calculés sur ``date_debut_n1``/
+    ``date_fin_n1`` (défaut : même intervalle décalé d'un an). Défaut =
+    réponse actuelle byte-identique.
     """
     def prod(*prefixes):
         return _somme_prefixes(
@@ -481,7 +733,22 @@ def esg(company, *, date_debut=None, date_fin=None, validees_seulement=False):
         {'code': 'RN', 'libelle': 'Résultat net de l’exercice',
          'montant': resultat_net},
     ]
-    return {'soldes': soldes, 'resultat_net': resultat_net}
+    out = {'soldes': soldes, 'resultat_net': resultat_net}
+    if comparer:
+        deb_n1, fin_n1 = _periode_n1(date_debut, date_fin, date_debut_n1,
+                                     date_fin_n1)
+        n1 = esg(company, date_debut=deb_n1, date_fin=fin_n1,
+                 validees_seulement=validees_seulement)
+        n1_soldes = {s['code']: s['montant'] for s in n1['soldes']}
+        for solde in soldes:
+            montant_n1 = n1_soldes.get(solde['code'], Decimal('0'))
+            solde['montant_n1'] = montant_n1
+            solde['ecart'] = solde['montant'] - montant_n1
+            solde['ecart_pct'] = _ecart_pct(solde['montant'], montant_n1)
+        out['resultat_net_n1'] = n1['resultat_net']
+        out['date_debut_n1'] = deb_n1
+        out['date_fin_n1'] = fin_n1
+    return out
 
 
 # Sections normalisées de l'ETIC (ordre figé du paquet d'informations
@@ -579,6 +846,284 @@ def comptes_par_classe(company, classe):
         company=company, classe=classe).order_by('numero'))
 
 
+# ── ZACC3 — Tableau de financement / des flux de trésorerie CGNC (méthode
+# indirecte) ─────────────────────────────────────────────────────────────
+# 5e état CGNC (standard Odoo « Cash Flow Statement »), jamais couvert avant :
+# la position (FG122) donne un solde instantané, le prévisionnel (FG126) une
+# projection roulante éditable — ni l'un ni l'autre ne réconcilie le résultat
+# de l'exercice à la variation RÉELLE de trésorerie sur la période. On dérive
+# tout du grand livre (AUCUN import cross-app, AUCUN recalcul hors GL) :
+#
+#   * capacité d'autofinancement (CAF) = résultat net (ESG) + dotations aux
+#     amortissements/provisions (charges 619/659 — non décaissées) − reprises
+#     (produits 719/759 — non encaissées) ;
+#   * variation du BFR = variation NETTE des soldes des comptes de tiers/stock
+#     d'exploitation (classes 3 hors trésorerie 51/54, et 4 hors emprunts
+#     1481/1671) entre l'ouverture et la clôture — une hausse de créances/
+#     stock CONSOMME de la trésorerie (flux négatif), une hausse de dettes en
+#     LIBÈRE (flux positif) ;
+#   * flux d'investissement = variation NETTE des comptes d'immobilisations
+#     (classe 2) entre ouverture et clôture, signe inversé (une acquisition
+#     consomme de la trésorerie) ;
+#   * flux de financement = variation NETTE des comptes d'emprunts (1481,
+#     1671) + capital (111x) entre ouverture et clôture.
+#
+# Somme des 3 flux = variation nette de trésorerie, réconciliée avec la
+# position FG122 ouverture → clôture (comptes 51xx/54xx).
+
+_COMPTES_FINANCEMENT = ('1481', '1671', '1111', '1117')
+
+
+def _solde_classe(company, classe, *, date_fin=None, validees_seulement=False,
+                  exclure_prefixes=()):
+    """Solde net (débit − crédit) de TOUS les comptes d'une classe à une date,
+    en excluant les comptes dont le numéro commence par un préfixe exclu."""
+    qs = _lignes_qs(company, date_fin=date_fin,
+                    validees_seulement=validees_seulement).filter(
+        compte__classe=classe)
+    for prefixe in exclure_prefixes:
+        qs = qs.exclude(compte__numero__startswith=prefixe)
+    agg = qs.aggregate(debit=Sum('debit'), credit=Sum('credit'))
+    return (agg['debit'] or Decimal('0')) - (agg['credit'] or Decimal('0'))
+
+
+def tableau_flux_tresorerie(company, exercice, *, validees_seulement=False):
+    """Tableau de financement / des flux de trésorerie CGNC — méthode
+    indirecte (ZACC3).
+
+    Trois sections (exploitation / investissement / financement) dont la
+    somme réconcilie EXACTEMENT la variation nette de trésorerie de
+    l'exercice (position FG122 ouverture → clôture). Lecture seule, scopée
+    société ; aucune écriture n'est créée. Renvoie ``{'exercice',
+    'date_debut', 'date_fin', 'exploitation': {...}, 'investissement': {...},
+    'financement': {...}, 'variation_nette_tresorerie',
+    'tresorerie_ouverture', 'tresorerie_cloture', 'reconciliee'}``.
+    """
+    date_debut = exercice.date_debut
+    date_fin = exercice.date_fin
+    date_ouverture = date_debut - timedelta(days=1)
+
+    # ── Exploitation : CAF ± variation du BFR ──
+    resultat_exercice = cpc(
+        company, date_debut=date_debut, date_fin=date_fin,
+        validees_seulement=validees_seulement)['resultat']
+    dotations = _somme_prefixes(
+        company, ('619', '659'), sens='charge', date_debut=date_debut,
+        date_fin=date_fin, validees_seulement=validees_seulement)
+    reprises = _somme_prefixes(
+        company, ('719', '759'), sens='produit', date_debut=date_debut,
+        date_fin=date_fin, validees_seulement=validees_seulement)
+    caf = resultat_exercice + dotations - reprises
+
+    # Classe 3 (actif circulant) est déjà HORS trésorerie dans le plan CGNC
+    # (la trésorerie est en classe 5) ; classe 4 (passif circulant) exclut
+    # par précaution les comptes de financement (au cas où un compte 1481/
+    # 1671 serait mal classé) — sans effet dans le plan seedé standard.
+    bfr_ouverture = (
+        _solde_classe(company, 3, date_fin=date_ouverture,
+                      validees_seulement=validees_seulement)
+        - _solde_classe(company, 4, date_fin=date_ouverture,
+                        validees_seulement=validees_seulement,
+                        exclure_prefixes=_COMPTES_FINANCEMENT))
+    bfr_cloture = (
+        _solde_classe(company, 3, date_fin=date_fin,
+                      validees_seulement=validees_seulement)
+        - _solde_classe(company, 4, date_fin=date_fin,
+                        validees_seulement=validees_seulement,
+                        exclure_prefixes=_COMPTES_FINANCEMENT))
+    variation_bfr = bfr_cloture - bfr_ouverture
+    # Une hausse du BFR (plus de créances/stock net des dettes) CONSOME de la
+    # trésorerie : flux négatif.
+    flux_exploitation = caf - variation_bfr
+
+    # ── Investissement : variation des immobilisations (classe 2) ──
+    immo_ouverture = _solde_classe(
+        company, 2, date_fin=date_ouverture,
+        validees_seulement=validees_seulement)
+    immo_cloture = _solde_classe(
+        company, 2, date_fin=date_fin,
+        validees_seulement=validees_seulement)
+    # Une hausse du solde des immobilisations (acquisition nette) CONSOMME de
+    # la trésorerie : flux négatif (signe inversé de la variation).
+    flux_investissement = -(immo_cloture - immo_ouverture)
+
+    # ── Financement : variation des emprunts + capital ──
+    fin_ouverture = _solde_groupe(
+        company, _COMPTES_FINANCEMENT, date_fin=date_ouverture,
+        validees_seulement=validees_seulement)
+    fin_cloture = _solde_groupe(
+        company, _COMPTES_FINANCEMENT, date_fin=date_fin,
+        validees_seulement=validees_seulement)
+    # Ces comptes sont au PASSIF (soldes créditeurs négatifs en débit-crédit) :
+    # une hausse de l'encours (nouvel emprunt/apport) LIBÈRE de la trésorerie,
+    # d'où le signe inversé (même convention que le bilan : passif = -solde).
+    flux_financement = -(fin_cloture - fin_ouverture)
+
+    variation_nette = (
+        flux_exploitation + flux_investissement + flux_financement)
+
+    tresorerie_ouverture = _solde_classe(
+        company, 5, date_fin=date_ouverture,
+        validees_seulement=validees_seulement)
+    tresorerie_cloture = _solde_classe(
+        company, 5, date_fin=date_fin, validees_seulement=validees_seulement)
+
+    return {
+        'exercice': exercice.libelle or str(exercice.pk),
+        'date_debut': date_debut.isoformat(),
+        'date_fin': date_fin.isoformat(),
+        'exploitation': {
+            'resultat_net': resultat_exercice,
+            'dotations': dotations,
+            'reprises': reprises,
+            'capacite_autofinancement': caf,
+            'variation_bfr': variation_bfr,
+            'flux_net': flux_exploitation,
+        },
+        'investissement': {
+            'immobilisations_ouverture': immo_ouverture,
+            'immobilisations_cloture': immo_cloture,
+            'flux_net': flux_investissement,
+        },
+        'financement': {
+            'financement_ouverture': fin_ouverture,
+            'financement_cloture': fin_cloture,
+            'flux_net': flux_financement,
+        },
+        'variation_nette_tresorerie': variation_nette,
+        'tresorerie_ouverture': tresorerie_ouverture,
+        'tresorerie_cloture': tresorerie_cloture,
+        'reconciliee': (
+            tresorerie_ouverture + variation_nette == tresorerie_cloture),
+    }
+
+
+# ── ZACC12 — Rapport des immobilisations (tableau CGNC B2/B2bis) ──────────
+# Aucun sélecteur d'ÉTAT récapitulatif des immobilisations n'existait (seul un
+# registre `Immobilisation` + un plan d'amortissement par immo). Ce sélecteur
+# assemble, PAR IMMOBILISATION, le tableau CGNC B2 (immobilisations : valeur
+# brute ouverture/acquisitions/cessions/clôture) et B2bis (amortissements :
+# cumul ouverture/dotations de l'exercice/reprises sur cessions/cumul
+# clôture) + la VNC — sans rien recalculer (relit `Immobilisation`,
+# `DotationAmortissement`, `CessionImmobilisation` déjà postés).
+
+def tableau_immobilisations(company, exercice, *, validees_seulement=False):
+    """Tableau des immobilisations & amortissements pour la liasse/l'annexe
+    (ZACC12 — tableaux CGNC B2/B2bis).
+
+    Par immobilisation : valeur brute à l'ouverture (coût si acquise avant
+    l'exercice, sinon 0), acquisitions de l'exercice, cessions de l'exercice
+    (valeur brute sortie), valeur brute à la clôture, cumul d'amortissement à
+    l'ouverture, dotations de l'exercice (postées), reprises sur cessions de
+    l'exercice, cumul à la clôture, VNC. Une immobilisation cédée AVANT
+    l'exercice n'apparaît pas (déjà sortie du patrimoine). Lecture seule,
+    scopée société ; aucune écriture n'est créée. Renvoie ``{'exercice',
+    'date_debut', 'date_fin', 'lignes': [...], 'totaux': {...}}``.
+    """
+    date_debut = exercice.date_debut
+    date_fin = exercice.date_fin
+    lignes = []
+    total_brut_ouverture = Decimal('0')
+    total_acquisitions = Decimal('0')
+    total_cessions_brut = Decimal('0')
+    total_brut_cloture = Decimal('0')
+    total_amort_ouverture = Decimal('0')
+    total_dotations = Decimal('0')
+    total_reprises = Decimal('0')
+    total_amort_cloture = Decimal('0')
+    total_vnc = Decimal('0')
+
+    immos = (Immobilisation.objects.filter(company=company)
+             .filter(Q(date_acquisition__lte=date_fin))
+             .order_by('date_acquisition', 'id'))
+    for immo in immos:
+        cession = CessionImmobilisation.objects.filter(
+            company=company, immobilisation=immo,
+            date_cession__lt=date_debut).first()
+        if cession is not None:
+            continue  # sortie du patrimoine AVANT l'exercice : omise.
+
+        cout = immo.cout or Decimal('0')
+        cession_exercice = CessionImmobilisation.objects.filter(
+            company=company, immobilisation=immo,
+            date_cession__gte=date_debut,
+            date_cession__lte=date_fin).first()
+
+        acquis_avant = immo.date_acquisition < date_debut
+        brut_ouverture = cout if acquis_avant else Decimal('0')
+        acquisitions = Decimal('0') if acquis_avant else cout
+        cessions_brut = cout if cession_exercice is not None else Decimal('0')
+        brut_cloture = brut_ouverture + acquisitions - cessions_brut
+
+        plan = getattr(immo, 'plan_amortissement', None)
+        dotations_qs = (
+            DotationAmortissement.objects.filter(
+                company=company, plan=plan, posted=True)
+            if plan is not None else DotationAmortissement.objects.none())
+        if validees_seulement:
+            dotations_qs = dotations_qs.filter(
+                ecriture__statut=EcritureComptable.Statut.VALIDEE)
+        amort_ouverture = Decimal('0')
+        if plan is not None:
+            cumul_avant = (
+                dotations_qs.filter(date_dotation__lt=date_debut)
+                .order_by('-date_dotation', '-id').values_list(
+                    'cumul', flat=True).first())
+            amort_ouverture = cumul_avant or Decimal('0')
+        dotations_exercice = (
+            dotations_qs.filter(
+                date_dotation__gte=date_debut, date_dotation__lte=date_fin,
+            ).aggregate(total=Sum('montant'))['total'] or Decimal('0'))
+        reprises = (
+            cession_exercice.amortissements_cumules
+            if cession_exercice is not None else Decimal('0'))
+        amort_cloture = amort_ouverture + dotations_exercice - reprises
+        vnc = brut_cloture - amort_cloture
+
+        lignes.append({
+            'immobilisation_id': immo.id,
+            'reference': immo.reference,
+            'libelle': immo.libelle,
+            'categorie': immo.categorie,
+            'brut_ouverture': brut_ouverture,
+            'acquisitions': acquisitions,
+            'cessions': cessions_brut,
+            'brut_cloture': brut_cloture,
+            'amort_ouverture': amort_ouverture,
+            'dotations': dotations_exercice,
+            'reprises': reprises,
+            'amort_cloture': amort_cloture,
+            'valeur_nette_comptable': vnc,
+        })
+        total_brut_ouverture += brut_ouverture
+        total_acquisitions += acquisitions
+        total_cessions_brut += cessions_brut
+        total_brut_cloture += brut_cloture
+        total_amort_ouverture += amort_ouverture
+        total_dotations += dotations_exercice
+        total_reprises += reprises
+        total_amort_cloture += amort_cloture
+        total_vnc += vnc
+
+    return {
+        'exercice': exercice.libelle or str(exercice.pk),
+        'date_debut': date_debut.isoformat(),
+        'date_fin': date_fin.isoformat(),
+        'lignes': lignes,
+        'totaux': {
+            'brut_ouverture': total_brut_ouverture,
+            'acquisitions': total_acquisitions,
+            'cessions': total_cessions_brut,
+            'brut_cloture': total_brut_cloture,
+            'amort_ouverture': total_amort_ouverture,
+            'dotations': total_dotations,
+            'reprises': total_reprises,
+            'amort_cloture': total_amort_cloture,
+            'valeur_nette_comptable': total_vnc,
+        },
+    }
+
+
 # ── FG122 — Position de trésorerie consolidée + projection nette ───────────
 
 # Comptes CGNC dont les soldes alimentent la projection nette. Tout se déduit du
@@ -616,9 +1161,12 @@ def position_tresorerie(company, *, date_fin=None, validees_seulement=False):
 
     Pour chaque ``CompteTresorerie`` actif de la société, le solde courant =
     ``solde_initial`` + mouvements du grand livre sur son compte comptable
-    (classe 5). Renvoie ``{'comptes': [...], 'total': Decimal}`` où chaque entrée
-    porte ``{'id', 'libelle', 'type_compte', 'banque', 'devise', 'solde_initial',
-    'mouvements', 'solde'}``. Lecture seule, scopée société.
+    (classe 5). Renvoie ``{'comptes': [...], 'total': Decimal,
+    'encours_emprunts': Decimal}`` où chaque entrée de ``comptes`` porte
+    ``{'id', 'libelle', 'type_compte', 'banque', 'devise', 'solde_initial',
+    'mouvements', 'solde'}``. ``encours_emprunts`` (XACC14) est le capital
+    restant dû cumulé de TOUS les emprunts/leasings de la société — ajouté en
+    lecture seule, n'affecte pas ``total``. Lecture seule, scopée société.
     """
     comptes = []
     total = Decimal('0')
@@ -641,7 +1189,10 @@ def position_tresorerie(company, *, date_fin=None, validees_seulement=False):
             'mouvements': mouvements,
             'solde': solde,
         })
-    return {'comptes': comptes, 'total': total}
+    encours_emprunts = sum(
+        (e.encours_restant_du for e in Emprunt.objects.filter(company=company)),
+        Decimal('0'))
+    return {'comptes': comptes, 'total': total, 'encours_emprunts': encours_emprunts}
 
 
 def projection_tresorerie(company, *, date_fin=None, validees_seulement=False):
@@ -1136,6 +1687,11 @@ def previsionnel_tresorerie(company, *, date_debut=None, nb_semaines=13):
         date_echeance__lt=fin_horizon,
         statut__in=[Effet.Statut.PORTEFEUILLE, Effet.Statut.REMIS]
     ).order_by('date_echeance', 'id'))
+    # XACC14 — échéances d'emprunt FUTURES non postées : décaissement prévu.
+    echeances_emprunt = list(EcheanceEmprunt.objects.filter(
+        company=company, date_echeance__gte=debut,
+        date_echeance__lt=fin_horizon, posted=False,
+    ).select_related('emprunt').order_by('date_echeance', 'id'))
 
     semaines = []
     for i in range(nb_semaines):
@@ -1174,6 +1730,18 @@ def previsionnel_tresorerie(company, *, date_debut=None, nb_semaines=13):
                     'categorie': ef.sens,
                     'date': ef.date_echeance,
                     'montant': signe,
+                })
+        for ee in echeances_emprunt:
+            if s_debut <= ee.date_echeance <= s_fin:
+                montant = ee.mensualite or Decimal('0')
+                sorties += montant
+                lignes.append({
+                    'type': 'echeance_emprunt',
+                    'libelle': (
+                        f'Échéance emprunt {ee.emprunt.banque or ee.emprunt.reference}'),
+                    'categorie': 'decaissement',
+                    'date': ee.date_echeance,
+                    'montant': -montant,
                 })
         flux_net = entrees - sorties
         solde += flux_net
@@ -1431,7 +1999,8 @@ def _mouvements_groupe(company, numeros, *, date_debut=None, date_fin=None,
 
 def preparer_declaration_tva(company, *, date_debut, date_fin, regime='mensuel',
                              methode='debit', credit_anterieur=Decimal('0'),
-                             validees_seulement=False):
+                             validees_seulement=False, comparer=False,
+                             date_debut_m1=None, date_fin_m1=None):
     """Calcule la TVA à déclarer sur une période depuis le grand livre (FG137).
 
     TVA collectée = Σ crédit − Σ débit des comptes 4455… (passif : un avoir
@@ -1442,6 +2011,12 @@ def preparer_declaration_tva(company, *, date_debut, date_fin, regime='mensuel',
     trimestriel) et ``methode`` (débit / encaissement) qualifient le dépôt mais
     n'altèrent pas l'agrégation GL (la période en porte la portée). Lecture
     seule, scopée société. Renvoie un dict prêt à figer sur une ``DeclarationTVA``.
+
+    ZACC10 — ``comparer=True`` ajoute ``tva_collectee_m1``/
+    ``tva_deductible_m1``/``tva_a_declarer_m1`` + les écarts % correspondants,
+    calculés sur ``date_debut_m1``/``date_fin_m1`` (défaut : la période
+    immédiatement précédente, de même durée). Défaut = réponse actuelle
+    byte-identique — détection d'anomalie de collecte/déduction M-1.
     """
     debit_coll, credit_coll = _mouvements_groupe(
         company, _COMPTES_TVA_COLLECTEE, date_debut=date_debut,
@@ -1461,7 +2036,7 @@ def preparer_declaration_tva(company, *, date_debut, date_fin, regime='mensuel',
     net = collectee - deductible - anterieur
     a_declarer = net if net >= 0 else Decimal('0')
     reportable = -net if net < 0 else Decimal('0')
-    return {
+    resultat = {
         'date_debut': date_debut,
         'date_fin': date_fin,
         'regime': regime,
@@ -1472,6 +2047,40 @@ def preparer_declaration_tva(company, *, date_debut, date_fin, regime='mensuel',
         'tva_a_declarer': a_declarer,
         'credit_reportable': reportable,
     }
+    if comparer:
+        deb_m1, fin_m1 = _periode_m1(date_debut, date_fin, date_debut_m1,
+                                     date_fin_m1)
+        m1 = preparer_declaration_tva(
+            company, date_debut=deb_m1, date_fin=fin_m1, regime=regime,
+            methode=methode, validees_seulement=validees_seulement)
+        resultat['date_debut_m1'] = deb_m1
+        resultat['date_fin_m1'] = fin_m1
+        resultat['tva_collectee_m1'] = m1['tva_collectee']
+        resultat['tva_collectee_ecart_pct'] = _ecart_pct(
+            collectee, m1['tva_collectee'])
+        resultat['tva_deductible_m1'] = m1['tva_deductible']
+        resultat['tva_deductible_ecart_pct'] = _ecart_pct(
+            deductible, m1['tva_deductible'])
+        resultat['tva_a_declarer_m1'] = m1['tva_a_declarer']
+        resultat['tva_a_declarer_ecart_pct'] = _ecart_pct(
+            a_declarer, m1['tva_a_declarer'])
+    return resultat
+
+
+def _periode_m1(date_debut, date_fin, date_debut_m1=None, date_fin_m1=None):
+    """Résout la période M-1 (précédente) : bornes explicites priment, sinon
+    la période immédiatement AVANT ``date_debut`` de la MÊME durée en jours
+    (jamais d'erreur si aucune donnée M-1 n'existe — soldes nuls)."""
+    if date_debut_m1 or date_fin_m1:
+        return date_debut_m1, date_fin_m1
+    deb = _as_date(date_debut)
+    fin = _as_date(date_fin)
+    if deb is None or fin is None:
+        return None, None
+    duree = (fin - deb).days
+    fin_m1 = deb - timedelta(days=1)
+    deb_m1 = fin_m1 - timedelta(days=duree)
+    return deb_m1, fin_m1
 
 
 # ── FG138 — Relevé de déductions détaillé (annexe TVA, DGI) ────────────────
@@ -2391,44 +3000,119 @@ def budget_vs_realise(company, budget, *, date_fin=None):
     }
 
 
+# ── XACC21 — Contrôle du budget COMPTABLE à l'engagement ───────────────────
+
+def budget_restant(company, *, centre_cout=None, compte=None, periode):
+    """Budget COMPTABLE restant pour un centre de coût/compte à une période
+    (XACC21), consommable par ``apps.stock``/``apps.rh`` (EN COMPLÉMENT du
+    contrôle PROJET FG313, ``installations.selectors`` — jamais dupliqué ici).
+
+    ``periode`` : une ``date`` dans l'année budgétaire visée (le budget de
+    l'exercice ``periode.year`` de la société est utilisé — le PLUS RÉCENT si
+    plusieurs budgets existent pour cette année). ``centre_cout``/``compte``
+    filtrent les ``BudgetLigne`` concernées (au moins l'un des deux requis).
+    Renvoie ``None`` si AUCUN budget n'est défini pour cette
+    société/année/centre/compte (= aucun contrôle possible, comportement
+    actuel intact) ; sinon ``{'budget_id', 'controle', 'montant_budgete',
+    'realise', 'restant'}`` où ``restant`` peut être négatif (dépassement).
+    Lecture seule, scopée société.
+    """
+    if centre_cout is None and compte is None:
+        raise ValueError("centre_cout ou compte requis pour budget_restant.")
+    annee = periode.year
+    budget = Budget.objects.filter(
+        company=company, annee=annee).order_by('-id').first()
+    if budget is None:
+        return None
+    lignes_qs = budget.lignes.all()
+    if centre_cout is not None:
+        lignes_qs = lignes_qs.filter(centre_cout=centre_cout)
+    if compte is not None:
+        lignes_qs = lignes_qs.filter(compte=compte)
+    if not lignes_qs.exists():
+        return None
+
+    total_budgete = Decimal('0')
+    total_realise = Decimal('0')
+    debut = date(annee, 1, 1)
+    fin = date(annee, 12, 31)
+    for bl in lignes_qs.select_related('compte'):
+        total_budgete += bl.montant_annuel
+        agg = LigneEcriture.objects.filter(
+            company=company, compte=bl.compte,
+            ecriture__date_ecriture__gte=debut,
+            ecriture__date_ecriture__lte=fin,
+        )
+        if bl.centre_cout_id:
+            agg = agg.filter(centre_cout=bl.centre_cout)
+        agg = agg.aggregate(debit=Sum('debit'), credit=Sum('credit'))
+        debit = agg['debit'] or Decimal('0')
+        credit = agg['credit'] or Decimal('0')
+        if bl.compte.classe == 7:
+            total_realise += credit - debit
+        else:
+            total_realise += debit - credit
+    return {
+        'budget_id': budget.id,
+        'controle': budget.controle,
+        'montant_budgete': total_budgete,
+        'realise': total_realise,
+        'restant': total_budgete - total_realise,
+    }
+
+
 # ── FG150 — Comptabilité analytique / centres de coût ──────────────────────
 
 def resultat_analytique(company, *, date_debut=None, date_fin=None,
                         validees_seulement=False):
-    """Produits − charges ventilés par centre de coût (FG150).
+    """Produits − charges ventilés par centre de coût (FG150 + XACC20).
 
-    Agrège les ``LigneEcriture`` de classes 6/7 portant un centre de coût et
-    renvoie le résultat (produits − charges) par axe analytique :
-    ``{'centres': [{'code', 'libelle', 'axe', 'produits', 'charges',
-    'resultat'}], 'sans_centre': {...}}``. Lecture seule, scopée société.
+    Agrège les ``LigneEcriture`` de classes 6/7 : une ligne portant une
+    ``VentilationAnalytique`` (XACC20) est éclatée AU PRORATA des pourcentages
+    de la distribution sur chacun de ses centres ; une ligne SANS ventilation
+    retombe sur son ``centre_cout`` simple (FG150, rétro-compatible, comme
+    avant XACC20). Renvoie le résultat (produits − charges) par axe
+    analytique : ``{'centres': [{'code', 'libelle', 'axe', 'produits',
+    'charges', 'resultat'}], 'sans_centre': {...}}``. Lecture seule, scopée
+    société.
     """
     qs = _lignes_qs(company, date_debut=date_debut, date_fin=date_fin,
                     validees_seulement=validees_seulement).filter(
-        compte__classe__in=[6, 7])
-    agg = qs.values(
-        'centre_cout', 'centre_cout__code', 'centre_cout__libelle',
-        'centre_cout__axe', 'compte__classe',
-    ).annotate(debit=Sum('debit'), credit=Sum('credit'))
+        compte__classe__in=[6, 7]).select_related(
+        'centre_cout', 'compte').prefetch_related(
+        'ventilation_analytique__distributions__centre_cout')
+
     centres = {}
     sans_centre = {'produits': Decimal('0'), 'charges': Decimal('0')}
-    for row in agg:
-        debit = row['debit'] or Decimal('0')
-        credit = row['credit'] or Decimal('0')
-        cc_id = row['centre_cout']
-        if cc_id is None:
-            cible = sans_centre
+
+    def _cible(cc):
+        if cc is None:
+            return sans_centre
+        return centres.setdefault(cc.id, {
+            'code': cc.code, 'libelle': cc.libelle, 'axe': cc.axe,
+            'produits': Decimal('0'), 'charges': Decimal('0'),
+        })
+
+    for ligne in qs:
+        montant_net = (ligne.credit or Decimal('0')) - (ligne.debit or Decimal('0'))
+        classe = ligne.compte.classe
+        ventilation = getattr(ligne, 'ventilation_analytique', None)
+        distributions = list(ventilation.distributions.all()) if ventilation else []
+        if distributions:
+            for d in distributions:
+                part = (montant_net * d.pourcentage / Decimal('100'))
+                cible = _cible(d.centre_cout)
+                if classe == 7:
+                    cible['produits'] += part
+                else:
+                    cible['charges'] += -part
         else:
-            cible = centres.setdefault(cc_id, {
-                'code': row['centre_cout__code'],
-                'libelle': row['centre_cout__libelle'],
-                'axe': row['centre_cout__axe'],
-                'produits': Decimal('0'),
-                'charges': Decimal('0'),
-            })
-        if row['compte__classe'] == 7:
-            cible['produits'] += credit - debit
-        else:
-            cible['charges'] += debit - credit
+            cible = _cible(ligne.centre_cout)
+            if classe == 7:
+                cible['produits'] += montant_net
+            else:
+                cible['charges'] += -montant_net
+
     liste = []
     for data in centres.values():
         data['resultat'] = data['produits'] - data['charges']
@@ -2669,3 +3353,639 @@ def export_fiduciaire(company, exercice, *, validees_seulement=False):
             'resultat': etat_cpc['resultat'],
         },
     }
+
+
+# ── XACC15 — Charges constatées d'avance : solde restant à étaler ─────────
+
+def solde_charges_constatees_avance(company, *, date_fin=None):
+    """Rapport du solde 3491 restant à étaler par charge, à une date donnée
+    (XACC15). Pour chaque ``ChargeConstateeAvance`` de la société : montant
+    total, Σ des dotations postées jusqu'à ``date_fin`` (défaut aujourd'hui),
+    et solde restant = montant total − dotations postées. Renvoie
+    ``{'charges': [...], 'total_restant': Decimal}``. Lecture seule.
+    """
+    date_fin = date_fin or timezone.localdate()
+    charges = ChargeConstateeAvance.objects.filter(
+        company=company).prefetch_related('dotations').order_by('-date_debut', '-id')
+    resultat = []
+    total_restant = Decimal('0')
+    for charge in charges:
+        dote = sum(
+            (d.montant for d in charge.dotations.all()
+             if d.posted and d.date_dotation <= date_fin),
+            Decimal('0'))
+        restant = (charge.montant_total or Decimal('0')) - dote
+        if restant < 0:
+            restant = Decimal('0')
+        total_restant += restant
+        resultat.append({
+            'id': charge.id,
+            'reference': charge.reference,
+            'libelle': charge.libelle,
+            'montant_total': charge.montant_total,
+            'dote': dote,
+            'solde_restant': restant,
+        })
+    return {'charges': resultat, 'total_restant': total_restant}
+
+
+# ── XACC17 — Table de taux de change ────────────────────────────────────────
+
+def taux_du_jour(company, devise, une_date=None):
+    """Taux de change ``devise`` → MAD applicable à ``une_date`` (XACC17).
+
+    Renvoie le ``TauxDevise`` le PLUS RÉCENT dont ``date_taux`` est
+    antérieure ou égale à ``une_date`` (défaut aujourd'hui) — ou ``None`` si
+    aucune table n'existe pour cette devise/société (repli MAD/1 intact côté
+    appelant). MAD est toujours 1:1 (jamais de table nécessaire). Lecture
+    seule, scopée société.
+    """
+    devise = (devise or 'MAD').upper()
+    if devise == 'MAD':
+        return None
+    une_date = une_date or timezone.localdate()
+    return TauxDevise.objects.filter(
+        company=company, devise=devise, date_taux__lte=une_date,
+    ).order_by('-date_taux').first()
+
+
+# ── XACC19 — Générateur d'états financiers personnalisés ───────────────────
+
+class FormuleEtatInvalideError(Exception):
+    """Formule de ligne d'état personnalisé invalide (terme non reconnu)."""
+
+
+def _parser_formule(formule):
+    """Parse ``formule`` (« +70,+71,-60 ») en liste de ``(signe, prefixe)``.
+
+    Un terme valide commence par ``+`` ou ``-`` suivi d'un préfixe de compte
+    non vide (chiffres). Lève ``FormuleEtatInvalideError`` si un terme est mal
+    formé — le service appelant transforme ça en 400 explicite.
+    """
+    termes = []
+    for brut in (formule or '').split(','):
+        terme = brut.strip()
+        if not terme:
+            continue
+        signe = terme[0]
+        if signe not in ('+', '-'):
+            raise FormuleEtatInvalideError(
+                f"Terme invalide « {terme} » : doit commencer par + ou -.")
+        prefixe = terme[1:].strip()
+        if not prefixe or not prefixe.isdigit():
+            raise FormuleEtatInvalideError(
+                f"Terme invalide « {terme} » : préfixe de compte manquant "
+                "ou non numérique.")
+        termes.append((1 if signe == '+' else -1, prefixe))
+    if not termes:
+        raise FormuleEtatInvalideError("La formule ne contient aucun terme.")
+    return termes
+
+
+def _evaluer_formule_sur_balance(formule, balance_lignes):
+    """Évalue une formule sur les lignes d'une ``balance_generale`` (pur calcul).
+
+    Chaque terme ``(signe, prefixe)`` somme le SOLDE (débiteur − créditeur,
+    signé naturel du compte) de tous les comptes dont le numéro commence par
+    ``prefixe``, multiplié par ``signe``. Renvoie un ``Decimal``.
+    """
+    termes = _parser_formule(formule)
+    total = Decimal('0')
+    for signe, prefixe in termes:
+        for ligne in balance_lignes:
+            if ligne['numero'].startswith(prefixe):
+                solde = ligne['solde_debiteur'] - ligne['solde_crediteur']
+                total += signe * solde
+    return total
+
+
+def evaluer_etat_personnalise(etat, *, colonnes_override=None):
+    """Évalue un ``EtatPersonnalise`` : une valeur par (ligne, colonne) — XACC19.
+
+    Pour chaque colonne (période, comparatif N-1, budget, écart %), calcule la
+    balance générale de la période correspondante puis évalue la formule de
+    chaque ligne TOTAL dessus (une ligne TITRE n'a aucune valeur). Une formule
+    invalide lève ``FormuleEtatInvalideError`` (le service/la vue la
+    transforme en 400 explicite). Sans N-1 disponible (colonne comparatif hors
+    de toute donnée), la valeur est simplement 0 (jamais d'erreur). Renvoie
+    ``{'lignes': [{'id', 'libelle', 'type_ligne', 'valeurs': {colonne_id: val}}],
+    'colonnes': [...]}``.
+    """
+    company = etat.company
+    colonnes = list(colonnes_override or etat.colonnes.all().order_by('ordre', 'id'))
+    balances_par_colonne = {}
+    for colonne in colonnes:
+        if colonne.type_colonne == 'budget':
+            # Colonne budget : valeur = somme des montants annuels du budget
+            # référencé, appliquée directement (pas de formule sur la balance).
+            balances_par_colonne[colonne.id] = None
+            continue
+        date_debut, date_fin = colonne.date_debut, colonne.date_fin
+        if colonne.type_colonne == 'comparatif_n1' and date_debut and date_fin:
+            try:
+                date_debut = date_debut.replace(year=date_debut.year - 1)
+                date_fin = date_fin.replace(year=date_fin.year - 1)
+            except ValueError:
+                # 29 février d'une année non bissextile : recule d'un jour.
+                from datetime import timedelta
+                date_debut = date_debut.replace(
+                    year=date_debut.year - 1, day=28) if date_debut.month == 2 else date_debut
+                date_fin = date_fin - timedelta(days=1)
+        balance = balance_generale(company, date_debut=date_debut, date_fin=date_fin)
+        balances_par_colonne[colonne.id] = balance['lignes']
+
+    lignes_resultat = []
+    for ligne in etat.lignes.all().order_by('ordre', 'id'):
+        valeurs = {}
+        if ligne.type_ligne == 'total':
+            for colonne in colonnes:
+                if colonne.type_colonne == 'budget':
+                    if colonne.budget_id:
+                        total = BudgetLigne.objects.filter(
+                            budget_id=colonne.budget_id).aggregate(
+                            **{f'm{i:02d}': Sum(f'm{i:02d}') for i in range(1, 13)})
+                        valeurs[colonne.id] = sum(
+                            (total.get(f'm{i:02d}') or Decimal('0') for i in range(1, 13)),
+                            Decimal('0'))
+                    else:
+                        valeurs[colonne.id] = Decimal('0')
+                    continue
+                balance_lignes = balances_par_colonne.get(colonne.id) or []
+                valeurs[colonne.id] = _evaluer_formule_sur_balance(
+                    ligne.formule, balance_lignes)
+        lignes_resultat.append({
+            'id': ligne.id,
+            'libelle': ligne.libelle,
+            'type_ligne': ligne.type_ligne,
+            'valeurs': valeurs,
+        })
+    return {
+        'colonnes': [
+            {'id': c.id, 'libelle': c.libelle, 'type_colonne': c.type_colonne}
+            for c in colonnes
+        ],
+        'lignes': lignes_resultat,
+    }
+
+
+# ── XACC24 — Validation RIB (comptes de trésorerie) ────────────────────────
+
+def comptes_tresorerie_rib_invalides(company):
+    """Liste les ``CompteTresorerie`` actifs dont le RIB porte une clé fausse
+    (XACC24), en WARNING pur — jamais un blocage de saisie historique. Un RIB
+    vide n'est PAS signalé (compte sans RIB renseigné, cas normal). Renvoie
+    une liste de ``{'id', 'libelle', 'rib', 'erreurs'}``. Lecture seule.
+    """
+    from core.rib import valider_rib
+
+    resultat = []
+    for compte in CompteTresorerie.objects.filter(company=company, actif=True):
+        if not (compte.rib or '').strip():
+            continue
+        diagnostic = valider_rib(compte.rib)
+        if not diagnostic['valide']:
+            resultat.append({
+                'id': compte.id, 'libelle': compte.libelle,
+                'rib': compte.rib, 'erreurs': diagnostic['erreurs'],
+            })
+    return resultat
+
+
+# ── XPAI25 — Indemnités chantier remboursables via la paie ─────────────────
+
+def indemnites_chantier_remboursables_par_paie(
+        company, employe_user_id, date_debut, date_fin):
+    """Indemnités chantier VALIDÉES non payées d'un employé sur une période.
+
+    Sélecteur cross-app fin (XPAI25) : la paie appelle CE sélecteur pour
+    lister les ``IndemniteChantier`` (FG136) éligibles à un remboursement via
+    le bulletin de salaire — validées (``statut == VALIDEE``, jamais déjà
+    remboursées, ni côté paie ni côté trésorerie) dont ``date_deplacement``
+    tombe dans ``[date_debut, date_fin]``. Jamais ``compta.models`` importé
+    hors de ce module (lecture seule, cadrée société). Renvoie un queryset.
+    """
+    return (
+        IndemniteChantier.objects
+        .filter(
+            company=company, employe_id=employe_user_id,
+            statut=IndemniteChantier.Statut.VALIDEE,
+            date_deplacement__gte=date_debut, date_deplacement__lte=date_fin,
+        )
+        .order_by('date_deplacement', 'id')
+    )
+
+
+# ── XCTR14 — Résolution du compte portail client par token (lecture seule) ──
+
+def compte_portail_par_token(token):
+    """Résout un ``ComptePortailClient`` ACTIF par son ``token_acces`` (FG228).
+
+    Point d'entrée LECTURE SEULE pour les apps consommatrices du portail
+    tokenisé existant (ex. ``apps.contrats`` — XCTR14) : jamais un import du
+    modèle ``ComptePortailClient`` en dehors de ``compta``. Renvoie ``None``
+    si le token est vide, inconnu, ou correspond à un compte inactif — sans
+    distinguer les deux cas (aucune fuite d'existence du token)."""
+    if not token:
+        return None
+    from .models import ComptePortailClient
+
+    return (
+        ComptePortailClient.objects
+        .filter(token_acces=token, actif=True)
+        .select_related('client')
+        .first()
+    )
+
+
+# ── XACC26 — État récapitulatif des provisions (dotations/reprises) ────────
+
+def etat_provisions(company, *, date_debut=None, date_fin=None, nature=None):
+    """Mouvements de provisions (XACC26) de la période, groupés par nature.
+
+    Liste chaque ``Provision`` dont la dotation OU la dernière reprise tombe
+    dans ``[date_debut, date_fin]`` (bornes optionnelles), avec son solde
+    courant. Renvoie un dict ``{nature: {'label', 'lignes': [...], 'total_dotation',
+    'total_repris', 'total_solde'}}``. Lecture seule ; company-scopé.
+    """
+    date_debut = _as_date(date_debut)
+    date_fin = _as_date(date_fin)
+    qs = Provision.objects.filter(company=company)
+    if nature:
+        qs = qs.filter(nature=nature)
+    if date_debut:
+        qs = qs.filter(
+            Q(date_dotation__gte=date_debut) |
+            Q(date_derniere_reprise__gte=date_debut))
+    if date_fin:
+        qs = qs.filter(
+            Q(date_dotation__lte=date_fin) |
+            Q(date_derniere_reprise__lte=date_fin))
+    result = {}
+    for prov in qs.order_by('nature', 'date_dotation', 'id'):
+        bucket = result.setdefault(prov.nature, {
+            'label': prov.get_nature_display(),
+            'lignes': [],
+            'total_dotation': Decimal('0'),
+            'total_repris': Decimal('0'),
+            'total_solde': Decimal('0'),
+        })
+        bucket['lignes'].append({
+            'id': prov.id,
+            'reference': prov.reference,
+            'motif': prov.motif,
+            'date_dotation': prov.date_dotation,
+            'montant_dotation': prov.montant_dotation,
+            'montant_repris': prov.montant_repris,
+            'solde': prov.solde,
+            'date_derniere_reprise': prov.date_derniere_reprise,
+        })
+        bucket['total_dotation'] += prov.montant_dotation or Decimal('0')
+        bucket['total_repris'] += prov.montant_repris or Decimal('0')
+        bucket['total_solde'] += prov.solde
+    return result
+
+
+# ── XACC28 — Frais refacturables non facturés (billable expenses) ─────────
+
+def frais_refacturables_non_factures(company, *, client_id=None):
+    """Notes de frais refacturables VALIDÉES pas encore refacturées (XACC28).
+
+    ``client_id`` (optionnel) filtre sur le client déjà rattaché à la note ;
+    sans filtre, renvoie toutes les notes refacturables en attente, tous
+    clients confondus. Lecture seule ; company-scopé."""
+    qs = NoteFrais.objects.filter(
+        company=company, refacturable=True,
+        statut=NoteFrais.Statut.VALIDEE,
+        facture_refacturation_id__isnull=True,
+    )
+    if client_id:
+        qs = qs.filter(client_refacturation_id=client_id)
+    return qs.order_by('date_frais', 'id')
+
+
+# ── ZACC7 — Analyse des frais (pivot employé × catégorie × période) ───────
+
+def analyse_notes_frais(company, *, date_debut=None, date_fin=None,
+                        group_by='employe'):
+    """ZACC7 — Agrège les ``NoteFrais`` (non brouillon) de la période par
+    ``group_by`` ∈ {'employe', 'categorie', 'mois'} — le pivot « Expense
+    Analysis » qui manquait (l'écran ne listait que les notes une par une).
+
+    Renvoie ``{'lignes': [{'cle', 'libelle', 'total', 'nombre',
+    'hors_politique_total'}], 'total_general'}`` — ``hors_politique_total``
+    (XACC27, best-effort : 0 si le champ est absent d'anciennes notes) est
+    la part des montants flaggés hors politique dans ce groupe. Exclut les
+    notes ``brouillon`` (jamais soumises — pas encore une dépense engagée
+    validable). Lecture seule ; company-scopée."""
+    qs = (NoteFrais.objects
+          .filter(company=company)
+          .exclude(statut=NoteFrais.Statut.BROUILLON)
+          .select_related('employe'))
+    if date_debut:
+        qs = qs.filter(date_frais__gte=_as_date(date_debut))
+    if date_fin:
+        qs = qs.filter(date_frais__lte=_as_date(date_fin))
+
+    def _cle_libelle(note):
+        if group_by == 'categorie':
+            return note.categorie, note.get_categorie_display()
+        if group_by == 'mois':
+            mois = note.date_frais.strftime('%Y-%m') if note.date_frais else ''
+            return mois, mois
+        # défaut : 'employe'
+        emp = note.employe
+        nom = getattr(emp, 'get_full_name', lambda: '')() or (
+            getattr(emp, 'username', '') if emp else '')
+        return (emp.id if emp else None), (nom or '—')
+
+    buckets = {}
+    total_general = Decimal('0')
+    for note in qs:
+        cle, libelle = _cle_libelle(note)
+        bucket = buckets.setdefault(cle, {
+            'cle': cle, 'libelle': libelle, 'total': Decimal('0'),
+            'nombre': 0, 'hors_politique_total': Decimal('0'),
+        })
+        montant = note.montant or Decimal('0')
+        bucket['total'] += montant
+        bucket['nombre'] += 1
+        if getattr(note, 'hors_politique', False):
+            bucket['hors_politique_total'] += montant
+        total_general += montant
+
+    lignes = sorted(
+        buckets.values(), key=lambda b: b['total'], reverse=True)
+    return {'lignes': lignes, 'total_general': total_general}
+
+
+# ── XACC29 — Rapport de continuité des séquences (gap detection) ──────────
+
+_SEQ_SUFFIX_RE = re.compile(r'^(.*?)-(\d+)$')
+
+
+def _extraire_bucket_numero(reference):
+    """Sépare ``reference`` en (radical, numéro) via le suffixe ``-NNNN``.
+
+    Renvoie ``(None, None)`` si la référence n'a pas de suffixe numérique
+    reconnaissable (jamais bloquant : la référence est alors simplement
+    ignorée du contrôle de continuité)."""
+    if not reference:
+        return None, None
+    m = _SEQ_SUFFIX_RE.match(reference)
+    if not m:
+        return None, None
+    radical, numero = m.group(1), m.group(2)
+    try:
+        return radical, int(numero)
+    except ValueError:
+        return None, None
+
+
+def _trous_pour_references(references, *, source_label):
+    """Groupe ``references`` par radical (préfixe + éventuel segment période)
+    et liste les numéros MANQUANTS entre le min et le max observés par
+    groupe. Renvoie une liste de dicts ``{source, radical, plage, manquants}``
+    — une entrée par radical avec au moins un trou (radical continu = omis)."""
+    buckets = {}
+    for ref in references:
+        radical, numero = _extraire_bucket_numero(ref)
+        if radical is None:
+            continue
+        buckets.setdefault(radical, set()).add(numero)
+    rapport = []
+    for radical, numeros in sorted(buckets.items()):
+        lo, hi = min(numeros), max(numeros)
+        manquants = sorted(set(range(lo, hi + 1)) - numeros)
+        if manquants:
+            rapport.append({
+                'source': source_label,
+                'journal': radical,
+                'plage': [lo, hi],
+                'manquants': manquants,
+            })
+    return rapport
+
+
+def trous_sequences(company, *, exercice=None):
+    """XACC29 — Rapport de continuité des numéros de pièces (audit marocain).
+
+    Balaie les factures ventes (``ventes.selectors.references_factures``), les
+    pièces comptables par journal (``EcritureComptable.reference`` de cette
+    société — même app, lecture directe) et les avoirs
+    (``ventes.selectors.references_avoirs``) — jamais un import de
+    ``ventes.models``. Extrait le compteur final de chaque référence
+    (suffixe ``-NNNN``) et liste, par radical (préfixe + période), les
+    numéros manquants entre le plus petit et le plus grand observés. Une
+    séquence sans trou n'apparaît pas dans le rapport (rapport vide = tout
+    continu). ``exercice`` est actuellement ignoré (réservé, toutes les
+    pièces de la société sont balayées — filtrage par exercice non câblé
+    faute de champ d'exercice direct sur ``EcritureComptable``). Lecture
+    seule ; company-scopé (jamais de fuite cross-company, les sélecteurs
+    sous-jacents filtrent déjà par société)."""
+    from apps.ventes import selectors as ventes_selectors
+
+    rapport = []
+    rapport += _trous_pour_references(
+        ventes_selectors.references_factures(company), source_label='factures')
+    rapport += _trous_pour_references(
+        ventes_selectors.references_avoirs(company), source_label='avoirs')
+    references_pieces = list(
+        EcritureComptable.objects.filter(company=company)
+        .exclude(reference='')
+        .values_list('reference', flat=True)
+    )
+    rapport += _trous_pour_references(
+        references_pieces, source_label='pieces_comptables')
+    return rapport
+
+
+# ── YLEDG13 — Rapprochement auxiliaire ↔ GL (tie-out AR/AP) ────────────────
+# Compare l'encours DOCUMENTAIRE (lu via ventes.selectors / stock.selectors,
+# jamais leurs models) au solde GL non lettré par tiers (3421/4411) — preuve
+# que les deux systèmes restent égaux une fois YLEDG1/2 câblés. Lecture
+# seule, scopée société.
+
+def _encours_gl_par_tiers(company, compte_numero, *, tiers_type,
+                          date=None):
+    """Solde GL non lettré par ``tiers_id`` d'un compte de tiers donné."""
+    qs = LigneEcriture.objects.filter(
+        company=company, compte__numero=compte_numero, lettrage='',
+        tiers_type=tiers_type, tiers_id__isnull=False)
+    if date:
+        qs = qs.filter(ecriture__date_ecriture__lte=date)
+    par_tiers = {}
+    for ligne in qs:
+        tid = ligne.tiers_id
+        par_tiers.setdefault(tid, Decimal('0'))
+        # Client (actif) : débit − crédit. Fournisseur (passif) : crédit −
+        # débit (inversé en aval selon l'appelant).
+        par_tiers[tid] += (ligne.debit or Decimal('0')) - \
+            (ligne.credit or Decimal('0'))
+    return par_tiers
+
+
+def rapprochement_auxiliaire_clients(company, date=None):
+    """Compare l'encours documentaire clients (ventes) au solde GL 3421 non
+    lettré, par tiers. Renvoie ``{'lignes': [...], 'ecart_total'}`` où chaque
+    ligne est ``{'tiers_id', 'nom', 'encours_documentaire', 'solde_gl',
+    'ecart', 'references'}`` — seuls les tiers en écart (≠ 0, tolérance 1
+    centime) apparaissent. Un document jamais comptabilisé (toggle OFF, ou
+    facture jamais émise) laisse le GL à 0 pendant que le documentaire porte
+    l'encours → apparaît en écart avec sa référence. Une écriture manuelle sur
+    3421 sans document source (donc absente de l'encours documentaire)
+    apparaît symétriquement. Lecture seule."""
+    from apps.ventes import selectors as ventes_selectors
+
+    documentaire = {
+        e['tiers_id']: e for e in ventes_selectors.encours_clients_par_tiers(
+            company)
+    }
+    gl = _encours_gl_par_tiers(company, '3421', tiers_type='client',
+                               date=date)
+    tiers_ids = set(documentaire) | set(gl)
+    lignes = []
+    ecart_total = Decimal('0')
+    for tid in tiers_ids:
+        doc = documentaire.get(tid)
+        doc_montant = doc['encours'] if doc else Decimal('0')
+        gl_montant = gl.get(tid, Decimal('0'))
+        ecart = doc_montant - gl_montant
+        if abs(ecart) <= Decimal('0.01'):
+            continue
+        lignes.append({
+            'tiers_id': tid,
+            'nom': doc['nom'] if doc else '',
+            'encours_documentaire': doc_montant,
+            'solde_gl': gl_montant,
+            'ecart': ecart,
+            'references': doc['references'] if doc else [],
+        })
+        ecart_total += ecart
+    lignes.sort(key=lambda e: abs(e['ecart']), reverse=True)
+    return {'lignes': lignes, 'ecart_total': ecart_total}
+
+
+def rapprochement_auxiliaire_fournisseurs(company, date=None):
+    """Miroir AP de ``rapprochement_auxiliaire_clients`` : compare l'encours
+    documentaire fournisseurs (stock) au solde GL 4411 non lettré, par tiers.
+    Le compte 4411 est un PASSIF (solde naturel créditeur) : le GL est lu
+    crédit − débit pour être homogène au sens « montant dû » du documentaire.
+    Lecture seule."""
+    from apps.stock import selectors as stock_selectors
+
+    documentaire = {
+        e['tiers_id']: e
+        for e in stock_selectors.encours_fournisseurs_par_tiers(company)
+    }
+    gl_actif_sens = _encours_gl_par_tiers(
+        company, '4411', tiers_type='fournisseur', date=date)
+    # _encours_gl_par_tiers calcule débit − crédit (sens actif) ; un compte
+    # fournisseur (passif) veut crédit − débit — on inverse le signe ici
+    # plutôt que dupliquer la fonction.
+    gl = {tid: -montant for tid, montant in gl_actif_sens.items()}
+    tiers_ids = set(documentaire) | set(gl)
+    lignes = []
+    ecart_total = Decimal('0')
+    for tid in tiers_ids:
+        doc = documentaire.get(tid)
+        doc_montant = doc['encours'] if doc else Decimal('0')
+        gl_montant = gl.get(tid, Decimal('0'))
+        ecart = doc_montant - gl_montant
+        if abs(ecart) <= Decimal('0.01'):
+            continue
+        lignes.append({
+            'tiers_id': tid,
+            'nom': doc['nom'] if doc else '',
+            'encours_documentaire': doc_montant,
+            'solde_gl': gl_montant,
+            'ecart': ecart,
+            'references': doc['references'] if doc else [],
+        })
+        ecart_total += ecart
+    lignes.sort(key=lambda e: abs(e['ecart']), reverse=True)
+    return {'lignes': lignes, 'ecart_total': ecart_total}
+
+
+def exposition_69_21(company, periode=None):
+    """XFAC2 — Conformité loi 69-21 (délais de paiement légaux fournisseurs).
+
+    Thin wrapper company-scopé sur ``stock.selectors.exposition_69_21``
+    (lecture des factures fournisseur via le sélecteur de l'app cible —
+    jamais un import de ``apps.stock.models`` ici). ``periode`` optionnel
+    (``'YYYY-MM'``) borne au trimestre civil pour la déclaration DGI.
+    Renvoie ``{'lignes': [...], 'total_amende_estimee': Decimal}``."""
+    from apps.stock import selectors as stock_selectors
+
+    lignes = stock_selectors.exposition_69_21(company, periode=periode)
+    total = sum((ligne['amende_estimee'] for ligne in lignes), Decimal('0'))
+    return {'lignes': lignes, 'total_amende_estimee': total}
+
+
+_ICE_RE = re.compile(r'^\d{15}$')
+
+
+def controle_identifiants_tiers(company):
+    """ZACC14 — Liste les tiers (clients ENTREPRISE + fournisseurs) dont
+    l'ICE est vide ou de format invalide (≠ 15 chiffres) — miroir marocain
+    du contrôle VIES, utile pour la conformité facture/déclaration DGI et
+    l'e-invoicing. Lecture via ``apps.crm.selectors`` /
+    ``apps.stock.selectors`` (jamais un import de leurs modèles). Pas de
+    service externe de vérification (aucune API publique ICE au Maroc à ce
+    jour) : contrôle de FORMAT uniquement.
+
+    Renvoie ``{'clients': [...], 'fournisseurs': [...]}`` où chaque entrée
+    est ``{'id', 'nom', 'ice', 'if_fiscal', 'motif'}`` — motif ∈
+    {'ice_absent', 'ice_invalide'}. Les tiers conformes sont exclus."""
+    from apps.crm import selectors as crm_selectors
+    from apps.stock import selectors as stock_selectors
+
+    def _motif(ice):
+        if not ice:
+            return 'ice_absent'
+        if not _ICE_RE.match(ice):
+            return 'ice_invalide'
+        return None
+
+    clients = []
+    for tiers in crm_selectors.clients_pour_controle_ice(company):
+        motif = _motif(tiers['ice'])
+        if motif:
+            clients.append({**tiers, 'motif': motif})
+
+    fournisseurs = []
+    for tiers in stock_selectors.fournisseurs_pour_controle_ice(company):
+        motif = _motif(tiers['ice'])
+        if motif:
+            fournisseurs.append({**tiers, 'motif': motif})
+
+    return {'clients': clients, 'fournisseurs': fournisseurs}
+
+
+def ecatalogue_public_par_token(token):
+    """XPOS14 — E-catalogue public lu par son token (FG214), lecture seule.
+
+    Utilisé par ``apps.ventes.public_views`` (frontière selectors — jamais
+    d'import de ``compta.models`` côté ventes). Renvoie ``None`` si le token
+    est inconnu, l'e-catalogue est inactif, ou expiré — un appelant public
+    traite ``None`` comme 404, sans jamais fuiter d'information sur l'état
+    réel (existe mais expiré / n'existe pas)."""
+    from .models import ECatalogue
+    try:
+        cat = ECatalogue.objects.get(token=token, actif=True)
+    except ECatalogue.DoesNotExist:
+        return None
+    if cat.expire_le and cat.expire_le < timezone.now():
+        return None
+    return cat
+
+
+def produits_publics_du_catalogue(ecatalogue):
+    """Produits exposés par un e-catalogue (prix public TTC uniquement,
+    jamais `prix_achat`). Lecture seule, scopée à la société du catalogue."""
+    from apps.stock.models import Produit
+    return list(
+        Produit.objects.filter(
+            company_id=ecatalogue.company_id,
+            id__in=ecatalogue.produit_ids or [],
+        )
+    )

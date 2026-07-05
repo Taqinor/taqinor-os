@@ -17,3 +17,21 @@ def recycler_leads_non_travailles_task():
     )
     escalated, deassigned = recycler_leads_non_travailles()
     return {'escalated': escalated, 'deassigned': deassigned}
+
+
+@shared_task(name='crm.escalader_rappels_demandes')
+def escalader_rappels_demandes_task():
+    """QW4 — Enveloppe Celery Beat de la commande de gestion homonyme.
+
+    Planifiée dans ``erp_agentique/celery.py`` (``beat_schedule``). Escalade
+    les rappels demandés (``contact_preference=phone_ok``) non actionnés au-
+    delà du SLA rappel — plus serré que le SLA générique premier-contact de
+    ``recycler_leads_non_travailles``. Même patron : réutilise entièrement la
+    commande de gestion (testable hors Celery via
+    ``manage.py escalader_rappels_demandes``).
+    """
+    from apps.crm.management.commands.escalader_rappels_demandes import (
+        escalader_rappels_demandes,
+    )
+    escalated = escalader_rappels_demandes()
+    return {'escalated': escalated}

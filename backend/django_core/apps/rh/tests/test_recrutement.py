@@ -44,6 +44,11 @@ def make_user(company, username, role='responsable'):
 
 
 def make_ouverture(company, intitule='Technicien pose', **kwargs):
+    # YHIRE14 — le statut par défaut du modèle est désormais 'brouillon'
+    # (cycle d'approbation amont) ; ce fixture historique continue de
+    # produire des ouvertures 'ouvert' par défaut pour ne pas casser les
+    # tests existants qui postent des candidatures dessus.
+    kwargs.setdefault('statut', OuverturePoste.Statut.OUVERT)
     return OuverturePoste.objects.create(
         company=company, intitule=intitule, **kwargs)
 
@@ -89,7 +94,9 @@ class OuverturePosteCrudTests(TestCase):
         ouv = OuverturePoste.objects.get(id=resp.data['id'])
         self.assertEqual(ouv.company, self.co_a)
         self.assertEqual(ouv.nombre_postes, 2)
-        self.assertEqual(ouv.statut, 'ouvert')
+        # YHIRE14 — une ouverture créée via l'API naît désormais en
+        # 'brouillon' (cycle d'approbation amont), plus 'ouvert'.
+        self.assertEqual(ouv.statut, 'brouillon')
         self.assertEqual(ouv.poste_ref_id, self.poste_a.id)
 
     def test_poste_ref_autre_societe_refuse(self):

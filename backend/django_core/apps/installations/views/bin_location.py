@@ -13,8 +13,13 @@ from rest_framework.exceptions import ValidationError
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 
-from ..models import BinLocation, BinAffectation
-from ..serializers import BinLocationSerializer, BinAffectationSerializer
+from ..models import (
+    BinLocation, BinAffectation, CategorieStockage, RegleRangement,
+)
+from ..serializers import (
+    BinLocationSerializer, BinAffectationSerializer,
+    CategorieStockageSerializer, RegleRangementSerializer,
+)
 
 READ_ACTIONS = ['list', 'retrieve']
 
@@ -53,12 +58,79 @@ class BinLocationViewSet(TenantMixin, viewsets.ModelViewSet):
                 emplacement, 'company_id', None) != cid:
             raise ValidationError(
                 {'emplacement': 'Emplacement inconnu pour cette société.'})
+        categorie = serializer.validated_data.get('categorie')
+        if categorie is not None and getattr(
+                categorie, 'company_id', None) != cid:
+            raise ValidationError(
+                {'categorie': 'Catégorie de stockage inconnue pour cette '
+                 'société.'})
 
     def perform_create(self, serializer):
         self._check_tenant(serializer)
         serializer.save(
             company=self.request.user.company,
             created_by=self.request.user)
+
+    def perform_update(self, serializer):
+        self._check_tenant(serializer)
+        serializer.save(company=self.request.user.company)
+
+
+class CategorieStockageViewSet(TenantMixin, viewsets.ModelViewSet):
+    """ZSTK9 — catégories de stockage (capacité/compatibilité). Lecture tout
+    rôle, écriture responsable/admin. Société posée serveur."""
+    queryset = CategorieStockage.objects.all()
+    serializer_class = CategorieStockageSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+
+class RegleRangementViewSet(TenantMixin, viewsets.ModelViewSet):
+    """ZSTK9 — règles de rangement configurables (produit/catégorie →
+    casier cible, priorité). Lecture tout rôle, écriture responsable/admin.
+    Société posée serveur ; `produit`/`bin_cible` validés tenant."""
+    queryset = RegleRangement.objects.select_related(
+        'produit', 'bin_cible').all()
+    serializer_class = RegleRangementSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        produit = params.get('produit')
+        if produit:
+            qs = qs.filter(produit_id=produit)
+        actif = params.get('actif')
+        if actif in ('0', 'false', 'False'):
+            qs = qs.filter(actif=False)
+        elif actif in ('1', 'true', 'True'):
+            qs = qs.filter(actif=True)
+        return qs
+
+    def _check_tenant(self, serializer):
+        company = self.request.user.company
+        cid = getattr(company, 'id', None)
+        produit = serializer.validated_data.get('produit')
+        if produit is not None and getattr(
+                produit, 'company_id', None) != cid:
+            raise ValidationError(
+                {'produit': 'Produit inconnu pour cette société.'})
+        bin_cible = serializer.validated_data.get('bin_cible')
+        if bin_cible is not None and getattr(
+                bin_cible, 'company_id', None) != cid:
+            raise ValidationError(
+                {'bin_cible': 'Casier inconnu pour cette société.'})
+
+    def perform_create(self, serializer):
+        self._check_tenant(serializer)
+        serializer.save(company=self.request.user.company)
 
     def perform_update(self, serializer):
         self._check_tenant(serializer)

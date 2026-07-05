@@ -58,43 +58,50 @@ class XSAV11ReopenTest(TestCase):
             technicien_responsable=self.tech, created_by=self.user)
 
     def test_resolu_vers_ouvert_incremente(self):
-        resp = self.api.patch(
-            f'/api/django/sav/tickets/{self.ticket.pk}/',
-            {'statut': Ticket.Statut.NOUVEAU}, format='json')
+        # YDOCF1 — la réouverture passe par l'action guardée `planifier`
+        # (RESOLU → PLANIFIE, permis par la machine d'états) qui ne recule
+        # jamais elle-même vers NOUVEAU : on utilise `planifier` en tant que
+        # transition « ouverte » (comptée comme réouverture par
+        # `_CLOTURE_STATUTS`).
+        resp = self.api.post(
+            f'/api/django/sav/tickets/{self.ticket.pk}/planifier/',
+            {}, format='json')
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertEqual(resp.data['reopen_count'], 1)
 
     def test_cloture_vers_en_cours_incremente(self):
         self.ticket.statut = Ticket.Statut.CLOTURE
         self.ticket.save(update_fields=['statut'])
-        resp = self.api.patch(
-            f'/api/django/sav/tickets/{self.ticket.pk}/',
-            {'statut': Ticket.Statut.EN_COURS}, format='json')
+        resp = self.api.post(
+            f'/api/django/sav/tickets/{self.ticket.pk}/demarrer/',
+            {}, format='json')
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertEqual(resp.data['reopen_count'], 1)
 
     def test_jamais_decremente(self):
-        self.api.patch(
-            f'/api/django/sav/tickets/{self.ticket.pk}/',
-            {'statut': Ticket.Statut.NOUVEAU}, format='json')
+        self.api.post(
+            f'/api/django/sav/tickets/{self.ticket.pk}/planifier/',
+            {}, format='json')
         self.ticket.refresh_from_db()
         self.assertEqual(self.ticket.reopen_count, 1)
         # Re-résoudre puis re-passer par des statuts ouverts NE compte
         # qu'à chaque transition RÉSOLU/CLÔTURÉ → OUVERT, jamais négatif.
-        self.api.patch(
-            f'/api/django/sav/tickets/{self.ticket.pk}/',
-            {'statut': Ticket.Statut.EN_COURS}, format='json')
+        self.api.post(
+            f'/api/django/sav/tickets/{self.ticket.pk}/demarrer/',
+            {}, format='json')
         self.ticket.refresh_from_db()
         self.assertEqual(self.ticket.reopen_count, 1)  # ouvert→ouvert : rien.
 
     def test_plusieurs_reouvertures_cumulent(self):
+        # Alterne RESOLU → EN_COURS (réouverture, +1) → RESOLU (pas une
+        # réouverture) — 3 fois, pour vérifier le cumul (jamais décrémenté).
         for _ in range(3):
-            self.api.patch(
-                f'/api/django/sav/tickets/{self.ticket.pk}/',
-                {'statut': Ticket.Statut.RESOLU}, format='json')
-            self.api.patch(
-                f'/api/django/sav/tickets/{self.ticket.pk}/',
-                {'statut': Ticket.Statut.NOUVEAU}, format='json')
+            self.api.post(
+                f'/api/django/sav/tickets/{self.ticket.pk}/demarrer/',
+                {}, format='json')
+            self.api.post(
+                f'/api/django/sav/tickets/{self.ticket.pk}/resoudre/',
+                {}, format='json')
         self.ticket.refresh_from_db()
         self.assertEqual(self.ticket.reopen_count, 3)
 

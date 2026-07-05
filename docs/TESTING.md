@@ -125,6 +125,97 @@ lien inter-sociétés planté, ignore les données propres). C'est le filet « q
 ajoute une fonctionnalité, la donnée reste connectée DANS sa société » — il s'étend
 tout seul aux nouveaux modèles.
 
+## Base partagée — `testkit/` (factories + auth multi-tenant)
+
+`backend/django_core/testkit/` (dép DEV `factory_boy`, jamais en prod) fournit :
+
+* `testkit/factories.py` — `CompanyFactory`, `UserFactory`, `ClientFactory`,
+  `ProduitFactory`, `DevisFactory`/`LigneDevisFactory` : chaque factory
+  attache une `company` par défaut et garde le graphe cohérent (le client
+  d'un devis est TOUJOURS dans la même société que le devis). `build()` =
+  instance en mémoire, sans requête DB (logique pure/serializers) ; `create()`
+  = persistance réelle (querysets/contraintes). `another_tenant()` construit
+  une 2ᵉ société + utilisateur pour les tests d'isolation.
+* `testkit/base.py` — `TenantAPITestCase(TestCase)` : `setUp` monte
+  `self.company`/`self.user` + `self.other_company`/`self.other_user`, et
+  `self.client_as(user=None, role=None)` renvoie un `APIClient` authentifié
+  (JWT réel via `AccessToken.for_user`).
+
+**Convention : tout nouveau test API hérite de `TenantAPITestCase` ; on
+construit les objets via les factories `testkit`, jamais `objects.create` à la
+main.** Exemple d'usage : `core/tests/test_testkit.py`.
+
+## Mutation testing (qualité des assertions, pas juste la couverture)
+
+La couverture (% de lignes exécutées) ne dit rien de la QUALITÉ des
+assertions — un test peut exécuter une ligne sans jamais vérifier son
+résultat. `mutmut` (dép DEV, `setup.cfg [mutmut]`) mute volontairement un
+petit périmètre à haut risque — `apps/ventes/quote_engine/builder.py`,
+`apps/ventes/utils/references.py`, `apps/roles/models.py` — et vérifie que la
+suite existante tue chaque mutant. Lancé UNIQUEMENT par
+`.github/workflows/mutation.yml` (nightly + bouton, `continue-on-error`,
+jamais un gate par-commit — le coût est O(mutants × suite complète)).
+
+**Triage d'un mutant survivant** (rapport `mutmut results` / artefact CI) :
+* Assertion manquante → ajouter un test qui aurait tué ce mutant.
+* Mutant sémantiquement équivalent (le mutant produit le même comportement
+  observable, ex. `<` → `<=` sur une borne jamais atteinte) → whitelister
+  explicitement dans `setup.cfg` avec un commentaire justifiant pourquoi.
+Lancer localement sur un seul module : `mutmut run --paths-to-mutate
+apps/ventes/utils/references.py`.
+
+## Test de charge (k6) — le gate est le percentile, jamais la moyenne
+
+`loadtests/` (k6) modélise un mix de trafic réaliste sur les endpoints
+critiques : `browse.js` (scénario `load` — login rare + liste devis/clients en
+lecture, montée progressive), `create-devis.js` (écriture — création de devis
+isolée pour ne pas diluer sa latence dans le volume de lecture), `spike.js`
+(scénario `spike` — surge soudaine 5→100 VUs, mode de défaillance différent
+d'une charge soutenue : saturation de pool/queue). Seuils déclarés par
+PERCENTILE (`p(95)<800ms`, `p(99)<1500ms`, `http_req_failed<0.5%`,
+`loadtests/common.js`) — **jamais la moyenne**, qui masque la traîne qui fait
+mal aux utilisateurs réels. `.github/workflows/loadtest.yml` lance un smoke
+COURT (~5 min, `browse.js` seul) en nightly + bouton, `continue-on-error`
+(non bloquant tant que la stabilité n'est pas prouvée) ; le soak long et
+`spike.js` restent manuels. Lancer en local : `k6 run -e
+BASE_URL=http://localhost:8000 loadtests/browse.js`.
+
+## Déterminisme — temps figé + Faker seedé
+
+Tout test dépendant de la date/heure ou de l'aléatoire doit être déterministe :
+* **Temps** — `testkit/time.py` expose `frozen(when)` (enrobe `freezegun`, dép
+  DEV) : `with frozen('2026-01-01 10:00:00'): …` ou en décorateur. Jamais de
+  test qui compare à un `timezone.now()` VIVANT dans une assertion (flaky près
+  d'une frontière d'horloge) — figer le temps à la place.
+* **Aléatoire** — `Faker.seed(1234)` (ou `faker.Faker().seed_instance(1234)`)
+  pour toute donnée « réaliste mais aléatoire » ; ne jamais compter sur la
+  seed par défaut de Faker (change à chaque run).
+* **Jamais de `sleep` fixe** — ni `time.sleep(` côté backend, ni
+  `page.waitForTimeout(`/`sleep(` fixe côté Playwright (attendre une
+  condition explicite à la place).
+
+Gardé par `scripts/check_test_determinism.py` (job `stage-names`, toujours
+actif) : échoue sur un `time.sleep(` backend, un `page.waitForTimeout(` e2e,
+ou une assertion comparant à un `timezone.now()` non figé. Les infractions
+préexistantes (2026-07, apps `compta`/`kb`/`ventes` — hors périmètre de cette
+lane) sont whitelistées explicitement dans le script avec la justification ;
+toute NOUVELLE infraction fait échouer le build.
+
+## Registre d'invariants métier + bug → test-rouge-d'abord
+
+`docs/invariants.md` recense les invariants critiques (référence sous
+concurrence, numérotation non-count+1, chaîne TVA, réconciliation des
+totaux, transitions de statut légales, scoping tenant, absence de
+`prix_achat` client-facing), chacun lié au test NOMMÉ qui le garde
+(`fichier.py::Classe::test_méthode`). `scripts/check_invariants.py` (job
+`stage-names`, toujours actif) échoue si une référence ne résout plus vers un
+test réel — un invariant ne doit jamais perdre son garde-fou en silence.
+
+**Règle permanente : tout bug corrigé atterrit avec un test qui échoue AVANT
+le correctif et passe après** (le backlog de bugs vit dans
+`docs/ERROR_PLAN.md`). Un ticket qui change un comportement observable sans
+un test de régression qui l'aurait attrapé n'est pas terminé.
+
 ## Pistes restantes
 * Parcours e2e par fonctionnalité pour les flux encore non couverts (stock,
   installations, SAV, reporting) : **scaffolds prêts** (`frontend/e2e/{stock,

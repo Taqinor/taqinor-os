@@ -33,6 +33,21 @@ modules =
     apps.stock.models
     apps.sav.models
     apps.installations.models
+# A domain model may call its OWN app's selector/service layer LAZILY
+# (function-local import inside a model method — e.g. `Facture.tva_par_taux` →
+# `ventes.selectors.tva_buckets`, `Ticket` → `sav.selectors.droits_restants`,
+# `Lead.save` → `crm.services.normalize_phone/email` [QW10 dedup columns]).
+# These run at call time, never at model load, so they cannot reintroduce the
+# load-time model→model cycle this contract exists to prevent. grimp still sees
+# the static edge, and because the selector/service layer legitimately crosses
+# domains (documented above), it makes the 5 model modules appear transitively
+# coupled. Prune ONLY these intra-app model→own-selector/service entry edges: a
+# DIRECT cross-domain `X.models -> Y.models` import is a separate edge and stays
+# caught.
+ignore_imports =
+    apps.ventes.models -> apps.ventes.selectors
+    apps.sav.models -> apps.sav.selectors
+    apps.crm.models -> apps.crm.services
 
 [importlinter:contract:installations-split-models-decoupled]
 name = Split installations model modules never import a sibling domain's models (locks M1 after the M7 split)
@@ -63,6 +78,13 @@ forbidden_modules =
 # ventes→notifications→audit path does not trip the forbidden contract.
 ignore_imports =
     apps.notifications.services -> apps.audit.recorder
+# XPUR11/XPUR13 — stock's services write their OWN best-effort audit trail for
+# override actions (duplicate-invoice / off-contract-price overrides). ventes
+# imports stock.services only for stock movements & QR; stock auditing itself is
+# stock's cross-cutting concern, not ventes reaching audit. Ignore this
+# stock→audit edge so the transitive ventes→stock.services→audit path is allowed.
+    apps.stock.services -> apps.audit.recorder
+    apps.stock.services -> apps.audit.models
 
 [importlinter:contract:ged-models-decoupled]
 name = GED models never import a business-core domain's models (string FKs only — GED38)
@@ -96,3 +118,15 @@ forbidden_modules =
     apps.documents
     apps.dataimport
     apps.contact
+# YRBAC6/YRBAC9 — two core SECURITY-RATCHET *test* modules deliberately import
+# real domain serializers/models to prove the core masking mixins actually strip
+# sensitive fields (prix_achat/marge) and that no public endpoint leaks. These
+# are cross-layer integration tests, not production `core` coupling: the base-
+# layer intent (core PRODUCTION code imports downward only) holds. Ignore only
+# these specific test→domain edges.
+ignore_imports =
+    core.tests.test_sensitive_field_leak -> apps.stock.serializers
+    core.tests.test_sensitive_field_leak -> apps.stock.models
+    core.tests.test_public_endpoint_hardening -> apps.ventes.models
+    core.tests.test_public_endpoint_hardening -> apps.crm.models
+    core.tests.test_registre_traitements -> apps.crm.models

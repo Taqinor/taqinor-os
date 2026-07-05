@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 11px; color: #333; }
+    .page { padding: 36px; }
+
+    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
+    .doc-title { font-size: 22px; font-weight: bold; color: {{ couleur_principale }}; }
+    .doc-internal { font-size: 9px; text-transform: uppercase; letter-spacing: 1px; color: #b91c1c; font-weight: bold; margin-top: 4px; }
+    .company-info { text-align: right; font-size: 10px; color: #555; line-height: 1.6; }
+    .company-info strong { font-size: 12px; color: #222; }
+    .periode { font-size: 10px; color: #666; margin-top: 4px; }
+
+    .section { margin-bottom: 22px; page-break-inside: avoid; }
+    .section-title { font-size: 13px; font-weight: bold; color: {{ couleur_principale }}; border-bottom: 2px solid {{ couleur_principale }}; padding-bottom: 4px; margin-bottom: 8px; }
+
+    table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+    thead tr { background: #f0fdf4; }
+    thead th { padding: 6px 8px; text-align: left; font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; color: #555; }
+    tbody td { padding: 5px 8px; border-bottom: 1px solid #e5e7eb; font-size: 10px; }
+    .text-right { text-align: right; }
+
+    .footer {
+      margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 10px;
+      font-size: 9px; color: #94a3b8; text-align: center; line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="header">
+    <div>
+      <div class="doc-title">ANALYSE D'ACHATS</div>
+      <div class="doc-internal">Document interne — ne jamais diffuser au client</div>
+      {% if date_debut or date_fin %}
+      <div class="periode">
+        Période :
+        {{ date_debut.strftime('%d/%m/%Y') if date_debut else '…' }}
+        —
+        {{ date_fin.strftime('%d/%m/%Y') if date_fin else '…' }}
+      </div>
+      {% endif %}
+    </div>
+    <div class="company-info">
+      <strong>{{ entreprise_nom }}</strong><br />
+      {% if entreprise_ice %}ICE : {{ entreprise_ice }}<br />{% endif %}
+      {% if entreprise_if %}IF : {{ entreprise_if }}<br />{% endif %}
+      {% if entreprise_rc %}RC : {{ entreprise_rc }}{% endif %}
+    </div>
+  </div>
+
+  <!-- Dépenses par fournisseur -->
+  <div class="section">
+    <div class="section-title">Dépenses par fournisseur</div>
+    <table>
+      <thead><tr><th>Fournisseur</th><th class="text-right">Total HT</th></tr></thead>
+      <tbody>
+        {% for e in data.depenses.par_fournisseur %}
+        <tr><td>{{ e.fournisseur }}</td><td class="text-right">{{ "%.2f"|format(e.total_ht) }} MAD</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Dépenses par catégorie -->
+  <div class="section">
+    <div class="section-title">Dépenses par catégorie</div>
+    <table>
+      <thead><tr><th>Catégorie</th><th class="text-right">Total HT</th></tr></thead>
+      <tbody>
+        {% for e in data.depenses.par_categorie %}
+        <tr><td>{{ e.categorie }}</td><td class="text-right">{{ "%.2f"|format(e.total_ht) }} MAD</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Top produits achetés -->
+  <div class="section">
+    <div class="section-title">Top produits achetés</div>
+    <table>
+      <thead><tr><th>Produit</th><th class="text-right">Qté</th><th class="text-right">Montant HT</th></tr></thead>
+      <tbody>
+        {% for e in data.top_produits[:15] %}
+        <tr>
+          <td>{{ e.produit_nom }}</td>
+          <td class="text-right">{{ e.quantite_totale }}</td>
+          <td class="text-right">{{ "%.2f"|format(e.montant_total) }} MAD</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Engagements ouverts -->
+  <div class="section">
+    <div class="section-title">Engagements ouverts (BCF envoyés non reçus)</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Référence</th><th>Fournisseur</th>
+          <th class="text-right">Commandé</th><th class="text-right">Reçu</th>
+          <th class="text-right">Restant dû</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in data.engagements_ouverts.lignes %}
+        <tr>
+          <td>{{ e.reference }}</td>
+          <td>{{ e.fournisseur_nom or '—' }}</td>
+          <td class="text-right">{{ "%.2f"|format(e.montant_commande) }} MAD</td>
+          <td class="text-right">{{ "%.2f"|format(e.montant_recu) }} MAD</td>
+          <td class="text-right"><strong>{{ "%.2f"|format(e.montant_restant) }} MAD</strong></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="text-right"><strong>Total engagé : {{ "%.2f"|format(data.engagements_ouverts.total_engage) }} MAD</strong></div>
+  </div>
+
+  <div class="footer">
+    <strong>{{ entreprise_nom }}</strong>
+    {% if entreprise_adresse %} — {{ entreprise_adresse }}{% endif %}
+    <br />Document interne généré le {{ genere_le.strftime('%d/%m/%Y à %H:%M') }}
+  </div>
+
+</div>
+</body>
+</html>

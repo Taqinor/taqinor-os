@@ -149,6 +149,23 @@ class OrdreAssemblage(models.Model):
         related_name='installations_ordres_assemblage_responsable')
     motif_annulation = models.TextField(blank=True, null=True)
 
+    # XMFG16 — assemblage sous-traité (façon) : composants confiés à un
+    # atelier externe puis composite reçu. `sous_traitant` (FK CHAÎNE
+    # `stock.Fournisseur` de type « service », même référentiel unifié que
+    # FG305/DC34 — jamais d'import de `stock.models`) + `ordre_sous_traitance`
+    # (same-app, optionnel) lie l'ordre d'assemblage à sa prestation façon
+    # (montant/montant_realise = coût façon, INTERNE, jamais client-facing).
+    # Les deux champs sont NULLABLES : un ordre d'assemblage interne (aucune
+    # sous-traitance) garde le comportement actuel inchangé.
+    sous_traitant = models.ForeignKey(
+        'stock.Fournisseur', on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='installations_ordres_assemblage_soustraites')
+    ordre_sous_traitance = models.ForeignKey(
+        'OrdreSousTraitance', on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='ordres_assemblage')
+
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True,

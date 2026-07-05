@@ -38,6 +38,12 @@ class BinLocation(models.Model):
     # Ordre de parcours physique : sert à trier une pick list (FG321) dans le
     # sens de circulation du magasin (du plus proche de l'entrée au plus loin).
     ordre = models.PositiveIntegerField(default=100)
+    # ZSTK9 — catégorie de stockage (capacité/compatibilité) posable sur ce
+    # casier. Nullable : sans catégorie, comportement historique inchangé
+    # (aucune limite consultée par la suggestion put-away).
+    categorie = models.ForeignKey(
+        'installations.CategorieStockage', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='bins')
     note = models.TextField(blank=True, null=True)
     archived = models.BooleanField(default=False)
     created_by = models.ForeignKey(

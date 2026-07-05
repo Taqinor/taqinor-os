@@ -7,8 +7,12 @@ société côté serveur ; la non-conformité enregistre aussi son signaleur
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import filters, status, viewsets
-from rest_framework.decorators import action
+from rest_framework.decorators import (
+    action, api_view, permission_classes, throttle_classes,
+)
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework.throttling import SimpleRateThrottle
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsResponsableOrAdmin
@@ -16,26 +20,31 @@ from authentication.permissions import IsResponsableOrAdmin
 from apps.ventes.utils.references import create_with_reference
 
 from .models import (
-    ActionCorrectivePreventive, AnalyseIncident, Audit,
+    ActionCorrectivePreventive, AnalyseIncident, AspectEnvironnemental, Audit,
     BilanCarbone, BordereauSuiviDechet, CauseIncident,
     CodeDefaut,
     ConformiteEnvironnementale, ConsignationLoto, ContactUrgence,
     ControleReception,
-    CritereAudit, Dechet, DeclarationCnss, Derogation, EtapeDeclarationAt,
-    EvaluationRisque, GrilleAudit,
+    CritereAudit, Dechet, DeclarationCnss, DemandeChangement, Derogation,
+    EtapeDeclarationAt,
+    EvaluationRisque, ExerciceUrgence, GrilleAudit,
     Incident, IndicateurESG,
     InductionSecurite, InspectionSecurite,
-    ItemNotation, LigneBilanCarbone,
+    ItemNotation, LienSignalementPublic, LigneBilanCarbone,
     LigneEvaluationRisque, NonConformite, NotationFinChantier,
+    ObservationSecurite,
     PermisTravail, PlanControleReception, PlanInspectionChantier,
     PlanInspectionModele, PlanUrgence,
     PointControleModele, PointControleReception, ProcedureQualite,
     QhseChatterEntry,
-    RecyclageModule, ReleveControle,
-    ReleveCourbeIV, ReponseCritere, RetourClientQualite, Secouriste,
+    RecyclageModule, ReleveConsommation, ReleveControle,
+    ReleveCourbeIV, ReponseCritere, RetourClientQualite,
+    RevueVeilleReglementaire, Secouriste,
+    SignalementPublic, VeilleReglementaire,
 )
 from .serializers import (
     ActionCorrectivePreventiveSerializer, AnalyseIncidentSerializer,
+    AspectEnvironnementalSerializer,
     AuditSerializer, BilanCarboneSerializer, BordereauSuiviDechetSerializer,
     CauseIncidentSerializer,
     CodeDefautSerializer,
@@ -43,29 +52,37 @@ from .serializers import (
     ConsignationLotoSerializer, ContactUrgenceSerializer,
     ControleReceptionSerializer,
     CritereAuditSerializer, DechetSerializer, DeclarationCnssSerializer,
+    DemandeChangementSerializer,
     DerogationSerializer, EtapeDeclarationAtSerializer,
-    EvaluationRisqueSerializer, GrilleAuditSerializer,
+    EvaluationRisqueSerializer, ExerciceUrgenceSerializer, GrilleAuditSerializer,
     IncidentSerializer,
     IndicateurESGSerializer,
     InductionSecuriteSerializer, InspectionSecuriteSerializer,
     ItemNotationSerializer,
+    LienSignalementPublicSerializer,
     LigneBilanCarboneSerializer,
     LigneEvaluationRisqueSerializer,
     NonConformiteSerializer, NotationFinChantierSerializer,
+    ObservationSecuriteSerializer,
     PermisTravailSerializer, PlanControleReceptionSerializer,
     PlanInspectionChantierSerializer,
     PlanInspectionModeleSerializer, PlanUrgenceSerializer,
     PointControleModeleSerializer, PointControleReceptionSerializer,
     ProcedureQualiteSerializer, QhseChatterEntrySerializer,
     RecyclageModuleSerializer,
-    ReleveControleSerializer, ReleveCourbeIVSerializer,
+    ReleveConsommationSerializer, ReleveControleSerializer,
+    ReleveCourbeIVSerializer,
     ReponseCritereSerializer, RetourClientQualiteSerializer,
-    SecouristeSerializer,
+    RevueVeilleReglementaireSerializer,
+    SecouristeSerializer, SignalementPublicSerializer,
+    VeilleReglementaireSerializer,
 )
 from . import chatter
 from .selectors import (
+    aspects_environnementaux_a_revoir,
     calendrier_qhse,
     capa_en_retard, chantier_peut_cloturer, conformites_a_relancer,
+    cout_non_qualite,
     courbes_iv_for_chantier,
     criticite_summary, declarations_cnss_a_echeance, document_unique_valide,
     export_esg,
@@ -75,16 +92,34 @@ from .selectors import (
     photos_controle_par_phase,
     procedure_qualite_courante, procedure_qualite_versions,
     procedures_qualite_courantes, satisfaction_moyenne, statistiques_tf_tg,
-    taux_conformite_premier_passage,
+    taux_conformite_premier_passage, taux_defaillance_par_produit,
 )
 from .services import (
     activer_procedure, calculer_score_audit, calculer_score_notation,
-    cloturer_ncr, creer_ncr_depuis_reserve, generer_capa_depuis_analyse,
+    cloturer_incident, cloturer_ncr, compteurs_observations_securite,
+    conclure_revue_veille,
+    creer_capa_mise_en_oeuvre_moc,
+    creer_intervention_depuis_ncr, creer_ncr_depuis_reserve,
+    creer_ncr_depuis_ticket,
+    convertir_observation_en_capa, convertir_observation_en_ncr,
+    creer_capa_depuis_ecart_exercice,
+    demandes_changement_a_reverser,
+    generer_capa_depuis_analyse, generer_lignes_bilan,
+    generer_revues_veille_dues,
+    creer_signalement_public, generer_qr_signalement,
+    incidents_notification_en_retard, initialiser_prochaine_revue,
     instancier_plan_chantier,
     lever_ncr_audit, lever_ncr_inspection, nouvelle_version_procedure,
-    poser_disposition,
-    relancer_capa_en_retard, relancer_conformites,
+    plans_exercices_dus, poser_disposition,
+    realiser_exercice_urgence,
+    relancer_capa_en_retard, relancer_conformites, relancer_demandes_changement,
+    relancer_exercices_urgence,
+    relancer_notifications_environnement,
+    resolve_lien_signalement_public,
     statuer_controle_reception,
+    suggerer_analyse_capa, suggerer_classification_incident,
+    transitionner_demande_changement,
+    SIGNALEMENT_OK,
     verifier_efficacite_capa,
 )
 
@@ -198,6 +233,46 @@ class NonConformiteViewSet(_ChatterMixin, _QhseBaseViewSet):
         code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
         return Response(self.get_serializer(ncr).data, status=code)
 
+    @action(detail=False, methods=['post'], url_path='depuis-ticket-sav')
+    def depuis_ticket_sav(self, request):
+        """XQHS23 — crée une NCR à partir d'un ticket SAV (pont ticket→NCR).
+
+        Corps : ``ticket`` (id du ``sav.Ticket``), ``gravite`` optionnelle.
+        Idempotent : une seule NCR par ticket. 404 si le ticket n'appartient
+        pas à la société."""
+        ticket_id = request.data.get('ticket')
+        if ticket_id in (None, ''):
+            return Response(
+                {'detail': 'ticket est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            ncr, created = creer_ncr_depuis_ticket(
+                ticket_id, request.user.company,
+                signale_par=request.user,
+                gravite=request.data.get('gravite') or None)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_404_NOT_FOUND)
+        code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+        return Response(self.get_serializer(ncr).data, status=code)
+
+    @action(detail=True, methods=['post'], url_path='creer-intervention')
+    def creer_intervention(self, request, pk=None):
+        """XQHS23 — ouvre une intervention corrective SAV depuis cette NCR
+        (pont inverse NCR→ticket). 400 si la NCR n'a pas de chantier
+        rattaché."""
+        ncr = self.get_object()
+        try:
+            ticket, created = creer_intervention_depuis_ncr(
+                ncr, description=request.data.get('description'))
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {'ticket_id': ticket.pk, 'ticket_reference': ticket.reference,
+             'created': created},
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
     @action(detail=True, methods=['post'])
     def cloturer(self, request, pk=None):
         """Clôture une NCR — conditionnée à l'efficacité des CAPA (QHSE13).
@@ -212,6 +287,12 @@ class NonConformiteViewSet(_ChatterMixin, _QhseBaseViewSet):
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(ncr).data)
+
+    @action(detail=False, methods=['get'], url_path='taux-defaillance-produit')
+    def taux_defaillance_produit(self, request):
+        """XQHS23 — taux de défaillance par produit (NCR d'origine SAV,
+        cockpit qualité)."""
+        return Response(taux_defaillance_par_produit(request.user.company))
 
     @action(detail=True, methods=['post'], url_path='poser-disposition')
     def poser_disposition_action(self, request, pk=None):
@@ -1081,6 +1162,24 @@ class PermisTravailViewSet(_QhseBaseViewSet):
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
 
+    @action(detail=True, methods=['get'], url_path='pdf')
+    def pdf(self, request, pk=None):
+        """XQHS27 — PDF INTERNE imprimable (FR/AR), scopé société.
+
+        ``?lang=fr`` (défaut) ou ``?lang=ar`` (gabarit RTL, police arabe
+        embarquée). JAMAIS ``/proposal`` — aucun prix, document terrain."""
+        from django.http import HttpResponse
+
+        from .pdf_terrain import render_permis_travail_pdf
+
+        permis = self.get_object()
+        lang = request.query_params.get('lang', 'fr')
+        pdf_bytes = render_permis_travail_pdf(permis, lang=lang)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'attachment; filename="permis-travail-{permis.pk}-{lang}.pdf"')
+        return response
+
 
 class ConsignationLotoViewSet(_QhseBaseViewSet):
     """Consignation électrique (LOTO) rattachée à un permis (QHSE24).
@@ -1207,6 +1306,24 @@ class InductionSecuriteViewSet(_QhseBaseViewSet):
         induction.acquittement_le = acquittement_le
         induction.save(update_fields=['acquittement', 'acquittement_le'])
         return Response(self.get_serializer(induction).data)
+
+    @action(detail=True, methods=['get'], url_path='pdf')
+    def pdf(self, request, pk=None):
+        """XQHS27 — PDF INTERNE imprimable (FR/AR), scopé société.
+
+        ``?lang=fr`` (défaut) ou ``?lang=ar`` (gabarit RTL, police arabe
+        embarquée). JAMAIS ``/proposal`` — aucun prix, document terrain."""
+        from django.http import HttpResponse
+
+        from .pdf_terrain import render_induction_securite_pdf
+
+        induction = self.get_object()
+        lang = request.query_params.get('lang', 'fr')
+        pdf_bytes = render_induction_securite_pdf(induction, lang=lang)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'attachment; filename="induction-securite-{induction.pk}-{lang}.pdf"')
+        return response
 
 
 class PlanUrgenceViewSet(_QhseBaseViewSet):
@@ -1382,6 +1499,27 @@ class IncidentViewSet(_QhseBaseViewSet):
         stats['tf'] = None if stats['tf'] is None else str(stats['tf'])
         stats['tg'] = None if stats['tg'] is None else str(stats['tg'])
         return Response(stats)
+
+    @action(detail=True, methods=['post'])
+    def cloturer(self, request, pk=None):
+        """XQHS19 — clôture un incident (gate : notification requise faite)."""
+        incident = self.get_object()
+        try:
+            incident = cloturer_incident(incident)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(IncidentSerializer(incident).data)
+
+    @action(detail=False, methods=['get'], url_path='notifications-en-retard')
+    def notifications_en_retard(self, request):
+        incidents = incidents_notification_en_retard(request.user.company)
+        return Response(IncidentSerializer(incidents, many=True).data)
+
+    @action(detail=False, methods=['post'], url_path='relancer-notifications')
+    def relancer_notifications(self, request):
+        incidents = relancer_notifications_environnement(request.user.company)
+        return Response({'relances': len(incidents)})
 
 
 class DeclarationCnssViewSet(_QhseBaseViewSet):
@@ -1937,6 +2075,14 @@ class BilanCarboneViewSet(_QhseBaseViewSet):
             qs = qs.filter(statut=statut)
         return qs
 
+    @action(detail=True, methods=['post'], url_path='generer-lignes-bilan')
+    def generer_lignes_bilan_action(self, request, pk=None):
+        """XQHS21 — pré-remplit les lignes du bilan depuis les relevés QHSE +
+        le carburant flotte de l'année du bilan (idempotent, éditable)."""
+        bilan = self.get_object()
+        lignes = generer_lignes_bilan(bilan, bilan.annee)
+        return Response(LigneBilanCarboneSerializer(lignes, many=True).data)
+
 
 class LigneBilanCarboneViewSet(_QhseBaseViewSet):
     """Lignes d'émission d'un bilan carbone (QHSE39).
@@ -2139,3 +2285,544 @@ class ParetoDefautsViewSet(viewsets.ViewSet):
             'premier_passage': taux_conformite_premier_passage(
                 request.user.company, chantier_id=chantier),
         })
+
+
+# ── XQHS16 — Signalement QR public sans compte (danger/incident chantier) ──
+
+class LienSignalementPublicViewSet(_QhseBaseViewSet):
+    """CRUD (Responsable/Admin) des liens publics tokenisés par chantier.
+
+    ``token`` est posé côté serveur (défaut du modèle) — jamais accepté en
+    écriture. L'action ``qr`` sert le PNG du QR à imprimer.
+    """
+    queryset = LienSignalementPublic.objects.all()
+    serializer_class = LienSignalementPublicSerializer
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company,
+            created_by=self.request.user)
+
+    @action(detail=True, methods=['get'])
+    def qr(self, request, pk=None):
+        lien = self.get_object()
+        base_url = request.build_absolute_uri('/').rstrip('/')
+        png = generer_qr_signalement(lien, base_url=base_url)
+        if png is None:
+            return Response(
+                {'detail': 'Génération QR indisponible (dépendance manquante).'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        from django.http import HttpResponse
+        resp = HttpResponse(png, content_type='image/png')
+        resp['Content-Disposition'] = (
+            f'attachment; filename="signalement-qr-{lien.token[:8]}.png"')
+        return resp
+
+
+class SignalementPublicViewSet(viewsets.ReadOnlyModelViewSet):
+    """Lecture interne (Responsable/Admin) des signalements reçus (XQHS16).
+
+    Scopé société. La création publique passe EXCLUSIVEMENT par la vue
+    tokenisée ``public_signalement`` (jamais par ce viewset authentifié).
+    """
+    queryset = SignalementPublic.objects.all()
+    serializer_class = SignalementPublicSerializer
+    permission_classes = [IsResponsableOrAdmin]
+
+    def get_queryset(self):
+        return super().get_queryset().filter(
+            company=self.request.user.company)
+
+
+class PublicSignalementRateThrottle(SimpleRateThrottle):
+    """Limite le débit du signalement public par IP + jeton (cache-based).
+
+    Même motif que ``ventes.public_views.PublicLinkRateThrottle`` / GED20 :
+    décourage l'abus/spam sans jamais bloquer un signalement légitime."""
+    scope = 'public_qhse_signalement'
+    rate = '20/minute'
+
+    def get_rate(self):
+        return self.rate
+
+    def get_cache_key(self, request, view):
+        token = (getattr(view, 'kwargs', None) or {}).get('token', '')
+        ident = self.get_ident(request)
+        return self.cache_format % {
+            'scope': self.scope,
+            'ident': f'{ident}:{token}',
+        }
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicSignalementRateThrottle])
+def public_signalement(request, token):
+    """XQHS16 — Signalement PUBLIC (sans login) via QR chantier.
+
+    `GET /api/django/qhse/public/signalement/<token>/` : vérifie la validité
+    du lien (pour l'UI publique, sans exposer de données internes).
+    `POST` avec `{"type_signalement": "danger"|"incident", "description": str,
+    "photo_url"?: str, "nom"?: str, "telephone"?: str}` — nom/téléphone
+    facultatifs (anonyme si absents).
+
+    Codes : 404 (jeton inconnu ou lien révoqué — indistinct, pas de fuite) ;
+    400 (description manquante) ; 200/201 sinon. La société est TOUJOURS
+    résolue depuis le jeton, jamais depuis le corps de requête."""
+    statut, lien = resolve_lien_signalement_public(token)
+    if statut != SIGNALEMENT_OK:
+        return Response(
+            {'detail': 'Ce lien de signalement est introuvable ou a été révoqué.'},
+            status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        return Response({'valide': True, 'libelle': lien.libelle})
+
+    description = (request.data.get('description') or '').strip()
+    if not description:
+        return Response(
+            {'description': 'La description est requise.'},
+            status=status.HTTP_400_BAD_REQUEST)
+    type_signalement = request.data.get('type_signalement') or \
+        SignalementPublic.Type.DANGER
+    if type_signalement not in SignalementPublic.Type.values:
+        type_signalement = SignalementPublic.Type.DANGER
+
+    signalement = creer_signalement_public(
+        lien,
+        type_signalement=type_signalement,
+        description=description,
+        photo_url=(request.data.get('photo_url') or '').strip(),
+        nom=request.data.get('nom') or '',
+        telephone=request.data.get('telephone') or '',
+    )
+    return Response(
+        {'detail': 'Signalement envoyé avec succès.', 'id': signalement.pk},
+        status=status.HTTP_201_CREATED)
+
+
+# ── XQHS17 — Observations sécurité comportementales (BBS) ──────────────────
+
+class ObservationSecuriteViewSet(_QhseBaseViewSet):
+    """CRUD + conversion en un clic (CAPA/NCR) des observations BBS.
+
+    ``company``/``observateur`` posés côté serveur. Filtres optionnels
+    ``?type_observation=`` / ``?chantier=``.
+    """
+    queryset = ObservationSecurite.objects.all()
+    serializer_class = ObservationSecuriteSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'date_observation', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        type_observation = self.request.query_params.get('type_observation')
+        if type_observation:
+            qs = qs.filter(type_observation=type_observation)
+        chantier = self.request.query_params.get('chantier')
+        if chantier:
+            qs = qs.filter(chantier_id=chantier)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company,
+            observateur=self.request.user)
+
+    @action(detail=True, methods=['post'], url_path='convertir-capa')
+    def convertir_capa(self, request, pk=None):
+        observation = self.get_object()
+        try:
+            capa, created = convertir_observation_en_capa(
+                observation,
+                description=request.data.get('description'),
+                responsable_id=request.data.get('responsable'),
+                echeance=request.data.get('echeance'))
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            ActionCorrectivePreventiveSerializer(capa).data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='convertir-ncr')
+    def convertir_ncr(self, request, pk=None):
+        observation = self.get_object()
+        try:
+            ncr, created = convertir_observation_en_ncr(
+                observation, gravite=request.data.get('gravite'))
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            NonConformiteSerializer(ncr).data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'])
+    def compteurs(self, request):
+        chantier = request.query_params.get('chantier') or None
+        return Response(compteurs_observations_securite(
+            request.user.company, chantier_id=chantier))
+
+
+# ── XQHS18 — Exercices d'urgence (drills) rattachés aux plans d'urgence ────
+
+class ExerciceUrgenceViewSet(_QhseBaseViewSet):
+    """CRUD des exercices d'urgence + actions ``realiser``/``creer-capa``.
+
+    ``company`` posée côté serveur. ``GET …/dus/`` liste les plans en retard
+    de leur prochain exercice (pattern relance QHSE38/QHSE12).
+    """
+    queryset = ExerciceUrgence.objects.all()
+    serializer_class = ExerciceUrgenceSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'date_prevue', 'date_realisee']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        plan = self.request.query_params.get('plan')
+        if plan:
+            qs = qs.filter(plan_id=plan)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+    @action(detail=True, methods=['post'])
+    def realiser(self, request, pk=None):
+        exercice = self.get_object()
+        exercice = realiser_exercice_urgence(
+            exercice,
+            date_realisee=request.data.get('date_realisee'),
+            duree_evacuation_secondes=request.data.get(
+                'duree_evacuation_secondes'),
+            nb_participants=request.data.get('nb_participants'),
+            participants_libre=request.data.get('participants_libre', ''),
+            observations=request.data.get('observations', ''))
+        return Response(ExerciceUrgenceSerializer(exercice).data)
+
+    @action(detail=True, methods=['post'], url_path='creer-capa')
+    def creer_capa(self, request, pk=None):
+        exercice = self.get_object()
+        try:
+            capa, created = creer_capa_depuis_ecart_exercice(
+                exercice, description=request.data.get('description'))
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            ActionCorrectivePreventiveSerializer(capa).data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'])
+    def dus(self, request):
+        plans = plans_exercices_dus(request.user.company)
+        return Response(PlanUrgenceSerializer(plans, many=True).data)
+
+    @action(detail=False, methods=['post'])
+    def relancer(self, request):
+        plans = relancer_exercices_urgence(request.user.company)
+        return Response({'relances': len(plans)})
+
+
+# ── XQHS20 — Registre des aspects & impacts environnementaux (ISO 14001) ──
+
+class AspectEnvironnementalViewSet(_QhseBaseViewSet):
+    """CRUD du registre des aspects environnementaux. ``company`` posée côté
+    serveur. ``GET …/a-revoir/`` liste les aspects en retard de revue."""
+    queryset = AspectEnvironnemental.objects.all()
+    serializer_class = AspectEnvironnementalSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['activite', 'aspect', 'impact']
+    ordering_fields = ['id', 'date_revue', 'date_creation']
+
+    def get_queryset(self):
+        from django.db.models import F
+
+        qs = super().get_queryset().annotate(
+            _criticite=F('frequence') * F('gravite'))
+        significatif = self.request.query_params.get('significatif')
+        if significatif in ('1', 'true', 'True'):
+            qs = qs.filter(_criticite__gte=F('seuil_significativite'))
+        elif significatif in ('0', 'false', 'False'):
+            qs = qs.filter(_criticite__lt=F('seuil_significativite'))
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+    @action(detail=False, methods=['get'], url_path='a-revoir')
+    def a_revoir(self, request):
+        aspects = aspects_environnementaux_a_revoir(request.user.company)
+        return Response(AspectEnvironnementalSerializer(aspects, many=True).data)
+
+
+# ── XQHS21 — Relevés de consommation par site (élec/eau/carburant) ────────
+
+class ReleveConsommationViewSet(_QhseBaseViewSet):
+    """CRUD des relevés mensuels de consommation par site. ``company`` posée
+    côté serveur. Filtres optionnels ``?type_energie=`` / ``?annee=``."""
+    queryset = ReleveConsommation.objects.all()
+    serializer_class = ReleveConsommationSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['site_libelle']
+    ordering_fields = ['id', 'periode']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        type_energie = self.request.query_params.get('type_energie')
+        if type_energie:
+            qs = qs.filter(type_energie=type_energie)
+        annee = self.request.query_params.get('annee')
+        if annee:
+            qs = qs.filter(periode__year=annee)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+
+# ── XQHS22 — Coût de la non-qualité (CoQ) — interne uniquement ────────────
+
+class CoutNonQualiteViewSet(viewsets.ViewSet):
+    """Rollup du coût de la non-qualité en lecture seule (XQHS22).
+
+    ``GET …/cout-non-qualite/?annee=YYYY``. Palier Responsable/Admin ; les
+    MONTANTS sont en plus gardés par la permission ``cout_non_qualite_voir``
+    (même palier que ``marge_voir``/``prix_achat_voir``) — sans la
+    permission, les montants reviennent ``None`` (structure identique,
+    jamais d'erreur, jamais de fuite dans un rendu client)."""
+    permission_classes = [IsResponsableOrAdmin]
+
+    def list(self, request):
+        annee = request.query_params.get('annee')
+        try:
+            annee = int(annee) if annee else timezone.now().year
+        except (TypeError, ValueError):
+            annee = timezone.now().year
+
+        rollup = dict(cout_non_qualite(request.user.company, annee))
+        if not getattr(request.user, 'can_view_cout_non_qualite', True):
+            rollup['interne'] = None
+            rollup['externe'] = None
+            rollup['total'] = None
+            rollup['par_mois'] = [
+                {'mois': m['mois'], 'interne': None, 'externe': None}
+                for m in rollup['par_mois']
+            ]
+        else:
+            rollup['interne'] = str(rollup['interne'])
+            rollup['externe'] = str(rollup['externe'])
+            rollup['total'] = str(rollup['total'])
+            rollup['par_mois'] = [
+                {'mois': m['mois'], 'interne': str(m['interne']),
+                 'externe': str(m['externe'])}
+                for m in rollup['par_mois']
+            ]
+        return Response(rollup)
+
+
+# ── XQHS24 — Gestion du changement (MOC léger) ─────────────────────────────
+
+class DemandeChangementViewSet(_QhseBaseViewSet):
+    """CRUD des demandes de changement (MOC). ``company`` posée côté serveur.
+    Le cycle de vie avance via ``transitionner`` (jamais un PATCH direct du
+    ``statut``) pour garder le gate d'approbation-avant-déploiement
+    centralisé côté serveur."""
+    queryset = DemandeChangement.objects.all()
+    serializer_class = DemandeChangementSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['description', 'justification']
+    ordering_fields = ['id', 'date_creation', 'date_expiration']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+    @action(detail=True, methods=['post'])
+    def transitionner(self, request, pk=None):
+        demande = self.get_object()
+        nouveau_statut = request.data.get('statut')
+        if not nouveau_statut:
+            return Response(
+                {'detail': 'statut est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            demande = transitionner_demande_changement(
+                demande, nouveau_statut, approbateur=request.user)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(demande).data)
+
+    @action(detail=True, methods=['post'], url_path='creer-capa')
+    def creer_capa(self, request, pk=None):
+        demande = self.get_object()
+        description = request.data.get('description')
+        if not description:
+            return Response(
+                {'detail': 'description est requise.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        capa = creer_capa_mise_en_oeuvre_moc(
+            demande, description=description,
+            responsable_id=request.data.get('responsable'),
+            echeance=request.data.get('echeance'))
+        return Response(
+            ActionCorrectivePreventiveSerializer(capa).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'], url_path='a-reverser')
+    def a_reverser(self, request):
+        demandes = demandes_changement_a_reverser(request.user.company)
+        return Response(self.get_serializer(demandes, many=True).data)
+
+    @action(detail=False, methods=['post'])
+    def relancer(self, request):
+        demandes = relancer_demandes_changement(request.user.company)
+        return Response({'relances': len(demandes)})
+
+
+# ── XQHS26 — Veille réglementaire QHSE Maroc (revue périodique assistée) ───
+
+class VeilleReglementaireViewSet(_QhseBaseViewSet):
+    """Textes réglementaires suivis + cadence de revue (XQHS26). ``company``
+    posée côté serveur. La cadence par défaut est trimestrielle
+    (``cadence_jours=90``) ; ``date_prochaine_revue`` est initialisée à la
+    création si absente et n'avance ensuite QUE via une revue conclue
+    (jamais un PATCH direct)."""
+    queryset = VeilleReglementaire.objects.all()
+    serializer_class = VeilleReglementaireSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['texte_suivi', 'source']
+    ordering_fields = ['id', 'date_prochaine_revue', 'date_creation']
+
+    def perform_create(self, serializer):
+        veille = serializer.save(company=self.request.user.company)
+        initialiser_prochaine_revue(veille)
+        return veille
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        veille = self.perform_create(serializer)
+        out = self.get_serializer(veille)
+        return Response(out.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'], url_path='generer-revues-dues')
+    def generer_revues_dues(self, request):
+        """Génère les tâches de revue DUES pour la société (idempotent —
+        n'ouvre jamais deux revues ``a_faire`` pour la même veille)."""
+        revues = generer_revues_veille_dues(request.user.company)
+        return Response({
+            'generees': len(revues),
+            'revues': RevueVeilleReglementaireSerializer(
+                revues, many=True).data,
+        })
+
+
+class RevueVeilleReglementaireViewSet(_QhseBaseViewSet):
+    """Revues (occurrences) des veilles réglementaires (XQHS26). ``company``
+    posée côté serveur. Filtre optionnel ``?veille=`` / ``?conclusion=``.
+
+    * ``POST …/<id>/conclure/`` — conclut la revue (``conclusion`` requis :
+      ``applicable``/``non_applicable``), avance ``date_prochaine_revue`` du
+      parent, et lie/instancie le registre légal (XQHS8) si applicable.
+    """
+    queryset = RevueVeilleReglementaire.objects.all()
+    serializer_class = RevueVeilleReglementaireSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'date_echeance', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        veille = self.request.query_params.get('veille')
+        if veille not in (None, ''):
+            qs = qs.filter(veille_id=veille)
+        conclusion = self.request.query_params.get('conclusion')
+        if conclusion not in (None, ''):
+            qs = qs.filter(conclusion=conclusion)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+    @action(detail=True, methods=['post'])
+    def conclure(self, request, pk=None):
+        revue = self.get_object()
+        conclusion = request.data.get('conclusion')
+        if not conclusion:
+            return Response(
+                {'detail': 'conclusion est requise.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            revue = conclure_revue_veille(
+                revue, conclusion,
+                impact_evalue=request.data.get('impact_evalue', ''),
+                resume_ia=request.data.get('resume_ia', ''))
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(revue).data)
+
+
+# ── XQHS25 — Assistance IA QHSE (classification + brouillon d'analyse) ────
+# Key-gated (GROQ_API_KEY) : sans clé, 200 + `disponible=false`, jamais
+# d'erreur ni de dépendance dure. TOUJOURS une proposition éditable, jamais
+# auto-appliquée (pattern propose→confirm du groupe AG). Authentifié
+# (Responsable/Admin) — CE N'EST PAS un endpoint public.
+
+@api_view(['POST'])
+@permission_classes([IsResponsableOrAdmin])
+def ia_suggestion_classification(request):
+    """XQHS25 — `POST {"description": str}` → suggestion de classification
+    (type/gravité/code défaut) d'un incident ou d'une NCR à partir d'une
+    description libre. Aucune donnée d'une autre société n'est envoyée au
+    modèle (le prompt ne contient que le texte fourni par CET utilisateur)."""
+    description = request.data.get('description') or ''
+    return Response(suggerer_classification_incident(description))
+
+
+@api_view(['POST'])
+@permission_classes([IsResponsableOrAdmin])
+def ia_suggestion_analyse(request):
+    """XQHS25 — `POST {"recit": str}` → brouillon 5-Pourquoi + plan CAPA
+    depuis un récit d'investigation libre."""
+    recit = request.data.get('recit') or ''
+    return Response(suggerer_analyse_capa(recit))
+
+
+# ── XQHS27 — Documents terrain QHSE imprimables bilingues FR/AR ────────────
+# La causerie sécurité vit dans ``rh`` (modèle ``CauserieSecurite``) : lue
+# EXCLUSIVEMENT via ``apps.rh.selectors.causerie_securite_for_id`` (jamais un
+# import de ``rh.models``/``rh.views``), scopée société côté serveur.
+
+@api_view(['GET'])
+def causerie_securite_pdf(request, causerie_id):
+    """XQHS27 — PDF INTERNE de la fiche causerie + émargement (FR/AR).
+
+    ``?lang=fr`` (défaut) ou ``?lang=ar`` (gabarit RTL, police arabe
+    embarquée). 404 si la causerie n'existe pas / n'appartient pas à la
+    société de l'utilisateur. JAMAIS ``/proposal`` — aucun prix."""
+    from django.http import HttpResponse
+
+    from apps.rh.selectors import causerie_securite_for_id
+
+    from .pdf_terrain import render_causerie_securite_pdf
+
+    causerie = causerie_securite_for_id(request.user.company, causerie_id)
+    if causerie is None:
+        return Response(
+            {'detail': 'Causerie introuvable.'},
+            status=status.HTTP_404_NOT_FOUND)
+    lang = request.query_params.get('lang', 'fr')
+    pdf_bytes = render_causerie_securite_pdf(causerie, lang=lang)
+    response = HttpResponse(pdf_bytes, content_type='application/pdf')
+    response['Content-Disposition'] = (
+        f'attachment; filename="causerie-securite-{causerie.pk}-{lang}.pdf"')
+    return response

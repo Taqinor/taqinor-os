@@ -18,6 +18,7 @@ from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 
 # ── QHSE1 / QHSE9 — Non-conformités (NCR) ──────────────────────────────────
@@ -92,6 +93,16 @@ class NonConformite(models.Model):
         related_name='qhse_ncr',
         verbose_name="Ordre d'assemblage d'origine",
     )
+    # XQHS23 — pont SAV → NCR (boucle défaillances terrain/garantie). Lien
+    # optionnel via FK-chaîne (jamais un import cross-app de modèle, pattern
+    # QHSE11/XMFG13) : une NCR peut naître d'un ticket SAV (panne/garantie).
+    ticket_sav = models.ForeignKey(
+        'sav.Ticket',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_ncr',
+        verbose_name="Ticket SAV d'origine",
+    )
     signale_par = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -137,8 +148,22 @@ class NonConformite(models.Model):
         related_name='non_conformites',
         verbose_name='Code de défaut',
     )
+    # ── XQHS22 — Coût de la non-qualité (CoQ), INTERNE uniquement ───────────
+    # JAMAIS dans un PDF ni une sortie client — même règle que `prix_achat`.
+    # Distinct de `cout_disposition` (XQHS2, coût de la disposition précise) :
+    # ``cout_estime``/``cout_reel`` couvrent le coût GLOBAL de la NCR.
+    cout_estime = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        null=True, blank=True, verbose_name='Coût estimé (interne)')
+    cout_reel = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        null=True, blank=True, verbose_name='Coût réel (interne)')
+    # XQHS22 — pas ``auto_now_add`` : le rollup mensuel (cout_non_qualite)
+    # ventile par ``date_creation`` et doit pouvoir dater un NCR rétroactivement
+    # (backfill/tests) ; l'API garde le champ read-only (auto au moment du
+    # ``create`` via le default), donc le comportement client est inchangé.
     date_creation = models.DateTimeField(
-        auto_now_add=True, verbose_name='Créé le')
+        default=timezone.now, verbose_name='Créé le')
 
     class Meta:
         verbose_name = 'Non-conformité'
@@ -214,6 +239,10 @@ class ActionCorrectivePreventive(models.Model):
         related_name='qhse_capa_verifiees',
         verbose_name='Vérifiée par',
     )
+    # XQHS22 — coût interne de l'action (JAMAIS client-facing).
+    cout = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        null=True, blank=True, verbose_name='Coût (interne)')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -1746,6 +1775,11 @@ class PlanUrgence(models.Model):
         default=Statut.BROUILLON, verbose_name='Statut')
     notes = models.TextField(
         blank=True, default='', verbose_name='Notes')
+    # XQHS18 — fréquence cible des exercices d'urgence (drills) pour ce plan.
+    # Additif/nullable, défaut 12 mois (annuel) : ne change rien aux plans
+    # existants au-delà d'ajouter la cadence de relance.
+    frequence_mois = models.PositiveIntegerField(
+        default=12, verbose_name="Fréquence cible des exercices (mois)")
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -1914,6 +1948,8 @@ class Incident(models.Model):
         ACCIDENT = 'accident', 'Accident'
         PRESQU_ACCIDENT = 'presqu_accident', 'Presqu’accident'
         INCIDENT = 'incident', 'Incident'
+        # XQHS19 — incident environnemental (déversement/rejet non conforme).
+        ENVIRONNEMENT = 'environnement', 'Environnement'
 
     class Gravite(models.TextChoices):
         MINEURE = 'mineure', 'Mineure'
@@ -1924,6 +1960,12 @@ class Incident(models.Model):
         OUVERT = 'ouvert', 'Ouvert'
         EN_COURS = 'en_cours', 'En cours'
         CLOS = 'clos', 'Clos'
+
+    # ── XQHS19 — Milieu touché par un incident environnemental ──────────────
+    class MilieuTouche(models.TextChoices):
+        SOL = 'sol', 'Sol'
+        EAU = 'eau', 'Eau'
+        AIR = 'air', 'Air'
 
     company = models.ForeignKey(
         'authentication.Company',
@@ -1968,6 +2010,32 @@ class Incident(models.Model):
         related_name='incidents',
         verbose_name='Code de défaut',
     )
+    # ── XQHS19 — Incidents environnementaux (déversement/rejet) ─────────────
+    # Tous nullable/blank par défaut : additif, aucune valeur sur les
+    # incidents existants (accident/presqu_accident/incident classiques).
+    substance = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Substance')
+    quantite_estimee = models.DecimalField(
+        max_digits=12, decimal_places=3, null=True, blank=True,
+        verbose_name='Quantité estimée')
+    quantite_unite = models.CharField(
+        max_length=20, blank=True, default='', verbose_name='Unité')
+    milieu_touche = models.CharField(
+        max_length=10, choices=MilieuTouche.choices,
+        blank=True, default='', verbose_name='Milieu touché')
+    notification_requise = models.BooleanField(
+        default=False, verbose_name='Notification à autorité requise')
+    autorite_notifiee = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Autorité notifiée')
+    date_notification = models.DateField(
+        null=True, blank=True, verbose_name='Date de notification')
+    date_limite_notification = models.DateField(
+        null=True, blank=True, verbose_name='Date limite de notification')
+    # XQHS22 — coût interne de l'incident (JAMAIS client-facing).
+    cout = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        null=True, blank=True, verbose_name='Coût (interne)')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -1998,6 +2066,24 @@ class Incident(models.Model):
 
     def __str__(self):
         return f'{self.reference or "INC"} — {self.titre}'
+
+    @property
+    def notification_en_retard(self):
+        """XQHS19 — True si une notification requise n'a pas encore été faite
+        et que la date limite est dépassée. Sans échéance/non requise :
+        toujours False (rien à relancer)."""
+        from django.utils import timezone
+
+        if not self.notification_requise or self.date_notification:
+            return False
+        if self.date_limite_notification is None:
+            return False
+        return timezone.localdate() > self.date_limite_notification
+
+    def peut_cloturer(self):
+        """XQHS19 — la clôture exige la notification si elle est requise
+        (analogue au gate CAPA de ``NonConformite``, QHSE13)."""
+        return not (self.notification_requise and not self.date_notification)
 
 
 # ── QHSE30 — Déclaration CNSS de l'accident du travail (échéance légale) ─────
@@ -4804,3 +4890,782 @@ class AccuseLecture(models.Model):
     def __str__(self):
         statut = 'lu' if self.lu_le else 'en attente'
         return f'{self.user_id} — {statut}'
+
+
+# ── XQHS16 — Signalement QR public sans compte (danger/incident chantier) ──
+
+def _default_qr_token():
+    import secrets
+    return secrets.token_urlsafe(24)
+
+
+class LienSignalementPublic(models.Model):
+    """Lien public tokenisé (QR) par chantier pour un signalement anonyme
+    (danger/incident) SANS compte ERP (XQHS16).
+
+    Pattern des liens publics tokenisés déjà en place (``ventes.ShareLink``,
+    ``ged`` partage/dépôt) : le jeton (long, imprévisible) est l'UNIQUE secret
+    d'accès — la société et le chantier sont résolus DEPUIS le jeton, JAMAIS
+    depuis le corps de requête. Révocable (``actif=False``) ; pas d'expiration
+    fixe (un QR imprimé reste valable tant que le chantier est actif) sauf si
+    l'utilisateur le révoque manuellement.
+
+    ``responsable_hse`` optionnel : notifié (best-effort) à chaque
+    signalement reçu via ce lien.
+
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_liens_signalement',
+        verbose_name='Société',
+    )
+    # Référence LÂCHE au chantier (installations.Chantier) par id : jamais un
+    # import cross-app de modèle.
+    chantier_id = models.PositiveIntegerField(
+        verbose_name='ID du chantier')
+    token = models.CharField(
+        max_length=64, unique=True, default=_default_qr_token,
+        editable=False, verbose_name='Jeton')
+    libelle = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Libellé (ex. nom du chantier)')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    responsable_hse = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_liens_signalement_responsable',
+        verbose_name='Responsable HSE à notifier',
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_liens_signalement_crees',
+        verbose_name='Créé par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Lien de signalement public (QR)'
+        verbose_name_plural = 'Liens de signalement public (QR)'
+        ordering = ['-id']
+        indexes = [
+            models.Index(fields=['token'], name='qhse_liensig_token'),
+            models.Index(
+                fields=['company', 'chantier_id'],
+                name='qhse_liensig_co_chant',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Lien signalement — {self.libelle or self.chantier_id}'
+
+
+class SignalementPublic(models.Model):
+    """Signalement reçu via un ``LienSignalementPublic`` (XQHS16).
+
+    Créé par un tiers SANS compte ERP (sous-traitant, riverain). L'auteur est
+    facultatif (``nom``/``telephone`` vides = anonyme). ``source`` reste
+    toujours ``qr_public`` pour distinguer ces entrées des signalements
+    internes classiques (registre ``Incident``).
+
+    Multi-société via ``company`` posée côté serveur (résolue depuis le lien,
+    jamais depuis le corps de requête). Entièrement additif.
+    """
+    class Type(models.TextChoices):
+        DANGER = 'danger', 'Danger'
+        INCIDENT = 'incident', 'Incident'
+
+    class Source(models.TextChoices):
+        QR_PUBLIC = 'qr_public', 'QR public'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_signalements_publics',
+        verbose_name='Société',
+    )
+    lien = models.ForeignKey(
+        LienSignalementPublic,
+        on_delete=models.CASCADE,
+        related_name='signalements',
+        verbose_name='Lien',
+    )
+    type_signalement = models.CharField(
+        max_length=10, choices=Type.choices,
+        default=Type.DANGER, verbose_name='Type')
+    description = models.TextField(verbose_name='Description')
+    photo_url = models.CharField(
+        max_length=500, blank=True, default='', verbose_name='Photo (URL)')
+    nom = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Nom (facultatif)')
+    telephone = models.CharField(
+        max_length=40, blank=True, default='',
+        verbose_name='Téléphone (facultatif)')
+    source = models.CharField(
+        max_length=15, choices=Source.choices,
+        default=Source.QR_PUBLIC, verbose_name='Source')
+    # Référence lâche : l'incident QHSE créé à partir de ce signalement, une
+    # fois traité côté HSE (intra-app, FK directe possible).
+    incident = models.ForeignKey(
+        'Incident',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='signalements_publics',
+        verbose_name='Incident lié',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Signalement public (QR)'
+        verbose_name_plural = 'Signalements publics (QR)'
+        ordering = ['-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'type_signalement'],
+                name='qhse_sigpub_co_type',
+            ),
+        ]
+
+    @property
+    def anonyme(self):
+        return not self.nom and not self.telephone
+
+    def __str__(self):
+        return f'Signalement {self.get_type_signalement_display()} ({self.lien_id})'
+
+
+# ── XQHS17 — Observations sécurité comportementales (BBS) ──────────────────
+
+class ObservationSecurite(models.Model):
+    """Observation comportementale sécurité (Behavior-Based Safety, XQHS17).
+
+    Saisie rapide (mobile-friendly) d'une observation TERRAIN — sûre ou à
+    risque — distincte du presqu'accident (``rh.PresquAccident``, RH) et du
+    registre d'incident (``qhse.Incident``, événement déjà survenu). La BBS
+    alimente la prévention EN AMONT, avant tout événement.
+
+    ``categorie`` réutilise les familles ``CodeDefaut`` là où c'est pertinent
+    (EPI/hauteur/électrique/manutention/environnement/autre) pour rester
+    cohérent avec le Pareto qualité existant, sans dépendre d'un FK vers
+    ``CodeDefaut`` (catégorie fixe, pas un référentiel éditable ici).
+
+    Une observation À RISQUE peut être convertie en un clic en CAPA (liée à
+    une NCR minimale créée pour l'occasion) ou en NCR directe — voir
+    ``services.convertir_observation_en_capa`` /
+    ``convertir_observation_en_ncr``.
+
+    Le rattachement au chantier se fait par référence LÂCHE (``chantier_id``).
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    class Categorie(models.TextChoices):
+        EPI = 'epi', 'EPI'
+        HAUTEUR = 'hauteur', 'Travail en hauteur'
+        ELECTRIQUE = 'electrique', 'Électrique'
+        MANUTENTION = 'manutention', 'Manutention'
+        ENVIRONNEMENT = 'environnement', 'Environnement'
+        AUTRE = 'autre', 'Autre'
+
+    class TypeObservation(models.TextChoices):
+        SUR = 'sur', 'Sûr'
+        A_RISQUE = 'a_risque', 'À risque'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_observations_securite',
+        verbose_name='Société',
+    )
+    date_observation = models.DateField(
+        null=True, blank=True, verbose_name="Date de l'observation")
+    # Référence LÂCHE au chantier (installations.Chantier) par id.
+    chantier_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du chantier')
+    categorie = models.CharField(
+        max_length=15, choices=Categorie.choices,
+        default=Categorie.AUTRE, verbose_name='Catégorie')
+    type_observation = models.CharField(
+        max_length=10, choices=TypeObservation.choices,
+        default=TypeObservation.SUR, verbose_name="Type d'observation")
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    feedback_donne = models.BooleanField(
+        default=False, verbose_name='Feedback donné sur place')
+    observateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_observations_securite',
+        verbose_name='Observateur',
+    )
+    # Conversion en un clic — trace vers l'action/NCR née de cette observation
+    # (intra-app, FK directe). NULL tant qu'aucune conversion n'a eu lieu.
+    action_liee = models.ForeignKey(
+        'ActionCorrectivePreventive',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='observations_origine',
+        verbose_name='CAPA liée',
+    )
+    non_conformite_liee = models.ForeignKey(
+        'NonConformite',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='observations_origine',
+        verbose_name='NCR liée',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Observation sécurité (BBS)'
+        verbose_name_plural = 'Observations sécurité (BBS)'
+        ordering = ['-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'type_observation'],
+                name='qhse_obssec_co_type',
+            ),
+            models.Index(
+                fields=['company', 'observateur'],
+                name='qhse_obssec_co_observ',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.get_type_observation_display()} — {self.get_categorie_display()}'
+
+
+# ── XQHS18 — Exercices d'urgence (drills) rattachés aux plans d'urgence ─────
+
+class ExerciceUrgence(models.Model):
+    """Exercice d'urgence (évacuation/incendie/déversement) rattaché à un
+    ``PlanUrgence`` (XQHS18, exigence ISO 45001 8.2).
+
+    Trace la planification (``date_prevue``) puis la réalisation
+    (``date_realisee``, ``duree_evacuation_secondes`` chronométrée,
+    participants, observations/écarts). Un écart constaté peut créer une CAPA
+    liée (voir ``services.creer_capa_depuis_ecart_exercice``).
+
+    ``frequence_mois`` sur le plan lui-même détermine la cadence cible ; le
+    sélecteur ``exercices_dus`` (pattern QHSE38/QHSE12) identifie les plans en
+    retard de leur prochain exercice.
+
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    class Type(models.TextChoices):
+        EVACUATION = 'evacuation', 'Évacuation'
+        INCENDIE = 'incendie', 'Incendie'
+        DEVERSEMENT = 'deversement', 'Déversement'
+        AUTRE = 'autre', 'Autre'
+
+    class Statut(models.TextChoices):
+        PLANIFIE = 'planifie', 'Planifié'
+        REALISE = 'realise', 'Réalisé'
+        ANNULE = 'annule', 'Annulé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_exercices_urgence',
+        verbose_name='Société',
+    )
+    plan = models.ForeignKey(
+        PlanUrgence,
+        on_delete=models.CASCADE,
+        related_name='exercices',
+        verbose_name="Plan d'urgence",
+    )
+    type_exercice = models.CharField(
+        max_length=15, choices=Type.choices,
+        default=Type.EVACUATION, verbose_name="Type d'exercice")
+    date_prevue = models.DateField(
+        null=True, blank=True, verbose_name='Date prévue')
+    date_realisee = models.DateField(
+        null=True, blank=True, verbose_name='Date réalisée')
+    duree_evacuation_secondes = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name="Durée d'évacuation chronométrée (secondes)")
+    nb_participants = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Nombre de participants')
+    participants_libre = models.TextField(
+        blank=True, default='', verbose_name='Participants (liste libre)')
+    observations = models.TextField(
+        blank=True, default='', verbose_name='Observations / écarts')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.PLANIFIE, verbose_name='Statut')
+    # Écart → CAPA liée (intra-app, FK directe). NULL tant qu'aucune CAPA
+    # n'a été créée à partir de cet exercice.
+    capa_liee = models.ForeignKey(
+        'ActionCorrectivePreventive',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='exercices_urgence_origine',
+        verbose_name='CAPA liée',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Exercice d'urgence"
+        verbose_name_plural = "Exercices d'urgence"
+        ordering = ['-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'plan'],
+                name='qhse_exeurg_co_plan',
+            ),
+            models.Index(
+                fields=['company', 'statut'],
+                name='qhse_exeurg_co_statut',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.get_type_exercice_display()} — {self.plan.titre}'
+
+
+# ── XQHS20 — Registre des aspects & impacts environnementaux (ISO 14001) ──
+
+class AspectEnvironnemental(models.Model):
+    """Aspect environnemental d'une activité + cotation de significativité
+    (XQHS20, ISO 14001 6.1.2).
+
+    Chaque entrée décrit une ``activite`` (transport, pose, stockage
+    batteries, déchets chantier…), son ``aspect`` (ce qui interagit avec
+    l'environnement) et son ``impact`` (la conséquence). La cotation
+    ``frequence`` × ``gravite`` (1 à 5 chacune) donne ``criticite`` (dérivée,
+    jamais stockée) ; ``significatif`` est calculé côté serveur au-delà du
+    ``seuil_significativite`` configurable par société (défaut 12).
+
+    Lien optionnel vers une ``ProcedureQualite`` (contrôle opérationnel
+    documenté) et vers un ``ObjectifQhse`` (XQHS13, objectif de réduction).
+    ``date_revue`` + relance suivent le pattern QHSE38/QHSE12.
+
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    SEUIL_SIGNIFICATIVITE_DEFAUT = 12
+
+    class Condition(models.TextChoices):
+        NORMALE = 'normale', 'Normale'
+        ANORMALE = 'anormale', 'Anormale'
+        URGENCE = 'urgence', "Urgence"
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_aspects_environnementaux',
+        verbose_name='Société',
+    )
+    activite = models.CharField(max_length=255, verbose_name='Activité')
+    aspect = models.CharField(max_length=255, verbose_name='Aspect')
+    impact = models.CharField(max_length=255, verbose_name='Impact')
+    condition = models.CharField(
+        max_length=10, choices=Condition.choices,
+        default=Condition.NORMALE, verbose_name='Condition')
+    frequence = models.PositiveSmallIntegerField(
+        default=1, verbose_name='Fréquence (1-5)')
+    gravite = models.PositiveSmallIntegerField(
+        default=1, verbose_name='Gravité (1-5)')
+    seuil_significativite = models.PositiveIntegerField(
+        default=SEUIL_SIGNIFICATIVITE_DEFAUT,
+        verbose_name='Seuil de significativité')
+    controles_existants = models.TextField(
+        blank=True, default='',
+        verbose_name='Contrôles opérationnels existants')
+    procedure = models.ForeignKey(
+        'ProcedureQualite',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='aspects_environnementaux',
+        verbose_name='Procédure liée',
+    )
+    objectif = models.ForeignKey(
+        'ObjectifQhse',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='aspects_environnementaux',
+        verbose_name='Objectif QHSE lié',
+    )
+    date_revue = models.DateField(
+        null=True, blank=True, verbose_name='Date de revue')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Aspect environnemental'
+        verbose_name_plural = 'Aspects environnementaux'
+        ordering = ['-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'condition'],
+                name='qhse_aspenv_co_cond',
+            ),
+        ]
+
+    @property
+    def criticite(self):
+        return (self.frequence or 0) * (self.gravite or 0)
+
+    @property
+    def significatif(self):
+        return self.criticite >= (
+            self.seuil_significativite or self.SEUIL_SIGNIFICATIVITE_DEFAUT)
+
+    def __str__(self):
+        return f'{self.activite} — {self.aspect}'
+
+
+# ── XQHS21 — Relevés de consommation par site (élec/eau/carburant) ─────────
+
+class ReleveConsommation(models.Model):
+    """Relevé périodique de consommation d'un site (XQHS21).
+
+    Capture la consommation MENSUELLE d'un site/groupe électrogène :
+    électricité (kWh), gasoil/essence (L, groupes électrogènes de site — le
+    carburant des VÉHICULES existe déjà dans ``flotte.PleinCarburant`` et est
+    agrégé via le sélecteur ``flotte.selectors.consommation_annuelle_flotte``,
+    jamais re-saisi ici), eau (m³).
+
+    ``services.generer_lignes_bilan`` agrège les relevés d'une année (+ le
+    carburant flotte) en ``LigneBilanCarbone`` pré-remplies, idempotent.
+
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    class TypeEnergie(models.TextChoices):
+        ELECTRICITE = 'electricite', 'Électricité (kWh)'
+        GASOIL = 'gasoil', 'Gasoil (L)'
+        ESSENCE = 'essence', 'Essence (L)'
+        EAU = 'eau', 'Eau (m³)'
+
+    class Source(models.TextChoices):
+        FACTURE = 'facture', 'Facture'
+        COMPTEUR = 'compteur', 'Compteur'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_releves_consommation',
+        verbose_name='Société',
+    )
+    site_libelle = models.CharField(
+        max_length=255, verbose_name='Site / libellé')
+    type_energie = models.CharField(
+        max_length=15, choices=TypeEnergie.choices,
+        default=TypeEnergie.ELECTRICITE, verbose_name="Type d'énergie")
+    # Mois-année de la période couverte (premier jour du mois par convention).
+    periode = models.DateField(verbose_name='Période (mois)')
+    quantite = models.DecimalField(
+        max_digits=14, decimal_places=3, default=0, verbose_name='Quantité')
+    source = models.CharField(
+        max_length=15, choices=Source.choices,
+        default=Source.FACTURE, verbose_name='Source')
+    piece_jointe_url = models.CharField(
+        max_length=500, blank=True, default='',
+        verbose_name='Pièce jointe (URL)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Relevé de consommation'
+        verbose_name_plural = 'Relevés de consommation'
+        ordering = ['-periode', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'site_libelle', 'type_energie', 'periode'],
+                name='qhse_relconso_co_site_type_periode_uniq',
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'periode'],
+                name='qhse_relconso_co_periode',
+            ),
+        ]
+
+    def __str__(self):
+        return (f'{self.site_libelle} — {self.get_type_energie_display()} '
+                f'({self.periode:%Y-%m})')
+
+
+# ── XQHS24 — Gestion du changement (MOC léger) ──────────────────────────────
+
+class DemandeChangement(models.Model):
+    """Demande de gestion du changement (MOC — Management Of Change léger,
+    XQHS24) : trace un changement de procédé/équipement/organisation/document
+    AVEC revue des risques avant mise en œuvre.
+
+    Cycle de vie : ``brouillon`` → ``en_revue`` → ``approuve`` → ``deploye`` /
+    (``clos`` | ``annule``). Un changement TEMPORAIRE porte
+    ``date_expiration`` + relance de réversion (pattern
+    ``Derogation``/``ConformiteEnvironnementale`` QHSE38). Les actions de mise
+    en œuvre = CAPA liées (voir ``services.creer_capa_mise_en_oeuvre_moc``).
+
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    class Type(models.TextChoices):
+        PROCEDE = 'procede', 'Procédé'
+        EQUIPEMENT = 'equipement', 'Équipement'
+        ORGANISATION = 'organisation', 'Organisation'
+        DOCUMENT = 'document', 'Document'
+
+    class Impact(models.TextChoices):
+        FAIBLE = 'faible', 'Faible'
+        MOYEN = 'moyen', 'Moyen'
+        FORT = 'fort', 'Fort'
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        EN_REVUE = 'en_revue', 'En revue'
+        APPROUVE = 'approuve', 'Approuvé'
+        DEPLOYE = 'deploye', 'Déployé'
+        CLOS = 'clos', 'Clos'
+        ANNULE = 'annule', 'Annulé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_demandes_changement',
+        verbose_name='Société',
+    )
+    type_changement = models.CharField(
+        max_length=15, choices=Type.choices,
+        default=Type.PROCEDE, verbose_name='Type de changement')
+    description = models.TextField(verbose_name='Description')
+    justification = models.TextField(
+        blank=True, default='', verbose_name='Justification')
+    classification_impact = models.CharField(
+        max_length=10, choices=Impact.choices,
+        default=Impact.FAIBLE, verbose_name="Classification d'impact")
+    # Revue des risques : texte libre + lien optionnel vers un DUERP existant
+    # (même app, FK directe).
+    revue_risques = models.TextField(
+        blank=True, default='', verbose_name='Revue des risques')
+    evaluation_risque = models.ForeignKey(
+        'EvaluationRisque',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='demandes_changement',
+        verbose_name='Évaluation des risques liée',
+    )
+    documents_formations_impactes = models.TextField(
+        blank=True, default='', verbose_name='Documents/formations impactés')
+    approbateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_demandes_changement_approuvees',
+        verbose_name='Approbateur',
+    )
+    date_approbation = models.DateTimeField(
+        null=True, blank=True, verbose_name="Date d'approbation")
+    checklist_verification = models.TextField(
+        blank=True, default='',
+        verbose_name='Checklist de vérification avant déploiement')
+    statut = models.CharField(
+        max_length=15, choices=Statut.choices,
+        default=Statut.BROUILLON, verbose_name='Statut')
+    # Changement TEMPORAIRE : date de retour à l'état antérieur + relance
+    # (pattern Derogation/ConformiteEnvironnementale, QHSE38). NULL = permanent.
+    est_temporaire = models.BooleanField(
+        default=False, verbose_name='Changement temporaire')
+    date_expiration = models.DateField(
+        null=True, blank=True, verbose_name='Date de réversion prévue')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Demande de changement (MOC)'
+        verbose_name_plural = 'Demandes de changement (MOC)'
+        ordering = ['-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='qhse_demchang_co_statut',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.get_type_changement_display()} — {self.description[:40]}'
+
+
+class DemandeChangementCapa(models.Model):
+    """Lien (M2M explicite) entre une ``DemandeChangement`` et une CAPA
+    (action de mise en œuvre — un même changement peut avoir plusieurs
+    actions, pattern ``RisqueOpportuniteCapa``)."""
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_demande_changement_capa',
+        verbose_name='Société',
+    )
+    demande_changement = models.ForeignKey(
+        DemandeChangement,
+        on_delete=models.CASCADE,
+        related_name='capa_liees',
+        verbose_name='Demande de changement',
+    )
+    capa = models.ForeignKey(
+        'ActionCorrectivePreventive',
+        on_delete=models.CASCADE,
+        related_name='demandes_changement_liees',
+        verbose_name='CAPA',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'CAPA liée à une demande de changement'
+        verbose_name_plural = 'CAPA liées à une demande de changement'
+        ordering = ['-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['demande_changement', 'capa'],
+                name='qhse_demchangcapa_dem_capa_uniq',
+            )
+        ]
+
+    def __str__(self):
+        return f'{self.demande_changement_id} ↔ CAPA {self.capa_id}'
+
+
+# ── XQHS26 — Veille réglementaire QHSE Maroc (revue périodique assistée) ────
+# DECISION (utilité vs charge à valider par le fondateur). Version SOBRE sans
+# dépendance externe : AUCUN scraping de source (règle CLAUDE.md #5 — ToS) ;
+# les textes suivis sont saisis manuellement, seule la CADENCE de revue est
+# automatisée (génération des revues dues, pas de collecte de contenu).
+
+class VeilleReglementaire(models.Model):
+    """Texte réglementaire QHSE suivi, avec cadence de revue périodique.
+
+    Chaque texte suivi (loi, décret, arrêté, norme…) porte sa ``source``
+    (Bulletin Officiel / ministère / organisme), une cadence de revue
+    (``cadence_jours`` — 90 jours = trimestrielle par défaut) et une
+    ``date_prochaine_revue`` qui avance à chaque revue conclue
+    (``qhse.services.conclure_revue_veille``). Le ``responsable`` (HSE) est
+    celui à qui la revue est assignée.
+
+    Le lien optionnel ``registre_conformite`` rattache ce texte à une entrée du
+    registre des exigences légales généralisé (XQHS8,
+    ``ConformiteEnvironnementale``) : une revue conclut l'applicabilité et peut
+    créer cette entrée si absente (``qhse.services.conclure_revue_veille``).
+
+    Multi-société via ``company`` posée côté serveur (jamais lue du corps de
+    requête). Entièrement additif.
+    """
+    CADENCE_JOURS_DEFAUT = 90  # trimestrielle
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_veilles_reglementaires',
+        verbose_name='Société',
+    )
+    texte_suivi = models.CharField(
+        max_length=255, verbose_name='Texte réglementaire suivi')
+    source = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Source (BO / ministère)')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    cadence_jours = models.PositiveIntegerField(
+        default=CADENCE_JOURS_DEFAUT, verbose_name='Cadence de revue (jours)')
+    date_derniere_revue = models.DateField(
+        null=True, blank=True, verbose_name='Dernière revue')
+    date_prochaine_revue = models.DateField(
+        null=True, blank=True, verbose_name='Prochaine revue')
+    responsable = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_veilles_reglementaires',
+        verbose_name='Responsable HSE',
+    )
+    # Lien optionnel vers le registre légal généralisé (XQHS8). Nullable : posé
+    # par le service lors de la première revue applicable.
+    registre_conformite = models.ForeignKey(
+        ConformiteEnvironnementale,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='veilles_reglementaires',
+        verbose_name='Entrée du registre légal liée',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Veille réglementaire'
+        verbose_name_plural = 'Veilles réglementaires'
+        ordering = ['date_prochaine_revue', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'date_prochaine_revue'],
+                name='qhse_veille_co_prochaine',
+            ),
+        ]
+
+    def __str__(self):
+        return self.texte_suivi
+
+
+class RevueVeilleReglementaire(models.Model):
+    """Une revue périodique (occurrence) d'une ``VeilleReglementaire``.
+
+    Générée automatiquement quand la revue est due
+    (``qhse.services.generer_revues_veille_dues`` — idempotent : une seule
+    revue ``a_faire`` ouverte à la fois par veille). Conclue via
+    ``qhse.services.conclure_revue_veille`` : fixe ``conclusion``
+    (applicable / non_applicable), avance ``date_prochaine_revue`` du parent,
+    et lie/instancie le registre légal (XQHS8) si ``applicable``.
+    """
+    class Conclusion(models.TextChoices):
+        A_FAIRE = 'a_faire', 'À faire'
+        APPLICABLE = 'applicable', 'Applicable'
+        NON_APPLICABLE = 'non_applicable', 'Non applicable'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_revues_veille',
+        verbose_name='Société',
+    )
+    veille = models.ForeignKey(
+        VeilleReglementaire,
+        on_delete=models.CASCADE,
+        related_name='revues',
+        verbose_name='Veille réglementaire',
+    )
+    date_echeance = models.DateField(
+        null=True, blank=True, verbose_name='Échéance de la revue')
+    date_revue = models.DateField(
+        null=True, blank=True, verbose_name='Date de revue effective')
+    conclusion = models.CharField(
+        max_length=15, choices=Conclusion.choices,
+        default=Conclusion.A_FAIRE, verbose_name='Conclusion')
+    impact_evalue = models.TextField(
+        blank=True, default='', verbose_name='Impact évalué')
+    resume_ia = models.TextField(
+        blank=True, default='',
+        verbose_name='Résumé IA du changement (XQHS25, optionnel)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Revue de veille réglementaire'
+        verbose_name_plural = 'Revues de veille réglementaire'
+        ordering = ['-date_echeance', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'conclusion'],
+                name='qhse_revveille_co_concl',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.veille.texte_suivi} — {self.get_conclusion_display()}'

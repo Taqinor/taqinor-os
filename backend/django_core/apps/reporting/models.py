@@ -303,6 +303,47 @@ class Classeur(models.Model):
         return self.titre
 
 
+# ── ZCTR9 — SLA d'approbation paramétrable par société (boîte XKB1) ──────────
+
+class ApprobationSlaConfig(models.Model):
+    """ZCTR9 — délai SLA (en jours OUVRÉS) au-delà duquel une demande en
+    attente dans la boîte d'approbations centralisée (XKB1) est signalée
+    « en retard » dans l'agrégateur ``apps/reporting/approbations.py``.
+
+    Un seul enregistrement par société (``company`` unique) ; ADDITIF —
+    aucune ligne pour une société = défaut ``DEFAULT_SLA_JOURS`` (3 jours
+    ouvrés), comportement inchangé tant que le founder ne configure rien."""
+
+    DEFAULT_SLA_JOURS = 3
+
+    company = models.OneToOneField(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='approbation_sla_config')
+    sla_jours = models.PositiveIntegerField(
+        default=DEFAULT_SLA_JOURS,
+        help_text=(
+            "Nombre de jours ouvrés en attente au-delà duquel une demande "
+            "d'approbation est signalée en retard."))
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Réglage SLA d'approbation"
+        verbose_name_plural = "Réglages SLA d'approbation"
+
+    def __str__(self):
+        return f'SLA approbation [{self.company_id}] = {self.sla_jours}j ouvrés'
+
+    @classmethod
+    def sla_jours_pour(cls, company):
+        """Renvoie le SLA (jours ouvrés) configuré pour ``company``, ou le
+        défaut si aucune config n'existe (ADDITIF, jamais d'exception)."""
+        if company is None:
+            return cls.DEFAULT_SLA_JOURS
+        cfg = cls.objects.filter(company=company).first()
+        return cfg.sla_jours if cfg is not None else cls.DEFAULT_SLA_JOURS
+
+
 class ClasseurPartageInterne(models.Model):
     """XPLT22 — partage interne fin d'un classeur (réutilise le pattern
     XPLT10 ``core.DashboardPartageInterne``, scopé Classeur)."""
