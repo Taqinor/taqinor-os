@@ -62,11 +62,12 @@ describe('W28 — en-tête : nav primaire + déroulants accessibles', () => {
 
   it('l’explainer Loi 82-21 sort de la nav de 1er niveau (plus de lien primaire « Loi 82-21 »)', () => {
     // Présent — mais uniquement comme item Ressources « Loi 82-21 expliquée ».
-    // W67 — le libellé vient désormais du dictionnaire (clé nav.law), dont la
-    // valeur FR reste « Loi 82-21 expliquée ».
+    // W67 — le libellé vient du dictionnaire (clé nav.law). Round-3 (2026-07-05) :
+    // renommé « Loi 82-21 : les 3 régimes » pour correspondre à la page /loi-82-21
+    // (l'ancien « expliquée » était le titre du GUIDE /guides/loi-82-21-expliquee).
     expect(header).toContain('/loi-82-21');
     expect(header).toContain("t('nav.law')");
-    expect(uiFr['nav.law']).toBe('Loi 82-21 expliquée');
+    expect(uiFr['nav.law']).toBe('Loi 82-21 : les 3 régimes');
     // L’ancien lien primaire dont le libellé rendu était « Loi 82-21 » n’existe plus.
     expect(header).not.toMatch(/>Loi 82-21</);
   });
