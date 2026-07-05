@@ -913,6 +913,26 @@ class ElementVariable(models.Model):
         related_name='elements_variables',
         verbose_name="Type d'entrée ponctuelle (catalogue)",
     )
+    # ZPAI11 — Reconduction automatique vers la période suivante (défaut
+    # False = comportement historique inchangé : ressaisie chaque mois). Un
+    # élément ponctuel-mais-répétitif (ex. prime de transport saisie chaque
+    # mois) marqué ``reconduire=True`` est copié UNE fois vers M+1 par
+    # ``services.reporter_elements_periode`` — jamais automatiquement à la
+    # création de l'élément lui-même.
+    reconduire = models.BooleanField(
+        default=False, verbose_name='Reconduire vers la période suivante')
+    # ZPAI11 — Trace de reconduction : posé UNIQUEMENT sur la copie créée par
+    # ``services.reporter_elements_periode`` (jamais sur l'original saisi à la
+    # main). Sert de clé d'IDEMPOTENCE : un re-run de la reconduction ne
+    # duplique jamais la copie d'un même élément d'origine vers la même
+    # période cible (``unique_together`` ci-dessous).
+    reconduit_depuis = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='reconductions',
+        verbose_name='Reconduit depuis (élément M-1)',
+    )
     source = models.CharField(
         max_length=10, choices=SOURCE_CHOICES, default=SOURCE_MANUEL,
         verbose_name='Source')
@@ -923,6 +943,10 @@ class ElementVariable(models.Model):
         verbose_name = 'Élément variable'
         verbose_name_plural = 'Éléments variables'
         ordering = ['periode', 'profil', 'id']
+        # ZPAI11 — une même origine ne peut être reconduite qu'UNE fois vers
+        # une période cible donnée (NULL ``reconduit_depuis`` = saisie
+        # normale, jamais concerné par cette contrainte).
+        unique_together = [('periode', 'reconduit_depuis')]
 
     def __str__(self):
         return f'{self.get_type_display()} {self.quantite} → profil #{self.profil_id}'

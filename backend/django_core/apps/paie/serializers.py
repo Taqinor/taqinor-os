@@ -393,9 +393,11 @@ class ElementVariableSerializer(serializers.ModelSerializer):
             'categorie_absence',
             # ZPAI9 — type d'entrée ponctuelle du catalogue (facultatif).
             'type_entree',
+            # ZPAI11 — reconduction auto vers la période suivante.
+            'reconduire', 'reconduit_depuis',
             'source', 'date_creation',
         ]
-        read_only_fields = ['date_creation']
+        read_only_fields = ['date_creation', 'reconduit_depuis']
 
     def validate_periode(self, value):
         return _meme_societe(self, value, 'Période')

@@ -478,6 +478,77 @@ def importer_elements_rh(periode):
         return importes
 
 
+# ── ZPAI11 — Duplication des rubriques récurrentes vers une nouvelle période ─
+
+def _mois_precedent(annee, mois):
+    """``(annee, mois)`` du mois précédent."""
+    if mois == 1:
+        return annee - 1, 12
+    return annee, mois - 1
+
+
+def reporter_elements_periode(periode_cible):
+    """Reconduit les éléments ``reconduire=True`` de M-1 vers ``periode_cible`` (ZPAI11).
+
+    Cherche la ``PeriodePaie`` du mois calendaire précédent, même société et
+    même ``type_run`` que ``periode_cible`` (aucune période précédente trouvée
+    → no-op, renvoie ``[]``). Pour chaque ``ElementVariable`` de cette période
+    marqué ``reconduire=True``, crée une COPIE dans ``periode_cible`` (même
+    profil/type/rubrique/libellé/quantité/montant/flags, ``source='manuel'``,
+    ``reconduit_depuis`` posé sur l'original) — IDEMPOTENT : la contrainte
+    ``(periode, reconduit_depuis)`` empêche toute double-copie d'un même
+    élément d'origine vers la même période cible (re-run silencieusement
+    ignoré). Un élément NON reconductible n'est jamais copié. Renvoie la
+    liste des nouvelles copies créées par CET appel (vide si toutes les
+    copies existaient déjà).
+    """
+    annee_prec, mois_prec = _mois_precedent(
+        periode_cible.annee, periode_cible.mois)
+    periode_precedente = (
+        PeriodePaie.objects
+        .filter(
+            company=periode_cible.company, annee=annee_prec, mois=mois_prec,
+            type_run=periode_cible.type_run)
+        .first()
+    )
+    if periode_precedente is None:
+        return []
+
+    a_reconduire = ElementVariable.objects.filter(
+        periode=periode_precedente, reconduire=True)
+    deja_copies = set(
+        ElementVariable.objects
+        .filter(periode=periode_cible, reconduit_depuis__isnull=False)
+        .values_list('reconduit_depuis_id', flat=True)
+    )
+
+    copies = []
+    with transaction.atomic():
+        for original in a_reconduire:
+            if original.id in deja_copies:
+                continue
+            copie = ElementVariable.objects.create(
+                company=periode_cible.company,
+                periode=periode_cible,
+                profil=original.profil,
+                type=original.type,
+                rubrique=original.rubrique,
+                libelle=original.libelle,
+                quantite=original.quantite,
+                categorie_hs=original.categorie_hs,
+                montant=original.montant,
+                remunere=original.remunere,
+                deduit_solde=original.deduit_solde,
+                categorie_absence=original.categorie_absence,
+                type_entree=original.type_entree,
+                reconduire=original.reconduire,
+                reconduit_depuis=original,
+                source=ElementVariable.SOURCE_MANUEL,
+            )
+            copies.append(copie)
+    return copies
+
+
 def _elements_rh_du_dossier(periode, dossier):
     """Éléments variables RH d'un dossier pour la période — liste de tuples.
 

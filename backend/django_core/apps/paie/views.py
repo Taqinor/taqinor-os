@@ -129,6 +129,7 @@ from .services import (
     recalculer_cumul_annuel,
     reemettre_ligne_virement,
     registre_conges,
+    reporter_elements_periode,
     rejeter_ligne_virement,
     saisies_arret_du_bulletin,
     simuler_bulletin,
@@ -680,6 +681,21 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response({'importes': importes}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='reporter-elements')
+    def reporter_elements(self, request, pk=None):
+        """Reconduit les éléments récurrents de M-1 vers cette période (ZPAI11).
+
+        Copie les ``ElementVariable`` marqués ``reconduire=True`` de la
+        période calendaire précédente (même société/``type_run``) — no-op si
+        aucune période précédente. Idempotent : un re-run ne duplique jamais
+        une copie déjà faite.
+        """
+        periode = self.get_object()
+        copies = reporter_elements_periode(periode)
+        return Response(
+            {'reconduits': [c.id for c in copies], 'nombre': len(copies)},
+            status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'], url_path='bulletin')
     def bulletin(self, request, pk=None):
