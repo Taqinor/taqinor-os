@@ -4,6 +4,7 @@ import {
   CANAL_LABELS,
   PRIORITE_LABELS,
   PRIORITE_STARS,
+  formatMAD,
   isPerdu,
   tagColor,
   tagList,
@@ -162,6 +163,14 @@ export default function LeadCard({
       </div>
 
       {sousTitre && <div className="kb-card-sub">{sousTitre}</div>}
+
+      {/* XSAL7 — montant estimé (pipeline pondéré pré-devis), affiché
+          seulement quand présent ; le devis (s'il existe) prime ailleurs. */}
+      {lead.montant_estime != null && lead.montant_estime !== '' && (
+        <div className="kb-card-montant-estime" title="Montant estimé (avant devis)">
+          ≈ {formatMAD(parseFloat(lead.montant_estime))}
+        </div>
+      )}
 
       {(tel || wa) && (
         <div

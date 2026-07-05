@@ -106,6 +106,41 @@ def _lead_value(lead):
         return Decimal('0')
 
 
+def _lead_has_devis_actif(lead):
+    """XSAL7 — True si le lead a AU MOINS un devis actif (is_active, ni
+    refusé ni expiré). Sert de garde anti-double-comptage : un lead AVEC
+    devis actif contribue via ``_lead_value`` (le devis) ; un lead SANS devis
+    actif contribue via ``montant_estime`` — jamais les deux à la fois."""
+    from apps.ventes.utils.expiry import is_expired
+    for devis in lead.devis.all():
+        if not devis.is_active:
+            continue
+        if devis.statut == 'refuse':
+            continue
+        try:
+            if is_expired(devis):
+                continue
+        except Exception:
+            pass
+        return True
+    return False
+
+
+def _lead_forecast_value(lead):
+    """XSAL7 — Valeur pipeline pondérable d'un lead pour le forecast :
+    ``_lead_value`` (son devis) s'il a un devis actif, SINON
+    ``montant_estime`` (saisie libre pré-devis) — jamais les deux (pas de
+    double comptage)."""
+    if _lead_has_devis_actif(lead):
+        return _lead_value(lead)
+    if lead.montant_estime is not None:
+        try:
+            return Decimal(str(lead.montant_estime))
+        except Exception:
+            return Decimal('0')
+    return Decimal('0')
+
+
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def pipeline(request):
@@ -129,8 +164,12 @@ def pipeline(request):
         valeur = sum((_lead_value(le) for le in in_stage), Decimal('0'))
         # FG362 — prévision pondérée par lead : chaque lead contribue sa valeur
         # × SA probabilité de gain (scorer pur), pas un poids fixe d'étape.
+        # XSAL7 — la valeur pondérée utilise ``_lead_forecast_value`` : un lead
+        # SANS devis actif contribue son ``montant_estime`` (saisie libre
+        # pré-devis) au lieu de peser zéro ; un lead AVEC devis actif contribue
+        # toujours la valeur du devis (jamais les deux — pas de double compte).
         forecast += sum(
-            (_lead_value(le) * _lead_win_weight(le) for le in in_stage),
+            (_lead_forecast_value(le) * _lead_win_weight(le) for le in in_stage),
             Decimal('0'),
         )
         par_etape.append({

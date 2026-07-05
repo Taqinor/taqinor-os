@@ -369,6 +369,20 @@ class Lead(models.Model):
     type_installation = models.CharField(
         max_length=20, choices=TypeInstallation.choices, blank=True, null=True)
 
+    # ── XSAL7 — Pipeline pondéré PRÉ-devis (additif, nullable) ──
+    # Un lead chaud SANS devis pèse zéro dans le forecast pipeline
+    # aujourd'hui ; ces deux champs, saisis librement en amont d'un devis,
+    # lui donnent un poids (montant_estime × win_probability, voir
+    # apps/reporting/pipeline.py) UNIQUEMENT quand le lead n'a aucun devis
+    # actif (jamais de double comptage avec la valeur du devis).
+    montant_estime = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Montant estimé (MAD)',
+        help_text="Estimation libre du commercial avant devis — contribue "
+                  "au forecast pondéré tant qu'aucun devis actif n'existe.")
+    date_cloture_prevue = models.DateField(
+        null=True, blank=True, verbose_name='Date de clôture prévue')
+
     # ── Profil énergétique ──
     conso_mensuelle_kwh = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True)

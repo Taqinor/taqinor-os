@@ -237,6 +237,8 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
     tags: F('tags'), motif_perte: F('motif_perte'),
     perdu: lead?.perdu ?? false,
     relance_date: F('relance_date'), type_installation: F('type_installation', '') ?? '',
+    // XSAL7 — pipeline pondéré pré-devis (saisie libre, jamais snap/reject).
+    montant_estime: F('montant_estime'), date_cloture_prevue: F('date_cloture_prevue'),
     // Énergie
     facture_hiver: F('facture_hiver'), facture_ete: F('facture_ete'),
     ete_differente: lead?.ete_differente ?? false,
@@ -791,6 +793,12 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
                   />
                 </div>
                 <Txt fields={fields} set={set} k="relance_date" label="Relance le" type="date" />
+              </div>
+              <div className="form-row">
+                {/* XSAL7 — pipeline pondéré pré-devis : un lead chaud sans
+                    devis pèse zéro dans la prévision sans ces deux champs. */}
+                <Txt fields={fields} set={set} k="montant_estime" label="Montant estimé (MAD)" type="number" />
+                <Txt fields={fields} set={set} k="date_cloture_prevue" label="Clôture prévue le" type="date" />
               </div>
               <div className="form-row">
                 <Sel fields={fields} set={set} k="priorite" label="Priorité" labels={PRIORITES} />
