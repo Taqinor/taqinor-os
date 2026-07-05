@@ -33,7 +33,7 @@ import Callout from '../components/Callout.astro';
 import RelatedLinks from '../components/RelatedLinks.astro';
 import CtaBand from '../components/CtaBand.astro';
 import StickyCta from '../components/StickyCta.astro';
-import { REALISATIONS, MEASURED_FLEET, MEASURED_FLEET_LIFETIME_MWH } from '../lib/realisations';
+import { REALISATIONS, MEASURED_FLEET_LIFETIME_MWH } from '../lib/realisations';
 import { FACTS_GENERATED_AT } from '../lib/facts';
 
 // ── Chiffres dérivés — AUCUNE valeur saisie à la main ────────────────────────
@@ -58,7 +58,7 @@ const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Dataset',
   name: 'Production solaire suivie — parc Taqinor',
-  description: `Cumul de production mesuré sur la flotte suivie en temps réel (${MEASURED_FLEET.length} centrales), arrêté au ${generatedDateLabel} : ${productionTotalLabel} kWh cumulés.`,
+  description: `Cumul de production mesuré sur la flotte suivie en temps réel, arrêté au ${generatedDateLabel} : ${productionTotalLabel} kWh cumulés.`,
   temporalCoverage: FACTS_GENERATED_AT,
   creator: { '@type': 'Organization', name: 'Taqinor', url: 'https://taqinor.ma' },
 };
@@ -83,7 +83,7 @@ const jsonLd = {
         <h1 class="display v2-page-title cine-in cine-in-1 mt-6">Production suivie</h1>
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
           Pas une brochure : un compteur qui roule. Ce que la flotte suivie en temps réel a
-          réellement produit depuis sa mise en service, en cumul — arrêté aujourd'hui au{' '}
+          réellement produit depuis sa mise en service, en cumul — arrêté au{' '}
           <strong class="text-white">{generatedDateLabel}</strong>.
         </p>
       </div>
@@ -94,13 +94,10 @@ const jsonLd = {
       <div class="mx-auto max-w-6xl">
         <p class="tech-label v2-kicker rule-brass text-lune">Cumul mesuré au {generatedDateLabel}</p>
         <h2 class="display v2-section-title mt-5 text-white">{productionTotalLabel} kWh, un seul compteur</h2>
-        <div class="mt-10 grid gap-6 sm:grid-cols-2" data-stagger>
+        <div class="mt-10 grid gap-6" data-stagger>
           <KeyFigure value={productionTotalLabel} unit="kWh cumulés" label="Production suivie">
             Cumul relevé sur la flotte suivie en temps réel depuis la mise en service — jamais
             annualisé.
-          </KeyFigure>
-          <KeyFigure value={String(MEASURED_FLEET.length)} unit="centrales suivies" label="Monitoring publié">
-            Flotte suivie en direct, accès client.
           </KeyFigure>
         </div>
         <Callout type="info" title="Comment ce chiffre est mis à jour">

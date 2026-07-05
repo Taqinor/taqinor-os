@@ -63,22 +63,22 @@ const breadcrumbLd = {
 };
 
 const pvout = [
-  { city: 'طنجة', value: '~1 550 – 1 650', tilt: '31°' },
-  { city: 'الدار البيضاء', value: '~1 620 – 1 700', tilt: '29°' },
-  { city: 'الرباط-سلا', value: '~1 620 – 1 700', tilt: '29°' },
-  { city: 'فاس', value: '~1 650 – 1 750', tilt: '~32°' },
-  { city: 'مراكش', value: '1 779', tilt: '28°' },
-  { city: 'أكادير', value: '~1 750 – 1 820', tilt: '27°' },
-  { city: 'ورزازات', value: '~1 850 – 1 950', tilt: '~28–30°' },
+  { city: 'طنجة', value: '<span dir="ltr">~1 550 – 1 650</span>', tilt: '<span dir="ltr">31°</span>' },
+  { city: 'الدار البيضاء', value: '<span dir="ltr">~1 620 – 1 700</span>', tilt: '<span dir="ltr">29°</span>' },
+  { city: 'الرباط-سلا', value: '<span dir="ltr">~1 620 – 1 700</span>', tilt: '<span dir="ltr">29°</span>' },
+  { city: 'فاس', value: '<span dir="ltr">~1 650 – 1 750</span>', tilt: '<span dir="ltr">~32°</span>' },
+  { city: 'مراكش', value: '<span dir="ltr">1 779</span>', tilt: '<span dir="ltr">28°</span>' },
+  { city: 'أكادير', value: '<span dir="ltr">~1 750 – 1 820</span>', tilt: '<span dir="ltr">27°</span>' },
+  { city: 'ورزازات', value: '<span dir="ltr">~1 850 – 1 950</span>', tilt: '<span dir="ltr">~28–30°</span>' },
 ];
 
 const tariffs = [
-  { range: '0 – 100 kWh', tariff: '0,9010', mode: 'تصاعدي' },
-  { range: '101 – 150 kWh', tariff: '1,0732', mode: 'تصاعدي' },
-  { range: '151 – 210 kWh', tariff: '1,0732', mode: 'انتقائي' },
-  { range: '211 – 310 kWh', tariff: '1,1676', mode: 'انتقائي' },
-  { range: '311 – 510 kWh', tariff: '1,3817', mode: 'انتقائي' },
-  { range: '> 510 kWh', tariff: '1,5958', mode: 'انتقائي' },
+  { range: '<span dir="ltr">0 – 100 kWh</span>', tariff: '<span dir="ltr">0,9010</span>', mode: 'تصاعدي' },
+  { range: '<span dir="ltr">101 – 150 kWh</span>', tariff: '<span dir="ltr">1,0732</span>', mode: 'تصاعدي' },
+  { range: '<span dir="ltr">151 – 210 kWh</span>', tariff: '<span dir="ltr">1,0732</span>', mode: 'انتقائي' },
+  { range: '<span dir="ltr">211 – 310 kWh</span>', tariff: '<span dir="ltr">1,1676</span>', mode: 'انتقائي' },
+  { range: '<span dir="ltr">311 – 510 kWh</span>', tariff: '<span dir="ltr">1,3817</span>', mode: 'انتقائي' },
+  { range: '<span dir="ltr">> 510 kWh</span>', tariff: '<span dir="ltr">1,5958</span>', mode: 'انتقائي' },
 ];
 ---
 
@@ -137,8 +137,8 @@ const tariffs = [
               {pvout.map((p) => (
                 <tr>
                   <td>{p.city}</td>
-                  <td>{p.value}</td>
-                  <td>{p.tilt}</td>
+                  <td set:html={p.value} />
+                  <td set:html={p.tilt} />
                 </tr>
               ))}
             </tbody>
@@ -147,9 +147,9 @@ const tariffs = [
         <p><em>المصادر: PVGIS (المفوضية الأوروبية)؛ Global Solar Atlas (البنك الدولي / Solargis)؛ MDPI Resources 2024 13(10):140 (مراكش، PR 78%). هوامش المدن الأخرى تقديرات مُعايَرة على نقطة مراكش — لا تُغني عن محاكاة PVGIS على عنوانكم الدقيق.</em></p>
         <blockquote><p><strong>ملاحظة انسجام:</strong> صفحتنا <a href={L('/ensoleillement-maroc')}>المردودية حسب المدينة</a>، المُستخرَجة مباشرة من استخلاصنا الخاص PVGIS TMY 2005–2020 (خسائر نظام 14%، PR 86%)، تُعطي قيماً أقل لنفس هذه المدن (مراكش ~1 650، الدار البيضاء ~1 650، أكادير ~1 686 kWh/kWc/سنة) — فارق حوالي 8% مقارنة بنقطة مراكش أعلاه. هذا ليس تناقضاً: دراسة MDPI تقيس GTI (الإشعاع في مستوى الألواح) وتطبّق فرضيتها الخاصة لنسبة الأداء (PR 78%)، مختلفة عن استخلاصنا الخاص PVGIS (PR 86%) — منهجيتان مختلفتان مُطبَّقتان على نفس المورد الشمسي لا تُعطيان نفس PVOUT النهائي. لتقدير يعكس بالضبط منهجيتنا في التحجيم، انظروا <a href={L('/ensoleillement-maroc')}>المردودية حسب المدينة</a> و<a href={L('/methodologie-estimation')}>منهجيتنا في التقدير</a>.</p></blockquote>
         <p>
-          <strong>المرجع الوطني:</strong> يقع نطاق PVOUT بالمغرب بين <strong> 1 600 و1 900
-          kWh/kWc/سنة</strong> (GSA). يستعمل المُركِّبون غالباً القاعدة التجريبية <strong> 1 500–1 800
-          kWh/kWc/سنة حسب الجهة</strong>.
+          <strong>المرجع الوطني:</strong> يقع نطاق PVOUT بالمغرب بين <strong><span dir="ltr">1 600</span> و<span dir="ltr">1 900
+          kWh/kWc</span>/سنة</strong> (GSA). يستعمل المُركِّبون غالباً القاعدة التجريبية <strong><span dir="ltr">1 500–1 800
+          kWh/kWc</span>/سنة حسب الجهة</strong>.
         </p>
 
         <h2>لماذا الطاقة الشمسية مربحة بالمغرب؟ آلية تعريفات ONEE</h2>
@@ -167,8 +167,8 @@ const tariffs = [
             <tbody>
               {tariffs.map((t) => (
                 <tr>
-                  <td>{t.range}</td>
-                  <td>{t.tariff}</td>
+                  <td set:html={t.range} />
+                  <td set:html={t.tariff} />
                   <td>{t.mode}</td>
                 </tr>
               ))}
@@ -206,14 +206,14 @@ const tariffs = [
         <p><strong>ما يؤثّر على الاسترجاع:</strong></p>
         <ul>
           <li><strong>شطركم التعريفي الحالي</strong>: كلّما كنتم في شطر أعلى (≥ 1,3817 درهم/kWh)، كلّما كانت التوفيرات السنوية أكبر والاسترجاع أسرع.</li>
-          <li><strong>كلفة التركيبة</strong>: هامش استرشادي 2026 من ~10 000 إلى 14 000 درهم/kWc (عتاد + تركيب، مصادر مُركِّبين — غير مُدقَّق). انظروا <a href={L('/blog/prix-installation-solaire-maroc-2026')}>دليلنا للأثمنة</a>.</li>
-          <li><strong>معدّل استهلاككم الذاتي</strong>: ينظّم <a href={L('/loi-82-21')}>القانون 82-21</a> الإنتاج الذاتي للتوتر المنخفض، لكن لم تُنشَر بعد أي تعريفة إعادة شراء سكنية (توتر منخفض) — نشرت ANRE تعريفة إعادة شراء الفائض (0,18–0,21 درهم/kWh) فقط للتوتر المتوسط/العالي/العالي جداً، وليس للبيوت أقل من 11 kW. وما دامت هذه التعريفة غير موجودة رسمياً، لا نحتسب <strong>أي عائد من التصدير</strong>: القيمة الفعلية للطاقة الشمسية في الاستهلاك الفوري، لا في إعادة بيع فائض غير مُقيَّم (انظروا <a href={L('/methodologie-estimation')}>منهجيتنا في التقدير</a>).</li>
+          <li><strong>كلفة التركيبة</strong>: هامش استرشادي 2026 من <span dir="ltr">~10 000 إلى 14 000</span> درهم/kWc (عتاد + تركيب، مصادر مُركِّبين — غير مُدقَّق). انظروا <a href={L('/blog/prix-installation-solaire-maroc-2026')}>دليلنا للأثمنة</a>.</li>
+          <li><strong>معدّل استهلاككم الذاتي</strong>: ينظّم <a href={L('/loi-82-21')}>القانون 82-21</a> الإنتاج الذاتي للتوتر المنخفض، لكن لم تُنشَر بعد أي تعريفة إعادة شراء سكنية (توتر منخفض) — نشرت ANRE تعريفة إعادة شراء الفائض (<span dir="ltr">0,18–0,21</span> درهم/kWh) فقط للتوتر المتوسط/العالي/العالي جداً، وليس للبيوت أقل من <span dir="ltr">11 kW</span>. وما دامت هذه التعريفة غير موجودة رسمياً، لا نحتسب <strong>أي عائد من التصدير</strong>: القيمة الفعلية للطاقة الشمسية في الاستهلاك الفوري، لا في إعادة بيع فائض غير مُقيَّم (انظروا <a href={L('/methodologie-estimation')}>منهجيتنا في التقدير</a>).</li>
           <li><strong>البطارية</strong>: إضافة تخزين تُطيل الاسترجاع بـ<strong>1 إلى 3 سنوات</strong> لكنها تزيد معدّل الاستهلاك الذاتي المسائي.</li>
         </ul>
         <p>
           <strong>على مدى 30 سنة</strong>، بمجرّد استرجاع كلفة التركيبة، يصبح كل kWh مُنتَج شبه مجاني.
-          تفقد الألواح الحديثة حوالي 0,4%/سنة من الأداء وكان معيار السوق القديم (خلايا PERC) يضمنها بـ ~80–85% من السعة الأولية عند
-          25 سنة — ألواح N-type التي نُركّبها تتجاوز ذلك: ضمان أداء <strong>خطي على مدى 30 سنة</strong>، بـ <strong>≥ 87,4% من القدرة الأولية عند 30 سنة</strong> (أي ≥ 89,4% عند 25 سنة).
+          تفقد الألواح الحديثة حوالي <span dir="ltr">0,4%</span>/سنة من الأداء وكان معيار السوق القديم (خلايا PERC) يضمنها بـ <span dir="ltr">~80–85%</span> من السعة الأولية عند
+          25 سنة — ألواح N-type التي نُركّبها تتجاوز ذلك: ضمان أداء <strong>خطي على مدى 30 سنة</strong>، بـ <strong><span dir="ltr">≥ 87,4%</span> من القدرة الأولية عند 30 سنة</strong> (أي <span dir="ltr">≥ 89,4%</span> عند 25 سنة).
         </p>
 
         <h2>حاكوا تركيبتكم</h2>
