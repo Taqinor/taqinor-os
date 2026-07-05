@@ -3788,3 +3788,134 @@ def _creer_avoir_location(ordre, facture_id, montant_abs, *, user=None):
         )
 
     return create_with_reference(Avoir, 'AV', ordre.company, _create)
+
+
+# ---------------------------------------------------------------------------
+# ZCTR2 — Clôture automatique des contrats impayés (délai de clôture auto)
+# ---------------------------------------------------------------------------
+
+
+def _jours_impaye_contrat(contrat):
+    """Jours d'impayé du contrat — ZCTR2. Renvoie le MAX des jours d'impayé
+    (``ventes.selectors.jours_impaye_facture``, jamais un import direct de
+    ``ventes.models``) sur toutes les ``LigneEcheance`` facturées du contrat
+    (``facture_id`` non NULL), ``0`` si aucune échéance facturée ou si
+    aucune n'est en retard (rien à clôturer)."""
+    from apps.ventes.selectors import jours_impaye_facture
+
+    from .models import LigneEcheance
+
+    facture_ids = list(
+        LigneEcheance.objects
+        .filter(echeancier__contrat=contrat, facture_id__isnull=False)
+        .exclude(statut=LigneEcheance.Statut.ANNULEE)
+        .values_list('facture_id', flat=True)
+    )
+    max_jours = 0
+    for facture_id in facture_ids:
+        jours = jours_impaye_facture(facture_id, contrat.company)
+        if jours > max_jours:
+            max_jours = jours
+    return max_jours
+
+
+@transaction.atomic
+def suspendre_contrat_si_impaye(contrat, *, today=None, auteur=None):
+    """Suspend un ``Contrat`` ACTIF dont une facture de cycle est impayée
+    depuis plus que ``PlanRecurrent.delai_cloture_auto_jours`` — ZCTR2.
+
+    RÈGLES :
+    - Un contrat SANS ``plan_recurrent`` rattaché, ou dont
+      ``delai_cloture_auto_jours`` est NULL, n'est JAMAIS clôturé
+      automatiquement (comportement neutre par défaut).
+    - Seul un contrat ``actif`` peut être suspendu ici (transition GARDÉE par
+      la machine d'états, ``actif → suspendu``) ; tout autre statut est un
+      no-op silencieux (renvoie ``None``).
+    - IDEMPOTENT : un contrat déjà ``suspendu`` n'est jamais re-suspendu — on
+      court-circuite dès l'entrée (pas de double notification/journal).
+    - Ne résilie JAMAIS le contrat (uniquement ``suspendu``) — la clôture
+      définitive reste un acte manuel distinct (``resilier_contrat``).
+
+    Renvoie le ``Contrat`` si suspendu, ``None`` sinon (rien à faire).
+    """
+    from .machine_etats import transition_permise
+    from .models import Contrat
+
+    if today is None:
+        today = timezone.localdate()
+
+    if contrat.statut != Contrat.Statut.ACTIF:
+        return None
+
+    plan = contrat.plan_recurrent
+    delai = plan.delai_cloture_auto_jours if plan else None
+    if not delai:
+        return None
+
+    jours_impaye = _jours_impaye_contrat(contrat)
+    if jours_impaye <= delai:
+        return None
+
+    if not transition_permise(contrat.statut, Contrat.Statut.SUSPENDU):
+        return None  # pragma: no cover - défensif (garde machine d'états)
+
+    ancien = contrat.statut
+    changer_statut(contrat, Contrat.Statut.SUSPENDU)
+
+    journaliser_transition(
+        contrat, field='statut', old_value=ancien,
+        new_value=contrat.statut,
+        message=(
+            f'Suspension automatique — facture impayée depuis '
+            f'{jours_impaye} jour(s) (délai {delai} j).'),
+        auteur=auteur)
+
+    try:
+        from apps.notifications.services import notify_many, resolve_recipients
+
+        recipients = resolve_recipients(contrat.company, 'digest')
+        notify_many(
+            recipients, 'digest', 'Contrat suspendu — impayé',
+            body=(
+                f'Le contrat #{contrat.id} a été suspendu automatiquement '
+                f'(facture impayée depuis {jours_impaye} jour(s)).'),
+            link='/contrats', company=contrat.company)
+    except Exception:  # pragma: no cover - défensif (best-effort)
+        pass
+
+    return contrat
+
+
+def cloturer_contrats_impayes(company, *, today=None, auteur=None):
+    """Parcourt les ``Contrat`` ACTIFS d'une société et suspend ceux dont une
+    facture de cycle est impayée depuis plus que le délai de leur
+    ``PlanRecurrent`` — ZCTR2 (commande ``cloturer_contrats_impayes``).
+
+    Multi-tenant : ``company`` doit être fournie par l'appelant (la commande
+    boucle par société, jamais de lecture de company du corps de requête).
+    Une exception sur UN contrat n'empêche jamais le traitement des suivants.
+
+    Renvoie la liste des ``Contrat`` effectivement suspendus.
+    """
+    from .models import Contrat
+
+    if today is None:
+        today = timezone.localdate()
+
+    suspendus = []
+    contrats = Contrat.objects.filter(
+        company=company, statut=Contrat.Statut.ACTIF,
+        plan_recurrent__isnull=False,
+        plan_recurrent__delai_cloture_auto_jours__isnull=False,
+    ).select_related('plan_recurrent')
+
+    for contrat in contrats:
+        try:
+            resultat = suspendre_contrat_si_impaye(
+                contrat, today=today, auteur=auteur)
+        except Exception:  # pragma: no cover - défensif (best-effort par contrat)
+            continue
+        if resultat is not None:
+            suspendus.append(resultat)
+
+    return suspendus

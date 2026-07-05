@@ -555,3 +555,24 @@ def etat_recouvrement_client(company, client_id):
         'encours_echu': encours_echu,
         'a_jour': False,
     }
+
+
+def jours_impaye_facture(facture_id, company):
+    """ZCTR2 — Nombre de jours DEPUIS lesquels une facture est impayée.
+
+    Point d'entrée cross-app en LECTURE SEULE pour ``apps.contrats``
+    (clôture automatique des contrats impayés) — jamais un import direct de
+    ``apps.ventes.models``. Renvoie ``0`` si la facture est introuvable (id
+    NULL/inconnu, autre société), déjà payée, annulée, ou sans
+    ``date_echeance`` (rien à mesurer) : dans tous ces cas rien n'est dû,
+    cohérent avec ``Facture.jours_retard``. Sinon renvoie le nombre de jours
+    entiers écoulés depuis ``date_echeance`` (0 si l'échéance n'est pas
+    encore dépassée)."""
+    from .models import Facture
+    if not facture_id:
+        return 0
+    facture = Facture.objects.filter(
+        pk=facture_id, company=company).first()
+    if facture is None:
+        return 0
+    return facture.jours_retard
