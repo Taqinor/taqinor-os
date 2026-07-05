@@ -72,7 +72,7 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
             return [HasPermissionOrLegacy('stock_modifier')()]
         elif self.action in WRITE_ACTIONS + [
             'envoyer', 'recevoir', 'annuler', 'confirmer', 'reviser',
-            'facturer', 'dupliquer',
+            'facturer', 'dupliquer', 'fusionner',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'en_retard':
@@ -619,6 +619,26 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
         clone = dupliquer_bcf(request.user.company, request.user, bc)
         return Response(
             self.get_serializer(clone).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'], url_path='fusionner')
+    def fusionner(self, request):
+        """ZPUR6 — fusionne plusieurs BCF BROUILLON du MÊME fournisseur (et
+        de cette société) en un BCF cible unique aux quantités cumulées par
+        produit ; les BCF sources passent en `annule` avec une note de
+        fusion. Corps : ``{"bons_commande": [id, id, ...]}`` (≥ 2 requis)."""
+        from ..services import fusionner_bcf
+        ids = request.data.get('bons_commande') or []
+        if not isinstance(ids, list):
+            return Response(
+                {'detail': 'bons_commande doit être une liste d\'ids.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            cible = fusionner_bcf(request.user.company, request.user, ids)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(cible).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'], url_path='facturer')
     def facturer(self, request, pk=None):

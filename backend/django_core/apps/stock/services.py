@@ -2475,6 +2475,104 @@ def dupliquer_bcf(company, user, bon_commande):
     return created['bon']
 
 
+# ── ZPUR6 — Regroupement de plusieurs BCF en un seul par fournisseur ────────
+# Odoo permet de fusionner des RFQ du même fournisseur. Plusieurs suggestions
+# de réappro (FG54) ou besoins chantier créent aujourd'hui des BCF séparés
+# vers le même fournisseur — l'acheteur finit par multiplier les commandes.
+
+def fusionner_bcf(company, user, bon_commande_ids):
+    """ZPUR6 — fusionne PLUSIEURS BCF BROUILLON du MÊME fournisseur (et de la
+    MÊME société) en un BCF cible neuf : lignes additionnées par produit
+    (quantités cumulées, prix d'achat du plus récent BCF source portant ce
+    produit), puis passe les BCF sources en `annule` avec une note de fusion
+    horodatée. Lève ValueError si : moins de 2 BCF, fournisseurs différents,
+    ou un des BCF n'est pas BROUILLON (ou n'appartient pas à la société)."""
+    from django.db import transaction
+    from django.utils import timezone
+    from apps.ventes.utils.references import create_with_reference
+    from .models import BonCommandeFournisseur, LigneBonCommandeFournisseur
+
+    bcs = list(
+        BonCommandeFournisseur.objects.filter(
+            company=company, id__in=bon_commande_ids)
+        .select_related('fournisseur').prefetch_related('lignes__produit'))
+    if len(bcs) != len(set(bon_commande_ids)):
+        raise ValueError('Un ou plusieurs bons de commande sont introuvables.')
+    if len(bcs) < 2:
+        raise ValueError('Au moins deux bons de commande sont requis.')
+    fournisseur_ids = {bc.fournisseur_id for bc in bcs}
+    if len(fournisseur_ids) > 1:
+        raise ValueError(
+            'Tous les bons de commande doivent être du même fournisseur.')
+    non_brouillon = [
+        bc for bc in bcs
+        if bc.statut != BonCommandeFournisseur.Statut.BROUILLON]
+    if non_brouillon:
+        raise ValueError(
+            'Seuls des bons de commande en BROUILLON peuvent être fusionnés '
+            f'({non_brouillon[0].reference} ne l\'est pas).')
+
+    # Cumule les quantités par produit ; garde le prix du BCF le plus RÉCENT
+    # (date_creation) portant ce produit. Une ligne sans produit (libre/
+    # service) est reprise telle quelle (pas de fusion par désignation —
+    # évite de coller à tort deux lignes libres différentes).
+    bcs_par_date = sorted(bcs, key=lambda bc: bc.date_creation)
+    lignes_par_produit = {}
+    lignes_libres = []
+    for bc in bcs_par_date:
+        for ligne in bc.lignes.all():
+            if ligne.produit_id is None:
+                lignes_libres.append(ligne)
+                continue
+            existante = lignes_par_produit.get(ligne.produit_id)
+            if existante is None:
+                lignes_par_produit[ligne.produit_id] = {
+                    'produit': ligne.produit,
+                    'quantite': ligne.quantite,
+                    'prix_achat_unitaire': ligne.prix_achat_unitaire,
+                }
+            else:
+                existante['quantite'] += ligne.quantite
+                # bcs_par_date est croissant : le dernier vu = le plus récent.
+                existante['prix_achat_unitaire'] = ligne.prix_achat_unitaire
+
+    fournisseur = bcs[0].fournisseur
+    created = {}
+    references_sources = ', '.join(bc.reference for bc in bcs)
+
+    def _save(ref):
+        cible = BonCommandeFournisseur.objects.create(
+            company=company, reference=ref, fournisseur=fournisseur,
+            statut=BonCommandeFournisseur.Statut.BROUILLON,
+            note=f'Fusion de {references_sources}', created_by=user)
+        for data in lignes_par_produit.values():
+            LigneBonCommandeFournisseur.objects.create(
+                bon_commande=cible, produit=data['produit'],
+                quantite=data['quantite'],
+                prix_achat_unitaire=data['prix_achat_unitaire'])
+        for ligne in lignes_libres:
+            LigneBonCommandeFournisseur.objects.create(
+                bon_commande=cible, produit=None,
+                designation=ligne.designation, sans_stock=True,
+                quantite=ligne.quantite,
+                prix_achat_unitaire=ligne.prix_achat_unitaire)
+        created['bon'] = cible
+        return cible
+
+    with transaction.atomic():
+        create_with_reference(BonCommandeFournisseur, 'BCF', company, _save)
+        cible = created['bon']
+        today = timezone.now().date()
+        for bc in bcs:
+            bc.statut = BonCommandeFournisseur.Statut.ANNULE
+            note_fusion = (
+                f'[{today.isoformat()}] Fusionné dans {cible.reference}.')
+            bc.note = (f'{bc.note}\n{note_fusion}'.strip()
+                       if bc.note else note_fusion)
+            bc.save(update_fields=['statut', 'note'])
+    return cible
+
+
 # ── DC38 — Landed cost (FG316) replié dans le coût moyen pondéré ─────────────
 # Le coût débarqué d'un dossier d'import (fret/douane/TVA import/transit) est
 # écrit dans le champ EXISTANT `LigneBonCommandeFournisseur.frais_annexes` —
