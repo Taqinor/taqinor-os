@@ -25,6 +25,7 @@ from .views import (
     PeriodeComptableViewSet, PilotageViewSet, PlafondNoteFraisViewSet,
     PlanComptableViewSet,
     ProvisionCreanceViewSet, ProvisionViewSet,
+    RapportNoteFraisViewSet,
     RapprochementBancaireViewSet, RapprochementViewSet,
     RelanceDevisAbandonneViewSet,
     RetenueGarantieViewSet, RetenueSourceViewSet, SequenceRelanceViewSet,
@@ -78,6 +79,7 @@ router.register(r'effets', EffetViewSet)
 router.register(r'bordereaux', BordereauRemiseViewSet)
 router.register(r'payment-runs', PaymentRunViewSet)
 router.register(r'notes-frais', NoteFraisViewSet)
+router.register(r'rapports-notes-frais', RapportNoteFraisViewSet)
 router.register(r'plafonds-notes-frais', PlafondNoteFraisViewSet)
 router.register(r'baremes-indemnite', BaremeIndemniteViewSet)
 router.register(r'indemnites-chantier', IndemniteChantierViewSet)

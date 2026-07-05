@@ -2489,6 +2489,18 @@ class NoteFrais(models.Model):
     facture_refacturation_id = models.PositiveIntegerField(
         null=True, blank=True,
         verbose_name='Facture de refacturation (id ventes, string-ref)')
+    # ── ZACC6 — Regroupement en UN rapport de frais (Odoo « Expense Report ») ──
+    # Nullable : une note SANS rapport garde son cycle actuel intact
+    # (soumettre/valider/rembourser individuellement). Une note RATTACHÉE à un
+    # rapport est postée/remboursée EN BLOC par le rapport (services du
+    # rapport), jamais individuellement une fois rattachée.
+    rapport = models.ForeignKey(
+        'RapportNoteFrais',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='notes',
+        verbose_name='Rapport de frais',
+    )
 
     class Meta:
         verbose_name = 'Note de frais'
@@ -2521,6 +2533,131 @@ class NoteFrais(models.Model):
     def est_terminee(self):
         """Vrai si la note est dans un état terminal (remboursée ou rejetée)."""
         return self.statut in (self.Statut.REMBOURSEE, self.Statut.REJETEE)
+
+
+# ── ZACC6 — Rapport de notes de frais (regroupement multi-lignes) ─────────
+
+class RapportNoteFrais(models.Model):
+    """Regroupe N ``NoteFrais`` d'un même employé en UN rapport soumis en
+    bloc (ZACC6 — Odoo « Expense Report »).
+
+    L'employé coche plusieurs notes en brouillon/rejetées et les regroupe en
+    UN rapport ; la validation du RAPPORT poste UNE écriture agrégée (Σ des
+    charges par compte / crédit 4432) et le remboursement solde en UN
+    paiement — jamais deux fois. Les ``NoteFrais`` isolées (``rapport=None``)
+    gardent leur cycle individuel actuel, intact. ``company`` posée côté
+    serveur, jamais lue du corps de requête. Strictement additif.
+    """
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        SOUMIS = 'soumis', 'Soumis'
+        VALIDE = 'valide', 'Validé'
+        REMBOURSE = 'rembourse', 'Remboursé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rapports_notes_frais',
+        verbose_name='Société',
+    )
+    # Référence interne par société (RNF-YYYYMM-NNNN), posée côté serveur via
+    # apps.ventes.utils.references (highest-used+1, jamais count()+1).
+    reference = models.CharField(
+        max_length=50, blank=True, default='', verbose_name='Référence')
+    employe = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name='rapports_notes_frais',
+        verbose_name='Employé',
+    )
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.BROUILLON, verbose_name='Statut')
+    valide_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rapports_notes_frais_valides',
+        verbose_name='Validé par',
+    )
+    date_validation = models.DateTimeField(
+        null=True, blank=True, verbose_name='Validé le')
+    ecriture_charge = models.ForeignKey(
+        EcritureComptable,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rapports_notes_frais_charge',
+        verbose_name='Écriture de charge agrégée',
+    )
+    mode_remboursement = models.CharField(
+        max_length=10, choices=NoteFrais.ModeRemboursement.choices,
+        default=NoteFrais.ModeRemboursement.VIREMENT,
+        verbose_name='Mode de remboursement')
+    compte_tresorerie = models.ForeignKey(
+        CompteTresorerie,
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name='rapports_notes_frais',
+        verbose_name='Compte de trésorerie (payeur)',
+    )
+    date_remboursement = models.DateField(
+        null=True, blank=True, verbose_name='Date de remboursement')
+    rembourse_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rapports_notes_frais_rembourses',
+        verbose_name='Remboursé par',
+    )
+    ecriture_remboursement = models.ForeignKey(
+        EcritureComptable,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rapports_notes_frais_remboursement',
+        verbose_name='Écriture de remboursement',
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rapports_notes_frais_crees',
+        verbose_name='Créé par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Rapport de notes de frais'
+        verbose_name_plural = 'Rapports de notes de frais'
+        ordering = ['-date_creation', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                condition=models.Q(reference__gt=''),
+                name='uniq_rapport_note_frais_reference',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.reference or "RNF"} — {self.employe_id}'
+
+    @property
+    def montant_total(self):
+        """Σ des montants des notes rattachées (toutes, quel que soit leur
+        statut individuel — un affichage informatif, jamais utilisé pour le
+        posting qui relit toujours les notes SOUMISES au moment de valider)."""
+        return self.notes.aggregate(
+            total=models.Sum('montant'))['total'] or Decimal('0')
+
+    @property
+    def est_remboursable(self):
+        return self.statut == self.Statut.VALIDE
+
+    @property
+    def est_terminal(self):
+        return self.statut == self.Statut.REMBOURSE
 
 
 # ── XACC27 — Plafonds de notes de frais par catégorie ──────────────────────

@@ -52,7 +52,7 @@ from .models import (
     LigneRegleImputation, DemandeApprobationRib,
     Immobilisation, IndemniteChantier, Journal, LigneEcriture,
     LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, NoteFrais,
-    OuverturePartage, PlafondNoteFrais,
+    OuverturePartage, PlafondNoteFrais, RapportNoteFrais,
     PaymentRun, PaymentRunLine, PeriodeComptable, PlanAmortissement,
     PlanComptable, PointageReleve, Provision, ProvisionCreance, Rapprochement,
     RapprochementBancaire, RelanceDevisAbandonne, RetenueSource,
@@ -4271,6 +4271,229 @@ def rembourser_note_frais(note, *, compte_tresorerie, date_remboursement=None,
         'statut', 'compte_tresorerie', 'mode_remboursement',
         'date_remboursement', 'rembourse_par', 'ecriture_remboursement'])
     return note
+
+
+# ── ZACC6 — Rapport de notes de frais (regroupement multi-lignes) ─────────
+
+def creer_rapport_note_frais(company, *, employe, note_frais_ids,
+                             libelle='', user=None):
+    """Crée un ``RapportNoteFrais`` (ZACC6) en BROUILLON et y RATTACHE les
+    notes désignées (``rapport = ce rapport``).
+
+    Les notes doivent appartenir à la MÊME société + au MÊME employé, être en
+    ``brouillon`` ou ``rejetee`` (pas déjà engagées dans un cycle de
+    validation), et ne pas déjà porter un rapport. Référence ``RNF-`` posée
+    côté serveur (fabrique gap-free race-safe). Renvoie le rapport.
+    """
+    notes = list(NoteFrais.objects.filter(
+        company=company, employe=employe, id__in=note_frais_ids))
+    if len(notes) != len(set(note_frais_ids or [])):
+        raise ValidationError(
+            "Certaines notes de frais sont introuvables pour cet employé.")
+    for note in notes:
+        if note.rapport_id is not None:
+            raise ValidationError(
+                f"La note {note.reference or note.id} appartient déjà à un "
+                "rapport.")
+        if note.statut not in (NoteFrais.Statut.BROUILLON,
+                               NoteFrais.Statut.REJETEE):
+            raise ValidationError(
+                f"La note {note.reference or note.id} n'est pas en "
+                "brouillon/rejetée : impossible de la regrouper.")
+    rapport = RapportNoteFrais(
+        company=company, employe=employe, libelle=libelle or '',
+        created_by=user)
+
+    def _save(reference):
+        rapport.reference = reference
+        rapport.save()
+        NoteFrais.objects.filter(
+            id__in=[n.id for n in notes]).update(rapport=rapport)
+        return rapport
+
+    from apps.ventes.utils.references import create_with_reference
+    return create_with_reference(RapportNoteFrais, 'RNF', company, _save)
+
+
+def soumettre_rapport_note_frais(rapport):
+    """Soumet le RAPPORT (brouillon → soumis) — ZACC6. Soumet aussi chaque
+    note rattachée encore en brouillon/rejetée (jamais un double-cycle)."""
+    if rapport.statut not in (RapportNoteFrais.Statut.BROUILLON,):
+        raise ValidationError(
+            "Seul un rapport en brouillon peut être soumis.")
+    for note in rapport.notes.all():
+        if note.statut in (NoteFrais.Statut.BROUILLON,
+                           NoteFrais.Statut.REJETEE):
+            soumettre_note_frais(note)
+    rapport.statut = RapportNoteFrais.Statut.SOUMIS
+    rapport.save(update_fields=['statut'])
+    return rapport
+
+
+@transaction.atomic
+def valider_rapport_note_frais(rapport, *, user=None):
+    """Valide le RAPPORT et poste UNE écriture AGRÉGÉE (ZACC6).
+
+    Σ des charges (groupées PAR COMPTE de charge) au débit / crédit UNIQUE
+    4432 personnel-créditeur pour le total — une seule écriture équilibrée au
+    lieu d'une par note. RESPECTE le verrou de période sur la date du jour.
+    Idempotent : un rapport déjà validé renvoie son rapport inchangé. Chaque
+    note rattachée passe individuellement à ``VALIDEE`` (même effet qu'un
+    ``valider_note_frais`` un par un) MAIS sans poster sa propre écriture —
+    seule l'écriture agrégée du rapport est créée.
+    """
+    if rapport.statut == RapportNoteFrais.Statut.VALIDE:
+        return rapport
+    if rapport.statut != RapportNoteFrais.Statut.SOUMIS:
+        raise ValidationError("Seul un rapport soumis peut être validé.")
+    company = rapport.company
+    notes = list(rapport.notes.filter(statut=NoteFrais.Statut.SOUMISE))
+    if not notes:
+        raise ValidationError(
+            "Aucune note soumise dans ce rapport : rien à valider.")
+    date_ref = max(note.date_frais for note in notes)
+    if PeriodeComptable.date_verrouillee(company.id, date_ref):
+        raise ValidationError(
+            "Période comptable clôturée : impossible de valider le rapport "
+            f"de notes de frais au {date_ref}.")
+    total = sum((Decimal(n.montant or 0) for n in notes), Decimal('0'))
+    if total <= 0:
+        raise ValidationError(
+            "Impossible de valider un rapport de montant total nul.")
+    # Regroupe Σ par compte de charge (celui de chaque note, ou le défaut) :
+    # {compte_id: (compte, montant_cumule)}.
+    par_compte = {}
+    for note in notes:
+        charge = note.compte_charge or _assurer_compte(
+            company, _COMPTE_NOTE_FRAIS_DEFAUT)
+        _, cumul = par_compte.get(charge.id, (charge, Decimal('0')))
+        par_compte[charge.id] = (charge, cumul + Decimal(note.montant or 0))
+    personnel = _assurer_compte(company, _COMPTE_PERSONNEL_CREDITEUR)
+    journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+    if journal is None:
+        seed_journaux(company)
+        journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+    libelle = f"Rapport de notes de frais {rapport.reference}"
+    lignes = [
+        {'compte': charge, 'debit': montant, 'credit': Decimal('0'),
+         'libelle': libelle}
+        for (charge, montant) in par_compte.values()
+    ]
+    lignes.append({
+        'compte': personnel, 'debit': Decimal('0'), 'credit': total,
+        'libelle': libelle, 'tiers_type': 'employe',
+        'tiers_id': rapport.employe_id,
+    })
+    ecriture = creer_ecriture(
+        company, journal, date_ref, libelle, lignes,
+        reference=rapport.reference or f'RNF-{rapport.id}',
+        source_type='rapport_note_frais', source_id=rapport.id,
+        created_by=user, statut=EcritureComptable.Statut.VALIDEE,
+    )
+    for note in notes:
+        charge = note.compte_charge or _assurer_compte(
+            company, _COMPTE_NOTE_FRAIS_DEFAUT)
+        note.statut = NoteFrais.Statut.VALIDEE
+        note.compte_charge = charge
+        note.valide_par = user
+        note.date_validation = timezone.now()
+        note.ecriture_charge = ecriture
+        note.save(update_fields=[
+            'statut', 'compte_charge', 'valide_par', 'date_validation',
+            'ecriture_charge'])
+    rapport.statut = RapportNoteFrais.Statut.VALIDE
+    rapport.valide_par = user
+    rapport.date_validation = timezone.now()
+    rapport.ecriture_charge = ecriture
+    rapport.save(update_fields=[
+        'statut', 'valide_par', 'date_validation', 'ecriture_charge'])
+    return rapport
+
+
+@transaction.atomic
+def rembourser_rapport_note_frais(rapport, *, compte_tresorerie,
+                                  date_remboursement=None,
+                                  mode_remboursement=None, user=None):
+    """Rembourse le RAPPORT validé en UN SEUL paiement agrégé (ZACC6).
+
+    Débit 4432 personnel-créditeur (Σ du rapport) / crédit du compte de
+    trésorerie payeur. RESPECTE le verrou de période. Idempotent : un rapport
+    déjà remboursé renvoie son rapport inchangé, jamais re-postable. Chaque
+    note rattachée passe à ``REMBOURSEE``.
+    """
+    if rapport.statut == RapportNoteFrais.Statut.REMBOURSE:
+        return rapport
+    if rapport.statut != RapportNoteFrais.Statut.VALIDE:
+        raise ValidationError("Seul un rapport validé peut être remboursé.")
+    company = rapport.company
+    if compte_tresorerie is None:
+        raise ValidationError(
+            "Un compte de trésorerie payeur est requis pour le "
+            "remboursement.")
+    if compte_tresorerie.company_id != company.id:
+        raise ValidationError("Compte de trésorerie inconnu.")
+    notes = list(rapport.notes.filter(statut=NoteFrais.Statut.VALIDEE))
+    if not notes:
+        raise ValidationError(
+            "Aucune note validée dans ce rapport : rien à rembourser.")
+    total = sum((Decimal(n.montant or 0) for n in notes), Decimal('0'))
+    date_rbt = date_remboursement or timezone.localdate()
+    if PeriodeComptable.date_verrouillee(company.id, date_rbt):
+        raise ValidationError(
+            "Période comptable clôturée : impossible de rembourser le "
+            f"rapport de notes de frais à la date du {date_rbt}.")
+    personnel = _assurer_compte(company, _COMPTE_PERSONNEL_CREDITEUR)
+    compte_treso = compte_tresorerie.compte_comptable
+    if compte_tresorerie.type_compte == CompteTresorerie.Type.CAISSE:
+        journal = _journal(company, Journal.Type.CAISSE)
+    else:
+        journal = _journal(company, Journal.Type.BANQUE)
+    if journal is None:
+        seed_journaux(company)
+        journal = _journal(
+            company,
+            Journal.Type.CAISSE
+            if compte_tresorerie.type_compte == CompteTresorerie.Type.CAISSE
+            else Journal.Type.BANQUE)
+    libelle = (f"Remboursement rapport de notes de frais {rapport.reference}"
+               f" — {rapport.employe_id}")
+    lignes = [
+        {'compte': personnel, 'debit': total, 'credit': Decimal('0'),
+         'libelle': libelle, 'tiers_type': 'employe',
+         'tiers_id': rapport.employe_id},
+        {'compte': compte_treso, 'debit': Decimal('0'), 'credit': total,
+         'libelle': libelle},
+    ]
+    ecriture = creer_ecriture(
+        company, journal, date_rbt, libelle, lignes,
+        reference=rapport.reference or f'RNF-{rapport.id}',
+        source_type='rapport_note_frais_remboursement', source_id=rapport.id,
+        created_by=user, statut=EcritureComptable.Statut.VALIDEE,
+    )
+    for note in notes:
+        note.statut = NoteFrais.Statut.REMBOURSEE
+        note.compte_tresorerie = compte_tresorerie
+        note.mode_remboursement = (
+            mode_remboursement or note.mode_remboursement
+            or NoteFrais.ModeRemboursement.VIREMENT)
+        note.date_remboursement = date_rbt
+        note.rembourse_par = user
+        note.ecriture_remboursement = ecriture
+        note.save(update_fields=[
+            'statut', 'compte_tresorerie', 'mode_remboursement',
+            'date_remboursement', 'rembourse_par', 'ecriture_remboursement'])
+    rapport.statut = RapportNoteFrais.Statut.REMBOURSE
+    rapport.compte_tresorerie = compte_tresorerie
+    rapport.mode_remboursement = (
+        mode_remboursement or rapport.mode_remboursement
+        or RapportNoteFrais.ModeRemboursement.VIREMENT)
+    rapport.date_remboursement = date_rbt
+    rapport.rembourse_par = user
+    rapport.ecriture_remboursement = ecriture
+    rapport.save(update_fields=[
+        'statut', 'compte_tresorerie', 'mode_remboursement',
+        'date_remboursement', 'rembourse_par', 'ecriture_remboursement'])
+    return rapport
 
 
 # ── FG136 — Indemnités kilométriques & per-diem chantier ───────────────────

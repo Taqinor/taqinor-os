@@ -41,7 +41,7 @@ from .models import (
     LignePrevisionnelTresorerie, LigneReleve, MessageWhatsAppEntrant,
     ModeleDevis, MouvementCaisse, NoteFrais, OuverturePartage,
     PaymentRun, PeriodeComptable, PlafondNoteFrais, PlanComptable, Provision,
-    ProvisionCreance,
+    ProvisionCreance, RapportNoteFrais,
     Rapprochement, RapprochementBancaire, RelanceDevisAbandonne,
     RetenueGarantie, RetenueSource, SequenceRelance, SessionGuidedSelling,
     TimbreFiscal, TravauxEnCours, VirementInterne,
@@ -87,6 +87,7 @@ from .serializers import (
     PeriodeComptableSerializer, PlanAmortissementSerializer,
     PlafondNoteFraisSerializer,
     PlanComptableSerializer, ProvisionSerializer, ProvisionCreanceSerializer,
+    RapportNoteFraisSerializer,
     RapprochementBancaireSerializer, RapprochementSerializer,
     RelanceDevisAbandonneSerializer,
     RetenueGarantieSerializer, RetenueSourceSerializer,
@@ -2760,6 +2761,115 @@ class NoteFraisViewSet(_ComptaBaseViewSet):
                 'analyse-notes-frais.xlsx', headers, rows,
                 sheet_title='Analyse frais')
         return Response(rapport)
+
+
+class RapportNoteFraisViewSet(_ComptaBaseViewSet):
+    """Rapport regroupant N notes de frais d'un employé (ZACC6).
+
+    ``creer`` (POST) crée le rapport ET rattache les notes désignées en un
+    appel ; ``soumettre``/``valider``/``rembourser`` font suivre le cycle du
+    RAPPORT (une seule écriture agrégée à la validation, un seul paiement au
+    remboursement). Les notes ISOLÉES (sans rapport) gardent leur cycle
+    individuel intact via ``NoteFraisViewSet``. Société scopée, posée côté
+    serveur ; Admin/Responsable uniquement.
+    """
+    queryset = RapportNoteFrais.objects.select_related(
+        'employe', 'compte_tresorerie', 'ecriture_charge',
+        'ecriture_remboursement').prefetch_related('notes').all()
+    serializer_class = RapportNoteFraisSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'libelle']
+    ordering_fields = ['date_creation', 'statut', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        """Crée le rapport ET rattache les notes désignées en un appel.
+
+        Corps : ``{employe, libelle?, note_frais_ids: [...]}``. Les notes
+        doivent appartenir au même employé/société, être en brouillon/
+        rejetées et ne pas déjà porter un rapport.
+        """
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        vd = serializer.validated_data
+        note_frais_ids = request.data.get('note_frais_ids') or []
+        try:
+            rapport = services.creer_rapport_note_frais(
+                request.user.company, employe=vd['employe'],
+                note_frais_ids=note_frais_ids,
+                libelle=vd.get('libelle', '') or '', user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(rapport).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def soumettre(self, request, pk=None):
+        """Soumet le rapport (brouillon → soumis), soumet les notes rattachées
+        encore en brouillon/rejetées."""
+        rapport = self.get_object()  # scopée société par TenantMixin.
+        try:
+            rapport = services.soumettre_rapport_note_frais(rapport)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(rapport).data)
+
+    @action(detail=True, methods=['post'])
+    def valider(self, request, pk=None):
+        """Valide le rapport et poste UNE écriture AGRÉGÉE (Σ des charges par
+        compte / crédit 4432 unique). Idempotent."""
+        rapport = self.get_object()  # scopée société par TenantMixin.
+        try:
+            rapport = services.valider_rapport_note_frais(
+                rapport, user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(rapport).data)
+
+    @action(detail=True, methods=['post'])
+    def rembourser(self, request, pk=None):
+        """Rembourse le rapport validé en UN SEUL paiement agrégé.
+
+        Corps : ``{compte_tresorerie, date_remboursement?,
+        mode_remboursement?}``. Refusé en période close. Idempotent : un
+        rapport déjà remboursé n'est jamais re-postable.
+        """
+        rapport = self.get_object()  # scopée société par TenantMixin.
+        treso = CompteTresorerie.objects.filter(
+            company=request.user.company,
+            id=request.data.get('compte_tresorerie')).first()
+        if treso is None:
+            return Response(
+                {'detail': 'Compte de trésorerie inconnu.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            rapport = services.rembourser_rapport_note_frais(
+                rapport, compte_tresorerie=treso,
+                date_remboursement=request.data.get('date_remboursement')
+                or None,
+                mode_remboursement=request.data.get('mode_remboursement')
+                or None,
+                user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(rapport).data)
 
 
 class PlafondNoteFraisViewSet(_ComptaBaseViewSet):
