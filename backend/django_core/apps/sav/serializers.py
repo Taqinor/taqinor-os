@@ -11,6 +11,7 @@ from .models import (
     EquipementDowntime, ReleveCompteurEquipement, ReponseType,
     CompatibilitePiece, PieceRetiree, PretEquipement, CategorieTicket,
     EquipeMaintenance, CategorieEquipement, TicketActiviteAFaire,
+    WorksheetMaintenanceModele, TicketWorksheet,
 )
 
 # Fenêtre « garantie expirant bientôt » (jours).
@@ -404,6 +405,8 @@ class SavSlaSettingsSerializer(serializers.ModelSerializer):
             'auto_cloture_jours', 'recidive_fenetre_jours',
             # YSERV5 — génération automatique planifiée des visites.
             'generation_auto_visites', 'visites_avance_jours',
+            # ZMFG6 — feuilles de maintenance (worksheets).
+            'worksheets_maintenance_actifs',
             'date_modification',
         ]
         read_only_fields = ['date_modification']
@@ -651,3 +654,36 @@ class CompatibilitePieceSerializer(serializers.ModelSerializer):
             'remplace_par_nom', 'date_creation',
         ]
         read_only_fields = ['id', 'company', 'date_creation']
+
+
+# ── ZMFG6 — Feuilles de maintenance (worksheets) ─────────────────────────────
+
+class WorksheetMaintenanceModeleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WorksheetMaintenanceModele
+        fields = [
+            'id', 'nom', 'type_ticket_applicable', 'champs', 'actif',
+            'date_creation',
+        ]
+        read_only_fields = ['id', 'company', 'date_creation']
+
+
+class TicketWorksheetSerializer(serializers.ModelSerializer):
+    modele_nom = serializers.CharField(
+        source='modele.nom', read_only=True, default=None)
+    champs_requis_manquants = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TicketWorksheet
+        fields = [
+            'id', 'ticket', 'modele', 'modele_nom', 'valeurs', 'complete',
+            'complete_par', 'complete_le', 'champs_requis_manquants',
+            'date_creation',
+        ]
+        read_only_fields = [
+            'id', 'company', 'complete', 'complete_par', 'complete_le',
+            'date_creation',
+        ]
+
+    def get_champs_requis_manquants(self, obj):
+        return obj.champs_requis_manquants()

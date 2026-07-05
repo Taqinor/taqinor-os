@@ -149,6 +149,33 @@
     {% endif %}
   </div>
 
+  {% if worksheet %}
+  <div class="section">
+    <div class="section-title">Feuille de maintenance — {{ worksheet.modele_nom }}{% if not worksheet.complete %} (en cours){% endif %}</div>
+    <table>
+      <thead>
+        <tr><th>Champ</th><th>Valeur</th></tr>
+      </thead>
+      <tbody>
+        {% for champ in worksheet.champs %}
+        <tr>
+          <td>{{ champ.libelle }}</td>
+          <td>
+            {%- if champ.type == 'case' -%}
+              {{ 'Oui' if champ.valeur else 'Non' }}
+            {%- elif champ.valeur is none or champ.valeur == '' -%}
+              —
+            {%- else -%}
+              {{ champ.valeur }}
+            {%- endif -%}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
   <div class="signature-section">
     <div class="signature-block">
       <div class="signature-label">Le technicien</div>

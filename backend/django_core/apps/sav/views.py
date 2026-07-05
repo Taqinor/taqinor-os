@@ -26,6 +26,7 @@ from .models import (
     ReleveCompteurEquipement, ReponseType, CompatibilitePiece, PieceRetiree,
     CategorieTicket, EquipeMaintenance, CategorieEquipement,
     TicketActiviteAFaire, TicketFollower,
+    WorksheetMaintenanceModele, TicketWorksheet,
 )
 from .services import add_months
 from .pdf import rapport_intervention_pdf
@@ -47,6 +48,7 @@ from .serializers import (
     EquipeMaintenanceSerializer,
     CategorieEquipementSerializer,
     TicketActiviteAFaireSerializer,
+    WorksheetMaintenanceModeleSerializer, TicketWorksheetSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -1616,6 +1618,67 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         item.save()
         return Response(TicketChecklistItemSerializer(item).data)
 
+    @action(detail=True, methods=['get', 'post', 'patch'],
+            url_path='worksheet',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def worksheet(self, request, pk=None):
+        """ZMFG6 — Feuille de maintenance (worksheet) remplie sur le ticket.
+
+        GET : renvoie la feuille existante (404 si aucune).
+        POST : crée la feuille depuis un modèle (body: {modele_id: N}) ;
+               idempotent (renvoie l'existante si déjà créée, jamais deux
+               feuilles sur le même ticket — OneToOne).
+        PATCH : met à jour les valeurs (body: {valeurs: {...}}) et/ou
+               marque complétée (body: {complete: true}) — refuse (400) si
+               un champ requis du modèle manque encore.
+        Gaté par ``SavSlaSettings.worksheets_maintenance_actifs`` (défaut
+        OFF) : 404 tant que la société n'a pas activé la fonctionnalité."""
+        ticket = self.get_object()
+        sla = SavSlaSettings.get(ticket.company)
+        if not sla.worksheets_maintenance_actifs:
+            return Response(
+                {'detail': 'Feuilles de maintenance non activées pour cette société.'},
+                status=404)
+
+        if request.method == 'GET':
+            worksheet = getattr(ticket, 'worksheet', None)
+            if worksheet is None:
+                return Response({'detail': 'Aucune feuille sur ce ticket.'}, status=404)
+            return Response(TicketWorksheetSerializer(worksheet).data)
+
+        if request.method == 'POST':
+            existing = getattr(ticket, 'worksheet', None)
+            if existing is not None:
+                return Response(TicketWorksheetSerializer(existing).data, status=200)
+            modele_id = request.data.get('modele_id')
+            if not modele_id:
+                return Response({'detail': 'modele_id requis.'}, status=400)
+            try:
+                modele = WorksheetMaintenanceModele.objects.get(
+                    pk=modele_id, company=ticket.company)
+            except WorksheetMaintenanceModele.DoesNotExist:
+                return Response({'detail': 'Modèle introuvable.'}, status=404)
+            worksheet = TicketWorksheet.objects.create(
+                company=ticket.company, ticket=ticket, modele=modele)
+            return Response(
+                TicketWorksheetSerializer(worksheet).data, status=201)
+
+        # PATCH — mise à jour des valeurs / complétion.
+        worksheet = getattr(ticket, 'worksheet', None)
+        if worksheet is None:
+            return Response({'detail': 'Aucune feuille sur ce ticket.'}, status=404)
+        if 'valeurs' in request.data:
+            valeurs = dict(worksheet.valeurs or {})
+            valeurs.update(request.data['valeurs'] or {})
+            worksheet.valeurs = valeurs
+            worksheet.save(update_fields=['valeurs'])
+        if request.data.get('complete'):
+            try:
+                worksheet.marquer_complete(request.user)
+            except ValueError as exc:
+                return Response({'detail': str(exc)}, status=400)
+        return Response(TicketWorksheetSerializer(worksheet).data)
+
     @action(detail=True, methods=['post'], url_path='attente-client',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def attente_client(self, request, pk=None):
@@ -2180,6 +2243,23 @@ class CategorieEquipementViewSet(TenantMixin, viewsets.ModelViewSet):
     écriture responsable/admin (édité dans Paramètres SAV)."""
     queryset = CategorieEquipement.objects.all()
     serializer_class = CategorieEquipementSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+
+# ── ZMFG6 — Feuilles de maintenance (worksheets) ──────────────────────────────
+
+class WorksheetMaintenanceModeleViewSet(TenantMixin, viewsets.ModelViewSet):
+    """ZMFG6 — CRUD modèle de feuille de maintenance, company-scopé (édité
+    dans Paramètres SAV). Lecture tout rôle, écriture responsable/admin."""
+    queryset = WorksheetMaintenanceModele.objects.all()
+    serializer_class = WorksheetMaintenanceModeleSerializer
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:

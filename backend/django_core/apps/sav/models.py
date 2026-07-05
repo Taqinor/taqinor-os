@@ -114,6 +114,16 @@ class SavSlaSettings(models.Model):
         related_name='sav_suit_tous_tickets',
         verbose_name='Suivre tous les tickets (utilisateurs)',
     )
+    # ── ZMFG6 — Feuilles de maintenance (worksheets) remplies par le
+    # technicien. OFF par défaut : comportement actuel inchangé (aucun
+    # ticket ne propose de feuille tant que la société ne l'active pas).
+    worksheets_maintenance_actifs = models.BooleanField(
+        default=False,
+        verbose_name='Feuilles de maintenance (worksheets) actives',
+        help_text='Active la feuille de maintenance remplie par le '
+                  'technicien sur les tickets (parité Odoo « Custom '
+                  'Maintenance Worksheets »).',
+    )
     date_modification = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -1875,3 +1885,103 @@ class CategorieTicket(models.Model):
 
     def __str__(self):
         return self.libelle
+
+
+# ── ZMFG6 — Feuilles de maintenance (worksheets) ─────────────────────────────
+
+class WorksheetMaintenanceModele(models.Model):
+    """ZMFG6 — Modèle de feuille de maintenance (parité Odoo « Custom
+    Maintenance Worksheets »), distinct de la checklist pass/fail (FG82) :
+    ici le technicien REMPLIT des champs typés (texte/nombre/case/mesure),
+    pas de simple coche.
+
+    ``champs`` est une liste JSON de définitions
+    ``[{"cle": "pression_bar", "libelle": "Pression (bar)", "type": "nombre",
+    "requis": true}, ...]`` — types acceptés : ``texte``/``nombre``/
+    ``case``/``mesure``. Gaté société par
+    ``SavSlaSettings.worksheets_maintenance_actifs`` (défaut OFF)."""
+
+    class TypeTicketApplicable(models.TextChoices):
+        PREVENTIF = 'preventif', 'Préventif'
+        CORRECTIF = 'correctif', 'Correctif'
+        TOUS = 'tous', 'Tous types'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='worksheet_maintenance_modeles')
+    nom = models.CharField(max_length=150)
+    type_ticket_applicable = models.CharField(
+        max_length=15, choices=TypeTicketApplicable.choices,
+        default=TypeTicketApplicable.TOUS)
+    champs = models.JSONField(
+        default=list, blank=True,
+        help_text='Liste de champs typés : '
+                  '[{"cle", "libelle", "type": texte|nombre|case|mesure, '
+                  '"requis"}].')
+    actif = models.BooleanField(default=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['nom']
+        verbose_name = 'Modèle de feuille de maintenance'
+        verbose_name_plural = 'Modèles de feuille de maintenance'
+
+    def __str__(self):
+        return self.nom
+
+
+class TicketWorksheet(models.Model):
+    """ZMFG6 — Feuille de maintenance remplie sur UN ticket, depuis un
+    ``WorksheetMaintenanceModele``. ``valeurs`` est un dict JSON
+    ``{cle: valeur}`` miroir des ``champs`` du modèle. ``complete`` passe à
+    ``True`` seulement quand tous les champs ``requis`` du modèle ont une
+    valeur non vide — imprimé dans le rapport de maintenance PDF (section
+    conditionnelle, `apps/sav/pdf.py`)."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ticket_worksheets')
+    ticket = models.OneToOneField(
+        Ticket, on_delete=models.CASCADE, related_name='worksheet')
+    modele = models.ForeignKey(
+        WorksheetMaintenanceModele, on_delete=models.PROTECT,
+        related_name='ticket_worksheets')
+    valeurs = models.JSONField(default=dict, blank=True)
+    complete = models.BooleanField(default=False)
+    complete_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+')
+    complete_le = models.DateTimeField(null=True, blank=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Feuille de maintenance (ticket)'
+        verbose_name_plural = 'Feuilles de maintenance (ticket)'
+
+    def __str__(self):
+        return f'Feuille {self.modele.nom} (ticket {self.ticket_id})'
+
+    def champs_requis_manquants(self):
+        """Liste des clés de champs REQUIS du modèle sans valeur (ou valeur
+        vide/None) dans ``valeurs`` — sert de garde à la complétion."""
+        manquants = []
+        for champ in (self.modele.champs or []):
+            if not champ.get('requis'):
+                continue
+            cle = champ.get('cle')
+            valeur = self.valeurs.get(cle) if cle else None
+            if valeur in (None, ''):
+                manquants.append(cle)
+        return manquants
+
+    def marquer_complete(self, user):
+        """Marque la feuille complétée si tous les champs requis sont
+        renseignés ; lève ``ValueError`` sinon (garde bloquante, ZMFG6)."""
+        manquants = self.champs_requis_manquants()
+        if manquants:
+            raise ValueError(
+                'Champs requis manquants : ' + ', '.join(manquants))
+        self.complete = True
+        self.complete_par = user
+        self.complete_le = timezone.now()
+        self.save(update_fields=['complete', 'complete_par', 'complete_le'])
