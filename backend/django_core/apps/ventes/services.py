@@ -3715,3 +3715,30 @@ def create_devis_upsell_from_intervention(*, intervention, user):
         'ZFSM5: devis upsell %s créé depuis intervention %s (company %s)',
         devis.reference, intervention.id, getattr(company, 'id', '?'))
     return devis
+
+
+def prix_applicable(*, produit, client=None, quantite=1):
+    """XSAL1 — Prix unitaire résolu pour un produit/client/quantité.
+
+    Ordre de résolution :
+      1. `client.liste_prix` (si assignée et active) → le prix de ligne fixe
+         (`LignePrixListe`) → sinon `produit.prix_vente`.
+      2. Sans liste (client=None, `liste_prix` vide, ou liste inactive) →
+         `produit.prix_vente` (comportement historique, octet-identique).
+
+    Ne renvoie et ne consulte JAMAIS `produit.prix_achat`. Renvoie un dict
+    `{"prix": Decimal, "source": "liste"|"standard", "liste_nom": str|None}`
+    pour que l'appelant (endpoint XSAL3) puisse afficher le badge « Tarif :
+    <nom de la liste> »."""
+    quantite = Decimal(str(quantite or 1))  # noqa: F841 - réservé XSAL2 (paliers)
+    prix_standard = produit.prix_vente
+
+    liste = getattr(client, 'liste_prix', None) if client is not None else None
+    if liste is None or not liste.est_active:
+        return {'prix': prix_standard, 'source': 'standard', 'liste_nom': None}
+
+    ligne = liste.lignes.filter(produit=produit).first()
+    if ligne is not None:
+        return {'prix': ligne.prix_unitaire, 'source': 'liste', 'liste_nom': liste.nom}
+
+    return {'prix': prix_standard, 'source': 'standard', 'liste_nom': None}

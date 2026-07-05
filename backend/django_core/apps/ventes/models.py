@@ -2686,3 +2686,64 @@ class TentativeDebitMandat(models.Model):
 
     def __str__(self):
         return f'{self.mandat_id} / {self.periode} — {self.statut}'
+
+
+class ListePrix(models.Model):
+    """XSAL1 — Liste de prix clients (détail / revendeur / export).
+
+    Un « prix négocié client » = une liste dédiée assignée à ce client via
+    ``crm.Client.liste_prix`` (string-FK additive). Le prix affiché reste
+    toujours HT/TTC selon le mode du générateur — cette liste ne porte que le
+    prix unitaire choisi par le vendeur, jamais ``prix_achat``."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='listes_prix')
+    nom = models.CharField(max_length=150)
+    devise = models.CharField(max_length=10, default='MAD')
+    date_debut = models.DateField(null=True, blank=True)
+    date_fin = models.DateField(null=True, blank=True)
+    archived = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Liste de prix'
+        verbose_name_plural = 'Listes de prix'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return self.nom
+
+    @property
+    def est_active(self):
+        """Vrai si la liste n'est pas archivée et est dans sa fenêtre de
+        validité (bornes optionnelles, ouvertes si non renseignées)."""
+        if self.archived:
+            return False
+        today = timezone.now().date()
+        if self.date_debut and today < self.date_debut:
+            return False
+        if self.date_fin and today > self.date_fin:
+            return False
+        return True
+
+
+class LignePrixListe(models.Model):
+    """XSAL1 — Prix unitaire d'un produit dans une liste de prix.
+
+    ``produit`` est une string-FK vers ``stock.Produit`` (M3 : aucune
+    liaison directe entre modèles de domaine). Unique (liste, produit) :
+    un produit n'a qu'un seul prix par liste."""
+    liste = models.ForeignKey(
+        ListePrix, on_delete=models.CASCADE, related_name='lignes')
+    produit = models.ForeignKey(
+        'stock.Produit', on_delete=models.CASCADE,
+        related_name='lignes_liste_prix')
+    prix_unitaire = models.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        verbose_name = 'Ligne de liste de prix'
+        verbose_name_plural = 'Lignes de liste de prix'
+        unique_together = [('liste', 'produit')]
+
+    def __str__(self):
+        return f'{self.liste_id} / produit {self.produit_id}'

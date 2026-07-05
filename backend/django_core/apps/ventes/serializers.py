@@ -3,7 +3,7 @@ from .models import (
     Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
     Avoir, LigneAvoir, DevisActivity, DevisPreset, RoofLayout,
     FicheTechnique, RemiseEncaissement, LigneRemiseEncaissement,
-    MandatPaiement,
+    MandatPaiement, ListePrix, LignePrixListe,
 )
 
 
@@ -802,3 +802,29 @@ class MandatPaiementSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'id', 'token', 'company', 'created_at', 'revoked_at',
         ]
+
+
+class LignePrixListeSerializer(serializers.ModelSerializer):
+    """XSAL1 — jamais `prix_achat` : seul `prix_unitaire` (prix négocié) est
+    exposé, `produit` reste une simple string-FK id."""
+    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
+
+    class Meta:
+        model = LignePrixListe
+        fields = ['id', 'liste', 'produit', 'produit_nom', 'prix_unitaire']
+        read_only_fields = ['id']
+
+
+class ListePrixSerializer(serializers.ModelSerializer):
+    """XSAL1 — liste de prix clients. `company` toujours forcée côté serveur
+    (jamais acceptée du body — voir ListePrixViewSet.perform_create)."""
+    lignes = LignePrixListeSerializer(many=True, read_only=True)
+    est_active = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = ListePrix
+        fields = [
+            'id', 'company', 'nom', 'devise', 'date_debut', 'date_fin',
+            'archived', 'created_at', 'lignes', 'est_active',
+        ]
+        read_only_fields = ['id', 'company', 'created_at']

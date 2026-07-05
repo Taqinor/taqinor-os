@@ -30,6 +30,7 @@ from .views import (
     AttestationREViewSet,  # FG287
     RemiseEncaissementViewSet,  # XFSM19
     MandatPaiementViewSet,  # XCTR22
+    ListePrixViewSet,  # XSAL1
 )
 from .recouvrement import (
     FollowupLevelViewSet,
@@ -120,6 +121,7 @@ router.register(r'attestations-re', AttestationREViewSet,
 router.register(r'remises-encaissement', RemiseEncaissementViewSet,
                 basename='remise-encaissement')
 # XCTR22 — mandats de paiement récurrent (tokenisation carte).
+router.register(r'listes-prix', ListePrixViewSet, basename='liste-prix')  # XSAL1
 router.register(r'mandats-paiement', MandatPaiementViewSet,
                 basename='mandat-paiement')
 
