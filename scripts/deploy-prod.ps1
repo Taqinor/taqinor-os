@@ -58,17 +58,11 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
 # nginx/Caddy). check_db()/check_services() degradent proprement (jamais
 # d'exception) ; on n'echoue le deploiement QUE si l'agregat global est "down".
 set +e
-HEALTH_JSON=$(docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T django_core python <<'PYEOF'
-import django, os
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'erp_agentique.settings.prod')
-django.setup()
-from core import health
-services = health.check_services()
-status = health.overall_status(services)
-print(status)
-PYEOF
-)
-HEALTH_STATUS=$(echo "$HEALTH_JSON" | tail -n 1 | tr -d '\r')
+# NB: python -c (une seule ligne), PAS un heredoc dans $(...) — un heredoc
+# imbrique dans une substitution de commande casse quand tout le script est
+# passe en UN SEUL argument SSH (« syntax error near unexpected token ( »
+# -> faux rollback). Le one-liner est robuste (aucun delimiteur de heredoc).
+HEALTH_STATUS=$(docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T django_core python -c "import django, os; os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'erp_agentique.settings.prod'); django.setup(); from core import health; print(health.overall_status(health.check_services()))" 2>/dev/null | tail -n 1 | tr -d '\r')
 set -e
 echo "Healthcheck post-deploiement: $HEALTH_STATUS"
 
