@@ -59,6 +59,11 @@ class FournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
             # à tout rôle porteur du droit de lecture stock (get_permissions
             # prime sur le permission_classes de l'@action, d'où ce cas explicite).
             return [HasPermissionOrLegacy('stock_voir')()]
+        elif self.action in ('portail_tokens', 'revoquer_portail_token'):
+            # XPUR22 — gestion des jetons portail fournisseur : écriture Stock,
+            # ouverte à tout rôle porteur du droit `stock_modifier` (get_permissions
+            # prime sur le permission_classes de l'@action, d'où ce cas explicite).
+            return [HasPermissionOrLegacy('stock_modifier')()]
         elif self.action in WRITE_ACTIONS:
             return [HasPermissionOrLegacy('stock_modifier')()]
         elif self.action == 'destroy':
