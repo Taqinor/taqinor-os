@@ -103,9 +103,14 @@ class StatsRecrutementTests(TestCase):
             company=self.co, ouverture=self.ouv1, nom='Rapide',
             etape=Candidature.Etape.EMBAUCHE, source='LinkedIn',
             date_candidature=date(2026, 1, 1))
-        c.date_modification = c.date_modification.replace(
-            year=2026, month=1, day=11)
-        c.save(update_fields=['date_modification'])
+        # ``date_modification`` est ``auto_now`` : passer par ``.save()``
+        # réécrase toujours la valeur avec l'horodatage réel. Pour fixer une
+        # date de test, il faut contourner via ``update()`` (bypass
+        # ``auto_now``), même technique que ``test_xrh24_retention_candidatures``.
+        Candidature.objects.filter(pk=c.pk).update(
+            date_modification=c.date_modification.replace(
+                year=2026, month=1, day=11))
+        c.refresh_from_db()
 
         data = selectors.stats_recrutement(self.co)
         self.assertEqual(data['delai_embauche_moyen_jours'], 10.0)
