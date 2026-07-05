@@ -49,7 +49,7 @@ const warranties = [
 const engagements = [
   {
     title: 'We watch your curve, not just ours',
-    body: 'Every installation reports to Deye Cloud: real-time production, history, automatic alerts. You receive your personal access via the mobile app — you see exactly what we see, day after day.',
+    body: 'Every installation has real-time production monitoring: history, automatic alerts. You receive your personal access via the mobile app — you see exactly what we see, day after day.',
   },
   {
     title: 'We spot the anomaly, not you',
@@ -57,7 +57,7 @@ const engagements = [
   },
   {
     title: 'The file stays in your hands',
-    body: 'At handover you leave with everything: single-line diagrams, cable sizing, the list of protections, the commissioning procedure and access to Deye Cloud monitoring. Enough to call in any technician, the day you want to.',
+    body: 'At handover you leave with everything: single-line diagrams, cable sizing, the list of protections, the commissioning procedure and access to real-time production monitoring. Enough to call in any technician, the day you want to.',
   },
 ];
 
@@ -109,7 +109,7 @@ const productionGuarantee = {
 
 <Layout
   title="Our warranties — what is covered, and for how many years | Taqinor"
-  description="A Taqinor installation commits over the long term: 30 years linear performance and 12 years product on panels (≥ 87.4 % power at 30 years), 10 years inverters and batteries, 20 years structure, 2 years installation. And monitoring that spots the anomaly before you, on Deye Cloud."
+  description="A Taqinor installation commits over the long term: 30 years linear performance and 12 years product on panels (≥ 87.4 % power at 30 years), 10 years inverters and batteries, 20 years structure, 2 years installation. And real-time production monitoring that spots the anomaly before you."
   ogSlug="garanties"
 >
   <div class="v2">
@@ -191,7 +191,7 @@ const productionGuarantee = {
           <p class="tech-label text-azur-600">A concrete scenario</p>
           <h3 class="display mt-2 text-lg">If performance falls under the linear guaranteed floor</h3>
           <p class="mt-3 text-sm leading-relaxed text-encre-soft">
-            Your panels are measured continuously on Deye Cloud. If a check finds, within the 30-year
+            Your panels are measured continuously via real-time production monitoring. If a check finds, within the 30-year
             period, that delivered power has dropped below the linear guaranteed floor (≥ 87.4 % of initial
             power at 30 years) — outside the exclusions above — the manufacturer warranty applies: replacement or
             compensation for the panel concerned, per the manufacturer's terms. This is exactly why
@@ -211,13 +211,13 @@ const productionGuarantee = {
           {productionGuarantee.floorPct ? (
             <p class="mt-3 text-sm leading-relaxed text-encre-soft">
               We commit to a floor of <strong>{productionGuarantee.floorPct} %</strong> of estimated
-              annual production (PVGIS method), measured on your Deye Cloud monitoring.
+              annual production (PVGIS method), measured on your real-time production monitoring.
               {productionGuarantee.remedy ? ` ${productionGuarantee.remedy}` : ''}
             </p>
           ) : (
             <>
               <p class="mt-3 text-sm leading-relaxed text-encre-soft">
-                Every Taqinor installation reports its real production, continuously, on Deye Cloud —
+                Every Taqinor installation has real-time production monitoring, continuously —
                 it's precisely this measured data, across a fleet now tracked for over a year (see our
                 {' '}<a href={L('/realisations')} class="font-semibold text-azur-600 underline decoration-azur-600/40 underline-offset-2 hover:decoration-azur-600">projects</a>),
                 that would make a numeric commitment credible: an annual production floor (as a % of the

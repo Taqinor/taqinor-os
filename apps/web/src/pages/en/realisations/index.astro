@@ -31,8 +31,8 @@ import { NAP } from '../../../lib/nap';
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
 
-const total = REALISATIONS.reduce((s, r) => s + r.kwcNum, 0);
-const totalLabel = total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' kWc';
+// WC5 (2026-07-05) — the aggregate "kWc installed" figure (sum across all
+// installations) is removed site-wide; only per-installation power remains.
 const villesCount = new Set(REALISATIONS.map((r) => r.ville)).size;
 
 // alt localisé (repli FR si absent dans la map de l'étude).
@@ -44,7 +44,7 @@ const itemListJsonLd = {
   '@type': 'ItemList',
   name: 'Taqinor solar installations — viewable, tracked production',
   description:
-    'Solar installations actually fitted by Taqinor, viewable on request, tracked in production on Deye Cloud.',
+    'Solar installations actually fitted by Taqinor, viewable on request, with real-time production monitoring.',
   itemListElement: REALISATIONS.map((r, i) => ({
     '@type': 'ListItem',
     position: i + 1,
@@ -57,7 +57,7 @@ const itemListJsonLd = {
 
 <Layout
   title="Our solar projects in Morocco — tracked installations | Taqinor"
-  description="The solar installations actually fitted by Taqinor: villas in Casablanca, El Jadida and Nouaceur, power, the equipment on the roof and production tracked continuously on Deye Cloud. Detailed case studies."
+  description="The solar installations actually fitted by Taqinor: villas in Casablanca, El Jadida and Nouaceur, power, the equipment on the roof and real-time production monitoring. Detailed case studies."
   ogSlug="accueil"
 >
   <script type="application/ld+json" set:html={JSON.stringify(itemListJsonLd)} />
@@ -77,10 +77,6 @@ const itemListJsonLd = {
           Nothing added, nothing erased.
         </p>
         <dl class="cine-in mt-8 flex flex-wrap gap-x-10 gap-y-4 [animation-delay:360ms]">
-          <div>
-            <dt class="tech-label text-lune-faint">Installed power</dt>
-            <dd class="fig lum text-3xl">{totalLabel}</dd>
-          </div>
           <div>
             <dt class="tech-label text-lune-faint">Cities</dt>
             <dd class="fig lum text-3xl">{villesCount}</dd>
@@ -104,8 +100,8 @@ const itemListJsonLd = {
           installed power and the equipment fitted are published as they are.
         </p>
         <p class="mt-4 text-lune-soft">
-          Every installation is tracked on Deye Cloud, with client access — production reads there
-          continuously, straight from the meter.
+          Every installation has real-time production monitoring, with client access — production
+          reads there continuously, straight from the meter.
         </p>
       </div>
     </section>

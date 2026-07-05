@@ -44,8 +44,8 @@ const waZeroForm = whatsappLink(WHATSAPP_LEADS, zeroFormWhatsappText());
 // unique de vérité, apps/web/src/lib/realisations.ts), jamais recopiés en dur.
 // Si REALISATIONS change, ces valeurs suivent automatiquement — plus aucun
 // risque de chiffre qui devient silencieusement faux.
-const totalKwc = REALISATIONS.reduce((sum, r) => sum + r.kwcNum, 0);
-const totalKwcLabel = totalKwc.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' kWc';
+// WC5 (2026-07-05) — le total kWc installé (« 43,48 kWc ») n'est plus affiché :
+// totalKwc/totalKwcLabel retirés avec le monument.
 // La plus grande installation résidentielle publiée (réf. 468, El Jadida) —
 // protagoniste du héros et de l'aside final. Dérivée par tri sur kwcNum,
 // jamais une référence recopiée à la main.
@@ -66,7 +66,7 @@ const casablancaSouthOptimalYield = YIELD_TABLE.casablanca.grid['0']['29'];
 const heroFigure = MEASURED_FLEET_LIFETIME_MWH_FR; // « 6,56 »
 const heroTitleSuffix = ' MWh déjà produits et mesurés sur nos installations.';
 const heroSub =
-  'Un cumul réel, relevé en continu sur Deye Cloud — pas une projection commerciale. Votre étude commence par un diagnostic de 60 secondes.';
+  'Un cumul réel, relevé en continu, en temps réel — pas une projection commerciale. Votre étude commence par un diagnostic de 60 secondes.';
 
 // W267 — Sous-ligne monétaire du héros. AUCUN chiffre inventé : la
 // consommation réelle du foyer réf. 468 n'est publiée nulle part sur le site,
@@ -116,7 +116,7 @@ const galleryRaw = [
   { name: 'reflet-468', alt: 'Le soleil se reflète sur la rangée de panneaux pendant la pose, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: true, type: '24 × Canadian Solar 710 Wc · Deye 15 kW', slug: 'el-jadida-17-kwc' },
   { name: 'equipe-trois', alt: 'Équipe Taqinor devant la longue rangée de panneaux en fin de chantier, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: false, type: 'Fin de chantier · équipe Taqinor', slug: 'el-jadida-17-kwc' },
   { name: 'hero-skyline', alt: 'Rangée de panneaux solaires devant la skyline de Casablanca et un minaret, lumière dorée', widths: [2000, 1280, 768, 480], ratio: 16 / 9, showProd: true, type: '16 × Canadian Solar 710 Wc · Deye 10 kW', slug: 'casablanca-11-kwc' },
-  { name: 'portrait-400', alt: "L'ingénieur devant le champ de panneaux, skyline de Casablanca", widths: [1600, 1024, 640], ratio: 4 / 3, showProd: false, type: 'Suivi en production sur Deye Cloud', slug: 'casablanca-11-kwc' },
+  { name: 'portrait-400', alt: "L'ingénieur devant le champ de panneaux, skyline de Casablanca", widths: [1600, 1024, 640], ratio: 4 / 3, showProd: false, type: 'Suivi de production en temps réel', slug: 'casablanca-11-kwc' },
   { name: 'champ-villa', alt: 'Champ de huit panneaux sur toit plat de villa, El Jadida', widths: [1600, 1024, 640], ratio: 3 / 2, showProd: true, type: '8 × Canadian Solar 710 Wc · Deye 5 kW', slug: 'el-jadida-6-kwc' },
   { name: 'pose-134', alt: "L'équipe incline un panneau pendant la pose, Casablanca", widths: [1600, 1024, 640], ratio: 4 / 3, showProd: true, type: 'Pose en cours · 8 × Canadian Solar 710 Wc', slug: 'casablanca-6-kwc' },
   { name: 'equipe-gilet-taqinor', alt: "Installateur en gilet Taqinor posant les rails d'une structure, Nouaceur", widths: [1600, 1024, 640], ratio: 1, showProd: false, type: 'Pose des rails · 6 × JA Solar', slug: 'nouaceur-4-kwc' },
@@ -145,7 +145,7 @@ const solutions = [
   { href: '/professionnel', tag: 'Industriels · hôtels · cliniques', title: 'Solaire professionnel', body: 'Réduction du poste électricité, moyenne tension, conformité loi 82-21.' },
   { href: '/pompage-solaire', tag: 'Agriculture & irrigation', title: 'Pompage solaire', body: 'Pompage au fil du soleil, souvent sans batteries, dimensionné au besoin réel.' },
   { href: '/batteries-stockage', tag: 'Autoconsommation', title: 'Batteries & stockage', body: 'Stockage LFP pour le nocturne ou la continuité de service — quand l’étude le justifie.' },
-  { href: '/maintenance-monitoring', tag: 'Après la pose', title: 'Maintenance & monitoring', body: 'Supervision Deye Cloud avec accès client, SAV proactif, dossier technique.' },
+  { href: '/maintenance-monitoring', tag: 'Après la pose', title: 'Maintenance & monitoring', body: 'Supervision en temps réel avec accès client, SAV proactif, dossier technique.' },
   { href: '/regularization-article-33', tag: 'Mise en conformité', title: 'Régularisation Loi 82-21', body: 'Régularisation des installations existantes via l’Article 33.' },
 ];
 
@@ -162,7 +162,7 @@ const journey = [
   { n: '3', title: 'Visite technique & étude gratuite', body: 'Lecture de la toiture sur site, étude complète et devis à 0 MAD.' },
   { n: '4', title: 'Pose', body: 'Matériel tier-1 installé avec son dossier technique complet.' },
   { n: '5', title: 'Mise en service', body: 'Raccordement, contrôles, et dossier loi 82-21 mené à terme.' },
-  { n: '6', title: 'Monitoring Deye Cloud', body: 'Production relevée en continu, accès client inclus : vous lisez vos kWh à la source.' },
+  { n: '6', title: 'Suivi en temps réel', body: 'Production relevée en continu, accès client inclus : vous lisez vos kWh à la source.' },
 ];
 
 // W252 — « Comment ça marche » : bande 4 étapes sous le héros, le device
@@ -177,7 +177,7 @@ const howItWorks = [
   { n: '1', title: 'Estimation instantanée', body: 'Votre facture donne une fourchette kWc en 60 secondes, sans engagement.' },
   { n: '2', title: 'Étude personnalisée signée', body: 'Visite technique, dimensionnement sur votre toiture réelle, validé et signé avant tout devis.' },
   { n: '3', title: 'Devis + signature en ligne', body: 'Le chiffrage détaillé se signe électroniquement, où que vous soyez.' },
-  { n: '4', title: 'Installation & SAV', body: 'Pose par notre équipe, mise en service, puis monitoring Deye Cloud et SAV proactif.' },
+  { n: '4', title: 'Installation & SAV', body: 'Pose par notre équipe, mise en service, puis suivi de production en temps réel et SAV proactif.' },
 ];
 
 // W58 — Iconographie sobre des cartes « Nos solutions » : un trait SVG par
@@ -207,7 +207,7 @@ const chantiersVisitablesCount = new Set(REALISATIONS.map((r) => r.ville)).size;
 const trust = [
   { fig: String(chantiersVisitablesCount), tally: false, label: 'Chantiers visitables', body: 'Installations réelles à voir sur demande — Casablanca, El Jadida, Nouaceur' },
   { fig: 'Loi 82-21', tally: false, label: 'Conformité incluse', body: 'Déclaration préparée et déposée pour vous par Taqinor' },
-  { fig: 'Deye Cloud', tally: false, label: 'Production mesurée', body: 'Monitoring sur chaque installation, accès client inclus' },
+  { fig: 'Temps réel', tally: false, label: 'Production suivie', body: 'Suivi de production en temps réel sur chaque installation, accès client inclus' },
 ];
 
 // W265 — L'histoire de l'investissement sur 30 ans : SEULE rupture tonale
@@ -217,41 +217,18 @@ const trust = [
 const investment = [
   { v: '3–7 ans', label: 'Retour sur investissement typique' },
   { v: '30 ans', label: 'Garantie de performance des panneaux' },
-  { v: '60–90 %', label: 'De la facture couverte' },
+  { v: '50–100 %', label: 'De la facture couverte — selon batteries et usage jour/nuit' },
   { v: '0 MAD', label: 'L’étude et le diagnostic' },
 ];
 
-// W276 — « Notre moteur, conçu au Maroc » : l'histoire vraie d'ingénierie
-// interne, racontée avec les TROIS outils réellement construits et déjà en
-// production sur le site (aucun logiciel tiers, aucun claim inventé) :
-//   1. L'estimateur piloté par la facture (moteur d'estimation maison —
-//      position solaire calculée maison, espacement inter-rangées dérivé
-//      d'une règle solstice d'hiver).
-//   2. Le moteur de toiture 3D (/devis/mon-toit — traçage de toiture,
-//      orientation/inclinaison réelles, pas un abaque générique).
-//   3. Le moteur de devis premium (apps/ventes/quote_engine, PDF signé en
-//      ligne, cf. CLAUDE.md règle #4) qui rend le devis final.
-// Aucun chiffre fabriqué ici : le lien mène directement vers le parcours réel
-// (/devis/mon-toit) pour que le visiteur le VÉRIFIE lui-même en 60 secondes.
-const engineeringPillars = [
-  {
-    title: 'L’estimateur piloté par la facture',
-    body: 'Votre facture d’électricité suffit : notre moteur calcule la position du soleil et l’espacement des rangées de panneaux selon une règle d’ombrage au solstice d’hiver — pas un abaque générique importé.',
-  },
-  {
-    title: 'Le moteur de toiture 3D',
-    body: 'Tracez votre toit, orientez-le, et le dimensionnement s’ajuste à la géométrie réelle de votre maison — la même technologie que vous testez dans le diagnostic ci-dessus.',
-  },
-  {
-    title: 'Le moteur de devis',
-    body: 'Le chiffrage qui en sort se signe électroniquement, en ligne — aucune ressaisie manuelle entre l’étude et le document que vous signez.',
-  },
-];
+// WC8 (2026-07-05) — `engineeringPillars` retiré avec la section « Un
+// installateur qui construit aussi ses outils » (le fondateur ne positionne
+// pas Taqinor comme constructeur de ses propres logiciels).
 ---
 
 <Layout
   title="Taqinor — Installations solaires au Maroc, conformes loi 82-21"
-  description="Installations solaires pour villas, industries et hôtels au Maroc : dimensionnées sur votre facture, déclarées loi 82-21, et suivies en production réelle sur Deye Cloud."
+  description="Installations solaires pour villas, industries et hôtels au Maroc : dimensionnées sur votre facture, déclarées loi 82-21, avec suivi de production en temps réel et accès client."
   ogSlug="accueil"
   preloadHeroPoster
 >
@@ -311,13 +288,15 @@ const engineeringPillars = [
           data-hero-tally : hook JS ci-dessous, distinct de data-tally.
           W378 — .v2-hero-title porte aussi le chuchotement font-stretch
           112→118 % (reveal + survol), pur CSS, voir global.css. */}
-      <div class="mx-auto w-full max-w-6xl px-4 pb-24 pt-32 sm:pb-32">
+      {/* WC7 (2026-07-05) — `relative z-10` : le contenu (dont le chiffre) reste
+          AU-DESSUS de la vidéo/affiche (couche `-z-10`) même après le fondu de
+          la vidéo → le chiffre ne « disparaît » plus quand la vidéo démarre. */}
+      <div class="relative z-10 mx-auto w-full max-w-6xl px-4 pb-24 pt-32 sm:pb-32">
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">L'étude d'abord, le chantier ensuite</p>
-        {/* WB1 (2026-07-04) — Titre héros STATIQUE : plus de count-up ni de
-            `.cine-in` sur l'élément LCP → il est peint immédiatement, aucun
-            flash « apparaît puis disparaît ». Le chiffre porte dir="ltr" pour
-            rester correct en arabe. */}
-        <h1 id="hero-title" class="display v2-hero-title hero-title-sweep mt-6 max-w-[15ch]">
+        {/* WB1/WC7 — Titre héros STATIQUE (aucun count-up/`.cine-in` sur le LCP)
+            + text-shadow défensif : le chiffre blanc reste lisible même
+            au-dessus d'une image de vidéo très lumineuse (plein soleil). */}
+        <h1 id="hero-title" class="display v2-hero-title hero-title-sweep mt-6 max-w-[15ch] [text-shadow:0_2px_28px_rgb(7_11_29/0.72)]">
           <span class="font-variant-numeric tabular-nums" dir="ltr">{heroFigure}</span>{heroTitleSuffix}
         </h1>
         <p class="v2-lead cine-in cine-in-2 mt-4 max-w-xl text-white/85">{heroSub}</p>
@@ -373,7 +352,7 @@ const engineeringPillars = [
       <p class="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center text-sm font-semibold text-lune sm:text-base">
         <span class="text-brass-300">30 ans de performance garantie</span>
         <span class="text-lune-faint" aria-hidden="true">·</span>
-        <span>production suivie, pas promise — monitoring Deye Cloud sur chaque installation</span>
+        <span>production suivie, pas promise — suivi en temps réel sur chaque installation</span>
       </p>
     </section>
 
@@ -561,18 +540,12 @@ const engineeringPillars = [
             main sur votre facture réelle. Le chiffre décide du matériel — jamais l'inverse.
           </p>
         </div>
-        {/* W375 — UN moment typographique monumental : le total kWc installé
-            (déjà publié, dérivé de REALISATIONS — voir plus haut) devient un
-            pull-figure isolé, clamp ~8–10 rem, axe de largeur Archivo à son
-            maximum (.v2-fig-monument, v2.css). Le corps environnant reste
-            calme (tech-label + une ligne) pour que le contraste d'échelle
-            porte seul la déclaration. Largeur réservée par le clamp lui-même
-            (pas de count-up ici) → zéro CLS vérifié : cette figure ne change
-            jamais après le premier rendu. */}
-        <div class="v2-rise mt-14 border-t-2 border-brass-400/60 pt-6">
-          <p class="fig v2-fig-monument lum whitespace-nowrap" data-tally>{totalKwcLabel}</p>
-          <p class="tech-label mt-3 text-lune-faint">Installés à ce jour — Casablanca, El Jadida, Nouaceur</p>
-        </div>
+        {/* WC5 (2026-07-05) — Le « moment monumental » 43,48 kWc installés a été
+            RETIRÉ : chiffre de capacité que le fondateur veut hors du site, et
+            qui débordait l'écran (`whitespace-nowrap`, ~500 px) sur mobile en
+            élargissant la page. La preuve vit désormais dans le chiffre de
+            PRODUCTION mesurée du héros (44,19 MWh) et la bande de trois
+            métriques ci-dessous. */}
         {/* W268 — bande monumentale pleine largeur, chiffres .fig-lg + filet
             laiton fin par colonne (même dispositif que la bande « Comment ça
             marche » et GarantiesTeaser) : les TROIS statistiques restantes,
@@ -590,45 +563,11 @@ const engineeringPillars = [
       </div>
     </section>
 
-    {/* ── NOTRE MOTEUR, CONÇU AU MAROC (W276) — l'histoire d'ingénierie
-        interne : un installateur qui construit aussi ses propres outils
-        (estimateur piloté par la facture, moteur de toiture 3D, moteur de
-        devis). Vrai, rare dans le secteur, et vérifiable en un clic : le lien
-        mène vers le parcours réel (/devis/mon-toit) plutôt que de l'affirmer
-        dans le vide.
-        W372 — DEUXIÈME battement clair du rythme tonal (la première bande
-        blanc-azur était seule, W265) : même recette de couture qu'elle
-        (.seam-lumiere en entrée / .seam-lumiere-out en sortie), classes de
-        couleur recalées sur le jeu clair (text-encre/azur-600), typographie
-        et structure inchangées. ── */}
-    <div class="seam-lumiere" aria-hidden="true"></div>
-    <section class="section bg-blanc-azur px-4 text-encre">
-      <div class="mx-auto max-w-6xl">
-        <div class="v2-rise max-w-2xl">
-          <p class="tech-label v2-kicker rule-brass text-azur-600"><span class="mr-2 font-display text-xs text-azur-600/60" aria-hidden="true">03</span>Notre moteur, conçu au Maroc</p>
-          <h2 class="display v2-section-title mt-5 text-encre">Un installateur qui construit aussi ses outils</h2>
-          <p class="v2-body mt-5 text-encre-soft">
-            La plupart des installateurs solaires achètent un logiciel de devis générique. Taqinor a
-            construit le sien : l'estimateur qui lit votre facture, le moteur qui trace votre toiture
-            en 3D, et le moteur qui produit le devis signé électroniquement. Trois outils, une seule
-            équipe technique — testez-les vous-même ci-dessous.
-          </p>
-        </div>
-        <div class="mt-12 grid gap-6 sm:grid-cols-3" data-stagger>
-          {engineeringPillars.map((p, i) => (
-            <div class="v2-rise relative min-w-0 border-t-2 border-azur-900/15 pt-5" style={`--v2-i:${i}`}>
-              <span class="absolute -top-px left-0 h-0.5 w-10 bg-brass-400" aria-hidden="true"></span>
-              <h3 class="display mt-2 text-lg text-encre">{p.title}</h3>
-              <p class="mt-2 text-sm leading-relaxed text-encre-soft">{p.body}</p>
-            </div>
-          ))}
-        </div>
-        <a href="/devis/mon-toit" class="v2-rise group mt-10 inline-flex items-center gap-1 border-b-2 border-azur-600 pb-0.5 text-sm font-bold text-azur-700 transition-colors hover:text-azur-600">
-          Essayer le moteur sur mon toit <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span>
-        </a>
-      </div>
-    </section>
-    <div class="seam-lumiere-out" aria-hidden="true"></div>
+    {/* WC8 (2026-07-05) — Section « Un installateur qui construit aussi ses
+        outils » RETIRÉE : le fondateur ne veut pas positionner Taqinor comme
+        constructeur de ses propres logiciels/outils. Les crédits d'ingénierie
+        du fondateur restent, eux, sur /à-propos (RULE A) et dans la bande
+        Expertise ci-dessous. */}
 
     {/* ── EXPERTISE — RULE A (2026-07-04) : plus de portrait/signature du
         fondateur sur l'accueil, dans aucune langue (supersède W266). Repli
@@ -750,7 +689,7 @@ const engineeringPillars = [
             {[featured.panneaux, featured.onduleur, featured.batterie].filter(Boolean).join(' · ')}
           </p>
           <p class="mt-4 border-t border-white/10 pt-3 text-xs text-lune-faint">
-            Installation suivie sur Deye Cloud, accès client inclus. Visites de site possibles sur demande.
+            Installation suivie en temps réel, accès client inclus. Visites de site possibles sur demande.
           </p>
         </aside>
       </div>

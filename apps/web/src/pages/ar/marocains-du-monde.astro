@@ -2,9 +2,9 @@
 /**
  * AR — Moroccans abroad / MRE (W67, RTL). Faithful Arabic translation of
  * /marocains-du-monde ; uses ONLY the positioning already on the site
- * (WhatsApp-first, remote assessment, Deye Cloud monitoring with client access,
- * law 82-21 compliance, service area = all of Morocco). No new factual claim,
- * no invented SLA. The lead WhatsApp text is translated but the leads number
+ * (WhatsApp-first, remote assessment, real-time production monitoring with
+ * client access, law 82-21 compliance, service area = all of Morocco). No new
+ * factual claim, no invented SLA. The lead WhatsApp text is translated but the leads number
  * (WHATSAPP_LEADS) and the whatsappLink helper are reused UNCHANGED. Internal
  * links via localizeNavHref. Shared component (WhatsAppMock) auto-detects
  * locale. FR untouched.
@@ -29,7 +29,7 @@ const devisHref = L('/devis/mon-toit');
 const wa = whatsappLink(WHATSAPP_LEADS, 'مرحباً، أنا مغربي·ة بالخارج وأرغب في دراسة تركيبة شمسية لفيلتي بالمغرب.');
 
 const etapes = [
-  { n: '1', body: 'تشخيص في 60 ثانية يمنحك مجالاً أولياً، أينما كنت تعيش ومهما كان فارق التوقيت.' },
+  { n: '1', body: 'تشخيص في <span dir="ltr">60</span> ثانية يمنحك مجالاً أولياً، أينما كنت تعيش ومهما كان فارق التوقيت.' },
   { n: '2', body: 'تتحدّث مباشرة على WhatsApp مع الفريق التقني. صور السطح ترسلها أنت — أو قريب بقي في البلد — ونحن ننسّق الباقي عن بُعد.' },
   { n: '3', body: 'ننتقل إلى عين المكان للزيارة التقنية والدراسة الكاملة، مجاناً، ثم نسلّمك الثمن. في أي لحظة لا يُشترط حضورك بالمغرب للانطلاق.' },
 ];
@@ -37,7 +37,7 @@ const etapes = [
 
 <Layout
   title="المغاربة في العالم: تركيبة مُدبَّرة من المغرب، متابَعة من الخارج | Taqinor"
-  description="تعيش بالخارج، وسطحك بالمغرب. تشخيص وتنسيق عبر WhatsApp، زيارة تقنية في عين المكان، ثم إنتاج فيلتك مرئي على Deye Cloud أينما كنت. مطابقة القانون 82-21 مُنجَزة من أجلك، دون تنقّل."
+  description="تعيش بالخارج، وسطحك بالمغرب. تشخيص وتنسيق عبر WhatsApp، زيارة تقنية في عين المكان، ثم إنتاج فيلتك يُتابَع في الوقت الحقيقي أينما كنت. مطابقة القانون 82-21 مُنجَزة من أجلك، دون تنقّل."
   ogSlug="accueil"
 >
   <div class="v2">
@@ -102,7 +102,7 @@ const etapes = [
           </p>
           <ol class="mt-8 space-y-3 text-sm text-lune">
             {etapes.map((e) => (
-              <li class="flex gap-3"><span class="fig lum text-lg">{e.n}.</span>{e.body}</li>
+              <li class="flex gap-3"><span class="fig lum text-lg">{e.n}.</span><span set:html={e.body} /></li>
             ))}
           </ol>
           <a href={wa} rel="noopener" class="mt-8 inline-flex items-center gap-2 bg-ok-600 px-6 py-3.5 text-base font-bold text-white transition-opacity hover:opacity-90">
@@ -135,7 +135,7 @@ const etapes = [
               عملية: تتوصّل بثمن مكتوب ومفصّل بالدرهم قبل أن تدفع أي درهم، ثم تؤدّي على دفعات
               حسب تقدّم الأشغال لا دفعة واحدة مقدَّماً، ولك أن توكّل قريباً تثق به — أخاً أو
               ابن عمّ أو جاراً — يمرّ ليعاين التركيب نيابةً عنك. ولا تسدّد الدفعة الأخيرة إلا
-              بعد أن يظهر إنتاج تركيبتك فعلاً على Deye Cloud.
+              بعد أن يظهر إنتاج تركيبتك فعلاً على المتابعة في الوقت الحقيقي.
             </p>
             <p class="mt-3 text-sm leading-relaxed text-lune-soft">
               وإذا لم يستطع أحد التنقّل؟ <strong class="text-white">وكالة</strong> — رسالة موقَّعة
@@ -176,11 +176,11 @@ const etapes = [
       <div class="mx-auto grid max-w-6xl gap-8 md:grid-cols-3" data-stagger>
         <div class="v2-rise" style="--v2-i:0">
           <h3 class="display text-xl text-white">فيلتك، على شاشتك</h3>
-          <p class="mt-3 text-sm leading-relaxed text-lune-soft">كل تركيبة تصعد إلى Deye Cloud، مع ولوج الزبون. من التطبيق المحمول، تشاهد ما ينتجه سطحك بالمغرب في الزمن الحقيقي — مفيد للتحقّق، عن بُعد، أن كل شيء يشتغل بينما الفيلا فارغة.</p>
+          <p class="mt-3 text-sm leading-relaxed text-lune-soft">كل تركيبة تستفيد من متابعة الإنتاج في الوقت الحقيقي، مع ولوج الزبون. من التطبيق المحمول، تشاهد ما ينتجه سطحك بالمغرب في الزمن الحقيقي — مفيد للتحقّق، عن بُعد، أن كل شيء يشتغل بينما الفيلا فارغة.</p>
         </div>
         <div class="v2-rise" style="--v2-i:1">
           <h3 class="display text-xl text-white">الملف الإداري، دونك</h3>
-          <p class="mt-3 text-sm leading-relaxed text-lune-soft">تصريح أو تسوية القانون 82-21: نقرأ حالتك، نحدّد النظام ونجهّز الملف — لا ذهاب وإياب إلى البلد عليك توقّعه. <a href={L('/loi-82-21')} class="border-b border-white/40 pb-0.5 font-semibold text-white transition-colors hover:border-white">شاهد الأنظمة <span class="inline-block rtl:-scale-x-100">→</span></a></p>
+          <p class="mt-3 text-sm leading-relaxed text-lune-soft">تصريح أو تسوية القانون <span dir="ltr">82-21</span>: نقرأ حالتك، نحدّد النظام ونجهّز الملف — لا ذهاب وإياب إلى البلد عليك توقّعه. <a href={L('/loi-82-21')} class="border-b border-white/40 pb-0.5 font-semibold text-white transition-colors hover:border-white">شاهد الأنظمة <span class="inline-block rtl:-scale-x-100">→</span></a></p>
         </div>
         <div class="v2-rise" style="--v2-i:2">
           <h3 class="display text-xl text-white">من مدينة إلى أخرى</h3>
