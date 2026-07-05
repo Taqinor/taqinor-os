@@ -1449,7 +1449,7 @@ class BackupRun(TimestampedModel):
                   "db_dump/restore_drill (toute l'instance, pas une société).")
 
     kind = models.CharField(
-        'Type', max_length=10, choices=KIND_CHOICES, default=KIND_EXPORT)
+        'Type', max_length=14, choices=KIND_CHOICES, default=KIND_EXPORT)
     mode = models.CharField(
         'Déclenchement', max_length=10, choices=MODE_CHOICES,
         default=MODE_MANUEL)
