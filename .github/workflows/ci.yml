@@ -222,7 +222,7 @@ jobs:
         # `coverage report` imprime un % backend visible (informatif).
         run: |
           pip install coverage
-          coverage run manage.py test apps authentication -v 2 --exclude-tag=pdf --exclude-tag=slow
+          coverage run manage.py test apps authentication core -v 2 --exclude-tag=pdf --exclude-tag=slow
           coverage report
 
   frontend-lint:
