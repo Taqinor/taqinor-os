@@ -164,6 +164,32 @@ def valider_vente(*, vente, paiements, user):
             created_by=user,
         )
 
+    # (c bis) XPOS9 — capture n° de série → garantie SAV automatique. Gated
+    # sur `produit.suivi_serie` (défaut off, rien ne change) ET la présence
+    # de n° de série saisis sur la ligne ; best-effort par série (une série en
+    # doublon ne bloque jamais la vente déjà validée).
+    if vente.client_id is not None:
+        from apps.sav.services import (
+            SerieDejaEnregistreeError, creer_equipement_depuis_vente_pos,
+        )
+        for ligne in lignes:
+            produit = ligne.produit
+            if not getattr(produit, 'suivi_serie', False):
+                continue
+            for serie in (ligne.numeros_serie or []):
+                serie = (serie or '').strip()
+                if not serie:
+                    continue
+                try:
+                    creer_equipement_depuis_vente_pos(
+                        company=vente.company, produit=produit,
+                        client=vente.client, numero_serie=serie,
+                        date_vente=today, created_by=user)
+                except SerieDejaEnregistreeError:
+                    # Ne bloque jamais la vente déjà encaissée : la série en
+                    # doublon est simplement ignorée (déjà tracée ailleurs).
+                    pass
+
     # (d) Droit de timbre espèces (FG144) sur la part réglée cash.
     if total_especes > 0:
         from apps.compta.services import enregistrer_timbre_fiscal

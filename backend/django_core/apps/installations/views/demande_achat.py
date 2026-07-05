@@ -140,6 +140,61 @@ class DemandeAchatViewSet(TenantMixin, viewsets.ModelViewSet):
         da.save(update_fields=['statut', 'date_modification'])
         return Response(self.get_serializer(da).data)
 
+    @action(detail=True, methods=['post'], url_path='generer-bcf')
+    def generer_bcf(self, request, pk=None):
+        """YPROC5 — convertit les lignes de la DA APPROUVÉE en BCF brouillon
+        chez le fournisseur choisi (corps, défaut `fournisseur_suggere`).
+        Idempotent : une DA déjà commandée avec un BCF lié est refusée."""
+        from django.apps import apps as django_apps
+        from apps.stock.services import creer_bcf_depuis_lignes
+
+        da = self.get_object()
+        if da.statut != DemandeAchat.Statut.APPROUVEE:
+            return Response(
+                {'detail': "Seule une demande approuvée peut générer un BCF."},
+                status=status.HTTP_400_BAD_REQUEST)
+        if da.bon_commande_id:
+            return Response(
+                {'detail': 'Cette demande a déjà un BCF lié.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        fournisseur_id = request.data.get('fournisseur') or (
+            da.fournisseur_suggere_id)
+        if not fournisseur_id:
+            return Response(
+                {'detail': 'Aucun fournisseur (ni suggéré, ni fourni).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        fournisseur_model = django_apps.get_model('stock', 'Fournisseur')
+        fournisseur = fournisseur_model.objects.filter(
+            id=fournisseur_id, company=request.user.company).first()
+        if fournisseur is None:
+            return Response(
+                {'fournisseur': 'Fournisseur inconnu pour cette société.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        lignes_source = list(da.lignes.select_related('produit').all())
+        # XPUR16 — les lignes sans produit catalogue sont reportées en
+        # désignation libre (jamais ignorées : couverture complète de la DA).
+        lignes = [
+            (ligne.produit_id, ligne.designation or
+             (ligne.produit.nom if ligne.produit_id else ''),
+             ligne.quantite, ligne.prix_estime)
+            for ligne in lignes_source
+        ]
+        if not lignes:
+            return Response(
+                {'detail': 'Cette demande ne contient aucune ligne.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        bon = creer_bcf_depuis_lignes(
+            company=request.user.company, user=request.user,
+            fournisseur=fournisseur, lignes=lignes,
+            note=f'Généré depuis {da.reference}')
+        da.bon_commande = bon
+        da.statut = DemandeAchat.Statut.COMMANDEE
+        da.save(update_fields=['bon_commande', 'statut', 'date_modification'])
+        return Response(self.get_serializer(da).data)
+
 
 class DemandeAchatLigneViewSet(viewsets.ModelViewSet):
     """FG310 — lignes de demande d'achat. La ligne n'a pas de `company` propre :

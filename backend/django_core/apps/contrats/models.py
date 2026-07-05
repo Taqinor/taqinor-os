@@ -17,6 +17,7 @@ from decimal import Decimal
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils import timezone
 
 
 class Contrat(models.Model):
@@ -149,6 +150,18 @@ class Contrat(models.Model):
         verbose_name='Montant')
     devise = models.CharField(
         max_length=3, default='MAD', verbose_name='Devise')
+    # ZCTR1 — plan de facturation récurrente réutilisable rattaché (nullable).
+    # NULL = comportement actuel inchangé (périodicité lue sur l'échéancier
+    # local, ``EcheancierContrat.periodicite``). Référence interne à l'app
+    # `contrats` (foundation), FK dur autorisé ; SET_NULL pour ne jamais
+    # perdre le contrat si le plan est supprimé.
+    plan_recurrent = models.ForeignKey(
+        'PlanRecurrent',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='contrats',
+        verbose_name='Plan de facturation récurrente',
+    )
     # Niveau de confidentialité : contrôle la visibilité du contrat au sein de
     # la société. PUBLIC = tous les utilisateurs authentifiés de la société ;
     # INTERNE = uniquement Responsables et Administrateurs ; CONFIDENTIEL =
@@ -1402,6 +1415,67 @@ class Avenant(models.Model):
         return f'Avenant n°{self.numero} — contrat {self.contrat_id}'
 
 
+class MotifResiliation(models.Model):
+    """Référentiel éditable des motifs de résiliation (close reasons) — ZCTR3.
+
+    Odoo attache un « Close Reason » configurable à chaque churn pour
+    l'analyse. Jusqu'ici ``Resiliation.motif`` est un texte libre (le champ
+    RESTE, pour rétrocompat) qui rend les agrégats de churn (XCTR7) bruités.
+    ``MotifResiliation`` est un référentiel COMPANY-SCOPÉ (code, libellé,
+    ordre d'affichage, catégorie optionnelle) qu'une ``Resiliation`` peut
+    rattacher via ``motif_ref`` (FK nullable, en PLUS du texte libre).
+
+    Multi-tenant : ``company`` posée CÔTÉ SERVEUR (jamais lue du corps de
+    requête, ``TenantMixin.perform_create``).
+
+    RUNTIME-SAFETY (leçon FG136) : ``code``/``libelle`` bornés ; l'index est
+    NOMMÉ explicitement (≤30 chars).
+    """
+
+    class Categorie(models.TextChoices):
+        PRIX = 'prix', 'Prix'
+        CONCURRENT = 'concurrent', 'Concurrent'
+        INSATISFACTION = 'insatisfaction', 'Insatisfaction'
+        FIN_PROJET = 'fin_projet', 'Fin de projet'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='motifs_resiliation',
+        verbose_name='Société',
+    )
+    code = models.CharField(max_length=50, verbose_name='Code')
+    libelle = models.CharField(max_length=150, verbose_name='Libellé')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    categorie = models.CharField(
+        max_length=20, choices=Categorie.choices,
+        blank=True, default='', verbose_name='Catégorie')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Motif de résiliation'
+        verbose_name_plural = 'Motifs de résiliation'
+        ordering = ['ordre', 'libelle', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'code'],
+                name='contrats_motifresil_co_code',
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'actif'],
+                name='contrats_motifresil_co_act',
+            ),
+        ]
+
+    def __str__(self):
+        return self.libelle
+
+
 class Resiliation(models.Model):
     """Résiliation d'un contrat (motif / préavis / solde) — CONTRAT25.
 
@@ -1458,9 +1532,21 @@ class Resiliation(models.Model):
         verbose_name='Contrat',
     )
     # Motif/justification de la résiliation. TextField : peut être long sans
-    # jamais lever (leçon FG136).
+    # jamais lever (leçon FG136). RESTE pour rétrocompat (texte libre) — ZCTR3
+    # ajoute ``motif_ref`` en PLUS, jamais en remplacement.
     motif = models.TextField(
         blank=True, default='', verbose_name='Motif de la résiliation')
+    # ZCTR3 — motif NORMALISÉ (référentiel éditable), en plus du texte libre
+    # ``motif`` ci-dessus. NULL = motif texte libre uniquement (comportement
+    # historique inchangé) ; SET_NULL pour ne jamais perdre la résiliation si
+    # le motif référentiel est supprimé.
+    motif_ref = models.ForeignKey(
+        'MotifResiliation',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='resiliations',
+        verbose_name='Motif (référentiel)',
+    )
     # Date de DEMANDE de la résiliation (posée côté serveur, défaut aujourd'hui).
     date_demande = models.DateField(
         null=True, blank=True, verbose_name='Date de demande')
@@ -2450,6 +2536,9 @@ class CycleFacturationLog(models.Model):
     class SourceType(models.TextChoices):
         CONTRAT = 'contrat', 'Contrat (échéancier)'
         SAV_MAINTENANCE = 'sav_maintenance', 'Maintenance SAV'
+        # XCTR20 — cycle de facturation récurrente d'un OrdreLocation longue
+        # durée. Choix additif (CharField, aucune migration de schéma requise).
+        ORDRE_LOCATION = 'ordre_location', 'Location longue durée'
 
     class Statut(models.TextChoices):
         GENERE = 'genere', 'Générée'
@@ -2505,3 +2594,451 @@ class CycleFacturationLog(models.Model):
             f'{self.get_source_type_display()} #{self.source_id} '
             f'— {self.periode} ({self.get_statut_display()})'
         )
+
+
+# ---------------------------------------------------------------------------
+# XCTR17 — Location de matériel SORTANTE (aux clients) — fondation
+# ---------------------------------------------------------------------------
+
+
+class OrdreLocation(models.Model):
+    """Ordre de location de matériel À UN CLIENT (XCTR17) — location SORTANTE.
+
+    Distinct de FG342 (location ENTRANTE / allocation interne d'engins) : ici
+    la société LOUE un ``stock.Produit`` marqué ``louable`` (groupe
+    électrogène, pompe, nacelle…) à un client. Le client est référencé en lien
+    LÂCHE par ``client_id`` (jamais un import de ``crm.Client``) et le produit
+    par FK DUR (``stock`` est une app cœur métier lue via son sélecteur
+    ``get_produit_louable`` à la création — jamais son modèle importé côté
+    vue — mais le FK lui-même reste nécessaire pour les jointures/rapports
+    internes à ``contrats``, comme le fait déjà tout le reste du module pour
+    ses propres références).
+
+    Machine d'états LOCALE (jamais confondue avec ``Contrat.statut`` ni le
+    funnel ``STAGES.py`` — rule #2) : ``reservee`` → ``enlevee`` → ``retournee``
+    → ``cloturee``, ou ``reservee``/``enlevee`` → ``annulee``. Les transitions
+    sont gardées par ``machine_etats.py`` (même patron que ``Contrat``).
+
+    DÉTECTION DE CONFLIT : deux ordres ACTIFS (non annulés/clôturés) sur le
+    MÊME produit + même ``numero_serie`` dont les fenêtres
+    ``[date_enlevement_prevue, date_retour_prevue]`` se chevauchent sont
+    refusés (400) — voir ``services.creer_ordre_location``.
+    """
+
+    class Statut(models.TextChoices):
+        RESERVEE = 'reservee', 'Réservée'
+        ENLEVEE = 'enlevee', 'Enlevée'
+        RETOURNEE = 'retournee', 'Retournée'
+        CLOTUREE = 'cloturee', 'Clôturée'
+        ANNULEE = 'annulee', 'Annulée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='ordres_location',
+        verbose_name='Société',
+    )
+    # Client locataire — lien LÂCHE (jamais un import de crm.Client).
+    client_id = models.PositiveIntegerField(verbose_name='ID du client')
+    # ZCTR6 — devis d'ORIGINE (``ventes.Devis``), lien LÂCHE (id seul, jamais
+    # un import de ``ventes.models`` ni un FK dur). NULL = ordre créé
+    # manuellement (comportement XCTR17 inchangé). ``ContratLien`` exige un
+    # ``Contrat`` (FK dur) qui n'existe pas dans ce flux devis→location pur —
+    # ce champ sert de GARDE ANTI-DOUBLON pour
+    # ``services.creer_ordres_location_depuis_devis`` (un re-run sur le même
+    # devis ne duplique jamais un ordre déjà créé pour la même ligne).
+    devis_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du devis d\'origine')
+    # ZCTR6 — ligne du devis d'origine (id seul, même lien lâche que
+    # ``devis_id``) : distingue plusieurs lignes louables d'un même devis.
+    devis_ligne_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID de la ligne devis d\'origine')
+    produit = models.ForeignKey(
+        'stock.Produit',
+        on_delete=models.PROTECT,
+        related_name='ordres_location',
+        verbose_name='Produit loué',
+    )
+    numero_serie = models.CharField(
+        max_length=100, blank=True, default='',
+        verbose_name='N° de série / unité')
+    date_reservation = models.DateField(
+        verbose_name='Date de réservation')
+    date_enlevement_prevue = models.DateField(
+        verbose_name="Date d'enlèvement prévue")
+    date_retour_prevue = models.DateField(
+        verbose_name='Date de retour prévue')
+    date_enlevement_reelle = models.DateField(
+        null=True, blank=True, verbose_name="Date d'enlèvement réelle")
+    date_retour_reelle = models.DateField(
+        null=True, blank=True, verbose_name='Date de retour réelle')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.RESERVEE, verbose_name='Statut')
+    tarif_jour = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        verbose_name='Tarif journalier appliqué')
+    montant_estime = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant estimé')
+    note = models.TextField(blank=True, default='', verbose_name='Note')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='ordres_location_crees',
+        verbose_name='Créé par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    # Statuts considérés ACTIFS pour la détection de chevauchement (une
+    # réservation/enlèvement en cours bloque une fenêtre qui la chevauche ;
+    # une location déjà clôturée/annulée ne bloque plus rien).
+    STATUTS_ACTIFS = (Statut.RESERVEE, Statut.ENLEVEE)
+
+    class CautionStatut(models.TextChoices):
+        """XCTR18 — cycle de vie de la caution/dépôt de garantie de l'ordre.
+
+        LOCAL à l'ordre de location : ne touche JAMAIS ``Contrat.statut`` ni
+        le funnel ``STAGES.py`` (rule #2). ``AUCUNE`` = aucune caution
+        demandée (comportement par défaut, inchangé)."""
+        AUCUNE = 'aucune', 'Aucune'
+        ENCAISSEE = 'encaissee', 'Encaissée'
+        RESTITUEE = 'restituee', 'Restituée'
+        RETENUE_PARTIELLE = 'retenue_partielle', 'Retenue partielle'
+
+    # ── XCTR18 — Caution (dépôt de garantie) sur location ───────────────────
+    caution_montant = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Montant de la caution')
+    caution_statut = models.CharField(
+        max_length=20, choices=CautionStatut.choices,
+        default=CautionStatut.AUCUNE, verbose_name='Statut de la caution')
+    caution_retenue = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Montant retenu sur la caution')
+    caution_motif_retenue = models.TextField(
+        blank=True, default='', verbose_name='Motif de la retenue')
+
+    # ── XCTR19 — Retour de location : retards, frais, inspection ────────────
+    # Frais de retard par jour, configurable PAR ordre. NULL = aucun frais de
+    # retard appliqué (comportement inchangé).
+    frais_retard_jour = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        verbose_name='Frais de retard / jour')
+    # Montant de frais de retard EFFECTIVEMENT facturé à la clôture — posé
+    # côté serveur, NULL tant qu'aucune clôture en retard n'a eu lieu.
+    frais_retard_montant = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Frais de retard facturés')
+    frais_retard_facture_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='ID de la facture (frais de retard)')
+    # Checklist d'inspection de retour (JSON libre : {"item": "ok"/"endommage",
+    # ...}) + relevé compteur (heures moteur, km…). Vide/NULL tant que le
+    # matériel n'est pas encore inspecté.
+    inspection_checklist = models.JSONField(
+        null=True, blank=True, verbose_name="Checklist d'inspection")
+    inspection_releve_compteur = models.CharField(
+        max_length=50, blank=True, default='',
+        verbose_name='Relevé compteur')
+    inspection_dommages_montant = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Montant des dommages chiffrés')
+    inspection_facture_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='ID de la facture (dommages)')
+    inspection_ticket_sav_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='ID du ticket SAV de remise en état')
+    inspection_date = models.DateTimeField(
+        null=True, blank=True, verbose_name="Date de l'inspection")
+
+    # ── XCTR20 — Location longue durée : facturation récurrente ─────────────
+    class CyclePeriodicite(models.TextChoices):
+        MENSUELLE = 'mensuelle', 'Mensuelle'
+
+    class CycleMoment(models.TextChoices):
+        AVANCE = 'avance', "D'avance"
+        ECHU = 'echu', 'À terme échu'
+
+    # False par défaut : un ordre reste facturé UNE fois (montant_estime, à la
+    # clôture) tant que ce drapeau n'est pas explicitement activé —
+    # comportement XCTR17/18/19 inchangé.
+    facturation_recurrente_active = models.BooleanField(
+        default=False, verbose_name='Facturation récurrente active')
+    facturation_periodicite = models.CharField(
+        max_length=20, choices=CyclePeriodicite.choices,
+        default=CyclePeriodicite.MENSUELLE, verbose_name='Périodicité')
+    facturation_moment = models.CharField(
+        max_length=10, choices=CycleMoment.choices,
+        default=CycleMoment.AVANCE, verbose_name='Facturé')
+    derniere_facturation = models.DateField(
+        null=True, blank=True, verbose_name='Dernière facturation')
+
+    class Meta:
+        verbose_name = 'Ordre de location'
+        verbose_name_plural = 'Ordres de location'
+        ordering = ['-date_creation', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='contrats_ordloc_co_st',
+            ),
+            models.Index(
+                fields=['produit', 'numero_serie'],
+                name='contrats_ordloc_prod_serie',
+            ),
+            # ZCTR6 — garde anti-doublon rapide (devis, ligne) → ordre créé.
+            models.Index(
+                fields=['devis_id', 'devis_ligne_id'],
+                name='contrats_ordloc_devis_ligne',
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f'Location {self.produit_id} ({self.numero_serie or "—"}) '
+            f'— {self.get_statut_display()}'
+        )
+
+    def chevauche(self, autre_debut, autre_fin):
+        """``True`` si la fenêtre ``[autre_debut, autre_fin]`` chevauche la
+        fenêtre d'enlèvement/retour PRÉVUE de cet ordre (bornes incluses)."""
+        return (
+            self.date_enlevement_prevue <= autre_fin
+            and autre_debut <= self.date_retour_prevue
+        )
+
+    def est_en_retard(self, today=None):
+        """``True`` si l'ordre est ENLEVÉ et que le retour prévu est dépassé
+        SANS retour effectif — XCTR19. ``today`` injectable pour les tests."""
+        if self.statut != OrdreLocation.Statut.ENLEVEE:
+            return False
+        if today is None:
+            today = timezone.localdate()
+        return today > self.date_retour_prevue
+
+    def jours_de_retard(self, today=None):
+        """Nombre de jours de retard (0 si pas en retard) — XCTR19."""
+        if not self.est_en_retard(today=today):
+            return 0
+        if today is None:
+            today = timezone.localdate()
+        return (today - self.date_retour_prevue).days
+
+    def prochaine_facturation(self):
+        """Date du prochain cycle de facturation récurrente — XCTR20.
+
+        Basée sur ``derniere_facturation`` (si posée) ou
+        ``date_enlevement_prevue``, avancée d'un mois (seule périodicité
+        supportée aujourd'hui — ``CyclePeriodicite.MENSUELLE``)."""
+        base = self.derniere_facturation or self.date_enlevement_prevue
+        return Contrat.ajouter_mois(base, 1)
+
+    def facturation_recurrente_due(self, today=None):
+        """``True`` si la facturation récurrente est active et due — XCTR20."""
+        if not self.facturation_recurrente_active:
+            return False
+        if today is None:
+            today = timezone.localdate()
+        return today >= self.prochaine_facturation()
+
+
+class CautionLocationLog(models.Model):
+    """Journal (chatter) des transitions de caution d'un ``OrdreLocation`` —
+    XCTR18.
+
+    ``OrdreLocation`` n'est PAS un ``Contrat`` (pas de FK vers ``Contrat``,
+    voir docstring de ``OrdreLocation``) — ce journal dédié rejoue le même
+    patron que ``ContratActivity`` (CONTRAT15) sans dépendre de son FK requis.
+    Une entrée par transition de ``caution_statut`` : ancien → nouveau statut,
+    montant concerné et motif éventuel. Société posée CÔTÉ SERVEUR.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='contrats_caution_location_logs',
+        verbose_name='Société',
+    )
+    ordre_location = models.ForeignKey(
+        OrdreLocation,
+        on_delete=models.CASCADE,
+        related_name='caution_logs',
+        verbose_name='Ordre de location',
+    )
+    ancien_statut = models.CharField(
+        max_length=20, blank=True, default='', verbose_name='Ancien statut')
+    nouveau_statut = models.CharField(
+        max_length=20, verbose_name='Nouveau statut')
+    montant = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Montant concerné')
+    motif = models.TextField(blank=True, default='', verbose_name='Motif')
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='caution_location_logs',
+        verbose_name='Auteur',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Journal de caution (location)'
+        verbose_name_plural = 'Journaux de caution (location)'
+        ordering = ['-date_creation', '-id']
+
+    def __str__(self):
+        return (
+            f'Caution ordre #{self.ordre_location_id} : '
+            f'{self.ancien_statut} → {self.nouveau_statut}'
+        )
+
+
+class PlanRecurrent(models.Model):
+    """Plan de facturation récurrente réutilisable (nommé) — ZCTR1.
+
+    Odoo Subscriptions définit des « Recurring Plans » nommés (période, délai
+    de clôture auto, alignement début-de-période) réutilisables sur tout
+    contrat ; ici la périodicité était jusqu'ici un enum figé recopié cas par
+    cas (``ContratMaintenance.periodicite``, ``EcheancierContrat.periodicite``).
+    Un ``PlanRecurrent`` centralise ces réglages et peut être RATTACHÉ (FK
+    nullable) à un ``Contrat`` ou (via id + sélecteur, jamais un import
+    cross-app) à un ``sav.ContratMaintenance`` : la lecture reste RÉTROCOMPATIBLE
+    — un contrat SANS plan rattaché conserve exactement son comportement actuel
+    (enum de périodicité local).
+
+    Multi-tenant : ``company`` posée CÔTÉ SERVEUR, jamais lue du corps de
+    requête (perform_create du ``TenantMixin``).
+
+    RUNTIME-SAFETY (leçon FG136) : ``nom`` borné (≤120).
+    """
+
+    class Unite(models.TextChoices):
+        MENSUEL = 'mensuel', 'Mensuel'
+        TRIMESTRIEL = 'trimestriel', 'Trimestriel'
+        SEMESTRIEL = 'semestriel', 'Semestriel'
+        ANNUEL = 'annuel', 'Annuel'
+
+    # Nombre de mois PAR PAS de l'unité (avant application de ``intervalle``).
+    MOIS_PAR_UNITE = {
+        Unite.MENSUEL: 1,
+        Unite.TRIMESTRIEL: 3,
+        Unite.SEMESTRIEL: 6,
+        Unite.ANNUEL: 12,
+    }
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='plans_recurrents',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=120, verbose_name='Nom')
+    unite = models.CharField(
+        max_length=15, choices=Unite.choices, default=Unite.MENSUEL,
+        verbose_name='Unité')
+    # Multiplicateur de l'unité (ex. unite=mensuel + intervalle=2 → tous les
+    # 2 mois). Toujours ≥ 1.
+    intervalle = models.PositiveIntegerField(
+        default=1, verbose_name='Intervalle')
+    # Délai (jours) après lequel un cycle impayé déclenche la clôture
+    # automatique (ZCTR2). NULL = jamais de clôture auto.
+    delai_cloture_auto_jours = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Délai de clôture auto (jours)')
+    # Aligne le premier cycle sur le DÉBUT de la période calendaire (ex. le
+    # 1er du trimestre) plutôt que sur la date de signature/activation brute.
+    aligner_debut_periode = models.BooleanField(
+        default=False, verbose_name='Aligner sur le début de période')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Plan de facturation récurrente'
+        verbose_name_plural = 'Plans de facturation récurrente'
+        ordering = ['nom', 'id']
+        indexes = [
+            models.Index(
+                fields=['company', 'actif'],
+                name='contrats_planrec_co_act',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.nom} ({self.get_unite_display()})'
+
+    def mois_par_cycle(self):
+        """Nombre de mois d'un cycle complet (``unite`` × ``intervalle``)."""
+        return self.MOIS_PAR_UNITE.get(self.unite, 1) * max(1, self.intervalle)
+
+    def debut_periode_alignee(self, date_reference):
+        """Renvoie ``date_reference`` alignée sur le début de sa période.
+
+        Sans alignement (``aligner_debut_periode=False``), renvoie
+        ``date_reference`` inchangée. Avec alignement : ramène au 1er du mois
+        pour une unité mensuelle, ou au 1er du bloc trimestriel/semestriel/
+        annuel civil couvrant ``date_reference``.
+        """
+        if not self.aligner_debut_periode:
+            return date_reference
+        mois_par_unite = self.MOIS_PAR_UNITE.get(self.unite, 1)
+        mois_index = date_reference.month - 1
+        mois_bloc_debut = (mois_index // mois_par_unite) * mois_par_unite
+        return date_reference.replace(month=mois_bloc_debut + 1, day=1)
+
+
+class ParametresLocation(models.Model):
+    """Réglages de location, singleton par société — ZCTR4.
+
+    Odoo Rental Settings porte « minimal rental duration », « default
+    padding time » (buffer d'indisponibilité entre deux locations d'une même
+    unité pour l'entretien) et « default delay costs ». XCTR17 détecte le
+    chevauchement STRICT (``OrdreLocation.chevauche``) mais ignore le
+    padding et n'a aucun défaut de frais/durée.
+
+    - ``duree_minimale_jours`` (NULL = aucun minimum) : la CRÉATION d'un
+      ``OrdreLocation`` plus court que ce minimum est refusée (400 FR).
+    - ``temps_securite_heures`` (défaut 0 = comportement XCTR17 inchangé) :
+      élargit de part et d'autre la fenêtre occupée utilisée par la
+      détection de conflit (``_verifier_disponibilite``) — deux locations
+      trop rapprochées (temps d'entretien insuffisant) sont refusées.
+    - ``frais_retard_jour_defaut`` (NULL = aucun défaut) : un ``OrdreLocation``
+      dont ``frais_retard_jour`` n'est PAS saisi hérite de ce défaut à la
+      création (XCTR19 s'applique ensuite sans changement).
+
+    Toutes les valeurs NULL/0 laissent le comportement XCTR17/19 inchangé —
+    ``ParametresLocation`` est entièrement OPTIONNEL (une société sans ligne
+    créée se comporte exactement comme avant ZCTR4).
+
+    Multi-tenant : ``company`` posée CÔTÉ SERVEUR (``OneToOneField``, une
+    seule ligne par société — singleton).
+    """
+
+    company = models.OneToOneField(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='parametres_location',
+        verbose_name='Société',
+    )
+    duree_minimale_jours = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Durée minimale (jours)')
+    temps_securite_heures = models.PositiveIntegerField(
+        default=0, verbose_name='Temps de sécurité / padding (heures)')
+    frais_retard_jour_defaut = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        verbose_name='Frais de retard / jour par défaut')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Paramètres de location'
+        verbose_name_plural = 'Paramètres de location'
+
+    def __str__(self):
+        return f'Paramètres de location — {self.company_id}'

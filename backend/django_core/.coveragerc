@@ -2,7 +2,7 @@
 #   coverage run manage.py test apps authentication … && coverage report
 # On mesure le CODE applicatif, pas les tests/migrations/réglages.
 [run]
-source = apps,authentication
+source = apps,authentication,core
 branch = True
 omit =
     */migrations/*

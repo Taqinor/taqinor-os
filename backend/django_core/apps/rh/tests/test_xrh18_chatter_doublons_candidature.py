@@ -41,8 +41,12 @@ class ChatterDoublonsCandidatureTests(TestCase):
     def setUp(self):
         self.co = make_company('chat-a', 'A')
         self.rh = make_user(self.co, 'chat-rh')
+        # YHIRE14 — le statut par défaut du modèle est désormais 'brouillon'
+        # (cycle d'approbation amont) ; ce test poste des candidatures sur
+        # l'ouverture, qui doit donc être 'ouvert' au recrutement.
         self.ouverture = OuverturePoste.objects.create(
-            company=self.co, intitule='Commercial terrain')
+            company=self.co, intitule='Commercial terrain',
+            statut=OuverturePoste.Statut.OUVERT)
         self.cand = Candidature.objects.create(
             company=self.co, ouverture=self.ouverture, nom='Nadia Alaoui',
             email='nadia@example.com', telephone='0612345678')

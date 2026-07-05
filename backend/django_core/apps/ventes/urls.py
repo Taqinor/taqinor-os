@@ -8,6 +8,7 @@ from .views import (
     LigneFactureViewSet,
     PaiementViewSet,
     AvoirViewSet,
+    NoteDebitViewSet,  # ZFAC4
     email_config,
     client_credit_warning,
     releve_dry_run,
@@ -27,19 +28,29 @@ from .views import (
     AttestationConformiteViewSet,  # FG277
     TestPerformanceReceptionViewSet,  # FG278
     AttestationREViewSet,  # FG287
+    RemiseEncaissementViewSet,  # XFSM19
+    MandatPaiementViewSet,  # XCTR22
 )
 from .recouvrement import (
     FollowupLevelViewSet,
+    ParametrageRelanceClientViewSet,  # ZFAC8
     PromessePaiementViewSet,
     relances_list,
     balance_agee,
     client_releve,
     client_releve_pdf,
     lettre_relance_pdf,
+    client_score_comportement,  # XFAC15
+    dossier_contentieux,  # XFAC21
 )
-from .public_views import proposal_data, proposal_accept, proposal_pdf
+from .public_views import (
+    proposal_data, proposal_accept, proposal_pdf,
+    # QW5 — mêmes vues QJ27, aliasées ici sous le mount `ventes/` (le site
+    # les appelle ici, pas sous `public/` — jamais de logique dupliquée).
+    proposal_contact_request, proposal_request_otp,
+)
 from .dashboard_view import dashboard_quote_to_cash
-from .insights_view import cash_flow_forecast
+from .insights_view import cash_flow_forecast, analyse_facturation_view  # ZFAC10
 from .journal_view import journal_ventes, export_comptable
 from .numbering_view import numerotation_audit, numerotation_preview
 from .extra_docs_views import lettre_relance_premium, fiche_remise_premium
@@ -56,6 +67,7 @@ router.register(r'factures', FactureViewSet)
 router.register(r'factures-lignes', LigneFactureViewSet)
 router.register(r'paiements', PaiementViewSet)
 router.register(r'avoirs', AvoirViewSet)
+router.register(r'notes-debit', NoteDebitViewSet, basename='note-debit')
 # FG245 — calepinage toiture (placement panneaux), compte calculé serveur.
 router.register(r'calepinages', RoofLayoutViewSet, basename='calepinage')
 # FG254 / DC35 — bibliothèque de fiches techniques normalisées (datasheets).
@@ -63,6 +75,9 @@ router.register(r'fiches-techniques', FicheTechniqueViewSet,
                 basename='fiche-technique')
 router.register(r'niveaux-relance', FollowupLevelViewSet,
                 basename='niveau-relance')
+# ZFAC8 — réglage responsable/mode de relance par client.
+router.register(r'parametrages-relance-client', ParametrageRelanceClientViewSet,
+                basename='parametrage-relance-client')
 # XFAC5 — promesses de paiement (suspendent la relance auto jusqu'à échéance).
 router.register(r'promesses-paiement', PromessePaiementViewSet,
                 basename='promesse-paiement')
@@ -101,6 +116,12 @@ router.register(r'tests-pr-reception', TestPerformanceReceptionViewSet,
 # FG287 — attestations d'énergie renouvelable.
 router.register(r'attestations-re', AttestationREViewSet,
                 basename='attestation-re')
+# XFSM19 — rapprochement des encaissements terrain par technicien.
+router.register(r'remises-encaissement', RemiseEncaissementViewSet,
+                basename='remise-encaissement')
+# XCTR22 — mandats de paiement récurrent (tokenisation carte).
+router.register(r'mandats-paiement', MandatPaiementViewSet,
+                basename='mandat-paiement')
 
 urlpatterns = [
     # Q6/Q7 — Proposition web tokenisée (données JSON + e-signature). Jeton
@@ -113,6 +134,13 @@ urlpatterns = [
     # affichage inline. Placé AVANT le routeur (comme les autres routes
     # proposal/) pour ne pas être avalé par la route /devis/.
     path('proposal/<str:token>/pdf/', proposal_pdf, name='proposal-pdf'),
+    # QW5 — le site poste sur CE mount (ventes/), pas sur public/ où ces vues
+    # QJ27 vivent déjà (apps/ventes/public_urls.py) — sans cet alias, 404.
+    # Même vue, jamais de logique dupliquée.
+    path('proposal/<str:token>/contact/', proposal_contact_request,
+         name='proposal-contact-ventes'),
+    path('proposal/<str:token>/otp/', proposal_request_otp,
+         name='proposal-otp-ventes'),
     # Export comptable : journal des ventes + résumé TVA (.xlsx).
     path('journal-ventes/', journal_ventes, name='journal-ventes'),
     # Export comptable DGI (groundwork) : factures validées d'une plage,
@@ -130,6 +158,12 @@ urlpatterns = [
     path('clients/<int:client_id>/releve/', client_releve, name='client-releve'),
     path('clients/<int:client_id>/releve-pdf/', client_releve_pdf,
          name='client-releve-pdf'),
+    # XFAC15 — badge de comportement de paiement (fiche client).
+    path('clients/<int:client_id>/score-comportement/',
+         client_score_comportement, name='client-score-comportement'),
+    # XFAC21 — dossier contentieux / passage en recouvrement externe.
+    path('clients/<int:client_id>/dossier-contentieux/',
+         dossier_contentieux, name='client-dossier-contentieux'),
     path('factures/<int:facture_id>/lettre-relance-pdf/', lettre_relance_pdf,
          name='lettre-relance-pdf'),
     # Documents premium ADDITIFS (langage visuel du devis) — rendus à la volée.
@@ -166,6 +200,8 @@ urlpatterns = [
     path('dashboard/', dashboard_quote_to_cash, name='ventes-dashboard'),
     # FG47 — prévision cash-flow / encaissements à venir (lecture seule).
     path('insights/cash-flow/', cash_flow_forecast, name='ventes-cash-flow'),
+    path('etats/analyse-facturation/', analyse_facturation_view,
+         name='ventes-analyse-facturation'),
     # FG273 — calendrier réglementaire & alertes d'expiration (lecture seule).
     path('calendrier-reglementaire/', calendrier_reglementaire,
          name='calendrier-reglementaire'),

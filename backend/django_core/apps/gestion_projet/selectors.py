@@ -28,6 +28,7 @@ from .models import (
     Projet,
     ProjetLien,
     RessourceProfil,
+    Risque,
     Tache,
     Timesheet,
 )
@@ -677,8 +678,21 @@ def ressource_disponible_sur_periode(ressource, debut, fin):
 # n'est donc pas rattaché au calendrier d'UN projet (relation 1-1 projet) — on
 # applique une semaine standard L-V, indépendante de tout CalendrierProjet.
 _JOURS_OUVRES_DEFAUT = frozenset({0, 1, 2, 3, 4})
-# Heures travaillées par jour ouvré (capacité d'une ressource à plein temps).
+# Heures travaillées par jour ouvré (capacité d'une ressource à plein temps) —
+# valeur de repli quand la société n'a PAS ENCORE de ``ReglageTemps`` (ZPRJ1).
 _HEURES_PAR_JOUR_DEFAUT = 8
+
+
+def _heures_par_jour_reglage(company):
+    """``heures_par_jour`` du ``ReglageTemps`` de ``company`` (ZPRJ1), LECTURE
+    SEULE : ``_HEURES_PAR_JOUR_DEFAUT`` (8) si aucun réglage n'existe encore
+    pour la société (jamais de création depuis un sélecteur)."""
+    from .models import ReglageTemps
+
+    reglage = ReglageTemps.objects.filter(company=company).first()
+    if reglage is None:
+        return _HEURES_PAR_JOUR_DEFAUT
+    return reglage.heures_par_jour
 
 
 def _jours_ouvres_periode(debut, fin, jours_ouvres):
@@ -742,7 +756,7 @@ def _charge_affectee_periode(affectation, debut, fin, jours_ouvres):
     return float(affectation.charge_jours) * _HEURES_PAR_JOUR_DEFAUT * fraction
 
 
-def plan_de_charge(company, debut, fin, heures_par_jour=_HEURES_PAR_JOUR_DEFAUT,
+def plan_de_charge(company, debut, fin, heures_par_jour=None,
                    ressource_id=None):
     """Plan de charge d'une société sur [debut, fin] : capacité vs affecté.
 
@@ -752,7 +766,9 @@ def plan_de_charge(company, debut, fin, heures_par_jour=_HEURES_PAR_JOUR_DEFAUT,
     * ``capacite_heures`` — jours OUVRÉS (semaine L-V par défaut) de la fenêtre
       INCLUSIVE [debut, fin], MOINS les jours ouvrés couverts par une
       indisponibilité (congé/formation/arrêt) chevauchant la fenêtre, × le
-      nombre d'heures par jour ouvré (``heures_par_jour``, défaut 8) ;
+      nombre d'heures par jour ouvré (``heures_par_jour`` — défaut : le
+      réglage ``heures_par_jour`` de ``ReglageTemps`` de la société, ZPRJ1,
+      lui-même par défaut 8) ;
     * ``affecte_heures`` — somme PRORATÉE des affectations (PROJ16) de la
       ressource — directes (``ressource``) ET via une ``Equipe`` dont elle est
       membre (la charge d'équipe est répartie à parts ÉGALES entre ses membres
@@ -771,6 +787,8 @@ def plan_de_charge(company, debut, fin, heures_par_jour=_HEURES_PAR_JOUR_DEFAUT,
     ``{debut, fin, heures_par_jour, lignes: [...], nb_surcharges}`` trié par nom
     de ressource.
     """
+    if heures_par_jour is None:
+        heures_par_jour = _heures_par_jour_reglage(company)
     try:
         heures_jour = float(heures_par_jour)
     except (TypeError, ValueError):
@@ -844,6 +862,19 @@ def plan_de_charge(company, debut, fin, heures_par_jour=_HEURES_PAR_JOUR_DEFAUT,
         else:
             utilisation_pct = None
 
+        # ZPRJ2 — statut de publication des affectations DIRECTES de la
+        # ressource (les affectations d'équipe ne portent pas d'individu à
+        # publier ici — elles restent visibles sur la ligne de l'équipe).
+        affectations_ressource = [
+            {
+                'id': aff.id, 'tache_id': aff.tache_id,
+                'date_debut': aff.date_debut.isoformat(),
+                'date_fin': aff.date_fin.isoformat(),
+                'statut_publication': aff.statut_publication,
+            }
+            for aff in affectations if aff.ressource_id == ressource.id
+        ]
+
         lignes.append({
             'ressource': ressource.id,
             'nom': ressource.nom,
@@ -855,6 +886,7 @@ def plan_de_charge(company, debut, fin, heures_par_jour=_HEURES_PAR_JOUR_DEFAUT,
             'jours_indispo': jours_indispo,
             'utilisation_pct': utilisation_pct,
             'surcharge': surcharge,
+            'affectations': affectations_ressource,
         })
 
     return {
@@ -1101,8 +1133,7 @@ def _periodes_se_chevauchent(a_debut, a_fin, b_debut, b_fin):
     return a_debut <= b_fin and a_fin >= b_debut
 
 
-def nivellement_charge(company, debut, fin,
-                       heures_par_jour=_HEURES_PAR_JOUR_DEFAUT):
+def nivellement_charge(company, debut, fin, heures_par_jour=None):
     """Propose un rééquilibrage des ressources SUR-CHARGÉES vers les SOUS-CHARGÉES.
 
     PROJ20 — l'équivalent gestion-projet de FG301. S'appuie sur le plan de
@@ -1799,6 +1830,139 @@ def temps_manquants(company, debut, fin):
     return {'debut': debut, 'fin': fin, 'lignes': lignes}
 
 
+# ── Heures attendues & heures supplémentaires (ZPRJ5) ────────────────────────
+def heures_attendues_vs_saisies(company, ressource, debut, fin):
+    """Écart heures ATTENDUES vs SAISIES pour UNE ressource sur [debut, fin]
+    (ZPRJ5) — sous-charge / heures supplémentaires, par jour et cumulé.
+
+    Distinct de ``temps_manquants`` (XPRJ7, jours SANS AUCUNE saisie) : ici on
+    QUANTIFIE l'écart d'HEURES, y compris pour un jour partiellement saisi.
+    Pour chaque jour OUVRÉ (semaine L-V par défaut, ``_JOURS_OUVRES_DEFAUT``)
+    de la fenêtre INCLUSIVE [debut, fin] NON couvert par une
+    ``Indisponibilite`` chevauchante de la ressource : l'attendu du jour =
+    ``heures_par_jour`` du réglage temps de la société (ZPRJ1,
+    ``_heures_par_jour_reglage`` — get_or_create-free, LECTURE SEULE) ; le
+    saisi du jour = somme des ``Timesheet.heures`` de la ressource CE jour.
+    L'écart du jour = saisi − attendu (positif = heures supplémentaires,
+    négatif = sous-charge, zéro = pile l'attendu). Un jour d'indisponibilité
+    n'a AUCUN attendu (exclu de ``jours_attendus`` et absent de ``par_jour``).
+
+    Lecture seule, multi-société : toutes les données lues sont filtrées sur
+    ``company`` (la ressource doit appartenir à la MÊME société — l'appelant
+    est responsable de ce scoping, comme pour les autres sélecteurs par
+    ressource). ``fin < debut`` → aucun jour attendu (garde explicite). Une
+    ressource sans ``user`` lié reste calculable (l'appelant décide s'il
+    notifie ou non — pas de filtre ici, contrairement à ``temps_manquants``).
+    Renvoie un dict ``{debut, fin, heures_attendues_jour, jours_attendus,
+    total_attendu, total_saisi, ecart_cumule, par_jour: [{date, attendu,
+    saisi, ecart}, ...]}``.
+    """
+    heures_attendues_jour = float(_heures_par_jour_reglage(company))
+    base = {
+        'debut': debut.isoformat(), 'fin': fin.isoformat(),
+        'heures_attendues_jour': heures_attendues_jour,
+        'jours_attendus': 0,
+        'total_attendu': 0.0, 'total_saisi': 0.0, 'ecart_cumule': 0.0,
+        'par_jour': [],
+    }
+    if fin < debut:
+        return base
+
+    jours_ouvres = _JOURS_OUVRES_DEFAUT
+    indispos = list(Indisponibilite.objects.filter(
+        company=company, ressource=ressource,
+        date_debut__lte=fin, date_fin__gte=debut))
+
+    def _indisponible(jour):
+        return any(i.date_debut <= jour <= i.date_fin for i in indispos)
+
+    saisies_par_jour = {}
+    for ts in Timesheet.objects.filter(
+            company=company, ressource=ressource,
+            date__gte=debut, date__lte=fin):
+        saisies_par_jour[ts.date] = (
+            saisies_par_jour.get(ts.date, Decimal('0')) + (ts.heures or Decimal('0')))
+
+    par_jour = []
+    total_attendu = 0.0
+    total_saisi = 0.0
+    cur = debut
+    while cur <= fin:
+        if cur.weekday() in jours_ouvres and not _indisponible(cur):
+            saisi = float(saisies_par_jour.get(cur, Decimal('0')))
+            ecart = saisi - heures_attendues_jour
+            par_jour.append({
+                'date': cur.isoformat(),
+                'attendu': heures_attendues_jour,
+                'saisi': round(saisi, 2),
+                'ecart': round(ecart, 2),
+            })
+            total_attendu += heures_attendues_jour
+            total_saisi += saisi
+        cur += timedelta(days=1)
+
+    base['jours_attendus'] = len(par_jour)
+    base['total_attendu'] = round(total_attendu, 2)
+    base['total_saisi'] = round(total_saisi, 2)
+    base['ecart_cumule'] = round(total_saisi - total_attendu, 2)
+    base['par_jour'] = par_jour
+    return base
+
+
+# ── Classement de saisie des temps — leaderboard interne (ZPRJ6) ────────────
+def classement_temps(company, debut, fin):
+    """Classement de saisie des temps par ``RessourceProfil`` (ZPRJ6).
+
+    Odoo Timesheets a un leaderboard gamifié (heures encodées, complétude)
+    pour inciter à la saisie. Pour CHAQUE ``RessourceProfil`` ACTIVE liée à un
+    ``user`` (une ressource sans compte ERP n'a rien à « classer ») sur
+    [debut, fin] : ``total_heures`` saisies (réutilise ``heures_attendues_vs_
+    saisies`` — ZPRJ5, ``total_saisi``), ``taux_completude_pct`` (jours saisis
+    / jours ouvrés attendus × 100, réutilise le même sélecteur — arrondi 1
+    décimale, ``None`` si aucun jour attendu, GARDE division par zéro),
+    ``jours_de_retard`` (jours ouvrés attendus SANS AUCUNE saisie sur la
+    fenêtre — même comptage que ``temps_manquants``/XPRJ7, calculé ici
+    directement pour rester cohérent avec le même sélecteur ZPRJ5 déjà
+    exécuté, sans le ré-invoquer).
+
+    AUCUN montant/coût interne (``cout``/``cout_horaire``) n'est exposé ici —
+    seules les heures et la complétude, jamais une donnée de pilotage
+    financier. Lecture seule, multi-société. Trié par ``taux_completude_pct``
+    DÉCROISSANT puis ``total_heures`` DÉCROISSANT (les plus assidus d'abord).
+    Renvoie ``{'debut', 'fin', 'lignes': [{ressource_id, ressource_nom,
+    total_heures, taux_completude_pct, jours_de_retard}, ...]}``.
+    """
+    ressources = RessourceProfil.objects.filter(
+        company=company, actif=True, user__isnull=False)
+
+    lignes = []
+    for ressource in ressources.order_by('nom', 'id'):
+        data = heures_attendues_vs_saisies(company, ressource, debut, fin)
+        jours_attendus = data['jours_attendus']
+        jours_saisis = sum(
+            1 for jour in data['par_jour'] if jour['saisi'] > 0)
+        if jours_attendus > 0:
+            taux_completude_pct = round(
+                jours_saisis / jours_attendus * 100, 1)
+        else:
+            taux_completude_pct = None
+        jours_de_retard = jours_attendus - jours_saisis
+
+        lignes.append({
+            'ressource_id': ressource.id,
+            'ressource_nom': ressource.nom,
+            'total_heures': data['total_saisi'],
+            'taux_completude_pct': taux_completude_pct,
+            'jours_de_retard': jours_de_retard,
+        })
+
+    lignes.sort(key=lambda ln: (
+        -(ln['taux_completude_pct'] or 0), -ln['total_heures']))
+
+    return {'debut': debut.isoformat(), 'fin': fin.isoformat(),
+            'lignes': lignes}
+
+
 # ── Rapprochement pointages RH ↔ temps projet (XPRJ8) ────────────────────────
 def rapprochement_pointages(company, debut, fin, seuil_heures=Decimal('0.5')):
     """Croise pointages RH (FG166) et temps projet, par employé/jour (XPRJ8).
@@ -2462,7 +2626,8 @@ def tableau_portefeuille(company, statut=None, seuil_jours=None):
     réelle cumulée, charge totale). Donnée 100 % INTERNE de pilotage — jamais
     exposée au client. Tout est scopé société. Lecture seule (aucune écriture).
     """
-    projets = Projet.objects.filter(company=company)
+    projets = Projet.objects.filter(company=company).select_related(
+        'evaluation')
     if statut:
         projets = projets.filter(statut=statut)
     projets = projets.order_by('-id')
@@ -2472,6 +2637,7 @@ def tableau_portefeuille(company, statut=None, seuil_jours=None):
     total_charge = Decimal('0')
     total_retards = 0
     total_risques = 0
+    notes_satisfaction = []
     for projet in projets:
         avancement = rollup_avancement(projet)
         retards = retards_projet(projet, seuil_jours=seuil_jours)
@@ -2498,6 +2664,16 @@ def tableau_portefeuille(company, statut=None, seuil_jours=None):
             company=company, projet=projet).order_by(
                 '-date_point', '-id').first()
 
+        # Note CSAT client (ZPRJ7) — None tant qu'aucune évaluation n'a été
+        # soumise (le lien peut exister sans dépôt).
+        evaluation = getattr(projet, 'evaluation', None)
+        note_satisfaction = (
+            evaluation.note
+            if evaluation is not None and evaluation.note is not None
+            else None)
+        if note_satisfaction is not None:
+            notes_satisfaction.append(note_satisfaction)
+
         lignes.append({
             'projet_id': projet.id,
             'code': projet.code,
@@ -2510,7 +2686,13 @@ def tableau_portefeuille(company, statut=None, seuil_jours=None):
             'charge_totale': charge,
             'derniere_sante': (
                 dernier_point.sante if dernier_point else None),
+            'note_satisfaction': note_satisfaction,
+            'politique_facturation': projet.politique_facturation,
         })
+
+    note_satisfaction_moyenne = (
+        round(sum(notes_satisfaction) / len(notes_satisfaction), 2)
+        if notes_satisfaction else None)
 
     return {
         'nb_projets': len(lignes),
@@ -2518,6 +2700,7 @@ def tableau_portefeuille(company, statut=None, seuil_jours=None):
         'total_charge': total_charge,
         'total_retards': total_retards,
         'total_risques': total_risques,
+        'note_satisfaction_moyenne': note_satisfaction_moyenne,
         'projets': lignes,
     }
 
@@ -2687,3 +2870,141 @@ def mes_taches(user, aujourd_hui=None):
     for r in resultats:
         del r['_urgence']
     return resultats
+
+
+# ── Marché public : exposition aux pénalités de retard (XPRJ27) ─────────────
+def penalites_retard(projet, date_reference=None):
+    """Exposition COURANTE aux pénalités de retard d'un marché public (XPRJ27).
+
+    Donnée INTERNE de pilotage — jamais dans un document client. Calcule le
+    nombre de jours de DÉPASSEMENT du délai contractuel d'exécution
+    (``delai_execution_jours`` compté depuis ``projet.date_debut``) à
+    ``date_reference`` (défaut aujourd'hui), puis l'exposition brute :
+
+        jours_depassement × (taux_penalite_retard / 1000) × montant_marche
+
+    plafonnée à ``plafond_penalite_pct`` % du ``montant_marche`` quand ce
+    plafond est renseigné. AVANT le délai (pas de dépassement) → exposition
+    NULLE (jamais négative). Un projet sans champs marché-public renseignés
+    (cas des projets PRIVÉS, majoritaires) renvoie une exposition nulle avec
+    ``applicable=False`` — sans jamais lever d'erreur, pour rester appelable
+    sans condition depuis n'importe quel projet. Le décompte DÉFINITIF reste à
+    établir à la CLÔTURE du marché (ce sélecteur ne fige rien, lecture seule).
+
+    Renvoie un dict ``{applicable, jours_depassement, taux_penalite_retard,
+    montant_marche, plafond_penalite_pct, exposition_brute, plafond_montant,
+    exposition, plafonnee, decompte_definitif_a_etablir}``.
+    """
+    if date_reference is None:
+        date_reference = _date.today()
+
+    applicable = bool(
+        projet.numero_marche
+        and projet.delai_execution_jours is not None
+        and projet.taux_penalite_retard is not None
+        and projet.montant_marche is not None
+        and projet.date_debut is not None
+    )
+    if not applicable:
+        return {
+            'applicable': False,
+            'jours_depassement': 0,
+            'taux_penalite_retard': None,
+            'montant_marche': None,
+            'plafond_penalite_pct': None,
+            'exposition_brute': Decimal('0'),
+            'plafond_montant': None,
+            'exposition': Decimal('0'),
+            'plafonnee': False,
+            'decompte_definitif_a_etablir': False,
+        }
+
+    date_limite = projet.date_debut + timedelta(
+        days=projet.delai_execution_jours)
+    jours_depassement = max((date_reference - date_limite).days, 0)
+
+    taux = projet.taux_penalite_retard
+    montant_marche = projet.montant_marche
+    exposition_brute = (
+        Decimal(jours_depassement) * (taux / Decimal('1000')) * montant_marche
+    ).quantize(Decimal('0.01'))
+
+    plafond_montant = None
+    exposition = exposition_brute
+    plafonnee = False
+    if projet.plafond_penalite_pct is not None:
+        plafond_montant = (
+            montant_marche * projet.plafond_penalite_pct / Decimal('100')
+        ).quantize(Decimal('0.01'))
+        if exposition_brute > plafond_montant:
+            exposition = plafond_montant
+            plafonnee = True
+
+    return {
+        'applicable': True,
+        'jours_depassement': jours_depassement,
+        'taux_penalite_retard': taux,
+        'montant_marche': montant_marche,
+        'plafond_penalite_pct': projet.plafond_penalite_pct,
+        'exposition_brute': exposition_brute,
+        'plafond_montant': plafond_montant,
+        'exposition': exposition,
+        'plafonnee': plafonnee,
+        'decompte_definitif_a_etablir': jours_depassement > 0,
+    }
+
+
+def matrice_risques(projet):
+    """Matrice des risques P × I (grille 5×5) d'un projet (ZPRJ8).
+
+    Compte, par cellule ``(probabilite, impact)`` (1–5 chacun), les
+    ``Risque`` du projet dont le ``statut`` est OUVERT ou SURVEILLÉ — les
+    risques MAÎTRISÉS/CLOS sont EXCLUS de la grille (comptage courant, pas
+    historique). Renvoie aussi le TOP risques par criticité décroissante
+    (mêmes risques ouverts/surveillés) pour affichage à côté de la heatmap.
+
+    Un projet sans risque ouvert/surveillé renvoie une grille entièrement à
+    zéro et un top vide — jamais d'erreur.
+
+    Renvoie un dict ``{grille: [{probabilite, impact, nombre}, ...25],
+    total_ouverts_surveilles, top_risques: [{id, libelle, probabilite,
+    impact, criticite, statut}, ...]}``.
+    """
+    risques_actifs = list(
+        Risque.objects.filter(
+            projet=projet,
+            statut__in=[Risque.Statut.OUVERT, Risque.Statut.SURVEILLE],
+        ).order_by('-criticite', '-id')
+    )
+
+    comptes = {}
+    for r in risques_actifs:
+        cle = (r.probabilite, r.impact)
+        comptes[cle] = comptes.get(cle, 0) + 1
+
+    grille = []
+    for probabilite in range(1, 6):
+        for impact in range(1, 6):
+            grille.append({
+                'probabilite': probabilite,
+                'impact': impact,
+                'nombre': comptes.get((probabilite, impact), 0),
+            })
+
+    top_risques = [
+        {
+            'id': r.id,
+            'libelle': r.libelle,
+            'probabilite': r.probabilite,
+            'impact': r.impact,
+            'criticite': r.criticite,
+            'statut': r.statut,
+        }
+        for r in risques_actifs[:10]
+    ]
+
+    return {
+        'grille': grille,
+        'total_ouverts_surveilles': len(risques_actifs),
+        'top_risques': top_risques,
+    }

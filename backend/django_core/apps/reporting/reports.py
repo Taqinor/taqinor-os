@@ -340,6 +340,17 @@ def service_report(request):
         **co, date_fin_garantie__gte=date.today(),
         date_fin_garantie__lte=horizon).count()
 
+    # YSERV12 — taux de résolution à distance (KPI d'évitement de
+    # déplacement). Company requise par le sélecteur ; superuser sans société
+    # (co == {}) est simplement omis (comme les autres compteurs ci-dessus,
+    # qui sont déjà scopés implicitement par ticket_qs).
+    resolution_a_distance = None
+    if request.user.company_id:
+        from apps.sav.selectors import taux_resolution_a_distance
+        resolution_a_distance = taux_resolution_a_distance(
+            request.user.company, date_debut=start, date_fin=end,
+            group_by_technicien=True)
+
     rows = [[c['statut'], c['count']] for c in chantiers_statut]
     x = _maybe_xlsx(request, 'rapport-service.xlsx',
                     ['Statut chantier', 'Nombre'], rows, 'Service')
@@ -378,4 +389,6 @@ def service_report(request):
         'tickets_ouverts': tickets_ouverts,
         'tickets_resolus': tickets_resolus,
         'garanties_expirantes_90j': garanties,
+        # YSERV12 — KPI d'évitement de déplacement.
+        'resolution_a_distance': resolution_a_distance,
     })

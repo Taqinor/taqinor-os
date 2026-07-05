@@ -120,6 +120,13 @@ class PaiementFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
                 taux_ras=taux, montant_ras_tva=montant_ras)
             paiement.facture.refresh_from_db()
             recompute_facture_fournisseur_statut(paiement.facture)
+            # YLEDG2 — événement documentaire générique (pose du seam pour
+            # compta.ecriture_pour_paiement_fournisseur, jamais d'import de
+            # son service ici).
+            from core.events import paiement_fournisseur_enregistre
+            paiement_fournisseur_enregistre.send(
+                sender=paiement.__class__, instance=paiement,
+                company=self.request.user.company)
             try:
                 # XPUR6 — informe (sans jamais déduire automatiquement) si ce
                 # paiement tombe dans la fenêtre d'escompte du fournisseur.

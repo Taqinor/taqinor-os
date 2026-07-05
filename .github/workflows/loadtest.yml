@@ -1,0 +1,65 @@
+name: loadtest smoke (k6, non-blocking)
+
+# YTEST14 — a SHORT (~5 min) k6 smoke against the critical read path, gated
+# by PERCENTILE thresholds (p95/p99 — see loadtests/common.js), never the
+# average. Non-blocking at first (continue-on-error) until stability is
+# proven; the long soak / spike scenarios stay manual/scheduled, never a
+# per-commit gate. docs/testing.md documents "percentile, pas moyenne".
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: '0 4 * * *'   # nightly, after the mutation job
+
+jobs:
+  k6-smoke:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: erp_db
+          POSTGRES_USER: erp_user
+          POSTGRES_PASSWORD: ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U erp_user"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DJANGO_SETTINGS_MODULE: erp_agentique.settings.dev
+      DJANGO_SECRET_KEY: ci-only-secret-key-not-used-in-production
+      DJANGO_DEBUG: 'True'
+      DB_NAME: erp_db
+      DB_USER: erp_user
+      DB_PASSWORD: ci_password
+      DB_HOST: localhost
+      DB_PORT: '5432'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install backend dependencies
+        working-directory: backend/django_core
+        run: pip install -r requirements.txt
+      - name: Migrate + run Django dev server in the background
+        working-directory: backend/django_core
+        run: |
+          python manage.py migrate --noinput
+          nohup python manage.py runserver 0.0.0.0:8000 > server.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8000/api/django/token/ -o /dev/null -w '%{http_code}' | grep -qE '^[24]'; then
+              echo "Django prêt"; break
+            fi
+            echo "Attente Django ($i)…"; sleep 1
+          done
+      - name: Install k6
+        run: |
+          curl -sL https://github.com/grafana/k6/releases/download/v0.52.0/k6-v0.52.0-linux-amd64.tar.gz | tar xz
+          sudo mv k6-v0.52.0-linux-amd64/k6 /usr/local/bin/k6
+      - name: Run k6 smoke (critical read path — short duration)
+        run: |
+          k6 run -e BASE_URL=http://localhost:8000 loadtests/browse.js || true

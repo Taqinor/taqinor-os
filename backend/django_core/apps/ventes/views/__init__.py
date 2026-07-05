@@ -9,7 +9,7 @@ from .devis import DevisViewSet
 from .ligne_devis import LigneDevisViewSet
 from .bon_commande import BonCommandeViewSet
 from .facture import FactureViewSet
-from .avoir import AvoirViewSet
+from .avoir import AvoirViewSet, NoteDebitViewSet  # ZFAC4
 from .paiement import PaiementViewSet
 from .ligne_facture import LigneFactureViewSet
 from .email import email_config
@@ -34,6 +34,8 @@ from .commissioning import (  # FG274-FG278, FG287
     TestPerformanceReceptionViewSet,
     AttestationREViewSet,
 )
+from .remise_encaissement import RemiseEncaissementViewSet  # XFSM19
+from .mandat_paiement import MandatPaiementViewSet  # XCTR22
 
 __all__ = [
     'DevisViewSet',
@@ -41,6 +43,7 @@ __all__ = [
     'BonCommandeViewSet',
     'FactureViewSet',
     'AvoirViewSet',
+    'NoteDebitViewSet',
     'PaiementViewSet',
     'LigneFactureViewSet',
     'email_config',
@@ -62,4 +65,6 @@ __all__ = [
     'AttestationConformiteViewSet',
     'TestPerformanceReceptionViewSet',
     'AttestationREViewSet',
+    'RemiseEncaissementViewSet',
+    'MandatPaiementViewSet',
 ]

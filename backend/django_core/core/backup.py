@@ -29,10 +29,51 @@ en mémoire) et l'ORM générique.
 """
 from __future__ import annotations
 
+import datetime
+import logging
+import subprocess
+import tempfile
+from pathlib import Path
+
+from django.conf import settings
 from django.utils import timezone
 
 from . import data_explorer
 from .models import BackupRun
+
+logger = logging.getLogger(__name__)
+
+# YOPSB1 — bucket MinIO dédié aux dumps Postgres réels (distinct des exports
+# manifeste FG395). Recopié depuis apps/ventes/utils/minio_client.py SANS
+# l'importer : core reste une couche de fondation qui ne dépend d'aucune app
+# domaine (contrat import-linter core-foundation-is-a-base-layer).
+BACKUP_BUCKET = 'erp-backups'
+
+
+def _minio_client():
+    """Client boto3/S3 vers MinIO (recopié de ventes.utils.minio_client pour
+    que core reste dépendance-libre vis-à-vis des apps domaine)."""
+    import boto3
+    return boto3.client(
+        's3',
+        endpoint_url=f'http://{settings.MINIO_ENDPOINT}',
+        aws_access_key_id=settings.MINIO_ACCESS_KEY,
+        aws_secret_access_key=settings.MINIO_SECRET_KEY,
+        region_name='us-east-1',
+    )
+
+
+def _ensure_backup_bucket(client) -> None:
+    """Crée le bucket ``erp-backups`` s'il n'existe pas (best-effort)."""
+    try:
+        client.head_bucket(Bucket=BACKUP_BUCKET)
+    except Exception:
+        try:
+            client.create_bucket(Bucket=BACKUP_BUCKET)
+            logger.info('Bucket MinIO créé: %s', BACKUP_BUCKET)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning('Impossible de créer le bucket %s: %s',
+                           BACKUP_BUCKET, exc)
 
 
 def _datasets_cibles(datasets):
@@ -121,3 +162,368 @@ def executer_restauration(run: BackupRun):
     }
     run.save(update_fields=['statut', 'detail', 'updated_at'])
     return run
+
+
+# ---------------------------------------------------------------------------
+# YOPSB1 — Sauvegarde Postgres réelle, planifiée et hors-serveur.
+#
+# ``dump_database`` lance un ``pg_dump`` (format custom -Fc) vers un fichier
+# temporaire puis l'UPLOAD dans MinIO (bucket ``erp-backups``), et journalise
+# le résultat en ``BackupRun`` (kind=db_dump, company=None — système-wide).
+# Un ``pg_dump`` en échec (code retour != 0) marque le run ``echec`` et NE
+# lève PAS d'exception : l'appelant (commande de gestion / tâche Celery)
+# inspecte ``run.statut`` et sort en code non-nul le cas échéant.
+# ---------------------------------------------------------------------------
+
+def _pg_dump_env_args():
+    """Renvoie (args pg_dump, env avec PGPASSWORD) depuis les variables DB_*
+    déjà lues par ``settings/base.py`` — jamais un mot de passe en argv."""
+    import os
+
+    db = settings.DATABASES['default']
+    args = [
+        'pg_dump',
+        '-Fc',
+        '-h', db.get('HOST', 'db'),
+        '-p', str(db.get('PORT', '5432')),
+        '-U', db.get('USER', 'erp_user'),
+        '-d', db.get('NAME', 'erp_db'),
+    ]
+    env = dict(os.environ)
+    if db.get('PASSWORD'):
+        env['PGPASSWORD'] = db['PASSWORD']
+    return args, env
+
+
+def dump_database(run: BackupRun) -> BackupRun:
+    """YOPSB1 — exécute un ``pg_dump`` réel de toute l'instance et l'upload
+    dans MinIO. ``run`` doit être ``kind=KIND_DB_DUMP`` (company=None).
+
+    Échec ``pg_dump`` (code retour non nul ou exception) → ``statut=echec``,
+    détail de l'erreur, AUCUNE levée d'exception (l'appelant décide du code
+    process de sortie via ``run.statut``)."""
+    run.statut = BackupRun.STATUT_EN_COURS
+    run.save(update_fields=['statut', 'updated_at'])
+
+    args, env = _pg_dump_env_args()
+    horodatage = timezone.now().strftime('%Y%m%d-%H%M%S')
+    object_key = f'pg_dumps/{horodatage}.dump'
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        dump_path = Path(tmpdir) / 'db.dump'
+        try:
+            with open(dump_path, 'wb') as fh:
+                result = subprocess.run(
+                    args, stdout=fh, stderr=subprocess.PIPE, env=env,
+                    timeout=3600)
+        except Exception as exc:  # noqa: BLE001 — pg_dump introuvable, timeout…
+            run.statut = BackupRun.STATUT_ECHEC
+            run.detail = {'message': f'pg_dump: exception: {exc}'}
+            run.save(update_fields=['statut', 'detail', 'updated_at'])
+            return run
+
+        if result.returncode != 0:
+            run.statut = BackupRun.STATUT_ECHEC
+            run.detail = {
+                'message': 'pg_dump a échoué (code non nul).',
+                'returncode': result.returncode,
+                'stderr': (result.stderr or b'').decode(errors='replace')[:2000],
+            }
+            run.save(update_fields=['statut', 'detail', 'updated_at'])
+            return run
+
+        taille = dump_path.stat().st_size
+        try:
+            client = _minio_client()
+            _ensure_backup_bucket(client)
+            client.upload_file(str(dump_path), BACKUP_BUCKET, object_key)
+        except Exception as exc:  # noqa: BLE001 — échec upload = échec du run
+            run.statut = BackupRun.STATUT_ECHEC
+            run.detail = {'message': f"Échec de l'upload MinIO: {exc}"}
+            run.save(update_fields=['statut', 'detail', 'updated_at'])
+            return run
+
+    run.object_key = object_key
+    run.bytes_taille = taille
+    run.artifact_ref = f'minio://{BACKUP_BUCKET}/{object_key}'
+    run.statut = BackupRun.STATUT_TERMINE
+    run.termine_le = timezone.now()
+    run.detail = {'message': 'pg_dump réussi et déposé dans MinIO.',
+                  'bytes': taille}
+    run.save(update_fields=['object_key', 'bytes_taille', 'artifact_ref',
+                            'statut', 'termine_le', 'detail', 'updated_at'])
+    return run
+
+
+# ---------------------------------------------------------------------------
+# YOPSB2 — Drill de restauration testé + vérification d'intégrité des dumps.
+#
+# ``restore_drill`` télécharge le dernier dump réussi (YOPSB1), le restaure
+# dans une base JETABLE (jamais la production — garde dure sur le nom), puis
+# compare des comptages de tables clés au manifeste du dump. La base scratch
+# est DROP à la fin (succès ou échec de la comparaison).
+# ---------------------------------------------------------------------------
+
+RESTORE_DRILL_TABLES = [
+    'authentication_customuser',
+    'ventes_devis',
+    'crm_lead',
+]
+
+
+class RestoreDrillGuardError(Exception):
+    """Levée si la base cible du drill == la base de production (jamais)."""
+
+
+def _restore_drill_db_name():
+    """Nom de la base scratch du drill (configurable), avec garde dure
+    empêchant qu'elle coïncide avec la base de production."""
+    import os
+
+    name = os.environ.get('BACKUP_RESTORE_DRILL_DB', 'erp_restore_drill')
+    prod_name = settings.DATABASES['default']['NAME']
+    if name == prod_name:
+        raise RestoreDrillGuardError(
+            "BACKUP_RESTORE_DRILL_DB coïncide avec la base de production "
+            f"({prod_name!r}) — refus d'écrire dessus.")
+    return name
+
+
+def _psql_env_args_for(db_name):
+    import os
+
+    db = settings.DATABASES['default']
+    env = dict(os.environ)
+    if db.get('PASSWORD'):
+        env['PGPASSWORD'] = db['PASSWORD']
+    base = ['-h', db.get('HOST', 'db'), '-p', str(db.get('PORT', '5432')),
+            '-U', db.get('USER', 'erp_user')]
+    return base, env, db_name
+
+
+def _dernier_dump_termine():
+    return (BackupRun.objects
+            .filter(kind=BackupRun.KIND_DB_DUMP,
+                    statut=BackupRun.STATUT_TERMINE)
+            .exclude(object_key='')
+            .order_by('-termine_le', '-id')
+            .first())
+
+
+def restore_drill(run: BackupRun) -> BackupRun:
+    """YOPSB2 — restaure le dernier dump réussi dans une base scratch,
+    vérifie des comptages clés, puis DROP la base scratch. ``run`` doit être
+    ``kind=KIND_RESTORE_DRILL`` (company=None, système-wide).
+
+    Garde dure : refuse d'écrire si la base cible == la base de production
+    (``RestoreDrillGuardError``, jamais un ``pg_restore`` aveugle)."""
+    run.statut = BackupRun.STATUT_EN_COURS
+    run.save(update_fields=['statut', 'updated_at'])
+
+    try:
+        drill_db = _restore_drill_db_name()
+    except RestoreDrillGuardError as exc:
+        run.statut = BackupRun.STATUT_ECHEC
+        run.detail = {'message': str(exc)}
+        run.save(update_fields=['statut', 'detail', 'updated_at'])
+        return run
+
+    source = _dernier_dump_termine()
+    if source is None:
+        run.statut = BackupRun.STATUT_ECHEC
+        run.detail = {'message': 'Aucun BackupRun db_dump terminé disponible '
+                                 'à restaurer.'}
+        run.save(update_fields=['statut', 'detail', 'updated_at'])
+        return run
+
+    base_args, env, _ = _psql_env_args_for(drill_db)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        dump_path = Path(tmpdir) / 'restore.dump'
+        try:
+            client = _minio_client()
+            client.download_file(BACKUP_BUCKET, source.object_key,
+                                 str(dump_path))
+        except Exception as exc:  # noqa: BLE001
+            run.statut = BackupRun.STATUT_ECHEC
+            run.detail = {'message': f'Échec du téléchargement MinIO: {exc}'}
+            run.save(update_fields=['statut', 'detail', 'updated_at'])
+            return run
+
+        try:
+            # 1) (re)créer la base scratch — DROP si résiduelle d'un drill
+            #    précédent interrompu, puis CREATE.
+            subprocess.run(
+                ['dropdb', *base_args, '--if-exists', drill_db],
+                env=env, stderr=subprocess.PIPE, timeout=120)
+            create = subprocess.run(
+                ['createdb', *base_args, drill_db],
+                env=env, stderr=subprocess.PIPE, timeout=120)
+            if create.returncode != 0:
+                run.statut = BackupRun.STATUT_ECHEC
+                run.detail = {
+                    'message': 'createdb (base scratch) a échoué.',
+                    'stderr': (create.stderr or b'').decode(
+                        errors='replace')[:2000],
+                }
+                run.save(update_fields=['statut', 'detail', 'updated_at'])
+                return run
+
+            # 2) pg_restore le dump dans la base scratch.
+            restore = subprocess.run(
+                ['pg_restore', *base_args, '-d', drill_db,
+                 '--no-owner', '--no-privileges', str(dump_path)],
+                env=env, stderr=subprocess.PIPE, timeout=3600)
+            if restore.returncode != 0:
+                run.statut = BackupRun.STATUT_ECHEC
+                run.detail = {
+                    'message': 'pg_restore a échoué.',
+                    'stderr': (restore.stderr or b'').decode(
+                        errors='replace')[:2000],
+                }
+                run.save(update_fields=['statut', 'detail', 'updated_at'])
+                return run
+
+            # 3) comptages de tables clés dans la base restaurée.
+            comptages = {}
+            try:
+                import psycopg2
+                conn = psycopg2.connect(
+                    host=settings.DATABASES['default'].get('HOST', 'db'),
+                    port=settings.DATABASES['default'].get('PORT', '5432'),
+                    user=settings.DATABASES['default'].get('USER', 'erp_user'),
+                    password=settings.DATABASES['default'].get('PASSWORD', ''),
+                    dbname=drill_db)
+                try:
+                    with conn.cursor() as cur:
+                        for table in RESTORE_DRILL_TABLES:
+                            cur.execute(f'SELECT COUNT(*) FROM {table}')
+                            comptages[table] = cur.fetchone()[0]
+                finally:
+                    conn.close()
+            except Exception as exc:  # noqa: BLE001
+                run.statut = BackupRun.STATUT_ECHEC
+                run.detail = {'message': f'Échec des comptages: {exc}'}
+                run.save(update_fields=['statut', 'detail', 'updated_at'])
+                return run
+        finally:
+            # Toujours DROP la base scratch, succès ou échec (jamais laisser
+            # traîner une base jetable en dehors du drill).
+            subprocess.run(
+                ['dropdb', *base_args, '--if-exists', drill_db],
+                env=env, stderr=subprocess.PIPE, timeout=120)
+
+    run.statut = BackupRun.STATUT_TERMINE
+    run.termine_le = timezone.now()
+    run.detail = {
+        'message': 'Drill de restauration réussi.',
+        'source_run_id': source.pk,
+        'source_object_key': source.object_key,
+        'comptages': comptages,
+    }
+    run.save(update_fields=['statut', 'termine_le', 'detail', 'updated_at'])
+    return run
+
+
+# ---------------------------------------------------------------------------
+# YOPSB3 — Rétention + purge automatique des sauvegardes (7j/4sem/12mois).
+#
+# ``purger_backups`` applique un schéma Grandfather-Father-Son configurable
+# par variables d'environnement (défauts codés) sur les ``BackupRun``
+# ``kind=db_dump`` ``statut=termine`` non encore purgés : garde le dernier
+# dump de chaque jour sur N jours, de chaque semaine sur W semaines, de
+# chaque mois sur M mois ; le reste est supprimé (objet MinIO + soft-delete
+# du BackupRun). DRY-RUN par défaut (``apply_=False``) : rien n'est supprimé
+# tant que l'appelant ne passe pas explicitement ``apply_=True`` (la tâche
+# Celery lit ``settings.BACKUP_PURGE_AUTO_APPLY``, comme GED25).
+# ---------------------------------------------------------------------------
+
+def _retention_settings():
+    import os
+
+    return {
+        'daily': int(os.environ.get('BACKUP_RETENTION_DAILY', '7')),
+        'weekly': int(os.environ.get('BACKUP_RETENTION_WEEKLY', '4')),
+        'monthly': int(os.environ.get('BACKUP_RETENTION_MONTHLY', '12')),
+    }
+
+
+def _a_conserver(runs, now):
+    """Détermine l'ensemble des ``BackupRun`` à CONSERVER selon le schéma GFS.
+
+    ``runs`` : itérable de BackupRun triés ou non, avec ``termine_le`` posé.
+    Renvoie un ``set`` de PK à garder."""
+    cfg = _retention_settings()
+    conserver = set()
+
+    # Regroupe par clé (jour / semaine ISO / mois), garde le PLUS RÉCENT de
+    # chaque groupe dans la fenêtre de rétention correspondante.
+    def _garder_dernier_par_groupe(candidats, key_fn, fenetre_debut):
+        groupes = {}
+        for r in candidats:
+            if r.termine_le is None or r.termine_le < fenetre_debut:
+                continue
+            key = key_fn(r.termine_le)
+            actuel = groupes.get(key)
+            if actuel is None or r.termine_le > actuel.termine_le:
+                groupes[key] = r
+        conserver.update(r.pk for r in groupes.values())
+
+    runs = list(runs)
+    _garder_dernier_par_groupe(
+        runs, lambda dt: dt.date(),
+        now - datetime.timedelta(days=cfg['daily']))
+    _garder_dernier_par_groupe(
+        runs, lambda dt: (dt.isocalendar()[0], dt.isocalendar()[1]),
+        now - datetime.timedelta(weeks=cfg['weekly']))
+    _garder_dernier_par_groupe(
+        runs, lambda dt: (dt.year, dt.month),
+        now - datetime.timedelta(days=31 * cfg['monthly']))
+    return conserver
+
+
+def purger_backups(now=None, apply_=False):
+    """YOPSB3 — purge GFS des dumps db_dump terminés hors schéma de
+    rétention. ``apply_=False`` (défaut) : DRY-RUN, ne supprime rien, ne fait
+    que renvoyer le compte prévisionnel. ``apply_=True`` : supprime l'objet
+    MinIO + soft-delete le ``BackupRun`` pour chaque run hors schéma.
+
+    Renvoie ``{conserves, supprimes, dry_run}``."""
+    now = now or timezone.now()
+    qs = (BackupRun.objects
+          .filter(kind=BackupRun.KIND_DB_DUMP,
+                  statut=BackupRun.STATUT_TERMINE,
+                  purge_is_deleted=False)
+          .exclude(termine_le__isnull=True))
+    runs = list(qs)
+    conserver_pks = _a_conserver(runs, now)
+    a_purger = [r for r in runs if r.pk not in conserver_pks]
+
+    if not apply_:
+        return {
+            'conserves': len(conserver_pks),
+            'supprimes': len(a_purger),
+            'dry_run': True,
+        }
+
+    client = None
+    for r in a_purger:
+        if r.object_key:
+            try:
+                client = client or _minio_client()
+                client.delete_object(Bucket=BACKUP_BUCKET, Key=r.object_key)
+            except Exception as exc:  # noqa: BLE001 — échec objet n'arrête pas
+                logger.warning(
+                    'purger_backups: échec suppression objet MinIO %s: %s',
+                    r.object_key, exc)
+                continue
+        r.purge_is_deleted = True
+        r.purge_deleted_at = now
+        r.save(update_fields=['purge_is_deleted', 'purge_deleted_at',
+                              'updated_at'])
+
+    return {
+        'conserves': len(conserver_pks),
+        'supprimes': len(a_purger),
+        'dry_run': False,
+    }

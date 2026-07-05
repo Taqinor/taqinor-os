@@ -25,7 +25,7 @@ from apps.crm.models import Client, Lead
 from apps.ventes.models import Devis
 from apps.chat.models import (
     Conversation, ConversationMember, Message, MessageAttachment,
-    MessageReaction, MessageMention,
+    MessageReaction, MessageMention, ThreadFollow,
 )
 from apps.chat import services
 
@@ -634,3 +634,836 @@ class S20MemberManagementTests(TestCase):
         r = api.post(
             f'/api/django/chat/conversations/{self.conv.id}/leave/')
         self.assertEqual(r.status_code, 404)
+
+
+class XKB24ThreadTests(TestCase):
+    """XKB24 — fils de discussion : réponses groupées, suivi, notifications
+    ciblées aux suiveurs (jamais tout le canal), boîte Fils."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.alice = make_user(self.company, 'alice')   # racine
+        self.bob = make_user(self.company, 'bob')        # répondant
+        self.carol = make_user(self.company, 'carol')    # membre, ne répond pas
+        self.conv = make_channel(
+            self.company, self.alice, members=[self.bob, self.carol])
+        self.root = Message.objects.create(
+            company=self.company, conversation=self.conv, sender=self.alice,
+            body='Message racine')
+
+    def test_reply_groups_under_root_and_counts(self):
+        api = auth(self.bob)
+        r = api.post(
+            f'/api/django/chat/messages/{self.root.id}/reply/',
+            {'body': 'Réponse de bob'}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(self.root.replies.count(), 1)
+
+        thread = api.get(f'/api/django/chat/messages/{self.root.id}/thread/')
+        self.assertEqual(thread.status_code, 200)
+        self.assertEqual(len(thread.data), 1)
+
+        detail = api.get(f'/api/django/chat/messages/{self.root.id}/')
+        self.assertEqual(detail.data['reply_count'], 1)
+
+    def test_reply_auto_follows_root_author_and_replier(self):
+        services.reply_in_thread(
+            root_message=self.root, sender=self.bob, company=self.company,
+            body='hop')
+        self.assertTrue(ThreadFollow.objects.filter(
+            root_message=self.root, user=self.alice).exists())
+        self.assertTrue(ThreadFollow.objects.filter(
+            root_message=self.root, user=self.bob).exists())
+
+    @patch('apps.notifications.services.notify')
+    def test_only_thread_followers_notified_not_whole_channel(self, mock_notify):
+        with self.captureOnCommitCallbacks(execute=True):
+            services.reply_in_thread(
+                root_message=self.root, sender=self.bob, company=self.company,
+                body='réponse')
+        notified_users = {call.args[0] for call in mock_notify.call_args_list}
+        # alice (racine, auto-suivie) est notifiée ; carol (membre du canal,
+        # pas du fil) ne l'est PAS ; bob (auteur) ne se notifie pas lui-même.
+        self.assertIn(self.alice, notified_users)
+        self.assertNotIn(self.carol, notified_users)
+        self.assertNotIn(self.bob, notified_users)
+
+    def test_followed_threads_box_lists_unread(self):
+        services.reply_in_thread(
+            root_message=self.root, sender=self.bob, company=self.company,
+            body='une réponse')
+        api = auth(self.alice)
+        r = api.get('/api/django/chat/messages/threads/')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(len(r.data), 1)
+        self.assertEqual(r.data[0]['root_message_id'], self.root.id)
+        self.assertEqual(r.data[0]['unread'], 1)
+
+        api.post(f'/api/django/chat/messages/{self.root.id}/thread-read/')
+        r2 = api.get('/api/django/chat/messages/threads/')
+        self.assertEqual(r2.data[0]['unread'], 0)
+
+    def test_manual_follow_unfollow(self):
+        carol_api = auth(self.carol)
+        carol_api.post(
+            f'/api/django/chat/messages/{self.root.id}/thread-follow/')
+        self.assertTrue(ThreadFollow.objects.filter(
+            root_message=self.root, user=self.carol).exists())
+        carol_api.post(
+            f'/api/django/chat/messages/{self.root.id}/thread-unfollow/')
+        self.assertFalse(ThreadFollow.objects.filter(
+            root_message=self.root, user=self.carol).exists())
+
+    def test_reply_non_member_403(self):
+        other_co = make_company(slug='xkb24-other', nom='Other')
+        evil = make_user(other_co, 'evil-xkb24')
+        api = auth(evil)
+        r = api.post(
+            f'/api/django/chat/messages/{self.root.id}/reply/',
+            {'body': 'intrus'}, format='json')
+        self.assertEqual(r.status_code, 404)
+
+
+class XKB25NotificationLevelTests(TestCase):
+    """XKB25 — niveau de notification à 3 valeurs par conversation."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.alice = make_user(self.company, 'alice')
+        self.bob = make_user(self.company, 'bob')
+        self.conv = make_channel(self.company, self.alice, members=[self.bob])
+
+    def test_default_level_is_all_preserves_existing_behavior(self):
+        member = ConversationMember.objects.get(
+            conversation=self.conv, user=self.bob)
+        self.assertEqual(member.notification_level, 'all')
+        self.assertFalse(member.is_muted)
+
+    def test_set_level_muted_syncs_is_muted(self):
+        member = ConversationMember.objects.get(
+            conversation=self.conv, user=self.bob)
+        services.set_notification_level(member, 'muted')
+        member.refresh_from_db()
+        self.assertEqual(member.notification_level, 'muted')
+        self.assertTrue(member.is_muted)
+
+    def test_set_level_all_unsyncs_is_muted(self):
+        member = ConversationMember.objects.get(
+            conversation=self.conv, user=self.bob)
+        services.set_notification_level(member, 'muted')
+        services.set_notification_level(member, 'all')
+        member.refresh_from_db()
+        self.assertFalse(member.is_muted)
+
+    def test_invalid_level_rejected(self):
+        member = ConversationMember.objects.get(
+            conversation=self.conv, user=self.bob)
+        with self.assertRaises(ValueError):
+            services.set_notification_level(member, 'bogus')
+
+    @patch('apps.notifications.services.notify')
+    def test_mentions_only_level_filters_plain_messages(self, mock_notify):
+        member = ConversationMember.objects.get(
+            conversation=self.conv, user=self.bob)
+        services.set_notification_level(member, 'mentions')
+        services.create_message(
+            conversation=self.conv, sender=self.alice, company=self.company,
+            body='message ordinaire, pas de mention')
+        notified = {call.args[0] for call in mock_notify.call_args_list}
+        self.assertNotIn(self.bob, notified)
+
+    @patch('apps.notifications.services.notify')
+    def test_mentions_only_level_lets_mention_through(self, mock_notify):
+        member = ConversationMember.objects.get(
+            conversation=self.conv, user=self.bob)
+        services.set_notification_level(member, 'mentions')
+        with self.captureOnCommitCallbacks(execute=True):
+            services.create_message(
+                conversation=self.conv, sender=self.alice, company=self.company,
+                body='@bob regarde ça')
+        notified = {call.args[0] for call in mock_notify.call_args_list}
+        self.assertIn(self.bob, notified)
+
+    @patch('apps.notifications.services.notify')
+    def test_muted_level_blocks_everything_including_mentions(self, mock_notify):
+        member = ConversationMember.objects.get(
+            conversation=self.conv, user=self.bob)
+        services.set_notification_level(member, 'muted')
+        services.create_message(
+            conversation=self.conv, sender=self.alice, company=self.company,
+            body='@bob urgent')
+        notified = {call.args[0] for call in mock_notify.call_args_list}
+        self.assertNotIn(self.bob, notified)
+
+    def test_api_notification_level_endpoint(self):
+        api = auth(self.bob)
+        r = api.post(
+            f'/api/django/chat/conversations/{self.conv.id}'
+            f'/notification-level/', {'level': 'mentions'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        member = ConversationMember.objects.get(
+            conversation=self.conv, user=self.bob)
+        self.assertEqual(member.notification_level, 'mentions')
+
+    def test_api_notification_level_invalid_rejected(self):
+        api = auth(self.bob)
+        r = api.post(
+            f'/api/django/chat/conversations/{self.conv.id}'
+            f'/notification-level/', {'level': 'bogus'}, format='json')
+        self.assertEqual(r.status_code, 400)
+
+    def test_mute_endpoint_still_syncs_level(self):
+        api = auth(self.bob)
+        r = api.post(f'/api/django/chat/conversations/{self.conv.id}/mute/',
+                     {'muted': True}, format='json')
+        self.assertEqual(r.status_code, 200)
+        member = ConversationMember.objects.get(
+            conversation=self.conv, user=self.bob)
+        self.assertEqual(member.notification_level, 'muted')
+
+
+class XKB26StatusDndTests(TestCase):
+    """XKB26 — statut personnalisé + Ne pas déranger."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.alice = make_user(self.company, 'alice')
+        self.bob = make_user(self.company, 'bob')
+        self.conv = make_channel(self.company, self.alice, members=[self.bob])
+
+    def test_set_status_visible_to_colleagues(self):
+        api = auth(self.bob)
+        r = api.post('/api/django/chat/status/me/',
+                     {'status_text': 'En déplacement chantier',
+                      'status_emoji': '🚗'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+
+        colleague_api = auth(self.alice)
+        r2 = colleague_api.get('/api/django/chat/status/colleagues/')
+        self.assertEqual(r2.status_code, 200)
+        entry = next(e for e in r2.data if e['user_id'] == self.bob.id)
+        self.assertEqual(entry['status_text'], 'En déplacement chantier')
+        self.assertEqual(entry['status_emoji'], '🚗')
+
+    def test_dnd_suppresses_push_during_window(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        services.set_dnd(
+            self.bob, self.company,
+            start=timezone.now() - timedelta(minutes=5),
+            end=timezone.now() + timedelta(hours=1))
+        with patch('apps.notifications.services.notify') as mock_notify:
+            services.create_message(
+                conversation=self.conv, sender=self.alice,
+                company=self.company, body='Bonjour')
+            notified = {call.args[0] for call in mock_notify.call_args_list}
+            self.assertNotIn(self.bob, notified)
+
+    def test_dnd_lifted_after_window_restores_push(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        services.set_dnd(
+            self.bob, self.company,
+            start=timezone.now() - timedelta(hours=2),
+            end=timezone.now() - timedelta(hours=1))
+        with patch('apps.notifications.services.notify') as mock_notify, \
+                self.captureOnCommitCallbacks(execute=True):
+            services.create_message(
+                conversation=self.conv, sender=self.alice,
+                company=self.company, body='Bonjour')
+        notified = {call.args[0] for call in mock_notify.call_args_list}
+        self.assertIn(self.bob, notified)
+
+    def test_dnd_invalid_window_rejected(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        with self.assertRaises(ValueError):
+            services.set_dnd(
+                self.bob, self.company,
+                start=timezone.now(),
+                end=timezone.now() - timedelta(hours=1))
+
+    def test_api_dnd_roundtrip(self):
+        api = auth(self.bob)
+        r = api.post('/api/django/chat/status/dnd/', {
+            'start': '2026-01-01T22:00:00Z',
+            'end': '2026-01-02T06:00:00Z',
+        }, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertIsNotNone(r.data['dnd_start'])
+        # Clear DND.
+        r2 = api.post('/api/django/chat/status/dnd/',
+                      {'start': None, 'end': None}, format='json')
+        self.assertEqual(r2.status_code, 200)
+        self.assertIsNone(r2.data['dnd_start'])
+
+    def test_last_seen_updated_via_polling_endpoint(self):
+        api = auth(self.bob)
+        r = api.post('/api/django/chat/status/seen/')
+        self.assertEqual(r.status_code, 200)
+        self.assertIsNotNone(r.data['last_seen_at'])
+
+    def test_clear_status(self):
+        services.set_status(self.bob, self.company, status_text='Occupé',
+                            status_emoji='⛔')
+        services.clear_status(self.bob, self.company)
+        st = services.get_or_create_status(self.bob, self.company)
+        self.assertEqual(st.status_text, '')
+        self.assertEqual(st.status_emoji, '')
+
+
+class XKB27ScheduledRemindersBookmarksTests(TestCase):
+    """XKB27 — messages programmés, rappels & signets."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.alice = make_user(self.company, 'alice')
+        self.bob = make_user(self.company, 'bob')
+        self.conv = make_channel(self.company, self.alice, members=[self.bob])
+        self.msg = Message.objects.create(
+            company=self.company, conversation=self.conv, sender=self.alice,
+            body='Message à enregistrer')
+
+    def test_schedule_message_not_sent_before_time(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        future = timezone.now() + timedelta(hours=1)
+        sched = services.schedule_message(
+            conversation=self.conv, sender=self.alice, company=self.company,
+            body='Plus tard', scheduled_at=future)
+        sent = services.sweep_scheduled_messages(now=timezone.now())
+        self.assertEqual(sent, 0)
+        sched.refresh_from_db()
+        self.assertEqual(sched.status, 'pending')
+        self.assertEqual(
+            self.conv.messages.filter(body='Plus tard').count(), 0)
+
+    def test_schedule_message_sent_at_due_time(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        future = timezone.now() + timedelta(minutes=1)
+        sched = services.schedule_message(
+            conversation=self.conv, sender=self.alice, company=self.company,
+            body='Plus tard', scheduled_at=future)
+        sent = services.sweep_scheduled_messages(
+            now=future + timedelta(seconds=1))
+        self.assertEqual(sent, 1)
+        sched.refresh_from_db()
+        self.assertEqual(sched.status, 'sent')
+        self.assertIsNotNone(sched.sent_message)
+        self.assertEqual(sched.sent_message.body, 'Plus tard')
+
+    def test_schedule_rejects_past_time(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        with self.assertRaises(ValueError):
+            services.schedule_message(
+                conversation=self.conv, sender=self.alice,
+                company=self.company, body='x',
+                scheduled_at=timezone.now() - timedelta(hours=1))
+
+    def test_cancel_scheduled_message_before_time(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        future = timezone.now() + timedelta(hours=1)
+        sched = services.schedule_message(
+            conversation=self.conv, sender=self.alice, company=self.company,
+            body='Annule-moi', scheduled_at=future)
+        services.cancel_scheduled_message(sched, self.alice)
+        sched.refresh_from_db()
+        self.assertEqual(sched.status, 'cancelled')
+        sent = services.sweep_scheduled_messages(
+            now=future + timedelta(seconds=1))
+        self.assertEqual(sent, 0)
+
+    def test_cancel_scheduled_message_wrong_user_forbidden(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        sched = services.schedule_message(
+            conversation=self.conv, sender=self.alice, company=self.company,
+            body='x', scheduled_at=timezone.now() + timedelta(hours=1))
+        with self.assertRaises(PermissionError):
+            services.cancel_scheduled_message(sched, self.bob)
+
+    def test_api_scheduled_message_create_and_cancel(self):
+        api = auth(self.alice)
+        r = api.post('/api/django/chat/scheduled-messages/', {
+            'conversation': self.conv.id,
+            'body': 'via API',
+            'scheduled_at': '2099-01-01T10:00:00Z',
+        }, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        sched_id = r.data['id']
+        r2 = api.delete(f'/api/django/chat/scheduled-messages/{sched_id}/')
+        self.assertEqual(r2.status_code, 200)
+        self.assertEqual(r2.data['status'], 'cancelled')
+
+    @patch('apps.notifications.services.notify')
+    def test_reminder_notifies_at_due_time_not_before(self, mock_notify):
+        from django.utils import timezone
+        from datetime import timedelta
+        future = timezone.now() + timedelta(minutes=30)
+        services.remind_me(self.msg, self.bob, future)
+        sent = services.sweep_reminders(now=timezone.now())
+        self.assertEqual(sent, 0)
+        mock_notify.assert_not_called()
+
+        sent2 = services.sweep_reminders(now=future + timedelta(seconds=1))
+        self.assertEqual(sent2, 1)
+        mock_notify.assert_called_once()
+
+    def test_reminder_rejects_past_time(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        with self.assertRaises(ValueError):
+            services.remind_me(
+                self.msg, self.bob, timezone.now() - timedelta(hours=1))
+
+    def test_bookmark_toggle_list_remove(self):
+        api = auth(self.bob)
+        r = api.post(f'/api/django/chat/messages/{self.msg.id}/bookmark/')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data['status'], 'added')
+
+        r2 = api.get('/api/django/chat/messages/bookmarks/')
+        self.assertEqual(r2.status_code, 200)
+        self.assertEqual(len(r2.data), 1)
+        self.assertEqual(r2.data[0]['message'], self.msg.id)
+
+        r3 = api.post(f'/api/django/chat/messages/{self.msg.id}/bookmark/')
+        self.assertEqual(r3.data['status'], 'removed')
+        r4 = api.get('/api/django/chat/messages/bookmarks/')
+        self.assertEqual(len(r4.data), 0)
+
+
+class XKB28CannedResponseTests(TestCase):
+    """XKB28 — réponses enregistrées (snippets) : personnelles privées,
+    société partagées."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.alice = make_user(self.company, 'alice')
+        self.bob = make_user(self.company, 'bob')
+        self.other_co = make_company(slug='xkb28-other', nom='Other')
+        self.evil = make_user(self.other_co, 'evil-xkb28')
+
+    def test_create_personal_snippet_private_to_owner(self):
+        api = auth(self.alice)
+        r = api.post('/api/django/chat/canned-responses/', {
+            'shortcut': 'salut', 'body': 'Bonjour, comment puis-je aider ?',
+            'scope': 'personal',
+        }, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+
+        bob_api = auth(self.bob)
+        listing = bob_api.get('/api/django/chat/canned-responses/')
+        shortcuts = [c['shortcut'] for c in listing.data]
+        self.assertNotIn('salut', shortcuts)
+
+    def test_company_snippet_shared_across_users(self):
+        api = auth(self.alice)
+        api.post('/api/django/chat/canned-responses/', {
+            'shortcut': 'devis', 'body': 'Voici votre devis en pièce jointe.',
+            'scope': 'company',
+        }, format='json')
+        bob_api = auth(self.bob)
+        listing = bob_api.get('/api/django/chat/canned-responses/')
+        shortcuts = [c['shortcut'] for c in listing.data]
+        self.assertIn('devis', shortcuts)
+
+    def test_prefix_autocomplete(self):
+        services.create_canned_response(
+            self.alice, self.company, shortcut='bonjour', body='Salut',
+            scope='personal')
+        services.create_canned_response(
+            self.alice, self.company, shortcut='byebye', body='Au revoir',
+            scope='personal')
+        rows = services.visible_canned_responses(
+            self.alice, self.company, prefix='bon')
+        self.assertEqual([r.shortcut for r in rows], ['bonjour'])
+
+    def test_duplicate_shortcut_same_scope_rejected(self):
+        services.create_canned_response(
+            self.alice, self.company, shortcut='dup', body='a',
+            scope='personal')
+        with self.assertRaises(ValueError):
+            services.create_canned_response(
+                self.alice, self.company, shortcut='dup', body='b',
+                scope='personal')
+
+    def test_cross_tenant_never_visible(self):
+        services.create_canned_response(
+            self.alice, self.company, shortcut='interne', body='x',
+            scope='company')
+        rows = services.visible_canned_responses(self.evil, self.other_co)
+        self.assertEqual(rows, [])
+
+    def test_personal_snippet_delete_owner_only(self):
+        canned = services.create_canned_response(
+            self.alice, self.company, shortcut='del', body='x',
+            scope='personal')
+        with self.assertRaises(PermissionError):
+            services.delete_canned_response(canned, self.bob)
+        services.delete_canned_response(canned, self.alice)  # ne lève pas
+
+    def test_company_snippet_deletable_by_any_member(self):
+        canned = services.create_canned_response(
+            self.alice, self.company, shortcut='partage', body='x',
+            scope='company')
+        services.delete_canned_response(canned, self.bob)  # ne lève pas
+
+
+class XKB30PollTests(TestCase):
+    """XKB30 — sondages dans les canaux : créer/voter/clôturer, anonyme
+    masque les votants, non-membre 403."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.alice = make_user(self.company, 'alice')
+        self.bob = make_user(self.company, 'bob')
+        self.carol = make_user(self.company, 'carol')  # non-membre
+        self.conv = make_channel(self.company, self.alice, members=[self.bob])
+
+    def test_create_vote_close_flow(self):
+        api = auth(self.alice)
+        r = api.post('/api/django/chat/messages/poll/', {
+            'conversation': self.conv.id,
+            'question': 'Date de pose ?',
+            'options': ['Lundi', 'Mardi', 'Mercredi'],
+        }, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        msg_id = r.data['id']
+        poll = Message.objects.get(pk=msg_id).poll
+        opt_lundi = poll.options.get(label='Lundi')
+
+        bob_api = auth(self.bob)
+        r2 = bob_api.post(
+            f'/api/django/chat/messages/{msg_id}/poll-vote/',
+            {'option_ids': [opt_lundi.id]}, format='json')
+        self.assertEqual(r2.status_code, 200, r2.data)
+        self.assertEqual(r2.data['options'][0]['vote_count'], 1)
+
+        r3 = api.post(f'/api/django/chat/messages/{msg_id}/poll-close/')
+        self.assertEqual(r3.status_code, 200)
+        poll.refresh_from_db()
+        self.assertIsNotNone(poll.closed_at)
+
+        # Vote refusé après clôture.
+        r4 = bob_api.post(
+            f'/api/django/chat/messages/{msg_id}/poll-vote/',
+            {'option_ids': [opt_lundi.id]}, format='json')
+        self.assertEqual(r4.status_code, 400)
+
+    def test_anonymous_poll_hides_voters(self):
+        poll = services.create_poll(
+            conversation=self.conv, sender=self.alice, company=self.company,
+            question='Anonyme ?', options=['Oui', 'Non'], is_anonymous=True)
+        opt = poll.options.first()
+        services.vote_poll(poll, self.bob, [opt.id])
+        results = services.poll_results(poll, self.alice)
+        self.assertNotIn('voter_ids', results['options'][0])
+        self.assertEqual(results['options'][0]['vote_count'], 1)
+
+    def test_non_anonymous_poll_shows_voters(self):
+        poll = services.create_poll(
+            conversation=self.conv, sender=self.alice, company=self.company,
+            question='Public ?', options=['Oui', 'Non'], is_anonymous=False)
+        opt = poll.options.first()
+        services.vote_poll(poll, self.bob, [opt.id])
+        results = services.poll_results(poll, self.alice)
+        self.assertIn(self.bob.id, results['options'][0]['voter_ids'])
+
+    def test_non_member_403(self):
+        api = auth(self.carol)
+        r = api.post('/api/django/chat/messages/poll/', {
+            'conversation': self.conv.id,
+            'question': 'Q ?', 'options': ['a', 'b'],
+        }, format='json')
+        self.assertEqual(r.status_code, 403)
+
+    def test_single_choice_rejects_multiple_options(self):
+        poll = services.create_poll(
+            conversation=self.conv, sender=self.alice, company=self.company,
+            question='Un seul ?', options=['A', 'B'], allow_multiple=False)
+        opts = list(poll.options.all())
+        with self.assertRaises(ValueError):
+            services.vote_poll(poll, self.bob, [o.id for o in opts])
+
+    def test_multiple_choice_allows_several(self):
+        poll = services.create_poll(
+            conversation=self.conv, sender=self.alice, company=self.company,
+            question='Plusieurs ?', options=['A', 'B', 'C'],
+            allow_multiple=True)
+        opts = list(poll.options.all())
+        services.vote_poll(poll, self.bob, [opts[0].id, opts[1].id])
+        results = services.poll_results(poll)
+        counted = sum(o['vote_count'] for o in results['options'])
+        self.assertEqual(counted, 2)
+
+    def test_close_poll_non_author_forbidden(self):
+        poll = services.create_poll(
+            conversation=self.conv, sender=self.alice, company=self.company,
+            question='Q ?', options=['a', 'b'])
+        with self.assertRaises(PermissionError):
+            services.close_poll(poll, self.bob)
+
+    def test_requires_at_least_two_options(self):
+        with self.assertRaises(ValueError):
+            services.create_poll(
+                conversation=self.conv, sender=self.alice,
+                company=self.company, question='Q ?', options=['juste une'])
+
+
+class XKB32RetentionExportTests(TestCase):
+    """XKB32 — rétention & export des conversations (loi 09-08)."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.admin = make_user(
+            self.company, 'admin32', role_legacy='admin')
+        self.alice = make_user(self.company, 'alice32')
+        self.bob = make_user(self.company, 'bob32')
+        self.conv = make_channel(
+            self.company, self.alice, members=[self.bob])
+
+    def _old_message(self, days_ago):
+        from django.utils import timezone
+        from datetime import timedelta
+        msg = Message.objects.create(
+            company=self.company, conversation=self.conv, sender=self.alice,
+            body='ancien message')
+        Message.objects.filter(pk=msg.pk).update(
+            created_at=timezone.now() - timedelta(days=days_ago))
+        msg.refresh_from_db()
+        return msg
+
+    def test_no_policy_purges_nothing(self):
+        old = self._old_message(days_ago=400)
+        purged = services.sweep_retention(self.company)
+        self.assertEqual(purged, 0)
+        old.refresh_from_db()
+        self.assertIsNone(old.deleted_at)
+
+    def test_policy_purges_beyond_window(self):
+        old = self._old_message(days_ago=400)   # ~13 mois
+        recent = self._old_message(days_ago=10)
+        services.set_retention_policy(
+            self.company, 'channel', 6, self.admin)
+        purged = services.sweep_retention(self.company)
+        self.assertEqual(purged, 1)
+        old.refresh_from_db()
+        recent.refresh_from_db()
+        self.assertIsNotNone(old.deleted_at)
+        self.assertIsNone(recent.deleted_at)
+
+    def test_sweep_always_logs_even_at_zero(self):
+        from apps.chat.models import RetentionSweepRun
+        services.sweep_retention(self.company)
+        self.assertEqual(
+            RetentionSweepRun.objects.filter(company=self.company).count(), 1)
+        run = RetentionSweepRun.objects.get(company=self.company)
+        self.assertEqual(run.messages_purged, 0)
+
+    def test_dm_policy_does_not_affect_channels(self):
+        old = self._old_message(days_ago=400)
+        services.set_retention_policy(self.company, 'dm', 1, self.admin)
+        purged = services.sweep_retention(self.company)
+        self.assertEqual(purged, 0)
+        old.refresh_from_db()
+        self.assertIsNone(old.deleted_at)
+
+    def test_export_returns_scoped_messages(self):
+        Message.objects.create(
+            company=self.company, conversation=self.conv, sender=self.alice,
+            body='bonjour tout le monde')
+        data = services.export_conversation(self.conv)
+        self.assertEqual(data['conversation_id'], self.conv.id)
+        bodies = [m['body'] for m in data['messages']]
+        self.assertIn('bonjour tout le monde', bodies)
+
+    def test_api_export_admin_only(self):
+        Message.objects.create(
+            company=self.company, conversation=self.conv, sender=self.alice,
+            body='secret rh')
+        non_admin_api = auth(self.alice)
+        r = non_admin_api.get(
+            f'/api/django/chat/conversations/{self.conv.id}/export/')
+        self.assertEqual(r.status_code, 403)
+
+        admin_api = auth(self.admin)
+        # admin doit être membre pour que get_object() le trouve (scopé
+        # appartenance) — l'ajoute au canal pour ce test.
+        ConversationMember.objects.get_or_create(
+            conversation=self.conv, user=self.admin)
+        r2 = admin_api.get(
+            f'/api/django/chat/conversations/{self.conv.id}/export/')
+        self.assertEqual(r2.status_code, 200)
+
+    def test_api_export_csv_format(self):
+        ConversationMember.objects.get_or_create(
+            conversation=self.conv, user=self.admin)
+        admin_api = auth(self.admin)
+        # ?export=csv — jamais ?format= (réservé DRF, renvoie 404 : garde-fou
+        # identique à compta/flotte/ged).
+        r = admin_api.get(
+            f'/api/django/chat/conversations/{self.conv.id}'
+            f'/export/?export=csv')
+        self.assertEqual(r.status_code, 200)
+        self.assertIn('text/csv', r['Content-Type'])
+
+    def test_retention_policy_api_admin_only(self):
+        non_admin_api = auth(self.alice)
+        r = non_admin_api.post('/api/django/chat/retention-policies/', {
+            'conversation_kind': 'channel', 'retention_months': 12,
+        }, format='json')
+        self.assertEqual(r.status_code, 403)
+
+        admin_api = auth(self.admin)
+        r2 = admin_api.post('/api/django/chat/retention-policies/', {
+            'conversation_kind': 'channel', 'retention_months': 12,
+        }, format='json')
+        self.assertEqual(r2.status_code, 201, r2.data)
+
+
+class ZCTR12ChannelEmailAliasTests(TestCase):
+    """ZCTR12 — canal comme liste de diffusion e-mail (sans clé mail = no-op
+    complet ; alias dupliqué refusé ; envoi/réception stubbés ; tenant)."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.alice = make_user(self.company, 'alice_ctr12')  # admin canal
+        self.bob = make_user(self.company, 'bob_ctr12')
+        self.conv = make_channel(
+            self.company, self.alice, name='support', members=[self.bob])
+
+    def test_set_alias_via_api_admin_only(self):
+        bob_api = auth(self.bob)
+        r = bob_api.post(
+            f'/api/django/chat/conversations/{self.conv.id}/alias-email/',
+            {'alias_email': 'support@taqinor.ma'}, format='json')
+        self.assertEqual(r.status_code, 403)
+
+        admin_api = auth(self.alice)
+        r2 = admin_api.post(
+            f'/api/django/chat/conversations/{self.conv.id}/alias-email/',
+            {'alias_email': 'Support@Taqinor.ma'}, format='json')
+        self.assertEqual(r2.status_code, 200, r2.data)
+        self.conv.refresh_from_db()
+        self.assertEqual(self.conv.alias_email, 'support@taqinor.ma')
+
+    def test_duplicate_alias_same_company_rejected(self):
+        services.set_channel_alias(self.conv, 'support@taqinor.ma', self.alice)
+        other_channel = make_channel(self.company, self.alice, name='sav')
+        with self.assertRaises(ValueError):
+            services.set_channel_alias(
+                other_channel, 'support@taqinor.ma', self.alice)
+
+    def test_same_alias_different_company_allowed(self):
+        services.set_channel_alias(self.conv, 'support@taqinor.ma', self.alice)
+        other_co = make_company(slug='ctr12-other', nom='Other')
+        other_owner = make_user(other_co, 'owner-ctr12')
+        other_conv = make_channel(other_co, other_owner, name='support-other')
+        # Ne lève pas : unique PAR société.
+        services.set_channel_alias(
+            other_conv, 'support@taqinor.ma', other_owner)
+
+    @patch('apps.ventes.email_service.is_email_configured', return_value=False)
+    def test_no_email_config_is_full_noop(self, _mock_cfg):
+        services.set_channel_alias(self.conv, 'support@taqinor.ma', self.alice)
+        with patch('apps.notifications.services._dispatch_email') as mock_send:
+            services.create_message(
+                conversation=self.conv, sender=self.alice,
+                company=self.company, body='Bonjour aliasé')
+            mock_send.assert_not_called()
+
+    @patch('apps.ventes.email_service.is_email_configured', return_value=True)
+    def test_email_configured_sends_to_opted_in_members(self, _mock_cfg):
+        from apps.notifications.models import NotificationPreference, EventType
+        services.set_channel_alias(self.conv, 'support@taqinor.ma', self.alice)
+        NotificationPreference.objects.create(
+            user=self.bob, event_type=EventType.CHAT_MESSAGE,
+            in_app=True, email=True)
+        with patch('apps.notifications.services._dispatch_email',
+                   return_value=True) as mock_send, \
+                self.captureOnCommitCallbacks(execute=True):
+            services.create_message(
+                conversation=self.conv, sender=self.alice,
+                company=self.company, body='Bonjour aliasé')
+        mock_send.assert_called_once()
+        self.assertEqual(mock_send.call_args.args[0], self.bob)
+
+    @patch('apps.ventes.email_service.is_email_configured', return_value=True)
+    def test_non_opted_in_member_not_emailed(self, _mock_cfg):
+        services.set_channel_alias(self.conv, 'support@taqinor.ma', self.alice)
+        # bob n'a PAS de préférence email=True -> défaut désactivé.
+        with patch('apps.notifications.services._dispatch_email') as mock_send:
+            services.create_message(
+                conversation=self.conv, sender=self.alice,
+                company=self.company, body='Bonjour aliasé')
+            mock_send.assert_not_called()
+
+    def test_inbound_email_creates_message_for_recognized_sender(self):
+        services.set_channel_alias(self.conv, 'support@taqinor.ma', self.alice)
+        # create_user (helper make_user) ne pose pas d'email par défaut ; on
+        # force un email exploitable pour simuler un expéditeur reconnu.
+        self.bob.email = 'bob_ctr12@example.com'
+        self.bob.save(update_fields=['email'])
+        ConversationMember.objects.get_or_create(
+            conversation=self.conv, user=self.bob)
+        msg = services.receive_channel_alias_email(
+            self.company, to_alias='support@taqinor.ma',
+            from_email='bob_ctr12@example.com',
+            subject='Question', body='Un souci avec ma commande')
+        self.assertIsNotNone(msg)
+        self.assertEqual(msg.sender_id, self.bob.pk)
+        self.assertIn('souci', msg.body)
+
+    def test_inbound_email_unknown_sender_falls_back_to_system_message(self):
+        services.set_channel_alias(self.conv, 'support@taqinor.ma', self.alice)
+        msg = services.receive_channel_alias_email(
+            self.company, to_alias='support@taqinor.ma',
+            from_email='inconnu@exterieur.com',
+            subject='Bonjour', body='Message externe')
+        self.assertIsNotNone(msg)
+        self.assertIsNone(msg.sender_id)
+        self.assertIn('inconnu@exterieur.com', msg.body)
+
+    def test_inbound_email_unknown_alias_returns_none(self):
+        result = services.receive_channel_alias_email(
+            self.company, to_alias='ghost@taqinor.ma',
+            from_email='x@x.com', body='x')
+        self.assertIsNone(result)
+
+    def test_inbound_email_cross_tenant_alias_not_matched(self):
+        services.set_channel_alias(self.conv, 'support@taqinor.ma', self.alice)
+        other_co = make_company(slug='ctr12-other2', nom='Other2')
+        result = services.receive_channel_alias_email(
+            other_co, to_alias='support@taqinor.ma',
+            from_email='x@x.com', body='x')
+        self.assertIsNone(result)
+
+    def test_webhook_noop_without_secret_configured(self):
+        api = APIClient()
+        r = api.post('/api/django/chat/inbound-email/',
+                     {'to': 'support@taqinor.ma', 'from': 'x@x.com',
+                      'text': 'hop'}, format='json')
+        self.assertEqual(r.status_code, 403)
+
+    @override_settings()
+    def test_webhook_with_secret_creates_system_message(self):
+        import os
+        services.set_channel_alias(self.conv, 'support@taqinor.ma', self.alice)
+        os.environ['CHAT_INBOUND_EMAIL_SECRET'] = 'test-secret'
+        os.environ['CHAT_INBOUND_EMAIL_COMPANY_ID'] = str(self.company.pk)
+        try:
+            api = APIClient()
+            r = api.post(
+                '/api/django/chat/inbound-email/',
+                {'to': 'support@taqinor.ma', 'from': 'ghost@ext.com',
+                 'subject': 'Salut', 'text': 'Un message externe'},
+                format='json', HTTP_X_INBOUND_SECRET='test-secret')
+            self.assertEqual(r.status_code, 200, r.content)
+            self.assertTrue(r.json()['created'])
+        finally:
+            os.environ.pop('CHAT_INBOUND_EMAIL_SECRET', None)
+            os.environ.pop('CHAT_INBOUND_EMAIL_COMPANY_ID', None)

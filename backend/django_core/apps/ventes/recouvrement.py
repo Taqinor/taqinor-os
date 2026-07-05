@@ -10,10 +10,15 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 
 from apps.crm.selectors import client_base_qs
-from authentication.permissions import IsAdminRole, IsAnyRole
+from authentication.permissions import (
+    IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
+)
 
-from .models import Facture, FollowupLevel, PromessePaiement
-from .serializers import FollowupLevelSerializer, PromessePaiementSerializer
+from .models import Facture, FollowupLevel, ParametrageRelanceClient, PromessePaiement
+from .serializers import (
+    FollowupLevelSerializer, ParametrageRelanceClientSerializer,
+    PromessePaiementSerializer,
+)
 
 
 def _s(x):
@@ -112,6 +117,33 @@ class FollowupLevelViewSet(viewsets.ModelViewSet):
             status=status.HTTP_201_CREATED)
 
 
+class ParametrageRelanceClientViewSet(viewsets.ModelViewSet):
+    """ZFAC8 — réglage par client du responsable/mode de relance. Lecture
+    tout rôle, écriture responsable/admin (même tier que les autres réglages
+    de recouvrement)."""
+    serializer_class = ParametrageRelanceClientSerializer
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        return _scope(
+            ParametrageRelanceClient.objects.select_related(
+                'client', 'responsable'),
+            self.request.user)
+
+    def perform_create(self, serializer):
+        company = self.request.user.company if self.request.user.company_id else None
+        client = serializer.validated_data.get('client')
+        if client is not None and client_base_qs(company).filter(
+                pk=client.pk).exists() is False:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({'client': 'Client introuvable.'})
+        serializer.save(company=company)
+
+
 def _facture_due_rows(user):
     """Factures ouvertes (dues) de la société, non exclues."""
     from authentication.scoping import scope_queryset
@@ -130,15 +162,39 @@ def _facture_due_rows(user):
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def relances_list(request):
-    """Impayés à relancer : factures dues, jours de retard, niveau courant."""
+    """Impayés à relancer : factures dues, jours de retard, niveau courant.
+
+    ZFAC8 — ``?mes_relances=1`` restreint aux clients dont le
+    ``ParametrageRelanceClient.responsable`` est l'utilisateur courant
+    (« mes relances »). Sans ce paramètre : comportement inchangé (toutes
+    les factures dues visibles à l'utilisateur)."""
     levels = _levels(request.user.company if request.user.company_id else None)
+    from .models import ParametrageRelanceClient
+    from .selectors import comportement_paiement
+    scores_cache = {}
+    param_par_client = {
+        p.client_id: p for p in ParametrageRelanceClient.objects.filter(
+            company_id=request.user.company_id)
+    }
+    mes_relances = str(request.GET.get('mes_relances') or '').strip() in (
+        '1', 'true', 'True')
     rows = []
     for f in _facture_due_rows(request.user):
+        param = param_par_client.get(f.client_id)
+        if mes_relances and (
+                param is None or param.responsable_id != request.user.id):
+            continue
         jr = f.jours_retard
         # XFAC5 — promesse de paiement active/rompue (priorité haute).
         promesse = f.promesses_paiement.filter(
             statut__in=[PromessePaiement.Statut.EN_COURS,
                         PromessePaiement.Statut.ROMPUE]).order_by('-id').first()
+        # XFAC15 — score comportemental agrégé du client (mis en cache par
+        # client sur la durée de la requête : plusieurs factures partagent le
+        # même client).
+        if f.client_id not in scores_cache:
+            scores_cache[f.client_id] = comportement_paiement(f.client)
+        score = scores_cache[f.client_id]
         rows.append({
             'id': f.id, 'reference': f.reference,
             'client_id': f.client_id,
@@ -159,6 +215,11 @@ def relances_list(request):
                 'montant_promis': _s(promesse.montant_promis),
                 'date_promise': promesse.date_promise.isoformat(),
             } if promesse else None),
+            # XFAC15 — badge de comportement de paiement (lettre A–E).
+            'score_comportement': score['lettre'],
+            # ZFAC8 — mode de relance du client (auto par défaut) + responsable.
+            'relance_mode': param.mode if param else 'auto',
+            'relance_responsable_id': param.responsable_id if param else None,
         })
     rows.sort(key=lambda r: (
         r['promesse'] is not None and r['promesse']['statut'] == 'rompue',
@@ -170,6 +231,7 @@ def relances_list(request):
 @permission_classes([IsAnyRole])
 def balance_agee(request):
     """Balance âgée : encours par client, bucketé 0–30/31–60/61–90/90+ jours."""
+    from .selectors import comportement_paiement
     by_client = {}
     for f in _facture_due_rows(request.user):
         cid = f.client_id
@@ -179,6 +241,9 @@ def balance_agee(request):
             'b0_30': Decimal('0'), 'b31_60': Decimal('0'),
             'b61_90': Decimal('0'), 'b90_plus': Decimal('0'),
             'total': Decimal('0'),
+            # XFAC15 — score comportemental agrégé du client (priorise les
+            # clients à risque dans la balance).
+            'score_comportement': comportement_paiement(f.client)['lettre'],
         })
         jr = f.jours_retard
         due = f.montant_du
@@ -222,7 +287,11 @@ def _releve_data(client, user=None):
     for f in factures:
         paye = f.montant_paye
         avo = f.avoirs_total
-        du = f.montant_du
+        # XFAC25 — une facture déjà soldée (payée) ne compte jamais dans
+        # l'encours du relevé, même si son solde brut n'est pas nul (ex.
+        # statut forcé sans paiement enregistré) : le statut fait foi, comme
+        # pour la liste des impayés/balance âgée (_facture_due_rows).
+        du = f.montant_du if f.statut != Facture.Statut.PAYEE else Decimal('0')
         total_facture += f.total_ttc
         total_paye += paye
         total_avoir += avo
@@ -281,6 +350,67 @@ def client_releve(request, client_id):
         return Response({'detail': 'Client introuvable.'},
                         status=status.HTTP_404_NOT_FOUND)
     return Response(_releve_data(client, request.user))
+
+
+@api_view(['GET'])
+@permission_classes([IsAnyRole])
+def client_score_comportement(request, client_id):
+    """XFAC15 — badge de comportement de paiement d'un client (fiche client).
+
+    Agrège FG365 (``core.payment_delay``) sur les factures ouvertes du client
+    + son retard moyen réel. Client sans historique → score neutre."""
+    client = _scope(client_base_qs(), request.user).filter(
+        pk=client_id).first()
+    if client is None:
+        return Response({'detail': 'Client introuvable.'},
+                        status=status.HTTP_404_NOT_FOUND)
+    from .selectors import comportement_paiement
+    return Response(comportement_paiement(client))
+
+
+@api_view(['POST'])
+@permission_classes([IsResponsableOrAdmin])
+def dossier_contentieux(request, client_id):
+    """XFAC21 — dossier contentieux / passage en recouvrement externe.
+
+    Sélectionne les factures en souffrance du client (id fournis dans
+    ``factures`` ; par défaut, TOUTES les factures ouvertes/dues du client),
+    génère le pack PDF complet, ouvre une réclamation ``litiges`` de type
+    recouvrement, et gèle les relances ordinaires sur ces factures. Une
+    facture déjà payée/annulée est refusée (rien à recouvrer)."""
+    client = _scope(client_base_qs(), request.user).filter(
+        pk=client_id).first()
+    if client is None:
+        return Response({'detail': 'Client introuvable.'},
+                        status=status.HTTP_404_NOT_FOUND)
+
+    facture_ids = request.data.get('factures')
+    qs = _scope(Facture.objects.filter(client=client), request.user)
+    if facture_ids:
+        qs = qs.filter(pk__in=facture_ids)
+    else:
+        qs = qs.exclude(statut__in=[
+            Facture.Statut.PAYEE, Facture.Statut.ANNULEE,
+            Facture.Statut.BROUILLON,
+        ])
+    factures = [f for f in qs.select_related('client') if f.montant_du > 0]
+    if not factures:
+        return Response(
+            {'detail': 'Aucune facture en souffrance pour ce client.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    from .services import ouvrir_dossier_contentieux
+    dossier_data, reclamation = ouvrir_dossier_contentieux(
+        factures=factures, user=request.user)
+
+    from .utils.pdf import generate_dossier_contentieux_pdf
+    pdf_bytes = generate_dossier_contentieux_pdf(client, dossier_data)
+    resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+    resp['Content-Disposition'] = (
+        f'inline; filename="Contentieux_{client.nom}.pdf"')
+    resp['X-Reclamation-Id'] = str(reclamation.id)
+    return resp
 
 
 @api_view(['GET'])
