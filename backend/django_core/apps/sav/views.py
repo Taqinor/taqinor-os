@@ -570,7 +570,9 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
                 # ZSAV3 — activités planifiées à échéance.
                 'activites', 'cocher_activite',
                 # ZSAV10 — endpoint d'actions groupées.
-                'actions_groupees']:
+                'actions_groupees',
+                # ZSAV6 — pièces unifiées (vue fusionnée) + fiche d'intervention.
+                'pieces_unifiees', 'worksheet']:
             return [HasPermissionOrLegacy('sav_gerer')()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
