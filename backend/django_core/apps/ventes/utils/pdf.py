@@ -310,6 +310,34 @@ def generate_avoir_pdf(avoir_id):
     return key
 
 
+def generate_note_debit_pdf(note_debit_id):
+    """ZFAC4 — generate, upload and persist PDF for a NoteDebit. Returns MinIO
+    key. Layout legacy facture (templates/pdf/note_debit.html, copie
+    relabellée de avoir.html), aucune refonte visuelle."""
+    from apps.ventes.models import NoteDebit
+    note_debit = (
+        NoteDebit.objects
+        .select_related('client', 'created_by', 'company', 'facture')
+        .prefetch_related('lignes__produit')
+        .get(pk=note_debit_id)
+    )
+
+    context = _company_context(company=note_debit.company)
+    context['note_debit'] = note_debit
+
+    html = _render_html('note_debit.html', context)
+    pdf_bytes = _html_to_pdf(html)
+
+    key = f'notes-debit/{note_debit.reference}.pdf'
+    _upload_pdf(pdf_bytes, key)
+
+    note_debit.fichier_pdf = key
+    note_debit.save(update_fields=['fichier_pdf'])
+
+    logger.info('PDF note de débit généré : %s', key)
+    return key
+
+
 def generate_releve_pdf(client, releve_data):
     """Relevé de compte client (style maison) — rendu à la volée, non stocké."""
     context = _company_context(company=client.company)
