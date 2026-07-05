@@ -26,7 +26,7 @@ from apps.crm.models import Client
 from apps.installations.models import Installation
 from apps.sav.models import Ticket
 
-from apps.monitoring import providers, services
+from apps.monitoring import providers, services, tasks
 from apps.monitoring.models import (
     CleaningEvent, MonitoringConfig, MonitoringSettings, ProductionReading,
     UnderperformanceFlag,
@@ -796,6 +796,127 @@ class TestOmReport(TestCase):
             f'/api/django/monitoring/configs/{self.config.id}/om-report/')
         self.assertEqual(r.status_code, 200, r.data)
         self.assertIn('period_kwh', r.data)
+
+
+class TestBalayageQuotidien(TestCase):
+    """YSERV3 — job Celery Beat : synchro + évaluation de sous-performance
+    pour chaque système supervisé, sans action humaine."""
+
+    def setUp(self):
+        self.company = make_company('bal-co', 'Bal Co')
+        self.today = date(2026, 6, 1)
+
+        class FakeProvider(providers.MonitoringProvider):
+            key = 'fake-bal'
+            label = 'Fake Bal'
+
+            def fetch_recent(self, system, config):
+                return [
+                    {'date': '2026-06-01', 'energy_kwh': 5,
+                     'period_days': 1, 'external_id': 'bal-1'},
+                ]
+
+        self._orig = dict(providers._REGISTRY)
+        providers.register_provider(FakeProvider)
+
+    def tearDown(self):
+        providers._REGISTRY.clear()
+        providers._REGISTRY.update(self._orig)
+
+    def test_noop_provider_no_crash_no_effect(self):
+        """Système sur le fournisseur NoOp (défaut) : aucune synchro, aucun
+        crash — comportement actuel inchangé, juste appelé automatiquement."""
+        inst, _ = make_installation(self.company, ref='BAL-NOOP', kwc='5.00')
+        MonitoringConfig.objects.create(company=self.company, installation=inst)
+        result = tasks.balayage_quotidien()
+        self.assertEqual(result['systemes'], 1)
+        self.assertEqual(result['releves_importes'], 0)
+        self.assertEqual(ProductionReading.objects.count(), 0)
+
+    def test_sync_and_evaluate_active_provider(self):
+        """Fournisseur actif : la tâche importe le relevé ET évalue la
+        sous-performance (aucune synchro auto n'existait avant ce job)."""
+        inst, _ = make_installation(self.company, ref='BAL-ACTIVE', kwc='5.00')
+        MonitoringConfig.objects.create(
+            company=self.company, installation=inst,
+            provider='fake-bal', enabled=True, credentials={'x': 1},
+            expected_annual_kwh=Decimal('7500'))
+        result = tasks.balayage_quotidien()
+        self.assertEqual(result['systemes'], 1)
+        self.assertEqual(result['releves_importes'], 1)
+        self.assertEqual(
+            ProductionReading.objects.filter(
+                installation=inst, source='auto').count(), 1)
+
+    def test_persistent_underperformance_creates_one_flag_and_ticket(self):
+        """Sous-performance persistante → exactement un drapeau + un ticket,
+        idempotent au re-run (aucun doublon)."""
+        inst, client = make_installation(
+            self.company, ref='BAL-PERF', kwc='5.00')
+        MonitoringSettings.objects.create(
+            company=self.company, underperf_threshold_pct=Decimal('20'),
+            auto_create_ticket=True)
+        # Relevé manuel très sous l'attendu (5 kWc × 1500 = 7500 kWh/an).
+        ProductionReading.objects.create(
+            company=self.company, installation=inst,
+            date=self.today - timedelta(days=10), period_days=365,
+            energy_kwh=Decimal('100'))
+        MonitoringConfig.objects.create(
+            company=self.company, installation=inst,
+            expected_annual_kwh=Decimal('7500'))
+
+        tasks.balayage_quotidien()
+        self.assertEqual(
+            UnderperformanceFlag.objects.filter(
+                installation=inst, is_open=True).count(), 1)
+        self.assertEqual(
+            Ticket.objects.filter(installation=inst).count(), 1)
+
+        # Re-run : idempotent, pas de second flag/ticket.
+        tasks.balayage_quotidien()
+        self.assertEqual(
+            UnderperformanceFlag.objects.filter(
+                installation=inst, is_open=True).count(), 1)
+        self.assertEqual(
+            Ticket.objects.filter(installation=inst).count(), 1)
+
+    def test_company_isolation(self):
+        """Un système d'une autre société n'est jamais mélangé dans le
+        décompte d'une société (chaque société traitée séparément)."""
+        other = make_company('bal-co-2', 'Bal Co 2')
+        inst1, _ = make_installation(self.company, ref='BAL-ISO-1', kwc='5.00')
+        inst2, _ = make_installation(other, ref='BAL-ISO-2', kwc='5.00')
+        MonitoringConfig.objects.create(company=self.company, installation=inst1)
+        MonitoringConfig.objects.create(company=other, installation=inst2)
+        result = tasks.balayage_quotidien()
+        self.assertEqual(result['systemes'], 2)
+
+    def test_broken_system_does_not_block_others(self):
+        """Un système qui échoue (ex. installation orpheline sans client pour
+        le ticket) n'empêche jamais les systèmes suivants d'être traités."""
+        inst_ok, _ = make_installation(self.company, ref='BAL-OK', kwc='5.00')
+        MonitoringConfig.objects.create(company=self.company, installation=inst_ok)
+
+        inst_bad, _ = make_installation(self.company, ref='BAL-BAD', kwc='5.00')
+        bad_config = MonitoringConfig.objects.create(
+            company=self.company, installation=inst_bad,
+            provider='fake-bal', enabled=True, credentials={'x': 1})
+
+        # Force sync_system à lever pour ce système précis pour vérifier
+        # l'isolement best-effort (le système suivant reste traité).
+        orig_sync = services.sync_system
+
+        def _boom(installation, *, user=None):
+            if installation.pk == bad_config.installation_id:
+                raise RuntimeError('boom')
+            return orig_sync(installation, user=user)
+
+        services.sync_system = _boom
+        try:
+            result = tasks.balayage_quotidien()
+        finally:
+            services.sync_system = orig_sync
+        self.assertEqual(result['systemes'], 1)
 
     def test_email_endpoint(self):
         from django.core import mail

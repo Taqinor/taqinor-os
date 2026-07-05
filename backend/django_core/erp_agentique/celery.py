@@ -264,6 +264,12 @@ app.conf.beat_schedule = {
         'task': 'core.beat_heartbeat',
         'schedule': crontab(minute='*/5'),
     },
+    # YSERV3 — balayage monitoring quotidien (synchro fournisseur + évaluation
+    # de sous-performance), heure creuse matinale.
+    'monitoring-balayage-quotidien': {
+        'task': 'monitoring.balayage_quotidien',
+        'schedule': crontab(hour=7, minute=35),
+    },
 }
 
 # YHARD6 — compteurs Celery succès/échec (process-local, best-effort) pour
