@@ -18,7 +18,13 @@ from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from apps.ventes.utils.references import create_with_reference
 
 from ..models import Livraison, LivraisonLigne
-from ..serializers import LivraisonSerializer, LivraisonLigneSerializer
+from ..serializers import (
+    LivraisonSerializer, LivraisonLigneSerializer, RetourLivraisonSerializer,
+)
+from ..services import (
+    ventiler_stock_livraison, contre_transferer_stock_livraison,
+    generer_retour_livraison,
+)
 
 READ_ACTIONS = ['list', 'retrieve']
 
@@ -110,11 +116,16 @@ class LivraisonViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def expedier(self, request, pk=None):
-        """FG329 — passe la livraison en transit. XSTK22 : notifie le client
+        """FG329 — passe la livraison en transit. YSTCK5 : ventile le stock
+        dépôt → van (idempotent, best-effort). XSTK22 : notifie le client
         (best-effort, une seule fois)."""
         liv = self.get_object()
         liv.statut = Livraison.Statut.EN_TRANSIT
         liv.save(update_fields=['statut', 'date_modification'])
+        try:
+            ventiler_stock_livraison(liv, request.user)
+        except Exception:  # pragma: no cover - défensif, best-effort
+            pass
         self._notify_client(liv, Livraison.Statut.EN_TRANSIT, request)
         return Response(self.get_serializer(liv).data)
 
@@ -130,8 +141,46 @@ class LivraisonViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def annuler(self, request, pk=None):
-        """FG329 — annule la livraison."""
+        """FG329 — annule la livraison. YSTCK5 : contre-transfert van → dépôt
+        si le stock avait été ventilé (idempotent, best-effort)."""
+        liv = self.get_object()
+        try:
+            contre_transferer_stock_livraison(liv, request.user)
+        except Exception:  # pragma: no cover - défensif, best-effort
+            pass
         return self._set_statut(request, Livraison.Statut.ANNULEE)
+
+    @action(detail=True, methods=['post'], url_path='generer-retour',
+            permission_classes=[IsResponsableOrAdmin])
+    def generer_retour(self, request, pk=None):
+        """ZSTK8 — génère un `RetourLivraison` brouillon pré-rempli depuis
+        les lignes livrées. Refuse si la livraison n'est pas LIVREE (rien à
+        retourner tant qu'elle n'est pas arrivée)."""
+        liv = self.get_object()
+        if liv.statut != Livraison.Statut.LIVREE:
+            return Response(
+                {'detail': 'Seule une livraison livrée peut générer un '
+                 'retour.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        motif = (request.data.get('motif') or '').strip()
+        retour = generer_retour_livraison(liv, request.user, motif=motif)
+        return Response(
+            RetourLivraisonSerializer(retour).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'], url_path='bon-livraison',
+            permission_classes=[IsAnyRole])
+    def bon_livraison(self, request, pk=None):
+        """ZSTK4 — bon de livraison PDF (packing/delivery slip). Client-facing :
+        aucun `cout_transport` ni prix d'achat (test dédié)."""
+        from django.http import HttpResponse
+        from .. import livraison_pdf
+        liv = self.get_object()
+        pdf_bytes = livraison_pdf.bon_livraison_pdf(liv)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'inline; filename="bon-livraison-{liv.id}.pdf"')
+        return resp
 
     @action(detail=False, methods=['get'], url_path='portail',
             permission_classes=[IsAnyRole])

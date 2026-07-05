@@ -40,6 +40,8 @@ from .views import (
     ContratPrixLigneViewSet,
     BinLocationViewSet,
     BinAffectationViewSet,
+    CategorieStockageViewSet,
+    RegleRangementViewSet,
     PutAwayViewSet,
     PickListViewSet,
     PickListLigneViewSet,
@@ -64,6 +66,11 @@ from .views import (
     PreuveLivraisonViewSet,
     TransporteurViewSet,
     TourneeLivraisonView,
+    RetourMaterielViewSet,
+    RetourMaterielLigneViewSet,
+    RetourLivraisonViewSet,
+    RetourLivraisonLigneViewSet,
+    LotPrelevementViewSet,
 )
 
 router = DefaultRouter()
@@ -122,6 +129,8 @@ router.register(r'contrats-prix-fournisseur', ContratPrixFournisseurViewSet)
 router.register(r'contrats-prix-lignes', ContratPrixLigneViewSet)
 router.register(r'bin-locations', BinLocationViewSet)
 router.register(r'bin-affectations', BinAffectationViewSet)
+router.register(r'categories-stockage', CategorieStockageViewSet)
+router.register(r'regles-rangement', RegleRangementViewSet)
 router.register(r'putaways', PutAwayViewSet)
 router.register(r'pick-lists', PickListViewSet)
 router.register(r'pick-list-lignes', PickListLigneViewSet)
@@ -145,6 +154,11 @@ router.register(r'livraisons', LivraisonViewSet)
 router.register(r'livraison-lignes', LivraisonLigneViewSet)
 router.register(r'preuves-livraison', PreuveLivraisonViewSet)
 router.register(r'transporteurs', TransporteurViewSet)
+router.register(r'retours-materiel', RetourMaterielViewSet)
+router.register(r'retour-materiel-lignes', RetourMaterielLigneViewSet)
+router.register(r'retours-livraison', RetourLivraisonViewSet)
+router.register(r'retour-livraison-lignes', RetourLivraisonLigneViewSet)
+router.register(r'lots-prelevement', LotPrelevementViewSet)
 
 urlpatterns = [
     # N91/F21 — synchro idempotente de la capture terrain hors-ligne.

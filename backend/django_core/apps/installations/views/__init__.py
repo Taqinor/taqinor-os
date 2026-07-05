@@ -49,7 +49,10 @@ from .gr_ir import ReceptionNonFactureeViewSet
 from .contrat_prix import (
     ContratPrixFournisseurViewSet, ContratPrixLigneViewSet,
 )
-from .bin_location import BinLocationViewSet, BinAffectationViewSet
+from .bin_location import (
+    BinLocationViewSet, BinAffectationViewSet, CategorieStockageViewSet,
+    RegleRangementViewSet,
+)
 from .putaway import PutAwayViewSet
 from .picklist import PickListViewSet, PickListLigneViewSet
 from .colisage import ColisViewSet, ColisLigneViewSet
@@ -69,6 +72,11 @@ from .pod import PreuveLivraisonViewSet
 from .transporteur import TransporteurViewSet
 from .tournee import TourneeLivraisonView
 from .field_sync import FieldSyncView
+from .retour_materiel import RetourMaterielViewSet, RetourMaterielLigneViewSet
+from .retour_livraison import (
+    RetourLivraisonViewSet, RetourLivraisonLigneViewSet,
+)
+from .lot_prelevement import LotPrelevementViewSet
 
 __all__ = [
     'TypeInterventionViewSet',
@@ -122,6 +130,8 @@ __all__ = [
     'ContratPrixLigneViewSet',
     'BinLocationViewSet',
     'BinAffectationViewSet',
+    'CategorieStockageViewSet',
+    'RegleRangementViewSet',
     'PutAwayViewSet',
     'PickListViewSet',
     'PickListLigneViewSet',
@@ -147,4 +157,9 @@ __all__ = [
     'TransporteurViewSet',
     'TourneeLivraisonView',
     'FieldSyncView',
+    'RetourMaterielViewSet',
+    'RetourMaterielLigneViewSet',
+    'RetourLivraisonViewSet',
+    'RetourLivraisonLigneViewSet',
+    'LotPrelevementViewSet',
 ]

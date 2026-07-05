@@ -414,6 +414,24 @@ class CompanyProfile(models.Model):
                   "l'habilitation requise pour le type d'intervention : "
                   "avertir (défaut) ou bloquer l'affectation.")
 
+    # ── ZSTK11 — méthode de réservation du stock (Odoo "Reservation methods")
+    # Défaut 'confirmation' = comportement actuel byte-identique : la création
+    # d'un chantier (depuis un devis accepté) sème la réservation N14
+    # automatiquement. 'manuelle' : le SEUL déclencheur devient conditionnel —
+    # aucune réservation automatique à la création ; un bouton « Réserver le
+    # stock » explicite appelle le même service `installations.services.
+    # seed_reservations` (aucune logique de réservation dupliquée).
+    class MethodeReservationStock(models.TextChoices):
+        CONFIRMATION = 'confirmation', 'À la confirmation'
+        MANUELLE = 'manuelle', 'Manuelle'
+
+    methode_reservation_stock = models.CharField(
+        max_length=20, choices=MethodeReservationStock.choices,
+        default=MethodeReservationStock.CONFIRMATION,
+        help_text="Réserver le stock automatiquement à la création du "
+                  "chantier (défaut, comportement historique) ou "
+                  "manuellement via un bouton explicite.")
+
     class Meta:
         verbose_name = 'Profil entreprise'
 

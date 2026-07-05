@@ -625,3 +625,20 @@ def devis_a_facturer(company, *, jours=7, today=None):
         .distinct()
     )
     return list(candidats)
+
+
+def tranche_facturee(devis, type_facture):
+    """YSERV7 — la facture d'échéancier ``type_facture`` (acompte/
+    intermediaire/solde) existe-t-elle déjà pour ce devis ? Lecture seule,
+    point d'entrée cross-app sanctionné pour ``apps.installations`` (jamais un
+    import direct de ``apps.ventes.models``). Une facture ANNULÉE ne compte
+    pas comme émise (la tranche reste due). Renvoie un booléen."""
+    if devis is None or not type_facture:
+        return False
+    from .models import Facture
+    return (
+        Facture.objects
+        .filter(devis=devis, type_facture=type_facture)
+        .exclude(statut=Facture.Statut.ANNULEE)
+        .exists()
+    )

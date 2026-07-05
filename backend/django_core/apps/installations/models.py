@@ -191,6 +191,21 @@ from .models_pod import (
 from .models_transporteur import (
     Transporteur,
 )
+from .models_retour_materiel import (
+    RetourMateriel,
+    RetourMaterielLigne,
+)
+from .models_retour_livraison import (
+    RetourLivraison,
+    RetourLivraisonLigne,
+)
+from .models_storage_rules import (
+    CategorieStockage,
+    RegleRangement,
+)
+from .models_lot_prelevement import (
+    LotPrelevement,
+)
 
 __all__ = [
     'Installation',
@@ -291,4 +306,11 @@ __all__ = [
     'LivraisonLigne',
     'PreuveLivraison',
     'Transporteur',
+    'RetourMateriel',
+    'RetourMaterielLigne',
+    'RetourLivraison',
+    'RetourLivraisonLigne',
+    'CategorieStockage',
+    'RegleRangement',
+    'LotPrelevement',
 ]

@@ -21,7 +21,7 @@ from core.events import (
 
 from .services import (
     create_installation_from_devis, provisionner_gr_ir_reception,
-    lettrer_gr_ir_facture,
+    lettrer_gr_ir_facture, peupler_series_entrepot_reception,
 )
 
 
@@ -50,6 +50,20 @@ def _provisionner_gr_ir_on_reception(sender, reception, company, user,
     dette latente GR/IR (idempotent, no-op sans BCF lié)."""
     try:
         provisionner_gr_ir_reception(
+            reception=reception, company=company, user=user)
+    except Exception:  # pragma: no cover - défensif, best-effort
+        pass
+
+
+@receiver(reception_fournisseur_confirmee,
+          dispatch_uid="installations_peupler_series_entrepot_on_reception")
+def _peupler_series_entrepot_on_reception(sender, reception, company, user,
+                                          **kwargs):
+    """YSTCK7 — à la confirmation d'une réception fournisseur, peuple le
+    registre entrepôt (SerieEntrepot) depuis les séries capturées à la ligne
+    (idempotent, best-effort)."""
+    try:
+        peupler_series_entrepot_reception(
             reception=reception, company=company, user=user)
     except Exception:  # pragma: no cover - défensif, best-effort
         pass

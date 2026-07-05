@@ -28,6 +28,7 @@ from ..serializers import (  # noqa: F401
 from ..services import (  # noqa: F401
     create_installation_from_devis, seed_checklist_etapes,
     ensure_checklist_items, ensure_default_template,
+    notifier_reception_solde_a_facturer,
 )
 from .. import field_services  # noqa: F401
 from .. import field_capture  # noqa: F401
@@ -328,6 +329,12 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
             activity.log_note(
                 inst, self.request.user,
                 "Chantier réceptionné — système ajouté au parc installé.")
+            # YSERV7 — rappel de facturation pour la tranche SOLDE restante
+            # (best-effort, idempotent, jamais de facture créée).
+            try:
+                notifier_reception_solde_a_facturer(inst, self.request.user)
+            except Exception:  # pragma: no cover - défensif
+                pass
         # FG70 — remise de garantie automatique : balaye le BoM gelé vers le
         # parc SAV (un équipement par ligne, série optionnelle). Idempotent.
         _apply_reception_handover(
@@ -926,6 +933,30 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
         inst = self.get_object()
         tarif = request.query_params.get('tarif_jour')
         return Response(compute_chantier_cout(inst, tarif_jour=tarif))
+
+    @action(detail=False, methods=['get'], url_path='a-facturer',
+            permission_classes=[IsResponsableOrAdmin])
+    def a_facturer(self, request):
+        """YSERV7 — chantiers à tranche d'échéancier due (jalon atteint ou
+        réceptionné, non facturé). Liste plate, une entrée par tranche due."""
+        from ..services import chantiers_a_facturer
+        return Response(chantiers_a_facturer(request.user.company))
+
+    @action(detail=True, methods=['post'], url_path='reserver-stock',
+            permission_classes=[IsResponsableOrAdmin])
+    def reserver_stock(self, request, pk=None):
+        """ZSTK11 — réserve explicitement le stock du chantier (réutilise le
+        même service N14 `seed_reservations`). Utile en mode
+        `methode_reservation_stock='manuelle'`, où la création du chantier ne
+        sème plus la réservation automatiquement — reste utilisable aussi en
+        mode `confirmation` (idempotent, sans effet de bord supplémentaire)."""
+        from ..services import seed_reservations
+        inst = self.get_object()
+        reservations = seed_reservations(inst)
+        return Response({
+            'installation': inst.id,
+            'reservations_actives': len(reservations),
+        })
 
     # ── CH2 — parcours d'étapes configurables + gates appliqués ─────────────
     @action(detail=True, methods=['get'], url_path='etapes',

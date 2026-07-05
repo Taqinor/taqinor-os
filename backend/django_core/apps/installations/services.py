@@ -29,6 +29,29 @@ def default_installer_for(company):
         return None
 
 
+# ── ZSTK11 — méthode de réservation du stock (réglage société) ─────────────
+# Défaut 'confirmation' = comportement actuel byte-identique (réservation
+# semée à la création du chantier). 'manuelle' = SEUL le déclencheur devient
+# conditionnel ; le service `seed_reservations` reste inchangé et n'est
+# jamais dupliqué.
+METHODE_RESERVATION_MANUELLE = 'manuelle'
+
+
+def methode_reservation_stock(company):
+    """Valeur configurée `CompanyProfile.methode_reservation_stock` pour la
+    société ('confirmation' par défaut — comportement historique si le
+    profil est absent ou en erreur)."""
+    if company is None:
+        return 'confirmation'
+    try:
+        from apps.parametres.models import CompanyProfile
+        prof = CompanyProfile.get(company)
+        return getattr(prof, 'methode_reservation_stock', 'confirmation') \
+            if prof else 'confirmation'
+    except Exception:  # pragma: no cover - défensif
+        return 'confirmation'
+
+
 # Étapes de checklist d'exécution par défaut (N4). `capture_serie` marque les
 # étapes où l'on relève des n° de série (N9). Toutes « système » (protégées).
 DEFAULT_CHECKLIST_ETAPES = [
@@ -247,9 +270,13 @@ def create_installation_from_devis(devis, user, company):
         )
 
     inst = create_with_reference(Installation, 'CHT', company, _create)
-    # N14 — réserve le stock des SKU de la nomenclature gelée (robuste si le
-    # BOM est vide : aucune réservation, aucun plantage).
-    seed_reservations(inst)
+    # N14/ZSTK11 — réserve le stock des SKU de la nomenclature gelée (robuste
+    # si le BOM est vide : aucune réservation, aucun plantage) — SEULEMENT en
+    # mode 'confirmation' (défaut, byte-identique). En mode 'manuelle', le
+    # déclencheur devient conditionnel : un bouton explicite
+    # (`reserver-stock`) appelle le MÊME service, aucune logique dupliquée.
+    if methode_reservation_stock(company) != METHODE_RESERVATION_MANUELLE:
+        seed_reservations(inst)
     return inst, True
 
 
@@ -374,6 +401,117 @@ def release_reservations(installation):
     return (StockReservation.objects
             .filter(installation=installation, active=True, consomme=False)
             .update(active=False))
+
+
+# ── YSTCK4 — retour chantier : matériel non posé rapporté au dépôt ─────────
+# La consommation (N14/F11) est à SENS UNIQUE : rien ne permettait de faire
+# remonter le surplus non installé vers le dépôt. `RetourMateriel`/
+# `RetourMaterielLigne` matérialisent le blueprint « retour = mouvement
+# ENTRÉE référencé à la sortie d'origine, plafonné à ce qui a RÉELLEMENT été
+# sorti pour ce chantier, jamais un ajustement positif libre ».
+
+def _quantite_sortie_chantier(installation, produit_id):
+    """Quantité TOTALE réellement sortie pour ce chantier pour ce produit :
+    somme des `ConsommationLigne.quantite_utilisee` validées (stock_applique)
+    de TOUTES les interventions du chantier (F11 — la seule source qui bouge
+    réellement le stock ; la réservation N14 estimée n'en fait pas partie)."""
+    from decimal import Decimal
+    from django.db.models import Sum
+    from .models import ConsommationLigne
+    total = (
+        ConsommationLigne.objects
+        .filter(consommation__intervention__installation=installation,
+                produit_id=produit_id, stock_applique=True)
+        .aggregate(total=Sum('quantite_utilisee'))['total']
+    )
+    return total or Decimal('0')
+
+
+def _quantite_deja_retournee(installation, produit_id):
+    """Quantité déjà retournée (retours VALIDÉS uniquement) pour ce produit
+    sur ce chantier — un brouillon non validé ne compte pas encore."""
+    from decimal import Decimal
+    from django.db.models import Sum
+    from .models_retour_materiel import RetourMateriel, RetourMaterielLigne
+    total = (
+        RetourMaterielLigne.objects
+        .filter(retour__installation=installation, produit_id=produit_id,
+                retour__statut=RetourMateriel.Statut.VALIDE)
+        .aggregate(total=Sum('quantite'))['total']
+    )
+    return total or Decimal('0')
+
+
+def quantite_retournable(installation, produit_id):
+    """Solde encore retournable pour ce produit sur ce chantier = sorti −
+    déjà retourné (jamais négatif)."""
+    from decimal import Decimal
+    sortie = _quantite_sortie_chantier(installation, produit_id)
+    retournee = _quantite_deja_retournee(installation, produit_id)
+    return max(sortie - retournee, Decimal('0'))
+
+
+def valider_retour_materiel(retour, user):
+    """YSTCK4 — valide un retour BROUILLON : pour chaque ligne {produit,
+    quantité}, refuse si la quantité dépasse le solde retournable (sorti −
+    déjà retourné), puis poste UN `MouvementStock` ENTREE référencé
+    `RETOUR-<reference-chantier>` (idempotent via `stock_applique`).
+    Lève ValueError si une ligne dépasse le retournable. Renvoie le nombre de
+    lignes appliquées au stock."""
+    from decimal import Decimal
+    from django.db import transaction
+    from apps.stock.selectors import lock_produit
+    from apps.stock.services import (
+        mouvement_type_entree, record_stock_movement,
+    )
+    from .models_retour_materiel import RetourMateriel
+
+    if retour.statut == RetourMateriel.Statut.VALIDE:
+        raise ValueError('Retour déjà validé.')
+
+    installation = retour.installation
+    lignes = list(retour.lignes.select_related('produit').all())
+    for ligne in lignes:
+        if ligne.produit_id is None:
+            continue
+        qte = ligne.quantite or Decimal('0')
+        retournable = quantite_retournable(installation, ligne.produit_id)
+        if qte > retournable:
+            raise ValueError(
+                f'Quantité retournée ({qte}) supérieure à la quantité '
+                f'réellement sortie pour ce chantier ({retournable}) pour '
+                f'« {ligne.designation or ligne.produit_id} ».')
+
+    applied = 0
+    with transaction.atomic():
+        for ligne in lignes:
+            if ligne.stock_applique or ligne.produit_id is None:
+                continue
+            qte = ligne.quantite or Decimal('0')
+            if qte <= 0:
+                ligne.stock_applique = True
+                ligne.save(update_fields=['stock_applique'])
+                continue
+            produit = lock_produit(ligne.produit_id)
+            qte_avant = produit.quantite_stock
+            qte_apres = qte_avant + qte
+            record_stock_movement(
+                company=installation.company, produit=produit,
+                type_mouvement=mouvement_type_entree(),
+                quantite=qte,
+                quantite_avant=qte_avant, quantite_apres=qte_apres,
+                reference=f'RETOUR-{installation.reference}',
+                note=f'Retour chantier {installation.reference}',
+                created_by=user)
+            ligne.stock_applique = True
+            ligne.save(update_fields=['stock_applique'])
+            applied += 1
+        retour.statut = RetourMateriel.Statut.VALIDE
+        retour.valide_par = user
+        from django.utils import timezone as _tz
+        retour.valide_le = _tz.now()
+        retour.save(update_fields=['statut', 'valide_par', 'valide_le'])
+    return applied
 
 
 # ── YDOCF7 — Réservation de stock DEPUIS UN BonCommande (BC) ────────────────
@@ -2327,6 +2465,49 @@ def lettrer_gr_ir_facture(*, facture, company, user):
     return lettres
 
 
+# ── YSTCK7 — peuplement auto du registre entrepôt (SerieEntrepot) à la
+# réception BCF. Consommateur du même événement `reception_fournisseur_
+# confirmee` (abonné dans receivers.py) : DC37/FG61 capturent
+# `LigneReceptionFournisseur.numeros_serie` mais rien ne créait de
+# `SerieEntrepot` (FG323) — le registre devait être peuplé à la main.
+
+def peupler_series_entrepot_reception(*, reception, company, user):
+    """YSTCK7 — pour chaque série présente sur une ligne de la réception,
+    upsert IDEMPOTENT d'un `SerieEntrepot` (produit, numéro, emplacement
+    principal, statut « en stock »). Une série déjà enregistrée pour ce
+    produit+société n'est jamais dupliquée (contrainte unique_together —
+    `get_or_create`). Sans BCF ni séries, no-op. Renvoie le nombre de séries
+    créées."""
+    from .models_serie_entrepot import SerieEntrepot
+    from apps.stock.services import ensure_emplacements
+
+    if company is None or reception is None:
+        return 0
+    depot_principal = ensure_emplacements(company)
+    created = 0
+    for ligne in reception.lignes.select_related('produit').all():
+        if ligne.produit_id is None:
+            continue
+        series = getattr(ligne, 'numeros_serie', None) or []
+        for numero in series:
+            numero = (numero or '').strip() if isinstance(numero, str) \
+                else numero
+            if not numero:
+                continue
+            _, was_created = SerieEntrepot.objects.get_or_create(
+                company=company, produit_id=ligne.produit_id,
+                numero_serie=numero,
+                defaults={
+                    'statut': SerieEntrepot.Statut.EN_STOCK,
+                    'emplacement': depot_principal,
+                    'reference_reception': reception.reference,
+                    'created_by': user,
+                })
+            if was_created:
+                created += 1
+    return created
+
+
 # ── YSERV1 — Gate « acompte encaissé » avant planification (opt-in) ────────
 
 def verifier_gate_acompte_planification(installation):
@@ -2436,6 +2617,289 @@ def reactiver_interventions_annulees(installation, user):
     return count
 
 
+# ── YSERV7 — jalons atteints & réception → rappel de facturation d'échéancier
+# `JalonProjet.date_reelle`/`atteint` ne déclenchait RIEN côté facturation :
+# atteindre le jalon lié à une tranche (acompte/intermediaire/solde) ou
+# réceptionner le chantier (tranche SOLDE) ne signale jamais qu'une tranche
+# est à facturer. Nudge SEULEMENT — aucune facture créée automatiquement, les
+# statuts document restent inchangés. Lecture des factures du devis via
+# `apps.ventes.selectors` (jamais les models ventes).
+
+def notifier_jalon_a_facturer(jalon, user=None):
+    """YSERV7 — à l'atteinte (`atteint=True`) d'un jalon lié à une tranche
+    d'échéancier non encore facturée, notifie (best-effort) le responsable.
+    Idempotent : `rappel_facturation_envoye` verrouille — ne notifie jamais
+    deux fois pour le même jalon. No-op si le jalon n'est pas atteint, n'a pas
+    de tranche liée, ou si le chantier n'a pas de devis source."""
+    if not jalon.atteint or not jalon.tranche_echeancier:
+        return False
+    if jalon.rappel_facturation_envoye:
+        return False
+    installation = jalon.installation
+    devis = getattr(installation, 'devis', None)
+    if devis is None:
+        return False
+    from apps.ventes.selectors import tranche_facturee
+    if tranche_facturee(devis, jalon.tranche_echeancier):
+        return False
+    try:
+        from apps.notifications.services import notify_many, resolve_recipients
+        from apps.notifications.models import EventType
+        libelle_tranche = dict(jalon.TRANCHE_CHOICES).get(
+            jalon.tranche_echeancier, jalon.tranche_echeancier)
+        recipients = resolve_recipients(jalon.company, EventType.CHANTIER_DUE)
+        titre = f'Facture {libelle_tranche} à émettre — jalon {jalon.libelle} atteint'
+        notify_many(
+            recipients, EventType.CHANTIER_DUE, titre,
+            body=f'Chantier {installation.reference} — tranche '
+                 f'« {libelle_tranche} » non encore facturée.',
+            company=jalon.company)
+    except Exception:  # pragma: no cover - défensif, best-effort
+        pass
+    jalon.rappel_facturation_envoye = True
+    jalon.save(update_fields=['rappel_facturation_envoye'])
+    return True
+
+
+def notifier_reception_solde_a_facturer(installation, user=None):
+    """YSERV7 — à la réception du chantier (RECEPTIONNE), rappelle la tranche
+    SOLDE si elle n'est pas encore facturée. Réutilise le même verrou
+    d'idempotence que `notifier_jalon_a_facturer` : cherche (ou crée à la
+    volée) le jalon RECEPTION du chantier pour y accrocher le drapeau, sans
+    dupliquer le mécanisme de garde. No-op sans devis source."""
+    devis = getattr(installation, 'devis', None)
+    if devis is None:
+        return False
+    from .models import JalonProjet
+    jalon, _ = JalonProjet.objects.get_or_create(
+        installation=installation, phase=JalonProjet.Phase.RECEPTION,
+        defaults={
+            'company': installation.company,
+            'libelle': 'Réception',
+            'tranche_echeancier': JalonProjet.TRANCHE_SOLDE,
+        })
+    changed_fields = []
+    if not jalon.atteint:
+        jalon.atteint = True
+        changed_fields.append('atteint')
+    if not jalon.tranche_echeancier:
+        jalon.tranche_echeancier = JalonProjet.TRANCHE_SOLDE
+        changed_fields.append('tranche_echeancier')
+    if changed_fields:
+        jalon.save(update_fields=changed_fields)
+    return notifier_jalon_a_facturer(jalon, user)
+
+
+def chantiers_a_facturer(company):
+    """YSERV7 — sélecteur : chantiers ayant au moins une tranche due (jalon
+    atteint ou chantier réceptionné) non encore facturée. Renvoie une liste de
+    dicts plats `{installation_id, reference, tranche, jalon_id}` — un par
+    tranche due (un chantier peut apparaître plusieurs fois si plusieurs
+    tranches sont dues). Lecture seule ; import ventes via selectors seulement."""
+    from apps.ventes.selectors import tranche_facturee
+    from .models import JalonProjet
+    out = []
+    jalons = (
+        JalonProjet.objects
+        .filter(company=company, atteint=True,
+                tranche_echeancier__isnull=False)
+        .exclude(tranche_echeancier='')
+        .select_related('installation', 'installation__devis')
+        .order_by('installation_id', 'ordre', 'id')
+    )
+    for jalon in jalons:
+        installation = jalon.installation
+        devis = getattr(installation, 'devis', None)
+        if devis is None:
+            continue
+        if tranche_facturee(devis, jalon.tranche_echeancier):
+            continue
+        out.append({
+            'installation_id': installation.id,
+            'reference': installation.reference,
+            'tranche': jalon.tranche_echeancier,
+            'jalon_id': jalon.id,
+            'jalon_libelle': jalon.libelle,
+        })
+    return out
+
+
+# ── YSTCK5 — expédition/annulation de livraison ventile le grand livre ─────
+# `LivraisonViewSet.expedier`/`livrer`/`annuler` ne changeaient QUE le statut :
+# les `LivraisonLigne` (produit + quantité) ne réservaient ni ne déplaçaient
+# jamais rien — la planification était déconnectée du grand livre. À
+# `expedier`, on TRANSFÈRE (jamais un mouvement de sortie : le total ne
+# change pas) les lignes du dépôt de la livraison vers l'emplacement
+# chantier/van (« Camionnette », créée par `ensure_emplacements`) ; à
+# `annuler` d'une livraison déjà expédiée, le contre-transfert. Idempotent via
+# `Livraison.stock_mouvemente`. NB : ne double-compte jamais avec
+# `consume_reservations` (sortie réelle à « Installé ») — ceci est un
+# TRANSFERT interne (dépôt → van/site), pas une consommation.
+
+def _emplacement_van(company):
+    """Emplacement « Camionnette » (van/site) de la société — créé à la
+    volée par `ensure_emplacements` si la société n'a encore aucun
+    emplacement. Repli sur le premier emplacement non principal existant."""
+    from apps.stock.services import ensure_emplacements
+    from apps.stock.models import EmplacementStock
+    ensure_emplacements(company)
+    return (
+        EmplacementStock.objects
+        .filter(company=company, is_principal=False, archived=False)
+        .order_by('ordre', 'id')
+        .first()
+    )
+
+
+def ventiler_stock_livraison(livraison, user):
+    """YSTCK5 — à `expedier` : transfère chaque ligne du dépôt de la
+    livraison vers l'emplacement van. No-op sûr (renvoie 0) si la livraison
+    n'a pas de dépôt source, si son mode est `direct_site` (jamais passé par
+    le dépôt — rien à décrémenter), ou si `stock_mouvemente` est déjà posé
+    (idempotent). Une ligne sans produit catalogue ou en stock insuffisant au
+    dépôt est ignorée (best-effort, ne bloque jamais l'expédition)."""
+    from .models_livraison import Livraison
+    if livraison.stock_mouvemente:
+        return 0
+    if livraison.mode_acheminement == Livraison.ModeAcheminement.DIRECT_SITE:
+        return 0
+    if livraison.depot_id is None:
+        return 0
+    van = _emplacement_van(livraison.company)
+    if van is None:
+        return 0
+    from apps.stock.services import transfer_stock
+    transferred = 0
+    for ligne in livraison.lignes.select_related('produit').all():
+        if ligne.produit_id is None or not ligne.quantite:
+            continue
+        try:
+            transfer_stock(
+                company=livraison.company, user=user,
+                produit_id=ligne.produit_id, source_id=livraison.depot_id,
+                destination_id=van.id, quantite=ligne.quantite,
+                note=f'Expédition livraison {livraison.reference}')
+            transferred += 1
+        except ValueError:
+            continue  # best-effort : stock insuffisant, on n'échoue pas l'expédition.
+    livraison.stock_mouvemente = True
+    livraison.save(update_fields=['stock_mouvemente'])
+    return transferred
+
+
+def contre_transferer_stock_livraison(livraison, user):
+    """YSTCK5 — à `annuler` une livraison déjà ventilée : contre-transfert
+    van → dépôt. No-op si jamais ventilée (`stock_mouvemente=False`)."""
+    if not livraison.stock_mouvemente:
+        return 0
+    if livraison.depot_id is None:
+        return 0
+    van = _emplacement_van(livraison.company)
+    if van is None:
+        return 0
+    from apps.stock.services import transfer_stock
+    reversed_count = 0
+    for ligne in livraison.lignes.select_related('produit').all():
+        if ligne.produit_id is None or not ligne.quantite:
+            continue
+        try:
+            transfer_stock(
+                company=livraison.company, user=user,
+                produit_id=ligne.produit_id, source_id=van.id,
+                destination_id=livraison.depot_id, quantite=ligne.quantite,
+                note=f'Annulation livraison {livraison.reference}')
+            reversed_count += 1
+        except ValueError:
+            continue
+    livraison.stock_mouvemente = False
+    livraison.save(update_fields=['stock_mouvemente'])
+    return reversed_count
+
+
+# ── ZSTK8 — retour / transfert inverse depuis une Livraison validée ────────
+# Odoo génère un « return picking » depuis une livraison validée. Les retours
+# FOURNISSEUR existent (stock.RetourFournisseur) mais rien ne permettait de
+# générer un retour CLIENT depuis une `Livraison` livrée. Le retour ré-
+# incrémente le stock du DÉPÔT SOURCE de la livraison (jamais un ajustement
+# libre) — plafonné à la quantité réellement livrée.
+
+def generer_retour_livraison(livraison, user, motif=''):
+    """ZSTK8 — crée un `RetourLivraison` BROUILLON pré-rempli depuis les
+    lignes livrées de la livraison (quantité_livree = quantité de la ligne
+    d'origine, quantite_retournee = 0 par défaut, éditable ensuite ≤ livrée).
+    Renvoie le retour créé."""
+    from .models_retour_livraison import RetourLivraison, RetourLivraisonLigne
+
+    retour = RetourLivraison.objects.create(
+        company=livraison.company, livraison=livraison, motif=motif or '',
+        created_by=user)
+    for ligne in livraison.lignes.select_related('produit').all():
+        RetourLivraisonLigne.objects.create(
+            retour=retour, produit_id=ligne.produit_id,
+            designation=ligne.designation or (
+                ligne.produit.nom if ligne.produit_id else ''),
+            quantite_livree=ligne.quantite, quantite_retournee=0)
+    return retour
+
+
+def valider_retour_livraison(retour, user):
+    """ZSTK8 — valide le retour : pour chaque ligne dont
+    `quantite_retournee > 0`, poste UN `MouvementStock` ENTREE au dépôt
+    SOURCE de la livraison (idempotent via `stock_applique`). Refuse (lève
+    ValueError) si une ligne dépasse la quantité livrée, ou si la livraison
+    source n'a pas de dépôt. Renvoie le nombre de lignes appliquées."""
+    from django.db import transaction
+    from apps.stock.selectors import lock_produit
+    from apps.stock.services import (
+        mouvement_type_entree, record_stock_movement,
+    )
+    from .models_retour_livraison import RetourLivraison
+
+    if retour.statut == RetourLivraison.Statut.VALIDE:
+        raise ValueError('Retour déjà validé.')
+    livraison = retour.livraison
+    if livraison.depot_id is None:
+        raise ValueError('Cette livraison n\'a pas de dépôt source.')
+
+    lignes = list(retour.lignes.select_related('produit').all())
+    for ligne in lignes:
+        if ligne.quantite_retournee > ligne.quantite_livree:
+            raise ValueError(
+                f'Quantité retournée ({ligne.quantite_retournee}) '
+                f'supérieure à la quantité livrée ({ligne.quantite_livree}) '
+                f'pour « {ligne.designation or ligne.produit_id} ».')
+
+    applied = 0
+    with transaction.atomic():
+        for ligne in lignes:
+            if (ligne.stock_applique or ligne.produit_id is None
+                    or ligne.quantite_retournee <= 0):
+                if not ligne.stock_applique:
+                    ligne.stock_applique = True
+                    ligne.save(update_fields=['stock_applique'])
+                continue
+            produit = lock_produit(ligne.produit_id)
+            qte_avant = produit.quantite_stock
+            qte_apres = qte_avant + ligne.quantite_retournee
+            record_stock_movement(
+                company=livraison.company, produit=produit,
+                type_mouvement=mouvement_type_entree(),
+                quantite=ligne.quantite_retournee,
+                quantite_avant=qte_avant, quantite_apres=qte_apres,
+                reference=f'RETOUR-LIV-{livraison.reference}',
+                note=f'Retour livraison {livraison.reference}',
+                created_by=user)
+            ligne.stock_applique = True
+            ligne.save(update_fields=['stock_applique'])
+            applied += 1
+        retour.statut = RetourLivraison.Statut.VALIDE
+        retour.valide_par = user
+        from django.utils import timezone as _tz
+        retour.valide_le = _tz.now()
+        retour.save(update_fields=['statut', 'valide_par', 'valide_le'])
+    return applied
+
+
 # ── YHIRE9 — garde d'habilitation à l'affectation d'intervention ───────────
 # Mapping type d'intervention → habilitation requise partagé avec XFSM2
 # (``selectors._TYPE_VERS_HABILITATION``) : garde le SEUL référentiel, importé
@@ -2494,3 +2958,103 @@ def verifier_habilitation_affectation(company, technicien, type_intervention):
     except Exception:  # pragma: no cover - défensif
         mode = 'warn'
     return (mode == 'block'), avertissements
+
+
+# ── ZSTK10 — regroupement de prélèvements en lot (batch transfer) ─────────
+# Les pick-lists (FG321) sont générées par chantier ; Odoo permet de grouper
+# plusieurs pickings en un « Batch Transfer » qu'un magasinier traite en une
+# seule tournée. `LotPrelevement` regroupe des `PickList` du MÊME dépôt.
+
+def _depot_pick_list(pick_list):
+    """Emplacement (dépôt) déduit des lignes d'une pick-list : celui du
+    premier casier renseigné, ou None si aucune ligne n'a de casier (une
+    pick-list sans casier ne contraint aucun dépôt — jamais bloquant)."""
+    ligne = pick_list.lignes.filter(bin__isnull=False).select_related(
+        'bin').first()
+    return ligne.bin.emplacement_id if ligne is not None else None
+
+
+def creer_lot_prelevement(company, pick_list_ids, user):
+    """ZSTK10 — crée un `LotPrelevement` depuis une sélection de pick-lists du
+    MÊME dépôt (scopées société). Lève ValueError si les pick-lists visent des
+    dépôts différents, ou si la sélection est vide/inconnue. Référence
+    anti-collision via `apps.ventes.utils.references` (jamais count()+1)."""
+    from .models import PickList, LotPrelevement
+
+    pick_lists = list(PickList.objects.filter(
+        company=company, id__in=pick_list_ids or []))
+    if not pick_lists:
+        raise ValueError('Aucune pick-list valide sélectionnée.')
+
+    depots = {_depot_pick_list(pl) for pl in pick_lists}
+    depots.discard(None)
+    if len(depots) > 1:
+        raise ValueError(
+            'Les pick-lists sélectionnées ne partagent pas le même dépôt.')
+
+    def _save(reference):
+        lot = LotPrelevement.objects.create(
+            company=company, reference=reference, created_by=user)
+        lot.pick_lists.set(pick_lists)
+        return lot
+
+    return create_with_reference(LotPrelevement, 'LOTP', company, _save)
+
+
+def lignes_lot_prelevement(lot):
+    """ZSTK10 — lignes CONSOLIDÉES de toutes les pick-lists du lot, triées par
+    casier (`BinLocation.ordre`, réutilise l'ordonnancement FG321) pour une
+    passe unique de magasinier. Renvoie une liste de dicts plats."""
+    lignes = []
+    for pl in lot.pick_lists.prefetch_related('lignes__produit', 'lignes__bin'):
+        for li in pl.lignes.all():
+            lignes.append({
+                'ligne_id': li.id,
+                'pick_list_id': pl.id,
+                'pick_list_reference': pl.reference,
+                'produit_id': li.produit_id,
+                'designation': li.designation,
+                'bin_id': li.bin_id,
+                'bin_code': li.bin.code if li.bin_id else None,
+                'ordre': li.bin.ordre if li.bin_id else 999999,
+                'quantite_demandee': li.quantite_demandee,
+                'quantite_prelevee': li.quantite_prelevee,
+                'preleve': li.preleve,
+            })
+    lignes.sort(key=lambda entry: (entry['ordre'], entry['ligne_id']))
+    return lignes
+
+
+def cocher_ligne_lot(lot, ligne_id, quantite_prelevee=None):
+    """ZSTK10 — coche une ligne du lot : propage à la `PickListLigne` source
+    (même modèle, jamais dupliqué). Lève ValueError si la ligne n'appartient
+    à aucune pick-list du lot. Renvoie la ligne mise à jour."""
+    from .models import PickListLigne
+
+    ligne = PickListLigne.objects.filter(
+        id=ligne_id, pick_list__in=lot.pick_lists.all()).first()
+    if ligne is None:
+        raise ValueError('Ligne introuvable dans ce lot.')
+    ligne.preleve = True
+    if quantite_prelevee is not None:
+        ligne.quantite_prelevee = quantite_prelevee
+    elif not ligne.quantite_prelevee:
+        ligne.quantite_prelevee = ligne.quantite_demandee
+    ligne.save(update_fields=['preleve', 'quantite_prelevee'])
+    return ligne
+
+
+def cloturer_lot_prelevement(lot):
+    """ZSTK10 — clôture le lot (statut TERMINE) UNIQUEMENT si TOUTES ses
+    pick-lists sont soldées (statut `PickList.Statut.TERMINE`). Lève
+    ValueError sinon (message français). Idempotent."""
+    from .models import PickList, LotPrelevement
+
+    non_soldees = lot.pick_lists.exclude(statut=PickList.Statut.TERMINE)
+    if non_soldees.exists():
+        raise ValueError(
+            "Le lot ne peut être clôturé : des pick-lists ne sont pas "
+            'encore soldées.')
+    lot.statut = LotPrelevement.Statut.TERMINE
+    lot.save(update_fields=['statut', 'date_modification'])
+    return lot
