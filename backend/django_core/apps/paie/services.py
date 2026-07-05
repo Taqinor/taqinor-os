@@ -2952,15 +2952,13 @@ def generer_ordre_virement(periode, *, date_execution=None, rib_emetteur='',
             )
             total += net
             nombre += 1
-        if nombre == 0:
-            # YLEDG7 — un ordre de virement sans aucune ligne (aucun bulletin
-            # validé payé par virement sur la période) n'a rien à régler :
-            # le refuser plutôt que persister un ordre vide/sans montant que
-            # ``payer_ordre_virement`` traiterait comme "déjà réglé" (total=0).
-            raise ValueError(
-                "Aucun bulletin validé payé par virement sur cette période : "
-                "ordre de virement refusé (montant nul)."
-            )
+        # XPAI8 — un ordre sans aucune ligne reste CRÉABLE (brouillon vide) :
+        # ce sont les générateurs de fichier (``fichier_virement_paie`` /
+        # ``fichier_virement_paie_simt``) qui refusent de produire un fichier
+        # sans ligne, jamais la génération de l'ordre lui-même. YLEDG7 — le
+        # risque « payer un ordre sans montant » est gardé côté règlement :
+        # ``payer_ordre_virement`` refuse tout ordre au ``total`` nul (ci-
+        # dessous), donc un ordre vide ne peut jamais être réglé par erreur.
         ordre.total = _q(total)
         ordre.nombre_lignes = nombre
         ordre.save(update_fields=['total', 'nombre_lignes', 'libelle',
