@@ -515,9 +515,16 @@ def retrieve_chunks(user, query, *, limit=5):
     from pgvector.django import CosineDistance
 
     # ACL DÈS LE PREMIER JOUR : ne considère que les articles visibles pour
-    # cet utilisateur (KB7 + XKB9), jamais toute la table.
+    # cet utilisateur (KB7 + XKB9), jamais toute la table. ``visible_articles_qs``
+    # ne fait PAS elle-même le scoping société (elle attend un queryset déjà
+    # borné, comme les autres appelants) — on le pose ici en premier pour
+    # empêcher toute fuite cross-société (un admin d'une autre société ne doit
+    # JAMAIS voir les fragments d'une société qui n'est pas la sienne).
+    company_id = getattr(user, 'company_id', None)
+    base_qs = KbArticle.objects.filter(company_id=company_id) \
+        if company_id is not None else KbArticle.objects.none()
     visible_ids = visible_articles_qs(
-        KbArticle.objects.all(), user).values_list('id', flat=True)
+        base_qs, user).values_list('id', flat=True)
     base = (KbArticleChunk.objects
             .select_related('article')
             .filter(article_id__in=visible_ids, embedding__isnull=False))
