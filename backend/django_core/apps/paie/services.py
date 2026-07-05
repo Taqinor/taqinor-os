@@ -2952,6 +2952,15 @@ def generer_ordre_virement(periode, *, date_execution=None, rib_emetteur='',
             )
             total += net
             nombre += 1
+        if nombre == 0:
+            # YLEDG7 — un ordre de virement sans aucune ligne (aucun bulletin
+            # validé payé par virement sur la période) n'a rien à régler :
+            # le refuser plutôt que persister un ordre vide/sans montant que
+            # ``payer_ordre_virement`` traiterait comme "déjà réglé" (total=0).
+            raise ValueError(
+                "Aucun bulletin validé payé par virement sur cette période : "
+                "ordre de virement refusé (montant nul)."
+            )
         ordre.total = _q(total)
         ordre.nombre_lignes = nombre
         ordre.save(update_fields=['total', 'nombre_lignes', 'libelle',
