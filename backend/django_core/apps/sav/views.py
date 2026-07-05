@@ -133,8 +133,13 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
         return qs
 
     def get_permissions(self):
+        if self.action == 'fiabilite':
+            # XSAV15 — MTBF/MTTR restent visibles à tout rôle authentifié de
+            # la société ; le coût cumulé (sensible) est gated en interne sur
+            # `prix_achat_voir` (voir plus bas), jamais au niveau de l'action.
+            return [IsAnyRole()]
         if self.action in READ_ACTIONS + [
-                'etiquettes', 'registre_garanties', 'fiabilite',
+                'etiquettes', 'registre_garanties',
                 'estimations_maintenance', 'disponibilite']:
             return [HasPermissionOrLegacy('equipement_voir')()]
         elif self.action in WRITE_ACTIONS + [
@@ -308,17 +313,22 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(data)
 
     @action(detail=True, methods=['get'], url_path='fiabilite',
-            permission_classes=[HasPermissionOrLegacy('equipement_voir')])
+            permission_classes=[IsAnyRole])
     def fiabilite(self, request, pk=None):
         """XSAV15 — MTBF / MTTR / coût cumulé de CET équipement.
 
         Le coût cumulé (Ticket.cout + pièces valorisées prix d'achat) et
         l'indicateur réparer-vs-remplacer ne sont inclus QUE si l'utilisateur
         porte la permission `prix_achat_voir` — jamais exposés autrement
-        (admin-only, jamais client-facing ni dans un PDF)."""
+        (admin-only, jamais client-facing ni dans un PDF). Gated en interne
+        (et non au niveau de l'action) via `HasPermissionOrLegacy` pour que
+        les comptes légacy SANS rôle fin suivent le même repli que
+        `IsResponsableOrAdmin` (responsable/admin uniquement) plutôt que le
+        repli toujours-vrai de `can_view_buy_prices` — trop large ici."""
         from .selectors import fiabilite_equipement
         equipement = self.get_object()
-        include_couts = bool(request.user.can_view_buy_prices)
+        include_couts = HasPermissionOrLegacy('prix_achat_voir')().has_permission(
+            request, self)
         data = fiabilite_equipement(equipement, include_couts=include_couts)
         return Response(data)
 
