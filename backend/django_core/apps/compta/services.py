@@ -3458,6 +3458,29 @@ def evaluer_rapprochement(rapprochement):
     return rapprochement
 
 
+def refresh_rapprochements_ouverts_pour_bcf(company, bon_commande_id):
+    """YPROC8 — rafraîchit (ré-évalue) tous les rapprochements 3 voies OUVERTS
+    (statut différent de VALIDE) d'un BCF donné, après un événement stock qui
+    change le montant reçu (ex. retour fournisseur qui rouvre du reçu). Un
+    rapprochement déjà VALIDÉ (bon-à-payer explicite) n'est PAS touché — le
+    bon-à-payer n'est jamais écrasé silencieusement.
+
+    Point d'entrée cross-app dédié : ``apps.stock`` appelle CETTE fonction
+    (jamais le modèle ``Rapprochement`` directement) pour respecter le sens
+    d'import autorisé (stock → compta via service, jamais l'inverse). Best-
+    effort côté appelant recommandé ; ne lève que si le BCF n'appartient pas à
+    la société (garantie multi-tenant). Renvoie le nombre de rapprochements
+    rafraîchis."""
+    qs = Rapprochement.objects.filter(
+        company=company, bon_commande_id=bon_commande_id,
+    ).exclude(statut=Rapprochement.Statut.VALIDE)
+    count = 0
+    for rapprochement in qs:
+        evaluer_rapprochement(rapprochement)
+        count += 1
+    return count
+
+
 @transaction.atomic
 def valider_rapprochement(rapprochement, *, user=None, commentaire=''):
     """Marque un rapprochement « bon à payer » (FG131).

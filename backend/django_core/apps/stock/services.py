@@ -833,10 +833,49 @@ def check_negative_stock_guard(company, quantite_avant, quantite_apres):
 
 # ── N19 — Retour fournisseur : validation = décrément de stock (SORTIE) ───────
 
+def _reouvrir_quantite_recue_bcf(bc, produit_id, quantite_retournee):
+    """YPROC8 — décrémente ``quantite_recue`` des lignes BCF de ``produit_id``
+    à hauteur de ``quantite_retournee`` (plafonné à la quantité déjà reçue,
+    réparti sur les lignes du même produit — la plus récente d'abord), et
+    rétrograde le statut du BCF de RECU à ENVOYE si ``est_entierement_recu``
+    devient faux. Ne fait rien si ``bc`` est None (retour sans BCF lié —
+    comportement historique inchangé)."""
+    from .models import BonCommandeFournisseur
+
+    if bc is None or quantite_retournee <= 0:
+        return
+    restant_a_reouvrir = quantite_retournee
+    lignes = (bc.lignes.select_for_update()
+              .filter(produit_id=produit_id, quantite_recue__gt=0)
+              .order_by('-id'))
+    for ligne in lignes:
+        if restant_a_reouvrir <= 0:
+            break
+        # Plafond : on ne rouvre jamais plus que ce que la ligne montre reçu.
+        decrement = min(restant_a_reouvrir, ligne.quantite_recue)
+        if decrement <= 0:
+            continue
+        ligne.quantite_recue -= decrement
+        ligne.save(update_fields=['quantite_recue'])
+        restant_a_reouvrir -= decrement
+    bc.refresh_from_db()
+    if (bc.statut == BonCommandeFournisseur.Statut.RECU
+            and not bc.est_entierement_recu):
+        bc.statut = BonCommandeFournisseur.Statut.ENVOYE
+        bc.save(update_fields=['statut'])
+
+
 def apply_retour_fournisseur(retour, user):
     """Valide un retour fournisseur : décrémente le stock (MouvementStock
     SORTIE) pour chaque ligne, puis passe le retour à « validé ». Lève
-    ValueError si le retour n'est pas en brouillon ou est vide. INTERNE."""
+    ValueError si le retour n'est pas en brouillon ou est vide. INTERNE.
+
+    YPROC8 — quand ``retour.bon_commande`` est renseigné, rouvre
+    ``quantite_recue`` des lignes BCF du même produit (plafonné à la quantité
+    reçue), rétrograde le statut RECU→ENVOYE si le BCF n'est plus entièrement
+    reçu, et rafraîchit les rapprochements 3 voies OUVERTS de ce BCF (via le
+    service compta dédié — jamais d'import du modèle compta). Un retour SANS
+    BCF lié se comporte exactement comme avant (aucune régression)."""
     from django.db import transaction
     from .models import Produit, RetourFournisseur, MouvementStock
     if retour.statut != RetourFournisseur.Statut.BROUILLON:
@@ -863,8 +902,22 @@ def apply_retour_fournisseur(retour, user):
                 created_by=user)
             produit.quantite_stock = qte_apres
             produit.save(update_fields=['quantite_stock'])
+            if retour.bon_commande_id:
+                _reouvrir_quantite_recue_bcf(
+                    retour.bon_commande, ligne.produit_id, ligne.quantite)
         retour.statut = RetourFournisseur.Statut.VALIDE
         retour.save(update_fields=['statut'])
+    if retour.bon_commande_id:
+        try:
+            from apps.compta.services import (
+                refresh_rapprochements_ouverts_pour_bcf,
+            )
+            refresh_rapprochements_ouverts_pour_bcf(
+                retour.company, retour.bon_commande_id)
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.warning(
+                'apply_retour_fournisseur: échec refresh rapprochement '
+                'BCF %s', retour.bon_commande_id)
     return retour
 
 
