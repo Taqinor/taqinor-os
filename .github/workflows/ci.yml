@@ -213,6 +213,13 @@ jobs:
           docker run --rm --network host --entrypoint sh minio/mc:latest -c "
             mc alias set local http://localhost:9000 erp_admin erp_minio_password &&
             mc mb -p local/erp-pdf local/erp-uploads"
+      # YOPSB5 — anti-dérive modèle<->migration : échoue si un changement de
+      # modèle n'a pas sa migration (index nommé à la main divergent,
+      # contrainte sans migration…). Tourne AVANT la suite de tests, même
+      # service Postgres/env que celle-ci.
+      - name: Check for missing migrations (makemigrations --check)
+        working-directory: backend/django_core
+        run: python manage.py makemigrations --check --dry-run
       # Palier « par-merge » : tout SAUF les tests lourds étiquetés `pdf`/`slow`
       # (rendu WeasyPrint, golden PDF…). Ceux-ci tournent dans release-verify
       # (manuel + nightly), pour un retour rapide sur chaque merge.
@@ -276,6 +283,10 @@ jobs:
         run: python scripts/check_invariants.py
       - name: Check CODEMAP structural fingerprint
         run: python scripts/codemap_fingerprint.py --check
+      - name: Check for unsafe migration DDL patterns (YOPSB4)
+        run: python scripts/check_safe_migrations.py
+      - name: Test the safe-migrations checker itself (YOPSB4)
+        run: python -m unittest scripts.tests.test_check_safe_migrations -v
 
   web-build-test:
     needs: changes

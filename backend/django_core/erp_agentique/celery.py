@@ -235,4 +235,27 @@ app.conf.beat_schedule = {
         'task': 'stock.expiration_alerts',
         'schedule': crontab(hour=6, minute=20),
     },
+    # YOPSB1 — pg_dump réel quotidien vers MinIO (heure creuse).
+    'core-dump-database': {
+        'task': 'core.dump_database',
+        'schedule': crontab(hour=3, minute=0),
+    },
+    # YOPSB2 — drill de restauration hebdomadaire (lundi, heure creuse),
+    # restaure dans une base JETABLE et vérifie des comptages clés.
+    'core-restore-drill': {
+        'task': 'core.restore_drill',
+        'schedule': crontab(hour=4, minute=0, day_of_week=1),
+    },
+    # YOPSB3 — purge GFS quotidienne des dumps (DRY-RUN sauf
+    # BACKUP_PURGE_AUTO_APPLY).
+    'core-purge-backups': {
+        'task': 'core.purge_backups',
+        'schedule': crontab(hour=5, minute=0),
+    },
+    # YOPSB10 — sweep quotidien de toutes les politiques de rétention
+    # enregistrées (DRY-RUN sauf RETENTION_AUTO_APPLY), heure creuse.
+    'core-run-retention': {
+        'task': 'core.run_retention',
+        'schedule': crontab(hour=2, minute=0),
+    },
 }
