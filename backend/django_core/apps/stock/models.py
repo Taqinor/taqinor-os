@@ -1220,6 +1220,21 @@ class BonCommandeFournisseur(models.Model):
                   "d'origine) : la réception est suivie d'une affectation "
                   "chantier tracée (n'entre jamais en stock libre). "
                   'Vide = comportement historique.')
+    # ── YPROC10 — chantier D'ORIGINE du besoin (distinct de chantier_livraison
+    # ci-dessus, qui trace la LIVRAISON). Posé par `draft_bcf_for_shortfall` ;
+    # à la confirmation de réception, `installations` (abonné à l'événement
+    # `reception_fournisseur_confirmee`) crée/complète les `StockReservation`
+    # actives du chantier pour les quantités reçues — la chaîne MTO (« Made
+    # To Order ») n'est plus cassée à la réception. Nullable = comportement
+    # historique inchangé (la marchandise entre en stock libre).
+    chantier_origine = models.ForeignKey(
+        'installations.Installation', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='bons_commande_besoin_origine',
+        help_text="Chantier D'ORIGINE du besoin matériel (distinct de "
+                  'chantier_livraison, qui trace la LIVRAISON) : réceptionner '
+                  'ce BCF réserve automatiquement les quantités reçues pour '
+                  'ce chantier. Vide = comportement historique (stock '
+                  'libre).')
     note = models.TextField(blank=True, null=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,

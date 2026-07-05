@@ -1415,6 +1415,11 @@ def draft_bcf_for_shortfall(installation, fournisseur, user, company):
     Une ligne BCF par produit en pénurie (quantité = le manque), au prix
     d'achat catalogue (interne). Renvoie (bon, lignes_count). Lève ValueError
     s'il n'y a aucun manque à commander.
+
+    YPROC10 — pose `chantier_origine` (string-FK, distinct de la destination
+    de livraison XPUR23) : la note texte ne suffisait pas à relier
+    structurellement le BCF au chantier — à la réception, la marchandise
+    entrait en stock libre et pouvait être consommée par n'importe qui.
     """
     from apps.ventes.utils.references import create_with_reference
     from .models import BonCommandeFournisseur, LigneBonCommandeFournisseur
@@ -1431,6 +1436,7 @@ def draft_bcf_for_shortfall(installation, fournisseur, user, company):
             fournisseur=fournisseur,
             statut=BonCommandeFournisseur.Statut.BROUILLON,
             note=(f'Besoin matériel — chantier {installation.reference}'),
+            chantier_origine=installation,
             created_by=user,
         )
         for b in manquants:
