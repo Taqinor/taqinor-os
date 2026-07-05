@@ -282,6 +282,29 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             'validees_seulement': params.get('validees') == '1',
         }
 
+    def _company_profile(self, request):
+        """ZACC1 — ``CompanyProfile`` (entête PDF) ; ``None`` si absent —
+        JAMAIS bloquant (profil optionnel, foundation app exemptée)."""
+        try:
+            from apps.parametres.models_company import CompanyProfile
+            return CompanyProfile.get(company=request.user.company)
+        except Exception:  # pragma: no cover - profil optionnel.
+            return None
+
+    def _pdf_response(self, pdf_bytes, filename):
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return resp
+
+    def _pdf_or_503(self, render_fn):
+        """ZACC1 — invoque un ``render_*_pdf`` de ``pdf_etats``, ou renvoie un
+        503 explicite si WeasyPrint est indisponible (jamais un crash)."""
+        try:
+            return render_fn()
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
     @action(detail=False, methods=['get'])
     def grand_livre(self, request):
         company = request.user.company
@@ -292,17 +315,42 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             compte = CompteComptable.objects.filter(
                 company=company, numero=numero).first()
         data = selectors.grand_livre(company, compte=compte, **periode)
+        if request.query_params.get('export') == 'pdf':
+            from .pdf_etats import render_grand_livre_pdf
+            result = self._pdf_or_503(lambda: render_grand_livre_pdf(
+                data, self._company_profile(request),
+                date_debut=periode['date_debut'], date_fin=periode['date_fin']))
+            if isinstance(result, Response):
+                return result
+            return self._pdf_response(result, 'grand_livre.pdf')
         return Response(data)
 
     @action(detail=False, methods=['get'])
     def balance(self, request):
-        data = selectors.balance_generale(
-            request.user.company, **self._periode(request))
+        periode = self._periode(request)
+        data = selectors.balance_generale(request.user.company, **periode)
+        if request.query_params.get('export') == 'pdf':
+            from .pdf_etats import render_balance_pdf
+            result = self._pdf_or_503(lambda: render_balance_pdf(
+                data, self._company_profile(request),
+                date_debut=periode['date_debut'], date_fin=periode['date_fin']))
+            if isinstance(result, Response):
+                return result
+            return self._pdf_response(result, 'balance.pdf')
         return Response(data)
 
     @action(detail=False, methods=['get'])
     def cpc(self, request):
-        data = selectors.cpc(request.user.company, **self._periode(request))
+        periode = self._periode(request)
+        data = selectors.cpc(request.user.company, **periode)
+        if request.query_params.get('export') == 'pdf':
+            from .pdf_etats import render_cpc_pdf
+            result = self._pdf_or_503(lambda: render_cpc_pdf(
+                data, self._company_profile(request),
+                date_debut=periode['date_debut'], date_fin=periode['date_fin']))
+            if isinstance(result, Response):
+                return result
+            return self._pdf_response(result, 'cpc.pdf')
         return Response(data)
 
     @action(detail=False, methods=['get'])
@@ -311,6 +359,14 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
         data = selectors.bilan(
             request.user.company, date_fin=periode['date_fin'],
             validees_seulement=periode['validees_seulement'])
+        if request.query_params.get('export') == 'pdf':
+            from .pdf_etats import render_bilan_pdf
+            result = self._pdf_or_503(lambda: render_bilan_pdf(
+                data, self._company_profile(request),
+                date_fin=periode['date_fin']))
+            if isinstance(result, Response):
+                return result
+            return self._pdf_response(result, 'bilan.pdf')
         return Response(data)
 
     @action(detail=False, methods=['get'])
@@ -403,10 +459,19 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
         ``date_reference`` (défaut aujourd'hui), ``validees`` (1 → écritures
         validées seulement). Lecture seule, scopée société, Admin/Responsable.
         """
+        date_reference = request.query_params.get('date_reference') or None
         data = selectors.balance_agee_fournisseurs(
-            request.user.company,
-            date_reference=request.query_params.get('date_reference') or None,
+            request.user.company, date_reference=date_reference,
             validees_seulement=request.query_params.get('validees') == '1')
+        if request.query_params.get('export') == 'pdf':
+            from .pdf_etats import render_balance_agee_pdf
+            result = self._pdf_or_503(lambda: render_balance_agee_pdf(
+                data, self._company_profile(request),
+                date_reference=date_reference,
+                titre='Balance âgée fournisseurs'))
+            if isinstance(result, Response):
+                return result
+            return self._pdf_response(result, 'balance_agee_fournisseurs.pdf')
         return Response(data)
 
     @action(detail=False, methods=['get'],
@@ -708,8 +773,17 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
         data = selectors.liasse_fiscale(
             company, exercice,
             validees_seulement=request.query_params.get('validees') == '1')
-        if request.query_params.get('export') == 'csv':
+        export = request.query_params.get('export')
+        if export == 'csv':
             return self._export_liasse_csv(exercice, data)
+        if export == 'pdf':
+            from .pdf_etats import render_liasse_pdf
+            result = self._pdf_or_503(lambda: render_liasse_pdf(
+                data, self._company_profile(request), exercice=exercice))
+            if isinstance(result, Response):
+                return result
+            return self._pdf_response(
+                result, f'liasse_fiscale_exercice_{exercice.pk}.pdf')
         return Response(data)
 
     @staticmethod
