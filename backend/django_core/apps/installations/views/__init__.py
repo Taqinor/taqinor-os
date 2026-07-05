@@ -76,6 +76,7 @@ from .retour_materiel import RetourMaterielViewSet, RetourMaterielLigneViewSet
 from .retour_livraison import (
     RetourLivraisonViewSet, RetourLivraisonLigneViewSet,
 )
+from .lot_prelevement import LotPrelevementViewSet
 
 __all__ = [
     'TypeInterventionViewSet',
@@ -160,4 +161,5 @@ __all__ = [
     'RetourMaterielLigneViewSet',
     'RetourLivraisonViewSet',
     'RetourLivraisonLigneViewSet',
+    'LotPrelevementViewSet',
 ]

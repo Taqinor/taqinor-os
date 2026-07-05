@@ -74,6 +74,7 @@ from .models import (
     RetourLivraisonLigne,
     CategorieStockage,
     RegleRangement,
+    LotPrelevement,
 )
 
 
@@ -2691,3 +2692,26 @@ class RegleRangementSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'Indiquez un produit ou une categorie produit.')
         return attrs
+
+
+class LotPrelevementSerializer(serializers.ModelSerializer):
+    """ZSTK10 - lot de prelevement regroupant plusieurs pick-lists du meme
+    depot. Societe/`created_by`/reference poses COTE SERVEUR."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True, default=None)
+    operateur_nom = serializers.CharField(
+        source='operateur.username', read_only=True, default=None)
+    pick_list_ids = serializers.PrimaryKeyRelatedField(
+        source='pick_lists', many=True, read_only=True)
+
+    class Meta:
+        model = LotPrelevement
+        fields = [
+            'id', 'reference', 'statut', 'statut_display', 'operateur',
+            'operateur_nom', 'pick_list_ids',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'reference', 'statut', 'created_by',
+            'date_creation', 'date_modification',
+        ]

@@ -203,6 +203,9 @@ from .models_storage_rules import (
     CategorieStockage,
     RegleRangement,
 )
+from .models_lot_prelevement import (
+    LotPrelevement,
+)
 
 __all__ = [
     'Installation',
@@ -309,4 +312,5 @@ __all__ = [
     'RetourLivraisonLigne',
     'CategorieStockage',
     'RegleRangement',
+    'LotPrelevement',
 ]

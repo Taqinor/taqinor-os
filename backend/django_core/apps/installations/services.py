@@ -2931,3 +2931,103 @@ def verifier_habilitation_affectation(company, technicien, type_intervention):
     except Exception:  # pragma: no cover - défensif
         mode = 'warn'
     return (mode == 'block'), avertissements
+
+
+# ── ZSTK10 — regroupement de prélèvements en lot (batch transfer) ─────────
+# Les pick-lists (FG321) sont générées par chantier ; Odoo permet de grouper
+# plusieurs pickings en un « Batch Transfer » qu'un magasinier traite en une
+# seule tournée. `LotPrelevement` regroupe des `PickList` du MÊME dépôt.
+
+def _depot_pick_list(pick_list):
+    """Emplacement (dépôt) déduit des lignes d'une pick-list : celui du
+    premier casier renseigné, ou None si aucune ligne n'a de casier (une
+    pick-list sans casier ne contraint aucun dépôt — jamais bloquant)."""
+    ligne = pick_list.lignes.filter(bin__isnull=False).select_related(
+        'bin').first()
+    return ligne.bin.emplacement_id if ligne is not None else None
+
+
+def creer_lot_prelevement(company, pick_list_ids, user):
+    """ZSTK10 — crée un `LotPrelevement` depuis une sélection de pick-lists du
+    MÊME dépôt (scopées société). Lève ValueError si les pick-lists visent des
+    dépôts différents, ou si la sélection est vide/inconnue. Référence
+    anti-collision via `apps.ventes.utils.references` (jamais count()+1)."""
+    from .models import PickList, LotPrelevement
+
+    pick_lists = list(PickList.objects.filter(
+        company=company, id__in=pick_list_ids or []))
+    if not pick_lists:
+        raise ValueError('Aucune pick-list valide sélectionnée.')
+
+    depots = {_depot_pick_list(pl) for pl in pick_lists}
+    depots.discard(None)
+    if len(depots) > 1:
+        raise ValueError(
+            'Les pick-lists sélectionnées ne partagent pas le même dépôt.')
+
+    def _save(reference):
+        lot = LotPrelevement.objects.create(
+            company=company, reference=reference, created_by=user)
+        lot.pick_lists.set(pick_lists)
+        return lot
+
+    return create_with_reference(LotPrelevement, 'LOTP', company, _save)
+
+
+def lignes_lot_prelevement(lot):
+    """ZSTK10 — lignes CONSOLIDÉES de toutes les pick-lists du lot, triées par
+    casier (`BinLocation.ordre`, réutilise l'ordonnancement FG321) pour une
+    passe unique de magasinier. Renvoie une liste de dicts plats."""
+    lignes = []
+    for pl in lot.pick_lists.prefetch_related('lignes__produit', 'lignes__bin'):
+        for li in pl.lignes.all():
+            lignes.append({
+                'ligne_id': li.id,
+                'pick_list_id': pl.id,
+                'pick_list_reference': pl.reference,
+                'produit_id': li.produit_id,
+                'designation': li.designation,
+                'bin_id': li.bin_id,
+                'bin_code': li.bin.code if li.bin_id else None,
+                'ordre': li.bin.ordre if li.bin_id else 999999,
+                'quantite_demandee': li.quantite_demandee,
+                'quantite_prelevee': li.quantite_prelevee,
+                'preleve': li.preleve,
+            })
+    lignes.sort(key=lambda entry: (entry['ordre'], entry['ligne_id']))
+    return lignes
+
+
+def cocher_ligne_lot(lot, ligne_id, quantite_prelevee=None):
+    """ZSTK10 — coche une ligne du lot : propage à la `PickListLigne` source
+    (même modèle, jamais dupliqué). Lève ValueError si la ligne n'appartient
+    à aucune pick-list du lot. Renvoie la ligne mise à jour."""
+    from .models import PickListLigne
+
+    ligne = PickListLigne.objects.filter(
+        id=ligne_id, pick_list__in=lot.pick_lists.all()).first()
+    if ligne is None:
+        raise ValueError('Ligne introuvable dans ce lot.')
+    ligne.preleve = True
+    if quantite_prelevee is not None:
+        ligne.quantite_prelevee = quantite_prelevee
+    elif not ligne.quantite_prelevee:
+        ligne.quantite_prelevee = ligne.quantite_demandee
+    ligne.save(update_fields=['preleve', 'quantite_prelevee'])
+    return ligne
+
+
+def cloturer_lot_prelevement(lot):
+    """ZSTK10 — clôture le lot (statut TERMINE) UNIQUEMENT si TOUTES ses
+    pick-lists sont soldées (statut `PickList.Statut.TERMINE`). Lève
+    ValueError sinon (message français). Idempotent."""
+    from .models import PickList, LotPrelevement
+
+    non_soldees = lot.pick_lists.exclude(statut=PickList.Statut.TERMINE)
+    if non_soldees.exists():
+        raise ValueError(
+            "Le lot ne peut être clôturé : des pick-lists ne sont pas "
+            'encore soldées.')
+    lot.statut = LotPrelevement.Statut.TERMINE
+    lot.save(update_fields=['statut', 'date_modification'])
+    return lot
