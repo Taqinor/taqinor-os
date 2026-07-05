@@ -2177,6 +2177,100 @@ def facture_montant_du(facture):
     return facture.montant_du
 
 
+def affecter_encaissement_groupe(
+        *, company, client, montant, mode, date_paiement, user, factures,
+        reference='', repartition=None):
+    """ZFAC6 — un seul règlement client réparti sur PLUSIEURS factures.
+
+    Crée un ``Paiement`` par facture réglée : par défaut FIFO (la facture à
+    l'échéance la plus ancienne d'abord, jusqu'à épuisement du montant) ; ou
+    une répartition EXPLICITE si ``repartition`` (dict facture_id -> montant)
+    est fournie. Toutes les factures doivent appartenir à ``company`` ET
+    ``client`` (sinon ValueError — le viewset traduit en 400). Atomique :
+    échec partiel = rollback total. Bascule le statut « Payée » sur toute
+    facture intégralement soldée par ce geste (comportement identique à un
+    encaissement facture-par-facture)."""
+    from decimal import Decimal
+
+    from django.db import transaction
+
+    from apps.ventes.models import Facture
+
+    montant = Decimal(str(montant))
+    if montant <= 0:
+        raise ValueError("Le montant doit être positif.")
+    if not factures:
+        raise ValueError("Aucune facture fournie.")
+
+    for f in factures:
+        if f.company_id != company.id or f.client_id != client.id:
+            raise ValueError(
+                f"La facture {f.reference} n'appartient pas à ce client.")
+
+    paiements = []
+    with transaction.atomic():
+        locked = list(
+            Facture.objects.select_for_update()
+            .filter(id__in=[f.id for f in factures])
+        )
+        by_id = {f.id: f for f in locked}
+
+        if isinstance(repartition, dict) and repartition:
+            # Répartition explicite fournie par l'appelant.
+            for fid, part in repartition.items():
+                facture = by_id.get(int(fid))
+                if facture is None:
+                    raise ValueError(f"Facture {fid} inconnue dans ce lot.")
+                part = Decimal(str(part))
+                if part <= 0:
+                    continue
+                paiements.append(_creer_paiement_groupe(
+                    facture, part, mode, date_paiement, user, reference))
+        else:
+            # FIFO : échéance la plus ancienne d'abord (None en dernier).
+            ordonnees = sorted(
+                locked,
+                key=lambda f: (f.date_echeance is None, f.date_echeance))
+            restant = montant
+            for facture in ordonnees:
+                if restant <= 0:
+                    break
+                reste_facture = facture.montant_du
+                if reste_facture <= 0:
+                    continue
+                part = min(restant, reste_facture)
+                paiements.append(_creer_paiement_groupe(
+                    facture, part, mode, date_paiement, user, reference))
+                restant -= part
+
+        for facture in locked:
+            facture.refresh_from_db()
+            if facture.montant_du <= Decimal('0') and \
+                    facture.statut not in (
+                        Facture.Statut.ANNULEE, Facture.Statut.PAYEE):
+                facture.statut = Facture.Statut.PAYEE
+                facture.save(update_fields=['statut'])
+
+    return paiements
+
+
+def _creer_paiement_groupe(facture, montant, mode, date_paiement, user,
+                           reference):
+    from apps.ventes.models import Paiement
+
+    paiement = Paiement.objects.create(
+        company=facture.company, facture=facture, montant=montant,
+        date_paiement=date_paiement, mode=mode,
+        reference=reference or '', created_by=user,
+    )
+    # YLEDG1 — événement documentaire générique (même seam que
+    # enregistrer_paiement / le geste facture-par-facture).
+    from core.events import paiement_enregistre
+    paiement_enregistre.send(
+        sender=Paiement, instance=paiement, company=facture.company)
+    return paiement
+
+
 def calculer_date_echeance(*, client, date_emission):
     """XFAC23 — dérive la date d'échéance depuis les conditions de paiement du
     client (délai en jours + report fin de mois).

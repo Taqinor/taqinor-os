@@ -109,7 +109,7 @@ class FactureViewSet(viewsets.ModelViewSet):
             'dgi_export', 'dgi_conformite', 'dgi_transmettre',
             'bulk', 'lien_paiement', 'retour_client',
             'facturer_penalites', 'consolider', 'abandonner_solde',
-            'remettre_brouillon',
+            'remettre_brouillon', 'encaissement_groupe',
         ]:
             return [IsResponsableOrAdmin()]
         # Annuler une facture = réservé à l'admin/propriétaire (geste comptable).
@@ -1571,6 +1571,84 @@ class FactureViewSet(viewsets.ModelViewSet):
             return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
         return Response(
             FactureSerializer(facture).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'], url_path='encaissement-groupe',
+            permission_classes=[IsResponsableOrAdmin])
+    def encaissement_groupe(self, request):
+        """ZFAC6 — un seul règlement client réparti sur PLUSIEURS factures
+        (virement global, chèque unique). Body : ``{client, montant, mode,
+        date, reference, factures:[ids]}`` — répartition FIFO par échéance
+        (la plus ancienne d'abord) sur les factures listées ; un solde
+        éventuel non affecté n'est PAS créé ici (XFAC1 le gère séparément
+        s'il est présent — le montant excédentaire est simplement refusé)."""
+        from decimal import Decimal, InvalidOperation
+
+        from apps.crm.selectors import get_company_client
+
+        company = request.user.company
+        client_id = request.data.get('client')
+        client = get_company_client(company, client_id)
+        if client is None:
+            return Response(
+                {'detail': 'Client introuvable.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            montant = Decimal(str(request.data.get('montant')))
+        except (InvalidOperation, TypeError, ValueError):
+            return Response(
+                {'detail': 'Montant invalide.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if montant <= 0:
+            return Response(
+                {'detail': 'Le montant doit être positif.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        mode = (request.data.get('mode') or 'virement').strip()
+        date_paiement = request.data.get('date') or timezone.now().date()
+        reference = (request.data.get('reference') or '').strip()
+        facture_ids = request.data.get('factures') or []
+        if not isinstance(facture_ids, list) or not facture_ids:
+            return Response(
+                {'detail': 'factures (liste d\'ids) requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        factures = list(
+            Facture.objects.filter(company=company, id__in=facture_ids))
+        if len(factures) != len(set(facture_ids)):
+            return Response(
+                {'detail': 'Une ou plusieurs factures sont introuvables '
+                           'pour cette société.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        autres_clients = [f for f in factures if f.client_id != client.id]
+        if autres_clients:
+            return Response(
+                {'detail': (
+                    f"La facture {autres_clients[0].reference} "
+                    "n'appartient pas à ce client."
+                )},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        repartition = request.data.get('repartition')
+        if repartition is not None and not isinstance(repartition, dict):
+            return Response(
+                {'detail': 'repartition doit être un objet {facture_id: montant}.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        from ..services import affecter_encaissement_groupe
+
+        try:
+            paiements = affecter_encaissement_groupe(
+                company=company, client=client, montant=montant, mode=mode,
+                date_paiement=date_paiement, user=request.user,
+                factures=factures, reference=reference,
+                repartition=repartition,
+            )
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(
+            PaiementSerializer(paiements, many=True).data,
+            status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['post'], url_path='bulk',
             permission_classes=[IsResponsableOrAdmin])
