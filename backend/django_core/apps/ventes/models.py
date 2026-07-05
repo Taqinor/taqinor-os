@@ -509,6 +509,47 @@ class BonCommande(models.Model):
     def __str__(self):
         return self.reference
 
+    @property
+    def reliquat_par_ligne(self):
+        """XSAL12 — quantité restant à livrer par ligne de devis source.
+
+        Un BC sans devis (ou sans livraison partielle) renvoie une liste
+        vide — comportement historique inchangé (le statut reste piloté par
+        `marquer_livre` seul dans ce cas)."""
+        if self.devis_id is None:
+            return []
+        from django.db.models import Sum
+        livre_par_ligne = dict(
+            LigneLivraisonBC.objects
+            .filter(livraison__bon_commande=self)
+            .values_list('ligne_devis_id')
+            .annotate(total=Sum('quantite_livree'))
+        )
+        out = []
+        for ligne in self.devis.lignes.all():
+            livre = livre_par_ligne.get(ligne.id) or 0
+            out.append({
+                'ligne_devis_id': ligne.id,
+                'designation': ligne.designation,
+                'quantite_commandee': ligne.quantite,
+                'quantite_livree': livre,
+                'reliquat': ligne.quantite - livre,
+            })
+        return out
+
+    @property
+    def est_partiellement_livre(self):
+        """XSAL12 — vrai si au moins une livraison partielle existe et qu'il
+        reste un reliquat (le BC n'est pas encore `livre`)."""
+        if self.statut == self.Statut.LIVRE:
+            return False
+        reliquats = self.reliquat_par_ligne
+        if not reliquats:
+            return False
+        any_livre = any(r['quantite_livree'] > 0 for r in reliquats)
+        any_reliquat = any(r['reliquat'] > 0 for r in reliquats)
+        return any_livre and any_reliquat
+
 
 class Facture(models.Model):
     class Statut(models.TextChoices):
@@ -1810,6 +1851,16 @@ class ShareLink(models.Model):
     view_count = models.PositiveIntegerField(
         default=0,
         verbose_name='Nombre de consultations')
+    # ── XSAL16 — Analytics d'engagement par section de la proposition ──
+    # JSON additif, agrégé par section : {"prix": {"seconds": 120, "hits": 3},
+    # "etude": {...}, ...}. Alimenté par des beacons POST côté proposition web
+    # (WEB_PLAN WJ — moitié web hors périmètre ERP). Vide/absent = comportement
+    # QJ1 inchangé (aucun affichage supplémentaire).
+    engagement = models.JSONField(null=True, blank=True)
+    # Horodatage du premier engagement PROFOND (seuil dépassé sur au moins une
+    # section) — sert à ne loguer QU'UNE FOIS la note chatter « a commencé à
+    # lire en détail ».
+    deep_engagement_logged_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ['-created_at']
@@ -1829,6 +1880,21 @@ class ShareLink(models.Model):
     @property
     def is_valid(self):
         return self.expires_at > timezone.now()
+
+    @property
+    def engagement_summary(self):
+        """XSAL16 — résumé lisible par section : « a passé 2 min sur le prix,
+        n'a pas ouvert l'étude ». Vide sans beacon (comportement QJ1
+        inchangé, aucune donnée personnelle stockée — juste des sections/
+        durées)."""
+        data = self.engagement or {}
+        return {
+            section: {
+                'seconds': int(v.get('seconds', 0) or 0),
+                'hits': int(v.get('hits', 0) or 0),
+            }
+            for section, v in data.items()
+        }
 
     @classmethod
     def for_devis(cls, devis):
@@ -2686,3 +2752,246 @@ class TentativeDebitMandat(models.Model):
 
     def __str__(self):
         return f'{self.mandat_id} / {self.periode} — {self.statut}'
+
+
+class ListePrix(models.Model):
+    """XSAL1 — Liste de prix clients (détail / revendeur / export).
+
+    Un « prix négocié client » = une liste dédiée assignée à ce client via
+    ``crm.Client.liste_prix`` (string-FK additive). Le prix affiché reste
+    toujours HT/TTC selon le mode du générateur — cette liste ne porte que le
+    prix unitaire choisi par le vendeur, jamais ``prix_achat``."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='listes_prix')
+    nom = models.CharField(max_length=150)
+    devise = models.CharField(max_length=10, default='MAD')
+    date_debut = models.DateField(null=True, blank=True)
+    date_fin = models.DateField(null=True, blank=True)
+    archived = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Liste de prix'
+        verbose_name_plural = 'Listes de prix'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return self.nom
+
+    @property
+    def est_active(self):
+        """Vrai si la liste n'est pas archivée et est dans sa fenêtre de
+        validité (bornes optionnelles, ouvertes si non renseignées)."""
+        if self.archived:
+            return False
+        today = timezone.now().date()
+        if self.date_debut and today < self.date_debut:
+            return False
+        if self.date_fin and today > self.date_fin:
+            return False
+        return True
+
+
+class LignePrixListe(models.Model):
+    """XSAL1 — Prix unitaire d'un produit dans une liste de prix.
+
+    ``produit`` est une string-FK vers ``stock.Produit`` (M3 : aucune
+    liaison directe entre modèles de domaine). Unique (liste, produit) :
+    un produit n'a qu'un seul prix par liste."""
+    liste = models.ForeignKey(
+        ListePrix, on_delete=models.CASCADE, related_name='lignes')
+    produit = models.ForeignKey(
+        'stock.Produit', on_delete=models.CASCADE,
+        related_name='lignes_liste_prix')
+    prix_unitaire = models.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        verbose_name = 'Ligne de liste de prix'
+        verbose_name_plural = 'Lignes de liste de prix'
+        unique_together = [('liste', 'produit')]
+
+    def __str__(self):
+        return f'{self.liste_id} / produit {self.produit_id}'
+
+
+class RegleListePrix(models.Model):
+    """XSAL2 — Règle de prix / palier de quantité sur une liste de prix.
+
+    Portée : produit précis (``produit``), catégorie (``categorie_nom``,
+    string-ref stock — jamais d'import de ``stock.models``), marque
+    (``marque``, string libre — miroir de ``Produit.marque``) ou tout le
+    catalogue (aucune portée renseignée). ``prix_applicable()`` retient la
+    règle la plus spécifique satisfaite par la quantité (priorité décroissante
+    : produit > catégorie > marque > catalogue, puis ``priorite`` explicite,
+    puis palier le plus élevé atteint). Aucune règle ne touche
+    ``prix_achat``."""
+    class TypeRegle(models.TextChoices):
+        PRIX_FIXE = 'prix_fixe', 'Prix fixe'
+        REMISE_PCT = 'remise_pct', 'Remise %'
+        FORMULE_SUR_PRIX_VENTE = 'formule_sur_prix_vente', 'Formule sur prix de vente'
+
+    liste = models.ForeignKey(
+        ListePrix, on_delete=models.CASCADE, related_name='regles')
+    produit = models.ForeignKey(
+        'stock.Produit', on_delete=models.CASCADE, null=True, blank=True,
+        related_name='regles_liste_prix')
+    categorie_nom = models.CharField(max_length=150, blank=True, default='')
+    marque = models.CharField(max_length=100, blank=True, default='')
+    type_regle = models.CharField(max_length=25, choices=TypeRegle.choices)
+    valeur = models.DecimalField(
+        max_digits=10, decimal_places=4,
+        help_text='Prix fixe (MAD), % de remise, ou coefficient formule selon type_regle.')
+    quantite_min = models.DecimalField(
+        max_digits=10, decimal_places=2, default=1,
+        help_text='Palier : quantité minimale pour que la règle s\'applique.')
+    priorite = models.PositiveIntegerField(
+        default=0, help_text='Priorité explicite (plus haut = préféré) à portée égale.')
+    actif = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = 'Règle de liste de prix'
+        verbose_name_plural = 'Règles de liste de prix'
+        ordering = ['-priorite', '-quantite_min']
+
+    def __str__(self):
+        return f'{self.liste_id} / {self.type_regle} (min {self.quantite_min})'
+
+    @property
+    def specificite(self):
+        """Rang de spécificité de portée : produit > catégorie > marque > catalogue."""
+        if self.produit_id:
+            return 3
+        if self.categorie_nom:
+            return 2
+        if self.marque:
+            return 1
+        return 0
+
+    def matches_produit(self, produit):
+        if self.produit_id:
+            return produit.pk == self.produit_id
+        if self.categorie_nom:
+            cat = getattr(produit, 'categorie', None)
+            return bool(cat) and cat.nom == self.categorie_nom
+        if self.marque:
+            return (produit.marque or '') == self.marque
+        return True
+
+
+class PlanCommission(models.Model):
+    """XSAL6 — Plan de commission par commercial (au-delà du mode société
+    unique `CompanyProfile.commission_mode`).
+
+    ``owner`` nul = plan par défaut de la société (fallback quand un
+    commercial n'a pas de plan dédié). ``base`` détermine sur quoi le taux/
+    montant s'applique : CA des devis signés, marge interne (ADMIN-ONLY —
+    calculée depuis ``prix_achat``, jamais exposée aux non-admins) ou MAD par
+    kWc installé. ``paliers`` (JSON optionnel) permet une accélération du taux
+    une fois un seuil d'atteinte d'objectif dépassé — la lecture de
+    l'atteinte se fait via ``apps.crm.selectors`` (jamais d'import direct de
+    ``apps.crm.models``). Le rapport (`reporting/insights.commissions`)
+    résout le plan du commercial : plan dédié → plan par défaut société →
+    ``CompanyProfile.commission_mode`` actuel (comportement historique
+    inchangé quand aucun plan n'existe)."""
+    class Base(models.TextChoices):
+        CA_DEVIS_SIGNE = 'ca_devis_signe', 'CA des devis signés'
+        MARGE_INTERNE = 'marge_interne', 'Marge interne (admin uniquement)'
+        PAR_KWC = 'par_kwc', 'MAD par kWc installé'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='plans_commission')
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, null=True,
+        blank=True, related_name='plans_commission',
+        help_text='Vide = plan par défaut de la société.')
+    base = models.CharField(max_length=20, choices=Base.choices)
+    taux_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text='% appliqué à la base (mode ca_devis_signe / marge_interne).')
+    montant_par_kwc = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text='MAD par kWc installé (mode par_kwc).')
+    # Paliers d'accélération : [{"seuil_atteinte_pct": 100, "taux": 5}, ...]
+    # adossés à l'atteinte crm.ObjectifCommercial (lue via crm.selectors).
+    paliers = models.JSONField(null=True, blank=True)
+    actif = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Plan de commission'
+        verbose_name_plural = 'Plans de commission'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        who = f'owner={self.owner_id}' if self.owner_id else 'défaut société'
+        return f'PlanCommission({who}, {self.base})'
+
+    def taux_effectif(self, atteinte_pct=None):
+        """Taux/montant après application du palier d'accélération le plus
+        haut ATTEINT (``atteinte_pct`` fourni par l'appelant, résolu via
+        ``crm.selectors``). Sans palier ou sans atteinte fournie : le taux de
+        base, comportement inchangé."""
+        base_valeur = (
+            self.montant_par_kwc if self.base == self.Base.PAR_KWC
+            else self.taux_pct
+        )
+        if not self.paliers or atteinte_pct is None:
+            return base_valeur
+        eligible = [
+            p for p in self.paliers
+            if atteinte_pct >= p.get('seuil_atteinte_pct', 0)
+        ]
+        if not eligible:
+            return base_valeur
+        best = max(eligible, key=lambda p: p.get('seuil_atteinte_pct', 0))
+        return best.get('taux', base_valeur)
+
+
+class LivraisonBC(models.Model):
+    """XSAL12 — Livraison partielle d'un bon de commande client.
+
+    Une ligne par événement de livraison (ex. « panneaux livrés le 3 juin »).
+    Le décompte réel par ligne de BC vit sur ``LigneLivraisonBC`` ; le solde
+    (reliquat) et le passage automatique à ``livre`` sont calculés à la
+    demande depuis l'ensemble des livraisons du BC — jamais stockés en dur
+    pour rester toujours cohérents avec ``LigneDevis.quantite`` source."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='livraisons_bc')
+    bon_commande = models.ForeignKey(
+        BonCommande, on_delete=models.CASCADE, related_name='livraisons')
+    date_livraison = models.DateField()
+    note = models.CharField(max_length=255, blank=True, default='')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='livraisons_bc_creees')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Livraison (BC)'
+        verbose_name_plural = 'Livraisons (BC)'
+        ordering = ['-date_livraison', '-created_at']
+
+    def __str__(self):
+        return f'Livraison {self.bon_commande_id} du {self.date_livraison}'
+
+
+class LigneLivraisonBC(models.Model):
+    """XSAL12 — Quantité livrée pour une ligne de devis donnée, dans une
+    livraison partielle. ``ligne_devis`` référence la ligne du devis source
+    du BC (même app, FK directe autorisée)."""
+    livraison = models.ForeignKey(
+        LivraisonBC, on_delete=models.CASCADE, related_name='lignes')
+    ligne_devis = models.ForeignKey(
+        LigneDevis, on_delete=models.CASCADE,
+        related_name='lignes_livraison_bc')
+    quantite_livree = models.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        verbose_name = 'Ligne de livraison (BC)'
+        verbose_name_plural = 'Lignes de livraison (BC)'
+
+    def __str__(self):
+        return f'{self.livraison_id} / ligne {self.ligne_devis_id} = {self.quantite_livree}'

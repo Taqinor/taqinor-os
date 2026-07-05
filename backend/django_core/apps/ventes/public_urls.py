@@ -3,6 +3,7 @@ from .public_views import (
     public_document, public_bcf_document, pay_page, pay_webhook,
     proposal_data, proposal_pdf, proposal_accept,
     proposal_contact_request, proposal_request_otp,
+    proposal_engagement,  # XSAL16
     ecatalogue_public, ecatalogue_demander_devis,
 )
 
@@ -21,6 +22,11 @@ urlpatterns = [
          name='public-proposal-otp'),
     path('proposal/<str:token>/accept/', proposal_accept,
          name='public-proposal-accept'),
+    # XSAL16 — beacon léger d'engagement par section (aucune donnée
+    # personnelle requise). L'émission côté page proposition part dans
+    # docs/WEB_PLAN.md — ce mount couvre uniquement la réception backend.
+    path('proposal/<str:token>/engagement/', proposal_engagement,
+         name='public-proposal-engagement'),
     # FG53 — page publique « Payer en ligne » + webhook (jeton PaymentLink).
     path('pay/<str:token>/', pay_page, name='public-pay-page'),
     path('pay/<str:token>/webhook/', pay_webhook, name='public-pay-webhook'),

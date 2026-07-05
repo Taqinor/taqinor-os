@@ -87,6 +87,21 @@ class Client(models.Model):
         help_text='Langue des factures / devis générés pour ce client.',
     )
 
+    # XSAL1 — Liste de prix négociée (string-FK additive vers
+    # ventes.ListePrix — jamais d'import direct de apps.ventes.models ici).
+    # Vide = comportement historique inchangé (le client reste au
+    # `Produit.prix_vente` standard, résolu par
+    # `apps.ventes.services.prix_applicable`).
+    liste_prix = models.ForeignKey(
+        'ventes.ListePrix',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='clients',
+        verbose_name='Liste de prix',
+        help_text="Tarif négocié pour ce client. Vide = prix de vente standard.",
+    )
+
     # XFAC25 — envoi programmé (mensuel) du relevé de compte. Défaut OFF :
     # le relevé reste disponible uniquement à la demande (comportement actuel
     # inchangé). ON + email renseigné + encours non nul → un relevé PDF est

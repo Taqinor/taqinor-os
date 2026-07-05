@@ -83,7 +83,8 @@ class BonCommandeViewSet(viewsets.ModelViewSet):
         if self.action in READ_ACTIONS + ['pdf']:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
-            'confirmer', 'marquer_livre', 'annuler', 'creer_facture'
+            'confirmer', 'marquer_livre', 'annuler', 'creer_facture',
+            'livrer_partiel',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -212,6 +213,122 @@ class BonCommandeViewSet(viewsets.ModelViewSet):
         if toggle_bc_stock:
             from apps.installations.services import consommer_reservation_bc
             consommer_reservation_bc(bc, request.user)
+        return Response(BonCommandeSerializer(bc).data)
+
+    @action(detail=True, methods=['post'], url_path='livrer-partiel',
+            permission_classes=[IsResponsableOrAdmin])
+    def livrer_partiel(self, request, pk=None):
+        """XSAL12 — Livraison partielle : décrémente le stock UNIQUEMENT des
+        quantités livrées de cette livraison (jamais un second décompte via
+        `marquer_livre` — le BC passe à `livre` automatiquement seulement
+        quand tout le reliquat est soldé, une seule fois)."""
+        from decimal import Decimal, ROUND_HALF_UP
+
+        from ..models import LivraisonBC, LigneLivraisonBC
+
+        bc = self.get_object()
+        if bc.devis_id is None:
+            return Response(
+                {'detail': 'Ce BC ne porte aucun devis : aucune ligne à livrer.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if bc.statut == BonCommande.Statut.LIVRE:
+            return Response(
+                {'detail': 'Ce BC est déjà entièrement livré.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        lignes_payload = request.data.get('lignes') or []
+        if not lignes_payload:
+            return Response(
+                {'detail': 'lignes est requis (liste de {ligne_devis, quantite}).'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        reliquats = {r['ligne_devis_id']: r for r in bc.reliquat_par_ligne}
+
+        # Validation intégrale AVANT toute écriture — un payload invalide ne
+        # doit laisser aucune trace (pas de LivraisonBC orpheline). Le stock
+        # déjà réservé PAR CETTE MÊME requête est suivi en mémoire (deux
+        # lignes de devis du même produit ne doivent pas survaloriser le
+        # stock disponible).
+        stock_reserve = {}
+        validated = []
+        for entry in lignes_payload:
+            ligne_devis_id = entry.get('ligne_devis')
+            quantite = entry.get('quantite')
+            if ligne_devis_id is None or quantite is None:
+                return Response(
+                    {'detail': 'Chaque ligne requiert ligne_devis et quantite.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            reliquat_ligne = reliquats.get(int(ligne_devis_id))
+            if reliquat_ligne is None:
+                return Response(
+                    {'detail': f'Ligne de devis {ligne_devis_id} inconnue sur ce BC.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            quantite = Decimal(str(quantite))
+            if quantite <= 0 or quantite > reliquat_ligne['reliquat']:
+                return Response(
+                    {'detail': (
+                        f"Quantité invalide pour « {reliquat_ligne['designation']} » "
+                        f"(reliquat disponible : {reliquat_ligne['reliquat']})."
+                    )},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            ligne_devis = bc.devis.lignes.get(id=ligne_devis_id)
+            produit = ligne_devis.produit
+            produit.refresh_from_db()
+            qte_entiere = int(Decimal(quantite).quantize(
+                Decimal('1'), rounding=ROUND_HALF_UP))
+            qte_avant = produit.quantite_stock - stock_reserve.get(produit.id, 0)
+            qte_apres = qte_avant - qte_entiere
+            if qte_apres < 0:
+                return Response(
+                    {'detail': (
+                        f'Stock insuffisant pour « {produit.nom} » '
+                        f'(disponible : {qte_avant}, requis : {qte_entiere}).'
+                    )},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            stock_reserve[produit.id] = stock_reserve.get(produit.id, 0) + qte_entiere
+            validated.append(
+                (ligne_devis, produit, quantite, qte_entiere, qte_avant, qte_apres))
+
+        with transaction.atomic():
+            livraison = LivraisonBC.objects.create(
+                company=bc.company, bon_commande=bc,
+                date_livraison=request.data.get('date_livraison') or timezone.now().date(),
+                note=(request.data.get('note') or '')[:255],
+                created_by=request.user,
+            )
+            for (ligne_devis, produit, quantite, qte_entiere,
+                    qte_avant, qte_apres) in validated:
+                LigneLivraisonBC.objects.create(
+                    livraison=livraison, ligne_devis=ligne_devis,
+                    quantite_livree=quantite)
+                record_stock_movement(
+                    company=bc.company,
+                    produit=produit,
+                    type_mouvement=mouvement_type_sortie(),
+                    quantite=qte_entiere,
+                    quantite_avant=qte_avant,
+                    quantite_apres=qte_apres,
+                    reference=bc.reference,
+                    note=f'Livraison partielle BC {bc.reference}',
+                    created_by=request.user,
+                )
+
+            # Solde intégral atteint sur toutes les lignes → passage LIVRE
+            # (une seule fois — les side-effects existants de `marquer_livre`
+            # NE sont PAS ré-exécutés ici : le statut est simplement posé).
+            bc.refresh_from_db()
+            reliquats_apres = bc.reliquat_par_ligne
+            if reliquats_apres and all(r['reliquat'] <= 0 for r in reliquats_apres):
+                bc.statut = BonCommande.Statut.LIVRE
+                bc.date_livraison_reelle = timezone.now().date()
+                bc.save()
+
         return Response(BonCommandeSerializer(bc).data)
 
     @action(detail=True, methods=['post'], url_path='annuler',

@@ -754,3 +754,24 @@ def lignes_louables_devis(devis, produit_ids_louables):
         }
         for ligne in lignes
     ]
+
+
+def resoudre_plan_commission(company, owner):
+    """XSAL6 — Point d'entrée cross-app (reporting/insights) pour résoudre le
+    plan de commission d'un commercial.
+
+    Ordre : plan actif dédié à ``owner`` → plan actif par défaut de la société
+    (``owner=None``) → ``None`` (l'appelant retombe alors sur
+    ``CompanyProfile.commission_mode``, comportement historique inchangé).
+    Lecture seule ; ne consulte jamais ``prix_achat`` ici (la base
+    ``marge_interne`` reste calculée et gardée ADMIN-ONLY côté appelant)."""
+    from .models import PlanCommission
+
+    if company is None:
+        return None
+    qs = PlanCommission.objects.filter(company=company, actif=True)
+    if owner is not None:
+        plan = qs.filter(owner=owner).first()
+        if plan is not None:
+            return plan
+    return qs.filter(owner__isnull=True).first()

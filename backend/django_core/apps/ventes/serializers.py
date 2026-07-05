@@ -3,7 +3,7 @@ from .models import (
     Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
     Avoir, LigneAvoir, DevisActivity, DevisPreset, RoofLayout,
     FicheTechnique, RemiseEncaissement, LigneRemiseEncaissement,
-    MandatPaiement,
+    MandatPaiement, ListePrix, LignePrixListe, RegleListePrix,
 )
 
 
@@ -298,6 +298,14 @@ class DevisSerializer(serializers.ModelSerializer):
         link = self._active_share_link(obj)
         return bool(link and link.first_viewed_at is not None)
 
+    # XSAL16 — résumé d'engagement par section (« a passé 2 min sur le prix,
+    # n'a pas ouvert l'étude »). Vide sans beacon — comportement QJ1 inchangé.
+    engagement = serializers.SerializerMethodField()
+
+    def get_engagement(self, obj):
+        link = self._active_share_link(obj)
+        return link.engagement_summary if link else {}
+
     class Meta:
         model = Devis
         fields = '__all__'
@@ -332,6 +340,10 @@ class BonCommandeSerializer(serializers.ModelSerializer):
     total_ht = serializers.SerializerMethodField()
     total_tva = serializers.SerializerMethodField()
     total_ttc = serializers.SerializerMethodField()
+    # XSAL12 — état dérivé de livraison partielle (lecture seule, calculé à
+    # la demande depuis LigneLivraisonBC ; ne casse pas l'enum de statut).
+    reliquat_par_ligne = serializers.ListField(read_only=True)
+    est_partiellement_livre = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = BonCommande
@@ -802,3 +814,42 @@ class MandatPaiementSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'id', 'token', 'company', 'created_at', 'revoked_at',
         ]
+
+
+class LignePrixListeSerializer(serializers.ModelSerializer):
+    """XSAL1 — jamais `prix_achat` : seul `prix_unitaire` (prix négocié) est
+    exposé, `produit` reste une simple string-FK id."""
+    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
+
+    class Meta:
+        model = LignePrixListe
+        fields = ['id', 'liste', 'produit', 'produit_nom', 'prix_unitaire']
+        read_only_fields = ['id']
+
+
+class RegleListePrixSerializer(serializers.ModelSerializer):
+    """XSAL2 — règle de prix / palier de quantité."""
+    class Meta:
+        model = RegleListePrix
+        fields = [
+            'id', 'liste', 'produit', 'categorie_nom', 'marque',
+            'type_regle', 'valeur', 'quantite_min', 'priorite', 'actif',
+        ]
+        read_only_fields = ['id']
+
+
+class ListePrixSerializer(serializers.ModelSerializer):
+    """XSAL1/XSAL2 — liste de prix clients + ses règles de paliers.
+    `company` toujours forcée côté serveur (jamais acceptée du body — voir
+    ListePrixViewSet.perform_create)."""
+    lignes = LignePrixListeSerializer(many=True, read_only=True)
+    regles = RegleListePrixSerializer(many=True, read_only=True)
+    est_active = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = ListePrix
+        fields = [
+            'id', 'company', 'nom', 'devise', 'date_debut', 'date_fin',
+            'archived', 'created_at', 'lignes', 'regles', 'est_active',
+        ]
+        read_only_fields = ['id', 'company', 'created_at']
