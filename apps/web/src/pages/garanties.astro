@@ -11,22 +11,19 @@
  * la seule page qui émet le FAQPage JSON-LD du site est /faq (W19).
  *
  * W331 — trois ajouts honnêtes : (1) une clause « ce qui n'est pas couvert »
- * (WG16 encore en cours : exclusions GÉNÉRIQUES d'une garantie PV standard,
- * marquées « à confirmer » — pas la liste définitive de Taqinor tant que Reda
- * ne l'a pas validée) ; (2) un scénario concret si la performance tombe sous
- * le seuil garanti (≥ 87,4 % à 30 ans déjà publié) ; (3) une marche à suivre pour faire
+ * (exclusions GÉNÉRIQUES d'une garantie PV standard, présentées comme
+ * indicatives — la version contractuelle remise à la signature fait foi) ;
+ * (2) un scénario concret si la performance tombe sous le seuil garanti
+ * (≥ 87,4 % à 30 ans déjà publié) ; (3) une marche à suivre pour faire
  * jouer la garantie, avec le délai de réponse résolu par le fondateur
  * (WG9 : « sous 1 h, 7j/7 »).
  *
- * W352 — scaffold « Garantie de production Taqinor » : un bloc DISTINCT qui
- * pose le cadre d'un engagement de production annuelle (plancher de kWh
- * mesuré par rapport à la production estimée PVGIS, remède si le seuil n'est
- * pas tenu). WG12 (gate fondateur) n'a pas encore fourni le pourcentage
- * plancher ni le remède exact : ce bloc rend donc `pending founder
- * commitment` — la mécanique et la logique sont expliquées, AUCUN chiffre de
- * seuil n'est affiché tant que WG12 n'a pas tranché. Dès que WG12 livre
- * l'engagement, seule la constante `productionGuarantee.floorPct` (et le
- * texte de remède) a besoin d'être renseignée pour que le bloc s'anime.
+ * W352 / WN3 — « Garantie de production Taqinor » : bloc DISTINCT qui ne
+ * s'affiche QUE lorsqu'un plancher chiffré est arrêté
+ * (`productionGuarantee.floorPct`). Tant qu'aucun chiffre n'est confirmé, la
+ * section est OMISE côté client — pas d'état « en attente » affiché (règle
+ * checked-facts-only). Dès que le pourcentage plancher (et le remède) sont
+ * renseignés, la carte apparaît automatiquement.
  */
 import Layout from '../layouts/Layout.astro';
 import V2Enhance from '../components/V2Enhance.astro';
@@ -123,11 +120,10 @@ const claimSteps = [
   },
 ];
 
-// W352 — « Garantie de production Taqinor » : scaffold `pending founder
-// commitment`. `floorPct` et `remedy` restent `null` tant que WG12 (gate
-// fondateur) n'a pas fourni le plancher annuel de production ET le remède —
-// le bloc affiche alors uniquement le CADRE (comment un tel engagement se
-// mesurerait, avec quelles données), jamais un pourcentage inventé.
+// W352 / WN3 — « Garantie de production Taqinor » : `floorPct`/`remedy`
+// restent `null` tant qu'aucun plancher chiffré n'est arrêté. Tant qu'ils
+// sont nuls, la carte est OMISE côté client — aucun état « en attente », jamais
+// un pourcentage inventé (règle checked-facts-only).
 const productionGuarantee = {
   floorPct: null as number | null,
   remedy: null as string | null,
@@ -208,8 +204,8 @@ const productionGuarantee = {
             ))}
           </ul>
           <p class="mt-4 text-xs italic text-encre-faint">
-            À confirmer : liste précise en cours de validation par Taqinor — la version contractuelle
-            qui vous sera remise à la signature fait foi.
+            Cette liste est indicative ; la version contractuelle qui vous sera remise à la
+            signature fait foi.
           </p>
         </div>
 
@@ -227,40 +223,21 @@ const productionGuarantee = {
           </p>
         </div>
 
-        <!-- W352 — « Garantie de production Taqinor » : scaffold distinct,
-             `pending founder commitment`. Explique le CADRE (comment un
-             plancher annuel de kWh se mesurerait, à partir de quelles
-             données) sans jamais afficher de pourcentage tant que WG12 n'a
-             pas tranché — cf. productionGuarantee ci-dessus. -->
-        <div class="mx-auto mt-14 max-w-xl border-2 border-brass-400/50 bg-blanc p-6">
-          <p class="tech-label text-azur-600">Ce que nos données rendent possible</p>
-          <h3 class="display mt-2 text-lg">Garantie de production Taqinor</h3>
-          {productionGuarantee.floorPct ? (
+        <!-- W352 / WN3 — « Garantie de production Taqinor » : n'affiche la carte
+             QUE lorsqu'un plancher chiffré est arrêté (productionGuarantee.floorPct).
+             Tant qu'aucun chiffre n'est confirmé, la section est OMISE (pas d'état
+             « en attente » côté client — règle checked-facts-only). -->
+        {productionGuarantee.floorPct ? (
+          <div class="mx-auto mt-14 max-w-xl border-2 border-brass-400/50 bg-blanc p-6">
+            <p class="tech-label text-azur-600">Ce que nos données rendent possible</p>
+            <h3 class="display mt-2 text-lg">Garantie de production Taqinor</h3>
             <p class="mt-3 text-sm leading-relaxed text-encre-soft">
               Nous nous engageons sur un plancher de <strong>{productionGuarantee.floorPct} %</strong> de
               la production annuelle estimée (méthode PVGIS), mesurée sur votre suivi de production en temps réel.
               {productionGuarantee.remedy ? ` ${productionGuarantee.remedy}` : ''}
             </p>
-          ) : (
-            <>
-              <p class="mt-3 text-sm leading-relaxed text-encre-soft">
-                Chaque installation Taqinor bénéficie d’un suivi de production en temps réel, en continu —
-                c’est justement cette donnée mesurée, sur un parc désormais suivi depuis plus d’un an
-                (voir nos <a href="/realisations" class="font-semibold text-azur-600 underline decoration-azur-600/40 underline-offset-2 hover:decoration-azur-600">réalisations</a>),
-                qui rendrait crédible un engagement chiffré : un plancher de production annuelle
-                (en % de l’estimation PVGIS retenue à l’étude) en dessous duquel un remède défini
-                s’appliquerait.
-              </p>
-              <p class="mt-3 text-sm leading-relaxed text-encre-soft">
-                Ce plancher et son remède ne sont pas encore fixés — nous ne publions aucun pourcentage
-                tant que l’engagement n’est pas arrêté. Cette section sera complétée dès que ce sera fait.
-              </p>
-              <p class="mt-4 text-xs italic text-encre-faint">
-                En attente d’un engagement du fondateur — aucun chiffre n’est publié avant confirmation.
-              </p>
-            </>
-          )}
-        </div>
+          </div>
+        ) : null}
       </div>
     </section>
 

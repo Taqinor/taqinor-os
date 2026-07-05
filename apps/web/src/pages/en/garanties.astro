@@ -4,19 +4,17 @@
  * (12/30/10/20/2 years, 87.4 %) kept EXACT. No invented SLA. Internal links use
  * localizeNavHref (FR fallback when not yet translated). FR untouched.
  *
- * W331 — three honest additions: (1) a "what isn't covered" clause (WG16 still
- * in progress: GENERIC standard-PV-warranty exclusions, marked "to confirm" —
- * not Taqinor's final list until Reda validates it); (2) a concrete scenario
+ * W331 — three honest additions: (1) a "what isn't covered" clause (GENERIC
+ * standard-PV-warranty exclusions, presented as indicative — the contractual
+ * version handed over at signature is authoritative); (2) a concrete scenario
  * if performance falls under the guaranteed floor (≥ 87.4 % at 30 years already
  * published); (3) a claim step list, with the response window resolved by the
  * founder (WG9: "within 1 h, 7 days a week").
  *
- * W352 — "Taqinor Production Guarantee" scaffold: a DISTINCT block framing an
- * annual-production commitment (a measured-kWh floor vs. the PVGIS estimate,
- * plus a remedy). WG12 (founder gate) has not set the floor % or remedy yet:
- * this block ships `pending founder commitment` — the mechanics are
- * explained, NO threshold figure is shown until WG12 lands. See
- * productionGuarantee below.
+ * W352 / WN3 — "Taqinor Production Guarantee": a DISTINCT block shown ONLY once
+ * a numeric floor is set (productionGuarantee.floorPct). Until a figure is
+ * confirmed the section is OMITTED client-side — no "pending" state is shown
+ * (checked-facts-only rule). See productionGuarantee below.
  */
 import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
@@ -97,10 +95,9 @@ const claimSteps = [
   },
 ];
 
-// W352 — "Taqinor Production Guarantee": scaffold `pending founder
-// commitment`. floorPct/remedy stay null until WG12 (founder gate) supplies
-// the annual production floor AND the remedy — until then the block shows
-// only the FRAMING, never an invented percentage.
+// W352 / WN3 — "Taqinor Production Guarantee": floorPct/remedy stay null
+// until a numeric floor is set. While null, the card is OMITTED client-side —
+// no "pending" state, never an invented percentage (checked-facts-only rule).
 const productionGuarantee = {
   floorPct: null as number | null,
   remedy: null as string | null,
@@ -181,8 +178,8 @@ const productionGuarantee = {
             ))}
           </ul>
           <p class="mt-4 text-xs italic text-encre-faint">
-            To confirm: exact list currently being validated by Taqinor — the contractual version
-            handed to you at signature is authoritative.
+            This list is indicative; the contractual version handed to you at signature is
+            authoritative.
           </p>
         </div>
 
@@ -200,39 +197,21 @@ const productionGuarantee = {
           </p>
         </div>
 
-        <!-- W352 — "Taqinor Production Guarantee": distinct scaffold,
-             `pending founder commitment`. Explains the FRAMING (how an annual
-             kWh floor would be measured, from which data) without ever
-             showing a percentage until WG12 lands — see productionGuarantee
-             above. -->
-        <div class="mx-auto mt-14 max-w-xl border-2 border-brass-400/50 bg-blanc p-6">
-          <p class="tech-label text-azur-600">What our data makes possible</p>
-          <h3 class="display mt-2 text-lg">Taqinor Production Guarantee</h3>
-          {productionGuarantee.floorPct ? (
+        <!-- W352 / WN3 — "Taqinor Production Guarantee": distinct block shown
+             ONLY once a numeric floor is set (productionGuarantee.floorPct).
+             Until a figure is confirmed the section is OMITTED client-side —
+             no "pending" state shown (checked-facts-only rule). -->
+        {productionGuarantee.floorPct ? (
+          <div class="mx-auto mt-14 max-w-xl border-2 border-brass-400/50 bg-blanc p-6">
+            <p class="tech-label text-azur-600">What our data makes possible</p>
+            <h3 class="display mt-2 text-lg">Taqinor Production Guarantee</h3>
             <p class="mt-3 text-sm leading-relaxed text-encre-soft">
               We commit to a floor of <strong>{productionGuarantee.floorPct} %</strong> of estimated
               annual production (PVGIS method), measured on your real-time production monitoring.
               {productionGuarantee.remedy ? ` ${productionGuarantee.remedy}` : ''}
             </p>
-          ) : (
-            <>
-              <p class="mt-3 text-sm leading-relaxed text-encre-soft">
-                Every Taqinor installation has real-time production monitoring, continuously —
-                it's precisely this measured data, across a fleet now tracked for over a year (see our
-                {' '}<a href={L('/realisations')} class="font-semibold text-azur-600 underline decoration-azur-600/40 underline-offset-2 hover:decoration-azur-600">projects</a>),
-                that would make a numeric commitment credible: an annual production floor (as a % of the
-                PVGIS estimate used at assessment) below which a defined remedy would apply.
-              </p>
-              <p class="mt-3 text-sm leading-relaxed text-encre-soft">
-                That floor and its remedy are not set yet — we publish no percentage until the commitment
-                is finalised. This section will be completed once it is.
-              </p>
-              <p class="mt-4 text-xs italic text-encre-faint">
-                Awaiting a founder commitment — no figure is published before confirmation.
-              </p>
-            </>
-          )}
-        </div>
+          </div>
+        ) : null}
       </div>
     </section>
 
