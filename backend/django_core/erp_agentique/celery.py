@@ -233,4 +233,10 @@ app.conf.beat_schedule = {
         'task': 'core.purge_backups',
         'schedule': crontab(hour=5, minute=0),
     },
+    # YOPSB10 — sweep quotidien de toutes les politiques de rétention
+    # enregistrées (DRY-RUN sauf RETENTION_AUTO_APPLY), heure creuse.
+    'core-run-retention': {
+        'task': 'core.run_retention',
+        'schedule': crontab(hour=2, minute=0),
+    },
 }

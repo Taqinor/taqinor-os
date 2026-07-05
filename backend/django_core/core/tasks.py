@@ -8,10 +8,13 @@
     des comptages clés — jamais la base de production.
   * YOPSB3 — ``core.purge_backups`` : purge GFS quotidienne des dumps
     (05:00), DRY-RUN tant que ``BACKUP_PURGE_AUTO_APPLY`` n'est pas activé.
+  * YOPSB10 — ``core.run_retention`` : sweep quotidien (02:00) de TOUTES les
+    politiques de rétention enregistrées (``core.retention``), DRY-RUN tant
+    que ``RETENTION_AUTO_APPLY`` n'est pas activé.
 
-Toute la logique vit dans ``core.backup`` (testable sans Celery) ; ces
-tâches ne sont qu'une fine enveloppe planifiable, comme les autres tâches du
-dépôt (cf. apps/ged/tasks.py)."""
+Toute la logique vit dans ``core.backup``/``core.retention`` (testable sans
+Celery) ; ces tâches ne sont qu'une fine enveloppe planifiable, comme les
+autres tâches du dépôt (cf. apps/ged/tasks.py)."""
 import logging
 
 from celery import shared_task
@@ -64,3 +67,20 @@ def purge_backups_task():
     logger.info('core.purge_backups: apply=%s conserves=%d supprimes=%d',
                 apply_, result['conserves'], result['supprimes'])
     return result
+
+
+@shared_task(name='core.run_retention')
+def run_retention_task():
+    """YOPSB10 — sweep quotidien de toutes les politiques de rétention
+    enregistrées (planifié 02:00). DRY-RUN par défaut
+    (``settings.RETENTION_AUTO_APPLY``) : chaque politique reçoit
+    ``apply_=False`` tant que le drapeau n'est pas explicitement vrai."""
+    from django.conf import settings
+
+    from . import retention
+
+    apply_ = bool(getattr(settings, 'RETENTION_AUTO_APPLY', False))
+    results = retention.run_all_policies(apply_=apply_)
+    logger.info('core.run_retention: apply=%s policies=%d',
+                apply_, len(results))
+    return results

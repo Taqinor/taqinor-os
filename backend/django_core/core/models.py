@@ -1790,3 +1790,63 @@ class DashboardPartageInterne(TimestampedModel):
     def __str__(self):
         cible = self.utilisateur_id or self.role or '—'
         return f'Dashboard {self.dashboard_id} → {cible} ({self.niveau})'
+
+
+# ---------------------------------------------------------------------------
+# YOPSB10 — Registre de rétention partagé + sweep beat unifié.
+#
+# ``RetentionRun`` journalise CHAQUE exécution d'une politique de rétention
+# enregistrée (``core.retention.register_retention_policy``). Une politique
+# balaie généralement TOUTES les sociétés (elle scope elle-même en interne),
+# d'où ``company`` NULLABLE (balayage système, transverse) — comme
+# ``BackupRun.company`` pour ses kinds système (YOPSB1/2). ``core`` reste
+# fondation : aucune app domaine n'est importée ici, ``policy_name`` est un
+# simple identifiant texte (pas de FK vers une politique métier).
+# ---------------------------------------------------------------------------
+
+
+class RetentionRun(TimestampedModel):
+    """Journal d'exécution d'une politique de rétention (YOPSB10)."""
+
+    STATUT_OK = 'ok'
+    STATUT_ECHEC = 'echec'
+    STATUT_CHOICES = [
+        (STATUT_OK, 'OK'),
+        (STATUT_ECHEC, 'Échec'),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='retention_runs', verbose_name='Société',
+        null=True, blank=True,
+        help_text='Nulle pour un balayage système transverse à toutes les '
+                  'sociétés (la politique scope elle-même en interne).')
+
+    policy_name = models.CharField(
+        'Politique', max_length=100,
+        help_text="Nom enregistré via register_retention_policy (pas de FK "
+                  "— core ne connaît aucune app domaine).")
+    dry_run = models.BooleanField(
+        'Dry-run', default=True,
+        help_text='Vrai si la politique a tourné en mode simulation '
+                  '(RETENTION_AUTO_APPLY inactif).')
+    count = models.IntegerField(
+        'Compte', default=0,
+        help_text="Nombre d'éléments supprimés/anonymisés (0 en dry-run si "
+                  "la politique ne fait que compter).")
+    statut = models.CharField(
+        'Statut', max_length=10, choices=STATUT_CHOICES, default=STATUT_OK)
+    erreur = models.TextField('Erreur', blank=True, default='')
+    executed_at = models.DateTimeField('Exécuté le', default=timezone.now)
+
+    class Meta:
+        verbose_name = 'Exécution de rétention'
+        verbose_name_plural = 'Exécutions de rétention'
+        ordering = ['-executed_at', '-id']
+        indexes = [
+            models.Index(fields=['policy_name', '-executed_at'],
+                         name='core_retentionrun_policy_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.policy_name} ({self.statut}, {self.count})'

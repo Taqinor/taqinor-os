@@ -381,6 +381,7 @@ CELERY_TASK_ROUTES = {
     'core.dump_database': {'queue': 'scheduled'},
     'core.restore_drill': {'queue': 'scheduled'},
     'core.purge_backups': {'queue': 'scheduled'},
+    'core.run_retention': {'queue': 'scheduled'},
 }
 # Le worker par défaut (sans -Q) écoute la queue nommée dans
 # task_default_queue — on la garde `default` pour ne rien casser ; en
@@ -492,6 +493,14 @@ GED_PURGE_GRACE_DAYS = int(os.environ.get('GED_PURGE_GRACE_DAYS', '30'))
 # (défauts codés) : BACKUP_RETENTION_DAILY=7, WEEKLY=4, MONTHLY=12 sont lus
 # directement depuis l'environnement dans `core.backup._retention_settings`.
 BACKUP_PURGE_AUTO_APPLY = os.environ.get('BACKUP_PURGE_AUTO_APPLY', '0') == '1'
+
+# YOPSB10 — registre de rétention partagé (core.retention). DRY-RUN PAR
+# DÉFAUT (même convention que GED_PURGE_AUTO_APPLY/BACKUP_PURGE_AUTO_APPLY
+# ci-dessus) : la tâche planifiée `core.run_retention` transmet
+# `apply_=False` à CHAQUE politique enregistrée tant que
+# RETENTION_AUTO_APPLY n'est pas explicitement à 1 — aucune politique ne
+# doit alors supprimer quoi que ce soit (contrat imposé à chaque politique).
+RETENTION_AUTO_APPLY = os.environ.get('RETENTION_AUTO_APPLY', '0') == '1'
 
 # GED33/GED34 — OCR de pièces + classification automatique. KEY-GATED : OFF par
 # défaut → tout est un no-op déterministe (aucun appel réseau, aucun coût, aucune
