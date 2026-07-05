@@ -41,6 +41,9 @@ DEDUP_WINDOW_SECONDS = 60
 _FIRST_TOUCH_FIELDS = frozenset([
     'fbclid', 'utm_source', 'utm_medium',
     'utm_campaign', 'utm_content', 'utm_term',
+    # QW2 — la landing page de première visite est une donnée d'attribution :
+    # protégée à l'identique de l'UTM/fbclid sur un visiteur revenant.
+    'page',
 ])
 
 
@@ -348,6 +351,50 @@ def _map_payload_to_fields(data: dict) -> dict:
             fields['batterie_souhaitee'] = (
                 Lead.BatterieSouhaitee.AVEC if interest
                 else Lead.BatterieSouhaitee.SANS)
+
+    # ── QW2 — Champs du site sans colonne d'accueil (additifs, tolérants) ──
+    # Mode PROFESSIONNEL (WJ68) : raison sociale RÉUTILISE `societe` (jamais
+    # de colonne `raison_sociale` dédiée — consigne founder).
+    raison_sociale = data.get('raisonSociale') or data.get('raison_sociale')
+    if raison_sociale:
+        fields['societe'] = str(raison_sociale).strip()[:255] or None
+    facility_type = _clean_choice(
+        data.get('facilityType', data.get('facility_type')),
+        Lead.FacilityType.values)
+    if facility_type is not None:
+        fields['facility_type'] = facility_type
+    site_count = _clean_choice(
+        data.get('siteCount', data.get('site_count')), Lead.SiteCount.values)
+    if site_count is not None:
+        fields['site_count'] = site_count
+    # Créneau de visite technique préféré (statique).
+    visit_window_part = _clean_choice(
+        data.get('visitWindowPart', data.get('visit_window_part')),
+        Lead.VisitWindowPart.values)
+    if visit_window_part is not None:
+        fields['visit_window_part'] = visit_window_part
+    visit_window_week = _clean_choice(
+        data.get('visitWindowWeek', data.get('visit_window_week')),
+        Lead.VisitWindowWeek.values)
+    if visit_window_week is not None:
+        fields['visit_window_week'] = visit_window_week
+    # Référence courte générée côté client — anti-garbage minimal (le format
+    # émis par buildClientRef() côté site : lettres/chiffres/tirets, 4-24).
+    client_ref_raw = data.get('clientRef') or data.get('client_ref')
+    if client_ref_raw:
+        candidate = str(client_ref_raw).strip()[:24]
+        import re as _re_ref
+        if _re_ref.match(r'^[A-Za-z0-9-]{4,24}$', candidate):
+            fields['client_ref'] = candidate
+    # Diaspora/MRE : numéro E.164 étranger (indicatif ≠ 212).
+    if 'phoneIsForeign' in data or 'phone_is_foreign' in data:
+        foreign = data.get('phoneIsForeign', data.get('phone_is_foreign'))
+        if isinstance(foreign, bool):
+            fields['phone_is_foreign'] = foreign
+    # Landing page de première visite (first-touch, protégée comme l'UTM).
+    page = data.get('page')
+    if page:
+        fields['page'] = str(page).strip()[:300] or None
 
     if fields['whatsapp_opt_in'] and fields['telephone']:
         fields['whatsapp'] = fields['telephone']

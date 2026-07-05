@@ -309,3 +309,79 @@ class QW1DroppedFieldsMappingTests(TestCase):
         self.assertIsNone(lead.distributeur)
         self.assertIsNone(lead.ownership)
         self.assertIsNone(lead.ombrage)
+
+
+@override_settings(WEBSITE_LEAD_WEBHOOK_SECRET=SECRET)
+class QW2SiteFieldsTests(TestCase):
+    """QW2 — nouvelles colonnes Lead pour les champs du site sans accueil."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='Taqinor Test QW2', slug='taqinor-test-qw2')
+        self.other_company = Company.objects.create(nom='Autre Société QW2', slug='autre-qw2')
+        self.url = reverse('website-lead-webhook')
+
+    def post(self, data, secret=SECRET):
+        headers = {'HTTP_X_WEBHOOK_SECRET': secret} if secret is not None else {}
+        return self.client.post(
+            self.url, data=json.dumps(data),
+            content_type='application/json', **headers)
+
+    def test_raison_sociale_reuses_societe_column(self):
+        res = self.post(payload_site(raisonSociale='ACME Solutions SARL'))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertEqual(lead.societe, 'ACME Solutions SARL')
+        # Pas de colonne dédiée : uniquement `societe`.
+        self.assertFalse(hasattr(lead, 'raison_sociale'))
+
+    def test_facility_type_and_site_count_persisted(self):
+        res = self.post(payload_site(facilityType='entrepot', siteCount='2-5'))
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertEqual(lead.facility_type, 'entrepot')
+        self.assertEqual(lead.site_count, '2-5')
+
+    def test_visit_window_persisted(self):
+        res = self.post(payload_site(
+            visitWindowPart='matin', visitWindowWeek='cette_semaine'))
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertEqual(lead.visit_window_part, 'matin')
+        self.assertEqual(lead.visit_window_week, 'cette_semaine')
+
+    def test_client_ref_persisted_and_garbage_rejected(self):
+        res = self.post(payload_site(clientRef='AB12-CD34'))
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertEqual(lead.client_ref, 'AB12-CD34')
+
+        res2 = self.post(payload_site(
+            phoneE164='+212600000010', clientRef='a'))  # trop court
+        lead2 = Lead.objects.get(pk=res2.json()['lead_id'])
+        self.assertIsNone(lead2.client_ref)
+
+    def test_phone_is_foreign_persisted(self):
+        res = self.post(payload_site(phoneIsForeign=True))
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertTrue(lead.phone_is_foreign)
+
+    def test_page_persisted_and_protected_as_first_touch(self):
+        import datetime
+
+        res = self.post(payload_site(
+            phoneE164='+212699999999', page='/simulateur'))
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertEqual(lead.page, '/simulateur')
+
+        # Visiteur revenant hors fenêtre de 60 s (même téléphone → dédup
+        # couche 2) avec une AUTRE page : le first-touch est préservé.
+        lead.date_creation = lead.date_creation - datetime.timedelta(minutes=5)
+        lead.save(update_fields=['date_creation'])
+        res2 = self.post(payload_site(
+            phoneE164='+212699999999', page='/autre-page'))
+        self.assertEqual(res2.status_code, 200)
+        lead.refresh_from_db()
+        self.assertEqual(lead.page, '/simulateur')
+
+    def test_company_isolation(self):
+        res = self.post(payload_site(facilityType='usine'))
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertEqual(lead.company, self.company)
+        self.assertNotEqual(lead.company, self.other_company)

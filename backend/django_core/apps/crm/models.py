@@ -211,6 +211,32 @@ class Lead(models.Model):
         AVEC = 'avec', 'Avec batterie'
         LES_DEUX = 'les_deux', 'Les deux options'
 
+    # QW2 — Mode PROFESSIONNEL du site (WJ68) : type de site + nombre de sites.
+    # Vocabulaire identique à `apps/web/src/lib/lead.ts` (FACILITY_TYPES /
+    # SITE_COUNTS) — additifs, optionnels, jamais redemandés au commercial.
+    class FacilityType(models.TextChoices):
+        BUREAU = 'bureau', 'Bureau'
+        ENTREPOT = 'entrepot', 'Entrepôt'
+        USINE = 'usine', 'Usine'
+        COMMERCE = 'commerce', 'Commerce'
+        AGRICOLE = 'agricole', 'Agricole'
+        AUTRE = 'autre', 'Autre'
+
+    class SiteCount(models.TextChoices):
+        UN = '1', '1 site'
+        DEUX_A_CINQ = '2-5', '2 à 5 sites'
+        SIX_PLUS = '6+', '6 sites ou plus'
+
+    # QW2 — Créneau de visite technique préféré (W353), STATIQUE — jamais une
+    # réservation confirmée (le RDV réel reste QJ20 Appointment).
+    class VisitWindowPart(models.TextChoices):
+        MATIN = 'matin', 'Matin'
+        APRES_MIDI = 'apres_midi', 'Après-midi'
+
+    class VisitWindowWeek(models.TextChoices):
+        CETTE_SEMAINE = 'cette_semaine', 'Cette semaine'
+        SEMAINE_PROCHAINE = 'semaine_prochaine', 'Semaine prochaine'
+
     # Langue préférée du contact pour les messages (ex. WhatsApp). Nullable :
     # tant qu'elle n'est pas renseignée, le message retombe sur le FR. Les clés
     # sont identiques à celles attendues par le constructeur WhatsApp
@@ -438,6 +464,40 @@ class Lead(models.Model):
         null=True, blank=True,
         verbose_name='Charges futures prévues',
         help_text="Liste parmi 'clim', 've', 'pompe'.")
+
+    # ── QW2 — Champs du site sans colonne d'accueil (additifs, nullable) ──
+    # NOTE : `raisonSociale` du site RÉUTILISE `societe` (models.py ci-dessus)
+    # — pas de colonne dédiée (consigne founder explicite).
+    facility_type = models.CharField(
+        max_length=12, choices=FacilityType.choices, blank=True, null=True,
+        verbose_name='Type de site (pro)')
+    site_count = models.CharField(
+        max_length=4, choices=SiteCount.choices, blank=True, null=True,
+        verbose_name='Nombre de sites (pro)')
+    # Créneau de visite technique PRÉFÉRÉ (statique, jamais un RDV confirmé —
+    # le rendez-vous réel reste QJ20 Appointment).
+    visit_window_part = models.CharField(
+        max_length=12, choices=VisitWindowPart.choices, blank=True, null=True,
+        verbose_name='Créneau de visite préféré')
+    visit_window_week = models.CharField(
+        max_length=20, choices=VisitWindowWeek.choices, blank=True, null=True,
+        verbose_name='Semaine de visite préférée')
+    # Référence courte générée CÔTÉ CLIENT (aucune garantie d'unicité globale —
+    # sert de corrélation best-effort avec une conversation WhatsApp/support,
+    # jamais une clé d'unicité serveur).
+    client_ref = models.CharField(
+        max_length=24, blank=True, null=True,
+        verbose_name='Référence client (générée navigateur)')
+    # Diaspora/MRE : `phoneE164` étranger (indicatif ≠ 212) — une motion
+    # commerciale distincte, badge-worthy (jamais utilisé pour qualifiesForCrm).
+    phone_is_foreign = models.BooleanField(
+        null=True, blank=True, verbose_name='Numéro étranger (diaspora/MRE)')
+    # Première page de landing vue (first-touch) — protégé comme l'UTM :
+    # jamais écrasé sur un visiteur revenant (voir `_FIRST_TOUCH_FIELDS`,
+    # apps/crm/webhooks.py).
+    page = models.CharField(
+        max_length=300, blank=True, null=True,
+        verbose_name='Page de landing (first-touch)')
 
     note = models.TextField(blank=True, null=True)
 
