@@ -282,6 +282,20 @@ class Intervention(models.Model):
         # expiré si aujourd'hui > date_prevue + 1 jour.
         return timezone.localdate() > (self.date_prevue + timedelta(days=1))
 
+    @property
+    def gps_tracking_required(self):
+        """XFSM23 — vrai tant que le statut F3 est dans la plage active
+        (Prête/En route/Sur site) ET que l'intervention n'est pas annulée.
+        Propriété SERVEUR calculée sur le statut — le client mobile ne peut
+        JAMAIS la désactiver ; elle retombe à faux automatiquement dès que
+        l'intervention quitte la plage active (Terminée/Validée) ou est
+        annulée (YSERV6). N'affecte ni la state machine F3 ni
+        STAGES.py — lecture pure."""
+        from .models_gps_tracking import GPS_TRACKING_REQUIRED_STATUTS
+        if self.annulee:
+            return False
+        return self.statut in GPS_TRACKING_REQUIRED_STATUTS
+
     def ensure_lien_rapport_token(self):
         """ZFSM2 — génère (lazily) et renvoie le jeton public du lien
         compte-rendu signé. Idempotent : si le jeton existe déjà, le retourne

@@ -81,6 +81,9 @@ from .retour_livraison import (
     RetourLivraisonViewSet, RetourLivraisonLigneViewSet,
 )
 from .lot_prelevement import LotPrelevementViewSet
+from .gps_tracking import (
+    GpsConsentRecordViewSet, PositionTechnicienViewSet, GeofenceAlertViewSet,
+)
 
 __all__ = [
     'TypeInterventionViewSet',
@@ -169,4 +172,7 @@ __all__ = [
     'RetourLivraisonViewSet',
     'RetourLivraisonLigneViewSet',
     'LotPrelevementViewSet',
+    'GpsConsentRecordViewSet',
+    'PositionTechnicienViewSet',
+    'GeofenceAlertViewSet',
 ]

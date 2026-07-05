@@ -78,6 +78,9 @@ from .models import (
     CategorieStockage,
     RegleRangement,
     LotPrelevement,
+    GpsConsentRecord,
+    PositionTechnicien,
+    GeofenceAlert,
 )
 
 
@@ -2794,4 +2797,65 @@ class LotPrelevementSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'reference', 'statut', 'created_by',
             'date_creation', 'date_modification',
+        ]
+
+
+class GpsConsentRecordSerializer(serializers.ModelSerializer):
+    """XFSM23 — trace de consentement GPS (déjà obtenu). company/technicien/
+    recorded_by posés côté serveur ; jamais posée/révoquée par le corps client
+    mobile — seule une action responsable/admin dédiée révoque."""
+    technicien_nom = serializers.CharField(
+        source='technicien.username', read_only=True, default=None)
+    is_active = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = GpsConsentRecord
+        fields = [
+            'id', 'technicien', 'technicien_nom', 'consent_ref',
+            'consent_recorded_at', 'recorded_by', 'revoked_at',
+            'revoked_reason', 'is_active',
+        ]
+        read_only_fields = [
+            'consent_recorded_at', 'recorded_by', 'revoked_at',
+            'revoked_reason',
+        ]
+
+
+class PositionTechnicienSerializer(serializers.ModelSerializer):
+    """XFSM23 — position GPS live d'un technicien. company/technicien posés
+    côté serveur ; ``distance_site_km``/``hors_perimetre`` sont calculés par
+    le service (jamais fournis par le client)."""
+    technicien_nom = serializers.CharField(
+        source='technicien.username', read_only=True, default=None)
+
+    class Meta:
+        model = PositionTechnicien
+        fields = [
+            'id', 'technicien', 'technicien_nom', 'intervention', 'lat',
+            'lng', 'accuracy_m', 'captured_at', 'distance_site_km',
+            'hors_perimetre',
+        ]
+        read_only_fields = [
+            'company', 'technicien', 'captured_at', 'distance_site_km',
+            'hors_perimetre',
+        ]
+
+
+class GeofenceAlertSerializer(serializers.ModelSerializer):
+    """XFSM23 — alerte géofence (position hors du rayon attendu du chantier
+    pendant une intervention active). Lecture seule côté API — générée
+    uniquement par le service ``enregistrer_position``."""
+    technicien_nom = serializers.CharField(
+        source='technicien.username', read_only=True, default=None)
+
+    class Meta:
+        model = GeofenceAlert
+        fields = [
+            'id', 'intervention', 'technicien', 'technicien_nom', 'position',
+            'distance_site_km', 'rayon_attendu_km', 'created_at',
+            'acquittee', 'acquittee_par', 'acquittee_le',
+        ]
+        read_only_fields = [
+            'intervention', 'technicien', 'position', 'distance_site_km',
+            'rayon_attendu_km', 'created_at',
         ]

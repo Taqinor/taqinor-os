@@ -211,6 +211,11 @@ from .models_storage_rules import (
 from .models_lot_prelevement import (
     LotPrelevement,
 )
+from .models_gps_tracking import (
+    GpsConsentRecord,
+    PositionTechnicien,
+    GeofenceAlert,
+)
 
 __all__ = [
     'Installation',
@@ -323,4 +328,7 @@ __all__ = [
     'CategorieStockage',
     'RegleRangement',
     'LotPrelevement',
+    'GpsConsentRecord',
+    'PositionTechnicien',
+    'GeofenceAlert',
 ]
