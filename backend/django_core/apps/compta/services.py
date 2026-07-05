@@ -6259,7 +6259,9 @@ def campagnes_par_statut(company):
     Kanban (4 colonnes : brouillon/en_file+envoi_en_cours/envoyee/annulee).
     """
     resultat = {statut: [] for statut, _ in Campagne.Statut.choices}
-    qs = Campagne.objects.filter(company=company).order_by('-date_creation')
+    # ZMKT3 — un modèle n'est jamais envoyé, jamais dans le pipeline d'envoi.
+    qs = Campagne.objects.filter(
+        company=company, est_modele=False).order_by('-date_creation')
     for campagne in qs:
         taux_ouverture = 0.0
         if campagne.nb_envois:
@@ -6273,6 +6275,27 @@ def campagnes_par_statut(company):
             'taux_ouverture_pct': taux_ouverture,
         })
     return resultat
+
+
+# ── ZMKT3 — Enregistrer une campagne comme modèle réutilisable ─────────────
+
+def creer_depuis_modele(modele):
+    """ZMKT3 — clone objet/corps/canal/segment/variantes langue (XMKT11)
+    d'un modèle dans une nouvelle campagne BROUILLON indépendante. Le clone
+    n'altère JAMAIS le modèle source (jamais un ``.save()`` dessus)."""
+    clone = Campagne.objects.create(
+        company=modele.company,
+        nom=f'{modele.nom} (copie)',
+        canal=modele.canal,
+        objet=modele.objet,
+        corps=modele.corps,
+        segment=dict(modele.segment or {}),
+        sms_sender_id=modele.sms_sender_id,
+        variantes_langue=dict(modele.variantes_langue or {}),
+        est_modele=False,
+    )
+    clone.listes.set(modele.listes.all())
+    return clone
 
 
 def _destinataires_des_listes(campagne):

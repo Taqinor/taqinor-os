@@ -4709,6 +4709,22 @@ class CampagneViewSet(_ComptaBaseViewSet):
         """ZMKT1 — campagnes groupées par statut (pipeline Odoo-style)."""
         return Response(services.campagnes_par_statut(request.user.company))
 
+    @action(detail=False, methods=['get'], url_path='modeles')
+    def modeles(self, request):
+        """ZMKT3 — liste des modèles company-scopés."""
+        qs = self.get_queryset().filter(est_modele=True)
+        return Response(CampagneSerializer(qs, many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='creer-depuis-modele')
+    def creer_depuis_modele(self, request, pk=None):
+        """ZMKT3 — clone un modèle en une nouvelle campagne brouillon."""
+        modele = self.get_object()
+        if not modele.est_modele:
+            return Response(
+                {'detail': "Cette campagne n'est pas un modèle."}, status=400)
+        clone = services.creer_depuis_modele(modele)
+        return Response(CampagneSerializer(clone).data, status=201)
+
     @action(detail=True, methods=['post'], url_path='rattacher')
     def rattacher(self, request, pk=None):
         """XMKT31 — rattache un objet (séquence/formulaire/code promo/

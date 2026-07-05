@@ -1487,7 +1487,7 @@ class CampagneSerializer(serializers.ModelSerializer):
             'planifiee_le', 'debit_max_par_heure', 'variantes_langue',
             'ab_test', 'ab_gagnant', 'ab_decide_le',
             'budget_mad', 'cout_reel_mad', 'lignes_cout',
-            'parente', 'rattachements',
+            'parente', 'rattachements', 'est_modele',
             'taux_delivre_pct', 'taux_ouverture_pct', 'taux_clic_pct',
             'taux_desinscription_pct',
         ]

@@ -4615,6 +4615,10 @@ class Campagne(models.Model):
     rattachements = models.JSONField(
         default=list, blank=True,
         verbose_name='Rattachements (JSON, campagne mère)')
+    # ── ZMKT3 — enregistrer une campagne comme modèle réutilisable ──────────
+    est_modele = models.BooleanField(
+        default=False,
+        verbose_name='Modèle réutilisable (jamais envoyé)')
 
     class Meta:
         verbose_name = 'Campagne email/SMS'
