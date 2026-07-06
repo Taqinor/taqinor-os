@@ -1,26 +1,29 @@
-import { useMemo, useState } from 'react'
-import { Plus, Pencil, Download } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Plus, Pencil, Download, FileText, Send, Bell } from 'lucide-react'
 import { ListShell, statusPill } from '../../../ui/module'
-import { Button, Segmented, Card, Input, Label, toast } from '../../../ui'
-import { formatMAD } from '../../../lib/format'
+import { Button, Segmented, Card, Input, Label, EmptyState, toast } from '../../../ui'
+import { formatMAD, formatDate } from '../../../lib/format'
 import comptaApi from '../../../api/comptaApi'
-import useComptaList from '../components/useComptaList.js'
+import useComptaList, { unwrap } from '../components/useComptaList.js'
 import CrudDialog from '../components/CrudDialog.jsx'
 
 /* ============================================================================
    UX7 — Fiscalité & déclarations.
    ----------------------------------------------------------------------------
-   CRUD des déclarations TVA / retenues à la source / timbres fiscaux, plus un
-   bloc d'exports fichiers (téléchargement de blob) : FEC, liasse fiscale, export
-   fiduciaire (Sage/CEGID), relevé des déductions TVA, déclaration des honoraires
-   et aide au calcul de l'IS. Ces exports exigent « ?export=... » côté backend
-   (jamais « ?format= ») — géré dans comptaApi.
+   CRUD des déclarations TVA / retenues à la source / timbres fiscaux, l'onglet
+   XACC9 « Échéances fiscales » (lecture seule + génération/rappels J-7), plus
+   un bloc d'exports fichiers (téléchargement de blob) : FEC, liasse fiscale,
+   export fiduciaire, relevé des déductions TVA, déclaration des honoraires et
+   aide au calcul de l'IS. Ces exports exigent « ?export=... » côté backend
+   (jamais « ?format= ») — géré dans comptaApi. ZACC10 : bordereau PDF +
+   comparatif M-1 en actions de ligne sur les déclarations TVA.
    ========================================================================== */
 
 const TABS = [
   { value: 'declarationsTva', label: 'Déclarations TVA' },
   { value: 'retenuesSource', label: 'Retenues à la source' },
   { value: 'timbresFiscaux', label: 'Timbres fiscaux' },
+  { value: 'echeances', label: 'Échéances fiscales' },
 ]
 
 const RESOURCE = {
@@ -34,9 +37,13 @@ const StatutFiscal = statusPill({
   prepare: { label: 'Préparée', tone: 'info' },
   preparee: { label: 'Préparée', tone: 'info' },
   declaree: { label: 'Déclarée', tone: 'success' },
+  deposee: { label: 'Déposée', tone: 'success' },
   verse: { label: 'Versé', tone: 'success' },
   versee: { label: 'Versée', tone: 'success' },
   du: { label: 'Dû', tone: 'warning' },
+  a_preparer: { label: 'À préparer', tone: 'warning' },
+  a_declarer: { label: 'À déclarer', tone: 'warning' },
+  a_verser: { label: 'À verser', tone: 'warning' },
 })
 
 const money = (v) => formatMAD(v)
@@ -115,16 +122,157 @@ const EXPORTS = [
   { key: 'aideIs', label: 'Aide au calcul IS', fn: comptaApi.etats.aideIs, file: 'aide-is.csv', needsExercice: true },
 ]
 
+// XACC9 — Calendrier des échéances fiscales : lecture seule + génération/rappels.
+function EcheancesPanel() {
+  const [exercice, setExercice] = useState('')
+  const [exercices, setExercices] = useState([])
+  const list = useComptaList(comptaApi.obligationsFiscales.list, undefined)
+
+  useEffect(() => {
+    comptaApi.exercices.list().then((res) => setExercices(unwrap(res))).catch(() => {})
+  }, [])
+
+  const generer = async () => {
+    if (!exercice) {
+      toast.error('Sélectionnez un exercice à générer.')
+      return
+    }
+    try {
+      await comptaApi.obligationsFiscales.generer({ exercice })
+      toast.success('Calendrier fiscal généré.')
+      list.reload()
+    } catch (err) {
+      const d = err?.response?.data
+      toast.error(typeof d === 'string' ? d : (d?.detail || 'Génération impossible.'))
+    }
+  }
+
+  const envoyerRappels = async () => {
+    try {
+      const res = await comptaApi.obligationsFiscales.rappels()
+      const n = unwrap(res).length
+      toast.success(`${n} rappel(s) envoyé(s).`)
+    } catch {
+      toast.error('Envoi des rappels impossible.')
+    }
+  }
+
+  const rows = list.rows || []
+
+  return (
+    <div className="flex flex-col gap-3">
+      <Card className="p-4 sm:p-5">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-col gap-1 sm:max-w-xs">
+            <Label htmlFor="ech-ex">Exercice</Label>
+            <select
+              id="ech-ex"
+              className="h-[var(--control-h)] rounded-md border border-input bg-card px-[var(--control-px)] text-sm"
+              value={exercice} onChange={(e) => setExercice(e.target.value)}
+            >
+              <option value="">—</option>
+              {exercices.map((ex) => (
+                <option key={ex.id} value={ex.id}>{ex.libelle}</option>
+              ))}
+            </select>
+          </div>
+          <Button variant="outline" onClick={generer}>Générer le calendrier</Button>
+          <Button variant="outline" onClick={envoyerRappels}>
+            <Bell className="size-4" /> Envoyer les rappels (J-7)
+          </Button>
+        </div>
+      </Card>
+      {!rows.length ? (
+        <EmptyState title="Aucune échéance" description="Générez le calendrier fiscal d’un exercice pour commencer." />
+      ) : (
+        <ListShell
+          title="Échéances fiscales"
+          columns={[
+            { id: 'type', header: 'Obligation', accessor: (r) => r.type_display || r.type || '—' },
+            { id: 'date_limite', header: 'Date limite', accessor: (r) => r.date_limite,
+              searchable: false, cell: (v) => formatDate(v) },
+            { id: 'statut', header: 'Statut', accessor: (r) => r.statut, searchable: false,
+              cell: (v) => <StatutFiscal status={v} /> },
+          ]}
+          rows={rows}
+          loading={list.loading}
+          error={list.error}
+          exportName="echeances-fiscales"
+          emptyTitle="Aucune échéance"
+          emptyDescription="Rien à afficher."
+        />
+      )}
+    </div>
+  )
+}
+
 export default function FiscalitePage() {
   const [tab, setTab] = useState('declarationsTva')
   const [dialog, setDialog] = useState(null)
   const [exercice, setExercice] = useState('')
 
-  const list = useComptaList(RESOURCE[tab].list, undefined)
+  const isEcheances = tab === 'echeances'
+  const list = useComptaList(
+    isEcheances ? comptaApi.obligationsFiscales.list : RESOURCE[tab].list, undefined)
 
-  const rowActions = (row) => [{
-    id: 'edit', label: 'Éditer', icon: Pencil, onClick: () => setDialog({ row }),
-  }]
+  const download = async (fn, filename, okMsg) => {
+    try {
+      const res = await fn()
+      const blob = res.data instanceof Blob ? res.data : new Blob([res.data])
+      comptaApi.downloadBlob(blob, filename)
+      if (okMsg) toast.success(okMsg)
+    } catch {
+      toast.error('Téléchargement indisponible.')
+    }
+  }
+
+  const act = async (fn, okMsg) => {
+    try {
+      await fn()
+      toast.success(okMsg)
+      list.reload()
+    } catch (err) {
+      const d = err?.response?.data
+      toast.error(typeof d === 'string' ? d : (d?.detail || 'Action impossible.'))
+    }
+  }
+
+  const rowActions = (row) => {
+    if (tab === 'declarationsTva') {
+      return [
+        { id: 'bordereau', label: 'Bordereau PDF', icon: FileText,
+          onClick: () => download(
+            () => comptaApi.declarationsTva.bordereauPdf(row.id),
+            `bordereau_tva_${row.reference || row.id}.pdf`) },
+        { id: 'comparatif', label: 'Comparatif N-1', icon: Download,
+          onClick: () => download(
+            () => comptaApi.declarationsTva.export(row.id),
+            `declaration_tva_${row.reference || row.id}.csv`) },
+        ...(row.statut !== 'deposee' ? [{
+          id: 'deposer', label: 'Déposer', icon: Send,
+          onClick: () => act(() => comptaApi.declarationsTva.deposer(row.id), 'Déclaration déposée.'),
+        }] : []),
+        { id: 'edit', label: 'Éditer', icon: Pencil, onClick: () => setDialog({ row }) },
+      ]
+    }
+    if (tab === 'retenuesSource' && row.statut !== 'versee') {
+      return [
+        { id: 'verser', label: 'Marquer versée', icon: Send,
+          onClick: () => act(() => comptaApi.retenuesSource.verser(row.id), 'Retenue marquée versée.') },
+        { id: 'edit', label: 'Éditer', icon: Pencil, onClick: () => setDialog({ row }) },
+      ]
+    }
+    if (tab === 'timbresFiscaux' && row.statut !== 'verse') {
+      return [
+        { id: 'verser', label: 'Marquer versé', icon: Send,
+          onClick: () => act(() => comptaApi.timbresFiscaux.verser(row.id), 'Timbre marqué versé.') },
+        { id: 'edit', label: 'Éditer', icon: Pencil, onClick: () => setDialog({ row }) },
+      ]
+    }
+    return [{
+      id: 'edit', label: 'Éditer', icon: Pencil, onClick: () => setDialog({ row }),
+    }]
+  }
 
   const submit = (payload) => {
     const api = RESOURCE[tab]
@@ -157,47 +305,55 @@ export default function FiscalitePage() {
     <div className="page">
       <div className="page-header">
         <h2>Fiscalité & déclarations</h2>
-        <div className="page-header-actions">
-          <Button onClick={() => setDialog({ row: null })}>
-            <Plus /> Nouvelle {singular}
-          </Button>
-        </div>
+        {!isEcheances && (
+          <div className="page-header-actions">
+            <Button onClick={() => setDialog({ row: null })}>
+              <Plus /> Nouvelle {singular}
+            </Button>
+          </div>
+        )}
       </div>
 
       <div className="mb-3">
         <Segmented options={TABS} value={tab} onChange={setTab} aria-label="Onglet fiscalité" />
       </div>
 
-      <ListShell
-        title={TABS.find((t) => t.value === tab).label}
-        columns={COLUMNS[tab]}
-        rows={list.rows}
-        loading={list.loading}
-        error={list.error}
-        rowActions={rowActions}
-        exportName={tab}
-        emptyTitle="Aucun élément"
-        emptyDescription="Rien à afficher pour cet onglet."
-      />
+      {isEcheances ? (
+        <EcheancesPanel />
+      ) : (
+        <ListShell
+          title={TABS.find((t) => t.value === tab).label}
+          columns={COLUMNS[tab]}
+          rows={list.rows}
+          loading={list.loading}
+          error={list.error}
+          rowActions={rowActions}
+          exportName={tab}
+          emptyTitle="Aucun élément"
+          emptyDescription="Rien à afficher pour cet onglet."
+        />
+      )}
 
       {/* Bloc exports fichiers / télédéclarations (blob download). */}
-      <Card className="mt-4 p-4 sm:p-5">
-        <h3 className="mb-3 font-display text-base font-semibold">Exports & télédéclarations</h3>
-        <div className="mb-3 flex flex-col gap-1 sm:max-w-xs">
-          <Label htmlFor="fx-exercice">Exercice (ID) — requis pour FEC / liasse / IS</Label>
-          <Input id="fx-exercice" value={exercice} onChange={(e) => setExercice(e.target.value)}
-                 placeholder="ex. 3" inputMode="numeric" />
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {EXPORTS.map((exp) => (
-            <Button key={exp.key} variant="outline" size="sm" onClick={() => runExport(exp)}>
-              <Download className="size-4" /> {exp.label}
-            </Button>
-          ))}
-        </div>
-      </Card>
+      {!isEcheances && (
+        <Card className="mt-4 p-4 sm:p-5">
+          <h3 className="mb-3 font-display text-base font-semibold">Exports & télédéclarations</h3>
+          <div className="mb-3 flex flex-col gap-1 sm:max-w-xs">
+            <Label htmlFor="fx-exercice">Exercice (ID) — requis pour FEC / liasse / IS</Label>
+            <Input id="fx-exercice" value={exercice} onChange={(e) => setExercice(e.target.value)}
+                   placeholder="ex. 3" inputMode="numeric" />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {EXPORTS.map((exp) => (
+              <Button key={exp.key} variant="outline" size="sm" onClick={() => runExport(exp)}>
+                <Download className="size-4" /> {exp.label}
+              </Button>
+            ))}
+          </div>
+        </Card>
+      )}
 
-      {dialog && (
+      {dialog && !isEcheances && (
         <CrudDialog
           open
           onClose={() => setDialog(null)}
