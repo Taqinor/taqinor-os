@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useDispatch } from 'react-redux'
 import { createClient, updateClient } from '../../features/crm/store/crmSlice'
 import {
   Form, FormSection, FormField, FormErrorSummary,
   Input, Textarea, Segmented, Button, useDirtyGuard,
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { Combobox } from '../../ui/Combobox'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
@@ -11,6 +12,7 @@ import { toast } from '../../ui/confirm'
 import { canonicalPhoneMA } from '../../lib/format'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
 import crmApi from '../../api/crmApi'
+import ventesApi from '../../api/ventesApi'
 import {
   searchCompanies, hitsToOptions, verifierIceUrl, verifierOmpicUrl,
 } from '../../features/crm/companyLookup'
@@ -73,10 +75,21 @@ export default function ClientForm({ client = null, onClose }) {
     langue_document: client?.langue_document ?? 'fr',
     // XSAL9 — société mère (hiérarchie de comptes / consolidation groupe).
     parent: client?.parent ?? null,
+    // XSAL1-2 — liste de prix négociée (tarif revendeur/export). Vide =
+    // prix de vente standard (comportement historique inchangé).
+    liste_prix: client?.liste_prix ?? null,
   }), [client])
 
   const [fields, setFields] = useState(initial)
   const isEntreprise = fields.type_client === 'entreprise'
+
+  // XSAL1-2 — listes de prix actives de la société, pour le select tarif.
+  const [listesPrix, setListesPrix] = useState([])
+  useEffect(() => {
+    ventesApi.getListesPrix().then(({ data }) => {
+      setListesPrix(data.results ?? data)
+    }).catch(() => {})
+  }, [])
 
   // Forme marocaine normalisée du téléphone (aperçu uniquement — on stocke
   // toujours la valeur tapée). Masquée si elle est identique à la saisie.
@@ -189,6 +202,8 @@ export default function ClientForm({ client = null, onClose }) {
         langue_document: fields.langue_document,
         // XSAL9 — société mère (hiérarchie de comptes), optionnelle.
         parent: fields.parent || null,
+        // XSAL1-2 — liste de prix négociée, optionnelle.
+        liste_prix: fields.liste_prix || null,
       }
       if (isEdit) {
         await dispatch(updateClient({ id: client.id, data: payload })).unwrap()
@@ -446,6 +461,26 @@ export default function ClientForm({ client = null, onClose }) {
                     Retirer le rattachement
                   </button>
                 )}
+              </FormField>
+
+              {/* XSAL1-2 — tarif négocié (liste de prix). Vide = prix de vente
+                  standard, résolu par apps.ventes.services.prix_applicable. */}
+              <FormField
+                label="Liste de prix — optionnel"
+                htmlFor="cf-liste-prix" fullWidth
+              >
+                <Select
+                  value={fields.liste_prix ? String(fields.liste_prix) : 'none'}
+                  onValueChange={(v) => setField('liste_prix', v === 'none' ? null : v)}
+                >
+                  <SelectTrigger id="cf-liste-prix"><SelectValue placeholder="Prix de vente standard" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Prix de vente standard</SelectItem>
+                    {listesPrix.map((lp) => (
+                      <SelectItem key={lp.id} value={String(lp.id)}>{lp.nom}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </FormField>
             </FormSection>
 

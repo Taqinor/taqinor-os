@@ -43,6 +43,7 @@ const ToitureDesign = lazy(() => import('../pages/ventes/ToitureDesign'))
 const RoofViewerPage = lazy(() => import('../pages/ventes/RoofViewerPage'))
 const FactureList = lazy(() => import('../pages/ventes/FactureList'))
 const VentesKanban = lazy(() => import('../pages/ventes/VentesKanban'))
+const ListesPrixPage = lazy(() => import('../pages/ventes/ListesPrixPage'))
 const InstallationsPage = lazy(() => import('../pages/installations/InstallationsPage'))
 const InterventionsPage = lazy(() => import('../pages/interventions/InterventionsPage'))
 const MaJourneePage = lazy(() => import('../pages/interventions/MaJourneePage'))
@@ -226,6 +227,8 @@ const router = createBrowserRouter([
   { path: '/ventes/avoirs', loader: authLoader, element: <WithLayout><AvoirsPage /></WithLayout> },
   { path: '/ventes/relances', loader: authLoader, element: <WithLayout><RelancesPage /></WithLayout> },
   { path: '/ventes/paiements', loader: authLoader, element: <WithLayout><PaiementsPage /></WithLayout> },
+  // XSAL1-2 — administration des listes de prix clients (écriture Responsable/Admin, gardée serveur).
+  { path: '/ventes/listes-prix', loader: authLoader, element: <WithLayout><ListesPrixPage /></WithLayout> },
 
   // Chantiers / Installations
   { path: '/chantiers', loader: authLoader, element: <WithLayout><InstallationsPage /></WithLayout> },
