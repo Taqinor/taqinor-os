@@ -46,6 +46,7 @@ import ApiWebhooksSection from './ApiWebhooksSection'
 import AvanceSection from './AvanceSection'
 import SecuriteCompteSection from './SecuriteCompteSection'
 import TraductionsSection from './TraductionsSection'
+import ConfidentialiteSection from './ConfidentialiteSection'
 
 // N96 — onglet « Sécurité du compte » (double authentification 2FA, opt-in).
 // Ajouté localement (sans modifier la liste partagée peConstants.TABS) pour
@@ -54,6 +55,9 @@ const SECURITE_COMPTE_TAB = { key: 'securite_compte', label: 'Sécurité du comp
 // N94 — onglet « Traductions » (surcharges d'interface par langue, sans code).
 // Ajouté localement, même logique que l'onglet N96 (hors peConstants.TABS).
 const TRADUCTIONS_TAB = { key: 'traductions', label: 'Traductions' }
+// XPLT23 — onglet « Confidentialité » (registre CNDP + demandes de personnes
+// concernées). Ajouté localement, même logique que N96/N94.
+const CONFIDENTIALITE_TAB = { key: 'confidentialite', label: 'Confidentialité' }
 
 // ── Conteneur de la page Paramètres (D1) ───────────────────────────────────────
 // Toute la logique (état du formulaire, chargements, handlers) vit ici, dans un
@@ -77,8 +81,9 @@ export default function ParametresEntreprise() {
   // L790 — recherche de réglage : saute à l'onglet contenant un libellé.
   const [search, setSearch] = useState('')
   const searchResults = searchSettings(search)
-  // Liste d'onglets affichée = onglets partagés + N96 (2FA) + N94 (traductions).
-  const allTabs = [...TABS, SECURITE_COMPTE_TAB, TRADUCTIONS_TAB]
+  // Liste d'onglets affichée = onglets partagés + N96 (2FA) + N94 (traductions)
+  // + XPLT23 (confidentialité).
+  const allTabs = [...TABS, SECURITE_COMPTE_TAB, TRADUCTIONS_TAB, CONFIDENTIALITE_TAB]
   const tabLabel = (key) => (allTabs.find(t => t.key === key)?.label ?? key)
   const jumpToTab = (key) => { setTab(key); setSearch('') }
 
@@ -862,6 +867,8 @@ export default function ParametresEntreprise() {
           {tab === 'securite_compte' && <SecuriteCompteSection />}
           {/* N94 — traductions d'interface éditables par langue (autonome). */}
           {tab === 'traductions' && <TraductionsSection />}
+          {/* XPLT23 — registre CNDP + demandes de personnes concernées (autonome). */}
+          {tab === 'confidentialite' && <ConfidentialiteSection />}
 
           {/* Bouton d'enregistrement du profil (onglets porteurs de champs) */}
           {showSave && saveButton}

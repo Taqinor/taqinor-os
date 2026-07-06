@@ -78,6 +78,27 @@ const coreApi = {
   dashboardsTv: {
     list: () => api.get('/core/dashboards-tv/'),
   },
+  // XPLT23 — onglet « Confidentialité » (loi 09-08 / CNDP), réservé
+  // admin/responsable (le backend re-vérifie : IsAdminOrResponsableTier).
+  // `company` n'est jamais envoyée : toujours imposée côté serveur.
+  confidentialite: {
+    // Registre des traitements CNDP — CRUD complet + export CSV.
+    registreTraitements: {
+      list: () => api.get('/core/registre-traitements/'),
+      create: (data) => api.post('/core/registre-traitements/', data),
+      update: (id, data) => api.patch(`/core/registre-traitements/${id}/`, data),
+      remove: (id) => api.delete(`/core/registre-traitements/${id}/`),
+      exportCsv: () =>
+        api.get('/core/registre-traitements/export-csv/', { responseType: 'blob' }),
+    },
+    // Demandes de personnes concernées (accès/effacement/rectification) —
+    // soumission + suivi + exécution (`traiter`, gérée par core.dsr).
+    dsrRequests: {
+      list: () => api.get('/core/dsr-requests/'),
+      create: (data) => api.post('/core/dsr-requests/', data),
+      traiter: (id) => api.post(`/core/dsr-requests/${id}/traiter/`),
+    },
+  },
 }
 
 export default coreApi

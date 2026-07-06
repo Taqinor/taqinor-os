@@ -6,7 +6,15 @@ import { render, screen, cleanup } from '@testing-library/react'
    contient AUCUN attribut style inline. importApi est mocké. */
 
 vi.mock('../api/importApi', () => ({
-  default: { dryRun: vi.fn(), commit: vi.fn() },
+  default: {
+    dryRun: vi.fn(),
+    commit: vi.fn(),
+    getSavedMappings: vi.fn(() => Promise.resolve({ data: [] })),
+    saveMapping: vi.fn(),
+    jobErreursCsv: vi.fn(),
+  },
+  downloadBlob: vi.fn(),
+  filenameFromResponse: vi.fn(),
 }))
 
 import ExcelImport from './ExcelImport'

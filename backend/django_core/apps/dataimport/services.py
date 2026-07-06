@@ -173,6 +173,16 @@ def save_mapping(company, target, nom, mapping):
     return obj
 
 
+def list_mappings(company, target=None):
+    """XPLT2 — mappings sauvegardés d'une société (sélecteur frontend), triés
+    par usage le plus récent. ``target`` optionnel restreint à une cible."""
+    from .models import ImportMapping
+    qs = ImportMapping.objects.filter(company=company)
+    if target:
+        qs = qs.filter(entity=target)
+    return list(qs)
+
+
 def _row_to_fields(row, mapped):
     return {field: row.get(col) for col, field in mapped.items()
             if row.get(col) not in (None, '')}
