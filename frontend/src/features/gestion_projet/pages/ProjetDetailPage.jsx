@@ -17,6 +17,7 @@ import LienFormDialog from '../components/LienFormDialog'
 import ClotureDialog from '../components/ClotureDialog'
 import TachesKanbanView from '../components/TachesKanbanView'
 import TachesCalendarView from '../components/TachesCalendarView'
+import SituationsTab from '../components/SituationsTab'
 
 /* UX38 — Détail projet : entête + statut, transitions GARDÉES (miroir de la
    machine à états serveur), onglets Résumé / Liens / Historique / Clôture. */
@@ -298,6 +299,7 @@ export default function ProjetDetailPage() {
           { value: 'taches', label: 'Tâches', count: taches.length, content: tachesTab },
           { value: 'liens', label: 'Liens', count: liens.length, content: liensTab },
           { value: 'historique', label: 'Historique', count: historique.length, content: histoTab },
+          { value: 'situations', label: 'Situations', content: <SituationsTab projetId={projet.id} /> },
           { value: 'cloture', label: 'Clôture', content: clotureTab },
         ]}
       />

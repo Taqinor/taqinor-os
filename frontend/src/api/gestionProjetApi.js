@@ -39,6 +39,20 @@ const gestionProjetApi = {
   getProjetCoutsEngagesReels: (id) =>
     api.get(`${P}/projets/${id}/couts-engages-reels/`),
   getProjetPnl: (id) => api.get(`${P}/projets/${id}/pnl/`),
+  // Création depuis devis accepté (XPRJ21) + plan IA propose→confirme (XPRJ29).
+  creerProjetDepuisDevis: (devisId) =>
+    api.post(`${P}/projets/depuis-devis/`, { devis_id: devisId }),
+  genererPlanIa: (id, data) =>
+    api.post(`${P}/projets/${id}/generer-plan-ia/`, data),
+  confirmerPlanIa: (id, data) =>
+    api.post(`${P}/projets/${id}/confirmer-plan-ia/`, data),
+  getMatriceRisques: (id) => api.get(`${P}/projets/${id}/matrice-risques/`),
+  getLienEvaluation: (id) => api.post(`${P}/projets/${id}/lien-evaluation/`),
+  getPrevisionFin: (id, params) =>
+    api.get(`${P}/projets/${id}/prevision-fin/`, { params }),
+  getBurndown: (id, params) => api.get(`${P}/projets/${id}/burndown/`, { params }),
+  getRapportAvancementPdf: (id) =>
+    api.get(`${P}/projets/${id}/rapport-avancement-pdf/`, { responseType: 'blob' }),
 
   // ── Chantiers & liens (UX38) ──────────────────────────────────────────────
   getChantiers: (params) => api.get(`${P}/projet-chantiers/`, { params }),
@@ -64,6 +78,13 @@ const gestionProjetApi = {
   // Drag calendrier : reprogrammer une tâche (+ cascade successeurs) (XPRJ11).
   reprogrammerTache: (id, data) =>
     api.post(`${P}/taches/${id}/reprogrammer/`, data),
+  // Tâches — filtres + vue transverse « Mes tâches » (XPRJ10/12) + chrono (XPRJ5).
+  getMesTaches: () => api.get(`${P}/taches/mes-taches/`),
+  getTacheDependances: (id) => api.get(`${P}/taches/${id}/dependances/`),
+  demarrerChrono: (id) => api.post(`${P}/taches/${id}/demarrer-chrono/`),
+  arreterChrono: (id, data) => api.post(`${P}/taches/${id}/arreter-chrono/`, data),
+  getChronoActif: () => api.get(`${P}/chrono-actif/`),
+  versTicketSav: (id) => api.post(`${P}/taches/${id}/vers-ticket-sav/`),
   getDependances: (params) => api.get(`${P}/dependances/`, { params }),
   createDependance: (data) => api.post(`${P}/dependances/`, data),
   deleteDependance: (id) => api.delete(`${P}/dependances/${id}/`),
@@ -109,6 +130,29 @@ const gestionProjetApi = {
     api.get(`${P}/timesheets/semaine/`, { params }),
   copierSemaineTimesheets: (data) =>
     api.post(`${P}/timesheets/copier-semaine/`, data),
+  // Workflow d'approbation des timesheets (XPRJ7-8/ZPRJ5-6).
+  soumettreTimesheet: (id) => api.post(`${P}/timesheets/${id}/soumettre/`),
+  approuverTimesheet: (id) => api.post(`${P}/timesheets/${id}/approuver/`),
+  rejeterTimesheet: (id, data) => api.post(`${P}/timesheets/${id}/rejeter/`, data),
+  getTempsManquants: (params) => api.get(`${P}/timesheets/manquants/`, { params }),
+  getHeuresAttendues: (params) =>
+    api.get(`${P}/timesheets/heures-attendues/`, { params }),
+  getClassementTemps: (params) => api.get(`${P}/timesheets/classement/`, { params }),
+  getRapprochementTemps: (params) =>
+    api.get(`${P}/timesheets/rapprochement/`, { params }),
+  getRapportTemps: (params) => api.get(`${P}/timesheets/rapport/`, { params }),
+  // Réglages temps société (ZPRJ1, singleton).
+  getReglageTemps: () => api.get(`${P}/reglages-temps/mon-reglage/`),
+  updateReglageTemps: (data) =>
+    api.patch(`${P}/reglages-temps/mon-reglage/`, data),
+  // Publier / copier-semaine / auto-affecter (ZPRJ2-4).
+  publierAffectations: (data) => api.post(`${P}/affectations/publier/`, data),
+  copierSemaineAffectations: (data) =>
+    api.post(`${P}/affectations/copier-semaine/`, data),
+  autoAffecter: (data, confirm = false) =>
+    api.post(`${P}/affectations/auto-affecter/${confirm ? '?confirm=1' : ''}`, data),
+  getNivellementCharge: (params) =>
+    api.get(`${P}/ressources/nivellement-charge/`, { params }),
 
   // ── Budget & P&L (UX41) ───────────────────────────────────────────────────
   getBudgets: (params) => api.get(`${P}/budgets/`, { params }),
@@ -165,6 +209,23 @@ const gestionProjetApi = {
     api.patch(`${P}/lots-sous-traitance/${id}/`, data),
   deleteLotSousTraitance: (id) =>
     api.delete(`${P}/lots-sous-traitance/${id}/`),
+
+  // ── Situations de travaux BTP (XPRJ4) ─────────────────────────────────────
+  getSituations: (params) => api.get(`${P}/situations/`, { params }),
+  createSituation: (data) => api.post(`${P}/situations/`, data),
+  getLignesSituation: (params) => api.get(`${P}/lignes-situation/`, { params }),
+  ajouterLigneSituation: (id, data) =>
+    api.post(`${P}/situations/${id}/ajouter-ligne/`, data),
+  validerSituation: (id) => api.post(`${P}/situations/${id}/valider/`),
+
+  // ── Checklist tâche (XPRJ14) & points d'avancement RAG (XPRJ15) ───────────
+  getItemsChecklist: (params) => api.get(`${P}/items-checklist/`, { params }),
+  createItemChecklist: (data) => api.post(`${P}/items-checklist/`, data),
+  deleteItemChecklist: (id) => api.delete(`${P}/items-checklist/${id}/`),
+  toggleItemChecklist: (id) => api.post(`${P}/items-checklist/${id}/toggle/`),
+  getPointsAvancement: (params) =>
+    api.get(`${P}/points-avancement/`, { params }),
+  createPointAvancement: (data) => api.post(`${P}/points-avancement/`, data),
 }
 
 export default gestionProjetApi
