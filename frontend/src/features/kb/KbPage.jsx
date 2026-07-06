@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSelector } from 'react-redux'
-import { BookOpen, Plus, Eye, Pencil, Trash2, Send } from 'lucide-react'
+import { BookOpen, Plus, Eye, Pencil, Trash2, Send, FolderTree, Copy } from 'lucide-react'
 import { ListShell } from '../../ui/module'
 import { Button, Badge, Tag, toast } from '../../ui'
 import { formatDateTime } from '../../lib/format'
@@ -9,6 +9,7 @@ import { KB_STATUT_MAP, StatutArticlePill, splitTags } from './kbStatus'
 import ArticleDetail from './ArticleDetail'
 import ArticleEditor from './ArticleEditor'
 import FilterSelect from './FilterSelect'
+import ArticleTree from './ArticleTree'
 
 /* ============================================================================
    UX43 — Base de connaissances (apps/kb).
@@ -147,12 +148,45 @@ export default function KbPage() {
     },
   ], [])
 
+  // XKB21 — duplique l'article (copie brouillon indépendante).
+  const handleDuplicate = async (a) => {
+    const avecSousArticles = window.confirm(
+      `Dupliquer « ${a.titre} » ? OK = avec ses sous-articles, Annuler = article seul.`)
+    try {
+      await kbApi.dupliquer(a.id, { avec_sous_articles: avecSousArticles })
+      toast.success('Article dupliqué (brouillon).')
+      load()
+    } catch { toast.error('Duplication impossible.') }
+  }
+
+  // XKB8 — déplace (re-parente) l'article : demande l'id du nouveau parent
+  // (vide = racine). Interaction volontairement simple (prompt) — le
+  // panneau ArticleTree reste la vue de référence pour visualiser l'arbre.
+  const handleMove = async (a) => {
+    const input = window.prompt(
+      `Déplacer « ${a.titre} » — identifiant de l’article parent (laisser vide pour la racine) :`,
+      a.parent ?? '')
+    if (input === null) return
+    const parent = input.trim() === '' ? null : Number(input.trim())
+    if (parent !== null && Number.isNaN(parent)) {
+      toast.error('Identifiant de parent invalide.')
+      return
+    }
+    try {
+      await kbApi.deplacer(a.id, { parent })
+      toast.success('Article déplacé.')
+      load()
+    } catch { toast.error('Déplacement impossible.') }
+  }
+
   const rowActions = (a) => {
     const actions = [
       { id: 'read', label: 'Consulter', icon: Eye, onClick: () => openDetail(a) },
     ]
     if (peutEditer) {
       actions.push({ id: 'edit', label: 'Éditer', icon: Pencil, onClick: () => openEditor(a) })
+      actions.push({ id: 'move', label: 'Déplacer', icon: FolderTree, onClick: () => handleMove(a) })
+      actions.push({ id: 'duplicate', label: 'Dupliquer', icon: Copy, onClick: () => handleDuplicate(a) })
       if (a.statut !== 'publie') {
         actions.push({
           id: 'publish', label: 'Publier', icon: Send,
@@ -248,7 +282,9 @@ export default function KbPage() {
         exportName="base-de-connaissances"
         emptyTitle="Aucun article"
         emptyDescription="Aucun article ne correspond à cette recherche."
-      />
+      >
+        <ArticleTree onSelect={openDetail} />
+      </ListShell>
     </div>
   )
 }
