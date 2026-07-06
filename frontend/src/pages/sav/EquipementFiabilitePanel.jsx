@@ -40,23 +40,22 @@ export default function EquipementFiabilitePanel({ equipementId }) {
   const [releveBusy, setReleveBusy] = useState(false)
   const [downtimeBusy, setDowntimeBusy] = useState(false)
 
-  const load = () => {
-    setLoading(true)
-    Promise.all([
-      savApi.getEquipementFiabilite(equipementId).then((r) => r.data).catch(() => null),
-      savApi.getEquipementDisponibilite(equipementId).then((r) => r.data).catch(() => null),
-      savApi.getEquipementDowntime(equipementId).then((r) => r.data).catch(() => []),
-      savApi.getEquipementReleves(equipementId).then((r) => r.data).catch(() => []),
-      // ZMFG11 — prochaine défaillance estimée (MTBF) + prochain entretien dû.
-      savApi.getEquipementEstimations(equipementId).then((r) => r.data).catch(() => null),
-    ]).then(([f, d, dt, rv, est]) => {
-      setFiabilite(f)
-      setDispo(d)
-      setDowntimes(dt || [])
-      setReleves(rv || [])
-      setEstimations(est)
-    }).finally(() => setLoading(false))
-  }
+  const load = () => Promise.all([
+    savApi.getEquipementFiabilite(equipementId).then((r) => r.data).catch(() => null),
+    savApi.getEquipementDisponibilite(equipementId).then((r) => r.data).catch(() => null),
+    savApi.getEquipementDowntime(equipementId).then((r) => r.data).catch(() => []),
+    savApi.getEquipementReleves(equipementId).then((r) => r.data).catch(() => []),
+    // ZMFG11 — prochaine défaillance estimée (MTBF) + prochain entretien dû.
+    savApi.getEquipementEstimations(equipementId).then((r) => r.data).catch(() => null),
+  ]).then(([f, d, dt, rv, est]) => {
+    setFiabilite(f)
+    setDispo(d)
+    setDowntimes(dt || [])
+    setReleves(rv || [])
+    setEstimations(est)
+  }).finally(() => setLoading(false))
+
+  const charger = () => { setLoading(true); return load() }
 
   useEffect(() => { load() }, [equipementId]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -67,7 +66,7 @@ export default function EquipementFiabilitePanel({ equipementId }) {
     try {
       await savApi.ouvrirEquipementDowntime(equipementId, {})
       toast.success('Immobilisation ouverte')
-      load()
+      charger()
     } catch (err) {
       toast.error(err?.response?.data?.detail ?? "Impossible d'ouvrir l'immobilisation.")
     } finally { setDowntimeBusy(false) }
@@ -78,7 +77,7 @@ export default function EquipementFiabilitePanel({ equipementId }) {
     try {
       await savApi.cloturerEquipementDowntime(equipementId, enCours.id)
       toast.success('Immobilisation clôturée')
-      load()
+      charger()
     } catch (err) {
       toast.error(err?.response?.data?.detail ?? "Impossible de clôturer l'immobilisation.")
     } finally { setDowntimeBusy(false) }
@@ -95,7 +94,7 @@ export default function EquipementFiabilitePanel({ equipementId }) {
       } else {
         toast.success('Relevé enregistré')
       }
-      load()
+      charger()
     } catch (err) {
       toast.error(err?.response?.data?.detail ?? 'Relevé invalide.')
     } finally { setReleveBusy(false) }

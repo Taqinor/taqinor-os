@@ -28,11 +28,11 @@ function ReponsesTypeSection() {
   const [form, setForm] = useState({ titre: '', corps: '', nouveau_statut: '' })
   const [edit, setEdit] = useState(null)
 
-  const load = () => {
-    setLoading(true)
-    savApi.getReponsesType().then((r) => setRows(r.data.results ?? r.data ?? []))
-      .catch(() => {}).finally(() => setLoading(false))
-  }
+  const load = () => savApi.getReponsesType().then((r) => setRows(r.data.results ?? r.data ?? []))
+    .catch(() => {}).finally(() => setLoading(false))
+
+  const charger = () => { setLoading(true); return load() }
+
   useEffect(() => { load() }, [])
 
   const add = async () => {
@@ -41,7 +41,7 @@ function ReponsesTypeSection() {
       await savApi.saveReponseType(null, form)
       setForm({ titre: '', corps: '', nouveau_statut: '' })
       toast.success('Réponse type ajoutée')
-      load()
+      charger()
     } catch (e) { toast.error(e?.response?.data?.detail ?? 'Ajout impossible.') }
   }
   const startEdit = (r) => setEdit({ id: r.id, titre: r.titre, corps: r.corps, nouveau_statut: r.nouveau_statut ?? '' })
@@ -52,11 +52,11 @@ function ReponsesTypeSection() {
       })
       setEdit(null)
       toast.success('Réponse type mise à jour')
-      load()
+      charger()
     } catch { toast.error('Mise à jour impossible.') }
   }
   const toggleArchive = async (r) => {
-    try { await savApi.saveReponseType(r.id, { archived: !r.archived }); load() }
+    try { await savApi.saveReponseType(r.id, { archived: !r.archived }); charger() }
     catch { toast.error('Bascule impossible.') }
   }
 
@@ -133,6 +133,7 @@ function EquipesMaintenanceSection() {
       saveFn={savApi.saveEquipeMaintenance}
       nameField="nom"
       label="équipe"
+      emptyLabel="Aucune équipe"
       isArchived={(r) => !r.actif}
       archivePayload={() => ({ actif: false })}
       unarchivePayload={() => ({ actif: true })}
@@ -149,6 +150,7 @@ function CategoriesEquipementSection() {
       saveFn={savApi.saveCategorieEquipement}
       nameField="nom"
       label="catégorie d'équipement"
+      emptyLabel="Aucune catégorie d'équipement"
       isArchived={() => false}
       archivePayload={() => ({})}
       unarchivePayload={() => ({})}
@@ -185,6 +187,7 @@ export default function SavParametresPage() {
               saveFn={savApi.saveCategorieTicket}
               nameField="libelle"
               label="catégorie"
+              emptyLabel="Aucune catégorie"
               isArchived={(r) => !r.actif}
               archivePayload={() => ({ actif: false })}
               unarchivePayload={() => ({ actif: true })}
@@ -200,6 +203,7 @@ export default function SavParametresPage() {
                   saveFn={savApi.saveCauseDefaillance}
                   nameField="nom"
                   label="cause"
+                  emptyLabel="Aucune cause"
                   isArchived={(r) => r.archived}
                   archivePayload={() => ({ archived: true })}
                   unarchivePayload={() => ({ archived: false })}

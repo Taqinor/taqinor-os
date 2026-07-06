@@ -40,6 +40,9 @@ vi.mock('../../api/savApi', () => ({
     getTriageIa: vi.fn(() => Promise.resolve({ data: { disponible: false } })),
     getPretsEquipement: vi.fn(() => Promise.resolve({ data: [] })),
     getReponsesType: vi.fn(() => Promise.resolve({ data: [] })),
+    // WR11/FG82 — TicketChecklistPanel (montée dans TicketDetail).
+    getTicketChecklist: vi.fn(() => Promise.resolve({ data: [] })),
+    getChecklistTemplates: vi.fn(() => Promise.resolve({ data: [] })),
   },
 }))
 

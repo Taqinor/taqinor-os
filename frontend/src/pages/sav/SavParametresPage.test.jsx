@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 
 /* ZSAV2/ZMFG1/ZMFG2/XSAV14/XSAV23 — Paramètres SAV : référentiels édités
    par responsable/admin. savApi mocké. */
@@ -39,8 +40,9 @@ describe('SavParametresPage', () => {
 
   it('bascule vers l\'onglet Réponses types et crée une macro', async () => {
     savApi.saveReponseType.mockResolvedValue({ data: {} })
+    const user = userEvent.setup()
     render(<SavParametresPage />)
-    fireEvent.click(screen.getByRole('tab', { name: 'Réponses types' }))
+    await user.click(screen.getByRole('tab', { name: 'Réponses types' }))
     fireEvent.change(await screen.findByPlaceholderText('Titre'), { target: { value: 'Relance client' } })
     fireEvent.change(screen.getByPlaceholderText('Corps du message'), { target: { value: 'Bonjour {client}...' } })
     fireEvent.click(screen.getByRole('button', { name: /Ajouter/ }))

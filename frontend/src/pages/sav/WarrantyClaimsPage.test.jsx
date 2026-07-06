@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
+import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
 /* FG83 — écran de réclamations garantie fournisseur (RMA). savApi mocké. */
 
@@ -16,6 +18,13 @@ import WarrantyClaimsPage, { WarrantyClaimStatutPill } from './WarrantyClaimsPag
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
+// DataTable lit la densité via useDensity → <ThemeProvider> et persiste ses
+// filtres via useSearchParams → <Router> (même patron que FleetPage.test.jsx)
+// — nécessaire dès qu'une ligne rend la DataTable.
+function renderPage(ui) {
+  return render(<MemoryRouter><ThemeProvider>{ui}</ThemeProvider></MemoryRouter>)
+}
+
 describe('WarrantyClaimsPage — FG83 flux RMA', () => {
   it('affiche la liste des réclamations avec statut et fournisseur', async () => {
     savApi.getWarrantyClaims.mockResolvedValue({
@@ -25,10 +34,14 @@ describe('WarrantyClaimsPage — FG83 flux RMA', () => {
         date_signalement: '2026-07-01', date_resolution: null,
       }],
     })
-    render(<WarrantyClaimsPage />)
-    expect(await screen.findByText(/Onduleur Huawei/)).toBeInTheDocument()
-    expect(screen.getByText('Huawei Maroc')).toBeInTheDocument()
-    expect(screen.getByText('Ouvert')).toBeInTheDocument()
+    renderPage(<WarrantyClaimsPage />)
+    // DataTable rend simultanément une vue tableau (desktop) et une vue carte
+    // (mobile) — chaque cellule apparaît donc deux fois (même patron que
+    // FleetPage.test.jsx : getAllByText(...).length).
+    await waitFor(() => expect(
+      screen.getAllByText(/Onduleur Huawei/).length).toBeGreaterThan(0))
+    expect(screen.getAllByText('Huawei Maroc').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Ouvert').length).toBeGreaterThan(0)
   })
 
   it('affiche un état vide quand aucune réclamation', async () => {
@@ -46,10 +59,14 @@ describe('WarrantyClaimsPage — FG83 flux RMA', () => {
       }],
     })
     savApi.saveWarrantyClaim.mockResolvedValue({ data: {} })
-    render(<WarrantyClaimsPage />)
-    await screen.findByText(/Variateur VEICHI/)
-    fireEvent.click(screen.getByRole('button', { name: /Éditer/ }))
-    fireEvent.click(screen.getByRole('button', { name: /Enregistrer/ }))
+    renderPage(<WarrantyClaimsPage />)
+    // DataTable rend simultanément une vue tableau (desktop) et une vue carte
+    // (mobile) — chaque ligne/bouton apparaît donc deux fois ; on agit sur la
+    // première occurrence (vue tableau).
+    await waitFor(() => expect(
+      screen.getAllByText(/Variateur VEICHI/).length).toBeGreaterThan(0))
+    fireEvent.click(screen.getAllByRole('button', { name: /Éditer/ })[0])
+    fireEvent.click(screen.getAllByRole('button', { name: /Enregistrer/ })[0])
     await waitFor(() => expect(savApi.saveWarrantyClaim).toHaveBeenCalledWith(
       7, expect.objectContaining({ statut: 'ouvert', rma_ref: '' })))
   })

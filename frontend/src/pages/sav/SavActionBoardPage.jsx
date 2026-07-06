@@ -21,26 +21,25 @@ export default function SavActionBoardPage() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
 
-  const load = () => {
-    setLoading(true)
-    setLoadError(false)
-    savApi.getSavFileAction()
-      .then((r) => {
-        setBoard(r.data)
-        const allIds = Object.values(r.data.buckets ?? {}).flatMap((b) => b.ids)
-        if (allIds.length === 0) { setTickets({}); return }
-        // Récupère les références/clients affichés — la liste des tickets
-        // ouverts suffit largement (pas de pagination attendue sur ce volume).
-        return savApi.getTickets({ ouvert: 'tous' }).then((tr) => {
-          const rows = tr.data.results ?? tr.data ?? []
-          const map = {}
-          for (const t of rows) map[t.id] = t
-          setTickets(map)
-        })
+  const load = () => savApi.getSavFileAction()
+    .then((r) => {
+      setBoard(r.data)
+      const allIds = Object.values(r.data.buckets ?? {}).flatMap((b) => b.ids)
+      if (allIds.length === 0) { setTickets({}); return }
+      // Récupère les références/clients affichés — la liste des tickets
+      // ouverts suffit largement (pas de pagination attendue sur ce volume).
+      return savApi.getTickets({ ouvert: 'tous' }).then((tr) => {
+        const rows = tr.data.results ?? tr.data ?? []
+        const map = {}
+        for (const t of rows) map[t.id] = t
+        setTickets(map)
       })
-      .catch(() => setLoadError(true))
-      .finally(() => setLoading(false))
-  }
+    })
+    .catch(() => setLoadError(true))
+    .finally(() => setLoading(false))
+
+  const charger = () => { setLoading(true); setLoadError(false); return load() }
+
   useEffect(() => { load() }, [])
 
   const totalCount = useMemo(() => {
@@ -60,7 +59,7 @@ export default function SavActionBoardPage() {
       <div className="ui-root mx-auto max-w-6xl p-1">
         <EmptyState icon={AlertTriangle} title="Chargement impossible"
                     description="Le tableau d'action n'a pas pu être chargé. Réessayez."
-                    action={<Button size="sm" variant="outline" onClick={load}>Réessayer</Button>} />
+                    action={<Button size="sm" variant="outline" onClick={charger}>Réessayer</Button>} />
       </div>
     )
   }
@@ -81,7 +80,7 @@ export default function SavActionBoardPage() {
             return (
               <Card key={key} className="flex flex-col gap-2 p-3">
                 <div className="flex items-center gap-2">
-                  <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
+                  {Icon && <Icon className="size-4 text-muted-foreground" aria-hidden="true" />}
                   <span className="flex-1 font-display text-sm font-semibold">{label}</span>
                   <Badge tone={tone}>{bucket.count}</Badge>
                 </div>

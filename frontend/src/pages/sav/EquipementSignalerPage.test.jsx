@@ -49,7 +49,8 @@ describe('EquipementSignalerPage (public, XSAV19)', () => {
       target: { value: 'Panne' },
     })
     fireEvent.click(screen.getByRole('button', { name: 'Envoyer le signalement' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('Introuvable.')
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Ce lien est invalide ou introuvable')
   })
 
   it('désactive le bouton tant que la description est vide', () => {

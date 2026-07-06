@@ -14,9 +14,11 @@ import { Button, Input, EmptyState, Skeleton, toast } from '../../ui'
  * la sémantique du champ d'archivage propre à chaque modèle (`archived` bool
  * pour causes/remèdes, `actif` inversé pour les catégories de ticket) — le
  * composant générique ne suppose jamais un nom de champ fixe.
+ * `emptyLabel` = texte complet de l'état vide (accorde le genre de `label`,
+ * ex. « Aucune catégorie » vs « Aucun remède ») ; par défaut `Aucun ${label}`.
  */
 export default function SimpleRefListEditor({
-  loadFn, saveFn, nameField = 'nom', label = 'élément',
+  loadFn, saveFn, nameField = 'nom', label = 'élément', emptyLabel,
   isArchived, archivePayload, unarchivePayload,
 }) {
   const [rows, setRows] = useState([])
@@ -24,13 +26,13 @@ export default function SimpleRefListEditor({
   const [newName, setNewName] = useState('')
   const [busy, setBusy] = useState(false)
 
-  const load = () => {
-    setLoading(true)
-    loadFn()
-      .then((r) => setRows(r.data.results ?? r.data ?? []))
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }
+  const load = () => loadFn()
+    .then((r) => setRows(r.data.results ?? r.data ?? []))
+    .catch(() => {})
+    .finally(() => setLoading(false))
+
+  const charger = () => { setLoading(true); return load() }
+
   useEffect(() => { load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const add = async () => {
@@ -41,7 +43,7 @@ export default function SimpleRefListEditor({
       await saveFn(null, { [nameField]: nom })
       setNewName('')
       toast.success(`${label} ajouté(e)`)
-      load()
+      charger()
     } catch (e) {
       toast.error(e?.response?.data?.detail ?? 'Ajout impossible.')
     } finally { setBusy(false) }
@@ -50,7 +52,7 @@ export default function SimpleRefListEditor({
   const toggleArchive = async (row) => {
     try {
       await saveFn(row.id, isArchived(row) ? unarchivePayload(row) : archivePayload(row))
-      load()
+      charger()
     } catch { toast.error('Bascule impossible.') }
   }
 
@@ -67,7 +69,7 @@ export default function SimpleRefListEditor({
         </Button>
       </div>
       {rows.length === 0 ? (
-        <EmptyState title={`Aucun ${label}`} />
+        <EmptyState title={emptyLabel ?? `Aucun ${label}`} />
       ) : (
         <ul className="flex flex-col gap-1.5">
           {rows.map((r) => (

@@ -17,14 +17,13 @@ export default function SavSlaReportPage() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
 
-  const load = () => {
-    setLoading(true)
-    setLoadError(false)
-    savApi.getSavSlaReport()
-      .then((r) => setData(r.data))
-      .catch(() => setLoadError(true))
-      .finally(() => setLoading(false))
-  }
+  const load = () => savApi.getSavSlaReport()
+    .then((r) => setData(r.data))
+    .catch(() => setLoadError(true))
+    .finally(() => setLoading(false))
+
+  const charger = () => { setLoading(true); setLoadError(false); return load() }
+
   useEffect(() => { load() }, [])
 
   const exportXlsx = () => {
@@ -45,7 +44,7 @@ export default function SavSlaReportPage() {
       <div className="ui-root mx-auto max-w-5xl p-1">
         <EmptyState title="Chargement impossible"
                     description="Le rapport SLA n'a pas pu être chargé. Réessayez."
-                    action={<Button size="sm" variant="outline" onClick={load}>Réessayer</Button>} />
+                    action={<Button size="sm" variant="outline" onClick={charger}>Réessayer</Button>} />
       </div>
     )
   }
