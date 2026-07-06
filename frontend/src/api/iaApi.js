@@ -85,6 +85,13 @@ const iaApi = {
   getAgentActions: () =>
     iaApi_instance.get('/api/django/agent/actions/'),
 
+  // YHARD2 — journal des actions IA confirmées (admin/Directeur) + annulation
+  // d'une action réversible. Mêmes endpoints DJANGO absolus (apps/agent).
+  getAgentActionLogs: () =>
+    iaApi_instance.get('/api/django/agent/logs/'),
+  undoAgentAction: (id) =>
+    iaApi_instance.post(`/api/django/agent/logs/${id}/annuler/`),
+
   getSchema: () =>
     iaApi_instance.get('/sql-agent/schema'),
 
