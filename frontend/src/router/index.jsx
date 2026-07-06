@@ -124,6 +124,8 @@ const KiosquePointage = lazy(() => import('../features/rh/Kiosque'))
 const EquipementSignalerPage = lazy(() => import('../pages/sav/EquipementSignalerPage'))
 // XSAV10/FG86 — page publique de suivi client d'un ticket SAV + CSAT.
 const TicketSuiviPage = lazy(() => import('../pages/sav/TicketSuiviPage'))
+// XKB19 — page publique de consultation d'un article KB partagé (lien tokenisé).
+const PublicArticlePage = lazy(() => import('../pages/kb/PublicArticlePage'))
 const ChatPage = lazy(() => import('../pages/messaging/ChatPage'))
 const DocumentsPage = lazy(() => import('../pages/ged/DocumentsPage'))
 
@@ -228,6 +230,8 @@ const router = createBrowserRouter([
   // XPLT10 — kiosque TV plein écran des dashboards partagés (authentifié,
   // sans layout ERP — rotation/rafraîchissement pilotés côté écran).
   { path: '/dashboards-tv', loader: authLoader, element: <Suspense fallback={<Fallback />}><DashboardsTvPage /></Suspense> },
+  // XKB19 — consultation publique d'un article KB partagé (sans login, sans layout ERP).
+  { path: '/kb/public/:token', element: <Suspense fallback={<Fallback />}><PublicArticlePage /></Suspense> },
 
   { path: '/dashboard', loader: authLoader, element: <WithLayout><Dashboard /></WithLayout> },
   { path: '/messages', loader: authLoader, element: <WithLayout><ChatPage /></WithLayout> },
