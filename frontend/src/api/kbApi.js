@@ -41,6 +41,91 @@ const kbApi = {
   listAcls: (params) => api.get('/kb/article-acls/', { params }),
   createAcl: (data) => api.post('/kb/article-acls/', data),
   removeAcl: (id) => api.delete(`/kb/article-acls/${id}/`),
+
+  // ── XKB8/21 — arbre + réordonnancement/déplacement/duplication ──
+  arbre: () => api.get('/kb/articles/arbre/'),
+  deplacer: (id, data) => api.post(`/kb/articles/${id}/deplacer/`, data),
+  dupliquer: (id, data) => api.post(`/kb/articles/${id}/dupliquer/`, data),
+  items: (id, params) => api.get(`/kb/articles/${id}/items/`, { params }),
+
+  // ── XKB14 — vérification/verrouillage + péremption ──
+  verifier: (id, horizon_jours) =>
+    api.post(`/kb/articles/${id}/verifier/`, { horizon_jours }),
+  verrouiller: (id) => api.post(`/kb/articles/${id}/verrouiller/`),
+  deverrouiller: (id) => api.post(`/kb/articles/${id}/deverrouiller/`),
+  rapportPeremption: () => api.get('/kb/articles/rapport-peremption/'),
+
+  // ── XKB10 — sommaire (TOC) ──
+  sommaire: (id) => api.get(`/kb/articles/${id}/sommaire/`),
+
+  // ── XKB18 — traduction ──
+  traduire: (id, langue) => api.post(`/kb/articles/${id}/traduire/`, { langue }),
+
+  // ── XKB11 — rétroliens ──
+  retroliens: (id) => api.get(`/kb/articles/${id}/retroliens/`),
+
+  // ── XKB12 — gabarits ──
+  gabarits: () => api.get('/kb/articles/gabarits/'),
+  enregistrerCommeGabarit: (id) =>
+    api.post(`/kb/articles/${id}/enregistrer-comme-gabarit/`),
+  depuisGabarit: (id) => api.post(`/kb/articles/${id}/depuis-gabarit/`),
+
+  // ── XKB17 — export/import ──
+  exportPdfUrl: (id) => `/api/django/kb/articles/${id}/export-pdf/`,
+  exportMarkdownUrl: (id) => `/api/django/kb/articles/${id}/export-markdown/`,
+  exportZipUrl: () => '/api/django/kb/articles/export-zip/',
+  importerMarkdown: (data) => {
+    const form = new FormData()
+    if (data.fichier) form.append('fichier', data.fichier)
+    if (data.contenu) form.append('contenu', data.contenu)
+    return api.post('/kb/articles/importer-markdown/', form)
+  },
+
+  // ── XKB15 — favoris/récents ──
+  togglerFavori: (id) => api.post(`/kb/articles/${id}/toggler-favori/`),
+  recents: () => api.get('/kb/articles/recents/'),
+  listFavoris: (params) => api.get('/kb/favoris/', { params }),
+
+  // ── XKB16 — rapports/stats ──
+  rapportTopConsultes: () => api.get('/kb/articles/rapport-top-consultes/'),
+  rapportMoinsConsultes: () => api.get('/kb/articles/rapport-moins-consultes/'),
+  rapportLacunesConnaissance: () =>
+    api.get('/kb/articles/rapport-lacunes-connaissance/'),
+
+  // ── ZGED10 — emoji + couverture ──
+  uploadCouverture: (id, fichier) => {
+    const form = new FormData()
+    form.append('fichier', fichier)
+    return api.post(`/kb/articles/${id}/couverture/`, form)
+  },
+  removeCouverture: (id) => api.delete(`/kb/articles/${id}/couverture/`),
+  couvertureImageUrl: (id) => `/api/django/kb/articles/${id}/couverture-image/`,
+
+  // ── ZGED12 — blocs réutilisables ──
+  listBlocs: (params) => api.get('/kb/blocs/', { params }),
+  createBloc: (data) => api.post('/kb/blocs/', data),
+  removeBloc: (id) => api.delete(`/kb/blocs/${id}/`),
+
+  // ── XKB19 — partages publics ──
+  listPartages: (params) => api.get('/kb/partages/', { params }),
+  createPartage: (data) => api.post('/kb/partages/', data),
+  depublierPartage: (id) => api.post(`/kb/partages/${id}/depublier/`),
+  // Endpoint PUBLIC (sans login) — jamais via l'instance ``api`` authentifiée
+  // pour éviter d'envoyer un cookie de session inutile ; axios brut suffit,
+  // le proxy /api/django est le même hôte.
+  getPublicArticle: (token) => api.get(`/kb/public/${token}/`),
+
+  // ── XKB22 — parcours d'intégration ──
+  listParcours: (params) => api.get('/kb/parcours/', { params }),
+  createParcours: (data) => api.post('/kb/parcours/', data),
+  parcoursArticles: (id) => api.get(`/kb/parcours/${id}/articles/`),
+  listParcoursArticles: (params) => api.get('/kb/parcours-articles/', { params }),
+  createParcoursArticle: (data) => api.post('/kb/parcours-articles/', data),
+  removeParcoursArticle: (id) => api.delete(`/kb/parcours-articles/${id}/`),
+  listAssignations: (params) => api.get('/kb/parcours-assignations/', { params }),
+  createAssignation: (data) => api.post('/kb/parcours-assignations/', data),
+  assignationProgression: (id) =>
+    api.get(`/kb/parcours-assignations/${id}/progression/`),
 }
 
 export default kbApi
