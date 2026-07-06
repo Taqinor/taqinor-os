@@ -9,23 +9,24 @@ import Recrutement from './Recrutement.jsx'
    onglets (Vivier / Statistiques / Gabarits) branchés sur les endpoints ATS.
    Le module ne doit jamais planter au chargement, même quand tout est vide. */
 
-const empty = () => Promise.resolve({ data: [] })
-
-vi.mock('../../api/rhApi', () => ({
-  default: {
-    getEpiCatalogue: vi.fn(empty),
-    getDotationsEpi: vi.fn(empty),
-    getOuverturesPoste: vi.fn(empty),
-    getCandidatures: vi.fn(empty),
-    getVivier: vi.fn(empty),
-    getRecrutementStatistiques: vi.fn(() => Promise.resolve({ data: {} })),
-    getGabaritsEmailRecrutement: vi.fn(empty),
-    getModelesEvaluation: vi.fn(empty),
-    getCampagnesEvaluation: vi.fn(empty),
-    getEvaluationsEmploye: vi.fn(empty),
-    getSanctions: vi.fn(empty),
-  },
-}))
+vi.mock('../../api/rhApi', () => {
+  const empty = () => Promise.resolve({ data: [] })
+  return {
+    default: {
+      getEpiCatalogue: vi.fn(empty),
+      getDotationsEpi: vi.fn(empty),
+      getOuverturesPoste: vi.fn(empty),
+      getCandidatures: vi.fn(empty),
+      getVivier: vi.fn(empty),
+      getRecrutementStatistiques: vi.fn(() => Promise.resolve({ data: {} })),
+      getGabaritsEmailRecrutement: vi.fn(empty),
+      getModelesEvaluation: vi.fn(empty),
+      getCampagnesEvaluation: vi.fn(empty),
+      getEvaluationsEmploye: vi.fn(empty),
+      getSanctions: vi.fn(empty),
+    },
+  }
+})
 
 function renderRecrutement() {
   return render(

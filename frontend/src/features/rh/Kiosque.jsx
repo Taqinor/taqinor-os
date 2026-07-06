@@ -23,9 +23,9 @@ export default function Kiosque() {
   const [feedback, setFeedback] = useState(null)
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- lecture unique du jeton mémorisé
     try {
       const t = window.localStorage.getItem(TOKEN_KEY)
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- lecture unique du jeton mémorisé au montage
       if (t) setToken(t)
     } catch { /* localStorage indisponible */ }
   }, [])

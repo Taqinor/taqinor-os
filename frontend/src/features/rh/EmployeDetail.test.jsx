@@ -17,24 +17,25 @@ vi.mock('react-router-dom', async (orig) => ({
   useParams: () => ({ id: '7' }),
 }))
 
-const empty = () => Promise.resolve({ data: [] })
-
-vi.mock('../../api/rhApi', () => ({
-  default: {
-    getEmploye: vi.fn(),
-    getDocuments: vi.fn(empty),
-    getHabilitations: vi.fn(empty),
-    getRegistreFormation: vi.fn(() => Promise.resolve({ data: { lignes: [] } })),
-    getIntegration: vi.fn(() => Promise.resolve({ data: { lignes: [], total: 0, faits: 0, progression_pct: 0 } })),
-    getHistoriqueEmploye: vi.fn(empty),
-    getRemunerations: vi.fn(empty),
-    getCompaRatio: vi.fn(() => Promise.resolve({ data: null })),
-    sortirEmploye: vi.fn(() => Promise.resolve({ data: {} })),
-    getCertificatTravail: vi.fn(),
-    confirmerEssai: vi.fn(),
-    marquerDeclare: vi.fn(),
-  },
-}))
+vi.mock('../../api/rhApi', () => {
+  const empty = () => Promise.resolve({ data: [] })
+  return {
+    default: {
+      getEmploye: vi.fn(),
+      getDocuments: vi.fn(empty),
+      getHabilitations: vi.fn(empty),
+      getRegistreFormation: vi.fn(() => Promise.resolve({ data: { lignes: [] } })),
+      getIntegration: vi.fn(() => Promise.resolve({ data: { lignes: [], total: 0, faits: 0, progression_pct: 0 } })),
+      getHistoriqueEmploye: vi.fn(empty),
+      getRemunerations: vi.fn(empty),
+      getCompaRatio: vi.fn(() => Promise.resolve({ data: null })),
+      sortirEmploye: vi.fn(() => Promise.resolve({ data: {} })),
+      getCertificatTravail: vi.fn(),
+      confirmerEssai: vi.fn(),
+      marquerDeclare: vi.fn(),
+    },
+  }
+})
 
 function renderDetail({ permissions = [] } = {}) {
   const store = configureStore({
@@ -62,8 +63,8 @@ describe('EmployeDetail — offboarding (YHIRE2/ZRH12)', () => {
       data: { id: 7, nom: 'Bennani', prenom: 'Youssef', matricule: 'M007', statut: 'actif' },
     })
     renderDetail()
-    expect(await screen.findByText('Bennani Youssef')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Sortie/ })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /Sortie/ })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Bennani Youssef' })).toBeInTheDocument()
   })
 
   it('affiche le certificat de travail pour un employé sorti', async () => {
@@ -71,7 +72,7 @@ describe('EmployeDetail — offboarding (YHIRE2/ZRH12)', () => {
       data: { id: 7, nom: 'Bennani', prenom: 'Youssef', matricule: 'M007', statut: 'sorti', date_sortie: '2026-01-15' },
     })
     renderDetail()
-    expect(await screen.findByText('Bennani Youssef')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Certificat de travail/ })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /Certificat de travail/ })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Bennani Youssef' })).toBeInTheDocument()
   })
 })

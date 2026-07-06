@@ -8,23 +8,24 @@ import Temps from './Temps.jsx'
 /* XRH10/11/13 — Temps & présence : le module charge les devices kiosque et
    expose l'onglet Kiosque + l'import CSV. Smoke : ne plante pas au montage. */
 
-const empty = () => Promise.resolve({ data: [] })
-
-vi.mock('../../api/rhApi', () => ({
-  default: {
-    getPointages: vi.fn(empty),
-    getRoster: vi.fn(empty),
-    getPresencesChantier: vi.fn(empty),
-    getHeuresSupp: vi.fn(empty),
-    getDevicesKiosque: vi.fn(empty),
-    pointagerDepart: vi.fn(),
-    exportPaiePointages: vi.fn(empty),
-    importPointageCsv: vi.fn(),
-    emettreDeviceKiosque: vi.fn(),
-    revoquerDeviceKiosque: vi.fn(),
-    updatePointage: vi.fn(),
-  },
-}))
+vi.mock('../../api/rhApi', () => {
+  const empty = () => Promise.resolve({ data: [] })
+  return {
+    default: {
+      getPointages: vi.fn(empty),
+      getRoster: vi.fn(empty),
+      getPresencesChantier: vi.fn(empty),
+      getHeuresSupp: vi.fn(empty),
+      getDevicesKiosque: vi.fn(empty),
+      pointagerDepart: vi.fn(),
+      exportPaiePointages: vi.fn(empty),
+      importPointageCsv: vi.fn(),
+      emettreDeviceKiosque: vi.fn(),
+      revoquerDeviceKiosque: vi.fn(),
+      updatePointage: vi.fn(),
+    },
+  }
+})
 
 function renderTemps() {
   return render(

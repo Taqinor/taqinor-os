@@ -9,25 +9,26 @@ import Portail from './Portail.jsx'
    Le portail ne doit jamais planter et doit afficher un état clair quand le
    compte connecté n'a aucun dossier employé lié (404 sur mes-infos). */
 
-const emptyList = () => Promise.resolve({ data: [] })
-
-vi.mock('../../api/rhApi', () => ({
-  default: {
-    getMesInfos: vi.fn(),
-    getMesSoldes: vi.fn(emptyList),
-    getMesConges: vi.fn(emptyList),
-    getMesFrais: vi.fn(emptyList),
-    getOrdresMission: vi.fn(emptyList),
-    getMesBulletins: vi.fn(emptyList),
-    getMesDemandes: vi.fn(emptyList),
-    getMesEpi: vi.fn(emptyList),
-    getMesHabilitations: vi.fn(emptyList),
-    getQuizDisponibles: vi.fn(emptyList),
-    getMesTentativesQuiz: vi.fn(emptyList),
-    getMesEvaluations: vi.fn(emptyList),
-    getCampagnesPulse: vi.fn(emptyList),
-  },
-}))
+vi.mock('../../api/rhApi', () => {
+  const emptyList = () => Promise.resolve({ data: [] })
+  return {
+    default: {
+      getMesInfos: vi.fn(),
+      getMesSoldes: vi.fn(emptyList),
+      getMesConges: vi.fn(emptyList),
+      getMesFrais: vi.fn(emptyList),
+      getOrdresMission: vi.fn(emptyList),
+      getMesBulletins: vi.fn(emptyList),
+      getMesDemandes: vi.fn(emptyList),
+      getMesEpi: vi.fn(emptyList),
+      getMesHabilitations: vi.fn(emptyList),
+      getQuizDisponibles: vi.fn(emptyList),
+      getMesTentativesQuiz: vi.fn(emptyList),
+      getMesEvaluations: vi.fn(emptyList),
+      getCampagnesPulse: vi.fn(emptyList),
+    },
+  }
+})
 
 function renderPortail() {
   return render(
