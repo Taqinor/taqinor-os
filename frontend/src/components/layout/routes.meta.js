@@ -38,6 +38,7 @@ const BASE_PAGE_TITLES = [
   ['/ventes/avoirs', 'Avoirs'],
   ['/ventes/paiements', 'Encaissements'],
   ['/ventes/relances', 'Relances / Impayés'],
+  ['/ventes/listes-prix', 'Listes de prix'],
 
   // Chantiers
   ['/chantiers', 'Chantiers'],
@@ -101,6 +102,7 @@ const TITLE_KEYS = {
   '/ventes/avoirs': 'title.ventes.avoirs',
   '/ventes/paiements': 'title.ventes.paiements',
   '/ventes/relances': 'title.ventes.relances',
+  '/ventes/listes-prix': 'title.ventes.listes_prix',
   '/chantiers': 'title.chantiers',
   '/ma-journee': 'title.ma_journee',
   '/interventions': 'title.interventions',
