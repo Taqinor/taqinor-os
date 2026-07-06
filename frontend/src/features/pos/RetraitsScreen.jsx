@@ -32,8 +32,7 @@ export default function RetraitsScreen() {
   const [commande, setCommande] = useState(null)
   const [code, setCode] = useState('')
 
-  const charger = (initial = false) => {
-    if (!initial) setLoading(true)
+  const load = () => {
     return posApi.getRetraits()
       .then((r) => {
         const data = r?.data?.results ?? r?.data ?? []
@@ -42,8 +41,9 @@ export default function RetraitsScreen() {
       .catch(() => setRetraits([]))
       .finally(() => setLoading(false))
   }
+  const charger = () => { setLoading(true); return load() }
 
-  useEffect(() => { charger(true) }, [])
+  useEffect(() => { load() }, [])
 
   const enAttente = useMemo(
     () => retraits.filter((c) => c.statut === 'a_preparer' || c.statut === 'pret'),

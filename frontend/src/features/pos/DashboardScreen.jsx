@@ -32,8 +32,7 @@ export default function DashboardScreen() {
   const [dateDebut, setDateDebut] = useState('')
   const [dateFin, setDateFin] = useState('')
 
-  const charger = (initial = false) => {
-    if (!initial) setLoading(true)
+  const load = () => {
     const params = {}
     if (dateDebut) params.date_debut = dateDebut
     if (dateFin) params.date_fin = dateFin
@@ -42,8 +41,9 @@ export default function DashboardScreen() {
       .catch(() => { setData(null); toast.error('Le tableau de bord est indisponible.') })
       .finally(() => setLoading(false))
   }
+  const charger = () => { setLoading(true); return load() }
 
-  useEffect(() => { charger(true) }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleExport = () => {
     // Export xlsx : ouverture directe (cookie httpOnly envoyé par le navigateur).
