@@ -86,6 +86,8 @@ const AgentActions = lazy(() => import('../pages/ia/AgentActions'))
 const UIShowcase = lazy(() => import('../pages/ui/UIShowcase'))
 // XSAL17 — page publique de réservation de visite (placeholder {lien_rdv}).
 const PublicBookingPage = lazy(() => import('../pages/crm/PublicBookingPage'))
+// XCTR14 — portail client public « Mes contrats » (token, sans login).
+const PortailContratsPage = lazy(() => import('../features/contrats/PortailContratsPage'))
 const ChatPage = lazy(() => import('../pages/messaging/ChatPage'))
 const DocumentsPage = lazy(() => import('../pages/ged/DocumentsPage'))
 
@@ -173,6 +175,8 @@ const router = createBrowserRouter([
   { path: '/ui', element: <Suspense fallback={<Fallback />}><UIShowcase /></Suspense> },
   // XSAL17 — réservation de visite publique (sans login, sans layout ERP).
   { path: '/rdv/:token', element: <Suspense fallback={<Fallback />}><PublicBookingPage /></Suspense> },
+  // XCTR14 — portail client public « Mes contrats » (sans login, sans layout ERP).
+  { path: '/portail-contrats/:token', element: <Suspense fallback={<Fallback />}><PortailContratsPage /></Suspense> },
 
   { path: '/dashboard', loader: authLoader, element: <WithLayout><Dashboard /></WithLayout> },
   { path: '/messages', loader: authLoader, element: <WithLayout><ChatPage /></WithLayout> },
