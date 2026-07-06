@@ -16,6 +16,7 @@ import { ShoppingCart } from 'lucide-react'
 
 const CaisseScreen = lazy(() => import('./CaisseScreen'))
 const SessionScreen = lazy(() => import('./SessionScreen'))
+const DashboardScreen = lazy(() => import('./DashboardScreen'))
 
 const ROLES = ['normal', 'responsable', 'admin']
 // XPOS4 — l'ouverture/clôture de caisse est réservée aux responsables/admin
@@ -30,16 +31,19 @@ const config = {
     items: [
       { to: '/pos', label: 'Caisse', icon: <ShoppingCart size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/pos/session', label: 'Sessions de caisse', icon: <ShoppingCart size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES_CAISSE },
+      { to: '/pos/dashboard', label: 'Tableau de bord', icon: <ShoppingCart size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES_CAISSE },
     ],
   },
   titles: [
     ['/pos', 'Caisse'],
     ['/pos/session', 'Sessions de caisse'],
+    ['/pos/dashboard', 'Tableau de bord'],
   ],
   sectionLabels: { pos: 'Caisse' },
   routes: [
     { path: '/pos', component: CaisseScreen, roles: ROLES },
     { path: '/pos/session', component: SessionScreen, roles: ROLES_CAISSE },
+    { path: '/pos/dashboard', component: DashboardScreen, roles: ROLES_CAISSE },
   ],
 }
 
