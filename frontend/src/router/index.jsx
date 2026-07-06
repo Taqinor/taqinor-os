@@ -49,6 +49,7 @@ const InterventionsPage = lazy(() => import('../pages/interventions/Intervention
 const MaJourneePage = lazy(() => import('../pages/interventions/MaJourneePage'))
 const ParcInstallePage = lazy(() => import('../pages/installations/ParcInstallePage'))
 const PlanificationPage = lazy(() => import('../pages/installations/PlanificationPage'))
+const AteliersPage = lazy(() => import('../pages/installations/AteliersPage'))
 const OutillagePage = lazy(() => import('../pages/outillage/OutillagePage'))
 const ProductionPage = lazy(() => import('../pages/monitoring/ProductionPage'))
 const FleetPage = lazy(() => import('../pages/monitoring/FleetPage'))
@@ -236,6 +237,7 @@ const router = createBrowserRouter([
   { path: '/planification', loader: authLoader, element: <WithLayout><PlanificationPage /></WithLayout> },
   { path: '/ma-journee', loader: authLoader, element: <WithLayout><MaJourneePage /></WithLayout> },
   { path: '/parc', loader: authLoader, element: <WithLayout><ParcInstallePage /></WithLayout> },
+  { path: '/atelier', loader: authLoader, element: <WithLayout><AteliersPage /></WithLayout> },
   { path: '/production', loader: authLoader, element: <WithLayout><ProductionPage /></WithLayout> },
   { path: '/production/parc', loader: authLoader, element: <WithLayout><FleetPage /></WithLayout> },
   { path: '/production/analytique', loader: authLoader, element: <WithLayout><OmAnalyticsPage /></WithLayout> },
