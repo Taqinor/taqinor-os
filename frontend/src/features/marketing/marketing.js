@@ -60,7 +60,9 @@ export function monthGrid(year, month) {
     d.setDate(start.getDate() + i)
     cells.push(d)
   }
-  if (cells[35].getMonth() !== month && cells[28].getMonth() !== month) {
+  // La 6e semaine (cases 35–41) déborde entièrement sur le mois suivant dès que
+  // son premier jour (lundi, case 35) n'est plus dans le mois : on la retire.
+  if (cells[35].getMonth() !== month) {
     return cells.slice(0, 35)
   }
   return cells
