@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Power, Trash2 } from 'lucide-react'
 import { ListShell, EcheanceCenter } from '../../ui/module'
 import { Segmented, Badge, toast } from '../../ui'
+import { useConfirmDialog } from '../../ui/confirm'
 import { formatDate } from '../../lib/format'
 import rhApi from '../../api/rhApi'
 
@@ -18,9 +20,12 @@ const VUES = [
   { value: 'habilitations', label: 'Habilitations' },
   { value: 'certifications', label: 'Certifications' },
   { value: 'formation', label: 'Formation' },
+  { value: 'quiz', label: 'Quiz' },
+  { value: 'organigramme', label: 'Organigramme' },
 ]
 
 export default function Competences() {
+  const { confirmDelete } = useConfirmDialog()
   const [vue, setVue] = useState('matrice')
   const [competencesEmp, setCompetencesEmp] = useState([])
   const [habilitations, setHabilitations] = useState([])
@@ -28,8 +33,13 @@ export default function Competences() {
   const [visites, setVisites] = useState([])
   const [sessions, setSessions] = useState([])
   const [besoins, setBesoins] = useState([])
+  const [quiz, setQuiz] = useState([])
+  const [arbre, setArbre] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [reloadTick, setReloadTick] = useState(0)
+
+  const recharger = () => setReloadTick((t) => t + 1)
 
   useEffect(() => {
     let vivant = true
@@ -43,8 +53,10 @@ export default function Competences() {
       rhApi.getVisitesMedicales(),
       rhApi.getSessionsFormation(),
       rhApi.getBesoinsFormation(),
+      rhApi.getQuizFormation(),
+      rhApi.getArbreDepartements(),
     ])
-      .then(([ce, hab, cert, vm, ses, bes]) => {
+      .then(([ce, hab, cert, vm, ses, bes, qz, ar]) => {
         if (!vivant) return
         setCompetencesEmp(unwrap(ce.data))
         setHabilitations(unwrap(hab.data))
@@ -52,6 +64,8 @@ export default function Competences() {
         setVisites(unwrap(vm.data))
         setSessions(unwrap(ses.data))
         setBesoins(unwrap(bes.data))
+        setQuiz(unwrap(qz.data))
+        setArbre(unwrap(ar.data))
       })
       .catch(() => {
         if (!vivant) return
@@ -60,7 +74,33 @@ export default function Competences() {
       })
       .finally(() => { if (vivant) setLoading(false) })
     return () => { vivant = false }
-  }, [])
+  }, [reloadTick])
+
+  const basculerQuiz = async (q) => {
+    try {
+      await rhApi.updateQuizFormation(q.id, { actif: !q.actif })
+      toast.success(q.actif ? 'Quiz désactivé.' : 'Quiz activé.')
+      recharger()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Modification impossible.')
+    }
+  }
+
+  const supprimerQuiz = async (q) => {
+    const ok = await confirmDelete({
+      title: 'Supprimer ce quiz ?',
+      description: `« ${q.intitule} » sera supprimé.`,
+      confirmLabel: 'Supprimer',
+    })
+    if (!ok) return
+    try {
+      await rhApi.deleteQuizFormation(q.id)
+      toast.success('Quiz supprimé.')
+      recharger()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Suppression impossible.')
+    }
+  }
 
   // Centre d'échéances : titres réglementaires + visites à expirer.
   const echeanceItems = useMemo(() => {
@@ -106,6 +146,18 @@ export default function Competences() {
     { id: 'statut', header: 'Statut', width: 120, accessor: (s) => s.statut_display || s.statut || '', cell: (v) => v || '—' },
   ], [])
 
+  const quizColumns = useMemo(() => [
+    { id: 'intitule', header: 'Quiz', width: 240, accessor: (q) => q.intitule || '', cell: (v) => <span className="font-medium">{v || '—'}</span> },
+    { id: 'questions', header: 'Questions', width: 110, align: 'right', searchable: false, accessor: (q) => (Array.isArray(q.questions) ? q.questions.length : (q.questions_count ?? '')), cell: (v) => (v === '' ? '—' : v) },
+    { id: 'seuil', header: 'Seuil', width: 90, align: 'right', searchable: false, accessor: (q) => q.seuil_reussite ?? '', cell: (v) => (v === '' ? '—' : `${v}%`) },
+    { id: 'actif', header: 'Actif', width: 100, accessor: (q) => (q.actif ? 'oui' : 'non'), cell: (_v, q) => <Badge tone={q.actif ? 'success' : 'neutral'}>{q.actif ? 'Actif' : 'Inactif'}</Badge> },
+  ], [])
+
+  const quizActions = (q) => [
+    { id: 'toggle', label: q.actif ? 'Désactiver' : 'Activer', icon: Power, onClick: () => basculerQuiz(q) },
+    { id: 'suppr', label: 'Supprimer', icon: Trash2, destructive: true, onClick: () => supprimerQuiz(q) },
+  ]
+
   return (
     <div className="page flex flex-col gap-4">
       <div className="page-header">
@@ -147,6 +199,18 @@ export default function Competences() {
                 emptyTitle="Aucun besoin" emptyDescription="Aucun besoin de formation." />
             </>
           )}
+          {vue === 'quiz' && (
+            <ListShell title="Quiz de formation" columns={quizColumns} rows={quiz}
+              loading={loading} error={error} searchable rowActions={quizActions} exportName="quiz-formation"
+              emptyTitle="Aucun quiz" emptyDescription="Aucun quiz d’évaluation configuré." />
+          )}
+          {vue === 'organigramme' && (
+            <div className="rounded-lg border border-border bg-card p-4">
+              {arbre.length === 0
+                ? <p className="text-sm text-muted-foreground">Aucun département.</p>
+                : <ArbreDepartements noeuds={arbre} />}
+            </div>
+          )}
         </div>
 
         <EcheanceCenter
@@ -159,6 +223,29 @@ export default function Competences() {
         />
       </div>
     </div>
+  )
+}
+
+/* XRH27 — arbre des départements (effectif propre + cumulé). */
+function ArbreDepartements({ noeuds, niveau = 0 }) {
+  return (
+    <ul className={niveau === 0 ? 'flex flex-col gap-1' : 'ml-4 flex flex-col gap-1 border-l border-border pl-3'}>
+      {noeuds.map((n) => (
+        <li key={n.id ?? n.nom} className="flex flex-col gap-1">
+          <div className="flex items-center justify-between gap-3 text-sm">
+            <span className="font-medium">{n.nom || '—'}</span>
+            <span className="text-xs text-muted-foreground">
+              {n.effectif_propre ?? n.effectif ?? 0}
+              {n.effectif_cumule != null && n.effectif_cumule !== (n.effectif_propre ?? n.effectif)
+                ? ` (${n.effectif_cumule} avec sous-dép.)` : ''}
+            </span>
+          </div>
+          {Array.isArray(n.enfants) && n.enfants.length > 0 && (
+            <ArbreDepartements noeuds={n.enfants} niveau={niveau + 1} />
+          )}
+        </li>
+      ))}
+    </ul>
   )
 }
 

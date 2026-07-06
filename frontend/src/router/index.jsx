@@ -92,6 +92,8 @@ const PortailContratsPage = lazy(() => import('../features/contrats/PortailContr
 const PublicSignaturePage = lazy(() => import('../pages/ged/PublicSignaturePage'))
 // XGED7 — dépôt public de fichier (upload-request, sans login).
 const PublicDepotPage = lazy(() => import('../pages/ged/PublicDepotPage'))
+// XRH10 — guichet kiosque de pointage (device-token, sans session ni layout ERP).
+const KiosquePointage = lazy(() => import('../features/rh/Kiosque'))
 const ChatPage = lazy(() => import('../pages/messaging/ChatPage'))
 const DocumentsPage = lazy(() => import('../pages/ged/DocumentsPage'))
 
@@ -187,6 +189,8 @@ const router = createBrowserRouter([
   { path: '/ged/signataire/:token', element: <Suspense fallback={<Fallback />}><PublicSignaturePage mode="signataire" /></Suspense> },
   // XGED7 — dépôt public de fichier (upload-request), sans login.
   { path: '/ged/depot/:token', element: <Suspense fallback={<Fallback />}><PublicDepotPage /></Suspense> },
+  // XRH10 — kiosque de pointage (jeton de device en localStorage, sans session).
+  { path: '/kiosque', element: <Suspense fallback={<Fallback />}><KiosquePointage /></Suspense> },
 
   { path: '/dashboard', loader: authLoader, element: <WithLayout><Dashboard /></WithLayout> },
   { path: '/messages', loader: authLoader, element: <WithLayout><ChatPage /></WithLayout> },
