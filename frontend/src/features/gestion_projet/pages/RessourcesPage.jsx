@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Plus, Users } from 'lucide-react'
+import { Plus, Users, Settings, Send, Copy, Wand2 } from 'lucide-react'
 import {
   Card, Button, Spinner, EmptyState, Badge, DataTable, Tabs, TabsList,
   TabsTrigger, TabsContent, Input, Label, toast,
@@ -11,6 +11,7 @@ import gestionProjetApi from '../../../api/gestionProjetApi'
 import { errMessage } from '../constants'
 import RessourceFormDialog from '../components/RessourceFormDialog'
 import TimesheetsTab from '../components/TimesheetsTab'
+import ReglagesTempsDialog from '../components/ReglagesTempsDialog'
 
 /* UX40 — Ressources & capacité : profils, équipes, affectations,
    indisponibilités, plan de charge (capacité vs affecté), timesheets.
@@ -34,6 +35,8 @@ export default function RessourcesPage() {
   const [error, setError] = useState(null)
   const [showForm, setShowForm] = useState(false)
   const [editRes, setEditRes] = useState(null)
+  const [showReglages, setShowReglages] = useState(false)
+  const [affectBusy, setAffectBusy] = useState(false)
 
   // Plan de charge : fenêtre par défaut = 30 prochains jours.
   const [debut, setDebut] = useState(todayISO())
@@ -103,6 +106,59 @@ export default function RessourcesPage() {
     }
   }
 
+  // ZPRJ2 — Publier les affectations BROUILLON de la fenêtre affichée.
+  const publierAffectations = async () => {
+    setAffectBusy(true)
+    try {
+      const res = await gestionProjetApi.publierAffectations({ debut, fin })
+      toast.success(`${res.data?.nb_publiees ?? 0} affectation(s) publiée(s).`)
+      load()
+    } catch (err) {
+      toast.error(errMessage(err, 'Publication impossible.'))
+    } finally {
+      setAffectBusy(false)
+    }
+  }
+
+  // ZPRJ3 — Copie le plan de la semaine précédente vers la semaine affichée.
+  const copierSemaineAffectations = async () => {
+    setAffectBusy(true)
+    try {
+      const semaineCible = debut
+      const src = new Date(debut)
+      src.setDate(src.getDate() - 7)
+      const semaineSource = src.toISOString().slice(0, 10)
+      const res = await gestionProjetApi.copierSemaineAffectations({
+        semaine_source: semaineSource, semaine_cible: semaineCible,
+      })
+      toast.success(`${res.data?.nb_copiees ?? 0} affectation(s) copiée(s).`)
+      load()
+    } catch (err) {
+      toast.error(errMessage(err, 'Copie impossible.'))
+    } finally {
+      setAffectBusy(false)
+    }
+  }
+
+  // ZPRJ4 — Auto-affectation (simulation puis confirmation demandée à l'utilisateur).
+  const autoAffecter = async () => {
+    setAffectBusy(true)
+    try {
+      const simulation = await gestionProjetApi.autoAffecter({ debut, fin }, false)
+      const nb = simulation.data?.propositions?.length ?? simulation.data?.nb_propositions ?? 0
+      const ok = window.confirm(
+        `${nb} proposition(s) d'affectation — confirmer l'application (statut brouillon) ?`)
+      if (!ok) return
+      const res = await gestionProjetApi.autoAffecter({ debut, fin }, true)
+      toast.success(`${res.data?.nb_appliquees ?? nb} affectation(s) créée(s)/déplacée(s).`)
+      load()
+    } catch (err) {
+      toast.error(errMessage(err, 'Auto-affectation impossible.'))
+    } finally {
+      setAffectBusy(false)
+    }
+  }
+
   // Données du graphique plan de charge : deux barres par ressource
   // (capacité vs affecté), distinguées par couleur.
   const chargeBars = useMemo(() => {
@@ -128,9 +184,14 @@ export default function RessourcesPage() {
           <h1 className="font-display text-xl font-semibold tracking-tight">Ressources & capacité</h1>
           <p className="text-sm text-muted-foreground">Profils, équipes, affectations, plan de charge et temps.</p>
         </div>
-        <Button onClick={() => { setEditRes(null); setShowForm(true) }}>
-          <Plus /> Nouvelle ressource
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setShowReglages(true)}>
+            <Settings /> Réglages temps
+          </Button>
+          <Button onClick={() => { setEditRes(null); setShowForm(true) }}>
+            <Plus /> Nouvelle ressource
+          </Button>
+        </div>
       </div>
 
       <Tabs defaultValue="ressources">
@@ -213,6 +274,17 @@ export default function RessourcesPage() {
 
         <TabsContent value="affectations">
           <Card className="p-4 sm:p-5">
+            <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
+              <Button size="sm" variant="outline" disabled={affectBusy} onClick={publierAffectations} title="Publier les affectations brouillon (ZPRJ2)">
+                <Send className="size-3.5" aria-hidden="true" /> Publier
+              </Button>
+              <Button size="sm" variant="outline" disabled={affectBusy} onClick={copierSemaineAffectations} title="Copier le plan de la semaine précédente (ZPRJ3)">
+                <Copy className="size-3.5" aria-hidden="true" /> Copier la semaine
+              </Button>
+              <Button size="sm" variant="outline" disabled={affectBusy} onClick={autoAffecter} title="Auto-affecter les tâches en excès (ZPRJ4)">
+                <Wand2 className="size-3.5" aria-hidden="true" /> Auto-affecter
+              </Button>
+            </div>
             <DataTable
               data={affectations}
               getRowId={(a) => a.id}
@@ -266,6 +338,12 @@ export default function RessourcesPage() {
             })
             toast.success('Ressource enregistrée.')
           }}
+        />
+      )}
+      {showReglages && (
+        <ReglagesTempsDialog
+          onClose={() => setShowReglages(false)}
+          onSaved={() => { setShowReglages(false); toast.success('Réglages temps enregistrés.') }}
         />
       )}
     </div>
