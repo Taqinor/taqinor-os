@@ -10,7 +10,7 @@
 // Section autonome : charge ses propres données et s'enregistre seule (sans le
 // bouton « Enregistrer » global). Texte en français ; clés techniques en anglais.
 import { useEffect, useState } from 'react'
-import { Plus, Trash2, RefreshCw, Wand2 } from 'lucide-react'
+import { Plus, Trash2, RefreshCw, Wand2, Sparkles } from 'lucide-react'
 import automationApi from '../../api/automationApi'
 import {
   Card, CardContent, Input, Textarea, Button, IconButton, Badge, Spinner,
@@ -69,6 +69,17 @@ export default function AutomatisationsSection() {
   // FG3 — modèles prédéfinis.
   const [templates, setTemplates] = useState([])
   const [showTemplates, setShowTemplates] = useState(false)
+  // XPLT18 — génération de règle par l'IA (propose→confirme). Le brouillon
+  // proposé crée TOUJOURS une règle désactivée : la confirmation se fait en
+  // l'activant depuis la liste ci-dessus, comme toute règle manuelle.
+  const [showAiDraft, setShowAiDraft] = useState(false)
+  const [aiDraft, setAiDraft] = useState({
+    nom: '', trigger_type: 'lead_stage_change', trigger_config: '',
+    action_type: 'create_activity', action_config: '',
+  })
+  const [aiDraftBusy, setAiDraftBusy] = useState(false)
+  const [aiDraftError, setAiDraftError] = useState(null)
+  const [aiDraftResult, setAiDraftResult] = useState(null)
   // Brouillon de nouvelle règle.
   const [draft, setDraft] = useState({
     nom: '', trigger_type: 'lead_stage_change', trigger_config: '',
@@ -104,6 +115,42 @@ export default function AutomatisationsSection() {
       approval_threshold: '',
     })
     setShowTemplates(false)
+  }
+
+  // XPLT18 — propose : envoie le brouillon (description + déclencheur/action
+  // choisis dans le catalogue fermé) à l'agent, qui crée une règle TOUJOURS
+  // désactivée. Rien ne s'exécute avant que l'admin ne l'active ci-dessus.
+  const proposeAiDraft = async () => {
+    const nom = aiDraft.nom.trim()
+    if (!nom) { setAiDraftError('Décrivez la règle souhaitée.'); return }
+    const trigCfg = safeParse(aiDraft.trigger_config)
+    const actCfg = safeParse(aiDraft.action_config)
+    if (trigCfg === null || actCfg === null) {
+      setAiDraftError('Configuration JSON invalide (déclencheur ou action).')
+      return
+    }
+    setAiDraftBusy(true); setAiDraftError(null); setAiDraftResult(null)
+    try {
+      const { data } = await automationApi.proposeDraft({
+        nom,
+        trigger_type: aiDraft.trigger_type,
+        trigger_config: trigCfg,
+        action_type: aiDraft.action_type,
+        action_config: actCfg,
+      })
+      setAiDraftResult(data)
+      loadRules()
+    } catch (e) {
+      setAiDraftError(e?.response?.data?.detail ?? 'Génération impossible.')
+    } finally { setAiDraftBusy(false) }
+  }
+
+  const resetAiDraft = () => {
+    setAiDraft({
+      nom: '', trigger_type: 'lead_stage_change', trigger_config: '',
+      action_type: 'create_activity', action_config: '',
+    })
+    setAiDraftError(null); setAiDraftResult(null)
   }
 
   const addRule = async () => {
@@ -209,6 +256,79 @@ export default function AutomatisationsSection() {
                 </div>
               </div>
             ))}
+          </div>
+
+          {/* ── XPLT18 : Générer une règle (IA) — propose→confirme ── */}
+          <div className="mt-2">
+            <Button type="button" size="sm" variant="outline"
+              onClick={() => setShowAiDraft((v) => !v)}>
+              <Sparkles className="size-4" aria-hidden="true" />
+              Générer une règle (IA)
+            </Button>
+            {showAiDraft && (
+              <div className="mt-2 rounded-lg border border-border bg-muted/30 p-3">
+                <p className="mb-2 text-xs text-muted-foreground">
+                  Décrivez la règle souhaitée et choisissez son déclencheur/action
+                  dans le catalogue existant. La règle proposée est TOUJOURS créée
+                  <strong> désactivée</strong> : confirmez-la en l'activant dans la
+                  liste ci-dessus, après relecture.
+                </p>
+                <Input className="w-full" placeholder="Décrivez la règle (ex. « Relancer 2 jours après un devis accepté »)"
+                  value={aiDraft.nom}
+                  onChange={(e) => setAiDraft((d) => ({ ...d, nom: e.target.value }))} />
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  <div className="min-w-[180px] flex-1">
+                    <Select value={aiDraft.trigger_type}
+                      onValueChange={(v) => setAiDraft((d) => ({ ...d, trigger_type: v }))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {TRIGGERS.map((t) => (
+                          <SelectItem key={t.key} value={t.key}>{t.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="min-w-[180px] flex-1">
+                    <Select value={aiDraft.action_type}
+                      onValueChange={(v) => setAiDraft((d) => ({ ...d, action_type: v }))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {ACTIONS.map((a) => (
+                          <SelectItem key={a.key} value={a.key}>{a.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  <Textarea className="min-w-[160px] flex-1 font-mono text-xs" rows={2}
+                    placeholder='Config déclencheur (JSON, optionnel)'
+                    value={aiDraft.trigger_config}
+                    onChange={(e) => setAiDraft((d) => ({ ...d, trigger_config: e.target.value }))} />
+                  <Textarea className="min-w-[160px] flex-1 font-mono text-xs" rows={2}
+                    placeholder='Config action (JSON, optionnel)'
+                    value={aiDraft.action_config}
+                    onChange={(e) => setAiDraft((d) => ({ ...d, action_config: e.target.value }))} />
+                </div>
+                {aiDraftError && (
+                  <p className="mt-1.5 text-xs text-destructive">{aiDraftError}</p>
+                )}
+                {aiDraftResult && (
+                  <p className="mt-1.5 text-xs text-success">
+                    Brouillon « {aiDraftResult.nom} » créé, désactivé — activez-le
+                    dans la liste ci-dessus pour le confirmer.
+                  </p>
+                )}
+                <div className="mt-1.5 flex items-center gap-2">
+                  <Button type="button" onClick={proposeAiDraft} disabled={aiDraftBusy}>
+                    {aiDraftBusy ? 'Génération…' : 'Proposer le brouillon'}
+                  </Button>
+                  <Button type="button" variant="outline" onClick={resetAiDraft} disabled={aiDraftBusy}>
+                    Réinitialiser
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* ── FG3 : Créer depuis un modèle ── */}
