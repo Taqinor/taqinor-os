@@ -38,8 +38,12 @@ class RoundRobinOffByDefaultTests(TestCase):
     def setUp(self):
         self.company = Company.objects.create(
             nom='Taqinor XSAL11 Off', slug='taqinor-xsal11-off')
+        # OFF path falls back to QW6's pick_round_robin_owner(), which
+        # requires the crm_creer permission (see tests_qw6_speed_to_lead.py)
+        # — not just role__nom='Commercial' like the ON/balanced path.
         self.role = Role.objects.create(
-            company=self.company, nom='Commercial', permissions=['crm_voir'])
+            company=self.company, nom='Commercial',
+            permissions=['crm_creer', 'crm_voir'])
 
     def test_off_responsable_explicite_prime_octet_identique(self):
         explicite = make_commercial(self.company, 'explicite_off', self.role)
