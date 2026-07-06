@@ -92,13 +92,19 @@ class TestCalculForecast(Zstk3Base):
     def test_reservations_chantier_diminuent_le_projete(self):
         from apps.installations.models import Installation, StockReservation
 
-        installation = Installation.objects.create(
+        # Deux chantiers distincts réservent le même produit — une seule
+        # réservation par (installation, produit) est autorisée
+        # (`unique_together`), donc deux réservations sur LE MÊME chantier
+        # ne peuvent pas coexister ; on utilise deux installations.
+        installation1 = Installation.objects.create(
             company=self.company, reference='CH-ZSTK3-0001')
+        installation2 = Installation.objects.create(
+            company=self.company, reference='CH-ZSTK3-0002')
         StockReservation.objects.create(
-            company=self.company, installation=installation,
+            company=self.company, installation=installation1,
             produit=self.produit, quantite=12, active=True, consomme=False)
         StockReservation.objects.create(
-            company=self.company, installation=installation,
+            company=self.company, installation=installation2,
             produit=self.produit, quantite=8, active=True, consomme=False)
         result = forecast_produit(self.company, self.produit)
         self.assertEqual(result['sorties_attendues'], 20)

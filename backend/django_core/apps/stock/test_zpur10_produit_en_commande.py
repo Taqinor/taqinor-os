@@ -161,15 +161,21 @@ class TestImpactReappro(Zpur10Base):
             (b for b in besoins if b['produit_id'] == self.produit.id), None)
         self.assertIsNotNone(entry)
         self.assertEqual(entry['en_commande'], 40)
-        # Net = seuil(100) - disponible(0) - en_commande(40) = 60.
-        self.assertEqual(entry['quantite_suggere'], 60)
+        # FG54 (comportement historique préservé) — sans
+        # `quantite_reappro_cible` explicite, la cible est seuil × 2 = 200 ;
+        # YPROC9 ne déduit que le pipeline déjà en commande : 200 - 40 = 160.
+        self.assertEqual(entry['quantite_suggere'], 160)
 
     def test_reappro_exclut_produit_quand_en_commande_couvre_tout(self):
         from apps.stock.services import produits_a_reapprovisionner
 
+        # `quantite_reappro_cible` explicite (100) — sans elle la cible par
+        # défaut serait seuil × 2 = 200 (FG54, comportement historique).
         self.produit.seuil_alerte = 100
+        self.produit.quantite_reappro_cible = 100
         self.produit.quantite_stock = 0
-        self.produit.save(update_fields=['seuil_alerte', 'quantite_stock'])
+        self.produit.save(update_fields=[
+            'seuil_alerte', 'quantite_reappro_cible', 'quantite_stock'])
         statut_envoye = BonCommandeFournisseur.Statut.ENVOYE
         self._bcf('BCF-ZPUR10-0009', statut_envoye,
                   quantite=100, quantite_recue=0)

@@ -410,24 +410,31 @@ class ProduitSerializer(serializers.ModelSerializer):
         rows = self._breakdown_map().get(obj.id, [])
         return [r for r in rows if r['quantite']]
 
-    def get_quantite_en_commande(self, obj):
-        # ZPUR10 — évite le calcul hors contexte requête (pas de company
-        # connue) ; réutilise le sélecteur YPROC9 (jamais de logique
-        # dupliquée).
+    def _en_commande_map(self):
+        """YOPSB13 — map {produit_id: [sources en-commande]} calculée UNE
+        fois par sérialisation (évite le N+1 ZPUR10 sur la liste produits :
+        `get_quantite_en_commande`/`get_bcf_sources_en_commande` appelaient
+        auparavant un sélecteur PAR produit). Mémoïsée sur l'instance, même
+        pattern que `_reserved_map`/`_breakdown_map` ci-dessus."""
+        cache = getattr(self, '_en_commande_map_cache', None)
+        if cache is not None:
+            return cache
+        from .selectors import bcf_sources_en_commande_map
         request = self.context.get('request')
         company = getattr(getattr(request, 'user', None), 'company', None)
-        if company is None:
-            return 0
-        from .selectors import quantite_en_commande_produit
-        return quantite_en_commande_produit(company, obj.id)
+        cache = bcf_sources_en_commande_map(company) if company is not None \
+            else {}
+        self._en_commande_map_cache = cache
+        return cache
+
+    def get_quantite_en_commande(self, obj):
+        # ZPUR10 — réutilise la même map que `bcf_sources_en_commande`
+        # (jamais de logique dupliquée, jamais de requête par produit).
+        sources = self._en_commande_map().get(obj.id, [])
+        return sum(s['quantite_restante'] for s in sources)
 
     def get_bcf_sources_en_commande(self, obj):
-        request = self.context.get('request')
-        company = getattr(getattr(request, 'user', None), 'company', None)
-        if company is None:
-            return []
-        from .selectors import bcf_sources_en_commande_produit
-        return bcf_sources_en_commande_produit(company, obj.id)
+        return self._en_commande_map().get(obj.id, [])
 
     def get_nb_mouvements(self, obj):
         return getattr(obj, 'nb_mouvements', None)
