@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Link2, FileDown } from 'lucide-react'
 import {
   Card, Button, Spinner, EmptyState, Badge, DataTable, Tabs, TabsList,
-  TabsTrigger, TabsContent,
+  TabsTrigger, TabsContent, toast,
 } from '../../../ui'
 import { formatMAD, formatDate } from '../../../lib/format'
+import { filenameFromResponse } from '../../../utils/downloadBlob'
 import gestionProjetApi from '../../../api/gestionProjetApi'
 import {
   errMessage, StatutRisque, StatutAction, PrioriteAction, StatutLot,
   CATEGORIES_RISQUE, TYPES_DOC,
 } from '../constants'
 import ProjetPicker from '../components/ProjetPicker'
+import RiskHeatmap from '../components/RiskHeatmap'
 
 /* UX42 — Risques, actions & CR : registre des risques, plan d'actions,
    comptes-rendus, documents/commentaires, modèles de projet, sous-traitants &
@@ -26,6 +29,9 @@ export default function RisquesPage() {
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [matrice, setMatrice] = useState(null)
+  const [csatBusy, setCsatBusy] = useState(false)
+  const [pdfBusy, setPdfBusy] = useState(false)
 
   const asList = (r) => (Array.isArray(r.data) ? r.data : r.data?.results ?? [])
 
@@ -35,7 +41,7 @@ export default function RisquesPage() {
     try {
       // Modèles & sous-traitants sont société-scopés (indépendants du projet).
       const params = pid ? { projet: pid } : undefined
-      const [ri, ac, cr, doc, com, mod, st, lo] = await Promise.all([
+      const [ri, ac, cr, doc, com, mod, st, lo, mat] = await Promise.all([
         pid ? gestionProjetApi.getRisques(params) : Promise.resolve({ data: [] }),
         pid ? gestionProjetApi.getActions(params) : Promise.resolve({ data: [] }),
         pid ? gestionProjetApi.getComptesRendus(params) : Promise.resolve({ data: [] }),
@@ -44,12 +50,14 @@ export default function RisquesPage() {
         gestionProjetApi.getModeles(),
         gestionProjetApi.getSousTraitants(),
         pid ? gestionProjetApi.getLotsSousTraitance(params) : Promise.resolve({ data: [] }),
+        pid ? gestionProjetApi.getMatriceRisques(pid).catch(() => ({ data: null })) : Promise.resolve({ data: null }),
       ])
       setState({
         risques: asList(ri), actions: asList(ac), crs: asList(cr),
         documents: asList(doc), commentaires: asList(com), modeles: asList(mod),
         sousTraitants: asList(st), lots: asList(lo),
       })
+      setMatrice(mat.data)
     } catch (err) {
       setError(errMessage(err, 'Chargement impossible.'))
     } finally {
@@ -63,6 +71,46 @@ export default function RisquesPage() {
     return () => { alive = false }
   }, [projetId, load])
 
+  // ZPRJ7 — Lien tokenisé d'évaluation CSAT (idempotent, à envoyer au client
+  // à la clôture du projet). Copié au presse-papier.
+  const copierLienEvaluation = async () => {
+    setCsatBusy(true)
+    try {
+      const res = await gestionProjetApi.getLienEvaluation(projetId)
+      const base = (import.meta.env.VITE_PUBLIC_SITE_URL || 'https://taqinor.ma').replace(/\/+$/, '')
+      const url = `${base}/gestion-projet/portail/evaluation/${res.data.token}/`
+      try { await navigator.clipboard?.writeText(url) } catch { /* presse-papier indispo */ }
+      toast.success('Lien d\'évaluation CSAT copié.')
+    } catch (err) {
+      toast.error(errMessage(err, 'Génération du lien impossible.'))
+    } finally {
+      setCsatBusy(false)
+    }
+  }
+
+  // ZPRJ9 — PDF interne « Point d'avancement projet » (WeasyPrint legacy,
+  // jamais le moteur premium /proposal réservé aux devis client — règle #4).
+  const telechargerRapportPdf = async () => {
+    setPdfBusy(true)
+    try {
+      const res = await gestionProjetApi.getRapportAvancementPdf(projetId)
+      const url = URL.createObjectURL(res.data)
+      const a = document.createElement('a')
+      a.href = url
+      a.target = '_blank'
+      a.rel = 'noopener'
+      a.download = filenameFromResponse(res, `avancement-projet-${projetId}.pdf`)
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      setTimeout(() => URL.revokeObjectURL(url), 10000)
+    } catch (err) {
+      toast.error(errMessage(err, 'Génération du PDF impossible.'))
+    } finally {
+      setPdfBusy(false)
+    }
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -70,7 +118,19 @@ export default function RisquesPage() {
           <h1 className="font-display text-xl font-semibold tracking-tight">Risques, actions & CR</h1>
           <p className="text-sm text-muted-foreground">Registre des risques, plan d'actions, réunions, documents, modèles & sous-traitance.</p>
         </div>
-        <ProjetPicker value={projetId} onChange={setProjetId} />
+        <div className="flex flex-wrap items-end gap-2">
+          <ProjetPicker value={projetId} onChange={setProjetId} />
+          {projetId && (
+            <>
+              <Button size="sm" variant="outline" disabled={csatBusy} onClick={copierLienEvaluation} title="Copier le lien d'évaluation CSAT (ZPRJ7)">
+                <Link2 className="size-3.5" aria-hidden="true" /> Lien CSAT
+              </Button>
+              <Button size="sm" variant="outline" disabled={pdfBusy} onClick={telechargerRapportPdf} title="Télécharger le rapport d'avancement PDF (ZPRJ9)">
+                <FileDown className="size-3.5" aria-hidden="true" /> Rapport PDF
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
       {loading ? (
@@ -81,6 +141,7 @@ export default function RisquesPage() {
         <Tabs defaultValue="risques">
           <TabsList className="flex-wrap">
             <TabsTrigger value="risques">Risques</TabsTrigger>
+            <TabsTrigger value="heatmap">Matrice P × I</TabsTrigger>
             <TabsTrigger value="actions">Actions</TabsTrigger>
             <TabsTrigger value="cr">Comptes-rendus</TabsTrigger>
             <TabsTrigger value="documents">Documents</TabsTrigger>
@@ -105,6 +166,16 @@ export default function RisquesPage() {
                 emptyTitle="Aucun risque"
                 emptyDescription={projetId ? 'Aucun risque enregistré pour ce projet.' : 'Sélectionnez un projet.'}
               />
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="heatmap">
+            <Card className="p-4 sm:p-5">
+              {!projetId ? (
+                <EmptyState title="Aucun projet sélectionné" description="Choisissez un projet pour afficher sa matrice des risques." />
+              ) : (
+                <RiskHeatmap grille={matrice?.grille ?? []} topRisques={matrice?.top_risques ?? []} />
+              )}
             </Card>
           </TabsContent>
 
