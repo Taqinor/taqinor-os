@@ -122,6 +122,11 @@ const crmApi = {
 
   // ZSAL3 — Tableau de bord « Mes équipes ».
   getEquipesStatistiques: () => api.get('/crm/equipes/statistiques/'),
+  // ZSAL3 — Équipes commerciales (admin CRUD, Paramètres → CRM).
+  getEquipes: (params) => api.get('/crm/equipes/', { params }),
+  saveEquipe: (id, data) =>
+    id ? api.patch(`/crm/equipes/${id}/`, data) : api.post('/crm/equipes/', data),
+  deleteEquipe: (id) => api.delete(`/crm/equipes/${id}/`),
 
   // ZSAL4 — Conversion lead → client explicite (nouveau / lier / aucun).
   convertirLeadEnClient: (leadId, payload) =>

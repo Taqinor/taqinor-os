@@ -7,6 +7,7 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { SectionTitle, Field } from './peComponents'
+import EquipesCommercialesSection from './EquipesCommercialesSection'
 
 // Sentinel pour l'option « aucun » : Radix Select n'autorise pas la valeur ''.
 const NONE = '__none__'
@@ -278,6 +279,9 @@ export default function LeadsSection({
           </div>
         </CardContent>
       </Card>
+
+      {/* ZSAL3 — Équipes commerciales (admin CRUD). */}
+      <EquipesCommercialesSection assignables={assignables} />
     </>
   )
 }
