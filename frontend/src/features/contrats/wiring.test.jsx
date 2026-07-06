@@ -19,9 +19,11 @@ beforeAll(() => {
   }
 })
 
-const changerStatut = vi.fn(() => Promise.resolve({ data: {} }))
-const signer = vi.fn(() => Promise.resolve({ data: { contrat_signe: false } }))
-const createOrdreLocation = vi.fn(() => Promise.resolve({ data: { id: 1 } }))
+const { changerStatut, signer, createOrdreLocation } = vi.hoisted(() => ({
+  changerStatut: vi.fn(() => Promise.resolve({ data: {} })),
+  signer: vi.fn(() => Promise.resolve({ data: { contrat_signe: false } })),
+  createOrdreLocation: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
+}))
 
 vi.mock('../../api/contratsApi', () => {
   const empty = () => Promise.resolve({ data: [] })
@@ -80,7 +82,7 @@ vi.mock('../../api/crmApi', () => ({
 
 import ContratDetail from './ContratDetail'
 import LocationPage from './LocationPage'
-import { StatutLocation, StatutCautionLocation } from './LocationPage'
+import { StatutLocation, StatutCautionLocation } from './locationStatus'
 
 beforeEach(() => { vi.clearAllMocks() })
 

@@ -8,7 +8,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
   Label, Input, Textarea,
 } from '../../ui'
-import { statusPill } from '../../ui/module'
+import { StatutLocation, StatutCautionLocation } from './locationStatus'
 import { formatMAD, formatDate } from '../../lib/format'
 import SimpleTable from './SimpleTable'
 
@@ -22,22 +22,6 @@ import SimpleTable from './SimpleTable'
    cycle, prolonger, écourter — XCTR20), et bons PDF (enlèvement / restitution).
    Aucune donnée de coût interne (prix d'achat / ROI admin) n'apparaît ici.
    ========================================================================== */
-
-// Statuts locaux de l'ordre (OrdreLocation.Statut) — miroir backend.
-export const StatutLocation = statusPill({
-  reservee: { label: 'Réservée', tone: 'info' },
-  enlevee: { label: 'Enlevée', tone: 'success' },
-  retournee: { label: 'Retournée', tone: 'warning' },
-  cloturee: { label: 'Clôturée', tone: 'neutral' },
-  annulee: { label: 'Annulée', tone: 'neutral' },
-})
-
-export const StatutCautionLocation = statusPill({
-  aucune: { label: 'Aucune', tone: 'neutral' },
-  encaissee: { label: 'Encaissée', tone: 'success' },
-  restituee: { label: 'Restituée', tone: 'neutral' },
-  retenue_partielle: { label: 'Retenue', tone: 'warning' },
-})
 
 const listData = (res) => (Array.isArray(res.data) ? res.data : (res.data?.results ?? []))
 const errMsg = (e, fallback) => e?.response?.data?.detail || fallback
