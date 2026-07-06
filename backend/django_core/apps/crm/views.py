@@ -423,6 +423,71 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
     ordering_fields = ['nom', 'date_creation', 'stage', 'score']
     ordering = ['-date_creation']
 
+    def list(self, request, *args, **kwargs):
+        # YOPSB13 — LeadSerializer.get_next_activity() et get_devis() (via
+        # installation_summaries_for_devis) exécutaient chacun 1 requête PAR
+        # LIGNE (N+1 réel : le nombre de requêtes grandissait avec le nombre
+        # de leads — apps/crm/tests_yopsb13_lead_query_budget.py /
+        # tests_perf_n1_leads.py). On précharge ici les deux cartes {lead_id
+        # / devis_id: ...} en UNE SEULE requête chacune, pour TOUTE la page
+        # (après pagination), et on les pose dans le contexte serializer —
+        # le serializer les préfère à son fallback requête-par-ligne.
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        objects = page if page is not None else list(queryset)
+
+        extra_context = {
+            'next_activity_map': self._next_activity_map(objects),
+            'chantier_map': self._chantier_map(objects),
+        }
+        if page is not None:
+            serializer = self.get_serializer(
+                page, many=True, context={
+                    **self.get_serializer_context(), **extra_context})
+            return self.get_paginated_response(serializer.data)
+        serializer = self.get_serializer(
+            objects, many=True, context={
+                **self.get_serializer_context(), **extra_context})
+        return Response(serializer.data)
+
+    @staticmethod
+    def _next_activity_map(leads):
+        """{lead_id: Activity} — l'activité ouverte la plus proche par lead,
+        en UNE requête pour tout le lot (au lieu d'une par lead)."""
+        from django.contrib.contenttypes.models import ContentType
+
+        from apps.records.models import Activity
+
+        ids = [lead.id for lead in leads]
+        if not ids:
+            return {}
+        ct = ContentType.objects.get_for_model(Lead)
+        out = {}
+        acts = (Activity.objects
+                .filter(content_type=ct, object_id__in=ids, done=False,
+                        due_date__isnull=False)
+                .select_related('activity_type')
+                .order_by('object_id', 'due_date'))
+        for act in acts:
+            # order_by garantit due_date croissant par lead — on ne garde
+            # que la PREMIÈRE (la plus proche) rencontrée par lead.
+            out.setdefault(act.object_id, act)
+        return out
+
+    @staticmethod
+    def _chantier_map(leads):
+        """{devis_id: chantier-summary} pour TOUS les devis de TOUS les leads
+        du lot, en UNE requête (au lieu d'une par lead via get_devis)."""
+        from apps.installations.selectors import (
+            installation_summaries_for_devis,
+        )
+        devis_ids = [d.id for lead in leads for d in lead.devis.all()]
+        if not devis_ids:
+            return {}
+        from apps.ventes.models import Devis
+        rows = Devis.objects.filter(id__in=devis_ids)
+        return installation_summaries_for_devis(rows)
+
     def get_queryset(self):
         qs = super().get_queryset()
         # Portée de visibilité (Feature F) : un rôle restreint ne voit que ses
