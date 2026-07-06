@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Segmented } from '../../ui'
+import { Segmented, Button, toast } from '../../ui'
 import { ListShell } from '../../ui/module'
 import flotteApi from '../../api/flotteApi'
 import { formatNumber } from '../../lib/format'
@@ -7,6 +7,7 @@ import { ENERGIES, VEHICULE_STATUTS } from './flotte'
 import { VehiculeStatutPill } from './statusPills'
 import useFlotteResource from './useFlotteResource'
 import VehiculeDetail from './VehiculeDetail'
+import VehiculeCreateDialog from './VehiculeCreateDialog'
 
 /* ============================================================================
    UX16 — Véhicules & engins (`/flotte/vehicules`).
@@ -42,6 +43,7 @@ export default function VehiculesList() {
   const [statut, setStatut] = useState('')
   const [energie, setEnergie] = useState('')
   const [selected, setSelected] = useState(null)
+  const [showCreate, setShowCreate] = useState(false)
 
   const isVeh = parc === 'vehicules'
   const params = useMemo(() => {
@@ -51,11 +53,13 @@ export default function VehiculesList() {
     return p
   }, [statut, energie, isVeh])
 
-  const { data, loading, error } = useFlotteResource(
+  const { data, loading, error, reload } = useFlotteResource(
     isVeh ? flotteApi.vehicules.list : flotteApi.engins.list,
     params,
     [parc],
   )
+  // XFLT12 — catalogue de modèles, pour le pré-remplissage à la création.
+  const { data: modeles } = useFlotteResource(flotteApi.modelesVehicule.list, {})
 
   const vehiculeColumns = useMemo(() => [
     {
@@ -146,12 +150,17 @@ export default function VehiculesList() {
     </div>
   )
 
+  const actions = isVeh
+    ? <Button onClick={() => setShowCreate(true)}>Nouveau véhicule</Button>
+    : undefined
+
   return (
     <div className="page">
       <ListShell
         title="Véhicules & engins"
         subtitle="Parc roulant de l’entreprise — identité, coûts, conformité."
         filters={filters}
+        actions={actions}
         columns={isVeh ? vehiculeColumns : enginColumns}
         rows={data}
         loading={loading}
@@ -168,6 +177,14 @@ export default function VehiculesList() {
         <VehiculeDetail
           vehicule={selected}
           onClose={() => setSelected(null)}
+        />
+      )}
+
+      {showCreate && (
+        <VehiculeCreateDialog
+          modeles={modeles}
+          onClose={() => setShowCreate(false)}
+          onSaved={() => { setShowCreate(false); reload(); toast.success('Véhicule créé.') }}
         />
       )}
     </div>
