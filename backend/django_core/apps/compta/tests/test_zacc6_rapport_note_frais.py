@@ -172,6 +172,7 @@ class TestServices(_Base):
         # Rejeter la note plutôt que la soumettre : le rapport n'a alors
         # aucune note SOUMISE à valider.
         services.soumettre_rapport_note_frais(rapport)
+        self.note1.refresh_from_db()
         services.rejeter_note_frais(self.note1, user=self.admin)
         with self.assertRaises(Exception):
             services.valider_rapport_note_frais(rapport, user=self.admin)
