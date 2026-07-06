@@ -59,6 +59,7 @@ const OmReportPage = lazy(() => import('../pages/monitoring/OmReportPage'))
 const ClientPortalPage = lazy(() => import('../pages/monitoring/ClientPortalPage'))
 const EquipementsPage = lazy(() => import('../pages/sav/EquipementsPage'))
 const TicketsPage = lazy(() => import('../pages/sav/TicketsPage'))
+const WarrantyClaimsPage = lazy(() => import('../pages/sav/WarrantyClaimsPage'))
 const AgentChat = lazy(() => import('../pages/ia/AgentChat'))
 const OcrUpload = lazy(() => import('../pages/ia/OcrUpload'))
 const OcrStockImport = lazy(() => import('../pages/stock/OcrStockImport'))
@@ -240,6 +241,8 @@ const router = createBrowserRouter([
   { path: '/equipements', loader: authLoader, element: <WithLayout><EquipementsPage /></WithLayout> },
   { path: '/sav', loader: authLoader, element: <WithLayout><TicketsPage /></WithLayout> },
   { path: '/sav/contrats', loader: authLoader, element: <WithLayout><ContratsMaintenance /></WithLayout> },
+  // FG83 — réclamations garantie fournisseur (flux RMA).
+  { path: '/sav/warranty-claims', loader: authLoader, element: <WithLayout><WarrantyClaimsPage /></WithLayout> },
 
   // IA
   { path: '/ia/agent', loader: authLoader, element: <WithLayout><AgentChat /></WithLayout> },

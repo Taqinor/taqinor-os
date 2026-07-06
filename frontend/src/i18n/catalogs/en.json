@@ -58,6 +58,7 @@
   "nav.equipements": "Equipment",
   "nav.tickets_sav": "Service tickets",
   "nav.contrats_maintenance": "Maintenance contracts",
+  "nav.warranty_claims": "Supplier warranty claims (RMA)",
   "nav.documents_ged": "Documents (DMS)",
   "nav.ocr": "OCR",
   "nav.agent_ia": "AI agent",

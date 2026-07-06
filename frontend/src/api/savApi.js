@@ -11,6 +11,25 @@ const savApi = {
   // FG290 — registre des garanties par parc (échéancier de fin de garantie).
   getRegistreGaranties: (params) =>
     api.get('/sav/equipements/registre-garanties/', { params }),
+  // XSAV15 — MTBF/MTTR/coût cumulé de CET équipement (coût gated prix_achat_voir côté serveur).
+  getEquipementFiabilite: (id) => api.get(`/sav/equipements/${id}/fiabilite/`),
+  // ZMFG11 — prochaine défaillance estimée (MTBF) + prochain entretien dû.
+  getEquipementEstimations: (id) => api.get(`/sav/equipements/${id}/estimations-maintenance/`),
+  // XSAV16 — journal d'immobilisation (downtime) : GET liste, POST ouvre une fenêtre.
+  getEquipementDowntime: (id) => api.get(`/sav/equipements/${id}/downtime/`),
+  ouvrirEquipementDowntime: (id, body) => api.post(`/sav/equipements/${id}/downtime/`, body ?? {}),
+  cloturerEquipementDowntime: (id, downtimeId, fin) =>
+    api.post(`/sav/equipements/${id}/downtime/${downtimeId}/cloturer/`, fin ? { fin } : {}),
+  // XSAV16 — disponibilité % sur une période (défaut 30 derniers jours).
+  getEquipementDisponibilite: (id, params) =>
+    api.get(`/sav/equipements/${id}/disponibilite/`, { params }),
+  // XSAV17 — relevés compteur (heures/kWh) : GET historique, POST enregistre.
+  getEquipementReleves: (id) => api.get(`/sav/equipements/${id}/releves-compteur/`),
+  addEquipementReleve: (id, body) => api.post(`/sav/equipements/${id}/releves-compteur/`, body),
+  // ZMFG12 — mise au rebut motivée / réactivation (réservé responsable/admin).
+  mettreAuRebutEquipement: (id, motif) =>
+    api.post(`/sav/equipements/${id}/mettre-au-rebut/`, { motif }),
+  reactiverRebutEquipement: (id) => api.post(`/sav/equipements/${id}/reactiver-rebut/`),
 
   // ── Tickets SAV ──
   getTickets: (params) => api.get('/sav/tickets/', { params }),
@@ -83,6 +102,14 @@ const savApi = {
   maintenanceRapportPdf: (id, date) =>
     api.get(`/sav/contrats-maintenance/${id}/rapport-pdf/`,
       { responseType: 'blob', params: date ? { date } : {} }),
+
+  // FG83 — réclamations garantie fournisseur (flux RMA).
+  getWarrantyClaims: (params) => api.get('/sav/warranty-claims/', { params }),
+  getWarrantyClaim: (id) => api.get(`/sav/warranty-claims/${id}/`),
+  saveWarrantyClaim: (id, data) => id
+    ? api.patch(`/sav/warranty-claims/${id}/`, data)
+    : api.post('/sav/warranty-claims/', data),
+  deleteWarrantyClaim: (id) => api.delete(`/sav/warranty-claims/${id}/`),
 }
 
 export default savApi
