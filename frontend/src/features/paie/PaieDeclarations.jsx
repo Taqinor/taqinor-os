@@ -698,7 +698,7 @@ function AvancesTab() {
   const [avances, setAvances] = useState([])
   const [saisies, setSaisies] = useState([])
   const [loading, setLoading] = useState(true)
-  const [busy, setBusy] = useState('')
+  const [, setBusy] = useState('')
   const [lotOuvert, setLotOuvert] = useState(false)
 
   const load = () =>

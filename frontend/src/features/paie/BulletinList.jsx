@@ -30,7 +30,7 @@ export default function BulletinList() {
       .finally(() => alive && setLoading(false))
     return () => { alive = false }
   }
-  useEffect(() => load(), []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => load(), [])
 
   useEffect(() => {
     paieApi.getPeriodes().then((r) => setPeriodes(listOf(r.data))).catch(() => {})
