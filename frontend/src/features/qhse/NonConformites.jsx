@@ -1,14 +1,15 @@
 import { useMemo, useState } from 'react'
 import {
-  Plus, Eye, CheckCircle2, RefreshCw, ClipboardCheck,
+  Plus, Eye, CheckCircle2, RefreshCw, ClipboardCheck, Gavel, Sparkles,
 } from 'lucide-react'
 import qhseApi from '../../api/qhseApi'
 import { ListShell, DetailShell } from '../../ui/module'
 import {
   Button, Badge, Dialog, DialogContent, DialogTitle, Input, Textarea, Label,
-  toast, DefinitionList,
+  toast, DefinitionList, Tabs, TabsList, TabsTrigger, TabsContent,
 } from '../../ui'
 import { FieldSelect } from './QhseForm'
+import { QhseResourceList } from './QhseResourceList'
 import { formatDate } from '../../lib/format'
 import { useQhseList } from './useQhseList'
 import {
@@ -20,17 +21,116 @@ import NcrChatter from './NcrChatter'
 /* ============================================================================
    UX30 — Non-conformités (NCR) & actions correctives/préventives (CAPA).
    ----------------------------------------------------------------------------
-   Deux registres sous onglets :
+   Trois registres sous onglets :
    • NCR : registre + création (dont depuis une réserve de chantier), clôture
-     conditionnée (gate CAPA côté serveur), et détail avec chatter/historique
-     (panneau `activity` de la DetailShell).
+     conditionnée (gate CAPA côté serveur), disposition (XQHS2) et détail avec
+     chatter/historique (panneau `activity` de la DetailShell).
    • CAPA : registre, filtre « en retard », relance en masse, vérification
      d'efficacité.
+   • Dérogations (XQHS2) : acceptations en l'état bornées, liées à une NCR.
    ========================================================================== */
 
 const GRAVITE_OPTS = Object.entries(GRAVITE).map(([value, v]) => ({
   value, label: v.label,
 }))
+
+// XQHS2 — dispositions possibles (miroir de `NonConformite.Disposition`).
+const DISPOSITION_OPTS = [
+  { value: 'rebut', label: 'Rebut' },
+  { value: 'retouche', label: 'Retouche' },
+  { value: 'retour_fournisseur', label: 'Retour fournisseur' },
+  { value: 'accepte_en_etat', label: "Accepté en l'état" },
+  { value: 'tri_recontrole', label: 'Tri / recontrôle' },
+]
+
+function DispositionDialog({ ncr, onClose, onDone }) {
+  const [disposition, setDisposition] = useState('')
+  const [coutDisposition, setCoutDisposition] = useState('')
+  const [fournisseur, setFournisseur] = useState('')
+  const [creerCapaRetouche, setCreerCapaRetouche] = useState(false)
+  const [capaDescription, setCapaDescription] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    if (!disposition) { toast.error('La disposition est requise.'); return }
+    if (disposition === 'retour_fournisseur' && !fournisseur) {
+      toast.error('Le fournisseur est requis pour un retour fournisseur.')
+      return
+    }
+    setSaving(true)
+    try {
+      await qhseApi.nonConformites.poserDisposition(ncr.id, {
+        disposition,
+        cout_disposition: coutDisposition || undefined,
+        fournisseur: fournisseur ? Number(fournisseur) : undefined,
+        creer_capa_retouche: disposition === 'retouche' ? creerCapaRetouche : false,
+        capa_description: capaDescription,
+      })
+      toast.success('Disposition posée.')
+      onDone()
+      onClose()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Disposition impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogTitle>Poser la disposition</DialogTitle>
+        <div className="flex flex-col gap-3">
+          <div>
+            <Label>Disposition</Label>
+            <FieldSelect
+              value={disposition}
+              onValueChange={setDisposition}
+              options={DISPOSITION_OPTS}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Coût interne (optionnel)</Label>
+              <Input value={coutDisposition} onChange={(e) => setCoutDisposition(e.target.value)}
+                inputMode="decimal" />
+            </div>
+            {disposition === 'retour_fournisseur' && (
+              <div>
+                <Label>Fournisseur (id)</Label>
+                <Input value={fournisseur} onChange={(e) => setFournisseur(e.target.value)}
+                  inputMode="numeric" />
+              </div>
+            )}
+          </div>
+          {disposition === 'retouche' && (
+            <div className="flex flex-col gap-2 rounded-md border border-border p-3">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={creerCapaRetouche}
+                  onChange={(e) => setCreerCapaRetouche(e.target.checked)}
+                />
+                Créer une CAPA de retouche
+              </label>
+              {creerCapaRetouche && (
+                <Textarea rows={2} placeholder="Description de l'action de retouche"
+                  value={capaDescription}
+                  onChange={(e) => setCapaDescription(e.target.value)} />
+              )}
+            </div>
+          )}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={onClose}>Annuler</Button>
+            <Button onClick={save} disabled={saving}>
+              {saving ? 'Enregistrement…' : 'Poser la disposition'}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
 
 function NcrCreateDialog({ onClose, onCreated }) {
   const [form, setForm] = useState({
@@ -38,8 +138,42 @@ function NcrCreateDialog({ onClose, onCreated }) {
     reserve: '', chantier_id: '',
   })
   const [saving, setSaving] = useState(false)
+  const [suggesting, setSuggesting] = useState(false)
   const set = (k) => (e) =>
     setForm((f) => ({ ...f, [k]: e?.target ? e.target.value : e }))
+
+  // XQHS25 — assistance IA (key-gated) : suggère la gravité depuis la
+  // description. Toujours une proposition éditable, jamais auto-appliquée
+  // sans passer par ce bouton explicite.
+  async function suggererClassification() {
+    if (!form.description.trim()) {
+      toast.error('Décrivez la non-conformité pour obtenir une suggestion.')
+      return
+    }
+    setSuggesting(true)
+    try {
+      const res = await qhseApi.ia.suggestionClassification({
+        description: form.description,
+      })
+      if (!res.data?.disponible) {
+        toast.error('Assistance IA indisponible (clé non configurée).')
+        return
+      }
+      const suggestion = res.data.suggestion
+      if (!suggestion) {
+        toast.error(res.data.erreur || 'Aucune suggestion.')
+        return
+      }
+      if (suggestion.gravite) {
+        setForm((f) => ({ ...f, gravite: suggestion.gravite }))
+      }
+      toast.success(suggestion.justification || 'Suggestion appliquée.')
+    } catch {
+      toast.error('Assistance IA indisponible.')
+    } finally {
+      setSuggesting(false)
+    }
+  }
 
   async function save() {
     if (!form.titre.trim()) { toast.error('Le titre est requis.'); return }
@@ -82,6 +216,13 @@ function NcrCreateDialog({ onClose, onCreated }) {
           <div>
             <Label>Description</Label>
             <Textarea rows={3} value={form.description} onChange={set('description')} />
+            <Button
+              type="button" size="sm" variant="outline" className="mt-1.5"
+              onClick={suggererClassification} disabled={suggesting}
+            >
+              <Sparkles size={14} />
+              {suggesting ? 'Analyse…' : 'Suggérer la gravité (IA)'}
+            </Button>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -121,6 +262,7 @@ function NcrCreateDialog({ onClose, onCreated }) {
 
 function NcrDetail({ ncr, onBack, onChanged }) {
   const [busy, setBusy] = useState(false)
+  const [posingDisposition, setPosingDisposition] = useState(false)
   async function cloturer() {
     setBusy(true)
     try {
@@ -143,48 +285,68 @@ function NcrDetail({ ncr, onBack, onChanged }) {
     { term: 'Chantier', description: ncr.chantier_id ?? '—' },
     { term: 'Détectée le', description: formatDate(ncr.date_detection) },
     { term: 'Créée le', description: formatDate(ncr.date_creation) },
+    {
+      term: 'Disposition',
+      description: ncr.disposition_display || ncr.disposition || '—',
+    },
   ]
 
   return (
-    <DetailShell
-      title={ncr.titre || ncr.reference || `NCR #${ncr.id}`}
-      status={ncr.statut}
-      statusPill={NcrStatutPill}
-      actions={
-        ncr.statut !== 'cloturee' ? (
-          <Button size="sm" onClick={cloturer} disabled={busy}>
-            <CheckCircle2 size={15} /> Clôturer
-          </Button>
-        ) : null
-      }
-      activity={<NcrChatter ncrId={ncr.id} />}
-      tabs={[
-        {
-          value: 'infos',
-          label: 'Détails',
-          content: (
-            <div className="flex flex-col gap-4">
-              <DefinitionList items={items} />
-              {ncr.description && (
-                <div>
-                  <h4 className="mb-1 text-sm font-semibold">Description</h4>
-                  <p className="whitespace-pre-wrap text-sm text-muted-foreground">
-                    {ncr.description}
-                  </p>
-                </div>
-              )}
-              <button
-                type="button"
-                onClick={onBack}
-                className="self-start text-sm text-muted-foreground hover:text-foreground"
-              >
-                ← Retour au registre
-              </button>
-            </div>
-          ),
-        },
-      ]}
-    />
+    <>
+      <DetailShell
+        title={ncr.titre || ncr.reference || `NCR #${ncr.id}`}
+        status={ncr.statut}
+        statusPill={NcrStatutPill}
+        actions={
+          <div className="flex items-center gap-2">
+            {!ncr.disposition && (
+              <Button size="sm" variant="outline" onClick={() => setPosingDisposition(true)}>
+                <Gavel size={15} /> Poser disposition
+              </Button>
+            )}
+            {ncr.statut !== 'cloturee' && (
+              <Button size="sm" onClick={cloturer} disabled={busy}>
+                <CheckCircle2 size={15} /> Clôturer
+              </Button>
+            )}
+          </div>
+        }
+        activity={<NcrChatter ncrId={ncr.id} />}
+        tabs={[
+          {
+            value: 'infos',
+            label: 'Détails',
+            content: (
+              <div className="flex flex-col gap-4">
+                <DefinitionList items={items} />
+                {ncr.description && (
+                  <div>
+                    <h4 className="mb-1 text-sm font-semibold">Description</h4>
+                    <p className="whitespace-pre-wrap text-sm text-muted-foreground">
+                      {ncr.description}
+                    </p>
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={onBack}
+                  className="self-start text-sm text-muted-foreground hover:text-foreground"
+                >
+                  ← Retour au registre
+                </button>
+              </div>
+            ),
+          },
+        ]}
+      />
+      {posingDisposition && (
+        <DispositionDialog
+          ncr={ncr}
+          onClose={() => setPosingDisposition(false)}
+          onDone={onChanged}
+        />
+      )}
+    </>
   )
 }
 
@@ -397,25 +559,47 @@ function CapaRegister() {
   )
 }
 
+// XQHS2 — Dérogations (acceptations en l'état bornées) liées à une NCR.
+function DerogationsRegister() {
+  const columns = useMemo(() => [
+    { id: 'non_conformite', header: 'NCR', accessor: (r) => r.non_conformite_reference || r.non_conformite },
+    { id: 'motif', header: 'Motif', accessor: (r) => r.motif || '—' },
+    {
+      id: 'date_expiration', header: 'Expire le', width: 130, align: 'right',
+      accessor: (r) => r.date_expiration, cell: (v) => formatDate(v),
+    },
+  ], [])
+  return (
+    <QhseResourceList
+      title="Dérogations"
+      subtitle="Acceptations en l'état bornées, liées à une NCR"
+      fetcher={() => qhseApi.derogations.list()}
+      columns={columns}
+      exportName="qhse-derogations"
+    />
+  )
+}
+
 export default function NonConformites() {
   const [tab, setTab] = useState('ncr')
   return (
     <div className="page flex flex-col gap-4">
-      <div className="flex gap-2">
-        <Button
-          variant={tab === 'ncr' ? 'default' : 'ghost'}
-          onClick={() => setTab('ncr')}
-        >
-          Non-conformités
-        </Button>
-        <Button
-          variant={tab === 'capa' ? 'default' : 'ghost'}
-          onClick={() => setTab('capa')}
-        >
-          CAPA
-        </Button>
-      </div>
-      {tab === 'ncr' ? <NcrRegister /> : <CapaRegister />}
+      <Tabs value={tab} onValueChange={setTab}>
+        <TabsList className="flex-wrap">
+          <TabsTrigger value="ncr">Non-conformités</TabsTrigger>
+          <TabsTrigger value="capa">CAPA</TabsTrigger>
+          <TabsTrigger value="derogations">Dérogations</TabsTrigger>
+        </TabsList>
+        <TabsContent value="ncr" className="mt-4">
+          <NcrRegister />
+        </TabsContent>
+        <TabsContent value="capa" className="mt-4">
+          <CapaRegister />
+        </TabsContent>
+        <TabsContent value="derogations" className="mt-4">
+          <DerogationsRegister />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
