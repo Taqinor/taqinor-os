@@ -700,6 +700,38 @@ export default function DevisGenerator({
   const setLine = (key, k, v) =>
     setLines(ls => ls.map(l => (l._key === key ? { ...l, [k]: v } : l)))
 
+  // XSAL3 — badge « Tarif : <liste> » par ligne, quand le prix résolu vient
+  // d'une liste de prix client (source !== 'standard'). Purement informatif +
+  // pré-remplissage au changement de produit/quantité/client — ne touche
+  // JAMAIS une valeur déjà tapée manuellement par l'utilisateur après coup
+  // (aucun re-snap sur un prix modifié à la main).
+  const [tarifBadges, setTarifBadges] = useState({})
+
+  const refreshTarif = async (key, produitId, quantite) => {
+    if (!produitId) {
+      setTarifBadges(b => { const { [key]: _drop, ...rest } = b; return rest })
+      return
+    }
+    try {
+      const { data } = await ventesApi.getPrixApplicable({
+        produit: produitId,
+        client: clientId || undefined,
+        quantite: quantite || 1,
+      })
+      if (data.source && data.source !== 'standard') {
+        setTarifBadges(b => ({ ...b, [key]: data.liste_nom }))
+        setLines(ls => ls.map(l =>
+          l._key === key ? { ...l, prix_unit_ttc: String(data.prix) } : l))
+      } else {
+        setTarifBadges(b => { const { [key]: _drop, ...rest } = b; return rest })
+      }
+    } catch {
+      // Résolution de prix indisponible : on garde le prix standard déjà posé,
+      // jamais de blocage de la saisie.
+      setTarifBadges(b => { const { [key]: _drop, ...rest } = b; return rest })
+    }
+  }
+
   const onProduitChange = (key, produitId) => {
     const p = produits.find(p => String(p.id) === String(produitId))
     setLines(ls => ls.map(l =>
@@ -713,7 +745,25 @@ export default function DevisGenerator({
           }
         : l
     ))
+    if (p) {
+      const l = lines.find(x => x._key === key)
+      refreshTarif(key, produitId, l?.quantite)
+    }
   }
+
+  // Ré-interroge le tarif applicable quand la quantité change sur une ligne
+  // déjà liée à un produit (paliers XSAL2), ou quand le client change (liste
+  // XSAL1 assignée) — pour toutes les lignes liées à un produit.
+  const onQuantiteChange = (key, quantite) => {
+    setLine(key, 'quantite', quantite)
+    const l = lines.find(x => x._key === key)
+    if (l?.produit) refreshTarif(key, l.produit, quantite)
+  }
+
+  useEffect(() => {
+    lines.forEach(l => { if (l.produit) refreshTarif(l._key, l.produit, l.quantite) })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientId, lines.length])
 
   // QP2 — au blur d'une désignation modifiée (par un rôle autorisé) qui diffère
   // du nom du produit lié, propose les deux options : « renommer ici seulement »
@@ -1971,6 +2021,11 @@ export default function DevisGenerator({
                             typeFilter={classifyProduct(l.designation) || undefined}
                             onProduitCreated={(p) => setProduits(ps => [...ps, p])}
                           />
+                          {tarifBadges[l._key] && (
+                            <span className="mt-0.5 inline-block rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary">
+                              Tarif : {tarifBadges[l._key]}
+                            </span>
+                          )}
                         </td>
                         {multiMode === 'villas' && (
                           <td data-label="Villa">
@@ -1989,7 +2044,7 @@ export default function DevisGenerator({
                         <td data-label="Qté">
                           <input type="number" min="0" step="any"
                                  className="form-control form-control-sm ta-right" value={l.quantite}
-                                 onChange={e => setLine(l._key, 'quantite', e.target.value)} />
+                                 onChange={e => onQuantiteChange(l._key, e.target.value)} />
                         </td>
                         <td data-label="Prix unit. TTC">
                           <input type="number" min="0" step="any"

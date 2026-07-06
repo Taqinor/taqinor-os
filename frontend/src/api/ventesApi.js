@@ -2,20 +2,26 @@ import api from './axios'
 
 const ventesApi = {
   // XSAL3 — résolution de prix (liste client / palier de quantité), lecture
-  // seule, company-scoped. BLOQUÉ : dépend de XSAL1 (`ventes.ListePrix` +
-  // `LignePrixListe` + `Client.liste_prix`) et XSAL2 (`RegleListePrix` +
-  // paliers de quantité) — confirmé absents de `apps/ventes/models.py` (grep
-  // `ListePrix|RegleListePrix` : aucun résultat) : ni le modèle, ni le
-  // service `prix_applicable()`, ni cet endpoint n'existent encore côté
-  // backend. Câblé à l'URL conventionnelle décrite par la tâche
-  // (`GET /ventes/prix-applicable/?produit=&client=&quantite=`) pour que
-  // l'intégration DevisGenerator/ProduitPicker (badge « Tarif : <liste> »,
-  // pré-remplissage, jamais de snap/reject de la saisie manuelle) puisse être
-  // câblée dès que XSAL1/XSAL2 livrent — NE PAS appeler depuis un écran tant
-  // que ce commentaire est présent, ni ajouter de logique de repli locale
-  // (le fallback prix_vente doit rester server-side, jamais deviné ici).
+  // seule, company-scoped (backend `prix_applicable_view`, XSAL1 `ListePrix`
+  // + XSAL2 `RegleListePrix` en place). Renvoie { prix, source, liste_nom } —
+  // le fallback `prix_vente` standard reste calculé côté serveur, jamais
+  // deviné ici.
   getPrixApplicable: ({ produit, client, quantite } = {}) =>
     api.get('/ventes/prix-applicable/', { params: { produit, client, quantite } }),
+
+  // XSAL1-2 — administration des listes de prix (CRUD + lignes/règles).
+  getListesPrix: (params) => api.get('/ventes/listes-prix/', { params }),
+  getListePrix: (id) => api.get(`/ventes/listes-prix/${id}/`),
+  createListePrix: (data) => api.post('/ventes/listes-prix/', data),
+  updateListePrix: (id, data) => api.put(`/ventes/listes-prix/${id}/`, data),
+  patchListePrix: (id, data) => api.patch(`/ventes/listes-prix/${id}/`, data),
+  deleteListePrix: (id) => api.delete(`/ventes/listes-prix/${id}/`),
+  // Upsert (crée ou met à jour) le prix d'un produit dans une liste.
+  setLignePrixListe: (listeId, { produit, prix_unitaire }) =>
+    api.post(`/ventes/listes-prix/${listeId}/lignes/`, { produit, prix_unitaire }),
+  // Ajoute une règle de prix / palier de quantité à une liste.
+  addRegleListePrix: (listeId, data) =>
+    api.post(`/ventes/listes-prix/${listeId}/regles/`, data),
 
   // Devis
   getDevis: (params) => api.get('/ventes/devis/', { params }),
@@ -80,8 +86,12 @@ const ventesApi = {
   patchBonCommande: (id, data) => api.patch(`/ventes/bons-commande/${id}/`, data),
   confirmerBC: (id) => api.post(`/ventes/bons-commande/${id}/confirmer/`),
   marquerLivreBC: (id) => api.post(`/ventes/bons-commande/${id}/marquer-livre/`),
+  // XSAL12 — livraison partielle : { lignes: [{ligne_devis, quantite}], date_livraison?, note? }.
+  livrerPartielBC: (id, data) => api.post(`/ventes/bons-commande/${id}/livrer-partiel/`, data),
   annulerBC: (id) => api.post(`/ventes/bons-commande/${id}/annuler/`),
   creerFactureBC: (id) => api.post(`/ventes/bons-commande/${id}/creer-facture/`),
+  // ZSAL8 — PDF imprimable du bon de commande (blob, aperçu/téléchargement inline).
+  getBonCommandePdf: (id) => api.get(`/ventes/bons-commande/${id}/pdf/`, { responseType: 'blob' }),
 
   // Factures
   getFactures: (params) => api.get('/ventes/factures/', { params }),
