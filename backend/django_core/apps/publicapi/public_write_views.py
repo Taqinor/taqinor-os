@@ -8,6 +8,7 @@ TOUJOURS par `apps.crm.services` (jamais par ses models/views directement),
 comme l'exige la frontière inter-app cross-domaine."""
 from rest_framework import status
 from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -21,8 +22,18 @@ from .public_serializers import PublicLeadSerializer
 
 class PublicWriteAPIView(APIView):
     """Base commune : auth par clé d'API, throttle par clé, scope requis
-    déclaré par la sous-classe (`required_scope`), idempotence optionnelle."""
+    déclaré par la sous-classe (`required_scope`), idempotence optionnelle.
+
+    ``permission_classes`` est explicitement ``[AllowAny]`` : le projet a pour
+    permission DRF par défaut ``IsAuthenticated`` (qui exige un utilisateur de
+    session) — or l'API publique authentifie par clé d'API, jamais par
+    session (``ApiKeyUser.is_authenticated`` est toujours ``False``). Sans ce
+    override, ``super().check_permissions`` rejetterait TOUJOURS avec 403,
+    avant même que le contrôle de scope ci-dessous ne s'exécute. Le contrôle
+    d'accès réel est le scope check explicite plus bas (parallèle à
+    ``HasApiScope`` sur ``PublicReadOnlyViewSet`` côté lecture)."""
     authentication_classes = [ApiKeyAuthentication]
+    permission_classes = [AllowAny]
     throttle_classes = [ApiKeyRateThrottle]
     required_scope = None
     endpoint_name = None  # identifiant stable pour le scope d'idempotence
