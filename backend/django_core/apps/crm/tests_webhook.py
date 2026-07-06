@@ -2,7 +2,7 @@
 
 import json
 
-from django.test import TestCase, override_settings
+from django.test import TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 
 from authentication.models import Company
@@ -558,8 +558,15 @@ class QW9ReplayFreshnessTests(TestCase):
 
 
 @override_settings(WEBSITE_LEAD_WEBHOOK_SECRET=SECRET)
-class QW10IndexedDedupAndConcurrencyTests(TestCase):
-    """QW10 — dédup indexée + garde concurrente via idempotencyKey."""
+class QW10IndexedDedupAndConcurrencyTests(TransactionTestCase):
+    """QW10 — dédup indexée + garde concurrente via idempotencyKey.
+
+    TransactionTestCase (not TestCase): the concurrency test spawns real
+    threads that INSERT a Lead on their own DB connection. Under TestCase the
+    setUp company lives in an uncommitted transaction the thread cannot see, so
+    the thread's FK INSERT blocks on it while the main thread blocks on join()
+    -> deadlock (the CI backend-tests hang). Committing per-test fixes it.
+    """
 
     def setUp(self):
         self.company = Company.objects.create(nom='Taqinor Test QW10', slug='taqinor-test-qw10')
