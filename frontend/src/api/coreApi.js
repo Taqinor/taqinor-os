@@ -59,6 +59,25 @@ const coreApi = {
     updateLayout: (id, layout) =>
       api.patch(`/core/dashboards/${id}/`, { layout }),
   },
+
+  // XPLT10 — partage de dashboard : lien public tokenisé (créer/révoquer) +
+  // mode TV (rotation plein écran des dashboards société/partagés).
+  dashboardsPartages: {
+    list: () => api.get('/core/dashboards-partages/'),
+    create: (dashboardId, expiresAt) =>
+      api.post('/core/dashboards-partages/', {
+        dashboard: dashboardId, expires_at: expiresAt || null,
+      }),
+    // Révoquer = kill-switch (`actif=False`), jamais une suppression physique.
+    revoke: (id) => api.patch(`/core/dashboards-partages/${id}/`, { actif: false }),
+    remove: (id) => api.delete(`/core/dashboards-partages/${id}/`),
+    // Accès public (sans session) via le seul jeton — utilisé par une page
+    // publique dédiée si besoin ; le kiosque TV authentifié utilise `tv()`.
+    getPublic: (token) => api.get(`/core/dashboards-partages/public/${token}/`),
+  },
+  dashboardsTv: {
+    list: () => api.get('/core/dashboards-tv/'),
+  },
 }
 
 export default coreApi

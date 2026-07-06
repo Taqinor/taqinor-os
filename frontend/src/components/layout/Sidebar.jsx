@@ -6,7 +6,7 @@ import {
   UserPlus, ShoppingCart, Receipt, FileMinus, Wallet, CalendarClock,
   CalendarDays, HardHat, Wrench, Cpu, BarChart3, Search, Bot, UserCog, Shield,
   ScrollText, Settings, DownloadCloud, LogOut, ChevronLeft, ChevronRight, Key,
-  Briefcase, User as UserIcon, FolderOpen,
+  Briefcase, User as UserIcon, FolderOpen, Inbox, AlertTriangle, Tv,
 } from 'lucide-react'
 import { logoutUser } from '../../features/auth/store/authSlice'
 // UX1 — Sections de navigation des modules « coquille », enregistrées par
@@ -78,6 +78,9 @@ const I = {
   export:       mk(DownloadCloud),
   cpu:          mk(Cpu),
   documents:    mk(FolderOpen),
+  approbations: mk(Inbox),
+  alertes_kpi:  mk(AlertTriangle),
+  dashboards_tv: mk(Tv),
 }
 
 const ROLE_META = {
@@ -181,6 +184,21 @@ const NAV_SECTIONS = [
       { to: '/rapports',             label: 'Rapports',         k: 'nav.rapports',   icon: I.reporting,    roles: ['responsable','admin'] },
       { to: '/reporting/balance-agee', label: 'Balance âgée',   k: 'nav.balance_agee', icon: I.reporting,  roles: ['responsable','admin'] },
       { to: '/reporting/commercial', label: 'Tableau commercial', k: 'nav.tableau_commercial', icon: I.reporting, roles: ['responsable','admin'] },
+      // XKB1/ZCTR7-9 — boîte d'approbations centralisée, ouverte à tout rôle
+      // (chacun peut avoir des demandes en attente sur son périmètre).
+      { to: '/approbations',         label: 'Approbations',     k: 'nav.approbations', icon: I.approbations, roles: ['normal','responsable','admin'] },
+      // XPLT22 — classeurs (mini-tableurs BI avec données live).
+      { to: '/reporting/classeurs',  label: 'Classeurs',        k: 'nav.classeurs',  icon: I.reporting,    roles: ['responsable','admin'] },
+      // XSAV8 — conformité SLA + KPI SAV avancés.
+      { to: '/reporting/sav-sla',    label: 'SLA SAV',          k: 'nav.sav_sla',    icon: I.reporting,    roles: ['responsable','admin'] },
+      // XFSM16 — analytics field service consolidés (FTF, MTTR, ponctualité…).
+      { to: '/reporting/field-service', label: 'Analytics terrain', k: 'nav.field_service', icon: I.reporting, roles: ['responsable','admin'] },
+      // XFSM17 — scorecard coaching par technicien vs moyenne équipe.
+      { to: '/reporting/scorecard-technicien', label: 'Scorecard technicien', k: 'nav.scorecard_technicien', icon: I.reporting, roles: ['responsable','admin'] },
+      // XPLT10 — kiosque TV plein écran des dashboards partagés.
+      { to: '/dashboards-tv',        label: 'Dashboards TV',    k: 'nav.dashboards_tv', icon: I.dashboards_tv, roles: ['responsable','admin'] },
+      // XPLT10 — gestion des liens de partage (créer/révoquer).
+      { to: '/reporting/dashboards/partage', label: 'Partage de dashboards', k: 'nav.dashboards_partage', icon: I.reporting, roles: ['responsable','admin'] },
     ],
   },
   {
@@ -195,6 +213,8 @@ const NAV_SECTIONS = [
       // N97 — export configurable & sauvegarde : réservé à l'administrateur
       // (l'endpoint backend exige le rôle admin).
       { to: '/parametres/export',    label: 'Export / Sauvegarde', k: 'nav.export_sauvegarde', icon: I.export, roles: ['admin'] },
+      // XPLT6 — CRUD des alertes de seuil sur KPI agrégés.
+      { to: '/parametres/alertes-kpi', label: 'Alertes KPI',    k: 'nav.alertes_kpi', icon: I.alertes_kpi, roles: ['responsable','admin'] },
     ],
   },
 ]
