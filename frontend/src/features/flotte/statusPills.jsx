@@ -34,6 +34,9 @@ export const EntretienStatutPill = statusPill({
 
 export const OrStatutPill = statusPill({
   ouvert: { label: 'Ouvert', tone: 'warning' },
+  // XFLT19 — chaîne d'approbation des devis de réparation externe.
+  devis_recu: { label: 'Devis reçu', tone: 'info' },
+  approuve: { label: 'Approuvé', tone: 'info' },
   en_cours: { label: 'En cours', tone: 'info' },
   cloture: { label: 'Clôturé', tone: 'success' },
 })
@@ -66,4 +69,18 @@ export const DemandeStatutPill = statusPill({
   approuvee: { label: 'Approuvée', tone: 'success' },
   refusee: { label: 'Refusée', tone: 'danger' },
   annulee: { label: 'Annulée', tone: 'neutral' },
+})
+
+// XFLT5 — signalements d'anomalie véhicule (conducteur → OR).
+export const SignalementStatutPill = statusPill({
+  ouvert: { label: 'Ouvert', tone: 'warning' },
+  en_cours: { label: 'En cours', tone: 'info' },
+  resolu: { label: 'Résolu', tone: 'success' },
+  clos: { label: 'Clos', tone: 'neutral' },
+})
+
+export const SignalementGravitePill = statusPill({
+  faible: { label: 'Faible', tone: 'neutral' },
+  moyenne: { label: 'Moyenne', tone: 'warning' },
+  critique: { label: 'Critique', tone: 'danger' },
 })
