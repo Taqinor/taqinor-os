@@ -32,6 +32,8 @@ export default function ReclamationEditor({ reclamation, onCancel, onSaved }) {
     concurrent_nom: reclamation?.concurrent_nom ?? '',
     concurrent_prix: reclamation?.concurrent_prix ?? '',
     motif_perte: reclamation?.motif_perte ?? '',
+    ncr_id: reclamation?.ncr_id ?? '',
+    audit_id: reclamation?.audit_id ?? '',
   })
   const [saving, setSaving] = useState(false)
 
@@ -49,6 +51,8 @@ export default function ReclamationEditor({ reclamation, onCancel, onSaved }) {
         ...form,
         montant_conteste: form.montant_conteste === '' ? 0 : form.montant_conteste,
         concurrent_prix: form.concurrent_prix === '' ? null : form.concurrent_prix,
+        ncr_id: form.ncr_id === '' ? null : form.ncr_id,
+        audit_id: form.audit_id === '' ? null : form.audit_id,
       }
       const saved = isEdit
         ? (await litigesApi.update(reclamation.id, payload)).data
@@ -158,6 +162,32 @@ export default function ReclamationEditor({ reclamation, onCancel, onSaved }) {
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="lit-motif">Motif de la perte</Label>
             <Input id="lit-motif" value={form.motif_perte} onChange={set('motif_perte')} />
+          </div>
+        </fieldset>
+
+        <fieldset className="grid gap-4 rounded-lg border border-border p-4 sm:grid-cols-2">
+          <legend className="px-1 text-sm font-medium text-muted-foreground">
+            Rattachement QHSE (optionnel)
+          </legend>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="lit-ncr">ID de la NCR liée</Label>
+            <Input
+              id="lit-ncr"
+              type="number"
+              step="1"
+              value={form.ncr_id}
+              onChange={set('ncr_id')}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="lit-audit">ID de l'audit fin de chantier lié</Label>
+            <Input
+              id="lit-audit"
+              type="number"
+              step="1"
+              value={form.audit_id}
+              onChange={set('audit_id')}
+            />
           </div>
         </fieldset>
 
