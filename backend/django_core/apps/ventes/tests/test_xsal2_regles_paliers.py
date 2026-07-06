@@ -129,8 +129,8 @@ class TestReglesViewSetAction(TestCase):
                 'type_regle': RegleListePrix.TypeRegle.REMISE_PCT,
                 'valeur': '8',
                 'quantite_min': '5',
-            })
-        self.assertEqual(resp.status_code, 201)
+            }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
         self.assertTrue(
             RegleListePrix.objects.filter(liste=self.liste, produit=self.produit).exists())
 
