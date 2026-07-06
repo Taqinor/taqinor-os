@@ -6067,14 +6067,15 @@ def brevo_actif():
 
 # ── XMKT7 — Planification, throttling et fenêtres de silence d'envoi ───────
 
-def _hors_fenetre_silence(company):
-    """XMKT7 — True si l'instant présent tombe dans une fenêtre de silence
-    (nuit ou jour férié/non-ouvré) pour ``company``. Réutilise le selector de
-    ``notifications`` — jamais d'import direct de ses modèles.
+def _hors_fenetre_silence(company, maintenant=None):
+    """XMKT7 — True si ``maintenant`` (par défaut l'instant présent) tombe
+    dans une fenêtre de silence (nuit ou jour férié/non-ouvré) pour
+    ``company``. Réutilise le selector de ``notifications`` — jamais
+    d'import direct de ses modèles.
     """
     from apps.notifications import selectors as notifications_selectors
     return notifications_selectors.est_hors_fenetre_silence(
-        timezone.now(), company)
+        maintenant or timezone.now(), company)
 
 
 def _plafond_pression_atteint(company, destinataire):
@@ -6440,6 +6441,7 @@ def envoyer_campagne(campagne, *, destinataires=None):
     """
     if campagne.statut not in (Campagne.Statut.BROUILLON, Campagne.Statut.EN_FILE):
         return campagne
+    statut_avant = campagne.statut
     campagne.statut = Campagne.Statut.ENVOI_EN_COURS
     campagne.save(update_fields=['statut'])
     brutes = list(destinataires or [])
@@ -6451,9 +6453,13 @@ def envoyer_campagne(campagne, *, destinataires=None):
     # XMKT7 — fenêtre de silence : un SMS/WhatsApp ne part jamais la nuit ni
     # un jour férié/non-ouvré (email non concerné par la fenêtre horaire).
     if campagne.canal in ('sms', 'whatsapp') and _hors_fenetre_silence(campagne.company):
-        # ZMKT1 — repasse en_file (jamais coincée en envoi_en_cours) : le
-        # prochain passage beat retentera l'envoi hors fenêtre de silence.
-        campagne.statut = Campagne.Statut.EN_FILE
+        # ZMKT1 — repasse à son statut d'avant l'envoi (jamais coincée en
+        # envoi_en_cours) : un ``en_file`` reste en_file (le prochain passage
+        # beat retentera), un ``brouillon`` envoyé directement hors fenêtre
+        # redevient brouillon (aucun envoi planifié n'a été créé ici — le
+        # forcer en_file le ferait ré-essayer tout seul via le beat sans
+        # qu'aucune planification n'ait été demandée).
+        campagne.statut = statut_avant
         campagne.save(update_fields=['statut'])
         return campagne
 
@@ -7755,7 +7761,7 @@ def _executer_action_crm(inscription, etape):
     return 'execute'
 
 
-def _executer_une_etape(inscription, etape):
+def _executer_une_etape(inscription, etape, *, maintenant=None):
     """Exécute (ou planifie, gated) une étape pour une inscription et trace
     le résultat. N'envoie jamais réellement ici : réutilise le comportement
     NO-OP existant des intégrations (FG31 — file de relance manuelle quand
@@ -7765,7 +7771,14 @@ def _executer_une_etape(inscription, etape):
     la condition est vraie au moment dû ; sinon l'``action_alternative``
     (si renseignée) est appliquée à la place. La branche prise est tracée
     sur ``ExecutionEtapeSequence.branche_prise``.
+
+    ``maintenant`` — instant simulé (XMKT7 throttling) : propagé jusqu'à la
+    vérification de fenêtre de silence pour que la décision reste cohérente
+    avec l'instant utilisé par ``executer_etapes_dues`` plutôt que l'horloge
+    réelle (sinon la fenêtre de silence de l'exécution réelle "fuit" dans une
+    exécution simulée à un autre instant).
     """
+    maintenant = maintenant or timezone.now()
     resultat = 'planifie'
     erreur = ''
     canal = etape.canal
@@ -7820,7 +7833,7 @@ def _executer_une_etape(inscription, etape):
                 inscription.company, destinataire, canal=canal):
             motif_rejet = ExecutionEtapeSequence.MotifRejet.SANS_CONSENTEMENT
         elif (canal == EtapeSequence.Canal.WHATSAPP
-                and _hors_fenetre_silence(inscription.company)):
+                and _hors_fenetre_silence(inscription.company, maintenant)):
             motif_rejet = ExecutionEtapeSequence.MotifRejet.HORS_FENETRE
         if motif_rejet:
             return ExecutionEtapeSequence.objects.create(
@@ -8033,7 +8046,8 @@ def executer_etapes_dues(company, *, maintenant=None):
             days=etape.delai_jours)
         if maintenant < echeance:
             continue
-        executions.append(_executer_une_etape(inscription, etape))
+        executions.append(
+            _executer_une_etape(inscription, etape, maintenant=maintenant))
         suivante = inscription.sequence.etapes.filter(
             ordre__gt=etape.ordre).order_by('ordre').first()
         if suivante:
