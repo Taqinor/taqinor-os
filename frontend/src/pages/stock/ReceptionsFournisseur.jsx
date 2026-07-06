@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { PackageCheck, Plus, ReceiptText } from 'lucide-react'
+import { PackageCheck, Plus, ReceiptText, Tags } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import {
   Button, StatusPill, DataTable,
@@ -223,6 +223,7 @@ export function ReceptionDetail({ reception, onClose, onSaved }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [factureInfo, setFactureInfo] = useState(null)
+  const [labelsBusy, setLabelsBusy] = useState(false)
   const lignes = reception?.lignes ?? []
   const isBrouillon = reception?.statut === 'brouillon'
   const isConfirme = reception?.statut === 'confirme'
@@ -265,6 +266,22 @@ export function ReceptionDetail({ reception, onClose, onSaved }) {
     } catch (err) {
       setError(frError(err, 'La facturation de la réception a échoué.'))
     } finally { setBusy(false) }
+  }
+
+  // ZSTK6 — planche d'étiquettes lot/série imprimable : une étiquette par
+  // numéro de série reçu + une par lot renseigné sur cette réception.
+  const aSerieOuLot = lignes.some(
+    (l) => (l.numeros_serie ?? []).length > 0 || l.numero_lot)
+  const imprimerEtiquettes = async () => {
+    setLabelsBusy(true); setError(null)
+    try {
+      const res = await stockApi.receptionEtiquettes(reception.id)
+      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }))
+      window.open(url, '_blank', 'noopener')
+      setTimeout(() => URL.revokeObjectURL(url), 60000)
+    } catch (err) {
+      setError(frError(err, "L'impression des étiquettes a échoué."))
+    } finally { setLabelsBusy(false) }
   }
 
   return (
@@ -333,6 +350,14 @@ export function ReceptionDetail({ reception, onClose, onSaved }) {
             <Button type="button" variant="outline" loading={busy} onClick={facturer}
                     title="Créer une facture fournisseur à partir de cette réception (interne)">
               <ReceiptText /> Facturer cette réception
+            </Button>
+          )}
+          {/* ZSTK6 — étiquettes lot/série imprimables (uniquement si des
+              numéros de série/lot ont été saisis sur cette réception). */}
+          {aSerieOuLot && (
+            <Button type="button" variant="outline" loading={labelsBusy} onClick={imprimerEtiquettes}
+                    title="Imprimer les étiquettes lot/série de cette réception">
+              <Tags /> Étiquettes lot/série
             </Button>
           )}
           <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
