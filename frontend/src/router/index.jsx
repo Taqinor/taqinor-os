@@ -86,6 +86,10 @@ const AgentActions = lazy(() => import('../pages/ia/AgentActions'))
 const UIShowcase = lazy(() => import('../pages/ui/UIShowcase'))
 // XSAL17 — page publique de réservation de visite (placeholder {lien_rdv}).
 const PublicBookingPage = lazy(() => import('../pages/crm/PublicBookingPage'))
+// XSAV19 — page publique « Signaler un problème » via QR équipement.
+const EquipementSignalerPage = lazy(() => import('../pages/sav/EquipementSignalerPage'))
+// XSAV10/FG86 — page publique de suivi client d'un ticket SAV + CSAT.
+const TicketSuiviPage = lazy(() => import('../pages/sav/TicketSuiviPage'))
 const ChatPage = lazy(() => import('../pages/messaging/ChatPage'))
 const DocumentsPage = lazy(() => import('../pages/ged/DocumentsPage'))
 
@@ -173,6 +177,10 @@ const router = createBrowserRouter([
   { path: '/ui', element: <Suspense fallback={<Fallback />}><UIShowcase /></Suspense> },
   // XSAL17 — réservation de visite publique (sans login, sans layout ERP).
   { path: '/rdv/:token', element: <Suspense fallback={<Fallback />}><PublicBookingPage /></Suspense> },
+  // XSAV19 — « Signaler un problème » via QR équipement (sans login, sans layout ERP).
+  { path: '/e/:token', element: <Suspense fallback={<Fallback />}><EquipementSignalerPage /></Suspense> },
+  // XSAV10/FG86 — suivi client d'un ticket SAV + CSAT (sans login, sans layout ERP).
+  { path: '/suivi/:token', element: <Suspense fallback={<Fallback />}><TicketSuiviPage /></Suspense> },
 
   { path: '/dashboard', loader: authLoader, element: <WithLayout><Dashboard /></WithLayout> },
   { path: '/messages', loader: authLoader, element: <WithLayout><ChatPage /></WithLayout> },
