@@ -562,8 +562,12 @@ def ca_devis_factures_par_clients(company, client_ids):
     Renvoie un dict ``{client_id: {'ca_devis': Decimal, 'ca_factures':
     Decimal, 'nb_devis': int, 'nb_factures': int}}`` — un client sans devis/
     facture n'apparaît PAS dans le résultat (l'appelant fournit un défaut à
-    zéro). Lecture seule ; jamais de fuite cross-société (filtré par
-    ``company`` ET ``client_id__in``)."""
+    zéro). Lecture seule ; jamais de fuite cross-société — filtré par
+    ``company`` (le devis/facture) ET ``client__company=company`` (le client
+    lui-même) EN PLUS de ``client_id__in`` : un ``client_id`` d'une AUTRE
+    société ne doit jamais fuiter des chiffres même si (par bug amont ou
+    appel API malveillant) un ``Devis``/``Facture`` avait été mal rattaché à
+    un client d'une société différente de la sienne."""
     from decimal import Decimal
 
     from .models import Devis, Facture
@@ -574,7 +578,8 @@ def ca_devis_factures_par_clients(company, client_ids):
 
     out = {}
     devis_qs = (Devis.objects
-                .filter(company=company, client_id__in=client_ids)
+                .filter(company=company, client_id__in=client_ids,
+                        client__company=company)
                 .exclude(statut=Devis.Statut.REFUSE))
     for devis in devis_qs:
         entry = out.setdefault(devis.client_id, {
@@ -588,7 +593,8 @@ def ca_devis_factures_par_clients(company, client_ids):
         entry['nb_devis'] += 1
 
     facture_qs = (Facture.objects
-                  .filter(company=company, client_id__in=client_ids)
+                  .filter(company=company, client_id__in=client_ids,
+                          client__company=company)
                   .exclude(statut=Facture.Statut.ANNULEE))
     for facture in facture_qs:
         entry = out.setdefault(facture.client_id, {
