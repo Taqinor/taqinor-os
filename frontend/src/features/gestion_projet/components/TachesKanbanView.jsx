@@ -5,6 +5,7 @@ import {
 } from '@dnd-kit/core'
 import { Badge } from '../../../ui'
 import { StatutTache } from '../constants'
+import ChronoButton from './ChronoWidget'
 
 /* XPRJ11 — Vue kanban des Tache par colonne de statut (a_faire/en_cours/
    bloque/termine — statuts PROPRES au module, jamais STAGES.py). Glisser-
@@ -67,6 +68,9 @@ function TacheCard({ tache }) {
       {tache.date_fin_prevue && (
         <div className="mt-1 text-xs text-muted-foreground">Échéance : {tache.date_fin_prevue}</div>
       )}
+      <div className="mt-2" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+        <ChronoButton tache={tache} />
+      </div>
     </div>
   )
 }

@@ -18,6 +18,7 @@ import ClotureDialog from '../components/ClotureDialog'
 import TachesKanbanView from '../components/TachesKanbanView'
 import TachesCalendarView from '../components/TachesCalendarView'
 import SituationsTab from '../components/SituationsTab'
+import { ChronoActifIndicator } from '../components/ChronoWidget'
 
 /* UX38 — Détail projet : entête + statut, transitions GARDÉES (miroir de la
    machine à états serveur), onglets Résumé / Liens / Historique / Clôture. */
@@ -278,6 +279,7 @@ export default function ProjetDetailPage() {
         backTo="/projets"
         actions={(
           <div className="flex flex-wrap items-center gap-2">
+            <ChronoActifIndicator />
             {available.map((t) => (
               <Button
                 key={t.key}
