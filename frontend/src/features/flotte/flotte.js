@@ -14,6 +14,21 @@ export const VEHICULE_STATUTS = {
   actif: 'Actif',
   maintenance: 'En maintenance',
   reforme: 'Réformé',
+  // XFLT4 — cycle de vie complet (acquisition → cession) ; les 3 statuts
+  // historiques ci-dessus restent intacts.
+  commande: 'Commandé',
+  a_vendre: 'À vendre',
+  vendu: 'Vendu',
+}
+
+// XFLT4 — checklist de mise en service (gate du passage commande→actif),
+// miroir de `Vehicule.CHECKLIST_MISE_EN_SERVICE` (jamais renommer/ajouter
+// sans mettre à jour le backend).
+export const CHECKLIST_MISE_EN_SERVICE_ITEMS = {
+  immatriculation_faite: 'Immatriculation faite',
+  plaques: 'Plaques posées',
+  assurance_active: 'Assurance active',
+  carte_grise_recue: 'Carte grise reçue',
 }
 
 export const ENERGIES = {
@@ -50,6 +65,9 @@ export const ENTRETIEN_STATUTS = {
 
 export const OR_STATUTS = {
   ouvert: 'Ouvert',
+  // XFLT19 — chaîne d'approbation des devis de réparation externe.
+  devis_recu: 'Devis reçu',
+  approuve: 'Approuvé',
   en_cours: 'En cours',
   cloture: 'Clôturé',
 }
@@ -121,6 +139,20 @@ export const INFRACTION_TYPES = {
 export const TELEMATIQUE_SOURCES = {
   manuel: 'Saisie manuelle',
   telematique: 'Fournisseur télématique',
+}
+
+// XFLT5 — signalements d'anomalie déposés par un conducteur.
+export const SIGNALEMENT_GRAVITES = {
+  faible: 'Faible',
+  moyenne: 'Moyenne',
+  critique: 'Critique',
+}
+
+export const SIGNALEMENT_STATUTS = {
+  ouvert: 'Ouvert',
+  en_cours: 'En cours',
+  resolu: 'Résolu',
+  clos: 'Clos',
 }
 
 // Options {value,label} pour un <Select> à partir d'un map de choix.

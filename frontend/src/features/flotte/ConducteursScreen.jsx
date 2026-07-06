@@ -1,15 +1,17 @@
-import { useMemo, useState } from 'react'
-import { UserPlus, AlertTriangle } from 'lucide-react'
+import { useCallback, useMemo, useState } from 'react'
+import { UserPlus, AlertTriangle, FileCheck } from 'lucide-react'
 import {
   Button, Badge, Segmented, Tabs, TabsList, TabsTrigger, TabsContent,
   toast,
 } from '../../ui'
 import { ListShell } from '../../ui/module'
 import flotteApi from '../../api/flotteApi'
-import { formatDate, formatPhoneMA } from '../../lib/format'
+import { formatDate, formatDateTime, formatPhoneMA } from '../../lib/format'
 import { daysUntil, urgencyTone } from '../../ui/module'
 import useFlotteResource from './useFlotteResource'
 import AffectationDialog from './AffectationDialog'
+import MasseAffectationDialog from './MasseAffectationDialog'
+import SignatureDialog from './SignatureDialog'
 
 /* ============================================================================
    UX17 — Conducteurs & affectations (`/flotte/conducteurs`).
@@ -106,6 +108,7 @@ function ConducteursTab() {
 
 function AffectationsTab({ conducteurs, vehicules }) {
   const [showForm, setShowForm] = useState(false)
+  const [showMasse, setShowMasse] = useState(false)
   const { data, loading, error, reload } = useFlotteResource(flotteApi.affectations.list, {})
 
   const columns = useMemo(() => [
@@ -138,9 +141,12 @@ function AffectationsTab({ conducteurs, vehicules }) {
   ], [])
 
   const actions = (
-    <Button onClick={() => setShowForm(true)}>
-      <UserPlus /> Nouvelle affectation
-    </Button>
+    <div className="flex items-center gap-2">
+      <Button variant="outline" onClick={() => setShowMasse(true)}>Réaffectation en masse</Button>
+      <Button onClick={() => setShowForm(true)}>
+        <UserPlus /> Nouvelle affectation
+      </Button>
+    </div>
   )
 
   return (
@@ -163,6 +169,14 @@ function AffectationsTab({ conducteurs, vehicules }) {
           vehicules={vehicules}
           onClose={() => setShowForm(false)}
           onSaved={() => { setShowForm(false); reload(); toast.success('Affectation enregistrée.') }}
+        />
+      )}
+      {showMasse && (
+        <MasseAffectationDialog
+          conducteurs={conducteurs}
+          vehicules={vehicules}
+          onClose={() => setShowMasse(false)}
+          onSaved={() => { setShowMasse(false); reload(); toast.success('Réaffectation en masse enregistrée.') }}
         />
       )}
     </>
@@ -195,27 +209,138 @@ function ReservationsTab() {
 }
 
 function EtatsDesLieuxTab() {
-  const { data, loading, error } = useFlotteResource(flotteApi.etatsDesLieux.list, {})
+  const { data, loading, error, reload } = useFlotteResource(flotteApi.etatsDesLieux.list, {})
+  const [signing, setSigning] = useState(null) // { etat, role }
+
   const columns = useMemo(() => [
-    { id: 'vehicule', header: 'Véhicule', width: 180, accessor: (r) => r.vehicule_label || r.vehicule, cell: (v) => v || '—' },
-    { id: 'moment', header: 'Moment', width: 110, accessor: (r) => r.moment_display || r.moment, cell: (v) => v || '—' },
-    { id: 'date_constat', header: 'Date', width: 130, accessor: (r) => r.date_constat, cell: (v) => (v ? formatDate(v) : '—') },
-    { id: 'kilometrage', header: 'Km', align: 'right', numeric: true, width: 110, accessor: (r) => r.kilometrage, cell: (v) => (v != null ? v : '—') },
-    { id: 'etat_general', header: 'État', width: 110, accessor: (r) => r.etat_general_display || r.etat_general, cell: (v) => v || '—' },
-    { id: 'nb_photos', header: 'Photos', align: 'right', numeric: true, width: 90, searchable: false, accessor: (r) => r.nb_photos ?? 0, cell: (v) => v ?? 0 },
+    { id: 'vehicule', header: 'Véhicule', width: 170, accessor: (r) => r.vehicule_label || r.vehicule, cell: (v) => v || '—' },
+    { id: 'moment', header: 'Moment', width: 100, accessor: (r) => r.moment_display || r.moment, cell: (v) => v || '—' },
+    { id: 'date_constat', header: 'Date', width: 120, accessor: (r) => r.date_constat, cell: (v) => (v ? formatDate(v) : '—') },
+    { id: 'kilometrage', header: 'Km', align: 'right', numeric: true, width: 100, accessor: (r) => r.kilometrage, cell: (v) => (v != null ? v : '—') },
+    { id: 'etat_general', header: 'État', width: 100, accessor: (r) => r.etat_general_display || r.etat_general, cell: (v) => v || '—' },
+    { id: 'nb_photos', header: 'Photos', align: 'right', numeric: true, width: 80, searchable: false, accessor: (r) => r.nb_photos ?? 0, cell: (v) => v ?? 0 },
+    {
+      // XFLT17 — état des signatures (loi 53-05, nom saisi + horodatage serveur).
+      id: 'signatures',
+      header: 'Signatures',
+      width: 180,
+      searchable: false,
+      accessor: (r) => `${r.signature_conducteur || ''}|${r.signature_responsable || ''}`,
+      cell: (_v, r) => (
+        <div className="flex flex-col gap-0.5 text-xs">
+          <span className={r.signature_conducteur ? 'text-success' : 'text-muted-foreground'}>
+            Conducteur : {r.signature_conducteur || 'non signé'}
+          </span>
+          <span className={r.signature_responsable ? 'text-success' : 'text-muted-foreground'}>
+            Responsable : {r.signature_responsable || 'non signé'}
+          </span>
+        </div>
+      ),
+    },
   ], [])
+
+  const rowActions = (row) => {
+    const actions = []
+    if (!row.signature_conducteur) {
+      actions.push({ id: 'sign-cond', label: 'Signer (conducteur)', onClick: () => setSigning({ etat: row, role: 'conducteur' }) })
+    }
+    if (!row.signature_responsable) {
+      actions.push({ id: 'sign-resp', label: 'Signer (responsable)', onClick: () => setSigning({ etat: row, role: 'responsable' }) })
+    }
+    return actions
+  }
+
   return (
-    <ListShell
-      title="États des lieux"
-      subtitle="Constats départ / retour avec relevé kilométrique."
-      columns={columns}
-      rows={data}
-      loading={loading}
-      error={error}
-      exportName="etats-des-lieux"
-      emptyTitle="Aucun état des lieux"
-      emptyDescription="Aucun constat enregistré."
-    />
+    <>
+      <ListShell
+        title="États des lieux"
+        subtitle="Constats départ / retour avec relevé kilométrique et e-signature."
+        columns={columns}
+        rows={data}
+        loading={loading}
+        error={error}
+        rowActions={rowActions}
+        exportName="etats-des-lieux"
+        emptyTitle="Aucun état des lieux"
+        emptyDescription="Aucun constat enregistré."
+      />
+      {signing && (
+        <SignatureDialog
+          etat={signing.etat}
+          role={signing.role}
+          onClose={() => setSigning(null)}
+          onSaved={() => { setSigning(null); reload(); toast.success('Signature enregistrée.') }}
+        />
+      )}
+    </>
+  )
+}
+
+function CharteTab({ conducteurs }) {
+  const { data: charte, loading: loadingCharte } = useFlotteResource(flotteApi.chartesVehicule.list, {})
+  const { data: accuses, loading: loadingAccuses, reload } = useFlotteResource(flotteApi.accusesCharte.list, {})
+  const derniere = useMemo(
+    () => [...(charte || [])].sort((a, b) => (b.version || 0) - (a.version || 0))[0] || null,
+    [charte],
+  )
+
+  const accuser = useCallback(async (conducteurId) => {
+    try {
+      await flotteApi.accusesCharte.create({ conducteur: conducteurId })
+      toast.success('Accusé de lecture enregistré.')
+      reload()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'Enregistrement impossible.')
+    }
+  }, [reload])
+
+  const columns = useMemo(() => [
+    { id: 'nom', header: 'Conducteur', width: 200, accessor: (r) => r.nom, cell: (v) => v || '—' },
+    {
+      id: 'accuse',
+      header: 'Charte accusée',
+      width: 220,
+      searchable: false,
+      accessor: (r) => {
+        const acc = (accuses || []).find((a) => a.conducteur === r.id)
+        return acc && derniere && acc.version === derniere.version ? 'à jour' : 'à faire'
+      },
+      cell: (_v, r) => {
+        const acc = (accuses || []).find((a) => a.conducteur === r.id)
+        const aJour = acc && derniere && acc.version === derniere.version
+        if (aJour) {
+          return <Badge tone="success">Accusée le {formatDateTime(acc.date_accuse)}</Badge>
+        }
+        return (
+          <Button size="sm" variant="outline" onClick={() => accuser(r.id)} disabled={!derniere}>
+            Accuser lecture
+          </Button>
+        )
+      },
+    },
+  ], [accuses, derniere, accuser])
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm">
+        <FileCheck className="size-4 text-muted-foreground" aria-hidden="true" />
+        {loadingCharte
+          ? 'Chargement de la charte…'
+          : derniere
+            ? `Charte véhicule en vigueur : version ${derniere.version} (publiée le ${formatDate(derniere.date_publication)}).`
+            : 'Aucune charte véhicule publiée pour cette société.'}
+      </div>
+      <ListShell
+        title="Accusés de lecture"
+        subtitle="Suivi conducteur par conducteur de la charte véhicule en vigueur."
+        columns={columns}
+        rows={conducteurs}
+        loading={loadingAccuses}
+        exportName="charte-accuses"
+        emptyTitle="Aucun conducteur"
+        emptyDescription="Aucun conducteur à suivre."
+      />
+    </div>
   )
 }
 
@@ -234,6 +359,7 @@ export default function ConducteursScreen() {
           <TabsTrigger value="affectations">Affectations</TabsTrigger>
           <TabsTrigger value="reservations">Réservations</TabsTrigger>
           <TabsTrigger value="etats">États des lieux</TabsTrigger>
+          <TabsTrigger value="charte">Charte véhicule</TabsTrigger>
         </TabsList>
         <TabsContent value="conducteurs"><ConducteursTab /></TabsContent>
         <TabsContent value="affectations">
@@ -241,6 +367,7 @@ export default function ConducteursScreen() {
         </TabsContent>
         <TabsContent value="reservations"><ReservationsTab /></TabsContent>
         <TabsContent value="etats"><EtatsDesLieuxTab /></TabsContent>
+        <TabsContent value="charte"><CharteTab conducteurs={conducteurs} /></TabsContent>
       </Tabs>
     </div>
   )
