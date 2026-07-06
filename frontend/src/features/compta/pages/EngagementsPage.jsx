@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useSelector } from 'react-redux'
 import {
   Plus, Unlock, ShieldCheck, TrendingUp, Undo2, Send, CheckCircle2,
@@ -230,7 +230,6 @@ function AvancementPanel() {
     if (sub === 'contrats' && row.statut !== 'cloture') {
       return [{ id: 'constater', label: 'Constater avancement', icon: TrendingUp,
         onClick: () => {
-          // eslint-disable-next-line no-alert -- saisie ponctuelle (module interne)
           const pct = window.prompt('Pourcentage d’avancement constaté (%)')
           if (pct == null) return
           act(() => comptaApi.contratsAvancement.constater(row.id, {

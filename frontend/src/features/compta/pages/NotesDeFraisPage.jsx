@@ -157,7 +157,6 @@ export default function NotesDeFraisPage() {
   }
 
   const rembourserPrompt = (fn) => {
-    // eslint-disable-next-line no-alert -- saisie ponctuelle du compte payeur (module interne)
     const compte = window.prompt(TRESO_ID_HINT)
     if (!compte) return
     act(() => fn({ compte_tresorerie: compte }), 'Remboursement enregistré.')

@@ -114,7 +114,6 @@ export default function ImmobilisationsPage() {
   ], [])
 
   const ceder = async (row) => {
-    // eslint-disable-next-line no-alert -- saisie ponctuelle du prix de cession (module interne)
     const prix = window.prompt('Prix de cession (0 = mise au rebut) :', '0')
     if (prix == null) return
     try {

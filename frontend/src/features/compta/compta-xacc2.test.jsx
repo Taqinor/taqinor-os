@@ -130,7 +130,8 @@ describe('NotesDeFraisPage — rendu smoke (FG135/FG136)', () => {
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Notes de frais & indemnités/ })).toBeInTheDocument()
     })
-    expect(screen.getByText('Notes de frais')).toBeInTheDocument()
+    // Le libellé du 1er onglet apparaît aussi comme titre du ListShell actif — getAllByText.
+    expect(screen.getAllByText('Notes de frais').length).toBeGreaterThan(0)
     expect(screen.getByText('Rapports')).toBeInTheDocument()
     expect(screen.getByText('Barèmes indemnité')).toBeInTheDocument()
   }, 30000)
@@ -143,7 +144,8 @@ describe('EffetsPage — rendu smoke (FG127-134)', () => {
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Effets & règlements fournisseurs/ })).toBeInTheDocument()
     })
-    expect(screen.getByText('Effets à recevoir/payer')).toBeInTheDocument()
+    // Le libellé du 1er onglet apparaît aussi comme titre du ListShell actif — getAllByText.
+    expect(screen.getAllByText('Effets à recevoir/payer').length).toBeGreaterThan(0)
     expect(screen.getByText('Bordereaux de remise')).toBeInTheDocument()
     expect(screen.getByText('Campagnes de règlement')).toBeInTheDocument()
   }, 30000)
@@ -156,7 +158,8 @@ describe('EngagementsPage — rendu smoke (FG145-148/XFAC14/XACC26/COMPTA39)', (
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Engagements & clôtures avancées/ })).toBeInTheDocument()
     })
-    expect(screen.getByText('Retenues de garantie')).toBeInTheDocument()
+    // Le libellé du 1er onglet apparaît aussi comme titre du ListShell actif — getAllByText.
+    expect(screen.getAllByText('Retenues de garantie').length).toBeGreaterThan(0)
     expect(screen.getByText('Compensations AR/AP')).toBeInTheDocument()
     expect(screen.getByText('Piste d’audit')).toBeInTheDocument()
   }, 30000)

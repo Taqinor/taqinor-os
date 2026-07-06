@@ -236,7 +236,6 @@ export function FactureDetail({ facture: factureProp, onClose, onSaved }) {
   // ponctuellement (module interne), puis on route via /compta/.
   const [immobilising, setImmobilising] = useState(false)
   const immobiliser = async () => {
-    // eslint-disable-next-line no-alert -- saisie ponctuelle (module interne)
     const ligneId = window.prompt(
       'ID de la ligne de facture à immobiliser (voir le détail de la facture) :')
     if (!ligneId) return
