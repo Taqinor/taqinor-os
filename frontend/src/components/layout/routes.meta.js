@@ -13,6 +13,7 @@ const BASE_PAGE_TITLES = [
   ['/dashboard', 'Tableau de bord'],
 
   // Stock
+  ['/stock/modeles-bcf', 'Modèles de bon de commande'],
   ['/stock/bons-commande-fournisseur', 'Bons de commande fournisseur'],
   ['/stock/receptions-fournisseur', 'Réceptions fournisseur'],
   ['/stock/factures-fournisseur', 'Factures fournisseur'],
@@ -80,6 +81,7 @@ export const PAGE_TITLES = [...BASE_PAGE_TITLES, ...moduleTitles]
 // qui n'ont pas encore de clés dédiées).
 const TITLE_KEYS = {
   '/dashboard': 'title.dashboard',
+  '/stock/modeles-bcf': 'title.stock.modeles_bcf',
   '/stock/bons-commande-fournisseur': 'title.stock.bons_commande_fournisseur',
   '/stock/receptions-fournisseur': 'title.stock.receptions_fournisseur',
   '/stock/factures-fournisseur': 'title.stock.factures_fournisseur',

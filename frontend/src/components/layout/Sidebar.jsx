@@ -105,6 +105,7 @@ const NAV_SECTIONS = [
       { to: '/stock/fournisseurs',   label: 'Fournisseurs',     k: 'nav.fournisseurs', icon: I.fournisseurs, roles: ['responsable','admin'] },
       { to: '/stock/mouvements',     label: 'Mouvements',       k: 'nav.mouvements', icon: I.mouvements,   roles: ['normal','responsable','admin'] },
       { to: '/stock/bons-commande-fournisseur', label: 'Commandes fournisseur', k: 'nav.commandes_fournisseur', icon: I.cmd_fourn, roles: ['responsable','admin'] },
+      { to: '/stock/modeles-bcf',    label: 'Modèles de commande', k: 'nav.modeles_bcf', icon: I.cmd_fourn,    roles: ['responsable','admin'] },
       { to: '/stock/receptions-fournisseur', label: 'Réceptions fournisseur', k: 'nav.receptions_fournisseur', icon: I.reception, roles: ['responsable','admin'] },
       { to: '/stock/factures-fournisseur', label: 'Factures fournisseur', k: 'nav.factures_fournisseur', icon: I.factures, roles: ['responsable','admin'] },
       { to: '/stock/retours-fournisseur', label: 'Retours fournisseur', k: 'nav.retours_fournisseur', icon: I.retour, roles: ['responsable','admin'] },
