@@ -31,16 +31,18 @@ export default function ListesPrixPage() {
   const [detail, setDetail] = useState(null) // liste ouverte (avec lignes/regles)
   const [produits, setProduits] = useState([])
 
-  const load = () => {
-    setLoading(true)
+  const fetchListes = () =>
     ventesApi.getListesPrix()
       .then(r => setListes(r.data.results ?? r.data))
       .catch(() => setError('Impossible de charger les listes de prix.'))
       .finally(() => setLoading(false))
-  }
+
+  // Rechargement explicite (après création/édition) : ré-affiche le squelette
+  // pendant le refetch, contrairement au chargement initial (déjà `true`).
+  const reload = () => { setLoading(true); fetchListes() }
 
   useEffect(() => {
-    load()
+    fetchListes()
     stockApi.getProduits().then(r => setProduits(r.data.results ?? r.data)).catch(() => {})
   }, [])
 
@@ -101,7 +103,7 @@ export default function ListesPrixPage() {
       {createOpen && (
         <CreateListeDialog
           onClose={() => setCreateOpen(false)}
-          onCreated={() => { setCreateOpen(false); load() }}
+          onCreated={() => { setCreateOpen(false); reload() }}
         />
       )}
 
@@ -110,7 +112,7 @@ export default function ListesPrixPage() {
           liste={detail}
           produits={produits}
           onClose={() => setDetail(null)}
-          onChanged={() => { refreshDetail(detail.id); load() }}
+          onChanged={() => { refreshDetail(detail.id); reload() }}
         />
       )}
     </div>
