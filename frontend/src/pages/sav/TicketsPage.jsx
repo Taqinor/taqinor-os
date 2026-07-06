@@ -19,6 +19,7 @@ import installationsApi from '../../api/installationsApi'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
 import TicketSuiviClientPanel from './TicketSuiviClientPanel'
 import TicketChecklistPanel from './TicketChecklistPanel'
+import TicketAdvancedPanel from './TicketAdvancedPanel'
 import { groupTicketsByDate } from './ticketCalendarUtils'
 import { INTERVENTION_TYPES } from '../../features/installations/statuses'
 import {
@@ -324,6 +325,38 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
       setHistorique((h) => [r.data, ...h])
       setNoteBody('')
     } catch (err) { setActionError(frError(err, "Échec de l'ajout de la note.")) }
+  }
+
+  // XSAV23 — insertion d'une réponse type (macro) depuis TicketAdvancedPanel.
+  const insererMacro = async (reponseTypeId) => {
+    setActionError(null)
+    try {
+      const r = await savApi.noterTicketAvecMacro(id, reponseTypeId)
+      setHistorique((h) => [r.data, ...h])
+      toast.success('Réponse type insérée')
+      await reloadAll()
+    } catch (err) { setActionError(frError(err, "Échec de l'insertion de la réponse type.")) }
+  }
+
+  // XSAV5 — pause/reprise SLA « en attente client ».
+  const [attenteBusy, setAttenteBusy] = useState(false)
+  const mettreEnAttenteClient = async () => {
+    setAttenteBusy(true)
+    try {
+      const r = await savApi.attenteClientTicket(id)
+      setCurrent(r.data)
+      toast.success('Mis en attente client')
+    } catch (err) { setActionError(frError(err, 'Impossible de mettre en attente.')) }
+    finally { setAttenteBusy(false) }
+  }
+  const reprendreApresAttente = async () => {
+    setAttenteBusy(true)
+    try {
+      const r = await savApi.reprendreTicket(id)
+      setCurrent(r.data)
+      toast.success('Reprise après attente client')
+    } catch (err) { setActionError(frError(err, 'Impossible de reprendre.')) }
+    finally { setAttenteBusy(false) }
   }
 
   const addIntervention = async () => {
@@ -689,11 +722,29 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
             ticket={current}
             onUpdated={(t) => { setCurrent(t); loadHistorique(); onSaved?.() }}
           />
+          {/* XSAV5 — pause/reprise SLA « en attente client ». */}
+          <div className="flex items-center gap-2">
+            {current.en_attente_client ? (
+              <Button type="button" size="sm" variant="outline" loading={attenteBusy} onClick={reprendreApresAttente}>
+                Reprendre après attente client
+              </Button>
+            ) : (
+              <Button type="button" size="sm" variant="outline" loading={attenteBusy} onClick={mettreEnAttenteClient}>
+                Mettre en attente client
+              </Button>
+            )}
+          </div>
         </CollapsibleSection>
 
         {/* ── WR11/FG82 — checklist de visite de maintenance ── */}
         <CollapsibleSection icon={ShieldCheck} title="Checklist de maintenance">
           <TicketChecklistPanel ticketId={id} />
+        </CollapsibleSection>
+
+        {/* ── XSAV12/21/27/28, ZSAV8/9 — actions avancées (fusion, similaires,
+             triage IA, macros, prêts équipement, conversion lead, suivre). ── */}
+        <CollapsibleSection icon={Sparkles} title="Actions avancées">
+          <TicketAdvancedPanel ticket={current} onNoteInsert={insererMacro} />
         </CollapsibleSection>
 
         {/* ── Interventions (L313 — repliable) ── */}

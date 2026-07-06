@@ -35,6 +35,11 @@ vi.mock('../../api/savApi', () => ({
       data: { facture_id: 8, facture_reference: 'FACT-SAV-8', couverture: 'facturable' },
     })),
     rapportPdf: vi.fn(() => Promise.resolve({ data: new Blob() })),
+    // XSAV12/21/27/28, ZSAV8/9 — TicketAdvancedPanel (montée dans TicketDetail).
+    getTicketsSimilaires: vi.fn(() => Promise.resolve({ data: { results: [] } })),
+    getTriageIa: vi.fn(() => Promise.resolve({ data: { disponible: false } })),
+    getPretsEquipement: vi.fn(() => Promise.resolve({ data: [] })),
+    getReponsesType: vi.fn(() => Promise.resolve({ data: [] })),
   },
 }))
 

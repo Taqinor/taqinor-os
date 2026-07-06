@@ -39,6 +39,11 @@ const savApi = {
   deleteTicket: (id) => api.delete(`/sav/tickets/${id}/`),
   getTicketHistorique: (id) => api.get(`/sav/tickets/${id}/historique/`),
   noterTicket: (id, body) => api.post(`/sav/tickets/${id}/noter/`, { body }),
+  // XSAV23 — insère une réponse type (macro) en un clic ; body reste
+  // optionnel (le serveur rend la macro s'il est vide).
+  noterTicketAvecMacro: (id, reponseTypeId, body) =>
+    api.post(`/sav/tickets/${id}/noter/`,
+      body ? { reponse_type_id: reponseTypeId, body } : { reponse_type_id: reponseTypeId }),
   annulerTicket: (id, motif) => api.post(`/sav/tickets/${id}/annuler/`, { motif }),
   reactiverTicket: (id) => api.post(`/sav/tickets/${id}/reactiver/`),
   // ZSAV10 — actions groupées atomiques (statut/technicien/priorite/annuler)
