@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react'
-import { Sprout, Plus } from 'lucide-react'
+import { Sprout, Plus, FileSignature, Download } from 'lucide-react'
 import {
   Button, Card, Input, Spinner, EmptyState, Badge, toast,
   Tabs, TabsList, TabsTrigger, TabsContent,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { DataTable } from '../../ui'
 import { formatMAD, formatPercent } from '../../lib/format'
+import { openPdfBlob } from '../../utils/pdfBlob'
 import paieApi from '../../api/paieApi'
 
 /* ============================================================================
@@ -33,11 +36,15 @@ export default function PaieParametres() {
           <TabsTrigger value="bareme">Barème IR</TabsTrigger>
           <TabsTrigger value="rubriques">Rubriques</TabsTrigger>
           <TabsTrigger value="profils">Profils</TabsTrigger>
+          <TabsTrigger value="mutuelle">Mutuelle</TabsTrigger>
+          <TabsTrigger value="simulateur">Simulateur net/brut</TabsTrigger>
         </TabsList>
         <TabsContent value="parametres"><ParametresTab /></TabsContent>
         <TabsContent value="bareme"><BaremeTab /></TabsContent>
         <TabsContent value="rubriques"><RubriquesTab /></TabsContent>
         <TabsContent value="profils"><ProfilsTab /></TabsContent>
+        <TabsContent value="mutuelle"><MutuelleTab /></TabsContent>
+        <TabsContent value="simulateur"><SimulateurTab /></TabsContent>
       </Tabs>
     </div>
   )
@@ -241,13 +248,15 @@ function RubriquesTab() {
 function ProfilsTab() {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
+  const [stcProfil, setStcProfil] = useState(null)
+  const [regimeProfil, setRegimeProfil] = useState(null)
 
-  useEffect(() => {
+  const load = () =>
     paieApi.getProfils()
       .then((r) => setRows(listOf(r.data)))
       .catch(() => toast.error('Chargement des profils impossible.'))
       .finally(() => setLoading(false))
-  }, [])
+  useEffect(() => { load() }, [])
 
   const columns = [
     { id: 'employe', header: 'Employé', accessor: (r) => r.employe_nom || '',
@@ -255,6 +264,10 @@ function ProfilsTab() {
     { id: 'type', header: 'Rémunération', accessor: (r) => r.type_remuneration },
     { id: 'cnss', header: 'N° CNSS', accessor: (r) => r.numero_cnss || '' },
     { id: 'banque', header: 'Banque', accessor: (r) => r.banque || '' },
+    { id: 'regime', header: 'Régime IR', accessor: (r) => r.regime_exoneration,
+      cell: (_v, r) => (r.regime_exoneration && r.regime_exoneration !== 'aucun'
+        ? <Badge tone="info">{r.regime_exoneration}</Badge>
+        : <span className="text-muted-foreground">—</span>) },
     { id: 'actif', header: 'État', accessor: (r) => r.actif,
       cell: (_v, r) => (r.actif
         ? <Badge tone="success">Actif</Badge>
@@ -262,15 +275,394 @@ function ProfilsTab() {
   ]
 
   return (
-    <Card className="p-4 sm:p-5">
-      {loading ? <Loading /> : rows.length === 0 ? (
-        <EmptyState icon={Plus} title="Aucun profil de paie"
-          description="Les profils rattachent chaque employé RH à ses règles de paie (salaire de base sensible, jamais exposé)." />
-      ) : (
-        <DataTable data={rows} columns={columns} searchable
-          exportName="profils-paie" />
+    <>
+      <Card className="p-4 sm:p-5">
+        {loading ? <Loading /> : rows.length === 0 ? (
+          <EmptyState icon={Plus} title="Aucun profil de paie"
+            description="Les profils rattachent chaque employé RH à ses règles de paie (salaire de base sensible, jamais exposé)." />
+        ) : (
+          <DataTable data={rows} columns={columns} searchable
+            exportName="profils-paie"
+            rowActions={(r) => [
+              { id: 'stc', label: 'Solde de tout compte', icon: FileSignature,
+                onClick: () => setStcProfil(r) },
+              { id: 'regime', label: 'Régime d’exonération IR',
+                onClick: () => setRegimeProfil(r) },
+            ]} />
+        )}
+      </Card>
+      {stcProfil && (
+        <StcDialog profil={stcProfil} onClose={() => setStcProfil(null)} />
       )}
-    </Card>
+      {regimeProfil && (
+        <RegimeExonerationDialog profil={regimeProfil}
+          onClose={() => setRegimeProfil(null)}
+          onSaved={load} />
+      )}
+    </>
+  )
+}
+
+/* ── XPAI18 — Régime d'exonération IR (stagiaire/ANAPEC/TAHFIZ) ── */
+function RegimeExonerationDialog({ profil, onClose, onSaved }) {
+  const [regime, setRegime] = useState(profil.regime_exoneration || 'aucun')
+  const [dateDebut, setDateDebut] = useState(profil.regime_date_debut || '')
+  const [dateFin, setDateFin] = useState(profil.regime_date_fin || '')
+  const [plafond, setPlafond] = useState(
+    String(profil.regime_plafond_mensuel ?? '6000'))
+  const [busy, setBusy] = useState(false)
+
+  const enregistrer = async () => {
+    setBusy(true)
+    try {
+      await paieApi.saveProfil(profil.id, {
+        regime_exoneration: regime,
+        regime_date_debut: dateDebut || null,
+        regime_date_fin: dateFin || null,
+        regime_plafond_mensuel: Number(plafond) || 0,
+      })
+      toast.success('Régime d’exonération mis à jour.')
+      onSaved()
+      onClose()
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Enregistrement impossible.')
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            Régime d’exonération IR — {profil.employe_nom || `Profil #${profil.id}`}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-3">
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-muted-foreground">Régime</span>
+            <Select value={regime} onValueChange={setRegime}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="aucun">Aucun</SelectItem>
+                <SelectItem value="stagiaire">Stagiaire</SelectItem>
+                <SelectItem value="anapec">ANAPEC</SelectItem>
+                <SelectItem value="tahfiz">TAHFIZ</SelectItem>
+              </SelectContent>
+            </Select>
+          </label>
+          <div className="flex gap-3">
+            <label className="flex flex-1 flex-col gap-1 text-sm">
+              <span className="text-muted-foreground">Date de début</span>
+              <Input type="date" value={dateDebut || ''}
+                onChange={(e) => setDateDebut(e.target.value)} />
+            </label>
+            <label className="flex flex-1 flex-col gap-1 text-sm">
+              <span className="text-muted-foreground">Date de fin (fenêtre)</span>
+              <Input type="date" value={dateFin || ''}
+                onChange={(e) => setDateFin(e.target.value)} />
+            </label>
+          </div>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-muted-foreground">Plafond mensuel exonéré</span>
+            <Input type="number" step="any" value={plafond}
+              onChange={(e) => setPlafond(e.target.value)} />
+          </label>
+        </div>
+        <DialogFooter>
+          <Button onClick={enregistrer} loading={busy}>Enregistrer</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* ── XPAI1 — Solde de tout compte (STC) ──
+   Génère (ou recalcule tant que non validé) le bulletin de sortie d'un
+   profil sur une période cible, puis propose le reçu PDF. Ne touche à
+   aucun statut RH (le motif de sortie reste piloté côté rh.DossierEmploye). */
+function StcDialog({ profil, onClose }) {
+  const [periodes, setPeriodes] = useState([])
+  const [periodeId, setPeriodeId] = useState('')
+  const [motif, setMotif] = useState('')
+  const [moisPreavis, setMoisPreavis] = useState('1')
+  const [pac, setPac] = useState('0')
+  const [busy, setBusy] = useState(false)
+  const [bulletin, setBulletin] = useState(null)
+
+  useEffect(() => {
+    paieApi.getPeriodes({ ordering: '-annee,-mois' })
+      .then((r) => setPeriodes(listOf(r.data)))
+      .catch(() => toast.error('Chargement des périodes impossible.'))
+  }, [])
+
+  const generer = async () => {
+    if (!periodeId) { toast.error('Choisissez une période.'); return }
+    setBusy(true)
+    try {
+      const { data } = await paieApi.stc(profil.id, {
+        periode: Number(periodeId),
+        motif,
+        mois_preavis: Number(moisPreavis) || 1,
+        personnes_a_charge: Number(pac) || 0,
+      })
+      setBulletin(data)
+      toast.success('Bulletin de solde de tout compte généré.')
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'STC impossible.')
+    } finally { setBusy(false) }
+  }
+
+  const telechargerRecu = async () => {
+    setBusy(true)
+    try {
+      const { data } = await paieApi.stcPdf(profil.id)
+      openPdfBlob(data, `stc_${profil.id}.pdf`)
+    } catch {
+      toast.error('Reçu STC indisponible (moteur de rendu).')
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            Solde de tout compte — {profil.employe_nom || `Profil #${profil.id}`}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-3">
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-muted-foreground">Période de sortie</span>
+            <Select value={periodeId} onValueChange={setPeriodeId}>
+              <SelectTrigger><SelectValue placeholder="Période…" /></SelectTrigger>
+              <SelectContent>
+                {periodes.map((p) => (
+                  <SelectItem key={p.id} value={String(p.id)}>
+                    {p.libelle || `${p.mois}/${p.annee}`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-muted-foreground">Motif (facultatif)</span>
+            <Input value={motif} onChange={(e) => setMotif(e.target.value)}
+              placeholder="Démission, licenciement, fin de CDD…" />
+          </label>
+          <div className="flex gap-3">
+            <label className="flex flex-1 flex-col gap-1 text-sm">
+              <span className="text-muted-foreground">Mois de préavis</span>
+              <Input type="number" step="any" value={moisPreavis}
+                onChange={(e) => setMoisPreavis(e.target.value)} />
+            </label>
+            <label className="flex flex-1 flex-col gap-1 text-sm">
+              <span className="text-muted-foreground">Personnes à charge</span>
+              <Input type="number" step="any" value={pac}
+                onChange={(e) => setPac(e.target.value)} />
+            </label>
+          </div>
+          {bulletin && (
+            <div className="rounded-lg bg-muted/50 p-3 text-sm">
+              Net à payer : <strong>{formatMAD(bulletin.net_a_payer)}</strong>
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          {bulletin && (
+            <Button variant="outline" onClick={telechargerRecu} loading={busy}>
+              <Download size={16} aria-hidden="true" /> Reçu PDF
+            </Button>
+          )}
+          <Button onClick={generer} loading={busy}>
+            <FileSignature size={16} aria-hidden="true" />
+            {bulletin ? 'Recalculer' : 'Générer le STC'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* ── XPAI3 — Mutuelle / prévoyance (régimes + adhésions) ── */
+function MutuelleTab() {
+  const [regimes, setRegimes] = useState([])
+  const [adhesions, setAdhesions] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    Promise.all([paieApi.getRegimesMutuelle(), paieApi.getAdhesionsMutuelle()])
+      .then(([r, a]) => {
+        setRegimes(listOf(r.data))
+        setAdhesions(listOf(a.data))
+      })
+      .catch(() => toast.error('Chargement de la mutuelle impossible.'))
+      .finally(() => setLoading(false))
+  }, [])
+
+  if (loading) return <Card className="p-4"><Loading /></Card>
+
+  const regimeCols = [
+    { id: 'libelle', header: 'Régime', accessor: (r) => r.libelle },
+    { id: 'mode', header: 'Mode', accessor: (r) => r.mode },
+    { id: 'palier', header: 'Palier', accessor: (r) => r.palier || '' },
+    { id: 'sal', header: 'Part salariale', align: 'right',
+      accessor: (r) => Number(r.part_salariale) || 0,
+      cell: (_v, r) => formatMAD(r.part_salariale) },
+    { id: 'pat', header: 'Part patronale', align: 'right',
+      accessor: (r) => Number(r.part_patronale) || 0,
+      cell: (_v, r) => formatMAD(r.part_patronale) },
+    { id: 'actif', header: 'État', accessor: (r) => r.actif,
+      cell: (_v, r) => (r.actif
+        ? <Badge tone="success">Actif</Badge>
+        : <Badge tone="neutral">Inactif</Badge>) },
+  ]
+  const adhesionCols = [
+    { id: 'profil', header: 'Profil', accessor: (r) => r.profil,
+      cell: (_v, r) => `#${r.profil}` },
+    { id: 'regime', header: 'Régime', accessor: (r) => r.regime,
+      cell: (_v, r) => `#${r.regime}` },
+    { id: 'debut', header: 'Depuis', accessor: (r) => r.date_debut || '' },
+    { id: 'actif', header: 'État', accessor: (r) => r.actif,
+      cell: (_v, r) => (r.actif
+        ? <Badge tone="success">Actif</Badge>
+        : <Badge tone="neutral">Inactif</Badge>) },
+  ]
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Card className="p-4 sm:p-5">
+        <h3 className="mb-3 font-display font-semibold">Régimes de mutuelle</h3>
+        {regimes.length === 0 ? (
+          <EmptyState icon={Sprout} title="Aucun régime"
+            description="Configurez les régimes de mutuelle/prévoyance/assurance groupe." />
+        ) : (
+          <DataTable data={regimes} columns={regimeCols}
+            exportName="regimes-mutuelle" />
+        )}
+      </Card>
+      <Card className="p-4 sm:p-5">
+        <h3 className="mb-3 font-display font-semibold">Adhésions</h3>
+        {adhesions.length === 0 ? (
+          <EmptyState icon={Sprout} title="Aucune adhésion" />
+        ) : (
+          <DataTable data={adhesions} columns={adhesionCols}
+            exportName="adhesions-mutuelle" />
+        )}
+      </Card>
+    </div>
+  )
+}
+
+/* ── XPAI16 — Simulateur brut pour net cible (lettres d'offre) ── */
+function SimulateurTab() {
+  const [periodes, setPeriodes] = useState([])
+  const [periodeId, setPeriodeId] = useState('')
+  const [netCible, setNetCible] = useState('')
+  const [pac, setPac] = useState('0')
+  const [affilieCnss, setAffilieCnss] = useState(true)
+  const [affilieAmo, setAffilieAmo] = useState(true)
+  const [affilieCimr, setAffilieCimr] = useState(false)
+  const [tauxCimr, setTauxCimr] = useState('0')
+  const [resultat, setResultat] = useState(null)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    paieApi.getPeriodes({ ordering: '-annee,-mois' })
+      .then((r) => setPeriodes(listOf(r.data)))
+      .catch(() => toast.error('Chargement des périodes impossible.'))
+  }, [])
+
+  const calculer = async () => {
+    if (!periodeId || !netCible) {
+      toast.error('Choisissez une période et un net cible.')
+      return
+    }
+    setBusy(true)
+    try {
+      const { data } = await paieApi.brutPourNet(periodeId, {
+        net_cible: netCible,
+        personnes_a_charge: pac,
+        affilie_cnss: affilieCnss,
+        affilie_amo: affilieAmo,
+        affilie_cimr: affilieCimr,
+        taux_cimr: tauxCimr,
+      })
+      setResultat(data)
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Calcul impossible.')
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Card className="flex flex-col gap-3 p-4 sm:p-5">
+        <p className="text-sm text-muted-foreground">
+          Calcul inverse « brut pour net cible » — utile pour préparer une
+          lettre d’offre. Aucune persistance.
+        </p>
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-muted-foreground">Période (paramètres en vigueur)</span>
+            <Select value={periodeId} onValueChange={setPeriodeId}>
+              <SelectTrigger className="w-56"><SelectValue placeholder="Période…" /></SelectTrigger>
+              <SelectContent>
+                {periodes.map((p) => (
+                  <SelectItem key={p.id} value={String(p.id)}>
+                    {p.libelle || `${p.mois}/${p.annee}`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-muted-foreground">Net cible (MAD)</span>
+            <Input type="number" step="any" value={netCible}
+              onChange={(e) => setNetCible(e.target.value)} className="w-32" />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-muted-foreground">Personnes à charge</span>
+            <Input type="number" step="any" value={pac}
+              onChange={(e) => setPac(e.target.value)} className="w-28" />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-muted-foreground">Taux CIMR</span>
+            <Input type="number" step="any" value={tauxCimr}
+              onChange={(e) => setTauxCimr(e.target.value)} className="w-24" />
+          </label>
+        </div>
+        <div className="flex flex-wrap gap-4 text-sm">
+          <label className="flex items-center gap-1.5">
+            <input type="checkbox" checked={affilieCnss}
+              onChange={(e) => setAffilieCnss(e.target.checked)} /> CNSS
+          </label>
+          <label className="flex items-center gap-1.5">
+            <input type="checkbox" checked={affilieAmo}
+              onChange={(e) => setAffilieAmo(e.target.checked)} /> AMO
+          </label>
+          <label className="flex items-center gap-1.5">
+            <input type="checkbox" checked={affilieCimr}
+              onChange={(e) => setAffilieCimr(e.target.checked)} /> CIMR
+          </label>
+        </div>
+        <div>
+          <Button onClick={calculer} loading={busy}>Calculer</Button>
+        </div>
+      </Card>
+      {resultat && (
+        <Card className="p-4 sm:p-5">
+          <dl className="flex flex-col divide-y divide-border">
+            {Object.entries(resultat).map(([k, v]) => (
+              <div key={k} className="flex items-center justify-between py-2 text-sm">
+                <dt className="text-muted-foreground">{k}</dt>
+                <dd className="tabular-nums">
+                  {typeof v === 'number' ? formatMAD(v) : String(v)}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </Card>
+      )}
+    </div>
   )
 }
 
