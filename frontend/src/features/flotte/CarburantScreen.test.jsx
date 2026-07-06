@@ -1,0 +1,62 @@
+import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+
+/* XFLT25 — codes défaut moteur (DTC) affichés sur les relevés télématiques,
+   et XFLT23 — création d'un plein via le nouveau bouton. */
+
+beforeAll(() => {
+  if (typeof globalThis.ResizeObserver === 'undefined') {
+    globalThis.ResizeObserver = class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+  }
+})
+
+const empty = () => Promise.resolve({ data: [] })
+
+vi.mock('../../api/flotteApi', () => ({
+  default: {
+    pleins: { list: empty, ocr: vi.fn() },
+    cartes: { list: empty },
+    sinistres: { list: empty },
+    infractions: { list: empty },
+    vehicules: { list: () => Promise.resolve({ data: [{ id: 1, immatriculation: '12345-A-6' }] }) },
+    relevesTelematiques: { list: () => Promise.resolve({
+      data: [{ id: 1, actif_label: '12345-A-6', horodatage: '2026-07-01T08:00:00Z', codes_defaut: ['P0300', 'P0171'] }],
+    }) },
+    trajetsTelematiques: { list: empty },
+    trajetsChantier: { list: empty },
+  },
+}))
+
+import CarburantScreen from './CarburantScreen'
+
+beforeEach(() => { vi.clearAllMocks() })
+
+function withProviders(ui) {
+  return render(<ThemeProvider>{ui}</ThemeProvider>)
+}
+
+describe('CarburantScreen — Télématique (XFLT25 DTC)', () => {
+  it('affiche les codes défaut moteur sur les relevés télématiques', async () => {
+    const user = userEvent.setup()
+    withProviders(<CarburantScreen />)
+
+    await user.click(screen.getByRole('tab', { name: 'Télématique' }))
+    await waitFor(() => expect(screen.getByText('P0300, P0171')).toBeInTheDocument())
+  })
+})
+
+describe('CarburantScreen — Carburant (XFLT23 bouton nouveau plein)', () => {
+  it('ouvre le formulaire de nouveau plein', async () => {
+    const user = userEvent.setup()
+    withProviders(<CarburantScreen />)
+
+    await user.click(screen.getByRole('button', { name: 'Nouveau plein' }))
+    expect(screen.getByRole('heading', { name: 'Nouveau plein' })).toBeInTheDocument()
+  })
+})

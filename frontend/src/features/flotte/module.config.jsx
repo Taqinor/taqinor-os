@@ -3,7 +3,9 @@
    `router/moduleRoutes.jsx` via glob : ce n'est pas un module de composants, le
    fast-refresh ne s'y applique pas (même dérogation que `moduleRoutes.jsx`). */
 import { lazy } from 'react'
-import { Truck, Users, Wrench, ShieldCheck, Fuel, LineChart, ClipboardCheck } from 'lucide-react'
+import {
+  Truck, Users, Wrench, ShieldCheck, Fuel, LineChart, ClipboardCheck, MapPin,
+} from 'lucide-react'
 
 /* ============================================================================
    FLOTTE (UX15–UX20) — configuration du module « Flotte » (auto-enregistrée).
@@ -22,6 +24,7 @@ const ConformiteScreen = lazy(() => import('./ConformiteScreen'))
 const CarburantScreen = lazy(() => import('./CarburantScreen'))
 const AnalyseCoutsScreen = lazy(() => import('./AnalyseCoutsScreen'))
 const InspectionsScreen = lazy(() => import('./InspectionsScreen'))
+const ZonesRappelsScreen = lazy(() => import('./ZonesRappelsScreen'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -39,6 +42,7 @@ const config = {
       { to: '/flotte/carburant', label: 'Carburant & télématique', icon: <Fuel size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/flotte/analyse-couts', label: 'Analyse des coûts', icon: <LineChart size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/flotte/inspections', label: 'Inspections', icon: <ClipboardCheck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/flotte/zones-rappels', label: 'Zones & rappels', icon: <MapPin size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
     ],
   },
   // routes.meta — du plus spécifique au plus général (le préfixe /flotte en dernier).
@@ -50,6 +54,7 @@ const config = {
     ['/flotte/carburant', 'Carburant & télématique'],
     ['/flotte/analyse-couts', 'Analyse des coûts'],
     ['/flotte/inspections', 'Inspections'],
+    ['/flotte/zones-rappels', 'Zones & rappels'],
     ['/flotte', 'Flotte'],
   ],
   sectionLabels: { flotte: 'Flotte' },
@@ -62,6 +67,7 @@ const config = {
     { path: '/flotte/carburant', component: CarburantScreen, roles: ROLES },
     { path: '/flotte/analyse-couts', component: AnalyseCoutsScreen, roles: ROLES },
     { path: '/flotte/inspections', component: InspectionsScreen, roles: ROLES },
+    { path: '/flotte/zones-rappels', component: ZonesRappelsScreen, roles: ROLES },
   ],
 }
 

@@ -111,6 +111,15 @@ function TelematiqueTab() {
     { id: 'horodatage', header: 'Horodatage', width: 170, accessor: (r) => r.horodatage, cell: (v) => (v ? formatDateTime(v) : '—') },
     { id: 'odometre', header: 'Odomètre', align: 'right', numeric: true, width: 120, searchable: false, accessor: (r) => r.odometre, cell: (v) => (v != null ? `${formatNumber(v)} km` : '—') },
     { id: 'source', header: 'Source', width: 150, accessor: (r) => r.source_display || TELEMATIQUE_SOURCES[r.source] || r.source, cell: (v) => v || '—' },
+    {
+      // XFLT25 — codes défaut moteur (DTC) remontés par le relevé télématique.
+      id: 'codes_defaut',
+      header: 'Codes défaut (DTC)',
+      width: 180,
+      searchable: false,
+      accessor: (r) => (Array.isArray(r.codes_defaut) ? r.codes_defaut.join(', ') : ''),
+      cell: (v) => (v ? <span className="font-mono text-xs text-warning">{v}</span> : <span className="text-muted-foreground">—</span>),
+    },
   ], [])
   const trajetsCols = useMemo(() => [
     { id: 'actif', header: 'Actif', width: 160, accessor: (r) => r.actif_label, cell: (v) => v || '—' },
