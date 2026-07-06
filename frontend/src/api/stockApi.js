@@ -87,10 +87,34 @@ const stockApi = {
     api.post(`/stock/bons-commande-fournisseur/${id}/envoyer-email/`, payload ?? {}),
   recevoirBcf: (id, receptions) =>
     api.post(`/stock/bons-commande-fournisseur/${id}/recevoir/`, { receptions }),
-  annulerBcf: (id) =>
-    api.post(`/stock/bons-commande-fournisseur/${id}/annuler/`),
+  // ZPUR11 — motif OBLIGATOIRE (le backend refuse un motif vide) ; `rouvrir`
+  // repasse un BCF ANNULE en brouillon (refusé si des réceptions confirmées existent).
+  annulerBcf: (id, motifAnnulation) =>
+    api.post(`/stock/bons-commande-fournisseur/${id}/annuler/`,
+      { motif_annulation: motifAnnulation }),
+  rouvrirBcf: (id) =>
+    api.post(`/stock/bons-commande-fournisseur/${id}/rouvrir/`),
+  // ZPUR4 — clone en nouveau BROUILLON (quantités reçues à zéro).
+  dupliquerBcf: (id) =>
+    api.post(`/stock/bons-commande-fournisseur/${id}/dupliquer/`),
+  // ZPUR6 — fusionne plusieurs BCF BROUILLON du même fournisseur.
+  fusionnerBcf: (ids) =>
+    api.post('/stock/bons-commande-fournisseur/fusionner/', { bons_commande: ids }),
+  // ZPUR1 — facture directement les lignes « sur commande » (sans réception préalable).
+  facturerBcf: (id) =>
+    api.post(`/stock/bons-commande-fournisseur/${id}/facturer/`),
   bcfPdf: (id) =>
     api.get(`/stock/bons-commande-fournisseur/${id}/pdf/`, { responseType: 'blob' }),
+
+  // ZPUR3 — modèles de BCF réutilisables (« purchase templates »).
+  getModelesBcf: (params) => api.get('/stock/modeles-bcf/', { params }),
+  getModeleBcf: (id) => api.get(`/stock/modeles-bcf/${id}/`),
+  createModeleBcf: (data) => api.post('/stock/modeles-bcf/', data),
+  updateModeleBcf: (id, data) => api.patch(`/stock/modeles-bcf/${id}/`, data),
+  deleteModeleBcf: (id) => api.delete(`/stock/modeles-bcf/${id}/`),
+  genererModeleBcf: (id, fournisseurId) =>
+    api.post(`/stock/modeles-bcf/${id}/generer/`,
+      fournisseurId ? { fournisseur: fournisseurId } : {}),
 
   // N20 — Étiquettes QR/CODE128 imprimables pour une sélection de SKU
   // (jeton stable PRODUIT:<id>, jamais de prix d'achat) + résolveur de scan.
@@ -226,6 +250,41 @@ const stockApi = {
   // FG62 — suggestions de réapprovisionnement par emplacement (admin).
   suggestionsReapproEmplacement: () =>
     api.get('/stock/emplacements/suggestions-reappro/'),
+  // ZSTK3 — rapport prévisionnel produit (disponible + entrées/sorties
+  // attendues → solde projeté daté). INTERNE, lecture seule.
+  produitPrevisionnel: (produitId) =>
+    api.get(`/stock/produits/${produitId}/previsionnel/`),
+  // ZSTK7 — « Vue groupée / pivot » : quantités entrées/sorties/nettes
+  // agrégées par produit/type/mois/emplacement.
+  mouvementsAgregation: (params) =>
+    api.get('/stock/mouvements/agregation/', { params }),
+  mouvementsAgregationXlsx: (params) =>
+    api.get('/stock/mouvements/agregation/',
+      { params: { ...params, export: 'xlsx' }, responseType: 'blob' }),
+  // ZSTK6 — planche d'étiquettes lot/série depuis une réception confirmée.
+  receptionEtiquettes: (id, { symbology = 'qr' } = {}) =>
+    api.get(`/stock/receptions-fournisseur/${id}/etiquettes/`,
+      { params: { symbology, sortie: 'pdf' }, responseType: 'blob' }),
+  // ZPUR9 — rapport imprimable « analyse d'achats » (PDF, admin/responsable).
+  analyseAchatsPdf: (params) =>
+    api.get('/stock/produits/analyse-achats/pdf/',
+      { params, responseType: 'blob' }),
+  analyseAchatsXlsx: (params) =>
+    api.get('/stock/produits/analyse-achats/export-xlsx/',
+      { params, responseType: 'blob' }),
+
+  // ZSTK12 — nomenclatures de code-barres (Paramètres) + leurs règles.
+  getNomenclaturesCodeBarres: () => api.get('/stock/nomenclatures-code-barres/'),
+  createNomenclatureCodeBarres: (data) =>
+    api.post('/stock/nomenclatures-code-barres/', data),
+  updateNomenclatureCodeBarres: (id, data) =>
+    api.patch(`/stock/nomenclatures-code-barres/${id}/`, data),
+  deleteNomenclatureCodeBarres: (id) =>
+    api.delete(`/stock/nomenclatures-code-barres/${id}/`),
+  createRegleCodeBarres: (data) => api.post('/stock/regles-code-barres/', data),
+  updateRegleCodeBarres: (id, data) =>
+    api.patch(`/stock/regles-code-barres/${id}/`, data),
+  deleteRegleCodeBarres: (id) => api.delete(`/stock/regles-code-barres/${id}/`),
 
   // WR5 — Opérations stock (admin/INTERNE).
   // FG63 — sessions d'inventaire physique (brouillon → valider / annuler).
