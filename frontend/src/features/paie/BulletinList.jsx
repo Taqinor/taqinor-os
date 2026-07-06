@@ -1,12 +1,16 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FileText, Download } from 'lucide-react'
+import { FileText, Download, XCircle, Printer } from 'lucide-react'
 import { ListShell } from '../../ui/module'
-import { toast } from '../../ui'
+import {
+  toast, Button, Select, SelectTrigger, SelectValue, SelectContent,
+  SelectItem,
+} from '../../ui'
 import { formatMAD } from '../../lib/format'
 import { openPdfBlob } from '../../utils/pdfBlob'
 import paieApi from '../../api/paieApi'
 import { StatutBulletin } from './statuses.jsx'
+import { BULLETIN_STATUTS } from './paieLogic.js'
 
 /* UX11 — Liste des bulletins de paie (aperçu, drill-in vers le détail). */
 export default function BulletinList() {
@@ -14,14 +18,22 @@ export default function BulletinList() {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [periodes, setPeriodes] = useState([])
+  const [periodeImpression, setPeriodeImpression] = useState('')
+  const [busy, setBusy] = useState('')
 
-  useEffect(() => {
+  const load = () => {
     let alive = true
     paieApi.getBulletins()
       .then((r) => alive && setRows(listOf(r.data)))
       .catch(() => alive && setError('Chargement des bulletins impossible.'))
       .finally(() => alive && setLoading(false))
     return () => { alive = false }
+  }
+  useEffect(() => load(), []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    paieApi.getPeriodes().then((r) => setPeriodes(listOf(r.data))).catch(() => {})
   }, [])
 
   const telecharger = async (row) => {
@@ -31,6 +43,32 @@ export default function BulletinList() {
     } catch {
       toast.error('PDF indisponible (moteur de rendu).')
     }
+  }
+
+  // ZPAI4 — annule un bulletin (crée un bulletin d'annulation, à montant
+  // opposé, sans jamais toucher au bulletin d'origine).
+  const annuler = async (row) => {
+    if (!row.periode) return
+    setBusy(`annuler-${row.id}`)
+    try {
+      await paieApi.annulerBulletin(row.id, { periode_cible: row.periode })
+      toast.success('Bulletin d’annulation créé.')
+      load()
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Annulation impossible.')
+    } finally { setBusy('') }
+  }
+
+  // ZPAI5 — impression en lot des bulletins VALIDÉS d'une période.
+  const imprimerLot = async () => {
+    if (!periodeImpression) { toast.error('Choisissez une période.'); return }
+    setBusy('lot')
+    try {
+      const { data } = await paieApi.bulletinsPdf(periodeImpression)
+      openPdfBlob(data, `bulletins_periode_${periodeImpression}.pdf`)
+    } catch {
+      toast.error('Impression en lot indisponible.')
+    } finally { setBusy('') }
   }
 
   const columns = [
@@ -60,11 +98,32 @@ export default function BulletinList() {
       searchable
       exportName="bulletins-paie"
       onRowClick={(r) => navigate(`/paie/bulletins/${r.id}`)}
+      actions={
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={periodeImpression} onValueChange={setPeriodeImpression}>
+            <SelectTrigger className="w-48"><SelectValue placeholder="Période…" /></SelectTrigger>
+            <SelectContent>
+              {periodes.map((p) => (
+                <SelectItem key={p.id} value={String(p.id)}>
+                  {p.libelle || `${p.mois}/${p.annee}`}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button variant="outline" onClick={imprimerLot} loading={busy === 'lot'}>
+            <Printer size={16} aria-hidden="true" /> Imprimer (lot)
+          </Button>
+        </div>
+      }
       rowActions={(r) => [
         { label: 'Ouvrir', icon: FileText,
           onClick: () => navigate(`/paie/bulletins/${r.id}`) },
         { label: 'Télécharger PDF', icon: Download,
           onClick: () => telecharger(r) },
+        ...(r.statut === BULLETIN_STATUTS.VALIDE ? [{
+          label: 'Annuler (contre-passation)', icon: XCircle,
+          onClick: () => annuler(r),
+        }] : []),
       ]}
       emptyTitle="Aucun bulletin"
       emptyDescription="Générez des bulletins depuis le run de paie."
