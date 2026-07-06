@@ -79,11 +79,13 @@ export default function MouvementsPage() {
   useEffect(() => {
     if (!vuePivot) return undefined
     let cancelled = false
-    setPivotLoading(true); setPivotError(null)
-    stockApi.mouvementsAgregation({ group_by: pivotGroupBy })
+    const load = () => Promise.resolve()
+      .then(() => { if (!cancelled) { setPivotLoading(true); setPivotError(null) } })
+      .then(() => stockApi.mouvementsAgregation({ group_by: pivotGroupBy }))
       .then((r) => { if (!cancelled) setPivotRows(r.data ?? []) })
       .catch(() => { if (!cancelled) setPivotError('Agrégation indisponible. Réessayez.') })
       .finally(() => { if (!cancelled) setPivotLoading(false) })
+    load()
     return () => { cancelled = true }
   }, [vuePivot, pivotGroupBy])
 

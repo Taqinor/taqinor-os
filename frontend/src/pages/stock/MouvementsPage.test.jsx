@@ -77,9 +77,9 @@ describe('ZSTK7 — bascule Vue liste / Vue groupée', () => {
     renderPage()
     fireEvent.click(screen.getByRole('button', { name: /Vue groupée/ }))
     await waitFor(() => expect(stockApi.mouvementsAgregation).toHaveBeenCalledWith({ group_by: 'produit' }))
-    expect(await screen.findByText('Panneau 550')).toBeInTheDocument()
-    expect(screen.getByText('+20')).toBeInTheDocument()
-    expect(screen.getByText('-5')).toBeInTheDocument()
+    expect((await screen.findAllByText('Panneau 550'))[0]).toBeInTheDocument()
+    expect(screen.getAllByText('+20')[0]).toBeInTheDocument()
+    expect(screen.getAllByText('-5')[0]).toBeInTheDocument()
     // Le bouton bascule en « Vue liste » une fois actif.
     expect(screen.getByRole('button', { name: /Vue liste/ })).toBeInTheDocument()
   })

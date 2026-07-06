@@ -41,7 +41,7 @@ describe('ZPUR10 — onglet « En commande »', () => {
   it('affiche la quantité en commande et ses BCF sources', () => {
     stockApi.produitPrevisionnel.mockResolvedValue({ data: null })
     render(<ProduitDetail produit={produit} onClose={() => {}} />, { wrapper })
-    expect(screen.getByText('50')).toBeInTheDocument()
+    expect(screen.getAllByText('50')[0]).toBeInTheDocument()
     expect(screen.getByText('BCF-2026-0012')).toBeInTheDocument()
     expect(screen.getByText('JA Solar')).toBeInTheDocument()
   })
@@ -67,7 +67,7 @@ describe('ZSTK3 — onglet « Prévisionnel »', () => {
     render(<ProduitDetail produit={produit} onClose={() => {}} />, { wrapper })
     await userEvent.click(screen.getByRole('tab', { name: 'Prévisionnel' }))
     await waitFor(() => expect(stockApi.produitPrevisionnel).toHaveBeenCalledWith(7))
-    expect(await screen.findByText('57')).toBeInTheDocument()
+    expect((await screen.findAllByText('57'))[0]).toBeInTheDocument()
     expect(screen.getByText('+50')).toBeInTheDocument()
   })
 

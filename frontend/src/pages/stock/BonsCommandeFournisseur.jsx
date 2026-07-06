@@ -893,7 +893,6 @@ export default function BonsCommandeFournisseur() {
     stockApi.getBonCommandeFournisseur(ouvrirBcfId)
       .then((r) => setSelected(r.data))
       .catch(() => {})
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ouvrirBcfId])
 
   // setState arrive dans les callbacks asynchrones (jamais synchrone dans

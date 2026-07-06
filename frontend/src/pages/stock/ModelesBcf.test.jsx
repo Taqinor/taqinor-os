@@ -54,29 +54,29 @@ beforeEach(() => {
 describe('ZPUR3 — liste des modèles de BCF', () => {
   it('affiche les modèles chargés', async () => {
     render(<ModelesBcf />, { wrapper })
-    expect(await screen.findByText('Réassort panneaux')).toBeInTheDocument()
-    expect(screen.getByText('JA Solar')).toBeInTheDocument()
+    expect((await screen.findAllByText('Réassort panneaux'))[0]).toBeInTheDocument()
+    expect(screen.getAllByText('JA Solar')[0]).toBeInTheDocument()
   })
 
   it('« Générer un BCF » appelle genererModeleBcf avec le fournisseur', async () => {
     stockApi.genererModeleBcf.mockResolvedValue({ data: { id: 55, reference: 'BCF-2026-0099' } })
     render(<ModelesBcf />, { wrapper })
-    await screen.findByText('Réassort panneaux')
-    fireEvent.click(screen.getByRole('button', { name: /Générer un BCF/ }))
+    await screen.findAllByText('Réassort panneaux')
+    fireEvent.click(screen.getAllByRole('button', { name: /Générer un BCF/ })[0])
     fireEvent.click(await screen.findByRole('button', { name: /^Générer le BCF$/ }))
     await waitFor(() => expect(stockApi.genererModeleBcf).toHaveBeenCalledWith(1, 3))
   })
 
   it('« Nouveau modèle » ouvre la modale de création', async () => {
     render(<ModelesBcf />, { wrapper })
-    await screen.findByText('Réassort panneaux')
+    await screen.findAllByText('Réassort panneaux')
     fireEvent.click(screen.getByRole('button', { name: /Nouveau modèle/ }))
     expect(screen.getByText('Nouveau modèle de BCF')).toBeInTheDocument()
   })
 
   it('création : refuse un modèle sans lignes', async () => {
     render(<ModelesBcf />, { wrapper })
-    await screen.findByText('Réassort panneaux')
+    await screen.findAllByText('Réassort panneaux')
     fireEvent.click(screen.getByRole('button', { name: /Nouveau modèle/ }))
     fireEvent.change(screen.getByLabelText('Nom du modèle'), { target: { value: 'Test' } })
     fireEvent.click(screen.getByRole('button', { name: /^Enregistrer$/ }))

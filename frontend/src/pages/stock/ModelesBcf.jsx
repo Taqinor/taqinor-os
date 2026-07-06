@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, LayoutTemplate, Trash2, PlayCircle } from 'lucide-react'
 import stockApi from '../../api/stockApi'
@@ -244,13 +244,13 @@ export default function ModelesBcf() {
     } catch { setSelected(m) }
   }
 
-  const supprimer = async (m) => {
+  const supprimer = useCallback(async (m) => {
     if (!window.confirm(`Supprimer le modèle « ${m.nom} » ?`)) return
     try {
       await stockApi.deleteModeleBcf(m.id)
       reload()
     } catch { setInfo('La suppression a échoué.') }
-  }
+  }, [])
 
   const columns = useMemo(() => [
     { id: 'nom', header: 'Nom', minWidth: 200, accessor: (m) => m.nom ?? '' },
@@ -273,7 +273,7 @@ export default function ModelesBcf() {
           </IconButton>
         </div>
       ) },
-  ], [])
+  ], [supprimer])
 
   return (
     <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
