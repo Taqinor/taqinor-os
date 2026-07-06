@@ -178,6 +178,71 @@ const gedApi = {
 
   // Documents (réutilisé par les écrans avancés pour peupler les sélecteurs).
   getDocumentsList: (params) => api.get('/ged/documents/', { params }),
+
+  // ══════════════════════════════════════════════════════════════════════
+  // XGED1/XGED2 — Cérémonie de signature PUBLIQUE (sans login, loi 53-05).
+  // Résolue par jeton uniquement ; ces routes sont AllowAny côté serveur.
+  // ══════════════════════════════════════════════════════════════════════
+  // Consulte une demande de signature mono-signataire (métadonnées + champs).
+  getSignaturePublique: (token) => api.get(`/ged/signature/${token}/`),
+  // Signe : { consentement, signature_texte?, signature_tracee?, valeurs_champs? }.
+  signerPublique: (token, data) =>
+    api.post(`/ged/signature/${token}/`, { action: 'signer', ...(data ?? {}) }),
+  // Refuse : { motif }.
+  refuserPublique: (token, data) =>
+    api.post(`/ged/signature/${token}/`, { action: 'refuser', ...(data ?? {}) }),
+
+  // XGED2 — jeton PROPRE à un destinataire du circuit multi-signataires.
+  getSignatairePublique: (token) => api.get(`/ged/signataire/${token}/`),
+  signerSignataire: (token, data) =>
+    api.post(`/ged/signataire/${token}/`, { action: 'signer', ...(data ?? {}) }),
+  refuserSignataire: (token, data) =>
+    api.post(`/ged/signataire/${token}/`, { action: 'refuser', ...(data ?? {}) }),
+  // ZGED2 — code d'authentification extra (OTP) avant de débloquer la signature.
+  envoyerCodeSignataire: (token) =>
+    api.post(`/ged/signataire/${token}/`, { action: 'envoyer-code' }),
+  validerCodeSignataire: (token, code) =>
+    api.post(`/ged/signataire/${token}/`, { action: 'valider-code', code }),
+
+  // ══════════════════════════════════════════════════════════════════════
+  // XGED7 — Lien PUBLIC de DÉPÔT (upload-request, sans login).
+  // ══════════════════════════════════════════════════════════════════════
+  // Infos du lien (message d'instruction + quota restant).
+  getDepotPublic: (token) => api.get(`/ged/depot/${token}/`),
+  // Dépose un fichier via le lien. `data` : { file, nom?, email? }.
+  deposerPublique: (token, { file, nom, email }) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    if (nom) fd.append('nom', nom)
+    if (email) fd.append('email', email)
+    return api.post(`/ged/depot/${token}/`, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+
+  // XGED2/XGED3 — circuit multi-signataires positionné sur une demande.
+  // Destinataires ordonnés (ordre/rôle) d'une demande de signature.
+  getSignatairesDemande: (params) =>
+    api.get('/ged/signataires-demande/', { params }),
+  createSignataireDemande: (data) =>
+    api.post('/ged/signataires-demande/', data),
+  deleteSignataireDemande: (id) =>
+    api.delete(`/ged/signataires-demande/${id}/`),
+  // Rôles de signataire (approbateur/témoin/…).
+  getRolesSignataire: (params) => api.get('/ged/roles-signataire/', { params }),
+  // XGED3 — champs de signature positionnés (page/x/y) sur une demande.
+  getChampsSignature: (params) => api.get('/ged/champs-signature/', { params }),
+  createChampSignature: (data) => api.post('/ged/champs-signature/', data),
+  deleteChampSignature: (id) => api.delete(`/ged/champs-signature/${id}/`),
+  getTypesChampSignature: (params) =>
+    api.get('/ged/types-champ-signature/', { params }),
+
+  // GED14 — aperçu inline même-origine d'une version (proxy binaire Django).
+  // URL directe (consommée par <iframe>/<img> src, pas un appel axios JSON).
+  apercuVersionUrl: (versionId) =>
+    `/api/django/ged/versions/${versionId}/apercu/`,
+  // Versions d'un document (pour choisir la version à prévisualiser).
+  getVersions: (params) => api.get('/ged/versions/', { params }),
 }
 
 export default gedApi

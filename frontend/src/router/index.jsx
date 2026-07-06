@@ -86,6 +86,10 @@ const AgentActions = lazy(() => import('../pages/ia/AgentActions'))
 const UIShowcase = lazy(() => import('../pages/ui/UIShowcase'))
 // XSAL17 — page publique de réservation de visite (placeholder {lien_rdv}).
 const PublicBookingPage = lazy(() => import('../pages/crm/PublicBookingPage'))
+// XGED1/XGED2 — cérémonie de signature électronique publique (sans login).
+const PublicSignaturePage = lazy(() => import('../pages/ged/PublicSignaturePage'))
+// XGED7 — dépôt public de fichier (upload-request, sans login).
+const PublicDepotPage = lazy(() => import('../pages/ged/PublicDepotPage'))
 const ChatPage = lazy(() => import('../pages/messaging/ChatPage'))
 const DocumentsPage = lazy(() => import('../pages/ged/DocumentsPage'))
 
@@ -173,6 +177,12 @@ const router = createBrowserRouter([
   { path: '/ui', element: <Suspense fallback={<Fallback />}><UIShowcase /></Suspense> },
   // XSAL17 — réservation de visite publique (sans login, sans layout ERP).
   { path: '/rdv/:token', element: <Suspense fallback={<Fallback />}><PublicBookingPage /></Suspense> },
+  // XGED1 — cérémonie de signature publique (mono-signataire), sans login.
+  { path: '/ged/signature/:token', element: <Suspense fallback={<Fallback />}><PublicSignaturePage mode="signature" /></Suspense> },
+  // XGED2 — cérémonie de signature publique d'un destinataire (multi-signataires).
+  { path: '/ged/signataire/:token', element: <Suspense fallback={<Fallback />}><PublicSignaturePage mode="signataire" /></Suspense> },
+  // XGED7 — dépôt public de fichier (upload-request), sans login.
+  { path: '/ged/depot/:token', element: <Suspense fallback={<Fallback />}><PublicDepotPage /></Suspense> },
 
   { path: '/dashboard', loader: authLoader, element: <WithLayout><Dashboard /></WithLayout> },
   { path: '/messages', loader: authLoader, element: <WithLayout><ChatPage /></WithLayout> },
