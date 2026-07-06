@@ -231,6 +231,11 @@ class TestBreakdownNonNegative(TestCase):
 class _FakeRequest:
     def __init__(self, user):
         self.user = user
+        # ERR95 — ProduitSerializer._target_locale() lit request.GET quand le
+        # mock n'a pas l'attribut DRF `query_params` (cf. serializers.py) ;
+        # une QueryDict vide reproduit fidèlement un GET sans `?locale=`.
+        from django.http import QueryDict
+        self.GET = QueryDict()
 
 
 class TestProduitSerializerAllowlist(TestCase):
