@@ -63,19 +63,8 @@ class Migration(migrations.Migration):
                 verbose_name="Email normalisé (dédup)",
             ),
         ),
-        migrations.AddIndex(
-            model_name="lead",
-            index=models.Index(
-                fields=["company", "phone_normalise"],
-                name="crm_lead_phone_norm_idx",
-            ),
-        ),
-        migrations.AddIndex(
-            model_name="lead",
-            index=models.Index(
-                fields=["company", "email_normalise"],
-                name="crm_lead_email_norm_idx",
-            ),
-        ),
+        # NB — les deux index composites (company, phone/email_normalise) sont
+        # posés CONCURREMMENT dans 0049 (YOPSB6) pour ne pas verrouiller
+        # crm_lead en écriture ; ici on se limite aux colonnes + backfill.
         migrations.RunPython(backfill_dedup_columns, noop_reverse),
     ]

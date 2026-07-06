@@ -43,8 +43,7 @@ class Migration(migrations.Migration):
             name='valeur_residuelle',
             field=models.DecimalField(blank=True, decimal_places=2, max_digits=12, null=True, verbose_name='Valeur résiduelle (MAD)'),
         ),
-        migrations.AddIndex(
-            model_name='conducteur',
-            index=models.Index(fields=['company', 'employe_id'], name='flotte_cond_co_emp_idx'),
-        ),
+        # NB — l'index composite (company, employe_id) est posé CONCURREMMENT
+        # dans 0056 (YOPSB6) pour ne pas verrouiller flotte_conducteur en
+        # écriture ; cette migration se limite aux colonnes.
     ]
