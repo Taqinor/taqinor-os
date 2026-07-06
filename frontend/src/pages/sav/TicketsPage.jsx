@@ -167,7 +167,7 @@ export function TicketSlaBadge({ ticket }) {
   )
 }
 
-function TicketDetail({ ticket, onClose, onSaved }) {
+export function TicketDetail({ ticket, onClose, onSaved }) {
   const dispatch = useDispatch()
   const allTickets = useSelector((s) => s.tickets.items)
   const id = ticket.id
@@ -414,6 +414,49 @@ function TicketDetail({ ticket, onClose, onSaved }) {
     } catch (err) {
       setActionError(frError(err, 'Rapport indisponible.'))
     }
+  }
+
+  // ── XSAV3/XFSM1/XCTR4 — devis de réparation / facturation depuis le ticket ──
+  const [devisBusy, setDevisBusy] = useState(false)
+  const [factureBusy, setFactureBusy] = useState(false)
+  const creerDevis = async () => {
+    setActionError(null)
+    setDevisBusy(true)
+    try {
+      const r = await savApi.creerDevisTicket(id)
+      toast.success(`Devis ${r.data?.devis_reference ?? ''} créé (brouillon)`)
+      setCurrent((c) => ({ ...c, devis_id_ext: r.data?.devis_id }))
+      loadHistorique()
+      onSaved?.()
+    } catch (err) {
+      setActionError(frError(err, 'Impossible de créer le devis.'))
+    } finally { setDevisBusy(false) }
+  }
+  const genererFacture = async () => {
+    setActionError(null)
+    setFactureBusy(true)
+    try {
+      const r = await savApi.genererFactureTicket(id)
+      toast.success(`Facture ${r.data?.facture_reference ?? ''} générée`)
+      setCurrent((c) => ({ ...c, facture_id_ext: r.data?.facture_id }))
+      loadHistorique()
+      onSaved?.()
+    } catch (err) {
+      setActionError(frError(err, 'Impossible de générer la facture.'))
+    } finally { setFactureBusy(false) }
+  }
+  const facturer = async () => {
+    setActionError(null)
+    setFactureBusy(true)
+    try {
+      const r = await savApi.facturerTicket(id)
+      toast.success(`Facture ${r.data?.facture_reference ?? ''} générée (${r.data?.couverture ?? ''})`)
+      setCurrent((c) => ({ ...c, facture_id_ext: r.data?.facture_id }))
+      loadHistorique()
+      onSaved?.()
+    } catch (err) {
+      setActionError(frError(err, 'Impossible de facturer ce ticket.'))
+    } finally { setFactureBusy(false) }
   }
 
   // L308 — options de technicien. Si /users/ renvoie vide (endpoint admin),
@@ -804,6 +847,31 @@ function TicketDetail({ ticket, onClose, onSaved }) {
           {!current.annule && (
             <Button type="button" variant="destructive" className="mr-auto" onClick={() => setAnnulerOpen(true)}>
               <Trash2 /> Annuler le ticket
+            </Button>
+          )}
+          {/* XSAV3 — devis de réparation hors garantie (refusé côté serveur
+              si le ticket est sous garantie calculée). */}
+          {current.sous_garantie_effectif !== 'oui' && (
+            current.devis_id_ext ? (
+              <Badge tone="success">Devis créé</Badge>
+            ) : (
+              <Button type="button" variant="outline" loading={devisBusy} onClick={creerDevis}>
+                <FileText /> Créer un devis
+              </Button>
+            )
+          )}
+          {/* XCTR4 — facturation routée par couverture (garantie/contrat/
+              facturable) une fois posée ou calculable ; XFSM1 en repli
+              générique sinon. Idempotent (facture_id_ext déjà posé). */}
+          {current.facture_id_ext ? (
+            <Badge tone="success">Facture générée</Badge>
+          ) : current.couverture && current.couverture !== 'a_determiner' ? (
+            <Button type="button" variant="outline" loading={factureBusy} onClick={facturer}>
+              <FileText /> Facturer
+            </Button>
+          ) : (
+            <Button type="button" variant="outline" loading={factureBusy} onClick={genererFacture}>
+              <FileText /> Générer facture
             </Button>
           )}
           <Button type="button" variant="outline" onClick={telechargerRapport}>
