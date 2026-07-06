@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
+import { ThemeProvider } from '../../../design/ThemeProvider.jsx'
 import gestionProjetApi from '../../../api/gestionProjetApi'
 import TimesheetsTab from './TimesheetsTab'
 
@@ -32,18 +34,22 @@ const timesheets = [
   { id: 2, date: '2026-07-02', projet_code: 'P-1', ressource_nom: 'Amine', heures: '3', cout: '300', statut: 'soumise' },
 ]
 
+function withProviders(ui) {
+  return render(<MemoryRouter><ThemeProvider>{ui}</ThemeProvider></MemoryRouter>)
+}
+
 describe('TimesheetsTab', () => {
   it('affiche les lignes avec leur statut', async () => {
-    render(<TimesheetsTab timesheets={timesheets} onChanged={vi.fn()} />)
-    expect(await screen.findByText('Brouillon')).toBeInTheDocument()
-    expect(screen.getByText('Soumise')).toBeInTheDocument()
+    withProviders(<TimesheetsTab timesheets={timesheets} onChanged={vi.fn()} />)
+    expect((await screen.findAllByText('Brouillon')).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Soumise').length).toBeGreaterThan(0)
   })
 
   it('« Soumettre » sur une ligne brouillon appelle l\'action serveur dédiée', async () => {
     const onChanged = vi.fn()
     const user = userEvent.setup()
-    const { container } = render(<TimesheetsTab timesheets={timesheets} onChanged={onChanged} />)
-    await screen.findByText('Brouillon')
+    const { container } = withProviders(<TimesheetsTab timesheets={timesheets} onChanged={onChanged} />)
+    await waitFor(() => expect(container.querySelector('[data-dt-table]')).not.toBeNull())
     const table = container.querySelector('[data-dt-table]')
     const menus = within(table).getAllByLabelText("Plus d'actions sur la ligne")
     await user.click(menus[0])
@@ -55,8 +61,8 @@ describe('TimesheetsTab', () => {
   it('« Approuver » sur une ligne soumise appelle l\'action serveur dédiée', async () => {
     const onChanged = vi.fn()
     const user = userEvent.setup()
-    const { container } = render(<TimesheetsTab timesheets={timesheets} onChanged={onChanged} />)
-    await screen.findByText('Soumise')
+    const { container } = withProviders(<TimesheetsTab timesheets={timesheets} onChanged={onChanged} />)
+    await waitFor(() => expect(container.querySelector('[data-dt-table]')).not.toBeNull())
     const table = container.querySelector('[data-dt-table]')
     const menus = within(table).getAllByLabelText("Plus d'actions sur la ligne")
     await user.click(menus[1])

@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
+import { ThemeProvider } from '../../../design/ThemeProvider.jsx'
 import gestionProjetApi from '../../../api/gestionProjetApi'
 import RessourcesPage from './RessourcesPage'
 
@@ -33,10 +35,14 @@ vi.mock('../../../ui', async (importOriginal) => {
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
+function withProviders(ui) {
+  return render(<MemoryRouter><ThemeProvider>{ui}</ThemeProvider></MemoryRouter>)
+}
+
 describe('RessourcesPage — ZPRJ1-4', () => {
   it('ouvre les réglages temps et les enregistre', async () => {
     const user = userEvent.setup()
-    render(<RessourcesPage />)
+    withProviders(<RessourcesPage />)
     await user.click(await screen.findByRole('button', { name: /Réglages temps/ }))
     await waitFor(() => expect(gestionProjetApi.getReglageTemps).toHaveBeenCalled())
     await user.click(await screen.findByRole('button', { name: 'Enregistrer' }))
@@ -45,7 +51,7 @@ describe('RessourcesPage — ZPRJ1-4', () => {
 
   it('« Publier » appelle l\'action serveur dédiée', async () => {
     const user = userEvent.setup()
-    render(<RessourcesPage />)
+    withProviders(<RessourcesPage />)
     await user.click(await screen.findByRole('tab', { name: 'Affectations' }))
     await user.click(await screen.findByRole('button', { name: /Publier/ }))
     await waitFor(() => expect(gestionProjetApi.publierAffectations).toHaveBeenCalled())
@@ -53,7 +59,7 @@ describe('RessourcesPage — ZPRJ1-4', () => {
 
   it('« Copier la semaine » appelle l\'action serveur dédiée', async () => {
     const user = userEvent.setup()
-    render(<RessourcesPage />)
+    withProviders(<RessourcesPage />)
     await user.click(await screen.findByRole('tab', { name: 'Affectations' }))
     await user.click(await screen.findByRole('button', { name: /Copier la semaine/ }))
     await waitFor(() => expect(gestionProjetApi.copierSemaineAffectations).toHaveBeenCalled())
@@ -62,7 +68,7 @@ describe('RessourcesPage — ZPRJ1-4', () => {
   it('« Auto-affecter » simule puis demande confirmation avant d\'appliquer', async () => {
     const user = userEvent.setup()
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
-    render(<RessourcesPage />)
+    withProviders(<RessourcesPage />)
     await user.click(await screen.findByRole('tab', { name: 'Affectations' }))
     await user.click(await screen.findByRole('button', { name: /Auto-affecter/ }))
     await waitFor(() => expect(gestionProjetApi.autoAffecter).toHaveBeenCalledWith(

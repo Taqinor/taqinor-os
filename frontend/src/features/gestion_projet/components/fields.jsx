@@ -9,9 +9,8 @@ export function Field({ label, htmlFor, required, hint, children }) {
   return (
     <div className="flex flex-col gap-1">
       {label && (
-        <Label htmlFor={htmlFor}>
+        <Label htmlFor={htmlFor} required={required}>
           {label}
-          {required && <span className="ml-0.5 text-destructive">*</span>}
         </Label>
       )}
       {children}

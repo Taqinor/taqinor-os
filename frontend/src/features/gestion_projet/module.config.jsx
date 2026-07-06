@@ -25,9 +25,10 @@ const BudgetPage = lazy(() => import('./pages/BudgetPage'))
 const RisquesPage = lazy(() => import('./pages/RisquesPage'))
 const TempsPage = lazy(() => import('./pages/TempsPage'))
 const TachesPage = lazy(() => import('./pages/TachesPage'))
-const MesTachesPage = lazy(() => import('./pages/TachesPage').then((m) => ({
-  default: () => <m.default mesTaches />,
-})))
+const MesTachesPage = lazy(() => import('./pages/TachesPage').then((mod) => {
+  const TachesPageComponent = mod.default
+  return { default: () => <TachesPageComponent mesTaches /> }
+}))
 
 export default {
   key: 'gestion_projet',

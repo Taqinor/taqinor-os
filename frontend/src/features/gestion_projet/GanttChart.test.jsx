@@ -72,7 +72,7 @@ describe('GanttChart', () => {
         onReprogrammer={onReprogrammer}
       />,
     )
-    const bar = screen.getByTitle(/Pose/)
+    const bar = screen.getByTitle(/Pose — .* \(glisser pour replanifier\)/)
     vi.spyOn(bar.parentElement, 'getBoundingClientRect').mockReturnValue({ width: 300 })
     fireEvent.pointerDown(bar, { clientX: 0 })
     fireEvent.pointerMove(bar, { clientX: 1 })

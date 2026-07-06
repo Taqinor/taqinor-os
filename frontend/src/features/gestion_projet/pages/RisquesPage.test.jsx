@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
+import { ThemeProvider } from '../../../design/ThemeProvider.jsx'
 import gestionProjetApi from '../../../api/gestionProjetApi'
 import RisquesPage from './RisquesPage'
 
@@ -38,10 +40,14 @@ vi.mock('../../../ui', async (importOriginal) => {
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
+function withProviders(ui) {
+  return render(<MemoryRouter><ThemeProvider>{ui}</ThemeProvider></MemoryRouter>)
+}
+
 describe('RisquesPage — ZPRJ7-9', () => {
   it('affiche la matrice des risques après sélection du projet', async () => {
     const user = userEvent.setup()
-    render(<RisquesPage />)
+    withProviders(<RisquesPage />)
     await screen.findByRole('option', { name: /Villa Fès/ })
     await user.selectOptions(screen.getByLabelText('Projet'), '10')
     await waitFor(() => expect(gestionProjetApi.getMatriceRisques).toHaveBeenCalledWith('10'))
@@ -51,7 +57,7 @@ describe('RisquesPage — ZPRJ7-9', () => {
 
   it('« Lien CSAT » appelle l\'action serveur dédiée', async () => {
     const user = userEvent.setup()
-    render(<RisquesPage />)
+    withProviders(<RisquesPage />)
     await screen.findByRole('option', { name: /Villa Fès/ })
     await user.selectOptions(screen.getByLabelText('Projet'), '10')
     await user.click(await screen.findByRole('button', { name: /Lien CSAT/ }))
@@ -60,7 +66,7 @@ describe('RisquesPage — ZPRJ7-9', () => {
 
   it('« Rapport PDF » télécharge le rapport d\'avancement', async () => {
     const user = userEvent.setup()
-    render(<RisquesPage />)
+    withProviders(<RisquesPage />)
     await screen.findByRole('option', { name: /Villa Fès/ })
     await user.selectOptions(screen.getByLabelText('Projet'), '10')
     await user.click(await screen.findByRole('button', { name: /Rapport PDF/ }))

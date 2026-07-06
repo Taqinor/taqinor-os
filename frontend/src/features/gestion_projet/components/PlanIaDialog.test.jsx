@@ -37,7 +37,7 @@ describe('PlanIaDialog', () => {
     const onConfirmed = vi.fn()
     render(<PlanIaDialog projetId={10} onClose={vi.fn()} onConfirmed={onConfirmed} />)
 
-    await user.type(screen.getByLabelText('ID du devis lié'), '99')
+    await user.type(screen.getByLabelText(/^ID du devis lié/), '99')
     await user.click(screen.getByRole('button', { name: /Proposer un plan/ }))
     await waitFor(() => expect(gestionProjetApi.genererPlanIa).toHaveBeenCalledWith(
       10, expect.objectContaining({ devis_id: '99' }),
@@ -57,7 +57,7 @@ describe('PlanIaDialog', () => {
   it('retirer une tâche proposée l\'exclut de la confirmation', async () => {
     const user = userEvent.setup()
     render(<PlanIaDialog projetId={10} onClose={vi.fn()} onConfirmed={vi.fn()} />)
-    await user.type(screen.getByLabelText('ID du devis lié'), '99')
+    await user.type(screen.getByLabelText(/^ID du devis lié/), '99')
     await user.click(screen.getByRole('button', { name: /Proposer un plan/ }))
     await screen.findByText('Étude toiture')
 

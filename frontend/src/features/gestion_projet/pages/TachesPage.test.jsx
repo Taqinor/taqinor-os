@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
+import { ThemeProvider } from '../../../design/ThemeProvider.jsx'
 import gestionProjetApi from '../../../api/gestionProjetApi'
 import TachesPage from './TachesPage'
 
@@ -30,16 +32,20 @@ vi.mock('../../../ui', async (importOriginal) => {
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
+function withProviders(ui) {
+  return render(<MemoryRouter><ThemeProvider>{ui}</ThemeProvider></MemoryRouter>)
+}
+
 describe('TachesPage', () => {
   it('charge et affiche les tâches filtrées par projet/assigné/priorité/statut', async () => {
-    render(<TachesPage />)
+    withProviders(<TachesPage />)
     await waitFor(() => expect(gestionProjetApi.getTaches).toHaveBeenCalled())
-    expect(await screen.findByText('Pose panneaux')).toBeInTheDocument()
+    expect((await screen.findAllByText('Pose panneaux')).length).toBeGreaterThan(0)
   })
 
   it('changer le filtre priorité relance le chargement avec le bon paramètre', async () => {
     const user = userEvent.setup()
-    render(<TachesPage />)
+    withProviders(<TachesPage />)
     await waitFor(() => expect(gestionProjetApi.getTaches).toHaveBeenCalled())
     await user.selectOptions(screen.getByLabelText('Filtrer par priorité'), 'haute')
     await waitFor(() => expect(gestionProjetApi.getTaches).toHaveBeenCalledWith(
@@ -48,9 +54,9 @@ describe('TachesPage', () => {
   })
 
   it('mode « Mes tâches » appelle mes-taches et masque les filtres', async () => {
-    render(<TachesPage mesTaches />)
+    withProviders(<TachesPage mesTaches />)
     await waitFor(() => expect(gestionProjetApi.getMesTaches).toHaveBeenCalled())
-    expect(await screen.findByText('Ma tâche urgente')).toBeInTheDocument()
+    expect((await screen.findAllByText('Ma tâche urgente')).length).toBeGreaterThan(0)
     expect(screen.queryByLabelText('Filtrer par priorité')).not.toBeInTheDocument()
     expect(gestionProjetApi.getTaches).not.toHaveBeenCalled()
   })

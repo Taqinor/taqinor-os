@@ -1,11 +1,24 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest'
 import { render, screen, cleanup, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
+import { ThemeProvider } from '../../../design/ThemeProvider.jsx'
 import gestionProjetApi from '../../../api/gestionProjetApi'
 import BudgetPage from './BudgetPage'
 
 /* XPRJ14-17 — Prévision fin (ETC/EAC), burndown et points d'avancement (RAG)
    dans BudgetPage. Toutes les données sont INTERNES (jamais client). */
+
+// jsdom n'implémente pas ResizeObserver, utilisé par le burndown (recharts).
+beforeAll(() => {
+  if (typeof globalThis.ResizeObserver === 'undefined') {
+    globalThis.ResizeObserver = class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+  }
+})
 
 vi.mock('../../../api/gestionProjetApi', () => ({
   default: {
@@ -48,13 +61,17 @@ vi.mock('../../../ui', async (importOriginal) => {
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
+function withProviders(ui) {
+  return render(<MemoryRouter><ThemeProvider>{ui}</ThemeProvider></MemoryRouter>)
+}
+
 describe('BudgetPage', () => {
   it('affiche la prévision fin (ETC/EAC) et le point RAG après sélection du projet', async () => {
     const user = userEvent.setup()
-    render(<BudgetPage />)
+    withProviders(<BudgetPage />)
     await screen.findByRole('option', { name: /Villa Fès/ })
     await user.selectOptions(screen.getByLabelText('Projet'), '10')
-    await waitFor(() => expect(gestionProjetApi.getPrevisionFin).toHaveBeenCalledWith(10))
+    await waitFor(() => expect(gestionProjetApi.getPrevisionFin).toHaveBeenCalledWith('10'))
     expect(await screen.findByText('Prévision fin de projet (ETC/EAC)')).toBeInTheDocument()
     expect(screen.getByText('Orange')).toBeInTheDocument()
     expect(screen.getByText('Pose toiture', { exact: false })).toBeInTheDocument()
@@ -62,7 +79,7 @@ describe('BudgetPage', () => {
 
   it('crée un nouveau point d\'avancement via le formulaire', async () => {
     const user = userEvent.setup()
-    render(<BudgetPage />)
+    withProviders(<BudgetPage />)
     await screen.findByRole('option', { name: /Villa Fès/ })
     await user.selectOptions(screen.getByLabelText('Projet'), '10')
     await screen.findByText("Points d'avancement (RAG)")

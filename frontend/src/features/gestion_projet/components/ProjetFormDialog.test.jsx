@@ -31,7 +31,7 @@ describe('ProjetFormDialog — XPRJ27 marché public', () => {
   it('révèle le volet et envoie les champs marché public à la création', async () => {
     const user = userEvent.setup()
     render(<ProjetFormDialog onClose={vi.fn()} onSaved={vi.fn()} />)
-    await user.type(screen.getByLabelText('Nom'), 'Villa Fès')
+    await user.type(screen.getByLabelText(/^Nom/), 'Villa Fès')
     await user.click(screen.getByRole('button', { name: /Marché public/ }))
     await user.type(screen.getByLabelText('N° de marché'), 'MP-2026-042')
     await user.type(screen.getByLabelText('Montant du marché (MAD)'), '500000')
