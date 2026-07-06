@@ -3,7 +3,7 @@
    `router/moduleRoutes.jsx` via glob : ce n'est pas un module de composants, le
    fast-refresh ne s'y applique pas (même dérogation que `moduleRoutes.jsx`). */
 import { lazy } from 'react'
-import { Truck, Users, Wrench, ShieldCheck, Fuel } from 'lucide-react'
+import { Truck, Users, Wrench, ShieldCheck, Fuel, LineChart } from 'lucide-react'
 
 /* ============================================================================
    FLOTTE (UX15–UX20) — configuration du module « Flotte » (auto-enregistrée).
@@ -20,6 +20,7 @@ const ConducteursScreen = lazy(() => import('./ConducteursScreen'))
 const EntretienScreen = lazy(() => import('./EntretienScreen'))
 const ConformiteScreen = lazy(() => import('./ConformiteScreen'))
 const CarburantScreen = lazy(() => import('./CarburantScreen'))
+const AnalyseCoutsScreen = lazy(() => import('./AnalyseCoutsScreen'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -35,6 +36,7 @@ const config = {
       { to: '/flotte/entretien', label: 'Entretien', icon: <Wrench size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/flotte/conformite', label: 'Conformité', icon: <ShieldCheck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/flotte/carburant', label: 'Carburant & télématique', icon: <Fuel size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/flotte/analyse-couts', label: 'Analyse des coûts', icon: <LineChart size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
     ],
   },
   // routes.meta — du plus spécifique au plus général (le préfixe /flotte en dernier).
@@ -44,6 +46,7 @@ const config = {
     ['/flotte/entretien', 'Entretien'],
     ['/flotte/conformite', 'Conformité'],
     ['/flotte/carburant', 'Carburant & télématique'],
+    ['/flotte/analyse-couts', 'Analyse des coûts'],
     ['/flotte', 'Flotte'],
   ],
   sectionLabels: { flotte: 'Flotte' },
@@ -54,6 +57,7 @@ const config = {
     { path: '/flotte/entretien', component: EntretienScreen, roles: ROLES },
     { path: '/flotte/conformite', component: ConformiteScreen, roles: ROLES },
     { path: '/flotte/carburant', component: CarburantScreen, roles: ROLES },
+    { path: '/flotte/analyse-couts', component: AnalyseCoutsScreen, roles: ROLES },
   ],
 }
 
