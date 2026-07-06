@@ -113,8 +113,13 @@ def erase_crm(company, subject_identifier):
         le.telephone = None
         le.whatsapp = None
         le.adresse = None
+        # QW10 — ``Lead.save()`` recalcule ``email_normalise``/``phone_normalise``
+        # depuis les PII désormais vidées ; on les inclut dans ``update_fields``
+        # pour que les clés de dédup normalisées soient AUSSI purgées (sinon un
+        # lead « anonymisé » garderait un email/téléphone normalisé recherchable).
         le.save(update_fields=[
-            'nom', 'prenom', 'email', 'telephone', 'whatsapp', 'adresse'])
+            'nom', 'prenom', 'email', 'telephone', 'whatsapp', 'adresse',
+            'email_normalise', 'phone_normalise'])
         count += 1
 
     for cl in clients:
