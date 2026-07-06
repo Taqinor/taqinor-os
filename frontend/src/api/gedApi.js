@@ -220,22 +220,29 @@ const gedApi = {
     })
   },
 
-  // XGED2/XGED3 — circuit multi-signataires positionné sur une demande.
-  // Destinataires ordonnés (ordre/rôle) d'une demande de signature.
+  // XGED2 — circuit multi-signataires (ordre/rôle) sur une demande.
+  // Création groupée : `data` = { document, destinataires:[{nom,email?,
+  // telephone?,role?,ordre?,role_signataire?}], routage?, expires_at?,
+  // relance_cadence_jours? } → services.creer_demande_multi_signataires.
+  creerDemandeMultiSignataires: (data) =>
+    api.post('/ged/demandes-signature/creer-multi/', data),
+  // Destinataires (LECTURE SEULE — créés via creer-multi).
   getSignatairesDemande: (params) =>
     api.get('/ged/signataires-demande/', { params }),
-  createSignataireDemande: (data) =>
-    api.post('/ged/signataires-demande/', data),
-  deleteSignataireDemande: (id) =>
-    api.delete(`/ged/signataires-demande/${id}/`),
-  // Rôles de signataire (approbateur/témoin/…).
+  // Rôles de signataire réutilisables (approbateur/témoin/…), CRUD.
   getRolesSignataire: (params) => api.get('/ged/roles-signataire/', { params }),
-  // XGED3 — champs de signature positionnés (page/x/y) sur une demande.
+  // XGED3 — champs de signature positionnés (page/x/y) sur une demande, CRUD.
   getChampsSignature: (params) => api.get('/ged/champs-signature/', { params }),
   createChampSignature: (data) => api.post('/ged/champs-signature/', data),
   deleteChampSignature: (id) => api.delete(`/ged/champs-signature/${id}/`),
   getTypesChampSignature: (params) =>
     api.get('/ged/types-champ-signature/', { params }),
+  // ZGED3 — tableau de bord / kanban des demandes de signature.
+  getTableauBordSignatures: (params) =>
+    api.get('/ged/demandes-signature/tableau-bord/', { params }),
+  // XGED2 — annuler une demande (action émetteur).
+  annulerDemandeSignature: (id) =>
+    api.post(`/ged/demandes-signature/${id}/annuler/`),
 
   // GED14 — aperçu inline même-origine d'une version (proxy binaire Django).
   // URL directe (consommée par <iframe>/<img> src, pas un appel axios JSON).
