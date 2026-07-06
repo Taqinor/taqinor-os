@@ -114,7 +114,8 @@ class TestFicheInterventionTemplateCRUD(TestCase):
         other = make_company()
         make_template(other, type_intervention='pose')
         r = self.api.get(f'{BASE}/fiche-intervention-templates/')
-        self.assertEqual(len(r.data), 1)
+        rows = r.data['results'] if isinstance(r.data, dict) else r.data
+        self.assertEqual(len(rows), 1)
 
 
 class TestFicheReleveMaterialisation(TestCase):
@@ -164,8 +165,13 @@ class TestFicheReleveMaterialisation(TestCase):
 
     def test_missing_required_champ_blocks_terminee(self):
         field_services.ensure_fiche_releve(self.interv)
-        # Satisfy F5/F8 gates so only ZFSM1 gate is exercised: no prep lines,
-        # no required shots configured for this company (default seed absent).
+        # Satisfy F5/F8 gates so only ZFSM1 gate is exercised: confirm the
+        # (empty) preparation — F5 blocks ANY transition past "À préparer"
+        # until "Tout est chargé" is confirmed, even with no prep lines — and
+        # no required shots are configured for this company (default seed
+        # absent).
+        prep = field_services.ensure_preparation(self.interv)
+        field_services.confirm_charge(prep, self.user)
         reason = field_services.transition_block_reason(
             self.interv, Intervention.Statut.TERMINEE)
         self.assertIsNotNone(reason)
@@ -176,6 +182,8 @@ class TestFicheReleveMaterialisation(TestCase):
         val = releve.valeurs.get(champ=self.champ_obligatoire)
         val.valeur = '230'
         val.save(update_fields=['valeur'])
+        prep = field_services.ensure_preparation(self.interv)
+        field_services.confirm_charge(prep, self.user)
         reason = field_services.transition_block_reason(
             self.interv, Intervention.Statut.TERMINEE)
         self.assertIsNone(reason)
