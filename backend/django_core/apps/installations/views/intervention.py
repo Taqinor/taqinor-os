@@ -241,6 +241,8 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             'reverifications',
             # XFSM22 — durée & pièces suggérées par l'historique.
             'suggestions_creation',
+            # ZFSM1 — lecture de la fiche d'intervention (relevé terrain).
+            'fiche',
         ]:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
@@ -272,6 +274,8 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             'generer_facture',
             # ZFSM5 — devis d'upsell créé sur place depuis l'intervention.
             'generer_devis',
+            # ZFSM1 — renseigner la fiche d'intervention (relevé terrain).
+            'renseigner_fiche',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
