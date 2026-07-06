@@ -9,6 +9,7 @@ import { formatDateTime } from '../../lib/format'
 import kbApi from '../../api/kbApi'
 import { StatutArticlePill, splitTags } from './kbStatus'
 import FilterSelect from './FilterSelect'
+import ChatterWidget from '../../components/ChatterWidget'
 
 /* ============================================================================
    UX43 — Détail d'un article : contenu, versions, suivi de lecture, ACL.
@@ -345,10 +346,16 @@ export default function ArticleDetail({ articleId, canEdit, onBack, onEdit, onCh
     </div>
   )
 
+  // ── Onglet Commentaires (chatter, XKB13) ──
+  const commentairesTab = (
+    <ChatterWidget model="kb.kbarticle" id={articleId} />
+  )
+
   const tabs = [
     { value: 'contenu', label: 'Contenu', content: contenuTab },
     { value: 'versions', label: 'Versions', count: versions.length, content: versionsTab },
     { value: 'lecteurs', label: 'Lecteurs', count: resume?.nombre ?? 0, content: lecteursTab },
+    { value: 'commentaires', label: 'Commentaires', content: commentairesTab },
   ]
   if (canEdit) {
     tabs.push({ value: 'acces', label: 'Droits d’accès', count: acls.length, content: aclTab })

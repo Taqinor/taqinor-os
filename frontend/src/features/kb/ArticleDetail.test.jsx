@@ -2,7 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+import authReducer from '../../features/auth/store/authSlice'
 
 /* ============================================================================
    XKB19/XKB14/XKB15 — actions ajoutées au détail d'article : partage public
@@ -30,14 +33,33 @@ vi.mock('../../api/kbApi', () => ({
   },
 }))
 
+vi.mock('../../api/recordsApi', () => ({
+  default: {
+    getComments: vi.fn().mockResolvedValue({ data: [] }),
+    createComment: vi.fn(),
+    deleteComment: vi.fn(),
+  },
+}))
+
 import kbApi from '../../api/kbApi'
 import ArticleDetail from './ArticleDetail'
 
+function makeStore() {
+  return configureStore({
+    reducer: { auth: authReducer },
+    preloadedState: {
+      auth: { user: { id: 1, username: 'reda' }, role: 'admin', isAuthenticated: true, loading: false },
+    },
+  })
+}
+
 function wrap(ui) {
   return (
-    <MemoryRouter>
-      <ThemeProvider>{ui}</ThemeProvider>
-    </MemoryRouter>
+    <Provider store={makeStore()}>
+      <MemoryRouter>
+        <ThemeProvider>{ui}</ThemeProvider>
+      </MemoryRouter>
+    </Provider>
   )
 }
 
@@ -143,5 +165,17 @@ describe('ArticleDetail — favoris (XKB15)', () => {
     const favBtn = screen.getByRole('button', { name: /ajouter aux favoris/i })
     await user.click(favBtn)
     await waitFor(() => expect(kbApi.togglerFavori).toHaveBeenCalledWith(1))
+  })
+})
+
+describe('ArticleDetail — commentaires (XKB13)', () => {
+  it('l’onglet Commentaires monte le ChatterWidget scopé kb.kbarticle', async () => {
+    mockLoads()
+    const recordsApi = (await import('../../api/recordsApi')).default
+    const user = userEvent.setup()
+    render(wrap(<ArticleDetail articleId={1} canEdit onBack={() => {}} onEdit={() => {}} />))
+    await waitFor(() => expect(screen.getByText('Procédure onduleur')).toBeTruthy())
+    await user.click(screen.getByRole('tab', { name: /Commentaires/i }))
+    await waitFor(() => expect(recordsApi.getComments).toHaveBeenCalledWith('kb.kbarticle', 1))
   })
 })

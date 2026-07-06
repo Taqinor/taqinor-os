@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSelector } from 'react-redux'
-import { BookOpen, Plus, Eye, Pencil, Trash2, Send, FolderTree, Copy } from 'lucide-react'
+import {
+  BookOpen, Plus, Eye, Pencil, Trash2, Send, FolderTree, Copy, AlertTriangle,
+} from 'lucide-react'
 import { ListShell } from '../../ui/module'
 import { Button, Badge, Tag, toast } from '../../ui'
 import { formatDateTime } from '../../lib/format'
@@ -39,6 +41,10 @@ export default function KbPage() {
   const [selected, setSelected] = useState(null)
   const [editing, setEditing] = useState(null) // article en édition (ou {} pour nouveau)
 
+  // XKB14 — rapport de péremption (articles dont la revue est due), visible
+  // seulement responsable/admin.
+  const [peremption, setPeremption] = useState([])
+
   // Charge la liste avec les filtres serveur passés (statut / catégorie).
   const load = (statut = statutFilter, categorie = categorieFilter) => {
     setLoading(true)
@@ -58,6 +64,13 @@ export default function KbPage() {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    if (!peutEditer) return
+    kbApi.rapportPeremption()
+      .then((res) => setPeremption(Array.isArray(res.data) ? res.data : (res.data?.results ?? [])))
+      .catch(() => setPeremption([]))
+  }, [peutEditer])
 
   // Les filtres serveur relancent explicitement le chargement (évite un effet
   // dépendant qui déclencherait un setState « en cascade »).
@@ -283,6 +296,13 @@ export default function KbPage() {
         emptyTitle="Aucun article"
         emptyDescription="Aucun article ne correspond à cette recherche."
       >
+        {peutEditer && peremption.length > 0 && (
+          <div className="flex items-center gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning">
+            <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
+            {peremption.length} article{peremption.length > 1 ? 's' : ''} dont la revue
+            est due (contenu potentiellement périmé).
+          </div>
+        )}
         <ArticleTree onSelect={openDetail} />
       </ListShell>
     </div>

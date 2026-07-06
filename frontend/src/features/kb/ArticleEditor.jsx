@@ -18,6 +18,14 @@ const STATUT_OPTIONS = Object.entries(KB_STATUT_MAP).map(([value, v]) => ({
   value, label: v.label,
 }))
 
+// XKB9 — visibilité (section) de l'article. ``workspace`` = comportement
+// historique (visible de tous les paliers autorisés, sous réserve des ACL).
+const VISIBILITE_OPTIONS = [
+  { value: 'workspace', label: 'Espace de travail' },
+  { value: 'prive', label: 'Privé' },
+  { value: 'partage', label: 'Partagé' },
+]
+
 export default function ArticleEditor({ article, onCancel, onSaved }) {
   const isEdit = !!article?.id
   const [form, setForm] = useState({
@@ -26,6 +34,7 @@ export default function ArticleEditor({ article, onCancel, onSaved }) {
     categorie: article?.categorie ?? '',
     tags: article?.tags ?? '',
     statut: article?.statut ?? 'brouillon',
+    visibilite: article?.visibilite ?? 'workspace',
   })
   const [saving, setSaving] = useState(false)
   const corpsRef = useRef(null)
@@ -84,7 +93,7 @@ export default function ArticleEditor({ article, onCancel, onSaved }) {
           <Input id="kb-titre" value={form.titre} onChange={set('titre')} />
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-4">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="kb-categorie">Catégorie</Label>
             <Input id="kb-categorie" value={form.categorie} onChange={set('categorie')} />
@@ -100,6 +109,15 @@ export default function ArticleEditor({ article, onCancel, onSaved }) {
               value={form.statut}
               onChange={set('statut')}
               options={STATUT_OPTIONS}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="kb-visibilite">Visibilité</Label>
+            <FilterSelect
+              id="kb-visibilite"
+              value={form.visibilite}
+              onChange={set('visibilite')}
+              options={VISIBILITE_OPTIONS}
             />
           </div>
         </div>
