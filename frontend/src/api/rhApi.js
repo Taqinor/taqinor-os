@@ -33,7 +33,9 @@ const rhApi = {
   // ── YHIRE2 / ZRH12 — Offboarding (sortie) ──
   sortirEmploye: (id, data) => api.post(`/rh/employes/${id}/sortir/`, data ?? {}),
   getComptesActifsSortis: () => api.get('/rh/employes/comptes-actifs-sortis/'),
-  certificatTravailUrl: (id) => `/rh/employes/${id}/certificat-travail/`,
+  // Certificat de travail (ZRH12) — PDF authentifié (cookie), récupéré en blob.
+  getCertificatTravail: (id) =>
+    api.get(`/rh/employes/${id}/certificat-travail/`, { responseType: 'blob' }),
   getElementsSortie: (params) => api.get('/rh/elements-sortie/', { params }),
   updateElementSortie: (id, data) => api.patch(`/rh/elements-sortie/${id}/`, data),
 
