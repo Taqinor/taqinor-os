@@ -14,6 +14,21 @@ export const VEHICULE_STATUTS = {
   actif: 'Actif',
   maintenance: 'En maintenance',
   reforme: 'Réformé',
+  // XFLT4 — cycle de vie complet (acquisition → cession) ; les 3 statuts
+  // historiques ci-dessus restent intacts.
+  commande: 'Commandé',
+  a_vendre: 'À vendre',
+  vendu: 'Vendu',
+}
+
+// XFLT4 — checklist de mise en service (gate du passage commande→actif),
+// miroir de `Vehicule.CHECKLIST_MISE_EN_SERVICE` (jamais renommer/ajouter
+// sans mettre à jour le backend).
+export const CHECKLIST_MISE_EN_SERVICE_ITEMS = {
+  immatriculation_faite: 'Immatriculation faite',
+  plaques: 'Plaques posées',
+  assurance_active: 'Assurance active',
+  carte_grise_recue: 'Carte grise reçue',
 }
 
 export const ENERGIES = {

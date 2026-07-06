@@ -14,6 +14,10 @@ export const VehiculeStatutPill = statusPill({
   actif: { label: 'Actif', tone: 'success' },
   maintenance: { label: 'En maintenance', tone: 'warning' },
   reforme: { label: 'Réformé', tone: 'neutral' },
+  // XFLT4 — cycle de vie complet (acquisition → cession).
+  commande: { label: 'Commandé', tone: 'info' },
+  a_vendre: { label: 'À vendre', tone: 'warning' },
+  vendu: { label: 'Vendu', tone: 'neutral' },
 })
 
 export const ReservationStatutPill = statusPill({
