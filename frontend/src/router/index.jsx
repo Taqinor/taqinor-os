@@ -61,6 +61,12 @@ const OmReportPage = lazy(() => import('../pages/monitoring/OmReportPage'))
 const ClientPortalPage = lazy(() => import('../pages/monitoring/ClientPortalPage'))
 const EquipementsPage = lazy(() => import('../pages/sav/EquipementsPage'))
 const TicketsPage = lazy(() => import('../pages/sav/TicketsPage'))
+const WarrantyClaimsPage = lazy(() => import('../pages/sav/WarrantyClaimsPage'))
+const SavParametresPage = lazy(() => import('../pages/sav/SavParametresPage'))
+const SavSlaReportPage = lazy(() => import('../pages/sav/SavSlaReportPage'))
+const SavAlarmesPage = lazy(() => import('../pages/sav/SavAlarmesPage'))
+const SavActionBoardPage = lazy(() => import('../pages/sav/SavActionBoardPage'))
+const KbArticlesPage = lazy(() => import('../pages/sav/KbArticlesPage'))
 const AgentChat = lazy(() => import('../pages/ia/AgentChat'))
 const OcrUpload = lazy(() => import('../pages/ia/OcrUpload'))
 const OcrStockImport = lazy(() => import('../pages/stock/OcrStockImport'))
@@ -96,6 +102,10 @@ const PublicSignaturePage = lazy(() => import('../pages/ged/PublicSignaturePage'
 const PublicDepotPage = lazy(() => import('../pages/ged/PublicDepotPage'))
 // XRH10 — guichet kiosque de pointage (device-token, sans session ni layout ERP).
 const KiosquePointage = lazy(() => import('../features/rh/Kiosque'))
+// XSAV19 — page publique « Signaler un problème » via QR équipement.
+const EquipementSignalerPage = lazy(() => import('../pages/sav/EquipementSignalerPage'))
+// XSAV10/FG86 — page publique de suivi client d'un ticket SAV + CSAT.
+const TicketSuiviPage = lazy(() => import('../pages/sav/TicketSuiviPage'))
 const ChatPage = lazy(() => import('../pages/messaging/ChatPage'))
 const DocumentsPage = lazy(() => import('../pages/ged/DocumentsPage'))
 
@@ -193,6 +203,10 @@ const router = createBrowserRouter([
   { path: '/ged/depot/:token', element: <Suspense fallback={<Fallback />}><PublicDepotPage /></Suspense> },
   // XRH10 — kiosque de pointage (jeton de device en localStorage, sans session).
   { path: '/kiosque', element: <Suspense fallback={<Fallback />}><KiosquePointage /></Suspense> },
+  // XSAV19 — « Signaler un problème » via QR équipement (sans login, sans layout ERP).
+  { path: '/e/:token', element: <Suspense fallback={<Fallback />}><EquipementSignalerPage /></Suspense> },
+  // XSAV10/FG86 — suivi client d'un ticket SAV + CSAT (sans login, sans layout ERP).
+  { path: '/suivi/:token', element: <Suspense fallback={<Fallback />}><TicketSuiviPage /></Suspense> },
 
   { path: '/dashboard', loader: authLoader, element: <WithLayout><Dashboard /></WithLayout> },
   { path: '/messages', loader: authLoader, element: <WithLayout><ChatPage /></WithLayout> },
@@ -255,6 +269,18 @@ const router = createBrowserRouter([
   { path: '/equipements', loader: authLoader, element: <WithLayout><EquipementsPage /></WithLayout> },
   { path: '/sav', loader: authLoader, element: <WithLayout><TicketsPage /></WithLayout> },
   { path: '/sav/contrats', loader: authLoader, element: <WithLayout><ContratsMaintenance /></WithLayout> },
+  // FG83 — réclamations garantie fournisseur (flux RMA).
+  { path: '/sav/warranty-claims', loader: authLoader, element: <WithLayout><WarrantyClaimsPage /></WithLayout> },
+  // ZSAV2/ZMFG1/ZMFG2/XSAV14/XSAV23 — référentiels SAV (responsable/admin, écriture gardée côté serveur).
+  { path: '/sav/parametres', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><SavParametresPage /></WithLayout> },
+  // XSAV8 — rapport de conformité SLA + KPI avancés.
+  { path: '/sav/sla-rapport', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><SavSlaReportPage /></WithLayout> },
+  // Alarmes onduleur (FG280).
+  { path: '/sav/alarmes', loader: authLoader, element: <WithLayout><SavAlarmesPage /></WithLayout> },
+  // ZSAV6 — file d'action (tickets ouverts groupés par action attendue).
+  { path: '/sav/action-requise', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><SavActionBoardPage /></WithLayout> },
+  // FG87 — base de connaissances SAV (articles KB).
+  { path: '/sav/kb', loader: authLoader, element: <WithLayout><KbArticlesPage /></WithLayout> },
 
   // IA
   { path: '/ia/agent', loader: authLoader, element: <WithLayout><AgentChat /></WithLayout> },

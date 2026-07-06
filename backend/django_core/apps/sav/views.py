@@ -1955,11 +1955,14 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
 
         Retourne l'URL absolue du lien client tokenisé + le jeton brut.
         Le jeton est créé à la première demande ; les appels suivants renvoient
-        le même jeton sans régénérer. Aucun cout ni chatter n'est exposé."""
+        le même jeton sans régénérer. Aucun cout ni chatter n'est exposé.
+
+        XSAV10/XSAV19 — l'URL pointe vers la page FRONTEND ``/suivi/<token>``
+        (statut + CSAT), pas directement l'API JSON (même origine, même
+        patron que XSAL17 ``public_booking_url``)."""
         ticket = self.get_object()
         token = ticket.ensure_share_token()
-        url = request.build_absolute_uri(
-            f'/api/django/public/sav/ticket/{token}/')
+        url = request.build_absolute_uri(f'/suivi/{token}')
         return Response({'token': token, 'url': url})
 
 

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import {
   Download, PackageSearch, AlarmClock, AlertTriangle, RotateCcw, Save,
-  Wrench, Pencil, ShieldCheck,
+  Wrench, Pencil, ShieldCheck, Trash2, ChevronRight, Activity,
 } from 'lucide-react'
 import { fetchEquipements } from '../../features/sav/store/equipementsSlice'
 import savApi from '../../api/savApi'
@@ -11,6 +11,7 @@ import installationsApi from '../../api/installationsApi'
 import stockApi from '../../api/stockApi'
 import importApi, { downloadXlsx } from '../../api/importApi'
 import RegistreGarantiesDialog from './RegistreGarantiesDialog'
+import EquipementFiabilitePanel from './EquipementFiabilitePanel'
 import {
   EMPTY_EQUIP_FILTERS,
   EQUIP_STATUTS,
@@ -35,6 +36,8 @@ import {
   Form, FormSection, FormField, FormActions, useDirtyGuard,
   DataTable,
   toast,
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
 } from '../../ui'
 
 const formatDateFR = (iso) => {
@@ -77,7 +80,21 @@ function frError(data, fallback) {
   return fallback
 }
 
-function EquipementDetail({ equipement, onClose, onSaved }) {
+// XSAV15/16/17 — section repliable (même patron que TicketsPage.CollapsibleSection).
+function CollapsibleSection({ icon: Icon, title, children }) {
+  return (
+    <details open className="group flex flex-col gap-3 [&[open]>summary>svg.chevron]:rotate-90">
+      <summary className="flex cursor-pointer list-none items-center gap-2 font-display text-base font-semibold text-foreground">
+        {Icon && <Icon className="size-4 text-muted-foreground" aria-hidden="true" />}
+        <span className="flex-1">{title}</span>
+        <ChevronRight className="chevron size-4 rotate-0 text-muted-foreground transition-transform" aria-hidden="true" />
+      </summary>
+      <div className="flex flex-col gap-3 pt-2">{children}</div>
+    </details>
+  )
+}
+
+export function EquipementDetail({ equipement, onClose, onSaved }) {
   const navigate = useNavigate()
   const initial = useMemo(() => ({
     numero_serie: equipement.numero_serie ?? '',
@@ -176,6 +193,38 @@ function EquipementDetail({ equipement, onClose, onSaved }) {
     }
   }
 
+  // ── ZMFG12 — mise au rebut motivée / réactivation ──
+  const [rebutOpen, setRebutOpen] = useState(false)
+  const [motifRebut, setMotifRebut] = useState('')
+  const [rebutBusy, setRebutBusy] = useState(false)
+  const [current, setCurrent] = useState(equipement)
+
+  const mettreAuRebut = async () => {
+    if (!motifRebut.trim()) return
+    setRebutBusy(true)
+    try {
+      const r = await savApi.mettreAuRebutEquipement(equipement.id, motifRebut.trim())
+      setCurrent(r.data)
+      setRebutOpen(false)
+      setMotifRebut('')
+      toast.success('Équipement mis au rebut')
+      onSaved?.()
+    } catch (err) {
+      setError(frError(err.response?.data, 'Mise au rebut impossible.'))
+    } finally { setRebutBusy(false) }
+  }
+  const reactiverRebut = async () => {
+    setRebutBusy(true)
+    try {
+      const r = await savApi.reactiverRebutEquipement(equipement.id)
+      setCurrent(r.data)
+      toast.success('Équipement réactivé')
+      onSaved?.()
+    } catch (err) {
+      setError(frError(err.response?.data, 'Réactivation impossible.'))
+    } finally { setRebutBusy(false) }
+  }
+
   return (
     <Sheet open onOpenChange={(o) => { if (!o) onClose() }}>
       <SheetContent side="right" className="w-[min(34rem,calc(100%-2rem))] sm:max-w-lg">
@@ -186,6 +235,20 @@ function EquipementDetail({ equipement, onClose, onSaved }) {
             automatiquement.
           </SheetDescription>
         </SheetHeader>
+
+        {/* ZMFG12 — bannière de rebut, même patron que le bandeau ticket annulé. */}
+        {current.mis_au_rebut && (
+          <div role="alert"
+               className="flex flex-wrap items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+            <span>
+              <strong>Équipement mis au rebut.</strong>
+              {current.motif_rebut ? ` Motif : ${current.motif_rebut}` : ''}
+            </span>
+            <Button size="sm" variant="outline" loading={rebutBusy} onClick={reactiverRebut}>
+              Réactiver
+            </Button>
+          </div>
+        )}
 
         <Form onSubmit={(e) => { e.preventDefault(); save() }} className="gap-5">
           <FormSection title="Identité">
@@ -324,10 +387,46 @@ function EquipementDetail({ equipement, onClose, onSaved }) {
           </p>
 
           <FormActions sticky={false}>
+            {!current.mis_au_rebut && (
+              <Button type="button" variant="destructive" className="mr-auto"
+                      onClick={() => setRebutOpen(true)}>
+                <Trash2 /> Mettre au rebut
+              </Button>
+            )}
             <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
             <Button type="submit" loading={saving}><Save /> Mettre à jour</Button>
           </FormActions>
         </Form>
+
+        {/* XSAV15/16/17 — fiabilité, disponibilité, immobilisation, relevés compteur. */}
+        <CollapsibleSection icon={Activity} title="Fiabilité & maintenance">
+          <EquipementFiabilitePanel equipementId={equipement.id} />
+        </CollapsibleSection>
+
+        <AlertDialog open={rebutOpen} onOpenChange={setRebutOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Mettre cet équipement au rebut ?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Motif obligatoire — l'équipement sortira du parc actif et des
+                générations de visites préventives. Cette action est réservée
+                responsable/admin.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="grid gap-1.5">
+              <label htmlFor="motif-rebut" className="text-sm font-medium">Motif</label>
+              <Textarea id="motif-rebut" rows={2} value={motifRebut}
+                        onChange={(e) => setMotifRebut(e.target.value)} />
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Annuler</AlertDialogCancel>
+              <AlertDialogAction disabled={!motifRebut.trim() || rebutBusy}
+                                  onClick={(e) => { e.preventDefault(); mettreAuRebut() }}>
+                Confirmer la mise au rebut
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </SheetContent>
     </Sheet>
   )

@@ -152,6 +152,12 @@ const NAV_SECTIONS = [
       { to: '/equipements',          label: 'Équipements',      k: 'nav.equipements', icon: I.equipements, roles: ['normal','responsable','admin'] },
       { to: '/sav',                  label: 'Tickets SAV',      k: 'nav.tickets_sav', icon: I.sav,         roles: ['normal','responsable','admin'] },
       { to: '/sav/contrats',         label: 'Contrats maintenance', k: 'nav.contrats_maintenance', icon: I.sav, roles: ['responsable','admin'] },
+      { to: '/sav/warranty-claims',  label: 'Garanties fournisseur (RMA)', k: 'nav.warranty_claims', icon: I.sav, roles: ['responsable','admin'] },
+      { to: '/sav/kb',               label: 'Base de connaissances SAV', k: 'nav.sav_kb', icon: I.sav, roles: ['normal','responsable','admin'] },
+      { to: '/sav/alarmes',          label: 'Alarmes onduleur',  k: 'nav.sav_alarmes', icon: I.sav, roles: ['normal','responsable','admin'] },
+      { to: '/sav/action-requise',   label: 'Action requise',    k: 'nav.sav_action_requise', icon: I.sav, roles: ['responsable','admin'] },
+      { to: '/sav/sla-rapport',      label: 'Rapport SLA SAV',   k: 'nav.sav_sla_rapport', icon: I.sav, roles: ['responsable','admin'] },
+      { to: '/sav/parametres',       label: 'Paramètres SAV',    k: 'nav.sav_parametres', icon: I.sav, roles: ['responsable','admin'] },
     ],
   },
   {
