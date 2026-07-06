@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { LibraryBig } from 'lucide-react'
 import contratsApi from '../../api/contratsApi'
 import { Card, Badge, Tabs, TabsList, TabsTrigger, TabsContent, toast } from '../../ui'
@@ -17,6 +18,7 @@ import { formatDate } from '../../lib/format'
 const listData = (res) => (Array.isArray(res.data) ? res.data : (res.data?.results ?? []))
 
 export default function ModelesPage() {
+  const navigate = useNavigate()
   const [modeles, setModeles] = useState([])
   const [clauses, setClauses] = useState([])
   const [versions, setVersions] = useState([])
@@ -58,7 +60,20 @@ export default function ModelesPage() {
     { id: 'cree_le', header: 'Figée le', width: 160, align: 'right', searchable: false, accessor: (v) => v.cree_le || '', cell: (val) => (val ? formatDate(val) : '—') },
   ], [])
 
-  const wrap = (title, subtitle, columns, rows, name, empty) => (
+  // CONTRAT7 — instancier un contrat pré-rempli depuis un gabarit puis ouvrir
+  // sa fiche cycle de vie (aucun autre chemin de création n'existait).
+  const instancier = async (modele) => {
+    try {
+      const r = await contratsApi.instancierModele(modele.id)
+      const id = r.data?.id
+      toast.success('Contrat créé depuis le gabarit.')
+      if (id) navigate(`/contrats/${id}`)
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Instanciation impossible.')
+    }
+  }
+
+  const wrap = (title, subtitle, columns, rows, name, empty, onRowClick) => (
     <ListShell
       title={title}
       subtitle={subtitle}
@@ -70,7 +85,7 @@ export default function ModelesPage() {
       exportName={name}
       emptyTitle="Vide"
       emptyDescription={empty}
-      onRowClick={() => toast.message('Édition de la bibliothèque à venir.')}
+      onRowClick={onRowClick || (() => toast.message('Édition de la bibliothèque à venir.'))}
     />
   )
 
@@ -87,7 +102,7 @@ export default function ModelesPage() {
           <TabsTrigger value="versions">Versions ({versions.length})</TabsTrigger>
         </TabsList>
         <TabsContent value="modeles">
-          {wrap('Gabarits de contrat', 'Instanciez un contrat pré-rempli depuis un gabarit.', modeleCols, modeles, 'modeles-contrat', 'Aucun modèle de contrat.')}
+          {wrap('Gabarits de contrat', 'Cliquez un gabarit pour créer un contrat pré-rempli.', modeleCols, modeles, 'modeles-contrat', 'Aucun modèle de contrat.', instancier)}
         </TabsContent>
         <TabsContent value="clauses">
           {wrap('Bibliothèque de clauses', 'Clauses réutilisables, rattachables aux gabarits et résolues sur chaque contrat.', clauseCols, clauses, 'clauses-contrat', 'Aucune clause.')}
