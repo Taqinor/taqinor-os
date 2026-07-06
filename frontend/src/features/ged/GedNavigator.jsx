@@ -13,7 +13,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   Folder, FolderOpen, ChevronRight, ChevronDown, FileText, Loader2, Inbox,
-  RefreshCw, Plus, FolderPlus, Pencil, Upload, MoveRight, Eye,
+  RefreshCw, Plus, FolderPlus, Pencil, Upload, MoveRight, Eye, Lock, LockOpen,
+  Trash2,
 } from 'lucide-react'
 import gedApi from '../../api/gedApi'
 import { formatDate } from '../../lib/format'
@@ -152,6 +153,33 @@ export default function GedNavigator() {
   const onCabinetCreated = (cab) => loadCabinets(cab.id)
   const onFolderChanged = () => loadFolders(cabinetId)
   const onDocumentUploaded = () => reloadDocuments()
+
+  // ── GED16 — check-out / check-in ; GED26 — mise en corbeille ──
+  const checkOut = async (d) => {
+    try {
+      await gedApi.checkOutDocument(d.id)
+      toast.success('Document extrait (verrouillé).')
+      reloadDocuments()
+    } catch (err) {
+      if (err?.response?.status === 409) {
+        toast.error(errText(err, 'Document déjà extrait par un autre utilisateur.'))
+      } else { toast.error(errText(err, 'Extraction impossible.')) }
+    }
+  }
+  const checkIn = async (d) => {
+    try {
+      await gedApi.checkInDocument(d.id)
+      toast.success('Document archivé (verrou levé).')
+      reloadDocuments()
+    } catch (err) { toast.error(errText(err, 'Archivage impossible.')) }
+  }
+  const mettreEnCorbeille = async (d) => {
+    try {
+      await gedApi.mettreEnCorbeille(d.id)
+      toast.success('Document mis en corbeille.')
+      reloadDocuments()
+    } catch (err) { toast.error(errText(err, 'Mise en corbeille impossible.')) }
+  }
 
   const hasCabinet = cabinetId != null
 
@@ -331,14 +359,42 @@ export default function GedNavigator() {
                               {d.version_count ?? 0}
                               {d.derniere_version ? ` (v${d.derniere_version})` : ''}
                             </td>
-                            <td data-label="Créé par" className="m-hide">{d.created_by_nom || '—'}</td>
+                            <td data-label="Créé par" className="m-hide">
+                              {d.created_by_nom || '—'}
+                              {d.is_locked && (
+                                <Badge tone="warning" className="ml-1.5 inline-flex items-center gap-0.5">
+                                  <Lock className="size-3" aria-hidden="true" />
+                                  {d.locked_by_nom ? d.locked_by_nom : 'extrait'}
+                                </Badge>
+                              )}
+                            </td>
                             <td data-label="Mis à jour">{formatDate(d.updated_at)}</td>
                             <td data-label="Actions" className="text-right">
-                              <Button size="sm" variant="ghost"
-                                aria-label={`Aperçu de ${d.nom}`}
-                                onClick={() => setPreviewDoc(d)}>
-                                <Eye className="size-4" aria-hidden="true" /> Aperçu
-                              </Button>
+                              <div className="flex items-center justify-end gap-0.5">
+                                <Button size="sm" variant="ghost"
+                                  aria-label={`Aperçu de ${d.nom}`}
+                                  onClick={() => setPreviewDoc(d)}>
+                                  <Eye className="size-4" aria-hidden="true" /> Aperçu
+                                </Button>
+                                {d.is_locked ? (
+                                  <Button size="sm" variant="ghost"
+                                    aria-label={`Archiver ${d.nom}`}
+                                    onClick={() => checkIn(d)}>
+                                    <LockOpen className="size-4" aria-hidden="true" /> Archiver
+                                  </Button>
+                                ) : (
+                                  <Button size="sm" variant="ghost"
+                                    aria-label={`Extraire ${d.nom}`}
+                                    onClick={() => checkOut(d)}>
+                                    <Lock className="size-4" aria-hidden="true" /> Extraire
+                                  </Button>
+                                )}
+                                <Button size="sm" variant="ghost"
+                                  aria-label={`Mettre ${d.nom} en corbeille`}
+                                  onClick={() => mettreEnCorbeille(d)}>
+                                  <Trash2 className="size-4" aria-hidden="true" />
+                                </Button>
+                              </div>
                             </td>
                           </tr>
                         ))}

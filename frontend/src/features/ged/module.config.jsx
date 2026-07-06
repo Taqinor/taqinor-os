@@ -3,7 +3,7 @@
    de composants : le fast-refresh ne s'y applique pas (meme contrat que
    router/moduleRoutes.jsx). */
 import { lazy } from 'react'
-import { FileSignature, ShieldCheck, Tags, ScanLine } from 'lucide-react'
+import { FileSignature, ShieldCheck, Tags, ScanLine, Trash2 } from 'lucide-react'
 
 /* ============================================================================
    UX45-UX47 - Config du module GED avancee (approbation, retention, tags).
@@ -25,6 +25,7 @@ const ApprobationPage = lazy(() => import('./advanced/ApprobationPage.jsx'))
 const RetentionPage = lazy(() => import('./advanced/RetentionPage.jsx'))
 const TagsPage = lazy(() => import('./advanced/TagsPage.jsx'))
 const NumeriserPage = lazy(() => import('./NumeriserPage.jsx'))
+const CorbeillePage = lazy(() => import('./advanced/CorbeillePage.jsx'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -38,6 +39,7 @@ export default {
       { to: '/ged/approbation', label: 'Approbation & signature', icon: <FileSignature size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/ged/retention', label: 'Rétention & archivage', icon: <ShieldCheck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/ged/tags', label: 'Tags & liens', icon: <Tags size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/ged/corbeille', label: 'Corbeille', icon: <Trash2 size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
     ],
   },
   titles: [
@@ -45,6 +47,7 @@ export default {
     ['/ged/approbation', 'Approbation & signature'],
     ['/ged/retention', 'Rétention & archivage'],
     ['/ged/tags', 'Tags & liens'],
+    ['/ged/corbeille', 'Corbeille'],
   ],
   sectionLabels: {},
   routes: [
@@ -52,5 +55,6 @@ export default {
     { path: '/ged/approbation', component: ApprobationPage, roles: ROLES },
     { path: '/ged/retention', component: RetentionPage, roles: ROLES },
     { path: '/ged/tags', component: TagsPage, roles: ROLES },
+    { path: '/ged/corbeille', component: CorbeillePage, roles: ROLES },
   ],
 }

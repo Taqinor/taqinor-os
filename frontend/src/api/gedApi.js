@@ -250,6 +250,25 @@ const gedApi = {
     `/api/django/ged/versions/${versionId}/apercu/`,
   // Versions d'un document (pour choisir la version à prévisualiser).
   getVersions: (params) => api.get('/ged/versions/', { params }),
+
+  // ══════════════════════════════════════════════════════════════════════
+  // GED26 — Corbeille (soft-delete réversible + purge définitive).
+  // ══════════════════════════════════════════════════════════════════════
+  getCorbeille: (params) => api.get('/ged/documents/corbeille/', { params }),
+  mettreEnCorbeille: (id) =>
+    api.post(`/ged/documents/${id}/mettre-en-corbeille/`),
+  restaurerCorbeille: (id) =>
+    api.post(`/ged/documents/${id}/restaurer-corbeille/`),
+  purgerDocument: (id) => api.post(`/ged/documents/${id}/purger/`),
+
+  // GED16 — Check-out / check-in (verrou d'extraction).
+  checkOutDocument: (id) => api.post(`/ged/documents/${id}/check-out/`),
+  checkInDocument: (id) => api.post(`/ged/documents/${id}/check-in/`),
+
+  // XGED14 — Opérations en lot sur une multi-sélection de documents.
+  // `data` : { documents:[<id>,...], operation:'tagger'|'detaguer'|'deplacer'|
+  // 'corbeille'|'partager'|'demander_signature'|'demander_revue', params?:{} }.
+  operationsLot: (data) => api.post('/ged/documents/operations-lot/', data),
 }
 
 export default gedApi

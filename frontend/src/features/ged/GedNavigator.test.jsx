@@ -22,6 +22,10 @@ vi.mock('../../api/gedApi', () => ({
     // GED14 — aperçu inline.
     getVersions: vi.fn(() => Promise.resolve({ data: [] })),
     apercuVersionUrl: (id) => `/api/django/ged/versions/${id}/apercu/`,
+    // GED16 — check-out / check-in ; GED26 — corbeille.
+    checkOutDocument: vi.fn(() => Promise.resolve({ data: {} })),
+    checkInDocument: vi.fn(() => Promise.resolve({ data: {} })),
+    mettreEnCorbeille: vi.fn(() => Promise.resolve({ data: {} })),
   },
 }))
 
@@ -146,6 +150,22 @@ describe('GedNavigator — écriture (U14)', () => {
       expect(iframe).toBeTruthy()
       expect(iframe.getAttribute('src')).toContain('/ged/versions/22/apercu/')
     })
+  })
+
+  it('GED16 — extrait un document (check-out)', async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([
+      { id: 8, nom: 'facture.pdf', is_locked: false, updated_at: '2026-06-01T10:00:00Z' },
+    ]))
+
+    render(<GedNavigator />)
+    await userEvent.click(await screen.findByText('Docs'))
+    await userEvent.click(await screen.findByRole('button', { name: /Extraire facture\.pdf/i }))
+
+    await waitFor(() => expect(gedApi.checkOutDocument).toHaveBeenCalledWith(8))
   })
 
   it('renomme le dossier sélectionné', async () => {
