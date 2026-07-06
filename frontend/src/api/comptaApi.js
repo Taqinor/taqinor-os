@@ -63,6 +63,18 @@ const comptaApi = {
       api.get('/compta/etats/previsionnel-tresorerie/', { params }),
     balanceAgeeFournisseurs: (params) =>
       api.get('/compta/etats/balance-agee-fournisseurs/', { params }),
+    releveFournisseur: (tiersId, params) =>
+      api.get(`/compta/etats/releve-fournisseur/${tiersId}/`, { params }),
+    tableauFlux: (params) => api.get('/compta/etats/tableau-flux/', { params }),
+    tableauImmobilisations: (params) =>
+      api.get('/compta/etats/tableau-immobilisations/', { params }),
+    journalItems: (params) => api.get('/compta/etats/journal-items/', { params }),
+    continuiteSequences: (params) =>
+      api.get('/compta/etats/continuite-sequences/', { params }),
+    controleIce: (params) => api.get('/compta/etats/controle-ice/', { params }),
+    dossierCloture: (params) =>
+      api.get('/compta/etats/dossier-cloture/',
+        { params: { export: 'xlsx', ...params }, responseType: 'blob' }),
 
     // ── UX7 — Exports fichiers ──
     // Le backend renvoie un fichier UNIQUEMENT avec « ?export=... » (jamais
@@ -90,14 +102,58 @@ const comptaApi = {
 
   // ── UX6 — Trésorerie & prévisionnel ──
   tresorerie: resource('tresorerie'),
-  caisses: resource('caisses'),
+  caisses: {
+    ...resource('caisses'),
+    mouvementList: (id, params) =>
+      api.get(`/compta/caisses/${id}/mouvement/`, { params }),
+    mouvementCreer: (id, data) =>
+      api.post(`/compta/caisses/${id}/mouvement/`, data),
+    posterMouvement: (id, data) =>
+      api.post(`/compta/caisses/${id}/poster-mouvement/`, data),
+    resume: (id, params) =>
+      api.get(`/compta/caisses/${id}/resume/`, { params }),
+    clotureList: (id) => api.get(`/compta/caisses/${id}/cloturer/`),
+    cloturer: (id, data) => api.post(`/compta/caisses/${id}/cloturer/`, data),
+  },
   virements: resource('virements'),
   previsionnel: resource('previsionnel'),
 
   // ── UX7 — Fiscalité & déclarations ──
-  declarationsTva: resource('declarations-tva'),
-  retenuesSource: resource('retenues-source'),
-  timbresFiscaux: resource('timbres-fiscaux'),
+  declarationsTva: {
+    ...resource('declarations-tva'),
+    preparer: (data) => api.post('/compta/declarations-tva/preparer/', data),
+    export: (id) => api.get(
+      `/compta/declarations-tva/${id}/export/`, { responseType: 'blob' }),
+    deposer: (id) => api.post(`/compta/declarations-tva/${id}/deposer/`),
+    comparatif: (id, params) =>
+      api.get(`/compta/declarations-tva/${id}/comparatif/`, { params }),
+    bordereauPdf: (id) =>
+      api.get(`/compta/declarations-tva/${id}/bordereau-pdf/`,
+        { responseType: 'blob' }),
+  },
+  retenuesSource: {
+    ...resource('retenues-source'),
+    verser: (id) => api.post(`/compta/retenues-source/${id}/verser/`),
+    bordereau: (params) =>
+      api.get('/compta/retenues-source/bordereau/', { params }),
+    attestation: (id) =>
+      api.get(`/compta/retenues-source/${id}/attestation/`,
+        { responseType: 'blob' }),
+    attestationAnnuelle: (params) =>
+      api.get('/compta/retenues-source/attestation-annuelle/',
+        { params, responseType: 'blob' }),
+  },
+  timbresFiscaux: {
+    ...resource('timbres-fiscaux'),
+    verser: (id) => api.post(`/compta/timbres-fiscaux/${id}/verser/`),
+  },
+
+  // ── XACC9 — Calendrier des obligations fiscales ──
+  obligationsFiscales: {
+    ...resource('obligations-fiscales'),
+    generer: (data) => api.post('/compta/obligations-fiscales/generer/', data),
+    rappels: () => api.post('/compta/obligations-fiscales/rappels/'),
+  },
 
   // ── UX8 — Immobilisations ──
   immobilisations: {
@@ -107,6 +163,8 @@ const comptaApi = {
     genererPlanAmortissement: (id, data) =>
       api.post(`/compta/immobilisations/${id}/plan-amortissement/`, data),
     ceder: (id, data) => api.post(`/compta/immobilisations/${id}/ceder/`, data),
+    depuisFactureFournisseur: (data) =>
+      api.post('/compta/immobilisations/depuis-facture-fournisseur/', data),
   },
   dotations: {
     ...resource('dotations'),
@@ -126,6 +184,15 @@ const comptaApi = {
       api.post(`/compta/rapprochements/${id}/ligne-releve/`, data),
     pointer: (id, data) =>
       api.post(`/compta/rapprochements/${id}/pointer/`, data),
+    suggestions: (id) => api.get(`/compta/rapprochements/${id}/suggestions/`),
+    accepterSuggestions: (id) =>
+      api.post(`/compta/rapprochements/${id}/accepter-suggestions/`),
+    cloturer: (id) => api.post(`/compta/rapprochements/${id}/cloturer/`),
+  },
+  modelesRapprochement: {
+    ...resource('modeles-rapprochement'),
+    appliquer: (id, data) =>
+      api.post(`/compta/modeles-rapprochement/${id}/appliquer/`, data),
   },
   rapprochements3voies: {
     ...resource('rapprochements-3voies'),
@@ -148,6 +215,136 @@ const comptaApi = {
     ...resource('periodes'),
     cloturer: (id) => api.post(`/compta/periodes/${id}/cloturer/`),
     rouvrir: (id) => api.post(`/compta/periodes/${id}/rouvrir/`),
+  },
+
+  // ── FG127/128 — Effets à recevoir/payer ──
+  effets: {
+    ...resource('effets'),
+    encaisser: (id, data) => api.post(`/compta/effets/${id}/encaisser/`, data),
+    payer: (id, data) => api.post(`/compta/effets/${id}/payer/`, data),
+    rejeter: (id, data) => api.post(`/compta/effets/${id}/rejeter/`, data),
+    escompter: (id, data) => api.post(`/compta/effets/${id}/escompter/`, data),
+    apurerEscompte: (id, data) =>
+      api.post(`/compta/effets/${id}/apurer-escompte/`, data),
+    endosser: (id, data) => api.post(`/compta/effets/${id}/endosser/`, data),
+  },
+  // ── FG129 — Bordereaux de remise en banque ──
+  bordereaux: {
+    ...resource('bordereaux'),
+    poster: (id) => api.post(`/compta/bordereaux/${id}/poster/`),
+  },
+  // ── FG133/134 — Campagnes de règlement fournisseurs ──
+  paymentRuns: {
+    ...resource('payment-runs'),
+    proposer: (id, data) => api.post(`/compta/payment-runs/${id}/proposer/`, data),
+    figer: (id) => api.post(`/compta/payment-runs/${id}/figer/`),
+    poster: (id) => api.post(`/compta/payment-runs/${id}/poster/`),
+    fichierVirement: (id) =>
+      api.get(`/compta/payment-runs/${id}/fichier-virement/`,
+        { responseType: 'blob' }),
+  },
+
+  // ── FG135 — Notes de frais (écran validation/comptable, distinct RH) ──
+  notesFrais: {
+    ...resource('notes-frais'),
+    refacturables: (params) =>
+      api.get('/compta/notes-frais/refacturables/', { params }),
+    refacturer: (data) => api.post('/compta/notes-frais/refacturer/', data),
+    ocr: (formData) => api.post('/compta/notes-frais/ocr/', formData),
+    soumettre: (id) => api.post(`/compta/notes-frais/${id}/soumettre/`),
+    valider: (id, data) => api.post(`/compta/notes-frais/${id}/valider/`, data),
+    rejeter: (id, data) => api.post(`/compta/notes-frais/${id}/rejeter/`, data),
+    rembourser: (id, data) =>
+      api.post(`/compta/notes-frais/${id}/rembourser/`, data),
+    recuPdf: (id) =>
+      api.get(`/compta/notes-frais/${id}/recu-pdf/`, { responseType: 'blob' }),
+    analyse: (params) => api.get('/compta/notes-frais/analyse/', { params }),
+  },
+  rapportsNotesFrais: {
+    ...resource('rapports-notes-frais'),
+    soumettre: (id) => api.post(`/compta/rapports-notes-frais/${id}/soumettre/`),
+    valider: (id) => api.post(`/compta/rapports-notes-frais/${id}/valider/`),
+    rembourser: (id, data) =>
+      api.post(`/compta/rapports-notes-frais/${id}/rembourser/`, data),
+    recuPdf: (id) =>
+      api.get(`/compta/rapports-notes-frais/${id}/recu-pdf/`,
+        { responseType: 'blob' }),
+  },
+  plafondsNotesFrais: resource('plafonds-notes-frais'),
+  baremesIndemnite: resource('baremes-indemnite'),
+  indemnitesChantier: {
+    ...resource('indemnites-chantier'),
+    soumettre: (id) => api.post(`/compta/indemnites-chantier/${id}/soumettre/`),
+    valider: (id, data) =>
+      api.post(`/compta/indemnites-chantier/${id}/valider/`, data),
+    rejeter: (id, data) =>
+      api.post(`/compta/indemnites-chantier/${id}/rejeter/`, data),
+    rembourser: (id, data) =>
+      api.post(`/compta/indemnites-chantier/${id}/rembourser/`, data),
+  },
+
+  // ── FG145 — Retenue de garantie & cautions bancaires ──
+  retenuesGarantie: {
+    ...resource('retenues-garantie'),
+    liberer: (id, data) =>
+      api.post(`/compta/retenues-garantie/${id}/liberer/`, data),
+    echeances: (params) =>
+      api.get('/compta/retenues-garantie/echeances/', { params }),
+  },
+  cautionsBancaires: {
+    ...resource('cautions-bancaires'),
+    mainlevee: (id, data) =>
+      api.post(`/compta/cautions-bancaires/${id}/mainlevee/`, data),
+    echeances: (params) =>
+      api.get('/compta/cautions-bancaires/echeances/', { params }),
+  },
+
+  // ── FG146 — Contrats à l'avancement (revenue-recognition/WIP) ──
+  contratsAvancement: {
+    ...resource('contrats-avancement'),
+    constater: (id, data) =>
+      api.post(`/compta/contrats-avancement/${id}/constater/`, data),
+    avancement: (id) =>
+      api.get(`/compta/contrats-avancement/${id}/avancement/`),
+  },
+  // ── FG147 — Travaux en cours (PCA/WIP cut-off) ──
+  travauxEnCours: {
+    ...resource('travaux-en-cours'),
+    reprendre: (id, data) =>
+      api.post(`/compta/travaux-en-cours/${id}/reprendre/`, data),
+  },
+  // ── FG148 — Campagnes de versement de commissions ──
+  commissionPayoutRuns: {
+    ...resource('commission-payout-runs'),
+    valider: (id) => api.post(`/compta/commission-payout-runs/${id}/valider/`),
+    poster: (id) => api.post(`/compta/commission-payout-runs/${id}/poster/`),
+  },
+
+  // ── XFAC14 — Compensation AR/AP (netting) ──
+  compensations: {
+    ...resource('compensations'),
+    valider: (id) => api.post(`/compta/compensations/${id}/valider/`),
+  },
+
+  // ── XACC26 — Provisions FNP/FAE de fin de période ──
+  provisionsPeriode: {
+    genererFnp: (data) =>
+      api.post('/compta/provisions-periode/generer-fnp/', data),
+    genererFae: (data) =>
+      api.post('/compta/provisions-periode/generer-fae/', data),
+    rapport: (params) =>
+      api.get('/compta/provisions-periode/rapport/', { params }),
+    exportCsv: (params) =>
+      api.get('/compta/provisions-periode/export-csv/',
+        { params, responseType: 'blob' }),
+  },
+
+  // ── COMPTA39 — Piste d'audit comptable (hash-chaînée, admin) ──
+  pistesAudit: {
+    list: (params) => api.get('/compta/pistes-audit/', { params }),
+    get: (id) => api.get(`/compta/pistes-audit/${id}/`),
+    verifier: () => api.get('/compta/pistes-audit/verifier/'),
+    sceller: (data) => api.post('/compta/pistes-audit/sceller/', data),
   },
 
   // ── XMKT30 — Calendrier marketing unifié ──

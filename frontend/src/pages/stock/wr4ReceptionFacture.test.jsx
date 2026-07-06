@@ -16,7 +16,14 @@ vi.mock('../../api/stockApi', () => ({
   },
 }))
 
+vi.mock('../../api/comptaApi', () => ({
+  default: {
+    immobilisations: { depuisFactureFournisseur: vi.fn() },
+  },
+}))
+
 import stockApi from '../../api/stockApi'
+import comptaApi from '../../api/comptaApi'
 import { ReceptionDetail } from './ReceptionsFournisseur.jsx'
 import { FactureDetail } from './FacturesFournisseur.jsx'
 
@@ -89,5 +96,31 @@ describe('WR4 — PDF facture fournisseur (FG55)', () => {
     fireEvent.click(screen.getByRole('button', { name: /PDF \(interne\)/ }))
     const alert = await screen.findByRole('alert')
     expect(alert.textContent).toContain('Réservé aux responsables.')
+  })
+})
+
+describe('XACC33 — capitaliser une ligne de facture fournisseur (bouton « Immobiliser »)', () => {
+  const facture = {
+    id: 11, reference: 'FF-2026-07-0011', statut: 'a_payer',
+    fournisseur_nom: 'JA Solar', montant_ttc: '6000', total_paye: '0',
+    solde_du: '6000', paiements: [],
+  }
+
+  it('appelle depuisFactureFournisseur avec la ligne saisie', async () => {
+    comptaApi.immobilisations.depuisFactureFournisseur.mockResolvedValue({ data: { id: 5 } })
+    window.prompt = vi.fn(() => '42')
+    wrap(<FactureDetail facture={facture} onClose={() => {}} onSaved={() => {}} />)
+    fireEvent.click(screen.getByRole('button', { name: /Immobiliser/ }))
+    await waitFor(() => {
+      expect(comptaApi.immobilisations.depuisFactureFournisseur).toHaveBeenCalledWith(
+        expect.objectContaining({ facture_id: 11, ligne_id: 42 }))
+    })
+  })
+
+  it('annule si aucun ligne_id n’est saisi', () => {
+    window.prompt = vi.fn(() => null)
+    wrap(<FactureDetail facture={facture} onClose={() => {}} onSaved={() => {}} />)
+    fireEvent.click(screen.getByRole('button', { name: /Immobiliser/ }))
+    expect(comptaApi.immobilisations.depuisFactureFournisseur).not.toHaveBeenCalled()
   })
 })

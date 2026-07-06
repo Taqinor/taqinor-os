@@ -107,12 +107,12 @@ describe('PlanComptablePage — rendu smoke (UX3)', () => {
   }, 30000)
 })
 
-describe('module.config — enregistrement (UX2–UX9)', () => {
-  it('déclare 8 routes/nav gatées responsable+admin sous /comptabilite', async () => {
+describe('module.config — enregistrement (UX2–UX9 + XACC/ZACC round 2)', () => {
+  it('déclare 11 routes/nav gatées responsable+admin sous /comptabilite', async () => {
     const { default: config } = await import('./module.config.jsx')
     expect(config.key).toBe('compta')
-    expect(config.routes).toHaveLength(8)
-    expect(config.nav.items).toHaveLength(8)
+    expect(config.routes).toHaveLength(11)
+    expect(config.nav.items).toHaveLength(11)
     // Chaque item de nav correspond à une route.
     const navTargets = config.nav.items.map((i) => i.to).sort()
     const routePaths = config.routes.map((r) => r.path).sort()
