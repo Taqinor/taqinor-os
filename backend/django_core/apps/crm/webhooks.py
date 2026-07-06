@@ -329,7 +329,8 @@ def _map_payload_to_fields(data: dict) -> dict:
         '3mois': Lead.ProjectTimeline.MOINS_3_MOIS,
         'renseignement': Lead.ProjectTimeline.PLUS_TARD,
     }
-    timeline_raw = data.get('projectTiming', data.get('project_timeline'))
+    timeline_raw = data.get('projectTiming', data.get(
+        'projectTimeline', data.get('project_timeline')))
     if timeline_raw not in (None, ''):
         mapped_timeline = _PROJECT_TIMING_ALIASES.get(str(timeline_raw).strip().lower())
         if mapped_timeline is None:
