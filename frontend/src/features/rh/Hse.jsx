@@ -1,10 +1,28 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Check } from 'lucide-react'
+import { Check, FileText } from 'lucide-react'
 import { ListShell } from '../../ui/module'
 import { Segmented, Badge, toast } from '../../ui'
 import { formatDate } from '../../lib/format'
 import rhApi from '../../api/rhApi'
+import qhseApi from '../../api/qhseApi'
 import { GraviteAccident, StatutAccident, StatutAnalyse } from './constants.jsx'
+
+// XQHS27 — PDF interne bilingue (FR/AR) de la fiche causerie + émargement.
+async function telechargerCauseriePdf(causerie, lang = 'fr') {
+  try {
+    const res = await qhseApi.causerieSecuritePdf(causerie.id, { lang })
+    const url = window.URL.createObjectURL(new Blob([res.data]))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `causerie-${causerie.id}-${lang}.pdf`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    window.URL.revokeObjectURL(url)
+  } catch {
+    toast.error('Génération du PDF impossible.')
+  }
+}
 
 /* ============================================================================
    UX27 — HSE RH (registres).
@@ -123,7 +141,11 @@ export default function Hse() {
       )}
       {vue === 'causeries' && (
         <ListShell title="Causeries de sécurité" columns={causerieColumns} rows={causeries} loading={loading} error={error}
-          searchable exportName="causeries-securite" emptyTitle="Aucune causerie" emptyDescription="Aucune causerie enregistrée." />
+          searchable exportName="causeries-securite" emptyTitle="Aucune causerie" emptyDescription="Aucune causerie enregistrée."
+          rowActions={(c) => [
+            { id: 'pdf-fr', label: 'PDF (FR)', icon: FileText, onClick: () => telechargerCauseriePdf(c, 'fr') },
+            { id: 'pdf-ar', label: 'PDF (AR)', icon: FileText, onClick: () => telechargerCauseriePdf(c, 'ar') },
+          ]} />
       )}
       {vue === 'analyses' && (
         <ListShell title="Analyses de risques chantier" columns={analyseColumns} rows={analyses} loading={loading} error={error}
