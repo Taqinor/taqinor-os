@@ -62,6 +62,14 @@ export const PrioriteAction = statusPill({
   haute: { label: 'Haute', tone: 'warning' },
 })
 
+// ── Timesheet.Statut (XPRJ1 — cycle de vie propre, jamais STAGES.py) ────────
+export const StatutTimesheet = statusPill({
+  brouillon: { label: 'Brouillon', tone: 'neutral' },
+  soumise: { label: 'Soumise', tone: 'info' },
+  approuvee: { label: 'Approuvée', tone: 'success' },
+  rejetee: { label: 'Rejetée', tone: 'danger' },
+})
+
 // ── BudgetProjet.Statut ─────────────────────────────────────────────────────
 export const StatutBudget = statusPill({
   brouillon: { label: 'Brouillon', tone: 'neutral' },

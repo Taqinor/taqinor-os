@@ -10,6 +10,7 @@ import { formatMAD, formatNumber, formatDate } from '../../../lib/format'
 import gestionProjetApi from '../../../api/gestionProjetApi'
 import { errMessage } from '../constants'
 import RessourceFormDialog from '../components/RessourceFormDialog'
+import TimesheetsTab from '../components/TimesheetsTab'
 
 /* UX40 — Ressources & capacité : profils, équipes, affectations,
    indisponibilités, plan de charge (capacité vs affecté), timesheets.
@@ -249,22 +250,7 @@ export default function RessourcesPage() {
         </TabsContent>
 
         <TabsContent value="timesheets">
-          <Card className="p-4 sm:p-5">
-            <DataTable
-              data={timesheets}
-              getRowId={(t) => t.id}
-              columns={[
-                { id: 'date', header: 'Date', searchable: false, accessor: (t) => t.date || '', cell: (v) => v ? formatDate(v) : '—' },
-                { id: 'projet', header: 'Projet', accessor: (t) => t.projet_code || `#${t.projet}` },
-                { id: 'ressource', header: 'Ressource', accessor: (t) => t.ressource_nom || `#${t.ressource}` },
-                { id: 'heures', header: 'Heures', align: 'right', numeric: true, searchable: false, accessor: (t) => Number(t.heures ?? 0), cell: (v) => formatNumber(v) },
-                { id: 'cout', header: 'Coût (interne)', align: 'right', numeric: true, searchable: false, accessor: (t) => Number(t.cout ?? 0), cell: (_v, t) => (t.cout ? formatMAD(t.cout) : '—') },
-              ]}
-              exportName="timesheets"
-              emptyTitle="Aucune feuille de temps"
-              emptyDescription="Le coût est figé côté serveur (interne, jamais client)."
-            />
-          </Card>
+          <TimesheetsTab timesheets={timesheets} onChanged={load} />
         </TabsContent>
       </Tabs>
 
