@@ -266,6 +266,12 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             'generer_devis_reserve',
             # XFSM7 — lien public « technicien en route ».
             'lien_client',
+            # ZFSM2 — lien public tokenisé du compte-rendu signé.
+            'lien_rapport',
+            # ZFSM4 — facturation directe d'une intervention hors contrat.
+            'generer_facture',
+            # ZFSM5 — devis d'upsell créé sur place depuis l'intervention.
+            'generer_devis',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
