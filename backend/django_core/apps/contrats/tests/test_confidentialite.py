@@ -163,8 +163,15 @@ class ConfidentialiteRoleFKTests(TestCase):
     def setUp(self):
         self.co = make_company('conf-rolefk', 'R')
         # Admin via Role FK (roles_gerer) — role_legacy reste 'normal'.
+        # YRBAC3 — contrat_voir est désormais requis pour accéder aux
+        # endpoints contrats (avant, IsResponsableOrAdmin passait pour tout
+        # rôle avec une permission d'écriture, dont roles_gerer) ; un admin
+        # provisionné en production porte aussi les permissions contrats
+        # (cf. ADMIN_PERMISSIONS, dérivé de ALL_PERMISSIONS) donc ce fixture
+        # doit désormais le poser explicitement pour rester représentatif.
         self.admin_fk = make_role_fk_user(
-            self.co, 'conf-admin-fk', permissions=['roles_gerer'])
+            self.co, 'conf-admin-fk',
+            permissions=['roles_gerer', 'contrat_voir', 'contrat_gerer'])
         # Responsable via Role FK (palier responsable : permissions d'écriture
         # + users_voir, mais PAS roles_gerer → non-admin).
         self.resp_fk = make_role_fk_user(

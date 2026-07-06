@@ -131,8 +131,21 @@ class DevisSerializer(serializers.ModelSerializer):
     chantier = serializers.SerializerMethodField()
 
     def get_chantier(self, obj):
-        from apps.installations.selectors import installation_for_devis
-        inst = installation_for_devis(obj)
+        # N+1 réel corrigé (YOPSB13) : ``installation_for_devis`` exécute une
+        # requête PAR devis (Installation.objects.filter(devis=devis).first())
+        # — flagrant sur la liste. ``DevisViewSet.queryset`` précharge
+        # désormais la relation inverse ``installations`` (FK
+        # Installation.devis, related_name='installations' — string-FK
+        # cross-app, jamais d'import de apps.installations.models ici) ; on
+        # réutilise ce cache prefetch au lieu de rappeler le sélecteur, qui
+        # reste la voie d'accès pour un usage hors liste (fiche détail unique).
+        installations = getattr(obj, '_prefetched_objects_cache', {}).get(
+            'installations')
+        if installations is not None:
+            inst = installations[0] if installations else None
+        else:
+            from apps.installations.selectors import installation_for_devis
+            inst = installation_for_devis(obj)
         if inst is None:
             return None
         return {'id': inst.id, 'reference': inst.reference,

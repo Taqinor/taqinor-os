@@ -56,7 +56,15 @@ class DevisViewSet(viewsets.ModelViewSet):
     queryset = Devis.objects.select_related(
         'client', 'created_by', 'lead', 'bon_commande', 'signature',
         'superseded_by', 'version_parent',
-    ).prefetch_related('lignes', 'factures', 'share_links').all()
+    ).prefetch_related(
+        'lignes', 'factures', 'share_links',
+        # YOPSB13 — évite le N+1 de DevisSerializer.get_chantier (avant :
+        # une requête Installation par devis via le sélecteur
+        # installations.selectors.installation_for_devis appelé par ligne de
+        # liste). String-FK cross-app (Installation.devis, related_name=
+        # 'installations') — jamais d'import de apps.installations.models ici.
+        'installations',
+    ).all()
 
     def get_queryset(self):
         qs = _company_qs(super().get_queryset(), self.request.user)

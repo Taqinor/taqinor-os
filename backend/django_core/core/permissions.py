@@ -238,6 +238,20 @@ class WriteScopedPermissionMixin:
     par défaut ; un viewset qui a besoin d'un ``get_permissions`` par action
     (ex. destroy admin-only) peut surcharger ``get_permissions`` en appelant
     ``super().get_permissions()`` puis en ajustant l'action ciblée.
+
+    BUG réel corrigé : ``get_permissions()`` renvoyait INCONDITIONNELLEMENT
+    ``[ScopedPermission()]``, ignorant tout ``permission_classes=`` déclaré
+    directement sur une ``@action`` (ex. ``campagne-revision`` réservée
+    ``IsAdminRole`` dans ``contrats.views.ContratViewSet``) — DRF applique un
+    tel override en posant ``self.permission_classes`` sur l'instance de vue
+    AVANT l'appel à ``get_permissions()`` (voir ``ViewSetMixin.as_view()`` /
+    ``action.kwargs``), mais l'ancienne implémentation ne le lisait jamais.
+    Conséquence concrète : un Responsable (repli légacy ``is_responsable`` via
+    ``contrat_gerer``) passait la garde ``ScopedPermission`` en écriture sur
+    ``campagne-revision``, alors que l'action est censée être STRICTEMENT
+    réservée aux Administrateurs — un contournement RBAC réel, pas juste un
+    test caduc. On respecte maintenant un override d'instance (différent du
+    défaut de la classe) en retombant sur le comportement standard DRF.
     """
 
     read_permission = None
@@ -245,4 +259,9 @@ class WriteScopedPermissionMixin:
     permission_classes = [ScopedPermission]
 
     def get_permissions(self):
+        # Un override d'instance posé par DRF pour CETTE action (ex.
+        # `@action(permission_classes=[IsAdminRole])`) diffère du défaut de
+        # classe : on le respecte au lieu de l'écraser par ScopedPermission.
+        if self.permission_classes != type(self).permission_classes:
+            return [permission() for permission in self.permission_classes]
         return [ScopedPermission()]

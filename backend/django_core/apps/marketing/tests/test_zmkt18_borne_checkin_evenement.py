@@ -51,8 +51,8 @@ class BorneCheckinEvenementTests(TestCase):
         inscription = services.inscrire_evenement(self.evt, nom='Idempotent')
         services.pointer_presence_via_qr_ou_recherche(
             self.evt, inscription_id=inscription.id)
-        premier_pointage = inscription.date_pointage
         inscription.refresh_from_db()
+        premier_pointage = inscription.date_pointage
         services.pointer_presence_via_qr_ou_recherche(
             self.evt, inscription_id=inscription.id)
         inscription.refresh_from_db()

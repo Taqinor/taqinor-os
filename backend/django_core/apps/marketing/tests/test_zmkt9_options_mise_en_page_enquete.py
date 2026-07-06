@@ -70,12 +70,14 @@ class OptionsMiseEnPageEnqueteTests(TestCase):
         enquete = services.creer_enquete(self.co, titre='E6', questions=QUESTIONS)
         enquete.ordre_aleatoire = True
         enquete.save(update_fields=['ordre_aleatoire'])
-        rendu1 = services.rendre_enquete_publique(enquete, {}, seed=1)
-        rendu2 = services.rendre_enquete_publique(enquete, {}, seed=2)
+        # Seeds 1/2 collident sur seulement 3 éléments (random.Random(1) et
+        # random.Random(2)).shuffle() renvoient le même ordre — 0 et 4 sont
+        # vérifiées pour donner deux permutations différentes entre elles ET
+        # de l'ordre par défaut, donc un test déterministe non flaky.
+        rendu1 = services.rendre_enquete_publique(enquete, {}, seed=0)
+        rendu2 = services.rendre_enquete_publique(enquete, {}, seed=4)
         ids1 = [q['id'] for q in rendu1['questions']]
         ids2 = [q['id'] for q in rendu2['questions']]
-        # Avec deux seeds différentes sur 3 éléments, très probable que
-        # l'ordre diffère (déterministe pour le test).
         self.assertNotEqual(ids1, ids2)
 
     def test_defaut_ordre_fixe(self):

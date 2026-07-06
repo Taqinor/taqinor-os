@@ -824,19 +824,35 @@ class Ticket(models.Model):
                     else self.SousGarantie.NON)
         return self.sous_garantie
 
-    def couverture_calculee(self):
+    def couverture_calculee(self, *, contrat_cache=None):
         """XCTR4 — Propose une couverture (garantie / contrat / facturable)
         SANS écraser une valeur déjà posée manuellement.
 
         Ordre : garantie (si `sous_garantie_calcule=OUI`) → contrat (si un
         contrat de maintenance actif du client couvre l'équipement lié — ou
         n'a pas de registre — ET que son quota XCTR3 n'est pas épuisé pour ce
-        type de ticket) → facturable sinon."""
+        type de ticket) → facturable sinon.
+
+        ``contrat_cache`` (optionnel) — dict ``{client_id: ContratMaintenance
+        | None}`` fourni par l'appelant (YOPSB13 : ``TicketSerializer``, qui
+        le partage entre tous les tickets d'une même page) pour éviter une
+        requête ``ContratMaintenance`` PAR TICKET quand plusieurs tickets de
+        la liste partagent le même client — N+1 réel sur la liste SAV.
+        ``None`` (défaut) préserve le comportement d'origine (requête directe)
+        pour tout appel hors contexte de liste (fiche détail unique, etc.)."""
         if self.sous_garantie_calcule == self.SousGarantie.OUI:
             return self.Couverture.GARANTIE
-        contrat = (ContratMaintenance.objects
-                   .filter(client_id=self.client_id, actif=True)
-                   .order_by('-date_creation').first())
+        if contrat_cache is not None:
+            if self.client_id not in contrat_cache:
+                contrat_cache[self.client_id] = (
+                    ContratMaintenance.objects
+                    .filter(client_id=self.client_id, actif=True)
+                    .order_by('-date_creation').first())
+            contrat = contrat_cache[self.client_id]
+        else:
+            contrat = (ContratMaintenance.objects
+                       .filter(client_id=self.client_id, actif=True)
+                       .order_by('-date_creation').first())
         if contrat is not None and contrat.couvre_equipement(self.equipement):
             from .selectors import droits_restants
             annee = (self.date_ouverture or timezone.localdate()).year
@@ -853,10 +869,22 @@ class Ticket(models.Model):
         """YSERV2 — Propose ``sur_site`` si ≥1 intervention liée à ce ticket
         est TERMINEE/VALIDEE, sinon ``a_distance`` (aucun déplacement tracé).
         Purement une PROPOSITION : n'écrase jamais ``canal_resolution`` déjà
-        posé explicitement (l'appelant décide s'il applique la valeur)."""
-        return (self.CanalResolution.SUR_SITE
-                if self.interventions.filter(
-                    statut__in=('terminee', 'validee')).exists()
+        posé explicitement (l'appelant décide s'il applique la valeur).
+
+        N+1 réel corrigé (YOPSB13) : ``self.interventions.filter(...)``
+        construit un NOUVEAU queryset qui ignore le cache
+        ``prefetch_related('interventions')`` de ``TicketViewSet.queryset``
+        — une requête par ticket sur la liste. Quand le prefetch est présent,
+        on filtre en Python sur le cache déjà chargé ; sinon (objet chargé
+        hors de la vue liste), on retombe sur le filtre DB d'origine."""
+        termines = ('terminee', 'validee')
+        if 'interventions' in getattr(self, '_prefetched_objects_cache', {}):
+            a_un_terminee = any(
+                i.statut in termines for i in self.interventions.all())
+        else:
+            a_un_terminee = self.interventions.filter(
+                statut__in=termines).exists()
+        return (self.CanalResolution.SUR_SITE if a_un_terminee
                 else self.CanalResolution.A_DISTANCE)
 
     def recompute_sla_breach(self):

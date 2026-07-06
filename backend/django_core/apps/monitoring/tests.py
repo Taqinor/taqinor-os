@@ -805,6 +805,16 @@ class TestBalayageQuotidien(TestCase):
     def setUp(self):
         self.company = make_company('bal-co', 'Bal Co')
         self.today = date(2026, 6, 1)
+        # YSERV3 — self.api : requis par test_email_endpoint (endpoint API
+        # email-om-report). Un utilisateur seul n'affecte pas
+        # balayage_quotidien() (scopé aux MonitoringConfig existants), donc
+        # ne pollue aucun des autres tests de cette classe qui comptent des
+        # systèmes traités — contrairement à une config/installation créée
+        # ici, que test_email_endpoint crée donc lui-même plutôt qu'en setUp.
+        self.user = User.objects.create_user(
+            username='bal_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = auth(self.user)
 
         class FakeProvider(providers.MonitoringProvider):
             key = 'fake-bal'
@@ -920,8 +930,15 @@ class TestBalayageQuotidien(TestCase):
 
     def test_email_endpoint(self):
         from django.core import mail
+        # Système propre à ce test (jamais en setUp — balayage_quotidien()
+        # scanne TOUS les MonitoringConfig de la société et les autres tests
+        # de cette classe comptent des systèmes traités).
+        inst, _client = make_installation(self.company, ref='BAL-EMAIL', kwc='5.00')
+        config = MonitoringConfig.objects.create(
+            company=self.company, installation=inst,
+            expected_annual_kwh=Decimal('7500'))
         r = self.api.post(
-            f'/api/django/monitoring/configs/{self.config.id}/email-om-report/',
+            f'/api/django/monitoring/configs/{config.id}/email-om-report/',
             {'period': 'monthly'}, format='json')
         self.assertEqual(r.status_code, 200, r.data)
         self.assertTrue(r.data['sent'])
