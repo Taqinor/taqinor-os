@@ -304,6 +304,98 @@ function LedgerTab({ id }) {
   )
 }
 
+// XFLT20 — Onglet « Accessoires » : détenteurs courants (clés/cartes/badges)
+// + historique des remises. Résout l'``ActifFlotte`` du véhicule (la custody
+// est trackée par actif unifié, pas directement par Vehicule).
+function AccessoiresTab({ vehiculeId }) {
+  const [state, setState] = useState({ loading: true, error: null, actifId: null, detenteurs: [], remises: [] })
+
+  const load = useCallback(() => {
+    if (!vehiculeId) return undefined
+    let cancelled = false
+    setState((s) => ({ ...s, loading: true, error: null }))
+    flotteApi.actifs.list({ type_actif: 'vehicule' })
+      .then((res) => {
+        if (cancelled) return
+        const payload = res?.data
+        const rows = Array.isArray(payload) ? payload : payload?.results || []
+        const actif = rows.find((a) => String(a.vehicule) === String(vehiculeId))
+        if (!actif) {
+          setState({ loading: false, error: null, actifId: null, detenteurs: [], remises: [] })
+          return
+        }
+        return Promise.all([
+          flotteApi.actifs.detenteursCourants(actif.id),
+          flotteApi.remisesAccessoire.list({ actif_flotte: actif.id }),
+        ]).then(([det, rem]) => {
+          if (cancelled) return
+          const remPayload = rem?.data
+          const remRows = Array.isArray(remPayload) ? remPayload : remPayload?.results || []
+          setState({ loading: false, error: null, actifId: actif.id, detenteurs: det?.data || [], remises: remRows })
+        })
+      })
+      .catch((err) => {
+        if (cancelled) return
+        setState({ loading: false, error: err?.response?.data?.detail || 'Indisponible.', actifId: null, detenteurs: [], remises: [] })
+      })
+    return () => { cancelled = true }
+  }, [vehiculeId])
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  useEffect(() => { load() }, [load])
+
+  if (state.loading) {
+    return <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground"><Spinner className="size-4" /> Chargement…</div>
+  }
+  if (state.error) {
+    return <EmptyState title="Indisponible" description={state.error} />
+  }
+  if (state.actifId == null) {
+    return <EmptyState title="Aucun actif lié" description="Ce véhicule n’est pas encore rattaché à un actif de flotte." />
+  }
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div>
+        <p className="mb-2 text-sm font-medium">Détenteurs courants</p>
+        {state.detenteurs.length === 0 ? (
+          <EmptyState title="Aucun accessoire détenu" description="Aucune clé/carte/badge en cours de détention." />
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {state.detenteurs.map((d) => (
+              <li key={d.type} className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm">
+                <span className="font-medium">{d.type_display}</span>
+                <span className="text-xs text-muted-foreground">
+                  {d.conducteur_nom} · depuis le {d.date_remise ? formatDate(d.date_remise) : '—'}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div>
+        <p className="mb-2 text-sm font-medium">Historique des remises</p>
+        {state.remises.length === 0 ? (
+          <EmptyState title="Aucune remise" description="Aucun accessoire remis pour ce véhicule." />
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {state.remises.map((r) => (
+              <li key={r.id} className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm">
+                <span>{r.type_accessoire_display} — {r.conducteur_nom}</span>
+                <span className="text-xs text-muted-foreground">
+                  {r.date_remise ? formatDate(r.date_remise) : '—'}
+                  {r.date_retour ? ` → ${formatDate(r.date_retour)}` : ' (en cours)'}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function VehiculeDetail({ vehicule, onClose, onChanged }) {
   const v = vehicule
   const open = Boolean(v)
@@ -343,6 +435,7 @@ export default function VehiculeDetail({ vehicule, onClose, onChanged }) {
             <TabsTrigger value="cycle-de-vie">Cycle de vie</TabsTrigger>
             <TabsTrigger value="contrats">Contrats</TabsTrigger>
             <TabsTrigger value="ledger">Grand livre</TabsTrigger>
+            <TabsTrigger value="accessoires">Accessoires</TabsTrigger>
             <TabsTrigger value="tco">Coûts TCO</TabsTrigger>
             <TabsTrigger value="eco">Éco-conduite</TabsTrigger>
             <TabsTrigger value="amortissement">Amortissement</TabsTrigger>
@@ -363,6 +456,10 @@ export default function VehiculeDetail({ vehicule, onClose, onChanged }) {
 
           <TabsContent value="ledger">
             <LedgerTab id={v?.id} key={`ledger-${refreshKey}`} />
+          </TabsContent>
+
+          <TabsContent value="accessoires">
+            <AccessoiresTab vehiculeId={v?.id} />
           </TabsContent>
 
           <TabsContent value="tco">

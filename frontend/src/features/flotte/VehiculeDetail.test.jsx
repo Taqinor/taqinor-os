@@ -23,6 +23,11 @@ const ceder = vi.fn(() => Promise.resolve({ data: { id: 1, statut: 'vendu' } }))
 const vehiculeHistorique = vi.fn(() => Promise.resolve({ data: [] }))
 const vehiculeLedger = vi.fn(() => Promise.resolve({ data: { lignes: [] } }))
 const contratsList = vi.fn(() => Promise.resolve({ data: [] }))
+const actifsList = vi.fn(() => Promise.resolve({ data: [{ id: 77, vehicule: 42, type_actif: 'vehicule' }] }))
+const detenteursCourants = vi.fn(() => Promise.resolve({
+  data: [{ type: 'cle', type_display: 'Clé', conducteur_id: 1, conducteur_nom: 'Karim', date_remise: '2026-06-01' }],
+}))
+const remisesList = vi.fn(() => Promise.resolve({ data: [] }))
 const empty = () => Promise.resolve({ data: null })
 
 vi.mock('../../api/flotteApi', () => ({
@@ -36,6 +41,11 @@ vi.mock('../../api/flotteApi', () => ({
     vehiculeEcoConduite: empty,
     vehiculeAmortissement: empty,
     contratsVehicule: { list: (...args) => contratsList(...args) },
+    actifs: {
+      list: (...args) => actifsList(...args),
+      detenteursCourants: (...args) => detenteursCourants(...args),
+    },
+    remisesAccessoire: { list: (...args) => remisesList(...args) },
   },
 }))
 
@@ -101,5 +111,18 @@ describe('VehiculeDetail — Contrats (XFLT1) & Grand livre (XFLT3)', () => {
 
     await user.click(screen.getByRole('tab', { name: 'Grand livre' }))
     await waitFor(() => expect(vehiculeLedger).toHaveBeenCalledWith(42))
+  })
+})
+
+describe('VehiculeDetail — Accessoires (XFLT20)', () => {
+  it('résout l’actif du véhicule et affiche le détenteur courant', async () => {
+    const user = userEvent.setup()
+    withProviders(<VehiculeDetail vehicule={VEHICULE} onClose={() => {}} />)
+
+    await user.click(screen.getByRole('tab', { name: 'Accessoires' }))
+    await waitFor(() => expect(actifsList).toHaveBeenCalledWith({ type_actif: 'vehicule' }))
+    await waitFor(() => expect(detenteursCourants).toHaveBeenCalledWith(77))
+    await waitFor(() => expect(remisesList).toHaveBeenCalledWith({ actif_flotte: 77 }))
+    await waitFor(() => expect(screen.getByText('Karim', { exact: false })).toBeInTheDocument())
   })
 })
