@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   Pencil, Send, CheckCircle2, Trash2, Plus, Share2, Copy,
-  ShieldCheck, Lock, Unlock, Star,
+  ShieldCheck, Lock, Unlock, Star, Languages,
 } from 'lucide-react'
 import { DetailShell } from '../../ui/module'
 import { Button, Badge, EmptyState, Spinner, toast } from '../../ui'
@@ -10,6 +10,13 @@ import kbApi from '../../api/kbApi'
 import { StatutArticlePill, splitTags } from './kbStatus'
 import FilterSelect from './FilterSelect'
 import ChatterWidget from '../../components/ChatterWidget'
+import AttachmentsPanel from '../../components/AttachmentsPanel'
+import { KbMarkdownBody, extractHeadings } from './kbMarkdown'
+
+// XKB18 — langues supportées (mêmes clés que ``KbArticle.LANGUE_CHOICES``
+// côté backend). L'arabe est RTL — le corps de l'article bascule ``dir``.
+const LANGUE_LABELS = { fr: 'Français', ar: 'العربية', en: 'English' }
+const RTL_LANGUES = new Set(['ar'])
 
 /* ============================================================================
    UX43 — Détail d'un article : contenu, versions, suivi de lecture, ACL.
@@ -167,6 +174,15 @@ export default function ArticleDetail({ articleId, canEdit, onBack, onEdit, onCh
     } catch { toast.error('Action impossible.') }
   }
 
+  // ── XKB18 — traduire vers une langue absente parmi celles supportées ──
+  const traduire = async (langue) => {
+    try {
+      await kbApi.traduire(articleId, langue)
+      toast.success(`Traduction ${LANGUE_LABELS[langue]} créée (brouillon).`)
+      onChanged?.()
+    } catch { toast.error('Traduction impossible.') }
+  }
+
   if (loading || !article) {
     return (
       <div className="page flex items-center gap-2 text-muted-foreground">
@@ -180,6 +196,15 @@ export default function ArticleDetail({ articleId, canEdit, onBack, onEdit, onCh
   // côté client, aucun champ booléen dédié côté serveur).
   const estVerifie = !!article.verifie_jusqua
     && new Date(article.verifie_jusqua) > new Date()
+
+  // XKB10 — sommaire dérivé du corps Markdown (vide pour un article texte
+  // brut ou sans titres ATX).
+  const estMarkdown = article.corps_format === 'markdown'
+  const sommaire = estMarkdown ? extractHeadings(article.corps) : []
+  // XKB18 — langue de CET article + RTL si arabe.
+  const langue = article.langue || 'fr'
+  const estRtl = RTL_LANGUES.has(langue)
+  const languesManquantes = Object.keys(LANGUE_LABELS).filter((l) => l !== langue)
 
   // ── Onglet Contenu ──
   const contenuTab = (
@@ -197,11 +222,49 @@ export default function ArticleDetail({ articleId, canEdit, onBack, onEdit, onCh
             <Lock className="size-3.5" aria-hidden="true" /> Verrouillé
           </Badge>
         )}
+        <Badge tone="neutral">{LANGUE_LABELS[langue] || langue}</Badge>
+        {article.traduction_perimee && (
+          <Badge tone="warning">Traduction périmée</Badge>
+        )}
         <span>· Auteur : {article.auteur_nom || '—'}</span>
         <span>· Modifié : {formatDateTime(article.date_modification)}</span>
       </div>
-      <article className="whitespace-pre-wrap text-sm leading-relaxed">
-        {article.corps || <span className="text-muted-foreground">(Aucun contenu)</span>}
+
+      {canEdit && (
+        <div className="flex flex-wrap items-center gap-1.5 text-sm">
+          <Languages className="size-4 text-muted-foreground" aria-hidden="true" />
+          <span className="text-muted-foreground">Traduire vers :</span>
+          {languesManquantes.map((l) => (
+            <Button key={l} type="button" variant="outline" size="sm" onClick={() => traduire(l)}>
+              {LANGUE_LABELS[l]}
+            </Button>
+          ))}
+        </div>
+      )}
+
+      {sommaire.length > 0 && (
+        <nav aria-label="Sommaire" className="rounded-lg border border-border px-3 py-2 text-sm">
+          <p className="mb-1 font-medium">Sommaire</p>
+          <ul className="flex flex-col gap-0.5">
+            {sommaire.map((h) => (
+              <li key={h.slug} style={{ paddingInlineStart: (h.niveau - 1) * 12 }}>
+                <a href={`#${h.slug}`} className="text-muted-foreground hover:text-foreground hover:underline">
+                  {h.texte}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      )}
+
+      <article
+        dir={estRtl ? 'rtl' : 'ltr'}
+        className={estMarkdown ? 'text-sm' : 'whitespace-pre-wrap text-sm leading-relaxed'}
+      >
+        {!article.corps && <span className="text-muted-foreground">(Aucun contenu)</span>}
+        {article.corps && (estMarkdown
+          ? <KbMarkdownBody corps={article.corps} />
+          : article.corps)}
       </article>
     </div>
   )
@@ -351,8 +414,14 @@ export default function ArticleDetail({ articleId, canEdit, onBack, onEdit, onCh
     <ChatterWidget model="kb.kbarticle" id={articleId} />
   )
 
+  // ── Onglet Pièces jointes (XKB10) ──
+  const piecesJointesTab = (
+    <AttachmentsPanel model="kb.kbarticle" id={articleId} />
+  )
+
   const tabs = [
     { value: 'contenu', label: 'Contenu', content: contenuTab },
+    { value: 'pieces-jointes', label: 'Pièces jointes', content: piecesJointesTab },
     { value: 'versions', label: 'Versions', count: versions.length, content: versionsTab },
     { value: 'lecteurs', label: 'Lecteurs', count: resume?.nombre ?? 0, content: lecteursTab },
     { value: 'commentaires', label: 'Commentaires', content: commentairesTab },

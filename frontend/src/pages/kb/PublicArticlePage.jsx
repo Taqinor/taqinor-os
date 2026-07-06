@@ -10,6 +10,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import kbApi from '../../api/kbApi'
+import { KbMarkdownBody } from '../../features/kb/kbMarkdown'
 
 export default function PublicArticlePage() {
   const { token } = useParams()
@@ -43,18 +44,17 @@ export default function PublicArticlePage() {
         <p role="alert" className="page-error">{error}</p>
       )}
       {status === 'valid' && article && (
-        <article>
+        <article dir={article.langue === 'ar' ? 'rtl' : 'ltr'}>
           {article.categorie && (
             <p style={{ color: 'var(--muted-foreground, #6b7280)', marginBottom: 4 }}>
               {article.categorie}
             </p>
           )}
           <h1>{article.titre}</h1>
-          <div
-            style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6 }}
-          >
-            {article.corps || <span>(Aucun contenu)</span>}
-          </div>
+          {!article.corps && <span>(Aucun contenu)</span>}
+          {article.corps && (article.corps_format === 'markdown'
+            ? <KbMarkdownBody corps={article.corps} />
+            : <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{article.corps}</div>)}
         </article>
       )}
     </div>

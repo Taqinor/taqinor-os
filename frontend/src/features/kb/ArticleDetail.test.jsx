@@ -30,6 +30,7 @@ vi.mock('../../api/kbApi', () => ({
     marquerLu: vi.fn(),
     publier: vi.fn(),
     nouvelleVersion: vi.fn(),
+    traduire: vi.fn(),
   },
 }))
 
@@ -38,6 +39,9 @@ vi.mock('../../api/recordsApi', () => ({
     getComments: vi.fn().mockResolvedValue({ data: [] }),
     createComment: vi.fn(),
     deleteComment: vi.fn(),
+    getAttachments: vi.fn().mockResolvedValue({ data: [] }),
+    uploadAttachment: vi.fn(),
+    deleteAttachment: vi.fn(),
   },
 }))
 
