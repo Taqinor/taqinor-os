@@ -41,7 +41,22 @@ vi.mock('../../api/axios', () => ({
   },
 }))
 
+// XPLT9 — DashboardFilterBar (jusque-là construit mais jamais monté) : la
+// page liste les dashboards FG381 et monte la barre de filtres pour celui
+// sélectionné.
+vi.mock('../../api/coreApi', () => ({
+  default: {
+    dashboards: {
+      list: vi.fn(() => Promise.resolve({
+        data: [{ id: 7, titre: 'Dashboard commercial', layout: { widgets: [] } }],
+      })),
+      updateLayout: vi.fn(() => Promise.resolve({ data: {} })),
+    },
+  },
+}))
+
 import reportingApi from '../../api/reportingApi'
+import coreApi from '../../api/coreApi'
 import DashboardConfigPage from './DashboardConfigPage'
 
 describe('DashboardConfigPage (WR8 — config tableaux de bord)', () => {
@@ -58,5 +73,19 @@ describe('DashboardConfigPage (WR8 — config tableaux de bord)', () => {
 
     await waitFor(() => expect(reportingApi.listDashboardConfigs).toHaveBeenCalled())
     expect(reportingApi.effectiveDashboardConfig).toHaveBeenCalled()
+  })
+
+  it('XPLT9 — monte DashboardFilterBar une fois un dashboard choisi', async () => {
+    renderPage(<DashboardConfigPage />)
+
+    await waitFor(() => expect(coreApi.dashboards.list).toHaveBeenCalled())
+    expect(screen.queryByTestId('dashboard-filter-bar')).not.toBeInTheDocument()
+
+    const select = await screen.findByLabelText('Choisir un tableau de bord')
+    select.click()
+    const option = await screen.findByText('Dashboard commercial')
+    option.click()
+
+    expect(await screen.findByTestId('dashboard-filter-bar')).toBeInTheDocument()
   })
 })
