@@ -60,6 +60,11 @@ const ClientPortalPage = lazy(() => import('../pages/monitoring/ClientPortalPage
 const EquipementsPage = lazy(() => import('../pages/sav/EquipementsPage'))
 const TicketsPage = lazy(() => import('../pages/sav/TicketsPage'))
 const WarrantyClaimsPage = lazy(() => import('../pages/sav/WarrantyClaimsPage'))
+const SavParametresPage = lazy(() => import('../pages/sav/SavParametresPage'))
+const SavSlaReportPage = lazy(() => import('../pages/sav/SavSlaReportPage'))
+const SavAlarmesPage = lazy(() => import('../pages/sav/SavAlarmesPage'))
+const SavActionBoardPage = lazy(() => import('../pages/sav/SavActionBoardPage'))
+const KbArticlesPage = lazy(() => import('../pages/sav/KbArticlesPage'))
 const AgentChat = lazy(() => import('../pages/ia/AgentChat'))
 const OcrUpload = lazy(() => import('../pages/ia/OcrUpload'))
 const OcrStockImport = lazy(() => import('../pages/stock/OcrStockImport'))
@@ -243,6 +248,16 @@ const router = createBrowserRouter([
   { path: '/sav/contrats', loader: authLoader, element: <WithLayout><ContratsMaintenance /></WithLayout> },
   // FG83 — réclamations garantie fournisseur (flux RMA).
   { path: '/sav/warranty-claims', loader: authLoader, element: <WithLayout><WarrantyClaimsPage /></WithLayout> },
+  // ZSAV2/ZMFG1/ZMFG2/XSAV14/XSAV23 — référentiels SAV (responsable/admin, écriture gardée côté serveur).
+  { path: '/sav/parametres', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><SavParametresPage /></WithLayout> },
+  // XSAV8 — rapport de conformité SLA + KPI avancés.
+  { path: '/sav/sla-rapport', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><SavSlaReportPage /></WithLayout> },
+  // Alarmes onduleur (FG280).
+  { path: '/sav/alarmes', loader: authLoader, element: <WithLayout><SavAlarmesPage /></WithLayout> },
+  // ZSAV6 — file d'action (tickets ouverts groupés par action attendue).
+  { path: '/sav/action-requise', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><SavActionBoardPage /></WithLayout> },
+  // FG87 — base de connaissances SAV (articles KB).
+  { path: '/sav/kb', loader: authLoader, element: <WithLayout><KbArticlesPage /></WithLayout> },
 
   // IA
   { path: '/ia/agent', loader: authLoader, element: <WithLayout><AgentChat /></WithLayout> },
