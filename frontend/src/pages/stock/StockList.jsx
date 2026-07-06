@@ -16,6 +16,7 @@ import {
   forceDeleteArchivedProduit,
 } from '../../features/stock/store/stockSlice'
 import ProduitForm from './ProduitForm'
+import ProduitDetail from './ProduitDetail'
 import { CatalogueTable } from './CatalogueTable'
 import PilotageStock from './PilotageStock'
 import BulkProductBar from './BulkProductBar'
@@ -583,6 +584,8 @@ export default function StockList() {
   const [search, setSearch]           = useState('')
   const [showForm, setShowForm]       = useState(false)
   const [editProduit, setEditProduit] = useState(null)
+  // ZPUR10/ZSTK3 — fiche produit (quantité en commande + prévisionnel).
+  const [detailProduit, setDetailProduit] = useState(null)
   const [filterLow, setFilterLow]     = useState(false)
   const [filterNoPrice, setFilterNoPrice] = useState(false)  // produits sans prix de vente
   const [filterNoSku, setFilterNoSku]     = useState(false)  // produits sans SKU
@@ -1102,6 +1105,9 @@ export default function StockList() {
       {showForm && (
         <ProduitForm produit={editProduit} onClose={closeForm} onSaved={onSaved} />
       )}
+      {detailProduit && (
+        <ProduitDetail produit={detailProduit} onClose={() => setDetailProduit(null)} />
+      )}
 
       <div className="flex flex-col gap-4 lg:flex-row">
         <aside className="flex shrink-0 flex-col gap-1 lg:w-60">
@@ -1213,6 +1219,7 @@ export default function StockList() {
               onEdit={openEdit}
               onDelete={handleDelete}
               onHistorique={(prod) => navigate(`/stock/mouvements?produit=${prod.id}`)}
+              onDetail={(prod) => setDetailProduit(prod)}
               onReapprovisionner={canWrite ? (prod) => navigate('/stock/bons-commande-fournisseur', {
                 state: { prefillBcf: {
                   produit: prod.id,

@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import {
-  AlertTriangle, History, Pencil, Trash2,
+  AlertTriangle, History, Pencil, Trash2, PackageSearch,
 } from 'lucide-react'
 import {
   Badge, Button, Checkbox, DataTable, EditableCell,
@@ -61,6 +61,7 @@ export function CatalogueTable({
   onHistorique,
   onReapprovisionner,
   onInlineSave,
+  onDetail,
   selected,
   onToggleSelect,
 }) {
@@ -260,6 +261,8 @@ export function CatalogueTable({
   // Actions de ligne (≤2 rapides + menu kebab) — historique / éditer / supprimer.
   const rowActions = (p) => {
     const acts = []
+    // ZPUR10/ZSTK3 — fiche produit : quantité « en commande » + prévisionnel.
+    if (onDetail) acts.push({ id: 'detail', label: 'Fiche produit (en commande, prévisionnel)', icon: PackageSearch, onClick: () => onDetail(p) })
     if (onHistorique) acts.push({ id: 'hist', label: 'Historique des mouvements', icon: History, onClick: () => onHistorique(p) })
     if (canWrite && onEdit) acts.push({ id: 'edit', label: 'Éditer', icon: Pencil, onClick: () => onEdit(p) })
     if (canDelete && onDelete) acts.push({ id: 'del', label: 'Supprimer', icon: Trash2, destructive: true, separatorBefore: true, onClick: () => onDelete(p) })
