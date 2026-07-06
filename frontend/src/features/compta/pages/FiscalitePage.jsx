@@ -213,7 +213,7 @@ export default function FiscalitePage() {
 
   const isEcheances = tab === 'echeances'
   const list = useComptaList(
-    isEcheances ? comptaApi.obligationsFiscales.list : RESOURCE[tab].list, undefined)
+    isEcheances ? comptaApi.exercices.list : RESOURCE[tab].list, undefined)
 
   const download = async (fn, filename, okMsg) => {
     try {

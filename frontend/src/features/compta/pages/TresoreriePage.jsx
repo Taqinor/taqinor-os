@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Plus, Pencil, RefreshCw } from 'lucide-react'
+import { Plus, Pencil, RefreshCw, BookOpen, Send } from 'lucide-react'
 import { ListShell } from '../../../ui/module'
-import { Button, Segmented, Card, EmptyState, toast } from '../../../ui'
+import {
+  Button, Segmented, Card, EmptyState, toast,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Input, Label,
+} from '../../../ui'
 import { formatMAD, formatDate } from '../../../lib/format'
 import comptaApi from '../../../api/comptaApi'
 import useComptaList from '../components/useComptaList.js'
@@ -191,17 +195,162 @@ function PositionPanel() {
   )
 }
 
+// FG124 — Journal d'espèces d'une caisse : mouvements + clôture (cash count).
+function CaisseJournalDialog({ caisse, onClose }) {
+  const [journal, setJournal] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [montant, setMontant] = useState('')
+  const [motif, setMotif] = useState('')
+  const [sens, setSens] = useState('entree')
+  const [soldeCompte, setSoldeCompte] = useState('')
+
+  const load = useCallback(() => {
+    setLoading(true)
+    comptaApi.caisses.mouvementList(caisse.id)
+      .then((res) => setJournal(res.data))
+      .catch(() => toast.error('Journal de caisse indisponible.'))
+      .finally(() => setLoading(false))
+  }, [caisse.id])
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  useEffect(() => load(), [load])
+
+  const enregistrerMouvement = async () => {
+    if (!(Number(montant) > 0)) {
+      toast.error('Saisissez un montant positif.')
+      return
+    }
+    try {
+      await comptaApi.caisses.mouvementCreer(caisse.id, {
+        sens, montant: Number(montant), motif,
+        date_mouvement: new Date().toISOString().slice(0, 10),
+      })
+      toast.success('Mouvement enregistré.')
+      setMontant('')
+      setMotif('')
+      load()
+    } catch (err) {
+      const d = err?.response?.data
+      toast.error(typeof d === 'string' ? d : (d?.detail || 'Enregistrement impossible.'))
+    }
+  }
+
+  const cloturer = async () => {
+    if (soldeCompte === '') {
+      toast.error('Saisissez le solde compté avant de clôturer.')
+      return
+    }
+    try {
+      await comptaApi.caisses.cloturer(caisse.id, {
+        date_cloture: new Date().toISOString().slice(0, 10),
+        solde_compte: Number(soldeCompte),
+      })
+      toast.success('Caisse clôturée.')
+      setSoldeCompte('')
+      load()
+    } catch (err) {
+      const d = err?.response?.data
+      toast.error(typeof d === 'string' ? d : (d?.detail || 'Clôture impossible.'))
+    }
+  }
+
+  const mouvements = Array.isArray(journal) ? journal : (journal?.mouvements || [])
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Journal de caisse — {caisse.libelle}</DialogTitle>
+        </DialogHeader>
+        {loading ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">Chargement…</p>
+        ) : !mouvements.length ? (
+          <EmptyState title="Aucun mouvement" description="Aucun mouvement d’espèces enregistré." />
+        ) : (
+          <div className="max-h-60 overflow-y-auto overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <th className="px-2 py-2">Date</th>
+                  <th className="px-2 py-2">Sens</th>
+                  <th className="px-2 py-2">Motif</th>
+                  <th className="px-2 py-2 text-right">Montant</th>
+                </tr>
+              </thead>
+              <tbody>
+                {mouvements.map((m, i) => (
+                  <tr key={m.id ?? i} className="border-b last:border-0">
+                    <td className="px-2 py-1.5">{formatDate(m.date || m.date_mouvement)}</td>
+                    <td className="px-2 py-1.5">{m.sens === 'entree' ? 'Entrée' : 'Sortie'}</td>
+                    <td className="px-2 py-1.5">{m.motif || '—'}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{formatMAD(m.montant)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div className="flex flex-col gap-2 rounded-lg border p-3">
+          <span className="text-sm font-semibold">Nouveau mouvement</span>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <select
+              className="h-[var(--control-h)] rounded-md border border-input bg-card px-[var(--control-px)] text-sm"
+              value={sens} onChange={(e) => setSens(e.target.value)}
+            >
+              <option value="entree">Entrée</option>
+              <option value="sortie">Sortie</option>
+            </select>
+            <Input type="number" step="any" placeholder="Montant" value={montant}
+                   onChange={(e) => setMontant(e.target.value)} />
+            <Input placeholder="Motif" value={motif} onChange={(e) => setMotif(e.target.value)} />
+          </div>
+          <Button size="sm" className="w-fit" onClick={enregistrerMouvement}>
+            <Plus className="size-4" /> Enregistrer le mouvement
+          </Button>
+        </div>
+
+        <div className="flex flex-col gap-2 rounded-lg border p-3">
+          <span className="text-sm font-semibold">Clôture (comptage physique)</span>
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="cc-solde">Solde compté</Label>
+              <Input id="cc-solde" type="number" step="any" value={soldeCompte}
+                     onChange={(e) => setSoldeCompte(e.target.value)} />
+            </div>
+            <Button variant="outline" size="sm" onClick={cloturer}>
+              <Send className="size-4" /> Clôturer la caisse
+            </Button>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Fermer</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export default function TresoreriePage() {
   const [tab, setTab] = useState('tresorerie')
   const [dialog, setDialog] = useState(null)
+  const [caisseJournal, setCaisseJournal] = useState(null)
 
   const isPosition = tab === 'position'
   const list = useComptaList(
     isPosition ? comptaApi.exercices.list : RESOURCE[tab].list, undefined)
 
-  const rowActions = (row) => [{
-    id: 'edit', label: 'Éditer', icon: Pencil, onClick: () => setDialog({ row }),
-  }]
+  const rowActions = (row) => {
+    const acts = [{ id: 'edit', label: 'Éditer', icon: Pencil, onClick: () => setDialog({ row }) }]
+    if (tab === 'caisses') {
+      acts.unshift({
+        id: 'journal', label: 'Journal & clôture', icon: BookOpen,
+        onClick: () => setCaisseJournal(row),
+      })
+    }
+    return acts
+  }
 
   const submit = (payload) => {
     const api = RESOURCE[tab]
@@ -256,6 +405,10 @@ export default function TresoreriePage() {
           onSubmit={submit}
           onSaved={list.reload}
         />
+      )}
+
+      {caisseJournal && (
+        <CaisseJournalDialog caisse={caisseJournal} onClose={() => setCaisseJournal(null)} />
       )}
     </div>
   )

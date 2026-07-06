@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Plus, Pencil, CalendarRange } from 'lucide-react'
+import { Plus, Pencil, CalendarRange, LogOut } from 'lucide-react'
 import { ListShell } from '../../../ui/module'
 import {
   Button, EmptyState,
@@ -113,10 +113,30 @@ export default function ImmobilisationsPage() {
       align: 'right', cell: (v) => formatDate(v) },
   ], [])
 
+  const ceder = async (row) => {
+    // eslint-disable-next-line no-alert -- saisie ponctuelle du prix de cession (module interne)
+    const prix = window.prompt('Prix de cession (0 = mise au rebut) :', '0')
+    if (prix == null) return
+    try {
+      await comptaApi.immobilisations.ceder(row.id, {
+        date_cession: new Date().toISOString().slice(0, 10),
+        prix_cession: Number(prix) || 0,
+      })
+      toast.success('Cession enregistrée et postée.')
+      list.reload()
+    } catch (err) {
+      const d = err?.response?.data
+      toast.error(typeof d === 'string' ? d : (d?.detail || 'Cession impossible.'))
+    }
+  }
+
   const rowActions = (row) => [
     { id: 'plan', label: 'Plan d’amortissement', icon: CalendarRange,
       onClick: () => setPlanImmo(row) },
     { id: 'edit', label: 'Éditer', icon: Pencil, onClick: () => setDialog({ row }) },
+    ...(row.actif !== false ? [{
+      id: 'ceder', label: 'Céder / mettre au rebut', icon: LogOut, onClick: () => ceder(row),
+    }] : []),
   ]
 
   const submit = (payload) => (dialog?.row
