@@ -1,11 +1,12 @@
-import { useMemo } from 'react'
-import { Tabs, TabsList, TabsTrigger, TabsContent, Badge } from '../../ui'
+import { useMemo, useState } from 'react'
+import { Tabs, TabsList, TabsTrigger, TabsContent, Badge, Button, toast } from '../../ui'
 import { ListShell } from '../../ui/module'
 import flotteApi from '../../api/flotteApi'
 import { formatDate, formatDateTime, formatNumber } from '../../lib/format'
 import { SinistreStatutPill, InfractionStatutPill } from './statusPills'
 import { SINISTRE_TYPES, INFRACTION_TYPES, TELEMATIQUE_SOURCES } from './flotte'
 import useFlotteResource from './useFlotteResource'
+import PleinDialog from './PleinDialog'
 
 /* ============================================================================
    UX20 — Carburant & télématique (`/flotte/carburant`).
@@ -16,7 +17,9 @@ import useFlotteResource from './useFlotteResource'
    ========================================================================== */
 
 function PleinsTab() {
-  const { data, loading, error } = useFlotteResource(flotteApi.pleins.list, {})
+  const [showForm, setShowForm] = useState(false)
+  const { data, loading, error, reload } = useFlotteResource(flotteApi.pleins.list, {})
+  const { data: vehicules } = useFlotteResource(flotteApi.vehicules.list, {})
   const columns = useMemo(() => [
     { id: 'vehicule', header: 'Véhicule', width: 160, accessor: (r) => r.vehicule_label, cell: (v) => v || '—' },
     { id: 'date_plein', header: 'Date', width: 120, accessor: (r) => r.date_plein, cell: (v) => (v ? formatDate(v) : '—') },
@@ -25,10 +28,22 @@ function PleinsTab() {
     { id: 'prix_total', header: 'Coût', align: 'right', numeric: true, width: 120, searchable: false, accessor: (r) => Number(r.prix_total ?? 0), cell: (v) => (v ? `${formatNumber(v, { decimals: 2 })} MAD` : '—') },
     { id: 'station', header: 'Station', width: 150, accessor: (r) => r.station, cell: (v) => v || '—' },
   ], [])
+  const actions = (
+    <Button onClick={() => setShowForm(true)}>Nouveau plein</Button>
+  )
   return (
-    <ListShell title="Pleins de carburant" columns={columns} rows={data} loading={loading} error={error}
-      exportName="pleins" searchable searchPlaceholder="Rechercher station…"
-      emptyTitle="Aucun plein" emptyDescription="Aucun plein enregistré." />
+    <>
+      <ListShell title="Pleins de carburant" actions={actions} columns={columns} rows={data} loading={loading} error={error}
+        exportName="pleins" searchable searchPlaceholder="Rechercher station…"
+        emptyTitle="Aucun plein" emptyDescription="Aucun plein enregistré." />
+      {showForm && (
+        <PleinDialog
+          vehicules={vehicules}
+          onClose={() => setShowForm(false)}
+          onSaved={() => { setShowForm(false); reload(); toast.success('Plein enregistré.') }}
+        />
+      )}
+    </>
   )
 }
 

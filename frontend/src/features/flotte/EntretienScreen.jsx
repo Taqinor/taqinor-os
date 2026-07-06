@@ -12,6 +12,7 @@ import { PNEU_POSITIONS, PNEU_STATUTS } from './flotte'
 import useFlotteResource from './useFlotteResource'
 import SignalementDialog from './SignalementDialog'
 import GarageDialog from './GarageDialog'
+import PlanRolloutDialog from './PlanRolloutDialog'
 
 /* ============================================================================
    UX18 — Entretien (`/flotte/entretien`).
@@ -22,8 +23,10 @@ import GarageDialog from './GarageDialog'
    internes (jamais des prix client ni des prix d'achat/marge).
    ========================================================================== */
 
-function PlansTab() {
-  const { data, loading, error } = useFlotteResource(flotteApi.plansEntretien.list, {})
+function PlansTab({ actifs }) {
+  const { data, loading, error, reload } = useFlotteResource(flotteApi.plansEntretien.list, {})
+  const [rolloutPlan, setRolloutPlan] = useState(null)
+
   const columns = useMemo(() => [
     { id: 'actif', header: 'Actif', width: 200, accessor: (r) => r.actif_label, cell: (v) => v || '—' },
     { id: 'type_entretien', header: 'Type', width: 180, accessor: (r) => r.type_entretien, cell: (v) => v || '—' },
@@ -38,17 +41,33 @@ function PlansTab() {
       cell: (_v, r) => (r.actif ? <Badge tone="success">Actif</Badge> : <Badge tone="neutral">Inactif</Badge>),
     },
   ], [])
+
+  const rowActions = (row) => [
+    { id: 'rollout', label: 'Dupliquer sur…', onClick: () => setRolloutPlan(row) },
+  ]
+
   return (
-    <ListShell
-      title="Plans d’entretien préventif"
-      columns={columns}
-      rows={data}
-      loading={loading}
-      error={error}
-      exportName="plans-entretien"
-      emptyTitle="Aucun plan"
-      emptyDescription="Aucun plan d’entretien défini."
-    />
+    <>
+      <ListShell
+        title="Plans d’entretien préventif"
+        columns={columns}
+        rows={data}
+        loading={loading}
+        error={error}
+        rowActions={rowActions}
+        exportName="plans-entretien"
+        emptyTitle="Aucun plan"
+        emptyDescription="Aucun plan d’entretien défini."
+      />
+      {rolloutPlan && (
+        <PlanRolloutDialog
+          plan={rolloutPlan}
+          actifs={actifs}
+          onClose={() => setRolloutPlan(null)}
+          onSaved={() => { reload(); toast.success('Plan dupliqué.') }}
+        />
+      )}
+    </>
   )
 }
 
@@ -327,7 +346,8 @@ function PiecesTab() {
 }
 
 export default function EntretienScreen() {
-  // Charge les actifs une fois pour alimenter le formulaire de signalement.
+  // Charge les actifs une fois pour alimenter le formulaire de signalement
+  // et le rollout de plans d'entretien.
   const { data: actifs } = useFlotteResource(flotteApi.actifs.list, {})
 
   return (
@@ -344,7 +364,7 @@ export default function EntretienScreen() {
           <TabsTrigger value="pieces">Pièces</TabsTrigger>
         </TabsList>
         <TabsContent value="echeances"><EcheancesTab /></TabsContent>
-        <TabsContent value="plans"><PlansTab /></TabsContent>
+        <TabsContent value="plans"><PlansTab actifs={actifs} /></TabsContent>
         <TabsContent value="ordres"><OrdresTab /></TabsContent>
         <TabsContent value="signalements"><SignalementsTab actifs={actifs} /></TabsContent>
         <TabsContent value="garages"><GaragesTab /></TabsContent>

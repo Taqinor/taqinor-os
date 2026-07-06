@@ -10,6 +10,7 @@ import { formatDate, formatDateTime, formatPhoneMA } from '../../lib/format'
 import { daysUntil, urgencyTone } from '../../ui/module'
 import useFlotteResource from './useFlotteResource'
 import AffectationDialog from './AffectationDialog'
+import MasseAffectationDialog from './MasseAffectationDialog'
 import SignatureDialog from './SignatureDialog'
 
 /* ============================================================================
@@ -107,6 +108,7 @@ function ConducteursTab() {
 
 function AffectationsTab({ conducteurs, vehicules }) {
   const [showForm, setShowForm] = useState(false)
+  const [showMasse, setShowMasse] = useState(false)
   const { data, loading, error, reload } = useFlotteResource(flotteApi.affectations.list, {})
 
   const columns = useMemo(() => [
@@ -139,9 +141,12 @@ function AffectationsTab({ conducteurs, vehicules }) {
   ], [])
 
   const actions = (
-    <Button onClick={() => setShowForm(true)}>
-      <UserPlus /> Nouvelle affectation
-    </Button>
+    <div className="flex items-center gap-2">
+      <Button variant="outline" onClick={() => setShowMasse(true)}>Réaffectation en masse</Button>
+      <Button onClick={() => setShowForm(true)}>
+        <UserPlus /> Nouvelle affectation
+      </Button>
+    </div>
   )
 
   return (
@@ -164,6 +169,14 @@ function AffectationsTab({ conducteurs, vehicules }) {
           vehicules={vehicules}
           onClose={() => setShowForm(false)}
           onSaved={() => { setShowForm(false); reload(); toast.success('Affectation enregistrée.') }}
+        />
+      )}
+      {showMasse && (
+        <MasseAffectationDialog
+          conducteurs={conducteurs}
+          vehicules={vehicules}
+          onClose={() => setShowMasse(false)}
+          onSaved={() => { setShowMasse(false); reload(); toast.success('Réaffectation en masse enregistrée.') }}
         />
       )}
     </>
