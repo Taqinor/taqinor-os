@@ -56,6 +56,15 @@ PUBLIC_ALLOWLIST_PREFIXES = (
     "api/django/gestion-projet/portail",      # portail avancement/CSAT tokenisé
     "api/django/notifications/push/vapid-public-key",  # clé VAPID (publique par nature)
     "api/django/health",                      # sondes liveness/readiness
+    # Marketing PUBLIC (compta.urls) — tokenisés/webhooks, sans login, throttlés :
+    "api/django/compta/webhooks/",            # webhooks entrants Brevo/SMS-STOP
+    "api/django/compta/desinscription/",      # désinscription tokenisée (opt-out)
+    "api/django/compta/double-optin/",        # confirmation double opt-in tokenisée
+    "api/django/compta/r/",                   # redirection de lien tracké tokenisée
+    "api/django/compta/enquetes-publiques/",  # enquête/NPS publique tokenisée
+    "api/django/compta/reponses-enquete/",    # certificat PDF d'une réponse d'enquête
+    "api/django/compta/evenements-marketing/",  # inscription publique à un événement
+    "api/django/rh/carrieres",                # page carrières publique (flag-gated)
     "api/schema",                             # OpenAPI (si activé plus tard)
     "api/docs",
     "api/redoc",

@@ -411,6 +411,11 @@ CELERY_TASK_ROUTES = {
     'core.restore_drill': {'queue': 'scheduled'},
     'core.purge_backups': {'queue': 'scheduled'},
     'core.run_retention': {'queue': 'scheduled'},
+    'core.beat_heartbeat': {'queue': 'scheduled'},
+    'monitoring.balayage_quotidien': {'queue': 'scheduled'},
+    'stock.expiration_alerts': {'queue': 'scheduled'},
+    'stock.relancer_bcf_en_retard': {'queue': 'scheduled'},
+    'crm.escalader_rappels_demandes': {'queue': 'scheduled'},
 }
 # Le worker par défaut (sans -Q) écoute la queue nommée dans
 # task_default_queue — on la garde `default` pour ne rien casser ; en

@@ -359,9 +359,16 @@ class ProduitSerializer(serializers.ModelSerializer):
 
     def get_marge_pct(self, obj):
         """Marge brute en % depuis prix_vente/prix_achat (None si indéfinie)."""
-        from decimal import Decimal, ROUND_HALF_UP
-        vente = obj.prix_vente or Decimal('0')
-        achat = obj.prix_achat or Decimal('0')
+        from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+        # ``prix_vente``/``prix_achat`` peuvent arriver en int OU float selon le
+        # chemin d'écriture (création directe sans refresh_from_db, auto-fill,
+        # import) : on force un ``Decimal`` AVANT toute arithmétique, sinon un
+        # ``float * Decimal`` lève ``TypeError`` (YHARD4).
+        try:
+            vente = Decimal(str(obj.prix_vente)) if obj.prix_vente else Decimal('0')
+            achat = Decimal(str(obj.prix_achat)) if obj.prix_achat else Decimal('0')
+        except (InvalidOperation, TypeError, ValueError):
+            return None
         if vente <= 0 or achat <= 0:
             return None
         pct = (vente - achat) / vente * Decimal('100')
