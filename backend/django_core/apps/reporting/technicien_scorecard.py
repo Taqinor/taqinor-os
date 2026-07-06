@@ -15,10 +15,27 @@ le technicien lui-même, et n'expose AUCUN coût interne (prix d'achat,
 marge). Compare le technicien à la moyenne de l'équipe (tous les
 techniciens actifs sur la période).
 """
+from datetime import date
+
 from apps.crm.exports import build_xlsx_response
 from authentication.permissions import IsResponsableOrAdmin
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
+
+
+def _qdate(value):
+    """Parse une date ?from=/?to= au format ISO, ou None.
+
+    BUG réel corrigé : les chaînes brutes de ``request.query_params``
+    passaient telles quelles jusqu'à ``plan_de_charge_equipes`` /
+    ``_jours_ouvres`` (installations/selectors.py), qui fait de
+    l'arithmétique de dates (``jour.weekday()``) — un ``AttributeError``
+    garanti dès que ``?from=&to=`` sont fournis (donc dès qu'on filtre par
+    période, le cas d'usage principal du paramètre)."""
+    try:
+        return date.fromisoformat((value or '').strip())
+    except (ValueError, TypeError):
+        return None
 
 
 def _co(user):
@@ -162,8 +179,8 @@ def technicien_scorecard(request):
     except (User.DoesNotExist, ValueError):
         return Response({'detail': 'Technicien introuvable.'}, status=404)
 
-    start = request.query_params.get('from')
-    end = request.query_params.get('to')
+    start = _qdate(request.query_params.get('from'))
+    end = _qdate(request.query_params.get('to'))
 
     scorecard = _technicien_stats(
         request.user.company, technicien, start=start, end=end)
