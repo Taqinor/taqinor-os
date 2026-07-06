@@ -12,6 +12,7 @@ vi.mock('../../api/savApi', () => ({
     getEquipementDisponibilite: vi.fn(),
     getEquipementDowntime: vi.fn(),
     getEquipementReleves: vi.fn(),
+    getEquipementEstimations: vi.fn(() => Promise.resolve({ data: null })),
     ouvrirEquipementDowntime: vi.fn(),
     cloturerEquipementDowntime: vi.fn(),
     addEquipementReleve: vi.fn(),
@@ -65,6 +66,21 @@ describe('EquipementFiabilitePanel — XSAV15 MTBF/MTTR', () => {
     expect(await screen.findByText(/Coût cumulé/)).toBeInTheDocument()
     expect(screen.getByText('2500.00 DH')).toBeInTheDocument()
     expect(screen.getByText('À remplacer')).toBeInTheDocument()
+  })
+})
+
+describe('EquipementFiabilitePanel — ZMFG11 estimations de maintenance', () => {
+  it('affiche la prochaine défaillance estimée et le prochain entretien dû', async () => {
+    savApi.getEquipementFiabilite.mockResolvedValue({ data: { mtbf_jours: 30, mttr_jours: 2 } })
+    savApi.getEquipementDisponibilite.mockResolvedValue({ data: { disponibilite_pct: 95 } })
+    savApi.getEquipementDowntime.mockResolvedValue({ data: [] })
+    savApi.getEquipementReleves.mockResolvedValue({ data: [] })
+    savApi.getEquipementEstimations.mockResolvedValue({
+      data: { prochaine_defaillance_estimee: '2026-08-01', prochain_entretien_du: '2026-07-15' },
+    })
+    renderPanel()
+    expect(await screen.findByText('Prochaine défaillance estimée :')).toBeInTheDocument()
+    expect(screen.getByText('Prochain entretien dû :')).toBeInTheDocument()
   })
 })
 

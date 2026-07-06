@@ -33,6 +33,7 @@ export default function EquipementFiabilitePanel({ equipementId }) {
   const [dispo, setDispo] = useState(null)
   const [downtimes, setDowntimes] = useState([])
   const [releves, setReleves] = useState([])
+  const [estimations, setEstimations] = useState(null)
   const [loading, setLoading] = useState(true)
 
   const [releveForm, setReleveForm] = useState({ type: 'heures', valeur: '' })
@@ -46,11 +47,14 @@ export default function EquipementFiabilitePanel({ equipementId }) {
       savApi.getEquipementDisponibilite(equipementId).then((r) => r.data).catch(() => null),
       savApi.getEquipementDowntime(equipementId).then((r) => r.data).catch(() => []),
       savApi.getEquipementReleves(equipementId).then((r) => r.data).catch(() => []),
-    ]).then(([f, d, dt, rv]) => {
+      // ZMFG11 — prochaine défaillance estimée (MTBF) + prochain entretien dû.
+      savApi.getEquipementEstimations(equipementId).then((r) => r.data).catch(() => null),
+    ]).then(([f, d, dt, rv, est]) => {
       setFiabilite(f)
       setDispo(d)
       setDowntimes(dt || [])
       setReleves(rv || [])
+      setEstimations(est)
     }).finally(() => setLoading(false))
   }
 
@@ -122,6 +126,19 @@ export default function EquipementFiabilitePanel({ equipementId }) {
                 {fiabilite.reparer_vs_remplacer === 'remplacer' ? 'À remplacer' : 'Réparable'}
               </Badge>
             )}
+          </div>
+        )}
+        {/* ZMFG11 — prochaine défaillance estimée (MTBF) + prochain entretien dû. */}
+        {estimations?.prochaine_defaillance_estimee && (
+          <div className="flex items-center gap-2 text-sm sm:col-span-2">
+            <span className="font-medium">Prochaine défaillance estimée :</span>
+            <span>{fmtDate(estimations.prochaine_defaillance_estimee)}</span>
+          </div>
+        )}
+        {estimations?.prochain_entretien_du && (
+          <div className="flex items-center gap-2 text-sm sm:col-span-2">
+            <span className="font-medium">Prochain entretien dû :</span>
+            <span>{fmtDate(estimations.prochain_entretien_du)}</span>
           </div>
         )}
       </div>
