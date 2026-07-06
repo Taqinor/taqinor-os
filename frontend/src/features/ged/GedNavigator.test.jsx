@@ -26,6 +26,8 @@ vi.mock('../../api/gedApi', () => ({
     checkOutDocument: vi.fn(() => Promise.resolve({ data: {} })),
     checkInDocument: vi.fn(() => Promise.resolve({ data: {} })),
     mettreEnCorbeille: vi.fn(() => Promise.resolve({ data: {} })),
+    // XGED14 — opérations en lot.
+    operationsLot: vi.fn(() => Promise.resolve({ data: { resultats: [], erreurs: [] } })),
   },
 }))
 
@@ -166,6 +168,31 @@ describe('GedNavigator — écriture (U14)', () => {
     await userEvent.click(await screen.findByRole('button', { name: /Extraire facture\.pdf/i }))
 
     await waitFor(() => expect(gedApi.checkOutDocument).toHaveBeenCalledWith(8))
+  })
+
+  it('XGED14 — sélection + mise en corbeille par lot', async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([
+      { id: 8, nom: 'a.pdf', updated_at: '2026-06-01T10:00:00Z' },
+      { id: 9, nom: 'b.pdf', updated_at: '2026-06-02T10:00:00Z' },
+    ]))
+
+    render(<GedNavigator />)
+    await userEvent.click(await screen.findByText('Docs'))
+
+    // Coche deux documents.
+    await userEvent.click(await screen.findByRole('checkbox', { name: /Sélectionner a\.pdf/i }))
+    await userEvent.click(screen.getByRole('checkbox', { name: /Sélectionner b\.pdf/i }))
+
+    // La barre d'actions apparaît → mise en corbeille par lot.
+    await userEvent.click(await screen.findByRole('button', { name: /Mettre en corbeille/i }))
+
+    await waitFor(() => expect(gedApi.operationsLot).toHaveBeenCalledWith({
+      documents: [8, 9], operation: 'corbeille',
+    }))
   })
 
   it('renomme le dossier sélectionné', async () => {

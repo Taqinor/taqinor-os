@@ -62,6 +62,9 @@ export default function GedNavigator() {
   const [uploadDlg, setUploadDlg] = useState(false)
   // GED14 — document à prévisualiser (clic sur une ligne → modale d'aperçu).
   const [previewDoc, setPreviewDoc] = useState(null)
+  // XGED14 — multi-sélection de documents pour les opérations en lot.
+  const [selectedIds, setSelectedIds] = useState(() => new Set())
+  const [bulkBusy, setBulkBusy] = useState(false)
 
   // ── Chargement des cabinets (armoires racines) ──
   const loadCabinets = (preferId) => {
@@ -140,9 +143,43 @@ export default function GedNavigator() {
   })
 
   const selectFolder = (node) => {
-    if (selected?.id !== node.id) setDocuments([])
+    if (selected?.id !== node.id) { setDocuments([]); setSelectedIds(new Set()) }
     setSelected(node)
     if (node.hasChildren) toggle(node.id)
+  }
+
+  // XGED14 — bascule la sélection d'un document / tout sélectionner.
+  const toggleSelect = (id) => setSelectedIds((prev) => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    return next
+  })
+  const toggleSelectAll = () => setSelectedIds((prev) => (
+    prev.size === documents.length && documents.length > 0
+      ? new Set()
+      : new Set(documents.map((d) => d.id))
+  ))
+
+  // XGED14 — mise en corbeille par lot de la sélection.
+  const bulkCorbeille = async () => {
+    if (selectedIds.size === 0) return
+    setBulkBusy(true)
+    try {
+      const res = await gedApi.operationsLot({
+        documents: [...selectedIds], operation: 'corbeille',
+      })
+      const erreurs = res?.data?.erreurs || []
+      if (erreurs.length) {
+        toast.error(`${erreurs.length} document(s) non traité(s) (protégés).`)
+      } else {
+        toast.success(`${selectedIds.size} document(s) mis en corbeille.`)
+      }
+      setSelectedIds(new Set())
+      reloadDocuments()
+    } catch (err) {
+      toast.error(errText(err, 'Opération en lot impossible.'))
+    } finally { setBulkBusy(false) }
   }
 
   const tree = useMemo(() => buildFolderTree(folders), [folders])
@@ -320,6 +357,24 @@ export default function GedNavigator() {
                       </Button>
                     </div>
                   </div>
+                  {/* XGED14 — barre d'actions par lot (visible dès qu'une case est cochée). */}
+                  {selectedIds.size > 0 && (
+                    <div className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/40 px-4 py-2">
+                      <span className="text-[13px] font-medium">
+                        {selectedIds.size} sélectionné{selectedIds.size > 1 ? 's' : ''}
+                      </span>
+                      <div className="ml-auto flex items-center gap-1">
+                        <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
+                          Désélectionner
+                        </Button>
+                        <Button size="sm" variant="destructive"
+                          onClick={bulkCorbeille} disabled={bulkBusy}>
+                          {bulkBusy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Trash2 className="size-4" aria-hidden="true" />}
+                          Mettre en corbeille
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                   {loadingDocs ? (
                     <div className="flex items-center gap-2 p-6 text-[13px] text-muted-foreground">
                       <Loader2 className="size-4 animate-spin" aria-hidden="true" /> Chargement des documents…
@@ -336,6 +391,13 @@ export default function GedNavigator() {
                     <table className="data-table">
                       <thead>
                         <tr>
+                          <th className="w-8">
+                            {/* XGED14 — tout sélectionner. */}
+                            <input type="checkbox"
+                              aria-label="Tout sélectionner"
+                              checked={selectedIds.size === documents.length && documents.length > 0}
+                              onChange={toggleSelectAll} />
+                          </th>
                           <th>Document</th>
                           <th className="m-hide">Versions</th>
                           <th className="m-hide">Créé par</th>
@@ -346,6 +408,12 @@ export default function GedNavigator() {
                       <tbody>
                         {documents.map((d) => (
                           <tr key={d.id}>
+                            <td data-label="" className="w-8">
+                              <input type="checkbox"
+                                aria-label={`Sélectionner ${d.nom}`}
+                                checked={selectedIds.has(d.id)}
+                                onChange={() => toggleSelect(d.id)} />
+                            </td>
                             <td data-label="Document" className="font-medium">
                               {/* GED14 — clic sur le nom → aperçu du document. */}
                               <button type="button"
