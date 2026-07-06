@@ -106,7 +106,8 @@ class TestRecurrenceInterventionCRUD(TestCase):
             type_intervention='controle', regle='annuelle',
             prochaine_echeance=date.today())
         r = self.api.get(f'{BASE}/recurrences-intervention/')
-        self.assertEqual(len(r.data), 1)
+        rows = r.data['results'] if isinstance(r.data, dict) else r.data
+        self.assertEqual(len(rows), 1)
 
 
 class TestGenererInterventionsRecurrentes(TestCase):
