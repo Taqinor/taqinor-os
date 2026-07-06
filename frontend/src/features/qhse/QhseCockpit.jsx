@@ -30,6 +30,7 @@ export default function QhseCockpit() {
   const [tftg, setTftg] = useState(null)
   const [iso, setIso] = useState(null)
   const [cal, setCal] = useState(null)
+  const [pareto, setPareto] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -39,17 +40,19 @@ export default function QhseCockpit() {
       setLoading(true)
       setError(null)
       try {
-        // Les trois sources sont indépendantes : on les charge en parallèle et
-        // on tolère qu'une échoue (settlements) sans casser tout le cockpit.
-        const [tRes, iRes, cRes] = await Promise.allSettled([
+        // Les sources sont indépendantes : on les charge en parallèle et on
+        // tolère qu'une échoue (settlements) sans casser tout le cockpit.
+        const [tRes, iRes, cRes, pRes] = await Promise.allSettled([
           qhseApi.incidents.statistiquesTfTg(),
           qhseApi.iso9001Readiness(),
           qhseApi.calendrier(),
+          qhseApi.paretoDefauts(),
         ])
         if (!alive) return
         setTftg(tRes.status === 'fulfilled' ? tRes.value.data : null)
         setIso(iRes.status === 'fulfilled' ? iRes.value.data : null)
         setCal(cRes.status === 'fulfilled' ? cRes.value.data : null)
+        setPareto(pRes.status === 'fulfilled' ? pRes.value.data : null)
         if (
           tRes.status === 'rejected' &&
           iRes.status === 'rejected' &&
@@ -66,6 +69,13 @@ export default function QhseCockpit() {
     load()
     return () => { alive = false }
   }, [])
+
+  // XQHS4 — Pareto défauts (comptes + % cumulé), agrégé NCR + relevés + incidents.
+  const paretoBars = (pareto?.pareto ?? []).map((p) => ({
+    label: p.libelle ?? p.code ?? '—',
+    value: num(p.nb) ?? 0,
+    color: undefined,
+  }))
 
   const tf = tftg?.tf
   const tg = tftg?.tg
@@ -104,23 +114,41 @@ export default function QhseCockpit() {
     color: undefined,
   }))
 
-  const charts = isoBars.length
-    ? [{
-        title: 'Critères ISO 9001 (score %)',
-        span: 'full',
-        node: (
-          <BarArrondie
-            data={isoBars}
-            layout="vertical"
-            height={Math.max(160, isoBars.length * 34)}
-            categoryWidth={220}
-            tone="primary"
-            name="Score"
-            tooltipFormat={(v) => `${v} %`}
-          />
-        ),
-      }]
-    : []
+  const charts = [
+    ...(isoBars.length
+      ? [{
+          title: 'Critères ISO 9001 (score %)',
+          span: 'full',
+          node: (
+            <BarArrondie
+              data={isoBars}
+              layout="vertical"
+              height={Math.max(160, isoBars.length * 34)}
+              categoryWidth={220}
+              tone="primary"
+              name="Score"
+              tooltipFormat={(v) => `${v} %`}
+            />
+          ),
+        }]
+      : []),
+    ...(paretoBars.length
+      ? [{
+          title: 'Pareto des défauts qualité',
+          span: 'full',
+          node: (
+            <BarArrondie
+              data={paretoBars}
+              layout="vertical"
+              height={Math.max(160, paretoBars.length * 34)}
+              categoryWidth={220}
+              tone="warning"
+              name="Occurrences"
+            />
+          ),
+        }]
+      : []),
+  ]
 
   // Échéances calendrier → items EcheanceCenter (lien vers l'écran concerné).
   const TARGET = {
