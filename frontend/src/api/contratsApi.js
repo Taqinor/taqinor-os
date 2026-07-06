@@ -23,6 +23,17 @@ const contratsApi = {
     api.get('/contrats/contrats/tableau-de-bord/', { params }),
   getReporting: () => api.get('/contrats/contrats/reporting/'),
 
+  // Analytique récurrente (MRR / rétention / campagne / CLV) — XCTR7-11.
+  getMrrMouvements: (params) =>
+    api.get('/contrats/contrats/mrr-mouvements/', { params }),
+  getCohortesRetention: () =>
+    api.get('/contrats/contrats/cohortes-retention/'),
+  getClv: (params) => api.get('/contrats/contrats/clv/', { params }),
+  campagneRevision: (data) =>
+    api.post('/contrats/contrats/campagne-revision/', data),
+  campagneRevisionRollback: (data) =>
+    api.post('/contrats/contrats/campagne-revision-rollback/', data),
+
   // Échéances (préavis / renouvellement) — CONTRAT20/21.
   getPreavis: (params) => api.get('/contrats/contrats/preavis/', { params }),
   getARenouveler: (params) =>
@@ -212,6 +223,103 @@ const contratsApi = {
     api.delete(`/contrats/pieces-conformite/${id}/`),
   marquerPieceFournie: (id, data) =>
     api.post(`/contrats/pieces-conformite/${id}/marquer-fournie/`, data ?? {}),
+
+  /* ---------------- Cycles de facturation & exceptions — XCTR5 ---------------- */
+  getCyclesFacturation: (params) =>
+    api.get('/contrats/cycles-facturation/', { params }),
+  getExceptionsFacturation: (params) =>
+    api.get('/contrats/cycles-facturation/exceptions/', { params }),
+  rejouerCycle: (id) =>
+    api.post(`/contrats/cycles-facturation/${id}/rejouer/`),
+
+  /* ---------------- Location de matériel (XCTR17-21) ---------------- */
+  getOrdresLocation: (params) =>
+    api.get('/contrats/ordres-location/', { params }),
+  getOrdreLocation: (id) => api.get(`/contrats/ordres-location/${id}/`),
+  createOrdreLocation: (data) =>
+    api.post('/contrats/ordres-location/', data),
+  updateOrdreLocation: (id, data) =>
+    api.patch(`/contrats/ordres-location/${id}/`, data),
+  deleteOrdreLocation: (id) => api.delete(`/contrats/ordres-location/${id}/`),
+  disponibiliteLocation: (params) =>
+    api.get('/contrats/ordres-location/disponibilite/', { params }),
+  changerStatutOrdreLocation: (id, statut) =>
+    api.post(`/contrats/ordres-location/${id}/changer-statut/`, { statut }),
+  ordresLocationEnRetard: (params) =>
+    api.get('/contrats/ordres-location/en-retard/', { params }),
+  utilisationLocation: (params) =>
+    api.get('/contrats/ordres-location/utilisation/', { params }),
+  // Caution (dépôt de garantie) — XCTR18.
+  cautionEncaisser: (id, montant) =>
+    api.post(`/contrats/ordres-location/${id}/caution/encaisser/`, { montant }),
+  cautionRestituer: (id) =>
+    api.post(`/contrats/ordres-location/${id}/caution/restituer/`),
+  cautionRetenir: (id, data) =>
+    api.post(`/contrats/ordres-location/${id}/caution/retenir/`, data),
+  // Retour / retards / inspection — XCTR19.
+  cloturerOrdreLocation: (id) =>
+    api.post(`/contrats/ordres-location/${id}/cloturer/`),
+  inspecterOrdreLocation: (id, data) =>
+    api.post(`/contrats/ordres-location/${id}/inspecter/`, data),
+  // Longue durée : cycle récurrent + prolongation/écourtage — XCTR20.
+  facturerCycleLocation: (id, data) =>
+    api.post(`/contrats/ordres-location/${id}/facturer-cycle/`, data ?? {}),
+  prolongerOrdreLocation: (id, data) =>
+    api.post(`/contrats/ordres-location/${id}/prolonger/`, data),
+  ecourterOrdreLocation: (id, data) =>
+    api.post(`/contrats/ordres-location/${id}/ecourter/`, data),
+  // Depuis un devis accepté — ZCTR6.
+  ordresLocationDepuisDevis: (devisId, data) =>
+    api.post(`/contrats/ordres-location/depuis-devis/${devisId}/`, data ?? {}),
+  // Bons PDF — ZCTR5.
+  getBonEnlevementUrl: (id) =>
+    `/contrats/ordres-location/${id}/bon-enlevement/`,
+  getBonEnlevement: (id) =>
+    api.get(`/contrats/ordres-location/${id}/bon-enlevement/`, { responseType: 'blob' }),
+  getBonRestitution: (id) =>
+    api.get(`/contrats/ordres-location/${id}/bon-restitution/`, { responseType: 'blob' }),
+
+  /* ---------------- Config location (ZCTR1/3/4) ---------------- */
+  getPlansRecurrents: (params) =>
+    api.get('/contrats/plans-recurrents/', { params }),
+  createPlanRecurrent: (data) => api.post('/contrats/plans-recurrents/', data),
+  updatePlanRecurrent: (id, data) =>
+    api.patch(`/contrats/plans-recurrents/${id}/`, data),
+  deletePlanRecurrent: (id) => api.delete(`/contrats/plans-recurrents/${id}/`),
+
+  getMotifsResiliation: (params) =>
+    api.get('/contrats/motifs-resiliation/', { params }),
+  createMotifResiliation: (data) =>
+    api.post('/contrats/motifs-resiliation/', data),
+  updateMotifResiliation: (id, data) =>
+    api.patch(`/contrats/motifs-resiliation/${id}/`, data),
+  deleteMotifResiliation: (id) =>
+    api.delete(`/contrats/motifs-resiliation/${id}/`),
+
+  getParametresLocation: () =>
+    api.get('/contrats/parametres-location/courant/'),
+  updateParametresLocation: (data) =>
+    api.patch('/contrats/parametres-location/courant/', data),
+
+  // Génération d'un devis de renouvellement — CONTRAT23.
+  genererDevisRenouvellement: (id, data) =>
+    api.post(`/contrats/contrats/${id}/generer-devis-renouvellement/`, data ?? {}),
+}
+
+/* ============================================================================
+   Portail client PUBLIC (sans login) — « Mes contrats » (XCTR14).
+   Résolu par le token du portail self-service (compta.ComptePortailClient).
+   Ne change JAMAIS le statut d'un contrat : la demande crée une activité côté
+   ERP. Utilise l'axios NU (pas d'auth) sur le préfixe /public/.
+   ========================================================================== */
+export const contratsPortailApi = {
+  mesContrats: (token) =>
+    api.get(`/public/contrats/portail/${encodeURIComponent(token)}/`),
+  demander: (token, contratId, data) =>
+    api.post(
+      `/public/contrats/portail/${encodeURIComponent(token)}/${contratId}/demande/`,
+      data,
+    ),
 }
 
 export default contratsApi
