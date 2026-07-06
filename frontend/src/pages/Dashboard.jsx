@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo } from 'react'
 
 const ActivityFeedWidget = lazy(() => import('../components/ActivityFeedWidget'))
+const MesEquipesCard = lazy(() => import('../components/MesEquipesCard'))
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -654,6 +655,12 @@ export function Component() {
               </CardContent>
             </Card>
           </div>
+
+          {/* ZSAL3 — Tableau de bord « Mes équipes » (autonome : ne rend rien
+              si aucune équipe ou si le rôle n'y a pas accès). */}
+          <Suspense fallback={null}>
+            <MesEquipesCard />
+          </Suspense>
 
           {/* FG8 — Flux d'activités planifiées (records.Activity) */}
           <Card>

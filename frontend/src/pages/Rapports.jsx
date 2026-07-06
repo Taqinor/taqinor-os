@@ -11,6 +11,7 @@ import {
 } from 'recharts'
 import api from '../api/axios'
 import reportingApi from '../api/reportingApi'
+import crmApi from '../api/crmApi'
 import { downloadXlsx } from '../api/importApi'
 import { formatNumber } from '../lib/format'
 import {
@@ -420,6 +421,8 @@ export function Component() {
   const [sales, setSales] = useState(null)
   const [stock, setStock] = useState(null)
   const [service, setService] = useState(null)
+  // ZSAL6 — Rapport d'attribution des leads (par commercial + par source).
+  const [attribution, setAttribution] = useState(null)
   const [recurring, setRecurring] = useState(null)
   const [audit, setAudit] = useState(null)
   const [jobCosting, setJobCosting] = useState(null)
@@ -448,6 +451,7 @@ export function Component() {
       delete next.sales
       delete next.stock
       delete next.service
+      delete next.attribution
       return next
     })
   }
@@ -472,6 +476,11 @@ export function Component() {
     load('sales', api.get('/reporting/reports/sales/', { params }), setSales)
     load('stock', api.get('/reporting/reports/stock/', { params }), setStock)
     load('service', api.get('/reporting/reports/service/', { params }), setService)
+    // ZSAL6 — même période (?debut=&fin=, noms distincts côté CRM).
+    const attrParams = {}
+    if (from) attrParams.debut = from
+    if (to) attrParams.fin = to
+    load('attribution', crmApi.getAttributionLeads(attrParams), setAttribution)
   }, [from, to, load])
 
   // Les insights (all-time) ne sont chargés qu'une fois.
@@ -604,6 +613,42 @@ export function Component() {
                      ])}
                      footer={['Total', fmt(sumBy(sales.perdus_par_motif, 'count'))]} />
             </ReportCard>
+          ))}
+
+          {/* ZSAL6 — Attribution des leads (par commercial + par source). */}
+          {renderReportCard('attribution', 'Attribution des leads', () => (
+            <InsightCard title="Attribution des leads"
+                         note="Répartition des leads par commercial et par canal, croisée avec la conversion et le CA signé.">
+              <Subhead>Par commercial</Subhead>
+              <Table headers={['Commercial', 'Leads', 'Signés', 'Taux', 'CA signé']}
+                     rows={(attribution?.par_commercial ?? []).map((r) => [
+                       r.commercial
+                         ? <DrillLink to={`/crm/leads?owner=${encodeURIComponent(r.commercial)}`}>{r.commercial}</DrillLink>
+                         : 'Non assigné',
+                       fmt(r.nb_leads), fmt(r.nb_signes),
+                       `${r.taux_conversion_pct ?? 0}%`,
+                       `${fmt(r.ca_signe)} DH`,
+                     ])}
+                     footer={['Total',
+                       fmt(sumBy(attribution?.par_commercial ?? [], 'nb_leads')),
+                       fmt(sumBy(attribution?.par_commercial ?? [], 'nb_signes')),
+                       '', `${fmt(sumBy(attribution?.par_commercial ?? [], 'ca_signe'))} DH`]} />
+              <Subhead>Par source</Subhead>
+              {/* Pas de lien de drill-down ici : la liste des leads n'a pas
+                  de filtre par canal aujourd'hui (contrairement à owner/stage
+                  ci-dessus) — on n'invente pas une route qui n'existe pas. */}
+              <Table headers={['Canal', 'Leads', 'Signés', 'Taux', 'CA signé']}
+                     rows={(attribution?.par_source ?? []).map((r) => [
+                       r.canal_label || r.canal,
+                       fmt(r.nb_leads), fmt(r.nb_signes),
+                       `${r.taux_conversion_pct ?? 0}%`,
+                       `${fmt(r.ca_signe)} DH`,
+                     ])}
+                     footer={['Total',
+                       fmt(sumBy(attribution?.par_source ?? [], 'nb_leads')),
+                       fmt(sumBy(attribution?.par_source ?? [], 'nb_signes')),
+                       '', `${fmt(sumBy(attribution?.par_source ?? [], 'ca_signe'))} DH`]} />
+            </InsightCard>
           ))}
         </TabsContent>
 

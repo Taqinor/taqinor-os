@@ -1,8 +1,8 @@
 from rest_framework import serializers
 from .models import (
-    Appointment, Client, ConcurrentPerte, EtapePlanActivite, Lead,
-    LeadActivity, MessageTemplate, ObjectifCommercial, Parrainage,
-    PlanActivite, PointContact, SiteProfile,
+    Appointment, Client, ConcurrentPerte, EquipeCommerciale,
+    EtapePlanActivite, Lead, LeadActivity, MessageTemplate,
+    ObjectifCommercial, Parrainage, PlanActivite, PointContact, SiteProfile,
 )
 from .devis_auto import champs_manquants, message_manquants
 from .scoring import compute_score, score_label
@@ -787,4 +787,21 @@ class PlanActiviteSerializer(serializers.ModelSerializer):
     class Meta:
         model = PlanActivite
         fields = ['id', 'company', 'nom', 'actif', 'date_creation', 'etapes']
+        read_only_fields = ['company', 'date_creation']
+
+
+# ── ZSAL3 — Équipes commerciales (admin CRUD ; le dashboard « Mes équipes »
+# lit stats_equipe() séparément, voir views.equipes_statistiques) ────────────
+
+class EquipeCommercialeSerializer(serializers.ModelSerializer):
+    responsable_nom = serializers.CharField(
+        source='responsable.username', read_only=True, default=None)
+    nb_membres = serializers.IntegerField(source='membres.count', read_only=True)
+
+    class Meta:
+        model = EquipeCommerciale
+        fields = [
+            'id', 'company', 'nom', 'responsable', 'responsable_nom',
+            'membres', 'nb_membres', 'actif', 'date_creation',
+        ]
         read_only_fields = ['company', 'date_creation']

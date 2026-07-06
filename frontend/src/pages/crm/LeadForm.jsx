@@ -14,6 +14,8 @@ import CustomFieldsInput from '../../components/CustomFieldsInput'
 import AppointmentBooker from './leads/AppointmentBooker'
 import LeadDevisPanel from './leads/LeadDevisPanel'
 import SigneDialog from './leads/SigneDialog'
+import PlanActiviteDialog from './leads/PlanActiviteDialog'
+import ConvertirClientDialog from './leads/ConvertirClientDialog'
 import { CONVERSION_STAGE } from '../../features/crm/stages'
 import useCanaux from '../../features/crm/useCanaux'
 import {
@@ -276,6 +278,10 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
   // Dialogue « Signé » : passer l'étape à Signé via le select ouvre le
   // dialogue d'acceptation (devis + option) au lieu d'enregistrer SIGNED.
   const [signeOpen, setSigneOpen] = useState(false)
+  // ZSAL2 — dialogue « Appliquer un plan d'activité ».
+  const [planOpen, setPlanOpen] = useState(false)
+  // ZSAL4 — dialogue « Convertir en client » (nouveau / lier / aucun).
+  const [convertOpen, setConvertOpen] = useState(false)
   // Champs personnalisés (T11).
   const [customData, setCustomData] = useState(lead?.custom_data || {})
   const bodyRef = useRef(null)
@@ -607,6 +613,17 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
               >
                 {(liveLead?.devis ?? []).length} devis
               </button>
+            )}
+            {isEdit && !liveLead?.client && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setConvertOpen(true)}
+                title="Convertir ce lead en client (nouveau, lier à un client existant, ou aucun)"
+              >
+                Convertir en client
+              </Button>
             )}
             {isEdit && (
               <Button
@@ -1122,6 +1139,12 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
             {/* ── Activités planifiées ── */}
             {isEdit && (
               <Sec id="activites" title="⏰ Activités">
+                <div style={{ margin: '0 0 8px' }}>
+                  <Button type="button" size="sm" variant="outline"
+                          onClick={() => setPlanOpen(true)}>
+                    📋 Appliquer un plan
+                  </Button>
+                </div>
                 <ActivitiesPanel
                   model="crm.lead" id={lead.id} users={users}
                   onChange={() => onSaved?.()}
@@ -1249,6 +1272,24 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
           lead={liveLead}
           onClose={() => { set('stage', lead.stage); setSigneOpen(false) }}
           onConfirmed={() => { setSigneOpen(false); onSaved?.(); onClose() }}
+        />
+      )}
+
+      {/* ZSAL2 — Appliquer un plan d'activité au lead ouvert. */}
+      {isEdit && planOpen && (
+        <PlanActiviteDialog
+          lead={liveLead}
+          onClose={() => setPlanOpen(false)}
+          onApplied={() => onSaved?.()}
+        />
+      )}
+
+      {/* ZSAL4 — Convertir en client (nouveau / lier / aucun). */}
+      {isEdit && convertOpen && (
+        <ConvertirClientDialog
+          lead={liveLead}
+          onClose={() => setConvertOpen(false)}
+          onConverted={refreshLead}
         />
       )}
     </div>
