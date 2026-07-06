@@ -131,6 +131,24 @@ def commit(request):
     return Response(result)
 
 
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def list_mappings(request):
+    """XPLT2 — mappings sauvegardés de la société courante (sélecteur), filtrés
+    optionnellement par cible (``?target=leads``)."""
+    target = request.query_params.get('target') or None
+    if target is not None and target not in services.TARGETS:
+        cibles = ', '.join(sorted(services.TARGETS))
+        return Response(
+            {'detail': f'Cible invalide (valeurs possibles : {cibles}).'},
+            status=400)
+    mappings = services.list_mappings(request.user.company, target=target)
+    return Response([
+        {'id': m.pk, 'target': m.entity, 'nom': m.nom, 'mapping': m.mapping}
+        for m in mappings
+    ])
+
+
 @api_view(['POST'])
 @permission_classes([IsResponsableOrAdmin])
 def save_mapping(request):
