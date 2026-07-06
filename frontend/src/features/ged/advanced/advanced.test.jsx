@@ -33,6 +33,13 @@ vi.mock('../../../api/gedApi', () => ({
     getTagAssignments: vi.fn(() => Promise.resolve({ data: [] })),
     getLiens: vi.fn(() => Promise.resolve({ data: [] })),
     leverLegalHold: vi.fn(),
+    // XGED2/XGED3 — circuit multi-signataires + champs positionnés.
+    getRolesSignataire: vi.fn(() => Promise.resolve({ data: [] })),
+    creerDemandeMultiSignataires: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
+    getChampsSignature: vi.fn(() => Promise.resolve({ data: [] })),
+    createChampSignature: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
+    deleteChampSignature: vi.fn(() => Promise.resolve({ data: {} })),
+    annulerDemandeSignature: vi.fn(() => Promise.resolve({ data: {} })),
   },
 }))
 
@@ -62,6 +69,27 @@ describe('UX45 ApprobationPage', () => {
     expect(await screen.findByText('Approbations & revue')).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Signatures' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Modèles' })).toBeInTheDocument()
+  })
+
+  it('XGED2 — le circuit multi-signataires ajoute/retire des destinataires ordonnés', async () => {
+    gedApi.getDocumentsList.mockResolvedValue({
+      data: [{ id: 4, nom: 'Bail.pdf' }],
+    })
+    renderPage(<ApprobationPage />)
+    await userEvent.click(await screen.findByRole('tab', { name: 'Signatures' }))
+    await userEvent.click(await screen.findByRole('button', { name: /Circuit multi-signataires/i }))
+
+    // Un destinataire de départ + le routage séquentiel par défaut.
+    expect(await screen.findByText(/Ordre de signature/i)).toBeInTheDocument()
+    expect(screen.getAllByPlaceholderText('Nom')).toHaveLength(1)
+
+    // Ajout d'un 2e destinataire (les ordres 1, 2 sont posés à la création).
+    await userEvent.click(screen.getByRole('button', { name: /Ajouter un destinataire/i }))
+    expect(screen.getAllByPlaceholderText('Nom')).toHaveLength(2)
+
+    // Retrait du 2e destinataire.
+    await userEvent.click(screen.getByRole('button', { name: /Retirer le destinataire 2/i }))
+    expect(screen.getAllByPlaceholderText('Nom')).toHaveLength(1)
   })
 })
 

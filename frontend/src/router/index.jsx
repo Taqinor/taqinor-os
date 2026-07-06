@@ -88,6 +88,10 @@ const UIShowcase = lazy(() => import('../pages/ui/UIShowcase'))
 const PublicBookingPage = lazy(() => import('../pages/crm/PublicBookingPage'))
 // XCTR14 — portail client public « Mes contrats » (token, sans login).
 const PortailContratsPage = lazy(() => import('../features/contrats/PortailContratsPage'))
+// XGED1/XGED2 — cérémonie de signature électronique publique (sans login).
+const PublicSignaturePage = lazy(() => import('../pages/ged/PublicSignaturePage'))
+// XGED7 — dépôt public de fichier (upload-request, sans login).
+const PublicDepotPage = lazy(() => import('../pages/ged/PublicDepotPage'))
 const ChatPage = lazy(() => import('../pages/messaging/ChatPage'))
 const DocumentsPage = lazy(() => import('../pages/ged/DocumentsPage'))
 
@@ -177,6 +181,12 @@ const router = createBrowserRouter([
   { path: '/rdv/:token', element: <Suspense fallback={<Fallback />}><PublicBookingPage /></Suspense> },
   // XCTR14 — portail client public « Mes contrats » (sans login, sans layout ERP).
   { path: '/portail-contrats/:token', element: <Suspense fallback={<Fallback />}><PortailContratsPage /></Suspense> },
+  // XGED1 — cérémonie de signature publique (mono-signataire), sans login.
+  { path: '/ged/signature/:token', element: <Suspense fallback={<Fallback />}><PublicSignaturePage mode="signature" /></Suspense> },
+  // XGED2 — cérémonie de signature publique d'un destinataire (multi-signataires).
+  { path: '/ged/signataire/:token', element: <Suspense fallback={<Fallback />}><PublicSignaturePage mode="signataire" /></Suspense> },
+  // XGED7 — dépôt public de fichier (upload-request), sans login.
+  { path: '/ged/depot/:token', element: <Suspense fallback={<Fallback />}><PublicDepotPage /></Suspense> },
 
   { path: '/dashboard', loader: authLoader, element: <WithLayout><Dashboard /></WithLayout> },
   { path: '/messages', loader: authLoader, element: <WithLayout><ChatPage /></WithLayout> },
