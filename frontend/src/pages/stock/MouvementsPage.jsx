@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useSearchParams } from 'react-router-dom'
-import { Plus, ArrowDownUp, X, Download } from 'lucide-react'
+import { Plus, ArrowDownUp, X, Download, LayoutGrid, List } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import { downloadBlob } from '../../utils/downloadBlob'
 import {
@@ -16,6 +16,14 @@ import {
   Input, Textarea,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+
+// ZSTK7 — options du regroupement pivot (« Vue groupée »).
+const AGREGATION_GROUP_BY = [
+  { value: 'produit', label: 'Par produit' },
+  { value: 'type', label: 'Par type' },
+  { value: 'mois', label: 'Par mois' },
+  { value: 'emplacement', label: 'Par emplacement' },
+]
 
 // Tonalité du badge par type de mouvement (taxonomie de couleurs commune).
 const TYPE_META = {
@@ -58,6 +66,36 @@ export default function MouvementsPage() {
   // ce ne sont PAS des MouvementStock) — chargée à l'ouverture de l'onglet.
   const [transferts, setTransferts] = useState([])
   const [transfertsLoading, setTransfertsLoading] = useState(false)
+
+  // ZSTK7 — « Vue groupée / pivot » : quantités entrées/sorties/nettes
+  // agrégées par produit/type/mois/emplacement (mouvements/agregation/).
+  const [vuePivot, setVuePivot] = useState(false)
+  const [pivotGroupBy, setPivotGroupBy] = useState('produit')
+  const [pivotRows, setPivotRows] = useState([])
+  const [pivotLoading, setPivotLoading] = useState(false)
+  const [pivotError, setPivotError] = useState(null)
+  const [pivotExportBusy, setPivotExportBusy] = useState(false)
+
+  useEffect(() => {
+    if (!vuePivot) return undefined
+    let cancelled = false
+    setPivotLoading(true); setPivotError(null)
+    stockApi.mouvementsAgregation({ group_by: pivotGroupBy })
+      .then((r) => { if (!cancelled) setPivotRows(r.data ?? []) })
+      .catch(() => { if (!cancelled) setPivotError('Agrégation indisponible. Réessayez.') })
+      .finally(() => { if (!cancelled) setPivotLoading(false) })
+    return () => { cancelled = true }
+  }, [vuePivot, pivotGroupBy])
+
+  const exportPivotXlsx = async () => {
+    setPivotExportBusy(true)
+    try {
+      const res = await stockApi.mouvementsAgregationXlsx({ group_by: pivotGroupBy })
+      downloadBlob(res.data, 'mouvements-agregation.xlsx')
+    } catch {
+      setPivotError('Export indisponible. Réessayez.')
+    } finally { setPivotExportBusy(false) }
+  }
 
   useEffect(() => {
     dispatch(fetchMouvements())
@@ -224,6 +262,25 @@ export default function MouvementsPage() {
     },
   ], [])
 
+  // ZSTK7 — colonnes de la vue groupée (pivot) : libellé du groupe + quantités
+  // entrées/sorties/nettes agrégées.
+  const pivotColumns = useMemo(() => [
+    { id: 'libelle', header: 'Groupe', minWidth: 200, accessor: (r) => r.libelle ?? '' },
+    { id: 'entrees', header: 'Entrées', align: 'right', width: 110, searchable: false,
+      accessor: (r) => r.entrees ?? 0,
+      cell: (v) => <span className="text-success tabular-nums">+{v}</span> },
+    { id: 'sorties', header: 'Sorties', align: 'right', width: 110, searchable: false,
+      accessor: (r) => r.sorties ?? 0,
+      cell: (v) => <span className="text-destructive tabular-nums">-{v}</span> },
+    { id: 'net', header: 'Net', align: 'right', width: 110, searchable: false,
+      accessor: (r) => r.net ?? ((r.entrees ?? 0) - (r.sorties ?? 0)),
+      cell: (v) => (
+        <strong className={v >= 0 ? 'text-success' : 'text-destructive'}>
+          {v >= 0 ? '+' : ''}{v}
+        </strong>
+      ) },
+  ], [])
+
   const isTransferts = activeTab === 'transfert'
 
   return (
@@ -236,9 +293,24 @@ export default function MouvementsPage() {
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {/* ZSTK7 — bascule Vue liste / Vue groupée (pivot). */}
           {!isTransferts && (
+            <Button variant="outline" size="sm"
+                    onClick={() => setVuePivot((v) => !v)}
+                    title={vuePivot ? 'Revenir à la liste détaillée' : 'Regrouper les mouvements (pivot)'}>
+              {vuePivot ? <List /> : <LayoutGrid />}
+              {vuePivot ? 'Vue liste' : 'Vue groupée'}
+            </Button>
+          )}
+          {!isTransferts && !vuePivot && (
             <Button variant="outline" size="sm" loading={exportBusy} onClick={exportXlsx}
                     title="Exporter la liste (filtrée) des mouvements en Excel">
+              <Download /> Exporter Excel
+            </Button>
+          )}
+          {!isTransferts && vuePivot && (
+            <Button variant="outline" size="sm" loading={pivotExportBusy} onClick={exportPivotXlsx}
+                    title="Exporter l'agrégation affichée en Excel">
               <Download /> Exporter Excel
             </Button>
           )}
@@ -256,15 +328,30 @@ export default function MouvementsPage() {
         </div>
       )}
 
-      <Segmented
-        size="sm"
-        value={activeTab}
-        onChange={setActiveTab}
-        options={tabOptions}
-        className="flex-wrap"
-      />
+      {!vuePivot && (
+        <Segmented
+          size="sm"
+          value={activeTab}
+          onChange={setActiveTab}
+          options={tabOptions}
+          className="flex-wrap"
+        />
+      )}
 
-      {produitFiltre && (
+      {vuePivot && (
+        <div className="w-56">
+          <Select value={pivotGroupBy} onValueChange={setPivotGroupBy}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {AGREGATION_GROUP_BY.map((o) => (
+                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {produitFiltre && !vuePivot && (
         <div className="flex items-center gap-2">
           <Badge tone="primary" className="inline-flex items-center gap-1">
             Produit : {produitFiltre.nom}
@@ -276,7 +363,25 @@ export default function MouvementsPage() {
         </div>
       )}
 
-      {isTransferts ? (
+      {pivotError && (
+        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+          {pivotError}
+        </div>
+      )}
+
+      {vuePivot ? (
+        <DataTable
+          data={pivotRows}
+          columns={pivotColumns}
+          loading={pivotLoading}
+          getRowId={(r, i) => `${r.libelle ?? ''}-${i}`}
+          searchPlaceholder="Groupe…"
+          globalColumns={['libelle']}
+          emptyTitle="Aucune donnée"
+          emptyDescription="Aucun mouvement à agréger sur cette période."
+          aria-label="Mouvements de stock — vue groupée (pivot)"
+        />
+      ) : isTransferts ? (
         <DataTable
           data={produitParam
             ? transferts.filter(t => String(t.produit) === String(produitParam))
