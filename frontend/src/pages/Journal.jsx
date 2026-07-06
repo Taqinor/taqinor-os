@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSelector } from 'react-redux'
 import { Link } from 'react-router-dom'
+import { History } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
 import auditApi from '../api/auditApi'
 import {
   Card, CardHeader, CardTitle, CardContent, Segmented, MultiSelect,
-  Button, Badge, Skeleton, EmptyState,
+  Button, Badge, Skeleton, EmptyState, IconButton,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose,
 } from '../ui'
 import { formatNumber } from '../lib/format'
 
@@ -15,7 +17,12 @@ import { formatNumber } from '../lib/format'
    (permission « journal_activite_voir », octroyable dans Paramètres → Rôles).
    Switcher Jour/Semaine/Mois + barre de filtres pilotant À LA FOIS le graphe
    (recharts, thémé clair/sombre) et la table paginée. Heures en Africa/Casablanca
-   (fournies par le serveur). */
+   (fournies par le serveur).
+
+   YHARD3 — « Historique à cette date » : pour toute entrée reliée à un objet
+   (model + object_id connus), un bouton ouvre une reconstruction champ-par-
+   champ de l'objet à une date choisie (rejoue les diffs structurés côté
+   serveur). Même permission que le reste du Journal (Directeur/admin). */
 
 const TOKEN = {
   primary: 'var(--primary)',
@@ -87,6 +94,108 @@ function bucketLabel(period, key) {
     return ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'][d.getDay()]
   }
   return String(d.getDate())
+}
+
+// YHARD3 — bouton + dialog « Historique à cette date » : reconstruction
+// champ-par-champ d'un objet à une date choisie (rejoue les diffs structurés
+// de AuditLog.changes côté serveur, `apps.audit.selectors.reconstruct_as_of`).
+function AsOfDialog({ contentType, objectId, label, open, onOpenChange }) {
+  const [date, setDate] = useState(todayISO())
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+  const [result, setResult] = useState(null)
+
+  useEffect(() => {
+    if (!open) return undefined
+    let active = true
+    const load = async () => {
+      setLoading(true); setError(null)
+      try {
+        const r = await auditApi.getObjectAsOf(contentType, objectId, date)
+        if (active) setResult(r.data)
+      } catch {
+        if (active) setError("Impossible de reconstruire l'historique à cette date.")
+      } finally {
+        if (active) setLoading(false)
+      }
+    }
+    load()
+    return () => { active = false }
+  }, [open, contentType, objectId, date])
+
+  const fields = result?.fields ? Object.entries(result.fields) : []
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Historique à cette date — {label}</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-3">
+          <label className="flex flex-col gap-1 text-sm" htmlFor="journal-as-of-date">
+            Date de référence
+            <input
+              id="journal-as-of-date"
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value || todayISO())}
+              className="h-[var(--control-h)] rounded-md border border-input bg-card px-[var(--control-px)] text-sm text-foreground shadow-ui-xs focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+          </label>
+
+          {loading ? (
+            <p className="flex items-center gap-2 py-6 text-sm text-muted-foreground">Chargement…</p>
+          ) : error ? (
+            <p className="text-sm text-destructive">{error}</p>
+          ) : fields.length === 0 ? (
+            <EmptyState title="Aucun champ reconstruit"
+              description="Aucun historique structuré n'est disponible pour cet objet à cette date."
+              className="py-6" />
+          ) : (
+            <div className="max-w-full overflow-x-auto rounded-lg border border-border">
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-muted/40">
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Champ</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Valeur à cette date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {fields.map(([field, value]) => (
+                    <tr key={field} className="border-b border-border/60 last:border-b-0">
+                      <td className="px-3 py-2 font-medium text-foreground">{field}</td>
+                      <td className="px-3 py-2 text-muted-foreground">{value === null || value === '' ? '—' : String(value)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button type="button" variant="outline">Fermer</Button>
+          </DialogClose>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function AsOfTrigger({ contentType, objectId, label }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <IconButton size="sm" variant="ghost" label="Historique à cette date"
+        onClick={() => setOpen(true)}>
+        <History className="size-4" aria-hidden="true" />
+      </IconButton>
+      {open && (
+        <AsOfDialog contentType={contentType} objectId={objectId} label={label}
+          open={open} onOpenChange={setOpen} />
+      )}
+    </>
+  )
 }
 
 export default function Journal() {
@@ -300,20 +409,24 @@ export default function Journal() {
                     <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground">Action</th>
                     <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground">Objet</th>
                     <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground">Détail</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground">Historique</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading && !entries ? (
                     Array.from({ length: 6 }).map((u, i) => (
                       <tr key={i} className="border-b border-border/60">
-                        <td className="px-4 py-2.5" colSpan={5}><Skeleton className="h-4 w-full" /></td>
+                        <td className="px-4 py-2.5" colSpan={6}><Skeleton className="h-4 w-full" /></td>
                       </tr>
                     ))
                   ) : !entries || entries.length === 0 ? (
-                    <tr><td colSpan={5} className="px-4 py-10 text-center text-sm text-muted-foreground">Aucune entrée pour ces filtres.</td></tr>
+                    <tr><td colSpan={6} className="px-4 py-10 text-center text-sm text-muted-foreground">Aucune entrée pour ces filtres.</td></tr>
                   ) : (
                     entries.map((e) => {
                       const route = MODEL_ROUTES[e.model]
+                      // YHARD3 — content_type "app_label.model" (`module` sert
+                      // en fait l'app_label côté serializer, cf. auditApi).
+                      const contentType = e.module && e.model ? `${e.module}.${e.model}` : null
                       return (
                         <tr key={e.id} className="border-b border-border/60 last:border-b-0 hover:bg-accent/40">
                           <td className="px-4 py-2.5 whitespace-nowrap text-muted-foreground">
@@ -329,6 +442,12 @@ export default function Journal() {
                               : <span className="text-muted-foreground">—</span>}
                           </td>
                           <td className="px-4 py-2.5 text-muted-foreground">{e.detail || '—'}</td>
+                          <td className="px-4 py-2.5">
+                            {contentType && e.object_id ? (
+                              <AsOfTrigger contentType={contentType} objectId={e.object_id}
+                                label={e.object_repr || `${e.model} #${e.object_id}`} />
+                            ) : <span className="text-muted-foreground">—</span>}
+                          </td>
                         </tr>
                       )
                     })
