@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
 /* XFLT22 — deux opérations en masse : réaffectation conducteur en masse
@@ -18,9 +19,11 @@ beforeAll(() => {
   }
 })
 
-const masse = vi.fn(() => Promise.resolve({ data: { reussies: [{ vehicule_id: 1, conducteur_id: 2 }], echecs: [] } }))
-const rollout = vi.fn(() => Promise.resolve({ data: { crees: [{ id: 9 }], ignores: [] } }))
-const empty = () => Promise.resolve({ data: [] })
+const { masse, rollout, empty } = vi.hoisted(() => ({
+  masse: vi.fn(() => Promise.resolve({ data: { reussies: [{ vehicule_id: 1, conducteur_id: 2 }], echecs: [] } })),
+  rollout: vi.fn(() => Promise.resolve({ data: { crees: [{ id: 9 }], ignores: [] } })),
+  empty: () => Promise.resolve({ data: [] }),
+}))
 
 vi.mock('../../api/flotteApi', () => ({
   default: {
@@ -51,7 +54,11 @@ import EntretienScreen from './EntretienScreen'
 beforeEach(() => { vi.clearAllMocks() })
 
 function withProviders(ui) {
-  return render(<ThemeProvider>{ui}</ThemeProvider>)
+  return render(
+    <MemoryRouter>
+      <ThemeProvider>{ui}</ThemeProvider>
+    </MemoryRouter>,
+  )
 }
 
 describe('Reaffectation en masse (XFLT22)', () => {
@@ -79,9 +86,16 @@ describe('Rollout de plan entretien (XFLT22)', () => {
     const user = userEvent.setup()
     withProviders(<EntretienScreen />)
 
-    await user.click(screen.getByRole('button', { name: 'Dupliquer sur…' }))
+    // Le bouton « Dupliquer sur… » est une action de ligne de l'onglet Plans
+    // (l'onglet par défaut est Échéances).
+    await user.click(screen.getByRole('tab', { name: 'Plans' }))
+    await waitFor(() => expect(screen.getAllByText('Vidange').length).toBeGreaterThan(0))
+    await user.click(screen.getAllByRole('button', { name: 'Dupliquer sur…' })[0])
     await user.click(screen.getByLabelText('Actifs cibles'))
-    await user.click(await screen.findByText('12345-A-6'))
+    // Scope au listbox du MultiSelect : la même valeur apparaît aussi dans
+    // les rangées de la DataTable en arrière-plan (desktop + mobile).
+    const listbox = await screen.findByRole('listbox')
+    await user.click(within(listbox).getByText('12345-A-6'))
     await user.click(screen.getByRole('button', { name: 'Dupliquer' }))
 
     await waitFor(() => expect(rollout).toHaveBeenCalledWith(3, [5]))

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { UserPlus, AlertTriangle, FileCheck } from 'lucide-react'
 import {
   Button, Badge, Segmented, Tabs, TabsList, TabsTrigger, TabsContent,
@@ -284,7 +284,7 @@ function CharteTab({ conducteurs }) {
     [charte],
   )
 
-  const accuser = async (conducteurId) => {
+  const accuser = useCallback(async (conducteurId) => {
     try {
       await flotteApi.accusesCharte.create({ conducteur: conducteurId })
       toast.success('Accusé de lecture enregistré.')
@@ -292,7 +292,7 @@ function CharteTab({ conducteurs }) {
     } catch (err) {
       toast.error(err?.response?.data?.detail || 'Enregistrement impossible.')
     }
-  }
+  }, [reload])
 
   const columns = useMemo(() => [
     { id: 'nom', header: 'Conducteur', width: 200, accessor: (r) => r.nom, cell: (v) => v || '—' },
@@ -318,7 +318,7 @@ function CharteTab({ conducteurs }) {
         )
       },
     },
-  ], [accuses, derniere])
+  ], [accuses, derniere, accuser])
 
   return (
     <div className="flex flex-col gap-4">

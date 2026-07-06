@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
 /* XFLT4/XFLT1/XFLT3 — Onglets « Cycle de vie », « Contrats » et « Grand livre »
@@ -18,17 +19,22 @@ beforeAll(() => {
   }
 })
 
-const changerStatut = vi.fn(() => Promise.resolve({ data: { id: 1, statut: 'actif' } }))
-const ceder = vi.fn(() => Promise.resolve({ data: { id: 1, statut: 'vendu' } }))
-const vehiculeHistorique = vi.fn(() => Promise.resolve({ data: [] }))
-const vehiculeLedger = vi.fn(() => Promise.resolve({ data: { lignes: [] } }))
-const contratsList = vi.fn(() => Promise.resolve({ data: [] }))
-const actifsList = vi.fn(() => Promise.resolve({ data: [{ id: 77, vehicule: 42, type_actif: 'vehicule' }] }))
-const detenteursCourants = vi.fn(() => Promise.resolve({
-  data: [{ type: 'cle', type_display: 'Clé', conducteur_id: 1, conducteur_nom: 'Karim', date_remise: '2026-06-01' }],
+const {
+  changerStatut, ceder, vehiculeHistorique, vehiculeLedger, contratsList,
+  actifsList, detenteursCourants, remisesList, empty,
+} = vi.hoisted(() => ({
+  changerStatut: vi.fn(() => Promise.resolve({ data: { id: 1, statut: 'actif' } })),
+  ceder: vi.fn(() => Promise.resolve({ data: { id: 1, statut: 'vendu' } })),
+  vehiculeHistorique: vi.fn(() => Promise.resolve({ data: [] })),
+  vehiculeLedger: vi.fn(() => Promise.resolve({ data: { lignes: [] } })),
+  contratsList: vi.fn(() => Promise.resolve({ data: [] })),
+  actifsList: vi.fn(() => Promise.resolve({ data: [{ id: 77, vehicule: 42, type_actif: 'vehicule' }] })),
+  detenteursCourants: vi.fn(() => Promise.resolve({
+    data: [{ type: 'cle', type_display: 'Clé', conducteur_id: 1, conducteur_nom: 'Karim', date_remise: '2026-06-01' }],
+  })),
+  remisesList: vi.fn(() => Promise.resolve({ data: [] })),
+  empty: () => Promise.resolve({ data: null }),
 }))
-const remisesList = vi.fn(() => Promise.resolve({ data: [] }))
-const empty = () => Promise.resolve({ data: null })
 
 vi.mock('../../api/flotteApi', () => ({
   default: {
@@ -54,7 +60,11 @@ import VehiculeDetail from './VehiculeDetail'
 beforeEach(() => { vi.clearAllMocks() })
 
 function withProviders(ui) {
-  return render(<ThemeProvider>{ui}</ThemeProvider>)
+  return render(
+    <MemoryRouter>
+      <ThemeProvider>{ui}</ThemeProvider>
+    </MemoryRouter>,
+  )
 }
 
 const VEHICULE = {

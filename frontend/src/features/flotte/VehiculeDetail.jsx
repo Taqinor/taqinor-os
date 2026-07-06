@@ -71,16 +71,17 @@ function CycleDeVieTab({ vehicule, onUpdated }) {
   const [historique, setHistorique] = useState({ loading: true, items: [] })
   const [cession, setCession] = useState({ date_cession: '', prix_cession: '', acheteur: '' })
   const [cedant, setCedant] = useState(false)
+  const vehiculeId = vehicule?.id
 
   const loadHistorique = useCallback(() => {
-    if (!vehicule?.id) return undefined
+    if (!vehiculeId) return undefined
     let cancelled = false
     setHistorique({ loading: true, items: [] })
-    flotteApi.vehiculeHistorique(vehicule.id)
+    flotteApi.vehiculeHistorique(vehiculeId)
       .then((res) => { if (!cancelled) setHistorique({ loading: false, items: res?.data || [] }) })
       .catch(() => { if (!cancelled) setHistorique({ loading: false, items: [] }) })
     return () => { cancelled = true }
-  }, [vehicule?.id])
+  }, [vehiculeId])
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
   useEffect(() => { loadHistorique() }, [loadHistorique])

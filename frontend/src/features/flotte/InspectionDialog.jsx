@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
   Button, Label, Input, Checkbox,
@@ -18,6 +18,7 @@ export default function InspectionDialog({ actifs = [], modeles = [], onClose, o
   const [actifFlotte, setActifFlotte] = useState('')
   const [modeleId, setModeleId] = useState('')
   const [resultats, setResultats] = useState([])
+  const [resultatsModeleId, setResultatsModeleId] = useState('')
   const [signatureNom, setSignatureNom] = useState('')
   const [saving, setSaving] = useState(false)
   const [serverError, setServerError] = useState(null)
@@ -27,11 +28,13 @@ export default function InspectionDialog({ actifs = [], modeles = [], onClose, o
     [modeles, modeleId],
   )
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- réinitialise la check-list au changement de modèle
-  useEffect(() => {
+  // Réinitialise la check-list au changement de modèle. Dérivé pendant le rendu
+  // (plutôt qu'un effet) pour éviter un setState synchrone dans un effet.
+  if (resultatsModeleId !== modeleId) {
+    setResultatsModeleId(modeleId)
     const items = modele?.items || []
     setResultats(items.map((it) => ({ libelle: it.libelle, resultat: 'pass', bloquant: Boolean(it.bloquant) })))
-  }, [modele])
+  }
 
   const toggleItem = (index, ok) => {
     setResultats((prev) => prev.map((r, i) => (i === index ? { ...r, resultat: ok ? 'pass' : 'fail' } : r)))

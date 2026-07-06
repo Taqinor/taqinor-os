@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
 /* XFLT24/28 — écran Zones & rappels : évaluation du géofencing et
@@ -38,7 +39,11 @@ import ZonesRappelsScreen from './ZonesRappelsScreen'
 beforeEach(() => { vi.clearAllMocks() })
 
 function withProviders(ui) {
-  return render(<ThemeProvider>{ui}</ThemeProvider>)
+  return render(
+    <MemoryRouter>
+      <ThemeProvider>{ui}</ThemeProvider>
+    </MemoryRouter>,
+  )
 }
 
 describe('ZonesRappelsScreen', () => {
@@ -46,7 +51,9 @@ describe('ZonesRappelsScreen', () => {
     const user = userEvent.setup()
     withProviders(<ZonesRappelsScreen />)
 
-    await waitFor(() => expect(screen.getByText('Dépôt Casablanca')).toBeInTheDocument())
+    // DataTable rend la table desktop ET les cartes mobiles dans le DOM (le
+    // point de rupture est géré en CSS) : deux correspondances attendues.
+    await waitFor(() => expect(screen.getAllByText('Dépôt Casablanca').length).toBeGreaterThan(0))
     await user.click(screen.getByRole('button', { name: 'Évaluer le géofencing' }))
     await waitFor(() => expect(evaluer).toHaveBeenCalled())
   })
@@ -56,8 +63,8 @@ describe('ZonesRappelsScreen', () => {
     withProviders(<ZonesRappelsScreen />)
 
     await user.click(screen.getByRole('tab', { name: 'Rappels constructeur' }))
-    await waitFor(() => expect(screen.getByText('REC-2026-01')).toBeInTheDocument())
-    await user.click(screen.getByRole('button', { name: 'Rapprocher contre le parc' }))
+    await waitFor(() => expect(screen.getAllByText('REC-2026-01').length).toBeGreaterThan(0))
+    await user.click(screen.getAllByRole('button', { name: 'Rapprocher contre le parc' })[0])
     await waitFor(() => expect(rapprocher).toHaveBeenCalledWith(5))
   })
 })

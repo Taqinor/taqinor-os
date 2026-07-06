@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
 /* XFLT17 — e-signature d'état des lieux + accusé de lecture de la charte
@@ -18,17 +19,18 @@ beforeAll(() => {
   }
 })
 
-const signer = vi.fn(() => Promise.resolve({ data: {} }))
-const accuserCreate = vi.fn(() => Promise.resolve({ data: {} }))
-const empty = () => Promise.resolve({ data: [] })
-
-const etatsList = () => Promise.resolve({
-  data: [{
-    id: 5, vehicule_label: '12345-A-6', moment_display: 'Départ',
-    date_constat: '2026-07-01', kilometrage: 1000, etat_general_display: 'Bon',
-    nb_photos: 2, signature_conducteur: '', signature_responsable: '',
-  }],
-})
+const { signer, accuserCreate, empty, etatsList } = vi.hoisted(() => ({
+  signer: vi.fn(() => Promise.resolve({ data: {} })),
+  accuserCreate: vi.fn(() => Promise.resolve({ data: {} })),
+  empty: () => Promise.resolve({ data: [] }),
+  etatsList: () => Promise.resolve({
+    data: [{
+      id: 5, vehicule_label: '12345-A-6', moment_display: 'Départ',
+      date_constat: '2026-07-01', kilometrage: 1000, etat_general_display: 'Bon',
+      nb_photos: 2, signature_conducteur: '', signature_responsable: '',
+    }],
+  }),
+}))
 
 vi.mock('../../api/flotteApi', () => ({
   default: {
@@ -47,7 +49,11 @@ import ConducteursScreen from './ConducteursScreen'
 beforeEach(() => { vi.clearAllMocks() })
 
 function withProviders(ui) {
-  return render(<ThemeProvider>{ui}</ThemeProvider>)
+  return render(
+    <MemoryRouter>
+      <ThemeProvider>{ui}</ThemeProvider>
+    </MemoryRouter>,
+  )
 }
 
 describe('ConducteursScreen — États des lieux (XFLT17 e-signature)', () => {
@@ -56,11 +62,14 @@ describe('ConducteursScreen — États des lieux (XFLT17 e-signature)', () => {
     withProviders(<ConducteursScreen />)
 
     await user.click(screen.getByRole('tab', { name: 'États des lieux' }))
-    await waitFor(() => expect(screen.getByText('12345-A-6')).toBeInTheDocument())
+    // DataTable rend la table desktop ET les cartes mobiles dans le DOM (le
+    // point de rupture est géré en CSS) : deux correspondances attendues.
+    await waitFor(() => expect(screen.getAllByText('12345-A-6').length).toBeGreaterThan(0))
 
     // Les 2 premières actions de ligne s'affichent comme icônes directes
-    // (RowActions — max 2 « quick actions » avant le menu kebab).
-    await user.click(screen.getByRole('button', { name: 'Signer (conducteur)' }))
+    // (RowActions — max 2 « quick actions » avant le menu kebab). Idem : une
+    // occurrence par rendu (desktop + mobile), on prend la première.
+    await user.click(screen.getAllByRole('button', { name: 'Signer (conducteur)' })[0])
 
     await user.type(screen.getByLabelText('Nom (e-signature)'), 'Karim')
     await user.click(screen.getByRole('button', { name: 'Signer' }))
@@ -77,7 +86,10 @@ describe('ConducteursScreen — Charte véhicule (XFLT17 accusé de lecture)', (
     await user.click(screen.getByRole('tab', { name: 'Charte véhicule' }))
     await waitFor(() => expect(screen.getByText(/version 2/)).toBeInTheDocument())
 
-    await user.click(screen.getByRole('button', { name: 'Accuser lecture' }))
+    // DataTable rend la table desktop ET les cartes mobiles dans le DOM (le
+    // point de rupture est géré en CSS) : deux boutons identiques, on prend
+    // le premier.
+    await user.click(screen.getAllByRole('button', { name: 'Accuser lecture' })[0])
     await waitFor(() => expect(accuserCreate).toHaveBeenCalledWith({ conducteur: 1 }))
   })
 })

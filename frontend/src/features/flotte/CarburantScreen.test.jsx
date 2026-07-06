@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
 /* XFLT25 — codes défaut moteur (DTC) affichés sur les relevés télématiques,
@@ -16,7 +17,9 @@ beforeAll(() => {
   }
 })
 
-const empty = () => Promise.resolve({ data: [] })
+const { empty } = vi.hoisted(() => ({
+  empty: () => Promise.resolve({ data: [] }),
+}))
 
 vi.mock('../../api/flotteApi', () => ({
   default: {
@@ -38,7 +41,11 @@ import CarburantScreen from './CarburantScreen'
 beforeEach(() => { vi.clearAllMocks() })
 
 function withProviders(ui) {
-  return render(<ThemeProvider>{ui}</ThemeProvider>)
+  return render(
+    <MemoryRouter>
+      <ThemeProvider>{ui}</ThemeProvider>
+    </MemoryRouter>,
+  )
 }
 
 describe('CarburantScreen — Télématique (XFLT25 DTC)', () => {
@@ -47,7 +54,9 @@ describe('CarburantScreen — Télématique (XFLT25 DTC)', () => {
     withProviders(<CarburantScreen />)
 
     await user.click(screen.getByRole('tab', { name: 'Télématique' }))
-    await waitFor(() => expect(screen.getByText('P0300, P0171')).toBeInTheDocument())
+    // DataTable rend la table desktop ET les cartes mobiles dans le DOM (le
+    // point de rupture est géré en CSS) : deux correspondances attendues.
+    await waitFor(() => expect(screen.getAllByText('P0300, P0171').length).toBeGreaterThan(0))
   })
 })
 

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
 /* XFLT5 (signalements), XFLT19 (approbation OR) et XFLT26 (ICE/IF garage) —
@@ -17,18 +18,21 @@ beforeAll(() => {
   }
 })
 
-const empty = () => Promise.resolve({ data: [] })
-const signalementsCreate = vi.fn(() => Promise.resolve({ data: { id: 1 } }))
-const garagesCreate = vi.fn(() => Promise.resolve({ data: { id: 1 } }))
-const approuver = vi.fn(() => Promise.resolve({ data: { id: 7, statut: 'approuve' } }))
-
-const ordresList = () => Promise.resolve({
-  data: [{
-    id: 7, actif_label: '12345-A-6', garage_nom: 'Garage Centre',
-    description: 'Frein arrière', date_ouverture: '2026-07-01',
-    cout_total: 1200, statut: 'devis_recu', sous_garantie: true,
-  }],
-})
+const {
+  empty, signalementsCreate, garagesCreate, approuver, ordresList,
+} = vi.hoisted(() => ({
+  empty: () => Promise.resolve({ data: [] }),
+  signalementsCreate: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
+  garagesCreate: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
+  approuver: vi.fn(() => Promise.resolve({ data: { id: 7, statut: 'approuve' } })),
+  ordresList: () => Promise.resolve({
+    data: [{
+      id: 7, actif_label: '12345-A-6', garage_nom: 'Garage Centre',
+      description: 'Frein arrière', date_ouverture: '2026-07-01',
+      cout_total: 1200, statut: 'devis_recu', sous_garantie: true,
+    }],
+  }),
+}))
 
 vi.mock('../../api/flotteApi', () => ({
   default: {
@@ -55,7 +59,11 @@ import EntretienScreen from './EntretienScreen'
 beforeEach(() => { vi.clearAllMocks() })
 
 function withProviders(ui) {
-  return render(<ThemeProvider>{ui}</ThemeProvider>)
+  return render(
+    <MemoryRouter>
+      <ThemeProvider>{ui}</ThemeProvider>
+    </MemoryRouter>,
+  )
 }
 
 describe('EntretienScreen — Signalements (XFLT5)', () => {
@@ -82,8 +90,10 @@ describe('EntretienScreen — Ordres de réparation (XFLT19)', () => {
     withProviders(<EntretienScreen />)
 
     await user.click(screen.getByRole('tab', { name: 'Ordres de réparation' }))
-    await waitFor(() => expect(screen.getByText('Frein arrière')).toBeInTheDocument())
-    expect(screen.getByText('Sous garantie')).toBeInTheDocument()
+    // DataTable rend la table desktop ET les cartes mobiles dans le DOM (le
+    // point de rupture est géré en CSS) : deux correspondances attendues.
+    await waitFor(() => expect(screen.getAllByText('Frein arrière').length).toBeGreaterThan(0))
+    expect(screen.getAllByText('Sous garantie').length).toBeGreaterThan(0)
   })
 })
 

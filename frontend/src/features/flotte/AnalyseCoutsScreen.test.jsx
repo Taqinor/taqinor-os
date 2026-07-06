@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
 /* XFLT7/15/18 — écran « Analyse des coûts » (pivot, remplacement, budget vs
@@ -40,14 +41,20 @@ import AnalyseCoutsScreen from './AnalyseCoutsScreen'
 beforeEach(() => { vi.clearAllMocks() })
 
 function withProviders(ui) {
-  return render(<ThemeProvider>{ui}</ThemeProvider>)
+  return render(
+    <MemoryRouter>
+      <ThemeProvider>{ui}</ThemeProvider>
+    </MemoryRouter>,
+  )
 }
 
 describe('AnalyseCoutsScreen', () => {
   it('charge le pivot des coûts par défaut (group_by=vehicule)', async () => {
     withProviders(<AnalyseCoutsScreen />)
     await waitFor(() => expect(rapportCouts).toHaveBeenCalledWith({ group_by: 'vehicule' }))
-    await waitFor(() => expect(screen.getByText('12345-A-6')).toBeInTheDocument())
+    // DataTable rend la table desktop ET les cartes mobiles dans le DOM (le
+    // point de rupture est géré en CSS) : deux correspondances attendues.
+    await waitFor(() => expect(screen.getAllByText('12345-A-6').length).toBeGreaterThan(0))
   })
 
   it('recharge le pivot quand on change le regroupement', async () => {
