@@ -4,7 +4,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import {
   Download, Plus, FileText, FileDown, Check, ArrowRight, HardHat, FileStack,
   Copy, Send, X, Eye, Search, AlertTriangle, UserCog, Box, ExternalLink,
-  Link2,
+  Link2, FolderKanban,
 } from 'lucide-react'
 import {
   fetchDevis,
@@ -13,6 +13,7 @@ import {
 } from '../../features/ventes/store/ventesSlice'
 import ventesApi from '../../api/ventesApi'
 import installationsApi from '../../api/installationsApi'
+import gestionProjetApi from '../../api/gestionProjetApi'
 import importApi, { downloadXlsx } from '../../api/importApi'
 import DevisForm from './DevisForm'
 import {
@@ -500,6 +501,24 @@ export default function DevisList() {
       toast.error(frenchError(err, 'Création du chantier impossible.'))
     } finally {
       setChantierBusy(null)
+    }
+  }
+
+  // XPRJ21 — « Créer un projet » depuis un devis accepté : action utilisateur
+  // explicite (jamais automatique sur devis_accepted — le chantier auto
+  // existe déjà côté installations). Crée le Projet + son lien + un budget v1
+  // pré-ventilé depuis les lignes du devis, puis navigue vers le module Projets.
+  const [projetBusy, setProjetBusy] = useState(null)
+  const handleCreerProjet = async (d) => {
+    setProjetBusy(d.id)
+    try {
+      const res = await gestionProjetApi.creerProjetDepuisDevis(d.id)
+      toast.success(`Projet ${res.data.code} créé.`)
+      navigate(`/projets/${res.data.id}`)
+    } catch (err) {
+      toast.error(frenchError(err, 'Création du projet impossible.'))
+    } finally {
+      setProjetBusy(null)
     }
   }
 
@@ -1610,6 +1629,19 @@ export default function DevisList() {
                                 : 'Créer le chantier à partir de ce devis'}
                             >
                               <HardHat /> {d.chantier ? 'Voir le chantier' : 'Créer le chantier'}
+                            </Button>
+                          )}
+
+                          {/* XPRJ21 — Créer un projet (gestion de projet) depuis ce devis accepté. */}
+                          {d.statut === 'accepte' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleCreerProjet(d)}
+                              loading={projetBusy === d.id}
+                              title="Créer un projet (planning, budget, ressources) à partir de ce devis"
+                            >
+                              <FolderKanban /> Créer projet
                             </Button>
                           )}
 

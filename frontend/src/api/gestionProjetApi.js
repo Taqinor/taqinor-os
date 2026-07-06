@@ -47,6 +47,7 @@ const gestionProjetApi = {
   confirmerPlanIa: (id, data) =>
     api.post(`${P}/projets/${id}/confirmer-plan-ia/`, data),
   getMatriceRisques: (id) => api.get(`${P}/projets/${id}/matrice-risques/`),
+  getPenalitesRetard: (id) => api.get(`${P}/projets/${id}/penalites-retard/`),
   getLienEvaluation: (id) => api.post(`${P}/projets/${id}/lien-evaluation/`),
   getPrevisionFin: (id, params) =>
     api.get(`${P}/projets/${id}/prevision-fin/`, { params }),
