@@ -489,7 +489,8 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
                                           'check_duplicates', 'doublons',
                                           'export_xlsx', 'relances',
                                           'roi_sources', 'sla_breach',
-                                          'client_match', 'points_contact']:
+                                          'client_match', 'points_contact',
+                                          'scan_carte']:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
             'noter', 'devis_auto', 'archiver', 'restaurer', 'merge',
