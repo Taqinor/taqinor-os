@@ -5,7 +5,20 @@ import TachesKanbanView from './TachesKanbanView'
 /* XPRJ11 — Vue kanban des tâches : colonnes de statut PROPRES au module
    (a_faire/en_cours/bloque/termine), alternative clavier au drag via un
    <select> sous chaque carte (miroir du kanban CRM leads). Le parent gère le
-   rollback (ce composant se contente d'appeler onChangeStatut). */
+   rollback (ce composant se contente d'appeler onChangeStatut). Chaque carte
+   rend aussi <ChronoButton>/<TacheChecklist> (XPRJ5/XPRJ-checklist), qui
+   appellent gestionProjetApi dans leur propre effet — mocké ici pour rester
+   hors réseau, même si les deux composants no-op déjà proprement en cas
+   d'échec (try/catch silencieux). */
+vi.mock('../../../api/gestionProjetApi', () => ({
+  default: {
+    getChronoActif: vi.fn(() => Promise.resolve({ status: 204, data: null })),
+    demarrerChrono: vi.fn(() => Promise.resolve({ data: {} })),
+    arreterChrono: vi.fn(() => Promise.resolve({ data: {} })),
+    getItemsChecklist: vi.fn(() => Promise.resolve({ data: [] })),
+    toggleItemChecklist: vi.fn(() => Promise.resolve({ data: {} })),
+  },
+}))
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 

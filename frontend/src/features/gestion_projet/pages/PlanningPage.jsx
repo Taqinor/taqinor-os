@@ -16,6 +16,7 @@ export default function PlanningPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [busyTacheId, setBusyTacheId] = useState(null)
 
   const load = useCallback(async (pid) => {
     if (!pid) { setData(null); return }
@@ -51,6 +52,35 @@ export default function PlanningPage() {
     ;(async () => { if (alive) await load(projetId) })()
     return () => { alive = false }
   }, [projetId, load])
+
+  // PROJ11 — Drag-to-reschedule dans le Gantt : appelle l'action serveur
+  // `reprogrammer` (cascade successeurs conservée) avec rollback réseau.
+  const reprogrammerTache = async (tache, nouvelleDateDebut) => {
+    if (!tache) return
+    const ancien = { debut: tache.date_debut_prevue, fin: tache.date_fin_prevue }
+    setBusyTacheId(tache.id)
+    setData((d) => (d ? { ...d, taches: d.taches.map((t) => (t.id === tache.id ? { ...t, date_debut_prevue: nouvelleDateDebut } : t)) } : d))
+    try {
+      const res = await gestionProjetApi.reprogrammerTache(tache.id, { date_debut: nouvelleDateDebut })
+      const modifiees = Array.isArray(res.data) ? res.data : []
+      setData((d) => {
+        if (!d) return d
+        return {
+          ...d,
+          taches: d.taches.map((t) => {
+            const maj = modifiees.find((m) => m.id === t.id)
+            return maj ? { ...t, ...maj } : t
+          }),
+        }
+      })
+      toast.success('Tâche replanifiée.')
+    } catch (err) {
+      setData((d) => (d ? { ...d, taches: d.taches.map((t) => (t.id === tache.id ? { ...t, date_debut_prevue: ancien.debut, date_fin_prevue: ancien.fin } : t)) } : d))
+      toast.error(errMessage(err, "La replanification n'a pas pu être enregistrée — réessayez."))
+    } finally {
+      setBusyTacheId(null)
+    }
+  }
 
   const prendreBaseline = async () => {
     setBusy(true)
@@ -96,6 +126,8 @@ export default function PlanningPage() {
               jalons={data?.jalons ?? []}
               dependances={data?.dependances ?? []}
               baseline={[]}
+              onReprogrammer={reprogrammerTache}
+              busyTacheId={busyTacheId}
             />
           </Card>
 

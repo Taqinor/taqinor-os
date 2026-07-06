@@ -1,0 +1,74 @@
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { Provider } from 'react-redux'
+import { MemoryRouter } from 'react-router-dom'
+import { configureStore } from '@reduxjs/toolkit'
+
+/* XPRJ21 — « Créer projet » sur un devis ACCEPTÉ : action utilisateur
+   explicite (jamais automatique) qui crée le Projet (gestion_projet) depuis
+   le devis puis navigue vers sa fiche. Fichier de test dédié et minimal pour
+   ne pas alourdir DevisList.test.jsx (qui mocke déjà beaucoup de surface). */
+
+vi.mock('../../features/ventes/store/ventesSlice', async (importOriginal) => {
+  const actual = await importOriginal()
+  return { ...actual, fetchDevis: () => ({ type: 'ventes/fetchDevis/noop' }) }
+})
+
+vi.mock('../../api/gestionProjetApi', () => ({
+  default: {
+    creerProjetDepuisDevis: vi.fn(() => Promise.resolve({ data: { id: 42, code: 'PRJ-0042' } })),
+  },
+}))
+
+const navigateMock = vi.fn()
+vi.mock('react-router-dom', async (importOriginal) => {
+  const actual = await importOriginal()
+  return { ...actual, useNavigate: () => navigateMock }
+})
+
+import DevisList from './DevisList'
+import gestionProjetApi from '../../api/gestionProjetApi'
+
+function makeStore(devis) {
+  return configureStore({
+    reducer: {
+      ventes: (state = { devis, loading: false, error: null }) => state,
+      auth: (state = { role: 'admin', role_nom: 'Directeur', permissions: [] }) => state,
+    },
+  })
+}
+
+function renderList(devis) {
+  const store = makeStore(devis)
+  return render(
+    <Provider store={store}>
+      <MemoryRouter initialEntries={['/ventes/devis']}>
+        <DevisList />
+      </MemoryRouter>
+    </Provider>,
+  )
+}
+
+afterEach(() => { cleanup(); vi.clearAllMocks() })
+
+const devisAccepte = [{
+  id: 7, reference: 'DEV-0007', statut: 'accepte', is_active: true,
+  client_nom: 'Amine', date_creation: '2026-07-01', total_ttc: '100000',
+  version: 1,
+}]
+
+describe('DevisList — XPRJ21 Créer projet depuis devis', () => {
+  it('affiche le bouton « Créer projet » uniquement sur un devis accepté', () => {
+    renderList(devisAccepte)
+    expect(screen.getByRole('button', { name: /Créer projet/ })).toBeInTheDocument()
+  })
+
+  it('appelle creerProjetDepuisDevis puis navigue vers la fiche projet créée', async () => {
+    const user = userEvent.setup()
+    renderList(devisAccepte)
+    await user.click(screen.getByRole('button', { name: /Créer projet/ }))
+    await waitFor(() => expect(gestionProjetApi.creerProjetDepuisDevis).toHaveBeenCalledWith(7))
+    await waitFor(() => expect(navigateMock).toHaveBeenCalledWith('/projets/42'))
+  })
+})
