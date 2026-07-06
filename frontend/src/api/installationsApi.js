@@ -398,6 +398,92 @@ const installationsApi = {
       motifRefus ? { motif_refus: motifRefus } : {}),
   executerDemandeTransfert: (id) =>
     api.post(`/installations/demandes-transfert/${id}/executer/`, {}),
+
+  // ── XMFG1-16 — Atelier MRP-lite : ordres d'assemblage / démontage (kitting) ──
+
+  // FG328 — ordres d'assemblage (kits → composite). Référence/société posées
+  // serveur ; le statut avance via demarrer/terminer/annuler. Filtrable par
+  // `statut`, `kit`, `responsable`, `date_prevue`.
+  getOrdresAssemblage: (params) =>
+    api.get('/installations/ordres-assemblage/', { params }),
+  getOrdreAssemblage: (id) => api.get(`/installations/ordres-assemblage/${id}/`),
+  createOrdreAssemblage: (data) =>
+    api.post('/installations/ordres-assemblage/', data),
+  updateOrdreAssemblage: (id, data) =>
+    api.patch(`/installations/ordres-assemblage/${id}/`, data),
+  deleteOrdreAssemblage: (id) =>
+    api.delete(`/installations/ordres-assemblage/${id}/`),
+  // XMFG2 — disponibilité par ligne de composant (réservation-aware).
+  getDisponibiliteAssemblage: (id) =>
+    api.get(`/installations/ordres-assemblage/${id}/disponibilite/`),
+  // FG328/XMFG2 — passe l'ordre en cours (backflush différé à la clôture).
+  demarrerAssemblage: (id) =>
+    api.post(`/installations/ordres-assemblage/${id}/demarrer/`, {}),
+  // FG328/XMFG1 — clôture + backflush stock. `quantite_produite`, emplacements,
+  // forçage QC (`forcer`+`motif_forcage`) éditables au moment de la clôture.
+  terminerAssemblage: (id, data) =>
+    api.post(`/installations/ordres-assemblage/${id}/terminer/`, data ?? {}),
+  // XMFG4 — annulation motivée (refusée si stock déjà mouvementé).
+  annulerAssemblage: (id, motif) =>
+    api.post(`/installations/ordres-assemblage/${id}/annuler/`,
+      { motif_annulation: motif }),
+  // XMFG4 — chatter de l'ordre (logs auto + notes).
+  getHistoriqueAssemblage: (id) =>
+    api.get(`/installations/ordres-assemblage/${id}/historique/`),
+  noterAssemblage: (id, body) =>
+    api.post(`/installations/ordres-assemblage/${id}/noter/`, { body }),
+  // XMFG13 — checklist QC de l'ordre (gate de clôture).
+  getControleQualiteAssemblage: (id) =>
+    api.get(`/installations/ordres-assemblage/${id}/controle-qualite/`),
+  enregistrerControleQualiteAssemblage: (id, itemModeleId, payload) =>
+    api.post(
+      `/installations/ordres-assemblage/${id}/controle-qualite/${itemModeleId}/`,
+      payload),
+  // XMFG14 — gamme d'exécution (étapes) de l'ordre.
+  getEtapesAssemblage: (id) =>
+    api.get(`/installations/ordres-assemblage/${id}/etapes/`),
+  cocherEtapeAssemblage: (id, etapeModeleId, payload) =>
+    api.post(
+      `/installations/ordres-assemblage/${id}/etapes/${etapeModeleId}/cocher/`,
+      payload),
+  // ZMFG10 — bon d'assemblage PDF (worksheet atelier, aucun prix).
+  bonAssemblageUrl: (id) =>
+    `/api/django/installations/ordres-assemblage/${id}/bon-pdf/`,
+
+  // XMFG6 — lignes de composant personnalisables (éditables tant que planifié).
+  getLignesAssemblage: (ordreId) =>
+    api.get('/installations/ordre-assemblage-lignes/', { params: { ordre: ordreId } }),
+  createLigneAssemblage: (data) =>
+    api.post('/installations/ordre-assemblage-lignes/', data),
+  updateLigneAssemblage: (id, data) =>
+    api.patch(`/installations/ordre-assemblage-lignes/${id}/`, data),
+  deleteLigneAssemblage: (id) =>
+    api.delete(`/installations/ordre-assemblage-lignes/${id}/`),
+
+  // XMFG12 — ordres de démontage (unbuild) : composite → composants.
+  getOrdresDemontage: (params) =>
+    api.get('/installations/ordres-demontage/', { params }),
+  getOrdreDemontage: (id) => api.get(`/installations/ordres-demontage/${id}/`),
+  createOrdreDemontage: (data) =>
+    api.post('/installations/ordres-demontage/', data),
+  updateOrdreDemontage: (id, data) =>
+    api.patch(`/installations/ordres-demontage/${id}/`, data),
+  deleteOrdreDemontage: (id) =>
+    api.delete(`/installations/ordres-demontage/${id}/`),
+  // XMFG12 — clôture : sort le composite, restocke les composants récupérés.
+  terminerDemontage: (id) =>
+    api.post(`/installations/ordres-demontage/${id}/terminer/`, {}),
+
+  // XMFG12 — lignes de démontage (quantité récupérée éditable avant clôture).
+  updateLigneDemontage: (id, data) =>
+    api.patch(`/installations/ordre-demontage-lignes/${id}/`, data),
+
+  // FG328 — kits d'assemblage (en-tête + nomenclature) : source des ordres.
+  // Filtrable par `active`.
+  getKitsAssemblage: (params) => api.get('/installations/kits/', { params }),
+
+  // XMFG5 — nomenclature indentée + disponibilité d'un kit produit (stock app).
+  getKitStructure: (kitId) => api.get(`/stock/kits/${kitId}/structure/`),
 }
 
 export default installationsApi
