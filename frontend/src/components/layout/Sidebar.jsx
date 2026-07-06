@@ -187,6 +187,8 @@ const NAV_SECTIONS = [
       { to: '/reporting/scorecard-technicien', label: 'Scorecard technicien', k: 'nav.scorecard_technicien', icon: I.reporting, roles: ['responsable','admin'] },
       // XPLT10 — kiosque TV plein écran des dashboards partagés.
       { to: '/dashboards-tv',        label: 'Dashboards TV',    k: 'nav.dashboards_tv', icon: I.dashboards_tv, roles: ['responsable','admin'] },
+      // XPLT10 — gestion des liens de partage (créer/révoquer).
+      { to: '/reporting/dashboards/partage', label: 'Partage de dashboards', k: 'nav.dashboards_partage', icon: I.reporting, roles: ['responsable','admin'] },
     ],
   },
   {

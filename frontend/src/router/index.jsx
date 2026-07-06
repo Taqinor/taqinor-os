@@ -81,6 +81,8 @@ const ArchiveChantierPage = lazy(() => import('../pages/reporting/ArchiveChantie
 const CommercialDashboard = lazy(() => import('../pages/reporting/CommercialDashboard'))
 const CohortsPage = lazy(() => import('../pages/reporting/CohortsPage'))
 const DashboardConfigPage = lazy(() => import('../pages/reporting/DashboardConfigPage'))
+// XPLT10 — partage de dashboard (liens publics tokenisés, créer/révoquer).
+const DashboardSharePage = lazy(() => import('../pages/reporting/DashboardSharePage'))
 // XKB1/ZCTR7-9 — boîte d'approbations centralisée cross-app (5 sources).
 const ApprobationsPage = lazy(() => import('../pages/approbations/ApprobationsPage'))
 // XPLT6 — CRUD des alertes de seuil sur KPI agrégés.
@@ -262,6 +264,8 @@ const router = createBrowserRouter([
   { path: '/reporting/commercial', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><CommercialDashboard /></WithLayout> },
   { path: '/reporting/cohortes', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><CohortsPage /></WithLayout> },
   { path: '/reporting/dashboards', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><DashboardConfigPage /></WithLayout> },
+  // XPLT10 — partage de dashboard (liens publics tokenisés).
+  { path: '/reporting/dashboards/partage', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><DashboardSharePage /></WithLayout> },
   { path: '/reporting/archive/client/:id', loader: authLoader, element: <WithLayout><ArchiveClientPage /></WithLayout> },
   { path: '/reporting/archive/chantier/:id', loader: authLoader, element: <WithLayout><ArchiveChantierPage /></WithLayout> },
   // XKB1/ZCTR7-9 — boîte d'approbations centralisée (toutes sources), accessible
