@@ -35,7 +35,15 @@ vi.mock('../../api/kbApi', () => ({
     enregistrerCommeGabarit: vi.fn(),
     exportPdfUrl: vi.fn(() => '/api/django/kb/articles/1/export-pdf/'),
     exportMarkdownUrl: vi.fn(() => '/api/django/kb/articles/1/export-markdown/'),
+    uploadCouverture: vi.fn(),
+    removeCouverture: vi.fn(),
+    couvertureImageUrl: vi.fn(() => '/api/django/kb/articles/1/couverture-image/'),
+    items: vi.fn().mockResolvedValue({ data: [] }),
   },
+}))
+
+vi.mock('../../api/customFieldsApi', () => ({
+  default: { getDefs: vi.fn().mockResolvedValue({ data: [] }) },
 }))
 
 vi.mock('../../api/recordsApi', () => ({
@@ -205,5 +213,26 @@ describe('ArticleDetail — rétroliens (XKB11)', () => {
     await waitFor(() => expect(screen.getByText('Guide de dépannage')).toBeTruthy())
     await user.click(screen.getByText('Guide de dépannage'))
     expect(onOpenArticle).toHaveBeenCalledWith(7)
+  })
+})
+
+describe('ArticleDetail — emoji + couverture (ZGED10)', () => {
+  it('préfixe le titre avec l’emoji quand présent', async () => {
+    mockLoads({ emoji: '📘' })
+    render(wrap(<ArticleDetail articleId={1} canEdit onBack={() => {}} onEdit={() => {}} />))
+    await waitFor(() => expect(screen.getByText('📘 Procédure onduleur')).toBeTruthy())
+  })
+
+  it('affiche l’image de couverture et permet de la retirer', async () => {
+    mockLoads({ has_couverture: true })
+    kbApi.removeCouverture.mockResolvedValue({ data: { ...baseArticle, has_couverture: false } })
+    const user = userEvent.setup()
+    const { container } = render(
+      wrap(<ArticleDetail articleId={1} canEdit onBack={() => {}} onEdit={() => {}} />))
+    await waitFor(() => expect(screen.getByText('Procédure onduleur')).toBeTruthy())
+    expect(container.querySelector('img')).toHaveAttribute(
+      'src', '/api/django/kb/articles/1/couverture-image/')
+    await user.click(screen.getByRole('button', { name: /^Retirer$/i }))
+    await waitFor(() => expect(kbApi.removeCouverture).toHaveBeenCalledWith(1))
   })
 })

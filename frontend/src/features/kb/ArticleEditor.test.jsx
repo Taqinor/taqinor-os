@@ -12,7 +12,12 @@ vi.mock('../../api/kbApi', () => ({
     createArticle: vi.fn().mockResolvedValue({ data: { id: 1, statut: 'brouillon' } }),
     updateArticle: vi.fn(),
     publier: vi.fn(),
+    listBlocs: vi.fn().mockResolvedValue({ data: [] }),
   },
+}))
+
+vi.mock('../../api/customFieldsApi', () => ({
+  default: { getDefs: vi.fn().mockResolvedValue({ data: [] }) },
 }))
 
 import kbApi from '../../api/kbApi'
@@ -43,5 +48,31 @@ describe('ArticleEditor — visibilité (XKB9)', () => {
     await user.click(screen.getByRole('button', { name: /^Enregistrer$/i }))
     expect(kbApi.createArticle).toHaveBeenCalledWith(
       expect.objectContaining({ visibilite: 'prive' }))
+  })
+})
+
+describe('ArticleEditor — emoji (ZGED10)', () => {
+  it('envoie l’emoji saisi à la création', async () => {
+    const user = userEvent.setup()
+    render(wrap(<ArticleEditor article={null} onCancel={() => {}} onSaved={() => {}} />))
+    await user.type(screen.getByLabelText('Titre'), 'Nouvel article')
+    await user.type(screen.getByLabelText('Emoji'), '📘')
+    await user.click(screen.getByRole('button', { name: /^Enregistrer$/i }))
+    expect(kbApi.createArticle).toHaveBeenCalledWith(
+      expect.objectContaining({ emoji: '📘' }))
+  })
+})
+
+describe('ArticleEditor — bloc réutilisable (ZGED12)', () => {
+  it('insère le corps du bloc choisi dans le contenu', async () => {
+    kbApi.listBlocs.mockResolvedValue({
+      data: [{ id: 3, nom: 'Signature standard', corps: 'Cordialement, l’équipe TAQINOR' }],
+    })
+    const user = userEvent.setup()
+    render(wrap(<ArticleEditor article={null} onCancel={() => {}} onSaved={() => {}} />))
+    await screen.findByLabelText('Choisir un bloc réutilisable')
+    await user.selectOptions(screen.getByLabelText('Choisir un bloc réutilisable'), '3')
+    await user.click(screen.getByRole('button', { name: /^Insérer$/i }))
+    expect(screen.getByLabelText('Contenu')).toHaveValue('Cordialement, l’équipe TAQINOR')
   })
 })

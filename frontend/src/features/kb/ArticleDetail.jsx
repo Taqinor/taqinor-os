@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import {
   Pencil, Send, CheckCircle2, Trash2, Plus, Share2, Copy,
   ShieldCheck, Lock, Unlock, Star, Languages, Download, LayoutTemplate,
+  Image as ImageIcon,
 } from 'lucide-react'
 import { DetailShell } from '../../ui/module'
 import { Button, Badge, EmptyState, Spinner, toast, buttonVariants } from '../../ui'
@@ -11,6 +12,7 @@ import { StatutArticlePill, splitTags } from './kbStatus'
 import FilterSelect from './FilterSelect'
 import ChatterWidget from '../../components/ChatterWidget'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
+import ItemsCollectionView from './ItemsCollectionView'
 import { KbMarkdownBody, extractHeadings } from './kbMarkdown'
 
 // XKB18 — langues supportées (mêmes clés que ``KbArticle.LANGUE_CHOICES``
@@ -197,6 +199,26 @@ export default function ArticleDetail({
     } catch { toast.error('Action impossible.') }
   }
 
+  // ── ZGED10 — image de couverture ──
+  const changerCouverture = async (e) => {
+    const fichier = e.target.files?.[0]
+    e.target.value = ''
+    if (!fichier) return
+    try {
+      await kbApi.uploadCouverture(articleId, fichier)
+      toast.success('Couverture mise à jour.')
+      load()
+    } catch { toast.error('Téléversement impossible.') }
+  }
+
+  const retirerCouverture = async () => {
+    try {
+      await kbApi.removeCouverture(articleId)
+      toast.success('Couverture retirée.')
+      load()
+    } catch { toast.error('Action impossible.') }
+  }
+
   if (loading || !article) {
     return (
       <div className="page flex items-center gap-2 text-muted-foreground">
@@ -223,6 +245,29 @@ export default function ArticleDetail({
   // ── Onglet Contenu ──
   const contenuTab = (
     <div className="flex flex-col gap-4">
+      {article.has_couverture && (
+        <img
+          src={kbApi.couvertureImageUrl(articleId)}
+          alt=""
+          className="h-40 w-full rounded-lg object-cover"
+        />
+      )}
+      {canEdit && (
+        <div className="flex items-center gap-2">
+          <label className={`${buttonVariants({ variant: 'outline', size: 'sm' })} cursor-pointer`}>
+            <ImageIcon /> {article.has_couverture ? 'Changer la couverture' : 'Ajouter une couverture'}
+            <input
+              type="file" accept="image/*" className="hidden"
+              onChange={changerCouverture}
+            />
+          </label>
+          {article.has_couverture && (
+            <Button type="button" variant="ghost" size="sm" onClick={retirerCouverture}>
+              Retirer
+            </Button>
+          )}
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
         {article.categorie && <Badge tone="info">{article.categorie}</Badge>}
         {tags.map((t) => <Badge key={t} tone="neutral">{t}</Badge>)}
@@ -454,9 +499,15 @@ export default function ArticleDetail({
     <AttachmentsPanel model="kb.kbarticle" id={articleId} />
   )
 
+  // ── Onglet Sous-articles (ZGED11 — vues liste/cartes/kanban/calendrier) ──
+  const sousArticlesTab = (
+    <ItemsCollectionView articleId={articleId} onSelect={(item) => onOpenArticle?.(item.id)} />
+  )
+
   const tabs = [
     { value: 'contenu', label: 'Contenu', content: contenuTab },
     { value: 'pieces-jointes', label: 'Pièces jointes', content: piecesJointesTab },
+    { value: 'sous-articles', label: 'Sous-articles', content: sousArticlesTab },
     { value: 'versions', label: 'Versions', count: versions.length, content: versionsTab },
     { value: 'retroliens', label: 'Rétroliens', count: retroliens.length, content: retroliensTab },
     { value: 'lecteurs', label: 'Lecteurs', count: resume?.nombre ?? 0, content: lecteursTab },
@@ -528,7 +579,7 @@ export default function ArticleDetail({
         ← Retour à la liste
       </button>
       <DetailShell
-        title={article.titre}
+        title={article.emoji ? `${article.emoji} ${article.titre}` : article.titre}
         status={article.statut}
         statusPill={StatutArticlePill}
         actions={actions}
