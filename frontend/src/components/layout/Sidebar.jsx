@@ -179,6 +179,8 @@ const NAV_SECTIONS = [
       // XKB1/ZCTR7-9 — boîte d'approbations centralisée, ouverte à tout rôle
       // (chacun peut avoir des demandes en attente sur son périmètre).
       { to: '/approbations',         label: 'Approbations',     k: 'nav.approbations', icon: I.approbations, roles: ['normal','responsable','admin'] },
+      // XPLT22 — classeurs (mini-tableurs BI avec données live).
+      { to: '/reporting/classeurs',  label: 'Classeurs',        k: 'nav.classeurs',  icon: I.reporting,    roles: ['responsable','admin'] },
       // XSAV8 — conformité SLA + KPI SAV avancés.
       { to: '/reporting/sav-sla',    label: 'SLA SAV',          k: 'nav.sav_sla',    icon: I.reporting,    roles: ['responsable','admin'] },
       // XFSM16 — analytics field service consolidés (FTF, MTTR, ponctualité…).

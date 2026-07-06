@@ -88,6 +88,7 @@ const ApprobationsPage = lazy(() => import('../pages/approbations/ApprobationsPa
 // XPLT6 — CRUD des alertes de seuil sur KPI agrégés.
 const KpiAlertesPage = lazy(() => import('../pages/parametres/KpiAlertesPage'))
 // XPLT22 — classeur léger embarqué (mini-spreadsheet BI, données live).
+const ClasseursListPage = lazy(() => import('../pages/reporting/ClasseursListPage'))
 const ClasseurPage = lazy(() => import('../pages/reporting/ClasseurPage'))
 // XPLT10 — kiosque TV public des dashboards partagés (sans layout ERP).
 const DashboardsTvPage = lazy(() => import('../pages/reporting/DashboardsTvPage'))
@@ -272,6 +273,7 @@ const router = createBrowserRouter([
   // à tout rôle (chacun peut avoir des demandes en attente sur son périmètre).
   { path: '/approbations', loader: authLoader, element: <WithLayout><ApprobationsPage /></WithLayout> },
   // XPLT22 — classeur léger embarqué (mini-spreadsheet BI, données live).
+  { path: '/reporting/classeurs', loader: authLoader, element: <WithLayout><ClasseursListPage /></WithLayout> },
   { path: '/reporting/classeurs/:id', loader: authLoader, element: <WithLayout><ClasseurPage /></WithLayout> },
   // XSAV8 — conformité SLA + KPI SAV avancés (responsable/admin).
   { path: '/reporting/sav-sla', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><SavSlaPage /></WithLayout> },
