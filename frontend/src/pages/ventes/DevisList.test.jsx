@@ -393,3 +393,33 @@ describe('DevisList — WR2 : copier le lien de proposition (share_link)', () =>
     })
   })
 })
+
+describe('DevisList — XSAL16 : résumé d\'engagement par section', () => {
+  it('affiche le temps passé par section quand engagement est renseigné', () => {
+    renderList({
+      loading: false,
+      devis: [{
+        id: 50, reference: 'DEV-ENGAGE', client_nom: 'ACME', statut: 'envoye',
+        date_creation: '2026-07-01', total_ttc: 9000, nb_options: 1, version: 1,
+        engagement: { prix: { seconds: 120, hits: 4 }, etude: { seconds: 15, hits: 1 } },
+      }],
+    })
+    const row = screen.getByText('DEV-ENGAGE').closest('tr')
+    // Section la plus engagée (prix, 120s → 2 min) en premier.
+    expect(within(row).getByText(/2 min sur prix/)).toBeVisible()
+    expect(within(row).getByText(/15 s sur étude/)).toBeVisible()
+  })
+
+  it('n\'affiche aucun résumé sans beacon (engagement vide)', () => {
+    renderList({
+      loading: false,
+      devis: [{
+        id: 51, reference: 'DEV-NOENGAGE', client_nom: 'ACME', statut: 'envoye',
+        date_creation: '2026-07-01', total_ttc: 9000, nb_options: 1, version: 1,
+        engagement: {},
+      }],
+    })
+    const row = screen.getByText('DEV-NOENGAGE').closest('tr')
+    expect(within(row).queryByText(/sur prix|sur étude/)).toBeNull()
+  })
+})

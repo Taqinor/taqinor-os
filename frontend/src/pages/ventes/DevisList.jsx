@@ -111,6 +111,27 @@ function daysUntil(isoDate) {
   return Math.round((a - b) / 86400000)
 }
 
+// XSAL16 — libellés FR des sections suivies sur la proposition web (miroir de
+// `_ENGAGEMENT_SECTIONS` côté serveur, apps/ventes/public_views.py).
+const ENGAGEMENT_LABELS = {
+  hero: 'accueil', prix: 'prix', etude: 'étude', garanties: 'garanties', signature: 'signature',
+}
+
+// Résume l'engagement par section en une phrase courte (« 2 min sur le prix,
+// 30 s sur l'étude ») — null sans aucune section suivie (comportement QJ1
+// inchangé, aucun badge affiché).
+function engagementSummary(engagement) {
+  const entries = Object.entries(engagement || {}).filter(([, v]) => v?.seconds > 0)
+  if (entries.length === 0) return null
+  entries.sort((a, b) => b[1].seconds - a[1].seconds)
+  return entries.map(([section, v]) => {
+    const label = ENGAGEMENT_LABELS[section] ?? section
+    const mins = Math.round(v.seconds / 60)
+    const duree = mins >= 1 ? `${mins} min` : `${v.seconds} s`
+    return `${duree} sur ${label}`
+  }).join(' · ')
+}
+
 function openPdfBlob(blob, filename) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -1245,6 +1266,17 @@ export default function DevisList() {
                           >
                             <Eye className="size-3" aria-hidden="true" />
                             Consulté ×{d.nombre_vues ?? 1}
+                          </div>
+                        )}
+                        {/* XSAL16 — résumé d'engagement par section de la proposition
+                            web (« a passé 2 min sur le prix, n'a pas ouvert l'étude »).
+                            Vide sans beacon (déjà serialisé, comportement QJ1 inchangé). */}
+                        {engagementSummary(d.engagement) && (
+                          <div
+                            className="mt-0.5 text-xs text-muted-foreground"
+                            title="Temps passé par section sur la proposition en ligne"
+                          >
+                            {engagementSummary(d.engagement)}
                           </div>
                         )}
                         {/* U5 — Documents générés depuis ce devis : factures (chips
