@@ -99,6 +99,13 @@ export const StatutBudget = statusPill({
   archive: { label: 'Archivé', tone: 'info' },
 })
 
+// ── PointAvancement.Sante (RAG — XPRJ15) ────────────────────────────────────
+export const SanteRAG = statusPill({
+  vert: { label: 'Vert', tone: 'success' },
+  orange: { label: 'Orange', tone: 'warning' },
+  rouge: { label: 'Rouge', tone: 'danger' },
+})
+
 // ── LotSousTraitance.Statut ─────────────────────────────────────────────────
 export const StatutLot = statusPill({
   prevu: { label: 'Prévu', tone: 'neutral' },

@@ -6,6 +6,7 @@ import {
 import { Badge } from '../../../ui'
 import { StatutTache } from '../constants'
 import ChronoButton from './ChronoWidget'
+import TacheChecklist from './TacheChecklist'
 
 /* XPRJ11 — Vue kanban des Tache par colonne de statut (a_faire/en_cours/
    bloque/termine — statuts PROPRES au module, jamais STAGES.py). Glisser-
@@ -70,6 +71,7 @@ function TacheCard({ tache }) {
       )}
       <div className="mt-2" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
         <ChronoButton tache={tache} />
+        <TacheChecklist tacheId={tache.id} />
       </div>
     </div>
   )
