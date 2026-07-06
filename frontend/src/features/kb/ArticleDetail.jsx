@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import {
   Pencil, Send, CheckCircle2, Trash2, Plus, Share2, Copy,
-  ShieldCheck, Lock, Unlock, Star, Languages,
+  ShieldCheck, Lock, Unlock, Star, Languages, Download, LayoutTemplate,
 } from 'lucide-react'
 import { DetailShell } from '../../ui/module'
-import { Button, Badge, EmptyState, Spinner, toast } from '../../ui'
+import { Button, Badge, EmptyState, Spinner, toast, buttonVariants } from '../../ui'
 import { formatDateTime } from '../../lib/format'
 import kbApi from '../../api/kbApi'
 import { StatutArticlePill, splitTags } from './kbStatus'
@@ -36,7 +36,9 @@ const NIVEAU_OPTIONS = [
   { value: 'edition', label: 'Édition' },
 ]
 
-export default function ArticleDetail({ articleId, canEdit, onBack, onEdit, onChanged }) {
+export default function ArticleDetail({
+  articleId, canEdit, onBack, onEdit, onChanged, onOpenArticle,
+}) {
   const [article, setArticle] = useState(null)
   const [versions, setVersions] = useState([])
   const [resume, setResume] = useState(null)
@@ -45,6 +47,7 @@ export default function ArticleDetail({ articleId, canEdit, onBack, onEdit, onCh
   const [loading, setLoading] = useState(true)
   const [aclDraft, setAclDraft] = useState({ role: 'normal', niveau: 'lecture' })
   const [favori, setFavori] = useState(false)
+  const [retroliens, setRetroliens] = useState([])
 
   const load = () => {
     setLoading(true)
@@ -55,8 +58,9 @@ export default function ArticleDetail({ articleId, canEdit, onBack, onEdit, onCh
       canEdit ? kbApi.listAcls({ article: articleId }) : Promise.resolve(null),
       canEdit ? kbApi.listPartages({ article: articleId }) : Promise.resolve(null),
       kbApi.listFavoris({ article: articleId }),
+      kbApi.retroliens(articleId),
     ])
-      .then(([a, v, r, acl, part, fav]) => {
+      .then(([a, v, r, acl, part, fav, retro]) => {
         setArticle(a.data)
         setVersions(Array.isArray(v.data) ? v.data : (v.data?.results ?? []))
         setResume(r.data)
@@ -64,6 +68,7 @@ export default function ArticleDetail({ articleId, canEdit, onBack, onEdit, onCh
         if (part) setPartages(Array.isArray(part.data) ? part.data : (part.data?.results ?? []))
         const favRows = Array.isArray(fav.data) ? fav.data : (fav.data?.results ?? [])
         setFavori(favRows.length > 0)
+        setRetroliens(Array.isArray(retro.data) ? retro.data : (retro.data?.results ?? []))
       })
       .catch(() => toast.error('Impossible de charger l’article.'))
       .finally(() => setLoading(false))
@@ -181,6 +186,15 @@ export default function ArticleDetail({ articleId, canEdit, onBack, onEdit, onCh
       toast.success(`Traduction ${LANGUE_LABELS[langue]} créée (brouillon).`)
       onChanged?.()
     } catch { toast.error('Traduction impossible.') }
+  }
+
+  // ── XKB12 — enregistrer comme gabarit réutilisable ──
+  const enregistrerCommeGabarit = async () => {
+    try {
+      await kbApi.enregistrerCommeGabarit(articleId)
+      toast.success('Article enregistré comme gabarit.')
+      load()
+    } catch { toast.error('Action impossible.') }
   }
 
   if (loading || !article) {
@@ -337,6 +351,27 @@ export default function ArticleDetail({ articleId, canEdit, onBack, onEdit, onCh
     <EmptyState title="Aucune version" description="Aucun instantané n’a encore été figé." />
   )
 
+  // ── Onglet Rétroliens (XKB11) — articles qui pointent vers celui-ci ──
+  const retroliensTab = retroliens.length ? (
+    <ul className="flex flex-col gap-2">
+      {retroliens.map((r) => (
+        <li key={r.id} className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-sm">
+          <button
+            type="button"
+            onClick={() => onOpenArticle?.(r.id)}
+            className="font-medium text-left hover:underline disabled:no-underline disabled:cursor-default"
+            disabled={!onOpenArticle}
+          >
+            {r.titre}
+          </button>
+          <StatutArticlePill status={r.statut} />
+        </li>
+      ))}
+    </ul>
+  ) : (
+    <EmptyState title="Aucun rétrolien" description="Aucun article ne pointe encore vers celui-ci." />
+  )
+
   // ── Onglet Lecteurs (suivi de lecture) ──
   const lecteurs = resume?.lecteurs ?? []
   const lecteursTab = (
@@ -423,6 +458,7 @@ export default function ArticleDetail({ articleId, canEdit, onBack, onEdit, onCh
     { value: 'contenu', label: 'Contenu', content: contenuTab },
     { value: 'pieces-jointes', label: 'Pièces jointes', content: piecesJointesTab },
     { value: 'versions', label: 'Versions', count: versions.length, content: versionsTab },
+    { value: 'retroliens', label: 'Rétroliens', count: retroliens.length, content: retroliensTab },
     { value: 'lecteurs', label: 'Lecteurs', count: resume?.nombre ?? 0, content: lecteursTab },
     { value: 'commentaires', label: 'Commentaires', content: commentairesTab },
   ]
@@ -443,6 +479,15 @@ export default function ArticleDetail({ articleId, canEdit, onBack, onEdit, onCh
       <Button type="button" variant="outline" onClick={marquerLu}>
         <CheckCircle2 /> Marquer comme lu
       </Button>
+      {/* Liens de téléchargement stylés comme des boutons — pas de
+          Button asChild (Slot Radix exige un unique enfant, incompatible
+          avec icône + libellé ici). */}
+      <a href={kbApi.exportPdfUrl(articleId)} download className={buttonVariants({ variant: 'outline' })}>
+        <Download /> PDF
+      </a>
+      <a href={kbApi.exportMarkdownUrl(articleId)} download className={buttonVariants({ variant: 'outline' })}>
+        <Download /> Markdown
+      </a>
       {canEdit && (
         <>
           <Button type="button" variant="outline" onClick={onEdit}>
@@ -458,6 +503,11 @@ export default function ArticleDetail({ articleId, canEdit, onBack, onEdit, onCh
             {article.est_verrouille ? <Unlock /> : <Lock />}
             {article.est_verrouille ? 'Déverrouiller' : 'Verrouiller'}
           </Button>
+          {!article.est_gabarit && (
+            <Button type="button" variant="outline" onClick={enregistrerCommeGabarit}>
+              <LayoutTemplate /> Enregistrer comme gabarit
+            </Button>
+          )}
           {article.statut !== 'publie' && (
             <Button type="button" onClick={publier}>
               <Send /> Publier

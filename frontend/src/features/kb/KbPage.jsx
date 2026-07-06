@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSelector } from 'react-redux'
 import {
   BookOpen, Plus, Eye, Pencil, Trash2, Send, FolderTree, Copy, AlertTriangle,
+  LayoutTemplate, Download, Upload,
 } from 'lucide-react'
 import { ListShell } from '../../ui/module'
-import { Button, Badge, Tag, toast } from '../../ui'
+import { Button, Badge, Tag, toast, buttonVariants } from '../../ui'
 import { formatDateTime } from '../../lib/format'
 import kbApi from '../../api/kbApi'
 import { KB_STATUT_MAP, StatutArticlePill, splitTags } from './kbStatus'
@@ -12,6 +13,7 @@ import ArticleDetail from './ArticleDetail'
 import ArticleEditor from './ArticleEditor'
 import FilterSelect from './FilterSelect'
 import ArticleTree from './ArticleTree'
+import TemplatesGallery from './TemplatesGallery'
 
 /* ============================================================================
    UX43 — Base de connaissances (apps/kb).
@@ -44,6 +46,11 @@ export default function KbPage() {
   // XKB14 — rapport de péremption (articles dont la revue est due), visible
   // seulement responsable/admin.
   const [peremption, setPeremption] = useState([])
+
+  // XKB12 — galerie de gabarits (masquée par défaut).
+  const [showGabarits, setShowGabarits] = useState(false)
+  // XKB17 — import Markdown (input fichier caché, déclenché par le bouton).
+  const importInputRef = useRef(null)
 
   // Charge la liste avec les filtres serveur passés (statut / catégorie).
   const load = (statut = statutFilter, categorie = categorieFilter) => {
@@ -241,11 +248,57 @@ export default function KbPage() {
     </div>
   )
 
+  // XKB17 — import Markdown : crée un nouvel article BROUILLON depuis un
+  // fichier .md sélectionné.
+  const handleImportMarkdown = async (e) => {
+    const fichier = e.target.files?.[0]
+    e.target.value = ''
+    if (!fichier) return
+    try {
+      await kbApi.importerMarkdown({ fichier })
+      toast.success('Article importé (brouillon).')
+      load()
+    } catch { toast.error('Import impossible.') }
+  }
+
   const actions = peutEditer ? (
-    <Button onClick={() => openEditor(null)}>
-      <Plus /> Nouvel article
-    </Button>
+    <>
+      <Button variant="outline" onClick={() => setShowGabarits(true)}>
+        <LayoutTemplate /> Gabarits
+      </Button>
+      {/* Lien de téléchargement stylé comme un bouton — pas de Button
+          asChild (Slot Radix exige un unique enfant, incompatible avec
+          icône + libellé ici). */}
+      <a href={kbApi.exportZipUrl()} download className={buttonVariants({ variant: 'outline' })}>
+        <Download /> Exporter (ZIP)
+      </a>
+      <Button variant="outline" onClick={() => importInputRef.current?.click()}>
+        <Upload /> Importer Markdown
+      </Button>
+      <input
+        ref={importInputRef}
+        type="file"
+        accept=".md,text/markdown,text/plain"
+        className="hidden"
+        onChange={handleImportMarkdown}
+      />
+      <Button onClick={() => openEditor(null)}>
+        <Plus /> Nouvel article
+      </Button>
+    </>
   ) : null
+
+  // ── Galerie de gabarits (XKB12) ──
+  if (showGabarits) {
+    return (
+      <div className="page">
+        <TemplatesGallery
+          onClose={() => setShowGabarits(false)}
+          onCreated={(article) => { setShowGabarits(false); openEditor(article) }}
+        />
+      </div>
+    )
+  }
 
   // ── Éditeur (création / édition) ──
   if (editing) {
@@ -267,6 +320,7 @@ export default function KbPage() {
         onBack={closeAll}
         onEdit={() => openEditor(selected)}
         onChanged={load}
+        onOpenArticle={(id) => openDetail({ id })}
       />
     )
   }

@@ -21,6 +21,7 @@ vi.mock('../../api/kbApi', () => ({
     listAcls: vi.fn(),
     listPartages: vi.fn(),
     listFavoris: vi.fn(),
+    retroliens: vi.fn(),
     createPartage: vi.fn(),
     depublierPartage: vi.fn(),
     verifier: vi.fn(),
@@ -31,6 +32,9 @@ vi.mock('../../api/kbApi', () => ({
     publier: vi.fn(),
     nouvelleVersion: vi.fn(),
     traduire: vi.fn(),
+    enregistrerCommeGabarit: vi.fn(),
+    exportPdfUrl: vi.fn(() => '/api/django/kb/articles/1/export-pdf/'),
+    exportMarkdownUrl: vi.fn(() => '/api/django/kb/articles/1/export-markdown/'),
   },
 }))
 
@@ -87,6 +91,7 @@ function mockLoads(overrides = {}) {
   kbApi.listAcls.mockResolvedValue({ data: [] })
   kbApi.listPartages.mockResolvedValue({ data: [] })
   kbApi.listFavoris.mockResolvedValue({ data: [] })
+  kbApi.retroliens.mockResolvedValue({ data: [] })
 }
 
 beforeEach(() => {
@@ -181,5 +186,24 @@ describe('ArticleDetail — commentaires (XKB13)', () => {
     await waitFor(() => expect(screen.getByText('Procédure onduleur')).toBeTruthy())
     await user.click(screen.getByRole('tab', { name: /Commentaires/i }))
     await waitFor(() => expect(recordsApi.getComments).toHaveBeenCalledWith('kb.kbarticle', 1))
+  })
+})
+
+describe('ArticleDetail — rétroliens (XKB11)', () => {
+  it('liste les articles qui pointent vers celui-ci et navigue au clic', async () => {
+    mockLoads()
+    kbApi.retroliens.mockResolvedValue({
+      data: [{ id: 7, titre: 'Guide de dépannage', statut: 'publie' }],
+    })
+    const onOpenArticle = vi.fn()
+    const user = userEvent.setup()
+    render(wrap(
+      <ArticleDetail articleId={1} canEdit onBack={() => {}} onEdit={() => {}} onOpenArticle={onOpenArticle} />,
+    ))
+    await waitFor(() => expect(screen.getByText('Procédure onduleur')).toBeTruthy())
+    await user.click(screen.getByRole('tab', { name: /Rétroliens/i }))
+    await waitFor(() => expect(screen.getByText('Guide de dépannage')).toBeTruthy())
+    await user.click(screen.getByText('Guide de dépannage'))
+    expect(onOpenArticle).toHaveBeenCalledWith(7)
   })
 })
