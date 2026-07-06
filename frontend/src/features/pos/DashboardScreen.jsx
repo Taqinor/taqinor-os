@@ -32,8 +32,8 @@ export default function DashboardScreen() {
   const [dateDebut, setDateDebut] = useState('')
   const [dateFin, setDateFin] = useState('')
 
-  const charger = () => {
-    setLoading(true)
+  const charger = (initial = false) => {
+    if (!initial) setLoading(true)
     const params = {}
     if (dateDebut) params.date_debut = dateDebut
     if (dateFin) params.date_fin = dateFin
@@ -43,7 +43,7 @@ export default function DashboardScreen() {
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { charger() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { charger(true) }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleExport = () => {
     // Export xlsx : ouverture directe (cookie httpOnly envoyé par le navigateur).
