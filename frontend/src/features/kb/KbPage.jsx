@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSelector } from 'react-redux'
 import {
   BookOpen, Plus, Eye, Pencil, Trash2, Send, FolderTree, Copy, AlertTriangle,
-  LayoutTemplate, Download, Upload,
+  LayoutTemplate, Download, Upload, Star, BarChart3,
 } from 'lucide-react'
 import { ListShell } from '../../ui/module'
 import { Button, Badge, Tag, toast, buttonVariants } from '../../ui'
@@ -14,6 +14,8 @@ import ArticleEditor from './ArticleEditor'
 import FilterSelect from './FilterSelect'
 import ArticleTree from './ArticleTree'
 import TemplatesGallery from './TemplatesGallery'
+import KbStatsPanel from './KbStatsPanel'
+import FavorisRecentsPanel from './FavorisRecentsPanel'
 
 /* ============================================================================
    UX43 — Base de connaissances (apps/kb).
@@ -49,6 +51,10 @@ export default function KbPage() {
 
   // XKB12 — galerie de gabarits (masquée par défaut).
   const [showGabarits, setShowGabarits] = useState(false)
+  // XKB16 — statistiques (masquées par défaut, responsable/admin).
+  const [showStats, setShowStats] = useState(false)
+  // XKB15 — favoris/récents (masqués par défaut, tous rôles).
+  const [showFavoris, setShowFavoris] = useState(false)
   // XKB17 — import Markdown (input fichier caché, déclenché par le bouton).
   const importInputRef = useRef(null)
 
@@ -261,32 +267,42 @@ export default function KbPage() {
     } catch { toast.error('Import impossible.') }
   }
 
-  const actions = peutEditer ? (
+  const actions = (
     <>
-      <Button variant="outline" onClick={() => setShowGabarits(true)}>
-        <LayoutTemplate /> Gabarits
+      <Button variant="outline" onClick={() => setShowFavoris(true)}>
+        <Star /> Favoris &amp; récents
       </Button>
-      {/* Lien de téléchargement stylé comme un bouton — pas de Button
-          asChild (Slot Radix exige un unique enfant, incompatible avec
-          icône + libellé ici). */}
-      <a href={kbApi.exportZipUrl()} download className={buttonVariants({ variant: 'outline' })}>
-        <Download /> Exporter (ZIP)
-      </a>
-      <Button variant="outline" onClick={() => importInputRef.current?.click()}>
-        <Upload /> Importer Markdown
-      </Button>
-      <input
-        ref={importInputRef}
-        type="file"
-        accept=".md,text/markdown,text/plain"
-        className="hidden"
-        onChange={handleImportMarkdown}
-      />
-      <Button onClick={() => openEditor(null)}>
-        <Plus /> Nouvel article
-      </Button>
+      {peutEditer && (
+        <>
+          <Button variant="outline" onClick={() => setShowStats(true)}>
+            <BarChart3 /> Statistiques
+          </Button>
+          <Button variant="outline" onClick={() => setShowGabarits(true)}>
+            <LayoutTemplate /> Gabarits
+          </Button>
+          {/* Lien de téléchargement stylé comme un bouton — pas de Button
+              asChild (Slot Radix exige un unique enfant, incompatible avec
+              icône + libellé ici). */}
+          <a href={kbApi.exportZipUrl()} download className={buttonVariants({ variant: 'outline' })}>
+            <Download /> Exporter (ZIP)
+          </a>
+          <Button variant="outline" onClick={() => importInputRef.current?.click()}>
+            <Upload /> Importer Markdown
+          </Button>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".md,text/markdown,text/plain"
+            className="hidden"
+            onChange={handleImportMarkdown}
+          />
+          <Button onClick={() => openEditor(null)}>
+            <Plus /> Nouvel article
+          </Button>
+        </>
+      )}
     </>
-  ) : null
+  )
 
   // ── Galerie de gabarits (XKB12) ──
   if (showGabarits) {
@@ -295,6 +311,27 @@ export default function KbPage() {
         <TemplatesGallery
           onClose={() => setShowGabarits(false)}
           onCreated={(article) => { setShowGabarits(false); openEditor(article) }}
+        />
+      </div>
+    )
+  }
+
+  // ── Statistiques (XKB16) ──
+  if (showStats) {
+    return (
+      <div className="page">
+        <KbStatsPanel onClose={() => setShowStats(false)} />
+      </div>
+    )
+  }
+
+  // ── Favoris & récents (XKB15) ──
+  if (showFavoris) {
+    return (
+      <div className="page">
+        <FavorisRecentsPanel
+          onClose={() => setShowFavoris(false)}
+          onSelect={(a) => { setShowFavoris(false); openDetail(a) }}
         />
       </div>
     )
