@@ -8,6 +8,7 @@ import {
 } from '../../ui'
 import { SectionTitle, Field } from './peComponents'
 import EquipesCommercialesSection from './EquipesCommercialesSection'
+import MessageTemplatesCrmSection from './MessageTemplatesCrmSection'
 
 // Sentinel pour l'option « aucun » : Radix Select n'autorise pas la valeur ''.
 const NONE = '__none__'
@@ -282,6 +283,9 @@ export default function LeadsSection({
 
       {/* ZSAL3 — Équipes commerciales (admin CRUD). */}
       <EquipesCommercialesSection assignables={assignables} />
+
+      {/* FG36/XSAL17 — Modèles de messages CRM ({lien_rdv} entre autres). */}
+      <MessageTemplatesCrmSection />
     </>
   )
 }
