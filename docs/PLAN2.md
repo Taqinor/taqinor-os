@@ -443,6 +443,11 @@ dark mode à moitié réel. Cette vague est de l'ADOPTION et de la SIGNATURE, pa
 > éléments ; garde `noValidate`/`step="any"` du générateur intacte ; `prix_achat`/marge JAMAIS client-facing.
 > Frontend-only (aucun changement backend dans ce groupe) ; `prefers-reduced-motion` respecté partout ;
 > contraste AA en clair ET en sombre. Le modèle conseillé par tâche est indicatif (l'orchestrateur arbitre).
+> **Coordination inter-plans :** `docs/FRONTEND_GAP_PLAN.md` (câblage fonctionnel des backends X*/Z*, ajouté
+> 2026-07-07 via fe-dev) partage trois fichiers avec ce groupe — `GedNavigator.jsx` (FE-XGED14 ↔ VX38),
+> `TicketsPage.jsx` (FE-XSAV5/21/28 ↔ VX31), `DevisList.jsx` (FE-ZSAL8/XSAL16 ↔ VX7/20/40/44). Le run qui
+> passe en second rebase sur le premier ; les deux plans sont complémentaires (câblage vs design), jamais
+> en conflit d'intention.
 
 **A — La signature : la coquille devient TAQINOR (le meilleur ratio qualité perçue ÷ effort de la vague) :**
 - [ ] VX1 — **Un seul or, un seul navy : fusion des jetons de marque.** Éliminer les quatre « ors » (`--primary #e8b54a`, `--cat-gold #f5a623`, `#F5C100` sidebar/bolt, `#f28e2b` gen-btn) et les trois « navys » (`--nuit`, `--cat-navy #0b1f3a`, `#0f172a`) : redéfinir `--cat-gold: var(--primary)` et `--cat-navy: var(--color-nuit)` dans `frontend/src/design/tokens.css`, retirer les redéclarations locales (`frontend/src/index.css` ~1520-1525 et bloc `.lv-wrap` ~4469) et les constantes JS `NAVY`/`GOLD` de `frontend/src/features/pwa/PwaPrompts.jsx` (→ `var(--…)`). Une signature exige UNE couleur signature (discipline Linear). **Done =** un seul or et un seul navy à travers catalogue/kanban/générateur/sidebar/bannière PWA, grep des valeurs mortes vide hors token source, CI stage-names verte. Files: frontend/src/design/tokens.css, frontend/src/index.css, frontend/src/features/pwa/PwaPrompts.jsx. (ROUTINE — M, sonnet) (@lane: frontend/design)
