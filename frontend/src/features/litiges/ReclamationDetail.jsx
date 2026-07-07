@@ -112,6 +112,47 @@ export default function ReclamationDetail({ reclamationId, onBack, onEdit, onCha
   }
   if (rec.motif_perte) items.push({ term: 'Motif de la perte', description: rec.motif_perte })
 
+  // ── LITIGE4 — aperçus QHSE liés (NCR + audit fin de chantier) ──
+  const qhseTab = (
+    <div className="flex flex-col gap-4">
+      {rec.ncr ? (
+        <div className="rounded-lg border border-border p-3 text-sm">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="font-medium">Non-conformité (NCR) liée</span>
+            <Badge tone={rec.ncr.gravite === 'elevee' ? 'danger' : 'neutral'}>
+              {rec.ncr.gravite_display || rec.ncr.gravite}
+            </Badge>
+          </div>
+          <DefinitionList items={[
+            { term: 'Référence', description: rec.ncr.reference || '—' },
+            { term: 'Titre', description: rec.ncr.titre || '—' },
+            { term: 'Statut', description: rec.ncr.statut_display || rec.ncr.statut || '—' },
+          ]}
+          />
+        </div>
+      ) : (
+        <EmptyState title="Aucune NCR liée" description="Cette réclamation n'est rattachée à aucune non-conformité QHSE." />
+      )}
+
+      {rec.audit ? (
+        <div className="rounded-lg border border-border p-3 text-sm">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="font-medium">Audit fin de chantier lié</span>
+            <Badge tone="info">{rec.audit.statut_display || rec.audit.statut}</Badge>
+          </div>
+          <DefinitionList items={[
+            { term: 'Grille', description: rec.audit.grille || '—' },
+            { term: 'Date audit', description: rec.audit.date_audit ? formatDateTime(rec.audit.date_audit) : '—' },
+            { term: 'Score', description: rec.audit.score != null ? String(rec.audit.score) : '—' },
+          ]}
+          />
+        </div>
+      ) : (
+        <EmptyState title="Aucun audit lié" description="Cette réclamation n'est rattachée à aucun audit fin de chantier." />
+      )}
+    </div>
+  )
+
   const detailsTab = (
     <div className="flex flex-col gap-4">
       {rec.description && (
@@ -204,6 +245,7 @@ export default function ReclamationDetail({ reclamationId, onBack, onEdit, onCha
         actions={actions}
         tabs={[
           { value: 'details', label: 'Détails', content: detailsTab },
+          { value: 'qhse', label: 'NCR / Audit lié', content: qhseTab },
           { value: 'historique', label: 'Historique', count: activites.length, content: historiqueTab },
         ]}
       />

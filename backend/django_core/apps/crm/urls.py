@@ -5,7 +5,7 @@ from .views import (
     assignable_users, equipes_statistiques, rapport_attribution,
     LeadTagViewSet, MotifPerteViewSet, CanalViewSet, ParrainageViewSet,
     MessageTemplateViewSet, ObjectifCommercialViewSet, PlanActiviteViewSet,
-    PointContactViewSet, SiteProfileViewSet,
+    PointContactViewSet, SiteProfileViewSet, EquipeCommercialeViewSet,
 )
 from .webhooks import website_lead_webhook, meta_lead_ads_webhook
 from .roof_views import lead_roof_footprint
@@ -28,6 +28,7 @@ router.register(r'concurrents-perte', ConcurrentPerteViewSet)  # FG242
 router.register(r'points-contact', PointContactViewSet)  # FG204
 router.register(r'site-profiles', SiteProfileViewSet)  # DC12
 router.register(r'plans-activite', PlanActiviteViewSet)  # ZSAL2
+router.register(r'equipes', EquipeCommercialeViewSet)  # ZSAL3 (admin CRUD)
 
 urlpatterns = [
     # Récepteur des leads du site public (secret statique, voir webhooks.py)
@@ -36,7 +37,8 @@ urlpatterns = [
     path('webhooks/meta-lead-ads/', meta_lead_ads_webhook, name='meta-lead-ads-webhook'),
     # Employés assignables (sélecteur de responsable) — ouvert à la Commerciale.
     path('assignable-users/', assignable_users, name='assignable-users'),
-    # ZSAL3 — Tableau de bord « Mes équipes ».
+    # ZSAL3 — Tableau de bord « Mes équipes ». Doit précéder include(router.urls)
+    # : sinon le routeur (equipes/<pk>/) intercepterait 'statistiques' comme pk.
     path('equipes/statistiques/', equipes_statistiques, name='equipes-statistiques'),
     # ZSAL6 — Rapport d'attribution des leads (par commercial + par source).
     path('rapports/attribution/', rapport_attribution, name='rapport-attribution'),

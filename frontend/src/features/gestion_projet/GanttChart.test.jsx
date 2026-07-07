@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { describe, it, expect, vi } from 'vitest'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import GanttChart from './GanttChart.jsx'
@@ -37,6 +37,47 @@ describe('GanttChart', () => {
   it('affiche un état vide quand aucune tâche n’est datée', () => {
     withProviders(<GanttChart taches={[{ id: 1, libelle: 'X' }]} />)
     expect(screen.getByText('Aucune tâche datée')).toBeInTheDocument()
+  })
+
+  it('PROJ11 — glisser une barre appelle onReprogrammer avec la nouvelle date de début', () => {
+    const onReprogrammer = vi.fn()
+    withProviders(
+      <GanttChart
+        taches={[
+          { id: 1, libelle: 'Pose', code_wbs: '1', statut: 'en_cours', date_debut_prevue: '2026-01-01', date_fin_prevue: '2026-01-11' },
+        ]}
+        onReprogrammer={onReprogrammer}
+      />,
+    )
+    const bar = screen.getByTitle(/Pose — .* \(glisser pour replanifier\)/)
+    // Simule un drag : la piste parente mesure 0 en jsdom (pas de layout réel),
+    // donc on force getBoundingClientRect sur le parent pour un delta mesurable.
+    vi.spyOn(bar.parentElement, 'getBoundingClientRect').mockReturnValue({ width: 300 })
+    fireEvent.pointerDown(bar, { clientX: 0 })
+    fireEvent.pointerMove(bar, { clientX: 30 })
+    fireEvent.pointerUp(bar, { clientX: 30 })
+    expect(onReprogrammer).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 1 }),
+      expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+    )
+  })
+
+  it('ne déclenche rien pour un micro-mouvement (< 4px)', () => {
+    const onReprogrammer = vi.fn()
+    withProviders(
+      <GanttChart
+        taches={[
+          { id: 1, libelle: 'Pose', date_debut_prevue: '2026-01-01', date_fin_prevue: '2026-01-11' },
+        ]}
+        onReprogrammer={onReprogrammer}
+      />,
+    )
+    const bar = screen.getByTitle(/Pose — .* \(glisser pour replanifier\)/)
+    vi.spyOn(bar.parentElement, 'getBoundingClientRect').mockReturnValue({ width: 300 })
+    fireEvent.pointerDown(bar, { clientX: 0 })
+    fireEvent.pointerMove(bar, { clientX: 1 })
+    fireEvent.pointerUp(bar, { clientX: 1 })
+    expect(onReprogrammer).not.toHaveBeenCalled()
   })
 })
 

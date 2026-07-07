@@ -13,6 +13,7 @@ const BASE_PAGE_TITLES = [
   ['/dashboard', 'Tableau de bord'],
 
   // Stock
+  ['/stock/modeles-bcf', 'Modèles de bon de commande'],
   ['/stock/bons-commande-fournisseur', 'Bons de commande fournisseur'],
   ['/stock/receptions-fournisseur', 'Réceptions fournisseur'],
   ['/stock/factures-fournisseur', 'Factures fournisseur'],
@@ -38,6 +39,7 @@ const BASE_PAGE_TITLES = [
   ['/ventes/avoirs', 'Avoirs'],
   ['/ventes/paiements', 'Encaissements'],
   ['/ventes/relances', 'Relances / Impayés'],
+  ['/ventes/listes-prix', 'Listes de prix'],
 
   // Chantiers
   ['/chantiers', 'Chantiers'],
@@ -59,13 +61,21 @@ const BASE_PAGE_TITLES = [
   ['/reporting/balance-agee', 'Balance âgée'],
   ['/reporting/archive/client', 'Archive client'],
   ['/reporting/archive/chantier', 'Archive chantier'],
+  ['/reporting/dashboards/partage', 'Partage de dashboards'],
+  ['/reporting/classeurs', 'Classeur'],
+  ['/reporting/sav-sla', 'SLA SAV'],
+  ['/reporting/field-service', 'Analytics terrain'],
+  ['/reporting/scorecard-technicien', 'Scorecard technicien'],
   ['/reporting', 'Reporting & analytics'],
   ['/rapports', 'Rapports'],
+  ['/approbations', 'Approbations'],
+  ['/dashboards-tv', 'Dashboards TV'],
 
   // Administration
   ['/admin/users', 'Utilisateurs'],
   ['/admin/roles', 'Rôles'],
   ['/parametres/notifications', 'Préférences de notifications'],
+  ['/parametres/alertes-kpi', 'Alertes KPI'],
   ['/parametres', 'Paramètres'],
 ]
 
@@ -80,6 +90,7 @@ export const PAGE_TITLES = [...BASE_PAGE_TITLES, ...moduleTitles]
 // qui n'ont pas encore de clés dédiées).
 const TITLE_KEYS = {
   '/dashboard': 'title.dashboard',
+  '/stock/modeles-bcf': 'title.stock.modeles_bcf',
   '/stock/bons-commande-fournisseur': 'title.stock.bons_commande_fournisseur',
   '/stock/receptions-fournisseur': 'title.stock.receptions_fournisseur',
   '/stock/factures-fournisseur': 'title.stock.factures_fournisseur',
@@ -101,6 +112,7 @@ const TITLE_KEYS = {
   '/ventes/avoirs': 'title.ventes.avoirs',
   '/ventes/paiements': 'title.ventes.paiements',
   '/ventes/relances': 'title.ventes.relances',
+  '/ventes/listes-prix': 'title.ventes.listes_prix',
   '/chantiers': 'title.chantiers',
   '/ma-journee': 'title.ma_journee',
   '/interventions': 'title.interventions',
@@ -114,11 +126,19 @@ const TITLE_KEYS = {
   '/reporting/balance-agee': 'title.reporting.balance_agee',
   '/reporting/archive/client': 'title.reporting.archive_client',
   '/reporting/archive/chantier': 'title.reporting.archive_chantier',
+  '/reporting/dashboards/partage': 'title.reporting.dashboards_partage',
+  '/reporting/classeurs': 'title.reporting.classeurs',
+  '/reporting/sav-sla': 'title.reporting.sav_sla',
+  '/reporting/field-service': 'title.reporting.field_service',
+  '/reporting/scorecard-technicien': 'title.reporting.scorecard_technicien',
   '/reporting': 'title.reporting',
   '/rapports': 'title.rapports',
+  '/approbations': 'title.approbations',
+  '/dashboards-tv': 'title.dashboards_tv',
   '/admin/users': 'title.admin.users',
   '/admin/roles': 'title.admin.roles',
   '/parametres/notifications': 'title.parametres.notifications',
+  '/parametres/alertes-kpi': 'title.parametres.alertes_kpi',
   '/parametres': 'title.parametres',
 }
 
@@ -135,6 +155,8 @@ export const SECTION_LABELS = {
   ia: 'Intelligence',
   reporting: 'Analyse',
   rapports: 'Analyse',
+  approbations: 'Analyse',
+  'dashboards-tv': 'Analyse',
   admin: 'Administration',
   parametres: 'Administration',
   activites: 'CRM',

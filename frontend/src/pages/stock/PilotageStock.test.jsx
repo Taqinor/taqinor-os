@@ -16,6 +16,8 @@ vi.mock('../../api/stockApi', () => ({
     rotationStock: vi.fn(),
     expirantBientot: vi.fn(),
     genererBcfReappro: vi.fn(),
+    analyseAchatsXlsx: vi.fn(),
+    analyseAchatsPdf: vi.fn(),
   },
 }))
 
@@ -126,5 +128,47 @@ describe('WR3 — auto-PO (BCF brouillon en un clic)', () => {
     const alert = await screen.findByRole('alert')
     expect(within(alert).queryByText || alert.textContent).toBeTruthy()
     expect(alert.textContent).toContain('Aucun produit à réapprovisionner.')
+  })
+})
+
+describe('ZPUR9/XPUR24 — rapport « analyse d\'achats » (Excel + PDF)', () => {
+  beforeEach(() => {
+    URL.createObjectURL = vi.fn(() => 'blob:mock-url')
+    URL.revokeObjectURL = vi.fn()
+    window.open = vi.fn(() => ({}))
+  })
+
+  it('exporte l\'analyse d\'achats en Excel', async () => {
+    stockApi.analyseAchatsXlsx.mockResolvedValue({ data: new Blob(['x']) })
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    render(<PilotageStock />, { wrapper })
+    const btn = await screen.findByRole('button', { name: /Analyse d'achats \(Excel\)/ })
+    fireEvent.click(btn)
+    await waitFor(() => expect(stockApi.analyseAchatsXlsx).toHaveBeenCalled())
+    clickSpy.mockRestore()
+  })
+
+  it('ouvre le rapport PDF « analyse d\'achats » dans un nouvel onglet', async () => {
+    stockApi.analyseAchatsPdf.mockResolvedValue({
+      data: new Blob(['%PDF-1.7'], { type: 'application/pdf' }),
+    })
+    render(<PilotageStock />, { wrapper })
+    const btn = await screen.findByRole('button', { name: /Analyse d'achats \(PDF\)/ })
+    fireEvent.click(btn)
+    await waitFor(() => {
+      expect(stockApi.analyseAchatsPdf).toHaveBeenCalled()
+      expect(window.open).toHaveBeenCalledWith('blob:mock-url', '_blank', 'noopener')
+    })
+  })
+
+  it('un non-autorisé (403) voit un message honnête sur le PDF', async () => {
+    stockApi.analyseAchatsPdf.mockRejectedValue({
+      response: { status: 403, data: new Blob(['{}'], { type: 'application/json' }) },
+    })
+    render(<PilotageStock />, { wrapper })
+    const btn = await screen.findByRole('button', { name: /Analyse d'achats \(PDF\)/ })
+    fireEvent.click(btn)
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toMatch(/Accès refusé/)
   })
 })

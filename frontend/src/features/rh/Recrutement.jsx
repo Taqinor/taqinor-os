@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
-import { UserPlus, Ban } from 'lucide-react'
+import {
+  UserPlus, Ban, ScanText, Star, BarChart3, FileSignature, CalendarClock,
+} from 'lucide-react'
 import { ListShell } from '../../ui/module'
-import { Segmented, Badge, toast } from '../../ui'
+import {
+  Segmented, Badge, toast, Card, Stat,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Button, Label, Input, Textarea,
+} from '../../ui'
 import { useConfirmDialog } from '../../ui/confirm'
 import { formatDate } from '../../lib/format'
 import rhApi from '../../api/rhApi'
@@ -10,16 +16,21 @@ import {
 } from './constants.jsx'
 
 /* ============================================================================
-   UX26 — EPI, recrutement & évaluations.
+   UX26 + XRH17-23 / ZRH7-9 — EPI, recrutement (ATS complet) & évaluations.
    ----------------------------------------------------------------------------
-   Regroupe sous onglets : Catalogue EPI + dotations, ATS léger (ouvertures de
-   poste → candidatures → embauche), campagnes & évaluations, sanctions. Les
-   transitions (embaucher / valider / annuler) passent par les @actions serveur.
+   ATS : ouvertures → candidatures (avec parsing CV XRH23, mise au vivier XRH21,
+   comparatif XRH17, promesse d'embauche XRH20, planification d'entretien XRH17),
+   vivier (talent pool), statistiques recrutement (XRH22), gabarits d'email
+   (XRH19) & modèles d'évaluation (ZRH7). Toutes les transitions passent par les
+   @actions serveur ; la société est toujours posée côté serveur.
    ========================================================================== */
 
 const VUES = [
   { value: 'epi', label: 'EPI' },
   { value: 'recrutement', label: 'Recrutement' },
+  { value: 'vivier', label: 'Vivier' },
+  { value: 'stats', label: 'Statistiques' },
+  { value: 'gabarits', label: 'Gabarits' },
   { value: 'evaluations', label: 'Évaluations' },
   { value: 'sanctions', label: 'Sanctions' },
 ]
@@ -32,11 +43,20 @@ export default function Recrutement() {
   const [dotations, setDotations] = useState([])
   const [postes, setPostes] = useState([])
   const [candidatures, setCandidatures] = useState([])
+  const [vivier, setVivier] = useState([])
+  const [stats, setStats] = useState(null)
+  const [gabarits, setGabarits] = useState([])
+  const [modelesEval, setModelesEval] = useState([])
   const [campagnes, setCampagnes] = useState([])
   const [evaluations, setEvaluations] = useState([])
   const [sanctions, setSanctions] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+
+  // Dialogues ATS.
+  const [promesseFor, setPromesseFor] = useState(null)
+  const [entretienFor, setEntretienFor] = useState(null)
+  const [comparatifFor, setComparatifFor] = useState(null)
 
   const recharger = () => {
     let vivant = true
@@ -47,16 +67,24 @@ export default function Recrutement() {
       rhApi.getDotationsEpi(),
       rhApi.getOuverturesPoste(),
       rhApi.getCandidatures(),
+      rhApi.getVivier(),
+      rhApi.getRecrutementStatistiques(),
+      rhApi.getGabaritsEmailRecrutement(),
+      rhApi.getModelesEvaluation(),
       rhApi.getCampagnesEvaluation(),
       rhApi.getEvaluationsEmploye(),
       rhApi.getSanctions(),
     ])
-      .then(([ec, dt, op, ca, cp, ev, sa]) => {
+      .then(([ec, dt, op, ca, vv, st, gb, me, cp, ev, sa]) => {
         if (!vivant) return
         setEpiCat(unwrap(ec.data))
         setDotations(unwrap(dt.data))
         setPostes(unwrap(op.data))
         setCandidatures(unwrap(ca.data))
+        setVivier(unwrap(vv.data))
+        setStats(st.data ?? null)
+        setGabarits(unwrap(gb.data))
+        setModelesEval(unwrap(me.data))
         setCampagnes(unwrap(cp.data))
         setEvaluations(unwrap(ev.data))
         setSanctions(unwrap(sa.data))
@@ -90,6 +118,40 @@ export default function Recrutement() {
     }
   }
 
+  const parserCv = async (c) => {
+    try {
+      const res = await rhApi.parserCv(c.id)
+      const champs = res?.data?.champs_remplis ?? []
+      toast.success(champs.length
+        ? `CV analysé — champs pré-remplis : ${champs.join(', ')}.`
+        : 'CV analysé — aucun champ vide à compléter.')
+      recharger()
+    } catch (err) {
+      if (err?.response?.status === 503) {
+        toast.error(err?.response?.data?.detail ?? 'Analyse CV indisponible (clé OCR non configurée).')
+      } else {
+        toast.error(err?.response?.data?.detail ?? 'Analyse du CV impossible.')
+      }
+    }
+  }
+
+  const mettreAuVivier = async (c) => {
+    const ok = await confirm({
+      title: `Mettre ${c.nom} au vivier ?`,
+      description: 'Le candidat restera disponible pour de futures ouvertures.',
+      confirmLabel: 'Mettre au vivier',
+      destructive: false,
+    })
+    if (!ok) return
+    try {
+      await rhApi.mettreAuVivier(c.id, {})
+      toast.success('Candidat ajouté au vivier.')
+      recharger()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Mise au vivier impossible.')
+    }
+  }
+
   const validerEval = async (e) => {
     try {
       await rhApi.validerEvaluation(e.id)
@@ -113,6 +175,22 @@ export default function Recrutement() {
       recharger()
     } catch (err) {
       toast.error(err?.response?.data?.detail ?? 'Annulation impossible.')
+    }
+  }
+
+  const supprimerGabarit = async (g) => {
+    const ok = await confirmDelete({
+      title: 'Supprimer ce gabarit ?',
+      description: `Le gabarit « ${g.sujet || g.etape} » sera supprimé.`,
+      confirmLabel: 'Supprimer',
+    })
+    if (!ok) return
+    try {
+      await rhApi.deleteGabaritEmailRecrutement(g.id)
+      toast.success('Gabarit supprimé.')
+      recharger()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Suppression impossible.')
     }
   }
 
@@ -146,6 +224,26 @@ export default function Recrutement() {
     { id: 'etape', header: 'Étape', width: 130, accessor: (c) => c.etape || '', cell: (_v, c) => <EtapeCandidature status={c.etape} label={c.etape_display} /> },
   ], [])
 
+  const vivierColumns = useMemo(() => [
+    { id: 'nom', header: 'Candidat', width: 180, accessor: (c) => c.nom || '', cell: (v) => <span className="font-medium">{v || '—'}</span> },
+    { id: 'email', header: 'Email', width: 200, accessor: (c) => c.email || '', cell: (v) => v || '—' },
+    { id: 'tags', header: 'Tags', width: 220, accessor: (c) => c.tags_vivier || '', cell: (v) => v || '—' },
+    { id: 'recu', header: 'Reçu le', width: 120, searchable: false, accessor: (c) => c.date_candidature || c.date_creation || '', cell: (v) => (v ? formatDate(v) : '—') },
+  ], [])
+
+  const gabaritColumns = useMemo(() => [
+    { id: 'etape', header: 'Étape', width: 150, accessor: (g) => g.etape_display || g.etape || '', cell: (v) => v || '—' },
+    { id: 'sujet', header: 'Sujet', width: 260, accessor: (g) => g.sujet || '', cell: (v) => <span className="font-medium">{v || '—'}</span> },
+    { id: 'actif', header: 'Actif', width: 90, accessor: (g) => (g.actif ? 'oui' : 'non'), cell: (_v, g) => <Badge tone={g.actif ? 'success' : 'neutral'}>{g.actif ? 'Actif' : 'Inactif'}</Badge> },
+  ], [])
+
+  const modeleEvalColumns = useMemo(() => [
+    { id: 'nom', header: 'Modèle', width: 220, accessor: (m) => m.nom || '', cell: (v) => <span className="font-medium">{v || '—'}</span> },
+    { id: 'departement', header: 'Département', width: 160, accessor: (m) => m.departement_nom || (m.departement ? String(m.departement) : ''), cell: (v) => v || 'Tous' },
+    { id: 'questions', header: 'Questions', width: 110, align: 'right', searchable: false, accessor: (m) => (Array.isArray(m.questions) ? m.questions.length : (m.questions_count ?? '')), cell: (v) => (v === '' ? '—' : v) },
+    { id: 'actif', header: 'Actif', width: 90, accessor: (m) => (m.actif ? 'oui' : 'non'), cell: (_v, m) => <Badge tone={m.actif ? 'success' : 'neutral'}>{m.actif ? 'Actif' : 'Inactif'}</Badge> },
+  ], [])
+
   const evalColumns = useMemo(() => [
     { id: 'employe', header: 'Employé', width: 180, accessor: (e) => e.employe_nom || String(e.employe || ''), cell: (v) => <span className="font-medium">{v || '—'}</span> },
     { id: 'evaluateur', header: 'Évaluateur', width: 160, accessor: (e) => e.evaluateur_nom || String(e.evaluateur || ''), cell: (v) => v || '—' },
@@ -161,15 +259,29 @@ export default function Recrutement() {
     { id: 'statut', header: 'Statut', width: 120, accessor: (s) => s.statut || '', cell: (_v, s) => <StatutSanction status={s.statut} label={s.statut_display} /> },
   ], [])
 
-  const candidatureActions = (c) => (c.etape !== 'embauche' && c.etape !== 'rejete'
-    ? [{ id: 'embaucher', label: 'Embaucher', icon: UserPlus, onClick: () => embaucher(c) }]
-    : [])
+  const candidatureActions = (c) => {
+    const actions = []
+    if (c.etape !== 'embauche' && c.etape !== 'rejete') {
+      actions.push({ id: 'embaucher', label: 'Embaucher', icon: UserPlus, onClick: () => embaucher(c) })
+    }
+    actions.push({ id: 'entretien', label: 'Planifier un entretien', icon: CalendarClock, onClick: () => setEntretienFor(c) })
+    actions.push({ id: 'promesse', label: 'Promesse d’embauche', icon: FileSignature, onClick: () => setPromesseFor(c) })
+    actions.push({ id: 'comparatif', label: 'Comparer les candidats', icon: BarChart3, onClick: () => setComparatifFor(c) })
+    actions.push({ id: 'cv', label: 'Analyser le CV', icon: ScanText, onClick: () => parserCv(c) })
+    if (!c.vivier) {
+      actions.push({ id: 'vivier', label: 'Mettre au vivier', icon: Star, onClick: () => mettreAuVivier(c) })
+    }
+    return actions
+  }
   const evalActions = (e) => (e.statut === 'brouillon'
     ? [{ id: 'valider', label: 'Valider', icon: UserPlus, onClick: () => validerEval(e) }]
     : [])
   const sanctionActions = (s) => (s.statut !== 'annulee'
     ? [{ id: 'annuler', label: 'Annuler', icon: Ban, destructive: true, onClick: () => annulerSanction(s) }]
     : [])
+  const gabaritActions = (g) => [
+    { id: 'suppr', label: 'Supprimer', icon: Ban, destructive: true, onClick: () => supprimerGabarit(g) },
+  ]
 
   return (
     <div className="page flex flex-col gap-4">
@@ -196,6 +308,22 @@ export default function Recrutement() {
             emptyTitle="Aucune candidature" emptyDescription="Aucune candidature reçue." />
         </div>
       )}
+      {vue === 'vivier' && (
+        <ListShell title="Vivier de talents" columns={vivierColumns} rows={vivier} loading={loading} error={error}
+          searchable exportName="vivier" emptyTitle="Vivier vide"
+          emptyDescription="Aucun candidat au vivier. Mettez des candidatures au vivier pour les réutiliser." />
+      )}
+      {vue === 'stats' && <StatsRecrutement stats={stats} loading={loading} />}
+      {vue === 'gabarits' && (
+        <div className="flex flex-col gap-4">
+          <ListShell title="Gabarits d’email (par étape)" columns={gabaritColumns} rows={gabarits} loading={loading} error={error}
+            searchable rowActions={gabaritActions} exportName="gabarits-email"
+            emptyTitle="Aucun gabarit" emptyDescription="Aucun gabarit d’email de recrutement." />
+          <ListShell title="Modèles d’évaluation" columns={modeleEvalColumns} rows={modelesEval} loading={loading} error={error}
+            searchable exportName="modeles-evaluation"
+            emptyTitle="Aucun modèle" emptyDescription="Aucun modèle d’évaluation réutilisable." />
+        </div>
+      )}
       {vue === 'evaluations' && (
         <div className="flex flex-col gap-4">
           <ListShell title="Campagnes d’évaluation"
@@ -216,7 +344,232 @@ export default function Recrutement() {
           searchable rowActions={sanctionActions} exportName="sanctions"
           emptyTitle="Aucune sanction" emptyDescription="Aucune sanction enregistrée." />
       )}
+
+      {promesseFor && (
+        <PromesseDialog
+          candidature={promesseFor}
+          onClose={() => setPromesseFor(null)}
+          onSaved={() => { setPromesseFor(null); recharger() }}
+        />
+      )}
+      {entretienFor && (
+        <EntretienDialog
+          candidature={entretienFor}
+          onClose={() => setEntretienFor(null)}
+          onSaved={() => { setEntretienFor(null); recharger() }}
+        />
+      )}
+      {comparatifFor && (
+        <ComparatifDialog
+          candidature={comparatifFor}
+          onClose={() => setComparatifFor(null)}
+        />
+      )}
     </div>
+  )
+}
+
+/* ── XRH22 — Statistiques de recrutement ── */
+function StatsRecrutement({ stats, loading }) {
+  if (loading) {
+    return <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {Array.from({ length: 4 }).map((_u, i) => <Card key={i} className="h-24 animate-pulse" />)}
+    </div>
+  }
+  if (!stats) {
+    return <p className="text-sm text-muted-foreground">Aucune statistique disponible.</p>
+  }
+  const entonnoir = stats.entonnoir || stats.funnel || {}
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Card className="p-4"><Stat label="Délai d’embauche moyen" value={stats.delai_embauche_moyen != null ? `${stats.delai_embauche_moyen} j` : '—'} icon={CalendarClock} /></Card>
+        <Card className="p-4"><Stat label="Candidatures" value={stats.total_candidatures ?? '—'} icon={UserPlus} /></Card>
+        <Card className="p-4"><Stat label="Embauches" value={stats.total_embauches ?? '—'} icon={UserPlus} /></Card>
+        <Card className="p-4"><Stat label="Ouvertures actives" value={stats.ouvertures_actives ?? '—'} icon={BarChart3} /></Card>
+      </div>
+      {Object.keys(entonnoir).length > 0 && (
+        <Card className="p-4">
+          <h3 className="mb-3 text-sm font-medium">Entonnoir par étape</h3>
+          <ul className="flex flex-col gap-2">
+            {Object.entries(entonnoir).map(([etape, n]) => (
+              <li key={etape} className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">{etape}</span>
+                <Badge tone="info">{n}</Badge>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+    </div>
+  )
+}
+
+/* ── XRH20 — Créer une promesse d'embauche ── */
+function PromesseDialog({ candidature, onClose, onSaved }) {
+  const [poste, setPoste] = useState('')
+  const [salaire, setSalaire] = useState('')
+  const [dateDebut, setDateDebut] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    setSaving(true)
+    setServerError(null)
+    try {
+      await rhApi.createPromesseEmbauche({
+        candidature: candidature.id,
+        poste_propose: poste || '',
+        salaire_propose: salaire || null,
+        date_debut_prevue: dateDebut || null,
+      })
+      toast.success('Promesse d’embauche créée.')
+      onSaved?.()
+    } catch (err) {
+      setServerError(err?.response?.data?.detail
+        || 'Création de la promesse impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Promesse d’embauche — {candidature.nom}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="pr-poste">Poste proposé</Label>
+            <Input id="pr-poste" value={poste} onChange={(e) => setPoste(e.target.value)} placeholder="Ex. Technicien photovoltaïque" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="pr-salaire">Salaire proposé (MAD)</Label>
+              <Input id="pr-salaire" type="number" step="any" value={salaire} onChange={(e) => setSalaire(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="pr-debut">Début prévu</Label>
+              <Input id="pr-debut" type="date" value={dateDebut} onChange={(e) => setDateDebut(e.target.value)} />
+            </div>
+          </div>
+          {serverError && <p className="text-sm text-destructive" role="alert">{serverError}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+            <Button type="submit" disabled={saving}>{saving ? 'Création…' : 'Créer la promesse'}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* ── XRH17 — Planifier un entretien de recrutement ── */
+function EntretienDialog({ candidature, onClose, onSaved }) {
+  const [dateHeure, setDateHeure] = useState('')
+  const [type, setType] = useState('')
+  const [lieu, setLieu] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!dateHeure) return
+    setSaving(true)
+    setServerError(null)
+    try {
+      await rhApi.createEntretienRecrutement({
+        candidature: candidature.id,
+        date_heure: dateHeure,
+        type_entretien: type || undefined,
+        lieu: lieu || '',
+      })
+      toast.success('Entretien planifié.')
+      onSaved?.()
+    } catch (err) {
+      setServerError(err?.response?.data?.detail
+        || 'Planification de l’entretien impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Planifier un entretien — {candidature.nom}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="en-dt">Date & heure</Label>
+            <Input id="en-dt" type="datetime-local" value={dateHeure} onChange={(e) => setDateHeure(e.target.value)} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="en-type">Type</Label>
+              <Input id="en-type" value={type} onChange={(e) => setType(e.target.value)} placeholder="Ex. Technique, RH" />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="en-lieu">Lieu</Label>
+              <Input id="en-lieu" value={lieu} onChange={(e) => setLieu(e.target.value)} placeholder="Bureau / visio" />
+            </div>
+          </div>
+          {serverError && <p className="text-sm text-destructive" role="alert">{serverError}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+            <Button type="submit" disabled={!dateHeure || saving}>{saving ? 'Planification…' : 'Planifier'}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* ── XRH17 — Comparatif des candidats d'une même ouverture ── */
+function ComparatifDialog({ candidature, onClose }) {
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    let vivant = true
+    rhApi.getComparatifCandidats(candidature.id)
+      .then((res) => { if (vivant) setRows(unwrap(res.data)) })
+      .catch(() => { if (vivant) setError('Comparatif indisponible.') })
+      .finally(() => { if (vivant) setLoading(false) })
+    return () => { vivant = false }
+  }, [candidature.id])
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Comparatif des candidats</DialogTitle>
+        </DialogHeader>
+        {loading && <p className="text-sm text-muted-foreground">Chargement…</p>}
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        {!loading && !error && (
+          rows.length === 0
+            ? <p className="text-sm text-muted-foreground">Aucun candidat noté pour cette ouverture.</p>
+            : (
+              <ul className="flex flex-col gap-2">
+                {rows.map((r, i) => (
+                  <li key={r.id ?? i} className="flex items-center justify-between rounded-lg border border-border bg-card px-3 py-2 text-sm">
+                    <span className="font-medium">{r.nom || `Candidat ${r.id}`}</span>
+                    <Badge tone="info">{r.note_moyenne != null ? Number(r.note_moyenne).toFixed(1) : '—'}</Badge>
+                  </li>
+                ))}
+              </ul>
+            )
+        )}
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>Fermer</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

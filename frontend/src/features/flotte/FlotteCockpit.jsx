@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Truck, Gauge, Wrench, ShieldCheck, Fuel } from 'lucide-react'
+import { Truck, Gauge, Wrench, ShieldCheck, Fuel, LineChart } from 'lucide-react'
 import { ModuleDashboard, EcheanceCenter } from '../../ui/module'
 import PageHeader from '../../components/layout/PageHeader'
 import flotteApi from '../../api/flotteApi'
@@ -88,6 +88,14 @@ export default function FlotteCockpit() {
       hint: 'Échéances d’entretien ouvertes',
       icon: Wrench,
       to: '/flotte/entretien',
+    },
+    {
+      // XFLT7/15/18 — accès direct au pivot des coûts, remplacement, budget.
+      label: 'Analyse des coûts',
+      value: '→',
+      hint: 'Pivot, remplacement & budget vs réalisé',
+      icon: LineChart,
+      to: '/flotte/analyse-couts',
     },
   ]
 

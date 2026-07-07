@@ -214,11 +214,13 @@ vi.mock('../../api/posApi', () => ({
     getProduits: () => Promise.resolve({ data: { results: [] } }),
     searchClients: () => Promise.resolve({ data: { results: [] } }),
     createClient: () => Promise.resolve({ data: { id: 1, nom: 'Client comptoir' } }),
-    createFacture: () => Promise.resolve({ data: { id: 1 } }),
-    createLigneFacture: () => Promise.resolve({ data: {} }),
-    enregistrerPaiement: () => Promise.resolve({ data: {} }),
-    emettreFacture: () => Promise.resolve({ data: {} }),
-    getFacture: () => Promise.resolve({ data: { id: 1, reference: 'FAC-0001' } }),
+    createVente: () => Promise.resolve({ data: { id: 1 } }),
+    ajouterLigne: () => Promise.resolve({ data: {} }),
+    validerVente: () => Promise.resolve({ data: { id: 1, reference: 'VC-0001' } }),
+    getVente: () => Promise.resolve({ data: { id: 1, reference: 'VC-0001' } }),
+    ticketPdfUrl: (id) => `/pos/ventes/${id}/ticket-pdf/`,
+    ticketEscpos: () => Promise.resolve({ data: { sent_to_printer: false } }),
+    ticketShareLink: () => Promise.resolve({ data: { token: 'tok123' } }),
   },
 }))
 

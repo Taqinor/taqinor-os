@@ -20,3 +20,14 @@ test('getAgentActions cible bien Django (chemin absolu /api/django), pas FastAPI
   // Le chemin commence par /api/ → l'intercepteur ne le re-préfixe pas.
   assert.match(src, /getAgentActions:[\s\S]*?'\/api\/django\//)
 })
+
+/* YHARD2 — journal des actions IA confirmées + annulation. Mêmes endpoints
+   DJANGO absolus (apps/agent), même raison (pas de préfixe /api/fastapi). */
+
+test('getAgentActionLogs → GET /api/django/agent/logs/', () => {
+  assert.match(src, /getAgentActionLogs:[\s\S]*?iaApi_instance\.get\('\/api\/django\/agent\/logs\/'\)/)
+})
+
+test('undoAgentAction → POST /api/django/agent/logs/<id>/annuler/', () => {
+  assert.match(src, /undoAgentAction:[\s\S]*?iaApi_instance\.post\(`\/api\/django\/agent\/logs\/\$\{id\}\/annuler\/`\)/)
+})

@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Plus, FileText, Undo2, Package, Trash2 } from 'lucide-react'
+import {
+  Plus, FileText, Undo2, Package, Trash2, Copy, RotateCcw, Receipt, LayoutTemplate,
+} from 'lucide-react'
 import stockApi from '../../api/stockApi'
+import messagesApi from '../../api/messagesApi'
 import BcfProduitPicker from './BcfProduitPicker'
 import ProduitQuickCreateModal from '../../components/ProduitQuickCreateModal'
 import { useCanCreateProduit } from '../../hooks/useHasPermission'
@@ -157,6 +160,49 @@ function RetourModal({ bcf, onClose, onDone }) {
   )
 }
 
+// ── ZPUR11 — Modal d'annulation : motif OBLIGATOIRE (le backend refuse un
+// motif vide en 400). Export nommé : testé directement.
+export function MotifAnnulationModal({ onClose, onConfirm, busy }) {
+  const [motif, setMotif] = useState('')
+  const [error, setError] = useState(null)
+
+  const confirmer = () => {
+    if (!motif.trim()) { setError('Le motif est obligatoire.'); return }
+    setError(null)
+    onConfirm(motif.trim())
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Annuler le bon de commande</DialogTitle>
+          <DialogDescription>
+            Un motif d&apos;annulation est requis (tracé, horodaté).
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium" htmlFor="bcf-motif-annulation">Motif</label>
+          <Textarea id="bcf-motif-annulation" rows={3} value={motif}
+                    onChange={(e) => setMotif(e.target.value)}
+                    placeholder="ex. commande passée par erreur, fournisseur indisponible…" />
+        </div>
+        {error && (
+          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+            {error}
+          </div>
+        )}
+        <DialogFooter>
+          <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
+          <Button type="button" variant="destructive" loading={busy} onClick={confirmer}>
+            {busy ? '…' : 'Confirmer l\'annulation'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ── Modal de création / consultation / réception d'un BCF ──
 // Export nommé : testé directement (QS1 — bouton « PDF (interne) »).
 export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
@@ -172,12 +218,27 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
   const [note, setNote] = useState(bcf?.note ?? '')
   const [lignes, setLignes] = useState(
     (bcf?.lignes ?? []).map((l) => ({ ...l })))
+  // ZPUR8 — « Other Information » : acheteur (défaut = créateur côté serveur),
+  // référence fournisseur, note de bas de page, incoterm reporté.
+  const [acheteur, setAcheteur] = useState(bcf?.acheteur ?? '')
+  const [refFournisseur, setRefFournisseur] = useState(bcf?.ref_fournisseur ?? '')
+  const [noteBasPage, setNoteBasPage] = useState(bcf?.note_bas_page ?? '')
+  const [incoterm, setIncoterm] = useState(bcf?.incoterm ?? '')
+  const [membres, setMembres] = useState([])
   // Saisies de réception : { [ligneId]: quantité }
   const [receptions, setReceptions] = useState({})
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [showRetour, setShowRetour] = useState(false)
+  const [showAnnuler, setShowAnnuler] = useState(false)
   const [info, setInfo] = useState(null)
+
+  // ZPUR8 — liste des membres de la société pour le sélecteur « acheteur ».
+  useEffect(() => {
+    messagesApi.listCompanyMembers()
+      .then((r) => setMembres(r.data?.results ?? r.data ?? []))
+      .catch(() => {})
+  }, [])
   // QS2 — produits créés à la volée (fusionnés au catalogue prop, en lecture
   // seule) + la ligne sur laquelle déposer le produit fraîchement créé.
   const [extraProduits, setExtraProduits] = useState([])
@@ -251,6 +312,12 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
     fournisseur: fournisseur || null,
     date_commande: dateCommande || null,
     note: note || null,
+    // ZPUR8 — « Other Information » : acheteur, réf. fournisseur, note de
+    // bas de page + report incoterm (édité au document, jamais recalculé).
+    acheteur: acheteur || null,
+    ref_fournisseur: refFournisseur || null,
+    note_bas_page: noteBasPage || null,
+    incoterm: incoterm || null,
     // XPUR16 — une ligne libre/service (pas de produit catalogue) est gardée
     // tant qu'elle porte une désignation libre (« Transport Casablanca »…).
     lignes: lignes
@@ -366,17 +433,65 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
     } finally { setBusy(false) }
   }
 
-  const annuler = async () => {
-    if (!window.confirm('Annuler ce bon de commande ?')) return
+  // ZPUR11 — motif OBLIGATOIRE, saisi via MotifAnnulationModal (le backend
+  // refuse un motif vide en 400).
+  const annuler = async (motif) => {
     setBusy(true); setError(null)
     try {
-      await stockApi.annulerBcf(bcf.id)
+      await stockApi.annulerBcf(bcf.id, motif)
+      setShowAnnuler(false)
       onSaved?.()
       onClose()
     } catch (err) {
       setError(frBcfError(err, "L'annulation a échoué."))
     } finally { setBusy(false) }
   }
+
+  // ZPUR11 — réouvre un BCF ANNULE en BROUILLON (refusé si des réceptions
+  // confirmées existent — le backend renvoie alors un 400 explicite).
+  const rouvrir = async () => {
+    setBusy(true); setError(null)
+    try {
+      await stockApi.rouvrirBcf(bcf.id)
+      setInfo('Bon de commande réouvert (repassé en brouillon).')
+      onSaved?.()
+    } catch (err) {
+      setError(frBcfError(err, 'La réouverture a échoué.'))
+    } finally { setBusy(false) }
+  }
+
+  // ZPUR4 — clone ce BCF en un nouveau BROUILLON (quantités reçues à zéro).
+  const dupliquer = async () => {
+    setBusy(true); setError(null)
+    try {
+      await stockApi.dupliquerBcf(bcf.id)
+      setInfo('Bon de commande dupliqué en nouveau brouillon.')
+      onSaved?.()
+      onClose()
+    } catch (err) {
+      setError(frBcfError(err, 'La duplication a échoué.'))
+    } finally { setBusy(false) }
+  }
+
+  // ZPUR1 — facture directement ce BCF (lignes « sur commande » uniquement,
+  // sans exiger de réception préalable). Le backend refuse sinon (400).
+  const facturer = async () => {
+    setBusy(true); setError(null)
+    try {
+      const r = await stockApi.facturerBcf(bcf.id)
+      setInfo(`Facture fournisseur ${r.data?.reference ?? ''} créée.`)
+      onSaved?.()
+    } catch (err) {
+      setError(frBcfError(err, 'La facturation directe a échoué.'))
+    } finally { setBusy(false) }
+  }
+
+  // ZPUR1 — gating : au moins une ligne produit porte la politique « sur
+  // commande » (comme le backend l'exige — jamais deviné côté client).
+  const peutFacturerDirect = !isNew && statut !== 'annule' && lignes.some((l) => {
+    const prod = allProduits.find((p) => String(p.id) === String(l.produit))
+    return prod?.politique_facturation_achat === 'sur_commande'
+  })
 
   // QS1 — PDF fournisseur : ouvre le PDF dans un nouvel onglet (repli :
   // téléchargement si popup bloquée) et fait remonter la VRAIE erreur
@@ -439,6 +554,44 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
             <Input id="bcf-date" type="date" value={dateCommande ?? ''}
                    disabled={!editableLignes}
                    onChange={(e) => setDateCommande(e.target.value)} />
+          </div>
+        </div>
+
+        {/* ── ZPUR8 — « Other Information » : acheteur, réf. fournisseur,
+            note de bas de page, incoterm (imprimés sur le PDF BCF). ── */}
+        <div className="grid gap-4 rounded-lg border border-border p-3 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium" htmlFor="bcf-acheteur">Acheteur</label>
+            <Select value={acheteur ? String(acheteur) : '__none'}
+                    onValueChange={(v) => setAcheteur(v === '__none' ? '' : v)}>
+              <SelectTrigger id="bcf-acheteur"><SelectValue placeholder="— Créateur par défaut —" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none">— Créateur par défaut —</SelectItem>
+                {membres.map((m) => (
+                  <SelectItem key={m.id} value={String(m.id)}>
+                    {m.username ?? m.email ?? `#${m.id}`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium" htmlFor="bcf-ref-fou">Référence fournisseur</label>
+            <Input id="bcf-ref-fou" value={refFournisseur ?? ''}
+                   placeholder="Numéro de commande côté fournisseur"
+                   onChange={(e) => setRefFournisseur(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium" htmlFor="bcf-incoterm">Incoterm</label>
+            <Input id="bcf-incoterm" value={incoterm ?? ''}
+                   placeholder="ex. FOB, EXW, DAP…"
+                   onChange={(e) => setIncoterm(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium" htmlFor="bcf-note-bas-page">Note de bas de page (PDF)</label>
+            <Input id="bcf-note-bas-page" value={noteBasPage ?? ''}
+                   placeholder="Mention imprimée en bas du PDF"
+                   onChange={(e) => setNoteBasPage(e.target.value)} />
           </div>
         </div>
 
@@ -610,8 +763,29 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
             </Button>
           )}
           {!isNew && (statut === 'brouillon' || statut === 'envoye') && (
-            <Button type="button" variant="destructive" loading={busy} onClick={annuler}>
+            <Button type="button" variant="destructive" loading={busy} onClick={() => setShowAnnuler(true)}>
               Annuler le BC
+            </Button>
+          )}
+          {/* ZPUR11 — un BCF ANNULE peut être réouvert en brouillon (refusé
+              côté serveur si des réceptions confirmées existent). */}
+          {!isNew && statut === 'annule' && (
+            <Button type="button" variant="outline" loading={busy} onClick={rouvrir}>
+              <RotateCcw /> Réouvrir
+            </Button>
+          )}
+          {/* ZPUR4 — clone en nouveau brouillon (jamais sur un BCF neuf). */}
+          {!isNew && (
+            <Button type="button" variant="outline" loading={busy} onClick={dupliquer}>
+              <Copy /> Dupliquer
+            </Button>
+          )}
+          {/* ZPUR1 — facture directement les lignes « sur commande », sans
+              exiger de réception préalable. */}
+          {peutFacturerDirect && (
+            <Button type="button" variant="outline" loading={busy} onClick={facturer}
+                    title="Facture directement les lignes en politique « sur commande »">
+              <Receipt /> Facturer (sur commande)
             </Button>
           )}
           <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
@@ -665,6 +839,11 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
         <RetourModal bcf={bcf} onClose={() => setShowRetour(false)}
                      onDone={(msg) => { onSaved?.(); if (msg) setInfo(msg) }} />
       )}
+      {showAnnuler && (
+        <MotifAnnulationModal busy={busy}
+                               onClose={() => setShowAnnuler(false)}
+                               onConfirm={annuler} />
+      )}
       {/* QS2 — création rapide de produit (réutilise la modale QG6) puis dépôt
           sur la ligne du BCF avec pré-remplissage du prix d'achat interne. */}
       {canCreateProduit && (
@@ -686,6 +865,8 @@ export default function BonsCommandeFournisseur() {
   const [fournisseurs, setFournisseurs] = useState([])
   const [produits, setProduits] = useState([])
   const [statutFiltre, setStatutFiltre] = useState('')
+  const [fusionInfo, setFusionInfo] = useState(null)
+  const [fusionError, setFusionError] = useState(null)
   // Réapprovisionnement (706) : un BCF brouillon pré-rempli demandé via l'état
   // de navigation depuis le catalogue ouvre directement le détail.
   const prefill = location.state?.prefillBcf ?? null
@@ -698,10 +879,21 @@ export default function BonsCommandeFournisseur() {
       : null), // bcf object or {} for new
   )
 
+  // ZPUR3 — un BCF brouillon généré depuis un modèle (« Modèles » →
+  // « Générer un BCF ») s'ouvre directement ici en édition avant envoi.
+  const ouvrirBcfId = location.state?.ouvrirBcfId ?? null
+
   // Nettoie l'état de navigation pour ne pas rouvrir le brouillon au retour.
   useEffect(() => {
-    if (prefill) navigate(location.pathname, { replace: true, state: null })
-  }, [prefill, navigate, location.pathname])
+    if (prefill || ouvrirBcfId) navigate(location.pathname, { replace: true, state: null })
+  }, [prefill, ouvrirBcfId, navigate, location.pathname])
+
+  useEffect(() => {
+    if (!ouvrirBcfId) return
+    stockApi.getBonCommandeFournisseur(ouvrirBcfId)
+      .then((r) => setSelected(r.data))
+      .catch(() => {})
+  }, [ouvrirBcfId])
 
   // setState arrive dans les callbacks asynchrones (jamais synchrone dans
   // l'effet) : l'état initial loading=true couvre le premier chargement.
@@ -734,6 +926,22 @@ export default function BonsCommandeFournisseur() {
     } catch { setSelected(b) }
   }
 
+  // ZPUR6 — fusionne une sélection de BCF BROUILLON du même fournisseur en
+  // un BCF cible unique (quantités cumulées par produit) ; les sources
+  // passent en `annule`. Le backend refuse (400) toute sélection invalide
+  // (statuts mélangés, fournisseurs différents, moins de 2 BCF).
+  const fusionner = async (selRows, selKeys, clear) => {
+    setFusionError(null); setFusionInfo(null)
+    try {
+      const r = await stockApi.fusionnerBcf([...selKeys])
+      setFusionInfo(`BCF fusionnés en ${r.data?.reference ?? 'un nouveau bon de commande'}.`)
+      clear()
+      reload()
+    } catch (err) {
+      setFusionError(frBcfError(err, 'La fusion a échoué.'))
+    }
+  }
+
   const columns = useMemo(() => [
     { id: 'reference', header: 'Référence', minWidth: 140,
       accessor: (b) => b.reference ?? '' },
@@ -760,10 +968,27 @@ export default function BonsCommandeFournisseur() {
           <h1 className="font-display text-xl font-semibold tracking-tight">Bons de commande fournisseur</h1>
           <p className="text-sm text-muted-foreground">{rows.length} bon(s) de commande</p>
         </div>
-        <Button onClick={() => setSelected({})}>
-          <Plus /> Nouveau bon de commande
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* ZPUR3 — modèles de BCF réutilisables (purchase templates). */}
+          <Button variant="outline" onClick={() => navigate('/stock/modeles-bcf')}>
+            <LayoutTemplate /> Modèles
+          </Button>
+          <Button onClick={() => setSelected({})}>
+            <Plus /> Nouveau bon de commande
+          </Button>
+        </div>
       </header>
+
+      {fusionError && (
+        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+          {fusionError}
+        </div>
+      )}
+      {fusionInfo && (
+        <div className="rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
+          {fusionInfo}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="w-48 sm:w-56">
@@ -797,6 +1022,21 @@ export default function BonsCommandeFournisseur() {
         searchPlaceholder="Rechercher (référence, fournisseur)…"
         globalColumns={['reference', 'fournisseur_nom']}
         onRowClick={openBcf}
+        selectable
+        bulkActions={(selRows, selKeys, clear) => (
+          // ZPUR6 — n'affiche l'action que si la sélection est éligible
+          // (≥2 BCF BROUILLON du même fournisseur) — le backend re-vérifie
+          // de toute façon, mais autant ne pas proposer une action vouée à
+          // échouer.
+          selRows.length >= 2
+          && selRows.every((b) => b.statut === 'brouillon')
+          && new Set(selRows.map((b) => b.fournisseur)).size === 1
+            ? [{
+                id: 'fusionner', label: 'Fusionner en un seul BCF',
+                onClick: () => fusionner(selRows, selKeys, clear),
+              }]
+            : []
+        )}
         emptyTitle="Aucun bon de commande fournisseur"
         emptyDescription="Créez-en un avec « Nouveau bon de commande » ou depuis le besoin matériel d'un chantier."
         aria-label="Bons de commande fournisseur"

@@ -19,6 +19,12 @@ const parametresApi = {
     api.get('/parametres/statuts/effective/', { params: { domaine } }),
   saveStatuts: (domaine, statuts) =>
     api.put('/parametres/statuts/bulk/', { domaine, statuts }),
+  // ZSAL5 — modèles d'e-mail éditables par clé (envoi_devis, etc.), parité
+  // WhatsApp (getMessages/saveMessage). RENDU uniquement — jamais de statut
+  // touché ici (apps/parametres/views_email.py EmailTemplateViewSet).
+  getEmailTemplates: () => api.get('/parametres/email-templates/effective/'),
+  saveEmailTemplates: (templates) =>
+    api.put('/parametres/email-templates/bulk/', { templates }),
   // D2/N60/N67/N26/N59 — modèles de documents éditables (textes du devis).
   // Tout champ vide = repli moteur sur le littéral historique (PDF identique).
   getDocumentTemplates: () => api.get('/parametres/document-templates/'),

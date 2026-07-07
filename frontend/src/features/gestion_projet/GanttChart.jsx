@@ -1,8 +1,8 @@
-import { useMemo } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Flag } from 'lucide-react'
 import { formatDate } from '../../lib/format'
 import { EmptyState } from '../../ui'
-import { timelineBounds, barGeometry, markerGeometry } from './gantt'
+import { timelineBounds, barGeometry, markerGeometry, parseDate } from './gantt'
 
 /* ============================================================================
    UX39 — Gantt CSS/SVG léger (aucune bibliothèque Gantt).
@@ -21,11 +21,77 @@ const TONE_BG = {
   bloque: 'var(--destructive)',
 }
 
+const MS_PER_DAY = 24 * 60 * 60 * 1000
+const pad2 = (n) => String(n).padStart(2, '0')
+const toISO = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+
+// PROJ11 — Barre draggable horizontalement : le déplacement en pixels est
+// converti en un nombre de jours entiers (arrondi) via la largeur RÉELLE de la
+// piste parente (mesurée au pointerdown), puis
+// `onReprogrammer(tache, nouvelleDateDebutISO)` est appelé au relâchement (la
+// durée est conservée côté serveur — voir l'action `reprogrammer`).
+function DraggableBar({ tache, geo, bg, min, max, onReprogrammer, disabled }) {
+  const [dragPx, setDragPx] = useState(0)
+  const [dragging, setDragging] = useState(false)
+  const startXRef = useRef(0)
+  const trackWidthRef = useRef(0)
+
+  const handlePointerDown = (e) => {
+    if (disabled || !onReprogrammer) return
+    startXRef.current = e.clientX
+    trackWidthRef.current = e.currentTarget.parentElement?.getBoundingClientRect().width ?? 0
+    setDragging(true)
+    e.currentTarget.setPointerCapture?.(e.pointerId)
+  }
+
+  const handlePointerMove = (e) => {
+    if (!dragging) return
+    setDragPx(e.clientX - startXRef.current)
+  }
+
+  const handlePointerUp = () => {
+    if (!dragging) return
+    setDragging(false)
+    const trackWidth = trackWidthRef.current
+    const currentDragPx = dragPx
+    setDragPx(0)
+    if (!trackWidth || Math.abs(currentDragPx) < 4) return
+    const totalMs = parseDate(max).getTime() - parseDate(min).getTime()
+    const deltaMs = (currentDragPx / trackWidth) * totalMs
+    const deltaJours = Math.round(deltaMs / MS_PER_DAY)
+    if (deltaJours === 0) return
+    const debut = parseDate(tache.date_debut_prevue)
+    if (!debut) return
+    const nouvelleDate = new Date(debut.getTime() + deltaJours * MS_PER_DAY)
+    onReprogrammer(tache, toISO(nouvelleDate))
+  }
+
+  return (
+    <div
+      className={`absolute top-0.5 flex h-4 items-center overflow-hidden rounded px-1 text-[10px] leading-none text-white ${onReprogrammer && !disabled ? 'cursor-grab active:cursor-grabbing' : ''}`}
+      style={{
+        left: `${geo.offsetPct}%`,
+        width: `${geo.widthPct}%`,
+        backgroundColor: bg,
+        transform: dragging ? `translateX(${dragPx}px)` : undefined,
+      }}
+      title={`${tache.libelle} — ${formatDate(tache.date_debut_prevue)} → ${formatDate(tache.date_fin_prevue)}${onReprogrammer && !disabled ? ' (glisser pour replanifier)' : ''}`}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+    >
+      {typeof tache.avancement_pct === 'number' && tache.avancement_pct > 0 ? `${tache.avancement_pct}%` : ''}
+    </div>
+  )
+}
+
 export function GanttChart({
   taches = [],
   jalons = [],
   dependances = [],
   baseline = [],
+  onReprogrammer,
+  busyTacheId,
 }) {
   const bounds = useMemo(() => {
     const bars = [
@@ -93,13 +159,15 @@ export function GanttChart({
                   />
                 )}
                 {geo.widthPct > 0 && (
-                  <div
-                    className="absolute top-0.5 flex h-4 items-center overflow-hidden rounded px-1 text-[10px] leading-none text-white"
-                    style={{ left: `${geo.offsetPct}%`, width: `${geo.widthPct}%`, backgroundColor: bg }}
-                    title={`${t.libelle} — ${formatDate(t.date_debut_prevue)} → ${formatDate(t.date_fin_prevue)}`}
-                  >
-                    {typeof t.avancement_pct === 'number' && t.avancement_pct > 0 ? `${t.avancement_pct}%` : ''}
-                  </div>
+                  <DraggableBar
+                    tache={t}
+                    geo={geo}
+                    bg={bg}
+                    min={min}
+                    max={max}
+                    onReprogrammer={onReprogrammer}
+                    disabled={busyTacheId === t.id}
+                  />
                 )}
               </div>
             </div>

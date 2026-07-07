@@ -19,6 +19,15 @@ vi.mock('../../api/gedApi', () => ({
     getTags: vi.fn(() => Promise.resolve({ data: [] })),
     searchDocuments: vi.fn(() => Promise.resolve({ data: [] })),
     semanticSearch: vi.fn(() => Promise.resolve({ data: [] })),
+    // GED14 — aperçu inline.
+    getVersions: vi.fn(() => Promise.resolve({ data: [] })),
+    apercuVersionUrl: (id) => `/api/django/ged/versions/${id}/apercu/`,
+    // GED16 — check-out / check-in ; GED26 — corbeille.
+    checkOutDocument: vi.fn(() => Promise.resolve({ data: {} })),
+    checkInDocument: vi.fn(() => Promise.resolve({ data: {} })),
+    mettreEnCorbeille: vi.fn(() => Promise.resolve({ data: {} })),
+    // XGED14 — opérations en lot.
+    operationsLot: vi.fn(() => Promise.resolve({ data: { resultats: [], erreurs: [] } })),
   },
 }))
 
@@ -115,6 +124,75 @@ describe('GedNavigator — écriture (U14)', () => {
     await waitFor(() => expect(gedApi.uploadDocument).toHaveBeenCalled())
     expect(gedApi.uploadDocument.mock.calls[0][0]).toMatchObject({ folder: 5 })
     expect(gedApi.uploadDocument.mock.calls[0][0].file).toBeInstanceOf(File)
+  })
+
+  it('GED14 — clic sur un document ouvre l’aperçu inline', async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([
+      { id: 8, nom: 'facture.pdf', version_count: 1, updated_at: '2026-06-01T10:00:00Z' },
+    ]))
+    gedApi.getVersions.mockResolvedValue(ok([
+      { id: 22, numero: 1, mime: 'application/pdf', filename: 'facture.pdf' },
+    ]))
+
+    render(<GedNavigator />)
+    await userEvent.click(await screen.findByText('Docs'))
+
+    // Le bouton « Aperçu » de la ligne ouvre la modale.
+    await userEvent.click(await screen.findByRole('button', { name: /Aperçu de facture\.pdf/i }))
+
+    const dialog = await screen.findByRole('dialog')
+    await waitFor(() => expect(gedApi.getVersions).toHaveBeenCalledWith({ document: 8 }))
+    // L'aperçu PDF est rendu dans un iframe pointant sur le proxy même-origine.
+    await waitFor(() => {
+      const iframe = dialog.querySelector('iframe')
+      expect(iframe).toBeTruthy()
+      expect(iframe.getAttribute('src')).toContain('/ged/versions/22/apercu/')
+    })
+  })
+
+  it('GED16 — extrait un document (check-out)', async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([
+      { id: 8, nom: 'facture.pdf', is_locked: false, updated_at: '2026-06-01T10:00:00Z' },
+    ]))
+
+    render(<GedNavigator />)
+    await userEvent.click(await screen.findByText('Docs'))
+    await userEvent.click(await screen.findByRole('button', { name: /Extraire facture\.pdf/i }))
+
+    await waitFor(() => expect(gedApi.checkOutDocument).toHaveBeenCalledWith(8))
+  })
+
+  it('XGED14 — sélection + mise en corbeille par lot', async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([
+      { id: 8, nom: 'a.pdf', updated_at: '2026-06-01T10:00:00Z' },
+      { id: 9, nom: 'b.pdf', updated_at: '2026-06-02T10:00:00Z' },
+    ]))
+
+    render(<GedNavigator />)
+    await userEvent.click(await screen.findByText('Docs'))
+
+    // Coche deux documents.
+    await userEvent.click(await screen.findByRole('checkbox', { name: /Sélectionner a\.pdf/i }))
+    await userEvent.click(screen.getByRole('checkbox', { name: /Sélectionner b\.pdf/i }))
+
+    // La barre d'actions apparaît → mise en corbeille par lot.
+    await userEvent.click(await screen.findByRole('button', { name: /Mettre en corbeille/i }))
+
+    await waitFor(() => expect(gedApi.operationsLot).toHaveBeenCalledWith({
+      documents: [8, 9], operation: 'corbeille',
+    }))
   })
 
   it('renomme le dossier sélectionné', async () => {

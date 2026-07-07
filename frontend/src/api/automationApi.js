@@ -2,7 +2,14 @@ import api from './axios'
 
 // N72 / N73 — moteur d'automatisations sans code (règles « si ceci → alors
 // cela » sur les événements propres de l'app) + étape d'approbation.
+// XPLT18 — endpoint DJANGO `apps.agent` (chemin ABSOLU /api/django/…) : la
+// proposition de règle par l'IA crée toujours un brouillon DÉSACTIVÉ, à
+// confirmer ensuite via le bouton « Activer » déjà existant de la liste.
 const automationApi = {
+  // XPLT18 — propose→confirme : crée un brouillon de règle désactivé à partir
+  // d'un déclencheur/action du catalogue fermé (jamais de code libre).
+  proposeDraft: (data) => api.post('/agent/actions/automation-draft/', data),
+
   // ── Règles (N72) ──
   getRules: (params) => api.get('/automation/rules/', { params }),
   saveRule: (id, data) => id

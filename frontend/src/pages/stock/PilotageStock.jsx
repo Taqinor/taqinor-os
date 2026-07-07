@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ShoppingCart, RefreshCw } from 'lucide-react'
+import { ShoppingCart, RefreshCw, Download, FileText } from 'lucide-react'
 import stockApi from '../../api/stockApi'
+import { downloadBlob } from '../../utils/downloadBlob'
+import { ouvrirPdfBlob, estBlobPdf, messageErreurBlob } from '../../utils/pdfBlob'
 import { ModuleDashboard } from '../../ui/module'
 import { Button, Badge, Spinner } from '../../ui'
 
@@ -89,6 +91,10 @@ export default function PilotageStock({ onBcfGenere }) {
   const [genBusy, setGenBusy] = useState(false)
   const [genMsg, setGenMsg] = useState(null)
   const [genErr, setGenErr] = useState(null)
+  // ZPUR9/XPUR24 — rapport « analyse d'achats » exportable (Excel + PDF
+  // imprimable, au-delà du dashboard écran). Admin/Responsable uniquement.
+  const [analyseBusy, setAnalyseBusy] = useState(null) // 'xlsx' | 'pdf' | null
+  const [analyseErr, setAnalyseErr] = useState(null)
 
   const chargeSection = (promise, set) => promise
     .then((r) => set({ loading: false, data: r.data ?? [], error: null }))
@@ -123,6 +129,40 @@ export default function PilotageStock({ onBcfGenere }) {
         ? 'Réservé aux responsables et administrateurs.'
         : (e?.response?.data?.detail ?? 'La génération du bon de commande a échoué.'))
     } finally { setGenBusy(false) }
+  }
+
+  // XPUR24 — export Excel du tableau de bord achats (dépenses, dérive de prix,
+  // engagements ouverts, top produits, cycle DA→BCF→réception→facture).
+  const exporterAnalyseXlsx = async () => {
+    setAnalyseBusy('xlsx'); setAnalyseErr(null)
+    try {
+      const res = await stockApi.analyseAchatsXlsx()
+      downloadBlob(res.data, 'analyse-achats.xlsx')
+    } catch (e) {
+      setAnalyseErr(await messageErreurBlob(e, {
+        fallback: "L'export Excel de l'analyse d'achats a échoué.",
+      }))
+    } finally { setAnalyseBusy(null) }
+  }
+
+  // ZPUR9 — rapport imprimable « analyse d'achats » (PDF, au-delà de l'export
+  // Excel XPUR24) : dépenses par fournisseur/catégorie, top produits,
+  // engagements ouverts, identité société. Admin/Responsable uniquement.
+  const imprimerAnalysePdf = async () => {
+    setAnalyseBusy('pdf'); setAnalyseErr(null)
+    try {
+      const res = await stockApi.analyseAchatsPdf()
+      const blob = res.data
+      if (!estBlobPdf(blob)) {
+        setAnalyseErr('Le serveur n\'a pas renvoyé de PDF (réponse inattendue). Réessayez.')
+        return
+      }
+      ouvrirPdfBlob(blob, 'analyse-achats.pdf')
+    } catch (e) {
+      setAnalyseErr(await messageErreurBlob(e, {
+        fallback: "La génération du rapport PDF a échoué.",
+      }))
+    } finally { setAnalyseBusy(null) }
   }
 
   const nbDormants = (rotation.data ?? []).filter((r) => r.bucket === 'immobile').length
@@ -254,10 +294,30 @@ export default function PilotageStock({ onBcfGenere }) {
             Réapprovisionnement, prévisions, rotation et péremptions — donnée interne.
           </p>
         </div>
-        <Button type="button" variant="outline" size="sm" onClick={chargerTout}>
-          <RefreshCw /> Actualiser
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* XPUR24 export Excel + ZPUR9 rapport PDF imprimable — même analyse,
+              deux formats (écran/dashboard déjà couvert par les 4 rapports
+              ci-dessus). */}
+          <Button type="button" variant="outline" size="sm"
+                  loading={analyseBusy === 'xlsx'} onClick={exporterAnalyseXlsx}
+                  title="Exporter l'analyse d'achats en Excel (admin/responsable)">
+            <Download /> Analyse d&apos;achats (Excel)
+          </Button>
+          <Button type="button" variant="outline" size="sm"
+                  loading={analyseBusy === 'pdf'} onClick={imprimerAnalysePdf}
+                  title="Rapport imprimable « analyse d'achats » (PDF, admin/responsable)">
+            <FileText /> Analyse d&apos;achats (PDF)
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={chargerTout}>
+            <RefreshCw /> Actualiser
+          </Button>
+        </div>
       </div>
+      {analyseErr && (
+        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+          {analyseErr}
+        </div>
+      )}
       <ModuleDashboard stats={stats} charts={charts} />
     </section>
   )

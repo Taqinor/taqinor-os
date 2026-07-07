@@ -19,6 +19,7 @@ import installationsApi from '../../api/installationsApi'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
 import TicketSuiviClientPanel from './TicketSuiviClientPanel'
 import TicketChecklistPanel from './TicketChecklistPanel'
+import TicketAdvancedPanel from './TicketAdvancedPanel'
 import { groupTicketsByDate } from './ticketCalendarUtils'
 import { INTERVENTION_TYPES } from '../../features/installations/statuses'
 import {
@@ -167,7 +168,7 @@ export function TicketSlaBadge({ ticket }) {
   )
 }
 
-function TicketDetail({ ticket, onClose, onSaved }) {
+export function TicketDetail({ ticket, onClose, onSaved }) {
   const dispatch = useDispatch()
   const allTickets = useSelector((s) => s.tickets.items)
   const id = ticket.id
@@ -326,6 +327,38 @@ function TicketDetail({ ticket, onClose, onSaved }) {
     } catch (err) { setActionError(frError(err, "Échec de l'ajout de la note.")) }
   }
 
+  // XSAV23 — insertion d'une réponse type (macro) depuis TicketAdvancedPanel.
+  const insererMacro = async (reponseTypeId) => {
+    setActionError(null)
+    try {
+      const r = await savApi.noterTicketAvecMacro(id, reponseTypeId)
+      setHistorique((h) => [r.data, ...h])
+      toast.success('Réponse type insérée')
+      await reloadAll()
+    } catch (err) { setActionError(frError(err, "Échec de l'insertion de la réponse type.")) }
+  }
+
+  // XSAV5 — pause/reprise SLA « en attente client ».
+  const [attenteBusy, setAttenteBusy] = useState(false)
+  const mettreEnAttenteClient = async () => {
+    setAttenteBusy(true)
+    try {
+      const r = await savApi.attenteClientTicket(id)
+      setCurrent(r.data)
+      toast.success('Mis en attente client')
+    } catch (err) { setActionError(frError(err, 'Impossible de mettre en attente.')) }
+    finally { setAttenteBusy(false) }
+  }
+  const reprendreApresAttente = async () => {
+    setAttenteBusy(true)
+    try {
+      const r = await savApi.reprendreTicket(id)
+      setCurrent(r.data)
+      toast.success('Reprise après attente client')
+    } catch (err) { setActionError(frError(err, 'Impossible de reprendre.')) }
+    finally { setAttenteBusy(false) }
+  }
+
   const addIntervention = async () => {
     if (!interv.type_intervention) return
     setIntervBusy(true)
@@ -414,6 +447,49 @@ function TicketDetail({ ticket, onClose, onSaved }) {
     } catch (err) {
       setActionError(frError(err, 'Rapport indisponible.'))
     }
+  }
+
+  // ── XSAV3/XFSM1/XCTR4 — devis de réparation / facturation depuis le ticket ──
+  const [devisBusy, setDevisBusy] = useState(false)
+  const [factureBusy, setFactureBusy] = useState(false)
+  const creerDevis = async () => {
+    setActionError(null)
+    setDevisBusy(true)
+    try {
+      const r = await savApi.creerDevisTicket(id)
+      toast.success(`Devis ${r.data?.devis_reference ?? ''} créé (brouillon)`)
+      setCurrent((c) => ({ ...c, devis_id_ext: r.data?.devis_id }))
+      loadHistorique()
+      onSaved?.()
+    } catch (err) {
+      setActionError(frError(err, 'Impossible de créer le devis.'))
+    } finally { setDevisBusy(false) }
+  }
+  const genererFacture = async () => {
+    setActionError(null)
+    setFactureBusy(true)
+    try {
+      const r = await savApi.genererFactureTicket(id)
+      toast.success(`Facture ${r.data?.facture_reference ?? ''} générée`)
+      setCurrent((c) => ({ ...c, facture_id_ext: r.data?.facture_id }))
+      loadHistorique()
+      onSaved?.()
+    } catch (err) {
+      setActionError(frError(err, 'Impossible de générer la facture.'))
+    } finally { setFactureBusy(false) }
+  }
+  const facturer = async () => {
+    setActionError(null)
+    setFactureBusy(true)
+    try {
+      const r = await savApi.facturerTicket(id)
+      toast.success(`Facture ${r.data?.facture_reference ?? ''} générée (${r.data?.couverture ?? ''})`)
+      setCurrent((c) => ({ ...c, facture_id_ext: r.data?.facture_id }))
+      loadHistorique()
+      onSaved?.()
+    } catch (err) {
+      setActionError(frError(err, 'Impossible de facturer ce ticket.'))
+    } finally { setFactureBusy(false) }
   }
 
   // L308 — options de technicien. Si /users/ renvoie vide (endpoint admin),
@@ -646,11 +722,29 @@ function TicketDetail({ ticket, onClose, onSaved }) {
             ticket={current}
             onUpdated={(t) => { setCurrent(t); loadHistorique(); onSaved?.() }}
           />
+          {/* XSAV5 — pause/reprise SLA « en attente client ». */}
+          <div className="flex items-center gap-2">
+            {current.en_attente_client ? (
+              <Button type="button" size="sm" variant="outline" loading={attenteBusy} onClick={reprendreApresAttente}>
+                Reprendre après attente client
+              </Button>
+            ) : (
+              <Button type="button" size="sm" variant="outline" loading={attenteBusy} onClick={mettreEnAttenteClient}>
+                Mettre en attente client
+              </Button>
+            )}
+          </div>
         </CollapsibleSection>
 
         {/* ── WR11/FG82 — checklist de visite de maintenance ── */}
         <CollapsibleSection icon={ShieldCheck} title="Checklist de maintenance">
           <TicketChecklistPanel ticketId={id} />
+        </CollapsibleSection>
+
+        {/* ── XSAV12/21/27/28, ZSAV8/9 — actions avancées (fusion, similaires,
+             triage IA, macros, prêts équipement, conversion lead, suivre). ── */}
+        <CollapsibleSection icon={Sparkles} title="Actions avancées">
+          <TicketAdvancedPanel ticket={current} onNoteInsert={insererMacro} />
         </CollapsibleSection>
 
         {/* ── Interventions (L313 — repliable) ── */}
@@ -804,6 +898,31 @@ function TicketDetail({ ticket, onClose, onSaved }) {
           {!current.annule && (
             <Button type="button" variant="destructive" className="mr-auto" onClick={() => setAnnulerOpen(true)}>
               <Trash2 /> Annuler le ticket
+            </Button>
+          )}
+          {/* XSAV3 — devis de réparation hors garantie (refusé côté serveur
+              si le ticket est sous garantie calculée). */}
+          {current.sous_garantie_effectif !== 'oui' && (
+            current.devis_id_ext ? (
+              <Badge tone="success">Devis créé</Badge>
+            ) : (
+              <Button type="button" variant="outline" loading={devisBusy} onClick={creerDevis}>
+                <FileText /> Créer un devis
+              </Button>
+            )
+          )}
+          {/* XCTR4 — facturation routée par couverture (garantie/contrat/
+              facturable) une fois posée ou calculable ; XFSM1 en repli
+              générique sinon. Idempotent (facture_id_ext déjà posé). */}
+          {current.facture_id_ext ? (
+            <Badge tone="success">Facture générée</Badge>
+          ) : current.couverture && current.couverture !== 'a_determiner' ? (
+            <Button type="button" variant="outline" loading={factureBusy} onClick={facturer}>
+              <FileText /> Facturer
+            </Button>
+          ) : (
+            <Button type="button" variant="outline" loading={factureBusy} onClick={genererFacture}>
+              <FileText /> Générer facture
             </Button>
           )}
           <Button type="button" variant="outline" onClick={telechargerRapport}>

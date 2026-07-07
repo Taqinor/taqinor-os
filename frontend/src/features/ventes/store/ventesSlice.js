@@ -141,6 +141,17 @@ export const annulerBC = createAsyncThunk('ventes/annulerBC', async (id, { rejec
   }
 })
 
+// XSAL12 — livraison partielle : { lignes: [{ligne_devis, quantite}], ... }.
+export const livrerPartielBC = createAsyncThunk(
+  'ventes/livrerPartielBC', async ({ id, data }, { rejectWithValue }) => {
+    try {
+      const res = await ventesApi.livrerPartielBC(id, data)
+      return res.data
+    } catch (err) {
+      return rejectWithValue(err.response?.data ?? err.message)
+    }
+  })
+
 export const creerFactureFromBC = createAsyncThunk('ventes/creerFactureFromBC', async (id, { rejectWithValue }) => {
   try {
     const res = await ventesApi.creerFactureBC(id)
@@ -324,6 +335,10 @@ const ventesSlice = createSlice({
         if (idx !== -1) state.bonsCommande[idx] = action.payload
       })
       .addCase(annulerBC.fulfilled, (state, action) => {
+        const idx = state.bonsCommande.findIndex(b => b.id === action.payload.id)
+        if (idx !== -1) state.bonsCommande[idx] = action.payload
+      })
+      .addCase(livrerPartielBC.fulfilled, (state, action) => {
         const idx = state.bonsCommande.findIndex(b => b.id === action.payload.id)
         if (idx !== -1) state.bonsCommande[idx] = action.payload
       })

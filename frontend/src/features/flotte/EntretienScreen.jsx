@@ -1,11 +1,18 @@
-import { useMemo } from 'react'
-import { Tabs, TabsList, TabsTrigger, TabsContent, Badge } from '../../ui'
+import { useMemo, useState } from 'react'
+import { AlertTriangle } from 'lucide-react'
+import { Tabs, TabsList, TabsTrigger, TabsContent, Badge, Button, toast } from '../../ui'
 import { ListShell, EcheanceCenter } from '../../ui/module'
 import flotteApi from '../../api/flotteApi'
 import { formatDate, formatNumber } from '../../lib/format'
-import { EntretienStatutPill, OrStatutPill } from './statusPills'
+import {
+  EntretienStatutPill, OrStatutPill, SignalementStatutPill,
+  SignalementGravitePill,
+} from './statusPills'
 import { PNEU_POSITIONS, PNEU_STATUTS } from './flotte'
 import useFlotteResource from './useFlotteResource'
+import SignalementDialog from './SignalementDialog'
+import GarageDialog from './GarageDialog'
+import PlanRolloutDialog from './PlanRolloutDialog'
 
 /* ============================================================================
    UX18 — Entretien (`/flotte/entretien`).
@@ -16,8 +23,10 @@ import useFlotteResource from './useFlotteResource'
    internes (jamais des prix client ni des prix d'achat/marge).
    ========================================================================== */
 
-function PlansTab() {
-  const { data, loading, error } = useFlotteResource(flotteApi.plansEntretien.list, {})
+function PlansTab({ actifs }) {
+  const { data, loading, error, reload } = useFlotteResource(flotteApi.plansEntretien.list, {})
+  const [rolloutPlan, setRolloutPlan] = useState(null)
+
   const columns = useMemo(() => [
     { id: 'actif', header: 'Actif', width: 200, accessor: (r) => r.actif_label, cell: (v) => v || '—' },
     { id: 'type_entretien', header: 'Type', width: 180, accessor: (r) => r.type_entretien, cell: (v) => v || '—' },
@@ -32,17 +41,33 @@ function PlansTab() {
       cell: (_v, r) => (r.actif ? <Badge tone="success">Actif</Badge> : <Badge tone="neutral">Inactif</Badge>),
     },
   ], [])
+
+  const rowActions = (row) => [
+    { id: 'rollout', label: 'Dupliquer sur…', onClick: () => setRolloutPlan(row) },
+  ]
+
   return (
-    <ListShell
-      title="Plans d’entretien préventif"
-      columns={columns}
-      rows={data}
-      loading={loading}
-      error={error}
-      exportName="plans-entretien"
-      emptyTitle="Aucun plan"
-      emptyDescription="Aucun plan d’entretien défini."
-    />
+    <>
+      <ListShell
+        title="Plans d’entretien préventif"
+        columns={columns}
+        rows={data}
+        loading={loading}
+        error={error}
+        rowActions={rowActions}
+        exportName="plans-entretien"
+        emptyTitle="Aucun plan"
+        emptyDescription="Aucun plan d’entretien défini."
+      />
+      {rolloutPlan && (
+        <PlanRolloutDialog
+          plan={rolloutPlan}
+          actifs={actifs}
+          onClose={() => setRolloutPlan(null)}
+          onSaved={() => { reload(); toast.success('Plan dupliqué.') }}
+        />
+      )}
+    </>
   )
 }
 
@@ -82,11 +107,15 @@ function EcheancesTab() {
 }
 
 function GaragesTab() {
-  const { data, loading, error } = useFlotteResource(flotteApi.garages.list, {})
+  const [showForm, setShowForm] = useState(false)
+  const { data, loading, error, reload } = useFlotteResource(flotteApi.garages.list, {})
   const columns = useMemo(() => [
     { id: 'nom', header: 'Garage', width: 200, accessor: (r) => r.nom, cell: (v) => v || '—' },
     { id: 'adresse', header: 'Adresse', width: 240, accessor: (r) => r.adresse, cell: (v) => v || '—' },
     { id: 'telephone', header: 'Téléphone', width: 150, accessor: (r) => r.telephone, cell: (v) => v || '—' },
+    // XFLT26 — ICE/IF (préparation e-facturation DGI), affichés en lecture.
+    { id: 'ice', header: 'ICE', width: 140, accessor: (r) => r.ice, cell: (v) => (v ? <span className="font-mono text-xs">{v}</span> : '—') },
+    { id: 'identifiant_fiscal', header: 'IF', width: 120, accessor: (r) => r.identifiant_fiscal, cell: (v) => v || '—' },
     {
       id: 'actif',
       header: 'Statut',
@@ -96,22 +125,45 @@ function GaragesTab() {
       cell: (_v, r) => (r.actif ? <Badge tone="success">Actif</Badge> : <Badge tone="neutral">Inactif</Badge>),
     },
   ], [])
+  const actions = (
+    <Button onClick={() => setShowForm(true)}>Nouveau garage</Button>
+  )
   return (
-    <ListShell
-      title="Garages"
-      columns={columns}
-      rows={data}
-      loading={loading}
-      error={error}
-      exportName="garages"
-      emptyTitle="Aucun garage"
-      emptyDescription="Aucun garage référencé."
-    />
+    <>
+      <ListShell
+        title="Garages"
+        actions={actions}
+        columns={columns}
+        rows={data}
+        loading={loading}
+        error={error}
+        exportName="garages"
+        emptyTitle="Aucun garage"
+        emptyDescription="Aucun garage référencé."
+      />
+      {showForm && (
+        <GarageDialog
+          onClose={() => setShowForm(false)}
+          onSaved={() => { setShowForm(false); reload(); toast.success('Garage enregistré.') }}
+        />
+      )}
+    </>
   )
 }
 
 function OrdresTab() {
-  const { data, loading, error } = useFlotteResource(flotteApi.ordresReparation.list, {})
+  const { data, loading, error, reload } = useFlotteResource(flotteApi.ordresReparation.list, {})
+
+  const approuver = async (row) => {
+    try {
+      await flotteApi.ordresReparation.approuver(row.id)
+      toast.success('Devis approuvé.')
+      reload()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'Approbation impossible.')
+    }
+  }
+
   const columns = useMemo(() => [
     { id: 'actif', header: 'Actif', width: 180, accessor: (r) => r.actif_label, cell: (v) => v || '—' },
     { id: 'garage', header: 'Garage', width: 160, accessor: (r) => r.garage_nom, cell: (v) => v || '—' },
@@ -129,8 +181,30 @@ function OrdresTab() {
       accessor: (r) => Number(r.cout_total ?? 0),
       cell: (v) => (v ? `${formatNumber(v, { decimals: 2 })} MAD` : '—'),
     },
+    {
+      // XFLT14 — avertissement non bloquant : réparation sous garantie active.
+      id: 'sous_garantie',
+      header: 'Garantie',
+      width: 110,
+      searchable: false,
+      accessor: (r) => (r.sous_garantie ? 'Sous garantie' : ''),
+      cell: (_v, r) => (r.sous_garantie
+        ? (
+          <span className="inline-flex items-center gap-1 text-xs text-warning">
+            <AlertTriangle className="size-3.5" aria-hidden="true" /> Sous garantie
+          </span>
+        )
+        : <span className="text-muted-foreground">—</span>),
+    },
     { id: 'statut', header: 'Statut', width: 120, accessor: (r) => r.statut, cell: (v) => <OrStatutPill status={v} /> },
   ], [])
+
+  const rowActions = (row) => (
+    row.statut === 'devis_recu'
+      ? [{ id: 'approuver', label: 'Approuver le devis', onClick: () => approuver(row) }]
+      : []
+  )
+
   return (
     <ListShell
       title="Ordres de réparation"
@@ -139,10 +213,77 @@ function OrdresTab() {
       rows={data}
       loading={loading}
       error={error}
+      rowActions={rowActions}
       exportName="ordres-reparation"
       emptyTitle="Aucun ordre"
       emptyDescription="Aucun ordre de réparation ouvert."
     />
+  )
+}
+
+function SignalementsTab({ actifs }) {
+  const [showForm, setShowForm] = useState(false)
+  const { data, loading, error, reload } = useFlotteResource(flotteApi.signalements.list, {})
+
+  const convertir = async (row) => {
+    try {
+      await flotteApi.signalements.convertirEnOr(row.id)
+      toast.success('Converti en ordre de réparation.')
+      reload()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'Conversion impossible.')
+    }
+  }
+
+  const columns = useMemo(() => [
+    { id: 'actif', header: 'Actif', width: 170, accessor: (r) => r.actif_label, cell: (v) => v || '—' },
+    { id: 'description', header: 'Description', width: 260, accessor: (r) => r.description, cell: (v) => v || '—' },
+    { id: 'auteur', header: 'Signalé par', width: 150, accessor: (r) => r.auteur_nom, cell: (v) => v || '—' },
+    { id: 'gravite', header: 'Gravité', width: 120, accessor: (r) => r.gravite, cell: (v) => <SignalementGravitePill status={v} /> },
+    { id: 'statut', header: 'Statut', width: 120, accessor: (r) => r.statut, cell: (v) => <SignalementStatutPill status={v} /> },
+    {
+      id: 'ordre_reparation',
+      header: 'OR lié',
+      width: 100,
+      searchable: false,
+      accessor: (r) => (r.ordre_reparation ? 'Oui' : ''),
+      cell: (_v, r) => (r.ordre_reparation ? <Badge tone="success">#{r.ordre_reparation}</Badge> : <span className="text-muted-foreground">—</span>),
+    },
+  ], [])
+
+  const rowActions = (row) => (
+    row.ordre_reparation
+      ? []
+      : [{ id: 'convertir', label: 'Convertir en ordre de réparation', onClick: () => convertir(row) }]
+  )
+
+  const actions = (
+    <Button onClick={() => setShowForm(true)}>Signaler un problème</Button>
+  )
+
+  return (
+    <>
+      <ListShell
+        title="Signalements"
+        subtitle="Anomalies déposées par les conducteurs — convertibles en ordre de réparation."
+        actions={actions}
+        columns={columns}
+        rows={data}
+        loading={loading}
+        error={error}
+        rowActions={rowActions}
+        exportName="signalements"
+        emptyTitle="Aucun signalement"
+        emptyDescription="Aucune anomalie signalée."
+      />
+      {showForm && (
+        <SignalementDialog
+          actifs={actifs}
+          onClose={() => setShowForm(false)}
+          onSaved={() => { setShowForm(false); reload(); toast.success('Signalement enregistré.') }}
+        />
+      )}
+    </>
   )
 }
 
@@ -205,6 +346,10 @@ function PiecesTab() {
 }
 
 export default function EntretienScreen() {
+  // Charge les actifs une fois pour alimenter le formulaire de signalement
+  // et le rollout de plans d'entretien.
+  const { data: actifs } = useFlotteResource(flotteApi.actifs.list, {})
+
   return (
     <div className="page flex flex-col gap-4">
       <h2 className="font-display text-xl font-semibold tracking-tight">Entretien & réparations</h2>
@@ -213,13 +358,15 @@ export default function EntretienScreen() {
           <TabsTrigger value="echeances">Échéances</TabsTrigger>
           <TabsTrigger value="plans">Plans</TabsTrigger>
           <TabsTrigger value="ordres">Ordres de réparation</TabsTrigger>
+          <TabsTrigger value="signalements">Signalements</TabsTrigger>
           <TabsTrigger value="garages">Garages</TabsTrigger>
           <TabsTrigger value="pneus">Pneumatiques</TabsTrigger>
           <TabsTrigger value="pieces">Pièces</TabsTrigger>
         </TabsList>
         <TabsContent value="echeances"><EcheancesTab /></TabsContent>
-        <TabsContent value="plans"><PlansTab /></TabsContent>
+        <TabsContent value="plans"><PlansTab actifs={actifs} /></TabsContent>
         <TabsContent value="ordres"><OrdresTab /></TabsContent>
+        <TabsContent value="signalements"><SignalementsTab actifs={actifs} /></TabsContent>
         <TabsContent value="garages"><GaragesTab /></TabsContent>
         <TabsContent value="pneus"><PneusTab /></TabsContent>
         <TabsContent value="pieces"><PiecesTab /></TabsContent>

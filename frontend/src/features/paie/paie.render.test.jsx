@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import MesBulletins from './MesBulletins.jsx'
@@ -8,12 +8,21 @@ import PaieRunWizard from './PaieRunWizard.jsx'
 /* Smoke : les écrans Paie montent sans planter (imports résolus, kit UX1 OK).
    L'API est mockée pour renvoyer des listes vides — on vérifie que le titre et
    les repères clés s'affichent, sans dépendre du réseau. */
+const periodeTest = { id: 7, statut: 'brouillon', libelle: 'Juillet 2026' }
+
 vi.mock('../../api/paieApi', () => ({
   default: {
     getPeriodes: vi.fn(() => Promise.resolve({ data: [] })),
     getProfils: vi.fn(() => Promise.resolve({ data: [] })),
     getBulletins: vi.fn(() => Promise.resolve({ data: [] })),
     getMesBulletins: vi.fn(() => Promise.resolve({ data: [] })),
+    avertissements: vi.fn(() => Promise.resolve({
+      data: [
+        { type: 'cnss_manquant', employe_id: 1, matricule: 'M1', nom: 'A B',
+          gravite: 'bloquant', message: 'A B — numéro CNSS manquant.' },
+      ],
+    })),
+    createPeriode: vi.fn(() => Promise.resolve({ data: periodeTest })),
   },
 }))
 
@@ -37,5 +46,17 @@ describe('Paie — smoke de rendu', () => {
     // D'abord l'état de chargement (rendu synchrone), puis le titre.
     expect(screen.getByText(/Chargement de la paie/i)).toBeInTheDocument()
     expect(await screen.findByText('Run de paie')).toBeInTheDocument()
+  })
+
+  it('PaieRunWizard (YHIRE3/XPAI15/ZPAI2) affiche le panneau d’avertissements '
+    + 'pré-run après création d’une période', async () => {
+    wrap(<PaieRunWizard />)
+    await screen.findByText('Run de paie')
+    fireEvent.click(screen.getByRole('button', { name: /Créer la période/i }))
+    await waitFor(() => {
+      expect(screen.getByText(/1 avertissement\(s\) avant de lancer la paie/i))
+        .toBeInTheDocument()
+    })
+    expect(screen.getByText(/numéro CNSS manquant/i)).toBeInTheDocument()
   })
 })

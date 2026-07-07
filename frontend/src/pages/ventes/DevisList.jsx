@@ -4,7 +4,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import {
   Download, Plus, FileText, FileDown, Check, ArrowRight, HardHat, FileStack,
   Copy, Send, X, Eye, Search, AlertTriangle, UserCog, Box, ExternalLink,
-  Link2,
+  Link2, FolderKanban,
 } from 'lucide-react'
 import {
   fetchDevis,
@@ -13,6 +13,7 @@ import {
 } from '../../features/ventes/store/ventesSlice'
 import ventesApi from '../../api/ventesApi'
 import installationsApi from '../../api/installationsApi'
+import gestionProjetApi from '../../api/gestionProjetApi'
 import importApi, { downloadXlsx } from '../../api/importApi'
 import DevisForm from './DevisForm'
 import {
@@ -109,6 +110,27 @@ function daysUntil(isoDate) {
   const a = Date.UTC(target.getFullYear(), target.getMonth(), target.getDate())
   const b = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())
   return Math.round((a - b) / 86400000)
+}
+
+// XSAL16 — libellés FR des sections suivies sur la proposition web (miroir de
+// `_ENGAGEMENT_SECTIONS` côté serveur, apps/ventes/public_views.py).
+const ENGAGEMENT_LABELS = {
+  hero: 'accueil', prix: 'prix', etude: 'étude', garanties: 'garanties', signature: 'signature',
+}
+
+// Résume l'engagement par section en une phrase courte (« 2 min sur le prix,
+// 30 s sur l'étude ») — null sans aucune section suivie (comportement QJ1
+// inchangé, aucun badge affiché).
+function engagementSummary(engagement) {
+  const entries = Object.entries(engagement || {}).filter(([, v]) => v?.seconds > 0)
+  if (entries.length === 0) return null
+  entries.sort((a, b) => b[1].seconds - a[1].seconds)
+  return entries.map(([section, v]) => {
+    const label = ENGAGEMENT_LABELS[section] ?? section
+    const mins = Math.round(v.seconds / 60)
+    const duree = mins >= 1 ? `${mins} min` : `${v.seconds} s`
+    return `${duree} sur ${label}`
+  }).join(' · ')
 }
 
 function openPdfBlob(blob, filename) {
@@ -500,6 +522,24 @@ export default function DevisList() {
       toast.error(frenchError(err, 'Création du chantier impossible.'))
     } finally {
       setChantierBusy(null)
+    }
+  }
+
+  // XPRJ21 — « Créer un projet » depuis un devis accepté : action utilisateur
+  // explicite (jamais automatique sur devis_accepted — le chantier auto
+  // existe déjà côté installations). Crée le Projet + son lien + un budget v1
+  // pré-ventilé depuis les lignes du devis, puis navigue vers le module Projets.
+  const [projetBusy, setProjetBusy] = useState(null)
+  const handleCreerProjet = async (d) => {
+    setProjetBusy(d.id)
+    try {
+      const res = await gestionProjetApi.creerProjetDepuisDevis(d.id)
+      toast.success(`Projet ${res.data.code} créé.`)
+      navigate(`/projets/${res.data.id}`)
+    } catch (err) {
+      toast.error(frenchError(err, 'Création du projet impossible.'))
+    } finally {
+      setProjetBusy(null)
     }
   }
 
@@ -1247,6 +1287,17 @@ export default function DevisList() {
                             Consulté ×{d.nombre_vues ?? 1}
                           </div>
                         )}
+                        {/* XSAL16 — résumé d'engagement par section de la proposition
+                            web (« a passé 2 min sur le prix, n'a pas ouvert l'étude »).
+                            Vide sans beacon (déjà serialisé, comportement QJ1 inchangé). */}
+                        {engagementSummary(d.engagement) && (
+                          <div
+                            className="mt-0.5 text-xs text-muted-foreground"
+                            title="Temps passé par section sur la proposition en ligne"
+                          >
+                            {engagementSummary(d.engagement)}
+                          </div>
+                        )}
                         {/* U5 — Documents générés depuis ce devis : factures (chips
                             cliquables → liste Factures) + bon de commande (→ BC).
                             Lecture seule, données du serializer. */}
@@ -1610,6 +1661,19 @@ export default function DevisList() {
                                 : 'Créer le chantier à partir de ce devis'}
                             >
                               <HardHat /> {d.chantier ? 'Voir le chantier' : 'Créer le chantier'}
+                            </Button>
+                          )}
+
+                          {/* XPRJ21 — Créer un projet (gestion de projet) depuis ce devis accepté. */}
+                          {d.statut === 'accepte' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleCreerProjet(d)}
+                              loading={projetBusy === d.id}
+                              title="Créer un projet (planning, budget, ressources) à partir de ce devis"
+                            >
+                              <FolderKanban /> Créer projet
                             </Button>
                           )}
 

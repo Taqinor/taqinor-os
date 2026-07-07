@@ -13,10 +13,18 @@ vi.mock('../../api/stockApi', () => ({
     annulerReceptionFournisseur: vi.fn(),
     factureFournisseurPdf: vi.fn(),
     ajouterPaiementFournisseur: vi.fn(),
+    receptionEtiquettes: vi.fn(),
+  },
+}))
+
+vi.mock('../../api/comptaApi', () => ({
+  default: {
+    immobilisations: { depuisFactureFournisseur: vi.fn() },
   },
 }))
 
 import stockApi from '../../api/stockApi'
+import comptaApi from '../../api/comptaApi'
 import { ReceptionDetail } from './ReceptionsFournisseur.jsx'
 import { FactureDetail } from './FacturesFournisseur.jsx'
 
@@ -58,6 +66,43 @@ describe('WR4 — facturer une réception (FG56)', () => {
   })
 })
 
+describe('ZSTK6 — étiquettes lot/série sur une réception', () => {
+  const receptionSansSerie = {
+    id: 8, reference: 'REC-2026-07-0008', statut: 'confirme',
+    lignes: [{ id: 1, produit_nom: 'Panneau', quantite: 5 }],
+  }
+  const receptionAvecSerie = {
+    id: 9, reference: 'REC-2026-07-0009', statut: 'confirme',
+    lignes: [{ id: 1, produit_nom: 'Onduleur', quantite: 2, numeros_serie: ['SN001', 'SN002'] }],
+  }
+  const receptionAvecLot = {
+    id: 10, reference: 'REC-2026-07-0010', statut: 'confirme',
+    lignes: [{ id: 1, produit_nom: 'Câble', quantite: 100, numero_lot: 'LOT-42' }],
+  }
+
+  it('sans numéro de série/lot : le bouton est absent', () => {
+    wrap(<ReceptionDetail reception={receptionSansSerie} onClose={() => {}} onSaved={() => {}} />)
+    expect(screen.queryByRole('button', { name: /Étiquettes lot\/série/ })).toBeNull()
+  })
+
+  it('avec des numéros de série : le bouton imprime les étiquettes', async () => {
+    stockApi.receptionEtiquettes.mockResolvedValue({
+      data: new Blob(['%PDF-1.7'], { type: 'application/pdf' }),
+    })
+    wrap(<ReceptionDetail reception={receptionAvecSerie} onClose={() => {}} onSaved={() => {}} />)
+    fireEvent.click(screen.getByRole('button', { name: /Étiquettes lot\/série/ }))
+    await waitFor(() => {
+      expect(stockApi.receptionEtiquettes).toHaveBeenCalledWith(9)
+      expect(window.open).toHaveBeenCalled()
+    })
+  })
+
+  it('avec un lot renseigné : le bouton est aussi affiché', () => {
+    wrap(<ReceptionDetail reception={receptionAvecLot} onClose={() => {}} onSaved={() => {}} />)
+    expect(screen.getByRole('button', { name: /Étiquettes lot\/série/ })).toBeInTheDocument()
+  })
+})
+
 describe('WR4 — PDF facture fournisseur (FG55)', () => {
   const facture = {
     id: 11, reference: 'FF-2026-07-0011', statut: 'a_payer',
@@ -89,5 +134,31 @@ describe('WR4 — PDF facture fournisseur (FG55)', () => {
     fireEvent.click(screen.getByRole('button', { name: /PDF \(interne\)/ }))
     const alert = await screen.findByRole('alert')
     expect(alert.textContent).toContain('Réservé aux responsables.')
+  })
+})
+
+describe('XACC33 — capitaliser une ligne de facture fournisseur (bouton « Immobiliser »)', () => {
+  const facture = {
+    id: 11, reference: 'FF-2026-07-0011', statut: 'a_payer',
+    fournisseur_nom: 'JA Solar', montant_ttc: '6000', total_paye: '0',
+    solde_du: '6000', paiements: [],
+  }
+
+  it('appelle depuisFactureFournisseur avec la ligne saisie', async () => {
+    comptaApi.immobilisations.depuisFactureFournisseur.mockResolvedValue({ data: { id: 5 } })
+    window.prompt = vi.fn(() => '42')
+    wrap(<FactureDetail facture={facture} onClose={() => {}} onSaved={() => {}} />)
+    fireEvent.click(screen.getByRole('button', { name: /Immobiliser/ }))
+    await waitFor(() => {
+      expect(comptaApi.immobilisations.depuisFactureFournisseur).toHaveBeenCalledWith(
+        expect.objectContaining({ facture_id: 11, ligne_id: 42 }))
+    })
+  })
+
+  it('annule si aucun ligne_id n’est saisi', () => {
+    window.prompt = vi.fn(() => null)
+    wrap(<FactureDetail facture={facture} onClose={() => {}} onSaved={() => {}} />)
+    fireEvent.click(screen.getByRole('button', { name: /Immobiliser/ }))
+    expect(comptaApi.immobilisations.depuisFactureFournisseur).not.toHaveBeenCalled()
   })
 })

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   CalendarPlus, FileStack, ClipboardCheck, CheckCircle2, Lock,
-  AlertTriangle, RefreshCw, Plus, ArrowRight,
+  AlertTriangle, RefreshCw, Plus, ArrowRight, ShieldAlert, ChevronDown, Gift,
 } from 'lucide-react'
 import {
   Button, Card, Input, Select, SelectTrigger, SelectValue, SelectContent,
@@ -48,6 +48,8 @@ export default function PaieRunWizard() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState('')
   const [step, setStep] = useState('periode')
+  const [avertissements, setAvertissements] = useState([])
+  const [avertissementsOuvert, setAvertissementsOuvert] = useState(true)
 
   // Formulaire de création de période.
   const [annee, setAnnee] = useState(String(now.getFullYear()))
@@ -77,9 +79,21 @@ export default function PaieRunWizard() {
       .catch(() => toast.error('Chargement des bulletins impossible.'))
   }
 
+  // YHIRE3/XPAI15/ZPAI2 — panneau d'avertissements pré-run (RIB/CNSS
+  // manquants, dossiers non actifs, CDD échus, salaire nul…). Lecture seule,
+  // jamais bloquant côté client — affiché en tête, avant toute génération.
+  const loadAvertissements = (per) => {
+    if (!per) { setAvertissements([]); return Promise.resolve() }
+    return paieApi.avertissements(per.id)
+      .then((r) => setAvertissements(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setAvertissements([]))
+  }
+
   const selectPeriode = (per) => {
     setPeriode(per)
     loadBulletins(per)
+    loadAvertissements(per)
+    setAvertissementsOuvert(true)
     setStep(per ? 'generer' : 'periode')
   }
 
@@ -123,6 +137,7 @@ export default function PaieRunWizard() {
       await loadBulletins(periode)
       // La période passe en « calculée » dès qu'un bulletin existe.
       await avancerVers(PERIODE_STATUTS.CALCULEE, { silencieux: true })
+      await loadAvertissements(periode)
       toast.success(`${ok} bulletin(s) généré(s).`)
       setStep('revue')
     } catch (e) {
@@ -173,6 +188,21 @@ export default function PaieRunWizard() {
     } finally { setBusy('') }
   }
 
+  // XPAI4 — run hors-cycle « 13e mois » : génère les bulletins de
+  // gratification de tous les profils actifs sur la période sélectionnée.
+  const runGratification = async () => {
+    if (!periode) return
+    setBusy('gratification')
+    try {
+      const { data } = await paieApi.runGratification(periode.id)
+      const n = Array.isArray(data) ? data.length : data?.crees ?? 0
+      toast.success(`${n} bulletin(s) de 13e mois généré(s).`)
+      await loadBulletins(periode)
+    } catch (e) {
+      toast.error(errMsg(e, 'Run 13e mois impossible.'))
+    } finally { setBusy('') }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center gap-2 p-8 text-muted-foreground">
@@ -198,9 +228,22 @@ export default function PaieRunWizard() {
               {periode.libelle || `${MOIS[periode.mois - 1]} ${periode.annee}`}
             </span>
             <StatutPeriode status={periode.statut} />
+            <Button variant="outline" size="sm"
+              onClick={runGratification} loading={busy === 'gratification'}>
+              <Gift size={15} aria-hidden="true" /> Run 13e mois
+            </Button>
           </div>
         )}
       </div>
+
+      {/* YHIRE3/XPAI15/ZPAI2 — avertissements pré-run, jamais bloquants. */}
+      {periode && avertissements.length > 0 && (
+        <AvertissementsPanel
+          items={avertissements}
+          ouvert={avertissementsOuvert}
+          onToggle={() => setAvertissementsOuvert((o) => !o)}
+        />
+      )}
 
       {/* Rail d'étapes */}
       <StepRail steps={steps} current={step} onPick={setStep} />
@@ -248,6 +291,57 @@ export default function PaieRunWizard() {
         )}
       </Card>
     </div>
+  )
+}
+
+/* ── Panneau d'avertissements pré-run (YHIRE3/XPAI15/ZPAI2) ──
+   Liste plate, jamais bloquante — bloquant/avertissement distingués par
+   couleur uniquement (RIB/CNSS manquants, dossier non actif, CDD échu,
+   salaire nul). Aucune donnée de salaire n'y figure. */
+function AvertissementsPanel({ items, ouvert, onToggle }) {
+  const bloquants = items.filter((a) => a.gravite === 'bloquant')
+  const autres = items.filter((a) => a.gravite !== 'bloquant')
+  return (
+    <Card className={cx(
+      'border p-4',
+      bloquants.length ? 'border-destructive/40 bg-destructive/5'
+        : 'border-warning/40 bg-warning/5',
+    )}>
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center justify-between gap-2 text-left"
+      >
+        <span className="flex items-center gap-2 text-sm font-semibold">
+          <ShieldAlert size={16} aria-hidden="true"
+            className={bloquants.length ? 'text-destructive' : 'text-warning'} />
+          {items.length} avertissement(s) avant de lancer la paie
+          {bloquants.length > 0 && (
+            <Badge tone="danger">{bloquants.length} bloquant(s)</Badge>
+          )}
+        </span>
+        <ChevronDown
+          size={16} aria-hidden="true"
+          className={cx('transition-transform', ouvert && 'rotate-180')}
+        />
+      </button>
+      {ouvert && (
+        <ul className="mt-3 flex flex-col gap-1.5 text-sm">
+          {[...bloquants, ...autres].map((a, i) => (
+            <li key={`${a.type}-${a.employe_id}-${i}`}
+              className="flex items-start gap-2">
+              <span className={cx(
+                'mt-1.5 size-1.5 shrink-0 rounded-full',
+                a.gravite === 'bloquant' ? 'bg-destructive' : 'bg-warning',
+              )} />
+              <span className={a.gravite === 'bloquant' ? 'text-destructive' : ''}>
+                {a.message}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
   )
 }
 

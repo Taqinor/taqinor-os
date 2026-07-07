@@ -4,7 +4,7 @@
 import { createElement, lazy } from 'react'
 import {
   LayoutDashboard, BookOpen, PencilLine, FileBarChart2,
-  Landmark, ReceiptText, Building2, Scale,
+  Landmark, ReceiptText, Building2, Scale, Receipt, HandCoins, ShieldCheck,
 } from 'lucide-react'
 
 /* ============================================================================
@@ -25,6 +25,9 @@ const TresoreriePage = lazy(() => import('./pages/TresoreriePage.jsx'))
 const FiscalitePage = lazy(() => import('./pages/FiscalitePage.jsx'))
 const ImmobilisationsPage = lazy(() => import('./pages/ImmobilisationsPage.jsx'))
 const RapprochementsPage = lazy(() => import('./pages/RapprochementsPage.jsx'))
+const NotesDeFraisPage = lazy(() => import('./pages/NotesDeFraisPage.jsx'))
+const EffetsPage = lazy(() => import('./pages/EffetsPage.jsx'))
+const EngagementsPage = lazy(() => import('./pages/EngagementsPage.jsx'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -47,10 +50,16 @@ const config = {
       { to: '/comptabilite/fiscalite', label: 'Fiscalité', icon: icon(ReceiptText), roles: ROLES },
       { to: '/comptabilite/immobilisations', label: 'Immobilisations', icon: icon(Building2), roles: ROLES },
       { to: '/comptabilite/rapprochements', label: 'Rapprochements', icon: icon(Scale), roles: ROLES },
+      { to: '/comptabilite/notes-de-frais', label: 'Notes de frais', icon: icon(Receipt), roles: ROLES },
+      { to: '/comptabilite/effets', label: 'Effets & règlements', icon: icon(HandCoins), roles: ROLES },
+      { to: '/comptabilite/engagements', label: 'Engagements', icon: icon(ShieldCheck), roles: ROLES },
     ],
   },
   // Titres de page : du plus spécifique au plus général (routes.meta).
   titles: [
+    ['/comptabilite/engagements', 'Engagements — Comptabilité'],
+    ['/comptabilite/effets', 'Effets & règlements — Comptabilité'],
+    ['/comptabilite/notes-de-frais', 'Notes de frais — Comptabilité'],
     ['/comptabilite/rapprochements', 'Rapprochements — Comptabilité'],
     ['/comptabilite/immobilisations', 'Immobilisations — Comptabilité'],
     ['/comptabilite/fiscalite', 'Fiscalité — Comptabilité'],
@@ -70,6 +79,9 @@ const config = {
     { path: '/comptabilite/fiscalite', component: FiscalitePage, roles: ROLES },
     { path: '/comptabilite/immobilisations', component: ImmobilisationsPage, roles: ROLES },
     { path: '/comptabilite/rapprochements', component: RapprochementsPage, roles: ROLES },
+    { path: '/comptabilite/notes-de-frais', component: NotesDeFraisPage, roles: ROLES },
+    { path: '/comptabilite/effets', component: EffetsPage, roles: ROLES },
+    { path: '/comptabilite/engagements', component: EngagementsPage, roles: ROLES },
   ],
 }
 

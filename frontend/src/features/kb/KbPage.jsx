@@ -1,14 +1,21 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSelector } from 'react-redux'
-import { BookOpen, Plus, Eye, Pencil, Trash2, Send } from 'lucide-react'
+import {
+  BookOpen, Plus, Eye, Pencil, Trash2, Send, FolderTree, Copy, AlertTriangle,
+  LayoutTemplate, Download, Upload, Star, BarChart3,
+} from 'lucide-react'
 import { ListShell } from '../../ui/module'
-import { Button, Badge, Tag, toast } from '../../ui'
+import { Button, Badge, Tag, toast, buttonVariants } from '../../ui'
 import { formatDateTime } from '../../lib/format'
 import kbApi from '../../api/kbApi'
 import { KB_STATUT_MAP, StatutArticlePill, splitTags } from './kbStatus'
 import ArticleDetail from './ArticleDetail'
 import ArticleEditor from './ArticleEditor'
 import FilterSelect from './FilterSelect'
+import ArticleTree from './ArticleTree'
+import TemplatesGallery from './TemplatesGallery'
+import KbStatsPanel from './KbStatsPanel'
+import FavorisRecentsPanel from './FavorisRecentsPanel'
 
 /* ============================================================================
    UX43 — Base de connaissances (apps/kb).
@@ -38,6 +45,19 @@ export default function KbPage() {
   const [selected, setSelected] = useState(null)
   const [editing, setEditing] = useState(null) // article en édition (ou {} pour nouveau)
 
+  // XKB14 — rapport de péremption (articles dont la revue est due), visible
+  // seulement responsable/admin.
+  const [peremption, setPeremption] = useState([])
+
+  // XKB12 — galerie de gabarits (masquée par défaut).
+  const [showGabarits, setShowGabarits] = useState(false)
+  // XKB16 — statistiques (masquées par défaut, responsable/admin).
+  const [showStats, setShowStats] = useState(false)
+  // XKB15 — favoris/récents (masqués par défaut, tous rôles).
+  const [showFavoris, setShowFavoris] = useState(false)
+  // XKB17 — import Markdown (input fichier caché, déclenché par le bouton).
+  const importInputRef = useRef(null)
+
   // Charge la liste avec les filtres serveur passés (statut / catégorie).
   const load = (statut = statutFilter, categorie = categorieFilter) => {
     setLoading(true)
@@ -57,6 +77,13 @@ export default function KbPage() {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    if (!peutEditer) return
+    kbApi.rapportPeremption()
+      .then((res) => setPeremption(Array.isArray(res.data) ? res.data : (res.data?.results ?? [])))
+      .catch(() => setPeremption([]))
+  }, [peutEditer])
 
   // Les filtres serveur relancent explicitement le chargement (évite un effet
   // dépendant qui déclencherait un setState « en cascade »).
@@ -147,12 +174,45 @@ export default function KbPage() {
     },
   ], [])
 
+  // XKB21 — duplique l'article (copie brouillon indépendante).
+  const handleDuplicate = async (a) => {
+    const avecSousArticles = window.confirm(
+      `Dupliquer « ${a.titre} » ? OK = avec ses sous-articles, Annuler = article seul.`)
+    try {
+      await kbApi.dupliquer(a.id, { avec_sous_articles: avecSousArticles })
+      toast.success('Article dupliqué (brouillon).')
+      load()
+    } catch { toast.error('Duplication impossible.') }
+  }
+
+  // XKB8 — déplace (re-parente) l'article : demande l'id du nouveau parent
+  // (vide = racine). Interaction volontairement simple (prompt) — le
+  // panneau ArticleTree reste la vue de référence pour visualiser l'arbre.
+  const handleMove = async (a) => {
+    const input = window.prompt(
+      `Déplacer « ${a.titre} » — identifiant de l’article parent (laisser vide pour la racine) :`,
+      a.parent ?? '')
+    if (input === null) return
+    const parent = input.trim() === '' ? null : Number(input.trim())
+    if (parent !== null && Number.isNaN(parent)) {
+      toast.error('Identifiant de parent invalide.')
+      return
+    }
+    try {
+      await kbApi.deplacer(a.id, { parent })
+      toast.success('Article déplacé.')
+      load()
+    } catch { toast.error('Déplacement impossible.') }
+  }
+
   const rowActions = (a) => {
     const actions = [
       { id: 'read', label: 'Consulter', icon: Eye, onClick: () => openDetail(a) },
     ]
     if (peutEditer) {
       actions.push({ id: 'edit', label: 'Éditer', icon: Pencil, onClick: () => openEditor(a) })
+      actions.push({ id: 'move', label: 'Déplacer', icon: FolderTree, onClick: () => handleMove(a) })
+      actions.push({ id: 'duplicate', label: 'Dupliquer', icon: Copy, onClick: () => handleDuplicate(a) })
       if (a.statut !== 'publie') {
         actions.push({
           id: 'publish', label: 'Publier', icon: Send,
@@ -194,11 +254,88 @@ export default function KbPage() {
     </div>
   )
 
-  const actions = peutEditer ? (
-    <Button onClick={() => openEditor(null)}>
-      <Plus /> Nouvel article
-    </Button>
-  ) : null
+  // XKB17 — import Markdown : crée un nouvel article BROUILLON depuis un
+  // fichier .md sélectionné.
+  const handleImportMarkdown = async (e) => {
+    const fichier = e.target.files?.[0]
+    e.target.value = ''
+    if (!fichier) return
+    try {
+      await kbApi.importerMarkdown({ fichier })
+      toast.success('Article importé (brouillon).')
+      load()
+    } catch { toast.error('Import impossible.') }
+  }
+
+  const actions = (
+    <>
+      <Button variant="outline" onClick={() => setShowFavoris(true)}>
+        <Star /> Favoris &amp; récents
+      </Button>
+      {peutEditer && (
+        <>
+          <Button variant="outline" onClick={() => setShowStats(true)}>
+            <BarChart3 /> Statistiques
+          </Button>
+          <Button variant="outline" onClick={() => setShowGabarits(true)}>
+            <LayoutTemplate /> Gabarits
+          </Button>
+          {/* Lien de téléchargement stylé comme un bouton — pas de Button
+              asChild (Slot Radix exige un unique enfant, incompatible avec
+              icône + libellé ici). */}
+          <a href={kbApi.exportZipUrl()} download className={buttonVariants({ variant: 'outline' })}>
+            <Download /> Exporter (ZIP)
+          </a>
+          <Button variant="outline" onClick={() => importInputRef.current?.click()}>
+            <Upload /> Importer Markdown
+          </Button>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".md,text/markdown,text/plain"
+            className="hidden"
+            onChange={handleImportMarkdown}
+          />
+          <Button onClick={() => openEditor(null)}>
+            <Plus /> Nouvel article
+          </Button>
+        </>
+      )}
+    </>
+  )
+
+  // ── Galerie de gabarits (XKB12) ──
+  if (showGabarits) {
+    return (
+      <div className="page">
+        <TemplatesGallery
+          onClose={() => setShowGabarits(false)}
+          onCreated={(article) => { setShowGabarits(false); openEditor(article) }}
+        />
+      </div>
+    )
+  }
+
+  // ── Statistiques (XKB16) ──
+  if (showStats) {
+    return (
+      <div className="page">
+        <KbStatsPanel onClose={() => setShowStats(false)} />
+      </div>
+    )
+  }
+
+  // ── Favoris & récents (XKB15) ──
+  if (showFavoris) {
+    return (
+      <div className="page">
+        <FavorisRecentsPanel
+          onClose={() => setShowFavoris(false)}
+          onSelect={(a) => { setShowFavoris(false); openDetail(a) }}
+        />
+      </div>
+    )
+  }
 
   // ── Éditeur (création / édition) ──
   if (editing) {
@@ -220,6 +357,7 @@ export default function KbPage() {
         onBack={closeAll}
         onEdit={() => openEditor(selected)}
         onChanged={load}
+        onOpenArticle={(id) => openDetail({ id })}
       />
     )
   }
@@ -248,7 +386,16 @@ export default function KbPage() {
         exportName="base-de-connaissances"
         emptyTitle="Aucun article"
         emptyDescription="Aucun article ne correspond à cette recherche."
-      />
+      >
+        {peutEditer && peremption.length > 0 && (
+          <div className="flex items-center gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning">
+            <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
+            {peremption.length} article{peremption.length > 1 ? 's' : ''} dont la revue
+            est due (contenu potentiellement périmé).
+          </div>
+        )}
+        <ArticleTree onSelect={openDetail} />
+      </ListShell>
     </div>
   )
 }

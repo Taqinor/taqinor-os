@@ -90,6 +90,40 @@ const reportingApi = {
   // QJ19 — Win/loss par canal/source + top motifs de perte.
   winLossBySource: (params) =>
     api.get('/reporting/commercial/win-loss-by-source/', { params }),
+  // XKB1/ZCTR7-9 — Boîte d'approbations centralisée (5 sources : automation,
+  // contrats, ged, installations, workflow), UNFILTRÉE par défaut.
+  // ?source=/?categorie=, ?priorite=, ?trier=urgence|anciennete|montant.
+  approbationsEnAttente: (params) =>
+    api.get('/reporting/approbations-en-attente/', { params }),
+  deciderApprobation: (source, id, decision, motif) =>
+    api.post('/reporting/approbations-en-attente/decider/', {
+      source, id, decision, motif,
+    }),
+  deciderApprobationsEnMasse: (items, decision, motif) =>
+    api.post('/reporting/approbations-en-attente/decider-en-masse/', {
+      items, decision, motif,
+    }),
+  // XPLT6 — CRUD des alertes de seuil sur KPI agrégés.
+  listKpiAlertes: () => api.get('/reporting/kpi-alertes/'),
+  createKpiAlerte: (data) => api.post('/reporting/kpi-alertes/', data),
+  updateKpiAlerte: (id, data) => api.patch(`/reporting/kpi-alertes/${id}/`, data),
+  deleteKpiAlerte: (id) => api.delete(`/reporting/kpi-alertes/${id}/`),
+  // XPLT22 — classeur léger embarqué (mini-spreadsheet BI, données live).
+  listClasseurs: () => api.get('/reporting/classeurs/'),
+  getClasseur: (id) => api.get(`/reporting/classeurs/${id}/`),
+  createClasseur: (data) => api.post('/reporting/classeurs/', data),
+  updateClasseur: (id, data) => api.patch(`/reporting/classeurs/${id}/`, data),
+  deleteClasseur: (id) => api.delete(`/reporting/classeurs/${id}/`),
+  rafraichirClasseur: (id) => api.get(`/reporting/classeurs/${id}/rafraichir/`),
+  evaluerFormuleClasseur: (id, formule) =>
+    api.post(`/reporting/classeurs/${id}/evaluer/`, { formule }),
+  // XSAV8 — conformité SLA + KPI SAV avancés.
+  savSlaInsight: (params) => api.get('/reporting/insights/sav-sla/', { params }),
+  // XFSM16 — analytics field service consolidés (FTF, MTTR, ponctualité…).
+  fieldServiceReport: (params) => api.get('/reporting/reports/field/', { params }),
+  // XFSM17 — scorecard coaching par technicien vs moyenne équipe.
+  technicienScorecard: (params) =>
+    api.get('/reporting/insights/technicien-scorecard/', { params }),
 }
 
 export default reportingApi

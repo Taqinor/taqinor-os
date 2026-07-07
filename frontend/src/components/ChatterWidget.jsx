@@ -9,9 +9,9 @@
  *   readOnly (bool, défaut false)
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useSelector } from 'react-redux'
 import { MessageSquare, Send, Trash2 } from 'lucide-react'
 import recordsApi from '../api/recordsApi'
-import { useAuth } from '../contexts/AuthContext'
 
 // Surligne les @mentions dans le texte.
 function renderBody(body) {
@@ -37,7 +37,7 @@ function formatDate(iso) {
 }
 
 export default function ChatterWidget({ model, id, readOnly = false }) {
-  const { user } = useAuth()
+  const user = useSelector((s) => s.auth?.user)
   const [comments, setComments] = useState([])
   const [body, setBody] = useState('')
   const [loading, setLoading] = useState(false)

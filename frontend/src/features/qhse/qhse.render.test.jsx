@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
@@ -24,7 +24,10 @@ beforeAll(() => {
 vi.mock('../../api/qhseApi', () => {
   const emptyList = () => Promise.resolve({ data: [] })
   const res = (data) => Promise.resolve({ data })
-  const crud = () => ({ list: emptyList, get: emptyList, create: emptyList })
+  const crud = () => ({
+    list: emptyList, get: emptyList, create: emptyList, update: emptyList,
+    remove: emptyList,
+  })
   return {
     default: {
       incidents: {
@@ -47,7 +50,12 @@ vi.mock('../../api/qhseApi', () => {
             { type: 'permis', id: 1, titre: 'Permis hauteur', date: '2026-08-01', en_retard: false, reference: 'PT-1' },
           ],
         }),
-      nonConformites: { list: emptyList, historique: emptyList },
+      paretoDefauts: () => res({ pareto: [], premier_passage: {} }),
+      nonConformites: {
+        list: emptyList, historique: emptyList,
+        poserDisposition: emptyList, depuisTicketSav: emptyList,
+        creerIntervention: emptyList, tauxDefaillanceProduit: emptyList,
+      },
       capa: { list: emptyList, enRetard: emptyList },
       plansInspection: crud(), plansChantier: crud(), releves: crud(),
       grillesAudit: crud(), audits: crud(), notationsFinChantier: crud(),
@@ -58,21 +66,63 @@ vi.mock('../../api/qhseApi', () => {
       dechets: crud(), bordereauxDechets: crud(), recyclageModules: crud(),
       conformitesEnvironnementales: crud(), bilansCarbone: crud(),
       indicateursEsg: crud(),
+      derogations: crud(),
+      plansControleReception: crud(), pointsControleReception: crud(),
+      controlesReception: { ...crud(), statuer: emptyList },
+      codesDefaut: crud(),
+      etapesDeclarationAt: { ...crud(), marquerFait: emptyList },
+      liensSignalement: { ...crud(), qr: emptyList },
+      signalementsPublics: crud(),
+      observationsSecurite: {
+        ...crud(), convertirCapa: emptyList, convertirNcr: emptyList,
+        compteurs: emptyList,
+      },
+      exercicesUrgence: crud(),
+      aspectsEnvironnementaux: { ...crud(), aRevoir: emptyList },
+      relevesConsommation: crud(),
+      coutNonQualite: () => res({ interne: null, externe: null, total: null }),
+      demandesChangement: {
+        ...crud(), transitionner: emptyList, creerCapa: emptyList,
+        aReverser: emptyList, relancer: emptyList,
+      },
+      veillesReglementaires: { ...crud(), genererRevuesDues: emptyList },
+      revuesVeille: { ...crud(), conclure: emptyList },
+      ia: { suggestionClassification: emptyList, suggestionAnalyse: emptyList },
+      causerieSecuritePdf: emptyList,
     },
   }
 })
 
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
+import authReducer from '../auth/store/authSlice'
 import QhseCockpit from './QhseCockpit.jsx'
 import NonConformites from './NonConformites.jsx'
 import Inspections from './Inspections.jsx'
 import Risques from './Risques.jsx'
 import Environnement from './Environnement.jsx'
 
+// Environnement (coût de non-qualité, XQHS22) consulte `useHasPermission`
+// (react-redux) — un Provider minimal évite le crash « no store found ».
+function makeStore() {
+  return configureStore({
+    reducer: { auth: authReducer },
+    preloadedState: {
+      auth: {
+        user: { id: 1 }, role: 'normal', role_nom: 'Responsable',
+        permissions: [], isAuthenticated: true, loading: false,
+      },
+    },
+  })
+}
+
 function renderWith(ui) {
   return render(
-    <MemoryRouter>
-      <ThemeProvider>{ui}</ThemeProvider>
-    </MemoryRouter>,
+    <Provider store={makeStore()}>
+      <MemoryRouter>
+        <ThemeProvider>{ui}</ThemeProvider>
+      </MemoryRouter>
+    </Provider>,
   )
 }
 
@@ -93,12 +143,14 @@ describe('QhseCockpit', () => {
 })
 
 describe('NonConformites', () => {
-  it('rend le registre NCR avec ses onglets', async () => {
+  it('rend le registre NCR avec ses onglets (dont XQHS2 Dérogations)', async () => {
     renderWith(<NonConformites />)
-    // Les deux bascules d'onglet sont présentes.
+    // Les trois bascules d'onglet sont présentes (NCR / CAPA / Dérogations).
     expect(screen.getByText('Non-conformités', { selector: 'button' }))
       .toBeInTheDocument()
     expect(screen.getByText('CAPA', { selector: 'button' })).toBeInTheDocument()
+    expect(screen.getByText('Dérogations', { selector: 'button' }))
+      .toBeInTheDocument()
     // Le titre de la ListShell NCR apparaît après chargement.
     await waitFor(() =>
       expect(
@@ -106,24 +158,37 @@ describe('NonConformites', () => {
       ).toBeInTheDocument(),
     )
   })
+
+  it('propose l’assistance IA (XQHS25) dans le dialogue de création NCR', async () => {
+    renderWith(<NonConformites />)
+    fireEvent.click(screen.getByText('Nouvelle NCR'))
+    expect(
+      await screen.findByText('Suggérer la gravité (IA)'),
+    ).toBeInTheDocument()
+  })
 })
 
 describe('Écrans à onglets (montage sans crash)', () => {
-  it('monte Inspections & audits avec ses onglets', () => {
+  it('monte Inspections & audits avec l’onglet Contrôle réception (XQHS3)', () => {
     renderWith(<Inspections />)
     expect(screen.getByText('Inspections & audits')).toBeInTheDocument()
     expect(screen.getByText('Plans d’inspection (ITP)')).toBeInTheDocument()
+    expect(screen.getByText('Contrôle réception')).toBeInTheDocument()
   })
 
-  it('monte Risques, permis & incidents', () => {
+  it('monte Risques, permis & incidents avec Signalement QR (XQHS16) et BBS (XQHS17)', () => {
     renderWith(<Risques />)
     expect(screen.getByText('Risques, permis & incidents')).toBeInTheDocument()
     expect(screen.getByText('Document unique')).toBeInTheDocument()
+    expect(screen.getByText('Signalement QR')).toBeInTheDocument()
+    expect(screen.getByText('Observations BBS')).toBeInTheDocument()
   })
 
-  it('monte Environnement & ESG', () => {
+  it('monte Environnement & ESG avec Aspects environnementaux (XQHS20) et Changement & veille (XQHS24/26)', () => {
     renderWith(<Environnement />)
     expect(screen.getByText('Environnement & ESG')).toBeInTheDocument()
     expect(screen.getByText('Bilan carbone')).toBeInTheDocument()
+    expect(screen.getByText('Aspects environnementaux')).toBeInTheDocument()
+    expect(screen.getByText('Changement & veille')).toBeInTheDocument()
   })
 })
