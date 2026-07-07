@@ -429,6 +429,41 @@ def bcf_sources_en_commande_produit(company, produit_id):
     return out
 
 
+def bcf_sources_en_commande_map(company):
+    """YOPSB13 — variante « toute la société en une requête » de
+    :func:`bcf_sources_en_commande_produit`, pour éviter le N+1 sur la LISTE
+    produits (``ProduitSerializer.get_bcf_sources_en_commande``/
+    ``get_quantite_en_commande`` appelés une fois par ligne). Renvoie
+    ``{produit_id: [sources...]}`` — même forme de dict par source que la
+    version unitaire, résultat identique (mêmes filtres BROUILLON/ENVOYE,
+    mêmes exclusions ANNULE/RECU/restant<=0). INTERNE, lecture seule."""
+    from .models import BonCommandeFournisseur, LigneBonCommandeFournisseur
+
+    lignes = (LigneBonCommandeFournisseur.objects
+              .filter(
+                  bon_commande__company=company,
+                  bon_commande__statut__in=[
+                      BonCommandeFournisseur.Statut.BROUILLON,
+                      BonCommandeFournisseur.Statut.ENVOYE,
+                  ])
+              .select_related('bon_commande', 'bon_commande__fournisseur'))
+    out = {}
+    for ligne in lignes:
+        restant = max(ligne.quantite - ligne.quantite_recue, 0)
+        if restant <= 0:
+            continue
+        bc = ligne.bon_commande
+        out.setdefault(ligne.produit_id, []).append({
+            'bon_commande_id': bc.id,
+            'reference': bc.reference,
+            'fournisseur_nom': (
+                bc.fournisseur.nom if bc.fournisseur_id else None),
+            'quantite_restante': restant,
+            'date_livraison_prevue': bc.date_livraison_prevue,
+        })
+    return out
+
+
 def three_way_amounts(company, bc_id):
     """FG131 — Les trois montants HT du rapprochement 3 voies pour un BCF :
     commandé (BC) ↔ reçu (réception) ↔ facturé (facture fournisseur).
@@ -726,3 +761,234 @@ def lignes_import_depuis_bcf(company, bon_commande_id):
             'pays_origine': p.pays_origine or '',
         })
     return out
+
+
+MOUVEMENTS_AGREGES_GROUP_BY = ('produit', 'type', 'mois', 'emplacement')
+
+
+def mouvements_agreges(company, *, group_by, date_min=None, date_max=None):
+    """ZSTK7 — « Reporting ▸ Moves History » : agrège `MouvementStock` par
+    ``group_by`` (produit/type/mois/emplacement) sur la période optionnelle,
+    en quantités ENTRÉES/SORTIES/NETTES. LECTURE SEULE, INTERNE.
+
+    ``group_by='emplacement'`` réutilise `stock_breakdown_map` (ventilation
+    ACTUELLE par emplacement — le modèle `MouvementStock` ne trace pas
+    l'emplacement par mouvement) : chaque quantité agrégée est éclatée selon
+    la répartition courante du produit entre emplacements. Lève
+    ``ValueError`` si ``group_by`` n'est pas reconnu (400 côté vue)."""
+    from .models import MouvementStock
+
+    if group_by not in MOUVEMENTS_AGREGES_GROUP_BY:
+        raise ValueError(
+            f'group_by inconnu : {group_by!r} '
+            f'(attendu parmi {MOUVEMENTS_AGREGES_GROUP_BY}).')
+
+    qs = MouvementStock.objects.filter(
+        company=company).select_related('produit')
+    if date_min:
+        qs = qs.filter(date__date__gte=date_min)
+    if date_max:
+        qs = qs.filter(date__date__lte=date_max)
+
+    ENTREE = MouvementStock.TypeMouvement.ENTREE
+    SORTIE = MouvementStock.TypeMouvement.SORTIE
+
+    def _cle(m):
+        if group_by == 'produit':
+            return (m.produit_id, m.produit.nom if m.produit_id else '—')
+        if group_by == 'type':
+            return (m.type_mouvement, m.get_type_mouvement_display())
+        if group_by == 'mois':
+            from .services import _mois_key
+            key = _mois_key(m.date)
+            return (key, key)
+        return None  # 'emplacement' traité séparément ci-dessous.
+
+    buckets = {}
+    for m in qs:
+        if group_by == 'emplacement':
+            continue
+        cle, libelle = _cle(m)
+        entry = buckets.setdefault(
+            cle, {'cle': cle, 'libelle': libelle,
+                  'entrees': 0, 'sorties': 0})
+        if m.type_mouvement == ENTREE:
+            entry['entrees'] += m.quantite
+        elif m.type_mouvement == SORTIE:
+            entry['sorties'] += m.quantite
+
+    if group_by == 'emplacement':
+        from .services import stock_breakdown_map
+        breakdown = stock_breakdown_map(company)
+        for m in qs:
+            rows = breakdown.get(m.produit_id, [])
+            total = sum(r['quantite'] for r in rows) or 1
+            for r in rows:
+                part = r['quantite'] / total
+                cle = (r['emplacement_id'], r['emplacement_nom'])
+                entry = buckets.setdefault(
+                    cle, {'cle': cle, 'libelle': r['emplacement_nom'],
+                          'entrees': 0, 'sorties': 0})
+                if m.type_mouvement == ENTREE:
+                    entry['entrees'] += m.quantite * part
+                elif m.type_mouvement == SORTIE:
+                    entry['sorties'] += m.quantite * part
+
+    out = []
+    for entry in buckets.values():
+        out.append({
+            'libelle': entry['libelle'],
+            'entrees': entry['entrees'],
+            'sorties': entry['sorties'],
+            'net': entry['entrees'] - entry['sorties'],
+        })
+    out.sort(key=lambda e: e['libelle'] or '')
+    return out
+
+
+def resolve_via_nomenclature(company, code):
+    """ZSTK12 — consulte la nomenclature de code-barres ACTIVE de la société
+    (s'il y en a une) et renvoie ``(encode, regle)`` pour la PREMIÈRE règle
+    (triée par priorité) dont le motif matche ``code``, ou ``None`` si
+    aucune nomenclature active / aucune règle ne matche — repli : le
+    résolveur de scan continue alors son comportement HISTORIQUE (jetons
+    internes → GS1 → EAN), byte-identique à avant ZSTK12."""
+    from .models import NomenclatureCodeBarres
+
+    nomenclature = (NomenclatureCodeBarres.objects
+                    .filter(company=company, actif=True)
+                    .prefetch_related('regles')
+                    .first())
+    if nomenclature is None:
+        return None
+    for regle in nomenclature.regles.all():
+        if regle.matches(code):
+            return regle.encode, regle
+    return None
+
+
+def trace_serie(company, *, numero_serie=None, numero_lot=None):
+    """XSTK7 — rapport de traçabilité bout-en-bout (rappel fabricant) : pour
+    un numéro de série (ou de lot XSTK6), remonte EN UN APPEL la chaîne
+    réception fournisseur (BCF/réception/fournisseur/date) → emplacements
+    (LotEntrepot/SerieEntrepot) → livraison/chantier → équipement installé/
+    client. Lit `installations`/`sav` via LEURS selectors (jamais leurs
+    models). LECTURE SEULE, INTERNE.
+
+    Exactement un de ``numero_serie``/``numero_lot`` doit être fourni.
+    Renvoie ``None`` si rien n'est trouvé (numéro inconnu / hors société —
+    l'appelant renvoie 404)."""
+    from .models import LigneReceptionFournisseur, LotEntrepot
+
+    if not numero_serie and not numero_lot:
+        return None
+
+    chaine = {
+        'numero_serie': numero_serie,
+        'numero_lot': numero_lot,
+        'reception': None,
+        'emplacement': None,
+        'equipement': None,
+    }
+    found = False
+
+    if numero_serie:
+        # ── Maillon 1 : réception fournisseur (série capturée FG61) ───────
+        lignes = (LigneReceptionFournisseur.objects
+                  .filter(reception__company=company,
+                          numeros_serie__isnull=False)
+                  .select_related(
+                      'reception', 'reception__bon_commande',
+                      'reception__bon_commande__fournisseur', 'produit'))
+        for ligne in lignes:
+            valeurs = [str(v).strip() for v in (ligne.numeros_serie or [])]
+            if numero_serie.strip() in valeurs:
+                bc = (ligne.reception.bon_commande
+                      if ligne.reception.bon_commande_id else None)
+                chaine['reception'] = {
+                    'reception_reference': ligne.reception.reference,
+                    'bcf_reference': bc.reference if bc else None,
+                    'fournisseur_nom': (
+                        bc.fournisseur.nom
+                        if bc and bc.fournisseur_id else None),
+                    'date': (
+                        ligne.reception.date_creation.isoformat()
+                        if ligne.reception.date_creation else None),
+                    'produit_id': ligne.produit_id,
+                    'produit_nom': (
+                        ligne.produit.nom if ligne.produit_id else None),
+                }
+                found = True
+                break
+
+        # ── Maillon 2 : emplacement entrepôt (SerieEntrepot, installations)
+        from apps.installations.selectors import serie_entrepot_scoped_by_serial
+        produit_id = (chaine['reception']['produit_id']
+                      if chaine['reception'] else None)
+        serie_ent = None
+        if produit_id is not None:
+            serie_ent = serie_entrepot_scoped_by_serial(
+                company, produit_id, numero_serie)
+        if serie_ent is not None:
+            chaine['emplacement'] = {
+                'statut': serie_ent.statut,
+                'emplacement_id': serie_ent.emplacement_id,
+            }
+            found = True
+
+        # ── Maillon 3+4 : équipement installé (sav.Equipement) → chantier/
+        # client (via Equipement.installation, déjà porté par le selector).
+        from apps.sav.selectors import equipement_scoped_by_serial
+        equipement = equipement_scoped_by_serial(company, numero_serie)
+        if equipement is not None:
+            found = True
+            installation = equipement.installation
+            client_nom = ''
+            if installation is not None and installation.client_id:
+                c = installation.client
+                client_nom = f'{c.nom} {c.prenom or ""}'.strip()
+            chaine['equipement'] = {
+                'equipement_id': equipement.id,
+                'statut': equipement.statut,
+                'chantier_reference': (
+                    installation.reference if installation else None),
+                'client_nom': client_nom or None,
+            }
+
+    if numero_lot:
+        lot = (LotEntrepot.objects
+               .filter(company=company, numero_lot=numero_lot)
+               .select_related('produit', 'emplacement')
+               .order_by('-date_creation')
+               .first())
+        if lot is not None:
+            found = True
+            chaine['reception'] = {
+                'reception_reference': lot.reference_reception,
+                'bcf_reference': None,
+                'fournisseur_nom': None,
+                'date': None,
+                'produit_id': lot.produit_id,
+                'produit_nom': lot.produit.nom if lot.produit_id else None,
+            }
+            chaine['emplacement'] = {
+                'statut': (
+                    'epuise' if lot.quantite_restante <= 0 else 'en_stock'),
+                'emplacement_id': lot.emplacement_id,
+            }
+
+    if not found:
+        return None
+    return chaine
+
+
+# ── XMKT29 — Exposition de l'encodeur QR maison (N20) aux autres apps ──────
+
+def qr_svg(text, *, box=4, quiet=4):
+    """XMKT29 — encodeur QR SANS dépendance (``apps.stock.labels.qr_svg``),
+    exposé ici pour que d'autres apps (compta : SupportOffline XMKT29,
+    badges ZMKT19, enquêtes ZMKT12) génèrent un QR SVG sans jamais importer
+    ``apps.stock.labels``/``apps.stock.views`` directement — AUCUNE nouvelle
+    dépendance (pattern N20)."""
+    from .labels import qr_svg as _qr_svg
+    return _qr_svg(text, box=box, quiet=quiet)

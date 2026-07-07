@@ -175,3 +175,36 @@ describe('FactureList — WR2b : barre d\'actions en masse (bulkFactures)', () =
     expect(within(bulkBar).getByText('2')).toBeVisible()
   })
 })
+
+describe('FactureList — ZFAC9 : bascule Liste/Kanban', () => {
+  it('la vue Liste (tableau) est affichée par défaut', () => {
+    renderList({ factures: [{ ...baseFacture }] })
+    expect(screen.getByRole('table')).toBeInTheDocument()
+    expect(screen.queryByTestId('facture-kanban-board')).not.toBeInTheDocument()
+  })
+
+  it('basculer sur Kanban masque le tableau et regroupe par colonne (même onglet/dérivation)', async () => {
+    const user = userEvent.setup()
+    renderList({
+      factures: [
+        { ...baseFacture, id: 1, reference: 'FAC-K-1', statut: 'brouillon' },
+        { ...baseFacture, id: 2, reference: 'FAC-K-2', statut: 'payee', montant_du: 0 },
+      ],
+    })
+    await user.click(screen.getByRole('button', { name: /Kanban/ }))
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    expect(screen.getByTestId('facture-kanban-board')).toBeInTheDocument()
+    expect(screen.getByTestId('fkb-count-brouillon')).toHaveTextContent('1')
+    expect(screen.getByTestId('fkb-count-payee')).toHaveTextContent('1')
+    expect(screen.getByText('FAC-K-1')).toBeInTheDocument()
+    expect(screen.getByText('FAC-K-2')).toBeInTheDocument()
+  })
+
+  it('revenir sur Liste réaffiche le tableau', async () => {
+    const user = userEvent.setup()
+    renderList({ factures: [{ ...baseFacture }] })
+    await user.click(screen.getByRole('button', { name: /Kanban/ }))
+    await user.click(screen.getByRole('button', { name: /^Liste/ }))
+    expect(screen.getByRole('table')).toBeInTheDocument()
+  })
+})

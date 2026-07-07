@@ -13,6 +13,7 @@ from .views import (
     AcompteFournisseurViewSet, AvoirFournisseurViewSet,
     LotEntrepotViewSet, InventaireAnnuelViewSet, RevalorisationStockViewSet,
     ConditionnementProduitViewSet, ModeleBonCommandeFournisseurViewSet,
+    NomenclatureCodeBarresViewSet, RegleCodeBarresViewSet,
 )
 
 router = DefaultRouter()
@@ -46,6 +47,9 @@ router.register(r'inventaires-annuels', InventaireAnnuelViewSet)
 router.register(r'revalorisations-stock', RevalorisationStockViewSet)
 router.register(r'conditionnements', ConditionnementProduitViewSet)
 router.register(r'modeles-bcf', ModeleBonCommandeFournisseurViewSet)
+router.register(
+    r'nomenclatures-code-barres', NomenclatureCodeBarresViewSet)
+router.register(r'regles-code-barres', RegleCodeBarresViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

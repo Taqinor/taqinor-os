@@ -272,6 +272,44 @@ def _register_builtin_actions() -> None:
             required_permission='crm_voir',
             risk=RISK_INTERNAL,
         ),
+        # XPLT18 — Proposer une règle d'automatisation en langage naturel.
+        # Le LLM produit un brouillon STRUCTURÉ (trigger_type/action_type du
+        # catalogue FERMÉ apps.automation.models.TriggerType/ActionType —
+        # jamais de code libre), présenté propose→confirm (risk=outward). La
+        # règle créée est TOUJOURS désactivée (revue admin) — voir
+        # apps.automation.services.create_draft_rule_from_agent, qui
+        # re-valide le brouillon contre le catalogue fermé côté serveur.
+        AgentAction(
+            key='automation.rule.propose_draft',
+            label="Proposer une règle d'automatisation",
+            description=(
+                "Crée un brouillon de règle d'automatisation (si/alors) à "
+                "partir d'une description en langage naturel. Le "
+                "déclencheur et l'action doivent appartenir au catalogue "
+                "fermé existant (jamais de code libre). La règle est "
+                "TOUJOURS créée désactivée : elle attend une revue admin "
+                "dans Paramètres → Automatisations avant de pouvoir "
+                "s'exécuter."
+            ),
+            endpoint='/api/django/agent/actions/automation-draft/',
+            method='POST',
+            inputs={
+                'type': 'object',
+                'properties': {
+                    'nom': {'type': 'string'},
+                    'trigger_type': {'type': 'string'},
+                    'trigger_config': {'type': 'object'},
+                    'action_type': {'type': 'string'},
+                    'action_config': {'type': 'object'},
+                },
+                'required': ['nom', 'trigger_type', 'action_type'],
+            },
+            required_permission=None,
+            risk=RISK_OUTWARD,
+            confirm_summary=(
+                "Créer un brouillon de règle d'automatisation (désactivée, "
+                "à valider par un administrateur)."),
+        ),
         AgentAction(
             key='stock.produit.delete',
             label='Supprimer un produit',

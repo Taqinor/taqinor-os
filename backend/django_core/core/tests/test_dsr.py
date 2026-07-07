@@ -27,6 +27,11 @@ class DsrRegistryTests(TestCase):
         cls.company = Company.objects.create(nom='ACME')
 
     def setUp(self):
+        # Sauvegarde/restaure le registre GLOBAL des providers DSR : les vrais
+        # providers crm/rh sont enregistrés une fois au démarrage (ready()) et
+        # d'autres modules de test en dépendent — un .clear() sans restauration
+        # les vidait pour les tests suivants (contamination inter-tests).
+        self._saved_providers = dict(dsr._PROVIDERS)
         dsr._PROVIDERS.clear()
         dsr.register_dsr_provider(
             'crm',
@@ -37,6 +42,7 @@ class DsrRegistryTests(TestCase):
 
     def tearDown(self):
         dsr._PROVIDERS.clear()
+        dsr._PROVIDERS.update(self._saved_providers)
 
     def test_export_aggregates_and_isolates_errors(self):
         out = dsr.exporter(self.company, 'a@b.ma')
@@ -106,11 +112,13 @@ class DsrRequestViewSetTests(TestCase):
         cls.factory = APIRequestFactory()
 
     def setUp(self):
+        self._saved_providers = dict(dsr._PROVIDERS)
         dsr._PROVIDERS.clear()
         dsr.register_dsr_provider('crm', export=lambda co, subj: {'ok': True})
 
     def tearDown(self):
         dsr._PROVIDERS.clear()
+        dsr._PROVIDERS.update(self._saved_providers)
 
     def test_traiter_action(self):
         dsr_req = DataSubjectRequest.objects.create(

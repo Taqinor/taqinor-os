@@ -6,6 +6,8 @@ from .views import (
     CommissioningRecordViewSet, StageModeleViewSet,
     ChecklistTemplateViewSet, ChecklistEtapeModeleViewSet, ShotListSlotViewSet,
     SafetyChecklistSlotViewSet,
+    FicheInterventionTemplateViewSet, FicheInterventionChampViewSet,
+    RecurrenceInterventionViewSet,
     JalonProjetViewSet, ModeleProjetViewSet, ReunionChantierViewSet,
     DocumentProjetViewSet, RevisionDocumentViewSet, FieldSyncView,
     ProjetViewSet, ProjetTacheViewSet, ProjetChantierViewSet,
@@ -71,6 +73,9 @@ from .views import (
     RetourLivraisonViewSet,
     RetourLivraisonLigneViewSet,
     LotPrelevementViewSet,
+    GpsConsentRecordViewSet,
+    PositionTechnicienViewSet,
+    GeofenceAlertViewSet,
 )
 
 router = DefaultRouter()
@@ -82,6 +87,9 @@ router.register(r'etapes-chantier', StageModeleViewSet)
 router.register(r'checklist-templates', ChecklistTemplateViewSet)
 router.register(r'checklist-etapes', ChecklistEtapeModeleViewSet)
 router.register(r'shotlist-slots', ShotListSlotViewSet)
+router.register(r'fiche-intervention-templates', FicheInterventionTemplateViewSet)
+router.register(r'fiche-intervention-champs', FicheInterventionChampViewSet)
+router.register(r'recurrences-intervention', RecurrenceInterventionViewSet)
 router.register(r'consignes-securite', SafetyChecklistSlotViewSet)
 router.register(r'jalons-projet', JalonProjetViewSet)
 router.register(r'modeles-projet', ModeleProjetViewSet)
@@ -159,6 +167,12 @@ router.register(r'retour-materiel-lignes', RetourMaterielLigneViewSet)
 router.register(r'retours-livraison', RetourLivraisonViewSet)
 router.register(r'retour-livraison-lignes', RetourLivraisonLigneViewSet)
 router.register(r'lots-prelevement', LotPrelevementViewSet)
+# XFSM23 — consentement GPS + positions live + alertes géofence.
+router.register(r'gps-consentements', GpsConsentRecordViewSet)
+router.register(r'positions-techniciens', PositionTechnicienViewSet,
+                basename='positiontechnicien')
+router.register(r'geofence-alertes', GeofenceAlertViewSet,
+                basename='geofencealert')
 
 urlpatterns = [
     # N91/F21 — synchro idempotente de la capture terrain hors-ligne.

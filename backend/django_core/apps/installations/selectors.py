@@ -127,6 +127,19 @@ def reserved_quantity_for_produit(produit):
     return (agg['total'] or 0) + (agg_asm['total'] or 0)
 
 
+def serie_entrepot_scoped_by_serial(company, produit_id, numero_serie):
+    """ZSTK6 — `SerieEntrepot` (FG323) scopée société, par (produit, n° de
+    série), avec chantier + client préchargés. Point d'entrée cross-app pour
+    le résolveur de scan de `apps.stock` (jamais son modèle importé
+    directement) — LECTURE SEULE, None si introuvable/hors société."""
+    from .models import SerieEntrepot
+    return (SerieEntrepot.objects
+            .filter(company=company, produit_id=produit_id,
+                    numero_serie=numero_serie)
+            .select_related('installation', 'installation__client')
+            .first())
+
+
 def reserved_quantities_for_company(company):
     """Map {produit_id: quantité réservée active} pour toute la société —
     chantier (N14) + ordre d'assemblage (XMFG2), un seul agrégat par source
@@ -2287,6 +2300,36 @@ def intervention_public_payload(interv):
         'distance_km': distance_km,
         'eta_minutes': eta_minutes,
         'site_ville': getattr(inst, 'site_ville', None),
+    }
+
+
+# ── ZFSM2 — lien public tokenisé du compte-rendu signé ───────────────────────
+def intervention_rapport_public_payload(interv):
+    """ZFSM2 — payload public (read-only, tokenisé) du compte-rendu signé :
+    mêmes données que le PDF F19 (photos avant/après, réserves, matériel
+    consommé SANS prix d'achat ni marge, signature), plus un lien de
+    téléchargement du PDF. Aucune donnée interne."""
+    from . import intervention_pdf
+
+    inst = interv.installation
+    return {
+        'statut': interv.statut,
+        'statut_display': interv.get_statut_display(),
+        'type_intervention_display': interv.get_type_intervention_display(),
+        'chantier_reference': getattr(inst, 'reference', None),
+        'site_ville': getattr(inst, 'site_ville', None),
+        'date_realisee': (
+            interv.date_realisee.isoformat() if interv.date_realisee else None),
+        'equipe': intervention_pdf._equipe_payload(interv),
+        'photos': intervention_pdf._photos_payload(interv),
+        'serials': intervention_pdf._serials_payload(interv),
+        'consommation': intervention_pdf._consommation_payload(interv),
+        'reserves': intervention_pdf._reserves_payload(interv),
+        'signataire_nom': interv.signataire_nom or None,
+        'signe_le': interv.signe_le.isoformat() if interv.signe_le else None,
+        'pdf_url': (
+            f'/api/django/public/installations/intervention-rapport/'
+            f'{interv.lien_rapport_token}/pdf/'),
     }
 
 

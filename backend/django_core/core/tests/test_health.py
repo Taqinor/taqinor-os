@@ -5,7 +5,10 @@ Couvre :
   * overall_status agrège (db down → global down) ;
   * l'endpoint status renvoie global/services/incidents (auth requise) ;
   * incidents bornés à la société.
+  * YOPSB7 — saturation des connexions Postgres (degraded au-delà de 80 %).
 """
+from unittest import mock
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework import status
@@ -73,3 +76,35 @@ class HealthTests(TestCase):
             detail={'message': 'autre société'})
         incidents = health.recent_incidents(company=self.company)
         self.assertEqual(incidents, [])
+
+    def test_db_check_ok_when_connections_far_from_saturation(self):
+        fake = {'active': 10, 'max': 100, 'ratio': 0.1, 'saturated': False}
+        with mock.patch.object(
+                health, '_check_db_connections', return_value=fake):
+            result = health._check_db()
+        self.assertEqual(result['status'], health.STATUS_OK)
+
+    def test_db_check_degraded_when_connections_saturated(self):
+        fake = {'active': 85, 'max': 100, 'ratio': 0.85, 'saturated': True}
+        with mock.patch.object(
+                health, '_check_db_connections', return_value=fake):
+            result = health._check_db()
+        self.assertEqual(result['status'], health.STATUS_DEGRADED)
+        self.assertIn('85', result['detail'])
+
+    def test_db_check_connections_best_effort_none_stays_ok(self):
+        """Une erreur sur la sonde de connexions (best-effort) ne doit jamais
+        faire échouer _check_db (déjà validé par le SELECT 1)."""
+        with mock.patch.object(
+                health, '_check_db_connections', return_value=None):
+            result = health._check_db()
+        self.assertEqual(result['status'], health.STATUS_OK)
+
+    def test_overall_status_degraded_when_only_db_degraded(self):
+        services = [
+            {'name': 'database', 'status': health.STATUS_DEGRADED,
+             'detail': 'saturation'},
+            {'name': 'cache', 'status': health.STATUS_OK, 'detail': ''},
+        ]
+        self.assertEqual(health.overall_status(services),
+                         health.STATUS_DEGRADED)

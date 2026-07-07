@@ -11,6 +11,10 @@ from .commissioning import CommissioningRecordViewSet
 from .stage_config import StageModeleViewSet
 from .checklist_template import ChecklistTemplateViewSet
 from .checklist_etape import ChecklistEtapeModeleViewSet
+from .fiche_intervention import (
+    FicheInterventionTemplateViewSet, FicheInterventionChampViewSet,
+)
+from .recurrence_intervention import RecurrenceInterventionViewSet
 from .intervention import InterventionViewSet
 from .shotlist import ShotListSlotViewSet
 from .safety import SafetyChecklistSlotViewSet
@@ -77,6 +81,9 @@ from .retour_livraison import (
     RetourLivraisonViewSet, RetourLivraisonLigneViewSet,
 )
 from .lot_prelevement import LotPrelevementViewSet
+from .gps_tracking import (
+    GpsConsentRecordViewSet, PositionTechnicienViewSet, GeofenceAlertViewSet,
+)
 
 __all__ = [
     'TypeInterventionViewSet',
@@ -86,6 +93,9 @@ __all__ = [
     'StageModeleViewSet',
     'ChecklistTemplateViewSet',
     'ChecklistEtapeModeleViewSet',
+    'FicheInterventionTemplateViewSet',
+    'FicheInterventionChampViewSet',
+    'RecurrenceInterventionViewSet',
     'InterventionViewSet',
     'ShotListSlotViewSet',
     'SafetyChecklistSlotViewSet',
@@ -162,4 +172,7 @@ __all__ = [
     'RetourLivraisonViewSet',
     'RetourLivraisonLigneViewSet',
     'LotPrelevementViewSet',
+    'GpsConsentRecordViewSet',
+    'PositionTechnicienViewSet',
+    'GeofenceAlertViewSet',
 ]

@@ -133,6 +133,13 @@ app.conf.beat_schedule = {
         'task': 'crm.recycler_leads_non_travailles',
         'schedule': crontab(minute=0),  # every hour
     },
+    # QW4 — SLA rappel plus serré que le SLA générique premier-contact :
+    # tourne plus souvent (toutes les 30 min) pour rattraper une escalade
+    # rapidement sur un SLA rappel typiquement court (2 à quelques heures).
+    'crm-escalader-rappels-demandes': {
+        'task': 'crm.escalader_rappels_demandes',
+        'schedule': crontab(minute='*/30'),
+    },
     # XPLT6 — évalue les alertes de seuil sur KPI agrégés (dédup interne).
     'reporting-evaluate-kpi-alertes': {
         'task': 'reporting.evaluate_kpi_alertes',
@@ -216,4 +223,74 @@ app.conf.beat_schedule = {
         'task': 'stock.recompute_reordering',
         'schedule': crontab(hour=6, minute=15),
     },
+    # ZPUR7 — brouillon de relance BCF en retard (gated OFF par défaut via
+    # `AchatsParametres.relance_bcf_actif`, no-op tant que non activé).
+    'stock-relancer-bcf-en-retard': {
+        'task': 'stock.relancer_bcf_en_retard',
+        'schedule': crontab(hour=7, minute=10),
+    },
+    # ZSTK2 — alertes de péremption des lots (fenêtre configurable par
+    # société, `CompanyProfile.jours_alerte_peremption`, défaut 30).
+    'stock-expiration-alerts': {
+        'task': 'stock.expiration_alerts',
+        'schedule': crontab(hour=6, minute=20),
+    },
+    # YOPSB1 — pg_dump réel quotidien vers MinIO (heure creuse).
+    'core-dump-database': {
+        'task': 'core.dump_database',
+        'schedule': crontab(hour=3, minute=0),
+    },
+    # YOPSB2 — drill de restauration hebdomadaire (lundi, heure creuse),
+    # restaure dans une base JETABLE et vérifie des comptages clés.
+    'core-restore-drill': {
+        'task': 'core.restore_drill',
+        'schedule': crontab(hour=4, minute=0, day_of_week=1),
+    },
+    # YOPSB3 — purge GFS quotidienne des dumps (DRY-RUN sauf
+    # BACKUP_PURGE_AUTO_APPLY).
+    'core-purge-backups': {
+        'task': 'core.purge_backups',
+        'schedule': crontab(hour=5, minute=0),
+    },
+    # YOPSB10 — sweep quotidien de toutes les politiques de rétention
+    # enregistrées (DRY-RUN sauf RETENTION_AUTO_APPLY), heure creuse.
+    'core-run-retention': {
+        'task': 'core.run_retention',
+        'schedule': crontab(hour=2, minute=0),
+    },
+    # YHARD6 — heartbeat du beat (toutes les 5 min) : alimente /metrics et
+    # core/health.py (détection d'un beat arrêté).
+    'core-beat-heartbeat': {
+        'task': 'core.beat_heartbeat',
+        'schedule': crontab(minute='*/5'),
+    },
+    # YSERV3 — balayage monitoring quotidien (synchro fournisseur + évaluation
+    # de sous-performance), heure creuse matinale.
+    'monitoring-balayage-quotidien': {
+        'task': 'monitoring.balayage_quotidien',
+        'schedule': crontab(hour=7, minute=35),
+    },
 }
+
+# YHARD6 — compteurs Celery succès/échec (process-local, best-effort) pour
+# l'endpoint /metrics. Enregistrés au niveau du signal Celery (pas Django) :
+# fonctionne aussi bien côté worker que côté beat, sans importer d'app métier.
+from celery.signals import task_success, task_failure  # noqa: E402
+
+
+@task_success.connect
+def _yhard6_on_task_success(**kwargs):
+    try:
+        from core import metrics
+        metrics.record_task_success()
+    except Exception:  # noqa: BLE001 — best-effort, ne doit jamais casser Celery
+        pass
+
+
+@task_failure.connect
+def _yhard6_on_task_failure(**kwargs):
+    try:
+        from core import metrics
+        metrics.record_task_failure()
+    except Exception:  # noqa: BLE001 — best-effort, ne doit jamais casser Celery
+        pass

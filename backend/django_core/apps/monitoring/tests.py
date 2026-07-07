@@ -26,7 +26,7 @@ from apps.crm.models import Client
 from apps.installations.models import Installation
 from apps.sav.models import Ticket
 
-from apps.monitoring import providers, services
+from apps.monitoring import providers, services, tasks
 from apps.monitoring.models import (
     CleaningEvent, MonitoringConfig, MonitoringSettings, ProductionReading,
     UnderperformanceFlag,
@@ -797,11 +797,201 @@ class TestOmReport(TestCase):
         self.assertEqual(r.status_code, 200, r.data)
         self.assertIn('period_kwh', r.data)
 
+
+class TestBalayageQuotidien(TestCase):
+    """YSERV3 — job Celery Beat : synchro + évaluation de sous-performance
+    pour chaque système supervisé, sans action humaine."""
+
+    def setUp(self):
+        self.company = make_company('bal-co', 'Bal Co')
+        self.today = date(2026, 6, 1)
+        # YSERV3 — self.api : requis par test_email_endpoint (endpoint API
+        # email-om-report). Un utilisateur seul n'affecte pas
+        # balayage_quotidien() (scopé aux MonitoringConfig existants), donc
+        # ne pollue aucun des autres tests de cette classe qui comptent des
+        # systèmes traités — contrairement à une config/installation créée
+        # ici, que test_email_endpoint crée donc lui-même plutôt qu'en setUp.
+        self.user = User.objects.create_user(
+            username='bal_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = auth(self.user)
+
+        class FakeProvider(providers.MonitoringProvider):
+            key = 'fake-bal'
+            label = 'Fake Bal'
+
+            def fetch_recent(self, system, config):
+                return [
+                    {'date': '2026-06-01', 'energy_kwh': 5,
+                     'period_days': 1, 'external_id': 'bal-1'},
+                ]
+
+        self._orig = dict(providers._REGISTRY)
+        providers.register_provider(FakeProvider)
+
+    def tearDown(self):
+        providers._REGISTRY.clear()
+        providers._REGISTRY.update(self._orig)
+
+    def test_noop_provider_no_crash_no_effect(self):
+        """Système sur le fournisseur NoOp (défaut) : aucune synchro, aucun
+        crash — comportement actuel inchangé, juste appelé automatiquement."""
+        inst, _ = make_installation(self.company, ref='BAL-NOOP', kwc='5.00')
+        MonitoringConfig.objects.create(company=self.company, installation=inst)
+        result = tasks.balayage_quotidien()
+        self.assertEqual(result['systemes'], 1)
+        self.assertEqual(result['releves_importes'], 0)
+        self.assertEqual(ProductionReading.objects.count(), 0)
+
+    def test_sync_and_evaluate_active_provider(self):
+        """Fournisseur actif : la tâche importe le relevé ET évalue la
+        sous-performance (aucune synchro auto n'existait avant ce job)."""
+        inst, _ = make_installation(self.company, ref='BAL-ACTIVE', kwc='5.00')
+        MonitoringConfig.objects.create(
+            company=self.company, installation=inst,
+            provider='fake-bal', enabled=True, credentials={'x': 1},
+            expected_annual_kwh=Decimal('7500'))
+        result = tasks.balayage_quotidien()
+        self.assertEqual(result['systemes'], 1)
+        self.assertEqual(result['releves_importes'], 1)
+        self.assertEqual(
+            ProductionReading.objects.filter(
+                installation=inst, source='auto').count(), 1)
+
+    def test_persistent_underperformance_creates_one_flag_and_ticket(self):
+        """Sous-performance persistante → exactement un drapeau + un ticket,
+        idempotent au re-run (aucun doublon)."""
+        inst, client = make_installation(
+            self.company, ref='BAL-PERF', kwc='5.00')
+        MonitoringSettings.objects.create(
+            company=self.company, underperf_threshold_pct=Decimal('20'),
+            auto_create_ticket=True)
+        # Relevé manuel très sous l'attendu (5 kWc × 1500 = 7500 kWh/an).
+        ProductionReading.objects.create(
+            company=self.company, installation=inst,
+            date=self.today - timedelta(days=10), period_days=365,
+            energy_kwh=Decimal('100'))
+        MonitoringConfig.objects.create(
+            company=self.company, installation=inst,
+            expected_annual_kwh=Decimal('7500'))
+
+        tasks.balayage_quotidien()
+        self.assertEqual(
+            UnderperformanceFlag.objects.filter(
+                installation=inst, is_open=True).count(), 1)
+        self.assertEqual(
+            Ticket.objects.filter(installation=inst).count(), 1)
+
+        # Re-run : idempotent, pas de second flag/ticket.
+        tasks.balayage_quotidien()
+        self.assertEqual(
+            UnderperformanceFlag.objects.filter(
+                installation=inst, is_open=True).count(), 1)
+        self.assertEqual(
+            Ticket.objects.filter(installation=inst).count(), 1)
+
+    def test_company_isolation(self):
+        """Un système d'une autre société n'est jamais mélangé dans le
+        décompte d'une société (chaque société traitée séparément)."""
+        other = make_company('bal-co-2', 'Bal Co 2')
+        inst1, _ = make_installation(self.company, ref='BAL-ISO-1', kwc='5.00')
+        inst2, _ = make_installation(other, ref='BAL-ISO-2', kwc='5.00')
+        MonitoringConfig.objects.create(company=self.company, installation=inst1)
+        MonitoringConfig.objects.create(company=other, installation=inst2)
+        result = tasks.balayage_quotidien()
+        self.assertEqual(result['systemes'], 2)
+
+    def test_broken_system_does_not_block_others(self):
+        """Un système qui échoue (ex. installation orpheline sans client pour
+        le ticket) n'empêche jamais les systèmes suivants d'être traités."""
+        inst_ok, _ = make_installation(self.company, ref='BAL-OK', kwc='5.00')
+        MonitoringConfig.objects.create(company=self.company, installation=inst_ok)
+
+        inst_bad, _ = make_installation(self.company, ref='BAL-BAD', kwc='5.00')
+        bad_config = MonitoringConfig.objects.create(
+            company=self.company, installation=inst_bad,
+            provider='fake-bal', enabled=True, credentials={'x': 1})
+
+        # Force sync_system à lever pour ce système précis pour vérifier
+        # l'isolement best-effort (le système suivant reste traité).
+        orig_sync = services.sync_system
+
+        def _boom(installation, *, user=None):
+            if installation.pk == bad_config.installation_id:
+                raise RuntimeError('boom')
+            return orig_sync(installation, user=user)
+
+        services.sync_system = _boom
+        try:
+            result = tasks.balayage_quotidien()
+        finally:
+            services.sync_system = orig_sync
+        self.assertEqual(result['systemes'], 1)
+
     def test_email_endpoint(self):
         from django.core import mail
+        # Système propre à ce test (jamais en setUp — balayage_quotidien()
+        # scanne TOUS les MonitoringConfig de la société et les autres tests
+        # de cette classe comptent des systèmes traités).
+        inst, _client = make_installation(self.company, ref='BAL-EMAIL', kwc='5.00')
+        config = MonitoringConfig.objects.create(
+            company=self.company, installation=inst,
+            expected_annual_kwh=Decimal('7500'))
         r = self.api.post(
-            f'/api/django/monitoring/configs/{self.config.id}/email-om-report/',
+            f'/api/django/monitoring/configs/{config.id}/email-om-report/',
             {'period': 'monthly'}, format='json')
         self.assertEqual(r.status_code, 200, r.data)
         self.assertTrue(r.data['sent'])
         self.assertEqual(len(mail.outbox), 1)
+
+
+class TestODX16AbonnementMonitoringRelocation(TestCase):
+    """ODX16 — ``AbonnementMonitoring`` relogé de compta vers monitoring, table
+    physique préservée (``compta_abonnementmonitoring``), nouvelle route
+    ``/api/django/monitoring/abonnements-monitoring/`` + ancienne route compta
+    conservée, scoping société côté serveur."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = User.objects.create_user(
+            username='mon_subs_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = auth(self.user)
+        self.inst, self.client_obj = make_installation(
+            self.company, ref='CHT-SUBS-1')
+
+    def test_model_lives_in_monitoring_with_preserved_db_table(self):
+        from apps.monitoring.models import AbonnementMonitoring
+        from apps.compta.models import (
+            AbonnementMonitoring as ComptaShimAbonnement)
+        # Le shim compta ré-exporte EXACTEMENT la même classe (ODX22 le retirera).
+        self.assertIs(AbonnementMonitoring, ComptaShimAbonnement)
+        self.assertEqual(
+            AbonnementMonitoring._meta.db_table,
+            'compta_abonnementmonitoring')
+        self.assertEqual(
+            AbonnementMonitoring._meta.app_label, 'monitoring')
+
+    def test_new_monitoring_route_creates_scoped_and_computes_echeance(self):
+        r = self.api.post(
+            '/api/django/monitoring/abonnements-monitoring/', {
+                'client_id': self.client_obj.id,
+                'installation_id': self.inst.id,
+                'periodicite': 'mensuel', 'montant': '199.00',
+            }, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        from apps.monitoring.models import AbonnementMonitoring
+        obj = AbonnementMonitoring.objects.get(id=r.data['id'])
+        self.assertEqual(obj.company_id, self.company.id)
+        # ``renouveler_abonnement_monitoring`` (perform_create) calcule la 1re
+        # échéance à la création.
+        self.assertIsNotNone(obj.prochaine_echeance)
+
+    def test_legacy_compta_route_still_serves_same_data(self):
+        from apps.monitoring.models import AbonnementMonitoring
+        obj = AbonnementMonitoring.objects.create(
+            company=self.company, client_id=self.client_obj.id,
+            periodicite='mensuel', montant=Decimal('50.00'))
+        r = self.api.get('/api/django/compta/abonnements-monitoring/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertIn(obj.id, ids_of(r))

@@ -9,6 +9,7 @@ import {
 import { bubbleTime, displayName } from './time'
 import VoiceMessage from './VoiceMessage'
 import Reactions from './Reactions'
+import { renderRichText } from './richText'
 
 /* S15/S17/S18 — Une bulle de message. `own` distingue mes messages (alignés à
    droite) des autres. Les emplacements pièce-jointe / vocal / carte-
@@ -101,7 +102,10 @@ export default function MessageBubble({
           ) : (
             <>
               <RecordCard message={m} />
-              {m.body && <p className="chat-bubble-text">{m.body}</p>}
+              {/* XKB29 — rendu sûr du gras/italique/code/listes/liens (aucun
+                  dangerouslySetInnerHTML : renderRichText construit un arbre
+                  d'éléments React, un payload script reste du texte). */}
+              {m.body && <p className="chat-bubble-text">{renderRichText(m.body)}</p>}
               {legacyVoice && (
                 <VoiceMessage messageId={m.id} attachment={legacyVoice} />
               )}

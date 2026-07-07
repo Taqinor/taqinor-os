@@ -148,6 +148,8 @@ export const EMPTY_FILTERS = {
   relance: '', // '' | 'retard' (en retard) | 'semaine' (cette semaine)
   perdus: 'avec', // 'avec' | 'sans' | 'seuls'
   archived: 'actifs', // 'actifs' | 'tous' | 'seuls' — dimension serveur (refetch)
+  // QW3 — préférence de contact explicite ('' = toutes | 'phone_ok' | 'whatsapp_only')
+  contact_preference: '',
 }
 
 // 'YYYY-MM-DD' du jour, en heure LOCALE (jamais via toISOString → pas d'UTC).
@@ -199,6 +201,9 @@ export function filterLeads(leads, filters) {
     }
     if (f.perdus === 'sans' && isPerdu(l)) return false
     if (f.perdus === 'seuls' && !isPerdu(l)) return false
+    if (f.contact_preference && l.contact_preference !== f.contact_preference) {
+      return false
+    }
     if (!q) return true
     return (
       (l.nom ?? '').toLowerCase().includes(q) ||

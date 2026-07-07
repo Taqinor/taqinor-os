@@ -149,6 +149,21 @@ const comptaApi = {
     cloturer: (id) => api.post(`/compta/periodes/${id}/cloturer/`),
     rouvrir: (id) => api.post(`/compta/periodes/${id}/rouvrir/`),
   },
+
+  // ── XMKT30 — Calendrier marketing unifié ──
+  // Agrège 4 sources company-scoped : campagnes (planifiee_le, XMKT7), étapes
+  // de séquences dues, événements (XMKT28) et relances (FG31). Fenêtre
+  // ?from=&to= (AAAA-MM-JJ), filtre optionnel ?channel=.
+  // NOTE (XMKT30, lane frontend/marketing) : endpoint agrégé pas encore
+  // construit côté backend (aucune route `calendrier-marketing` ni vue
+  // équivalente dans apps/compta/urls.py|views.py à ce jour) — câblé sur
+  // l'URL conventionnelle ci-dessous, prêt à s'activer dès que
+  // apps/compta/views.py expose l'agrégation (tâche BLOQUÉE côté backend).
+  calendrierMarketing: {
+    get: (params) => api.get('/compta/calendrier-marketing/', { params }),
+    reschedule: (payload) =>
+      api.post('/compta/calendrier-marketing/reschedule/', payload),
+  },
 }
 
 export default comptaApi

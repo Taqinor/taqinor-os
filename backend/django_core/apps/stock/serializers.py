@@ -16,6 +16,7 @@ from .models import (
     PalierPrixFournisseur, PortailFournisseurToken,
     LotEntrepot, InventaireAnnuel, RevalorisationStock, ConditionnementProduit,
     ModeleBonCommandeFournisseur, ModeleBonCommandeFournisseurLigne,
+    NomenclatureCodeBarres, RegleCodeBarres,
 )
 
 
@@ -154,11 +155,14 @@ class ProduitSerializer(serializers.ModelSerializer):
     def get_fields(self):
         fields = super().get_fields()
         request = self.context.get('request')
-        if request and hasattr(request.user, 'company_id') and request.user.company_id:
-            company = request.user.company
+        # Un request brut (WSGIRequest, ex. APIRequestFactory sans DRF) n'a pas
+        # d'attribut .user — on le lit défensivement comme plus bas (ligne 168).
+        _u = getattr(request, 'user', None)
+        if _u is not None and getattr(_u, 'company_id', None):
+            company = _u.company
             fields['categorie_id'].queryset = Categorie.objects.filter(company=company)
             fields['fournisseur_id'].queryset = Fournisseur.objects.filter(company=company)
-        elif request and request.user.is_superuser:
+        elif _u is not None and getattr(_u, 'is_superuser', False):
             fields['categorie_id'].queryset = Categorie.objects.all()
             fields['fournisseur_id'].queryset = Fournisseur.objects.all()
         # Feature D — le prix d'achat (et donc la marge) ne s'expose qu'aux rôles
@@ -173,6 +177,11 @@ class ProduitSerializer(serializers.ModelSerializer):
         if user is not None and not getattr(user, 'can_view_marge', True):
             fields.pop('marge_pct', None)
         return fields
+    # YHARD4 — variantes localisées (repli FR octet-identique par défaut si
+    # aucun ``?locale=`` n'est demandé ou si aucune traduction n'existe pour
+    # cette langue). Additif : n'affecte jamais nom/description bruts.
+    nom_localise = serializers.SerializerMethodField()
+    description_localise = serializers.SerializerMethodField()
     # FG20 — marge brute en % ((vente − achat)/vente), arrondie à 1 décimale.
     # None si prix_vente nul/absent ou prix_achat à 0. Donnée sensible : le
     # champ est entièrement retiré pour les rôles sans ``marge_voir``.
@@ -199,6 +208,12 @@ class ProduitSerializer(serializers.ModelSerializer):
     # (lecture seule) pour afficher dépôt/camionnette sans ouvrir le modal
     # Transfert. Map calculée UNE fois par sérialisation (pas de N+1).
     stock_par_emplacement = serializers.SerializerMethodField()
+    # ZPUR10 — quantité déjà « en commande » chez un fournisseur (Σ des
+    # restants sur BCF non annulés/non entièrement reçus) + le détail des BCF
+    # sources, exposés sur la fiche produit à côté de disponible/réservé.
+    # Réutilise le sélecteur YPROC9 existant (jamais de logique dupliquée).
+    quantite_en_commande = serializers.SerializerMethodField()
+    bcf_sources_en_commande = serializers.SerializerMethodField()
 
     # XSTK3 — déclaré explicitement `required=False` : DRF (≥ 3.14) dérive un
     # validateur "unique together" depuis la `UniqueConstraint` conditionnelle
@@ -261,6 +276,8 @@ class ProduitSerializer(serializers.ModelSerializer):
         fields = [
             # Identité & catalogue
             'id', 'company', 'nom', 'description', 'sku', 'marque',
+            # YHARD4 — variantes localisées (repli FR, cf. core/i18n_content.py)
+            'nom_localise', 'description_localise',
             # XSTK3 — code-barres fabricant (EAN/UPC/GTIN)
             'code_barres',
             # XSTK19 — code SH (HS) + pays d'origine (dossier d'import ADII)
@@ -293,6 +310,8 @@ class ProduitSerializer(serializers.ModelSerializer):
             'is_low_stock_disponible', 'nb_mouvements',
             'premiere_date_mouvement', 'derniere_date_mouvement',
             'stock_par_emplacement',
+            # ZPUR10 — en-commande (fiche produit) + BCF sources
+            'quantite_en_commande', 'bcf_sources_en_commande',
         ]
         # company est posé côté serveur (TenantMixin) — jamais accepté du corps.
         read_only_fields = ['company', 'date_creation', 'date_mise_a_jour']
@@ -316,11 +335,43 @@ class ProduitSerializer(serializers.ModelSerializer):
         self._reserved_map_cache = cache
         return cache
 
+    def _target_locale(self):
+        """YHARD4 — langue cible pour les champs localisés : ``?locale=`` sur
+        la requête (ex. rendu PDF/proposition) sinon ``None`` (repli FR
+        octet-identique, comportement historique). Ne dérive JAMAIS d'une
+        entrée non fiable au-delà d'un simple code de langue à 2 lettres."""
+        request = self.context.get('request')
+        locale = self.context.get('locale')
+        if not locale and request is not None:
+            locale = request.query_params.get('locale') if hasattr(
+                request, 'query_params') else request.GET.get('locale')
+        if locale and len(locale) <= 5:
+            return locale
+        return None
+
+    def get_nom_localise(self, obj):
+        """YHARD4 — variante ``nom`` dans la langue cible, repli FR
+        (``ContentTranslation``, cf. core/i18n_content.py)."""
+        from core.i18n_content import translated_value
+        return translated_value(obj, 'nom', self._target_locale())
+
+    def get_description_localise(self, obj):
+        """YHARD4 — variante ``description`` dans la langue cible, repli FR."""
+        from core.i18n_content import translated_value
+        return translated_value(obj, 'description', self._target_locale())
+
     def get_marge_pct(self, obj):
         """Marge brute en % depuis prix_vente/prix_achat (None si indéfinie)."""
-        from decimal import Decimal, ROUND_HALF_UP
-        vente = obj.prix_vente or Decimal('0')
-        achat = obj.prix_achat or Decimal('0')
+        from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+        # ``prix_vente``/``prix_achat`` peuvent arriver en int OU float selon le
+        # chemin d'écriture (création directe sans refresh_from_db, auto-fill,
+        # import) : on force un ``Decimal`` AVANT toute arithmétique, sinon un
+        # ``float * Decimal`` lève ``TypeError`` (YHARD4).
+        try:
+            vente = Decimal(str(obj.prix_vente)) if obj.prix_vente else Decimal('0')
+            achat = Decimal(str(obj.prix_achat)) if obj.prix_achat else Decimal('0')
+        except (InvalidOperation, TypeError, ValueError):
+            return None
         if vente <= 0 or achat <= 0:
             return None
         pct = (vente - achat) / vente * Decimal('100')
@@ -368,6 +419,32 @@ class ProduitSerializer(serializers.ModelSerializer):
         # alourdir la liste. La camionnette à 0 n'apparaît donc pas.
         rows = self._breakdown_map().get(obj.id, [])
         return [r for r in rows if r['quantite']]
+
+    def _en_commande_map(self):
+        """YOPSB13 — map {produit_id: [sources en-commande]} calculée UNE
+        fois par sérialisation (évite le N+1 ZPUR10 sur la liste produits :
+        `get_quantite_en_commande`/`get_bcf_sources_en_commande` appelaient
+        auparavant un sélecteur PAR produit). Mémoïsée sur l'instance, même
+        pattern que `_reserved_map`/`_breakdown_map` ci-dessus."""
+        cache = getattr(self, '_en_commande_map_cache', None)
+        if cache is not None:
+            return cache
+        from .selectors import bcf_sources_en_commande_map
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        cache = bcf_sources_en_commande_map(company) if company is not None \
+            else {}
+        self._en_commande_map_cache = cache
+        return cache
+
+    def get_quantite_en_commande(self, obj):
+        # ZPUR10 — réutilise la même map que `bcf_sources_en_commande`
+        # (jamais de logique dupliquée, jamais de requête par produit).
+        sources = self._en_commande_map().get(obj.id, [])
+        return sum(s['quantite_restante'] for s in sources)
+
+    def get_bcf_sources_en_commande(self, obj):
+        return self._en_commande_map().get(obj.id, [])
 
     def get_nb_mouvements(self, obj):
         return getattr(obj, 'nb_mouvements', None)
@@ -577,6 +654,14 @@ class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
             'created_by',
             'created_by_username', 'date_creation', 'date_mise_a_jour',
             'lignes', 'total_achat', 'est_entierement_recu', 'acomptes',
+            # ZPUR8 — « Other Information » : acheteur (défaut = created_by),
+            # réf. fournisseur, note de bas de page + report incoterm/
+            # conditions de paiement (éditables au document).
+            'acheteur', 'ref_fournisseur', 'note_bas_page', 'incoterm',
+            'conditions_paiement', 'nb_relances',
+            # ZPUR11 — motif tracé à l'annulation (posé UNIQUEMENT par
+            # l'action `annuler`, jamais en écriture libre).
+            'motif_annulation',
         ]
         # company + reference + created_by sont posés côté serveur. La date
         # confirmée/numéro d'accusé n'est modifiable QUE via l'action
@@ -586,6 +671,8 @@ class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
             'reference', 'created_by', 'date_creation', 'date_mise_a_jour',
             'date_confirmee_fournisseur', 'numero_confirmation_fournisseur',
             'revision',
+            # ZPUR11 — posé uniquement par l'action `annuler`.
+            'motif_annulation',
         ]
 
     def get_acomptes(self, obj):
@@ -1438,3 +1525,26 @@ class ModeleBonCommandeFournisseurSerializer(serializers.ModelSerializer):
                 ModeleBonCommandeFournisseurLigne.objects.create(
                     modele=instance, **ligne)
         return instance
+
+
+class RegleCodeBarresSerializer(serializers.ModelSerializer):
+    """ZSTK12 — règle d'une nomenclature de code-barres."""
+
+    class Meta:
+        model = RegleCodeBarres
+        fields = [
+            'id', 'nomenclature', 'motif', 'est_regex', 'encode', 'priorite',
+        ]
+
+
+class NomenclatureCodeBarresSerializer(serializers.ModelSerializer):
+    """ZSTK12 — nomenclature de code-barres (Default/GS1) + ses règles."""
+    regles = RegleCodeBarresSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = NomenclatureCodeBarres
+        fields = [
+            'id', 'nom', 'type_nomenclature', 'actif', 'regles',
+            'date_creation', 'date_mise_a_jour',
+        ]
+        read_only_fields = ['date_creation', 'date_mise_a_jour']

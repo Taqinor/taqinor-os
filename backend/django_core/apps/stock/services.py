@@ -1709,7 +1709,36 @@ def record_stock_movement(*, company, produit, type_mouvement, quantite,
             defaults={'company': company, 'quantite': 0})
         se.quantite = max(se.quantite - quantite, 0)
         se.save(update_fields=['quantite'])
+    _notify_seuil_atteint_si_franchi(
+        company=company, produit=produit,
+        quantite_avant=quantite_avant, quantite_apres=quantite_apres)
     return mouvement
+
+
+def _notify_seuil_atteint_si_franchi(*, company, produit, quantite_avant,
+                                     quantite_apres):
+    """XSTK23 — webhook `stock.seuil_atteint`, ÉMIS UNE SEULE FOIS au moment où
+    ce mouvement fait FRANCHIR le seuil effectif À LA BAISSE (avant > seuil,
+    après <= seuil). Un mouvement qui ne franchit rien (déjà sous seuil avant,
+    ou remontée) ne redéclenche rien. Best-effort : jamais bloquant, appelle le
+    SERVICE publicapi (jamais son modèle) — cross-app via services.py comme
+    l'exige la frontière inter-app."""
+    try:
+        seuil, _cible = seuil_effectif_produit(company, produit)
+        if seuil is None or seuil <= 0:
+            return
+        if quantite_avant > seuil and quantite_apres <= seuil:
+            from apps.publicapi.services import notify_stock_seuil_atteint
+            notify_stock_seuil_atteint(
+                company_id=company.id if company else None,
+                produit_id=produit.id,
+                sku=produit.sku,
+                nom=produit.nom,
+                quantite_disponible=quantite_apres,
+                seuil=seuil,
+            )
+    except Exception:  # noqa: BLE001 — jamais bloquant pour l'écriture stock
+        logger.exception('publicapi stock.seuil_atteint dispatch failed')
 
 
 def mouvement_type_sortie():
@@ -3615,6 +3644,124 @@ def creer_echeancier_facture_fournisseur(company, facture, tranches):
     return created
 
 
+# ── ZPUR8 — « Other Information » BCF : acheteur/réf/note + report défauts ──
+
+def conditions_paiement_label(fournisseur):
+    """ZPUR8 — libellé lisible des conditions de paiement dérivé de
+    `Fournisseur.delai_paiement_jours`/`fin_de_mois` (XPUR6). Vide si aucun
+    délai connu (0 = comptant, comportement historique)."""
+    if fournisseur is None or not fournisseur.delai_paiement_jours:
+        return ''
+    label = f'{fournisseur.delai_paiement_jours} jours'
+    if fournisseur.fin_de_mois:
+        label += ' fin de mois'
+    return label
+
+
+def default_other_information_bcf(bon_commande):
+    """ZPUR8 — reporte au DOCUMENT (une fois, à la création) les défauts
+    fournisseur `incoterm` (XPUR5) et les conditions de paiement dérivées de
+    `delai_paiement_jours` (XPUR6) — SANS redéfinir ces référentiels. Un champ
+    déjà renseigné (édition ultérieure) n'est jamais écrasé. No-op si le BCF
+    n'a pas de fournisseur (comportement historique)."""
+    if bon_commande.fournisseur_id is None:
+        return
+    changed = []
+    if not bon_commande.incoterm:
+        incoterm = bon_commande.fournisseur.incoterm or ''
+        if incoterm:
+            bon_commande.incoterm = incoterm
+            changed.append('incoterm')
+    if not bon_commande.conditions_paiement:
+        label = conditions_paiement_label(bon_commande.fournisseur)
+        if label:
+            bon_commande.conditions_paiement = label
+            changed.append('conditions_paiement')
+    if changed:
+        bon_commande.save(update_fields=changed)
+
+
+# ── ZPUR11 — motif d'annulation obligatoire + réouverture ─────────────────
+
+def log_bcf_chatter(bon_commande, *, user, body):
+    """ZPUR11 — trace une entrée `records.Comment` (chatter, horodaté +
+    acteur) sur un BCF (annulation motivée, réouverture…). Best-effort :
+    ne bloque jamais l'action appelante."""
+    try:
+        from django.contrib.contenttypes.models import ContentType
+        from apps.records.models import Comment
+        from .models import BonCommandeFournisseur
+        Comment.objects.create(
+            company=bon_commande.company,
+            content_type=ContentType.objects.get_for_model(
+                BonCommandeFournisseur),
+            object_id=bon_commande.pk,
+            body=body,
+            author=user,
+        )
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.info(
+            'ZPUR11: chatter non journalisé pour BCF %s', bon_commande.pk)
+
+
+# ── ZSTK3 — rapport prévisionnel par produit (Forecasted report) ──────────
+
+def forecast_produit(company, produit):
+    """ZSTK3 — assemble en une timeline : disponible actuel, entrées
+    attendues (Σ `quantite_restante` des lignes de BCF envoyés/non annulés,
+    avec date + fournisseur — réutilise `bcf_sources_en_commande_produit`
+    ZPUR10, jamais recalculé différemment) et sorties attendues
+    (réservations chantier + assemblage actives, lues via
+    `installations.selectors.reserved_quantity_for_produit` — jamais son
+    modèle) ; renvoie un solde projeté CUMULÉ daté (les entrées sans date
+    connue sont regroupées en fin de liste, après les entrées datées triées
+    chronologiquement). LECTURE SEULE, INTERNE."""
+    from .selectors import bcf_sources_en_commande_produit
+    from apps.installations.selectors import reserved_quantity_for_produit
+
+    disponible = produit.quantite_stock
+    entrees = bcf_sources_en_commande_produit(company, produit.id)
+    sorties_reservees = reserved_quantity_for_produit(produit)
+
+    # Entrées datées d'abord (triées par date), puis les non-datées.
+    datees = sorted(
+        (e for e in entrees if e.get('date_livraison_prevue')),
+        key=lambda e: e['date_livraison_prevue'])
+    non_datees = [e for e in entrees if not e.get('date_livraison_prevue')]
+
+    timeline = []
+    solde = disponible
+    for e in datees + non_datees:
+        solde += e['quantite_restante']
+        timeline.append({
+            'date': e.get('date_livraison_prevue'),
+            'type': 'entree',
+            'quantite': e['quantite_restante'],
+            'reference': e['reference'],
+            'fournisseur_nom': e.get('fournisseur_nom'),
+            'solde_projete': solde,
+        })
+    if sorties_reservees:
+        solde -= sorties_reservees
+        timeline.append({
+            'date': None,
+            'type': 'sortie',
+            'quantite': -sorties_reservees,
+            'reference': None,
+            'fournisseur_nom': None,
+            'solde_projete': solde,
+        })
+
+    return {
+        'produit_id': produit.id,
+        'disponible': disponible,
+        'entrees_attendues': entrees,
+        'sorties_attendues': sorties_reservees,
+        'solde_projete': solde,
+        'timeline': timeline,
+    }
+
+
 # ── XPUR7 — dates de livraison prévues, accusé fournisseur & OTD réel ──────
 
 def compute_date_livraison_prevue(company, fournisseur, date_commande,
@@ -4950,6 +5097,9 @@ def depenses_achats_par_periode(company, *, date_debut=None, date_fin=None):
     par_fournisseur = {}
     par_categorie = {}
     par_mois = {}
+    # ZPUR8 — dépenses PAR ACHETEUR (nullable = comportement historique :
+    # un BCF sans acheteur renseigné groupe sous « — »).
+    par_acheteur = {}
     for ligne in qs:
         bc = ligne.bon_commande
         total = ligne.total_achat
@@ -4958,12 +5108,17 @@ def depenses_achats_par_periode(company, *, date_debut=None, date_fin=None):
         categorie_nom = (
             ligne.produit.categorie.nom
             if ligne.produit_id and ligne.produit.categorie_id else '—')
+        acheteur_nom = (
+            bc.acheteur.get_full_name() or bc.acheteur.username
+            if bc.acheteur_id else '—')
 
         par_fournisseur[fournisseur_nom] = (
             par_fournisseur.get(fournisseur_nom, Decimal('0')) + total)
         par_categorie[categorie_nom] = (
             par_categorie.get(categorie_nom, Decimal('0')) + total)
         par_mois[mois] = par_mois.get(mois, Decimal('0')) + total
+        par_acheteur[acheteur_nom] = (
+            par_acheteur.get(acheteur_nom, Decimal('0')) + total)
 
     return {
         'par_fournisseur': [
@@ -4979,6 +5134,11 @@ def depenses_achats_par_periode(company, *, date_debut=None, date_fin=None):
         'par_mois': [
             {'mois': k, 'total_ht': v}
             for k, v in sorted(par_mois.items(), key=lambda kv: kv[0])
+        ],
+        'par_acheteur': [
+            {'acheteur': k, 'total_ht': v}
+            for k, v in sorted(
+                par_acheteur.items(), key=lambda kv: kv[1], reverse=True)
         ],
     }
 

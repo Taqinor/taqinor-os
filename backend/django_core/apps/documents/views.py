@@ -5,31 +5,28 @@ un id de chantier d'une autre société renvoie 404.
 
 Aucun de ces documents n'expose de prix d'achat / marge.
 """
-from django.http import HttpResponse, Http404
+from django.http import HttpResponse
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 
 from authentication.permissions import IsAnyRole
 from apps.installations.models import Installation
+from core.selectors import get_company_object
 
 from . import builders
 
 
 def _get_chantier_or_404(request, pk):
-    """Récupère un chantier scopé à la société de l'utilisateur, sinon 404."""
-    user = request.user
+    """Récupère un chantier scopé à la société de l'utilisateur, sinon 404.
+
+    YRBAC11 — délègue au helper canonique ``core.selectors.get_company_object``
+    (même comportement : 404 indistinct d'un id inexistant), sur un queryset
+    pré-optimisé (select_related/prefetch_related préservés)."""
     qs = Installation.objects.select_related(
         'client', 'devis', 'company', 'technicien_responsable',
     ).prefetch_related('devis__lignes__produit')
-    if user.company_id:
-        qs = qs.filter(company_id=user.company_id)
-    elif not user.is_superuser:
-        qs = qs.none()
-    chantier = qs.filter(pk=pk).first()
-    if chantier is None:
-        raise Http404("Chantier inconnu.")
-    return chantier
+    return get_company_object(qs, pk, request.user)
 
 
 def _pdf_response(pdf_bytes, filename):

@@ -155,6 +155,21 @@ class CareersApplyThrottle(AnonRateThrottle):
         return super().allow_request(request, view)
 
 
+class CareersListThrottle(AnonRateThrottle):
+    """Throttle de la liste publique des offres — anti-scraping/abus (lecture,
+    limite plus large que la candidature). Laisse passer sans compter tant que
+    la page carrières est désactivée (le handler renvoie 404 lui-même)."""
+    scope = 'rh_careers_list'
+
+    def get_rate(self):
+        return '60/min'
+
+    def allow_request(self, request, view):
+        if not getattr(settings, 'CAREERS_ENABLED', False):
+            return True
+        return super().allow_request(request, view)
+
+
 def _careers_or_404():
     """Lève 404 si la page carrières est désactivée (flag OFF, défaut)."""
     if not getattr(settings, 'CAREERS_ENABLED', False):
@@ -163,6 +178,7 @@ def _careers_or_404():
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
+@throttle_classes([CareersListThrottle])
 def careers_list(request, company_slug):
     """XRH33 — liste PUBLIQUE des ouvertures de poste PUBLIÉES d'une société
     (résolue par ``slug``), intitulé/description/ville UNIQUEMENT (aucune

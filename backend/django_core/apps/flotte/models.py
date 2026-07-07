@@ -139,6 +139,25 @@ class Vehicule(models.Model):
         related_name='vehicules',
         verbose_name='Modèle de référence',
     )
+    # ZCTR11 — n° de carte carburant/mobilité (texte libre, distincte de
+    # ``CarteCarburant`` FLOTTE14 qui gère les cartes en tant qu'entités
+    # propres) — simple champ d'identification affiché sur la fiche véhicule.
+    carte_mobilite = models.CharField(
+        max_length=60, blank=True, verbose_name='Carte mobilité')
+    # ZCTR11 — Enrichissement fiscal : copie véhicule des champs catalogue
+    # (``ModeleVehicule.valeur_residuelle``/``pct_charges_non_deductibles``),
+    # pré-remplis à la sélection du modèle (``services.prefill_depuis_modele``)
+    # SANS écraser une saisie existante — un véhicule peut aussi les porter en
+    # saisie libre (sans modèle de référence). Lus par le TCO/amortissement
+    # (FLOTTE30/31) et la synthèse fiscale (XFLT8/XFLT9) pour signaler la part
+    # non déductible.
+    valeur_residuelle = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Valeur résiduelle (MAD)')
+    pct_charges_non_deductibles = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        verbose_name='% charges non déductibles',
+        help_text='0-100 — plafond CGI tourisme. Vide = non renseigné.')
     # XFLT16 — Cession / sortie de parc. Renseignés par l'action ``ceder/`` ;
     # les véhicules vendus/réformés gardent TOUT leur historique mais sont
     # exclus des KPI actifs (FLOTTE35) et des alertes d'échéances.
@@ -167,6 +186,15 @@ class Vehicule(models.Model):
         'immatriculation_faite', 'plaques', 'assurance_active',
         'carte_grise_recue',
     )
+
+    def clean(self):
+        """ZCTR11 — ``pct_charges_non_deductibles`` doit rester dans [0, 100]
+        quand renseigné (vide = non renseigné, aucune contrainte)."""
+        if self.pct_charges_non_deductibles is not None and not (
+                0 <= self.pct_charges_non_deductibles <= 100):
+            raise ValidationError(
+                "Le % de charges non déductibles doit être compris entre "
+                "0 et 100.")
 
     def checklist_mise_en_service_ok(self):
         """XFLT4 — Vrai si tous les items de la checklist de mise en service
@@ -313,6 +341,10 @@ class ReferentielFlotte(models.Model):
         # (``critique``/``moyenne``/``faible`` — voir
         # ``services.criticite_dtc``, qui lit ce référentiel).
         CODE_DTC = 'code_dtc', 'Criticité des codes défaut (DTC)'
+        # ZCTR10 — types de service / entretien flotte, éditable par société
+        # (vidange, freins, pneus, révision, carrosserie…). Référencé par
+        # ``OrdreReparation.type_service`` — jamais un domaine hardcodé.
+        TYPE_SERVICE = 'type_service', "Type de service / entretien"
 
     company = models.ForeignKey(
         'authentication.Company',
@@ -852,6 +884,19 @@ class Conducteur(models.Model):
         related_name='conducteurs_flotte',
         verbose_name='Utilisateur ERP',
     )
+    # YHIRE11 — lien optionnel vers le dossier employé RH (``rh.DossierEmploye``,
+    # même société). STRING-FK (PositiveInteger), jamais un FK Django cross-app
+    # dur (modularité, voir CLAUDE.md) — la flotte ne lit ``rh`` que par
+    # ``rh.selectors`` (``peut_conduire``/``permis_expirant_bientot``). null =
+    # conducteur externe sans dossier employé (comportement historique
+    # inchangé, les champs de permis locaux restent la source de vérité).
+    # Quand renseigné, la validité du permis RH PRIME sur les champs locaux
+    # (conservés en repli) — voir ``services.controle_permis``.
+    employe_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Employé RH (id)',
+        help_text="Lien optionnel vers le dossier employé RH. Quand "
+        "renseigné, le permis RH (rh.PermisConduire) prime sur les champs "
+        "de permis locaux.")
     nom = models.CharField(max_length=120, verbose_name='Nom complet')
     telephone = models.CharField(
         max_length=30, blank=True, verbose_name='Téléphone')
@@ -890,6 +935,11 @@ class Conducteur(models.Model):
         verbose_name = 'Conducteur'
         verbose_name_plural = 'Conducteurs'
         ordering = ['nom']
+        indexes = [
+            models.Index(
+                fields=['company', 'employe_id'],
+                name='flotte_cond_co_emp_idx'),
+        ]
 
     def __str__(self):
         return self.nom
@@ -1284,6 +1334,19 @@ class OrdreReparation(models.Model):
         related_name='flotte_ordres_reparation',
         verbose_name="Échéance d'entretien liée",
     )
+    # ZCTR10 — type de service/entretien (vidange, freins, pneus, révision,
+    # carrosserie…), tiré du référentiel ÉDITABLE par société
+    # (``ReferentielFlotte.Domaine.TYPE_SERVICE``) — JAMAIS un domaine
+    # hardcodé. Nullable : un OR sans type reste "non catégorisé" (aucune
+    # régression sur les OR existants). Validé même-société dans ``clean``.
+    type_service = models.ForeignKey(
+        'ReferentielFlotte',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='flotte_ordres_reparation',
+        verbose_name='Type de service',
+    )
     description = models.TextField(
         blank=True, verbose_name='Description des travaux')
     date_ouverture = models.DateField(verbose_name="Date d'ouverture")
@@ -1365,6 +1428,14 @@ class OrdreReparation(models.Model):
                 and self.echeance.company_id != self.company_id:
             raise ValidationError(
                 "L'échéance d'entretien n'appartient pas à la même société.")
+        if self.type_service_id is not None:
+            if self.type_service.company_id != self.company_id:
+                raise ValidationError(
+                    "Le type de service n'appartient pas à la même société.")
+            if self.type_service.domaine != ReferentielFlotte.Domaine.TYPE_SERVICE:
+                raise ValidationError(
+                    "Le type de service doit provenir du référentiel "
+                    "« Type de service / entretien ».")
         if self.date_ouverture is not None and self.date_cloture is not None \
                 and self.date_cloture < self.date_ouverture:
             raise ValidationError(
@@ -3559,6 +3630,21 @@ class ModeleVehicule(models.Model):
         null=True, blank=True, verbose_name='Capacité réservoir (L)',
         help_text='Sert au détecteur de fraude FLOTTE14 : un plein '
         'dépassant cette capacité est une anomalie.')
+    # ZCTR11 — Enrichissement fiscal du catalogue. ``valeur_residuelle`` sert
+    # de repli au TCO/amortissement quand le véhicule n'a pas (encore) sa
+    # propre estimation ; ``pct_charges_non_deductibles`` (0-100, plafond CGI
+    # tourisme) est pré-rempli sur le ``Vehicule`` à la sélection du modèle et
+    # lu par la synthèse fiscale (XFLT8/XFLT9) pour signaler la part non
+    # déductible. Tous deux nullable/optionnels : aucune régression sur les
+    # modèles déjà catalogués.
+    valeur_residuelle = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Valeur résiduelle (MAD)')
+    pct_charges_non_deductibles = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        verbose_name='% charges non déductibles',
+        help_text='0-100 — plafond CGI tourisme. Vide = non renseigné '
+        '(aucune part non déductible signalée).')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -3572,6 +3658,15 @@ class ModeleVehicule(models.Model):
                 name='flotte_modveh_co_mm_idx',
             ),
         ]
+
+    def clean(self):
+        """ZCTR11 — ``pct_charges_non_deductibles`` doit rester dans [0, 100]
+        quand renseigné (vide = non renseigné, aucune contrainte)."""
+        if self.pct_charges_non_deductibles is not None and not (
+                0 <= self.pct_charges_non_deductibles <= 100):
+            raise ValidationError(
+                "Le % de charges non déductibles doit être compris entre "
+                "0 et 100.")
 
     def __str__(self):
         return f'{self.marque} {self.modele}'

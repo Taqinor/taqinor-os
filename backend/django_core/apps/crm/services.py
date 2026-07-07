@@ -310,17 +310,123 @@ def sync_relance_activity(lead, user):
         pass
 
 
+def _next_round_robin_owner_for_new_lead(company):
+    """QW6 — Round-robin parmi les commerciaux actifs d'une société, quand
+    AUCUN responsable par défaut n'est configuré (``CompanyProfile.
+    responsable_defaut_leads``).
+
+    Distinct de ``_next_round_robin_commercial`` (XMKT21, départagé par
+    ``mql_assigned_at``, réservé au franchissement du seuil MQL) : ici on
+    départage par le nombre TOTAL de leads déjà assignés (tous statuts), pour
+    répartir la charge entrante générale — pas seulement les MQL. Renvoie
+    None si aucun commercial actif (no-op : le lead reste sans owner, comme
+    aujourd'hui).
+    """
+    from django.contrib.auth import get_user_model
+    from django.db.models import Count
+
+    User = get_user_model()
+    candidats = list(
+        User.objects.filter(
+            company=company, is_active=True, role__nom='Commercial',
+        ).annotate(
+            nb_leads=Count('leads_assignes'),
+        ).order_by('nb_leads', 'id')
+    )
+    return candidats[0] if candidats else None
+
+
+def _leads_ouverts_count(commercial):
+    """XSAL11 — Nombre de leads OUVERTS assignés à un commercial : stage NON
+    SIGNED/COLD (clés STAGES.py — jamais codées en dur) et jamais perdu. Sert
+    de plafond de saturation pour la rotation round-robin équilibrée."""
+    return Lead.objects.filter(
+        owner=commercial, perdu=False,
+    ).exclude(stage__in=[stages.SIGNED, stages.COLD]).count()
+
+
+def _next_balanced_round_robin_commercial(company, plafond):
+    """XSAL11 — Round-robin ÉQUILIBRÉ : parmi les commerciaux actifs de la
+    société (rôle « Commercial » — pas de territoire câblé dans ce dépôt,
+    voir FG236), affecte au prochain dans la rotation (moins de leads
+    OUVERTS d'abord, départage par id) EN SAUTANT quiconque a atteint/dépassé
+    ``plafond`` leads ouverts. Renvoie None si TOUS les commerciaux actifs
+    sont saturés (l'appelant retombe alors sur ``responsable_defaut_leads``)
+    ou s'il n'y a aucun commercial actif du tout."""
+    from django.contrib.auth import get_user_model
+
+    User = get_user_model()
+    candidats = list(
+        User.objects.filter(
+            company=company, is_active=True, role__nom='Commercial',
+        ).order_by('id')
+    )
+    if not candidats:
+        return None
+    eligibles = [
+        c for c in candidats if _leads_ouverts_count(c) < plafond
+    ]
+    if not eligibles:
+        return None  # tous saturés — fallback à l'appelant
+    eligibles.sort(key=lambda c: (_leads_ouverts_count(c), c.id))
+    return eligibles[0]
+
+
 def default_responsable_for(company):
     """Responsable assigné par défaut aux nouveaux leads d'une société.
 
-    Source unique : le profil entreprise (Paramètres → « Responsable par
-    défaut des nouveaux leads »). None si non configuré ou pas de société.
+    XSAL11 — quand ``CompanyProfile.round_robin_leads_actif`` est ON, la
+    rotation ÉQUILIBRÉE (en sautant les commerciaux saturés — plafond
+    ``round_robin_plafond_leads_ouverts``) est tentée EN PREMIER ; si tous
+    sont saturés, replie sur le responsable par défaut explicite. OFF
+    (défaut) = comportement byte-identique à avant XSAL11 : le profil
+    entreprise (Paramètres → « Responsable par défaut ») prime, et QW6 replie
+    sur un round-robin simple (par charge totale) si ce réglage est vide.
+    None si aucune société ou aucun commercial actif (comportement inchangé
+    dans ce cas — un lead sans owner reste possible).
     """
     if company is None:
         return None
     from apps.parametres.models import CompanyProfile
     profile = CompanyProfile.objects.filter(company=company).first()
-    return profile.responsable_defaut_leads if profile else None
+    explicit = profile.responsable_defaut_leads if profile else None
+
+    if profile is not None and profile.round_robin_leads_actif:
+        balanced = _next_balanced_round_robin_commercial(
+            company, profile.round_robin_plafond_leads_ouverts)
+        if balanced is not None:
+            return balanced
+        # Tous saturés (ou aucun commercial actif) — fallback explicite.
+        return explicit
+
+    if explicit is not None:
+        return explicit
+    return pick_round_robin_owner(company)
+
+
+def pick_round_robin_owner(company):
+    """QW6 — Choisit un propriétaire par ROUND-ROBIN parmi les utilisateurs
+    commerciaux actifs de la société (permission ``crm_creer``), pour qu'un
+    lead ne reste JAMAIS sans responsable quand aucun « responsable par
+    défaut » n'est configuré. Sans état dédié à maintenir : le tour revient à
+    l'utilisateur ayant le MOINS de leads assignés (ties départagés par id,
+    ordre stable) — équivalent d'une rotation, sans compteur externe. None si
+    la société n'a aucun utilisateur commercial actif."""
+    from django.contrib.auth import get_user_model
+    from django.db.models import Count, Q
+
+    User = get_user_model()
+    candidates = list(
+        User.objects.filter(
+            company=company, is_active=True,
+        ).filter(
+            Q(role__permissions__contains=['crm_creer'])
+            | Q(role__isnull=True, role_legacy__in=['admin', 'responsable']),
+        ).annotate(
+            nb_leads=Count('leads_assignes'),
+        ).order_by('nb_leads', 'pk').distinct()
+    )
+    return candidates[0] if candidates else None
 
 
 # FG28 — SLA première prise de contact ────────────────────────────────────────
@@ -354,6 +460,19 @@ def lead_sla_hours(company) -> int:
     except Exception:
         pass
     return 24
+
+
+def callback_sla_hours(company) -> int:
+    """QW4 — Délai SLA (heures) d'un RAPPEL demandé (``contact_preference=
+    phone_ok``), plus SERRÉ que le SLA générique de premier contact
+    (``lead_sla_hours``) : la moitié, plancher 2 h. AUCUN nouveau champ
+    société (on reste dans `apps/crm`, pas de dépendance nouvelle sur
+    `parametres`) — dérivé du SLA générique déjà configurable. 0 (SLA
+    générique désactivé) désactive aussi le SLA rappel."""
+    generic = lead_sla_hours(company)
+    if not generic:
+        return 0
+    return max(2, generic // 2)
 
 
 # Champs scalaires recopiés sur le survivant SEULEMENT s'il les a vides
@@ -520,7 +639,14 @@ def find_duplicates_by_contact(company, *, phone=None, email=None,
     """Leads d'une société partageant un téléphone OU un email normalisé avec
     les valeurs fournies (saisie libre acceptée — mêmes normaliseurs que la
     détection de doublons). Sert AUSSI au contrôle PRÉ-CRÉATION, où aucun Lead
-    n'existe encore (d'où l'absence d'instance). Inclut les archivés."""
+    n'existe encore (d'où l'absence d'instance). Inclut les archivés.
+
+    QW10 — requête INDEXÉE sur les colonnes normalisées maintenues par
+    `Lead.save()` (`phone_normalise`/`email_normalise`, backfillées par la
+    migration pour les lignes existantes) — jamais un scan Python complet de
+    la société à chaque appel."""
+    from django.db.models import Q
+
     phone = normalize_phone(phone)
     email = normalize_email(email)
     if not phone and not email:
@@ -528,13 +654,13 @@ def find_duplicates_by_contact(company, *, phone=None, email=None,
     qs = Lead.objects.filter(company=company)
     if exclude_pk is not None:
         qs = qs.exclude(pk=exclude_pk)
-    candidates = []
-    for other in qs:
-        if phone and normalize_phone(other.telephone) == phone:
-            candidates.append(other)
-        elif email and normalize_email(other.email) == email:
-            candidates.append(other)
-    return candidates
+
+    q = Q()
+    if phone:
+        q |= Q(phone_normalise=phone)
+    if email:
+        q |= Q(email_normalise=email)
+    return list(qs.filter(q))
 
 
 def merge_leads(survivor, others, user):
@@ -963,6 +1089,88 @@ def create_draft_lead_from_ocr(*, company, user, fields) -> Lead:
     return lead
 
 
+# ── XSAL8 — Scan de carte de visite (salon/chantier) → pré-remplissage ──────
+#
+# NE crée JAMAIS de lead : lit une photo, l'envoie à l'OCR EXISTANT
+# (``core.ai.services.extract_document``, gabarit ``carte_visite`` — la même
+# capacité que FG355/XRH23, key-gated ZHIPU_API_KEY, NO-OP-safe), et renvoie
+# les champs reconnus pour PRÉ-REMPLIR le modal « Lead express » — la création
+# reste TOUJOURS un geste explicite de l'utilisateur (bouton « Créer »).
+
+# Mêmes octets magiques que ``apps.records.storage`` (jamais de nouvelle
+# dépendance) : la carte de visite est une simple PHOTO (JPEG/PNG/WebP),
+# jamais un PDF.
+_CARTE_VISITE_MAX_BYTES = 8 * 1024 * 1024  # 8 Mo (photo mobile courante)
+_CARTE_VISITE_MAGIC = {
+    'image/png': lambda h: h[:8] == b'\x89PNG\r\n\x1a\n',
+    'image/jpeg': lambda h: h[:3] == b'\xff\xd8\xff',
+    'image/webp': lambda h: h[:4] == b'RIFF' and h[8:12] == b'WEBP',
+}
+
+
+class CarteVisiteScanUnavailable(Exception):
+    """XSAL8 — levée quand l'OCR n'est pas configuré (503 douce côté vue) ou
+    quand le fichier fourni n'est pas une image reconnue (400 côté vue)."""
+
+
+def scan_carte_visite(*, company, file_bytes, mime_hint=''):
+    """XSAL8 — Extrait nom/société/téléphone/email d'une photo de carte de
+    visite, PRÉ-VÉRIFIE les doublons, et renvoie un dict prêt à pré-remplir le
+    modal « Lead express » — NE CRÉE JAMAIS de lead (l'utilisateur valide).
+
+    Lève :class:`CarteVisiteScanUnavailable` si le fichier n'est pas une image
+    reconnue (magic bytes) OU trop volumineux OU si aucun fournisseur OCR
+    n'est configuré (``ZHIPU_API_KEY`` absent — dégradation propre, jamais
+    d'appel réseau). Ne persiste JAMAIS l'image reçue au-delà du traitement en
+    mémoire (aucun stockage MinIO — contrairement aux autres flux OCR qui
+    rattachent le fichier en pièce jointe)."""
+    if not file_bytes:
+        raise CarteVisiteScanUnavailable('Aucune image fournie.')
+    if len(file_bytes) > _CARTE_VISITE_MAX_BYTES:
+        raise CarteVisiteScanUnavailable('Image trop volumineuse (max 8 Mo).')
+
+    header = file_bytes[:12]
+    mime = None
+    for candidate_mime, test in _CARTE_VISITE_MAGIC.items():
+        if test(header):
+            mime = candidate_mime
+            break
+    if mime is None:
+        raise CarteVisiteScanUnavailable(
+            'Format non reconnu (JPEG, PNG ou WebP uniquement).')
+
+    from core.ai.services import extract_document
+    result = extract_document(
+        content=file_bytes, mime_type=mime, schema='carte_visite')
+    if not result.configured:
+        raise CarteVisiteScanUnavailable(
+            "Aucun fournisseur OCR n'est configuré (clé absente) — "
+            'saisie manuelle requise.')
+
+    data = result.data or {}
+    nom = str(data.get('nom') or '').strip()[:255]
+    prenom = str(data.get('prenom') or '').strip()[:255]
+    societe = str(data.get('societe') or '').strip()[:255]
+    telephone = str(data.get('telephone') or '').strip()[:50]
+    email = str(data.get('email') or '').strip()[:254]
+
+    doublons = []
+    if telephone or email:
+        dupes = find_duplicates_by_contact(
+            company, phone=telephone or None, email=email or None)
+        doublons = [
+            {'id': d.id, 'nom': d.nom, 'prenom': d.prenom,
+             'telephone': d.telephone, 'email': d.email}
+            for d in dupes
+        ]
+
+    return {
+        'nom': nom, 'prenom': prenom, 'societe': societe,
+        'telephone': telephone, 'email': email,
+        'doublons': doublons,
+    }
+
+
 # ── YLEAD8 — Rattacher l'inbound WhatsApp à un lead OUVERT existant ──────────
 
 def resolve_or_create_lead_from_whatsapp(company, telephone, nom='',
@@ -1015,11 +1223,17 @@ def resolve_or_create_lead_from_whatsapp(company, telephone, nom='',
     # téléphone/whatsapp est posé ICI pour que le PROCHAIN message du même
     # numéro retrouve ce lead via find_duplicates_by_contact (sinon YLEAD8
     # créerait un doublon à chaque message, ce que ce service existe pour
-    # éviter).
+    # éviter). BUG RÉEL corrigé ici : Lead.save() recalcule
+    # phone_normalise/email_normalise EN MÉMOIRE à chaque save() (avant
+    # super().save()), mais save(update_fields=[...]) ne PERSISTE que les
+    # colonnes listées — sans 'phone_normalise' ici, la colonne restait ''
+    # en base malgré le téléphone posé, et find_duplicates_by_contact (qui
+    # filtre sur phone_normalise) ne retrouvait jamais ce lead au message
+    # suivant : chaque nouveau message du même numéro créait un DOUBLON.
     if telephone:
         lead.telephone = telephone
         lead.whatsapp = telephone
-        lead.save(update_fields=['telephone', 'whatsapp'])
+        lead.save(update_fields=['telephone', 'whatsapp', 'phone_normalise'])
     return lead
 
 
@@ -1467,31 +1681,67 @@ def notify_devis_opened(devis_reference: str, lead) -> None:
             getattr(lead, 'pk', '?'), devis_reference, exc)
 
 
+#: QW5 — libellés FR par canal de contact proposition (WJ85/WJ54 — le site
+#: envoie 'rappel'/'whatsapp'/'question'/'voice'/'revision', un vocabulaire
+#: plus large que ce que ce module connaissait (whatsapp/rappel seuls).
+_CONTACT_CANAL_LABELS = {
+    'whatsapp': 'par WhatsApp',
+    'rappel': 'par téléphone (rappel)',
+    'question': 'question avant signature',
+    'voice': 'orienté vers une note vocale WhatsApp',
+    'revision': 'demande de modification',
+}
+
+#: QW5 — libellés FR par type de modification demandée (WJ54, uniquement
+#: pertinent quand canal == 'revision').
+_REVISION_KIND_LABELS = {
+    'kwc': 'ajuster la puissance (kWc)',
+    'batterie': 'changer l’option batterie',
+    'autre': 'autre modification',
+}
+
+
 def notify_client_contact_request(devis_reference: str, lead,
-                                  canal='', message='') -> None:
-    """QJ27 — Le CLIENT demande à être contacté (depuis la proposition publique).
+                                  canal='', message='', revision_kind='') -> None:
+    """QJ27/QW5 — Le CLIENT demande à être contacté (proposition publique).
 
     Consigne la demande dans le chatter du lead (note SYSTÈME, user=None — ne
     fait donc jamais avancer le funnel QJ7) ET notifie le responsable du lead
     ET son supérieur (repli managers société quand l'un des deux manque), avec
     un lien wa.me « répondre maintenant ». Best-effort — jamais d'exception
     propagée. La société vient TOUJOURS du lead (jamais d'un corps de requête).
-    """
+
+    QW5 — ``revision_kind`` (WJ54, uniquement quand ``canal == 'revision'``)
+    est journalisé dans le chatter et le corps de notification. Le canal
+    ``rappel`` sur une demande CLIENT (proposition) est une obligation de
+    RAPPEL — même sémantique que QW4 (``contact_preference=phone_ok``) : si le
+    lead lié n'a pas encore cette préférence posée, on la pose ici aussi et on
+    déclenche la même notification distincte + SLA rappel (jamais dupliquée —
+    ``notify_lead_callback_requested`` est déjà idempotent par lead)."""
     try:
-        canal_label = {
-            'whatsapp': 'par WhatsApp',
-            'rappel': 'par téléphone (rappel)',
-        }.get((canal or '').strip(), '')
+        canal_key = (canal or '').strip()
+        canal_label = _CONTACT_CANAL_LABELS.get(canal_key, '')
         nom = (getattr(lead, 'nom', '') or '').strip() or 'Le client'
         # Note chatter (toujours, même sans destinataire notifiable).
         note = f'Le client demande à être contacté ({devis_reference})'
         if canal_label:
             note += f' — {canal_label}'
+        if canal_key == 'revision' and revision_kind:
+            note += f' [{_REVISION_KIND_LABELS.get(revision_kind, revision_kind)}]'
         if message:
-            note += f' : « {message[:500]} »'
+            note += f' : « {message[:2000]} »'
         LeadActivity.objects.create(
             company=lead.company, lead=lead, user=None,
             kind=LeadActivity.Kind.NOTE, body=note)
+
+        # QW5/QW4 — un rappel demandé DEPUIS LA PROPOSITION est la même
+        # obligation qu'un rappel demandé à la capture : pose la préférence si
+        # absente et route vers la notification distincte + SLA rappel.
+        if canal_key == 'rappel' and getattr(lead, 'contact_preference', None) != Lead.ContactPreference.PHONE_OK:
+            lead.contact_preference = Lead.ContactPreference.PHONE_OK
+            lead.save(update_fields=['contact_preference'])
+        if canal_key == 'rappel':
+            notify_lead_callback_requested(lead)
 
         recipients = lead_notification_recipients(lead)
         if not recipients:
@@ -1502,8 +1752,11 @@ def notify_client_contact_request(devis_reference: str, lead,
             f'{nom} demande à être contacté au sujet du devis '
             f'{devis_reference}'
             + (f' ({canal_label})' if canal_label else '') + '.']
+        if canal_key == 'revision' and revision_kind:
+            body_parts.append(
+                f'Type de modification : {_REVISION_KIND_LABELS.get(revision_kind, revision_kind)}')
         if message:
-            body_parts.append(f'Message : « {message[:500]} »')
+            body_parts.append(f'Message : « {message[:2000]} »')
         if wa_url:
             body_parts.append(f'Répondre maintenant : {wa_url}')
         notify_many(
@@ -1519,6 +1772,57 @@ def notify_client_contact_request(devis_reference: str, lead,
         logging.getLogger(__name__).warning(
             'QJ27: notify_client_contact_request échoué pour lead #%s '
             'devis %s : %s', getattr(lead, 'pk', '?'), devis_reference, exc)
+
+
+#: QW4 — marqueur de note système : posé UNE FOIS par lead pour éviter de
+#: notifier plusieurs fois la même demande de rappel (idempotence, même
+#: patron que ``ESCALATION_MARKER`` de ``recycler_leads_non_travailles``).
+CALLBACK_REQUESTED_MARKER = 'auto — rappel demandé (contact_preference=phone_ok)'
+
+
+def notify_lead_callback_requested(lead) -> None:
+    """QW4 — Notification DISTINCTE, urgence plus élevée, quand un lead arrive
+    avec ``contact_preference=phone_ok`` (« rappel demandé »), différente du
+    générique ``notify_new_lead`` (réponse WhatsApp). Notifie owner + supérieur
+    (repli managers société). Idempotent par lead — jamais renotifié deux fois
+    pour la même demande (marqueur chatter). Best-effort — jamais d'exception
+    propagée."""
+    try:
+        if getattr(lead, 'contact_preference', None) != Lead.ContactPreference.PHONE_OK:
+            return
+        already = LeadActivity.objects.filter(
+            lead=lead, kind=LeadActivity.Kind.NOTE,
+            body__startswith=CALLBACK_REQUESTED_MARKER,
+        ).exists()
+        if already:
+            return
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.NOTE,
+            body=f'{CALLBACK_REQUESTED_MARKER}.',
+        )
+        recipients = lead_notification_recipients(lead)
+        if not recipients:
+            return
+        from apps.notifications.services import notify_many
+        nom = (getattr(lead, 'nom', '') or '').strip() or 'Un prospect'
+        body_parts = [f'{nom} a demandé un RAPPEL téléphonique (pas une réponse WhatsApp).']
+        tel = (getattr(lead, 'telephone', '') or '').strip()
+        if tel:
+            body_parts.append(f'Numéro à rappeler : {tel}')
+        notify_many(
+            recipients,
+            'lead_callback_requested',
+            f'☎ Rappeler {nom} — rappel demandé',
+            body='\n'.join(body_parts),
+            link=f'/crm/leads?lead={lead.pk}',
+            company=lead.company,
+        )
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        import logging
+        logging.getLogger(__name__).warning(
+            'QW4: notify_lead_callback_requested échoué pour lead #%s : %s',
+            getattr(lead, 'pk', '?'), exc)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2010,6 +2314,94 @@ def book_appointment(*, lead, scheduled_at, notes=None, user=None):
     return appointment
 
 
+# ── XSAL17 — Placeholder {lien_rdv} : lien de réservation dans les messages ──
+
+def public_booking_url(lead, *, request=None):
+    """XSAL17 — Crée (ou réutilise) un ``BookingLink`` NON expiré/NON utilisé
+    pour ``lead`` et renvoie son URL PUBLIQUE complète. Réutilise un lien
+    existant tant qu'il n'est ni expiré ni déjà utilisé (évite de multiplier
+    les jetons à chaque envoi) ; en crée un nouveau sinon. Company-scopé
+    (le lien porte la société du lead, jamais du corps de requête)."""
+    from django.conf import settings
+    from django.utils import timezone as _timezone
+
+    from .models import BookingLink
+
+    now = _timezone.now()
+    link = (
+        BookingLink.objects
+        .filter(lead=lead, used_at__isnull=True, expires_at__gt=now)
+        .order_by('-created_at')
+        .first()
+    )
+    if link is None:
+        link = BookingLink.objects.create(company=lead.company, lead=lead)
+
+    if request is not None:
+        base = request.build_absolute_uri('/')[:-1]
+    else:
+        base = (getattr(settings, 'PUBLIC_SITE_URL', '') or '').rstrip('/')
+    return f'{base}/rdv/{link.token}'
+
+
+def resoudre_lien_rdv(text, lead, *, request=None) -> str:
+    """XSAL17 — Résout le placeholder ``{lien_rdv}`` dans ``text`` au moment
+    de l'ENVOI (jamais généré à l'avance/en masse) : un template SANS le
+    placeholder est renvoyé INCHANGÉ (aucun jeton créé — no-op, jamais de
+    coût inutile). Best-effort : une erreur de génération de lien ne casse
+    jamais l'envoi — le placeholder est alors simplement retiré."""
+    if '{lien_rdv}' not in (text or ''):
+        return text
+    try:
+        url = public_booking_url(lead, request=request)
+    except Exception:  # noqa: BLE001 — jamais bloquer l'envoi d'un message
+        url = ''
+    return text.replace('{lien_rdv}', url)
+
+
+class BookingLinkUnavailable(Exception):
+    """XSAL17 — levée quand un jeton de réservation est invalide, expiré ou
+    déjà utilisé (l'appelant — la vue publique — traduit en 404/410 douce)."""
+
+
+def resolve_booking_link(token):
+    """XSAL17 — Résout un jeton de réservation PUBLIC : renvoie le
+    ``BookingLink`` s'il existe, n'est ni expiré ni déjà utilisé. Lève
+    :class:`BookingLinkUnavailable` sinon (message explicite). Lecture
+    seule — ne réserve rien elle-même."""
+    from .models import BookingLink
+
+    link = BookingLink.objects.select_related('lead', 'company').filter(
+        token=token).first()
+    if link is None:
+        raise BookingLinkUnavailable('Lien de réservation introuvable.')
+    if link.is_used:
+        raise BookingLinkUnavailable('Ce créneau a déjà été réservé.')
+    if link.is_expired:
+        raise BookingLinkUnavailable('Ce lien de réservation a expiré.')
+    return link
+
+
+def reserver_creneau_public(token, *, scheduled_at, notes=None):
+    """XSAL17 — Réservation PUBLIQUE d'un créneau via un jeton
+    ``BookingLink`` : crée l'``Appointment`` (via ``book_appointment``,
+    même logique métier que la création interne — user=None, un visiteur
+    anonyme n'est jamais un utilisateur ERP) et marque le lien comme
+    UTILISÉ (idempotent : un second appel avec le même jeton lève
+    :class:`BookingLinkUnavailable`, jamais un second rendez-vous).
+    Le lead atterrit toujours sur SON lead d'origine (booking-to-lead) —
+    jamais un autre, jamais choisi par le visiteur."""
+    from django.utils import timezone as _timezone
+
+    link = resolve_booking_link(token)
+    appointment = book_appointment(
+        lead=link.lead, scheduled_at=scheduled_at, notes=notes, user=None)
+    link.used_at = _timezone.now()
+    link.appointment = appointment
+    link.save(update_fields=['used_at', 'appointment'])
+    return appointment
+
+
 def dispatch_appointment_reminder(appointment) -> bool:
     """QJ20 — Envoie le rappel de visite pour un rendez-vous à venir.
 
@@ -2216,3 +2608,253 @@ def create_lead_depuis_ticket(*, company, user, client, contexte=''):
         # QJ7 ignore les activités système), tout en traçant l'origine.
         activity.log_note(lead, None, contexte)
     return lead, True
+
+
+# ── XMKT4 — écriture de consentement marketing pour un lead ────────────────
+# Point d'entrée UNIQUE pour poser un ``core.ConsentRecord`` depuis un lead
+# (jamais d'écriture directe de compta/parametres dans core.ConsentRecord au
+# nom d'un lead — cette fonction reste la porte d'entrée crm).
+
+def enregistrer_consentement_lead(
+        lead, *, purpose, granted=True, source='', version_texte='',
+        ip_confirmation=None):
+    """Pose (ou met à jour) le consentement d'un lead pour un canal donné.
+
+    ``purpose`` ∈ 'marketing' / 'email' / 'sms' / 'whatsapp'…
+    ``lead.email`` est utilisé comme identifiant si présent, sinon
+    ``lead.telephone``. Crée une NOUVELLE entrée à chaque appel (le registre
+    ``ConsentRecord`` est un historique append-only, cf. FG394) — la lecture
+    de l'état courant prend toujours la ligne la plus récente.
+    """
+    from core.models import ConsentRecord
+
+    identifiant = (lead.email or lead.telephone or '').strip()
+    if not identifiant:
+        return None
+    return ConsentRecord.objects.create(
+        company=lead.company,
+        subject_identifier=identifiant,
+        purpose=purpose,
+        granted=granted,
+        source=source or '',
+        occurred_at=timezone.now(),
+        version_texte=version_texte or '',
+        ip_confirmation=ip_confirmation,
+    )
+
+
+# ── XMKT19 — Actions CRM exécutables depuis une étape de séquence ──────────
+# Point d'entrée UNIQUE pour qu'une ``EtapeSequence`` (apps.compta) exécute
+# une action CRM au lieu d'un message — jamais d'import direct du modèle
+# crm depuis compta ; chaque fonction journalise le chatter (``LeadActivity``)
+# via ``activity``, jamais silencieuse.
+
+def avancer_stage_lead_vers(lead, user, stage_cible):
+    """XMKT19 — avance ``lead`` vers ``stage_cible`` (clé canonique
+    STAGES.py, jamais hardcodée par l'appelant). Refuse un recul (même règle
+    que le bulk edit, ``_bulk_stage_allowed``). Renvoie True si appliqué.
+    """
+    if not _bulk_stage_allowed(lead.stage, stage_cible):
+        return False
+    ancien = lead.stage
+    lead.stage = stage_cible
+    lead.save(update_fields=['stage'])
+    activity.log_bulk_change(lead, user, 'stage', ancien, stage_cible)
+    return True
+
+
+def assigner_lead_a(lead, user, owner_id):
+    """XMKT19 — assigne (ou vide) le propriétaire du lead."""
+    nouveau = _resolve_owner(lead.company, owner_id)
+    ancien = lead.owner
+    lead.owner = nouveau
+    lead.save(update_fields=['owner'])
+    activity.log_bulk_change(
+        lead, user,
+        'owner',
+        getattr(ancien, 'username', '') if ancien else '',
+        getattr(nouveau, 'username', '') if nouveau else '')
+    return lead
+
+
+def poser_tag_lead(lead, user, tag):
+    """XMKT19 — ajoute (idempotent) un tag au lead."""
+    tag = (tag or '').strip()
+    if not tag:
+        return lead
+    current = [t.strip() for t in (lead.tags or '').split(',') if t.strip()]
+    if tag in current:
+        return lead
+    old = lead.tags or ''
+    current.append(tag)
+    lead.tags = ', '.join(current)[:500]
+    lead.save(update_fields=['tags'])
+    activity.log_bulk_change(lead, user, 'tags', old, lead.tags)
+    return lead
+
+
+def retirer_tag_lead(lead, user, tag):
+    """XMKT19 — retire (idempotent) un tag du lead."""
+    tag = (tag or '').strip()
+    if not tag:
+        return lead
+    current = [t.strip() for t in (lead.tags or '').split(',') if t.strip()]
+    if tag not in current:
+        return lead
+    old = lead.tags or ''
+    current.remove(tag)
+    lead.tags = ', '.join(current)[:500]
+    lead.save(update_fields=['tags'])
+    activity.log_bulk_change(lead, user, 'tags', old, lead.tags)
+    return lead
+
+
+def ajuster_score_lead(lead, user, delta):
+    """XMKT19 — ajuste le score du lead de ``delta`` (peut être négatif),
+    borné à [0, 100]."""
+    ancien = lead.score or 0
+    nouveau = max(0, min(100, ancien + int(delta)))
+    lead.score = nouveau
+    lead.save(update_fields=['score'])
+    activity.log_bulk_change(lead, user, 'score', ancien, nouveau)
+    return lead
+
+
+def creer_relance_lead(lead, user, *, relance_date, note=''):
+    """XMKT19 — crée/pose une relance/tâche (FG31) sur le lead."""
+    lead.relance_date = relance_date
+    lead.save(update_fields=['relance_date'])
+    body = f'Relance planifiée le {relance_date}'
+    if note:
+        body += f' — {note}'
+    activity.log_note(lead, user, body)
+    return lead
+
+
+# ── XMKT28 — Lead depuis une inscription à un événement marketing ──────────
+
+def create_lead_from_evenement_marketing(
+        *, company, nom, telephone='', email='', evenement_nom='') -> Lead:
+    """XMKT28 — Crée (ou dédupe sur) un lead dès qu'un inscrit à un
+    ``EvenementMarketing`` (apps.compta) est capturé. Même pattern que
+    ``create_lead_from_livechat`` (XMKT37) : dédup par téléphone/email dans
+    la société avant de créer, canal ``AUTRE``, stage NEW (défaut du champ).
+    """
+    nom = (nom or '').strip()[:255] or 'Prospect événement'
+    telephone = (telephone or '').strip()[:20]
+    email = (email or '').strip()[:254]
+
+    lead = None
+    if telephone or email:
+        dupes = find_duplicates_by_contact(
+            company, phone=telephone or None, email=email or None)
+        if dupes:
+            lead = sorted(dupes, key=lambda d: d.date_creation, reverse=True)[0]
+
+    if lead is None:
+        extra = {}
+        default = default_responsable_for(company)
+        if default is not None:
+            extra['owner'] = default
+        lead = Lead.objects.create(
+            company=company,
+            nom=nom,
+            telephone=telephone or None,
+            email=email or None,
+            canal=Lead.Canal.AUTRE,
+            **extra,
+        )
+        activity.log_creation(lead, None)
+    else:
+        changed = False
+        if telephone and not lead.telephone:
+            lead.telephone = telephone
+            changed = True
+        if email and not lead.email:
+            lead.email = email
+            changed = True
+        if changed:
+            lead.save()
+
+    if evenement_nom:
+        activity.log_note(
+            lead, None, f'Inscrit à l\'événement « {evenement_nom} »')
+    recompute_lead_score(lead)
+    return lead
+
+
+# ── XPLT5 — API publique en ÉCRITURE (leads:write / activities:write) ───────
+# Point d'entrée cross-app sanctionné (services.py) pour `apps.publicapi` :
+# la société vient TOUJOURS de l'appelant (résolue depuis la clé API, jamais
+# du corps), jamais acceptée en argument depuis les données utilisateur.
+
+PUBLIC_LEAD_WRITABLE_FIELDS = (
+    'nom', 'prenom', 'societe', 'email', 'telephone', 'ville',
+    'canal', 'priorite', 'type_installation', 'stage',
+)
+
+
+def create_lead_from_public_api(*, company, fields):
+    """XPLT5 — crée un lead depuis l'API publique en écriture.
+
+    ``fields`` est filtré à la liste blanche ``PUBLIC_LEAD_WRITABLE_FIELDS``
+    (un champ non listé est silencieusement ignoré — jamais 500). ``stage``,
+    s'il est fourni, doit être une clé canonique STAGES.py valide (sinon
+    ``ValueError`` — jamais de nouvelle liste d'étapes, jamais hardcodée) ;
+    absent, le lead prend le défaut du modèle (NEW). ``nom`` est obligatoire.
+    Company forcée serveur, jamais du body. Journalise la création
+    (``LeadActivity``, acteur système) comme tout autre point d'entrée."""
+    clean = {k: v for k, v in (fields or {}).items()
+             if k in PUBLIC_LEAD_WRITABLE_FIELDS and v not in (None, '')}
+    nom = (clean.pop('nom', '') or '').strip()
+    if not nom:
+        raise ValueError("Le champ « nom » est obligatoire.")
+    stage = clean.pop('stage', None)
+    if stage is not None and stage not in stages.STAGES:
+        raise ValueError(
+            f'Étape inconnue : {stage!r} (STAGES.py = {stages.STAGES}).')
+    lead = Lead.objects.create(
+        company=company, nom=nom,
+        stage=stage or stages.NEW,
+        **clean,
+    )
+    activity.log_creation(lead, None)
+    return lead
+
+
+def update_lead_from_public_api(*, company, lead_id, fields):
+    """XPLT5 — met à jour un lead EXISTANT DE CETTE SOCIÉTÉ depuis l'API
+    publique en écriture. Lève ``Lead.DoesNotExist`` si le lead n'appartient
+    pas (ou plus) à ``company`` — jamais de fuite cross-tenant. Champs
+    filtrés à la même liste blanche que la création ; ``stage`` validé contre
+    STAGES.py. Journalise chaque champ changé (chatter, acteur système)."""
+    lead = Lead.objects.get(company=company, pk=lead_id)
+    clean = {k: v for k, v in (fields or {}).items()
+             if k in PUBLIC_LEAD_WRITABLE_FIELDS}
+    stage = clean.get('stage')
+    if stage is not None and stage not in stages.STAGES:
+        raise ValueError(
+            f'Étape inconnue : {stage!r} (STAGES.py = {stages.STAGES}).')
+    old = Lead.objects.get(pk=lead.pk)
+    changed_fields = []
+    for field, value in clean.items():
+        if value in (None, '') and field != 'stage':
+            continue
+        if getattr(lead, field) != value:
+            setattr(lead, field, value)
+            changed_fields.append(field)
+    if changed_fields:
+        lead.save(update_fields=changed_fields)
+        activity.log_changes(old, lead, None)
+    return lead
+
+
+def create_activity_from_public_api(*, company, lead_id, body):
+    """XPLT5 — ajoute une note (activité chatter) sur un lead DE CETTE
+    SOCIÉTÉ depuis l'API publique en écriture. Lève ``Lead.DoesNotExist`` si
+    hors société (jamais de fuite cross-tenant). ``body`` ne peut être vide."""
+    lead = Lead.objects.get(company=company, pk=lead_id)
+    body = (body or '').strip()
+    if not body:
+        raise ValueError("Le champ « body » est obligatoire.")
+    return activity.log_note(lead, None, body)

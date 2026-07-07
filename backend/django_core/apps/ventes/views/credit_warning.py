@@ -5,11 +5,13 @@ pour afficher un warning doux quand l'encours du client dépasse son plafond.
 Jamais un blocage dur : l'encours est calculé à la volée depuis les factures
 ouvertes et renvoyé avec un message prêt à l'affichage.
 """
+from django.http import Http404
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework import status
 
 from authentication.permissions import IsAnyRole
+from core.selectors import get_company_object
 
 
 @api_view(['GET'])
@@ -35,10 +37,11 @@ def client_credit_warning(request, client_id):
     from ..selectors import etat_recouvrement_client
     company = request.user.company
 
-    # Scoping tenant : le client doit appartenir à la société.
+    # Scoping tenant (YRBAC11) : le client doit appartenir à la société —
+    # helper canonique, 404 indistinct d'un id inexistant.
     try:
-        client = Client.objects.get(pk=client_id, company=company)
-    except Client.DoesNotExist:
+        client = get_company_object(Client, client_id, request.user)
+    except Http404:
         return Response({'detail': 'Client introuvable.'},
                         status=status.HTTP_404_NOT_FOUND)
 

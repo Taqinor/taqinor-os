@@ -9,6 +9,9 @@
  *     via GET /crm/leads/check-duplicates/?phone=… — avertissement non bloquant.
  *   - POST vers l'endpoint existant /crm/leads/ (identique au LeadForm).
  *   - Après création : appelle onSaved(lead) et se ferme.
+ *   - XSAL8 — « Scanner une carte » (photo) pré-remplit le formulaire via
+ *     l'OCR existant (503 douce sans clé configurée : message clair, aucune
+ *     répétition automatique — l'utilisateur retombe sur la saisie manuelle).
  */
 import { useState, useEffect, useId, useRef } from 'react'
 import crmApi from '../../../api/crmApi'
@@ -23,20 +26,59 @@ function normalizePhone(raw) {
 export default function LeadExpressModal({ onClose, onSaved }) {
   const formId = useId()
   const nomRef = useRef(null)
+  const scanInputRef = useRef(null)
 
   const [nom, setNom] = useState('')
   const [telephone, setTelephone] = useState('')
+  const [societe, setSociete] = useState('')
+  const [email, setEmail] = useState('')
   const [canal, setCanal] = useState('walk_in')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   // FG35 — état de la vérification de doublons.
   // dupState: null (pas encore) | 'checking' | { warning: string|null }
   const [dupState, setDupState] = useState(null)
+  // XSAL8 — scan de carte de visite : null | 'scanning' | { error } | { ok }
+  const [scanState, setScanState] = useState(null)
+  // Une fois l'OCR détecté indisponible (clé absente), on masque le bouton
+  // pour le reste de la session — évite de retenter un appel voué à échouer.
+  const [scanUnavailable, setScanUnavailable] = useState(false)
 
   const { options: canauxOptions, loaded: canauxLoaded } = useCanaux()
 
   // Mise au point auto sur le champ nom à l'ouverture.
   useEffect(() => { nomRef.current?.focus() }, [])
+
+  const handleScanFile = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = '' // permet de rescanner la même photo si besoin
+    if (!file) return
+    setScanState('scanning')
+    try {
+      const res = await crmApi.scanCarteVisite(file)
+      const data = res.data || {}
+      if (data.nom) setNom(data.nom + (data.prenom ? ` ${data.prenom}` : ''))
+      if (data.telephone) setTelephone(data.telephone)
+      if (data.societe) setSociete(data.societe)
+      if (data.email) setEmail(data.email)
+      const dups = data.doublons ?? []
+      setScanState({
+        ok: true,
+        warning: dups.length
+          ? `Doublon possible : ${dups.slice(0, 2).map((d) => d.nom || '?').join(', ')}.`
+          : null,
+      })
+    } catch (err) {
+      if (err?.response?.status === 503) {
+        setScanUnavailable(true)
+        setScanState(null)
+        return
+      }
+      const detail =
+        err?.response?.data?.detail || 'Lecture de la carte impossible — saisie manuelle.'
+      setScanState({ error: detail })
+    }
+  }
 
   // Vérification de doublons dès que le numéro est suffisamment long.
   useEffect(() => {
@@ -78,6 +120,8 @@ export default function LeadExpressModal({ onClose, onSaved }) {
       const payload = {
         nom: nom.trim(),
         telephone: telephone.trim() || null,
+        societe: societe.trim() || null,
+        email: email.trim() || null,
         canal: canal || null,
         // owner et company sont injectés côté serveur
       }
@@ -123,6 +167,37 @@ export default function LeadExpressModal({ onClose, onSaved }) {
         </div>
 
         <form onSubmit={handleSubmit} noValidate className="lem-form">
+          {/* XSAL8 — Scan de carte de visite (photo) : masqué sans clé OCR
+              configurée (503 rencontrée une fois → bouton retiré). */}
+          {!scanUnavailable && (
+            <div className="lem-scan-row">
+              <input
+                ref={scanInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                capture="environment"
+                onChange={handleScanFile}
+                style={{ display: 'none' }}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                disabled={scanState === 'scanning'}
+                onClick={() => scanInputRef.current?.click()}
+              >
+                {scanState === 'scanning' ? 'Lecture…' : '📇 Scanner une carte'}
+              </Button>
+              {scanState && scanState.error && (
+                <p className="lem-scan-error" role="alert">{scanState.error}</p>
+              )}
+              {scanState && scanState.ok && scanState.warning && (
+                <p className="lem-dup-warning" role="alert" aria-live="assertive">
+                  ⚠ {scanState.warning}
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Nom */}
           <label className="lem-label" htmlFor={`${formId}-nom`}>
             Nom <span aria-hidden="true" className="lem-required">*</span>
@@ -136,6 +211,18 @@ export default function LeadExpressModal({ onClose, onSaved }) {
             value={nom}
             onChange={(e) => setNom(e.target.value)}
             required
+            autoComplete="off"
+          />
+
+          {/* Société (pré-remplie par le scan, éditable) */}
+          <label className="lem-label" htmlFor={`${formId}-societe`}>Société</label>
+          <input
+            id={`${formId}-societe`}
+            className="lem-input"
+            type="text"
+            placeholder="Société du prospect"
+            value={societe}
+            onChange={(e) => setSociete(e.target.value)}
             autoComplete="off"
           />
 
@@ -160,6 +247,18 @@ export default function LeadExpressModal({ onClose, onSaved }) {
               ⚠ {dupWarning}
             </p>
           )}
+
+          {/* E-mail (pré-rempli par le scan, éditable) */}
+          <label className="lem-label" htmlFor={`${formId}-email`}>E-mail</label>
+          <input
+            id={`${formId}-email`}
+            className="lem-input"
+            type="email"
+            placeholder="contact@exemple.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            autoComplete="off"
+          />
 
           {/* Canal */}
           <label className="lem-label" htmlFor={`${formId}-canal`}>Canal</label>

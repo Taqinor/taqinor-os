@@ -2,12 +2,24 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    desinscription_publique, webhook_brevo_campagne, webhook_sms_stop,
+    desinscription_publique, double_optin_confirmer,
+    redirection_lien_tracke,
+    enquete_publique, enquete_soumettre, enquete_certificat_pdf, EnqueteViewSet,
+    evenement_inscription_publique, EvenementMarketingViewSet,
+    InscriptionEvenementViewSet,
+    SupportOfflineViewSet,
+    DomaineEnvoiViewSet,
+    TypeEvenementViewSet,
+    BilletEvenementViewSet,
+    QuestionEvenementViewSet,
+    CommunicationEvenementViewSet,
+    webhook_brevo_campagne, webhook_sms_stop,
     portail_mon_releve, portail_mon_releve_pdf, portail_contester_facture,
     AppelTelephoniqueViewSet,
     BaremeIndemniteViewSet, BordereauRemiseViewSet, BudgetViewSet,
     CaisseViewSet, CampagneViewSet, CautionBancaireViewSet, CentreCoutViewSet,
     EnvoiCampagneViewSet, ListeDiffusionViewSet, AbonnementListeViewSet,
+    ApprobationEnvoiCampagneViewSet,
     SegmentMarketingViewSet,
     CessionImmobilisationViewSet, CodePromotionViewSet,
     CommissionPayoutRunViewSet, ComparateurDevisViewSet,
@@ -25,6 +37,7 @@ from .views import (
     PeriodeComptableViewSet, PilotageViewSet, PlafondNoteFraisViewSet,
     PlanComptableViewSet,
     ProvisionCreanceViewSet, ProvisionViewSet,
+    RapportNoteFraisViewSet,
     RapprochementBancaireViewSet, RapprochementViewSet,
     RelanceDevisAbandonneViewSet,
     RetenueGarantieViewSet, RetenueSourceViewSet, SequenceRelanceViewSet,
@@ -78,6 +91,7 @@ router.register(r'effets', EffetViewSet)
 router.register(r'bordereaux', BordereauRemiseViewSet)
 router.register(r'payment-runs', PaymentRunViewSet)
 router.register(r'notes-frais', NoteFraisViewSet)
+router.register(r'rapports-notes-frais', RapportNoteFraisViewSet)
 router.register(r'plafonds-notes-frais', PlafondNoteFraisViewSet)
 router.register(r'baremes-indemnite', BaremeIndemniteViewSet)
 router.register(r'indemnites-chantier', IndemniteChantierViewSet)
@@ -106,6 +120,7 @@ router.register(r'familles-tva-non-deductibles', FamilleTvaNonDeductibleViewSet)
 # ── Croissance commerciale / marketing / CPQ (FG201–FG214) ──────────────────
 router.register(r'campagnes', CampagneViewSet)
 router.register(r'envois-campagne', EnvoiCampagneViewSet)
+router.register(r'approbations-envoi-campagne', ApprobationEnvoiCampagneViewSet)
 router.register(r'listes-diffusion', ListeDiffusionViewSet)
 router.register(r'abonnements-liste', AbonnementListeViewSet)
 router.register(r'segments-marketing', SegmentMarketingViewSet)
@@ -168,12 +183,37 @@ router.register(r'pistes-audit', PisteAuditComptableViewSet,
                 basename='pisteaudit')
 # ── XFAC14 — Compensation AR/AP (netting) ───────────────────────────────────
 router.register(r'compensations', CompensationViewSet)
+# ── XMKT27 — Constructeur d'enquêtes ────────────────────────────────────────
+router.register(r'enquetes', EnqueteViewSet)
+# ── XMKT28 — Événements marketing légers ────────────────────────────────────
+router.register(r'evenements-marketing', EvenementMarketingViewSet)
+router.register(r'inscriptions-evenement', InscriptionEvenementViewSet)
+router.register(r'types-evenement', TypeEvenementViewSet)
+router.register(r'billets-evenement', BilletEvenementViewSet)
+router.register(r'questions-evenement', QuestionEvenementViewSet)
+router.register(r'communications-evenement', CommunicationEvenementViewSet)
+# ── XMKT29 — Ponts QR pour supports offline ─────────────────────────────────
+router.register(r'supports-offline', SupportOfflineViewSet)
+# ── XMKT33 — Assistant d'authentification du domaine d'envoi ───────────────
+router.register(r'domaines-envoi', DomaineEnvoiViewSet)
 
 urlpatterns = [
     path('webhooks/brevo/', webhook_brevo_campagne, name='webhook-brevo-campagne'),
     path('webhooks/sms-stop/', webhook_sms_stop, name='webhook-sms-stop'),
     path('desinscription/<str:token>/', desinscription_publique,
          name='desinscription-publique'),
+    path('double-optin/<str:token>/', double_optin_confirmer,
+         name='double-optin-confirmer'),
+    path('r/<str:token>/', redirection_lien_tracke,
+         name='redirection-lien-tracke'),
+    path('enquetes-publiques/<str:token>/', enquete_publique,
+         name='enquete-publique'),
+    path('enquetes-publiques/<str:token>/soumettre/', enquete_soumettre,
+         name='enquete-soumettre'),
+    path('reponses-enquete/<int:reponse_id>/certificat/', enquete_certificat_pdf,
+         name='enquete-certificat-pdf'),
+    path('evenements-marketing/<int:evenement_id>/inscription-publique/',
+         evenement_inscription_publique, name='evenement-inscription-publique'),
     # XFAC26/27 — Portail client self-service (token, sans login).
     path('portail/<str:token>/mon-releve/', portail_mon_releve,
          name='portail-mon-releve'),

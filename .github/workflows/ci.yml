@@ -193,7 +193,7 @@ jobs:
             libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b fonts-dejavu-core
       - name: Install Python dependencies
         working-directory: backend/django_core
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-dev.txt
       - name: Start MinIO + create buckets
         run: |
           docker run -d --name minio -p 9000:9000 \
@@ -213,6 +213,13 @@ jobs:
           docker run --rm --network host --entrypoint sh minio/mc:latest -c "
             mc alias set local http://localhost:9000 erp_admin erp_minio_password &&
             mc mb -p local/erp-pdf local/erp-uploads"
+      # YOPSB5 — anti-dérive modèle<->migration : échoue si un changement de
+      # modèle n'a pas sa migration (index nommé à la main divergent,
+      # contrainte sans migration…). Tourne AVANT la suite de tests, même
+      # service Postgres/env que celle-ci.
+      - name: Check for missing migrations (makemigrations --check)
+        working-directory: backend/django_core
+        run: python manage.py makemigrations --check --dry-run
       # Palier « par-merge » : tout SAUF les tests lourds étiquetés `pdf`/`slow`
       # (rendu WeasyPrint, golden PDF…). Ceux-ci tournent dans release-verify
       # (manuel + nightly), pour un retour rapide sur chaque merge.
@@ -222,7 +229,7 @@ jobs:
         # `coverage report` imprime un % backend visible (informatif).
         run: |
           pip install coverage
-          coverage run manage.py test apps authentication -v 2 --exclude-tag=pdf --exclude-tag=slow
+          coverage run manage.py test apps authentication core -v 2 --exclude-tag=pdf --exclude-tag=slow
           coverage report
 
   frontend-lint:
@@ -255,6 +262,33 @@ jobs:
         working-directory: frontend
         run: npm run test:coverage
 
+  # YHARD7 — budget de performance du bundle SPA ERP. Complète le
+  # `chunkSizeWarningLimit` (avertissement de build seulement) par un contrôle
+  # qui ÉCHOUE la CI si un chunk (ou le total gzippé) dépasse son budget.
+  # Dev-only (frontend/scripts/check_bundle_budget.mjs, Node stdlib pur —
+  # aucune dépendance ajoutée). Lighthouse-CI reste hors périmètre ici
+  # (optionnel/non bloquant) pour éviter la flakiness.
+  frontend-perf:
+    needs: changes
+    if: ${{ needs.changes.outputs.frontend == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+      - name: Check bundle budget
+        working-directory: frontend
+        run: npm run check-bundle-budget
+
   stage-names:
     # Intentionally UNGATED: this is the fast, broad drift guard. It must run on
     # docs/plan changes (plan fingerprint), on STAGES.py, and on any structural
@@ -270,8 +304,16 @@ jobs:
         run: python scripts/check_stages.py
       - name: Check module registry <-> frontend consistency (ODX21)
         run: python scripts/check_modules.py
+      - name: Check test determinism (no sleeps / unfrozen live-clock assertions)
+        run: python scripts/check_test_determinism.py
+      - name: Check invariant registry (docs/invariants.md still points at real tests)
+        run: python scripts/check_invariants.py
       - name: Check CODEMAP structural fingerprint
         run: python scripts/codemap_fingerprint.py --check
+      - name: Check for unsafe migration DDL patterns (YOPSB4)
+        run: python scripts/check_safe_migrations.py
+      - name: Test the safe-migrations checker itself (YOPSB4)
+        run: python -m unittest scripts.tests.test_check_safe_migrations -v
 
   web-build-test:
     needs: changes
@@ -359,7 +401,7 @@ jobs:
             libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b fonts-dejavu-core
       - name: Install Python dependencies
         working-directory: backend/django_core
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-dev.txt
       - name: Start MinIO + create buckets
         run: |
           docker run -d --name minio -p 9000:9000 \
@@ -439,6 +481,7 @@ jobs:
       - backend-lint
       - backend-tests
       - frontend-lint
+      - frontend-perf
       - stage-names
       - web-build-test
       - e2e
@@ -450,6 +493,7 @@ jobs:
           echo "backend-lint=${{ needs.backend-lint.result }}"
           echo "backend-tests=${{ needs.backend-tests.result }}"
           echo "frontend-lint=${{ needs.frontend-lint.result }}"
+          echo "frontend-perf=${{ needs.frontend-perf.result }}"
           echo "stage-names=${{ needs.stage-names.result }}"
           echo "web-build-test=${{ needs.web-build-test.result }}"
           echo "e2e=${{ needs.e2e.result }}"

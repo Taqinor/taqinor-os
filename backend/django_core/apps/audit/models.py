@@ -63,6 +63,13 @@ class AuditLog(models.Model):
     object_repr = models.CharField(max_length=255, blank=True, default='')
     # Court « ce qui a changé » (ex. « Statut : Brouillon → Envoyé »).
     detail = models.TextField(blank=True, default='')
+    # YHARD3 — diff structuré best-effort, additif : liste JSON
+    # ``[{"field": ..., "old": ..., "new": ...}, ...]``. Nullable/absent pour
+    # tout le legacy et pour les actions non-UPDATE — la reconstruction as-of
+    # dégrade proprement (voir ``selectors.reconstruct_as_of``, fallback parse
+    # de ``detail``). Rempli best-effort par ``recorder.record`` ; ne bloque
+    # jamais la requête.
+    changes = models.JSONField('Diff structuré', null=True, blank=True)
     timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:

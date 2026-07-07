@@ -1,5 +1,5 @@
 from django.db import transaction  # noqa: F401
-from django.db.models import ProtectedError, Count, Min, Max  # noqa: F401
+from django.db.models import ProtectedError, Count, Min, Max, Prefetch  # noqa: F401
 from django.http import HttpResponse  # noqa: F401
 from rest_framework import viewsets, filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
@@ -10,7 +10,7 @@ from ..models import (  # noqa: F401
     Produit, Categorie, Fournisseur, MouvementStock, Marque,
     BonCommandeFournisseur, EmplacementStock, TransfertStock, PrixFournisseur,
     RetourFournisseur, ReceptionFournisseur, FactureFournisseur,
-    PaiementFournisseur,
+    PaiementFournisseur, RegleCodeBarres,
 )
 from ..serializers import (  # noqa: F401
     ProduitSerializer,
@@ -51,8 +51,19 @@ PRODUIT_CREATE_PERMISSION = HasPermissionAndRole(
 
 
 class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
-    queryset = Produit.objects.select_related(
-        'categorie', 'fournisseur'
+    # YOPSB13 — le FournisseurSerializer imbriqué (ProduitSerializer.fournisseur)
+    # lit contacts.all() + nb_produits/nb_bons_commande (repli .count()) PAR
+    # ligne : N+1. On précharge le fournisseur avec les mêmes annotations que
+    # FournisseurViewSet + ses contacts → nombre de requêtes fixe quel que soit
+    # le nombre de produits.
+    queryset = Produit.objects.select_related('categorie').prefetch_related(
+        Prefetch(
+            'fournisseur',
+            queryset=Fournisseur.objects.annotate(
+                nb_produits_annot=Count('produits', distinct=True),
+                nb_bons_commande_annot=Count('bons_commande', distinct=True),
+            ).prefetch_related('contacts'),
+        ),
     ).all()
     serializer_class = ProduitSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -66,12 +77,16 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
         # Écritures Stock : permission ERP granulaire (rôles fins type
         # « Commerciale » = lecture seule) avec comportement historique
         # pour les comptes hérités sans rôle fin.
-        if self.action in READ_ACTIONS + ['export_xlsx', 'resolve']:
+        if self.action in READ_ACTIONS + [
+                'export_xlsx', 'resolve', 'previsionnel', 'tracer']:
             # XSTK3/XSTK4 — `resolve` (scan code-barres/GS1) est LECTURE
             # SEULE, accessible à tout rôle authentifié — même garde que
             # `@action(permission_classes=[IsAnyRole])` sur l'action
             # (`get_permissions` prime sur le `permission_classes` de
             # l'@action, d'où ce cas explicite — sinon repli IsAdminRole).
+            # ZSTK3 — `previsionnel` est LECTURE SEULE, même garde.
+            # XSTK7 — `tracer` (rapport de traçabilité) est LECTURE SEULE,
+            # même garde.
             return [IsAnyRole()]
         elif self.action in ('create', 'dupliquer'):
             # QG4 — création réservée à Directeur + Commercial responsable.
@@ -87,10 +102,13 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
             return [HasPermissionOrLegacy('stock_modifier')()]
         elif self.action in ('destroy', 'force_delete'):
             return [IsAdminRole()]
-        elif self.action in ('analyse_achats', 'analyse_achats_export_xlsx'):
-            # XPUR24 — tableau de bord achats : Admin/Responsable uniquement
-            # (get_permissions prime sur le permission_classes de l'@action,
-            # d'où ce cas explicite — sinon repli IsAdminRole).
+        elif self.action in (
+                'analyse_achats', 'analyse_achats_export_xlsx',
+                'analyse_achats_pdf'):
+            # XPUR24/ZPUR9 — tableau de bord + rapport imprimable achats :
+            # Admin/Responsable uniquement (get_permissions prime sur le
+            # permission_classes de l'@action, d'où ce cas explicite —
+            # sinon repli IsAdminRole).
             return [IsResponsableOrAdmin()]
         # XSTK10 — `rapport_pertes` reste admin-only (valeur d'achat
         # interne, jamais client-facing) via le repli ci-dessous.
@@ -449,6 +467,65 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
             date_fin=request.query_params.get('date_fin'),
             nb_mois=nb_mois)
 
+    @action(detail=False, methods=['get'], url_path='analyse-achats/pdf',
+            permission_classes=[IsResponsableOrAdmin])
+    def analyse_achats_pdf(self, request):
+        """ZPUR9 — rapport imprimable « analyse d'achats » (PDF, au-delà du
+        dashboard écran XPUR24) : dépenses par fournisseur/catégorie, top
+        produits, engagements ouverts, identité société (ICE/IF/RC).
+        Admin/Responsable uniquement — document INTERNE, jamais côté client.
+        Réutilise `analyse_achats_dashboard` (jamais recalculé)."""
+        from django.http import HttpResponse
+        from ..utils.pdf_analyse_achats import generate_analyse_achats_pdf
+        try:
+            nb_mois = int(request.query_params.get('nb_mois', 6))
+        except (TypeError, ValueError):
+            nb_mois = 6
+        pdf_bytes = generate_analyse_achats_pdf(
+            request.user.company,
+            date_debut=request.query_params.get('date_debut'),
+            date_fin=request.query_params.get('date_fin'),
+            nb_mois=nb_mois)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            'inline; filename="analyse-achats.pdf"')
+        return response
+
+    @action(detail=True, methods=['get'], url_path='previsionnel',
+            permission_classes=[IsAnyRole])
+    def previsionnel(self, request, pk=None):
+        """ZSTK3 — rapport prévisionnel (Forecasted report) : disponible +
+        entrées attendues (BCF ouverts) + sorties attendues (réservations
+        chantier/assemblage) → solde projeté daté. INTERNE, lecture seule."""
+        from ..services import forecast_produit
+        produit = self.get_object()
+        return Response(forecast_produit(request.user.company, produit))
+
+    @action(detail=False, methods=['get'], url_path='tracer',
+            permission_classes=[IsAnyRole])
+    def tracer(self, request):
+        """XSTK7 — rapport de traçabilité bout-en-bout (rappel fabricant) :
+        `?serie=<numero>` ou `?lot=<numero>`. Remonte réception fournisseur
+        → emplacement entrepôt → équipement installé/client en un appel.
+        Numéro inconnu / hors société → 404. INTERNE, lecture seule."""
+        from ..selectors import trace_serie
+
+        numero_serie = (request.query_params.get('serie') or '').strip()
+        numero_lot = (request.query_params.get('lot') or '').strip()
+        if not numero_serie and not numero_lot:
+            return Response(
+                {'detail': 'Paramètre serie ou lot requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        result = trace_serie(
+            request.user.company,
+            numero_serie=numero_serie or None,
+            numero_lot=numero_lot or None)
+        if result is None:
+            return Response(
+                {'detail': 'Aucune traçabilité trouvée pour ce numéro.'},
+                status=status.HTTP_404_NOT_FOUND)
+        return Response(result)
+
     @action(detail=False, methods=['get'], url_path='resolve',
             permission_classes=[IsAnyRole])
     def resolve(self, request):
@@ -466,6 +543,49 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response(
                 {'detail': 'Code illisible.'},
                 status=status.HTTP_400_BAD_REQUEST)
+
+        # ZSTK12 — la nomenclature de code-barres ACTIVE de la société (s'il
+        # y en a une) est consultée AVANT tout parsing GS1/EAN en dur. Sans
+        # nomenclature définie, ce bloc est un no-op total (repli byte-
+        # identique au comportement historique ci-dessous).
+        from ..selectors import resolve_via_nomenclature
+        matched = resolve_via_nomenclature(request.user.company, code)
+        if matched is not None:
+            encode, regle = matched
+            remainder = (
+                code[len(regle.motif):] if not regle.est_regex else code)
+            remainder = remainder.strip(':').strip()
+            if encode == RegleCodeBarres.Encode.EMPLACEMENT and \
+                    remainder.isdigit():
+                emplacement = (EmplacementStock.objects
+                               .filter(company=request.user.company,
+                                       id=int(remainder))
+                               .first())
+                if emplacement is not None:
+                    return Response({
+                        'type': 'emplacement',
+                        'id': emplacement.id,
+                        'label': emplacement.nom,
+                        'route': '/stock',
+                    })
+            elif encode == RegleCodeBarres.Encode.PRODUIT and \
+                    remainder.isdigit():
+                produit = (Produit.objects
+                           .filter(company=request.user.company,
+                                   id=int(remainder))
+                           .first())
+                if produit is not None:
+                    return Response({
+                        'type': 'produit',
+                        'id': produit.id,
+                        'label': produit.nom,
+                        'sku': produit.sku or '',
+                        'route': '/stock',
+                    })
+            # Une règle a matché mais la cible n'existe pas (ou le type
+            # encode/lot/série n'a pas encore de résolveur dédié) : repli
+            # sur le comportement historique ci-dessous plutôt qu'un 404
+            # prématuré — un futur module peut compléter ce routage.
 
         # XSTK3 — un EAN/UPC/GTIN imprimé par le FABRICANT n'a pas de ':'
         # (contrairement aux jetons internes `PRODUIT:<id>`). On matche
@@ -510,6 +630,62 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
             if gs1_extra:
                 data['gs1'] = gs1_extra
             return Response(data)
+
+        # ZSTK6 — jetons LOT:<produit_id>:<valeur> / SERIE:<produit_id>:
+        # <valeur> (3 segments, contrairement aux jetons internes à 2
+        # segments type PRODUIT:<id>) : traités AVANT le split générique
+        # ci-dessous car leur second segment n'est pas un simple entier.
+        first_prefix = code.split(':', 1)[0].strip().upper()
+        if first_prefix in (labels.LOT_PREFIX, labels.SERIE_PREFIX):
+            parts = code.split(':', 2)
+            if len(parts) != 3 or not parts[1].strip().isdigit():
+                return Response(
+                    {'detail': 'Code illisible.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            produit_id = int(parts[1].strip())
+            valeur = parts[2].strip()
+            if first_prefix == labels.LOT_PREFIX:
+                from ..models import LotEntrepot
+                lot = (LotEntrepot.objects
+                       .filter(company=request.user.company,
+                               produit_id=produit_id, numero_lot=valeur)
+                       .select_related('produit', 'emplacement')
+                       .first())
+                if lot is None:
+                    return Response(
+                        {'detail': 'Lot introuvable.'},
+                        status=status.HTTP_404_NOT_FOUND)
+                return Response({
+                    'type': 'lot',
+                    'id': lot.id,
+                    'label': f'{lot.produit.nom} — lot {lot.numero_lot}',
+                    'numero_lot': lot.numero_lot,
+                    'quantite_restante': lot.quantite_restante,
+                    'date_peremption': (
+                        lot.date_peremption.isoformat()
+                        if lot.date_peremption else None),
+                    'route': '/stock',
+                })
+            # SERIE — lecture seule via installations.selectors (jamais son
+            # modèle importé directement).
+            from apps.installations.selectors import (
+                serie_entrepot_scoped_by_serial,
+            )
+            serie = serie_entrepot_scoped_by_serial(
+                request.user.company, produit_id, valeur)
+            if serie is None:
+                return Response(
+                    {'detail': 'Série introuvable.'},
+                    status=status.HTTP_404_NOT_FOUND)
+            return Response({
+                'type': 'serie_entrepot',
+                'id': serie.id,
+                'label': f'N° série {serie.numero_serie}',
+                'numero_serie': serie.numero_serie,
+                'statut': serie.statut,
+                'route': '/chantiers' if serie.installation_id else '/stock',
+            })
+
         prefix, _, raw_id = code.partition(':')
         prefix = prefix.strip().upper()
         raw_id = raw_id.strip()

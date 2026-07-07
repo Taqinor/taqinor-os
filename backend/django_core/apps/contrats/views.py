@@ -28,7 +28,10 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
-from authentication.permissions import IsAdminRole, IsResponsableOrAdmin
+from authentication.permissions import (
+    HasPermissionOrLegacy, IsAdminRole,
+)
+from core.permissions import ScopedPermission, WriteScopedPermissionMixin
 
 from . import selectors, services
 from .models import (
@@ -136,9 +139,18 @@ def _client_ip(request):
     return ip[:45]
 
 
-class _ContratsBaseViewSet(TenantMixin, viewsets.ModelViewSet):
-    """Base : société scopée + accès Administrateur/Responsable uniquement."""
-    permission_classes = [IsResponsableOrAdmin]
+class _ContratsBaseViewSet(
+        WriteScopedPermissionMixin, TenantMixin, viewsets.ModelViewSet):
+    """Base : société scopée + lecture/écriture fine-grainées (YRBAC3).
+
+    ``contrat_voir`` gate les méthodes sûres (GET/HEAD/OPTIONS), ``contrat_gerer``
+    gate l'écriture (POST/PUT/PATCH/DELETE + actions custom) — SAUF les actions
+    qui déclarent explicitement leur propre ``permission_classes`` plus strict
+    (ex. ``campagne-revision`` réservée ``IsAdminRole``, inchangé). Comptes
+    légacy sans rôle fin : repli historique Administrateur/Responsable préservé.
+    """
+    read_permission = 'contrat_voir'
+    write_permission = 'contrat_gerer'
 
 
 class ContratViewSet(_ContratsBaseViewSet):
@@ -968,7 +980,7 @@ class VersionContratViewSet(TenantMixin,
     contrat et restent immuables. Scopé société (``TenantMixin``) ; accès réservé
     au palier Administrateur/Responsable.
     """
-    permission_classes = [IsResponsableOrAdmin]
+    permission_classes = [HasPermissionOrLegacy('contrat_voir')]
     queryset = VersionContrat.objects.all()
     serializer_class = VersionContratSerializer
     filter_backends = [filters.OrderingFilter]
@@ -991,7 +1003,7 @@ class AvenantViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     (qui fige aussi la ``VersionContrat`` associée). Scopé société
     (``TenantMixin``) ; accès réservé au palier Administrateur/Responsable.
     """
-    permission_classes = [IsResponsableOrAdmin]
+    permission_classes = [HasPermissionOrLegacy('contrat_voir')]
     queryset = Avenant.objects.select_related('contrat', 'version_creee').all()
     serializer_class = AvenantSerializer
     filter_backends = [filters.OrderingFilter]
@@ -1015,7 +1027,7 @@ class ResiliationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     d'états gardée). Scopé société (``TenantMixin``) ; accès réservé au palier
     Administrateur/Responsable.
     """
-    permission_classes = [IsResponsableOrAdmin]
+    permission_classes = [HasPermissionOrLegacy('contrat_voir')]
     queryset = Resiliation.objects.select_related(
         'contrat', 'version_creee').all()
     serializer_class = ResiliationSerializer
@@ -1714,13 +1726,18 @@ class LigneEcheanceViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     ``?statut=<valeur>``) et ``retrieve``. Les lignes sont créées exclusivement
     via l'action ``ajouter-ligne`` de l'échéancier (numéro côté serveur). Action
     ``pointer-paiement`` pour marquer une ligne payée (statut + date côté
-    serveur). Scopé société (``TenantMixin``) ; accès Administrateur/Responsable.
+    serveur). Scopé société (``TenantMixin``) ; lecture ``contrat_voir``,
+    écriture (``pointer-paiement``) ``contrat_gerer`` (YRBAC3).
     """
-    permission_classes = [IsResponsableOrAdmin]
+    read_permission = 'contrat_voir'
+    write_permission = 'contrat_gerer'
     queryset = LigneEcheance.objects.select_related('echeancier').all()
     serializer_class = LigneEcheanceSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['numero', 'date_echeance', 'date_creation', 'id']
+
+    def get_permissions(self):
+        return [ScopedPermission()]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -1939,12 +1956,19 @@ class CycleFacturationLogViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     deux factures pour la même période contrat). Scopé société (``TenantMixin``).
 
     Filtres : ``?statut=<valeur>``, ``?source_type=<valeur>``.
+
+    Lecture ``contrat_voir`` ; écriture (action ``rejouer``) ``contrat_gerer``
+    (YRBAC3).
     """
-    permission_classes = [IsResponsableOrAdmin]
+    read_permission = 'contrat_voir'
+    write_permission = 'contrat_gerer'
     queryset = CycleFacturationLog.objects.all()
     serializer_class = CycleFacturationLogSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_creation', 'id']
+
+    def get_permissions(self):
+        return [ScopedPermission()]
 
     def get_queryset(self):
         qs = super().get_queryset()

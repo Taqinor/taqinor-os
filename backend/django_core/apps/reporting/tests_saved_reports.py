@@ -103,7 +103,11 @@ class ScheduledReportNoEmailTests(TestCase):
 
 @override_settings(
     EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
-    ANYMAIL={'BREVO_API_KEY': 'test-key'})
+    # ANYMAIL n'a JAMAIS de clé littéralement nommée BREVO_API_KEY (le
+    # backend anymail Brevo s'appelle "sendinblue" — voir la correction QW8
+    # dans apps/ventes/email_service.py:is_email_configured) : la clé réelle
+    # posée par les settings est SENDINBLUE_API_KEY.
+    ANYMAIL={'SENDINBLUE_API_KEY': 'test-key'})
 class ScheduledReportSelectionTests(TestCase):
     """Avec une configuration email présente, la tâche sélectionne les rapports
     DUS et envoie le .xlsx en pièce jointe."""

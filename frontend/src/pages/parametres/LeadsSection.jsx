@@ -104,6 +104,27 @@ export default function LeadsSection({
                    name="lead_sla_hours" value={form.lead_sla_hours}
                    onChange={set} />
           </Field>
+          {/* XSAL11 — round-robin équilibré, OFF par défaut (comportement
+              actuel inchangé). ON : rotation entre commerciaux actifs en
+              sautant qui dépasse le plafond de leads ouverts ci-dessous. */}
+          <p className="mb-1 mt-3.5 text-[12.5px] text-muted-foreground">
+            Répartit automatiquement les leads entrants (site + création
+            manuelle sans responsable) entre les commerciaux, en sautant ceux
+            qui ont déjà trop de leads ouverts. Repli sur le responsable par
+            défaut si tous sont au plafond.
+          </p>
+          <label className="mb-2 flex items-center gap-2 text-sm text-foreground">
+            <Switch name="round_robin_leads_actif"
+                    checked={!!form.round_robin_leads_actif}
+                    onCheckedChange={v => setForm(f => ({ ...f, round_robin_leads_actif: v }))} />
+            Activer l'affectation round-robin équilibrée
+          </label>
+          <Field label="Plafond de leads ouverts par commercial" htmlFor="pe-round-robin-plafond">
+            <Input id="pe-round-robin-plafond" type="number" min="1" step="1"
+                   name="round_robin_plafond_leads_ouverts"
+                   value={form.round_robin_plafond_leads_ouverts}
+                   onChange={set} />
+          </Field>
         </CardContent>
       </Card>
 

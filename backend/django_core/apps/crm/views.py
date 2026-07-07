@@ -1,6 +1,8 @@
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from authentication.mixins import TenantMixin
 from authentication.scoping import scope_queryset, scope_client_queryset
 from .models import (
@@ -212,6 +214,26 @@ class ClientViewSet(TenantMixin, viewsets.ModelViewSet):
             'chantiers': chantiers,
         })
 
+    @action(detail=True, methods=['get'], url_path='consolidation',
+            permission_classes=[IsAnyRole])
+    def consolidation(self, request, pk=None):
+        """XSAL9 — Rollup CA groupe (société mère + toutes ses filiales,
+        récursif) — voir ``selectors.consolidation_client``. Lecture seule,
+        bornée à la société courante (get_object passe par TenantMixin)."""
+        from .selectors import consolidation_client
+        client = self.get_object()
+        rollup = consolidation_client(client)
+        return Response({
+            'filiales': [
+                {'id': f.id, 'nom': str(f), 'parent_id': f.parent_id}
+                for f in rollup['filiales']
+            ],
+            'ca_devis_total': str(rollup['ca_devis_total']),
+            'ca_factures_total': str(rollup['ca_factures_total']),
+            'nb_devis_total': rollup['nb_devis_total'],
+            'nb_factures_total': rollup['nb_factures_total'],
+        })
+
     @action(detail=True, methods=['get'], url_path='data-export',
             permission_classes=[IsResponsableOrAdmin])
     def data_export(self, request, pk=None):
@@ -387,12 +409,107 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
     L'utilisateur acteur et la société viennent toujours de la requête côté
     serveur — jamais du corps envoyé par le navigateur.
     """
-    queryset = Lead.objects.all()
+    # YOPSB13 — LeadSerializer expose owner_nom/owner_poste/owner_avatar
+    # (SerializerMethodField sur obj.owner), client_nom (obj.client) et devis
+    # (obj.devis, reverse FK) : sans select_related/prefetch_related, la
+    # liste des leads exécute 1 requête PAR LIGNE pour chacune (N+1 réel,
+    # capturé par core.tests.test_utils.AssertQueryBudgetMixin dans
+    # apps/crm/tests/test_lead_query_budget.py).
+    queryset = Lead.objects.select_related('owner', 'client').prefetch_related(
+        # 'devis__lignes' — get_devis expose d.total_ttc (propriété qui somme
+        # les LIGNES du devis) : sans ce prefetch imbriqué, chaque devis
+        # requêtait ses lignes (N+1, ~2 requêtes/devis). String-FK cross-app.
+        'devis', 'devis__lignes').all()
     serializer_class = LeadSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['nom', 'prenom', 'societe', 'email', 'telephone', 'ville']
     ordering_fields = ['nom', 'date_creation', 'stage', 'score']
     ordering = ['-date_creation']
+
+    def list(self, request, *args, **kwargs):
+        # YOPSB13 — LeadSerializer.get_next_activity() et get_devis() (via
+        # installation_summaries_for_devis) exécutaient chacun 1 requête PAR
+        # LIGNE (N+1 réel : le nombre de requêtes grandissait avec le nombre
+        # de leads — apps/crm/tests_yopsb13_lead_query_budget.py /
+        # tests_perf_n1_leads.py). On précharge ici les deux cartes {lead_id
+        # / devis_id: ...} en UNE SEULE requête chacune, pour TOUTE la page
+        # (après pagination), et on les pose dans le contexte serializer —
+        # le serializer les préfère à son fallback requête-par-ligne.
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        objects = page if page is not None else list(queryset)
+
+        extra_context = {
+            'next_activity_map': self._next_activity_map(objects),
+            'chantier_map': self._chantier_map(objects),
+            'stage_since_map': self._stage_since_map(objects),
+        }
+        if page is not None:
+            serializer = self.get_serializer(
+                page, many=True, context={
+                    **self.get_serializer_context(), **extra_context})
+            return self.get_paginated_response(serializer.data)
+        serializer = self.get_serializer(
+            objects, many=True, context={
+                **self.get_serializer_context(), **extra_context})
+        return Response(serializer.data)
+
+    @staticmethod
+    def _next_activity_map(leads):
+        """{lead_id: Activity} — l'activité ouverte la plus proche par lead,
+        en UNE requête pour tout le lot (au lieu d'une par lead)."""
+        from django.contrib.contenttypes.models import ContentType
+
+        from apps.records.models import Activity
+
+        ids = [lead.id for lead in leads]
+        if not ids:
+            return {}
+        ct = ContentType.objects.get_for_model(Lead)
+        out = {}
+        acts = (Activity.objects
+                .filter(content_type=ct, object_id__in=ids, done=False,
+                        due_date__isnull=False)
+                .select_related('activity_type')
+                .order_by('object_id', 'due_date'))
+        for act in acts:
+            # order_by garantit due_date croissant par lead — on ne garde
+            # que la PREMIÈRE (la plus proche) rencontrée par lead.
+            out.setdefault(act.object_id, act)
+        return out
+
+    @staticmethod
+    def _chantier_map(leads):
+        """{devis_id: chantier-summary} pour TOUS les devis de TOUS les leads
+        du lot, en UNE requête (au lieu d'une par lead via get_devis)."""
+        from apps.installations.selectors import (
+            installation_summaries_for_devis,
+        )
+        devis_ids = [d.id for lead in leads for d in lead.devis.all()]
+        if not devis_ids:
+            return {}
+        from apps.ventes.models import Devis
+        rows = Devis.objects.filter(id__in=devis_ids)
+        return installation_summaries_for_devis(rows)
+
+    @staticmethod
+    def _stage_since_map(leads):
+        """{lead_id: datetime du dernier changement d'étape} pour tout le lot
+        en UNE requête (au lieu d'une par lead via get_stage_since_days)."""
+        from .models import LeadActivity
+        ids = [lead.id for lead in leads]
+        if not ids:
+            return {}
+        out = {}
+        rows = (LeadActivity.objects
+                .filter(lead_id__in=ids,
+                        kind=LeadActivity.Kind.MODIFICATION, field='stage')
+                .order_by('lead_id', '-created_at')
+                .values('lead_id', 'created_at'))
+        for r in rows:
+            # -created_at → on garde la PREMIÈRE (la plus récente) par lead.
+            out.setdefault(r['lead_id'], r['created_at'])
+        return out
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -460,7 +577,8 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
                                           'check_duplicates', 'doublons',
                                           'export_xlsx', 'relances',
                                           'roi_sources', 'sla_breach',
-                                          'client_match', 'points_contact']:
+                                          'client_match', 'points_contact',
+                                          'scan_carte']:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
             'noter', 'devis_auto', 'archiver', 'restaurer', 'merge',
@@ -640,6 +758,42 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
             }
             for d in dups
         ])
+
+    @action(detail=False, methods=['post'], url_path='scan-carte',
+            permission_classes=[IsAnyRole],
+            parser_classes=[MultiPartParser],
+            throttle_classes=[ScopedRateThrottle])
+    def scan_carte(self, request):
+        """XSAL8 — Scan de carte de visite (photo) → pré-remplissage du modal
+        « Lead express ». NE CRÉE JAMAIS de lead — renvoie les champs
+        reconnus + un pré-check de doublons ; l'utilisateur valide avant
+        toute création. Sans clé OCR configurée : 503 douce, aucun appel
+        réseau. Aucune image persistée au-delà du traitement (en mémoire)."""
+        from .services import CarteVisiteScanUnavailable, scan_carte_visite
+
+        upload = request.FILES.get('file')
+        if not upload:
+            return Response(
+                {'detail': 'Aucune image fournie.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            content = upload.read()
+        finally:
+            upload.close()
+
+        try:
+            result = scan_carte_visite(
+                company=request.user.company, file_bytes=content)
+        except CarteVisiteScanUnavailable as exc:
+            message = str(exc)
+            unavailable = 'configuré' in message
+            return Response(
+                {'detail': message},
+                status=(status.HTTP_503_SERVICE_UNAVAILABLE if unavailable
+                        else status.HTTP_400_BAD_REQUEST))
+        return Response(result)
+
+    scan_carte.throttle_scope = 'crm_ocr_scan'
 
     @action(detail=False, methods=['get'], url_path='doublons',
             permission_classes=[IsAnyRole])
@@ -1346,15 +1500,32 @@ class MessageTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='render',
             permission_classes=[IsAnyRole])
     def render_template(self, request, pk=None):
-        """Applique les variables {prenom}/{ville}/{lien} et retourne le texte.
+        """Applique les variables {prenom}/{ville}/{lien}/{lien_rdv} et
+        retourne le texte.
 
-        Corps : {prenom, ville, lien} (tous optionnels).
+        Corps : {prenom, ville, lien, lead_id} (tous optionnels). XSAL17 —
+        ``lead_id`` (scopé société) résout {lien_rdv} en un lien de
+        réservation réel ; sans lead_id (ou template sans le placeholder),
+        aucun BookingLink n'est créé (no-op — le placeholder disparaît
+        simplement s'il est présent sans lead_id fourni).
         """
         tmpl = self.get_object()
         prenom = request.data.get('prenom', '')
         ville = request.data.get('ville', '')
         lien = request.data.get('lien', '')
-        return Response({'texte': tmpl.render(prenom=prenom, ville=ville, lien=lien)})
+        lien_rdv = ''
+        lead_id = request.data.get('lead_id')
+        if lead_id and '{lien_rdv}' in (tmpl.corps or ''):
+            from .services import public_booking_url
+            lead = Lead.objects.filter(
+                pk=lead_id, company=request.user.company).first()
+            if lead is not None:
+                try:
+                    lien_rdv = public_booking_url(lead, request=request)
+                except Exception:  # noqa: BLE001 — jamais bloquer l'aperçu
+                    lien_rdv = ''
+        return Response({'texte': tmpl.render(
+            prenom=prenom, ville=ville, lien=lien, lien_rdv=lien_rdv)})
 
 
 # ── QJ20 — Rendez-vous (visites commerciales/techniques) ──────────────────────

@@ -31,14 +31,54 @@ STATUS_DEGRADED = 'degraded'
 STATUS_UNKNOWN = 'unknown'
 
 
+CONN_SATURATION_DEGRADED_RATIO = 0.8
+
+
+def _check_db_connections(cur):
+    """YOPSB7 — remonte le nombre de connexions actives vs ``max_connections``
+    (``pg_stat_activity``/``SHOW max_connections``). ``degraded`` au-delà de
+    80 %. Best-effort : une erreur ici ne fait jamais échouer ``_check_db``
+    (déjà validé par le SELECT 1 qui précède)."""
+    try:
+        cur.execute('SELECT count(*) FROM pg_stat_activity')
+        active = cur.fetchone()[0]
+        cur.execute('SHOW max_connections')
+        max_conn = int(cur.fetchone()[0])
+        ratio = (active / max_conn) if max_conn else 0
+        return {
+            'active': active,
+            'max': max_conn,
+            'ratio': round(ratio, 3),
+            'saturated': ratio >= CONN_SATURATION_DEGRADED_RATIO,
+        }
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        return None
+
+
 def _check_db():
     try:
         with connection.cursor() as cur:
             cur.execute('SELECT 1')
             cur.fetchone()
-        return {'name': 'database', 'status': STATUS_OK, 'detail': ''}
+            conn_info = _check_db_connections(cur)
     except Exception as exc:  # noqa: BLE001
         return {'name': 'database', 'status': STATUS_DOWN, 'detail': str(exc)}
+
+    if conn_info and conn_info['saturated']:
+        return {
+            'name': 'database', 'status': STATUS_DEGRADED,
+            'detail': (
+                f"Connexions proches de la saturation : {conn_info['active']}"
+                f"/{conn_info['max']} ({conn_info['ratio']:.0%})."),
+        }
+    return {'name': 'database', 'status': STATUS_OK, 'detail': ''}
+
+
+# YOPSB14 — alias public pour /api/django/core/health/ready/ (core.views).
+# Le probe readiness n'a besoin QUE de la sonde DB (pas du reste de
+# check_services()) — exposé explicitement plutôt que d'accéder au nom
+# préfixé « privé » depuis un autre module.
+check_db = _check_db
 
 
 def _check_cache():
@@ -89,6 +129,48 @@ def _check_monitoring():
     }
 
 
+def _check_beat():
+    """YHARD6 — santé du Celery Beat via le heartbeat périodique
+    (``core.beat_heartbeat``, cf. ``core/metrics.py``). ``unknown`` si le
+    heartbeat n'a jamais été reçu (beat jamais démarré / pas encore de tick) —
+    ne dégrade pas agressivement un environnement fraîchement démarré ;
+    ``degraded`` seulement au-delà du seuil de péremption."""
+    from . import metrics as metrics_infra
+    try:
+        age = metrics_infra.beat_heartbeat_age_seconds()
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        return {'name': 'beat', 'status': STATUS_UNKNOWN, 'detail': str(exc)}
+    if age is None:
+        return {
+            'name': 'beat', 'status': STATUS_UNKNOWN,
+            'detail': 'Aucun heartbeat reçu pour le moment.',
+        }
+    if age > metrics_infra.BEAT_HEARTBEAT_STALE_SECONDS:
+        return {
+            'name': 'beat', 'status': STATUS_DEGRADED,
+            'detail': f'Dernier heartbeat il y a {int(age)}s (beat probablement arrêté).',
+        }
+    return {'name': 'beat', 'status': STATUS_OK, 'detail': f'Heartbeat il y a {int(age)}s.'}
+
+
+def _check_queue():
+    """YHARD6 — longueur de la file Redis du broker Celery. ``unknown`` si le
+    broker n'est pas Redis ou injoignable ; pas de seuil de saturation fixe ici
+    (dépend de la charge normale de chaque déploiement) — exposé pour que
+    l'alerting externe (documenté, non déployé ici) applique son propre seuil."""
+    from . import metrics as metrics_infra
+    try:
+        length = metrics_infra.redis_queue_length()
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        return {'name': 'queue', 'status': STATUS_UNKNOWN, 'detail': str(exc)}
+    if length is None:
+        return {
+            'name': 'queue', 'status': STATUS_UNKNOWN,
+            'detail': 'Broker non-Redis ou injoignable.',
+        }
+    return {'name': 'queue', 'status': STATUS_OK, 'detail': f'{length} tâche(s) en attente.'}
+
+
 def check_services():
     """Liste normalisée de l'état de chaque service d'infrastructure."""
     return [
@@ -97,6 +179,8 @@ def check_services():
         _check_broker(),
         _check_storage(),
         _check_monitoring(),
+        _check_beat(),
+        _check_queue(),
     ]
 
 

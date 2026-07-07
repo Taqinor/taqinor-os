@@ -12,11 +12,12 @@ from django.db.models import Q, Sum
 from django.utils import timezone
 
 from .models import (
-    Budget, BudgetLigne, Caisse, CautionBancaire, ChargeConstateeAvance,
+    Budget, BudgetLigne, Caisse, CautionBancaire, CessionImmobilisation,
+    ChargeConstateeAvance,
     CompteComptable,
     CompteTresorerie, EcheanceEmprunt,
     Effet, Emprunt,
-    EntiteConsolidation, IndemniteChantier, LigneEcriture,
+    EntiteConsolidation, Immobilisation, IndemniteChantier, LigneEcriture,
     LignePrevisionnelTresorerie,
     MouvementCaisse, Rapprochement, RetenueGarantie, RetenueSource,
     TauxDevise, TimbreFiscal,
@@ -159,14 +160,77 @@ def journal_items(company, *, journal=None, compte=None, tiers_type=None,
     return out
 
 
+# ── ZACC2 — Colonne comparative N-1 sur les états STANDARD (bilan/CPC/
+# balance/ESG). L'existant (XACC19) porte le N-1 sur les états PERSONNALISÉS
+# uniquement ; les états CGNC natifs ne comparaient rien. On ajoute un mode
+# comparatif OPTIONNEL : sans paramètre, chaque selector renvoie EXACTEMENT
+# son dict actuel (aucune régression) ; ``comparer=True`` (vue) enrichit
+# chaque ligne par clé (``numero`` pour bilan/balance, ``code`` pour l'ESG)
+# avec la valeur N-1, l'écart absolu et l'écart % — un exercice sans N-1
+# renvoie 0 (jamais d'erreur).
+
+def _decalage_un_an(valeur):
+    """Décale une date d'exactement un an en arrière (29 fév -> 28 fév)."""
+    d = _as_date(valeur)
+    if d is None:
+        return None
+    try:
+        return d.replace(year=d.year - 1)
+    except ValueError:  # 29 février d'une année bissextile.
+        return d.replace(year=d.year - 1, day=28)
+
+
+def _periode_n1(date_debut, date_fin, date_debut_n1=None, date_fin_n1=None):
+    """Résout la période N-1 : les bornes explicites priment, sinon la même
+    période décalée d'un an (jamais d'erreur si aucune période N-1 n'existe —
+    l'appelant reçoit simplement des soldes nuls)."""
+    deb_n1 = date_debut_n1 or _decalage_un_an(date_debut)
+    fin_n1 = date_fin_n1 or _decalage_un_an(date_fin)
+    return deb_n1, fin_n1
+
+
+def _ecart_pct(valeur_n, valeur_n1):
+    """Écart % = (N − N-1) / |N-1| × 100, ``None`` si N-1 = 0 (indéterminé)."""
+    if not valeur_n1:
+        return None
+    return ((valeur_n - valeur_n1) / abs(valeur_n1) * Decimal('100')
+            ).quantize(Decimal('0.01'))
+
+
+def _fusionner_comparatif(lignes_n, lignes_n1, cle):
+    """Fusionne deux listes de lignes (dicts) par ``cle`` : ajoute
+    ``montant_n1``/``ecart``/``ecart_pct`` sur chaque ligne de ``lignes_n``
+    (une ligne présente seulement en N-1 n'est pas ajoutée — l'état N reste le
+    référentiel de lignes affichées, comme le veut le menu « Comparison »)."""
+    par_cle = {ligne[cle]: ligne for ligne in lignes_n1}
+    out = []
+    for ligne in lignes_n:
+        ligne = dict(ligne)
+        n1 = par_cle.get(ligne[cle])
+        montant_n1 = (n1['montant'] if n1 is not None
+                      else Decimal('0'))
+        ligne['montant_n1'] = montant_n1
+        ligne['ecart'] = ligne['montant'] - montant_n1
+        ligne['ecart_pct'] = _ecart_pct(ligne['montant'], montant_n1)
+        out.append(ligne)
+    return out
+
+
 # ── FG111 / COMPTA20 — Balance générale (trial balance) ────────────────────
 
 def balance_generale(company, *, date_debut=None, date_fin=None,
-                     validees_seulement=False):
+                     validees_seulement=False, comparer=False,
+                     date_debut_n1=None, date_fin_n1=None):
     """Débit/crédit/solde par compte sur une période (≠ balance âgée clients).
 
     Renvoie une liste de dicts triée par numéro + des totaux globaux. La somme
     des débits doit égaler la somme des crédits (le grand livre est équilibré).
+
+    ZACC2 — ``comparer=True`` ajoute, par ligne, le solde débiteur N-1
+    (``solde_debiteur_n1``) et l'écart (``ecart_solde_debiteur``,
+    ``ecart_solde_debiteur_pct``), calculés sur ``date_debut_n1``/
+    ``date_fin_n1`` (défaut : même intervalle décalé d'un an). Défaut
+    (``comparer`` omis) = réponse actuelle byte-identique.
     """
     qs = _lignes_qs(company, date_debut=date_debut, date_fin=date_fin,
                     validees_seulement=validees_seulement)
@@ -193,12 +257,32 @@ def balance_generale(company, *, date_debut=None, date_fin=None,
             'solde_debiteur': solde if solde > 0 else Decimal('0'),
             'solde_crediteur': -solde if solde < 0 else Decimal('0'),
         })
-    return {
+    resultat = {
         'lignes': lignes,
         'total_debit': total_debit,
         'total_credit': total_credit,
         'equilibree': total_debit == total_credit,
     }
+    if comparer:
+        deb_n1, fin_n1 = _periode_n1(date_debut, date_fin, date_debut_n1,
+                                     date_fin_n1)
+        n1 = balance_generale(
+            company, date_debut=deb_n1, date_fin=fin_n1,
+            validees_seulement=validees_seulement)
+        lignes_n1 = [
+            {'numero': li['numero'], 'montant': li['solde_debiteur']}
+            for li in n1['lignes']]
+        fusion = _fusionner_comparatif(
+            [{'numero': li['numero'], 'montant': li['solde_debiteur'],
+              **li} for li in lignes],
+            lignes_n1, 'numero')
+        for li, f in zip(lignes, fusion):
+            li['solde_debiteur_n1'] = f['montant_n1']
+            li['ecart_solde_debiteur'] = f['ecart']
+            li['ecart_solde_debiteur_pct'] = f['ecart_pct']
+        resultat['date_debut_n1'] = deb_n1
+        resultat['date_fin_n1'] = fin_n1
+    return resultat
 
 
 # ── FG141 — Export FEC (Fichier des Écritures Comptables, format DGI) ───────
@@ -392,11 +476,17 @@ def delettrer(company, code):
 
 # ── FG113 / COMPTA27 — CPC (Compte de Produits et Charges) ─────────────────
 
-def cpc(company, *, date_debut=None, date_fin=None, validees_seulement=False):
+def cpc(company, *, date_debut=None, date_fin=None, validees_seulement=False,
+        comparer=False, date_debut_n1=None, date_fin_n1=None):
     """État de résultat (CPC) : produits (classe 7) − charges (classe 6).
 
     Renvoie ``{'produits', 'total_produits', 'charges', 'total_charges',
     'resultat'}``. Le résultat positif = bénéfice, négatif = perte.
+
+    ZACC2 — ``comparer=True`` ajoute ``montant_n1``/``ecart``/``ecart_pct``
+    sur chaque poste (produit et charge) + ``resultat_n1``/``resultat_ecart``
+    de tête, calculés sur ``date_debut_n1``/``date_fin_n1`` (défaut : même
+    intervalle décalé d'un an). Défaut = réponse actuelle byte-identique.
     """
     qs = _lignes_qs(company, date_debut=date_debut, date_fin=date_fin,
                     validees_seulement=validees_seulement).filter(
@@ -427,24 +517,51 @@ def cpc(company, *, date_debut=None, date_fin=None, validees_seulement=False):
             item['montant'] = montant
             total_charges += montant
             charges.append(item)
-    return {
+    resultat = {
         'produits': produits,
         'total_produits': total_produits,
         'charges': charges,
         'total_charges': total_charges,
         'resultat': total_produits - total_charges,
     }
+    if comparer:
+        deb_n1, fin_n1 = _periode_n1(date_debut, date_fin, date_debut_n1,
+                                     date_fin_n1)
+        n1 = cpc(company, date_debut=deb_n1, date_fin=fin_n1,
+                 validees_seulement=validees_seulement)
+        n1_produits = {li['numero']: li['montant'] for li in n1['produits']}
+        n1_charges = {li['numero']: li['montant'] for li in n1['charges']}
+        for item in produits:
+            montant_n1 = n1_produits.get(item['numero'], Decimal('0'))
+            item['montant_n1'] = montant_n1
+            item['ecart'] = item['montant'] - montant_n1
+            item['ecart_pct'] = _ecart_pct(item['montant'], montant_n1)
+        for item in charges:
+            montant_n1 = n1_charges.get(item['numero'], Decimal('0'))
+            item['montant_n1'] = montant_n1
+            item['ecart'] = item['montant'] - montant_n1
+            item['ecart_pct'] = _ecart_pct(item['montant'], montant_n1)
+        resultat['resultat_n1'] = n1['resultat']
+        resultat['resultat_ecart'] = resultat['resultat'] - n1['resultat']
+        resultat['date_debut_n1'] = deb_n1
+        resultat['date_fin_n1'] = fin_n1
+    return resultat
 
 
 # ── FG114 / COMPTA28 — Bilan (format CGNC) ─────────────────────────────────
 
-def bilan(company, *, date_fin=None, validees_seulement=False):
+def bilan(company, *, date_fin=None, validees_seulement=False,
+          comparer=False, date_fin_n1=None):
     """Bilan : actif (classes 2,3,5) / passif (classes 1,4) depuis les soldes.
 
     Le résultat de l'exercice (CPC) est porté au passif pour équilibrer
     (équation comptable : Actif = Passif + Résultat). Renvoie
     ``{'actif', 'total_actif', 'passif', 'total_passif', 'resultat',
     'equilibre'}``.
+
+    ZACC2 — ``comparer=True`` ajoute ``montant_n1``/``ecart``/``ecart_pct``
+    sur chaque poste d'actif/passif, calculés à ``date_fin_n1`` (défaut :
+    ``date_fin`` décalée d'un an). Défaut = réponse actuelle byte-identique.
     """
     qs = _lignes_qs(company, date_fin=date_fin,
                     validees_seulement=validees_seulement).filter(
@@ -472,17 +589,36 @@ def bilan(company, *, date_fin=None, validees_seulement=False):
             item['montant'] = -solde
             total_passif += -solde
             passif.append(item)
-    resultat = cpc(
+    resultat_exercice = cpc(
         company, date_fin=date_fin,
         validees_seulement=validees_seulement)['resultat']
-    return {
+    out = {
         'actif': actif,
         'total_actif': total_actif,
         'passif': passif,
         'total_passif': total_passif,
-        'resultat': resultat,
-        'equilibre': total_actif == (total_passif + resultat),
+        'resultat': resultat_exercice,
+        'equilibre': total_actif == (total_passif + resultat_exercice),
     }
+    if comparer:
+        _, fin_n1 = _periode_n1(None, date_fin, None, date_fin_n1)
+        n1 = bilan(company, date_fin=fin_n1,
+                   validees_seulement=validees_seulement)
+        n1_actif = {li['numero']: li['montant'] for li in n1['actif']}
+        n1_passif = {li['numero']: li['montant'] for li in n1['passif']}
+        for item in actif:
+            montant_n1 = n1_actif.get(item['numero'], Decimal('0'))
+            item['montant_n1'] = montant_n1
+            item['ecart'] = item['montant'] - montant_n1
+            item['ecart_pct'] = _ecart_pct(item['montant'], montant_n1)
+        for item in passif:
+            montant_n1 = n1_passif.get(item['numero'], Decimal('0'))
+            item['montant_n1'] = montant_n1
+            item['ecart'] = item['montant'] - montant_n1
+            item['ecart_pct'] = _ecart_pct(item['montant'], montant_n1)
+        out['resultat_n1'] = n1['resultat']
+        out['date_fin_n1'] = fin_n1
+    return out
 
 
 # ── COMPTA29 — ESG (état des soldes de gestion) + ETIC ─────────────────────
@@ -516,7 +652,8 @@ def _somme_prefixes(company, prefixes, *, sens, date_debut=None,
     return (credit - debit) if sens == 'produit' else (debit - credit)
 
 
-def esg(company, *, date_debut=None, date_fin=None, validees_seulement=False):
+def esg(company, *, date_debut=None, date_fin=None, validees_seulement=False,
+        comparer=False, date_debut_n1=None, date_fin_n1=None):
     """État des soldes de gestion (ESG / SIG) au format CGNC marocain.
 
     Cascade des soldes intermédiaires de gestion, chacun déduit des soldes de
@@ -539,6 +676,11 @@ def esg(company, *, date_debut=None, date_fin=None, validees_seulement=False):
 
     Renvoie ``{'soldes': [{'code', 'libelle', 'montant'} …], 'resultat_net'}``.
     Lecture seule ; aucun état n'est persisté.
+
+    ZACC2 — ``comparer=True`` ajoute ``montant_n1``/``ecart``/``ecart_pct``
+    sur chaque solde + ``resultat_net_n1``, calculés sur ``date_debut_n1``/
+    ``date_fin_n1`` (défaut : même intervalle décalé d'un an). Défaut =
+    réponse actuelle byte-identique.
     """
     def prod(*prefixes):
         return _somme_prefixes(
@@ -591,7 +733,22 @@ def esg(company, *, date_debut=None, date_fin=None, validees_seulement=False):
         {'code': 'RN', 'libelle': 'Résultat net de l’exercice',
          'montant': resultat_net},
     ]
-    return {'soldes': soldes, 'resultat_net': resultat_net}
+    out = {'soldes': soldes, 'resultat_net': resultat_net}
+    if comparer:
+        deb_n1, fin_n1 = _periode_n1(date_debut, date_fin, date_debut_n1,
+                                     date_fin_n1)
+        n1 = esg(company, date_debut=deb_n1, date_fin=fin_n1,
+                 validees_seulement=validees_seulement)
+        n1_soldes = {s['code']: s['montant'] for s in n1['soldes']}
+        for solde in soldes:
+            montant_n1 = n1_soldes.get(solde['code'], Decimal('0'))
+            solde['montant_n1'] = montant_n1
+            solde['ecart'] = solde['montant'] - montant_n1
+            solde['ecart_pct'] = _ecart_pct(solde['montant'], montant_n1)
+        out['resultat_net_n1'] = n1['resultat_net']
+        out['date_debut_n1'] = deb_n1
+        out['date_fin_n1'] = fin_n1
+    return out
 
 
 # Sections normalisées de l'ETIC (ordre figé du paquet d'informations
@@ -687,6 +844,284 @@ def comptes_par_classe(company, classe):
     """Comptes d'une classe donnée (lecture seule, scopé société)."""
     return list(CompteComptable.objects.filter(
         company=company, classe=classe).order_by('numero'))
+
+
+# ── ZACC3 — Tableau de financement / des flux de trésorerie CGNC (méthode
+# indirecte) ─────────────────────────────────────────────────────────────
+# 5e état CGNC (standard Odoo « Cash Flow Statement »), jamais couvert avant :
+# la position (FG122) donne un solde instantané, le prévisionnel (FG126) une
+# projection roulante éditable — ni l'un ni l'autre ne réconcilie le résultat
+# de l'exercice à la variation RÉELLE de trésorerie sur la période. On dérive
+# tout du grand livre (AUCUN import cross-app, AUCUN recalcul hors GL) :
+#
+#   * capacité d'autofinancement (CAF) = résultat net (ESG) + dotations aux
+#     amortissements/provisions (charges 619/659 — non décaissées) − reprises
+#     (produits 719/759 — non encaissées) ;
+#   * variation du BFR = variation NETTE des soldes des comptes de tiers/stock
+#     d'exploitation (classes 3 hors trésorerie 51/54, et 4 hors emprunts
+#     1481/1671) entre l'ouverture et la clôture — une hausse de créances/
+#     stock CONSOMME de la trésorerie (flux négatif), une hausse de dettes en
+#     LIBÈRE (flux positif) ;
+#   * flux d'investissement = variation NETTE des comptes d'immobilisations
+#     (classe 2) entre ouverture et clôture, signe inversé (une acquisition
+#     consomme de la trésorerie) ;
+#   * flux de financement = variation NETTE des comptes d'emprunts (1481,
+#     1671) + capital (111x) entre ouverture et clôture.
+#
+# Somme des 3 flux = variation nette de trésorerie, réconciliée avec la
+# position FG122 ouverture → clôture (comptes 51xx/54xx).
+
+_COMPTES_FINANCEMENT = ('1481', '1671', '1111', '1117')
+
+
+def _solde_classe(company, classe, *, date_fin=None, validees_seulement=False,
+                  exclure_prefixes=()):
+    """Solde net (débit − crédit) de TOUS les comptes d'une classe à une date,
+    en excluant les comptes dont le numéro commence par un préfixe exclu."""
+    qs = _lignes_qs(company, date_fin=date_fin,
+                    validees_seulement=validees_seulement).filter(
+        compte__classe=classe)
+    for prefixe in exclure_prefixes:
+        qs = qs.exclude(compte__numero__startswith=prefixe)
+    agg = qs.aggregate(debit=Sum('debit'), credit=Sum('credit'))
+    return (agg['debit'] or Decimal('0')) - (agg['credit'] or Decimal('0'))
+
+
+def tableau_flux_tresorerie(company, exercice, *, validees_seulement=False):
+    """Tableau de financement / des flux de trésorerie CGNC — méthode
+    indirecte (ZACC3).
+
+    Trois sections (exploitation / investissement / financement) dont la
+    somme réconcilie EXACTEMENT la variation nette de trésorerie de
+    l'exercice (position FG122 ouverture → clôture). Lecture seule, scopée
+    société ; aucune écriture n'est créée. Renvoie ``{'exercice',
+    'date_debut', 'date_fin', 'exploitation': {...}, 'investissement': {...},
+    'financement': {...}, 'variation_nette_tresorerie',
+    'tresorerie_ouverture', 'tresorerie_cloture', 'reconciliee'}``.
+    """
+    date_debut = exercice.date_debut
+    date_fin = exercice.date_fin
+    date_ouverture = date_debut - timedelta(days=1)
+
+    # ── Exploitation : CAF ± variation du BFR ──
+    resultat_exercice = cpc(
+        company, date_debut=date_debut, date_fin=date_fin,
+        validees_seulement=validees_seulement)['resultat']
+    dotations = _somme_prefixes(
+        company, ('619', '659'), sens='charge', date_debut=date_debut,
+        date_fin=date_fin, validees_seulement=validees_seulement)
+    reprises = _somme_prefixes(
+        company, ('719', '759'), sens='produit', date_debut=date_debut,
+        date_fin=date_fin, validees_seulement=validees_seulement)
+    caf = resultat_exercice + dotations - reprises
+
+    # Classe 3 (actif circulant) est déjà HORS trésorerie dans le plan CGNC
+    # (la trésorerie est en classe 5) ; classe 4 (passif circulant) exclut
+    # par précaution les comptes de financement (au cas où un compte 1481/
+    # 1671 serait mal classé) — sans effet dans le plan seedé standard.
+    bfr_ouverture = (
+        _solde_classe(company, 3, date_fin=date_ouverture,
+                      validees_seulement=validees_seulement)
+        - _solde_classe(company, 4, date_fin=date_ouverture,
+                        validees_seulement=validees_seulement,
+                        exclure_prefixes=_COMPTES_FINANCEMENT))
+    bfr_cloture = (
+        _solde_classe(company, 3, date_fin=date_fin,
+                      validees_seulement=validees_seulement)
+        - _solde_classe(company, 4, date_fin=date_fin,
+                        validees_seulement=validees_seulement,
+                        exclure_prefixes=_COMPTES_FINANCEMENT))
+    variation_bfr = bfr_cloture - bfr_ouverture
+    # Une hausse du BFR (plus de créances/stock net des dettes) CONSOME de la
+    # trésorerie : flux négatif.
+    flux_exploitation = caf - variation_bfr
+
+    # ── Investissement : variation des immobilisations (classe 2) ──
+    immo_ouverture = _solde_classe(
+        company, 2, date_fin=date_ouverture,
+        validees_seulement=validees_seulement)
+    immo_cloture = _solde_classe(
+        company, 2, date_fin=date_fin,
+        validees_seulement=validees_seulement)
+    # Une hausse du solde des immobilisations (acquisition nette) CONSOMME de
+    # la trésorerie : flux négatif (signe inversé de la variation).
+    flux_investissement = -(immo_cloture - immo_ouverture)
+
+    # ── Financement : variation des emprunts + capital ──
+    fin_ouverture = _solde_groupe(
+        company, _COMPTES_FINANCEMENT, date_fin=date_ouverture,
+        validees_seulement=validees_seulement)
+    fin_cloture = _solde_groupe(
+        company, _COMPTES_FINANCEMENT, date_fin=date_fin,
+        validees_seulement=validees_seulement)
+    # Ces comptes sont au PASSIF (soldes créditeurs négatifs en débit-crédit) :
+    # une hausse de l'encours (nouvel emprunt/apport) LIBÈRE de la trésorerie,
+    # d'où le signe inversé (même convention que le bilan : passif = -solde).
+    flux_financement = -(fin_cloture - fin_ouverture)
+
+    variation_nette = (
+        flux_exploitation + flux_investissement + flux_financement)
+
+    tresorerie_ouverture = _solde_classe(
+        company, 5, date_fin=date_ouverture,
+        validees_seulement=validees_seulement)
+    tresorerie_cloture = _solde_classe(
+        company, 5, date_fin=date_fin, validees_seulement=validees_seulement)
+
+    return {
+        'exercice': exercice.libelle or str(exercice.pk),
+        'date_debut': date_debut.isoformat(),
+        'date_fin': date_fin.isoformat(),
+        'exploitation': {
+            'resultat_net': resultat_exercice,
+            'dotations': dotations,
+            'reprises': reprises,
+            'capacite_autofinancement': caf,
+            'variation_bfr': variation_bfr,
+            'flux_net': flux_exploitation,
+        },
+        'investissement': {
+            'immobilisations_ouverture': immo_ouverture,
+            'immobilisations_cloture': immo_cloture,
+            'flux_net': flux_investissement,
+        },
+        'financement': {
+            'financement_ouverture': fin_ouverture,
+            'financement_cloture': fin_cloture,
+            'flux_net': flux_financement,
+        },
+        'variation_nette_tresorerie': variation_nette,
+        'tresorerie_ouverture': tresorerie_ouverture,
+        'tresorerie_cloture': tresorerie_cloture,
+        'reconciliee': (
+            tresorerie_ouverture + variation_nette == tresorerie_cloture),
+    }
+
+
+# ── ZACC12 — Rapport des immobilisations (tableau CGNC B2/B2bis) ──────────
+# Aucun sélecteur d'ÉTAT récapitulatif des immobilisations n'existait (seul un
+# registre `Immobilisation` + un plan d'amortissement par immo). Ce sélecteur
+# assemble, PAR IMMOBILISATION, le tableau CGNC B2 (immobilisations : valeur
+# brute ouverture/acquisitions/cessions/clôture) et B2bis (amortissements :
+# cumul ouverture/dotations de l'exercice/reprises sur cessions/cumul
+# clôture) + la VNC — sans rien recalculer (relit `Immobilisation`,
+# `DotationAmortissement`, `CessionImmobilisation` déjà postés).
+
+def tableau_immobilisations(company, exercice, *, validees_seulement=False):
+    """Tableau des immobilisations & amortissements pour la liasse/l'annexe
+    (ZACC12 — tableaux CGNC B2/B2bis).
+
+    Par immobilisation : valeur brute à l'ouverture (coût si acquise avant
+    l'exercice, sinon 0), acquisitions de l'exercice, cessions de l'exercice
+    (valeur brute sortie), valeur brute à la clôture, cumul d'amortissement à
+    l'ouverture, dotations de l'exercice (postées), reprises sur cessions de
+    l'exercice, cumul à la clôture, VNC. Une immobilisation cédée AVANT
+    l'exercice n'apparaît pas (déjà sortie du patrimoine). Lecture seule,
+    scopée société ; aucune écriture n'est créée. Renvoie ``{'exercice',
+    'date_debut', 'date_fin', 'lignes': [...], 'totaux': {...}}``.
+    """
+    date_debut = exercice.date_debut
+    date_fin = exercice.date_fin
+    lignes = []
+    total_brut_ouverture = Decimal('0')
+    total_acquisitions = Decimal('0')
+    total_cessions_brut = Decimal('0')
+    total_brut_cloture = Decimal('0')
+    total_amort_ouverture = Decimal('0')
+    total_dotations = Decimal('0')
+    total_reprises = Decimal('0')
+    total_amort_cloture = Decimal('0')
+    total_vnc = Decimal('0')
+
+    immos = (Immobilisation.objects.filter(company=company)
+             .filter(Q(date_acquisition__lte=date_fin))
+             .order_by('date_acquisition', 'id'))
+    for immo in immos:
+        cession = CessionImmobilisation.objects.filter(
+            company=company, immobilisation=immo,
+            date_cession__lt=date_debut).first()
+        if cession is not None:
+            continue  # sortie du patrimoine AVANT l'exercice : omise.
+
+        cout = immo.cout or Decimal('0')
+        cession_exercice = CessionImmobilisation.objects.filter(
+            company=company, immobilisation=immo,
+            date_cession__gte=date_debut,
+            date_cession__lte=date_fin).first()
+
+        acquis_avant = immo.date_acquisition < date_debut
+        brut_ouverture = cout if acquis_avant else Decimal('0')
+        acquisitions = Decimal('0') if acquis_avant else cout
+        cessions_brut = cout if cession_exercice is not None else Decimal('0')
+        brut_cloture = brut_ouverture + acquisitions - cessions_brut
+
+        plan = getattr(immo, 'plan_amortissement', None)
+        dotations_qs = (
+            DotationAmortissement.objects.filter(
+                company=company, plan=plan, posted=True)
+            if plan is not None else DotationAmortissement.objects.none())
+        if validees_seulement:
+            dotations_qs = dotations_qs.filter(
+                ecriture__statut=EcritureComptable.Statut.VALIDEE)
+        amort_ouverture = Decimal('0')
+        if plan is not None:
+            cumul_avant = (
+                dotations_qs.filter(date_dotation__lt=date_debut)
+                .order_by('-date_dotation', '-id').values_list(
+                    'cumul', flat=True).first())
+            amort_ouverture = cumul_avant or Decimal('0')
+        dotations_exercice = (
+            dotations_qs.filter(
+                date_dotation__gte=date_debut, date_dotation__lte=date_fin,
+            ).aggregate(total=Sum('montant'))['total'] or Decimal('0'))
+        reprises = (
+            cession_exercice.amortissements_cumules
+            if cession_exercice is not None else Decimal('0'))
+        amort_cloture = amort_ouverture + dotations_exercice - reprises
+        vnc = brut_cloture - amort_cloture
+
+        lignes.append({
+            'immobilisation_id': immo.id,
+            'reference': immo.reference,
+            'libelle': immo.libelle,
+            'categorie': immo.categorie,
+            'brut_ouverture': brut_ouverture,
+            'acquisitions': acquisitions,
+            'cessions': cessions_brut,
+            'brut_cloture': brut_cloture,
+            'amort_ouverture': amort_ouverture,
+            'dotations': dotations_exercice,
+            'reprises': reprises,
+            'amort_cloture': amort_cloture,
+            'valeur_nette_comptable': vnc,
+        })
+        total_brut_ouverture += brut_ouverture
+        total_acquisitions += acquisitions
+        total_cessions_brut += cessions_brut
+        total_brut_cloture += brut_cloture
+        total_amort_ouverture += amort_ouverture
+        total_dotations += dotations_exercice
+        total_reprises += reprises
+        total_amort_cloture += amort_cloture
+        total_vnc += vnc
+
+    return {
+        'exercice': exercice.libelle or str(exercice.pk),
+        'date_debut': date_debut.isoformat(),
+        'date_fin': date_fin.isoformat(),
+        'lignes': lignes,
+        'totaux': {
+            'brut_ouverture': total_brut_ouverture,
+            'acquisitions': total_acquisitions,
+            'cessions': total_cessions_brut,
+            'brut_cloture': total_brut_cloture,
+            'amort_ouverture': total_amort_ouverture,
+            'dotations': total_dotations,
+            'reprises': total_reprises,
+            'amort_cloture': total_amort_cloture,
+            'valeur_nette_comptable': total_vnc,
+        },
+    }
 
 
 # ── FG122 — Position de trésorerie consolidée + projection nette ───────────
@@ -1564,7 +1999,8 @@ def _mouvements_groupe(company, numeros, *, date_debut=None, date_fin=None,
 
 def preparer_declaration_tva(company, *, date_debut, date_fin, regime='mensuel',
                              methode='debit', credit_anterieur=Decimal('0'),
-                             validees_seulement=False):
+                             validees_seulement=False, comparer=False,
+                             date_debut_m1=None, date_fin_m1=None):
     """Calcule la TVA à déclarer sur une période depuis le grand livre (FG137).
 
     TVA collectée = Σ crédit − Σ débit des comptes 4455… (passif : un avoir
@@ -1575,6 +2011,12 @@ def preparer_declaration_tva(company, *, date_debut, date_fin, regime='mensuel',
     trimestriel) et ``methode`` (débit / encaissement) qualifient le dépôt mais
     n'altèrent pas l'agrégation GL (la période en porte la portée). Lecture
     seule, scopée société. Renvoie un dict prêt à figer sur une ``DeclarationTVA``.
+
+    ZACC10 — ``comparer=True`` ajoute ``tva_collectee_m1``/
+    ``tva_deductible_m1``/``tva_a_declarer_m1`` + les écarts % correspondants,
+    calculés sur ``date_debut_m1``/``date_fin_m1`` (défaut : la période
+    immédiatement précédente, de même durée). Défaut = réponse actuelle
+    byte-identique — détection d'anomalie de collecte/déduction M-1.
     """
     debit_coll, credit_coll = _mouvements_groupe(
         company, _COMPTES_TVA_COLLECTEE, date_debut=date_debut,
@@ -1594,7 +2036,7 @@ def preparer_declaration_tva(company, *, date_debut, date_fin, regime='mensuel',
     net = collectee - deductible - anterieur
     a_declarer = net if net >= 0 else Decimal('0')
     reportable = -net if net < 0 else Decimal('0')
-    return {
+    resultat = {
         'date_debut': date_debut,
         'date_fin': date_fin,
         'regime': regime,
@@ -1605,6 +2047,40 @@ def preparer_declaration_tva(company, *, date_debut, date_fin, regime='mensuel',
         'tva_a_declarer': a_declarer,
         'credit_reportable': reportable,
     }
+    if comparer:
+        deb_m1, fin_m1 = _periode_m1(date_debut, date_fin, date_debut_m1,
+                                     date_fin_m1)
+        m1 = preparer_declaration_tva(
+            company, date_debut=deb_m1, date_fin=fin_m1, regime=regime,
+            methode=methode, validees_seulement=validees_seulement)
+        resultat['date_debut_m1'] = deb_m1
+        resultat['date_fin_m1'] = fin_m1
+        resultat['tva_collectee_m1'] = m1['tva_collectee']
+        resultat['tva_collectee_ecart_pct'] = _ecart_pct(
+            collectee, m1['tva_collectee'])
+        resultat['tva_deductible_m1'] = m1['tva_deductible']
+        resultat['tva_deductible_ecart_pct'] = _ecart_pct(
+            deductible, m1['tva_deductible'])
+        resultat['tva_a_declarer_m1'] = m1['tva_a_declarer']
+        resultat['tva_a_declarer_ecart_pct'] = _ecart_pct(
+            a_declarer, m1['tva_a_declarer'])
+    return resultat
+
+
+def _periode_m1(date_debut, date_fin, date_debut_m1=None, date_fin_m1=None):
+    """Résout la période M-1 (précédente) : bornes explicites priment, sinon
+    la période immédiatement AVANT ``date_debut`` de la MÊME durée en jours
+    (jamais d'erreur si aucune donnée M-1 n'existe — soldes nuls)."""
+    if date_debut_m1 or date_fin_m1:
+        return date_debut_m1, date_fin_m1
+    deb = _as_date(date_debut)
+    fin = _as_date(date_fin)
+    if deb is None or fin is None:
+        return None, None
+    duree = (fin - deb).days
+    fin_m1 = deb - timedelta(days=1)
+    deb_m1 = fin_m1 - timedelta(days=duree)
+    return deb_m1, fin_m1
 
 
 # ── FG138 — Relevé de déductions détaillé (annexe TVA, DGI) ────────────────

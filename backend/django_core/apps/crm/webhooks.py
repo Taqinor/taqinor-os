@@ -41,7 +41,37 @@ DEDUP_WINDOW_SECONDS = 60
 _FIRST_TOUCH_FIELDS = frozenset([
     'fbclid', 'utm_source', 'utm_medium',
     'utm_campaign', 'utm_content', 'utm_term',
+    # QW2 — la landing page de première visite est une donnée d'attribution :
+    # protégée à l'identique de l'UTM/fbclid sur un visiteur revenant.
+    'page',
 ])
+
+
+#: QW9 — Tolérance de dérive d'horloge pour l'en-tête `X-Webhook-Timestamp`
+#: (déjà émis par le site — lib/lead.ts + proposition-track.ts). Une requête
+#: dont l'horodatage dépasse cette tolérance (rejeu capturé) est rejetée ;
+#: l'ABSENCE de l'en-tête (anciens workers) reste tolérée — jamais bloquant.
+WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS = 600
+
+
+def _freshness_ok(request) -> bool:
+    """QW9 — Rejette un rejeu capturé via l'horodatage `X-Webhook-Timestamp`.
+
+    Tolérant de l'ABSENCE de l'en-tête (anciens workers du site, ou tout appel
+    qui ne le fournit pas) — dans ce cas on laisse passer (comportement actuel
+    préservé). Seul un en-tête PRÉSENT mais hors tolérance (> ~10 min, passé
+    OU futur) est rejeté. Une valeur non parsable est traitée comme absente
+    (jamais bloquant sur un format inattendu)."""
+    raw = request.headers.get('X-Webhook-Timestamp', '')
+    if not raw:
+        return True
+    ts = parse_datetime(raw)
+    if ts is None:
+        return True
+    if timezone.is_naive(ts):
+        ts = timezone.make_aware(ts, timezone.utc)
+    skew = abs((timezone.now() - ts).total_seconds())
+    return skew <= WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS
 
 
 def _secret_ok(request) -> bool:
@@ -252,44 +282,157 @@ def _map_payload_to_fields(data: dict) -> dict:
         if mapped_mode:
             fields['type_installation'] = mapped_mode
     # Langue du visiteur (fr/ar/darija) → langue préférée des messages.
-    langue = data.get('langue') or data.get('language') or data.get('lang')
+    # QW1 — le site émet aussi `langue_preferee` (lead.ts:LEAD_LANGS = fr/ar),
+    # à lire EN PLUS de langue/language/lang (jamais ce seul champ ignoré).
+    langue = (data.get('langue_preferee') or data.get('langue')
+              or data.get('language') or data.get('lang'))
     if langue not in (None, ''):
         mapped_langue = _LANGUE_ALIASES.get(str(langue).strip().lower())
         if mapped_langue:
             fields['langue_preferee'] = mapped_langue
     # Distributeur d'électricité (ONEE/Lydec/Redal/autre).
+    # QW1 — le site envoie 'inconnu' (DISTRIBUTEURS de lead.ts) : vocabulaire
+    # à rapprocher de Lead.Distributeur.AUTRE (jamais silencieusement jeté).
     distributeur = _clean_choice(
         data.get('distributeur', data.get('utility')),
-        Lead.Distributeur.values)
+        list(Lead.Distributeur.values) + ['inconnu'])
+    if distributeur == 'inconnu':
+        distributeur = Lead.Distributeur.AUTRE
     if distributeur is not None:
         fields['distributeur'] = distributeur
     # Âge de la toiture (années, bornes plausibles 0–200).
+    # QW1 — le site envoie `roofAgeYears` (lead.ts), pas seulement `roofAge`.
     roof_age = _clean_decimal(
-        data.get('roofAge', data.get('roof_age')), lo=0, hi=200)
+        data.get('roofAgeYears', data.get('roofAge', data.get('roof_age'))),
+        lo=0, hi=200)
     if roof_age is not None:
         fields['roof_age'] = int(roof_age)
-    # Propriétaire / locataire.
-    ownership = _clean_choice(data.get('ownership'), Lead.Ownership.values)
+    # Propriétaire / locataire / décideur.
+    # QW1 — le site envoie `occupantType` (OCCUPANT_TYPES: proprietaire/
+    # locataire/decideur) ; le webhook ne lisait que `ownership`, un vocabulaire
+    # différent. 'decideur' (locataire mais décideur des travaux) est rapproché
+    # de PROPRIETAIRE (décide des travaux), jamais jeté.
+    ownership = _clean_choice(
+        data.get('occupantType', data.get('ownership')),
+        list(Lead.Ownership.values) + ['decideur'])
+    if ownership == 'decideur':
+        ownership = Lead.Ownership.PROPRIETAIRE
     if ownership is not None:
         fields['ownership'] = ownership
     # Horizon du projet.
-    timeline = _clean_choice(
-        data.get('projectTimeline', data.get('project_timeline')),
-        Lead.ProjectTimeline.values)
-    if timeline is not None:
-        fields['project_timeline'] = timeline
+    # QW1 — le site envoie `projectTiming` (PROJECT_TIMINGS: maintenant/3mois/
+    # renseignement), un vocabulaire DIFFÉRENT du `Lead.ProjectTimeline`
+    # (immediat/3_mois/6_mois/plus_tard) — mappé explicitement ci-dessous
+    # (jamais silencieusement jeté, jamais un simple alias 1:1).
+    _PROJECT_TIMING_ALIASES = {
+        'maintenant': Lead.ProjectTimeline.IMMEDIAT,
+        '3mois': Lead.ProjectTimeline.MOINS_3_MOIS,
+        'renseignement': Lead.ProjectTimeline.PLUS_TARD,
+    }
+    timeline_raw = data.get('projectTiming', data.get(
+        'projectTimeline', data.get('project_timeline')))
+    if timeline_raw not in (None, ''):
+        mapped_timeline = _PROJECT_TIMING_ALIASES.get(str(timeline_raw).strip().lower())
+        if mapped_timeline is None:
+            # Rétro-compat : accepte aussi directement le vocabulaire CRM
+            # (`projectTimeline`/`project_timeline` historique).
+            mapped_timeline = _clean_choice(
+                timeline_raw, Lead.ProjectTimeline.values)
+        if mapped_timeline:
+            fields['project_timeline'] = mapped_timeline
     # Intention de financement.
-    financing = _clean_choice(
-        data.get('financingIntent', data.get('financing_intent')),
-        Lead.FinancingIntent.values)
-    if financing is not None:
-        fields['financing_intent'] = financing
+    # QW1 — le site envoie `financingIntent` en FR (comptant/financement/
+    # indecis) ; `Lead.FinancingIntent` utilise cash/credit/indecis — mappé
+    # explicitement (jamais un simple alias qui silencieusement jette
+    # comptant/financement).
+    _FINANCING_INTENT_ALIASES = {
+        'comptant': Lead.FinancingIntent.CASH,
+        'financement': Lead.FinancingIntent.CREDIT,
+        'indecis': Lead.FinancingIntent.INDECIS,
+    }
+    financing_raw = data.get('financingIntent', data.get('financing_intent'))
+    if financing_raw not in (None, ''):
+        mapped_financing = _FINANCING_INTENT_ALIASES.get(str(financing_raw).strip().lower())
+        if mapped_financing is None:
+            mapped_financing = _clean_choice(
+                financing_raw, Lead.FinancingIntent.values)
+        if mapped_financing:
+            fields['financing_intent'] = mapped_financing
     # Charges futures prévues (clim / VE / pompe).
     futures = _clean_futures_charges(
         data.get('futuresCharges', data.get('futures_charges',
                                             data.get('futureLoads'))))
     if futures is not None:
         fields['futures_charges'] = futures
+    # QW1 — Ombrage déclaré par le client (lead.ts OMBRAGES = aucun/partiel/
+    # important) : vocabulaire identique à `Lead.Ombrage` — champ auparavant
+    # totalement omis du mapping.
+    ombrage = _clean_choice(data.get('ombrage'), Lead.Ombrage.values)
+    if ombrage is not None:
+        fields['ombrage'] = ombrage
+    # QW1 — Intérêt batterie (lead.ts `batteryInterest`, booléen) → le champ
+    # de qualification le plus proche existant, `Lead.batterie_souhaitee`
+    # (auparavant totalement omis du mapping).
+    if 'batteryInterest' in data or 'battery_interest' in data:
+        interest = data.get('batteryInterest', data.get('battery_interest'))
+        if isinstance(interest, bool):
+            fields['batterie_souhaitee'] = (
+                Lead.BatterieSouhaitee.AVEC if interest
+                else Lead.BatterieSouhaitee.SANS)
+
+    # ── QW2 — Champs du site sans colonne d'accueil (additifs, tolérants) ──
+    # Mode PROFESSIONNEL (WJ68) : raison sociale RÉUTILISE `societe` (jamais
+    # de colonne `raison_sociale` dédiée — consigne founder).
+    raison_sociale = data.get('raisonSociale') or data.get('raison_sociale')
+    if raison_sociale:
+        fields['societe'] = str(raison_sociale).strip()[:255] or None
+    facility_type = _clean_choice(
+        data.get('facilityType', data.get('facility_type')),
+        Lead.FacilityType.values)
+    if facility_type is not None:
+        fields['facility_type'] = facility_type
+    site_count = _clean_choice(
+        data.get('siteCount', data.get('site_count')), Lead.SiteCount.values)
+    if site_count is not None:
+        fields['site_count'] = site_count
+    # Créneau de visite technique préféré (statique).
+    visit_window_part = _clean_choice(
+        data.get('visitWindowPart', data.get('visit_window_part')),
+        Lead.VisitWindowPart.values)
+    if visit_window_part is not None:
+        fields['visit_window_part'] = visit_window_part
+    visit_window_week = _clean_choice(
+        data.get('visitWindowWeek', data.get('visit_window_week')),
+        Lead.VisitWindowWeek.values)
+    if visit_window_week is not None:
+        fields['visit_window_week'] = visit_window_week
+    # Référence courte générée côté client — anti-garbage minimal (le format
+    # émis par buildClientRef() côté site : lettres/chiffres/tirets, 4-24).
+    client_ref_raw = data.get('clientRef') or data.get('client_ref')
+    if client_ref_raw:
+        candidate = str(client_ref_raw).strip()[:24]
+        import re as _re_ref
+        if _re_ref.match(r'^[A-Za-z0-9-]{4,24}$', candidate):
+            fields['client_ref'] = candidate
+    # Diaspora/MRE : numéro E.164 étranger (indicatif ≠ 212).
+    if 'phoneIsForeign' in data or 'phone_is_foreign' in data:
+        foreign = data.get('phoneIsForeign', data.get('phone_is_foreign'))
+        if isinstance(foreign, bool):
+            fields['phone_is_foreign'] = foreign
+    # Landing page de première visite (first-touch, protégée comme l'UTM).
+    page = data.get('page')
+    if page:
+        fields['page'] = str(page).strip()[:300] or None
+
+    # QW3 — Préférence de contact EXPLICITE (« WhatsApp uniquement » / « Rappel
+    # téléphonique OK »), DISTINCTE de `whatsapp_opt_in` (consentement
+    # marketing) et de `canal` (canal marketing d'ORIGINE, toujours SITE_WEB
+    # ci-dessus pour ce webhook — jamais réécrit par cette préférence).
+    contact_preference = _clean_choice(
+        data.get('contactPreference', data.get('contact_preference')),
+        Lead.ContactPreference.values)
+    if contact_preference is not None:
+        fields['contact_preference'] = contact_preference
 
     if fields['whatsapp_opt_in'] and fields['telephone']:
         fields['whatsapp'] = fields['telephone']
@@ -304,6 +447,11 @@ def _map_payload_to_fields(data: dict) -> dict:
 def website_lead_webhook(request):
     if not _secret_ok(request):
         return JsonResponse({'detail': 'Secret invalide ou absent.'}, status=401)
+    if not _freshness_ok(request):
+        # QW9 — horodatage hors tolérance : rejeu probable d'une requête
+        # capturée. Rejeté AVANT toute écriture (même le brut n'est pas
+        # stocké — un rejeu n'apporte aucune donnée nouvelle à conserver).
+        return JsonResponse({'detail': 'Horodatage hors tolérance.'}, status=401)
 
     try:
         data = json.loads(request.body.decode('utf-8'))
@@ -326,10 +474,74 @@ def website_lead_webhook(request):
         logger.error('website_lead_webhook: aucune Company (payload #%s)', raw.pk)
         return JsonResponse({'detail': 'Stocké, mapping différé.', 'payload_id': raw.pk}, status=202)
 
+    # QW7 — Ping d'engagement proposition (WJ55 : proposition-track.ts POSTe
+    # {qualified:false, event_type, phoneE164, utm, page} vers CE MÊME webhook).
+    # [Défensif — le correctif principal est côté source, WEB_PLAN WJ109.]
+    # Un simple "le client a ouvert sa proposition" ne doit JAMAIS créer de
+    # lead ni écraser nom/tags/utm/canal d'un lead déjà existant retrouvé par
+    # téléphone — seule une note chatter + notification best-effort est
+    # journalisée sur le lead déjà connu. Sans lead correspondant, l'événement
+    # est silencieusement abandonné (jamais de lead fantôme « Lead site web »).
+    event_type = data.get('event_type')
+    if event_type:
+        try:
+            phone_raw = str(data.get('phoneE164') or data.get('phone') or '').strip()[:50]
+            from apps.crm.services import normalize_phone
+            phone_key = normalize_phone(phone_raw)
+            matched = None
+            if phone_key:
+                for candidate in Lead.objects.filter(company=company):
+                    if normalize_phone(candidate.telephone) == phone_key:
+                        matched = candidate
+                        break
+            if matched is not None:
+                LeadActivity.objects.create(
+                    company=matched.company, lead=matched, user=None,
+                    kind=LeadActivity.Kind.NOTE,
+                    body=f'Engagement proposition : {event_type}',
+                )
+            raw.lead = matched
+            raw.processed = True
+            raw.save(update_fields=['lead', 'processed'])
+        except Exception:  # noqa: BLE001 — un ping d'engagement ne doit
+            # jamais faire échouer le webhook ni polluer le lead.
+            logger.exception(
+                'website_lead_webhook: engagement ping (event_type=%s) échoué', event_type)
+        return JsonResponse(
+            {'detail': 'Événement enregistré (sans mutation de lead).',
+             'payload_id': raw.pk}, status=200)
+
     try:
         fields = _map_payload_to_fields(data)
         telephone = fields.get('telephone') or ''
         email = fields.get('email') or ''
+
+        # QW10 — Garde CONCURRENTE via `idempotencyKey` (lib/lead.ts — jeton
+        # généré côté navigateur à l'ouverture de la session de saisie).
+        # `cache.add` est atomique : deux POSTs simultanés avec la MÊME clé ne
+        # peuvent jamais tous les deux se croire « premiers » — la requête
+        # PERDANTE attend brièvement que la gagnante commite son lead, puis
+        # rejoint la dédup téléphone/email normale ci-dessous (jamais de
+        # logique de fusion dupliquée). Best-effort : sans clé (anciens
+        # workers) ou cache indisponible, comportement inchangé (couches 1/2
+        # restent la seule protection).
+        idempotency_key = str(
+            data.get('idempotencyKey') or data.get('idempotency_key') or ''
+        ).strip()[:64]
+        if idempotency_key:
+            try:
+                import time as _time
+
+                from django.core.cache import cache
+                cache_key = f'qw10-idem:{company.pk}:{idempotency_key}'
+                won = cache.add(cache_key, True, DEDUP_WINDOW_SECONDS)
+                if not won:
+                    # Perdant de la course : laisse une chance à la requête
+                    # gagnante de commiter avant la recherche de doublon
+                    # ci-dessous (best-effort, jamais un blocage long).
+                    _time.sleep(0.15)
+            except Exception:  # noqa: BLE001 — cache indisponible : no-op
+                pass
 
         existing = None
         is_window_dedup = False
@@ -431,6 +643,18 @@ def website_lead_webhook(request):
             logger.warning(
                 'website_lead_webhook: photo non jointe (lead #%s) : %s',
                 lead.pk, _exc)
+
+        # QW4 — rappel demandé (contact_preference=phone_ok) : notification
+        # DISTINCTE et plus urgente qu'un lead générique, sur création ET
+        # mise à jour (un visiteur revenant peut poser sa préférence après
+        # coup). Idempotent (marqueur chatter) — jamais best-effort bloquant.
+        try:
+            from .services import notify_lead_callback_requested
+            notify_lead_callback_requested(lead)
+        except Exception as _exc:  # noqa: BLE001 — best-effort
+            logger.warning(
+                'website_lead_webhook: notify_lead_callback_requested échoué '
+                '(lead #%s) : %s', lead.pk, _exc)
 
         raw.lead = lead
         raw.processed = True

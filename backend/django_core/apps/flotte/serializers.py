@@ -64,6 +64,8 @@ class VehiculeSerializer(serializers.ModelSerializer):
             'vin', 'annee', 'date_acquisition', 'type_fiscal',
             'type_fiscal_display', 'tags', 'checklist_mise_en_service',
             'checklist_mise_en_service_ok', 'modele_ref', 'modele_ref_label',
+            'carte_mobilite', 'valeur_residuelle',
+            'pct_charges_non_deductibles',
             'date_cession', 'prix_cession', 'acheteur', 'date_creation',
         ]
         # XFLT16 — la cession passe UNIQUEMENT par l'action ``ceder/`` (calcule
@@ -73,6 +75,13 @@ class VehiculeSerializer(serializers.ModelSerializer):
 
     def get_modele_ref_label(self, obj):
         return str(obj.modele_ref) if obj.modele_ref_id else None
+
+    def validate_pct_charges_non_deductibles(self, value):
+        if value is not None and not (0 <= value <= 100):
+            raise serializers.ValidationError(
+                "Le % de charges non déductibles doit être compris entre "
+                "0 et 100.")
+        return value
 
     def get_checklist_mise_en_service_ok(self, obj):
         return obj.checklist_mise_en_service_ok()
@@ -201,7 +210,7 @@ class ConducteurSerializer(serializers.ModelSerializer):
     class Meta:
         model = Conducteur
         fields = [
-            'id', 'user', 'user_display', 'nom', 'telephone',
+            'id', 'user', 'user_display', 'employe_id', 'nom', 'telephone',
             'numero_permis', 'categorie_permis',
             'date_obtention', 'date_expiration',
             'actif', 'date_creation',
@@ -953,12 +962,16 @@ class OrdreReparationSerializer(serializers.ModelSerializer):
     garage_nom = serializers.SerializerMethodField()
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
+    # ZCTR10 — libellé du type de service (référentiel éditable), ou ``None``
+    # si aucun type n'a été choisi (OR "non catégorisé").
+    type_service_libelle = serializers.SerializerMethodField()
 
     class Meta:
         model = OrdreReparation
         fields = [
             'id', 'actif_flotte', 'actif_label', 'garage', 'garage_nom',
-            'echeance', 'description', 'date_ouverture', 'date_cloture',
+            'echeance', 'type_service', 'type_service_libelle', 'description',
+            'date_ouverture', 'date_cloture',
             'statut', 'statut_display', 'cout_main_oeuvre', 'cout_pieces',
             'cout_total', 'sous_garantie', 'montant_devis', 'devis_fichier',
             'approuve_par', 'date_approbation', 'ecart_facture_devis_pct',
@@ -977,6 +990,9 @@ class OrdreReparationSerializer(serializers.ModelSerializer):
 
     def get_garage_nom(self, obj):
         return obj.garage.nom if obj.garage_id else None
+
+    def get_type_service_libelle(self, obj):
+        return obj.type_service.libelle if obj.type_service_id else None
 
     def validate_cout_main_oeuvre(self, value):
         if value is not None and value < 0:
@@ -999,6 +1015,8 @@ class OrdreReparationSerializer(serializers.ModelSerializer):
         garage = attrs.get('garage', getattr(self.instance, 'garage', None))
         echeance = attrs.get(
             'echeance', getattr(self.instance, 'echeance', None))
+        type_service = attrs.get(
+            'type_service', getattr(self.instance, 'type_service', None))
         date_ouverture = attrs.get(
             'date_ouverture', getattr(self.instance, 'date_ouverture', None))
         date_cloture = attrs.get(
@@ -1017,6 +1035,19 @@ class OrdreReparationSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {'echeance':
                      "Cette échéance n'appartient pas à votre société."})
+            # ZCTR10 — le type de service doit appartenir à la société ET au
+            # domaine TYPE_SERVICE du référentiel (jamais un domaine hardcodé).
+            if type_service is not None:
+                if type_service.company_id != company.id:
+                    raise serializers.ValidationError(
+                        {'type_service':
+                         "Ce type de service n'appartient pas à votre "
+                         "société."})
+                if type_service.domaine != ReferentielFlotte.Domaine.TYPE_SERVICE:
+                    raise serializers.ValidationError(
+                        {'type_service':
+                         "Ce type de service doit provenir du référentiel "
+                         "« Type de service / entretien »."})
 
         if date_ouverture is not None and date_cloture is not None \
                 and date_cloture < date_ouverture:
@@ -2084,9 +2115,17 @@ class ModeleVehiculeSerializer(serializers.ModelSerializer):
             'id', 'marque', 'modele', 'categorie', 'categorie_display',
             'energie', 'energie_display', 'co2_g_km', 'places',
             'puissance_fiscale', 'puissance_kw', 'valeur_catalogue',
-            'capacite_reservoir_l', 'date_creation',
+            'capacite_reservoir_l', 'valeur_residuelle',
+            'pct_charges_non_deductibles', 'date_creation',
         ]
         read_only_fields = ['date_creation']
+
+    def validate_pct_charges_non_deductibles(self, value):
+        if value is not None and not (0 <= value <= 100):
+            raise serializers.ValidationError(
+                "Le % de charges non déductibles doit être compris entre "
+                "0 et 100.")
+        return value
 
 
 # ── XFLT13 — Inspections périodiques paramétrables (check-lists DVIR) ──────────

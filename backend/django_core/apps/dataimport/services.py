@@ -22,11 +22,14 @@ FIELD_MAPS = {
         'nom': 'nom', 'prenom': 'prenom', 'societe': 'societe',
         'email': 'email', 'telephone': 'telephone', 'tel': 'telephone',
         'ville': 'ville', 'whatsapp': 'whatsapp', 'adresse': 'adresse',
+        # XPLT1 — identifiant externe optionnel (rapprochement upsert/maj).
+        'external_id': 'external_id', 'id_externe': 'external_id',
     },
     'clients': {
         'nom': 'nom', 'prenom': 'prenom', 'email': 'email',
         'telephone': 'telephone', 'tel': 'telephone', 'adresse': 'adresse',
         'ice': 'ice',
+        'external_id': 'external_id', 'id_externe': 'external_id',
     },
     'products': {
         'nom': 'nom', 'sku': 'sku', 'reference': 'sku', 'marque': 'marque',
@@ -108,11 +111,18 @@ def parse_rows(file_bytes, filename):
     return headers, list(reader)
 
 
-def _map_headers(headers, target):
+def _map_headers(headers, target, saved_mapping=None):
+    """``saved_mapping`` (XPLT2, ``ImportMapping.mapping``) est un dict
+    colonne→champ appliqué EN PRIORITÉ (mêmes clés que le mapping automatique) ;
+    toute colonne non couverte retombe sur le mapping par en-tête habituel."""
     fmap = FIELD_MAPS[target]
     mapped, unmapped = {}, []
     for h in headers:
-        field = fmap.get(_norm(h))
+        field = None
+        if saved_mapping:
+            field = saved_mapping.get(h) or saved_mapping.get(_norm(h))
+        if not field:
+            field = fmap.get(_norm(h))
         if field:
             mapped[h] = field
         else:
@@ -120,15 +130,27 @@ def _map_headers(headers, target):
     return mapped, unmapped
 
 
-def dry_run(file_bytes, filename, target):
-    """Aperçu : mapping colonne→champ + 10 premières lignes mappées + non-mappés."""
+def dry_run(file_bytes, filename, target, company=None, mapping_name=None):
+    """Aperçu : mapping colonne→champ + 10 premières lignes mappées + non-mappés.
+
+    XPLT2 — si ``mapping_name`` désigne un ``ImportMapping`` sauvegardé (pour
+    ``company``+``target``), son mapping colonne→champ est réappliqué en
+    priorité sur le mapping automatique habituel.
+    """
     if target not in TARGETS:
         raise ValueError("Cible d'import inconnue.")
     headers, rows = parse_rows(file_bytes, filename)
     if len(rows) > MAX_ROWS:
         raise ImportTooLarge(
             f'Trop de lignes : {len(rows)} (max {MAX_ROWS}).')
-    mapped, unmapped = _map_headers(headers, target)
+    saved_mapping = None
+    if mapping_name and company is not None:
+        from .models import ImportMapping
+        m = ImportMapping.objects.filter(
+            company=company, entity=target, nom=mapping_name).first()
+        if m is not None:
+            saved_mapping = m.mapping
+    mapped, unmapped = _map_headers(headers, target, saved_mapping)
     preview = []
     for row in rows[:10]:
         preview.append({field: row.get(col) for col, field in mapped.items()})
@@ -142,21 +164,106 @@ def dry_run(file_bytes, filename, target):
     }
 
 
+def save_mapping(company, target, nom, mapping):
+    """XPLT2 — sauvegarde (ou remplace) un mapping colonne→champ nommé pour
+    une cible, réutilisable au prochain dry-run."""
+    from .models import ImportMapping
+    obj, _created = ImportMapping.objects.update_or_create(
+        company=company, entity=target, nom=nom, defaults={'mapping': mapping})
+    return obj
+
+
 def _row_to_fields(row, mapped):
     return {field: row.get(col) for col, field in mapped.items()
             if row.get(col) not in (None, '')}
 
 
-def commit(file_bytes, filename, target, company, user):
-    """Crée les enregistrements (jamais d'écrasement). Renvoie un récapitulatif."""
+# XPLT1 — modes de commit. ``creer`` (défaut) reproduit exactement le
+# comportement historique (création seule, doublons ignorés). ``maj``/
+# ``upsert`` rapprochent d'abord par identifiant externe (ExternalRef) puis par
+# contact normalisé (réutilise ``find_duplicates_by_contact``) : en cas de
+# correspondance, seuls les champs FOURNIS par la ligne sont mis à jour
+# (jamais d'écrasement silencieux par une valeur absente) ; ``maj`` n'importe
+# JAMAIS de nouvelle fiche (une ligne sans correspondance est ignorée),
+# ``upsert`` crée si aucune correspondance n'est trouvée.
+MODES = {'creer', 'maj', 'upsert'}
+
+DEFAULT_EXTERNAL_SYSTEM = 'import'
+
+
+def _get_or_create_ref(company, external_system, external_id, obj):
+    from .models import ExternalRef
+    from django.contrib.contenttypes.models import ContentType
+    ct = ContentType.objects.get_for_model(obj)
+    ExternalRef.objects.get_or_create(
+        company=company, external_system=external_system,
+        external_id=external_id,
+        defaults={'content_type': ct, 'object_id': obj.pk})
+
+
+def _find_by_external_id(company, external_system, external_id, model):
+    from .models import ExternalRef
+    if not external_id:
+        return None
+    ref = ExternalRef.objects.filter(
+        company=company, external_system=external_system,
+        external_id=str(external_id)).first()
+    if ref is None:
+        return None
+    return model.objects.filter(company=company, pk=ref.object_id).first()
+
+
+def _apply_updates(instance, fields, skip_keys=()):
+    """Met à jour uniquement les champs FOURNIS (non vides) — jamais d'écrasement
+    par une valeur absente de la ligne importée."""
+    changed = []
+    for key, value in fields.items():
+        if key in skip_keys:
+            continue
+        if not hasattr(instance, key):
+            continue
+        if value in (None, ''):
+            continue
+        if getattr(instance, key, None) != value:
+            setattr(instance, key, value)
+            changed.append(key)
+    if changed:
+        instance.save(update_fields=changed)
+    return changed
+
+
+def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
+                external_system=None, mapping_name=None):
+    """Crée (mode=creer, défaut inchangé) ou rapproche+met à jour (maj/upsert)
+    les enregistrements. Renvoie un récapitulatif (dont ``lignes`` : le détail
+    ligne par ligne utilisé par XPLT2 pour le journal ``ImportJob``)."""
     if target not in TARGETS:
         raise ValueError("Cible d'import inconnue.")
+    if mode not in MODES:
+        raise ValueError("Mode d'import inconnu (creer, maj ou upsert).")
+    # XPLT1 — le rapprochement maj/upsert n'est câblé que pour les cibles où un
+    # contact (email/téléphone) permet un rapprochement fiable (leads, clients).
+    # Les autres cibles gardent le comportement historique (création seule) et
+    # refusent explicitement un mode qu'elles ne supportent pas encore, plutôt
+    # que de l'ignorer silencieusement.
+    if mode != 'creer' and target not in ('leads', 'clients'):
+        raise ValueError(
+            f"Le mode « {mode} » n'est pas supporté pour la cible « {target} » "
+            "(seuls leads et clients supportent maj/upsert).")
+    external_system = external_system or DEFAULT_EXTERNAL_SYSTEM
     headers, rows = parse_rows(file_bytes, filename)
     if len(rows) > MAX_ROWS:
         raise ImportTooLarge(
             f'Trop de lignes : {len(rows)} (max {MAX_ROWS}).')
-    mapped, _ = _map_headers(headers, target)
-    created, skipped = 0, []
+    saved_mapping = None
+    if mapping_name:
+        from .models import ImportMapping
+        m = ImportMapping.objects.filter(
+            company=company, entity=target, nom=mapping_name).first()
+        if m is not None:
+            saved_mapping = m.mapping
+    mapped, _ = _map_headers(headers, target, saved_mapping)
+    created, updated, skipped = 0, 0, []
 
     # ERR51 — Tout l'import est atomique : une erreur en cours de boucle annule
     # l'intégralité du lot (jamais de demi-import laissant le compteur perdu et
@@ -164,24 +271,54 @@ def commit(file_bytes, filename, target, company, user):
     with transaction.atomic():
         if target == 'leads':
             from apps.crm.models import Lead
+            from apps.crm.services import find_duplicates_by_contact
             for i, row in enumerate(rows, 1):
                 f = _row_to_fields(row, mapped)
                 if not f.get('nom') and not f.get('email') and not f.get('telephone'):
                     skipped.append({'ligne': i, 'raison': 'ligne vide'})
                     continue
-                dup = Lead.objects.filter(company=company)
-                if f.get('email'):
-                    dup = dup.filter(email__iexact=f['email'])
-                elif f.get('telephone'):
-                    dup = dup.filter(telephone=f['telephone'])
-                else:
-                    dup = Lead.objects.none()
-                if dup.exists():
-                    skipped.append({'ligne': i, 'raison': 'doublon (existe déjà)'})
+                ext_id = f.pop('external_id', None)
+
+                existing = None
+                if mode in ('maj', 'upsert'):
+                    existing = _find_by_external_id(
+                        company, external_system, ext_id, Lead)
+                    if existing is None:
+                        dupes = find_duplicates_by_contact(
+                            company, phone=f.get('telephone'),
+                            email=f.get('email'))
+                        existing = dupes[0] if dupes else None
+
+                if existing is not None:
+                    _apply_updates(existing, f)
+                    if ext_id:
+                        _get_or_create_ref(
+                            company, external_system, ext_id, existing)
+                    updated += 1
                     continue
+
+                if mode == 'maj':
+                    skipped.append(
+                        {'ligne': i, 'raison': 'aucune correspondance (maj seule)'})
+                    continue
+
+                # Création (mode=creer, ou mode=upsert sans correspondance).
+                if mode == 'creer':
+                    dup = Lead.objects.filter(company=company)
+                    if f.get('email'):
+                        dup = dup.filter(email__iexact=f['email'])
+                    elif f.get('telephone'):
+                        dup = dup.filter(telephone=f['telephone'])
+                    else:
+                        dup = Lead.objects.none()
+                    if dup.exists():
+                        skipped.append({'ligne': i, 'raison': 'doublon (existe déjà)'})
+                        continue
                 tags = (f.pop('tags', '') or '')
                 f['tags'] = (tags + (', ' if tags else '') + 'Import').strip(', ')[:500]
-                Lead.objects.create(company=company, **f)
+                lead = Lead.objects.create(company=company, **f)
+                if ext_id:
+                    _get_or_create_ref(company, external_system, ext_id, lead)
                 created += 1
 
         elif target == 'clients':
@@ -191,11 +328,36 @@ def commit(file_bytes, filename, target, company, user):
                 if not f.get('nom'):
                     skipped.append({'ligne': i, 'raison': 'nom manquant'})
                     continue
-                if f.get('email') and Client.objects.filter(
+                ext_id = f.pop('external_id', None)
+
+                existing = None
+                if mode in ('maj', 'upsert'):
+                    existing = _find_by_external_id(
+                        company, external_system, ext_id, Client)
+                    if existing is None and f.get('email'):
+                        existing = Client.objects.filter(
+                            company=company, email__iexact=f['email']).first()
+
+                if existing is not None:
+                    _apply_updates(existing, f)
+                    if ext_id:
+                        _get_or_create_ref(
+                            company, external_system, ext_id, existing)
+                    updated += 1
+                    continue
+
+                if mode == 'maj':
+                    skipped.append(
+                        {'ligne': i, 'raison': 'aucune correspondance (maj seule)'})
+                    continue
+
+                if mode == 'creer' and f.get('email') and Client.objects.filter(
                         company=company, email__iexact=f['email']).exists():
                     skipped.append({'ligne': i, 'raison': 'doublon (email existe)'})
                     continue
-                Client.objects.create(company=company, **f)
+                client = Client.objects.create(company=company, **f)
+                if ext_id:
+                    _get_or_create_ref(company, external_system, ext_id, client)
                 created += 1
 
         elif target == 'products':
@@ -333,5 +495,97 @@ def commit(file_bytes, filename, target, company, user):
                 else:
                     skipped.append({'ligne': i, 'raison': message or 'erreur'})
 
-    return {'ok': True, 'target': target, 'created': created,
-            'skipped': skipped, 'total': len(rows)}
+    return {'ok': True, 'target': target, 'mode': mode, 'created': created,
+            'updated': updated, 'skipped': skipped, 'total': len(rows),
+            'headers': headers, 'rows': rows}
+
+
+def commit(file_bytes, filename, target, company, user, mode='creer',
+           external_system=None, mapping_name=None, rollback_on_error=False):
+    """XPLT2 — enveloppe publique de ``_commit_raw`` : journalise l'import dans
+    un ``ImportJob``/``ImportJobRow`` (statut par ligne, motif d'échec,
+    contenu brut ré-importable) et applique le choix commit partiel (défaut,
+    comportement historique inchangé) vs rollback atomique total.
+
+    ``rollback_on_error=True`` : si NE SERAIT-CE QU'UNE ligne échoue, tout le
+    lot est annulé (aucune création/mise à jour ne subsiste) — le job est
+    journalisé statut ECHEC et la réponse renvoie l'erreur sans avoir rien
+    persisté. ``rollback_on_error=False`` (défaut) : comportement historique —
+    les lignes en échec sont signalées, les autres restent commitées.
+    """
+    from .models import ImportJob, ImportJobRow
+
+    def _run():
+        return _commit_raw(
+            file_bytes, filename, target, company, user, mode=mode,
+            external_system=external_system, mapping_name=mapping_name)
+
+    if rollback_on_error:
+        # Rejoue tout dans UNE transaction externe : si des lignes ont échoué,
+        # on annule le lot entier plutôt que de garder les créations partielles.
+        with transaction.atomic():
+            result = _run()
+            if result['skipped']:
+                transaction.set_rollback(True)
+    else:
+        result = _run()
+
+    rows = result.pop('rows', [])
+    headers = result.pop('headers', [])
+    skipped_by_line = {s['ligne']: s['raison'] for s in result['skipped']}
+    error_count = len(skipped_by_line)
+    rolled_back = rollback_on_error and error_count > 0
+
+    if rolled_back:
+        statut = ImportJob.Statut.ECHEC
+    elif error_count:
+        statut = ImportJob.Statut.PARTIEL
+    else:
+        statut = ImportJob.Statut.OK
+
+    job = ImportJob.objects.create(
+        company=company, target=target, fichier_nom=filename, mode=mode,
+        statut=statut, total_lignes=result['total'],
+        created_count=0 if rolled_back else result['created'],
+        updated_count=0 if rolled_back else result['updated'],
+        error_count=error_count,
+        created_by=user if getattr(user, 'pk', None) else None)
+
+    job_rows = []
+    for i, row in enumerate(rows, 1):
+        raison = skipped_by_line.get(i)
+        job_rows.append(ImportJobRow(
+            job=job, ligne=i,
+            statut=ImportJobRow.Statut.ERREUR if raison else ImportJobRow.Statut.OK,
+            motif=raison,
+            donnees={h: row.get(h) for h in headers} if raison else {}))
+    if job_rows:
+        ImportJobRow.objects.bulk_create(job_rows)
+
+    result['job_id'] = job.pk
+    result['statut'] = statut
+    if rolled_back:
+        result['created'] = 0
+        result['updated'] = 0
+    return result
+
+
+def erreurs_csv_rows(job):
+    """XPLT2 — lignes en ÉCHEC d'un ``ImportJob``, prêtes à être ré-écrites en
+    CSV (mêmes en-têtes que le fichier d'origine + une colonne ``_motif``)."""
+    from .models import ImportJobRow
+    error_rows = job.rows.filter(statut=ImportJobRow.Statut.ERREUR).order_by('ligne')
+    fieldnames = []
+    seen = set()
+    for r in error_rows:
+        for k in r.donnees.keys():
+            if k not in seen:
+                seen.add(k)
+                fieldnames.append(k)
+    fieldnames.append('_motif')
+    out_rows = []
+    for r in error_rows:
+        row = dict(r.donnees)
+        row['_motif'] = r.motif or ''
+        out_rows.append(row)
+    return fieldnames, out_rows

@@ -35,6 +35,10 @@ statsmodels==0.14.4
 # Email
 django-anymail[sendgrid]==10.3
 
+# XMKT33 — vérification DNS (SPF/DKIM/DMARC) du domaine d'envoi marketing.
+# Dépendance libre (MIT), aucun coût.
+dnspython==2.7.0
+
 # File storage MinIO/S3
 django-storages[s3]==1.14.4
 boto3==1.35.99
@@ -80,3 +84,11 @@ import-linter==2.11
 # stays intact). RFC 3161 timestamp support (pyhanko also ships the TSA
 # client) is key-gated via settings.GED_TSA_URL — no-op without it.
 pyHanko==0.28.0
+
+# YHARD6 — Prometheus metrics (open-source, free). OPTIONAL: core/metrics.py
+# renders the /metrics exposition text in pure stdlib regardless of whether
+# this package is installed, so the endpoint (and its custom Celery/beat
+# collectors) never depends on it being present. When installed, it also
+# provides standard Django HTTP/DB instrumentation (not wired by default —
+# add its middleware in settings if that richer surface is wanted later).
+django-prometheus==2.3.1

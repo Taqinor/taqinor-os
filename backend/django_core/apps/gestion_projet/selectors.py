@@ -1759,6 +1759,109 @@ def synthese_temps_projet(projet):
     }
 
 
+# ── Grille hebdomadaire de saisie des temps (XPRJ6) ──────────────────────────
+def grille_semaine_temps(ressource, debut_semaine):
+    """Grille hebdomadaire de saisie des temps d'une ressource (XPRJ6).
+
+    ``debut_semaine`` est le PREMIER jour (date) de la fenêtre de 7 jours
+    inclusive analysée : ``[debut_semaine, debut_semaine + 6 jours]``. Regroupe
+    les ``Timesheet`` de la ressource sur cette fenêtre par (projet, tâche) —
+    une ligne de grille par couple rencontré — avec les heures par jour
+    (index 0 = ``debut_semaine`` … 6 = dernier jour) et le total de la ligne ;
+    calcule aussi le total par jour et le total de la semaine. Lecture seule,
+    scopée société (celle de la ressource).
+
+    Ajoute des SUGGESTIONS de pré-remplissage dérivées des
+    ``AffectationRessource`` DIRECTES (vecteur ``ressource`` — jamais via
+    équipe ni actif matériel, une suggestion de temps est individuelle) de la
+    ressource dont la fenêtre chevauche la semaine : une suggestion par
+    (projet, tâche, jour OUVRÉ de l'affectation dans la semaine) SANS saisie
+    déjà existante ce jour-là pour ce couple — jamais une ligne déjà couverte
+    par une timesheet réelle. Les suggestions ne sont QUE proposées : rien
+    n'est jamais écrit ici (le clic d'acceptation crée la ``Timesheet`` via
+    l'endpoint de création standard).
+
+    Renvoie ``{debut_semaine, fin_semaine, jours: [7 dates ISO],
+    lignes: [{projet, projet_code, tache, tache_libelle, heures: [7],
+    total_ligne}], total_par_jour: [7], total_semaine,
+    suggestions: [{projet, projet_code, tache, tache_libelle, jour_index,
+    date}]}``.
+    """
+    fin_semaine = debut_semaine + timedelta(days=6)
+    jours = [debut_semaine + timedelta(days=i) for i in range(7)]
+
+    timesheets = list(Timesheet.objects.filter(
+        ressource=ressource, company=ressource.company,
+        date__gte=debut_semaine, date__lte=fin_semaine,
+    ).select_related('projet', 'tache').order_by('date', 'id'))
+
+    lignes_par_cle = {}
+    total_par_jour = [Decimal('0') for _ in range(7)]
+    saisi_par_cle_jour = set()  # {(projet_id, tache_id, jour_index)}
+    for ts in timesheets:
+        idx = (ts.date - debut_semaine).days
+        if idx < 0 or idx > 6:
+            continue  # pragma: no cover - garanti par le filtre de date
+        cle = (ts.projet_id, ts.tache_id)
+        ligne = lignes_par_cle.setdefault(cle, {
+            'projet': ts.projet_id,
+            'projet_code': ts.projet.code if ts.projet_id else '',
+            'tache': ts.tache_id,
+            'tache_libelle': ts.tache.libelle if ts.tache_id else '',
+            'heures': [Decimal('0') for _ in range(7)],
+            'total_ligne': Decimal('0'),
+        })
+        heures = ts.heures or Decimal('0')
+        ligne['heures'][idx] += heures
+        ligne['total_ligne'] += heures
+        total_par_jour[idx] += heures
+        saisi_par_cle_jour.add((ts.projet_id, ts.tache_id, idx))
+
+    total_semaine = sum(total_par_jour, Decimal('0'))
+
+    # ── Suggestions depuis les affectations directes (jamais auto-enregistrées).
+    affectations = AffectationRessource.objects.filter(
+        ressource=ressource, company=ressource.company,
+        date_debut__lte=fin_semaine, date_fin__gte=debut_semaine,
+    ).select_related('tache', 'tache__projet')
+
+    suggestions = []
+    vues = set()  # anti-doublon si plusieurs affectations couvrent le même jour
+    for aff in affectations:
+        tache = aff.tache
+        if tache is None:
+            continue
+        projet_id = tache.projet_id
+        for idx, jour in enumerate(jours):
+            if jour < aff.date_debut or jour > aff.date_fin:
+                continue
+            cle = (projet_id, tache.id, idx)
+            if cle in saisi_par_cle_jour or cle in vues:
+                continue
+            vues.add(cle)
+            suggestions.append({
+                'projet': projet_id,
+                'projet_code': tache.projet.code if projet_id else '',
+                'tache': tache.id,
+                'tache_libelle': tache.libelle,
+                'jour_index': idx,
+                'date': jour.isoformat(),
+            })
+    suggestions.sort(key=lambda s: (s['jour_index'], s['tache'] or 0))
+
+    return {
+        'debut_semaine': debut_semaine.isoformat(),
+        'fin_semaine': fin_semaine.isoformat(),
+        'jours': [j.isoformat() for j in jours],
+        'lignes': sorted(
+            lignes_par_cle.values(),
+            key=lambda ligne: (ligne['projet_code'], ligne['tache_libelle'])),
+        'total_par_jour': total_par_jour,
+        'total_semaine': total_semaine,
+        'suggestions': suggestions,
+    }
+
+
 # ── Détection des temps manquants (XPRJ7) ────────────────────────────────────
 def temps_manquants(company, debut, fin):
     """Jours SANS saisie de temps par ressource ACTIVE liée à un user (XPRJ7).

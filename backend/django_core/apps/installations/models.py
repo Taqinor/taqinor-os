@@ -31,6 +31,7 @@ from .models_intervention import (
     InterventionActivity,
     InstallationActivity,
     TypeInterventionPlan,
+    RecurrenceIntervention,
 )
 from .models_chantier import (
     ChecklistTemplate,
@@ -59,6 +60,10 @@ from .models_field import (
     SafetySignoff,
     SafetyCheckItem,
     FieldOp,
+    FicheInterventionTemplate,
+    FicheInterventionChamp,
+    FicheInterventionReleve,
+    FicheInterventionValeur,
 )
 from .models_projet import (
     JalonProjet,
@@ -206,6 +211,11 @@ from .models_storage_rules import (
 from .models_lot_prelevement import (
     LotPrelevement,
 )
+from .models_gps_tracking import (
+    GpsConsentRecord,
+    PositionTechnicien,
+    GeofenceAlert,
+)
 
 __all__ = [
     'Installation',
@@ -215,6 +225,7 @@ __all__ = [
     'InterventionActivity',
     'InstallationActivity',
     'TypeInterventionPlan',
+    'RecurrenceIntervention',
     'ChecklistTemplate',
     'ChecklistEtapeModele',
     'StageModele',
@@ -239,6 +250,10 @@ __all__ = [
     'SafetySignoff',
     'SafetyCheckItem',
     'FieldOp',
+    'FicheInterventionTemplate',
+    'FicheInterventionChamp',
+    'FicheInterventionReleve',
+    'FicheInterventionValeur',
     'JalonProjet',
     'ModeleProjet',
     'ModeleProjetJalon',
@@ -313,4 +328,7 @@ __all__ = [
     'CategorieStockage',
     'RegleRangement',
     'LotPrelevement',
+    'GpsConsentRecord',
+    'PositionTechnicien',
+    'GeofenceAlert',
 ]

@@ -266,6 +266,10 @@ export default function InstallationsPage() {
       .catch(() => { toast.error('Replanification impossible.'); refetch() })
   useEffect(() => {
     dispatch(fetchInstallations(serverParams(filters)))
+    // intentionally narrow: only `annule`/`mine` are server-side dimensions
+    // (see comment above); the other filter fields are applied client-side
+    // and must NOT retrigger a server refetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch, filters.annule, filters.mine])
 
   const onOpen = (it) => setSelected(it)

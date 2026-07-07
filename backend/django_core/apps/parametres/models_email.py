@@ -143,8 +143,11 @@ EMAIL_TEMPLATE_PLACEHOLDERS = {
     'livraison_en_transit': ['{civilite}', '{nom}', '{reference}', '{lien}'],
     'livraison_livree': ['{civilite}', '{nom}', '{reference}', '{lien}'],
     # ZSAL5 — {validite} en plus (date limite de validité du devis).
+    # XSAL17 — {lien_rdv} : lien de réservation de visite, résolu au moment
+    # de l'envoi (apps.crm.services.resoudre_lien_rdv / public_booking_url).
     'envoi_devis': [
-        '{civilite}', '{nom}', '{reference}', '{lien}', '{validite}'],
+        '{civilite}', '{nom}', '{reference}', '{lien}', '{validite}',
+        '{lien_rdv}'],
 }
 
 

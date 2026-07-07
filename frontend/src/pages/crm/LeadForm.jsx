@@ -229,11 +229,16 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
     // Canal prérempli à la création (jamais null) ; en édition on respecte la
     // valeur du lead (y compris vide pour un ancien lead).
     canal: lead ? (F('canal', '') ?? '') : DEFAULT_CANAL,
+    // QW3 — préférence de contact explicite (posée par le site/webhook),
+    // lecture seule ici : distincte du canal marketing et de whatsapp_opt_in.
+    contact_preference: F('contact_preference', '') ?? '',
     priorite: F('priorite', 'normale'),
     langue_preferee: F('langue_preferee', '') ?? '',
     tags: F('tags'), motif_perte: F('motif_perte'),
     perdu: lead?.perdu ?? false,
     relance_date: F('relance_date'), type_installation: F('type_installation', '') ?? '',
+    // XSAL7 — pipeline pondéré pré-devis (saisie libre, jamais snap/reject).
+    montant_estime: F('montant_estime'), date_cloture_prevue: F('date_cloture_prevue'),
     // Énergie
     facture_hiver: F('facture_hiver'), facture_ete: F('facture_ete'),
     ete_differente: lead?.ete_differente ?? false,
@@ -790,6 +795,12 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
                 <Txt fields={fields} set={set} k="relance_date" label="Relance le" type="date" />
               </div>
               <div className="form-row">
+                {/* XSAL7 — pipeline pondéré pré-devis : un lead chaud sans
+                    devis pèse zéro dans la prévision sans ces deux champs. */}
+                <Txt fields={fields} set={set} k="montant_estime" label="Montant estimé (MAD)" type="number" />
+                <Txt fields={fields} set={set} k="date_cloture_prevue" label="Clôture prévue le" type="date" />
+              </div>
+              <div className="form-row">
                 <Sel fields={fields} set={set} k="priorite" label="Priorité" labels={PRIORITES} />
                 <Sel fields={fields} set={set} k="canal" label="Canal" labels={canalLabels} />
                 <Sel fields={fields} set={set} k="langue_preferee" label="Langue préférée" labels={LANGUES_PREFEREES} />
@@ -801,6 +812,20 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
                   </datalist>
                 </div>
               </div>
+              {/* QW3 — préférence de contact explicite du client, distincte du
+                  canal marketing et du consentement WhatsApp : lecture seule
+                  ici (posée par le site/webhook), visuellement distincte de
+                  l'icône WhatsApp. */}
+              {fields.contact_preference === 'phone_ok' && (
+                <div className="form-row">
+                  <span
+                    className="kb-badge-rappel rounded-full bg-info/15 px-1.5 py-0.5 text-info"
+                    title="Le client a demandé à être rappelé par téléphone"
+                  >
+                    ☎ Rappel demandé
+                  </span>
+                </div>
+              )}
               <div className="form-row">
                 {/* « Perdu ? » est un drapeau indépendant de l'étape : un lead
                     peut être perdu à n'importe quelle étape. */}

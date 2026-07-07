@@ -1987,6 +1987,32 @@ def sortir_employe(dossier, *, date_sortie, motif, notes_avances=''):
         affectation.date_fin = date_sortie
         affectation.save(update_fields=['statut', 'date_fin', 'date_modification'])
 
+    # YHIRE11 — Affectations flotte OUVERTES du sortant (conducteur flotte
+    # lié à ce dossier, ``flotte.Conducteur.employe_id``) → note informative
+    # listant les véhicules encore ouverts. Distinct de l'``AffectationVehicule``
+    # RH ci-dessus (qui référence ``flotte.Vehicule`` par un string-FK
+    # indépendant) : un conducteur flotte peut avoir des affectations propres
+    # que le module RH ne connaissait pas jusqu'ici. Lecture cross-app UNIQUEMENT
+    # via le sélecteur flotte (jamais un import de ``apps.flotte.models``).
+    try:
+        from apps.flotte.selectors import affectations_ouvertes_pour_employe
+        affectations_flotte = affectations_ouvertes_pour_employe(
+            dossier.company, dossier.pk)
+    except Exception:
+        affectations_flotte = []
+    if affectations_flotte:
+        vehicules_labels = ', '.join(
+            a['vehicule_label'] for a in affectations_flotte)
+        ElementSortie.objects.create(
+            company=dossier.company,
+            employe=dossier,
+            libelle='Véhicules flotte encore ouverts'[:160],
+            type_element=ElementSortie.TypeElement.VEHICULE,
+            note=(
+                f'{len(affectations_flotte)} affectation(s) flotte '
+                f'ouverte(s) : {vehicules_labels}'[:255]),
+        )
+
     # Avances non soldées → note informative (pas de mouvement financier ici,
     # le solde reste porté par le module concerné — RH ou paie).
     avances_ouvertes = AvanceSalaire.objects.filter(
@@ -2516,3 +2542,174 @@ def enregistrer_niveau_competence(
             source=source,
         )
     return obj
+
+
+# ── ZRH8 — Plans d'appréciation automatiques (jalons d'ancienneté) ─────────
+
+def campagne_annuelle_par_defaut(company, annee):
+    """ZRH8 — Renvoie la campagne annuelle par défaut de ``company``/``annee``,
+    la créant si elle n'existe pas déjà (idempotent, ``get_or_create``).
+
+    Utilisée par ``planifier_appreciations`` quand un ``PlanAppreciation`` ne
+    porte pas de ``campagne_cible`` explicite. Le libellé est stable
+    (« Appréciations automatiques <année> ») pour que deux appels sur la même
+    année retombent sur la MÊME campagne (jamais un doublon).
+    """
+    from .models import CampagneEvaluation
+
+    campagne, _created = CampagneEvaluation.objects.get_or_create(
+        company=company, annee=annee,
+        intitule=f'Appréciations automatiques {annee}',
+        defaults={'statut': CampagneEvaluation.Statut.OUVERTE},
+    )
+    return campagne
+
+
+def _mois_entre(date_debut, date_fin):
+    """ZRH8 — Nombre de mois PLEINS entre deux dates (``date_fin`` > ou =
+    ``date_debut``), en tenant compte du jour du mois (un jalon n'est
+    « franchi » que le jour anniversaire, pas avant). Lecture seule."""
+    mois = ((date_fin.year - date_debut.year) * 12
+            + (date_fin.month - date_debut.month))
+    if date_fin.day < date_debut.day:
+        mois -= 1
+    return max(mois, 0)
+
+
+def planifier_appreciations_pour_societe(company, *, aujourd_hui=None,
+                                         apply=False):
+    """ZRH8 — Planifie les évaluations dues (jalons d'ancienneté franchis)
+    pour TOUS les ``DossierEmploye`` ACTIFS de ``company``, selon les
+    ``PlanAppreciation`` actifs de la société.
+
+    Pour chaque employé actif et chaque plan actif : calcule son ancienneté
+    en mois pleins (``date_embauche`` -> ``aujourd_hui``, défaut aujourd'hui)
+    et, pour CHAQUE jalon du plan déjà FRANCHI (ancienneté >= jalon), crée une
+    ``EvaluationEmploye`` "planifiée" — SAUF si une évaluation existe déjà
+    pour ce jalon (clé d'idempotence : ``synthese`` porte une marque stable
+    ``"[ZRH8:jalon=<n>]"`` — un jalon donné ne génère donc JAMAIS de doublon,
+    même rejoué). L'évaluateur posé est le MANAGER de l'employé s'il en
+    existe un identifiable (le dernier ``evaluateur`` d'une évaluation
+    antérieure de cet employé), sinon ``None`` (aucune évaluation n'est
+    inventée). La campagne cible est celle du plan (``campagne_cible``) ou,
+    à défaut, la campagne annuelle par défaut de l'année courante.
+
+    Dry-run PAR DÉFAUT (``apply=False``) : ne calcule et ne rapporte que ce
+    qui SERAIT créé, sans rien écrire. ``apply=True`` committe réellement.
+
+    Un employé dont l'ancienneté n'atteint aucun jalon ne génère rien.
+    Multi-tenant : tout est scopé à ``company`` (jamais lu du corps de
+    requête).
+
+    Retourne ``{'a_creer': [...], 'nb_a_creer': int, 'nb_deja': int}`` où
+    chaque entrée de ``a_creer`` est ``{'employe_id', 'jalon', 'plan_id'}``
+    (dry-run) ou l'``EvaluationEmploye`` créée (``apply=True``).
+    """
+    from .models import DossierEmploye, EvaluationEmploye, PlanAppreciation
+
+    if aujourd_hui is None:
+        aujourd_hui = timezone.localdate()
+
+    plans = PlanAppreciation.objects.filter(company=company, actif=True)
+    if not plans:
+        return {'a_creer': [], 'nb_a_creer': 0, 'nb_deja': 0}
+
+    dossiers = DossierEmploye.objects.filter(
+        company=company, statut=DossierEmploye.Statut.ACTIF,
+        date_embauche__isnull=False)
+
+    a_creer = []
+    nb_deja = 0
+    # Un employé qui franchit PLUSIEURS jalons du même plan dans le même
+    # passage (ex. 3 ET 12 mois à la fois) obtient UNE SEULE
+    # ``EvaluationEmploye`` par (campagne, employe) — contrainte unique,
+    # toutes les marques de jalon coexistent dans ``synthese``
+    # (test_deux_jalons_franchis_meme_campagne_pas_de_doublon_ligne). Sans ce
+    # suivi, chaque jalon franchi comptait pour +1 dans ``nb_a_creer``/
+    # ``a_creer`` même quand il retombait sur la MÊME ligne déjà comptée —
+    # bug réel : un employé embauché il y a exactement 12 mois avec les
+    # jalons [3, 12, 24] franchit 3 ET 12 à la fois, gonflant nb_a_creer à 2
+    # pour une seule évaluation réellement (à créer/déjà créée).
+    lignes_comptees = set()  # {(campagne_id ou None, employe_id)}
+
+    for plan in plans:
+        jalons = plan.mois_apres_embauche or []
+        if not jalons:
+            continue
+        for dossier in dossiers:
+            anciennete_mois = _mois_entre(dossier.date_embauche, aujourd_hui)
+            for jalon in jalons:
+                if anciennete_mois < jalon:
+                    continue  # jalon pas encore franchi.
+
+                marque = f'[ZRH8:jalon={jalon}]'
+                deja = EvaluationEmploye.objects.filter(
+                    company=company, employe=dossier,
+                    synthese__contains=marque).exists()
+                if deja:
+                    nb_deja += 1
+                    continue
+
+                if apply:
+                    campagne = (
+                        plan.campagne_cible
+                        or campagne_annuelle_par_defaut(
+                            company, aujourd_hui.year))
+                    # Le dernier évaluateur connu de cet employé sert de
+                    # proxy « manager » (aucun organigramme dédié n'existe
+                    # encore dans ce module) — None si aucun antécédent.
+                    derniere_eval = (
+                        EvaluationEmploye.objects
+                        .filter(company=company, employe=dossier)
+                        .exclude(evaluateur__isnull=True)
+                        .order_by('-date_creation')
+                        .first())
+                    evaluateur = (
+                        derniere_eval.evaluateur if derniere_eval else None)
+
+                    evaluation, created = (
+                        EvaluationEmploye.objects.get_or_create(
+                            company=company, campagne=campagne,
+                            employe=dossier,
+                            defaults={
+                                'evaluateur': evaluateur,
+                                'statut': EvaluationEmploye.Statut.PLANIFIE,
+                                'synthese': marque,
+                            },
+                        ))
+                    if not created and marque not in (evaluation.synthese or ''):
+                        # Une évaluation existe déjà pour (campagne, employe)
+                        # (contrainte unique) mais sans la marque de CE
+                        # jalon — on l'ajoute pour rester idempotent sans
+                        # dupliquer la ligne.
+                        evaluation.synthese = (
+                            f'{evaluation.synthese} {marque}'.strip())
+                        evaluation.save(update_fields=['synthese'])
+                    ligne_key = (campagne.id, dossier.pk)
+                    if ligne_key not in lignes_comptees:
+                        lignes_comptees.add(ligne_key)
+                        a_creer.append(evaluation)
+                else:
+                    # Dry-run : la clé de regroupement DOIT rester purement
+                    # en lecture (aucune écriture en dry-run — contrat du
+                    # docstring). ``campagne_cible`` s'il est posé, sinon un
+                    # marqueur stable par année (même campagne annuelle par
+                    # défaut qu'``apply`` résoudrait, sans la créer ici).
+                    campagne_key = (
+                        plan.campagne_cible_id
+                        if plan.campagne_cible_id
+                        else f'defaut-{aujourd_hui.year}')
+                    ligne_key = (campagne_key, dossier.pk)
+                    if ligne_key not in lignes_comptees:
+                        lignes_comptees.add(ligne_key)
+                        a_creer.append({
+                            'employe_id': dossier.pk,
+                            'jalon': jalon,
+                            'plan_id': plan.pk,
+                        })
+
+    return {
+        'a_creer': a_creer,
+        'nb_a_creer': len(a_creer),
+        'nb_deja': nb_deja,
+    }

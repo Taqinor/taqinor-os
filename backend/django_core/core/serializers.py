@@ -200,7 +200,8 @@ class ConsentRecordSerializer(serializers.ModelSerializer):
         model = ConsentRecord
         fields = [
             'id', 'subject_identifier', 'purpose', 'granted', 'source',
-            'occurred_at', 'created_at', 'updated_at',
+            'occurred_at', 'version_texte', 'ip_confirmation',
+            'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
@@ -250,11 +251,13 @@ class BackupRunSerializer(serializers.ModelSerializer):
         model = BackupRun
         fields = [
             'id', 'kind', 'mode', 'statut', 'datasets', 'cron', 'artifact_ref',
+            'object_key', 'bytes_taille',
             'manifest', 'declenche_par', 'termine_le', 'detail',
             'created_at', 'updated_at',
         ]
         read_only_fields = [
             'id', 'statut', 'manifest', 'declenche_par', 'termine_le', 'detail',
+            'object_key', 'bytes_taille',
             'created_at', 'updated_at',
         ]
 

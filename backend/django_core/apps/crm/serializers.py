@@ -61,6 +61,33 @@ class ClientSerializer(serializers.ModelSerializer):
                     'client', company, attrs.get('custom_data'))
         return attrs
 
+    def validate_parent(self, value):
+        # XSAL9 — anti-cycle + même société, appliqué ici car DRF n'invoque
+        # PAS Model.clean() automatiquement à l'écriture API (seul
+        # full_clean() le ferait — jamais appelé sur ce chemin).
+        if value is None:
+            return value
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is not None and value.company_id != company.id:
+            raise serializers.ValidationError(
+                'La société mère doit appartenir à la même société.')
+        if self.instance is not None:
+            if value.pk == self.instance.pk:
+                raise serializers.ValidationError(
+                    "Un client ne peut pas être sa propre société mère.")
+            seen = {self.instance.pk}
+            current = value
+            depth = 0
+            while current is not None:
+                if current.pk in seen or depth > 100:
+                    raise serializers.ValidationError(
+                        'Cette hiérarchie créerait un cycle.')
+                seen.add(current.pk)
+                current = current.parent
+                depth += 1
+        return value
+
     def get_fields(self):
         fields = super().get_fields()
         # FG20 — masque la PII en LECTURE pour les rôles non autorisés. On rend
@@ -162,18 +189,29 @@ class LeadSerializer(serializers.ModelSerializer):
 
     def get_next_activity(self, obj):
         """Activité ouverte la plus proche (pour la pastille horloge de la
-        carte kanban) : {state: overdue/today/upcoming, due_date, summary}."""
+        carte kanban) : {state: overdue/today/upcoming, due_date, summary}.
+
+        YOPSB13 — sur une LISTE, ``LeadViewSet.list()`` précharge une carte
+        {lead_id: Activity} en UNE requête pour toute la page et la pose dans
+        le contexte (``next_activity_map``) : on la préfère quand elle existe
+        pour éviter une requête PAR LIGNE (N+1). Sans contexte (ex. detail
+        unique, ou appel serializer hors vue), on retombe sur la requête
+        individuelle — comportement inchangé."""
         try:
-            from django.contrib.contenttypes.models import ContentType
-            from apps.records.models import Activity
-            from apps.records.serializers import activity_state
-            ct = ContentType.objects.get_for_model(obj.__class__)
-            act = (Activity.objects
-                   .filter(content_type=ct, object_id=obj.id, done=False,
-                           due_date__isnull=False)
-                   .order_by('due_date').first())
+            next_activity_map = self.context.get('next_activity_map')
+            if next_activity_map is not None:
+                act = next_activity_map.get(obj.id)
+            else:
+                from django.contrib.contenttypes.models import ContentType
+                from apps.records.models import Activity
+                ct = ContentType.objects.get_for_model(obj.__class__)
+                act = (Activity.objects
+                       .filter(content_type=ct, object_id=obj.id, done=False,
+                               due_date__isnull=False)
+                       .order_by('due_date').first())
             if act is None:
                 return None
+            from apps.records.serializers import activity_state
             return {
                 'state': activity_state(act.due_date, False),
                 'due_date': act.due_date.isoformat(),
@@ -212,17 +250,23 @@ class LeadSerializer(serializers.ModelSerializer):
         """
         try:
             from django.utils import timezone
-            from .models import LeadActivity
-            last_change = (
-                LeadActivity.objects
-                .filter(lead=obj, kind=LeadActivity.Kind.MODIFICATION, field='stage')
-                .order_by('-created_at')
-                .first()
-            )
-            if last_change:
-                ref = last_change.created_at
+            # YOPSB13/perf_n1 — sur une LISTE, LeadViewSet.list() précharge une
+            # carte {lead_id: dernière date de changement d'étape} en UNE requête
+            # (stage_since_map) : sinon c'était 1 requête LeadActivity PAR LIGNE
+            # (N+1). Hors contexte (détail) → requête individuelle inchangée.
+            stage_since_map = self.context.get('stage_since_map')
+            if stage_since_map is not None:
+                ref = stage_since_map.get(obj.id) or obj.date_creation
             else:
-                ref = obj.date_creation
+                from .models import LeadActivity
+                last_change = (
+                    LeadActivity.objects
+                    .filter(lead=obj, kind=LeadActivity.Kind.MODIFICATION,
+                            field='stage')
+                    .order_by('-created_at')
+                    .first()
+                )
+                ref = last_change.created_at if last_change else obj.date_creation
             if ref is None:
                 return None
             now = timezone.now()
@@ -341,13 +385,30 @@ class LeadSerializer(serializers.ModelSerializer):
         # Devis « empilés » sur le lead, du plus récent au plus ancien.
         # A4 — on expose le chantier lié (s'il existe) et l'option acceptée pour
         # que la fiche lead propose en ligne « Générer la facture » et « Créer le
-        # chantier » (sans doublon) après acceptation. Une seule requête
-        # Installation pour tous les devis du lead.
-        from apps.installations.selectors import (
-            installation_summaries_for_devis,
+        # chantier » (sans doublon) après acceptation.
+        # YOPSB13 — sur une LISTE, ``LeadViewSet.list()`` précharge les
+        # chantiers de TOUS les devis de la page en UNE requête et la pose
+        # dans le contexte (``chantier_map``), pour éviter une requête
+        # Installation PAR LIGNE (N+1). Sans contexte, on retombe sur l'appel
+        # individuel — comportement inchangé.
+        # YOPSB13/perf_n1 — ``obj.devis.order_by(...)`` clone le manager et
+        # IGNORE le cache prefetch (``prefetch_related('devis')`` posé par
+        # ``LeadViewSet``), ré-exécutant une requête PAR ligne (N+1). On lit le
+        # cache via ``.all()`` puis on trie en Python (ordre identique), sans
+        # importer le modèle ``ventes`` (frontière inter-app respectée).
+        rows = sorted(
+            obj.devis.all(),
+            key=lambda d: (d.date_creation is not None, d.date_creation),
+            reverse=True,
         )
-        rows = list(obj.devis.order_by('-date_creation'))
-        chantiers = installation_summaries_for_devis(rows)
+        chantier_map = self.context.get('chantier_map')
+        if chantier_map is not None:
+            chantiers = {d.id: chantier_map.get(d.id) for d in rows}
+        else:
+            from apps.installations.selectors import (
+                installation_summaries_for_devis,
+            )
+            chantiers = installation_summaries_for_devis(rows)
         return [
             {
                 'id': d.id,

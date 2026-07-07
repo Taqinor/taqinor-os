@@ -103,6 +103,75 @@ def conducteurs_permis_expirant(company, jours=30):
     ).select_related('user')
 
 
+def divergences_permis_flotte_rh(company, today=None):
+    """YHIRE11 — Rapport de réconciliation « divergences permis flotte↔RH »
+    (lecture seule).
+
+    Pour chaque ``Conducteur`` LIÉ à un dossier RH (``employe_id`` renseigné),
+    compare la validité LOCALE (champs ``date_expiration``/``categorie_permis``
+    du ``Conducteur``) à la validité RH (``rh.selectors.peut_conduire``,
+    source de vérité quand le lien existe — voir ``services.controle_permis``)
+    et signale une divergence quand les deux désaccordent : le local dit
+    valide alors que le RH dit invalide, ou l'inverse. Un conducteur externe
+    (``employe_id`` vide) n'est jamais inclus (rien à réconcilier).
+
+    Import LOCAL de ``rh.selectors`` (cross-app, jamais ``rh.models``) — si
+    l'app ``rh`` est indisponible, renvoie un rapport vide plutôt que de lever.
+
+    Retourne un dict LECTURE SEULE ::
+
+        {
+          'nb_conducteurs_lies': <int>,
+          'nb_divergences': <int>,
+          'divergences': [
+            {'conducteur_id', 'employe_id', 'conducteur_nom',
+             'local_valide': <bool>, 'rh_valide': <bool>}, …
+          ],
+        }
+
+    Aucune écriture, aucun effet de bord.
+    """
+    if today is None:
+        today = datetime.date.today()
+
+    try:
+        from apps.rh import selectors as rh_selectors
+    except Exception:
+        return {'nb_conducteurs_lies': 0, 'nb_divergences': 0,
+                'divergences': []}
+
+    conducteurs = Conducteur.objects.filter(
+        company=company, employe_id__isnull=False)
+
+    divergences = []
+    nb_lies = 0
+    for conducteur in conducteurs:
+        nb_lies += 1
+        local_valide = not (
+            conducteur.date_expiration is not None
+            and conducteur.date_expiration < today)
+        try:
+            rh_valide = bool(rh_selectors.peut_conduire(
+                company, conducteur.employe_id, le=today))
+        except Exception:
+            continue
+
+        if local_valide != rh_valide:
+            divergences.append({
+                'conducteur_id': conducteur.id,
+                'employe_id': conducteur.employe_id,
+                'conducteur_nom': conducteur.nom,
+                'local_valide': local_valide,
+                'rh_valide': rh_valide,
+            })
+
+    return {
+        'nb_conducteurs_lies': nb_lies,
+        'nb_divergences': len(divergences),
+        'divergences': divergences,
+    }
+
+
 def conducteur_actuel_du_vehicule(company, vehicule_id):
     """FLOTTE8 — Retourne le conducteur actuellement actif pour un véhicule donné.
 
@@ -150,6 +219,49 @@ def affectations_du_conducteur(company, conducteur_id):
         .select_related("vehicule")
         .order_by("-date_debut")
     )
+
+
+def affectations_ouvertes_pour_employe(company, employe_id):
+    """YHIRE11 — Affectations OUVERTES (actif=True, sans date de fin passée)
+    du/des ``Conducteur`` flotte LIÉS à ``employe_id`` (dossier RH), scopées
+    société.
+
+    Point d'entrée CROSS-APP EN LECTURE pour ``rh`` : la checklist de sortie
+    (``rh.services.sortir_employe``, YHIRE2) appelle CETTE fonction pour
+    lister les véhicules flotte encore ouverts du sortant — ``rh`` n'importe
+    JAMAIS les modèles ``flotte`` (cross-app, voir CLAUDE.md).
+
+    Un ``Conducteur`` sans lien RH (``employe_id`` vide, conducteur externe)
+    n'est jamais retourné. Retourne une liste LECTURE SEULE ::
+
+        [{'affectation_id', 'conducteur_id', 'vehicule_id', 'vehicule_label',
+          'date_debut', 'date_fin'}, …]
+
+    Aucune écriture, aucun effet de bord.
+    """
+    if not employe_id:
+        return []
+
+    affectations = (
+        AffectationConducteur.objects
+        .filter(
+            company=company, actif=True,
+            conducteur__employe_id=employe_id,
+        )
+        .select_related('vehicule', 'conducteur')
+        .order_by('-date_debut')
+    )
+    return [
+        {
+            'affectation_id': affectation.id,
+            'conducteur_id': affectation.conducteur_id,
+            'vehicule_id': affectation.vehicule_id,
+            'vehicule_label': str(affectation.vehicule),
+            'date_debut': affectation.date_debut,
+            'date_fin': affectation.date_fin,
+        }
+        for affectation in affectations
+    ]
 
 
 def avantages_en_nature(company, mois):
@@ -1465,7 +1577,8 @@ def ledger_vehicule(company, vehicule_id, periode=None):
     if actif_flotte_id is not None:
         # 2) Réparations.
         for ordre in OrdreReparation.objects.filter(
-                company=company, actif_flotte_id=actif_flotte_id):
+                company=company, actif_flotte_id=actif_flotte_id
+        ).select_related('type_service'):
             if not _dans_periode(ordre.date_ouverture):
                 continue
             lignes.append({
@@ -1475,6 +1588,12 @@ def ledger_vehicule(company, vehicule_id, periode=None):
                 'libelle': f'OR — {ordre.garage}'.strip(' —') if
                 ordre.garage_id else 'Ordre de réparation',
                 'conducteur_id': None, 'objet_id': ordre.id,
+                # ZCTR10 — type de service (référentiel éditable) ; ``None``
+                # = OR non catégorisé (aucune régression sur les OR existants).
+                'type_service_id': ordre.type_service_id,
+                'type_service_libelle': (
+                    ordre.type_service.libelle if ordre.type_service_id
+                    else None),
             })
 
         # 3) Assurances (franchise, datée au début de couverture).
@@ -1553,7 +1672,12 @@ def analyse_couts_report(company, group_by='vehicule', periode=None):
     * ``'mois'``      — total par mois (``'YYYY-MM'``) ;
     * ``'conducteur'``— total par conducteur (lignes sans conducteur exclues) ;
     * ``'garage'``    — total par garage des ``OrdreReparation`` (lignes hors
-      réparation exclues).
+      réparation exclues) ;
+    * ``'type_service'`` — ZCTR10 : total par type de service/entretien des
+      ``OrdreReparation`` (référentiel éditable ``ReferentielFlotte``,
+      domaine ``type_service``) — un OR sans type est regroupé sous la clé
+      ``'non_categorise'`` ; lignes hors réparation exclues (même patron que
+      ``'garage'``).
 
     ``periode`` (optionnel) est un tuple ``(date_debut, date_fin)`` transmis
     tel quel à ``ledger_vehicule``.
@@ -1602,6 +1726,14 @@ def analyse_couts_report(company, group_by='vehicule', periode=None):
             elif group_by == 'conducteur':
                 if ligne['conducteur_id'] is not None:
                     cle = ligne['conducteur_id']
+                    pivot_totaux[cle] = pivot_totaux.get(cle, 0.0) + montant
+            elif group_by == 'type_service':
+                # ZCTR10 — uniquement les lignes de réparation (les autres
+                # sources n'ont pas de type de service) ; un OR sans type est
+                # regroupé sous 'non_categorise'.
+                if ligne['source'] == 'reparation':
+                    libelle = ligne.get('type_service_libelle')
+                    cle = libelle if libelle else 'non_categorise'
                     pivot_totaux[cle] = pivot_totaux.get(cle, 0.0) + montant
 
             if ligne['source'] == 'reparation' and ligne['objet_id']:
@@ -1701,6 +1833,12 @@ def synthese_tva_carburant(company, periode):
     alimenter la déclaration TVA (compta LIT ce sélecteur — jamais l'inverse,
     voir CLAUDE.md).
 
+    ZCTR11 — ``par_vehicule`` signale, PAR véhicule ayant un
+    ``pct_charges_non_deductibles`` renseigné, la part de sa dépense carburant
+    (``prix_total``, sur la période) qui n'est pas déductible fiscalement
+    (plafond CGI tourisme) — les véhicules sans ce pourcentage renseigné n'y
+    figurent PAS (aucun signal fabriqué).
+
     Retourne un dict LECTURE SEULE ::
 
         {
@@ -1710,6 +1848,10 @@ def synthese_tva_carburant(company, periode):
              'tva_non_deductible': <float>}, …
           ],
           'total_recuperable': <float>, 'total_non_deductible': <float>,
+          'par_vehicule': [
+            {'vehicule_id', 'pct_charges_non_deductibles',
+             'montant_carburant', 'montant_carburant_non_deductible'}, …
+          ],
         }
 
     Aucune écriture, aucun effet de bord.
@@ -1724,8 +1866,12 @@ def synthese_tva_carburant(company, periode):
     par_mois = {}
     total_recuperable = 0.0
     total_non_deductible = 0.0
+    # ZCTR11 — cumul du carburant (prix_total) par véhicule, sur la période.
+    carburant_par_vehicule = {}
 
-    for plein in qs.values('date_plein', 'montant_tva', 'tva_recuperable'):
+    for plein in qs.values(
+            'vehicule_id', 'date_plein', 'montant_tva', 'tva_recuperable',
+            'prix_total'):
         mois = plein['date_plein'].strftime('%Y-%m')
         montant = float(plein['montant_tva'] or 0)
         bloc = par_mois.setdefault(
@@ -1738,11 +1884,35 @@ def synthese_tva_carburant(company, periode):
             bloc['tva_non_deductible'] += montant
             total_non_deductible += montant
 
+        veh_id = plein['vehicule_id']
+        carburant_par_vehicule[veh_id] = (
+            carburant_par_vehicule.get(veh_id, 0.0)
+            + float(plein['prix_total'] or 0))
+
+    par_vehicule = []
+    if carburant_par_vehicule:
+        vehicules_pct = Vehicule.objects.filter(
+            company=company,
+            id__in=carburant_par_vehicule.keys(),
+            pct_charges_non_deductibles__isnull=False,
+        ).values_list('id', 'pct_charges_non_deductibles')
+        for veh_id, pct in vehicules_pct:
+            montant_carburant = round(carburant_par_vehicule[veh_id], 2)
+            par_vehicule.append({
+                'vehicule_id': veh_id,
+                'pct_charges_non_deductibles': float(pct),
+                'montant_carburant': montant_carburant,
+                'montant_carburant_non_deductible': round(
+                    montant_carburant * float(pct) / 100.0, 2),
+            })
+        par_vehicule.sort(key=lambda r: r['vehicule_id'])
+
     return {
         'periode': [debut, fin],
         'par_mois': sorted(par_mois.values(), key=lambda b: b['mois']),
         'total_recuperable': round(total_recuperable, 2),
         'total_non_deductible': round(total_non_deductible, 2),
+        'par_vehicule': par_vehicule,
     }
 
 
@@ -2237,13 +2407,18 @@ def tco_vehicule(company, vehicule_id):
     Le ``cout_total`` somme ces postes. ``amortissement`` (cumul des dotations
     via FLOTTE30) est rapporté à titre INDICATIF mais N'EST PAS sommé au total
     (il chevauche la valeur d'acquisition, pas une dépense d'exploitation
-    récurrente). Retourne un dict LECTURE SEULE ::
+    récurrente). ZCTR11 — ``pct_charges_non_deductibles`` (catalogue/véhicule)
+    signale, à titre INDICATIF, la part de ``cout_total`` non déductible
+    fiscalement (plafond CGI tourisme) — ``None`` si non renseigné. Retourne un
+    dict LECTURE SEULE ::
 
         {
           'vehicule_id', 'actif_flotte_id',
           'carburant', 'reparations', 'pneus_pieces', 'assurances',
           'infractions', 'sinistres', 'cout_total',
           'amortissement_cumule',  # indicatif, hors total
+          'pct_charges_non_deductibles',  # ZCTR11, None si non renseigné
+          'part_charges_non_deductibles',  # ZCTR11, None si pct non renseigné
           'distance_totale_km', 'cout_par_km',  # None si distance nulle
         }
 
@@ -2296,6 +2471,16 @@ def tco_vehicule(company, vehicule_id):
 
     amort = amortissement_vehicule(company, vehicule_id)
 
+    # ZCTR11 — Part de charges non déductibles (indicative), dérivée du %
+    # catalogue/véhicule. ``None`` tant que le pourcentage n'est pas renseigné
+    # (aucune régression : les véhicules sans ce champ gardent un TCO
+    # identique à avant).
+    pct_non_deductible = getattr(vehicule, 'pct_charges_non_deductibles', None)
+    part_non_deductible = None
+    if pct_non_deductible is not None:
+        part_non_deductible = round(
+            cout_total * float(pct_non_deductible) / 100.0, 2)
+
     return {
         'vehicule_id': vehicule_id,
         'actif_flotte_id': actif_flotte_id,
@@ -2306,6 +2491,10 @@ def tco_vehicule(company, vehicule_id):
         'sinistres': round(sinistres, 2),
         'cout_total': round(cout_total, 2),
         'amortissement_cumule': amort.get('cumul_amortissements'),
+        'pct_charges_non_deductibles': (
+            float(pct_non_deductible) if pct_non_deductible is not None
+            else None),
+        'part_charges_non_deductibles': part_non_deductible,
         'distance_totale_km': distance,
         'cout_par_km': cout_par_km,
     }

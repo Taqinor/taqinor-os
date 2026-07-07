@@ -17,3 +17,26 @@ def approvals_en_attente(company):
                     status=AutomationApproval.Status.PENDING)
             .select_related('rule')
             .order_by('date_creation', 'id'))
+
+
+def closed_rule_catalogue():
+    """XPLT18 — catalogue FERMÉ des déclencheurs/actions/champs-date valides
+    pour une ``AutomationRule``, exposé aux AUTRES apps (ex. ``apps.agent``,
+    qui construit un brouillon de règle en langage naturel et doit valider le
+    JSON produit par le LLM SANS jamais importer ``apps.automation.models``
+    directement).
+
+    Renvoie des types simples (listes/dicts de chaînes) — jamais les classes
+    ``TriggerType``/``ActionType`` elles-mêmes — pour que l'appelant n'ait
+    besoin d'aucune connaissance du modèle Django sous-jacent."""
+    from .models import ActionType, DATE_TRIGGER_TARGETS, TriggerType
+
+    date_targets = {
+        f'{app_label}.{model}': sorted(fields)
+        for (app_label, model), fields in DATE_TRIGGER_TARGETS.items()
+    }
+    return {
+        'trigger_types': sorted(v for v, _ in TriggerType.choices),
+        'action_types': sorted(v for v, _ in ActionType.choices),
+        'date_trigger_targets': date_targets,
+    }

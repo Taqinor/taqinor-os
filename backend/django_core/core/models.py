@@ -538,6 +538,19 @@ class IntegrationConfig(TimestampedModel):
         "Référence du secret", max_length=120, blank=True, default='',
         help_text="Nom de variable d'environnement contenant le secret.")
 
+    # YHARD5 — gouvernance des secrets & suivi de rotation (additif). Aucune
+    # valeur de secret n'est jamais stockée ici : seulement des métadonnées de
+    # suivi (échéance, propriétaire) ; ``secret_ref`` reste la seule
+    # indirection vers la valeur réelle.
+    secret_last_rotated_at = models.DateTimeField(
+        'Dernière rotation du secret', null=True, blank=True)
+    rotation_period_days = models.PositiveIntegerField(
+        'Période de rotation (jours)', null=True, blank=True,
+        help_text='Échéance = dernière rotation + cette période. Vide = pas de suivi.')
+    secret_owner = models.CharField(
+        'Propriétaire du secret', max_length=120, blank=True, default='',
+        help_text='Texte libre (personne/équipe responsable de la rotation).')
+
     class Meta:
         verbose_name = "Configuration d'intégration"
         verbose_name_plural = "Configurations d'intégration"
@@ -1250,6 +1263,15 @@ class ConsentRecord(TimestampedModel):
         'Horodatage', null=True, blank=True,
         help_text='Date/heure du consentement (sur le consent_timestamp '
                   'existant côté métier).')
+    # ── XMKT4 — version du texte + preuve de double opt-in (loi 09-08/CNDP) ──
+    version_texte = models.CharField(
+        'Version du texte de consentement', max_length=40, blank=True,
+        default='', help_text='Version du texte présenté à la personne '
+                              '(ex. « v1-2026-07 »).')
+    ip_confirmation = models.GenericIPAddressField(
+        'IP de confirmation', null=True, blank=True,
+        help_text='IP du clic de confirmation (double opt-in), preuve '
+                  'loi 09-08.')
 
     class Meta:
         verbose_name = 'Consentement'
@@ -1408,9 +1430,17 @@ class BackupRun(TimestampedModel):
 
     KIND_EXPORT = 'export'
     KIND_RESTORE = 'restore'
+    # YOPSB1/2 — dump Postgres réel (pg_dump vers MinIO) et drill de
+    # restauration (pg_restore vers une base JETABLE). Système-wide : PAS de
+    # société unique concernée (toute l'instance), d'où ``company`` nullable
+    # ci-dessous réservé à CES deux kinds.
+    KIND_DB_DUMP = 'db_dump'
+    KIND_RESTORE_DRILL = 'restore_drill'
     KIND_CHOICES = [
         (KIND_EXPORT, 'Sauvegarde'),
         (KIND_RESTORE, 'Restauration'),
+        (KIND_DB_DUMP, 'Dump base (pg_dump)'),
+        (KIND_RESTORE_DRILL, 'Drill de restauration'),
     ]
 
     MODE_MANUEL = 'manuel'
@@ -1435,10 +1465,13 @@ class BackupRun(TimestampedModel):
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
-        related_name='backup_runs', verbose_name='Société')
+        related_name='backup_runs', verbose_name='Société',
+        null=True, blank=True,
+        help_text="Nulle UNIQUEMENT pour les kinds système "
+                  "db_dump/restore_drill (toute l'instance, pas une société).")
 
     kind = models.CharField(
-        'Type', max_length=10, choices=KIND_CHOICES, default=KIND_EXPORT)
+        'Type', max_length=14, choices=KIND_CHOICES, default=KIND_EXPORT)
     mode = models.CharField(
         'Déclenchement', max_length=10, choices=MODE_CHOICES,
         default=MODE_MANUEL)
@@ -1456,6 +1489,12 @@ class BackupRun(TimestampedModel):
     artifact_ref = models.CharField(
         "Référence de l'artefact", max_length=500, blank=True, default='',
         help_text='Chemin/URL de stockage du bundle (jamais le contenu).')
+    object_key = models.CharField(
+        'Clé objet MinIO', max_length=500, blank=True, default='',
+        help_text='YOPSB1 — clé de l\'objet .dump dans le bucket erp-backups.')
+    bytes_taille = models.BigIntegerField(
+        'Taille (octets)', null=True, blank=True,
+        help_text='YOPSB1 — taille du dump pg_dump produit.')
     manifest = models.JSONField(
         'Manifeste', default=dict, blank=True,
         help_text='Résumé du bundle (datasets + comptes), sans contenu métier.')
@@ -1468,6 +1507,17 @@ class BackupRun(TimestampedModel):
     detail = models.JSONField(
         'Détail', default=dict, blank=True,
         help_text="Compte-rendu d'exécution (erreurs, durées).")
+
+    # YOPSB3 — soft-delete LÉGER (champ direct, PAS SoftDeleteModel : le
+    # manager par défaut de BackupRun reste inchangé pour ne pas affecter les
+    # querysets existants). La purge GFS marque ``purge_is_deleted`` avant de
+    # retirer l'objet MinIO ; les runs purgés restent visibles pour l'audit
+    # via ``all_objects``-style filtre explicite si besoin.
+    purge_is_deleted = models.BooleanField(
+        'Purgé (rétention GFS)', default=False,
+        help_text='YOPSB3 — vrai une fois retiré par la purge GFS (soft-delete).')
+    purge_deleted_at = models.DateTimeField(
+        'Purgé le', null=True, blank=True)
 
     class Meta:
         verbose_name = 'Sauvegarde/restauration'
@@ -1762,3 +1812,126 @@ class DashboardPartageInterne(TimestampedModel):
     def __str__(self):
         cible = self.utilisateur_id or self.role or '—'
         return f'Dashboard {self.dashboard_id} → {cible} ({self.niveau})'
+
+
+# ---------------------------------------------------------------------------
+# YOPSB10 — Registre de rétention partagé + sweep beat unifié.
+#
+# ``RetentionRun`` journalise CHAQUE exécution d'une politique de rétention
+# enregistrée (``core.retention.register_retention_policy``). Une politique
+# balaie généralement TOUTES les sociétés (elle scope elle-même en interne),
+# d'où ``company`` NULLABLE (balayage système, transverse) — comme
+# ``BackupRun.company`` pour ses kinds système (YOPSB1/2). ``core`` reste
+# fondation : aucune app domaine n'est importée ici, ``policy_name`` est un
+# simple identifiant texte (pas de FK vers une politique métier).
+# ---------------------------------------------------------------------------
+
+
+class RetentionRun(TimestampedModel):
+    """Journal d'exécution d'une politique de rétention (YOPSB10)."""
+
+    STATUT_OK = 'ok'
+    STATUT_ECHEC = 'echec'
+    STATUT_CHOICES = [
+        (STATUT_OK, 'OK'),
+        (STATUT_ECHEC, 'Échec'),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='retention_runs', verbose_name='Société',
+        null=True, blank=True,
+        help_text='Nulle pour un balayage système transverse à toutes les '
+                  'sociétés (la politique scope elle-même en interne).')
+
+    policy_name = models.CharField(
+        'Politique', max_length=100,
+        help_text="Nom enregistré via register_retention_policy (pas de FK "
+                  "— core ne connaît aucune app domaine).")
+    dry_run = models.BooleanField(
+        'Dry-run', default=True,
+        help_text='Vrai si la politique a tourné en mode simulation '
+                  '(RETENTION_AUTO_APPLY inactif).')
+    count = models.IntegerField(
+        'Compte', default=0,
+        help_text="Nombre d'éléments supprimés/anonymisés (0 en dry-run si "
+                  "la politique ne fait que compter).")
+    statut = models.CharField(
+        'Statut', max_length=10, choices=STATUT_CHOICES, default=STATUT_OK)
+    erreur = models.TextField('Erreur', blank=True, default='')
+    executed_at = models.DateTimeField('Exécuté le', default=timezone.now)
+
+    class Meta:
+        verbose_name = 'Exécution de rétention'
+        verbose_name_plural = 'Exécutions de rétention'
+        ordering = ['-executed_at', '-id']
+        indexes = [
+            models.Index(fields=['policy_name', '-executed_at'],
+                         name='core_retentionrun_policy_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.policy_name} ({self.statut}, {self.count})'
+
+
+# ---------------------------------------------------------------------------
+# YHARD4 — traduction du CONTENU saisi (i18n des données MAÎTRES, ≠ i18n de
+# l'UI, déjà livrée par N93/N94 via frontend/src/i18n/ + parametres.
+# TranslationOverride).
+#
+# ``ContentTranslation`` est un modèle GÉNÉRIQUE réutilisable : n'importe
+# quelle app métier peut y stocker une variante de langue d'un de ses champs
+# texte (désignation produit, article KB, clause de contrat…) SANS que
+# ``core`` importe la moindre app de domaine — la cible est désignée par
+# ``content_type`` + ``object_id`` (contenttypes, fondation Django) exactement
+# comme ``AuditLog``/``EsignRequest``. Traduction MANUELLE stockée (aucun
+# appel machine ici) ; l'aide de lecture ``core.i18n_content.translated_value``
+# fait le fallback vers la langue par défaut (FR) quand la variante demandée
+# est absente.
+# ---------------------------------------------------------------------------
+
+
+class ContentTranslation(TimestampedModel):
+    """Variante de langue d'un champ texte d'un objet métier quelconque.
+
+    Multi-tenant : ``company`` forcée côté serveur. Une seule variante par
+    ``(company, content_type, object_id, locale, field)`` — un upsert écrase
+    la précédente plutôt que d'en accumuler des doublons.
+    """
+
+    class Locale(models.TextChoices):
+        FR = 'fr', 'Français'
+        EN = 'en', 'English'
+        AR = 'ar', 'العربية'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='content_translations', verbose_name='Société')
+
+    content_type = models.ForeignKey(
+        'contenttypes.ContentType', on_delete=models.CASCADE)
+    object_id = models.CharField(max_length=64)
+    content_object = GenericForeignKey('content_type', 'object_id')
+
+    locale = models.CharField(
+        'Langue', max_length=5, choices=Locale.choices)
+    field = models.CharField(
+        'Champ', max_length=100,
+        help_text='Nom du champ traduit (ex. « nom », « description », « titre », « corps »).')
+    value = models.TextField('Valeur traduite')
+
+    class Meta:
+        verbose_name = 'Traduction de contenu'
+        verbose_name_plural = 'Traductions de contenu'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'content_type', 'object_id', 'locale', 'field'],
+                name='core_contenttranslation_unique'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'content_type', 'object_id'],
+                         name='core_contenttrans_obj_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.content_type}#{self.object_id} [{self.locale}] {self.field}'

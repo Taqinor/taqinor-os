@@ -45,6 +45,10 @@ from .views import (
     TenantThemeViewSet,
     TrashViewSet,
     WorkflowTemplateViewSet,
+    health_live,
+    health_ready,
+    metrics_view,
+    secrets_rotation_due,
 )
 
 router = DefaultRouter()
@@ -105,4 +109,12 @@ urlpatterns = router.urls + [
     path('dashboards-partages/public/<str:token>/', dashboard_public,
          name='dashboard-partage-public'),
     path('dashboards-tv/', dashboard_tv, name='dashboard-tv'),
+    # YOPSB14 — probes readiness/liveness légers, non authentifiés, jamais
+    # de données société (à sonder par nginx/Caddy avant de router).
+    path('health/live/', health_live, name='health-live'),
+    path('health/ready/', health_ready, name='health-ready'),
+    # YHARD5 — tableau « Secrets & rotation » (admin-only, jamais la valeur).
+    path('secrets/rotation/', secrets_rotation_due, name='secrets-rotation-due'),
+    # YHARD6 — métriques Prometheus (admin OU IP-allowlist, jamais public).
+    path('metrics/', metrics_view, name='metrics'),
 ]

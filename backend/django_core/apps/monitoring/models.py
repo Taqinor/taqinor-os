@@ -241,3 +241,77 @@ class UnderperformanceFlag(models.Model):
 
     def __str__(self):
         return f'Flag #{self.installation_id} ({"ouvert" if self.is_open else "fermé"})'
+
+
+# ── FG244 — Abonnements de monitoring (revenu récurrent) ───────────────────
+# ODX16 — relogé depuis ``apps.compta`` (défaut fondateur : monitoring, car le
+# modèle référence les configs de supervision ; facturation future via services
+# ventes). La table physique existante est PRÉSERVÉE À L'IDENTIQUE
+# (``db_table = 'compta_abonnementmonitoring'``) via des migrations
+# ``SeparateDatabaseAndState`` (state-only, aucun SQL, aucune donnée déplacée) :
+# compta 0105 le retire de l'état AVANT que monitoring 0004 ne le recrée sur la
+# MÊME table. Un shim de ré-export subsiste dans ``apps/compta/models.py`` pour
+# le code/migrations/services historiques. Client/installation restent
+# référencés par id (cross-app — jamais d'import crm/installations).
+
+class AbonnementMonitoring(models.Model):
+    """Abonnement de supervision (monitoring) mensuel/annuel (FG244).
+
+    Offre de revenu récurrent adossée au module monitoring : le client paie une
+    supervision périodique de son installation. Client/installation référencés
+    par id (cross-app — jamais d'import monitoring/crm). ``prochaine_echeance``
+    est recalculée à chaque renouvellement selon la périodicité. Scopé société.
+    """
+    class Periodicite(models.TextChoices):
+        MENSUEL = 'mensuel', 'Mensuel'
+        ANNUEL = 'annuel', 'Annuel'
+
+    class Statut(models.TextChoices):
+        ACTIF = 'actif', 'Actif'
+        SUSPENDU = 'suspendu', 'Suspendu'
+        RESILIE = 'resilie', 'Résilié'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='abonnements_monitoring',
+        verbose_name='Société',
+    )
+    client_id = models.PositiveIntegerField(verbose_name='Id du client')
+    installation_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="Id de l'installation")
+    periodicite = models.CharField(
+        max_length=8, choices=Periodicite.choices, default=Periodicite.MENSUEL,
+        verbose_name='Périodicité')
+    montant = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name='Montant par période (MAD)')
+    statut = models.CharField(
+        max_length=8, choices=Statut.choices, default=Statut.ACTIF,
+        verbose_name='Statut')
+    date_debut = models.DateField(
+        null=True, blank=True, verbose_name='Date de début')
+    prochaine_echeance = models.DateField(
+        null=True, blank=True, verbose_name='Prochaine échéance')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    # YSUBS3 — dernière période facturée (garde d'idempotence : ne re-facture
+    # jamais la même `prochaine_echeance`). NULL = jamais facturé
+    # (comportement historique intact tant que personne n'appelle
+    # `facturer`).
+    derniere_facturation = models.DateField(
+        null=True, blank=True, verbose_name='Dernière période facturée')
+    # YSUBS4 — motif de résiliation (obligatoire à la résiliation, posé par
+    # le service ``resilier_abonnement_monitoring``, jamais le viewset).
+    motif_resiliation = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Motif de résiliation')
+
+    class Meta:
+        verbose_name = 'Abonnement de monitoring'
+        verbose_name_plural = 'Abonnements de monitoring'
+        db_table = 'compta_abonnementmonitoring'
+        ordering = ['prochaine_echeance', 'id']
+
+    def __str__(self):
+        return f'Monitoring client #{self.client_id} ({self.periodicite})'

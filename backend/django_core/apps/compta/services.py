@@ -25,6 +25,7 @@ import hashlib
 import io
 import re
 import urllib.request
+import uuid
 from decimal import ROUND_HALF_UP, Decimal
 from math import asin, cos, radians, sin, sqrt
 
@@ -52,7 +53,7 @@ from .models import (
     LigneRegleImputation, DemandeApprobationRib,
     Immobilisation, IndemniteChantier, Journal, LigneEcriture,
     LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, NoteFrais,
-    OuverturePartage, PlafondNoteFrais,
+    OuverturePartage, PlafondNoteFrais, RapportNoteFrais,
     PaymentRun, PaymentRunLine, PeriodeComptable, PlanAmortissement,
     PlanComptable, PointageReleve, Provision, ProvisionCreance, Rapprochement,
     RapprochementBancaire, RelanceDevisAbandonne, RetenueSource,
@@ -70,6 +71,15 @@ from .models import (
     SequenceRelance, EnvoiCampagne, SuppressionMarketing,
     ListeDiffusion, AbonnementListe, RebondSoft,
     Compensation, LigneCompensation,
+    LienTrackee, ClicLien,
+    StatutEngagementContact,
+    ApprobationEnvoiCampagne,
+    Enquete, ReponseEnquete,
+    InscriptionEvenement,
+    EvenementMarketing,
+    SupportOffline,
+    DomaineEnvoi,
+    CommunicationEvenement,
 )
 
 
@@ -4273,6 +4283,235 @@ def rembourser_note_frais(note, *, compte_tresorerie, date_remboursement=None,
     return note
 
 
+# ── ZACC6 — Rapport de notes de frais (regroupement multi-lignes) ─────────
+
+def creer_rapport_note_frais(company, *, employe, note_frais_ids,
+                             libelle='', user=None):
+    """Crée un ``RapportNoteFrais`` (ZACC6) en BROUILLON et y RATTACHE les
+    notes désignées (``rapport = ce rapport``).
+
+    Les notes doivent appartenir à la MÊME société + au MÊME employé, être en
+    ``brouillon`` ou ``rejetee`` (pas déjà engagées dans un cycle de
+    validation), et ne pas déjà porter un rapport. Référence ``RNF-`` posée
+    côté serveur (fabrique gap-free race-safe). Renvoie le rapport.
+    """
+    notes = list(NoteFrais.objects.filter(
+        company=company, employe=employe, id__in=note_frais_ids))
+    if len(notes) != len(set(note_frais_ids or [])):
+        raise ValidationError(
+            "Certaines notes de frais sont introuvables pour cet employé.")
+    for note in notes:
+        if note.rapport_id is not None:
+            raise ValidationError(
+                f"La note {note.reference or note.id} appartient déjà à un "
+                "rapport.")
+        if note.statut not in (NoteFrais.Statut.BROUILLON,
+                               NoteFrais.Statut.REJETEE):
+            raise ValidationError(
+                f"La note {note.reference or note.id} n'est pas en "
+                "brouillon/rejetée : impossible de la regrouper.")
+    rapport = RapportNoteFrais(
+        company=company, employe=employe, libelle=libelle or '',
+        created_by=user)
+
+    def _save(reference):
+        rapport.reference = reference
+        rapport.save()
+        NoteFrais.objects.filter(
+            id__in=[n.id for n in notes]).update(rapport=rapport)
+        return rapport
+
+    from apps.ventes.utils.references import create_with_reference
+    return create_with_reference(RapportNoteFrais, 'RNF', company, _save)
+
+
+def soumettre_rapport_note_frais(rapport):
+    """Soumet le RAPPORT (brouillon → soumis) — ZACC6. Soumet aussi chaque
+    note rattachée encore en brouillon/rejetée (jamais un double-cycle)."""
+    if rapport.statut not in (RapportNoteFrais.Statut.BROUILLON,):
+        raise ValidationError(
+            "Seul un rapport en brouillon peut être soumis.")
+    for note in rapport.notes.all():
+        if note.statut in (NoteFrais.Statut.BROUILLON,
+                           NoteFrais.Statut.REJETEE):
+            soumettre_note_frais(note)
+    rapport.statut = RapportNoteFrais.Statut.SOUMIS
+    rapport.save(update_fields=['statut'])
+    return rapport
+
+
+@transaction.atomic
+def valider_rapport_note_frais(rapport, *, user=None):
+    """Valide le RAPPORT et poste UNE écriture AGRÉGÉE (ZACC6).
+
+    Σ des charges (groupées PAR COMPTE de charge) au débit / crédit UNIQUE
+    4432 personnel-créditeur pour le total — une seule écriture équilibrée au
+    lieu d'une par note. RESPECTE le verrou de période sur la date du jour.
+    Idempotent : un rapport déjà validé renvoie son rapport inchangé. Chaque
+    note rattachée passe individuellement à ``VALIDEE`` (même effet qu'un
+    ``valider_note_frais`` un par un) MAIS sans poster sa propre écriture —
+    seule l'écriture agrégée du rapport est créée.
+    """
+    if rapport.statut == RapportNoteFrais.Statut.VALIDE:
+        return rapport
+    if rapport.statut != RapportNoteFrais.Statut.SOUMIS:
+        raise ValidationError("Seul un rapport soumis peut être validé.")
+    company = rapport.company
+    notes = list(rapport.notes.filter(statut=NoteFrais.Statut.SOUMISE))
+    if not notes:
+        raise ValidationError(
+            "Aucune note soumise dans ce rapport : rien à valider.")
+    date_ref = max(note.date_frais for note in notes)
+    if PeriodeComptable.date_verrouillee(company.id, date_ref):
+        raise ValidationError(
+            "Période comptable clôturée : impossible de valider le rapport "
+            f"de notes de frais au {date_ref}.")
+    total = sum((Decimal(n.montant or 0) for n in notes), Decimal('0'))
+    if total <= 0:
+        raise ValidationError(
+            "Impossible de valider un rapport de montant total nul.")
+    # Regroupe Σ par compte de charge (celui de chaque note, ou le défaut) :
+    # {compte_id: (compte, montant_cumule)}.
+    par_compte = {}
+    for note in notes:
+        charge = note.compte_charge or _assurer_compte(
+            company, _COMPTE_NOTE_FRAIS_DEFAUT)
+        _, cumul = par_compte.get(charge.id, (charge, Decimal('0')))
+        par_compte[charge.id] = (charge, cumul + Decimal(note.montant or 0))
+    personnel = _assurer_compte(company, _COMPTE_PERSONNEL_CREDITEUR)
+    journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+    if journal is None:
+        seed_journaux(company)
+        journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+    libelle = f"Rapport de notes de frais {rapport.reference}"
+    lignes = [
+        {'compte': charge, 'debit': montant, 'credit': Decimal('0'),
+         'libelle': libelle}
+        for (charge, montant) in par_compte.values()
+    ]
+    lignes.append({
+        'compte': personnel, 'debit': Decimal('0'), 'credit': total,
+        'libelle': libelle, 'tiers_type': 'employe',
+        'tiers_id': rapport.employe_id,
+    })
+    ecriture = creer_ecriture(
+        company, journal, date_ref, libelle, lignes,
+        reference=rapport.reference or f'RNF-{rapport.id}',
+        source_type='rapport_note_frais', source_id=rapport.id,
+        created_by=user, statut=EcritureComptable.Statut.VALIDEE,
+    )
+    for note in notes:
+        charge = note.compte_charge or _assurer_compte(
+            company, _COMPTE_NOTE_FRAIS_DEFAUT)
+        note.statut = NoteFrais.Statut.VALIDEE
+        note.compte_charge = charge
+        note.valide_par = user
+        note.date_validation = timezone.now()
+        note.ecriture_charge = ecriture
+        note.save(update_fields=[
+            'statut', 'compte_charge', 'valide_par', 'date_validation',
+            'ecriture_charge'])
+    rapport.statut = RapportNoteFrais.Statut.VALIDE
+    rapport.valide_par = user
+    rapport.date_validation = timezone.now()
+    rapport.ecriture_charge = ecriture
+    rapport.save(update_fields=[
+        'statut', 'valide_par', 'date_validation', 'ecriture_charge'])
+    return rapport
+
+
+@transaction.atomic
+def rembourser_rapport_note_frais(rapport, *, compte_tresorerie,
+                                  date_remboursement=None,
+                                  mode_remboursement=None, user=None):
+    """Rembourse le RAPPORT validé en UN SEUL paiement agrégé (ZACC6).
+
+    Débit 4432 personnel-créditeur (Σ du rapport) / crédit du compte de
+    trésorerie payeur. RESPECTE le verrou de période. Idempotent : un rapport
+    déjà remboursé renvoie son rapport inchangé, jamais re-postable. Chaque
+    note rattachée passe à ``REMBOURSEE``.
+    """
+    if rapport.statut == RapportNoteFrais.Statut.REMBOURSE:
+        return rapport
+    if rapport.statut != RapportNoteFrais.Statut.VALIDE:
+        raise ValidationError("Seul un rapport validé peut être remboursé.")
+    company = rapport.company
+    if compte_tresorerie is None:
+        raise ValidationError(
+            "Un compte de trésorerie payeur est requis pour le "
+            "remboursement.")
+    if compte_tresorerie.company_id != company.id:
+        raise ValidationError("Compte de trésorerie inconnu.")
+    notes = list(rapport.notes.filter(statut=NoteFrais.Statut.VALIDEE))
+    if not notes:
+        raise ValidationError(
+            "Aucune note validée dans ce rapport : rien à rembourser.")
+    total = sum((Decimal(n.montant or 0) for n in notes), Decimal('0'))
+    date_rbt = date_remboursement or timezone.localdate()
+    if PeriodeComptable.date_verrouillee(company.id, date_rbt):
+        raise ValidationError(
+            "Période comptable clôturée : impossible de rembourser le "
+            f"rapport de notes de frais à la date du {date_rbt}.")
+    personnel = _assurer_compte(company, _COMPTE_PERSONNEL_CREDITEUR)
+    compte_treso = compte_tresorerie.compte_comptable
+    if compte_tresorerie.type_compte == CompteTresorerie.Type.CAISSE:
+        journal = _journal(company, Journal.Type.CAISSE)
+    else:
+        journal = _journal(company, Journal.Type.BANQUE)
+    if journal is None:
+        seed_journaux(company)
+        journal = _journal(
+            company,
+            Journal.Type.CAISSE
+            if compte_tresorerie.type_compte == CompteTresorerie.Type.CAISSE
+            else Journal.Type.BANQUE)
+    libelle = (f"Remboursement rapport de notes de frais {rapport.reference}"
+               f" — {rapport.employe_id}")
+    lignes = [
+        {'compte': personnel, 'debit': total, 'credit': Decimal('0'),
+         'libelle': libelle, 'tiers_type': 'employe',
+         'tiers_id': rapport.employe_id},
+        {'compte': compte_treso, 'debit': Decimal('0'), 'credit': total,
+         'libelle': libelle},
+    ]
+    ecriture = creer_ecriture(
+        company, journal, date_rbt, libelle, lignes,
+        reference=rapport.reference or f'RNF-{rapport.id}',
+        # ZACC6 — ``source_type`` est un CharField(max_length=30) ; la valeur
+        # 'rapport_note_frais_remboursement' (32) dépassait la limite →
+        # DataError à l'insert (aucune écriture n'a jamais été persistée, donc
+        # zéro impact données). Valeur raccourcie (≤30) ; l'écriture est reliée
+        # au rapport par la FK ``ecriture_remboursement``, jamais relue par cette
+        # chaîne — aucun lecteur/préfixe ne l'utilise.
+        source_type='rapport_frais_remboursement', source_id=rapport.id,
+        created_by=user, statut=EcritureComptable.Statut.VALIDEE,
+    )
+    for note in notes:
+        note.statut = NoteFrais.Statut.REMBOURSEE
+        note.compte_tresorerie = compte_tresorerie
+        note.mode_remboursement = (
+            mode_remboursement or note.mode_remboursement
+            or NoteFrais.ModeRemboursement.VIREMENT)
+        note.date_remboursement = date_rbt
+        note.rembourse_par = user
+        note.ecriture_remboursement = ecriture
+        note.save(update_fields=[
+            'statut', 'compte_tresorerie', 'mode_remboursement',
+            'date_remboursement', 'rembourse_par', 'ecriture_remboursement'])
+    rapport.statut = RapportNoteFrais.Statut.REMBOURSE
+    rapport.compte_tresorerie = compte_tresorerie
+    rapport.mode_remboursement = (
+        mode_remboursement or rapport.mode_remboursement
+        or RapportNoteFrais.ModeRemboursement.VIREMENT)
+    rapport.date_remboursement = date_rbt
+    rapport.rembourse_par = user
+    rapport.ecriture_remboursement = ecriture
+    rapport.save(update_fields=[
+        'statut', 'compte_tresorerie', 'mode_remboursement',
+        'date_remboursement', 'rembourse_par', 'ecriture_remboursement'])
+    return rapport
+
+
 # ── FG136 — Indemnités kilométriques & per-diem chantier ───────────────────
 
 # Compte de charge par défaut imputé à une indemnité chantier validée : le même
@@ -5832,6 +6071,360 @@ def brevo_actif():
                 and getattr(settings, 'BREVO_API_KEY', ''))
 
 
+# ── XMKT7 — Planification, throttling et fenêtres de silence d'envoi ───────
+
+def _hors_fenetre_silence(company, maintenant=None):
+    """XMKT7 — True si ``maintenant`` (par défaut l'instant présent) tombe
+    dans une fenêtre de silence (nuit ou jour férié/non-ouvré) pour
+    ``company``. Réutilise le selector de ``notifications`` — jamais
+    d'import direct de ses modèles.
+    """
+    from apps.notifications import selectors as notifications_selectors
+    return notifications_selectors.est_hors_fenetre_silence(
+        maintenant or timezone.now(), company)
+
+
+def _plafond_pression_atteint(company, destinataire):
+    """XMKT7 — True si ``destinataire`` a déjà atteint le plafond de pression
+    marketing (tous canaux, campagnes + séquences confondus) sur la fenêtre
+    glissante société. Sans réglage (``pression_marketing_max_par_contact``
+    NULL), aucune limite (comportement actuel).
+    """
+    if not destinataire:
+        return False
+    try:
+        from apps.parametres.models_company import CompanyProfile
+        profil = CompanyProfile.objects.filter(company=company).first()
+    except Exception:  # pragma: no cover - défensif
+        profil = None
+    plafond = getattr(profil, 'pression_marketing_max_par_contact', None)
+    if not plafond:
+        return False
+    periode_jours = getattr(profil, 'pression_marketing_periode_jours', 7) or 7
+    depuis = timezone.now() - timezone.timedelta(days=periode_jours)
+    nb_campagnes = EnvoiCampagne.objects.filter(
+        company=company, destinataire=destinataire,
+        date_creation__gte=depuis,
+    ).exclude(statut=EnvoiCampagne.Statut.REBOND).count()
+    nb_sequences = ExecutionEtapeSequence.objects.filter(
+        company=company, execute_le__gte=depuis,
+        inscription__lead_reference=destinataire,
+    ).count() if destinataire else 0
+    return (nb_campagnes + nb_sequences) >= plafond
+
+
+# ── XMKT22 — Politique « sunset » d'engagement ──────────────────────────────
+
+def sunset_fenetre_jours(company):
+    """XMKT22 — fenêtre société (jours), ``None`` si désactivé (défaut)."""
+    try:
+        from apps.parametres.models_company import CompanyProfile
+        profil = CompanyProfile.objects.filter(company=company).first()
+        return getattr(profil, 'sunset_fenetre_jours', None) if profil else None
+    except Exception:  # pragma: no cover - défensif
+        return None
+
+
+def est_dormant(company, destinataire):
+    """XMKT22 — True si ``destinataire`` est marqué dormant (comportement
+    historique préservé si la politique est désactivée, ou si le contact n'a
+    jamais été évalué)."""
+    if not destinataire:
+        return False
+    return StatutEngagementContact.objects.filter(
+        company=company, destinataire=destinataire,
+        statut=StatutEngagementContact.Statut.DORMANT).exists()
+
+
+def recalculer_dormants(company, *, maintenant=None):
+    """XMKT22 — Enveloppe beat : recalcule le statut d'engagement de chaque
+    destinataire connu (EnvoiCampagne) sur la fenêtre société. Désactivé
+    (``sunset_fenetre_jours`` NULL) : no-op, aucun contact n'est jamais
+    marqué dormant. Un destinataire sans AUCUNE ouverture/clic sur la
+    fenêtre → dormant ; sinon → actif (réactivation automatique s'il
+    redevient engagé). Renvoie le nombre de destinataires marqués dormants.
+    """
+    fenetre = sunset_fenetre_jours(company)
+    if not fenetre:
+        return 0
+    maintenant = maintenant or timezone.now()
+    depuis = maintenant - timezone.timedelta(days=fenetre)
+    destinataires = set(
+        EnvoiCampagne.objects.filter(company=company)
+        .values_list('destinataire', flat=True).distinct())
+    marques_dormants = 0
+    for destinataire in destinataires:
+        if not destinataire:
+            continue
+        engage_recemment = EnvoiCampagne.objects.filter(
+            company=company, destinataire=destinataire,
+        ).filter(
+            Q(ouvert_le__gte=depuis) | Q(clique_le__gte=depuis)
+        ).exists()
+        nouveau_statut = (
+            StatutEngagementContact.Statut.ACTIF if engage_recemment
+            else StatutEngagementContact.Statut.DORMANT)
+        obj, _cree = StatutEngagementContact.objects.update_or_create(
+            company=company, destinataire=destinataire,
+            defaults={'statut': nouveau_statut})
+        if nouveau_statut == StatutEngagementContact.Statut.DORMANT:
+            marques_dormants += 1
+    return marques_dormants
+
+
+def reactiver_contact(company, destinataire):
+    """XMKT22 — réactive un contact dormant (chemin de re-permission : clic
+    sur la campagne dédiée « voulez-vous rester informé ? »)."""
+    StatutEngagementContact.objects.update_or_create(
+        company=company, destinataire=destinataire,
+        defaults={'statut': StatutEngagementContact.Statut.ACTIF})
+
+
+# ── XMKT23 — Approbation avant envoi de masse + journal d'audit ────────────
+
+def seuil_approbation_envoi_masse(company):
+    """XMKT23 — seuil société (défaut 100)."""
+    try:
+        from apps.parametres.models_company import CompanyProfile
+        profil = CompanyProfile.objects.filter(company=company).first()
+        return getattr(profil, 'seuil_approbation_envoi_masse', 100) if profil else 100
+    except Exception:  # pragma: no cover - défensif
+        return 100
+
+
+def demander_ou_envoyer_campagne(campagne, *, destinataires=None, user=None):
+    """XMKT23 — au-delà du seuil société de destinataires, crée une demande
+    d'approbation EN ATTENTE au lieu d'envoyer directement ; sous le seuil,
+    envoie normalement (comportement actuel préservé). Renvoie
+    ``(campagne, approbation_ou_none)``.
+    """
+    nb = len(destinataires or [])
+    seuil = seuil_approbation_envoi_masse(campagne.company)
+    if nb <= seuil:
+        return envoyer_campagne(campagne, destinataires=destinataires), None
+    approbation = ApprobationEnvoiCampagne.objects.create(
+        company=campagne.company, campagne=campagne,
+        nb_destinataires_demandes=nb, demande_par=user,
+    )
+    # Conserve les destinataires demandés pour l'envoi une fois approuvé.
+    campagne.segment = dict(campagne.segment or {})
+    campagne.segment['_xmkt23_destinataires_en_attente'] = list(destinataires or [])
+    campagne.save(update_fields=['segment'])
+    return campagne, approbation
+
+
+def approuver_envoi_campagne(approbation, *, user=None):
+    """XMKT23 — approuve une demande EN ATTENTE, déclenche l'envoi
+    différé."""
+    if approbation.statut != ApprobationEnvoiCampagne.Statut.EN_ATTENTE:
+        return approbation
+    approbation.statut = ApprobationEnvoiCampagne.Statut.APPROUVE
+    approbation.decide_par = user
+    approbation.date_decision = timezone.now()
+    approbation.save(update_fields=['statut', 'decide_par', 'date_decision'])
+    destinataires = (approbation.campagne.segment or {}).pop(
+        '_xmkt23_destinataires_en_attente', [])
+    envoyer_campagne(approbation.campagne, destinataires=destinataires)
+    return approbation
+
+
+def rejeter_envoi_campagne(approbation, *, motif='', user=None):
+    """XMKT23 — rejette une demande EN ATTENTE (motivé) ; la campagne reste
+    brouillon, jamais envoyée."""
+    if approbation.statut != ApprobationEnvoiCampagne.Statut.EN_ATTENTE:
+        return approbation
+    approbation.statut = ApprobationEnvoiCampagne.Statut.REJETE
+    approbation.decide_par = user
+    approbation.motif_rejet = motif or ''
+    approbation.date_decision = timezone.now()
+    approbation.save(update_fields=[
+        'statut', 'decide_par', 'motif_rejet', 'date_decision'])
+    return approbation
+
+
+def journal_audit_envois(company):
+    """XMKT23 — journal d'audit immuable : qui a envoyé/approuvé quoi à
+    combien de contacts, horodaté (dérivé des ``ApprobationEnvoiCampagne`` +
+    des campagnes envoyées directement sous le seuil)."""
+    lignes = []
+    for approb in ApprobationEnvoiCampagne.objects.filter(company=company):
+        lignes.append({
+            'campagne_id': approb.campagne_id,
+            'campagne_nom': approb.campagne.nom,
+            'nb_destinataires': approb.nb_destinataires_demandes,
+            'statut': approb.statut,
+            'demande_par': getattr(approb.demande_par, 'username', None),
+            'decide_par': getattr(approb.decide_par, 'username', None),
+            'date_creation': approb.date_creation,
+            'date_decision': approb.date_decision,
+        })
+    return lignes
+
+
+# ── ZMKT1 — Statuts de pipeline mailing + vue Kanban ────────────────────────
+
+def campagnes_par_statut(company):
+    """ZMKT1 — groupe les campagnes par statut (company-scoped) pour la vue
+    Kanban (4 colonnes : brouillon/en_file+envoi_en_cours/envoyee/annulee).
+    """
+    resultat = {statut: [] for statut, _ in Campagne.Statut.choices}
+    # ZMKT3 — un modèle n'est jamais envoyé, jamais dans le pipeline d'envoi.
+    qs = Campagne.objects.filter(
+        company=company, est_modele=False).order_by('-date_creation')
+    for campagne in qs:
+        taux_ouverture = 0.0
+        if campagne.nb_envois:
+            taux_ouverture = round(
+                campagne.nb_ouvertures / campagne.nb_envois * 100, 1)
+        resultat.setdefault(campagne.statut, []).append({
+            'id': campagne.id,
+            'nom': campagne.nom,
+            'canal': campagne.canal,
+            'nb_destinataires': campagne.nb_destinataires,
+            'taux_ouverture_pct': taux_ouverture,
+        })
+    return resultat
+
+
+# ── ZMKT3 — Enregistrer une campagne comme modèle réutilisable ─────────────
+
+def creer_depuis_modele(modele):
+    """ZMKT3 — clone objet/corps/canal/segment/variantes langue (XMKT11)
+    d'un modèle dans une nouvelle campagne BROUILLON indépendante. Le clone
+    n'altère JAMAIS le modèle source (jamais un ``.save()`` dessus)."""
+    clone = Campagne.objects.create(
+        company=modele.company,
+        nom=f'{modele.nom} (copie)',
+        canal=modele.canal,
+        objet=modele.objet,
+        corps=modele.corps,
+        segment=dict(modele.segment or {}),
+        sms_sender_id=modele.sms_sender_id,
+        variantes_langue=dict(modele.variantes_langue or {}),
+        est_modele=False,
+    )
+    clone.listes.set(modele.listes.all())
+    return clone
+
+
+# ── ZMKT4 — Actions Renvoyer les échecs / Dupliquer / Annuler ──────────────
+
+def dupliquer_campagne(campagne):
+    """ZMKT4 — clone une campagne en brouillon indépendant (mêmes règles que
+    ZMKT3 ``creer_depuis_modele``, mais depuis N'IMPORTE QUELLE campagne, pas
+    seulement un modèle)."""
+    clone = Campagne.objects.create(
+        company=campagne.company,
+        nom=f'{campagne.nom} (copie)',
+        canal=campagne.canal,
+        objet=campagne.objet,
+        corps=campagne.corps,
+        segment=dict(campagne.segment or {}),
+        sms_sender_id=campagne.sms_sender_id,
+        variantes_langue=dict(campagne.variantes_langue or {}),
+        est_modele=False,
+    )
+    clone.listes.set(campagne.listes.all())
+    return clone
+
+
+def annuler_campagne(campagne):
+    """ZMKT4 — annule une campagne ``en_file``/``envoi_en_cours`` : le beat
+    cesse tout envoi restant (journalisé). Idempotent — une campagne déjà
+    envoyée/annulée n'est pas modifiée."""
+    if campagne.statut not in (
+            Campagne.Statut.EN_FILE, Campagne.Statut.ENVOI_EN_COURS,
+            Campagne.Statut.BROUILLON):
+        return campagne
+    campagne.statut = Campagne.Statut.ANNULEE
+    campagne.save(update_fields=['statut'])
+    return campagne
+
+
+def renvoyer_echecs_campagne(campagne):
+    """ZMKT4 — recrée l'envoi UNIQUEMENT vers les destinataires en statut
+    rebond soft/échec récupérable de la trace XMKT2 (jamais les
+    désinscrits/consentement refusé — motifs
+    ``consentement_refuse_ou_absent``/``plafond_pression_marketing``/
+    ``contact_dormant_sunset`` exclus)."""
+    motifs_non_recuperables = {
+        'consentement_refuse_ou_absent', 'plafond_pression_marketing',
+        'contact_dormant_sunset',
+    }
+    echecs = campagne.envois.filter(
+        statut=EnvoiCampagne.Statut.REBOND,
+    ).exclude(raison_smtp__in=motifs_non_recuperables)
+    destinataires = [e.destinataire for e in echecs]
+    if not destinataires:
+        return []
+    nouvelle_campagne = Campagne.objects.create(
+        company=campagne.company,
+        nom=f'{campagne.nom} (renvoi échecs)',
+        canal=campagne.canal, objet=campagne.objet, corps=campagne.corps,
+    )
+    envoyer_campagne(nouvelle_campagne, destinataires=destinataires)
+    return [nouvelle_campagne]
+
+
+def _destinataires_des_listes(campagne):
+    """XMKT7 — résout les destinataires INSCRITS des ``listes`` ciblées par
+    la campagne (XMKT5). Simple source stable pour l'envoi planifié beat —
+    ne duplique pas la résolution de segment (XMKT6, IDs de lead).
+    """
+    abonnements = AbonnementListe.objects.filter(
+        liste__in=campagne.listes.all(),
+        statut=AbonnementListe.Statut.INSCRIT,
+    ).values('destinataire', 'contact_ref').distinct()
+    vus = set()
+    resultat = []
+    for a in abonnements:
+        dest = a['destinataire']
+        if dest in vus:
+            continue
+        vus.add(dest)
+        resultat.append({'destinataire': dest, 'contact_ref': a['contact_ref'] or ''})
+    return resultat
+
+
+def planifier_campagne(campagne, *, planifiee_le):
+    """ZMKT1 — planifie une campagne : passe ``brouillon`` → ``en_file``
+    (pipeline Odoo-style Draft → In Queue). Idempotent (no-op si déjà
+    planifiée/envoyée/annulée)."""
+    if campagne.statut != Campagne.Statut.BROUILLON:
+        return campagne
+    campagne.planifiee_le = planifiee_le
+    campagne.statut = Campagne.Statut.EN_FILE
+    campagne.save(update_fields=['planifiee_le', 'statut'])
+    return campagne
+
+
+def envoyer_campagnes_planifiees(company, *, maintenant=None):
+    """XMKT7 — Enveloppe beat : envoie chaque campagne ``planifiee_le`` dont
+    l'échéance est atteinte, par lots throttlés si ``debit_max_par_heure``
+    est renseigné (le lot = les destinataires des listes ciblées, tronqué au
+    débit horaire ; le reliquat repart en file au prochain passage beat en
+    restant ``en_file`` avec sa ``planifiee_le`` inchangée).
+
+    ZMKT1 — la campagne passe ``en_file`` → ``envoi_en_cours`` (positionné
+    par le moteur d'envoi) → ``envoyee``.
+    """
+    maintenant = maintenant or timezone.now()
+    campagnes = Campagne.objects.filter(
+        company=company,
+        statut__in=[Campagne.Statut.BROUILLON, Campagne.Statut.EN_FILE],
+        planifiee_le__isnull=False, planifiee_le__lte=maintenant,
+    )
+    envoyees = []
+    for campagne in campagnes:
+        destinataires = _destinataires_des_listes(campagne)
+        if campagne.debit_max_par_heure:
+            lot = destinataires[:campagne.debit_max_par_heure]
+        else:
+            lot = destinataires
+        envoyees.append(envoyer_campagne(campagne, destinataires=lot))
+    return envoyees
+
+
 def envoyer_campagne(campagne, *, destinataires=None):
     """Déclenche l'envoi groupé d'une campagne (FG201), idempotent.
 
@@ -5847,31 +6440,123 @@ def envoyer_campagne(campagne, *, destinataires=None):
     après ré-import de contacts. Chaque destinataire restant obtient sa ligne
     ``EnvoiCampagne`` (XMKT2), point de départ du drill-down par KPI et du
     suivi webhook Brevo.
+
+    ZMKT1 — pipeline Odoo-style : accepte une campagne ``brouillon`` (envoi
+    direct) ou ``en_file`` (planifiée, XMKT7) ; passe transitoirement par
+    ``envoi_en_cours`` pendant le traitement du lot avant ``envoyee``.
     """
-    if campagne.statut != Campagne.Statut.BROUILLON:
+    if campagne.statut not in (Campagne.Statut.BROUILLON, Campagne.Statut.EN_FILE):
         return campagne
+    statut_avant = campagne.statut
+    campagne.statut = Campagne.Statut.ENVOI_EN_COURS
+    campagne.save(update_fields=['statut'])
     brutes = list(destinataires or [])
 
     def _adresse(cible):
         brute = cible.get('destinataire') if isinstance(cible, dict) else cible
         return (brute or '').strip()
 
+    # XMKT7 — fenêtre de silence : un SMS/WhatsApp ne part jamais la nuit ni
+    # un jour férié/non-ouvré (email non concerné par la fenêtre horaire).
+    if campagne.canal in ('sms', 'whatsapp') and _hors_fenetre_silence(campagne.company):
+        # ZMKT1 — repasse à son statut d'avant l'envoi (jamais coincée en
+        # envoi_en_cours) : un ``en_file`` reste en_file (le prochain passage
+        # beat retentera), un ``brouillon`` envoyé directement hors fenêtre
+        # redevient brouillon (aucun envoi planifié n'a été créé ici — le
+        # forcer en_file le ferait ré-essayer tout seul via le beat sans
+        # qu'aucune planification n'ait été demandée).
+        campagne.statut = statut_avant
+        campagne.save(update_fields=['statut'])
+        return campagne
+
     cibles = [
         cible for cible in brutes
         if not est_supprime(campagne.company, _adresse(cible))
+        # XMKT4 — un contact sans ConsentRecord accordé pour le canal n'est
+        # jamais ciblé (comportement historique préservé tant qu'AUCUNE
+        # entrée de consentement n'existe pour ce destinataire).
+        and consentement_accorde(
+            campagne.company, _adresse(cible), canal=campagne.canal)
+        # XMKT7 — un contact déjà au plafond de pression marketing sur la
+        # période est sauté (journalisé).
+        and not _plafond_pression_atteint(campagne.company, _adresse(cible))
+        # XMKT22 — un contact dormant (politique sunset) est sauté, sauf
+        # sur la campagne de re-permission elle-même (aucun marquage
+        # spécial requis — le clic sur SON lien réactive via traiter_clic_lien).
+        and not est_dormant(campagne.company, _adresse(cible))
     ]
+    refuses_consentement = [
+        _adresse(cible) for cible in brutes
+        if not est_supprime(campagne.company, _adresse(cible))
+        and not consentement_accorde(
+            campagne.company, _adresse(cible), canal=campagne.canal)
+    ]
+    for dest in refuses_consentement:
+        if dest:
+            EnvoiCampagne.objects.create(
+                company=campagne.company, campagne=campagne,
+                destinataire=dest, contact_ref='',
+                statut=EnvoiCampagne.Statut.REBOND,
+                raison_smtp='consentement_refuse_ou_absent',
+            )
+    plafonnes = [
+        _adresse(cible) for cible in brutes
+        if not est_supprime(campagne.company, _adresse(cible))
+        and consentement_accorde(
+            campagne.company, _adresse(cible), canal=campagne.canal)
+        and _plafond_pression_atteint(campagne.company, _adresse(cible))
+    ]
+    for dest in plafonnes:
+        if dest:
+            EnvoiCampagne.objects.create(
+                company=campagne.company, campagne=campagne,
+                destinataire=dest, contact_ref='',
+                statut=EnvoiCampagne.Statut.REBOND,
+                raison_smtp='plafond_pression_marketing',
+            )
+    dormants = [
+        _adresse(cible) for cible in brutes
+        if not est_supprime(campagne.company, _adresse(cible))
+        and consentement_accorde(
+            campagne.company, _adresse(cible), canal=campagne.canal)
+        and not _plafond_pression_atteint(campagne.company, _adresse(cible))
+        and est_dormant(campagne.company, _adresse(cible))
+    ]
+    for dest in dormants:
+        if dest:
+            EnvoiCampagne.objects.create(
+                company=campagne.company, campagne=campagne,
+                destinataire=dest, contact_ref='',
+                statut=EnvoiCampagne.Statut.REBOND,
+                raison_smtp='contact_dormant_sunset',
+            )
     campagne.nb_destinataires = len(cibles)
     if brevo_actif() and cibles:
         # Intégration réelle (future) — jamais appelée tant que le flag est OFF.
         # On laisse le compteur d'envois aligné sur les destinataires ; les
         # ouvertures/clics seront remontés par les webhooks Brevo.
         campagne.nb_envois = len(cibles)
+    # XMKT9 — réécrit les liens du corps en redirections tokenisées AU MOMENT
+    # DE L'ENVOI (une seule fois, jamais si aucun lien HTTP(S) présent).
+    if cibles:
+        corps_reecrit, _liens = envelopper_liens_campagne(campagne)
+        if corps_reecrit != campagne.corps:
+            campagne.corps = corps_reecrit
     campagne.statut = Campagne.Statut.ENVOYEE
     campagne.envoyee_le = timezone.now()
     campagne.save(update_fields=[
-        'nb_destinataires', 'nb_envois', 'statut', 'envoyee_le'])
+        'nb_destinataires', 'nb_envois', 'statut', 'envoyee_le', 'corps'])
     maintenant = timezone.now() if campagne.nb_envois else None
-    for cible in cibles:
+    # XMKT14 — répartition A/B sans chevauchement ni doublon (échantillon =
+    # les N premiers destinataires, moitié A / moitié B) si un test A/B est
+    # configuré et pas encore décidé.
+    ab_config = campagne.ab_test or {}
+    ab_actif = bool(ab_config) and not campagne.ab_gagnant
+    pct_echantillon = int(ab_config.get('pct_echantillon', 0) or 0) if ab_actif else 0
+    taille_echantillon = (len(cibles) * pct_echantillon) // 100 if ab_actif else 0
+    moitie = taille_echantillon // 2
+
+    for index, cible in enumerate(cibles):
         if isinstance(cible, dict):
             destinataire = (cible.get('destinataire') or '').strip()
             contact_ref = cible.get('contact_ref') or ''
@@ -5880,6 +6565,9 @@ def envoyer_campagne(campagne, *, destinataires=None):
             contact_ref = ''
         if not destinataire:
             continue
+        variante_ab = ''
+        if ab_actif and index < taille_echantillon:
+            variante_ab = 'a' if index < moitie else 'b'
         EnvoiCampagne.objects.create(
             company=campagne.company,
             campagne=campagne,
@@ -5888,12 +6576,55 @@ def envoyer_campagne(campagne, *, destinataires=None):
             statut=(EnvoiCampagne.Statut.ENVOYE if maintenant
                     else EnvoiCampagne.Statut.QUEUED),
             envoye_le=maintenant,
+            variante_ab=variante_ab,
         )
         # XMKT16 — une ligne de chatter par lead ciblé, jamais par batch.
         noter_touche_marketing_pour_lead(
             campagne.company, contact_ref,
             f'Campagne « {campagne.nom} » envoyée')
     return campagne
+
+
+def _metrique_ab(campagne, variante, critere):
+    """XMKT14 — mesure (nb d'ouvertures ou de clics) pour une variante A/B,
+    lue sur les traces ``EnvoiCampagne`` (XMKT2)."""
+    qs = campagne.envois.filter(variante_ab=variante)
+    if critere == 'clics':
+        return qs.filter(clique_le__isnull=False).count()
+    return qs.filter(ouvert_le__isnull=False).count()
+
+
+def decider_gagnant_ab(campagne, *, maintenant=None):
+    """XMKT14 — Compare les métriques A vs B à l'issue de la fenêtre de
+    décision et envoie la variante gagnante au reste (destinataires non
+    échantillonnés, encore ``queued``). Égalité → A. No-op si aucun test A/B
+    configuré, déjà décidé, ou fenêtre pas encore écoulée. Renvoie le
+    gagnant ('a'/'b') ou ``None``.
+    """
+    maintenant = maintenant or timezone.now()
+    ab_config = campagne.ab_test or {}
+    if not ab_config or campagne.ab_gagnant:
+        return None
+    if not campagne.envoyee_le:
+        return None
+    fenetre_heures = int(ab_config.get('fenetre_heures', 4) or 4)
+    echeance = campagne.envoyee_le + timezone.timedelta(hours=fenetre_heures)
+    if maintenant < echeance:
+        return None
+    critere = ab_config.get('critere', 'ouvertures')
+    metrique_a = _metrique_ab(campagne, 'a', critere)
+    metrique_b = _metrique_ab(campagne, 'b', critere)
+    gagnant = 'b' if metrique_b > metrique_a else 'a'
+    campagne.ab_gagnant = gagnant
+    campagne.ab_decide_le = maintenant
+    campagne.save(update_fields=['ab_gagnant', 'ab_decide_le'])
+    # Envoie le contenu gagnant au reste (destinataires jamais échantillonnés,
+    # toujours en file d'attente).
+    reste = campagne.envois.filter(variante_ab='', statut=EnvoiCampagne.Statut.QUEUED)
+    reste.update(
+        statut=EnvoiCampagne.Statut.ENVOYE, envoye_le=maintenant,
+        variante_ab=gagnant)
+    return gagnant
 
 
 def webhook_brevo_evenement(company, *, campagne_id, destinataire, evenement,
@@ -5986,6 +6717,143 @@ def recalculer_compteurs_campagne(campagne):
     return campagne
 
 
+# ── XMKT9 — Tracker de liens + auto-tag UTM ─────────────────────────────────
+
+_LIEN_URL_RE = re.compile(r'https?://[^\s<>"\')]+')
+
+
+def _tagger_utm(url, campagne):
+    """Ajoute utm_source/medium/campaign à ``url`` (XMKT9). Ne casse jamais
+    une URL déjà taguée (les paramètres existants sont préservés en tête).
+    """
+    from urllib.parse import urlencode, urlparse, parse_qsl, urlunparse
+
+    parsed = urlparse(url)
+    query = dict(parse_qsl(parsed.query))
+    query.setdefault('utm_source', 'campagne')
+    query.setdefault('utm_medium', campagne.canal)
+    query.setdefault('utm_campaign', campagne.nom)
+    nouvelle_query = urlencode(query)
+    return urlunparse(parsed._replace(query=nouvelle_query))
+
+
+def envelopper_liens_campagne(campagne):
+    """XMKT9 — Enveloppe chaque lien HTTP(S) du corps de la campagne dans une
+    redirection tokenisée company-scoped (créant un ``LienTrackee`` par URL
+    distincte trouvée), et renvoie le corps avec les liens réécrits en
+    ``/api/django/compta/r/<token>/``. Idempotent : rejouer sur un corps déjà
+    réécrit ne recrée pas de doublon (dédoublonné par URL cible taguée).
+    """
+    corps = campagne.corps or ''
+    urls = set(_LIEN_URL_RE.findall(corps))
+    corps_reecrit = corps
+    liens = []
+    for url in urls:
+        url_taguee = _tagger_utm(url, campagne)
+        lien = LienTrackee.objects.filter(
+            company=campagne.company, campagne=campagne,
+            url_cible=url_taguee).first()
+        if lien is None:
+            lien = LienTrackee.objects.create(
+                company=campagne.company, campagne=campagne,
+                url_cible=url_taguee, token=uuid.uuid4().hex)
+        liens.append(lien)
+        corps_reecrit = corps_reecrit.replace(
+            url, f'/api/django/compta/r/{lien.token}/')
+    return corps_reecrit, liens
+
+
+def traiter_clic_lien(token, *, destinataire=''):
+    """XMKT9 — Traite un clic sur un lien tracké : incrémente le lien +
+    crée la ligne ``ClicLien`` par destinataire, met à jour l'``EnvoiCampagne``
+    correspondant (``clique_le`` — alimente XMKT2) et crée le point de
+    contact (``crm.PointContact`` FG204) si le destinataire est connu.
+    Renvoie ``(ok, url_cible_ou_message_erreur)``.
+    """
+    lien = LienTrackee.objects.filter(token=token).first()
+    if not lien:
+        return False, 'Lien invalide.'
+    lien.nb_clics += 1
+    lien.save(update_fields=['nb_clics'])
+    destinataire = (destinataire or '').strip()
+    ClicLien.objects.create(
+        company=lien.company, lien=lien, destinataire=destinataire)
+    if destinataire and lien.campagne_id:
+        # XMKT22 — un clic réactive automatiquement un contact dormant
+        # (chemin de re-permission).
+        reactiver_contact(lien.company, destinataire)
+        envoi = webhook_brevo_evenement(
+            lien.company, campagne_id=lien.campagne_id,
+            destinataire=destinataire, evenement='click')
+        if envoi and envoi.contact_ref:
+            noter_touche_marketing_pour_lead(
+                lien.company, envoi.contact_ref,
+                f'Lien « {lien.url_cible[:80]} » cliqué (campagne '
+                f'« {lien.campagne.nom} »)')
+    return True, lien.url_cible
+
+
+def clics_par_lien(campagne):
+    """XMKT9 — Page « clics par lien » du détail campagne : compte par URL
+    cible."""
+    return [
+        {'lien_id': lien.id, 'url_cible': lien.url_cible, 'nb_clics': lien.nb_clics}
+        for lien in campagne.liens_trackes.all()
+    ]
+
+
+# ── XMKT17 — Coût & ROI MAD par campagne ────────────────────────────────────
+
+def cout_total_campagne(campagne):
+    """XMKT17 — Coût total (MAD) : ``cout_reel_mad`` s'il est renseigné,
+    sinon Σ des ``lignes_cout`` libres, sinon 0."""
+    if campagne.cout_reel_mad is not None:
+        return Decimal(str(campagne.cout_reel_mad))
+    total = Decimal('0')
+    for ligne in (campagne.lignes_cout or []):
+        try:
+            total += Decimal(str(ligne.get('montant_mad', 0)))
+        except Exception:
+            continue
+    return total
+
+
+def roi_campagne(campagne):
+    """XMKT17 — ROI MAD d'une campagne : rapproche le coût (saisi) et le
+    revenu attribué (leads portant l'utm_campaign de la campagne → devis
+    signés, dernier-touch, via ``apps.crm.selectors`` — jamais d'import de
+    ``apps.ventes``/``apps.crm.models``). Renvoie coût, revenu, ROI (%) et
+    coût-par-lead (division par zéro = 0).
+    """
+    from apps.crm.selectors import revenu_attribue_campagne
+
+    cout = cout_total_campagne(campagne)
+    attribution = revenu_attribue_campagne(campagne.company, campagne.nom)
+    revenu = Decimal(attribution['revenu_ttc'])
+    roi_pct = 0.0
+    if cout > 0:
+        roi_pct = round(float((revenu - cout) / cout * 100), 1)
+    cout_par_lead = 0.0
+    if attribution['nb_leads']:
+        cout_par_lead = round(float(cout / attribution['nb_leads']), 2)
+    return {
+        'budget_mad': str(campagne.budget_mad) if campagne.budget_mad is not None else None,
+        'cout_mad': str(cout),
+        'revenu_ttc_mad': str(revenu),
+        'roi_pct': roi_pct,
+        'nb_leads': attribution['nb_leads'],
+        'nb_signes': attribution['nb_signes'],
+        'cout_par_lead_mad': cout_par_lead,
+    }
+
+
+def leads_source_roi(campagne):
+    """XMKT17 — Drill-down vers les leads sources du ROI (via
+    ``apps.crm.selectors``)."""
+    from apps.crm.selectors import leads_source_campagne
+    return leads_source_campagne(campagne.company, campagne.nom)
+
+
 # ── XMKT3 — Désinscription un clic + liste de suppression globale ──────────
 
 _DESINSCRIPTION_SALT = 'compta.xmkt3.desinscription'
@@ -6067,6 +6935,131 @@ def importer_liste_opposition(company, destinataires, *, source='import_csv'):
         if cree:
             ajoutes += 1
     return ajoutes
+
+
+# ── XMKT4 — Application du consentement marketing par canal (loi 09-08) ────
+# Le registre EXISTE déjà : ``core.ConsentRecord`` (FG394). On ne le duplique
+# JAMAIS ici — on l'applique au moment de l'envoi (campagnes ET séquences).
+
+_CANAL_VERS_PURPOSE = {
+    'email': 'email',
+    'sms': 'sms',
+    'whatsapp': 'whatsapp',
+}
+
+_DOUBLE_OPTIN_SALT = 'compta.xmkt4.double_optin'
+
+
+def _purpose_pour_canal(canal):
+    return _CANAL_VERS_PURPOSE.get((canal or '').strip().lower(), 'marketing')
+
+
+def consentement_accorde(company, destinataire, *, canal='email'):
+    """XMKT4 — un destinataire a-t-il un ``ConsentRecord`` accordé (le plus
+    récent) pour le canal donné ? Sans AUCUNE entrée de consentement pour ce
+    destinataire+finalité, le comportement HISTORIQUE est préservé (True) —
+    l'application stricte ne s'active qu'une fois qu'au moins une entrée de
+    consentement existe pour ce destinataire (évite de bloquer toute la base
+    existante avant migration des consentements).
+    """
+    from core.models import ConsentRecord
+
+    purpose = _purpose_pour_canal(canal)
+    dernier = (
+        ConsentRecord.objects
+        .filter(company=company, subject_identifier=destinataire,
+                purpose=purpose)
+        .order_by('-id')
+        .first())
+    if dernier is None:
+        return True
+    return bool(dernier.granted)
+
+
+def filtrer_destinataires_consentants(company, destinataires, *, canal='email'):
+    """Filtre une liste de destinataires (str) : garde ceux qui ont un
+    consentement accordé (ou aucune entrée = comportement historique) pour le
+    canal. Renvoie ``(consentants, refuses)``.
+    """
+    consentants, refuses = [], []
+    for dest in destinataires:
+        d = (dest or '').strip()
+        if not d:
+            continue
+        if consentement_accorde(company, d, canal=canal):
+            consentants.append(d)
+        else:
+            refuses.append(d)
+    return consentants, refuses
+
+
+def generer_token_double_optin(company_id, destinataire, *, version_texte=''):
+    """Jeton signé (XMKT4) pour le lien de confirmation du double opt-in."""
+    return signing.dumps(
+        {'company_id': company_id, 'destinataire': destinataire,
+         'version_texte': version_texte},
+        salt=_DOUBLE_OPTIN_SALT)
+
+
+def double_optin_actif(company):
+    """XMKT4 — toggle société (``CompanyProfile.double_optin_actif``), OFF
+    par défaut : sans réglage, l'inscription publique reste immédiatement
+    consentante (comportement actuel).
+    """
+    try:
+        from apps.parametres.models_company import CompanyProfile
+        profil = CompanyProfile.objects.filter(company=company).first()
+        return bool(profil and profil.double_optin_actif)
+    except Exception:  # pragma: no cover - défensif
+        return False
+
+
+def confirmer_double_optin_via_token(token):
+    """Traite le clic de confirmation du double opt-in (XMKT4).
+
+    Pose un ``ConsentRecord`` ``granted=True`` pour la finalité marketing,
+    avec l'IP + horodatage comme preuve (loi 09-08). Renvoie
+    ``(ok, destinataire_ou_message_erreur)``.
+    """
+    try:
+        payload = signing.loads(token, salt=_DOUBLE_OPTIN_SALT)
+    except signing.BadSignature:
+        return False, 'Lien invalide.'
+    from authentication.models import Company
+    from core.models import ConsentRecord
+
+    company = Company.objects.filter(id=payload.get('company_id')).first()
+    if not company:
+        return False, 'Lien invalide.'
+    destinataire = (payload.get('destinataire') or '').strip()
+    if not destinataire:
+        return False, 'Lien invalide.'
+    ConsentRecord.objects.create(
+        company=company,
+        subject_identifier=destinataire,
+        purpose='marketing',
+        granted=True,
+        source='double_optin_confirmation',
+        occurred_at=timezone.now(),
+        version_texte=payload.get('version_texte') or '',
+    )
+    return True, destinataire
+
+
+def cndp_footer_texte(company):
+    """XMKT4 — texte de pied d'email marketing avec le n° de déclaration CNDP,
+    si renseigné (``CompanyProfile.numero_declaration_cndp``). Chaîne vide si
+    non renseigné (comportement actuel, aucun pied additionnel).
+    """
+    try:
+        from apps.parametres.models_company import CompanyProfile
+        profil = CompanyProfile.objects.filter(company=company).first()
+        numero = (profil.numero_declaration_cndp or '').strip() if profil else ''
+    except Exception:  # pragma: no cover - défensif
+        numero = ''
+    if not numero:
+        return ''
+    return f'Déclaration CNDP n° {numero}'
 
 
 # ── XMKT5 — Listes de diffusion nommées + abonnements ───────────────────────
@@ -6193,11 +7186,15 @@ def valider_regles_segment(regles):
     """Valide les règles JSON d'un segment (XMKT6) : lève ``ValueError`` sur
     une clé inconnue (champ lead OU clé d'activité marketing). Ne touche
     jamais à la base — appelée avant la sauvegarde ET avant l'évaluation.
+
+    XMKT28 — clés additives ``evenement_present``/``evenement_absent`` (id
+    d'``EvenementMarketing``) pour cibler les leads présents/absents à un
+    événement (suivi différencié post-événement).
     """
     from apps.crm.selectors import LEAD_SEGMENT_FIELDS
 
     regles = regles or {}
-    cles_activite = {'activite'}
+    cles_activite = {'activite', 'evenement_present', 'evenement_absent'}
     cles_connues = set(LEAD_SEGMENT_FIELDS) | cles_activite
     inconnues = set(regles) - cles_connues
     if inconnues:
@@ -6206,6 +7203,19 @@ def valider_regles_segment(regles):
     if activite and activite not in _SEGMENT_ACTIVITE_CHOICES:
         raise ValueError(f"Activité de segment inconnue : {activite}")
     return regles
+
+
+def _filtrer_par_evenement(company, lead_ids, evenement_id, *, statut):
+    """XMKT28 — filtre par présence/absence à un événement (via
+    ``InscriptionEvenement.lead_id``)."""
+    if not evenement_id or not lead_ids:
+        return lead_ids
+    lead_ids_evenement = set(
+        InscriptionEvenement.objects.filter(
+            company=company, evenement_id=evenement_id, statut=statut,
+            lead_id__isnull=False,
+        ).values_list('lead_id', flat=True))
+    return [lid for lid in lead_ids if lid in lead_ids_evenement]
 
 
 def _filtrer_par_activite(company, lead_ids, activite):
@@ -6242,11 +7252,21 @@ def evaluer_segment(segment):
     from apps.crm.selectors import leads_matching_regles
 
     regles = valider_regles_segment(segment.regles)
-    regles_lead = {k: v for k, v in regles.items() if k != 'activite'}
+    regles_lead = {
+        k: v for k, v in regles.items()
+        if k not in ('activite', 'evenement_present', 'evenement_absent')
+    }
     lead_ids = list(
         leads_matching_regles(segment.company, regles_lead)
         .values_list('id', flat=True))
-    return _filtrer_par_activite(segment.company, lead_ids, regles.get('activite'))
+    lead_ids = _filtrer_par_activite(segment.company, lead_ids, regles.get('activite'))
+    lead_ids = _filtrer_par_evenement(
+        segment.company, lead_ids, regles.get('evenement_present'),
+        statut=InscriptionEvenement.Statut.PRESENT)
+    lead_ids = _filtrer_par_evenement(
+        segment.company, lead_ids, regles.get('evenement_absent'),
+        statut=InscriptionEvenement.Statut.ABSENT)
+    return lead_ids
 
 
 def previsualiser_segment(segment, *, taille_echantillon=10):
@@ -6304,6 +7324,44 @@ def rendre_variables_fusion(corps, company, lead_id, *, fallback=''):
         valeur = champs.get(variable) or fallback
         rendu = rendu.replace('{' + variable + '}', valeur)
     return rendu
+
+
+# ── XMKT11 — Campagnes multilingues FR/AR/Darija avec variantes ────────────
+
+def variante_pour_langue(campagne, langue):
+    """Renvoie ``(objet, corps)`` pour ``langue`` (XMKT11) — fallback FR
+    (``campagne.objet``/``campagne.corps``) si la langue est absente de
+    ``variantes_langue`` ou vaut ``'fr'``.
+    """
+    langue = (langue or 'fr').strip().lower()
+    if langue == 'fr':
+        return campagne.objet, campagne.corps
+    variante = (campagne.variantes_langue or {}).get(langue)
+    if not variante:
+        return campagne.objet, campagne.corps
+    objet = variante.get('objet') or campagne.objet
+    corps = variante.get('corps') or campagne.corps
+    return objet, corps
+
+
+def rendre_pour_lead(campagne, company, lead_id):
+    """XMKT11 — Sélectionne la variante de langue selon
+    ``lead.langue_preferee`` (lu via ``apps.crm.selectors.get_company_lead``)
+    puis applique la fusion de variables (XMKT8). Renvoie
+    ``{'objet': ..., 'corps': ..., 'langue': ..., 'rtl': bool}``.
+    """
+    from apps.crm.selectors import get_company_lead
+
+    lead = get_company_lead(company, lead_id)
+    langue = getattr(lead, 'langue_preferee', None) or 'fr'
+    objet, corps = variante_pour_langue(campagne, langue)
+    corps_rendu = rendre_variables_fusion(corps, company, lead_id)
+    return {
+        'objet': objet,
+        'corps': corps_rendu,
+        'langue': langue,
+        'rtl': langue in ('ar',),
+    }
 
 
 # ── XMKT13 — Envoi test + aperçu fusionné + pré-check santé ─────────────────
@@ -6376,6 +7434,22 @@ def precheck_sante_campagne(campagne, *, verifier_liens=False):
     segment_vide = not (campagne.segment or {}) and not campagne.listes.exists()
     if segment_vide:
         avertissements.append('Aucun segment ni liste ciblée — 0 destinataire prévu.')
+
+    # XMKT33 — avertissement si le domaine d'envoi (email société) n'est pas
+    # authentifié (SPF/DKIM/DMARC). Best-effort, jamais bloquant.
+    if campagne.canal == Campagne.Canal.EMAIL:
+        try:
+            from apps.parametres.models_company import CompanyProfile
+            profil = CompanyProfile.objects.filter(company=campagne.company).first()
+            email_expediteur = (profil.email or '') if profil else ''
+        except Exception:  # pragma: no cover - défensif
+            email_expediteur = ''
+        if '@' in email_expediteur:
+            domaine = email_expediteur.split('@', 1)[1]
+            if not domaine_envoi_authentifie(campagne.company, domaine):
+                avertissements.append(
+                    f'Domaine d\'envoi « {domaine} » non authentifié '
+                    '(SPF/DKIM/DMARC) — risque de délivrabilité.')
 
     return {'bloque': bloque, 'avertissements': avertissements}
 
@@ -6600,15 +7674,182 @@ def inscrire_leads_pour_stage(company, stage_key, *, lead_id, lead_reference='')
     ]
 
 
-def _executer_une_etape(inscription, etape):
+def _condition_vraie(inscription, condition):
+    """XMKT18 — évalue une condition d'engagement pour une inscription, sur
+    les traces existantes : ``EnvoiCampagne`` (ouverture/clic, TOUTES
+    campagnes du lead depuis le déclenchement) et ``MessageWhatsAppEntrant``
+    (réponse WhatsApp entrante rattachée au lead depuis le déclenchement).
+    """
+    if condition in ('', EtapeSequence.Condition.TOUJOURS):
+        return True
+    contact_ref = f'lead:{inscription.lead_id}'
+    depuis = inscription.declenchee_le
+    if condition == EtapeSequence.Condition.A_OUVERT:
+        return EnvoiCampagne.objects.filter(
+            company=inscription.company, contact_ref=contact_ref,
+            ouvert_le__isnull=False, ouvert_le__gte=depuis).exists()
+    if condition == EtapeSequence.Condition.A_CLIQUE:
+        return EnvoiCampagne.objects.filter(
+            company=inscription.company, contact_ref=contact_ref,
+            clique_le__isnull=False, clique_le__gte=depuis).exists()
+    if condition == EtapeSequence.Condition.N_A_PAS_OUVERT:
+        return not EnvoiCampagne.objects.filter(
+            company=inscription.company, contact_ref=contact_ref,
+            ouvert_le__isnull=False, ouvert_le__gte=depuis).exists()
+    if condition == EtapeSequence.Condition.A_REPONDU:
+        return MessageWhatsAppEntrant.objects.filter(
+            company=inscription.company, lead_id=inscription.lead_id,
+            date_reception__gte=depuis).exists()
+    return True
+
+
+def _appliquer_action_alternative(inscription, etape, action):
+    """XMKT18 — applique l'action alternative (condition fausse). Deux
+    formes reconnues : ``renvoyer:<nouvel_objet>`` (renvoi de l'étape avec un
+    objet différent — journalisé, gated comme l'envoi normal) et
+    ``tache_commerciale`` (crée une relance/tâche au propriétaire du lead via
+    ``crm.services`` — jamais d'import direct du modèle crm)."""
+    if not action:
+        return
+    if action == 'tache_commerciale':
+        from apps.crm.selectors import get_company_lead
+        lead = get_company_lead(inscription.company, inscription.lead_id)
+        if lead is not None:
+            noter_touche_marketing_pour_lead(
+                inscription.company, f'lead:{inscription.lead_id}',
+                f'Séquence « {inscription.sequence.nom} » — relance '
+                f'commerciale créée (branche alternative étape {etape.ordre})')
+    elif action.startswith('renvoyer:'):
+        noter_touche_marketing_pour_lead(
+            inscription.company, f'lead:{inscription.lead_id}',
+            f'Séquence « {inscription.sequence.nom} » — renvoi avec un '
+            f'autre objet (branche alternative étape {etape.ordre})')
+
+
+def _executer_action_crm(inscription, etape):
+    """XMKT19 — exécute l'action CRM configurée sur ``etape.action_crm``
+    (JSON ``{"action": ..., "params": {...}}``), toujours via
+    ``apps.crm.services`` (jamais d'import direct du modèle CRM). Renvoie
+    ``'execute'`` / ``'lead_introuvable'`` / ``'action_inconnue'`` / ``'erreur'``.
+    """
+    from apps.crm.selectors import get_company_lead
+    from apps.crm import services as crm_services
+
+    lead = get_company_lead(inscription.company, inscription.lead_id)
+    if lead is None:
+        return 'lead_introuvable'
+    config = etape.action_crm or {}
+    action = config.get('action')
+    params = config.get('params') or {}
+    try:
+        if action == 'avancer_stage':
+            crm_services.avancer_stage_lead_vers(lead, None, params.get('stage'))
+        elif action == 'assigner':
+            crm_services.assigner_lead_a(lead, None, params.get('owner_id'))
+        elif action == 'tag':
+            crm_services.poser_tag_lead(lead, None, params.get('tag'))
+        elif action == 'retirer_tag':
+            crm_services.retirer_tag_lead(lead, None, params.get('tag'))
+        elif action == 'score':
+            crm_services.ajuster_score_lead(lead, None, params.get('delta', 0))
+        elif action == 'tache':
+            crm_services.creer_relance_lead(
+                lead, None, relance_date=params.get('relance_date'),
+                note=params.get('note', ''))
+        else:
+            return 'action_inconnue'
+    except Exception:
+        return 'erreur'
+    noter_touche_marketing_pour_lead(
+        inscription.company, f'lead:{inscription.lead_id}',
+        f'Séquence « {inscription.sequence.nom} » — action CRM « {action} » '
+        f'exécutée (étape {etape.ordre})')
+    return 'execute'
+
+
+def _executer_une_etape(inscription, etape, *, maintenant=None):
     """Exécute (ou planifie, gated) une étape pour une inscription et trace
     le résultat. N'envoie jamais réellement ici : réutilise le comportement
     NO-OP existant des intégrations (FG31 — file de relance manuelle quand
     aucune intégration n'est active).
+
+    XMKT18 — si l'étape porte une ``condition``, elle n'est exécutée QUE si
+    la condition est vraie au moment dû ; sinon l'``action_alternative``
+    (si renseignée) est appliquée à la place. La branche prise est tracée
+    sur ``ExecutionEtapeSequence.branche_prise``.
+
+    ``maintenant`` — instant simulé (XMKT7 throttling) : propagé jusqu'à la
+    vérification de fenêtre de silence pour que la décision reste cohérente
+    avec l'instant utilisé par ``executer_etapes_dues`` plutôt que l'horloge
+    réelle (sinon la fenêtre de silence de l'exécution réelle "fuit" dans une
+    exécution simulée à un autre instant).
     """
+    maintenant = maintenant or timezone.now()
     resultat = 'planifie'
     erreur = ''
     canal = etape.canal
+    condition = getattr(etape, 'condition', EtapeSequence.Condition.TOUJOURS)
+    condition_vraie = _condition_vraie(inscription, condition)
+    branche_prise = 'condition' if condition_vraie else 'alternative'
+
+    if not condition_vraie:
+        _appliquer_action_alternative(
+            inscription, etape, getattr(etape, 'action_alternative', ''))
+        execution = ExecutionEtapeSequence.objects.create(
+            company=inscription.company,
+            inscription=inscription,
+            etape=etape,
+            canal=canal,
+            resultat='condition_fausse',
+            erreur=erreur,
+            branche_prise=branche_prise,
+        )
+        return execution
+
+    # XMKT19 — étape d'action CRM (au lieu d'un message) : pose l'action puis
+    # trace, jamais de faux "envoi" journalisé pour ce type d'étape.
+    if getattr(etape, 'type_etape', EtapeSequence.TypeEtape.MESSAGE) == \
+            EtapeSequence.TypeEtape.ACTION_CRM:
+        resultat_action = _executer_action_crm(inscription, etape)
+        return ExecutionEtapeSequence.objects.create(
+            company=inscription.company,
+            inscription=inscription,
+            etape=etape,
+            canal='',
+            resultat=resultat_action,
+            erreur='' if resultat_action != 'erreur' else 'action CRM échouée',
+            branche_prise=branche_prise,
+        )
+
+    # ZMKT5 — rejet consentement/suppression/fenêtre AVANT tout envoi
+    # (email/whatsapp uniquement — l'appel n'a jamais lieu, comportement
+    # historique préservé pour l'appel téléphonique manuel).
+    if canal in (EtapeSequence.Canal.EMAIL, EtapeSequence.Canal.WHATSAPP):
+        from apps.crm.selectors import get_company_lead
+        lead = get_company_lead(inscription.company, inscription.lead_id)
+        destinataire = ''
+        if lead is not None:
+            destinataire = (
+                lead.email if canal == EtapeSequence.Canal.EMAIL
+                else (lead.whatsapp or lead.telephone)) or ''
+        motif_rejet = ''
+        if destinataire and est_supprime(inscription.company, destinataire):
+            motif_rejet = ExecutionEtapeSequence.MotifRejet.SUPPRIME
+        elif destinataire and not consentement_accorde(
+                inscription.company, destinataire, canal=canal):
+            motif_rejet = ExecutionEtapeSequence.MotifRejet.SANS_CONSENTEMENT
+        elif (canal == EtapeSequence.Canal.WHATSAPP
+                and _hors_fenetre_silence(inscription.company, maintenant)):
+            motif_rejet = ExecutionEtapeSequence.MotifRejet.HORS_FENETRE
+        if motif_rejet:
+            return ExecutionEtapeSequence.objects.create(
+                company=inscription.company, inscription=inscription,
+                etape=etape, canal=canal, resultat='rejete',
+                branche_prise=branche_prise,
+                statut_trace=ExecutionEtapeSequence.StatutTrace.REJETE,
+                motif_rejet=motif_rejet,
+            )
+
     if canal == EtapeSequence.Canal.WHATSAPP and not whatsapp_actif():
         resultat = 'planifie'  # file manuelle FG31, aucun appel réseau
     elif canal == EtapeSequence.Canal.EMAIL and not email_marketing_actif():
@@ -6622,6 +7863,8 @@ def _executer_une_etape(inscription, etape):
         canal=canal,
         resultat=resultat,
         erreur=erreur,
+        branche_prise=branche_prise,
+        statut_trace=ExecutionEtapeSequence.StatutTrace.TRAITE,
     )
     # XMKT16 — une ligne de chatter par étape exécutée (pas par batch).
     noter_touche_marketing_pour_lead(
@@ -6633,6 +7876,135 @@ def _executer_une_etape(inscription, etape):
 def email_marketing_actif():
     """Alias explicite de ``brevo_actif`` pour les séquences (XMKT1)."""
     return brevo_actif()
+
+
+# ── ZMKT5 — Traces d'activité de séquence + compteurs par étape ────────────
+
+def traces_sequence(sequence, *, etape_id=None, statut_trace=None):
+    """ZMKT5 — traces filtrables par étape et statut, company-scopées."""
+    qs = ExecutionEtapeSequence.objects.filter(
+        company=sequence.company, etape__sequence=sequence,
+    ).select_related('etape', 'inscription')
+    if etape_id:
+        qs = qs.filter(etape_id=etape_id)
+    if statut_trace:
+        qs = qs.filter(statut_trace=statut_trace)
+    return [
+        {
+            'id': t.id, 'etape_id': t.etape_id, 'etape_ordre': t.etape.ordre,
+            'inscription_id': t.inscription_id, 'lead_id': t.inscription.lead_id,
+            'statut_trace': t.statut_trace, 'motif_rejet': t.motif_rejet,
+            'resultat': t.resultat, 'execute_le': t.execute_le,
+        }
+        for t in qs.order_by('-execute_le')
+    ]
+
+
+def participants_sequence(sequence, *, statut=None):
+    """ZMKT6 — liste des participants (``InscriptionSequence``) : nœud
+    courant + prochaine échéance, filtrable par statut."""
+    qs = sequence.inscriptions.select_related('etape_courante').all()
+    if statut:
+        qs = qs.filter(statut=statut)
+    resultat = []
+    for insc in qs:
+        prochaine_echeance = None
+        if insc.etape_courante is not None:
+            prochaine_echeance = insc.declenchee_le + timezone.timedelta(
+                days=insc.etape_courante.delai_jours)
+        resultat.append({
+            'id': insc.id,
+            'lead_id': insc.lead_id,
+            'lead_reference': insc.lead_reference,
+            'etape_courante_id': insc.etape_courante_id,
+            'statut': insc.statut,
+            'prochaine_echeance': prochaine_echeance,
+        })
+    return resultat
+
+
+def reporting_campagnes(company, *, groupby='canal'):
+    """ZMKT8 — reporting multi-vue (Graph/Pivot/Cohorte) sur la trace XMKT2 :
+    mesures délivrés/ouverts/cliqués/rebonds/désinscrits + CTR/CTOR/
+    délivrabilité, groupables par ``canal``/``mois``/``campagne``.
+    Division par zéro = 0 (jamais d'exception).
+    """
+    from django.db.models.functions import TruncMonth
+
+    envois = EnvoiCampagne.objects.filter(company=company)
+    if groupby == 'mois':
+        envois = envois.annotate(groupe=TruncMonth('date_creation'))
+        cle = 'groupe'
+    elif groupby == 'campagne':
+        cle = 'campagne_id'
+    else:
+        cle = 'campagne__canal'
+
+    groupes = {}
+    for e in envois.values(cle, 'statut'):
+        clef_groupe = e[cle]
+        slot = groupes.setdefault(clef_groupe, {
+            'delivres': 0, 'ouverts': 0, 'cliques': 0, 'rebonds': 0,
+            'desinscrits': 0, 'total': 0,
+        })
+        slot['total'] += 1
+        if e['statut'] == EnvoiCampagne.Statut.REBOND:
+            slot['rebonds'] += 1
+        elif e['statut'] == EnvoiCampagne.Statut.DESINSCRIT:
+            slot['desinscrits'] += 1
+        else:
+            slot['delivres'] += 1
+    # Ouvertures/clics comptés séparément (un envoi peut être ouvert ET
+    # cliqué — pas mutuellement exclusif avec le statut agrégé ci-dessus).
+    for e in envois.filter(ouvert_le__isnull=False).values(cle):
+        groupes.setdefault(e[cle], {
+            'delivres': 0, 'ouverts': 0, 'cliques': 0, 'rebonds': 0,
+            'desinscrits': 0, 'total': 0})['ouverts'] += 1
+    for e in envois.filter(clique_le__isnull=False).values(cle):
+        groupes.setdefault(e[cle], {
+            'delivres': 0, 'ouverts': 0, 'cliques': 0, 'rebonds': 0,
+            'desinscrits': 0, 'total': 0})['cliques'] += 1
+
+    resultat = []
+    for clef_groupe, slot in groupes.items():
+        total = slot['total'] or 1
+        ctr = round(slot['cliques'] / total * 100, 1) if total else 0.0
+        ctor = (round(slot['cliques'] / slot['ouverts'] * 100, 1)
+                if slot['ouverts'] else 0.0)
+        delivrabilite = (
+            round(slot['delivres'] / total * 100, 1) if total else 0.0)
+        resultat.append({
+            'groupe': clef_groupe,
+            'delivres': slot['delivres'], 'ouverts': slot['ouverts'],
+            'cliques': slot['cliques'], 'rebonds': slot['rebonds'],
+            'desinscrits': slot['desinscrits'],
+            'ctr_pct': ctr, 'ctor_pct': ctor,
+            'delivrabilite_pct': delivrabilite,
+        })
+    return resultat
+
+
+def nb_participants_actifs(sequence):
+    """ZMKT6 — compteur « N participants actifs »."""
+    return sequence.inscriptions.filter(
+        statut=InscriptionSequence.Statut.ACTIF).count()
+
+
+def compteurs_par_etape(sequence):
+    """ZMKT5 — agrège par étape des compteurs Succès/Rejeté/Envoyé."""
+    resultat = []
+    for etape in sequence.etapes.order_by('ordre'):
+        executions = etape.executions.all()
+        resultat.append({
+            'etape_id': etape.id,
+            'ordre': etape.ordre,
+            'succes': executions.exclude(
+                statut_trace=ExecutionEtapeSequence.StatutTrace.REJETE).count(),
+            'rejete': executions.filter(
+                statut_trace=ExecutionEtapeSequence.StatutTrace.REJETE).count(),
+            'envoye': executions.filter(resultat='envoye').count(),
+        })
+    return resultat
 
 
 def sortir_inscription(inscription, *, motif=''):
@@ -6680,7 +8052,8 @@ def executer_etapes_dues(company, *, maintenant=None):
             days=etape.delai_jours)
         if maintenant < echeance:
             continue
-        executions.append(_executer_une_etape(inscription, etape))
+        executions.append(
+            _executer_une_etape(inscription, etape, maintenant=maintenant))
         suivante = inscription.sequence.etapes.filter(
             ordre__gt=etape.ordre).order_by('ordre').first()
         if suivante:
@@ -9381,3 +10754,786 @@ def creer_reclamation_portail(facture, *, motif_label, commentaire=''):
         montant_conteste=facture.montant_du,
         bloque_relances=True,
     )
+
+
+# ── XMKT27 — Constructeur d'enquêtes avec logique conditionnelle ───────────
+
+_TYPES_QUESTION_VALIDES = {'choix', 'echelle', 'texte', 'nps'}
+
+
+def valider_questions_enquete(questions):
+    """XMKT27 — valide la structure JSON des questions d'une enquête.
+    Lève ``ValueError`` sur un type/format inconnu."""
+    if not isinstance(questions, list):
+        raise ValueError('questions doit être une liste.')
+    ids_vus = set()
+    for q in questions:
+        if not isinstance(q, dict):
+            raise ValueError('chaque question doit être un objet.')
+        qid = q.get('id')
+        if not qid:
+            raise ValueError('chaque question doit avoir un id.')
+        if qid in ids_vus:
+            raise ValueError(f'id de question dupliqué : {qid}')
+        ids_vus.add(qid)
+        qtype = q.get('type')
+        if qtype not in _TYPES_QUESTION_VALIDES:
+            raise ValueError(f'type de question inconnu : {qtype}')
+        condition = q.get('condition')
+        if condition is not None:
+            if not isinstance(condition, dict) or 'question_id' not in condition:
+                raise ValueError(
+                    f'condition invalide pour la question {qid}.')
+    return questions
+
+
+def creer_enquete(company, *, titre, questions=None):
+    """XMKT27 — crée une enquête avec un jeton public unique."""
+    questions = valider_questions_enquete(questions or [])
+    return Enquete.objects.create(
+        company=company, titre=titre, questions=questions,
+        token=uuid.uuid4().hex)
+
+
+def questions_visibles(enquete, reponses_partielles):
+    """XMKT27 — filtre les questions visibles selon la logique conditionnelle
+    « question B si réponse A », évaluée sur les réponses déjà données."""
+    visibles = []
+    for q in enquete.questions or []:
+        condition = q.get('condition')
+        if not condition:
+            visibles.append(q)
+            continue
+        valeur_attendue = condition.get('valeur')
+        valeur_donnee = reponses_partielles.get(condition.get('question_id'))
+        if valeur_donnee == valeur_attendue:
+            visibles.append(q)
+    return visibles
+
+
+def rendre_enquete_publique(enquete, reponses_partielles, *, seed=None):
+    """ZMKT9 — applique l'ordre aléatoire (si activé) aux questions visibles,
+    pour le rendu public de l'enquête. ``seed`` optionnel pour un ordre
+    reproductible en test ; sans ``seed``, l'ordre varie à chaque appel
+    (nouvelle ouverture)."""
+    import random
+
+    visibles = questions_visibles(enquete, reponses_partielles)
+    if enquete.ordre_aleatoire:
+        rng = random.Random(seed)
+        visibles = list(visibles)
+        rng.shuffle(visibles)
+    return {
+        'titre': enquete.titre,
+        'questions': visibles,
+        'mode_pagination': enquete.mode_pagination,
+        'barre_progression': enquete.barre_progression,
+        'bouton_retour': enquete.bouton_retour,
+        'limite_temps_minutes': enquete.limite_temps_minutes,
+        'description_accueil': enquete.description_accueil,
+        'message_fin': enquete.message_fin,
+    }
+
+
+def limite_temps_depassee(enquete, *, debute_le, maintenant=None):
+    """ZMKT9 — True si la limite de temps de l'enquête est dépassée pour une
+    session commencée à ``debute_le``. Pas de limite (NULL) → jamais
+    dépassée (comportement actuel)."""
+    if not enquete.limite_temps_minutes or not debute_le:
+        return False
+    maintenant = maintenant or timezone.now()
+    echeance = debute_le + timezone.timedelta(minutes=enquete.limite_temps_minutes)
+    return maintenant > echeance
+
+
+def soumettre_reponse_enquete(
+        enquete, *, reponses, contact_ref='', nom_repondant=''):
+    """ZMKT11 — refuse (ValueError) si ``tentatives_max`` est dépassé pour
+    ``contact_ref`` (email d'un répondant identifié)."""
+    if contact_ref and enquete.tentatives_max:
+        restantes = tentatives_restantes(enquete, contact_ref)
+        if restantes is not None and restantes <= 0:
+            raise ValueError('Nombre maximum de tentatives atteint.')
+    return _soumettre_reponse_enquete_interne(
+        enquete, reponses=reponses, contact_ref=contact_ref,
+        nom_repondant=nom_repondant)
+
+
+def _soumettre_reponse_enquete_interne(
+        enquete, *, reponses, contact_ref='', nom_repondant=''):
+    """XMKT27 — soumission publique d'une enquête (sans auth). Ne valide QUE
+    les questions effectivement visibles (logique conditionnelle) : une
+    question masquée n'est jamais requise. Lève ``ValueError`` si une
+    question obligatoire visible est absente.
+
+    ZMKT10 — si ``mode_scoring`` != 'aucun', calcule le score (points par
+    réponse dans le JSON questions) et marque réussi/échoué vs
+    ``score_requis_pct``. Si ``est_certification`` et réussi, génère le
+    certificat PDF (stocké nulle part ici — régénérable à la demande via
+    ``generer_certificat_pdf``).
+    """
+    reponses = reponses or {}
+    visibles = questions_visibles(enquete, reponses)
+    for q in visibles:
+        if q.get('obligatoire') and not reponses.get(q['id']):
+            raise ValueError(f'question obligatoire manquante : {q["id"]}')
+
+    score_pct = None
+    reussi = None
+    if enquete.mode_scoring != Enquete.ModeScoring.AUCUN:
+        score_pct = calculer_score_enquete(enquete, reponses)
+        if enquete.score_requis_pct is not None:
+            reussi = float(score_pct) >= enquete.score_requis_pct
+
+    reponse = ReponseEnquete.objects.create(
+        company=enquete.company, enquete=enquete,
+        contact_ref=contact_ref or '', reponses=reponses,
+        score_pct=score_pct, reussi=reussi)
+
+    if enquete.est_certification and reussi:
+        reponse.certificat_genere = True
+        reponse.save(update_fields=['certificat_genere'])
+    return reponse
+
+
+def calculer_score_enquete(enquete, reponses):
+    """ZMKT10 — calcule le score (%) : Σ points obtenus / Σ points possibles
+    × 100 sur les questions portant un ``points``/``bonne_reponse``.
+    Questions sans barème ignorées (0 point possible)."""
+    from decimal import Decimal
+
+    points_obtenus = Decimal('0')
+    points_possibles = Decimal('0')
+    for q in (enquete.questions or []):
+        points = q.get('points')
+        bonne_reponse = q.get('bonne_reponse')
+        if points is None or bonne_reponse is None:
+            continue
+        points_possibles += Decimal(str(points))
+        if reponses.get(q['id']) == bonne_reponse:
+            points_obtenus += Decimal(str(points))
+    if points_possibles == 0:
+        return Decimal('0')
+    return (points_obtenus / points_possibles * 100).quantize(Decimal('0.01'))
+
+
+def acces_enquete_autorise(enquete, *, jeton_invite=None):
+    """ZMKT11 — vérifie le mode d'accès : lien public toujours autorisé,
+    invités-seulement exige un jeton émis (présent dans ``jetons_invites``).
+    """
+    if enquete.mode_acces == Enquete.ModeAcces.LIEN_PUBLIC:
+        return True
+    return bool(jeton_invite and jeton_invite in (enquete.jetons_invites or []))
+
+
+def emettre_jeton_invite(enquete):
+    """ZMKT11 — émet (et enregistre) un nouveau jeton d'invitation."""
+    jeton = uuid.uuid4().hex
+    jetons = list(enquete.jetons_invites or [])
+    jetons.append(jeton)
+    enquete.jetons_invites = jetons
+    enquete.save(update_fields=['jetons_invites'])
+    return jeton
+
+
+def qr_svg_enquete(enquete):
+    """ZMKT12 — QR SVG du lien public de l'enquête (réutilise
+    ``stock.selectors.qr_svg`` — pattern XMKT29, aucune dépendance)."""
+    from apps.stock.selectors import qr_svg
+
+    url_publique = f'/api/django/compta/enquetes-publiques/{enquete.token}/'
+    return qr_svg(url_publique)
+
+
+def inviter_enquete(enquete, *, segment=None, liste=None):
+    """ZMKT12 — envoie le lien de l'enquête par email (gated Brevo, no-op
+    sans clé → file de relance manuelle FG31) aux contacts d'un segment
+    (XMKT6) ou d'une liste (XMKT5). Respecte consentement + suppression
+    (XMKT3/XMKT4). Renvoie le nombre de destinataires ciblés."""
+    destinataires = []
+    if segment is not None:
+        lead_ids = evaluer_segment(segment)
+        from apps.crm.selectors import get_company_lead
+        for lead_id in lead_ids:
+            lead = get_company_lead(enquete.company, lead_id)
+            if lead is not None and lead.email:
+                destinataires.append(lead.email)
+    if liste is not None:
+        abonnements = AbonnementListe.objects.filter(
+            liste=liste, statut=AbonnementListe.Statut.INSCRIT)
+        destinataires.extend(a.destinataire for a in abonnements)
+
+    cibles = [
+        d for d in destinataires
+        if not est_supprime(enquete.company, d)
+        and consentement_accorde(enquete.company, d, canal='email')
+    ]
+    if not brevo_actif():
+        # No-op réseau : file de relance manuelle FG31 (aucun appel payant).
+        return {'destinataires_cibles': len(cibles), 'envoye_reel': False}
+    return {'destinataires_cibles': len(cibles), 'envoye_reel': True}
+
+
+def participations_enquete(enquete, *, reussi=None):
+    """ZMKT13 — liste des soumissions individuelles (contact quand connu,
+    score, durée, date) filtrable réussi/échoué."""
+    from apps.crm.selectors import get_company_lead
+
+    qs = enquete.reponses.all()
+    if reussi is not None:
+        qs = qs.filter(reussi=reussi)
+    resultat = []
+    for reponse in qs:
+        contact_nom = reponse.contact_ref or 'Anonyme'
+        if reponse.contact_ref.startswith('lead:'):
+            lead_id = reponse.contact_ref.split(':', 1)[1]
+            lead = get_company_lead(
+                enquete.company, int(lead_id)) if lead_id.isdigit() else None
+            if lead is not None:
+                contact_nom = f'{lead.nom} {lead.prenom or ""}'.strip()
+        resultat.append({
+            'id': reponse.id,
+            'contact': contact_nom,
+            'score_pct': reponse.score_pct,
+            'reussi': reponse.reussi,
+            'date_creation': reponse.date_creation,
+        })
+    return resultat
+
+
+def tester_enquete(enquete):
+    """ZMKT11 — ouvre l'enquête en mode aperçu (test) SANS enregistrer de
+    ``ReponseEnquete`` — renvoie le rendu public tel qu'un vrai répondant le
+    verrait."""
+    return rendre_enquete_publique(enquete, {})
+
+
+def tentatives_restantes(enquete, identifiant):
+    """ZMKT11 — nombre de tentatives restantes pour ``identifiant`` (email),
+    ``None`` = illimité (comportement actuel)."""
+    if not enquete.tentatives_max:
+        return None
+    deja_soumises = ReponseEnquete.objects.filter(
+        enquete=enquete, contact_ref=identifiant).count()
+    return max(0, enquete.tentatives_max - deja_soumises)
+
+
+def generer_certificat_pdf(reponse):
+    """ZMKT10 — génère le PDF du certificat (WeasyPrint, HORS /proposal)
+    pour une réponse réussie/certifiée. Renvoie ``None`` si non
+    certifiée/échouée."""
+    if not reponse.certificat_genere:
+        return None
+    from .pdf_certificat_enquete import render_certificat_pdf
+
+    nom = reponse.reponses.get('_nom_repondant', reponse.contact_ref or 'Répondant')
+    return render_certificat_pdf(
+        nom_repondant=nom, titre_enquete=reponse.enquete.titre,
+        score_pct=reponse.score_pct)
+
+
+def taux_completion_enquete(enquete):
+    """XMKT27 — taux de complétion vs abandon : une réponse est « complète »
+    si toutes les questions obligatoires VISIBLES pour elle ont une valeur."""
+    total = enquete.reponses.count()
+    if not total:
+        return {'total': 0, 'completes': 0, 'taux_completion_pct': 0.0}
+    completes = 0
+    for reponse in enquete.reponses.all():
+        visibles = questions_visibles(enquete, reponse.reponses or {})
+        obligatoires_ok = all(
+            reponse.reponses.get(q['id']) for q in visibles if q.get('obligatoire'))
+        if obligatoires_ok:
+            completes += 1
+    return {
+        'total': total,
+        'completes': completes,
+        'taux_completion_pct': round(completes / total * 100, 1),
+    }
+
+
+def analytics_enquete(enquete):
+    """XMKT27 — analytics agrégées par question : répartition des choix,
+    moyenne/distribution des échelles, nuage des réponses texte, NPS
+    consolidé si question NPS."""
+    reponses = list(enquete.reponses.all())
+    resultats = {}
+    for q in (enquete.questions or []):
+        qid = q['id']
+        valeurs = [r.reponses.get(qid) for r in reponses if r.reponses.get(qid) is not None]
+        if q['type'] == 'choix':
+            repartition = {}
+            for v in valeurs:
+                repartition[v] = repartition.get(v, 0) + 1
+            resultats[qid] = {'type': 'choix', 'repartition': repartition}
+        elif q['type'] in ('echelle', 'nps'):
+            nombres = [float(v) for v in valeurs if _est_nombre(v)]
+            moyenne = round(sum(nombres) / len(nombres), 2) if nombres else 0.0
+            entry = {'type': q['type'], 'moyenne': moyenne, 'n': len(nombres)}
+            if q['type'] == 'nps' and nombres:
+                promoteurs = sum(1 for n in nombres if n >= 9)
+                detracteurs = sum(1 for n in nombres if n <= 6)
+                entry['nps'] = round(
+                    (promoteurs - detracteurs) / len(nombres) * 100, 1)
+            resultats[qid] = entry
+        else:
+            resultats[qid] = {'type': 'texte', 'reponses': valeurs}
+    resultats['_completion'] = taux_completion_enquete(enquete)
+    return resultats
+
+
+def _est_nombre(v):
+    try:
+        float(v)
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
+# ── XMKT28 — Événements marketing légers ────────────────────────────────────
+
+def inscrire_evenement(
+        evenement, *, nom, email='', telephone='', billet=None,
+        reponses_questions=None):
+    """XMKT28 — Inscription publique à un événement : crée l'inscription +
+    le lead dédupliqué (via ``crm.services``, jamais d'import direct du
+    modèle CRM), attribue un jeton QR de check-in par inscrit.
+
+    ZMKT15 — si ``billet`` est fourni : refuse (ValueError) au-delà du
+    quota, ou hors fenêtre de vente.
+
+    ZMKT16 — ``reponses_questions`` (JSON) refusé (ValueError) si une
+    question obligatoire de l'événement est absente ; stocké sur
+    l'inscription et reporté (note chatter) sur le lead créé.
+    """
+    from apps.crm import services as crm_services
+
+    if billet is not None:
+        if not billet.dans_fenetre_vente():
+            raise ValueError('Billet hors fenêtre de vente.')
+        if billet.places_restantes is not None and billet.places_restantes <= 0:
+            raise ValueError('Quota de places atteint pour ce billet.')
+
+    reponses_questions = reponses_questions or {}
+    questions_obligatoires = evenement.questions.filter(obligatoire=True)
+    for question in questions_obligatoires:
+        if not reponses_questions.get(str(question.id)):
+            raise ValueError(
+                f'question obligatoire manquante : {question.libelle}')
+
+    inscription = InscriptionEvenement.objects.create(
+        company=evenement.company, evenement=evenement,
+        nom=nom, email=email or '', telephone=telephone or '',
+        qr_token=uuid.uuid4().hex, billet=billet,
+        reponses_questions=reponses_questions,
+    )
+    lead = crm_services.create_lead_from_evenement_marketing(
+        company=evenement.company, nom=nom, telephone=telephone,
+        email=email, evenement_nom=evenement.nom)
+    inscription.lead_id = lead.id
+    inscription.save(update_fields=['lead_id'])
+    return inscription
+
+
+def pointer_presence(inscription):
+    """XMKT28 — Check-in sur place : bascule le statut en présent
+    (horodaté)."""
+    if inscription.statut == InscriptionEvenement.Statut.PRESENT:
+        return inscription
+    inscription.statut = InscriptionEvenement.Statut.PRESENT
+    inscription.date_pointage = timezone.now()
+    inscription.save(update_fields=['statut', 'date_pointage'])
+    return inscription
+
+
+def reporting_evenements(company, *, groupby=None):
+    """ZMKT20 — reporting événement : inscrits/confirmés/présents/absents,
+    taux de présence, répartition par billet, recette théorique MAD (Σ prix
+    billet × inscrits), leads générés, groupable par type d'événement/mois.
+    """
+    resultats = []
+    qs = EvenementMarketing.objects.filter(company=company)
+    for evenement in qs:
+        inscriptions = evenement.inscriptions.all()
+        nb_inscrits = inscriptions.count()
+        nb_confirmes = inscriptions.filter(
+            statut=InscriptionEvenement.Statut.CONFIRME).count()
+        nb_presents = inscriptions.filter(
+            statut=InscriptionEvenement.Statut.PRESENT).count()
+        nb_absents = inscriptions.filter(
+            statut=InscriptionEvenement.Statut.ABSENT).count()
+        taux_presence = (
+            round(nb_presents / nb_inscrits * 100, 1) if nb_inscrits else 0.0)
+        recette = Decimal('0')
+        repartition_billets = {}
+        for billet in evenement.billets.all():
+            nb = billet.inscriptions.count()
+            repartition_billets[billet.libelle] = nb
+            recette += Decimal(str(billet.prix_ttc_mad)) * nb
+        nb_leads = inscriptions.exclude(lead_id__isnull=True).values(
+            'lead_id').distinct().count()
+        resultats.append({
+            'evenement_id': evenement.id,
+            'nom': evenement.nom,
+            'type_evenement': evenement.type_evenement,
+            'mois': evenement.date_debut.strftime('%Y-%m'),
+            'nb_inscrits': nb_inscrits,
+            'nb_confirmes': nb_confirmes,
+            'nb_presents': nb_presents,
+            'nb_absents': nb_absents,
+            'taux_presence_pct': taux_presence,
+            'repartition_billets': repartition_billets,
+            'recette_theorique_mad': str(recette),
+            'nb_leads': nb_leads,
+        })
+
+    if groupby == 'type':
+        groupes = {}
+        for r in resultats:
+            groupes.setdefault(r['type_evenement'], []).append(r)
+        return groupes
+    if groupby == 'mois':
+        groupes = {}
+        for r in resultats:
+            groupes.setdefault(r['mois'], []).append(r)
+        return groupes
+    return resultats
+
+
+def generer_badge_pdf(inscription):
+    """ZMKT19 — badge PDF imprimable d'UN inscrit : nom, événement, société
+    organisatrice, QR de check-in (via ``stock.selectors.qr_svg``)."""
+    from apps.stock.selectors import qr_svg
+    from .pdf_badge_evenement import render_badge_pdf
+
+    nom_societe = ''
+    try:
+        from apps.parametres.models_company import CompanyProfile
+        profil = CompanyProfile.objects.filter(
+            company=inscription.company).first()
+        nom_societe = profil.nom if profil else ''
+    except Exception:  # pragma: no cover - défensif
+        pass
+    svg = qr_svg(inscription.qr_token or '')
+    return render_badge_pdf(
+        nom_inscrit=inscription.nom, nom_evenement=inscription.evenement.nom,
+        nom_societe=nom_societe, qr_svg=svg)
+
+
+def generer_badges_pdf_lot(evenement):
+    """ZMKT19 — impression en lot (PDF multi-pages) pour tous les inscrits
+    confirmés de l'événement."""
+    from apps.stock.selectors import qr_svg
+    from .pdf_badge_evenement import render_badges_pdf
+
+    nom_societe = ''
+    try:
+        from apps.parametres.models_company import CompanyProfile
+        profil = CompanyProfile.objects.filter(company=evenement.company).first()
+        nom_societe = profil.nom if profil else ''
+    except Exception:  # pragma: no cover - défensif
+        pass
+    inscrits = evenement.inscriptions.filter(
+        statut__in=[
+            InscriptionEvenement.Statut.CONFIRME,
+            InscriptionEvenement.Statut.INSCRIT])
+    donnees = [
+        {
+            'nom_inscrit': i.nom, 'nom_evenement': evenement.nom,
+            'nom_societe': nom_societe, 'qr_svg': qr_svg(i.qr_token or ''),
+        }
+        for i in inscrits
+    ]
+    return render_badges_pdf(donnees)
+
+
+def rechercher_inscrits_borne(evenement, terme):
+    """ZMKT18 — recherche par nom/email parmi les inscrits (borne de
+    check-in), company-scopée."""
+    terme = (terme or '').strip()
+    if not terme:
+        return []
+    qs = InscriptionEvenement.objects.filter(
+        company=evenement.company, evenement=evenement,
+    ).filter(Q(nom__icontains=terme) | Q(email__icontains=terme))
+    return [
+        {'id': i.id, 'nom': i.nom, 'email': i.email, 'statut': i.statut}
+        for i in qs
+    ]
+
+
+def pointer_presence_via_qr_ou_recherche(evenement, *, qr_token=None,
+                                         inscription_id=None):
+    """ZMKT18 — check-in via le token QR par inscrit (XMKT28) ou une
+    recherche/sélection directe. Idempotent (une seule fois — délègue à
+    ``pointer_presence``)."""
+    inscription = None
+    if qr_token:
+        inscription = InscriptionEvenement.objects.filter(
+            company=evenement.company, evenement=evenement,
+            qr_token=qr_token).first()
+    elif inscription_id:
+        inscription = InscriptionEvenement.objects.filter(
+            company=evenement.company, evenement=evenement,
+            id=inscription_id).first()
+    if inscription is None:
+        return None
+    return pointer_presence(inscription)
+
+
+def cloturer_presences_evenement(evenement):
+    """XMKT28 — marque ``absent`` les inscrits confirmés/inscrits non pointés
+    à la fin de l'événement."""
+    qs = InscriptionEvenement.objects.filter(
+        company=evenement.company, evenement=evenement,
+    ).exclude(statut__in=[
+        InscriptionEvenement.Statut.PRESENT, InscriptionEvenement.Statut.ABSENT])
+    nb = qs.update(statut=InscriptionEvenement.Statut.ABSENT)
+    return nb
+
+
+# ── ZMKT14 — Types d'événements + modèles + étapes de pipeline ─────────────
+
+def creer_evenement_depuis_type(type_evenement, *, nom, date_debut, **kwargs):
+    """ZMKT14 — crée un ``EvenementMarketing`` depuis un ``TypeEvenement`` :
+    pré-remplit le type d'événement par défaut, garde la trace du modèle
+    source (``type_modele``)."""
+    return EvenementMarketing.objects.create(
+        company=type_evenement.company, nom=nom,
+        type_evenement=type_evenement.type_evenement_defaut,
+        date_debut=date_debut, type_modele=type_evenement, **kwargs)
+
+
+def avancer_etape_evenement(evenement, nouvelle_etape):
+    """ZMKT14 — avance l'événement dans le pipeline configurable (JAMAIS les
+    clés STAGES.py du funnel CRM — un vocabulaire strictement séparé)."""
+    evenement.etape = nouvelle_etape
+    evenement.save(update_fields=['etape'])
+    return evenement
+
+
+def evenements_par_etape(company):
+    """ZMKT14 — Kanban par étape (company-scoped)."""
+    resultat = {etape: [] for etape, _ in EvenementMarketing.Etape.choices}
+    for evenement in EvenementMarketing.objects.filter(company=company):
+        resultat.setdefault(evenement.etape, []).append({
+            'id': evenement.id, 'nom': evenement.nom,
+            'type_evenement': evenement.type_evenement,
+        })
+    return resultat
+
+
+# ── ZMKT17 — Communications programmées d'événement ────────────────────────
+
+def envoyer_communications_evenement_dues(company, *, maintenant=None):
+    """ZMKT17 — Enveloppe beat : envoie chaque communication d'événement dont
+    l'échéance (relative à ``evenement.date_debut``) est atteinte, aux
+    inscrits pertinents (inscrit/confirmé/présent), consentement +
+    suppression respectés, gated comme FG201 (no-op sans clé).
+    """
+    maintenant = maintenant or timezone.now()
+    envoyees = []
+    qs = CommunicationEvenement.objects.filter(
+        company=company, envoyee_le__isnull=True,
+    ).select_related('evenement')
+    for comm in qs:
+        if maintenant < comm.echeance():
+            continue
+        inscrits = InscriptionEvenement.objects.filter(
+            company=company, evenement=comm.evenement,
+            statut__in=[
+                InscriptionEvenement.Statut.INSCRIT,
+                InscriptionEvenement.Statut.CONFIRME,
+                InscriptionEvenement.Statut.PRESENT],
+        )
+        destinataires = []
+        for inscrit in inscrits:
+            dest = inscrit.email if comm.canal == 'email' else inscrit.telephone
+            if not dest:
+                continue
+            if est_supprime(company, dest):
+                continue
+            if not consentement_accorde(company, dest, canal=comm.canal):
+                continue
+            destinataires.append(dest)
+        comm.envoyee_le = maintenant
+        comm.save(update_fields=['envoyee_le'])
+        envoyees.append({
+            'communication_id': comm.id, 'nb_destinataires': len(destinataires),
+            'envoye_reel': brevo_actif(),
+        })
+    return envoyees
+
+
+# ── XMKT29 — Ponts QR pour supports offline (flyers, bâches, véhicules) ────
+
+def _tagger_utm_offline(url, nom_support):
+    """XMKT29 — auto-tague l'URL cible utm_source=offline&utm_campaign=nom."""
+    from urllib.parse import urlencode, urlparse, parse_qsl, urlunparse
+
+    parsed = urlparse(url)
+    query = dict(parse_qsl(parsed.query))
+    query.setdefault('utm_source', 'offline')
+    query.setdefault('utm_campaign', nom_support)
+    return urlunparse(parsed._replace(query=urlencode(query)))
+
+
+def creer_support_offline(company, *, nom, url_cible):
+    """XMKT29 — crée un support offline avec son lien tracké (QR
+    téléchargeable). Réutilise ``LienTrackee``/``traiter_clic_lien``
+    (XMKT9) — ``campagne=None`` (lien issu d'un support, pas d'un envoi)."""
+    url_taguee = _tagger_utm_offline(url_cible, nom)
+    lien = LienTrackee.objects.create(
+        company=company, campagne=None, url_cible=url_taguee,
+        token=uuid.uuid4().hex)
+    return SupportOffline.objects.create(
+        company=company, nom=nom, url_cible=url_taguee, lien_tracke=lien)
+
+
+def qr_svg_support_offline(support):
+    """XMKT29 — SVG du QR téléchargeable pointant vers la redirection
+    tokenisée du support (compte les scans)."""
+    from apps.stock.selectors import qr_svg
+
+    if not support.lien_tracke:
+        return None
+    url_redirection = f'/api/django/compta/r/{support.lien_tracke.token}/'
+    return qr_svg(url_redirection)
+
+
+def tableau_scans_par_support(company):
+    """XMKT29 — tableau scans/leads par support (drill-down)."""
+    resultats = []
+    for support in SupportOffline.objects.filter(company=company):
+        lien = support.lien_tracke
+        nb_scans = lien.nb_clics if lien else 0
+        resultats.append({
+            'support_id': support.id,
+            'nom': support.nom,
+            'nb_scans': nb_scans,
+        })
+    return resultats
+
+
+# ── XMKT31 — Conteneur de campagne multi-canal ──────────────────────────────
+
+def rattacher_a_campagne_mere(campagne_mere, *, type_objet, objet_id):
+    """XMKT31 — rattache un objet OPAQUE (séquence/formulaire/code promo/
+    événement) à une campagne mère. Idempotent."""
+    rattachements = list(campagne_mere.rattachements or [])
+    entree = {'type': type_objet, 'id': objet_id}
+    if entree not in rattachements:
+        rattachements.append(entree)
+        campagne_mere.rattachements = rattachements
+        campagne_mere.save(update_fields=['rattachements'])
+    return campagne_mere
+
+
+def kpi_campagne_mere(campagne_mere):
+    """XMKT31 — agrège KPI/coûts/ROI de TOUS les enfants (canaux) d'une
+    campagne mère. Renvoie les totaux + le détail par enfant."""
+    enfants = list(campagne_mere.enfants.all())
+    nb_destinataires = sum(e.nb_destinataires for e in enfants)
+    nb_envois = sum(e.nb_envois for e in enfants)
+    nb_ouvertures = sum(e.nb_ouvertures for e in enfants)
+    nb_clics = sum(e.nb_clics for e in enfants)
+    cout_total = cout_total_campagne(campagne_mere)
+    for enfant in enfants:
+        cout_total += cout_total_campagne(enfant)
+    revenu_total = Decimal('0')
+    nb_leads_total = 0
+    nb_signes_total = 0
+    for campagne in [campagne_mere] + enfants:
+        roi = roi_campagne(campagne)
+        revenu_total += Decimal(roi['revenu_ttc_mad'])
+        nb_leads_total += roi['nb_leads']
+        nb_signes_total += roi['nb_signes']
+    roi_pct = 0.0
+    if cout_total > 0:
+        roi_pct = round(float((revenu_total - cout_total) / cout_total * 100), 1)
+    return {
+        'campagne_mere_id': campagne_mere.id,
+        'nb_enfants': len(enfants),
+        'nb_destinataires': nb_destinataires,
+        'nb_envois': nb_envois,
+        'nb_ouvertures': nb_ouvertures,
+        'nb_clics': nb_clics,
+        'cout_total_mad': str(cout_total),
+        'revenu_total_ttc_mad': str(revenu_total),
+        'roi_pct': roi_pct,
+        'nb_leads': nb_leads_total,
+        'nb_signes': nb_signes_total,
+        'rattachements': campagne_mere.rattachements or [],
+    }
+
+
+# ── XMKT33 — Assistant d'authentification du domaine d'envoi ──────────────
+
+def enregistrements_dns_attendus(domaine):
+    """XMKT33 — enregistrements DNS ATTENDUS pour ``domaine`` (SPF/DKIM
+    Brevo/DMARC), affichés dans la page Paramètres avant vérification."""
+    return {
+        'spf': {
+            'type': 'TXT', 'hote': domaine,
+            'valeur_attendue': 'v=spf1 include:spf.brevo.com ~all',
+        },
+        'dkim': {
+            'type': 'CNAME', 'hote': f'mail._domainkey.{domaine}',
+            'valeur_attendue': f'mail._domainkey.{domaine}.brevo.com',
+        },
+        'dmarc': {
+            'type': 'TXT', 'hote': f'_dmarc.{domaine}',
+            'valeur_attendue': 'v=DMARC1; p=none;',
+        },
+    }
+
+
+def _lookup_txt(hote):
+    """Lookup DNS TXT best-effort (dnspython) ; renvoie une liste de chaînes,
+    liste vide si échec (jamais d'exception propagée — no-op réseau en
+    tests, mock)."""
+    try:
+        import dns.resolver
+        reponses = dns.resolver.resolve(hote, 'TXT')
+        return [str(r).strip('"') for r in reponses]
+    except Exception:  # pragma: no cover - défensif (réseau/DNS absent)
+        return []
+
+
+def _lookup_cname(hote):
+    """Lookup DNS CNAME best-effort (dnspython)."""
+    try:
+        import dns.resolver
+        reponses = dns.resolver.resolve(hote, 'CNAME')
+        return [str(r).rstrip('.') for r in reponses]
+    except Exception:  # pragma: no cover - défensif
+        return []
+
+
+def verifier_domaine_envoi(domaine_envoi):
+    """XMKT33 — relance la vérification DNS des 3 enregistrements pour
+    ``domaine_envoi`` (mutable, relançable). Renvoie l'objet mis à jour."""
+    attendus = enregistrements_dns_attendus(domaine_envoi.domaine)
+
+    spf_txts = _lookup_txt(attendus['spf']['hote'])
+    domaine_envoi.spf_verifie = any('v=spf1' in t for t in spf_txts)
+
+    dkim_cnames = _lookup_cname(attendus['dkim']['hote'])
+    domaine_envoi.dkim_verifie = bool(dkim_cnames)
+
+    dmarc_txts = _lookup_txt(attendus['dmarc']['hote'])
+    domaine_envoi.dmarc_verifie = any('v=dmarc1' in t.lower() for t in dmarc_txts)
+
+    domaine_envoi.derniere_verification_le = timezone.now()
+    domaine_envoi.save(update_fields=[
+        'spf_verifie', 'dkim_verifie', 'dmarc_verifie',
+        'derniere_verification_le'])
+    return domaine_envoi
+
+
+def domaine_envoi_authentifie(company, domaine):
+    """XMKT33 — True si le domaine est intégralement authentifié (utilisé
+    par le pré-check XMKT13). Domaine jamais enregistré = non authentifié
+    (avertissement, comportement conservateur)."""
+    obj = DomaineEnvoi.objects.filter(company=company, domaine=domaine).first()
+    return bool(obj and obj.authentifie)

@@ -25,6 +25,7 @@ from ..serializers import (  # noqa: F401
     ConsommationLigneSerializer, VoiceMemoSerializer, ReserveSerializer,
     ToolReturnSerializer, SafetyChecklistSlotSerializer, SafetySignoffSerializer,
     ReverificationMesureSerializer,
+    FicheInterventionReleveSerializer,
 )
 from ..services import (  # noqa: F401
     create_installation_from_devis, seed_checklist_etapes,
@@ -240,6 +241,8 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             'reverifications',
             # XFSM22 — durée & pièces suggérées par l'historique.
             'suggestions_creation',
+            # ZFSM1 — lecture de la fiche d'intervention (relevé terrain).
+            'fiche',
         ]:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
@@ -265,6 +268,14 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             'generer_devis_reserve',
             # XFSM7 — lien public « technicien en route ».
             'lien_client',
+            # ZFSM2 — lien public tokenisé du compte-rendu signé.
+            'lien_rapport',
+            # ZFSM4 — facturation directe d'une intervention hors contrat.
+            'generer_facture',
+            # ZFSM5 — devis d'upsell créé sur place depuis l'intervention.
+            'generer_devis',
+            # ZFSM1 — renseigner la fiche d'intervention (relevé terrain).
+            'renseigner_fiche',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -434,6 +445,11 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             intervention_completed.send(
                 sender=Intervention, intervention=interv,
                 company=self.request.user.company, user=self.request.user)
+        # ZFSM2 — génère le jeton du lien public « compte-rendu signé » à la
+        # validation de l'intervention (lazy, idempotent : ne régénère jamais).
+        if (old.statut != Intervention.Statut.VALIDEE
+                and interv.statut == Intervention.Statut.VALIDEE):
+            interv.ensure_lien_rapport_token()
 
     def perform_destroy(self, instance):
         # Suppression d'intervention → trace au chatter du CHANTIER.
@@ -1221,6 +1237,41 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         data['labour_jours'] = field_capture.labour_days_for_intervention(interv)
         return Response(data)
 
+    # ── ZFSM1 — gabarit de fiche d'intervention (relevé matérialisé) ─────────
+    @action(detail=True, methods=['get'], url_path='fiche',
+            permission_classes=[IsAnyRole])
+    def fiche(self, request, pk=None):
+        """ZFSM1 — relevé de fiche d'intervention (mesures/cases/texte) selon
+        le gabarit du type de l'intervention. Matérialisé paresseusement à la
+        première consultation. `null` si aucun gabarit ne correspond au type."""
+        interv = self.get_object()
+        releve = field_services.ensure_fiche_releve(interv)
+        if releve is None:
+            return Response(None)
+        return Response(FicheInterventionReleveSerializer(
+            releve, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='renseigner-fiche',
+            permission_classes=[IsResponsableOrAdmin])
+    def renseigner_fiche(self, request, pk=None):
+        """ZFSM1 — renseigne la valeur d'UN champ du relevé. Corps :
+        {"valeur_id": <id>, "valeur": <str>}."""
+        interv = self.get_object()
+        releve = field_services.ensure_fiche_releve(interv)
+        if releve is None:
+            return Response({'detail': "Aucun gabarit pour ce type d'intervention."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        valeur_obj = releve.valeurs.filter(
+            id=request.data.get('valeur_id')).first()
+        if valeur_obj is None:
+            return Response({'detail': 'Champ de fiche inconnu.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        valeur_obj.valeur = str(request.data.get('valeur', '') or '').strip()
+        valeur_obj.renseigne_le = timezone.now()
+        valeur_obj.save(update_fields=['valeur', 'renseigne_le'])
+        return Response(FicheInterventionReleveSerializer(
+            releve, context={'request': request}).data)
+
     # ── F16 — réserves (punch-list) ──────────────────────────────────────────
     @action(detail=True, methods=['get'], url_path='reserves',
             permission_classes=[IsAnyRole])
@@ -1569,6 +1620,76 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         resp['Content-Disposition'] = (
             f'inline; filename="compte-rendu-intervention-{interv.id}.pdf"')
         return resp
+
+    # ── ZFSM2 — lien public tokenisé du compte-rendu signé ──────────────────
+    @action(detail=True, methods=['get'], url_path='lien-rapport',
+            permission_classes=[IsResponsableOrAdmin])
+    def lien_rapport(self, request, pk=None):
+        """ZFSM2 — génère (lazily) et renvoie l'URL publique du compte-rendu
+        signé de cette intervention, à partager par WhatsApp/SMS (pattern
+        FG86/liens WhatsApp/XFSM7). Jeton DISTINCT du lien « en route »."""
+        interv = self.get_object()
+        token = interv.ensure_lien_rapport_token()
+        return Response({
+            'token': token,
+            'path': f'/public/installations/intervention-rapport/{token}/'})
+
+    # ── ZFSM4 — facturation directe d'une intervention hors contrat ─────────
+    @action(detail=True, methods=['post'], url_path='generer-facture',
+            permission_classes=[IsResponsableOrAdmin])
+    def generer_facture(self, request, pk=None):
+        """ZFSM4 — génère une facture brouillon depuis cette intervention
+        (matériel réellement consommé au prix de VENTE catalogue + ligne
+        main-d'œuvre au taux horaire paramétrable). Idempotent : si
+        l'intervention porte déjà un `facture_id`, le renvoie sans en créer
+        une seconde. Passe EXCLUSIVEMENT par apps.ventes.services (jamais
+        d'import direct des models ventes — règle de modularité)."""
+        interv = self.get_object()
+        # ZFSM4 — capturer l'état AVANT l'appel : le service pose
+        # ``intervention.facture_id`` en place sur cet objet, donc comparer
+        # après renverrait TOUJOURS deja_existant=True (jamais 201 à la
+        # première création). On mémorise le facture_id préexistant.
+        prev_facture_id = interv.facture_id
+        from apps.ventes.services import generer_facture_intervention
+        try:
+            facture = generer_facture_intervention(
+                intervention=interv, user=request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        deja_existant = (prev_facture_id == facture.id)
+        return Response({
+            'intervention': interv.id, 'facture_id': facture.id,
+            'facture_reference': facture.reference,
+            'deja_existant': deja_existant,
+        }, status=status.HTTP_200_OK if deja_existant else status.HTTP_201_CREATED)
+
+    # ── ZFSM5 — devis d'upsell créé sur place depuis l'intervention ─────────
+    @action(detail=True, methods=['post'], url_path='generer-devis',
+            permission_classes=[IsResponsableOrAdmin])
+    def generer_devis(self, request, pk=None):
+        """ZFSM5 — génère un devis brouillon d'upsell depuis cette
+        intervention (client résolu server-side depuis le chantier,
+        description pré-remplie). Idempotent : si l'intervention porte déjà
+        un `devis_upsell_id`, le renvoie sans en créer un second. DISTINCT de
+        `generer-devis-reserve` (XFSM18, réserve → devis de réparation)."""
+        interv = self.get_object()
+        # ZFSM5 — même correctif que generer_facture : mémoriser l'id AVANT
+        # (le service pose ``devis_upsell_id`` en place → sinon toujours 200).
+        prev_devis_id = interv.devis_upsell_id
+        from apps.ventes.services import create_devis_upsell_from_intervention
+        try:
+            devis = create_devis_upsell_from_intervention(
+                intervention=interv, user=request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        deja_existant = (prev_devis_id == devis.id)
+        return Response({
+            'intervention': interv.id, 'devis_id': devis.id,
+            'devis_reference': devis.reference,
+            'deja_existant': deja_existant,
+        }, status=status.HTTP_200_OK if deja_existant else status.HTTP_201_CREATED)
 
     # ── F23 — code court / QR de l'intervention ──────────────────────────────
     @action(detail=True, methods=['get'], url_path='code',

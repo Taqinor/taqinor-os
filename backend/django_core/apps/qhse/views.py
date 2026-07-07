@@ -15,7 +15,8 @@ from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 
 from authentication.mixins import TenantMixin
-from authentication.permissions import IsResponsableOrAdmin
+from authentication.permissions import HasPermissionOrLegacy
+from core.permissions import WriteScopedPermissionMixin
 
 from apps.ventes.utils.references import create_with_reference
 
@@ -124,9 +125,16 @@ from .services import (
 )
 
 
-class _QhseBaseViewSet(TenantMixin, viewsets.ModelViewSet):
-    """Base : société scopée + accès Administrateur/Responsable uniquement."""
-    permission_classes = [IsResponsableOrAdmin]
+class _QhseBaseViewSet(
+        WriteScopedPermissionMixin, TenantMixin, viewsets.ModelViewSet):
+    """Base : société scopée + lecture/écriture fine-grainées (YRBAC3).
+
+    ``qhse_voir`` gate les méthodes sûres (GET/HEAD/OPTIONS), ``qhse_gerer``
+    gate l'écriture (POST/PUT/PATCH/DELETE + actions custom). Comptes légacy
+    sans rôle fin : repli historique Administrateur/Responsable préservé.
+    """
+    read_permission = 'qhse_voir'
+    write_permission = 'qhse_gerer'
 
 
 class _ChatterMixin:
@@ -661,7 +669,7 @@ class QhseChatterEntryViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     CAPA — jamais par cet endpoint. Scopé société (TenantMixin), palier
     Responsable/Admin.
     """
-    permission_classes = [IsResponsableOrAdmin]
+    permission_classes = [HasPermissionOrLegacy('qhse_voir')]
     queryset = QhseChatterEntry.objects.select_related('user').all()
     serializer_class = QhseChatterEntrySerializer
 
@@ -916,7 +924,7 @@ class Iso9001ReadinessViewSet(viewsets.ViewSet):
     existantes — aucun modèle, aucune mutation. Scopé société : le sélecteur ne
     lit que les données de ``request.user.company``. Palier Responsable/Admin.
     """
-    permission_classes = [IsResponsableOrAdmin]
+    permission_classes = [HasPermissionOrLegacy('qhse_voir')]
 
     def list(self, request):
         return Response(iso9001_readiness(request.user.company))
@@ -934,7 +942,7 @@ class CalendrierQhseViewSet(viewsets.ViewSet):
     drapeau ``en_retard`` par échéance passée. Agrégation PURE des sélecteurs
     QHSE existants — aucune mutation. Scopé société. Palier Responsable/Admin.
     """
-    permission_classes = [IsResponsableOrAdmin]
+    permission_classes = [HasPermissionOrLegacy('qhse_voir')]
 
     def list(self, request):
         within = request.query_params.get('within_days', 30)
@@ -2272,7 +2280,7 @@ class ParetoDefautsViewSet(viewsets.ViewSet):
     premier-passage des relevés (mêmes filtres période/chantier). Agrégation
     PURE — aucune mutation. Scopé société. Palier Responsable/Admin.
     """
-    permission_classes = [IsResponsableOrAdmin]
+    permission_classes = [HasPermissionOrLegacy('qhse_voir')]
 
     def list(self, request):
         periode = request.query_params.get('periode') or None
@@ -2327,7 +2335,7 @@ class SignalementPublicViewSet(viewsets.ReadOnlyModelViewSet):
     """
     queryset = SignalementPublic.objects.all()
     serializer_class = SignalementPublicSerializer
-    permission_classes = [IsResponsableOrAdmin]
+    permission_classes = [HasPermissionOrLegacy('qhse_voir')]
 
     def get_queryset(self):
         return super().get_queryset().filter(
@@ -2592,7 +2600,7 @@ class CoutNonQualiteViewSet(viewsets.ViewSet):
     (même palier que ``marge_voir``/``prix_achat_voir``) — sans la
     permission, les montants reviennent ``None`` (structure identique,
     jamais d'erreur, jamais de fuite dans un rendu client)."""
-    permission_classes = [IsResponsableOrAdmin]
+    permission_classes = [HasPermissionOrLegacy('qhse_voir')]
 
     def list(self, request):
         annee = request.query_params.get('annee')
@@ -2778,7 +2786,7 @@ class RevueVeilleReglementaireViewSet(_QhseBaseViewSet):
 # (Responsable/Admin) — CE N'EST PAS un endpoint public.
 
 @api_view(['POST'])
-@permission_classes([IsResponsableOrAdmin])
+@permission_classes([HasPermissionOrLegacy('qhse_gerer')])
 def ia_suggestion_classification(request):
     """XQHS25 — `POST {"description": str}` → suggestion de classification
     (type/gravité/code défaut) d'un incident ou d'une NCR à partir d'une
@@ -2789,7 +2797,7 @@ def ia_suggestion_classification(request):
 
 
 @api_view(['POST'])
-@permission_classes([IsResponsableOrAdmin])
+@permission_classes([HasPermissionOrLegacy('qhse_gerer')])
 def ia_suggestion_analyse(request):
     """XQHS25 — `POST {"recit": str}` → brouillon 5-Pourquoi + plan CAPA
     depuis un récit d'investigation libre."""

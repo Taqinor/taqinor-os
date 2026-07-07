@@ -84,6 +84,8 @@ const DashboardConfigPage = lazy(() => import('../pages/reporting/DashboardConfi
 const AgentActions = lazy(() => import('../pages/ia/AgentActions'))
 // Vitrine interne du système UI (refonte, P68) — référence vivante des primitifs.
 const UIShowcase = lazy(() => import('../pages/ui/UIShowcase'))
+// XSAL17 — page publique de réservation de visite (placeholder {lien_rdv}).
+const PublicBookingPage = lazy(() => import('../pages/crm/PublicBookingPage'))
 const ChatPage = lazy(() => import('../pages/messaging/ChatPage'))
 const DocumentsPage = lazy(() => import('../pages/ged/DocumentsPage'))
 
@@ -169,6 +171,8 @@ const router = createBrowserRouter([
   { path: '/login',  element: <Suspense fallback={<Fallback />}><Login /></Suspense> },
   // Référence interne du design system (sans auth ni layout : page autonome).
   { path: '/ui', element: <Suspense fallback={<Fallback />}><UIShowcase /></Suspense> },
+  // XSAL17 — réservation de visite publique (sans login, sans layout ERP).
+  { path: '/rdv/:token', element: <Suspense fallback={<Fallback />}><PublicBookingPage /></Suspense> },
 
   { path: '/dashboard', loader: authLoader, element: <WithLayout><Dashboard /></WithLayout> },
   { path: '/messages', loader: authLoader, element: <WithLayout><ChatPage /></WithLayout> },

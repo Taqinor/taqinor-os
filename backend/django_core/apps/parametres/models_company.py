@@ -72,6 +72,24 @@ class CompanyProfile(models.Model):
         blank=True,
         related_name='+',
     )
+    # ── XSAL11 — Affectation round-robin équilibrée des leads entrants ──
+    # OFF par défaut = comportement actuel inchangé (responsable par défaut /
+    # round-robin déjà existant de QW6). ON : parmi les commerciaux actifs
+    # (rôle « Commercial »), affecte au prochain dans la rotation en sautant
+    # quiconque dépasse le plafond de leads OUVERTS (stage non SIGNED/COLD,
+    # jamais perdu) ; fallback sur `responsable_defaut_leads` si tous saturés.
+    round_robin_leads_actif = models.BooleanField(
+        default=False,
+        verbose_name='Affectation round-robin équilibrée des leads',
+        help_text='OFF = comportement actuel (round-robin simple ou '
+                  "responsable par défaut). ON = plafond de leads ouverts "
+                  'par commercial appliqué avant rotation.')
+    round_robin_plafond_leads_ouverts = models.PositiveIntegerField(
+        default=20,
+        verbose_name='Plafond de leads ouverts par commercial',
+        help_text="Un commercial au-delà de ce nombre de leads OUVERTS "
+                  "(stage non SIGNED/COLD, non perdu) est sauté dans la "
+                  "rotation (XSAL11).")
     # N66 — installateur (technicien) assigné par défaut aux NOUVEAUX chantiers
     # quand aucun n'est choisi. NULL = comportement actuel (le créateur du
     # chantier en est le technicien responsable). Additif.
@@ -431,6 +449,60 @@ class CompanyProfile(models.Model):
         help_text="Réserver le stock automatiquement à la création du "
                   "chantier (défaut, comportement historique) ou "
                   "manuellement via un bouton explicite.")
+
+    # ── ZSTK2 — fenêtre d'alerte de péremption (jours) pour la tâche beat
+    # `stock.expiration_alerts` (Odoo "expiration alerts" scheduled action).
+    # Défaut 30 — réutilise `produits_expirant_bientot` (FG64) tel quel, sans
+    # dupliquer la logique d'expiry.
+    jours_alerte_peremption = models.PositiveIntegerField(
+        default=30,
+        help_text='Fenêtre (jours) au-delà de laquelle un lot proche de sa '
+                  'péremption déclenche une alerte automatique quotidienne.')
+
+    # ── XMKT4 — consentement marketing (loi 09-08 / CNDP) ───────────────────
+    # Numéro de déclaration CNDP, affiché dans le pied des emails marketing
+    # (informatif, jamais obligatoire — vide = comportement actuel).
+    numero_declaration_cndp = models.CharField(
+        max_length=60, blank=True, default='',
+        help_text="Numéro de déclaration CNDP (loi 09-08), affiché dans le "
+                  "pied des emails marketing s'il est renseigné.")
+    # Double opt-in des inscriptions publiques (FormulaireIntake) : OFF par
+    # défaut (comportement actuel préservé — inscription immédiatement
+    # consentante).
+    double_optin_actif = models.BooleanField(
+        default=False,
+        help_text="Active le double opt-in (email de confirmation, "
+                  "mailable seulement après clic) pour les inscriptions "
+                  "publiques marketing. Désactivé par défaut.")
+
+    # ── XMKT7 — pression marketing (throttling + fenêtres de silence) ───────
+    # NULL/0 = comportement actuel (aucune limite), tous canaux confondus
+    # (campagnes + séquences), sur la fenêtre glissante de
+    # ``pression_marketing_periode_jours`` jours.
+    pression_marketing_max_par_contact = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Nombre maximum de messages marketing (campagnes + "
+                  "séquences, tous canaux) par contact sur la période. "
+                  "Vide = aucune limite (comportement actuel).")
+    pression_marketing_periode_jours = models.PositiveIntegerField(
+        default=7,
+        help_text="Fenêtre glissante (jours) sur laquelle le plafond de "
+                  "pression marketing est évalué.")
+
+    # ── XMKT22 — politique « sunset » d'engagement ──────────────────────────
+    # NULL = fonctionnalité désactivée (comportement actuel, aucun contact
+    # jamais marqué dormant). Valeur typique 90-180 jours.
+    sunset_fenetre_jours = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Fenêtre (jours, 90-180 typiquement) sans ouverture/clic "
+                  "au-delà de laquelle un contact est marqué dormant et "
+                  "sauté aux envois. Vide = désactivé (comportement actuel).")
+
+    # ── XMKT23 — approbation avant envoi de masse ───────────────────────────
+    seuil_approbation_envoi_masse = models.PositiveIntegerField(
+        default=100,
+        help_text="Au-delà de ce nombre de destinataires, l'envoi d'une "
+                  "campagne exige l'approbation d'un Responsable/Directeur.")
 
     class Meta:
         verbose_name = 'Profil entreprise'

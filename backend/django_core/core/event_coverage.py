@@ -47,13 +47,30 @@ ALLOWED_UNCONSUMED = {
     # lot (facturation récurrente / notification / dépôt GED à brancher).
     "contrat_signe",
     "contrat_actif",
+    # YEVNT6 — événements documentaires ventes en aval du devis : émis
+    # SYNCHRONE best-effort mais SANS abonné obligatoire dans ce repo (pose du
+    # seam pour compta/notifications/audit/KPI). ``facture_emise`` et
+    # ``facture_annulee`` ont déjà un abonné compta ; ``facture_paid`` /
+    # ``facture_payee`` / ``bon_commande_cree`` restent purement observables.
+    "facture_paid",
+    "facture_payee",
+    "bon_commande_cree",
+    # YSUBS4 — résiliation d'un AbonnementMonitoring : effet aval (couper la
+    # supervision monitoring liée) volontairement NON câblé dans ce repo —
+    # monitoring reste satellite, câblage futur via son propre receivers.py.
+    "abonnement_monitoring_resilie",
 }
 
 # Membres ``EventType`` déclarés mais sans producteur ``notify()`` encore câblé
 # (leur sweep/producteur serait planifié séparément). VIDE aujourd'hui : chaque
 # EventType déclaré a au moins un producteur. Tout nouvel EventType sans
 # producteur DOIT être soit câblé, soit ajouté ici avec une justification.
-ALLOWED_UNPRODUCED: set[str] = set()
+ALLOWED_UNPRODUCED: set[str] = {
+    # ZSAV3 — activité SAV planifiée à échéance : EventType déclaré comme seam
+    # de notification ; son producteur (balayage cron des activités SAV échues)
+    # est planifié séparément et n'est pas câblé dans ce repo.
+    "SAV_ACTIVITE_DUE",
+}
 
 
 def declared_signals():

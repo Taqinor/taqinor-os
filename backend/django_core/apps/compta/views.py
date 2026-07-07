@@ -41,7 +41,7 @@ from .models import (
     LignePrevisionnelTresorerie, LigneReleve, MessageWhatsAppEntrant,
     ModeleDevis, MouvementCaisse, NoteFrais, OuverturePartage,
     PaymentRun, PeriodeComptable, PlafondNoteFrais, PlanComptable, Provision,
-    ProvisionCreance,
+    ProvisionCreance, RapportNoteFrais,
     Rapprochement, RapprochementBancaire, RelanceDevisAbandonne,
     RetenueGarantie, RetenueSource, SequenceRelance, SessionGuidedSelling,
     TimbreFiscal, TravauxEnCours, VirementInterne,
@@ -61,6 +61,15 @@ from .models import (
     ObligationFiscale,
     FamilleTvaNonDeductible,
     Compensation,
+    ApprobationEnvoiCampagne,
+    Enquete, ReponseEnquete,
+    EvenementMarketing, InscriptionEvenement,
+    SupportOffline,
+    DomaineEnvoi,
+    TypeEvenement,
+    BilletEvenement,
+    QuestionEvenement,
+    CommunicationEvenement,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -69,6 +78,15 @@ from .serializers import (
     CampagneSerializer, CautionBancaireSerializer, CentreCoutSerializer,
     CessionImmobilisationSerializer, ClotureCaisseSerializer,
     CodePromotionSerializer, EnvoiCampagneSerializer,
+    ApprobationEnvoiCampagneSerializer,
+    EnqueteSerializer,
+    EvenementMarketingSerializer, InscriptionEvenementSerializer,
+    SupportOfflineSerializer,
+    DomaineEnvoiSerializer,
+    TypeEvenementSerializer,
+    BilletEvenementSerializer,
+    QuestionEvenementSerializer,
+    CommunicationEvenementSerializer,
     CommissionPayoutRunSerializer, CompteComptableSerializer,
     CompteTresorerieSerializer, ContratAvancementSerializer,
     DeclarationTVASerializer, DemandeApprobationConfigSerializer,
@@ -87,6 +105,7 @@ from .serializers import (
     PeriodeComptableSerializer, PlanAmortissementSerializer,
     PlafondNoteFraisSerializer,
     PlanComptableSerializer, ProvisionSerializer, ProvisionCreanceSerializer,
+    RapportNoteFraisSerializer,
     RapprochementBancaireSerializer, RapprochementSerializer,
     RelanceDevisAbandonneSerializer,
     RetenueGarantieSerializer, RetenueSourceSerializer,
@@ -282,6 +301,43 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             'validees_seulement': params.get('validees') == '1',
         }
 
+    def _company_profile(self, request):
+        """ZACC1 — ``CompanyProfile`` (entête PDF) ; ``None`` si absent —
+        JAMAIS bloquant (profil optionnel, foundation app exemptée)."""
+        try:
+            from apps.parametres.models_company import CompanyProfile
+            return CompanyProfile.get(company=request.user.company)
+        except Exception:  # pragma: no cover - profil optionnel.
+            return None
+
+    def _pdf_response(self, pdf_bytes, filename):
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return resp
+
+    def _pdf_or_503(self, render_fn):
+        """ZACC1 — invoque un ``render_*_pdf`` de ``pdf_etats``, ou renvoie un
+        503 explicite si WeasyPrint est indisponible (jamais un crash)."""
+        try:
+            return render_fn()
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+    def _comparatif_kwargs(self, request):
+        """ZACC2 — kwargs du mode comparatif N-1 (``comparer=1`` ou bornes
+        explicites ``date_debut_n1``/``date_fin_n1``). Défaut = comportement
+        actuel intact (``comparer=False``)."""
+        params = request.query_params
+        comparer = (params.get('comparer') == '1'
+                    or bool(params.get('date_debut_n1'))
+                    or bool(params.get('date_fin_n1')))
+        return {
+            'comparer': comparer,
+            'date_debut_n1': params.get('date_debut_n1') or None,
+            'date_fin_n1': params.get('date_fin_n1') or None,
+        }
+
     @action(detail=False, methods=['get'])
     def grand_livre(self, request):
         company = request.user.company
@@ -292,25 +348,65 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             compte = CompteComptable.objects.filter(
                 company=company, numero=numero).first()
         data = selectors.grand_livre(company, compte=compte, **periode)
+        if request.query_params.get('export') == 'pdf':
+            from .pdf_etats import render_grand_livre_pdf
+            result = self._pdf_or_503(lambda: render_grand_livre_pdf(
+                data, self._company_profile(request),
+                date_debut=periode['date_debut'], date_fin=periode['date_fin']))
+            if isinstance(result, Response):
+                return result
+            return self._pdf_response(result, 'grand_livre.pdf')
         return Response(data)
 
     @action(detail=False, methods=['get'])
     def balance(self, request):
+        periode = self._periode(request)
         data = selectors.balance_generale(
-            request.user.company, **self._periode(request))
+            request.user.company, **periode,
+            **self._comparatif_kwargs(request))
+        if request.query_params.get('export') == 'pdf':
+            from .pdf_etats import render_balance_pdf
+            result = self._pdf_or_503(lambda: render_balance_pdf(
+                data, self._company_profile(request),
+                date_debut=periode['date_debut'], date_fin=periode['date_fin']))
+            if isinstance(result, Response):
+                return result
+            return self._pdf_response(result, 'balance.pdf')
         return Response(data)
 
     @action(detail=False, methods=['get'])
     def cpc(self, request):
-        data = selectors.cpc(request.user.company, **self._periode(request))
+        periode = self._periode(request)
+        data = selectors.cpc(
+            request.user.company, **periode,
+            **self._comparatif_kwargs(request))
+        if request.query_params.get('export') == 'pdf':
+            from .pdf_etats import render_cpc_pdf
+            result = self._pdf_or_503(lambda: render_cpc_pdf(
+                data, self._company_profile(request),
+                date_debut=periode['date_debut'], date_fin=periode['date_fin']))
+            if isinstance(result, Response):
+                return result
+            return self._pdf_response(result, 'cpc.pdf')
         return Response(data)
 
     @action(detail=False, methods=['get'])
     def bilan(self, request):
         periode = self._periode(request)
+        comparatif = self._comparatif_kwargs(request)
         data = selectors.bilan(
             request.user.company, date_fin=periode['date_fin'],
-            validees_seulement=periode['validees_seulement'])
+            validees_seulement=periode['validees_seulement'],
+            comparer=comparatif['comparer'],
+            date_fin_n1=comparatif['date_fin_n1'])
+        if request.query_params.get('export') == 'pdf':
+            from .pdf_etats import render_bilan_pdf
+            result = self._pdf_or_503(lambda: render_bilan_pdf(
+                data, self._company_profile(request),
+                date_fin=periode['date_fin']))
+            if isinstance(result, Response):
+                return result
+            return self._pdf_response(result, 'bilan.pdf')
         return Response(data)
 
     @action(detail=False, methods=['get'])
@@ -319,10 +415,13 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
 
         Cascade marge → valeur ajoutée → EBE → résultat courant → résultat net,
         déduite du grand livre (comptes de gestion classes 6 & 7). Paramètres :
-        ``date_debut``/``date_fin`` (bornes), ``validees`` (1 → validées).
-        Lecture seule, scopée société, Admin/Responsable.
+        ``date_debut``/``date_fin`` (bornes), ``validees`` (1 → validées),
+        ``comparer`` (1 → colonne N-1, ZACC2). Lecture seule, scopée société,
+        Admin/Responsable.
         """
-        data = selectors.esg(request.user.company, **self._periode(request))
+        data = selectors.esg(
+            request.user.company, **self._periode(request),
+            **self._comparatif_kwargs(request))
         return Response(data)
 
     @action(detail=False, methods=['get'])
@@ -403,10 +502,19 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
         ``date_reference`` (défaut aujourd'hui), ``validees`` (1 → écritures
         validées seulement). Lecture seule, scopée société, Admin/Responsable.
         """
+        date_reference = request.query_params.get('date_reference') or None
         data = selectors.balance_agee_fournisseurs(
-            request.user.company,
-            date_reference=request.query_params.get('date_reference') or None,
+            request.user.company, date_reference=date_reference,
             validees_seulement=request.query_params.get('validees') == '1')
+        if request.query_params.get('export') == 'pdf':
+            from .pdf_etats import render_balance_agee_pdf
+            result = self._pdf_or_503(lambda: render_balance_agee_pdf(
+                data, self._company_profile(request),
+                date_reference=date_reference,
+                titre='Balance âgée fournisseurs'))
+            if isinstance(result, Response):
+                return result
+            return self._pdf_response(result, 'balance_agee_fournisseurs.pdf')
         return Response(data)
 
     @action(detail=False, methods=['get'],
@@ -708,8 +816,17 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
         data = selectors.liasse_fiscale(
             company, exercice,
             validees_seulement=request.query_params.get('validees') == '1')
-        if request.query_params.get('export') == 'csv':
+        export = request.query_params.get('export')
+        if export == 'csv':
             return self._export_liasse_csv(exercice, data)
+        if export == 'pdf':
+            from .pdf_etats import render_liasse_pdf
+            result = self._pdf_or_503(lambda: render_liasse_pdf(
+                data, self._company_profile(request), exercice=exercice))
+            if isinstance(result, Response):
+                return result
+            return self._pdf_response(
+                result, f'liasse_fiscale_exercice_{exercice.pk}.pdf')
         return Response(data)
 
     @staticmethod
@@ -795,6 +912,364 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             f'"liasse_fiscale_exercice_{exercice.pk}_{exercice.date_debut}'
             f'_{exercice.date_fin}.csv"')
         return resp
+
+    def _resolve_exercice(self, request):
+        """Résout ``?exercice=<id>`` scopé société : (exercice, erreur_response
+        ou None). Réutilisé par tous les états portant un paramètre exercice
+        (ZACC3, ZACC12, ZACC16)."""
+        company = request.user.company
+        exercice_id = request.query_params.get('exercice')
+        if not exercice_id:
+            return None, Response(
+                {'detail': "Le paramètre 'exercice' est requis."},
+                status=status.HTTP_400_BAD_REQUEST)
+        exercice = ExerciceComptable.objects.filter(
+            company=company, pk=exercice_id).first()
+        if exercice is None:
+            return None, Response(
+                {'detail': 'Exercice introuvable pour cette société.'},
+                status=status.HTTP_404_NOT_FOUND)
+        return exercice, None
+
+    @action(detail=False, methods=['get'], url_path='tableau-flux')
+    def tableau_flux(self, request):
+        """ZACC3 — Tableau de financement / des flux de trésorerie CGNC
+        (méthode indirecte).
+
+        5e état CGNC (standard Odoo « Cash Flow Statement ») jamais couvert
+        avant : réconcilie le résultat de l'exercice à la variation RÉELLE de
+        trésorerie via 3 sections (exploitation/investissement/financement).
+        Paramètres : ``exercice`` (id, requis), ``validees`` (1 → validées),
+        ``export`` (``csv``/``pdf`` via ZACC1). Lecture seule, scopée société,
+        Admin/Responsable.
+        """
+        exercice, err = self._resolve_exercice(request)
+        if err is not None:
+            return err
+        data = selectors.tableau_flux_tresorerie(
+            request.user.company, exercice,
+            validees_seulement=request.query_params.get('validees') == '1')
+        export = request.query_params.get('export')
+        if export == 'csv':
+            return self._export_tableau_flux_csv(exercice, data)
+        if export == 'pdf':
+            result = self._pdf_or_503(
+                lambda: self._render_tableau_flux_pdf(request, data))
+            if isinstance(result, Response):
+                return result
+            return self._pdf_response(
+                result, f'tableau_flux_exercice_{exercice.pk}.pdf')
+        return Response(data)
+
+    def _render_tableau_flux_pdf(self, request, data):
+        from .pdf_etats import _entete_societe_html, _fmt, _wrap
+        from datetime import date as _date
+        entete = _entete_societe_html(self._company_profile(request))
+        corps = f"""
+        <table><tbody>
+        <tr class="total-row"><td colspan="2">Exploitation</td></tr>
+        <tr><td>Résultat net</td><td class="montant">
+        {_fmt(data['exploitation']['resultat_net'])}</td></tr>
+        <tr><td>+ Dotations</td><td class="montant">
+        {_fmt(data['exploitation']['dotations'])}</td></tr>
+        <tr><td>- Reprises</td><td class="montant">
+        {_fmt(data['exploitation']['reprises'])}</td></tr>
+        <tr><td>= Capacité d'autofinancement</td><td class="montant">
+        {_fmt(data['exploitation']['capacite_autofinancement'])}</td></tr>
+        <tr><td>± Variation du BFR</td><td class="montant">
+        {_fmt(data['exploitation']['variation_bfr'])}</td></tr>
+        <tr class="total-row"><td>Flux net d'exploitation</td>
+        <td class="montant">{_fmt(data['exploitation']['flux_net'])}</td></tr>
+        <tr class="total-row"><td colspan="2">Investissement</td></tr>
+        <tr class="total-row"><td>Flux net d'investissement</td>
+        <td class="montant">
+        {_fmt(data['investissement']['flux_net'])}</td></tr>
+        <tr class="total-row"><td colspan="2">Financement</td></tr>
+        <tr class="total-row"><td>Flux net de financement</td>
+        <td class="montant">{_fmt(data['financement']['flux_net'])}</td></tr>
+        <tr class="total-row"><td>Variation nette de trésorerie</td>
+        <td class="montant">
+        {_fmt(data['variation_nette_tresorerie'])}</td></tr>
+        <tr><td>Trésorerie à l'ouverture</td><td class="montant">
+        {_fmt(data['tresorerie_ouverture'])}</td></tr>
+        <tr><td>Trésorerie à la clôture</td><td class="montant">
+        {_fmt(data['tresorerie_cloture'])}</td></tr>
+        </tbody></table>"""
+        html = _wrap(
+            entete, 'Tableau de financement / des flux de trésorerie',
+            f"Exercice du {data['date_debut']} au {data['date_fin']}",
+            corps, _date.today())
+        from .pdf_etats import _html_to_pdf
+        return _html_to_pdf(html)
+
+    @staticmethod
+    def _export_tableau_flux_csv(exercice, data):
+        """Sérialise le tableau de financement (ZACC3) en CSV."""
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, delimiter=';')
+        writer.writerow(['Tableau de financement / des flux de trésorerie'])
+        writer.writerow(
+            ['Exercice', f"{data['date_debut']} → {data['date_fin']}"])
+        writer.writerow([])
+        writer.writerow(['EXPLOITATION'])
+        expl = data['exploitation']
+        writer.writerow(['Résultat net', expl['resultat_net']])
+        writer.writerow(['Dotations', expl['dotations']])
+        writer.writerow(['Reprises', expl['reprises']])
+        writer.writerow(
+            ["Capacité d'autofinancement", expl['capacite_autofinancement']])
+        writer.writerow(['Variation du BFR', expl['variation_bfr']])
+        writer.writerow(['Flux net exploitation', expl['flux_net']])
+        writer.writerow([])
+        writer.writerow(['INVESTISSEMENT'])
+        writer.writerow(
+            ['Flux net investissement', data['investissement']['flux_net']])
+        writer.writerow([])
+        writer.writerow(['FINANCEMENT'])
+        writer.writerow(
+            ['Flux net financement', data['financement']['flux_net']])
+        writer.writerow([])
+        writer.writerow(
+            ['Variation nette de trésorerie',
+             data['variation_nette_tresorerie']])
+        writer.writerow(['Trésorerie ouverture', data['tresorerie_ouverture']])
+        writer.writerow(['Trésorerie clôture', data['tresorerie_cloture']])
+        resp = HttpResponse(
+            buffer.getvalue(), content_type='text/csv; charset=utf-8')
+        resp['Content-Disposition'] = (
+            'attachment; filename='
+            f'"tableau_flux_exercice_{exercice.pk}.csv"')
+        return resp
+
+    @action(detail=False, methods=['get'], url_path='tableau-immobilisations')
+    def tableau_immobilisations(self, request):
+        """ZACC12 — Rapport des immobilisations (tableau CGNC B2/B2bis).
+
+        Par immobilisation : valeur brute ouverture/acquisitions/cessions/
+        clôture, cumul d'amortissement ouverture/dotations/reprises/clôture,
+        VNC. Paramètres : ``exercice`` (id, requis), ``validees`` (1 →
+        validées), ``export`` (``csv``/``pdf`` via ZACC1). Lecture seule,
+        scopée société, Admin/Responsable.
+        """
+        exercice, err = self._resolve_exercice(request)
+        if err is not None:
+            return err
+        data = selectors.tableau_immobilisations(
+            request.user.company, exercice,
+            validees_seulement=request.query_params.get('validees') == '1')
+        export = request.query_params.get('export')
+        if export == 'csv':
+            return self._export_tableau_immobilisations_csv(exercice, data)
+        if export == 'pdf':
+            result = self._pdf_or_503(
+                lambda: self._render_tableau_immobilisations_pdf(
+                    request, data))
+            if isinstance(result, Response):
+                return result
+            return self._pdf_response(
+                result, f'tableau_immobilisations_exercice_{exercice.pk}.pdf')
+        return Response(data)
+
+    def _render_tableau_immobilisations_pdf(self, request, data):
+        from datetime import date as _date
+        from html import escape
+        from .pdf_etats import _entete_societe_html, _fmt, _wrap, _html_to_pdf
+        entete = _entete_societe_html(self._company_profile(request))
+        rows = ''.join(
+            f"<tr><td>{escape(li['libelle'])}</td>"
+            f"<td class=\"montant\">{_fmt(li['brut_ouverture'])}</td>"
+            f"<td class=\"montant\">{_fmt(li['acquisitions'])}</td>"
+            f"<td class=\"montant\">{_fmt(li['cessions'])}</td>"
+            f"<td class=\"montant\">{_fmt(li['brut_cloture'])}</td>"
+            f"<td class=\"montant\">{_fmt(li['amort_ouverture'])}</td>"
+            f"<td class=\"montant\">{_fmt(li['dotations'])}</td>"
+            f"<td class=\"montant\">{_fmt(li['reprises'])}</td>"
+            f"<td class=\"montant\">{_fmt(li['amort_cloture'])}</td>"
+            f"<td class=\"montant\">"
+            f"{_fmt(li['valeur_nette_comptable'])}</td></tr>"
+            for li in data['lignes']
+        )
+        totaux = data['totaux']
+        corps = f"""
+        <table><thead><tr><th>Immobilisation</th>
+        <th class="montant">Brut ouv.</th><th class="montant">Acquis.</th>
+        <th class="montant">Cessions</th><th class="montant">Brut clôt.</th>
+        <th class="montant">Amort. ouv.</th>
+        <th class="montant">Dotations</th><th class="montant">Reprises</th>
+        <th class="montant">Amort. clôt.</th><th class="montant">VNC</th>
+        </tr></thead><tbody>{rows}
+        <tr class="total-row"><td>Totaux</td>
+        <td class="montant">{_fmt(totaux['brut_ouverture'])}</td>
+        <td class="montant">{_fmt(totaux['acquisitions'])}</td>
+        <td class="montant">{_fmt(totaux['cessions'])}</td>
+        <td class="montant">{_fmt(totaux['brut_cloture'])}</td>
+        <td class="montant">{_fmt(totaux['amort_ouverture'])}</td>
+        <td class="montant">{_fmt(totaux['dotations'])}</td>
+        <td class="montant">{_fmt(totaux['reprises'])}</td>
+        <td class="montant">{_fmt(totaux['amort_cloture'])}</td>
+        <td class="montant">{_fmt(totaux['valeur_nette_comptable'])}</td>
+        </tr></tbody></table>"""
+        html = _wrap(
+            entete, 'Tableau des immobilisations & amortissements',
+            f"Exercice du {data['date_debut']} au {data['date_fin']}",
+            corps, _date.today())
+        return _html_to_pdf(html)
+
+    @staticmethod
+    def _export_tableau_immobilisations_csv(exercice, data):
+        """Sérialise le tableau des immobilisations (ZACC12) en CSV."""
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, delimiter=';')
+        writer.writerow(['Tableau des immobilisations & amortissements'])
+        writer.writerow(
+            ['Exercice', f"{data['date_debut']} → {data['date_fin']}"])
+        writer.writerow([])
+        writer.writerow([
+            'Immobilisation', 'Brut ouverture', 'Acquisitions', 'Cessions',
+            'Brut clôture', 'Amort. ouverture', 'Dotations', 'Reprises',
+            'Amort. clôture', 'VNC'])
+        for li in data['lignes']:
+            writer.writerow([
+                li['libelle'], li['brut_ouverture'], li['acquisitions'],
+                li['cessions'], li['brut_cloture'], li['amort_ouverture'],
+                li['dotations'], li['reprises'], li['amort_cloture'],
+                li['valeur_nette_comptable']])
+        totaux = data['totaux']
+        writer.writerow([
+            'Totaux', totaux['brut_ouverture'], totaux['acquisitions'],
+            totaux['cessions'], totaux['brut_cloture'],
+            totaux['amort_ouverture'], totaux['dotations'],
+            totaux['reprises'], totaux['amort_cloture'],
+            totaux['valeur_nette_comptable']])
+        resp = HttpResponse(
+            buffer.getvalue(), content_type='text/csv; charset=utf-8')
+        resp['Content-Disposition'] = (
+            'attachment; filename='
+            f'"tableau_immobilisations_exercice_{exercice.pk}.csv"')
+        return resp
+
+    @action(detail=False, methods=['get'], url_path='dossier-cloture')
+    def dossier_cloture(self, request):
+        """ZACC16 — Dossier de clôture xlsx multi-onglets (bilan/CPC/
+        balance/grand-livre/balance-âgée/tableau-immos ZACC12/tableau-flux
+        ZACC3) en UN seul fichier remis au fiduciaire.
+
+        Assemble les sélecteurs EXISTANTS (aucun recalcul). Paramètres :
+        ``exercice`` (id, requis), ``validees`` (1 → validées),
+        ``export=xlsx`` (seul format supporté — sinon 400 explicite : ce
+        dossier n'a pas de rendu JSON, il n'existe qu'en xlsx). Company-
+        scopé, Admin/Responsable.
+        """
+        exercice, err = self._resolve_exercice(request)
+        if err is not None:
+            return err
+        if request.query_params.get('export') != 'xlsx':
+            return Response(
+                {'detail': "Seul 'export=xlsx' est supporté pour le "
+                           "dossier de clôture."},
+                status=status.HTTP_400_BAD_REQUEST)
+        company = request.user.company
+        validees = request.query_params.get('validees') == '1'
+        date_debut = exercice.date_debut.isoformat()
+        date_fin = exercice.date_fin.isoformat()
+
+        bilan = selectors.bilan(
+            company, date_fin=date_fin, validees_seulement=validees)
+        cpc_data = selectors.cpc(
+            company, date_debut=date_debut, date_fin=date_fin,
+            validees_seulement=validees)
+        balance = selectors.balance_generale(
+            company, date_debut=date_debut, date_fin=date_fin,
+            validees_seulement=validees)
+        grand_livre_data = selectors.grand_livre(
+            company, date_debut=date_debut, date_fin=date_fin,
+            validees_seulement=validees)
+        balance_agee = selectors.balance_agee_fournisseurs(
+            company, date_reference=date_fin, validees_seulement=validees)
+        tableau_immos = selectors.tableau_immobilisations(
+            company, exercice, validees_seulement=validees)
+        tableau_flux = selectors.tableau_flux_tresorerie(
+            company, exercice, validees_seulement=validees)
+
+        from openpyxl import Workbook
+        from openpyxl.styles import Font
+        from apps.records.xlsx import coerce_cell, XLSX_CONTENT_TYPE
+
+        def _feuille(wb, titre, headers, rows, first=False):
+            ws = wb.active if first else wb.create_sheet()
+            ws.title = titre[:31]
+            ws.append(list(headers))
+            bold = Font(bold=True)
+            for cell in ws[1]:
+                cell.font = bold
+            for row in rows:
+                ws.append([coerce_cell(v) for v in row])
+            return ws
+
+        wb = Workbook()
+        _feuille(
+            wb, 'Bilan', ['Section', 'N°', 'Intitulé', 'Montant'],
+            [['Actif', p['numero'], p['intitule'], p['montant']]
+             for p in bilan['actif']]
+            + [['Passif', p['numero'], p['intitule'], p['montant']]
+               for p in bilan['passif']]
+            + [['Résultat', '', '', bilan['resultat']]],
+            first=True)
+        _feuille(
+            wb, 'CPC', ['Section', 'N°', 'Intitulé', 'Montant'],
+            [['Produit', p['numero'], p['intitule'], p['montant']]
+             for p in cpc_data['produits']]
+            + [['Charge', p['numero'], p['intitule'], p['montant']]
+               for p in cpc_data['charges']]
+            + [['Résultat', '', '', cpc_data['resultat']]])
+        _feuille(
+            wb, 'Balance',
+            ['N°', 'Intitulé', 'Débit', 'Crédit', 'Solde débiteur',
+             'Solde créditeur'],
+            [[li['numero'], li['intitule'], li['debit'], li['credit'],
+              li['solde_debiteur'], li['solde_crediteur']]
+             for li in balance['lignes']])
+        _feuille(
+            wb, 'Grand livre',
+            ['Compte', 'Date', 'Journal', 'Référence', 'Libellé', 'Débit',
+             'Crédit'],
+            [[compte['numero'], li['date'], li['journal'], li['reference'],
+              li['libelle'], li['debit'], li['credit']]
+             for compte in grand_livre_data for li in compte['lignes']])
+        _feuille(
+            wb, 'Balance âgée fournisseurs',
+            ['Fournisseur', '0-30j', '31-60j', '61-90j', '90j+', 'Total'],
+            [[li['fournisseur_nom'], li['b0_30'], li['b31_60'],
+              li['b61_90'], li['b90_plus'], li['total']]
+             for li in balance_agee])
+        _feuille(
+            wb, 'Tableau immobilisations',
+            ['Immobilisation', 'Brut ouverture', 'Acquisitions', 'Cessions',
+             'Brut clôture', 'Amort. ouverture', 'Dotations', 'Reprises',
+             'Amort. clôture', 'VNC'],
+            [[li['libelle'], li['brut_ouverture'], li['acquisitions'],
+              li['cessions'], li['brut_cloture'], li['amort_ouverture'],
+              li['dotations'], li['reprises'], li['amort_cloture'],
+              li['valeur_nette_comptable']]
+             for li in tableau_immos['lignes']])
+        _feuille(
+            wb, 'Tableau des flux',
+            ['Section', 'Poste', 'Montant'],
+            [['Exploitation', k, v]
+             for k, v in tableau_flux['exploitation'].items()]
+            + [['Investissement', k, v]
+               for k, v in tableau_flux['investissement'].items()]
+            + [['Financement', k, v]
+               for k, v in tableau_flux['financement'].items()]
+            + [['Synthèse', 'variation_nette_tresorerie',
+                tableau_flux['variation_nette_tresorerie']]])
+
+        response = HttpResponse(content_type=XLSX_CONTENT_TYPE)
+        response['Content-Disposition'] = (
+            'attachment; filename='
+            f'"dossier_cloture_exercice_{exercice.pk}.xlsx"')
+        wb.save(response)
+        return response
 
     @action(detail=False, methods=['get'], url_path='export-fiduciaire')
     def export_fiduciaire(self, request):
@@ -2510,6 +2985,38 @@ class NoteFraisViewSet(_ComptaBaseViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(note).data)
 
+    @action(detail=True, methods=['get'], url_path='recu-pdf')
+    def recu_pdf(self, request, pk=None):
+        """ZACC8 — Reçu PDF de remboursement de la note (entête société,
+        détail, total en chiffres ET en lettres, mode/date, référence
+        écriture). Une note NON remboursée -> 400 explicite. Company-scopée
+        (404 cross-company via ``get_object``)."""
+        note = self.get_object()  # scopée société par TenantMixin.
+        if note.statut != NoteFrais.Statut.REMBOURSEE:
+            return Response(
+                {'detail': "Cette note de frais n'est pas encore "
+                           "remboursée : aucun reçu à générer."},
+                status=status.HTTP_400_BAD_REQUEST)
+        from .pdf_notes_frais import render_recu_note_frais_pdf
+        try:
+            pdf_bytes = render_recu_note_frais_pdf(
+                note, self._company_profile_for(request))
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'attachment; filename="recu_note_frais_'
+            f'{note.reference or note.id}.pdf"')
+        return resp
+
+    def _company_profile_for(self, request):
+        try:
+            from apps.parametres.models_company import CompanyProfile
+            return CompanyProfile.get(company=request.user.company)
+        except Exception:  # pragma: no cover - profil optionnel.
+            return None
+
     @action(detail=False, methods=['get'])
     def analyse(self, request):
         """ZACC7 — Pivot des frais par employé/catégorie/mois
@@ -2534,6 +3041,144 @@ class NoteFraisViewSet(_ComptaBaseViewSet):
                 'analyse-notes-frais.xlsx', headers, rows,
                 sheet_title='Analyse frais')
         return Response(rapport)
+
+
+class RapportNoteFraisViewSet(_ComptaBaseViewSet):
+    """Rapport regroupant N notes de frais d'un employé (ZACC6).
+
+    ``creer`` (POST) crée le rapport ET rattache les notes désignées en un
+    appel ; ``soumettre``/``valider``/``rembourser`` font suivre le cycle du
+    RAPPORT (une seule écriture agrégée à la validation, un seul paiement au
+    remboursement). Les notes ISOLÉES (sans rapport) gardent leur cycle
+    individuel intact via ``NoteFraisViewSet``. Société scopée, posée côté
+    serveur ; Admin/Responsable uniquement.
+    """
+    queryset = RapportNoteFrais.objects.select_related(
+        'employe', 'compte_tresorerie', 'ecriture_charge',
+        'ecriture_remboursement').prefetch_related('notes').all()
+    serializer_class = RapportNoteFraisSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'libelle']
+    ordering_fields = ['date_creation', 'statut', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        """Crée le rapport ET rattache les notes désignées en un appel.
+
+        Corps : ``{employe, libelle?, note_frais_ids: [...]}``. Les notes
+        doivent appartenir au même employé/société, être en brouillon/
+        rejetées et ne pas déjà porter un rapport.
+        """
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        vd = serializer.validated_data
+        note_frais_ids = request.data.get('note_frais_ids') or []
+        try:
+            rapport = services.creer_rapport_note_frais(
+                request.user.company, employe=vd['employe'],
+                note_frais_ids=note_frais_ids,
+                libelle=vd.get('libelle', '') or '', user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(rapport).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def soumettre(self, request, pk=None):
+        """Soumet le rapport (brouillon → soumis), soumet les notes rattachées
+        encore en brouillon/rejetées."""
+        rapport = self.get_object()  # scopée société par TenantMixin.
+        try:
+            rapport = services.soumettre_rapport_note_frais(rapport)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(rapport).data)
+
+    @action(detail=True, methods=['post'])
+    def valider(self, request, pk=None):
+        """Valide le rapport et poste UNE écriture AGRÉGÉE (Σ des charges par
+        compte / crédit 4432 unique). Idempotent."""
+        rapport = self.get_object()  # scopée société par TenantMixin.
+        try:
+            rapport = services.valider_rapport_note_frais(
+                rapport, user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(rapport).data)
+
+    @action(detail=True, methods=['post'])
+    def rembourser(self, request, pk=None):
+        """Rembourse le rapport validé en UN SEUL paiement agrégé.
+
+        Corps : ``{compte_tresorerie, date_remboursement?,
+        mode_remboursement?}``. Refusé en période close. Idempotent : un
+        rapport déjà remboursé n'est jamais re-postable.
+        """
+        rapport = self.get_object()  # scopée société par TenantMixin.
+        treso = CompteTresorerie.objects.filter(
+            company=request.user.company,
+            id=request.data.get('compte_tresorerie')).first()
+        if treso is None:
+            return Response(
+                {'detail': 'Compte de trésorerie inconnu.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            rapport = services.rembourser_rapport_note_frais(
+                rapport, compte_tresorerie=treso,
+                date_remboursement=request.data.get('date_remboursement')
+                or None,
+                mode_remboursement=request.data.get('mode_remboursement')
+                or None,
+                user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(rapport).data)
+
+    @action(detail=True, methods=['get'], url_path='recu-pdf')
+    def recu_pdf(self, request, pk=None):
+        """ZACC8 — Reçu PDF de remboursement du RAPPORT (détail de chaque
+        note rattachée + total en chiffres ET en lettres). Un rapport NON
+        remboursé -> 400 explicite. Company-scopé (404 cross-company via
+        ``get_object``)."""
+        rapport = self.get_object()  # scopée société par TenantMixin.
+        if rapport.statut != RapportNoteFrais.Statut.REMBOURSE:
+            return Response(
+                {'detail': "Ce rapport de notes de frais n'est pas encore "
+                           "remboursé : aucun reçu à générer."},
+                status=status.HTTP_400_BAD_REQUEST)
+        from .pdf_notes_frais import render_recu_rapport_note_frais_pdf
+        try:
+            from apps.parametres.models_company import CompanyProfile
+            profile = CompanyProfile.get(company=request.user.company)
+        except Exception:  # pragma: no cover - profil optionnel.
+            profile = None
+        try:
+            pdf_bytes = render_recu_rapport_note_frais_pdf(rapport, profile)
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'attachment; filename="recu_rapport_note_frais_'
+            f'{rapport.reference or rapport.id}.pdf"')
+        return resp
 
 
 class PlafondNoteFraisViewSet(_ComptaBaseViewSet):
@@ -2842,6 +3487,73 @@ class DeclarationTVAViewSet(_ComptaBaseViewSet):
         decl = self.get_object()  # scopée société par TenantMixin.
         decl = services.deposer_declaration_tva(decl)
         return Response(self.get_serializer(decl).data)
+
+    @action(detail=True, methods=['get'])
+    def comparatif(self, request, pk=None):
+        """ZACC10 — Comparatif M-1 de la déclaration (collecté/déductible/net
+        vs période précédente, écart %). Recalculé LIVE depuis le GL sur la
+        même période que la déclaration figée (jamais un recalcul de la
+        déclaration elle-même) ; ``defaut`` sans ce paramètre reste inchangé —
+        l'action existe précisément pour exposer le mode ``comparer=1``.
+        """
+        decl = self.get_object()  # scopée société par TenantMixin.
+        data = selectors.preparer_declaration_tva(
+            request.user.company, date_debut=decl.date_debut,
+            date_fin=decl.date_fin, regime=decl.regime, methode=decl.methode,
+            credit_anterieur=decl.credit_anterieur, comparer=True,
+            date_debut_m1=request.query_params.get('date_debut_m1') or None,
+            date_fin_m1=request.query_params.get('date_fin_m1') or None)
+        return Response(data)
+
+    @action(detail=True, methods=['get'], url_path='bordereau-pdf')
+    def bordereau_pdf(self, request, pk=None):
+        """ZACC10 — Bordereau PDF de la déclaration de TVA (entête société
+        IF/ICE, régime débit/encaissement, TVA collectée par taux, TVA
+        déductible sur biens/services/immo, crédit reporté, net à payer).
+        Reprend le snapshot FIGÉ de la déclaration — AUCUNE télétransmission
+        (le gate DGI reste XFAC29). Company-scopée (404 cross-company)."""
+        from datetime import date as _date
+        from html import escape
+        decl = self.get_object()  # scopée société par TenantMixin.
+        from .pdf_notes_frais import _entete_societe_html, _fmt
+        from .pdf_etats import _wrap, _html_to_pdf
+        try:
+            from apps.parametres.models_company import CompanyProfile
+            profile = CompanyProfile.get(company=request.user.company)
+        except Exception:  # pragma: no cover - profil optionnel.
+            profile = None
+        entete = _entete_societe_html(profile)
+        corps = f"""
+        <table><tbody>
+        <tr><td>Régime</td><td class="montant">
+        {escape(decl.get_regime_display())}</td></tr>
+        <tr><td>Méthode</td><td class="montant">
+        {escape(decl.get_methode_display())}</td></tr>
+        <tr><td>TVA collectée</td><td class="montant">
+        {_fmt(decl.tva_collectee)}</td></tr>
+        <tr><td>TVA déductible</td><td class="montant">
+        {_fmt(decl.tva_deductible)}</td></tr>
+        <tr><td>Crédit de TVA antérieur</td><td class="montant">
+        {_fmt(decl.credit_anterieur)}</td></tr>
+        <tr class="total-row"><td>TVA à déclarer</td><td class="montant">
+        {_fmt(decl.tva_a_declarer)}</td></tr>
+        <tr><td>Crédit de TVA reportable</td><td class="montant">
+        {_fmt(decl.credit_reportable)}</td></tr>
+        </tbody></table>"""
+        html = _wrap(
+            entete, 'Bordereau de déclaration de TVA',
+            f'Période du {decl.date_debut} au {decl.date_fin}', corps,
+            _date.today())
+        try:
+            pdf_bytes = _html_to_pdf(html)
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'attachment; filename="bordereau_tva_'
+            f'{decl.reference or decl.id}.pdf"')
+        return resp
 
 
 class RetenueSourceViewSet(_ComptaBaseViewSet):
@@ -3896,14 +4608,35 @@ class CampagneViewSet(_ComptaBaseViewSet):
     serializer_class = CampagneSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['nom', 'objet']
-    ordering_fields = ['date_creation', 'nom']
+    # ZMKT2 — tri par les mesures agrégées (les taux dérivés se recalculent
+    # depuis ces champs bruts — DRF ne peut trier que sur des champs réels).
+    ordering_fields = [
+        'date_creation', 'nom', 'envoyee_le', 'nb_envois', 'nb_ouvertures',
+        'nb_clics', 'nb_destinataires',
+    ]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        # ZMKT2 — Group By statut/canal/mois d'envoi (réutilisé par le
+        # frontend pour le regroupement de liste).
+        groupby = self.request.query_params.get('groupby')
+        if groupby in ('statut', 'canal'):
+            qs = qs.order_by(groupby, '-date_creation')
+        return qs
 
     @action(detail=True, methods=['post'])
     def envoyer(self, request, pk=None):
         campagne = self.get_object()
         destinataires = request.data.get('destinataires') or []
-        services.envoyer_campagne(campagne, destinataires=destinataires)
-        return Response(CampagneSerializer(campagne).data)
+        # XMKT23 — au-delà du seuil société, l'envoi reste bloqué en attente
+        # d'approbation (comportement inchangé sous le seuil).
+        _campagne, approbation = services.demander_ou_envoyer_campagne(
+            campagne, destinataires=destinataires, user=request.user)
+        data = CampagneSerializer(campagne).data
+        if approbation is not None:
+            data['approbation_requise'] = True
+            data['approbation_id'] = approbation.id
+        return Response(data)
 
     @action(detail=True, methods=['get'])
     def apercu_fusion(self, request, pk=None):
@@ -3954,6 +4687,145 @@ class CampagneViewSet(_ComptaBaseViewSet):
             campagne.corps, nb_destinataires=nb_destinataires, **kwargs)
         return Response(estimation)
 
+    @action(detail=True, methods=['get'], url_path='clics-par-lien')
+    def clics_par_lien(self, request, pk=None):
+        """XMKT9 — Page « clics par lien » du détail campagne."""
+        campagne = self.get_object()
+        return Response(services.clics_par_lien(campagne))
+
+    @action(detail=True, methods=['get'], url_path='roi')
+    def roi(self, request, pk=None):
+        """XMKT17 — ROI MAD : dépensé vs revenu signé attribué + coût/lead."""
+        campagne = self.get_object()
+        return Response(services.roi_campagne(campagne))
+
+    @action(detail=True, methods=['get'], url_path='roi/leads-sources')
+    def roi_leads_sources(self, request, pk=None):
+        """XMKT17 — Drill-down vers les leads sources du ROI."""
+        campagne = self.get_object()
+        return Response(services.leads_source_roi(campagne))
+
+    @action(detail=True, methods=['get'], url_path='kpi-mere')
+    def kpi_mere(self, request, pk=None):
+        """XMKT31 — agrège KPI/coûts/ROI de tous les enfants d'une campagne
+        mère (conteneur multi-canal)."""
+        campagne = self.get_object()
+        return Response(services.kpi_campagne_mere(campagne))
+
+    @action(detail=False, methods=['get'])
+    def kanban(self, request):
+        """ZMKT1 — campagnes groupées par statut (pipeline Odoo-style)."""
+        return Response(services.campagnes_par_statut(request.user.company))
+
+    @action(detail=False, methods=['get'])
+    def reporting(self, request):
+        """ZMKT8 — reporting multi-vue (Graph/Pivot/Cohorte) : mesures
+        délivrés/ouverts/cliqués/rebonds/désinscrits + CTR/CTOR/
+        délivrabilité, groupable par ``?groupby=canal|mois|campagne``."""
+        groupby = request.query_params.get('groupby', 'canal')
+        return Response(
+            services.reporting_campagnes(request.user.company, groupby=groupby))
+
+    @action(detail=False, methods=['get'], url_path='reporting/export')
+    def reporting_export(self, request):
+        """ZMKT8 — export XLSX du reporting multi-vue."""
+        from openpyxl import Workbook
+        from openpyxl.styles import Font
+        from apps.records.xlsx import coerce_cell, XLSX_CONTENT_TYPE
+
+        groupby = request.query_params.get('groupby', 'canal')
+        lignes = services.reporting_campagnes(request.user.company, groupby=groupby)
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Reporting campagnes'
+        headers = [
+            'Groupe', 'Délivrés', 'Ouverts', 'Clics', 'Rebonds',
+            'Désinscrits', 'CTR %', 'CTOR %', 'Délivrabilité %',
+        ]
+        ws.append(headers)
+        for cell in ws[1]:
+            cell.font = Font(bold=True)
+        for ligne in lignes:
+            ws.append([coerce_cell(v) for v in [
+                ligne['groupe'], ligne['delivres'], ligne['ouverts'],
+                ligne['cliques'], ligne['rebonds'], ligne['desinscrits'],
+                ligne['ctr_pct'], ligne['ctor_pct'], ligne['delivrabilite_pct'],
+            ]])
+        import io
+        buf = io.BytesIO()
+        wb.save(buf)
+        resp = HttpResponse(buf.getvalue(), content_type=XLSX_CONTENT_TYPE)
+        resp['Content-Disposition'] = 'attachment; filename="reporting_campagnes.xlsx"'
+        return resp
+
+    @action(detail=False, methods=['get'], url_path='modeles')
+    def modeles(self, request):
+        """ZMKT3 — liste des modèles company-scopés."""
+        qs = self.get_queryset().filter(est_modele=True)
+        return Response(CampagneSerializer(qs, many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='creer-depuis-modele')
+    def creer_depuis_modele(self, request, pk=None):
+        """ZMKT3 — clone un modèle en une nouvelle campagne brouillon."""
+        modele = self.get_object()
+        if not modele.est_modele:
+            return Response(
+                {'detail': "Cette campagne n'est pas un modèle."}, status=400)
+        clone = services.creer_depuis_modele(modele)
+        return Response(CampagneSerializer(clone).data, status=201)
+
+    @action(detail=True, methods=['post'])
+    def dupliquer(self, request, pk=None):
+        """ZMKT4 — duplique une campagne en brouillon indépendant."""
+        campagne = self.get_object()
+        clone = services.dupliquer_campagne(campagne)
+        return Response(CampagneSerializer(clone).data, status=201)
+
+    @action(detail=True, methods=['post'])
+    def annuler(self, request, pk=None):
+        """ZMKT4 — annule une campagne en file/en cours d'envoi."""
+        campagne = self.get_object()
+        services.annuler_campagne(campagne)
+        campagne.refresh_from_db()
+        return Response(CampagneSerializer(campagne).data)
+
+    @action(detail=True, methods=['post'], url_path='renvoyer-echecs')
+    def renvoyer_echecs(self, request, pk=None):
+        """ZMKT4 — recrée l'envoi vers les destinataires en échec
+        récupérable uniquement."""
+        campagne = self.get_object()
+        nouvelles = services.renvoyer_echecs_campagne(campagne)
+        return Response(
+            {'campagnes_creees': [c.id for c in nouvelles]}, status=201)
+
+    @action(detail=True, methods=['post'], url_path='rattacher')
+    def rattacher(self, request, pk=None):
+        """XMKT31 — rattache un objet (séquence/formulaire/code promo/
+        événement) à cette campagne mère."""
+        campagne = self.get_object()
+        type_objet = request.data.get('type')
+        objet_id = request.data.get('id')
+        if not type_objet or not objet_id:
+            return Response({'detail': 'type et id requis.'}, status=400)
+        services.rattacher_a_campagne_mere(
+            campagne, type_objet=type_objet, objet_id=objet_id)
+        return Response(CampagneSerializer(campagne).data)
+
+    @action(detail=True, methods=['get'], url_path='rendu-lead')
+    def rendu_lead(self, request, pk=None):
+        """XMKT11 — Rendu final (variante de langue + fusion) pour un lead
+        donné (``?lead_id=``)."""
+        campagne = self.get_object()
+        lead_id = request.query_params.get('lead_id')
+        if not lead_id:
+            return Response({'detail': 'lead_id requis.'}, status=400)
+        try:
+            rendu = services.rendre_pour_lead(
+                campagne, request.user.company, lead_id)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(rendu)
+
 
 # ── XMKT2 — Journal d'envoi par destinataire (drill-down) ───────────────────
 
@@ -3976,6 +4848,402 @@ class EnvoiCampagneViewSet(_ComptaBaseViewSet):
         if statut:
             qs = qs.filter(statut=statut)
         return qs
+
+
+# ── XMKT23 — Approbation avant envoi de masse + journal d'audit ────────────
+
+class ApprobationEnvoiCampagneViewSet(_ComptaBaseViewSet):
+    """Demandes d'approbation d'envoi de masse (XMKT23)."""
+    http_method_names = ['get', 'post', 'head', 'options']
+    queryset = ApprobationEnvoiCampagne.objects.select_related('campagne').all()
+    serializer_class = ApprobationEnvoiCampagneSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation']
+
+    @action(detail=True, methods=['post'])
+    def approuver(self, request, pk=None):
+        approbation = self.get_object()
+        services.approuver_envoi_campagne(approbation, user=request.user)
+        approbation.refresh_from_db()
+        return Response(ApprobationEnvoiCampagneSerializer(approbation).data)
+
+    @action(detail=True, methods=['post'])
+    def rejeter(self, request, pk=None):
+        approbation = self.get_object()
+        motif = request.data.get('motif', '')
+        services.rejeter_envoi_campagne(approbation, motif=motif, user=request.user)
+        approbation.refresh_from_db()
+        return Response(ApprobationEnvoiCampagneSerializer(approbation).data)
+
+    @action(detail=False, methods=['get'], url_path='journal-audit')
+    def journal_audit(self, request):
+        return Response(
+            services.journal_audit_envois(request.user.company))
+
+
+# ── XMKT27 — Constructeur d'enquêtes avec logique conditionnelle ───────────
+
+class EnqueteViewSet(_ComptaBaseViewSet):
+    """CRUD des enquêtes (XMKT27)."""
+    queryset = Enquete.objects.all()
+    serializer_class = EnqueteSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['titre']
+    ordering_fields = ['date_creation', 'titre']
+
+    def perform_create(self, serializer):
+        import uuid
+        serializer.save(
+            company=self.request.user.company, token=uuid.uuid4().hex)
+
+    @action(detail=True, methods=['get'])
+    def resultats(self, request, pk=None):
+        """XMKT27 — analytics agrégées par question + taux de complétion."""
+        enquete = self.get_object()
+        return Response(services.analytics_enquete(enquete))
+
+    @action(detail=True, methods=['get'])
+    def tester(self, request, pk=None):
+        """ZMKT11 — aperçu SANS enregistrer de réponse."""
+        enquete = self.get_object()
+        return Response(services.tester_enquete(enquete))
+
+    @action(detail=True, methods=['post'], url_path='emettre-jeton-invite')
+    def emettre_jeton_invite(self, request, pk=None):
+        """ZMKT11 — émet un jeton d'invitation (mode invités-seulement)."""
+        enquete = self.get_object()
+        jeton = services.emettre_jeton_invite(enquete)
+        return Response({'jeton': jeton})
+
+    @action(detail=True, methods=['get'])
+    def qr(self, request, pk=None):
+        """ZMKT12 — QR SVG téléchargeable du lien public de l'enquête."""
+        enquete = self.get_object()
+        svg = services.qr_svg_enquete(enquete)
+        return HttpResponse(svg, content_type='image/svg+xml')
+
+    @action(detail=True, methods=['get'])
+    def participations(self, request, pk=None):
+        """ZMKT13 — liste des soumissions individuelles, filtrable
+        réussi/échoué (``?reussi=true|false``)."""
+        enquete = self.get_object()
+        reussi_param = request.query_params.get('reussi')
+        reussi = None
+        if reussi_param is not None:
+            reussi = reussi_param.lower() == 'true'
+        return Response(services.participations_enquete(enquete, reussi=reussi))
+
+    @action(detail=True, methods=['get'], url_path='resultats/export')
+    def resultats_export(self, request, pk=None):
+        """ZMKT13 — export XLSX des participations."""
+        from openpyxl import Workbook
+        from openpyxl.styles import Font
+        from apps.records.xlsx import coerce_cell, XLSX_CONTENT_TYPE
+        import io
+
+        enquete = self.get_object()
+        participations = services.participations_enquete(enquete)
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Participations'
+        ws.append(['Contact', 'Score %', 'Réussi', 'Date'])
+        for cell in ws[1]:
+            cell.font = Font(bold=True)
+        for p in participations:
+            ws.append([coerce_cell(v) for v in [
+                p['contact'], p['score_pct'], p['reussi'], p['date_creation']]])
+        buf = io.BytesIO()
+        wb.save(buf)
+        resp = HttpResponse(buf.getvalue(), content_type=XLSX_CONTENT_TYPE)
+        resp['Content-Disposition'] = 'attachment; filename="participations.xlsx"'
+        return resp
+
+    @action(detail=True, methods=['post'])
+    def inviter(self, request, pk=None):
+        """ZMKT12 — invitation email vers un segment (XMKT6) ou une liste
+        (XMKT5), consentement + suppression respectés."""
+        enquete = self.get_object()
+        segment_id = request.data.get('segment_id')
+        liste_id = request.data.get('liste_id')
+        segment = (SegmentMarketing.objects.filter(
+            id=segment_id, company=request.user.company).first()
+            if segment_id else None)
+        liste = (ListeDiffusion.objects.filter(
+            id=liste_id, company=request.user.company).first()
+            if liste_id else None)
+        resultat = services.inviter_enquete(enquete, segment=segment, liste=liste)
+        return Response(resultat)
+
+
+# ── XMKT28 — Événements marketing légers ────────────────────────────────────
+
+class EvenementMarketingViewSet(_ComptaBaseViewSet):
+    """CRUD des événements marketing (XMKT28)."""
+    queryset = EvenementMarketing.objects.all()
+    serializer_class = EvenementMarketingSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom']
+    ordering_fields = ['date_debut', 'date_creation']
+
+    @action(detail=True, methods=['post'], url_path='cloturer-presences')
+    def cloturer_presences(self, request, pk=None):
+        evenement = self.get_object()
+        nb = services.cloturer_presences_evenement(evenement)
+        return Response({'absents_marques': nb})
+
+    @action(detail=True, methods=['get'])
+    def borne(self, request, pk=None):
+        """ZMKT18 — recherche par nom/email parmi les inscrits."""
+        evenement = self.get_object()
+        terme = request.query_params.get('q', '')
+        return Response(services.rechercher_inscrits_borne(evenement, terme))
+
+    @action(detail=True, methods=['get'])
+    def badges(self, request, pk=None):
+        """ZMKT19 — impression en lot des badges (PDF multi-pages)."""
+        evenement = self.get_object()
+        pdf_bytes = services.generer_badges_pdf_lot(evenement)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = 'inline; filename="badges.pdf"'
+        return resp
+
+    @action(detail=False, methods=['get'])
+    def reporting(self, request):
+        """ZMKT20 — reporting événement (participants & billetterie),
+        groupable par ``?groupby=type|mois``."""
+        groupby = request.query_params.get('groupby')
+        return Response(
+            services.reporting_evenements(request.user.company, groupby=groupby))
+
+    @action(detail=False, methods=['get'], url_path='reporting/export')
+    def reporting_export(self, request):
+        """ZMKT20 — export XLSX du reporting événement."""
+        from openpyxl import Workbook
+        from openpyxl.styles import Font
+        from apps.records.xlsx import coerce_cell, XLSX_CONTENT_TYPE
+        import io
+
+        lignes = services.reporting_evenements(request.user.company)
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Reporting événements'
+        headers = [
+            'Événement', 'Type', 'Inscrits', 'Confirmés', 'Présents',
+            'Absents', 'Taux présence %', 'Recette théorique MAD', 'Leads',
+        ]
+        ws.append(headers)
+        for cell in ws[1]:
+            cell.font = Font(bold=True)
+        for ligne in lignes:
+            ws.append([coerce_cell(v) for v in [
+                ligne['nom'], ligne['type_evenement'], ligne['nb_inscrits'],
+                ligne['nb_confirmes'], ligne['nb_presents'],
+                ligne['nb_absents'], ligne['taux_presence_pct'],
+                ligne['recette_theorique_mad'], ligne['nb_leads'],
+            ]])
+        buf = io.BytesIO()
+        wb.save(buf)
+        resp = HttpResponse(buf.getvalue(), content_type=XLSX_CONTENT_TYPE)
+        resp['Content-Disposition'] = 'attachment; filename="reporting_evenements.xlsx"'
+        return resp
+
+    @action(detail=False, methods=['get'])
+    def kanban(self, request):
+        """ZMKT14 — Kanban par étape configurable."""
+        return Response(services.evenements_par_etape(request.user.company))
+
+    @action(detail=True, methods=['post'], url_path='avancer-etape')
+    def avancer_etape(self, request, pk=None):
+        evenement = self.get_object()
+        nouvelle_etape = request.data.get('etape')
+        services.avancer_etape_evenement(evenement, nouvelle_etape)
+        evenement.refresh_from_db()
+        return Response(EvenementMarketingSerializer(evenement).data)
+
+
+class TypeEvenementViewSet(_ComptaBaseViewSet):
+    """Modèles réutilisables d'événement (ZMKT14)."""
+    queryset = TypeEvenement.objects.all()
+    serializer_class = TypeEvenementSerializer
+
+    @action(detail=True, methods=['post'], url_path='creer-evenement')
+    def creer_evenement(self, request, pk=None):
+        type_evenement = self.get_object()
+        nom = request.data.get('nom')
+        date_debut = request.data.get('date_debut')
+        if not nom or not date_debut:
+            return Response({'detail': 'nom et date_debut requis.'}, status=400)
+        evenement = services.creer_evenement_depuis_type(
+            type_evenement, nom=nom, date_debut=date_debut)
+        return Response(EvenementMarketingSerializer(evenement).data, status=201)
+
+
+class BilletEvenementViewSet(_ComptaBaseViewSet):
+    """Billets d'événement (ZMKT15)."""
+    queryset = BilletEvenement.objects.select_related('evenement').all()
+    serializer_class = BilletEvenementSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        evenement_id = self.request.query_params.get('evenement')
+        if evenement_id:
+            qs = qs.filter(evenement_id=evenement_id)
+        return qs
+
+
+class QuestionEvenementViewSet(_ComptaBaseViewSet):
+    """Questions d'inscription par événement (ZMKT16)."""
+    queryset = QuestionEvenement.objects.select_related('evenement').all()
+    serializer_class = QuestionEvenementSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        evenement_id = self.request.query_params.get('evenement')
+        if evenement_id:
+            qs = qs.filter(evenement_id=evenement_id)
+        return qs
+
+
+class CommunicationEvenementViewSet(_ComptaBaseViewSet):
+    """Communications programmées d'événement (ZMKT17)."""
+    queryset = CommunicationEvenement.objects.select_related('evenement').all()
+    serializer_class = CommunicationEvenementSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        evenement_id = self.request.query_params.get('evenement')
+        if evenement_id:
+            qs = qs.filter(evenement_id=evenement_id)
+        return qs
+
+
+class InscriptionEvenementViewSet(_ComptaBaseViewSet):
+    """Inscriptions à un événement (XMKT28)."""
+    queryset = InscriptionEvenement.objects.select_related('evenement').all()
+    serializer_class = InscriptionEvenementSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        evenement_id = self.request.query_params.get('evenement')
+        if evenement_id:
+            qs = qs.filter(evenement_id=evenement_id)
+        return qs
+
+    @action(detail=True, methods=['post'])
+    def pointer(self, request, pk=None):
+        inscription = self.get_object()
+        services.pointer_presence(inscription)
+        inscription.refresh_from_db()
+        return Response(InscriptionEvenementSerializer(inscription).data)
+
+    @action(detail=True, methods=['get'])
+    def badge(self, request, pk=None):
+        """ZMKT19 — badge PDF imprimable d'un inscrit."""
+        inscription = self.get_object()
+        pdf_bytes = services.generer_badge_pdf(inscription)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = 'inline; filename="badge.pdf"'
+        return resp
+
+
+class _MarketingPublicThrottle(SimpleRateThrottle):
+    """Débit des endpoints marketing PUBLICS (inscriptions événement,
+    désinscription/double opt-in/enquête tokenisés, webhooks entrants) par IP
+    — anti-abus/brute-force du jeton (YRBAC9). Même patron que
+    ``_PortailComptaThrottle``."""
+    scope = 'compta_marketing_public'
+    rate = '30/minute'
+
+    def get_rate(self):
+        return self.rate
+
+    def get_cache_key(self, request, view):
+        ident = self.get_ident(request)
+        return self.cache_format % {'scope': self.scope, 'ident': ident}
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@throttle_classes([_MarketingPublicThrottle])
+def evenement_inscription_publique(request, evenement_id):
+    """XMKT28 — Inscription publique à un événement (aucune auth)."""
+    evenement = EvenementMarketing.objects.filter(id=evenement_id).first()
+    if not evenement:
+        return Response({'detail': 'Événement introuvable.'}, status=404)
+    nom = (request.data.get('nom') or '').strip()
+    if not nom:
+        return Response({'detail': 'nom requis.'}, status=400)
+    billet = None
+    billet_id = request.data.get('billet_id')
+    if billet_id:
+        billet = BilletEvenement.objects.filter(
+            id=billet_id, evenement=evenement).first()
+        if not billet:
+            return Response({'detail': 'Billet introuvable.'}, status=404)
+    try:
+        inscription = services.inscrire_evenement(
+            evenement, nom=nom,
+            email=request.data.get('email', ''),
+            telephone=request.data.get('telephone', ''), billet=billet,
+            reponses_questions=request.data.get('reponses_questions'))
+    except ValueError as exc:
+        return Response({'detail': str(exc)}, status=400)
+    return Response(
+        {'id': inscription.id, 'qr_token': inscription.qr_token}, status=201)
+
+
+# ── XMKT29 — Ponts QR pour supports offline ─────────────────────────────────
+
+class SupportOfflineViewSet(_ComptaBaseViewSet):
+    """CRUD des supports offline avec QR téléchargeable (XMKT29)."""
+    queryset = SupportOffline.objects.select_related('lien_tracke').all()
+    serializer_class = SupportOfflineSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom']
+    ordering_fields = ['date_creation']
+
+    def perform_create(self, serializer):
+        nom = serializer.validated_data.get('nom')
+        url_cible = serializer.validated_data.get('url_cible')
+        support = services.creer_support_offline(
+            self.request.user.company, nom=nom, url_cible=url_cible)
+        serializer.instance = support
+
+    @action(detail=True, methods=['get'])
+    def qr(self, request, pk=None):
+        support = self.get_object()
+        svg = services.qr_svg_support_offline(support)
+        if svg is None:
+            return Response({'detail': 'QR indisponible.'}, status=404)
+        return HttpResponse(svg, content_type='image/svg+xml')
+
+    @action(detail=False, methods=['get'], url_path='scans-par-support')
+    def scans_par_support(self, request):
+        return Response(
+            services.tableau_scans_par_support(request.user.company))
+
+
+# ── XMKT33 — Assistant d'authentification du domaine d'envoi ──────────────
+
+class DomaineEnvoiViewSet(_ComptaBaseViewSet):
+    """Page Paramètres « Domaine d'envoi » (XMKT33)."""
+    queryset = DomaineEnvoi.objects.all()
+    serializer_class = DomaineEnvoiSerializer
+
+    @action(detail=True, methods=['get'], url_path='enregistrements-attendus')
+    def enregistrements_attendus(self, request, pk=None):
+        domaine_envoi = self.get_object()
+        return Response(
+            services.enregistrements_dns_attendus(domaine_envoi.domaine))
+
+    @action(detail=True, methods=['post'], url_path='verifier')
+    def verifier(self, request, pk=None):
+        domaine_envoi = self.get_object()
+        services.verifier_domaine_envoi(domaine_envoi)
+        domaine_envoi.refresh_from_db()
+        return Response(DomaineEnvoiSerializer(domaine_envoi).data)
 
 
 # ── XMKT5 — Listes de diffusion nommées + abonnements ───────────────────────
@@ -4055,6 +5323,32 @@ class SequenceRelanceViewSet(_ComptaBaseViewSet):
         plan = services.planifier_etapes_sequence(sequence)
         return Response({'etapes': plan})
 
+    @action(detail=True, methods=['get'])
+    def traces(self, request, pk=None):
+        """ZMKT5 — traces filtrables par étape et statut."""
+        sequence = self.get_object()
+        etape_id = request.query_params.get('etape')
+        statut_trace = request.query_params.get('statut')
+        return Response(services.traces_sequence(
+            sequence, etape_id=etape_id, statut_trace=statut_trace))
+
+    @action(detail=True, methods=['get'], url_path='compteurs-par-etape')
+    def compteurs_par_etape(self, request, pk=None):
+        """ZMKT5 — compteurs Succès/Rejeté/Envoyé par étape."""
+        sequence = self.get_object()
+        return Response(services.compteurs_par_etape(sequence))
+
+    @action(detail=True, methods=['get'])
+    def participants(self, request, pk=None):
+        """ZMKT6 — liste des participants (nœud courant + prochaine
+        échéance), filtrable par statut, + compteur actifs."""
+        sequence = self.get_object()
+        statut = request.query_params.get('statut')
+        return Response({
+            'participants': services.participants_sequence(sequence, statut=statut),
+            'nb_actifs': services.nb_participants_actifs(sequence),
+        })
+
 
 class EtapeSequenceViewSet(_ComptaBaseViewSet):
     """Étapes d'une séquence de relance (FG202)."""
@@ -4113,6 +5407,7 @@ class InscriptionSequenceViewSet(_ComptaBaseViewSet):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@throttle_classes([_MarketingPublicThrottle])
 def webhook_brevo_campagne(request):
     """Réception d'un événement webhook Brevo (XMKT2/XMKT12) : delivered/
     opened/click/bounce/unsubscribed/complaint. Résout la société depuis la
@@ -4144,6 +5439,7 @@ def webhook_brevo_campagne(request):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@throttle_classes([_MarketingPublicThrottle])
 def webhook_sms_stop(request):
     """Réception d'un SMS entrant STOP (XMKT15, gated/no-op sans intégration
     d'agrégateur active). Payload minimal attendu : ``company_id``,
@@ -4169,6 +5465,7 @@ def webhook_sms_stop(request):
 
 @api_view(['GET', 'POST'])
 @permission_classes([AllowAny])
+@throttle_classes([_MarketingPublicThrottle])
 def desinscription_publique(request, token):
     """Page/endpoint public de désinscription un clic (XMKT3, RFC 8058).
 
@@ -4181,6 +5478,122 @@ def desinscription_publique(request, token):
     if not ok:
         return Response({'detail': resultat}, status=400)
     return Response({'desinscrit': True, 'destinataire': resultat})
+
+
+# ── XMKT4 — Confirmation double opt-in (public, tokenisé, aucune auth) ─────
+
+@api_view(['GET', 'POST'])
+@permission_classes([AllowAny])
+@throttle_classes([_MarketingPublicThrottle])
+def double_optin_confirmer(request, token):
+    """Clic de confirmation du double opt-in (XMKT4, loi 09-08).
+
+    Pose un ``core.ConsentRecord`` accordé pour la finalité marketing, preuve
+    IP + horodatage. Jeton invalide → 400 sans effet.
+    """
+    ok, resultat = services.confirmer_double_optin_via_token(token)
+    if not ok:
+        return Response({'detail': resultat}, status=400)
+    return Response({'confirme': True, 'destinataire': resultat})
+
+
+# ── XMKT9 — Redirection tokenisée (public, tracking de clics) ──────────────
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([_MarketingPublicThrottle])
+def redirection_lien_tracke(request, token):
+    """Redirige vers l'URL cible d'un ``LienTrackee`` (XMKT9), en comptant le
+    clic (par lien + par destinataire via ``?d=`` si fourni par l'appelant
+    email/SMS). Jeton invalide → 404 (aucune fuite d'existence)."""
+    from django.http import HttpResponseRedirect
+
+    destinataire = (request.GET.get('d') or '').strip()
+    ok, resultat = services.traiter_clic_lien(token, destinataire=destinataire)
+    if not ok:
+        return Response({'detail': resultat}, status=404)
+    return HttpResponseRedirect(resultat)
+
+
+# ── XMKT27 — Enquêtes (public, tokenisé, aucune auth) ───────────────────────
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([_MarketingPublicThrottle])
+def enquete_publique(request, token):
+    """Récupère les questions VISIBLES d'une enquête via son lien public
+    (XMKT27). Jeton invalide/enquête inactive → 404 (aucune fuite
+    d'existence). Les réponses déjà données (``?reponses=`` JSON encodé) sont
+    prises en compte pour la logique conditionnelle."""
+    import json as _json
+
+    enquete = Enquete.objects.filter(token=token, actif=True).first()
+    if not enquete:
+        return Response({'detail': 'Enquête introuvable.'}, status=404)
+    jeton_invite = request.GET.get('invite')
+    if not services.acces_enquete_autorise(enquete, jeton_invite=jeton_invite):
+        return Response({'detail': 'Enquête introuvable.'}, status=404)
+    reponses_partielles = {}
+    brut = request.GET.get('reponses')
+    if brut:
+        try:
+            reponses_partielles = _json.loads(brut)
+        except (ValueError, TypeError):
+            reponses_partielles = {}
+    rendu = services.rendre_enquete_publique(enquete, reponses_partielles)
+    return Response(rendu)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@throttle_classes([_MarketingPublicThrottle])
+def enquete_soumettre(request, token):
+    """Soumission publique d'une enquête (XMKT27), aucune authentification.
+
+    ZMKT9 — ``debute_le`` (ISO datetime, optionnel) permet de vérifier la
+    limite de temps de l'enquête ; sans elle, aucune vérification (illimité,
+    comportement actuel)."""
+    from django.utils.dateparse import parse_datetime
+
+    enquete = Enquete.objects.filter(token=token, actif=True).first()
+    if not enquete:
+        return Response({'detail': 'Enquête introuvable.'}, status=404)
+    debute_le_brut = request.data.get('debute_le')
+    if debute_le_brut:
+        debute_le = parse_datetime(debute_le_brut)
+        if debute_le and services.limite_temps_depassee(enquete, debute_le=debute_le):
+            return Response({'detail': 'Temps limite dépassé.'}, status=400)
+    reponses = request.data.get('reponses') or {}
+    contact_ref = request.data.get('contact_ref', '')
+    try:
+        reponse = services.soumettre_reponse_enquete(
+            enquete, reponses=reponses, contact_ref=contact_ref,
+            nom_repondant=request.data.get('nom_repondant', ''))
+    except ValueError as exc:
+        return Response({'detail': str(exc)}, status=400)
+    return Response({
+        'id': reponse.id,
+        'score_pct': reponse.score_pct,
+        'reussi': reponse.reussi,
+        'certificat_genere': reponse.certificat_genere,
+    }, status=201)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([_MarketingPublicThrottle])
+def enquete_certificat_pdf(request, reponse_id):
+    """ZMKT10 — téléchargement du certificat PDF (répondant), 404 si non
+    certifié/échoué (aucune fuite d'existence)."""
+    reponse = ReponseEnquete.objects.filter(id=reponse_id).first()
+    if not reponse or not reponse.certificat_genere:
+        return Response({'detail': 'Certificat indisponible.'}, status=404)
+    pdf_bytes = services.generer_certificat_pdf(reponse)
+    if pdf_bytes is None:
+        return Response({'detail': 'Certificat indisponible.'}, status=404)
+    resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+    resp['Content-Disposition'] = 'inline; filename="certificat.pdf"'
+    return resp
 
 
 # ── XFAC26/27 — Portail client self-service : relevé + contestation ───────

@@ -54,8 +54,21 @@ def _company_qs(qs, user):
 
 class DevisViewSet(viewsets.ModelViewSet):
     queryset = Devis.objects.select_related(
-        'client', 'created_by'
-    ).prefetch_related('lignes').all()
+        'client', 'created_by', 'lead', 'bon_commande', 'signature',
+        'superseded_by', 'version_parent',
+    ).prefetch_related(
+        # YOPSB13 — paiements/avoirs imbriqués préchargés : DevisSerializer.
+        # get_solde (via solde_devis) itère f.paiements/f.avoirs PAR facture ;
+        # sans ces prefetch c'était un N+1 imbriqué sur la liste.
+        'lignes', 'factures', 'factures__paiements', 'factures__avoirs',
+        'share_links',
+        # YOPSB13 — évite le N+1 de DevisSerializer.get_chantier (avant :
+        # une requête Installation par devis via le sélecteur
+        # installations.selectors.installation_for_devis appelé par ligne de
+        # liste). String-FK cross-app (Installation.devis, related_name=
+        # 'installations') — jamais d'import de apps.installations.models ici.
+        'installations',
+    ).all()
 
     def get_queryset(self):
         qs = _company_qs(super().get_queryset(), self.request.user)
@@ -437,12 +450,24 @@ class DevisViewSet(viewsets.ModelViewSet):
             # ``{nom}`` porte le salut complet ("Bonjour X," / "Bonjour,")
             # pour préserver EXACTEMENT le rendu historique par défaut.
             salut = f'Bonjour {nom_client},' if nom_client else 'Bonjour,'
+            # XSAL17 — {lien_rdv} : résolu paresseusement, jamais de
+            # BookingLink créé si le gabarit effectif ne référence pas le
+            # placeholder (évite un jeton inutile à chaque envoi de devis).
+            lien_rdv = ''
+            if devis.lead_id and '{lien_rdv}' in EmailTemplate.get_template(
+                    devis.company, 'envoi_devis')['corps']:
+                try:
+                    from apps.crm.services import public_booking_url
+                    lien_rdv = public_booking_url(devis.lead, request=request)
+                except Exception:  # noqa: BLE001 — jamais bloquer l'envoi
+                    lien_rdv = ''
             rendu = EmailTemplate.render(
                 devis.company, 'envoi_devis',
                 civilite=civilite, nom=salut,
                 reference=devis.reference or '', lien=proposal_url,
                 validite=(devis.date_validite.strftime('%d/%m/%Y')
                           if devis.date_validite else ''),
+                lien_rdv=lien_rdv,
             )
             sujet = sujet or rendu['sujet']
             corps = corps or rendu['corps']

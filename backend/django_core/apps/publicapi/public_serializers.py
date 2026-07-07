@@ -10,6 +10,7 @@ from rest_framework import serializers
 from apps.crm.models import Lead
 from apps.ventes.models import Devis, LigneDevis, Facture, LigneFacture
 from apps.installations.models import Installation
+from apps.stock.models import Produit
 
 
 class PublicLeadSerializer(serializers.ModelSerializer):
@@ -83,6 +84,25 @@ class PublicFactureSerializer(serializers.ModelSerializer):
             'remise_globale', 'lignes',
         ]
         read_only_fields = fields
+
+
+class PublicProduitSerializer(serializers.ModelSerializer):
+    """XSTK23 — disponibilité produit UNIQUEMENT : SKU/nom/marque/catégorie/
+    quantité disponible. JAMAIS `prix_achat` ni `prix_vente` ni aucun coût."""
+    categorie = serializers.SlugRelatedField(
+        slug_field='nom', read_only=True)
+    quantite_disponible = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Produit
+        fields = [
+            'id', 'sku', 'nom', 'marque', 'categorie', 'quantite_disponible',
+        ]
+        read_only_fields = fields
+
+    def get_quantite_disponible(self, obj):
+        from apps.stock.services import available_quantity
+        return available_quantity(obj)
 
 
 class PublicChantierSerializer(serializers.ModelSerializer):

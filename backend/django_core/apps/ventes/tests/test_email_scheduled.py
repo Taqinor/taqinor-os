@@ -277,3 +277,87 @@ class TestScheduledJobs(TestCase):
         from apps.ventes.scheduled import casablanca_today, CASABLANCA_TZ
         self.assertEqual(CASABLANCA_TZ, 'Africa/Casablanca')
         self.assertIsInstance(casablanca_today(), date)
+
+
+@override_settings(EMAIL_BACKEND='django.core.mail.backends.console.EmailBackend')
+class TestQW8EmailConfigBugfix(TestCase):
+    """QW8 — is_email_configured() checked a key (ANYMAIL['BREVO_API_KEY'])
+    that settings/base.py NEVER sets (the env var BREVO_API_KEY is stored
+    under ANYMAIL['SENDINBLUE_API_KEY']). Even with EMAIL_BACKEND left on
+    console (the actual default), a real Brevo key must be detected as
+    configured."""
+
+    @override_settings(ANYMAIL={'SENDINBLUE_API_KEY': 'real-brevo-key', 'SENDGRID_API_KEY': ''})
+    def test_sendinblue_key_detected_even_on_console_backend(self):
+        from apps.ventes import email_service
+        # Avant le correctif QW8 : is_email_configured() cherchait
+        # ANYMAIL['BREVO_API_KEY'] (jamais posée), retombait sur le backend
+        # (console → False) — un vrai déploiement Brevo configuré via
+        # BREVO_API_KEY seul (sans changer EMAIL_BACKEND) restait "non
+        # configuré".
+        self.assertTrue(email_service.is_email_configured())
+
+    @override_settings(ANYMAIL={'SENDINBLUE_API_KEY': '', 'SENDGRID_API_KEY': 'sg-key'})
+    def test_sendgrid_key_also_detected(self):
+        from apps.ventes import email_service
+        self.assertTrue(email_service.is_email_configured())
+
+    @override_settings(ANYMAIL={'SENDINBLUE_API_KEY': '', 'SENDGRID_API_KEY': ''})
+    def test_no_key_stays_unconfigured_on_console(self):
+        from apps.ventes import email_service
+        self.assertFalse(email_service.is_email_configured())
+
+
+class TestQW8CallbackEmailDefaultOn(TestCase):
+    """QW8 — a phone_ok callback fires an outbound email when configured
+    (email channel defaults ON for lead_callback_requested, unlike the
+    generic notification default of email=False)."""
+
+    def setUp(self):
+        self.company = make_company(slug='qw8-callback-co', nom='QW8 Callback Co')
+        from apps.roles.models import Role
+        role = Role.objects.create(
+            company=self.company, nom='Commercial QW8', permissions=['crm_voir'])
+        self.owner = User.objects.create_user(
+            username='qw8_owner', password='x', company=self.company,
+            role=role, email='owner@example.com')
+
+    @override_settings(
+        EMAIL_BACKEND=LOCMEM,
+        ANYMAIL={'SENDINBLUE_API_KEY': 'real-brevo-key', 'SENDGRID_API_KEY': ''})
+    def test_configured_prod_fires_callback_email(self):
+        from apps.crm.models import Lead
+        from apps.crm.services import notify_lead_callback_requested
+
+        lead = Lead.objects.create(
+            company=self.company, nom='Prospect QW8', telephone='+212600998877',
+            owner=self.owner, contact_preference=Lead.ContactPreference.PHONE_OK)
+        notify_lead_callback_requested(lead)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn('owner@example.com', mail.outbox[0].to)
+
+    @override_settings(EMAIL_BACKEND=LOCMEM, ANYMAIL={'SENDINBLUE_API_KEY': '', 'SENDGRID_API_KEY': ''})
+    def test_unconfigured_never_sends_but_never_crashes(self):
+        from apps.crm.models import Lead
+        from apps.crm.services import notify_lead_callback_requested
+
+        lead = Lead.objects.create(
+            company=self.company, nom='Prospect QW8b', telephone='+212600998866',
+            owner=self.owner, contact_preference=Lead.ContactPreference.PHONE_OK)
+        notify_lead_callback_requested(lead)
+        self.assertEqual(len(mail.outbox), 0)
+
+    @override_settings(
+        EMAIL_BACKEND=LOCMEM,
+        ANYMAIL={'SENDINBLUE_API_KEY': 'real-brevo-key', 'SENDGRID_API_KEY': ''})
+    def test_generic_new_lead_notification_still_defaults_email_off(self):
+        # QW8 n'ouvre le canal email par défaut QUE pour le rappel — le
+        # générique lead_new reste email=False par défaut (aucune régression).
+        from apps.crm.models import Lead
+        from apps.crm.services import notify_new_lead
+
+        lead = Lead.objects.create(
+            company=self.company, nom='Prospect générique',
+            telephone='+212600998855', owner=self.owner)
+        notify_new_lead(lead)
+        self.assertEqual(len(mail.outbox), 0)

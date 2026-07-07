@@ -302,3 +302,54 @@ class TestTrackedModelsCoverage(TestCase):
         for app_label, model_name in TRACKED_MODELS:
             # Lève LookupError si la paire est erronée.
             django_apps.get_model(app_label, model_name)
+
+
+class TestPaieAuditTrail(AuditBase):
+    """XPAI23 — piste d'audit paie : les écritures « argent » (taux/barèmes/
+    rubriques/profils/avances/arrêts/périodes) sont désormais suivies, même
+    mécanique post_save/post_delete que les autres modèles (aucun changement
+    de comportement)."""
+
+    def test_paie_models_are_tracked(self):
+        from apps.audit.signals import TRACKED_MODELS
+        attendus = {
+            ('paie', 'ParametrePaie'),
+            ('paie', 'BaremeIR'),
+            ('paie', 'Rubrique'),
+            ('paie', 'ProfilPaie'),
+            ('paie', 'RubriqueEmploye'),
+            ('paie', 'AvanceSalarie'),
+            ('paie', 'SaisieArret'),
+            ('paie', 'PeriodePaie'),
+        }
+        self.assertTrue(attendus.issubset(set(TRACKED_MODELS)))
+
+    def test_parametre_paie_update_logs_audit_entry(self):
+        """Modifier un taux ParametrePaie via l'API produit une entrée
+        d'audit, scopée à la société de l'acteur."""
+        from apps.paie.models import ParametrePaie
+
+        param = ParametrePaie.objects.create(
+            company=self.company, date_effet='2026-01-01',
+            taux_cnss_salarial=Decimal('4.48'))
+        resp = auth(self.directeur).patch(
+            f'/api/django/paie/parametres/{param.id}/',
+            {'taux_cnss_salarial': '5.00'}, format='json')
+        self.assertEqual(resp.status_code, 200)
+        entry = AuditLog.objects.filter(
+            action='update', object_id=str(param.id)).first()
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry.user_id, self.directeur.id)
+        self.assertEqual(entry.company_id, self.company.id)
+
+    def test_parametre_paie_orm_create_outside_request_not_logged(self):
+        """Même règle que les autres modèles suivis : une écriture ORM
+        directe hors requête (migration/seed/test) ne journalise rien."""
+        from apps.paie.models import ParametrePaie
+
+        ParametrePaie.objects.create(
+            company=self.company, date_effet='2026-02-01')
+        self.assertFalse(
+            AuditLog.objects.filter(action='create',
+                                    object_repr__icontains='2026-02-01')
+            .exists())

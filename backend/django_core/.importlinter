@@ -33,18 +33,21 @@ modules =
     apps.stock.models
     apps.sav.models
     apps.installations.models
-# A domain model may call its OWN app's selector layer LAZILY (function-local
-# import inside a model method — e.g. `Facture.tva_par_taux` →
-# `ventes.selectors.tva_buckets`, `Ticket` → `sav.selectors.droits_restants`).
+# A domain model may call its OWN app's selector/service layer LAZILY
+# (function-local import inside a model method — e.g. `Facture.tva_par_taux` →
+# `ventes.selectors.tva_buckets`, `Ticket` → `sav.selectors.droits_restants`,
+# `Lead.save` → `crm.services.normalize_phone/email` [QW10 dedup columns]).
 # These run at call time, never at model load, so they cannot reintroduce the
 # load-time model→model cycle this contract exists to prevent. grimp still sees
 # the static edge, and because the selector/service layer legitimately crosses
 # domains (documented above), it makes the 5 model modules appear transitively
-# coupled. Prune ONLY these intra-app model→own-selector entry edges: a DIRECT
-# cross-domain `X.models -> Y.models` import is a separate edge and stays caught.
+# coupled. Prune ONLY these intra-app model→own-selector/service entry edges: a
+# DIRECT cross-domain `X.models -> Y.models` import is a separate edge and stays
+# caught.
 ignore_imports =
     apps.ventes.models -> apps.ventes.selectors
     apps.sav.models -> apps.sav.selectors
+    apps.crm.models -> apps.crm.services
 
 [importlinter:contract:installations-split-models-decoupled]
 name = Split installations model modules never import a sibling domain's models (locks M1 after the M7 split)
@@ -95,6 +98,19 @@ forbidden_modules =
     apps.sav.models
     apps.installations.models
 
+[importlinter:contract:marketing-models-decoupled]
+name = Marketing models never import a business-core domain's models (string FKs only — ODX9/ODX10)
+type = forbidden
+source_modules =
+    apps.marketing.models
+forbidden_modules =
+    apps.crm.models
+    apps.ventes.models
+    apps.stock.models
+    apps.sav.models
+    apps.installations.models
+    apps.compta.models
+
 [importlinter:contract:core-foundation-is-a-base-layer]
 name = The core foundation app imports downward only (no domain-core or satellite app)
 type = forbidden
@@ -127,3 +143,12 @@ ignore_imports =
     core.tests.test_public_endpoint_hardening -> apps.ventes.models
     core.tests.test_public_endpoint_hardening -> apps.crm.models
     core.tests.test_registre_traitements -> apps.crm.models
+# YHARD4/YHARD10 — two more core cross-layer INTEGRATION tests: YHARD4 asserts
+# the i18n content-translation layer round-trips a real domain serializer, and
+# YHARD10's export-anonymise UAT-clone command is proven against a real
+# crm.Client. Same rationale as the YRBAC6/9 exceptions above — test-only
+# cross-layer edges, not production `core` coupling (core prod code imports
+# downward only). Ignore just these specific test→domain edges.
+    core.tests.test_yhard4_i18n_content -> apps.stock.models
+    core.tests.test_yhard4_i18n_content -> apps.stock.serializers
+    core.tests.test_yhard10_export_anonymise -> apps.crm.models

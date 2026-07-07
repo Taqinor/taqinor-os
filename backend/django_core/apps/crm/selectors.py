@@ -862,6 +862,39 @@ def leads_sla_depasse(company, now=None, seuil_heures=None):
     ).order_by('date_creation')
 
 
+# QW4 — Rappels demandés (contact_preference=phone_ok) non actionnés ─────────
+
+def leads_callback_sla_depasse(company, now=None, seuil_heures=None):
+    """QW4 — Rappels demandés (``contact_preference=phone_ok``) non actionnés
+    (``first_contacted_at`` NULL) au-delà du SLA rappel, plus serré que le SLA
+    générique (``services.callback_sla_hours``). Même patron LECTURE SEULE que
+    ``leads_sla_depasse`` — ``now``/``seuil_heures`` injectables (tests
+    déterministes) ; ``seuil_heures=0`` (SLA désactivé) renvoie un queryset
+    vide. N'exige PAS ``stage=NEW`` : un rappel peut être demandé à n'importe
+    quelle étape (rule #2 — la préférence de contact n'est pas liée au
+    funnel)."""
+    from django.utils import timezone as _timezone
+    import datetime as _dt
+
+    from .models import Lead
+    from .services import callback_sla_hours as _get_callback_sla_hours
+
+    now = now or _timezone.now()
+    if seuil_heures is None:
+        seuil_heures = _get_callback_sla_hours(company)
+    if not seuil_heures:
+        return Lead.objects.none()
+
+    cutoff = now - _dt.timedelta(hours=seuil_heures)
+    return Lead.objects.filter(
+        company=company,
+        is_archived=False,
+        contact_preference=Lead.ContactPreference.PHONE_OK,
+        first_contacted_at__isnull=True,
+        date_creation__lte=cutoff,
+    ).order_by('date_creation')
+
+
 def site_location_for_devis(devis):
     """DC13 — localisation du chantier à créer depuis un devis.
 
@@ -970,4 +1003,126 @@ def lead_merge_fields(company, lead_id):
         'ville': lead.ville or '',
         'societe': lead.societe or '',
         'proprietaire_lead': proprietaire,
+    }
+
+
+# ── XMKT17 — Coût & ROI MAD par campagne (compta.Campagne) ─────────────────
+
+def revenu_attribue_campagne(company, nom_campagne):
+    """XMKT17 — Revenu attribué (dernier-touch) à une ``compta.Campagne`` :
+    somme des devis ACCEPTÉS (TTC) des leads portant
+    ``utm_campaign == nom_campagne``. Jamais d'import de ``apps.ventes``
+    depuis ici — les devis sont lus via la relation ``lead.devis`` déjà
+    dans le domaine crm (même pattern que ``attribution_leads``).
+
+    Renvoie ``{'nb_leads': int, 'nb_signes': int, 'revenu_ttc': str}``.
+    """
+    from decimal import Decimal
+    from .models import Lead
+
+    if not nom_campagne:
+        return {'nb_leads': 0, 'nb_signes': 0, 'revenu_ttc': '0'}
+
+    leads = list(
+        Lead.objects.filter(
+            company=company, is_archived=False, utm_campaign=nom_campagne,
+        ).prefetch_related('devis'))
+    nb_signes = 0
+    revenu = Decimal('0')
+    for lead in leads:
+        signe_pour_ce_lead = False
+        for devis in lead.devis.all():
+            if devis.statut == 'accepte':
+                signe_pour_ce_lead = True
+                try:
+                    revenu += Decimal(str(devis.total_ttc or 0))
+                except Exception:
+                    continue
+        if signe_pour_ce_lead:
+            nb_signes += 1
+    return {
+        'nb_leads': len(leads),
+        'nb_signes': nb_signes,
+        'revenu_ttc': str(revenu),
+    }
+
+
+def leads_source_campagne(company, nom_campagne):
+    """XMKT17 — Liste (drill-down) des leads portant l'utm_campaign de la
+    campagne : id + nom + stage + signé (pour le drill-down ROI)."""
+    from .models import Lead
+
+    if not nom_campagne:
+        return []
+    leads = Lead.objects.filter(
+        company=company, is_archived=False, utm_campaign=nom_campagne,
+    ).only('id', 'nom', 'prenom', 'stage')
+    return [
+        {'id': lead.id, 'nom': f'{lead.nom} {lead.prenom or ""}'.strip(),
+         'stage': lead.stage}
+        for lead in leads
+    ]
+
+
+# ── XSAL9 — Hiérarchie de comptes (société mère / filiales) + consolidation ──
+
+def _tous_descendants(client):
+    """XSAL9 — Tous les descendants (filiales, petites-filiales…) d'un
+    client, en profondeur, jamais infini (garde anti-cycle même si `clean()`
+    est censé l'empêcher en amont — défense en profondeur). Lecture seule."""
+    out = []
+    frontier = list(client.filiales.all())
+    seen = {client.pk}
+    while frontier:
+        current = frontier.pop()
+        if current.pk in seen:
+            continue
+        seen.add(current.pk)
+        out.append(current)
+        frontier.extend(current.filiales.all())
+    return out
+
+
+def consolidation_client(client):
+    """XSAL9 — Rollup CA groupe : agrège CE client + TOUS ses descendants
+    (filiales, récursif) via les sélecteurs ventes existants (JAMAIS d'import
+    de ``apps.ventes.models``). Renvoie un dict :
+
+      ``{'filiales': [Client, ...], 'ca_devis_total': Decimal,
+         'ca_factures_total': Decimal, 'nb_devis_total': int,
+         'nb_factures_total': int, 'par_client': {client_id: {...}}}``
+
+    Un client SANS filiale renvoie un rollup contenant uniquement ses
+    propres chiffres (comportement dégradé, jamais une erreur). Lecture
+    seule ; toujours borné à la société du client (les sélecteurs ventes
+    filtrent déjà par company+client_ids)."""
+    from decimal import Decimal
+
+    from apps.ventes.selectors import ca_devis_factures_par_clients
+
+    filiales = _tous_descendants(client)
+    tous_ids = [client.pk] + [f.pk for f in filiales]
+    par_client = ca_devis_factures_par_clients(client.company, tous_ids)
+
+    ca_devis_total = Decimal('0')
+    ca_factures_total = Decimal('0')
+    nb_devis_total = 0
+    nb_factures_total = 0
+    for cid in tous_ids:
+        entry = par_client.get(cid) or {
+            'ca_devis': Decimal('0'), 'ca_factures': Decimal('0'),
+            'nb_devis': 0, 'nb_factures': 0,
+        }
+        ca_devis_total += entry['ca_devis']
+        ca_factures_total += entry['ca_factures']
+        nb_devis_total += entry['nb_devis']
+        nb_factures_total += entry['nb_factures']
+
+    return {
+        'filiales': filiales,
+        'ca_devis_total': ca_devis_total,
+        'ca_factures_total': ca_factures_total,
+        'nb_devis_total': nb_devis_total,
+        'nb_factures_total': nb_factures_total,
+        'par_client': par_client,
     }

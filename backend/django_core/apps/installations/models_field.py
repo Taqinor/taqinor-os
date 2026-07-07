@@ -486,6 +486,124 @@ class SafetyCheckItem(models.Model):
         return f'{self.libelle} · {"✓" if self.coche else "—"}'
 
 
+# ── ZFSM1 — Gabarit de fiche d'intervention configurable par type ────────────
+class FicheInterventionTemplate(models.Model):
+    """ZFSM1 — gabarit de RELEVÉ structuré (mesures numériques + cases + texte
+    court) attaché à un `type_intervention` (clé `Intervention.Type`),
+    éditable dans Paramètres → Chantiers. Unifie ce que Odoo appelle une
+    « Worksheet Template » — chez nous les référentiels existants (shotlist
+    F7/F8, sécurité F18, checklist chantier N4/N74) restent séparés et
+    intacts ; ce gabarit couvre un besoin DIFFÉRENT (mesures/cases/texte
+    propres à l'intervention, pas des photos ni des consignes de sécurité).
+    `protege` verrouille un gabarit système. Additif — company-scopé."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='fiche_intervention_templates')
+    nom = models.CharField(max_length=120)
+    # Clé du type d'intervention auquel ce gabarit s'applique
+    # (`Intervention.Type` — texte, pas de FK rigide, même patron que
+    # `TypeInterventionPlan.type_intervention_cle`).
+    type_intervention = models.CharField(max_length=20)
+    actif = models.BooleanField(default=True)
+    protege = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['type_intervention', 'nom']
+        unique_together = [('company', 'type_intervention')]
+        verbose_name = "Gabarit de fiche d'intervention"
+        verbose_name_plural = "Gabarits de fiche d'intervention"
+
+    def __str__(self):
+        return f'{self.nom} ({self.type_intervention})'
+
+
+class FicheInterventionChamp(models.Model):
+    """ZFSM1 — un champ du gabarit : case à cocher, texte court, nombre, ou
+    mesure avec unité. `obligatoire` gate la transition de l'intervention vers
+    « Terminée » (réutilise `transition_block_reason` dans field_services.py) —
+    un champ obligatoire non renseigné bloque la clôture avec un message
+    clair. Additif — company-scopé."""
+    class TypeChamp(models.TextChoices):
+        CASE = 'case', 'Case à cocher'
+        TEXTE = 'texte', 'Texte court'
+        NOMBRE = 'nombre', 'Nombre'
+        MESURE = 'mesure', 'Mesure (avec unité)'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='fiche_intervention_champs')
+    template = models.ForeignKey(
+        FicheInterventionTemplate, on_delete=models.CASCADE,
+        related_name='champs')
+    cle = models.CharField(max_length=40)
+    libelle = models.CharField(max_length=150)
+    type_champ = models.CharField(max_length=10, choices=TypeChamp.choices)
+    unite = models.CharField(max_length=20, blank=True, default='')
+    ordre = models.PositiveIntegerField(default=0)
+    obligatoire = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['ordre', 'id']
+        unique_together = [('template', 'cle')]
+        verbose_name = 'Champ de fiche (gabarit)'
+        verbose_name_plural = 'Champs de fiche (gabarit)'
+
+    def __str__(self):
+        return f'{self.libelle} ({self.type_champ})'
+
+
+class FicheInterventionReleve(models.Model):
+    """ZFSM1 — relevé matérialisé PARESSEUSEMENT pour UNE intervention, depuis
+    le gabarit correspondant à son `type_intervention` (pattern
+    SafetySignoff/SafetyCheckItem : un relevé par intervention, une valeur par
+    champ). Additif — company-scopé, one-to-one avec l'intervention."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='fiche_intervention_releves')
+    intervention = models.OneToOneField(
+        Intervention, on_delete=models.CASCADE, related_name='fiche_releve')
+    template = models.ForeignKey(
+        FicheInterventionTemplate, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='releves')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Relevé de fiche d'intervention"
+        verbose_name_plural = "Relevés de fiche d'intervention"
+        ordering = ['intervention_id']
+
+    def __str__(self):
+        return f'Relevé · intervention {self.intervention_id}'
+
+
+class FicheInterventionValeur(models.Model):
+    """ZFSM1 — valeur d'UN champ du gabarit pour un relevé donné. `valeur` est
+    stockée en texte (case: 'true'/'false', nombre/mesure: représentation
+    décimale, texte: libre) pour rester simple et éviter une table par type de
+    champ ; l'interprétation typée reste côté service/serializer."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='fiche_intervention_valeurs')
+    releve = models.ForeignKey(
+        FicheInterventionReleve, on_delete=models.CASCADE,
+        related_name='valeurs')
+    champ = models.ForeignKey(
+        FicheInterventionChamp, on_delete=models.CASCADE,
+        related_name='valeurs')
+    valeur = models.TextField(blank=True, default='')
+    renseigne_le = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['champ__ordre', 'id']
+        unique_together = [('releve', 'champ')]
+        verbose_name = "Valeur de fiche d'intervention"
+        verbose_name_plural = "Valeurs de fiche d'intervention"
+
+    def __str__(self):
+        return f'{self.champ_id} = {self.valeur or "—"}'
+
+
 # ── N91/F21 — Journal d'idempotence de la capture terrain hors-ligne ──────────
 class FieldOp(models.Model):
     """N91/F21 — une opération de capture terrain rejouée depuis l'outbox du

@@ -4,6 +4,7 @@ import {
   CANAL_LABELS,
   PRIORITE_LABELS,
   PRIORITE_STARS,
+  formatMAD,
   isPerdu,
   tagColor,
   tagList,
@@ -110,6 +111,14 @@ export default function LeadCard({
         )}
         <span className="kb-card-name">{nomComplet}</span>
         {perdu && <span className="kb-badge-perdu">Perdu</span>}
+        {lead.contact_preference === 'phone_ok' && (
+          <span
+            className="kb-badge-rappel rounded-full bg-info/15 px-1.5 py-0.5 text-info"
+            title="Le client a demandé à être rappelé par téléphone"
+          >
+            ☎ Rappel demandé
+          </span>
+        )}
         {dernierDevisExpire && (
           <span
             className="kb-badge-expire rounded-full bg-warning/15 px-1.5 py-0.5 text-warning"
@@ -154,6 +163,14 @@ export default function LeadCard({
       </div>
 
       {sousTitre && <div className="kb-card-sub">{sousTitre}</div>}
+
+      {/* XSAL7 — montant estimé (pipeline pondéré pré-devis), affiché
+          seulement quand présent ; le devis (s'il existe) prime ailleurs. */}
+      {lead.montant_estime != null && lead.montant_estime !== '' && (
+        <div className="kb-card-montant-estime" title="Montant estimé (avant devis)">
+          ≈ {formatMAD(parseFloat(lead.montant_estime))}
+        </div>
+      )}
 
       {(tel || wa) && (
         <div
