@@ -39,6 +39,15 @@ class ProduitListQueryBudgetTests(AssertQueryBudgetMixin, TestCase):
             company=self.company, nom='Onduleurs')
         self.fournisseur = Fournisseur.objects.create(
             company=self.company, nom='Fournisseur Budget')
+        # YOPSB13 — précondition société : le dépôt principal est matérialisé
+        # PARESSEUSEMENT au 1er accès (services.ensure_emplacements). Sans ce
+        # warm-up, le TOUT PREMIER GET porte 2 requêtes de création unique
+        # (INSERT emplacement) qui gonflaient le compte (17 à froid vs 15 en
+        # régime) et faisaient croire à une croissance (17 != 15). Toute vraie
+        # société a déjà ce dépôt : on le matérialise ici pour mesurer le
+        # régime permanent (la vraie garde N+1), pas le coût unique d'amorçage.
+        from apps.stock.services import ensure_emplacements
+        ensure_emplacements(self.company)
 
     def _seed_produits(self, count, start=0):
         for i in range(start, start + count):

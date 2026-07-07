@@ -416,7 +416,10 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
     # capturé par core.tests.test_utils.AssertQueryBudgetMixin dans
     # apps/crm/tests/test_lead_query_budget.py).
     queryset = Lead.objects.select_related('owner', 'client').prefetch_related(
-        'devis').all()
+        # 'devis__lignes' — get_devis expose d.total_ttc (propriété qui somme
+        # les LIGNES du devis) : sans ce prefetch imbriqué, chaque devis
+        # requêtait ses lignes (N+1, ~2 requêtes/devis). String-FK cross-app.
+        'devis', 'devis__lignes').all()
     serializer_class = LeadSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['nom', 'prenom', 'societe', 'email', 'telephone', 'ville']
