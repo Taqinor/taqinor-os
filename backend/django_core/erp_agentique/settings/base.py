@@ -589,6 +589,13 @@ VAPID_PRIVATE_KEY = os.environ.get('VAPID_PRIVATE_KEY', '')
 VAPID_ADMIN_EMAIL = os.environ.get('VAPID_ADMIN_EMAIL', '')
 
 TESTING = ('test' in sys.argv) or bool(os.environ.get('PYTEST_CURRENT_TEST'))
+# WOW2 — sous le test runner UNIQUEMENT, hacher les mots de passe en MD5 (rapide)
+# au lieu du PBKDF2 par défaut (des milliers d'itérations). Chaque test qui crée
+# un utilisateur / s'authentifie (quasi tous, la portée multi-société crée des
+# users partout) paie sinon le coût PBKDF2 → 2-5× de gain sur toute la suite.
+# JAMAIS actif en prod (TESTING n'y est jamais vrai). Patron documenté par Django.
+if TESTING:
+    PASSWORD_HASHERS = ['django.contrib.auth.hashers.MD5PasswordHasher']
 # N109 — auto-generate a VAPID keypair (persisted DB singleton) in production
 # when no keys are provided via env, so web push works out of the box. OFF under
 # the test runner so the "unconfigured => empty endpoint => no-op" contract holds.
