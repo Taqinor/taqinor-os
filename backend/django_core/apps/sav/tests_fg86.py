@@ -213,8 +213,10 @@ class TestLienClientAction(TestCase):
         self.assertIn(resp.data['token'], resp.data['url'])
 
     def test_url_points_to_public_endpoint(self):
+        # XSAV10/XSAV19 — pointe vers la page FRONTEND /suivi/<token>
+        # (statut + CSAT), pas l'API JSON brute.
         resp = self.api.get(self.url)
-        self.assertIn('/api/django/public/sav/ticket/', resp.data['url'])
+        self.assertIn('/suivi/', resp.data['url'])
 
     def test_idempotent_token(self):
         """Deux appels successifs renvoient le même token."""

@@ -24,11 +24,19 @@ vi.mock('../../api/stockApi', () => ({
     createProduit: vi.fn(),
     whatsappBcf: vi.fn(),
     envoyerEmailBcf: vi.fn(),
+    annulerBcf: vi.fn(),
+    rouvrirBcf: vi.fn(),
+    dupliquerBcf: vi.fn(),
+    facturerBcf: vi.fn(),
   },
 }))
 
+vi.mock('../../api/messagesApi', () => ({
+  default: { listCompanyMembers: vi.fn().mockResolvedValue({ data: [] }) },
+}))
+
 import stockApi from '../../api/stockApi'
-import { BcfDetail } from './BonsCommandeFournisseur.jsx'
+import { BcfDetail, MotifAnnulationModal } from './BonsCommandeFournisseur.jsx'
 import { messageErreurBlob } from '../../utils/pdfBlob'
 
 function makeStore({ role_nom = 'Magasinier', permissions = [] } = {}) {
@@ -254,5 +262,79 @@ describe('QS4 — envois fournisseur WhatsApp / email', () => {
     await waitFor(() => expect(stockApi.envoyerEmailBcf).toHaveBeenCalledWith(42))
     expect(await screen.findByText(/Email envoyé à contact@fourni\.ma/)).toBeInTheDocument()
     await waitFor(() => expect(onSaved).toHaveBeenCalled())
+  })
+})
+
+// ── ZPUR11 — annulation avec motif obligatoire + réouverture ────────────────
+describe('ZPUR11 — annulation (motif obligatoire) et réouverture', () => {
+  it('MotifAnnulationModal refuse un motif vide', () => {
+    const onConfirm = vi.fn()
+    render(<MotifAnnulationModal onClose={() => {}} onConfirm={onConfirm} busy={false} />,
+      { wrapper: makeWrapper() })
+    fireEvent.click(screen.getByRole('button', { name: /Confirmer l'annulation/ }))
+    expect(screen.getByRole('alert').textContent).toMatch(/motif est obligatoire/)
+    expect(onConfirm).not.toHaveBeenCalled()
+  })
+
+  it('MotifAnnulationModal transmet le motif saisi', () => {
+    const onConfirm = vi.fn()
+    render(<MotifAnnulationModal onClose={() => {}} onConfirm={onConfirm} busy={false} />,
+      { wrapper: makeWrapper() })
+    fireEvent.change(screen.getByLabelText('Motif'), { target: { value: 'Erreur de saisie' } })
+    fireEvent.click(screen.getByRole('button', { name: /Confirmer l'annulation/ }))
+    expect(onConfirm).toHaveBeenCalledWith('Erreur de saisie')
+  })
+
+  it('« Annuler le BC » ouvre la modale de motif puis appelle annulerBcf(id, motif)', async () => {
+    stockApi.annulerBcf.mockResolvedValue({ data: {} })
+    const onSaved = vi.fn()
+    renderDetail({ bcf: { ...bcf, statut: 'brouillon' }, onSaved })
+    fireEvent.click(screen.getByRole('button', { name: /Annuler le BC/ }))
+    fireEvent.change(screen.getByLabelText('Motif'), { target: { value: 'Commande erronée' } })
+    fireEvent.click(screen.getByRole('button', { name: /Confirmer l'annulation/ }))
+    await waitFor(() => expect(stockApi.annulerBcf).toHaveBeenCalledWith(42, 'Commande erronée'))
+    await waitFor(() => expect(onSaved).toHaveBeenCalled())
+  })
+
+  it('un BCF ANNULE affiche « Réouvrir » qui appelle rouvrirBcf', async () => {
+    stockApi.rouvrirBcf.mockResolvedValue({ data: {} })
+    renderDetail({ bcf: { ...bcf, statut: 'annule' } })
+    fireEvent.click(screen.getByRole('button', { name: /Réouvrir/ }))
+    await waitFor(() => expect(stockApi.rouvrirBcf).toHaveBeenCalledWith(42))
+  })
+})
+
+// ── ZPUR4 — duplication ──────────────────────────────────────────────────────
+describe('ZPUR4 — dupliquer un BCF', () => {
+  it('le bouton Dupliquer appelle dupliquerBcf(id)', async () => {
+    stockApi.dupliquerBcf.mockResolvedValue({ data: { id: 99 } })
+    const onSaved = vi.fn()
+    renderDetail({ onSaved })
+    fireEvent.click(screen.getByRole('button', { name: /Dupliquer/ }))
+    await waitFor(() => expect(stockApi.dupliquerBcf).toHaveBeenCalledWith(42))
+    await waitFor(() => expect(onSaved).toHaveBeenCalled())
+  })
+})
+
+// ── ZPUR1 — facturation directe (lignes « sur commande ») ───────────────────
+describe('ZPUR1 — facturer directement (politique sur commande)', () => {
+  it('sans ligne « sur commande » : le bouton est absent', () => {
+    renderDetail({
+      bcf: { ...bcf, lignes: [{ id: 1, produit: 7, quantite: 2, prix_achat_unitaire: 100 }] },
+      produits: [{ id: 7, politique_facturation_achat: 'sur_reception' }],
+    })
+    expect(screen.queryByRole('button', { name: /Facturer \(sur commande\)/ })).toBeNull()
+  })
+
+  it('avec une ligne « sur commande » : le bouton facture directement le BCF', async () => {
+    stockApi.facturerBcf.mockResolvedValue({ data: { reference: 'FF-2026-0001' } })
+    renderDetail({
+      bcf: { ...bcf, lignes: [{ id: 1, produit: 7, quantite: 2, prix_achat_unitaire: 100 }] },
+      produits: [{ id: 7, politique_facturation_achat: 'sur_commande' }],
+    })
+    const btn = screen.getByRole('button', { name: /Facturer \(sur commande\)/ })
+    fireEvent.click(btn)
+    await waitFor(() => expect(stockApi.facturerBcf).toHaveBeenCalledWith(42))
+    expect(await screen.findByText(/FF-2026-0001/)).toBeInTheDocument()
   })
 })

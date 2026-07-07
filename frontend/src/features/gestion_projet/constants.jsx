@@ -32,6 +32,28 @@ export const StatutTache = statusPill({
   bloque: { label: 'Bloquée', tone: 'danger' },
 })
 
+// ── Tache.Priorite (XPRJ10) ─────────────────────────────────────────────────
+export const PrioriteTache = statusPill({
+  basse: { label: 'Basse', tone: 'neutral' },
+  normale: { label: 'Normale', tone: 'info' },
+  haute: { label: 'Haute', tone: 'warning' },
+  urgente: { label: 'Urgente', tone: 'danger' },
+})
+
+export const PRIORITES_TACHE = [
+  { value: 'basse', label: 'Basse' },
+  { value: 'normale', label: 'Normale' },
+  { value: 'haute', label: 'Haute' },
+  { value: 'urgente', label: 'Urgente' },
+]
+
+export const STATUTS_TACHE = [
+  { value: 'a_faire', label: 'À faire' },
+  { value: 'en_cours', label: 'En cours' },
+  { value: 'bloque', label: 'Bloquée' },
+  { value: 'termine', label: 'Terminée' },
+]
+
 // ── Jalon.Statut ────────────────────────────────────────────────────────────
 export const StatutJalon = statusPill({
   a_venir: { label: 'À venir', tone: 'neutral' },
@@ -62,11 +84,26 @@ export const PrioriteAction = statusPill({
   haute: { label: 'Haute', tone: 'warning' },
 })
 
+// ── Timesheet.Statut (XPRJ1 — cycle de vie propre, jamais STAGES.py) ────────
+export const StatutTimesheet = statusPill({
+  brouillon: { label: 'Brouillon', tone: 'neutral' },
+  soumise: { label: 'Soumise', tone: 'info' },
+  approuvee: { label: 'Approuvée', tone: 'success' },
+  rejetee: { label: 'Rejetée', tone: 'danger' },
+})
+
 // ── BudgetProjet.Statut ─────────────────────────────────────────────────────
 export const StatutBudget = statusPill({
   brouillon: { label: 'Brouillon', tone: 'neutral' },
   valide: { label: 'Validé', tone: 'success' },
   archive: { label: 'Archivé', tone: 'info' },
+})
+
+// ── PointAvancement.Sante (RAG — XPRJ15) ────────────────────────────────────
+export const SanteRAG = statusPill({
+  vert: { label: 'Vert', tone: 'success' },
+  orange: { label: 'Orange', tone: 'warning' },
+  rouge: { label: 'Rouge', tone: 'danger' },
 })
 
 // ── LotSousTraitance.Statut ─────────────────────────────────────────────────

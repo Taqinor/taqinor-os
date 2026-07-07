@@ -153,6 +153,114 @@ const qhseApi = {
   bilansCarbone: crud('bilans-carbone'),
   lignesBilanCarbone: crud('lignes-bilan-carbone'),
   indicateursEsg: crud('indicateurs-esg'),
+
+  // ── XQHS2 — Dérogations & disposition NCR ──────────────────────────────
+  derogations: crud('derogations'),
+
+  // ── XQHS3 — Contrôle qualité à la réception fournisseur ────────────────
+  plansControleReception: crud('plans-controle-reception'),
+  pointsControleReception: crud('points-controle-reception'),
+  controlesReception: {
+    ...crud('controles-reception'),
+    statuer: (id, data) =>
+      api.post(`/qhse/controles-reception/${id}/statuer/`, data),
+  },
+
+  // ── XQHS4 — Codes de défaut & Pareto qualité ───────────────────────────
+  codesDefaut: crud('codes-defaut'),
+  paretoDefauts: (params) => api.get('/qhse/pareto-defauts/', { params }),
+
+  // ── XQHS1 — Checklist des étapes légales AT/MP ─────────────────────────
+  etapesDeclarationAt: {
+    ...crud('etapes-declaration-at'),
+    marquerFait: (id) =>
+      api.post(`/qhse/etapes-declaration-at/${id}/marquer-fait/`),
+  },
+
+  // ── XQHS16 — Signalement QR public (chantier) ──────────────────────────
+  liensSignalement: {
+    ...crud('liens-signalement'),
+    qr: (id) =>
+      api.get(`/qhse/liens-signalement/${id}/qr/`, { responseType: 'blob' }),
+  },
+  signalementsPublics: crud('signalements-publics'),
+
+  // ── XQHS17 — Observations sécurité comportementales (BBS) ──────────────
+  observationsSecurite: {
+    ...crud('observations-securite'),
+    convertirCapa: (id, data) =>
+      api.post(`/qhse/observations-securite/${id}/convertir-capa/`, data),
+    convertirNcr: (id, data) =>
+      api.post(`/qhse/observations-securite/${id}/convertir-ncr/`, data),
+    compteurs: (params) =>
+      api.get('/qhse/observations-securite/compteurs/', { params }),
+  },
+
+  // ── XQHS18 — Exercices d'urgence (drills) ──────────────────────────────
+  exercicesUrgence: crud('exercices-urgence'),
+
+  // ── XQHS20 — Registre des aspects & impacts environnementaux ───────────
+  aspectsEnvironnementaux: {
+    ...crud('aspects-environnementaux'),
+    aRevoir: () => api.get('/qhse/aspects-environnementaux/a-revoir/'),
+  },
+
+  // ── XQHS21 — Relevés de consommation par site ──────────────────────────
+  relevesConsommation: crud('releves-consommation'),
+
+  // ── XQHS22 — Coût de la non-qualité (rollup, gated) ────────────────────
+  coutNonQualite: (params) => api.get('/qhse/cout-non-qualite/', { params }),
+
+  // ── XQHS23 — Pont SAV ↔ NCR ─────────────────────────────────────────────
+  // (nonConformites.depuisTicketSav / creerIntervention / tauxDefaillance
+  // ajoutés ci-dessous, en complément du bloc `nonConformites` UX30.)
+
+  // ── XQHS24 — Gestion du changement (MOC léger) ─────────────────────────
+  demandesChangement: {
+    ...crud('demandes-changement'),
+    transitionner: (id, data) =>
+      api.post(`/qhse/demandes-changement/${id}/transitionner/`, data),
+    creerCapa: (id, data) =>
+      api.post(`/qhse/demandes-changement/${id}/creer-capa/`, data),
+    aReverser: () => api.get('/qhse/demandes-changement/a-reverser/'),
+    relancer: () => api.post('/qhse/demandes-changement/relancer/'),
+  },
+
+  // ── XQHS26 — Veille réglementaire ───────────────────────────────────────
+  veillesReglementaires: {
+    ...crud('veilles-reglementaires'),
+    genererRevuesDues: () =>
+      api.post('/qhse/veilles-reglementaires/generer-revues-dues/'),
+  },
+  revuesVeille: {
+    ...crud('revues-veille'),
+    conclure: (id, data) =>
+      api.post(`/qhse/revues-veille/${id}/conclure/`, data),
+  },
+
+  // ── XQHS25 — Assistance IA QHSE (key-gated) ─────────────────────────────
+  ia: {
+    suggestionClassification: (data) =>
+      api.post('/qhse/ia/suggestion-classification/', data),
+    suggestionAnalyse: (data) =>
+      api.post('/qhse/ia/suggestion-analyse/', data),
+  },
+
+  // ── XQHS27 — Documents terrain imprimables bilingues FR/AR ──────────────
+  causerieSecuritePdf: (causerieId, params) =>
+    api.get(`/qhse/causeries/${causerieId}/pdf/`, {
+      params, responseType: 'blob',
+    }),
 }
+
+// ── XQHS2/XQHS23 — actions complémentaires sur `nonConformites` (UX30) ────
+qhseApi.nonConformites.poserDisposition = (id, data) =>
+  api.post(`/qhse/non-conformites/${id}/poser-disposition/`, data)
+qhseApi.nonConformites.depuisTicketSav = (data) =>
+  api.post('/qhse/non-conformites/depuis-ticket-sav/', data)
+qhseApi.nonConformites.creerIntervention = (id, data) =>
+  api.post(`/qhse/non-conformites/${id}/creer-intervention/`, data)
+qhseApi.nonConformites.tauxDefaillanceProduit = () =>
+  api.get('/qhse/non-conformites/taux-defaillance-produit/')
 
 export default qhseApi

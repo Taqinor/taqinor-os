@@ -37,11 +37,13 @@ def build_ticket_transition_message(ticket, cle, *, request=None):
     from apps.ventes.utils.whatsapp import render_message_template
 
     token = ticket.ensure_share_token()
+    # XSAV10/XSAV19 — pointe vers la page FRONTEND /suivi/<token> (statut +
+    # CSAT), pas l'API JSON brute (même origine, même patron que lien_client()
+    # dans views.py et public_booking_url() XSAL17).
     if request is not None:
-        lien = request.build_absolute_uri(
-            f'/api/django/public/sav/ticket/{token}/')
+        lien = request.build_absolute_uri(f'/suivi/{token}')
     else:
-        lien = f'/api/django/public/sav/ticket/{token}/'
+        lien = f'/suivi/{token}'
 
     ctx = {
         'civilite': '', 'nom': _nom_complet(ticket.client),

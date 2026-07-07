@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { ShieldAlert } from 'lucide-react'
 import { ListShell } from '../../ui/module'
 import { toast } from '../../ui'
 import { formatDate } from '../../lib/format'
@@ -17,6 +18,7 @@ import { StatutEmploye, TYPE_CONTRAT_LABELS } from './constants.jsx'
 export default function EmployeList() {
   const navigate = useNavigate()
   const [rows, setRows] = useState([])
+  const [alertesSecurite, setAlertesSecurite] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -37,6 +39,11 @@ export default function EmployeList() {
         toast.error('Impossible de charger les employés.')
       })
       .finally(() => { if (vivant) setLoading(false) })
+    // YHIRE2 — rapport de sécurité : comptes restés actifs alors que le dossier
+    // est sorti (doit rester vide en fonctionnement normal).
+    rhApi.getComptesActifsSortis()
+      .then((res) => { if (vivant) setAlertesSecurite(unwrap(res.data)) })
+      .catch(() => { /* non bloquant */ })
     return () => { vivant = false }
   }, [])
 
@@ -88,7 +95,21 @@ export default function EmployeList() {
   ], [])
 
   return (
-    <div className="page">
+    <div className="page flex flex-col gap-4">
+      {alertesSecurite.length > 0 && (
+        <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <ShieldAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          <div>
+            <p className="font-medium">
+              {alertesSecurite.length} compte(s) actif(s) alors que le dossier est sorti
+            </p>
+            <p className="text-xs">
+              {alertesSecurite.map((a) => a.nom || a.matricule || `#${a.id}`).join(', ')}
+              {' '}— à désactiver (sortie faite hors du chemin standard).
+            </p>
+          </div>
+        </div>
+      )}
       <ListShell
         title="Employés"
         columns={columns}
@@ -104,4 +125,10 @@ export default function EmployeList() {
       />
     </div>
   )
+}
+
+function unwrap(data) {
+  if (Array.isArray(data)) return data
+  if (data && Array.isArray(data.results)) return data.results
+  return []
 }

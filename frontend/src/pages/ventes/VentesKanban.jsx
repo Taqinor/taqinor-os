@@ -9,9 +9,11 @@ import {
   confirmerBC,
   marquerLivreBC,
   annulerBC,
+  livrerPartielBC,
   creerFactureFromBC,
 } from '../../features/ventes/store/ventesSlice'
 import crmApi from '../../api/crmApi'
+import ventesApi from '../../api/ventesApi'
 import {
   Button, Badge, StatusPill, Card, EmptyState, Spinner,
   Tabs, TabsList, TabsTrigger,
@@ -22,6 +24,7 @@ import {
   Textarea, Label,
 } from '../../ui'
 import { formatMAD } from '../../lib/format'
+import { ouvrirPdfBlob } from '../../utils/pdfBlob'
 
 const STATUT_DISPLAY = {
   en_attente: 'En attente',
@@ -49,6 +52,8 @@ export default function BonCommandeList() {
   const [showForm, setShowForm]   = useState(false)
   const [editBC, setEditBC]       = useState(null)
   const [actionError, setActionError] = useState('')
+  // XSAL12 — livraison partielle : BC ouvert dans le dialogue de saisie.
+  const [livraisonBC, setLivraisonBC] = useState(null)
 
   useEffect(() => { dispatch(fetchBonsCommande()) }, [dispatch])
 
@@ -111,6 +116,20 @@ export default function BonCommandeList() {
     }
   }
 
+  // ZSAL8 — PDF imprimable du bon de commande (blob, ouverture nouvel onglet).
+  const handleTelechargerPdfBC = async (bc) => {
+    setActionId(bc.id)
+    setActionError('')
+    try {
+      const res = await ventesApi.getBonCommandePdf(bc.id)
+      ouvrirPdfBlob(res.data, `${bc.reference}.pdf`)
+    } catch {
+      setActionError('PDF indisponible. Réessayez.')
+    } finally {
+      setActionId(null)
+    }
+  }
+
   const openNew  = () => { setEditBC(null); setShowForm(true) }
   const openEdit = bc => { setEditBC(bc);   setShowForm(true) }
   const closeForm = () => { setShowForm(false); setEditBC(null) }
@@ -167,6 +186,14 @@ export default function BonCommandeList() {
         />
       )}
 
+      {livraisonBC && (
+        <LivraisonPartielleDialog
+          bc={livraisonBC}
+          onClose={() => setLivraisonBC(null)}
+          onSaved={() => { dispatch(fetchBonsCommande()); setLivraisonBC(null) }}
+        />
+      )}
+
       <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-1">
         <TabsList className="flex-wrap">
           {TABS.map(t => (
@@ -205,6 +232,7 @@ export default function BonCommandeList() {
                   <th className="ta-right">Total TTC</th>
                   <th>Livraison prévue</th>
                   <th>Statut</th>
+                  <th>Reliquat</th>
                   <th>Facture</th>
                   <th>Actions</th>
                 </tr>
@@ -231,6 +259,12 @@ export default function BonCommandeList() {
                         <StatusPill status={bc.statut} label={STATUT_DISPLAY[bc.statut] ?? STATUT_DISPLAY.en_attente} />
                       </td>
                       <td>
+                        {/* XSAL12 — état dérivé de livraison partielle (lecture seule). */}
+                        {bc.est_partiellement_livre
+                          ? <Badge tone="warning">Partiel</Badge>
+                          : <span className="text-muted-foreground">—</span>}
+                      </td>
+                      <td>
                         {bc.has_facture
                           ? <Badge tone="success">Oui</Badge>
                           : <span className="text-muted-foreground">—</span>}
@@ -253,12 +287,24 @@ export default function BonCommandeList() {
                               Livrer
                             </Button>
                           )}
+                          {/* XSAL12 — livraison partielle : réservée aux BC avec devis, pas déjà livrés. */}
+                          {bc.statut === 'confirme' && bc.devis_reference && (
+                            <Button size="sm" variant="outline" loading={busy}
+                                    onClick={() => setLivraisonBC(bc)}>
+                              Livrer partiellement
+                            </Button>
+                          )}
                           {(bc.statut === 'confirme' || bc.statut === 'livre') && !bc.has_facture && (
                             <Button size="sm" variant="outline" loading={busy}
                                     onClick={() => handleCreerFacture(bc)}>
                               <FilePlus2 /> Facture
                             </Button>
                           )}
+                          {/* ZSAL8 — PDF imprimable du BC (layout legacy, jamais le moteur devis premium). */}
+                          <Button size="sm" variant="outline" loading={busy}
+                                  onClick={() => handleTelechargerPdfBC(bc)}>
+                            PDF
+                          </Button>
                           {bc.statut !== 'livre' && bc.statut !== 'annule' && (
                             <Button size="sm" variant="outline" loading={busy}
                                     onClick={() => doAction(annulerBC, bc.id, `Annuler le BC ${bc.reference} ?`)}>
@@ -389,6 +435,117 @@ function BCForm({ bc = null, onClose, onSaved }) {
             <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
             <Button type="submit" loading={saving}>
               {isEdit ? 'Mettre à jour' : 'Créer le BC'}
+            </Button>
+          </FormActions>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── XSAL12 — Dialogue de livraison partielle ────────────────────────────────
+// Saisit, ligne par ligne, la quantité livrée MAINTENANT (bornée par le
+// reliquat déjà calculé côté serveur `bc.reliquat_par_ligne`) ; le BC passe
+// automatiquement à « livré » côté serveur seulement quand tout le reliquat
+// est soldé — cet écran ne fait qu'envoyer la saisie.
+function LivraisonPartielleDialog({ bc, onClose, onSaved }) {
+  const dispatch = useDispatch()
+  const reliquats = (bc.reliquat_par_ligne ?? []).filter(r => r.reliquat > 0)
+  const [quantites, setQuantites] = useState(() =>
+    Object.fromEntries(reliquats.map(r => [r.ligne_devis_id, ''])))
+  const [dateLivraison, setDateLivraison] = useState(() => new Date().toISOString().slice(0, 10))
+  const [note, setNote] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const setQuantite = (ligneId, v) => setQuantites(q => ({ ...q, [ligneId]: v }))
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setError('')
+    const lignes = Object.entries(quantites)
+      .filter(([, v]) => parseFloat(v) > 0)
+      .map(([ligne_devis, quantite]) => ({ ligne_devis: parseInt(ligne_devis, 10), quantite }))
+    if (lignes.length === 0) {
+      setError('Saisissez au moins une quantité à livrer.')
+      return
+    }
+    setSaving(true)
+    try {
+      await dispatch(livrerPartielBC({
+        id: bc.id,
+        data: { lignes, date_livraison: dateLivraison, note: note || undefined },
+      })).unwrap()
+      onSaved()
+    } catch (err) {
+      setError(err?.detail ?? "La livraison partielle a échoué. Vérifiez les quantités.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Livraison partielle — {bc.reference}</DialogTitle>
+        </DialogHeader>
+        <Form onSubmit={handleSubmit} className="gap-4">
+          {reliquats.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Aucun reliquat à livrer sur ce BC.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Ligne</th>
+                    <th className="ta-right">Reliquat</th>
+                    <th className="ta-right">Quantité livrée</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reliquats.map(r => (
+                    <tr key={r.ligne_devis_id}>
+                      <td>{r.designation}</td>
+                      <td className="ta-right tabular-nums">{r.reliquat}</td>
+                      <td className="ta-right">
+                        <Input
+                          type="number" min="0" max={r.reliquat} step="any"
+                          className="w-28 text-right"
+                          aria-label={`Quantité livrée — ${r.designation}`}
+                          value={quantites[r.ligne_devis_id] ?? ''}
+                          onChange={e => setQuantite(r.ligne_devis_id, e.target.value)}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <FormField label="Date de livraison" htmlFor="lp-date" fullWidth>
+            <Input id="lp-date" type="date" value={dateLivraison}
+                   onChange={e => setDateLivraison(e.target.value)} />
+          </FormField>
+
+          <div className="grid gap-1.5">
+            <Label htmlFor="lp-note">Note</Label>
+            <Textarea id="lp-note" rows={2} value={note}
+                      onChange={e => setNote(e.target.value)}
+                      placeholder="Référence bon de livraison, transporteur..." />
+          </div>
+
+          {error && (
+            <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {error}
+            </p>
+          )}
+
+          <FormActions sticky={false}>
+            <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
+            <Button type="submit" loading={saving} disabled={reliquats.length === 0}>
+              Enregistrer la livraison
             </Button>
           </FormActions>
         </Form>

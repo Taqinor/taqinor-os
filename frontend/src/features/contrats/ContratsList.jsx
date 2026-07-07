@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { FileSignature, Plus } from 'lucide-react'
 import contratsApi from '../../api/contratsApi'
-import { Button, Segmented, toast } from '../../ui'
+import { Button, Segmented } from '../../ui'
 import { ListShell } from '../../ui/module'
 import { formatMAD, formatDate } from '../../lib/format'
 import {
@@ -118,7 +118,7 @@ export default function ContratsList() {
       title="Contrats"
       subtitle="Cycle de vie des contrats : brouillon → approbation → signé → actif → suspendu → résilié → expiré."
       actions={(
-        <Button onClick={() => toast.message('Créez un contrat depuis un modèle (onglet Modèles).')}>
+        <Button onClick={() => navigate('/contrats/modeles')}>
           <Plus /> Nouveau contrat
         </Button>
       )}

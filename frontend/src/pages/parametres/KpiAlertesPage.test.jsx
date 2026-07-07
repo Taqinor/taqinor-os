@@ -1,0 +1,61 @@
+import { describe, it, expect, vi, beforeAll } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
+import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+
+beforeAll(() => {
+  if (typeof globalThis.ResizeObserver === 'undefined') {
+    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
+  }
+})
+
+function renderPage(ui) {
+  return render(<MemoryRouter><ThemeProvider>{ui}</ThemeProvider></MemoryRouter>)
+}
+
+/* XPLT6 — CRUD des alertes de seuil sur KPI agrégés (reporting/kpi-alertes/). */
+
+vi.mock('../../api/reportingApi', () => ({
+  default: {
+    listKpiAlertes: vi.fn(() => Promise.resolve({
+      data: [
+        {
+          id: 1, nom: 'DSO trop élevé', kpi: 'dso', kpi_label: 'DSO (délai moyen de recouvrement, jours)',
+          operateur: 'sup', operateur_label: '>', seuil: '60.00',
+          derniere_valeur: '45.00', actif: true,
+        },
+      ],
+    })),
+    createKpiAlerte: vi.fn(() => Promise.resolve({ data: {} })),
+    updateKpiAlerte: vi.fn(() => Promise.resolve({ data: {} })),
+    deleteKpiAlerte: vi.fn(() => Promise.resolve({})),
+  },
+}))
+
+vi.mock('../../api/axios', () => ({
+  default: {
+    get: vi.fn(() => Promise.resolve({
+      data: [{ id: 3, username: 'reda', email: 'reda@taqinor.ma' }],
+    })),
+  },
+}))
+
+import reportingApi from '../../api/reportingApi'
+import KpiAlertesPage from './KpiAlertesPage'
+
+describe('KpiAlertesPage (XPLT6 — alertes de seuil sur KPI agrégés)', () => {
+  it('liste les alertes existantes', async () => {
+    renderPage(<KpiAlertesPage />)
+
+    expect((await screen.findAllByText('DSO trop élevé')).length).toBeGreaterThan(0)
+    await waitFor(() => expect(reportingApi.listKpiAlertes).toHaveBeenCalled())
+  })
+
+  it('ouvre le dialogue de création', async () => {
+    renderPage(<KpiAlertesPage />)
+    await screen.findAllByText('DSO trop élevé')
+
+    screen.getByRole('button', { name: /Nouvelle alerte/i }).click()
+    expect(await screen.findByText('Nouvelle alerte KPI')).toBeInTheDocument()
+  })
+})

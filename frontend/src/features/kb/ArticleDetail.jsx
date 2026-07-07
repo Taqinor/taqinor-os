@@ -1,11 +1,24 @@
 import { useEffect, useState } from 'react'
-import { Pencil, Send, CheckCircle2, Trash2, Plus } from 'lucide-react'
+import {
+  Pencil, Send, CheckCircle2, Trash2, Plus, Share2, Copy,
+  ShieldCheck, Lock, Unlock, Star, Languages, Download, LayoutTemplate,
+  Image as ImageIcon,
+} from 'lucide-react'
 import { DetailShell } from '../../ui/module'
-import { Button, Badge, EmptyState, Spinner, toast } from '../../ui'
+import { Button, Badge, EmptyState, Spinner, toast, buttonVariants } from '../../ui'
 import { formatDateTime } from '../../lib/format'
 import kbApi from '../../api/kbApi'
 import { StatutArticlePill, splitTags } from './kbStatus'
 import FilterSelect from './FilterSelect'
+import ChatterWidget from '../../components/ChatterWidget'
+import AttachmentsPanel from '../../components/AttachmentsPanel'
+import ItemsCollectionView from './ItemsCollectionView'
+import { KbMarkdownBody, extractHeadings } from './kbMarkdown'
+
+// XKB18 — langues supportées (mêmes clés que ``KbArticle.LANGUE_CHOICES``
+// côté backend). L'arabe est RTL — le corps de l'article bascule ``dir``.
+const LANGUE_LABELS = { fr: 'Français', ar: 'العربية', en: 'English' }
+const RTL_LANGUES = new Set(['ar'])
 
 /* ============================================================================
    UX43 — Détail d'un article : contenu, versions, suivi de lecture, ACL.
@@ -25,13 +38,18 @@ const NIVEAU_OPTIONS = [
   { value: 'edition', label: 'Édition' },
 ]
 
-export default function ArticleDetail({ articleId, canEdit, onBack, onEdit, onChanged }) {
+export default function ArticleDetail({
+  articleId, canEdit, onBack, onEdit, onChanged, onOpenArticle,
+}) {
   const [article, setArticle] = useState(null)
   const [versions, setVersions] = useState([])
   const [resume, setResume] = useState(null)
   const [acls, setAcls] = useState([])
+  const [partages, setPartages] = useState([])
   const [loading, setLoading] = useState(true)
   const [aclDraft, setAclDraft] = useState({ role: 'normal', niveau: 'lecture' })
+  const [favori, setFavori] = useState(false)
+  const [retroliens, setRetroliens] = useState([])
 
   const load = () => {
     setLoading(true)
@@ -40,12 +58,19 @@ export default function ArticleDetail({ articleId, canEdit, onBack, onEdit, onCh
       kbApi.listVersions({ article: articleId }),
       kbApi.resumeLecture(articleId),
       canEdit ? kbApi.listAcls({ article: articleId }) : Promise.resolve(null),
+      canEdit ? kbApi.listPartages({ article: articleId }) : Promise.resolve(null),
+      kbApi.listFavoris({ article: articleId }),
+      kbApi.retroliens(articleId),
     ])
-      .then(([a, v, r, acl]) => {
+      .then(([a, v, r, acl, part, fav, retro]) => {
         setArticle(a.data)
         setVersions(Array.isArray(v.data) ? v.data : (v.data?.results ?? []))
         setResume(r.data)
         if (acl) setAcls(Array.isArray(acl.data) ? acl.data : (acl.data?.results ?? []))
+        if (part) setPartages(Array.isArray(part.data) ? part.data : (part.data?.results ?? []))
+        const favRows = Array.isArray(fav.data) ? fav.data : (fav.data?.results ?? [])
+        setFavori(favRows.length > 0)
+        setRetroliens(Array.isArray(retro.data) ? retro.data : (retro.data?.results ?? []))
       })
       .catch(() => toast.error('Impossible de charger l’article.'))
       .finally(() => setLoading(false))
@@ -98,6 +123,102 @@ export default function ArticleDetail({ articleId, canEdit, onBack, onEdit, onCh
     } catch { toast.error('Suppression impossible.') }
   }
 
+  // ── XKB19 — Partager sur le web (lien public tokenisé) ──
+  const partagerSurLeWeb = async () => {
+    try {
+      await kbApi.createPartage({ article: articleId })
+      toast.success('Lien public créé.')
+      load()
+    } catch { toast.error('Création du lien impossible.') }
+  }
+
+  const depublierPartage = async (id) => {
+    try {
+      await kbApi.depublierPartage(id)
+      toast.success('Lien dépublié.')
+      load()
+    } catch { toast.error('Dépublication impossible.') }
+  }
+
+  const copierLien = (token) => {
+    const url = `${window.location.origin}/kb/public/${token}`
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(url)
+      toast.success('Lien copié.')
+    } else {
+      toast.info(url)
+    }
+  }
+
+  // ── XKB14 — vérification / verrouillage ──
+  const marquerVerifie = async () => {
+    try {
+      await kbApi.verifier(articleId, 90)
+      toast.success('Article marqué vérifié.')
+      load()
+    } catch { toast.error('Action impossible.') }
+  }
+
+  const toggleVerrou = async () => {
+    try {
+      if (article.est_verrouille) {
+        await kbApi.deverrouiller(articleId)
+        toast.success('Article déverrouillé.')
+      } else {
+        await kbApi.verrouiller(articleId)
+        toast.success('Article verrouillé.')
+      }
+      load()
+    } catch { toast.error('Action impossible (droit d’édition requis).') }
+  }
+
+  // ── XKB15 — favori ──
+  const toggleFavori = async () => {
+    try {
+      const res = await kbApi.togglerFavori(articleId)
+      setFavori(res.data?.favori)
+      toast.success(res.data?.favori ? 'Ajouté aux favoris.' : 'Retiré des favoris.')
+    } catch { toast.error('Action impossible.') }
+  }
+
+  // ── XKB18 — traduire vers une langue absente parmi celles supportées ──
+  const traduire = async (langue) => {
+    try {
+      await kbApi.traduire(articleId, langue)
+      toast.success(`Traduction ${LANGUE_LABELS[langue]} créée (brouillon).`)
+      onChanged?.()
+    } catch { toast.error('Traduction impossible.') }
+  }
+
+  // ── XKB12 — enregistrer comme gabarit réutilisable ──
+  const enregistrerCommeGabarit = async () => {
+    try {
+      await kbApi.enregistrerCommeGabarit(articleId)
+      toast.success('Article enregistré comme gabarit.')
+      load()
+    } catch { toast.error('Action impossible.') }
+  }
+
+  // ── ZGED10 — image de couverture ──
+  const changerCouverture = async (e) => {
+    const fichier = e.target.files?.[0]
+    e.target.value = ''
+    if (!fichier) return
+    try {
+      await kbApi.uploadCouverture(articleId, fichier)
+      toast.success('Couverture mise à jour.')
+      load()
+    } catch { toast.error('Téléversement impossible.') }
+  }
+
+  const retirerCouverture = async () => {
+    try {
+      await kbApi.removeCouverture(articleId)
+      toast.success('Couverture retirée.')
+      load()
+    } catch { toast.error('Action impossible.') }
+  }
+
   if (loading || !article) {
     return (
       <div className="page flex items-center gap-2 text-muted-foreground">
@@ -107,19 +228,152 @@ export default function ArticleDetail({ articleId, canEdit, onBack, onEdit, onCh
   }
 
   const tags = splitTags(article.tags)
+  // XKB14 — « vérifié » = verifie_jusqua posé ET pas encore dépassé (dérivé
+  // côté client, aucun champ booléen dédié côté serveur).
+  const estVerifie = !!article.verifie_jusqua
+    && new Date(article.verifie_jusqua) > new Date()
+
+  // XKB10 — sommaire dérivé du corps Markdown (vide pour un article texte
+  // brut ou sans titres ATX).
+  const estMarkdown = article.corps_format === 'markdown'
+  const sommaire = estMarkdown ? extractHeadings(article.corps) : []
+  // XKB18 — langue de CET article + RTL si arabe.
+  const langue = article.langue || 'fr'
+  const estRtl = RTL_LANGUES.has(langue)
+  const languesManquantes = Object.keys(LANGUE_LABELS).filter((l) => l !== langue)
 
   // ── Onglet Contenu ──
   const contenuTab = (
     <div className="flex flex-col gap-4">
+      {article.has_couverture && (
+        <img
+          src={kbApi.couvertureImageUrl(articleId)}
+          alt=""
+          className="h-40 w-full rounded-lg object-cover"
+        />
+      )}
+      {canEdit && (
+        <div className="flex items-center gap-2">
+          <label className={`${buttonVariants({ variant: 'outline', size: 'sm' })} cursor-pointer`}>
+            <ImageIcon /> {article.has_couverture ? 'Changer la couverture' : 'Ajouter une couverture'}
+            <input
+              type="file" accept="image/*" className="hidden"
+              onChange={changerCouverture}
+            />
+          </label>
+          {article.has_couverture && (
+            <Button type="button" variant="ghost" size="sm" onClick={retirerCouverture}>
+              Retirer
+            </Button>
+          )}
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
         {article.categorie && <Badge tone="info">{article.categorie}</Badge>}
         {tags.map((t) => <Badge key={t} tone="neutral">{t}</Badge>)}
+        {estVerifie && (
+          <Badge tone="success">
+            <ShieldCheck className="size-3.5" aria-hidden="true" /> Vérifié
+          </Badge>
+        )}
+        {article.est_verrouille && (
+          <Badge tone="warning">
+            <Lock className="size-3.5" aria-hidden="true" /> Verrouillé
+          </Badge>
+        )}
+        <Badge tone="neutral">{LANGUE_LABELS[langue] || langue}</Badge>
+        {article.traduction_perimee && (
+          <Badge tone="warning">Traduction périmée</Badge>
+        )}
         <span>· Auteur : {article.auteur_nom || '—'}</span>
         <span>· Modifié : {formatDateTime(article.date_modification)}</span>
       </div>
-      <article className="whitespace-pre-wrap text-sm leading-relaxed">
-        {article.corps || <span className="text-muted-foreground">(Aucun contenu)</span>}
+
+      {canEdit && (
+        <div className="flex flex-wrap items-center gap-1.5 text-sm">
+          <Languages className="size-4 text-muted-foreground" aria-hidden="true" />
+          <span className="text-muted-foreground">Traduire vers :</span>
+          {languesManquantes.map((l) => (
+            <Button key={l} type="button" variant="outline" size="sm" onClick={() => traduire(l)}>
+              {LANGUE_LABELS[l]}
+            </Button>
+          ))}
+        </div>
+      )}
+
+      {sommaire.length > 0 && (
+        <nav aria-label="Sommaire" className="rounded-lg border border-border px-3 py-2 text-sm">
+          <p className="mb-1 font-medium">Sommaire</p>
+          <ul className="flex flex-col gap-0.5">
+            {sommaire.map((h) => (
+              <li key={h.slug} style={{ paddingInlineStart: (h.niveau - 1) * 12 }}>
+                <a href={`#${h.slug}`} className="text-muted-foreground hover:text-foreground hover:underline">
+                  {h.texte}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      )}
+
+      <article
+        dir={estRtl ? 'rtl' : 'ltr'}
+        className={estMarkdown ? 'text-sm' : 'whitespace-pre-wrap text-sm leading-relaxed'}
+      >
+        {!article.corps && <span className="text-muted-foreground">(Aucun contenu)</span>}
+        {article.corps && (estMarkdown
+          ? <KbMarkdownBody corps={article.corps} />
+          : article.corps)}
       </article>
+    </div>
+  )
+
+  // ── Onglet Partage public (XKB19) ──
+  const partageTab = (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-muted-foreground">
+        Génère un lien public (sans login) pour consulter cet article — utile pour
+        un client ou un sous-traitant sans compte ERP.
+      </p>
+      <Button type="button" variant="outline" onClick={partagerSurLeWeb} className="w-fit">
+        <Share2 /> Partager sur le web
+      </Button>
+      {partages.length ? (
+        <ul className="flex flex-col gap-1.5">
+          {partages.map((p) => (
+            <li key={p.id} className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-sm">
+              <span className="flex items-center gap-2">
+                <Badge tone={p.actif ? 'success' : 'neutral'}>
+                  {p.actif ? 'Actif' : 'Dépublié'}
+                </Badge>
+                <span className="text-xs text-muted-foreground">
+                  {p.consultations ?? 0} consultation(s)
+                </span>
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Button
+                  type="button" variant="ghost" size="sm"
+                  onClick={() => copierLien(p.token)}
+                  aria-label="Copier le lien"
+                >
+                  <Copy />
+                </Button>
+                {p.actif && (
+                  <Button
+                    type="button" variant="ghost" size="sm"
+                    onClick={() => depublierPartage(p.id)}
+                    aria-label="Dépublier ce lien"
+                  >
+                    Dépublier
+                  </Button>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <EmptyState title="Aucun lien public" description="Cet article n’a pas encore été partagé." />
+      )}
     </div>
   )
 
@@ -140,6 +394,27 @@ export default function ArticleDetail({ articleId, canEdit, onBack, onEdit, onCh
     </ul>
   ) : (
     <EmptyState title="Aucune version" description="Aucun instantané n’a encore été figé." />
+  )
+
+  // ── Onglet Rétroliens (XKB11) — articles qui pointent vers celui-ci ──
+  const retroliensTab = retroliens.length ? (
+    <ul className="flex flex-col gap-2">
+      {retroliens.map((r) => (
+        <li key={r.id} className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-sm">
+          <button
+            type="button"
+            onClick={() => onOpenArticle?.(r.id)}
+            className="font-medium text-left hover:underline disabled:no-underline disabled:cursor-default"
+            disabled={!onOpenArticle}
+          >
+            {r.titre}
+          </button>
+          <StatutArticlePill status={r.statut} />
+        </li>
+      ))}
+    </ul>
+  ) : (
+    <EmptyState title="Aucun rétrolien" description="Aucun article ne pointe encore vers celui-ci." />
   )
 
   // ── Onglet Lecteurs (suivi de lecture) ──
@@ -214,20 +489,56 @@ export default function ArticleDetail({ articleId, canEdit, onBack, onEdit, onCh
     </div>
   )
 
+  // ── Onglet Commentaires (chatter, XKB13) ──
+  const commentairesTab = (
+    <ChatterWidget model="kb.kbarticle" id={articleId} />
+  )
+
+  // ── Onglet Pièces jointes (XKB10) ──
+  const piecesJointesTab = (
+    <AttachmentsPanel model="kb.kbarticle" id={articleId} />
+  )
+
+  // ── Onglet Sous-articles (ZGED11 — vues liste/cartes/kanban/calendrier) ──
+  const sousArticlesTab = (
+    <ItemsCollectionView articleId={articleId} onSelect={(item) => onOpenArticle?.(item.id)} />
+  )
+
   const tabs = [
     { value: 'contenu', label: 'Contenu', content: contenuTab },
+    { value: 'pieces-jointes', label: 'Pièces jointes', content: piecesJointesTab },
+    { value: 'sous-articles', label: 'Sous-articles', content: sousArticlesTab },
     { value: 'versions', label: 'Versions', count: versions.length, content: versionsTab },
+    { value: 'retroliens', label: 'Rétroliens', count: retroliens.length, content: retroliensTab },
     { value: 'lecteurs', label: 'Lecteurs', count: resume?.nombre ?? 0, content: lecteursTab },
+    { value: 'commentaires', label: 'Commentaires', content: commentairesTab },
   ]
   if (canEdit) {
     tabs.push({ value: 'acces', label: 'Droits d’accès', count: acls.length, content: aclTab })
+    tabs.push({ value: 'partage', label: 'Partage public', count: partages.length, content: partageTab })
   }
 
   const actions = (
     <>
+      <Button
+        type="button" variant="outline" onClick={toggleFavori}
+        aria-pressed={favori}
+        aria-label={favori ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+      >
+        <Star className={favori ? 'fill-current' : ''} />
+      </Button>
       <Button type="button" variant="outline" onClick={marquerLu}>
         <CheckCircle2 /> Marquer comme lu
       </Button>
+      {/* Liens de téléchargement stylés comme des boutons — pas de
+          Button asChild (Slot Radix exige un unique enfant, incompatible
+          avec icône + libellé ici). */}
+      <a href={kbApi.exportPdfUrl(articleId)} download className={buttonVariants({ variant: 'outline' })}>
+        <Download /> PDF
+      </a>
+      <a href={kbApi.exportMarkdownUrl(articleId)} download className={buttonVariants({ variant: 'outline' })}>
+        <Download /> Markdown
+      </a>
       {canEdit && (
         <>
           <Button type="button" variant="outline" onClick={onEdit}>
@@ -236,6 +547,18 @@ export default function ArticleDetail({ articleId, canEdit, onBack, onEdit, onCh
           <Button type="button" variant="outline" onClick={nouvelleVersion}>
             Nouvelle version
           </Button>
+          <Button type="button" variant="outline" onClick={marquerVerifie}>
+            <ShieldCheck /> Marquer vérifié
+          </Button>
+          <Button type="button" variant="outline" onClick={toggleVerrou}>
+            {article.est_verrouille ? <Unlock /> : <Lock />}
+            {article.est_verrouille ? 'Déverrouiller' : 'Verrouiller'}
+          </Button>
+          {!article.est_gabarit && (
+            <Button type="button" variant="outline" onClick={enregistrerCommeGabarit}>
+              <LayoutTemplate /> Enregistrer comme gabarit
+            </Button>
+          )}
           {article.statut !== 'publie' && (
             <Button type="button" onClick={publier}>
               <Send /> Publier
@@ -256,7 +579,7 @@ export default function ArticleDetail({ articleId, canEdit, onBack, onEdit, onCh
         ← Retour à la liste
       </button>
       <DetailShell
-        title={article.titre}
+        title={article.emoji ? `${article.emoji} ${article.titre}` : article.titre}
         status={article.statut}
         statusPill={StatutArticlePill}
         actions={actions}

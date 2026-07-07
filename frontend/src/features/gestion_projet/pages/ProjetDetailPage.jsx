@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Pencil, Link2, CheckCircle2, Plus } from 'lucide-react'
+import { Pencil, Link2, CheckCircle2, Plus, Sparkles } from 'lucide-react'
 import { DetailShell } from '../../../ui/module'
 import {
   Button, Spinner, EmptyState, DefinitionList, Badge, toast, DataTable,
@@ -17,6 +17,9 @@ import LienFormDialog from '../components/LienFormDialog'
 import ClotureDialog from '../components/ClotureDialog'
 import TachesKanbanView from '../components/TachesKanbanView'
 import TachesCalendarView from '../components/TachesCalendarView'
+import SituationsTab from '../components/SituationsTab'
+import { ChronoActifIndicator } from '../components/ChronoWidget'
+import PlanIaDialog from '../components/PlanIaDialog'
 
 /* UX38 — Détail projet : entête + statut, transitions GARDÉES (miroir de la
    machine à états serveur), onglets Résumé / Liens / Historique / Clôture. */
@@ -36,21 +39,25 @@ export default function ProjetDetailPage() {
   const [showEdit, setShowEdit] = useState(false)
   const [showLien, setShowLien] = useState(false)
   const [showCloture, setShowCloture] = useState(false)
+  const [showPlanIa, setShowPlanIa] = useState(false)
+  const [penalites, setPenalites] = useState(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const [p, l, h, t] = await Promise.all([
+      const [p, l, h, t, pen] = await Promise.all([
         gestionProjetApi.getProjet(id),
         gestionProjetApi.getProjetLiens(id).catch(() => ({ data: [] })),
         gestionProjetApi.getProjetHistorique(id).catch(() => ({ data: [] })),
         gestionProjetApi.getTaches({ projet: id }).catch(() => ({ data: [] })),
+        gestionProjetApi.getPenalitesRetard(id).catch(() => ({ data: null })),
       ])
       setProjet(p.data)
       setLiens(Array.isArray(l.data) ? l.data : l.data?.results ?? [])
       setHistorique(Array.isArray(h.data) ? h.data : h.data?.results ?? [])
       setTaches(Array.isArray(t.data) ? t.data : t.data?.results ?? [])
+      setPenalites(pen.data)
     } catch (err) {
       setError(errMessage(err, 'Projet introuvable.'))
     } finally {
@@ -168,6 +175,19 @@ export default function ProjetDetailPage() {
       {projet.description && (
         <p className="whitespace-pre-wrap text-sm text-muted-foreground">{projet.description}</p>
       )}
+      {/* XPRJ27 — Exposition aux pénalités de retard (marché public uniquement,
+          donnée interne de pilotage — jamais dans un document client). */}
+      {penalites?.applicable && (
+        <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
+          <p className="font-medium">Exposition aux pénalités de retard (marché public)</p>
+          <div className="mt-1 flex flex-wrap gap-4 text-xs text-muted-foreground">
+            <span>Jours de dépassement : <strong className="text-foreground">{penalites.jours_depassement}</strong></span>
+            <span>Exposition : <strong className="text-foreground">{formatMAD(penalites.exposition)}</strong></span>
+            {penalites.plafonnee && <Badge tone="warning">Plafonnée</Badge>}
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">Le décompte définitif reste à établir à la clôture du marché.</p>
+        </div>
+      )}
     </div>
   )
 
@@ -220,7 +240,10 @@ export default function ProjetDetailPage() {
 
   const tachesTab = (
     <div className="flex flex-col gap-3">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button size="sm" variant="outline" onClick={() => setShowPlanIa(true)}>
+          <Sparkles /> Plan par IA
+        </Button>
         <Segmented
           size="sm"
           aria-label="Vue des tâches"
@@ -277,6 +300,7 @@ export default function ProjetDetailPage() {
         backTo="/projets"
         actions={(
           <div className="flex flex-wrap items-center gap-2">
+            <ChronoActifIndicator />
             {available.map((t) => (
               <Button
                 key={t.key}
@@ -298,6 +322,7 @@ export default function ProjetDetailPage() {
           { value: 'taches', label: 'Tâches', count: taches.length, content: tachesTab },
           { value: 'liens', label: 'Liens', count: liens.length, content: liensTab },
           { value: 'historique', label: 'Historique', count: historique.length, content: histoTab },
+          { value: 'situations', label: 'Situations', content: <SituationsTab projetId={projet.id} /> },
           { value: 'cloture', label: 'Clôture', content: clotureTab },
         ]}
       />
@@ -321,6 +346,13 @@ export default function ProjetDetailPage() {
           projetId={projet.id}
           onClose={() => setShowCloture(false)}
           onSaved={() => { setShowCloture(false); toast.success('Projet clôturé.'); load() }}
+        />
+      )}
+      {showPlanIa && (
+        <PlanIaDialog
+          projetId={projet.id}
+          onClose={() => setShowPlanIa(false)}
+          onConfirmed={() => { setShowPlanIa(false); load() }}
         />
       )}
     </>

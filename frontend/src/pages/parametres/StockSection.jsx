@@ -8,6 +8,7 @@ import {
 } from '../../features/stock/store/stockSlice'
 import { Card, CardContent, Input, Button, IconButton } from '../../ui'
 import { SectionTitle, ReferentielBlock } from './peComponents'
+import NomenclaturesCodeBarresSection from './NomenclaturesCodeBarresSection'
 
 export default function StockSection({
   categories, fournisseurs, dispatch,
@@ -61,6 +62,8 @@ export default function StockSection({
           onDelete={id => dispatch(deleteFournisseur(id)).unwrap()}
         />
       </div>
+      {/* ZSTK12 — nomenclatures de code-barres (routage des codes internes). */}
+      <NomenclaturesCodeBarresSection />
     </>
   )
 }

@@ -6,9 +6,9 @@ from rest_framework.throttling import ScopedRateThrottle
 from authentication.mixins import TenantMixin
 from authentication.scoping import scope_queryset, scope_client_queryset
 from .models import (
-    Appointment, Client, ConcurrentPerte, Lead, LeadTag, MotifPerte, Canal,
-    Parrainage, MessageTemplate, ObjectifCommercial, PlanActivite,
-    PointContact, SiteProfile,
+    Appointment, Client, ConcurrentPerte, EquipeCommerciale, Lead, LeadTag,
+    MotifPerte, Canal, Parrainage, MessageTemplate, ObjectifCommercial,
+    PlanActivite, PointContact, SiteProfile,
 )
 from .serializers import (
     AppointmentSerializer, ClientSerializer, ConcurrentPerteSerializer,
@@ -17,6 +17,7 @@ from .serializers import (
     ParrainageSerializer, MessageTemplateSerializer, _tag_en_usage, _motif_en_usage,
     ObjectifCommercialSerializer, ObjectifAttainmentSerializer,
     PlanActiviteSerializer, PointContactSerializer, SiteProfileSerializer,
+    EquipeCommercialeSerializer,
 )
 from . import activity
 from .services import default_responsable_for
@@ -1455,6 +1456,19 @@ class PlanActiviteViewSet(TenantMixin, viewsets.ModelViewSet):
     queryset = PlanActivite.objects.prefetch_related(
         'etapes', 'etapes__activity_type').all()
     serializer_class = PlanActiviteSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+
+class EquipeCommercialeViewSet(TenantMixin, viewsets.ModelViewSet):
+    """ZSAL3 — Équipes commerciales (admin CRUD, Paramètres → CRM). Lecture
+    tout rôle (le dashboard « Mes équipes » y référence des noms), écriture
+    responsable/admin. Société forcée côté serveur (TenantMixin)."""
+    queryset = EquipeCommerciale.objects.prefetch_related('membres').all()
+    serializer_class = EquipeCommercialeSerializer
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:

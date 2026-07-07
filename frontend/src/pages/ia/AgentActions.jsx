@@ -1,13 +1,21 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Zap, ShieldAlert, ArrowRightLeft, Lock } from 'lucide-react'
+import { useSelector } from 'react-redux'
+import { Zap, ShieldAlert, ArrowRightLeft, Lock, History, Undo2 } from 'lucide-react'
 import iaApi from '../../api/iaApi'
-import { Badge, Card, CardContent, EmptyState, Input, Spinner } from '../../ui'
+import {
+  Badge, Card, CardContent, EmptyState, Input, Spinner,
+  Tabs, TabsList, TabsTrigger, TabsContent, Button,
+} from '../../ui'
 
 /* WR8 — Catalogue des actions agentiques (AG1). Liste, dans l'assistant, les
    actions pilotées par le registre que l'utilisateur courant a le droit
    d'exécuter, depuis GET /api/django/agent/actions/ (filtré par permission
    côté serveur). Métadonnées seules : cet écran N'EXÉCUTE rien — l'exécution
-   reste la voie propose→confirme de l'agent (AG2/AG3). */
+   reste la voie propose→confirme de l'agent (AG2/AG3).
+
+   YHARD2 — un second onglet « Historique / annuler », réservé admin/Directeur,
+   liste les actions IA CONFIRMÉES (GET /api/django/agent/logs/) et permet
+   d'annuler celles qui sont réversibles (POST …/logs/<id>/annuler/). */
 
 // Libellé + teinte FR du niveau de risque d'une action.
 const RISK = {
@@ -16,7 +24,7 @@ const RISK = {
   irreversible: { label: 'Irréversible', tone: 'danger', icon: ShieldAlert },
 }
 
-export default function AgentActions() {
+function ActionsCatalogue() {
   const [actions, setActions] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
@@ -41,14 +49,7 @@ export default function AgentActions() {
   }, [actions, q])
 
   return (
-    <div className="page" data-testid="agent-actions">
-      <div className="page-header">
-        <h1 className="page-title">Actions de l’assistant</h1>
-        <div className="page-subtitle">
-          Actions que vous pouvez déclencher via l’assistant. Chacune se confirme avant exécution.
-        </div>
-      </div>
-
+    <>
       <div className="mb-4 max-w-md">
         <Input
           type="search"
@@ -109,6 +110,142 @@ export default function AgentActions() {
             )
           })}
         </div>
+      )}
+    </>
+  )
+}
+
+// YHARD2 — journal des actions IA confirmées + annulation (admin/Directeur).
+function ActionsHistorique() {
+  const [logs, setLogs] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
+  const [undoingId, setUndoingId] = useState(null)
+  const [undoError, setUndoError] = useState(null)
+  // Bump pour redéclencher le chargement (après une annulation) sans appeler
+  // setState de façon synchrone hors effet.
+  const [reloadKey, setReloadKey] = useState(0)
+
+  useEffect(() => {
+    let active = true
+    const load = async () => {
+      setLoading(true)
+      try {
+        const r = await iaApi.getAgentActionLogs()
+        if (active) { setLogs(r.data?.results ?? []); setError(false) }
+      } catch {
+        if (active) setError(true)
+      } finally {
+        if (active) setLoading(false)
+      }
+    }
+    load()
+    return () => { active = false }
+  }, [reloadKey])
+
+  const undo = async (log) => {
+    setUndoingId(log.id); setUndoError(null)
+    try {
+      await iaApi.undoAgentAction(log.id)
+      setReloadKey((k) => k + 1)
+    } catch (e) {
+      setUndoError(e?.response?.data?.detail ?? 'Annulation impossible.')
+    } finally {
+      setUndoingId(null)
+    }
+  }
+
+  if (loading) return (
+    <p className="flex items-center gap-2 py-10 text-sm text-muted-foreground"><Spinner /> Chargement…</p>
+  )
+  if (error) {
+    return (
+      <EmptyState
+        icon={Lock}
+        title="Impossible de charger l’historique"
+        description="Une erreur est survenue lors du chargement du journal des actions IA."
+        className="my-6"
+      />
+    )
+  }
+  if (logs.length === 0) {
+    return (
+      <EmptyState
+        icon={History}
+        title="Aucune action confirmée"
+        description="Les actions IA confirmées par un utilisateur apparaîtront ici."
+        className="my-6"
+      />
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      {undoError && <div className="form-error-box">{undoError}</div>}
+      {logs.map((log) => {
+        const risk = RISK[log.risk_level] || RISK.internal
+        return (
+          <Card key={log.id} data-testid="action-log-row">
+            <CardContent className="flex flex-wrap items-center gap-2 p-3">
+              <div className="min-w-[180px] flex-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-medium text-sm">{log.object_repr || log.action_key}</span>
+                  <Badge tone={risk.tone}>{risk.label}</Badge>
+                  {log.undone_at && <Badge tone="neutral">Annulée</Badge>}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {log.user || '—'} · {log.confirmed_at ? new Date(log.confirmed_at).toLocaleString('fr-FR') : '—'}
+                </div>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={!log.is_undoable || Boolean(log.undone_at) || undoingId === log.id}
+                onClick={() => undo(log)}
+              >
+                <Undo2 className="size-4" aria-hidden="true" />
+                {log.undone_at ? 'Déjà annulée' : undoingId === log.id ? 'Annulation…' : 'Annuler'}
+              </Button>
+            </CardContent>
+          </Card>
+        )
+      })}
+    </div>
+  )
+}
+
+export default function AgentActions() {
+  const role = useSelector((s) => s.auth.role)
+  const roleNom = useSelector((s) => s.auth.role_nom)
+  // YHARD2 — le journal des actions IA est un réglage interne sensible,
+  // réservé admin/Directeur (le backend re-vérifie : IsAdminRole).
+  const canViewHistorique = role === 'admin' || roleNom === 'Directeur'
+
+  return (
+    <div className="page" data-testid="agent-actions">
+      <div className="page-header">
+        <h1 className="page-title">Actions de l’assistant</h1>
+        <div className="page-subtitle">
+          Actions que vous pouvez déclencher via l’assistant. Chacune se confirme avant exécution.
+        </div>
+      </div>
+
+      {canViewHistorique ? (
+        <Tabs defaultValue="catalogue">
+          <TabsList className="mb-4">
+            <TabsTrigger value="catalogue">Catalogue</TabsTrigger>
+            <TabsTrigger value="historique">Historique / annuler</TabsTrigger>
+          </TabsList>
+          <TabsContent value="catalogue">
+            <ActionsCatalogue />
+          </TabsContent>
+          <TabsContent value="historique">
+            <ActionsHistorique />
+          </TabsContent>
+        </Tabs>
+      ) : (
+        <ActionsCatalogue />
       )}
     </div>
   )

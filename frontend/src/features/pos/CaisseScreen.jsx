@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Minus, Trash2, Printer } from 'lucide-react'
+import { Plus, Minus, Trash2, Printer, Link2, Usb } from 'lucide-react'
 import posApi from '../../api/posApi'
+import api from '../../api/axios'
 import { prixTtc, sansPrix } from '../stock/catalogue'
 import {
   Button, Input, Label, Badge, EmptyState,
@@ -29,7 +30,11 @@ export default function CaisseScreen() {
   const [encaissementOpen, setEncaissementOpen] = useState(false)
   const [paiements, setPaiements] = useState([{ mode: 'especes', montant: '' }])
   const [busy, setBusy] = useState(false)
-  const [derniereFacture, setDerniereFacture] = useState(null)
+  // XPOS7/9 — la vente validée (VenteComptoir) pilote les actions ticket
+  // (PDF / ESC/POS / lien public). null tant qu'aucune vente n'est encaissée.
+  const [derniereVente, setDerniereVente] = useState(null)
+  // XPOS9 — numéros de série saisis par produitId ("SN1, SN2" → liste).
+  const [numerosSerie, setNumerosSerie] = useState({})
 
   useEffect(() => {
     posApi.getProduits().then((r) => {
@@ -54,7 +59,24 @@ export default function CaisseScreen() {
   }
 
   const handleQuantite = (produitId, valeur) => setCart((c) => setQuantite(c, produitId, valeur))
-  const handleRetirer = (produitId) => setCart((c) => removeFromCart(c, produitId))
+  const handleRetirer = (produitId) => {
+    setCart((c) => removeFromCart(c, produitId))
+    setNumerosSerie((s) => {
+      const next = { ...s }
+      delete next[produitId]
+      return next
+    })
+  }
+
+  // XPOS9 — capture des numéros de série (séparés par virgule/retour ligne).
+  const handleNumerosSerie = (produitId, valeur) =>
+    setNumerosSerie((s) => ({ ...s, [produitId]: valeur }))
+
+  const parseNumerosSerie = (valeur) =>
+    (valeur || '')
+      .split(/[\n,;]+/)
+      .map((v) => v.trim())
+      .filter(Boolean)
 
   const onSearchClient = (q) =>
     posApi.searchClients(q).then((r) => {
@@ -122,39 +144,34 @@ export default function CaisseScreen() {
     setEncaissementOpen(true)
   }
 
-  // Encaissement = crée la facture (client requis côté modèle → auto quick-
-  // create "Client comptoir" si aucun client choisi), ses lignes, le(s)
-  // paiement(s), puis émet — voir posApi.js pour le détail des 4 appels.
+  // Encaissement (app POS dédiée) : crée une VenteComptoir (brouillon), ajoute
+  // ses lignes (produit + qté + prix TTC + numéros de série éventuels), puis la
+  // valide avec les paiements — la validation crée la Facture légale + les
+  // Paiement côté backend (services.valider_vente). Le client est optionnel.
   const handleConfirmerEncaissement = async () => {
     setBusy(true)
     try {
-      let clientId = client?.id
-      if (!clientId) {
-        const res = await posApi.createClient({ nom: 'Client comptoir' })
-        clientId = res.data.id
-      }
-      const factureRes = await posApi.createFacture({ client: clientId })
-      const factureId = factureRes.data.id
+      const venteRes = await posApi.createVente(
+        client?.id ? { client: client.id } : {})
+      const venteId = venteRes.data.id
       for (const ligne of cart) {
-        await posApi.createLigneFacture({
-          facture: factureId,
+        await posApi.ajouterLigne(venteId, {
           produit: ligne.produitId,
-          designation: ligne.nom,
           quantite: ligne.quantite,
-          prix_unitaire: ligne.prixTtc,
+          prix_unitaire_ttc: ligne.prixTtc,
+          numeros_serie: parseNumerosSerie(numerosSerie[ligne.produitId]),
         })
       }
-      for (const p of paiements) {
-        const montant = Number(p.montant) || 0
-        if (montant > 0) await posApi.enregistrerPaiement(factureId, { mode: p.mode, montant })
-      }
-      await posApi.emettreFacture(factureId)
-      const finale = await posApi.getFacture(factureId)
-      setDerniereFacture(finale.data)
+      const utiles = paiements
+        .map((p) => ({ mode: p.mode, montant: Number(p.montant) || 0 }))
+        .filter((p) => p.montant > 0)
+      const finale = await posApi.validerVente(venteId, { paiements: utiles })
+      setDerniereVente(finale.data)
       toast.success('Vente encaissée.')
       setEncaissementOpen(false)
       setCart([])
       setClient(null)
+      setNumerosSerie({})
     } catch {
       toast.error('L’encaissement a échoué — la vente n’a pas été validée.')
     } finally {
@@ -162,9 +179,48 @@ export default function CaisseScreen() {
     }
   }
 
-  // XPOS3 (impression/téléchargement du ticket) n'existe pas encore : repli
-  // simple sur l'impression navigateur en attendant le rendu de ticket dédié.
-  const handleImprimer = () => window.print()
+  // XPOS7 — ticket PDF : ouvre le PDF rendu par le backend (vente validée).
+  const handleImprimer = () => {
+    if (!derniereVente?.id) return
+    window.open(`${api.defaults.baseURL || ''}/api/django${posApi.ticketPdfUrl(derniereVente.id)}`, '_blank')
+  }
+
+  // XPOS7 — ticket ESC/POS : pousse le flux vers l'imprimante réseau configurée
+  // (no-op côté backend si aucune imprimante active — le message le reflète).
+  const handleTicketEscpos = async () => {
+    if (!derniereVente?.id) return
+    setBusy(true)
+    try {
+      const res = await posApi.ticketEscpos(derniereVente.id)
+      toast.success(res?.data?.sent_to_printer
+        ? 'Ticket envoyé à l’imprimante.'
+        : 'Aucune imprimante active — flux ESC/POS généré (non envoyé).')
+    } catch {
+      toast.error('L’impression ESC/POS a échoué.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // XPOS7 — lien public partageable du ticket (tokenisé, sans login client).
+  const handleTicketShareLink = async () => {
+    if (!derniereVente?.id) return
+    setBusy(true)
+    try {
+      const res = await posApi.ticketShareLink(derniereVente.id)
+      const url = `${window.location.origin}/api/django/public/pos/ticket/${res.data.token}/`
+      try {
+        await navigator.clipboard?.writeText(url)
+        toast.success('Lien du ticket copié.')
+      } catch {
+        toast.success('Lien du ticket généré.')
+      }
+    } catch {
+      toast.error('La génération du lien a échoué.')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   return (
     <div className="flex flex-col gap-4 p-4 sm:p-6">
@@ -255,7 +311,8 @@ export default function CaisseScreen() {
             ) : (
               <ul className="flex flex-col gap-2">
                 {cart.map((l) => (
-                  <li key={l.produitId} className="flex items-center gap-2 rounded-md border border-border p-2">
+                  <li key={l.produitId} className="flex flex-col gap-1.5 rounded-md border border-border p-2">
+                   <div className="flex items-center gap-2">
                     <div className="flex-1">
                       <div className="text-sm font-medium">{l.nom}</div>
                       <div className="text-xs tabular-nums text-muted-foreground">
@@ -287,6 +344,16 @@ export default function CaisseScreen() {
                         <Trash2 className="size-3.5 text-destructive" />
                       </Button>
                     </div>
+                   </div>
+                   {/* XPOS9 — numéros de série (optionnel, séparés par virgule). */}
+                   <input
+                     type="text"
+                     aria-label={`Numéros de série de ${l.nom}`}
+                     value={numerosSerie[l.produitId] || ''}
+                     onChange={(e) => handleNumerosSerie(l.produitId, e.target.value)}
+                     className="h-7 w-full rounded-md border border-input bg-card px-2 text-xs"
+                     placeholder="N° de série (optionnel, séparés par une virgule)"
+                   />
                   </li>
                 ))}
               </ul>
@@ -311,10 +378,25 @@ export default function CaisseScreen() {
             </Button>
           </div>
 
-          {derniereFacture && (
-            <Button type="button" variant="ghost" onClick={handleImprimer} className="gap-2">
-              <Printer className="size-4" /> Imprimer / télécharger le ticket ({derniereFacture.reference})
-            </Button>
+          {derniereVente && (
+            <div className="flex flex-col gap-2 border-t border-border pt-2" data-testid="ticket-actions">
+              <span className="text-xs text-muted-foreground">
+                Vente {derniereVente.reference} validée — ticket :
+              </span>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="ghost" size="sm" onClick={handleImprimer} className="gap-1.5">
+                  <Printer className="size-4" /> PDF
+                </Button>
+                <Button type="button" variant="ghost" size="sm" onClick={handleTicketEscpos}
+                        disabled={busy} className="gap-1.5">
+                  <Usb className="size-4" /> Imprimante caisse
+                </Button>
+                <Button type="button" variant="ghost" size="sm" onClick={handleTicketShareLink}
+                        disabled={busy} className="gap-1.5">
+                  <Link2 className="size-4" /> Lien partageable
+                </Button>
+              </div>
+            </div>
           )}
         </div>
       </div>

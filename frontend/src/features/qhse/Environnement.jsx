@@ -11,6 +11,56 @@ import {
   EsgPilierPill,
 } from './qhsePills'
 import { num } from './qhseStatus'
+import { useHasPermission } from '../../hooks/useHasPermission'
+
+// XQHS22 — coût de la non-qualité (CoQ), gardé par `cout_non_qualite_voir`.
+// Le serveur renvoie déjà les montants à `null` sans la permission (structure
+// identique) : ce composant s'affiche toujours, mais montre « — » sans accès.
+function CoutNonQualiteCard() {
+  const canView = useHasPermission('cout_non_qualite_voir')
+  const [rollup, setRollup] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let alive = true
+    qhseApi.coutNonQualite()
+      .then((res) => { if (alive) setRollup(res.data) })
+      .catch(() => { if (alive) setRollup(null) })
+      .finally(() => { if (alive) setLoading(false) })
+    return () => { alive = false }
+  }, [])
+
+  if (loading || !rollup) return null
+
+  const fmtMontant = (v) => (v == null ? '—' : `${formatNumber(v, { decimals: 0 })} MAD`)
+
+  return (
+    <Card className="p-4 sm:p-5">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h3 className="font-display text-base font-semibold tracking-tight">
+          Coût de la non-qualité {rollup.annee ?? ''}
+        </h3>
+        {!canView && (
+          <Badge tone="neutral">Montants masqués (permission requise)</Badge>
+        )}
+      </div>
+      <div className="grid grid-cols-3 gap-3 text-sm">
+        <div>
+          <div className="text-muted-foreground">Interne</div>
+          <div className="font-semibold tabular-nums">{fmtMontant(rollup.interne)}</div>
+        </div>
+        <div>
+          <div className="text-muted-foreground">Externe</div>
+          <div className="font-semibold tabular-nums">{fmtMontant(rollup.externe)}</div>
+        </div>
+        <div>
+          <div className="text-muted-foreground">Total</div>
+          <div className="font-semibold tabular-nums">{fmtMontant(rollup.total)}</div>
+        </div>
+      </div>
+    </Card>
+  )
+}
 
 /* ============================================================================
    UX33 — Environnement & ESG.
@@ -163,6 +213,71 @@ export default function Environnement() {
     },
   ], [])
 
+  // XQHS20 — registre des aspects & impacts environnementaux (ISO 14001 6.1.2).
+  const aspectsCols = useMemo(() => [
+    { id: 'activite', header: 'Activité', accessor: (r) => r.activite },
+    { id: 'aspect', header: 'Aspect', accessor: (r) => r.aspect },
+    { id: 'impact', header: 'Impact', accessor: (r) => r.impact },
+    {
+      id: 'criticite', header: 'Criticité', width: 110, align: 'center',
+      accessor: (r) => r.criticite ?? 0,
+      cell: (v, r) => <Badge tone={r.significatif ? 'danger' : 'neutral'}>{v}</Badge>,
+    },
+    {
+      id: 'significatif', header: 'Significatif', width: 120, align: 'center',
+      accessor: (r) => r.significatif,
+      cell: (v) => <Badge tone={v ? 'danger' : 'success'}>{v ? 'Oui' : 'Non'}</Badge>,
+    },
+    {
+      id: 'date_revue', header: 'Revue', width: 120, align: 'right',
+      accessor: (r) => r.date_revue, cell: (v) => (v ? formatDate(v) : '—'),
+    },
+  ], [])
+
+  // XQHS21 — relevés de consommation par site (bilan carbone en amont).
+  const consommationCols = useMemo(() => [
+    { id: 'site', header: 'Site', accessor: (r) => r.site_libelle },
+    { id: 'type', header: 'Énergie', width: 130, accessor: (r) => r.type_energie_display || r.type_energie },
+    { id: 'periode', header: 'Période', width: 120, accessor: (r) => r.periode },
+    {
+      id: 'quantite', header: 'Quantité', width: 120, align: 'right',
+      accessor: (r) => r.quantite,
+      cell: (v) => (v == null ? '—' : formatNumber(v, { decimals: 2 })),
+    },
+    { id: 'source', header: 'Source', width: 130, accessor: (r) => r.source_display || r.source },
+  ], [])
+
+  // XQHS24 — demandes de gestion du changement (MOC léger).
+  const mocCols = useMemo(() => [
+    { id: 'type', header: 'Type', width: 150, accessor: (r) => r.type_changement_display || r.type_changement },
+    { id: 'description', header: 'Description', accessor: (r) => r.description },
+    {
+      id: 'impact', header: 'Impact', width: 120,
+      accessor: (r) => r.classification_impact_display || r.classification_impact,
+    },
+    { id: 'statut', header: 'Statut', width: 140, accessor: (r) => r.statut_display || r.statut },
+    {
+      id: 'temporaire', header: 'Temporaire', width: 110, align: 'center',
+      accessor: (r) => r.est_temporaire,
+      cell: (v) => <Badge tone={v ? 'warning' : 'neutral'}>{v ? 'Oui' : 'Non'}</Badge>,
+    },
+  ], [])
+
+  // XQHS26 — veille réglementaire QHSE Maroc.
+  const veilleCols = useMemo(() => [
+    { id: 'texte', header: 'Texte suivi', accessor: (r) => r.texte_suivi },
+    { id: 'source', header: 'Source', accessor: (r) => r.source || '—' },
+    {
+      id: 'prochaine_revue', header: 'Prochaine revue', width: 150, align: 'right',
+      accessor: (r) => r.date_prochaine_revue, cell: (v) => (v ? formatDate(v) : '—'),
+    },
+    {
+      id: 'registre', header: 'Registre légal', width: 130, align: 'center',
+      accessor: (r) => r.registre_conformite,
+      cell: (v) => <Badge tone={v ? 'success' : 'neutral'}>{v ? 'Lié' : '—'}</Badge>,
+    },
+  ], [])
+
   return (
     <div className="page flex flex-col gap-4">
       <div className="page-header">
@@ -179,6 +294,8 @@ export default function Environnement() {
           <TabsTrigger value="conformite">Conformité</TabsTrigger>
           <TabsTrigger value="carbone">Bilan carbone</TabsTrigger>
           <TabsTrigger value="esg">ESG</TabsTrigger>
+          <TabsTrigger value="aspects">Aspects environnementaux</TabsTrigger>
+          <TabsTrigger value="changement">Changement & veille</TabsTrigger>
         </TabsList>
 
         <TabsContent value="dechets" className="mt-4 flex flex-col gap-6">
@@ -236,6 +353,41 @@ export default function Environnement() {
             fetcher={() => qhseApi.indicateursEsg.list()}
             columns={esgCols}
             exportName="qhse-indicateurs-esg"
+          />
+        </TabsContent>
+
+        <TabsContent value="aspects" className="mt-4 flex flex-col gap-6">
+          <QhseResourceList
+            title="Registre des aspects & impacts environnementaux"
+            subtitle="ISO 14001 6.1.2 — criticité = fréquence × gravité vs seuil"
+            fetcher={() => qhseApi.aspectsEnvironnementaux.list()}
+            columns={aspectsCols}
+            exportName="qhse-aspects-environnementaux"
+          />
+          <QhseResourceList
+            title="Relevés de consommation par site"
+            subtitle="Électricité, eau, carburant — alimente le bilan carbone"
+            fetcher={() => qhseApi.relevesConsommation.list()}
+            columns={consommationCols}
+            exportName="qhse-releves-consommation"
+          />
+        </TabsContent>
+
+        <TabsContent value="changement" className="mt-4 flex flex-col gap-6">
+          <CoutNonQualiteCard />
+          <QhseResourceList
+            title="Demandes de gestion du changement (MOC)"
+            subtitle="Cycle de vie via transition serveur (jamais un PATCH direct du statut)"
+            fetcher={() => qhseApi.demandesChangement.list()}
+            columns={mocCols}
+            exportName="qhse-demandes-changement"
+          />
+          <QhseResourceList
+            title="Veille réglementaire"
+            subtitle="Textes suivis — revue périodique assistée"
+            fetcher={() => qhseApi.veillesReglementaires.list()}
+            columns={veilleCols}
+            exportName="qhse-veille-reglementaire"
           />
         </TabsContent>
       </Tabs>

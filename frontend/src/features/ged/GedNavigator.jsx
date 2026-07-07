@@ -13,7 +13,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   Folder, FolderOpen, ChevronRight, ChevronDown, FileText, Loader2, Inbox,
-  RefreshCw, Plus, FolderPlus, Pencil, Upload, MoveRight,
+  RefreshCw, Plus, FolderPlus, Pencil, Upload, MoveRight, Eye, Lock, LockOpen,
+  Trash2,
 } from 'lucide-react'
 import gedApi from '../../api/gedApi'
 import { formatDate } from '../../lib/format'
@@ -59,6 +60,11 @@ export default function GedNavigator() {
   const [cabinetDlg, setCabinetDlg] = useState(false)
   const [folderDlg, setFolderDlg] = useState(null) // { mode:'create'|'rename'|'move', folder? }
   const [uploadDlg, setUploadDlg] = useState(false)
+  // GED14 — document à prévisualiser (clic sur une ligne → modale d'aperçu).
+  const [previewDoc, setPreviewDoc] = useState(null)
+  // XGED14 — multi-sélection de documents pour les opérations en lot.
+  const [selectedIds, setSelectedIds] = useState(() => new Set())
+  const [bulkBusy, setBulkBusy] = useState(false)
 
   // ── Chargement des cabinets (armoires racines) ──
   const loadCabinets = (preferId) => {
@@ -137,9 +143,43 @@ export default function GedNavigator() {
   })
 
   const selectFolder = (node) => {
-    if (selected?.id !== node.id) setDocuments([])
+    if (selected?.id !== node.id) { setDocuments([]); setSelectedIds(new Set()) }
     setSelected(node)
     if (node.hasChildren) toggle(node.id)
+  }
+
+  // XGED14 — bascule la sélection d'un document / tout sélectionner.
+  const toggleSelect = (id) => setSelectedIds((prev) => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    return next
+  })
+  const toggleSelectAll = () => setSelectedIds((prev) => (
+    prev.size === documents.length && documents.length > 0
+      ? new Set()
+      : new Set(documents.map((d) => d.id))
+  ))
+
+  // XGED14 — mise en corbeille par lot de la sélection.
+  const bulkCorbeille = async () => {
+    if (selectedIds.size === 0) return
+    setBulkBusy(true)
+    try {
+      const res = await gedApi.operationsLot({
+        documents: [...selectedIds], operation: 'corbeille',
+      })
+      const erreurs = res?.data?.erreurs || []
+      if (erreurs.length) {
+        toast.error(`${erreurs.length} document(s) non traité(s) (protégés).`)
+      } else {
+        toast.success(`${selectedIds.size} document(s) mis en corbeille.`)
+      }
+      setSelectedIds(new Set())
+      reloadDocuments()
+    } catch (err) {
+      toast.error(errText(err, 'Opération en lot impossible.'))
+    } finally { setBulkBusy(false) }
   }
 
   const tree = useMemo(() => buildFolderTree(folders), [folders])
@@ -150,6 +190,33 @@ export default function GedNavigator() {
   const onCabinetCreated = (cab) => loadCabinets(cab.id)
   const onFolderChanged = () => loadFolders(cabinetId)
   const onDocumentUploaded = () => reloadDocuments()
+
+  // ── GED16 — check-out / check-in ; GED26 — mise en corbeille ──
+  const checkOut = async (d) => {
+    try {
+      await gedApi.checkOutDocument(d.id)
+      toast.success('Document extrait (verrouillé).')
+      reloadDocuments()
+    } catch (err) {
+      if (err?.response?.status === 409) {
+        toast.error(errText(err, 'Document déjà extrait par un autre utilisateur.'))
+      } else { toast.error(errText(err, 'Extraction impossible.')) }
+    }
+  }
+  const checkIn = async (d) => {
+    try {
+      await gedApi.checkInDocument(d.id)
+      toast.success('Document archivé (verrou levé).')
+      reloadDocuments()
+    } catch (err) { toast.error(errText(err, 'Archivage impossible.')) }
+  }
+  const mettreEnCorbeille = async (d) => {
+    try {
+      await gedApi.mettreEnCorbeille(d.id)
+      toast.success('Document mis en corbeille.')
+      reloadDocuments()
+    } catch (err) { toast.error(errText(err, 'Mise en corbeille impossible.')) }
+  }
 
   const hasCabinet = cabinetId != null
 
@@ -290,6 +357,24 @@ export default function GedNavigator() {
                       </Button>
                     </div>
                   </div>
+                  {/* XGED14 — barre d'actions par lot (visible dès qu'une case est cochée). */}
+                  {selectedIds.size > 0 && (
+                    <div className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/40 px-4 py-2">
+                      <span className="text-[13px] font-medium">
+                        {selectedIds.size} sélectionné{selectedIds.size > 1 ? 's' : ''}
+                      </span>
+                      <div className="ml-auto flex items-center gap-1">
+                        <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
+                          Désélectionner
+                        </Button>
+                        <Button size="sm" variant="destructive"
+                          onClick={bulkCorbeille} disabled={bulkBusy}>
+                          {bulkBusy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Trash2 className="size-4" aria-hidden="true" />}
+                          Mettre en corbeille
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                   {loadingDocs ? (
                     <div className="flex items-center gap-2 p-6 text-[13px] text-muted-foreground">
                       <Loader2 className="size-4 animate-spin" aria-hidden="true" /> Chargement des documents…
@@ -306,27 +391,79 @@ export default function GedNavigator() {
                     <table className="data-table">
                       <thead>
                         <tr>
+                          <th className="w-8">
+                            {/* XGED14 — tout sélectionner. */}
+                            <input type="checkbox"
+                              aria-label="Tout sélectionner"
+                              checked={selectedIds.size === documents.length && documents.length > 0}
+                              onChange={toggleSelectAll} />
+                          </th>
                           <th>Document</th>
                           <th className="m-hide">Versions</th>
                           <th className="m-hide">Créé par</th>
                           <th>Mis à jour</th>
+                          <th aria-label="Actions" />
                         </tr>
                       </thead>
                       <tbody>
                         {documents.map((d) => (
                           <tr key={d.id}>
+                            <td data-label="" className="w-8">
+                              <input type="checkbox"
+                                aria-label={`Sélectionner ${d.nom}`}
+                                checked={selectedIds.has(d.id)}
+                                onChange={() => toggleSelect(d.id)} />
+                            </td>
                             <td data-label="Document" className="font-medium">
-                              <span className="flex items-center gap-1.5">
+                              {/* GED14 — clic sur le nom → aperçu du document. */}
+                              <button type="button"
+                                className="flex items-center gap-1.5 text-left hover:underline"
+                                onClick={() => setPreviewDoc(d)}>
                                 <FileText className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                                 {d.nom}
-                              </span>
+                              </button>
                             </td>
                             <td data-label="Versions" className="m-hide">
                               {d.version_count ?? 0}
                               {d.derniere_version ? ` (v${d.derniere_version})` : ''}
                             </td>
-                            <td data-label="Créé par" className="m-hide">{d.created_by_nom || '—'}</td>
+                            <td data-label="Créé par" className="m-hide">
+                              {d.created_by_nom || '—'}
+                              {d.is_locked && (
+                                <Badge tone="warning" className="ml-1.5 inline-flex items-center gap-0.5">
+                                  <Lock className="size-3" aria-hidden="true" />
+                                  {d.locked_by_nom ? d.locked_by_nom : 'extrait'}
+                                </Badge>
+                              )}
+                            </td>
                             <td data-label="Mis à jour">{formatDate(d.updated_at)}</td>
+                            <td data-label="Actions" className="text-right">
+                              <div className="flex items-center justify-end gap-0.5">
+                                <Button size="sm" variant="ghost"
+                                  aria-label={`Aperçu de ${d.nom}`}
+                                  onClick={() => setPreviewDoc(d)}>
+                                  <Eye className="size-4" aria-hidden="true" /> Aperçu
+                                </Button>
+                                {d.is_locked ? (
+                                  <Button size="sm" variant="ghost"
+                                    aria-label={`Archiver ${d.nom}`}
+                                    onClick={() => checkIn(d)}>
+                                    <LockOpen className="size-4" aria-hidden="true" /> Archiver
+                                  </Button>
+                                ) : (
+                                  <Button size="sm" variant="ghost"
+                                    aria-label={`Extraire ${d.nom}`}
+                                    onClick={() => checkOut(d)}>
+                                    <Lock className="size-4" aria-hidden="true" /> Extraire
+                                  </Button>
+                                )}
+                                <Button size="sm" variant="ghost"
+                                  aria-label={`Mettre ${d.nom} en corbeille`}
+                                  onClick={() => mettreEnCorbeille(d)}>
+                                  <Trash2 className="size-4" aria-hidden="true" />
+                                </Button>
+                              </div>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -346,7 +483,76 @@ export default function GedNavigator() {
         cabinetId={cabinetId} folders={folders} onChanged={onFolderChanged} />
       <UploadDialog open={uploadDlg} onOpenChange={setUploadDlg}
         folder={selected} onUploaded={onDocumentUploaded} />
+      <DocumentPreviewDialog document={previewDoc} onClose={() => setPreviewDoc(null)} />
     </div>
+  )
+}
+
+// ── GED14 — Aperçu inline d'un document (modale) ────────────────────────────
+// Récupère les versions du document, prend la plus récente et l'affiche via le
+// proxy même-origine (versions/<id>/apercu/). Dégrade proprement en lien de
+// téléchargement si l'aperçu n'est pas disponible.
+function DocumentPreviewDialog({ document: doc, onClose }) {
+  const [version, setVersion] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    if (!doc?.id) return
+    let alive = true
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement à l'ouverture
+    setLoading(true)
+    setVersion(null)
+    setFailed(false)
+    gedApi.getVersions({ document: doc.id })
+      .then((r) => {
+        if (!alive) return
+        const list = rows(r)
+        const courante = [...list].sort((a, b) => (b.numero || 0) - (a.numero || 0))[0]
+        if (courante) setVersion(courante)
+        else setFailed(true)
+      })
+      .catch(() => { if (alive) setFailed(true) })
+      .finally(() => { if (alive) setLoading(false) })
+    return () => { alive = false }
+  }, [doc?.id])
+
+  const src = version ? gedApi.apercuVersionUrl(version.id) : null
+  const isImage = String(version?.mime || '').startsWith('image/')
+
+  return (
+    <Dialog open={!!doc} onOpenChange={(v) => { if (!v) onClose() }}>
+      <DialogContent className="max-w-3xl">
+        <DialogHeader>
+          <DialogTitle className="truncate">{doc?.nom || 'Aperçu'}</DialogTitle>
+        </DialogHeader>
+        {loading ? (
+          <div className="flex items-center gap-2 p-6 text-[13px] text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" aria-hidden="true" /> Chargement de l'aperçu…
+          </div>
+        ) : failed || !src ? (
+          <p className="p-4 text-[13px] text-muted-foreground">
+            L'aperçu de ce document n'est pas disponible.
+          </p>
+        ) : isImage ? (
+          <img src={src} alt={`Aperçu de ${doc?.nom || 'document'}`}
+            className="max-h-[70vh] w-full rounded border border-border object-contain" />
+        ) : (
+          <iframe title={`Aperçu de ${doc?.nom || 'document'}`} src={src}
+            className="h-[70vh] w-full rounded border border-border" />
+        )}
+        <DialogFooter>
+          {src && (
+            <a href={src} target="_blank" rel="noreferrer">
+              <Button variant="outline">Ouvrir dans un onglet</Button>
+            </a>
+          )}
+          <DialogClose asChild>
+            <Button variant="ghost">Fermer</Button>
+          </DialogClose>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

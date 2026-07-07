@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { LayoutGrid, Plus, Trash2 } from 'lucide-react'
 import api from '../../api/axios'
+import coreApi from '../../api/coreApi'
 import reportingApi from '../../api/reportingApi'
 import {
   Badge, Button, Card, CardContent, Checkbox, DataTable, EmptyState, IconButton,
@@ -9,10 +10,16 @@ import {
 } from '../../ui'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import { useConfirmDialog, toast } from '../../ui/confirm'
+import DashboardFilterBar from '../../features/reporting/DashboardFilterBar'
 
 /* WR8 — Gestionnaire de configuration de tableau de bord (FG96).
    CRUD des configs par UTILISATEUR ou par PALIER de rôle : choix des cartes
-   affichées. Réservé responsable/admin (gate route). company forcée serveur. */
+   affichées. Réservé responsable/admin (gate route). company forcée serveur.
+
+   XPLT9 — monte aussi `DashboardFilterBar` (jusque-là construit mais jamais
+   monté nulle part) : un sélecteur de dashboard FG381 (`core.Dashboard`)
+   au-dessus de sa barre de filtres globaux (plage de dates, commercial,
+   canal, catégorie produit), persistés dans `layout.globalFilters`. */
 
 // Libellés FR des clés de cartes (miroir de ALL_DASHBOARD_CARDS côté backend).
 const CARD_LABELS = {
@@ -53,6 +60,31 @@ export default function DashboardConfigPage() {
   const [userId, setUserId] = useState('')
   const [cards, setCards] = useState([...ALL_CARDS])
   const [saving, setSaving] = useState(false)
+
+  // XPLT9 — dashboards FG381 (`core.Dashboard`) disponibles pour le filtre
+  // global, et le dashboard actuellement sélectionné. `selectedLayout` est un
+  // ÉTAT LOCAL (pas un simple dérivé) car `DashboardFilterBar` le met à jour
+  // en écriture optimiste (`onLayoutChange`) avant confirmation serveur —
+  // resynchronisé depuis `dashboards` UNIQUEMENT quand la sélection change
+  // (pas à chaque refetch de la liste, pour ne jamais écraser une frappe en
+  // cours dans la barre de filtres).
+  const [dashboards, setDashboards] = useState([])
+  const [selectedDashboardId, setSelectedDashboardId] = useState('')
+  const [selectedLayout, setSelectedLayout] = useState(null)
+
+  useEffect(() => {
+    let active = true
+    coreApi.dashboards.list()
+      .then((r) => { if (active) setDashboards(r.data?.results ?? r.data ?? []) })
+      .catch(() => { if (active) setDashboards([]) })
+    return () => { active = false }
+  }, [])
+
+  const selectDashboard = (id) => {
+    setSelectedDashboardId(id)
+    const found = dashboards.find((d) => String(d.id) === String(id))
+    setSelectedLayout(found?.layout ?? {})
+  }
 
   const userName = useMemo(() => {
     const map = new Map(users.map((u) => [u.id, u]))
@@ -174,6 +206,37 @@ export default function DashboardConfigPage() {
             <span className="text-sm text-muted-foreground">
               {(effective.cards || []).map((k) => CARD_LABELS[k] || k).join(', ')}
             </span>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* XPLT9 — sélecteur de dashboard FG381 + sa barre de filtres globaux
+          (plage de dates, commercial, canal, catégorie produit), persistés
+          dans `layout.globalFilters`. */}
+      {dashboards.length > 0 && (
+        <Card className="mb-4">
+          <CardContent className="flex flex-col gap-3 p-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-sm font-semibold">Filtres globaux d’un tableau de bord</span>
+              <Select value={selectedDashboardId} onValueChange={selectDashboard}>
+                <SelectTrigger className="w-64" aria-label="Choisir un tableau de bord">
+                  <SelectValue placeholder="Choisir un tableau de bord…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {dashboards.map((d) => (
+                    <SelectItem key={d.id} value={String(d.id)}>{d.titre}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {selectedDashboardId && (
+              <DashboardFilterBar
+                dashboardId={Number(selectedDashboardId)}
+                layout={selectedLayout}
+                onLayoutChange={setSelectedLayout}
+                onReload={() => {}}
+              />
+            )}
           </CardContent>
         </Card>
       )}

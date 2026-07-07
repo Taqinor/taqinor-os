@@ -1,13 +1,21 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
-import { AlarmClock, CalendarCheck2, CalendarClock, ExternalLink, PartyPopper, Users } from 'lucide-react'
+import { AlarmClock, CalendarCheck2, CalendarClock, ExternalLink, PartyPopper, Sparkles, Users } from 'lucide-react'
 import recordsApi from '../../api/recordsApi'
 import {
   Button, Badge, Card, CardHeader, CardTitle, CardContent,
   EmptyState, Spinner,
 } from '../../ui'
 import { Table } from '../reporting/Table'
+
+// ZSAL1 — échéance par défaut de l'activité de suivi suggérée : aujourd'hui +
+// le délai configuré sur le type d'activité clôturé (delai_jours, ≥ 0).
+function addDaysIso(days) {
+  const d = new Date()
+  d.setDate(d.getDate() + (Number(days) || 0))
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
 
 // Date du jour au format ISO (YYYY-MM-DD), pour comparer aux échéances.
 const todayStr = () => {
@@ -69,6 +77,11 @@ export default function MesActivitesPage() {
   // la liste complète des activités de la société (l'endpoint « mine » ne
   // renvoie que celles de l'utilisateur courant).
   const [teamActivities, setTeamActivities] = useState([])
+  // ZSAL1 — activité de suivi proposée par le serveur (mode « suggérer » du
+  // type d'activité clôturé) : { activity_type, activity_type_nom, delai_jours }.
+  // null = aucune proposition en attente.
+  const [suggestion, setSuggestion] = useState(null)
+  const [suggestionBusy, setSuggestionBusy] = useState(false)
 
   const load = () => {
     setLoading(true)
@@ -94,9 +107,33 @@ export default function MesActivitesPage() {
   const markDone = async (a) => {
     setActionError(null)
     try {
-      await recordsApi.markActivityDone(a.id)
+      const res = await recordsApi.markActivityDone(a.id)
+      // ZSAL1 — le serveur ne CRÉE rien en mode « suggérer » : il renvoie juste
+      // la proposition, à confirmer explicitement par l'utilisateur ici.
+      setSuggestion(res?.data?.suggestion
+        ? { ...res.data.suggestion, source: a } : null)
       load(); if (isAdmin) loadTeam()
     } catch { setActionError('Action impossible — réessayez.') }
+  }
+
+  const dismissSuggestion = () => setSuggestion(null)
+
+  const acceptSuggestion = async () => {
+    if (!suggestion) return
+    setSuggestionBusy(true)
+    setActionError(null)
+    try {
+      await recordsApi.createActivity({
+        model: suggestion.source?.target_model,
+        id: suggestion.source?.object_id,
+        activity_type: suggestion.activity_type,
+        summary: suggestion.activity_type_nom,
+        due_date: addDaysIso(suggestion.delai_jours),
+      })
+      setSuggestion(null)
+      load(); if (isAdmin) loadTeam()
+    } catch { setActionError("La création de l'activité de suivi a échoué — réessayez.") }
+    finally { setSuggestionBusy(false) }
   }
 
   const openResched = (a) => {
@@ -139,6 +176,28 @@ export default function MesActivitesPage() {
 
       {actionError && (
         <p className="form-error mb-3" role="alert">{actionError}</p>
+      )}
+
+      {/* ZSAL1 — proposition d'activité de suivi à la clôture d'une activité
+          « suggérer » : ne crée RIEN tant que l'utilisateur ne confirme pas. */}
+      {suggestion && (
+        <Card className="mb-4 overflow-hidden border-primary/40" role="alert">
+          <CardContent className="flex flex-wrap items-center gap-2 py-3">
+            <Sparkles className="size-4 shrink-0 text-primary" aria-hidden="true" />
+            <span className="flex-1 text-sm">
+              Planifier une suite : <strong>{suggestion.activity_type_nom}</strong>
+              {' '}({addDaysIso(suggestion.delai_jours)}) ?
+            </span>
+            <Button size="sm" onClick={acceptSuggestion}
+                    loading={suggestionBusy} disabled={suggestionBusy}>
+              Planifier
+            </Button>
+            <Button size="sm" variant="outline" onClick={dismissSuggestion}
+                    disabled={suggestionBusy}>
+              Ignorer
+            </Button>
+          </CardContent>
+        </Card>
       )}
 
       {isAdmin && teamOverdue.length > 0 && (
