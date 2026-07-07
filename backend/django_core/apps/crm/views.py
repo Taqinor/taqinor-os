@@ -417,7 +417,10 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
     # capturé par core.tests.test_utils.AssertQueryBudgetMixin dans
     # apps/crm/tests/test_lead_query_budget.py).
     queryset = Lead.objects.select_related('owner', 'client').prefetch_related(
-        'devis').all()
+        # 'devis__lignes' — get_devis expose d.total_ttc (propriété qui somme
+        # les LIGNES du devis) : sans ce prefetch imbriqué, chaque devis
+        # requêtait ses lignes (N+1, ~2 requêtes/devis). String-FK cross-app.
+        'devis', 'devis__lignes').all()
     serializer_class = LeadSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['nom', 'prenom', 'societe', 'email', 'telephone', 'ville']
@@ -440,6 +443,7 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
         extra_context = {
             'next_activity_map': self._next_activity_map(objects),
             'chantier_map': self._chantier_map(objects),
+            'stage_since_map': self._stage_since_map(objects),
         }
         if page is not None:
             serializer = self.get_serializer(
@@ -488,6 +492,25 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
         from apps.ventes.models import Devis
         rows = Devis.objects.filter(id__in=devis_ids)
         return installation_summaries_for_devis(rows)
+
+    @staticmethod
+    def _stage_since_map(leads):
+        """{lead_id: datetime du dernier changement d'étape} pour tout le lot
+        en UNE requête (au lieu d'une par lead via get_stage_since_days)."""
+        from .models import LeadActivity
+        ids = [lead.id for lead in leads]
+        if not ids:
+            return {}
+        out = {}
+        rows = (LeadActivity.objects
+                .filter(lead_id__in=ids,
+                        kind=LeadActivity.Kind.MODIFICATION, field='stage')
+                .order_by('lead_id', '-created_at')
+                .values('lead_id', 'created_at'))
+        for r in rows:
+            # -created_at → on garde la PREMIÈRE (la plus récente) par lead.
+            out.setdefault(r['lead_id'], r['created_at'])
+        return out
 
     def get_queryset(self):
         qs = super().get_queryset()

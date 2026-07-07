@@ -250,17 +250,23 @@ class LeadSerializer(serializers.ModelSerializer):
         """
         try:
             from django.utils import timezone
-            from .models import LeadActivity
-            last_change = (
-                LeadActivity.objects
-                .filter(lead=obj, kind=LeadActivity.Kind.MODIFICATION, field='stage')
-                .order_by('-created_at')
-                .first()
-            )
-            if last_change:
-                ref = last_change.created_at
+            # YOPSB13/perf_n1 — sur une LISTE, LeadViewSet.list() précharge une
+            # carte {lead_id: dernière date de changement d'étape} en UNE requête
+            # (stage_since_map) : sinon c'était 1 requête LeadActivity PAR LIGNE
+            # (N+1). Hors contexte (détail) → requête individuelle inchangée.
+            stage_since_map = self.context.get('stage_since_map')
+            if stage_since_map is not None:
+                ref = stage_since_map.get(obj.id) or obj.date_creation
             else:
-                ref = obj.date_creation
+                from .models import LeadActivity
+                last_change = (
+                    LeadActivity.objects
+                    .filter(lead=obj, kind=LeadActivity.Kind.MODIFICATION,
+                            field='stage')
+                    .order_by('-created_at')
+                    .first()
+                )
+                ref = last_change.created_at if last_change else obj.date_creation
             if ref is None:
                 return None
             now = timezone.now()

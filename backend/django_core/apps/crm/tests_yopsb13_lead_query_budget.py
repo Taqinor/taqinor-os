@@ -33,9 +33,17 @@ class LeadListQueryBudgetTests(AssertQueryBudgetMixin, TestCase):
             username='budget_owner', password='x', role_legacy='admin',
             company=self.company)
         self.api = _api(self.owner)
+        # Pré-chauffe le cache ContentType : LeadViewSet.list() appelle
+        # ContentType.objects.get_for_model(Lead) (next_activity_map), mis en
+        # cache PROCESS-WIDE au 1er appel. Sans ça, le tout premier GET-avec-
+        # leads porte cette requête unique (11) alors que le 2e ne l'a plus
+        # (10), simulant une croissance. On mesure ainsi le régime permanent
+        # (la vraie garde N+1), pas ce coût de cache unique.
+        from django.contrib.contenttypes.models import ContentType
+        ContentType.objects.get_for_model(Lead)
 
-    def _seed_leads(self, count):
-        for i in range(count):
+    def _seed_leads(self, count, start=0):
+        for i in range(start, start + count):
             client = Client.objects.create(
                 company=self.company, nom=f'Client{i}', prenom='Test')
             lead = Lead.objects.create(
@@ -43,6 +51,8 @@ class LeadListQueryBudgetTests(AssertQueryBudgetMixin, TestCase):
                 client=client)
             # get_devis() itère obj.devis.order_by(...) — au moins un devis
             # par lead pour exercer réellement le prefetch_related('devis').
+            # `start` décale la référence : le 2e appel (croissance 10→25) ne
+            # doit PAS réutiliser BUDGET-0000..0009 (collision unique company+ref).
             from apps.ventes.models import Devis
             Devis.objects.create(
                 company=self.company, lead=lead, client=client,
@@ -58,7 +68,7 @@ class LeadListQueryBudgetTests(AssertQueryBudgetMixin, TestCase):
         self.assertEqual(resp.status_code, 200)
         count_at_10 = len(ctx_10.captured_queries)
 
-        self._seed_leads(15)  # total 25
+        self._seed_leads(15, start=10)  # total 25
         with CaptureQueriesContext(connection) as ctx_25:
             resp = self.api.get(LEADS_URL)
         self.assertEqual(resp.status_code, 200)
