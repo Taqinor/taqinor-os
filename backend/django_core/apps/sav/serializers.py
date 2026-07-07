@@ -319,6 +319,34 @@ class TicketSerializer(serializers.ModelSerializer):
     # terminée, sinon à_distance), distinct de `canal_resolution` (stocké).
     canal_resolution_propose = serializers.SerializerMethodField()
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # YOPSB13 — caches {client_id: ContratMaintenance|None} partagés pour
+        # TOUTE la page sérialisée : avec ``many=True``, DRF réutilise UNE
+        # seule instance enfant pour chaque ligne, donc un cache d'instance
+        # survit d'un ticket à l'autre. Évite une requête ContratMaintenance
+        # par ticket (N+1 réel) quand plusieurs tickets d'une liste partagent
+        # le même client. DEUX caches distincts : get_equipement_couvert
+        # (registre XCTR2 — n'importe quel contrat actif, priorité à celui
+        # avec override SLA) et get_couverture_proposee/couverture_calculee
+        # (XCTR4 — contrat actif le plus récent, sans condition d'override) —
+        # des requêtes différentes, jamais interchangeables.
+        self._contrat_actif_cache = {}
+        self._contrat_recent_cache = {}
+
+    def _contrat_actif_pour_client(self, client):
+        from .models import ContratMaintenance
+        if client is None:
+            return None
+        if client.id not in self._contrat_actif_cache:
+            contrat = ContratMaintenance.actif_pour_client(client)
+            if contrat is None:
+                contrat = (ContratMaintenance.objects
+                           .filter(client=client, actif=True)
+                           .order_by('-date_creation').first())
+            self._contrat_actif_cache[client.id] = contrat
+        return self._contrat_actif_cache[client.id]
+
     class Meta:
         model = Ticket
         fields = '__all__'
@@ -383,21 +411,24 @@ class TicketSerializer(serializers.ModelSerializer):
     def get_equipement_couvert(self, obj):
         """XCTR2 — indicateur « couvert / non couvert » calculé sur le ticket :
         None si pas d'équipement lié ou pas de contrat actif du client, sinon
-        True/False selon le registre `ContratMaintenance.equipements`."""
+        True/False selon le registre `ContratMaintenance.equipements`.
+
+        N+1 réel corrigé (YOPSB13) : réutilise le cache par client partagé
+        avec ``get_couverture_proposee`` au lieu de requêter
+        ``ContratMaintenance`` à chaque ticket."""
         if obj.equipement_id is None:
             return None
-        from .models import ContratMaintenance
-        contrat = ContratMaintenance.actif_pour_client(obj.client)
-        if contrat is None:
-            contrat = (ContratMaintenance.objects
-                       .filter(client=obj.client, actif=True)
-                       .order_by('-date_creation').first())
+        contrat = self._contrat_actif_pour_client(obj.client)
         if contrat is None:
             return None
         return contrat.couvre_equipement(obj.equipement)
 
     def get_couverture_proposee(self, obj):
-        return obj.couverture_calculee()
+        # N+1 réel corrigé (YOPSB13) : partage le cache ContratMaintenance
+        # (contrat actif le plus récent, sans condition d'override SLA — un
+        # cache DISTINCT de get_equipement_couvert) par client sur toute la
+        # page au lieu d'une requête par ticket.
+        return obj.couverture_calculee(contrat_cache=self._contrat_recent_cache)
 
     def get_canal_resolution_propose(self, obj):
         return obj.canal_resolution_propose()

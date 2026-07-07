@@ -1,5 +1,4 @@
-/* eslint-disable react-refresh/only-export-components --
-   Fichier de configuration de module (données + composants lazy), collecté par
+/* Fichier de configuration de module (données + composants lazy), collecté par
    `router/moduleRoutes.jsx` via glob : ce n'est pas un module de composants, le
    fast-refresh ne s'y applique pas (même dérogation que `moduleRoutes.jsx`). */
 

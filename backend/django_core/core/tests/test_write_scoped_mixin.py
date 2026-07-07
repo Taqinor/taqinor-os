@@ -67,7 +67,11 @@ class WriteScopedMixinTests(TestCase):
     def test_anonyme_refuse(self):
         view = _DummyViewSet.as_view({"get": "list"})
         req = self.factory.get("/dummy/")
-        self.assertEqual(view(req).status_code, 403)
+        # 401 (et non 403) : le seul authentificateur configuré
+        # (CookieJWTAuthentication) expose un ``authenticate_header`` non nul,
+        # donc DRF lève NotAuthenticated (401) pour une requête anonyme — c'est
+        # la réponse correcte sous cette config d'auth ; le mixin est correct.
+        self.assertEqual(view(req).status_code, 401)
 
     def test_none_read_permission_autorise_authentifie(self):
         """read_permission=None → tout authentifié lit (préserve l'historique)."""

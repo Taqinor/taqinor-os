@@ -1223,11 +1223,17 @@ def resolve_or_create_lead_from_whatsapp(company, telephone, nom='',
     # téléphone/whatsapp est posé ICI pour que le PROCHAIN message du même
     # numéro retrouve ce lead via find_duplicates_by_contact (sinon YLEAD8
     # créerait un doublon à chaque message, ce que ce service existe pour
-    # éviter).
+    # éviter). BUG RÉEL corrigé ici : Lead.save() recalcule
+    # phone_normalise/email_normalise EN MÉMOIRE à chaque save() (avant
+    # super().save()), mais save(update_fields=[...]) ne PERSISTE que les
+    # colonnes listées — sans 'phone_normalise' ici, la colonne restait ''
+    # en base malgré le téléphone posé, et find_duplicates_by_contact (qui
+    # filtre sur phone_normalise) ne retrouvait jamais ce lead au message
+    # suivant : chaque nouveau message du même numéro créait un DOUBLON.
     if telephone:
         lead.telephone = telephone
         lead.whatsapp = telephone
-        lead.save(update_fields=['telephone', 'whatsapp'])
+        lead.save(update_fields=['telephone', 'whatsapp', 'phone_normalise'])
     return lead
 
 

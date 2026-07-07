@@ -106,7 +106,8 @@ class TestCascadeAnnulationBcf(Yproc7Base):
         bc = self._bcf(statut=BonCommandeFournisseur.Statut.ENVOYE)
         rec = self._reception_brouillon(bc)
         resp = self.api.post(
-            f'/api/django/stock/bons-commande-fournisseur/{bc.id}/annuler/')
+            f'/api/django/stock/bons-commande-fournisseur/{bc.id}/annuler/',
+            {'motif_annulation': 'Fournisseur en rupture'}, format='json')
         self.assertEqual(resp.status_code, 200)
         bc.refresh_from_db()
         self.assertEqual(bc.statut, BonCommandeFournisseur.Statut.ANNULE)
@@ -128,7 +129,8 @@ class TestCascadeAnnulationBcf(Yproc7Base):
             ligne_commande=bc.ligne, produit=self.produit, quantite=2)
 
         resp = self.api.post(
-            f'/api/django/stock/bons-commande-fournisseur/{bc.id}/annuler/')
+            f'/api/django/stock/bons-commande-fournisseur/{bc.id}/annuler/',
+            {'motif_annulation': 'Fournisseur en rupture'}, format='json')
         self.assertEqual(resp.status_code, 200)
         rec_confirmee.refresh_from_db()
         rec_brouillon.refresh_from_db()
@@ -151,13 +153,15 @@ class TestCascadeAnnulationBcf(Yproc7Base):
         bc = self._bcf(statut=BonCommandeFournisseur.Statut.ENVOYE)
         self._reception_brouillon(bc)
         resp1 = self.api.post(
-            f'/api/django/stock/bons-commande-fournisseur/{bc.id}/annuler/')
+            f'/api/django/stock/bons-commande-fournisseur/{bc.id}/annuler/',
+            {'motif_annulation': 'Fournisseur en rupture'}, format='json')
         self.assertEqual(resp1.status_code, 200)
         self.assertEqual(resp1.data['cascade']['receptions_annulees'], 1)
         # Ré-annuler un BCF déjà annulé : aucune réception brouillon restante
         # à annuler (idempotence sur la cascade — le service ne recompte pas
         # une réception déjà ANNULE).
         resp2 = self.api.post(
-            f'/api/django/stock/bons-commande-fournisseur/{bc.id}/annuler/')
+            f'/api/django/stock/bons-commande-fournisseur/{bc.id}/annuler/',
+            {'motif_annulation': 'Confirmation ré-annulation'}, format='json')
         self.assertEqual(resp2.status_code, 200)
         self.assertEqual(resp2.data['cascade']['receptions_annulees'], 0)

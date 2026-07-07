@@ -5148,8 +5148,25 @@ class InscriptionEvenementViewSet(_ComptaBaseViewSet):
         return resp
 
 
+class _MarketingPublicThrottle(SimpleRateThrottle):
+    """Débit des endpoints marketing PUBLICS (inscriptions événement,
+    désinscription/double opt-in/enquête tokenisés, webhooks entrants) par IP
+    — anti-abus/brute-force du jeton (YRBAC9). Même patron que
+    ``_PortailComptaThrottle``."""
+    scope = 'compta_marketing_public'
+    rate = '30/minute'
+
+    def get_rate(self):
+        return self.rate
+
+    def get_cache_key(self, request, view):
+        ident = self.get_ident(request)
+        return self.cache_format % {'scope': self.scope, 'ident': ident}
+
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@throttle_classes([_MarketingPublicThrottle])
 def evenement_inscription_publique(request, evenement_id):
     """XMKT28 — Inscription publique à un événement (aucune auth)."""
     evenement = EvenementMarketing.objects.filter(id=evenement_id).first()
@@ -5390,6 +5407,7 @@ class InscriptionSequenceViewSet(_ComptaBaseViewSet):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@throttle_classes([_MarketingPublicThrottle])
 def webhook_brevo_campagne(request):
     """Réception d'un événement webhook Brevo (XMKT2/XMKT12) : delivered/
     opened/click/bounce/unsubscribed/complaint. Résout la société depuis la
@@ -5421,6 +5439,7 @@ def webhook_brevo_campagne(request):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@throttle_classes([_MarketingPublicThrottle])
 def webhook_sms_stop(request):
     """Réception d'un SMS entrant STOP (XMKT15, gated/no-op sans intégration
     d'agrégateur active). Payload minimal attendu : ``company_id``,
@@ -5446,6 +5465,7 @@ def webhook_sms_stop(request):
 
 @api_view(['GET', 'POST'])
 @permission_classes([AllowAny])
+@throttle_classes([_MarketingPublicThrottle])
 def desinscription_publique(request, token):
     """Page/endpoint public de désinscription un clic (XMKT3, RFC 8058).
 
@@ -5464,6 +5484,7 @@ def desinscription_publique(request, token):
 
 @api_view(['GET', 'POST'])
 @permission_classes([AllowAny])
+@throttle_classes([_MarketingPublicThrottle])
 def double_optin_confirmer(request, token):
     """Clic de confirmation du double opt-in (XMKT4, loi 09-08).
 
@@ -5480,6 +5501,7 @@ def double_optin_confirmer(request, token):
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
+@throttle_classes([_MarketingPublicThrottle])
 def redirection_lien_tracke(request, token):
     """Redirige vers l'URL cible d'un ``LienTrackee`` (XMKT9), en comptant le
     clic (par lien + par destinataire via ``?d=`` si fourni par l'appelant
@@ -5497,6 +5519,7 @@ def redirection_lien_tracke(request, token):
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
+@throttle_classes([_MarketingPublicThrottle])
 def enquete_publique(request, token):
     """Récupère les questions VISIBLES d'une enquête via son lien public
     (XMKT27). Jeton invalide/enquête inactive → 404 (aucune fuite
@@ -5523,6 +5546,7 @@ def enquete_publique(request, token):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@throttle_classes([_MarketingPublicThrottle])
 def enquete_soumettre(request, token):
     """Soumission publique d'une enquête (XMKT27), aucune authentification.
 
@@ -5557,6 +5581,7 @@ def enquete_soumettre(request, token):
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
+@throttle_classes([_MarketingPublicThrottle])
 def enquete_certificat_pdf(request, reponse_id):
     """ZMKT10 — téléchargement du certificat PDF (répondant), 404 si non
     certifié/échoué (aucune fuite d'existence)."""

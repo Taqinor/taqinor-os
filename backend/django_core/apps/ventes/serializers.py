@@ -131,8 +131,21 @@ class DevisSerializer(serializers.ModelSerializer):
     chantier = serializers.SerializerMethodField()
 
     def get_chantier(self, obj):
-        from apps.installations.selectors import installation_for_devis
-        inst = installation_for_devis(obj)
+        # N+1 réel corrigé (YOPSB13) : ``installation_for_devis`` exécute une
+        # requête PAR devis (Installation.objects.filter(devis=devis).first())
+        # — flagrant sur la liste. ``DevisViewSet.queryset`` précharge
+        # désormais la relation inverse ``installations`` (FK
+        # Installation.devis, related_name='installations' — string-FK
+        # cross-app, jamais d'import de apps.installations.models ici) ; on
+        # réutilise ce cache prefetch au lieu de rappeler le sélecteur, qui
+        # reste la voie d'accès pour un usage hors liste (fiche détail unique).
+        installations = getattr(obj, '_prefetched_objects_cache', {}).get(
+            'installations')
+        if installations is not None:
+            inst = installations[0] if installations else None
+        else:
+            from apps.installations.selectors import installation_for_devis
+            inst = installation_for_devis(obj)
         if inst is None:
             return None
         return {'id': inst.id, 'reference': inst.reference,
@@ -153,6 +166,9 @@ class DevisSerializer(serializers.ModelSerializer):
         # related_name='factures' depuis Facture.devis (FK). Triées par référence
         # pour un rendu stable. Référence + statut (+ libellé du statut) suffisent
         # pour une chip cliquable ; aucun montant client-sensible ajouté ici.
+        # YOPSB13 — ``.order_by()`` sur le manager cloné IGNORE le cache
+        # prefetch ('factures' préchargé par DevisViewSet) et ré-exécute une
+        # requête par ligne (N+1). On trie en Python la liste déjà en cache.
         return [
             {
                 'id': f.id,
@@ -161,7 +177,7 @@ class DevisSerializer(serializers.ModelSerializer):
                 'statut_display': f.get_statut_display(),
                 'type_facture': f.type_facture,
             }
-            for f in obj.factures.all().order_by('reference')
+            for f in sorted(obj.factures.all(), key=lambda f: f.reference)
         ]
 
     def get_bon_commande_etat(self, obj):
@@ -274,15 +290,29 @@ class DevisSerializer(serializers.ModelSerializer):
     deja_consulte = serializers.SerializerMethodField()
 
     def _active_share_link(self, obj):
-        """Renvoie le ShareLink le plus récent lié à ce devis (valide en premier)."""
+        """Renvoie le ShareLink le plus récent lié à ce devis (valide en premier).
+
+        YOPSB13 — réutilise le cache prefetch de DevisViewSet.queryset
+        ('share_links') au lieu de ``obj.share_links.filter(...)`` : un
+        ``.filter()`` sur un related manager ne réutilise JAMAIS le cache
+        prefetch (il ré-exécute une requête, et ``.first()``/``.exists()``
+        en ré-exécutent chacun une autre) — appelé 4× par ligne
+        (nombre_vues/derniere_consultation/deja_consulte/engagement) c'était
+        un N+1. Résultat mémoïsé sur l'instance pour ne calculer qu'une fois."""
+        if hasattr(obj, '_active_share_link_cache'):
+            return obj._active_share_link_cache
         from django.utils import timezone as tz
-        links = obj.share_links.filter(devis=obj).order_by(
-            # Valides d'abord, puis par date de création décroissante.
-            '-expires_at', '-created_at'
-        )
+        cached = getattr(obj, '_prefetched_objects_cache', {}).get('share_links')
+        if cached is not None:
+            links = [lk for lk in cached if lk.devis_id == obj.id]
+        else:
+            links = list(obj.share_links.filter(devis=obj))
+        links.sort(key=lambda lk: (lk.expires_at, lk.created_at), reverse=True)
         now = tz.now()
         valid = [lk for lk in links if lk.expires_at > now]
-        return (valid[0] if valid else links.first()) if links.exists() else None
+        result = valid[0] if valid else (links[0] if links else None)
+        obj._active_share_link_cache = result
+        return result
 
     def get_nombre_vues(self, obj):
         link = self._active_share_link(obj)

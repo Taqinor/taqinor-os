@@ -42,10 +42,15 @@ class _Base(TestCase):
             self.company, services.Journal.Type.OPERATIONS_DIVERSES)
         compte_tva_collectee = services.get_compte(self.company, '4455')
         compte_ventes = services.get_compte(self.company, '7121')
-        # Février : TVA collectée de 200 (vente 1000 HT + 200 TVA).
+        compte_clients = services.get_compte(self.company, '3421')
+        # Février : TVA collectée de 200 (vente 1000 HT + 200 TVA), soldée
+        # par le débit du compte clients (créance TTC 1200) pour équilibrer
+        # l'écriture.
         services.creer_ecriture_od(
             self.company, '2026-02-15', 'Vente février',
             [
+                {'compte': compte_clients, 'debit': Decimal('1200'),
+                 'credit': Decimal('0')},
                 {'compte': compte_ventes, 'debit': Decimal('0'),
                  'credit': Decimal('1000')},
                 {'compte': compte_tva_collectee, 'debit': Decimal('0'),
@@ -55,6 +60,8 @@ class _Base(TestCase):
         services.creer_ecriture_od(
             self.company, '2026-03-15', 'Vente mars',
             [
+                {'compte': compte_clients, 'debit': Decimal('2400'),
+                 'credit': Decimal('0')},
                 {'compte': compte_ventes, 'debit': Decimal('0'),
                  'credit': Decimal('2000')},
                 {'compte': compte_tva_collectee, 'debit': Decimal('0'),

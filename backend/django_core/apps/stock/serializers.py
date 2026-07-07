@@ -155,11 +155,14 @@ class ProduitSerializer(serializers.ModelSerializer):
     def get_fields(self):
         fields = super().get_fields()
         request = self.context.get('request')
-        if request and hasattr(request.user, 'company_id') and request.user.company_id:
-            company = request.user.company
+        # Un request brut (WSGIRequest, ex. APIRequestFactory sans DRF) n'a pas
+        # d'attribut .user — on le lit défensivement comme plus bas (ligne 168).
+        _u = getattr(request, 'user', None)
+        if _u is not None and getattr(_u, 'company_id', None):
+            company = _u.company
             fields['categorie_id'].queryset = Categorie.objects.filter(company=company)
             fields['fournisseur_id'].queryset = Fournisseur.objects.filter(company=company)
-        elif request and request.user.is_superuser:
+        elif _u is not None and getattr(_u, 'is_superuser', False):
             fields['categorie_id'].queryset = Categorie.objects.all()
             fields['fournisseur_id'].queryset = Fournisseur.objects.all()
         # Feature D — le prix d'achat (et donc la marge) ne s'expose qu'aux rôles
@@ -359,9 +362,16 @@ class ProduitSerializer(serializers.ModelSerializer):
 
     def get_marge_pct(self, obj):
         """Marge brute en % depuis prix_vente/prix_achat (None si indéfinie)."""
-        from decimal import Decimal, ROUND_HALF_UP
-        vente = obj.prix_vente or Decimal('0')
-        achat = obj.prix_achat or Decimal('0')
+        from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+        # ``prix_vente``/``prix_achat`` peuvent arriver en int OU float selon le
+        # chemin d'écriture (création directe sans refresh_from_db, auto-fill,
+        # import) : on force un ``Decimal`` AVANT toute arithmétique, sinon un
+        # ``float * Decimal`` lève ``TypeError`` (YHARD4).
+        try:
+            vente = Decimal(str(obj.prix_vente)) if obj.prix_vente else Decimal('0')
+            achat = Decimal(str(obj.prix_achat)) if obj.prix_achat else Decimal('0')
+        except (InvalidOperation, TypeError, ValueError):
+            return None
         if vente <= 0 or achat <= 0:
             return None
         pct = (vente - achat) / vente * Decimal('100')
@@ -410,24 +420,31 @@ class ProduitSerializer(serializers.ModelSerializer):
         rows = self._breakdown_map().get(obj.id, [])
         return [r for r in rows if r['quantite']]
 
-    def get_quantite_en_commande(self, obj):
-        # ZPUR10 — évite le calcul hors contexte requête (pas de company
-        # connue) ; réutilise le sélecteur YPROC9 (jamais de logique
-        # dupliquée).
+    def _en_commande_map(self):
+        """YOPSB13 — map {produit_id: [sources en-commande]} calculée UNE
+        fois par sérialisation (évite le N+1 ZPUR10 sur la liste produits :
+        `get_quantite_en_commande`/`get_bcf_sources_en_commande` appelaient
+        auparavant un sélecteur PAR produit). Mémoïsée sur l'instance, même
+        pattern que `_reserved_map`/`_breakdown_map` ci-dessus."""
+        cache = getattr(self, '_en_commande_map_cache', None)
+        if cache is not None:
+            return cache
+        from .selectors import bcf_sources_en_commande_map
         request = self.context.get('request')
         company = getattr(getattr(request, 'user', None), 'company', None)
-        if company is None:
-            return 0
-        from .selectors import quantite_en_commande_produit
-        return quantite_en_commande_produit(company, obj.id)
+        cache = bcf_sources_en_commande_map(company) if company is not None \
+            else {}
+        self._en_commande_map_cache = cache
+        return cache
+
+    def get_quantite_en_commande(self, obj):
+        # ZPUR10 — réutilise la même map que `bcf_sources_en_commande`
+        # (jamais de logique dupliquée, jamais de requête par produit).
+        sources = self._en_commande_map().get(obj.id, [])
+        return sum(s['quantite_restante'] for s in sources)
 
     def get_bcf_sources_en_commande(self, obj):
-        request = self.context.get('request')
-        company = getattr(getattr(request, 'user', None), 'company', None)
-        if company is None:
-            return []
-        from .selectors import bcf_sources_en_commande_produit
-        return bcf_sources_en_commande_produit(company, obj.id)
+        return self._en_commande_map().get(obj.id, [])
 
     def get_nb_mouvements(self, obj):
         return getattr(obj, 'nb_mouvements', None)

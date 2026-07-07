@@ -429,6 +429,41 @@ def bcf_sources_en_commande_produit(company, produit_id):
     return out
 
 
+def bcf_sources_en_commande_map(company):
+    """YOPSB13 — variante « toute la société en une requête » de
+    :func:`bcf_sources_en_commande_produit`, pour éviter le N+1 sur la LISTE
+    produits (``ProduitSerializer.get_bcf_sources_en_commande``/
+    ``get_quantite_en_commande`` appelés une fois par ligne). Renvoie
+    ``{produit_id: [sources...]}`` — même forme de dict par source que la
+    version unitaire, résultat identique (mêmes filtres BROUILLON/ENVOYE,
+    mêmes exclusions ANNULE/RECU/restant<=0). INTERNE, lecture seule."""
+    from .models import BonCommandeFournisseur, LigneBonCommandeFournisseur
+
+    lignes = (LigneBonCommandeFournisseur.objects
+              .filter(
+                  bon_commande__company=company,
+                  bon_commande__statut__in=[
+                      BonCommandeFournisseur.Statut.BROUILLON,
+                      BonCommandeFournisseur.Statut.ENVOYE,
+                  ])
+              .select_related('bon_commande', 'bon_commande__fournisseur'))
+    out = {}
+    for ligne in lignes:
+        restant = max(ligne.quantite - ligne.quantite_recue, 0)
+        if restant <= 0:
+            continue
+        bc = ligne.bon_commande
+        out.setdefault(ligne.produit_id, []).append({
+            'bon_commande_id': bc.id,
+            'reference': bc.reference,
+            'fournisseur_nom': (
+                bc.fournisseur.nom if bc.fournisseur_id else None),
+            'quantite_restante': restant,
+            'date_livraison_prevue': bc.date_livraison_prevue,
+        })
+    return out
+
+
 def three_way_amounts(company, bc_id):
     """FG131 — Les trois montants HT du rapprochement 3 voies pour un BCF :
     commandé (BC) ↔ reçu (réception) ↔ facturé (facture fournisseur).

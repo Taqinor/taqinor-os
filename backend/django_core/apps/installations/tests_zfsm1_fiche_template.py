@@ -114,7 +114,8 @@ class TestFicheInterventionTemplateCRUD(TestCase):
         other = make_company()
         make_template(other, type_intervention='pose')
         r = self.api.get(f'{BASE}/fiche-intervention-templates/')
-        self.assertEqual(len(r.data), 1)
+        rows = r.data['results'] if isinstance(r.data, dict) else r.data
+        self.assertEqual(len(rows), 1)
 
 
 class TestFicheReleveMaterialisation(TestCase):
@@ -164,8 +165,13 @@ class TestFicheReleveMaterialisation(TestCase):
 
     def test_missing_required_champ_blocks_terminee(self):
         field_services.ensure_fiche_releve(self.interv)
-        # Satisfy F5/F8 gates so only ZFSM1 gate is exercised: no prep lines,
-        # no required shots configured for this company (default seed absent).
+        # Satisfy F5/F8 gates so only ZFSM1 gate is exercised: confirm the
+        # (empty) preparation — F5 blocks ANY transition past "À préparer"
+        # until "Tout est chargé" is confirmed, even with no prep lines — and
+        # no required shots are configured for this company (default seed
+        # absent).
+        prep = field_services.ensure_preparation(self.interv)
+        field_services.confirm_charge(prep, self.user)
         reason = field_services.transition_block_reason(
             self.interv, Intervention.Statut.TERMINEE)
         self.assertIsNotNone(reason)
@@ -176,6 +182,8 @@ class TestFicheReleveMaterialisation(TestCase):
         val = releve.valeurs.get(champ=self.champ_obligatoire)
         val.valeur = '230'
         val.save(update_fields=['valeur'])
+        prep = field_services.ensure_preparation(self.interv)
+        field_services.confirm_charge(prep, self.user)
         reason = field_services.transition_block_reason(
             self.interv, Intervention.Statut.TERMINEE)
         self.assertIsNone(reason)
@@ -189,3 +197,42 @@ class TestFicheReleveMaterialisation(TestCase):
         releve2 = field_services.ensure_fiche_releve(self.interv)
         val2 = releve2.valeurs.get(champ=self.champ_obligatoire)
         self.assertEqual(val2.valeur, '230')
+
+
+class TestFicheReleveResponsablePermissions(TestCase):
+    """Régression : les @action `fiche` (lecture) et `renseigner_fiche`
+    (écriture) doivent respecter leur permission déclarée (IsAnyRole /
+    IsResponsableOrAdmin). Un bug de `get_permissions()` forçait
+    silencieusement IsAdminRole() pour toute action non listée → un rôle
+    `responsable` (non-admin) recevait 403. Ces tests exercent un utilisateur
+    `responsable` (les autres classes utilisent le défaut `admin`, ce qui
+    masquait le bug)."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company, role='responsable')
+        self.api = auth(self.user)
+        self.inst = make_installation(self.company)
+        self.template = make_template(self.company, type_intervention='controle')
+        self.champ = FicheInterventionChamp.objects.create(
+            company=self.company, template=self.template,
+            cle='tension_dc', libelle='Tension DC', type_champ='mesure',
+            unite='V', ordre=1, obligatoire=True)
+        self.interv = Intervention.objects.create(
+            company=self.company, installation=self.inst,
+            type_intervention='controle', created_by=self.user)
+
+    def test_responsable_can_read_fiche(self):
+        r = self.api.get(f'{BASE}/interventions/{self.interv.id}/fiche/')
+        self.assertEqual(r.status_code, 200, r.content)
+
+    def test_responsable_can_renseigner_fiche(self):
+        r0 = self.api.get(f'{BASE}/interventions/{self.interv.id}/fiche/')
+        self.assertEqual(r0.status_code, 200, r0.content)
+        valeur_id = next(
+            v['id'] for v in r0.data['valeurs']
+            if v['champ_cle'] == 'tension_dc')
+        r = self.api.post(
+            f'{BASE}/interventions/{self.interv.id}/renseigner-fiche/',
+            {'valeur_id': valeur_id, 'valeur': '235.4'}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)

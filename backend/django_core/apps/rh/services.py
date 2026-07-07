@@ -2620,6 +2620,17 @@ def planifier_appreciations_pour_societe(company, *, aujourd_hui=None,
 
     a_creer = []
     nb_deja = 0
+    # Un employé qui franchit PLUSIEURS jalons du même plan dans le même
+    # passage (ex. 3 ET 12 mois à la fois) obtient UNE SEULE
+    # ``EvaluationEmploye`` par (campagne, employe) — contrainte unique,
+    # toutes les marques de jalon coexistent dans ``synthese``
+    # (test_deux_jalons_franchis_meme_campagne_pas_de_doublon_ligne). Sans ce
+    # suivi, chaque jalon franchi comptait pour +1 dans ``nb_a_creer``/
+    # ``a_creer`` même quand il retombait sur la MÊME ligne déjà comptée —
+    # bug réel : un employé embauché il y a exactement 12 mois avec les
+    # jalons [3, 12, 24] franchit 3 ET 12 à la fois, gonflant nb_a_creer à 2
+    # pour une seule évaluation réellement (à créer/déjà créée).
+    lignes_comptees = set()  # {(campagne_id ou None, employe_id)}
 
     for plan in plans:
         jalons = plan.mois_apres_embauche or []
@@ -2674,13 +2685,28 @@ def planifier_appreciations_pour_societe(company, *, aujourd_hui=None,
                         evaluation.synthese = (
                             f'{evaluation.synthese} {marque}'.strip())
                         evaluation.save(update_fields=['synthese'])
-                    a_creer.append(evaluation)
+                    ligne_key = (campagne.id, dossier.pk)
+                    if ligne_key not in lignes_comptees:
+                        lignes_comptees.add(ligne_key)
+                        a_creer.append(evaluation)
                 else:
-                    a_creer.append({
-                        'employe_id': dossier.pk,
-                        'jalon': jalon,
-                        'plan_id': plan.pk,
-                    })
+                    # Dry-run : la clé de regroupement DOIT rester purement
+                    # en lecture (aucune écriture en dry-run — contrat du
+                    # docstring). ``campagne_cible`` s'il est posé, sinon un
+                    # marqueur stable par année (même campagne annuelle par
+                    # défaut qu'``apply`` résoudrait, sans la créer ici).
+                    campagne_key = (
+                        plan.campagne_cible_id
+                        if plan.campagne_cible_id
+                        else f'defaut-{aujourd_hui.year}')
+                    ligne_key = (campagne_key, dossier.pk)
+                    if ligne_key not in lignes_comptees:
+                        lignes_comptees.add(ligne_key)
+                        a_creer.append({
+                            'employe_id': dossier.pk,
+                            'jalon': jalon,
+                            'plan_id': plan.pk,
+                        })
 
     return {
         'a_creer': a_creer,

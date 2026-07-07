@@ -28,6 +28,9 @@ from __future__ import annotations
 
 CATEGORIES = {
     'Ventes', 'Finance', 'RH', 'Stock', 'Services', 'Marketing', 'Technique',
+    # Regroupement commercial transverse (appels d'offres, marketing, portail
+    # client) — modules ao/marketing/portail.
+    'Commercial',
 }
 
 

@@ -34,13 +34,15 @@ def make_user(company, username, role='admin'):
 
 
 def make_user_with_role(company, username, permissions):
-    # Ajoute toujours une permission d'écriture (`stock_modifier`) pour que le
-    # rôle passe ``is_responsable`` (ERR4 : un rôle SANS permission
-    # d'écriture/gestion échoue `IsResponsableOrAdmin`, indépendamment de
-    # `cout_non_qualite_voir` qui est testé séparément).
+    # Ajoute toujours `qhse_voir` (accès de base aux endpoints QHSE — les
+    # montants restent masqués/démasqués séparément par
+    # `cout_non_qualite_voir`, testé ici) + une permission d'écriture
+    # (`stock_modifier`) pour que le rôle passe ``is_responsable`` (ERR4 :
+    # un rôle SANS permission d'écriture/gestion échoue
+    # `IsResponsableOrAdmin`, indépendamment de `cout_non_qualite_voir`).
     role = Role.objects.create(
         company=company, nom=f'role-{username}',
-        permissions=list(permissions) + ['stock_modifier'])
+        permissions=list(permissions) + ['qhse_voir', 'stock_modifier'])
     return User.objects.create_user(
         username=username, password='x', company=company, role=role)
 

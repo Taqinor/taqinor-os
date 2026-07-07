@@ -1,5 +1,5 @@
 from django.db import transaction  # noqa: F401
-from django.db.models import ProtectedError, Count, Min, Max  # noqa: F401
+from django.db.models import ProtectedError, Count, Min, Max, Prefetch  # noqa: F401
 from django.http import HttpResponse  # noqa: F401
 from rest_framework import viewsets, filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
@@ -51,8 +51,19 @@ PRODUIT_CREATE_PERMISSION = HasPermissionAndRole(
 
 
 class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
-    queryset = Produit.objects.select_related(
-        'categorie', 'fournisseur'
+    # YOPSB13 — le FournisseurSerializer imbriqué (ProduitSerializer.fournisseur)
+    # lit contacts.all() + nb_produits/nb_bons_commande (repli .count()) PAR
+    # ligne : N+1. On précharge le fournisseur avec les mêmes annotations que
+    # FournisseurViewSet + ses contacts → nombre de requêtes fixe quel que soit
+    # le nombre de produits.
+    queryset = Produit.objects.select_related('categorie').prefetch_related(
+        Prefetch(
+            'fournisseur',
+            queryset=Fournisseur.objects.annotate(
+                nb_produits_annot=Count('produits', distinct=True),
+                nb_bons_commande_annot=Count('bons_commande', distinct=True),
+            ).prefetch_related('contacts'),
+        ),
     ).all()
     serializer_class = ProduitSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
