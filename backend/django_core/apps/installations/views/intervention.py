@@ -1645,6 +1645,11 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         une seconde. Passe EXCLUSIVEMENT par apps.ventes.services (jamais
         d'import direct des models ventes — règle de modularité)."""
         interv = self.get_object()
+        # ZFSM4 — capturer l'état AVANT l'appel : le service pose
+        # ``intervention.facture_id`` en place sur cet objet, donc comparer
+        # après renverrait TOUJOURS deja_existant=True (jamais 201 à la
+        # première création). On mémorise le facture_id préexistant.
+        prev_facture_id = interv.facture_id
         from apps.ventes.services import generer_facture_intervention
         try:
             facture = generer_facture_intervention(
@@ -1652,7 +1657,7 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
-        deja_existant = (interv.facture_id == facture.id)
+        deja_existant = (prev_facture_id == facture.id)
         return Response({
             'intervention': interv.id, 'facture_id': facture.id,
             'facture_reference': facture.reference,
@@ -1669,6 +1674,9 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         un `devis_upsell_id`, le renvoie sans en créer un second. DISTINCT de
         `generer-devis-reserve` (XFSM18, réserve → devis de réparation)."""
         interv = self.get_object()
+        # ZFSM5 — même correctif que generer_facture : mémoriser l'id AVANT
+        # (le service pose ``devis_upsell_id`` en place → sinon toujours 200).
+        prev_devis_id = interv.devis_upsell_id
         from apps.ventes.services import create_devis_upsell_from_intervention
         try:
             devis = create_devis_upsell_from_intervention(
@@ -1676,7 +1684,7 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
-        deja_existant = (interv.devis_upsell_id == devis.id)
+        deja_existant = (prev_devis_id == devis.id)
         return Response({
             'intervention': interv.id, 'devis_id': devis.id,
             'devis_reference': devis.reference,

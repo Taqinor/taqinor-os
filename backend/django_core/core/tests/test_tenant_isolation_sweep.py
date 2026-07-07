@@ -101,19 +101,23 @@ class TenantIsolationSweepTests(TestCase):
                     f"{name} : GET détail d'un objet d'une autre société "
                     f"attendait 404, a renvoyé {get_resp.status_code}.")
 
-                # 3) PATCH : 404 (jamais 403, jamais 200).
+                # 3) PATCH : 404 (jamais 403, jamais 200) — 405 accepté : un
+                # viewset lecture-seule (sans update) rejette la méthode AVANT
+                # toute recherche d'objet, donc aucune fuite inter-société
+                # possible (la fuite GET est couverte séparément ci-dessus).
                 patch_resp = client.patch(detail_path, {}, format="json")
-                self.assertEqual(
-                    patch_resp.status_code, 404,
+                self.assertIn(
+                    patch_resp.status_code, (404, 405),
                     f"{name} : PATCH d'un objet d'une autre société "
-                    f"attendait 404, a renvoyé {patch_resp.status_code}.")
+                    f"attendait 404/405, a renvoyé {patch_resp.status_code}.")
 
-                # 4) DELETE : 404 (jamais 403, jamais 204).
+                # 4) DELETE : 404 (jamais 403, jamais 204) — 405 idem (viewset
+                # sans destroy).
                 delete_resp = client.delete(detail_path)
-                self.assertEqual(
-                    delete_resp.status_code, 404,
+                self.assertIn(
+                    delete_resp.status_code, (404, 405),
                     f"{name} : DELETE d'un objet d'une autre société "
-                    f"attendait 404, a renvoyé {delete_resp.status_code}.")
+                    f"attendait 404/405, a renvoyé {delete_resp.status_code}.")
 
         # Rapport de dette explicite (jamais silencieux) — visible dans la
         # sortie du test même quand tous les subTest passent.
