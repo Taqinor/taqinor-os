@@ -57,8 +57,12 @@ class TenantViewSetEntry:
 
     @property
     def model(self):
-        return getattr(self.view_class, "queryset", None) and \
-            self.view_class.queryset.model
+        # NB : ne PAS utiliser ``qs and qs.model`` — évaluer la vérité d'un
+        # QuerySet exécute une requête ; sur une base de test vide il renvoie
+        # False et court-circuite vers le QuerySet vide (au lieu de .model),
+        # ce qui faisait sauter TOUS les viewsets du balayage (exercised==0).
+        qs = getattr(self.view_class, "queryset", None)
+        return qs.model if qs is not None else None
 
     def detail_path(self, pk) -> str:
         return f"{self.list_path.rstrip('/')}/{pk}/"

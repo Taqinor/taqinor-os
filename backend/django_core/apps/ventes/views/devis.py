@@ -57,7 +57,11 @@ class DevisViewSet(viewsets.ModelViewSet):
         'client', 'created_by', 'lead', 'bon_commande', 'signature',
         'superseded_by', 'version_parent',
     ).prefetch_related(
-        'lignes', 'factures', 'share_links',
+        # YOPSB13 — paiements/avoirs imbriqués préchargés : DevisSerializer.
+        # get_solde (via solde_devis) itère f.paiements/f.avoirs PAR facture ;
+        # sans ces prefetch c'était un N+1 imbriqué sur la liste.
+        'lignes', 'factures', 'factures__paiements', 'factures__avoirs',
+        'share_links',
         # YOPSB13 — évite le N+1 de DevisSerializer.get_chantier (avant :
         # une requête Installation par devis via le sélecteur
         # installations.selectors.installation_for_devis appelé par ligne de

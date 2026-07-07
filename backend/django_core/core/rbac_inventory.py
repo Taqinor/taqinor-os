@@ -65,6 +65,30 @@ PUBLIC_ALLOWLIST_PREFIXES = (
     "api/django/compta/reponses-enquete/",    # certificat PDF d'une réponse d'enquête
     "api/django/compta/evenements-marketing/",  # inscription publique à un événement
     "api/django/rh/carrieres",                # page carrières publique (flag-gated)
+    # Auth publiques (JWT obtention/refresh, inscription société onboarding) :
+    "api/django/auth/token",                  # obtention/refresh/verify JWT (auth.urls)
+    "api/django/auth/register-company",       # inscription société (onboarding)
+    # Sondes/metrics montées sous core/ (déplacées depuis /health) :
+    "api/django/core/health",                 # sondes liveness/readiness
+    "api/django/core/metrics",                # métriques (probe monitoring)
+    # Portail client compta tokenisé (relevé/factures via jeton, sans login) :
+    "api/django/compta/portail",
+    # Liens GED tokenisés (dépôt/signature électronique, sans login) :
+    "api/django/ged/depot",
+    "api/django/ged/signataire",
+    "api/django/ged/signature",
+    # Proposition de devis tokenisée (client, sans login — cf. RÈGLE #4 /proposal) :
+    "api/django/ventes/proposal",
+    # Marketing PUBLIC (ODX10 — nouveau préfixe /marketing/, miroir de /compta/) :
+    "api/django/marketing/webhooks/",         # webhooks entrants Brevo/SMS-STOP
+    "api/django/marketing/desinscription/",   # désinscription tokenisée (opt-out)
+    "api/django/marketing/double-optin/",     # confirmation double opt-in tokenisée
+    "api/django/marketing/r/",                # redirection de lien tracké tokenisée
+    "api/django/marketing/enquetes-publiques/",  # enquête/NPS publique tokenisée
+    "api/django/marketing/reponses-enquete/",  # certificat PDF d'une réponse d'enquête
+    "api/django/marketing/evenements-marketing/",  # inscription publique à un événement
+    # Kiosque pointage : le motif routeur capture une ancre ^ dans le chemin :
+    "api/django/rh/^pointages/kiosque",
     "api/schema",                             # OpenAPI (si activé plus tard)
     "api/docs",
     "api/redoc",

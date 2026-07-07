@@ -80,8 +80,13 @@ class NotifyLeadCallbackRequestedTests(TestCase):
             company=self.company, nom='Test', telephone='+212611223344',
             owner=self.owner, contact_preference=Lead.ContactPreference.PHONE_OK)
         notify_lead_callback_requested(lead)
-        self.assertEqual(Notification.objects.filter(recipient=self.owner).count(), 1)
-        notif = Notification.objects.get(recipient=self.owner)
+        # QW4 — un lead créé AVEC owner déclenche aussi la notification générique
+        # LEAD_ASSIGNED (apps.notifications.signals) ; on ne compte donc QUE la
+        # notification produite par la fonction testée (son event_type dédié).
+        self.assertEqual(Notification.objects.filter(
+            recipient=self.owner, event_type='lead_callback_requested').count(), 1)
+        notif = Notification.objects.get(
+            recipient=self.owner, event_type='lead_callback_requested')
         self.assertIn('Rappeler', notif.title)
 
     def test_whatsapp_only_lead_never_notified(self):
@@ -89,7 +94,8 @@ class NotifyLeadCallbackRequestedTests(TestCase):
             company=self.company, nom='Test', telephone='+212611223355',
             owner=self.owner, contact_preference=Lead.ContactPreference.WHATSAPP_ONLY)
         notify_lead_callback_requested(lead)
-        self.assertEqual(Notification.objects.filter(recipient=self.owner).count(), 0)
+        self.assertEqual(Notification.objects.filter(
+            recipient=self.owner, event_type='lead_callback_requested').count(), 0)
 
     def test_idempotent_never_notifies_twice(self):
         lead = Lead.objects.create(
@@ -97,14 +103,16 @@ class NotifyLeadCallbackRequestedTests(TestCase):
             owner=self.owner, contact_preference=Lead.ContactPreference.PHONE_OK)
         notify_lead_callback_requested(lead)
         notify_lead_callback_requested(lead)
-        self.assertEqual(Notification.objects.filter(recipient=self.owner).count(), 1)
+        self.assertEqual(Notification.objects.filter(
+            recipient=self.owner, event_type='lead_callback_requested').count(), 1)
 
     def test_no_preference_never_notified(self):
         lead = Lead.objects.create(
             company=self.company, nom='Test', telephone='+212611223377',
             owner=self.owner)
         notify_lead_callback_requested(lead)
-        self.assertEqual(Notification.objects.filter(recipient=self.owner).count(), 0)
+        self.assertEqual(Notification.objects.filter(
+            recipient=self.owner, event_type='lead_callback_requested').count(), 0)
 
 
 class LeadsCallbackSlaDepasseSelectorTests(TestCase):

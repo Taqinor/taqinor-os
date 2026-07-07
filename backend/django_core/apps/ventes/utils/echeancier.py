@@ -68,10 +68,16 @@ def schedule_for_devis(devis):
 
 
 def factures_actives(devis):
-    """Factures de tranche non annulées du devis, dans l'ordre de création."""
-    return devis.factures.exclude(
-        statut=Facture.Statut.ANNULEE
-    ).order_by('id')
+    """Factures de tranche non annulées du devis, dans l'ordre de création.
+
+    YOPSB13 — filtre en Python la relation ``factures`` PRÉCHARGÉE (prefetch de
+    DevisViewSet) au lieu de ``.exclude().order_by()`` : ce dernier clone le
+    manager, IGNORE le cache prefetch et ré-exécute une requête par appel (N+1
+    en liste), en perdant au passage les prefetch imbriqués paiements/avoirs.
+    Renvoie une liste — les 3 appelants la consomment déjà en liste/itération.
+    Hors liste (cache absent) : un seul SELECT, comportement inchangé."""
+    factures = sorted(devis.factures.all(), key=lambda f: f.id)
+    return [f for f in factures if f.statut != Facture.Statut.ANNULEE]
 
 
 def blended_tva_pct(devis) -> Decimal:
@@ -222,5 +228,5 @@ def solde_devis(devis):
         'avoirs': _q(avoirs),
         'restant': _q(restant),
         'tranches_total': len(schedule_for_devis(devis)),
-        'tranches_facturees': actives.count(),
+        'tranches_facturees': len(actives),
     }

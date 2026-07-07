@@ -385,7 +385,16 @@ class LeadSerializer(serializers.ModelSerializer):
         # dans le contexte (``chantier_map``), pour éviter une requête
         # Installation PAR LIGNE (N+1). Sans contexte, on retombe sur l'appel
         # individuel — comportement inchangé.
-        rows = list(obj.devis.order_by('-date_creation'))
+        # YOPSB13/perf_n1 — ``obj.devis.order_by(...)`` clone le manager et
+        # IGNORE le cache prefetch (``prefetch_related('devis')`` posé par
+        # ``LeadViewSet``), ré-exécutant une requête PAR ligne (N+1). On lit le
+        # cache via ``.all()`` puis on trie en Python (ordre identique), sans
+        # importer le modèle ``ventes`` (frontière inter-app respectée).
+        rows = sorted(
+            obj.devis.all(),
+            key=lambda d: (d.date_creation is not None, d.date_creation),
+            reverse=True,
+        )
         chantier_map = self.context.get('chantier_map')
         if chantier_map is not None:
             chantiers = {d.id: chantier_map.get(d.id) for d in rows}

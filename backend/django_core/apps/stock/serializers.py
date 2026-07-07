@@ -155,11 +155,14 @@ class ProduitSerializer(serializers.ModelSerializer):
     def get_fields(self):
         fields = super().get_fields()
         request = self.context.get('request')
-        if request and hasattr(request.user, 'company_id') and request.user.company_id:
-            company = request.user.company
+        # Un request brut (WSGIRequest, ex. APIRequestFactory sans DRF) n'a pas
+        # d'attribut .user — on le lit défensivement comme plus bas (ligne 168).
+        _u = getattr(request, 'user', None)
+        if _u is not None and getattr(_u, 'company_id', None):
+            company = _u.company
             fields['categorie_id'].queryset = Categorie.objects.filter(company=company)
             fields['fournisseur_id'].queryset = Fournisseur.objects.filter(company=company)
-        elif request and request.user.is_superuser:
+        elif _u is not None and getattr(_u, 'is_superuser', False):
             fields['categorie_id'].queryset = Categorie.objects.all()
             fields['fournisseur_id'].queryset = Fournisseur.objects.all()
         # Feature D — le prix d'achat (et donc la marge) ne s'expose qu'aux rôles

@@ -116,7 +116,10 @@ class SpeedToLeadNotificationReachesAssignedOwnerTests(TestCase):
         lead = Lead.objects.create(
             company=self.company, nom='Prospect QW6', owner=assigned)
         notify_new_lead(lead)
-        self.assertEqual(Notification.objects.filter(recipient=owner).count(), 1)
+        # Un lead créé AVEC owner déclenche aussi LEAD_ASSIGNED (signals) : on ne
+        # compte que la notification produite par notify_new_lead (event dédié).
+        self.assertEqual(Notification.objects.filter(
+            recipient=owner, event_type='lead_new').count(), 1)
 
     def test_no_commercial_no_default_never_crashes(self):
         CompanyProfile.objects.create(company=self.company)

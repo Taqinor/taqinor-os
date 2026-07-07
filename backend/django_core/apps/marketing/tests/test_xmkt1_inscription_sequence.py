@@ -147,7 +147,14 @@ class InscriptionSequenceTests(TestCase):
     def test_etape_executee_hors_integration_reste_planifiee_noop(self):
         seq = make_sequence(self.co)
         services.inscrire_lead_sequence(self.co, seq, lead_id=3)
-        executions = services.executer_etapes_dues(self.co)
+        # Épingle `maintenant` dans la fenêtre ouvrée (08h-20h UTC) : sinon
+        # l'étape WhatsApp J0 est rejetée « hors_fenetre » (silence nuit/fériés
+        # XMKT7) selon l'heure réelle où tourne la suite — la CI tourne à ~23h
+        # UTC. Ce test porte sur l'ABSENCE d'intégration WhatsApp/Brevo, pas sur
+        # la fenêtre de silence.
+        maintenant = timezone.now().replace(
+            hour=12, minute=0, second=0, microsecond=0)
+        executions = services.executer_etapes_dues(self.co, maintenant=maintenant)
         self.assertEqual(executions[0].resultat, 'planifie')
         self.assertEqual(executions[0].erreur, '')
 

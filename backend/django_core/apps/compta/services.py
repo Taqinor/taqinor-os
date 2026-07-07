@@ -4477,7 +4477,13 @@ def rembourser_rapport_note_frais(rapport, *, compte_tresorerie,
     ecriture = creer_ecriture(
         company, journal, date_rbt, libelle, lignes,
         reference=rapport.reference or f'RNF-{rapport.id}',
-        source_type='rapport_note_frais_remboursement', source_id=rapport.id,
+        # ZACC6 — ``source_type`` est un CharField(max_length=30) ; la valeur
+        # 'rapport_note_frais_remboursement' (32) dépassait la limite →
+        # DataError à l'insert (aucune écriture n'a jamais été persistée, donc
+        # zéro impact données). Valeur raccourcie (≤30) ; l'écriture est reliée
+        # au rapport par la FK ``ecriture_remboursement``, jamais relue par cette
+        # chaîne — aucun lecteur/préfixe ne l'utilise.
+        source_type='rapport_frais_remboursement', source_id=rapport.id,
         created_by=user, statut=EcritureComptable.Statut.VALIDEE,
     )
     for note in notes:
