@@ -8,16 +8,22 @@ ERR76 — a user-supplied custom acompte can never produce a negative "Matériel
         amount or an acompte over 100 %.
 """
 import re
+import tempfile
 import threading
 
-from django.test import TestCase
+from django.test import TransactionTestCase
 
 from apps.ventes.tests.test_quote_engine import (
     make_company, make_user, make_client, make_devis,
 )
 
 
-class TestPremiumEngineSecurity(TestCase):
+# WOW15 — TransactionTestCase (et non TestCase) : test_err17 lance un vrai
+# threading.Thread ; sous TestCase, le thread reçoit sa PROPRE connexion DB
+# (thread-local) HORS de la transaction atomique du test → il ne voit pas les
+# données non commitées et peut interbloquer/échouer. TransactionTestCase
+# commite les données, donc le thread les voit. Prérequis pour `--parallel`.
+class TestPremiumEngineSecurity(TransactionTestCase):
     def setUp(self):
         self.company = make_company()
         self.user = make_user(self.company)
@@ -96,10 +102,12 @@ class TestPremiumEngineSecurity(TestCase):
             return str(out)  # skip the real render — only hold the lock
 
         G._render_premium_pdf = slow
+        out_path = tempfile.NamedTemporaryFile(
+            suffix='.pdf', delete=False).name  # WOW15 — chemin unique (pas de /tmp fixe partagé entre workers --parallel)
         try:
             data = self._data()
             t = threading.Thread(
-                target=lambda: G.generate_premium_pdf(data, '/tmp/_lock_test.pdf'))
+                target=lambda: G.generate_premium_pdf(data, out_path))
             t.start()
             self.assertTrue(started.wait(3), 'render thread did not start')
             # The render thread holds _RENDER_LOCK; this (different) thread must

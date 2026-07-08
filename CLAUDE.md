@@ -46,8 +46,10 @@ repo yet, the rule still applies to any future integration.
 - Backend: Django at `backend/django_core` (apps: authentication, stock, crm, ventes,
   reporting, parametres, roles, contact) + FastAPI AI service at `backend/fastapi_ia`
   (OCR via Zhipu AI, natural-language SQL agent via LangChain). Frontend: React/Vite
-  at `frontend`. Run backend tests: `python manage.py test apps` (inside the
-  django_core container or with env pointing at a local Postgres). Full stack:
+  at `frontend`. Run backend tests locally via the canonical harness
+  `powershell -File scripts/test-backend.ps1 [-Modules "apps authentication core"]`
+  (docker `--keepdb --parallel`, single-writer guard so parallel lanes never
+  corrupt the shared `test_erp_db`; see WOW9). Full stack:
   `docker compose up` (nginx :80, Postgres+pgvector, Redis, MinIO, Celery, Django,
   FastAPI, frontend) — copy `.env.example` to `.env` first.
 - **Multi-tenant.** All business data is scoped by `authentication.Company`. New
@@ -169,11 +171,18 @@ run is the GitHub CI `backend-tests` gate: **~40 minutes, serialized, per merge*
 waiting for its CI before the next 5 pays 40 min × N — the slowest shape (the trap). Two levers:
 (a) **lane-draining** — one agent drains a WHOLE app lane (8-10 tasks), collapsing ~9 single-task
 waves into ~1; (b) **one merge per run** — accumulate every lane onto one branch and pay CI once.
-**MERGE FLOOR (founder rule): never merge to `main` with fewer than ~200 completed tasks on the
-branch.** Keep draining more app lanes in parallel onto the one branch until ≥200 done, THEN the
-single CI+merge+deploy. Merging a small handful (5, 13, 80…) is forbidden. The ONLY time you
-merge under 200 is when the buildable queue is genuinely exhausted (every remaining task
-blocked/gated/deferred or in a concurrent session's dirty apps). Reaching ≥200 means MANY lanes
+**MERGE FLOOR (founder rule — RECALIBRATED 2026-07-08 by WOW1-5).** The old ~200-task floor was
+the correct adaptation to a ~2h15 CI gate (measured; the "~40 min" above was aspirational): pay
+that 40-min-to-2h cost ONCE. WOW1-5 cut the gate toward **≤45 min** (`--parallel 4` on the 4-vCPU
+runner, coverage removed from the gate, MD5 test hasher, pip caching, a real slow/pdf tier), which
+FLIPS the economics — a cheap gate makes SMALL, SAFE batches beat one giant batch at equal
+throughput (the 200-floor is what produced the 113-unvalidated-failure multi-day recovery). NEW
+FLOOR **once the gate is ≤45 min:** land ONE drained lane-GROUP (≈40-80 tasks) or one full
+work-day of folded lanes, whichever comes first; never carry more than ~100 unmerged tasks. **If a
+batch's CI is red, FIX it within that batch before building the next on top — NEVER stack a second
+unvalidated batch on a red one.** KEEP unchanged: one sync-safe self-merge per batch, 0 approvals,
+`main` always revertable via `git revert`. (Until a run has MEASURED the gate ≤45 min, the ~200
+floor still applies.) Reaching ≥200 means MANY lanes
 (often 8 at the cap, refilled as they finish) across many apps in one run, AND second-round
 same-app lanes that first `git merge` the integration branch to inherit the round-1 migration
 chain (so migrations chain instead of colliding) — expected and correct, and one run legitimately
@@ -199,12 +208,16 @@ test DB is a ~13-min rebuild; reuse makes each fold ~2 min).
    first (worktree agents branch from `origin/main`) — so build a lane's available head tasks,
    land them, then the tail; or split the lane across runs.
 3. **Orchestrator reviews each lane + runs ONE combined local test after folding.** As each lane
-   returns, adversarially review its commits vs the safety rules + acceptance criteria. Fold all
-   file-disjoint lanes onto the one branch, then run a SINGLE combined test in the local prod
-   docker image over all new test modules (reuse ONE persistent `--keepdb` DB). This is the real
-   pre-merge feedback — it has caught a real bug in most runs (missing import, `clean()`-vs-`save()`,
-   name clash, hard-vs-soft-delete, a silently-swallowed effect). Fix, re-run only the affected
-   module, then the single gate. It is NOT the GitHub CI (which runs once at the very end).
+   returns, adversarially review its commits vs the safety rules + acceptance criteria, then — AT
+   FOLD TIME, per lane — run THAT lane's new/changed test modules via
+   `powershell -File scripts/test-backend.ps1 -Modules "<lane's test modules>"` (WOW11 — the
+   harness's single-writer guard means only one run touches the shared `--keepdb` DB at a time, so
+   parallel lanes never corrupt it). A lane whose modules are red is NOT fold-eligible: fix first.
+   Then, once all file-disjoint lanes are in, run the SINGLE combined test over all new modules.
+   This per-fold gate is exactly what batch-4 SKIPPED when it shipped 113 unvalidated failures; the
+   combined test is the real pre-merge feedback — it has caught a real bug in most runs (missing
+   import, `clean()`-vs-`save()`, name clash, hard-vs-soft-delete, a silently-swallowed effect).
+   Fix, re-run only the affected module, then the single gate. NOT the GitHub CI (once at the end).
 4. **Fold continuously into ONE `dev` branch + advance LOCAL `main`.** As each reviewed+tested
    task passes: fold its branch into the accumulating `dev`, tick it `[x]`, add one dated DONE LOG
    line, and **fast-forward LOCAL `main` to the `dev` tip — locally only: never push, never PR,

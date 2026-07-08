@@ -1,13 +1,30 @@
 version: 2
 updates:
-  - package-ecosystem: "pip"
-    directory: "/"
+  - package-ecosystem: "npm"
+    directory: "/frontend"
     schedule:
       interval: "weekly"
       day: "monday"
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5
     labels:
       - "chore"
+    groups:
+      npm-weekly:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "pip"
+    directory: "/backend/django_core"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "chore"
+    groups:
+      pip-weekly:
+        patterns:
+          - "*"
 
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -17,3 +34,7 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - "chore"
+    groups:
+      github-actions-weekly:
+        patterns:
+          - "*"
