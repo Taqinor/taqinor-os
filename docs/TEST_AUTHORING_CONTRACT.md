@@ -12,7 +12,7 @@ existing file, so it landed here instead. See report for details.
 Never hardcode reference literals like `reference='FAC-1'` or
 `'BUDGET-0000'` — 78 such landmines exist in the suite today, and
 `BUDGET-0000` collided in real CI under repeated test runs. Generate unique
-values from a shared `itertools.count()` or via `core/factories.py` instead.
+values from a shared `itertools.count()` or via `testkit/factories.py` instead.
 
 ## Pin wall-clock time
 
@@ -48,9 +48,9 @@ company caches first — an uncached first hit is a 1-query cold-start
 artifact that falsely reads as an N+1. See the 2026-07-07 stage_since /
 ContentType-prewarm fixes.
 
-## Use `core/factories.py`
+## Use `testkit/factories.py`
 
 Use the shared factories (`make_company`, `make_user`, …) in
-`core/factories.py` for common rows instead of hand-rolling a local helper.
+`testkit/factories.py` for common rows instead of hand-rolling a local helper.
 One place to fix when a model gains a required field — today there are 135
 hand-rolled helpers doing the same job.
