@@ -16,7 +16,12 @@ param(
   [int]$MaxAgeDays = 14
 )
 $ErrorActionPreference = 'Stop'
-$repo = (git -C $PSScriptRoot/.. rev-parse --show-toplevel)
+# Résout la racine du dépôt PRINCIPAL, même si ce script est lancé depuis une
+# copie dans un worktree (`--show-toplevel` renverrait alors la racine du
+# worktree, où `.claude/worktrees` n'existe pas → 0 worktree balayé). Le
+# git-common-dir est partagé par tous les worktrees et pointe le `.git` principal.
+$commonGit = (git -C $PSScriptRoot rev-parse --path-format=absolute --git-common-dir).Trim()
+$repo = Split-Path -Parent $commonGit
 Set-Location $repo
 $act = if ($WhatIf) { '[dry-run] ' } else { '' }
 Write-Host "== gc-workspace ($act mode) — repo $repo =="
@@ -36,7 +41,10 @@ foreach ($it in (Get-ChildItem "$repo/.claude/worktrees" -Directory -ErrorAction
   Write-Host "  ${act}REMOVE worktree $($it.Name)"
   if (-not $WhatIf) {
     git worktree remove --force $p 2>$null
-    if (Test-Path $p) { Remove-Item -Recurse -Force $p -ErrorAction SilentlyContinue }
+    # Repli sûr-jonction : `Remove-Item -Recurse` (PS 5.1) SUIT les jonctions
+    # (node_modules) et effacerait leur cible dans le dépôt principal. `rmdir /s`
+    # traite une jonction comme un fichier — supprime le lien, jamais la cible.
+    if (Test-Path $p) { cmd /c rmdir /s /q "$p" 2>$null }
     $removed++
   }
 }
@@ -45,10 +53,19 @@ git worktree prune
 # 2) Branches locales fusionnées dans main, motif agent-*/claude/* → suppr.
 #    Non-mergées → listées, jamais supprimées.
 $mergedDeleted = 0; $unmergedKept = @()
-$merged = (git branch --merged main --format '%(refname:short)') -split "`n" | Where-Object { $_ -and $_ -notin @('main','master') -and ($_ -match '^(agent-|claude/|wow-)') }
+# Une branche extraite dans un worktree ne peut PAS être supprimée (git refuse
+# et, sous $ErrorActionPreference='Stop', PS 5.1 promeut le stderr natif en
+# erreur terminale qui tuait la boucle). On les exclut donc en amont.
+$checkedOut = @(git worktree list --porcelain | Select-String '^branch refs/heads/' | ForEach-Object { $_.ToString().Substring(18) })
+$merged = (git branch --merged main --format '%(refname:short)') -split "`n" | Where-Object { $_ -and $_ -notin @('main','master') -and ($_ -match '^(agent-|claude/|wow-)') -and ($_ -notin $checkedOut) }
 foreach ($b in $merged) {
   Write-Host "  ${act}delete merged branch $b"
-  if (-not $WhatIf) { git branch -D $b 2>$null | Out-Null; $mergedDeleted++ }
+  if (-not $WhatIf) {
+    $eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    git branch -D $b 2>$null | Out-Null
+    $ErrorActionPreference = $eap
+    $mergedDeleted++
+  }
 }
 $unmergedKept = (git branch --no-merged main --format '%(refname:short)') -split "`n" | Where-Object { $_ -and ($_ -match '^(agent-|claude/|wow-)') }
 if ($unmergedKept) { Write-Host "  KEEP (non fusionnées, à vérifier à la main) :"; $unmergedKept | ForEach-Object { Write-Host "    - $_" } }
