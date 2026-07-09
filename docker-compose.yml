@@ -77,14 +77,37 @@ services:
     # Le dossier backend/celery_worker/ contient des tâches Celery additionnelles
     # à intégrer dans django_core/erp_agentique/celery.py si nécessaire.
     build: ./backend/django_core
-    # YOPSB9 — le worker unique consomme les 3 queues (default/interactive/
-    # scheduled — cf. CELERY_TASK_ROUTES dans settings/base.py) : sans -Q
-    # explicite, un worker Celery n'écoute QUE `default` et les tâches
-    # routées vers interactive/scheduled ne seraient jamais consommées.
-    # Comportement inchangé (toujours un seul worker, toutes les tâches
-    # traitées) ; poser un worker DÉDIÉ `interactive` en prod si besoin de
-    # séparation réelle (`celery -A erp_agentique worker -Q interactive`).
-    command: celery -A erp_agentique worker -l info -Q default,interactive,scheduled
+    # YOPSB9/SCA9 — ce worker consomme désormais SEULEMENT `default,scheduled`
+    # (cf. CELERY_TASK_ROUTES dans settings/base.py) : la queue `interactive`
+    # (rendus PDF déclenchés par un clic commercial, transcription vocale) est
+    # isolée dans le conteneur DÉDIÉ `celery_worker_interactive` ci-dessous —
+    # un backlog `scheduled` (dumps DB, digests, sweeps planifiés) ne peut
+    # plus retarder un rendu PDF interactif : deux process Celery distincts,
+    # queues disjointes, aucun overlap possible par construction (`-Q`
+    # restreint strictement les queues qu'un worker consomme).
+    command: celery -A erp_agentique worker -l info -Q default,scheduled
+    volumes:
+      - ./backend/django_core:/app
+      - ./STAGES.py:/opt/STAGES.py:ro
+    env_file:
+      - ./.env
+    depends_on:
+      - redis
+      - django_core
+    restart: always
+
+  celery_worker_interactive:
+    # SCA9 — worker DÉDIÉ à la queue `interactive` (rendus PDF synchrones
+    # ventes.generate_devis_pdf/generate_facture_pdf + chat.transcribe_voice_
+    # attachment — cf. CELERY_TASK_ROUTES dans settings/base.py:376-419,
+    # INCHANGÉ par cette tâche). Isolé du worker `default,scheduled` :
+    # un batch planifié de nuit ne peut plus affamer un rendu PDF attendu en
+    # direct par un commercial. Concurrency explicite (pas le défaut
+    # cpu_count()) car ce worker n'a besoin que d'absorber quelques rendus
+    # PDF simultanés, pas de saturer la boîte.
+    build: ./backend/django_core
+    command: celery -A erp_agentique worker -l info -Q interactive
+             --concurrency=${CELERY_INTERACTIVE_CONCURRENCY:-2}
     volumes:
       - ./backend/django_core:/app
       - ./STAGES.py:/opt/STAGES.py:ro

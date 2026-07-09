@@ -69,10 +69,15 @@ services:
     cpus: 1.5
 
   celery_worker:
-    # SCA8 — toutes les queues consommées à ce stade (SCA9 isolera
-    # `interactive` dans un conteneur dédié — mem_limit posé alors).
+    # SCA8/SCA9 — queues default+scheduled (interactive isolée ci-dessous).
     mem_limit: 2g
     cpus: 1.5
+
+  celery_worker_interactive:
+    # SCA8/SCA9 — queue interactive isolée, charge plus légère et bornée
+    # (rendu PDF synchrone déclenché par un clic, jamais un batch).
+    mem_limit: 1g
+    cpus: 1.0
 
   celery_beat:
     # SCA8 — scheduler seul, aucun traitement de tâche : empreinte minimale.
