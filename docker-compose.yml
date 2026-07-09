@@ -1,5 +1,11 @@
 name: erp-agentique
 
+# SCA8 — ce compose de BASE (dev + superposé par docker-compose.prod.yml en
+# prod) reste SANS mem_limit/cpus : les limites de ressources conservatrices
+# vivent uniquement dans docker-compose.prod.yml (dev garde le comportement
+# actuel, non borné, pour ne pas gêner le développement local). Voir
+# docs/scale-runway.md section « SCA8 — Limites de ressources conteneurs »
+# pour le détail et la justification par service.
 services:
   nginx:
     build: ./backend/nginx
