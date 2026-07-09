@@ -69,6 +69,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'   # MUST match prod (python:3.11.x) — the full PDF/golden suite must run on the same Python that generates client PDFs.
+          cache: 'pip'   # WOW4
+          cache-dependency-path: backend/django_core/requirements.txt
       - name: Install WeasyPrint system dependencies
         run: |
           sudo apt-get update
@@ -93,9 +95,14 @@ jobs:
           docker run --rm --network host --entrypoint sh minio/mc:latest -c "
             mc alias set local http://localhost:9000 erp_admin erp_minio_password &&
             mc mb -p local/erp-pdf local/erp-uploads"
-      - name: Run FULL Django test suite (incl. pdf/slow)
+      - name: Run FULL Django test suite (incl. pdf/slow) + coverage
         working-directory: backend/django_core
-        run: python manage.py test apps authentication -v 2
+        # WOW3 — la couverture vit ICI (nightly/manuel), plus dans le gate
+        # par-merge : on paie l'instrumentation là où la latence est sans enjeu.
+        run: |
+          pip install coverage
+          coverage run manage.py test apps authentication core -v 2
+          coverage report
 
   # ── Front : logique pure (node:test) + composants/UX (Vitest) ──────────────
   frontend-full:

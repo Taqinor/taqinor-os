@@ -589,6 +589,23 @@ VAPID_PRIVATE_KEY = os.environ.get('VAPID_PRIVATE_KEY', '')
 VAPID_ADMIN_EMAIL = os.environ.get('VAPID_ADMIN_EMAIL', '')
 
 TESTING = ('test' in sys.argv) or bool(os.environ.get('PYTEST_CURRENT_TEST'))
+# WOW2 — sous le test runner UNIQUEMENT, hacher les mots de passe en MD5 (rapide)
+# au lieu du PBKDF2 par défaut (des milliers d'itérations). Chaque test qui crée
+# un utilisateur / s'authentifie (quasi tous, la portée multi-société crée des
+# users partout) paie sinon le coût PBKDF2 → 2-5× de gain sur toute la suite.
+# JAMAIS actif en prod (TESTING n'y est jamais vrai). Patron documenté par Django.
+if TESTING:
+    PASSWORD_HASHERS = ['django.contrib.auth.hashers.MD5PasswordHasher']
+    # WOW1 — sous les tests, cache LOCAL par process (pas le Redis partagé) : en
+    # `--parallel`, les N workers partagent le MÊME Redis, donc un `cache.clear()`
+    # d'un test efface l'état des AUTRES workers en plein milieu (idempotence
+    # cache-based cassée — ex. test_qj27 already_sent). LocMemCache est isolé par
+    # process = par worker, donc chaque test voit uniquement son propre cache.
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        }
+    }
 # N109 — auto-generate a VAPID keypair (persisted DB singleton) in production
 # when no keys are provided via env, so web push works out of the box. OFF under
 # the test runner so the "unconfigured => empty endpoint => no-op" contract holds.

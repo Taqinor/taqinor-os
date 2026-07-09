@@ -50,6 +50,10 @@ emits a wave plan where each wave holds one head per lane, up to ``--max-lanes``
 distinct lanes. Tasks inside a lane stay sequential across waves.
 
 Pure Python standard library; no third-party dependency.
+
+Lane assignment is a prose heuristic (regex/keyword matching over the task
+text), not real static analysis of the codebase — a surprising grouping
+should be sanity-checked by a human before the run trusts it.
 """
 from __future__ import annotations
 
@@ -70,6 +74,10 @@ _TASK_LIST_RE = re.compile(
 _TASK_HEADER_RE = re.compile(
     r"^#{2,4}\s+(?P<id>[A-Z]+\d+)\s+—\s+(?P<label>.*?)\s+—\s+\[(?P<status>[^\]]*)\]"
 )
+# Any raw checklist-style line, used only to detect lines that LOOK like a
+# task marker but fail to match either regex above (malformed task) so
+# ``parse_tasks``/``--check`` can flag it instead of silently dropping it.
+_RAW_CHECKLIST_RE = re.compile(r"^\s*- \[")
 
 # Sections whose tasks are never auto-built (kept out of the schedule entirely).
 _NON_QUEUE_SECTION = re.compile(
@@ -281,11 +289,17 @@ def _deps(label: str) -> set[str]:
 
 
 def parse_tasks(path: Path) -> list[dict]:
-    """Parse every unchecked BUILD-QUEUE task with its derived lane + gate."""
+    """Parse every unchecked BUILD-QUEUE task with its derived lane + gate.
+
+    As a side effect, warns to stderr (once per line) about any ``- [`` line
+    that fails to match BOTH ``_TASK_LIST_RE`` and ``_TASK_HEADER_RE`` — today
+    such a malformed line simply vanishes from the schedule with no
+    diagnostic, which lets a typo'd task silently never get built.
+    """
     headers = {"##": "", "###": "", "comment": ""}
     in_non_queue = False
     tasks: list[dict] = []
-    for raw in path.read_text(encoding="utf-8").splitlines():
+    for lineno, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         if raw.startswith("## ") or raw.startswith("# "):
             headers["##"] = raw
             headers["###"] = ""
@@ -305,6 +319,13 @@ def parse_tasks(path: Path) -> list[dict]:
             continue
         m = _TASK_LIST_RE.match(raw) or _TASK_HEADER_RE.match(raw)
         if not m:
+            if _RAW_CHECKLIST_RE.match(raw):
+                print(
+                    f"WARNING: malformed task line at {path}:{lineno} — "
+                    f"looks like a checklist item but matches neither task "
+                    f"regex: {raw.strip()!r}",
+                    file=sys.stderr,
+                )
             continue
         status = m.group("status").strip()
         if status.lower() != "":  # only the truly-open "[ ]" tasks
@@ -325,6 +346,27 @@ def parse_tasks(path: Path) -> list[dict]:
             "section": (headers["###"] or headers["##"]).lstrip("# ").strip(),
         })
     return tasks
+
+
+def count_malformed(path: Path) -> int:
+    """Count ``- [`` lines that fail to match either task regex.
+
+    Used by ``--check`` as a second, independent coverage signal alongside
+    "unassigned lane": a line can match a task regex fine but still resolve
+    to ``UNASSIGNED`` (caught elsewhere), or it can fail to match a task
+    regex AT ALL and vanish from the schedule entirely (caught here). Reuses
+    ``_RAW_CHECKLIST_RE`` / ``_TASK_LIST_RE`` / ``_TASK_HEADER_RE`` — no
+    parsing state (headers/non-queue sections) needed since a malformed line
+    is malformed regardless of the section it lives in.
+    """
+    malformed = 0
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        if not _RAW_CHECKLIST_RE.match(raw):
+            continue
+        if _TASK_LIST_RE.match(raw) or _TASK_HEADER_RE.match(raw):
+            continue
+        malformed += 1
+    return malformed
 
 
 def schedule(tasks: list[dict], max_lanes: int) -> dict:
@@ -455,12 +497,27 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(render(plan, max(1, args.max_lanes), source))
 
+    check_failed = False
     if args.check and plan["unassigned"]:
         print(
             f"\n{len(plan['unassigned'])} buildable task(s) have no lane — "
             "add a `@lane:`/`@files:` tag.",
             file=sys.stderr,
         )
+        check_failed = True
+
+    if args.check:
+        malformed = count_malformed(path)
+        if malformed:
+            print(
+                f"\n{malformed} line(s) look like a checklist task "
+                "(`- [`) but match neither task regex — see the WARNING(s) "
+                "above for file/line detail.",
+                file=sys.stderr,
+            )
+            check_failed = True
+
+    if check_failed:
         return 1
     return 0
 
