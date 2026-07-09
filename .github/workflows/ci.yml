@@ -143,9 +143,17 @@ jobs:
         working-directory: backend/django_core
         run: lint-imports
 
-  backend-tests:
+  # WOW6 — the fast backend suite is sharded 4× across free public-repo runners
+  # (matrix legs run concurrently, each on its own 4-vCPU runner + Postgres). The
+  # REQUIRED `backend-tests` status check name is preserved by the thin
+  # `backend-tests` aggregator job defined right after this one.
+  backend-tests-shard:
     needs: changes
     if: ${{ needs.changes.outputs.backend == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -225,15 +233,35 @@ jobs:
       # Palier « par-merge » : tout SAUF les tests lourds étiquetés `pdf`/`slow`
       # (rendu WeasyPrint, golden PDF…). Ceux-ci tournent dans release-verify
       # (manuel + nightly), pour un retour rapide sur chaque merge.
-      - name: Run Django test suite (fast tier — excludes pdf/slow)
+      # WOW6 — ce shard n'exécute QUE son quart des apps (round-robin déterministe
+      # via scripts/ci_shard.py) ; l'union des 4 shards == `apps authentication
+      # core` (garanti par un test d'égalité d'ensembles). --parallel 4 (WOW1)
+      # exploite les 4 vCPU du runner ; `coverage` reste hors du gate (WOW3).
+      - name: Run Django test suite — shard ${{ matrix.shard }}/4 (fast tier — excludes pdf/slow)
         working-directory: backend/django_core
-        # WOW1 — --parallel 4 exploite les 4 vCPU du runner (~3-4× ; Django clone
-        # la base par worker via TEMPLATE Postgres, coût migration payé 1×).
-        # WOW3 — `coverage` retiré du gate (son rapport n'était ni publié ni
-        # imposé — 10-30 % de surcoût pour rien) ; la couverture vit désormais
-        # dans release-verify (nightly/manuel).
         run: |
-          python manage.py test apps authentication core -v 2 --exclude-tag=pdf --exclude-tag=slow --parallel 4
+          LABELS=$(python ../../scripts/ci_shard.py ${{ matrix.shard }} 4)
+          echo "Shard ${{ matrix.shard }}/4 -> $LABELS"
+          python manage.py test $LABELS -v 2 --exclude-tag=pdf --exclude-tag=slow --parallel 4
+
+  # WOW6 — thin aggregator that PRESERVES the required `backend-tests` status
+  # check name. Branch protection requires the literal `backend-tests` context
+  # (NOT `ci-gate`), so the real job renamed to `backend-tests-shard` above must
+  # be paired with a job still literally named `backend-tests`. Passes iff no
+  # shard failed; also passes when the shards SKIP (backend=false), preserving the
+  # path-filter "a skipped required check counts as success" behaviour.
+  backend-tests:
+    needs: [changes, backend-tests-shard]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any shard failed or was cancelled
+        if: ${{ needs.backend-tests-shard.result == 'failure' || needs.backend-tests-shard.result == 'cancelled' }}
+        run: |
+          echo "A backend-tests shard did not pass (result=${{ needs.backend-tests-shard.result }})."
+          exit 1
+      - name: All shards passed (or were skipped)
+        run: echo "backend-tests-shard result=${{ needs.backend-tests-shard.result }} — gate OK."
 
   frontend-lint:
     needs: changes
@@ -486,6 +514,7 @@ jobs:
     needs:
       - changes
       - backend-lint
+      - backend-tests-shard
       - backend-tests
       - frontend-lint
       - frontend-perf
@@ -498,6 +527,7 @@ jobs:
         run: |
           echo "changes=${{ needs.changes.result }}"
           echo "backend-lint=${{ needs.backend-lint.result }}"
+          echo "backend-tests-shard=${{ needs.backend-tests-shard.result }}"
           echo "backend-tests=${{ needs.backend-tests.result }}"
           echo "frontend-lint=${{ needs.frontend-lint.result }}"
           echo "frontend-perf=${{ needs.frontend-perf.result }}"
