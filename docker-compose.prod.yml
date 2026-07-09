@@ -112,6 +112,14 @@ services:
     mem_limit: 1g
     cpus: 1.0
 
+  redis_cache:
+    # SCA10 — cache applicatif, séparé du broker. Pas de ports à reset (le
+    # compose de base ne l'expose déjà pas). Limite plus modeste que le
+    # broker : un cache est jetable, sa perte dégrade la latence, jamais la
+    # fiabilité des tâches en file.
+    mem_limit: 512m
+    cpus: 0.5
+
 volumes:
   caddy_data:
   caddy_config:

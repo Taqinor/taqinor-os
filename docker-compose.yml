@@ -33,9 +33,15 @@ services:
       - ./STAGES.py:/opt/STAGES.py:ro
     env_file:
       - ./.env
+    # SCA10 — cible le cache Django sur l'instance Redis dédiée par défaut
+    # (settings/base.py retombe sur REDIS_HOST si REDIS_CACHE_HOST est vide,
+    # donc surchageable/annulable via .env sans casser la rétro-compatibilité).
+    environment:
+      REDIS_CACHE_HOST: ${REDIS_CACHE_HOST:-redis_cache}
     depends_on:
       - db
       - redis
+      - redis_cache
     expose:
       - "8000"
     restart: always
@@ -91,8 +97,12 @@ services:
       - ./STAGES.py:/opt/STAGES.py:ro
     env_file:
       - ./.env
+    # SCA10 — même cible cache que django_core (voir commentaire ci-dessus).
+    environment:
+      REDIS_CACHE_HOST: ${REDIS_CACHE_HOST:-redis_cache}
     depends_on:
       - redis
+      - redis_cache
       - django_core
     restart: always
 
@@ -113,8 +123,12 @@ services:
       - ./STAGES.py:/opt/STAGES.py:ro
     env_file:
       - ./.env
+    # SCA10 — même cible cache que django_core (voir commentaire ci-dessus).
+    environment:
+      REDIS_CACHE_HOST: ${REDIS_CACHE_HOST:-redis_cache}
     depends_on:
       - redis
+      - redis_cache
       - django_core
     restart: always
 
@@ -181,12 +195,37 @@ services:
 
   redis:
     image: redis:7.4-alpine
+    # SCA10 — broker Celery UNIQUEMENT (db0, CELERY_BROKER_URL). `noeviction`
+    # (explicite désormais, c'était déjà le défaut Redis implicite) : un
+    # broker ne doit JAMAIS évincer des tâches en attente sous pression
+    # mémoire — il doit plutôt refuser l'écriture (comportement noeviction)
+    # pour que l'appelant sache que l'enqueue a échoué. `maxmemory 256mb`
+    # dimensionné sous la limite conteneur SCA8 (1g en prod) — une file de
+    # tâches ne devrait jamais approcher cette taille en usage normal.
+    # `appendonly yes` (persistance AOF) : un restart Redis ne perd plus les
+    # tâches en file d'attente (avant SCA10, un restart perdait tout — db0
+    # et db1 étaient en mémoire pure, sans persistance).
+    command: redis-server --maxmemory 256mb --maxmemory-policy noeviction --appendonly yes
     # DEV UNIQUEMENT — supprimer ce port en production
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: always
+
+  redis_cache:
+    # SCA10 — cache applicatif Django (CACHES['default'], db1 auparavant sur
+    # la MÊME instance que le broker). Instance SÉPARÉE : `allkeys-lru`
+    # (éviction des clés les moins récemment utilisées sous pression — le
+    # comportement CORRECT pour un cache, jamais pour un broker) + AUCUNE
+    # persistance (`--save ""` : un cache est par nature jetable, pas besoin
+    # de survivre à un restart, et évite l'overhead disque inutile).
+    image: redis:7.4-alpine
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru --save ""
     restart: always
 
 volumes:
   pg_data:
   minio_data:
   hf_cache:
+  redis_data:
