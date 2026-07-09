@@ -16,3 +16,8 @@ mutmut==2.4.4
 # YOPSB12 — N+1 query detector in dev only (guarded import in
 # erp_agentique/settings/dev.py; never installed by CI/prod requirements.txt).
 nplusone==1.0.0
+
+# WOW1 — Django's parallel test runner (`--parallel`) pickles worker-process
+# tracebacks via tblib; without it, sub-process failures lose their traceback.
+# Dev/CI only (the merge gate runs --parallel 4), never in the prod image.
+tblib==3.0.0

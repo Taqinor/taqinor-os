@@ -49,24 +49,27 @@ class TestTenantLineInjection(TestCase):
     """ERR7 — poster une ligne sur le devis/facture d'une AUTRE société est
     rejeté (pas d'injection IDOR en écriture)."""
 
-    def setUp(self):
-        self.co_a = make_company('idor-a')
-        self.co_b = make_company('idor-b')
-        self.user_a = User.objects.create_user(
+    @classmethod
+    def setUpTestData(cls):
+        cls.co_a = make_company('idor-a')
+        cls.co_b = make_company('idor-b')
+        cls.user_a = User.objects.create_user(
             username='idor_a', password='x', role_legacy='responsable',
-            company=self.co_a)
-        self.api = auth(self.user_a)
-        self.client_b = make_client(self.co_b, email='b@example.com')
-        self.devis_b = Devis.objects.create(
-            company=self.co_b, reference=f'DEV-{MONTH}-7001',
-            client=self.client_b, statut=Devis.Statut.BROUILLON)
-        self.facture_b = Facture.objects.create(
-            company=self.co_b, reference=f'FAC-{MONTH}-7001',
-            client=self.client_b, statut=Facture.Statut.BROUILLON,
+            company=cls.co_a)
+        cls.client_b = make_client(cls.co_b, email='b@example.com')
+        cls.devis_b = Devis.objects.create(
+            company=cls.co_b, reference=f'DEV-{MONTH}-7001',
+            client=cls.client_b, statut=Devis.Statut.BROUILLON)
+        cls.facture_b = Facture.objects.create(
+            company=cls.co_b, reference=f'FAC-{MONTH}-7001',
+            client=cls.client_b, statut=Facture.Statut.BROUILLON,
             taux_tva=Decimal('20.00'))
-        self.produit_a = Produit.objects.create(
-            company=self.co_a, nom='Panneau', sku='P-A',
+        cls.produit_a = Produit.objects.create(
+            company=cls.co_a, nom='Panneau', sku='P-A',
             prix_vente=Decimal('1000'), quantite_stock=10)
+
+    def setUp(self):
+        self.api = auth(self.user_a)
 
     def test_cannot_inject_ligne_devis_on_other_company(self):
         r = self.api.post('/api/django/ventes/devis-lignes/', {
@@ -92,19 +95,22 @@ class TestDevisUpdateTenant(TestCase):
     """ERR8 — un PATCH ne peut pas re-pointer un devis vers le client/lead
     d'une autre société."""
 
-    def setUp(self):
-        self.co_a = make_company('upd-a')
-        self.co_b = make_company('upd-b')
-        self.user_a = User.objects.create_user(
+    @classmethod
+    def setUpTestData(cls):
+        cls.co_a = make_company('upd-a')
+        cls.co_b = make_company('upd-b')
+        cls.user_a = User.objects.create_user(
             username='upd_a', password='x', role_legacy='responsable',
-            company=self.co_a)
+            company=cls.co_a)
+        cls.client_a = make_client(cls.co_a, email='a@example.com')
+        cls.client_b = make_client(cls.co_b, email='b2@example.com')
+        cls.lead_b = Lead.objects.create(company=cls.co_b, nom='LeadB')
+        cls.devis = Devis.objects.create(
+            company=cls.co_a, reference=f'DEV-{MONTH}-8001',
+            client=cls.client_a, statut=Devis.Statut.BROUILLON)
+
+    def setUp(self):
         self.api = auth(self.user_a)
-        self.client_a = make_client(self.co_a, email='a@example.com')
-        self.client_b = make_client(self.co_b, email='b2@example.com')
-        self.lead_b = Lead.objects.create(company=self.co_b, nom='LeadB')
-        self.devis = Devis.objects.create(
-            company=self.co_a, reference=f'DEV-{MONTH}-8001',
-            client=self.client_a, statut=Devis.Statut.BROUILLON)
 
     def test_cannot_repoint_to_other_company_client(self):
         r = self.api.patch(
@@ -127,15 +133,18 @@ class TestBonCommandeFactureTenant(TestCase):
     """ERR13/ERR14 — créer un BC/une facture lié à un enregistrement d'un autre
     tenant est rejeté."""
 
-    def setUp(self):
-        self.co_a = make_company('bc-a')
-        self.co_b = make_company('bc-b')
-        self.user_a = User.objects.create_user(
+    @classmethod
+    def setUpTestData(cls):
+        cls.co_a = make_company('bc-a')
+        cls.co_b = make_company('bc-b')
+        cls.user_a = User.objects.create_user(
             username='bc_a', password='x', role_legacy='responsable',
-            company=self.co_a)
+            company=cls.co_a)
+        cls.client_a = make_client(cls.co_a, email='bca@example.com')
+        cls.client_b = make_client(cls.co_b, email='bcb@example.com')
+
+    def setUp(self):
         self.api = auth(self.user_a)
-        self.client_a = make_client(self.co_a, email='bca@example.com')
-        self.client_b = make_client(self.co_b, email='bcb@example.com')
 
     def test_bc_rejects_other_company_client(self):
         r = self.api.post('/api/django/ventes/bons-commande/', {
@@ -158,26 +167,29 @@ class TestMarquerLivreDecimal(TestCase):
     """ERR15 — marquer-livre n'utilise plus int() qui tronquait la quantité
     décimale (3,5 → 3) ; on arrondit (3,5 → 4)."""
 
-    def setUp(self):
-        self.company = make_company('liv-co')
-        self.user = User.objects.create_user(
+    @classmethod
+    def setUpTestData(cls):
+        cls.company = make_company('liv-co')
+        cls.user = User.objects.create_user(
             username='liv_resp', password='x', role_legacy='responsable',
-            company=self.company)
-        self.api = auth(self.user)
-        self.client_obj = make_client(self.company, email='liv@example.com')
-        self.produit = Produit.objects.create(
-            company=self.company, nom='Câble 6mm', sku='CABLE-6',
+            company=cls.company)
+        cls.client_obj = make_client(cls.company, email='liv@example.com')
+        cls.produit = Produit.objects.create(
+            company=cls.company, nom='Câble 6mm', sku='CABLE-6',
             prix_vente=Decimal('100'), quantite_stock=10)
-        self.devis = Devis.objects.create(
-            company=self.company, reference=f'DEV-{MONTH}-1501',
-            client=self.client_obj, statut=Devis.Statut.ACCEPTE)
+        cls.devis = Devis.objects.create(
+            company=cls.company, reference=f'DEV-{MONTH}-1501',
+            client=cls.client_obj, statut=Devis.Statut.ACCEPTE)
         LigneDevis.objects.create(
-            devis=self.devis, produit=self.produit, designation='Câble 6mm',
+            devis=cls.devis, produit=cls.produit, designation='Câble 6mm',
             quantite=Decimal('3.5'), prix_unitaire=Decimal('100'))
-        self.bc = BonCommande.objects.create(
-            company=self.company, reference=f'BC-{MONTH}-1501',
-            devis=self.devis, client=self.client_obj,
+        cls.bc = BonCommande.objects.create(
+            company=cls.company, reference=f'BC-{MONTH}-1501',
+            devis=cls.devis, client=cls.client_obj,
             statut=BonCommande.Statut.CONFIRME)
+
+    def setUp(self):
+        self.api = auth(self.user)
 
     def test_fractional_quantity_not_truncated(self):
         from apps.stock.models import MouvementStock
@@ -196,20 +208,20 @@ class TestLegacyFactureHonorsOption(TestCase):
     """ERR16 — la voie legacy BC→Facture ne facture QUE les lignes de l'option
     retenue (« Sans batterie » / « Avec batterie »), pas les deux."""
 
-    def setUp(self):
-        self.company = make_company('opt-co')
+    @classmethod
+    def setUpTestData(cls):
+        cls.company = make_company('opt-co')
         admin_role = Role.objects.create(
-            company=self.company, nom='Administrateur',
+            company=cls.company, nom='Administrateur',
             permissions=ALL_PERMISSIONS, est_systeme=True)
-        self.admin = User.objects.create_user(
+        cls.admin = User.objects.create_user(
             username='opt_admin', password='x', role=admin_role,
-            role_legacy='admin', company=self.company)
-        self.api = auth(self.admin)
-        self.client_obj = make_client(self.company, email='opt@example.com')
+            role_legacy='admin', company=cls.company)
+        cls.client_obj = make_client(cls.company, email='opt@example.com')
         # Devis à DEUX options : onduleur réseau + (onduleur hybride + batterie).
-        self.devis = Devis.objects.create(
-            company=self.company, reference=f'DEV-{MONTH}-1601',
-            client=self.client_obj, statut=Devis.Statut.ACCEPTE,
+        cls.devis = Devis.objects.create(
+            company=cls.company, reference=f'DEV-{MONTH}-1601',
+            client=cls.client_obj, statut=Devis.Statut.ACCEPTE,
             option_acceptee=Devis.OptionAcceptee.SANS_BATTERIE)
         for desig, qty, pu in [
             ('Onduleur réseau', '1', '11700'),
@@ -219,17 +231,20 @@ class TestLegacyFactureHonorsOption(TestCase):
             ('Installation', '1', '4000'),
         ]:
             produit = Produit.objects.create(
-                company=self.company, nom=desig, sku=f'OPT-{desig[:10]}',
+                company=cls.company, nom=desig, sku=f'OPT-{desig[:10]}',
                 prix_vente=Decimal(pu), quantite_stock=100,
                 tva=Decimal('20.00'))
             LigneDevis.objects.create(
-                devis=self.devis, produit=produit, designation=desig,
+                devis=cls.devis, produit=produit, designation=desig,
                 quantite=Decimal(qty), prix_unitaire=Decimal(pu),
                 taux_tva=Decimal('20.00'))
-        self.bc = BonCommande.objects.create(
-            company=self.company, reference=f'BC-{MONTH}-1601',
-            devis=self.devis, client=self.client_obj,
+        cls.bc = BonCommande.objects.create(
+            company=cls.company, reference=f'BC-{MONTH}-1601',
+            devis=cls.devis, client=cls.client_obj,
             statut=BonCommande.Statut.CONFIRME)
+
+    def setUp(self):
+        self.api = auth(self.admin)
 
     def test_creer_facture_excludes_unchosen_option_lines(self):
         r = self.api.post(
@@ -249,13 +264,16 @@ class TestLegacyFactureHonorsOption(TestCase):
 class TestAccepterStatusGuard(TestCase):
     """ERR33 — accepter un devis refusé/expiré/déjà accepté est rejeté."""
 
-    def setUp(self):
-        self.company = make_company('acc-guard-co')
-        self.user = User.objects.create_user(
+    @classmethod
+    def setUpTestData(cls):
+        cls.company = make_company('acc-guard-co')
+        cls.user = User.objects.create_user(
             username='accg_resp', password='x', role_legacy='responsable',
-            company=self.company)
+            company=cls.company)
+        cls.client_obj = make_client(cls.company, email='accg@example.com')
+
+    def setUp(self):
         self.api = auth(self.user)
-        self.client_obj = make_client(self.company, email='accg@example.com')
 
     def _devis(self, num, statut):
         return Devis.objects.create(
@@ -291,27 +309,30 @@ class TestAvoirLineValidation(TestCase):
     """ERR34 — creer-avoir valide les lignes et échoue bruyamment (400) au lieu
     d'avaler les lignes invalides en silence."""
 
-    def setUp(self):
-        self.company = make_company('avo-val-co')
+    @classmethod
+    def setUpTestData(cls):
+        cls.company = make_company('avo-val-co')
         admin_role = Role.objects.create(
-            company=self.company, nom='Administrateur',
+            company=cls.company, nom='Administrateur',
             permissions=ALL_PERMISSIONS, est_systeme=True)
-        self.admin = User.objects.create_user(
+        cls.admin = User.objects.create_user(
             username='avoval_admin', password='x', role=admin_role,
-            role_legacy='admin', company=self.company)
-        self.api = auth(self.admin)
-        self.client_obj = make_client(self.company, email='avoval@example.com')
-        self.produit = Produit.objects.create(
-            company=self.company, nom='Onduleur', sku='OND-V',
+            role_legacy='admin', company=cls.company)
+        cls.client_obj = make_client(cls.company, email='avoval@example.com')
+        cls.produit = Produit.objects.create(
+            company=cls.company, nom='Onduleur', sku='OND-V',
             prix_vente=Decimal('5000'), quantite_stock=10, tva=Decimal('20'))
-        self.facture = Facture.objects.create(
-            company=self.company, reference=f'FAC-{MONTH}-3401',
-            client=self.client_obj, statut=Facture.Statut.EMISE,
+        cls.facture = Facture.objects.create(
+            company=cls.company, reference=f'FAC-{MONTH}-3401',
+            client=cls.client_obj, statut=Facture.Statut.EMISE,
             taux_tva=Decimal('20.00'))
         LigneFacture.objects.create(
-            facture=self.facture, produit=self.produit, designation='Onduleur',
+            facture=cls.facture, produit=cls.produit, designation='Onduleur',
             quantite=Decimal('1'), prix_unitaire=Decimal('5000'),
             taux_tva=Decimal('20.00'))
+
+    def setUp(self):
+        self.api = auth(self.admin)
 
     def _avoir(self, lignes):
         return self.api.post(
@@ -352,26 +373,27 @@ class TestRelanceMultiLevel(TestCase):
     """ERR36 — relance_reminders avance niveau par niveau au lieu de tirer une
     seule fois et de sauter au niveau le plus dur."""
 
-    def setUp(self):
-        self.company = make_company('rel-co')
+    @classmethod
+    def setUpTestData(cls):
+        cls.company = make_company('rel-co')
         for ordre, nom, delai in [
             (0, 'Rappel', 7), (1, 'Relance', 15), (2, 'Mise en demeure', 30),
         ]:
             FollowupLevel.objects.create(
-                company=self.company, ordre=ordre, nom=nom, delai_jours=delai)
-        self.client_obj = make_client(self.company, email='rel@example.com')
-        self.produit = Produit.objects.create(
-            company=self.company, nom='Onduleur', sku='OND-REL',
+                company=cls.company, ordre=ordre, nom=nom, delai_jours=delai)
+        cls.client_obj = make_client(cls.company, email='rel@example.com')
+        cls.produit = Produit.objects.create(
+            company=cls.company, nom='Onduleur', sku='OND-REL',
             prix_vente=Decimal('5000'), quantite_stock=10, tva=Decimal('20'))
         # Facture due, échéance dépassée de 40 jours, prochaine_relance échue.
-        self.facture = Facture.objects.create(
-            company=self.company, reference='FAC-REL-0001',
-            client=self.client_obj, statut=Facture.Statut.EN_RETARD,
+        cls.facture = Facture.objects.create(
+            company=cls.company, reference='FAC-REL-0001',
+            client=cls.client_obj, statut=Facture.Statut.EN_RETARD,
             taux_tva=Decimal('20.00'),
             date_echeance=date.today() - timedelta(days=40),
             prochaine_relance=date.today())
         LigneFacture.objects.create(
-            facture=self.facture, produit=self.produit, designation='Onduleur',
+            facture=cls.facture, produit=cls.produit, designation='Onduleur',
             quantite=Decimal('1'), prix_unitaire=Decimal('5000'),
             taux_tva=Decimal('20.00'))
 
@@ -411,9 +433,10 @@ class TestDevisTvaQuantize(TestCase):
     """ERR71 — Devis.total_tva quantize par panier de taux comme Facture, donc
     devis et facture s'accordent au centime sur un devis à taux mixtes."""
 
-    def setUp(self):
-        self.company = make_company('tva-co')
-        self.client_obj = make_client(self.company, email='tva@example.com')
+    @classmethod
+    def setUpTestData(cls):
+        cls.company = make_company('tva-co')
+        cls.client_obj = make_client(cls.company, email='tva@example.com')
 
     def test_devis_total_tva_matches_facture_per_bucket(self):
         # Lignes choisies pour faire apparaître un centime sur un taux mixte.
@@ -462,24 +485,27 @@ class TestPaiementRowLock(TestCase):
     """ERR72 — la garde sur-paiement lit le reste sous verrou (select_for_update)
     et reste correcte (comportement fonctionnel inchangé, sérialisé)."""
 
-    def setUp(self):
-        self.company = make_company('lock-co')
-        self.user = User.objects.create_user(
+    @classmethod
+    def setUpTestData(cls):
+        cls.company = make_company('lock-co')
+        cls.user = User.objects.create_user(
             username='lock_resp', password='x', role_legacy='responsable',
-            company=self.company)
-        self.api = auth(self.user)
-        self.client_obj = make_client(self.company, email='lock@example.com')
-        self.produit = Produit.objects.create(
-            company=self.company, nom='Onduleur', sku='OND-L',
+            company=cls.company)
+        cls.client_obj = make_client(cls.company, email='lock@example.com')
+        cls.produit = Produit.objects.create(
+            company=cls.company, nom='Onduleur', sku='OND-L',
             prix_vente=Decimal('5000'), quantite_stock=10, tva=Decimal('20'))
-        self.facture = Facture.objects.create(
-            company=self.company, reference='FAC-LOCK-0001',
-            client=self.client_obj, statut=Facture.Statut.EMISE,
+        cls.facture = Facture.objects.create(
+            company=cls.company, reference='FAC-LOCK-0001',
+            client=cls.client_obj, statut=Facture.Statut.EMISE,
             taux_tva=Decimal('20.00'))
         LigneFacture.objects.create(
-            facture=self.facture, produit=self.produit, designation='Onduleur',
+            facture=cls.facture, produit=cls.produit, designation='Onduleur',
             quantite=Decimal('1'), prix_unitaire=Decimal('5000'),
             taux_tva=Decimal('20.00'))  # 6000 TTC
+
+    def setUp(self):
+        self.api = auth(self.user)
 
     def _pay(self, montant):
         return self.api.post(
@@ -510,42 +536,45 @@ class TestReleveOwnerScope(TestCase):
     restreint ne voit que ses propres factures, l'isolation société tenant
     déjà)."""
 
-    def setUp(self):
-        self.company = make_company('releve-co')
+    @classmethod
+    def setUpTestData(cls):
+        cls.company = make_company('releve-co')
         # Rôle restreint à l'équipe (records_scope_equipe).
         team_role = Role.objects.create(
-            company=self.company, nom='Commercial',
+            company=cls.company, nom='Commercial',
             permissions=RESPONSABLE_PERMISSIONS + ['records_scope_equipe'],
             est_systeme=False)
-        self.restricted = User.objects.create_user(
+        cls.restricted = User.objects.create_user(
             username='releve_team', password='x', role=team_role,
-            role_legacy='responsable', company=self.company)
-        self.other = User.objects.create_user(
+            role_legacy='responsable', company=cls.company)
+        cls.other = User.objects.create_user(
             username='releve_other', password='x', role_legacy='responsable',
-            company=self.company)
-        self.api = auth(self.restricted)
-        self.client_obj = make_client(self.company, email='releve@example.com')
-        self.produit = Produit.objects.create(
-            company=self.company, nom='Onduleur', sku='OND-RV',
+            company=cls.company)
+        cls.client_obj = make_client(cls.company, email='releve@example.com')
+        cls.produit = Produit.objects.create(
+            company=cls.company, nom='Onduleur', sku='OND-RV',
             prix_vente=Decimal('5000'), quantite_stock=10, tva=Decimal('20'))
         # Facture créée par UN AUTRE utilisateur (hors portée du restreint).
-        self.facture_other = Facture.objects.create(
-            company=self.company, reference='FAC-REL-OTHER',
-            client=self.client_obj, statut=Facture.Statut.EMISE,
-            taux_tva=Decimal('20.00'), created_by=self.other)
+        cls.facture_other = Facture.objects.create(
+            company=cls.company, reference='FAC-REL-OTHER',
+            client=cls.client_obj, statut=Facture.Statut.EMISE,
+            taux_tva=Decimal('20.00'), created_by=cls.other)
         LigneFacture.objects.create(
-            facture=self.facture_other, produit=self.produit,
+            facture=cls.facture_other, produit=cls.produit,
             designation='Onduleur', quantite=Decimal('1'),
             prix_unitaire=Decimal('5000'), taux_tva=Decimal('20.00'))
         # Facture créée par le restreint lui-même (dans sa portée).
-        self.facture_mine = Facture.objects.create(
-            company=self.company, reference='FAC-REL-MINE',
-            client=self.client_obj, statut=Facture.Statut.EMISE,
-            taux_tva=Decimal('20.00'), created_by=self.restricted)
+        cls.facture_mine = Facture.objects.create(
+            company=cls.company, reference='FAC-REL-MINE',
+            client=cls.client_obj, statut=Facture.Statut.EMISE,
+            taux_tva=Decimal('20.00'), created_by=cls.restricted)
         LigneFacture.objects.create(
-            facture=self.facture_mine, produit=self.produit,
+            facture=cls.facture_mine, produit=cls.produit,
             designation='Onduleur', quantite=Decimal('1'),
             prix_unitaire=Decimal('5000'), taux_tva=Decimal('20.00'))
+
+    def setUp(self):
+        self.api = auth(self.restricted)
 
     def test_releve_excludes_out_of_scope_factures(self):
         r = self.api.get(
@@ -559,17 +588,20 @@ class TestReleveOwnerScope(TestCase):
 class TestProposalNoPersist(TestCase):
     """ERR74 — /proposal (GET sûr) ne ré-écrit pas fichier_pdf à chaque appel."""
 
-    def setUp(self):
-        self.company = make_company('prop-co')
-        self.user = User.objects.create_user(
+    @classmethod
+    def setUpTestData(cls):
+        cls.company = make_company('prop-co')
+        cls.user = User.objects.create_user(
             username='prop_resp', password='x', role_legacy='responsable',
-            company=self.company)
-        self.api = auth(self.user)
-        self.client_obj = make_client(self.company, email='prop@example.com')
-        self.devis = Devis.objects.create(
-            company=self.company, reference='DEV-PROP-0001',
-            client=self.client_obj, statut=Devis.Statut.BROUILLON,
+            company=cls.company)
+        cls.client_obj = make_client(cls.company, email='prop@example.com')
+        cls.devis = Devis.objects.create(
+            company=cls.company, reference='DEV-PROP-0001',
+            client=cls.client_obj, statut=Devis.Statut.BROUILLON,
             taux_tva=Decimal('20.00'))
+
+    def setUp(self):
+        self.api = auth(self.user)
 
     def test_proposal_does_not_persist_fichier_pdf(self):
         from unittest import mock

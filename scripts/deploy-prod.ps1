@@ -29,8 +29,17 @@ PREV_SHA=$(git rev-parse HEAD)
 echo "Commit precedent (rollback cible si besoin): $PREV_SHA"
 git fetch origin main
 git reset --hard origin/main
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+# WOW26 --remove-orphans : sans lui, un conteneur fastapi_ia orphelin bloquait
+# la recreation ("Conflict. The container name is already in use") et, sous
+# `set -e`, le script SORTAIT ICI -> migrate/init_roles/nginx SKIP -> 502 +
+# migrations non appliquees (arrive sur les 2 deploiements du 2026-07-07).
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --remove-orphans
 docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T django_core python manage.py migrate --noinput
+# WOW26 — verifie que TOUTES les migrations sont appliquees (un up -d partiel /
+# un set -e interrompu laissait des migrations non appliquees + un 502 silencieux).
+UNAPPLIED=$(docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T django_core python manage.py showmigrations --plan 2>/dev/null | grep -c '\[ \]')
+echo "Migrations non appliquees restantes: $UNAPPLIED"
+if [ "$UNAPPLIED" != "0" ]; then echo "MIGRATIONS INCOMPLETES ($UNAPPLIED) -> echec deploiement (relancer deploy-prod.ps1)"; exit 1; fi
 # Synchronise les permissions des roles systeme (Admin/Responsable/Utilisateur)
 # avec roles/models.py : indispensable quand un deploiement ajoute de nouveaux
 # codes de permission (ex. equipement_*/sav_*). Idempotent, sans effet sinon.
@@ -69,7 +78,7 @@ echo "Healthcheck post-deploiement: $HEALTH_STATUS"
 if [ "$HEALTH_STATUS" = "down" ]; then
   echo "HEALTHCHECK ECHEC (down) -> ROLLBACK vers $PREV_SHA"
   git reset --hard "$PREV_SHA"
-  docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+  docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --remove-orphans
   docker compose -f docker-compose.yml -f docker-compose.prod.yml restart nginx
   docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T caddy caddy reload --config /etc/caddy/Caddyfile
   echo "ROLLBACK TERMINE. Le code deploye est revenu a $PREV_SHA."
