@@ -172,8 +172,17 @@ services:
       POSTGRES_DB: ${DB_NAME}
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
+    # SCA11 — postgresql.conf tune monte en lecture seule + demarre Postgres
+    # avec -c config_file= pointant dessus (mecanisme standard de l'image
+    # postgres officielle, dont pgvector/pgvector derive : le fichier stock
+    # dans /var/lib/postgresql/data n'est PAS ecrase par ce montage, on
+    # demande juste au serveur de charger notre conf a la place). Voir
+    # backend/db/postgresql.conf et docs/scale-runway.md pour le detail des
+    # valeurs.
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf
     volumes:
       - pg_data:/var/lib/postgresql/data
+      - ./backend/db/postgresql.conf:/etc/postgresql/postgresql.conf:ro
     # DEV UNIQUEMENT — supprimer ces ports en production
     ports:
       - "5433:5432"
