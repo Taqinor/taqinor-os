@@ -1,0 +1,47 @@
+name: backend-env
+description: >-
+  WOW7 — shared backend CI environment: WeasyPrint system libraries, the Python
+  dependencies, and a MinIO server with the erp-pdf / erp-uploads buckets. Dedupes
+  the WeasyPrint + pip + MinIO block that was copy-pasted across backend-tests-shard,
+  e2e (ci.yml) and release-verify.yml. Callers set up Python (and Node) themselves
+  first; this action only prepares the shared backend runtime env.
+inputs:
+  requirements:
+    description: >-
+      Requirements file to install, relative to backend/django_core. The per-merge
+      gate installs the dev/test deps; release-verify runs on the prod deps.
+    required: false
+    default: requirements-dev.txt
+runs:
+  using: composite
+  steps:
+    - name: Install WeasyPrint system dependencies
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b fonts-dejavu-core
+    - name: Install Python dependencies
+      shell: bash
+      working-directory: backend/django_core
+      run: pip install -r ${{ inputs.requirements }}
+    - name: Start MinIO + create buckets
+      shell: bash
+      run: |
+        docker run -d --name minio -p 9000:9000 \
+          -e MINIO_ROOT_USER=erp_admin \
+          -e MINIO_ROOT_PASSWORD=erp_minio_password \
+          minio/minio:latest server /data
+        # Wait for MinIO's health endpoint before creating buckets.
+        for i in $(seq 1 30); do
+          if curl -sf http://localhost:9000/minio/health/live; then
+            echo "MinIO ready"; break
+          fi
+          echo "Waiting for MinIO ($i)..."; sleep 2
+          if [ "$i" = "30" ]; then echo "MinIO unavailable"; exit 1; fi
+        done
+        # Pre-create the buckets (erp-pdf is also self-healed by the app). The
+        # minio/mc entrypoint is `mc`, so force `sh` to chain the commands.
+        docker run --rm --network host --entrypoint sh minio/mc:latest -c "
+          mc alias set local http://localhost:9000 erp_admin erp_minio_password &&
+          mc mb -p local/erp-pdf local/erp-uploads"
