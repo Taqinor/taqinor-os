@@ -71,30 +71,10 @@ jobs:
           python-version: '3.11'   # MUST match prod (python:3.11.x) — the full PDF/golden suite must run on the same Python that generates client PDFs.
           cache: 'pip'   # WOW4
           cache-dependency-path: backend/django_core/requirements.txt
-      - name: Install WeasyPrint system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b fonts-dejavu-core
-      - name: Install Python dependencies
-        working-directory: backend/django_core
-        run: pip install -r requirements.txt
-      - name: Start MinIO + create buckets
-        run: |
-          docker run -d --name minio -p 9000:9000 \
-            -e MINIO_ROOT_USER=erp_admin \
-            -e MINIO_ROOT_PASSWORD=erp_minio_password \
-            minio/minio:latest server /data
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost:9000/minio/health/live; then
-              echo "MinIO prêt"; break
-            fi
-            echo "Attente MinIO ($i)…"; sleep 2
-            if [ "$i" = "30" ]; then echo "MinIO indisponible"; exit 1; fi
-          done
-          docker run --rm --network host --entrypoint sh minio/mc:latest -c "
-            mc alias set local http://localhost:9000 erp_admin erp_minio_password &&
-            mc mb -p local/erp-pdf local/erp-uploads"
+      # WOW7 — shared WeasyPrint + pip (prod requirements.txt) + MinIO setup.
+      - uses: ./.github/actions/backend-env
+        with:
+          requirements: requirements.txt
       - name: Run FULL Django test suite (incl. pdf/slow) + coverage
         working-directory: backend/django_core
         # WOW3 — la couverture vit ICI (nightly/manuel), plus dans le gate
@@ -174,30 +154,10 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Install WeasyPrint system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b fonts-dejavu-core
-      - name: Install Python dependencies
-        working-directory: backend/django_core
-        run: pip install -r requirements.txt
-      - name: Start MinIO + create buckets
-        run: |
-          docker run -d --name minio -p 9000:9000 \
-            -e MINIO_ROOT_USER=erp_admin \
-            -e MINIO_ROOT_PASSWORD=erp_minio_password \
-            minio/minio:latest server /data
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost:9000/minio/health/live; then
-              echo "MinIO prêt"; break
-            fi
-            echo "Attente MinIO ($i)…"; sleep 2
-            if [ "$i" = "30" ]; then echo "MinIO indisponible"; exit 1; fi
-          done
-          docker run --rm --network host --entrypoint sh minio/mc:latest -c "
-            mc alias set local http://localhost:9000 erp_admin erp_minio_password &&
-            mc mb -p local/erp-pdf local/erp-uploads"
+      # WOW7 — shared WeasyPrint + pip (prod requirements.txt) + MinIO setup.
+      - uses: ./.github/actions/backend-env
+        with:
+          requirements: requirements.txt
       - name: Migrate + seed throwaway demo data
         working-directory: backend/django_core
         run: |

@@ -1,6 +1,8 @@
 # Dev/test-only dependencies — NEVER installed in the production image
 # (ci.yml + the Dockerfile install only requirements.txt).
 # Install locally with: pip install -r requirements.txt -r requirements-dev.txt
+# In CI these are installed by the shared `.github/actions/backend-env`
+# composite action (WOW7), which also brings up WeasyPrint + MinIO.
 -r requirements.txt
 
 # YTEST1 — shared test factories (testkit/factories.py)
