@@ -165,31 +165,31 @@ task at a time, NEVER a merge per wave or per batch. This is the ONLY run model 
 any older "waves"/"one merge per wave"/"one task per session"/"stop after one task" wording
 anywhere, including in the plan files.
 
-**THE COST MODEL (why this is the fast shape — internalize it).** The single dominant cost of a
-run is the GitHub CI `backend-tests` gate: **~40 minutes, serialized, per merge**. So run speed
-= how many times you pay that 40 minutes. Pay it **ONCE per run**. Merging "a batch of 5" then
-waiting for its CI before the next 5 pays 40 min × N — the slowest shape (the trap). Two levers:
-(a) **lane-draining** — one agent drains a WHOLE app lane (8-10 tasks), collapsing ~9 single-task
-waves into ~1; (b) **one merge per run** — accumulate every lane onto one branch and pay CI once.
-**MERGE FLOOR (founder rule — RECALIBRATED 2026-07-08 by WOW1-5).** The old ~200-task floor was
-the correct adaptation to a ~2h15 CI gate (measured; the "~40 min" above was aspirational): pay
-that 40-min-to-2h cost ONCE. WOW1-5 cut the gate toward **≤45 min** (`--parallel 4` on the 4-vCPU
-runner, coverage removed from the gate, MD5 test hasher, pip caching, a real slow/pdf tier), which
-FLIPS the economics — a cheap gate makes SMALL, SAFE batches beat one giant batch at equal
-throughput (the 200-floor is what produced the 113-unvalidated-failure multi-day recovery). NEW
-FLOOR **once the gate is ≤45 min:** land ONE drained lane-GROUP (≈40-80 tasks) or one full
-work-day of folded lanes, whichever comes first; never carry more than ~100 unmerged tasks. **If a
-batch's CI is red, FIX it within that batch before building the next on top — NEVER stack a second
-unvalidated batch on a red one.** KEEP unchanged: one sync-safe self-merge per batch, 0 approvals,
-`main` always revertable via `git revert`. (Until a run has MEASURED the gate ≤45 min, the ~200
-floor still applies.) Reaching ≥200 means MANY lanes
-(often 8 at the cap, refilled as they finish) across many apps in one run, AND second-round
-same-app lanes that first `git merge` the integration branch to inherit the round-1 migration
-chain (so migrations chain instead of colliding) — expected and correct, and one run legitimately
-spans many wakeups. If a mid-run merge is ever unavoidable (a same-app lane needs a prior task on
-`origin/main` to chain migrations), pipeline the next lanes on DISJOINT apps while that ONE CI
-runs (never idle on it) and reuse ONE persistent `--keepdb` test DB across folds (a fresh full
-test DB is a ~13-min rebuild; reuse makes each fold ~2 min).
+**THE COST MODEL (measured 2026-07-09 — internalize the NEW numbers).** The dominant cost of a
+run is the GitHub CI `backend-tests` gate. Its measured arc: **2h15** (serial + coverage, pre-WOW)
+→ **45.5 min** (WOW1 `--parallel 4`) → **41 min** (WOW6 4× shard — small gain because the
+~850-migration test-DB build was **97% of each shard**; the tests themselves ran in 62s) →
+**WOW8** cache-restores that pre-migrated DB (key = migrations hash, rebuilt once per migration
+change), targeting **~6-10 min** on the hit path; e2e restores from the same cache (its
+migrate+seed was 94% of its 32 min — the specs run in 36s). Docs-only merges skip the heavy jobs
+entirely and cost **~2 min** (measured) — the floor below NEVER applies to them.
+**MERGE FLOOR (founder rule — CONDITION FIRED 2026-07-09).** The old ~200-task floor was the
+correct adaptation to the 2h15 gate, but the 5-day evidence shows what it cost: giant PRs sat open
+a median 3.16h/mean ~10h (one 202-task PR abandoned outright; #329 open 39h through 4 red cycles),
+and 11 red heavy-gate cycles burned ~20-40h of CI wall-clock. The gate is now MEASURED ≤45 min on
+two full runs (#335 45.5 min, #342 41 min), so the WOW22 recalibration is ACTIVE. THE FLOOR NOW:
+land ONE drained lane-GROUP (≈40-80 tasks) or one full work-day of folded lanes, whichever comes
+first; never carry more than ~100 unmerged tasks; once the WOW8 hit-path is confirmed ≤15 min,
+a single full app lane (8-15 tasks) is a legitimate merge. **If a batch's CI is red, FIX it within
+that batch before building the next on top — NEVER stack a second unvalidated batch on a red one**
+(batch-4, merged unvalidated, cost 13 CI-red bugs and 4 red cycles). KEEP unchanged: lane-draining
+as the unit of work, one sync-safe self-merge per batch, 0 approvals, `main` always revertable via
+`git revert`, and the local combined docker test BEFORE every merge (it has caught ~96 real bugs
+pre-merge, 67 in one run — it is the cheap gate; CI is the expensive confirmation). Second-round
+same-app lanes still `git merge` the integration branch to inherit the round-1 migration chain.
+While ONE batch's CI runs, pipeline the next lanes on DISJOINT apps (never idle on it) and reuse
+ONE persistent `--keepdb` test DB across folds (a fresh full test DB build is ~35-38 min measured
+— the same migration replay WOW8 caches in CI; reuse makes each fold ~2 min).
 
 1. **Plan the lanes once.** Run `python scripts/plan_lanes.py <planfile>` for the file-ownership
    + dependency graph. A **lane** = tasks sharing a file/migration that must run in sequence;
@@ -312,8 +312,9 @@ above. Anything typed after the command is extra detail.
   them fully and verify real repo state before building.
 - Process EVERY unchecked `[ ]` task; verify each isn't already built (if it is, mark
   `[x] (already present)`), then tick `[x]` + add a dated DONE LOG line as it lands.
-- Lane-draining, ≥200 tasks per merge, one sync-safe self-merge, one deploy (per the COST MODEL +
-  MERGE FLOOR above). The rich self-contained lanes to drain first:
+- Lane-draining, batches sized by the RECALIBRATED MERGE FLOOR above (≈40-80 task lane-groups now
+  that the gate is measured ≤45 min — not the old ≥200), each batch locally tested then one
+  sync-safe self-merge, one deploy at the end of the run. The rich self-contained lanes to drain first:
   rh/flotte/qhse/contrats/ged/paie, then parametres/publicapi/kb/core/stock/sav/litiges/crm, then
   the rest. Report once with the lane plan (how many ran in parallel + what each shipped) and what
   was skipped/blocked.
