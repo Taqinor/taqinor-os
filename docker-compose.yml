@@ -25,7 +25,12 @@ services:
 
   django_core:
     build: ./backend/django_core
-    command: gunicorn erp_agentique.wsgi:application --bind 0.0.0.0:8000 --workers 4 --timeout 120 --worker-class sync
+    # SCA16 — GUNICORN_WORKERS/GUNICORN_THREADS surchargeables via .env sans
+    # éditer ce compose. Défauts = comportement ACTUEL (4 workers, pas de
+    # --threads posé en dev — --worker-class sync reste sync même avec
+    # GUNICORN_THREADS>1, cohérent avec avant SCA16). Formule de
+    # dimensionnement : docs/scale-runway.md section SCA16.
+    command: gunicorn erp_agentique.wsgi:application --bind 0.0.0.0:8000 --workers ${GUNICORN_WORKERS:-4} --timeout 120 --worker-class sync
     volumes:
       - ./backend/django_core:/app
       # Canonical pipeline stages — single source of truth (CLAUDE.md rule #2).
@@ -91,7 +96,13 @@ services:
     # plus retarder un rendu PDF interactif : deux process Celery distincts,
     # queues disjointes, aucun overlap possible par construction (`-Q`
     # restreint strictement les queues qu'un worker consomme).
-    command: celery -A erp_agentique worker -l info -Q default,scheduled
+    # SCA16 — CELERY_CONCURRENCY (env, .env) surchargeable ; VIDE par défaut =
+    # comportement ACTUEL (pas de --concurrency posé = défaut natif Celery,
+    # cpu_count() du conteneur). sh -c conditionnel : n'ajoute --concurrency=
+    # QUE si la variable est non-vide (jamais un --concurrency= vide invalide).
+    command: >
+      sh -c "celery -A erp_agentique worker -l info -Q default,scheduled
+      ${CELERY_CONCURRENCY:+--concurrency=$CELERY_CONCURRENCY}"
     volumes:
       - ./backend/django_core:/app
       - ./STAGES.py:/opt/STAGES.py:ro

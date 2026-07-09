@@ -51,10 +51,15 @@ services:
     #   derrière un rendu PDF WeasyPrint (3-4,5 s mesurés) qui occupe un worker.
     # --preload : imports lourds (matplotlib, WeasyPrint) chargés UNE fois
     #   dans le maître avant le fork — démarrage et mémoire partagés.
+    # SCA16 — GUNICORN_WORKERS/GUNICORN_THREADS (env, .env serveur)
+    # surchargeables sans éditer ce compose. Défauts = valeurs ACTUELLES
+    # (3/4) : comportement byte-identique sans .env posé. Formule de
+    # dimensionnement : docs/scale-runway.md section SCA16.
     command: >
       sh -c "python manage.py collectstatic --noinput
       && gunicorn erp_agentique.wsgi:application
-      --bind 0.0.0.0:8000 --workers 3 --threads 4 --preload --timeout 120"
+      --bind 0.0.0.0:8000 --workers ${GUNICORN_WORKERS:-3}
+      --threads ${GUNICORN_THREADS:-4} --preload --timeout 120"
     # SCA8 — 3 workers × 4 threads = 12 connexions/requêtes concurrentes ;
     # WeasyPrint + matplotlib chargés au --preload (mémoire partagée entre
     # workers forkés, pas de fuite connue). Recalibrer si les valeurs sont
