@@ -197,7 +197,12 @@ jobs:
           cache: 'pip'   # WOW4 — cache les deps Python (npm l'était déjà, pas pip) ; clé sur requirements-dev.txt.
           cache-dependency-path: backend/django_core/requirements-dev.txt
       # WOW7 — shared WeasyPrint + pip (requirements-dev.txt) + MinIO setup.
+      # WOW8 — restore the cached pre-migrated test DB (measured: the ~850-
+      # migration replay was 2255s of a 2388s shard — 97% of the job); the test
+      # step's --keepdb then reuses it and only clones the 4 parallel workers.
       - uses: ./.github/actions/backend-env
+        with:
+          testdb-cache-into: test_erp_db
       # YOPSB5 — anti-dérive modèle<->migration : échoue si un changement de
       # modèle n'a pas sa migration (index nommé à la main divergent,
       # contrainte sans migration…). Tourne AVANT la suite de tests, même
@@ -217,7 +222,7 @@ jobs:
         run: |
           LABELS=$(python ../../scripts/ci_shard.py ${{ matrix.shard }} 4)
           echo "Shard ${{ matrix.shard }}/4 -> $LABELS"
-          python manage.py test $LABELS -v 2 --exclude-tag=pdf --exclude-tag=slow --parallel 4
+          python manage.py test $LABELS -v 2 --exclude-tag=pdf --exclude-tag=slow --parallel 4 --keepdb
 
   # WOW6 — thin aggregator that PRESERVES the required `backend-tests` status
   # check name. Branch protection requires the literal `backend-tests` context
@@ -405,7 +410,13 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       # WOW7 — shared WeasyPrint + pip (requirements-dev.txt) + MinIO setup.
+      # WOW8 — restore the cached pre-migrated dump straight into erp_db
+      # (measured: this job's migrate+seed step was 1796s of a 1915s total —
+      # 94% — while the E2E specs themselves ran in 36s). The migrate below
+      # becomes a fast no-op; the seeds still run fresh.
       - uses: ./.github/actions/backend-env
+        with:
+          testdb-cache-into: erp_db
       - name: Migrate + seed throwaway demo data
         working-directory: backend/django_core
         run: |
