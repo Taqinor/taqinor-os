@@ -2,7 +2,9 @@
 # (ci.yml + the Dockerfile install only requirements.txt).
 # Install locally with: pip install -r requirements.txt -r requirements-dev.txt
 # In CI these are installed by the shared `.github/actions/backend-env`
-# composite action (WOW7), which also brings up WeasyPrint + MinIO.
+# composite action (WOW7), which also brings up WeasyPrint + MinIO and, for
+# jobs that opt in, restores the cached pre-migrated test DB (WOW8) so the
+# ~850-migration replay is paid once per migration change, not per job.
 -r requirements.txt
 
 # YTEST1 — shared test factories (testkit/factories.py)

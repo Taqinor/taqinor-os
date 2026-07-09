@@ -72,16 +72,19 @@ jobs:
           cache: 'pip'   # WOW4
           cache-dependency-path: backend/django_core/requirements.txt
       # WOW7 — shared WeasyPrint + pip (prod requirements.txt) + MinIO setup.
+      # WOW8 — restore the cached pre-migrated test DB (skips the ~35-min
+      # migration replay); the test run below adds --keepdb to reuse it.
       - uses: ./.github/actions/backend-env
         with:
           requirements: requirements.txt
+          testdb-cache-into: test_erp_db
       - name: Run FULL Django test suite (incl. pdf/slow) + coverage
         working-directory: backend/django_core
         # WOW3 — la couverture vit ICI (nightly/manuel), plus dans le gate
         # par-merge : on paie l'instrumentation là où la latence est sans enjeu.
         run: |
           pip install coverage
-          coverage run manage.py test apps authentication core -v 2
+          coverage run manage.py test apps authentication core -v 2 --keepdb
           coverage report
 
   # ── Front : logique pure (node:test) + composants/UX (Vitest) ──────────────
@@ -155,9 +158,12 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       # WOW7 — shared WeasyPrint + pip (prod requirements.txt) + MinIO setup.
+      # WOW8 — restore the cached pre-migrated dump into erp_db (the migrate
+      # step below becomes a fast no-op; the demo seeds still run fresh).
       - uses: ./.github/actions/backend-env
         with:
           requirements: requirements.txt
+          testdb-cache-into: erp_db
       - name: Migrate + seed throwaway demo data
         working-directory: backend/django_core
         run: |
