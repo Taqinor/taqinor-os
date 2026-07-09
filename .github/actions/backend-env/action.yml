@@ -12,6 +12,20 @@ inputs:
       gate installs the dev/test deps; release-verify runs on the prod deps.
     required: false
     default: requirements-dev.txt
+  testdb-cache-into:
+    description: >-
+      WOW8 — when set to a database name (e.g. `test_erp_db` for the sharded test
+      jobs, `erp_db` for e2e), restore a cached PRE-MIGRATED database dump into it
+      instead of paying the ~850-migration replay (~35 min, measured as 97% of a
+      shard's wall-clock). Cache key = hash of every migration file + the prod
+      requirements; on a miss this action BUILDS the DB once via `manage.py
+      migrate`, dumps it, and saves the cache (a migration-adding PR pays the
+      build exactly once; the post-merge run on main saves the canonical cache
+      all later PRs restore). Full dump — never --schema-only — so RunPython-
+      seeded rows (content types, permissions, seed data) are preserved. Empty
+      (the default) disables the feature entirely.
+    required: false
+    default: ''
 runs:
   using: composite
   steps:
@@ -45,3 +59,38 @@ runs:
         docker run --rm --network host --entrypoint sh minio/mc:latest -c "
           mc alias set local http://localhost:9000 erp_admin erp_minio_password &&
           mc mb -p local/erp-pdf local/erp-uploads"
+    - name: Restore cached pre-migrated DB dump (WOW8)
+      if: ${{ inputs.testdb-cache-into != '' }}
+      uses: actions/cache@v4
+      with:
+        path: /tmp/testdb.dump
+        key: testdb-v1-${{ hashFiles('backend/django_core/**/migrations/*.py', 'backend/django_core/requirements.txt') }}
+    - name: Build or restore the pre-migrated database (WOW8)
+      if: ${{ inputs.testdb-cache-into != '' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        TARGET='${{ inputs.testdb-cache-into }}'
+        export PGPASSWORD="${DB_PASSWORD:-ci_password}"
+        PGHOST="${DB_HOST:-localhost}"; PGUSER="${DB_USER:-erp_user}"
+        # Run the postgres client tools from the SAME image as the DB service so
+        # client/server versions can never mismatch (pg_dump refuses to run
+        # against a newer server; ubuntu runners ship whatever apt has).
+        PGIMG=pgvector/pgvector:pg16
+        pgtool() { docker run --rm --network host -v /tmp:/tmp -e PGPASSWORD "$PGIMG" "$@"; }
+        if [ -f /tmp/testdb.dump ]; then
+          echo "Cache HIT — restoring pre-migrated dump into $TARGET"
+          # e2e's target (erp_db) already exists (service POSTGRES_DB); the
+          # shards' target (test_erp_db) doesn't — create it if missing.
+          pgtool createdb -h "$PGHOST" -U "$PGUSER" "$TARGET" 2>/dev/null || true
+          pgtool pg_restore -h "$PGHOST" -U "$PGUSER" -d "$TARGET" --no-owner /tmp/testdb.dump
+          echo "Restore done — Django's --keepdb will reuse it (zero migrations)."
+        else
+          echo "Cache MISS — building $TARGET via migrate once, then dumping it"
+          pgtool createdb -h "$PGHOST" -U "$PGUSER" "$TARGET" 2>/dev/null || true
+          (cd backend/django_core && DB_NAME="$TARGET" python manage.py migrate --noinput)
+          # FULL dump (never --schema-only): RunPython data migrations seed real
+          # rows (content types, permissions, seed data) that tests depend on.
+          pgtool pg_dump -h "$PGHOST" -U "$PGUSER" -Fc -f /tmp/testdb.dump "$TARGET"
+          echo "Dump saved — actions/cache uploads it at job end (first save wins)."
+        fi
