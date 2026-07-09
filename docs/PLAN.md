@@ -1399,18 +1399,16 @@ client-facing PDFs are GALLERY-gated).
 
 ---
 
-## WOW — deferred remainder (rest of WOW1-26 SHIPPED 2026-07-08 → see docs/DONE.md)
+## WOW — COMPLETE (all 26 SHIPPED: WOW1-26 → see docs/DONE.md + the DONE LOG below)
 
-> The 2026-07-08 Fable meta-audit's way-of-working overhaul (WOW1-26) was IMPLEMENTED in one merge:
-> CI gate 2h15→≤45 min (`--parallel 4`, coverage off the gate, MD5 test hasher, pip cache, real
-> slow/pdf tier), committed local test harness (`scripts/test-backend.ps1`) + query probe
-> (`scripts/probe_queries.py`) + test factories (`core/factories.py`), `docs/TEST_AUTHORING_CONTRACT.md`
-> + `docs/LANE_BRIEF.md`, `land.ps1`/`backup-bundle.ps1`/`gc-workspace.ps1`, grouped Dependabot,
-> hardened `plan_lanes.py`, deploy `--remove-orphans` + migration-verify, and the CLAUDE.md merge-floor
-> recalibration + validation-left rule. These few are HELD — each depends on measuring the new gate
-> first, is risky-blind, or is a dedicated operation:
-
-- [ ] WOW8 — (STRETCH) Cached pre-migrated test DB: nightly `pg_dump` artifact keyed on `hashFiles('**/migrations/*.py')`, restored before `--keepdb`. SKIP entirely if WOW1+WOW6 already land the gate ≤20 min. @lane: ci
+> The 2026-07-08 Fable meta-audit's way-of-working overhaul is fully implemented: the 20-task core
+> merge (#335), then WOW16 (#340), WOW17 (#341), WOW6+13 (#342), WOW7 (#344) and WOW8. Measured
+> arc of the backend CI gate: 2h15 (serial+coverage) → 45.5 min (WOW1 `--parallel 4`) → 41 min
+> (WOW6 4× shard — small gain because the ~850-migration test-DB build was 97% of each shard) →
+> WOW8 cache-restores that pre-migrated DB (key = migrations hash; built once per migration
+> change), targeting a ~6-10 min gate. e2e's migrate+seed (94% of its 32 min) restores from the
+> same cache. Evidence, sources and rejected alternatives (squash, tmpfs, Playwright shard,
+> baked images): DONE LOG 2026-07-09.
 
 
 ## NEEDS YOUR INPUT — ungated; each waits on something only you can give (with my recommendation)
@@ -1573,6 +1571,7 @@ Tracked here so they aren't lost:
 ## DONE LOG (agent appends one plain-language line per completed task)
 
 - 2026-07-09 — YRBAC12 coché `[x] (already present)` : le test générique d'isolation multi-tenant existe déjà (`core/tests/test_tenant_isolation_sweep.py`) — constat de l'audit round-2 SCA, aucun code changé. Groupe SCA (SCA1-SCA49) ajouté au BUILD QUEUE (échelle, forteresse SaaS, usine à modules, gouvernance d'ordre de build).
+- 2026-07-09 WOW8 — cached pre-migrated test DB, the decisive CI lever. EVIDENCE (step-level archaeology of runs 28986447245/28976333265/85713837712): the ~850-migration test-DB build was 2255s of a 2388s shard (97%, tests themselves 62s) and e2e's migrate+seed 1796s of 1915s (94%, specs 36s) — so WOW6's 4× shard only moved the gate 45.5→41 min, and the "skip if ≤20 min" condition was NOT met → built. DESIGN (per external research: django-migrations-ci 15min→seconds, Cal.com 30→5 min, Zulip's persistent template-DB clone; 6 gotchas addressed): `backend-env` gains a `testdb-cache-into` input — `actions/cache` on a `pg_dump -Fc` FULL dump (never --schema-only: RunPython-seeded rows) keyed on `hashFiles(migrations + requirements.txt)`; on hit createdb+pg_restore, on miss ONE `migrate` builds+dumps (a migration-adding PR pays once; main's post-merge run saves the canonical cache all PRs restore; shard save-races are first-wins/harmless on free runners). Client tools run FROM pgvector/pgvector:pg16 itself → version mismatch impossible. Wired: shards (test_erp_db + --keepdb, workers still TEMPLATE-clone), e2e (erp_db — migrate becomes no-op, seeds fresh), release-verify backend-full (+--keepdb) + e2e-full. Expected: gate ~6-10 min hit-path (16× vs the 2h15 era), nightly 84→~50 min. REJECTED with sources: squashmigrations (no measured CI win exists; CircularDependencyError at 37-app scale; InconsistentMigrationHistory patched in Django as late as 11/2025), `test --no-migrations` (stops validating the real migration chain), Playwright sharding (specs=36s; sink was the DB), baked DB images/PGDATA caching (services start before steps; no working precedent), tmpfs micro-opt (deferred — one risky change per PR). @lane: ci
 - 2026-07-09 WOW7 — extracted the tripled backend CI env setup (WeasyPrint apt libs + `pip install` + MinIO server/buckets) into a reusable composite action `.github/actions/backend-env` with a `requirements` input (default `requirements-dev.txt`; release-verify passes `requirements.txt`). Now referenced by all 4 usages: `backend-tests-shard` + `e2e` in ci.yml and `backend-full` + `e2e-full` in release-verify.yml — the block lives in ONE place. Callers still set up Python (and Node) themselves. Validated by exercising the sharded suite on this PR (a `requirements-dev.txt` doc note forces `changes.backend=true` so the composite action actually runs before merge). @lane: ci
 - 2026-07-09 WOW6 — sharded the fast backend-tests suite 4× in `.github/workflows/ci.yml`: renamed the job to `backend-tests-shard` (`strategy: matrix: shard: [0,1,2,3]`, one free public-repo runner each) and added a thin `backend-tests` AGGREGATOR job that preserves the REQUIRED status-check name (branch protection requires the literal `backend-tests` context, NOT `ci-gate` — verified via the GitHub API; branch protection UNCHANGED). New `scripts/ci_shard.py` splits the app labels round-robin; a set-equality test proves the 4 shards' union == `apps authentication core` (37 labels, no gaps/extras — `authentication`'s `tests_role_change.py` included via a recursive `test*.py` match). `ci-gate` now also `needs` the shard job. Aggregator passes iff no shard failed and stays green when shards skip (docs-only PRs). Every shard still builds the full test DB; WOW8 (cached DB) is evaluated from the measured sharded wall-clock. @lane: ci
 - 2026-07-09 WOW13 — converted per-test `setUp` → class-scoped `setUpTestData` across the 3 heaviest test files (ventes/test_error_fixes.py, records/tests.py, ged/test_ged.py — 43 classes) so fixture objects are created ONCE per class instead of per test. Model-object creation moved to `setUpTestData` (`self.`→`cls.`); APIClients kept per-test in a thin `setUp`; ged base classes (`GedBase`/`RetentionBase`/`ArchivageLegalBase`) chain via `super().setUpTestData()`. Safe under Django 5.1 (per-test savepoint rollback + `TestData` deep-copy isolation). Verified: all 44 `setUpTestData` carry `@classmethod`, flake8 + py_compile clean, and a local prod-image run of the 3 modules. @lane: tests
