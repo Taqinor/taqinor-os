@@ -23,16 +23,19 @@ def auth(user):
 
 
 class TestActivities(TestCase):
-    def setUp(self):
-        self.company = Company.objects.create(nom='Act Co', slug='act-co')
+    @classmethod
+    def setUpTestData(cls):
+        cls.company = Company.objects.create(nom='Act Co', slug='act-co')
         # Seed migration ne s'exécute pas sur la base de test fraîche par
         # société créée ici → on crée les types nous-mêmes.
-        self.type_appel = ActivityType.objects.create(
-            company=self.company, nom='Appel', ordre=10)
-        self.user = User.objects.create_user(
+        cls.type_appel = ActivityType.objects.create(
+            company=cls.company, nom='Appel', ordre=10)
+        cls.user = User.objects.create_user(
             username='act_resp', password='x', role_legacy='responsable',
-            company=self.company)
-        self.lead = Lead.objects.create(company=self.company, nom='Prospect')
+            company=cls.company)
+        cls.lead = Lead.objects.create(company=cls.company, nom='Prospect')
+
+    def setUp(self):
         self.api = auth(self.user)
 
     def test_plan_then_list_for_record(self):
@@ -109,19 +112,22 @@ class TestActivities(TestCase):
 
 
 class TestAttachments(TestCase):
-    def setUp(self):
-        self.company = Company.objects.create(nom='Att Co', slug='att-co')
-        self.user = User.objects.create_user(
+    @classmethod
+    def setUpTestData(cls):
+        cls.company = Company.objects.create(nom='Att Co', slug='att-co')
+        cls.user = User.objects.create_user(
             username='att_resp', password='x', role_legacy='responsable',
-            company=self.company)
+            company=cls.company)
         from apps.roles.models import Role, ALL_PERMISSIONS
         admin_role = Role.objects.create(
-            company=self.company, nom='Administrateur',
+            company=cls.company, nom='Administrateur',
             permissions=ALL_PERMISSIONS, est_systeme=True)
-        self.admin = User.objects.create_user(
+        cls.admin = User.objects.create_user(
             username='att_admin', password='x', role=admin_role,
-            role_legacy='admin', company=self.company)
-        self.lead = Lead.objects.create(company=self.company, nom='Doc Lead')
+            role_legacy='admin', company=cls.company)
+        cls.lead = Lead.objects.create(company=cls.company, nom='Doc Lead')
+
+    def setUp(self):
         self.api = auth(self.user)
 
     def test_upload_roundtrip_and_delete(self):
@@ -369,13 +375,16 @@ class TestResolveTargetErrors(TestCase):
     """ERR56 — un `model` valide + `id` inexistant ou de mauvais type doit
     produire une 400/200-vide propre (jamais un 500 non rattrapé)."""
 
-    def setUp(self):
-        self.company = Company.objects.create(nom='Res Co', slug='res-co')
-        self.type_appel = ActivityType.objects.create(
-            company=self.company, nom='Appel', ordre=10)
-        self.user = User.objects.create_user(
+    @classmethod
+    def setUpTestData(cls):
+        cls.company = Company.objects.create(nom='Res Co', slug='res-co')
+        cls.type_appel = ActivityType.objects.create(
+            company=cls.company, nom='Appel', ordre=10)
+        cls.user = User.objects.create_user(
             username='res_resp', password='x', role_legacy='responsable',
-            company=self.company)
+            company=cls.company)
+
+    def setUp(self):
         self.api = auth(self.user)
 
     def test_resolve_target_nonexistent_pk_raises_valueerror(self):
@@ -421,14 +430,17 @@ class TestVentesAttachmentTargets(TestCase):
     """ventes.devis et ventes.facture sont des cibles de pièce jointe valides :
     on peut RÉELLEMENT y joindre un fichier (persiste + listable)."""
 
-    def setUp(self):
-        self.company = Company.objects.create(nom='Vts Att', slug='vts-att')
+    @classmethod
+    def setUpTestData(cls):
+        cls.company = Company.objects.create(nom='Vts Att', slug='vts-att')
         from apps.roles.models import Role, COMMERCIAL_PERMISSIONS
         role = Role.objects.create(
-            company=self.company, nom='Commercial',
+            company=cls.company, nom='Commercial',
             permissions=COMMERCIAL_PERMISSIONS, est_systeme=True)
-        self.user = User.objects.create_user(
-            username='vts_com', password='x', role=role, company=self.company)
+        cls.user = User.objects.create_user(
+            username='vts_com', password='x', role=role, company=cls.company)
+
+    def setUp(self):
         self.api = auth(self.user)
 
     def _client(self):
@@ -478,19 +490,22 @@ class TestVentesAttachmentTargets(TestCase):
 class TestComments(TestCase):
     """FG7 — Commentaires génériques + @mentions."""
 
-    def setUp(self):
-        self.company = Company.objects.create(nom='Cmt Co', slug='cmt-co')
-        self.resp = User.objects.create_user(
+    @classmethod
+    def setUpTestData(cls):
+        cls.company = Company.objects.create(nom='Cmt Co', slug='cmt-co')
+        cls.resp = User.objects.create_user(
             username='cmt_resp', password='x', role_legacy='responsable',
-            company=self.company)
+            company=cls.company)
         from apps.roles.models import Role, ALL_PERMISSIONS
         admin_role = Role.objects.create(
-            company=self.company, nom='Administrateur',
+            company=cls.company, nom='Administrateur',
             permissions=ALL_PERMISSIONS, est_systeme=True)
-        self.admin = User.objects.create_user(
+        cls.admin = User.objects.create_user(
             username='cmt_admin', password='x', role=admin_role,
-            role_legacy='admin', company=self.company)
-        self.lead = Lead.objects.create(company=self.company, nom='Lead Cmt')
+            role_legacy='admin', company=cls.company)
+        cls.lead = Lead.objects.create(company=cls.company, nom='Lead Cmt')
+
+    def setUp(self):
         self.api = auth(self.resp)
 
     def test_create_and_list_comment(self):
@@ -581,19 +596,22 @@ class TestComments(TestCase):
 class TestTags(TestCase):
     """FG9 — Vocabulaire de tags partagés + TaggedItems."""
 
-    def setUp(self):
-        self.company = Company.objects.create(nom='Tag Co', slug='tag-co')
-        self.resp = User.objects.create_user(
+    @classmethod
+    def setUpTestData(cls):
+        cls.company = Company.objects.create(nom='Tag Co', slug='tag-co')
+        cls.resp = User.objects.create_user(
             username='tag_resp', password='x', role_legacy='responsable',
-            company=self.company)
+            company=cls.company)
         from apps.roles.models import Role, ALL_PERMISSIONS
         admin_role = Role.objects.create(
-            company=self.company, nom='Administrateur',
+            company=cls.company, nom='Administrateur',
             permissions=ALL_PERMISSIONS, est_systeme=True)
-        self.admin = User.objects.create_user(
+        cls.admin = User.objects.create_user(
             username='tag_admin', password='x', role=admin_role,
-            role_legacy='admin', company=self.company)
-        self.lead = Lead.objects.create(company=self.company, nom='Lead Tag')
+            role_legacy='admin', company=cls.company)
+        cls.lead = Lead.objects.create(company=cls.company, nom='Lead Tag')
+
+    def setUp(self):
         self.api = auth(self.resp)
 
     def test_create_and_list_tags(self):
@@ -689,12 +707,15 @@ class TestTags(TestCase):
 class TestAttachmentsAll(TestCase):
     """FG10 — Centre de pièces jointes de la société (GET records/attachments/all/)."""
 
-    def setUp(self):
-        self.company = Company.objects.create(nom='AttAll Co', slug='attall-co')
-        self.user = User.objects.create_user(
+    @classmethod
+    def setUpTestData(cls):
+        cls.company = Company.objects.create(nom='AttAll Co', slug='attall-co')
+        cls.user = User.objects.create_user(
             username='attall_user', password='x', role_legacy='responsable',
-            company=self.company)
-        self.lead = Lead.objects.create(company=self.company, nom='Lead AttAll')
+            company=cls.company)
+        cls.lead = Lead.objects.create(company=cls.company, nom='Lead AttAll')
+
+    def setUp(self):
         self.api = auth(self.user)
 
     def _make_att(self, filename, mime='application/pdf', phase=''):
@@ -778,16 +799,19 @@ class TestAttachmentsAll(TestCase):
 
 # ── XKB4 — à-faire personnel (sans cible métier) + conversion en tâche ──────
 class TestActivitesPersonnelles(TestCase):
-    def setUp(self):
-        self.company = Company.objects.create(nom='XKB4 Co', slug='xkb4-co')
-        self.type_todo = ActivityType.objects.create(
-            company=self.company, nom='À faire', ordre=5)
-        self.user = User.objects.create_user(
+    @classmethod
+    def setUpTestData(cls):
+        cls.company = Company.objects.create(nom='XKB4 Co', slug='xkb4-co')
+        cls.type_todo = ActivityType.objects.create(
+            company=cls.company, nom='À faire', ordre=5)
+        cls.user = User.objects.create_user(
             username='xkb4_u', password='x', role_legacy='responsable',
-            company=self.company)
-        self.collegue = User.objects.create_user(
+            company=cls.company)
+        cls.collegue = User.objects.create_user(
             username='xkb4_collegue', password='x', role_legacy='responsable',
-            company=self.company)
+            company=cls.company)
+
+    def setUp(self):
         self.api = auth(self.user)
 
     def test_create_personal_todo_without_target(self):
@@ -851,12 +875,15 @@ class TestActivitesPersonnelles(TestCase):
 
 # ── ZSAL1 — Enchaînement d'activités sur les types d'activité ───────────────
 class TestEnchainementActivites(TestCase):
-    def setUp(self):
-        self.company = Company.objects.create(nom='ZSAL1 Co', slug='zsal1-co')
-        self.user = User.objects.create_user(
+    @classmethod
+    def setUpTestData(cls):
+        cls.company = Company.objects.create(nom='ZSAL1 Co', slug='zsal1-co')
+        cls.user = User.objects.create_user(
             username='zsal1_u', password='x', role_legacy='responsable',
-            company=self.company)
-        self.lead = Lead.objects.create(company=self.company, nom='ZSAL1 lead')
+            company=cls.company)
+        cls.lead = Lead.objects.create(company=cls.company, nom='ZSAL1 lead')
+
+    def setUp(self):
         self.api = auth(self.user)
 
     def test_declencher_creates_exactly_one_followup(self):
@@ -940,18 +967,21 @@ class TestEnchainementActivites(TestCase):
 
 # ── XKB34 — S'abonner aux enregistrements (followers) ───────────────────────
 class TestFollowers(TestCase):
-    def setUp(self):
-        self.company = Company.objects.create(nom='XKB34 Co', slug='xkb34-co')
-        self.owner = User.objects.create_user(
+    @classmethod
+    def setUpTestData(cls):
+        cls.company = Company.objects.create(nom='XKB34 Co', slug='xkb34-co')
+        cls.owner = User.objects.create_user(
             username='xkb34_owner', password='x', role_legacy='responsable',
-            company=self.company)
-        self.follower_user = User.objects.create_user(
+            company=cls.company)
+        cls.follower_user = User.objects.create_user(
             username='xkb34_follower', password='x', role_legacy='responsable',
-            company=self.company)
-        self.other = User.objects.create_user(
+            company=cls.company)
+        cls.other = User.objects.create_user(
             username='xkb34_other', password='x', role_legacy='responsable',
-            company=self.company)
-        self.lead = Lead.objects.create(company=self.company, nom='Follow Me')
+            company=cls.company)
+        cls.lead = Lead.objects.create(company=cls.company, nom='Follow Me')
+
+    def setUp(self):
         self.api_follower = auth(self.follower_user)
         self.api_owner = auth(self.owner)
 
