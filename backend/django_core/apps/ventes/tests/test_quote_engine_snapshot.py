@@ -139,7 +139,7 @@ REQUIRED_TOTALS_LITERALS = (
 
 # Marqueurs de prix d'achat interdits sur TOUT rendu client (jamais un centime
 # du prix d'achat revendeur ne doit fuiter — CLAUDE.md).
-FORBIDDEN_BUY_PRICE_MARKERS = ('9876', '9 876', '9 876', 'achat')
+FORBIDDEN_BUY_PRICE_MARKERS = ('9876', '9 876', '9 876', '9&#8239;876', 'achat')
 
 
 def _render_pdf_bytes(devis, pdf_options=None):
@@ -198,42 +198,121 @@ def _png_diff_ratio(png_a: bytes, png_b: bytes) -> float:
     return diff_pixels / total_pixels
 
 
-def _assert_matches_baseline(test_case, name, pdf_bytes, *, page_count):
-    """Compare (ou écrit) le baseline PNG par page pour ``name``. Échoue avec
-    un message français clair si le baseline est absent et que
-    UPDATE_PDF_SNAPSHOTS n'est pas armé."""
-    pages = _rasterize(pdf_bytes)
-    test_case.assertEqual(
-        len(pages), page_count,
-        f'{name} : {page_count} page(s) attendue(s), {len(pages)} obtenue(s).')
+def check_or_write_baseline(name, pdf_bytes, *, page_count, update=None):
+    """Compare (ou écrit) le baseline PNG par page pour ``name``.
 
-    update = os.environ.get('UPDATE_PDF_SNAPSHOTS') == '1'
+    Fonction PURE (aucune dépendance à ``TestCase``) — partagée par le test
+    (qui l'enrobe en assertions) et par ``update_pdf_baselines`` (qui
+    l'appelle directement avec ``update=True``). Retourne la liste des chemins
+    de baseline écrits ; lève ``AssertionError`` avec un message français
+    clair sur toute divergence (page manquante, baseline absent, diff au-delà
+    du seuil).
+    """
+    if update is None:
+        update = os.environ.get('UPDATE_PDF_SNAPSHOTS') == '1'
+    pages = _rasterize(pdf_bytes)
+    if len(pages) != page_count:
+        raise AssertionError(
+            f'{name} : {page_count} page(s) attendue(s), '
+            f'{len(pages)} obtenue(s).')
+
     BASELINE_DIR.mkdir(parents=True, exist_ok=True)
+    written = []
     for idx, png_bytes in enumerate(pages, start=1):
         baseline_path = BASELINE_DIR / f'{name}_p{idx}.png'
         if not baseline_path.exists():
             if update:
                 baseline_path.write_bytes(png_bytes)
+                written.append(baseline_path)
                 continue
-            test_case.fail(
+            raise AssertionError(
                 f"Baseline manquant : {baseline_path.name}. Ce test ne peut "
                 "pas générer de baseline ici (pas de base de données/docker "
                 "disponible). Lancez `python manage.py update_pdf_baselines` "
                 "dans l'image docker prod (voir docs/TESTING.md) puis "
                 "committez le PNG produit sous "
                 "apps/ventes/tests/baselines/.")
-        baseline_bytes = baseline_path.read_bytes()
         if update:
             # Réécrit toujours en mode mise à jour explicite.
             baseline_path.write_bytes(png_bytes)
+            written.append(baseline_path)
             continue
+        baseline_bytes = baseline_path.read_bytes()
         ratio = _png_diff_ratio(png_bytes, baseline_bytes)
-        test_case.assertLessEqual(
-            ratio, MAX_DIFF_PIXEL_RATIO,
-            f'{baseline_path.name} : diff visuel de {ratio:.2%} '
-            f'(> seuil {MAX_DIFF_PIXEL_RATIO:.0%}). Si le changement est '
-            'volontaire, régénérez avec `manage.py update_pdf_baselines` '
-            '(YTEST11) et committez le nouveau PNG.')
+        if ratio > MAX_DIFF_PIXEL_RATIO:
+            raise AssertionError(
+                f'{baseline_path.name} : diff visuel de {ratio:.2%} '
+                f'(> seuil {MAX_DIFF_PIXEL_RATIO:.0%}). Si le changement est '
+                'volontaire, régénérez avec `manage.py update_pdf_baselines` '
+                '(YTEST11) et committez le nouveau PNG.')
+    return written
+
+
+def _build_snapshot_devis(company, user, client_obj, case):
+    """Construit le Devis fixe d'un cas de baseline (ORM nue, réutilisable
+    hors TestCase par ``update_pdf_baselines``)."""
+    return make_devis(
+        company, user, client_obj, case['lines'],
+        reference=case['reference'],
+        mode_installation=case.get('mode_installation', ''),
+        etude_params=case.get('etude_params'))
+
+
+# Un cas par format — SOURCE UNIQUE partagée par le test (TestCase, DB de
+# test) et la commande de gestion ``update_pdf_baselines`` (DB réelle, image
+# docker prod). Ne jamais dupliquer cette liste ailleurs.
+BASELINE_CASES = [
+    {
+        'name': 'residentiel_full',
+        'reference': 'DEV-SNAP-FULL',
+        'lines': FULL_LINES,
+        'pdf_options': None,
+        'page_count': 3,
+        'check_totals': True,
+    },
+    {
+        'name': 'industriel_full_etude',
+        'reference': 'DEV-SNAP-ETUDE',
+        'lines': FULL_LINES,
+        'mode_installation': 'industriel',
+        'etude_params': ETUDE_PARAMS,
+        'pdf_options': {'include_etude': True},
+        'page_count': 4,
+        'check_totals': True,
+    },
+    {
+        'name': 'residentiel_onepage',
+        'reference': 'DEV-SNAP-1PG',
+        'lines': FULL_LINES,
+        'pdf_options': {'pdf_mode': 'onepage'},
+        'page_count': 1,
+        'check_totals': True,
+    },
+    {
+        'name': 'agricole_pompage_full',
+        'reference': 'DEV-SNAP-AGRI',
+        'lines': AGRICOLE_LINES,
+        'mode_installation': 'agricole',
+        'etude_params': AGRICOLE_ETUDE,
+        'pdf_options': None,
+        'page_count': 4,
+        # Le rendu agricole plein format porte ses propres figures (pas de
+        # remise/TVA détaillée par palier identique au résidentiel) —
+        # la garde totaux est déjà couverte par les formats
+        # résidentiel/industriel ; on vérifie ici l'absence de prix d'achat.
+        'check_totals': False,
+    },
+    {
+        'name': 'agricole_pompage_onepage',
+        'reference': 'DEV-SNAP-AGRI1PG',
+        'lines': AGRICOLE_LINES,
+        'mode_installation': 'agricole',
+        'etude_params': AGRICOLE_ETUDE,
+        'pdf_options': {'pdf_mode': 'onepage'},
+        'page_count': 1,
+        'check_totals': True,
+    },
+]
 
 
 @tag('pdf')
@@ -247,69 +326,44 @@ class TestQuoteEngineGoldenSnapshots(TestCase):
         self.user = make_user(self.company)
         self.client_obj = make_client(self.company)
 
-    def _structural_asserts(self, pdf_bytes, *, buy_price_markers=None):
+    def _structural_asserts(self, pdf_bytes):
         text = _extract_text(pdf_bytes)
         for literal in REQUIRED_TOTALS_LITERALS:
             self.assertIn(
                 literal, text,
                 f'figure clé absente du PDF : « {literal} »')
-        for marker in (buy_price_markers or FORBIDDEN_BUY_PRICE_MARKERS):
-            self.assertNotIn(
-                marker.lower(), text.lower(),
-                f'prix_achat détecté dans le PDF client (marqueur « {marker} »)')
 
-    def test_full_format_three_pages(self):
-        devis = make_devis(
-            self.company, self.user, self.client_obj, FULL_LINES,
-            reference='DEV-SNAP-FULL')
-        pdf_bytes = _render_pdf_bytes(devis)
-        self._structural_asserts(pdf_bytes)
-        _assert_matches_baseline(
-            self, 'residentiel_full', pdf_bytes, page_count=3)
-
-    def test_full_with_etude_four_pages(self):
-        devis = make_devis(
-            self.company, self.user, self.client_obj, FULL_LINES,
-            reference='DEV-SNAP-ETUDE', mode_installation='industriel',
-            etude_params=ETUDE_PARAMS)
-        pdf_bytes = _render_pdf_bytes(devis, {'include_etude': True})
-        self._structural_asserts(pdf_bytes)
-        _assert_matches_baseline(
-            self, 'industriel_full_etude', pdf_bytes, page_count=4)
-
-    def test_onepage_format_one_page(self):
-        devis = make_devis(
-            self.company, self.user, self.client_obj, FULL_LINES,
-            reference='DEV-SNAP-1PG')
-        pdf_bytes = _render_pdf_bytes(devis, {'pdf_mode': 'onepage'})
-        self._structural_asserts(pdf_bytes)
-        _assert_matches_baseline(
-            self, 'residentiel_onepage', pdf_bytes, page_count=1)
-
-    def test_agricole_pompage_full_format(self):
-        devis = make_devis(
-            self.company, self.user, self.client_obj, AGRICOLE_LINES,
-            reference='DEV-SNAP-AGRI', mode_installation='agricole',
-            etude_params=AGRICOLE_ETUDE)
-        pdf_bytes = _render_pdf_bytes(devis)
-        # Le rendu agricole plein format porte ses propres figures (pas de
-        # remise/TVA détaillée par palier identique au résidentiel) — on ne
-        # vérifie donc que l'absence de prix d'achat ici, la garde totaux
-        # étant déjà couverte par les formats résidentiel/industriel.
-        text = _extract_text(pdf_bytes)
+    def _assert_no_buy_price(self, pdf_bytes):
+        text = _extract_text(pdf_bytes).lower()
         for marker in FORBIDDEN_BUY_PRICE_MARKERS:
             self.assertNotIn(
-                marker.lower(), text.lower(),
-                f'prix_achat détecté dans le PDF pompage (marqueur « {marker} »)')
-        _assert_matches_baseline(
-            self, 'agricole_pompage_full', pdf_bytes, page_count=4)
+                marker.lower(), text,
+                f'prix_achat détecté dans le PDF client (marqueur « {marker} »)')
+
+    def _run_case(self, case):
+        devis = _build_snapshot_devis(
+            self.company, self.user, self.client_obj, case)
+        pdf_bytes = _render_pdf_bytes(devis, case.get('pdf_options'))
+        self._assert_no_buy_price(pdf_bytes)
+        if case['check_totals']:
+            self._structural_asserts(pdf_bytes)
+        try:
+            check_or_write_baseline(
+                case['name'], pdf_bytes, page_count=case['page_count'])
+        except AssertionError as exc:
+            self.fail(str(exc))
+
+    def test_full_format_three_pages(self):
+        self._run_case(BASELINE_CASES[0])
+
+    def test_full_with_etude_four_pages(self):
+        self._run_case(BASELINE_CASES[1])
+
+    def test_onepage_format_one_page(self):
+        self._run_case(BASELINE_CASES[2])
+
+    def test_agricole_pompage_full_format(self):
+        self._run_case(BASELINE_CASES[3])
 
     def test_agricole_pompage_onepage_format(self):
-        devis = make_devis(
-            self.company, self.user, self.client_obj, AGRICOLE_LINES,
-            reference='DEV-SNAP-AGRI1PG', mode_installation='agricole',
-            etude_params=AGRICOLE_ETUDE)
-        pdf_bytes = _render_pdf_bytes(devis, {'pdf_mode': 'onepage'})
-        self._structural_asserts(pdf_bytes)
-        _assert_matches_baseline(
-            self, 'agricole_pompage_onepage', pdf_bytes, page_count=1)
+        self._run_case(BASELINE_CASES[4])
