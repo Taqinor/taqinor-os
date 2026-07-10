@@ -11,6 +11,7 @@ comme source unique de vérité.
 from django.test import SimpleTestCase
 
 from apps.records.platform_guards import (
+    BASELINE_BRANDING,
     BASELINE_HANDROLLED_MODELS,
     BASELINE_UNSCOPED_VIEWSETS,
     GRANDFATHERED_ACTIVITY_CLASSES,
@@ -21,9 +22,11 @@ from apps.records.platform_guards import (
     NUMBERING_HOME_FILES,
     SOCLE_DEFINING_APPS,
     is_test_path,
+    new_branding_hits,
     new_handrolled_models,
     new_unscoped_viewsets,
     scan_activity_classes,
+    scan_branding,
     scan_filefields,
     scan_flat_storage_key,
     scan_handrolled_models,
@@ -347,3 +350,48 @@ class TestFlatStorageKeyGuard(SimpleTestCase):
         self.assertIn("apps/records/storage.py", GRANDFATHERED_FLAT_STORAGE_KEYS)
         self.assertIn("authentication/avatars.py", GRANDFATHERED_FLAT_STORAGE_KEYS)
         self.assertIn("apps/ged/services.py", GRANDFATHERED_FLAT_STORAGE_KEYS)
+
+
+class TestBrandingGuard(SimpleTestCase):
+    """SCA29 — marque « taqinor » hardcodée dans une surface user-facing = rouge."""
+
+    def test_uppercase_brand_is_red(self):
+        self.assertTrue(scan_branding(
+            "apps/nouveau/views.py", "    msg = 'Bienvenue chez TAQINOR'\n"))
+
+    def test_public_domain_is_red(self):
+        self.assertTrue(scan_branding(
+            "frontend/src/pages/X.jsx", "  const u = 'https://taqinor.ma/x';\n"))
+
+    def test_contact_email_is_red(self):
+        self.assertTrue(scan_branding(
+            "apps/x/mail.py", "    to = 'contact@taqinor.ma'\n"))
+
+    def test_comment_line_is_green(self):
+        """Un motif en COMMENTAIRE (py ou JS) n'est pas une surface client."""
+        self.assertFalse(scan_branding(
+            "apps/x/views.py", "    # voir taqinor.ma pour la doc\n"))
+        self.assertFalse(scan_branding(
+            "frontend/src/x.jsx", "  // contact@taqinor legacy\n"))
+
+    def test_generic_lowercase_taqinor_is_green(self):
+        """Un « taqinor » générique (chemin d'infra, non client-facing) n'est pas
+        un motif de MARQUE visé (seuls TAQINOR/taqinor.ma/contact@taqinor le sont)."""
+        self.assertFalse(scan_branding(
+            "apps/x/settings.py", "    path = '/opt/taqinor/data'\n"))
+
+    def test_test_file_is_exempt(self):
+        self.assertFalse(scan_branding("apps/x/tests/test_y.py", "    x = 'TAQINOR'\n"))
+
+    def test_baseline_entry_is_green(self):
+        baselined = next(iter(BASELINE_BRANDING))
+        self.assertEqual(new_branding_hits([baselined]), [])
+
+    def test_novel_hit_is_red(self):
+        self.assertEqual(
+            new_branding_hits(["apps/brandnew/views.py"]),
+            ["apps/brandnew/views.py"])
+
+    def test_baseline_covers_current_tree(self):
+        """Baseline datée non vide (état post-SCA25-27 du 2026-07-10)."""
+        self.assertGreater(len(BASELINE_BRANDING), 0)

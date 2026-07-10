@@ -27,6 +27,8 @@ SCA4 — no NEW hand-rolled ``company`` FK model (must inherit ``TenantModel``)
     against a frozen baseline that can only shrink.
 SCA42 — no NEW flat (non-company-prefixed) storage key outside the frozen
     baseline: new upload keys go ``{app}/{company_id}/{uuid}.ext`` (ERR75).
+SCA29 — no NEW hardcoded ``taqinor`` brand string (TAQINOR / taqinor.ma /
+    contact@taqinor) in user-facing surfaces outside the frozen baseline.
 
 Run
 ---
@@ -46,13 +48,16 @@ if str(DJANGO_CORE) not in sys.path:
     sys.path.insert(0, str(DJANGO_CORE))
 from apps.records.platform_guards import (  # noqa: E402
     activity_error_line,
+    branding_error_line,
     filefield_error_line,
     flat_storage_key_error_line,
     handrolled_model_error_line,
+    new_branding_hits,
     new_handrolled_models,
     new_unscoped_viewsets,
     numbering_error_line,
     scan_activity_classes,
+    scan_branding,
     scan_filefields,
     scan_flat_storage_key,
     scan_handrolled_models,
@@ -223,6 +228,35 @@ def check_flat_storage_keys() -> list[str]:
     return [flat_storage_key_error_line(p) for p in sorted(set(find_new_flat_storage_keys()))]
 
 
+FRONTEND_SRC = ROOT / "frontend" / "src"
+
+
+def find_new_branding_hits() -> list[str]:
+    """SCA29 — fichiers user-facing NOUVEAUX (hors baseline) avec un motif marque.
+
+    Surfaces : littéraux py des apps (backend) + ``frontend/src`` (JS/JSX/TS/TSX).
+    Le module de gardes s'auto-exclut (il cite les motifs en littéral)."""
+    found: list[str] = []
+    for path in APPS_DIR.glob("**/*.py"):
+        relpath = path.relative_to(DJANGO_CORE).as_posix()
+        if relpath == "apps/records/platform_guards.py":
+            continue
+        if scan_branding(relpath, path.read_text(encoding="utf-8", errors="replace")):
+            found.append(relpath)
+    if FRONTEND_SRC.is_dir():  # absent quand seul backend/django_core est monté
+        for pattern in ("**/*.js", "**/*.jsx", "**/*.ts", "**/*.tsx"):
+            for path in FRONTEND_SRC.glob(pattern):
+                relpath = path.relative_to(ROOT).as_posix()
+                if scan_branding(relpath, path.read_text(encoding="utf-8", errors="replace")):
+                    found.append(relpath)
+    return new_branding_hits(sorted(set(found)))
+
+
+def check_branding() -> list[str]:
+    """SCA29 guard — plus de marque taqinor hardcodée hors baseline (empty = OK)."""
+    return [branding_error_line(p) for p in sorted(set(find_new_branding_hits()))]
+
+
 def run_checks() -> list[str]:
     """Run all platform guards; return the flat list of error lines."""
     errors: list[str] = []
@@ -233,6 +267,7 @@ def run_checks() -> list[str]:
     errors.extend(check_handrolled_models())
     errors.extend(check_unscoped_viewsets())
     errors.extend(check_flat_storage_keys())
+    errors.extend(check_branding())
     return errors
 
 

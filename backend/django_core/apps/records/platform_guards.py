@@ -500,3 +500,69 @@ def flat_storage_key_error_line(relpath: str) -> str:
         f"GED à migrer) vit dans apps/records/platform_guards.py "
         f"(GRANDFATHERED_FLAT_STORAGE_KEYS)."
     )
+
+
+# ── SCA29 — anti-branding « taqinor » hardcodé dans les surfaces user-facing ──
+#
+# Constat : ~146 fichiers backend + 49 frontend mentionnent « taqinor » — la
+# plupart LÉGITIMES (commentaires, seeds, chemins d'infra). Mais rien n'empêche
+# la PROCHAINE chaîne client-facing hardcodée. SCA29 scanne les surfaces
+# user-facing (littéraux de chaîne py des apps, ``frontend/src``, templates) à la
+# recherche des motifs de MARQUE (``TAQINOR`` majuscule, domaine ``taqinor.ma``,
+# email ``contact@taqinor``) contre une BASELINE DATÉE GELÉE : tout NOUVEAU hit =
+# rouge. La baseline ne peut que DÉCROÎTRE (les fixes SCA24-27 la réduisent — un
+# fichier nettoyé sort du scan et son entrée de baseline devient inerte).
+#
+# HEURISTIQUE (documentée) : on scanne LIGNE À LIGNE et on IGNORE les lignes de
+# commentaire pur (``#…`` en py, ``//…`` / ``*…`` en JS/JSX) — un commentaire
+# « taqinor » n'est pas une surface client. Le grain reste le FICHIER (un hit =
+# le fichier entre au registre) : suffisant pour empêcher une régression sans
+# suivre chaque occurrence. Les motifs de marque sont ÉTROITS (pas un simple
+# « taqinor » qui matcherait un chemin d'infra ou une URL d'API interne) :
+#   * ``TAQINOR`` — la marque en CAPITALES (libellé affiché) ;
+#   * ``taqinor.ma`` — le domaine public (jamais hardcodé côté client : le
+#     branding vient de ``TenantTheme``/``CompanyProfile``) ;
+#   * ``contact@taqinor`` — l'email de contact hardcodé.
+
+# Motifs de MARQUE user-facing (étroits — pas un « taqinor » générique).
+BRANDING_RE = re.compile(r"TAQINOR|taqinor\.ma|contact@taqinor")
+
+# Lignes de commentaire pur à ignorer (py ``#`` / JS ``//`` / bloc ``*``).
+_COMMENT_LINE_RE = re.compile(r"^\s*(?:#|//|\*|/\*)")
+
+
+def scan_branding(relpath: str, text: str) -> bool:
+    """True si ``text`` contient un motif de MARQUE user-facing hors commentaire.
+
+    ``relpath`` : chemin POSIX (backend relatif à ``backend/django_core`` ; ou
+    ``frontend/src/...``). Les fichiers de tests sont hors périmètre (fixtures)."""
+    if is_test_path(relpath):
+        return False
+    for line in text.splitlines():
+        if _COMMENT_LINE_RE.match(line):
+            continue
+        if BRANDING_RE.search(line):
+            return True
+    return False
+
+
+# Baseline gelée des fichiers user-facing contenant DÉJÀ un motif de marque
+# (inventaire daté). Un fichier nettoyé (SCA24-27…) sort du scan → son entrée
+# devient inerte ; la liste ne peut que décroître.
+BASELINE_BRANDING = _load_baseline("branding_hits.txt")
+
+
+def new_branding_hits(found: list[str]) -> list[str]:
+    """Filtre les fichiers scannés contre la baseline gelée : NOUVEAUX hits."""
+    return [p for p in found if p not in BASELINE_BRANDING]
+
+
+def branding_error_line(relpath: str) -> str:
+    return (
+        f"[SCA29] Marque « taqinor » hardcodée dans une surface user-facing "
+        f"« {relpath} » (motif TAQINOR / taqinor.ma / contact@taqinor). Le "
+        f"branding client vient de TenantTheme/CompanyProfile (white-label), "
+        f"jamais d'une chaîne en dur. Si c'est légitime (infra non client-facing), "
+        f"ajoutez le fichier à la baseline gelée "
+        f"apps/records/platform_baselines/branding_hits.txt (décroissante)."
+    )
