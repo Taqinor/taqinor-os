@@ -8,7 +8,8 @@ class Company(models.Model):
     # intact (jamais supprimé) et reste le drapeau lu partout ; ``statut`` ajoute
     # une granularité (actif / suspendu / en fermeture) appliquée au JWT et à
     # l'API. Un PONT de synchro bidirectionnel réversible garde les deux
-    # cohérents. Backfill (0018) : chaque société existante prend
+    # cohérents : ``statut != actif`` → ``actif`` recalculé (seul ``actif``
+    # signifie « opérationnel »). Backfill : chaque société existante prend
     # ``statut=actif`` si ``actif`` sinon ``suspendu`` — comportement inchangé.
     STATUT_ACTIF = 'actif'
     STATUT_SUSPENDU = 'suspendu'
@@ -36,6 +37,12 @@ class Company(models.Model):
     # remarque libre, JAMAIS de billing ici. Additif, défaut vide.
     plan_flag = models.CharField(
         'Note de plan (fondateur)', max_length=255, blank=True, default='')
+    # SCA46 — consentement au benchmarking anonymisé agrégé. Le CONSENTEMENT est
+    # une donnée (Boolean, défaut False — opt-in strict) ; AUCUNE agrégation
+    # n'est construite ici. Une future feature d'agrégation devra pointer ce
+    # champ (voir NTDATA46) au lieu de re-modéliser le consentement.
+    benchmarking_opt_in = models.BooleanField(
+        'Consentement benchmarking anonymisé', default=False)
     date_creation = models.DateTimeField(auto_now_add=True)
 
     class Meta:

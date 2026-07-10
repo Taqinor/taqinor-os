@@ -6,7 +6,11 @@ from .models import CustomUser, Company, UserSession
 class CompanySerializer(serializers.ModelSerializer):
     class Meta:
         model = Company
-        fields = ('id', 'nom', 'slug', 'actif', 'date_creation')
+        # SCA46 — expose le consentement benchmarking (Boolean, défaut False,
+        # opt-in strict). Aucune agrégation construite : le CONSENTEMENT est la
+        # donnée (voir NTDATA46 — toute future agrégation pointe ce champ).
+        fields = ('id', 'nom', 'slug', 'actif', 'benchmarking_opt_in',
+                  'date_creation')
         read_only_fields = ('id', 'slug', 'date_creation')
 
 
