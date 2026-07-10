@@ -24,6 +24,27 @@ const isEnRetard = (iso) => {
 // Seuil d'inactivité (jours sans modification) au-delà duquel on alerte.
 const INACTIF_JOURS = 14
 
+// QX31 — Speed-to-lead : minutes écoulées depuis `date_creation` (timestamp
+// ISO), ou null si absente/invalide. Composant présentation pure (pas de
+// setInterval) : le libellé se recalcule à chaque rendu naturel de la carte
+// (le kanban re-rend déjà périodiquement via son polling/refetch existant).
+const minutesDepuis = (iso) => {
+  if (!iso) return null
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return null
+  const minutes = Math.floor((Date.now() - d.getTime()) / 60000)
+  return minutes >= 0 ? minutes : null
+}
+
+// Libellé FR compact : « il y a 12 min », « il y a 2 h », « il y a 3 j ».
+const formatDepuis = (minutes) => {
+  if (minutes < 60) return `il y a ${minutes} min`
+  const heures = Math.floor(minutes / 60)
+  if (heures < 24) return `il y a ${heures} h`
+  const jours = Math.floor(heures / 24)
+  return `il y a ${jours} j`
+}
+
 // Nombre de jours entiers écoulés depuis `date_modification` (timestamp ISO),
 // ou null si la date est absente/invalide.
 const joursInactif = (iso) => {
@@ -78,6 +99,9 @@ export default function LeadCard({
   const action = prochaineAction(lead)
   const tel = telHref(lead.telephone)
   const wa = waHref(lead.whatsapp)
+  // QX31 — minuteur premier contact : uniquement en colonne NEW (dès que le
+  // lead est contacté, son étape change et le minuteur disparaît de lui-même).
+  const minutesNouveau = lead.stage === 'NEW' ? minutesDepuis(lead.date_creation) : null
   // ⚡ indisponible : on explique pourquoi (devis_auto.message).
   const factureManquante =
     lead.devis_auto && !lead.devis_auto.pret ? lead.devis_auto.message : null
@@ -185,6 +209,19 @@ export default function LeadCard({
       </div>
 
       {sousTitre && <div className="kb-card-sub">{sousTitre}</div>}
+
+      {/* QX31 — Speed-to-lead : minuteur premier contact sur les cartes NEW
+          (« il y a 12 min, non contacté »). Disparaît dès que le lead change
+          d'étape (il n'est alors plus dans la colonne NEW). */}
+      {minutesNouveau != null && (
+        <div
+          className="kb-card-first-touch"
+          style={{ fontSize: '11px', color: minutesNouveau >= 30 ? 'var(--color-destructive, #dc2626)' : 'var(--color-warning, #d97706)', fontWeight: 500 }}
+          title="Temps écoulé depuis la création du lead — non encore contacté"
+        >
+          ⏱ {formatDepuis(minutesNouveau)}, non contacté
+        </div>
+      )}
 
       {/* QX28 — chips de préparation : ce que le site a déjà capturé. Visibles
           seulement pour les signaux réellement présents (jamais un chip
