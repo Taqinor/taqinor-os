@@ -26,8 +26,6 @@ const Login = lazy(() => import('../pages/Login'))
 const Dashboard = lazy(() => import('../pages/Dashboard').then(m => ({ default: m.Component })))
 const Reporting = lazy(() => import('../pages/Reporting').then(m => ({ default: m.Component })))
 const Rapports = lazy(() => import('../pages/Rapports').then(m => ({ default: m.Component })))
-const ClientList = lazy(() => import('../pages/crm/ClientList'))
-const LeadsPage = lazy(() => import('../pages/crm/leads/LeadsPage'))
 const DevisList = lazy(() => import('../pages/ventes/DevisList'))
 const DevisGenerator = lazy(() => import('../pages/ventes/DevisGenerator'))
 const ToitureDesign = lazy(() => import('../pages/ventes/ToitureDesign'))
@@ -60,10 +58,6 @@ const ParametresEntreprise = lazy(() => import('../pages/parametres/ParametresEn
 const ExportSauvegarde = lazy(() => import('../pages/parametres/ExportSauvegarde'))
 const NotificationsPreferences = lazy(() => import('../pages/parametres/NotificationsPreferences'))
 const Journal = lazy(() => import('../pages/Journal'))
-const MesActivitesPage = lazy(() => import('../pages/activities/MesActivitesPage'))
-const CalendarPage = lazy(() => import('../pages/CalendarPage'))
-const CartePage = lazy(() => import('../pages/CartePage'))
-const ParrainagePage = lazy(() => import('../pages/crm/ParrainagePage'))
 const AvoirsPage = lazy(() => import('../pages/ventes/AvoirsPage'))
 const RelancesPage = lazy(() => import('../pages/ventes/RelancesPage'))
 const PaiementsPage = lazy(() => import('../pages/ventes/PaiementsPage'))
@@ -221,13 +215,7 @@ const router = createBrowserRouter([
 
   // Stock — migré vers frontend/src/features/stock/module.config.jsx (ARC48).
 
-  // CRM
-  { path: '/crm', loader: authLoader, element: <WithLayout><ClientList /></WithLayout> },
-  { path: '/crm/leads', loader: authLoader, element: <WithLayout><LeadsPage /></WithLayout> },
-  { path: '/activites', loader: authLoader, element: <WithLayout><MesActivitesPage /></WithLayout> },
-  { path: '/calendrier', loader: authLoader, element: <WithLayout><CalendarPage /></WithLayout> },
-  { path: '/carte', loader: authLoader, element: <WithLayout><CartePage /></WithLayout> },
-  { path: '/crm/parrainage', loader: authLoader, element: <WithLayout><ParrainagePage /></WithLayout> },
+  // CRM — migré vers frontend/src/features/crm/module.config.jsx (ARC54).
 
   // Ventes
   { path: '/ventes/devis', loader: authLoader, element: <WithLayout><DevisList /></WithLayout> },
