@@ -45,11 +45,12 @@ from core.models import TenantModel
 
 __all__ = [
     "DocumentMetier",
+    "TotauxDocumentMixin",
+    "LigneDocumentMetier",
     "TransitionRefusee",
     "changer_statut",
-    "LigneDocumentMetier",
-    "TotauxDocumentMixin",
     "document_viewset",
+    "render_document_pdf",
 ]
 
 
@@ -443,4 +444,53 @@ def document_viewset(model, serializer, *, prefix, padding=4, period="monthly",
         f"{model.__name__}KitViewSet",
         (ChatterViewSetMixin, base_cls),
         namespace,
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SCA33 — Hook PDF du kit via ``core.pdf`` (allowlist ARC11 héritée verbatim).
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def render_document_pdf(instance, template, *, context=None, header=True,
+                        footer=True, upload_to=None, upload_bucket=None):
+    """Rend le PDF d'un document du kit en DÉLÉGUANT à ``core.pdf.render_pdf``.
+
+    Le kit n'importe JAMAIS WeasyPrint : il délègue au service partagé ARC11
+    (``core.pdf.render_pdf``), qui centralise l'import paresseux de WeasyPrint,
+    le branding OPT-IN depuis ``CompanyProfile`` et l'upload MinIO optionnel. Le
+    kit HÉRITE donc l'allowlist d'exclusion ARC11/ARC52 TELLE QUELLE — le garde
+    ``scripts/check_platform.py`` (ARC52) le prouve : ce module ne figure pas
+    dans ``GRANDFATHERED_WEASYPRINT`` et n'importe pas ``weasyprint``, donc il
+    RESTE vert. EXCLUSION PERMANENTE (règle #4) inchangée : Devis/Facture/BC/Avoir
+    gardent leurs chemins PDF propres (quote_engine ``/proposal`` + facture
+    legacy), jamais ce hook.
+
+    Args:
+        instance: le document (sous-classe de ``DocumentMetier``) — sa société
+            (``instance.company``) pilote le branding OPT-IN.
+        template: nom du gabarit Django à rendre.
+        context: contexte de rendu (défaut ``{'document': instance}`` enrichi de
+            l'``instance`` fournie par l'appelant).
+        header / footer: branding OPT-IN (défaut ``True`` — un NOUVEAU document
+            du kit veut l'en-tête/pied brandés ; les pilotes ARC11 existants les
+            laissaient à ``False`` pour un rendu inchangé, mais le kit est neuf).
+        upload_to / upload_bucket: transmis tels quels à ``render_pdf`` (upload
+            MinIO best-effort → retour ``(bytes, key)`` si ``upload_to`` fourni).
+
+    Retour : ``bytes`` (PDF) — ou ``(bytes, key)`` si ``upload_to`` est fourni
+    (contrat de ``core.pdf.render_pdf`` inchangé)."""
+    from core.pdf import render_pdf
+
+    ctx = {"document": instance}
+    if context:
+        ctx.update(context)
+    return render_pdf(
+        template=template,
+        context=ctx,
+        company=getattr(instance, "company", None),
+        header=header,
+        footer=footer,
+        upload_to=upload_to,
+        upload_bucket=upload_bucket,
     )
