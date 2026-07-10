@@ -5472,6 +5472,22 @@ class SegmentMarketingViewSet(_ComptaBaseViewSet):
             return Response({'detail': str(exc)}, status=400)
         return Response(data)
 
+    @action(detail=True, methods=['post'], url_path='exporter-audience-meta')
+    def exporter_audience_meta(self, request, pk=None):
+        """XMKT36 — [DECISION] Synchronise le segment comme audience Meta.
+
+        Identifiants hashés SHA-256 côté serveur, consentement XMKT4 exigé,
+        clients signés en liste d'exclusion. GATED : sans jeton
+        (``META_ADS_ENABLED``/``META_ADS_TOKEN``/``META_AD_ACCOUNT_ID``),
+        aucun appel réseau — le résumé (compteurs, configured=false) est
+        renvoyé pour l'UI. AUCUNE campagne publicitaire créée (règle n°3)."""
+        segment = self.get_object()
+        try:
+            resume = services.exporter_segment_audience_meta(segment)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(resume)
+
 
 # ── FG202 — Séquences de relance automatisées ──────────────────────────────
 

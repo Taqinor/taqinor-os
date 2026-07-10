@@ -7406,6 +7406,179 @@ def previsualiser_segment(segment, *, taille_echantillon=10):
     }
 
 
+# ── XMKT36 — [DECISION] Export de segments vers audiences Meta (gated) ──────
+# AUCUNE création de campagne publicitaire ici (règle n°3 — si un jour elle
+# s'ajoute : toujours --status PAUSED). Uniquement la synchronisation d'une
+# audience personnalisée : identifiants hashés SHA-256 CÔTÉ SERVEUR (norme
+# Meta), consentement XMKT4 exigé, clients signés en liste d'exclusion.
+# DÉFAUT OFF : sans jeton, aucune donnée ne quitte jamais le serveur.
+
+def meta_audiences_actif():
+    """Toggle maître de l'export d'audiences Meta (XMKT36). OFF par défaut.
+
+    Actif uniquement avec ``META_ADS_ENABLED=1`` ET un jeton ET un id de
+    compte publicitaire (env). DECISION founder requise avant de poser un
+    vrai jeton (loi 09-08 : envoi de données hashées à Meta)."""
+    import os
+    return (os.getenv('META_ADS_ENABLED', '0') == '1'
+            and bool(os.getenv('META_ADS_TOKEN', '').strip())
+            and bool(os.getenv('META_AD_ACCOUNT_ID', '').strip()))
+
+
+def _normaliser_email_meta(email):
+    """Norme Meta : trim + minuscules. Chaîne vide si absent."""
+    return (email or '').strip().lower()
+
+
+def _normaliser_telephone_meta(telephone):
+    """Norme Meta : chiffres uniquement, AVEC indicatif pays (212…).
+
+    Réutilise la normalisation marocaine existante quand elle matche ;
+    sinon repli chiffres-bruts (0X… → 212X…)."""
+    brut = (telephone or '').strip()
+    if not brut:
+        return ''
+    try:
+        from apps.ventes.utils.phone import normalize_ma_phone
+        norme = normalize_ma_phone(brut)
+        if norme:
+            return norme
+    except Exception:  # pragma: no cover - défensif
+        pass
+    chiffres = re.sub(r'\D', '', brut)
+    if chiffres.startswith('0') and len(chiffres) == 10:
+        chiffres = '212' + chiffres[1:]
+    return chiffres
+
+
+def hash_identifiant_meta(valeur, *, genre='email'):
+    """SHA-256 hex d'un identifiant NORMALISÉ (norme Meta customaudiences).
+
+    ``genre`` ∈ ('email', 'telephone'). Chaîne vide → '' (jamais hashée)."""
+    if genre == 'telephone':
+        norme = _normaliser_telephone_meta(valeur)
+    else:
+        norme = _normaliser_email_meta(valeur)
+    if not norme:
+        return ''
+    return hashlib.sha256(norme.encode('utf-8')).hexdigest()
+
+
+def _contacts_hashes_meta(company, contacts):
+    """Hash SHA-256 les contacts CONSENTIS (XMKT4) — jamais les autres.
+
+    ``contacts`` : liste de dicts ``{'email':…, 'telephone':…}`` (selectors
+    crm). Un contact sans AUCUN consentement marketing valide est exclu. Un
+    contact supprimé (XMKT3) est exclu. Renvoie des lignes
+    ``{'email_sha256':…, 'telephone_sha256':…}`` (champs vides omis → '')."""
+    lignes = []
+    for c in contacts or []:
+        email = (c.get('email') or '').strip()
+        telephone = (c.get('telephone') or '').strip()
+        identifiant = email or telephone
+        if not identifiant:
+            continue
+        if est_supprime(company, identifiant):
+            continue
+        if not consentement_accorde(company, identifiant, canal='marketing'):
+            continue
+        lignes.append({
+            'email_sha256': hash_identifiant_meta(email, genre='email'),
+            'telephone_sha256': hash_identifiant_meta(
+                telephone, genre='telephone'),
+        })
+    return lignes
+
+
+def _meta_ads_post(path, payload):
+    """POST JSON vers l'API Meta Graph (audiences) — chemin GATED uniquement.
+
+    Jamais appelée sans jeton (l'appelant vérifie ``meta_audiences_actif``).
+    Renvoie le dict de réponse, ou lève (l'appelant capture)."""
+    import json
+    import os
+    base = (os.getenv('META_GRAPH_BASE_URL', '')
+            or 'https://graph.facebook.com/v19.0').rstrip('/')
+    token = os.getenv('META_ADS_TOKEN', '').strip()
+    body = dict(payload)
+    body['access_token'] = token
+    req = urllib.request.Request(
+        f'{base}/{path}', data=json.dumps(body).encode(),
+        headers={'Content-Type': 'application/json'}, method='POST')
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        return json.loads(resp.read() or b'{}')
+
+
+def exporter_segment_audience_meta(segment, *, inclure_exclusions=True):
+    """XMKT36 — Synchronise un ``SegmentMarketing`` comme audience Meta.
+
+    Émet UNIQUEMENT des identifiants hashés SHA-256 côté serveur (jamais de
+    PII en clair), pour les seuls contacts au consentement XMKT4 valide ;
+    les CLIENTS SIGNÉS partent en liste d'exclusion séparée. GATED : sans
+    jeton (``meta_audiences_actif()`` faux), NO-OP réseau strict — renvoie
+    quand même le résumé (compteurs) pour l'UI. AUCUNE campagne publicitaire
+    n'est créée ici (règle n°3)."""
+    import os
+    from apps.crm.selectors import (
+        clients_contact_identifiers, lead_contact_identifiers,
+    )
+    company = segment.company
+    lead_ids = evaluer_segment(segment)
+    inclus = _contacts_hashes_meta(
+        company, lead_contact_identifiers(company, lead_ids))
+    exclus = []
+    if inclure_exclusions:
+        exclus = _contacts_hashes_meta(
+            company, clients_contact_identifiers(company))
+    resume = {
+        'configured': meta_audiences_actif(),
+        'segment': segment.nom,
+        'inclus': len(inclus),
+        'exclus': len(exclus),
+        'audience_id': '',
+        'exclusion_audience_id': '',
+    }
+    if not resume['configured']:
+        return resume
+    ad_account = os.getenv('META_AD_ACCOUNT_ID', '').strip()
+    schema = ['EMAIL_SHA256', 'PHONE_SHA256']
+
+    def _payload_users(lignes):
+        return {
+            'schema': schema,
+            'data': [
+                [ligne['email_sha256'], ligne['telephone_sha256']]
+                for ligne in lignes
+            ],
+        }
+
+    try:
+        audience = _meta_ads_post(
+            f'act_{ad_account}/customaudiences',
+            {'name': f'Segment — {segment.nom}',
+             'subtype': 'CUSTOM', 'customer_file_source':
+                 'USER_PROVIDED_ONLY'})
+        resume['audience_id'] = str(audience.get('id') or '')
+        if resume['audience_id'] and inclus:
+            _meta_ads_post(
+                f"{resume['audience_id']}/users",
+                {'payload': _payload_users(inclus)})
+        if exclus:
+            exclusion = _meta_ads_post(
+                f'act_{ad_account}/customaudiences',
+                {'name': f'Exclusion clients — {segment.nom}',
+                 'subtype': 'CUSTOM', 'customer_file_source':
+                     'USER_PROVIDED_ONLY'})
+            resume['exclusion_audience_id'] = str(exclusion.get('id') or '')
+            if resume['exclusion_audience_id']:
+                _meta_ads_post(
+                    f"{resume['exclusion_audience_id']}/users",
+                    {'payload': _payload_users(exclus)})
+    except Exception as exc:
+        resume['erreur'] = str(exc)[:255]
+    return resume
+
+
 # ── XMKT8 — Variables de fusion dans les campagnes avec fallback ───────────
 
 # Variables disponibles au rendu — jamais ``prix_achat`` ni aucune donnée

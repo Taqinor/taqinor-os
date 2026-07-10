@@ -1006,6 +1006,38 @@ def lead_merge_fields(company, lead_id):
     }
 
 
+# ── XMKT36 — Identifiants de contact pour l'export d'audience Meta ─────────
+
+def lead_contact_identifiers(company, lead_ids):
+    """XMKT36 — email/téléphone LECTURE SEULE des leads d'un segment, pour le
+    hash SHA-256 côté serveur (``apps.compta``, jamais d'import direct de
+    ``apps.crm.models``). Scopé société : un id hors société est ignoré.
+    Ne renvoie JAMAIS aucune donnée interne (prix_achat/marge inexistants
+    ici) — uniquement les identifiants de contact déjà publics de la fiche."""
+    from .models import Lead
+    if not lead_ids:
+        return []
+    rows = Lead.objects.filter(
+        company=company, id__in=list(lead_ids),
+    ).values('email', 'telephone', 'whatsapp')
+    return [
+        {'email': r['email'] or '', 'telephone': r['telephone'] or r['whatsapp'] or ''}
+        for r in rows
+    ]
+
+
+def clients_contact_identifiers(company):
+    """XMKT36 — email/téléphone des CLIENTS signés de la société (liste
+    d'exclusion publicitaire : on n'achète pas d'impression pour un client
+    déjà converti). Même contrat lecture seule que ``lead_contact_identifiers``."""
+    from .models import Client
+    rows = Client.objects.filter(company=company).values('email', 'telephone')
+    return [
+        {'email': r['email'] or '', 'telephone': r['telephone'] or ''}
+        for r in rows
+    ]
+
+
 # ── XMKT17 — Coût & ROI MAD par campagne (compta.Campagne) ─────────────────
 
 def revenu_attribue_campagne(company, nom_campagne):
