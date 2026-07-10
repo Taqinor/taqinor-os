@@ -41,6 +41,7 @@ from apps.installations.models import OrdreSousTraitance
 from apps.records.models import ALLOWED_TARGETS, Activity
 from apps.stock.services import create_sous_traitant
 from core.documents import DocumentMetier, TransitionRefusee, changer_statut
+from testkit.time import frozen
 
 User = get_user_model()
 _seq = itertools.count(1)
@@ -95,10 +96,13 @@ class TestReferenceContinuity(TestCase):
 
     def test_format_bit_identique(self):
         """SCA34 — le format OST-YYYYMM-NNNN est inchangé par la conversion."""
-        ref = self._create()
-        self.assertRegex(ref, REF_RE)
-        # Le segment de période est bien le mois COURANT (période mensuelle).
-        self.assertEqual(ref.split('-')[1], timezone.now().strftime('%Y%m'))
+        # Horloge gelée : la référence ET l'assertion voient le MÊME mois — pas
+        # de flake de bord de mois (déterminisme YTEST15).
+        with frozen('2026-06-15 10:00:00'):
+            ref = self._create()
+            self.assertRegex(ref, REF_RE)
+            # Le segment de période est bien le mois COURANT (période mensuelle).
+            self.assertEqual(ref.split('-')[1], '202606')
 
     def test_reprise_du_compteur_courant(self):
         """SCA34 — un ordre pré-existant numéroté 0007 sur le mois courant

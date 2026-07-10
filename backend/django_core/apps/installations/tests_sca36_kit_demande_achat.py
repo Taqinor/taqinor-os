@@ -36,6 +36,7 @@ from apps.records.models import ALLOWED_TARGETS, Activity
 from core.documents import (
     DocumentMetier, TotauxDocumentMixin, TransitionRefusee, changer_statut,
 )
+from testkit.time import frozen
 
 User = get_user_model()
 _seq = itertools.count(1)
@@ -81,9 +82,12 @@ class TestReferenceContinuity(TestCase):
         return r.data['reference']
 
     def test_format_bit_identique(self):
-        ref = self._create()
-        self.assertRegex(ref, REF_RE)
-        self.assertEqual(ref.split('-')[1], timezone.now().strftime('%Y%m'))
+        # Horloge gelée : référence + assertion sur le MÊME mois (déterminisme
+        # YTEST15, pas de flake de bord de mois).
+        with frozen('2026-06-15 10:00:00'):
+            ref = self._create()
+            self.assertRegex(ref, REF_RE)
+            self.assertEqual(ref.split('-')[1], '202606')
 
     def test_reprise_du_compteur_courant(self):
         """SCA36 — une demande pré-existante numérotée 0007 sur le mois
