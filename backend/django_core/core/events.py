@@ -600,3 +600,14 @@ projet_status_change = django.dispatch.Signal()
 # du module ci-dessus. Décision publicapi (pas d'abonné) documentée aussi
 # ci-dessus.
 incident_declared = django.dispatch.Signal()
+
+# Émis par le kit DocumentMetier (SCA30, ``core.documents``) quand un document
+# métier change de statut via ``changer_statut()`` gardé côté service. GÉNÉRIQUE
+# (un seul signal pour tout document composant le kit) — le cycle de vie PROPRE
+# du document, DISTINCT du cycle d'APPROBATION qui reste ARC10/WorkflowDefinition.
+# EXCLUSION PERMANENTE (règle #4) : Devis/Facture/BonCommande/Avoir ne sont
+# JAMAIS rétrofittés sur le kit ; ce signal ne les concerne donc jamais.
+# Arguments : instance (le document), ancien_statut, nouveau_statut,
+# user (peut être None), company. Aucun abonné obligatoire (pose du seam pour
+# audit/notifications/KPI d'un futur type de document construit sur le kit).
+document_statut_change = django.dispatch.Signal()
