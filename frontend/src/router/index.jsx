@@ -26,13 +26,8 @@ const Login = lazy(() => import('../pages/Login'))
 const Dashboard = lazy(() => import('../pages/Dashboard').then(m => ({ default: m.Component })))
 const Reporting = lazy(() => import('../pages/Reporting').then(m => ({ default: m.Component })))
 const Rapports = lazy(() => import('../pages/Rapports').then(m => ({ default: m.Component })))
-const DevisList = lazy(() => import('../pages/ventes/DevisList'))
-const DevisGenerator = lazy(() => import('../pages/ventes/DevisGenerator'))
 const ToitureDesign = lazy(() => import('../pages/ventes/ToitureDesign'))
 const RoofViewerPage = lazy(() => import('../pages/ventes/RoofViewerPage'))
-const FactureList = lazy(() => import('../pages/ventes/FactureList'))
-const VentesKanban = lazy(() => import('../pages/ventes/VentesKanban'))
-const ListesPrixPage = lazy(() => import('../pages/ventes/ListesPrixPage'))
 const InstallationsPage = lazy(() => import('../pages/installations/InstallationsPage'))
 const DemandesAchatList = lazy(() => import('../pages/installations/DemandesAchatList'))
 const InterventionsPage = lazy(() => import('../pages/interventions/InterventionsPage'))
@@ -58,9 +53,6 @@ const ParametresEntreprise = lazy(() => import('../pages/parametres/ParametresEn
 const ExportSauvegarde = lazy(() => import('../pages/parametres/ExportSauvegarde'))
 const NotificationsPreferences = lazy(() => import('../pages/parametres/NotificationsPreferences'))
 const Journal = lazy(() => import('../pages/Journal'))
-const AvoirsPage = lazy(() => import('../pages/ventes/AvoirsPage'))
-const RelancesPage = lazy(() => import('../pages/ventes/RelancesPage'))
-const PaiementsPage = lazy(() => import('../pages/ventes/PaiementsPage'))
 const BalanceAgeePage = lazy(() => import('../pages/reporting/BalanceAgeePage'))
 const ArchiveClientPage = lazy(() => import('../pages/reporting/ArchiveClientPage'))
 const ArchiveChantierPage = lazy(() => import('../pages/reporting/ArchiveChantierPage'))
@@ -217,20 +209,12 @@ const router = createBrowserRouter([
 
   // CRM — migré vers frontend/src/features/crm/module.config.jsx (ARC54).
 
-  // Ventes
-  { path: '/ventes/devis', loader: authLoader, element: <WithLayout><DevisList /></WithLayout> },
-  { path: '/ventes/devis/nouveau', loader: authLoader, element: <WithLayout><DevisGenerator /></WithLayout> },
+  // Ventes — migré vers frontend/src/features/ventes/module.config.jsx (ARC54).
+  // Non-migrables (errorElement dédié, non exprimable par buildModuleRoutes) :
   // QG12 — Design 3D d'un devis en LECTURE SEULE, plein écran, ouvrable dans une fenêtre.
   { path: '/ventes/devis/:id/3d', loader: authLoader, errorElement: <RouteErrorBoundary />, element: <WithLayout><RoofViewerPage /></WithLayout> },
   // Conception 3D de la toiture (héberge le builder roofPro11 du site, en ERP).
   { path: '/devis-design/:id', loader: authLoader, errorElement: <RouteErrorBoundary />, element: <WithLayout><ToitureDesign /></WithLayout> },
-  { path: '/ventes/bons-commande', loader: authLoader, element: <WithLayout><VentesKanban /></WithLayout> },
-  { path: '/ventes/factures', loader: authLoader, element: <WithLayout><FactureList /></WithLayout> },
-  { path: '/ventes/avoirs', loader: authLoader, element: <WithLayout><AvoirsPage /></WithLayout> },
-  { path: '/ventes/relances', loader: authLoader, element: <WithLayout><RelancesPage /></WithLayout> },
-  { path: '/ventes/paiements', loader: authLoader, element: <WithLayout><PaiementsPage /></WithLayout> },
-  // XSAL1-2 — administration des listes de prix clients (écriture Responsable/Admin, gardée serveur).
-  { path: '/ventes/listes-prix', loader: authLoader, element: <WithLayout><ListesPrixPage /></WithLayout> },
 
   // Chantiers / Installations
   { path: '/chantiers', loader: authLoader, element: <WithLayout><InstallationsPage /></WithLayout> },
