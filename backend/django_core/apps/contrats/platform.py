@@ -1,23 +1,29 @@
-"""ARC28 — Manifeste plateforme du module Contrats (« déclarer une fois »).
+"""ARC28/ARC29 — Manifeste plateforme du module Contrats (« déclarer une fois »).
 
 Déclare ce que l'app Contrats expose aux surfaces transverses (voir
-``core.platform``). Il reflète le câblage RÉEL d'aujourd'hui, qui est ASYMÉTRIQUE
-par rapport au CRM — et c'est VOULU : le contrat reçoit le chatter générique
-(``records.ALLOWED_TARGETS`` contient ``('contrats', 'contrat')``, ARC8) mais
-n'est PAS encore branché sur les autres surfaces :
+``core.platform``). Il reflétait à l'origine (ARC28) un câblage ASYMÉTRIQUE :
+le contrat recevait le chatter générique (``records.ALLOWED_TARGETS`` contient
+``('contrats', 'contrat')``, ARC8) mais restait invisible en recherche globale
+— un trou que la matrice de dérive ARC41 rendait visible via
+``BASELINE_DRIFT`` (``'contrats.contrat', 'chatter_sans_recherche'``).
 
-* PAS de recherche globale (absent de ``reporting/search.py``) ;
-* PAS de champs personnalisés (absent de ``customfields.Module``) ;
+ARC29 comble ce trou précis : Contrat est désormais cherchable
+(``reporting/search.py::_spec_contrat``) — l'entrée ``BASELINE_DRIFT``
+correspondante est retirée dans le même commit (elle mentirait sinon : la
+dérive n'existe plus).
+
+Surfaces encore VOLONTAIREMENT vides (le contrat n'y est pas branché) :
+
+* PAS de champs personnalisés déclarés via ce manifeste (la cible pilote ARC14
+  reste enregistrée par ``ContratsConfig.ready()`` jusqu'à ARC31) ;
 * PAS d'import/export (absent de ``dataimport``) ;
-* PAS d'actions agentiques (aucun ``apps/contrats/agent_actions.py``) ;
+* PAS d'actions agentiques déclarées via ce manifeste ;
 * PAS d'automatisation temporelle (absent de ``automation.DATE_TRIGGER_TARGETS``) ;
 * PAS de KPI/agrégat dédié (absent de ``reporting/reports.py``).
 
-Déclarer ce manifeste À COMPTE HONNÊTE (une seule surface remplie) rend cette
-dérive VISIBLE et mesurable : la matrice de couverture ARC41 croisera ce
-manifeste pour signaler « contrat chatter-isé mais introuvable en recherche /
-non customfieldable » au lieu de laisser le trou silencieux. Les surfaces
-manquantes se rempliront quand elles seront branchées (tâches ultérieures).
+Laissées explicites (jamais « remplies pour faire joli ») : un identifiant ici
+sans le câblage réel de la surface serait un mensonge que la matrice ARC41
+détecterait à l'envers (déclaré mais absent du code de la surface).
 """
 from __future__ import annotations
 
@@ -25,15 +31,15 @@ PLATFORM = {
     # Clé ModuleToggle (identique à ``ContratsConfig.module_manifest['key']``).
     'module': 'contrats',
 
-    # SEULE surface câblée aujourd'hui : chatter/records générique (ARC8).
+    # Chatter/records générique (ARC8).
     'record_targets': ['contrats.contrat'],
 
-    # Surfaces DÉLIBÉRÉMENT VIDES (le contrat n'y est pas encore branché) —
-    # laissées explicites pour documenter la dérive que la matrice ARC41 doit
-    # remonter. Ne pas « remplir pour faire joli » : un identifiant ici sans le
-    # câblage réel de la surface serait un mensonge que la matrice détecterait à
-    # l'envers (déclaré mais absent du code de la surface).
-    'searchable_models': [],
+    # ARC29 — trou comblé : Contrat devient cherchable (voir
+    # apps/reporting/search.py::_spec_contrat). Retire l'entrée BASELINE_DRIFT
+    # 'chatter_sans_recherche' correspondante dans core/platform_coverage.py.
+    'searchable_models': ['contrats.contrat'],
+
+    # Surfaces DÉLIBÉRÉMENT VIDES (le contrat n'y est pas encore branché).
     'customfield_models': [],
     'import_specs': [],
     'agent_actions_module': '',

@@ -55,12 +55,23 @@ DRIFT_RULES = {
 # ci-dessous sont tolérées (dérives héritées, remontées en warnings). RETIRER une
 # entrée quand la surface manquante est enfin câblée (le test le vérifie :
 # une entrée baseline qui n'est PLUS une incohérence réelle devient rouge).
+#
+# ARC29 — l'entrée ARC28 pilote (``'contrats.contrat', 'chatter_sans_recherche'``)
+# a été RETIRÉE : Contrat est désormais cherchable (apps/contrats/platform.py
+# déclare 'contrats.contrat' dans searchable_models, apps/reporting/search.py
+# le résout via _spec_contrat) — la dérive n'existe plus, la garder aurait menti.
+# En sens inverse, déclarer les surfaces RÉELLES de ventes/installations/sav/
+# stock (ARC29) rend VISIBLES des dérives HÉRITÉES jusque-là silencieuses —
+# elles préexistaient au registre, on les gèle ici au lieu de les masquer.
 BASELINE_DRIFT: set[tuple[str, str]] = {
-    # ARC28 pilote : le Contrat reçoit le chatter générique (ARC8,
-    # records.ALLOWED_TARGETS) mais n'est pas branché sur la recherche globale
-    # (reporting/search.py) — trou à combler quand la recherche contrat sera
-    # câblée (tâche ultérieure). Rendu VISIBLE ici plutôt que silencieux.
-    ('contrats.contrat', 'chatter_sans_recherche'),
+    # Cherchables SANS chatter générique (hérité — l'utilisateur les trouve
+    # mais ne peut ni les commenter ni y joindre une pièce) : à retirer le
+    # jour où ils entreront dans records.ALLOWED_TARGETS.
+    ('sav.equipement', 'recherche_sans_chatter'),
+    ('sav.contratmaintenance', 'recherche_sans_chatter'),
+    # Chatter-isé SANS recherche globale (hérité, DC33) : à retirer le jour où
+    # le fournisseur deviendra cherchable.
+    ('stock.fournisseur', 'chatter_sans_recherche'),
 }
 
 

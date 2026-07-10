@@ -46,9 +46,24 @@ class PlatformCoverageTests(SimpleTestCase):
             f"{sorted(stale)}")
 
     def test_known_contrat_drift_is_detected(self):
-        """Preuve que le croisement marche : Contrat chatter-isé, non cherchable."""
+        """ARC29 — le trou historique est comblé : Contrat est désormais
+        chatter-isé ET cherchable, donc plus AUCUNE dérive ne le concerne.
+        Preuve que le croisement marche encore : on simule un manifeste
+        chatter-sans-recherche pour vérifier que la règle est toujours active."""
         drift = platform_coverage.all_drift(self.manifests)
-        self.assertIn(('contrats.contrat', 'chatter_sans_recherche'), drift)
+        self.assertNotIn(('contrats.contrat', 'chatter_sans_recherche'), drift)
+        faux = dict(self.manifests)
+        faux['bidon_chatter'] = {
+            'module': 'bidon_chatter',
+            'searchable_models': [],
+            'record_targets': ['bidon.truc'],
+            'customfield_models': [], 'import_specs': [],
+            'agent_actions_module': '', 'automation_state_fields': [],
+            'kpi_providers': [],
+        }
+        self.assertIn(
+            ('bidon.truc', 'chatter_sans_recherche'),
+            platform_coverage.all_drift(faux))
 
     def test_matrix_lists_pilot_models(self):
         """La matrice remonte bien des modèles réels (crm + contrats)."""
@@ -61,10 +76,10 @@ class PlatformCoverageTests(SimpleTestCase):
         self.assertTrue(rows['crm.lead']['record_target'])
         self.assertTrue(rows['crm.lead']['automation'])
         self.assertEqual(rows['crm.lead']['drift'], [])
-        # contrats.contrat : chatter-isé mais pas cherchable → dérive listée.
+        # ARC29 — contrats.contrat : chatter-isé ET cherchable → plus de dérive.
         self.assertTrue(rows['contrats.contrat']['record_target'])
-        self.assertFalse(rows['contrats.contrat']['searchable'])
-        self.assertIn('chatter_sans_recherche', rows['contrats.contrat']['drift'])
+        self.assertTrue(rows['contrats.contrat']['searchable'])
+        self.assertEqual(rows['contrats.contrat']['drift'], [])
 
     def test_matrix_renders_without_error(self):
         """La sortie texte de la matrice est produite (elle apparaît en régression)."""
