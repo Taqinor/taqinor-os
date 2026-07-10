@@ -72,6 +72,20 @@ BASELINE_DRIFT: set[tuple[str, str]] = {
     # Chatter-isé SANS recherche globale (hérité, DC33) : à retirer le jour où
     # le fournisseur deviendra cherchable.
     ('stock.fournisseur', 'chatter_sans_recherche'),
+    # ARC30 — la migration des 19 cibles records vers les manifestes rend
+    # VISIBLES les cibles chatter-isées historiques jamais branchées sur la
+    # recherche globale (dérives héritées, préexistantes au registre — la
+    # recherche de ces modèles est un trou à combler modèle par modèle, chaque
+    # câblage retirant son entrée ici).
+    ('outillage.outillage', 'chatter_sans_recherche'),
+    ('rh.dossieremploye', 'chatter_sans_recherche'),
+    ('qhse.relevecontrole', 'chatter_sans_recherche'),
+    ('qhse.nonconformite', 'chatter_sans_recherche'),
+    ('kb.kbarticle', 'chatter_sans_recherche'),
+    ('ged.document', 'chatter_sans_recherche'),
+    ('flotte.vehicule', 'chatter_sans_recherche'),
+    ('gestion_projet.projet', 'chatter_sans_recherche'),
+    ('ao.appeloffre', 'chatter_sans_recherche'),
 }
 
 
