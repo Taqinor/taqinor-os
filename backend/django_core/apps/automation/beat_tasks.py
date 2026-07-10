@@ -30,8 +30,10 @@ OVERDUE_GRACE_DAYS = 0       # facture en retard dès l'échéance dépassée
 
 def _companies():
     try:
-        from authentication.models import Company
-        return list(Company.objects.filter(actif=True))
+        # SCA19 — source unique des sociétés balayables : un tenant suspendu/en
+        # fermeture (actif=False via le pont SCA18) est exclu des automations.
+        from authentication.selectors import active_companies
+        return list(active_companies())
     except Exception:  # pragma: no cover
         logger.warning('automation.beat: chargement des sociétés impossible',
                        exc_info=True)
