@@ -721,21 +721,32 @@ def proposal_engagement(request, token):
         # proposition côté client, mais on n'enregistre rien d'invalide.
         return _noindex(Response(status=status.HTTP_204_NO_CONTENT))
 
-    engagement = dict(link.engagement or {})
-    slot = dict(engagement.get(section) or {'seconds': 0, 'hits': 0})
-    slot['seconds'] = int(slot.get('seconds', 0)) + seconds
-    slot['hits'] = int(slot.get('hits', 0)) + 1
-    engagement[section] = slot
-    link.engagement = engagement
+    # QX30be — CORRECTIF perte de mise à jour : le read-modify-write du JSON
+    # d'engagement était NON atomique (deux beacons de sections concurrents se
+    # écrasaient — last-write-win). On relit le lien VERROUILLÉ dans une
+    # transaction (select_for_update) et on fusionne sur l'état frais.
+    from django.db import transaction
+    with transaction.atomic():
+        locked = (ShareLink.objects.select_for_update()
+                  .get(pk=link.pk))
+        engagement = dict(locked.engagement or {})
+        slot = dict(engagement.get(section) or {'seconds': 0, 'hits': 0})
+        slot['seconds'] = int(slot.get('seconds', 0)) + seconds
+        slot['hits'] = int(slot.get('hits', 0)) + 1
+        engagement[section] = slot
+        locked.engagement = engagement
 
-    total_seconds = sum(int(v.get('seconds', 0)) for v in engagement.values())
-    newly_deep = (
-        link.deep_engagement_logged_at is None
-        and total_seconds >= _DEEP_ENGAGEMENT_THRESHOLD_SECONDS
-    )
-    if newly_deep:
-        link.deep_engagement_logged_at = timezone.now()
-    link.save(update_fields=['engagement', 'deep_engagement_logged_at'])
+        total_seconds = sum(
+            int(v.get('seconds', 0)) for v in engagement.values())
+        newly_deep = (
+            locked.deep_engagement_logged_at is None
+            and total_seconds >= _DEEP_ENGAGEMENT_THRESHOLD_SECONDS
+        )
+        if newly_deep:
+            locked.deep_engagement_logged_at = timezone.now()
+        locked.save(
+            update_fields=['engagement', 'deep_engagement_logged_at'])
+    link = locked
 
     if newly_deep and link.devis_id:
         try:

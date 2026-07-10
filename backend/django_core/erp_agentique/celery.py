@@ -340,6 +340,12 @@ app.conf.beat_schedule = {
         'task': 'ged.poll_mail_intake',
         'schedule': crontab(minute='*/10'),
     },
+    # QX30be — moteur de relance déclenchée par le comportement (non-ouverture
+    # 24 h / ouvert-non-signé 48 h / rouvert 3×). Toutes les 3 h.
+    'ventes-engagement-followup-engine': {
+        'task': 'ventes.engagement_followup_engine',
+        'schedule': crontab(minute=5, hour='*/3'),
+    },
 }
 
 # YHARD6 — compteurs Celery succès/échec (process-local, best-effort) pour

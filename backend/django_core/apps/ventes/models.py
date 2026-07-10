@@ -1912,6 +1912,11 @@ class ShareLink(models.Model):
     # section) — sert à ne loguer QU'UNE FOIS la note chatter « a commencé à
     # lire en détail ».
     deep_engagement_logged_at = models.DateTimeField(null=True, blank=True)
+    # ── QX30be — moteur de relance déclenchée par le COMPORTEMENT ──
+    # Liste des déclencheurs d'engagement déjà notifiés (idempotence) :
+    # ex. ["not_opened_24h", "opened_not_signed_48h", "reopened_3x"]. Additif/
+    # nullable → aucun lien existant n'en porte (comportement inchangé).
+    engagement_triggers_fired = models.JSONField(null=True, blank=True)
 
     class Meta:
         ordering = ['-created_at']
