@@ -346,6 +346,12 @@ app.conf.beat_schedule = {
         'task': 'ventes.engagement_followup_engine',
         'schedule': crontab(minute=5, hour='*/3'),
     },
+    # QX31be — escalade speed-to-lead : lead chaud dont la notif d'arrivée
+    # reste non lue au-delà du seuil minutes. Cadence rapide (toutes les 15 min).
+    'notifications-sweep-hot-leads': {
+        'task': 'notifications.sweep_hot_leads',
+        'schedule': crontab(minute='*/15'),
+    },
 }
 
 # YHARD6 — compteurs Celery succès/échec (process-local, best-effort) pour
