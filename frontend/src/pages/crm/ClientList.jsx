@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { Pencil, FileText, Trash2, Upload, Plus, FilePlus } from 'lucide-react'
+import { useIsAdmin } from '../../hooks/useHasPermission'
 import { fetchClients, deleteClient, updateClient } from '../../features/crm/store/crmSlice'
 import ventesApi from '../../api/ventesApi'
 import crmApi from '../../api/crmApi'
@@ -36,7 +37,7 @@ export default function ClientList() {
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const { clients, loading, error } = useSelector(s => s.crm)
-  const role = useSelector(s => s.auth.role)
+  const isAdmin = useIsAdmin()
   const { confirmDelete } = useConfirmDialog()
   // Squelette différé : on n'affiche le chargement que s'il dure (anti-flash).
   const { showSkeleton } = useDelayedLoading(loading)
@@ -279,7 +280,7 @@ export default function ClientList() {
       },
       { id: 'releve', label: 'Relevé', icon: FileText, onClick: () => openReleve(c) },
     ]
-    if (role === 'admin') {
+    if (isAdmin) {
       actions.push({
         id: 'delete',
         label: deletingId === c.id ? 'Suppression…' : 'Supprimer',
@@ -390,8 +391,8 @@ export default function ClientList() {
             searchable
             searchPlaceholder="Rechercher nom, email, tél, ICE, IF, RC, CIN…"
             rowActions={rowActions}
-            selectable={role === 'admin'}
-            bulkActions={role === 'admin' ? (rows, _keys, clear) => [{
+            selectable={isAdmin}
+            bulkActions={isAdmin ? (rows, _keys, clear) => [{
               id: 'bulk-delete',
               label: 'Supprimer (sans devis)',
               icon: Trash2,

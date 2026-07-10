@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useSelector } from 'react-redux'
 import { Link } from 'react-router-dom'
+import { useHasPermission } from '../hooks/useHasPermission'
 import { History } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -199,8 +199,7 @@ function AsOfTrigger({ contentType, objectId, label }) {
 }
 
 export default function Journal() {
-  const permissions = useSelector((s) => s.auth.permissions) || []
-  const allowed = permissions.includes('journal_activite_voir')
+  const allowed = useHasPermission('journal_activite_voir')
 
   const [period, setPeriod] = useState('jour')
   const [date, setDate] = useState(todayISO())

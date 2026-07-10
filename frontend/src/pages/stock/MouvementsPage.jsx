@@ -16,6 +16,7 @@ import {
   Input, Textarea,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+import { useHasPermission, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 
 // ZSTK7 — options du regroupement pivot (« Vue groupée »).
 const AGREGATION_GROUP_BY = [
@@ -44,13 +45,13 @@ const TABS = [
 export default function MouvementsPage() {
   const dispatch = useDispatch()
   const { mouvements, produits, loading, error } = useSelector(s => s.stock)
-  const role = useSelector(s => s.auth.role)
-  const permissions = useSelector(s => s.auth.permissions)
-  // Rôle fin : la permission stock_mouvement décide ; comptes hérités :
-  // comportement historique par rôle.
-  const canPostMouvement = permissions.length
-    ? permissions.includes('stock_mouvement')
-    : (role === 'responsable' || role === 'admin')
+  // ARC47 — gating via le hook partagé. Rôle fin : la permission stock_mouvement
+  // décide ; comptes hérités : repli par palier. `hasFinePermissions` (présence
+  // de codes ERP, PAS un droit) choisit la branche ; hooks inconditionnels.
+  const hasFinePermissions = useSelector(s => (s.auth.permissions || []).length > 0)
+  const canPostViaPerm = useHasPermission('stock_mouvement')
+  const canPostViaRole = useIsAdminOrResponsable()
+  const canPostMouvement = hasFinePermissions ? canPostViaPerm : canPostViaRole
 
   const [activeTab, setActiveTab] = useState('tous')
   // Pré-filtre par produit (lien « historique » depuis le catalogue) + saisie
