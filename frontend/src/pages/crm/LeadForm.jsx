@@ -45,6 +45,12 @@ const STATUT_DEVIS = {
 }
 
 const PRIORITES = { basse: 'Basse', normale: 'Normale', haute: 'Haute' }
+// FG30/QX27 — libellés FR du résultat d'un appel/e-mail journalisé (miroir de
+// LeadActivity.OUTCOMES côté serveur, apps/crm/models.py).
+const OUTCOME_LABELS = {
+  '': null, joint: 'Joint', non_joint: 'Non joint', rappel: 'À rappeler',
+  refuse: 'Refus', interesse: 'Intéressé',
+}
 // Langue préférée du contact — pré-sélectionne la langue du message WhatsApp.
 const LANGUES_PREFEREES = { fr: 'Français', darija: 'Darija' }
 const TYPES_INSTALLATION = {
@@ -126,7 +132,12 @@ function timeAgo(iso) {
   return new Date(iso).toLocaleDateString('fr-FR')
 }
 
-export default function LeadForm({ lead = null, onClose, onSaved, initialDevis = null, onOpenDuplicate = null }) {
+export default function LeadForm({
+  lead = null, onClose, onSaved, initialDevis = null, onOpenDuplicate = null,
+  // QX25 — « Planifier une relance » (kanban) ouvre directement la fiche sur
+  // la section « Suivi commercial » (relance_date) au lieu d'un texte inerte.
+  focusSection = null,
+}) {
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const isEdit = !!lead
@@ -369,6 +380,16 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
     }
   }, [isEdit, initialDevis])
 
+  // QX25 — « Planifier une relance » : fait défiler jusqu'à la section « Suivi
+  // commercial » (relance_date) à l'ouverture, une seule fois.
+  const focusSectionRan = useRef(false)
+  useEffect(() => {
+    if (isEdit && focusSection && !focusSectionRan.current) {
+      focusSectionRan.current = true
+      setTimeout(() => jumpTo(focusSection), 0)
+    }
+  }, [isEdit, focusSection])
+
   // Fermeture du petit menu « Devis modifiable » au clic extérieur.
   useEffect(() => {
     if (!devisMenuOpen) return undefined
@@ -408,6 +429,10 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
   const devisReady = !!liveLead?.devis_auto?.pret
   const devisNotReadyMsg = liveLead?.devis_auto?.message
     ?? 'Renseignez la facture du lead pour activer le devis automatique.'
+  // QX28 — mêmes chips de préparation que LeadCard.jsx (crm/leads/views/) :
+  // ce que le site a déjà capturé, visible dès l'ouverture de la fiche.
+  const roofReady = !!liveLead?.roof_point
+  const factureReady = liveLead?.facture_hiver != null && liveLead.facture_hiver !== ''
 
   const openDevisPanel = (mode) => {
     setDevisMenuOpen(false)
@@ -640,6 +665,32 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
           </div>
         </div>
 
+        {/* QX28 — chips de préparation (même logique que LeadCard.jsx) : ce
+            que le site a déjà capturé pour ce lead, visible dès l'ouverture
+            de la fiche, jamais un chip « manquant » — juste l'absence. */}
+        {isEdit && (roofReady || factureReady || devisReady) && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', padding: '0 1rem' }}>
+            {roofReady && (
+              <span style={{ fontSize: '11px', borderRadius: '9999px', padding: '1px 8px', background: 'var(--color-success-muted, rgba(22,163,74,.12))', color: 'var(--color-success, #16a34a)' }}
+                    title="Un repère GPS de toiture a été capturé (site ou 3D)">
+                📍 Toit épinglé (GPS)
+              </span>
+            )}
+            {factureReady && (
+              <span style={{ fontSize: '11px', borderRadius: '9999px', padding: '1px 8px', background: 'var(--color-info-muted, rgba(37,99,235,.12))', color: 'var(--color-info, #2563eb)' }}
+                    title="Une facture d'électricité a été saisie">
+                🧾 Facture saisie
+              </span>
+            )}
+            {devisReady && (
+              <span style={{ fontSize: '11px', borderRadius: '9999px', padding: '1px 8px', background: 'var(--color-primary-muted, rgba(37,99,235,.12))', color: 'var(--color-primary, #2563eb)' }}
+                    title="Toutes les données nécessaires sont réunies pour générer un devis en un clic">
+                ⚡ Prêt à deviser en 1 clic
+              </span>
+            )}
+          </div>
+        )}
+
         {/* ── Barre d'actions devis (style Odoo) — tout reste dans la fiche ── */}
         {isEdit && (
           <div className="lead-subbar">
@@ -684,9 +735,11 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
             <div className="lead-subbar-devis">
               {lead?.id && (
                 <Button type="button" size="sm" className="gen-btn-orange"
-                        title="Ouvrir l'outil de conception 3D du site avec ce lead déjà chargé"
+                        title={roofReady
+                          ? 'Repère toit (GPS) disponible — ouvrir le plan déjà positionné'
+                          : "Ouvrir l'outil de conception 3D du site avec ce lead déjà chargé"}
                         onClick={ouvrirConceptionToiture}>
-                  🏠 Concevoir la toiture (3D)
+                  🏠 Concevoir la toiture (3D){roofReady ? ' 📍' : ''}
                 </Button>
               )}
               <Button type="button" size="sm" className="gen-btn-orange"
@@ -994,9 +1047,11 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
                 {lead?.id && (
                   <div style={{ margin: '0 0 8px' }}>
                     <Button type="button" size="sm" className="gen-btn-orange"
-                            title="Ouvrir l'outil de conception 3D du site avec ce lead déjà chargé"
+                            title={roofReady
+                              ? 'Repère toit (GPS) disponible — ouvrir le plan déjà positionné'
+                              : "Ouvrir l'outil de conception 3D du site avec ce lead déjà chargé"}
                             onClick={ouvrirConceptionToiture}>
-                      🏠 Concevoir la toiture (3D)
+                      🏠 Concevoir la toiture (3D){roofReady ? ' 📍' : ''}
                     </Button>
                   </div>
                 )}
@@ -1219,6 +1274,48 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
                           ✏️ <strong>{a.field_label}&nbsp;:</strong>{' '}
                           {a.old_value} → <strong>{a.new_value}</strong>
                         </span>
+                      )}
+                      {/* FG30/QX27 — appel/e-mail journalisés (jusqu'ici rendus
+                          BLANCS faute de branche : aucune trace visible du
+                          contact). Corps libre + résultat (outcome) si posé. */}
+                      {a.kind === 'appel' && (
+                        <span>
+                          📞 <strong>Appel</strong>
+                          {OUTCOME_LABELS[a.outcome] && (
+                            <> — <strong>{OUTCOME_LABELS[a.outcome]}</strong></>
+                          )}
+                          {a.body ? <>&nbsp;: {a.body}</> : null}
+                        </span>
+                      )}
+                      {a.kind === 'email' && (
+                        <span>
+                          ✉️ <strong>E-mail</strong>
+                          {OUTCOME_LABELS[a.outcome] && (
+                            <> — <strong>{OUTCOME_LABELS[a.outcome]}</strong></>
+                          )}
+                          {a.body ? <>&nbsp;: {a.body}</> : null}
+                        </span>
+                      )}
+                      {/* QX32 — timeline unifiée : le cycle de vie du devis
+                          (envoyé/ouvert/signé/refusé) + le résumé d'engagement
+                          de la proposition en ligne, fusionnés par le serveur
+                          dans ce même historique (apps/ventes/selectors.py
+                          devis_events_for_lead) — le vendeur n'a plus besoin
+                          d'ouvrir la liste des devis pour préparer un appel. */}
+                      {a.kind === 'devis_sent' && (
+                        <span>📤 <strong>Devis envoyé</strong>{a.body ? <>&nbsp;: {a.body}</> : null}</span>
+                      )}
+                      {a.kind === 'devis_opened' && (
+                        <span>👁️ <strong>Proposition ouverte</strong>{a.body ? <>&nbsp;: {a.body}</> : null}</span>
+                      )}
+                      {a.kind === 'devis_signed' && (
+                        <span>✅ <strong>Devis signé</strong>{a.body ? <>&nbsp;: {a.body}</> : null}</span>
+                      )}
+                      {a.kind === 'devis_refused' && (
+                        <span>❌ <strong>Devis refusé</strong>{a.body ? <>&nbsp;: {a.body}</> : null}</span>
+                      )}
+                      {a.kind === 'devis_engagement' && (
+                        <span>📊 <strong>Engagement proposition</strong>{a.body ? <>&nbsp;: {a.body}</> : null}</span>
                       )}
                       {a.bulk && <span className="chatter-bulk">en masse</span>}
                       <span className="chatter-meta">

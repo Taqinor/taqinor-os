@@ -3,8 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import {
   Download, Plus, FileText, FileDown, Check, ArrowRight, HardHat, FileStack,
-  Copy, Send, X, Eye, Search, AlertTriangle, UserCog, Box, ExternalLink,
-  Link2, FolderKanban,
+  Copy, Send, X, Eye, Search, AlertTriangle, Box, ExternalLink,
+  Link2, FolderKanban, MoreHorizontal,
 } from 'lucide-react'
 import {
   fetchDevis,
@@ -14,6 +14,7 @@ import {
 import ventesApi from '../../api/ventesApi'
 import installationsApi from '../../api/installationsApi'
 import gestionProjetApi from '../../api/gestionProjetApi'
+import crmApi from '../../api/crmApi'
 import importApi, { downloadXlsx } from '../../api/importApi'
 import DevisForm from './DevisForm'
 import {
@@ -24,6 +25,10 @@ import {
   AlertDialogTitle, AlertDialogDescription, AlertDialogFooter,
   AlertDialogCancel, AlertDialogAction,
   RadioGroup, RadioGroupItem, Checkbox, Label, Input, Segmented, toast,
+  Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
+  Textarea,
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
+  DropdownMenuItem, DropdownMenuLabel,
 } from '../../ui'
 import { formatMAD } from '../../lib/format'
 import { filenameFromResponse } from '../../utils/downloadBlob'
@@ -165,6 +170,11 @@ export default function DevisList() {
   const [convertingId, setConvertingId] = useState(null)
   const [factureGenId, setFactureGenId] = useState(null) // devis id en cours de facturation
   const [pdfGenerating, setPdfGenerating] = useState({}) // id → true
+  // QX21 — au-delà de 30 s, la génération n'est PAS abandonnée : elle reste
+  // visible comme « toujours en cours » (le job Celery continue côté serveur)
+  // et le polling se poursuit à un rythme plus espacé, sans jamais relancer un
+  // second job (un seul dispatch(genererPdfDevis) par appel de genererUnPdf).
+  const [pdfSlowPoll, setPdfSlowPoll] = useState({}) // id → true
   const [pdfDownloading, setPdfDownloading] = useState({}) // id → true
   const [statutActionId, setStatutActionId] = useState(null) // envoi/refus en cours
   const [previewingId, setPreviewingId] = useState(null) // aperçu PDF en cours
@@ -192,8 +202,20 @@ export default function DevisList() {
   })
 
   // ── Filtre statut + recherche (référence / client) ──
-  const [statutFilter, setStatutFilter] = useState('tous')
+  // QX12 — deep-link ?statut=<key> pré-règle le filtre au montage (liens de
+  // notification / Dashboard). Une valeur inconnue retombe sur « tous ».
+  const [statutFilter, setStatutFilter] = useState(() => {
+    const s = searchParams.get('statut')
+    return s && (s === 'tous' || STATUT_DISPLAY[s]) ? s : 'tous'
+  })
   const [query, setQuery] = useState('')
+  // QX12 — deep-link ?devis=<pk> ouvre/surligne ce devis précis au montage
+  // (notifications « Devis accepté »/« Devis expiré » qui pointaient vers une
+  // route inexistante /devis/{pk} — le producteur redirige maintenant ici).
+  const [highlightId, setHighlightId] = useState(() => {
+    const v = searchParams.get('devis')
+    return v ? Number(v) : null
+  })
   // U7 — masque par défaut les révisions remplacées (is_active=False) pour
   // qu'un devis révisé n'apparaisse plus comme un doublon « vivant ». Un
   // bouton « voir les versions remplacées » les réaffiche, toujours badgées
@@ -350,6 +372,15 @@ export default function DevisList() {
 
   useEffect(() => { dispatch(fetchDevis()) }, [dispatch])
 
+  // QX12 — une fois les devis chargés, fait défiler jusqu'à la ligne ciblée par
+  // ?devis=<pk> et efface le paramètre après un court délai (la surbrillance
+  // CSS reste tant que highlightId est posé ; on ne la clignote pas plus).
+  useEffect(() => {
+    if (!highlightId || loading) return
+    const row = document.getElementById(`devis-row-${highlightId}`)
+    if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [highlightId, loading, devis])
+
   // WR2 — « Copier le lien proposition » : (re)mint le lien public tokenisé du
   // devis (DevisViewSet.share_link) et le copie au presse-papier, sans passer
   // par l'envoi email/WhatsApp. Surface une fonctionnalité serveur jusqu'ici
@@ -402,28 +433,46 @@ export default function DevisList() {
     }
   }
 
-  // QG8 — « Envoyer » = flux WhatsApp des leads (aperçu du message + lien
-  // tokenisé), et le devis est marqué « envoyé » côté serveur (idempotent, sans
-  // régression). On ouvre une modale d'aperçu, puis WhatsApp au clic.
+  // QG8/QX22 — « Envoyer » = flux WhatsApp des leads (aperçu du message + lien
+  // tokenisé). La modale se peuple désormais depuis une action de PRÉVISUALISATION
+  // en LECTURE SEULE (whatsappPreviewDevis) — ouvrir-puis-fermer sans cliquer ne
+  // marque plus rien « Envoyé ». Le devis n'est marqué « Envoyé » que sur le clic
+  // réel vers wa.me (mark_devis_sent côté serveur, appelé par openWhatsApp).
   const [waTarget, setWaTarget] = useState(null)   // devis ciblé
   const [waData, setWaData] = useState(null)        // { wa_url, message, url }
+  const [waSending, setWaSending] = useState(false)
   const handleEnvoyer = async (d) => {
     setStatutActionId(d.id)
     try {
-      const res = await ventesApi.whatsappDevis(d.id)
+      const res = await ventesApi.whatsappPreviewDevis(d.id)
       setWaTarget(d)
       setWaData(res.data)
-      dispatch(fetchDevis())
+      // Aperçu seul — AUCUNE mutation de statut ici (fermer la modale sans
+      // cliquer « Ouvrir WhatsApp » laisse le devis brouillon).
     } catch (err) {
       toast.error(frenchError(err, 'Préparation WhatsApp impossible.'))
     } finally {
       setStatutActionId(null)
     }
   }
-  const closeWaModal = () => { setWaTarget(null); setWaData(null) }
-  const openWhatsApp = () => {
+  const closeWaModal = () => { setWaTarget(null); setWaData(null); setWaSending(false) }
+  // QX22 — clic réel sur « Ouvrir WhatsApp » : ouvre wa.me PUIS marque le devis
+  // « Envoyé » côté serveur (whatsappDevis, l'action d'envoi véritable — jamais
+  // au moment de l'ouverture de la modale). Le lien s'ouvre même si le marquage
+  // échoue (le message a déjà été montré au vendeur ; on prévient de l'échec).
+  const openWhatsApp = async () => {
+    if (!waTarget) return
     if (waData?.wa_url) window.open(waData.wa_url, '_blank', 'noopener')
-    closeWaModal()
+    setWaSending(true)
+    try {
+      await ventesApi.whatsappDevis(waTarget.id)
+      dispatch(fetchDevis())
+    } catch (err) {
+      toast.error(frenchError(err, 'Le marquage « Envoyé » a échoué — vérifiez le devis.'))
+    } finally {
+      setWaSending(false)
+      closeWaModal()
+    }
   }
 
   // QJ28 — « Contacter mon supérieur » : notifie le supérieur du vendeur
@@ -442,21 +491,47 @@ export default function DevisList() {
     }
   }
 
-  // WR1 — Refuser un devis envoyé : passe par l'action dédiée `refuser`
+  // WR1/QX26 — Refuser un devis envoyé : passe par l'action dédiée `refuser`
   // (motif/date/chatter + événement devis_refused qui clôt le lead), plus
   // JAMAIS un PATCH statut direct qui contournait ce chemin (funnel intact).
-  const handleRefuser = async (d) => {
-    if (!window.confirm(`Marquer le devis « ${d.reference} » comme refusé ?`)) return
-    const motif = window.prompt('Motif du refus (optionnel) :', '') ?? ''
-    setStatutActionId(d.id)
+  // QX26 — le motif n'est plus un window.prompt optionnel (perdu, illisible en
+  // reporting) : une modale OBLIGATOIRE impose un motif de la taxonomie
+  // MotifPerte (partagée avec le CRM, endpoint company-scoped existant) + une
+  // note libre optionnelle. Sans motif sélectionné, la confirmation reste
+  // bloquée — les données de perte redeviennent exploitables.
+  const [refusTarget, setRefusTarget] = useState(null)
+  const [motifsPerte, setMotifsPerte] = useState([])
+  const [refusMotifId, setRefusMotifId] = useState('')
+  const [refusNote, setRefusNote] = useState('')
+  const [refusBusy, setRefusBusy] = useState(false)
+
+  const openRefusModal = (d) => {
+    setRefusTarget(d)
+    setRefusMotifId('')
+    setRefusNote('')
+    setRefusBusy(false)
+    crmApi.getMotifsPerte()
+      .then(r => setMotifsPerte(r.data?.results ?? r.data ?? []))
+      .catch(() => setMotifsPerte([]))
+  }
+  const closeRefusModal = () => { setRefusTarget(null); setRefusBusy(false) }
+
+  const submitRefus = async () => {
+    const d = refusTarget
+    if (!d || !refusMotifId) return
+    setRefusBusy(true)
     try {
-      await ventesApi.refuserDevis(d.id, motif.trim() ? { motif: motif.trim() } : {})
+      await ventesApi.refuserDevis(d.id, {
+        motif_perte: refusMotifId,
+        motif: refusNote.trim() || undefined,
+      })
       dispatch(fetchDevis())
       toast.success(`Devis ${d.reference} marqué « Refusé ».`)
+      closeRefusModal()
     } catch (err) {
       toast.error(frenchError(err, 'Refus impossible.'))
     } finally {
-      setStatutActionId(null)
+      setRefusBusy(false)
     }
   }
 
@@ -592,20 +667,29 @@ export default function DevisList() {
   // l'enchaînement par lot.
   const genererUnPdf = async (d, { autoOpen = true } = {}) => {
     setPdfGenerating(prev => ({ ...prev, [d.id]: true }))
+    setPdfSlowPoll(prev => ({ ...prev, [d.id]: false }))
     try {
       await dispatch(genererPdfDevis({ id: d.id, options: buildPdfOptions(d) })).unwrap()
       let attempts = 0
+      // QX21 — 15 tentatives × 2 s = 30 s au rythme rapide ; passé ce cap, le
+      // job Celery n'est PAS relancé (un seul dispatch a eu lieu ci-dessus) —
+      // on continue simplement à interroger, plus espacé (10 s), et on affiche
+      // « toujours en cours » au lieu d'abandonner silencieusement.
+      const FAST_ATTEMPTS = 15
       const poll = async () => {
-        if (attempts++ > 15) {
+        const slow = attempts >= FAST_ATTEMPTS
+        attempts += 1
+        if (slow && !pdfSlowPoll[d.id]) {
+          setPdfSlowPoll(prev => ({ ...prev, [d.id]: true }))
           if (autoOpen) {
-            toast.error(`${d.reference} : le PDF met plus de temps que prévu — réessayez le téléchargement dans un instant.`)
+            toast(`${d.reference} : le PDF est toujours en cours de génération — la page continue de vérifier automatiquement.`)
           }
-          return
         }
         try {
           const res = await ventesApi.getDevisById(d.id)
           if (res.data.fichier_pdf) {
             dispatch(fetchDevis())
+            setPdfSlowPoll(prev => ({ ...prev, [d.id]: false }))
             if (autoOpen) {
               try {
                 const pdfRes = await ventesApi.telechargerPdfDevis(d.id)
@@ -615,9 +699,9 @@ export default function DevisList() {
               }
             }
           } else {
-            setTimeout(poll, 2000)
+            setTimeout(poll, slow ? 10000 : 2000)
           }
-        } catch { /* ignore poll errors */ }
+        } catch { /* ignore poll errors — la boucle continue */ }
       }
       setTimeout(poll, 2000)
       return true
@@ -1060,6 +1144,58 @@ export default function DevisList() {
           </div>
       </ResponsiveDialog>
 
+      {/* QX26 — Modale de refus OBLIGATOIRE : motif MotifPerte (taxonomie
+          partagée CRM) + note libre optionnelle. Le bouton de confirmation
+          reste désactivé tant qu'aucun motif n'est choisi — plus de refus
+          « silencieux » (données de perte enfin exploitables en reporting). */}
+      <ResponsiveDialog
+        open={!!refusTarget}
+        onOpenChange={(o) => { if (!o) closeRefusModal() }}
+        title={`Refuser le devis — ${refusTarget?.reference ?? ''}`}
+        description="Le motif est obligatoire — il alimente le reporting des pertes."
+        footer={(
+          <>
+            <Button variant="ghost" onClick={closeRefusModal} disabled={refusBusy}>Annuler</Button>
+            <Button
+              onClick={submitRefus}
+              loading={refusBusy}
+              disabled={!refusMotifId}
+              className="border-destructive/40 text-destructive hover:bg-destructive/10"
+            >
+              <X className="size-4 mr-1" aria-hidden="true" />
+              Confirmer le refus
+            </Button>
+          </>
+        )}
+      >
+          <div className="flex flex-col gap-4">
+            <div className="grid gap-1.5">
+              <Label htmlFor="refus-motif">Motif du refus</Label>
+              <Select value={refusMotifId} onValueChange={setRefusMotifId}>
+                <SelectTrigger id="refus-motif">
+                  <SelectValue placeholder="Choisir un motif…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {motifsPerte.map(m => (
+                    <SelectItem key={m.id} value={String(m.id)}>{m.nom ?? m.libelle}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {motifsPerte.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Aucun motif configuré — ajoutez-en dans les paramètres CRM.
+                </p>
+              )}
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="refus-note">Détail (optionnel)</Label>
+              <Textarea id="refus-note" value={refusNote}
+                        onChange={e => setRefusNote(e.target.value)}
+                        placeholder="Précisions sur le refus…" rows={3} />
+            </div>
+          </div>
+      </ResponsiveDialog>
+
       {/* QJ14 — Modale « Envoyer par email » : PDF premium + lien de proposition
           (MB4 — ResponsiveDialog → tiroir bas plein écran sur mobile) */}
       <ResponsiveDialog
@@ -1119,8 +1255,8 @@ export default function DevisList() {
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={closeWaModal}>Fermer</Button>
-            <Button onClick={openWhatsApp} disabled={!waData?.wa_url}>
+            <Button variant="outline" onClick={closeWaModal} disabled={waSending}>Fermer</Button>
+            <Button onClick={openWhatsApp} disabled={!waData?.wa_url} loading={waSending}>
               <Send className="size-4 mr-1" aria-hidden="true" />
               Ouvrir WhatsApp
             </Button>
@@ -1227,9 +1363,13 @@ export default function DevisList() {
                   const effStatut = d.is_expired ? 'expire' : d.statut
                   const isGenerating = pdfGenerating[d.id]
                   const isDownloading = pdfDownloading[d.id]
+                  const isSlowPolling = !!pdfSlowPoll[d.id]
                   return (
                     <Fragment key={d.id}>
-                    <tr>
+                    <tr id={`devis-row-${d.id}`}
+                        style={highlightId === d.id
+                          ? { outline: '2px solid var(--color-primary, #2563eb)', outlineOffset: '-2px' }
+                          : undefined}>
                       <td>
                         <Checkbox
                           checked={selectedIds.includes(d.id)}
@@ -1437,19 +1577,57 @@ export default function DevisList() {
                           >
                             Éditer
                           </Button>
-                          {d.is_active && d.statut !== 'brouillon' && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              title="Créer une nouvelle version (v2, v3…) de ce devis"
-                              onClick={() => {
-                                ventesApi.reviserDevis(d.id)
-                                  .then(() => dispatch(fetchDevis()))
-                                  .catch(() => {})
-                              }}
-                            >
-                              Réviser
-                            </Button>
+                          {/* QX27 — actions secondaires (peu fréquentes / sans
+                              raccourci clavier) regroupées dans un menu « ⋯ »
+                              au lieu de gonfler la ligne : Réviser, Approuver
+                              remise, Contacter mon supérieur, Email. Les
+                              actions qui font AVANCER le funnel (Envoyer,
+                              Accepter, Refuser, BC, Chantier, Facture…)
+                              restent des boutons directs, visibles. */}
+                          {((d.is_active && d.statut !== 'brouillon')
+                            || (role === 'admin' && d.statut === 'brouillon' && parseFloat(d.remise_globale) > 0 && !d.remise_approuvee)
+                            || d.statut === 'brouillon' || d.statut === 'envoye') && (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button size="sm" variant="ghost" aria-label={`Autres actions — ${d.reference}`}>
+                                  <MoreHorizontal className="size-4" aria-hidden="true" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="start">
+                                <DropdownMenuLabel>Autres actions</DropdownMenuLabel>
+                                {d.is_active && d.statut !== 'brouillon' && (
+                                  <DropdownMenuItem onSelect={() => {
+                                    ventesApi.reviserDevis(d.id)
+                                      .then(() => dispatch(fetchDevis()))
+                                      .catch(() => {})
+                                  }}>
+                                    Réviser (nouvelle version)
+                                  </DropdownMenuItem>
+                                )}
+                                {role === 'admin' && d.statut === 'brouillon'
+                                  && parseFloat(d.remise_globale) > 0 && !d.remise_approuvee && (
+                                  <DropdownMenuItem onSelect={() => {
+                                    ventesApi.approuverRemise(d.id)
+                                      .then(() => dispatch(fetchDevis())).catch(() => {})
+                                  }}>
+                                    Approuver la remise
+                                  </DropdownMenuItem>
+                                )}
+                                {(d.statut === 'brouillon' || d.statut === 'envoye') && (
+                                  <DropdownMenuItem
+                                    disabled={superieurBusyId === d.id}
+                                    onSelect={() => handleContacterSuperieur(d)}
+                                  >
+                                    Contacter mon supérieur
+                                  </DropdownMenuItem>
+                                )}
+                                {(d.statut === 'brouillon' || d.statut === 'envoye') && (
+                                  <DropdownMenuItem onSelect={() => openEmailModal(d)}>
+                                    Envoyer par email
+                                  </DropdownMenuItem>
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           )}
                           {/* QG10/QJ15 — « Variante » : ouvre une modale pour
                               confirmer/éditer le pourcentage (défaut = config
@@ -1464,20 +1642,6 @@ export default function DevisList() {
                             >
                               <Copy className="size-3.5 mr-1" aria-hidden="true" />
                               Variante
-                            </Button>
-                          )}
-                          {role === 'admin' && d.statut === 'brouillon'
-                            && parseFloat(d.remise_globale) > 0 && !d.remise_approuvee && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              title="Approuver la remise (autorise l'envoi si au-dessus du seuil)"
-                              onClick={() => {
-                                ventesApi.approuverRemise(d.id)
-                                  .then(() => dispatch(fetchDevis())).catch(() => {})
-                              }}
-                            >
-                              Approuver remise
                             </Button>
                           )}
                           {canDelete && (
@@ -1517,30 +1681,6 @@ export default function DevisList() {
                               title="Envoyer par WhatsApp (message + lien de proposition) — marque le devis « Envoyé »"
                             >
                               <Send /> Envoyer
-                            </Button>
-                          )}
-                          {/* QJ28 — Contacter mon supérieur (notification, jamais automatique) */}
-                          {(d.statut === 'brouillon' || d.statut === 'envoye') && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              loading={superieurBusyId === d.id}
-                              onClick={() => handleContacterSuperieur(d)}
-                              title="Contacter mon supérieur — lui envoyer une notification avec le lien de ce devis"
-                            >
-                              <UserCog />
-                            </Button>
-                          )}
-                          {/* QJ14 — Envoyer par email : PDF premium + lien de proposition */}
-                          {(d.statut === 'brouillon' || d.statut === 'envoye') && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => openEmailModal(d)}
-                              title="Envoyer la proposition par email (PDF + lien de signature)"
-                            >
-                              <Send className="size-3.5 mr-1" aria-hidden="true" />
-                              Email
                             </Button>
                           )}
                           {/* WR2 — Copier le lien de proposition (share_link) :
@@ -1604,6 +1744,14 @@ export default function DevisList() {
                           >
                             <FileText /> PDF
                           </Button>
+                          {/* QX21 — passé 30 s, on n'abandonne plus le suivi : ce
+                              badge reste visible tant que le polling se poursuit
+                              (aucun second job n'est jamais relancé en dessous). */}
+                          {isSlowPolling && (
+                            <Badge tone="warning" title="Le PDF est toujours en cours de génération côté serveur — la page continue de vérifier automatiquement.">
+                              PDF toujours en cours…
+                            </Badge>
+                          )}
                           {d.fichier_pdf && (
                             <Button
                               size="sm"
@@ -1629,10 +1777,9 @@ export default function DevisList() {
                             <Button
                               size="sm"
                               variant="outline"
-                              loading={statutActionId === d.id}
-                              onClick={() => handleRefuser(d)}
+                              onClick={() => openRefusModal(d)}
                               className="border-destructive/40 text-destructive hover:bg-destructive/10"
-                              title="Marquer ce devis comme refusé"
+                              title="Marquer ce devis comme refusé (motif obligatoire)"
                             >
                               <X /> Refuser
                             </Button>

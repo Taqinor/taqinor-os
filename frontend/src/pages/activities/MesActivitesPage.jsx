@@ -1,13 +1,33 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
-import { AlarmClock, CalendarCheck2, CalendarClock, ExternalLink, PartyPopper, Sparkles, Users } from 'lucide-react'
+import {
+  AlarmClock, CalendarCheck2, CalendarClock, ExternalLink, PartyPopper, Sparkles, Users,
+  PhoneCall, MessageCircle,
+} from 'lucide-react'
 import recordsApi from '../../api/recordsApi'
 import {
   Button, Badge, Card, CardHeader, CardTitle, CardContent,
   EmptyState, Spinner,
 } from '../../ui'
 import { Table } from '../reporting/Table'
+
+// QX25 — « Mes activités » est la liste d'appels du jour : chaque ligne doit
+// être prête à appeler/WhatsApper en un tap, sans ouvrir la fiche. Le
+// serializer ajoute `target_phone` (numéro déjà résolu — lead, client…) ;
+// on dérive tel:/wa.me localement, en silence si absent (aucun champ cassé).
+const telHref = (raw) => {
+  const s = String(raw ?? '').trim()
+  if (!s) return null
+  const cleaned = s.replace(/[^\d+]/g, '')
+  return cleaned ? `tel:${cleaned}` : null
+}
+const waHref = (raw) => {
+  const s = String(raw ?? '').trim()
+  if (!s) return null
+  const digits = s.replace(/\D/g, '')
+  return digits ? `https://wa.me/${digits}` : null
+}
 
 // ZSAL1 — échéance par défaut de l'activité de suivi suggérée : aujourd'hui +
 // le délai configuré sur le type d'activité clôturé (delai_jours, ≥ 0).
@@ -267,6 +287,36 @@ export default function MesActivitesPage() {
                               <ExternalLink /> {a.target_label || 'Ouvrir'}
                             </Button>
                           ) : (a.target_label || '—')
+                        },
+                      },
+                      {
+                        // QX25 — liste d'appels prête à l'emploi : tel:/wa.me
+                        // directs depuis `target_phone` (résolu côté serveur),
+                        // sans ouvrir la fiche. Colonne vide (rien affiché)
+                        // quand aucun numéro n'est disponible.
+                        key: 'contact',
+                        header: '',
+                        cell: (a) => {
+                          const tel = telHref(a.target_phone)
+                          const wa = waHref(a.target_phone)
+                          if (!tel && !wa) return null
+                          return (
+                            <span className="inline-flex items-center gap-2">
+                              {tel && (
+                                <a href={tel} title="Appeler" aria-label={`Appeler ${a.target_label || ''}`}
+                                   className="text-muted-foreground hover:text-foreground">
+                                  <PhoneCall className="size-4" aria-hidden="true" />
+                                </a>
+                              )}
+                              {wa && (
+                                <a href={wa} target="_blank" rel="noopener noreferrer" title="Ouvrir WhatsApp"
+                                   aria-label={`WhatsApp ${a.target_label || ''}`}
+                                   className="text-muted-foreground hover:text-foreground">
+                                  <MessageCircle className="size-4" aria-hidden="true" />
+                                </a>
+                              )}
+                            </span>
+                          )
                         },
                       },
                       {

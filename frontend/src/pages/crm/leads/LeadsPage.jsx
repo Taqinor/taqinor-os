@@ -98,6 +98,9 @@ export default function LeadsPage() {
   const [editLead, setEditLead] = useState(null)
   // Intention « ouvrir directement le devis » à l'ouverture de la fiche (⚡).
   const [formDevisIntent, setFormDevisIntent] = useState(null)
+  // QX25 — section à cibler à l'ouverture de la fiche (« Planifier une
+  // relance » depuis la carte kanban → section « Suivi commercial »).
+  const [formFocusSection, setFormFocusSection] = useState(null)
   // Atelier doublons (modal).
   const [showDoublons, setShowDoublons] = useState(false)
   // Nombre de groupes de doublons détectés (badge sur le bouton « Doublons »).
@@ -228,12 +231,13 @@ export default function LeadsPage() {
     }
   }
 
-  const openNew = () => { setEditLead(null); setFormDevisIntent(null); setShowForm(true) }
-  const onOpenLead = (lead) => { setEditLead(lead); setFormDevisIntent(null); setShowForm(true) }
+  const openNew = () => { setEditLead(null); setFormDevisIntent(null); setFormFocusSection(null); setShowForm(true) }
+  const onOpenLead = (lead) => { setEditLead(lead); setFormDevisIntent(null); setFormFocusSection(null); setShowForm(true) }
   const closeForm = () => {
     setShowForm(false)
     setEditLead(null)
     setFormDevisIntent(null)
+    setFormFocusSection(null)
     // Nettoie le lien profond ?lead=<id> pour ne pas ré-ouvrir la fiche.
     if (searchParams.has('lead')) {
       setSearchParams(prev => {
@@ -249,7 +253,7 @@ export default function LeadsPage() {
   // complète puis on bascule le formulaire dessus (même panneau, autre lead).
   const onOpenDuplicate = (id) => {
     crmApi.getLead(id)
-      .then(r => { setEditLead(r.data); setFormDevisIntent(null); setShowForm(true) })
+      .then(r => { setEditLead(r.data); setFormDevisIntent(null); setFormFocusSection(null); setShowForm(true) })
       .catch(() => {})
   }
 
@@ -258,6 +262,18 @@ export default function LeadsPage() {
   const onAutoQuote = (lead) => {
     setEditLead(lead)
     setFormDevisIntent('auto')
+    setFormFocusSection(null)
+    setShowForm(true)
+  }
+
+  // QX25 — « Planifier une relance » (bouton jusqu'ici inerte sur la carte
+  // kanban, LeadCard.jsx) : ouvre la fiche du lead directement sur la section
+  // « Suivi commercial » (relance_date), même machinerie que les autres
+  // ouvertures de fiche (setEditLead/setShowForm).
+  const onPlanifierRelance = (lead) => {
+    setEditLead(lead)
+    setFormDevisIntent(null)
+    setFormFocusSection('pipeline')
     setShowForm(true)
   }
 
@@ -329,6 +345,7 @@ export default function LeadsPage() {
     onOpenLead,
     onChangeStage: changeStage,
     onAutoQuote,
+    onPlanifierRelance,
     onRefetch: refetch,
     busyLeadId,
     users,
@@ -460,6 +477,7 @@ export default function LeadsPage() {
           onSaved={onSaved}
           onOpenDuplicate={onOpenDuplicate}
           initialDevis={showForm ? formDevisIntent : null}
+          focusSection={showForm ? formFocusSection : null}
         />
       )}
 

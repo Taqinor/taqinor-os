@@ -2,7 +2,7 @@
 // Les étapes viennent EXCLUSIVEMENT de features/crm/stages (miroir de
 // STAGES.py) : aucune liste d'étapes n'est déclarée ici.
 import { Fragment, useEffect, useMemo, useState } from 'react'
-import { MoreHorizontal } from 'lucide-react'
+import { MoreHorizontal, PhoneCall, MessageCircle } from 'lucide-react'
 import { useDispatch, useSelector } from 'react-redux'
 import { archiveLead, restoreLead, deleteLead } from '../../../../features/crm/store/crmSlice'
 import {
@@ -53,6 +53,22 @@ const PRIORITE_OPTIONS = [
 const PRIO_RANK = { haute: 0, normale: 1, basse: 2 }
 
 const fullName = (l) => `${l.nom ?? ''} ${l.prenom ?? ''}`.trim()
+
+// QX25 — la colonne Téléphone est masquée sur mobile (`m-hide`, ≤768px) sans
+// aucun repli tap-to-call : on pose des icônes compactes tel:/wa.me dans la
+// cellule « Lead » (jamais masquée) pour que le mobile reste appelable.
+const telHref = (raw) => {
+  const s = String(raw ?? '').trim()
+  if (!s) return null
+  const cleaned = s.replace(/[^\d+]/g, '')
+  return cleaned ? `tel:${cleaned}` : null
+}
+const waHref = (raw) => {
+  const s = String(raw ?? '').trim()
+  if (!s) return null
+  const digits = s.replace(/\D/g, '')
+  return digits ? `https://wa.me/${digits}` : null
+}
 
 // Comparateurs ascendants par colonne triable.
 const SORTERS = {
@@ -257,6 +273,28 @@ export default function ListView({
                     {lead.societe ? (
                       <span className="lv-lead-societe">{lead.societe}</span>
                     ) : null}
+                    {/* QX25 — repli tap-to-call mobile : la colonne Téléphone
+                        (m-hide) disparaît sous 768px, ces icônes compactes
+                        restent visibles dans la cellule Lead (jamais masquée). */}
+                    {(telHref(lead.telephone) || waHref(lead.whatsapp)) && (
+                      <span className="lv-lead-contact" style={{ display: 'inline-flex', gap: '8px', marginTop: '2px' }}
+                            onClick={(e) => e.stopPropagation()}>
+                        {telHref(lead.telephone) && (
+                          <a href={telHref(lead.telephone)} title="Appeler"
+                             aria-label={`Appeler ${fullName(lead) || 'ce lead'}`}
+                             className="text-muted-foreground hover:text-foreground">
+                            <PhoneCall className="size-3.5" aria-hidden="true" />
+                          </a>
+                        )}
+                        {waHref(lead.whatsapp) && (
+                          <a href={waHref(lead.whatsapp)} target="_blank" rel="noopener noreferrer"
+                             title="Ouvrir WhatsApp" aria-label={`WhatsApp ${fullName(lead) || 'ce lead'}`}
+                             className="text-muted-foreground hover:text-foreground">
+                            <MessageCircle className="size-3.5" aria-hidden="true" />
+                          </a>
+                        )}
+                      </span>
+                    )}
                   </div>
                 </td>
                 <td data-label="Stade" onClick={(e) => e.stopPropagation()}>
