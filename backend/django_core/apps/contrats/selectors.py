@@ -16,6 +16,7 @@ from django.utils import timezone
 from .models import (
     Avenant,
     Contrat,
+    ContratActivity,
     ContratLien,
     EtapeApprobation,
     JalonContrat,
@@ -1457,3 +1458,34 @@ def mois_par_cycle_contrat(contrat):
         'mensuelle': 1, 'trimestrielle': 3, 'semestrielle': 6, 'annuelle': 12,
     }
     return mois_par_periodicite.get(echeancier.periodicite)
+
+
+def contrat_chatter_envelope(contrat):
+    """ARC9 — timeline chatter du contrat dans l'ENVELOPPE UNIFORME.
+
+    Projette ``contrats.ContratActivity`` vers le format commun consommé par
+    ``records.serializers.UniformChatterSerializer``. Les noms de champs maison
+    diffèrent des autres apps : on NORMALISE ici (``type``→``kind`` avec
+    ``log``→``modification``, ``message``→``body``, ``auteur``→
+    ``user_username``, ``date_creation``→``created_at``) — le frontend (VX23
+    ChatterTimeline) ne voit qu'UN format. Lecture seule, aucune table
+    modifiée. Le contrat est déjà borné société par l'appelant.
+    """
+    rows = contrat.activites.select_related('auteur').all()
+    return [{
+        'id': a.id,
+        # Vocabulaire uniforme : une entrée d'audit (« log ») est une
+        # modification au sens du chatter commun.
+        'kind': ('modification' if a.type == ContratActivity.Kind.LOG
+                 else a.type),
+        'field': a.field or '',
+        # ContratActivity n'a pas de libellé de champ dédié : on retombe sur
+        # le nom technique (jamais None — enveloppe uniforme).
+        'field_label': a.field or '',
+        'old_value': a.old_value or '',
+        'new_value': a.new_value or '',
+        'body': a.message or '',
+        'user_username': a.auteur.username if a.auteur_id else None,
+        'created_at': a.date_creation,
+        'source': 'contrats.contratactivity',
+    } for a in rows]

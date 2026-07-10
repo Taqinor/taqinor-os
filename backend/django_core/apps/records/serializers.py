@@ -139,6 +139,43 @@ class ChatterActivitySerializer(serializers.ModelSerializer):
         return f'{ct.app_label}.{ct.model}'
 
 
+class UniformChatterSerializer(serializers.Serializer):
+    """ARC9 — enveloppe de LECTURE uniforme, agnostique du modèle source.
+
+    Étape 1 (additive) de la convergence des 13 chatters historiques : un
+    sérialiseur COMMUN qui projette n'importe quel modèle ``*Activity`` maison
+    (crm.LeadActivity, sav.TicketActivity, contrats.ContratActivity…) — ou une
+    ``records.Activity`` de chatter — vers un format unique consommé par le
+    frontend (VX23 ChatterTimeline).
+
+    Les modèles maison ne partagent pas exactement les mêmes noms de champs
+    (``message`` vs ``body``, ``auteur`` vs ``user``, ``date_creation`` vs
+    ``created_at``, ``type`` vs ``kind``…) : le selector de chaque app cible
+    normalise ses lignes en dictionnaires portant CES clés-ci avant
+    sérialisation (voir ``apps/crm/selectors.lead_chatter_envelope``,
+    ``apps/sav/selectors.ticket_chatter_envelope``,
+    ``apps/contrats/selectors.contrat_chatter_envelope``). AUCUNE table n'est
+    modifiée — pure projection de lecture. Voir
+    ``docs/decisions/chatter-convergence.md`` pour l'étape 2 (gate fondateur)."""
+
+    id = serializers.IntegerField(read_only=True)
+    kind = serializers.CharField(read_only=True)
+    field = serializers.CharField(read_only=True, allow_null=True,
+                                  allow_blank=True)
+    field_label = serializers.CharField(read_only=True, allow_null=True,
+                                        allow_blank=True)
+    old_value = serializers.CharField(read_only=True, allow_null=True,
+                                      allow_blank=True)
+    new_value = serializers.CharField(read_only=True, allow_null=True,
+                                      allow_blank=True)
+    body = serializers.CharField(read_only=True, allow_null=True,
+                                 allow_blank=True)
+    user_username = serializers.CharField(read_only=True, allow_null=True)
+    created_at = serializers.DateTimeField(read_only=True)
+    # App + modèle source (ex. 'crm.leadactivity') pour tracer l'origine.
+    source = serializers.CharField(read_only=True, required=False)
+
+
 class AttachmentSerializer(serializers.ModelSerializer):
     uploaded_by_nom = serializers.CharField(
         source='uploaded_by.username', read_only=True, default=None)
