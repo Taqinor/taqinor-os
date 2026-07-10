@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, within, act, fireEvent, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
 import { configureStore } from '@reduxjs/toolkit'
@@ -27,6 +28,7 @@ vi.mock('../../features/ventes/store/ventesSlice', async (importOriginal) => {
 // QG1 — espionne getDevisById (polling) + telechargerPdfDevis (ouverture auto).
 // QG10 — getVarianteConfig (pré-remplit le %) + dupliquerVariante (création).
 // WR2 — shareLinkDevis (« Copier le lien proposition »).
+// QX22 — whatsappPreviewDevis (aperçu lecture seule) + whatsappDevis (envoi réel).
 vi.mock('../../api/ventesApi', async (importOriginal) => {
   const actual = await importOriginal()
   return {
@@ -42,12 +44,29 @@ vi.mock('../../api/ventesApi', async (importOriginal) => {
       getVarianteConfig: vi.fn(() => Promise.resolve({ data: { variante_pct: '25.00' } })),
       dupliquerVariante: vi.fn(() => Promise.resolve({ data: [] })),
       shareLinkDevis: vi.fn(() => Promise.resolve({ data: { token: 'tok123', path: '/proposition/tok123' } })),
+      whatsappPreviewDevis: vi.fn(() => Promise.resolve({ data: { wa_url: 'https://wa.me/212600000000', message: 'Bonjour' } })),
+      whatsappDevis: vi.fn(() => Promise.resolve({ data: { statut: 'envoye' } })),
+    },
+  }
+})
+
+// QX26 — motifs de perte (taxonomie CRM, endpoint company-scoped existant).
+vi.mock('../../api/crmApi', async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    default: {
+      ...actual.default,
+      getMotifsPerte: vi.fn(() => Promise.resolve({
+        data: [{ id: 5, nom: 'Trop cher' }, { id: 6, nom: 'Choisi un concurrent' }],
+      })),
     },
   }
 })
 
 import DevisList from './DevisList'
 import ventesApi from '../../api/ventesApi'
+import crmApi from '../../api/crmApi'
 
 // Réducteurs minimaux : seules les tranches lues par l'écran (ventes + auth).
 // QG10 — l'écran lit aussi auth.role_nom + auth.permissions (useHasPermission).
@@ -182,10 +201,8 @@ describe('DevisList — U7 : révisions remplacées masquées par défaut', () =
   })
 })
 
-describe('DevisList — WR1 : refus passe par l\'action dédiée refuser()', () => {
-  it('appelle ventesApi.refuserDevis (jamais un PATCH statut direct)', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
-    vi.spyOn(window, 'prompt').mockReturnValue('Trop cher')
+describe('DevisList — WR1/QX26 : refus passe par l\'action dédiée refuser() avec motif obligatoire', () => {
+  it('ouvre une modale de motif obligatoire (jamais un window.prompt optionnel)', async () => {
     renderList({
       loading: false,
       devis: [{
@@ -196,10 +213,31 @@ describe('DevisList — WR1 : refus passe par l\'action dédiée refuser()', () 
     const row = screen.getByText('DEV-REFUS').closest('tr')
     fireEvent.click(within(row).getByRole('button', { name: /Refuser/ }))
     await waitFor(() => {
-      expect(ventesApi.refuserDevis).toHaveBeenCalledWith(42, { motif: 'Trop cher' })
+      expect(screen.getByText(/Refuser le devis — DEV-REFUS/)).toBeVisible()
     })
-    window.confirm.mockRestore()
-    window.prompt.mockRestore()
+    // Le bouton de confirmation reste désactivé sans motif choisi.
+    expect(screen.getByRole('button', { name: /Confirmer le refus/ })).toBeDisabled()
+  })
+
+  it('appelle ventesApi.refuserDevis avec le motif choisi (jamais un PATCH statut direct)', async () => {
+    const user = userEvent.setup()
+    renderList({
+      loading: false,
+      devis: [{
+        id: 42, reference: 'DEV-REFUS', client_nom: 'ACME', statut: 'envoye',
+        date_creation: '2026-07-01', total_ttc: 5000, nb_options: 1, version: 1,
+      }],
+    })
+    const row = screen.getByText('DEV-REFUS').closest('tr')
+    fireEvent.click(within(row).getByRole('button', { name: /Refuser/ }))
+    await waitFor(() => expect(crmApi.getMotifsPerte).toHaveBeenCalled())
+    await user.click(screen.getByRole('combobox'))
+    await waitFor(() => expect(screen.getByText('Trop cher')).toBeVisible())
+    await user.click(screen.getByText('Trop cher'))
+    await user.click(screen.getByRole('button', { name: /Confirmer le refus/ }))
+    await waitFor(() => {
+      expect(ventesApi.refuserDevis).toHaveBeenCalledWith(42, { motif_perte: '5', motif: undefined })
+    })
   })
 })
 

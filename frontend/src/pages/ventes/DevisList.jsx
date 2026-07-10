@@ -14,6 +14,7 @@ import {
 import ventesApi from '../../api/ventesApi'
 import installationsApi from '../../api/installationsApi'
 import gestionProjetApi from '../../api/gestionProjetApi'
+import crmApi from '../../api/crmApi'
 import importApi, { downloadXlsx } from '../../api/importApi'
 import DevisForm from './DevisForm'
 import {
@@ -24,6 +25,8 @@ import {
   AlertDialogTitle, AlertDialogDescription, AlertDialogFooter,
   AlertDialogCancel, AlertDialogAction,
   RadioGroup, RadioGroupItem, Checkbox, Label, Input, Segmented, toast,
+  Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
+  Textarea,
 } from '../../ui'
 import { formatMAD } from '../../lib/format'
 import { filenameFromResponse } from '../../utils/downloadBlob'
@@ -486,21 +489,47 @@ export default function DevisList() {
     }
   }
 
-  // WR1 — Refuser un devis envoyé : passe par l'action dédiée `refuser`
+  // WR1/QX26 — Refuser un devis envoyé : passe par l'action dédiée `refuser`
   // (motif/date/chatter + événement devis_refused qui clôt le lead), plus
   // JAMAIS un PATCH statut direct qui contournait ce chemin (funnel intact).
-  const handleRefuser = async (d) => {
-    if (!window.confirm(`Marquer le devis « ${d.reference} » comme refusé ?`)) return
-    const motif = window.prompt('Motif du refus (optionnel) :', '') ?? ''
-    setStatutActionId(d.id)
+  // QX26 — le motif n'est plus un window.prompt optionnel (perdu, illisible en
+  // reporting) : une modale OBLIGATOIRE impose un motif de la taxonomie
+  // MotifPerte (partagée avec le CRM, endpoint company-scoped existant) + une
+  // note libre optionnelle. Sans motif sélectionné, la confirmation reste
+  // bloquée — les données de perte redeviennent exploitables.
+  const [refusTarget, setRefusTarget] = useState(null)
+  const [motifsPerte, setMotifsPerte] = useState([])
+  const [refusMotifId, setRefusMotifId] = useState('')
+  const [refusNote, setRefusNote] = useState('')
+  const [refusBusy, setRefusBusy] = useState(false)
+
+  const openRefusModal = (d) => {
+    setRefusTarget(d)
+    setRefusMotifId('')
+    setRefusNote('')
+    setRefusBusy(false)
+    crmApi.getMotifsPerte()
+      .then(r => setMotifsPerte(r.data?.results ?? r.data ?? []))
+      .catch(() => setMotifsPerte([]))
+  }
+  const closeRefusModal = () => { setRefusTarget(null); setRefusBusy(false) }
+
+  const submitRefus = async () => {
+    const d = refusTarget
+    if (!d || !refusMotifId) return
+    setRefusBusy(true)
     try {
-      await ventesApi.refuserDevis(d.id, motif.trim() ? { motif: motif.trim() } : {})
+      await ventesApi.refuserDevis(d.id, {
+        motif_perte: refusMotifId,
+        motif: refusNote.trim() || undefined,
+      })
       dispatch(fetchDevis())
       toast.success(`Devis ${d.reference} marqué « Refusé ».`)
+      closeRefusModal()
     } catch (err) {
       toast.error(frenchError(err, 'Refus impossible.'))
     } finally {
-      setStatutActionId(null)
+      setRefusBusy(false)
     }
   }
 
@@ -1113,6 +1142,58 @@ export default function DevisList() {
           </div>
       </ResponsiveDialog>
 
+      {/* QX26 — Modale de refus OBLIGATOIRE : motif MotifPerte (taxonomie
+          partagée CRM) + note libre optionnelle. Le bouton de confirmation
+          reste désactivé tant qu'aucun motif n'est choisi — plus de refus
+          « silencieux » (données de perte enfin exploitables en reporting). */}
+      <ResponsiveDialog
+        open={!!refusTarget}
+        onOpenChange={(o) => { if (!o) closeRefusModal() }}
+        title={`Refuser le devis — ${refusTarget?.reference ?? ''}`}
+        description="Le motif est obligatoire — il alimente le reporting des pertes."
+        footer={(
+          <>
+            <Button variant="ghost" onClick={closeRefusModal} disabled={refusBusy}>Annuler</Button>
+            <Button
+              onClick={submitRefus}
+              loading={refusBusy}
+              disabled={!refusMotifId}
+              className="border-destructive/40 text-destructive hover:bg-destructive/10"
+            >
+              <X className="size-4 mr-1" aria-hidden="true" />
+              Confirmer le refus
+            </Button>
+          </>
+        )}
+      >
+          <div className="flex flex-col gap-4">
+            <div className="grid gap-1.5">
+              <Label htmlFor="refus-motif">Motif du refus</Label>
+              <Select value={refusMotifId} onValueChange={setRefusMotifId}>
+                <SelectTrigger id="refus-motif">
+                  <SelectValue placeholder="Choisir un motif…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {motifsPerte.map(m => (
+                    <SelectItem key={m.id} value={String(m.id)}>{m.nom ?? m.libelle}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {motifsPerte.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Aucun motif configuré — ajoutez-en dans les paramètres CRM.
+                </p>
+              )}
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="refus-note">Détail (optionnel)</Label>
+              <Textarea id="refus-note" value={refusNote}
+                        onChange={e => setRefusNote(e.target.value)}
+                        placeholder="Précisions sur le refus…" rows={3} />
+            </div>
+          </div>
+      </ResponsiveDialog>
+
       {/* QJ14 — Modale « Envoyer par email » : PDF premium + lien de proposition
           (MB4 — ResponsiveDialog → tiroir bas plein écran sur mobile) */}
       <ResponsiveDialog
@@ -1694,10 +1775,9 @@ export default function DevisList() {
                             <Button
                               size="sm"
                               variant="outline"
-                              loading={statutActionId === d.id}
-                              onClick={() => handleRefuser(d)}
+                              onClick={() => openRefusModal(d)}
                               className="border-destructive/40 text-destructive hover:bg-destructive/10"
-                              title="Marquer ce devis comme refusé"
+                              title="Marquer ce devis comme refusé (motif obligatoire)"
                             >
                               <X /> Refuser
                             </Button>
