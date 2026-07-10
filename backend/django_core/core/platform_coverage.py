@@ -86,6 +86,16 @@ BASELINE_DRIFT: set[tuple[str, str]] = {
     ('flotte.vehicule', 'chatter_sans_recherche'),
     ('gestion_projet.projet', 'chatter_sans_recherche'),
     ('ao.appeloffre', 'chatter_sans_recherche'),
+    # SCA34 (2026-07-10) — pilote 1 du kit core.documents : l'ordre de
+    # sous-traitance gagne le chatter générique (périmètre du pilote =
+    # socle+chatter+PDF) ; son câblage en recherche globale
+    # (apps/reporting/search.py) est un trou assumé à combler plus tard,
+    # comme les 9 cibles héritées ci-dessus — retirer cette entrée le jour
+    # où il deviendra cherchable.
+    ('installations.ordresoustraitance', 'chatter_sans_recherche'),
+    # SCA36 (2026-07-10) — pilote 3 du kit (dégradation gracieuse sans
+    # totaux) : même dérive assumée que SCA34, même remède futur.
+    ('installations.demandeachat', 'chatter_sans_recherche'),
 }
 
 

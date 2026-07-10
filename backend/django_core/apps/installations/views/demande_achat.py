@@ -8,6 +8,15 @@ responsable/admin (FG310 : la réquisition doit être approuvée avant de deveni
 BCF). Multi-tenant via ``TenantMixin`` : référence/société/created_by posés côté
 serveur ; les FK liées (chantier/programme/fournisseur_suggere) sont validées
 tenant. Cross-app : ``stock.Fournisseur`` / ``stock.Produit`` en string-FK.
+
+SCA36 — pilote 3 du kit ``core.documents`` (dégradation gracieuse sans totaux).
+Le viewset gagne le chatter générique ARC8 (``ChatterViewSetMixin`` :
+``chatter/historique`` GET tout rôle + ``chatter/noter`` POST
+responsable/admin) ; la numérotation passe EXPLICITEMENT par la primitive du
+kit ``core.numbering`` (le shim ``apps.ventes.utils.references`` en était déjà
+le ré-export bit-identique — format ``DA-YYYYMM-NNNN`` inchangé). Les actions
+d'approbation et leurs gardes restent STRICTEMENT inchangées (moteur propre,
+chemin ARC10 nommé) ; aucun PDF (document d'approbation interne).
 """
 from django.utils import timezone
 from rest_framework import viewsets, status
@@ -16,14 +25,17 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.numbering import create_with_reference
 from core.viewsets import CompanyScopedModelViewSet
 
-from apps.ventes.utils.references import create_with_reference
+from apps.records.views import ChatterViewSetMixin
 
 from ..models import DemandeAchat, DemandeAchatLigne
 from ..serializers import DemandeAchatSerializer, DemandeAchatLigneSerializer
 
-READ_ACTIONS = ['list', 'retrieve']
+# SCA36 — 'chatter_historique' est une lecture (patron flotte : le
+# get_permissions maison prime sur les permission_classes d'@action du mixin).
+READ_ACTIONS = ['list', 'retrieve', 'chatter_historique']
 
 
 def _check_tenant(serializer, company, field):
@@ -33,11 +45,13 @@ def _check_tenant(serializer, company, field):
         raise ValidationError({field: 'Objet inconnu pour cette société.'})
 
 
-class DemandeAchatViewSet(CompanyScopedModelViewSet):
+class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
     """FG310 — réquisitions d'achat. Lecture tout rôle, écriture
     responsable/admin. Référence anti-collision + société + `created_by` posés
     serveur ; chantier/programme/fournisseur_suggere validés tenant. Filtrable
-    par `statut`, `chantier`, `programme`. Cycle de vie via les actions."""
+    par `statut`, `chantier`, `programme`. Cycle de vie via les actions.
+    SCA36 — chatter générique (`chatter/historique`, `chatter/noter`) via le
+    kit ; approbations inchangées."""
     queryset = DemandeAchat.objects.select_related(
         'chantier', 'programme', 'fournisseur_suggere',
         'approuvee_par', 'created_by').prefetch_related('lignes').all()
