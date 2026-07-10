@@ -11,6 +11,11 @@ XPUR21 : la page publique (``public_views.rfq_consultation_public``) résout
 le jeton, affiche/collecte l'offre du fournisseur (idempotent : re-soumettre
 tant que la RFQ n'est pas clôturée met à jour SA PROPRE offre), sans jamais
 exposer les offres des autres fournisseurs ni un prix interne.
+
+ARC39 — ces envois ciblent des FOURNISSEURS (tiers externes), PAS des
+utilisateurs internes : exception documentée à la règle « plus d'email brut
+interne » (cf. `apps/notifications/`), au même titre que
+`ventes/email_service.py` et le rapport O&M client de `monitoring/report.py`.
 """
 import logging
 

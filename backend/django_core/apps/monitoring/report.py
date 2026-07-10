@@ -172,6 +172,15 @@ def email_om_report(installation, *, period='monthly', recipient=None,
 
     Destinataire = `recipient` sinon l'e-mail du client du système. No-op sûr
     (renvoie False) sans destinataire. Renvoie True si l'envoi a été tenté.
+
+    ARC39 — cet envoi reste un ``EmailMessage`` direct (destinataire CLIENT,
+    PDF en pièce jointe — ``notifications.services.notify()`` ne sait pas
+    joindre de fichier et son destinataire est un utilisateur applicatif, pas
+    un client) : EXCEPTION documentée, même famille que
+    ``ventes/email_service.py``/``installations/rfq_service.py`` (emails
+    CLIENTS, pas des notifications internes). En complément, on notifie EN
+    INTERNE (best-effort, canal central) les responsables que le rapport
+    vient d'être envoyé — c'était jusqu'ici invisible côté équipe.
     """
     from django.core.mail import EmailMessage
 
@@ -193,4 +202,27 @@ def email_om_report(installation, *, period='monthly', recipient=None,
         to=[recipient])
     msg.attach(f'rapport-om-{ref}.pdf', pdf_bytes, 'application/pdf')
     msg.send(fail_silently=True)
+
+    try:
+        _notify_rapport_envoye(installation, period_label, ref, recipient)
+    except Exception:  # pragma: no cover - défensif, best-effort
+        pass
     return True
+
+
+def _notify_rapport_envoye(installation, period_label, ref, recipient):
+    """ARC39 — notification INTERNE (canal central) qu'un rapport O&M a été
+    envoyé au client. Best-effort, jamais bloquant pour l'envoi e-mail
+    lui-même (déjà tenté par l'appelant)."""
+    from apps.notifications import services as notif_services
+
+    company = getattr(installation, 'company', None)
+    if company is None:
+        return
+    recipients = notif_services.resolve_recipients(
+        company, 'monitoring_rapport')
+    titre = f'Rapport O&M {period_label} envoyé — système {ref}'
+    corps = f'Rapport O&M {period_label} du système {ref} envoyé à {recipient}.'
+    notif_services.notify_many(
+        recipients, 'monitoring_rapport', title=titre, body=corps,
+        company=company)
