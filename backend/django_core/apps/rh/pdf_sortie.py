@@ -27,6 +27,12 @@ from html import escape
 
 from core.pdf import render_pdf
 
+
+def _html_to_pdf(html_string):
+    """HTML → octets PDF via ``core.pdf.render_pdf`` (ARC12)."""
+    return render_pdf(html=html_string)
+
+
 MOIS_FR = [
     '', 'janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet',
     'août', 'septembre', 'octobre', 'novembre', 'décembre',
@@ -104,5 +110,5 @@ def render_certificat_travail_html(employe, *, today=None):
 
 def render_certificat_travail_pdf(employe, *, today=None):
     """Certificat de travail → octets PDF (ZRH12)."""
-    return render_pdf(
-        html=render_certificat_travail_html(employe, today=today))
+    return _html_to_pdf(
+        render_certificat_travail_html(employe, today=today))

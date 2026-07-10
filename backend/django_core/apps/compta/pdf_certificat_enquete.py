@@ -16,6 +16,11 @@ from html import escape
 from core.pdf import render_pdf
 
 
+def _html_to_pdf(html_string):
+    """HTML → octets PDF via ``core.pdf.render_pdf`` (ARC12)."""
+    return render_pdf(html=html_string)
+
+
 _STYLE = """
   body { font-family: sans-serif; margin: 60px; text-align: center; }
   .cadre { border: 4px solid #2563EB; padding: 60px 40px; }
@@ -45,7 +50,7 @@ def render_certificat_html(*, nom_repondant, titre_enquete, score_pct, today=Non
 
 
 def render_certificat_pdf(*, nom_repondant, titre_enquete, score_pct, today=None):
-    return render_pdf(
-        html=render_certificat_html(
+    return _html_to_pdf(
+        render_certificat_html(
             nom_repondant=nom_repondant, titre_enquete=titre_enquete,
             score_pct=score_pct, today=today))

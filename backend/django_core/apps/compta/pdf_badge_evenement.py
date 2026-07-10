@@ -15,6 +15,11 @@ from html import escape
 from core.pdf import render_pdf
 
 
+def _html_to_pdf(html_string):
+    """HTML → octets PDF via ``core.pdf.render_pdf`` (ARC12)."""
+    return render_pdf(html=html_string)
+
+
 _STYLE = """
   @page { size: 90mm 130mm; margin: 6mm; }
   body { font-family: sans-serif; text-align: center; }
@@ -60,10 +65,10 @@ def render_badges_html(inscrits):
 
 
 def render_badge_pdf(*, nom_inscrit, nom_evenement, nom_societe='', qr_svg=''):
-    return render_pdf(html=render_badge_html(
+    return _html_to_pdf(render_badge_html(
         nom_inscrit=nom_inscrit, nom_evenement=nom_evenement,
         nom_societe=nom_societe, qr_svg=qr_svg))
 
 
 def render_badges_pdf(inscrits):
-    return render_pdf(html=render_badges_html(inscrits))
+    return _html_to_pdf(render_badges_html(inscrits))
