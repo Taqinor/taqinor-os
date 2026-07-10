@@ -931,6 +931,30 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
         entreprise = {}
 
+    # ── QX6 — CTA de signature : lien tokenisé VERS LA VRAIE proposition ──────
+    # L'ancien « taqinor.ma/signer/<ref> » (404) est remplacé par un ShareLink
+    # tokenisé vers la page proposition publique (SITE_URL/proposition/<token>).
+    # Mint/réutilise un ShareLink (lecture seule, expirant) — cela NE CHANGE
+    # AUCUN statut (règle #4). Les autres liens (produits/réalisations/avis/
+    # garanties) dérivent du site public de la société (entreprise.site_url) ;
+    # absents quand aucun site n'est renseigné → le renderer retombe sur son
+    # littéral historique. Repli silencieux : sur toute erreur, le renderer
+    # garde son lien historique (aucun PDF ne casse ici).
+    links = {}
+    try:
+        from django.conf import settings
+        from apps.ventes.models import ShareLink
+        _pk = getattr(devis, "pk", None)
+        if _pk is not None:
+            _share = ShareLink.for_devis(devis)
+            _site = getattr(settings, "SITE_URL", "https://taqinor.ma").rstrip("/")
+            links["signer"] = f"{_site}/proposition/{_share.token}"
+    except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
+        links = {}
+    # Liens site (produits/réalisations/avis/garanties) pilotés par le site
+    # public de la société ; le renderer les complète/dérive du site_url et
+    # supprime ceux sans site. On ne pose ici QUE le signer réel.
+
     # ── QG7 — contact du CRÉATEUR du devis (nom + téléphone) ─────────────────
     # Le bloc contact du PDF affichait uniquement la société (donc toujours le
     # fondateur). On expose le créateur (Devis.created_by : first_name/last_name/
@@ -1055,6 +1079,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # DC1 — identité société (multi-tenant). Champs vides → le moteur premium
         # applique ses littéraux historiques (aucune fuite d'un autre tenant).
         "entreprise": entreprise,
+        # QX6 — liens tokenisés/site (signer réel posé ici ; produits/réalisations
+        # /avis/garanties dérivés du site public par le renderer). Vide → le
+        # renderer applique ses littéraux historiques.
+        "links": links,
+        # QX6 — site public de la société (pilote les liens du renderer) ; vide →
+        # repli historique « taqinor.ma ».
+        "site_url": (entreprise.get("site_url") or "").strip().rstrip("/"),
         # QG7 — contact du créateur du devis (nom + tél ; repli société).
         # Vide → le moteur retombe sur le contact société (byte-identique).
         "seller": seller,

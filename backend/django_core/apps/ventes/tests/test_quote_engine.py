@@ -1364,6 +1364,72 @@ class TestResidentialRenderer(TestCase):
         self.assertIn('data:image/png', html)
 
 
+class TestQuoteSignLinkAndPageNumbers(TestCase):
+    """QX6 — le CTA de signature pointe vers la VRAIE proposition tokenisée
+    (ShareLink), plus l'ancien /signer/<ref> 404 ; le pied de page n'a plus de
+    « / 3 » codé en dur (il lit le nombre réel de pages rendues)."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+
+    def _resid_devis(self):
+        return make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau Canadien Solar 710W', '14', '1272.73'),
+            ('Onduleur réseau Huawei 10kW Triphasé', '1', '16666.67'),
+            ('Onduleur hybride Deye 10kW Triphasé', '1', '23333.33'),
+            ('Batterie Deyness 10 kWh', '1', '25000'),
+            ('Installation', '1', '4000'),
+        ], reference='DEV-QX6-1')
+
+    def test_builder_mints_tokenized_signer_link(self):
+        from apps.ventes.models import ShareLink
+        from apps.ventes.quote_engine.builder import build_quote_data
+        devis = self._resid_devis()
+        data = build_quote_data(devis)
+        signer = (data.get("links") or {}).get("signer", "")
+        self.assertIn('/proposition/', signer)
+        # le lien porte le token d'un vrai ShareLink de ce devis
+        link = ShareLink.for_devis(devis)
+        self.assertIn(link.token, signer)
+        # plus jamais l'ancien chemin inventé /signer/<ref>
+        self.assertNotIn('/signer/', signer)
+
+    def test_signer_link_reused_not_duplicated(self):
+        from apps.ventes.models import ShareLink
+        from apps.ventes.quote_engine.builder import build_quote_data
+        devis = self._resid_devis()
+        build_quote_data(devis)
+        build_quote_data(devis)
+        # un seul ShareLink valide par devis (réutilisé, pas dupliqué)
+        self.assertEqual(
+            ShareLink.objects.filter(devis=devis).count(), 1)
+
+    @tag('pdf')
+    def test_rendered_pdf_qr_points_at_live_proposal(self):
+        from apps.ventes.quote_engine.residential import renderer, render
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.models import ShareLink
+        devis = self._resid_devis()
+        data = build_quote_data(devis)
+        html = render.build_html(renderer._augment(data))
+        link = ShareLink.for_devis(devis)
+        # le lien texte « Signez en ligne » pointe vers la proposition tokenisée
+        self.assertIn(f'/proposition/{link.token}', html)
+        self.assertNotIn('taqinor.ma/signer/', html)
+
+    @tag('pdf')
+    def test_footer_page_total_matches_real_pages(self):
+        from apps.ventes.quote_engine.residential import renderer, render
+        from apps.ventes.quote_engine.builder import build_quote_data
+        devis = self._resid_devis()
+        html = render.build_html(renderer._augment(build_quote_data(devis)))
+        # le pied affiche « Page N / 3 » = nombre RÉEL de pages (résidentiel = 3)
+        self.assertIn('Page 1 / 3', html)
+        self.assertIn('Page 3 / 3', html)
+
+
 @tag('pdf')
 class TestResidentialSingleOptionGate(TestCase):
     """QX5 — jamais d'option fantôme : un devis résidentiel mono-option rend
