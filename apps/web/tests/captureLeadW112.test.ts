@@ -49,6 +49,7 @@ describe('W112 — /api/capture-lead joint le repère au record transmis', () =>
     for (const k of Object.keys(mockEnv)) delete mockEnv[k];
     mockEnv.LEAD_WEBHOOK_URL = 'https://crm.example/hook';
     mockEnv.LEAD_WEBHOOK_SECRET = 's3cret';
+    mockEnv.CAPI_URL = 'https://capi.example/events';
   });
   afterEach(() => vi.unstubAllGlobals());
 
@@ -124,5 +125,42 @@ describe('W112 — /api/capture-lead joint le repère au record transmis', () =>
     let last = { status: 200 };
     for (let i = 0; i < 12; i++) last = await call(qualified);
     expect(last.status).toBe(429);
+  });
+});
+
+// WJ110 — /devis/mon-toit est le CTA principal du site, mais capture-lead ne
+// déclenchait JAMAIS le Meta CAPI (contrairement à simulate.ts et
+// preview-lead.ts) : Meta optimisait donc les campagnes sur une tranche non
+// représentative du trafic. Preuve : une soumission QUALIFIÉE déclenche
+// fireCapi exactement une fois ; une soumission NON qualifiée ne le déclenche
+// jamais (même gating que forwardLead, miroir du test simulate/preview-lead).
+describe('WJ110 — /api/capture-lead déclenche le Meta CAPI', () => {
+  beforeEach(() => {
+    resetRateLimit();
+    for (const k of Object.keys(mockEnv)) delete mockEnv[k];
+    mockEnv.LEAD_WEBHOOK_URL = 'https://crm.example/hook';
+    mockEnv.LEAD_WEBHOOK_SECRET = 's3cret';
+    mockEnv.CAPI_URL = 'https://capi.example/events';
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('une soumission QUALIFIÉE déclenche fireCapi exactement une fois', async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) }) as unknown as Response);
+    vi.stubGlobal('fetch', fetchMock);
+    const { status, json } = await call(qualified);
+    expect(status).toBe(200);
+    expect(json.ok).toBe(true);
+    const capiCalls = fetchMock.mock.calls.filter((c) => String(c[0]).includes('capi.example/events'));
+    expect(capiCalls.length).toBe(1);
+  });
+
+  it('une soumission NON qualifiée (sous le seuil) ne déclenche PAS fireCapi', async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) }) as unknown as Response);
+    vi.stubGlobal('fetch', fetchMock);
+    const { status, json } = await call(belowThreshold);
+    expect(status).toBe(200);
+    expect(json.ok).toBe(true);
+    const capiCalls = fetchMock.mock.calls.filter((c) => String(c[0]).includes('capi.example/events'));
+    expect(capiCalls.length).toBe(0);
   });
 });

@@ -189,7 +189,10 @@ pre-merge, 67 in one run — it is the cheap gate; CI is the expensive confirmat
 same-app lanes still `git merge` the integration branch to inherit the round-1 migration chain.
 While ONE batch's CI runs, pipeline the next lanes on DISJOINT apps (never idle on it) and reuse
 ONE persistent `--keepdb` test DB across folds (a fresh full test DB build is ~35-38 min measured
-— the same migration replay WOW8 caches in CI; reuse makes each fold ~2 min).
+— the same migration replay WOW8 caches in CI). **WOW8-local brings that cache to the harness:**
+seed the DB once, `test-backend.ps1 -Snapshot` freezes it as a Postgres TEMPLATE, and every later
+gate uses `-RestoreDb` (TEMPLATE clone ~seconds + `--keepdb` for only the new migrations) instead
+of a cold rebuild — a real ARC+SCA run burned ~3.5 h purely on local test-DB churn without it.
 
 1. **Plan the lanes once.** Run `python scripts/plan_lanes.py <planfile>` for the file-ownership
    + dependency graph. A **lane** = tasks sharing a file/migration that must run in sequence;
@@ -218,17 +221,27 @@ ONE persistent `--keepdb` test DB across folds (a fresh full test DB build is ~3
    When a same-app lane tail needs a just-built prior task, that prior must be on `origin/main`
    first (worktree agents branch from `origin/main`) — so build a lane's available head tasks,
    land them, then the tail; or split the lane across runs.
-3. **Orchestrator reviews each lane + runs ONE combined local test after folding.** As each lane
-   returns, adversarially review its commits vs the safety rules + acceptance criteria, then — AT
-   FOLD TIME, per lane — run THAT lane's new/changed test modules via
-   `powershell -File scripts/test-backend.ps1 -Modules "<lane's test modules>"` (WOW11 — the
-   harness's single-writer guard means only one run touches the shared `--keepdb` DB at a time, so
-   parallel lanes never corrupt it). A lane whose modules are red is NOT fold-eligible: fix first.
+3. **Orchestrator reviews each lane + runs the combined local test — CACHED, not rebuilt (WOW8-local,
+   2026-07-10).** As each lane returns, adversarially review its commits vs the safety rules +
+   acceptance criteria, then — AT FOLD TIME, per lane — run THAT lane's new/changed test modules via
+   `powershell -File scripts/test-backend.ps1 -RestoreDb -Modules "<lane's test modules>"` (WOW11 —
+   the harness's single-writer guard means only one run touches the shared `--keepdb` DB at a time,
+   so parallel lanes never corrupt it). A lane whose modules are red is NOT fold-eligible: fix first.
    Then, once all file-disjoint lanes are in, run the SINGLE combined test over all new modules.
-   This per-fold gate is exactly what batch-4 SKIPPED when it shipped 113 unvalidated failures; the
-   combined test is the real pre-merge feedback — it has caught a real bug in most runs (missing
-   import, `clean()`-vs-`save()`, name clash, hard-vs-soft-delete, a silently-swallowed effect).
-   Fix, re-run only the affected module, then the single gate. NOT the GitHub CI (once at the end).
+   **THE COST DISCIPLINE — a real ARC+SCA run's whole lost afternoon (~3.5 h) was LOCAL test-DB
+   churn, not CI (it never reached CI): the test DB is CACHED locally exactly like WOW8 caches it in
+   CI.** Seed it once, then `test-backend.ps1 -Snapshot` freezes the migrated DB as a Postgres
+   TEMPLATE (`test_erp_db_base`); every gate after uses `-RestoreDb` — a TEMPLATE clone (~seconds) +
+   `--keepdb` applying only the NEW migrations. **NEVER `-RebuildDb`** (the ~35-min cold "heures"
+   rebuild) except once to seed; a migration collision or stale `--keepdb` DB is recovered with
+   `-RestoreDb`, not a rebuild. Run the FULL combined gate ONCE per merge-batch, **not once per fold**
+   (that run did ~6 gates = ~6 rebuilds — the whole afternoon); never fold while a gate runs (the
+   harness live-mounts the worktree → code shifts under the tests) and cap concurrent heavy lanes at
+   2-3 (more OOM-kills the gate → forces a rebuild). This per-fold gate is exactly what batch-4
+   SKIPPED when it shipped 113 unvalidated failures; the combined test is the real pre-merge feedback
+   — it has caught a real bug in most runs (missing import, `clean()`-vs-`save()`, name clash,
+   hard-vs-soft-delete, a silently-swallowed effect). Fix, re-run only the affected module, then the
+   single gate. NOT the GitHub CI (once at the end).
 4. **Fold continuously into ONE `dev` branch + advance LOCAL `main`.** As each reviewed+tested
    task passes: fold its branch into the accumulating `dev`, tick it `[x]`, add one dated DONE LOG
    line, and **fast-forward LOCAL `main` to the `dev` tip — locally only: never push, never PR,
