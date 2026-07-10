@@ -1739,7 +1739,13 @@ def notify_client_contact_request(devis_reference: str, lead,
         # absente et route vers la notification distincte + SLA rappel.
         if canal_key == 'rappel' and getattr(lead, 'contact_preference', None) != Lead.ContactPreference.PHONE_OK:
             lead.contact_preference = Lead.ContactPreference.PHONE_OK
-            lead.save(update_fields=['contact_preference'])
+            # QX15 — même horodatage dédié que le webhook : le SLA rappel
+            # mesure depuis la POSE de la préférence, pas depuis la création
+            # du lead (un vieux lead qui demande un rappel MAINTENANT ne doit
+            # pas être instantanément « SLA rompu »).
+            lead.contact_preference_set_at = timezone.now()
+            lead.save(update_fields=[
+                'contact_preference', 'contact_preference_set_at'])
         if canal_key == 'rappel':
             notify_lead_callback_requested(lead)
 

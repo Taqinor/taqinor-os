@@ -872,7 +872,15 @@ def leads_callback_sla_depasse(company, now=None, seuil_heures=None):
     déterministes) ; ``seuil_heures=0`` (SLA désactivé) renvoie un queryset
     vide. N'exige PAS ``stage=NEW`` : un rappel peut être demandé à n'importe
     quelle étape (rule #2 — la préférence de contact n'est pas liée au
-    funnel)."""
+    funnel).
+
+    QX15 — l'horloge SLA mesure depuis ``contact_preference_set_at`` (quand
+    la préférence a été POSÉE), avec repli sur ``date_creation`` pour les
+    leads dont la préférence a été posée avant l'ajout de ce champ (NULL).
+    Sans ce correctif, un VIEUX lead dont le rappel est demandé MAINTENANT
+    apparaissait instantanément « SLA rompu » (mesuré depuis sa création)."""
+    from django.db.models.functions import Coalesce
+    from django.db.models import F
     from django.utils import timezone as _timezone
     import datetime as _dt
 
@@ -891,7 +899,10 @@ def leads_callback_sla_depasse(company, now=None, seuil_heures=None):
         is_archived=False,
         contact_preference=Lead.ContactPreference.PHONE_OK,
         first_contacted_at__isnull=True,
-        date_creation__lte=cutoff,
+    ).annotate(
+        _sla_clock=Coalesce(F('contact_preference_set_at'), F('date_creation')),
+    ).filter(
+        _sla_clock__lte=cutoff,
     ).order_by('date_creation')
 
 

@@ -433,6 +433,10 @@ def _map_payload_to_fields(data: dict) -> dict:
         Lead.ContactPreference.values)
     if contact_preference is not None:
         fields['contact_preference'] = contact_preference
+        # QX15 — horodate la POSE de la préférence (distinct de
+        # date_creation) : le SLA rappel doit mesurer depuis ce moment, pas
+        # depuis la création du lead (couche 2 dédup — visiteur revenant).
+        fields['contact_preference_set_at'] = timezone.now()
 
     if fields['whatsapp_opt_in'] and fields['telephone']:
         fields['whatsapp'] = fields['telephone']

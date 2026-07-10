@@ -512,6 +512,14 @@ class Lead(models.Model):
     contact_preference = models.CharField(
         max_length=16, choices=ContactPreference.choices, blank=True, null=True,
         verbose_name='Préférence de contact')
+    # QX15 — horodatage de la POSE de `contact_preference` (distinct de
+    # `date_creation` du lead). Le SLA rappel doit mesurer depuis QUAND le
+    # rappel a été demandé, pas depuis quand le lead a été créé — un vieux
+    # lead dont la préférence est posée MAINTENANT ne doit pas apparaître
+    # instantanément « SLA rompu ». NULL = jamais posé (ou posé avant ce
+    # champ) ; le sélecteur retombe sur `date_creation` dans ce cas
+    # (comportement historique inchangé pour les leads déjà en base).
+    contact_preference_set_at = models.DateTimeField(null=True, blank=True)
     consent_timestamp = models.DateTimeField(null=True, blank=True)
     # Attribution publicitaire (capture first-touch du site)
     fbclid = models.CharField(max_length=500, blank=True, null=True)
