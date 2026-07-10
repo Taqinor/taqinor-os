@@ -132,7 +132,12 @@ function timeAgo(iso) {
   return new Date(iso).toLocaleDateString('fr-FR')
 }
 
-export default function LeadForm({ lead = null, onClose, onSaved, initialDevis = null, onOpenDuplicate = null }) {
+export default function LeadForm({
+  lead = null, onClose, onSaved, initialDevis = null, onOpenDuplicate = null,
+  // QX25 — « Planifier une relance » (kanban) ouvre directement la fiche sur
+  // la section « Suivi commercial » (relance_date) au lieu d'un texte inerte.
+  focusSection = null,
+}) {
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const isEdit = !!lead
@@ -374,6 +379,16 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
       setDevisPanel(initialDevis)
     }
   }, [isEdit, initialDevis])
+
+  // QX25 — « Planifier une relance » : fait défiler jusqu'à la section « Suivi
+  // commercial » (relance_date) à l'ouverture, une seule fois.
+  const focusSectionRan = useRef(false)
+  useEffect(() => {
+    if (isEdit && focusSection && !focusSectionRan.current) {
+      focusSectionRan.current = true
+      setTimeout(() => jumpTo(focusSection), 0)
+    }
+  }, [isEdit, focusSection])
 
   // Fermeture du petit menu « Devis modifiable » au clic extérieur.
   useEffect(() => {
