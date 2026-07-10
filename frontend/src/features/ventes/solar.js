@@ -890,30 +890,63 @@ export function debitAtHmt(courbe, hmt) {
 
 const _hasPrix = (p) => (parseFloat(p.prix_vente) || 0) > 0
 
+// QX40 — tension d'un produit (pompe/variateur) : champ tension_v prioritaire,
+// sinon lecture « 220V »/« 380V » dans le nom, sinon null (inconnu).
+export function tensionOf(p) {
+  if (p && p.tension_v) return Number(p.tension_v)
+  const nom = (p && p.nom) || ''
+  if (/220\s*v/i.test(nom)) return 220
+  if (/380\s*v/i.test(nom)) return 380
+  return null
+}
+
+// Tension attendue selon l'alimentation demandée : mono → 220 V, tri → 380 V.
+export function tensionForAlim(alim) {
+  return alim === 'mono' ? 220 : 380
+}
+
 // Pompe à courbe : la plus petite (kW) qui délivre ≥ le débit souhaité (m³/h)
 // à la HMT demandée. Jamais de produit sans prix sur un devis : si seules des
 // pompes « prix à renseigner » conviennent, on le dit au lieu d'en chiffrer une.
-export function selectPompeByCurve(produits, { hmt, debit, typePompe }) {
+// QX40 — filtre de compatibilité PHASE/TENSION avant sélection : une demande
+// mono/220 V ne peut JAMAIS renvoyer une pompe 380 V (et inversement). Une pompe
+// de tension inconnue reste candidate (aucune régression pour les données
+// existantes sans tension). Quand aucune pompe à courbe PRICÉE et compatible
+// n'existe, `phaseMismatch` signale le repli attendu vers le chemin CV.
+export function selectPompeByCurve(produits, { hmt, debit, typePompe, alim }) {
   const H = parseFloat(hmt)
   const Q = parseFloat(debit)
-  if (!(H > 0) || !(Q > 0)) return { pump: null, sansPrix: [] }
+  if (!(H > 0) || !(Q > 0)) return { pump: null, sansPrix: [], phaseMismatch: false }
   const wantSurface = typePompe === 'surface'
-  const cands = produits
+  const wantV = alim ? tensionForAlim(alim) : null
+  const base = produits
     .map(p => ({
       p, n: _norm(p.nom),
       kw: parseFloat(p.pompe_kw) || 0,
       q: debitAtHmt(p.courbe_pompe, H),
+      v: tensionOf(p),
     }))
     .filter(x => x.p.courbe_pompe && x.kw > 0 && x.q != null && x.q >= Q)
     .filter(x => wantSurface ? x.n.includes('surface') : x.n.includes('immerg'))
+  // Compat phase : quand une alim est demandée, on écarte les tensions
+  // INCOMPATIBLES (une tension inconnue reste tolérée). Sans alim, comportement
+  // historique (aucun filtre de tension).
+  const cands = base
+    .filter(x => wantV == null || x.v == null || x.v === wantV)
     .sort((a, b) => a.kw - b.kw
       || (parseFloat(a.p.prix_vente) || 0) - (parseFloat(b.p.prix_vente) || 0))
   const priced = cands.filter(x => _hasPrix(x.p))
   if (priced.length) {
     const best = priced[0]
-    return { pump: best.p, kw: best.kw, debitHmt: best.q, sansPrix: [] }
+    return { pump: best.p, kw: best.kw, debitHmt: best.q, sansPrix: [],
+      phaseMismatch: false }
   }
-  return { pump: null, sansPrix: cands.map(x => x.p.nom) }
+  // QX40 — signale un mismatch de phase : des pompes à courbe convenaient
+  // (débit/type) mais AUCUNE compatible+pricée → on dégradera vers le CV avec
+  // un avertissement visible plutôt que de chiffrer une tension incompatible.
+  const phaseMismatch = wantV != null && priced.length === 0
+    && base.some(x => _hasPrix(x.p) && x.v != null && x.v !== wantV)
+  return { pump: null, sansPrix: cands.map(x => x.p.nom), phaseMismatch }
 }
 
 // Variateur VEICHI : le plus petit dont kW ≥ kW pompe, tension assortie
@@ -944,8 +977,8 @@ export function findAfficheurVariateur(produits) {
 // Si HMT + débit souhaité sont renseignés et qu'une pompe à courbe convient,
 // elle pilote tout (kW réels, débit interpolé, m³/jour). Sinon : sélection
 // historique par CV, débit manuel, pas de m³/jour (jamais de chiffre inventé).
-export function pompageSelection(produits, { cv, typePompe, hmt, debit, heures }) {
-  const sel = selectPompeByCurve(produits, { hmt, debit, typePompe })
+export function pompageSelection(produits, { cv, typePompe, hmt, debit, heures, alim }) {
+  const sel = selectPompeByCurve(produits, { hmt, debit, typePompe, alim })
   if (sel.pump) {
     const kw = sel.kw
     const cvP = parseFloat(sel.pump.pompe_cv)
@@ -960,9 +993,18 @@ export function pompageSelection(produits, { cv, typePompe, hmt, debit, heures }
       debitHmt: sel.debitHmt,
       m3Jour: hrs > 0 ? Math.round(sel.debitHmt * hrs) : null,
       sansPrix: [],
+      warning: null,
     }
   }
   const cvNum = parseFloat(cv) || 0
+  // QX40 — dégradation VERS LE CHEMIN CV avec avertissement visible quand une
+  // pompe à courbe convenait mais aucune n'était compatible avec la phase/
+  // tension demandée (jamais une pompe 380 V pour une demande mono/220 V).
+  const warning = sel.phaseMismatch
+    ? `Aucune pompe à courbe compatible ${alim === 'mono' ? 'monophasée 220 V'
+        : 'triphasée 380 V'} n'est disponible et pricée : dimensionnement par CV `
+      + '(vérifiez la tension de la pompe et du variateur).'
+    : null
   return {
     mode: 'cv',
     pump: null,
@@ -972,6 +1014,7 @@ export function pompageSelection(produits, { cv, typePompe, hmt, debit, heures }
     debitHmt: null,
     m3Jour: null,
     sansPrix: sel.sansPrix,
+    warning,
   }
 }
 
@@ -1021,6 +1064,18 @@ export function autoFillPompage(produits, { cv, alim, typePompe, distance, struc
       ?? vfds[vfds.length - 1] ?? null)?.p ?? null
   }
   const afficheur = vfdP && /veichi/i.test(vfdP.nom) ? findAfficheurVariateur(produits) : null
+
+  // QX40 — garde-fou de tension : pompe et variateur DOIVENT partager la même
+  // tension. Si les deux ont une tension connue et qu'elles divergent (ex.
+  // pompe 380 V + variateur 220 V), on n'assortit PAS la pompe (on ne chiffre
+  // jamais un couple incompatible). Une tension inconnue est tolérée.
+  if (pump && vfdP) {
+    const vp = tensionOf(pump.p)
+    const vv = tensionOf(vfdP)
+    if (vp != null && vv != null && vp !== vv) {
+      pump = null
+    }
+  }
 
   const dims = sel.dims
   const byType = {}

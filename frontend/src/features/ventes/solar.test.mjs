@@ -449,6 +449,7 @@ test('pompage : 5.5 CV tri → variateur 5.5 tri + champ ≈1.4× pompe, sans ba
 import {
   debitAtHmt, selectPompeByCurve, selectVariateurVeichi,
   findAfficheurVariateur, pompageSelection, HEURES_POMPAGE_DEFAUT,
+  tensionOf, tensionForAlim,
 } from './solar.js'
 
 const OSP_CURVE_30_8 = { debits_m3h: [0, 12, 24, 30, 36, 39], hmt_m: [91, 85, 70, 60, 43, 34] }
@@ -727,6 +728,66 @@ test('QX39 — batterie (rendement aller-retour) allonge le payback', () => {
   const no = computeCashflowPayback(50000, 10000)
   const bat = computeCashflowPayback(50000, 10000, { battery: true })
   assert.ok(bat.paybackYears >= no.paybackYears)
+})
+
+// ── QX40 — pompage : compatibilité phase/tension pompe ↔ variateur ──────────
+const _curvePump = (nom, kw, tension, prix, courbe) => ({
+  id: ++_id, nom, pompe_kw: kw, tension_v: tension, prix_vente: prix,
+  courbe_pompe: courbe,
+})
+// courbe simple : à HMT 60 m délivre 40 m³/h (≥ le débit demandé de 30)
+const _COURBE = { debits_m3h: [0, 40, 60], hmt_m: [90, 60, 30] }
+
+test('QX40 — tensionOf / tensionForAlim', () => {
+  assert.equal(tensionForAlim('mono'), 220)
+  assert.equal(tensionForAlim('tri'), 380)
+  assert.equal(tensionOf({ tension_v: 380 }), 380)
+  assert.equal(tensionOf({ nom: 'Pompe immergée 220V' }), 220)
+  assert.equal(tensionOf({ nom: 'Pompe sans tension' }), null)
+})
+
+test('QX40 — une demande mono/220V ne renvoie JAMAIS une pompe 380V', () => {
+  const produits = [
+    _curvePump('Pompe immergée OSP 380V', 7.5, 380, '12000', _COURBE),
+  ]
+  const sel = selectPompeByCurve(produits, { hmt: 60, debit: 30, typePompe: 'immergee', alim: 'mono' })
+  // la seule pompe à courbe pricée est 380V → incompatible mono → pas de pompe
+  assert.equal(sel.pump, null)
+  assert.equal(sel.phaseMismatch, true)
+})
+
+test('QX40 — une pompe compatible 220V est bien sélectionnée en mono', () => {
+  const produits = [
+    _curvePump('Pompe immergée OSP 380V', 7.5, 380, '12000', _COURBE),
+    _curvePump('Pompe immergée OSP 220V', 7.5, 220, '11000', _COURBE),
+  ]
+  const sel = selectPompeByCurve(produits, { hmt: 60, debit: 30, typePompe: 'immergee', alim: 'mono' })
+  assert.ok(sel.pump)
+  assert.equal(tensionOf(sel.pump), 220)
+})
+
+test('QX40 — mismatch de phase dégrade vers le chemin CV avec avertissement', () => {
+  const produits = [
+    _curvePump('Pompe immergée OSP 380V', 7.5, 380, '12000', _COURBE),
+  ]
+  const sel = pompageSelection(produits, {
+    cv: '10', typePompe: 'immergee', hmt: 60, debit: 30, heures: 7, alim: 'mono' })
+  assert.equal(sel.mode, 'cv')
+  assert.ok(sel.warning && sel.warning.includes('monophasée'))
+})
+
+test('QX40 — compose : jamais un couple pompe/variateur de tensions différentes', () => {
+  const produits = [
+    _curvePump('Pompe immergée OSP 380V', 7.5, 380, '12000', _COURBE),
+    // un variateur 220V pricé (mono)
+    { id: ++_id, nom: 'VARIATEUR VEICHI SI23 7.5KW 220V', pompe_kw: 7.5, tension_v: 220, prix_vente: '3000' },
+  ]
+  const lignes = autoFillPompage(produits, {
+    cv: '10', alim: 'mono', typePompe: 'immergee', distance: 0,
+    structureType: 'acier', hmt: 60, debit: 30, heures: 7 })
+  // aucune ligne « Pompe … 380V » ne doit être chiffrée avec un variateur 220V
+  const pompe380 = lignes.find(l => /380\s*v/i.test(l.designation || '') && /pompe/i.test(l.designation || ''))
+  assert.equal(pompe380, undefined)
 })
 
 // ── QF5 — computeROI bascule sur le modèle « deux factures » (parité écran/PDF) ─
