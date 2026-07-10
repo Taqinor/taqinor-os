@@ -677,6 +677,2375 @@ complémentaire de VX76 (le TEMPLATE que les deux goulots rendent).*
 - **Re-surfacer l'abonnement iCal (FG6)** — une ligne dans VX46 « Mes préférences » (extension par référence), pas une tâche : le feed + le bouton « Copier » existent déjà sur CalendarPage.
 - **Attention fold cross-lane (critic Fable)** — `FactureList.jsx` (VX92/93/97/114), `NotificationBell.jsx` (VX84/86 + VX14/56), `Dashboard.jsx` (VX86/VX27) sont édités par plusieurs lanes : rebaser en séquence (les `@after`/`@coord` posés) ou fusionner par fichier au build — jamais deux lanes concurrentes sur le même fichier.
 
+### Groupe VXD — approfondissement forensique (rework 3 axes, 2026-07-10)
+
+Provenance : rework forensique en 3 axes (beauté / robustesse / amour-employé), ~30 lanes
+d'audit + synthèses Fable par axe + une méta-critique Fable finale (`grand-verdict.md`) qui a
+contre-vérifié ~20 claims dans le code réel, tué/fusionné/rogné les seeds en collision avec
+VX1-116, et corrigé les constats survendus avant transcription. Verdict honnête du méta-critique :
+cette passe ne « rapetisse » pas les 3 rounds précédents en VOLUME, mais l'axe robustesse (VXD-A/B)
+trouve des bugs d'une gravité qu'aucun round n'avait atteinte — doublon fiscal au retry, paie qui
+valide une période avec des bulletins avalés, signature client hors-ligne qui s'évapore, deux
+intercepteurs de refresh concurrents qui déconnectent des sessions valides — et la famille
+« surfaces fantômes » (VXD-D) prouve que deux features entières (chat Discuss, LeadExpressModal)
+rendent sans un seul octet de CSS, qu'un kiosque TV affiche du JSON brut, et qu'un token de focus
+soigné est du code mort — des angles morts qu'une lecture JSX-only ne peut pas voir. Axes 2 et 3
+ont été livrés partiellement au premier passage (21/45 puis 11/45) et complétés après le
+grand-verdict depuis les rapports de lane bruts (`r2-*`, `r3-*`) ; ce qui suit est l'état complet
+tel que livré, corrections du grand-verdict déjà appliquées seed par seed. Contraintes héritées à
+l'identique du bloc VX : frontend-first, aucune dépendance npm nouvelle sauf tâche taguée
+[GATED], ne jamais toucher `apps/ventes/quote_engine/`, `/proposal`, PdfCanvas ni `apps/web`
+(règle #4), toute clé de stage vient de `STAGES.py`/`features/crm/stages.js`, jamais un littéral
+(règle #2), UI française partout, hooks e2e `ap-*/att-*/pp-*` préservés, `prix_achat`/marge jamais
+client-facing, tout scoping multi-tenant côté serveur (`request.user.company`, `perform_create`
+force `company`).
+
+---
+
+## TOP PRIORITÉ — 3 bugs constructibles + 1 alerte sécurité (CANDIDAT BUILD)
+
+- [ ] VX117 — **[BUG] CANDIDAT BUILD : `resilientMutation` — fin du doublon fiscal au retry
+  (devis/facture/paie/rôles).** Trois flux « parent + N lignes en `Promise.all` » laissent des
+  documents financiers mi-sauvés et permettent un doublon fiscal silencieux au retry :
+  `DevisGenerator.jsx:1019-1020` a un `.catch(() => {})` explicite sur `deleteLigneDevis`, et
+  `DevisForm.jsx:40` (`const isEdit = !!devis`, jamais réassigné après un create réussi — idem
+  `FactureForm.jsx:41`) fait qu'un retry après échec partiel repart en CREATE et crée un SECOND
+  devis/facture. `PaieRunWizard.jsx:127` (`.catch(() => {})`) et `:135` (`catch { /* on continue */
+  }`) avalent chaque échec de bulletin puis avancent inconditionnellement la période en VALIDÉE.
+  `RolesManagement.jsx:328-338` réassigne en masse sans rapport nominatif sur le chemin
+  permissions. Fix (le bon patron existe déjà, payé une fois en ERR63
+  `ParametresEntreprise.jsx:470-486`) : extraire `frontend/src/lib/resilientMutation.js`
+  (`allSettled` + rapport nominatif `{succeeded, failed:[{item,error}], allOk}` + `resumeId` — le
+  parent créé reste exposé, la relance passe en ÉDITION, jamais un second POST) et n'avancer
+  l'état parent (VALIDÉE, `deleteRole`, fermeture) que si `allOk`. Files :
+  `frontend/src/lib/resilientMutation.js` (nouveau), `DevisGenerator.jsx`, `DevisForm.jsx`,
+  `FactureForm.jsx`, `PaieRunWizard.jsx`, `RolesManagement.jsx`. DoD : mock 1 ligne/3 en échec → 2
+  persistées, message nomme la ligne, « Réessayer » ne renvoie QUE la fautive et jamais un second
+  `createDevis` ; 1 bulletin en échec → période NON avancée + employé nommé ; 1 PATCH rôle en
+  échec → rôle non supprimé + liste migrés/en-échec + reprise ciblée. (T1 — M/L, sonnet ; review
+  opus : paie + rôles = surfaces finance/auth) (@lane: frontend/data)
+
+- [ ] VX118 — **[BUG] CANDIDAT BUILD : surfaces fantômes — deux features entières rendent sans
+  AUCUN CSS + kiosque TV en JSON brut.** (a) le chat interne Discuss — `chat-list-*`, `chat-shell`,
+  `chat-thread-*`, `chat-pinned-*`, `chat-composer-*` (11+ noms, 4 fichiers
+  `features/messaging/*` : `ConversationList.jsx`, `MessageThread.jsx`, `Composer.jsx`,
+  `pages/messaging/ChatPage.jsx`) ont **0 règle** dans les 5 fichiers CSS du repo — la barre des
+  messages épinglés, les états active/unread/muted, la liste de conversations retombent sur les
+  styles navigateur ; (b) `LeadExpressModal.jsx` — 23 références `lem-*` sans aucun CSS depuis sa
+  création, le raccourci « ⚡ Express » mis en avant s'affiche en HTML nu au milieu d'une app
+  tokenisée ; (c) `DashboardsTvPage.jsx:76` — page explicitement documentée « pensée pour un écran
+  dédié affiché en continu » — rend `<pre>{JSON.stringify(current.layout)}</pre>` : du texte
+  développeur monospace sur l'écran que le bureau regarde toute la journée, alors que la rotation
+  15s et le refresh 60s sont déjà câblés, seul le renderer manque. Fix : (a)/(b) migrer sur les
+  primitives existantes (`cn()` conditionnel + Tailwind pour Discuss dont Avatar/Badge/Input sont
+  déjà importés ; `Dialog`+`FormField` pour LeadExpress) — PAS écrire le CSS manquant ; (c)
+  consommer `current.layout` avec le kit existant (`Stat`/`ModuleDashboard`/`ui/charts` en mise en
+  page plein écran, grands chiffres `text-6xl`, sparklines en grand, contraste lisible à 3 mètres),
+  lire la forme réelle du layout retourné par `coreApi.dashboardsTv.list()` avant mapping. Files :
+  `features/messaging/ConversationList.jsx`, `MessageThread.jsx`, `Composer.jsx`,
+  `pages/messaging/ChatPage.jsx`, `pages/crm/leads/LeadExpressModal.jsx`,
+  `pages/reporting/DashboardsTvPage.jsx`. DoD : grep des classes fantômes `chat-*`/`lem-*` = 0 (ou
+  chacune couverte par du Tailwind co-listé) ; bandeau épinglé avec fond/bordure visibles
+  (capture) ; le modal Express partage le langage des autres dialogues CRM ; test de rendu
+  DashboardsTvPage avec layout mock stats/charts → aucun `<pre>`/JSON.stringify dans le DOM ;
+  vérification visuelle 1920×1080. (T1 — M, sonnet) (@lane: frontend/orphans)
+
+- [ ] VX119 — **[BUG] CANDIDAT BUILD : outbox terrain — une op rejetée par le serveur disparaît en
+  silence (incl. signature client).** `offline/outbox.js:117-122` purge un batch 100 % en statut
+  `error` sans jamais lire le champ `.error` que le backend renvoie pourtant par opération
+  (`field_sync.py:263/266/293/313`) ; l'unique affichage (`OfflineSyncIndicator.jsx:14-23`) rend
+  « Connexion rétablie. » dans les deux cas — une SIGNATURE CLIENT capturée hors-ligne
+  (`FIELD_OPS.SIGNER_CLIENT`) peut s'évaporer sans trace. Fix : trois classes de résultat dans
+  `flush()` (done retirés / `error` GARDÉS en file avec message serveur + compteur de tentatives /
+  échec réseau déjà géré), méthode `fieldOutbox.failed()`, indicateur à 3 états (badge rouge « N
+  action(s) en échec — voir détail », abandon par op UNIQUEMENT explicite). Le message serveur
+  affiché EST le signal de conflit — pas de moteur CRDT, pas une 2ᵉ file offline. Files :
+  `offline/outbox.js`, `offline/useFieldOutbox.js`, `offline/OfflineSyncIndicator.jsx`. DoD : batch
+  mock 100 % `error` → ops gardées + message par op accessible ; badge distinct rendu ;
+  non-régression `applied`/`replayed`. (T1 — M, sonnet) (@lane: frontend/data)
+
+- [ ] VX120 — **[BUG] [GATED: génération QR] La graine TOTP 2FA est exfiltrée vers
+  `api.qrserver.com` — et la CSP casse l'écran d'activation.** [BACKEND additif]
+  `pages/parametres/SecuriteCompteSection.jsx:360-363` construit
+  `https://api.qrserver.com/v1/create-qr-code/?...data=${encodeURIComponent(setup.otpauth_uri)}` —
+  l'URI `otpauth://` CONTIENT `secret=<graine TOTP>` : le facteur 2FA part en clair chez un tiers
+  non contrôlé (logs, MITM, opérateur). Aggravant : la CSP `img-src` (`nginx.conf:78`) n'autorise
+  PAS ce domaine → en prod le QR ne s'affiche JAMAIS, l'activation 2FA est cassée
+  fonctionnellement. Le repo possède DÉJÀ un générateur QR serveur (`apps/stock/labels.py:368`,
+  `qr_svg`). Fix : [BACKEND additif] l'endpoint `2fa/setup/` renvoie un `qr_svg` inline (réutiliser
+  `labels.qr_svg` via un helper `authentication` — aucune migration) ; le client le rend via un
+  helper `renderTrustedSvg`/`lib/trustedSvg.js` (refuse `<script`/`on*=`/`javascript:`) ; supprimer
+  totalement l'appel tiers. Files : `frontend/src/pages/parametres/SecuriteCompteSection.jsx` ;
+  `[BACKEND]` `authentication/views` (payload setup). DoD : activer le 2FA n'émet AUCUNE requête
+  hors-origine (Playwright `page.on('request')` filtré = 0) ; le QR s'affiche sous la CSP de prod ;
+  la graine n'apparaît dans aucune URL. (T1 — M, opus : auth/2FA) (@lane: backend/auth)
+
+**Note d'extension (ne pas double-compter) :** l'audit a confirmé que
+`IsResponsableOrAdmin` (`authentication/permissions.py:14-21`, 614 usages / 156 fichiers) laisse
+n'importe quelle permission d'écriture ouvrir TOUS les endpoints qu'il garde — le frontend gate
+finement mais l'API directe réussit. C'est la MÊME classe de bug que **VX101** corrige côté
+`decider_approbation`/`IsAnyRole` (endpoints disjoints, même remède `HasPermissionOrLegacy`) : ce
+constat ÉTEND VX101, il n'est pas transcrit comme tâche séparée ici — voir VXD-J / `@coord VX101`
+sous VX193 (VXD SEED transcrit avec la même classe de garde) pour le détail d'audit des viewsets
+restants.
+
+---
+
+## AXE 1 — BEAUTÉ (VX121–VX158, 38 tâches survivantes sur 44 seeds ; 6 tuées + 1 fusionnée par le
+grand-verdict — voir NE PAS FAIRE en fin de section pour le détail des kills/rognages)
+
+**Sous-groupe VXD-E — Craft-physics & tokens (les fondations que 3 rounds n'ont pas atteintes)**
+
+- [ ] VX121 — **Zéro couleur hors token : le sweep CSS et JS, avec garde CI.** Trois strates de
+  couleur échappent encore à tout token : (a) ~500 hex slate au niveau composant dans `index.css`
+  (`.form-control`/`.modal-*` L900-1156, `.lines-table` L1184-1220, `.data-table` L830-862,
+  `.lead-nav` L1002-1006, `.page-loading/.page-error` L727-739) ; (b) les 6 ombres d'épinglage
+  `rgba(0,0,0,0.25)` du moteur `DataTable.jsx` L477/478/519/627/628/640 — seul noir pur de tout
+  `ui/`, bande noire dure en dark mode sur la surface qui portera DevisList/FactureList ; (c) les
+  constantes hex JS invisibles à tout grep CSS : `SCORE_COLORS` (`ListView.jsx:77-81`),
+  `OWNER_PALETTE` (`CalendarView.jsx:36-39`), les 5 jalons hex de `ChantierTimeline.jsx:6-21`, la
+  famille orpheline `--color-*` d'`AppointmentBooker.jsx:81-96` (fallbacks silencieux = rupture de
+  theming), les Tailwind bruts `emerald/red` de `ProductionPage.jsx:228`. **Rogné (grand-verdict) :**
+  retirer `SCORE_COLORS`/`OWNER_PALETTE`/`NAVY-GOLD` ChartsView (déjà couverts par VX26) et
+  NAVY/GOLD PwaPrompts (déjà VX1). Survit : sweep ~500 hex composant d'index.css, ombres pin
+  DataTable, hex JS ChantierTimeline/AppointmentBooker/ProductionPage, suppression du bloc CSS mort
+  `.agent-*` (`index.css:2209-2270`, 0 consommateur JSX — **@coord VX4**, qui prévoyait de le
+  re-tokeniser : la suppression prime, amender le Done= de VX4 d'une note), garde
+  `scripts/check_hex.mjs` (grep hex hors `:root`/tokens, branchée dans frontend-lint — script
+  maison, zéro dépendance). Files : `index.css`, `design/tokens.css`, `ui/datatable/DataTable.jsx`,
+  `features/crm/stages.js`, `ChantierTimeline.jsx`, `AppointmentBooker.jsx`, `ProductionPage.jsx`,
+  `scripts/check_hex.mjs` (nouveau). DoD : grep hex hors `:root` = 0 sur les blocs cités ; `grep
+  rgba(0,0,0 ui/` = 0 ; dark mode cohérent sur 6 écrans témoins ; garde CI verte puis rouge sur un
+  hex injecté. (T2 — L, sonnet) (@lane: frontend/ui-core)
+
+- [ ] VX122 — **La voix typographique : police de marque par défaut + échelle F121 réellement
+  branchée + finesse française.** Quatre défauts d'une même cause : (a) `index.css:26` rend tout
+  le legacy en `font-family: system-ui` alors qu'Archivo/Hanken Grotesk sont préchargées
+  (`brand.css`) ; **rogné (grand-verdict) :** ce point (a) est déjà VX3 mot pour mot, ne pas le
+  refaire. Survivent : (b) l'échelle F121 (`tokens.css:103-115`) a 4 usages, tous dans UIShowcase —
+  câbler `.page-header h2` sur `--text-h1`/`--font-display`, classe `.text-eyebrow` unique
+  consommant `--text-caption` (13+ recopies inline avec trackings divergents 0.04 vs 0.05em) ; (c)
+  116 sites de libellés FR sans espace fine insécable avant `:`/`;`/`!`/`?` — helper `nbsp()` dans
+  `lib/format.js` posé sur les 5 libellés les plus visibles (LeadCard tooltip, EcrituresPage,
+  BudgetPage) ; (d) `max-w-prose` sur l'article KB (`ArticleDetail.jsx:321`, 0 `max-w`
+  aujourd'hui). Files : `index.css:683-688,840-851`, `design/tokens.css`, `lib/format.js`,
+  `features/kb/ArticleDetail.jsx:321`. DoD : les 3 écrans témoins (DevisList/CommercialDashboard/
+  Reporting) rendent le même titre sans toucher leur JSX ; `nbsp('Priorité')` vérifiable par
+  `codePointAt` ; e2e verts. (T2 — M, sonnet) (@lane: frontend/ui-core)
+
+- [ ] VX123 — **Plancher d'accessibilité visuelle : anneau de focus token-isé consommé partout +
+  modes de contraste système.** Le token `--focus-ring` (`tokens.css:98`) et l'utilitaire
+  `shadow-focus-ring` (L248) sont du code mort décoratif : **24 fichiers** primitifs (corrigé par
+  le grand-verdict : pas « 40+ ») répètent en dur `focus-visible:ring-2 ring-ring
+  ring-offset-2`, et 6 `outline:none` legacy orphelins subsistent dans `index.css` ; par ailleurs
+  `grep forced-colors` = 0 et `prefers-contrast` = 0 — en mode contraste élevé Windows les
+  bordures-ombres `--elevation-card` (box-shadow) disparaissent entièrement. Fix : une classe
+  utilitaire unique `focus-ring` remplaçant les 24 chaînes (un seul point de vérité du halo), purge
+  des `outline:none` non remplacés, puis `@media (forced-colors: active)` mappant carte/bouton/
+  focus sur `CanvasText/Highlight/ButtonBorder` et `@media (prefers-contrast: more)` durcissant
+  `--border`/`--muted-foreground`. Files : `design/tokens.css`, tous les primitifs `ui/*`
+  (remplacement mécanique), `index.css`. DoD : `grep 'focus-visible:ring-2 focus-visible:ring-ring'
+  ui/` ≈ 0 ; halo visible au Tab sur chaque contrôle ; émulation forced-colors → cartes/boutons
+  délimités ; émulation prefers-contrast → bordures plus marquées ; scan axe (VX71) sans
+  régression. (T2 — M, sonnet) (@lane: frontend/ui-core)
+
+- [ ] VX124 — **Craft-physics pack : les 4 micro-détails qui signent un produit investi.** Quatre
+  absences prouvées par grep (0 résultat chacune) : (a) `caret-color` jamais posé — le curseur de
+  saisie reste noir système sur le champ le plus regardé de l'ERP (générateur de devis) ; (b)
+  toutes les ombres sont gris-nuit neutre — aucune ombre teintée brass au survol du CTA primaire ;
+  (c) le tracking négatif fixe (-0.025em) sur-comprime les montants à 7 chiffres en grande taille ;
+  (d) la police variable est chargée (`font-weight: 100 900`, `brand.css:9-17`) mais
+  `font-variation-settings` = 0 dans tout le repo — le chiffre KPI de `Stat.jsx:26` pourrait « se
+  solidifier » (wght 500→600 sur 400ms au montage, saut direct sous reduced-motion). Fix :
+  `caret-color: var(--primary)` sur Input/Textarea/NumberInputs ; token `--shadow-primary-hover`
+  (color-mix brass 35%) sur le seul variant `default` de Button ; règle
+  `.tabular-nums.text-display/.text-h1 { letter-spacing: -0.01em }` ; transition wght sur Stat.
+  Files : `ui/Input.jsx`, `ui/NumberInputs.jsx`, `ui/Textarea.jsx`, `ui/Button.jsx:27`,
+  `ui/Stat.jsx`, `design/tokens.css`. DoD : curseur teinté visible au focus ; ombre du CTA ≠ gris
+  neutre (preview_inspect) ; montant 7 chiffres moins collé (capture) ; `getComputedStyle` du Stat
+  montre la transition de wght, neutralisée sous reduced-motion. (T3 — S/M, sonnet) (@lane:
+  frontend/ui-core)
+
+- [ ] VX125 — **[DECISION] Gouvernance anti-monday : budget de densité de signaux + badge de
+  maturité de module.** La plainte structurelle n°1 de monday.com 2026 (« density of statuses,
+  colors, and columns… overwhelming ») est la trajectoire que VX construit un badge à la fois
+  (VX84 cloche, VX86 approbations, VX98 fraîcheur, VX27 KPI) sans qu'aucune tâche ne pose de règle
+  d'arbitrage ; la leçon Ramp-Travel (un module neuf médiocre contamine la perception du cœur
+  mature) n'a aucun équivalent. Fix : un document court (< 30 lignes)
+  `docs/design-density-budget.md` posant le plafond « 3 signaux ambiants simultanés par écran de
+  liste, jamais deux signaux répétant le même chiffre », référencé depuis CODEMAP §4 comme
+  contrainte transversale ; plus un `<BetaBadge>` discret optionnel sur la nav des modules jeunes
+  avec critère objectif de retrait. Files : `docs/design-density-budget.md` (nouveau),
+  `design/tokens.css` (commentaire), option `components/layout/Sidebar.jsx`. DoD : le document
+  existe, cite le plafond, est référencé ; le CODEMAP est re-fingerprinté dans le même commit ;
+  aucune tâche existante modifiée. (T3 — S, sonnet) (@lane: frontend/brand)
+
+**Sous-groupe VXD-F — Primitives last-mile (la mécanique d'état que Button seul possède)**
+
+- [ ] VX126 — **L'état PRESSÉ propagé : 12+ contrôles cessent d'être morts au clic, courbes
+  unifiées.** `grep active:` = Button uniquement : Switch, Slider, Segmented, Tabs, Checkbox,
+  Radio, items Select/Combobox/MultiSelect/DropdownMenu/ContextMenu, cellules DatePicker — aucun
+  retour pressé ; sur mobile 4G l'absence de feedback tactile fait re-taper. En plus :
+  Checkbox/Radio sans `hover:` (cibles « froides » dans les listes denses), le pouce du Switch sans
+  squish et le thumb du Slider sans halo au grab, et Switch/Progress héritent du défaut Tailwind
+  `150ms ease` linéaire-ish pendant que Button câble `cubic-bezier(0.23,1,0.32,1)` — deux vitesses
+  de mouvement côte à côte, Checkbox sans aucune transition de coche. Fix : utilitaire partagé
+  `press` calqué sur le pattern prouvé `Button.jsx:20`
+  (`[@media(hover:hover)]:active:scale-[0.98]` + assombrissement), posé sur tous les
+  triggers/items ; `hover:border-primary/60` sur cases/radios ; squish Switch + halo/scale thumb
+  Slider ; alignement de la courbe Button sur Switch/Progress + scale-in de coche Checkbox. Files :
+  les 12 primitifs `ui/*` cités + un utilitaire partagé. DoD : test de rendu par contrôle
+  assertant la classe pressée ; courbes identiques par `transition-timing-function` calculée ;
+  rien sous `hover:none` ; e2e inchangés. (T2 — M, sonnet) (@lane: frontend/ui-core)
+
+- [ ] VX127 — **L'état LECTURE-SEULE existe enfin + EditableCell honnête (pending/erreur
+  serveur/readOnly).** Aucun primitif ne distingue `readOnly` de `disabled` : une référence de
+  devis ou un total TTC affiché en Input apparaît soit éditable soit grisé opacité 60 % (illisible,
+  non copiable). Et `EditableCell.jsx:108` commit au blur sans état « enregistrement en cours »,
+  sans rendu d'un rejet serveur (seule la validation locale L45-54 est gérée), sans mode
+  lecture-seule par rôle — une perte de confiance silencieuse au cœur du DataTable. Fix : variant
+  Tailwind natif `read-only:` sur Input/Textarea/Select (fond `bg-muted/40`, curseur default,
+  texte pleine opacité, pas de ring éditable) ; EditableCell gagne un spinner discret pendant
+  l'`await onSave`, rouvre avec message sur rejet, et une prop `readOnly` (double-clic sans effet).
+  Files : `ui/Input.jsx`, `ui/Textarea.jsx`, `ui/Select.jsx`, `ui/datatable/EditableCell.jsx`. DoD :
+  `<Input readOnly>` visuellement ≠ disabled, sélectionnable ; `onSave` lent → spinner ; `onSave`
+  rejeté → cellule rouverte + message ; tests unitaires des trois états. (T2 — M, sonnet) (@lane:
+  frontend/ui-core)
+
+- [ ] VX128 — **Comboboxes audibles : `aria-activedescendant` câblé (0 occurrence dans tout le
+  repo).** `Combobox.jsx`, `MultiSelect.jsx`, `TimePicker.jsx` gèrent un curseur visuel
+  (`data-cursor`, flèches) mais l'input `role="combobox"` ne pointe jamais l'option active — un
+  utilisateur NVDA/VoiceOver entend « zone de liste » puis RIEN en parcourant ; c'est LE trou du
+  pattern combobox selon WAI-ARIA APG, purement additif à corriger. Fix : id stable par option
+  (`${listId}-opt-${i}`), `aria-activedescendant` posé sur l'input suivant le curseur,
+  `aria-selected` déjà présent. Files : `ui/Combobox.jsx`, `ui/MultiSelect.jsx`,
+  `ui/TimePicker.jsx`. DoD : test — ouvrir, flèche bas, `input.getAttribute('aria-activedescendant')`
+  === id de la 2ᵉ option ; le scan axe (VX71) le détecte corrigé. (T2 — S/M, sonnet) (@lane:
+  frontend/ui-core)
+
+- [ ] VX129 — **Primitives complétées : menus pro, Textarea adulte, Progress indéterminé, Avatar
+  riche, UNE grammaire de chip.** Pack de complétude sur 6 primitifs, tous prouvés incomplets par
+  grep : (a) menus sans `RadioItem`/`Sub`/`SubTrigger` (0 occurrence) ni slot raccourci —
+  ContextMenu n'a même pas CheckboxItem ; (b) Textarea nu : resize navigateur, ni autoResize ni
+  compteur `maxLength` ; (c) Progress sans état indéterminé, Stat avec glyphes texte `▲/▼` au lieu
+  de lucide et sa propre mini-map de tons ; (d) Avatar taille fixe sans statut de présence,
+  AvatarGroup sans « +N » ; (e) QUATRE grammaires de chip divergentes — Badge rounded-full, Tag
+  rounded-md, StatusPill, jetons inline MultiSelect L144-158 ; (f) Popover/HoverCard sans flèche
+  d'ancrage alors que Tooltip en a une (prop `arrow` opt-in). Fix : ajouts Radix habillés sur le
+  pattern `menuContent`/`menuItem` existant, props additives, alignement des rayons/hauteurs de
+  chip sur une base commune consommée par MultiSelect. Files : `ui/DropdownMenu.jsx`,
+  `ui/ContextMenu.jsx`, `ui/Textarea.jsx`, `ui/Progress.jsx`, `ui/Stat.jsx`, `ui/Avatar.jsx`,
+  `ui/Tag.jsx`, `ui/Badge.jsx`, `ui/MultiSelect.jsx`, `ui/Popover.jsx`, `ui/HoverCard.jsx`. DoD :
+  menu radio exclusif + sous-menu + shortcut aligné à droite (tests de rôles) ; autoResize +
+  compteur ; `<Progress indeterminate>` balaie et se fige sous reduced-motion ; `<AvatarGroup
+  max={3}>` de 5 → « +2 » ; jetons MultiSelect et Tag partagent rayon/hauteur (inspection). (T2 —
+  L, sonnet) (@lane: frontend/ui-core)
+
+- [ ] VX130 — **Le toast devient un objet de marque : tokens, icônes lucide, durées motion,
+  registres réels.** `Toaster.jsx:13` délègue tout à sonner `richColors` : couleurs génériques hors
+  tokens `--success/--warning/--info` (divergentes en dark), icônes internes sonner alors que TOUT
+  le reste de l'app est lucide, durées indépendantes de `--motion-*`, et un vocabulaire binaire —
+  503 `toast.error` / 360 `toast.success` / 1 info / 1 warning dans tout le repo, aucun registre
+  destructif à délai d'annulation prolongé. Fix : retirer `richColors`, styler par type via
+  `toastOptions.classNames` + tokens, injecter les icônes lucide
+  (`CheckCircle2/AlertTriangle/Info`), surcharger la durée via `--motion-base`, formaliser
+  `toastInfo`/`toastWarning` stylés + un registre destructif ≥ 6s, avec ≥ 8 poses réelles
+  d'avertissement. Files : `ui/Toaster.jsx`, `lib/toast.js`, `index.css` (règle
+  `[data-sonner-toast]`). DoD : toast succès dérivé de `--success` en clair ET sombre (parité
+  Badge) ; même glyphe AlertTriangle que l'EmptyState d'erreur ; changer `--motion-base` affecte
+  les toasts ; 4 variantes distinctes testées. (T2 — M, sonnet) (@lane: frontend/ui-core)
+
+- [ ] VX131 — **Des états qui disent vrai : `tone` sur EmptyState, CTA sur les listes principales,
+  page 403.** Trois trous du même système : (a) les 267 poses d'EmptyState partagent le wrapper
+  gris neutre — un ÉCHEC de chargement est visuellement identique à « rien à afficher » ; pire,
+  `DataTable.jsx:385` (erreur) garde l'icône grise quand `ErrorBoundary.jsx:38` la colore ; (b)
+  ~207/267 EmptyState n'ont pas de CTA, y compris sur des listes qui ONT un bouton « Nouveau » dans
+  leur toolbar (modèle parfait : `ClientList.jsx:347-356`) ; (c) `ui/NotFound.jsx` existe mais
+  AUCUN `Forbidden`/403 — un refus de rôle retombe sur un toast technique ou rien. Fix : prop
+  `tone` (`neutral|error|warning`) sur EmptyState calquée sur ErrorBoundary, migration de
+  DataTable/ModuleDashboard ; passe CTA sur les ~15 listes principales (Stock, Tickets SAV,
+  Installations…) ; `ui/Forbidden.jsx` jumeau de NotFound, câblé aux gardes de permission. Files :
+  `ui/EmptyState.jsx`, `ui/datatable/DataTable.jsx:381-388`, `ui/Forbidden.jsx` (nouveau), ~15
+  écrans de liste. DoD : `<EmptyState tone="error">` = icône sur fond destructif (3 tons testés) ;
+  liste vide → même CTA que la toolbar (test) ; route refusée → écran 403 dédié (pas le 404). (T1 —
+  M, sonnet) (@lane: frontend/orphans)
+
+- [ ] VX132 — **L'attente premium : shimmer, crossfade, squelettes honnêtes, anti-scintillement
+  propagé, chargement long conscient.** Cinq défauts d'une même expérience : (a) `Skeleton.jsx:11`
+  est le pulse Tailwind par défaut — pas de balayage lumineux directionnel (CSS pur, motion-safe
+  gardé) ; (b) le passage squelette→contenu est un swap sec partout — pas de `<FadeSwap>`
+  générique ; (c) le squelette DataTable affiche 6 lignes fixes quel que soit `pageSize` → saut
+  brutal vers 50 lignes réelles (dériver `Math.min(pageSize, 12)`) ; (d) `useDelayedLoading` —
+  fini, documenté, testé — n'est utilisé que sur 6 fichiers/265 pendant que 73 écrans affichent un
+  Spinner nu qui scintille (propager aux ~15 listes principales) ; (e) la génération PDF premium
+  (latence connue, la plus longue de l'app) montre un spinner muet — un hook `useRotatingLabel` fait
+  tourner 3-4 libellés honnêtes (« Mise en page des schémas… ») toutes les ~2.5s, sans fausse barre
+  de progression (ne touche QUE le bouton côté client, jamais le moteur — règle #4). Files :
+  `ui/Skeleton.jsx`, `ui/FadeSwap.jsx` (nouveau), `ui/datatable/DataTable.jsx` (~L540-550),
+  `hooks/useRotatingLabel.js` (nouveau), les call-sites `generer-pdf` de DevisList/FactureList, ~15
+  écrans Spinner. DoD : shimmer visible clair+sombre, pulse identique sous reduced-motion ;
+  chargement <300ms → aucun spinner (test promesse 100ms) ; squelette ∝ pageSize sans saut de
+  scroll ; ≥ 2 libellés visibles sur le chemin PDF long. (T2 — L, sonnet) (@lane: frontend/ui-core)
+
+**Sous-groupe VXD-F (suite) — Chorégraphie de mouvement**
+
+- [ ] VX133 — **Grammaire directionnelle des surfaces : chaque overlay entre par où il vit.** Un
+  seul keyframe `pop-in` (translateY 4px + scale 0.97, conçu pour un popover ancré) sert 14
+  primitifs aux géométries incompatibles : le `Sheet` latéral de 26rem « pop » du centre au lieu de
+  glisser de son bord (`Sheet.jsx:32`, 13 consommateurs), alors que la preuve du bon glissement
+  existe déjà en bespoke (`.ldp-panel`/`@keyframes ldpIn`, `index.css:3393-3407` — 2 usages,
+  dupliqués par copier-coller) ; `BulkActionBar.jsx:23` fait `if (!count) return null` → JAMAIS
+  d'animation de sortie malgré le commentaire qui prétend « glisser depuis le bas » ;
+  `AccordionContent` n'anime pas sa hauteur (`--radix-accordion-content-height` = 0 occurrence) ;
+  `TabsContent` swap sans crossfade. Fix : 4 keyframes `slide-in/out-{right,left,top,bottom}` +
+  `accordion-down/up` dans tokens.css (mappés `--motion-*` donc annulés par reduced-motion),
+  mapping `SIDE → animationClass` dans Sheet, migration de LeadDevisPanel/InstallationDetail sur
+  `SheetContent side="right"` + suppression de `.ldp-*`, BulkActionBar monté en permanence avec
+  état `visible` retardé (pattern exit-sans-lib) + slide-up, fondu court `--motion-fast` sur
+  TabsContent. Files : `design/tokens.css`, `ui/Sheet.jsx`, `ui/Accordion.jsx`, `ui/Tabs.jsx`,
+  `ui/datatable/BulkActionBar.jsx`, `pages/crm/leads/LeadDevisPanel.jsx`,
+  `pages/installations/InstallationDetail.jsx`, `index.css` (−25 lignes ldp). DoD : Sheet
+  `side="right"` translate en X ; grep `ldp-panel` = 0 ; désélectionner la dernière ligne montre
+  une sortie glissée ; accordéon anime sa hauteur ; reduced-motion = instantané partout ; tests de
+  rendu par côté. **@coord VX43** (Sheet.jsx partagé / bottom-sheets mobile). (T2/T3 — M/L, sonnet)
+  (@lane: frontend/motion)
+
+- [ ] VX134 — **Chorégraphie de coquille : ⌘K, sidebar, route, badge, thème — cinq
+  téléportations soignées.** Cinq surfaces de la coquille bougent « sec » : (a) la palette ⌘K
+  réutilise le Dialog générique centré-zoomé — s'ancrer en haut avec un slide-down rapide
+  `--motion-fast` ; (b) le liseré doré actif de la sidebar (`index.css:396-412`, pseudo-élément par
+  item, 0 transition) téléporte entre items au lieu de glisser (fallback fondu si la mesure DOM est
+  jugée invasive) ; (c) le contenu de route post-Suspense apparaît en cut dur — un fondu
+  `key={pathname}` (pattern déjà utilisé par RouteErrorBoundary juste à côté,
+  `router/index.jsx:198`) suffit, View Transition API notée en option future ; (d) le badge
+  non-lus de `ChatBell.jsx:38` change de valeur toutes les 30s sans aucun signal — pulse scale
+  1→1.25 UNIQUEMENT quand le total augmente ; (e) `applyTheme` bascule `.dark` d'un coup — le mode
+  sombre OKLCH mérite une transition ≤ 200ms via classe transitoire, sans FOUC. Files :
+  `providers/CommandPalette.jsx`, `ui/Dialog.jsx` (variante `command`),
+  `components/layout/Sidebar.jsx`, `router/index.jsx`, `components/layout/ChatBell.jsx`,
+  `design/theme.js`, `index.css`, `design/tokens.css` (keyframe `command-in`, `badge-pulse`). DoD :
+  ⌘K ancrée haut plus rapide qu'un modal ; naviguer fait glisser/fondre le repère sidebar ;
+  changement de route = fondu doux ; badge pulse seulement à l'incrément (test mock store) ;
+  bascule de thème fluide, instantanée sous reduced-motion, classe transitoire retirée (test).
+  **@coord axe3-VX190** (refonte cloche — ce seed ne touche que l'animation du compteur, pas son
+  contenu). (T2/T3 — M, sonnet) (@lane: frontend/motion)
+
+- [ ] VX135 — **Mouvement piloté par JS rendu accessible + FLIP des listes.** La garde globale
+  reduced-motion (`index.css:67-77`) ne neutralise QUE les animations CSS déclaratives : les
+  transforms posés en JS par dnd-kit y échappent structurellement — le tilt `rotate(2deg)
+  scale(1.02)` de la carte kanban tenue reste actif pour un utilisateur vestibulaire, aucun des 3
+  kanbans ne passe `dropAnimation` (timing dnd-kit par défaut, désaligné des tokens), et la carte
+  saute au tilt sans transition de grab ; le `Spinner` tourne en `animate-spin` nu pendant que
+  Skeleton est correctement `motion-safe` ; et AUCUNE liste de l'app n'anime tri/filtre/ajout (0
+  framer-motion, télé-portation des lignes). Fix : hook partagé `usePrefersReducedMotion()`
+  (matchMedia + listener) consommé par les 3 kanbans (tilt désactivé, dropAnimation
+  `{duration:180, easing:cubic-bezier(0.23,1,0.32,1)}` ou 1ms) ; `transition: transform 120ms
+  var(--ease-out)` sur `.kb-drag-overlay .kb-card` ; `motion-safe:` sur Spinner avec repli
+  statique lisible ; FLIP minimal sans dépendance dans DataTable (mesure
+  getBoundingClientRect avant/après tri/filtre, translateY transitionné, plafonné < 200 lignes,
+  désactivé par le hook). Files : `hooks/usePrefersReducedMotion.js` (nouveau),
+  `pages/crm/leads/views/KanbanView.jsx`, `pages/installations/views/KanbanView.jsx`,
+  `features/gestion_projet/components/TachesKanbanView.jsx`, `index.css`, `ui/Spinner.jsx`,
+  `ui/datatable/DataTable.jsx` (hook `useRowFlip`). DoD : reduced-motion émulé → plus de
+  tilt/rotation pendant le drag, spinner figé ; dépose calée sur les tokens ; trier une colonne
+  fait glisser les lignes (test non-régression `datatable.test.mjs`). (T2/T3 — M/L, sonnet ; opus
+  si le hook FLIP doit se partager avec ARC49/53 — coordonner, ne pas dupliquer) (@lane:
+  frontend/motion)
+
+- [ ] VX136 — **Scroll-timeline natif : reveal des cockpits + progression des formulaires
+  longs.** `grep view-timeline|animation-timeline` = 0 : aucun usage du mécanisme 2026 (compositor
+  thread, zéro JS d'orchestration, progressive enhancement pur). Deux poses à haute valeur : (a)
+  les cartes KPI de `ModuleDashboard` se révèlent (translateY 8px→0 + fondu) via `@supports
+  (animation-timeline: view())`, fallback état final statique ; (b) une barre `ScrollProgress` de
+  2px en haut des deux formulaires-fleuves (LeadForm 1297 l., DevisGenerator 2319 l.) via
+  `animation-timeline: scroll(nearest)`. Files : `ui/module/ModuleDashboard.jsx`,
+  `ui/ScrollProgress.jsx` (nouveau), `pages/crm/LeadForm.jsx`, `pages/ventes/DevisGenerator.jsx`,
+  `index.css` (`.reveal-on-scroll`). DoD : Chromium — reveal au scroll + barre qui grandit
+  0→100 % ; Firefox/Safari <18 — apparition instantanée, aucune erreur ni layout cassé ;
+  reduced-motion désactive la timeline. (T2/T3 — M, sonnet) (@lane: frontend/motion)
+
+**Sous-groupe VXD-G — Ventes : le chemin de l'argent (l'écran vendeur le plus vu du produit)**
+
+- [ ] VX137 — **La table de lignes du générateur sort du HTML brut. @after VX17.** `DevisGenerator.jsx`
+  L1965-2091 : `<input className="form-control form-control-sm">` natifs alors que le MÊME fichier
+  utilise Input/Select/Textarea du design system dans ses 9 autres cartes ; hex codés dans le JSX
+  restants après VX17 (le sweep tokens/couleurs `.gen-metric*`/`.lines-table*` est déjà fait par
+  **VX17** — ce delta ne recouvre QUE le remplacement `<input class="form-control">` natif par
+  `ui/Input` dans la table). Attention absolue : le formulaire reste `noValidate`/`step="any"`
+  (règle CLAUDE.md, gardé par test) et l'indicateur de marge (`prix_achat`) reste generator-only.
+  Files : `pages/ventes/DevisGenerator.jsx` (L2000-2192). DoD : `grep "style={{ color:"
+  DevisGenerator.jsx` = 0 ; capture dark mode avant/après ; test « saisie jamais rejetée » vert.
+  (T2 — S, sonnet) (@lane: frontend/ventes)
+
+- [ ] VX138 — **L'aperçu de simulation devient un comparateur : Sans/Avec groupés, chiffres héros
+  stables, totaux hiérarchisés, CTA sticky, cartes selon le mode.** Le moment de vente en direct
+  souffre de cinq défauts convergents : (a) jusqu'à 12 `MetricCard` dans UNE grille homogène — les
+  paires Sans/Avec batterie ne sont reliées que par une étoile noyée → 2 colonnes nommées « Option
+  1/2 », recommandation en liseré de colonne ; (b) les chiffres ROI héros
+  (`.gen-metric-value`/`.gen-kwp`, `index.css:2577-2586/2692-2697`) n'ont AUCUN `tabular-nums` — ils
+  tremblent horizontalement pendant la frappe devant le client, et `fmtNum` local (L79) duplique
+  `formatNumber` sans jamais importer `lib/format.js` ; (c) la chaîne Sous-total→Remise→Total
+  HT→TVA→TTC est plate à l'écran alors que le PDF la hiérarchise — appliquer une progression
+  `text-small`→`text-body medium`→`text-h3 semibold+primary` avec les paliers F121 existants ; (d)
+  `.gen-actions-sticky` n'est sticky QUE sous media query mobile — bandeau sticky desktop affichant
+  le TTC courant (dérivé de `totals` déjà en mémoire) + bouton condensé ; (e) les cartes non
+  pertinentes pour le mode actif gardent le même poids — « Multi-propriétés » développée par défaut
+  même en agricole : accordéon replié, jamais masqué. Files : `pages/ventes/DevisGenerator.jsx`
+  (L79, L1810-1844, L2093-2194, L2251-2273, L1886-1961), `index.css` (blocs `.gen-*`). DoD : mode
+  « Les deux » → 2 colonnes alignées ; les chiffres ne tremblent plus (glyphes à largeur fixe, test
+  rendu) ; 3 paliers visuels sur les totaux, TTC point focal ; barre sticky au scroll desktop, même
+  handler de soumission ; bloc multi-propriétés replié par défaut en agricole. (T2 — L, sonnet)
+  (@lane: frontend/ventes)
+
+- [ ] VX139 — **Deux éditeurs de devis, UNE présentation des totaux et UNE devise. @coord VX75.**
+  Le même métier (lignes + remise + TVA + totaux) rend différemment selon le point d'entrée :
+  `DevisForm.jsx` L372-395 (propre, tokens, suffixe « DH » codé en dur `toFixed(2)`) vs
+  `DevisGenerator` `.gen-total-*` (hex inline, suffixe « MAD ») — le vendeur qui crée puis édite
+  voit deux présentations de prix du même document. Fix : extraire
+  `features/ventes/QuoteTotalsSummary.jsx` (props lines/totals/discountPct/tauxTva) consommé par
+  les deux écrans, formaté par `formatMAD` de `lib/format.js` (une seule devise affichée), hérite
+  de la hiérarchie de poids de VX138. Files : `features/ventes/QuoteTotalsSummary.jsx` (nouveau),
+  `pages/ventes/DevisForm.jsx` (L372-395), `pages/ventes/DevisGenerator.jsx` (L2093-2194). DoD :
+  `grep '"DH"\| DH' DevisForm.jsx` = 0 ; les deux écrans rendent le même bloc de totaux (mêmes
+  valeurs, même libellé de devise) ; tests de rendu des deux écrans verts. (T2 — M, sonnet) (@lane:
+  frontend/ventes)
+
+- [ ] VX140 — **DevisList : 14 boutons deviennent 4 + un menu, la cellule Référence respire.**
+  Deux défauts jumeaux de la liste la plus dense : (a) jusqu'à 14 boutons d'action de poids
+  identique par ligne brouillon (L1428-1707) alors que sa liste sœur FactureList a DÉJÀ résolu le
+  problème avec un `DropdownMenu` Actions (L1140-1181) ; (b) la cellule Référence empile jusqu'à 7
+  éléments hétérogènes (L1240-1331) en colonne verticale de 6-8 lignes. Fix : 3-4 actions primaires
+  visibles selon statut + menu « Plus d'actions » (même primitive que FactureList) ; cellule à 2
+  niveaux — ligne 1 référence+badges de version en `text-sm` gras, ligne 2 métadonnées en `text-xs
+  muted` séparées par ` · `, chips de documents liés dans une info-bulle au survol. Files :
+  `pages/ventes/DevisList.jsx` (L1240-1331, L1428-1707). DoD : ≤ 5 boutons visibles par ligne +
+  menu ; un devis à historique complet tient sur 2 lignes visuelles (snapshot) ; e2e clic
+  Éditer/Envoyer/PDF verts avec les mêmes sélecteurs `ap-*`. (T2 — M/L, sonnet) (@lane:
+  frontend/ventes)
+
+- [ ] VX141 — **`DocumentStageTrack` : le statut devient un parcours.** `StatusPill` est un fait
+  isolé (point + badge) ; rien dans DevisList/FactureList ne visualise la CHAÎNE
+  brouillon→envoyé→accepté→BC→facturé→chantier — un devis accepté sans BC n'est signalé qu'en
+  texte. Fix : petit composant `<DocumentStageTrack current stages>` — piste horizontale de 5-6
+  puces reliées, franchies cochées, courante remplie, bloquée en rouge — posé dans la cellule
+  Statut de DevisList à côté du StatusPill existant. Strictement la couche statuts DOCUMENT (règle
+  #4) ; jamais les stages STAGES.py (règle #2) — les deux couches ne se mélangent pas. Files :
+  `ui/DocumentStageTrack.jsx` (nouveau), `pages/ventes/DevisList.jsx` (L1375-1425). DoD : devis
+  accepté avec BC annulé → point « BC » rouge sur la piste ; test de rendu par statut ; aucune clé
+  de stage CRM importée. (T2 — M, sonnet) (@lane: frontend/ventes)
+
+- [ ] VX142 — **FactureList & cousins : toolbar rangée, action recommandée trouvable, primitives
+  cohérentes.** Quatre finitions du même sous-module : (a) la toolbar FactureList aligne 8
+  contrôles dont 4 variantes d'export à plat, et « Journal comptable » passe par un
+  `window.prompt()` texte libre (L625-629) — un menu « Exporter » (primitive DropdownMenu déjà dans
+  le même fichier) + un petit Dialog mois/trimestre ; (b) `nextBestAction()` (L98-104) est calculé
+  mais rendu seulement par `variant=default` sur des boutons à position mouvante — lui réserver le
+  PREMIER slot de la rangée avec icône + halo tokenisé, ordre stable ; (c) `RelancesPage.jsx`
+  L217-227 contient le SEUL `<select>` HTML natif de tout `pages/ventes/` → composant `Select` ;
+  (d) `FactureKanbanBoard.jsx` L47 répète le StatusPill sur chaque carte d'une colonne qui EST le
+  statut → remplacer par une info utile (échéance ou montant dû). Files :
+  `pages/ventes/FactureList.jsx` (L596-667, L1084-1182), `pages/ventes/RelancesPage.jsx`,
+  `pages/ventes/FactureKanbanBoard.jsx`. DoD : toolbar à 5 groupes ; plus de `window.prompt` ;
+  l'action recommandée est toujours en position 1 avec style distinct (test par statut) ; 0 select
+  natif dans le dossier ; carte kanban sans statut redondant (snapshot). (T2 — M, sonnet) (@lane:
+  frontend/ventes)
+
+**Note d'exécution (annexe de VX75, jamais une tâche séparée — grand-verdict §d, S23) :** en plus de
+son propre périmètre, VX75 doit aussi couvrir ces sites de niveau CELLULE, invisibles aux audits
+d'écran : sous-ligne `Facturé {d.solde.facture} / Payé … / Restant … MAD` (`DevisList.jsx:1371`)
+rendue en montants BRUTS ; colonne prix des produits archivés (`StockList.jsx:846-848`, `12500.00
+DH` — point décimal anglais, zéro séparateur) ; 31 appels directs `toLocaleDateString` qui
+contournent `formatDate` sur les écrans ventes/stock ; `fmtNum2` local (`StockList.jsx:49`) qui
+duplique `formatNumber` ; la référence `DEV-202607-0012` (lue à voix haute au client) sans
+`tabular-nums`/slashed-zero (`DevisList.jsx:1241`, `FactureList` idem) alors que `.tabular-nums`
+inclut déjà `slashed-zero` (`tokens.css:296-299`). Files à ajouter au Done= de VX75 :
+`pages/ventes/DevisList.jsx` (1241, 1283, 1315-1327, 1353-1394, 1371, 1734),
+`pages/ventes/FactureList.jsx` (722, 742, 1026, 1047), `pages/stock/StockList.jsx` (49, 515, 843,
+846-848). [DECISION] option non retenue par défaut : police mono auto-hébergée (~15KB woff2
+subset) pour les identifiants (`--font-mono`) — à soumettre au fondateur avant tout build.
+
+**Sous-groupe VXD-H — CRM : l'écran le plus fréquenté**
+
+- [ ] VX143 — **LeadForm refondu : un seul langage de formulaire dans le module CRM. @after
+  VX89.** Le plus gros formulaire du repo (1297 l., 9-11 sections) redéfinit ses propres
+  `Sec`/`Txt`/`Sel` locaux (L74-118) sur des classes hex-brutes, quand `ClientForm.jsx:244-497` — à
+  un clic — compose proprement `FormSection`/`FormField` (a11y `aria-invalid`/`aria-describedby`
+  automatique). S'y ajoutent : sections sans AUCUNE frontière visuelle, distinguées par la seule
+  emoji 👤📈💡 (`.form-section` = flex nu, `index.css:1159-1163`) ; rail de navigation gauche en hex
+  figés `#dbeafe/#1d4ed8` (`index.css:1002-1006`), sans barre d'accent, sans écho des icônes de
+  section, sans indicateur de contenu (« Doublons » n'affiche jamais son compte) ; et le bouton
+  « Concevoir la toiture (3D) » dupliqué verbatim aux L685-691 ET L994-1001. Fix : migration
+  `Sec/Txt/Sel → FormSection/FormField/Input/Select` (pattern démontré par ClientForm, présentation
+  pure — scroll-spy `data-nav-id` et verrouillages métier intacts) ; traitement de carte sur
+  `.form-section` + icônes lucide au lieu d'emoji ; rail tokenisé `border-left: 3px solid
+  var(--primary)` + même icône que la section + badges de contenu ; suppression du doublon 3D.
+  Files : `pages/crm/LeadForm.jsx` (L74-118 + ~60 usages + L685-691/994-1001 + rail L733-741),
+  `index.css` (`.form-section*`, `.lead-nav`). DoD : `grep "Txt fields=" LeadForm.jsx` = 0 ; chaque
+  section a une séparation visible (preview_inspect) ; grep `#dbeafe|#1d4ed8` = 0 ; le bouton 3D
+  apparaît une fois quel que soit le scroll ; `LeadForm.test.jsx` vert. (T2 — L, sonnet) (@lane:
+  frontend/crm)
+
+- [ ] VX144 — **Hiérarchie de lecture des cartes et vues CRM : montrer moins pour dire plus.
+  @coord VX89/VX45/VX51.** Cinq défauts « tout est montré, rien n'est priorisé » : (a) `LeadCard`
+  empile jusqu'à 9 modules/6 badges simultanés sur 272px — fusionner les 3 badges de statut
+  (perdu/expiré/inactif) en UN emplacement par priorité, reléguer le secondaire au survol (le
+  pattern « +N autres » existe déjà dans `CalendarView.jsx:237-244`, jamais appliqué à la carte) ;
+  (b) `ListView` rend 12-13 colonnes au poids identique — modificateur `.lv-col-secondary` (muted,
+  non gras) sur Score/Canal/Ville/Tags ; (c) la cellule Client de `ClientList` (L157-168) wrap
+  nom+pastille+badge ICE sans ordre garanti à 200px — empilement 2 lignes déterministe ; (d) les
+  « leads sans date » sont présentés en note de bas de page neutre (`CalendarView.jsx:261-283`) —
+  accent `--warning` + icône ; (e) `ChartsView` rend 4 graphiques au poids strictement égal —
+  l'entonnoir par étape passe en pleine largeur. **Rogné (grand-verdict) :** retirer la fusion des
+  badges LeadCard en une pilule prioritaire (déjà VX24) ; réduire la démotion des colonnes
+  secondaires ListView (recoupe déjà VX7 calm-color) — survivent (c), (d), (e) intégralement + (a)
+  et (b) réduits à leur delta non couvert. Files : `pages/crm/leads/views/LeadCard.jsx` (L113-137),
+  `pages/crm/leads/views/ListView.jsx`, `pages/crm/ClientList.jsx` (L157-168),
+  `pages/crm/leads/views/CalendarView.jsx` (L261-266), `pages/crm/leads/views/ChartsView.jsx`
+  (L139-286), `index.css` (`.kb-badge-*`, `.lv-col-secondary`, `.cal-undated-label`,
+  `.ch-card-wide`). DoD : fixture triple-drapeau → exactement 1 badge (`querySelectorAll` === 1) ;
+  couleur calculée des colonnes secondaires plus claire ; à 200px le badge passe sous le nom
+  (bounding box) ; `.cal-undated-label` porte `var(--warning)` ; la carte entonnoir est plus large
+  que les 3 autres en desktop, empilée en mobile. (T2 — M, sonnet) (@lane: frontend/crm — @after
+  VX89)
+
+- [ ] VX145 — **Barres d'action CRM : groupes, risque perçu, désencombrement. @after VX89.** Trois
+  toolbars du même module sans hiérarchie : (a) `BulkActionBar` leads rend 11-12 boutons
+  identiques — grouper en 3 clusters séparés (éditions de champ / cycle de vie / export+destructif)
+  par `border-left` + gap ; **rogné (grand-verdict) :** le regroupement en clusters de
+  BulkActionBar recoupe déjà VX20 — ne pas refaire ce point isolément, seuls (b) et (c) survivent.
+  (b) l'en-tête `LeadsPage` (L349-371) montre 6 actions de même poids pour des fréquences très
+  différentes — démoter Doublons/Importer/Exporter dans un menu « ⋯ » (pattern DropdownMenu déjà
+  importé dans `ListView.jsx:24-26`), ne garder que « + Nouveau lead », « ⚡ Express » et le
+  ViewSwitcher, avec un séparateur qui isole le ViewSwitcher comme cluster de mode ; (c) le bloc
+  « vues enregistrées » est copié-collé entre `ClientList.jsx:366-383` et `LeadsPage.jsx:376-393`
+  et occupe une rangée pleine largeur même vide — extraire `<SavedViewsBar>` partagé, replié dans
+  la rangée de filtres quand 0 vue (le hook `useSavedViews` client existant, PAS les vues serveur
+  NTUX). Files : `pages/crm/leads/LeadsPage.jsx` (L349-371, 376-393), `pages/crm/ClientList.jsx`
+  (L366-383), `components/SavedViewsBar.jsx` (nouveau), `index.css`. DoD : en-tête = 3 contrôles +
+  1 menu ⋯ dont chaque action reste déclenchable (test RTL à travers le menu) ; 0 rangée dédiée
+  quand `savedViews.length === 0`. (T2 — M, sonnet) (@lane: frontend/crm — @after VX89)
+
+- [ ] VX146 — **`/calendrier` rejoint le design system : un seul calendrier mensuel dans l'app.**
+  `pages/CalendarPage.jsx` (292 l., l'agenda global qui agrège poses/interventions/maintenance/
+  activités) est construit à 100 % en `style={{}}` avec hex bruts (`#0d1b3e`, `#e2e8f0`,
+  `#dc2626`…) et n'importe AUCUN composant `ui/` — alors qu'une grille mensuelle tokenisée existe
+  littéralement dans le même repo (`.cal-grid/.cal-cell/.cal-weekday`, `index.css:3845-3891`,
+  consommée par `leads/views/CalendarView.jsx`) : deux calendriers, un poli, un brut. Fix : porter
+  le balisage sur le vocabulaire `.cal-*` existant (l'étendre pour les 5 types d'événements +
+  légende + panneau d'abonnement), les hex de `TYPES` (L11-17) deviennent des classes par type
+  analogues à `STAGE_COLORS`. Files : `pages/CalendarPage.jsx` (entier), `index.css` (extension du
+  bloc `.cal-*`). DoD : grep hex littéral dans le fichier = 0 hors constantes mappées ; rendu
+  visuel équivalent (preview_screenshot avant/après) ; dark mode correct. (T2 — M, sonnet) (@lane:
+  frontend/crm)
+
+- [ ] VX147 — **LeadsPage et ses 4 vues parlent enfin le même langage d'état.** L'écran le plus
+  fréquenté du CRM rend son chargement/erreur en `<p className="page-loading/page-error">` brut,
+  stylé en hex codés en dur (`index.css:727-739`) — hors de tout le système d'états ; et ses 4 vues
+  traitent « 0 lead » de 4 façons (Kanban/List/Carte en texte brut, ChartsView seule en
+  `EmptyState` correct). Fix : remplacer L313-325 par `StateBlock`/`EmptyState`+`Skeleton`,
+  supprimer `.page-loading/.page-error` d'index.css, unifier les 3 vues texte-brut sur `EmptyState`
+  (calqué sur ChartsView:105-118, la seule déjà correcte). Files :
+  `pages/crm/leads/LeadsPage.jsx` (L313-325), `pages/crm/leads/views/KanbanView.jsx` (L147),
+  `ListView.jsx` (L484), `CarteView.jsx` (L99), `index.css` (L727-739). DoD : `grep
+  page-loading|page-error src/` = 0 ; les 4 vues montent le même composant pour `leads=[]` (test
+  rôle status/alert) ; sélecteurs e2e intacts. (T2 — M, sonnet) (@lane: frontend/crm)
+
+**Sous-groupe VXD-D — Ops & insight : les nombres sont le héros**
+
+- [ ] VX148 — **Le kit `ui/charts` réellement adopté : fin des 3 thèmes recopiés et des rapports
+  sans graphique.** Le kit maison (AreaSansAxe/BarArrondie/KpiSpark/ChartTooltip/ChartEmpty, thémé,
+  testé, reduced-motion géré) est contourné par les écrans d'insight les plus importants :
+  `Reporting.jsx` (L7-10, 39-49, radius codé `[0,6,6,0]` L384, KPI sans sparkline), `Rapports.jsx`
+  et `Journal.jsx` redéclarent chacun leur objet tooltip quasi identique — 3 copies du même
+  dictionnaire de style ; `PilotageStock.jsx` (L189-284) et 5 des 6 rapports de `Rapports.jsx`
+  rendent des données comparatives en `<table>` pures ; `ProductionPage.jsx` — l'écran le plus
+  consulté du dossier monitoring — n'a AUCUN graphique quand ses 4 voisins directs en ont un ; et
+  `ChartEmpty` a 0 site d'appel dans tout `pages/**`. Fix : migrer les 3 fichiers sur le kit
+  (supprimer les tooltips locaux, `BAR_RADIUS_H` partout), ajouter un `BarArrondie`/`AreaSansAxe`
+  AU-DESSUS des tables de PilotageStock/Rapports (la table garde le détail), une courbe de
+  tendance kWh sur ProductionPage (pattern `OmAnalyticsPage.jsx:151-162`), brancher `ChartEmpty`
+  sur les cartes de graphes vides de Dashboard/CommercialDashboard/Cohorts. La palette
+  catégorielle elle-même reste VX41 — ce seed APPLIQUE le kit existant. Files : `pages/Reporting.jsx`,
+  `pages/Rapports.jsx`, `pages/Journal.jsx`, `pages/stock/PilotageStock.jsx`,
+  `pages/monitoring/ProductionPage.jsx`, `pages/Dashboard.jsx`,
+  `pages/reporting/CommercialDashboard.jsx`. DoD : `grep "from 'recharts'"` sur les 3 fichiers ne
+  montre plus que les formes non couvertes ; une seule définition de tooltip dans `pages/` ;
+  chaque section citée affiche graphe + table ; `ChartEmpty` rendu quand dataset vide (tests). (T2
+  — L, sonnet) (@lane: frontend/orphans)
+
+- [ ] VX149 — **Un seul accent de statut : `StatusAccentCard` + le terrain + le micro-pack ops.**
+  La « carte à accent coloré par statut » est réinventée en parallèle :
+  `InterventionsPage.jsx:68-145` (`.kb-*/.kc-*`, `--kb-accent` — le bon craft de référence) vs la
+  `CalendarView` inline d'`InstallationsPage.jsx:58-217` (`.cal-*`, `style={{background: dot}}`) —
+  extraire `ui/StatusAccentCard.jsx` consommé par les deux ; « Ma journée » technicien
+  (`MaJourneePage.jsx:77-113`) reste une liste plate sans différenciation par `type_intervention` —
+  poser le même accent + `text-amber-600` → `text-warning`. Micro-pack de dédup dans la même
+  passe : `FournisseurFiche360.jsx:43-62` redéfinit Card/Stat localement → imports `ui/` ;
+  `ChantierPhotos.jsx:141-190` vignettes `size-16` fixes → bascule densité compact/confortable en
+  Segmented ; `BulkProductBar.jsx:27-37` réinvente un bouton-onglet sur fond sombre → variant
+  `Segmented` partagé ; `ChantierGateTimeline.jsx:36-38` double mécanisme classe+style inline
+  redondant → suppression. Files : `ui/StatusAccentCard.jsx` (nouveau),
+  `pages/interventions/InterventionsPage.jsx`, `pages/installations/InstallationsPage.jsx`,
+  `pages/interventions/MaJourneePage.jsx`, `pages/stock/FournisseurFiche360.jsx`,
+  `pages/installations/ChantierPhotos.jsx`, `pages/stock/BulkProductBar.jsx`,
+  `pages/installations/ChantierGateTimeline.jsx`. DoD : les deux écrans kanban/calendrier
+  consomment le même composant (tests non régressés) ; chaque ligne de Ma journée porte un accent
+  par type ; fiche 360 sur primitives partagées ; 40+ photos lisibles en densité compacte ;
+  `data-testid="ch6-stage"` intact. (T2 — M/L, sonnet) (@lane: frontend/orphans)
+
+**Sous-groupe VXD-J — Fondation & âme de marque**
+
+- [ ] VX150 — **Le login re-signé : la première impression cesse de contredire le système.**
+  `Login.jsx` est une île : 100 % `style={{}}` inline avec les hex d'une ANCIENNE marque
+  (`#1863DC`/`#F5C100`), fond animé « TAQINOR » en `Arial Black` (L46) au lieu de la police de
+  marque, œil mot-de-passe et alerte en émojis bruts `👁️/🙈/⚠️` (L240, L292), et un
+  `requestAnimationFrame` PERMANENT (`BouncingBackground` L71-85) sans garde
+  `prefers-reduced-motion` ni throttle `visibilitychange`. **Rogné (grand-verdict) :** VX34 possède
+  déjà la MISE EN PAGE cockpit du login (mêmes hex, mêmes emojis→lucide, même garde reduced-motion
+  sur BouncingBackground) — ne conserver que le delta non couvert : wordmark `Arial Black` → police
+  de marque, et pause `visibilitychange` du rAF (2 lignes ajoutées au Done= de VX34, pas un
+  chantier séparé). Files : `pages/Login.jsx` uniquement. DoD : le wordmark utilise la police de
+  marque ; le rAF de fond se met en pause hors onglet actif (test mock `visibilitychange`).
+  (T3 — S, sonnet) (@lane: frontend/brand — delta sur VX34)
+
+- [ ] VX151 — **Paramètres : 24 onglets deviennent une surface de réglages navigable.** `TABS`
+  (`peConstants.js` L27-50) + 3 onglets locaux = 24 onglets plats dans UN `<TabsList
+  overflow-x-auto>` (L801) — ~9-10 visibles à 1280px, scroll horizontal à l'aveugle sans
+  fade/chevron ; et le bouton « Enregistrer » n'existe que sur 4/24 onglets, chaque section ayant
+  SA convention de persistance sans aucune affordance préalable. Fix : champ `group` par entrée de
+  TABS (4-5 méta-catégories : Identité & documents / Vente & CRM / Terrain & stock / Sécurité &
+  système / Avancé) rendues en navigation à 2 niveaux, CHAQUE clé `tab` existante conservée
+  (routing/tests intacts) ; badge/ligne contextuelle par section (« Modifications enregistrées
+  immédiatement » vs bouton visible). Files : `pages/parametres/ParametresEntreprise.jsx`
+  (L799-808, L829-872), `pages/parametres/peConstants.js`. DoD : les 24 clés restent accessibles
+  (`tab===…` inchangé) ; hiérarchie 2 niveaux visible ; chaque onglet annonce son modèle de
+  sauvegarde avant édition ; recherche fonctionnelle. (T2 — M, sonnet) (@lane: frontend/brand)
+
+- [ ] VX152 — **Fin des moteurs de table parallèles : GED, Admin, ClientDetail, OCR
+  convergent.** Quatre modules contiennent chacun DEUX systèmes de table à deux clics l'un de
+  l'autre : le point d'entrée GED (`GedNavigator.jsx:391-470`, `GedSearch.jsx:147-181`) rend en
+  `<table class="data-table">` hex-legacy pendant que les écrans avancés du MÊME module
+  (Approbation/Corbeille) utilisent `ListShell` moderne ; `RolesManagement.jsx:489` est une table
+  HTML brute (constante `th` répétée 16×) pendant que `UsersManagement.jsx:438` — même dossier
+  admin — a le DataTable complet ; `ClientDetailPanel.jsx:19-55` fabrique un TROISIÈME moteur
+  `DocTable` à la main pour Devis/Factures/Chantiers ; `OcrUpload.jsx` L222-235/248-267 duplique
+  deux `<table>` Tailwind répétitives. Fix : porter chaque surface sur le moteur déjà utilisé par
+  son voisin direct (ListShell pour GED, DataTable pour les rôles — liste seulement, la grille de
+  permissions reste —, `Table` partagée pour ClientDetail, `KeyValueTable` partagé pour OCR).
+  Files : `features/ged/GedNavigator.jsx`, `features/ged/GedSearch.jsx`,
+  `pages/admin/RolesManagement.jsx` (L460-582), `pages/crm/ClientDetailPanel.jsx`,
+  `pages/ia/OcrUpload.jsx`. DoD : grep `data-table` = 0 sur les 2 fichiers GED ; recherche/tri
+  disponibles sur les rôles, dialogue de réassignation intact ; `grep "<table"
+  ClientDetailPanel.jsx` = 0 ; un seul point de rendu FIELD_LABELS dans OcrUpload ; tests existants
+  verts. (T2 — L, sonnet) (@lane: frontend/brand)
+
+- [ ] VX153 — **GED/IA micro-pack : navigation réunifiée, tailles sémantiques, temps lisible.**
+  Trois finitions du même périmètre : (a) « Documents » et « GESTION DOCUMENTAIRE » sont deux
+  sections de menu pour UN espace conceptuel — un contournement technique de collision de clé
+  assumé en commentaire (`module.config.jsx:36`) — fusionner/adjacenter les deux groupes sans
+  toucher au routing `/ged/*` ; (b) `GedNavigator/GedSearch` utilisent `text-[13px]`/`text-[11px]`
+  arbitraires au lieu de `text-sm`/`text-xs` ; (c) l'onglet Historique d'`AgentActions.jsx`
+  (L118-198) liste des logs chronologiques en cartes plates — grouper par jour
+  (Aujourd'hui/Hier/date), `confirmed_at` est déjà servi. Files : `features/ged/module.config.jsx`,
+  `features/ged/GedNavigator.jsx`, `features/ged/GedSearch.jsx`, `pages/ia/AgentActions.jsx`. DoD :
+  les deux groupes de nav adjacents/fusionnés ; grep `text-\[1[0-9]px\]` = 0 sur les 2 fichiers ;
+  logs groupés par jour (`AgentActions.historique.test.jsx` vert). (T2 — S/M, haiku ; sonnet pour
+  la décision de nav) (@lane: frontend/brand)
+
+- [ ] VX154 — **`TaqinorMark` + `SolarLoader` : le mot-symbole soleil-éclair porté dans l'app,
+  chaque attente signée.** Le glyphe le plus distinctif de la marque — le soleil rayonnant à
+  éclair azur de `public/favicon.svg` — n'existe dans l'app React NULLE PART (grep = 0) : le header
+  porte un `<Zap>` lucide générique sur carré jaune (`Header.jsx:60-62`), et chaque attente est
+  anonyme (Spinner cercle gris, RouteFallback silhouette). Fix : composant `<TaqinorMark>` SVG
+  inline tokenisé (rayons `var(--primary)`, éclair `var(--info)`, props size/animate) remplaçant
+  le Zap du header ; `<SolarLoader>` — le mark dont les rayons s'illuminent en séquence, CSS pur,
+  statique sous reduced-motion — posé sur `RouteFallback` et les chargements plein-écran (JAMAIS
+  les spinners inline de bouton) ; shimmer skeleton légèrement teinté brass (@coord VX132). Files :
+  `ui/TaqinorMark.jsx` (nouveau), `ui/SolarLoader.jsx` (nouveau), `components/layout/Header.jsx`,
+  `components/RouteFallback.jsx`, `index.css` (keyframe `sun-rise`). DoD : header = soleil-éclair
+  (snapshot, aria/data-* intacts) ; transition de route = petit soleil animé, figé sous
+  reduced-motion ; rendu correct clair/sombre via tokens. (T3 — M, sonnet) (@lane: frontend/brand)
+
+- [ ] VX155 — **La gradation émotionnelle du funnel : signé célébré, envoyé/payé reconnus.**
+  Le moment le plus important de tout l'ERP — un devis solaire SIGNÉ — est muet :
+  `SigneDialog.jsx:190-213` appelle `accepterDevis` puis les 2 appelants (`LeadForm.jsx:1274`,
+  `LeadsPage.jsx:485`) ferment la modale + refetch, zéro reconnaissance pour une affaire de 150 000
+  MAD ; et les jalons intermédiaires (devis envoyé, facture payée) sont des `toast.success`
+  identiques à « ligne supprimée ». **Fusionné (grand-verdict) :** ce seed enrichit directement le
+  Done= de **VX40** (qui câble déjà SigneDialog/DevisList) — ne pas créer de tâche séparée pour la
+  carte de victoire, l'ajouter au périmètre VX40. Fix (delta à ajouter au Done= de VX40) :
+  `<DealSignedCelebration>` — burst de confetti canvas maison (brass+azur, 0 dépendance), carte de
+  victoire avec montant TTC + kWc (déjà calculés dans `SigneDialog` `optionsDetail` L59) + « ≈ X t
+  CO₂ évitées/an » dérivée, TaqinorMark qui pulse ; dégrade en toast riche sous reduced-motion ;
+  câblé sur les DEUX chemins d'appel. Survit comme tâche autonome : `toastMilestone` dans
+  `lib/toast.js` — un cran au-dessus du succès plat (icône soleil + description réf/client/montant)
+  posé sur devis envoyé (event `devis_sent`) et facture payée (`PaiementsPage`). Files :
+  `ui/DealSignedCelebration.jsx` (nouveau, ≤120 l., @coord VX40), `pages/crm/leads/SigneDialog.jsx`,
+  `pages/crm/leads/LeadsPage.jsx`, `pages/crm/LeadForm.jsx`, `lib/toast.js`,
+  `pages/ventes/DevisList.jsx:476`, `pages/ventes/PaiementsPage.jsx`. DoD : accepter → carte de
+  victoire avec montant + kWc réels (test mock accepterDevis) ; reduced-motion → carte sans
+  mouvement ; devis envoyé/facture payée → toast visuellement distinct du toast générique (test du
+  helper). (T3 — M, sonnet) (@lane: frontend/brand — @with VX40)
+
+- [ ] VX156 — **Une voix avec un point de vue + le moment d'accueil.** La microcopie est correcte
+  mais interchangeable avec n'importe quel SaaS — aucun ton « fier du solaire », aucun vocabulaire
+  métier aux moments émotionnels ; et la première connexion atterrit sur le Dashboard brut (les
+  coachmarks FG16 sont un tour FONCTIONNEL, pas un accueil). Fix : (a) module `lib/voice.js` (~20
+  chaînes FR, vouvoiement, vocabulaire kWc/chantier/mise en service) + guide d'une page, posé sur
+  les 5-6 moments à forte charge : première connexion, file vide (« Tout est à jour — belle journée
+  pour poser des panneaux. »), devis envoyé, affaire signée, chantier terminé, erreur réseau — PAS
+  un rewrite massif (VX45 possède la microcopie générale) ; (b) `<WelcomeMoment>` one-shot à la
+  première connexion : TaqinorMark animé, phrase de mission, bouton « Commencer », flag
+  localStorage défensif (@coord `safeStorage`, VXD-B), skippable, une seule fois. Files :
+  `lib/voice.js` (nouveau), `components/WelcomeMoment.jsx` (nouveau), `main.jsx`, poses sur ~6
+  écrans. DoD : les 6 moments portent une chaîne voice.js (test aucune chaîne vide) ; accueil
+  affiché une fois puis plus jamais (test du flag) ; revue de ton « ça sonne Taqinor ». (T3 — M,
+  sonnet) (@lane: frontend/brand)
+
+- [ ] VX157 — **Le langage d'impact : icônes métier unifiées + la fierté ambiante du parc.**
+  Aucun vocabulaire d'icône partagé pour les grandeurs métier (kWc, production, CO₂ évité,
+  économies) — chaque écran choisit la sienne (`Co2Page` importe Leaf/Sprout/Zap ad hoc) ; et
+  l'impact cumulé du parc (déjà servi par `monitoringApi.getCo2Fleet()`) est enterré dans un
+  sous-écran monitoring. Fix : map `ui/metricIcons.js` (soleil=production, éclair=kWc,
+  feuille=CO₂, portefeuille=économies, HardHat=chantier) + variante `Stat tone="impact"` à accent
+  brass pour les grandeurs d'impact positif ; « pastille d'impact » discrète en pied de Sidebar
+  (« X MWh · Y t CO₂ évitées » cumulés), chargée paresseusement, MASQUÉE si aucune donnée — jamais
+  un « 0 » inventé (scoping company côté serveur ; [BACKEND] additif si l'endpoint manque). Files :
+  `ui/metricIcons.js` (nouveau), `ui/Stat.jsx`, `components/layout/Sidebar.jsx`, poses
+  Co2Page/Dashboard/monitoring. DoD : les KPI kWc/production/CO₂ partagent les mêmes icônes partout
+  (test de la map) ; pastille = vraies valeurs du parc, absente si vide (test conditionnel). (T3 —
+  M, sonnet) (@lane: frontend/brand)
+
+- [ ] VX158 — **Confiance et clarté : les valeurs suggérées se déclarent, le jargon fiscal se
+  traduit.** Deux leçons de produits finis (Ramp, Pennylane) : (a) VX93 pré-remplira
+  owner/ville/TVA/mode de paiement depuis localStorage sans qu'AUCUN signal ne distingue une
+  SUPPOSITION d'une donnée confirmée — un style réutilisable discret (contour pointillé + micro-
+  libellé « suggéré » au focus, retiré dès modification) posé sur les 4 champs VX93 — jamais un
+  « confidence score » générique (à livrer AVEC ou juste après VX93) ; (b)
+  `FiscalitePage.jsx`/`EtatsPage.jsx` exposent « FEC », « liasse », « IS » sans un mot d'aide — une
+  phrase grise par bouton d'export (« FEC — fichier requis par l'administration fiscale en cas de
+  contrôle »), zéro logique. Files : mêmes fichiers que VX93 (LeadForm, ProduitForm,
+  DevisGenerator, FactureList) + `features/compta/pages/FiscalitePage.jsx`,
+  `features/compta/pages/EtatsPage.jsx`. DoD : champ pré-rempli non touché → indice « suggéré »
+  visible, disparaît à la modification (snapshot 1 champ) ; chaque export fiscal porte sa phrase
+  d'aide sans clic. (T3 — S, sonnet ; haiku pour le volet fiscal) (@lane: frontend/brand — @after
+  VX93)
+
+- [ ] VX159 — **`RelationCounters` : le seul bon réflexe d'Odoo, systématisé. @coord ARC46.**
+  Chaque fiche 360 (Lead, Client, Fournisseur, Produit) affiche ses relations à sa façon — aucune
+  convention « compteurs cliquables en tête de fiche » (« 3 devis · 1 facture impayée · 2 tickets
+  SAV »). Fix : composant `ui/RelationCounters.jsx` posé en tête des 4 fiches, lisant les selectors
+  existants par domaine (JAMAIS une nouvelle agrégation cross-app — frontière `selectors.py`
+  respectée), clic → liste cible pré-filtrée (`?client=`, même pattern que VX112). Files :
+  `ui/RelationCounters.jsx` (nouveau), `pages/crm/ClientDetailPanel.jsx`,
+  `pages/stock/FournisseurFiche360.jsx`, `ProduitDetail.jsx`, `pages/crm/LeadForm.jsx`. DoD : les 4
+  fiches affichent les mêmes badges cliquables ; clic → liste pré-filtrée (test) ; zéro nouvelle
+  route cross-app. [coordonner ARC46 — construisible avant `RecordShell`, migrable dedans ensuite]
+  (T3 — M, sonnet) (@lane: frontend/brand)
+
+---
+
+## AXE 2 — ROBUSTESSE (VX160–VX208, 49 tâches survivantes sur 49 seeds ; 0 tuée, 2 rognées —
+SEED-14 re-scopé/SEED-17 rogné, corrections déjà appliquées dans le texte transcrit ci-dessous)
+
+**Sous-groupe VXD-A — Intégrité des mutations & résilience réseau (le niveau sous la
+présentation d'erreur)**
+
+*Note : VX117 (au sommet de ce document) EST la transcription de SEED-01 de cette section — ne
+pas la dupliquer ici, la numérotation continue directement à SEED-02.*
+
+- [ ] VX160 — **Outbox terrain : une op rejetée par le serveur ne disparaît plus en silence.**
+  *(Transcription intégrale de SEED-02 — le résumé de tête figure déjà en VX119 au sommet du
+  document comme bug candidat-build ; cette entrée porte le detail complet pour la lane VXD-A.)*
+  `offline/outbox.js:117-122` purge un batch 100 % en statut `error` sans jamais lire le champ
+  `.error` que le backend renvoie pourtant par op (`field_sync.py:263/266/293/313`) ; l'unique
+  affichage (`OfflineSyncIndicator.jsx:14-23`) rend « Connexion rétablie. » dans les deux cas — une
+  SIGNATURE CLIENT capturée hors-ligne (`FIELD_OPS.SIGNER_CLIENT`) peut s'évaporer sans trace. Fix :
+  trois classes de résultat dans `flush()` (done retirés / `error` GARDÉS en file avec message
+  serveur + compteur de tentatives / échec réseau déjà géré), méthode `fieldOutbox.failed()`,
+  indicateur à 3 états (badge rouge « N action(s) en échec — voir détail », abandon par op
+  UNIQUEMENT explicite). Le message serveur affiché EST le signal de conflit — pas de moteur CRDT.
+  Files : `offline/outbox.js`, `offline/useFieldOutbox.js`, `offline/OfflineSyncIndicator.jsx`.
+  DoD : batch mock 100 % `error` → ops gardées + message par op accessible ; badge distinct rendu ;
+  non-régression `applied`/`replayed`. (T1 — M, sonnet) (@lane: frontend/data)
+
+- [ ] VX161 — **`refreshCoordinator` : un seul refresh 401 partagé entre `axios.js` et
+  `iaApi.js`.** `axios.js:29-53` pose `_retry` PAR REQUÊTE : N requêtes 401 simultanées = N `POST
+  /token/refresh/` parallèles (stampede) ; `iaApi.js:28-53` duplique en plus son PROPRE
+  intercepteur — une page métier + le Copilote au même instant lancent deux refresh concurrents
+  contre le même refresh_token ; en rotation à usage unique, le second échoue →
+  `emitSessionExpired()` intempestif sur une session valide. Fix : `api/refreshCoordinator.js` —
+  promesse de refresh UNIQUE partagée (le premier appelant POST, tout suivant `await` la MÊME
+  promesse, reset en `finally`), consommée par les deux intercepteurs. Files :
+  `api/refreshCoordinator.js` (nouveau), `api/axios.js`, `api/iaApi.js`. DoD : 5 requêtes 401
+  simultanées (mix des deux instances) → exactement UN POST refresh, les 5 rejouées après. (T1 —
+  S, sonnet) (@lane: frontend/data)
+
+- [ ] VX162 — **`BroadcastChannel` de session : le logout se propage à tous les onglets.**
+  `authSlice.js:17-28` ne notifie que l'onglet courant ; grep cross-tab exhaustif = 1 hit
+  cosmétique (`GlobalSearch.jsx:144`). Sur un poste partagé (accueil/atelier), l'onglet B continue
+  de MUTER des données au nom d'un utilisateur délibérément déconnecté jusqu'à son premier 401
+  tardif. Fix : `BroadcastChannel('taqinor-session')` dans `providers/session-bridge.js` —
+  `logoutUser.fulfilled` publie, chaque onglet s'abonne dans `SessionProvider` et dispatch le
+  logout local + `/login` sans attendre un échec réseau ; feature-detect no-op. Files :
+  `providers/session-bridge.js`, `authSlice.js`, `providers/SessionProvider.jsx`. DoD : logout
+  onglet A → onglet B simulé passe `isAuthenticated:false` sans appel réseau. (T2 — S, sonnet)
+  (@lane: frontend/data)
+
+- [ ] VX163 — **Infrastructure thunk : annulation `{signal}` + dé-duplication en vol des 4 thunks
+  chauds.** 79 `createAsyncThunk` identiques, ZÉRO `{signal}` (grep) — un démontage laisse la
+  requête vivre et réduire un écran disparu ; et zéro dédup : deux montages simultanés = deux GET
+  identiques. Fix (0 dép — le « RTK Query sans RTK Query ») : `lib/thunkHelpers.js` —
+  `createCancellableThunk(type, apiCall)` injecte `thunkAPI.signal` dans axios et normalise
+  `CanceledError` (jamais toasté) ; + une `Map<clé, Promise>` in-flight (~15 lignes) sur
+  `fetchProduits`/`fetchDevis`/`fetchLeads`/`fetchFactures` — les MÊMES 4 slices que VX54 touche
+  (séquencer `@with/after VX54`). Files : `lib/thunkHelpers.js` (nouveau), les 4 slices
+  (stock/ventes/crm). DoD : dispatch double avant résolution → 1 seul appel réseau, 2 promesses
+  même payload ; démontage → `meta.aborted === true`, 0 toast. (T2 — M, sonnet) (@lane:
+  frontend/data — @with/after VX54)
+
+- [ ] VX164 — **Plancher anti-course : séquence (messaging), fraîcheur (réducteurs `update*`),
+  verrou `InlineEdit`.** (a) `messagingSlice.js:200-205` protège le changement de conversation mais
+  pas l'ORDRE — le poll 3 s (`useChatPolling.js:51-55`) n'annule pas le tick précédent : un tick
+  N-1 lent écrase la page plus fraîche (un message reçu DISPARAÎT jusqu'au tick suivant). (b)
+  `crmSlice.js:159-162`, `ventesSlice.js:300-307`, `stockSlice.js:196-199` : remplacement TOTAL au
+  `.fulfilled` — deux PATCH rapides du même utilisateur résolus dans l'ordre inverse font régresser
+  l'écran. (c) `InlineEdit.jsx:30-48` : Enter puis blur = deux `onSave` (le verrou `saving` ne
+  pilote que l'AFFICHAGE). Fix : compteur monotone par ressource appliqué au `fulfilled` (no-op si
+  obsolète — même mécanique pour a et b) ; `committingRef` vérifié EN TÊTE de `commit()` pour (c).
+  Files : `messagingSlice.js`, `useChatPolling.js`, les 3 slices (réducteurs
+  `update*/patch*.fulfilled`), `components/InlineEdit.jsx`. DoD : résolutions inversées → l'état
+  final contient LES DEUX changements / le payload le plus récent DEMANDÉ ; Enter+blur synchrone →
+  `onSave` 1×. (T2 — M, sonnet) (@lane: frontend/data)
+
+- [ ] VX165 — **Chargement par-ressource : le spinner ne ment plus (prérequis silencieux de
+  VX67).** `ventesSlice.js:288-298/316-321/353-358` (miroirs crm/stock) : UN `state.loading`
+  partagé par `fetchDevis`/`fetchBonsCommande`/`fetchFactures` — le premier résolu éteint le
+  spinner pendant que les requêtes sœurs chargent encore. Fix : `pendingCount`
+  incrémenté/décrémenté par chaque `pending`/settled (une ligne par builder, rétrocompatible avec
+  les sélecteurs existants), spinner tant que `> 0`. Files : `ventesSlice.js`, `crmSlice.js`,
+  `stockSlice.js`. DoD : `fetchDevis` + `fetchFactures` parallèles, factures résout d'abord →
+  `loading` reste `true` (test rouge avant/vert après). (T2 — S, sonnet) (@lane: frontend/data)
+
+**Sous-groupe VXD-B — Formulaires : ne jamais perdre une saisie**
+
+- [ ] VX166 — **Câbler `confirmLeaveIfDirty` chez les 7 adoptants existants + `CrudDialog` (8
+  écrans compta d'un coup).** Les 7 formulaires qui calculent DÉJÀ `dirty` + `useDirtyGuard`
+  (`ClientForm.jsx:240`, `ProduitForm.jsx:402`, `DevisForm.jsx:222`, `FactureForm.jsx:263`,
+  `InstallationDetail.jsx:725`, `EquipementsPage.jsx:229`, `TicketsPage.jsx:529`) gardent
+  `onOpenChange={(o)=>{if(!o) onClose()}}` — Radix ferme sur Escape ET clic-overlay et jette la
+  saisie ; `confirmLeaveIfDirty` (`useDirtyGuard.js:27-33`) a 0 appelant dans tout le repo (grep).
+  Et `features/compta/components/CrudDialog.jsx:67` (partagé par 8 pages compta) n'a AUCUNE notion
+  de dirty. Fix : gater la fermeture par `confirmLeaveIfDirty(dirty)` dans les 7 fichiers + snapshot
+  à l'ouverture + garde dans `CrudDialog` (zéro changement d'API pour les 8 appelants). Files : les
+  7 fichiers + `CrudDialog.jsx`. DoD : modifier → Escape → `confirm` invoqué (mock) ; annuler →
+  modale ouverte, champs intacts ; non-dirty inchangé ; smoke 2 pages compta. (T1 — S/M, sonnet)
+  (@lane: frontend/forms)
+
+- [ ] VX167 — **LeadForm : dirty-tracking + garde de fermeture (le modal n°1 — complément direct
+  de VX89). @with/after VX89.** `LeadForm.jsx:588` (overlay `onClick={onClose}`) et `:639` (bouton
+  ✕) : ZÉRO notion de dirty dans tout le fichier (grep) — 15 champs (bien+GPS+relance+tags) perdus
+  sur un mis-clic, à 20-40 ouvertures/jour/commercial. VX89 (Escape+autofocus via ResponsiveDialog)
+  rendra même la perte PLUS facile : Escape marchera enfin, et fermera sans rien demander. Fix :
+  snapshot initial (patron `isDirty` prouvé dans `ProduitForm.jsx:286`) + `useDirtyGuard(dirty)` +
+  `confirmLeaveIfDirty` sur ✕/overlay/futur `onOpenChange`. Files : `pages/crm/LeadForm.jsx`. DoD :
+  modifier un champ → toute fermeture demande confirmation ; e2e leads verts. (T1 — M, sonnet)
+  (@lane: frontend/forms — @with/after VX89)
+
+- [ ] VX168 — **Balayage garde+autoFocus : 13 dialogues flotte/gestion_projet +
+  `EmployeDetail`/`Recrutement` + autoFocus top-20.** 9 dialogues `features/flotte/*` (dont
+  `PleinDialog` 11 useState, `SignalementDialog` saisie terrain) + 4
+  `features/gestion_projet/components/*Dialog.jsx` : 0 dirty-guard (grep) ;
+  `features/rh/Recrutement.jsx` (31 useState — 2ᵉ plus long formulaire du repo après
+  DevisGenerator) et `EmployeDetail.jsx` (19) : 0 garde ; `autoFocus` ne couvre que 12/93
+  fichiers-formulaire. Fix : même recette snapshot+garde posée mécaniquement (1ᵉʳ fichier = patron
+  validé, puis répétition), et `autoFocus` posé dans la MÊME passe + sur ~20 formulaires fréquents
+  (UsersManagement, RolesManagement, KpiAlertesPage, écrans compta). Files : les 15 fichiers cités +
+  ~20 autoFocus. DoD : par fichier — modifier→fermer → confirmation ; ouverture →
+  `document.activeElement` = premier champ. (T1 — L, sonnet ; haiku après le patron) (@lane:
+  frontend/forms)
+
+- [ ] VX169 — **`useBlocker` : garde de navigation IN-APP des formulaires route-level.**
+  `useDirtyGuard` ne couvre que `beforeunload` — un clic sidebar pendant la saisie navigue
+  instantanément (pushState, pas un déchargement) ; `useBlocker` de react-router v7
+  (`createBrowserRouter` confirmé `router/index.jsx:207`) = 0 usage dans le repo. Fix :
+  `hooks/useNavigationGuard.js` fin au-dessus de `useBlocker` (fallback no-op), monté sur
+  `ParametresEntreprise`, `EquipementSignalerPage`, `DashboardConfigPage`, `ArticleEditor`,
+  `ReclamationEditor` ; dialogue design-system, pas `window.confirm` brut. Files : le hook
+  (nouveau) + les 5 écrans. DoD : modifier ParametresEntreprise → clic lien sidebar →
+  confirmation ; accepter navigue, annuler reste. (T2 — M, sonnet) (@lane: frontend/forms)
+
+- [ ] VX170 — **`useFormSafety` : LA primitive qui rend le mauvais câblage impossible (incl.
+  réparation WebKit du hook + `safeStorage`).** Le repo n'a pas de convention : chaque formulaire
+  réinvente son snapshot (`isDirty` / `JSON.stringify` diff / `useMemo` custom) et personne ne
+  branche les 3 mécanismes ensemble (tab-close + in-app-close + router) — les 7 « meilleurs
+  élèves » n'en branchent que 1 sur 3. Pire : `useDirtyGuard.js:20` n'écoute QUE `beforeunload`,
+  quasi muet sur iOS (swipe-back/bascule d'app sautent l'événement ; le fiable WebKit est
+  `pagehide`) → toute la pile B est aveugle iPhone. Fix : `ui/useFormSafety.js` — `{dirty,
+  guardedClose, snapshot}` composant (a) diff générique, (b) `useDirtyGuard`, (c)
+  `confirmLeaveIfDirty` wrappé, (d) flag route-level → VX169 ; réparer le hook sous-jacent avec
+  `pagehide` (+ `visibilitychange→hidden`) qui PERSISTE un brouillon défensif — on ne peut pas
+  bloquer un pagehide, la bonne UX WebKit = sauver, pas bloquer — via un `lib/safeStorage.js`
+  défensif (try/catch + éviction sur `QuotaExceededError`, Safari privé) que VX62/VX46/VX10/NTUX16
+  consommeront aussi. Files : `ui/useFormSafety.js` (nouveau), `ui/useDirtyGuard.js`,
+  `lib/safeStorage.js` (nouveau), migration d'au moins 3 formulaires (ClientForm, CrudDialog, un
+  dialogue flotte). DoD : test du hook isolé ; `pagehide` dirty → persistance appelée ; `setItem`
+  en quota plein ne crash pas et évince le plus ancien ; 3 formulaires migrés avec moins de code.
+  (T2 — M, sonnet) (@lane: frontend/forms)
+
+- [ ] VX171 — **Vérité des erreurs de champ : serveur → champ (`useServerFieldErrors`) + erreurs
+  locales effacées à la frappe.** (a) DRF renvoie `{champ:[msg]}` mais 12 fichiers seulement posent
+  `aria-invalid` — tout est écrasé en UN toast opaque ; `FormField` (`ui/Form.jsx:56-77`) est
+  correctement câblé et sous-consommé. (b) `ClientForm.jsx:170-180`, `DevisForm.jsx:147/215`,
+  `FactureForm.jsx:184/256` : `setErrors` n'est jamais nettoyé au `onChange` — le rouge MENT
+  pendant que l'utilisateur corrige, jusqu'au prochain submit. Fix : `hooks/useServerFieldErrors.js`
+  (mapping DRF → `errors{champ}` consommé par `FormField error=`) posé sur
+  Client/Lead/Devis/Facture/Produit ; dans chaque `set(field, …)`, `delete errors[field]`. Files :
+  le hook (nouveau) + les 5 formulaires. DoD : soumettre invalide → LE champ vire rouge avec son
+  message (pas un toast anonyme) ; taper dans le champ fautif → l'erreur disparaît avant re-submit ;
+  tests des formes DRF (detail / `{champ:[…]}` / array). (T2 — M, sonnet) (@lane: frontend/forms)
+
+**Sous-groupe VXD-C — iOS Safari / WebKit / PWA (la longue traîne au-delà de VX48-53/68)**
+
+- [ ] VX172 — **Exports blob (xlsx/csv/json/png) fiables sur iOS/standalone : routage par geste +
+  pending visible + repli PDF réparé. @after VX48/49 — RE-SCOPÉ par le grand-verdict.**
+  `downloadBlob.js:2-11` et ~20 call-sites posent `a.download` sur un `blob:` (`ClientList.jsx:138`,
+  `LeadsPage.jsx:124/219`, `StockList.jsx:191/669/771`, `ClientRgpdActions.jsx:35`,
+  `DocumentsArchive.jsx:89/111`, `PaieDeclarations.jsx:67/578/886`, `Risques.jsx:73`,
+  `comptaApi.js:16`, `importApi.js:55/74`…). **Constat corrigé (grand-verdict) :** Safari iOS ≥13
+  SUPPORTE `a.download` sur les URL blob — le risque réel est le mode PWA STANDALONE + les vieux
+  iOS + une UX de fichier téléchargé invisible (gestionnaire de téléchargements indécouvrable en
+  coquille installée), PAS un échec universel. Le repli terminal `pdfBlob.js:88-92` combine
+  `download`+`_blank` — fragile dans les mêmes conditions. La gestion d'erreur des ~49 sites blob
+  (try/catch + toast + `revokeObjectURL`) appartient à **VX49** — ne PAS la refaire ici. Fix :
+  `downloadBlobInGesture` (patron `openPdfInGesture` de VX48 : onglet pré-ouvert dans le handler
+  de tap quand iOS/standalone, `a.download` ailleurs) + routage des ~20 sites ; état
+  `loading`/désactivé sur les 6 boutons Excel (`DevisList.jsx:772`, `FactureList.jsx:620`,
+  `InstallationsPage.jsx:353`, `Rapports.jsx:523`, `EquipementsPage.jsx:551`,
+  `TicketsPage.jsx:1396` — VX49 pose le toast, jamais le pending) ; brancher le repli `pdfBlob` vers
+  `openPdfInGesture` ou `location.assign` (uniquement le chemin d'OUVERTURE, jamais le moteur
+  `/proposal`, règle #4). Files : `utils/downloadBlob.js`, `utils/pdfBlob.js`, `api/importApi.js`,
+  les call-sites. DoD : vitest UA iOS/standalone → le helper passe par le chemin geste (l'inverse
+  ailleurs) ; bouton Exporter désactivé + spinner pendant l'attente ; vérification APPAREIL
+  RÉEL/standalone notée au DoD (le simulateur ne suffit pas) ; e2e WebKit (VX189) : « Exporter »
+  aboutit. (T2 — M, sonnet) (@lane: frontend/ios)
+
+- [ ] VX173 — **`VoiceRecorder` : mimeType négocié (fin du blob mp4 étiqueté « webm »).**
+  `VoiceRecorder.jsx:64` : `new MediaRecorder(stream)` sans mimeType, `:70` étiquette
+  `rec.mimeType || 'audio/webm'` — WebKit ne supporte pas webm et produit `audio/mp4` ⇒ message
+  vocal mal typé, lecture/serveur KO sur iPhone. Le voisin
+  `features/ia/voice/useVoiceChat.js:55` a DÉJÀ `pickAudioMimeType()` propre (webm/opus → mp4).
+  Fix : exporter `pickAudioMimeType` (source unique), passer `{mimeType}` au constructeur,
+  étiqueter le blob du vrai type négocié. Files : `features/messaging/VoiceRecorder.jsx`,
+  `features/ia/voice/useVoiceChat.js`. DoD : mock MediaRecorder mp4-only → blob `audio/mp4`,
+  jamais « webm » en dur ; un vocal WebKit se relit. (T2 — S, sonnet) (@lane: frontend/ios)
+
+- [ ] VX174 — **Politique de saisie iOS sur les primitives (`sanitize`) + `DatePicker` là où
+  `min`/`max` porte une règle métier.** `ui/Input.jsx`/`Textarea.jsx` : ZÉRO défaut
+  `autoCapitalize`/`autoCorrect` (29 fichiers overrident au coup par coup) — références
+  `DEV-202607-…`, emails, ICE/IF, SKU, plaques auto-capitalisés/corrigés au clavier iPhone. Et 93
+  `<input type="date">` natifs : la roue iOS IGNORE `min={todayStr()}`
+  (`ActivitiesPanel.jsx:125`, `MesActivitesPage.jsx:278`) — contrainte métier contournable sur
+  iPhone. Fix : prop `sanitize` (`'code'|'email'|'name'|'off'`) sur Input/Textarea forçant
+  `autoCapitalize/autoCorrect/spellCheck/autoComplete/inputMode` cohérents, appliquée aux champs
+  référence/ICE/IF/SKU/email des formulaires clés ; remplacer par `ui/DatePicker` (custom
+  existant, borne en JS) UNIQUEMENT les dates à contrainte métier (relances, échéances, activités à
+  venir). Files : `ui/Input.jsx`, `ui/Textarea.jsx`, `ActivitiesPanel.jsx`,
+  `MesActivitesPage.jsx`, formulaires clés. DoD : `<Input sanitize="code">` rend les 4 attributs
+  off ; WebKit : impossible de choisir une date < `min` sur un champ borné. (T2 — M, sonnet)
+  (@lane: frontend/ios)
+
+- [ ] VX175 — **Plancher CSS tactile/viewport : `touch-action` global, momentum horizontal,
+  `.modal` dvh, ellipse sidebar.** Quatre oublis mécaniques prouvés : (a) `touch-action:
+  manipulation` n'existe que sur `.kb-drag-wrap` (`index.css:4180`) — double-tap-zoom parasite +
+  délai 300 ms partout ailleurs : l'étendre au sélecteur global du tap-highlight
+  (`index.css:148`). (b) ≥5 conteneurs `overflow-x:auto` sans `-webkit-overflow-scrolling:touch`
+  ni `overscroll-behavior-x:contain` (`.lines-table-wrap:1179`, `.lv-wrap:4472`, kanban `:4087`,
+  `.lead-nav:1012` — `.agent-sql` RETIRÉ : CSS mort, 0 consommateur, sa suppression appartient à
+  VX121) — classe utilitaire `.scroll-x-touch`. (c) `.modal` (`index.css:899-905`) est le SEUL
+  bloc `100vh` du fichier sans repli `100dvh` (bas de modale rogné sous barre d'adresse
+  dynamique) — ajouter la paire comme partout ailleurs. (d) `Sidebar.jsx:312` : `title=` seulement
+  si `collapsed` + `.sidebar-nav-label` sans `text-overflow` (`index.css:427`) — libellé
+  silencieusement COUPÉ à texte-zoom élevé : ellipsis + `title` inconditionnel. Files :
+  `index.css`, `components/layout/Sidebar.jsx`. DoD : WebKit — scroll de lignes inertiel,
+  double-tap sans zoom ; `modal-viewport.test` étendu à `dvh` ; libellé tronqué → `…` + `title`
+  présent en état déplié. (T2 — S, haiku/sonnet) (@lane: frontend/ios)
+
+- [ ] VX176 — **Safe-area complète : overlays plein écran + barres fixes (encoche/Dynamic Island
+  en PWA standalone).** `black-translucent` (`index.html`) fait passer le contenu SOUS la barre
+  d'état ; le header réserve `env(safe-area-inset-top)` (`index.css:467`) mais les overlays Radix
+  `fixed inset-0` (`ui/Sheet.jsx:26`, `Dialog.jsx:40`, `AlertDialog.jsx:23`) n'ont AUCUN inset
+  haut — un Sheet latéral colle son bord sous l'encoche en standalone ; `safe-area-inset` = 2
+  fichiers dans tout le repo (les barres fixes/bottom-tab/FAB VX42 non couvertes non plus). Fix :
+  classe `safe-top` (`padding-top: env(safe-area-inset-top)`) sur les overlays plein écran +
+  application aux surfaces fixes globales + `viewport-fit=cover` vérifié. Files : `ui/Sheet.jsx`,
+  `ui/Dialog.jsx`, `ui/AlertDialog.jsx`, `index.css`, `index.html`. DoD : simulateur iPhone
+  standalone — l'en-tête d'un Sheet/AlertDialog n'est jamais sous l'encoche ; extension de
+  `modal-viewport.test.jsx`. (T2 — S, sonnet) (@lane: frontend/ios)
+
+- [ ] VX177 — **`ExternalLink` : navigation standalone PWA maîtrisée.** En mode `standalone` iOS,
+  ~18 `<a target="_blank">` externes (GED/KB/RH/wa.me/`verifierIceUrl`) ouvrent un
+  SFSafariViewController sans retour naturel ; un lien interne nu peut ÉJECTER hors de la coquille
+  installée. `PwaPrompts.jsx:17` détecte `isStandalone()` sans jamais l'exploiter. Fix : un
+  `<ExternalLink>`/`openExternal(url)` centralisant `_blank`+`noopener` pour l'EXTERNE et
+  react-router pour l'INTERNE (jamais de `<a href>` nu pour une route interne) ; ne touche PAS
+  `/proposal` ni les pages publiques GED (règle #4). Files : `ui/ExternalLink.jsx` (nouveau) + les
+  call-sites externes. DoD : en standalone simulé, lien externe → nouvel onglet sans quitter la
+  coquille ; lien interne → routeur ; test de rendu. (T2 — M, sonnet) (@lane: frontend/ios)
+
+- [ ] VX178 — **`backdrop-blur` retiré des surfaces sticky scrollées (jank WebKit du
+  DataTable).** `ui/datatable/DataTable.jsx:436` (thead `sticky top-0` + `backdrop-blur`) + `:669`
+  (tfoot sticky) + `BulkActionBar.jsx:39` : `backdrop-filter` recomposé à CHAQUE frame de scroll —
+  jank et scintillement connus WebKit sur les grandes listes ; ARC49/53 vont migrer
+  DevisList/FactureList SUR ce composant fragile. Fix : fond opaque token-isé (`bg-muted` plein)
+  sur les barres sticky — le blur n'apporte rien sur une barre déjà pleine et coûte cher ; blur
+  conservé sur les overlays STATIQUES. Files : `ui/datatable/DataTable.jsx`,
+  `ui/datatable/BulkActionBar.jsx`. DoD : grep confirme `backdrop-blur` retiré des thead/tfoot
+  sticky ; rendu visuel équivalent ; scroll 100+ lignes fluide en WebKit. (T2 — S, sonnet) (@lane:
+  frontend/ios — avant ARC49/53)
+
+- [ ] VX179 — **Service worker : cache runtime `StaleWhileRevalidate` des images/médias
+  dynamiques.** `sw.js:41-65` : précache build-time + navigations network-first SEULEMENT — zéro
+  `registerRoute` runtime : photos d'installation/GED et images KB re-téléchargées à chaque
+  visite, et CASSÉES hors-ligne alors que la coquille, elle, marche. Fix : `registerRoute`
+  `StaleWhileRevalidate` same-origin `/media/` + images KB/GED avec `ExpirationPlugin` borné (max
+  entries + max age — les paquets `workbox-*` sont déjà des dépendances via vite-plugin-pwa, 0
+  dép nouvelle). Files : `frontend/src/sw.js` uniquement. DoD : Playwright — article KB avec
+  images visité online → `setOffline(true)` → reload → images rendues du cache ; nombre d'entrées
+  ≤ max configuré. (T2 — S, sonnet) (@lane: frontend/ios)
+
+**Sous-groupe VXD-C (suite) — Viewport & performance réelle**
+
+- [ ] VX180 — **`DataTable`/`ListShell` : le seuil documenté (768px) n'est PAS le seuil réel
+  (Tailwind `sm` = 640px) — 42 pages affectées, indétectable par les tests actuels. AVANT
+  ARC49/53.** `ui/datatable/DataTable.jsx:396` (`hidden … sm:block`) et `:702` (`sm:hidden`)
+  utilisent l'utilitaire Tailwind par défaut (640px) alors que le code ET son test affirment 768px
+  en toutes lettres (commentaires `:697/:701`, `DataTable.test.jsx:253-271`) — vérifié : AUCUN
+  override de `--breakpoint-sm` dans `design/tokens.css` `@theme`. Entre 640 et 767px (petite
+  tablette portrait, Android paysage, fenêtre redimensionnée), la TABLE DESKTOP s'affiche à la
+  place des cartes que le code croit garantir. Le test ne vérifie qu'une SOUS-CHAÎNE de classe
+  (jsdom n'applique aucune media query) — il ne peut structurellement PAS le détecter ; aucun
+  projet Playwright ne couvre cette bande (mobile=390, desktop=1280). 42 pages via
+  `ui/module/ListShell.jsx` (compta ×9, flotte ×8, paie ×5, rh ×5, ged ×4…) + 4 usages directs
+  héritent du bug. Fix : variante Tailwind DÉDIÉE `dt-desktop:` mappée à 768px, réservée au
+  DataTable (option sûre — l'option globale `--breakpoint-sm: 48rem` traverse tout `sm:` du
+  projet → opus si retenue) ; corriger le test pour PROUVER le seuil (Playwright réel à 700px,
+  `toBeVisible()`, jamais une classe). Files : `ui/datatable/DataTable.jsx`, `DataTable.test.jsx`,
+  `e2e/datatable-breakpoint.spec.js` (nouveau), `design/tokens.css` (si option globale). DoD : à
+  700px réels, les cartes sont visibles et la table ne l'est pas ; les 42 pages `ListShell` non
+  régressées. (T1 — M, sonnet ; opus si option globale) (@lane: frontend/ios — avant ARC49/53)
+
+- [ ] VX181 — **`.header-right` : 9 cibles interactives sans garde de largeur — débordement à
+  320-375px.** `index.css:1943-1946` fige `.header-right { flex-shrink:0; flex:0 0 auto }` sur
+  mobile alors qu'il empile : loupe repliée, `LanguageSwitcher`, 3 boutons `ThemeToggle` jamais
+  masqués (rendu inconditionnel `Header.jsx:87`, seul le LIBELLÉ est `hidden sm:inline` —
+  `ThemeToggle.jsx:16-52`), Copilote, `ChatBell`, `NotificationBell`, avatar. Avec le padding
+  `max(1.25rem, safe-area)`, l'espace utile à 320px ≈ 280px pour TOUT le header. Fix : `ThemeToggle`
+  en `hidden md:flex` + les 3 options ajoutées au `DropdownMenu` du menu utilisateur ; si le budget
+  reste tendu, regrouper Copilote/ChatBell/NotificationBell derrière un menu « Activité » mobile.
+  Files : `design/ThemeToggle.jsx`, `components/layout/Header.jsx`. DoD : à 320 et 375px,
+  `scrollWidth <= clientWidth` sur `.header` (Playwright) ; les 3 thèmes restent accessibles via le
+  menu ; e2e mobile vert. (T2 — S/M, sonnet) (@lane: frontend/ios)
+
+- [ ] VX182 — **7 modales fait-main hors LeadForm : le même défaut que VX89 corrige, sur 7
+  surfaces qu'il ne cite pas. @after VX89.** Grep négatif vérifié
+  (`Escape|autoFocus|role="dialog"|aria-modal|ResponsiveDialog` = 0) sur 7 fichiers au même shell
+  `.modal-overlay` brut que `LeadForm.jsx:588` : `features/logistique/PodCaptureDialog.jsx`,
+  `features/logistique/TransfertsScreen.jsx`, `pages/crm/ClientDetailPanel.jsx`,
+  `pages/crm/leads/ConvertirClientDialog.jsx`, `LeadInsightsDialog.jsx`, `PlanActiviteDialog.jsx`,
+  `SigneDialog.jsx` — Tab passe SOUS le voile, Escape ne ferme rien, dont deux flux terrain
+  photo/signature à forte fréquence tactile. Fix : envelopper chaque shell dans
+  `ResponsiveDialog` (Dialog Radix bureau / Sheet bas mobile, hook `matchMedia` réactif — déjà
+  4/11 adoptants), `autoFocus` sur le premier contrôle, en LOT mécanique une fois le patron VX89
+  posé. Files : les 7 fichiers. DoD : chacun répond à Escape, autofocus posé, largeur desktop
+  équivalente, e2e leads/logistique verts. Complément de VX168 (dirty-guard flotte/GP — fichiers
+  disjoints, préoccupation différente). (T2 — M, sonnet) (@lane: frontend/forms — @after VX89)
+
+- [ ] VX183 — **Densité par palier : colonnes kanban 272px fixes (pipeline à moitié invisible sur
+  iPad) + calendrier 7 colonnes illisible sous 400px.** (a) `index.css:4094-4095` (`.kb-col { flex:
+  0 0 272px }`), aucune media query 768-1024 : sur l'iPad 1024×768 paysage que VX68 ajoute
+  justement en e2e, 6 étapes STAGES.py ≈ 1670px → ~3,7 colonnes visibles, défilement horizontal
+  permanent — et le test « pas de débordement » de VX68 PASSE quand même. Fix :
+  `@media (max-width:1024px)` → `.kb-col` ~220px entre 900-1024, bureau ≥1280 inchangé. (b)
+  `index.css:3846-3848` + `4011-4025` : la grille calendrier reste `repeat(7, minmax(0,1fr))` à
+  TOUTES les largeurs — à 320px, cellules ≈40px, contenu événement intruncable. Fix : vue
+  « agenda » (liste verticale jour-par-jour) sous ~400px, `@after VX147` (coordonner avec son
+  extraction `MonthGrid`). Files : `index.css`, `components/MonthGrid.jsx`/`CalendarPage.jsx`/
+  `crm/leads/views/CalendarView.jsx`. DoD : à 1024px, ≥5 des 6 colonnes visibles sans défilement
+  (mesure Playwright) ; à 320-375px, titre + heure d'un événement lisibles. (T2 — M, sonnet)
+  (@lane: frontend/ios — @after VX147)
+
+- [ ] VX184 — **Un seul comportement mobile pour les lignes-produit : `data-label` + bascule
+  carte sur DevisForm/FactureForm. @coord VX146 (FactureForm).** `pages/ventes/DevisForm.jsx:292-303`
+  et `FactureForm.jsx:407-419` : `<table min-w-[640px]>` dans un `overflow-x-auto` — scroll
+  horizontal permanent sur téléphone, alors que `.lines-table` du générateur bascule en cartes
+  empilées sous 768px (`index.css:2122-2154`, patron `data-label` complet). Fix : poser les
+  `data-label` manquants + étendre les règles `.lines-table` à ces deux tableaux (ou migrer vers la
+  classe partagée si les colonnes correspondent). Files : `DevisForm.jsx`, `FactureForm.jsx`,
+  `index.css`. DoD : à 375px, éditer un devis existant affiche des cartes empilées comme le
+  générateur ; e2e non régressé. La garde `data-label` de VX50 ne couvre que les tables
+  `.data-table` de LISTE, pas ces modales. (T2 — M, sonnet) (@lane: frontend/ios)
+
+- [ ] VX185 — **Le barrel `ui/index.js` fuit `datatable`/`recharts`/`pdfjs-dist` dans le preload
+  du BOOT (~350 Ko gzip avant l'écran de connexion) + garde CI étendue.** Build réel :
+  `dist/index.html` contient 21 `<link rel="modulepreload">` dont `pdfjs-dist` (125,6 Ko gzip),
+  `recharts` (110,3), `datatable` (29,2) — chargés sur TOUTE page, `/login` inclus, sur le 4G
+  marocain. Origine tracée : `Header.jsx:8` importe depuis le barrel `'../../ui'` dont la
+  DERNIÈRE ligne (`ui/index.js:57`) exporte `datatable` ; Header est statique dans `Layout.jsx:7`
+  → `router/index.jsx:8` → `main.jsx`. La garde YHARD7 (`check_bundle_budget.mjs`, 2 161,8/2 200
+  Ko — 98,3 % consommé) mesure chaque chunk ISOLÉMENT, jamais ce que `index.html` précharge au
+  boot. Fix : imports DIRECTS (`../../ui/Avatar`, `../../ui/DropdownMenu`) dans `Header.jsx` +
+  `LanguageSwitcher.jsx:5` ; étendre `check_bundle_budget.mjs` (additif) : échec si un vendor
+  lourd nommé (`recharts`/`pdfjs-dist`/`datatable`/`roof-tool`) figure en `modulepreload`
+  (allowlist commentée) + plafond/métrique du NOMBRE de chunks. Files :
+  `components/layout/Header.jsx`, `LanguageSwitcher.jsx`, `frontend/scripts/check_bundle_budget.mjs`.
+  DoD : après build, `grep modulepreload dist/index.html` sans recharts/pdfjs/datatable ; la garde
+  est rouge si on les réintroduit ; `Header.test.jsx` vert. (T2 — M, sonnet) (@lane:
+  frontend/ios)
+
+- [ ] VX186 — **Code-splitting intra-écran : les 5 vues de LeadsPage + `MapView`/leaflet enfin
+  lazy.** `pages/crm/leads/LeadsPage.jsx:22-26` importe STATIQUEMENT les 5 vues, le rendu
+  (`:437-449`) ne fait qu'en choisir une : `CarteView` embarque leaflet (150,7 Ko/44,4 gzip, plus
+  gros composant non-vendor), `ChartsView` embarque recharts → LeadsPage = PLUS GROS chunk de
+  route du repo (137,9 Ko/38 gzip). `MapView` est aussi statique dans `CartePage.jsx` et
+  `ParcInstallePage.jsx:467`. Fix : `React.lazy` + `<Suspense>` autour du switch de vue (motif
+  standard du router, 0 dép) ; `lazy(MapView)` aux 3 sites. Files : `LeadsPage.jsx`,
+  `CartePage.jsx`, `views/CarteView.jsx`, `installations/ParcInstallePage.jsx`. DoD : `npm run
+  build` → `LeadsPage-*.js` chute (~40 Ko gzip, shell + vues par défaut) ;
+  MapView/ChartsView/CalendarView = chunks séparés chargés au premier clic d'onglet ; tests
+  LeadsPage/KanbanView verts. (T2 — S/M, sonnet) (@lane: frontend/ios)
+
+- [ ] VX187 — **LeadsPage runtime : `useDeferredValue` sur le filtre + `React.memo` sur les
+  cartes (l'exception MESURÉE au différé round-2).** `LeadsPage.jsx:76/:82` :
+  `filterLeads(leads, filters)` recalcule en SYNCHRONE dans un `useMemo` à chaque frappe de la
+  recherche ; et zéro `memo(` dans `LeadCard.jsx`/`ListView.jsx` : chaque frappe re-rend toutes
+  les cartes visibles. Fix : `useDeferredValue(filters)` pour dériver la liste (input dans la lane
+  urgente, `isStale` → dim) ; `React.memo(LeadCard)` + rangée ListView + `useCallback` sur les 2-3
+  handlers parents (sinon le memo ne tient pas) ; option (c) `<Activity mode>` (React 19.2
+  confirmé `^19.2.5`) pour préserver scroll/état local à la bascule kanban↔liste — API récente :
+  vérifier la sémantique des effets avant de shipper, abandonner proprement si elle ne convient
+  pas. Files : `LeadsPage.jsx`, `views/LeadCard.jsx`, `views/ListView.jsx` (+ call-sites
+  KanbanView). DoD : vitest — frappes rapides : `filterLeads` ne re-tourne pas en synchrone dans
+  le commit de la frappe ; spy : une carte non concernée ne re-rend pas ; (c) bascule → scroll
+  préservé. (T2 — M, sonnet) (@lane: frontend/ios)
+
+- [ ] VX188 — **DevisGenerator : extraire `DevisLineRow` mémoïsé + `startTransition` sur les
+  cascades de recalcul. @with/after VX62 — même fichier.** `DevisGenerator.jsx` : 64 `useState` ;
+  les agrégats lourds sont DÉJÀ bien mémoïsés (`totals` :336-339, `roi`/`chartData` en
+  `useDeferredValue` :354-358) MAIS le tableau de lignes (`lines.map` :1979) est du JSX inline :
+  chaque frappe dans `note`/`farmSurfaceHa`/n'importe lequel des 63 autres états réconcilie N
+  `<ProduitPicker>` (filtrage interne `ProduitPicker.jsx:44-66` tournant à vide) ; et
+  `onProduitChange`/`onProduitCreated` sont recréés à chaque rendu. Fix : extraire `DevisLineRow`
+  en `React.memo` + stabiliser les callbacks (clé de ligne en ARGUMENT, pas en fermeture) ;
+  envelopper les 2-3 cascades de recalcul solar.js dans `startTransition` avec `isPending` sur le
+  bloc TOTAUX — jamais sur l'input : la règle fondateur « ne jamais snapper/rejeter un nombre
+  tapé » est un invariant absolu, ceci n'est qu'un changement d'ORDONNANCEMENT. Files :
+  `pages/ventes/DevisGenerator.jsx`. DoD : taper dans « Note » sur un devis à 15 lignes ne re-rend
+  PAS les ProduitPicker inchangés (spy) ; le test noValidate/step="any" reste vert. (T2 — M,
+  sonnet) (@lane: frontend/ventes — @with/after VX62)
+
+- [ ] VX189 — **Pack micro-perf mécanique : chunk `icons` unique, Sidebar `useMemo`,
+  `content-visibility`, LoAF dev-warning.** Quatre gains prouvés, tous S, zéro dépendance : (a)
+  126 chunks JS < 1 Ko gzip (icônes lucide individuelles, sur 345 chunks au total) —
+  `manualChunks` dédié dans `vite.config.js:203-211` (`lucide-react` → chunk `icons` unique). (b)
+  `Sidebar.jsx:238-246` recalcule la fusion `NAV_SECTIONS`+`moduleNavSections` et re-filtre par
+  rôle À CHAQUE rendu — `useMemo` sur la fusion (statique) et le filtrage (`[role, permissions]`).
+  (c) `content-visibility: auto; contain-intrinsic-size` sur les sections hors-écran de
+  Dashboard/Rapports (paint sauté sans JS — vérifier que recharts ne casse pas sous
+  content-visibility). (d) `lib/devPerfWarn.js` dev-only : `PerformanceObserver`
+  `long-animation-frame` → `console.warn` formaté, gardé par `import.meta.env.DEV`, zéro octet en
+  prod. **Note de coordination :** quand VX61 se construit, utiliser `web-vitals/attribution` et
+  inclure `longAnimationFrameEntries` (top-3 scripts) dans le beacon — amendement du Done= de
+  VX61, même fichier `vitals.js`, ne pas transcrire comme tâche. Files : `vite.config.js`,
+  `components/layout/Sidebar.jsx`, CSS Dashboard/Rapports, `lib/devPerfWarn.js` (nouveau),
+  `main.jsx`. DoD : chunks < 1 Ko ≈ 0-5 + un chunk `icons` unique, budget YHARD7 vert ; profiler :
+  Sidebar ne recalcule que sur changement de rôle ; zéro saut de scrollbar ; tâche synthétique
+  250 ms → table console en dev, zéro référence au module en build prod. Sora/`/landing` EXCLU —
+  VX57 le possède. (T2 — S, haiku ; sonnet pour le c) (@lane: frontend/ios)
+
+- [ ] VX190 — **Garde CI WebKit étendue : exports blob + sticky DataTable + standalone. @after
+  VX68 + VX172/176/178.** VX68 ajoute les projets `mobile-safari` (WebKit réel) + `tablet` mais ne
+  teste NI l'export blob (VX172), NI le rendu sticky/`backdrop-blur` du DataTable (VX178), NI la
+  navigation standalone (VX176/177). Fix : 3 assertions ajoutées au spec WebKit une fois VX68
+  mergé : (a) clic « Exporter » aboutit par le chemin geste (pas d'échec silencieux) ; (b) scroll
+  d'un DataTable large garde thead/tfoot lisibles (pas de détachement) ; (c) un `Sheet` en
+  standalone simulé respecte l'inset haut. Files : `frontend/e2e/mobile-safari.spec.js` (ou le
+  spec de VX68), `playwright.config.js`. DoD : les 3 assertions vertes en CI WebKit ; rouges si on
+  régresse VX172/176/178. (T2 — S/M, sonnet) (@lane: frontend/ios — @after VX68)
+
+**Sous-groupe VXD-C (suite) — Accessibilité forensique (WCAG 2.2 prouvée file:line)**
+
+*Acquis vérifiés à NE PAS refaire : Radix (focus-trap/Échap/flèches), sonner déjà
+`aria-live=polite`, anneau `:focus-visible` global + `scroll-margin` (`index.css:89-132`),
+reduced-motion (`:67-87`), cibles 44px `pointer:coarse` (`:156-173`), DataTable exemplaire
+(`aria-sort`/`scope`/live).*
+
+- [ ] VX191 — **`useActiveDescendant` : brancher `aria-activedescendant` sur les 10
+  autocomplétions (grep = 0 partout).** *(Note : recoupe partiellement VX128 axe1 sur
+  Combobox/MultiSelect/TimePicker — ce seed ÉTEND la couverture à `ProduitPicker.jsx`/
+  `BcfProduitPicker.jsx`, `ToitureDesign.jsx`, `MentionAutocomplete.jsx`,
+  `SlashCommandPicker.jsx`, `ShareRecord.jsx`, `GlobalSearch.jsx` — coordonner l'ordre
+  d'implémentation avec VX128, ne pas dupliquer le hook.)* Le motif « champ texte → listbox avec
+  curseur visuel » est réimplémenté 10 fois — et `aria-activedescendant` = 0 fichier dans tout le
+  repo : flécher au clavier n'annonce RIEN (WCAG 4.1.2). Fix : hook
+  `hooks/useActiveDescendant.js` (id stable par option, `aria-activedescendant` sur l'input,
+  `id`/`aria-selected` sur l'option active), adopté d'abord dans `Combobox` + `MultiSelect`, puis
+  `MentionAutocomplete` (+ le `Composer` qui la pilote) et `GlobalSearch`. Files : le hook
+  (nouveau) + les 4 primitives citées. DoD : test RTL — l'input porte un `aria-activedescendant`
+  pointant l'option `aria-selected` à chaque ↑/↓ ; VoiceOver/NVDA annonce le libellé. (T2 — M,
+  sonnet) (@lane: frontend/ios — @coord VX128)
+
+- [ ] VX192 — **Kanbans accessibles : `StageMover` porté au kanban chantiers + `KeyboardSensor` +
+  annonces FR sur les 3 kanbans + fin du `window.alert`.** Les 3 `<DndContext>` montent
+  `useSensors(PointerSensor, TouchSensor)` sans `KeyboardSensor` ni
+  `accessibility.announcements` (`crm/leads/views/KanbanView.jsx:173-209`,
+  `installations/views/KanbanView.jsx:136-173`,
+  `gestion_projet/…/TachesKanbanView.jsx:119-122`). Le kanban leads compense avec `StageMover`
+  (`:31-53`, select clavier) ; le kanban CHANTIERS n'a RIEN : carte ouverte par `<div onClick>`
+  non focalisable (`:178`), refus de déplacement en `window.alert()` bloquant (`:161`). Fix :
+  porter `StageMover` au kanban chantiers, carte → `<button>`, `window.alert` → bandeau
+  `role="status"` (patron leads `:211-218`) ; + `useSensor(KeyboardSensor)` (0 dép) et un helper
+  d'annonces FR partagé sur les 3 kanbans. Files : les 3 `KanbanView`,
+  `features/*/kanbanA11y.js` (helper nouveau). DoD : au clavier seul — Tab atteint le sélecteur
+  d'étape et le change ; Espace saisit une carte, flèches déplacent, Entrée dépose, chaque étape
+  annoncée en FR ; plus aucun `window.alert` (assert). (T2 — M, sonnet ; opus si l'entonnoir+clavier
+  se complique) (@lane: frontend/ios)
+
+- [ ] VX193 — **LeadForm : labels associés + validation client annoncée ; AppointmentBooker :
+  disclosure + tokens morts. @with VX144 + `ma-file` (même passe fichier).** Le plus gros
+  formulaire CRM rend tous ses labels SANS `htmlFor` et ses inputs SANS `id` (helpers `Txt`/`Sel`
+  `LeadForm.jsx:101-118` ; champs `:763-987`) ; les erreurs `form-feedback` (`:766,780`) n'ont ni
+  `role="alert"` ni `aria-describedby`, l'input invalide pas d'`aria-invalid` (`:764`).
+  `AppointmentBooker.jsx` : bouton révélateur sans `aria-expanded`/`aria-controls` (`:125-133`),
+  labels nus (`:140,153`), erreur muette (`:163-167`), et des variables CSS INEXISTANTES
+  (`--color-text-muted`, `--color-danger`… `:73-164`) qui cassent le dark mode. Fix : `id` (via
+  `useId`) + `htmlFor` dans `Txt`/`Sel` — idéalement pointer le primitif `FormField` déjà correct
+  (`ui/Form.jsx:93-104`) ; `aria-invalid` + `aria-describedby` → `form-feedback` avec `id` +
+  `role="alert"` ; `aria-expanded`/`aria-controls` sur la disclosure ; migrer les `--color-*`
+  morts vers les vrais tokens. Files : `pages/crm/LeadForm.jsx`,
+  `pages/crm/leads/AppointmentBooker.jsx`. DoD : cliquer un label focalise son champ ; soumettre
+  « Nom » vide → message annoncé + `aria-invalid` ; le bouton annonce réduit/développé ; dark mode
+  réparé ; e2e leads verts. `DevisGenerator` fait correctement `htmlFor`, preuve que c'est un
+  défaut d'écran. (T2 — M, sonnet) (@lane: frontend/crm — @with VX144)
+
+- [ ] VX194 — **Plancher visuel WCAG 2.2 : texte accent brass 1.8:1 → ≥4.5:1 + cibles 24px
+  desktop + test de contraste.** (a) `tokens.css:70` `--primary:#e8b54a` : en REMPLISSAGE de
+  bouton c'est conforme, mais `Button` variant `link` = `text-primary` (`ui/Button.jsx:33`) rend
+  le brass EN TEXTE sur `--background:#f6f8fc` ≈ 1.8:1 (échec 1.4.3 — 4.5:1 requis), consommé
+  dans ≥10 pages et `text-primary` dans 48 fichiers ; `--warning:#c8870f` en texte ≈ 3.3:1. Fix :
+  token dédié `--primary-text` (brass ASSOMBRI ≥4.5:1 — brass-600/700 déjà dans
+  `tokens.css:36-37`) pour le variant `link` + les utilitaires de texte accent, idem warning ; test
+  de contraste en calcul pur (0 dép) sur les paires Button des DEUX thèmes. (b) le plancher 44px
+  n'existe que sous `pointer:coarse` — WCAG 2.5.8 (AA, 2.2) exige 24×24 px indépendamment du
+  pointeur : cas prouvés `ChatterWidget.jsx:114` (Trash2 size=12), `chat-mention-item` → plancher
+  24×24 via `IconButton` + les cas cités. Files : `design/tokens.css`, `ui/Button.jsx`,
+  `ui/contrast.test.*` (nouveau), `ui/IconButton.jsx`, `components/ChatterWidget.jsx`. DoD : tout
+  texte accent ≥4.5:1 clair ET sombre (le test échoue sinon) ; chaque bouton-icône ≥24×24 en
+  pointeur fin. (T2 — M, sonnet) (@lane: frontend/ios)
+
+- [ ] VX195 — **Carte Leaflet accessible : rôle + liste clavier parallèle.**
+  `components/MapView.jsx:115-121` : le conteneur n'a ni `role`, ni `aria-label`, ni fallback ; les
+  marqueurs (`marker.on('click')` :102) ne sont pas focalisables — un technicien au
+  clavier/lecteur d'écran n'a AUCUN accès aux leads/chantiers géolocalisés (CartePage,
+  ParcInstallePage). Fix : `role="application"` + `aria-label` FR (« carte, N points ») ; liste
+  clavier PARALLÈLE (chaque marqueur = un `<button>` dans une liste repliable/sr-only appelant le
+  même `onMarkerClick`). 0 dép, Leaflet reste impératif. Files : `components/MapView.jsx`
+  (CartePage/ParcInstallePage héritent). DoD : au clavier, Tab atteint chaque point via la liste et
+  déclenche la même action ; VoiceOver annonce « carte, N points » ; test de la liste de boutons.
+  (T2 — M, sonnet) (@lane: frontend/ios)
+
+- [ ] VX196 — **Régions live : chat/chatter annoncés + scroll clavier + erreurs toast en
+  `assertive`.** (a) `MessageThread.jsx:104-135` : un message entrant pousse dans un `<div>`
+  scrollable sans `aria-live` (WCAG 4.1.3) et sans `tabIndex`/`role`. (b)
+  `ChatterWidget.jsx:100-126` : liste sans live ; bouton supprimer avec `title` seul (`:117`). (c)
+  le succès d'un déplacement kanban n'émet aucun `role="status"` (seul l'échec en a un). (d)
+  toutes les erreurs sonner partent en `polite` — une erreur bloquante devrait interrompre. Fix :
+  `aria-live="polite"` + `aria-relevant="additions"` (n'annoncer QUE le dernier message) ;
+  scroll-container `role="log"` + `tabIndex={0}` ; `aria-label="Supprimer le commentaire"` (le
+  `title` reste pour VX52) ; `role="status"` sur le succès kanban ; dans `lib/toast.js`,
+  `toastError` pose l'option sonner `assertive`/`important`, succès/info restent `polite`. Files :
+  `features/messaging/MessageThread.jsx`, `components/ChatterWidget.jsx`, `lib/toast.js` (+
+  `ui/Toaster.jsx` si région séparée). DoD : un message entrant est annoncé UNE fois ; le fil est
+  défilable au clavier ; une erreur interrompt (assertive), un succès non ; tests RTL. (T2 — S,
+  sonnet) (@lane: frontend/ios)
+
+- [ ] VX197 — **`RouteFocus` : skip-link + focus `<main>` + navigation annoncée. @coord VX82
+  pour le titre.** `Layout.jsx:68-78` : `<main>` sans `id`/`tabIndex` ; la barre de progression de
+  route (`role="progressbar"` :71-75) n'a pas d'`aria-live` ; 0 skip-link, 0 focus déplacé, 0
+  repère après navigation SPA (WCAG 2.4.1/2.4.3). Fix : `<RouteFocus>` monté dans Layout — à
+  chaque `location` : focus sur `<main id="contenu" tabIndex={-1}>`, annonce du nom d'écran via
+  une région `aria-live="polite"` dédiée (source `routes.meta.js`, déjà là) ; skip-link « Aller au
+  contenu » premier focalisable ; `aria-live` sur la barre de progression. NE PAS re-créer la
+  gestion du titre d'onglet : **VX82 possède `useDocumentTitle`** — RouteFocus ANNONCE ce que VX82
+  AFFICHE (consommer le même méta). Files : `components/layout/Layout.jsx`,
+  `components/layout/RouteFocus.jsx` (nouveau), `routes.meta.js`. DoD : après navigation, Tab part
+  du contenu (pas du header) ; le nom d'écran est annoncé une fois ; skip-link visible au premier
+  Tab ; e2e clavier. (T2 — M, sonnet) (@lane: frontend/ios)
+
+- [ ] VX198 — **[GATED si dev-dep à ajouter] Garde statique jsx-a11y ciblée : empêcher d'ÉCRIRE
+  la régression (complément build du scan runtime VX71).** Rien n'empêche la réintroduction des
+  trous ci-dessus (label sans contrôle, rôle sans props ARIA requises, interactif non
+  focalisable) — `eslint-plugin-jsx-a11y` absent de la config (à confirmer ; sinon [GATED]
+  dev-dep). Fix : sous-ensemble ciblé en warn→error : `label-has-associated-control`,
+  `role-has-required-aria-props`, `interactive-supports-focus`, `click-events-have-key-events`,
+  `img-redundant-alt`. Files : `frontend/eslint.config.js` (aucun code métier). DoD : `npm run
+  lint` signale un `<label>` sans contrôle associé ; `frontend-lint` échoue sur une régression
+  neuve ; le build actuel reste vert. (T2 — S, sonnet) (@lane: frontend/ios)
+
+**Sous-groupe VXD-A (suite) — Sécurité frontend & observabilité (les échecs que personne ne
+voit)**
+
+*Non-défauts vérifiés à NE PAS re-signaler : auth par cookie httpOnly (aucun jeton en
+localStorage, `AUTH_LOCALSTORAGE_KEYS=[]`), rendus chat/KB/copilote en arbres React (pas
+d'injection), `rel=noopener` présent (faux positif multi-ligne), `prix_achat` correctement masqué
+partout côté client.*
+
+*Note : la graine TOTP 2FA exfiltrée vers `api.qrserver.com` (SEED-41) est déjà transcrite en
+détail en tête de document — voir **VX120**. Ne pas la reconstruire ici.*
+
+- [ ] VX199 — **[BACKEND] `IsResponsableOrAdmin` : n'importe quelle permission d'écriture ouvre
+  TOUS les endpoints qu'il garde (+ test d'alignement front↔back). ÉTEND VX101, ne pas
+  double-compter.** `authentication/permissions.py:14-21` : la classe passe si
+  `user.is_responsable` ; or depuis ERR4 (`models.py:211-234`), `is_responsable` = « le rôle
+  accorde AU MOINS UNE permission d'écriture ». Un rôle « Commercial » (écrire des leads) passe
+  donc les endpoints de validation de devis, émission de facture, mouvements de stock partout où
+  cette classe grossière garde seule (famille = 614 occurrences / 156 fichiers ; le code
+  documente lui-même le piège, `permissions.py:31-34`). Le frontend gate FINEMENT
+  (`useHasPermission`) : l'écran CACHE le bouton mais l'API directe RÉUSSIT — la classe VX101, à
+  l'envers et systémique. Fix : audit des viewsets en `IsResponsableOrAdmin` PUR → permission ERP
+  fine (`HasPermissionOrLegacy('<domaine>_<action>')`, mécanique existante
+  `permissions.py:54-121`) sur les actions sensibles UNIQUEMENT ; + test d'ALIGNEMENT : la liste
+  blanche frontend (`useHasPermission.js:29-36`, `PRODUIT_CREATE_ROLES`) comparée au comportement
+  backend réel, idéalement dérivée de `/auth/me` plutôt que d'une constante en dur. Files :
+  `[BACKEND]` `ventes/views/{devis,facture,bon_commande}.py`, `stock/views/mouvement.py`,
+  `crm/views.py` (remplacements de classe, additifs) ; `frontend/src/hooks/useHasPermission.js`.
+  DoD : un compte « lecture + une écriture » reçoit 403 en appelant directement la validation de
+  devis / l'émission de facture (étendre `tests_role_tier.py`) ; un test échoue si front et back
+  divergent. **@coord VX101** (il corrige `decider_approbation`/`IsAnyRole` — même classe de bug,
+  endpoints disjoints ; ne pas doubler). (T1 — L, opus : auth/permissions) (@lane: backend/auth)
+
+- [ ] VX200 — **[BACKEND infra] CSP figée sur des valeurs de DEV + zéro header de repli côté
+  SPA : templater la prod, décommenter HSTS.** `backend/nginx/Dockerfile` copie `nginx.conf`
+  VERBATIM (pas d'envsubst) or `nginx.conf:78` code en dur `http://localhost:9000` (MinIO dev)
+  dans `img-src`/`connect-src`/`frame-src` : en prod, les URL MinIO présignées réelles sont
+  potentiellement BLOQUÉES ; HSTS est commenté (`:80`) alors que Caddy termine déjà le TLS ;
+  `script-src` garde `'unsafe-inline' 'unsafe-eval'` (objectif : retirer `unsafe-eval` si maplibre
+  le permet). Et `frontend/nginx.conf:1-41` (le serveur du SPA) ne pose AUCUN header. Fix : CSP
+  par environnement (`envsubst` à l'entrypoint ou `map` nginx), retrait de `localhost:9000`, HSTS
+  décommenté ; défense en profondeur : meta CSP de base dans `index.html` +
+  `X-Frame-Options` répliqué dans `frontend/nginx.conf` (`frame-ancestors` est ignoré en meta —
+  garder le header). Files : `backend/nginx/nginx.conf`, `backend/nginx/Dockerfile`,
+  `docker-compose.prod.yml`, `frontend/index.html`, `frontend/nginx.conf`. DoD : en prod, `curl
+  -I` → CSP sans `localhost:9000`, avec l'origine MinIO réelle, avec HSTS ; les aperçus MinIO
+  s'affichent ; le SPA servi hors proxy garde CSP + anti-framing. (T2 — M, opus : headers
+  sécurité) (@lane: backend/auth)
+
+- [ ] VX201 — **Pack durcissement client : DevTools coupé en prod, garde SVG + CI
+  anti-`dangerouslySetInnerHTML`, jeton kiosque expirant, presse-papier 2FA vidé.** Quatre petites
+  failles prouvées, un lot : (a) `store/index.js:46-48` — `configureStore` sans `devTools:
+  import.meta.env.DEV` : en prod, l'extension Redux DevTools expose TOUT l'état (PII, matrice de
+  permissions, leads/devis/factures) → une ligne. (b) le SEUL `dangerouslySetInnerHTML` réel
+  (`InterventionCapturePanels.jsx:476`, `qr_svg`) est sûr AUJOURD'HUI mais sans garde contre une
+  régression serveur → helper `lib/trustedSvg.js` (commence par `<svg`, refuse
+  `<script`/`on*=`/`javascript:`, repli neutre) + règle eslint `react/no-danger` en error avec UN
+  disable documenté (ou `scripts/check_no_danger.mjs` dans `frontend-lint`). (c)
+  `features/rh/Kiosque.jsx:16-47` : jeton de device (`X-Kiosque-Token`) en localStorage CLAIR et
+  PERMANENT sur une tablette en libre-service → timeout d'inactivité qui `oublierToken()` +
+  `safeStorage` (VX170) ; `[BACKEND]` rotation si retenue. (d)
+  `SecuriteCompteSection.jsx:270-277` : codes de secours 2FA copiés en clair (presse-papier
+  souvent synchronisé cloud) → vidage best-effort à ~60 s + micro-avertissement. Files :
+  `store/index.js`, `lib/trustedSvg.js` (nouveau), `InterventionCapturePanels.jsx`,
+  `eslint.config.js` OU `scripts/check_no_danger.mjs`, `features/rh/Kiosque.jsx`,
+  `SecuriteCompteSection.jsx`. DoD : build prod → DevTools n'affiche aucun store ; un `qr_svg`
+  contenant `<script>` est refusé ; un `dangerouslySetInnerHTML` non whitelisté fait échouer
+  `frontend-lint` ; le kiosque redemande le jeton après inactivité ; le presse-papier est vidé au
+  délai (mock). (T2 — M, sonnet) (@lane: backend/auth)
+
+- [ ] VX202 — **[BACKEND nginx] Pages publiques tokenisées : `noindex` + throttle client +
+  rate-limit des préfixes publics.** 10 routes `:token` publiques sans auth
+  (`router/index.jsx:216-235` : `/rdv`, `/portail-contrats`, `/ged/signature|signataire|depot`,
+  `/e`, `/suivi`, `/kb/public`…). Aucune page ne pose `<meta name="robots" content="noindex">` ;
+  le rate-limit nginx n'existe QUE sur login/contact/register (`nginx.conf:86-118`) — rien sur
+  `/ged/`, `/suivi/`, `/rdv/`, `/e/` ; le dépôt public (`PublicDepotPage.jsx:42-58`) n'a aucun
+  throttle de re-soumission. Fix : composant `<NoIndex/>` partagé monté par toutes les pages
+  publiques tokenisées ; throttle client de re-soumission sur le dépôt ; `[BACKEND]` étendre les
+  zones `limit_req` aux préfixes publics. Files : `pages/ged/PublicDepotPage.jsx`,
+  `PublicSignaturePage.jsx`, `pages/sav/TicketSuiviPage.jsx`, `pages/crm/PublicBookingPage.jsx`,
+  `pages/kb/PublicArticlePage.jsx`, composant `NoIndex` (nouveau) ; `[BACKEND]`
+  `backend/nginx/nginx.conf`. DoD : chaque page publique émet le meta noindex ; une re-soumission
+  est throttlée ; `/ged/depot/<t>/` répond 429 sous rafale. (T2 — M, sonnet) (@lane:
+  backend/auth)
+
+- [ ] VX203 — **Contrat d'erreur UNIQUE : fin du double-toast (35 pages), `getApiError`
+  canonique (259 clones), `iaApi` aligné (le 403 IA n'est plus muet).** Trois moitiés du même
+  contrat, explicitement renvoyées à l'axe robustesse par la synthèse beauté : (a)
+  `api/axios.js:63-70` toaste DÉJÀ toute erreur ≠401/404, mais ~35 pages re-toastent dans leur
+  `catch` (3 fichiers seulement posent `suppressErrorToast`) → DOUBLE toast sur des centaines de
+  chemins. Contrat : l'intercepteur est la source par défaut ; tout `catch` qui gère INLINE passe
+  `{suppressErrorToast:true}` ; garde grep `scripts/check_double_toast.mjs` dans frontend-lint.
+  (b) 259 extractions inline `.response?.data?.detail` ré-implémentent une version PARTIELLE du
+  helper existant (`lib/toast.js:92-107`) — promouvoir `lib/apiError.js` (`{message,
+  fieldErrors}`, cas `non_field_errors`/tableaux/429/500 HTML/timeout), codemod des sites vers
+  l'import unique (VX171 en consomme `fieldErrors`). (c) `iaApi.js` ne toaste RIEN globalement
+  hors 401 : un 403 du catalogue d'actions agentiques ou un 500 FastAPI est INVISIBLE — aligner
+  sur le contrat (a) en préservant les dégradations volontaires (`available:false`) via
+  `suppressErrorToast`. Files : `api/axios.js`, `api/iaApi.js`, `lib/apiError.js` (extrait de
+  toast.js), les ~35 pages fautives, `scripts/check_double_toast.mjs` (nouveau). DoD : un 500
+  forcé = EXACTEMENT un toast (test) ; grep `.response?.data?.detail` hors helper = 0 ; un 403 IA
+  surface un toast FR ; tests des formes DRF. (T2 — M/L, sonnet) (@lane: frontend/data)
+
+- [ ] VX204 — **Fin des veuves silencieuses : ChatterWidget, ActivitiesPanel, Journal +
+  détection de panne prolongée des polls.** Quatre silences prouvés hors des 5 listes de VX67 :
+  (a) `ChatterWidget.jsx:66-80` — l'échec d'envoi d'un commentaire est `catch { /* ignore */ }` ;
+  l'intercepteur ne toaste pas les 404 → zéro signal. (b) `ActivitiesPanel.jsx:32-42` — `load()` +
+  types en `.catch(() => {})` : un échec de chargement est INDISCERNABLE de « aucune relance
+  due » (le state `error` existe ligne 26, jamais alimenté). (c) `Journal.jsx:235` —
+  `getMeta().catch(() => {})` : les filtres de L'OUTIL D'AUDIT rendent des menus vides sans dire
+  qu'ils sont cassés. (d) `useChatPolling.js:51-63` (aucun `.catch`) et
+  `NotificationBell.jsx:115-138` : rien ne détecte une SÉRIE d'échecs. Fix : états d'erreur locaux
+  + « Réessayer » (patron ActivitiesPanel) sur a/b/c ; compteur d'échecs consécutifs (≥3 →
+  indicateur discret « Mise à jour interrompue » + reprise manuelle, reset au premier succès) sur
+  la cloche et le chat. Files : `components/ChatterWidget.jsx`, `components/ActivitiesPanel.jsx`,
+  `pages/Journal.jsx`, `features/messaging/useChatPolling.js`,
+  `components/layout/NotificationBell.jsx`. DoD : par widget — un rejet rend un message +
+  Réessayer (jamais une liste vide muette) ; 3 échecs simulés → indicateur, un succès →
+  disparition. Distinct du rejet « refonte chatter » (VX23/ARC8-9) — correctif d'erreur, pas une
+  refonte. (T2 — M, sonnet ; haiku sur a/b) (@lane: frontend/data)
+
+- [ ] VX205 — **Déployer la `SectionBoundary` DÉJÀ CONSTRUITE : un panneau meurt, l'écran
+  survit.** `ui/ErrorBoundary.jsx:7-59` est un composant COMPLET (fallback custom, `reset()`,
+  `onError`) monté dans UN SEUL fichier réel : la page de démo (`UIShowcase.jsx:507-553`). VX64 ne
+  couvre que le niveau ROUTE ; mémoire projet : « /ui crashes whole-page on render throw ». Fix :
+  pure tâche de DÉPLOIEMENT (rien à construire) — poser `<ErrorBoundary>` autour des zones
+  indépendantes à risque : chaque `TabsContent` de `LeadForm.jsx`, cartes cockpit
+  `Dashboard`/`CommercialDashboard`, `InterventionCapturePanels.jsx` ; câbler `onError` sur le
+  `console.error` structuré de VX206. Files : `pages/crm/LeadForm.jsx`, `pages/Dashboard.jsx` (+
+  cockpit), `InterventionCapturePanels.jsx`. DoD : un enfant qui throw dans UN onglet ne fait
+  disparaître QUE cet onglet, le reste reste utilisable ; la RouteErrorBoundary parente n'intercepte
+  plus ces cas. (T2 — M, sonnet) (@lane: frontend/data)
+
+- [ ] VX206 — **Socle local d'observabilité : `console.error` des boundaries +
+  `unhandledrejection` global + identifiant support. @with VX72 (mêmes fichiers).** Zéro
+  télémétrie locale : `console.error` = 1 hit dans tout `src/` ; les DEUX boundaries
+  (`ui/ErrorBoundary.jsx`, `RouteErrorBoundary.jsx` — qui n'a même pas de `componentDidCatch`)
+  n'écrivent RIEN. Et aucun `window.addEventListener('unhandledrejection'|'error')` : une promesse
+  rejetée dans un handler d'événement, une chaîne `.then()`, ou le `sender()` de l'outbox échoue
+  en silence TOTAL — invisible même après VX72, qui ne câble QUE
+  `RouteErrorBoundary→captureException`. Fix : `console.error('[ErrorBoundary]', error,
+  info?.componentStack)` dans les deux boundaries (ajouter `componentDidCatch` à
+  RouteErrorBoundary) ; `lib/globalErrors.js` — les deux listeners globaux canalisés vers le MÊME
+  chemin captureException-ou-no-op que VX72 établit + un `toastError` générique ; afficher un
+  identifiant support sur l'écran de récupération (l'`eventId` VX72 quand DSN actif, sinon un
+  horodatage court). Files : `ui/ErrorBoundary.jsx`, `components/RouteErrorBoundary.jsx`,
+  `lib/globalErrors.js` (nouveau), `main.jsx` (+ `lib/monitoring.js` de VX72). DoD : un throw →
+  `console.error` avec stack ; une promesse rejetée non gérée → toast + capture (DSN de test) ;
+  sans DSN → zéro requête sortante ; l'écran de récupération montre un identifiant transmissible.
+  (T2 — S, sonnet) (@lane: frontend/data — @with VX72)
+
+---
+
+## AXE 3 — AMOUR-EMPLOYÉ (VX207–VX252, 46 tâches survivantes sur 47 seeds ; 1 tuée par le
+grand-verdict — SEED-03 — dont le delta est reporté en note sur VX56/VX86, jamais transcrit
+comme tâche)
+
+**Sous-groupe VXD-I — Attention & handoffs (le badge redevient CROYABLE). @after
+VX83-86/99-101 (round 3, non construit) — transcrire chaque @after tel quel.**
+
+- [ ] VX207 — **[BACKEND additif] Une seule vérité de comptage : endpoint canonique
+  `attention-summary`. @after VX83/VX86.** Après VX83/84/86 il existera ≥4 dérivations de
+  compteur calculées par des chemins différents (badge cloche = `derivedTotal + feedUnread`
+  `NotificationBell.jsx:182`, en-tête Ma file, `useApprobationsCount` VX86, badge sidebar) — rien
+  ne garantit qu'elles convergent, et un badge qui ment tue tout le système d'attention. Fix :
+  `GET /notifications/attention-summary/` renvoyant le décompte canonique `{actions_dues,
+  en_retard, aujourdhui, approbations, mentions_non_lues}` scopé `recipient`/`assigned_to`,
+  réutilisant les MÊMES selectors que « Ma file » (VX83) ; cloche, badge sidebar et en-tête Ma
+  file consomment tous ce seul endpoint. Files : `apps/notifications/views.py`+`selectors.py`,
+  `NotificationBell.jsx`, `useApprobationsCount.js` (VX86). DoD : test de contrat — forcer 5 items
+  → les 3 surfaces affichent 5 ; aucune dérivation client parallèle restante. (T2 — M, sonnet)
+  (@lane: backend/notify — @after VX83/VX86)
+
+- [ ] VX208 — **[BACKEND additif] La cloche cesse d'être une liste plate : sévérité, regroupement
+  par entité, digest hors badge, et undo. @with VX14 (même fichier — la mise en onglets appartient
+  à VX14, cette seed apporte la taxonomie/dédoublonnage/compteurs/undo).** Trois défauts prouvés
+  sur la même surface : (a) `EventType` a 42 valeurs sans rang de sévérité ni catégorie — la
+  cloche affiche un incident QHSE critique noyé sous des digests, 5 notifs même facture = 5
+  lignes ; (b) `DIGEST` passe par `notify()` → `feedUnread` → badge (`digests.py:169`), donc le
+  badge gonfle chaque matin d'un non-travail ; (c) `read-all` est irréversible et `mark_unread`
+  (`views.py:68`, `notificationsApi.js:11`) a zéro consommateur. Fix : dict statique
+  `EVENT_SEVERITY`/`EVENT_CATEGORY` (`apps/notifications/severity.py`, exposé en lecture dans le
+  serializer, pas de migration) ; frontend — groupement par catégorie + dédoublonnage par `link`,
+  liseré `critique`, deux compteurs (badge rouge ACTIONS / point gris INFOS, digests dans un
+  onglet plié), `read-all` → `toastWithUndo` restaurant via `mark_unread`, bouton « Marquer
+  non-lu ». Files : `apps/notifications/{severity.py,serializers.py,views.py}`,
+  `NotificationBell.jsx`. DoD : un `INCIDENT_CRITICAL` remonte au-dessus de 10 `DIGEST` ; un
+  digest n'incrémente pas le badge d'actions ; « Tout lu » puis « Annuler » restaure l'état exact ;
+  3 notifs même lien = 1 ligne pliée. (T2 — L, sonnet) (@lane: backend/notify — @with VX14)
+
+- [ ] VX209 — **[BACKEND] `notify()` devient humain : heures calmes, bon event de mention,
+  purge, émetteurs manquants.** Quatre défauts du même moteur : (a) `est_hors_fenetre_silence()`
+  (`selectors.py:23`) n'est consulté que par le marketing ET la compta (`compta/services.py:6083`),
+  jamais par `notify()` lui-même — un push/email de `sweep_daily` ou d'escalade part à 23 h ou un
+  jour férié ; (b) `_notify_mentions` (`records/views.py:315`) émet `ET.LEAD_ASSIGNED` pour une
+  @mention : couper la préférence `lead_assigned` coupe silencieusement ses mentions, et le
+  libellé ment — `CHAT_MENTION` (`models.py:69`) existe ; (c) la table `Notification` grossit sans
+  borne (zéro `.delete()` repo-wide, `list()` renvoie tout) ; (d)
+  `SAV_ACTIVITE_DUE`/`STOCK_EXPIRATION_SOON` sont déclarés jamais émis, et warranty/maintenance
+  notifient les managers même quand un owner existe (`sweeps.py:104,146`). Fix : flag
+  `respect_quiet_hours` (défaut on) différant les canaux hors-app non-critiques via le calendrier
+  ouvré FG5 (in-app toujours immédiat) ; one-liner `CHAT_MENTION` (@coord VX85, même fonction) ;
+  tâche Celery `purge_notifications_anciennes` (lues > 60 j supprimées, non-lues archivées,
+  `list()` borné 90 j) ; étendre `sweep_daily` aux 2 events morts + routage owner-d'abord. Files :
+  `apps/notifications/{models,services,selectors,sweeps,views}.py` + migration additive,
+  `apps/records/views.py`, `NotificationsPreferences.jsx` (toggle). DoD : un `notify()`
+  non-critique à 23 h ne part pas en email (in-app créé) ; une mention crée `chat_mention` ; une
+  notif lue de 61 j est purgée ; un lot proche péremption émet `STOCK_EXPIRATION_SOON` ; tests.
+  (T2 — L, sonnet) (@lane: backend/notify)
+
+- [ ] VX210 — **[BACKEND additif] Le snooze devient un rappel actif, généralisé, et déclenché par
+  l'événement métier. @after VX85.** VX85 pose `snoozed_until` + exclusion passive sur
+  `records.Activity` seulement — rien ne RÉVEILLE l'item ni ne re-notifie à l'échéance. Fix : (a)
+  sweep Celery `reveiller_snoozes` — à échéance, l'item revient dans la file ET émet une
+  `notify()` légère « ⏰ De retour : {titre} » ; (b) table générique `SnoozedItem` (content-type,
+  pattern `ApprovalReminderState`) pour snoozer aussi une approbation/facture depuis la file ; (c)
+  champ optionnel `snooze_trigger_event` (choix fermés : `client_reply:<lead>`,
+  `devis_signed:<devis>`, `stock_arrive:<produit>`) abonné sur `core/events.py` — le premier de
+  l'horloge ou de l'événement gagne ; le picker VX85 gagne 1-2 options contextuelles « jusqu'à… ».
+  Files : `apps/records/{models,services}.py`, `apps/notifications/{models,sweeps}.py` +
+  migrations, `ActivitiesPanel.jsx`, `MesActivitesPage.jsx`. DoD : un item snoozé « ce soir »
+  réapparaît + notifie au sweep suivant ; un item « jusqu'à réponse client » revient dès la
+  `LeadActivity` entrante même avant l'échéance ; snoozer une approbation la masque puis la
+  ramène ; tests des 2 chemins de sortie. (T2/T3 — M/L, sonnet ; opus si le générique cross-source
+  dérape) (@lane: backend/notify — @after VX85)
+
+- [ ] VX211 — **« Ma file » par persona + départage « victoires rapides ». @after VX83.** VX83
+  construit UNE union triée par urgence globale, identique pour tous — or
+  commercial/comptable/technicien/directeur ont des priorités radicalement différentes. Fix
+  frontend : `queueViewForRole(role)` (rôle déjà dans le store, `MesActivitesPage.jsx:66`) posant
+  l'ORDRE des sections par défaut (commercial : relances → leads chauds → devis expirants ;
+  comptable : factures échues → approbations ; terrain : interventions du jour ; direction :
+  approbations → escalades), surcharge persistée `localStorage`, jamais un mur (« Tout voir »
+  reste) ; + [BACKEND léger] champ `effort_estime` déterministe par `kind` sur `ma-file/` (table
+  statique, pas de ML) alimentant un tri secondaire optionnel « Victoires rapides d'abord » —
+  uniquement un DÉPARTAGE entre items d'urgence égale. Files :
+  `frontend/src/features/queue/queueViews.js` (nouveau), `MesActivitesPage.jsx`,
+  `apps/records/views.py` (serializer). DoD : un commercial voit Relances en tête, un comptable
+  Factures échues ; à urgence égale l'item `faible` précède l'`eleve` quand l'option est active ;
+  le tri par défaut reste inchangé sinon ; STAGES.py importé pour toute clé de stage. (T2 — M,
+  sonnet) (@lane: backend/notify — @after VX83)
+
+- [ ] VX212 — **[BACKEND additif léger] Transparence « pourquoi je reçois ça » + contexte
+  décisionnel dans l'email d'approbation. @after VX99/VX100.** `resolve_recipients`
+  (`services.py:275`) applique des règles invisibles — des notifs « pourquoi moi ? » qu'on ne peut
+  couper qu'en fouillant la grille des 42 événements ; et l'email de demande d'approbation
+  n'embarque pas le montant/contexte. Fix : (a) `reason` court sur la ligne Notification
+  (`'assigné à vous'|'manager'|'règle de routage'|'vous suivez'`), rendu sous chaque notif avec
+  « Régler » → deep-link `/parametres/notifications#<event>` ; (b) enrichir le template email
+  d'approbation avec montant + 1-2 lignes de contexte (déjà exposés par VX100 côté API) — jamais
+  de bouton « Approuver » par lien email (pas de mutation non-authentifiée). Files :
+  `apps/notifications/{models,services,serializers}.py` + migration, templates email
+  notifications, `NotificationBell.jsx`, `NotificationsPreferences.jsx`. DoD : une notif montre sa
+  raison et « Régler » ouvre la bonne ligne de préférence ; l'email d'approbation contient montant
+  + résumé dans le corps (snapshot test). (T2 — M, sonnet) (@lane: backend/notify — @after
+  VX99/VX100)
+
+**Sous-groupe VXD-I (suite) — Handoffs cross-persona (la main gauche apprend ce que fait la
+droite)**
+
+- [ ] VX213 — **[BACKEND] Notifier les handoffs AVAL : chantier créé, chantier réassigné,
+  réquisition (2 bords), + SLA ballon-perdu. @after VX99.** Le motif systémique prouvé : l'amont
+  (lead→vendeur, approbations compta) notifie, l'aval (exécution) est muet. (a)
+  `create_installation_from_devis` (`installations/services.py:205`) assigne
+  `technicien_responsable` avec ZÉRO `notify()` — le plus gros transfert de l'entreprise est
+  silencieux ; (b) réassigner un chantier (`InstallationsPage.jsx:259`) ne notifie pas le nouveau
+  technicien alors que `_notifier_reassignation` (`services.py:2296`) le fait déjà pour la
+  replanification d'intervention ; (c) **rogné (grand-verdict) :** la notif de SOUMISSION d'une DA
+  vers les approbateurs = VX99, ne pas la re-câbler — seul le bord RETOUR reste muet :
+  `approuver`/`refuser` (`demande_achat.py:96/113`) ne notifient jamais le DEMANDEUR de la
+  décision ; (d) aucun SLA sur une DA restée SOUMISE. Fix : notify idempotent à `created=True`
+  (« Nouveau chantier assigné », lien `?installation=<id>`), diff pre/post sur
+  `technicien_responsable`, notify du demandeur à la décision (motif si refus ; montant estimé
+  client-safe, jamais dérivé de `prix_achat`), et `_sweep_da_soumise_stale` miroir de
+  `_sweep_sav_breaching`. Files :
+  `apps/installations/{services.py,receivers.py,views/demande_achat.py,views/installation.py}`,
+  `apps/notifications/sweeps.py`, `apps/installations/selectors.py`. DoD : accepter un devis →
+  notif dans la cloche de l'installateur (ré-accepter n'en recrée pas) ; réassigner → notif au
+  nouveau ; décider une DA → le demandeur notifié ; une DA soumise > seuil relance les
+  approbateurs ; tests des transitions. (T1 — M, sonnet) (@lane: backend/notify — @after VX99)
+
+- [ ] VX214 — **[BACKEND additif] [RESHAPÉE — grand-verdict] Les kinds d'EXÉCUTION entrent dans
+  « Ma file » (jamais une 2ᵉ boîte). @after VX83.** `MesActivitesPage` n'agrège que
+  `records.Activity` et `ApprobationsPage` que les approbations — un chantier assigné, une
+  intervention à faire, une DA approuvée à commander, un ticket transféré n'apparaissent dans
+  AUCUNE boîte. Fix (reshape imposé) : ne PAS créer d'endpoint `mes-affectations-entrantes/` ni de
+  page `MesAffectationsPage` parallèles — étendre l'endpoint `ma-file/` de VX83 avec les kinds
+  d'exécution (`chantier_assigne`, `intervention_du_jour`, `da_approuvee_a_commander`,
+  `ticket_transfere`) via une fonction lecture-seule `selectors.affectations_pour(user)` par app
+  cible (scopé company+user serveur), et laisser VX211 (vues par persona) ordonner ces sections —
+  sinon l'ERP finit avec DEUX boîtes de réception concurrentes, l'anti-pattern que VX83 a été
+  conçu pour tuer. Files : `apps/records/views.py` (l'action `ma-file/` de VX83),
+  `apps/{installations,sav}/selectors.py` (une fonction chacun),
+  `frontend/src/pages/activities/MesActivitesPage.jsx` (rendu des nouveaux kinds). DoD : un
+  installateur ouvre Ma file et voit son chantier fraîchement assigné + interventions + tickets à
+  côté de ses activités, triés urgence ; scoping company/user testé serveur ; aucun endpoint ni
+  écran parallèle créé. (T3 — L, opus : agrégateur cross-app = jugement frontières) (@lane:
+  backend/notify — @after VX83)
+
+- [ ] VX215 — **Boucle de retour « pris en charge » : l'émetteur sait que le ballon est
+  attrapé.** Grep `accuser|prise en charge|acknowledge|seenBy` = 0 hit métier — le système est
+  100 % push unidirectionnel. Fix frontend-first : version minimale = afficher l'état `read` déjà
+  persisté de la notification liée là où l'action a été initiée (ex. « avis lu par le directeur »
+  sur le devis après `contacterSuperieur`) ; version complète [BACKEND minime] = flag
+  `acknowledged` + bouton « Je prends en charge » dans la cloche sur les notifs de handoff à fort
+  enjeu, l'émetteur voyant « Pris en charge par X ». Files : `NotificationBell.jsx`,
+  `pages/ventes/DevisList.jsx`, `api/notificationsApi.js`, `[BACKEND]` serializer léger exposant
+  l'état de la notif liée. DoD : après « demander l'avis du supérieur », le vendeur voit passer
+  « vu » quand le directeur ouvre la notif ; test de rendu. (T2 — M, sonnet ; S en version lecture
+  seule) (@lane: backend/notify)
+
+- [ ] VX216 — **Rendre les seams VISIBLES des deux côtés : divergence devis↔chantier, ticket
+  résolu par intervention, fil de responsabilité.** Trois lacunes de lecture jumelles : (a)
+  `InstallationDetail.jsx:252-271` détecte `devisDivergent` (bom gelé ≠ devis actuel) côté
+  installateur SEULEMENT ; (b) `sav/receivers.py` (YSERV2) avance le ticket à RESOLU quand
+  l'intervention se termine, mais le ticket ne montre jamais QUELLE intervention l'a résolu
+  (`TicketsPage.jsx:579` lie vers `/chantiers` générique) ; (c) personne ne voit la CHAÎNE de
+  responsabilité du client quand il rappelle. Fix : badge « Chantier en cours (compo gelée) » +
+  `toastWarning` à l'édition sur DevisList ; « Résolu par l'intervention #X du {date} par {tech} »
+  avec lien profond sur le détail ticket ; mini-composant `<OwnerChain>` (avatars + rôle + étape)
+  sur InstallationDetail et fiche client. Files : `DevisList.jsx`, `TicketsPage.jsx`,
+  `components/OwnerChain.jsx` (nouveau), `InstallationDetail.jsx` ; `[BACKEND]` éventuels flags
+  légers de serializer si un lien manque. DoD : éditer un devis lié à un chantier avec bom →
+  avertissement ; ticket résolu par intervention → lien vers elle ; un chantier montre « Lead : A ·
+  Devis : B · Chantier : C · SAV : D » cliquable ; tests de rendu. (T2 — M, sonnet) (@lane:
+  backend/notify)
+
+- [ ] VX217 — **La cloche finit le travail : aperçu sans naviguer, actions par entité,
+  bottom-sheet mobile. @after VX208.** Trois compléments du même organe : (a) chaque item de
+  cloche/file est un cul-de-sac de navigation (`NotificationBell.jsx:272-275`, `goto(n.link)`) —
+  traiter 8 relances = 8 allers-retours d'écran ; (b) les actions sont 100 % unitaires ; (c)
+  `.nb-panel` (`NotificationBell.jsx:218`) est un panneau absolu desktop qui déborde sur mobile,
+  sans safe-area, alors que `ResponsiveDialog` existe (VX89 l'adopte). Fix : `<AttentionPeek>`
+  (popover survol desktop / tap-and-hold mobile : client, montant si pertinent — jamais
+  `prix_achat` —, échéance, dernière action, bouton « Ouvrir ») rendu depuis les données déjà dans
+  la notif ; une fois le regroupement par entité de VX208 posé, actions de groupe « Tout marquer
+  lu » / « Reporter le lot » (boucle sur les mutations unitaires + `toastWithUndo` global, aucune
+  mutation serveur nouvelle) ; sur breakpoint mobile la cloche s'ouvre en bottom-sheet
+  (`env(safe-area-inset-bottom)`, desktop inchangé). Files :
+  `frontend/src/features/queue/AttentionPeek.jsx` (nouveau), `NotificationBell.jsx`,
+  `MesActivitesPage.jsx`, `index.css` (`.nb-panel` responsive). DoD : survoler une relance montre
+  son aperçu sans changer d'URL ; 3 notifs même entité → « Tout marquer lu » en un clic avec
+  undo ; sur WebKit mobile (projet VX68) la cloche respecte l'encoche ; `prix_achat` jamais rendu ;
+  e2e verts. (T2 — M, sonnet) (@lane: backend/notify — @after VX208)
+
+- [ ] VX218 — **Le handoff se voit aussi CÔTÉ RÉCEPTION et DANS LE TEMPS : « Nouveau pour moi » +
+  état d'escalade lisible.** Deux trous jumeaux de VX213/VX215 : (a)
+  `InstallationsPage.jsx:40` a un filtre `mine=only` mais rien ne distingue un chantier
+  NOUVELLEMENT confié d'un ancien ; (b) `APPROVAL_ESCALATED`/`APPROVAL_REMINDER` (YEVNT9)
+  notifient, mais le DEMANDEUR ne voit nulle part un état persistant « votre demande a été
+  escaladée à N+2, relancée le … » sur sa propre vue. Fix : badge « Nouveau » sur les chantiers
+  assignés à l'utilisateur depuis sa dernière visite (timestamp `lastSeenChantiers` en
+  localStorage via le helper défensif `safeStorage` — VX170, @coord) + raccourci de filtre « Mes
+  nouveaux chantiers » ; colonne/ligne état d'escalade (niveau + dernière relance) côté demandeur
+  dans `ApprobationsPage`, [BACKEND léger] exposer le niveau dans
+  `reporting/approbations.py` si absent. Files : `pages/installations/InstallationsPage.jsx`,
+  `pages/approbations/ApprobationsPage.jsx`, `apps/reporting/approbations.py`. DoD : un chantier
+  assigné après ma dernière visite affiche « Nouveau », ouvrir l'écran l'efface ; une approbation
+  escaladée montre son niveau au demandeur ; tests. (T2 — S/M, sonnet) (@lane: backend/notify)
+
+**Sous-groupe VXD-K — Le commercial : chaque job compté en clics**
+
+- [ ] VX219 — **« Mes chiffres » : le vendeur `normal` voit ENFIN sa propre performance. @coord
+  VX27.** Défaut prouvé : `/reporting` ET `/reporting/commercial` sont gatés
+  `roleLoader(['responsable','admin'])` (`router/index.jsx:319,322`) ; `Dashboard.jsx` est
+  company-wide ; le seul KPI perso (FG39, `CrmInsightsPanel`) n'est rendu QUE dans
+  `ChartsView.jsx:288` (l'onglet graphique des leads, ouvert 1×/semaine). Fix frontend-first :
+  carte « Mes chiffres » en tête de `Dashboard.jsx`, tous rôles — devis envoyés/acceptés du mois,
+  taux de signature, CA signé, atteinte d'objectif (réutiliser `crmApi.getObjectifsAttainment`
+  FG39 déjà livré) + 3 leads chauds à traiter ; dériver des slices déjà chargés filtrés
+  `owner===me` côté client ; [BACKEND additif] `?owner=me` seulement si la justesse l'exige ; ne
+  JAMAIS dé-gater `/reporting/commercial` (reste l'outil manager). Files :
+  `frontend/src/pages/Dashboard.jsx`, `CrmInsightsPanel.jsx` (extraire la carte en composant),
+  éventuellement `apps/crm/selectors.py`. DoD : un `normal` ouvre `/dashboard` et voit SES
+  métriques (test : la carte n'agrège que `owner==user`) ; le gate manager inchangé. (T2 — M,
+  sonnet) (@lane: frontend/crm — @coord VX27)
+
+- [ ] VX220 — **⌘K atterrit sur le RECORD (pas la liste) + créations au clavier. @after VX79,
+  @coord NTUX9/10.** Défaut prouvé : `CommandPalette.jsx:24-33` route
+  `devis/client/facture/chantier/equipement/ticket` vers leur LISTE — seul `lead` ouvre la fiche.
+  Et `shortcuts.js` = 8 `g x` de nav, 0 action « créer » (`commandActions.js:13`). Fix : (a)
+  réutiliser la convention de deep-link `?id=` de VX79 dans le mapping `ROUTE` de la palette, et
+  étendre la lecture du param à `FactureList.jsx`/`ClientList.jsx` — une seule convention de
+  param, jamais deux ; (b) 2-3 raccourcis `c l`/`c d`/`c c` (créer lead/devis/client) dans
+  `shortcuts.js` + section « Créer » de la palette — périmètre réduit : NTUX possède le
+  quick-create palette générique, ici SEULEMENT les raccourcis clavier directs et le câblage
+  `?new=1`, @coord NTUX9/10 (vérifier-non-déjà-construit avant build) ; (c) vérifier
+  l'exhaustivité `GOTO_SHORTCUTS` vs routes de premier niveau (`/planification`,
+  `/approbations`). Files : `providers/CommandPalette.jsx`, `providers/shortcuts.js`,
+  `commandActions.js`, lecteurs `?id=`/`?open=` des listes citées. DoD : chercher une référence
+  dans ⌘K ouvre le record exact ; `c l` ouvre le form lead ; toute route de premier niveau a son
+  `g x` ; tests du mapping. (T2 — M, sonnet) (@lane: frontend/crm — @after VX79)
+
+- [ ] VX221 — **Le score de lead dit enfin POURQUOI (tooltip de raisons + tri).** Défaut prouvé :
+  `ListView.jsx:83-99` affiche `score`/100 nu ; `serializers.py:240` calcule `score_label` via
+  `compute_score(obj)` mais aucune décomposition n'est exposée. Fix : [BACKEND additif léger]
+  exposer `score_reasons` (liste `{facteur, points}`) depuis `apps/crm/scoring.py` (pure exposition
+  des composantes déjà calculées, zéro recalcul) ; tooltip riche sur `ScoreBadge` (« +30 facture
+  élevée · +20 récent · +15 canal web ») + badge score sur `LeadCard` (absent aujourd'hui) +
+  colonne triable. Files : `apps/crm/{scoring,serializers}.py`,
+  `frontend/src/pages/crm/leads/views/ListView.jsx`, `LeadCard.jsx`. DoD : survoler le badge
+  montre les 2-3 facteurs dominants ; test serializer company-scopé. (T2 — S/M, sonnet) (@lane:
+  frontend/crm)
+
+- [ ] VX222 — **« Relancer ce devis » : le pendant devis de la relance facture.** Défaut prouvé :
+  `DevisList.jsx:736-741` calcule `expiringSoon` (envoyés expirant ≤7 j) et affiche un bandeau —
+  mais AUCUNE action : la relance structurée n'existe QUE pour les factures (`RelancesPage`). Fix :
+  bouton « 🔔 Relancer » sur les lignes `statut==='envoye'` qui rouvre le flux WhatsApp/email
+  EXISTANT (`handleEnvoyer:410`, `openEmailModal:238`) avec un message « relance » (pas « envoi
+  initial ») + consigne au chatter du devis (`DevisActivity`, cf. VX97) ; aperçu-puis-clic, jamais
+  d'envoi auto (règle manuel-wa.me fondateur). Files : `frontend/src/pages/ventes/DevisList.jsx`.
+  DoD : un devis envoyé propose « Relancer » → même modale en mode relance + entrée chatter ;
+  l'action n'apparaît que sur `envoye` ; test. (T2 — S/M, sonnet) (@lane: frontend/ventes)
+
+- [ ] VX223 — **[BACKEND léger] Actions de carte en 2 clics : « ✗ Perdu (motif) », file
+  « Rappels demandés », « ⚡ indisponible » cliquable. @after VX83.** Trois gestes quotidiens
+  enfermés dans la fiche : (a) marquer perdu = ouvrir la fiche → scroller → cocher « Perdu ? » +
+  motif — ~5 interactions ; (b) `contact_preference==='phone_ok'` rend un badge passif « ☎ Rappel
+  demandé » (`LeadCard.jsx:114-121`) — le signal le plus chaud n'alimente aucune file ; (c) le ⚡
+  devis-auto désactivé cache sa raison dans un `title` sans action de correction. Fix : action
+  « ✗ Perdu » dans le menu de ligne/carte → mini-popover motif (datalist `motifs-perte` déjà
+  chargée) → PATCH `perdu`+`motif_perte` ; chip filtre « Rappels demandés » sur `FilterBar` (pur
+  client) + famille `{kind:'rappel', urgency:'high'}` dans `ma-file/` via `crm/selectors.py`
+  (@after VX83 — famille que VX83 n'énumère pas) ; le texte `factureManquante`
+  (`LeadCard.jsx:209-216`) devient un bouton « → Renseigner la facture » qui ouvre la fiche ET
+  focus le champ bloquant. Files : `LeadCard.jsx`, `views/ListView.jsx`, `FilterBar.jsx`,
+  `LeadForm.jsx`, `apps/crm/selectors.py`. DoD : perdu + motif en 2 clics depuis une ligne (motif
+  alimente le win/loss du CommercialDashboard) ; chip « Rappels demandés » liste les `phone_ok` ;
+  cliquer « devis auto indisponible » ouvre la section énergie en édition ; tests. (T2 — M,
+  sonnet) (@lane: frontend/crm — @after VX83)
+
+- [ ] VX224 — **La session de qualification en rafale : ◀▶ prev/next, « créer un autre »,
+  « Mes leads » par défaut. @after VX89 (même fichier — rebase), VX92, VX93.** Trois
+  multiplicateurs de la même session (20-40 leads/j) : (a) `LeadForm` reçoit UN lead — passer au
+  suivant = fermer, re-viser la ligne, recliquer ; (b) VX92 câble « Créer un autre » sur
+  ProduitForm/ClientForm/paiement mais PAS sur `LeadForm` ; (c) `LeadsPage` charge TOUS les leads
+  de l'équipe, le filtre owner n'est jamais pré-réglé. Fix : passer à `LeadForm` la liste filtrée
+  courante + index (déjà en mémoire, `filtered`), boutons ◀▶ + touches `J`/`K` façon Gmail (garde
+  de saisie si dirty — @coord VXD-B/VX167) ; étendre le toggle VX92 à `LeadForm` (création seule :
+  succès → reset + refocus Nom, défauts VX93 réappliqués) ; toggle « Mes leads » défaut ON pour le
+  rôle `normal` (persisté `localStorage`, le manager bascule OFF). Files :
+  `frontend/src/pages/crm/leads/LeadsPage.jsx`, `LeadForm.jsx`, `FilterBar.jsx`,
+  `features/crm/stages.js`. DoD : `J`/`K` charge le lead voisin sans fermer (confirmation si
+  dirty) ; toggle ON → créer vide le form et refocus Nom ; un `normal` ouvre `/crm/leads` sur SES
+  leads ; tests. (T2 — M, sonnet) (@lane: frontend/crm — @after VX89/VX92/VX93)
+
+**Sous-groupe VXD-L — Le technicien terrain**
+
+- [ ] VX225 — **La raison de blocage de statut cesse d'être jetée à la poubelle
+  (InterventionsPage). @coord VX105.** Défaut prouvé : le backend calcule un message FR précis et
+  actionnable — `transition_block_reason` (`field_services.py:405-423`, « Photos obligatoires
+  manquantes avant "Terminée" : Toiture avant, Câblage. ») — mais `InterventionsPage.jsx:262-272`
+  (`DetailSheet.setStatut`) fait `catch { toast.error('Impossible de changer le statut.') }` : le
+  corps du 400 (`{statut:[raisons]}`) n'est JAMAIS lu. Le patron de rendu existe DÉJÀ un niveau
+  au-dessus : `ChantierGateTimeline.jsx:54-58` affiche les `raisons[]` en `<ul>` inline. Fix : lire
+  `err?.response?.data?.statut` et rendre la liste inline sous le Select de statut (patron
+  GateTimeline), toast détaillé en repli. Files :
+  `frontend/src/pages/installations/InterventionsPage.jsx` (`DetailSheet.setStatut`). DoD :
+  forcer un 400 → le message exact du serveur s'affiche sous le sélecteur ; test. VX105 AJOUTE un
+  contrôle de statut à MaJourneePage en affichant le 400 — ceci répare le DetailSheet EXISTANT
+  d'InterventionsPage, l'autre moitié du même défaut. (T2 — S, sonnet) (@lane: frontend/ios —
+  @coord VX105)
+
+- [ ] VX226 — **« Ma journée » dit l'urgence et reste fraîche.** Deux défauts du même
+  écran-pivot : (a) `priorite` existe, est ANNOTÉ et TRIÉ serveur (`views/intervention.py:129-144`)
+  mais `MaJourneePage.jsx` ne le rend JAMAIS ; (b) `load()` n'est appelé qu'au montage (`:57`) —
+  aucun bouton refresh, aucun `visibilitychange`, et le pull-to-refresh natif est coupé
+  (`overscroll-behavior: contain`) : une réaffectation dispatch de 10 h est invisible jusqu'au
+  rechargement manuel de l'onglet. Fix : puce `Badge tone="danger"/"warning"` quand
+  `priorite==='urgente'/'haute'` ; bouton « Actualiser » discret (`RefreshCw`, cohérent
+  `OfflineSyncIndicator`) + refetch throttlé sur `visibilitychange` (retour visible après ≥2 min —
+  jamais un poll actif). Files : `frontend/src/pages/interventions/MaJourneePage.jsx`, vérif
+  `apps/installations/serializers.py`. DoD : une intervention urgente porte une puce distincte du
+  rang ; revenir sur l'onglet après 2 min déclenche un refetch silencieux ; tests. (T2 — S,
+  sonnet) (@lane: frontend/ios)
+
+- [ ] VX227 — **Les coutures chantier↔intervention : pont Demande d'achat, photos reliées,
+  séries dédoublonnées. @coord ARC26.** Trois seams du même chantier : (a) `DemandesAchatList.jsx`
+  n'a aucun pré-remplissage `chantier` ; (b) deux systèmes de photos avant/pendant/après jamais
+  reliés : `PhotosPanel` vs `ChantierPhotos` ; (c) deux captures de n° de série indépendantes : le
+  garde-doublon de `ChantierChecklist.jsx:26-30` ne voit pas les séries saisies côté intervention
+  et vice-versa. Fix : lien « Autre besoin non prévu → Nouvelle demande d'achat » dans
+  `PreparationPanel` naviguant vers `/chantiers/demandes-achat?chantier={id}&intervention={id}` +
+  lecture des query params dans `DemandesAchatList` ; liens croisés discrets « Voir aussi les
+  photos du chantier / de cette intervention » (jamais de fusion de magasins — @coord ARC26
+  politique magasin-unique) ; enrichir le `Set` de déduplication des séries par l'union des deux
+  sources. Files : `DemandesAchatList.jsx`, `InterventionFieldExecution.jsx` (`PreparationPanel`,
+  `PhotosPanel`), `pages/installations/{ChantierPhotos,ChantierChecklist}.jsx`,
+  `InterventionCapturePanels.jsx` (`SerialsPanel`). DoD : depuis une intervention, un tap ouvre la
+  DA avec le chantier pré-sélectionné ; chaque écran photo lie vers l'autre ; une série saisie
+  côté F9 est détectée en doublon côté N9 et réciproquement ; tests. (T2 — M, sonnet) (@lane:
+  frontend/ios — @coord ARC26)
+
+**Sous-groupe VXD-M — Le comptable : le mois compté en clics**
+
+- [ ] VX228 — **Le rapprochement bancaire ligne-à-ligne : le contrat d'interaction complet.
+  @coord FE-rapprochement-detail (cette seed EST sa spécification d'interaction — une seule
+  tâche, jamais deux).** Défaut prouvé : `comptaApi.rapprochements.{lignesGl,resume,
+  ajouterLigneReleve,pointer}` (`comptaApi.js:180-186`) n'ont AUCUN consommateur réel —
+  `RapprochementsPage.jsx` n'offre que `SuggestionsDialog` (lot) et `cloturer` : une ligne non
+  suggérée est IMPOSSIBLE à apparier, et rien ne dit si le mois est bouclé. Fix :
+  `RapprochementDetailDialog` à 2 volets côte à côte (relevé | grand-livre), ligne relevé
+  cliquable → candidates GL pré-filtrées montant/date (`lignesGl`) → « Pointer » (`pointer`),
+  bandeau `resume()` en tête (solde relevé / pointé / écart restant, même langage visuel que
+  l'équilibre d'`EcrituresPage.jsx:170-181`) qui décroît EN DIRECT à chaque pointage ;
+  « Suggestions » devient une action DE ce dialog. Files :
+  `frontend/src/features/compta/pages/RapprochementsPage.jsx` (nouveau
+  `RapprochementDetailDialog`), consomme les 4 méthodes API déjà écrites. DoD : ouvrir un
+  rapprochement en cours montre l'écart ; pointer une ligne le réduit en direct ; écart 0 →
+  clôturable ; test du flux pointer→resume. (T2 — L, sonnet ; opus si scores de confiance à
+  rendre) (@lane: frontend/compta)
+
+- [ ] VX229 — **`CrudDialog` apprend le Combobox : fin des champs FK « (ID) » tapés à la main.**
+  Défaut prouvé : `CrudDialog.jsx:76-96` (la plomberie CRUD des 8 écrans compta) ne rend que
+  `<Input>` ou `<select>` statique — résultat : `NotesDeFraisPage.jsx:104/110/123` (« Employé
+  (ID) » ×3), `RapprochementsPage.jsx:285` (« Compte de contrepartie (ID) »), et PIRE,
+  `EngagementsPage.jsx:75-82/148-155` capture `tiers_nom`/`marche_ref` en TEXTE LIBRE — une
+  retenue de garantie part désynchronisée du référentiel tiers dès sa création. Le bon patron
+  existe DANS LE MÊME module : `EcrituresPage.jsx:35-40` (`Combobox` + `comptesOpts`). Fix : type
+  de champ `{name, label, async: () => Promise<{value,label}[]>}` dans le schéma `CrudDialog`
+  (options chargées au montage, memoïsées) ; migrer les 2 champs ID et les champs texte libre
+  d'Engagements vers un `tiers_id` réel (`tiers_nom` dérivé lecture seule). Files :
+  `features/compta/components/CrudDialog.jsx`, `NotesDeFraisPage.jsx`,
+  `RapprochementsPage.jsx`, `EngagementsPage.jsx`. DoD : créer une note de frais montre un
+  Combobox « Nom Prénom » ; une retenue de garantie référence un tiers réel traçable vers sa
+  fiche ; test de rendu du nouveau type. (T2 — M, sonnet) (@lane: frontend/compta)
+
+- [ ] VX230 — **Encaisser LÀ où on chasse l'impayé + total « reste à encaisser » visible. @after
+  VX92/VX93 (même dialog — rebase).** Deux moitiés du même job : (a) `RelancesPage.jsx` n'a AUCUNE
+  action « Enregistrer un paiement » — le chèque décroché après relance force à quitter, rouvrir
+  Factures, re-chercher la même facture ; (b) `FactureList` montre « Encaissé ce mois » mais
+  JAMAIS le total dû de la sélection filtrée courante (onglet « Partiellement payées »). Fix :
+  extraire la modale paiement de `FactureList.jsx:676-752` en `PaiementDialog` partagé
+  (props facture/onSaved) monté depuis les 2 pages + bouton « Encaisser » à côté de « Relancer » ;
+  carte « Reste à encaisser (onglet) » calculée sur `filtered` (déjà en mémoire, zéro appel
+  réseau). Files : `frontend/src/pages/ventes/PaiementDialog.jsx` (extrait), `FactureList.jsx`,
+  `RelancesPage.jsx`. DoD : depuis Relances, « Encaisser » ouvre la même modale et retire la
+  ligne des impayés ; l'onglet « Partiellement payées » affiche son total dû ; non-régression du
+  flux FactureList. (T2 — M, sonnet) (@lane: frontend/compta — @after VX92/VX93)
+
+- [ ] VX231 — **La navigation finance atterrit sur la CIBLE : `?facture=`, lien client, onglet
+  persistant, TVA↔Grand-livre. @coord VX79, VX113 (sélecteur d'exercice, même fichier —
+  rebase).** Quatre liens cassés du même mois comptable : (a) `PaiementsPage.jsx:127` émet
+  `to="/ventes/factures?facture={id}"` mais `FactureList.jsx` n'a AUCUN `useSearchParams` ; (b)
+  `client_nom` (`PaiementsPage.jsx:133`) est du texte brut ; (c) AUCUNE des 7 pages compta à
+  onglets ne persiste son onglet ; (d) vérifier une déclaration TVA contre le GL = 2 écrans, 2
+  chiffres notés à la main. Fix : lire `?facture=` au montage de FactureList (basculer d'onglet
+  si besoin, scroll + surbrillance 2-3 s) ; `client_nom` cliquable + filtre `?client=` local sur
+  PaiementsPage ; hook partagé `useTabParam(defaultTab)` synchronisant le `Segmented` avec
+  `?onglet=` (7 adoptions d'une ligne) ; action « Comparer au Grand-livre » sur une déclaration
+  TVA → `EtatsPage` `?etat=grand-livre&date_debut=…&date_fin=…`. Files : `FactureList.jsx`,
+  `PaiementsPage.jsx`, `features/compta/components/useTabParam.js` (nouveau) + les 7 pages,
+  `FiscalitePage.jsx`, `EtatsPage.jsx`. DoD : cliquer une facture depuis Encaissements atterrit
+  sur la ligne surlignée ; recharger restaure l'onglet ; « Comparer au GL » ouvre le grand-livre
+  pré-filtré ; tests MemoryRouter. (T2 — M, sonnet) (@lane: frontend/compta — @coord VX79/VX113)
+
+- [ ] VX232 — **Les états financiers deviennent LISIBLES : noms réels, tableaux exploitables,
+  exports hiérarchisés et traduits.** Quatre défauts de lisibilité du même module : (a) le KPI n°1
+  du Cockpit affiche `Tiers #42` (`CockpitPage.jsx:101-104`) ; (b) les états CGNC
+  (`EtatsPage.jsx:55-96`, `GenericTable`) sont des `<table>` HTML nus ; (c) les 6 boutons d'export
+  fiscaux ont le même poids visuel — routine mensuelle mélangée à l'annuel ; (d) « FEC »/
+  « liasse »/« IS » sans un mot d'aide. Fix : résoudre `tiers_id` en nom réel ([BACKEND additif]
+  enrichir le selector serveur `top_encours_clients[].tiers_nom`, fallback « Tiers #N » si
+  supprimé) ; migrer `GenericTable` vers le `Table` partagé (garder `KeyValue` pour les
+  scalaires) ; grouper les exports en 2 rangées sous-titrées « Mensuel » / « Annuel — exercice
+  requis » ; sous-libellé gris d'une phrase par export. Files :
+  `features/compta/pages/{CockpitPage,EtatsPage,FiscalitePage}.jsx`, `apps/compta/selectors.py`
+  [BACKEND]. DoD : le graphique montre des noms de clients ; une balance rendue trie au clic ;
+  les 2 groupes d'exports sont distincts et chaque bouton porte sa phrase d'aide ; exports
+  serveur inchangés ; tests de rendu. (T2 — M, sonnet) (@lane: frontend/compta)
+
+**Sous-groupe VXD-N — Le directeur/admin : contrôle et supervision**
+
+- [ ] VX233 — **[BACKEND 1 ligne] Le journal des paramètres montre TOUTES ses sections + la
+  tarification a son historique.** Défaut prouvé : `SettingsAuditLog` journalise déjà 6+ sections
+  côté serveur et l'endpoint `settings_audit_sections` (`views_audit.py:53-68`) EXISTE — mais
+  `parametresApi.js` ne l'expose pas et le seul consommateur (`AvanceSection.jsx:304-307`)
+  hardcode un `<Select>` à 2 options (`profil`, `messages`). Fix : ajouter `'tarification'` à
+  `KNOWN_AUDIT_SECTIONS` ; exposer `parametresApi.getAuditSections()` et construire le `<Select>`
+  dynamiquement ; extraire le feed en `SettingsAuditFeed` paramétrable par section, lien « Voir
+  l'historique » sur TarificationSection. Files : `apps/parametres/views_audit.py`,
+  `frontend/src/api/parametresApi.js`, `pages/parametres/{AvanceSection,TarificationSection,
+  SettingsAuditFeed}.jsx`. DoD : le filtre propose ≥6 sections réelles ; changer le barème ONEE
+  puis filtrer `tarification` montre qui/quand/ancien→nouveau ; « Voir l'historique » depuis
+  Tarification affiche sa section seule ; tests. (T2 — M, sonnet) (@lane: frontend/brand)
+
+- [ ] VX234 — **[BACKEND] L'audit des rôles au grain de la PERMISSION + garde de
+  réassignation.** Deux trous du même écran de pouvoir : (a) `roles/views.py:64-74` stocke
+  `"{nom} ({N} permissions)"` — retirer `crm_supprimer` et ajouter `ventes_export` (net zéro)
+  produit un journal illisible ; (b) le dialogue de réassignation avant suppression
+  (`RolesManagement.jsx:583-629`) liste TOUS les rôles sans tri ni annotation — réassigner 5
+  commerciaux vers « Administrateur » d'un clic hâtif leur donne tous les droits sans
+  avertissement. Fix : stocker le diff structuré (`permissions_ajoutees`/`retirees` par
+  set-difference dans `old_value`/`new_value` JSON existants) ; rendu frontend en badges +/-
+  (le `fmtVal` d'`AvanceSection:48-49` détecte un tableau au lieu de JSON.stringify brut) ; trier
+  le `<Select>` de réassignation par nombre de permissions croissant + badge « ⚠ plus large »
+  quand la cible dépasse l'original. Files : `apps/roles/views.py`,
+  `pages/parametres/AvanceSection.jsx`, `pages/admin/RolesManagement.jsx`. DoD : un échange
+  net-neutre de permissions journalise les 2 codes exacts ; le sélecteur annote les rôles plus
+  larges ; tests. (T2 — M, sonnet) (@lane: backend/auth)
+
+- [ ] VX235 — **[BACKEND] Gardes-fous du pouvoir admin : motif par item en bulk-refus, cycle de
+  hiérarchie, import-écraser confirmé, dernier admin protégé en masse. Noter AUTH au DONE LOG.**
+  Quatre trous d'intégrité prouvés : (a) `ApprobationsPage.deciderEnMasse` (:106-131) applique UN
+  `window.prompt` de motif à N demandes HÉTÉROGÈNES (VX19 remplacera le prompt mais pas la
+  sémantique « un motif menteur pour tous ») ; (b) `validate_supervisor`
+  (`authentication/serializers.py:226-228`) ne bloque que l'auto-supervision — un cycle A→B→C→A
+  corrompt silencieusement `records_scope_sous_arbre` ; (c) `ExportSauvegarde.importConfig`
+  (:41-56) exécute `config-import/?mode=overwrite` au choix de fichier, gardé par une case à
+  cocher HTML native — zéro `AlertDialog`, zéro aperçu des 6 catégories écrasées ; (d)
+  `UsersManagement.bulkActions` (:310-321) « Désactiver » ne vérifie jamais `isLastAdmin`. Fix :
+  `ResponsiveDialog` de refus listant chaque item avec motif PROPRE (motif commun optionnel
+  « appliquer à tous », modifiable par ligne) ; [BACKEND] remonter la chaîne de superviseurs
+  (borne 20 sauts) et rejeter le cycle avec message clair + filtrer les descendants du `<select>`
+  d'EquipeSection ; `AlertDialog destructive` récapitulant les catégories du bundle AVANT le
+  POST ; exclure de la désactivation groupée le(s) compte(s) gardant au moins un admin actif +
+  toast des comptes sautés. Files : `pages/approbations/ApprobationsPage.jsx`,
+  `authentication/serializers.py`, `pages/parametres/{EquipeSection,ExportSauvegarde}.jsx`,
+  `pages/admin/UsersManagement.jsx`. DoD : refus en lot = motif distinct par ligne possible ;
+  cycle à 3 nœuds → 400 clair ; import-écraser demande confirmation listée ; désactivation
+  groupée laisse ≥1 admin actif ; tests des 4 gardes. (T2 — L, opus : auth/hiérarchie) (@lane:
+  backend/auth)
+
+- [ ] VX236 — **Fin des culs-de-sac de pilotage : équipes cliquables, Journal deep-linké, seuils
+  avec retour. @after VX220 (Journal — la palette ⌘K de VX79 ne liste PAS Journal.jsx dans ses
+  Files).** Quatre écrans de supervision qui montrent sans jamais mener : (a)
+  `MesEquipesCard.jsx` (monté `Dashboard.jsx:662` — vu par CHAQUE directeur à chaque connexion) :
+  zéro lien sur pipeline/retards/CA ; (b) `Journal.jsx` `MODEL_ROUTES` (:50-64) pointe vers des
+  LISTES nues ; (c) `KpiAlertesPage.jsx` affiche `derniere_valeur` sans lier vers la source ; (d)
+  `MonitoringSection.jsx` (:80-92) règle le seuil de sous-perf à l'aveugle, sans aperçu du nombre
+  de systèmes signalés. Fix : `<Link>` sur chaque métrique d'équipe
+  (`/crm/leads?equipe=`, `/activites?equipe=`, `/ventes/devis?statut=accepte&equipe=`) ;
+  `MODEL_ROUTES` en fonctions `(objectId) => path` (`?lead=` marche dès aujourd'hui,
+  devis/chantier/ticket s'activent avec VX79) ; mapper `kpi → route` sur KpiAlertes ; [BACKEND
+  additif] `GET /parametres/monitoring/apercu/?seuil=N` affiché au blur du champ. Files :
+  `components/MesEquipesCard.jsx`, `pages/Journal.jsx`,
+  `pages/parametres/{KpiAlertesPage,MonitoringSection}.jsx`, endpoint léger `apps/parametres` ou
+  `apps/sav`. DoD : chaque chiffre d'équipe ouvre la liste filtrée ; cliquer un objet « lead » du
+  Journal ouvre CE lead ; la valeur d'une alerte DSO ouvre la balance âgée ; changer le seuil
+  affiche « N systèmes seraient signalés » avant sauvegarde ; tests. (T2 — M, sonnet) (@lane:
+  frontend/brand — @after VX79)
+
+**Sous-groupe VXD-O — La vélocité de saisie**
+
+- [ ] VX237 — **Collage intelligent : le presse-papiers du monde réel entre proprement.** Défaut
+  prouvé : 0 `onPaste` dans tout le frontend — un numéro WhatsApp collé, un montant Excel, une
+  carte de visite texte tombent bruts dans l'`<input>`. Le « paste-grid Excel » multi-cellules
+  reste DIFFÉRÉ (dedup-map) — ceci est le collage UNITAIRE, jamais proposé ni rejeté. Fix : hook
+  partagé `usePasteClean(parser)` posé en `onPaste` sur les champs téléphone (parse via
+  `canonicalPhoneMA`/`normalizeMaPhone` déjà écrits, `lib/format.js:132,154`), montant (strip
+  espaces/virgules/« DH »), et un mode carte-WhatsApp sur le Nom de
+  `LeadExpressModal`/`LeadForm` (motif `Nom … Tel …` → bouton « Répartir » après collage,
+  confirmation, jamais silencieux). Zéro dépendance, regex pures. Files :
+  `frontend/src/hooks/usePasteClean.js` (nouveau), poses sur `LeadForm.jsx`,
+  `LeadExpressModal.jsx`, `ClientForm.jsx`, `ClientQuickCreateModal.jsx`, champs montant
+  `DevisGenerator.jsx`/`FactureForm.jsx`. DoD : coller `+212 6-12.34.56.78` stocke la forme
+  canonique ; coller « 12 500,00 » donne `12500` ; test du parseur sur 8 formats réels. (T2 — M,
+  sonnet) (@lane: frontend/crm)
+
+- [ ] VX238 — **Primitives « mains rapides » : Segmented au clavier, Tab-qui-choisit, focus
+  post-sélection. @after VX90/VX91.** Trois défauts de primitives partagées : (a)
+  `ui/Segmented.jsx` (57 fichiers consommateurs) déclare `role="radiogroup"` mais n'implémente
+  AUCUNE navigation flèches ; (b) `ProduitPicker.jsx:89-101`/`Combobox.jsx:97-110` gèrent
+  flèches/Enter/Escape mais pas Tab — Tab blur à vide ; (c) `ProduitPicker.pick()` (:84-87) rend
+  le focus au bouton déclencheur — encore un Tab avant de taper la quantité. Fix : roving
+  tabindex + `ArrowLeft/Right/Home/End` sur le conteneur radiogroup ; `Tab` (sans shift) =
+  `pick(cursor)` sans `preventDefault` ; callback `onPicked` → `.focus()` sur l'input Qté de la
+  même ligne (réutilise le `data-line-key` de VX90). Files : `ui/Segmented.jsx`,
+  `ui/Combobox.jsx`, `components/ProduitPicker.jsx`, `DevisGenerator.jsx`/`DevisForm.jsx`/
+  `FactureForm.jsx`. DoD : Tab arrive UNE fois sur le groupe, flèches changent la sélection ;
+  taper une recherche puis Tab sélectionne ET avance ; choisir un produit focus la Qté de LA
+  ligne ; tests `document.activeElement`. (T2 — M, sonnet) (@lane: frontend/ventes — @after
+  VX90/VX91)
+
+- [ ] VX239 — **Doublons : prévenir à la création CLIENT + le geste de FUSION. @coord F-E5.**
+  Deux moitiés manquantes du même système : (a) `crmApi.checkDuplicates` n'est câblé que sur
+  `LeadForm.jsx:330-346` — `ClientForm`/`ClientQuickCreateModal` n'ont que l'autocomplete NOM ;
+  et le formatage téléphone (`canonicalPhoneMA`) n'est consommé que par UN champ ; (b) la
+  DÉTECTION backend existe (`apps/crm/tests_doublons.py`, `services.py`) mais aucun composant
+  frontend `merge/fusion` trouvé — VÉRIFIER-D'ABORD, puis dialogue de fusion 2 colonnes (garder
+  A/garder B par champ, JAMAIS perdre le chatter). Fix : extraire
+  `useDuplicateCheck(phone, email, {exclude})` de LeadForm, poser sur ClientForm +
+  ClientQuickCreateModal ; extraire `<PhoneHint>` de ClientForm, poser sur
+  LeadForm/LeadExpressModal ; geste de fusion en second temps. Files :
+  `hooks/useDuplicateCheck.js` + `components/PhoneHint.jsx` (extraits), `ClientForm.jsx`,
+  `ClientQuickCreateModal.jsx`, `LeadForm.jsx`, `LeadExpressModal.jsx`, `apps/crm/services.py` +
+  `LeadMergeDialog.jsx`/`ClientMergeDialog.jsx` (si confirmé manquant). DoD : créer un client
+  avec un téléphone connu avertit AVANT soumission ; taper un numéro dans LeadForm affiche la
+  forme normalisée ; fusionner 2 doublons préserve les deux chatters + redirige les documents.
+  (T2 — M, sonnet ; opus si fusion cross-app) (@lane: frontend/crm)
+
+- [ ] VX240 — **Parité mécanique des formulaires : autofocus, mémoire des défauts,
+  multi-fichiers, focus de ligne achats. @after VX90, @coord VX92/VX93.** Sept incohérences
+  prouvées entre formulaires jumeaux : (a) `FactureForm.jsx:293-307`/`DevisForm.jsx:231-245`
+  s'ouvrent SANS aucun autofocus ; (b) `ProduitForm.jsx:413-416` Nom sans autofocus ; (c) dialog
+  paiement : `pay-montant` sans autofocus + `payReference` sans mémoire ; (d) création ticket
+  SAV (`TicketsPage.jsx:1092-1150`) : zéro autofocus + `type` reset à `'correctif'` ; (e)
+  `LeadExpressModal.jsx:35` reset `canal='walk_in'` en dur ; (f) `AttachmentsPanel.jsx:85` fait
+  `upload(files[0])` sans passer `multiple` à `FileUpload` (qui le supporte) — 5 photos = 5
+  cycles complets ; (g) `BonsCommandeFournisseur.jsx:260-268` n'avance jamais le focus à l'ajout
+  de ligne. Fix : chaque dialog nommé focus son premier champ utile ; type ticket/canal
+  express/payMode mémorisés (localStorage, modifiables) ; itérer séquentiellement les fichiers
+  avec « i/N », échec partiel n'annule pas les autres ; répliquer le patch VX90
+  (`data-line-key` + `pendingFocusKey`) côté achats. Files : `FactureForm.jsx`, `DevisForm.jsx`,
+  `ProduitForm.jsx`, `FactureList.jsx`, `pages/sav/TicketsPage.jsx`, `LeadExpressModal.jsx`,
+  `components/AttachmentsPanel.jsx`, `pages/stock/BonsCommandeFournisseur.jsx`. DoD : chaque
+  dialog nommé focus son premier champ utile à l'ouverture ; type ticket/canal express/payMode
+  mémorisés ; 5 fichiers s'uploadent en une sélection ; « Ajouter ligne » BCF focus la nouvelle
+  ligne ; tests de rendu. (T2 — M, haiku ; revue sonnet) (@lane: frontend/ventes — @after VX90)
+
+**Sous-groupe VXD-P — Forgiveness / historique / confiance**
+
+- [ ] VX241 — **[BACKEND] Le journal d'audit dit VRAI : cascade KB avouée, destroys
+  gardés+journalisés, Timesheet tracé, diffs automatiques.** Quatre défauts prouvés du même
+  système : (a) `KbArticle.parent` est `on_delete=CASCADE` (`apps/kb/models.py:87-89`) et le
+  confirm (`KbPage.jsx:104-105`) ment par omission — supprimer un parent détruit tout le
+  sous-arbre sans le dire ; (b) 23 `destroy()` recensés : `KitOutillage`/`Litige` (dossier légal)
+  n'ont AUCUN override, et les 7 modèles gardés « en usage »
+  (LeadTag/MotifPerte/Canal/ChecklistTemplate/ChecklistEtape/SafetyChecklistSlot/StageModele)
+  n'écrivent AUCUNE ligne `AuditLog` — `TRACKED_MODELS` (`audit/signals.py:18-58`, 31 modèles) ne
+  liste aucun d'eux, ni `Timesheet` (`gestion_projet/views.py:2136`) ; (c) le paramètre
+  `changes=` (diff structuré alimentant `reconstruct_as_of` YHARD3) n'est peuplé qu'à 2
+  call-sites dans tout le backend. Fix : confirm KB avec le compte réel de descendants (pattern
+  `ForceDeleteModal`) + `('kb','KbArticle')` et `('gestion_projet','Timesheet')` dans
+  `TRACKED_MODELS` ; mixin réutilisable `UsageGuardedDestroyMixin` (usage_count + message FR +
+  ligne AuditLog via `recorder.record()` en UN endroit) appliqué aux 7 gardés + gardes neufs
+  Kit/Litige ; snapshot complet du row dans `_on_pre_save` → diff automatique `changes=` pour
+  chaque UPDATE tracé. Files : `frontend/src/features/kb/KbPage.jsx`, `apps/kb/views.py`
+  (annotation compte), `apps/audit/signals.py`, `apps/core/destroy_mixins.py` (nouveau),
+  `apps/{crm,installations,outillage,litiges}/views*.py`. DoD : supprimer un parent KB affiche le
+  vrai compte + écrit une ligne DELETE visible au Journal ; supprimer un Kit utilisé → 409 FR ;
+  supprimer un Timesheet trace ; éditer `total_ttc` d'un devis écrit `changes=[{field,old,new}]`
+  sans toucher une seule vue ; tests YHARD3 verts. (T2/T3 — L, sonnet ; opus si l'import-linter
+  core bronche sur le mixin) (@lane: backend/auth)
+
+- [ ] VX242 — **[BACKEND+AUTH — noter au DONE LOG] Sécurité de session digne de confiance : le
+  changement de mot de passe révoque, le secret 2FA ne fuit plus.** Deux trous dans une feature
+  par ailleurs finie (N96, hors périmètre VX/NT) : (a) `ChangePasswordView.post()`
+  (`authentication/views.py:855-904`) ne touche jamais `UserSession`/blacklist — après
+  compromission, l'attaquant garde son refresh 7 j alors que TOUTE la machinerie de révocation
+  existe (`SessionRevokeView`, `_blacklist_refresh_jti`, :823-851), juste jamais invoquée depuis
+  ce chemin ; (b) `SecuriteCompteSection.jsx:363` rend le QR d'enrôlement 2FA via
+  `api.qrserver.com` — le SECRET TOTP brut part en clair. *(Note : (b) est la MÊME faille que
+  VX120 en tête de document — ne pas la reconstruire deux fois, ce seed la référence pour le
+  contexte de la révocation de session (a) qui l'accompagnait dans le rapport source.)* Fix :
+  révoquer toutes les sessions SAUF la courante après `user.save()` (boucle sur la logique
+  SessionRevoke existante), réponse `sessions_revoked: N` + message « … {N} autre(s) session(s)
+  déconnectée(s) » ; pour (b) voir VX120. Files : `authentication/views.py`
+  (`ChangePasswordView`). DoD : changer le mot de passe avec 2 autres sessions actives blackliste
+  leurs refresh (test à 2 logins). (T1 — S/M, sonnet — noter AUTH au DONE LOG) (@lane:
+  backend/auth)
+
+- [ ] VX243 — **[BACKEND] La confiance au niveau du DOSSIER : « archivé par X », historique de
+  MON enregistrement, garde d'édition périmée. @after VX98 (réutilise `updated_by`/`updated_at` —
+  ne jamais dupliquer le champ).** Trois lectures de confiance au grain du record : (a)
+  `Lead.archived_by`/`archived_at` sont capturés serveur (`crm/models.py:602-608`) et JAMAIS
+  rendus (0 hit frontend) ; (b) le Journal est gaté `can_view_activity_log` tout-ou-rien
+  (`audit/views.py:32-41`) : un commercial ne peut pas voir qui a modifié SON propre lead sans
+  recevoir la visibilité sur TOUTE la boîte — ajouter un chemin de lecture record-scopé ; (c)
+  aucune détection d'édition périmée au moment du SAVE (le verrou 409 backend reste territoire
+  YDATA ; VX98(b) = puce passive à la LECTURE) — hook `useStaleGuard` : au submit, re-GET léger de
+  `updated_at`, si différent de la valeur d'ouverture → bannière non bloquante « Modifié par {X}
+  pendant votre édition — vérifiez avant d'enregistrer » avec choix revoir/forcer. Files :
+  `pages/crm/leads/views/ListView.jsx` + `apps/crm/serializers.py` (exposer archived_by/at si
+  absents — additif), `apps/audit/views.py` (action de lecture scopée objet),
+  `hooks/useStaleGuard.js` (nouveau) câblé sur Lead/Devis/Facture. DoD : une ligne archivée
+  montre « Archivé par X le … » ; un commercial sans permission Journal voit l'historique de SON
+  lead et rien d'autre (test des 2 bornes) ; éditer dans 2 onglets → le 2ᵉ save affiche la
+  bannière AVANT le PATCH ; tests. (T2 — M, sonnet ; revue attentive de la borne de permission)
+  (@lane: backend/auth — @after VX98)
+
+- [ ] VX244 — **Le poids de la confirmation devient proportionné au dégât : primitive
+  `ConfirmDialog` à sévérité. @coord VX19, VX95/96.** Défaut prouvé : 68 `window.confirm` dans 44
+  fichiers, UNE seule gravité — supprimer un litige client (dossier légal), un article KB avec
+  sous-arbre, un secret webhook et un preset UI passent par le même dialog natif ; le repo SAIT
+  faire mieux (le `ForceDeleteModal` typé de `StockList.jsx:507-560`, le « maison, jamais
+  window.confirm » d'`UsersManagement.jsx:189`) sans jamais l'avoir généralisé. Fix : primitive
+  `ui/ConfirmDialog.jsx` (vérifier-d'abord qu'elle n'existe pas sous un autre nom) avec prop
+  `severity` (`low/medium/high`) pilotant couleur + confirmation tapée ; sémantique clavier
+  délibérée (Escape annule TOUJOURS ; Entrée ne confirme JAMAIS un destructif `high`) ; migrer les
+  ~10 sites au plus fort blast-radius (litiges, webhook-secret, templates checklist/safety,
+  KB-avec-enfants de VX241, bulk ≥5 leads via `<BulkDestructiveConfirm count>` extrait de
+  ForceDeleteModal) — jamais les 68 d'un coup. Files : `ui/ConfirmDialog.jsx` +
+  `ui/BulkDestructiveConfirm.jsx` (extraits), les ~10 sites cités. DoD : les 10 sites à fort enjeu
+  utilisent le dialog pondéré (confirmation tapée pour litiges/webhook/KB-enfants) ; bulk ≥5
+  leads montre le compte tapé ; Entrée ne déclenche pas un `high` ; tests. (T2 — M, sonnet)
+  (@lane: frontend/data — @coord VX19/VX95/VX96)
+
+**Sous-groupe VXD-Q — Interop & onboarding→maîtrise**
+
+- [ ] VX245 — **[BACKEND] Le cycle client sortant se boucle : `.ics` d'événement unique,
+  confirmation WhatsApp de RDV, relance de facture riche. @coord VX116, VX46 (re-surface
+  l'ABONNEMENT — distinct).** Trois maillons du même canal : (a) `AppointmentBooker.jsx` crée un
+  RDV sans JAMAIS produire de `.ics` — le seul générateur (`reporting/calendar.py:366-392`,
+  `build_ics`) ne fait que le flux d'ABONNEMENT complet ; (b) une fois le `.ics` livré, rien ne
+  relie le RDV au message WhatsApp de confirmation ; (c) le flux WhatsApp RICHE
+  (`LeadForm.jsx:179-207`) est un MONOPOLE du devis→lead — VX108 rend les numéros cliquables NUS
+  sans message pré-rempli. Fix : extraire `build_ics` en fonction pure, endpoint `GET
+  /crm/appointments/<id>/ics/` (1 VEVENT RFC 5545, scopé company) + bouton « Ajouter à mon
+  agenda (.ics) » ; bouton « Confirmer par WhatsApp » post-RDV (aperçu date/heure + lien .ics,
+  jamais automatique) ; extraire la construction message+wa_url en service paramétré par contexte
+  (`crm/services.py` ; la variante facture vit côté `ventes/services.py`) et l'appliquer à la
+  relance de facture depuis `FactureList`/`ClientDetailPanel`. Files :
+  `apps/reporting/calendar.py`, `apps/crm/{views,services}.py`, `apps/ventes/services.py`,
+  `crmApi.js`, `AppointmentBooker.jsx`, `FactureList.jsx`/`ClientDetailPanel.jsx`. DoD : « Ajouter
+  à mon agenda » télécharge un .ics valide qui s'ouvre dans Google Agenda (RDV d'une autre
+  société → 404) ; confirmer un RDV propose le message WhatsApp avec lien ; « Relancer par
+  WhatsApp » sur une facture en retard affiche l'aperçu du message ; tests. (T3 — M, sonnet)
+  (@lane: backend/notify — @coord VX116/VX46)
+
+- [ ] VX246 — **Queue de couverture interop : compression POD/chatter, Imprimer RH/contrats,
+  Copier TSV partout, vCard, tel: terrain. @after VX77/VX80/VX110/VX108.** Cinq extensions
+  mécaniques de patrons que VX pose sur des listes nommées en laissant des orphelins prouvés :
+  (a) compression photo VX77 = 3 écrans terrain — `PodCaptureDialog.jsx:120` et
+  `AttachmentsPanel.jsx:79` envoient brut ; (b) VX80 pose `print.css` + bouton sur 3 écrans —
+  ajouter le MÊME bouton sur `EmployeDetail.jsx` et `ContratDetail.jsx` (PAS le PDF WeasyPrint
+  contrat existant, hors règle #4 mais un seul mécanisme) ; (c) VX110 pilote « Copier » TSV sur
+  ClientList — restent orphelins : `installations/views/ListView.jsx`, `sav/TicketsPage.jsx`,
+  `stock/BonsCommandeFournisseur.jsx` ; (d) aucun `.vcf` nulle part — util pur `lib/vcard.js`
+  (vCard 3.0, zéro dép) + bouton discret à côté des liens VX108 ; (e) `TrajetPanel`
+  (`InterventionFieldExecution.jsx:247-251`) affiche le téléphone du contact site en texte brut →
+  lien `tel:`. Files : `features/logistique/PodCaptureDialog.jsx`,
+  `components/AttachmentsPanel.jsx`, `features/rh/EmployeDetail.jsx`,
+  `features/contrats/ContratDetail.jsx`, les 3 listes TSV, `lib/vcard.js` (nouveau),
+  `InterventionFieldExecution.jsx`. DoD : une photo POD de 6 Mo compresse avant upload, un PDF
+  passe intact ; `emulateMedia print` propre sur RH/contrat ; « Copier » TSV sur les 3 listes ; un
+  `.vcf` téléchargé s'importe ; le numéro du contact site est tapable ; tests. (T3 — M,
+  haiku/sonnet) (@lane: frontend/ios — @after VX77/VX80/VX110/VX108)
+
+- [ ] VX247 — **[GATED-founder pour le volet (e)] Onboarding→maîtrise : le guide connaît le
+  rôle, annonce le clavier, se voit dans le shell, a une mémoire — et l'ERP peut se peupler
+  d'exemple. @coord NTMOB33/VX47.** Le rapport prouve qu'un système d'onboarding ENTIER (FG16 :
+  279 lignes de coachmarks + checklist réelle) est absent à 100 % de la carte VX1-116. Cinq
+  trous : (a) `OnboardingCoachmarks.jsx:20-52` montre la MÊME séquence à tous → filtrer `STEPS`
+  par prédicat de rôle + 1-2 étapes par rôle non-admin (desktop ; NTMOB33 possède le MOBILE) ; (b)
+  le tour ne mentionne JAMAIS `⌘K` ni `?` → +1 étape finale sourcée de `GLOBAL_SHORTCUTS` ; (c) la
+  progression (`OnboardingSection.jsx:71`) n'existe QUE dans Paramètres → badge `2/3` sur l'item
+  Sidebar Paramètres tant que <100 % ; (d) aucun glossaire métier → page statique
+  `/aide/lexique` (15-25 termes), les HelpTip VX47 y POINTENT au lieu de dupliquer (@after VX47) ;
+  (e) [GATED-founder][BACKEND] `seed_demo.py` (326 lignes, jeu complet, CLI/DEBUG-only) n'est
+  exposé nulle part — endpoint protégé (flag explicite, société fraîche ET vide uniquement) +
+  bouton conditionnel dans OnboardingSection — PROPOSER, ne jamais activer sans accord fondateur.
+  Files : `features/onboarding/{OnboardingCoachmarks.jsx,onboardingHelpers.js}`,
+  `hooks/useOnboardingProgress.js` (nouveau), `components/layout/Sidebar.jsx`,
+  `pages/aide/LexiquePage.jsx` (nouveau + route),
+  `authentication/management/commands/seed_demo.py` (extraction service), endpoint léger,
+  `pages/parametres/OnboardingSection.jsx`. DoD : un compte Technicien ne voit jamais « Invitez
+  votre équipe » ; le tour finit sur `⌘K`/`?` ; badge Sidebar disparaît à 100 % ; lexique ≥15
+  termes ; une société neuve se peuple/se vide d'exemple derrière le flag (2 sens testés, garde
+  prod) ; non-régression du parcours Admin. (T3 — L, sonnet) (@lane: frontend/brand — @coord
+  NTMOB33/VX47)
+
+**Sous-groupe VXD-R — L'âme au quotidien**
+
+- [ ] VX248 — **Raccourcis d'ACTION à une touche sur le record focalisé + cheatsheet filtrée par
+  rôle. @coord NTUX9/18 (palette = chercher-puis-exécuter ; cheatsheet-recherche = trouver un
+  raccourci CONNU — mécanismes disjoints, vérifier avant build).** La vélocité perçue vient des
+  raccourcis d'ACTION sur l'objet affiché, pas de la navigation — `shortcuts.js` ne connaît que
+  `GOTO_SHORTCUTS` (nav), et la cheatsheet `?` est une liste statique identique pour tous les
+  rôles. Fix : registre `focusedRecordShortcuts.js` par écran de détail (LeadForm, détail
+  DevisList/FactureList, Ticket) — une touche = une action fréquente (`a` archiver, `d` déléguer,
+  `1..4` changer de stage via les CLÉS DE STAGES.py, règle #2 — jamais de littéraux) derrière la
+  garde `isTypingTarget` existante (`shortcuts.js:29-38`) ; apprentissage passif : le raccourci
+  s'affiche en tooltip sur le bouton équivalent (@coord VX129 — même slot `kbd`) ; la cheatsheet
+  gagne un champ `roles: []` optionnel et groupe « Pour votre rôle » d'abord, « Autres » en repli
+  (filtre d'AFFICHAGE seulement, jamais de désactivation fonctionnelle). Files :
+  `providers/{shortcuts.js,ShortcutsProvider.jsx}`, `focusedRecordShortcuts.js` (nouveau), points
+  de montage LeadForm/DevisList/FactureList, composant cheatsheet. DoD : sur LeadForm ouvert, `a`
+  (hors champ) archive sans clic, une frappe DANS un `<Input>` ne déclenche jamais ; un
+  Technicien ouvrant `?` voit ses raccourcis en tête ; la cheatsheet liste les nouveaux par écran
+  actif ; tests `isTypingTarget` + rendu par rôle. (T3 — M, sonnet) (@lane: frontend/crm — @coord
+  NTUX9/18)
+
+- [ ] VX249 — **Le langage des micro-états : pulse de champ sauvé, valeur « suggérée », pastille
+  « pour moi » vs « société ». @after/with VX93, @coord VX83/84/86 + VX208.** Trois micro-signaux
+  systémiques qu'aucune tâche par-écran ne peut poser : (a) aucun micro-accusé au grain du champ
+  pour les sauvegardes silencieuses (édition inline DataTable, statut, note chatter) → primitive
+  `ui/FieldSavedPulse.jsx` (pulse vert 300-400 ms sur LA cellule, `prefers-reduced-motion` →
+  changement statique), intégrée d'abord à l'édition inline DataTable ; (b) VX93 pré-remplit
+  (owner/ville/TVA/payMode) sans dire que c'est une SUPPOSITION → style discret « suggéré »
+  (contour pointillé + micro-libellé au focus, retiré dès modification) sur les 4 champs VX93
+  exactement, jamais un système de confidence générique ; (c) VX83/84/86 posent 3 surfaces de
+  signal sans convention visuelle commune « assigné à moi » vs « information société » → UN
+  token (pastille pleine = pour moi/action, contour = info passive) consommé à l'identique par
+  cloche, Ma file et Dashboard. Files : `ui/FieldSavedPulse.jsx` (nouveau),
+  `ui/datatable/DataTable.jsx`, les 4 fichiers VX93, `design/tokens.css`, `NotificationBell.jsx`,
+  `MesActivitesPage.jsx`, `Dashboard.jsx`. DoD : valider une cellule inline pulse LA cellule (pas
+  un toast) ; les champs pré-remplis affichent « suggéré » jusqu'au premier toucher ; un item
+  société n'emprunte jamais le style « pour moi » (test des 3 surfaces) ; reduced-motion dégrade.
+  (T3 — M, sonnet) (@lane: frontend/crm — @after/with VX93)
+
+- [ ] VX250 — **La fiche annonce son état et ses relations : « en attente de… » + compteurs
+  cliquables. @coord ARC46 (`RecordShell` — construire indépendant, migrer dedans plus tard).**
+  Deux lectures ambiantes au niveau du record : (a) rien ne montre, DANS le document ouvert, ce
+  qui reste à faire ailleurs → `<PendingStepsIndicator>` sur le détail Devis/Facture, dérivé des
+  statuts déjà chargés (devis `envoye` non signé → « En attente de signature client » ; facture à
+  acompte partiel → « Solde restant : X MAD ») — lecture PURE, ne change jamais un statut (chaîne
+  Devis/BonCommande/Facture préservée 1:1, règle #4) ; (b) chaque fiche 360 affiche ses relations
+  à sa façon → `<RelationCounters>` réutilisable (« 3 devis · 1 facture impayée · 2 tickets SAV »)
+  en tête de Lead/Client/Fournisseur/Produit *(note : composant déjà introduit en VX159 côté axe1
+  — cette entrée en spécifie l'usage sur DevisForm/FactureList également, coordonner un seul
+  `ui/RelationCounters.jsx`, ne jamais en construire un second)*, chaque compteur lu via le
+  selector du domaine CIBLE, clic → liste pré-filtrée `?client=`/`?id=`. Files :
+  `pages/ventes/{DevisForm,FactureList}.jsx` (détail), `ui/RelationCounters.jsx` (voir VX159),
+  montage `ClientDetailPanel.jsx`, `FournisseurFiche360.jsx`, `ProduitDetail.jsx`,
+  `LeadForm.jsx`. DoD : un devis envoyé non signé affiche son bandeau qui disparaît à la
+  signature ; une facture d'acompte affiche le solde ; les 4 fiches montrent les mêmes compteurs
+  cliquables vers des listes pré-filtrées ; `prix_achat` jamais rendu ; zéro appel réseau nouveau
+  pour (a) ; tests. (T3 — M, sonnet) (@lane: frontend/crm — @coord VX159/ARC46)
+
+- [ ] VX251 — **Le dispatch au glisser-déposer : réaffecter une intervention comme
+  ServiceTitan. @after VX95, @coord NTFSM3 (optimiseur 2-opt = l'ORDRE d'une tournée, pas le
+  geste de réaffectation — disjoint ; vérifier avant build).** Le geste cœur d'un dispatch board
+  (glisser un job d'un technicien à l'autre) n'existe pas — `PlanificationPage.jsx` (calendrier
+  dispatch) n'a aucun `onDrop`/`draggable`, alors que `KanbanView.jsx:186-200` (CRM) prouve déjà
+  le pattern drag+recul-guard dans le repo. Fix : répliquer le pattern Kanban sur l'onglet
+  dispatch — glisser une carte intervention d'une colonne-technicien à une autre déclenche
+  l'update `technicien`/`date` EXISTANT + `toastWithUndo` 6 s (VX95, jamais un 2ᵉ primitif undo) ;
+  le Gantt FG74 reste lecture seule ; la notif au nouveau technicien arrive par
+  `_notifier_reassignation` déjà câblé (XFSM3) — zéro backend. Files :
+  `pages/installations/PlanificationPage.jsx`, réutilise `lib/toast.js:60-89`. DoD : le drag
+  réaffecte réellement (persistance vérifiée), « Annuler » restaure l'affectation ; la
+  notification part au réassigné ; test du drop + undo. (T3 — M, sonnet) (@lane: frontend/ios —
+  @after VX95)
+
+- [ ] VX252 — **[BACKEND additif léger] Maîtrise personnelle : milestones non comparatifs, KPI
+  d'adoption clavier, garde anti-backfire de la gamification. @after VX156 (célébration devis
+  signé), @coord NTCRM23/24/28, NTUX40.** Recherche 2026 (Trophy.so, Carnegie Mellon) : ~10 % des
+  employés sont motivés par la compétition ; les 90 % restants sont ACTIVEMENT démotivés par un
+  classement. Trois pièces : (a) étendre `celebrate.js` (VX156, CSS-only) d'un déclencheur
+  « milestone personnel » à seuils déterministes et espacés (50ᵉ intervention signée, 25ᵉ devis
+  signé) — célébré UNE fois, jamais visible d'un collègue/manager, reduced-motion → toast simple ;
+  (b) KPI interne d'adoption clavier (« % actifs ayant utilisé ⌘K 1×/semaine », signal `POST
+  /ux/usage-signal/` best-effort jamais bloquant) — gate Directeur/Admin, JAMAIS montré au
+  commercial (@coord NTUX40 — métriques disjointes, vérifier) ; (c) garde anti-backfire à
+  INSCRIRE sur NTCRM23/24 avant leur build : `metrique_qualite_associee` affichée à côté du score
+  brut + participation réellement opt-in invisible — jamais un score de vitesse seul. Files :
+  `ui/celebrate.js`, points d'appel `MaJourneePage.jsx`/`SigneDialog`, `apps/reporting/models.py`
+  + endpoint léger, `providers/CommandPalette.jsx` (compteur), note sur NTCRM23/24. DoD : la 50ᵉ
+  intervention signée célèbre une fois (pas au 51ᵉ, pas au reload) ; le KPI calcule un % réel et
+  échoue gracieusement à 0 ; la note NTCRM est posée dans le plan ; tests. (T3 — M, sonnet)
+  (@lane: backend/notify — @after VX156)
+
+---
+
+## NE PAS FAIRE (Groupe VXD) — fusion dédupliquée des trois axes
+
+**Déjà possédé par VX1-116 (couches design/coquille/cockpits) :**
+- Re-signature coquille/marque, accents module, lanceur, cockpits → VX1-8, VX9-12/ODX5-7,
+  VX15/27/29-34. Couleurs de stage StatusPill → VX26 (règle #2).
+- Palette catégorielle data-viz + annotations → VX41 (danger zone) ; la rampe « solaire »
+  d'un rapport source est versée comme INPUT à VX41, jamais re-proposée.
+- Illustrations SVG d'états vides + confetti générique → VX40 (« délice mesuré ») ; VX156 (axe1
+  S40b, ex-« signé célébré ») ne câble QUE le moment signé, jamais le système d'illustration.
+- Photo produit catalogue, theming par tenant, refonte Landing, grille d'apps pleine page à la
+  Odoo → rejets fondateur explicites (rounds 1-3, PLAN2 NE PAS FAIRE).
+- Grain `feTurbulence` sur la sidebar, `@starting-style` (pattern de référence, pas un défaut),
+  `content-visibility` sur les listes non virtualisées (territoire perf, pas beauté) → rejetés/
+  hors-axe, non repris.
+- Badge persistant d'échec PDF sur la ligne, identifiant support dans ErrorBoundary → possédés
+  par VX172 / VX206 respectivement.
+
+**Déjà possédé par VX48-72 (appareils/Safari/perf nommés) :**
+- PDF iOS (onglet pré-ouvert), popup-block detection, `data-label` tables, clavier iOS
+  VisualViewport, `title=` tactile, balayage compat → VX48/49/50/51/52/53.
+- Troncature 100 lignes + pagination parallèle, timeout axios + annulation, poll onglet caché,
+  cold-path, préchargement, chunk-name, e2e comptes-justes, Web Vitals → VX54-VX61.
+- Brouillon auto DevisGenerator + garde de sortie → VX62 ; JSON brut DevisList → VX63 ; error
+  boundaries routes nues → VX64 ; `?next=` login → VX65 ; anti-double-submit Button → VX66.
+- Safari/iPad/zoom/visual-regression/axe/Sentry e2e → VX68/69/70/71/72.
+- `.agent-sql` momentum-scroll → CSS mort (0 consommateur), retiré de VX175 ; sa suppression
+  appartient à VX121.
+- Rejets round 2 toujours en vigueur : verrou optimiste 409 (→YDATA), Lighthouse-CI sur le SPA
+  authentifié, BundleMon 2ᵉ gate, Firefox en matrice, service-worker cache des RÉPONSES API, 2ᵉ
+  outbox offline, virtualisation sans mesure. VX187/VX188 sont les seules exceptions MESURÉES
+  (DoD Profiler à l'appui) ; VX179 cache des ASSETS/médias en lecture, jamais des réponses API.
+  `animation-timeline: scroll()` non confirmé dans le code → ne pas construire spéculativement ;
+  attribution LoAF dans le beacon → amendement du build de VX61 (même fichier `vitals.js`), pas
+  une tâche séparée ; note HMR du singleton `fieldOutbox` → un commentaire de code, pas une
+  tâche ; moteur de conflit offline / CRDT → le signal de conflit EST le message serveur par op de
+  VX119.
+- Gate visuel bloquant par PR → contredit la décision LIVRÉE de VX70, jamais un amendement sans
+  raison.
+
+**Déjà possédé par VX73-116 (locale, files, saisie, argent, amour-employé) :**
+- Sélecteur de langue menteur + `Ctrl K` → VX73 ; arabe RTL décision → VX74 ; format
+  argent/date + garde CI → VX75 (VX143 en est l'annexe d'exécution, pas un doublon) ; compression
+  photo → VX77 ; 404 branché → VX78.
+- « Ma file » unique + cloche AUTRES + plomberie records + signaux approbation → VX83-86,
+  VX99-101 ; jamais un 2ᵉ agrégateur ni une 2ᵉ boîte de réception parallèle (VX214 l'atteste par
+  reshape) ; jamais de hook de polling séparé pour la cloche (VX56 possède
+  `useVisibilityAwarePolling`, cloche incluse).
+- Journal d'appel un-geste + tournée géo + délégation absence + technicien + signature client +
+  résumé client → VX87/88/103/105/106/107.
+- LeadForm Escape/autofocus, « Ajouter ligne » focus, convergence FactureForm, « enregistrer et
+  créer un autre », défauts intelligents, Enter-pour-ajouter → VX89-94.
+- `toastWithUndo` câblé (archive/kanban), soft-delete Lead, « qui a fait quoi », lien Historique,
+  `tel:`/`wa.me`, import fournisseurs, « Copier » TSV, pièce jointe note chatter → VX95-98,
+  VX108-111.
+- Drill-down relances, exercice fiscal, sélecteur dates export, KPI compta, relance en lot →
+  VX112-116.
+- « Mes préférences » (thème/densité/module d'atterrissage/mouvement) → VX46 ; HelpTip
+  contextuel → VX47 ; emails de marque wrapper → VX76 ; export XLSX horodaté → VX81 ; liens
+  partageables `?id=` → VX79 ; impression → VX80 ; chrome onglet + non-lus → VX82.
+- Rejets round 3 : 2FA remember-device (→NTSEC14), Corbeille générique (→NTUX7), formulaire
+  DemandeAchat catalogue (→NTP2P3), refonte chatter (→VX23/ARC8-9), moteur d'approbation unifié
+  (→ARC10/NTWFL1), « Ma journée commerciale » silo (→VX83 absorbe), inbox mentions dédiée
+  (→NTCOL17), optimiseur 2-opt (→NTFSM3), undo bulk-edit (→NTUX6), paste-grid Excel multi-cellules
+  (différé — VX237 est le collage UNITAIRE), KPI perso PUBLIC/classement (différé — VX219 est
+  privé, VX252 non-comparatif), correction de ligne de paiement (DECISION), iCal abonnement
+  (VX46), Client-360/OCR relevé (persona-finance).
+
+**Frontières NT/ARC intouchables (les trois axes) :**
+- Vues serveur partagées / FilterBuilder ET/OU / bulk-edit preview-undo / corbeille transverse
+  (`apps/trash`) / quick-create palette générique / favoris / peek-hover de LIGNE / densité par
+  vue → NTUX (frontière explicite « pas de changement visuel/shell (Groupe VX) »,
+  `new_tasks_plan.md:2436`).
+- Boîte email par user / RDV Calendly / boîte partagée / inbox mentions `/mentions` / digest
+  personnel → NTCOL.
+- Offline multi-module / accueils mobiles par rôle / géofence / scan QR / onboarding mobile
+  « Ma journée » → NTMOB, NTMOB33.
+- i18n/RTL/langue par user/polices arabes → NTI18N (attention : NTI18N5/17/30 touchent le moteur
+  `/proposal` — règle #4, ne jamais y toucher côté client).
+- Leaderboard/défis d'équipe → NTCRM23/24 (seul le garde-fou de VX252 s'y greffe, jamais le
+  système lui-même).
+- Moteur d'approbation unifié → ARC10/NTWFL1 ; migration DataTable DevisList/FactureList →
+  ARC49/53 (VX180/VX178/VX184 se corrigent AVANT que la migration n'hérite du défaut) ;
+  `useResource` → ARC44/45 ; RecordShell → ARC46 (VX159/VX250 construits indépendants, migrables
+  dedans ensuite) ; politique magasin-unique → ARC26.
+- Verrou optimiste backend 409 → YDATA ; file photo binaire offline → FG386 (« jamais un 2ᵉ
+  outbox », VX119 ne construit PAS de moteur CRDT).
+
+**Mécanique transversale (toujours vraie, tous les VXD) :**
+- Frontend-first ; aucune dépendance npm nouvelle sauf tâche taguée [GATED] (VX120 QR 2FA,
+  VX198 jsx-a11y, VX247(e) seed_demo — tous soumis au fondateur avant tout build).
+- Jamais toucher `apps/ventes/quote_engine/`, `/proposal`, PdfCanvas, `apps/web` (règle #4) — le
+  moteur RESTITUE, ne change jamais un statut (VX250(a) est une LECTURE) ; les PDF
+  d'intervention/contrat (WeasyPrint) sont hors règle #4 mais on n'y crée jamais un 2ᵉ mécanisme
+  concurrent (VX246(b)).
+- Toute clé de stage vient de `STAGES.py`/`features/crm/stages.js` (règle #2) — jamais un
+  littéral (VX224, VX248 raccourcis `1..4`, VX211 `queueViews`).
+- `prix_achat`/marge jamais client-facing ni dans un peek/notification/WhatsApp/milestone
+  (VX213 montants DA, VX217 AttentionPeek, VX156 messages — tous montants client-safe).
+- Jamais d'envoi WhatsApp/email automatique — aperçu-puis-clic partout (règle manuel-wa.me
+  fondateur, VX222/VX245/VX252) ; jamais de mutation via lien email non authentifié (VX212).
+  `api.qrserver.com` et tout rendu tiers de secrets sont interdits (VX120).
+- Ne pas dé-gater `/reporting/commercial` (VX219 ajoute une carte personnelle, le reporting
+  manager reste manager) ; ne pas élargir le Journal global (VX243 = lecture record-scopée,
+  jamais un grant company-wide) ; ne JAMAIS déverrouiller un accès nav/rôle sans décision
+  fondateur.
+- Hooks e2e `ap-*/att-*/pp-*` préservés partout ; UN seul Toaster ; scoping tenant TOUJOURS
+  serveur (`request.user.company`, `perform_create` force `company`) ; jamais `count()+1` pour
+  une référence ; migrations additives/révertables ; noter AUTH au DONE LOG pour
+  VX235/VX242/VX243 ; FR partout.
+
 ### Group QF — Quote fidelity: real-bill tranche savings, battery-scenario honesty, Huawei-only accessories (founder request 2026-07-01)
 
 *From Reda: the devis currently shows savings numbers unrelated to the client's real bill; selecting « sans batterie » (and likely « avec batterie ») does not produce the right option; and the Smart Meter + Clé Wifi accessories are being attached to every inverter when they only belong on a Huawei. Three clusters below. Research pinned the exact code: residential on-screen savings (`solar.js computeROI`) use a FIXED 1.75 MAD/kWh and ignore the entered bills (bills are chart-only); the backend `pricing.py` already has ONEE/Lydec/Redal tranche tables from QJ13 but they only fire when `distributeur`+consumption are passed; `builder.py` (~L414-422) auto-derives the avec/sans scenario from line items and IGNORES the seller's stored `etude_params['scenario']`; and `solar.js autoFillLines` (~L445-465) attaches Smart Meter + Wifi to ANY réseau inverter, not Huawei-only (the correct guard exists in the old simulator and was never ported).*
