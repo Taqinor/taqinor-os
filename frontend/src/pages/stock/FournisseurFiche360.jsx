@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useSelector } from 'react-redux'
+import { useHasPermission, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import {
   BarChart3, FileWarning, PackageCheck, Receipt, Wallet,
   Undo2, ShieldCheck, Tags,
@@ -326,13 +327,15 @@ function OngletAccordsPrix({ fournisseurId }) {
 export default function FournisseurFiche360({ fournisseurId: fournisseurIdProp, fournisseurNom } = {}) {
   const params = useParams()
   const fournisseurId = fournisseurIdProp ?? params.id
-  const role = useSelector((s) => s.auth.role)
-  const permissions = useSelector((s) => s.auth.permissions) || []
-  // Donnée d'achat INTERNE (prix/solde/performance) : même garde que le reste
-  // de l'écran fournisseur — responsable/admin ou droit explicite stock_voir.
-  const canView = permissions.length
-    ? permissions.includes('stock_voir')
-    : (role === 'responsable' || role === 'admin')
+  // ARC47 — gating via le hook partagé. Donnée d'achat INTERNE
+  // (prix/solde/performance) : même garde que le reste de l'écran fournisseur —
+  // responsable/admin ou droit explicite stock_voir. `hasFinePermissions`
+  // (présence de codes ERP, PAS un droit) choisit la branche ; hooks
+  // inconditionnels ; sémantique identique à l'origine.
+  const hasFinePermissions = useSelector((s) => (s.auth.permissions || []).length > 0)
+  const canViewViaPerm = useHasPermission('stock_voir')
+  const canViewViaRole = useIsAdminOrResponsable()
+  const canView = hasFinePermissions ? canViewViaPerm : canViewViaRole
 
   const tabs = useMemo(() => ([
     { value: 'performance', label: 'Performance', icon: BarChart3, Comp: OngletPerformance },

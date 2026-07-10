@@ -17,11 +17,21 @@ DEFAULT_PREFIXES = {
 def _profile(company):
     if company is None:
         return None
-    try:
-        from apps.parametres.models import CompanyProfile
-        return CompanyProfile.get(company=company)
-    except Exception:
-        return None
+
+    def _load():
+        try:
+            from apps.parametres.models import CompanyProfile
+            return CompanyProfile.get(company=company)
+        except Exception:
+            return None
+
+    # SCA43 / NTPLT16 — mémo PAR REQUÊTE : le profil société est constant le temps
+    # d'une requête ; la liste des devis appelle le moteur une fois par devis, donc
+    # sans ce mémo la même config est relue ~1×/devis (N+1). Hors requête (Celery/
+    # PDF) le cache est inactif → CompanyProfile.get à chaque appel (inchangé).
+    from core import request_cache
+    return request_cache.memoize(
+        ("parametres.company_profile", getattr(company, "id", None)), _load)
 
 
 def payment_terms_for(company, mode):

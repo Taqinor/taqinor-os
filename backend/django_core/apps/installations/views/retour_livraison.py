@@ -9,8 +9,8 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import RetourLivraison, RetourLivraisonLigne
 from ..serializers import (
@@ -21,7 +21,7 @@ from ..services import valider_retour_livraison
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class RetourLivraisonViewSet(TenantMixin, viewsets.ModelViewSet):
+class RetourLivraisonViewSet(CompanyScopedModelViewSet):
     """ZSTK8 — retours client générés depuis une livraison livrée. Lecture
     tout rôle, écriture responsable/admin. Filtrable par `livraison`,
     `statut`."""

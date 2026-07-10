@@ -48,6 +48,11 @@ vi.mock('../../api/ventesApi', async (importOriginal) => {
 
 import DevisList from './DevisList'
 import ventesApi from '../../api/ventesApi'
+// ARC49 — DevisList rend désormais son tableau via le moteur `ui/datatable`, qui
+// lit la densité via useDensity() et EXIGE donc un <ThemeProvider> dans l'arbre
+// (comme en production, où <Layout> l'enveloppe). Ajout de wrapper de HARNAIS
+// uniquement — aucune assertion n'est modifiée.
+import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
 // Réducteurs minimaux : seules les tranches lues par l'écran (ventes + auth).
 // QG10 — l'écran lit aussi auth.role_nom + auth.permissions (useHasPermission).
@@ -68,7 +73,9 @@ function renderList(opts, initialEntries = ['/ventes/devis']) {
   return render(
     <Provider store={store}>
       <MemoryRouter initialEntries={initialEntries}>
-        <DevisList />
+        <ThemeProvider>
+          <DevisList />
+        </ThemeProvider>
       </MemoryRouter>
     </Provider>,
   )

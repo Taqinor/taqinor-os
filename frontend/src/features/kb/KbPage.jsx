@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useSelector } from 'react-redux'
+import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import {
   BookOpen, Plus, Eye, Pencil, Trash2, Send, FolderTree, Copy, AlertTriangle,
   LayoutTemplate, Download, Upload, Star, BarChart3,
@@ -32,8 +32,7 @@ const STATUT_FILTER_OPTIONS = [
 ]
 
 export default function KbPage() {
-  const role = useSelector((s) => s.auth?.role)
-  const peutEditer = role === 'responsable' || role === 'admin'
+  const peutEditer = useIsAdminOrResponsable()
 
   const [articles, setArticles] = useState([])
   const [loading, setLoading] = useState(true)

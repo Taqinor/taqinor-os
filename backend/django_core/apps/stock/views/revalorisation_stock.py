@@ -1,7 +1,7 @@
-from rest_framework import viewsets, status
+from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from authentication.mixins import TenantMixin
+from core.viewsets import CompanyScopedModelViewSet
 from ..models import RevalorisationStock
 from ..serializers import RevalorisationStockSerializer
 from authentication.permissions import IsAdminRole
@@ -11,7 +11,7 @@ from authentication.permissions import IsAdminRole
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-class RevalorisationStockViewSet(TenantMixin, viewsets.ModelViewSet):
+class RevalorisationStockViewSet(CompanyScopedModelViewSet):
     """XSTK14 — revalorisation manuelle du stock (document tracé). INTERNE,
     admin-only, jamais client-facing. Un brouillon peut être supprimé ; une
     revalorisation VALIDÉE est verrouillée (jamais modifiée/supprimée)."""

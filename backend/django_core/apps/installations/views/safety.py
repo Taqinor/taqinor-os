@@ -6,6 +6,7 @@ from authentication.mixins import TenantMixin  # noqa: F401
 from authentication.permissions import (  # noqa: F401
     IsAnyRole, IsResponsableOrAdmin, IsAdminRole,
 )
+from core.viewsets import CompanyScopedModelViewSet
 from django.utils import timezone  # noqa: F401
 
 from .. import activity  # noqa: F401
@@ -107,7 +108,7 @@ def seed_types_intervention(company):
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-class SafetyChecklistSlotViewSet(TenantMixin, viewsets.ModelViewSet):
+class SafetyChecklistSlotViewSet(CompanyScopedModelViewSet):
     """F18 — consignes de sécurité configurables (Paramètres → Sécurité).
     Lecture tout rôle, écriture admin. Les défauts (EPI portés, consignation
     électrique) sont semés à la première liste ; une consigne protégée garde sa

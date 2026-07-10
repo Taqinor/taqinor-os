@@ -78,6 +78,43 @@ export const DataTable = forwardRef(function DataTable(
     onRowClick,
     onRowPrefetch, // (row) => void — H133 : préchargement au survol/intention
     renderExpanded, // (row) => ReactNode → ligne dépliable
+    /* ---- ARC49/ARC53 — Échappatoires ADDITIVES (100 % opt-in) ------------
+       Le moteur est consommé par ~79 écrans ; TOUTES les propriétés ci-dessous
+       sont opt-in et, non fournies, laissent le rendu STRICTEMENT identique à
+       avant. Elles permettent de porter les écrans « chemin de l'argent »
+       (DevisList/FactureList) — dont chaque ligne est un <tr> riche avec
+       boutons à état de chargement, AlertDialog, deux panneaux dépliables
+       indépendants — sur le frame du moteur sans casser leur contrat de test.
+
+       - renderRow(row, api) : rend une LIGNE ENTIÈRE personnalisée (remplace le
+         pipeline de cellules + RowActions intégrés). `api` = { rowKey, index,
+         isSelected, toggleSelect, isPanelOpen(id), togglePanel(id),
+         setPanel(id, open), query }. Quand fourni, le moteur n'émet ni la
+         cellule sélection, ni la cellule actions, ni le chevron `renderExpanded`
+         intégrés — la ligne custom en a la pleine maîtrise (panneaux multiples
+         inclus, cf. `expandedPanels`).
+       - renderHeaderRow(api) : rend le CONTENU de la rangée d'en-tête (<th>…</th>)
+         à la place de l'en-tête intégré. `api` = { pageSelectionState,
+         onToggleAllPage, allSelected }.
+       - tableClassName : classes ajoutées à la <table> desktop (ex. 'data-table').
+       - tableRole : rôle ARIA de la <table> (défaut 'grid' — inchangé ; passer
+         'table' pour les écrans testés via getByRole('table')).
+       - hideToolbar / hideMobileCards / hidePagination : masquent les chromes
+         intégrés quand l'écran fournit les siens (opt-in, défaut = comportement
+         historique inchangé). `renderRow` implique hideMobileCards par défaut
+         (une ligne custom ne se replie pas automatiquement en carte).
+       - expandedPanels : liste d'identifiants de panneaux dépliables nommés dont
+         l'état d'ouverture est suivi indépendamment PAR LIGNE (ex. ['versions',
+         'roof']). Déclaratif/documentaire : `renderRow` lit/écrit via l'`api`. */
+    renderRow,
+    renderHeaderRow,
+    tableClassName,
+    tableRole,
+    hideToolbar = false,
+    hideMobileCards = false,
+    hidePagination = false,
+    // eslint-disable-next-line no-unused-vars
+    expandedPanels,
     // pagination
     pageSize: initialPageSize = 25,
     pageSizeOptions = [10, 25, 50, 100],
@@ -136,6 +173,24 @@ export const DataTable = forwardRef(function DataTable(
   } = table
 
   const [expanded, setExpanded] = useState({})
+  // ARC49 — état d'ouverture des panneaux dépliables NOMMÉS, indépendant par
+  // ligne : { [rowKey]: { [panelId]: bool } }. Utilisé UNIQUEMENT par le mode
+  // `renderRow` (via l'`api`) ; sans lui, cet état reste vide et inerte, donc
+  // les consommateurs historiques ne voient aucune différence.
+  const [panelState, setPanelState] = useState({})
+  const isPanelOpen = useCallback(
+    (rowKey, panelId) => !!panelState[rowKey]?.[panelId],
+    [panelState],
+  )
+  const setPanel = useCallback((rowKey, panelId, open) => {
+    setPanelState((p) => ({ ...p, [rowKey]: { ...p[rowKey], [panelId]: open } }))
+  }, [])
+  const togglePanel = useCallback((rowKey, panelId) => {
+    setPanelState((p) => ({
+      ...p,
+      [rowKey]: { ...p[rowKey], [panelId]: !p[rowKey]?.[panelId] },
+    }))
+  }, [])
   const dragId = useRef(null)
   const scrollRef = useRef(null)
   const [scrollTop, setScrollTop] = useState(0)
@@ -286,8 +341,15 @@ export const DataTable = forwardRef(function DataTable(
     : { startIndex: 0, endIndex: rows.length, paddingTop: 0, paddingBottom: 0 }
   const visibleRows = effectiveVirtualize ? rows.slice(win.startIndex, win.endIndex) : rows
 
-  const colSpan = resolvedColumns.length + (selectable ? 1 : 0) + (rowActions ? 1 : 0) + (renderExpanded ? 1 : 0)
-  const expandable = typeof renderExpanded === 'function'
+  // ARC49 — en mode `renderRow`, la ligne custom possède TOUTE sa structure de
+  // cellules (sélection/actions/panneaux inclus) : le moteur n'ajoute aucune
+  // colonne technique, et les cellules pleine largeur (vide/erreur) couvrent
+  // simplement le nombre de colonnes métier.
+  const customRow = typeof renderRow === 'function'
+  const colSpan = customRow
+    ? resolvedColumns.length
+    : resolvedColumns.length + (selectable ? 1 : 0) + (rowActions ? 1 : 0) + (renderExpanded ? 1 : 0)
+  const expandable = !customRow && typeof renderExpanded === 'function'
 
   const cellPadY = compact ? 'py-1.5' : 'py-2.5'
   const cellPadX = 'px-3'
@@ -333,7 +395,8 @@ export const DataTable = forwardRef(function DataTable(
     [rows, activeRow, onRowClick],
   )
 
-  const hasToolbar = searchable || savedViews || columns.some((c) => c.hideable !== false) || onExport !== undefined
+  const hasToolbar = !hideToolbar
+    && (searchable || savedViews || columns.some((c) => c.hideable !== false) || onExport !== undefined)
 
   return (
     <div ref={ref} className={cn('flex flex-col gap-3', className)}>
@@ -408,17 +471,23 @@ export const DataTable = forwardRef(function DataTable(
               style={effectiveVirtualize ? { maxHeight: maxBodyHeight } : undefined}
             >
               <table
-                role="grid"
+                role={tableRole ?? 'grid'}
                 aria-label={ariaLabel}
                 aria-rowcount={totalCount}
                 tabIndex={0}
                 onKeyDown={onGridKeyDown}
-                className="w-full border-collapse text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className={cn(
+                  'w-full border-collapse text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  tableClassName,
+                )}
                 style={colWidths.vars}
               >
                 {/* O166 — <colgroup> dimensionne les colonnes UNE SEULE FOIS par rendu
                     (largeur résolue depuis la variable CSS du conteneur), au lieu de
-                    recalculer/poser la largeur sur CHAQUE cellule à chaque rendu. */}
+                    recalculer/poser la largeur sur CHAQUE cellule à chaque rendu.
+                    ARC49 — en mode `renderRow`, la ligne custom gère elle-même sa
+                    structure : pas de <colgroup> technique injecté. */}
+                {!customRow && (
                 <colgroup>
                   {expandable && <col style={{ width: 36 }} />}
                   {selectable && <col style={{ width: leadOffset }} />}
@@ -433,6 +502,21 @@ export const DataTable = forwardRef(function DataTable(
                   ))}
                   {rowActions && <col style={{ width: actionsWidth }} />}
                 </colgroup>
+                )}
+                {/* ARC49 — en-tête personnalisé (opt-in) : l'écran fournit ses
+                    propres <th> (mêmes libellés/classes que l'écran historique)
+                    et la case « tout sélectionner ». Sans lui, en-tête intégré. */}
+                {renderHeaderRow ? (
+                  <thead className="sticky top-0 z-[var(--z-sticky)] bg-muted/95 backdrop-blur">
+                    <tr>
+                      {renderHeaderRow({
+                        pageSelectionState,
+                        onToggleAllPage,
+                        allSelected: pageSelectionState === 'all',
+                      })}
+                    </tr>
+                  </thead>
+                ) : (
                 <thead className="sticky top-0 z-[var(--z-sticky)] bg-muted/95 backdrop-blur">
                   <tr>
                     {expandable && <th scope="col" className="w-9 px-2" aria-label="Déplier" />}
@@ -521,6 +605,7 @@ export const DataTable = forwardRef(function DataTable(
                     )}
                   </tr>
                 </thead>
+                )}
 
                 <tbody>
                   {loading ? (
@@ -559,6 +644,26 @@ export const DataTable = forwardRef(function DataTable(
                         const isExpanded = !!expanded[rowKey]
                         const isActive = i === activeRow
                         const actions = rowActions ? rowActions(row) : []
+                        // ARC49 — mode ligne personnalisée : l'écran rend TOUTE la
+                        // ligne (et ses panneaux dépliables) via `renderRow`. Le
+                        // moteur ne fournit que l'identité + l'API de sélection /
+                        // panneaux ; il n'ajoute aucune cellule technique.
+                        if (customRow) {
+                          return (
+                            <Fragment key={rowKey}>
+                              {renderRow(row, {
+                                rowKey,
+                                index: i,
+                                isSelected,
+                                toggleSelect: () => onToggleRow(rowKey),
+                                isPanelOpen: (panelId) => isPanelOpen(rowKey, panelId),
+                                togglePanel: (panelId) => togglePanel(rowKey, panelId),
+                                setPanel: (panelId, open) => setPanel(rowKey, panelId, open),
+                                query,
+                              })}
+                            </Fragment>
+                          )
+                        }
                         return (
                           <Fragment key={rowKey}>
                             <tr
@@ -699,6 +804,10 @@ export const DataTable = forwardRef(function DataTable(
              titre (1re colonne) en haut, métrique clé en GRAND, le reste des
              champs en libellé/valeur, et un chevron vers le détail. L'en-tête
              de tableau est masqué (la table desktop est en `hidden sm:block`). */}
+          {/* ARC49 — le mode `renderRow` (ou `hideMobileCards`) supprime le
+              repli en cartes : l'écran conserve son unique table `data-table`
+              responsive (CSS) comme aujourd'hui, sans DOM carte dupliqué. */}
+          {!(customRow || hideMobileCards) && (
           <div data-dt-cards className="flex flex-col gap-2 sm:hidden">
             {loading ? (
               Array.from({ length: 4 }).map((unused, i) => (
@@ -784,9 +893,10 @@ export const DataTable = forwardRef(function DataTable(
               })
             )}
           </div>
+          )}
 
           {/* -------- Pagination -------- */}
-          {!loading && rows.length > 0 && (
+          {!hidePagination && !customRow && !loading && rows.length > 0 && (
             <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
               <div className="flex items-center gap-2 text-muted-foreground">
                 <span aria-live="polite">{range.from === 0 ? '0 sur 0' : `${range.from}–${range.to} sur ${range.total}`}</span>

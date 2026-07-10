@@ -65,6 +65,27 @@ def _from_email():
     return getattr(settings, 'DEFAULT_FROM_EMAIL', '') or 'noreply@erp.local'
 
 
+def _signature(company, **context):
+    """SCA25 — signature d'email de la société (BrandedTemplate ou repli neutre).
+
+    Résout le nom de la société via ``parametres.company_identity``
+    (``CompanyProfile``) puis délègue à ``core.selectors.resolve_email_signature``
+    qui applique le ``BrandedTemplate`` de la société s'il existe, sinon
+    « L'équipe {nom} ». Plus jamais « TAQINOR » codé en dur : le fondateur ne
+    voit son nom que parce que SON profil le porte. Ne casse jamais l'envoi."""
+    nom = ''
+    try:
+        from apps.parametres.selectors import company_identity
+        nom = (company_identity(company).get('nom') or '').strip()
+    except Exception:  # noqa: BLE001 — un email ne casse jamais sur ce point
+        nom = ''
+    try:
+        from core.selectors import resolve_email_signature
+        return resolve_email_signature(company, nom, **context)
+    except Exception:  # noqa: BLE001 — repli ultime, jamais d'échec d'envoi
+        return f"L'équipe {nom}" if nom else "L'équipe"
+
+
 def _send(to_email, sujet, corps, attachment=None, attachment_name=None):
     """Envoie via le backend Django configuré. Retourne (ok, erreur).
 
@@ -138,12 +159,14 @@ def send_document_email(document, *, to_email=None, sujet=None, corps=None,
         if client is not None:
             nom_client = f"{client.nom} {getattr(client, 'prenom', '') or ''}".strip()
         salut = f'Bonjour {nom_client},' if nom_client else 'Bonjour,'
+        signature = _signature(
+            getattr(document, 'company', None), reference=reference)
         corps = (
             f"{salut}\n\n"
             f"Veuillez trouver ci-joint votre {type_doc} "
             f"{reference}.\n\n"
             f"Nous restons à votre disposition pour toute question.\n\n"
-            f"Cordialement,\nL'équipe TAQINOR"
+            f"Cordialement,\n{signature}"
         )
 
     attachment = attachment_name = None
@@ -203,9 +226,11 @@ def send_relance_email(facture, *, niveau_nom='', message='', user=None,
     corps_msg = message.strip() if message else (
         f"Sauf erreur de notre part, la facture {reference} reste impayée. "
         f"Nous vous remercions de bien vouloir procéder à son règlement.")
+    signature = _signature(
+        getattr(facture, 'company', None), reference=reference)
     corps = (
         f"{salut}\n\n{corps_msg}\n\n"
-        f"Cordialement,\nL'équipe TAQINOR"
+        f"Cordialement,\n{signature}"
     )
 
     attachment = attachment_name = None
@@ -266,9 +291,11 @@ def send_pre_echeance_email(facture, *, user=None):
         getattr(facture, 'company', None), 'pre_echeance',
         civilite=civilite, nom=nom_client, reference=reference, lien=lien)
     sujet = rendered['sujet'] or f'Rappel amical — échéance {reference}'
+    signature = _signature(
+        getattr(facture, 'company', None), reference=reference)
     corps = rendered['corps'] or (
         f"Bonjour {nom_client},\n\nVotre facture {reference} arrive "
-        f"prochainement à échéance.\n\nCordialement,\nL'équipe TAQINOR")
+        f"prochainement à échéance.\n\nCordialement,\n{signature}")
 
     log = EmailLog(
         company=getattr(facture, 'company', None),
@@ -308,10 +335,12 @@ def send_recu_email(paiement, *, user=None, to_email=None):
         nom_client = f"{client.nom} {getattr(client, 'prenom', '') or ''}".strip()
     salut = f'Bonjour {nom_client},' if nom_client else 'Bonjour,'
     sujet = f'Quittance de paiement — {reference}'
+    signature = _signature(
+        getattr(paiement, 'company', None), reference=reference)
     corps = (
         f"{salut}\n\nVeuillez trouver ci-joint votre quittance pour le "
         f"règlement de {paiement.montant} MAD.\n\n"
-        f"Cordialement,\nL'équipe TAQINOR"
+        f"Cordialement,\n{signature}"
     )
 
     log = EmailLog(
@@ -361,9 +390,10 @@ def send_releve_email(client, releve_data, *, user=None):
 
     nom_client = f"{client.nom} {getattr(client, 'prenom', '') or ''}".strip()
     sujet = f'Relevé de compte — {nom_client}'
+    signature = _signature(getattr(client, 'company', None))
     corps = (
         f"Bonjour {nom_client},\n\nVeuillez trouver ci-joint votre relevé "
-        f"de compte mensuel.\n\nCordialement,\nL'équipe TAQINOR"
+        f"de compte mensuel.\n\nCordialement,\n{signature}"
     )
 
     log = EmailLog(

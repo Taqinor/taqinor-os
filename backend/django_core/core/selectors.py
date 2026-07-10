@@ -66,3 +66,54 @@ def get_company_object(model_or_queryset, pk, user, extra_scope=None,
         # fuite (IDOR par énumération).
         raise Http404('Introuvable.')
     return obj
+
+
+# ── SCA25 — signature d'email brandée (BrandedTemplate FG393) ────────────────
+# Code d'usage canonique du modèle de signature d'email d'une société. Un
+# ``BrandedTemplate(company, kind='email', code=EMAIL_SIGNATURE_CODE)`` actif,
+# s'il existe, pilote la signature des emails transactionnels ; sinon on retombe
+# sur « L'équipe {nom de la société} ». Constante ici (et non en dur dans
+# ``ventes``) pour rester la SEULE source du code d'usage.
+EMAIL_SIGNATURE_CODE = 'signature'
+
+
+def resolve_email_signature(company, nom_societe='', **context) -> str:
+    """Signature à apposer au bas d'un email transactionnel d'une société.
+
+    ``core`` reste FONDATION : la SIGNATURE elle-même vient soit d'un
+    ``BrandedTemplate`` (kind ``email``, code ``signature``, FG393) que la
+    société a rédigé — rendu par ``core.templating`` (substitution littérale,
+    aucun code exécuté) —, soit d'un REPLI neutre « L'équipe {nom de la
+    société} ». Plus aucun nom codé en dur (TAQINOR) : la marque du fondateur
+    ne s'affiche que parce que SON ``CompanyProfile.nom`` vaut « TAQINOR » —
+    comportement préservé PAR LA DONNÉE, jamais par le code.
+
+    ``nom_societe`` est fourni par l'appelant (résolu depuis
+    ``CompanyProfile`` — que ``core`` ne connaît pas). ``context`` alimente les
+    placeholders ``{{ … }}`` du modèle (ex. ``reference``). Ne lève jamais :
+    toute erreur retombe sur le repli neutre.
+    """
+    from core.templating import rendre  # import local : évite tout cycle
+
+    nom = (nom_societe or '').strip()
+    fallback = f"L'équipe {nom}" if nom else "L'équipe"
+
+    if company is None:
+        return fallback
+    try:
+        from core.models import BrandedTemplate
+        tpl = (
+            BrandedTemplate.objects
+            .filter(company=company, kind=BrandedTemplate.KIND_EMAIL,
+                    code=EMAIL_SIGNATURE_CODE, actif=True)
+            .first()
+        )
+    except Exception:  # noqa: BLE001 — un email ne casse jamais sur ce point
+        tpl = None
+    if tpl is None or not (tpl.corps or '').strip():
+        return fallback
+
+    ctx = {'nom': nom, 'nom_societe': nom, 'equipe': fallback}
+    ctx.update(context)
+    rendu = rendre(tpl.corps, ctx).strip()
+    return rendu or fallback

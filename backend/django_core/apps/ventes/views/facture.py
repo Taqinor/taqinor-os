@@ -33,6 +33,7 @@ from authentication.permissions import (  # noqa: F401
     IsResponsableOrAdmin,
     IsAdminRole,
 )
+from core.viewsets import CompanyScopedModelViewSet  # noqa: F401  ARC5
 from ..utils.references import create_with_reference  # noqa: F401
 from ..utils.company_settings import create_numbered  # noqa: F401
 
@@ -133,7 +134,12 @@ class _DatedDocument:
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-class FactureViewSet(viewsets.ModelViewSet):
+class FactureViewSet(CompanyScopedModelViewSet):
+    # ARC5 — sweep TenantMixin : base transverse unique (CompanyScopedModelViewSet
+    # = TenantMixin + ModelViewSet). get_queryset/perform_create/perform_update/
+    # get_permissions SURCHARGENT la base : scoping société et matrice 401/403/404
+    # IDENTIQUES (règle #4 : aucun statut/sérialisation Facture touché ; la facture
+    # garde son PDF légacy séparé, hors périmètre du moteur devis).
     queryset = Facture.objects.select_related(
         'client', 'created_by', 'bon_commande'
     ).prefetch_related('lignes').all()

@@ -1,112 +1,34 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState } from 'react'
 import { useDispatch } from 'react-redux'
 import { useNavigate, Link } from 'react-router-dom'
 import { setCredentials } from '../features/auth/store/authSlice'
 import api from '../api/axios'
 
-// ── Logo officiel Taqinor (mot-symbole des devis, source de vérité de la marque).
-//    Asset généré par scripts/gen_brand_assets.py depuis quote_engine/logo.png.
-function TaqinorLogo({ height = 52 }) {
+// SCA24 — Login est PRÉ-AUTH : on ne connaît pas encore la société de
+// l'utilisateur (donc pas son TenantTheme), donc pas de logo/couleur dynamique
+// ici. Marque produit NEUTRE fixée au build (env), plus de logo/texte
+// "Taqinor" en dur — la première chose qu'un tenant #2 doit voir n'est pas la
+// marque d'un autre client. Défaut sobre si la variable n'est pas fournie.
+const PRODUCT_NAME = import.meta.env.VITE_PRODUCT_NAME || 'ERP'
+
+function ProductBrand() {
   return (
-    <img
-      src="/taqinor-logo.png"
-      alt="Taqinor"
-      style={{ height, width: 'auto', maxWidth: '100%', display: 'block' }}
-    />
-  )
-}
-
-// ── Bouncing TAQINOR background ───────────────────────────────────────────────
-const BLOBS = [
-  { size: 150, speed: 0.55, opacity: 0.07, color: '#ffffff', angle: 0.7  },
-  { size: 95,  speed: 0.85, opacity: 0.06, color: '#F5C100', angle: 2.1  },
-  { size: 190, speed: 0.38, opacity: 0.05, color: '#ffffff', angle: 4.3  },
-  { size: 115, speed: 0.70, opacity: 0.08, color: '#F5C100', angle: 1.5  },
-  { size: 80,  speed: 1.05, opacity: 0.05, color: '#ffffff', angle: 3.8  },
-]
-
-function BouncingBackground() {
-  const containerRef = useRef(null)
-  const animRef      = useRef(null)
-  const stateRef     = useRef([])
-
-  useEffect(() => {
-    const container = containerRef.current
-    if (!container) return
-
-    const W = window.innerWidth
-    const H = window.innerHeight
-
-    stateRef.current = BLOBS.map((cfg) => {
-      const el = document.createElement('div')
-      el.textContent = 'TAQINOR'
-      Object.assign(el.style, {
-        position: 'absolute', top: '0', left: '0',
-        fontFamily: "'Arial Black', Impact, sans-serif",
-        fontWeight: '900',
-        fontSize: `${cfg.size}px`,
-        color: cfg.color,
-        opacity: String(cfg.opacity),
-        filter: 'blur(10px)',
-        userSelect: 'none', pointerEvents: 'none',
-        whiteSpace: 'nowrap', letterSpacing: '0.05em',
-        willChange: 'transform',
-      })
-      container.appendChild(el)
-
-      // Mesure réelle après ajout au DOM
-      const rect = el.getBoundingClientRect()
-      const w = rect.width  || cfg.size * 5.8
-      const h = rect.height || cfg.size * 1.2
-
-      return {
-        el, w, h,
-        x: Math.random() * Math.max(1, W - w),
-        y: Math.random() * Math.max(1, H - h),
-        vx: Math.cos(cfg.angle) * cfg.speed,
-        vy: Math.sin(cfg.angle) * cfg.speed,
-      }
-    })
-
-    const tick = () => {
-      const W = window.innerWidth
-      const H = window.innerHeight
-      stateRef.current.forEach((b) => {
-        b.x += b.vx
-        b.y += b.vy
-        if (b.x <= 0)        { b.x = 0;        b.vx =  Math.abs(b.vx) }
-        if (b.x + b.w >= W)  { b.x = W - b.w;  b.vx = -Math.abs(b.vx) }
-        if (b.y <= 0)        { b.y = 0;        b.vy =  Math.abs(b.vy) }
-        if (b.y + b.h >= H)  { b.y = H - b.h;  b.vy = -Math.abs(b.vy) }
-        b.el.style.transform = `translate(${b.x}px,${b.y}px)`
-      })
-      animRef.current = requestAnimationFrame(tick)
-    }
-    animRef.current = requestAnimationFrame(tick)
-
-    // Re-clamp les blobs dans le viewport courant au redimensionnement/rotation —
-    // sinon ils dérivent hors écran jusqu'au rechargement.
-    const onResize = () => {
-      const W2 = window.innerWidth
-      const H2 = window.innerHeight
-      stateRef.current.forEach((b) => {
-        b.x = Math.min(Math.max(0, b.x), Math.max(0, W2 - b.w))
-        b.y = Math.min(Math.max(0, b.y), Math.max(0, H2 - b.h))
-      })
-    }
-    window.addEventListener('resize', onResize)
-
-    return () => {
-      cancelAnimationFrame(animRef.current)
-      window.removeEventListener('resize', onResize)
-      stateRef.current.forEach((b) => b.el.remove())
-    }
-  }, [])
-
-  return (
-    <div ref={containerRef}
-      style={{ position: 'fixed', inset: 0, overflow: 'hidden', pointerEvents: 'none', zIndex: 0 }}
-    />
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      gap: 10, height: 52,
+    }}>
+      <span style={{
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        width: 40, height: 40, borderRadius: 10,
+        background: 'linear-gradient(135deg, #1863DC 0%, #326CFE 100%)',
+        color: '#fff', fontWeight: 800, fontSize: 18,
+      }} aria-hidden="true">
+        {PRODUCT_NAME.charAt(0).toUpperCase()}
+      </span>
+      <span style={{ fontSize: 22, fontWeight: 700, color: '#0c1335', letterSpacing: '-0.01em' }}>
+        {PRODUCT_NAME}
+      </span>
+    </div>
   )
 }
 
@@ -192,8 +114,6 @@ export default function Login() {
       background: 'linear-gradient(135deg, #050e1f 0%, #0b2050 50%, #050e1f 100%)',
       overflow: 'hidden',
     }}>
-      <BouncingBackground />
-
       {/* Halo lumineux central */}
       <div style={{
         position: 'fixed', inset: 0, zIndex: 1, pointerEvents: 'none',
@@ -210,9 +130,9 @@ export default function Login() {
         animation: 'loginIn 0.55s cubic-bezier(0.16, 1, 0.3, 1) both',
       }}>
 
-        {/* Logo centré */}
+        {/* Marque produit centrée */}
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 6 }}>
-          <TaqinorLogo height={52} />
+          <ProductBrand />
         </div>
 
         {/* Ligne décorative */}

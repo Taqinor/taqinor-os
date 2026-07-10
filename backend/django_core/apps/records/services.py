@@ -58,6 +58,22 @@ def log_note(target, user, body, *, company=None):
         target, Activity.Kind.NOTE, user=user, body=body, company=company)
 
 
+def log_field_change(target, field, old_value, new_value, *, user=None,
+                     field_label='', company=None):
+    """ARC16 — raccourci : entrée de chatter « modification » d'un champ.
+
+    Point d'entrée côté ``records`` utilisé par l'entonnoir de journalisation
+    ``apps.audit.recorder.record_field_change`` (qui écrit l'``AuditLog`` ET
+    cette ligne de chatter en un seul appel). Reste purement additif : c'est un
+    simple raccourci sur ``log_activity`` avec ``kind=modification`` — la société
+    et l'auteur restent posés côté serveur.
+    """
+    return log_activity(
+        target, Activity.Kind.MODIFICATION, user=user, field=field or '',
+        field_label=field_label or '', old_value=old_value,
+        new_value=new_value, company=company)
+
+
 def chatter_qs(target, company=None):
     """ARC8 — timeline du chatter générique d'une cible (plus récent d'abord).
 
