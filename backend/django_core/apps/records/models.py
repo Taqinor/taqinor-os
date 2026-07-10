@@ -57,6 +57,13 @@ ALLOWED_TARGETS = {
     # intacts en parallèle (couche héritée, non touchée dans cette vague).
     ('contrats', 'contrat'),
     ('flotte', 'vehicule'),
+    # ARC26 — pièces jointes génériques : le projet et l'appel d'offres
+    # deviennent des cibles records (Attachment/Activity/Comment/Tag). La
+    # convention « plus de FileField sauvage » (garde-fou dans
+    # scripts/check_platform.py) impose que toute NOUVELLE pièce jointe passe
+    # par records.Attachment ou ged.Document — jamais un FileField de plus.
+    ('gestion_projet', 'projet'),
+    ('ao', 'appeloffre'),
 }
 
 

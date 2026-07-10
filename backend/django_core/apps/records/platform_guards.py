@@ -72,3 +72,60 @@ def activity_error_line(qualified: str) -> str:
         f"un modèle chatter maison. Si c'est un cas légitime NON-chatter, "
         f"ajoutez-le à GRANDFATHERED_ACTIVITY_CLASSES."
     )
+
+
+# ── ARC26 — « plus de FileField sauvage » ─────────────────────────────────────
+
+# Toute NOUVELLE pièce jointe passe par ``records.Attachment`` (MinIO) ou
+# ``ged.Document`` — jamais un nouveau ``models.FileField``/``ImageField``.
+# Les 17 FileField existants (7 fichiers, inventaire gelé au 2026-07-10 par
+# grep ``models.FileField(`` sur apps/*/models*.py) sont grand-fatherés À
+# COMPTE CONSTANT : le garde-fou devient rouge si un fichier dépasse son
+# compte gelé pour un nom de champ, ou si un couple (fichier, champ) inconnu
+# apparaît. Chemins POSIX relatifs à ``backend/django_core``.
+GRANDFATHERED_FILEFIELDS = {
+    "apps/ao/models.py": {"fichier": 1},
+    "apps/compta/models.py": {"justificatif": 1, "fichier": 2},
+    "apps/flotte/models.py": {
+        "devis_fichier": 1, "attestation": 1, "carte_grise_fichier": 1,
+        "autorisation_fichier": 1, "constat_fichier": 1, "pv_fichier": 1,
+        "photo": 1, "document": 1,
+    },
+    "apps/gestion_projet/models.py": {"fichier": 1},
+    "apps/portail/models.py": {"fichier": 1},
+    "apps/rh/models.py": {"justificatif": 1, "cv_fichier": 1},
+    "apps/stock/models.py": {"pdf": 1},
+}
+
+FILEFIELD_RE = re.compile(
+    r"^\s*([a-z_][a-z0-9_]*)\s*=\s*models\.(?:FileField|ImageField)\(",
+    re.MULTILINE,
+)
+
+
+def scan_filefields(relpath: str, text: str) -> list[str]:
+    """Return ``'chemin:champ'`` pour tout FileField/ImageField NON gelé.
+
+    ``relpath`` : chemin POSIX relatif à ``backend/django_core`` (ex.
+    ``'apps/flotte/models.py'``). Rouge si un champ inconnu apparaît OU si le
+    compte d'un champ connu dépasse le compte gelé (deux ``fichier`` gelés
+    dans compta : un 3ᵉ = violation)."""
+    counts: dict[str, int] = {}
+    for m in FILEFIELD_RE.finditer(text):
+        name = m.group(1)
+        counts[name] = counts.get(name, 0) + 1
+    allowed = GRANDFATHERED_FILEFIELDS.get(relpath, {})
+    violations: list[str] = []
+    for name in sorted(counts):
+        if counts[name] > allowed.get(name, 0):
+            violations.append(f"{relpath}:{name}")
+    return violations
+
+
+def filefield_error_line(spec: str) -> str:
+    return (
+        f"[ARC26] Nouveau FileField/ImageField « {spec} » hors liste gelée. "
+        f"Toute NOUVELLE pièce jointe passe par records.Attachment (MinIO) ou "
+        f"ged.Document — jamais un FileField de plus. La liste gelée vit dans "
+        f"apps/records/platform_guards.py (GRANDFATHERED_FILEFIELDS)."
+    )

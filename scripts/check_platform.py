@@ -35,7 +35,9 @@ if str(DJANGO_CORE) not in sys.path:
     sys.path.insert(0, str(DJANGO_CORE))
 from apps.records.platform_guards import (  # noqa: E402
     activity_error_line,
+    filefield_error_line,
     scan_activity_classes,
+    scan_filefields,
 )
 
 
@@ -70,10 +72,26 @@ def check_activity_convergence() -> list[str]:
     return [activity_error_line(q) for q in sorted(find_new_activity_classes())]
 
 
+def find_new_filefields() -> list[str]:
+    """ARC26 — retourne ['chemin:champ', …] pour tout FileField NON gelé."""
+    violations: list[str] = []
+    for path in _iter_model_files():
+        relpath = path.relative_to(DJANGO_CORE).as_posix()
+        text = path.read_text(encoding="utf-8")
+        violations.extend(scan_filefields(relpath, text))
+    return violations
+
+
+def check_no_wild_filefields() -> list[str]:
+    """ARC26 guard — plus de FileField sauvage (empty = OK)."""
+    return [filefield_error_line(s) for s in sorted(find_new_filefields())]
+
+
 def run_checks() -> list[str]:
     """Run all platform guards; return the flat list of error lines."""
     errors: list[str] = []
     errors.extend(check_activity_convergence())
+    errors.extend(check_no_wild_filefields())
     return errors
 
 
