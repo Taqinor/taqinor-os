@@ -5,11 +5,11 @@ ne porte aucun prix / marque / TVA propre ; l'action ``exploser`` le décompose
 en lignes composant avec prix/TVA/marque LUS sur chaque ``Produit`` au vol.
 Multi-tenant : querysets filtrés par société + ``company`` forcée côté serveur
 (TenantMixin)."""
-from rest_framework import viewsets, filters, status
+from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from core.mixins import TenantMixin
+from core.viewsets import CompanyScopedModelViewSet
 from authentication.permissions import (
     IsAnyRole, IsAdminRole, IsResponsableOrAdmin, HasPermissionOrLegacy,
 )
@@ -23,7 +23,7 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update', 'dupliquer',
                  'remplacer_composant']
 
 
-class KitProduitViewSet(TenantMixin, viewsets.ModelViewSet):
+class KitProduitViewSet(CompanyScopedModelViewSet):
     queryset = KitProduit.objects.all().prefetch_related('composants__produit')
     serializer_class = KitProduitSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]

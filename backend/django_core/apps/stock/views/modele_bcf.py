@@ -1,10 +1,10 @@
 from decimal import Decimal
 
-from rest_framework import viewsets, status
+from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from authentication.mixins import TenantMixin
+from core.viewsets import CompanyScopedModelViewSet
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from apps.ventes.utils.references import create_with_reference
 
@@ -22,7 +22,7 @@ READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update', 'destroy']
 
 
-class ModeleBonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
+class ModeleBonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
     """ZPUR3 — Modèles de bon de commande fournisseur réutilisables
     (« Purchase Templates ») : nom + fournisseur optionnel + lignes
     produit/quantité par défaut. L'action `generer` matérialise un BCF
