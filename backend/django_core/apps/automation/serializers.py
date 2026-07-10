@@ -3,7 +3,7 @@ from rest_framework import serializers
 from .models import (
     ApprovalDelegation, ApprovalRequest, ApprovalRequestType,
     AutomationApproval, AutomationRule, AutomationRun,
-    IncomingWebhookTrigger,
+    IncomingWebhookTrigger, TriggerType, record_state_change_targets,
 )
 
 
@@ -24,6 +24,50 @@ class AutomationRuleSerializer(serializers.ModelSerializer):
             'date_creation', 'date_modification',
         ]
         read_only_fields = ['date_creation', 'date_modification']
+
+    def validate(self, attrs):
+        """ARC34 — une règle ``RECORD_STATE_CHANGE`` doit viser un couple
+        (modèle, champ) AUTORISÉ par le registre plateforme (surface
+        ``automation_state_fields`` des manifestes ``apps/<x>/platform.py`` —
+        ``record_state_change_targets()``), et son arbre de ``conditions``
+        optionnel doit être structurellement valide
+        (``core.rules.validate_condition_group``, FG367). Les autres types de
+        déclencheurs sont INCHANGÉS (aucune validation ajoutée)."""
+        trigger_type = attrs.get(
+            'trigger_type', getattr(self.instance, 'trigger_type', None))
+        if trigger_type != TriggerType.RECORD_STATE_CHANGE:
+            return attrs
+        config = attrs.get(
+            'trigger_config',
+            getattr(self.instance, 'trigger_config', None)) or {}
+        model = (config.get('model') or '').strip().lower()
+        field = (config.get('field') or '').strip()
+        if not model or not field:
+            raise serializers.ValidationError({
+                'trigger_config': (
+                    "Un déclencheur « changement d'état » exige un modèle et "
+                    "un champ (trigger_config['model'] / "
+                    "trigger_config['field'])."),
+            })
+        autorises = record_state_change_targets()
+        if field not in autorises.get(model, set()):
+            couples = ', '.join(
+                f'{m}.{f}' for m in sorted(autorises)
+                for f in sorted(autorises[m])) or 'aucun'
+            raise serializers.ValidationError({
+                'trigger_config': (
+                    f'Couple (modèle, champ) non autorisé : '
+                    f'« {model}.{field} ». Couples déclarés au registre '
+                    f'plateforme : {couples}.'),
+            })
+        conditions = config.get('conditions')
+        if conditions:
+            from core.rules import validate_condition_group
+            erreurs = validate_condition_group(conditions)
+            if erreurs:
+                raise serializers.ValidationError(
+                    {'trigger_config': erreurs})
+        return attrs
 
 
 class AutomationRunSerializer(serializers.ModelSerializer):

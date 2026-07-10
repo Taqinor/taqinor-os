@@ -48,6 +48,57 @@ from .machine_etats import (  # noqa: F401 — réexport (point d'entrée servic
 )
 
 # ---------------------------------------------------------------------------
+# ARC34 — émission automation générique sur transition de statut du Contrat
+# ---------------------------------------------------------------------------
+#
+# Frontière : même précédent que ``gestion_projet.services`` (appel direct
+# ``apps.automation.engine.evaluate()``, import FONCTION-LOCAL, chemin
+# parallèle documenté dans automation/models.py). L'émission part du SERVICE
+# (jamais du modèle) ; le couple (contrats.contrat, statut) est déclaré
+# automatisable dans ``apps/contrats/platform.py`` (automation_state_fields).
+# Le statut visé est le ``Contrat.Statut`` de DOMAINE, jamais STAGES.py.
+
+
+def emettre_changement_statut_automation(contrat, *, ancien_statut, user=None):
+    """ARC34 — évalue les règles no-code ``RECORD_STATE_CHANGE`` après une
+    transition de statut RÉUSSIE du contrat. Best-effort : aucune erreur ne
+    remonte (la transition, côté appelant, est déjà actée)."""
+    if contrat.statut == ancien_statut:
+        return
+    try:
+        from apps.automation.engine import evaluate
+        from apps.automation.models import TriggerType
+
+        evaluate(
+            TriggerType.RECORD_STATE_CHANGE, contrat, contrat.company,
+            context={
+                'model': 'contrats.contrat', 'field': 'statut',
+                'old_value': ancien_statut, 'new_value': contrat.statut,
+            },
+            user=user)
+    except Exception:  # pragma: no cover - défensif (best-effort)
+        pass
+
+
+_changer_statut_machine = changer_statut
+
+
+def changer_statut(contrat, statut_cible, *, persister=True, user=None):  # noqa: F811 — enveloppe ARC34 du réexport ci-dessus
+    """ARC34 — enveloppe du point d'entrée services : applique la transition
+    GARDÉE (``machine_etats.changer_statut`` — mêmes gardes, mêmes exceptions,
+    comportement inchangé) puis émet le déclencheur automation générique sur un
+    changement RÉELLEMENT persisté. Tous les appelants du service (vue
+    ``changer-statut``, ``activer_si_eligible``, ``signer_contrat``) émettent
+    donc sans modification. ``user`` (optionnel) est journalisé sur les runs."""
+    ancien = contrat.statut
+    _changer_statut_machine(contrat, statut_cible, persister=persister)
+    if persister and contrat.statut != ancien:
+        emettre_changement_statut_automation(
+            contrat, ancien_statut=ancien, user=user)
+    return contrat
+
+
+# ---------------------------------------------------------------------------
 # CONTRAT10 — Génération par fusion (merge tokens)
 # ---------------------------------------------------------------------------
 
