@@ -1347,15 +1347,28 @@ class DevisVersProjetError(Exception):
 def _prochain_code_projet(company):
     """Code ``Projet`` sûr : plus haut suffixe utilisé + 1 (JAMAIS count()+1).
 
-    Radical ``PRJ-<année>-`` (reset annuel), même politique anti-collision que
-    ``apps/ventes/utils/references.py`` (pas de dépendance croisée : logique
-    dupliquée localement, modèle différent).
+    ARC7 — ``Projet.code`` (``unique_together = [('company', 'code')]``) n'est
+    PAS un champ ``reference`` : ``core.numbering.next_reference`` filtre
+    littéralement sur ``reference__startswith``, donc il ne s'applique pas tel
+    quel à ce modèle. On réutilise ses helpers de bucket (``_bucket_prefix``/
+    ``_period_segment`` — même radical ``PRJ-<année>-``, reset annuel, déjà
+    ré-exportés par le shim ``apps/ventes/utils/references.py``) pour rester
+    à l'octet près du même algorithme plus-haut-utilisé+1, et on ajoute la
+    protection race-safe qui manquait : verrouille la ligne ``Company``
+    (``select_for_update``) le temps du calcul pour sérialiser les créations
+    concurrentes — même patron que ``prochain_numero_situation`` ci-dessous
+    (verrou sur la ligne ancre faute de ligne ``Projet`` existante à
+    verrouiller pour une CRÉATION). Doit être appelé dans une transaction
+    atomique par l'appelant (``creer_projet_depuis_devis`` l'est via
+    ``@transaction.atomic``).
     """
     import re
-    from django.utils import timezone
 
-    annee = timezone.now().strftime('%Y')
-    prefix = f'PRJ-{annee}-'
+    from authentication.models import Company
+    from core.numbering import _bucket_prefix
+
+    Company.objects.select_for_update().get(pk=company.pk)
+    prefix = _bucket_prefix('PRJ', 'yearly')
     refs = Projet.objects.filter(
         company=company, code__startswith=prefix).values_list(
             'code', flat=True)
@@ -1365,7 +1378,7 @@ def _prochain_code_projet(company):
         m = suffix_re.search(ref)
         if m:
             highest = max(highest, int(m.group(1)))
-    return f'{prefix}{highest + 1:04d}'
+    return f'{prefix}-{highest + 1:04d}'
 
 
 @transaction.atomic
