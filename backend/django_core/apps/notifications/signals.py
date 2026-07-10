@@ -120,6 +120,59 @@ def devis_expired_receiver(sender, devis, ancien_statut, **kwargs):
         logger.exception('notify DEVIS_EXPIRED failed (devis %s)', devis.pk)
 
 
+# ── Facture soldée → FACTURE_PAYEE (ARC36) ───────────────────────────────────
+# S'abonne à ``core.events.facture_payee`` (YEVNT6 — émis SYNCHRONE au passage
+# résiduel→0, tous chemins d'encaissement confondus) pour notifier le VENDEUR
+# (créateur de la facture, repli créateur du devis lié). Le signal frère
+# ``facture_paid`` (YDOCF4) porte le même fait métier — il est DÉPRÉCIÉ pour
+# l'abonnement (documenté dans la docstring du bus) : on n'écoute que
+# ``facture_payee`` pour ne jamais notifier deux fois.
+def facture_payee_receiver(sender, instance, company, **kwargs):
+    recipient = getattr(instance, 'created_by', None)
+    if recipient is None:
+        devis = getattr(instance, 'devis', None)
+        recipient = getattr(devis, 'created_by', None)
+    if recipient is None:
+        return
+    try:
+        notify(
+            user=recipient,
+            event_type=EventType.FACTURE_PAYEE,
+            title='Facture intégralement réglée',
+            body=(f'La facture {instance.reference} est intégralement '
+                  'réglée.'),
+            link=f'/factures/{instance.pk}',
+            company=company,
+        )
+    except Exception:  # noqa: BLE001 — jamais bloquant
+        logger.exception(
+            'notify FACTURE_PAYEE failed (facture %s)', instance.pk)
+
+
+# ── Bon de commande créé → BON_COMMANDE_CREE (ARC36) ────────────────────────
+# S'abonne à ``core.events.bon_commande_cree`` (YEVNT6 — émis à la conversion
+# d'un devis accepté en BC). Notifie le « magasinier » : il n'existe pas de
+# rôle legacy dédié — la résolution passe par ``resolve_recipients`` (FG4) :
+# une ``NotificationRoutingRule`` route l'événement vers l'utilisateur/rôle
+# entrepôt ; sans règle, repli managers (admin/responsable), comme les autres
+# événements routables.
+def bon_commande_cree_receiver(sender, instance, company, **kwargs):
+    try:
+        from .services import notify_many, resolve_recipients
+        recipients = resolve_recipients(company, EventType.BON_COMMANDE_CREE)
+        notify_many(
+            recipients, EventType.BON_COMMANDE_CREE,
+            'Bon de commande créé',
+            body=(f'Le bon de commande {instance.reference} a été créé — '
+                  'matériel à préparer.'),
+            link=f'/bons-commande/{instance.pk}',
+            company=company,
+        )
+    except Exception:  # noqa: BLE001 — jamais bloquant
+        logger.exception(
+            'notify BON_COMMANDE_CREE failed (bc %s)', instance.pk)
+
+
 # ── SAV Ticket → SAV_TICKET_OPENED (YEVNT4) ─────────────────────────────────
 def sav_ticket_post_save(sender, instance, created, **kwargs):
     """À la CRÉATION d'un ticket SAV → notifie le technicien assigné, sinon
@@ -257,7 +310,7 @@ def connect():
     from apps.crm.models import Lead
     from apps.sav.models import Ticket
     from apps.ventes.models import Devis
-    from core.events import devis_expired
+    from core.events import bon_commande_cree, devis_expired, facture_payee
 
     pre_save.connect(lead_pre_save, sender=Lead,
                      dispatch_uid='notifications_lead_pre')
@@ -269,6 +322,11 @@ def connect():
                       dispatch_uid='notifications_devis_accepted')
     devis_expired.connect(devis_expired_receiver,
                           dispatch_uid='notifications_devis_expired')
+    # ARC36 — événements documentaires YEVNT6 désormais consommés.
+    facture_payee.connect(facture_payee_receiver,
+                          dispatch_uid='notifications_facture_payee')
+    bon_commande_cree.connect(bon_commande_cree_receiver,
+                              dispatch_uid='notifications_bon_commande_cree')
     post_save.connect(sav_ticket_post_save, sender=Ticket,
                       dispatch_uid='notifications_sav_ticket_opened')
     pre_save.connect(automation_approval_pre_save, sender=AutomationApproval,

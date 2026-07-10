@@ -341,6 +341,14 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
         # parc SAV (un équipement par ligne, série optionnelle). Idempotent.
         _apply_reception_handover(
             inst, canon_old, canon_new, self.request.user)
+        # YSERV4 — événement bus au franchissement vers RECEPTIONNE (best-
+        # effort, ne modifie aucun statut). Abonné : compta (enquête NPS).
+        if (canon_new == Installation.Statut.RECEPTIONNE
+                and canon_old != Installation.Statut.RECEPTIONNE):
+            from core.events import chantier_receptionne
+            chantier_receptionne.send(
+                sender=Installation, installation=inst,
+                user=self.request.user, ancien_statut=old.statut)
         # N14 — applique les effets stock du changement de statut (consomme à
         # « Installé », libère à la clôture). Idempotent côté service.
         _apply_stock_statut_effects(
@@ -458,6 +466,14 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
         # FG70 — « Mise en service » se rabat sur « Réceptionné » : la remise de
         # garantie balaie le BoM gelé vers le parc SAV (idempotente côté service).
         _apply_reception_handover(inst, canon_old, canon_new, request.user)
+        # YSERV4 — événement bus au franchissement vers RECEPTIONNE (best-
+        # effort, ne modifie aucun statut). Abonné : compta (enquête NPS).
+        if (canon_new == Installation.Statut.RECEPTIONNE
+                and canon_old != Installation.Statut.RECEPTIONNE):
+            from core.events import chantier_receptionne
+            chantier_receptionne.send(
+                sender=Installation, installation=inst,
+                user=request.user, ancien_statut=old.statut)
         _apply_stock_statut_effects(inst, canon_old, canon_new, request.user)
         # CH2 — aligne le pointeur d'étape sur le nouveau statut.
         from ..services import sync_etape_from_statut

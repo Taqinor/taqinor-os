@@ -2858,3 +2858,45 @@ def create_activity_from_public_api(*, company, lead_id, body):
     if not body:
         raise ValueError("Le champ « body » est obligatoire.")
     return activity.log_note(lead, None, body)
+
+
+# ── YSERV11 — Gabarit de message « parrainage » (FR + darija, éditable) ─────
+
+# Corps par défaut — ÉDITABLES ensuite par l'admin comme tout MessageTemplate.
+_PARRAINAGE_TEMPLATE_DEFAULTS = {
+    'fr': (
+        'parrainage',
+        "Bonjour {prenom}, merci pour votre confiance ! Si un proche "
+        "souhaite passer au solaire, recommandez-nous : notre programme de "
+        "parrainage vous récompense. Parlez-en à votre conseiller ou "
+        "répondez à ce message.",
+    ),
+    'darija': (
+        'parrainage_darija',
+        "Salam {prenom}, choukran 3la ti9a dyalek ! Ila kan chi wahed 9rib "
+        "lik bagh idir solaire, 3eyet lina — barnamaj l'parrainage dyalna "
+        "kay3tik mokafaa. Hder m3a lmostachar dyalek wla jaweb 3la had "
+        "l'message.",
+    ),
+}
+
+
+def get_or_create_parrainage_template(company, langue='fr'):
+    """YSERV11 — renvoie (crée au premier usage) le ``MessageTemplate``
+    « parrainage » de la société pour ``langue`` ('fr'|'darija').
+
+    Point d'entrée cross-app THIN (appelé par ``apps.compta`` au moment de
+    l'enchantement NPS) : la clé template est posée additivement, idempotente
+    par (company, nom), le corps reste éditable par l'admin — jamais écrasé.
+    Langue inconnue → repli FR."""
+    from .models import MessageTemplate
+    cle = 'darija' if (langue or '').strip().lower() == 'darija' else 'fr'
+    nom, corps_defaut = _PARRAINAGE_TEMPLATE_DEFAULTS[cle]
+    template, _ = MessageTemplate.objects.get_or_create(
+        company=company, nom=nom,
+        defaults={
+            'langue': (MessageTemplate.Langue.DARIJA if cle == 'darija'
+                       else MessageTemplate.Langue.FR),
+            'corps': corps_defaut,
+        })
+    return template

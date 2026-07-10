@@ -116,6 +116,19 @@ class EventType(models.TextChoices):
     # YEVNT12 — un incident QHSE CRITIQUE est déclaré (au-delà de la note
     # chatter existante QHSE32) : notifie les responsables QHSE.
     INCIDENT_CRITICAL = 'incident_critical', 'Incident QHSE critique'
+    # XMKT35 — un post réseau social planifié arrive à échéance SANS jeton
+    # Meta Graph configuré : rappel manuel (texte prêt à coller) à l'auteur.
+    POST_SOCIAL_RAPPEL = 'post_social_rappel', 'Post social à publier (rappel)'
+    # YSERV11 — réponse NPS promoteur (9-10) : proposer le parrainage au
+    # moment de l'enchantement (notification au commercial du client).
+    NPS_PROMOTEUR = 'nps_promoteur', 'Client promoteur — proposer le parrainage'
+    # ARC36 — une facture est intégralement réglée (résiduel→0, bus
+    # ``facture_payee``) : notifie le vendeur (créateur de la facture).
+    FACTURE_PAYEE = 'facture_payee', 'Facture intégralement réglée'
+    # ARC36 — un bon de commande est créé depuis un devis accepté (bus
+    # ``bon_commande_cree``) : notifie le magasinier/managers (routable par
+    # ``NotificationRoutingRule`` vers l'utilisateur entrepôt).
+    BON_COMMANDE_CREE = 'bon_commande_cree', 'Bon de commande créé'
 
 
 class Channel(models.TextChoices):
@@ -591,6 +604,13 @@ class WhatsAppMessageLog(models.Model):
     external_id = models.CharField(
         max_length=255, blank=True, default='', db_index=True,
         verbose_name='ID externe Meta')
+    # XMKT10 — id opaque de la ``marketing.Campagne`` d'origine (jamais un FK
+    # direct : ``notifications`` est un satellite, il n'importe pas
+    # ``apps.marketing``). NULL = message hors campagne (comportement
+    # historique : notifications transactionnelles / liens manuels).
+    campagne_id = models.PositiveIntegerField(
+        null=True, blank=True, db_index=True,
+        verbose_name='Id de la campagne (opaque)')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -606,6 +626,10 @@ class WhatsAppMessageLog(models.Model):
             models.Index(
                 fields=['company', 'created_at'],
                 name='nwa_log_company_created_idx',
+            ),
+            models.Index(
+                fields=['company', 'campagne_id'],
+                name='nwa_log_company_campagne_idx',
             ),
         ]
 

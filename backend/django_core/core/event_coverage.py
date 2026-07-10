@@ -47,18 +47,14 @@ ALLOWED_UNCONSUMED = {
     # lot (facturation récurrente / notification / dépôt GED à brancher).
     "contrat_signe",
     "contrat_actif",
-    # YEVNT6 — événements documentaires ventes en aval du devis : émis
-    # SYNCHRONE best-effort mais SANS abonné obligatoire dans ce repo (pose du
-    # seam pour compta/notifications/audit/KPI). ``facture_emise`` et
-    # ``facture_annulee`` ont déjà un abonné compta ; ``facture_paid`` /
-    # ``facture_payee`` / ``bon_commande_cree`` restent purement observables.
+    # ARC36 — ``facture_payee``/``bon_commande_cree`` (YEVNT6) et
+    # ``abonnement_monitoring_resilie`` (YSUBS4) ont désormais des abonnés
+    # métier (compta lettrage + notifications vendeur/magasinier ;
+    # apps/monitoring/receivers.py) : RETIRÉS de cette liste. ``facture_paid``
+    # (YDOCF4) reste ici : signal FRÈRE de ``facture_payee`` (même fait,
+    # résiduel→0) — DÉPRÉCIÉ pour l'abonnement (voir docstring du bus) afin
+    # de ne jamais réagir deux fois au même règlement ; ne PAS s'y abonner.
     "facture_paid",
-    "facture_payee",
-    "bon_commande_cree",
-    # YSUBS4 — résiliation d'un AbonnementMonitoring : effet aval (couper la
-    # supervision monitoring liée) volontairement NON câblé dans ce repo —
-    # monitoring reste satellite, câblage futur via son propre receivers.py.
-    "abonnement_monitoring_resilie",
 }
 
 # Membres ``EventType`` déclarés mais sans producteur ``notify()`` encore câblé

@@ -55,6 +55,7 @@ from .models import (
     BilletEvenement,
     QuestionEvenement,
     CommunicationEvenement,
+    PostSocial,
 )
 
 
@@ -1485,7 +1486,8 @@ class CampagneSerializer(serializers.ModelSerializer):
         model = Campagne
         fields = [
             'id', 'nom', 'canal', 'canal_display', 'objet', 'corps', 'segment',
-            'listes', 'sms_sender_id', 'statut', 'statut_display',
+            'listes', 'sms_sender_id', 'whatsapp_template', 'statut',
+            'statut_display',
             'nb_destinataires', 'nb_envois', 'nb_ouvertures', 'nb_clics',
             'envoyee_le', 'date_creation',
             'planifiee_le', 'debit_max_par_heure', 'variantes_langue',
@@ -1538,6 +1540,27 @@ class CampagneSerializer(serializers.ModelSerializer):
         except ValueError as exc:
             raise serializers.ValidationError(str(exc))
         return value
+
+
+# ── XMKT35 — Posts réseaux sociaux (calendrier de contenu) ──────────────────
+
+class PostSocialSerializer(serializers.ModelSerializer):
+    reseau_display = serializers.CharField(
+        source='get_reseau_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = PostSocial
+        fields = [
+            'id', 'reseau', 'reseau_display', 'texte', 'media_key',
+            'date_planifiee', 'statut', 'statut_display', 'rappel_envoye',
+            'publie_le', 'external_id', 'erreur', 'date_creation',
+        ]
+        read_only_fields = [
+            'rappel_envoye', 'publie_le', 'external_id', 'erreur',
+            'date_creation',
+        ]
 
 
 # ── XMKT2 — Journal d'envoi par destinataire ────────────────────────────────

@@ -13,12 +13,18 @@ const STATUTS = [
 const dh = (v) => `${Number(v ?? 0).toLocaleString('fr-MA')} DH`
 
 export default function ParrainagePage() {
+  // YSERV11 — « ?parrain=<client_id> » pré-remplit le parrain (lien depuis
+  // la notification « Client promoteur — proposer le parrainage »).
+  // Lu sur window.location (pas de dépendance au contexte Router).
+  const parrainInitial = new URLSearchParams(
+    typeof window !== 'undefined' ? window.location.search : '',
+  ).get('parrain') || ''
   const [rows, setRows] = useState([])
   const [clients, setClients] = useState([])
   const [stats, setStats] = useState(null)
   const [msg, setMsg] = useState(null)
   const [form, setForm] = useState(
-    { parrain: '', filleul_nom: '', recompense: '' })
+    { parrain: parrainInitial, filleul_nom: '', recompense: '' })
 
   const load = () => {
     crmApi.getParrainages()

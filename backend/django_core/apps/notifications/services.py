@@ -567,6 +567,78 @@ def set_template_approval_status(template, statut, *, motif_rejet=''):
 
 
 # =============================================================================
+# XMKT10 — Canal WhatsApp dans les campagnes (opt-in, gated).
+# =============================================================================
+
+def render_whatsapp_template(template, *, prenom='', ville=''):
+    """Substitue ``{prenom}``/``{ville}`` dans l'aide-mémoire du gabarit BSP
+    (même convention que ``crm.MessageTemplate.render``). ``template`` peut
+    être ``None`` (renvoie une chaîne vide) — l'appelant retombe alors sur le
+    corps libre de la campagne."""
+    if template is None:
+        return ''
+    return (template.body_fr or '').replace(
+        '{prenom}', prenom or '').replace('{ville}', ville or '')
+
+
+def send_whatsapp_campaign_message(company, *, recipient, body, campagne_id=None,
+                                   template=None):
+    """XMKT10 — envoie (ou prépare) UN message WhatsApp de campagne et le
+    journalise TOUJOURS dans ``WhatsAppMessageLog``, lié à la campagne par
+    ``campagne_id`` (référence opaque — ``notifications`` n'importe jamais
+    ``apps.marketing``).
+
+    Réutilise ``notifications.whatsapp_bsp.get_whatsapp_provider()`` (QJ23/
+    FG33) : sans jeton BSP configuré, ``ManualWaMeProvider`` construit un lien
+    wa.me — AUCUN appel réseau, comportement manuel actuel préservé à 100 %.
+    Avec ``WHATSAPP_BSP_ENABLED=1`` + credentials complets, ``BspProvider``
+    est utilisé (scaffold : retombe encore sur le lien manuel tant que
+    ``_send_via_api`` n'est pas branché par le fondateur — voir whatsapp_bsp.py).
+
+    Renvoie un dict ``{'log': WhatsAppMessageLog, 'url': str|None,
+    'provider': 'manual'|'bsp'}``. Ne lève jamais d'exception (best-effort,
+    comme ``notify()``). Ne journalise jamais ``prix_achat``/marge (appelant
+    responsable du corps du message)."""
+    from .models import WhatsAppMessageLog
+    from .whatsapp_bsp import get_whatsapp_provider
+
+    recipient = (recipient or '').strip()
+    result = {'log': None, 'url': None, 'provider': 'manual'}
+    if not recipient:
+        return result
+    try:
+        provider = get_whatsapp_provider()
+        wa_result = provider.get_wa_url(recipient, body or '')
+    except Exception as exc:  # pragma: no cover - défensif
+        logger.warning('send_whatsapp_campaign_message: provider échoué : %s', exc)
+        wa_result = {'url': None, 'provider': 'manual'}
+    provider_name = wa_result.get('provider') or 'manual'
+    url = wa_result.get('url')
+    is_bsp = provider_name == 'bsp'
+    if is_bsp:
+        status = WhatsAppMessageLog.Status.SENT
+        provider_choice = WhatsAppMessageLog.Provider.BSP
+    else:
+        status = WhatsAppMessageLog.Status.MANUAL
+        provider_choice = WhatsAppMessageLog.Provider.MANUAL
+    try:
+        log = WhatsAppMessageLog.objects.create(
+            company=company, recipient=recipient, body=body or '',
+            template=template,
+            status=status,
+            provider=provider_choice,
+            campagne_id=campagne_id,
+        )
+    except Exception as exc:  # pragma: no cover - défensif
+        logger.warning('send_whatsapp_campaign_message: log échoué : %s', exc)
+        log = None
+    result['log'] = log
+    result['url'] = url
+    result['provider'] = provider_name
+    return result
+
+
+# =============================================================================
 # XKB5 — Annonces internes ciblées et programmées.
 # =============================================================================
 
