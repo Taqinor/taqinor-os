@@ -267,11 +267,20 @@ the merge+deploy gate). Every SUBAGENT is dispatched via `Agent` `model:` / `Wor
     flows) AND judgment work (adversarial verification, cross-domain dedupe, completeness
     synthesis, the merge/report gate). Escalate any lane a cheaper agent returns
     `[BLOCKED]`/uncertain one tier up.
-  - **fable** — RESERVED for the 1-3 passes per run where frontier reasoning materially changes the
-    outcome (a final completeness critic, a decisive synthesis, adjudicating a contradiction) AND
-    only when Reda asked for a "full checkup / go deep". NEVER the default for a fleet of
-    scouts/verifiers, and NEVER for BUILD subagents. Fable is the MOST capable AND MOST EXPENSIVE
-    model ($10/$50 per 1M — 2× Opus, 10× Haiku); a scalpel, not the house model.
+  - **fable** — the 1-3 passes per run where frontier reasoning materially changes the outcome.
+    **AUTO-AUTHORIZED (2026-07-10, founder) when a pass is objectively WORTH IT — no longer only
+    on request.** Worth it means one of exactly these (each backed by a real catch in this repo's
+    history: the QW7 live data-corruption bug, two ARC security catches, the VX false-premise
+    fixes were ALL single Fable critic passes): (a) ONE final adversarial/completeness critic
+    over a large or high-risk batch BEFORE its single merge (≥~40 folded tasks, or any batch
+    touching rule-#4/auth/architecture); (b) adjudicating a contradiction two Opus passes could
+    not resolve, or a lane that failed twice at the opus tier; (c) ONE decisive synthesis whose
+    verdict shapes many downstream tasks. HARD LIMITS: cap 1-3 Fable calls per run; NEVER for
+    build lanes, scouts, or verifier fleets; each Fable call gets a one-line DONE-LOG note
+    (what it was for + what it caught) so the founder sees whether it earned its cost. Fable is
+    the MOST capable AND MOST EXPENSIVE model ($10/$50 per 1M — 2× Opus, 10× Haiku); a scalpel,
+    not the house model. A small batch (<~40 routine tasks, no high-risk surface) does NOT get
+    a Fable pass — Opus review is enough there.
   The orchestrator still adversarially reviews + locally tests EVERY lane regardless of which model
   built it, so a cheaper builder never lowers the merge bar. Config backstop (`.claude/settings.json`):
   `"model": "opus"` runs the orchestrator on Opus, and `env.CLAUDE_CODE_SUBAGENT_MODEL=sonnet` floors
@@ -282,6 +291,16 @@ the merge+deploy gate). Every SUBAGENT is dispatched via `Agent` `model:` / `Wor
   `@model:haiku|sonnet|opus` tag on a task line overrides the classifier) — a plan run reads each
   lane's `model=` off the lane plan and passes it to the Agent call; no judgment call needed for
   the routine tiers. `fable` is deliberately not routable — it stays a session-level scalpel.
+  **EVERY-PROMPT RULE (2026-07-10, founder): this routing applies to ALL of Reda's prompts, not
+  only plan runs.** On ANY substantive request — bug fix, audit, research, a facture, an
+  investigation — the session model acts as the ORCHESTRATOR ONLY: it thinks, decomposes, reviews
+  and reports, and DELEGATES the heavy mechanical volume (bulk edits, sweeps, log-reading, broad
+  greps, transcript/file mining, standard build work) to subagents tagged per the tiers above
+  (haiku scout / sonnet worker / opus judgment). Answer directly WITHOUT delegation only when the
+  work is genuinely small (a question, a one-file fix, pure judgment) — spawning an agent for a
+  two-minute task wastes more than it saves. The session model itself is never downgraded; the
+  savings come from where the VOLUME runs, and the orchestrator's adversarial review keeps the
+  quality bar identical regardless of which tier produced the work.
 
 **Token discipline — read the MAP before grepping the territory (founder rule).** `docs/CODEMAP.md`
 is the curated, always-current map (§3 repository map + §4 app-by-app: every app's
@@ -319,6 +338,28 @@ fails CI.
 
 **Report once**, in plain language: how many tasks shipped (and what), what was skipped/blocked and
 why, and the single merge + deploy.
+
+**RETRO — every plan run learns from itself (MANDATORY, ≤5 min, BOUNDED so memory improves
+instead of bloating).** After the report, run a short self-retrospective over what THIS run got
+wrong and fixed, and bank it in the ONE right place:
+1. **New CI/test bug class** a subagent shipped → ONE numbered 2-4-line entry in the memory file
+   `plan_drain_ci_bug_classes` (the proven pattern: that catalog grew 8→19 entries across runs and
+   each entry saved later runs a red cycle). **Dedupe first**: if the class exists, sharpen the
+   existing entry — never add a near-duplicate.
+2. **Routing misjudgment** (a sonnet lane returned `[BLOCKED]` and opus fixed it, or an opus lane
+   proved trivially mechanical) → fix it in CODE, not notes: add `@model:` tags to the similar
+   remaining plan tasks or refine `scripts/plan_lanes.py`'s classifier regexes in the same run.
+   The router IS the memory for routing lessons.
+3. **New infra/concurrency hazard** → the matching memory file (`local_ci_via_docker` for
+   docker/test-harness, `worktree_drain_mechanics` for worktree/git, `plan_run_addenda` for
+   run-economics), 1-3 lines, evidence-counted where possible.
+4. **ANTI-BLOAT RULES (absolute):** only bank a lesson that would CHANGE a future run's behavior —
+   run history belongs in the DONE LOG, never in memory; update-in-place beats appending; NEVER
+   create a new memory file for a lesson that fits an existing one; if a touched file exceeds its
+   budget (gotcha files ~40 lines, mechanics files ~180, the bug catalog ~4 lines/entry), fold its
+   weakest/stalest entries into `done_history_archive` IN THE SAME edit — memory must come out of
+   every run at the same size or smaller, just sharper. A run with nothing genuinely new banks
+   NOTHING (most runs — that is success, not failure).
 
 ### "work on the plan"
 Drain `docs/PLAN2.md` (priority queue, first) then `docs/PLAN.md` using **"How a plan run works"**
