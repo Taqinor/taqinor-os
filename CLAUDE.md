@@ -391,13 +391,23 @@ plan run works"** EXCEPT:
   (any session may run `deploy-prod.ps1`; it is idempotent).
 
 ### "work on the plan"
-Drain `docs/PLAN2.md` (priority queue, first) then `docs/PLAN.md` using **"How a plan run works"**
-above. Anything typed after the command is extra detail. This is the PLATFORM/cross-cutting run
-(ARC, SCA, ODX, YAPIC, VX shell, QX journey — the work that touches many apps and therefore stays
-single-session).
-- Active files: `docs/PLAN2.md` then `docs/PLAN.md`. One session at a time ON THESE FILES (domain
-  sessions on `docs/plans/*` run in parallel with it, per the section above). Read
-  them fully and verify real repo state before building.
+Drain in STANDING PRIORITY ORDER (founder, 2026-07-10): **1) `docs/PLAN2.md` → 2) `docs/PLAN.md`
+→ 3) `docs/new_tasks_plan.md` (the NT platform tier)** using **"How a plan run works"** above.
+Anything typed after the command is extra detail. This is the PLATFORM/cross-cutting run
+(ARC, SCA, ODX, YAPIC, VX shell, QX journey, then the NT platform groups — the work that touches
+many apps and therefore stays single-session).
+- **The priority order is STANDING and re-checked at every lane refill:** when a higher-priority
+  file gains new `[ ]` tasks mid-run (an "add to plan:" landed, a task got unblocked), the next
+  free lane pulls from the highest-priority non-empty queue FIRST — new PLAN2/PLAN tasks always
+  jump ahead of the NT tier, today and after any future additions. A run only descends to
+  `new_tasks_plan.md` when PLAN2 + PLAN.md hold zero buildable `[ ]` tasks (blocked/gated ones
+  don't hold it back).
+- NT-tier bookkeeping follows its file's own rules (NOT in the plan-fingerprint surface: tick +
+  DONE LOG in-file, never CODEMAP §10; respect `BUILD_ORDER.yml` wave-gating within it; the NT
+  header's built-digest regeneration step applies). The `docs/plans/PLAN_*` domain files are NEVER
+  part of this run — they belong to their own parallel `work on the plan <domain>` sessions.
+- One session at a time ON THESE THREE FILES (domain sessions on `docs/plans/*` run in parallel
+  with it, per the section above). Read them fully and verify real repo state before building.
 - Process EVERY unchecked `[ ]` task; verify each isn't already built (if it is, mark
   `[x] (already present)`), then tick `[x]` + add a dated DONE LOG line as it lands.
 - Lane-draining, batches sized by the RECALIBRATED MERGE FLOOR above (≈40-80 task lane-groups now
