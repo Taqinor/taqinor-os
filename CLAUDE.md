@@ -266,7 +266,11 @@ the merge+deploy gate). Every SUBAGENT is dispatched via `Agent` `model:` / `Wor
   `"model": "opus"` runs the orchestrator on Opus, and `env.CLAUDE_CODE_SUBAGENT_MODEL=sonnet` floors
   EVERY untagged subagent at Sonnet — a forgotten tag can never inherit Fable. Per-call `model:`
   overrides the floor (haiku down / opus-fable up). For a deliberate Fable deep-dive, `/model fable`
-  at session start.
+  at session start. **AUTOMATIC ROUTING (2026-07-10): `python scripts/plan_lanes.py <planfile>`
+  prints the model tier per task AND per lane** (a lane's model = its highest-risk task; an explicit
+  `@model:haiku|sonnet|opus` tag on a task line overrides the classifier) — a plan run reads each
+  lane's `model=` off the lane plan and passes it to the Agent call; no judgment call needed for
+  the routine tiers. `fable` is deliberately not routable — it stays a session-level scalpel.
 
 **Token discipline — read the MAP before grepping the territory (founder rule).** `docs/CODEMAP.md`
 is the curated, always-current map (§3 repository map + §4 app-by-app: every app's

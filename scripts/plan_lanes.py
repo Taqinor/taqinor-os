@@ -94,6 +94,57 @@ GATED_KEYWORDS: set[str] = set()
 # the DONE-LOG visibility note) -- labelling only, never gating.
 LABEL_KEYWORDS = {"ARCH", "DECISION", "AUTH", "COST", "GALLERY"}
 
+# --- Automatic model routing (founder rule: subagents NEVER inherit the
+# session model; auto-pick the cheapest tier that fits — CLAUDE.md § model
+# selection). An explicit ``@model:haiku|sonnet|opus`` tag on a task wins.
+# ``fable`` is deliberately NOT routable here: it is a session-level scalpel
+# (1-3 frontier passes when the founder asks to go deep), never a build lane.
+_AT_MODEL_RE = re.compile(r"@model:\s*(?P<tier>haiku|sonnet|opus)\b", re.IGNORECASE)
+_MODEL_RANK = {"haiku": 0, "sonnet": 1, "opus": 2}
+
+# OPUS — high-risk/judgment lanes ONLY: the rule-#4 quote engine, `core` under
+# import-linter contracts, auth/permissions/security surfaces, destructive
+# migrations, brand-new cross-app architecture.
+_OPUS_LABEL_RE = re.compile(
+    r"quote_engine|generate_devis_premium|premium (?:PDF|engine)|R(?:È|E)GLE\s*#?4"
+    r"|RULE\s*#?4|import-?linter|\.importlinter|destructive|irr(?:é|e)versible"
+    r"|permission|RBAC|role_legacy|IsResponsable|IsAdmin|s(?:é|e)curit(?:é|e)"
+    r"|security|\bSSO\b|\bSAML\b|\bJWT\b|\bMFA\b|\b2FA\b|chiffrement|encryption"
+    r"|authentification|mot de passe|password|secret",
+    re.IGNORECASE,
+)
+_OPUS_LANES = {"core", "authentication", "identity", "roles"}
+_OPUS_ID_PREFIXES = ("YRBAC", "NTSEC", "QPERF")
+
+# HAIKU — clearly mechanical only (scouting, docs, renames, verify-and-skip,
+# DC single-source wiring). Conservative on purpose: when in doubt, sonnet.
+_HAIKU_LABEL_RE = re.compile(
+    r"docs?[ /-]only|README|typo|renomm(?:er|age)|\brename\b|one-?liner"
+    r"|v(?:é|e)rifier (?:que|si|seulement)|verify(?:-and-skip| only)"
+    r"|d(?:é|e)j(?:à|a) pr(?:é|e)sent|already present|libell(?:é|e)s? seulement"
+    r"|wording|cha(?:î|i)ne de caract|comment(?:aire)? seulement",
+    re.IGNORECASE,
+)
+_HAIKU_ID_PREFIXES = ("DC",)
+
+
+def _model_tier(label: str, lane: str, task_id: str, gate_labels: list[str]) -> str:
+    """Cheapest model tier that fits this task (haiku < sonnet < opus)."""
+    explicit = _AT_MODEL_RE.search(label)
+    if explicit:
+        return explicit.group("tier").lower()
+    if (
+        _OPUS_LABEL_RE.search(label)
+        or lane in _OPUS_LANES
+        or task_id.upper().startswith(_OPUS_ID_PREFIXES)
+        or {"AUTH", "DECISION", "ARCH"} & set(gate_labels)
+    ):
+        return "opus"
+    if _HAIKU_LABEL_RE.search(label) or task_id.upper().startswith(_HAIKU_ID_PREFIXES):
+        return "haiku"
+    return "sonnet"
+
+
 # Dependencies the founder long ago pre-approved. Kept for reference; with the
 # standing consent a DEP no longer gates regardless of membership here.
 PRE_APPROVED_DEPS = {
@@ -344,6 +395,7 @@ def parse_tasks(path: Path) -> list[dict]:
             "gate_reasons": reasons,
             "deps": sorted(_deps(label)),
             "section": (headers["###"] or headers["##"]).lstrip("# ").strip(),
+            "model": _model_tier(label, lane or "UNASSIGNED", m.group("id"), reasons),
         })
     return tasks
 
@@ -409,8 +461,19 @@ def schedule(tasks: list[dict], max_lanes: int) -> dict:
             scheduled.add(t["id"])
         waves.append(wave)
 
+    # One lane = ONE dispatched agent, so the lane's model is the highest tier
+    # any of its tasks needs (a cheaper builder never lowers the risk bar).
+    lane_models = {
+        k: max((t["model"] for t in lanes[k]), key=_MODEL_RANK.__getitem__)
+        for k in lane_order
+    }
+    model_counts = {tier: 0 for tier in _MODEL_RANK}
+    for t in buildable:
+        model_counts[t["model"]] += 1
+
     return {
         "lanes": {k: [t["id"] for t in lanes[k]] for k in lane_order},
+        "lane_models": lane_models,
         "waves": [[t["id"] for t in w] for w in waves],
         "wave_detail": waves,
         "gated": gated,
@@ -422,6 +485,7 @@ def schedule(tasks: list[dict], max_lanes: int) -> dict:
             "gated": len(gated),
             "unassigned": len(unassigned),
             "max_parallel": max((len(w) for w in waves), default=0),
+            "models": model_counts,
         },
     }
 
@@ -436,6 +500,10 @@ def render(plan: dict, max_lanes: int, source: str) -> str:
         f"{c['gated']} gated (auto-gating is OFF — every category builds; this "
         f"stays 0 by design), {c['unassigned']} unassigned (need a "
         f"@lane:/@files: tag).",
+        f"Model mix (auto-routed; `@model:` tag overrides): "
+        f"{c['models']['haiku']} haiku / {c['models']['sonnet']} sonnet / "
+        f"{c['models']['opus']} opus — dispatch each lane's Agent with the "
+        f"lane's `model=` below (founder rule: never inherit the session model).",
         "",
         "## Waves (each row builds in parallel; one task per lane)",
     ]
@@ -443,10 +511,12 @@ def render(plan: dict, max_lanes: int, source: str) -> str:
         out.append(f"- **Wave {n}** ({len(wave)} parallel):")
         for t in wave:
             deps = f"  after {','.join(t['deps'])}" if t["deps"] else ""
-            out.append(f"    - `{t['id']}`  [{t['lane']}]{deps}")
-    out += ["", "## Lanes (tasks inside a lane run in sequence)"]
+            out.append(f"    - `{t['id']}`  [{t['lane']}] ({t['model']}){deps}")
+    out += ["", "## Lanes (tasks inside a lane run in sequence; model = lane's max tier)"]
     for lane, ids in plan["lanes"].items():
-        out.append(f"- **{lane}** ({len(ids)}): {', '.join(ids)}")
+        out.append(
+            f"- **{lane}** ({len(ids)}, model={plan['lane_models'][lane]}): {', '.join(ids)}"
+        )
     if plan["gated"]:
         out += ["", "## Gated — skip and flag (never auto-built)"]
         for t in plan["gated"]:
