@@ -147,6 +147,67 @@ un identifiant déclaré mais absent du code de la surface).
 
 ---
 
+## Kit « document métier » — déclarer un document en 1 fichier (SCA30-33, étend ARC51)
+
+> Un NOUVEAU type de document métier (header + statut + référence + chatter +
+> PDF ± lignes/totaux) se déclare sur `core/documents.py` au lieu de recomposer
+> les primitives à la main. **Exclusion permanente (règle #4)** :
+> Devis/Facture/BonCommande/Avoir ne sont JAMAIS rétrofittés sur ce kit.
+
+### L'anatomie et ce que chaque brique ARC fournit
+
+| Brique du kit (`core/documents.py`) | Compose | Ce que le document hérite |
+|---|---|---|
+| `DocumentMetier` (abstrait) | ARC1 `TenantModel` | FK `company` + `created_at`/`updated_at` ; champ `statut` adossé aux `Statut` (TextChoices) de la sous-classe (choices/default auto via `__init_subclass__`) ; table `TRANSITIONS` déclarative + `transitions_permises()` |
+| `changer_statut()` (service) | bus M6 | LE point d'écriture gardé du statut : transition hors table → `TransitionRefusee` sans écriture ; émet `core.events.document_statut_change` (user/société posés serveur) |
+| `LigneDocumentMetier` + `TotauxDocumentMixin` (abstraits, OPTIONNELS) | SCA31 | ligne `designation/quantite/prix_unitaire/remise/taux_tva` (formule `total_ht` miroir exact de `LigneDevis`) + totaux gelés/recomputés (patron Facture) — un document SANS argent ne les prend simplement pas |
+| `document_viewset()` (factory) | ARC2 + ARC6 + ARC8 | viewset complet en 1 déclaration : queryset scopé société, `perform_create` avec référence race-safe (`create_with_reference`, jamais count()+1), chatter générique |
+| `render_document_pdf()` (hook) | ARC11 | PDF via `core.pdf.render_pdf` (import WeasyPrint centralisé, branding opt-in, upload MinIO) — le kit n'importe jamais WeasyPrint |
+
+Pour un modèle EXISTANT, l'alternative légère à la factory est
+`ChatterViewSetMixin` sur le viewset en place (patron flotte) + une action
+`pdf` de ~13 lignes qui appelle `render_document_pdf` — c'est le chemin pris
+par les pilotes. **Ne pas oublier** : (1) la cible chatter dans
+`PLATFORM['record_targets']` de l'app (`'app.model'`, ARC30) + le set attendu
+dans `apps/records/tests_arc30_registry.py` ; (2) si le viewset surcharge
+`get_permissions`, ajouter `'chatter_historique'` à ses actions de LECTURE
+(le `get_permissions` maison prime sur les `permission_classes` du mixin) ;
+(3) un modèle chatter-isé NON cherchable déclenche la matrice ARC41
+(`chatter_sans_recherche`, `core/platform_coverage.py`) — câbler la recherche
+globale, ou assumer la dérive dans `BASELINE_DRIFT` avec une justification
+datée (le message d'échec du test propose exactement ces deux issues).
+
+### Exemple réel : pilote SCA34 `OrdreSousTraitance` (avant → après, mesuré)
+
+Conversion d'un document existant (FG305) qui avait statut + référence `OST-`
+mais NI chatter NI PDF ni contrat de transitions :
+
+| Fichier | Avant | Après | Delta |
+|---|---|---|---|
+| `models_ordre_soustraitance.py` | 102 | 160 | +58 (dont ~45 de docstrings justifiant la conversion ; le cœur = héritage `DocumentMetier`, table `TRANSITIONS` 7 lignes, suppression du champ `statut` local) |
+| `views/ordre_soustraitance.py` | 164 | 196 | +32 (**~27 lignes fonctionnelles** : chatter = 2 lignes — héritage mixin + `READ_ACTIONS` ; action `pdf` = 13 lignes ; le reste = docstrings) |
+| `platform.py` | 28 | 35 | +7 (2 lignes utiles : la cible `record_targets`) |
+| gabarit PDF (nouveau) | — | 51 | corps HTML minimal (branding géré par `render_pdf`) |
+| migration `0094` | — | 65 | additive : `AddField created_at/updated_at` + `AlterField statut` 20→32 (élargissement pur) — `company` redéclarée à l'identique = zéro opération |
+
+**Le point de comparaison qui justifie le kit** : dans la MÊME app, un chatter
+maison coûte un modèle `*Activity` + un module de log (`activity.py` 79 l.,
+`intervention_activity.py` 66 l.) + serializer + 2 actions ≈ **150-250 lignes
+par document** (le dépôt en comptait 13 copies avant ARC8), et un PDF maison
+un module dédié de **61-108 lignes** (`rfq_pdf.py` 61, `intervention_pdf.py`
+108) + branchement. Avec le kit : chatter + PDF + statut gardé + numérotation
++ tenancy ≈ **30 lignes utiles** + un gabarit HTML. La contrepartie mesurée de
+la conversion d'un EXISTANT : une migration additive (timestamps + élargissement
+`statut`) et la continuité du compteur de références à prouver par test
+(`tests_sca34_kit_ordre_soustraitance.py` — reprise du compteur courant).
+
+Le pilote SCA36 (`DemandeAchat`) prouve la composition inverse : socle +
+statut + chatter + numérotation SANS `TotauxDocumentMixin` ni lignes du kit
+(document d'approbation, aucun champ monétaire ajouté — le flux d'approbation
+reste sur son moteur propre, chemin ARC10 nommé).
+
+---
+
 ## Événements — bus core.events (M6)
 
 `core/events.py` expose des objets `django.dispatch.Signal` (bus synchrone qui
