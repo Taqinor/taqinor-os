@@ -15,10 +15,8 @@ BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[3]
 
 # Tâches délibérément DÉCLENCHÉES À LA DEMANDE (jamais périodiques) OU
 # planifiées par une autre tâche/lane — chacune justifiée.
-ON_DEMAND_ALLOWLIST = {
-    # QX36 (même lane) planifie poll_mail_intake dans le beat juste après.
-    'ged.poll_mail_intake',
-}
+# (Vide : toutes les tâches périodiques connues sont désormais planifiées.)
+ON_DEMAND_ALLOWLIST = set()
 
 
 def _all_shared_task_names():

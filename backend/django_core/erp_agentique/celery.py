@@ -329,6 +329,17 @@ app.conf.beat_schedule = {
         'task': 'qhse.escalader_checkins_en_retard',
         'schedule': crontab(minute='*/30'),
     },
+    # QX36 — relève des boîtes email entrantes (dispatch bus core.email_intake :
+    # SAV email→ticket, ventes réponse→devis). No-op sans boîte configurée.
+    'ventes-poll-inbound-mailboxes': {
+        'task': 'ventes.poll_inbound_mailboxes',
+        'schedule': crontab(minute='*/10'),
+    },
+    # QX36 — FG373 relève GED (import documentaire par email), toutes les 10 min.
+    'ged-poll-mail-intake': {
+        'task': 'ged.poll_mail_intake',
+        'schedule': crontab(minute='*/10'),
+    },
 }
 
 # YHARD6 — compteurs Celery succès/échec (process-local, best-effort) pour

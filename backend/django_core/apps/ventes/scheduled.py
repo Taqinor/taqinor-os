@@ -518,3 +518,31 @@ def devis_a_facturer_reminder(jours=7):
 
     logger.info('devis_a_facturer_reminder: %s rappel(s) posé(s)', total)
     return total
+
+
+@shared_task(name='ventes.poll_inbound_mailboxes')
+def poll_inbound_mailboxes():
+    """QX36 — interroge la boîte email entrante de chaque société et dispatche
+    aux handlers du bus ``core.email_intake`` (SAV email→ticket, ventes
+    réponse→devis). Sans boîte configurée par société, ``poll_mailbox`` est un
+    no-op propre (aucune connexion réseau) — donc cette tâche est sûre à
+    planifier même quand aucune boîte n'est câblée.
+
+    Multi-tenant : la société est imposée société par société (jamais du corps
+    d'une requête). Best-effort par société : un échec n'arrête pas les autres.
+    Renvoie le total {fetched, handled}."""
+    from core.email_intake import poll_mailbox
+    from authentication.models import Company
+
+    fetched = handled = 0
+    for company in Company.objects.all():
+        try:
+            res = poll_mailbox(company)
+            fetched += int(res.get('fetched', 0) or 0)
+            handled += int(res.get('handled', 0) or 0)
+        except Exception:  # noqa: BLE001 — best-effort par société
+            logger.warning('ventes.poll_inbound_mailboxes: échec société %s',
+                           getattr(company, 'pk', '?'), exc_info=True)
+    logger.info('ventes.poll_inbound_mailboxes: %d relevé(s), %d dispatché(s)',
+                fetched, handled)
+    return {'fetched': fetched, 'handled': handled}

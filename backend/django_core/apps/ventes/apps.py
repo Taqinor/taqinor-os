@@ -58,3 +58,7 @@ class VentesConfig(AppConfig):
         # QX24 — connecte les signaux LigneDevis (post_save/post_delete) qui
         # gardent le payback de l'étude cohérent avec le total courant.
         receivers._register_qx24_signals()
+        # QX36 — abonne le handler email entrant (réponse client → chatter +
+        # notification sur le devis) au bus core.email_intake.
+        from .inbound_email import register_ventes_inbound_handler
+        register_ventes_inbound_handler()

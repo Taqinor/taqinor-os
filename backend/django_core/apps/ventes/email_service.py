@@ -65,17 +65,33 @@ def _from_email():
     return getattr(settings, 'DEFAULT_FROM_EMAIL', '') or 'noreply@erp.local'
 
 
+def _reply_to_address():
+    """QX36 — adresse Reply-To des emails sortants (devis/facture).
+
+    Pointe vers la boîte entrante relevée par ``core.email_intake`` /
+    ``ventes.inbound_email`` pour qu'une réponse client revienne s'attacher au
+    devis. Précédence : ``INBOUND_REPLY_EMAIL`` (settings/env) → adresse
+    d'expédition par défaut. Vide → pas de Reply-To (comportement inchangé)."""
+    return (getattr(settings, 'INBOUND_REPLY_EMAIL', '') or '').strip()
+
+
 def _send(to_email, sujet, corps, attachment=None, attachment_name=None):
     """Envoie via le backend Django configuré. Retourne (ok, erreur).
 
     Sans clé configurée → backend console → l'email est « envoyé » sans appel
     réseau ni exception (NO-OP). Toute exception réelle est capturée et
-    renvoyée comme erreur, jamais propagée à l'appelant."""
+    renvoyée comme erreur, jamais propagée à l'appelant.
+
+    QX36 — pose un ``Reply-To`` vers la boîte entrante (si configurée) pour
+    qu'une réponse client atterrisse sur le fil du devis (voir
+    ``ventes.inbound_email``)."""
     try:
         connection = get_connection(fail_silently=False)
+        reply_to = _reply_to_address()
         msg = EmailMessage(
             subject=sujet, body=corps, from_email=_from_email(),
-            to=[to_email], connection=connection)
+            to=[to_email], connection=connection,
+            reply_to=[reply_to] if reply_to else None)
         if attachment and attachment_name:
             msg.attach(attachment_name, attachment, 'application/pdf')
         msg.send(fail_silently=False)

@@ -30,6 +30,9 @@ class EventType(models.TextChoices):
     DEVIS_ACCEPTED = 'devis_accepted', 'Devis accepté'
     # QJ2 — première ouverture du lien de proposition par le client.
     DEVIS_OPENED = 'devis_opened', 'Proposition ouverte par le client'
+    # QX36 — le client RÉPOND par email à une proposition/facture (réponse
+    # rattachée au devis via sa référence) : le vendeur est notifié.
+    DEVIS_REPLY = 'devis_reply', 'Réponse email du client sur un devis'
     # QJ27 — le client demande à être contacté (depuis la proposition publique).
     CLIENT_CONTACT_REQUEST = (
         'client_contact_request', 'Client souhaite être contacté')
