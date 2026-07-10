@@ -90,15 +90,27 @@ if [ "$HEALTH_STATUS" = "down" ]; then
 fi
 '@ -replace "`r`n", "`n"
 
-# Pass the script as the ssh command ARGUMENT (normalized to LF). Two gotchas
-# this avoids:
+# Transport du script : FICHIER (scp) puis execution — jamais en argument ssh
+# ni via stdin. Trois gotchas que ce choix evite :
 #  1. CRLF: the .ps1 is CRLF on Windows; an un-normalized here-string makes the
 #     remote shell see `cd /opt/taqinor-os\r` and every command fails. Hence the
 #     `-replace "`r`n","`n"` above.
 #  2. Do NOT pipe via stdin (`$remote | ssh ... bash -s`): `docker compose exec -T`
 #     consumes stdin, which would swallow the rest of the script (init_roles,
-#     nginx restart, ...). As an argument, the remote stdin stays free.
-ssh -i $Key -o StrictHostKeyChecking=accept-new "root@$ServerIp" $remote
+#     nginx restart, ...). With a file, the remote stdin stays free.
+#  3. Do NOT pass the script as the ssh command ARGUMENT: Windows PowerShell 5.1
+#     mangles native-command quoting on embedded double quotes in a multi-line
+#     argument — the remote bash received a script split mid-line
+#     (« syntax error near unexpected token ( » at the first $(...), rien
+#     n'etait execute, et le message rollback etait un faux positif).
+$tmpScript = Join-Path $env:TEMP 'taqinor-deploy-remote.sh'
+[IO.File]::WriteAllText($tmpScript, $remote)  # LF, sans BOM
+& scp -i $Key -o StrictHostKeyChecking=accept-new $tmpScript "root@${ServerIp}:/tmp/taqinor-deploy-remote.sh"
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "scp du script de deploiement a echoue (code $LASTEXITCODE)."
+    exit 1
+}
+ssh -i $Key -o StrictHostKeyChecking=accept-new "root@$ServerIp" 'bash /tmp/taqinor-deploy-remote.sh'
 $deployExitCode = $LASTEXITCODE
 
 # YHARD11 — un exit non-zero du bloc distant signifie que le healthcheck a
