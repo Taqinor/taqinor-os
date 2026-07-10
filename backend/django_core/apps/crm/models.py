@@ -379,6 +379,23 @@ class Lead(models.Model):
         related_name='leads',
     )
 
+    # ── ARC56 — Pont additif vers le répertoire unifié Tiers (stade amont) ──
+    # FK nullable (string-FK ``'tiers.Tiers'``) : le lead porte l'identité
+    # PRÉ-CONVERSION (avant qu'un Client structuré existe), donc le recoupement
+    # « qui est ce tiers ? » (ARC20) doit aussi couvrir ce stade. Rattaché au
+    # MÊME Tiers que le Client résolu (via resolve_client_for_lead + le miroir
+    # crm.Client → Tiers d'ARC18) ; jamais un 2ᵉ Tiers pour le même acteur.
+    # ATTENTION QW7 : ce pont ne touche AUCUN champ de nom du lead.
+    tiers = models.ForeignKey(
+        'tiers.Tiers',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='leads',
+        verbose_name='Tiers (répertoire unifié)',
+        help_text="Fiche du répertoire unifié reflétant ce prospect "
+                  "(stade amont). Renseignée automatiquement (miroir).")
+
     # Facture électrique du lead (MAD/mois). Si l'été ne diffère pas de
     # l'hiver, facture_hiver vaut pour les deux (ete_differente = False).
     facture_hiver = models.DecimalField(
