@@ -412,7 +412,11 @@ describe('DevisList — QG11/QG12 : design 3D (roof_layout) lecture seule', () =
 describe('DevisList — WR2 : copier le lien de proposition (share_link)', () => {
   it('appelle shareLinkDevis et copie l\'URL publique au presse-papier', async () => {
     const writeText = vi.fn(() => Promise.resolve())
-    Object.assign(navigator, { clipboard: { writeText } })
+    // navigator.clipboard peut être un getter en lecture seule selon la version
+    // de jsdom → defineProperty (configurable) au lieu d'Object.assign qui jette.
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText }, configurable: true, writable: true,
+    })
     renderList({
       loading: false,
       devis: [{
