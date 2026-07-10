@@ -4108,3 +4108,89 @@ def creer_ordres_location_depuis_devis(devis, *, company, created_by=None,
         crees.append(ordre)
 
     return crees
+
+
+# ── ARC13 — import générique (framework `apps.dataimport`) ─────────────────
+
+def _parse_date_import(valeur):
+    """Normalise une valeur de date issue d'un import (str ISO/FR ou objet
+    date/datetime déjà résolu par openpyxl) ; ``None`` si vide/invalide."""
+    import datetime as _dt
+
+    if valeur is None or valeur == '':
+        return None
+    if isinstance(valeur, _dt.datetime):
+        return valeur.date()
+    if isinstance(valeur, _dt.date):
+        return valeur
+    for fmt in ('%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y'):
+        try:
+            return _dt.datetime.strptime(str(valeur).strip(), fmt).date()
+        except (ValueError, AttributeError):
+            continue
+    return None
+
+
+def creer_contrat_import(company, ligne, *, user=None):
+    """ARC13 — Crée (ou saute si doublon) UN contrat depuis une ligne d'import
+    CSV/XLSX (dict de colonnes déjà nettoyées), via ``apps.contrats.services``
+    — jamais le modèle ``Contrat`` directement (contrat du framework
+    ``apps.dataimport``, même motif que ``creer_vehicule_import`` XFLT22).
+
+    Colonnes attendues : ``objet`` (obligatoire), ``reference`` (clé
+    d'idempotence si fournie), ``type_contrat``, ``statut``, ``date_debut``,
+    ``date_fin``, ``montant``, ``devise``. Idempotent sur ``reference`` : une
+    ligne dont la référence est déjà utilisée pour la société est SAUTÉE
+    (retourne ``'doublon'``), jamais mise à jour ni dupliquée — une ligne SANS
+    référence est toujours créée (pas de clé d'idempotence disponible).
+    Retourne ``('cree'|'doublon'|'erreur', message|None)``.
+    """
+    from decimal import Decimal, InvalidOperation
+
+    from .models import Contrat
+
+    objet = str(ligne.get('objet', '') or '').strip()
+    if not objet:
+        return 'erreur', 'Objet manquant.'
+
+    reference = str(ligne.get('reference', '') or '').strip()
+    if reference and Contrat.objects.filter(
+            company=company, reference=reference).exists():
+        return 'doublon', None
+
+    type_brut = str(ligne.get('type_contrat', '') or '').strip().lower()
+    types_valides = {c for c, _ in Contrat.TypeContrat.choices}
+    type_contrat = type_brut if type_brut in types_valides \
+        else Contrat.TypeContrat.AUTRE
+
+    statut_brut = str(ligne.get('statut', '') or '').strip().lower()
+    statuts_valides = {c for c, _ in Contrat.Statut.choices}
+    statut = statut_brut if statut_brut in statuts_valides \
+        else Contrat.Statut.BROUILLON
+
+    montant_brut = ligne.get('montant')
+    montant = Decimal('0')
+    if montant_brut not in (None, ''):
+        raw = str(montant_brut).replace('\xa0', '').replace(' ', '').replace(',', '.')
+        try:
+            montant = Decimal(raw)
+        except (InvalidOperation, ValueError):
+            montant = Decimal('0')
+
+    try:
+        Contrat.objects.create(
+            company=company,
+            reference=reference,
+            objet=objet,
+            type_contrat=type_contrat,
+            statut=statut,
+            date_debut=_parse_date_import(ligne.get('date_debut')),
+            date_fin=_parse_date_import(ligne.get('date_fin')),
+            montant=montant,
+            devise=str(ligne.get('devise', '') or '').strip() or 'MAD',
+            created_by=user if getattr(user, 'pk', None) else None,
+        )
+    except Exception as exc:  # pragma: no cover - défensif, erreur inattendue
+        return 'erreur', str(exc)
+
+    return 'cree', None

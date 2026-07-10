@@ -361,10 +361,42 @@ wrong and fixed, and bank it in the ONE right place:
    every run at the same size or smaller, just sharper. A run with nothing genuinely new banks
    NOTHING (most runs — that is success, not failure).
 
+### "work on the plan <domain>" — PARALLEL domain sessions (founder, 2026-07-10)
+The 2,084-task NT backlog is SPLIT into 7 domain files under `docs/plans/` — **PLAN_CRM_VENTES,
+PLAN_FINANCE, PLAN_SUPPLY, PLAN_SERVICE, PLAN_RH_PAIE, PLAN_DOCS_JURIDIQUE, PLAN_VERTICALS**
+(`scripts/split_plan.py` did the move; `docs/new_tasks_plan.md` keeps the PLATFORM tier,
+single-session). Each file opens with an **APP-OWNERSHIP CONTRACT** — the guarantee that parallel
+sessions never conflict, exactly like the web/ERP split. A domain run is identical to **"How a
+plan run works"** EXCEPT:
+- It drains ONLY its own file and touches ONLY the apps/dirs its contract owns; anything outside →
+  `[BLOCKED: hors périmètre]` + keep going (it returns to the platform run). Foreign apps are read
+  via `selectors.py`/string-FK only — NEVER their models/migrations (this keeps every app's
+  migration chain single-writer).
+- Local tests use `DB_NAME=erp_<domain>` (never the shared test DB); at most 2-3 sessions run
+  heavy local docker on this box concurrently — further sessions run in the cloud and lean on the
+  ~6-min CI gate instead.
+- It merges its own `dev-<domain>` branch to `main` independently (update-branch → ~6-min CI →
+  auto-merge). If `docs/CODEMAP.md` conflicts at update time (two sessions both moved the
+  STRUCTURE fingerprint), take the merged tree and re-run `codemap_fingerprint.py --write` —
+  30 seconds, mechanical. Shared frontend files (router/nav/api): append-only additions; a
+  conflict there = keep BOTH sides' additions.
+- Domain files are NOT in the plan-fingerprint surface (like WEB_PLAN.md): tick `[x]` + DONE LOG
+  inside the domain file itself; never touch CODEMAP §10 for them.
+- **ONE session per domain file** (the per-file version of the old single-session rule). Any set
+  of DIFFERENT domains runs in parallel. The classic platform run (below) also joins, but
+  CRM_VENTES should be idle while it drains PLAN2's QX/VX (they touch ventes/crm/frontend-shell).
+- **Respect `docs/BUILD_ORDER.yml` (SCA3):** `plan_lanes.py <domain file>` says what is buildable
+  NOW vs wave-gated behind platform prerequisites; `--force-wave` is the founder-consigned
+  override when Reda wants a domain to start early. Deploy once at the end of a parallel batch
+  (any session may run `deploy-prod.ps1`; it is idempotent).
+
 ### "work on the plan"
 Drain `docs/PLAN2.md` (priority queue, first) then `docs/PLAN.md` using **"How a plan run works"**
-above. Anything typed after the command is extra detail.
-- Active files: `docs/PLAN2.md` then `docs/PLAN.md`. No lock — only ever one session at a time. Read
+above. Anything typed after the command is extra detail. This is the PLATFORM/cross-cutting run
+(ARC, SCA, ODX, YAPIC, VX shell, QX journey — the work that touches many apps and therefore stays
+single-session).
+- Active files: `docs/PLAN2.md` then `docs/PLAN.md`. One session at a time ON THESE FILES (domain
+  sessions on `docs/plans/*` run in parallel with it, per the section above). Read
   them fully and verify real repo state before building.
 - Process EVERY unchecked `[ ]` task; verify each isn't already built (if it is, mark
   `[x] (already present)`), then tick `[x]` + add a dated DONE LOG line as it lands.
