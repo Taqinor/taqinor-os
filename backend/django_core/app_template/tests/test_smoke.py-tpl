@@ -1,0 +1,15 @@
+"""Test de fumée du module « {{ app_label }} » (généré par startapp_erp — ARC42).
+
+Remplacer par de vrais tests dès que le module a un modèle/viewset : isolation
+multi-société (une société ne voit jamais les données d'une autre), matrice de
+permissions, et logique métier des services.
+"""
+from django.test import SimpleTestCase
+
+
+class {{ camel_case_app_name }}SmokeTest(SimpleTestCase):
+    def test_module_importe(self):
+        """L'app se charge (placeholder — à remplacer par de vrais tests)."""
+        import apps.{{ app_label }}  # noqa: F401
+
+        self.assertTrue(True)
