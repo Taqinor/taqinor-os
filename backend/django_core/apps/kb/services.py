@@ -9,6 +9,8 @@ import logging
 
 from django.db import transaction
 
+from core.pdf import render_pdf
+
 from .models import (
     KbArticle,
     KbArticleChunk,
@@ -226,17 +228,12 @@ def article_to_markdown(article):
 def article_to_pdf(article):
     """XKB17 — Rend un article en PDF (mise en page d'impression propre).
 
-    Utilise EXCLUSIVEMENT le WeasyPrint existant (JAMAIS le moteur devis
-    premium — rule #4 : `/proposal` reste l'unique chemin des PDF de devis
-    client, sans rapport avec cet export documentaire interne). Aucun statut
-    n'est modifié par cet export (lecture seule). Renvoie les octets PDF.
+    Utilise EXCLUSIVEMENT le service partagé ``core.pdf.render_pdf`` (ARC12 —
+    plomberie WeasyPrint centralisée ; JAMAIS le moteur devis premium — rule
+    #4 : `/proposal` reste l'unique chemin des PDF de devis client, sans
+    rapport avec cet export documentaire interne). Aucun statut n'est modifié
+    par cet export (lecture seule). Renvoie les octets PDF.
     """
-    try:
-        import weasyprint  # import local : lib lourde, chargée à la demande.
-    except Exception as exc:  # pragma: no cover - WeasyPrint est installé.
-        raise RuntimeError(
-            "WeasyPrint est requis pour exporter un article en PDF "
-            f"mais n'a pas pu être chargé : {exc}")
     titre = (article.titre or 'Article').replace('<', '&lt;').replace('>', '&gt;')
     corps_html = (article.corps or '').replace('\n', '<br>')
     html_str = (
@@ -252,7 +249,7 @@ def article_to_pdf(article):
         f"<div class='corps'>{corps_html}</div>"
         "</body></html>"
     )
-    return weasyprint.HTML(string=html_str).write_pdf()
+    return render_pdf(html=html_str)
 
 
 def importer_markdown(contenu, *, company, auteur=None):
