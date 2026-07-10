@@ -1419,6 +1419,64 @@ class TestCanonicalProductible(TestCase):
         self.assertEqual(ceilings, [100, 250, 400, None])
 
 
+class TestHonestCashflowPayback(TestCase):
+    """QX39 — payback par cashflow 25 ans (dégradation/escalade/batterie/
+    onduleur), croisement du cumul à zéro, hypothèses rendues sur le PDF."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+
+    def test_cashflow_payback_zero_crossing(self):
+        from apps.ventes.quote_engine.pricing import compute_cashflow_payback
+        cf = compute_cashflow_payback(50000, 10000)
+        # 25 années de cumul, payback interpolé au croisement de zéro
+        self.assertEqual(len(cf['cumulative']), 25)
+        self.assertGreater(cf['payback_years'], 0)
+        self.assertLess(cf['payback_years'], 25)
+        # le cumul est croissant puis positif (rentabilisé)
+        self.assertLess(cf['cumulative'][0], 0)
+        self.assertGreater(cf['cumulative'][-1], 0)
+        self.assertGreater(cf['net_gain'], 0)
+
+    def test_degenerate_inputs_return_zero(self):
+        from apps.ventes.quote_engine.pricing import compute_cashflow_payback
+        self.assertEqual(compute_cashflow_payback(0, 10000)['payback_years'], 0.0)
+        self.assertEqual(compute_cashflow_payback(50000, 0)['payback_years'], 0.0)
+
+    def test_battery_roundtrip_lengthens_payback(self):
+        from apps.ventes.quote_engine.pricing import compute_cashflow_payback
+        cf_no = compute_cashflow_payback(50000, 10000)
+        cf_bat = compute_cashflow_payback(50000, 10000, battery=True)
+        # le rendement aller-retour < 1 réduit l'économie → payback plus long
+        self.assertGreaterEqual(cf_bat['payback_years'], cf_no['payback_years'])
+
+    def test_assumptions_block_documented(self):
+        from apps.ventes.quote_engine.pricing import cashflow_assumptions
+        a = cashflow_assumptions()
+        self.assertEqual(a['years'], 25)
+        self.assertEqual(a['degradation_pct'], 0.5)
+        self.assertGreater(a['escalation_pct'], 0)
+        self.assertTrue(any('82-21' in n for n in a['notes']))
+        self.assertTrue(any('injection' in n.lower() for n in a['notes']))
+
+    def test_builder_roi_from_cashflow_and_assumptions_rendered(self):
+        from apps.ventes.quote_engine.builder import build_quote_data
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau Canadien Solar 710W', '14', '1272.73'),
+            ('Onduleur réseau Huawei 10kW', '1', '16666.67'),
+        ], reference='DEV-QX39-1')
+        data = build_quote_data(devis)
+        # le cumul du cashflow est porté dans les données de rendu
+        self.assertIsNotNone(data.get('cashflow_sans'))
+        self.assertEqual(len(data['cashflow_sans']), 25)
+        # les hypothèses documentées apparaissent dans le bloc « Nos hypothèses »
+        items = ' '.join(data['hypotheses']['items'])
+        self.assertIn('82-21', items)
+        self.assertIn('gradation', items.replace('é', 'e'))
+
+
 class TestQuoteNumbersHonestyPack(TestCase):
     """QX7 — pack d'honnêteté des chiffres du PDF : couverture réelle (a),
     échéancier custom sans case morte (b), ville résolue depuis le lead (c),

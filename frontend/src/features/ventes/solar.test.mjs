@@ -13,6 +13,7 @@ import {
   ONEE_TRANCHES, AUTOCONSO_SANS, AUTOCONSO_AVEC, buildEtudeParamsChoice,
   multiPropertyPreviewTTC,
   productibleForCity, PRODUCTIBLE_PAR_VILLE, DEFAULT_PRODUCTIBLE,
+  computeCashflowPayback,
 } from './solar.js'
 
 // Reflet du catalogue seedé (prix HT = TTC simulateur / 1.2, 2 décimales)
@@ -705,6 +706,27 @@ test('QX38 — computeROI : production = productible × kwp (parité PDF/web)', 
   })
   // production annuelle = 1687 × 7.1 (répartie par forme GHI, somme = total)
   assert.equal(Math.round(roi.production_annuelle_kwh), Math.round(1687 * kwp))
+})
+
+// ── QX39 — cashflow 25 ans honnête (miroir backend pricing.py) ──────────────
+test('QX39 — computeCashflowPayback : croisement du cumul à zéro (parité backend)', () => {
+  const cf = computeCashflowPayback(50000, 10000)
+  assert.equal(cf.cumulative.length, 25)
+  assert.ok(cf.paybackYears > 0 && cf.paybackYears < 25)
+  assert.ok(cf.cumulative[0] < 0)                 // année 1 encore négatif
+  assert.ok(cf.cumulative[cf.cumulative.length - 1] > 0) // rentabilisé à 25 ans
+  assert.ok(cf.netGain > 0)
+})
+
+test('QX39 — computeCashflowPayback : dégénéré → payback null', () => {
+  assert.equal(computeCashflowPayback(0, 10000).paybackYears, null)
+  assert.equal(computeCashflowPayback(50000, 0).paybackYears, null)
+})
+
+test('QX39 — batterie (rendement aller-retour) allonge le payback', () => {
+  const no = computeCashflowPayback(50000, 10000)
+  const bat = computeCashflowPayback(50000, 10000, { battery: true })
+  assert.ok(bat.paybackYears >= no.paybackYears)
 })
 
 // ── QF5 — computeROI bascule sur le modèle « deux factures » (parité écran/PDF) ─

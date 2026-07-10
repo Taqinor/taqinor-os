@@ -98,11 +98,21 @@ def coverage_donut(pct, w=1.95, h=1.95) -> str:
 
 
 def payback_curve(total_sans, total_avec, eco_s, eco_a, roi_s, roi_a,
-                  w=6.9, h=2.35) -> str:
+                  w=6.9, h=2.35, cashflow_sans=None, cashflow_avec=None) -> str:
     import numpy as np
     years = np.arange(0, 26)
-    cs = np.array([(-total_sans + eco_s * y) / 1000 for y in years])
-    ca = np.array([(-total_avec + eco_a * y) / 1000 for y in years])
+    # QX39 — quand le cumul du cashflow 25 ans réel est fourni (dégradation
+    # panneau + escalade tarifaire + rendement batterie + remplacement
+    # onduleur), on le TRACE tel quel (la courbe cesse d'impliquer des économies
+    # plates sur 25 ans). Repli : ancienne droite linéaire éco × année.
+    if cashflow_sans and cashflow_avec and len(cashflow_sans) >= 25:
+        cs = np.array([-total_sans / 1000]
+                      + [v / 1000 for v in cashflow_sans[:25]])
+        ca = np.array([-total_avec / 1000]
+                      + [v / 1000 for v in cashflow_avec[:25]])
+    else:
+        cs = np.array([(-total_sans + eco_s * y) / 1000 for y in years])
+        ca = np.array([(-total_avec + eco_a * y) / 1000 for y in years])
     fig, ax = plt.subplots(figsize=(w, h))
 
     # Profit zone: everything above break-even reads as money earned.
@@ -183,6 +193,8 @@ def build_all(data: dict) -> dict:
         "coverage": coverage_donut(data["coverage_pct"]),
         "payback": payback_curve(
             data["total_sans"], data["total_avec"],
-            data["eco_s_ann"], data["eco_a_ann"], data["roi_s"], data["roi_a"]),
+            data["eco_s_ann"], data["eco_a_ann"], data["roi_s"], data["roi_a"],
+            cashflow_sans=data.get("cashflow_sans"),
+            cashflow_avec=data.get("cashflow_avec")),
         "roof": roof_layout(data["nb_panneaux"]),
     }

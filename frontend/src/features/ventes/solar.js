@@ -106,6 +106,49 @@ export function estimerPanneaux(factureHiver, perTranche = 8) {
 export const AUTOCONSO_SANS = 0.60
 export const AUTOCONSO_AVEC = 0.85
 
+// ── QX39 — cashflow 25 ans honnête (MIROIR backend pricing.py) ───────────────
+// Mêmes hypothèses documentées : dégradation panneau, escalade tarifaire,
+// rendement batterie, remplacement onduleur optionnel. Le payback = croisement
+// du cumul à zéro. Écran, PDF et proposition web affichent le MÊME payback.
+export const CASHFLOW_YEARS = 25
+export const PANEL_DEGRADATION = 0.005
+export const TARIFF_ESCALATION = 0.02
+export const BATTERY_ROUNDTRIP = 0.90
+export const INVERTER_REPLACE_YEAR = 12
+export const INVERTER_REPLACE_FRACTION = 0.08
+
+export function computeCashflowPayback(investment, economieAnnee1, { battery = false } = {}) {
+  const inv = parseFloat(investment) || 0
+  const base = parseFloat(economieAnnee1) || 0
+  if (base <= 0 || inv <= 0) {
+    return { paybackYears: null, cumulative: [], netGain: 0, years: CASHFLOW_YEARS }
+  }
+  const cumulative = []
+  let cumul = -inv
+  let payback = null
+  let prev = -inv
+  for (let y = 1; y <= CASHFLOW_YEARS; y++) {
+    const prodFactor = (1 - PANEL_DEGRADATION) ** (y - 1)
+    const tarifFactor = (1 + TARIFF_ESCALATION) ** (y - 1)
+    let yearSaving = base * prodFactor * tarifFactor
+    if (battery) yearSaving *= BATTERY_ROUNDTRIP
+    let yearCf = yearSaving
+    if (INVERTER_REPLACE_YEAR && y === INVERTER_REPLACE_YEAR) {
+      yearCf -= inv * INVERTER_REPLACE_FRACTION
+    }
+    prev = cumul
+    cumul += yearCf
+    cumulative.push(Math.round(cumul))
+    if (payback === null && cumul >= 0) {
+      const span = cumul - prev
+      const frac = span ? (0 - prev) / span : 0
+      payback = Math.round(((y - 1) + frac) * 10) / 10
+    }
+  }
+  if (payback === null) payback = CASHFLOW_YEARS
+  return { paybackYears: payback, cumulative, netGain: Math.round(cumul), years: CASHFLOW_YEARS }
+}
+
 // ── Simulation ROI (port exact de /api/roi/calculate du simulateur) ──────────
 // QF5 — quand une consommation annuelle RÉELLE + un distributeur connu sont
 // fournis (`consoAnnuelleKwh`/`utility`, capturés par QF4), l'économie bascule
@@ -181,10 +224,12 @@ export function computeROI({
     }
   }
 
-  const paybackSans = (ecoAnnuelleSans > 0 && totalSans > 0)
-    ? Math.round(totalSans / ecoAnnuelleSans * 10) / 10 : null
-  const paybackAvec = (ecoAnnuelleAvec > 0 && totalAvec > 0)
-    ? Math.round(totalAvec / ecoAnnuelleAvec * 10) / 10 : null
+  // QX39 — payback par croisement du cumul du cashflow 25 ans (miroir backend),
+  // pas un ratio année-1 : écran/PDF/proposition affichent le MÊME payback.
+  const cfSans = computeCashflowPayback(totalSans, ecoAnnuelleSans)
+  const cfAvec = computeCashflowPayback(totalAvec, ecoAnnuelleAvec, { battery: true })
+  const paybackSans = (ecoAnnuelleSans > 0 && totalSans > 0) ? cfSans.paybackYears : null
+  const paybackAvec = (ecoAnnuelleAvec > 0 && totalAvec > 0) ? cfAvec.paybackYears : null
 
   return {
     production_annuelle_kwh: Math.round(productionAnnuelle * 10) / 10,
@@ -195,6 +240,11 @@ export function computeROI({
     eco_avec_monthly: ecoAvecMonthly,
     payback_sans: paybackSans,
     payback_avec: paybackAvec,
+    // QX39 — cumul cashflow 25 ans + gain net (mêmes clés que le PDF).
+    cashflow_sans: cfSans.cumulative,
+    cashflow_avec: cfAvec.cumulative,
+    net_gain_sans: cfSans.netGain,
+    net_gain_avec: cfAvec.netGain,
     // QF5 — transparence : le PDF (builder.py) porte les mêmes clés
     // (savings_model/facture_sans/facture_avec_s/facture_avec_a).
     savings_model: savingsModel,

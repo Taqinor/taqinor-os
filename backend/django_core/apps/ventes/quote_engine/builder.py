@@ -838,6 +838,14 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             f"Production estimée : ≈ {int(round(_prod_factor))} kWh par kWc et "
             "par an (irradiation moyenne au Maroc), performance panneaux "
             "garantie sur 25 ans.")
+    # QX39 — hypothèses du cashflow 25 ans (dégradation/escalade/batterie),
+    # documentées et rendues sur le PDF/la proposition. Le payback vient
+    # désormais du croisement du cumul à zéro, pas d'un ratio année-1.
+    _cf_assum = roi.get("cashflow_assumptions") or {}
+    for _n in (_cf_assum.get("notes") or []):
+        _n = str(_n).strip()
+        if _n and _n not in hypotheses:
+            hypotheses.append(_n)
     hypotheses.append(
         "Estimations non contractuelles ; toute hausse future du tarif "
         "électrique améliore votre rentabilité.")
@@ -1041,6 +1049,12 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "roi_a": roi["roi_a"],
         "eco_s_monthly": roi["eco_s_monthly"],
         "eco_a_monthly": roi["eco_a_monthly"],
+        # QX39 — cumul du cashflow 25 ans (dégradation/escalade/batterie/onduleur)
+        # : pilote la courbe de rentabilité (plus de droite linéaire « plate »).
+        "cashflow_sans": roi.get("cashflow_sans"),
+        "cashflow_avec": roi.get("cashflow_avec"),
+        "net_gain_sans": roi.get("net_gain_sans"),
+        "net_gain_avec": roi.get("net_gain_avec"),
         # QJ13 — honest-number guard: True when savings are an estimate (no tariff data)
         "savings_estimated": roi.get("savings_estimated", False),
         "tarif_kwh": roi.get("tarif_kwh"),
