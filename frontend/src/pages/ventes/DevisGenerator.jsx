@@ -385,6 +385,10 @@ export default function DevisGenerator({
     return kwhMensuel > 0 ? Math.round(kwhMensuel * 12) : null
   })()
 
+  // Lead prioritaire résolu tôt : le calcul ROI ci-dessous lit sa ville
+  // (productible par ville) — doit être déclaré avant le useMemo (pas de TDZ).
+  const selectedLead = leads.find(l => String(l.id) === String(leadId))
+
   const roi = useMemo(() => {
     if (dKwp <= 0 || !dMonthly.some(v => v > 0)) return null
     return computeROI({
@@ -461,8 +465,7 @@ export default function DevisGenerator({
   }
 
   // ── Lead prioritaire : factures remplies + client résolu depuis le lead ──
-  const selectedLead = leads.find(l => String(l.id) === String(leadId))
-
+  // (selectedLead est déclaré plus haut, avant le calcul ROI.)
   const resolvedClientLabel = useMemo(() => {
     if (!selectedLead) return null
     // B2B : si le client résolu porte un ICE, on l'affiche (devis professionnel).
@@ -2270,7 +2273,7 @@ export default function DevisGenerator({
                       {formatMoney(pkwc)}/kWc
                     </span>
                     {hasCible && (
-                      <span className="gen-total-hint" style={{ color: couleur, fontSize: 12 }}>
+                      <span className={`gen-total-hint ${couleurCls}`} style={{ fontSize: 12 }}>
                         {sousCible
                           ? `≤ cible (${formatMoney(cibleNum)}/kWc)`
                           : `au-dessus de la cible (${formatMoney(cibleNum)}/kWc)`}

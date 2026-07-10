@@ -18,7 +18,10 @@ class Qx37DeadWebhookRemovedTests(SimpleTestCase):
             __import__('core.webhooks', fromlist=['dispatch_event'])
 
     def test_publicapi_remains_the_single_webhook_surface(self):
-        # La couche vivante existe toujours.
+        # La couche vivante existe toujours. Résolution DYNAMIQUE (importlib) :
+        # ``core`` ne doit jamais IMPORTER statiquement ``apps.publicapi``
+        # (contrat import-linter « core-foundation-is-a-base-layer »).
+        import importlib
         self.assertIsNotNone(apps.get_model('publicapi', 'Webhook'))
-        from apps.publicapi import delivery
+        delivery = importlib.import_module('apps.publicapi.delivery')
         self.assertTrue(hasattr(delivery, 'dispatch_event'))

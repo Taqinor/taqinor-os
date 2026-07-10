@@ -212,7 +212,7 @@ export default function DevisList() {
   // QX12 — deep-link ?devis=<pk> ouvre/surligne ce devis précis au montage
   // (notifications « Devis accepté »/« Devis expiré » qui pointaient vers une
   // route inexistante /devis/{pk} — le producteur redirige maintenant ici).
-  const [highlightId, setHighlightId] = useState(() => {
+  const [highlightId] = useState(() => {
     const v = searchParams.get('devis')
     return v ? Number(v) : null
   })
