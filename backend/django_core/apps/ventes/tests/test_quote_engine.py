@@ -731,6 +731,28 @@ class TestPdfFormats(TestCase):
             for marker in ('9876', '9 876', '9\u202f876', '9&#8239;876', 'achat'):
                 self.assertNotIn(marker, html.lower())
 
+    def test_prix_par_kwc_never_in_pdf_html(self):
+        """SCA47 \u2014 prix_par_kwc est une donn\u00e9e INTERNE g\u00e9n\u00e9rateur/BI (m\u00eame
+        r\u00e9gime que prix_achat) : il n'appara\u00eet dans AUCUN rendu client, sur les
+        deux formats. Valeur secr\u00e8te 5 chiffres tr\u00e8s reconnaissable pos\u00e9e
+        directement sur le devis (contourne la d\u00e9rivation pour isoler la
+        garantie d'absence PDF)."""
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Onduleur r\u00e9seau 10kW', '1', '11700'),
+            ('Panneau mono 550W', '14', '1100'),
+        ], reference='DEV-QE-PKWC')
+        # Valeur secr\u00e8te distinctive (5 chiffres) \u2014 jamais un montant r\u00e9el.
+        Devis.objects.filter(pk=devis.pk).update(
+            prix_par_kwc=Decimal('54321.00'))
+        devis.refresh_from_db()
+        self.assertEqual(devis.prix_par_kwc, Decimal('54321.00'))
+        for opts in ({'pdf_mode': 'onepage'}, None):
+            html, _ = self._render(opts, devis=devis)
+            low = html.lower()
+            for marker in ('54321', '54 321', '54\u202f321', '54&#8239;321',
+                           'par_kwc', 'prix_par_kwc'):
+                self.assertNotIn(marker, low)
+
     def test_onepage_15_rich_lines_stays_one_page_with_totals_visible(self):
         """Adaptive density: a 15-line quote with long product descriptions
         must compact (descriptions suppressed > 12 lines) so the table AND

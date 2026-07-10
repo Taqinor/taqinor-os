@@ -54,7 +54,7 @@ from .public_views import (
 )
 from .dashboard_view import dashboard_quote_to_cash
 from .insights_view import cash_flow_forecast, analyse_facturation_view  # ZFAC10
-from .journal_view import journal_ventes, export_comptable
+from .journal_view import journal_ventes, export_comptable, export_status
 from .numbering_view import numerotation_audit, numerotation_preview
 from .extra_docs_views import lettre_relance_premium, fiche_remise_premium
 from .diagram_views import schema_unifilaire, schema_unifilaire_devis  # FG252
@@ -155,6 +155,9 @@ urlpatterns = [
     # ventilation TVA par ligne + ICE + totaux, en .xlsx OU .csv. FG49 :
     # ?layout=grand-livre → grand-livre codé par compte CGNC (fiduciaire).
     path('export-comptable/', export_comptable, name='export-comptable'),
+    # SCA41 — statut + téléchargement pré-signé d'un export xlsx asynchrone
+    # (voie déclenchée au-delà du seuil de lignes), borné société.
+    path('export/status/<str:token>/', export_status, name='export-status'),
     # Audit de la numérotation séquentielle (trous/doublons) — admin.
     path('numerotation-audit/', numerotation_audit, name='numerotation-audit'),
     # Aperçu du prochain numéro RÉEL par type de pièce (L770/L786).
