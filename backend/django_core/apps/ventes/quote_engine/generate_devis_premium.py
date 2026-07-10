@@ -405,12 +405,18 @@ def _apply_entreprise(ent):
         parts = [p for p in (_esc(email), _esc(tel)) if p]
         ENT_CONTACT_LINE = " &nbsp;&#183;&nbsp; ".join(parts)
 
-    # Pied de page ÉTUDE (email · site) : reconstruit dès qu’un email ou un
-    # site de profil est fourni (SCA27 — même sémantique par-champ que la
-    # ligne de contact ci-dessus).
+    # Pied de page ÉTUDE : reconstruit dès QU'UN contact quelconque est fourni
+    # (email, site OU téléphone) — même sémantique que la ligne de contact
+    # ci-dessus (SCA27). On préfère email + site ; si les deux manquent mais
+    # qu'un téléphone est présent (profil PME tel-seul), on affiche le tél afin
+    # de ne JAMAIS laisser le littéral fondateur près d'un nom de tenant. Seul
+    # le cas « aucun contact » (nom-seul / DC1) garde le défaut Taqinor, donc le
+    # rendu du fondateur (email+tél+site) reste byte-identique.
     site_web = (ent.get("site_web") or "").strip()
-    if email or site_web:
+    if email or tel or site_web:
         etude_parts = [p for p in (_esc(email), _esc(site_web)) if p]
+        if not etude_parts and tel:
+            etude_parts = [_esc(tel)]
         ENT_ETUDE_CONTACT = " &nbsp;·&nbsp; ".join(etude_parts)
 
     # Ligne légale : raison sociale · RC · ICE · IF · Patente · Siège.

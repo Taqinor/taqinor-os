@@ -79,15 +79,31 @@ class TestArc23TauxTVAMaster(TestCase):
             1)
 
     # ── Défauts branchés sur la création ─────────────────────────────────────
-    def test_referentiel_default_wired_into_line_creation(self):
-        # Défaut du référentiel = 18 % (édité) → une ligne standard sans taux ni
-        # produit taxé retombe sur CE taux, pas sur le littéral historique.
-        TauxTVA.seed_defaults(self.company)
-        TauxTVA.objects.filter(
-            company=self.company, code='standard').update(taux=Decimal('18'))
+    def _set_profile_tva_standard(self, value):
+        from apps.parametres.models import CompanyProfile
+        prof = CompanyProfile.get(company=self.company)
+        prof.tva_standard = Decimal(value)
+        prof.save(update_fields=['tva_standard'])
+
+    def test_visible_knob_dominates_seeded_referentiel(self):
+        # ARC23 (corrigé) — le knob VISIBLE en Paramètres
+        # (CompanyProfile.tva_standard) prime sur le référentiel seedé (sans UI).
+        # Le tenant met « TVA standard » à 14 % ; le référentiel reste à 20 %
+        # (valeur seedée par défaut à l'inscription). Une ligne de repli DOIT
+        # prendre 14 % — le référentiel ne réprime plus l'édition de l'utilisateur.
+        TauxTVA.seed_defaults(self.company)  # référentiel standard = 20 %
+        self._set_profile_tva_standard('14')
         produit = self._produit('Onduleur réseau', tva=None)
         ligne = self._create_line('Onduleur réseau', produit)
-        self.assertEqual(ligne.taux_tva, Decimal('18'))
+        self.assertEqual(ligne.taux_tva, Decimal('14'))
+
+    def test_untouched_knob_keeps_default_20(self):
+        # Tenant qui n'a jamais touché le knob (défaut 20) + référentiel seedé à
+        # 20 → la ligne de repli garde 20 % (valeur d'aujourd'hui inchangée).
+        TauxTVA.seed_defaults(self.company)
+        produit = self._produit('Onduleur réseau', tva=None)
+        ligne = self._create_line('Onduleur réseau', produit)
+        self.assertEqual(ligne.taux_tva, Decimal('20'))
 
     def test_no_referentiel_preserves_historical_behavior(self):
         # Aucun référentiel actif (setUp ne seede pas) → repli 20 % historique.
