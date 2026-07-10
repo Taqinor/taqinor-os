@@ -263,6 +263,28 @@ importe ``apps.audit``.
       du ``dossier_cible`` (ex. ``{"annee": 2026}``) ;
     * ``uploaded_by`` — utilisateur à l'origine du fichier (peut être
       ``None``).
+
+``chantier_receptionne``
+    Émis quand une ``installations.Installation`` atteint le statut canonique
+    RECEPTIONNE (YSERV4) — aux DEUX sites où ce jalon peut être atteint :
+    ``InstallationViewSet.perform_update`` et l'action ``mise-en-service``
+    (celle-ci se rabat sur RECEPTIONNE, même patron que ``_apply_reception_
+    handover``). Émis SYNCHRONE, best-effort, uniquement sur le FRANCHISSEMENT
+    (``ancien_statut`` canonique différent de RECEPTIONNE) — un re-passage ne
+    réémet rien. Ne change AUCUN statut (l'émission suit la bascule déjà
+    actée). Abonné dans ce repo : ``compta`` (``apps/compta/receivers.py``) —
+    crée idempotemment une ``EnqueteNPS`` pour le client du chantier (une
+    enquête par chantier, jamais de doublon même en cas de ré-émission) et
+    appelle ``envoyer_enquete_nps`` (no-op sans clé Brevo, comportement FG238
+    inchangé). ``installations`` n'importe jamais ``apps.compta`` — même
+    patron que ``devis_accepted`` → ``crm``. Arguments du signal :
+
+    * ``installation`` — l'instance ``installations.Installation`` désormais
+      RECEPTIONNE ;
+    * ``user`` — l'utilisateur qui a déclenché la transition (peut être
+      ``None``) ;
+    * ``ancien_statut`` — le statut BRUT (non canonicalisé) avant la
+      transition.
 """
 import django.dispatch
 
@@ -418,3 +440,9 @@ effet_rejete = django.dispatch.Signal()
 # ce repo pour l'instant (monitoring reste satellite ; câblage futur via son
 # propre ``receivers.py``/``ready()`` sans jamais importer ``apps.compta``).
 abonnement_monitoring_resilie = django.dispatch.Signal()
+
+# Émis quand une Installation atteint le statut canonique RECEPTIONNE
+# (YSERV4). Arguments : installation, user (peut être None), ancien_statut.
+# Abonné dans ce repo : compta (crée l'EnqueteNPS + envoyer_enquete_nps,
+# idempotent) — voir docstring du module ci-dessus.
+chantier_receptionne = django.dispatch.Signal()
