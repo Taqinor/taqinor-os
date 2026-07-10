@@ -18,7 +18,9 @@ Découpage (guidance SCA23) :
     ``/proposal`` (WeasyPrint lourd, exclu du merge gate, joué au palier release
     + par l'orchestrateur). Assertions : zéro fuite de la LIGNE DE CONTACT
     fondateur (``contact@taqinor.com`` / ``<b>TAQINOR</b>``) dans le pied de page
-    d'un tenant qui a rempli son profil (SCA26/27), et zéro ``prix_achat``.
+    d'un tenant qui a rempli son profil (SCA26/27), zéro ``taqinor.ma`` du tout
+    quand le tenant a AUSSI rempli son site (SCA27 complément : ligne site +
+    liens fiches câblés sur son site), et zéro ``prix_achat``.
 
   * ``Day2FooterNomOnlyFallbackTest`` (``SimpleTestCase``, pur) — DOCUMENTE la
     sémantique DC1 « nom seul » (un tenant qui ne renseigne QUE son nom garde la
@@ -216,6 +218,9 @@ class Day2TenantProposalPdfTest(TestCase):
         profile.nom = 'Helios SARL'
         profile.email = 'hello@helios.ma'
         profile.telephone = '+212 5 22 00 00 00'
+        # SCA27 (complément) — le tenant remplit AUSSI son site : le PDF ne doit
+        # alors plus contenir AUCUNE trace de taqinor.ma (ligne site + fiches).
+        profile.site_web = 'helios.ma'
         profile.save()
 
         token = _login_token(APIClient(), 'helios-boss')
@@ -301,15 +306,14 @@ class Day2TenantProposalPdfTest(TestCase):
         # Le nom du tenant apparaît (pied de page marque).
         self.assertIn('Helios SARL', text)
 
-        # NOTE DE PORTÉE (fuite CONNUE, non corrigée ici — hors des 2 fichiers de
-        # cette lane) : ``build_quote_data`` ne câble PAS ``site_url``/``links``/
-        # ``produits_base`` depuis le tenant, donc le renderer résidentiel
-        # retombe sur ``taqinor.ma`` (ligne site du pied de page + liens fiches
-        # ``taqinor.ma/produits/…``). On N'affirme donc PAS ici l'absence de
-        # « taqinor.ma » : ce serait ROUGE sur une régression PRÉEXISTANTE, pas
-        # sur SCA23. Signalé à l'orchestrateur (TODO câblage tenant site_url).
-        # La neutralité RÉELLEMENT acquise (ligne de contact + nom) est vérifiée
-        # ci-dessus ; resserrer sur ``taqinor.ma`` quand le câblage sera fait.
+        # PORTÉE (SCA27 complément — câblage tenant site_url désormais fait) : le
+        # tenant a rempli SON site (helios.ma), donc ``build_quote_data`` câble
+        # ``site_url``/``links`` sur son site et le renderer résidentiel n'utilise
+        # plus AUCUN littéral ``taqinor.ma`` (ligne site du pied de page + liens
+        # fiches). On peut donc interdire ``taqinor.ma`` outright (la fuite
+        # PRÉEXISTANTE de SCA23 est fermée). SON site est présent en preuve.
+        self.assertIn('helios.ma', text)
+        self.assertNotIn('taqinor.ma', text)
 
 
 class Day2FooterNomOnlyFallbackTest(SimpleTestCase):

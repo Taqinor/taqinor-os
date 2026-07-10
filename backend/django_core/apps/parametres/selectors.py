@@ -38,6 +38,7 @@ def company_identity(company) -> dict:
             "nom": "", "adresse": "", "email": "", "telephone": "",
             "ice": "", "identifiant_fiscal": "", "rc": "", "patente": "",
             "cnss": "", "rib": "", "banque": "", "couleur_principale": "",
+            "site_web": "",
         }
     return {
         "nom": p.nom or "",
@@ -52,6 +53,9 @@ def company_identity(company) -> dict:
         "rib": p.rib or "",
         "banque": p.banque or "",
         "couleur_principale": p.couleur_principale or "",
+        # SCA27 — site web (pilote la ligne site + la base des liens fiches du
+        # PDF résidentiel). Vide → littéraux historiques (taqinor.ma).
+        "site_web": getattr(p, "site_web", "") or "",
     }
 
 

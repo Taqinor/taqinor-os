@@ -48,6 +48,16 @@ class CompanyProfile(models.Model):
         help_text='Numéro d\'affiliation CNSS.')
     rib = models.CharField(max_length=50, blank=True, default='')
     banque = models.CharField(max_length=100, blank=True, default='')
+    # ── SCA27 — site web de la société (identité/coordonnées) ──
+    # Additif, VIDE par défaut. Pilote la ligne « site » du pied de page du PDF
+    # résidentiel et la base des liens fiches produits : quand il est renseigné,
+    # le moteur affiche CE site (et omet les fiches taqinor.ma du fondateur) ;
+    # vide → le moteur garde ses littéraux historiques (taqinor.ma), donc un
+    # devis sans profil enrichi reste rendu strictement à l'identique.
+    site_web = models.CharField(
+        max_length=255, blank=True, default='',
+        help_text='Site web de la société (ex. helios.ma), affiché sur le PDF '
+                  'du devis. Vide = défaut historique.')
     # ── Bloc paiement & conditions sur la FACTURE (Feature B, 2026-06) ──
     # Trois réglages texte libre, additifs et VIDES par défaut : tant qu'ils ne
     # sont pas renseignés, le PDF facture est strictement identique (les blocs ne
