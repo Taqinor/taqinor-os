@@ -6782,6 +6782,7 @@ from apps.marketing.models import (  # noqa: E402,F401
     MessageWhatsAppEntrant,
     MouvementFidelite,
     OuverturePartage,
+    PostSocial,
     QuestionEvenement,
     RebondSoft,
     RegleUpsell,

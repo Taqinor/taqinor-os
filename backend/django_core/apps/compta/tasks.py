@@ -7,6 +7,7 @@ from .models import Campagne
 from .services import (
     decider_gagnant_ab, envoyer_campagnes_planifiees, executer_etapes_dues,
     recalculer_dormants, envoyer_communications_evenement_dues,
+    traiter_posts_sociaux_dus,
 )
 
 
@@ -75,3 +76,16 @@ def envoyer_communications_evenement_task():
     for company in Company.objects.all():
         total += len(envoyer_communications_evenement_dues(company))
     return {'communications_envoyees': total}
+
+
+@shared_task(name='compta.traiter_posts_sociaux')
+def traiter_posts_sociaux_task():
+    """XMKT35 — Enveloppe Celery Beat : traite les posts sociaux à échéance,
+    société par société. Sans jeton Meta Graph : rappel manuel notifié une
+    fois (texte prêt à coller) ; avec jeton : publication réelle gated."""
+    from authentication.models import Company
+
+    total = 0
+    for company in Company.objects.all():
+        total += len(traiter_posts_sociaux_dus(company))
+    return {'posts_traites': total}

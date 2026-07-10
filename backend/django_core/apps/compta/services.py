@@ -6647,6 +6647,112 @@ def decider_gagnant_ab(campagne, *, maintenant=None):
     return gagnant
 
 
+# ── XMKT35 — Posts réseaux sociaux (publication Meta Graph gated) ───────────
+# La publication réelle est OFF par défaut : sans jeton, un post dû devient un
+# RAPPEL manuel notifié à son auteur (texte prêt à coller) — aucun appel
+# réseau, aucun statut « publié » posé tout seul. AUCUNE création de campagne
+# publicitaire ici (règle n°3 — ce module publie du CONTENU de page, jamais
+# une campagne Ads ; si un jour l'Ads s'ajoute : toujours --status PAUSED).
+
+def meta_graph_actif():
+    """Toggle maître de la publication Meta Graph (XMKT35). OFF par défaut.
+
+    Actif uniquement avec ``META_GRAPH_ENABLED=1`` ET un jeton ET un id de
+    page (env). Sans ça : aucun appel réseau, chemin rappel manuel."""
+    import os
+    return (os.getenv('META_GRAPH_ENABLED', '0') == '1'
+            and bool(os.getenv('META_GRAPH_TOKEN', '').strip())
+            and bool(os.getenv('META_GRAPH_PAGE_ID', '').strip()))
+
+
+def planifier_post_social(post, *, date_planifiee):
+    """Planifie un post social : brouillon → planifié (XMKT35). Idempotent —
+    un post déjà publié/en échec n'est jamais replanifié par cette fonction."""
+    from .models import PostSocial
+    if post.statut not in (PostSocial.Statut.BROUILLON,
+                           PostSocial.Statut.PLANIFIE):
+        return post
+    post.date_planifiee = date_planifiee
+    post.statut = PostSocial.Statut.PLANIFIE
+    post.save(update_fields=['date_planifiee', 'statut'])
+    return post
+
+
+def publier_post_social(post):
+    """Publie RÉELLEMENT un post via l'API Meta Graph — GATED (XMKT35).
+
+    Sans jeton (``meta_graph_actif()`` faux) : NO-OP strict (le sweep pose le
+    rappel manuel à la place). Avec jeton : POST ``/{page_id}/feed`` (contenu
+    de page uniquement — jamais de campagne publicitaire, règle n°3) ;
+    succès → statut ``publie`` + ``external_id``, échec → ``echec`` +
+    ``erreur``. Ne relance jamais un post déjà publié."""
+    from .models import PostSocial
+    import json
+    import os
+    import urllib.parse
+    if post.statut != PostSocial.Statut.PLANIFIE:
+        return post
+    if not meta_graph_actif():
+        return post
+    token = os.getenv('META_GRAPH_TOKEN', '').strip()
+    page_id = os.getenv('META_GRAPH_PAGE_ID', '').strip()
+    base = (os.getenv('META_GRAPH_BASE_URL', '')
+            or 'https://graph.facebook.com/v19.0').rstrip('/')
+    payload = urllib.parse.urlencode({
+        'message': post.texte or '', 'access_token': token}).encode()
+    req = urllib.request.Request(
+        f'{base}/{page_id}/feed', data=payload, method='POST')
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read() or b'{}')
+        post.external_id = str(data.get('id') or '')
+        post.statut = PostSocial.Statut.PUBLIE
+        post.publie_le = timezone.now()
+        post.erreur = ''
+        post.save(update_fields=[
+            'external_id', 'statut', 'publie_le', 'erreur'])
+    except Exception as exc:
+        post.statut = PostSocial.Statut.ECHEC
+        post.erreur = str(exc)[:255]
+        post.save(update_fields=['statut', 'erreur'])
+    return post
+
+
+def traiter_posts_sociaux_dus(company, *, maintenant=None):
+    """Sweep beat XMKT35 : traite chaque post planifié arrivé à échéance.
+
+    Jeton Meta Graph présent → publication réelle (``publier_post_social``).
+    Sans jeton → RAPPEL manuel notifié UNE fois à l'auteur du post
+    (``notifications.notify``, texte prêt à coller) ; le post reste
+    ``planifie`` (l'utilisateur publie à la main puis met à jour le statut).
+    Idempotent : ``rappel_envoye`` garantit zéro double rappel."""
+    from .models import PostSocial
+    maintenant = maintenant or timezone.now()
+    dus = PostSocial.objects.filter(
+        company=company, statut=PostSocial.Statut.PLANIFIE,
+        date_planifiee__isnull=False, date_planifiee__lte=maintenant)
+    traites = []
+    actif = meta_graph_actif()
+    for post in dus:
+        if actif:
+            traites.append(publier_post_social(post))
+            continue
+        if post.rappel_envoye:
+            continue
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify
+        if post.created_by is not None:
+            notify(
+                post.created_by, EventType.POST_SOCIAL_RAPPEL,
+                f'Post {post.get_reseau_display()} à publier maintenant',
+                body=(post.texte or '')[:2000],
+                link='/marketing/calendrier', company=company)
+        post.rappel_envoye = True
+        post.save(update_fields=['rappel_envoye'])
+        traites.append(post)
+    return traites
+
+
 def webhook_brevo_evenement(company, *, campagne_id, destinataire, evenement,
                             raison_smtp='', bounce_type='', max_rebonds_soft=3):
     """Traite un événement webhook Brevo (XMKT2/XMKT12), gated/no-op sans clé.

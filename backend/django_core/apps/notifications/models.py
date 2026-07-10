@@ -116,6 +116,9 @@ class EventType(models.TextChoices):
     # YEVNT12 — un incident QHSE CRITIQUE est déclaré (au-delà de la note
     # chatter existante QHSE32) : notifie les responsables QHSE.
     INCIDENT_CRITICAL = 'incident_critical', 'Incident QHSE critique'
+    # XMKT35 — un post réseau social planifié arrive à échéance SANS jeton
+    # Meta Graph configuré : rappel manuel (texte prêt à coller) à l'auteur.
+    POST_SOCIAL_RAPPEL = 'post_social_rappel', 'Post social à publier (rappel)'
 
 
 class Channel(models.TextChoices):
