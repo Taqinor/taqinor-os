@@ -9224,6 +9224,28 @@ def facturer_abonnement_monitoring(abonnement, *, user=None):
     return facture
 
 
+def facturer_abonnement_monitoring_beat(abonnement, *, user=None):
+    """SCA44 — Facture UN ``AbonnementMonitoring`` dû, pour le beat
+    quotidien de ``apps.contrats.scheduled`` (3e flux de facturation
+    récurrente automatique, après les échéanciers contrats et les contrats
+    de maintenance SAV).
+
+    Même effet que l'action ``facturer`` de ``AbonnementMonitoringViewSet``
+    (``apps.compta.views``) : émet la Facture standard via
+    ``facturer_abonnement_monitoring`` (garde d'idempotence déjà posée sur
+    ``derniere_facturation`` — un second appel pour la même période refuse),
+    PUIS avance l'échéance via ``renouveler_abonnement_monitoring`` pour que
+    l'abonnement ne soit plus jamais re-sélectionné par
+    ``apps.compta.selectors.abonnements_monitoring_dus_facturation`` tant
+    que sa prochaine période n'est pas atteinte. Renvoie la Facture créée ;
+    lève ``AbonnementMonitoringError`` si la facturation échoue — l'appelant
+    (le beat) capture l'exception PAR abonnement pour ne jamais bloquer les
+    suivants."""
+    facture = facturer_abonnement_monitoring(abonnement, user=user)
+    renouveler_abonnement_monitoring(abonnement)
+    return facture
+
+
 def suspendre_abonnement_monitoring(abonnement):
     """YSUBS4 — Suspend un abonnement ACTIF (transition gardée, service —
     plus une écriture directe du viewset). Bloque la facturation récurrente
