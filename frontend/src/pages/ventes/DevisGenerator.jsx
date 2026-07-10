@@ -20,6 +20,7 @@ import ventesApi from '../../api/ventesApi'
 import parametresApi from '../../api/parametresApi'
 import ProduitPicker from '../../components/ProduitPicker'
 import ClientQuickCreateModal from './ClientQuickCreateModal'
+import DevisPresetPanel from './DevisPresetPanel'
 import { Combobox } from '../../ui/Combobox'
 import { searchCompanies } from '../../features/crm/companyLookup'
 import {
@@ -892,6 +893,27 @@ export default function DevisGenerator({
       l.groupeIndex === idx ? { ...l, groupeIndex: 0, groupeLabel: 'Équipement commun' } : l))
   }
 
+  // VX18 — un modèle appliqué remplace les lignes du formulaire. La réponse
+  // apply-preset porte les lignes du devis (modèle HT) ; on les reconvertit en
+  // lignes d'écran (TTC) et on remplace via setLines(withKeys(...)). Repli sûr
+  // si la forme diffère (aucun crash, on ignore).
+  const handlePresetApplied = (data) => {
+    const lignes = Array.isArray(data) ? data
+      : (data?.lignes || data?.results || [])
+    if (!Array.isArray(lignes) || !lignes.length) return
+    const rows = lignes.map(l => ({
+      produit: l.produit ?? l.produit_id ?? '',
+      designation: l.designation ?? '',
+      quantite: l.quantite ?? 1,
+      // le modèle stocke le HT ; l'écran travaille en TTC (au taux de la ligne).
+      prix_unit_ttc: ttcFromHt(l.prix_unitaire ?? l.prix_unit_ht ?? 0, l.taux_tva ?? 20),
+      taux_tva: l.taux_tva ?? 20,
+      groupeIndex: l.groupe_index ?? null,
+      groupeLabel: l.groupe_label ?? '',
+    }))
+    setLines(withKeys(rows))
+  }
+
   const handleAutoFill = () => {
     // Mode agricole : équipement pompage (pompe + variateur + champ PV)
     if (modeInstallation === 'agricole') {
@@ -1242,9 +1264,13 @@ export default function DevisGenerator({
         </div>
       )}
 
+      {/* VX16 — mise en page à deux colonnes sur lg+ : le formulaire à gauche,
+          un rail récapitulatif STICKY à droite. Sur mobile/tablette, layout
+          inchangé (le rail est masqué, les actions restent dans le formulaire). */}
+      <div className="lg:flex lg:items-start lg:gap-6">
       {/* noValidate : aucune contrainte navigateur — toute valeur saisie est
           acceptée telle quelle (les steps ne servent qu'aux flèches). */}
-      <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
+      <form id="gen-form" onSubmit={handleSubmit} noValidate className="flex flex-col gap-4 lg:flex-1 lg:min-w-0">
         {refsLoading && (
           <div className="rounded-lg border border-info/30 bg-info/10 p-3 text-sm text-info">
             Chargement des données (leads, clients, produits)…
@@ -1941,13 +1967,13 @@ export default function DevisGenerator({
                     {showSans && (
                       <Line type="monotone" dataKey="ecoSans"
                             name={'Option 1 – Sans batterie' + (sansRec ? ' ⭐' : '')}
-                            stroke="#1A2B4A" strokeWidth={sansRec ? 3.5 : 2.2}
+                            stroke="var(--gen-chart-sans)" strokeWidth={sansRec ? 3.5 : 2.2}
                             dot={{ r: sansRec ? 5 : 4 }} />
                     )}
                     {showAvec && (
                       <Line type="monotone" dataKey="ecoAvec"
                             name={'Option 2 – Avec batterie' + (avecRec ? ' ⭐' : '')}
-                            stroke="#F5A623" strokeWidth={avecRec ? 3.5 : 2.2}
+                            stroke="var(--gen-chart-avec)" strokeWidth={avecRec ? 3.5 : 2.2}
                             dot={{ r: avecRec ? 5 : 4 }} />
                     )}
                   </ComposedChart>
@@ -2201,7 +2227,8 @@ export default function DevisGenerator({
                        value={discountPct} onChange={e => setDiscountPct(e.target.value)} />
                 <span style={{ fontWeight: 700 }}>%</span>
                 {remiseMax !== '' && parseFloat(discountPct) > parseFloat(remiseMax) && (
-                  <span style={{ fontSize: 11, color: '#b45309', marginLeft: 6 }}>
+                  /* VX17 — couleur d'avertissement via token de thème. */
+                  <span className="text-warning ml-1.5" style={{ fontSize: 11 }}>
                     ⚠ au-delà de la limite conseillée ({remiseMax} %)
                   </span>
                 )}
@@ -2233,12 +2260,13 @@ export default function DevisGenerator({
                 const cibleNum = parseFloat(prixCible)
                 const hasCible = Number.isFinite(cibleNum) && cibleNum > 0
                 const sousCible = hasCible ? pkwc <= cibleNum : null
-                const couleur = sousCible == null ? undefined
-                  : (sousCible ? '#16a34a' : '#b91c1c')
+                // VX17 — couleur via tokens de thème (success/destructive).
+                const couleurCls = sousCible == null ? ''
+                  : (sousCible ? 'text-success' : 'text-destructive')
                 return (
                   <div className="gen-total-item">
                     <span className="gen-total-label">Prix / kWc</span>
-                    <span className="gen-total-value" style={{ color: couleur }}>
+                    <span className={`gen-total-value ${couleurCls}`}>
                       {formatMoney(pkwc)}/kWc
                     </span>
                     {hasCible && (
@@ -2264,12 +2292,12 @@ export default function DevisGenerator({
               </div>
               {marge != null && (
                 <div className="gen-total-item">
-                  <span className={`gen-total-label${marge < 0 ? '' : ' green'}`}
-                        style={marge < 0 ? { color: '#b91c1c' } : undefined}>
+                  {/* VX17 — couleurs via tokens de thème (text-success/destructive)
+                      plutôt qu'un hex codé en dur. */}
+                  <span className={`gen-total-label ${marge < 0 ? 'text-destructive' : 'text-success'}`}>
                     Marge indicative (interne)
                   </span>
-                  <span className="gen-total-value"
-                        style={{ color: marge < 0 ? '#b91c1c' : '#16a34a' }}>
+                  <span className={`gen-total-value ${marge < 0 ? 'text-destructive' : 'text-success'}`}>
                     {formatMoney(marge)}
                     {kpiTotal > 0 ? ` (${Math.round(marge / kpiTotal * 100)} %)` : ''}
                   </span>
@@ -2284,6 +2312,12 @@ export default function DevisGenerator({
             )}
           </CardContent>
         </Card>
+
+        {/* VX18 — modèles de devis : appliquer un modèle remplace les lignes.
+            Disponible en édition (le panneau exige un devisId serveur). */}
+        {editDevis && (
+          <DevisPresetPanel devisId={editDevis.id} onApplied={handlePresetApplied} />
+        )}
 
         {/* ── Notes ── */}
         <Card>
@@ -2364,6 +2398,52 @@ export default function DevisGenerator({
           </CardContent>
         </Card>
       </form>
+
+      {/* VX16 — rail récapitulatif STICKY (lg+ uniquement, jamais sur mobile).
+          Total TTC de l'option retenue + marge indicative (INTERNE, jamais dans
+          le PDF/client) + résumé système (kWc/panneaux) + Annuler/Créer câblés
+          sur le même formulaire (form="gen-form"). */}
+      <aside className="gen-summary-rail hidden lg:block lg:w-72 lg:shrink-0 lg:sticky"
+             style={{ top: 'var(--header-h, 64px)' }}>
+        <Card>
+          <CardContent className="pt-4 flex flex-col gap-3">
+            <div>
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                Total {scenario === 'Avec batterie' ? 'avec batterie'
+                  : scenario === 'Sans batterie' ? 'sans batterie'
+                    : (avecRec ? 'avec batterie' : 'sans batterie')} · TTC
+              </div>
+              <div className="text-2xl font-bold text-foreground">{formatMoney(kpiTotal)}</div>
+            </div>
+            {marge != null && (
+              <div>
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Marge indicative (interne)
+                </div>
+                <div className={`text-sm font-semibold ${marge < 0 ? 'text-destructive' : 'text-success'}`}>
+                  {formatMoney(marge)}
+                  {kpiTotal > 0 ? ` (${Math.round(marge / kpiTotal * 100)} %)` : ''}
+                </div>
+              </div>
+            )}
+            <div className="border-t border-border pt-3">
+              <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Système</div>
+              <div className="text-sm text-foreground">
+                {kwp > 0 ? `${kwp.toFixed(2)} kWc` : '— kWc'}
+                {parseInt(nbPanneaux) > 0 ? ` · ${parseInt(nbPanneaux)} panneaux` : ''}
+              </div>
+            </div>
+            <div className="flex flex-col gap-2 pt-1">
+              <Button type="submit" form="gen-form" loading={saving}>
+                {saving ? 'Enregistrement...'
+                  : (editDevis ? <><Sun /> Enregistrer</> : <><Sun /> Créer le devis</>)}
+              </Button>
+              <Button type="button" variant="ghost" onClick={cancel}>Annuler</Button>
+            </div>
+          </CardContent>
+        </Card>
+      </aside>
+      </div>
       <ClientQuickCreateModal
         open={clientQuickCreateOpen}
         onClose={() => setClientQuickCreateOpen(false)}
