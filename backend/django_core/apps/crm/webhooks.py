@@ -682,6 +682,19 @@ def website_lead_webhook(request):
                 'website_lead_webhook: notify_lead_callback_requested échoué '
                 '(lead #%s) : %s', lead.pk, _exc)
 
+        # QX35 — lien de parrainage (`utm_source=parrainage`, le code du
+        # parrain porté par `utm_campaign` — voir parrainage.astro) : crée
+        # un Parrainage `en_attente` rattaché au filleul + notifie les
+        # managers. Idempotent (un seul Parrainage par filleul_lead) —
+        # best-effort, jamais bloquant pour la capture du lead.
+        try:
+            from .services import handle_parrainage_signup
+            handle_parrainage_signup(lead)
+        except Exception as _exc:  # noqa: BLE001 — best-effort
+            logger.warning(
+                'website_lead_webhook: handle_parrainage_signup échoué '
+                '(lead #%s) : %s', lead.pk, _exc)
+
         raw.lead = lead
         raw.processed = True
         raw.save(update_fields=['lead', 'processed'])

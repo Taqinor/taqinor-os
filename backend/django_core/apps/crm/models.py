@@ -142,6 +142,20 @@ class Client(models.Model):
         help_text="Rattache ce client à une société mère (consolidation "
                   "CA groupe). Même société uniquement ; jamais de cycle.")
 
+    # ── QX35 — Code de parrainage DÉTERMINISTE (additif) ──
+    # Dérivé du pk (ex. « TQ-1042 ») dès la première sauvegarde — jamais un
+    # UUID aléatoire : un code stable, lisible, copiable dans un lien
+    # `?utm_source=parrainage&utm_campaign=<code>` (parrainage.astro). Unique
+    # par construction (dérivé du pk) ; nullable pour les lignes existantes
+    # tant qu'elles ne sont pas resauvegardées (comportement inchangé).
+    code_parrainage = models.CharField(
+        max_length=20, blank=True, null=True, unique=True,
+        verbose_name='Code de parrainage',
+        help_text="Code stable partagé par ce client pour parrainer un "
+                  "prospect (lien /devis/mon-toit?utm_source=parrainage&"
+                  "utm_campaign=<code>).",
+    )
+
     class Meta:
         verbose_name = "Client"
         verbose_name_plural = "Clients"
@@ -149,6 +163,18 @@ class Client(models.Model):
 
     def __str__(self):
         return f"{self.nom} {self.prenom if self.prenom else ''}"
+
+    def save(self, *args, **kwargs):
+        # QX35 — génère le code de parrainage APRÈS la première sauvegarde
+        # (a besoin du pk pour rester déterministe et unique sans collision) —
+        # patron standard Django « dérivé du pk », deuxième save() ciblé sur
+        # le seul champ concerné (jamais de boucle : ne s'exécute qu'une
+        # fois, quand code_parrainage est encore vide).
+        is_new = self.pk is None
+        super().save(*args, **kwargs)
+        if is_new and not self.code_parrainage:
+            self.code_parrainage = f'TQ-{self.pk}'
+            super().save(update_fields=['code_parrainage'])
 
     def clean(self):
         super().clean()

@@ -1831,6 +1831,81 @@ def notify_lead_callback_requested(lead) -> None:
             getattr(lead, 'pk', '?'), exc)
 
 
+PARRAINAGE_SIGNUP_MARKER = 'auto — filleul détecté (utm_source=parrainage)'
+
+
+def handle_parrainage_signup(lead) -> None:
+    """QX35 — Wire la promesse de la page /parrainage : un lead capté avec
+    ``utm_source=parrainage`` crée automatiquement un ``Parrainage`` en
+    attente, rattaché au CLIENT parrain identifié par son code (porté par
+    ``utm_campaign`` — voir ``apps/web/src/pages/parrainage.astro``, le lien
+    personnel est `?utm_source=parrainage&utm_campaign=<code>`).
+
+    Idempotent (un seul ``Parrainage`` par ``filleul_lead``) ; no-op si
+    ``utm_source`` n'est pas ``'parrainage'``, si le code de parrain est
+    absent/inconnu, ou en cas d'auto-parrainage (le filleul est déjà le même
+    téléphone/email que le parrain — anti-abus minimal). Notifie les managers
+    de la société (repli ``_company_fallback_managers``, pas de owner dédié à
+    ce stade). Best-effort — jamais d'exception propagée."""
+    try:
+        if (getattr(lead, 'utm_source', None) or '').strip().lower() != 'parrainage':
+            return
+        from .models import Parrainage
+
+        if Parrainage.objects.filter(filleul_lead=lead).exists():
+            return  # déjà traité (idempotent — visiteur revenant, replay).
+
+        code = (getattr(lead, 'utm_campaign', None) or '').strip()
+        if not code:
+            return
+        parrain = Client.objects.filter(
+            company=lead.company, code_parrainage=code).first()
+        if parrain is None:
+            return  # code inconnu/périmé — jamais bloquant, jamais d'erreur.
+
+        # Anti auto-parrainage minimal : même téléphone/email normalisé que
+        # le parrain → on ne crée rien (le parrain ne peut pas se parrainer
+        # lui-même, ni un dossier déjà connu sous une autre forme — promesse
+        # affichée sur /parrainage).
+        lead_phone = normalize_phone(getattr(lead, 'telephone', None))
+        lead_email = normalize_email(getattr(lead, 'email', None))
+        parrain_phone = normalize_phone(getattr(parrain, 'telephone', None))
+        parrain_email = normalize_email(getattr(parrain, 'email', None))
+        if ((lead_phone and lead_phone == parrain_phone)
+                or (lead_email and lead_email == parrain_email)):
+            return
+
+        Parrainage.objects.create(
+            company=lead.company, parrain=parrain,
+            filleul_lead=lead, filleul_nom=lead.nom or '',
+            statut=Parrainage.Statut.EN_ATTENTE,
+        )
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.NOTE,
+            body=f'{PARRAINAGE_SIGNUP_MARKER} — parrain : {parrain.nom}.',
+        )
+
+        managers = _company_fallback_managers(lead.company)
+        if managers:
+            from apps.notifications.services import notify_many
+            nom = (lead.nom or '').strip() or 'Un prospect'
+            notify_many(
+                managers,
+                'lead_new',
+                f'🤝 Parrainage : {parrain.nom} recommande {nom}',
+                body=(f'{nom} est arrivé via le lien de parrainage de '
+                      f'{parrain.nom} (code {code}).'),
+                link=f'/crm/parrainage?parrain={parrain.pk}',
+                company=lead.company,
+            )
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        import logging
+        logging.getLogger(__name__).warning(
+            'QX35: handle_parrainage_signup échoué pour lead #%s : %s',
+            getattr(lead, 'pk', '?'), exc)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Actions EN MASSE sur les leads (T3) — multi-sélection liste/kanban.
 #

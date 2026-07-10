@@ -76,6 +76,29 @@ def _marquer_lead_perdu_on_devis_refused(sender, devis, user, motif_refus,
                                      old_motif, motif_refus)
 
 
+@receiver(devis_accepted, dispatch_uid="crm_flip_parrainage_converti_on_devis_accepted")
+def _flip_parrainage_converti_on_devis_accepted(sender, devis, user, ancien_statut,
+                                                **kwargs):
+    """QX35 — Quand le devis d'un FILLEUL est accepté, le parrainage passe
+    ``en_attente`` → ``converti`` (la récompense reste versée manuellement,
+    hors périmètre ici). Même bus que l'avance de funnel ci-dessus — aucun
+    import de ``ventes`` (le devis n'est manipulé qu'au travers des kwargs du
+    signal). No-op si le devis n'a pas de lead, si aucun Parrainage
+    ``en_attente`` ne le référence, ou s'il est déjà ``converti``/
+    ``recompense_versee`` (jamais reculé)."""
+    if not getattr(devis, 'lead_id', None):
+        return
+    from .models import Parrainage
+    parrainage = Parrainage.objects.filter(
+        filleul_lead_id=devis.lead_id, company=devis.company,
+        statut=Parrainage.Statut.EN_ATTENTE,
+    ).first()
+    if parrainage is None:
+        return
+    parrainage.statut = Parrainage.Statut.CONVERTI
+    parrainage.save(update_fields=['statut'])
+
+
 @receiver(devis_refused, dispatch_uid="crm_signal_signe_sans_devis_actif")
 def _signaler_signe_sans_devis_actif(sender, devis, user, motif_refus,
                                      **kwargs):
