@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { LogOut, FileDown, CheckCircle2 } from 'lucide-react'
-import { DetailShell } from '../../ui/module'
+import { RecordShell } from '../../ui/module'
 import {
   DefinitionList, EmptyState, Skeleton, Badge, toast,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -401,7 +401,10 @@ export default function EmployeDetail() {
 
   return (
     <div className="page">
-      <DetailShell
+      {/* ARC46 — RecordShell (pendant détail de ListShell) ; drop-in de
+          DetailShell : mêmes props, aucune refonte visuelle, save-bar non
+          activée (édition via dialogue). */}
+      <RecordShell
         title={nomComplet || 'Employé'}
         subtitle={emp.matricule ? `Matricule ${emp.matricule}` : undefined}
         status={emp.statut}
