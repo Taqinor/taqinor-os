@@ -1,15 +1,20 @@
-// QX29 — « Relances du jour » : le tableau d'action des devis, miroir de
+// QX29/QX30 — « Relances du jour » : le tableau d'action des devis, miroir de
 // SavActionBoardPage (ZSAV6/parité Odoo « Activity view »). Répond à « quelles
 // propositions ai-je besoin de traiter aujourd'hui ? » — Dashboard reste
 // analytics-only, DevisList n'a qu'un bandeau d'expiration passif.
 // Buckets : envoyés sans réponse (par palier de cadence), acceptés non
 // facturés (réutilise le sélecteur ZFAC12 côté serveur), refusés sans motif
-// (QX26), expirant bientôt. Chaque ligne se lie en profondeur via ?devis=<pk>
-// (QX12) avec des raccourcis tel:/wa.me directs.
+// (QX26), expirant bientôt, ET (QX30) les files déclenchées par l'engagement
+// (non ouvert 24h / ouvert non signé 48h / réouvert 3×) que le backend
+// produit sous forme de Notifications + lignes de cette même file. Chaque
+// ligne se lie en profondeur via ?devis=<pk> (QX12) avec des raccourcis
+// tel:/wa.me directs — le wa.me est PRÉ-REMPLI (`?text=`) quand le backend
+// fournit un brouillon (board.wa_drafts[id], contrat QX30 côté serveur) ;
+// repli sur le lien nu sinon (comportement QX29 inchangé).
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  AlertTriangle, Clock, FileWarning, HelpCircle, PhoneCall, MessageCircle,
+  AlertTriangle, Clock, FileWarning, HelpCircle, PhoneCall, MessageCircle, Flame,
 } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
 import { TooltipProvider, Card, Badge, EmptyState, Skeleton, Button } from '../../ui'
@@ -20,6 +25,11 @@ const BUCKETS = [
   { key: 'acceptes_non_factures', label: 'Acceptés non facturés', icon: AlertTriangle, tone: 'danger' },
   { key: 'refuses_sans_motif', label: 'Refusés sans motif', icon: HelpCircle, tone: 'neutral' },
   { key: 'expirant_bientot', label: 'Expirant bientôt', icon: FileWarning, tone: 'warning' },
+  // QX30 — file déclenchée par l'engagement (ShareLink/proposal_engagement) :
+  // non ouvert 24h, ouvert non signé 48h, réouvert 3×… le backend agrège tout
+  // sous cette clé unique — rendu générique ici (peu importe le sous-motif),
+  // la distinction fine reste dans le libellé du devis fourni par l'API.
+  { key: 'engagement_relance', label: 'Relance engagement', icon: Flame, tone: 'danger' },
 ]
 
 // Numéro nettoyé pour un lien tel: / wa.me (chiffres et + initial), miroir de
@@ -31,11 +41,14 @@ const telHref = (raw) => {
   const cleaned = s.replace(/[^\d+]/g, '')
   return cleaned ? `tel:${cleaned}` : null
 }
-const waHref = (raw) => {
+// QX30 — draft optionnel : pré-remplit le message wa.me (`?text=`) quand le
+// backend fournit un brouillon (board.wa_drafts[id]) ; lien nu sinon.
+const waHref = (raw, draft) => {
   const s = String(raw ?? '').trim()
   if (!s) return null
   const digits = s.replace(/\D/g, '')
-  return digits ? `https://wa.me/${digits}` : null
+  if (!digits) return null
+  return draft ? `https://wa.me/${digits}?text=${encodeURIComponent(draft)}` : `https://wa.me/${digits}`
 }
 
 export default function DevisActionBoardPage() {
@@ -98,7 +111,7 @@ export default function DevisActionBoardPage() {
           </p>
         </header>
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           {BUCKETS.map(({ key, label, icon: Icon, tone }) => {
             const bucket = board.buckets?.[key] ?? { count: 0, ids: [] }
             return (
@@ -114,8 +127,11 @@ export default function DevisActionBoardPage() {
                   <ul className="flex flex-col gap-1.5">
                     {bucket.ids.slice(0, 20).map((id) => {
                       const d = devisMap[id]
+                      // QX30 — brouillon wa.me pré-rempli fourni par le backend
+                      // pour cette file (queue engagement) ; absent ailleurs.
+                      const draft = board.wa_drafts?.[id]
                       const tel = telHref(d?.client_telephone ?? d?.telephone)
-                      const wa = waHref(d?.client_whatsapp ?? d?.client_telephone ?? d?.telephone)
+                      const wa = waHref(d?.client_whatsapp ?? d?.client_telephone ?? d?.telephone, draft)
                       return (
                         <li key={id} className="flex items-center gap-1.5">
                           <button
@@ -133,7 +149,8 @@ export default function DevisActionBoardPage() {
                             </a>
                           )}
                           {wa && (
-                            <a href={wa} target="_blank" rel="noopener noreferrer" title="Ouvrir WhatsApp"
+                            <a href={wa} target="_blank" rel="noopener noreferrer"
+                               title={draft ? 'Ouvrir WhatsApp (message pré-rempli)' : 'Ouvrir WhatsApp'}
                                aria-label={`WhatsApp ${d?.client_nom ?? ''}`}
                                className="text-muted-foreground hover:text-foreground">
                               <MessageCircle className="size-3.5" aria-hidden="true" />
