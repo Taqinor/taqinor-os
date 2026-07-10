@@ -9,7 +9,7 @@
 // enregistre ses propres données, sans le bouton « Enregistrer » global). Tout
 // le texte est en français ; les clés techniques restent en anglais.
 import { useEffect, useState } from 'react'
-import { useSelector } from 'react-redux'
+import { useHasPermission, useIsAdmin } from '../../hooks/useHasPermission'
 import { Plus, Trash2, ChevronUp, ChevronDown, AlertCircle, Lock } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import {
@@ -34,10 +34,11 @@ const slugify = (s) => s.trim().toLowerCase()
   .replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40)
 
 export default function EtapesChantierSection() {
-  const roleNom = useSelector((s) => s.auth.role_nom)
-  const role = useSelector((s) => s.auth.role)
   // Le Directeur (ou un compte admin hérité) peut configurer ; sinon lecture.
-  const canEdit = roleNom === 'Directeur' || role === 'admin'
+  // Les deux hooks sont appelés inconditionnellement (règle des hooks).
+  const isDirecteur = useHasPermission(null, ['Directeur'])
+  const isAdmin = useIsAdmin()
+  const canEdit = isDirecteur || isAdmin
 
   const [stages, setStages] = useState([])
   const [loading, setLoading] = useState(true)
