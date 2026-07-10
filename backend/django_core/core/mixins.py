@@ -17,4 +17,15 @@ class TenantMixin:
         serializer.save(company=self.request.user.company)
 
     def perform_update(self, serializer):
-        serializer.save(company=self.request.user.company)
+        # Un utilisateur tenant : la société est forcée côté serveur (jamais lue
+        # du corps) — identique à avant, et elle vaut déjà celle de l'instance
+        # scopée par ``get_queryset``. Un superuser SANS société (acteur
+        # plateforme supporté, cf. docstring) NE doit PAS voir ``company=None``
+        # écrasé sur la ligne éditée : sur un modèle à ``company`` nullable la
+        # ligne se détacherait de son tenant (elle disparaîtrait des listes
+        # scopées), et sur un modèle NON-NULL cela lèverait IntegrityError (500).
+        # On préserve alors la société PROPRE de l'objet.
+        if self.request.user.company_id:
+            serializer.save(company=self.request.user.company)
+        else:
+            serializer.save()

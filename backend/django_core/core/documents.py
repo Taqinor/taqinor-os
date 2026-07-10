@@ -40,6 +40,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from django.db import models
+from django.db.models.base import ModelBase
 
 from core.models import TenantModel
 
@@ -65,15 +66,71 @@ class TransitionRefusee(Exception):
     cibles autorisées depuis le statut courant (utile pour un 400 côté API)."""
 
 
-class DocumentMetier(TenantModel):
+class DocumentMetierMeta(ModelBase):
+    """Métaclasse du kit : dote CHAQUE document de SON PROPRE champ ``statut``.
+
+    POURQUOI une métaclasse (et non ``__init_subclass__``) — le défaut réparé.
+    ``__init_subclass__`` s'exécute pendant ``ModelBase.__new__`` AVANT que la
+    sous-classe ait son propre ``_meta`` (il n'est posé qu'ensuite) : à ce
+    moment, ``get_field('statut')`` résout par MRO vers le champ de l'ABSTRAIT
+    ``DocumentMetier`` (un SEUL objet-champ partagé par héritage). L'ancien code
+    mutait CE champ partagé en place (``field.choices = …`` / ``field.default =
+    …``) → chaque nouvelle sous-classe écrasait les ``choices``/``default`` vus
+    par ses FRÈRES et par le PARENT, et la voie « sans effet » (sous-classe sans
+    ``Statut`` propre) héritait alors les valeurs du dernier frère défini.
+
+    La réparation. On intervient dans la métaclasse, AVANT que
+    ``ModelBase.__new__`` ne recopie (``copy.deepcopy``) le champ abstrait dans
+    la sous-classe : si le CORPS de la classe déclare son propre ``Statut``
+    peuplé, on injecte dans ``attrs`` un champ ``statut`` NEUF, propre à cette
+    classe, avec SES ``choices``/``default``. Django voit alors ``'statut'`` déjà
+    présent localement et NE recopie PAS le champ abstrait (cf. le test
+    ``field.name not in new_class.__dict__`` de ``ModelBase.__new__``). Le champ
+    partagé de l'abstrait n'est donc JAMAIS muté ; frères et parents gardent
+    chacun leur champ intact.
+
+    Garde-fous :
+      * on n'agit QUE si ``attrs`` porte un ``Statut`` PROPRE et PEUPLÉ — une
+        sous-classe intermédiaire abstraite, ou une sous-classe SANS ``Statut``
+        propre (la voie documentée « sans effet »), garde le champ hérité TEL
+        QUEL (défaut vide), jamais une valeur d'un frère ;
+      * ``STATUT_INITIAL`` est (re)calculé dès que la classe ne le fixe pas
+        elle-même dans son corps → un enfant portant son PROPRE ``Statut``
+        n'hérite jamais d'un défaut du parent HORS de son énumération.
+
+    (Un document CONCRET qui redéclare son ``Statut`` via une sous-classe MTI à
+    parent CONCRET est refusé par Django lui-même — ``FieldError`` : un champ
+    concret ne se redéclare pas en MTI. Un statut propre passe par une base
+    ABSTRAITE intermédiaire, cas couvert ci-dessus.)
+    """
+
+    def __new__(mcs, name, bases, attrs, **kwargs):
+        statut_cls = attrs.get("Statut")
+        if statut_cls is not None and "statut" not in attrs:
+            choices = list(getattr(statut_cls, "choices", ()) or ())
+            if choices:
+                initial = attrs.get("STATUT_INITIAL") or statut_cls.values[0]
+                attrs["STATUT_INITIAL"] = initial
+                attrs["statut"] = models.CharField(
+                    max_length=32,
+                    blank=True,
+                    choices=choices,
+                    default=initial,
+                )
+        return super().__new__(mcs, name, bases, attrs, **kwargs)
+
+
+class DocumentMetier(TenantModel, metaclass=DocumentMetierMeta):
     """Socle abstrait d'un document métier : socle multi-tenant + statut gardé.
 
     Compose ARC1 (``core.TenantModel`` : FK ``company`` + timestamps) et ajoute
     le CONTRAT de cycle de vie d'un document :
 
     * une sous-classe déclare son énumération de statuts en surchargeant
-      ``Statut`` (un ``models.TextChoices``) — le champ ``statut`` s'y adosse
-      automatiquement (``choices``/``default`` dérivés de la sous-classe) ;
+      ``Statut`` (un ``models.TextChoices``) — la métaclasse ``DocumentMetierMeta``
+      lui injecte alors un champ ``statut`` NEUF, propre à la sous-classe
+      (``choices``/``default`` dérivés de SON ``Statut``), sans jamais muter le
+      champ partagé de l'abstrait ni celui d'un frère/parent ;
     * une sous-classe déclare sa table ``TRANSITIONS`` DÉCLARATIVE :
       ``{statut_source: {statut_cible, …}, …}`` — la seule source de vérité du
       graphe d'états ; une transition absente de la table est REFUSÉE ;
@@ -101,38 +158,24 @@ class DocumentMetier(TenantModel):
         """
 
     #: Statut posé à la création. Défaut : premier membre de ``Statut`` de la
-    #: sous-classe (calculé dans ``__init_subclass__``). Surchargeable.
+    #: sous-classe (injecté par ``DocumentMetierMeta`` si la classe ne le fixe
+    #: pas elle-même). Surchargeable dans le corps de la sous-classe.
     STATUT_INITIAL: str = ""
 
     #: Table de transitions déclarative — la SEULE source de vérité du graphe.
     #: ``{source: {cible, …}}``. Vide par défaut (une sous-classe la déclare).
     TRANSITIONS: dict = {}
 
+    #: Champ ``statut`` de l'ABSTRAIT — vide par défaut. Une sous-classe qui
+    #: déclare son propre ``Statut`` peuplé reçoit à la place un champ ``statut``
+    #: NEUF (mêmes attributs + ``choices``/``default`` propres) injecté par
+    #: ``DocumentMetierMeta`` AVANT la recopie Django du champ abstrait ; ce
+    #: champ-ci n'est jamais muté et reste blanc pour les sous-classes « sans
+    #: effet » (aucun ``Statut`` propre). Voir ``DocumentMetierMeta``.
     statut = models.CharField(max_length=32, blank=True, default="")
 
     class Meta:
         abstract = True
-
-    def __init_subclass__(cls, **kwargs):
-        """Adosse le champ ``statut`` aux ``Statut`` de la sous-classe CONCRÈTE.
-
-        Django construit le champ hérité une seule fois sur l'abstrait ; pour que
-        chaque document concret porte SES ``choices``/``default``, on ajuste le
-        champ ``statut`` de la sous-classe à partir de son ``Statut`` et de son
-        ``STATUT_INITIAL`` au moment où la classe est définie. Sans effet sur une
-        sous-classe intermédiaire encore abstraite (pas de champs concrets)."""
-        super().__init_subclass__(**kwargs)
-        statuts = list(cls.Statut.choices)
-        if not statuts:
-            return
-        if not cls.STATUT_INITIAL:
-            cls.STATUT_INITIAL = cls.Statut.values[0]
-        try:
-            field = cls._meta.get_field("statut")
-        except Exception:  # pragma: no cover - champ toujours présent
-            return
-        field.choices = statuts
-        field.default = cls.STATUT_INITIAL
 
     # ── API de lecture du graphe (sans mutation) ─────────────────────────────
 
