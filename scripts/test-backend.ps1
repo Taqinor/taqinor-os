@@ -1,41 +1,42 @@
-﻿# La SEULE façon canonique de lancer les tests Django backend en local contre
-# la pile docker. Ne PAS improviser une commande `docker compose run` à la main
-# — ce script encapsule la garde single-writer (voir plus bas) qui a évité une
-# corruption de la base de test à deux reprises.
+﻿# La SEULE facon canonique de lancer les tests Django backend en local contre
+# la pile docker. Ne PAS improviser une commande `docker compose run` a la main
+# — ce script encapsule la garde single-writer (voir plus bas) qui a evite une
+# corruption de la base de test a deux reprises.
 #
 # The ONE canonical way to run backend Django tests locally against the docker
 # stack. Do NOT hand-roll a `docker compose run` — this script encapsulates the
-# single-writer guard below, which has already prevented test-DB corruption
-# twice.
+# single-writer guard below, which has already prevented test-DB corruption twice.
 #
 # Usage :
 #   powershell -File scripts\test-backend.ps1
 #   powershell -File scripts\test-backend.ps1 -Modules "apps.crm apps.ventes" -Parallel 8
-#   powershell -File scripts\test-backend.ps1 -RebuildDb        # voir AVERTISSEMENT plus bas
+#   powershell -File scripts\test-backend.ps1 -Snapshot     # fige la base migree actuelle comme TEMPLATE de base
+#   powershell -File scripts\test-backend.ps1 -RestoreDb    # WOW8-local : clone le TEMPLATE (~secondes) puis migre l'increment
+#   powershell -File scripts\test-backend.ps1 -RebuildDb    # rebuild a froid — DERNIER RECOURS, voir AVERTISSEMENT
 #
-# Par défaut : --keepdb (rapide, réutilise test_erp_db entre les runs).
-# -RebuildDb : DROP test_erp_db avant de lancer — Django la recrée à froid.
+# POURQUOI -RestoreDb / -Snapshot (WOW8 en local, 2026-07-10) : construire la
+# base de test a froid, c'est rejouer ~850 migrations = ~35 min, et un run de
+# plan qui refait ca a CHAQUE gate (collisions de migrations, clones perimes,
+# OOM en cours de build) a deja brule des HEURES. La parade est identique a WOW8
+# cote CI : on garde une base `test_erp_db_base` deja migree, et -RestoreDb la
+# CLONE par TEMPLATE Postgres (quasi instantane) au lieu de tout reconstruire ;
+# `--keepdb` n'applique alors que les migrations ajoutees depuis le snapshot.
+# Apres une build a froid propre, lancer -Snapshot pour rafraichir le TEMPLATE.
 #
-# GARDE SINGLE-WRITER (critique) : test_erp_db est une base UNIQUE partagée par
-# tout ce qui tourne dans docker compose (pas de writer concurrent). Deux runs
-# simultanés se sont déjà marché dessus et ont corrompu la base de test — ce
-# script REFUSE de démarrer si un conteneur de run backend-tests est déjà actif.
-#
-# SINGLE-WRITER GUARD (critical): test_erp_db is a single shared database — no
-# concurrent writer. Two simultaneous runs have already collided and corrupted
-# it — this script REFUSES to start if a backend-tests run container is already
-# active.
+# GARDE SINGLE-WRITER (critique) : test_erp_db est une base UNIQUE partagee par
+# tout ce qui tourne dans docker compose. Deux runs simultanes se sont deja
+# marche dessus et ont corrompu la base — ce script REFUSE de demarrer si un
+# conteneur de run backend-tests est deja actif.
 
 param(
     [string]$Modules = "apps authentication core",
     [int]$Parallel = 4,
-    [switch]$RebuildDb
+    [switch]$RebuildDb,
+    [switch]$RestoreDb,
+    [switch]$Snapshot
 )
 
 $ErrorActionPreference = 'Stop'
-
-# Se placer à la racine du dépôt (le docker-compose.yml y vit) — the compose
-# files live at repo root, not under scripts/.
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 Push-Location $RepoRoot
 
@@ -45,90 +46,92 @@ try {
     $DbUser = 'erp_user'
     $AdminDb = 'erp_db'
     $TestDb = 'test_erp_db'
+    $BaseDb = 'test_erp_db_base'   # WOW8-local : snapshot migre, clone par TEMPLATE
     $RunNamePattern = 'erp-agentique-django_core-run'
 
-    # ── GARDE SINGLE-WRITER / SINGLE-WRITER GUARD ──────────────────────────
-    # Vérifie qu'aucun autre run de tests backend n'est déjà en cours avant de
-    # toucher test_erp_db. Check for any other backend test run already active
-    # before touching test_erp_db.
-    Write-Host "→ Vérification qu'aucun autre run de tests backend n'est actif…"
+    function Invoke-Psql([string]$sql) {
+        docker exec $DbContainer psql -U $DbUser -d $AdminDb -v ON_ERROR_STOP=1 -c $sql
+        if ($LASTEXITCODE -ne 0) { throw "psql a echoue : $sql" }
+    }
+    function Test-DbExists([string]$name) {
+        $r = docker exec $DbContainer psql -U $DbUser -d $AdminDb -tAc `
+            "SELECT 1 FROM pg_database WHERE datname='$name'"
+        return ($r -and $r.Trim() -eq '1')
+    }
+    function Remove-Db([string]$name) {
+        Invoke-Psql "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='$name' AND pid<>pg_backend_pid();"
+        Invoke-Psql "DROP DATABASE IF EXISTS $name;"
+    }
+
+    # ---- GARDE SINGLE-WRITER ----------------------------------------------
+    Write-Host "-> Verification qu'aucun autre run de tests backend n'est actif..."
     $existing = docker ps --filter "name=$RunNamePattern" --format '{{.Names}}'
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "Impossible d'interroger docker (docker ps a échoué). Docker Desktop tourne-t-il ?"
-        exit 1
+        Write-Error "Impossible d'interroger docker. Docker Desktop tourne-t-il ?"; exit 1
     }
     if ($existing -and $existing.Trim().Length -gt 0) {
-        Write-Host ""
-        Write-Host "REFUS DE DÉMARRER : un run de tests backend est déjà actif :" -ForegroundColor Red
-        Write-Host "  $existing" -ForegroundColor Red
-        Write-Host ""
-        Write-Host "test_erp_db est single-writer — deux runs simultanés l'ont déjà" -ForegroundColor Red
-        Write-Host "corrompue par le passé. Attendez la fin de l'autre run, ou tuez-le :" -ForegroundColor Red
-        Write-Host "  docker rm -f $existing" -ForegroundColor Yellow
-        Write-Host ""
+        Write-Host "REFUS DE DEMARRER : un run de tests backend est deja actif : $existing" -ForegroundColor Red
+        Write-Host "test_erp_db est single-writer. Attendez, ou : docker rm -f $existing" -ForegroundColor Yellow
         exit 1
     }
-    Write-Host "  OK — aucun run concurrent détecté."
+    Write-Host "  OK — aucun run concurrent detecte."
 
-    # ── -RebuildDb : DROP + AVERTISSEMENT / DROP + WARNING ─────────────────
-    if ($RebuildDb) {
-        Write-Host ""
-        Write-Host "==============================================================" -ForegroundColor Yellow
-        Write-Host " AVERTISSEMENT — REBUILD COMPLET DE test_erp_db" -ForegroundColor Yellow
-        Write-Host " Un rebuild complet peut prendre PLUSIEURS HEURES sur ce PC." -ForegroundColor Yellow
-        Write-Host " Ne lancez ceci QUE seul, de nuit, sans autre run en parallèle." -ForegroundColor Yellow
-        Write-Host ""
-        Write-Host " WARNING — FULL REBUILD OF test_erp_db" -ForegroundColor Yellow
-        Write-Host " A full rebuild can take HOURS on this box. Run this ALONE," -ForegroundColor Yellow
-        Write-Host " overnight, with no other run in parallel." -ForegroundColor Yellow
-        Write-Host "==============================================================" -ForegroundColor Yellow
-        Write-Host ""
+    $KeepDbFlag = @('--keepdb')
 
-        Write-Host "→ DROP DATABASE test_erp_db (avec terminaison des connexions actives)…"
-        $dropSql = @"
-SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$TestDb' AND pid <> pg_backend_pid();
-DROP DATABASE IF EXISTS $TestDb;
-"@
-        docker exec $DbContainer psql -U $DbUser -d $AdminDb -c $dropSql
-        if ($LASTEXITCODE -ne 0) {
-            Write-Error "Échec du DROP DATABASE $TestDb — le conteneur $DbContainer tourne-t-il ?"
-            exit 1
+    # ---- -RestoreDb : clone TEMPLATE (~secondes) au lieu du rebuild (~heures)
+    if ($RestoreDb) {
+        if (Test-DbExists $BaseDb) {
+            Write-Host "-> WOW8-local : clone de $BaseDb -> $TestDb par TEMPLATE (quasi instantane)..."
+            Remove-Db $TestDb
+            Invoke-Psql "CREATE DATABASE $TestDb TEMPLATE $BaseDb;"
+            Write-Host "  Clone pret — --keepdb n'appliquera que les migrations ajoutees depuis le snapshot."
+        } else {
+            Write-Host "  Pas de snapshot $BaseDb — build a froid cette fois (puis -Snapshot pour figer)." -ForegroundColor Yellow
+            Remove-Db $TestDb
+            $KeepDbFlag = @()
         }
-        Write-Host "  test_erp_db supprimée — sera recréée à froid par ce run."
+    }
+    elseif ($RebuildDb) {
+        Write-Host "==============================================================" -ForegroundColor Yellow
+        Write-Host " AVERTISSEMENT — REBUILD A FROID (~heures). Preferez -RestoreDb." -ForegroundColor Yellow
+        Write-Host "==============================================================" -ForegroundColor Yellow
+        Remove-Db $TestDb
         $KeepDbFlag = @()
-    } else {
-        $KeepDbFlag = @('--keepdb')
     }
 
-    # ── Commande de test / test command ────────────────────────────────────
-    # L'image Docker n'installe que requirements.txt — les dépendances de TEST
-    # (factory_boy, freezegun, tblib… cf. requirements-dev.txt) en sont absentes
-    # et tout test important testkit/ échouerait en faux-négatif. On les installe
-    # dans le conteneur jetable avant de lancer (quelques secondes, idempotent).
+    # ---- Commande de test --------------------------------------------------
+    # L'image n'installe que requirements.txt — on ajoute les deps de TEST
+    # (factory_boy/freezegun/tblib) dans le conteneur jetable (idempotent).
     $ModulesList = $Modules -split '\s+' | Where-Object { $_ -ne '' }
     $DjangoCmd = (@('python', 'manage.py', 'test') + $ModulesList + $KeepDbFlag +
         @('--parallel', "$Parallel", '-v1')) -join ' '
     $testArgs = @(
         'compose', '-p', $ComposeProject, 'run', '--rm', '--no-deps',
         '-e', 'DJANGO_SETTINGS_MODULE=erp_agentique.settings.dev',
-        'django_core',
-        'sh', '-c', "pip install -q -r requirements-dev.txt && $DjangoCmd"
+        'django_core', 'sh', '-c', "pip install -q -r requirements-dev.txt && $DjangoCmd"
     )
-
     Write-Host ""
-    Write-Host "→ docker $($testArgs -join ' ')"
+    Write-Host "-> docker $($testArgs -join ' ')"
     Write-Host ""
-
     & docker @testArgs
     $testExitCode = $LASTEXITCODE
 
-    Write-Host ""
-    if ($testExitCode -eq 0) {
-        Write-Host "✓ Tests backend : SUCCÈS (modules: $Modules)" -ForegroundColor Green
-    } else {
-        Write-Host "✗ Tests backend : ÉCHEC (code $testExitCode, modules: $Modules)" -ForegroundColor Red
+    # ---- -Snapshot : fige la base migree comme TEMPLATE (seulement si vert) -
+    if ($Snapshot -and $testExitCode -eq 0) {
+        Write-Host ""
+        Write-Host "-> -Snapshot : $TestDb -> $BaseDb (TEMPLATE de base pour -RestoreDb)..."
+        Remove-Db $BaseDb
+        Invoke-Psql "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='$TestDb' AND pid<>pg_backend_pid();"
+        Invoke-Psql "CREATE DATABASE $BaseDb TEMPLATE $TestDb;"
+        Write-Host "  Snapshot fige — les prochains -RestoreDb cloneront en secondes." -ForegroundColor Green
     }
 
+    Write-Host ""
+    if ($testExitCode -eq 0) {
+        Write-Host "OK — Tests backend : SUCCES (modules: $Modules)" -ForegroundColor Green
+    } else {
+        Write-Host "ECHEC — Tests backend (code $testExitCode, modules: $Modules)" -ForegroundColor Red
+    }
     exit $testExitCode
 }
 finally {
