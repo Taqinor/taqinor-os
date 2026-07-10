@@ -7,6 +7,7 @@ by `residential.renderer`. Reuses the engine's bundled fonts/logo.
 """
 from __future__ import annotations
 import base64
+import functools
 from pathlib import Path
 
 # Engine assets (fonts + logo), one level up at quote_engine/assets.
@@ -43,8 +44,13 @@ def _font_b64(name: str) -> str:
     return base64.b64encode(p.read_bytes()).decode() if p.exists() else ""
 
 
+@functools.lru_cache(maxsize=1)
 def logo_dark_b64() -> str:
-    """Logo recolored white-on-transparent for navy headers."""
+    """Logo recolored white-on-transparent for navy headers.
+
+    QX8 — pur (aucun argument, lit un asset figé) : le recolorage par pixel +
+    l'encodage b64 sont mis en cache une fois par processus, donc une rafale de
+    rendus ne refait plus la boucle par pixel."""
     from PIL import Image
     import io
     p = _LIVE_ASSETS / "logo.png"
@@ -63,7 +69,9 @@ def logo_dark_b64() -> str:
     return base64.b64encode(buf.getvalue()).decode()
 
 
+@functools.lru_cache(maxsize=1)
 def logo_color_b64() -> str:
+    # QX8 — asset figé, encodé une fois par processus (cache pur).
     p = _LIVE_ASSETS / "logo.png"
     return base64.b64encode(p.read_bytes()).decode()
 
@@ -88,7 +96,10 @@ def hero_image_b64(kwc=None, mode: str = "residentiel") -> str:
     return base64.b64encode(p.read_bytes()).decode() if p.exists() else ""
 
 
+@functools.lru_cache(maxsize=1)
 def font_face_css() -> str:
+    # QX8 — @font-face (6 woff2 encodés en b64) figé, calculé une fois par
+    # processus : plus de relecture/encodage des polices à chaque rendu.
     faces = [
         ("DM Serif Display", 400, "DMSerifDisplay-400.woff2"),
         ("Playfair Display", 400, "PlayfairDisplay-400.woff2"),

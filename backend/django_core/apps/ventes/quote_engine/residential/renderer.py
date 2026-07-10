@@ -10,11 +10,41 @@ serves industriel / agricole / one-page / étude). One engine, one data builder.
 Renders only — never changes a devis status (CLAUDE.md rule #4).
 """
 from __future__ import annotations
+
+import hashlib
+import json
+from collections import OrderedDict
 from pathlib import Path
 
 
 class Unsupported(Exception):
     """The devis/options are outside the residential renderer's scope."""
+
+
+# ── QX8 — cache LRU des octets PDF rendus, clé = empreinte du dict de données ──
+# Un second rendu du MÊME devis inchangé (rafale de clients ouvrant le même
+# lien) réutilise les octets déjà rendus au lieu de refaire polices/logo/4
+# graphiques + WeasyPrint. Bornée (petite) pour ne pas gonfler la mémoire ;
+# l'empreinte couvre tout ce qui influe sur le rendu, donc toute édition du
+# devis change la clé et force un vrai re-rendu (jamais un PDF périmé). Sortie
+# byte-identique au chemin sans cache. Complète (sans dupliquer) la persistance
+# /proposal (ERR74) : ici on ne touche AUCUN modèle, on mémorise juste les octets.
+_PDF_CACHE: "OrderedDict[str, bytes]" = OrderedDict()
+_PDF_CACHE_MAX = 32
+
+
+def _fingerprint(data: dict) -> str | None:
+    """Empreinte stable et déterministe du dict de données de rendu.
+
+    Le dict est JSON-sérialisable (il est aussi renvoyé par l'endpoint public
+    proposal-data). Sur toute donnée non sérialisable, renvoie None → le cache
+    est simplement contourné (le rendu se fait normalement)."""
+    try:
+        blob = json.dumps(data, sort_keys=True, default=str,
+                          ensure_ascii=False)
+    except (TypeError, ValueError):
+        return None
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
 def is_residential(devis, options=None) -> bool:
@@ -97,10 +127,31 @@ def _augment(data: dict) -> dict:
 
 def render_pdf_bytes(data: dict) -> bytes:
     """Render the redesigned residential proposal to PDF bytes, or raise
-    Unsupported when the quote data isn't the residential two-option shape."""
+    Unsupported when the quote data isn't the residential two-option shape.
+
+    QX8 — un second rendu du MÊME devis inchangé réutilise les octets déjà
+    rendus (cache LRU par empreinte de données), sans refaire polices/logo/
+    graphiques/WeasyPrint. Toute édition change l'empreinte → vrai re-rendu.
+    """
     from weasyprint import HTML
     from . import render as residential_render
+
+    # _augment peut lever Unsupported : on le laisse remonter AVANT tout cache.
     d = _augment(data)
+    key = _fingerprint(d)
+    if key is not None:
+        hit = _PDF_CACHE.get(key)
+        if hit is not None:
+            _PDF_CACHE.move_to_end(key)  # LRU : marque comme récemment utilisé
+            return hit
+
     html = residential_render.build_html(d)
     base = str(Path(residential_render.__file__).resolve().parent)
-    return HTML(string=html, base_url=f"file://{base}/").write_pdf()
+    pdf_bytes = HTML(string=html, base_url=f"file://{base}/").write_pdf()
+
+    if key is not None:
+        _PDF_CACHE[key] = pdf_bytes
+        _PDF_CACHE.move_to_end(key)
+        while len(_PDF_CACHE) > _PDF_CACHE_MAX:
+            _PDF_CACHE.popitem(last=False)  # évince le plus ancien
+    return pdf_bytes

@@ -1364,6 +1364,65 @@ class TestResidentialRenderer(TestCase):
         self.assertIn('data:image/png', html)
 
 
+@tag('pdf')
+class TestResidentialWarmPathCache(TestCase):
+    """QX8 — chemin chaud : polices/logo/graphiques + octets PDF sont mis en
+    cache. Un second rendu du MÊME devis inchangé réutilise le travail (aucun
+    recalcul de graphiques) et produit des octets byte-identiques.
+    """
+
+    def test_font_and_logo_helpers_are_cached_pure(self):
+        from apps.ventes.quote_engine.residential import theme
+        # lru_cache présent → cache_info() disponible et effectif
+        theme.font_face_css.cache_clear()
+        theme.logo_dark_b64.cache_clear()
+        theme.logo_color_b64.cache_clear()
+        a = theme.font_face_css()
+        b = theme.font_face_css()
+        self.assertEqual(a, b)
+        self.assertEqual(theme.font_face_css.cache_info().misses, 1)
+        self.assertGreaterEqual(theme.font_face_css.cache_info().hits, 1)
+        # le logo recoloré (boucle par pixel) n'est calculé qu'une fois
+        theme.logo_dark_b64()
+        theme.logo_dark_b64()
+        self.assertEqual(theme.logo_dark_b64.cache_info().misses, 1)
+
+    def test_second_render_reuses_bytes_and_skips_chart_work(self):
+        from unittest.mock import patch
+        from apps.ventes.quote_engine.residential import renderer
+        from apps.ventes.quote_engine.residential import charts as charts_mod
+        data = _residential_sample_data()
+
+        # vide le cache PDF pour un décompte déterministe
+        renderer._PDF_CACHE.clear()
+
+        real_build_all = charts_mod.build_all
+        with patch.object(charts_mod, 'build_all',
+                          side_effect=real_build_all) as spy:
+            pdf1 = renderer.render_pdf_bytes(data)
+            pdf2 = renderer.render_pdf_bytes(data)
+        # second rendu : servi depuis le cache → graphiques NON recalculés
+        self.assertEqual(spy.call_count, 1)
+        # octets byte-identiques
+        self.assertEqual(pdf1, pdf2)
+        self.assertEqual(pdf1[:4], b'%PDF')
+
+    def test_edited_devis_forces_a_real_rerender(self):
+        from unittest.mock import patch
+        from apps.ventes.quote_engine.residential import renderer
+        from apps.ventes.quote_engine.residential import charts as charts_mod
+        renderer._PDF_CACHE.clear()
+        data = _residential_sample_data()
+        data2 = _residential_sample_data()
+        data2["ref"] = "DEV-202606-9999"   # une édition change l'empreinte
+        real = charts_mod.build_all
+        with patch.object(charts_mod, 'build_all', side_effect=real) as spy:
+            renderer.render_pdf_bytes(data)
+            renderer.render_pdf_bytes(data2)
+        # empreintes différentes → deux vrais rendus (pas de PDF périmé servi)
+        self.assertEqual(spy.call_count, 2)
+
+
 class TestQuoteSignLinkAndPageNumbers(TestCase):
     """QX6 — le CTA de signature pointe vers la VRAIE proposition tokenisée
     (ShareLink), plus l'ancien /signer/<ref> 404 ; le pied de page n'a plus de
