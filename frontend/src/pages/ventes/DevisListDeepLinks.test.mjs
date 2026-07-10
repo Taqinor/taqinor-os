@@ -24,8 +24,8 @@ test('QX12 : statutFilter se pré-règle depuis ?statut= au montage', () => {
 
 test('QX12 : highlightId se lit depuis ?devis= au montage', () => {
   const block = SRC.slice(
-    SRC.indexOf('const [highlightId, setHighlightId] = useState('),
-    SRC.indexOf('const [highlightId, setHighlightId] = useState(') + 400)
+    SRC.indexOf('const [highlightId] = useState('),
+    SRC.indexOf('const [highlightId] = useState(') + 400)
   assert.match(block, /searchParams\.get\('devis'\)/)
   assert.match(block, /Number\(v\)/)
 })
