@@ -34,6 +34,11 @@ class Campagne(models.Model):
     class Canal(models.TextChoices):
         EMAIL = 'email', 'Email'
         SMS = 'sms', 'SMS'
+        # XMKT10 — envoi groupé WhatsApp (opt-in XMKT4 uniquement). Réel via
+        # BSP quand ``notifications.whatsapp_bsp.get_whatsapp_provider()``
+        # renvoie ``BspProvider`` actif (jeton présent) ; sinon repli EXACT
+        # sur une file de liens wa.me ordonnée (comportement manuel actuel).
+        WHATSAPP = 'whatsapp', 'WhatsApp'
 
     class Statut(models.TextChoices):
         BROUILLON = 'brouillon', 'Brouillon'
@@ -68,6 +73,16 @@ class Campagne(models.Model):
     sms_sender_id = models.CharField(
         max_length=11, blank=True, default='',
         verbose_name="Sender-ID SMS déclaré (XMKT15)")
+    # XMKT10 — gabarit BSP approuvé (nom+langue) pour le canal whatsapp.
+    # NULL = comportement historique (corps libre, canal email/sms) ou envoi
+    # WhatsApp en repli manuel (file wa.me construite depuis ``corps``).
+    whatsapp_template = models.ForeignKey(
+        'notifications.WhatsAppTemplate',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='campagnes_marketing',
+        verbose_name='Gabarit WhatsApp (BSP)',
+    )
     statut = models.CharField(
         max_length=15, choices=Statut.choices, default=Statut.BROUILLON,
         verbose_name='Statut')

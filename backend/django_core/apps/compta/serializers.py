@@ -1485,7 +1485,8 @@ class CampagneSerializer(serializers.ModelSerializer):
         model = Campagne
         fields = [
             'id', 'nom', 'canal', 'canal_display', 'objet', 'corps', 'segment',
-            'listes', 'sms_sender_id', 'statut', 'statut_display',
+            'listes', 'sms_sender_id', 'whatsapp_template', 'statut',
+            'statut_display',
             'nb_destinataires', 'nb_envois', 'nb_ouvertures', 'nb_clics',
             'envoyee_le', 'date_creation',
             'planifiee_le', 'debit_max_par_heure', 'variantes_langue',

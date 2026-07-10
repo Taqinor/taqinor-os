@@ -6531,7 +6531,14 @@ def envoyer_campagne(campagne, *, destinataires=None):
                 raison_smtp='contact_dormant_sunset',
             )
     campagne.nb_destinataires = len(cibles)
-    if brevo_actif() and cibles:
+    if campagne.canal == Campagne.Canal.WHATSAPP and cibles:
+        # XMKT10 — le canal whatsapp ne dépend jamais de Brevo (email/SMS
+        # uniquement) : chaque destinataire obtient TOUJOURS un message —
+        # via BSP (jeton présent) ou repli manuel (lien wa.me), jamais aucun
+        # des deux (comportement du provider QJ23/FG33). On compte l'envoi
+        # comme « traité » indépendamment de brevo_actif().
+        campagne.nb_envois = len(cibles)
+    elif brevo_actif() and cibles:
         # Intégration réelle (future) — jamais appelée tant que le flag est OFF.
         # On laisse le compteur d'envois aligné sur les destinataires ; les
         # ouvertures/clics seront remontés par les webhooks Brevo.
@@ -6578,6 +6585,19 @@ def envoyer_campagne(campagne, *, destinataires=None):
             envoye_le=maintenant,
             variante_ab=variante_ab,
         )
+        # XMKT10 — canal whatsapp : envoi réel (BSP, jeton présent) ou repli
+        # sur une file wa.me (aucune clé) — chaque tentative est journalisée
+        # dans notifications.WhatsAppMessageLog, liée à cette campagne.
+        if campagne.canal == Campagne.Canal.WHATSAPP:
+            from apps.notifications.services import (
+                render_whatsapp_template, send_whatsapp_campaign_message,
+            )
+            corps_whatsapp = (
+                render_whatsapp_template(campagne.whatsapp_template)
+                or campagne.corps)
+            send_whatsapp_campaign_message(
+                campagne.company, recipient=destinataire, body=corps_whatsapp,
+                campagne_id=campagne.id, template=campagne.whatsapp_template)
         # XMKT16 — une ligne de chatter par lead ciblé, jamais par batch.
         noter_touche_marketing_pour_lead(
             campagne.company, contact_ref,

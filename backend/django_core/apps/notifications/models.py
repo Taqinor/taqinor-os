@@ -591,6 +591,13 @@ class WhatsAppMessageLog(models.Model):
     external_id = models.CharField(
         max_length=255, blank=True, default='', db_index=True,
         verbose_name='ID externe Meta')
+    # XMKT10 — id opaque de la ``marketing.Campagne`` d'origine (jamais un FK
+    # direct : ``notifications`` est un satellite, il n'importe pas
+    # ``apps.marketing``). NULL = message hors campagne (comportement
+    # historique : notifications transactionnelles / liens manuels).
+    campagne_id = models.PositiveIntegerField(
+        null=True, blank=True, db_index=True,
+        verbose_name='Id de la campagne (opaque)')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -606,6 +613,10 @@ class WhatsAppMessageLog(models.Model):
             models.Index(
                 fields=['company', 'created_at'],
                 name='nwa_log_company_created_idx',
+            ),
+            models.Index(
+                fields=['company', 'campagne_id'],
+                name='nwa_log_company_campagne_idx',
             ),
         ]
 
