@@ -13,3 +13,10 @@ class FlotteConfig(AppConfig):
         'description': 'Véhicules, engins et maintenance interne.',
         'categorie': 'Services',
     }
+
+    def ready(self):
+        # ARC14 — déclare Vehicule comme cible PILOTE des champs personnalisés
+        # (customfields.registry, registre data-driven — jamais un import de
+        # apps.customfields.models depuis ici, juste l'API de registre).
+        from apps.customfields import registry
+        registry.register('vehicule', 'flotte', 'Vehicule', label='Véhicule')

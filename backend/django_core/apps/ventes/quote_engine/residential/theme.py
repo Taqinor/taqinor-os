@@ -7,7 +7,16 @@ by `residential.renderer`. Reuses the engine's bundled fonts/logo.
 """
 from __future__ import annotations
 import base64
+from html import escape
 from pathlib import Path
+
+# ── SCA27 — littéraux d'identité du fondateur (repli byte-identique) ──────────
+# Reproduisent EXACTEMENT la ligne de pied de page historique. Tant qu'aucune
+# identité société n'est fournie dans ``data["entreprise"]`` (CompanyProfile),
+# le pied de page reste strictement identique à aujourd'hui.
+_FOOT_DEFAULT_NOM = "TAQINOR"
+_FOOT_DEFAULT_EMAIL = "contact@taqinor.com"
+_FOOT_DEFAULT_TEL = "+212 6 61 85 04 10"
 
 # Engine assets (fonts + logo), one level up at quote_engine/assets.
 _LIVE_ASSETS = Path(__file__).resolve().parent.parent / "assets"
@@ -189,12 +198,27 @@ def fiche_slug(designation, marque="") -> str:
     return ""
 
 
+# SCA27 — les fiches-techniques (/produits/<slug>) sont des pages RÉELLES de
+# taqinor.ma (le fondateur) ; leurs slugs (jinko-710, batterie-dyness…) n'existent
+# que là. On ne les lie donc QUE lorsque la base pointe sur taqinor.ma : le PDF
+# d'un autre locataire n'affiche plus un lien produit vers le site du fondateur
+# (la fiche est alors omise → texte simple). Rendu du fondateur inchangé.
+_FICHE_HOST = "taqinor.ma"
+
+
 def fiche_href(designation, marque="", produits_base="taqinor.ma/produits") -> str:
-    """Full https URL of a line's fiche-technique page, or '' if none."""
+    """Full https URL of a line's fiche-technique page, or '' if none.
+
+    SCA27 — omise si ``produits_base`` ne pointe pas sur ``taqinor.ma`` (seul
+    hôte des fiches) : liens produits = site du fondateur uniquement, sinon
+    omis. Base par défaut = taqinor.ma → comportement fondateur byte-identique.
+    """
     slug = fiche_slug(designation, marque)
     if not slug:
         return ""
     base = (produits_base or "taqinor.ma/produits").strip().rstrip("/")
+    if _FICHE_HOST not in base.lower():
+        return ""
     if not base.startswith("http"):
         base = "https://" + base
     return f"{base}/{slug}"
@@ -239,11 +263,36 @@ html, body {{ font-family:{FONT_SANS}; color:{C['ink']}; -weasy-hyphens:none; }}
 """
 
 
+def _footer_brand(data: dict) -> str:
+    """SCA27 — bloc marque du pied de page piloté par ``data["entreprise"]``
+    (identité CompanyProfile via ``parametres.company_identity``).
+
+    Sémantique IDENTIQUE à ``generate_devis_premium._apply_entreprise`` (DC1),
+    par champ : le NOM ne remplace le littéral fondateur que s'il est fourni ; la
+    ligne de contact (email · téléphone) n'est reconstruite QUE si un email ou un
+    téléphone est fourni — sinon le littéral fondateur est conservé. Un tenant
+    qui renseigne son identité voit SES coordonnées ; le fondateur (profil
+    rempli, ou aucun profil) garde son pied de page byte-identique.
+    """
+    ent = data.get("entreprise") or {}
+    nom = (ent.get("nom") or "").strip()
+    email = (ent.get("email") or "").strip()
+    tel = (ent.get("telephone") or "").strip()
+
+    marque = f"<b>{escape(nom)}</b>" if nom else f"<b>{_FOOT_DEFAULT_NOM}</b>"
+    if email or tel:
+        contact = " &nbsp;·&nbsp; ".join(escape(p) for p in (email, tel) if p)
+    else:
+        contact = f"{_FOOT_DEFAULT_EMAIL} &nbsp;·&nbsp; {_FOOT_DEFAULT_TEL}"
+    return f"{marque} &nbsp;·&nbsp; {contact}"
+
+
 def page_footer(data: dict) -> str:
     site = data.get("site_url", "taqinor.ma")
+    brand = _footer_brand(data)
     return f"""
 <div class="foot">
-  <div><b>TAQINOR</b> &nbsp;·&nbsp; contact@taqinor.com &nbsp;·&nbsp; +212 6 61 85 04 10</div>
+  <div>{brand}</div>
   <div>Page {{page}} / 3 &nbsp;·&nbsp; Réf. {data['ref']} &nbsp;·&nbsp; <a>{site}</a></div>
 </div>
 """

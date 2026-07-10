@@ -1,0 +1,18 @@
+"""Serializers du module « {{ app_label }} » (généré par startapp_erp — ARC42).
+
+RAPPEL multi-tenant : ne JAMAIS exposer ``company`` en écriture — elle est
+toujours forcée côté serveur (``CompanyScopedModelViewSet.perform_create``).
+Mettre ``company`` en ``read_only`` (ou l'omettre des ``fields``).
+"""
+from rest_framework import serializers  # noqa: F401
+
+
+# Exemple (décommenter quand ``models.Exemple`` existe) :
+#
+# from .models import Exemple
+#
+# class ExempleSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = Exemple
+#         fields = ['id', 'nom', 'reference', 'created_at']
+#         read_only_fields = ['reference', 'created_at']

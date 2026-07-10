@@ -369,6 +369,23 @@ class DossierEmploye(models.Model):
     localisation_hebdo = models.JSONField(
         blank=True, default=dict, verbose_name='Localisation hebdomadaire')
 
+    # ── ARC19 — Pont additif (INTERNE) vers le répertoire unifié Tiers ──
+    # FK nullable (string-FK ``'tiers.Tiers'`` — jamais d'import de
+    # apps.tiers.models ici). Le dossier employé est une partie prenante
+    # INTERNE : le miroir ne pose AUCUN rôle client/fournisseur (drapeau dédié
+    # côté Tiers réservé à un usage futur). Pas de fusion RIB ici (voir ARC25) :
+    # le miroir n'écrit que l'identité (nom/prénom/CIN/contact), jamais le RIB
+    # de paie. L'identité reste MAÎTRE côté dossier ; ``tiers`` n'en est qu'un
+    # reflet réversible, posé par apps/rh/tiers_bridge.py.
+    tiers = models.ForeignKey(
+        'tiers.Tiers',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='dossiers_employe',
+        verbose_name='Tiers (répertoire unifié)',
+        help_text="Fiche du répertoire unifié reflétant ce collaborateur "
+                  "(partie interne). Renseignée automatiquement (miroir).")
+
     class Meta:
         verbose_name = 'Dossier employé'
         verbose_name_plural = 'Dossiers employés'

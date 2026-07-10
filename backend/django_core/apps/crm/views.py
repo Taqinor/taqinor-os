@@ -4,6 +4,7 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from authentication.mixins import TenantMixin
+from core.viewsets import CompanyScopedModelViewSet
 from authentication.scoping import scope_queryset, scope_client_queryset
 from .models import (
     Appointment, Client, ConcurrentPerte, EquipeCommerciale, Lead, LeadTag,
@@ -93,7 +94,10 @@ def rapport_attribution(request):
     return Response(attribution_leads(user.company, debut=debut, fin=fin))
 
 
-class ClientViewSet(TenantMixin, viewsets.ModelViewSet):
+class ClientViewSet(CompanyScopedModelViewSet):
+    # ARC2 — pilote : base transverse unique (TenantMixin + ModelViewSet). Le
+    # get_queryset (portée de visibilité) et perform_create (company +
+    # created_by forcés serveur) SURCHARGENT la base : réponses inchangées.
     queryset = Client.objects.all()
     serializer_class = ClientSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]

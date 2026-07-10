@@ -19,6 +19,8 @@ import logging
 from django.conf import settings
 from django.db import models, transaction
 
+from core.models import TenantModel
+
 logger = logging.getLogger(__name__)
 
 
@@ -481,7 +483,7 @@ class Holiday(models.Model):
 # QJ23 — WhatsApp BSP scaffold (flag-gated, défaut manuel wa.me)
 # =============================================================================
 
-class WhatsAppTemplate(models.Model):
+class WhatsAppTemplate(TenantModel):
     """Registre des gabarits BSP WhatsApp approuvés par Meta, par entreprise.
 
     ADDITIF : sans aucune ligne, le comportement actuel (wa.me manuel) est
@@ -491,8 +493,15 @@ class WhatsAppTemplate(models.Model):
 
     MULTI-TENANT : `company` est forcé côté serveur, jamais accepté du corps.
     Ne jamais exposer prix_achat / marge dans un message.
+
+    ARC1 — pilote de conversion vers ``core.models.TenantModel`` : la FK
+    ``company`` + les timestamps ``created_at``/``updated_at`` viennent désormais
+    du socle. Le champ ``company`` est REDÉCLARÉ ci-dessous à l'IDENTIQUE pour
+    préserver l'accesseur inverse historique (``company.whatsapp_bsp_templates``)
+    — jamais un renommage. Migration générée vide (champs résolus inchangés).
     """
 
+    # Redéclaré à l'identique (ARC1) : conserve le related_name historique.
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         related_name='whatsapp_bsp_templates')
@@ -531,8 +540,7 @@ class WhatsAppTemplate(models.Model):
     # (comportement actuel préservé).
     groupe = models.CharField(
         max_length=100, blank=True, default='', verbose_name='Groupe de variantes')
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    # ARC1 — created_at / updated_at hérités de TenantModel (à l'identique).
 
     class Meta:
         verbose_name = 'Gabarit WhatsApp BSP'
@@ -559,7 +567,7 @@ class WhatsAppTemplate(models.Model):
         return self.statut_approbation == self.StatutApprobation.APPROUVE
 
 
-class WhatsAppMessageLog(models.Model):
+class WhatsAppMessageLog(TenantModel):
     """Journal des messages WhatsApp (envois BSP + liens manuels wa.me).
 
     Chaque tentative d'envoi ou de construction de lien wa.me peut laisser
@@ -568,6 +576,11 @@ class WhatsAppMessageLog(models.Model):
 
     MULTI-TENANT : `company` forcé côté serveur.
     Ne jamais stocker prix_achat / marge dans `body`.
+
+    ARC1 — pilote de conversion vers ``core.models.TenantModel`` : FK ``company``
+    + ``created_at``/``updated_at`` fournis par le socle. ``company`` REDÉCLARÉ à
+    l'identique pour préserver l'accesseur ``company.whatsapp_message_logs``.
+    Migration générée vide (champs résolus inchangés).
     """
 
     class Status(models.TextChoices):
@@ -611,8 +624,7 @@ class WhatsAppMessageLog(models.Model):
     campagne_id = models.PositiveIntegerField(
         null=True, blank=True, db_index=True,
         verbose_name='Id de la campagne (opaque)')
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    # ARC1 — created_at / updated_at hérités de TenantModel (à l'identique).
 
     class Meta:
         verbose_name = 'Journal WhatsApp'
@@ -641,7 +653,7 @@ class WhatsAppMessageLog(models.Model):
 # XKB5 — Annonces internes ciblées et programmées.
 # =============================================================================
 
-class Annonce(models.Model):
+class Annonce(TenantModel):
     """Annonce interne, publiée à l'heure dite, ciblée département/rôle/tous.
 
     ADDITIF : nouvelle app, nouveau modèle. Une annonce non publiée n'a AUCUN
@@ -652,6 +664,11 @@ class Annonce(models.Model):
     aucun job de suppression n'est nécessaire.
 
     MULTI-TENANT : `company` posée côté serveur, jamais depuis le corps.
+
+    ARC1 — pilote de conversion vers ``core.models.TenantModel`` : FK ``company``
+    + ``created_at``/``updated_at`` fournis par le socle. ``company`` REDÉCLARÉ à
+    l'identique pour préserver l'accesseur ``company.annonces``. Migration
+    générée vide (champs résolus inchangés).
     """
 
     class Cible(models.TextChoices):
@@ -699,8 +716,7 @@ class Annonce(models.Model):
     lecture_obligatoire = models.BooleanField(
         default=False, verbose_name='Lecture obligatoire')
 
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    # ARC1 — created_at / updated_at hérités de TenantModel (à l'identique).
 
     class Meta:
         verbose_name = 'Annonce'

@@ -250,3 +250,43 @@ class WorkflowTenancyTests(TestCase):
             self.fail(f"Code dupliqué entre sociétés rejeté à tort : {exc}")
         self.assertEqual(
             WorkflowDefinition.objects.filter(code='dup').count(), 2)
+
+
+class InstanceEnCoursPourTests(TestCase):
+    """ARC10 — le sélecteur ``instance_en_cours_pour`` résout le workflow EN
+    COURS d'une cible générique, scopé société et optionnellement par code."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.company = Company.objects.create(nom='Résolveur A')
+        cls.other = Company.objects.create(nom='Résolveur B')
+
+    def test_resolves_running_instance_for_target(self):
+        wf = _make_def(self.company, code='res')
+        inst = workflow.demarrer_workflow(wf, self.company, self.company)
+        found = workflow.instance_en_cours_pour(self.company, self.company)
+        self.assertEqual(found.id, inst.id)
+
+    def test_scoped_to_company(self):
+        wf = _make_def(self.company, code='res_scope')
+        workflow.demarrer_workflow(wf, self.company, self.company)
+        # La cible est une Company de la société A ; B ne voit rien.
+        self.assertIsNone(
+            workflow.instance_en_cours_pour(self.company, self.other))
+
+    def test_filtered_by_definition_code(self):
+        wf = _make_def(self.company, code='res_code')
+        workflow.demarrer_workflow(wf, self.company, self.company)
+        self.assertIsNotNone(
+            workflow.instance_en_cours_pour(
+                self.company, self.company, definition_code='res_code'))
+        self.assertIsNone(
+            workflow.instance_en_cours_pour(
+                self.company, self.company, definition_code='autre'))
+
+    def test_ignores_finished_instance(self):
+        wf = _make_def(self.company, code='res_done', steps=[])
+        # Définition sans étape → instance terminée d'emblée.
+        workflow.demarrer_workflow(wf, self.company, self.company)
+        self.assertIsNone(
+            workflow.instance_en_cours_pour(self.company, self.company))

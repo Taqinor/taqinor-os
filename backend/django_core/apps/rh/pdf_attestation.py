@@ -3,35 +3,24 @@ léger), renderer RH DÉDIÉ.
 
 JAMAIS ``/proposal`` (rule #4, CLAUDE.md — réservé au moteur devis ventes).
 Suit le même pattern self-contained que ``apps.paie.builders`` (PAIE34) :
-rendu HTML → PDF via WeasyPrint, aucune dépendance à une autre app business,
-lecture seule de champs publics (jamais de donnée d'achat/marge/salaire).
+rendu HTML → PDF, aucune dépendance à une autre app business, lecture seule de
+champs publics (jamais de donnée d'achat/marge/salaire).
 
-WeasyPrint est optionnel à l'import : si la lib n'est pas installée (build
-allégé), ``render_attestation_reussite_pdf`` lève une ``RuntimeError``
-explicite plutôt que de planter à l'import du module.
+ARC11 — la plomberie WeasyPrint (``HTML(string=...).write_pdf()`` + import
+paresseux) est déléguée au service partagé ``core.pdf.render_pdf`` ; le GABARIT
+HTML ci-dessous reste STRICTEMENT identique (aucune option de branding activée,
+donc rendu inchangé à l'octet près). ``core`` est une couche de fondation
+importable directement.
 """
 from datetime import date
 from html import escape
-from io import BytesIO
+
+from core.pdf import render_pdf
 
 MOIS_FR = [
     '', 'janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet',
     'août', 'septembre', 'octobre', 'novembre', 'décembre',
 ]
-
-
-def _html_to_pdf(html_string):
-    """HTML → octets PDF (WeasyPrint). Import paresseux de weasyprint."""
-    try:
-        import weasyprint
-    except ImportError as exc:  # pragma: no cover - dépend de l'environnement
-        raise RuntimeError(
-            "WeasyPrint n'est pas installé : génération PDF indisponible."
-        ) from exc
-    buf = BytesIO()
-    weasyprint.HTML(string=html_string).write_pdf(buf)
-    buf.seek(0)
-    return buf.read()
 
 
 def render_attestation_reussite_html(tentative, *, today=None):
@@ -77,5 +66,5 @@ def render_attestation_reussite_html(tentative, *, today=None):
 
 def render_attestation_reussite_pdf(tentative, *, today=None):
     """Attestation de réussite → octets PDF (XRH34)."""
-    return _html_to_pdf(
-        render_attestation_reussite_html(tentative, today=today))
+    return render_pdf(
+        html=render_attestation_reussite_html(tentative, today=today))

@@ -1,5 +1,6 @@
 import { useSelector, useDispatch } from 'react-redux'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
 import { Menu, Search, LogOut, User as UserIcon, Settings, Zap, Bot } from 'lucide-react'
 import {
   Avatar, AvatarFallback, initials,
@@ -17,6 +18,11 @@ import LanguageSwitcher from './LanguageSwitcher'
 import { titleFor } from './routes.meta'
 import { ThemeToggle } from '../../design/ThemeToggle'
 import { useT } from '../../i18n'
+import { getCurrentTenantTheme, subscribeTenantTheme } from '../../design/tenantTheme'
+
+// SCA24 — marque produit neutre par défaut (build-time), écrasée par le
+// `nom_affichage` du TenantTheme de la société quand il est renseigné.
+const PRODUCT_NAME = import.meta.env.VITE_PRODUCT_NAME || 'ERP'
 
 // I35 — Déclenche la palette de commandes (⌘K) construite par l'autre lane,
 // qui écoute cet événement exact. On ne construit PAS la palette ici.
@@ -32,6 +38,13 @@ export default function Header({ onMenu }) {
   const dispatch = useDispatch()
   const user = useSelector((state) => state.auth.user)
   const t = useT()
+  // SCA24 — thème de société (logo/nom) posé par Layout ; Header s'abonne
+  // sans refetch (pub/sub en mémoire, cf. design/tenantTheme.js). Repli neutre
+  // (PRODUCT_NAME, pas de logo) tant qu'aucun thème n'est chargé/renseigné.
+  const [tenantTheme, setTenantThemeState] = useState(getCurrentTenantTheme)
+  useEffect(() => subscribeTenantTheme(setTenantThemeState), [])
+  const brandName = tenantTheme.nomAffichage || PRODUCT_NAME
+  const brandLogoUrl = tenantTheme.logoUrl
 
   // N93 — titre de page traduit via t() ; FR reste le repli (titleFor accepte
   // le traducteur et retombe sur le libellé FR pour tout titre non couvert).
@@ -55,12 +68,18 @@ export default function Header({ onMenu }) {
           <Menu size={22} aria-hidden="true" />
         </button>
         {/* I136 — repère de marque cliquable : pastille « éclair » qui ramène au
-            tableau de bord (affordance d'accueil cohérente avec la sidebar). */}
+            tableau de bord (affordance d'accueil cohérente avec la sidebar).
+            SCA24 — si la société a un logo white-label (TenantTheme), il
+            remplace la pastille ; sinon repli neutre (icône éclair). */}
         <button type="button" className="header-brand" onClick={() => navigate('/dashboard')}
-                aria-label="Accueil — Taqinor" title="Accueil">
-          <span className="header-brand-bolt" aria-hidden="true">
-            <Zap size={14} strokeWidth={2.4} />
-          </span>
+                aria-label={`Accueil — ${brandName}`} title="Accueil">
+          {brandLogoUrl ? (
+            <img src={brandLogoUrl} alt={brandName} className="header-brand-logo" />
+          ) : (
+            <span className="header-brand-bolt" aria-hidden="true">
+              <Zap size={14} strokeWidth={2.4} />
+            </span>
+          )}
         </button>
         <div className="header-heading">
           <Breadcrumbs pathname={location.pathname} />
