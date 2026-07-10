@@ -37,6 +37,8 @@ from decimal import Decimal
 from django.db import transaction
 from django.utils import timezone
 
+from core.pdf import render_pdf
+
 from .machine_etats import (  # noqa: F401 — réexport (point d'entrée services)
     TRANSITIONS_AUTORISEES,
     TransitionInterdite,
@@ -197,14 +199,13 @@ def rendre_contrat_pdf(contrat):
     """Rend un PDF INTERNE du contrat (bytes) — hors ``/proposal``.
 
     PDF de travail interne : ce N'EST PAS un PDF de devis client (``/proposal``
-    reste l'unique chemin des PDF de devis). Import de ``weasyprint``
-    FONCTION-LOCAL pour ne pas alourdir le chargement du module ni casser les
-    environnements sans la lib.
+    reste l'unique chemin des PDF de devis). ARC12 — la plomberie WeasyPrint
+    (import paresseux + ``write_pdf()``) est déléguée au service partagé
+    ``core.pdf.render_pdf`` ; le GABARIT HTML de ``_contrat_html`` reste
+    STRICTEMENT identique, donc le rendu est inchangé à l'octet près.
     """
-    import weasyprint  # import local : lib lourde, chargée à la demande
-
     html_str = _contrat_html(contrat)
-    return weasyprint.HTML(string=html_str).write_pdf()
+    return render_pdf(html=html_str)
 
 
 def _gabarit_par_defaut(contexte):

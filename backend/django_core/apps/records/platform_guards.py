@@ -179,22 +179,7 @@ GRANDFATHERED_WEASYPRINT = frozenset({
     "apps/ventes/utils/pdf.py",
     "apps/ventes/connection_declaration.py",
     # Importeurs directs GELÉS (à migrer vers core.pdf plus tard).
-    "apps/compta/pdf_badge_evenement.py",
-    "apps/compta/pdf_certificat_enquete.py",
-    "apps/compta/pdf_etats.py",
-    "apps/compta/pdf_ras.py",
-    "apps/contrats/pdf_location.py",
-    "apps/contrats/services.py",
-    "apps/documents/builders.py",
-    "apps/ged/services.py",
-    "apps/installations/rfq_pdf.py",
-    "apps/kb/services.py",
-    "apps/monitoring/report.py",
-    "apps/paie/builders.py",
-    "apps/pos/receipt.py",
     "apps/qhse/services.py",
-    "apps/reporting/report_pdf.py",
-    "apps/rh/pdf_sortie.py",
 })
 
 # ``import weasyprint`` OU ``from weasyprint import …`` (indentation quelconque —

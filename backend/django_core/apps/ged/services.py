@@ -13,6 +13,8 @@ from django.contrib.postgres.search import SearchVector
 from django.db import models, transaction
 from django.db.models import Value
 
+from core.pdf import render_pdf
+
 from .models import Cabinet, Document, DocumentVersion, Folder, RoutageDocumentaire
 
 logger = logging.getLogger(__name__)
@@ -2375,21 +2377,15 @@ def rendre_modele(modele, contexte):
     PDF de devis : `/proposal` reste l'unique chemin des PDF de devis client
     (rule #4). On n'importe ni ne route jamais par le moteur premium.
 
-    Import de WeasyPrint FONCTION-LOCAL et gardé : la lib est lourde (chargée à
-    la demande) et le module reste import-safe là où WeasyPrint n'est pas
-    chargeable. WeasyPrint EST une dépendance du projet ; s'il venait à manquer
-    on lève une `RuntimeError` claire (jamais un crash silencieux).
+    ARC12 — la plomberie WeasyPrint (import paresseux + ``write_pdf()``) est
+    déléguée au service partagé ``core.pdf.render_pdf`` ; le GABARIT HTML de
+    `_modele_html_document` reste STRICTEMENT identique, donc le rendu est
+    inchangé à l'octet près.
 
     Renvoie les octets du PDF (commençant par ``%PDF``).
     """
-    try:
-        import weasyprint  # import local : lib lourde, chargée à la demande.
-    except Exception as exc:  # pragma: no cover - WeasyPrint est installé.
-        raise RuntimeError(
-            "WeasyPrint est requis pour rendre un modèle de document en PDF "
-            f"mais n'a pas pu être chargé : {exc}")
     html_str = _modele_html_document(modele, contexte)
-    return weasyprint.HTML(string=html_str).write_pdf()
+    return render_pdf(html=html_str)
 
 
 def resoudre_classement(modele, contexte, *, cabinet_defaut='Modèles',
@@ -3581,16 +3577,12 @@ def generer_certificat_completion(demande):
     Contenu : identités/emails des signataires, IP, user-agent, géolocalisation
     (optionnelle — jamais requise, vide si non transmise par le navigateur),
     méthode (tapée/tracée), séquence horodatée des événements, hash SHA-256.
-    Import de WeasyPrint FONCTION-LOCAL (même motif que `rendre_modele` GED27).
+
+    ARC12 — la plomberie WeasyPrint est déléguée au service partagé
+    ``core.pdf.render_pdf`` (même motif que `rendre_modele` GED27).
 
     Renvoie les octets du PDF certificat."""
-    try:
-        import weasyprint
-    except Exception as exc:  # pragma: no cover - WeasyPrint est installé.
-        raise RuntimeError(
-            "WeasyPrint est requis pour générer le certificat de complétion "
-            f"mais n'a pas pu être chargé : {exc}")
-    return weasyprint.HTML(string=_certificat_html(demande)).write_pdf()
+    return render_pdf(html=_certificat_html(demande))
 
 
 def classer_signature_completee(demande, *, created_by=None):
