@@ -43,13 +43,13 @@ DOMAIN_MAP: dict[str, tuple[set[str], str, str]] = {
         "frontend/src/pages|features de compta, contrats, finance",
     ),
     "SUPPLY": (
-        {"NTSCM", "NTWMS", "NTLOG", "NTDST", "NTRET"},
+        {"NTSCM", "NTWMS", "NTLOG", "NTDST", "NTRET", "NTMFG"},
         "apps/stock, apps/pos, nouvelles apps scm/wms/transport/douane/"
         "fidelite/promotions/negoce",
         "frontend/src/pages|features de stock, pos, achats",
     ),
     "SERVICE": (
-        {"NTSRV", "NTFSM", "NTNRG", "NTSVC"},
+        {"NTSRV", "NTFSM", "NTNRG", "NTSVC", "NTPRJ"},
         "apps/sav, apps/installations, apps/monitoring, nouvelles apps "
         "actifsnrg/ppa/services_pro/booking",
         "frontend/src/pages|features de sav, installations, terrain, monitoring",
