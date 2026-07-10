@@ -7,7 +7,7 @@ from .models import (
     ReceptionFournisseur, LigneReceptionFournisseur,
     FactureFournisseur, LigneFactureFournisseur, PaiementFournisseur,
     InventaireSession, LigneInventaire,
-    KitProduit, KitComposant,
+    KitProduit, KitComposant, RevisionKit,
     FicheTechnique,
     DocumentConformiteFournisseur, AchatsParametres,
     CategorieFournisseur, ContactFournisseur,
@@ -1263,6 +1263,15 @@ class KitProduitSerializer(serializers.ModelSerializer):
                     {'composants': 'Un kit ne peut pas se contenir '
                                    'lui-même.'})
 
+    def _snapshot(self, kit):
+        # XMFG18 — snapshot auto de la composition à chaque modification des
+        # composants (idempotent : composition identique → pas de doublon).
+        from .services import snapshot_revision_kit
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        snapshot_revision_kit(
+            kit, user=user if getattr(user, 'pk', None) else None)
+
     def create(self, validated_data):
         composants_data = validated_data.pop('composants', [])
         self._validate_company(composants_data)
@@ -1270,6 +1279,7 @@ class KitProduitSerializer(serializers.ModelSerializer):
         self._validate_no_direct_self_reference(kit.id, composants_data)
         for c in composants_data:
             KitComposant.objects.create(kit=kit, **c)
+        self._snapshot(kit)
         return kit
 
     def update(self, instance, validated_data):
@@ -1285,7 +1295,26 @@ class KitProduitSerializer(serializers.ModelSerializer):
             instance.composants.all().delete()
             for c in composants_data:
                 KitComposant.objects.create(kit=instance, **c)
+            self._snapshot(instance)
         return instance
+
+
+class RevisionKitSerializer(serializers.ModelSerializer):
+    """XMFG18 — révision (snapshot) de la nomenclature d'un kit. Lecture
+    seule : les révisions sont créées automatiquement côté serveur."""
+    user_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = RevisionKit
+        fields = ['id', 'kit', 'numero', 'composition', 'user', 'user_nom',
+                  'date_creation']
+        read_only_fields = fields
+
+    def get_user_nom(self, obj):
+        u = obj.user
+        if u is None:
+            return None
+        return (f'{u.first_name} {u.last_name}'.strip() or u.username)
 
 
 class FicheTechniqueSerializer(serializers.ModelSerializer):

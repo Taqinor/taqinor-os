@@ -2199,6 +2199,46 @@ class KitComposant(models.Model):
         return f'{self.kit_id}: {cible} × {self.quantite}'
 
 
+class RevisionKit(models.Model):
+    """XMFG18 — révision de nomenclature d'un kit (pattern RevisionDocument
+    FG297) : snapshot JSON AUTO de la composition à chaque modification des
+    composants, numéroté par kit. La révision la plus récente est la
+    composition courante ; « composition au JJ/MM/AAAA » = la dernière
+    révision à cette date. Jamais de prix d'achat dans le snapshot."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='revisions_kit_produit')
+    kit = models.ForeignKey(
+        KitProduit, on_delete=models.CASCADE, related_name='revisions')
+    numero = models.PositiveIntegerField(default=1)
+    composition = models.JSONField(
+        default=list,
+        help_text='Snapshot des composants : produit_id/composant_kit_id, '
+                  'désignation, quantité, taux de perte.')
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='revisions_kit_produit_creees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Révision de kit'
+        verbose_name_plural = 'Révisions de kit'
+        ordering = ['kit_id', '-numero']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['kit', 'numero'],
+                name='stock_revkit_kit_numero_uniq'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'kit'],
+                         name='stock_revkit_co_kit_idx'),
+        ]
+
+    def __str__(self):
+        return f'Rev.{self.numero} — kit {self.kit_id}'
+
+
 class FicheTechnique(models.Model):
     """DC35 / FG254 — Fiche technique (datasheet) d'un produit.
 

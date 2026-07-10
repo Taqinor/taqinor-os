@@ -3153,6 +3153,99 @@ def exploser_kit_par_id(company, kit_id, quantite_kit=1):
     return exploser_kit(kit, quantite_kit)
 
 
+# ── XMFG18 — Révisions de nomenclature + duplication de kit ────────────────
+# Chaque modification des composants d'un kit crée un SNAPSHOT JSON numéroté
+# (pattern RevisionDocument FG297). La révision la plus récente est la
+# composition courante ; « composition au JJ/MM/AAAA » = la dernière révision
+# à cette date. Jamais de prix d'achat dans le snapshot.
+
+def _composition_snapshot(kit):
+    """Sérialise la composition courante du kit en liste JSON-compatible
+    (produit_id / composant_kit_id, désignation, quantité, taux de perte).
+    AUCUN prix (ni achat ni vente) dans le snapshot — la valorisation est
+    toujours dérivée du catalogue au moment voulu (DC36)."""
+    out = []
+    for c in (kit.composants
+              .select_related('produit', 'composant_kit')
+              .order_by('id')):
+        out.append({
+            'produit_id': c.produit_id,
+            'composant_kit_id': c.composant_kit_id,
+            'designation': (
+                c.produit.nom if c.produit_id else c.composant_kit.nom),
+            'sku': (
+                (c.produit.sku if c.produit_id else c.composant_kit.sku)
+                or ''),
+            'quantite': str(c.quantite),
+            'taux_perte_pct': str(c.taux_perte_pct),
+        })
+    return out
+
+
+def snapshot_revision_kit(kit, user=None):
+    """XMFG18 — crée une révision (snapshot JSON) de la composition COURANTE
+    du kit si elle diffère de la dernière révision. Renvoie (revision,
+    created). Idempotent : re-sauver un kit sans changer sa composition ne
+    crée PAS de révision dupliquée."""
+    from .models import RevisionKit
+    composition = _composition_snapshot(kit)
+    derniere = kit.revisions.order_by('-numero').first()
+    if derniere is not None and derniere.composition == composition:
+        return derniere, False
+    numero = (derniere.numero + 1) if derniere is not None else 1
+    revision = RevisionKit.objects.create(
+        company=kit.company, kit=kit, numero=numero,
+        composition=composition, user=user)
+    return revision, True
+
+
+def composition_kit_au(kit, date_limite):
+    """XMFG18 — « composition au JJ/MM/AAAA » : la dernière révision créée à
+    la date donnée incluse (datetime.date). None si aucune révision
+    n'existait encore à cette date."""
+    return (kit.revisions
+            .filter(date_creation__date__lte=date_limite)
+            .order_by('-numero')
+            .first())
+
+
+def dupliquer_kit(kit, user=None, facteur_echelle=None):
+    """XMFG18 — duplique un kit stock : en-tête copié (« <nom> (copie) »,
+    sku vidé pour éviter la collision d'unicité) + composants copiés, avec
+    facteur d'échelle optionnel appliqué aux quantités (arrondi propre à 2
+    décimales, ROUND_HALF_UP — ex. 3 × 1.67 = 5.01 → 5.01). La copie reçoit
+    sa révision n°1 immédiatement."""
+    from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+    from .models import KitProduit, KitComposant
+
+    facteur = None
+    if facteur_echelle is not None:
+        try:
+            facteur = Decimal(str(facteur_echelle))
+        except (InvalidOperation, TypeError, ValueError):
+            raise ValueError("Facteur d'échelle invalide.")
+        if facteur <= 0:
+            raise ValueError("Le facteur d'échelle doit être positif.")
+
+    copie = KitProduit.objects.create(
+        company=kit.company,
+        nom=f'{kit.nom} (copie)',
+        sku=None,
+        description=kit.description,
+    )
+    for c in kit.composants.all():
+        quantite = c.quantite or Decimal('0')
+        if facteur is not None:
+            quantite = (quantite * facteur).quantize(
+                Decimal('0.01'), rounding=ROUND_HALF_UP)
+        KitComposant.objects.create(
+            kit=copie, produit_id=c.produit_id,
+            composant_kit_id=c.composant_kit_id,
+            quantite=quantite, taux_perte_pct=c.taux_perte_pct)
+    snapshot_revision_kit(copie, user=user)
+    return copie
+
+
 # ── XMFG5 — Coût de revient du kit : roll-up + structure + stock potentiel ──
 # INTERNE — le coût/marge n'est visible qu'aux rôles responsable/admin
 # (gardé côté vue) ; le prix d'achat/coût n'apparaît JAMAIS sur un document

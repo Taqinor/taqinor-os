@@ -17,8 +17,9 @@ from authentication.permissions import (
 from ..models import KitProduit
 from ..serializers import KitProduitSerializer
 
-READ_ACTIONS = ['list', 'retrieve', 'exploser']
-WRITE_ACTIONS = ['create', 'update', 'partial_update']
+READ_ACTIONS = ['list', 'retrieve', 'exploser', 'revisions',
+                'composition_au']
+WRITE_ACTIONS = ['create', 'update', 'partial_update', 'dupliquer']
 
 
 class KitProduitViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -30,6 +31,8 @@ class KitProduitViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
+            # XMFG18 — `revisions` / `composition-au` sont LECTURE SEULE
+            # (composition sans aucun prix), même garde que `exploser`.
             return [IsAnyRole()]
         elif self.action == 'structure':
             # XMFG5 — l'écran est accessible à tout rôle (disponibilité), le
@@ -37,6 +40,8 @@ class KitProduitViewSet(TenantMixin, viewsets.ModelViewSet):
             # accès responsable/admin (jamais client-facing).
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS:
+            # XMFG18 — `dupliquer` EST une écriture (crée un kit) : même
+            # garde que create/update.
             return [HasPermissionOrLegacy('stock_modifier')()]
         return [IsAdminRole()]
 
@@ -96,3 +101,59 @@ class KitProduitViewSet(TenantMixin, viewsets.ModelViewSet):
                 if data.get(_cle) is not None:
                     data[_cle] = f'{data[_cle]:.2f}'
         return Response(data)
+
+    @action(detail=True, methods=['get'], url_path='revisions')
+    def revisions(self, request, *args, **kwargs):
+        """XMFG18 — historique des révisions de nomenclature de ce kit
+        (numéro, date, utilisateur, snapshot JSON — sans aucun prix).
+        Lecture seule."""
+        from ..serializers import RevisionKitSerializer
+        kit = self.get_object()
+        qs = kit.revisions.select_related('user').order_by('-numero')
+        return Response(RevisionKitSerializer(qs, many=True).data)
+
+    @action(detail=True, methods=['get'], url_path='composition-au')
+    def composition_au(self, request, *args, **kwargs):
+        """XMFG18 — « composition au JJ/MM/AAAA » : renvoie la révision en
+        vigueur à la date donnée (`?date=JJ/MM/AAAA` ou `AAAA-MM-JJ`).
+        404 si aucune révision n'existait encore à cette date."""
+        from datetime import datetime
+        from ..serializers import RevisionKitSerializer
+        kit = self.get_object()
+        brut = (request.query_params.get('date') or '').strip()
+        date_limite = None
+        for fmt in ('%d/%m/%Y', '%Y-%m-%d'):
+            try:
+                date_limite = datetime.strptime(brut, fmt).date()
+                break
+            except ValueError:
+                continue
+        if date_limite is None:
+            return Response(
+                {'detail': 'Paramètre date requis (JJ/MM/AAAA ou '
+                           'AAAA-MM-JJ).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        from ..services import composition_kit_au
+        revision = composition_kit_au(kit, date_limite)
+        if revision is None:
+            return Response(
+                {'detail': 'Aucune révision à cette date.'},
+                status=status.HTTP_404_NOT_FOUND)
+        return Response(RevisionKitSerializer(revision).data)
+
+    @action(detail=True, methods=['post'], url_path='dupliquer')
+    def dupliquer(self, request, *args, **kwargs):
+        """XMFG18 — duplique ce kit (en-tête + composants), avec facteur
+        d'échelle optionnel sur les quantités (`facteur_echelle`, ex. 1.67 —
+        arrondi propre). La copie reçoit sa révision n°1."""
+        from ..services import dupliquer_kit
+        kit = self.get_object()
+        facteur = request.data.get('facteur_echelle')
+        try:
+            copie = dupliquer_kit(
+                kit, user=request.user, facteur_echelle=facteur)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(copie).data, status=status.HTTP_201_CREATED)
