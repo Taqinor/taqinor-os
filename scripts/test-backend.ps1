@@ -76,6 +76,33 @@ try {
     }
     Write-Host "  OK — aucun run concurrent detecte."
 
+    # ---- GARDE .env ------------------------------------------------------
+    # Un worktree cree par `git worktree add` n'a PAS de .env (il est gitignore),
+    # or docker compose charge les creds DB via `env_file: ./.env`. Sans lui, le
+    # conteneur django recoit des creds vides et se FIGE sur une connexion morte
+    # - c'est la fausse "attente de 2h" qu'un run recent a prise pour un OOM/
+    # deadlock. On auto-repare en copiant le .env d'un worktree voisin.
+    $EnvFile = Join-Path $RepoRoot '.env'
+    if (-not (Test-Path $EnvFile)) {
+        Write-Host "-> .env absent dans ce worktree - recuperation depuis un worktree voisin..."
+        $wtPaths = @()
+        foreach ($ln in (git -C $RepoRoot worktree list --porcelain)) {
+            if ($ln -like 'worktree *') { $wtPaths += ($ln.Substring(9).Trim() -replace '/', '\') }
+        }
+        $src = $wtPaths |
+            Where-Object { $_ -ne $RepoRoot -and (Test-Path (Join-Path $_ '.env')) } |
+            Select-Object -First 1
+        if ($src) {
+            Copy-Item (Join-Path $src '.env') $EnvFile
+            Write-Host "  .env copie depuis $src (evite le hang creds-DB-vides du conteneur)." -ForegroundColor Green
+        } else {
+            Write-Host "REFUS DE DEMARRER : aucun .env ici ni dans un worktree voisin." -ForegroundColor Red
+            Write-Host "Sans .env, docker compose passe des creds DB vides et le conteneur django se fige." -ForegroundColor Yellow
+            Write-Host "Placez un .env valide a la racine de ce worktree, puis relancez." -ForegroundColor Yellow
+            exit 1
+        }
+    }
+
     $KeepDbFlag = @('--keepdb')
 
     # ---- -RestoreDb : clone TEMPLATE (~secondes) au lieu du rebuild (~heures)
