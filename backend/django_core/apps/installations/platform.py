@@ -10,7 +10,9 @@ Déclare ce que Installations expose aux surfaces transverses (voir
   dossier_reference/opérateur) — les deux specs vivent dans
   ``apps/reporting/search.py`` sous la même clé de modèle ;
 * **chatter/records (ARC30)** — la cible ``records.ALLOWED_TARGETS``
-  historique (``installations.installation``).
+  historique (``installations.installation``) ; SCA34 ajoute
+  ``installations.ordresoustraitance`` (pilote 1 du kit ``core.documents`` —
+  chatter câblé sur son viewset via ``ChatterViewSetMixin``).
 """
 from __future__ import annotations
 
@@ -18,8 +20,13 @@ PLATFORM = {
     'module': 'installations',
     # ARC29 — modèle cherchable historique (2 groupes : chantier + dossier).
     'searchable_models': ['installations.installation'],
-    # ARC30 — cible chatter/records historique (records.ALLOWED_TARGETS).
-    'record_targets': ['installations.installation'],
+    # ARC30 — cibles chatter/records (records.ALLOWED_TARGETS). SCA34 ajoute
+    # ordresoustraitance (pilote kit core.documents, chatter câblé sur son
+    # viewset).
+    'record_targets': [
+        'installations.installation',
+        'installations.ordresoustraitance',
+    ],
     'customfield_models': [],
     'import_specs': [],
     'agent_actions_module': '',
