@@ -97,8 +97,11 @@ class TestPromoteurDeclencheParrainage(_Base):
 
     def test_passif_7_8_ne_declenche_rien(self):
         services.repondre_enquete_nps(self.enquete, score=7)
+        # Filtre event_type : la fixture (Lead avec owner) emet deja un
+        # lead_assigned legitime qui n'a rien a voir avec le flux NPS.
         self.assertEqual(Notification.objects.filter(
-            company=self.company).count(), 0)
+            company=self.company,
+            event_type=EventType.NPS_PROMOTEUR).count(), 0)
         self.assertEqual(Activity.objects.filter(
             company=self.company).count(), 0)
 
@@ -133,7 +136,9 @@ class TestToggleOff(_Base):
     def test_toggle_off_promoteur_rien(self):
         services.repondre_enquete_nps(self.enquete, score=10)
         self.assertEqual(
-            Notification.objects.filter(company=self.company).count(), 0)
+            Notification.objects.filter(
+                company=self.company,
+                event_type=EventType.NPS_PROMOTEUR).count(), 0)
         self.assertFalse(
             MessageTemplate.objects.filter(
                 company=self.company, nom='parrainage').exists())
@@ -167,7 +172,8 @@ class TestMultiTenant(TestCase):
             company=co_a, client_id=client_a.id)
         services.repondre_enquete_nps(enquete_a, score=9)
         self.assertEqual(
-            Notification.objects.filter(company=co_a).count(), 1)
+            Notification.objects.filter(
+                company=co_a, event_type=EventType.NPS_PROMOTEUR).count(), 1)
         self.assertEqual(
             Notification.objects.filter(company=co_b).count(), 0)
         self.assertFalse(

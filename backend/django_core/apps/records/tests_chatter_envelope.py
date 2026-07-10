@@ -38,9 +38,12 @@ class TestUniformChatterEnvelope(TenantAPITestCase):
             kind=LeadActivity.Kind.NOTE, body='Appel passé')
         rows = lead_chatter_envelope(lead)
         data = self._assert_envelope(rows, 'crm.leadactivity')
-        self.assertEqual(data[0]['kind'], 'note')
-        self.assertEqual(data[0]['body'], 'Appel passé')
-        self.assertEqual(data[0]['user_username'], self.user.username)
+        # La création du Lead auto-logge déjà une activité 'modification'
+        # (chatter CRM existant) — on cible la note manuelle, pas l'index 0.
+        notes = [r for r in data if r['kind'] == 'note']
+        self.assertEqual(len(notes), 1)
+        self.assertEqual(notes[0]['body'], 'Appel passé')
+        self.assertEqual(notes[0]['user_username'], self.user.username)
 
     def test_sav_ticket_envelope(self):
         from apps.sav.models import Ticket, TicketActivity

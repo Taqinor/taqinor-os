@@ -72,7 +72,21 @@ class Company(models.Model):
         #     suspendu/en fermeture a donc toujours ``actif=False``, ce qui fait
         #     que TOUT code qui ne lit que ``actif`` bloque déjà ces tenants.
         ancien_statut, ancien_actif = self.statut, self.actif
-        if self.statut == self.STATUT_ACTIF and self.actif is False:
+        # Qui mène ? Comparaison à l'état PERSISTÉ : si l'appelant n'a touché
+        # que le bool historique ``actif``, le bool mène (dans les deux sens) ;
+        # sinon ``statut`` mène. Sans cela, réactiver via ``statut = actif``
+        # était re-dégradé en « suspendu » (l'actif=False persistant gagnait).
+        db = (Company.objects.filter(pk=self.pk)
+              .values('statut', 'actif').first()) if self.pk else None
+        if db is not None:
+            statut_change = self.statut != db['statut']
+            actif_change = self.actif != db['actif']
+            if actif_change and not statut_change:
+                if self.actif is False and self.statut == self.STATUT_ACTIF:
+                    self.statut = self.STATUT_SUSPENDU
+                elif self.actif is True and self.statut != self.STATUT_ACTIF:
+                    self.statut = self.STATUT_ACTIF
+        elif self.statut == self.STATUT_ACTIF and self.actif is False:
             self.statut = self.STATUT_SUSPENDU
         self.actif = (self.statut == self.STATUT_ACTIF)
         # Un save(update_fields=[…]) partiel doit persister la réconciliation

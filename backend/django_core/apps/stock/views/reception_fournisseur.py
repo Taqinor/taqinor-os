@@ -64,7 +64,10 @@ class ReceptionFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['scan_gs1', 'etiquettes']:
             return [IsAnyRole()]
-        elif self.action in WRITE_ACTIONS + ['confirmer', 'annuler']:
+        elif self.action in WRITE_ACTIONS + ['confirmer', 'annuler', 'facturer']:
+            # « facturer » déclarait IsResponsableOrAdmin sur son décorateur
+            # mais ce get_permissions l'écrasait vers IsAdminRole (le repli
+            # par défaut) — bug préexistant attrapé par le test P2P YTEST6.
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
             return [IsAdminRole()]

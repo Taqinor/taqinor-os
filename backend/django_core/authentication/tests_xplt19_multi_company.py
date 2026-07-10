@@ -39,6 +39,10 @@ class SwitchCompanyApiTest(TenantAPITestCase):
         # Utilisateur bi-société : attaché à A, membre de A + B.
         self.bi_user = UserFactory(
             username='reda-bi', company=self.company,
+            # Rôle écrivain requis : la création de clients CRM exige le rôle
+            # responsable quel que soit le multi-société (le 403 sans lui n'a
+            # rien à voir avec le switch).
+            role_legacy='responsable',
         )
         self.bi_user.societes_autorisees.add(self.company, self.company_b)
         # Données distinctes par société.

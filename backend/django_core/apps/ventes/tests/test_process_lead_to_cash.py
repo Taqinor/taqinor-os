@@ -143,7 +143,8 @@ class TestProcessLeadToCash(TenantAPITestCase):
         self.assertGreater(montant_du_avant, Decimal('0'))
         resp = api.post(
             f'/api/django/ventes/factures/{facture_id}/enregistrer-paiement/',
-            {'montant': str(montant_du_avant), 'date_paiement': '2026-06-25',
+            {'montant': str(montant_du_avant.quantize(Decimal('0.01'))),
+             'date_paiement': '2026-06-25',
              'mode': 'virement'},
             format='json')
         self.assertEqual(resp.status_code, 201, resp.data)

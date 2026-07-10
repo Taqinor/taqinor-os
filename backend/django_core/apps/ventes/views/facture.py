@@ -67,7 +67,7 @@ def arrondir_au_pas(montant, pas):
     return (nb_pas * pas).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 
-def proposer_arrondi_caisse(facture, mode):
+def proposer_arrondi_caisse(facture, mode, reste=None):
     """ZFAC11 — propose le reste à payer ARRONDI au pas de caisse société.
 
     Ne s'applique QU'aux règlements en espèces et seulement si la société a
@@ -76,10 +76,15 @@ def proposer_arrondi_caisse(facture, mode):
     perçu (montant_du − montant_arrondi, jamais négatif) qui sera tracé comme
     un abandon « Arrondi espèces ». Hors espèces ou pas nul → ``applicable`` est
     ``False`` et ``montant_arrondi`` = reste à payer (aucun arrondi).
+
+    ``reste`` : résiduel de référence explicite. Indispensable au moment de
+    l'encaissement, où ``facture.montant_du`` (propriété vivante) inclut DÉJÀ
+    le paiement tout juste enregistré — la proposition doit se calculer sur le
+    reste AVANT paiement, sinon elle ne correspond jamais au montant réglé.
     """
     from decimal import Decimal
     from apps.parametres.models import CompanyProfile
-    reste = facture.montant_du
+    reste = facture.montant_du if reste is None else reste
     profile = CompanyProfile.get(company=facture.company)
     pas = getattr(profile, 'arrondi_caisse', None) or Decimal('0')
     if mode != Paiement.Mode.ESPECES or pas <= 0 or reste <= 0:
@@ -757,7 +762,9 @@ class FactureViewSet(viewsets.ModelViewSet):
                 # silencieux). Ne s'applique qu'aux espèces ; virement/chèque
                 # l'ignorent. Passe AVANT la tolérance XFAC13 (motif dédié).
                 mode = serializer.validated_data.get('mode', Paiement.Mode.VIREMENT)
-                prop = proposer_arrondi_caisse(facture, mode)
+                # ``reste`` = résiduel AVANT ce paiement (capturé plus haut) —
+                # montant_du est déjà retombé après serializer.save().
+                prop = proposer_arrondi_caisse(locked, mode, reste=reste)
                 if (prop['applicable']
                         and abs(montant - prop['montant_arrondi']) <= Decimal('0.01')
                         and Decimal('0') < locked.montant_du <= prop['pas']):
