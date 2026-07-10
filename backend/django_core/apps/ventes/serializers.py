@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from rest_framework.validators import UniqueTogetherValidator
 from .models import (
     Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
     Avoir, LigneAvoir, DevisActivity, DevisPreset, RoofLayout,
@@ -464,6 +465,19 @@ class PaiementSerializer(serializers.ModelSerializer):
         max_digits=12, decimal_places=2, read_only=True)
     statut_affectation_display = serializers.CharField(
         source='get_statut_affectation_display', read_only=True)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # SCA45 — la contrainte d'unicité (company, idempotency_key) est
+        # CONDITIONNELLE côté DB (exclut les clés nulles/vides — un paiement
+        # manuel n'en a pas). Le validateur unique-together AUTO de DRF ignore
+        # cette condition et rendait ``idempotency_key`` OBLIGATOIRE sur CHAQUE
+        # création (régression : 400 sur tout encaissement manuel). On le retire
+        # ici ; la contrainte DB conditionnelle reste l'arbitre de l'unicité.
+        self.validators = [
+            v for v in self.validators
+            if not (isinstance(v, UniqueTogetherValidator)
+                    and 'idempotency_key' in getattr(v, 'fields', ()))]
 
     def get_client_nom(self, obj):
         c = obj.facture.client if obj.facture_id else obj.client

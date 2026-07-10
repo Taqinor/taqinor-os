@@ -40,7 +40,6 @@ header=False, footer=False, upload_to=None, upload_bucket=None)`` :
   ``upload_to``, elle retourne simplement les ``bytes`` du PDF.
 """
 from html import escape
-from io import BytesIO
 
 from django.conf import settings
 
@@ -61,10 +60,11 @@ def _html_to_pdf_bytes(html_string):
         raise RuntimeError(
             "WeasyPrint n'est pas installé : génération PDF indisponible."
         ) from exc
-    buf = BytesIO()
-    weasyprint.HTML(string=html_string).write_pdf(buf)
-    buf.seek(0)
-    return buf.read()
+    # ``write_pdf()`` SANS cible renvoie directement les octets PDF (API
+    # WeasyPrint documentée) — même convention d'appel que les renderers
+    # RH/compta/qhse d'origine, donc les tests existants qui mockent
+    # ``HTML(...).write_pdf()`` (lambda sans argument) restent compatibles.
+    return weasyprint.HTML(string=html_string).write_pdf()
 
 
 # ── Branding OPT-IN depuis CompanyProfile (résolution paresseuse) ────────────

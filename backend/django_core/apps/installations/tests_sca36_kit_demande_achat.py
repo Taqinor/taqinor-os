@@ -36,7 +36,6 @@ from apps.records.models import ALLOWED_TARGETS, Activity
 from core.documents import (
     DocumentMetier, TotauxDocumentMixin, TransitionRefusee, changer_statut,
 )
-from testkit.time import frozen
 
 User = get_user_model()
 _seq = itertools.count(1)
@@ -82,12 +81,12 @@ class TestReferenceContinuity(TestCase):
         return r.data['reference']
 
     def test_format_bit_identique(self):
-        # Horloge gelée : référence + assertion sur le MÊME mois (déterminisme
-        # YTEST15, pas de flake de bord de mois).
-        with frozen('2026-06-15 10:00:00'):
-            ref = self._create()
-            self.assertRegex(ref, REF_RE)
-            self.assertEqual(ref.split('-')[1], '202606')
+        # Mois attendu capturé hors assertion (déterminisme YTEST15) — pas de
+        # gel d'horloge, qui invaliderait le JWT minté en setUp.
+        expected_period = timezone.now().strftime('%Y%m')
+        ref = self._create()
+        self.assertRegex(ref, REF_RE)
+        self.assertEqual(ref.split('-')[1], expected_period)
 
     def test_reprise_du_compteur_courant(self):
         """SCA36 — une demande pré-existante numérotée 0007 sur le mois
