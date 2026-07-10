@@ -11,15 +11,22 @@ comme source unique de vérité.
 from django.test import SimpleTestCase
 
 from apps.records.platform_guards import (
+    BASELINE_HANDROLLED_MODELS,
+    BASELINE_UNSCOPED_VIEWSETS,
     GRANDFATHERED_ACTIVITY_CLASSES,
     GRANDFATHERED_FILEFIELDS,
     GRANDFATHERED_NUMBERING,
     GRANDFATHERED_WEASYPRINT,
     NUMBERING_HOME_FILES,
+    SOCLE_DEFINING_APPS,
     is_test_path,
+    new_handrolled_models,
+    new_unscoped_viewsets,
     scan_activity_classes,
     scan_filefields,
+    scan_handrolled_models,
     scan_numbering,
+    scan_unscoped_viewsets,
     scan_weasyprint_import,
 )
 
@@ -224,3 +231,75 @@ class TestIsTestPath(SimpleTestCase):
     def test_rejects_source_files(self):
         for p in ("apps/x/services.py", "core/pdf.py", "apps/x/views.py"):
             self.assertFalse(is_test_path(p), p)
+
+
+class TestHandrolledModelGuard(SimpleTestCase):
+    """SCA4 garde (M) — nouveau modèle FK company à la main hors socle = rouge."""
+
+    def test_new_handrolled_model_is_red(self):
+        src = (
+            "class SinistreVoyou(models.Model):\n"
+            "    company = models.ForeignKey('authentication.Company', on_delete=1)\n"
+            "    x = models.IntegerField()\n"
+        )
+        found = scan_handrolled_models("flotte", src)
+        self.assertEqual(found, ["flotte.SinistreVoyou"])
+        # Absent de la baseline → violation réelle.
+        self.assertEqual(new_handrolled_models(found), ["flotte.SinistreVoyou"])
+
+    def test_onetoonefield_is_red_too(self):
+        src = (
+            "class UnParSociete(models.Model):\n"
+            "    company = models.OneToOneField('authentication.Company', on_delete=1)\n"
+        )
+        self.assertEqual(
+            scan_handrolled_models("flotte", src), ["flotte.UnParSociete"])
+
+    def test_tenantmodel_subclass_is_green(self):
+        """Un modèle qui hérite de TenantModel ne déclare pas la FK → jamais rouge."""
+        src = "class Propre(TenantModel):\n    x = models.IntegerField()\n"
+        self.assertEqual(scan_handrolled_models("flotte", src), [])
+
+    def test_socle_defining_apps_exempt(self):
+        """core/authentication DÉFINISSENT le socle : FK company à la main légitime."""
+        src = (
+            "class Base(models.Model):\n"
+            "    company = models.ForeignKey('authentication.Company', on_delete=1)\n"
+        )
+        for app in SOCLE_DEFINING_APPS:
+            self.assertEqual(scan_handrolled_models(app, src), [], app)
+
+    def test_baseline_entry_is_green(self):
+        """Un offender déjà dans la baseline gelée n'est PAS une violation."""
+        baselined = next(iter(BASELINE_HANDROLLED_MODELS))
+        self.assertEqual(new_handrolled_models([baselined]), [])
+
+    def test_baseline_covers_current_tree(self):
+        """La baseline gelée est non vide (inventaire pré-socle du 2026-07-10)."""
+        self.assertGreater(len(BASELINE_HANDROLLED_MODELS), 0)
+
+
+class TestUnscopedViewSetGuard(SimpleTestCase):
+    """SCA4 garde (V) — nouveau ModelViewSet hors CompanyScopedModelViewSet = rouge."""
+
+    def test_new_unscoped_viewset_is_red(self):
+        src = "class VoyouViewSet(viewsets.ModelViewSet):\n    pass\n"
+        found = scan_unscoped_viewsets("flotte", src)
+        self.assertEqual(found, ["flotte.VoyouViewSet"])
+        self.assertEqual(new_unscoped_viewsets(found), ["flotte.VoyouViewSet"])
+
+    def test_scoped_viewset_is_green(self):
+        src = "class PropreViewSet(CompanyScopedModelViewSet):\n    pass\n"
+        self.assertEqual(scan_unscoped_viewsets("flotte", src), [])
+
+    def test_readonly_viewset_excluded(self):
+        """ReadOnlyModelViewSet (pas de create) est hors périmètre du socle ARC2."""
+        src = "class LectureViewSet(viewsets.ReadOnlyModelViewSet):\n    pass\n"
+        self.assertEqual(scan_unscoped_viewsets("flotte", src), [])
+
+    def test_baseline_entry_is_green(self):
+        baselined = next(iter(BASELINE_UNSCOPED_VIEWSETS))
+        self.assertEqual(new_unscoped_viewsets([baselined]), [])
+
+    def test_baseline_covers_current_tree(self):
+        self.assertGreater(len(BASELINE_UNSCOPED_VIEWSETS), 0)

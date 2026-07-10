@@ -11,6 +11,27 @@ they stay in the fast, DB-free ``stage-names`` CI lane.
 from __future__ import annotations
 
 import re
+from pathlib import Path
+
+# Répertoire des baselines gelées (SCA4), à CÔTÉ de ce module pour être lisible
+# par les DEUX exécuteurs : le script CI (``scripts/check_platform.py``) ET le
+# runner Django (qui ne monte que ``backend/django_core``, jamais ``scripts/``).
+_BASELINE_DIR = Path(__file__).resolve().parent / "platform_baselines"
+
+
+def _load_baseline(name: str) -> frozenset:
+    """Charge une baseline gelée (un ``app.ClassName`` par ligne ; ``#`` = commentaire).
+
+    Absente/illisible → frozenset vide (le garde échoue alors OUVERT : tout
+    offender existant redevient rouge, jamais un faux vert)."""
+    path = _BASELINE_DIR / name
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:  # pragma: no cover - baseline toujours committée
+        return frozenset()
+    return frozenset(
+        s.strip() for s in lines if s.strip() and not s.lstrip().startswith("#"))
+
 
 # ── ARC8 — bespoke *Activity chatter classes ──────────────────────────────────
 
@@ -281,3 +302,145 @@ def numbering_error_line(spec: str) -> str:
         f"supprimé rétrécit le compte → collision en production). Cf. "
         f"apps/records/platform_guards.py (NUMBERING_HOME_FILES)."
     )
+
+
+# ── SCA4 — conformité noyau : modèles/viewsets hand-rollés hors socle ─────────
+#
+# Post-noyau (ARC1/ARC2), le socle multi-tenant EST posé : ``core.TenantModel``
+# (FK ``company`` + timestamps) et ``core.viewsets.CompanyScopedModelViewSet``
+# (scoping + forçage société côté serveur). SCA4 empêche une lane voyou de
+# RE-hand-roller ce socle après coup — chaque copie manuelle redevenant une cible
+# de sweep future (YDATA4/YRBAC12, nommés, non refaits ici).
+#
+# Deux gardes, chacun sur une BASELINE GELÉE qui ne peut que DÉCROÎTRE :
+#   (M) tout NOUVEAU modèle (absent de la baseline) qui déclare
+#       ``company = models.ForeignKey``/``OneToOneField`` À LA MAIN au lieu
+#       d'hériter ``TenantModel`` = rouge ;
+#   (V) tout NOUVEAU ViewSet ``ModelViewSet`` (absent de la baseline) qui n'hérite
+#       PAS de ``CompanyScopedModelViewSet`` = rouge.
+#
+# EXEMPTIONS INLINE :
+#   * ``core`` et ``authentication`` DÉFINISSENT le socle : leurs modèles portent
+#     légitimement une FK ``company`` à la main (``TenantModel`` lui-même,
+#     ``DeletionRecord``…). Ils sont hors périmètre du garde modèle.
+#   * Les fichiers de tests sont hors périmètre (fixtures/fakes).
+#   * La baseline liste les modèles/viewsets hand-rollés EXISTANTS (pré-SCA4,
+#     inventaire du 2026-07-10) — chargée depuis un fichier de données committé
+#     (``scripts/platform_baselines/``). Elle ne peut que rétrécir : un modèle
+#     converti à ``TenantModel`` / un viewset converti à
+#     ``CompanyScopedModelViewSet`` DISPARAÎT de son fichier source, donc ne
+#     matche plus — et son entrée de baseline devient inerte (le garde ignore une
+#     entrée de baseline sans offender réel). YDATA4 fera le sweep de complétude.
+
+# Apps qui DÉFINISSENT le socle (FK company à la main = légitime). Hors périmètre
+# du garde modèle SCA4.
+SOCLE_DEFINING_APPS = frozenset({"core", "authentication"})
+
+# ``company = models.ForeignKey(`` OU ``company = models.OneToOneField(`` déclaré
+# à la main dans le corps d'un modèle. Indentation quelconque (champ de classe).
+HANDROLLED_COMPANY_FK_RE = re.compile(
+    r"^\s*company\s*=\s*models\.(?:ForeignKey|OneToOneField)\b",
+    re.MULTILINE,
+)
+
+# En-tête de classe : ``class Name(bases):``. Capture le nom + les bases brutes.
+CLASS_HEADER_RE = re.compile(
+    r"^class\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(([^)]*)\)\s*:",
+    re.MULTILINE,
+)
+
+
+def _class_blocks(text: str):
+    """Yield ``(class_name, bases_str, body_text)`` for each module-level class.
+
+    Le corps va de la fin de l'en-tête jusqu'à la prochaine ``class`` de niveau
+    module (colonne 0) ou la fin du fichier. Suffisant pour repérer un champ de
+    classe (``company = …``) ou les bases — pas un parseur Python complet, mais
+    déterministe et sans dépendance."""
+    matches = list(CLASS_HEADER_RE.finditer(text))
+    for i, m in enumerate(matches):
+        name, bases = m.group(1), m.group(2)
+        start = m.end()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        yield name, bases, text[start:end]
+
+
+def scan_handrolled_models(app: str, text: str) -> list[str]:
+    """Retourne ``['app.ClassName', …]`` des modèles déclarant une FK ``company``
+    à la main dans ``text``. ``app`` : label d'app.
+
+    Les apps qui DÉFINISSENT le socle (``core``/``authentication``) sont
+    exemptées (leur FK ``company`` à la main est légitime)."""
+    if app in SOCLE_DEFINING_APPS:
+        return []
+    found: list[str] = []
+    for name, _bases, body in _class_blocks(text):
+        if HANDROLLED_COMPANY_FK_RE.search(body):
+            found.append(f"{app}.{name}")
+    return found
+
+
+# ``*ModelViewSet`` dans les bases, mais PAS ``CompanyScopedModelViewSet``. On
+# repère un viewset concret non scopé au socle. ``ReadOnlyModelViewSet`` et les
+# ``GenericViewSet`` ne portent pas d'écriture create → hors périmètre (le socle
+# ARC2 vise ``ModelViewSet``).
+MODELVIEWSET_BASE_RE = re.compile(r"\bModelViewSet\b")
+SCOPED_BASE_RE = re.compile(r"\bCompanyScopedModelViewSet\b")
+READONLY_BASE_RE = re.compile(r"\bReadOnlyModelViewSet\b")
+
+
+def scan_unscoped_viewsets(app: str, text: str) -> list[str]:
+    """Retourne ``['app.ClassName', …]`` des ViewSets ``ModelViewSet`` NON basés
+    sur ``CompanyScopedModelViewSet`` dans ``text``.
+
+    Un viewset dont les bases contiennent ``CompanyScopedModelViewSet`` est déjà
+    au socle (vert). ``ReadOnlyModelViewSet`` seul (sans ``ModelViewSet``
+    inscriptible) est hors périmètre."""
+    found: list[str] = []
+    for name, bases, _body in _class_blocks(text):
+        if SCOPED_BASE_RE.search(bases):
+            continue  # déjà au socle
+        # ReadOnlyModelViewSet matche aussi \bModelViewSet\b — l'exclure sauf si
+        # une VRAIE base ModelViewSet inscriptible est aussi présente.
+        stripped = READONLY_BASE_RE.sub("", bases)
+        if MODELVIEWSET_BASE_RE.search(stripped):
+            found.append(f"{app}.{name}")
+    return found
+
+
+def handrolled_model_error_line(qualified: str) -> str:
+    return (
+        f"[SCA4] Nouveau modèle « {qualified} » déclare une FK « company » à la "
+        f"main hors socle. Héritez de core.models.TenantModel (FK company + "
+        f"timestamps) plutôt que de re-hand-roller la paire multi-société. Si "
+        f"c'est un cas légitime (app qui définit le socle), ajoutez-le à la "
+        f"baseline gelée scripts/platform_baselines/handrolled_models.txt "
+        f"(elle ne peut que décroître)."
+    )
+
+
+def unscoped_viewset_error_line(qualified: str) -> str:
+    return (
+        f"[SCA4] Nouveau ViewSet « {qualified} » (ModelViewSet) n'hérite pas de "
+        f"core.viewsets.CompanyScopedModelViewSet — le scoping société + le "
+        f"forçage de company côté serveur ne sont donc pas garantis. Basez-le sur "
+        f"CompanyScopedModelViewSet. Si c'est un cas légitime, ajoutez-le à la "
+        f"baseline gelée apps/records/platform_baselines/unscoped_viewsets.txt "
+        f"(elle ne peut que décroître)."
+    )
+
+
+# Baselines gelées (chargées à l'import — une par fichier de données committé).
+BASELINE_HANDROLLED_MODELS = _load_baseline("handrolled_models.txt")
+BASELINE_UNSCOPED_VIEWSETS = _load_baseline("unscoped_viewsets.txt")
+
+
+def new_handrolled_models(found: list[str]) -> list[str]:
+    """Filtre ``found`` (offenders scannés) contre la baseline gelée : ne garde
+    que les NOUVEAUX (absents de la baseline) = les violations réelles."""
+    return [q for q in found if q not in BASELINE_HANDROLLED_MODELS]
+
+
+def new_unscoped_viewsets(found: list[str]) -> list[str]:
+    """Idem pour les viewsets non scopés au socle."""
+    return [q for q in found if q not in BASELINE_UNSCOPED_VIEWSETS]

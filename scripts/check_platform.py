@@ -22,6 +22,9 @@ ARC11 — no NEW direct ``weasyprint`` import outside the frozen allowlist: ever
     PDF render goes through ``core.pdf.render_pdf``.
 ARC6 — no NEW ``.count() + 1`` reference/number generation outside the two
     numbering-home files: references go through ``core.numbering.next_reference``.
+SCA4 — no NEW hand-rolled ``company`` FK model (must inherit ``TenantModel``)
+    and no NEW ``ModelViewSet`` outside ``CompanyScopedModelViewSet``, both
+    against a frozen baseline that can only shrink.
 
 Run
 ---
@@ -42,11 +45,17 @@ if str(DJANGO_CORE) not in sys.path:
 from apps.records.platform_guards import (  # noqa: E402
     activity_error_line,
     filefield_error_line,
+    handrolled_model_error_line,
+    new_handrolled_models,
+    new_unscoped_viewsets,
     numbering_error_line,
     scan_activity_classes,
     scan_filefields,
+    scan_handrolled_models,
     scan_numbering,
+    scan_unscoped_viewsets,
     scan_weasyprint_import,
+    unscoped_viewset_error_line,
     weasyprint_error_line,
 )
 
@@ -146,6 +155,49 @@ def check_numbering_home() -> list[str]:
     return [numbering_error_line(s) for s in sorted(find_new_numbering())]
 
 
+def _app_of_source(path: Path) -> str:
+    """apps/<app>/**/*.py -> '<app>' (label d'app pour un fichier source quelconque)."""
+    return path.relative_to(APPS_DIR).parts[0]
+
+
+def find_new_handrolled_models() -> list[str]:
+    """SCA4 — modèles NOUVEAUX (hors baseline) déclarant une FK company à la main."""
+    found: list[str] = []
+    for path in _iter_model_files():
+        relpath = path.relative_to(DJANGO_CORE).as_posix()
+        if relpath in (
+            "apps/records/platform_guards.py",
+        ):  # jamais un modèle
+            continue
+        app = _app_of(path)
+        found.extend(scan_handrolled_models(app, path.read_text(encoding="utf-8")))
+    return new_handrolled_models(sorted(set(found)))
+
+
+def check_handrolled_models() -> list[str]:
+    """SCA4 garde (M) — plus de modèle hand-rollé hors socle (empty = OK)."""
+    return [handrolled_model_error_line(q) for q in sorted(find_new_handrolled_models())]
+
+
+def find_new_unscoped_viewsets() -> list[str]:
+    """SCA4 — ViewSets ModelViewSet NOUVEAUX (hors baseline) non basés socle."""
+    found: list[str] = []
+    for path in APPS_DIR.glob("**/*.py"):
+        relpath = path.relative_to(DJANGO_CORE).as_posix()
+        # Le module de gardes CITE les noms de bases en littéral (regex) — jamais
+        # un vrai viewset ; l'exclure pour ne pas s'auto-signaler.
+        if relpath == "apps/records/platform_guards.py":
+            continue
+        app = _app_of_source(path)
+        found.extend(scan_unscoped_viewsets(app, path.read_text(encoding="utf-8")))
+    return new_unscoped_viewsets(sorted(set(found)))
+
+
+def check_unscoped_viewsets() -> list[str]:
+    """SCA4 garde (V) — plus de ModelViewSet non scopé au socle (empty = OK)."""
+    return [unscoped_viewset_error_line(q) for q in sorted(find_new_unscoped_viewsets())]
+
+
 def run_checks() -> list[str]:
     """Run all platform guards; return the flat list of error lines."""
     errors: list[str] = []
@@ -153,6 +205,8 @@ def run_checks() -> list[str]:
     errors.extend(check_no_wild_filefields())
     errors.extend(check_weasyprint_allowlist())
     errors.extend(check_numbering_home())
+    errors.extend(check_handrolled_models())
+    errors.extend(check_unscoped_viewsets())
     return errors
 
 
