@@ -241,6 +241,20 @@ def _client_ip(request):
     return (fwd.split(',')[0].strip() or request.META.get('REMOTE_ADDR') or '')
 
 
+def _parse_client_ts(value):
+    """QX9 — parse l'horodatage client ISO 8601 (best-effort → None si invalide).
+
+    Utilisé pour ``DevisSignature.signed_at_client`` : jamais bloquant, un
+    format inattendu tombe simplement à None (l'horodatage serveur fait foi)."""
+    if not value:
+        return None
+    try:
+        from django.utils.dateparse import parse_datetime
+        return parse_datetime(str(value))
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _resolve_proposal_link(token):
     """Return a valid devis-bearing ShareLink for this token, or None."""
     link = (
@@ -758,8 +772,25 @@ def proposal_accept(request, token):
             {'detail': 'Votre nom est requis pour signer la proposition.'},
             status=status.HTTP_400_BAD_REQUEST))
     option = (request.data.get('option') or '').strip()
-    # QJ10 — consentement explicite requis pour la validité loi 53-05.
-    consentement = bool(request.data.get('consentement', True))
+    # QX9 — consentement explicite requis (loi 43-20). Le front envoie
+    # ``consent_esign`` (booléen) ; on accepte aussi l'ancien ``consentement``
+    # en repli. Le consentement ne défaute PLUS silencieusement à True : une
+    # acceptation sans consentement explicite est refusée (400).
+    consent_raw = request.data.get('consent_esign')
+    if consent_raw is None:
+        consent_raw = request.data.get('consentement')
+    consentement = consent_raw in (True, 'true', 'True', '1', 1, 'on')
+    if not consentement:
+        return _noindex(Response(
+            {'detail': 'Votre consentement explicite à la signature '
+                       'électronique est requis pour accepter la '
+                       'proposition.'},
+            status=status.HTTP_400_BAD_REQUEST))
+    # QX9 — preuve de signature réelle envoyée par le front.
+    signature_image = (request.data.get('signature_data_url') or '')
+    signed_at_client = _parse_client_ts(
+        request.data.get('signed_at_client'))
+    on_behalf_of = (request.data.get('on_behalf_of') or '').strip()[:150]
     # QJ11 — code OTP si le toggle est actif (service gère la validation).
     otp_code = (request.data.get('otp_code') or '').strip()
     from .services import accept_devis, AcceptError, validate_esign_otp
@@ -775,6 +806,9 @@ def proposal_accept(request, token):
             ip=_client_ip(request),
             user_agent=request.META.get('HTTP_USER_AGENT', '')[:512],
             consentement=consentement,
+            signature_image=signature_image,
+            signed_at_client=signed_at_client,
+            on_behalf_of=on_behalf_of,
         )
     except AcceptError as exc:
         return _noindex(Response(

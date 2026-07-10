@@ -758,12 +758,18 @@ def _send_otp_email(email, code, devis_ref):
         return False
 
 
-def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True):
+def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
+                         signature_image='', signed_at_client=None,
+                         on_behalf_of=''):
     """QJ10 — Crée le DevisSignature IMMUABLE si aucun n'existe encore.
 
     Idempotent : un enregistrement existant n'est jamais écrasé (la première
     signature fait foi). Best-effort : une exception ne remonte jamais —
     l'acceptation (statut + chatter) est déjà écrite avant cet appel.
+
+    QX9 — persiste désormais la vraie preuve de signature (image manuscrite,
+    consentement e-signature explicite, horodatage client, « au nom de ») que
+    le front envoie et qui était auparavant jetée.
     """
     try:
         from django.utils import timezone
@@ -771,6 +777,11 @@ def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True):
         if DevisSignature.objects.filter(devis=devis).exists():
             return
         content_hash = DevisSignature.compute_content_hash(devis)
+        # ``signature_image`` peut être une data-URL volumineuse — on la borne
+        # raisonnablement (les payloads canvas font ~quelques Ko).
+        img = (signature_image or '')
+        if len(img) > 200000:
+            img = img[:200000]
         DevisSignature.objects.create(
             company=devis.company,
             devis=devis,
@@ -780,6 +791,10 @@ def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True):
             user_agent=(user_agent or '')[:512],
             content_hash=content_hash,
             signed_at=timezone.now(),
+            signature_image=img,
+            consent_esign=bool(consentement),
+            signed_at_client=signed_at_client or None,
+            on_behalf_of=(on_behalf_of or '')[:150],
         )
         logger.info(
             'QJ10: DevisSignature créée pour devis %s (hash=%s…)',
@@ -1148,6 +1163,7 @@ def _fire_capi_signed_quote(*, devis):
 
 def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
                  ip=None, user_agent='', consentement=True,
+                 signature_image='', signed_at_client=None, on_behalf_of='',
                  idempotent_reaccept=True):
     """Q7 — flip a Devis to « accepté » through the ONE acceptance path.
 
@@ -1231,6 +1247,8 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
     _create_esign_record(
         devis=devis, nom=nom, ip=ip,
         user_agent=user_agent, consentement=consentement,
+        signature_image=signature_image, signed_at_client=signed_at_client,
+        on_behalf_of=on_behalf_of,
     )
     # QJ9 — Attribution first-touch : copie UTM/fbclid du lead vers etude_params
     # du devis pour que l'attribution reste lossless même si le lead est fusionné.
@@ -1242,6 +1260,14 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
     # QJ22 — Stockage de l'artefact PDF signé (proposition verrouillée).
     # Appelé APRÈS _create_esign_record pour que le DevisSignature existe déjà.
     _store_signed_pdf(devis=devis)
+    # QX9 — le PDF signé est persisté sur une AUTRE instance (via le moteur) ;
+    # on rafraîchit ``fichier_pdf`` sur l'instance courante pour que la pièce
+    # jointe de l'email ne parte pas sur un état périmé (bug de l'exemplaire
+    # signé manquant).
+    try:
+        devis.refresh_from_db(fields=['fichier_pdf'])
+    except Exception:  # noqa: BLE001 — best-effort
+        pass
     # QJ10 — Email de confirmation PDF verrouillé au client + au vendeur.
     try:
         _send_acceptance_emails(devis=devis, user=user)

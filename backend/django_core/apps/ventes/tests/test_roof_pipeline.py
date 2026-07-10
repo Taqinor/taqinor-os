@@ -427,7 +427,8 @@ class TestQ7ProposalAccept(TestCase):
 
     def test_accept_flips_status_and_writes_stamp(self):
         resp = self.api.post(
-            self._url(self.link.token), {'nom': 'Salma Bennani'},
+            self._url(self.link.token),
+            {'nom': 'Salma Bennani', 'consent_esign': True},
             format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.devis.refresh_from_db()
@@ -446,10 +447,12 @@ class TestQ7ProposalAccept(TestCase):
 
     def test_idempotent_double_submit(self):
         first = self.api.post(
-            self._url(self.link.token), {'nom': 'A'}, format='json')
+            self._url(self.link.token),
+            {'nom': 'A', 'consent_esign': True}, format='json')
         self.assertEqual(first.status_code, 200)
         second = self.api.post(
-            self._url(self.link.token), {'nom': 'B'}, format='json')
+            self._url(self.link.token),
+            {'nom': 'B', 'consent_esign': True}, format='json')
         self.assertEqual(second.status_code, 200, second.data)
         self.devis.refresh_from_db()
         # Still the first signer; no second stamp.
@@ -459,13 +462,15 @@ class TestQ7ProposalAccept(TestCase):
 
     def test_invalid_token_404(self):
         self.assertEqual(
-            self.api.post(self._url('bad'), {'nom': 'X'}, format='json')
+            self.api.post(self._url('bad'),
+                          {'nom': 'X', 'consent_esign': True}, format='json')
             .status_code, 404)
 
     def test_bon_commande_chain_preserved(self):
         # After tokenized accept, the devis can be converted to a BC exactly
         # like an in-app acceptance (chain preserved 1:1).
-        self.api.post(self._url(self.link.token), {'nom': 'Chain'},
+        self.api.post(self._url(self.link.token),
+                      {'nom': 'Chain', 'consent_esign': True},
                       format='json')
         self.devis.refresh_from_db()
         self.assertEqual(self.devis.statut, 'accepte')

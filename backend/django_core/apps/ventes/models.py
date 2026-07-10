@@ -2102,6 +2102,26 @@ class DevisSignature(models.Model):
         verbose_name='Clé MinIO du PDF signé',
     )
 
+    # ── QX9 — preuve de signature électronique réelle (loi 43-20) ──
+    # Champs ADDITIFS/nullable : les signatures antérieures n'en portent aucun
+    # (comportement inchangé). Jamais de prix_achat/marge. ``signature_image``
+    # = data-URL PNG du tracé manuscrit (ou clé MinIO) ; ``consent_esign`` = le
+    # client a explicitement coché « je consens à signer électroniquement » ;
+    # ``signed_at_client`` = horodatage navigateur (distinct de ``signed_at``
+    # serveur, pour l'audit) ; ``on_behalf_of`` = précision facultative WJ87.
+    signature_image = models.TextField(
+        blank=True, default='',
+        verbose_name='Image de la signature (data-URL / clé MinIO)')
+    consent_esign = models.BooleanField(
+        default=False,
+        verbose_name='Consentement explicite e-signature (43-20)')
+    signed_at_client = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name='Horodatage client de la signature')
+    on_behalf_of = models.CharField(
+        max_length=150, blank=True, default='',
+        verbose_name='Signe au nom de (facultatif)')
+
     class Meta:
         verbose_name = 'Signature électronique'
         verbose_name_plural = 'Signatures électroniques'
