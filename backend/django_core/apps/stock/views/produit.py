@@ -4,7 +4,7 @@ from django.http import HttpResponse  # noqa: F401
 from rest_framework import viewsets, filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
-from authentication.mixins import TenantMixin  # noqa: F401
+from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference  # noqa: F401
 from ..models import (  # noqa: F401
     Produit, Categorie, Fournisseur, MouvementStock, Marque,
@@ -50,7 +50,7 @@ PRODUIT_CREATE_PERMISSION = HasPermissionAndRole(
     'stock_creer', 'Directeur', 'Commercial responsable')
 
 
-class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
+class ProduitViewSet(CompanyScopedModelViewSet):
     # YOPSB13 — le FournisseurSerializer imbriqué (ProduitSerializer.fournisseur)
     # lit contacts.all() + nb_produits/nb_bons_commande (repli .count()) PAR
     # ligne : N+1. On précharge le fournisseur avec les mêmes annotations que

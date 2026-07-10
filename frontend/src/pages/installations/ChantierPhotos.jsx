@@ -3,7 +3,7 @@
 // (apps.records, cible installations.installation).
 // J43 — porté sur le système de design (Button, IconButton, AlertDialog).
 import { useEffect, useRef, useState } from 'react'
-import { useSelector } from 'react-redux'
+import { useIsAdmin } from '../../hooks/useHasPermission'
 import {
   Plus, X, FileText, ChevronLeft, ChevronRight,
 } from 'lucide-react'
@@ -35,7 +35,7 @@ const MAX_SIZE = 20 * 1024 * 1024
 const ACCEPTED = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp']
 
 export default function ChantierPhotos({ installationId }) {
-  const isAdmin = useSelector((s) => s.auth.role) === 'admin'
+  const isAdmin = useIsAdmin()
   const [items, setItems] = useState([])
   const [busyPhase, setBusyPhase] = useState(null)
   const [toDelete, setToDelete] = useState(null)

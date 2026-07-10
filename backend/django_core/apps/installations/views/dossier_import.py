@@ -8,13 +8,13 @@ via ``TenantMixin`` : référence/société/created_by posés côté serveur ;
 fournisseur/bon_commande validés tenant. Cross-app : ``stock.Fournisseur`` /
 ``stock.BonCommandeFournisseur`` en string-FK.
 """
-from rest_framework import viewsets, status
+from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet
 
 from apps.ventes.utils.references import create_with_reference
 
@@ -35,7 +35,7 @@ STATUT_ORDER = [
 ]
 
 
-class DossierImportViewSet(TenantMixin, viewsets.ModelViewSet):
+class DossierImportViewSet(CompanyScopedModelViewSet):
     """FG315 — dossiers d'import. Lecture tout rôle, écriture responsable/admin.
     Référence anti-collision + société + `created_by` posés serveur ;
     fournisseur/bon_commande validés tenant. Filtrable par `statut_douane`,

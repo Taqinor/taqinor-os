@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSelector } from 'react-redux'
+import { useHasPermission, useIsAdmin, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { Plus, Pencil, Trash2, Package, ShoppingCart, BarChart3 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import {
@@ -222,19 +223,21 @@ function ScorecardModal({ fournisseur, onClose }) {
 }
 
 export default function FournisseursStock() {
-  const role = useSelector((s) => s.auth.role)
-  const permissions = useSelector((s) => s.auth.permissions) || []
-  const canWrite = permissions.length
-    ? permissions.includes('stock_modifier')
-    : (role === 'responsable' || role === 'admin')
-  const canDelete = role === 'admin'
+  // ARC47 — gating via le hook partagé. `hasFinePermissions` (présence de
+  // codes ERP, PAS un droit) choisit la branche ; hooks appelés
+  // inconditionnellement. Sémantique identique à l'origine.
+  const hasFinePermissions = useSelector((s) => (s.auth.permissions || []).length > 0)
+  const canWriteViaPerm = useHasPermission('stock_modifier')
+  const canWriteViaRole = useIsAdminOrResponsable()
+  const canWrite = hasFinePermissions ? canWriteViaPerm : canWriteViaRole
+  const canDelete = useIsAdmin()
 
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [selected, setSelected] = useState(null) // objet fournisseur ou {} (nouveau)
   const [scorecard, setScorecard] = useState(null) // WR4 — perf fournisseur (admin)
-  const isAdmin = role === 'admin'
+  const isAdmin = canDelete
 
   // setState n'arrive que dans les callbacks asynchrones (jamais synchrone dans
   // l'effet) : l'état initial loading=true couvre le premier chargement.

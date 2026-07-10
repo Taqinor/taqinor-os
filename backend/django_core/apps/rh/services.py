@@ -2713,3 +2713,76 @@ def planifier_appreciations_pour_societe(company, *, aujourd_hui=None,
         'nb_a_creer': len(a_creer),
         'nb_deja': nb_deja,
     }
+
+
+# ── ARC13 — import générique (framework `apps.dataimport`) ─────────────────
+
+def _parse_date_import(valeur):
+    """Normalise une valeur de date issue d'un import (str ISO/FR ou objet
+    date/datetime déjà résolu par openpyxl) ; ``None`` si vide/invalide."""
+    import datetime as _dt
+
+    if valeur is None or valeur == '':
+        return None
+    if isinstance(valeur, _dt.datetime):
+        return valeur.date()
+    if isinstance(valeur, _dt.date):
+        return valeur
+    for fmt in ('%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y'):
+        try:
+            return _dt.datetime.strptime(str(valeur).strip(), fmt).date()
+        except (ValueError, AttributeError):
+            continue
+    return None
+
+
+def creer_dossier_employe_import(company, ligne):
+    """ARC13 — Crée (ou saute si doublon) UN dossier employé depuis une ligne
+    d'import CSV/XLSX (dict de colonnes déjà nettoyées), via
+    ``apps.rh.services`` — jamais le modèle ``DossierEmploye`` directement
+    (contrat du framework ``apps.dataimport``, même motif que
+    ``creer_vehicule_import`` XFLT22).
+
+    Colonnes attendues : ``matricule`` (obligatoire, clé d'idempotence),
+    ``nom`` (obligatoire), ``prenom``, ``email``, ``telephone``, ``cin``,
+    ``poste``, ``date_embauche``, ``type_contrat``. Idempotent sur
+    ``(company, matricule)`` (même contrainte d'unicité que le modèle) : une
+    ligne dont le matricule existe déjà pour la société est SAUTÉE (retourne
+    ``'doublon'``), jamais mise à jour ni dupliquée. Retourne
+    ``('cree'|'doublon'|'erreur', message|None)``.
+    """
+    from .models import DossierEmploye
+
+    matricule = str(ligne.get('matricule', '') or '').strip()
+    if not matricule:
+        return 'erreur', 'Matricule manquant.'
+    nom = str(ligne.get('nom', '') or '').strip()
+    if not nom:
+        return 'erreur', 'Nom manquant.'
+
+    if DossierEmploye.objects.filter(
+            company=company, matricule=matricule).exists():
+        return 'doublon', None
+
+    type_brut = str(ligne.get('type_contrat', '') or '').strip().lower()
+    types_valides = {c for c, _ in DossierEmploye.TypeContrat.choices}
+    type_contrat = type_brut if type_brut in types_valides \
+        else DossierEmploye.TypeContrat.CDI
+
+    try:
+        DossierEmploye.objects.create(
+            company=company,
+            matricule=matricule,
+            nom=nom,
+            prenom=str(ligne.get('prenom', '') or '').strip(),
+            email=str(ligne.get('email', '') or '').strip(),
+            telephone=str(ligne.get('telephone', '') or '').strip(),
+            cin=str(ligne.get('cin', '') or '').strip(),
+            poste=str(ligne.get('poste', '') or '').strip(),
+            date_embauche=_parse_date_import(ligne.get('date_embauche')),
+            type_contrat=type_contrat,
+        )
+    except Exception as exc:  # pragma: no cover - défensif, erreur inattendue
+        return 'erreur', str(exc)
+
+    return 'cree', None

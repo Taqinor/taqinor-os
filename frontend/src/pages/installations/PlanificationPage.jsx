@@ -11,7 +11,7 @@
 // possède la refonte du statut/stepper) : ce module est une surface neuve,
 // autonome, réutilisant le kit ui/ existant (Card, Tabs, DataTable, Select…).
 import { useEffect, useMemo, useState } from 'react'
-import { useSelector } from 'react-redux'
+import { useIsAdmin } from '../../hooks/useHasPermission'
 import {
   CalendarRange, Navigation, Users, AlertTriangle, Scale, Truck,
   Wrench, Gauge, ExternalLink,
@@ -469,7 +469,7 @@ function CamionnettesTab() {
 // ── Outils par chantier — N43 (régime 82-21) + FG79 (interventions standard) +
 // FG71 (coût/marge, admin-only) ──────────────────────────────────────────────
 export function OutilsChantierTab() {
-  const isAdmin = useSelector((s) => s.auth.role) === 'admin'
+  const isAdmin = useIsAdmin()
   const [chantiers, setChantiers] = useState([])
   const [chantierId, setChantierId] = useState('')
   const [kwc, setKwc] = useState('')

@@ -11,15 +11,22 @@ import { configureStore } from '@reduxjs/toolkit'
 import React from 'react'
 
 import authReducer from '../features/auth/store/authSlice'
-import { useHasPermission, useCanCreateProduit, PRODUIT_CREATE_ROLES } from './useHasPermission'
+import {
+  useHasPermission,
+  useHasRole,
+  useIsAdmin,
+  useIsAdminOrResponsable,
+  useCanCreateProduit,
+  PRODUIT_CREATE_ROLES,
+} from './useHasPermission'
 
-function renderWithAuth({ role_nom = null, permissions = [] } = {}) {
+function renderWithAuth({ role = 'normal', role_nom = null, permissions = [] } = {}) {
   const store = configureStore({
     reducer: { auth: authReducer },
     preloadedState: {
       auth: {
         user: { id: 1 },
-        role: 'normal',
+        role,
         role_nom,
         permissions,
         isAuthenticated: true,
@@ -76,5 +83,40 @@ describe('useHasPermission (QG5)', () => {
     expect(renderHook(() => useCanCreateProduit(), { wrapper: magasinier }).result.current).toBe(false)
 
     expect(PRODUIT_CREATE_ROLES).toEqual(['Directeur', 'Commercial responsable'])
+  })
+})
+
+// ARC47 — le gating par palier machine (state.auth.role) passe désormais par
+// useHasRole ; on vérifie la parité stricte avec l'ancien `role === X`.
+describe('useHasRole (ARC47)', () => {
+  it('autorise quand le palier courant est dans la liste blanche', () => {
+    const wrapper = renderWithAuth({ role: 'admin' })
+    expect(renderHook(() => useHasRole(['admin']), { wrapper }).result.current).toBe(true)
+  })
+
+  it('refuse quand le palier courant est hors liste', () => {
+    const wrapper = renderWithAuth({ role: 'normal' })
+    expect(renderHook(() => useHasRole(['admin']), { wrapper }).result.current).toBe(false)
+  })
+
+  it('gère une liste multi-palier (responsable OU admin)', () => {
+    const resp = renderWithAuth({ role: 'responsable' })
+    expect(renderHook(() => useHasRole(['responsable', 'admin']), { wrapper: resp }).result.current).toBe(true)
+    const norm = renderWithAuth({ role: 'normal' })
+    expect(renderHook(() => useHasRole(['responsable', 'admin']), { wrapper: norm }).result.current).toBe(false)
+  })
+
+  it('useIsAdmin / useIsAdminOrResponsable reflètent les paliers', () => {
+    const admin = renderWithAuth({ role: 'admin' })
+    expect(renderHook(() => useIsAdmin(), { wrapper: admin }).result.current).toBe(true)
+    expect(renderHook(() => useIsAdminOrResponsable(), { wrapper: admin }).result.current).toBe(true)
+
+    const resp = renderWithAuth({ role: 'responsable' })
+    expect(renderHook(() => useIsAdmin(), { wrapper: resp }).result.current).toBe(false)
+    expect(renderHook(() => useIsAdminOrResponsable(), { wrapper: resp }).result.current).toBe(true)
+
+    const norm = renderWithAuth({ role: 'normal' })
+    expect(renderHook(() => useIsAdmin(), { wrapper: norm }).result.current).toBe(false)
+    expect(renderHook(() => useIsAdminOrResponsable(), { wrapper: norm }).result.current).toBe(false)
   })
 })

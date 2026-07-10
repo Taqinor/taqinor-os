@@ -8,13 +8,13 @@
 Toutes les vues sont multi-tenant via ``TenantMixin`` : le queryset est filtré
 sur la société de l'utilisateur et la société est posée côté serveur dans
 ``perform_create`` (jamais lue du corps de la requête)."""
-from rest_framework import viewsets, status
+from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import (
     Installation, JalonProjet, ModeleProjet, ReunionChantier,
@@ -35,7 +35,7 @@ def _check_installation_tenant(serializer, company):
         raise ValidationError({'installation': 'Chantier inconnu.'})
 
 
-class JalonProjetViewSet(TenantMixin, viewsets.ModelViewSet):
+class JalonProjetViewSet(CompanyScopedModelViewSet):
     """FG293 — jalons & phases de projet d'un chantier (dates cible & réelle).
     Lecture tout rôle, écriture responsable/admin. Filtrable par `installation`.
     Société posée côté serveur."""
@@ -72,7 +72,7 @@ class JalonProjetViewSet(TenantMixin, viewsets.ModelViewSet):
                 pass
 
 
-class ModeleProjetViewSet(TenantMixin, viewsets.ModelViewSet):
+class ModeleProjetViewSet(CompanyScopedModelViewSet):
     """FG296 — modèles de projet (templates de chantier-type). Lecture tout
     rôle, écriture responsable/admin. L'action `instancier` applique le modèle à
     un chantier (pré-crée jalons + BoM type). Société posée côté serveur."""
@@ -116,7 +116,7 @@ class ModeleProjetViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(result, status=status.HTTP_200_OK)
 
 
-class ReunionChantierViewSet(TenantMixin, viewsets.ModelViewSet):
+class ReunionChantierViewSet(CompanyScopedModelViewSet):
     """FG298 — comptes-rendus de réunion de chantier (ordre du jour / présents /
     décisions / actions). Lecture tout rôle, écriture responsable/admin.
     Filtrable par `installation`. Société + rédacteur posés côté serveur."""

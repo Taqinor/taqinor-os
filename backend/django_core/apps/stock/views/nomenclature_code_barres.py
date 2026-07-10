@@ -1,6 +1,6 @@
 from rest_framework import viewsets
 
-from authentication.mixins import TenantMixin
+from core.viewsets import CompanyScopedModelViewSet
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 
 from ..models import NomenclatureCodeBarres, RegleCodeBarres
@@ -15,7 +15,7 @@ from ..serializers import (
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class NomenclatureCodeBarresViewSet(TenantMixin, viewsets.ModelViewSet):
+class NomenclatureCodeBarresViewSet(CompanyScopedModelViewSet):
     """ZSTK12 — nomenclatures de code-barres (Default/GS1) configurables par
     société. Lecture pour tout rôle, écriture Responsable/Admin (config
     sensible : une règle mal formée peut mal router un scan)."""

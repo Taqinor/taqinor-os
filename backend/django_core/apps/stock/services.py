@@ -6016,3 +6016,39 @@ def decouper_produit(*, company, produit_source, quantite_consommee,
         'cout_unitaire': cout_unitaire, 'produit_source': produit_source,
         'produit_cible': cible, 'numero_lot': numero_lot,
     }
+
+
+# ── ARC21 — Bascule write-path identité (founder-gated, OFF par défaut) ──────
+
+def ecrire_identite_fournisseur(fournisseur) -> bool:
+    """ARC21 (founder-gated, OFF par défaut) — quand la bascule write-path est
+    ACTIVE (``TIERS_SOURCE_ECRITURE`` ON), pousse l'identité du fournisseur vers
+    son ``Tiers`` (source d'écriture unique) ; le fournisseur relira le miroir.
+
+    Flag OFF (défaut) : NO-OP strict — renvoie ``False`` sans rien écrire (le
+    fournisseur reste l'unique chemin d'écriture, comportement byte-identique à
+    aujourd'hui). Best-effort ; ne fait jamais échouer l'appelant. Le prix
+    d'achat n'est JAMAIS concerné (identité seulement).
+
+    Voir docs/decisions/ARC21-tiers-source-ecriture.md.
+    """
+    try:
+        from apps.tiers import services as tiers_services
+        if not tiers_services.identite_source_est_tiers():
+            return False  # flag OFF — rien ne change.
+        if fournisseur is None or fournisseur.tiers_id is None:
+            return False
+        return tiers_services.ecrire_identite(
+            company=fournisseur.company, tiers=fournisseur.tiers,
+            champs={
+                'nom': fournisseur.nom or '',
+                'email': fournisseur.email or '',
+                'telephone': fournisseur.telephone or '',
+                'adresse': fournisseur.adresse or '',
+                'ice': fournisseur.ice or '',
+                'rc': fournisseur.rc or '',
+                'identifiant_fiscal': fournisseur.identifiant_fiscal or '',
+                'rib': fournisseur.rib or '',
+            })
+    except Exception:
+        return False

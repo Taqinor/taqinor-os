@@ -17,13 +17,13 @@ from math import asin, cos, radians, sin, sqrt
 from django.contrib.auth import get_user_model
 from django.http import HttpResponse
 from django.utils import timezone
-from rest_framework import viewsets, status
+from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
 from .models import ContratMaintenance, Ticket
 from .pdf import rapport_maintenance_pdf
@@ -176,7 +176,7 @@ def generer_visites_dues(company, user, avance_jours=0):
     return genere
 
 
-class ContratMaintenanceViewSet(TenantMixin, viewsets.ModelViewSet):
+class ContratMaintenanceViewSet(CompanyScopedModelViewSet):
     """Contrats de maintenance (T16). Lecture tout rôle, écriture responsable/
     admin. ?due=1 → seulement les contrats dont la visite est due."""
     queryset = ContratMaintenance.objects.select_related(

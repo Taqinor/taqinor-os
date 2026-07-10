@@ -29,6 +29,7 @@ from authentication.permissions import (  # noqa: F401
     IsResponsableOrAdmin,
     IsAdminRole,
 )
+from core.viewsets import CompanyScopedModelViewSet  # noqa: F401  ARC5
 from ..utils.references import create_with_reference  # noqa: F401
 from ..utils.company_settings import create_numbered  # noqa: F401
 
@@ -52,7 +53,18 @@ def _company_qs(qs, user):
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-class DevisViewSet(viewsets.ModelViewSet):
+class DevisViewSet(CompanyScopedModelViewSet):
+    # ARC5 — sweep TenantMixin : base transverse unique (CompanyScopedModelViewSet
+    # = TenantMixin + ModelViewSet). get_queryset (portée de visibilité +
+    # _company_qs) / perform_create / perform_update / get_permissions SURCHARGENT
+    # la base : scoping société et matrice 401/403/404 INCHANGÉS.
+    #   Règle #4 : ce sweep ne touche NI le statut NI la sérialisation Devis. Le
+    #   moteur ne change jamais les statuts. L'@action `proposal` (chemin canonique
+    #   du PDF client, IsResponsableOrAdmin) reste une LECTURE AUTHENTIFIÉE scopée
+    #   société : `self.get_object()` passe par get_queryset (devis d'une autre
+    #   société → 404). Elle N'EST PAS un endpoint public — l'accès CLIENT au PDF
+    #   passe par les vues tokenisées ShareLink de `public_views.py`
+    #   (AllowAny, hors périmètre de ce sweep), qui restent inchangées.
     queryset = Devis.objects.select_related(
         'client', 'created_by', 'lead', 'bon_commande', 'signature',
         'superseded_by', 'version_parent',

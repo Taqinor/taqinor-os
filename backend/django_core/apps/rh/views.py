@@ -1546,9 +1546,12 @@ class PointageViewSet(_RhBaseViewSet):
         """XRH13 — importe un CSV de pointeuse externe (device_user_id,
         horodatage, sens). Mappe via ``EmployeDeviceMap`` (société scopée) ;
         idempotent par ``(employe, horodatage)`` ; les lignes sans mapping
-        connu sont rapportées en erreur (jamais silencieusement ignorées)."""
-        import csv
-        import io
+        connu sont rapportées en erreur (jamais silencieusement ignorées).
+
+        ARC13 — lecture déléguée à ``apps.dataimport.parsing.iter_rows``
+        (parseur générique partagé) au lieu d'un ``csv.DictReader`` local ;
+        comportement inchangé (mêmes en-têtes, mêmes clés de lignes)."""
+        from apps.dataimport.parsing import iter_rows
 
         f = request.FILES.get('file')
         if f is None:
@@ -1556,13 +1559,11 @@ class PointageViewSet(_RhBaseViewSet):
                 {'detail': 'Aucun fichier fourni.'},
                 status=status.HTTP_400_BAD_REQUEST)
         try:
-            text = f.read().decode('utf-8-sig', errors='replace')
+            _headers, rows = iter_rows(f.read(), f.name)
         except Exception:
             return Response(
                 {'detail': 'Fichier illisible (encodage invalide).'},
                 status=status.HTTP_400_BAD_REQUEST)
-        reader = csv.DictReader(io.StringIO(text))
-        rows = list(reader)
         result = services.importer_pointages_csv(
             request.user.company, rows)
         return Response(result, status=status.HTTP_200_OK)

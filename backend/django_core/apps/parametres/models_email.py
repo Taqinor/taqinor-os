@@ -25,38 +25,41 @@ from django.db import models
 
 # Sujet + corps par défaut pour chaque clé. Le défaut s'applique tant que la
 # société n'a pas personnalisé. Placeholders supportés (parité WhatsApp) :
-# {civilite} {nom} {reference} {lien} {n}.
+# {civilite} {nom} {reference} {lien} {n} {entreprise}.
+# SCA25 — {entreprise} : nom de la société émettrice (CompanyProfile), résolu
+# par ``render`` ; à défaut de profil nommé, retombe sur le littéral historique
+# (« Taqinor », « TAQINOR » pour envoi_devis) — rendu byte-identique sans profil.
 EMAIL_TEMPLATE_DEFAULTS = {
     'devis': {
-        'sujet': 'Votre devis Taqinor ({reference})',
+        'sujet': 'Votre devis {entreprise} ({reference})',
         'corps':
             'Bonjour {civilite} {nom},\n\n'
-            'Veuillez trouver votre devis Taqinor ({reference}) au lien '
+            'Veuillez trouver votre devis {entreprise} ({reference}) au lien '
             'suivant : {lien}\n\n'
-            'Cordialement,\nL\'équipe Taqinor',
+            'Cordialement,\nL\'équipe {entreprise}',
     },
     'facture': {
-        'sujet': 'Votre facture Taqinor ({reference})',
+        'sujet': 'Votre facture {entreprise} ({reference})',
         'corps':
             'Bonjour {civilite} {nom},\n\n'
-            'Veuillez trouver votre facture Taqinor ({reference}) au lien '
+            'Veuillez trouver votre facture {entreprise} ({reference}) au lien '
             'suivant : {lien}\n\n'
-            'Cordialement,\nL\'équipe Taqinor',
+            'Cordialement,\nL\'équipe {entreprise}',
     },
     'relance': {
-        'sujet': 'Rappel — facture Taqinor ({reference})',
+        'sujet': 'Rappel — facture {entreprise} ({reference})',
         'corps':
             'Bonjour {civilite} {nom},\n\n'
-            'Petit rappel concernant votre facture Taqinor ({reference}) : '
+            'Petit rappel concernant votre facture {entreprise} ({reference}) : '
             '{lien}\n\n'
-            'Cordialement,\nL\'équipe Taqinor',
+            'Cordialement,\nL\'équipe {entreprise}',
     },
     'notification': {
-        'sujet': 'Notification Taqinor',
+        'sujet': 'Notification {entreprise}',
         'corps':
             'Bonjour {civilite} {nom},\n\n'
             'Vous avez une nouvelle notification concernant {reference}.\n\n'
-            'Cordialement,\nL\'équipe Taqinor',
+            'Cordialement,\nL\'équipe {entreprise}',
     },
     # XSAV4 — transitions de ticket SAV (client). {lien} = lien-client FG86.
     'ticket_recu': {
@@ -65,7 +68,7 @@ EMAIL_TEMPLATE_DEFAULTS = {
             'Bonjour {civilite} {nom},\n\n'
             'Votre ticket SAV ({reference}) a bien été reçu par notre '
             'équipe. Suivi : {lien}\n\n'
-            'Cordialement,\nL\'équipe Taqinor',
+            'Cordialement,\nL\'équipe {entreprise}',
     },
     'ticket_planifie': {
         'sujet': 'Votre intervention {reference} est planifiée',
@@ -73,7 +76,7 @@ EMAIL_TEMPLATE_DEFAULTS = {
             'Bonjour {civilite} {nom},\n\n'
             'Votre intervention ({reference}) est planifiée. '
             'Suivi : {lien}\n\n'
-            'Cordialement,\nL\'équipe Taqinor',
+            'Cordialement,\nL\'équipe {entreprise}',
     },
     'ticket_resolu': {
         'sujet': 'Votre ticket SAV {reference} a été résolu',
@@ -81,7 +84,7 @@ EMAIL_TEMPLATE_DEFAULTS = {
             'Bonjour {civilite} {nom},\n\n'
             'Votre ticket SAV ({reference}) a été résolu. '
             'Suivi : {lien}\n\n'
-            'Cordialement,\nL\'équipe Taqinor',
+            'Cordialement,\nL\'équipe {entreprise}',
     },
     # XFAC7 — rappel de courtoisie PRÉ-échéance (J-N avant échéance, jamais
     # après). Ton amical, distinct de la relance (qui part APRÈS échéance).
@@ -89,9 +92,9 @@ EMAIL_TEMPLATE_DEFAULTS = {
         'sujet': 'Rappel amical — échéance à venir ({reference})',
         'corps':
             'Bonjour {civilite} {nom},\n\n'
-            'Votre facture Taqinor ({reference}) arrive prochainement à '
+            'Votre facture {entreprise} ({reference}) arrive prochainement à '
             'échéance. Vous pouvez régler dès maintenant : {lien}\n\n'
-            'Merci de votre confiance,\nL\'équipe Taqinor',
+            'Merci de votre confiance,\nL\'équipe {entreprise}',
     },
     # XSTK22 — notifications client aux transitions de sa livraison.
     'livraison_en_transit': {
@@ -100,7 +103,7 @@ EMAIL_TEMPLATE_DEFAULTS = {
             'Bonjour {civilite} {nom},\n\n'
             'Votre matériel ({reference}) est en cours d\'acheminement vers '
             'votre chantier. Suivi : {lien}\n\n'
-            'Cordialement,\nL\'équipe Taqinor',
+            'Cordialement,\nL\'équipe {entreprise}',
     },
     'livraison_livree': {
         'sujet': 'Votre livraison {reference} est arrivée',
@@ -108,7 +111,7 @@ EMAIL_TEMPLATE_DEFAULTS = {
             'Bonjour {civilite} {nom},\n\n'
             'Votre matériel ({reference}) a été livré sur votre chantier. '
             'Suivi : {lien}\n\n'
-            'Cordialement,\nL\'équipe Taqinor',
+            'Cordialement,\nL\'équipe {entreprise}',
     },
     # ZSAL5 — gabarit dédié « envoi de devis » (QJ14). Défaut = texte
     # actuellement codé en dur dans ``ventes.views.devis.envoyer_email``
@@ -124,7 +127,7 @@ EMAIL_TEMPLATE_DEFAULTS = {
             'Vous pouvez également consulter et signer votre proposition en '
             'ligne :\n{lien}\n\n'
             'Nous restons à votre disposition pour toute question.\n\n'
-            'Cordialement,\nL\'équipe TAQINOR',
+            'Cordialement,\nL\'équipe {entreprise}',
     },
 }
 
@@ -132,23 +135,36 @@ EMAIL_TEMPLATE_DEFAULTS = {
 # Placeholders autorisés par clé (parité avec ``MessageTemplate``). On valide au
 # sérialiseur qu'un sujet/corps ne référence QUE ces tokens-là.
 EMAIL_TEMPLATE_PLACEHOLDERS = {
-    'devis': ['{civilite}', '{nom}', '{reference}', '{lien}'],
-    'facture': ['{civilite}', '{nom}', '{reference}', '{lien}'],
-    'relance': ['{civilite}', '{nom}', '{reference}', '{lien}'],
-    'notification': ['{civilite}', '{nom}', '{reference}', '{lien}', '{n}'],
-    'ticket_recu': ['{civilite}', '{nom}', '{reference}', '{lien}'],
-    'ticket_planifie': ['{civilite}', '{nom}', '{reference}', '{lien}'],
-    'ticket_resolu': ['{civilite}', '{nom}', '{reference}', '{lien}'],
-    'pre_echeance': ['{civilite}', '{nom}', '{reference}', '{lien}'],
-    'livraison_en_transit': ['{civilite}', '{nom}', '{reference}', '{lien}'],
-    'livraison_livree': ['{civilite}', '{nom}', '{reference}', '{lien}'],
+    'devis': ['{civilite}', '{nom}', '{reference}', '{lien}', '{entreprise}'],
+    'facture': ['{civilite}', '{nom}', '{reference}', '{lien}', '{entreprise}'],
+    'relance': ['{civilite}', '{nom}', '{reference}', '{lien}', '{entreprise}'],
+    'notification': [
+        '{civilite}', '{nom}', '{reference}', '{lien}', '{n}', '{entreprise}'],
+    'ticket_recu': [
+        '{civilite}', '{nom}', '{reference}', '{lien}', '{entreprise}'],
+    'ticket_planifie': [
+        '{civilite}', '{nom}', '{reference}', '{lien}', '{entreprise}'],
+    'ticket_resolu': [
+        '{civilite}', '{nom}', '{reference}', '{lien}', '{entreprise}'],
+    'pre_echeance': [
+        '{civilite}', '{nom}', '{reference}', '{lien}', '{entreprise}'],
+    'livraison_en_transit': [
+        '{civilite}', '{nom}', '{reference}', '{lien}', '{entreprise}'],
+    'livraison_livree': [
+        '{civilite}', '{nom}', '{reference}', '{lien}', '{entreprise}'],
     # ZSAL5 — {validite} en plus (date limite de validité du devis).
     # XSAL17 — {lien_rdv} : lien de réservation de visite, résolu au moment
     # de l'envoi (apps.crm.services.resoudre_lien_rdv / public_booking_url).
     'envoi_devis': [
         '{civilite}', '{nom}', '{reference}', '{lien}', '{validite}',
-        '{lien_rdv}'],
+        '{lien_rdv}', '{entreprise}'],
 }
+
+# SCA25 — littéral de repli du placeholder {entreprise} quand la société n'a
+# pas de profil nommé : le littéral HISTORIQUE de chaque clé (casse préservée)
+# pour un rendu byte-identique à l'existant sans profil.
+_ENTREPRISE_FALLBACKS = {'envoi_devis': 'TAQINOR'}
+_ENTREPRISE_FALLBACK_DEFAULT = 'Taqinor'
 
 
 class EmailTemplate(models.Model):
@@ -224,8 +240,22 @@ class EmailTemplate(models.Model):
 
         Substitution tolérante : un placeholder absent du ``context`` est laissé
         tel quel (jamais de ``KeyError``) — l'appelant fournit ce qu'il a.
+
+        SCA25 — ``{entreprise}`` est résolu ICI (sauf si l'appelant le fournit) :
+        nom du profil société (``parametres.selectors.company_identity``), sinon
+        littéral historique de la clé — un tenant nommé voit SON nom, une société
+        sans profil garde le rendu d'aujourd'hui.
         """
         tpl = cls.get_template(company, cle)
+        if 'entreprise' not in context:
+            nom = ''
+            try:
+                from apps.parametres.selectors import company_identity
+                nom = (company_identity(company).get('nom') or '').strip()
+            except Exception:  # pragma: no cover — best-effort, jamais bloquant
+                nom = ''
+            context['entreprise'] = nom or _ENTREPRISE_FALLBACKS.get(
+                cle, _ENTREPRISE_FALLBACK_DEFAULT)
         return {
             'sujet': _safe_format(tpl['sujet'], context),
             'corps': _safe_format(tpl['corps'], context),

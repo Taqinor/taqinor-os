@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Truck, Gauge, Wrench, ShieldCheck, Fuel, LineChart } from 'lucide-react'
 import { ModuleDashboard, EcheanceCenter } from '../../ui/module'
 import PageHeader from '../../components/layout/PageHeader'
 import flotteApi from '../../api/flotteApi'
+import useResource from '../../hooks/useResource'
 import { formatMAD, formatNumber } from '../../lib/format'
 import { alertesToEcheanceItems } from './flotte'
 
@@ -18,31 +18,22 @@ import { alertesToEcheanceItems } from './flotte'
 
 export default function FlotteCockpit() {
   const navigate = useNavigate()
-  const [board, setBoard] = useState(null)
-  const [alertes, setAlertes] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
 
-  const load = useCallback(() => {
-    let cancelled = false
-    setLoading(true)
-    setError(null)
-    Promise.all([flotteApi.tableauBord(), flotteApi.alertesEcheances()])
-      .then(([bd, al]) => {
-        if (cancelled) return
-        setBoard(bd?.data ?? null)
-        setAlertes(al?.data?.alertes ?? [])
-      })
-      .catch((err) => {
-        if (cancelled) return
-        setError(err?.response?.data?.detail || 'Tableau de bord indisponible.')
-      })
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
-  }, [])
-
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
-  useEffect(() => { load() }, [load])
+  // ARC45 — fetch/état mutualisé (data/loading/error/refetch, abort au démontage).
+  const { data, loading, error } = useResource(
+    () => Promise.all([flotteApi.tableauBord(), flotteApi.alertesEcheances()]),
+    undefined,
+    {
+      initialData: { board: null, alertes: [] },
+      select: ([bd, al]) => ({
+        board: bd?.data ?? null,
+        alertes: al?.data?.alertes ?? [],
+      }),
+      errorMessage: (err) =>
+        err?.response?.data?.detail || 'Tableau de bord indisponible.',
+    },
+  )
+  const { board, alertes } = data
 
   const veh = board?.vehicules ?? {}
   const total = veh.total ?? 0

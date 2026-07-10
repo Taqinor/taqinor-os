@@ -7060,16 +7060,16 @@ class BalanceOuvertureViewSet(viewsets.ViewSet):
             return Response(
                 {'detail': 'Exercice introuvable pour cette société.'},
                 status=status.HTTP_404_NOT_FOUND)
+        # ARC13 — lecture déléguée à ``apps.dataimport.parsing.iter_rows``
+        # (parseur générique partagé) au lieu d'un ``csv.DictReader`` local ;
+        # comportement inchangé (mêmes en-têtes, mêmes clés de lignes).
+        from apps.dataimport.parsing import iter_rows
         try:
-            text = f.read().decode('utf-8-sig', errors='replace')
+            _headers, rows = iter_rows(f.read(), f.name)
         except Exception:
             return Response(
                 {'detail': 'Fichier illisible (encodage invalide).'},
                 status=status.HTTP_400_BAD_REQUEST)
-        sample = text[:2000]
-        delim = ';' if sample.count(';') > sample.count(',') else ','
-        reader = csv.DictReader(io.StringIO(text), delimiter=delim)
-        rows = list(reader)
         result = services.importer_balance_ouverture(
             company, rows, exercice=exercice, user=request.user)
         if not result['ok']:
