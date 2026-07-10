@@ -165,6 +165,11 @@ export default function DevisList() {
   const [convertingId, setConvertingId] = useState(null)
   const [factureGenId, setFactureGenId] = useState(null) // devis id en cours de facturation
   const [pdfGenerating, setPdfGenerating] = useState({}) // id → true
+  // QX21 — au-delà de 30 s, la génération n'est PAS abandonnée : elle reste
+  // visible comme « toujours en cours » (le job Celery continue côté serveur)
+  // et le polling se poursuit à un rythme plus espacé, sans jamais relancer un
+  // second job (un seul dispatch(genererPdfDevis) par appel de genererUnPdf).
+  const [pdfSlowPoll, setPdfSlowPoll] = useState({}) // id → true
   const [pdfDownloading, setPdfDownloading] = useState({}) // id → true
   const [statutActionId, setStatutActionId] = useState(null) // envoi/refus en cours
   const [previewingId, setPreviewingId] = useState(null) // aperçu PDF en cours
@@ -613,20 +618,29 @@ export default function DevisList() {
   // l'enchaînement par lot.
   const genererUnPdf = async (d, { autoOpen = true } = {}) => {
     setPdfGenerating(prev => ({ ...prev, [d.id]: true }))
+    setPdfSlowPoll(prev => ({ ...prev, [d.id]: false }))
     try {
       await dispatch(genererPdfDevis({ id: d.id, options: buildPdfOptions(d) })).unwrap()
       let attempts = 0
+      // QX21 — 15 tentatives × 2 s = 30 s au rythme rapide ; passé ce cap, le
+      // job Celery n'est PAS relancé (un seul dispatch a eu lieu ci-dessus) —
+      // on continue simplement à interroger, plus espacé (10 s), et on affiche
+      // « toujours en cours » au lieu d'abandonner silencieusement.
+      const FAST_ATTEMPTS = 15
       const poll = async () => {
-        if (attempts++ > 15) {
+        const slow = attempts >= FAST_ATTEMPTS
+        attempts += 1
+        if (slow && !pdfSlowPoll[d.id]) {
+          setPdfSlowPoll(prev => ({ ...prev, [d.id]: true }))
           if (autoOpen) {
-            toast.error(`${d.reference} : le PDF met plus de temps que prévu — réessayez le téléchargement dans un instant.`)
+            toast(`${d.reference} : le PDF est toujours en cours de génération — la page continue de vérifier automatiquement.`)
           }
-          return
         }
         try {
           const res = await ventesApi.getDevisById(d.id)
           if (res.data.fichier_pdf) {
             dispatch(fetchDevis())
+            setPdfSlowPoll(prev => ({ ...prev, [d.id]: false }))
             if (autoOpen) {
               try {
                 const pdfRes = await ventesApi.telechargerPdfDevis(d.id)
@@ -636,9 +650,9 @@ export default function DevisList() {
               }
             }
           } else {
-            setTimeout(poll, 2000)
+            setTimeout(poll, slow ? 10000 : 2000)
           }
-        } catch { /* ignore poll errors */ }
+        } catch { /* ignore poll errors — la boucle continue */ }
       }
       setTimeout(poll, 2000)
       return true
@@ -1248,6 +1262,7 @@ export default function DevisList() {
                   const effStatut = d.is_expired ? 'expire' : d.statut
                   const isGenerating = pdfGenerating[d.id]
                   const isDownloading = pdfDownloading[d.id]
+                  const isSlowPolling = !!pdfSlowPoll[d.id]
                   return (
                     <Fragment key={d.id}>
                     <tr id={`devis-row-${d.id}`}
@@ -1628,6 +1643,14 @@ export default function DevisList() {
                           >
                             <FileText /> PDF
                           </Button>
+                          {/* QX21 — passé 30 s, on n'abandonne plus le suivi : ce
+                              badge reste visible tant que le polling se poursuit
+                              (aucun second job n'est jamais relancé en dessous). */}
+                          {isSlowPolling && (
+                            <Badge tone="warning" title="Le PDF est toujours en cours de génération côté serveur — la page continue de vérifier automatiquement.">
+                              PDF toujours en cours…
+                            </Badge>
+                          )}
                           {d.fichier_pdf && (
                             <Button
                               size="sm"
