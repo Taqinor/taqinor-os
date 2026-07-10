@@ -29,6 +29,11 @@ SCA42 — no NEW flat (non-company-prefixed) storage key outside the frozen
     baseline: new upload keys go ``{app}/{company_id}/{uuid}.ext`` (ERR75).
 SCA29 — no NEW hardcoded ``taqinor`` brand string (TAQINOR / taqinor.ma /
     contact@taqinor) in user-facing surfaces outside the frozen baseline.
+SCA37 — no NEW hand-rolled « document métier » (statut à choices + ligne sœur
+    ``Ligne<Nom>`` + champ ``montant_ttc``) outside ``core.documents.DocumentMetier``
+    (SCA30/31 kit), against a frozen baseline that can only shrink. Devis /
+    Facture / BonCommande / Avoir are a PERMANENT, code-named exclusion
+    (rule #4) — never baseline-listed, never retrofit-required.
 
 Run
 ---
@@ -52,8 +57,10 @@ from apps.records.platform_guards import (  # noqa: E402
     filefield_error_line,
     flat_storage_key_error_line,
     handrolled_model_error_line,
+    kit_bypass_error_line,
     new_branding_hits,
     new_handrolled_models,
+    new_kit_bypass_documents,
     new_unscoped_viewsets,
     numbering_error_line,
     scan_activity_classes,
@@ -61,6 +68,7 @@ from apps.records.platform_guards import (  # noqa: E402
     scan_filefields,
     scan_flat_storage_key,
     scan_handrolled_models,
+    scan_kit_bypass_documents,
     scan_numbering,
     scan_unscoped_viewsets,
     scan_weasyprint_import,
@@ -257,6 +265,24 @@ def check_branding() -> list[str]:
     return [branding_error_line(p) for p in sorted(set(find_new_branding_hits()))]
 
 
+def find_new_kit_bypass_documents() -> list[str]:
+    """SCA37 — documents NOUVEAUX (hors baseline) hand-roulant l'anatomie du kit
+    (statut à choices + ligne sœur Ligne<Nom> + montant_ttc) sans hériter
+    ``DocumentMetier``. Les trois traits doivent cohabiter dans le MÊME fichier
+    de modèles (un seul passage par fichier, comme pour ARC8/ARC26)."""
+    found: list[str] = []
+    for path in _iter_model_files():
+        app = _app_of(path)
+        text = path.read_text(encoding="utf-8")
+        found.extend(scan_kit_bypass_documents(app, text))
+    return new_kit_bypass_documents(sorted(set(found)))
+
+
+def check_kit_bypass_documents() -> list[str]:
+    """SCA37 guard — plus de document métier hand-rollé hors kit (empty = OK)."""
+    return [kit_bypass_error_line(q) for q in sorted(find_new_kit_bypass_documents())]
+
+
 def run_checks() -> list[str]:
     """Run all platform guards; return the flat list of error lines."""
     errors: list[str] = []
@@ -268,6 +294,7 @@ def run_checks() -> list[str]:
     errors.extend(check_unscoped_viewsets())
     errors.extend(check_flat_storage_keys())
     errors.extend(check_branding())
+    errors.extend(check_kit_bypass_documents())
     return errors
 
 
