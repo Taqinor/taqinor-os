@@ -471,7 +471,22 @@ contradiction apparente à trancher SANS accès SSH à la boîte.
    fois, PERSISTE tel quel à travers tous les déploiements suivants — c'est
    cohérent avec l'hypothèse d'un `.env` jamais mis à jour vers `.prod`
    depuis le déploiement initial.
-3. **Sonde HTTPS read-only effectuée (2026-07-09, dans le budget autorisé de
+3. **Indice fort trouvé dans `deploy-prod.ps1:74`** (healthcheck post-
+   déploiement, YHARD11) : le script Python exécuté DANS le conteneur pour
+   sonder `core.health` fait explicitement
+   `os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'erp_agentique.settings.prod')`
+   AVANT `django.setup()`. `setdefault` ne pose la valeur QUE si la clé est
+   ABSENTE de l'environnement — si `DJANGO_SETTINGS_MODULE` était déjà réglé
+   sur `.prod` par le `.env` du serveur, ce `setdefault` serait un no-op
+   inutile. Sa présence même, écrite comme un FILET DE SÉCURITÉ explicite
+   pour CE SEUL sous-process de healthcheck, suggère que l'auteur du script
+   savait ou soupçonnait que le `.env` du serveur ne pose PAS
+   `DJANGO_SETTINGS_MODULE=erp_agentique.settings.prod` de façon fiable pour
+   le process gunicorn principal — cohérent avec l'hypothèse ci-dessus. (Ce
+   `setdefault` ne change RIEN au comportement du process gunicorn principal
+   lui-même, qui lit sa propre variable d'environnement au démarrage,
+   indépendamment de ce sous-process de sonde ponctuel.)
+4. **Sonde HTTPS read-only effectuée (2026-07-09, dans le budget autorisé de
    cette tâche)** :
    ```
    curl -sS -D - https://api.taqinor.ma/api/django/core/health/ready/
@@ -480,7 +495,7 @@ contradiction apparente à trancher SANS accès SSH à la boîte.
    octets — pas inspecté en détail, hors scope de cette sonde), headers de
    sécurité présents (`X-Content-Type-Options`, `Content-Security-Policy`,
    `X-Frame-Options` — DEUX fois avec des valeurs DIFFÉRENTES, `DENY` ET
-   `SAMEORIGIN, ce qui révèle que nginx ET Django posent CHACUN leurs propres
+   `SAMEORIGIN`, ce qui révèle que nginx ET Django posent CHACUN leurs propres
    headers de sécurité indépendamment — nginx pose `SAMEORIGIN`
    (`nginx.conf:70`), Django/prod.py pose `X_FRAME_OPTIONS='DENY'`
    (`prod.py:15`) — un chevauchement pré-existant hors scope de cette tâche,
@@ -493,27 +508,60 @@ contradiction apparente à trancher SANS accès SSH à la boîte.
    la contrainte de cette tâche** (aucune requête qui provoquerait un effet
    ou un risque sur le système vivant).
 
-**Conclusion** : la contradiction reste **NON TRANCHÉE avec certitude**
-depuis ce dépôt seul — mais l'analyse de fichiers converge vers une
-explication plausible et cohérente : **le `.env` du serveur Hetzner peut
-très bien pointer vers `settings.dev` plutôt que `settings.prod`**, auquel
-cas `prod.py:8` (qui EST correctement `DEBUG=False` dans le code committé)
-ne s'applique simplement jamais sur la boîte réelle. Ce n'est PAS un bug de
-code — le code prod.py est correct et sûr par construction. C'est, au pire,
-une question de configuration serveur (`.env` non aligné sur `.env.example`
-en matière de `DJANGO_SETTINGS_MODULE`).
+5. **Chaîne de déduction décisive (fichiers du dépôt + la sonde 200 OK
+   ci-dessus)** — elle permet de trancher BEAUCOUP plus fort que prévu :
+   - `erp_agentique/wsgi.py` (ce que gunicorn charge) fait
+     `os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'erp_agentique.settings.prod')`
+     — donc SANS la variable dans le `.env` serveur, gunicorn chargerait
+     BIEN `settings.prod`. Mais `manage.py` et `celery.py` défaut-ent sur
+     `settings.dev`, et `.env.example` pose
+     `DJANGO_SETTINGS_MODULE=erp_agentique.settings.dev` — un `.env` serveur
+     copié de l'exemple SURCHARGE le setdefault de wsgi.py vers `.dev`.
+   - `settings/prod.py:28-29` pose `SECURE_PROXY_SSL_HEADER =
+     ('HTTP_X_FORWARDED_PROTO', 'https')` + `SECURE_SSL_REDIRECT = True`.
+   - Or `backend/nginx/nginx.conf` (`location /api/django/`) fait
+     `proxy_set_header X-Forwarded-Proto $scheme` — nginx écoute en HTTP
+     PUR (port 80) derrière Caddy, donc `$scheme` vaut TOUJOURS `http` :
+     nginx ÉCRASE le `X-Forwarded-Proto: https` que Caddy avait posé
+     (`header_up X-Forwarded-Proto {scheme}`). Django ne voit donc JAMAIS
+     `https` dans ce header sur le chemin public.
+   - Conséquence si `settings.prod` était actif : `request.is_secure()` =
+     False sur CHAQUE requête → `SECURE_SSL_REDIRECT` renverrait un 301
+     vers https:// sur CHAQUE requête → la requête redirigée re-arrive avec
+     `X-Forwarded-Proto: http` → **boucle de redirection infinie, l'API
+     serait inutilisable**. Et le header `Strict-Transport-Security`
+     (SECURE_HSTS_SECONDS, prod.py:16) ne serait posé que sur une requête
+     jugée sécurisée — donc jamais sur ce chemin.
+   - **Observé en vif** : `200 OK` direct, AUCUN 301, AUCUN header
+     `Strict-Transport-Security` (deux réponses sondées). L'API est
+     manifestement utilisable en production depuis des mois.
 
-**DECISION (aucun changement unilatéral effectué)** : à confirmer par le
-fondateur lors d'un prochain accès SSH : `cat /opt/taqinor-os/.env | grep
-DJANGO_SETTINGS_MODULE` sur la boîte Hetzner. Si le résultat est
-`erp_agentique.settings.dev`, la note mémoire « DEBUG intentionally on » est
-avérée ET intentionnelle (aucune action requise, décision déjà prise par le
-fondateur dans le passé). Si le résultat est `erp_agentique.settings.prod`
-alors que du DEBUG=True est malgré tout observé en prod, il y aurait un
-véritable bug à investiguer (hors scope de cette tâche — nécessite l'accès
-qui manque ici). **Aucun changement de `settings/prod.py`, `docker-compose.
-prod.yml`, ni du `.env` serveur n'a été fait par cette tâche** — uniquement
-de la documentation.
+**Conclusion — l'évidence dit DEBUG probablement ACTIF en prod** : le
+comportement vivant observé est INCOMPATIBLE avec `settings.prod` actif
+(boucle 301 obligatoire vu l'écrasement X-Forwarded-Proto par nginx) et
+COMPATIBLE avec `settings.dev` actif (aucun SSL redirect, aucun HSTS,
+`DEBUG = True` — `dev.py:8`). Le module actif sur la boîte est donc, avec
+une confiance élevée, `erp_agentique.settings.dev` via le `.env` serveur —
+ce qui AVÈRE la note fondateur « DEBUG intentionally on » (mémoire
+`production_server.md`). Ce n'est PAS un bug du code committé : `prod.py`
+est correct par construction ; c'est l'état de configuration serveur.
+Reste à confirmer sur la boîte (une commande) :
+`cat /opt/taqinor-os/.env | grep DJANGO_SETTINGS_MODULE`.
+
+**DECISION (fondateur — aucun changement unilatéral effectué)** :
+1. Si « DEBUG on » reste voulu : rien à faire (état documenté ici).
+2. Si le fondateur veut passer en `settings.prod` un jour : il faudra
+   D'ABORD corriger l'écrasement `X-Forwarded-Proto` dans
+   `backend/nginx/nginx.conf` (relayer le header entrant de Caddy au lieu
+   de `$scheme`, ex. `proxy_set_header X-Forwarded-Proto
+   $http_x_forwarded_proto;`) — sinon la bascule casse l'API en boucle de
+   redirection le jour même. Cette correction n'a PAS été faite par cette
+   tâche (elle ne change rien tant que `.dev` est actif, et la décision de
+   bascule appartient au fondateur).
+
+**Aucun changement de `settings/prod.py`, `docker-compose.prod.yml`, ni du
+`.env` serveur n'a été fait par cette tâche** — uniquement de la
+documentation.
 
 ## Piste de découpage physique (SCA14)
 
