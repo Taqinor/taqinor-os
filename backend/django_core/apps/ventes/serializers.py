@@ -17,16 +17,25 @@ def _fallback_taux_tva(company, designation):
     comportement reste identique tant que les produits portent leur taux (cas
     nominal après seed_catalogue).
 
-    ARC23 — DÉFAUT branché sur le référentiel : pour une ligne standard, on
-    consulte d'abord le taux STANDARD par défaut du référentiel de la société
-    (`parametres.TauxTVA`). Absent (aucun référentiel actif) → repli sur le
-    comportement historique (`CompanyProfile.tva_standard` / 20). Un taux déjà
-    figé sur un document existant n'est JAMAIS réécrit (règle #4).
+    ARC23 — pour une ligne STANDARD, le knob éditable en Paramètres
+    (`CompanyProfile.tva_standard`, réglé par l'utilisateur) est PRIORITAIRE :
+    on le lit d'abord. Le référentiel `parametres.TauxTVA` (sans UI, seedé à
+    20 % pour chaque nouveau tenant par `signup_hooks.seed_taux_tva_hook`) ne
+    sert plus que de repli quand ce knob ne donne pas de taux, puis la constante
+    historique (20). Ainsi un tenant qui met « TVA standard » à 14 % voit 14 %
+    sur ses lignes de repli — le référentiel seedé ne le réprime plus. Un tenant
+    qui n'a jamais touché le champ garde sa valeur par défaut (20 %), inchangée.
+    Un taux déjà figé sur un document existant n'est JAMAIS réécrit (règle #4).
     """
     from apps.ventes.utils.company_settings import tva_standard, tva_panneaux
     d = (designation or '').lower()
     if 'panneau' in d:
         return tva_panneaux(company)
+    # Knob éditable (Paramètres) d'abord — l'édition de l'utilisateur prime.
+    standard = tva_standard(company)
+    if standard is not None:
+        return standard
+    # Repli : référentiel TauxTVA (sans UI), puis constante historique.
     try:
         from apps.parametres.models_taxes import TauxTVA
         referentiel = TauxTVA.default_taux(company)
@@ -34,7 +43,8 @@ def _fallback_taux_tva(company, designation):
         referentiel = None
     if referentiel is not None:
         return referentiel
-    return tva_standard(company)
+    from decimal import Decimal
+    return Decimal('20')
 
 
 class LigneDevisSerializer(serializers.ModelSerializer):
