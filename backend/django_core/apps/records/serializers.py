@@ -110,6 +110,35 @@ class ActivitySerializer(serializers.ModelSerializer):
         return str(target)
 
 
+class ChatterActivitySerializer(serializers.ModelSerializer):
+    """ARC8/ARC9 — enveloppe de LECTURE uniforme d'une entrée de chatter.
+
+    Sérialise une ``records.Activity`` portant une entrée de chatter (``kind``
+    renseigné) dans le format commun ``kind/field/field_label/old_value/
+    new_value/body/user/created_at`` — le MÊME contrat que consomme le frontend
+    (VX23 ChatterTimeline) quelle que soit l'app source. ``UniformChatter-
+    Serializer`` (ARC9) réutilise ces mêmes clés pour les 13 modèles maison, si
+    bien qu'un seul composant front lit toutes les timelines."""
+
+    user_username = serializers.CharField(
+        source='created_by.username', read_only=True, default=None)
+    target_model = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Activity
+        fields = [
+            'id', 'kind', 'field', 'field_label', 'old_value', 'new_value',
+            'body', 'user_username', 'object_id', 'target_model', 'created_at',
+        ]
+        read_only_fields = fields
+
+    def get_target_model(self, obj):
+        ct = obj.content_type
+        if ct is None:
+            return None
+        return f'{ct.app_label}.{ct.model}'
+
+
 class AttachmentSerializer(serializers.ModelSerializer):
     uploaded_by_nom = serializers.CharField(
         source='uploaded_by.username', read_only=True, default=None)

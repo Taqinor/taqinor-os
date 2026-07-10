@@ -51,6 +51,12 @@ ALLOWED_TARGETS = {
     # des événements majeurs (nouvelle version, statut, partage, signature) vit
     # à part dans `ged.DocumentActivity` (couche séparée, complète GED35).
     ('ged', 'document'),
+    # ARC8 — convergence du chatter : le contrat et le véhicule reçoivent le
+    # chatter GÉNÉRIQUE (records.Activity) via ChatterViewSetMixin. Leurs
+    # journaux maison (contrats.ContratActivity, flotte.ActiviteFlotte) restent
+    # intacts en parallèle (couche héritée, non touchée dans cette vague).
+    ('contrats', 'contrat'),
+    ('flotte', 'vehicule'),
 }
 
 
@@ -96,7 +102,24 @@ class ActivityType(models.Model):
 
 
 class Activity(models.Model):
-    """Activité planifiée rattachée à un enregistrement (générique)."""
+    """Activité planifiée rattachée à un enregistrement (générique).
+
+    ARC8 — sert AUSSI d'entrée de chatter unifiée (le « mail.thread » maison).
+    Les 13 modèles ``*Activity`` maison (crm.LeadActivity, sav.TicketActivity,
+    contrats.ContratActivity…) partagent tous la même forme
+    ``kind/field/old/new/body/user/timestamp`` ; les champs additifs ci-dessous
+    (tous nullable/vides par défaut) permettent à ``records.Activity`` de porter
+    une entrée de chatter — note manuelle (``kind=note``) ou journal de
+    changement (``kind=modification``) — sans dépendre d'un ``ActivityType``.
+    """
+
+    # ARC8 — familles d'entrées du chatter générique (alignées sur les 13
+    # modèles maison qu'il vise à remplacer à terme).
+    class Kind(models.TextChoices):
+        CREATION = 'creation', 'Création'
+        MODIFICATION = 'modification', 'Modification'
+        NOTE = 'note', 'Note'
+
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='activities')
@@ -112,8 +135,25 @@ class Activity(models.Model):
     personnelle = models.BooleanField(
         default=False, verbose_name='À-faire personnel')
 
+    # ARC8 — ``activity_type`` devient nullable : une entrée de CHATTER (note ou
+    # journal de changement) n'est pas une activité planifiée et n'a donc pas de
+    # type. Additif et rétro-compatible : toute activité PLANIFIÉE existante
+    # garde son type (non nul), le contrat 1:1 est préservé.
     activity_type = models.ForeignKey(
-        ActivityType, on_delete=models.PROTECT, related_name='activities')
+        ActivityType, on_delete=models.PROTECT, related_name='activities',
+        null=True, blank=True)
+    # ARC8 — champs de chatter (nullable/vides par défaut) : une activité
+    # planifiée « classique » les laisse à leur défaut et se comporte comme
+    # avant. ``kind`` vide = activité planifiée ; ``kind`` renseigné = entrée
+    # de chatter.
+    kind = models.CharField(
+        max_length=15, choices=Kind.choices, blank=True, default='',
+        verbose_name='Type de chatter')
+    field = models.CharField(max_length=100, blank=True, null=True)
+    field_label = models.CharField(max_length=150, blank=True, null=True)
+    old_value = models.TextField(blank=True, null=True)
+    new_value = models.TextField(blank=True, null=True)
+    body = models.TextField(blank=True, null=True)
     summary = models.CharField(max_length=255, blank=True, default='')
     note = models.TextField(blank=True, default='')
     due_date = models.DateField(null=True, blank=True)
@@ -145,7 +185,10 @@ class Activity(models.Model):
         verbose_name = 'Activité'
 
     def __str__(self):
-        return f'{self.activity_type} — {self.summary or self.due_date}'
+        # ARC8 — une entrée de chatter n'a pas d'activity_type : on retombe
+        # proprement sur le type de chatter (kind) puis le résumé/échéance.
+        head = self.activity_type or self.get_kind_display() or 'Activité'
+        return f'{head} — {self.summary or self.body or self.due_date or ""}'.strip()
 
 
 class Tag(models.Model):
