@@ -142,6 +142,22 @@ class Client(models.Model):
         help_text="Rattache ce client à une société mère (consolidation "
                   "CA groupe). Même société uniquement ; jamais de cycle.")
 
+    # ── ARC18 — Pont additif vers le répertoire unifié Tiers ──
+    # FK nullable (string-FK — jamais d'import de apps.tiers.models ici, crm
+    # reste découplé de la couche fondation par référence string). L'identité
+    # reste MAÎTRE ici ; ``tiers`` n'en est qu'un MIROIR one-way, réversible,
+    # posé par le hook de sauvegarde (voir apps/crm/tiers_bridge.py) et
+    # backfillé par la commande ``backfill_tiers``. Vide = pas encore relié
+    # (comportement API historique strictement inchangé).
+    tiers = models.ForeignKey(
+        'tiers.Tiers',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='clients',
+        verbose_name='Tiers (répertoire unifié)',
+        help_text="Fiche du répertoire unifié des parties prenantes reflétant "
+                  "ce client. Renseignée automatiquement (miroir).")
+
     class Meta:
         verbose_name = "Client"
         verbose_name_plural = "Clients"
@@ -362,6 +378,23 @@ class Lead(models.Model):
         blank=True,
         related_name='leads',
     )
+
+    # ── ARC56 — Pont additif vers le répertoire unifié Tiers (stade amont) ──
+    # FK nullable (string-FK ``'tiers.Tiers'``) : le lead porte l'identité
+    # PRÉ-CONVERSION (avant qu'un Client structuré existe), donc le recoupement
+    # « qui est ce tiers ? » (ARC20) doit aussi couvrir ce stade. Rattaché au
+    # MÊME Tiers que le Client résolu (via resolve_client_for_lead + le miroir
+    # crm.Client → Tiers d'ARC18) ; jamais un 2ᵉ Tiers pour le même acteur.
+    # ATTENTION QW7 : ce pont ne touche AUCUN champ de nom du lead.
+    tiers = models.ForeignKey(
+        'tiers.Tiers',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='leads',
+        verbose_name='Tiers (répertoire unifié)',
+        help_text="Fiche du répertoire unifié reflétant ce prospect "
+                  "(stade amont). Renseignée automatiquement (miroir).")
 
     # Facture électrique du lead (MAD/mois). Si l'été ne diffère pas de
     # l'hiver, facture_hiver vaut pour les deux (ete_differente = False).
