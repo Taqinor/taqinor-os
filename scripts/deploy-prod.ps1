@@ -33,8 +33,63 @@ git reset --hard origin/main
 # la recreation ("Conflict. The container name is already in use") et, sous
 # `set -e`, le script SORTAIT ICI -> migrate/init_roles/nginx SKIP -> 502 +
 # migrations non appliquees (arrive sur les 2 deploiements du 2026-07-07).
+# NETTOYAGE PRE-BUILD (incident 2026-07-10 : « no space left on device » en
+# plein build apres plusieurs deploiements — chaque rebuild orphelinise les
+# couches precedentes et le cache de build s'accumule sans borne). Dangling
+# images + cache de build UNIQUEMENT : jamais les conteneurs qui tournent,
+# jamais les volumes de donnees, jamais les images utilisees.
+echo "Espace disque avant nettoyage :"; df -h / | tail -1
+docker image prune -f || true
+docker builder prune -f || true
+echo "Espace disque apres nettoyage :"; df -h / | tail -1
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --remove-orphans
+# GARDE DB (incident 2026-07-10) : un changement du CONTENU d'un fichier
+# bind-monte (ex. backend/db/postgresql.conf) ne change PAS le hash de config
+# compose -> le conteneur db n'est PAS recree et Postgres tourne avec
+# l'ANCIENNE conf en memoire. On attend pg_isready ; si la base ne repond
+# pas, on redemarre db (relit la conf montee) et on re-attend. Sans cette
+# garde, migrate echouait « Connection refused » et, sous set -e, le script
+# MOURAIT AVANT le bloc healthcheck/rollback (fausse alerte « rollback
+# effectue » alors que rien n'avait ete restaure).
+wait_db() {
+  # -h db : teste le LISTENER TCP via le reseau compose — sans -h, pg_isready
+  # passe par la socket locale du conteneur et repond OK meme quand Postgres
+  # n'ecoute QUE sur localhost (exactement le mode de panne qu'on guette).
+  for i in $(seq 1 30); do
+    if docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T db pg_isready -h db -q 2>/dev/null; then
+      return 0
+    fi
+    sleep 3
+  done
+  return 1
+}
+if ! wait_db; then
+  echo "DB injoignable apres 90s -> restart du conteneur db (relecture de la conf montee)"
+  docker compose -f docker-compose.yml -f docker-compose.prod.yml restart db
+  if ! wait_db; then
+    echo "DB toujours injoignable apres restart -> ROLLBACK vers $PREV_SHA"
+    git reset --hard "$PREV_SHA"
+    docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --remove-orphans
+    docker compose -f docker-compose.yml -f docker-compose.prod.yml restart db nginx
+    echo "ROLLBACK TERMINE (db injoignable). Code revenu a $PREV_SHA."
+    exit 1
+  fi
+fi
+# migrate sous filet : sous `set -e` nu, un echec ici TUAIT le script AVANT
+# le bloc healthcheck/rollback (les « rollback effectue » des tentatives du
+# 2026-07-10 etaient des faux positifs — rien n'avait ete restaure).
+set +e
 docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T django_core python manage.py migrate --noinput
+MIGRATE_RC=$?
+set -e
+if [ "$MIGRATE_RC" != "0" ]; then
+  echo "MIGRATE ECHEC (rc=$MIGRATE_RC) -> ROLLBACK vers $PREV_SHA"
+  git reset --hard "$PREV_SHA"
+  docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --remove-orphans
+  docker compose -f docker-compose.yml -f docker-compose.prod.yml restart db nginx
+  echo "ROLLBACK TERMINE (migrate). Code revenu a $PREV_SHA."
+  exit 1
+fi
 # WOW26 — verifie que TOUTES les migrations sont appliquees (un up -d partiel /
 # un set -e interrompu laissait des migrations non appliquees + un 502 silencieux).
 UNAPPLIED=$(docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T django_core python manage.py showmigrations --plan 2>/dev/null | grep -c '\[ \]')
