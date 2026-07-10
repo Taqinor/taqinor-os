@@ -44,11 +44,16 @@ class PlatformCollectorTests(SimpleTestCase):
             crm['automation_state_fields'])
 
     def test_contrats_manifest_is_asymmetric(self):
-        """Contrats n'a que le chatter câblé — les autres surfaces sont vides."""
+        """Contrats a le chatter (ARC8), la recherche (ARC29) et les champs
+        perso (ARC31) câblés — les autres surfaces (import, agent, automation,
+        KPI) restent vides."""
         contrats = self.manifests['contrats']
         self.assertEqual(contrats['record_targets'], ['contrats.contrat'])
-        self.assertEqual(contrats['searchable_models'], [])
-        self.assertEqual(contrats['customfield_models'], [])
+        # ARC29 — trou comblé : Contrat est désormais cherchable.
+        self.assertEqual(contrats['searchable_models'], ['contrats.contrat'])
+        # ARC31 — cible customfieldable déclarée au manifeste (source du
+        # registre customfields, plus un register() dans ready()).
+        self.assertEqual(contrats['customfield_models'], ['contrat'])
         self.assertEqual(contrats['agent_actions_module'], '')
 
     def test_aggregators_flatten_across_manifests(self):
@@ -56,8 +61,8 @@ class PlatformCollectorTests(SimpleTestCase):
         searchable = platform.searchable_models(manifests=self.manifests)
         self.assertIn('crm.lead', searchable)
         self.assertIn('crm.client', searchable)
-        # Contrat n'est PAS cherchable (dérive volontaire, remontée par ARC41).
-        self.assertNotIn('contrats.contrat', searchable)
+        # ARC29 — trou comblé : Contrat est désormais cherchable.
+        self.assertIn('contrats.contrat', searchable)
 
         targets = platform.record_targets(manifests=self.manifests)
         self.assertIn('crm.lead', targets)

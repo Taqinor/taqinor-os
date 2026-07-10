@@ -14,9 +14,9 @@ class FlotteConfig(AppConfig):
         'categorie': 'Services',
     }
 
-    def ready(self):
-        # ARC14 — déclare Vehicule comme cible PILOTE des champs personnalisés
-        # (customfields.registry, registre data-driven — jamais un import de
-        # apps.customfields.models depuis ici, juste l'API de registre).
-        from apps.customfields import registry
-        registry.register('vehicule', 'flotte', 'Vehicule', label='Véhicule')
+    # ARC14 déclarait Vehicule comme cible PILOTE des champs personnalisés
+    # dans ready() (customfields.registry.register('vehicule', ...)). ARC31 a
+    # basculé cette déclaration vers apps/flotte/platform.py
+    # (customfield_models=['vehicule']) — un chargeur central unique
+    # (apps/customfields/apps.py::CustomfieldsConfig.ready()) la lit
+    # désormais depuis le manifeste ; ce AppConfig n'a plus besoin de ready().

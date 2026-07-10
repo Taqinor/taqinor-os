@@ -128,6 +128,80 @@ def _user_may_run(user, action: AgentAction) -> bool:
     return bool(has_perm(action.required_permission))
 
 
+# ── ARC33 — auto-découverte des actions agent depuis les manifestes ─────────
+# ``apps/<x>/platform.py`` (surface ``agent_actions_module``, ARC28). Avant
+# ARC33, brancher une app sur l'agent exigeait un ``agent_actions.py`` PLUS un
+# appel explicite dans son ``AppConfig.ready()`` (5 apps sur 35 l'avaient).
+# Désormais : déclarer le module dotted dans le manifeste suffit —
+# :func:`autodiscover_from_platform_manifests` (appelé par
+# ``AgentConfig.ready()``) importe le module et appelle sa fonction
+# ``register_actions()`` (convention, idempotente). Les clés ainsi découvertes
+# sont ATTRIBUÉES à leur module dotted (``_DISCOVERED``) pour le gatage
+# ``ModuleToggle`` (ODX23) : un module OFF pour la société disparaît du
+# catalogue ``for_user``. Les 5 apps historiques qui s'enregistrent encore
+# depuis leur propre ``ready()`` ne sont PAS attribuées (leur fonction ne suit
+# pas la convention) → leur comportement reste STRICTEMENT identique
+# (non-régression) ; elles migreront vers le manifeste à leur rythme.
+_DISCOVERED: "Dict[str, set]" = {}
+
+
+def autodiscover_from_platform_manifests() -> None:
+    """Importe et enregistre les actions agent déclarées par les manifestes.
+
+    Pour chaque manifeste ``core.platform`` dont ``agent_actions_module`` est
+    non vide : importe le module dotted, appelle sa fonction
+    ``register_actions()`` si elle existe (convention — idempotente, comme les
+    enregistrements historiques), et attribue au module les clés NOUVELLES
+    apparues dans le registre pendant l'appel (union sur ré-appels : un
+    ``ready()`` ré-exécuté n'efface jamais une attribution).
+
+    Idempotente et sûre à l'import : un module déjà importé est réutilisé
+    (cache d'import Python) ; une fonction ``register_actions`` absente est un
+    no-op silencieux (cas des apps historiques à convention de nom propre,
+    ex. ``register_crm_actions`` — elles restent branchées par leur propre
+    ``AppConfig.ready()``).
+    """
+    import importlib
+
+    from core import platform as core_platform
+
+    for manifest in core_platform.collect_platform_manifests().values():
+        dotted = manifest.get('agent_actions_module')
+        if not dotted:
+            continue
+        mod = importlib.import_module(dotted)
+        avant = set(_REGISTRY)
+        fn = getattr(mod, 'register_actions', None)
+        if callable(fn):
+            fn()
+        nouvelles = set(_REGISTRY) - avant
+        _DISCOVERED.setdefault(dotted, set()).update(nouvelles)
+
+
+def _hidden_keys_for(user) -> set:
+    """Clés d'actions masquées pour ``user`` par le gatage ``ModuleToggle``.
+
+    Une action DÉCOUVERTE (attribuée à un ``agent_actions_module`` de
+    manifeste) est masquée quand son module n'est plus visible pour la société
+    de l'utilisateur (``core.platform.agent_actions_modules(company)`` — un
+    module OFF disparaît de toutes les surfaces, ODX23/ARC28). Les actions non
+    attribuées (builtins + enregistrements historiques hors manifeste) ne sont
+    jamais masquées ici (comportement d'avant ARC33 préservé)."""
+    if not _DISCOVERED:
+        return set()
+    company = getattr(user, 'company', None)
+    if company is None:
+        return set()
+    from core import platform as core_platform
+
+    visibles = core_platform.agent_actions_modules(company)
+    hidden: set = set()
+    for dotted, keys in _DISCOVERED.items():
+        if dotted not in visibles:
+            hidden.update(keys)
+    return hidden
+
+
 def for_user(user) -> List[AgentAction]:
     """Sous-ensemble du catalogue que ``user`` a le droit d'exécuter.
 
@@ -136,8 +210,16 @@ def for_user(user) -> List[AgentAction]:
     d'un rôle rattaché à SA société). L'endpoint cible re-vérifie permission +
     société à l'exécution — ce filtre n'est qu'un premier garde-fou côté
     catalogue.
+
+    ARC33 — les actions AUTO-DÉCOUVERTES d'un module ``ModuleToggle``-OFF pour
+    la société du caller sont absentes du catalogue (gatage par société,
+    quel que soit le rôle — même sémantique que la recherche globale).
     """
-    return [a for a in all_actions() if _user_may_run(user, a)]
+    hidden = _hidden_keys_for(user)
+    return [
+        a for a in all_actions()
+        if a.key not in hidden and _user_may_run(user, a)
+    ]
 
 
 def _register_builtin_actions() -> None:

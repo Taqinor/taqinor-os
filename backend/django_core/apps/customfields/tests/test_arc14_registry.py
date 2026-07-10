@@ -106,8 +106,11 @@ class TestRegistryApi(TestCase):
             registry.register('_arc14_conflict_key', 'crm', 'Client')
 
     def test_pilots_registered_by_app_ready(self):
-        """contrats et flotte se sont enregistrés depuis leur AppConfig.ready()
-        (chargé une fois au démarrage Django — donc déjà présent ici)."""
+        """contrats et flotte sont enregistrés au démarrage Django — donc déjà
+        présents ici (ARC31 : désormais via le chargeur central
+        ``CustomfieldsConfig.ready()`` qui lit leurs manifestes ``platform.py``,
+        plus depuis un ``registry.register()`` explicite dans leur propre
+        ``AppConfig.ready()`` — même résultat, source différente)."""
         from apps.contrats.models import Contrat
         from apps.flotte.models import Vehicule
         self.assertTrue(registry.is_registered('contrat'))

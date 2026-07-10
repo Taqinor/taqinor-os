@@ -25,8 +25,9 @@ class ContratsConfig(AppConfig):
         # abonné = la même app, mais toujours via le bus pour rester
         # ouvert à de futurs abonnés externes).
         from . import receivers  # noqa: F401
-        # ARC14 — déclare Contrat comme cible PILOTE des champs personnalisés
-        # (customfields.registry, registre data-driven — jamais un import de
-        # apps.customfields.models depuis ici, juste l'API de registre).
-        from apps.customfields import registry
-        registry.register('contrat', 'contrats', 'Contrat', label='Contrat')
+        # ARC14 déclarait Contrat comme cible PILOTE des champs personnalisés
+        # ici même (customfields.registry.register('contrat', ...)). ARC31 a
+        # basculé cette déclaration vers apps/contrats/platform.py
+        # (customfield_models=['contrat']) — un chargeur central unique
+        # (apps/customfields/apps.py::CustomfieldsConfig.ready()) la lit
+        # désormais depuis le manifeste, plus depuis ce ready().
