@@ -456,34 +456,6 @@ class RegisterCompanyView(generics.GenericAPIView):
         # total + Journal d'activité), pour qu'il y ait au moins un Directeur.
         admin_role = roles['Directeur']
 
-        # Types d'activité par défaut (style Odoo) pour la nouvelle société.
-        try:
-            from apps.records.models import ActivityType
-            for nom, icone, ordre, delai in [
-                ('Appel', '📞', 10, 0), ('Email', '✉️', 20, 0),
-                ('Réunion', '👥', 30, 0), ('Relance', '📅', 40, 3),
-                ('À faire', '✔️', 50, 0),
-            ]:
-                ActivityType.objects.get_or_create(
-                    company=company, nom=nom,
-                    defaults={'icone': icone, 'ordre': ordre,
-                              'delai_defaut_jours': delai, 'est_systeme': True})
-        except Exception:
-            pass
-
-        # Niveaux de relance par défaut (J+7 / J+15 / J+30).
-        try:
-            from apps.ventes.models import FollowupLevel
-            for ordre, nom, delai in [
-                (1, 'Rappel courtois', 7), (2, 'Relance', 15),
-                (3, 'Relance ferme', 30),
-            ]:
-                FollowupLevel.objects.get_or_create(
-                    company=company, ordre=ordre,
-                    defaults={'nom': nom, 'delai_jours': delai})
-        except Exception:
-            pass
-
         user = CustomUser.objects.create_user(
             username=username,
             email=email,
@@ -492,6 +464,17 @@ class RegisterCompanyView(generics.GenericAPIView):
             role=admin_role,
             company=company,
         )
+        # XPLT19 — la société d'attache est aussi la première société autorisée
+        # (membre). Un compte mono-société démarre donc avec {sa société}.
+        user.societes_autorisees.add(company)
+
+        # SCA20 — seeds « à la création d'une société » migrés en HOOKS
+        # idempotents (types d'activité + niveaux de relance historiques, PLUS
+        # le catalogue produit désormais seedé). Chaque app enregistre son hook
+        # dans son apps.py ready() ; la vue ne les connaît pas. Best-effort : un
+        # hook KO n'empêche jamais la création de la société.
+        from core.signup_hooks import run_signup_hooks
+        run_signup_hooks(company, user=user)
 
         return Response({
             'detail': 'Entreprise creee avec succes.',
