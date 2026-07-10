@@ -2849,6 +2849,59 @@ def _get_nudge_days():
     return getattr(settings, 'DEVIS_NUDGE_DAYS', DEVIS_NUDGE_DEFAULT_DAYS)
 
 
+def _nudge_suppressed(devis, today, engagement_days=3):
+    """QX13 — une relance de devis doit-elle être différée/sautée ?
+
+    Trois signaux de réalité (la cadence était aveugle à l'activité) :
+      * ``lead.relance_date`` est dans le FUTUR (le vendeur a déjà planifié un
+        contact) → on ne double pas ;
+      * une activité de contact MANUELLE existe récemment sur le lead (via un
+        sélecteur crm optionnel, jamais un import de modèle crm) ;
+      * un engagement proposition récent (< engagement_days) sur le ShareLink
+        (le client vient de regarder → laisser respirer).
+
+    Retourne True pour SUPPRIMER/différer, False pour laisser passer. Best-
+    effort : toute erreur → False (on ne bloque jamais une relance par bug)."""
+    from datetime import timedelta
+    try:
+        lead_id = getattr(devis, 'lead_id', None)
+        if lead_id:
+            from apps.crm import selectors as crm_selectors
+            lead = crm_selectors.get_company_lead(devis.company, lead_id)
+            if lead is not None:
+                relance = getattr(lead, 'relance_date', None)
+                if relance and relance > today:
+                    return True
+                # Activité de contact manuelle récente — via sélecteur crm si
+                # disponible (jamais un import de modèle crm). Coordination :
+                # une fonction dédiée ``lead_recent_manual_contact`` pourra être
+                # ajoutée côté crm ; en son absence, ce signal est ignoré.
+                fn = getattr(crm_selectors, 'lead_recent_manual_contact', None)
+                if callable(fn):
+                    try:
+                        if fn(devis.company, lead_id):
+                            return True
+                    except Exception:  # noqa: BLE001
+                        pass
+    except Exception:  # noqa: BLE001
+        pass
+    # Engagement proposition récent (ShareLink — in-lane).
+    try:
+        from apps.ventes.models import ShareLink
+        link = (ShareLink.objects
+                .filter(devis=devis)
+                .order_by('-created_at')
+                .first())
+        seen = getattr(link, 'last_viewed_at', None) if link else None
+        if seen is not None:
+            seen_date = seen.date() if hasattr(seen, 'date') else seen
+            if seen_date >= today - timedelta(days=engagement_days):
+                return True
+    except Exception:  # noqa: BLE001
+        pass
+    return False
+
+
 def send_devis_followup_nudges():
     """QJ4 — Déclenche les relances cadencées pour les devis « envoyés ».
 
@@ -2916,6 +2969,11 @@ def send_devis_followup_nudges():
         client_nom = (getattr(client, 'nom', '') or '') if client else ''
         vendeur = getattr(devis, 'created_by', None)
 
+        # QX13 — respecte la réalité : relance planifiée, contact manuel
+        # récent, ou engagement proposition récent → on diffère ce tour.
+        if _nudge_suppressed(devis, today):
+            continue
+
         for idx, jours in enumerate(nudge_days):
             if idx in fired:
                 continue  # already sent for this level — idempotent
@@ -2924,11 +2982,12 @@ def send_devis_followup_nudges():
                 continue  # not due yet
 
             # Build the public share link for the seller to use.
+            # QX13 — via le builder UNIQUE client_links (chemin /proposition/,
+            # jamais /proposal/ qui 404 sur le site).
             try:
                 share_link = ShareLink.for_devis(devis)
-                from django.conf import settings
-                site = getattr(settings, 'SITE_URL', 'https://taqinor.ma')
-                proposal_url = f'{site}/proposal/{share_link.token}'
+                from apps.ventes.utils.client_links import proposition_url
+                proposal_url = proposition_url(share_link.token)
             except Exception:
                 proposal_url = ''
 
@@ -2960,16 +3019,37 @@ def send_devis_followup_nudges():
                 )
                 canal = DevisNudgeLog.Canal.EMAIL
             else:
-                # Surface wa.me draft — log so the seller sees it.
-                vendeur_phone = (
-                    getattr(vendeur, 'phone_number', '') or ''
-                    if vendeur else ''
-                )
-                wa_url = _build_wa_draft_url(vendeur_phone, msg_fr) or proposal_url
+                # QX13 — brouillon wa.me vers le CLIENT (le lien proposition à
+                # partager), et non le téléphone du vendeur.
+                client_phone = (getattr(client, 'telephone', '') or ''
+                                if client else '')
+                wa_url = (_build_wa_draft_url(client_phone, msg_fr)
+                          or proposal_url)
                 logger.info(
                     'QJ4 nudge wa_draft devis=%s niveau=%d j+%d vendeur=%s url=%s',
                     devis.reference, idx, jours,
                     getattr(vendeur, 'username', '?'), wa_url)
+                # QX13 — le brouillon wa.me ne partait qu'en LOG (invisible) :
+                # crée une vraie Notification in-app au vendeur, avec le lien
+                # proposition + le brouillon wa.me prêts et un deep-link devis.
+                if vendeur is not None:
+                    try:
+                        from apps.notifications.services import notify
+                        from apps.notifications.models import EventType
+                        notify(
+                            vendeur, EventType.DEVIS_NUDGE_DUE,
+                            title=(f'Relance à faire — devis {devis.reference} '
+                                   f'(niveau {idx + 1})'),
+                            body=(f'Aucune réponse depuis {jours} j. '
+                                  f'Proposition : {proposal_url or "—"}'
+                                  + (f'\nBrouillon WhatsApp : {wa_url}'
+                                     if wa_url else '')),
+                            link=f'/ventes/devis?devis={devis.id}',
+                            company=devis.company)
+                    except Exception as exc:  # noqa: BLE001 — best-effort
+                        logger.warning(
+                            'QX13: notification relance échec devis %s : %s',
+                            devis.reference, exc)
 
             # Record the fired level — unique_together prevents duplicates.
             try:

@@ -33,6 +33,9 @@ class EventType(models.TextChoices):
     # QX36 — le client RÉPOND par email à une proposition/facture (réponse
     # rattachée au devis via sa référence) : le vendeur est notifié.
     DEVIS_REPLY = 'devis_reply', 'Réponse email du client sur un devis'
+    # QX13 — une relance de devis (cadence j+2/j+5/j+10) est DUE : notification
+    # in-app au vendeur avec brouillon wa.me + lien proposition prêts.
+    DEVIS_NUDGE_DUE = 'devis_nudge_due', 'Relance de devis à faire'
     # QJ27 — le client demande à être contacté (depuis la proposition publique).
     CLIENT_CONTACT_REQUEST = (
         'client_contact_request', 'Client souhaite être contacté')
