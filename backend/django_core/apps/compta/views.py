@@ -4691,7 +4691,8 @@ class CampagneViewSet(_ComptaBaseViewSet):
             campagne.corps, nb_destinataires=nb_destinataires, **kwargs)
         return Response(estimation)
 
-    @action(detail=False, methods=['get'], url_path='generer-ia-disponible')
+    @action(detail=False, methods=['get'], url_path='generer-ia-disponible',
+            permission_classes=[IsResponsableOrAdmin])
     def generer_ia_disponible(self, request):
         """XMKT34 — probe UI : la génération IA est-elle configurée ?
 
@@ -4701,7 +4702,8 @@ class CampagneViewSet(_ComptaBaseViewSet):
         from core.ai.registry import is_capability_configured
         return Response({'configured': is_capability_configured('llm')})
 
-    @action(detail=False, methods=['post'], url_path='generer-ia')
+    @action(detail=False, methods=['post'], url_path='generer-ia',
+            permission_classes=[IsResponsableOrAdmin])
     def generer_ia(self, request):
         """XMKT34 — Génère (suggestion éditable) un objet + corps de campagne.
 
@@ -4893,7 +4895,8 @@ class PostSocialViewSet(_ComptaBaseViewSet):
         serializer.save(company=self.request.user.company,
                         created_by=self.request.user)
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'],
+            permission_classes=[IsResponsableOrAdmin])
     def planifier(self, request, pk=None):
         """Planifie le post à ``date_planifiee`` (brouillon → planifié)."""
         post = self.get_object()
@@ -5472,7 +5475,8 @@ class SegmentMarketingViewSet(_ComptaBaseViewSet):
             return Response({'detail': str(exc)}, status=400)
         return Response(data)
 
-    @action(detail=True, methods=['post'], url_path='exporter-audience-meta')
+    @action(detail=True, methods=['post'], url_path='exporter-audience-meta',
+            permission_classes=[IsResponsableOrAdmin])
     def exporter_audience_meta(self, request, pk=None):
         """XMKT36 — [DECISION] Synchronise le segment comme audience Meta.
 

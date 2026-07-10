@@ -102,8 +102,18 @@ class ClotureFraisRetardTests(TestCase):
         self.company = make_company('xctr19-cloture', 'Cloture')
         self.client_obj = make_client(self.company)
         self.produit = make_produit(self.company)
+        # Dates RELATIVES à aujourd'hui : la transition « retournée » pose
+        # date_retour_reelle = aujourd'hui — avec l'ancienne date absolue
+        # (2026-07-09), le test « sans retard » devenait faux dès le
+        # lendemain de son écriture (bombe à retardement calendaire).
+        from django.utils import timezone
+        aujourdhui = timezone.now().date()
+        delta = __import__('datetime').timedelta
         self.ordre = make_ordre(
             self.company, self.client_obj, self.produit,
+            date_reservation=aujourdhui - delta(days=4),
+            date_enlevement_prevue=aujourdhui - delta(days=2),
+            date_retour_prevue=aujourdhui + delta(days=2),
             frais_retard_jour=Decimal('100'))
 
     def _retourner_avec_retard(self, jours_retard):

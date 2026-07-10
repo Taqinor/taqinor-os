@@ -12,5 +12,5 @@ class TiersConfig(AppConfig):
         'depends': [],
         'description': "Répertoire unifié des parties prenantes (clients, "
                        "fournisseurs, partenaires, sous-traitants).",
-        'categorie': 'Fondation',
+        'categorie': 'Technique',  # couche foundation (même catégorie que records/roles)
     }
