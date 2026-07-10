@@ -24,8 +24,6 @@ import { buildModuleRoutes } from './moduleRoutes'
 const Landing = lazy(() => import('../pages/Landing'))
 const Login = lazy(() => import('../pages/Login'))
 const Dashboard = lazy(() => import('../pages/Dashboard').then(m => ({ default: m.Component })))
-const Reporting = lazy(() => import('../pages/Reporting').then(m => ({ default: m.Component })))
-const Rapports = lazy(() => import('../pages/Rapports').then(m => ({ default: m.Component })))
 const ToitureDesign = lazy(() => import('../pages/ventes/ToitureDesign'))
 const RoofViewerPage = lazy(() => import('../pages/ventes/RoofViewerPage'))
 const AgentChat = lazy(() => import('../pages/ia/AgentChat'))
@@ -37,29 +35,10 @@ const ParametresEntreprise = lazy(() => import('../pages/parametres/ParametresEn
 const ExportSauvegarde = lazy(() => import('../pages/parametres/ExportSauvegarde'))
 const NotificationsPreferences = lazy(() => import('../pages/parametres/NotificationsPreferences'))
 const Journal = lazy(() => import('../pages/Journal'))
-const BalanceAgeePage = lazy(() => import('../pages/reporting/BalanceAgeePage'))
-const ArchiveClientPage = lazy(() => import('../pages/reporting/ArchiveClientPage'))
-const ArchiveChantierPage = lazy(() => import('../pages/reporting/ArchiveChantierPage'))
-const CommercialDashboard = lazy(() => import('../pages/reporting/CommercialDashboard'))
-const CohortsPage = lazy(() => import('../pages/reporting/CohortsPage'))
-const DashboardConfigPage = lazy(() => import('../pages/reporting/DashboardConfigPage'))
-// XPLT10 — partage de dashboard (liens publics tokenisés, créer/révoquer).
-const DashboardSharePage = lazy(() => import('../pages/reporting/DashboardSharePage'))
-// XKB1/ZCTR7-9 — boîte d'approbations centralisée cross-app (5 sources).
-const ApprobationsPage = lazy(() => import('../pages/approbations/ApprobationsPage'))
 // XPLT6 — CRUD des alertes de seuil sur KPI agrégés.
 const KpiAlertesPage = lazy(() => import('../pages/parametres/KpiAlertesPage'))
-// XPLT22 — classeur léger embarqué (mini-spreadsheet BI, données live).
-const ClasseursListPage = lazy(() => import('../pages/reporting/ClasseursListPage'))
-const ClasseurPage = lazy(() => import('../pages/reporting/ClasseurPage'))
 // XPLT10 — kiosque TV public des dashboards partagés (sans layout ERP).
 const DashboardsTvPage = lazy(() => import('../pages/reporting/DashboardsTvPage'))
-// XSAV8 — conformité SLA + KPI SAV avancés.
-const SavSlaPage = lazy(() => import('../pages/reporting/SavSlaPage'))
-// XFSM16 — analytics field service consolidés.
-const FieldServiceReportPage = lazy(() => import('../pages/reporting/FieldServiceReportPage'))
-// XFSM17 — scorecard coaching par technicien vs moyenne équipe.
-const TechnicienScorecardPage = lazy(() => import('../pages/reporting/TechnicienScorecardPage'))
 const AgentActions = lazy(() => import('../pages/ia/AgentActions'))
 // Vitrine interne du système UI (refonte, P68) — référence vivante des primitifs.
 const UIShowcase = lazy(() => import('../pages/ui/UIShowcase'))
@@ -213,30 +192,7 @@ const router = createBrowserRouter([
   { path: '/ia/actions', loader: authLoader, element: <WithLayout><AgentActions /></WithLayout> },
   { path: '/ia/ocr', loader: authLoader, element: <WithLayout><OcrUpload /></WithLayout> },
 
-  // Reporting
-  { path: '/reporting', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><Reporting /></WithLayout> },
-  { path: '/rapports', loader: authLoader, element: <WithLayout><Rapports /></WithLayout> },
-  { path: '/reporting/balance-agee', loader: authLoader, element: <WithLayout><BalanceAgeePage /></WithLayout> },
-  { path: '/reporting/commercial', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><CommercialDashboard /></WithLayout> },
-  { path: '/reporting/cohortes', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><CohortsPage /></WithLayout> },
-  { path: '/reporting/dashboards', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><DashboardConfigPage /></WithLayout> },
-  // XPLT10 — partage de dashboard (liens publics tokenisés).
-  { path: '/reporting/dashboards/partage', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><DashboardSharePage /></WithLayout> },
-  { path: '/reporting/archive/client/:id', loader: authLoader, element: <WithLayout><ArchiveClientPage /></WithLayout> },
-  { path: '/reporting/archive/chantier/:id', loader: authLoader, element: <WithLayout><ArchiveChantierPage /></WithLayout> },
-  // XKB1/ZCTR7-9 — boîte d'approbations centralisée (toutes sources), accessible
-  // à tout rôle (chacun peut avoir des demandes en attente sur son périmètre).
-  { path: '/approbations', loader: authLoader, element: <WithLayout><ApprobationsPage /></WithLayout> },
-  // XPLT22 — classeur léger embarqué (mini-spreadsheet BI, données live).
-  { path: '/reporting/classeurs', loader: authLoader, element: <WithLayout><ClasseursListPage /></WithLayout> },
-  { path: '/reporting/classeurs/:id', loader: authLoader, element: <WithLayout><ClasseurPage /></WithLayout> },
-  // XSAV8 — conformité SLA + KPI SAV avancés (responsable/admin).
-  { path: '/reporting/sav-sla', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><SavSlaPage /></WithLayout> },
-  // XFSM16 — analytics field service consolidés (responsable/admin).
-  { path: '/reporting/field-service', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><FieldServiceReportPage /></WithLayout> },
-  // XFSM17 — scorecard coaching par technicien (responsable/admin uniquement,
-  // jamais visible du technicien lui-même — cf. permission backend).
-  { path: '/reporting/scorecard-technicien', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><TechnicienScorecardPage /></WithLayout> },
+  // Reporting — migré vers frontend/src/features/reporting/module.config.jsx (ARC54).
 
   // Administration
   { path: '/admin/users', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><UsersManagement /></WithLayout> },
