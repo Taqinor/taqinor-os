@@ -1263,10 +1263,42 @@ class Paiement(models.Model):
     )
     date_creation = models.DateTimeField(auto_now_add=True)
 
+    # ── SCA45 — champs PROVIDER-AGNOSTIQUES (le « sol » de QJ24/NTSUB) ──
+    # Leçon ServiceTitan/Toast : un paiement doit être un objet de registre de
+    # première classe DANS le schéma, pas la boîte noire d'un PSP futur. Ces
+    # deux champs accueillent une future intégration (CMI/PayZone — QJ24, gated
+    # fondateur ; NTSUB1-4 comme moteur d'abonnement) SANS nouveau schéma le
+    # jour venu. AUCUNE intégration PSP ici : purement additif.
+    #
+    # ARCHITECTURE (garde-fou permanent) : un futur webhook PSP ne touchera
+    # JAMAIS Facture.statut EN DIRECT — il route par apps.ventes.services
+    # (règle #4 + frontières inter-app). Ces colonnes ne font que STOCKER la
+    # référence prestataire + la clé d'idempotence, jamais piloter un statut.
+    provider_ref = models.CharField(
+        max_length=200, null=True, blank=True,
+        help_text='Référence du prestataire de paiement (PSP) — vide tant '
+                  'qu\'aucune intégration ne renseigne ce paiement.')
+    idempotency_key = models.CharField(
+        max_length=200, null=True, blank=True,
+        help_text='Clé d\'idempotence (déduplication webhook PSP) — unique par '
+                  'société quand renseignée.')
+
     class Meta:
         verbose_name = 'Paiement'
         verbose_name_plural = 'Paiements'
         ordering = ['-date_paiement', '-date_creation']
+        constraints = [
+            # SCA45 — la clé d'idempotence est unique PAR SOCIÉTÉ quand elle est
+            # renseignée (empêche le double-encaissement d'un même événement PSP
+            # rejoué). Les paiements sans clé (saisie manuelle actuelle) sont
+            # exclus de la contrainte — comportement historique inchangé.
+            models.UniqueConstraint(
+                fields=['company', 'idempotency_key'],
+                condition=models.Q(idempotency_key__isnull=False)
+                & ~models.Q(idempotency_key=''),
+                name='uniq_paiement_idempotency_par_societe',
+            ),
+        ]
 
     def __str__(self):
         cible = self.facture.reference if self.facture_id else (
