@@ -1,0 +1,53 @@
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { render, screen, cleanup } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
+
+/* QX29 — « Relances du jour » : tableau d'action des devis, miroir de
+   SavActionBoardPage.test.jsx (ZSAV6). ventesApi mocké. */
+
+vi.mock('../../api/ventesApi', () => ({
+  default: { getDevisActionBoard: vi.fn(), getDevis: vi.fn() },
+}))
+
+import ventesApi from '../../api/ventesApi'
+import DevisActionBoardPage from './DevisActionBoardPage'
+
+afterEach(() => { cleanup(); vi.clearAllMocks() })
+
+describe('DevisActionBoardPage', () => {
+  it('affiche les buckets avec leurs comptes et les devis référencés', async () => {
+    ventesApi.getDevisActionBoard.mockResolvedValue({
+      data: {
+        buckets: {
+          envoyes_sans_reponse: { count: 1, ids: [1] },
+          acceptes_non_factures: { count: 0, ids: [] },
+          refuses_sans_motif: { count: 0, ids: [] },
+          expirant_bientot: { count: 0, ids: [] },
+        },
+      },
+    })
+    ventesApi.getDevis.mockResolvedValue({
+      data: [{ id: 1, reference: 'DEV-001', client_nom: 'ACME', client_telephone: '0612345678' }],
+    })
+    render(<MemoryRouter><DevisActionBoardPage /></MemoryRouter>)
+    expect(await screen.findByText('Envoyés sans réponse')).toBeInTheDocument()
+    expect(await screen.findByText(/DEV-001/)).toBeInTheDocument()
+    // Raccourci tel: présent quand un téléphone existe sur le devis.
+    expect(screen.getByRole('link', { name: /Appeler/ })).toHaveAttribute('href', 'tel:0612345678')
+  })
+
+  it('affiche "Aucun devis." pour un bucket vide', async () => {
+    ventesApi.getDevisActionBoard.mockResolvedValue({
+      data: {
+        buckets: {
+          envoyes_sans_reponse: { count: 0, ids: [] },
+          acceptes_non_factures: { count: 0, ids: [] },
+          refuses_sans_motif: { count: 0, ids: [] },
+          expirant_bientot: { count: 0, ids: [] },
+        },
+      },
+    })
+    render(<MemoryRouter><DevisActionBoardPage /></MemoryRouter>)
+    expect((await screen.findAllByText('Aucun devis.')).length).toBe(4)
+  })
+})

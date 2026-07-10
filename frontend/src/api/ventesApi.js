@@ -75,6 +75,11 @@ const ventesApi = {
     api.get('/ventes/journal-ventes/', { params, responseType: 'blob' }),
   // Échéancier devis → factures : génère la prochaine tranche (acompte → solde).
   genererFacture: (id) => api.post(`/ventes/devis/${id}/generer-facture/`),
+  // QX29 — « Relances du jour » : devis nécessitant une action (envoyés sans
+  // réponse par palier de cadence, acceptés non facturés — réutilise le
+  // sélecteur ZFAC12, refusés sans motif, expirant bientôt). Miroir de
+  // savApi.getSavFileAction() (ZSAV6) — buckets { count, ids }.
+  getDevisActionBoard: () => api.get('/ventes/devis/action-requise/'),
 
   // Lignes de devis
   getLignesDevis: (params) => api.get('/ventes/devis-lignes/', { params }),

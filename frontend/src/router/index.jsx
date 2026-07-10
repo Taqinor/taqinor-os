@@ -39,6 +39,7 @@ const FacturesFournisseur = lazy(() => import('../pages/stock/FacturesFournisseu
 const ClientList = lazy(() => import('../pages/crm/ClientList'))
 const LeadsPage = lazy(() => import('../pages/crm/leads/LeadsPage'))
 const DevisList = lazy(() => import('../pages/ventes/DevisList'))
+const DevisActionBoardPage = lazy(() => import('../pages/ventes/DevisActionBoardPage'))
 const DevisGenerator = lazy(() => import('../pages/ventes/DevisGenerator'))
 const ToitureDesign = lazy(() => import('../pages/ventes/ToitureDesign'))
 const RoofViewerPage = lazy(() => import('../pages/ventes/RoofViewerPage'))
@@ -260,6 +261,8 @@ const router = createBrowserRouter([
 
   // Ventes
   { path: '/ventes/devis', loader: authLoader, element: <WithLayout><DevisList /></WithLayout> },
+  // QX29 — « Relances du jour » : tableau d'action des devis (miroir ZSAV6).
+  { path: '/ventes/devis/action-requise', loader: authLoader, element: <WithLayout><DevisActionBoardPage /></WithLayout> },
   { path: '/ventes/devis/nouveau', loader: authLoader, element: <WithLayout><DevisGenerator /></WithLayout> },
   // QG12 — Design 3D d'un devis en LECTURE SEULE, plein écran, ouvrable dans une fenêtre.
   { path: '/ventes/devis/:id/3d', loader: authLoader, errorElement: <RouteErrorBoundary />, element: <WithLayout><RoofViewerPage /></WithLayout> },
