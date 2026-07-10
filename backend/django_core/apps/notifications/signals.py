@@ -303,6 +303,28 @@ def demande_approbation_post_save(sender, instance, created, **kwargs):
             'notify APPROVAL_* failed (demande approbation %s)', instance.pk)
 
 
+
+# ── Contrat signé → CONTRAT_SIGNE (ARC35) ────────────────────────────────────
+# S'abonne à ``core.events.contrat_signe`` (YDOCF5 — seam posé par
+# CONTRAT16/17, jusqu'ici SANS abonné, catalogué ``ALLOWED_UNCONSUMED``).
+# Notifie l'utilisateur qui a agi à la signature (``user``), sinon les
+# managers de la société (même repli que les autres producteurs de ce module).
+def contrat_signe_receiver(sender, contrat, user, company, **kwargs):
+    try:
+        from .sweeps import _notify_user_or_managers
+
+        ref = (contrat.reference or '').strip() or f'#{contrat.pk}'
+        _notify_user_or_managers(
+            user, company, EventType.CONTRAT_SIGNE,
+            'Contrat signé',
+            body=f'Le contrat {ref} a été intégralement signé.',
+            link=f'/contrats/{contrat.pk}',
+        )
+    except Exception:  # noqa: BLE001 — jamais bloquant
+        logger.exception(
+            'notify CONTRAT_SIGNE failed (contrat %s)', getattr(contrat, 'pk', '?'))
+
+
 def connect():
     """Branche les récepteurs. Appelé depuis ``AppConfig.ready()``."""
     from apps.automation.models import AutomationApproval
@@ -310,7 +332,9 @@ def connect():
     from apps.crm.models import Lead
     from apps.sav.models import Ticket
     from apps.ventes.models import Devis
-    from core.events import bon_commande_cree, devis_expired, facture_payee
+    from core.events import (
+        bon_commande_cree, contrat_signe, devis_expired, facture_payee,
+    )
 
     pre_save.connect(lead_pre_save, sender=Lead,
                      dispatch_uid='notifications_lead_pre')
@@ -327,6 +351,8 @@ def connect():
                           dispatch_uid='notifications_facture_payee')
     bon_commande_cree.connect(bon_commande_cree_receiver,
                               dispatch_uid='notifications_bon_commande_cree')
+    contrat_signe.connect(contrat_signe_receiver,
+                          dispatch_uid='notifications_contrat_signe')
     post_save.connect(sav_ticket_post_save, sender=Ticket,
                       dispatch_uid='notifications_sav_ticket_opened')
     pre_save.connect(automation_approval_pre_save, sender=AutomationApproval,

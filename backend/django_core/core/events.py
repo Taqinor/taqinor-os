@@ -129,9 +129,15 @@ importe ``apps.audit``.
       externe) ;
     * ``company`` — la société (posée côté serveur).
 
-    Aucun abonné obligatoire dans ce lot (pose du seam) — destiné à
-    découpler la facturation récurrente (CONTRAT31/FG40), une notification
-    client, un dépôt GED (CONTRAT-*), ou une vérification d'entitlement SAV.
+    Abonnés dans ce repo (ARC35) : ``contrats`` lui-même
+    (``apps/contrats/receivers.py`` — note chatter ARC8 via
+    ``records.services.log_note`` + dépôt GED du contrat signé via
+    ``deposer_contrat_signe_en_ged``, sur le patron émetteur=abonné de
+    ``qhse.receivers``) et ``notifications``
+    (``apps/notifications/signals.py`` — notifie l'utilisateur signataire,
+    repli managers, ``EventType.CONTRAT_SIGNE``). Reste ouvert à un futur
+    abonné pour la facturation récurrente (CONTRAT31/FG40) ou une
+    vérification d'entitlement SAV.
 
 ``contrat_actif``
     Émis EXACTEMENT une fois quand un ``contrats.Contrat`` bascule vers
@@ -142,6 +148,10 @@ importe ``apps.audit``.
     n'est jamais modifié par ce module lui-même (préservation des statuts,
     CONTRAT12) : le bus ne fait qu'observer la bascule déjà actée par la
     machine d'états gardée.
+
+    Abonné dans ce repo (ARC35) : ``contrats`` lui-même
+    (``apps/contrats/receivers.py`` — note chatter ARC8 ; pas de second dépôt
+    GED, déjà couvert par ``contrat_signe`` juste avant dans le même appel).
 
 ``contrat_resilie``
     Émis à la FIN de ``contrats.services.resilier_contrat`` (CONTRAT25) —
@@ -361,13 +371,13 @@ employe_sorti = django.dispatch.Signal()
 conge_approuve = django.dispatch.Signal()
 
 # Émis à la bascule d'un contrat vers « signe » (CONTRAT16) — YDOCF5.
-# Arguments : contrat, user, company. Aucun abonné obligatoire dans ce lot
-# (pose du seam) — voir docstring du module ci-dessus.
+# Arguments : contrat, user, company. Abonnés (ARC35) : contrats lui-même
+# (chatter ARC8 + dépôt GED) et notifications — voir docstring du module.
 contrat_signe = django.dispatch.Signal()
 
 # Émis à la bascule d'un contrat vers « actif » (CONTRAT17) — YDOCF5.
-# Arguments : contrat, user, company. Aucun abonné obligatoire dans ce lot
-# (pose du seam) — voir docstring du module ci-dessus.
+# Arguments : contrat, user, company. Abonné (ARC35) : contrats lui-même
+# (chatter ARC8) — voir docstring du module ci-dessus.
 contrat_actif = django.dispatch.Signal()
 
 # Émis à la résiliation d'un contrat (CONTRAT25) — YSUBS5.
