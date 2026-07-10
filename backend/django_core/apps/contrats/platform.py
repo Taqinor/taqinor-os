@@ -1,4 +1,4 @@
-"""ARC28/ARC29/ARC31 — Manifeste plateforme du module Contrats
+"""ARC28/ARC29/ARC31/ARC33 — Manifeste plateforme du module Contrats
 (« déclarer une fois »).
 
 Déclare ce que l'app Contrats expose aux surfaces transverses (voir
@@ -19,10 +19,14 @@ au lieu d'un appel explicite ``customfields.registry.register(...)`` dans
 un chargeur central unique (``apps/customfields/apps.py``) qui lit ce
 manifeste ; l'API ``registry.register``/``get_model`` reste inchangée.
 
+ARC33 — ``apps.contrats.agent_actions`` (LECTURE seule : liste des contrats)
+est déclaré dans ``agent_actions_module`` et AUTO-DÉCOUVERT par
+``AgentConfig.ready()`` — aucun câblage dans ``ContratsConfig.ready()``.
+Module ``ModuleToggle``-OFF ⇒ actions absentes du catalogue agent.
+
 Surfaces encore VOLONTAIREMENT vides (le contrat n'y est pas branché) :
 
 * PAS d'import/export (absent de ``dataimport``) ;
-* PAS d'actions agentiques déclarées via ce manifeste ;
 * PAS d'automatisation temporelle (absent de ``automation.DATE_TRIGGER_TARGETS``) ;
 * PAS de KPI/agrégat dédié (absent de ``reporting/reports.py``).
 
@@ -48,9 +52,12 @@ PLATFORM = {
     # basculée depuis ContratsConfig.ready() vers ce manifeste).
     'customfield_models': ['contrat'],
 
+    # ARC33 — actions agentiques LECTURE seule (liste des contrats),
+    # auto-découvertes par AgentConfig.ready() depuis cette déclaration.
+    'agent_actions_module': 'apps.contrats.agent_actions',
+
     # Surfaces DÉLIBÉRÉMENT VIDES (le contrat n'y est pas encore branché).
     'import_specs': [],
-    'agent_actions_module': '',
     'automation_state_fields': [],
     'kpi_providers': [],
 }

@@ -1,10 +1,17 @@
-"""ARC28/ARC30 — Manifeste plateforme du module RH (« déclarer une fois »).
+"""ARC28/ARC30/ARC33 — Manifeste plateforme du module RH
+(« déclarer une fois »).
 
-Déclare ce que RH expose aux surfaces transverses (voir ``core.platform``).
-ARC30 fait basculer la source de ``records.ALLOWED_TARGETS`` d'un ``set``
-littéral figé vers l'union paresseuse des manifestes ``record_targets`` — ce
-manifeste porte la cible chatter/records historique (``rh.dossieremploye``).
-Les autres surfaces restent vides ici (hors périmètre ARC30).
+Déclare ce que RH expose aux surfaces transverses (voir ``core.platform``) :
+
+* **chatter/records (ARC30)** — la cible ``records.ALLOWED_TARGETS``
+  historique (``rh.dossieremploye``) ;
+* **actions agent (ARC33, pilote)** — ``apps.rh.agent_actions`` (lecture/liste
+  seule : employés, demandes de congé), AUTO-DÉCOUVERT par
+  ``AgentConfig.ready()`` depuis cette déclaration — aucun câblage dans
+  ``RhConfig.ready()``. Module ``ModuleToggle``-OFF ⇒ actions absentes du
+  catalogue.
+
+Les autres surfaces restent vides ici (hors périmètre).
 """
 from __future__ import annotations
 
@@ -15,7 +22,8 @@ PLATFORM = {
     'searchable_models': [],
     'customfield_models': [],
     'import_specs': [],
-    'agent_actions_module': '',
+    # ARC33 — actions agentiques lecture seule, auto-découvertes.
+    'agent_actions_module': 'apps.rh.agent_actions',
     'automation_state_fields': [],
     'kpi_providers': [],
 }
