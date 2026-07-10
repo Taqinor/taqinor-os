@@ -49,7 +49,14 @@ def _record_devis_expiration_systeme(sender, devis, ancien_statut, **kwargs):
     émet désormais ``devis_expired`` via ``core.events`` et l'audit s'y abonne
     ici (M4 — plus aucune arête montante ventes→audit). Best-effort : ``record``
     n'élève jamais.
+
+    ARC16 (pilote #1) — passe par l'entonnoir ``record_field_change`` : la ligne
+    ``AuditLog`` reste 1:1 (action STATUS, même devis, user=None, même détail)
+    et gagne un diff structuré ``statut: ancien → expire``. ``chatter=False`` :
+    expiration système hors requête, pas d'acteur — aucune note de chatter à
+    poser (comportement inchangé).
     """
-    recorder.record(
-        AuditLog.Action.STATUS, instance=devis, user=None,
+    recorder.record_field_change(
+        devis, 'statut', ancien_statut, 'expire', user=None,
+        field_label='Statut', action=AuditLog.Action.STATUS, chatter=False,
         detail='Expiration automatique (job : expire_stale_devis).')
