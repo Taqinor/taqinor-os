@@ -4,9 +4,45 @@ from django.utils.text import slugify
 
 
 class Company(models.Model):
+    # SCA18 — cycle de vie du tenant. ``actif`` (bool historique) est CONSERVÉ
+    # intact (jamais supprimé) et reste le drapeau lu partout ; ``statut`` ajoute
+    # une granularité (actif / suspendu / en fermeture) appliquée au JWT et à
+    # l'API. Un PONT de synchro bidirectionnel réversible garde les deux
+    # cohérents : ``statut != actif`` → ``actif`` recalculé (seul ``actif``
+    # signifie « opérationnel »). Backfill : chaque société existante prend
+    # ``statut=actif`` si ``actif`` sinon ``suspendu`` — comportement inchangé.
+    STATUT_ACTIF = 'actif'
+    STATUT_SUSPENDU = 'suspendu'
+    STATUT_FERMETURE = 'fermeture'
+    STATUT_CHOICES = [
+        (STATUT_ACTIF, 'Actif'),
+        (STATUT_SUSPENDU, 'Suspendu'),
+        (STATUT_FERMETURE, 'En fermeture'),
+    ]
+
     nom = models.CharField(max_length=255)
     slug = models.SlugField(unique=True, blank=True)
     actif = models.BooleanField(default=True)
+    statut = models.CharField(
+        'Statut du compte', max_length=12, choices=STATUT_CHOICES,
+        default=STATUT_ACTIF,
+        help_text="Cycle de vie du tenant : seul « actif » autorise login/API. "
+                  "« suspendu »/« en fermeture » bloquent l'accès (rule SCA18).")
+    # SCA21 — date de passage en fermeture : démarre le délai de grâce (30 j)
+    # pendant lequel les données restent intactes avant qu'une purge explicite
+    # (management command, double confirmation) puisse être exécutée.
+    date_fermeture = models.DateTimeField(
+        'Date de mise en fermeture', null=True, blank=True)
+    # SCA22 — annotation libre du fondateur (console tenants) : note de plan /
+    # remarque libre, JAMAIS de billing ici. Additif, défaut vide.
+    plan_flag = models.CharField(
+        'Note de plan (fondateur)', max_length=255, blank=True, default='')
+    # SCA46 — consentement au benchmarking anonymisé agrégé. Le CONSENTEMENT est
+    # une donnée (Boolean, défaut False — opt-in strict) ; AUCUNE agrégation
+    # n'est construite ici. Une future feature d'agrégation devra pointer ce
+    # champ (voir NTDATA46) au lieu de re-modéliser le consentement.
+    benchmarking_opt_in = models.BooleanField(
+        'Consentement benchmarking anonymisé', default=False)
     date_creation = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -16,10 +52,40 @@ class Company(models.Model):
     def __str__(self):
         return self.nom
 
+    @property
+    def est_operationnel(self):
+        """True si le tenant est ACTIF (login + API autorisés). Un tenant
+        suspendu ou en fermeture n'est pas opérationnel."""
+        return self.statut == self.STATUT_ACTIF and self.actif
+
     def save(self, *args, **kwargs):
         if not self.slug:
             base = slugify(self.nom)
             self.slug = base or f"company-{Company.objects.count() + 1}"
+        # SCA18 — pont de synchro bool↔statut (réversible, sans perte).
+        # ``actif`` (bool historique) et ``statut`` (granulaire) doivent toujours
+        # s'accorder sur l'état OPÉRATIONNEL. Réconciliation :
+        #   * si un code historique a mis ``actif=False`` alors que ``statut`` est
+        #     resté « actif » → on promeut ``statut`` en « suspendu » (le bool
+        #     mène) : une désactivation existante reste effective ;
+        #   * sinon ``actif`` suit ``statut`` (« actif » ⇔ True). Un tenant
+        #     suspendu/en fermeture a donc toujours ``actif=False``, ce qui fait
+        #     que TOUT code qui ne lit que ``actif`` bloque déjà ces tenants.
+        ancien_statut, ancien_actif = self.statut, self.actif
+        if self.statut == self.STATUT_ACTIF and self.actif is False:
+            self.statut = self.STATUT_SUSPENDU
+        self.actif = (self.statut == self.STATUT_ACTIF)
+        # Un save(update_fields=[…]) partiel doit persister la réconciliation
+        # du pont s'il a modifié statut/actif — sinon la base divergerait.
+        update_fields = kwargs.get('update_fields')
+        if update_fields is not None:
+            extra = set()
+            if self.statut != ancien_statut:
+                extra.add('statut')
+            if self.actif != ancien_actif:
+                extra.add('actif')
+            if extra:
+                kwargs['update_fields'] = list(set(update_fields) | extra)
         super().save(*args, **kwargs)
 
 
@@ -82,6 +148,22 @@ class CustomUser(AbstractUser):
         null=True,
         blank=True,
         related_name='users',
+    )
+    # XPLT19 — Accès multi-sociétés. Un utilisateur (ex. le fondateur qui opère
+    # une EI ET une SARL) peut être MEMBRE de plusieurs sociétés. ``company``
+    # ci-dessus reste la société d'attache (« home », défaut de connexion) ;
+    # ``societes_autorisees`` liste TOUTES les sociétés qu'il peut opérer.
+    # ADDITIF & rétrocompatible : une migration de données backfille chaque
+    # compte existant avec {sa ``company``}, donc un compte mono-société a
+    # exactement {sa société} — comportement byte-identique (il ne peut pas
+    # switcher). La société ACTIVE d'une requête est portée par un claim JWT et
+    # appliquée par ``ActiveCompanyMiddleware`` (voir ``active_company.py``) —
+    # jamais un ``save()`` : le FK ``company`` d'attache n'est jamais modifié.
+    societes_autorisees = models.ManyToManyField(
+        Company,
+        blank=True,
+        related_name='membres_autorises',
+        verbose_name='Sociétés autorisées',
     )
     # Compte propriétaire protégé : ne peut être ni supprimé ni rétrogradé,
     # par personne (y compris lui-même). Garantit, avec la garde « dernier
@@ -326,6 +408,22 @@ class CustomUser(AbstractUser):
         enregistrements (lui-même toujours inclus). Voir ``scoping``."""
         from authentication.scoping import visible_user_ids
         return visible_user_ids(self)
+
+    # ── XPLT19 — accès multi-sociétés & société active ────────────────────────
+    def societes_operables(self):
+        """Liste des sociétés que ce compte peut opérer (home + M2M), dédupliquée.
+
+        Un compte mono-société renvoie exactement {sa société} — il ne peut donc
+        pas switcher (comportement inchangé)."""
+        from authentication.active_company import companies_for_user
+        return companies_for_user(self)
+
+    def peut_operer_societe(self, company_id):
+        """True si ce compte est membre de la société ``company_id`` (home ou
+        ``societes_autorisees``). Un switch n'est autorisé que vers une société
+        pour laquelle ceci est True."""
+        from authentication.active_company import user_can_operate
+        return user_can_operate(self, company_id)
 
     # ── Rotation forcée des identifiants (N96) — strictement OPT-IN ──────────
     # Drapeau de rotation : quand un administrateur le passe à True, l'utilisateur

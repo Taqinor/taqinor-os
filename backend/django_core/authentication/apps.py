@@ -14,3 +14,10 @@ class AuthenticationConfig(AppConfig):
         'description': 'Comptes, sociétés et authentification.',
         'categorie': 'Technique',
     }
+
+    def ready(self):
+        # SCA20 — enregistre les hooks de seed « nouvelle société » (types
+        # d'activité + niveaux de relance) migrés depuis les seeds INLINE de
+        # RegisterCompanyView. Import local : jamais d'effet de bord à l'import.
+        from .signup_seeds import register_authentication_signup_hooks
+        register_authentication_signup_hooks()

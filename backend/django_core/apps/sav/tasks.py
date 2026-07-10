@@ -51,6 +51,7 @@ def generer_visites_dues_quotidien():
     quand au moins un ticket a été créé. OFF (défaut) = société totalement
     ignorée — aucun effet."""
     from authentication.models import CustomUser
+    from authentication.selectors import active_companies
 
     from apps.notifications.services import notify
     from .maintenance import generer_visites_dues
@@ -59,9 +60,11 @@ def generer_visites_dues_quotidien():
     total_societes = 0
     total_generes = 0
 
+    # SCA19 — restreint aux sociétés opérationnelles via la source unique : un
+    # tenant suspendu/en fermeture n'a plus de génération de visites préventives.
     for reglage in SavSlaSettings.objects.filter(
             generation_auto_visites=True, company__isnull=False,
-            company__actif=True).select_related('company'):
+            company__in=active_companies()).select_related('company'):
         company = reglage.company
         try:
             acteur = (

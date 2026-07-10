@@ -237,7 +237,35 @@ class CookieTokenRefreshView(APIView):
             )
         try:
             token = RefreshToken(refresh_raw)
-            access = str(token.access_token)
+            # SCA18 — un tenant suspendu/en fermeture ne peut plus rafraîchir un
+            # jeton émis avant sa suspension : on rejette au refresh (message FR).
+            # Superuser (support) exempté. Tenant actif inchangé.
+            try:
+                uid = token.get('user_id')
+                u = CustomUser.objects.select_related('company').filter(
+                    pk=uid).first() if uid else None
+                if (u is not None and not u.is_superuser
+                        and u.company is not None
+                        and not u.company.est_operationnel):
+                    resp = Response(
+                        {'detail': 'Ce compte société est suspendu.'},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+                    _clear_auth_cookies(resp)
+                    return resp
+            except Exception:
+                pass
+            access_token = token.access_token
+            # XPLT19 — le claim ``active_company_id`` du refresh n'est PAS recopié
+            # d'office sur l'access dérivé (simplejwt ne propage que les claims
+            # enregistrés). On le reporte explicitement pour que la société active
+            # choisie survive au rafraîchissement transparent (sinon elle
+            # retomberait sur la société d'attache toutes les 30 min).
+            from authentication.active_company import ACTIVE_COMPANY_CLAIM
+            active = token.get(ACTIVE_COMPANY_CLAIM)
+            if active is not None:
+                access_token[ACTIVE_COMPANY_CLAIM] = active
+            access = str(access_token)
             new_refresh = str(token) if settings.SIMPLE_JWT.get(
                 'ROTATE_REFRESH_TOKENS', False
             ) else None
@@ -251,6 +279,78 @@ class CookieTokenRefreshView(APIView):
             )
             _clear_auth_cookies(resp)
             return resp
+
+
+# ── XPLT19 — Bascule de société active (accès multi-sociétés) ──────
+class SwitchCompanyView(APIView):
+    """POST /api/django/auth/switch-company/ — change la société ACTIVE.
+
+    Corps : ``{"company_id": <id>}``. Autorisé UNIQUEMENT si l'utilisateur est
+    membre de la société cible (société d'attache OU ``societes_autorisees``).
+    Un compte mono-société ne peut donc PAS switcher (403). Sur succès, on
+    réémet des jetons (access + refresh) portant le claim ``active_company_id``
+    de la société choisie, et on journalise la bascule dans l'audit. Toutes les
+    requêtes ultérieures sont alors bornées à la nouvelle société active."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        company_id = request.data.get('company_id')
+        if company_id in (None, ''):
+            return Response(
+                {'detail': 'Le champ « company_id » est requis.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            company_id = int(company_id)
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': 'Identifiant de société invalide.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # Garde d'appartenance STRICTE : jamais de switch vers une société non
+        # autorisée (défense contre l'escalade cross-tenant).
+        if not user.peut_operer_societe(company_id):
+            return Response(
+                {'detail': "Vous n'êtes pas membre de cette société."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        cible = Company.objects.filter(pk=company_id).first()
+        if cible is None:
+            return Response(
+                {'detail': 'Société introuvable.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        # Réémet des jetons portant le claim de société active choisie. On passe
+        # par le même ``get_token`` que le login (mêmes claims), puis on écrase
+        # le claim de société active sur le refresh ET l'access (l'access dérivé
+        # ne recopie pas les claims personnalisés tout seul).
+        from authentication.active_company import ACTIVE_COMPANY_CLAIM
+        refresh = CustomTokenObtainPairSerializer.get_token(user)
+        refresh[ACTIVE_COMPANY_CLAIM] = company_id
+        access = refresh.access_token
+        access[ACTIVE_COMPANY_CLAIM] = company_id
+        response = Response({
+            'detail': 'Société active changée.',
+            'company_id': company_id,
+            'company_nom': cible.nom,
+        })
+        _set_auth_cookies(response, str(access), str(refresh))
+        # Sessions actives (N96) — le nouveau refresh est tracé/révocable comme
+        # une connexion. Best-effort, ne bloque jamais le switch.
+        _record_session(user, str(refresh), request)
+        # Journal d'activité — bascule de société active (best-effort).
+        try:
+            from apps.audit.recorder import record
+            from apps.audit.models import AuditLog
+            record(
+                AuditLog.Action.SWITCH_COMPANY, user=user,
+                company=cible,
+                detail=f'Société active → {cible.nom} (#{company_id}).',
+            )
+        except Exception:
+            pass
+        return response
 
 
 # ── Inscription d'un utilisateur dans une entreprise existante ─
@@ -356,34 +456,6 @@ class RegisterCompanyView(generics.GenericAPIView):
         # total + Journal d'activité), pour qu'il y ait au moins un Directeur.
         admin_role = roles['Directeur']
 
-        # Types d'activité par défaut (style Odoo) pour la nouvelle société.
-        try:
-            from apps.records.models import ActivityType
-            for nom, icone, ordre, delai in [
-                ('Appel', '📞', 10, 0), ('Email', '✉️', 20, 0),
-                ('Réunion', '👥', 30, 0), ('Relance', '📅', 40, 3),
-                ('À faire', '✔️', 50, 0),
-            ]:
-                ActivityType.objects.get_or_create(
-                    company=company, nom=nom,
-                    defaults={'icone': icone, 'ordre': ordre,
-                              'delai_defaut_jours': delai, 'est_systeme': True})
-        except Exception:
-            pass
-
-        # Niveaux de relance par défaut (J+7 / J+15 / J+30).
-        try:
-            from apps.ventes.models import FollowupLevel
-            for ordre, nom, delai in [
-                (1, 'Rappel courtois', 7), (2, 'Relance', 15),
-                (3, 'Relance ferme', 30),
-            ]:
-                FollowupLevel.objects.get_or_create(
-                    company=company, ordre=ordre,
-                    defaults={'nom': nom, 'delai_jours': delai})
-        except Exception:
-            pass
-
         user = CustomUser.objects.create_user(
             username=username,
             email=email,
@@ -392,6 +464,17 @@ class RegisterCompanyView(generics.GenericAPIView):
             role=admin_role,
             company=company,
         )
+        # XPLT19 — la société d'attache est aussi la première société autorisée
+        # (membre). Un compte mono-société démarre donc avec {sa société}.
+        user.societes_autorisees.add(company)
+
+        # SCA20 — seeds « à la création d'une société » migrés en HOOKS
+        # idempotents (types d'activité + niveaux de relance historiques, PLUS
+        # le catalogue produit désormais seedé). Chaque app enregistre son hook
+        # dans son apps.py ready() ; la vue ne les connaît pas. Best-effort : un
+        # hook KO n'empêche jamais la création de la société.
+        from core.signup_hooks import run_signup_hooks
+        run_signup_hooks(company, user=user)
 
         return Response({
             'detail': 'Entreprise creee avec succes.',

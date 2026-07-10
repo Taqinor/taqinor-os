@@ -9,6 +9,7 @@ import {
 import { logoutUser } from '../../features/auth/store/authSlice'
 import { toggleCopilot } from '../../features/ia/store/iaSlice'
 import GlobalSearch from './GlobalSearch'
+import CompanySwitcher from './CompanySwitcher'
 import NotificationBell from './NotificationBell'
 import ChatBell from './ChatBell'
 import Breadcrumbs from './Breadcrumbs'
@@ -82,6 +83,8 @@ export default function Header({ onMenu }) {
         </button>
 
         <div className="header-user">
+          {/* XPLT19 — sélecteur de société active (multi-sociétés uniquement). */}
+          <CompanySwitcher />
           {/* N93 — sélecteur de langue d'interface (FR / EN / العربية). */}
           <LanguageSwitcher />
           <ThemeToggle />

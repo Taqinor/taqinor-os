@@ -31,6 +31,8 @@ class AuditLog(models.Model):
         REFUSE = 'refuse', 'Devis refusé'
         # YEVNT5 — notification in-app émise (notifications.notify()).
         NOTIFY = 'notify', 'Notification envoyée'
+        # XPLT19 — bascule de société active (utilisateur multi-sociétés).
+        SWITCH_COMPANY = 'switch_company', 'Changement de société active'
 
     # Société forcée côté serveur (jamais depuis le corps de requête). Nullable
     # pour les évènements sans société connue (échec de connexion avant auth).
