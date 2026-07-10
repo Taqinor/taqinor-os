@@ -8,13 +8,13 @@ produit/emplacement/casier validés tenant. Cross-app : ``stock`` en string-FK.
 """
 from django.utils import timezone
 
-from rest_framework import viewsets, status
+from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import PutAway, BinLocation
 from ..serializers import PutAwaySerializer
@@ -23,7 +23,7 @@ from .. import selectors
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class PutAwayViewSet(TenantMixin, viewsets.ModelViewSet):
+class PutAwayViewSet(CompanyScopedModelViewSet):
     """FG320 — rangements guidés. Lecture tout rôle, écriture responsable/admin.
     Société/`created_by`/`bin_suggere` posés serveur. Filtrable par `statut`,
     `produit`, `emplacement`."""

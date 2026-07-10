@@ -13,8 +13,8 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet
 
 from apps.ventes.utils.references import create_with_reference
 
@@ -24,7 +24,7 @@ from ..serializers import ColisSerializer, ColisLigneSerializer
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class ColisViewSet(TenantMixin, viewsets.ModelViewSet):
+class ColisViewSet(CompanyScopedModelViewSet):
     """FG322 — colis de préparation. Lecture tout rôle, écriture
     responsable/admin. Référence/société/`created_by` posés serveur. Filtrable
     par `installation`, `statut`."""

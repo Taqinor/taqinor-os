@@ -9,12 +9,12 @@ Multi-tenant : la société est TOUJOURS posée côté serveur ; le queryset est
 scopé à la société du demandeur. Une étape SYSTÈME (protégée) ne se supprime
 pas — elle se désactive (même règle que les checklists/shot-list).
 """
-from rest_framework import viewsets, status
+from rest_framework import status
 from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
 
-from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole
+from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import StageModele
 from ..serializers_stage import StageModeleSerializer
@@ -47,7 +47,7 @@ class IsDirecteur(BasePermission):
         return getattr(user, 'is_admin_role', False)
 
 
-class StageModeleViewSet(TenantMixin, viewsets.ModelViewSet):
+class StageModeleViewSet(CompanyScopedModelViewSet):
     """CH5 — étapes/gates configurables (Paramètres → Chantiers). Lecture tout
     rôle ; écriture Directeur uniquement. Amorce le cycle PV international de la
     société à la première consultation."""
