@@ -17,6 +17,10 @@
 > l'arbre mergé et relancer `python scripts/codemap_fingerprint.py --write`.
 > Ce fichier n'est PAS dans la surface du plan-fingerprint (comme WEB_PLAN.md) :
 > tick + DONE LOG ici, jamais dans docs/CODEMAP.md §10.
+> JAMAIS ré-implémenter localement une primitive plateforme manquante (chatter,
+> numérotation, jobs, files, registre…) : si une tâche dépend d'une primitive
+> ARC/NT pas encore sur main → `[BLOCKED: attend <ID>]` + continuer. C'est le
+> vecteur n°1 de dette constaté (13 chatters artisanaux) — bloquer vaut mieux.
 > Groupes : NTFSM, NTNRG, NTSRV, NTSVC. Règles WOW/CLAUDE.md inchangées
 > (lane-draining, revue adversariale, retro, routage modèle via plan_lanes.py).
 
