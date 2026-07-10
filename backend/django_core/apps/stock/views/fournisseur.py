@@ -4,7 +4,7 @@ from django.http import HttpResponse  # noqa: F401
 from rest_framework import viewsets, filters, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
-from authentication.mixins import TenantMixin  # noqa: F401
+from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference  # noqa: F401
 from ..models import (  # noqa: F401
     Produit, Categorie, Fournisseur, MouvementStock, Marque,
@@ -44,7 +44,7 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-class FournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
+class FournisseurViewSet(CompanyScopedModelViewSet):
     queryset = Fournisseur.objects.all()
     serializer_class = FournisseurSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -167,7 +167,7 @@ class FournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(PortailFournisseurTokenSerializer(token_obj).data)
 
 
-class ContactFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
+class ContactFournisseurViewSet(CompanyScopedModelViewSet):
     """XPUR5 — contacts secondaires d'un fournisseur (N par fournisseur)."""
     queryset = ContactFournisseur.objects.select_related('fournisseur').all()
     serializer_class = ContactFournisseurSerializer
@@ -192,7 +192,7 @@ class ContactFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
         serializer.save(company=self.request.user.company)
 
 
-class CategorieFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
+class CategorieFournisseurViewSet(CompanyScopedModelViewSet):
     """XPUR5 — référentiel léger de catégories fournisseur (type Marque)."""
     queryset = CategorieFournisseur.objects.all()
     serializer_class = CategorieFournisseurSerializer
