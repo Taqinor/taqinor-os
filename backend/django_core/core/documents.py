@@ -49,6 +49,7 @@ __all__ = [
     "changer_statut",
     "LigneDocumentMetier",
     "TotauxDocumentMixin",
+    "document_viewset",
 ]
 
 
@@ -354,3 +355,92 @@ class TotauxDocumentMixin(models.Model):
         if self.montant_ttc is not None:
             return self.montant_ttc
         return self.total_ht + self.total_tva
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SCA32 — Factory de viewset du kit : scoping + numérotation + chatter en 1 ligne.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def document_viewset(model, serializer, *, prefix, padding=4, period="monthly",
+                     base=None, **attrs):
+    """Compose un ViewSet complet pour un document du kit en UNE déclaration.
+
+    Un NOUVEAU type de document ⇒ ~1 ligne : ``MonDocViewSet =
+    document_viewset(MonDoc, MonDocSerializer, prefix='MDOC')``. Le viewset
+    produit COMPOSE, sans rien re-coder :
+
+    * ``CompanyScopedModelViewSet`` (ARC2) — ``get_queryset`` scopé
+      ``request.user.company`` + ``company`` forcée côté serveur ;
+    * ``ChatterViewSetMixin`` (ARC8) — actions ``chatter/historique`` (GET) et
+      ``chatter/noter`` (POST) adossées au chatter générique ``records.Activity``
+      (auteur + société toujours posés côté serveur) ;
+    * ``core.numbering.create_with_reference`` (ARC6) appelé en
+      ``perform_create`` avec le ``prefix`` déclaré — référence race-safe
+      (plus-haut-utilisé+1, savepoint+retry), JAMAIS ``count()+1`` (règle repo).
+
+    Args:
+        model: le modèle document (sous-classe de ``DocumentMetier``) — doit
+            porter un champ ``reference`` unique par ``(company, reference)``.
+        serializer: le ``ModelSerializer`` du document.
+        prefix: préfixe de référence (ex. ``'MDOC'`` → ``MDOC-202607-0001``).
+        padding / period: transmis à ``next_reference`` (défauts = historique
+            mensuel 4-pad).
+        base: base viewset alternative (défaut ``CompanyScopedModelViewSet``) —
+            pour composer un document qui a en plus son propre ``get_permissions``
+            (le passer via ``attrs``) ou une base déjà spécialisée.
+        **attrs: attributs de classe supplémentaires (``permission_classes``,
+            ``get_permissions``, ``filterset_fields``…) fusionnés dans la classe
+            générée.
+
+    Points d'extension NOMMÉS (YAPIC1 pagination / YAPIC2 filtres) : hérités du
+    socle ``CompanyScopedModelViewSet``, NON implémentés ici (byte-identiques au
+    défaut projet). Le grain fin des rôles reste YRBAC3.
+
+    Retourne une CLASSE viewset prête à router. Elle est produite par ``type()``
+    (dynamique) : le garde SCA4 (V) scanne des en-têtes ``class`` textuels, donc
+    un viewset généré par factory n'a pas à figurer dans une baseline — et il est
+    de toute façon basé socle par construction.
+    """
+    from core.numbering import create_with_reference
+    from core.viewsets import CompanyScopedModelViewSet
+
+    # Chatter ARC8 : câblé au niveau viewset uniquement (records = fondation),
+    # jamais importé au niveau modèle du kit. Import fonction-local pour rester
+    # découplé au chargement.
+    from apps.records.views import ChatterViewSetMixin
+
+    base_cls = base or CompanyScopedModelViewSet
+
+    def perform_create(self, serializer_inst):
+        """Force la société côté serveur ET attribue une référence race-safe.
+
+        Compose ``TenantMixin.perform_create`` (company forcée) + ARC6
+        (numérotation anti-collision) : la référence est générée dans un
+        savepoint avec retry, jamais ``count()+1``. La société est TOUJOURS
+        celle de l'utilisateur (jamais lue du corps de requête)."""
+        company = self.request.user.company
+
+        def _save(reference):
+            return serializer_inst.save(company=company, reference=reference)
+
+        create_with_reference(
+            model, prefix, company, _save, padding=padding, period=period)
+
+    namespace = {
+        "queryset": model._default_manager.all(),
+        "serializer_class": serializer,
+        "perform_create": perform_create,
+        "__doc__": (
+            f"Viewset du document « {model.__name__} » composé par le kit "
+            f"(SCA32) : scoping société (ARC2) + numérotation race-safe préfixe "
+            f"« {prefix} » (ARC6) + chatter générique (ARC8)."
+        ),
+    }
+    namespace.update(attrs)
+
+    return type(
+        f"{model.__name__}KitViewSet",
+        (ChatterViewSetMixin, base_cls),
+        namespace,
+    )
