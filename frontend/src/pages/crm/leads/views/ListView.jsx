@@ -3,7 +3,8 @@
 // STAGES.py) : aucune liste d'étapes n'est déclarée ici.
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { MoreHorizontal } from 'lucide-react'
-import { useDispatch, useSelector } from 'react-redux'
+import { useDispatch } from 'react-redux'
+import { useIsAdmin } from '../../../../hooks/useHasPermission'
 import { archiveLead, restoreLead, deleteLead } from '../../../../features/crm/store/crmSlice'
 import {
   PIPELINE_STAGES,
@@ -129,8 +130,7 @@ export default function ListView({
   selected = new Set(), onToggleSelect, onToggleAll, onInlineSave,
 }) {
   const dispatch = useDispatch()
-  const role = useSelector((s) => s.auth.role)
-  const canDelete = role === 'admin' // règle existante : destroy = admin
+  const canDelete = useIsAdmin() // règle existante : destroy = admin
   const isMobile = useIsMobile()
   // Par défaut : plus récents d'abord (date_creation desc), aucune colonne active.
   const [sort, setSort] = useState({ key: null, dir: 'asc' })

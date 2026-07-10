@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
+import { useIsAdmin } from '../../hooks/useHasPermission'
 import {
   fetchProfile, saveProfile,
   clearSaveSuccess,
@@ -73,8 +74,7 @@ export default function ParametresEntreprise() {
   // éditables que par un directeur/admin. Le backend gate déjà l'écriture
   // (IsAdminOrResponsableTier) ; ce contrôle UI empêche un rôle non autorisé
   // de voir/modifier les champs sensibles.
-  const role = useSelector(s => s.auth.role)
-  const canManageSensitive = role === 'admin'
+  const canManageSensitive = useIsAdmin()
 
   // Onglet actif (D1). Société & identité par défaut.
   const [tab, setTab] = useState('societe')

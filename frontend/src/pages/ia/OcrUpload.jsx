@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
+import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import {
   FileText, Inbox, AlertCircle, Check, Copy, RefreshCw, Save, Trash2, ChevronDown,
   UserPlus, FilePlus, Receipt,
@@ -498,8 +499,7 @@ function DocumentsTab({ canDelete }) {
 // ── Page principale ───────────────────────────────────────────────────────────
 export default function OcrUpload() {
   const [tab, setTab] = useState('analyse')
-  const role = useSelector((s) => s.auth.role)
-  const canSave = role === 'responsable' || role === 'admin'
+  const canSave = useIsAdminOrResponsable()
 
   return (
     <div className="ui-root space-y-4">

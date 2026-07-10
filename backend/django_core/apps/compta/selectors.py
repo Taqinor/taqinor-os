@@ -3989,3 +3989,34 @@ def produits_publics_du_catalogue(ecatalogue):
             id__in=ecatalogue.produit_ids or [],
         )
     )
+
+
+# ── SCA44 — Abonnements de monitoring dus (facturation récurrente beat) ────
+
+def abonnements_monitoring_dus_facturation(company, today=None):
+    """``AbonnementMonitoring`` ACTIFS dont la période courante
+    (``prochaine_echeance``, ou aujourd'hui si absente) est due aujourd'hui
+    (ou en retard) ET pas encore facturée pour cette période — SCA44.
+
+    Lecture seule, scopée société. Miroir de
+    ``apps.sav.services.contrats_maintenance_dus_facturation`` : le beat
+    quotidien de ``apps.contrats.scheduled`` appelle ce sélecteur (frontière
+    ``selectors.py``, jamais un import direct de ``apps.monitoring.models``
+    depuis ``contrats``) pour ne facturer que les abonnements réellement dus,
+    sans jamais re-sélectionner un abonnement déjà facturé pour sa période
+    courante (garde d'idempotence de ``derniere_facturation`` ==
+    ``prochaine_echeance``, en plus de la garde déjà posée dans
+    ``services.facturer_abonnement_monitoring``)."""
+    from .models import AbonnementMonitoring
+
+    if today is None:
+        today = timezone.localdate()
+
+    return [
+        a for a in AbonnementMonitoring.objects.filter(
+            company=company,
+            statut=AbonnementMonitoring.Statut.ACTIF,
+            prochaine_echeance__lte=today,
+        )
+        if a.derniere_facturation != (a.prochaine_echeance or today)
+    ]

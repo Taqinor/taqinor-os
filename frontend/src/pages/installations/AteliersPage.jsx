@@ -4,7 +4,7 @@
 // gate qualité (checklist QC), gamme d'exécution, chatter et bon d'assemblage
 // PDF (worksheet atelier). Aucun coût d'achat / marge n'est affiché ici.
 import { useEffect, useMemo, useState } from 'react'
-import { useSelector } from 'react-redux'
+import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import {
   Plus, Play, CheckCircle2, XCircle, FileText, Printer, RefreshCw, Wrench,
 } from 'lucide-react'
@@ -602,8 +602,7 @@ function DemontageDetail({ ordre, canWrite, onClose, onChanged }) {
 
 // ── Page ────────────────────────────────────────────────────────────────────
 export default function AteliersPage() {
-  const role = useSelector((s) => s.auth.role)
-  const canWrite = role === 'responsable' || role === 'admin'
+  const canWrite = useIsAdminOrResponsable()
 
   const [mode, setMode] = useState('assemblage')
   const [assemblages, setAssemblages] = useState([])
