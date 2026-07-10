@@ -1019,3 +1019,64 @@ def seuil_max_emplacement(company, produit_id, emplacement_id):
                   emplacement_id=emplacement_id)
           .first())
     return se.seuil_max if se is not None else None
+
+
+# ── ZMFG9 — Disponibilité multi-niveaux d'un kit (stock partagé + goulots) ──
+
+def disponibilite_potentielle_recursive(kit, company):
+    """ZMFG9 — combien de kits COMPLETS sont assemblables avec le stock
+    disponible actuel, en explosant récursivement la nomenclature
+    multi-niveaux (XMFG17, garde anti-cycle incluse).
+
+    Le besoin par kit est AGRÉGÉ PAR PRODUIT à travers tous les niveaux
+    (``exploser_kit`` cumule les occurrences) : un composant utilisé dans
+    deux sous-kits n'est donc JAMAIS compté deux fois côté stock — le nombre
+    assemblable = min(disponible ÷ besoin agrégé). Le disponible déduit les
+    réservations actives (stock − réservé, comme `structure_kit`).
+
+    Renvoie ``{kit_id, kit_nom, kits_assemblables, composants: [{produit_id,
+    sku, designation, besoin_par_kit, disponible, kits_possibles}],
+    goulots: [...]}`` où ``goulots`` = les composants LIMITANTS (ceux au
+    minimum de ``kits_possibles``, triés par désignation). Un kit sans
+    composant renvoie 0 kit assemblable et aucun goulot.
+
+    Lève ``services.KitCycleError`` (cycle) / ``ValueError`` (profondeur
+    excessive) — mêmes gardes claires que l'explosion XMFG17. Lecture seule.
+    """
+    from decimal import Decimal
+    from .services import exploser_kit, reserved_quantities
+
+    besoins = exploser_kit(kit, 1)  # lignes produit agrégées tous niveaux.
+    reserves = reserved_quantities(company)
+    composants = []
+    minimum = None
+    for ligne in besoins:
+        besoin = ligne['quantite'] or Decimal('0')
+        if besoin <= 0:
+            continue
+        dispo = (Decimal(str(ligne['disponible'] or 0))
+                 - Decimal(str(reserves.get(ligne['produit_id'], 0))))
+        kits_possibles = (
+            int((dispo / besoin).to_integral_value(rounding='ROUND_FLOOR'))
+            if dispo > 0 else 0)
+        minimum = kits_possibles if minimum is None else min(
+            minimum, kits_possibles)
+        composants.append({
+            'produit_id': ligne['produit_id'],
+            'sku': ligne['sku'],
+            'designation': ligne['designation'],
+            'besoin_par_kit': str(besoin),
+            'disponible': str(dispo),
+            'kits_possibles': kits_possibles,
+        })
+    kits_assemblables = minimum or 0
+    goulots = sorted(
+        (c for c in composants if c['kits_possibles'] == kits_assemblables),
+        key=lambda c: c['designation']) if composants else []
+    return {
+        'kit_id': kit.id,
+        'kit_nom': kit.nom,
+        'kits_assemblables': kits_assemblables,
+        'composants': composants,
+        'goulots': goulots,
+    }
