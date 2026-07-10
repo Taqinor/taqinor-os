@@ -34,7 +34,8 @@ import {
   batteryKwhFromLines, optionTotalsTTC, autoFillLines, defaultProductLines,
   computeEtudeIndustrielle,
   autoFillPompage, pompageSelection, HEURES_POMPAGE_DEFAUT,
-  isBattery, isHybridInverter, prixParKwc, discountForTarget,
+  isBattery, isHybridInverter, isReseauInverter, isPanel, isPompe,
+  prixParKwc, discountForTarget,
   computeBuyCost, avecBatterieAvailability, KWH_PRICE, EFFICIENCY,
   panneauxPourKwc, expectedTvaForDesignation,
   TVA_STANDARD_DEFAUT, TVA_PANNEAUX_DEFAUT,
@@ -283,6 +284,10 @@ export default function DevisGenerator({
     productible: null,
   })
   const [remiseMax, setRemiseMax] = useState('')
+  // QX20 — échappatoire documentée à la garde d'équipement : un avenant ou un
+  // devis d'accessoires/main-d'œuvre seuls (SAV, extension câblage…) n'a pas à
+  // contenir panneau+onduleur/pompe. OFF par défaut (garde active).
+  const [accessoiresOnly, setAccessoiresOnly] = useState(false)
   // Pompage (agricole)
   const [pompeCv, setPompeCv] = useState('5.5')
   const [pompeType, setPompeType] = useState('immergee')
@@ -959,6 +964,33 @@ export default function DevisGenerator({
       e.lines = `Sélectionnez un produit du stock pour la ligne « ${orphan.designation || '—'} »`
     } else if (!usableLines().length) {
       e.lines = 'Au moins une ligne avec un produit et une quantité > 0'
+    } else if (!accessoiresOnly) {
+      // QX20 — un devis solaire DOIT contenir de l'équipement solaire cohérent
+      // avec le marché. Résidentiel/industriel : ≥ 1 panneau ET ≥ 1 onduleur ;
+      // agricole : ≥ 1 pompe. Échappatoire DOCUMENTÉE : cocher « avenant /
+      // accessoires seuls » (accessoiresOnly) désactive la garde pour un devis
+      // d'accessoires/main-d'œuvre légitime (SAV, extension câblage…).
+      const usable = usableLines()
+      const has = (pred) => usable.some(l => pred(l.designation))
+      if (modeInstallation === 'agricole') {
+        if (!has(isPompe)) {
+          e.lines = 'Un devis de pompage doit contenir au moins une pompe. '
+            + 'Utilisez « Auto-remplir » ou ajoutez une pompe, ou cochez '
+            + '« avenant / accessoires seuls ».'
+        }
+      } else {
+        const hasPanel = has(isPanel)
+        const hasInverter = has(d => isReseauInverter(d) || isHybridInverter(d))
+        if (!hasPanel || !hasInverter) {
+          const manque = [
+            !hasPanel ? 'un panneau' : null,
+            !hasInverter ? 'un onduleur' : null,
+          ].filter(Boolean).join(' et ')
+          e.lines = `Un devis solaire doit contenir au moins ${manque}. `
+            + 'Utilisez « Auto-remplir » ou ajoutez ces lignes, ou cochez '
+            + '« avenant / accessoires seuls ».'
+        }
+      }
     }
     // Avertissement NON bloquant : le lead choisi est perdu et/ou archivé.
     // On le signale avant l'enregistrement sans jamais l'empêcher.
@@ -1987,6 +2019,12 @@ export default function DevisGenerator({
             </div>
 
             {errors.lines && <div className="px-4 py-2 text-xs text-destructive">{errors.lines}</div>}
+            {/* QX20 — échappatoire documentée à la garde d'équipement solaire */}
+            <label className="px-4 pb-1 flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+              <input type="checkbox" checked={accessoiresOnly}
+                     onChange={e => setAccessoiresOnly(e.target.checked)} />
+              Avenant / accessoires ou main-d'œuvre seuls (désactive la vérification équipement)
+            </label>
             <div className="lines-table-wrap">
               <table className="lines-table">
                 <thead>

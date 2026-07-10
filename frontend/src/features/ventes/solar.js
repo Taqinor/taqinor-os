@@ -1034,6 +1034,13 @@ export function pompageSelection(produits, { cv, typePompe, hmt, debit, heures, 
 }
 
 const _isPompe = (n) => n.includes('pompe ') || n.startsWith('pompe')
+
+// QX20 — classification « pompe » exposée (garde d'équipement du générateur) :
+// une désignation de ligne est une pompe si son nom normalisé le dit. Utilise
+// le même _norm que les autres classificateurs.
+export function isPompe(designation) {
+  return _isPompe(_norm(designation || ''))
+}
 const _isVfdPompage = (n) =>
   (n.includes('variateur') || n.includes('coffret')) && n.includes('pompage')
 const _isCableMetre = (n) => n.includes('cable') && n.includes('metre')

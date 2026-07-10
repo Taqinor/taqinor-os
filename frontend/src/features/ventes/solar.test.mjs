@@ -476,8 +476,16 @@ test('pompage : 5.5 CV tri → variateur 5.5 tri + champ ≈1.4× pompe, sans ba
 import {
   debitAtHmt, selectPompeByCurve, selectVariateurVeichi,
   findAfficheurVariateur, pompageSelection, HEURES_POMPAGE_DEFAUT,
-  tensionOf, tensionForAlim,
+  tensionOf, tensionForAlim, isPompe,
 } from './solar.js'
+
+test('QX20 — isPompe classe une pompe, pas un panneau/onduleur', () => {
+  assert.equal(isPompe('Pompe immergée OSP 30/8'), true)
+  assert.equal(isPompe('Pompe de surface'), true)
+  assert.equal(isPompe('Panneau Canadien Solar 710W'), false)
+  assert.equal(isPompe('Onduleur réseau Huawei 10kW'), false)
+  assert.equal(isPompe(''), false)
+})
 
 const OSP_CURVE_30_8 = { debits_m3h: [0, 12, 24, 30, 36, 39], hmt_m: [91, 85, 70, 60, 43, 34] }
 const OSP_CURVE_30_13 = { debits_m3h: [0, 12, 24, 30, 36, 39], hmt_m: [148, 138, 114, 98, 70, 55] }
