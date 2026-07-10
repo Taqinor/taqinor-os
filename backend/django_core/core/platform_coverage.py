@@ -93,6 +93,9 @@ BASELINE_DRIFT: set[tuple[str, str]] = {
     # comme les 9 cibles héritées ci-dessus — retirer cette entrée le jour
     # où il deviendra cherchable.
     ('installations.ordresoustraitance', 'chatter_sans_recherche'),
+    # SCA36 (2026-07-10) — pilote 3 du kit (dégradation gracieuse sans
+    # totaux) : même dérive assumée que SCA34, même remède futur.
+    ('installations.demandeachat', 'chatter_sans_recherche'),
 }
 
 

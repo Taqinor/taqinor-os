@@ -2,8 +2,9 @@
 
 Couvre : (1) non-régression stricte — le ``set`` résolu par la vue paresseuse
 ``_LazyAllowedTargets`` est EXACTEMENT identique aux couples historiques
-littéraux (19 + SCA34 ``installations.ordresoustraitance``, pilote 1 du kit
-``core.documents``) ; (2) l'API existante (``in``, itération,
+littéraux (19 + les pilotes du kit ``core.documents`` : SCA34
+``installations.ordresoustraitance``, SCA36 ``installations.demandeachat``) ;
+(2) l'API existante (``in``, itération,
 ``resolve_target``) se comporte à l'identique (DROP-IN replacement) ; (3) une
 nouvelle cible déclarée UNIQUEMENT dans un manifeste fictif apparaît dans
 ``ALLOWED_TARGETS`` sans toucher ``apps/records/models.py``.
@@ -16,9 +17,10 @@ from apps.records.models import ALLOWED_TARGETS
 from apps.records.serializers import resolve_target
 from authentication.models import Company
 
-# Les 19 couples historiques (set littéral d'avant ARC30) + SCA34 (kit
-# core.documents, pilote 1 : installations.ordresoustraitance) — la référence
-# de non-régression. Toute divergence ici = régression réelle du registre.
+# Les 19 couples historiques (set littéral d'avant ARC30) + les pilotes du kit
+# core.documents (installations.ordresoustraitance SCA34,
+# installations.demandeachat SCA36) — la référence de non-régression. Toute
+# divergence ici = régression réelle du registre.
 HISTORICAL_TARGETS = {
     ('crm', 'lead'),
     ('crm', 'client'),
@@ -41,6 +43,9 @@ HISTORICAL_TARGETS = {
     ('ao', 'appeloffre'),
     # SCA34 — pilote 1 du kit core.documents (chatter câblé sur son viewset).
     ('installations', 'ordresoustraitance'),
+    # SCA36 — pilote 3 du kit core.documents (dégradation gracieuse sans
+    # totaux ; chatter câblé sur son viewset).
+    ('installations', 'demandeachat'),
 }
 
 
@@ -55,7 +60,7 @@ class TestAllowedTargetsNonRegression(SimpleTestCase):
             f"en trop: {resolved - HISTORICAL_TARGETS}")
 
     def test_len_matches(self):
-        self.assertEqual(len(ALLOWED_TARGETS), 20)
+        self.assertEqual(len(ALLOWED_TARGETS), 21)
 
     def test_contains_works_for_each_historical_pair(self):
         for pair in HISTORICAL_TARGETS:
