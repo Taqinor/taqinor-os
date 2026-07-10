@@ -8,19 +8,32 @@ from .models import (
 
 
 def _fallback_taux_tva(company, designation):
-    """DC4 — taux de TVA de repli d'une ligne sans taux ni produit taxé.
+    """DC4 / ARC23 — taux de TVA de repli d'une ligne sans taux ni produit taxé.
 
     Une ligne PANNEAU retombe sur le défaut société panneaux
-    (CompanyProfile.tva_panneaux, 10 %) ; toute autre ligne sur le taux standard
-    (20 %). `Produit.tva` reste prioritaire côté appelant (DC7) : ce repli ne
-    s'applique QUE lorsqu'il n'existe ni taux explicite ni produit portant un
-    taux, donc le comportement reste identique tant que les produits portent
-    leur taux (cas nominal après seed_catalogue).
+    (CompanyProfile.tva_panneaux, 10 %) ; toute autre ligne sur le taux standard.
+    `Produit.tva` reste prioritaire côté appelant (DC7) : ce repli ne s'applique
+    QUE lorsqu'il n'existe ni taux explicite ni produit portant un taux, donc le
+    comportement reste identique tant que les produits portent leur taux (cas
+    nominal après seed_catalogue).
+
+    ARC23 — DÉFAUT branché sur le référentiel : pour une ligne standard, on
+    consulte d'abord le taux STANDARD par défaut du référentiel de la société
+    (`parametres.TauxTVA`). Absent (aucun référentiel actif) → repli sur le
+    comportement historique (`CompanyProfile.tva_standard` / 20). Un taux déjà
+    figé sur un document existant n'est JAMAIS réécrit (règle #4).
     """
     from apps.ventes.utils.company_settings import tva_standard, tva_panneaux
     d = (designation or '').lower()
     if 'panneau' in d:
         return tva_panneaux(company)
+    try:
+        from apps.parametres.models_taxes import TauxTVA
+        referentiel = TauxTVA.default_taux(company)
+    except Exception:
+        referentiel = None
+    if referentiel is not None:
+        return referentiel
     return tva_standard(company)
 
 
@@ -339,7 +352,12 @@ class DevisSerializer(serializers.ModelSerializer):
     class Meta:
         model = Devis
         fields = '__all__'
-        read_only_fields = ['reference', 'created_by', 'fichier_pdf', 'date_creation']
+        # SCA47 — prix_par_kwc est DÉRIVÉ et gelé côté serveur (write-once au
+        # save) : lecture seule sur l'API interne générateur/BI, JAMAIS accepté
+        # du corps de requête (même régime interne que prix_achat, qui n'est
+        # jamais exposé côté client/PDF).
+        read_only_fields = ['reference', 'created_by', 'fichier_pdf',
+                            'date_creation', 'prix_par_kwc']
 
 
 class DevisWriteSerializer(serializers.ModelSerializer):
@@ -354,7 +372,10 @@ class DevisWriteSerializer(serializers.ModelSerializer):
         model = Devis
         exclude = ['reference', 'fichier_pdf']
         # company is force-assigned in perform_create — never accept it from the body.
-        read_only_fields = ['created_by', 'date_creation', 'company']
+        # SCA47 — prix_par_kwc est dérivé/gelé côté serveur (write-once), jamais
+        # accepté du corps de requête.
+        read_only_fields = ['created_by', 'date_creation', 'company',
+                            'prix_par_kwc']
         extra_kwargs = {'client': {'required': False}}
 
 

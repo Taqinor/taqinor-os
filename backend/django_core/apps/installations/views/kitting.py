@@ -17,8 +17,8 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet
 
 from apps.ventes.utils.references import create_with_reference
 from apps.ventes.selectors import get_devis_by_pk
@@ -52,7 +52,7 @@ READ_ACTIONS = ['list', 'retrieve']
 _ScaledLigne = namedtuple('_ScaledLigne', ['produit', 'quantite'])
 
 
-class KitViewSet(TenantMixin, viewsets.ModelViewSet):
+class KitViewSet(CompanyScopedModelViewSet):
     """FG328 — kits de pré-assemblage. Lecture tout rôle, écriture
     responsable/admin. Filtrable par `active`. XMFG18 : révisions de
     nomenclature (`revisions/`, `composition-au/`) + `dupliquer/`."""
@@ -209,10 +209,16 @@ class KitComposantViewSet(viewsets.ModelViewSet):
         self._snapshot(kit)
 
 
-class ControleQualiteModeleViewSet(viewsets.ModelViewSet):
+class ControleQualiteModeleViewSet(CompanyScopedModelViewSet):
     """XMFG13 — modèle de checklist QC par kit. Société posée COTE SERVEUR.
     Un kit sans modèle (ou avec un modèle inactif) garde le comportement
-    `terminer` actuel inchangé (aucune checklist exigée)."""
+    `terminer` actuel inchangé (aucune checklist exigée).
+
+    ARC3 — converti au socle transverse (contrairement aux autres viewsets de
+    ce fichier qui scopent via leur kit parent) : ce modèle porte une FK
+    `company` propre. get_queryset (filtre `kit`) et perform_create/
+    perform_update (company forcée serveur) SURCHARGENT la base : réponses
+    inchangées."""
     queryset = ControleQualiteModele.objects.select_related(
         'kit').prefetch_related('items').all()
     serializer_class = ControleQualiteModeleSerializer
@@ -224,11 +230,6 @@ class ControleQualiteModeleViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        user = self.request.user
-        if user.company_id:
-            qs = qs.filter(company=user.company)
-        elif not user.is_superuser:
-            qs = qs.none()
         kit = self.request.query_params.get('kit')
         if kit:
             qs = qs.filter(kit_id=kit)
@@ -351,7 +352,7 @@ class OrdreAssemblageLigneViewSet(viewsets.ModelViewSet):
         instance.delete()
 
 
-class OrdreAssemblageViewSet(TenantMixin, viewsets.ModelViewSet):
+class OrdreAssemblageViewSet(CompanyScopedModelViewSet):
     """FG328 — ordres d'assemblage. Lecture tout rôle, écriture
     responsable/admin. Référence/société/`created_by` posés serveur. Filtrable
     par `statut`, `kit`."""
@@ -902,7 +903,7 @@ class OrdreDemontageLigneViewSet(viewsets.ModelViewSet):
         serializer.save()
 
 
-class OrdreDemontageViewSet(TenantMixin, viewsets.ModelViewSet):
+class OrdreDemontageViewSet(CompanyScopedModelViewSet):
     """XMFG12 — ordres de démontage (unbuild) : composite → composants.
     Lecture tout rôle, écriture responsable/admin. Référence/société/
     `created_by` posés serveur. Filtrable par `statut`, `kit`."""

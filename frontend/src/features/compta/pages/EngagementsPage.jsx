@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useSelector } from 'react-redux'
+import { useIsAdmin } from '../../../hooks/useHasPermission'
 import {
   Plus, Unlock, ShieldCheck, TrendingUp, Undo2, Send, CheckCircle2,
   Landmark, ShieldAlert,
@@ -521,7 +521,7 @@ const TABS = [
 
 export default function EngagementsPage() {
   const [tab, setTab] = useState('retenuesGarantie')
-  const isAdmin = useSelector((s) => s.auth.role) === 'admin'
+  const isAdmin = useIsAdmin()
   const tabs = isAdmin ? [...TABS, { value: 'pisteAudit', label: 'Piste d’audit' }] : TABS
 
   return (

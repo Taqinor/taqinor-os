@@ -6,10 +6,14 @@ lue du corps de requête. ``tiers`` étant une couche fondation, ce module
 n'importe AUCUNE app de domaine.
 """
 from rest_framework import filters, viewsets
+from rest_framework.decorators import action
+from rest_framework.response import Response
 
+from authentication.permissions import IsAdminRole
 from core.mixins import TenantMixin
 from core.permissions import WriteScopedPermissionMixin
 
+from . import selectors
 from .models import Tiers
 from .serializers import TiersSerializer
 
@@ -37,3 +41,14 @@ class TiersViewSet(
     # + scopé société suffit (le repli légacy reste géré par ScopedPermission).
     read_permission = None
     write_permission = None
+
+    @action(detail=False, methods=['get'],
+            permission_classes=[IsAdminRole])
+    def doublons(self, request):
+        """ARC20 — Rapport LECTURE SEULE des doublons inter-référentiels de la
+        société de l'utilisateur : le même ICE/email porté par plusieurs fiches
+        ``Tiers`` (ex. un acteur à la fois Fournisseur et Partenaire). Réservé
+        aux administrateurs. AUCUNE fusion, aucune écriture. Company-scopé
+        (jamais les tiers d'une autre société). Renvoie ``{count, clusters}``."""
+        clusters = selectors.find_duplicates(request.user.company)
+        return Response({'count': len(clusters), 'clusters': clusters})

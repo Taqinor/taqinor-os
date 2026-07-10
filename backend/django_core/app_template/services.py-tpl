@@ -1,0 +1,19 @@
+"""Services (écritures / orchestration) du module « {{ app_label }} ».
+
+FRONTIÈRE INTER-APPS (import-linter) — un AUTRE app qui a besoin d'ÉCRIRE dans
+ce module ou d'orchestrer une action passe par une fonction de CE fichier
+(jamais en important ``apps.{{ app_label }}.models`` / ``.views`` directement). C'est
+aussi ici que vit la logique métier non triviale et la numérotation de
+documents via ``core.numbering`` (jamais ``count() + 1``).
+"""
+from __future__ import annotations
+
+# Exemple (numérotation race-safe via la primitive fondation) :
+#
+# def creer_exemple(company, data, serializer):
+#     """Crée un Exemple avec une référence anti-collision (ARC6)."""
+#     from core.numbering import create_with_reference
+#     from .models import Exemple
+#     return create_with_reference(
+#         Exemple, 'EX', company,
+#         lambda ref: serializer.save(company=company, reference=ref))

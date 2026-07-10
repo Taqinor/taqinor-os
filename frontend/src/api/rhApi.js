@@ -1,4 +1,5 @@
 import api from './axios'
+import { makeResourceFactory } from './resource'
 
 /* ============================================================================
    RH — Ressources humaines (apps.rh, préfixe API `/rh/`).
@@ -11,18 +12,27 @@ import api from './axios'
    résout le dossier lié au compte appelant).
    ========================================================================== */
 
+// ARC44 — Fabrique partagée (`api/resource.js`) : réservée aux DEUX groupes de
+// ce module dont le quintet complet (list/get/create/update/remove) tombe sur
+// un seul chemin REST plat. Le reste de rhApi garde des fonctions nommées à
+// plat (contrat historique, souvent des @actions sans CRUD complet) — migrer
+// ces dernières changerait l'API exportée pour aucun gain réel.
+const resource = makeResourceFactory(api, '/rh')
+const employesResource = resource('employes')
+const quizFormationResource = resource('quiz-formation')
+
 const rhApi = {
   // ── UX21 — Cockpit RH & tableaux de bord ──
   getCockpit: () => api.get('/rh/cockpit/'),
   getEcheances: (params) => api.get('/rh/echeances/', { params }),
   getTableauBordHse: (params) => api.get('/rh/tableau-bord-hse/', { params }),
 
-  // ── UX22 — Dossiers employés ──
-  getEmployes: (params) => api.get('/rh/employes/', { params }),
-  getEmploye: (id) => api.get(`/rh/employes/${id}/`),
-  createEmploye: (data) => api.post('/rh/employes/', data),
-  updateEmploye: (id, data) => api.patch(`/rh/employes/${id}/`, data),
-  deleteEmploye: (id) => api.delete(`/rh/employes/${id}/`),
+  // ── UX22 — Dossiers employés (ARC44 — sur la factory partagée) ──
+  getEmployes: (params) => employesResource.list(params),
+  getEmploye: (id) => employesResource.get(id),
+  createEmploye: (data) => employesResource.create(data),
+  updateEmploye: (id, data) => employesResource.update(id, data),
+  deleteEmploye: (id) => employesResource.remove(id),
   // @actions dossier
   getCddAEcheance: (params) => api.get('/rh/employes/cdd-a-echeance/', { params }),
   verifierHabilitation: (id, params) =>
@@ -163,11 +173,11 @@ const rhApi = {
   marquerSessionRealisee: (id, data) =>
     api.post(`/rh/sessions-formation/${id}/marquer-realisee/`, data ?? {}),
   getBesoinsFormation: (params) => api.get('/rh/besoins-formation/', { params }),
-  // ── XRH34 — Quiz builder (gestion RH — porte les bonnes réponses) ──
-  getQuizFormation: (params) => api.get('/rh/quiz-formation/', { params }),
-  createQuizFormation: (data) => api.post('/rh/quiz-formation/', data),
-  updateQuizFormation: (id, data) => api.patch(`/rh/quiz-formation/${id}/`, data),
-  deleteQuizFormation: (id) => api.delete(`/rh/quiz-formation/${id}/`),
+  // ── XRH34 — Quiz builder (gestion RH — porte les bonnes réponses ; ARC44) ──
+  getQuizFormation: (params) => quizFormationResource.list(params),
+  createQuizFormation: (data) => quizFormationResource.create(data),
+  updateQuizFormation: (id, data) => quizFormationResource.update(id, data),
+  deleteQuizFormation: (id) => quizFormationResource.remove(id),
   getTentativesQuiz: (params) => api.get('/rh/tentatives-quiz/', { params }),
   // ── XRH27 — Organigramme (arbre des départements) ──
   getArbreDepartements: () => api.get('/rh/departements/arbre/'),

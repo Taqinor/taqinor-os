@@ -233,6 +233,7 @@ a focused test, calling the EXISTING backend endpoint.
 - [ ] FE-XPLT1-2 — import upsert mode + saved-mapping picker + error-CSV link in `ExcelImport.jsx` (`importApi.js` mode/external_id/saveMapping/jobErreursCsv). (@lane: frontend/platform)
 - [ ] FE-XPLT23 — "Confidentialité" tab under parametres: CNDP `registre-traitements` CRUD + `dsr-requests` (DSR) submission/tracking. (@lane: frontend/platform)
 - [ ] FE-YHARD3 — "Historique à cette date" (as-of) view on record detail / `Journal.jsx` (admin/Directeur). (@lane: frontend/platform)
+- [ ] FE-SCA41 — Exports ventes : gérer la réponse 202 des exports xlsx volumineux (journal-ventes / export-comptable) : afficher « génération en arrière-plan », poller GET /api/django/ventes/export/status/<job_id>/ (payload {status, download_url, filename}) puis déclencher le téléchargement via download_url (URL pré-signée 1 h). Sous le seuil (2 000 lignes, env), rien ne change.
 
 ## AUDIT COMPLETE (2026-07-06)
 - Domains CLEAN (fully wired, no gaps): **litiges, monitoring, publicapi, audit** baseline screens.

@@ -1,0 +1,17 @@
+"""Routes du module « {{ app_label }} » (généré par startapp_erp — ARC42).
+
+Câblage restant (WIRING) : ajouter dans ``erp_agentique/urls.py`` la ligne
+``path('api/django/{{ app_label }}/', include('apps.{{ app_label }}.urls'))``. Le 2ᵉ
+segment d'URL doit correspondre à la clé ``module_manifest['key']`` (sinon,
+ajouter une entrée ``PREFIX_TO_MODULE`` dans ``core/permissions.py``) pour que
+le gatage 404 des modules désactivés vise le bon module.
+"""
+from django.urls import include, path
+from rest_framework.routers import DefaultRouter
+
+router = DefaultRouter()
+# router.register(r'exemples', ExempleViewSet)
+
+urlpatterns = [
+    path('', include(router.urls)),
+]

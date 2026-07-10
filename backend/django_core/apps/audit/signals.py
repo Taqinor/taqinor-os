@@ -109,8 +109,14 @@ def _on_post_save(sender, instance, created, **kwargs):
             old_label = dict(instance._meta.get_field(field).flatchoices).get(
                 old, old)
             new_label = _status_display(instance, field)
-            recorder.record(
-                AuditLog.Action.STATUS, instance=instance,
+            # ARC16 (pilote #2) — passe par l'entonnoir : ligne AuditLog 1:1
+            # (action STATUS, même instance, même détail) + diff structuré
+            # ``statut: old → new``. ``chatter=False`` : ce signal générique
+            # couvre TOUS les modèles suivis ; le chatter reste géré par chaque
+            # app (comportement inchangé, aucune note générique en plus).
+            recorder.record_field_change(
+                instance, field, old_label, new_label,
+                action=AuditLog.Action.STATUS, chatter=False,
                 detail=f'Statut : {old_label} → {new_label}')
             return
     recorder.record(AuditLog.Action.UPDATE, instance=instance)

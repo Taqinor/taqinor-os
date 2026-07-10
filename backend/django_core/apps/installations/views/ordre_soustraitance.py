@@ -11,13 +11,13 @@ posés côté serveur (jamais lus du corps). Le ``sous_traitant`` et le
 ``OST-YYYYMM-NNNN`` est anti-collision (jamais ``count()+1``).
 """
 from django.utils import timezone
-from rest_framework import viewsets, status
+from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet
 
 from apps.ventes.utils.references import create_with_reference
 
@@ -46,7 +46,7 @@ def _check_tenant(serializer, company, field):
             {field: 'Ce fournisseur n\'est pas un sous-traitant (type service).'})
 
 
-class OrdreSousTraitanceViewSet(TenantMixin, viewsets.ModelViewSet):
+class OrdreSousTraitanceViewSet(CompanyScopedModelViewSet):
     """FG305 — ordres de travaux sous-traitant. Lecture tout rôle, écriture
     responsable/admin. Référence anti-collision + société + `created_by` posés
     côté serveur ; `sous_traitant`/`chantier` validés tenant. Filtrable par

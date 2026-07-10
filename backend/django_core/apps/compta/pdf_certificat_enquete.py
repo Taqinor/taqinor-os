@@ -4,24 +4,16 @@ Même moteur WeasyPrint sobre que ``pdf_notes_frais.py``/``pdf_ras.py`` — PAS
 le quote engine premium (règle #4 CLAUDE.md non concernée, ce n'est pas un
 devis). Contenu minimal : nom du répondant, titre de l'enquête, score, date.
 Aucune donnée interne (prix_achat/marge) — sans objet ici de toute façon.
+
+ARC12 — la plomberie WeasyPrint (``HTML(string=...).write_pdf()`` + import
+paresseux) est déléguée au service partagé ``core.pdf.render_pdf`` ; le
+GABARIT HTML ci-dessous reste STRICTEMENT identique, donc le rendu est
+inchangé à l'octet près.
 """
 from datetime import date
 from html import escape
-from io import BytesIO
 
-
-def _html_to_pdf(html_string):
-    """HTML → octets PDF (WeasyPrint). Import paresseux."""
-    try:
-        import weasyprint
-    except ImportError as exc:  # pragma: no cover - dépend de l'environnement
-        raise RuntimeError(
-            "WeasyPrint n'est pas installé : génération PDF indisponible."
-        ) from exc
-    buf = BytesIO()
-    weasyprint.HTML(string=html_string).write_pdf(buf)
-    buf.seek(0)
-    return buf.read()
+from core.pdf import render_pdf
 
 
 _STYLE = """
@@ -53,7 +45,7 @@ def render_certificat_html(*, nom_repondant, titre_enquete, score_pct, today=Non
 
 
 def render_certificat_pdf(*, nom_repondant, titre_enquete, score_pct, today=None):
-    return _html_to_pdf(
-        render_certificat_html(
+    return render_pdf(
+        html=render_certificat_html(
             nom_repondant=nom_repondant, titre_enquete=titre_enquete,
             score_pct=score_pct, today=today))

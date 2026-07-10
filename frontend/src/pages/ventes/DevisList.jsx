@@ -32,6 +32,7 @@ import { useSavedViews } from '../../hooks/useSavedViews'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import { useHasPermission } from '../../hooks/useHasPermission'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
+import { DataTable } from '../../ui/datatable'
 import RoofViewer from './RoofViewer'
 
 // J141 — Squelette de la liste : reprend les 8 colonnes du vrai tableau pour que
@@ -66,6 +67,21 @@ function DevisTableSkeleton() {
 }
 
 const DL_SAVED_VIEWS_KEY = 'taqinor.ventes.devis.savedViews'
+
+// ── ARC49 — Colonnes du frame `ui/datatable` en mode « ligne custom ».
+// L'écran rend chaque ligne via `renderRow` (<DevisRow>), donc ces définitions
+// ne servent qu'à décrire la grille au moteur (identité de colonnes) : aucun
+// `cell` n'est utilisé, le tri/filtre/pagination sont désactivés (seams manuels).
+// Le rendu réel (cellules, boutons, panneaux) reste 100 % dans <DevisRow>.
+const DEVIS_DT_COLUMNS = [
+  { id: 'reference', header: 'Référence', sortable: false, hideable: false, reorderable: false },
+  { id: 'client', header: 'Client', sortable: false, hideable: false, reorderable: false },
+  { id: 'date_creation', header: 'Créé le', sortable: false, hideable: false, reorderable: false },
+  { id: 'date_validite', header: 'Validité', sortable: false, hideable: false, reorderable: false },
+  { id: 'total_ttc', header: 'Total TTC', align: 'right', sortable: false, hideable: false, reorderable: false },
+  { id: 'statut', header: 'Statut', sortable: false, hideable: false, reorderable: false },
+  { id: 'actions', header: 'Actions', sortable: false, hideable: false, reorderable: false },
+]
 
 const STATUT_DISPLAY = {
   brouillon: 'Brouillon',
@@ -144,6 +160,688 @@ function openPdfBlob(blob, filename) {
   a.click()
   document.body.removeChild(a)
   setTimeout(() => URL.revokeObjectURL(url), 10000)
+}
+
+// ── ARC49 — Modale de génération PDF de la LISTE (formats du simulateur). ──
+// Extraite telle quelle de DevisList (« lignes divisées ») : mêmes contrôles,
+// mêmes libellés, MÊMES options envoyées à `generer-pdf`/`clean_pdf_options`
+// (règle #4 — la migration ne touche QUE le découpage du rendu, jamais le flux
+// PDF). Toute la logique de valeur reste dans `buildPdfOptions` côté parent.
+function DevisPdfDialog({
+  pdfTarget, batchPdf, selectedIds,
+  pdfMode, setPdfMode, targetIsAgricole,
+  showMonthly, setShowMonthly,
+  targetHasEtude, includeEtude, setIncludeEtude,
+  devisFinal, setDevisFinal,
+  paymentMode, setPaymentMode,
+  customAcompte, setCustomAcompte,
+  onClose, onGenererLot, onGenererUn,
+}) {
+  return (
+    <ResponsiveDialog
+      open={!!pdfTarget || batchPdf}
+      onOpenChange={(o) => { if (!o) onClose() }}
+      title={batchPdf
+        ? `Générer le PDF — ${selectedIds.length} devis (format partagé)`
+        : `Générer le PDF — ${pdfTarget?.reference}`}
+      footer={(
+        <>
+          <Button variant="ghost" onClick={onClose}>Annuler</Button>
+          <Button onClick={() => (batchPdf ? onGenererLot() : onGenererUn(pdfTarget))}>
+            <FileText /> Générer
+          </Button>
+        </>
+      )}
+    >
+        <div className="flex flex-col gap-4">
+          <div className="grid gap-2">
+            <Label>Format</Label>
+            <RadioGroup value={pdfMode} onValueChange={setPdfMode} className="flex flex-col gap-2">
+              <label className="flex items-start gap-2 text-sm">
+                <RadioGroupItem value="full" className="mt-0.5" />
+                <span>
+                  {targetIsAgricole
+                    ? 'Devis premium (4 pages — étude, schéma, rentabilité, garanties)'
+                    : 'Devis premium (3 pages — options, analyse, garanties)'}
+                </span>
+              </label>
+              <label className="flex items-start gap-2 text-sm">
+                <RadioGroupItem value="onepage" className="mt-0.5" />
+                <span>Devis une page (liste produits uniquement, sans graphiques)</span>
+              </label>
+            </RadioGroup>
+          </div>
+
+          {pdfMode === 'full' && !targetIsAgricole && (
+            <label className="flex items-start gap-2 text-sm">
+              <Checkbox checked={showMonthly} onCheckedChange={v => setShowMonthly(!!v)} className="mt-0.5" />
+              <span>Économies mensuelles <span className="text-muted-foreground">(graphique mensuel page 2)</span></span>
+            </label>
+          )}
+
+          {pdfMode === 'full' && !batchPdf && !targetIsAgricole && (
+            <label className="flex items-start gap-2 text-sm aria-disabled:opacity-50" aria-disabled={!targetHasEtude}>
+              {/* T13 — case désactivée sans données d'étude (note explicative). */}
+              <Checkbox
+                checked={includeEtude && targetHasEtude}
+                disabled={!targetHasEtude}
+                onCheckedChange={v => setIncludeEtude(!!v)}
+                className="mt-0.5"
+              />
+              <span>
+                Inclure l'étude <span className="text-muted-foreground">(page autoconsommation — devis industriel)</span>
+                {!targetHasEtude && (
+                  <span className="block text-xs text-muted-foreground">
+                    Aucune donnée d'étude sur ce devis — option indisponible.
+                  </span>
+                )}
+              </span>
+            </label>
+          )}
+
+          <label className="flex items-start gap-2 text-sm">
+            <Checkbox checked={devisFinal} onCheckedChange={v => setDevisFinal(!!v)} className="mt-0.5" />
+            <span>Devis Final <span className="text-muted-foreground">(ajoute modalités de paiement + RIB)</span></span>
+          </label>
+
+          {devisFinal && (
+            <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/40 p-3">
+              <RadioGroup value={paymentMode} onValueChange={setPaymentMode} className="flex flex-col gap-2">
+                <label className="flex items-center gap-2 text-sm">
+                  <RadioGroupItem value="standard" />
+                  <span>Standard (30/60/10)</span>
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <RadioGroupItem value="custom" />
+                  <span>Acompte personnalisé</span>
+                </label>
+              </RadioGroup>
+              {paymentMode === 'custom' && (
+                <div className="grid gap-1.5">
+                  <Label htmlFor="pdf-acompte">Montant acompte (MAD)</Label>
+                  <Input id="pdf-acompte" type="number" min="0" step="any"
+                         value={customAcompte} onChange={e => setCustomAcompte(e.target.value)} />
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+    </ResponsiveDialog>
+  )
+}
+
+// ── ARC49 — Ligne de la liste des devis (« lignes divisées »). Extraite VERBATIM
+// du corps de `filteredDevis.map(...)` : mêmes `<tr>`, mêmes `data-label`, mêmes
+// boutons d'action VISIBLES (états `loading` individuels), mêmes deux panneaux
+// dépliables (versions / design 3D), mêmes appels API. Tout l'état et les
+// handlers viennent du parent via `ctx` — aucune logique n'est déplacée ni
+// modifiée. Le tableau reste `table.data-table` (contrat de test + carte mobile).
+function DevisRow({ d, ctx }) {
+  const {
+    selectedIds, toggleSelected,
+    versionsOpenId, setVersionsOpenId, roofOpenId, setRoofOpenId,
+    versionChain, effStatutOf,
+    navigate, dispatch,
+    role, canDelete,
+    deletingId, statutActionId, superieurBusyId, shareBusyId, previewingId,
+    pdfGenerating, pdfDownloading, convertingId, chantierBusy, projetBusy, factureGenId,
+    openEdit, openVarianteModal, handleDelete, handleEnvoyer, handleContacterSuperieur,
+    openEmailModal, handleCopierLienProposition, handlePreview, openPdfModal,
+    handleTelechargerPdf, openAcceptModal, handleRefuser, handleConvertBC,
+    handleChantier, handleCreerProjet, handleGenererFacture,
+  } = ctx
+  // Expiration calculée à la volée (T7) : un devis en attente dont la
+  // date de validité est dépassée s'affiche « Expiré » sans changer
+  // son statut stocké ni l'étape du lead.
+  const effStatut = d.is_expired ? 'expire' : d.statut
+  const isGenerating = pdfGenerating[d.id]
+  const isDownloading = pdfDownloading[d.id]
+  return (
+    <Fragment key={d.id}>
+    <tr>
+      <td>
+        <Checkbox
+          checked={selectedIds.includes(d.id)}
+          onCheckedChange={() => toggleSelected(d.id)}
+          aria-label={`Sélectionner ${d.reference}`}
+        />
+      </td>
+      <td>
+        <strong>{d.reference}</strong>
+        {d.version > 1 && (
+          <Badge tone="primary" className="ml-1.5">v{d.version}</Badge>
+        )}
+        {/* U7 — une révision remplacée (is_active=False) porte un
+            badge « Remplacé » explicite ; le lien ouvre l'historique
+            des versions (qui pointe vers la version courante). */}
+        {d.is_active === false && (
+          <Badge tone="neutral" className="ml-1.5">Remplacé</Badge>
+        )}
+        {d.superseded_by_ref && (
+          <div className="mt-0.5 text-xs text-warning">
+            remplacé par{' '}
+            <button
+              type="button"
+              className="font-medium underline hover:no-underline"
+              onClick={() => setVersionsOpenId(
+                versionsOpenId === d.id ? null : d.id)}
+              title="Voir la version qui remplace ce devis"
+            >
+              {d.superseded_by_ref}
+            </button>
+          </div>
+        )}
+        {(d.version > 1 || d.superseded_by_ref || d.version_parent_ref) && (
+          <div className="mt-0.5">
+            <button
+              type="button"
+              className="text-xs text-primary hover:underline"
+              onClick={() => setVersionsOpenId(
+                versionsOpenId === d.id ? null : d.id)}
+            >
+              {versionsOpenId === d.id ? 'Masquer les versions' : 'Voir les versions'}
+            </button>
+          </div>
+        )}
+        {/* QJ1 — Badge de consultation : affiché quand le lien public
+            a été ouvert au moins une fois. Nombre de vues + date. */}
+        {d.deja_consulte && (
+          <div
+            className="mt-0.5 inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
+            title={d.derniere_consultation
+              ? `Dernière ouverture : ${new Date(d.derniere_consultation).toLocaleString('fr-FR')}`
+              : 'Document consulté'}
+          >
+            <Eye className="size-3" aria-hidden="true" />
+            Consulté ×{d.nombre_vues ?? 1}
+          </div>
+        )}
+        {/* XSAL16 — résumé d'engagement par section de la proposition
+            web (« a passé 2 min sur le prix, n'a pas ouvert l'étude »).
+            Vide sans beacon (déjà serialisé, comportement QJ1 inchangé). */}
+        {engagementSummary(d.engagement) && (
+          <div
+            className="mt-0.5 text-xs text-muted-foreground"
+            title="Temps passé par section sur la proposition en ligne"
+          >
+            {engagementSummary(d.engagement)}
+          </div>
+        )}
+        {/* U5 — Documents générés depuis ce devis : factures (chips
+            cliquables → liste Factures) + bon de commande (→ BC).
+            Lecture seule, données du serializer. */}
+        {(d.factures_liees?.length > 0 || d.bon_commande_etat?.exists) && (
+          <div className="mt-1 flex flex-wrap gap-1">
+            {d.bon_commande_etat?.exists && (
+              <button
+                type="button"
+                onClick={() => navigate('/ventes/bons-commande')}
+                title={`Bon de commande ${d.bon_commande_etat.reference} — ${d.bon_commande_etat.statut_display}`}
+                className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/60 px-2 py-0.5 text-xs font-medium hover:bg-muted"
+              >
+                <FileStack className="size-3" aria-hidden="true" />
+                {d.bon_commande_etat.reference}
+              </button>
+            )}
+            {(d.factures_liees ?? []).map(f => (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => navigate('/ventes/factures')}
+                title={`Facture ${f.reference} — ${f.statut_display}`}
+                className="inline-flex items-center gap-1 rounded-full border border-success/40 bg-success/10 px-2 py-0.5 text-xs font-medium text-success hover:bg-success/20"
+              >
+                <FileText className="size-3" aria-hidden="true" />
+                {f.reference} · {f.statut_display}
+              </button>
+            ))}
+          </div>
+        )}
+      </td>
+      <td data-label="Client">
+        {d.client_nom ?? '—'}
+        {d.lead && (
+          <div className="mt-1">
+            <button
+              type="button"
+              title={[
+                'Ouvrir le lead lié',
+                d.lead_type_installation
+                  ? `Type : ${d.lead_type_installation}` : null,
+                d.lead_facture_hiver != null
+                  ? `Facture hiver : ${formatMAD(d.lead_facture_hiver)}` : null,
+              ].filter(Boolean).join('\n')}
+              onClick={() => navigate(`/crm/leads?lead=${d.lead}`)}
+              className="inline-flex items-center gap-1 rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning hover:bg-warning/20"
+            >
+              ↗ {d.lead_nom ?? 'Lead'}
+            </button>
+          </div>
+        )}
+      </td>
+      <td data-label="Créé le">{new Date(d.date_creation).toLocaleDateString('fr-FR')}</td>
+      <td className="m-hide">
+        {d.date_validite
+          ? new Date(d.date_validite).toLocaleDateString('fr-FR')
+          : '—'}
+      </td>
+      <td className="ta-right tabular-nums" data-label="Total TTC">
+        {(d.total_affiche ?? d.total_ttc) != null
+          ? formatMAD(d.total_affiche ?? d.total_ttc)
+          : '—'}
+        {d.nb_options === 2 && (
+          <Badge tone="warning" className="ml-1.5"
+                 title="Devis à deux options — total affiché : option 1 (sans batterie), remise incluse">
+            2 options
+          </Badge>
+        )}
+        {d.solde && (
+          <div className="mt-1 text-xs text-muted-foreground">
+            Facturé {d.solde.facture} / Payé {d.solde.paye} / Restant {d.solde.restant} MAD
+          </div>
+        )}
+      </td>
+      <td data-label="Statut">
+        <StatusPill status={effStatut} label={STATUT_DISPLAY[effStatut] ?? STATUT_DISPLAY.brouillon} />
+        {d.statut === 'accepte' && d.option_acceptee && (
+          <div className="mt-1 text-xs text-success">
+            Option : {d.option_acceptee === 'avec_batterie' ? 'Avec batterie' : 'Sans batterie'}
+          </div>
+        )}
+        {/* QJ22 — Badge « Proposition signée » : affiché quand un
+            DevisSignature (loi 53-05) existe pour ce devis accepté.
+            Indique que la signature électronique légale a été
+            enregistrée + le PDF de proposition signé est disponible. */}
+        {d.est_signe && (
+          <div
+            className="mt-1 inline-flex items-center gap-1 rounded-full border border-success/40 bg-success/10 px-2 py-0.5 text-xs font-medium text-success"
+            title={
+              d.signature_info
+                ? [
+                    `Signé par : ${d.signature_info.signataire_nom || '—'}`,
+                    d.signature_info.signed_at
+                      ? `le ${new Date(d.signature_info.signed_at).toLocaleString('fr-FR')}`
+                      : null,
+                    d.signature_info.has_pdf
+                      ? 'PDF signé disponible'
+                      : null,
+                  ].filter(Boolean).join(' ')
+                : 'Proposition signée (loi 53-05)'
+            }
+          >
+            <Check className="size-3" aria-hidden="true" />
+            Proposition signée
+          </div>
+        )}
+        {/* U8 — état du bon de commande lié (lecture seule, depuis
+            le OneToOne existant) + avertissement d'incohérence
+            quand un devis accepté n'a pas de BC actif. */}
+        {d.bon_commande_etat?.exists && (
+          <div className="mt-1 text-xs text-muted-foreground">
+            BC : {d.bon_commande_etat.statut_display}
+          </div>
+        )}
+        {d.bon_commande_etat?.mismatch && (
+          <div className="mt-1 flex items-start gap-1 text-xs font-medium text-warning"
+               title="Devis accepté mais le bon de commande est annulé ou absent">
+            <AlertTriangle className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
+            <span>
+              {d.bon_commande_etat.exists
+                ? 'Devis accepté mais BC annulé'
+                : 'Devis accepté sans bon de commande'}
+            </span>
+          </div>
+        )}
+      </td>
+      <td>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => openEdit(d)}
+            disabled={d.statut !== 'brouillon'}
+            title={d.statut === 'brouillon'
+              ? 'Ouvrir dans le générateur'
+              : 'Devis envoyé/clôturé — non modifiable (dupliquez-le depuis le générateur si besoin)'}
+          >
+            Éditer
+          </Button>
+          {d.is_active && d.statut !== 'brouillon' && (
+            <Button
+              size="sm"
+              variant="outline"
+              title="Créer une nouvelle version (v2, v3…) de ce devis"
+              onClick={() => {
+                ventesApi.reviserDevis(d.id)
+                  .then(() => dispatch(fetchDevis()))
+                  .catch(() => {})
+              }}
+            >
+              Réviser
+            </Button>
+          )}
+          {/* QG10/QJ15 — « Variante » : ouvre une modale pour
+              confirmer/éditer le pourcentage (défaut = config
+              société), créer les 3 variantes puis router vers la
+              comparaison côte-à-côte. */}
+          {d.statut === 'brouillon' && (
+            <Button
+              size="sm"
+              variant="outline"
+              title="Créer 3 variantes de taille (−p %, standard, +p %) pour comparaison côte-à-côte"
+              onClick={() => openVarianteModal(d)}
+            >
+              <Copy className="size-3.5 mr-1" aria-hidden="true" />
+              Variante
+            </Button>
+          )}
+          {role === 'admin' && d.statut === 'brouillon'
+            && parseFloat(d.remise_globale) > 0 && !d.remise_approuvee && (
+            <Button
+              size="sm"
+              variant="outline"
+              title="Approuver la remise (autorise l'envoi si au-dessus du seuil)"
+              onClick={() => {
+                ventesApi.approuverRemise(d.id)
+                  .then(() => dispatch(fetchDevis())).catch(() => {})
+              }}
+            >
+              Approuver remise
+            </Button>
+          )}
+          {canDelete && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  loading={deletingId === d.id}
+                  className="border-destructive/40 text-destructive hover:bg-destructive/10"
+                  title="Supprimer ce devis"
+                >
+                  Supprimer
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Supprimer le devis {d.reference} ?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Cette action est définitive et irréversible.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Annuler</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => handleDelete(d)}>Supprimer</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
+
+          {d.statut === 'brouillon' && (
+            <Button
+              size="sm"
+              variant="outline"
+              loading={statutActionId === d.id}
+              onClick={() => handleEnvoyer(d)}
+              title="Envoyer par WhatsApp (message + lien de proposition) — marque le devis « Envoyé »"
+            >
+              <Send /> Envoyer
+            </Button>
+          )}
+          {/* QJ28 — Contacter mon supérieur (notification, jamais automatique) */}
+          {(d.statut === 'brouillon' || d.statut === 'envoye') && (
+            <Button
+              size="sm"
+              variant="ghost"
+              loading={superieurBusyId === d.id}
+              onClick={() => handleContacterSuperieur(d)}
+              title="Contacter mon supérieur — lui envoyer une notification avec le lien de ce devis"
+            >
+              <UserCog />
+            </Button>
+          )}
+          {/* QJ14 — Envoyer par email : PDF premium + lien de proposition */}
+          {(d.statut === 'brouillon' || d.statut === 'envoye') && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => openEmailModal(d)}
+              title="Envoyer la proposition par email (PDF + lien de signature)"
+            >
+              <Send className="size-3.5 mr-1" aria-hidden="true" />
+              Email
+            </Button>
+          )}
+          {/* WR2 — Copier le lien de proposition (share_link) :
+              surface la fonctionnalité serveur invisible, sans
+              passer par un envoi email/WhatsApp. */}
+          {(d.statut === 'brouillon' || d.statut === 'envoye') && (
+            <Button
+              size="sm"
+              variant="ghost"
+              loading={shareBusyId === d.id}
+              onClick={() => handleCopierLienProposition(d)}
+              title="Copier le lien de la proposition (à coller où vous voulez)"
+            >
+              <Link2 className="size-3.5 mr-1" aria-hidden="true" />
+              Copier le lien
+            </Button>
+          )}
+          {/* QG11 — « Voir le design 3D » : ouvre le plan de
+              toiture (roof_layout) en lecture seule dans le
+              détail. N'apparaît que si un plan existe. */}
+          {d.roof_layout && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setRoofOpenId(
+                roofOpenId === d.id ? null : d.id)}
+              title="Voir le design 3D de la toiture (lecture seule)"
+            >
+              <Box className="size-3.5 mr-1" aria-hidden="true" />
+              Design 3D
+            </Button>
+          )}
+          {/* QG12 — « Ouvrir dans une fenêtre » : le plan plein
+              écran sur sa propre route /ventes/devis/:id/3d. */}
+          {d.roof_layout && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => window.open(`/ventes/devis/${d.id}/3d`, '_blank', 'noopener')}
+              title="Ouvrir le design 3D dans une nouvelle fenêtre"
+              aria-label={`Ouvrir le design 3D de ${d.reference} dans une fenêtre`}
+            >
+              <ExternalLink className="size-3.5" aria-hidden="true" />
+            </Button>
+          )}
+          <Button
+            size="sm"
+            variant="ghost"
+            loading={previewingId === d.id}
+            onClick={() => handlePreview(d)}
+            title="Aperçu du PDF dans l'application"
+          >
+            <Eye />
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => openPdfModal(d)}
+            loading={isGenerating}
+            title="Générer le PDF (choix du format)"
+          >
+            <FileText /> PDF
+          </Button>
+          {d.fichier_pdf && (
+            <Button
+              size="sm"
+              variant="success"
+              onClick={() => handleTelechargerPdf(d)}
+              loading={isDownloading}
+              title="Télécharger le dernier PDF généré"
+            >
+              <FileDown />
+            </Button>
+          )}
+
+          {d.statut === 'envoye' && (
+            <Button
+              size="sm"
+              title="Marquer accepté (date + nom + option) — déclenche la création du chantier"
+              onClick={() => openAcceptModal(d)}
+            >
+              <Check /> Accepter
+            </Button>
+          )}
+          {d.statut === 'envoye' && (
+            <Button
+              size="sm"
+              variant="outline"
+              loading={statutActionId === d.id}
+              onClick={() => handleRefuser(d)}
+              className="border-destructive/40 text-destructive hover:bg-destructive/10"
+              title="Marquer ce devis comme refusé"
+            >
+              <X /> Refuser
+            </Button>
+          )}
+
+          {d.statut === 'accepte' && (
+            <Button
+              size="sm"
+              variant="success"
+              onClick={() => handleConvertBC(d)}
+              loading={convertingId === d.id}
+              title="Convertir en bon de commande"
+            >
+              <ArrowRight /> BC
+            </Button>
+          )}
+
+          {d.statut === 'accepte' && (
+            <Button
+              size="sm"
+              variant={d.chantier ? 'outline' : 'default'}
+              onClick={() => handleChantier(d)}
+              loading={chantierBusy === d.id}
+              title={d.chantier
+                ? `Ouvrir le chantier ${d.chantier.reference}`
+                : 'Créer le chantier à partir de ce devis'}
+            >
+              <HardHat /> {d.chantier ? 'Voir le chantier' : 'Créer le chantier'}
+            </Button>
+          )}
+
+          {/* XPRJ21 — Créer un projet (gestion de projet) depuis ce devis accepté. */}
+          {d.statut === 'accepte' && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => handleCreerProjet(d)}
+              loading={projetBusy === d.id}
+              title="Créer un projet (planning, budget, ressources) à partir de ce devis"
+            >
+              <FolderKanban /> Créer projet
+            </Button>
+          )}
+
+          {/* « Générer facture » TOUJOURS visible, pour montrer que
+              c'est ici qu'un devis devient des factures. Désactivé
+              tant que le devis n'est pas « Accepté », avec un indice
+              VISIBLE (pas seulement au survol → lisible sur mobile). */}
+          {d.statut !== 'accepte' ? (
+            <div className="flex flex-col gap-0.5">
+              <Button size="sm" variant="outline" disabled>
+                Générer facture
+              </Button>
+              <span className="max-w-[190px] text-xs leading-tight text-muted-foreground">
+                Passez le devis en « Accepté » pour générer les factures.
+              </span>
+            </div>
+          ) : d.solde && d.solde.tranches_facturees >= d.solde.tranches_total ? (
+            <Button size="sm" variant="outline" disabled
+                    title="Toutes les tranches ont été facturées">
+              Échéancier complet
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              onClick={() => handleGenererFacture(d)}
+              loading={factureGenId === d.id}
+              title="Générer la prochaine tranche de facture"
+            >
+              Générer facture
+            </Button>
+          )}
+        </div>
+      </td>
+    </tr>
+    {versionsOpenId === d.id && (
+      <tr>
+        <td colSpan={8} className="bg-muted/30">
+          <div className="px-3 py-2">
+            <p className="mb-1 text-xs font-medium text-muted-foreground">
+              Historique des versions
+            </p>
+            {versionChain.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Aucune autre version trouvée parmi les devis chargés.
+              </p>
+            ) : (
+              <ul className="space-y-1 text-sm">
+                {versionChain.map(v => (
+                  <li key={v.id}
+                      className="flex flex-wrap items-center gap-2">
+                    <Badge tone={v.id === d.id ? 'primary' : 'neutral'}>
+                      v{v.version || 1}
+                    </Badge>
+                    <strong>{v.reference}</strong>
+                    <span className="text-xs text-muted-foreground">
+                      {STATUT_DISPLAY[effStatutOf(v)] ?? v.statut}
+                      {v.date_creation
+                        ? ` · ${new Date(v.date_creation).toLocaleDateString('fr-FR')}` : ''}
+                    </span>
+                    {v.id === d.id && (
+                      <span className="text-xs text-primary">(version affichée)</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </td>
+      </tr>
+    )}
+    {/* QG11 — Panneau « Voir le design 3D » : rendu LECTURE
+        SEULE du plan de toiture stocké (roof_layout). */}
+    {roofOpenId === d.id && (
+      <tr>
+        <td colSpan={8} className="bg-muted/30">
+          <div className="px-3 py-3">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <p className="text-xs font-medium text-muted-foreground">
+                Design 3D de la toiture — {d.reference}
+              </p>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => window.open(`/ventes/devis/${d.id}/3d`, '_blank', 'noopener')}
+                title="Ouvrir dans une nouvelle fenêtre"
+              >
+                <ExternalLink className="size-3.5 mr-1" aria-hidden="true" />
+                Ouvrir dans une fenêtre
+              </Button>
+            </div>
+            <div className="max-w-2xl">
+              <RoofViewer layout={d.roof_layout} />
+            </div>
+          </div>
+        </td>
+      </tr>
+    )}
+    </Fragment>
+  )
 }
 
 export default function DevisList() {
@@ -761,6 +1459,48 @@ export default function DevisList() {
       : [...new Set([...prev, ...filteredDevis.map(d => d.id)])]
   ))
 
+  // ── ARC49 — Sac de contexte passé à chaque <DevisRow> (« lignes divisées »).
+  // Regroupe l'état + les handlers que la ligne utilisait déjà depuis la clôture ;
+  // aucune valeur n'est transformée. `versionChain` est mémoïsé plus haut sur
+  // `versionsOpenId` (seule la ligne ouverte le rend), donc le partager est sûr.
+  const rowCtx = {
+    selectedIds, toggleSelected,
+    versionsOpenId, setVersionsOpenId, roofOpenId, setRoofOpenId,
+    versionChain, effStatutOf,
+    navigate, dispatch,
+    role, canDelete,
+    deletingId, statutActionId, superieurBusyId, shareBusyId, previewingId,
+    pdfGenerating, pdfDownloading, convertingId, chantierBusy, projetBusy, factureGenId,
+    openEdit, openVarianteModal, handleDelete, handleEnvoyer, handleContacterSuperieur,
+    openEmailModal, handleCopierLienProposition, handlePreview, openPdfModal,
+    handleTelechargerPdf, openAcceptModal, handleRefuser, handleConvertBC,
+    handleChantier, handleCreerProjet, handleGenererFacture,
+  }
+
+  // ── ARC49 — Rangée d'en-tête du tableau (8 colonnes), partagée par le cas
+  //    « filtre sans résultat » (rendu direct) et le mode `renderRow` du moteur
+  //    (via `renderHeaderRow` → ses enfants <th>). Mêmes libellés/classes/case
+  //    « tout sélectionner » que l'écran historique — DOM inchangé. ──
+  const devisHeaderRow = (
+    <tr>
+      <th className="w-8">
+        {/* T7 — tout sélectionner (devis affichés / filtrés). */}
+        <Checkbox
+          checked={allFilteredSelected}
+          onCheckedChange={toggleSelectAll}
+          aria-label="Tout sélectionner"
+        />
+      </th>
+      <th>Référence</th>
+      <th>Client</th>
+      <th>Créé le</th>
+      <th>Validité</th>
+      <th className="ta-right">Total TTC</th>
+      <th>Statut</th>
+      <th>Actions</th>
+    </tr>
+  )
+
   // J141 — l'en-tête de page reste TOUJOURS visible (chargement, erreur, données)
   // pour éviter le saut de mise en page. Le contenu interne varie selon l'état.
   const pageHeader = (
@@ -923,97 +1663,30 @@ export default function DevisList() {
         </div>
       )}
 
-      {/* ── Modale de génération PDF : formats du simulateur (MB4 —
-          ResponsiveDialog → tiroir bas plein écran sur mobile) ── */}
-      <ResponsiveDialog
-        open={!!pdfTarget || batchPdf}
-        onOpenChange={(o) => { if (!o) { setPdfTarget(null); setBatchPdf(false) } }}
-        title={batchPdf
-          ? `Générer le PDF — ${selectedIds.length} devis (format partagé)`
-          : `Générer le PDF — ${pdfTarget?.reference}`}
-        footer={(
-          <>
-            <Button variant="ghost" onClick={() => { setPdfTarget(null); setBatchPdf(false) }}>Annuler</Button>
-            <Button onClick={() => (batchPdf ? handleGenererPdfLot() : handleGenererPdf(pdfTarget))}>
-              <FileText /> Générer
-            </Button>
-          </>
-        )}
-      >
-          <div className="flex flex-col gap-4">
-            <div className="grid gap-2">
-              <Label>Format</Label>
-              <RadioGroup value={pdfMode} onValueChange={setPdfMode} className="flex flex-col gap-2">
-                <label className="flex items-start gap-2 text-sm">
-                  <RadioGroupItem value="full" className="mt-0.5" />
-                  <span>
-                    {targetIsAgricole
-                      ? 'Devis premium (4 pages — étude, schéma, rentabilité, garanties)'
-                      : 'Devis premium (3 pages — options, analyse, garanties)'}
-                  </span>
-                </label>
-                <label className="flex items-start gap-2 text-sm">
-                  <RadioGroupItem value="onepage" className="mt-0.5" />
-                  <span>Devis une page (liste produits uniquement, sans graphiques)</span>
-                </label>
-              </RadioGroup>
-            </div>
-
-            {pdfMode === 'full' && !targetIsAgricole && (
-              <label className="flex items-start gap-2 text-sm">
-                <Checkbox checked={showMonthly} onCheckedChange={v => setShowMonthly(!!v)} className="mt-0.5" />
-                <span>Économies mensuelles <span className="text-muted-foreground">(graphique mensuel page 2)</span></span>
-              </label>
-            )}
-
-            {pdfMode === 'full' && !batchPdf && !targetIsAgricole && (
-              <label className="flex items-start gap-2 text-sm aria-disabled:opacity-50" aria-disabled={!targetHasEtude}>
-                {/* T13 — case désactivée sans données d'étude (note explicative). */}
-                <Checkbox
-                  checked={includeEtude && targetHasEtude}
-                  disabled={!targetHasEtude}
-                  onCheckedChange={v => setIncludeEtude(!!v)}
-                  className="mt-0.5"
-                />
-                <span>
-                  Inclure l'étude <span className="text-muted-foreground">(page autoconsommation — devis industriel)</span>
-                  {!targetHasEtude && (
-                    <span className="block text-xs text-muted-foreground">
-                      Aucune donnée d'étude sur ce devis — option indisponible.
-                    </span>
-                  )}
-                </span>
-              </label>
-            )}
-
-            <label className="flex items-start gap-2 text-sm">
-              <Checkbox checked={devisFinal} onCheckedChange={v => setDevisFinal(!!v)} className="mt-0.5" />
-              <span>Devis Final <span className="text-muted-foreground">(ajoute modalités de paiement + RIB)</span></span>
-            </label>
-
-            {devisFinal && (
-              <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/40 p-3">
-                <RadioGroup value={paymentMode} onValueChange={setPaymentMode} className="flex flex-col gap-2">
-                  <label className="flex items-center gap-2 text-sm">
-                    <RadioGroupItem value="standard" />
-                    <span>Standard (30/60/10)</span>
-                  </label>
-                  <label className="flex items-center gap-2 text-sm">
-                    <RadioGroupItem value="custom" />
-                    <span>Acompte personnalisé</span>
-                  </label>
-                </RadioGroup>
-                {paymentMode === 'custom' && (
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="pdf-acompte">Montant acompte (MAD)</Label>
-                    <Input id="pdf-acompte" type="number" min="0" step="any"
-                           value={customAcompte} onChange={e => setCustomAcompte(e.target.value)} />
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-      </ResponsiveDialog>
+      {/* ── ARC49 — Modale de génération PDF (extraite en composant ; flux PDF
+          inchangé, règle #4). MB4 — ResponsiveDialog → tiroir bas sur mobile. ── */}
+      <DevisPdfDialog
+        pdfTarget={pdfTarget}
+        batchPdf={batchPdf}
+        selectedIds={selectedIds}
+        pdfMode={pdfMode}
+        setPdfMode={setPdfMode}
+        targetIsAgricole={targetIsAgricole}
+        showMonthly={showMonthly}
+        setShowMonthly={setShowMonthly}
+        targetHasEtude={targetHasEtude}
+        includeEtude={includeEtude}
+        setIncludeEtude={setIncludeEtude}
+        devisFinal={devisFinal}
+        setDevisFinal={setDevisFinal}
+        paymentMode={paymentMode}
+        setPaymentMode={setPaymentMode}
+        customAcompte={customAcompte}
+        setCustomAcompte={setCustomAcompte}
+        onClose={() => { setPdfTarget(null); setBatchPdf(false) }}
+        onGenererLot={handleGenererPdfLot}
+        onGenererUn={handleGenererPdf}
+      />
 
       {/* ── T9 — Modale d'acceptation inline (nom / date / option) — MB4
           ResponsiveDialog (tiroir bas plein écran sur mobile) ── */}
@@ -1193,589 +1866,47 @@ export default function DevisList() {
       ) : (
         <Card className="mt-4 overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th className="w-8">
-                    {/* T7 — tout sélectionner (devis affichés / filtrés). */}
-                    <Checkbox
-                      checked={allFilteredSelected}
-                      onCheckedChange={toggleSelectAll}
-                      aria-label="Tout sélectionner"
-                    />
-                  </th>
-                  <th>Référence</th>
-                  <th>Client</th>
-                  <th>Créé le</th>
-                  <th>Validité</th>
-                  <th className="ta-right">Total TTC</th>
-                  <th>Statut</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredDevis.length === 0 ? (
+            {filteredDevis.length === 0 ? (
+              /* ── ARC49 — Filtre sans résultat : ligne pleine largeur conservée
+                  à l'identique (le moteur ne rend renderRow que pour ≥1 ligne). ── */
+              <table className="data-table">
+                <thead>{devisHeaderRow}</thead>
+                <tbody>
                   <tr>
                     <td colSpan={8} className="py-6 text-center text-sm text-muted-foreground">
                       Aucun devis ne correspond à ces filtres.
                     </td>
                   </tr>
-                ) : filteredDevis.map(d => {
-                  // Expiration calculée à la volée (T7) : un devis en attente dont la
-                  // date de validité est dépassée s'affiche « Expiré » sans changer
-                  // son statut stocké ni l'étape du lead.
-                  const effStatut = d.is_expired ? 'expire' : d.statut
-                  const isGenerating = pdfGenerating[d.id]
-                  const isDownloading = pdfDownloading[d.id]
-                  return (
-                    <Fragment key={d.id}>
-                    <tr>
-                      <td>
-                        <Checkbox
-                          checked={selectedIds.includes(d.id)}
-                          onCheckedChange={() => toggleSelected(d.id)}
-                          aria-label={`Sélectionner ${d.reference}`}
-                        />
-                      </td>
-                      <td>
-                        <strong>{d.reference}</strong>
-                        {d.version > 1 && (
-                          <Badge tone="primary" className="ml-1.5">v{d.version}</Badge>
-                        )}
-                        {/* U7 — une révision remplacée (is_active=False) porte un
-                            badge « Remplacé » explicite ; le lien ouvre l'historique
-                            des versions (qui pointe vers la version courante). */}
-                        {d.is_active === false && (
-                          <Badge tone="neutral" className="ml-1.5">Remplacé</Badge>
-                        )}
-                        {d.superseded_by_ref && (
-                          <div className="mt-0.5 text-xs text-warning">
-                            remplacé par{' '}
-                            <button
-                              type="button"
-                              className="font-medium underline hover:no-underline"
-                              onClick={() => setVersionsOpenId(
-                                versionsOpenId === d.id ? null : d.id)}
-                              title="Voir la version qui remplace ce devis"
-                            >
-                              {d.superseded_by_ref}
-                            </button>
-                          </div>
-                        )}
-                        {(d.version > 1 || d.superseded_by_ref || d.version_parent_ref) && (
-                          <div className="mt-0.5">
-                            <button
-                              type="button"
-                              className="text-xs text-primary hover:underline"
-                              onClick={() => setVersionsOpenId(
-                                versionsOpenId === d.id ? null : d.id)}
-                            >
-                              {versionsOpenId === d.id ? 'Masquer les versions' : 'Voir les versions'}
-                            </button>
-                          </div>
-                        )}
-                        {/* QJ1 — Badge de consultation : affiché quand le lien public
-                            a été ouvert au moins une fois. Nombre de vues + date. */}
-                        {d.deja_consulte && (
-                          <div
-                            className="mt-0.5 inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
-                            title={d.derniere_consultation
-                              ? `Dernière ouverture : ${new Date(d.derniere_consultation).toLocaleString('fr-FR')}`
-                              : 'Document consulté'}
-                          >
-                            <Eye className="size-3" aria-hidden="true" />
-                            Consulté ×{d.nombre_vues ?? 1}
-                          </div>
-                        )}
-                        {/* XSAL16 — résumé d'engagement par section de la proposition
-                            web (« a passé 2 min sur le prix, n'a pas ouvert l'étude »).
-                            Vide sans beacon (déjà serialisé, comportement QJ1 inchangé). */}
-                        {engagementSummary(d.engagement) && (
-                          <div
-                            className="mt-0.5 text-xs text-muted-foreground"
-                            title="Temps passé par section sur la proposition en ligne"
-                          >
-                            {engagementSummary(d.engagement)}
-                          </div>
-                        )}
-                        {/* U5 — Documents générés depuis ce devis : factures (chips
-                            cliquables → liste Factures) + bon de commande (→ BC).
-                            Lecture seule, données du serializer. */}
-                        {(d.factures_liees?.length > 0 || d.bon_commande_etat?.exists) && (
-                          <div className="mt-1 flex flex-wrap gap-1">
-                            {d.bon_commande_etat?.exists && (
-                              <button
-                                type="button"
-                                onClick={() => navigate('/ventes/bons-commande')}
-                                title={`Bon de commande ${d.bon_commande_etat.reference} — ${d.bon_commande_etat.statut_display}`}
-                                className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/60 px-2 py-0.5 text-xs font-medium hover:bg-muted"
-                              >
-                                <FileStack className="size-3" aria-hidden="true" />
-                                {d.bon_commande_etat.reference}
-                              </button>
-                            )}
-                            {(d.factures_liees ?? []).map(f => (
-                              <button
-                                key={f.id}
-                                type="button"
-                                onClick={() => navigate('/ventes/factures')}
-                                title={`Facture ${f.reference} — ${f.statut_display}`}
-                                className="inline-flex items-center gap-1 rounded-full border border-success/40 bg-success/10 px-2 py-0.5 text-xs font-medium text-success hover:bg-success/20"
-                              >
-                                <FileText className="size-3" aria-hidden="true" />
-                                {f.reference} · {f.statut_display}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </td>
-                      <td data-label="Client">
-                        {d.client_nom ?? '—'}
-                        {d.lead && (
-                          <div className="mt-1">
-                            <button
-                              type="button"
-                              title={[
-                                'Ouvrir le lead lié',
-                                d.lead_type_installation
-                                  ? `Type : ${d.lead_type_installation}` : null,
-                                d.lead_facture_hiver != null
-                                  ? `Facture hiver : ${formatMAD(d.lead_facture_hiver)}` : null,
-                              ].filter(Boolean).join('\n')}
-                              onClick={() => navigate(`/crm/leads?lead=${d.lead}`)}
-                              className="inline-flex items-center gap-1 rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning hover:bg-warning/20"
-                            >
-                              ↗ {d.lead_nom ?? 'Lead'}
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                      <td data-label="Créé le">{new Date(d.date_creation).toLocaleDateString('fr-FR')}</td>
-                      <td className="m-hide">
-                        {d.date_validite
-                          ? new Date(d.date_validite).toLocaleDateString('fr-FR')
-                          : '—'}
-                      </td>
-                      <td className="ta-right tabular-nums" data-label="Total TTC">
-                        {(d.total_affiche ?? d.total_ttc) != null
-                          ? formatMAD(d.total_affiche ?? d.total_ttc)
-                          : '—'}
-                        {d.nb_options === 2 && (
-                          <Badge tone="warning" className="ml-1.5"
-                                 title="Devis à deux options — total affiché : option 1 (sans batterie), remise incluse">
-                            2 options
-                          </Badge>
-                        )}
-                        {d.solde && (
-                          <div className="mt-1 text-xs text-muted-foreground">
-                            Facturé {d.solde.facture} / Payé {d.solde.paye} / Restant {d.solde.restant} MAD
-                          </div>
-                        )}
-                      </td>
-                      <td data-label="Statut">
-                        <StatusPill status={effStatut} label={STATUT_DISPLAY[effStatut] ?? STATUT_DISPLAY.brouillon} />
-                        {d.statut === 'accepte' && d.option_acceptee && (
-                          <div className="mt-1 text-xs text-success">
-                            Option : {d.option_acceptee === 'avec_batterie' ? 'Avec batterie' : 'Sans batterie'}
-                          </div>
-                        )}
-                        {/* QJ22 — Badge « Proposition signée » : affiché quand un
-                            DevisSignature (loi 53-05) existe pour ce devis accepté.
-                            Indique que la signature électronique légale a été
-                            enregistrée + le PDF de proposition signé est disponible. */}
-                        {d.est_signe && (
-                          <div
-                            className="mt-1 inline-flex items-center gap-1 rounded-full border border-success/40 bg-success/10 px-2 py-0.5 text-xs font-medium text-success"
-                            title={
-                              d.signature_info
-                                ? [
-                                    `Signé par : ${d.signature_info.signataire_nom || '—'}`,
-                                    d.signature_info.signed_at
-                                      ? `le ${new Date(d.signature_info.signed_at).toLocaleString('fr-FR')}`
-                                      : null,
-                                    d.signature_info.has_pdf
-                                      ? 'PDF signé disponible'
-                                      : null,
-                                  ].filter(Boolean).join(' ')
-                                : 'Proposition signée (loi 53-05)'
-                            }
-                          >
-                            <Check className="size-3" aria-hidden="true" />
-                            Proposition signée
-                          </div>
-                        )}
-                        {/* U8 — état du bon de commande lié (lecture seule, depuis
-                            le OneToOne existant) + avertissement d'incohérence
-                            quand un devis accepté n'a pas de BC actif. */}
-                        {d.bon_commande_etat?.exists && (
-                          <div className="mt-1 text-xs text-muted-foreground">
-                            BC : {d.bon_commande_etat.statut_display}
-                          </div>
-                        )}
-                        {d.bon_commande_etat?.mismatch && (
-                          <div className="mt-1 flex items-start gap-1 text-xs font-medium text-warning"
-                               title="Devis accepté mais le bon de commande est annulé ou absent">
-                            <AlertTriangle className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
-                            <span>
-                              {d.bon_commande_etat.exists
-                                ? 'Devis accepté mais BC annulé'
-                                : 'Devis accepté sans bon de commande'}
-                            </span>
-                          </div>
-                        )}
-                      </td>
-                      <td>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => openEdit(d)}
-                            disabled={d.statut !== 'brouillon'}
-                            title={d.statut === 'brouillon'
-                              ? 'Ouvrir dans le générateur'
-                              : 'Devis envoyé/clôturé — non modifiable (dupliquez-le depuis le générateur si besoin)'}
-                          >
-                            Éditer
-                          </Button>
-                          {d.is_active && d.statut !== 'brouillon' && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              title="Créer une nouvelle version (v2, v3…) de ce devis"
-                              onClick={() => {
-                                ventesApi.reviserDevis(d.id)
-                                  .then(() => dispatch(fetchDevis()))
-                                  .catch(() => {})
-                              }}
-                            >
-                              Réviser
-                            </Button>
-                          )}
-                          {/* QG10/QJ15 — « Variante » : ouvre une modale pour
-                              confirmer/éditer le pourcentage (défaut = config
-                              société), créer les 3 variantes puis router vers la
-                              comparaison côte-à-côte. */}
-                          {d.statut === 'brouillon' && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              title="Créer 3 variantes de taille (−p %, standard, +p %) pour comparaison côte-à-côte"
-                              onClick={() => openVarianteModal(d)}
-                            >
-                              <Copy className="size-3.5 mr-1" aria-hidden="true" />
-                              Variante
-                            </Button>
-                          )}
-                          {role === 'admin' && d.statut === 'brouillon'
-                            && parseFloat(d.remise_globale) > 0 && !d.remise_approuvee && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              title="Approuver la remise (autorise l'envoi si au-dessus du seuil)"
-                              onClick={() => {
-                                ventesApi.approuverRemise(d.id)
-                                  .then(() => dispatch(fetchDevis())).catch(() => {})
-                              }}
-                            >
-                              Approuver remise
-                            </Button>
-                          )}
-                          {canDelete && (
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  loading={deletingId === d.id}
-                                  className="border-destructive/40 text-destructive hover:bg-destructive/10"
-                                  title="Supprimer ce devis"
-                                >
-                                  Supprimer
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Supprimer le devis {d.reference} ?</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    Cette action est définitive et irréversible.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Annuler</AlertDialogCancel>
-                                  <AlertDialogAction onClick={() => handleDelete(d)}>Supprimer</AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          )}
-
-                          {d.statut === 'brouillon' && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              loading={statutActionId === d.id}
-                              onClick={() => handleEnvoyer(d)}
-                              title="Envoyer par WhatsApp (message + lien de proposition) — marque le devis « Envoyé »"
-                            >
-                              <Send /> Envoyer
-                            </Button>
-                          )}
-                          {/* QJ28 — Contacter mon supérieur (notification, jamais automatique) */}
-                          {(d.statut === 'brouillon' || d.statut === 'envoye') && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              loading={superieurBusyId === d.id}
-                              onClick={() => handleContacterSuperieur(d)}
-                              title="Contacter mon supérieur — lui envoyer une notification avec le lien de ce devis"
-                            >
-                              <UserCog />
-                            </Button>
-                          )}
-                          {/* QJ14 — Envoyer par email : PDF premium + lien de proposition */}
-                          {(d.statut === 'brouillon' || d.statut === 'envoye') && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => openEmailModal(d)}
-                              title="Envoyer la proposition par email (PDF + lien de signature)"
-                            >
-                              <Send className="size-3.5 mr-1" aria-hidden="true" />
-                              Email
-                            </Button>
-                          )}
-                          {/* WR2 — Copier le lien de proposition (share_link) :
-                              surface la fonctionnalité serveur invisible, sans
-                              passer par un envoi email/WhatsApp. */}
-                          {(d.statut === 'brouillon' || d.statut === 'envoye') && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              loading={shareBusyId === d.id}
-                              onClick={() => handleCopierLienProposition(d)}
-                              title="Copier le lien de la proposition (à coller où vous voulez)"
-                            >
-                              <Link2 className="size-3.5 mr-1" aria-hidden="true" />
-                              Copier le lien
-                            </Button>
-                          )}
-                          {/* QG11 — « Voir le design 3D » : ouvre le plan de
-                              toiture (roof_layout) en lecture seule dans le
-                              détail. N'apparaît que si un plan existe. */}
-                          {d.roof_layout && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => setRoofOpenId(
-                                roofOpenId === d.id ? null : d.id)}
-                              title="Voir le design 3D de la toiture (lecture seule)"
-                            >
-                              <Box className="size-3.5 mr-1" aria-hidden="true" />
-                              Design 3D
-                            </Button>
-                          )}
-                          {/* QG12 — « Ouvrir dans une fenêtre » : le plan plein
-                              écran sur sa propre route /ventes/devis/:id/3d. */}
-                          {d.roof_layout && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => window.open(`/ventes/devis/${d.id}/3d`, '_blank', 'noopener')}
-                              title="Ouvrir le design 3D dans une nouvelle fenêtre"
-                              aria-label={`Ouvrir le design 3D de ${d.reference} dans une fenêtre`}
-                            >
-                              <ExternalLink className="size-3.5" aria-hidden="true" />
-                            </Button>
-                          )}
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            loading={previewingId === d.id}
-                            onClick={() => handlePreview(d)}
-                            title="Aperçu du PDF dans l'application"
-                          >
-                            <Eye />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => openPdfModal(d)}
-                            loading={isGenerating}
-                            title="Générer le PDF (choix du format)"
-                          >
-                            <FileText /> PDF
-                          </Button>
-                          {d.fichier_pdf && (
-                            <Button
-                              size="sm"
-                              variant="success"
-                              onClick={() => handleTelechargerPdf(d)}
-                              loading={isDownloading}
-                              title="Télécharger le dernier PDF généré"
-                            >
-                              <FileDown />
-                            </Button>
-                          )}
-
-                          {d.statut === 'envoye' && (
-                            <Button
-                              size="sm"
-                              title="Marquer accepté (date + nom + option) — déclenche la création du chantier"
-                              onClick={() => openAcceptModal(d)}
-                            >
-                              <Check /> Accepter
-                            </Button>
-                          )}
-                          {d.statut === 'envoye' && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              loading={statutActionId === d.id}
-                              onClick={() => handleRefuser(d)}
-                              className="border-destructive/40 text-destructive hover:bg-destructive/10"
-                              title="Marquer ce devis comme refusé"
-                            >
-                              <X /> Refuser
-                            </Button>
-                          )}
-
-                          {d.statut === 'accepte' && (
-                            <Button
-                              size="sm"
-                              variant="success"
-                              onClick={() => handleConvertBC(d)}
-                              loading={convertingId === d.id}
-                              title="Convertir en bon de commande"
-                            >
-                              <ArrowRight /> BC
-                            </Button>
-                          )}
-
-                          {d.statut === 'accepte' && (
-                            <Button
-                              size="sm"
-                              variant={d.chantier ? 'outline' : 'default'}
-                              onClick={() => handleChantier(d)}
-                              loading={chantierBusy === d.id}
-                              title={d.chantier
-                                ? `Ouvrir le chantier ${d.chantier.reference}`
-                                : 'Créer le chantier à partir de ce devis'}
-                            >
-                              <HardHat /> {d.chantier ? 'Voir le chantier' : 'Créer le chantier'}
-                            </Button>
-                          )}
-
-                          {/* XPRJ21 — Créer un projet (gestion de projet) depuis ce devis accepté. */}
-                          {d.statut === 'accepte' && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleCreerProjet(d)}
-                              loading={projetBusy === d.id}
-                              title="Créer un projet (planning, budget, ressources) à partir de ce devis"
-                            >
-                              <FolderKanban /> Créer projet
-                            </Button>
-                          )}
-
-                          {/* « Générer facture » TOUJOURS visible, pour montrer que
-                              c'est ici qu'un devis devient des factures. Désactivé
-                              tant que le devis n'est pas « Accepté », avec un indice
-                              VISIBLE (pas seulement au survol → lisible sur mobile). */}
-                          {d.statut !== 'accepte' ? (
-                            <div className="flex flex-col gap-0.5">
-                              <Button size="sm" variant="outline" disabled>
-                                Générer facture
-                              </Button>
-                              <span className="max-w-[190px] text-xs leading-tight text-muted-foreground">
-                                Passez le devis en « Accepté » pour générer les factures.
-                              </span>
-                            </div>
-                          ) : d.solde && d.solde.tranches_facturees >= d.solde.tranches_total ? (
-                            <Button size="sm" variant="outline" disabled
-                                    title="Toutes les tranches ont été facturées">
-                              Échéancier complet
-                            </Button>
-                          ) : (
-                            <Button
-                              size="sm"
-                              onClick={() => handleGenererFacture(d)}
-                              loading={factureGenId === d.id}
-                              title="Générer la prochaine tranche de facture"
-                            >
-                              Générer facture
-                            </Button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                    {versionsOpenId === d.id && (
-                      <tr>
-                        <td colSpan={8} className="bg-muted/30">
-                          <div className="px-3 py-2">
-                            <p className="mb-1 text-xs font-medium text-muted-foreground">
-                              Historique des versions
-                            </p>
-                            {versionChain.length === 0 ? (
-                              <p className="text-xs text-muted-foreground">
-                                Aucune autre version trouvée parmi les devis chargés.
-                              </p>
-                            ) : (
-                              <ul className="space-y-1 text-sm">
-                                {versionChain.map(v => (
-                                  <li key={v.id}
-                                      className="flex flex-wrap items-center gap-2">
-                                    <Badge tone={v.id === d.id ? 'primary' : 'neutral'}>
-                                      v{v.version || 1}
-                                    </Badge>
-                                    <strong>{v.reference}</strong>
-                                    <span className="text-xs text-muted-foreground">
-                                      {STATUT_DISPLAY[effStatutOf(v)] ?? v.statut}
-                                      {v.date_creation
-                                        ? ` · ${new Date(v.date_creation).toLocaleDateString('fr-FR')}` : ''}
-                                    </span>
-                                    {v.id === d.id && (
-                                      <span className="text-xs text-primary">(version affichée)</span>
-                                    )}
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                    {/* QG11 — Panneau « Voir le design 3D » : rendu LECTURE
-                        SEULE du plan de toiture stocké (roof_layout). */}
-                    {roofOpenId === d.id && (
-                      <tr>
-                        <td colSpan={8} className="bg-muted/30">
-                          <div className="px-3 py-3">
-                            <div className="mb-2 flex items-center justify-between gap-2">
-                              <p className="text-xs font-medium text-muted-foreground">
-                                Design 3D de la toiture — {d.reference}
-                              </p>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => window.open(`/ventes/devis/${d.id}/3d`, '_blank', 'noopener')}
-                                title="Ouvrir dans une nouvelle fenêtre"
-                              >
-                                <ExternalLink className="size-3.5 mr-1" aria-hidden="true" />
-                                Ouvrir dans une fenêtre
-                              </Button>
-                            </div>
-                            <div className="max-w-2xl">
-                              <RoofViewer layout={d.roof_layout} />
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                    </Fragment>
-                  )
-                })}
-              </tbody>
-            </table>
+                </tbody>
+              </table>
+            ) : (
+              /* ── ARC49 — Tableau sur le frame `ui/datatable` (mode ligne custom).
+                  L'écran garde 100 % de son DOM : `table.data-table`, son en-tête
+                  8 colonnes, `<DevisRow>` verbatim (boutons à état, AlertDialog,
+                  panneaux versions/3D pilotés par l'état de page + deep-links), sa
+                  sélection propre (`selectedIds`) et son flux PDF (règle #4). Le
+                  moteur ne fait que dérouler le pipeline de lignes ; il n'ajoute
+                  aucune cellule technique, ni tri client, ni pagination, ni carte
+                  mobile, ni barre d'outils (seams manuels + hideToolbar). ── */
+              <DataTable
+                data={filteredDevis}
+                columns={DEVIS_DT_COLUMNS}
+                getRowId={d => d.id}
+                manualSorting
+                manualFiltering
+                manualPagination
+                rowCount={filteredDevis.length}
+                pageSize={filteredDevis.length}
+                pageSizeOptions={[filteredDevis.length]}
+                searchable={false}
+                hideToolbar
+                hidePagination
+                tableClassName="data-table"
+                aria-label="Devis"
+                renderHeaderRow={() => devisHeaderRow.props.children}
+                renderRow={d => <DevisRow key={d.id} d={d} ctx={rowCtx} />}
+              />
+            )}
           </div>
         </Card>
       )}

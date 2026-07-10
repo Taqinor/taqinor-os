@@ -19,6 +19,7 @@ from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet
 from django.utils import timezone
 
 from .. import gps_tracking_service
@@ -31,7 +32,7 @@ from ..serializers import (
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class GpsConsentRecordViewSet(TenantMixin, viewsets.ModelViewSet):
+class GpsConsentRecordViewSet(CompanyScopedModelViewSet):
     """XFSM23 — trace du consentement GPS déjà obtenu. Lecture/écriture
     réservées responsable/admin : un technicien ne peut ni poser ni révoquer
     son propre consentement via l'API — c'est une décision RH, pas un

@@ -12,33 +12,24 @@ self-contained dans ``apps.paie`` : aucune dépendance à une autre app business
 champs PUBLICS du bulletin/profil — jamais de donnée d'achat/marge. Donnée
 SENSIBLE (salaires) — usage paie/employé uniquement.
 
-WeasyPrint est optionnel à l'import : si la lib n'est pas installée (build
-allégé), ``render_bulletin_pdf`` lève une ``RuntimeError`` explicite plutôt que
-de planter à l'import du module.
+ARC12 — la plomberie WeasyPrint (``HTML(string=...).write_pdf()`` + import
+paresseux) est déléguée au service partagé ``core.pdf.render_pdf`` ; les
+GABARITS HTML ci-dessous restent STRICTEMENT identiques, donc le rendu est
+inchangé à l'octet près. ``render_bulletins_periode_pdf`` (ZPAI5, fusion
+PyMuPDF) est HORS PÉRIMÈTRE : elle n'importe pas WeasyPrint directement, elle
+réutilise ``render_bulletin_pdf`` (déjà migré) puis fusionne les pages via
+``fitz``.
 """
 from datetime import date
 from decimal import Decimal
 from html import escape
-from io import BytesIO
+
+from core.pdf import render_pdf
 
 MOIS_FR = [
     '', 'janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet',
     'août', 'septembre', 'octobre', 'novembre', 'décembre',
 ]
-
-
-def _html_to_pdf(html_string):
-    """HTML → octets PDF (WeasyPrint). Import paresseux de weasyprint."""
-    try:
-        import weasyprint
-    except ImportError as exc:  # pragma: no cover - dépend de l'environnement
-        raise RuntimeError(
-            "WeasyPrint n'est pas installé : génération PDF indisponible."
-        ) from exc
-    buf = BytesIO()
-    weasyprint.HTML(string=html_string).write_pdf(buf)
-    buf.seek(0)
-    return buf.read()
 
 
 def _fmt(montant):
@@ -136,7 +127,7 @@ def render_bulletin_html(bulletin):
 
 def render_bulletin_pdf(bulletin):
     """Bulletin de paie → octets PDF (PAIE34)."""
-    return _html_to_pdf(render_bulletin_html(bulletin))
+    return render_pdf(html=render_bulletin_html(bulletin))
 
 
 # ── PAIE34 — Attestations (salaire / travail / domiciliation) ──────────────
@@ -247,8 +238,8 @@ def render_attestation_html(attestation_type, profil, *, bulletin=None,
 def render_attestation_pdf(attestation_type, profil, *, bulletin=None,
                            today=None, arret_cnss=None):
     """Attestation → octets PDF (PAIE34)."""
-    return _html_to_pdf(
-        render_attestation_html(
+    return render_pdf(
+        html=render_attestation_html(
             attestation_type, profil, bulletin=bulletin, today=today,
             arret_cnss=arret_cnss))
 
@@ -305,7 +296,7 @@ def render_stc_html(bulletin, *, today=None):
 
 def render_stc_pdf(bulletin, *, today=None):
     """Reçu pour solde de tout compte → octets PDF (XPAI1)."""
-    return _html_to_pdf(render_stc_html(bulletin, today=today))
+    return render_pdf(html=render_stc_html(bulletin, today=today))
 
 
 # ── XPAI26 — Registres d'inspection du travail ─────────────────────────────
@@ -349,7 +340,7 @@ def render_registre_conges_html(registre, *, today=None):
 
 def render_registre_conges_pdf(registre, *, today=None):
     """Registre des congés → octets PDF (XPAI26)."""
-    return _html_to_pdf(render_registre_conges_html(registre, today=today))
+    return render_pdf(html=render_registre_conges_html(registre, today=today))
 
 
 def render_historique_carriere_html(historique, *, today=None):
@@ -393,8 +384,8 @@ def render_historique_carriere_html(historique, *, today=None):
 
 def render_historique_carriere_pdf(historique, *, today=None):
     """Fiche historique de carrière → octets PDF (XPAI26)."""
-    return _html_to_pdf(
-        render_historique_carriere_html(historique, today=today))
+    return render_pdf(
+        html=render_historique_carriere_html(historique, today=today))
 
 
 # ── ZPAI5 — Impression en lot des bulletins d'une période (PDF fusionné) ────

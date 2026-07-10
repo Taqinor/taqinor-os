@@ -11,33 +11,22 @@ vente). Self-contained : ce module ne lit que des champs PUBLICS
 (``RetenueSource`` + ``CompanyProfile``, une app foundation exemptée de la
 règle cross-app), jamais de donnée d'achat/marge.
 
-WeasyPrint est optionnel à l'import : si la lib n'est pas installée, les
-fonctions ``render_*_pdf`` lèvent une ``RuntimeError`` explicite plutôt que
-de planter à l'import du module.
+ARC12 — la plomberie WeasyPrint (``HTML(string=...).write_pdf()`` + import
+paresseux) est déléguée au service partagé ``core.pdf.render_pdf`` ; les
+GABARITS HTML ci-dessous restent STRICTEMENT identiques (aucune option de
+branding de ``render_pdf`` activée), donc le rendu est inchangé à l'octet
+près.
 """
 from datetime import date
 from decimal import Decimal
 from html import escape
-from io import BytesIO
+
+from core.pdf import render_pdf
 
 MOIS_FR = [
     '', 'janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet',
     'août', 'septembre', 'octobre', 'novembre', 'décembre',
 ]
-
-
-def _html_to_pdf(html_string):
-    """HTML → octets PDF (WeasyPrint). Import paresseux de weasyprint."""
-    try:
-        import weasyprint
-    except ImportError as exc:  # pragma: no cover - dépend de l'environnement
-        raise RuntimeError(
-            "WeasyPrint n'est pas installé : génération PDF indisponible."
-        ) from exc
-    buf = BytesIO()
-    weasyprint.HTML(string=html_string).write_pdf(buf)
-    buf.seek(0)
-    return buf.read()
 
 
 def _fmt(montant):
@@ -135,8 +124,9 @@ def render_attestation_retenue_html(retenue, company_profile=None, *,
 def render_attestation_retenue_pdf(retenue, company_profile=None, *,
                                    today=None):
     """Attestation d'un versement → octets PDF (XACC35)."""
-    return _html_to_pdf(
-        render_attestation_retenue_html(retenue, company_profile, today=today))
+    return render_pdf(
+        html=render_attestation_retenue_html(
+            retenue, company_profile, today=today))
 
 
 def render_attestation_annuelle_html(retenues, tiers_nom, annee,
@@ -185,6 +175,6 @@ def render_attestation_annuelle_html(retenues, tiers_nom, annee,
 def render_attestation_annuelle_pdf(retenues, tiers_nom, annee,
                                     company_profile=None, *, today=None):
     """Cumul annuel → octets PDF (XACC35)."""
-    return _html_to_pdf(
-        render_attestation_annuelle_html(
+    return render_pdf(
+        html=render_attestation_annuelle_html(
             retenues, tiers_nom, annee, company_profile, today=today))

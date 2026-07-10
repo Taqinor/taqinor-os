@@ -6,7 +6,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
   Label, Input, Textarea,
 } from '../../ui'
-import { DetailShell } from '../../ui/module'
+import { RecordShell } from '../../ui/module'
 import { formatMAD, formatDate, formatDateTime } from '../../lib/format'
 import { StatutContrat, StatutResiliation, CONTRAT_STATUS } from './status'
 import StateMachine from './StateMachine'
@@ -375,7 +375,10 @@ export default function ContratDetail() {
 
   return (
     <>
-      <DetailShell
+      {/* ARC46 — RecordShell (pendant détail de ListShell) ; drop-in de
+          DetailShell : mêmes props (dont le slot chatter via `activity`),
+          aucune refonte visuelle. */}
+      <RecordShell
         title={contrat.reference || `Contrat #${contrat.id}`}
         subtitle={contrat.objet}
         status={contrat.statut}

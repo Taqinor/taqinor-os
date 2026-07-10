@@ -4,11 +4,11 @@
 NOTE: ce module fait partie du découpage de l'ancien views.py monolithe
 (un module par ressource). Comportement et symboles inchangés : le package
 __init__ ré-exporte toutes les vues publiques."""
-from rest_framework import viewsets, status
+from rest_framework import status
 from rest_framework.exceptions import ValidationError
 
-from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsAdminRole
+from core.viewsets import CompanyScopedModelViewSet
 from rest_framework.response import Response
 
 from ..models import FicheInterventionTemplate, FicheInterventionChamp
@@ -19,7 +19,7 @@ from ..serializers import (
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class FicheInterventionTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
+class FicheInterventionTemplateViewSet(CompanyScopedModelViewSet):
     """ZFSM1 — gabarits de fiche d'intervention (Paramètres → Chantiers).
     Lecture tout rôle, écriture admin. Un gabarit par `type_intervention` et
     par société ; `protege` verrouille un gabarit système. Tout est scopé à
@@ -41,7 +41,7 @@ class FicheInterventionTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
         return super().destroy(request, *args, **kwargs)
 
 
-class FicheInterventionChampViewSet(TenantMixin, viewsets.ModelViewSet):
+class FicheInterventionChampViewSet(CompanyScopedModelViewSet):
     """ZFSM1 — champs d'un gabarit de fiche d'intervention. Lecture tout rôle,
     écriture admin. Filtrable via ?template=<id>."""
     queryset = FicheInterventionChamp.objects.all()

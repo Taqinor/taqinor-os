@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useSelector } from 'react-redux'
+import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { Plus, Trash2, Send, Check, X } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import stockApi from '../../api/stockApi'
@@ -54,8 +54,7 @@ const emptyForm = () => ({
 })
 
 export default function DemandesAchatList() {
-  const tier = useSelector((s) => s.auth.role) || 'normal'
-  const isManager = ['responsable', 'admin'].includes(tier)
+  const isManager = useIsAdminOrResponsable()
 
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
