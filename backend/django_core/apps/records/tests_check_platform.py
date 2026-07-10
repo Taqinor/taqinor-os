@@ -13,8 +13,14 @@ from django.test import SimpleTestCase
 from apps.records.platform_guards import (
     GRANDFATHERED_ACTIVITY_CLASSES,
     GRANDFATHERED_FILEFIELDS,
+    GRANDFATHERED_NUMBERING,
+    GRANDFATHERED_WEASYPRINT,
+    NUMBERING_HOME_FILES,
+    is_test_path,
     scan_activity_classes,
     scan_filefields,
+    scan_numbering,
+    scan_weasyprint_import,
 )
 
 # Une NOUVELLE classe *Activity fictive dans une app métier (ex. flotte).
@@ -103,3 +109,118 @@ class TestFileFieldGuard(SimpleTestCase):
         self.assertEqual(len(GRANDFATHERED_FILEFIELDS), 7)
         total = sum(sum(v.values()) for v in GRANDFATHERED_FILEFIELDS.values())
         self.assertEqual(total, 17)
+
+
+class TestWeasyPrintGuard(SimpleTestCase):
+    """ARC11 — import WeasyPrint hors allowlist = rouge (ARC52 garde b)."""
+
+    def test_new_direct_import_is_red(self):
+        """Un nouvel importeur WeasyPrint hors allowlist = violation."""
+        self.assertTrue(
+            scan_weasyprint_import("apps/nouveau/report.py", "import weasyprint\n"))
+
+    def test_new_from_import_is_red(self):
+        self.assertTrue(scan_weasyprint_import(
+            "apps/nouveau/builder.py", "    from weasyprint import HTML\n"))
+
+    def test_allowlisted_service_is_green(self):
+        """``core/pdf.py`` (le service partagé) est allowlisté."""
+        self.assertFalse(
+            scan_weasyprint_import("core/pdf.py", "        import weasyprint\n"))
+
+    def test_rule4_quote_engine_is_green(self):
+        """Les fichiers du moteur de devis règle #4 sont exemptés en permanence."""
+        self.assertFalse(scan_weasyprint_import(
+            "apps/ventes/quote_engine/residential/render.py",
+            "    from weasyprint import HTML\n"))
+
+    def test_grandfathered_importer_is_green(self):
+        """Un importeur direct gelé (à migrer) ne déclenche rien."""
+        self.assertFalse(scan_weasyprint_import(
+            "apps/reporting/report_pdf.py", "import weasyprint\n"))
+
+    def test_test_file_is_exempt(self):
+        """Un fichier de tests peut importer WeasyPrint (rendu réel validé)."""
+        self.assertFalse(scan_weasyprint_import(
+            "apps/ventes/tests/test_x.py", "from weasyprint import HTML\n"))
+        self.assertFalse(scan_weasyprint_import(
+            "apps/x/tests_y.py", "import weasyprint\n"))
+
+    def test_commented_import_is_green(self):
+        """Un import commenté n'est pas un vrai import."""
+        self.assertFalse(scan_weasyprint_import(
+            "apps/x/report.py", "# import weasyprint\n"))
+
+    def test_allowlist_covers_pilots(self):
+        """Garde-fou du garde-fou : le service + un pilote règle #4 + un gelé
+        sont bien dans l'allowlist (sinon le scan du dépôt serait rouge)."""
+        self.assertIn("core/pdf.py", GRANDFATHERED_WEASYPRINT)
+        self.assertIn(
+            "apps/ventes/quote_engine/generate_devis_premium.py",
+            GRANDFATHERED_WEASYPRINT)
+        self.assertIn("apps/ged/services.py", GRANDFATHERED_WEASYPRINT)
+
+
+class TestNumberingGuard(SimpleTestCase):
+    """ARC6 — .count()+1 de référence hors socle = rouge (ARC52 garde c)."""
+
+    def test_count_plus_1_reference_is_red(self):
+        """Un ``.count() + 1`` en contexte de référence hors socle = violation."""
+        src = "    ticket.reference = f'T-{Ticket.objects.count() + 1}'\n"
+        found = scan_numbering("apps/sav/services.py", src)
+        self.assertEqual(found, ["apps/sav/services.py:count+1"])
+
+    def test_count_plus_1_numero_is_red(self):
+        src = "    numero = qs.count() + 1\n"
+        found = scan_numbering("apps/x/services.py", src)
+        self.assertEqual(found, ["apps/x/services.py:count+1"])
+
+    def test_slug_fallback_is_green(self):
+        """Un ``count()+1`` pour un SLUG (pas une référence) = pas de violation
+        (évite le faux positif sur authentication/models.py)."""
+        src = '    self.slug = base or f"company-{Company.objects.count() + 1}"\n'
+        self.assertEqual(scan_numbering("authentication/models.py", src), [])
+
+    def test_loop_bound_is_green(self):
+        """Un ``count()+1`` comme borne de boucle (pas une référence) = OK
+        (évite le faux positif sur core/scoping.py:max_depth)."""
+        src = "    max_depth = base.count() + 1\n"
+        self.assertEqual(scan_numbering("core/scoping.py", src), [])
+
+    def test_max_plus_1_is_green(self):
+        """Le motif CORRECT ``max(...)+1`` (versionnage race-safe) n'est jamais
+        visé — seul ``count()+1`` l'est."""
+        src = "    numero = (max(nums) if nums else 0) + 1  # reference suivante\n"
+        self.assertEqual(scan_numbering("apps/contrats/services.py", src), [])
+
+    def test_home_file_is_exempt(self):
+        """Les fichiers socle de numérotation sont exemptés."""
+        src = "    ref = f'{p}-{qs.count() + 1}'\n"
+        self.assertEqual(scan_numbering("core/numbering.py", src), [])
+        self.assertEqual(
+            scan_numbering("apps/ventes/utils/references.py", src), [])
+
+    def test_test_file_is_exempt(self):
+        """Un test peut fabriquer une référence jetable via count()."""
+        src = "    reference=f'T-{Ticket.objects.count() + 1}'\n"
+        self.assertEqual(scan_numbering("apps/sav/tests_x.py", src), [])
+
+    def test_baseline_is_empty(self):
+        """La baseline gelée est VIDE au 2026-07-10 (elle ne peut que décroître)
+        et les deux fichiers socle sont bien référencés."""
+        self.assertEqual(GRANDFATHERED_NUMBERING, frozenset())
+        self.assertIn("core/numbering.py", NUMBERING_HOME_FILES)
+        self.assertIn("apps/ventes/utils/references.py", NUMBERING_HOME_FILES)
+
+
+class TestIsTestPath(SimpleTestCase):
+    """Helper partagé (ARC11/ARC6) : reconnaître un fichier de tests."""
+
+    def test_recognises_test_files(self):
+        for p in ("apps/x/tests.py", "apps/x/test_y.py", "apps/x/tests_y.py",
+                  "apps/x/tests/test_z.py", "apps/x/tests/helpers.py"):
+            self.assertTrue(is_test_path(p), p)
+
+    def test_rejects_source_files(self):
+        for p in ("apps/x/services.py", "core/pdf.py", "apps/x/views.py"):
+            self.assertFalse(is_test_path(p), p)

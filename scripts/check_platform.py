@@ -16,6 +16,12 @@ Checks
 ARC8 — no NEW bespoke ``*Activity`` chatter model outside ``apps/records``: the
     13 near-identical ``*Activity`` classes are frozen legacy; any NEW chatter
     must converge on the generic ``records.Activity``.
+ARC26 — no NEW ``FileField``/``ImageField`` outside the frozen list: every new
+    attachment goes through ``records.Attachment`` / ``ged.Document``.
+ARC11 — no NEW direct ``weasyprint`` import outside the frozen allowlist: every
+    PDF render goes through ``core.pdf.render_pdf``.
+ARC6 — no NEW ``.count() + 1`` reference/number generation outside the two
+    numbering-home files: references go through ``core.numbering.next_reference``.
 
 Run
 ---
@@ -36,9 +42,16 @@ if str(DJANGO_CORE) not in sys.path:
 from apps.records.platform_guards import (  # noqa: E402
     activity_error_line,
     filefield_error_line,
+    numbering_error_line,
     scan_activity_classes,
     scan_filefields,
+    scan_numbering,
+    scan_weasyprint_import,
+    weasyprint_error_line,
 )
+
+
+CORE_DIR = DJANGO_CORE / "core"
 
 
 def _app_of(models_path: Path) -> str:
@@ -55,6 +68,17 @@ def _iter_model_files():
     paquet ``models/``."""
     yield from APPS_DIR.glob("*/models*.py")
     yield from APPS_DIR.glob("*/models/*.py")
+
+
+def _iter_source_files():
+    """Yield every ``.py`` source file that ARC11/ARC6 scan.
+
+    Toutes les apps (``apps/**/*.py``) plus les deux fichiers socle scannés par
+    ARC11/ARC6 (``core/pdf.py``, ``core/numbering.py``). Le filtrage des tests
+    et des fichiers gelés se fait dans les scanners (source unique de vérité)."""
+    yield from APPS_DIR.glob("**/*.py")
+    yield CORE_DIR / "pdf.py"
+    yield CORE_DIR / "numbering.py"
 
 
 def find_new_activity_classes() -> list[str]:
@@ -87,15 +111,59 @@ def check_no_wild_filefields() -> list[str]:
     return [filefield_error_line(s) for s in sorted(find_new_filefields())]
 
 
+def find_new_weasyprint_imports() -> list[str]:
+    """ARC11 — retourne les chemins des importeurs WeasyPrint NON allowlistés."""
+    violations: list[str] = []
+    for path in _iter_source_files():
+        if not path.exists():
+            continue
+        relpath = path.relative_to(DJANGO_CORE).as_posix()
+        text = path.read_text(encoding="utf-8")
+        if scan_weasyprint_import(relpath, text):
+            violations.append(relpath)
+    return violations
+
+
+def check_weasyprint_allowlist() -> list[str]:
+    """ARC11 guard — plus d'import WeasyPrint hors allowlist (empty = OK)."""
+    return [weasyprint_error_line(p) for p in sorted(find_new_weasyprint_imports())]
+
+
+def find_new_numbering() -> list[str]:
+    """ARC6 — retourne ['chemin:count+1', …] pour tout count()+1 de référence."""
+    violations: list[str] = []
+    for path in _iter_source_files():
+        if not path.exists():
+            continue
+        relpath = path.relative_to(DJANGO_CORE).as_posix()
+        text = path.read_text(encoding="utf-8")
+        violations.extend(scan_numbering(relpath, text))
+    return violations
+
+
+def check_numbering_home() -> list[str]:
+    """ARC6 guard — plus de count()+1 de référence hors socle (empty = OK)."""
+    return [numbering_error_line(s) for s in sorted(find_new_numbering())]
+
+
 def run_checks() -> list[str]:
     """Run all platform guards; return the flat list of error lines."""
     errors: list[str] = []
     errors.extend(check_activity_convergence())
     errors.extend(check_no_wild_filefields())
+    errors.extend(check_weasyprint_allowlist())
+    errors.extend(check_numbering_home())
     return errors
 
 
 def main() -> int:
+    # Les messages d'erreur sont en français (« » → …) : forcer UTF-8 sur la
+    # console pour ne pas planter sur un terminal cp1252 (Windows). La CI tourne
+    # déjà en UTF-8, ce reconfigure est un no-op inoffensif là-bas.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
+    except (AttributeError, ValueError):  # pragma: no cover - flux non reconfigurable
+        pass
     errors = run_checks()
     if errors:
         print("check_platform: VIOLATIONS")
