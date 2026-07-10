@@ -76,7 +76,7 @@ class TestKitComposantXor(TenantAPITestCase):
                 'quantite': 1,
             }],
         }
-        resp = self.client_as().post(
+        resp = self.client_as(role='responsable').post(
             '/api/django/stock/kits/', payload, format='json')
         self.assertEqual(resp.status_code, 400)
 
@@ -84,7 +84,7 @@ class TestKitComposantXor(TenantAPITestCase):
         kit = KitProduit.objects.create(company=self.company, nom='Self')
         payload = {'composants': [
             {'composant_kit': kit.id, 'quantite': 1}]}
-        resp = self.client_as().patch(
+        resp = self.client_as(role='responsable').patch(
             f'/api/django/stock/kits/{kit.id}/', payload,
             format='json')
         self.assertEqual(resp.status_code, 400)
