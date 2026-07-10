@@ -68,6 +68,24 @@ class CookieJWTAuthentication(BaseAuthentication):
                 user.company = active
         set_active_company_id(user.company_id)
 
+        # SCA18 — statut tenant appliqué ICI (et non dans un middleware) : la
+        # société est déjà jointe (select_related) donc le contrôle coûte ZÉRO
+        # requête, là où un middleware devait ré-authentifier (double SELECT
+        # utilisateur par requête — le budget YOPSB13 l'a attrapé). On borne
+        # la société EFFECTIVE (post-switch XPLT19) ; superuser exempté ; les
+        # chemins /auth/ et /token/ restent joignables (cycle de vie du jeton
+        # — le refresh porte sa propre garde SCA18 côté vue).
+        from rest_framework.exceptions import PermissionDenied
+        path = getattr(request, 'path', '') or ''
+        exempt = path.startswith(('/api/django/auth/', '/api/django/token/'))
+        company = getattr(user, 'company', None)
+        if (company is not None and not exempt
+                and not user.is_superuser
+                and not getattr(company, 'est_operationnel', True)):
+            raise PermissionDenied(
+                "Ce compte société est suspendu. "
+                "L'accès est temporairement bloqué.")
+
         return (user, validated)
 
     def authenticate_header(self, request):

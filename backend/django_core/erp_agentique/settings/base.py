@@ -152,7 +152,6 @@ MIDDLEWARE = [
     # SCA18 — 403 sur les appels API d'un tenant suspendu/en fermeture (défaut
     # actif : aucun blocage sans société non-active). Placé après l'auth Django ;
     # résout le JWT DRF best-effort, superuser + endpoints /auth exemptés.
-    'authentication.tenant_status.TenantStatusMiddleware',
     # Porte la requête courante pour la capture du Journal d'activité (Feature G).
     'apps.audit.middleware.AuditActorMiddleware',
 ]
