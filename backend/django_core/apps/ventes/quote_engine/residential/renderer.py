@@ -83,8 +83,26 @@ def _augment(data: dict) -> dict:
     annual_before, annual_after = sum(before), sum(after)
     if annual_before <= 0:
         raise Unsupported("no bill baseline")
-    conso = max(1, round(annual_before / 1.3))
-    coverage = max(40, min(99, round(data["prod_kwh"] / conso * 100)))
+
+    # ── QX7a — couverture solaire HONNÊTE (plus de diviseur /1.3 fabriqué) ────
+    # Priorité 1 : consommation annuelle RÉELLE (kWh) fournie par le builder
+    # (étude / vraie facture). Priorité 2 : dérivée de la facture annuelle au
+    # tarif kWh RÉEL (roi.tarif_kwh) — pas d'un 1.3 inventé. Le résultat n'est
+    # PLUS planché à 40 % : une petite installation affiche sa vraie couverture.
+    # Quand la conso n'est qu'une estimation (dérivée d'une facture), on pose un
+    # drapeau pour l'étiqueter « estimation » sur la donut.
+    conso_kwh = data.get("conso_annuelle_kwh")
+    coverage_estimated = False
+    if conso_kwh and conso_kwh > 0:
+        conso = conso_kwh
+    else:
+        tarif = data.get("tarif_kwh") or 0
+        if tarif and tarif > 0:
+            conso = max(1, round(annual_before / float(tarif)))
+        else:
+            conso = max(1, round(annual_before))  # dernier repli (1 MAD/kWh)
+        coverage_estimated = True
+    coverage = min(100, max(1, round(data["prod_kwh"] / conso * 100)))
 
     d = dict(data)
     d.setdefault("client_full", d.get("client_name") or "Client")
@@ -118,6 +136,9 @@ def _augment(data: dict) -> dict:
         "bills_before": before, "bills_after": after,
         "annual_before": annual_before, "annual_after": annual_after,
         "coverage_pct": coverage,
+        # QX7a — la couverture est une estimation quand la conso réelle est
+        # inconnue (dérivée d'une facture) → la donut l'étiquette honnêtement.
+        "coverage_estimated": coverage_estimated,
         "validity_days": d.get("validity_days", 30),
         "site_url": site_url,
         "links": links,

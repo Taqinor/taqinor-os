@@ -105,12 +105,31 @@ def build(ctx) -> str:
     l_gar = links.get("garanties", site_url + "/garanties")
     l_sign = links.get("signer", site_url + "/signer")
 
-    # ── Value points (no invented numbers) ──────────────────────────────────
+    # ── QX7e — puces de valeur : les marques d'équipement viennent des VRAIES
+    # lignes du devis (item['marque']), jamais d'une liste boilerplate. Repli
+    # « équipements certifiés IEC » quand aucune marque n'est portée par les
+    # lignes. Les figures marketing (« Pourquoi … ») sont un texte éditable par
+    # la société via doc_texts.trust_values (repli sur les puces par défaut).
+    _seen, _brands = set(), []
+    for _it in (d.get("avec_items") or []) + (d.get("sans_items") or []):
+        _m = (_it.get("marque") or "").strip()
+        if _m and _m.lower() not in _seen:
+            _seen.add(_m.lower())
+            _brands.append(_m)
+    _brand_line = (
+        "Équipements premium certifiés — " + " · ".join(_brands[:4])
+        if _brands else "Équipements premium certifiés IEC")
     values = [
         "Ingénieurs spécialisés en énergie solaire",
-        "Équipements premium certifiés — Canadian Solar · Huawei · Deye",
+        _brand_line,
         "Suivi de production en temps réel 24/7",
     ]
+    # Texte éditable par la société (doc_texts.trust_values) : liste de puces qui
+    # remplace la valeur par défaut ci-dessus quand elle est renseignée.
+    _doc_texts = d.get("doc_texts") or {}
+    _tv = _doc_texts.get("trust_values")
+    if isinstance(_tv, (list, tuple)) and any(str(x).strip() for x in _tv):
+        values = [str(x).strip() for x in _tv if str(x).strip()]
     values_html = "".join(
         f'<div class="p3-val"><span class="p3-dot"></span>'
         f'<span class="p3-val-t">{v}</span></div>'

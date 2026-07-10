@@ -95,6 +95,9 @@ def build(ctx):
     # deux-options historique.
     deux_options = bool(d.get("deux_options", True))
     avec_ok = bool(d.get("avec_ok", True))
+    # QX7a — couverture solaire : étiquetée « estimation » quand la conso réelle
+    # est inconnue (dérivée d'une facture, pas d'une conso kWh réelle).
+    cov_est_txt = " (estimation)" if d.get("coverage_estimated") else ""
 
     kwc_str = f"{kwc:.2f}".rstrip("0").rstrip(".").replace(".", ",")
     pkwc_sans = fmt(total_sans / kwc) if kwc else "—"
@@ -386,7 +389,7 @@ def build(ctx):
         <div class="c1-donut-tab"><div class="c1-donut-cell">
           <div class="c1-donut-k">Énergie solaire</div>
           <img class="c1-donut" src="{charts['coverage']}" alt="Couverture solaire">
-          <div class="c1-donut-cap">de votre consommation<span>annuelle assurée par le solaire</span></div>
+          <div class="c1-donut-cap">de votre consommation<span>annuelle assurée par le solaire{cov_est_txt}</span></div>
         </div></div>
       </div>
     </div>

@@ -1364,6 +1364,155 @@ class TestResidentialRenderer(TestCase):
         self.assertIn('data:image/png', html)
 
 
+class TestQuoteNumbersHonestyPack(TestCase):
+    """QX7 — pack d'honnêteté des chiffres du PDF : couverture réelle (a),
+    échéancier custom sans case morte (b), ville résolue depuis le lead (c),
+    marques dérivées des vraies lignes (e). Sous-item (d) hors périmètre
+    (public_views, autre lane)."""
+
+    FULL_LINES = [
+        ('Onduleur réseau 10kW', '1', '11700'),
+        ('Onduleur hybride 5kW', '1', '24000'),
+        ('Panneau mono 550W', '14', '1100'),
+        ('Batterie 5 kWh', '1', '14000'),
+        ('Structures acier', '14', '375'),
+        ('Installation', '1', '4000'),
+    ]
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+
+    def _render_legacy(self, pdf_options=None, devis=None):
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        data = build_quote_data(devis or self._devis(), pdf_options)
+        cap = {}
+        orig = G._render_pdf_weasyprint
+        G._render_pdf_weasyprint = lambda html, out: cap.update(html=html)
+        try:
+            G.generate_premium_pdf(data, '/tmp/_qx7_test.pdf')
+        finally:
+            G._render_pdf_weasyprint = orig
+        return cap['html']
+
+    def _devis(self, ref='DEV-QX7-0'):
+        return make_devis(self.company, self.user, self.client_obj,
+                          self.FULL_LINES, reference=ref)
+
+    # ── (a) couverture ──────────────────────────────────────────────────────
+    def test_coverage_uses_real_consumption_when_known(self):
+        """Avec une conso réelle (étude), la couverture = prod/conso, pas un
+        diviseur /1.3 fabriqué, et n'est plus étiquetée « estimation »."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine.residential import renderer
+        devis = self._devis(ref='DEV-QX7-COV')
+        devis.etude_params = {'conso_annuelle': 12000, 'distributeur': 'onee'}
+        devis.save(update_fields=['etude_params'])
+        data = build_quote_data(devis)
+        self.assertEqual(data['conso_annuelle_kwh'], 12000)
+        d = renderer._augment(data)
+        self.assertFalse(d['coverage_estimated'])
+        # couverture = prod/conso arrondie, jamais planchée à 40
+        self.assertEqual(d['coverage_pct'],
+                         min(100, max(1, round(data['prod_kwh'] / 12000 * 100))))
+
+    def test_coverage_flagged_estimation_without_real_conso(self):
+        """Sans conso réelle, la couverture est dérivée honnêtement et
+        étiquetée « estimation » (drapeau vrai)."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine.residential import renderer
+        data = build_quote_data(self._devis(ref='DEV-QX7-EST'))
+        self.assertIsNone(data['conso_annuelle_kwh'])
+        d = renderer._augment(data)
+        self.assertTrue(d['coverage_estimated'])
+
+    # ── (b) échéancier custom sans case morte ───────────────────────────────
+    def test_custom_acompte_full_collapses_to_two_boxes(self):
+        """Un acompte custom qui absorbe la tranche matériel → échéancier à
+        DEUX cases (Acompte + Solde), jamais une case « Matériel » à 0 %."""
+        devis = self._devis(ref='DEV-QX7-ACPT')
+        # acompte custom énorme → materiel clampé à 0
+        html = self._render_legacy(
+            {'devis_final': True, 'payment_mode': 'custom',
+             'custom_acompte': 999999}, devis=devis)
+        self.assertIn('Modalit', html)                    # bloc présent
+        # aucune case « Matériel » morte
+        self.assertNotIn('Avant installation', html)
+        self.assertIn('la livraison', html)               # solde à la livraison
+        # pas de « 0% » orphelin dans une case de paiement
+        self.assertNotIn('>0%</div>', html)
+
+    def test_standard_payment_keeps_three_boxes(self):
+        """Chemin standard (materiel > 0) : trois cases, rendu inchangé."""
+        html = self._render_legacy(
+            {'devis_final': True}, devis=self._devis(ref='DEV-QX7-STD'))
+        self.assertIn('Avant installation', html)         # case Matériel présente
+        self.assertIn('Acompte', html)
+        self.assertIn('Solde', html)
+
+    # ── (c) ville résolue depuis le lead ────────────────────────────────────
+    def test_client_city_resolved_from_lead_ville(self):
+        from apps.crm.models import Lead
+        from apps.ventes.quote_engine.builder import build_quote_data
+        lead = Lead.objects.create(
+            company=self.company, nom='Bennani', ville='Agadir')
+        devis = self._devis(ref='DEV-QX7-CITY')
+        devis.lead = lead
+        devis.save(update_fields=['lead'])
+        data = build_quote_data(devis)
+        self.assertEqual(data['client_city'], 'Agadir')
+
+    def test_client_city_empty_without_lead(self):
+        from apps.ventes.quote_engine.builder import build_quote_data
+        data = build_quote_data(self._devis(ref='DEV-QX7-NOCITY'))
+        self.assertEqual(data['client_city'], '')
+
+    # ── (e) marques dérivées des vraies lignes ──────────────────────────────
+    @tag('pdf')
+    def test_brand_chips_derive_from_real_line_marques(self):
+        from apps.ventes.quote_engine.residential import renderer, render
+        from apps.ventes.quote_engine.builder import build_quote_data
+        # produits porteurs de marques réelles distinctives
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau Canadien Solar 710W', '14', '1272.73'),
+            ('Onduleur réseau Huawei 10kW', '1', '16666.67'),
+            ('Onduleur hybride Deye 10kW', '1', '23333.33'),
+            ('Batterie Deyness 10 kWh', '1', '25000'),
+            ('Installation', '1', '4000'),
+        ], reference='DEV-QX7-BRAND')
+        for li in devis.lignes.all():
+            if 'Canadien' in li.designation:
+                li.produit.marque = 'Canadian Solar'
+            elif 'Huawei' in li.designation:
+                li.produit.marque = 'Huawei'
+            elif 'Deye' in li.designation:
+                li.produit.marque = 'Deye'
+            elif 'Deyness' in li.designation:
+                li.produit.marque = 'Deyness'
+            li.produit.save(update_fields=['marque'])
+        data = build_quote_data(devis)
+        html = render.build_html(renderer._augment(data))
+        # les marques réelles apparaissent dans la puce de valeur
+        self.assertIn('Équipements premium certifiés', html)
+        self.assertIn('Huawei', html)
+        self.assertIn('Deye', html)
+
+    @tag('pdf')
+    def test_brand_chip_falls_back_to_iec_without_marques(self):
+        from apps.ventes.quote_engine.residential import renderer, render
+        from apps.ventes.quote_engine.builder import build_quote_data
+        # lignes sans marque → repli « équipements certifiés IEC »
+        devis = self._devis(ref='DEV-QX7-NOBRAND')
+        for li in devis.lignes.all():
+            li.produit.marque = ''
+            li.produit.save(update_fields=['marque'])
+        data = build_quote_data(devis)
+        html = render.build_html(renderer._augment(data))
+        self.assertIn('Équipements premium certifiés IEC', html)
+
+
 @tag('pdf')
 class TestResidentialWarmPathCache(TestCase):
     """QX8 — chemin chaud : polices/logo/graphiques + octets PDF sont mis en

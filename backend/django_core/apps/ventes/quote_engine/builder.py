@@ -836,6 +836,16 @@ def build_quote_data(devis, pdf_options=None) -> dict:
 
     client_name = f"{(client.prenom or '').strip()} {(client.nom or '').strip()}".strip()
 
+    # QX7c — ville du client depuis le lead lié (lead.ville). Accès attribut sur
+    # l'instance liée (aucun import crm.models) ; vide si pas de lead/ville.
+    _client_city = ""
+    try:
+        _lead = getattr(devis, "lead", None)
+        if _lead is not None:
+            _client_city = (getattr(_lead, "ville", "") or "").strip()
+    except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus
+        _client_city = ""
+
     # Liste d'articles du format UNE PAGE. RÈGLE D'INTÉGRITÉ : une facture ne
     # mélange JAMAIS deux options — un devis à deux vraies options (réseau ET
     # hybride+batterie) rend l'OPTION 1 (sans batterie) seule, avec une
@@ -991,6 +1001,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "client_addr": client.adresse or "",
         "client_phone": client.telephone or "",
         "client_ice": (getattr(client, "ice", "") or ""),
+        # QX7c — ville du client : résolue depuis le lead lié (lead.ville) quand
+        # il existe, sinon vide (le champ était lu mais jamais alimenté). Accès
+        # attribut sur l'instance liée — aucun import de crm.models. Vide → la
+        # ligne meta ne montre pas de ville fantôme (join_meta l'omet).
+        "client_city": _client_city,
         "inst_type": inst_type,
         "puissance_kwc": puissance_kwc,
         "nb_panneaux": nb_panneaux,
@@ -1016,6 +1031,12 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # QJ13 — honest-number guard: True when savings are an estimate (no tariff data)
         "savings_estimated": roi.get("savings_estimated", False),
         "tarif_kwh": roi.get("tarif_kwh"),
+        # QX7a — consommation annuelle RÉELLE (kWh) quand elle est connue
+        # (étude industrielle ou dérivée d'une vraie facture via le tarif kWh) ;
+        # None sinon. Le renderer calcule alors une couverture honnête à partir
+        # de cette conso au lieu de fabriquer un diviseur /1.3. Jamais inventée.
+        "conso_annuelle_kwh": (
+            int(_conso_annuelle) if _conso_annuelle else None),
         # QF2 — modèle « deux factures » : les deux factures annuelles et le
         # modèle d'économie réellement utilisé ('factures'/'etude'/'estimation').
         # Les factures sont None hors modèle 'factures' — jamais inventées.
