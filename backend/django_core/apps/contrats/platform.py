@@ -24,10 +24,14 @@ est déclaré dans ``agent_actions_module`` et AUTO-DÉCOUVERT par
 ``AgentConfig.ready()`` — aucun câblage dans ``ContratsConfig.ready()``.
 Module ``ModuleToggle``-OFF ⇒ actions absentes du catalogue agent.
 
+ARC32 — cible d'import ``contrats`` (registre contractuel, ARC13) déclarée
+ici : l'écriture reste DÉLÉGUÉE à ``apps.contrats.services.creer_contrat_import``
+et le mapping d'en-têtes à ``dataimport.services.FIELD_MAPS`` ; seule la LISTE
+des cibles importables bascule sur ce manifeste (``services.TARGETS`` unionne).
+
 Surfaces encore VOLONTAIREMENT vides (le contrat n'y est pas branché) :
 
-* PAS d'import/export (absent de ``dataimport``) ;
-* PAS d'automatisation temporelle (absent de ``automation.DATE_TRIGGER_TARGETS``) ;
+* PAS d'automatisation temporelle DATE (absent de ``automation.DATE_TRIGGER_TARGETS``) ;
 * PAS de KPI/agrégat dédié (absent de ``reporting/reports.py``).
 
 Laissées explicites (jamais « remplies pour faire joli ») : un identifiant ici
@@ -56,8 +60,9 @@ PLATFORM = {
     # auto-découvertes par AgentConfig.ready() depuis cette déclaration.
     'agent_actions_module': 'apps.contrats.agent_actions',
 
+    # ARC32 — cible d'import Contrats (ARC13, écriture déléguée aux services).
+    'import_specs': ['contrats'],
     # Surfaces DÉLIBÉRÉMENT VIDES (le contrat n'y est pas encore branché).
-    'import_specs': [],
     'automation_state_fields': [],
     'kpi_providers': [],
 }

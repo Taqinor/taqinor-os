@@ -10,7 +10,10 @@ Déclare ce que SAV expose aux surfaces transverses (voir ``core.platform``) :
   historique (``sav.ticket``). Équipement et ContratMaintenance n'ont PAS de
   chatter générique (dérive héritée « recherche_sans_chatter », rendue visible
   et baselinée dans ``core.platform_coverage.BASELINE_DRIFT`` — à retirer le
-  jour où ils recevront le chatter).
+  jour où ils recevront le chatter) ;
+* **import (ARC32)** — cible ``equipements`` (parc SAV, FG14) : le mapping
+  d'en-têtes reste dans ``dataimport.services.FIELD_MAPS`` ; seule la LISTE des
+  cibles importables bascule sur ce manifeste.
 """
 from __future__ import annotations
 
@@ -23,7 +26,8 @@ PLATFORM = {
     # ARC30 — cible chatter/records historique (records.ALLOWED_TARGETS).
     'record_targets': ['sav.ticket'],
     'customfield_models': [],
-    'import_specs': [],
+    # ARC32 — cible d'import Équipements (parc SAV, clé FIELD_MAPS FG14).
+    'import_specs': ['equipements'],
     'agent_actions_module': '',
     'automation_state_fields': [],
     'kpi_providers': [],

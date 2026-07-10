@@ -86,7 +86,57 @@ FIELD_MAPS = {
     },
 }
 
-TARGETS = set(FIELD_MAPS)
+
+# ARC32 — l'ensemble des cibles importables lit désormais le REGISTRE plateforme
+# (``core.platform.import_specs``) : chaque app propriétaire déclare ses cibles
+# dans son ``apps/<x>/platform.py`` (surface ``import_specs``), exactement comme
+# ``records.ALLOWED_TARGETS`` (ARC30). ``TARGETS`` est un OBJET PARESSEUX qui se
+# comporte comme un ``set`` immuable en lecture (``in``, itération, ``len``) mais
+# calcule son contenu à la PREMIÈRE UTILISATION en unionnant les clés
+# ``FIELD_MAPS`` (le MAPPING d'en-têtes → champ reste ici, local à dataimport)
+# avec les ``import_specs`` déclarés par tous les manifestes installés.
+#
+# Résolution PARESSEUSE À DESSEIN : au moment où ce module est importé
+# (chargement des apps Django), le registre applicatif n'est pas garanti prêt —
+# le calcul n'a lieu qu'au premier ``in``/itération, bien après le démarrage.
+# Non-régression garantie par test (le set résolu == les 8 clés FIELD_MAPS
+# historiques, chaque cible étant déclarée par son app propriétaire).
+class _LazyTargets:
+    """Vue ``set``-like sur ``FIELD_MAPS`` ∪ ``core.platform.import_specs()``,
+    calculée au premier accès (jamais à l'import de ce module — ``core`` /
+    ``django.apps`` peuvent ne pas être prêts à ce moment).
+
+    DROP-IN replacement de l'ancien ``set(FIELD_MAPS)`` littéral pour tous les
+    usages du dépôt (``target in TARGETS``, itération, ``len``, ``sorted``)."""
+
+    def _resolve(self):
+        cibles = set(FIELD_MAPS)
+        try:
+            from core import platform
+            cibles |= set(platform.import_specs(company=None))
+        except Exception:  # pragma: no cover - registre indisponible ⇒ FIELD_MAPS seul
+            pass
+        return cibles
+
+    def __contains__(self, item):
+        return item in self._resolve()
+
+    def __iter__(self):
+        return iter(self._resolve())
+
+    def __len__(self):
+        return len(self._resolve())
+
+    def __repr__(self):
+        return f'_LazyTargets({sorted(self._resolve())!r})'
+
+    def __eq__(self, other):
+        if isinstance(other, _LazyTargets):
+            return self._resolve() == other._resolve()
+        return self._resolve() == other
+
+
+TARGETS = _LazyTargets()
 
 # ERR53 — Plafond de lignes : au-delà, on refuse proprement (ValueError → 400
 # clair côté vue) plutôt que de charger un fichier géant en mémoire et risquer
