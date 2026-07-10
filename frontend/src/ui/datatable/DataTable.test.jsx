@@ -387,3 +387,160 @@ describe('O166 — largeurs de colonnes mémoïsées (variables CSS)', () => {
     expect(styled).toBeTruthy()
   })
 })
+
+/* ============================== ARC49/ARC53 — ÉCHAPPATOIRES ADDITIVES ============================== */
+
+describe('ARC49/ARC53 — extensions opt-in (chemin de l\'argent)', () => {
+  it('tableClassName ajoute une classe à la <table> sans retirer les classes du moteur', () => {
+    const { container } = renderTable({ tableClassName: 'data-table' })
+    const table = container.querySelector('[data-dt-table] table')
+    expect(table.className).toContain('data-table')
+    // Les classes historiques du moteur restent présentes.
+    expect(table.className).toContain('border-collapse')
+  })
+
+  it('tableRole="table" remplace le rôle grid par défaut (getByRole table)', () => {
+    const { container } = renderTable({ tableRole: 'table' })
+    expect(container.querySelector('[data-dt-table] table[role="table"]')).toBeTruthy()
+    expect(container.querySelector('[data-dt-table] table[role="grid"]')).toBeNull()
+  })
+
+  it('sans tableRole, le rôle grid par défaut est INCHANGÉ', () => {
+    const { container } = renderTable()
+    expect(container.querySelector('[data-dt-table] table[role="grid"]')).toBeTruthy()
+  })
+
+  it('renderHeaderRow remplace l\'en-tête intégré par des <th> personnalisés', () => {
+    const { container } = renderTable({
+      renderHeaderRow: () => (
+        <>
+          <th className="w-8">Sel</th>
+          <th>Réf perso</th>
+        </>
+      ),
+    })
+    const ths = container.querySelectorAll('[data-dt-table] thead th')
+    expect(ths.length).toBe(2)
+    expect(ths[1].textContent).toBe('Réf perso')
+    // L'en-tête de tri intégré n'est pas rendu (aucun bouton « Trier par »).
+    expect(container.querySelector('thead button[aria-label^="Trier par"]')).toBeNull()
+  })
+
+  it('renderRow rend une ligne ENTIÈRE custom et n\'ajoute aucune cellule technique', () => {
+    const { container } = render(
+      <DataTable
+        data={DATA}
+        columns={COLUMNS}
+        selectable
+        tableClassName="data-table"
+        tableRole="table"
+        renderRow={(row, api) => (
+          <tr data-custom-row data-key={api.rowKey}>
+            <td>{row.nom}</td>
+            <td>{row.ville}</td>
+          </tr>
+        )}
+      />,
+      { wrapper },
+    )
+    const rows = container.querySelectorAll('tbody tr[data-custom-row]')
+    expect(rows.length).toBe(DATA.length)
+    // Chaque ligne custom n'a QUE ses 2 cellules (pas de case/actions injectées).
+    expect(rows[0].querySelectorAll('td').length).toBe(2)
+    // Pas de vue cartes mobile dupliquée (une seule table data-table).
+    expect(container.querySelector('[data-dt-cards]')).toBeNull()
+    // Aucun <colgroup> technique injecté en mode ligne custom.
+    expect(container.querySelector('[data-dt-table] colgroup')).toBeNull()
+  })
+
+  it('renderRow + renderHeaderRow : le moteur n\'ajoute AUCUNE colonne technique', () => {
+    const { container } = render(
+      <DataTable
+        data={DATA}
+        columns={COLUMNS}
+        selectable
+        renderHeaderRow={() => <th>Réf</th>}
+        renderRow={(row) => (
+          <tr data-custom-row>
+            <td>{row.nom}</td>
+          </tr>
+        )}
+      />,
+      { wrapper },
+    )
+    // L'en-tête ne contient QUE le <th> fourni (pas de case « tout sélectionner »).
+    const ths = container.querySelectorAll('[data-dt-table] thead th')
+    expect(ths.length).toBe(1)
+    expect(ths[0].textContent).toBe('Réf')
+  })
+
+  it('renderRow expose une API de sélection reliée à l\'état du moteur', async () => {
+    const user = userEvent.setup()
+    const { container } = render(
+      <DataTable
+        data={DATA}
+        columns={COLUMNS}
+        selectable
+        bulkActions={() => [{ id: 'x', label: 'Agir' }]}
+        renderRow={(row, api) => (
+          <tr data-custom-row>
+            <td>
+              <button type="button" onClick={api.toggleSelect}>
+                {api.isSelected ? 'Sélectionné' : `Sélectionner ${row.nom}`}
+              </button>
+            </td>
+          </tr>
+        )}
+      />,
+      { wrapper },
+    )
+    // Aucune barre de masse tant que rien n'est sélectionné.
+    expect(screen.queryByRole('region', { name: /sélectionnée/i })).not.toBeInTheDocument()
+    await user.click(screen.getByText('Sélectionner Kasri'))
+    // La sélection du moteur reflète le clic → la barre de masse apparaît.
+    expect(screen.getByRole('region', { name: /sélectionnée/i })).toBeInTheDocument()
+    expect(container.querySelector('tbody')).toBeTruthy()
+  })
+
+  it('renderRow : panneaux dépliables nommés à état indépendant par ligne', async () => {
+    const user = userEvent.setup()
+    render(
+      <DataTable
+        data={DATA}
+        columns={COLUMNS}
+        expandedPanels={['A', 'B']}
+        renderRow={(row, api) => (
+          <>
+            <tr data-custom-row>
+              <td>
+                <button type="button" onClick={() => api.togglePanel('A')}>{`A-${row.id}`}</button>
+                <button type="button" onClick={() => api.togglePanel('B')}>{`B-${row.id}`}</button>
+              </td>
+            </tr>
+            {api.isPanelOpen('A') && <tr data-panel-a><td>{`panneau A de ${row.id}`}</td></tr>}
+            {api.isPanelOpen('B') && <tr data-panel-b><td>{`panneau B de ${row.id}`}</td></tr>}
+          </>
+        )}
+      />,
+      { wrapper },
+    )
+    // Ouvre le panneau A de la ligne 1 : seul lui apparaît (B fermé, autres lignes fermées).
+    await user.click(screen.getByText('A-1'))
+    expect(screen.getByText('panneau A de 1')).toBeInTheDocument()
+    expect(screen.queryByText('panneau B de 1')).not.toBeInTheDocument()
+    expect(screen.queryByText('panneau A de 2')).not.toBeInTheDocument()
+    // Ouvre B de la même ligne : A ET B ouverts simultanément (indépendants).
+    await user.click(screen.getByText('B-1'))
+    expect(screen.getByText('panneau A de 1')).toBeInTheDocument()
+    expect(screen.getByText('panneau B de 1')).toBeInTheDocument()
+  })
+
+  it('hideToolbar supprime la barre d\'outils intégrée (recherche/export)', () => {
+    // Par défaut la barre existe (champ de recherche globale).
+    const { container: withBar } = renderTable()
+    expect(withBar.querySelector('input[aria-label="Recherche globale"]')).toBeTruthy()
+    // Avec hideToolbar, la barre disparaît.
+    const { container: noBar } = renderTable({ hideToolbar: true })
+    expect(noBar.querySelector('input[aria-label="Recherche globale"]')).toBeNull()
+  })
+})
