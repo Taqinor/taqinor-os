@@ -428,28 +428,46 @@ export default function DevisList() {
     }
   }
 
-  // QG8 — « Envoyer » = flux WhatsApp des leads (aperçu du message + lien
-  // tokenisé), et le devis est marqué « envoyé » côté serveur (idempotent, sans
-  // régression). On ouvre une modale d'aperçu, puis WhatsApp au clic.
+  // QG8/QX22 — « Envoyer » = flux WhatsApp des leads (aperçu du message + lien
+  // tokenisé). La modale se peuple désormais depuis une action de PRÉVISUALISATION
+  // en LECTURE SEULE (whatsappPreviewDevis) — ouvrir-puis-fermer sans cliquer ne
+  // marque plus rien « Envoyé ». Le devis n'est marqué « Envoyé » que sur le clic
+  // réel vers wa.me (mark_devis_sent côté serveur, appelé par openWhatsApp).
   const [waTarget, setWaTarget] = useState(null)   // devis ciblé
   const [waData, setWaData] = useState(null)        // { wa_url, message, url }
+  const [waSending, setWaSending] = useState(false)
   const handleEnvoyer = async (d) => {
     setStatutActionId(d.id)
     try {
-      const res = await ventesApi.whatsappDevis(d.id)
+      const res = await ventesApi.whatsappPreviewDevis(d.id)
       setWaTarget(d)
       setWaData(res.data)
-      dispatch(fetchDevis())
+      // Aperçu seul — AUCUNE mutation de statut ici (fermer la modale sans
+      // cliquer « Ouvrir WhatsApp » laisse le devis brouillon).
     } catch (err) {
       toast.error(frenchError(err, 'Préparation WhatsApp impossible.'))
     } finally {
       setStatutActionId(null)
     }
   }
-  const closeWaModal = () => { setWaTarget(null); setWaData(null) }
-  const openWhatsApp = () => {
+  const closeWaModal = () => { setWaTarget(null); setWaData(null); setWaSending(false) }
+  // QX22 — clic réel sur « Ouvrir WhatsApp » : ouvre wa.me PUIS marque le devis
+  // « Envoyé » côté serveur (whatsappDevis, l'action d'envoi véritable — jamais
+  // au moment de l'ouverture de la modale). Le lien s'ouvre même si le marquage
+  // échoue (le message a déjà été montré au vendeur ; on prévient de l'échec).
+  const openWhatsApp = async () => {
+    if (!waTarget) return
     if (waData?.wa_url) window.open(waData.wa_url, '_blank', 'noopener')
-    closeWaModal()
+    setWaSending(true)
+    try {
+      await ventesApi.whatsappDevis(waTarget.id)
+      dispatch(fetchDevis())
+    } catch (err) {
+      toast.error(frenchError(err, 'Le marquage « Envoyé » a échoué — vérifiez le devis.'))
+    } finally {
+      setWaSending(false)
+      closeWaModal()
+    }
   }
 
   // QJ28 — « Contacter mon supérieur » : notifie le supérieur du vendeur
@@ -1154,8 +1172,8 @@ export default function DevisList() {
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={closeWaModal}>Fermer</Button>
-            <Button onClick={openWhatsApp} disabled={!waData?.wa_url}>
+            <Button variant="outline" onClick={closeWaModal} disabled={waSending}>Fermer</Button>
+            <Button onClick={openWhatsApp} disabled={!waData?.wa_url} loading={waSending}>
               <Send className="size-4 mr-1" aria-hidden="true" />
               Ouvrir WhatsApp
             </Button>

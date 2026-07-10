@@ -47,6 +47,10 @@ const ventesApi = {
   envoyerEmailDevis: (id, payload = {}) => api.post(`/ventes/devis/${id}/envoyer-email/`, payload),
   // QG8 — « Envoyer » = flux WhatsApp : lien wa.me + lien tokenisé, marque envoyé.
   whatsappDevis: (id, payload = {}) => api.post(`/ventes/devis/${id}/whatsapp/`, payload),
+  // QX22 — aperçu LECTURE SEULE du message WhatsApp (aucune mutation de statut) :
+  // peuple la modale d'aperçu ; seul le clic-through sur wa.me (whatsappDevis
+  // ci-dessus) marque réellement le devis « Envoyé ».
+  whatsappPreviewDevis: (id, payload = {}) => api.post(`/ventes/devis/${id}/whatsapp-preview/`, payload),
   // QJ28 — « Contacter mon supérieur » : notifie le supérieur du vendeur sur ce devis.
   contacterSuperieur: (id, payload = {}) => api.post(`/ventes/devis/${id}/contacter-superieur/`, payload),
   // QJ15 — Variantes : créer 2–3 copies dimensionnées pour comparaison côte-à-côte.
