@@ -40,6 +40,7 @@ import {
   TVA_STANDARD_DEFAUT, TVA_PANNEAUX_DEFAUT,
   classifyProduct,
   kwhFromBill, buildEtudeParamsChoice, multiPropertyPreviewTTC,
+  productibleForCity,
 } from '../../features/ventes/solar'
 
 const MODE_OPTIONS = [
@@ -276,6 +277,10 @@ export default function DevisGenerator({
     // DC4/DC6 — repères TVA société (défauts réforme 20/10) : pilotent les
     // repli de taux et l'avertissement de divergence, jamais un recalage forcé.
     tvaStandard: TVA_STANDARD_DEFAUT, tvaPanneaux: TVA_PANNEAUX_DEFAUT,
+    // QX38 — override productible société (CompanyProfile.productible_kwh_kwc).
+    // Défaut historique 1600 → productibleForCity lit alors le PVGIS par ville
+    // (source unique alignée écran/PDF/web) ; une valeur société ≠ 1600 prime.
+    productible: null,
   })
   const [remiseMax, setRemiseMax] = useState('')
   // Pompage (agricole)
@@ -387,8 +392,13 @@ export default function DevisGenerator({
       // PDF) dès qu'une consommation réelle + un distributeur sont connus.
       consoAnnuelleKwh: consoAnnuelleReelle,
       utility: distributeur,
+      // QX38 — productible CANONIQUE PVGIS par ville (source unique alignée
+      // avec le PDF/web) ; override société si renseigné ≠ 1600.
+      productible: productibleForCity(
+        selectedLead?.ville || '', quoteLogic.productible),
     })
-  }, [dKwp, dMonthly, dDayUsage, dTotals, dLines, quoteLogic, consoAnnuelleReelle, distributeur])
+  }, [dKwp, dMonthly, dDayUsage, dTotals, dLines, quoteLogic,
+    consoAnnuelleReelle, distributeur, selectedLead])
 
   const chartData = useMemo(() => {
     if (!roi) return []

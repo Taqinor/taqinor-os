@@ -12,6 +12,7 @@ import {
   KWH_PRICE, FALLBACK_KWH_PRICE, kwhFromBill, twoBillsSavings, monthlyBillFromKwh,
   ONEE_TRANCHES, AUTOCONSO_SANS, AUTOCONSO_AVEC, buildEtudeParamsChoice,
   multiPropertyPreviewTTC,
+  productibleForCity, PRODUCTIBLE_PAR_VILLE, DEFAULT_PRODUCTIBLE,
 } from './solar.js'
 
 // Reflet du catalogue seedé (prix HT = TTC simulateur / 1.2, 2 décimales)
@@ -624,13 +625,15 @@ test('QF5 — tarif de repli unifié : KWH_PRICE (CompanyProfile) vs FALLBACK_KW
 })
 
 test('QF4 — monthlyBillFromKwh : barème ONEE par tranche (300 kWh/mois)', () => {
-  // Référence : pricing.py _monthly_bill_from_kwh(300, ONEE_TRANCHES) = 344.135
-  assert.ok(Math.abs(monthlyBillFromKwh(300, ONEE_TRANCHES) - 344.135) < 1e-9)
+  // QX38 — barème ONEE aligné (plafonds 100/250/400/∞) : 300 kWh/mois tombe
+  // dans la bande 251-400. Référence pricing.py _monthly_bill_from_kwh(300).
+  assert.ok(Math.abs(monthlyBillFromKwh(300, ONEE_TRANCHES) - 306.545) < 1e-9)
 })
 
-test('QF4 — kwhFromBill : inverse du barème ONEE (850 MAD → 660.9 kWh/mois)', () => {
+test('QF4 — kwhFromBill : inverse du barème ONEE (850 MAD → 698.4 kWh/mois)', () => {
+  // QX38 — barème ONEE aligné (plafonds 100/250/400/∞). Parité pricing.py.
   const r = kwhFromBill(850, 'onee')
-  assert.equal(r.kwhMensuel, 660.9)
+  assert.equal(r.kwhMensuel, 698.4)
   assert.equal(r.approximatif, false)
   assert.equal(r.estimation, false)
 })
@@ -654,18 +657,20 @@ test('QF4 — kwhFromBill : facture vide → 0 kWh, estimation', () => {
 })
 
 test('QF2/QF5 — twoBillsSavings : économie réelle par tranche (ratio 0.60, sans batterie)', () => {
-  // Référence : pricing.py two_bills_savings(6000, 7200, 0.6, utility='onee')
+  // QX38 — barème ONEE aligné (plafonds 100/250/400/∞). Référence :
+  // pricing.py two_bills_savings(6000, 7200, 0.6, utility='onee').
   const r = twoBillsSavings(6000, 7200, 0.6, 'onee')
   assert.deepEqual(r, {
-    factureSans: 9176, factureAvec: 4130, economie: 5046, autoconsoKwh: 3600,
+    factureSans: 8544, factureAvec: 3679, economie: 4865, autoconsoKwh: 3600,
   })
 })
 
 test('QF2/QF5 — twoBillsSavings : économie réelle par tranche (ratio 0.85, avec batterie)', () => {
-  // Référence : pricing.py two_bills_savings(6000, 7200, 0.85, utility='onee')
+  // QX38 — barème ONEE aligné (plafonds 100/250/400/∞). Référence :
+  // pricing.py two_bills_savings(6000, 7200, 0.85, utility='onee').
   const r = twoBillsSavings(6000, 7200, 0.85, 'onee')
   assert.deepEqual(r, {
-    factureSans: 9176, factureAvec: 2072, economie: 7104, autoconsoKwh: 5100,
+    factureSans: 8544, factureAvec: 2004, economie: 6540, autoconsoKwh: 5100,
   })
 })
 
@@ -674,6 +679,32 @@ test('twoBillsSavings : dégrade en null sans donnée réelle (jamais un chiffre
   assert.equal(twoBillsSavings(6000, 0, 0.6, 'onee'), null) // pas de conso
   assert.equal(twoBillsSavings(6000, 7200, 0, 'onee'), null) // pas de ratio
   assert.equal(twoBillsSavings(6000, 7200, 0.6, 'inconnu'), null) // pas de barème
+})
+
+// ── QX38 — productible canonique PVGIS par ville (miroir backend) ────────────
+test('QX38 — productibleForCity : PVGIS par ville, repli central, override société', () => {
+  assert.equal(productibleForCity('Agadir'), 1687)
+  assert.equal(productibleForCity('agadir'), 1687)
+  assert.equal(productibleForCity('Casablanca'), PRODUCTIBLE_PAR_VILLE.casablanca)
+  // ville inconnue → repli central (jamais un chiffre inventé)
+  assert.equal(productibleForCity('Oujda'), DEFAULT_PRODUCTIBLE)
+  // alias secondaire → ville de référence
+  assert.equal(productibleForCity('Kenitra'), PRODUCTIBLE_PAR_VILLE.rabat)
+  // override = défaut historique 1600 → on lit le PVGIS de la ville
+  assert.equal(productibleForCity('Agadir', 1600), 1687)
+  // override société explicite (≠ 1600) → il prime
+  assert.equal(productibleForCity('Agadir', 1750), 1750)
+})
+
+test('QX38 — computeROI : production = productible × kwp (parité PDF/web)', () => {
+  const kwp = 7.1
+  const roi = computeROI({
+    kwp, factures: Array(12).fill(500), dayUsagePct: 60,
+    totalSans: 80000, totalAvec: 100000, batteryKwh: 0,
+    productible: productibleForCity('Agadir'),
+  })
+  // production annuelle = 1687 × 7.1 (répartie par forme GHI, somme = total)
+  assert.equal(Math.round(roi.production_annuelle_kwh), Math.round(1687 * kwp))
 })
 
 // ── QF5 — computeROI bascule sur le modèle « deux factures » (parité écran/PDF) ─

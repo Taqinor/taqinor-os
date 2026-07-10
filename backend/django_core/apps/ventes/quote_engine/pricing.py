@@ -30,10 +30,16 @@ from __future__ import annotations
 # La dernière tranche n'a pas de plafond (None = tranche supérieure).
 #
 # ONEE (tarif BT résidentiel 2025 — public, officiels ONEE)
+# QX38 — plafonds CUMULATIFS alignés sur les vraies bandes ONEE (le modèle
+# progressif lit ces valeurs comme des seuils cumulés) : 0-100, 101-250,
+# 251-400, > 400. Avant QX38 les plafonds (150/200) contredisaient leurs propres
+# libellés et écrasaient la bande 101-250 → sous-tarification des foyers 150-400
+# kWh/mois typiques. Prix inchangés (publics ONEE) ; seuls les seuils sont
+# corrigés. Le miroir JS solar.js ONEE_TRANCHES porte les MÊMES valeurs.
 ONEE_TRANCHES = [
     (100, 0.9010),    # 0–100 kWh/mois
-    (150, 1.0258),    # 101–250 kWh/mois  (tranche 101–150 incluse ici)
-    (200, 1.2515),    # 251–400 kWh/mois  (tranche 201–400 incluse ici)
+    (250, 1.0258),    # 101–250 kWh/mois
+    (400, 1.2515),    # 251–400 kWh/mois
     (None, 1.4017),   # > 400 kWh/mois
 ]
 

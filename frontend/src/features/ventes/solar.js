@@ -26,6 +26,43 @@ export const CHART_MONTHS = [
 export const EFFICIENCY = 0.8 // rendement global
 export const KWH_PRICE = 1.75 // MAD/kWh ONEE — usage interne, jamais affiché
 
+// ── QX38 — productible CANONIQUE (kWh/kWc/an) par ville, source PVGIS ─────────
+// MIROIR EXACT de backend apps/ventes/quote_engine/productible.py
+// (PRODUCTIBLE_PAR_VILLE + DEFAULT_PRODUCTIBLE) et de apps/web yieldTable.ts
+// (aspect Sud, inclinaison optimale). Les trois DOIVENT rester alignés :
+// l'écran, le PDF et la proposition web affichent alors la MÊME production/
+// économies pour les mêmes entrées. Ne jamais éditer l'un sans les deux autres.
+export const PRODUCTIBLE_PAR_VILLE = {
+  agadir: 1687,
+  marrakech: 1651,
+  casablanca: 1651,
+  rabat: 1630,
+  tanger: 1634,
+}
+export const DEFAULT_PRODUCTIBLE = 1651 // Casablanca (centre zone de service)
+const _PRODUCTIBLE_HISTORICAL_DEFAULT = 1600
+const _CITY_ALIASES = {
+  casa: 'casablanca', kenitra: 'rabat', sale: 'rabat', salé: 'rabat',
+  mohammedia: 'casablanca', 'el jadida': 'casablanca', essaouira: 'agadir',
+  safi: 'casablanca', temara: 'rabat', témara: 'rabat', tetouan: 'tanger',
+  tétouan: 'tanger', settat: 'casablanca', benguerir: 'marrakech',
+  berrechid: 'casablanca',
+}
+
+// Productible canonique pour une ville. `override` = productible société
+// (CompanyProfile) : quand il diffère RÉELLEMENT du défaut historique 1600, il
+// prime ; sinon on lit le productible PVGIS de la ville (repli DEFAULT).
+export function productibleForCity(city, override = null) {
+  const ov = parseFloat(override)
+  if (Number.isFinite(ov) && ov > 0 && Math.abs(ov - _PRODUCTIBLE_HISTORICAL_DEFAULT) > 0.5) {
+    return ov
+  }
+  const key = String(city || '').trim().toLowerCase()
+  if (!key) return DEFAULT_PRODUCTIBLE
+  const norm = _CITY_ALIASES[key] || key
+  return PRODUCTIBLE_PAR_VILLE[norm] ?? DEFAULT_PRODUCTIBLE
+}
+
 // Factures mensuelles affichées au chargement (initApp du simulateur)
 export const DEFAULT_MONTHLY_BILLS = [500, 450, 400, 380, 360, 500, 700, 680, 580, 480, 430, 480]
 
@@ -78,12 +115,20 @@ export const AUTOCONSO_AVEC = 0.85
 // autoconsommation diurne × tarif) — jamais de régression pour un devis existant.
 export function computeROI({
   kwp, factures, dayUsagePct, totalSans, totalAvec, batteryKwh, kwhPrice, efficiency,
-  consoAnnuelleKwh, utility,
+  consoAnnuelleKwh, utility, productible,
 }) {
   // Tarif ONEE et rendement éditables (Paramètres → Avancé) ; sans valeur, on
   // garde EXACTEMENT les constantes historiques (parité simulateur garantie).
   const PRICE = (Number.isFinite(Number(kwhPrice)) && Number(kwhPrice) > 0) ? Number(kwhPrice) : KWH_PRICE
   const EFF = (Number.isFinite(Number(efficiency)) && Number(efficiency) > 0) ? Number(efficiency) : EFFICIENCY
+  // QX38 — productible CANONIQUE (kWh/kWc/an) : quand il est fourni (PVGIS par
+  // ville, source unique partagée avec le PDF/web), la production annuelle vaut
+  // productible × kwp, répartie par la FORME saisonnière GHI (le graphe mensuel
+  // garde sa saisonnalité). Sans productible, comportement HISTORIQUE inchangé
+  // (GHI[i] × kwp × rendement) — jamais de régression pour un devis existant.
+  const PROD = Number(productible)
+  const useProductible = Number.isFinite(PROD) && PROD > 0
+  const GHI_SUM = GHI.reduce((s, v) => s + v, 0)
   let bills = [...(factures ?? [])]
   if (bills.length < 12) {
     const last = bills.length ? bills[bills.length - 1] : 500
@@ -98,7 +143,9 @@ export function computeROI({
   let productionAnnuelle = 0
 
   for (let i = 0; i < 12; i++) {
-    const prodKwh = GHI[i] * kwp * EFF
+    const prodKwh = useProductible
+      ? (PROD * kwp) * (GHI[i] / GHI_SUM)   // productible réparti par forme GHI
+      : GHI[i] * kwp * EFF
     productionAnnuelle += prodKwh
     const selfConsumed = prodKwh * dayPct
     const ecoSans = selfConsumed * PRICE
@@ -172,10 +219,14 @@ export const FALLBACK_KWH_PRICE = 1.20 // MAD/kWh — miroir pricing.py._FALLBAC
 
 // Tables de tranches (miroir pricing.py — mêmes valeurs, mêmes plafonds).
 // Format : [plafond_kWh_mensuel | null, prix_MAD_kWh_TTC].
+// QX38 — plafonds cumulatifs alignés sur les vraies bandes ONEE (0-100 /
+// 101-250 / 251-400 / >400), miroir EXACT de pricing.py ONEE_TRANCHES. Prix
+// inchangés ; seuls les plafonds 150/200 → 250/400 sont corrigés (ils
+// contredisaient leurs libellés et sous-tarifaient les foyers 150-400 kWh/mois).
 export const ONEE_TRANCHES = [
   [100, 0.9010],
-  [150, 1.0258],
-  [200, 1.2515],
+  [250, 1.0258],
+  [400, 1.2515],
   [null, 1.4017],
 ]
 export const LYDEC_TRANCHES = [

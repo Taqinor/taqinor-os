@@ -666,13 +666,36 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # productible pilote la production annuelle et donc le ROI, même à l'écran ;
     # le tarif ONEE ne s'applique qu'en dernier repli (aucune donnée de conso),
     # de sorte que le simulateur et le PDF ne divergent plus.
+    # QX7c/QX38 — ville du client depuis le lead lié (lead.ville). Accès attribut
+    # sur l'instance liée (aucun import crm.models) ; vide si pas de lead/ville.
+    # Sert au productible PVGIS par ville (QX38) ET à la ligne meta du PDF (QX7c).
+    _client_city = ""
+    try:
+        _lead = getattr(devis, "lead", None)
+        if _lead is not None:
+            _client_city = (getattr(_lead, "ville", "") or "").strip()
+    except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus
+        _client_city = ""
+
     _tariff = {}
     try:
         from apps.parametres.selectors import tariff_for
         _tariff = tariff_for(getattr(devis, "company", None))
     except Exception:  # noqa: BLE001 — un PDF/une liste ne casse jamais ici
         _tariff = {}
-    _productible = _tariff.get("productible_kwh_kwc") or None
+    # ── QX38 — productible CANONIQUE (source unique PVGIS par ville) ──────────
+    # CompanyProfile.productible_kwh_kwc devient un OVERRIDE éditable, pas un
+    # modèle physique concurrent : quand il vaut le défaut historique 1600, on
+    # lit le productible PVGIS de la ville du lead/devis (aligné écran/PDF/web).
+    # Une valeur société ≠ 1600 (réglage explicite) prime. Repli sûr : sur toute
+    # erreur, on garde l'ancien productible du tarif (comportement inchangé).
+    _co_productible = _tariff.get("productible_kwh_kwc") or None
+    try:
+        from .productible import productible_for_city
+        _productible = productible_for_city(
+            _client_city, override=_co_productible)
+    except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus
+        _productible = _co_productible
     _onee_tarif = _tariff.get("onee_tarif_kwh") or None
     roi_kwargs = dict(
         conso_annuelle_kwh=float(_conso_annuelle) if _conso_annuelle else None,
@@ -835,16 +858,6 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     factures_mensuelles = [round(v / 0.85) for v in roi["eco_a_monthly"]]
 
     client_name = f"{(client.prenom or '').strip()} {(client.nom or '').strip()}".strip()
-
-    # QX7c — ville du client depuis le lead lié (lead.ville). Accès attribut sur
-    # l'instance liée (aucun import crm.models) ; vide si pas de lead/ville.
-    _client_city = ""
-    try:
-        _lead = getattr(devis, "lead", None)
-        if _lead is not None:
-            _client_city = (getattr(_lead, "ville", "") or "").strip()
-    except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus
-        _client_city = ""
 
     # Liste d'articles du format UNE PAGE. RÈGLE D'INTÉGRITÉ : une facture ne
     # mélange JAMAIS deux options — un devis à deux vraies options (réseau ET

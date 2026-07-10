@@ -1364,6 +1364,61 @@ class TestResidentialRenderer(TestCase):
         self.assertIn('data:image/png', html)
 
 
+class TestCanonicalProductible(TestCase):
+    """QX38 — un seul modèle de productible (PVGIS par ville), partagé par
+    l'écran, le PDF et la proposition web. CompanyProfile.productible (1600)
+    devient un override, pas un modèle concurrent ; le barème ONEE est aligné.
+    """
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+
+    def test_productible_lookup_per_city(self):
+        from apps.ventes.quote_engine.productible import (
+            productible_for_city, PRODUCTIBLE_PAR_VILLE, DEFAULT_PRODUCTIBLE)
+        self.assertEqual(productible_for_city('Agadir'), 1687)
+        self.assertEqual(productible_for_city('agadir'), 1687)
+        self.assertEqual(productible_for_city('Casablanca'),
+                         PRODUCTIBLE_PAR_VILLE['casablanca'])
+        # ville inconnue → repli central (jamais un chiffre inventé)
+        self.assertEqual(productible_for_city('Oujda'), DEFAULT_PRODUCTIBLE)
+        # alias secondaire → ville de référence
+        self.assertEqual(productible_for_city('Kenitra'),
+                         PRODUCTIBLE_PAR_VILLE['rabat'])
+
+    def test_company_override_beats_pvgis_only_when_non_default(self):
+        from apps.ventes.quote_engine.productible import productible_for_city
+        # override = défaut historique 1600 → on lit le PVGIS de la ville
+        self.assertEqual(productible_for_city('Agadir', override=1600), 1687)
+        # override société explicite (≠ 1600) → il prime
+        self.assertEqual(productible_for_city('Agadir', override=1750), 1750)
+
+    def test_builder_uses_city_productible_for_production(self):
+        from apps.crm.models import Lead
+        from apps.ventes.quote_engine.builder import build_quote_data
+        lead = Lead.objects.create(
+            company=self.company, nom='Agadiri', ville='Agadir')
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau Canadien Solar 710W', '10', '1272.73'),
+            ('Onduleur réseau 8kW', '1', '14000'),
+        ], reference='DEV-QX38-1')
+        devis.lead = lead
+        devis.save(update_fields=['lead'])
+        data = build_quote_data(devis)
+        # 7.1 kWc × 1687 (Agadir PVGIS) = 11 977 kWh/an
+        self.assertEqual(data['puissance_kwc'], 7.1)
+        self.assertEqual(data['prod_kwh'], round(7.1 * 1687))
+
+    def test_onee_tranche_ceilings_aligned(self):
+        """QX38 — les plafonds ONEE représentent les vraies bandes cumulées
+        (100 / 250 / 400 / ∞), plus la bande 101-250 écrasée."""
+        from apps.ventes.quote_engine.pricing import ONEE_TRANCHES
+        ceilings = [c for c, _ in ONEE_TRANCHES]
+        self.assertEqual(ceilings, [100, 250, 400, None])
+
+
 class TestQuoteNumbersHonestyPack(TestCase):
     """QX7 — pack d'honnêteté des chiffres du PDF : couverture réelle (a),
     échéancier custom sans case morte (b), ville résolue depuis le lead (c),
