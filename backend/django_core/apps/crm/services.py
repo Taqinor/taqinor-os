@@ -910,6 +910,17 @@ def resolve_client_for_lead(lead: Lead) -> Client:
         adresse = lead.adresse or ''
         if lead.ville:
             adresse = ', '.join(p for p in (adresse, lead.ville) if p)
+        # QX18 — l'arabophone ne doit pas disparaître à la couche document :
+        # un lead qui préfère la darija (message WhatsApp) obtenait quand
+        # même un PDF FLAGSHIP en français par défaut. Seed
+        # `langue_document='ar'` UNIQUEMENT à la création (jamais écrasé sur
+        # un client déjà existant réutilisé ci-dessus — sa préférence
+        # documentaire, si posée manuellement, prime toujours).
+        langue_document = (
+            Client.LangueDocument.AR
+            if lead.langue_preferee == Lead.LanguePreferee.DARIJA
+            else Client.LangueDocument.FR
+        )
         try:
             # Savepoint : si une création concurrente partageant le même email
             # a gagné la course, l'unique_together (company, email) lève une
@@ -923,6 +934,7 @@ def resolve_client_for_lead(lead: Lead) -> Client:
                     email=lead.email,
                     telephone=(lead.telephone or '')[:20] or None,
                     adresse=adresse or None,
+                    langue_document=langue_document,
                 )
         except IntegrityError:
             client = _find_existing()
