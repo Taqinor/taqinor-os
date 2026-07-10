@@ -371,7 +371,13 @@ plan run works"** EXCEPT:
 - It drains ONLY its own file and touches ONLY the apps/dirs its contract owns; anything outside →
   `[BLOCKED: hors périmètre]` + keep going (it returns to the platform run). Foreign apps are read
   via `selectors.py`/string-FK only — NEVER their models/migrations (this keeps every app's
-  migration chain single-writer).
+  migration chain single-writer). **COMPOSITION GUARD: a task that depends on a platform/NT
+  primitive not yet on `main` (chatter, numbering, job queue, registry…) → `[BLOCKED: attend
+  <ID>]` — NEVER hand-roll a local substitute for a platform primitive** (the #1 measured debt
+  source: 13 hand-rolled chatters). Cross-queue ORDER is enforced by machinery, not memory:
+  `BUILD_ORDER.yml` + `plan_lanes.py` refuse any task whose prerequisite group is under its
+  completion threshold, so sessions can be started in ANY order and still compose — the planner
+  simply won't hand out work whose foundations are missing.
 - Local tests use `DB_NAME=erp_<domain>` (never the shared test DB); at most 2-3 sessions run
   heavy local docker on this box concurrently — further sessions run in the cloud and lean on the
   ~6-min CI gate instead.
