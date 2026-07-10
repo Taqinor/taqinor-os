@@ -133,6 +133,7 @@ class SwitchCompanyApiTest(TenantAPITestCase):
         api_b = _client_with_active(self.bi_user, self.company_b.id)
         r = api_b.post('/api/django/crm/clients/',
                        {'nom': 'NouveauB', 'prenom': 'X',
+                        'email': 'nouveaub@example.com',
                         'telephone': '+212600000001'}, format='json')
         self.assertIn(r.status_code, (200, 201), getattr(r, 'data', None))
         from apps.crm.models import Client

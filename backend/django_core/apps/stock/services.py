@@ -2398,6 +2398,7 @@ def facturer_reception(company, user, reception):
     created = {}
 
     def _save(ref):
+        from django.utils import timezone
         ff = FactureFournisseur.objects.create(
             company=company, reference=ref,
             fournisseur=reception.bon_commande.fournisseur,
@@ -2405,6 +2406,9 @@ def facturer_reception(company, user, reception):
             montant_ht=montant_ht, montant_tva=montant_tva,
             montant_ttc=montant_ttc,
             statut=FactureFournisseur.Statut.A_PAYER,
+            # Sans date, l'écriture comptable auto (61xx/3455 -> 4411) crashait
+            # NOT NULL en silence (bug préexistant attrapé par le test P2P).
+            date_facture=timezone.now().date(),
             note=f'Facture réception {reception.reference}',
             created_by=user)
         for designation, qte, pu, taux_ligne in lignes_data:

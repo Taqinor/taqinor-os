@@ -951,7 +951,10 @@ def ecriture_pour_facture_fournisseur(facture, *, force=False, user=None,
     ttc = Decimal(getattr(facture, 'montant_ttc', 0) or 0)
     fournisseur_id = getattr(facture, 'fournisseur_id', None)
     reference = getattr(facture, 'reference', '') or ''
-    date_facture = getattr(facture, 'date_facture', None)
+    # Une facture fournisseur sans date (ex. créée par facturer_reception
+    # avant le fix, ou import partiel) ne doit pas faire crasher l'écriture
+    # (NOT NULL date_ecriture) — repli : date du jour.
+    date_facture = getattr(facture, 'date_facture', None) or timezone.now().date()
     # DC22 : famille de charge → compte 6x (défaut 6111 si non mappé).
     compte_charge = compte_pour_clef(
         company, MappingCompte.TypeClef.FAMILLE, famille_charge,
