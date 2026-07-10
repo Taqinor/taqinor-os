@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('parametres', '0057_unitemesure'),
+        ('parametres', '0058_unitemesure'),
         ('stock', '0076_fournisseur_condition_paiement_ref'),
     ]
 

@@ -8,7 +8,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('authentication', '0020_company_benchmarking_opt_in'),
-        ('parametres', '0056_conditionpaiement'),
+        ('parametres', '0057_conditionpaiement'),
     ]
 
     operations = [

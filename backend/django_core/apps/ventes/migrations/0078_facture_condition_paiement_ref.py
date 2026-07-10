@@ -7,8 +7,8 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('parametres', '0056_conditionpaiement'),
-        ('ventes', '0074_alter_facture_abandon_motif'),
+        ('parametres', '0057_conditionpaiement'),
+        ('ventes', '0077_sca47_devis_prix_par_kwc'),
     ]
 
     operations = [
