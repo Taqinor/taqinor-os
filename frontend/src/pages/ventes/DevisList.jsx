@@ -192,8 +192,20 @@ export default function DevisList() {
   })
 
   // ── Filtre statut + recherche (référence / client) ──
-  const [statutFilter, setStatutFilter] = useState('tous')
+  // QX12 — deep-link ?statut=<key> pré-règle le filtre au montage (liens de
+  // notification / Dashboard). Une valeur inconnue retombe sur « tous ».
+  const [statutFilter, setStatutFilter] = useState(() => {
+    const s = searchParams.get('statut')
+    return s && (s === 'tous' || STATUT_DISPLAY[s]) ? s : 'tous'
+  })
   const [query, setQuery] = useState('')
+  // QX12 — deep-link ?devis=<pk> ouvre/surligne ce devis précis au montage
+  // (notifications « Devis accepté »/« Devis expiré » qui pointaient vers une
+  // route inexistante /devis/{pk} — le producteur redirige maintenant ici).
+  const [highlightId, setHighlightId] = useState(() => {
+    const v = searchParams.get('devis')
+    return v ? Number(v) : null
+  })
   // U7 — masque par défaut les révisions remplacées (is_active=False) pour
   // qu'un devis révisé n'apparaisse plus comme un doublon « vivant ». Un
   // bouton « voir les versions remplacées » les réaffiche, toujours badgées
@@ -349,6 +361,15 @@ export default function DevisList() {
   }
 
   useEffect(() => { dispatch(fetchDevis()) }, [dispatch])
+
+  // QX12 — une fois les devis chargés, fait défiler jusqu'à la ligne ciblée par
+  // ?devis=<pk> et efface le paramètre après un court délai (la surbrillance
+  // CSS reste tant que highlightId est posé ; on ne la clignote pas plus).
+  useEffect(() => {
+    if (!highlightId || loading) return
+    const row = document.getElementById(`devis-row-${highlightId}`)
+    if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [highlightId, loading, devis])
 
   // WR2 — « Copier le lien proposition » : (re)mint le lien public tokenisé du
   // devis (DevisViewSet.share_link) et le copie au presse-papier, sans passer
@@ -1229,7 +1250,10 @@ export default function DevisList() {
                   const isDownloading = pdfDownloading[d.id]
                   return (
                     <Fragment key={d.id}>
-                    <tr>
+                    <tr id={`devis-row-${d.id}`}
+                        style={highlightId === d.id
+                          ? { outline: '2px solid var(--color-primary, #2563eb)', outlineOffset: '-2px' }
+                          : undefined}>
                       <td>
                         <Checkbox
                           checked={selectedIds.includes(d.id)}
