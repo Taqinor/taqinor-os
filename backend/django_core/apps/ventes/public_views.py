@@ -58,8 +58,16 @@ class PublicLinkRateThrottle(SimpleRateThrottle):
     rate = '30/minute'
 
     def get_rate(self):
-        # Taux fixé inline : pas besoin d'entrée DEFAULT_THROTTLE_RATES.
-        return self.rate
+        # QX41 — source de vérité UNIQUE : le taux vient de
+        # DEFAULT_THROTTLE_RATES['public_sharelink'] (settings), repli sur le
+        # défaut inline si absent (rétro-compatible).
+        try:
+            from django.conf import settings
+            rates = (settings.REST_FRAMEWORK or {}).get(
+                'DEFAULT_THROTTLE_RATES', {})
+            return rates.get(self.scope) or self.rate
+        except Exception:  # noqa: BLE001
+            return self.rate
 
     def get_cache_key(self, request, view):
         token = (view.kwargs or {}).get('token', '') if view else ''
@@ -1007,6 +1015,27 @@ def ecatalogue_demander_devis(request, token):
             status=status.HTTP_400_BAD_REQUEST))
 
     company = cat.company
+
+    # QX41 — verrou d'idempotence (cache.add atomique, miroir de
+    # proposal_contact_request) : un double-clic « demander un devis » ne crée
+    # plus deux brouillons + deux notifications. Clé = jeton catalogue +
+    # hash des coordonnées. Fenêtre courte (5 min) — un vrai deuxième panier
+    # plus tard passe. Un cache indisponible ne bloque jamais la demande.
+    try:
+        import hashlib
+        from django.core.cache import cache
+        contact_hash = hashlib.sha256(
+            f'{telephone}|{email}|{nom}'.encode('utf-8')).hexdigest()[:24]
+        idem_key = f'qx41-ecat:{token}:{contact_hash}'
+        if not cache.add(idem_key, True, 300):
+            return _noindex(Response({
+                'detail': ('Votre demande a déjà été transmise. '
+                           'Nous vous recontactons très vite.'),
+                'already_sent': True,
+            }, status=status.HTTP_201_CREATED))
+    except Exception:  # noqa: BLE001 — cache indisponible → on ne bloque pas
+        pass
+
     noms_produits = ', '.join(
         f'{c["produit"].nom} x{c["quantite"]}' for c in clean_lignes)
     transcript = f'Demande de devis depuis l\'e-catalogue « {cat.titre} » : {noms_produits}'

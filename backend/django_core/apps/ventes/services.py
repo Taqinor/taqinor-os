@@ -1214,57 +1214,72 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
 
     Raises ``AcceptError`` on a non-acceptable status or an invalid option.
     """
+    from django.db import transaction
     from django.utils import timezone
     from apps.ventes.models import Devis
     from apps.ventes import activity
     from core.events import devis_accepted
 
-    # Re-submit on an already-accepted devis: a no-op for the tokenized web
-    # proposal, but rejected (409) for the in-app action (ERR33 guard).
-    if devis.statut == Devis.Statut.ACCEPTE:
-        if idempotent_reaccept:
-            return devis
-        raise AcceptError('Ce devis est déjà accepté.', conflict=True)
-
-    # ERR33 — only a live devis (brouillon / envoyé) can be accepted.
-    if devis.statut not in (Devis.Statut.BROUILLON, Devis.Statut.ENVOYE):
-        raise AcceptError(
-            'Seul un devis en cours (brouillon ou envoyé) peut être accepté ; '
-            f'statut actuel : « {devis.get_statut_display()} ».',
-            conflict=True)
-
+    # QX41 — verrou anti-course sur le chemin public d'acceptation : deux POST
+    # concurrents (double-clic / rejeu) pouvaient tous deux passer le contrôle
+    # de statut et double-émettre ``devis_accepted`` (effets aval doublés). On
+    # relit le devis VERROUILLÉ (select_for_update) et on recontrôle son statut
+    # SOUS le verrou : le second appel voit ACCEPTE et devient un no-op.
     valid = {c.value for c in Devis.OptionAcceptee}
     option = (option or '').strip()
     if option and option not in valid:
         raise AcceptError(
             'Option invalide (attendu « sans_batterie » ou « avec_batterie »).')
 
-    # Resolve the option exactly like the viewset (two-option devis require an
-    # explicit choice; single-option devis deduce it from the scenario).
-    try:
-        from apps.ventes.quote_engine.builder import build_quote_data
-        qd = build_quote_data(devis, {'pdf_mode': 'onepage'})
-        nb_options = qd.get('nb_options', 1)
-        scenario = qd.get('scenario', '')
-    except Exception:  # noqa: BLE001 — l'acceptation ne doit jamais casser
-        nb_options, scenario = 1, ''
-    if nb_options == 2 and not option:
-        raise AcceptError(
-            'Ce devis comporte deux options — précisez celle choisie par le '
-            'client (« sans_batterie » ou « avec_batterie »).')
-    if not option:
-        option = (Devis.OptionAcceptee.AVEC_BATTERIE
-                  if scenario == 'Avec batterie'
-                  else Devis.OptionAcceptee.SANS_BATTERIE)
-
+    # QX41 — TOUT le contrôle-puis-bascule de statut se fait SOUS le même verrou
+    # (select_for_update) : deux acceptations concurrentes ne peuvent plus
+    # toutes deux voir « envoyé » et double-basculer/double-émettre l'événement.
     date_acc = date_acceptation or timezone.now().date()
-    ancien = devis.statut
-    devis.statut = Devis.Statut.ACCEPTE
-    devis.date_acceptation = date_acc
-    devis.accepte_par_nom = (nom or '')[:150]
-    devis.option_acceptee = option
-    devis.save(update_fields=[
-        'statut', 'date_acceptation', 'accepte_par_nom', 'option_acceptee'])
+    with transaction.atomic():
+        try:
+            devis = Devis.objects.select_for_update().get(pk=devis.pk)
+        except Devis.DoesNotExist:
+            raise AcceptError('Devis introuvable.', conflict=True)
+
+        # Re-submit on an already-accepted devis: a no-op for the tokenized
+        # web proposal, but rejected (409) for the in-app action (ERR33 guard).
+        if devis.statut == Devis.Statut.ACCEPTE:
+            if idempotent_reaccept:
+                return devis
+            raise AcceptError('Ce devis est déjà accepté.', conflict=True)
+
+        # ERR33 — only a live devis (brouillon / envoyé) can be accepted.
+        if devis.statut not in (Devis.Statut.BROUILLON, Devis.Statut.ENVOYE):
+            raise AcceptError(
+                'Seul un devis en cours (brouillon ou envoyé) peut être '
+                f'accepté ; statut actuel : « {devis.get_statut_display()} ».',
+                conflict=True)
+
+        # Resolve the option exactly like the viewset (two-option devis require
+        # an explicit choice; single-option devis deduce it from the scenario).
+        try:
+            from apps.ventes.quote_engine.builder import build_quote_data
+            qd = build_quote_data(devis, {'pdf_mode': 'onepage'})
+            nb_options = qd.get('nb_options', 1)
+            scenario = qd.get('scenario', '')
+        except Exception:  # noqa: BLE001 — l'acceptation ne doit jamais casser
+            nb_options, scenario = 1, ''
+        if nb_options == 2 and not option:
+            raise AcceptError(
+                'Ce devis comporte deux options — précisez celle choisie par '
+                'le client (« sans_batterie » ou « avec_batterie »).')
+        if not option:
+            option = (Devis.OptionAcceptee.AVEC_BATTERIE
+                      if scenario == 'Avec batterie'
+                      else Devis.OptionAcceptee.SANS_BATTERIE)
+
+        ancien = devis.statut
+        devis.statut = Devis.Statut.ACCEPTE
+        devis.date_acceptation = date_acc
+        devis.accepte_par_nom = (nom or '')[:150]
+        devis.option_acceptee = option
+        devis.save(update_fields=[
+            'statut', 'date_acceptation', 'accepte_par_nom', 'option_acceptee'])
     activity.log_devis_acceptance(devis, user, nom, date_acc, option)
     if ip:
         # Trace the e-signature origin IP in the chatter (Q7) without a new

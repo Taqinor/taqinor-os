@@ -265,6 +265,13 @@ REST_FRAMEWORK = {
         'automation_webhook': '60/minute',
         # XSAL8 — scan de carte de visite (OCR), par utilisateur authentifié.
         'crm_ocr_scan': '20/hour',
+        # QX41 — scopes des throttles publics jusqu'ici codés inline, désormais
+        # source de vérité UNIQUE ici (les classes lisent settings en priorité,
+        # repli sur leur défaut). ``public_sharelink`` : liens publics
+        # devis/facture/proposition (par IP+jeton) ; ``public_livechat`` :
+        # ouverture de session chat public (par IP).
+        'public_sharelink': '30/minute',
+        'public_livechat': '30/minute',
     },
     # YDATA9 — DRF sérialise déjà les `Decimal` en string par défaut (c'est
     # la valeur par défaut de DRF), mais rien ne le VERROUILLAIT explicitement
