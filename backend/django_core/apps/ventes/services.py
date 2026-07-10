@@ -672,6 +672,8 @@ def request_esign_otp(link):
     code = _generate_otp()
     cache_key = _otp_cache_key(link.token)
     cache.set(cache_key, code, timeout=OTP_CACHE_TTL)
+    # QX10 — un nouveau code réinitialise le compteur de tentatives (brute-force).
+    cache.delete(_otp_attempts_key(link.token))
 
     devis = link.devis
     client = getattr(devis, 'client', None)
@@ -694,6 +696,15 @@ def request_esign_otp(link):
     return None
 
 
+#: QX10 — nombre de tentatives OTP erronées avant verrouillage temporaire.
+OTP_MAX_ATTEMPTS = 5
+
+
+def _otp_attempts_key(link_token):
+    """QX10 — clé de cache du compteur de tentatives OTP erronées par jeton."""
+    return f'esign_otp_attempts:{link_token}'
+
+
 def validate_esign_otp(link, otp_code):
     """QJ11 — Valide l'OTP soumis contre le cache.
 
@@ -702,6 +713,11 @@ def validate_esign_otp(link, otp_code):
       - otp_code absent / vide → message d'erreur (OTP requis)
       - otp_code incorrect ou expiré → message d'erreur
       - otp_code correct → None (la validation réussit), le code est consommé.
+
+    QX10 — protection brute-force : un compteur par jeton (cache) verrouille
+    la validation après ``OTP_MAX_ATTEMPTS`` échecs (l'espace 6 chiffres est
+    trivial à balayer sans limite). Une validation réussie remet le compteur
+    à zéro ; un nouveau code doit être redemandé après verrouillage.
     """
     if not _esign_otp_enabled():
         return None
@@ -710,33 +726,46 @@ def validate_esign_otp(link, otp_code):
         return 'Un code de confirmation est requis. Demandez-le via le bouton « Envoyer le code ».'
 
     from django.core.cache import cache
+    attempts_key = _otp_attempts_key(link.token)
+    attempts = cache.get(attempts_key, 0)
+    if attempts >= OTP_MAX_ATTEMPTS:
+        return ('Trop de tentatives incorrectes. Redemandez un nouveau code '
+                'de confirmation et réessayez.')
+
     cache_key = _otp_cache_key(link.token)
     stored = cache.get(cache_key)
     if stored is None:
         return 'Le code de confirmation a expiré ou n\'a pas été demandé. Redemandez un nouveau code.'
     if stored != otp_code.strip():
+        # QX10 — incrémente le compteur d'échecs (TTL = fenêtre du code).
+        cache.set(attempts_key, attempts + 1, timeout=OTP_CACHE_TTL)
+        restantes = max(0, OTP_MAX_ATTEMPTS - (attempts + 1))
+        if restantes == 0:
+            return ('Trop de tentatives incorrectes. Redemandez un nouveau '
+                    'code de confirmation et réessayez.')
         return 'Code de confirmation incorrect. Vérifiez le code reçu et réessayez.'
 
-    # Code valide : on le consomme (one-time use).
+    # Code valide : on le consomme (one-time use) et on réinitialise le compteur.
     cache.delete(cache_key)
+    cache.delete(attempts_key)
     return None
 
 
 def _send_otp_whatsapp(phone, code, devis_ref):
-    """Envoie le code OTP via un lien wa.me (draft WhatsApp). Best-effort → bool."""
-    try:
-        # On journalise un message pré-formaté — pas d'API WhatsApp live
-        # (aucune dépendance gated). En production, intégrer ici WhatsApp BSP
-        # (notifications.whatsapp_bsp) quand disponible.
-        msg = (
-            f'Votre code de confirmation pour le devis {devis_ref} est : '
-            f'{code}. Valable 10 minutes.'
-        )
-        logger.info('QJ11 OTP wa.me [%s]: %s → %s', devis_ref, phone, msg)
-        return True
-    except Exception as exc:  # noqa: BLE001
-        logger.warning('QJ11: wa.me OTP échec : %s', exc)
-        return False
+    """Envoie le code OTP via WhatsApp. Best-effort → bool.
+
+    QX10 — CORRECTIF : ce canal est un STUB (aucune API WhatsApp live n'est
+    câblée — GATÉ derrière QXG1/le BSP). Il renvoie désormais ``False`` au lieu
+    de ``True`` : sinon un client SANS email (téléphone seul) ne recevait
+    JAMAIS son code (le stub prétendait l'avoir envoyé et coupait le repli
+    email), le verrouillant hors de la signature quand ``ESIGN_OTP_ENABLED``
+    est actif. En renvoyant False, ``request_esign_otp`` retombe sur l'email.
+    Quand le BSP WhatsApp sera disponible, envoyer réellement ici et renvoyer
+    True."""
+    logger.info(
+        'QJ11 OTP WhatsApp NON envoyé (stub, aucun BSP câblé) pour devis %s '
+        '— repli email', devis_ref)
+    return False
 
 
 def _send_otp_email(email, code, devis_ref):
