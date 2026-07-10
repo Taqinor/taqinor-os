@@ -168,6 +168,8 @@ function KitExplosion() {
   const [kitId, setKitId] = useState('')
   const [quantite, setQuantite] = useState('1')
   const [result, setResult] = useState(null)
+  // ZMFG9 — disponibilité multi-niveaux (kits assemblables + goulots).
+  const [dispo, setDispo] = useState(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
 
@@ -179,11 +181,17 @@ function KitExplosion() {
 
   const exploser = async () => {
     if (!kitId) { setError('Choisissez un kit.'); return }
-    setBusy(true); setError(null)
+    setBusy(true); setError(null); setDispo(null)
     try {
       const q = Number(quantite) > 0 ? Number(quantite) : 1
       const r = await stockApi.exploserKit(kitId, q)
       setResult(r.data)
+      // ZMFG9 — best-effort : la disponibilité récursive accompagne
+      // l'explosion (jamais bloquante pour l'affichage des lignes).
+      try {
+        const d = await stockApi.getKitDisponibilite(kitId)
+        setDispo(d.data)
+      } catch { /* fiche sans disponibilité si le calcul échoue */ }
     } catch (e) {
       setError(frErr(e, "L'explosion du kit a échoué."))
     } finally { setBusy(false) }
@@ -225,6 +233,20 @@ function KitExplosion() {
 
         {error && (
           <div role="alert" className="mt-2 rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-sm text-destructive">{error}</div>
+        )}
+
+        {dispo && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/40 p-2 text-sm">
+            <Badge tone={dispo.kits_assemblables > 0 ? 'success' : 'warning'}>
+              {dispo.kits_assemblables} kit{dispo.kits_assemblables > 1 ? 's' : ''} assemblable{dispo.kits_assemblables > 1 ? 's' : ''}
+            </Badge>
+            {(dispo.goulots ?? []).length > 0 && (
+              <span className="text-muted-foreground">
+                Goulot{dispo.goulots.length > 1 ? 's' : ''} :{' '}
+                {dispo.goulots.map((g) => g.designation).join(', ')}
+              </span>
+            )}
+          </div>
         )}
 
         {result && (

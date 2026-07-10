@@ -500,6 +500,17 @@ def kanban_token(produit_id, emplacement_id) -> str:
     return f'{KANBAN_PREFIX}:{produit_id}:{emplacement_id}'
 
 
+def showroom_url(base_url, catalogue_token, produit_id) -> str:
+    """XPOS17 — URL publique encodée par le QR d'une étiquette « showroom » :
+    la fiche produit PUBLIQUE de l'e-catalogue tokenisé (FG214). Le client
+    scanne en magasin et atterrit sur la fiche (specs, prix TTC, garantie,
+    disponibilité indicative — JAMAIS de prix d'achat) avec les CTA
+    « Demander un devis » (XPOS14) et « Être rappelé » (QJ27)."""
+    base = (base_url or '').rstrip('/')
+    return (f'{base}/api/django/public/stock/showroom/'
+            f'{catalogue_token}/produit/{produit_id}/')
+
+
 def _esc(value) -> str:
     return (str(value or '')
             .replace('&', '&amp;')

@@ -18,7 +18,7 @@ from ..models import KitProduit
 from ..serializers import KitProduitSerializer
 
 READ_ACTIONS = ['list', 'retrieve', 'exploser', 'revisions',
-                'composition_au']
+                'composition_au', 'disponibilite']
 WRITE_ACTIONS = ['create', 'update', 'partial_update', 'dupliquer',
                  'remplacer_composant']
 
@@ -29,6 +29,17 @@ class KitProduitViewSet(TenantMixin, viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['nom', 'sku', 'description']
     ordering = ['nom']
+
+    def get_serializer_context(self):
+        # ZMFG9 — `?avec_disponibilite=1` sur la liste/fiche enrichit chaque
+        # kit de sa disponibilité multi-niveaux (kits assemblables + goulots).
+        # OPT-IN : l'explosion récursive par kit a un coût — le comportement
+        # par défaut de la liste reste strictement inchangé.
+        context = super().get_serializer_context()
+        context['avec_disponibilite'] = (
+            self.request.query_params.get('avec_disponibilite')
+            in ('1', 'true', 'True')) if self.request else False
+        return context
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
@@ -141,6 +152,23 @@ class KitProduitViewSet(TenantMixin, viewsets.ModelViewSet):
                 {'detail': 'Aucune révision à cette date.'},
                 status=status.HTTP_404_NOT_FOUND)
         return Response(RevisionKitSerializer(revision).data)
+
+    @action(detail=True, methods=['get'], url_path='disponibilite')
+    def disponibilite(self, request, *args, **kwargs):
+        """ZMFG9 — disponibilité multi-niveaux du kit : nombre de kits
+        COMPLETS assemblables avec le stock disponible (explosion récursive,
+        stock partagé entre sous-kits jamais compté deux fois) + composants
+        limitants (goulots). Un cycle renvoie 400 clair. Lecture seule."""
+        from ..selectors import disponibilite_potentielle_recursive
+        from ..services import KitCycleError
+        kit = self.get_object()
+        try:
+            data = disponibilite_potentielle_recursive(
+                kit, request.user.company)
+        except (KitCycleError, ValueError) as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(data)
 
     @action(detail=True, methods=['post'], url_path='dupliquer')
     def dupliquer(self, request, *args, **kwargs):

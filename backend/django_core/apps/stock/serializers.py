@@ -881,7 +881,16 @@ class ReceptionFournisseurSerializer(serializers.ModelSerializer):
                     {'lignes': 'Ligne de commande hors de ce bon de commande.'})
             LigneReceptionFournisseur.objects.create(
                 reception=reception, ligne_commande=ligne_cmd,
-                produit=ligne_cmd.produit, quantite=ligne['quantite'])
+                produit=ligne_cmd.produit, quantite=ligne['quantite'],
+                # YTEST6 — les champs de traçabilité déclarés par le
+                # serializer de ligne (FG61 séries / FG64 lot+péremption)
+                # étaient silencieusement PERDUS à la création imbriquée :
+                # ils alimentent SerieEntrepot (YSTCK7) et LotEntrepot
+                # (XSTK6) à la confirmation. Absents du corps → None
+                # (comportement historique inchangé).
+                numeros_serie=ligne.get('numeros_serie'),
+                numero_lot=ligne.get('numero_lot'),
+                date_peremption=ligne.get('date_peremption'))
         return reception
 
 
@@ -1222,18 +1231,45 @@ class KitComposantSerializer(serializers.ModelSerializer):
 class KitProduitSerializer(serializers.ModelSerializer):
     composants = KitComposantSerializer(many=True)
     nb_composants = serializers.SerializerMethodField()
+    # ZMFG9 — disponibilité multi-niveaux (kits assemblables + goulots),
+    # OPT-IN via `?avec_disponibilite=1` (contexte posé par la vue) : la
+    # liste/fiche l'affiche sans alourdir le comportement par défaut.
+    disponibilite_potentielle = serializers.SerializerMethodField()
 
     class Meta:
         model = KitProduit
         # DC36 — un kit ne porte AUCUN champ prix / marque / TVA : tout vient
         # des composants à l'explosion.
         fields = ['id', 'nom', 'sku', 'description', 'is_archived',
-                  'composants', 'nb_composants', 'date_creation',
-                  'date_mise_a_jour']
+                  'composants', 'nb_composants', 'disponibilite_potentielle',
+                  'date_creation', 'date_mise_a_jour']
         read_only_fields = ['date_creation', 'date_mise_a_jour']
 
     def get_nb_composants(self, obj):
         return obj.composants.count()
+
+    def get_disponibilite_potentielle(self, obj):
+        if not self.context.get('avec_disponibilite'):
+            return None
+        from .selectors import disponibilite_potentielle_recursive
+        from .services import KitCycleError
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is None:
+            return None
+        try:
+            data = disponibilite_potentielle_recursive(obj, company)
+        except (KitCycleError, ValueError):
+            # Une nomenclature cyclique ne casse JAMAIS la liste entière :
+            # la fiche dédiée (`disponibilite/`) porte le message d'erreur.
+            return None
+        return {
+            'kits_assemblables': data['kits_assemblables'],
+            'goulots': [
+                {'designation': g['designation'], 'sku': g['sku']}
+                for g in data['goulots']
+            ],
+        }
 
     def _validate_company(self, composants_data):
         request = self.context.get('request')
