@@ -7,11 +7,10 @@
 Multi-tenant via ``TenantMixin`` ; l'emplacement/produit référencés sont
 validés tenant. Cross-app : ``stock`` en string-FK uniquement.
 """
-from rest_framework import viewsets
 from rest_framework.exceptions import ValidationError
 
-from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import (
     BinLocation, BinAffectation, CategorieStockage, RegleRangement,
@@ -24,7 +23,7 @@ from ..serializers import (
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class BinLocationViewSet(TenantMixin, viewsets.ModelViewSet):
+class BinLocationViewSet(CompanyScopedModelViewSet):
     """FG319 — casiers de rangement. Lecture tout rôle, écriture
     responsable/admin. Société + `created_by` posés serveur ; `emplacement`
     validé tenant. Filtrable par `emplacement`, `archived`."""
@@ -76,7 +75,7 @@ class BinLocationViewSet(TenantMixin, viewsets.ModelViewSet):
         serializer.save(company=self.request.user.company)
 
 
-class CategorieStockageViewSet(TenantMixin, viewsets.ModelViewSet):
+class CategorieStockageViewSet(CompanyScopedModelViewSet):
     """ZSTK9 — catégories de stockage (capacité/compatibilité). Lecture tout
     rôle, écriture responsable/admin. Société posée serveur."""
     queryset = CategorieStockage.objects.all()
@@ -88,7 +87,7 @@ class CategorieStockageViewSet(TenantMixin, viewsets.ModelViewSet):
         return [IsResponsableOrAdmin()]
 
 
-class RegleRangementViewSet(TenantMixin, viewsets.ModelViewSet):
+class RegleRangementViewSet(CompanyScopedModelViewSet):
     """ZSTK9 — règles de rangement configurables (produit/catégorie →
     casier cible, priorité). Lecture tout rôle, écriture responsable/admin.
     Société posée serveur ; `produit`/`bin_cible` validés tenant."""
@@ -137,7 +136,7 @@ class RegleRangementViewSet(TenantMixin, viewsets.ModelViewSet):
         serializer.save(company=self.request.user.company)
 
 
-class BinAffectationViewSet(TenantMixin, viewsets.ModelViewSet):
+class BinAffectationViewSet(CompanyScopedModelViewSet):
     """FG319 — affectation produit ↔ casier. Société posée serveur ; `bin` et
     `produit` validés tenant. Filtrable par `bin`, `produit`."""
     queryset = BinAffectation.objects.select_related(

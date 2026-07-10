@@ -12,8 +12,8 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet
 
 from apps.ventes.utils.references import create_with_reference
 
@@ -25,7 +25,7 @@ from ..serializers import (
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class SessionComptageViewSet(TenantMixin, viewsets.ModelViewSet):
+class SessionComptageViewSet(CompanyScopedModelViewSet):
     """FG324 — sessions de comptage tournant. Lecture tout rôle, écriture
     responsable/admin. Filtrable par `statut`, `classe_abc`, `emplacement`."""
     queryset = SessionComptage.objects.select_related(

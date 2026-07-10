@@ -15,8 +15,8 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet
 
 from apps.ventes.utils.references import create_with_reference
 
@@ -33,7 +33,7 @@ def _check_tenant(serializer, company, field):
         raise ValidationError({field: 'Objet inconnu pour cette société.'})
 
 
-class DemandeAchatViewSet(TenantMixin, viewsets.ModelViewSet):
+class DemandeAchatViewSet(CompanyScopedModelViewSet):
     """FG310 — réquisitions d'achat. Lecture tout rôle, écriture
     responsable/admin. Référence anti-collision + société + `created_by` posés
     serveur ; chantier/programme/fournisseur_suggere validés tenant. Filtrable
