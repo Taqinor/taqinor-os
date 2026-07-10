@@ -37,6 +37,8 @@ tout ``core``).
 """
 from __future__ import annotations
 
+from decimal import Decimal
+
 from django.db import models
 
 from core.models import TenantModel
@@ -45,6 +47,8 @@ __all__ = [
     "DocumentMetier",
     "TransitionRefusee",
     "changer_statut",
+    "LigneDocumentMetier",
+    "TotauxDocumentMixin",
 ]
 
 
@@ -191,3 +195,162 @@ def changer_statut(instance, nouveau_statut, *, user=None, save=True):
         company=getattr(instance, "company", None),
     )
     return instance
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SCA31 — ``LigneDocumentMetier`` + ``TotauxDocumentMixin`` (factorisation NEUVE).
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Constat. La chaîne de totaux (``montant_ht``/``montant_tva``/``montant_ttc``
+# gelés + propriétés ``total_*`` recomputées en repli) est copiée 3× verbatim
+# dans ``ventes/models.py`` (Facture ~626-874, Avoir ~1327-1498, tranches
+# ~1452-1498) + variantes ``stock/models.py`` (~1601-1733) et ``pos/models.py``
+# (~114-164) ; la formule de ligne ``quantite × prix_unitaire × (1 − remise/100)``
+# (motif ``LigneDevis.total_ht``, ventes/models.py:330-333) est répétée sur
+# chaque ``Ligne*``. On factorise pour le code NOUVEAU UNIQUEMENT : les 5 copies
+# existantes NE BOUGENT PAS (rétrofit du money-path interdit, règle #4 dans
+# l'esprit). Sémantique Decimal MIROIR EXACTE de ``LigneDevis.total_ht`` :
+# ``quantite * prix_unitaire * (1 - remise / 100)`` sans quantize (l'arrondi
+# reste à la charge de l'agrégat/panier TVA, exactement comme l'existant).
+
+
+class LigneDocumentMetier(models.Model):
+    """Socle abstrait d'une LIGNE de document métier (SCA31 — code NOUVEAU).
+
+    Champs standard d'une ligne : ``designation`` / ``quantite`` /
+    ``prix_unitaire`` / ``remise`` (%) / ``taux_tva`` (nullable). La formule
+    ``total_ht`` est le MIROIR EXACT du motif ``ventes.LigneDevis.total_ht`` :
+    ``quantite * prix_unitaire * (1 - remise / 100)`` — mêmes types
+    ``DecimalField`` (``max_digits``/``decimal_places``), AUCUN quantize (comme
+    l'existant, l'arrondi au centime est fait par l'agrégat, pas par la ligne).
+
+    ``taux_tva`` NULL ⇒ ``taux_tva_effectif`` retombe sur le taux du PARENT. Le
+    kit ne connaît pas le nom de la FK parente (chaque document nomme la sienne),
+    donc la sous-classe déclare :
+
+      * la FK parente elle-même (ex. ``document = models.ForeignKey(MonDoc, …)``) ;
+      * ``PARENT_FIELD`` = le nom de cet attribut (``'document'``) — utilisé par
+        ``taux_tva_effectif`` pour lire ``parent.taux_tva`` en repli.
+
+    Abstrait ⇒ aucune table, aucune migration. GÉNÉRIQUE : aucune app domaine.
+    """
+
+    #: Nom de l'attribut FK vers le document parent (déclaré par la sous-classe).
+    #: Sert au repli ``taux_tva_effectif`` → ``parent.taux_tva``.
+    PARENT_FIELD: str = ""
+
+    designation = models.CharField(max_length=255)
+    quantite = models.DecimalField(max_digits=10, decimal_places=2)
+    prix_unitaire = models.DecimalField(max_digits=10, decimal_places=2)
+    remise = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    taux_tva = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text="Taux TVA de la ligne (%). Vide = taux du document parent.",
+    )
+
+    class Meta:
+        abstract = True
+
+    @property
+    def total_ht(self):
+        """Miroir EXACT de ``ventes.LigneDevis.total_ht`` (sémantique Decimal).
+
+        ``quantite * prix_unitaire * (1 - remise / 100)`` — pas de quantize :
+        l'arrondi au centime reste à la charge de l'agrégat (panier TVA), comme
+        dans tout le money-path existant."""
+        return self.quantite * self.prix_unitaire * (1 - self.remise / 100)
+
+    @property
+    def taux_tva_effectif(self):
+        """Taux réellement appliqué : celui de la ligne, sinon celui du parent.
+
+        Repli sur ``getattr(parent, 'taux_tva', None)`` via ``PARENT_FIELD`` —
+        MÊME contrat que ``ventes.LigneDevis.taux_tva_effectif`` (``self.taux_tva
+        if not None else self.devis.taux_tva``)."""
+        if self.taux_tva is not None:
+            return self.taux_tva
+        parent = getattr(self, self.PARENT_FIELD, None) if self.PARENT_FIELD else None
+        return getattr(parent, "taux_tva", None)
+
+
+class TotauxDocumentMixin(models.Model):
+    """Mixin abstrait des TOTAUX gelés + propriétés de repli (SCA31 — NOUVEAU).
+
+    Reproduit à l'identique le patron gelé de ``ventes.Facture`` (montants figés
+    à la création OU recomputés depuis les lignes) :
+
+    * ``montant_ht`` / ``montant_tva`` / ``montant_ttc`` — champs ``DecimalField``
+      NULLABLES (``max_digits=12``, ``decimal_places=2`` — comme Facture/Avoir) :
+      NULL = document calculé depuis ses lignes ; renseignés = totaux FIGÉS
+      (acompte, tranche d'échéancier…), qui priment ;
+    * ``total_ht`` / ``total_tva`` / ``total_ttc`` — propriétés de REPLI : si le
+      montant figé correspondant est renseigné, on le renvoie ; sinon on
+      recompute depuis les lignes.
+
+    Le kit ne connaît pas le ``related_name`` des lignes (chaque document nomme
+    le sien), donc la sous-classe déclare ``LIGNES_ATTR`` = le nom de
+    l'accesseur inverse des lignes (ex. ``'lignes'``). Le repli TVA du kit est
+    VOLONTAIREMENT SIMPLE (somme de ``ligne.total_ht × taux_effectif/100`` par
+    ligne) : le kit est un socle NEUF pour de NOUVEAUX documents, il n'a pas à
+    répliquer la réconciliation par panier ``tva_buckets`` de ventes (spécifique
+    au money-path devis/facture, hors périmètre du kit). Un document qui a besoin
+    de la ventilation multi-taux au centime surcharge simplement ``total_tva``.
+
+    Abstrait ⇒ aucune table, aucune migration. GÉNÉRIQUE : aucune app domaine.
+    """
+
+    #: Nom de l'accesseur inverse des lignes du document (déclaré par la
+    #: sous-classe, ex. ``'lignes'``). Sert au recompute de repli.
+    LIGNES_ATTR: str = "lignes"
+
+    montant_ht = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True)
+    montant_tva = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True)
+    montant_ttc = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True)
+
+    class Meta:
+        abstract = True
+
+    def _lignes(self):
+        """QuerySet/itérable des lignes via ``LIGNES_ATTR`` (repli liste vide)."""
+        manager = getattr(self, self.LIGNES_ATTR, None)
+        if manager is None:
+            return []
+        return manager.all()
+
+    @property
+    def total_ht(self):
+        """Montant HT figé s'il existe, sinon somme des ``ligne.total_ht``.
+
+        Miroir du patron ``ventes.Facture.total_ht`` (montant figé → repli
+        lignes)."""
+        if self.montant_ht is not None:
+            return self.montant_ht
+        return sum((ligne.total_ht for ligne in self._lignes()), Decimal("0"))
+
+    @property
+    def total_tva(self):
+        """TVA figée s'il existe, sinon somme ligne par ligne (taux effectif).
+
+        Repli simple : ``Σ ligne.total_ht × taux_tva_effectif / 100`` — chaque
+        ligne applique son taux effectif (ligne sinon parent, cf.
+        ``LigneDocumentMetier.taux_tva_effectif``). Un document à réconciliation
+        par panier au centime surcharge cette propriété."""
+        if self.montant_tva is not None:
+            return self.montant_tva
+        total = Decimal("0")
+        for ligne in self._lignes():
+            taux = ligne.taux_tva_effectif
+            if taux is None:
+                continue
+            total += ligne.total_ht * (Decimal(str(taux)) / Decimal("100"))
+        return total
+
+    @property
+    def total_ttc(self):
+        """TTC figé s'il existe, sinon ``total_ht + total_tva`` (patron Facture)."""
+        if self.montant_ttc is not None:
+            return self.montant_ttc
+        return self.total_ht + self.total_tva
