@@ -154,8 +154,17 @@ class InscriptionSequenceTests(TestCase):
         # midi-aujourd'hui serait AVANT l'inscription et l'étape J0 ne serait
         # pas encore due → liste vide (IndexError). Ce test porte sur l'ABSENCE
         # d'intégration WhatsApp/Brevo, pas sur l'heure réelle de la CI.
+        # … et (3) un JOUR OUVRÉ : « demain » nu tombait le samedi chaque
+        # vendredi (et la veille des fériés) → rejet hors_fenetre au lieu de
+        # planifie — test flaky par date, corrigé en avançant jusqu'au
+        # prochain jour ouvré via le MÊME sélecteur que le code testé.
+        from apps.notifications.selectors import est_hors_fenetre_silence
         maintenant = (timezone.now() + timedelta(days=1)).replace(
             hour=12, minute=0, second=0, microsecond=0)
+        for _ in range(14):
+            if not est_hors_fenetre_silence(maintenant, self.co):
+                break
+            maintenant += timedelta(days=1)
         executions = services.executer_etapes_dues(self.co, maintenant=maintenant)
         self.assertEqual(executions[0].resultat, 'planifie')
         self.assertEqual(executions[0].erreur, '')
