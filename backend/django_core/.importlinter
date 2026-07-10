@@ -133,6 +133,11 @@ forbidden_modules =
     apps.dataimport
     apps.contact
 
+# ARC6 — `core.numbering` (fabrique de références anti-collision, ex
+# `apps.ventes.utils.references`) est une primitive de FONDATION relogée ici :
+# elle reçoit en paramètre le modèle/préfixe/société dont elle a besoin, n'importe
+# donc AUCUNE app métier et respecte nativement le contrat base-layer ci-dessous.
+# `apps.ventes.utils.references` n'est plus qu'un shim de ré-export bit-identique.
 [importlinter:contract:core-foundation-is-a-base-layer]
 name = The core foundation app imports downward only (no domain-core or satellite app)
 type = forbidden
