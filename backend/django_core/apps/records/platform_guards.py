@@ -316,7 +316,7 @@ def numbering_error_line(spec: str) -> str:
 #   * Les fichiers de tests sont hors périmètre (fixtures/fakes).
 #   * La baseline liste les modèles/viewsets hand-rollés EXISTANTS (pré-SCA4,
 #     inventaire du 2026-07-10) — chargée depuis un fichier de données committé
-#     (``scripts/platform_baselines/``). Elle ne peut que rétrécir : un modèle
+#     (``apps/records/platform_baselines/``). Elle ne peut que rétrécir : un modèle
 #     converti à ``TenantModel`` / un viewset converti à
 #     ``CompanyScopedModelViewSet`` DISPARAÎT de son fichier source, donc ne
 #     matche plus — et son entrée de baseline devient inerte (le garde ignore une
@@ -411,7 +411,7 @@ def handrolled_model_error_line(qualified: str) -> str:
         f"main hors socle. Héritez de core.models.TenantModel (FK company + "
         f"timestamps) plutôt que de re-hand-roller la paire multi-société. Si "
         f"c'est un cas légitime (app qui définit le socle), ajoutez-le à la "
-        f"baseline gelée scripts/platform_baselines/handrolled_models.txt "
+        f"baseline gelée apps/records/platform_baselines/handrolled_models.txt "
         f"(elle ne peut que décroître)."
     )
 
