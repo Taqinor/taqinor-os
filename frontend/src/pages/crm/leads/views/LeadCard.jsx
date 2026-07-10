@@ -82,6 +82,13 @@ export default function LeadCard({
   const factureManquante =
     lead.devis_auto && !lead.devis_auto.pret ? lead.devis_auto.message : null
 
+  // QX28 — chips de « préparation » : ce que le site a déjà capturé pour ce
+  // lead, invisible jusqu'ici (le vendeur ne pouvait pas distinguer un lead
+  // riche en données d'un lead vide sans ouvrir la fiche).
+  const roofReady = !!lead.roof_point
+  const factureReady = lead.facture_hiver != null && lead.facture_hiver !== ''
+  const devisReady = !!lead.devis_auto?.pret
+
   const classes = [
     'kb-card',
     perdu ? 'kb-card-perdu' : '',
@@ -146,9 +153,10 @@ export default function LeadCard({
         <button
           type="button"
           className="kb-flash"
+          style={{ position: 'relative' }}
           disabled={!lead.devis_auto?.pret}
           title={lead.devis_auto?.pret
-            ? 'Devis auto'
+            ? (roofReady ? 'Devis auto — repère toit disponible' : 'Devis auto')
             : (lead.devis_auto?.message ?? 'Devis auto indisponible')}
           aria-label="Devis auto"
           onPointerDown={(e) => e.stopPropagation()}
@@ -159,10 +167,53 @@ export default function LeadCard({
           }}
         >
           ⚡
+          {/* QX28 — badge le bouton quand un repère toit (GPS) existe : le
+              devis auto peut s'appuyer sur des données réelles, pas estimées. */}
+          {roofReady && (
+            <span
+              className="kb-flash-roof-badge"
+              style={{
+                position: 'absolute', top: '-2px', right: '-2px',
+                width: '7px', height: '7px', borderRadius: '9999px',
+                background: 'var(--color-success, #16a34a)',
+              }}
+              title="Repère toit (GPS) disponible"
+              aria-hidden="true"
+            />
+          )}
         </button>
       </div>
 
       {sousTitre && <div className="kb-card-sub">{sousTitre}</div>}
+
+      {/* QX28 — chips de préparation : ce que le site a déjà capturé. Visibles
+          seulement pour les signaux réellement présents (jamais un chip
+          "manquant" — juste l'absence du chip positif). */}
+      {(roofReady || factureReady || devisReady) && (
+        <div className="kb-readiness-chips" style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '2px' }}>
+          {roofReady && (
+            <span className="kb-chip kb-chip-roof"
+                  style={{ fontSize: '11px', borderRadius: '9999px', padding: '1px 8px', background: 'var(--color-success-muted, rgba(22,163,74,.12))', color: 'var(--color-success, #16a34a)' }}
+                  title="Un repère GPS de toiture a été capturé (site ou 3D)">
+              📍 Toit épinglé (GPS)
+            </span>
+          )}
+          {factureReady && (
+            <span className="kb-chip kb-chip-facture"
+                  style={{ fontSize: '11px', borderRadius: '9999px', padding: '1px 8px', background: 'var(--color-info-muted, rgba(37,99,235,.12))', color: 'var(--color-info, #2563eb)' }}
+                  title="Une facture d'électricité a été saisie">
+              🧾 Facture saisie
+            </span>
+          )}
+          {devisReady && (
+            <span className="kb-chip kb-chip-devis"
+                  style={{ fontSize: '11px', borderRadius: '9999px', padding: '1px 8px', background: 'var(--color-primary-muted, rgba(37,99,235,.12))', color: 'var(--color-primary, #2563eb)' }}
+                  title="Toutes les données nécessaires sont réunies pour générer un devis en un clic">
+              ⚡ Prêt à deviser en 1 clic
+            </span>
+          )}
+        </div>
+      )}
 
       {/* XSAL7 — montant estimé (pipeline pondéré pré-devis), affiché
           seulement quand présent ; le devis (s'il existe) prime ailleurs. */}

@@ -429,6 +429,10 @@ export default function LeadForm({
   const devisReady = !!liveLead?.devis_auto?.pret
   const devisNotReadyMsg = liveLead?.devis_auto?.message
     ?? 'Renseignez la facture du lead pour activer le devis automatique.'
+  // QX28 — mêmes chips de préparation que LeadCard.jsx (crm/leads/views/) :
+  // ce que le site a déjà capturé, visible dès l'ouverture de la fiche.
+  const roofReady = !!liveLead?.roof_point
+  const factureReady = liveLead?.facture_hiver != null && liveLead.facture_hiver !== ''
 
   const openDevisPanel = (mode) => {
     setDevisMenuOpen(false)
@@ -661,6 +665,32 @@ export default function LeadForm({
           </div>
         </div>
 
+        {/* QX28 — chips de préparation (même logique que LeadCard.jsx) : ce
+            que le site a déjà capturé pour ce lead, visible dès l'ouverture
+            de la fiche, jamais un chip « manquant » — juste l'absence. */}
+        {isEdit && (roofReady || factureReady || devisReady) && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', padding: '0 1rem' }}>
+            {roofReady && (
+              <span style={{ fontSize: '11px', borderRadius: '9999px', padding: '1px 8px', background: 'var(--color-success-muted, rgba(22,163,74,.12))', color: 'var(--color-success, #16a34a)' }}
+                    title="Un repère GPS de toiture a été capturé (site ou 3D)">
+                📍 Toit épinglé (GPS)
+              </span>
+            )}
+            {factureReady && (
+              <span style={{ fontSize: '11px', borderRadius: '9999px', padding: '1px 8px', background: 'var(--color-info-muted, rgba(37,99,235,.12))', color: 'var(--color-info, #2563eb)' }}
+                    title="Une facture d'électricité a été saisie">
+                🧾 Facture saisie
+              </span>
+            )}
+            {devisReady && (
+              <span style={{ fontSize: '11px', borderRadius: '9999px', padding: '1px 8px', background: 'var(--color-primary-muted, rgba(37,99,235,.12))', color: 'var(--color-primary, #2563eb)' }}
+                    title="Toutes les données nécessaires sont réunies pour générer un devis en un clic">
+                ⚡ Prêt à deviser en 1 clic
+              </span>
+            )}
+          </div>
+        )}
+
         {/* ── Barre d'actions devis (style Odoo) — tout reste dans la fiche ── */}
         {isEdit && (
           <div className="lead-subbar">
@@ -705,9 +735,11 @@ export default function LeadForm({
             <div className="lead-subbar-devis">
               {lead?.id && (
                 <Button type="button" size="sm" className="gen-btn-orange"
-                        title="Ouvrir l'outil de conception 3D du site avec ce lead déjà chargé"
+                        title={roofReady
+                          ? 'Repère toit (GPS) disponible — ouvrir le plan déjà positionné'
+                          : "Ouvrir l'outil de conception 3D du site avec ce lead déjà chargé"}
                         onClick={ouvrirConceptionToiture}>
-                  🏠 Concevoir la toiture (3D)
+                  🏠 Concevoir la toiture (3D){roofReady ? ' 📍' : ''}
                 </Button>
               )}
               <Button type="button" size="sm" className="gen-btn-orange"
@@ -1015,9 +1047,11 @@ export default function LeadForm({
                 {lead?.id && (
                   <div style={{ margin: '0 0 8px' }}>
                     <Button type="button" size="sm" className="gen-btn-orange"
-                            title="Ouvrir l'outil de conception 3D du site avec ce lead déjà chargé"
+                            title={roofReady
+                              ? 'Repère toit (GPS) disponible — ouvrir le plan déjà positionné'
+                              : "Ouvrir l'outil de conception 3D du site avec ce lead déjà chargé"}
                             onClick={ouvrirConceptionToiture}>
-                      🏠 Concevoir la toiture (3D)
+                      🏠 Concevoir la toiture (3D){roofReady ? ' 📍' : ''}
                     </Button>
                   </div>
                 )}
