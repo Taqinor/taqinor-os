@@ -51,6 +51,8 @@ from .public_views import (
     # les appelle ici, pas sous `public/` — jamais de logique dupliquée).
     proposal_contact_request, proposal_request_otp,
     proposal_engagement,  # XSAL16
+    proposal_virement_declare,  # QX33be
+    suivi_public,  # QX34
 )
 from .dashboard_view import dashboard_quote_to_cash
 from .insights_view import cash_flow_forecast, analyse_facturation_view  # ZFAC10
@@ -149,6 +151,11 @@ urlpatterns = [
     # côté page proposition part dans docs/WEB_PLAN.md).
     path('proposal/<str:token>/engagement/', proposal_engagement,
          name='proposal-engagement'),
+    # QX33be — déclaration de virement d'acompte (client).
+    path('proposal/<str:token>/virement/', proposal_virement_declare,
+         name='proposal-virement-ventes'),
+    # QX34 — suivi post-signature public en lecture seule (timeline jalons).
+    path('suivi/<str:token>/', suivi_public, name='suivi-public'),
     # Export comptable : journal des ventes + résumé TVA (.xlsx).
     path('journal-ventes/', journal_ventes, name='journal-ventes'),
     # Export comptable DGI (groundwork) : factures validées d'une plage,

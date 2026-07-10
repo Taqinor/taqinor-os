@@ -673,7 +673,10 @@ def sales_leaderboard(request):
             'nb_devis': 0,
             'kwc': Decimal('0'),
         })
-        slot['ca_ht'] += Decimal(d.total_ht)
+        # QX2 — CA sur le HT REMISÉ de l'option acceptée (chaîne canonique
+        # QX1), jamais le HT brut (revenu réel signé, non gonflé).
+        from apps.ventes.utils.options import option_totaux
+        slot['ca_ht'] += Decimal(str(option_totaux(d)['ht']))
         slot['nb_devis'] += 1
         slot['kwc'] += kwc_by_devis.get(d.id, Decimal('0'))
 

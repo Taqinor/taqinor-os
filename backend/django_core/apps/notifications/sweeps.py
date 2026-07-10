@@ -376,6 +376,94 @@ def _sweep_approval_reminders(company):
         return 0
 
 
+# ── QX31be — escalade speed-to-lead des leads chauds non contactés ───────────
+# Seuils défensifs (surchargables via settings).
+HOT_LEAD_SCORE_THRESHOLD = 70   # score ≥ ce seuil = lead « chaud »
+HOT_LEAD_UNREAD_MINUTES = 30    # notif d'arrivée non lue depuis ≥ N minutes
+
+
+def _lead_id_from_link(link):
+    """Extrait ``lead`` d'un deep-link « /crm/leads?lead=42 » (ou None)."""
+    if not link:
+        return None
+    import re
+    m = re.search(r'[?&]lead=(\d+)', link)
+    return int(m.group(1)) if m else None
+
+
+def _sweep_hot_leads(company):
+    """QX31be — escalade les leads CHAUDS dont la notif d'arrivée
+    (``LEAD_NEW``/``LEAD_ASSIGNED``) reste NON LUE au-delà du seuil minutes.
+
+    In-lane : lit les ``Notification`` (cette app) ; le score du lead est lu via
+    le sélecteur crm ``get_company_lead`` (jamais un import de modèle crm).
+    Idempotent : une escalade par notif d'origine (déduplication par link).
+    Best-effort par société."""
+    from django.conf import settings
+    from django.utils import timezone as tz
+    from .models import Notification
+
+    score_min = getattr(
+        settings, 'HOT_LEAD_SCORE_THRESHOLD', HOT_LEAD_SCORE_THRESHOLD)
+    minutes = getattr(
+        settings, 'HOT_LEAD_UNREAD_MINUTES', HOT_LEAD_UNREAD_MINUTES)
+    cutoff = tz.now() - timedelta(minutes=minutes)
+    posted = 0
+    try:
+        from apps.crm.selectors import get_company_lead
+    except Exception:  # pragma: no cover — crm indisponible
+        return 0
+
+    unread = Notification.objects.filter(
+        company=company, read=False,
+        event_type__in=[EventType.LEAD_NEW, EventType.LEAD_ASSIGNED],
+        created_at__lte=cutoff,
+    ).select_related('recipient')[:500]
+
+    for notif in unread:
+        lead_id = _lead_id_from_link(notif.link)
+        if not lead_id:
+            continue
+        lead = get_company_lead(company, lead_id)
+        score = getattr(lead, 'score', None) if lead is not None else None
+        if score is None or score < score_min:
+            continue
+        esc_link = notif.link or f'/crm/leads?lead={lead_id}'
+        # Idempotence : une escalade par lead (dédup par link du jour).
+        if _already_notified_today(
+                company, EventType.HOT_LEAD_UNREAD, esc_link):
+            continue
+        title = 'Lead chaud non contacté'
+        body = (f'Un lead à fort potentiel (score {score}) attend un premier '
+                f'contact depuis plus de {minutes} min. Contactez-le vite '
+                '(21× de chances de qualifier si < 5 min).')
+        # Escalade aux managers EN PLUS du destinataire initial.
+        for mgr in _managers(company):
+            notify(mgr, EventType.HOT_LEAD_UNREAD, title, body,
+                   link=esc_link, company=company)
+            posted += 1
+        if notif.recipient_id:
+            notify(notif.recipient, EventType.HOT_LEAD_UNREAD, title, body,
+                   link=esc_link, company=company)
+            posted += 1
+    return posted
+
+
+@shared_task(name='notifications.sweep_hot_leads')
+def sweep_hot_leads():
+    """QX31be — balayage rapide (cadence minutes) : escalade les leads chauds
+    dont la notif d'arrivée reste non lue. Best-effort par société."""
+    total = 0
+    for company in _companies():
+        try:
+            total += _sweep_hot_leads(company)
+        except Exception:  # pragma: no cover
+            logger.warning('sweeps: hot_leads société %s échouée',
+                           getattr(company, 'pk', None), exc_info=True)
+    logger.info('sweep_hot_leads: %s escalade(s)', total)
+    return total
+
+
 # ── Tâche Celery Beat ─────────────────────────────────────────────────────────
 
 @shared_task(name='notifications.sweep_daily')

@@ -113,4 +113,55 @@ def capture_inbound_email(from_email='', subject='', body='', company=None,
         sujet=(subject or '')[:300], corps=body or '',
         reference=reference,
     )
+    # QX36 — une réponse rattachée à un DEVIS surface dans son chatter + notifie
+    # le vendeur (sinon la réponse client atterrissait dans le vide). Best-
+    # effort : jamais bloquant.
+    if devis is not None:
+        _notify_devis_reply(devis, from_email, subject)
     return log
+
+
+def _notify_devis_reply(devis, from_email, subject):
+    """QX36 — chatter + notification vendeur sur une réponse email à un devis."""
+    try:
+        from .models import DevisActivity
+        DevisActivity.objects.create(
+            company=devis.company, devis=devis,
+            kind=DevisActivity.Kind.NOTE,
+            body=(f'Réponse email reçue de {from_email or "?"} : '
+                  f'« {(subject or "").strip()[:120]} »'))
+    except Exception:  # noqa: BLE001 — best-effort
+        pass
+    try:
+        from apps.notifications.services import notify
+        from apps.notifications.models import EventType
+        owner = getattr(devis, 'created_by', None)
+        if owner is not None:
+            notify(
+                owner, EventType.DEVIS_REPLY,
+                title=f'Réponse client — devis {devis.reference}',
+                body=(subject or '')[:200],
+                link=f'/ventes/devis?devis={devis.id}',
+                company=devis.company)
+    except Exception:  # noqa: BLE001 — best-effort
+        pass
+
+
+def ventes_inbound_handler(message, company):
+    """QX36 — handler du bus ``core.email_intake`` : route une réponse email
+    portant une référence DEV-…/FAC-… vers ``capture_inbound_email`` (chatter +
+    notification sur le devis). ``core`` n'importe jamais ``apps.ventes`` —
+    même patron de découplage que le handler SAV. Best-effort : un handler qui
+    lève n'arrête pas les autres (le dispatcher core encaisse)."""
+    return capture_inbound_email(
+        from_email=getattr(message, 'from_email', '') or '',
+        subject=getattr(message, 'subject', '') or '',
+        body=getattr(message, 'body', '') or '',
+        company=company)
+
+
+def register_ventes_inbound_handler():
+    """QX36 — abonne ``ventes_inbound_handler`` au bus e-mail entrant, câblé
+    depuis ``VentesConfig.ready()``."""
+    from core.email_intake import register_handler
+    register_handler(ventes_inbound_handler)

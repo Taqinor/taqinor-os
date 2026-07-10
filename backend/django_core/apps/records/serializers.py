@@ -73,6 +73,10 @@ class ActivitySerializer(serializers.ModelSerializer):
     # Cible lisible : "crm.lead" + id (pour les liens du cockpit).
     target_model = serializers.SerializerMethodField()
     target_label = serializers.SerializerMethodField()
+    # QX25be — téléphone de la cible (lead/client) pour rendre « Mes activités »
+    # ACTIONNABLE (tel:/wa.me sur chaque ligne). Résolu via un sélecteur crm,
+    # jamais un import de ``apps.crm.models`` ici. None si indisponible.
+    target_phone = serializers.SerializerMethodField()
 
     class Meta:
         model = Activity
@@ -81,7 +85,7 @@ class ActivitySerializer(serializers.ModelSerializer):
             'summary', 'note', 'due_date', 'assigned_to', 'assigned_to_nom',
             'done', 'done_at', 'done_by', 'auto_relance', 'state',
             'personnelle', 'object_id', 'target_model', 'target_label',
-            'created_at',
+            'target_phone', 'created_at',
         ]
         read_only_fields = ['done', 'done_at', 'done_by', 'auto_relance',
                             'object_id', 'created_at']
@@ -108,6 +112,35 @@ class ActivitySerializer(serializers.ModelSerializer):
                 prenom = getattr(target, 'prenom', '') or ''
                 return f'{val} {prenom}'.strip() if attr == 'nom' else str(val)
         return str(target)
+
+    def get_target_phone(self, obj):
+        """QX25be — téléphone de la cible (lead/client), via un sélecteur crm.
+
+        Best-effort : None si la cible n'est pas un lead/client crm, si
+        introuvable, ou si aucun téléphone. Company déduite du contexte requête
+        (jamais du corps). Ne lève jamais."""
+        ct = obj.content_type
+        if ct is None or ct.app_label != 'crm':
+            return None
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is None:
+            return None
+        try:
+            from apps.crm import selectors as crm_selectors
+            model = ct.model
+            if model == 'lead':
+                rows = crm_selectors.lead_contact_identifiers(
+                    company, [obj.object_id])
+                return (rows[0]['telephone'] or None) if rows else None
+            if model == 'client':
+                client = crm_selectors.get_company_client(
+                    company, obj.object_id)
+                if client is not None:
+                    return (getattr(client, 'telephone', '') or None)
+        except Exception:  # noqa: BLE001 — best-effort
+            return None
+        return None
 
 
 class ChatterActivitySerializer(serializers.ModelSerializer):

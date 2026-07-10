@@ -65,17 +65,33 @@ def _from_email():
     return getattr(settings, 'DEFAULT_FROM_EMAIL', '') or 'noreply@erp.local'
 
 
+def _reply_to_address():
+    """QX36 — adresse Reply-To des emails sortants (devis/facture).
+
+    Pointe vers la boîte entrante relevée par ``core.email_intake`` /
+    ``ventes.inbound_email`` pour qu'une réponse client revienne s'attacher au
+    devis. Précédence : ``INBOUND_REPLY_EMAIL`` (settings/env) → adresse
+    d'expédition par défaut. Vide → pas de Reply-To (comportement inchangé)."""
+    return (getattr(settings, 'INBOUND_REPLY_EMAIL', '') or '').strip()
+
+
 def _send(to_email, sujet, corps, attachment=None, attachment_name=None):
     """Envoie via le backend Django configuré. Retourne (ok, erreur).
 
     Sans clé configurée → backend console → l'email est « envoyé » sans appel
     réseau ni exception (NO-OP). Toute exception réelle est capturée et
-    renvoyée comme erreur, jamais propagée à l'appelant."""
+    renvoyée comme erreur, jamais propagée à l'appelant.
+
+    QX36 — pose un ``Reply-To`` vers la boîte entrante (si configurée) pour
+    qu'une réponse client atterrisse sur le fil du devis (voir
+    ``ventes.inbound_email``)."""
     try:
         connection = get_connection(fail_silently=False)
+        reply_to = _reply_to_address()
         msg = EmailMessage(
             subject=sujet, body=corps, from_email=_from_email(),
-            to=[to_email], connection=connection)
+            to=[to_email], connection=connection,
+            reply_to=[reply_to] if reply_to else None)
         if attachment and attachment_name:
             msg.attach(attachment_name, attachment, 'application/pdf')
         msg.send(fail_silently=False)
@@ -89,17 +105,37 @@ def _document_pdf(document):
     """Récupère les octets du PDF stocké d'un document (best-effort).
 
     Renvoie (bytes, nom_fichier) ou (None, None). Jamais d'exception remontée :
-    un PDF indisponible n'empêche pas l'envoi du corps de l'email."""
+    un PDF indisponible n'empêche pas l'envoi du corps de l'email.
+
+    QX9 — pour un devis signé, PRÉFÈRE la clé du PDF SIGNÉ persistée sur le
+    ``DevisSignature`` (``signed_pdf_key``) : c'est l'exemplaire promis
+    « ci-joint votre exemplaire signé ». À défaut, on retombe sur
+    ``document.fichier_pdf``. La branche « aucune pièce jointe » est désormais
+    journalisée (elle était silencieuse — un email promettant un PDF partait
+    sans PDF sans trace)."""
     key = getattr(document, 'fichier_pdf', None)
-    if not key:
+    # QX9 — préfère l'exemplaire signé s'il existe (devis accepté).
+    signed_key = None
+    try:
+        sig = getattr(document, 'signature', None)
+        if sig is not None:
+            signed_key = getattr(sig, 'signed_pdf_key', None) or None
+    except Exception:  # noqa: BLE001 — pas de signature liée → ignore
+        signed_key = None
+    chosen = signed_key or key
+    ref = getattr(document, 'reference', 'document')
+    if not chosen:
+        logger.warning(
+            'QX9: aucun PDF disponible en pièce jointe pour %s '
+            '(ni signed_pdf_key ni fichier_pdf) — email envoyé sans exemplaire',
+            ref)
         return None, None
     try:
         from .utils.pdf import download_pdf
-        data = download_pdf(key)
-        ref = getattr(document, 'reference', 'document')
+        data = download_pdf(chosen)
         return data, f'{ref}.pdf'
     except Exception as exc:
-        logger.warning('PDF indisponible pour pièce jointe : %s', exc)
+        logger.warning('PDF indisponible pour pièce jointe (%s) : %s', ref, exc)
         return None, None
 
 
