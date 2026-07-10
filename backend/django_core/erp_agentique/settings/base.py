@@ -393,6 +393,9 @@ CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 CELERY_TASK_ROUTES = {
     'ventes.generate_devis_pdf': {'queue': 'interactive'},
     'ventes.generate_facture_pdf': {'queue': 'interactive'},
+    # SCA41 — export xlsx volumineux déclenché par une action utilisateur → même
+    # queue `interactive` que les rendus PDF (pilote de NTPLT29/30).
+    'ventes.build_async_export': {'queue': 'interactive'},
     'chat.transcribe_voice_attachment': {'queue': 'interactive'},
     # Toutes les tâches planifiées (beat_schedule) → `scheduled`.
     'ventes.check_overdue_factures': {'queue': 'scheduled'},
