@@ -3246,6 +3246,146 @@ def dupliquer_kit(kit, user=None, facteur_echelle=None):
     return copie
 
 
+# ── XMFG19 — Remplacement de masse d'un composant dans les nomenclatures ───
+
+def remplacer_composant_masse(company, *, produit_ancien_id,
+                              produit_nouveau_id, ratio_quantite=None,
+                              dry_run=True, user=None):
+    """XMFG19 — remplace `produit_ancien` par `produit_nouveau` dans TOUTES
+    les nomenclatures de la société : kits stock (KitProduit) ET kits de
+    pré-assemblage (installations.Kit, via ses selectors/services — jamais
+    ses models importés ici).
+
+    `dry_run=True` (défaut) : PRÉVIEW seule — liste les kits impactés des
+    deux modules sans rien modifier. `dry_run=False` : application ATOMIQUE
+    (une seule transaction pour les deux modules), chaque kit modifié créant
+    sa révision XMFG18, plus UNE ligne d'audit récapitulative. Un kit dont
+    la nomenclature contient DÉJÀ le produit nouveau voit les deux lignes
+    fusionnées (quantités additionnées) — jamais de doublon (kit, produit).
+
+    Renvoie {'dry_run', 'kits_stock': [...], 'kits_installations': [...],
+    'nb_total'}. Lève ValueError sur produit inconnu / identique."""
+    from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+    from django.db import transaction
+    from .models import Produit, KitComposant
+
+    if str(produit_ancien_id) == str(produit_nouveau_id):
+        raise ValueError(
+            'Le produit de remplacement doit être différent du produit '
+            'remplacé.')
+    ancien = Produit.objects.filter(
+        company=company, id=produit_ancien_id).first()
+    nouveau = Produit.objects.filter(
+        company=company, id=produit_nouveau_id).first()
+    if ancien is None or nouveau is None:
+        raise ValueError('Produit introuvable pour cette société.')
+
+    ratio = None
+    if ratio_quantite is not None:
+        try:
+            ratio = Decimal(str(ratio_quantite))
+        except (InvalidOperation, TypeError, ValueError):
+            raise ValueError('Ratio de quantité invalide.')
+        if ratio <= 0:
+            raise ValueError('Le ratio de quantité doit être positif.')
+
+    def _nouvelle_quantite(quantite):
+        quantite = quantite or Decimal('0')
+        if ratio is not None:
+            quantite = (quantite * ratio).quantize(
+                Decimal('0.01'), rounding=ROUND_HALF_UP)
+        return quantite
+
+    # ── Préview stock ──
+    lignes_stock = (KitComposant.objects
+                    .filter(kit__company=company, produit_id=ancien.id)
+                    .select_related('kit')
+                    .order_by('kit__nom', 'id'))
+    kits_stock = [{
+        'kit_id': c.kit_id,
+        'kit_nom': c.kit.nom,
+        'quantite_avant': str(c.quantite),
+        'quantite_apres': str(_nouvelle_quantite(c.quantite)),
+    } for c in lignes_stock]
+
+    # ── Préview installations (lecture via selectors — cross-app propre) ──
+    from apps.installations.selectors import kits_utilisant_produit
+    kits_inst_preview = kits_utilisant_produit(company, ancien.id)
+    kits_installations = [{
+        'kit_id': k['kit_id'],
+        'kit_nom': k['kit_nom'],
+        'quantite_avant': str(k['quantite']),
+        'quantite_apres': str(
+            int((Decimal(k['quantite'] or 0) * ratio).to_integral_value(
+                rounding=ROUND_HALF_UP)) or 1
+            if ratio is not None and k['quantite'] else k['quantite']),
+    } for k in kits_inst_preview]
+
+    resultat = {
+        'dry_run': bool(dry_run),
+        'produit_ancien': ancien.nom,
+        'produit_nouveau': nouveau.nom,
+        'kits_stock': kits_stock,
+        'kits_installations': kits_installations,
+        'nb_total': len(kits_stock) + len(kits_installations),
+    }
+    if dry_run:
+        return resultat
+
+    # ── Application ATOMIQUE (stock + installations, une transaction) ──
+    with transaction.atomic():
+        kits_touches = {}
+        for c in lignes_stock:
+            existant = (KitComposant.objects
+                        .filter(kit_id=c.kit_id, produit_id=nouveau.id)
+                        .exclude(id=c.id)
+                        .first())
+            nouvelle_qte = _nouvelle_quantite(c.quantite)
+            if existant is not None:
+                # Fusion : le kit contient déjà le produit nouveau.
+                existant.quantite = (
+                    (existant.quantite or Decimal('0')) + nouvelle_qte)
+                existant.save(update_fields=['quantite'])
+                c.delete()
+            else:
+                c.produit_id = nouveau.id
+                c.quantite = nouvelle_qte
+                c.save(update_fields=['produit', 'quantite'])
+            kits_touches[c.kit_id] = c.kit
+        for kit in kits_touches.values():
+            snapshot_revision_kit(kit, user=user)
+
+        # Écriture installations via SON service (jamais ses models ici).
+        from apps.installations.services import remplacer_composant_kits
+        appliques_inst = remplacer_composant_kits(
+            company, produit_ancien_id=ancien.id,
+            produit_nouveau_id=nouveau.id, ratio=ratio, user=user)
+        resultat['kits_installations'] = [{
+            'kit_id': k['kit_id'],
+            'kit_nom': k['kit_nom'],
+            'quantite_avant': str(k['quantite_avant']),
+            'quantite_apres': str(k['quantite_apres']),
+        } for k in appliques_inst]
+        resultat['nb_total'] = (
+            len(resultat['kits_stock'])
+            + len(resultat['kits_installations']))
+
+        # Ligne d'audit récapitulative (best-effort, jamais bloquante).
+        from apps.audit.recorder import record
+        from apps.audit.models import AuditLog
+        record(
+            AuditLog.Action.UPDATE,
+            instance=nouveau,
+            company=company, user=user,
+            detail=(
+                f'Remplacement de masse : « {ancien.nom} » → '
+                f'« {nouveau.nom} » dans {resultat["nb_total"]} '
+                f'nomenclature(s)'
+                + (f' (ratio quantité ×{ratio})' if ratio is not None
+                   else '') + '.'))
+    return resultat
+
+
 # ── XMFG5 — Coût de revient du kit : roll-up + structure + stock potentiel ──
 # INTERNE — le coût/marge n'est visible qu'aux rôles responsable/admin
 # (gardé côté vue) ; le prix d'achat/coût n'apparaît JAMAIS sur un document

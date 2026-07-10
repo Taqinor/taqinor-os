@@ -19,7 +19,8 @@ from ..serializers import KitProduitSerializer
 
 READ_ACTIONS = ['list', 'retrieve', 'exploser', 'revisions',
                 'composition_au']
-WRITE_ACTIONS = ['create', 'update', 'partial_update', 'dupliquer']
+WRITE_ACTIONS = ['create', 'update', 'partial_update', 'dupliquer',
+                 'remplacer_composant']
 
 
 class KitProduitViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -157,3 +158,28 @@ class KitProduitViewSet(TenantMixin, viewsets.ModelViewSet):
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(
             self.get_serializer(copie).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'], url_path='remplacer-composant')
+    def remplacer_composant(self, request):
+        """XMFG19 — remplacement de MASSE d'un composant dans toutes les
+        nomenclatures de la société (kits stock + kits de pré-assemblage
+        installations). Body : `produit_ancien`, `produit_nouveau`,
+        `ratio_quantite` (optionnel), `dry_run` (défaut true = préview).
+        L'application (dry_run=false) est ATOMIQUE ; chaque kit modifié crée
+        sa révision XMFG18 + une ligne d'audit récapitulative."""
+        from ..services import remplacer_composant_masse
+        dry_run = request.data.get('dry_run', True)
+        if isinstance(dry_run, str):
+            dry_run = dry_run.lower() not in ('0', 'false', 'non')
+        try:
+            resultat = remplacer_composant_masse(
+                request.user.company,
+                produit_ancien_id=request.data.get('produit_ancien'),
+                produit_nouveau_id=request.data.get('produit_nouveau'),
+                ratio_quantite=request.data.get('ratio_quantite'),
+                dry_run=dry_run,
+                user=request.user)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(resultat)
