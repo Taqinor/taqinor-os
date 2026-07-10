@@ -375,11 +375,18 @@ def scan_handrolled_models(app: str, text: str) -> list[str]:
     à la main dans ``text``. ``app`` : label d'app.
 
     Les apps qui DÉFINISSENT le socle (``core``/``authentication``) sont
-    exemptées (leur FK ``company`` à la main est légitime)."""
+    exemptées (leur FK ``company`` à la main est légitime).
+
+    Un modèle qui HÉRITE de ``TenantModel`` et REdéclare ``company`` à
+    l'identique n'est PAS un hand-roll : c'est le motif ARC1 documenté de
+    préservation du ``related_name`` historique (cf. docstring de
+    ``core.models.TenantModel`` et les pilotes ``notifications``)."""
     if app in SOCLE_DEFINING_APPS:
         return []
     found: list[str] = []
-    for name, _bases, body in _class_blocks(text):
+    for name, bases, body in _class_blocks(text):
+        if "TenantModel" in bases:
+            continue  # motif ARC1 : redéclaration légitime sur le socle
         if HANDROLLED_COMPANY_FK_RE.search(body):
             found.append(f"{app}.{name}")
     return found
