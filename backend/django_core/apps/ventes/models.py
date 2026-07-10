@@ -192,6 +192,19 @@ class Devis(models.Model):
         verbose_name_plural = 'Devis'
         ordering = ['-date_creation']
         unique_together = [('company', 'reference')]
+        # SCA39 — index chemin-de-l'argent (sous-ensemble Devis de NTPLT20).
+        # (company, statut) couvre les listes filtrées par statut (11+ sites) ;
+        # (company, date_creation) couvre la liste par défaut (scopée société,
+        # triée -date_creation). Posés SANS verrou d'écriture bloquant via
+        # AddIndexConcurrently + lock_timeout (YOPSB6) dans la migration.
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='ventes_devis_co_statut_idx'),
+            models.Index(
+                fields=['company', 'date_creation'],
+                name='ventes_devis_co_datecrea_idx'),
+        ]
 
     def __str__(self):
         return self.reference
@@ -810,6 +823,19 @@ class Facture(models.Model):
         verbose_name_plural = 'Factures'
         ordering = ['-date_emission']
         unique_together = [('company', 'reference')]
+        # SCA39 — index chemin-de-l'argent (sous-ensemble Facture de NTPLT20).
+        # (company, statut) couvre les listes filtrées par statut (impayés,
+        # en_retard…) ; (company, date_emission) couvre la liste par défaut
+        # (scopée société, triée -date_emission). Posés SANS verrou d'écriture
+        # bloquant via AddIndexConcurrently + lock_timeout (YOPSB6).
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='ventes_fact_co_statut_idx'),
+            models.Index(
+                fields=['company', 'date_emission'],
+                name='ventes_fact_co_dateemis_idx'),
+        ]
 
     def __str__(self):
         return self.reference
