@@ -3051,42 +3051,95 @@ def previsions_reappro(company, nb_mois=6):
 # attributs sur le Produit composant au moment de l'insertion. Point d'entrée
 # cross-app : `ventes` insère un kit dans un devis en appelant CE service (puis
 # crée ses propres lignes de devis), jamais en important le modèle stock.
+#
+# XMFG17 — nomenclature multi-niveaux : un composant peut être un SOUS-KIT
+# (`composant_kit`, XOR avec `produit`). L'explosion devient RÉCURSIVE :
+# un sous-kit s'explose à son tour, ses lignes produit remontent (aplaties)
+# dans le résultat du kit parent, quantités multipliées à chaque niveau.
+# Garde anti-cycle (un kit ne peut jamais se contenir lui-même, directement
+# ou via une chaîne de sous-kits) + profondeur raisonnable (10 niveaux).
 
-def exploser_kit(kit, quantite_kit=1):
-    """Explose un kit en ses lignes composant pour ``quantite_kit`` unités.
+MAX_PROFONDEUR_KIT = 10
+
+
+class KitCycleError(ValueError):
+    """XMFG17 — un kit se contient lui-même (directement ou via un sous-kit).
+    Message clair pour le front (409/400 côté vue)."""
+
+
+def exploser_kit(kit, quantite_kit=1, *, _chemin=None, _profondeur=0):
+    """Explose un kit en ses lignes composant PRODUIT (récursif à travers les
+    sous-kits XMFG17) pour ``quantite_kit`` unités.
 
     Renvoie une liste de dicts triés par désignation :
       {produit_id, sku, designation, quantite, prix_vente_unitaire, tva,
        marque, disponible}
-    où ``quantite`` = quantité du composant × ``quantite_kit``. Le PRIX, la TVA
-    et la MARQUE proviennent du ``Produit`` (DC36 — jamais stockés sur le kit).
+    où ``quantite`` = quantité du composant × ``quantite_kit`` × le produit des
+    facteurs d'échelle de chaque niveau parent. Le PRIX, la TVA et la MARQUE
+    proviennent du ``Produit`` (DC36 — jamais stockés sur le kit). Un même
+    produit utilisé à plusieurs niveaux (ou dans plusieurs sous-kits) apparaît
+    en PLUSIEURS lignes agrégées par produit (quantités cumulées).
     ``prix_vente_unitaire`` est le prix de vente catalogue (client-facing OK).
     Le prix d'ACHAT n'est jamais exposé ici. INTERNE/écran ; côté ventes c'est
-    cette liste qui devient des lignes de devis."""
+    cette liste qui devient des lignes de devis.
+
+    Lève ``KitCycleError`` si ``kit`` se retrouve dans sa propre chaîne de
+    sous-kits (cycle) ; ``ValueError`` si la profondeur dépasse
+    ``MAX_PROFONDEUR_KIT`` (nomenclature anormalement profonde — probable
+    erreur de saisie)."""
     from decimal import Decimal, InvalidOperation
     try:
         facteur = Decimal(str(quantite_kit))
     except (InvalidOperation, TypeError, ValueError):
         facteur = Decimal('1')
-    out = []
+
+    chemin = _chemin if _chemin is not None else set()
+    if kit.id in chemin:
+        raise KitCycleError(
+            f'Nomenclature cyclique détectée : le kit "{kit.nom}" se '
+            'contient lui-même (directement ou via un sous-kit).')
+    if _profondeur > MAX_PROFONDEUR_KIT:
+        raise ValueError(
+            f'Nomenclature trop profonde (> {MAX_PROFONDEUR_KIT} niveaux) '
+            f'pour le kit "{kit.nom}" — vérifiez la composition.')
+    chemin = chemin | {kit.id}
+
+    par_produit = {}
     composants = (kit.composants
-                  .select_related('produit')
-                  .order_by('produit__nom'))
+                  .select_related('produit', 'composant_kit')
+                  .order_by('id'))
     for c in composants:
-        p = c.produit
         qte = (c.quantite or Decimal('0')) * facteur
-        out.append({
-            'produit_id': p.id,
-            'sku': p.sku or '',
-            'designation': p.nom,
-            'quantite': qte,
-            # DC36 — prix / TVA / marque lus sur le composant, jamais sur le kit.
-            'prix_vente_unitaire': p.prix_vente,
-            'tva': p.tva,
-            'marque': p.marque,
-            'disponible': p.quantite_stock,
-        })
-    return out
+        if c.produit_id:
+            p = c.produit
+            existant = par_produit.get(p.id)
+            if existant is not None:
+                existant['quantite'] += qte
+                continue
+            par_produit[p.id] = {
+                'produit_id': p.id,
+                'sku': p.sku or '',
+                'designation': p.nom,
+                'quantite': qte,
+                # DC36 — prix / TVA / marque lus sur le composant, jamais le kit.
+                'prix_vente_unitaire': p.prix_vente,
+                'tva': p.tva,
+                'marque': p.marque,
+                'disponible': p.quantite_stock,
+            }
+        else:
+            # XMFG17 — sous-kit : explosion récursive, lignes produit
+            # remontées (aplaties) et agrégées avec celles du niveau courant.
+            sous_lignes = exploser_kit(
+                c.composant_kit, qte, _chemin=chemin,
+                _profondeur=_profondeur + 1)
+            for ligne in sous_lignes:
+                existant = par_produit.get(ligne['produit_id'])
+                if existant is not None:
+                    existant['quantite'] += ligne['quantite']
+                else:
+                    par_produit[ligne['produit_id']] = dict(ligne)
+    return sorted(par_produit.values(), key=lambda x: x['designation'])
 
 
 def exploser_kit_par_id(company, kit_id, quantite_kit=1):
@@ -3105,45 +3158,106 @@ def exploser_kit_par_id(company, kit_id, quantite_kit=1):
 # (gardé côté vue) ; le prix d'achat/coût n'apparaît JAMAIS sur un document
 # client ni dans un PDF.
 
-def structure_kit(kit):
-    """XMFG5 — nomenclature indentée d'un kit : par composant, quantité,
-    disponibilité (`quantite_disponible` = stock − réservé), coût unitaire
-    (DC28 `cout_achat_courant`) et coût total roll-up. Renvoie
-    {kit_id, kit_nom, composants:[{produit_id, sku, designation, quantite,
-    quantite_disponible, cout_unitaire, cout_total, prix_vente}],
-    cout_total_roll_up, marge, disponibilite_potentielle} où
-    `disponibilite_potentielle` = min(dispo composant ÷ quantité) (combien de
-    kits sont assemblables avec le stock actuel, 0 si un composant manque).
-    INTERNE (coût/marge) — jamais client-facing."""
+def _structure_kit_lignes(kit, reserves, *, niveau=0, _chemin=None,
+                          _profondeur=0):
+    """XMFG17 — collecte RÉCURSIVE des lignes indentées (niveau 0 = racine)
+    + roll-up (coût/prix-vente/dispo potentielle) traversant les sous-kits.
+    Sous-fonction interne de `structure_kit` ; garde anti-cycle/profondeur
+    identique à `exploser_kit`."""
     from decimal import Decimal
-    reserves = reserved_quantities(kit.company)
-    composants = kit.composants.select_related('produit').order_by(
-        'produit__nom')
+
+    chemin = _chemin if _chemin is not None else set()
+    if kit.id in chemin:
+        raise KitCycleError(
+            f'Nomenclature cyclique détectée : le kit "{kit.nom}" se '
+            'contient lui-même (directement ou via un sous-kit).')
+    if _profondeur > MAX_PROFONDEUR_KIT:
+        raise ValueError(
+            f'Nomenclature trop profonde (> {MAX_PROFONDEUR_KIT} niveaux) '
+            f'pour le kit "{kit.nom}" — vérifiez la composition.')
+    chemin = chemin | {kit.id}
+
     lignes = []
     cout_total = Decimal('0')
     prix_vente_total = Decimal('0')
     disponibilite_potentielle = None
+    composants = (kit.composants
+                  .select_related('produit', 'composant_kit')
+                  .order_by('id'))
     for c in composants:
-        p = c.produit
         quantite = c.quantite or Decimal('0')
-        dispo = Decimal(str(p.quantite_stock)) - Decimal(
-            str(reserves.get(p.id, 0)))
-        cout_unitaire = cout_achat_courant(p)
-        cout_ligne = (cout_unitaire * quantite).quantize(Decimal('0.01'))
-        cout_total += cout_ligne
-        prix_vente_total += (p.prix_vente or Decimal('0')) * quantite
-        if quantite > 0:
-            kits_possibles = int((dispo / quantite).to_integral_value(
-                rounding='ROUND_FLOOR')) if dispo > 0 else 0
-            disponibilite_potentielle = kits_possibles if (
-                disponibilite_potentielle is None
-            ) else min(disponibilite_potentielle, kits_possibles)
-        lignes.append({
-            'produit_id': p.id, 'sku': p.sku or '', 'designation': p.nom,
-            'quantite': quantite, 'quantite_disponible': dispo,
-            'cout_unitaire': cout_unitaire, 'cout_total': cout_ligne,
-            'prix_vente': p.prix_vente,
-        })
+        if c.produit_id:
+            p = c.produit
+            dispo = Decimal(str(p.quantite_stock)) - Decimal(
+                str(reserves.get(p.id, 0)))
+            cout_unitaire = cout_achat_courant(p)
+            cout_ligne = (cout_unitaire * quantite).quantize(Decimal('0.01'))
+            cout_total += cout_ligne
+            prix_vente_total += (p.prix_vente or Decimal('0')) * quantite
+            if quantite > 0:
+                kits_possibles = int((dispo / quantite).to_integral_value(
+                    rounding='ROUND_FLOOR')) if dispo > 0 else 0
+                disponibilite_potentielle = kits_possibles if (
+                    disponibilite_potentielle is None
+                ) else min(disponibilite_potentielle, kits_possibles)
+            lignes.append({
+                'niveau': niveau, 'type': 'produit',
+                'produit_id': p.id, 'sku': p.sku or '', 'designation': p.nom,
+                'quantite': quantite, 'quantite_disponible': dispo,
+                'cout_unitaire': cout_unitaire, 'cout_total': cout_ligne,
+                'prix_vente': p.prix_vente,
+            })
+        else:
+            sk = c.composant_kit
+            (sous_lignes, sous_cout, sous_prix_vente,
+             sous_dispo_potentielle) = _structure_kit_lignes(
+                sk, reserves, niveau=niveau + 1, _chemin=chemin,
+                _profondeur=_profondeur + 1)
+            # Ligne d'en-tête du sous-kit (indentée), suivie de ses composants.
+            lignes.append({
+                'niveau': niveau, 'type': 'sous_kit',
+                'composant_kit_id': sk.id, 'sku': sk.sku or '',
+                'designation': sk.nom, 'quantite': quantite,
+                'quantite_disponible': sous_dispo_potentielle,
+                'cout_unitaire': (sous_cout * quantite).quantize(
+                    Decimal('0.01')) if quantite else Decimal('0.00'),
+                'cout_total': (sous_cout * quantite).quantize(
+                    Decimal('0.01')),
+                'prix_vente': None,
+            })
+            lignes.extend(sous_lignes)
+            cout_total += (sous_cout * quantite).quantize(Decimal('0.01'))
+            prix_vente_total += sous_prix_vente * quantite
+            if quantite > 0 and sous_dispo_potentielle is not None:
+                kits_possibles = int(
+                    (Decimal(sous_dispo_potentielle) / quantite)
+                    .to_integral_value(rounding='ROUND_FLOOR'))
+                disponibilite_potentielle = kits_possibles if (
+                    disponibilite_potentielle is None
+                ) else min(disponibilite_potentielle, kits_possibles)
+    return lignes, cout_total, prix_vente_total, disponibilite_potentielle
+
+
+def structure_kit(kit):
+    """XMFG5 — nomenclature indentée d'un kit : par composant, quantité,
+    disponibilité (`quantite_disponible` = stock − réservé), coût unitaire
+    (DC28 `cout_achat_courant`) et coût total roll-up. XMFG17 — traverse
+    récursivement les SOUS-KITS (chaque ligne porte `niveau` pour un
+    affichage indenté ; une ligne sous-kit a `type: 'sous_kit'`, une ligne
+    produit `type: 'produit'`). Renvoie
+    {kit_id, kit_nom, composants:[{niveau, type, produit_id?,
+    composant_kit_id?, sku, designation, quantite, quantite_disponible,
+    cout_unitaire, cout_total, prix_vente}], cout_total_roll_up, marge,
+    disponibilite_potentielle} où `disponibilite_potentielle` = min(dispo
+    composant ÷ quantité) TOUS NIVEAUX CONFONDUS (combien de kits sont
+    assemblables avec le stock actuel, 0 si un composant manque, à
+    n'importe quel niveau). INTERNE (coût/marge) — jamais client-facing.
+
+    Lève ``KitCycleError``/``ValueError`` — mêmes gardes que `exploser_kit`."""
+    from decimal import Decimal
+    reserves = reserved_quantities(kit.company)
+    lignes, cout_total, prix_vente_total, disponibilite_potentielle = (
+        _structure_kit_lignes(kit, reserves))
     marge = (prix_vente_total - cout_total).quantize(Decimal('0.01'))
     return {
         'kit_id': kit.id, 'kit_nom': kit.nom, 'composants': lignes,

@@ -5,7 +5,7 @@ ne porte aucun prix / marque / TVA propre ; l'action ``exploser`` le décompose
 en lignes composant avec prix/TVA/marque LUS sur chaque ``Produit`` au vol.
 Multi-tenant : querysets filtrés par société + ``company`` forcée côté serveur
 (TenantMixin)."""
-from rest_framework import viewsets, filters
+from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -43,9 +43,11 @@ class KitProduitViewSet(TenantMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=['get'], url_path='exploser')
     def exploser(self, request, *args, **kwargs):
         """Explose le kit en lignes composant (param ``quantite`` ≥ 1, défaut 1).
+        XMFG17 — traverse récursivement les sous-kits ; un cycle ou une
+        profondeur excessive renvoie un 400 clair plutôt qu'une RecursionError.
         Prix / TVA / marque dérivés des produits (DC36). Le prix d'achat n'est
         jamais exposé."""
-        from ..services import exploser_kit
+        from ..services import exploser_kit, KitCycleError
         kit = self.get_object()
         try:
             quantite = float(request.query_params.get('quantite', 1) or 1)
@@ -53,21 +55,32 @@ class KitProduitViewSet(TenantMixin, viewsets.ModelViewSet):
             quantite = 1
         if quantite <= 0:
             quantite = 1
+        try:
+            lignes = exploser_kit(kit, quantite)
+        except (KitCycleError, ValueError) as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response({
             'kit_id': kit.id,
             'kit_nom': kit.nom,
             'quantite_kit': quantite,
-            'lignes': exploser_kit(kit, quantite),
+            'lignes': lignes,
         })
 
     @action(detail=True, methods=['get'], url_path='structure')
     def structure(self, request, *args, **kwargs):
         """XMFG5 — nomenclature indentée + disponibilité + kits assemblables.
+        XMFG17 — traverse récursivement les sous-kits (chaque ligne porte
+        `niveau`) ; un cycle ou une profondeur excessive renvoie un 400 clair.
         Coût/marge RÉSERVÉS responsable/admin — retirés de la réponse pour
         les autres rôles (jamais client-facing)."""
-        from ..services import structure_kit
+        from ..services import structure_kit, KitCycleError
         kit = self.get_object()
-        data = structure_kit(kit)
+        try:
+            data = structure_kit(kit)
+        except (KitCycleError, ValueError) as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         peut_voir_cout = IsResponsableOrAdmin().has_permission(request, self)
         if not peut_voir_cout:
             for ligne in data['composants']:
