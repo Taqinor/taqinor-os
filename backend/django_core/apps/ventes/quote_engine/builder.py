@@ -65,6 +65,28 @@ def _parse_watt(*texts) -> int | None:
     return None
 
 
+def _normalize_site_host(site: str) -> str:
+    """SCA27 — forme d'AFFICHAGE d'un site tenant (comme le littéral fondateur
+    ``taqinor.ma``) : sans schéma, sans ``www.``, sans chemin ni slash final.
+
+    ``https://www.helios.ma/`` → ``helios.ma``. Chaîne vide/None → '' (le moteur
+    garde alors ses littéraux historiques). N'invente jamais de domaine.
+    """
+    s = (site or "").strip()
+    if not s:
+        return ""
+    # Retire le schéma (http/https/…) puis un éventuel www.
+    if "://" in s:
+        s = s.split("://", 1)[1]
+    if s.lower().startswith("www."):
+        s = s[4:]
+    # Garde uniquement l'hôte (coupe au premier / ? #).
+    for sep in ("/", "?", "#"):
+        if sep in s:
+            s = s.split(sep, 1)[0]
+    return s.strip().rstrip("/")
+
+
 def _is_battery(designation: str) -> bool:
     return "batterie" in (designation or "").lower()
 
@@ -931,6 +953,19 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
         entreprise = {}
 
+    # ── SCA27 (complément) — site du tenant câblé au moteur résidentiel ───────
+    # ``build_quote_data`` peuplait ``entreprise`` (identité) mais laissait le
+    # renderer retomber sur ``taqinor.ma`` pour la ligne « site » du pied de page
+    # ET la base des fiches produits, faisant fuiter le site du fondateur sur le
+    # PDF d'un autre tenant. On passe désormais SON site quand il est renseigné :
+    #   • ``site_url`` = forme d'affichage de son site (helios.ma) ;
+    #   • ``links["produits"]`` = son site + '/produits' → ``theme.fiche_href``
+    #     omet naturellement les fiches taqinor.ma (base non-taqinor) ; les autres
+    #     liens pointent sur son site (aucun 404 vers le fondateur).
+    # Site ABSENT → aucune clé posée : le renderer garde ses littéraux historiques
+    # (taqinor.ma) et le rendu fondateur/sans-profil reste byte-identique (DC1).
+    _tenant_site = _normalize_site_host(entreprise.get("site_web") or "")
+
     # ── QG7 — contact du CRÉATEUR du devis (nom + téléphone) ─────────────────
     # Le bloc contact du PDF affichait uniquement la société (donc toujours le
     # fondateur). On expose le créateur (Devis.created_by : first_name/last_name/
@@ -1081,6 +1116,21 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     )
     if financing is not None:
         data["financing"] = financing
+
+    # ── SCA27 (complément) — site du tenant : ligne site + base fiches ────────
+    # Posé UNIQUEMENT quand le profil porte un site : le renderer résidentiel lit
+    # alors ``data["site_url"]``/``data["links"]`` (au lieu de ``taqinor.ma``),
+    # et ``theme.fiche_href`` omet les fiches taqinor.ma (base non-taqinor). Site
+    # absent → aucune clé → littéraux moteur historiques (byte-identique DC1).
+    if _tenant_site:
+        data["site_url"] = _tenant_site
+        data["links"] = {
+            "realisations": f"{_tenant_site}/realisations",
+            "avis": f"{_tenant_site}/realisations",
+            "produits": f"{_tenant_site}/produits",
+            "garanties": f"{_tenant_site}/garanties",
+            "signer": f"{_tenant_site}/signer/{devis.reference}",
+        }
 
     # ── QJ29 — Multi-propriétés (additif, tout optionnel) ────────────────────
     # (A) ×N villas identiques : multiplicateur whole-quote (défaut 1) qui met à
