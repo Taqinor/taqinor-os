@@ -1126,3 +1126,28 @@ def consolidation_client(client):
         'nb_factures_total': nb_factures_total,
         'par_client': par_client,
     }
+
+
+def lead_chatter_envelope(lead):
+    """ARC9 — timeline chatter du lead dans l'ENVELOPPE UNIFORME.
+
+    Étape 1 (additive) de la convergence des chatters historiques : projette
+    ``crm.LeadActivity`` vers le format commun consommé par
+    ``records.serializers.UniformChatterSerializer`` (un seul contrat de
+    lecture pour le frontend, quel que soit le modèle source). Lecture seule —
+    AUCUNE table modifiée. Le queryset est déjà borné par le lead (lui-même
+    borné société par l'appelant).
+    """
+    rows = lead.activites.select_related('user').all()
+    return [{
+        'id': a.id,
+        'kind': a.kind,
+        'field': a.field or '',
+        'field_label': a.field_label or '',
+        'old_value': a.old_value or '',
+        'new_value': a.new_value or '',
+        'body': a.body or '',
+        'user_username': a.user.username if a.user_id else None,
+        'created_at': a.created_at,
+        'source': 'crm.leadactivity',
+    } for a in rows]
