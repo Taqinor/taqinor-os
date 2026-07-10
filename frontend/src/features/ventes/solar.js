@@ -667,11 +667,17 @@ export function defaultProductLines(produits) {
 // ── Auto-remplissage (port exact de auto_fill_from_power + autofill_router) ───
 // Retourne la table complète dans l'ordre canonique du simulateur, lignes à
 // quantité nulle comprises (elles s'affichent mais ne sont pas enregistrées).
-export function autoFillLines(produits, { kwp, panelW, structureType }) {
+export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux: nbOverride }) {
   if (!kwp || kwp <= 0) return []
   const byType = indexProduits(produits)
 
-  const nbPanneaux = Math.max(1, Math.round(kwp * 1000 / panelW))
+  // QX19 — nombre de panneaux : override explicite (dérivé d'une taille kWc
+  // souhaitée) sinon dérivé de la puissance. Le kWc RÉEL est recalculé plus bas
+  // depuis la puissance du panneau EFFECTIVEMENT retenu (jamais une divergence
+  // silencieuse 550W-pour-710W).
+  const nbPanneaux = (Number(nbOverride) > 0)
+    ? Math.round(Number(nbOverride))
+    : Math.max(1, Math.round(kwp * 1000 / panelW))
   const threshold = kwp * 0.8
 
   // Sélection onduleur : plus petit modèle >= 80 % de la puissance, sinon le
@@ -761,7 +767,7 @@ export function autoFillLines(produits, { kwp, panelW, structureType }) {
     ? row(structChosen, 'Structures aluminium', nbPanneaux)
     : row(structOther, 'Structures aluminium', 0)
 
-  return [
+  const lignes = [
     row(reseau?.p ?? null, 'Onduleur réseau', reseau ? inverterQty(reseau.kw) : 1),
     row(hybride?.p ?? null, 'Onduleur hybride', hybride ? Math.max(1, inverterQty(hybride.kw)) : 1),
     row(first('smart_meter'), 'Smart Meter', smQty),
@@ -778,6 +784,15 @@ export function autoFillLines(produits, { kwp, panelW, structureType }) {
     row(first('transport'), 'Transport', 1),
     row(first('suivi'), 'Suivi journalier, maintenance chaque 12 mois pendant 2 ans', 0),
   ]
+  // QX19 — puissance du panneau EFFECTIVEMENT retenu (peut différer de panelW
+  // quand le catalogue n'a pas exactement panelW → substitution la plus proche)
+  // + nb de panneaux : l'écran recalcule le kWc RÉEL depuis ces valeurs plutôt
+  // que d'afficher un kWc théorique divergent. Métadonnées portées sur le
+  // tableau (les consommateurs qui itèrent les lignes ne les voient pas).
+  lignes.actualPanelW = panel?.w ?? panelW
+  lignes.nbPanneaux = nbPanneaux
+  lignes.kwcReel = Math.round(nbPanneaux * (panel?.w ?? panelW) / 10) / 100
+  return lignes
 }
 
 // ══ Multi-marchés (2026-06) ═══════════════════════════════════════════════════

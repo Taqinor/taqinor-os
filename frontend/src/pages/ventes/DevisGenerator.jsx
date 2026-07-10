@@ -914,12 +914,27 @@ export default function DevisGenerator({
     const manquants = generated
       .filter(r => !r.produit && parseFloat(r.quantite) > 0)
       .map(r => r.designation || 'ligne sans produit')
+    // QX19 — divergence de wattage : le catalogue a substitué un panneau d'une
+    // AUTRE puissance que celle saisie (ex. 550 W pour 710 W). Le kWc affiché
+    // (issu du wattage saisi) ne correspond alors plus aux lignes réelles. On
+    // le signale visiblement plutôt que d'expédier un système mal étiqueté.
+    const askedW = parseFloat(panelW) || 710
+    const realW = generated.actualPanelW
+    let mismatch = null
+    if (realW && Math.abs(realW - askedW) > 1) {
+      const kwcReel = generated.kwcReel
+      mismatch = `Attention : le stock ne propose pas de panneau ${askedW} W ; `
+        + `un panneau ${realW} W a été retenu. La puissance réelle du système est `
+        + `${kwcReel} kWc (et non ${kwp} kWc). Ajustez le nombre de panneaux ou le `
+        + 'wattage pour la cible voulue.'
+    }
     setErrors(e => ({
       ...e,
       autofill: manquants.length
         ? `Aucun produit du stock ne correspond à : ${[...new Set(manquants)].join(', ')}. `
           + 'Complétez le catalogue ou choisissez ces produits à la main dans les lignes.'
         : null,
+      autofillKwc: mismatch,
     }))
     setLines(withKeys(generated))
   }
@@ -1743,6 +1758,7 @@ export default function DevisGenerator({
             </div>
             <div className="mt-3 flex flex-wrap items-center justify-end gap-3">
               {errors.autofill && <span className="text-xs text-destructive">{errors.autofill}</span>}
+              {errors.autofillKwc && <span className="text-xs text-warning">{errors.autofillKwc}</span>}
               <Button type="button" className="bg-brass-400 text-nuit hover:bg-brass-500" onClick={handleAutoFill}>
                 <Zap /> Auto-remplir depuis le stock
               </Button>

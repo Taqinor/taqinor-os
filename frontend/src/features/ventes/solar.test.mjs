@@ -312,6 +312,33 @@ test('auto-fill petit système 5 panneaux : onduleur 5 kW Monophasé préféré'
   assert.equal(by('Deyness 10').quantite, 0)
 })
 
+// ── QX19 — autoFillLines surface le wattage RÉEL + nb panneaux (anti-mismatch)
+test('QX19 — autoFillLines expose actualPanelW / nbPanneaux / kwcReel', () => {
+  const kwp = 14 * 710 / 1000
+  const rows = autoFillLines(SEEDED, { kwp, panelW: 710, structureType: 'acier' })
+  assert.equal(rows.actualPanelW, 710)     // catalogue a le 710 W demandé
+  assert.equal(rows.nbPanneaux, 14)
+  assert.equal(rows.kwcReel, Math.round(14 * 710 / 10) / 100)
+})
+
+test('QX19 — nbPanneaux override (taille souhaitée kWc) pilote le nb de panneaux', () => {
+  // taille souhaitée 7.1 kWc → panneauxPourKwc(7.1,710) = 10 panneaux
+  const rows = autoFillLines(SEEDED, { kwp: 7.1, panelW: 710, structureType: 'acier', nbPanneaux: 10 })
+  assert.equal(rows.nbPanneaux, 10)
+  // la ligne panneau (nom catalogue contient « Panneau ») porte la qté override
+  const panelRow = rows.find(r => /panneau/i.test(r.designation))
+  assert.equal(panelRow.quantite, 10)
+})
+
+test('QX19 — substitution de wattage : actualPanelW reflète le panneau retenu', () => {
+  // catalogue SANS panneau 710 W → substitution vers le plus proche (550 W)
+  const CAT550 = SEEDED.filter(p => !/710/.test(p.nom))
+    .concat([{ id: 9001, nom: 'Panneau mono 550W', prix_vente: ht(1400) }])
+  const rows = autoFillLines(CAT550, { kwp: 7.1, panelW: 710, structureType: 'acier' })
+  assert.equal(rows.actualPanelW, 550)     // wattage RÉEL du panneau substitué
+  assert.notEqual(rows.actualPanelW, 710)  // divergence détectable côté écran
+})
+
 // ── QF8 — Smart Meter + Clé Wifi UNIQUEMENT sur onduleur Huawei ─────────────
 test('QF8 — catalogue 100% Deye (réseau + hybride) : Smart Meter et Wifi Dongle qté 0', () => {
   const DEYE_ONLY = [
