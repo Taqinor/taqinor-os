@@ -138,9 +138,46 @@ export const TARIFF_BY_CITY: Record<string, TariffGrid> = {
   Tanger: REGIE_TARIFF,
 };
 
-/** Grille tarifaire à appliquer pour une ville (défaut : barème RÉGIE conservateur). */
+/**
+ * WJ113 — normalisation pour un matching TOLÉRANT : casse repliée, diacritiques
+ * retirés (accents), espaces superflus effondrés. PURE, aucune dépendance.
+ */
+function normalizeCityText(s: string): string {
+  return s
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '') // diacritiques (é, à, ç…)
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Grille tarifaire à appliquer pour une ville (défaut : barème RÉGIE conservateur).
+ *
+ * WJ113 — `city` vient ICI d'un champ TEXTE LIBRE (adresse géocodée inversée,
+ * ex. « Boulevard Zerktouni, Casablanca, Maroc », ou une saisie manuelle),
+ * jamais d'une clé structurée. L'ancien matching EXACT (`TARIFF_BY_CITY[city]`)
+ * ne correspondait donc JAMAIS à une adresse réelle — inoffensif aujourd'hui
+ * puisque TOUTES les entrées de TARIFF_BY_CITY valent encore REGIE_TARIFF (le
+ * repli), mais silencieusement cassé le jour où de vraies grilles par régie
+ * seront committées (une adresse à Casablanca retomberait alors, à tort, sur
+ * le barème régie au lieu du barème Lydec). On normalise (casse/diacritiques/
+ * espaces) puis on cherche la ville connue EN SOUS-CHAÎNE dans le texte libre —
+ * jamais l'inverse (une ville connue ne doit pas être un sous-mot d'un texte
+ * plus court), ce qui couvre « Casablanca », « casablanca », « CASABLANCA »,
+ * et « Boulevard Zerktouni, Casablanca, Maroc ». AUCUNE valeur tarifaire ne
+ * change ici — seul le MATCHING devient honnête sur du texte réel.
+ */
 export function tariffForCity(city?: string): TariffGrid {
-  if (city && Object.prototype.hasOwnProperty.call(TARIFF_BY_CITY, city)) return TARIFF_BY_CITY[city];
+  if (!city) return REGIE_TARIFF;
+  const trimmed = city.trim();
+  if (!trimmed) return REGIE_TARIFF;
+  // Egalité exacte d'abord (chemin le plus rapide, cas déjà couvert avant WJ113).
+  if (Object.prototype.hasOwnProperty.call(TARIFF_BY_CITY, trimmed)) return TARIFF_BY_CITY[trimmed];
+  const normalizedInput = normalizeCityText(trimmed);
+  for (const knownCity of Object.keys(TARIFF_BY_CITY)) {
+    if (normalizedInput.includes(normalizeCityText(knownCity))) return TARIFF_BY_CITY[knownCity];
+  }
   return REGIE_TARIFF;
 }
 
