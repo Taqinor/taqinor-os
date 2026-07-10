@@ -147,6 +147,21 @@ class Fournisseur(models.Model):
         max_digits=5, decimal_places=2, default=0)
     escompte_jours = models.PositiveIntegerField(default=0)
 
+    # ── ARC24 — référentiel des conditions de paiement (additif, optionnel) ──
+    # FK nullable (string-FK — jamais d'import de apps.parametres.models ici)
+    # vers parametres.ConditionPaiement : MIROIR des trois champs numériques
+    # ci-dessus (delai_paiement_jours/fin_de_mois/escompte_pct restent MAÎTRES).
+    # Backfillée depuis les triplets distincts par la commande
+    # ``backfill_conditions_paiement``. Vide = comportement historique inchangé.
+    condition_paiement_ref = models.ForeignKey(
+        'parametres.ConditionPaiement',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='fournisseurs',
+        verbose_name='Condition de paiement (référentiel)',
+        help_text="Condition du référentiel Paramètres reflétant le délai/"
+                  "escompte de ce fournisseur (miroir).")
+
     # ── ARC18 — Pont additif vers le répertoire unifié Tiers ──
     # FK nullable (string-FK — jamais d'import de apps.tiers.models ici, stock
     # reste découplé de la couche fondation par référence string). L'identité

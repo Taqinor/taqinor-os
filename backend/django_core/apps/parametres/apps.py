@@ -39,6 +39,9 @@ class ParametresConfig(AppConfig):
         # ARC23 — référentiel des taux de TVA par société (également ré-exporté
         # par models.py) ; import ici pour l'enregistrement au démarrage.
         import apps.parametres.models_taxes  # noqa: F401
+        # ARC24 — référentiel des conditions de paiement par société (également
+        # ré-exporté par models.py) ; import ici pour l'enregistrement.
+        import apps.parametres.models_payment_terms  # noqa: F401
         # ARC23 — hook de seed « nouvelle société » des taux de TVA usuels.
         from .signup_hooks import register_parametres_signup_hooks
         register_parametres_signup_hooks()

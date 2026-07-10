@@ -14,6 +14,7 @@ from .models_audit import SettingsAuditLog
 from .models_tariff import DEFAULT_RESIDENTIAL_TIERS, TariffSettings
 from .models_translations import TranslationOverride
 from .models_taxes import TAUX_TVA_MAROCAINS, TauxTVA
+from .models_payment_terms import ConditionPaiement
 
 __all__ = [
     'CompanyProfile',
@@ -25,4 +26,5 @@ __all__ = [
     'TranslationOverride',
     'TauxTVA',
     'TAUX_TVA_MAROCAINS',
+    'ConditionPaiement',
 ]

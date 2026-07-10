@@ -657,6 +657,20 @@ class Facture(models.Model):
     # Tous deux optionnels : leur absence ne fait qu'AVERTIR, jamais bloquer.
     date_livraison = models.DateField(null=True, blank=True)
     conditions_paiement = models.TextField(blank=True, default='')
+    # ── ARC24 — référentiel des conditions de paiement (additif, optionnel) ──
+    # FK nullable (string-FK — jamais d'import de apps.parametres.models ici)
+    # vers parametres.ConditionPaiement : SOURCE du libellé par défaut. Le
+    # TextField ``conditions_paiement`` ci-dessus reste MAÎTRE (surchargeable) ;
+    # cette FK ne fait que tracer la condition référentielle choisie. Vide =
+    # comportement historique inchangé (texte libre seul).
+    condition_paiement_ref = models.ForeignKey(
+        'parametres.ConditionPaiement',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='factures',
+        verbose_name='Condition de paiement (référentiel)',
+        help_text="Condition du référentiel Paramètres — source du libellé par "
+                  "défaut. Le texte libre reste surchargeable.")
     # ── Relances / recouvrement (workstream E) — additif ──
     # Date de la prochaine relance prévue (posée à l'enregistrement d'une
     # relance) ; exclu_relances retire la facture des listes d'impayés.
@@ -834,6 +848,17 @@ class Facture(models.Model):
             lead = getattr(devis, 'lead', None) if devis is not None else None
             if lead is not None:
                 self.lead = lead
+        # ── ARC24 — défaut du libellé de conditions de paiement à la CRÉATION ──
+        # Quand une condition référentielle est reliée mais que le texte libre
+        # (mention N11) est vide, on l'initialise depuis le libellé du
+        # référentiel. UNIQUEMENT à la création (self.pk None) et si le texte est
+        # vide : le texte libre reste MAÎTRE et surchargeable, et un document
+        # existant n'est JAMAIS réécrit (immutabilité — règle #4).
+        if self.pk is None and self.condition_paiement_ref_id is not None \
+                and not (self.conditions_paiement or '').strip():
+            libelle = getattr(self.condition_paiement_ref, 'libelle', '')
+            if libelle:
+                self.conditions_paiement = libelle
         super().save(*args, **kwargs)
 
     @property
