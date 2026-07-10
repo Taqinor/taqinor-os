@@ -180,3 +180,107 @@ class ChangerStatutTests(_CreateDocTableMixin, TestCase):
         # Pas persisté : la base garde l'ancien.
         fresh = _DocDeTest.objects.get(pk=self.doc.pk)
         self.assertEqual(fresh.statut, "brouillon")
+
+
+# ── DEFECT 1 (repair) — le champ ``statut`` de l'ABSTRAIT n'est JAMAIS muté ────
+# Deux « kit docs » aux ``Statut`` DIFFÉRENTS : chacun doit porter SON PROPRE
+# champ ``statut`` (choices/default distincts), sans corrompre son frère ni le
+# champ partagé de la base abstraite ``DocumentMetier``. Avant la réparation,
+# ``__init_subclass__`` mutait EN PLACE le champ résolu par MRO (celui de
+# l'abstrait) : le dernier document défini gagnait, écrasant les choices/default
+# vus par ses frères ET par la base. On teste ici les MÉTADONNÉES de champ
+# (``_meta.get_field('statut')``) — aucune table requise (pas de DB).
+class _KitDocA(DocumentMetier):
+    """Kit doc A — 2 statuts (a1/a2)."""
+
+    class Statut(models.TextChoices):
+        A1 = "a1", "A1"
+        A2 = "a2", "A2"
+
+    class Meta:
+        app_label = "core"
+
+
+class _KitDocB(DocumentMetier):
+    """Kit doc B — 3 statuts DIFFÉRENTS (b1/b2/b3)."""
+
+    class Statut(models.TextChoices):
+        B1 = "b1", "B1"
+        B2 = "b2", "B2"
+        B3 = "b3", "B3"
+
+    class Meta:
+        app_label = "core"
+
+
+class _KitDocSansStatut(DocumentMetier):
+    """Kit doc SANS ``Statut`` propre — voie documentée « sans effet » : garde le
+    champ hérité de l'abstrait (défaut blanc), jamais les valeurs d'un frère."""
+
+    class Meta:
+        app_label = "core"
+
+
+def _choices(model):
+    return [c[0] for c in (model._meta.get_field("statut").choices or [])]
+
+
+def _default(model):
+    return model._meta.get_field("statut").default
+
+
+class DocumentMetierChampStatutIsoleTests(TestCase):
+    """DEFECT 1 — chaque document a SON champ ``statut`` ; l'abstrait est intact."""
+
+    def test_chaque_document_porte_ses_propres_choices_et_default(self):
+        self.assertEqual(_choices(_KitDocA), ["a1", "a2"])
+        self.assertEqual(_default(_KitDocA), "a1")
+        self.assertEqual(_choices(_KitDocB), ["b1", "b2", "b3"])
+        self.assertEqual(_default(_KitDocB), "b1")
+
+    def test_definir_un_document_ne_corrompt_pas_son_frere(self):
+        # _KitDocB est défini APRÈS _KitDocA ; A ne doit PAS avoir hérité les
+        # choices/default de B (le bug historique : le dernier défini gagnait).
+        self.assertEqual(_choices(_KitDocA), ["a1", "a2"])
+        self.assertEqual(_default(_KitDocA), "a1")
+        # Ce sont des objets-champs DISTINCTS (pas le champ partagé de la base).
+        champ_a = _KitDocA._meta.get_field("statut")
+        champ_b = _KitDocB._meta.get_field("statut")
+        self.assertIsNot(champ_a, champ_b)
+
+    def test_champ_de_l_abstrait_jamais_mute(self):
+        # Le champ ``statut`` de l'ABSTRAIT ``DocumentMetier`` reste vide :
+        # aucun choices, default blanc — jamais réécrit par une sous-classe.
+        champ_base = DocumentMetier._meta.get_field("statut")
+        self.assertFalse(champ_base.choices)
+        self.assertEqual(champ_base.default, "")
+
+    def test_document_sans_statut_propre_garde_un_default_blanc(self):
+        # Voie « sans effet » : pas de ``Statut`` propre → champ hérité blanc,
+        # jamais les valeurs d'un frère défini plus tard.
+        self.assertEqual(_choices(_KitDocSansStatut), [])
+        self.assertEqual(_default(_KitDocSansStatut), "")
+
+    def test_pilotes_reels_conservent_leur_contrat_statut(self):
+        # Les 2 pilotes réels (OST-, DA-) DOIVENT garder choices/default exacts —
+        # bit-identiques aux migrations 0094/0095 (max_length=32, blank=True).
+        from apps.installations.models_ordre_soustraitance import (
+            OrdreSousTraitance,
+        )
+        from apps.installations.models_demande_achat import DemandeAchat
+
+        ost = OrdreSousTraitance._meta.get_field("statut")
+        self.assertEqual(
+            [c[0] for c in ost.choices],
+            ["brouillon", "emis", "en_cours", "receptionne", "clos"])
+        self.assertEqual(ost.default, "brouillon")
+        self.assertEqual(ost.max_length, 32)
+        self.assertTrue(ost.blank)
+
+        da = DemandeAchat._meta.get_field("statut")
+        self.assertEqual(
+            [c[0] for c in da.choices],
+            ["brouillon", "soumise", "approuvee", "refusee", "commandee"])
+        self.assertEqual(da.default, "brouillon")
+        self.assertEqual(da.max_length, 32)
+        self.assertTrue(da.blank)
