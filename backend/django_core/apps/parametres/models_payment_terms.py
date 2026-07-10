@@ -17,8 +17,10 @@ Gardé dans un fichier dédié (indépendance de lane) ; enregistré via
 """
 from django.db import models
 
+from core.models import TenantModel
 
-class ConditionPaiement(models.Model):
+
+class ConditionPaiement(TenantModel):
     """Une condition de paiement nommée par société (délai + escompte)."""
 
     company = models.ForeignKey(
@@ -36,8 +38,6 @@ class ConditionPaiement(models.Model):
         max_digits=5, decimal_places=2, default=0)
     actif = models.BooleanField(default=True)
 
-    date_creation = models.DateTimeField(auto_now_add=True)
-    date_modification = models.DateTimeField(auto_now=True)
 
     class Meta:
         verbose_name = 'Condition de paiement'

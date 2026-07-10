@@ -67,7 +67,7 @@ def _parse_watt(*texts) -> int | None:
 
 def _normalize_site_host(site: str) -> str:
     """SCA27 — forme d'AFFICHAGE d'un site tenant (comme le littéral fondateur
-    ``taqinor.ma``) : sans schéma, sans ``www.``, sans chemin ni slash final.
+    ``exemple.ma``) : sans schéma, sans ``www.``, sans chemin ni slash final.
 
     ``https://www.helios.ma/`` → ``helios.ma``. Chaîne vide/None → '' (le moteur
     garde alors ses littéraux historiques). N'invente jamais de domaine.

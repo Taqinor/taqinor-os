@@ -19,8 +19,8 @@ class Migration(migrations.Migration):
                 ('code', models.CharField(max_length=20)),
                 ('libelle', models.CharField(max_length=80)),
                 ('actif', models.BooleanField(default=True)),
-                ('date_creation', models.DateTimeField(auto_now_add=True)),
-                ('date_modification', models.DateTimeField(auto_now=True)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
                 ('company', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='unites_mesure_referentiel', to='authentication.company')),
             ],
             options={

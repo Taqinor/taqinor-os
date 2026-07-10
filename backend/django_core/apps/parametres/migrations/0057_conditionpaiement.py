@@ -21,8 +21,8 @@ class Migration(migrations.Migration):
                 ('fin_de_mois', models.BooleanField(default=False)),
                 ('escompte_pct', models.DecimalField(decimal_places=2, default=0, max_digits=5)),
                 ('actif', models.BooleanField(default=True)),
-                ('date_creation', models.DateTimeField(auto_now_add=True)),
-                ('date_modification', models.DateTimeField(auto_now=True)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
                 ('company', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='conditions_paiement_referentiel', to='authentication.company')),
             ],
             options={

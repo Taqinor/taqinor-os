@@ -17,6 +17,8 @@ from decimal import Decimal
 
 from django.db import models
 
+from core.models import TenantModel
+
 
 # Taux de TVA marocains usuels (réforme 2024–2026). Le taux STANDARD (20 %) est
 # marqué ``defaut=True`` au seed : c'est lui qui alimente le défaut d'un nouveau
@@ -36,7 +38,7 @@ TAUX_TVA_MAROCAINS = [
 ]
 
 
-class TauxTVA(models.Model):
+class TauxTVA(TenantModel):
     """Un taux de TVA de référence par société (code + libellé FR + taux)."""
 
     company = models.ForeignKey(
@@ -52,8 +54,6 @@ class TauxTVA(models.Model):
     defaut = models.BooleanField(default=False)
     actif = models.BooleanField(default=True)
 
-    date_creation = models.DateTimeField(auto_now_add=True)
-    date_modification = models.DateTimeField(auto_now=True)
 
     class Meta:
         verbose_name = 'Taux de TVA'

@@ -12,6 +12,8 @@ Gardé dans un fichier dédié (indépendance de lane) ; enregistré via
 """
 from django.db import models
 
+from core.models import TenantModel
+
 
 # Unités de mesure usuelles (code stable + libellé FR affichable). ``code`` est
 # la valeur portée par ``Produit.unite_stock`` (rétro-compat : 'unité' reste le
@@ -30,7 +32,7 @@ UNITES_MESURE_DEFAUT = [
 ]
 
 
-class UniteMesure(models.Model):
+class UniteMesure(TenantModel):
     """Une unité de mesure de référence par société (code + libellé FR)."""
 
     company = models.ForeignKey(
@@ -41,8 +43,6 @@ class UniteMesure(models.Model):
     libelle = models.CharField(max_length=80)
     actif = models.BooleanField(default=True)
 
-    date_creation = models.DateTimeField(auto_now_add=True)
-    date_modification = models.DateTimeField(auto_now=True)
 
     class Meta:
         verbose_name = 'Unité de mesure'

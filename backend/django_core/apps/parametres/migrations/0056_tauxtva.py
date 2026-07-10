@@ -21,8 +21,8 @@ class Migration(migrations.Migration):
                 ('taux', models.DecimalField(decimal_places=2, max_digits=5)),
                 ('defaut', models.BooleanField(default=False)),
                 ('actif', models.BooleanField(default=True)),
-                ('date_creation', models.DateTimeField(auto_now_add=True)),
-                ('date_modification', models.DateTimeField(auto_now=True)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
                 ('company', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='taux_tva_referentiel', to='authentication.company')),
             ],
             options={
