@@ -132,6 +132,21 @@ forbidden_modules =
     apps.documents
     apps.dataimport
     apps.contact
+# ARC18/19/21 — les modules de TEST des ponts Tiers importent volontairement les
+# vrais modèles historiques (crm.Client/Lead, stock.Fournisseur, compta.Partenaire,
+# rh.DossierEmploye) et le service crm pour PROUVER que le miroir one-way et la
+# bascule flag-gatée fonctionnent de bout en bout. Ce sont des tests d'intégration
+# cross-couche, PAS un couplage de production : le code de PRODUCTION de `tiers`
+# reste strictement base-layer (aucun import statique de domaine — vérifié). On
+# ignore uniquement ces arêtes test→domaine (même motif que les exceptions
+# core.tests.* ci-dessous).
+ignore_imports =
+    apps.tiers.tests.test_arc18_bridge -> apps.crm.models
+    apps.tiers.tests.test_arc18_bridge -> apps.stock.models
+    apps.tiers.tests.test_arc19_bridge -> apps.compta.models
+    apps.tiers.tests.test_arc19_bridge -> apps.rh.models
+    apps.tiers.tests.test_arc21_source_ecriture -> apps.crm.models
+    apps.tiers.tests.test_arc21_source_ecriture -> apps.crm.services
 
 [importlinter:contract:core-foundation-is-a-base-layer]
 name = The core foundation app imports downward only (no domain-core or satellite app)
