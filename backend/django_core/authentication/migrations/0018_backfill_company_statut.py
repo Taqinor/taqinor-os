@@ -10,16 +10,35 @@ le sens inverse remet ``statut='actif'`` sur ces lignes suspendues sans toucher
 from django.db import migrations
 
 
+BATCH = 500
+
+
+def _update_par_lots(qs, **valeurs):
+    # YOPSB4 — mise à jour PAR LOTS (marqueur .iterator) : jamais d'update
+    # global non borné dans une RunPython, même sur une table réputée petite.
+    Model = qs.model
+    lot = []
+    for pk in qs.values_list('pk', flat=True).iterator(chunk_size=BATCH):
+        lot.append(pk)
+        if len(lot) >= BATCH:
+            Model.objects.filter(pk__in=lot).update(**valeurs)
+            lot = []
+    if lot:
+        Model.objects.filter(pk__in=lot).update(**valeurs)
+
+
 def forwards(apps, schema_editor):
     Company = apps.get_model('authentication', 'Company')
-    Company.objects.filter(actif=False, statut='actif').update(
+    _update_par_lots(
+        Company.objects.filter(actif=False, statut='actif'),
         statut='suspendu')
 
 
 def backwards(apps, schema_editor):
     # Restaure la valeur par défaut du schéma pour les lignes backfillées.
     Company = apps.get_model('authentication', 'Company')
-    Company.objects.filter(actif=False, statut='suspendu').update(
+    _update_par_lots(
+        Company.objects.filter(actif=False, statut='suspendu'),
         statut='actif')
 
 

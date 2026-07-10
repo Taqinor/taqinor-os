@@ -16,8 +16,7 @@ class Migration(migrations.Migration):
             name='campagne_id',
             field=models.PositiveIntegerField(blank=True, db_index=True, null=True, verbose_name='Id de la campagne (opaque)'),
         ),
-        migrations.AddIndex(
-            model_name='whatsappmessagelog',
-            index=models.Index(fields=['company', 'campagne_id'], name='nwa_log_company_campagne_idx'),
-        ),
+        # L'index composite (company, campagne_id) est posé CONCURREMMENT par
+        # 0030 (YOPSB4/YOPSB6) — un AddIndex nu verrouillerait la table de logs
+        # WhatsApp en écriture pendant la construction.
     ]
