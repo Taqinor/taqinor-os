@@ -28,22 +28,6 @@ const Reporting = lazy(() => import('../pages/Reporting').then(m => ({ default: 
 const Rapports = lazy(() => import('../pages/Rapports').then(m => ({ default: m.Component })))
 const ToitureDesign = lazy(() => import('../pages/ventes/ToitureDesign'))
 const RoofViewerPage = lazy(() => import('../pages/ventes/RoofViewerPage'))
-const InstallationsPage = lazy(() => import('../pages/installations/InstallationsPage'))
-const DemandesAchatList = lazy(() => import('../pages/installations/DemandesAchatList'))
-const InterventionsPage = lazy(() => import('../pages/interventions/InterventionsPage'))
-const MaJourneePage = lazy(() => import('../pages/interventions/MaJourneePage'))
-const ParcInstallePage = lazy(() => import('../pages/installations/ParcInstallePage'))
-const PlanificationPage = lazy(() => import('../pages/installations/PlanificationPage'))
-const AteliersPage = lazy(() => import('../pages/installations/AteliersPage'))
-const OutillagePage = lazy(() => import('../pages/outillage/OutillagePage'))
-const ProductionPage = lazy(() => import('../pages/monitoring/ProductionPage'))
-const FleetPage = lazy(() => import('../pages/monitoring/FleetPage'))
-const OmAnalyticsPage = lazy(() => import('../pages/monitoring/OmAnalyticsPage'))
-const WarrantiesPage = lazy(() => import('../pages/monitoring/WarrantiesPage'))
-const Co2Page = lazy(() => import('../pages/monitoring/Co2Page'))
-const CleaningsPage = lazy(() => import('../pages/monitoring/CleaningsPage'))
-const OmReportPage = lazy(() => import('../pages/monitoring/OmReportPage'))
-const ClientPortalPage = lazy(() => import('../pages/monitoring/ClientPortalPage'))
 const AgentChat = lazy(() => import('../pages/ia/AgentChat'))
 const OcrUpload = lazy(() => import('../pages/ia/OcrUpload'))
 const UsersManagement = lazy(() => import('../pages/admin/UsersManagement'))
@@ -216,23 +200,8 @@ const router = createBrowserRouter([
   // Conception 3D de la toiture (héberge le builder roofPro11 du site, en ERP).
   { path: '/devis-design/:id', loader: authLoader, errorElement: <RouteErrorBoundary />, element: <WithLayout><ToitureDesign /></WithLayout> },
 
-  // Chantiers / Installations
-  { path: '/chantiers', loader: authLoader, element: <WithLayout><InstallationsPage /></WithLayout> },
-  { path: '/chantiers/demandes-achat', loader: authLoader, element: <WithLayout><DemandesAchatList /></WithLayout> },
-  { path: '/interventions', loader: authLoader, element: <WithLayout><InterventionsPage /></WithLayout> },
-  { path: '/planification', loader: authLoader, element: <WithLayout><PlanificationPage /></WithLayout> },
-  { path: '/ma-journee', loader: authLoader, element: <WithLayout><MaJourneePage /></WithLayout> },
-  { path: '/parc', loader: authLoader, element: <WithLayout><ParcInstallePage /></WithLayout> },
-  { path: '/atelier', loader: authLoader, element: <WithLayout><AteliersPage /></WithLayout> },
-  { path: '/production', loader: authLoader, element: <WithLayout><ProductionPage /></WithLayout> },
-  { path: '/production/parc', loader: authLoader, element: <WithLayout><FleetPage /></WithLayout> },
-  { path: '/production/analytique', loader: authLoader, element: <WithLayout><OmAnalyticsPage /></WithLayout> },
-  { path: '/production/garanties', loader: authLoader, element: <WithLayout><WarrantiesPage /></WithLayout> },
-  { path: '/production/co2', loader: authLoader, element: <WithLayout><Co2Page /></WithLayout> },
-  { path: '/production/nettoyages', loader: authLoader, element: <WithLayout><CleaningsPage /></WithLayout> },
-  { path: '/production/rapports', loader: authLoader, element: <WithLayout><OmReportPage /></WithLayout> },
-  { path: '/production/portail-client', loader: authLoader, element: <WithLayout><ClientPortalPage /></WithLayout> },
-  { path: '/outillage', loader: authLoader, element: <WithLayout><OutillagePage /></WithLayout> },
+  // Chantiers / Installations — migré vers
+  // frontend/src/features/installations/module.config.jsx (ARC54).
 
   // GED — gestion documentaire (navigateur arborescent)
   { path: '/ged', loader: authLoader, element: <WithLayout><DocumentsPage /></WithLayout> },
