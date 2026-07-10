@@ -879,11 +879,28 @@ def resolve_client_for_lead(lead: Lead) -> Client:
         return lead.client
 
     def _find_existing():
-        if not lead.email:
+        if lead.email:
+            match = Client.objects.filter(
+                company=lead.company, email__iexact=lead.email,
+            ).first()
+            if match is not None:
+                return match
+        # QX17 — repli téléphone : un client marocain récurrent n'a pas
+        # toujours le MÊME email (ou aucun) d'un dossier à l'autre — le
+        # téléphone est l'identité de facto. Comparaison Python-side (pas de
+        # colonne normalisée indexée sur Client, à la différence de
+        # Lead.phone_normalise) : borne de perf documentée — un scan de TOUS
+        # les clients de la société, acceptable au volume actuel (PME
+        # marocaines, quelques centaines à quelques milliers de clients par
+        # société) ; à indexer (colonne normalisée + index, comme QW10 sur
+        # Lead) si ce volume devient un goulot mesuré.
+        lead_phone = normalize_phone(lead.telephone)
+        if not lead_phone:
             return None
-        return Client.objects.filter(
-            company=lead.company, email__iexact=lead.email,
-        ).first()
+        for candidate in Client.objects.filter(company=lead.company):
+            if normalize_phone(candidate.telephone) == lead_phone:
+                return candidate
+        return None
 
     client = _find_existing()
 
