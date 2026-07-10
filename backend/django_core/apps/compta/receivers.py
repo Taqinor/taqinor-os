@@ -23,6 +23,7 @@ from core.events import (
     facture_annulee,
     facture_emise,
     facture_fournisseur_creee,
+    facture_payee,
     paiement_enregistre,
     paiement_fournisseur_enregistre,
     paiement_rejete,
@@ -150,6 +151,22 @@ def _delettrer_paiement_rejete(sender, paiement, facture, montant, company,
         return
     from . import selectors
     selectors.delettrer(company, ligne_lettree.lettrage)
+
+
+# ── ARC36 — facture intégralement réglée → lettrage du solde (compta) ────────
+# S'abonne à ``facture_payee`` (YEVNT6 — TOUT chemin qui solde la facture,
+# y compris « marquer payée » manuel sans nouveau Paiement). Complète le
+# lettrage YLEDG6 déjà déclenché sur ``paiement_enregistre`` : ce chemin-ci
+# couvre les soldes SANS événement de paiement. ``auto_lettrer_facture_
+# soldee`` est idempotente (lignes déjà lettrées exclues, no-op silencieux)
+# — une double invocation (paiement_enregistre PUIS facture_payee) ne pose
+# jamais deux lettrages. Le signal frère ``facture_paid`` (YDOCF4) porte le
+# même fait : DÉPRÉCIÉ pour l'abonnement (docstring du bus) — on n'écoute
+# que ``facture_payee``. Additif : aucun statut document modifié (règle #4).
+
+@receiver(facture_payee, dispatch_uid="compta_lettrage_facture_payee")
+def _lettrer_facture_payee(sender, instance, company, **kwargs):
+    auto_lettrer_facture_soldee(instance)
 
 
 # ── YSERV4 — enquête NPS auto à la réception d'un chantier ──────────────────

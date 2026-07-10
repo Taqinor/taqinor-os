@@ -9241,8 +9241,9 @@ def resilier_abonnement_monitoring(abonnement, *, motif, user=None):
     — capturé sur ``motif_resiliation``, jamais perdu comme avec l'ancien
     PATCH direct du viewset). Bloque définitivement la facturation
     récurrente. Émet ``abonnement_monitoring_resilie`` (core.events) pour
-    les effets aval (arrêt de la supervision monitoring — satellite, aucun
-    abonné dans ce repo pour l'instant). Idempotent (déjà résilié → no-op,
+    les effets aval — abonné dans ce repo (ARC36) :
+    ``apps/monitoring/receivers.py`` coupe la supervision automatique liée
+    (``MonitoringConfig.enabled=False``). Idempotent (déjà résilié → no-op,
     aucune ré-émission de l'événement). Renvoie l'abonnement."""
     from core.events import abonnement_monitoring_resilie
     from .models import AbonnementMonitoring

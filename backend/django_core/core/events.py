@@ -171,13 +171,21 @@ importe ``apps.audit``.
     (``record_payment_from_link``) ou un passage manuel « marquer payée ».
     Émis par ``apps/ventes/views/facture.py`` et ``apps/ventes/services.py``
     UNIQUEMENT au moment où le résiduel atteint zéro (un paiement partiel
-    n'émet rien) ; jamais posé deux fois pour le même règlement. Contrat :
-    émetteur ``ventes``, abonnés futurs ``compta`` (XACC1 transfert TVA à
-    l'encaissement) / ``notifications``. Arguments du signal :
+    n'émet rien) ; jamais posé deux fois pour le même règlement. Arguments du
+    signal :
 
     * ``facture`` — l'instance ``ventes.Facture`` désormais soldée ;
     * ``montant`` — montant du DERNIER paiement qui a soldé la facture ;
     * ``company`` — la société (posée côté serveur).
+
+    **DÉPRÉCIÉ POUR L'ABONNEMENT (ARC36).** ``facture_payee`` (YEVNT6,
+    ci-dessous) porte le MÊME fait métier, émis aux MÊMES sites au même
+    résiduel→0 — deux signaux pour un seul fait = dérive garantie. Les
+    abonnés consomment ``facture_payee`` (contrat ``instance, company``) ;
+    ne JAMAIS s'abonner aussi à ``facture_paid`` (réaction double au même
+    règlement). ``facture_paid`` reste ÉMIS tel quel (compat émetteur — il
+    porte ``montant``, absent du frère) et catalogué en seam
+    ``ALLOWED_UNCONSUMED`` ; à retirer quand plus aucun site ne l'émettra.
 
 ``paiement_rejete``
     Émis quand un ``ventes.Paiement`` encaissé est REJETÉ (chèque revenu
@@ -203,11 +211,21 @@ importe ``apps.audit``.
     ``facture_annulee`` ; ``convertir_en_bc`` pour ``bon_commande_cree`` ;
     ``facture_payee`` accompagne ``facture_paid`` — YDOCF4 — au même
     résiduel→0). Préserve STRICTEMENT les statuts document (règle #4) :
-    l'émission n'en change AUCUN. Aucun abonné obligatoire dans ce lot (pose
-    du seam pour ``compta``/``notifications``/audit/KPI). Arguments communs :
+    l'émission n'en change AUCUN. Arguments communs :
 
     * ``instance`` — l'objet ``Facture`` ou ``BonCommande`` concerné ;
     * ``company`` — la société (posée côté serveur).
+
+    Abonnés dans ce repo (ARC36) : ``facture_payee`` → ``compta``
+    (``apps/compta/receivers.py``, lettrage du solde — idempotent avec le
+    chemin YLEDG6 sur ``paiement_enregistre``) + ``notifications``
+    (``apps/notifications/signals.py``, notifie le vendeur) ;
+    ``bon_commande_cree`` → ``notifications`` (magasinier/managers via
+    ``resolve_recipients``, routable par ``NotificationRoutingRule``).
+    ``facture_emise``/``facture_annulee`` avaient déjà leur abonné compta
+    (YLEDG1/YLEDG4). C'est ``facture_payee`` — PAS ``facture_paid`` — qui
+    est le signal à consommer pour « facture soldée » (cf. dépréciation
+    ci-dessus).
 
 ``paiement_enregistre`` / ``avoir_cree``
     Complètent ``facture_emise`` côté YLEDG1 : événements documentaires pour
@@ -435,10 +453,11 @@ effet_rejete = django.dispatch.Signal()
 
 # YSUBS4 — un ``compta.AbonnementMonitoring`` est résilié
 # (``services.resilier_abonnement_monitoring``). Arguments : abonnement
-# (compta.AbonnementMonitoring), motif (str), company. Effet aval : arrêter
-# la supervision monitoring liée (``installation_id``) — aucun abonné dans
-# ce repo pour l'instant (monitoring reste satellite ; câblage futur via son
-# propre ``receivers.py``/``ready()`` sans jamais importer ``apps.compta``).
+# (compta.AbonnementMonitoring), motif (str), company. Abonné dans ce repo
+# (ARC36) : ``monitoring`` (``apps/monitoring/receivers.py``) — coupe la
+# supervision automatique liée (``MonitoringConfig.enabled=False`` pour
+# ``installation_id``), sans jamais importer ``apps.compta`` (abonnement par
+# NOM de signal : l'émetteur bougera avec ODX16/17-20 sans casser l'abonné).
 abonnement_monitoring_resilie = django.dispatch.Signal()
 
 # Émis quand une Installation atteint le statut canonique RECEPTIONNE

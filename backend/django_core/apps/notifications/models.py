@@ -122,6 +122,13 @@ class EventType(models.TextChoices):
     # YSERV11 — réponse NPS promoteur (9-10) : proposer le parrainage au
     # moment de l'enchantement (notification au commercial du client).
     NPS_PROMOTEUR = 'nps_promoteur', 'Client promoteur — proposer le parrainage'
+    # ARC36 — une facture est intégralement réglée (résiduel→0, bus
+    # ``facture_payee``) : notifie le vendeur (créateur de la facture).
+    FACTURE_PAYEE = 'facture_payee', 'Facture intégralement réglée'
+    # ARC36 — un bon de commande est créé depuis un devis accepté (bus
+    # ``bon_commande_cree``) : notifie le magasinier/managers (routable par
+    # ``NotificationRoutingRule`` vers l'utilisateur entrepôt).
+    BON_COMMANDE_CREE = 'bon_commande_cree', 'Bon de commande créé'
 
 
 class Channel(models.TextChoices):
