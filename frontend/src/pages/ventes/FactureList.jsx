@@ -227,6 +227,8 @@ export default function FactureList() {
   const [payDate, setPayDate] = useState(today)
   const [payMode, setPayMode] = useState('virement')
   const [payReference, setPayReference] = useState('')
+  // ZFAC11 — proposition d'arrondi de caisse (règlement espèces).
+  const [arrondiCaisse, setArrondiCaisse] = useState(null)
 
   // Chatter facture (avoirs + paiements) chargé à l'ouverture de la modale.
   const [factureActivites, setFactureActivites] = useState([])
@@ -245,8 +247,29 @@ export default function FactureList() {
     setPayDate(today)
     setPayMode('virement')
     setPayReference('')
+    setArrondiCaisse(null)
     setFactureActivites([])
     loadActivites(f.id)
+  }
+
+  // ZFAC11 — quand le mode passe à « espèces », interroge le reste à payer
+  // arrondi au pas de caisse société. Aucun arrondi configuré → applicable
+  // false, aucune proposition affichée (comportement inchangé). L'état n'est
+  // remis à jour que dans un callback asynchrone (la remise à zéro passe par
+  // la fonction de nettoyage) pour ne pas déclencher de re-rendu en cascade.
+  useEffect(() => {
+    if (!payTarget || payMode !== 'especes') return undefined
+    let annule = false
+    ventesApi.arrondiCaisseFacture(payTarget.id, 'especes')
+      .then(({ data }) => { if (!annule) setArrondiCaisse(data) })
+      .catch(() => { if (!annule) setArrondiCaisse(null) })
+    return () => { annule = true; setArrondiCaisse(null) }
+  }, [payTarget, payMode])
+
+  const appliquerArrondiCaisse = () => {
+    if (arrondiCaisse?.montant_arrondi != null) {
+      setPayMontant(arrondiCaisse.montant_arrondi)
+    }
   }
 
   const handleEnregistrerPaiement = async (e) => {
@@ -700,6 +723,19 @@ export default function FactureList() {
                 </SelectContent>
               </Select>
             </FormField>
+            {/* ZFAC11 — proposition d'arrondi de caisse (espèces). */}
+            {payMode === 'especes' && arrondiCaisse?.applicable && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
+                <p className="text-amber-800">
+                  Arrondi espèces : {formatMAD(arrondiCaisse.montant_arrondi)}
+                  {' '}(écart de {formatMAD(arrondiCaisse.ecart)} tracé « Arrondi espèces »).
+                </p>
+                <Button type="button" variant="ghost" size="sm" className="mt-1"
+                        onClick={appliquerArrondiCaisse}>
+                  Appliquer le montant arrondi
+                </Button>
+              </div>
+            )}
             <FormField label="Référence (optionnel)" htmlFor="pay-ref" fullWidth>
               <Input id="pay-ref" type="text"
                      value={payReference} onChange={e => setPayReference(e.target.value)} />

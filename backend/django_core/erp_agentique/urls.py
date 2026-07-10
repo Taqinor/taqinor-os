@@ -82,6 +82,8 @@ urlpatterns = [
     path('api/django/qhse/', include('apps.qhse.urls')),
     path('api/django/kb/', include('apps.kb.urls')),
     path('api/django/litiges/', include('apps.litiges.urls')),
+    # ARC17 — Répertoire des tiers (res.partner), couche fondation.
+    path('api/django/tiers/', include('apps.tiers.urls')),
     # XPOS1 — Vente comptoir (point of sale).
     path('api/django/pos/', include('apps.pos.urls')),
     # XPOS3 — Lien public tokenisé vers le PDF du ticket de caisse.

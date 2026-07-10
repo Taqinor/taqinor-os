@@ -130,6 +130,10 @@ INSTALLED_APPS = [
     'apps.litiges',
     # XPOS1 — Vente comptoir (point of sale, accessoires).
     'apps.pos',
+    # ARC17 — Répertoire unifié des tiers (res.partner). COUCHE FONDATION :
+    # ne dépend d'aucune app de domaine ; les domaines la référenceront
+    # (ARC18/19). Contrat import-linter `tiers-is-a-base-layer`.
+    'apps.tiers',
 ]
 
 MIDDLEWARE = [

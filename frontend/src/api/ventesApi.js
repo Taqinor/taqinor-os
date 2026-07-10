@@ -114,6 +114,10 @@ const ventesApi = {
   // Paiements : enregistrement manuel + liste par facture.
   enregistrerPaiement: (id, data) => api.post(`/ventes/factures/${id}/enregistrer-paiement/`, data),
   getPaiementsFacture: (id) => api.get(`/ventes/factures/${id}/paiements/`),
+  // ZFAC11 — reste à payer arrondi au pas de caisse société pour un règlement
+  // espèces (applicable=false + montant_du inchangé si arrondi désactivé).
+  arrondiCaisseFacture: (id, mode = 'especes') =>
+    api.get(`/ventes/factures/${id}/arrondi-caisse/`, { params: { mode } }),
   // FG53/WR2 — lien « Payer en ligne » (fournisseur NoOp par défaut, gated).
   lienPaiementFacture: (id, payload = {}) => api.post(`/ventes/factures/${id}/lien-paiement/`, payload),
   // N105/WR2 — export + contrôle de conformité DGI (404 tant que le flag
