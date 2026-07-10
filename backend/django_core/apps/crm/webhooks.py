@@ -613,6 +613,19 @@ def website_lead_webhook(request):
                 logger.warning(
                     'website_lead_webhook: réactivation échouée (lead #%s) : %s',
                     lead.pk, _exc)
+            # QX14 — TOUS les autres chemins de création/mise à jour de lead
+            # persistent le score via recompute_lead_score (views.py 561/574,
+            # services.py 1088/1366/1429/2782) SAUF ce webhook — le score
+            # jamais persisté casse silencieusement `?ordering=-score` et
+            # `maybe_assign_mql` (XMKT21) pour la source #1 (site web).
+            # Best-effort, même patron que les blocs ci-dessus.
+            try:
+                from .services import recompute_lead_score
+                recompute_lead_score(lead)
+            except Exception as _exc:  # noqa: BLE001 — best-effort
+                logger.warning(
+                    'website_lead_webhook: recompute_lead_score échoué '
+                    '(lead #%s) : %s', lead.pk, _exc)
         else:
             # Responsable par défaut de la société (Paramètres) si configuré.
             from .services import default_responsable_for
@@ -632,6 +645,15 @@ def website_lead_webhook(request):
                 logger.warning(
                     'website_lead_webhook: notify_new_lead échoué (lead #%s) : %s',
                     lead.pk, _exc)
+            # QX14 — même correctif côté création (voir commentaire ci-dessus,
+            # branche mise à jour) : persiste le score dès la première visite.
+            try:
+                from .services import recompute_lead_score
+                recompute_lead_score(lead)
+            except Exception as _exc:  # noqa: BLE001 — best-effort
+                logger.warning(
+                    'website_lead_webhook: recompute_lead_score échoué '
+                    '(lead #%s) : %s', lead.pk, _exc)
 
         # QK6 — photo de facture/compteur/toiture jointe à la capture :
         # attachée au lead (+ OCR si configuré), best-effort — une photo

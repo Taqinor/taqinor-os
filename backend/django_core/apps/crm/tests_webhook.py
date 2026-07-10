@@ -624,3 +624,54 @@ class QW10IndexedDedupAndConcurrencyTests(TransactionTestCase):
             company=other_company, nom='Autre société', telephone='0600000099')
         dupes = find_duplicates_by_contact(self.company, phone='0600000099')
         self.assertEqual(dupes, [])
+
+
+@override_settings(WEBSITE_LEAD_WEBHOOK_SECRET=SECRET)
+class QX14PersistedScoreTests(TestCase):
+    """QX14 — le score est persisté sur les leads webhook (création ET mise à
+    jour) comme sur TOUS les autres chemins de création de lead
+    (views.py/services.py) — la source #1 (site web) ne doit plus être la
+    seule à laisser `Lead.score` à zéro et `maybe_assign_mql` mort."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='Taqinor Test QX14', slug='taqinor-test-qx14')
+        self.url = reverse('website-lead-webhook')
+
+    def post(self, data, secret=SECRET):
+        headers = {'HTTP_X_WEBHOOK_SECRET': secret} if secret is not None else {}
+        return self.client.post(
+            self.url, data=json.dumps(data),
+            content_type='application/json', **headers)
+
+    def test_create_branch_persists_score(self):
+        res = self.post(payload_site(whatsappOptIn=True, gpsLat='33.5', gpsLng='-7.6'))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertGreater(lead.score, 0)
+
+    def test_update_branch_recomputes_score(self):
+        first = self.post(payload_site(phoneE164='+212611223344'))
+        self.assertEqual(first.status_code, 201, first.content)
+        lead = Lead.objects.get(pk=first.json()['lead_id'])
+        lead.score = 0
+        lead.save(update_fields=['score'])
+        # Re-post au-delà de la fenêtre de dédup < 60 s simule un visiteur
+        # revenant (couche 2) — on force directement le chemin de mise à jour
+        # en appelant find_duplicates_by_contact plutôt que d'attendre 60 s :
+        # ici on vérifie simplement que le double-clic (couche 1, < 60 s)
+        # recalcule aussi le score sur le lead existant mis à jour.
+        retry = self.post(payload_site(
+            phoneE164='+212611223344', gpsLat='33.5', gpsLng='-7.6',
+            whatsappOptIn=True))
+        self.assertEqual(retry.status_code, 200, retry.content)
+        lead.refresh_from_db()
+        self.assertGreater(lead.score, 0)
+
+    def test_mql_auto_assign_fires_for_website_lead(self):
+        from apps.parametres.models import CompanyProfile
+        CompanyProfile.objects.create(company=self.company, seuil_mql=1)
+        res = self.post(payload_site(
+            whatsappOptIn=True, gpsLat='33.5', gpsLng='-7.6'))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertIsNotNone(lead.mql_assigned_at)
