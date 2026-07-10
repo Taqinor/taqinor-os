@@ -590,6 +590,19 @@ def retirer_piece(*, company, ticket, produit, quantite, numero_serie,
             equipement_remplace.remplace_par_ticket = ticket
             equipement_remplace.save(
                 update_fields=['statut', 'remplace_par_ticket'])
+            # ARC37 — sav devient émetteur du bus : émet EXACTEMENT une fois
+            # (une seule bascule REMPLACE par appel, garantie par le
+            # ``if equipement_remplace is not None`` ci-dessus). Best-effort :
+            # jamais bloquant pour le retrait de pièce déjà acté.
+            try:
+                from core.events import equipement_remplace as \
+                    equipement_remplace_signal
+
+                equipement_remplace_signal.send(
+                    sender=None, equipement=equipement_remplace,
+                    ticket=ticket, company=company, user=user)
+            except Exception:  # pragma: no cover - défensif (best-effort)
+                pass
 
     piece = PieceRetiree.objects.create(
         company=company, ticket=ticket, produit=produit, quantite=quantite,
@@ -972,6 +985,29 @@ def notify_followers(ticket, *, event_type, title, body='', link=None,
                 link=link, company=ticket.company)
         except Exception:  # pragma: no cover - best-effort, jamais bloquant
             pass
+
+
+# ── ARC37 — sav devient émetteur du bus (core.events) ───────────────────────
+
+def emettre_ticket_resolu(ticket, *, company, user=None, ancien_statut):
+    """ARC37 — émet ``core.events.ticket_resolu`` sur le FRANCHISSEMENT vers
+    RESOLU. Point d'émission UNIQUE appelé par les DEUX sites où la bascule
+    RESOLU peut être atteinte : l'action gardée ``resoudre``
+    (``apps/sav/views.py``) et l'avancement automatique sur intervention
+    terminée (``apps/sav/receivers.py``, YSERV2). Best-effort : une erreur ici
+    ne doit jamais remonter (la transition, côté appelant, est déjà actée)."""
+    from .models import Ticket
+
+    if ticket.statut != Ticket.Statut.RESOLU or ancien_statut == Ticket.Statut.RESOLU:
+        return  # pas une bascule VERS résolu — ne réémet jamais.
+    try:
+        from core.events import ticket_resolu
+
+        ticket_resolu.send(
+            sender=None, ticket=ticket, company=company, user=user,
+            ancien_statut=ancien_statut)
+    except Exception:  # pragma: no cover - défensif (best-effort)
+        pass
 
 
 def abonner_suiveurs_globaux(ticket):

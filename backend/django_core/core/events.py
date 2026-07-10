@@ -313,6 +313,62 @@ importe ``apps.audit``.
       ``None``) ;
     * ``ancien_statut`` — le statut BRUT (non canonicalisé) avant la
       transition.
+
+``ticket_resolu``
+    Émis quand un ``sav.Ticket`` bascule vers RESOLU (ARC37) — aux DEUX sites
+    où cette bascule peut être atteinte : l'action gardée ``resoudre``
+    (``apps/sav/views.py``, via ``sav.services.emettre_ticket_resolu``) et
+    l'avancement automatique sur intervention terminée
+    (``apps/sav/receivers.py``, YSERV2). Émis SYNCHRONE, best-effort,
+    uniquement sur le FRANCHISSEMENT (un ticket déjà RESOLU/CLOTURE ne réémet
+    rien — même garde que les autres transitions SAV). Ne change AUCUN statut
+    lui-même (l'émission suit la bascule déjà actée). Arguments du signal :
+
+    * ``ticket`` — l'instance ``sav.Ticket`` désormais RESOLU ;
+    * ``company`` — la société (posée côté serveur) ;
+    * ``user`` — l'utilisateur qui a déclenché la transition (peut être
+      ``None`` pour une résolution automatique) ;
+    * ``ancien_statut`` — le statut avant la transition.
+
+    Abonnés dans ce repo (ARC37) : ``notifications``
+    (``apps/notifications/signals.py`` — notifie le technicien assigné, repli
+    managers, ``EventType.SAV_TICKET_RESOLU``) et ``crm``
+    (``apps/crm/receivers.py`` — note chatter ARC8 sur le ``crm.Client`` du
+    ticket, sans jamais importer ``apps.sav``).
+
+``equipement_remplace``
+    Émis quand un ``sav.Equipement`` est marqué REMPLACE suite au retrait
+    d'une pièce (ARC37, ``sav.services.retirer_piece``). Émis SYNCHRONE,
+    best-effort, à l'unique site de la bascule. Ne change AUCUN statut
+    lui-même. Arguments du signal :
+
+    * ``equipement`` — l'instance ``sav.Equipement`` désormais REMPLACE ;
+    * ``ticket`` — le ``sav.Ticket`` dont le retrait de pièce a déclenché le
+      remplacement ;
+    * ``company`` — la société (posée côté serveur) ;
+    * ``user`` — l'utilisateur qui a retiré la pièce (peut être ``None``).
+
+    Abonné dans ce repo (ARC37) : ``notifications``
+    (``apps/notifications/signals.py`` — notifie les managers,
+    ``EventType.SAV_EQUIPEMENT_REMPLACE``).
+
+``projet_status_change``
+    Émis quand un ``gestion_projet.Projet`` change de statut (ARC37) — posé
+    dans ``gestion_projet.services.notifier_transition_projet`` (même site
+    que l'émission EXISTANTE vers le moteur ``automation`` N72/N73, qui reste
+    inchangée : les DEUX chemins cohabitent, ``automation`` en direct ET ce
+    signal sur le bus, pour ouvrir un abonné DÉCOUPLÉ sans importer
+    ``apps.automation``). Émis SYNCHRONE, best-effort. Arguments du signal :
+
+    * ``projet`` — l'instance ``gestion_projet.Projet`` concernée ;
+    * ``company`` — la société (posée côté serveur) ;
+    * ``user`` — l'utilisateur qui a déclenché la transition (peut être
+      ``None``) ;
+    * ``ancien_statut`` / ``nouveau_statut`` — l'instantané avant/après.
+
+    Abonné dans ce repo (ARC37) : ``notifications``
+    (``apps/notifications/signals.py`` — notifie le responsable du projet,
+    ``EventType.PROJET_STATUT_CHANGE``).
 """
 import django.dispatch
 
@@ -475,3 +531,23 @@ abonnement_monitoring_resilie = django.dispatch.Signal()
 # Abonné dans ce repo : compta (crée l'EnqueteNPS + envoyer_enquete_nps,
 # idempotent) — voir docstring du module ci-dessus.
 chantier_receptionne = django.dispatch.Signal()
+
+# Émis quand un Ticket SAV bascule vers RESOLU (ARC37). Arguments : ticket,
+# company, user (peut être None), ancien_statut. Abonnés dans ce repo :
+# notifications (EventType.SAV_TICKET_RESOLU) et crm (chatter ARC8 sur le
+# Client lié) — voir docstring du module ci-dessus.
+ticket_resolu = django.dispatch.Signal()
+
+# Émis quand un Equipement SAV est marqué REMPLACE suite au retrait d'une
+# pièce (ARC37). Arguments : equipement, ticket, company, user (peut être
+# None). Abonné dans ce repo : notifications (EventType.
+# SAV_EQUIPEMENT_REMPLACE) — voir docstring du module ci-dessus.
+equipement_remplace = django.dispatch.Signal()
+
+# Émis quand un Projet (gestion_projet) change de statut (ARC37). Arguments :
+# projet, company, user (peut être None), ancien_statut, nouveau_statut. Le
+# chemin EXISTANT vers le moteur automation (N72/N73) reste inchangé et
+# cohabite avec ce signal (double émission assumée, transition documentée).
+# Abonné dans ce repo : notifications (EventType.PROJET_STATUT_CHANGE) — voir
+# docstring du module ci-dessus.
+projet_status_change = django.dispatch.Signal()

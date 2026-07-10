@@ -1520,6 +1520,12 @@ def notifier_transition_projet(
     interne) — la transition de statut qui a appelé cette fonction n'est
     JAMAIS bloquée. Variables ``{nom_projet}``/``{date}`` disponibles dans le
     corps des modèles de message (substitution côté automation).
+
+    ARC37 — émet AUSSI ``core.events.projet_status_change`` sur le bus
+    (double émission ASSUMÉE et documentée pendant la transition : le chemin
+    automation EXISTANT reste inchangé, le bus s'ajoute pour ouvrir un
+    abonné DÉCOUPLÉ — ``notifications`` — sans jamais importer
+    ``apps.automation`` depuis un abonné cross-app).
     """
     if ancien_statut == nouveau_statut:
         return
@@ -1537,6 +1543,15 @@ def notifier_transition_projet(
             },
             user=user,
         )
+    except Exception:  # pragma: no cover - défensif, ne bloque jamais
+        pass
+
+    try:
+        from core.events import projet_status_change
+
+        projet_status_change.send(
+            sender=None, projet=projet, company=projet.company, user=user,
+            ancien_statut=ancien_statut, nouveau_statut=nouveau_statut)
     except Exception:  # pragma: no cover - défensif, ne bloque jamais
         pass
 
