@@ -9,7 +9,9 @@ import {
   ArrowLeft, Target, ClipboardList, User, Zap, Sprout, BarChart3,
   ShoppingCart, StickyNote, FileText, RotateCcw, Sun, Plus, Trash2,
 } from 'lucide-react'
-import { createDevis, addLigneDevis } from '../../features/ventes/store/ventesSlice'
+// QX21 — la sauvegarde passe désormais par les endpoints ATOMIQUES de ventesApi
+// (createDevisAtomic / replaceLignesDevis) ; createDevis/addLigneDevis (1+N
+// round-trips non gardés) ne sont plus utilisés ici.
 import { createAutoQuote, buildEtudePompage, LEAD_TYPE_TO_MODE } from '../../features/ventes/autoQuote'
 import { waterDemandFromFarm } from '../../features/ventes/agronomy'
 import crmApi from '../../api/crmApi'
@@ -1068,40 +1070,38 @@ export default function DevisGenerator({
         etude_params: etudeParams,
         prix_cible_kwc: prixCible !== '' ? prixCible : null,
       }
+      // QX21 — lignes construites UNE fois (mêmes champs qu'avant : HT dérivé du
+      // TTC saisi au taux DE LA LIGNE, groupe villa en mode « villas »).
+      const lignesPayload = usableLines().map(l => ({
+        produit: parseInt(l.produit),
+        designation: l.designation,
+        quantite: l.quantite,
+        prix_unitaire: htFromTtc(l.prix_unit_ttc, l.taux_tva ?? 20),
+        remise: '0',
+        taux_tva: String(l.taux_tva ?? 20),
+        groupe_index: multiMode === 'villas' ? l.groupeIndex : null,
+        groupe_label: multiMode === 'villas' ? (l.groupeLabel || '') : '',
+      }))
+
       let devisId
       if (editDevis) {
-        // ÉDITION EN PLACE : mêmes référence et statut ; les anciennes lignes
-        // sont remplacées par celles du formulaire.
+        // QX21 — ÉDITION ATOMIQUE : le patch du devis PUIS le remplacement des
+        // lignes en une transaction serveur. Un échec préserve les lignes
+        // existantes (jamais un devis à zéro ligne, plus de delete-puis-recrée).
         await ventesApi.patchDevis(editDevis.id, payload)
-        await Promise.all(editDevis.lineIds.map(id =>
-          ventesApi.deleteLigneDevis(id).catch(() => {})))
+        await ventesApi.replaceLignesDevis(editDevis.id, lignesPayload)
         devisId = editDevis.id
       } else {
-        // Lead prioritaire : le client est résolu côté serveur depuis le lead.
+        // QX21 — CRÉATION ATOMIQUE : devis + lignes en UN commit serveur → plus
+        // de brouillon orphelin/partiel si la connexion est coupée en cours de
+        // sauvegarde. Lead prioritaire : le client est résolu côté serveur.
         if (leadId) payload.lead = parseInt(leadId)
         else payload.client = parseInt(clientId)
-        const devis = await dispatch(createDevis(payload)).unwrap()
-        devisId = devis.id
+        const { data } = await ventesApi.createDevisAtomic({
+          ...payload, lignes: lignesPayload,
+        })
+        devisId = data.id
       }
-
-      await Promise.all(usableLines().map(l =>
-        dispatch(addLigneDevis({
-          devis: devisId,
-          produit: parseInt(l.produit),
-          designation: l.designation,
-          quantite: l.quantite,
-          // le modèle stocke des prix HT ; l'écran travaille en TTC comme le
-          // simulateur. Réforme TVA : le HT est dérivé au taux DE LA LIGNE
-          // (10 % panneaux / 20 % le reste) pour que le TTC tapé soit exact.
-          prix_unitaire: htFromTtc(l.prix_unit_ttc, l.taux_tva ?? 20),
-          remise: '0',
-          taux_tva: String(l.taux_tva ?? 20),
-          // QJ31 (mode B) — groupe villa par ligne (QJ29). Envoyé UNIQUEMENT en
-          // mode « villas » ; sinon null/'' → chemin mono-système inchangé.
-          groupe_index: multiMode === 'villas' ? l.groupeIndex : null,
-          groupe_label: multiMode === 'villas' ? (l.groupeLabel || '') : '',
-        })).unwrap()
-      ))
 
       finish(devisId)
     } catch (err) {

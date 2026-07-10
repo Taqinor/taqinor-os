@@ -27,6 +27,15 @@ const ventesApi = {
   getDevis: (params) => api.get('/ventes/devis/', { params }),
   getDevisById: (id) => api.get(`/ventes/devis/${id}/`),
   createDevis: (data) => api.post('/ventes/devis/', data),
+  // QX21 — création ATOMIQUE (devis + lignes en un seul commit serveur) : plus
+  // de brouillons orphelins/partiels si la connexion est coupée en cours de
+  // sauvegarde. `data` porte le devis + une clé `lignes: [...]`.
+  createDevisAtomic: (data) => api.post('/ventes/devis/atomic/', data),
+  // QX21 — remplacement ATOMIQUE des lignes d'un devis (édition) : les
+  // anciennes lignes sont remplacées par les nouvelles en une transaction ; un
+  // échec préserve les lignes existantes (jamais un devis à zéro ligne).
+  replaceLignesDevis: (id, lignes) =>
+    api.post(`/ventes/devis/${id}/replace-lines/`, { lignes }),
   updateDevis: (id, data) => api.put(`/ventes/devis/${id}/`, data),
   patchDevis: (id, data) => api.patch(`/ventes/devis/${id}/`, data),
   deleteDevis: (id) => api.delete(`/ventes/devis/${id}/`),
