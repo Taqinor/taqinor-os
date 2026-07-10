@@ -189,7 +189,10 @@ class WorkflowTemplateEndpointTests(TestCase):
     def test_list_ok_for_authenticated_user(self):
         resp = self._list(self.limited)
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(resp.data), 3)
+        # Dérivé du catalogue (4 depuis ARC10 : relance_devis, relance_facture,
+        # approbation_bc, cloture_ncr) — ne plus casser à chaque ajout.
+        from core.workflow_templates import WORKFLOW_TEMPLATES
+        self.assertEqual(len(resp.data), len(WORKFLOW_TEMPLATES))
         self.assertEqual(
             set(resp.data[0].keys()),
             {'code', 'nom', 'description', 'nb_etapes', 'steps'},

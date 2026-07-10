@@ -47,7 +47,16 @@ class TenantModelAbstractTests(TestCase):
         """``company`` est une FK obligatoire vers Company, en CASCADE."""
         company_field = TenantModel._meta.get_field('company')
         self.assertIsInstance(company_field, models.ForeignKey)
-        self.assertEqual(company_field.remote_field.model, Company)
+        # Sur le modèle ABSTRAIT, la référence paresseuse reste la chaîne
+        # 'authentication.Company' ; elle se résout sur tout descendant
+        # concret — on vérifie les deux.
+        self.assertIn(
+            company_field.remote_field.model,
+            (Company, 'authentication.Company'))
+        from apps.notifications.models import WhatsAppTemplate
+        self.assertIs(
+            WhatsAppTemplate._meta.get_field('company').remote_field.model,
+            Company)
         self.assertEqual(
             company_field.remote_field.on_delete, models.CASCADE)
         # Obligatoire (multi-tenant) : non nullable.

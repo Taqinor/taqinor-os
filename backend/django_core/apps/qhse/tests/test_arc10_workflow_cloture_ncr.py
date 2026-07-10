@@ -192,9 +192,13 @@ class AgregateurApprobationsTests(TestCase):
         ncr = make_ncr(self.co)
         demarrer_workflow_cloture_ncr(ncr)
         items = _core_workflow_items(self.co)
-        self.assertEqual(len(items), 1)
-        self.assertEqual(items[0]['source'], 'workflow')
-        self.assertEqual(items[0]['libelle'], 'Vérification agent QHSE')
+        # Sémantique moteur (FG366/XKB1) : TOUTES les étapes non traitées d'une
+        # instance en cours sont ``en_attente`` — le gabarit cloture_ncr en a
+        # 2, l'agrégateur les remonte donc toutes les deux.
+        self.assertEqual(len(items), 2)
+        self.assertTrue(all(i['source'] == 'workflow' for i in items))
+        self.assertIn(
+            'Vérification agent QHSE', [i['libelle'] for i in items])
 
 
 class ScopingMultiTenantTests(TestCase):
