@@ -62,14 +62,15 @@ class TestDC36KitSchema(KitBase):
 
     def test_composant_has_no_inline_price_brand_tva(self):
         # DC36 — le composant ne recopie pas prix/marque/TVA : seuls le FK
-        # produit, la quantité et le taux de perte planifié (XMFG11) sont
-        # portés.
+        # produit (ou XMFG17 composant_kit), la quantité et le taux de perte
+        # planifié (XMFG11) sont portés.
         field_names = {f.name for f in KitComposant._meta.get_fields()}
         for forbidden in ('prix_vente', 'prix_achat', 'marque', 'tva'):
             self.assertNotIn(forbidden, field_names)
         self.assertEqual(
             field_names,
-            {'id', 'kit', 'produit', 'quantite', 'taux_perte_pct'})
+            {'id', 'kit', 'produit', 'composant_kit', 'quantite',
+             'taux_perte_pct'})
 
 
 class TestKitExplosion(KitBase):

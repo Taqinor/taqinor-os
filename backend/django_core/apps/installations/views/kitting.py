@@ -54,13 +54,15 @@ _ScaledLigne = namedtuple('_ScaledLigne', ['produit', 'quantite'])
 
 class KitViewSet(TenantMixin, viewsets.ModelViewSet):
     """FG328 — kits de pré-assemblage. Lecture tout rôle, écriture
-    responsable/admin. Filtrable par `active`."""
+    responsable/admin. Filtrable par `active`. XMFG18 : révisions de
+    nomenclature (`revisions/`, `composition-au/`) + `dupliquer/`."""
     queryset = Kit.objects.select_related(
         'produit_compose', 'created_by').prefetch_related('composants').all()
     serializer_class = KitSerializer
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS:
+        if self.action in READ_ACTIONS + ['revisions', 'composition_au']:
+            # XMFG18 — lecture seule (aucun prix dans les snapshots).
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
@@ -91,6 +93,61 @@ class KitViewSet(TenantMixin, viewsets.ModelViewSet):
     def perform_update(self, serializer):
         self._check_tenant(serializer)
         serializer.save(company=self.request.user.company)
+
+    @action(detail=True, methods=['get'], url_path='revisions')
+    def revisions(self, request, pk=None):
+        """XMFG18 — historique des révisions de nomenclature de ce kit
+        (numéro, date, utilisateur, snapshot JSON). Lecture seule."""
+        from ..serializers import RevisionKitSerializer
+        kit = self.get_object()
+        qs = kit.revisions.select_related('user').order_by('-numero')
+        return Response(RevisionKitSerializer(qs, many=True).data)
+
+    @action(detail=True, methods=['get'], url_path='composition-au')
+    def composition_au(self, request, pk=None):
+        """XMFG18 — « composition au JJ/MM/AAAA » : la révision en vigueur
+        à la date donnée (`?date=JJ/MM/AAAA` ou `AAAA-MM-JJ`). 404 si aucune
+        révision n'existait encore à cette date."""
+        from datetime import datetime
+        from ..serializers import RevisionKitSerializer
+        kit = self.get_object()
+        brut = (request.query_params.get('date') or '').strip()
+        date_limite = None
+        for fmt in ('%d/%m/%Y', '%Y-%m-%d'):
+            try:
+                date_limite = datetime.strptime(brut, fmt).date()
+                break
+            except ValueError:
+                continue
+        if date_limite is None:
+            return Response(
+                {'detail': 'Paramètre date requis (JJ/MM/AAAA ou '
+                           'AAAA-MM-JJ).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        from ..services import composition_kit_au
+        revision = composition_kit_au(kit, date_limite)
+        if revision is None:
+            return Response(
+                {'detail': 'Aucune révision à cette date.'},
+                status=status.HTTP_404_NOT_FOUND)
+        return Response(RevisionKitSerializer(revision).data)
+
+    @action(detail=True, methods=['post'], url_path='dupliquer')
+    def dupliquer(self, request, pk=None):
+        """XMFG18 — duplique ce kit (en-tête + composants), avec facteur
+        d'échelle optionnel sur les quantités (`facteur_echelle`). La copie
+        reçoit sa révision n°1."""
+        from ..services import dupliquer_kit
+        kit = self.get_object()
+        facteur = request.data.get('facteur_echelle')
+        try:
+            copie = dupliquer_kit(
+                kit, user=request.user, facteur_echelle=facteur)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(copie).data, status=status.HTTP_201_CREATED)
 
 
 class KitComposantViewSet(viewsets.ModelViewSet):
@@ -130,13 +187,26 @@ class KitComposantViewSet(viewsets.ModelViewSet):
             raise ValidationError(
                 {'produit': 'Produit inconnu pour cette société.'})
 
+    def _snapshot(self, kit):
+        # XMFG18 — snapshot auto de la composition à chaque modification des
+        # composants (idempotent : composition identique → pas de doublon).
+        from ..services import snapshot_revision_kit
+        snapshot_revision_kit(kit, user=self.request.user)
+
     def perform_create(self, serializer):
         self._check_parent(serializer)
         serializer.save()
+        self._snapshot(serializer.instance.kit)
 
     def perform_update(self, serializer):
         self._check_parent(serializer)
         serializer.save()
+        self._snapshot(serializer.instance.kit)
+
+    def perform_destroy(self, instance):
+        kit = instance.kit
+        instance.delete()
+        self._snapshot(kit)
 
 
 class ControleQualiteModeleViewSet(viewsets.ModelViewSet):
@@ -341,6 +411,14 @@ class OrdreAssemblageViewSet(TenantMixin, viewsets.ModelViewSet):
                 reference=reference)
 
         create_with_reference(OrdreAssemblage, 'ASM', company, _save)
+        # XMFG18 — l'ordre FIGE le numéro de révision de nomenclature en
+        # vigueur (crée la révision n°1 si le kit n'en a pas encore).
+        from ..services import snapshot_revision_kit
+        ordre = serializer.instance
+        revision, _created = snapshot_revision_kit(
+            ordre.kit, user=self.request.user)
+        ordre.revision_kit_numero = revision.numero
+        ordre.save(update_fields=['revision_kit_numero'])
         # XMFG6 — copie la BOM du kit en lignes éditables AVANT de semer les
         # réservations (XMFG2 lit ces lignes en priorité).
         seed_lignes_assemblage(serializer.instance)

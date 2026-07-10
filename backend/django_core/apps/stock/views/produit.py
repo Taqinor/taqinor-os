@@ -686,6 +686,41 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
                 'route': '/chantiers' if serie.installation_id else '/stock',
             })
 
+        # XSTK20 — jeton KANBAN:<produit_id>:<emplacement_id> (3 segments,
+        # même raison que LOT/SERIE ci-dessus). Le scan (bac vide) CRÉE — de
+        # façon idempotente — une DemandeTransfert préremplie depuis le dépôt
+        # principal ; jamais d'import du modèle installations (services).
+        if first_prefix == labels.KANBAN_PREFIX:
+            parts = code.split(':', 2)
+            if len(parts) != 3 or not parts[1].strip().isdigit() \
+                    or not parts[2].strip().isdigit():
+                return Response(
+                    {'detail': 'Code illisible.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            produit_id = int(parts[1].strip())
+            emplacement_id = int(parts[2].strip())
+            from apps.installations.services import (
+                demande_transfert_depuis_kanban,
+            )
+            try:
+                demande, created = demande_transfert_depuis_kanban(
+                    company=request.user.company, user=request.user,
+                    produit_id=produit_id,
+                    emplacement_destination_id=emplacement_id)
+            except ValueError as exc:
+                return Response(
+                    {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({
+                'type': 'demande_transfert',
+                'id': demande.id,
+                'label': f'Demande {demande.reference}',
+                'reference': demande.reference,
+                'quantite': demande.quantite,
+                'statut': demande.statut,
+                'created': created,
+                'route': '/stock',
+            })
+
         prefix, _, raw_id = code.partition(':')
         prefix = prefix.strip().upper()
         raw_id = raw_id.strip()

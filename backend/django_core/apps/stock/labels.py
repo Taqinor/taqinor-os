@@ -465,6 +465,11 @@ EQUIP_PREFIX = 'EQUIP'
 # deux produits différents peuvent partager un n° de série/lot).
 SERIE_PREFIX = 'SERIE'
 LOT_PREFIX = 'LOT'
+# XSTK20 — jeton « carte kanban » deux-bacs : `KANBAN:<produit_id>:
+# <emplacement_id>` (l'emplacement est celui qui se recomplète — la carte est
+# collée sur le bac vide de CET emplacement). Scanner cette carte crée une
+# DemandeTransfert préremplie depuis le dépôt principal.
+KANBAN_PREFIX = 'KANBAN'
 
 
 def produit_token(produit_id) -> str:
@@ -489,6 +494,10 @@ def serie_token(produit_id, numero_serie) -> str:
 
 def lot_token(produit_id, numero_lot) -> str:
     return f'{LOT_PREFIX}:{produit_id}:{numero_lot}'
+
+
+def kanban_token(produit_id, emplacement_id) -> str:
+    return f'{KANBAN_PREFIX}:{produit_id}:{emplacement_id}'
 
 
 def _esc(value) -> str:

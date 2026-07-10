@@ -2149,19 +2149,29 @@ class KitProduit(models.Model):
 
 
 class KitComposant(models.Model):
-    """Composant d'un kit (FG66/DC36) : un produit du catalogue + une quantité.
+    """Composant d'un kit (FG66/DC36) : soit un produit du catalogue, soit
+    (XMFG17) un SOUS-KIT (``composant_kit``) — jamais les deux (XOR imposé
+    par une CheckConstraint additive, sûre sur les données existantes : tout
+    composant déjà en base a ``produit`` renseigné et ``composant_kit`` NULL).
 
     DC36 — le prix / la marque / la TVA ne sont JAMAIS recopiés ici : ils sont
-    lus sur le ``Produit`` lié au moment de l'explosion. On ne stocke que le FK
-    produit et la quantité dans le bundle."""
+    lus sur le ``Produit`` (ou, pour un sous-kit, sur SES composants,
+    récursivement) au moment de l'explosion."""
 
     kit = models.ForeignKey(
         KitProduit, on_delete=models.CASCADE, related_name='composants')
     produit = models.ForeignKey(
-        Produit, on_delete=models.PROTECT, related_name='composants_kit')
+        Produit, on_delete=models.PROTECT, related_name='composants_kit',
+        null=True, blank=True)
+    # XMFG17 — sous-kit : nomenclature multi-niveaux. XOR avec `produit` (une
+    # ligne de composition est soit un produit feuille, soit un sous-kit).
+    composant_kit = models.ForeignKey(
+        KitProduit, on_delete=models.PROTECT, null=True, blank=True,
+        related_name='utilise_comme_sous_kit_dans',
+        help_text='Sous-kit utilisé comme composant (XOR avec produit).')
     quantite = models.DecimalField(
         max_digits=12, decimal_places=2, default=1,
-        help_text='Quantité de ce produit dans une unité de kit.')
+        help_text='Quantité de ce produit (ou sous-kit) dans une unité de kit.')
     # XMFG11 — taux de perte attendu (%) pour ce composant (casse, chutes...).
     # Défaut 0 = comportement historique inchangé. Gonfle le besoin/réservation
     # planifiés côté atelier (installations.KitComposant), pas la vente.
@@ -2172,11 +2182,61 @@ class KitComposant(models.Model):
     class Meta:
         verbose_name = 'Composant de kit'
         verbose_name_plural = 'Composants de kit'
-        unique_together = [('kit', 'produit')]
+        unique_together = [('kit', 'produit'), ('kit', 'composant_kit')]
         ordering = ['id']
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(produit__isnull=False, composant_kit__isnull=True)
+                    | models.Q(produit__isnull=True, composant_kit__isnull=False)
+                ),
+                name='kitcomposant_produit_xor_composant_kit',
+            ),
+        ]
 
     def __str__(self):
-        return f'{self.kit_id}: {self.produit_id} × {self.quantite}'
+        cible = self.produit_id or f'kit:{self.composant_kit_id}'
+        return f'{self.kit_id}: {cible} × {self.quantite}'
+
+
+class RevisionKit(models.Model):
+    """XMFG18 — révision de nomenclature d'un kit (pattern RevisionDocument
+    FG297) : snapshot JSON AUTO de la composition à chaque modification des
+    composants, numéroté par kit. La révision la plus récente est la
+    composition courante ; « composition au JJ/MM/AAAA » = la dernière
+    révision à cette date. Jamais de prix d'achat dans le snapshot."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='revisions_kit_produit')
+    kit = models.ForeignKey(
+        KitProduit, on_delete=models.CASCADE, related_name='revisions')
+    numero = models.PositiveIntegerField(default=1)
+    composition = models.JSONField(
+        default=list,
+        help_text='Snapshot des composants : produit_id/composant_kit_id, '
+                  'désignation, quantité, taux de perte.')
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='revisions_kit_produit_creees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Révision de kit'
+        verbose_name_plural = 'Révisions de kit'
+        ordering = ['kit_id', '-numero']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['kit', 'numero'],
+                name='stock_revkit_kit_numero_uniq'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'kit'],
+                         name='stock_revkit_co_kit_idx'),
+        ]
+
+    def __str__(self):
+        return f'Rev.{self.numero} — kit {self.kit_id}'
 
 
 class FicheTechnique(models.Model):

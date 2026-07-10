@@ -7,7 +7,7 @@ from .models import (
     ReceptionFournisseur, LigneReceptionFournisseur,
     FactureFournisseur, LigneFactureFournisseur, PaiementFournisseur,
     InventaireSession, LigneInventaire,
-    KitProduit, KitComposant,
+    KitProduit, KitComposant, RevisionKit,
     FicheTechnique,
     DocumentConformiteFournisseur, AchatsParametres,
     CategorieFournisseur, ContactFournisseur,
@@ -1184,23 +1184,39 @@ class InventaireSessionSerializer(serializers.ModelSerializer):
 # ── FG66 / DC36 — Kit / nomenclature (BOM) ────────────────────────────────────
 
 class KitComposantSerializer(serializers.ModelSerializer):
-    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
-    produit_sku = serializers.CharField(source='produit.sku', read_only=True)
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+    produit_sku = serializers.CharField(
+        source='produit.sku', read_only=True, default=None)
     # DC36 — prix de vente catalogue affiché en LECTURE SEULE (jamais stocké sur
     # le kit) ; aucun prix d'achat ici (interne).
     prix_vente = serializers.DecimalField(
         source='produit.prix_vente', max_digits=10, decimal_places=2,
-        read_only=True)
+        read_only=True, default=None)
+    # XMFG17 — nom du sous-kit (lecture seule, quand `composant_kit` est posé).
+    composant_kit_nom = serializers.CharField(
+        source='composant_kit.nom', read_only=True, default=None)
 
     class Meta:
         model = KitComposant
         fields = ['id', 'produit', 'produit_nom', 'produit_sku', 'prix_vente',
-                  'quantite']
+                  'composant_kit', 'composant_kit_nom', 'quantite']
 
     def validate_quantite(self, value):
         if value is None or value <= 0:
             raise serializers.ValidationError('La quantité doit être positive.')
         return value
+
+    def validate(self, attrs):
+        # XMFG17 — XOR produit/composant_kit posé côté serveur (même règle
+        # que la CheckConstraint DB — message clair AVANT le round-trip DB).
+        produit = attrs.get('produit')
+        composant_kit = attrs.get('composant_kit')
+        if bool(produit) == bool(composant_kit):
+            raise serializers.ValidationError(
+                'Un composant est soit un produit, soit un sous-kit '
+                '(jamais les deux, jamais aucun).')
+        return attrs
 
 
 class KitProduitSerializer(serializers.ModelSerializer):
@@ -1225,22 +1241,53 @@ class KitProduitSerializer(serializers.ModelSerializer):
         if company is None:
             return
         for c in composants_data:
-            if c['produit'].company_id != company.id:
+            if c.get('produit') is not None \
+                    and c['produit'].company_id != company.id:
                 raise serializers.ValidationError(
                     {'composants': 'Produit hors de votre entreprise.'})
+            if c.get('composant_kit') is not None \
+                    and c['composant_kit'].company_id != company.id:
+                raise serializers.ValidationError(
+                    {'composants': 'Sous-kit hors de votre entreprise.'})
+
+    def _validate_no_direct_self_reference(self, kit_id, composants_data):
+        # XMFG17 — un kit ne peut pas se déclarer lui-même comme sous-kit
+        # (garde immédiate ; les cycles indirects plus profonds sont
+        # détectés par `exploser_kit`/`structure_kit` à l'explosion).
+        if kit_id is None:
+            return
+        for c in composants_data:
+            sk = c.get('composant_kit')
+            if sk is not None and sk.id == kit_id:
+                raise serializers.ValidationError(
+                    {'composants': 'Un kit ne peut pas se contenir '
+                                   'lui-même.'})
+
+    def _snapshot(self, kit):
+        # XMFG18 — snapshot auto de la composition à chaque modification des
+        # composants (idempotent : composition identique → pas de doublon).
+        from .services import snapshot_revision_kit
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        snapshot_revision_kit(
+            kit, user=user if getattr(user, 'pk', None) else None)
 
     def create(self, validated_data):
         composants_data = validated_data.pop('composants', [])
         self._validate_company(composants_data)
         kit = KitProduit.objects.create(**validated_data)
+        self._validate_no_direct_self_reference(kit.id, composants_data)
         for c in composants_data:
             KitComposant.objects.create(kit=kit, **c)
+        self._snapshot(kit)
         return kit
 
     def update(self, instance, validated_data):
         composants_data = validated_data.pop('composants', None)
         if composants_data is not None:
             self._validate_company(composants_data)
+            self._validate_no_direct_self_reference(
+                instance.id, composants_data)
         for attr, val in validated_data.items():
             setattr(instance, attr, val)
         instance.save()
@@ -1248,7 +1295,26 @@ class KitProduitSerializer(serializers.ModelSerializer):
             instance.composants.all().delete()
             for c in composants_data:
                 KitComposant.objects.create(kit=instance, **c)
+            self._snapshot(instance)
         return instance
+
+
+class RevisionKitSerializer(serializers.ModelSerializer):
+    """XMFG18 — révision (snapshot) de la nomenclature d'un kit. Lecture
+    seule : les révisions sont créées automatiquement côté serveur."""
+    user_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = RevisionKit
+        fields = ['id', 'kit', 'numero', 'composition', 'user', 'user_nom',
+                  'date_creation']
+        read_only_fields = fields
+
+    def get_user_nom(self, obj):
+        u = obj.user
+        if u is None:
+            return None
+        return (f'{u.first_name} {u.last_name}'.strip() or u.username)
 
 
 class FicheTechniqueSerializer(serializers.ModelSerializer):

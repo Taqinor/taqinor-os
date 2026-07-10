@@ -992,3 +992,30 @@ def qr_svg(text, *, box=4, quiet=4):
     dépendance (pattern N20)."""
     from .labels import qr_svg as _qr_svg
     return _qr_svg(text, box=box, quiet=quiet)
+
+
+# ── XSTK20 — Réappro kanban : sélecteurs exposés à installations ───────────
+
+def emplacement_principal_scoped(company):
+    """Emplacement de stock PRINCIPAL de cette société, ou None. Amorce les
+    emplacements par défaut (dépôt principal + camionnette) si aucun
+    n'existe encore, réutilisant `ensure_emplacements` (comportement
+    identique à l'écran Emplacements N15). Lecture seule côté appelant."""
+    from .models import EmplacementStock
+    from .services import ensure_emplacements
+    if company is not None:
+        ensure_emplacements(company)
+    return (EmplacementStock.objects
+            .filter(company=company, is_principal=True)
+            .first())
+
+
+def seuil_max_emplacement(company, produit_id, emplacement_id):
+    """FG62 — `StockEmplacement.seuil_max` pour (produit, emplacement) de
+    cette société, ou None si non défini/inexistant. Lecture seule."""
+    from .models import StockEmplacement
+    se = (StockEmplacement.objects
+          .filter(company=company, produit_id=produit_id,
+                  emplacement_id=emplacement_id)
+          .first())
+    return se.seuil_max if se is not None else None
