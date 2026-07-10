@@ -377,6 +377,8 @@ unmapped_ok:
   # docs/PLAN2.md — small remnants / not NT/ARC/SCA-scoped.
   - QC
   - QW
+  - QX      # UI round-6 backlog (PR #350, landed after the SCA1 inventory) —
+  - QXG     # pure frontend waves outside the noyau->floods ordering.
   - S
   - VX      # frontend UI-redesign wave (PLAN2), drains before PLAN.md by
             # standing rule but is not part of the backend ARC/NT wave DAG.
