@@ -13,32 +13,23 @@ nombre_lettres`` (XFAC9, même conversion français/MAD que la quittance de
 paiement) — aucune réimplémentation ; l'import cross-app d'un module
 ``utils`` (pas de ``models``/``views``) suit le même patron déjà en place
 pour ``apps.ventes.utils.references``.
+
+ARC11 — la plomberie WeasyPrint est déléguée au service partagé
+``core.pdf.render_pdf`` ; les GABARITS HTML ci-dessous (dont l'en-tête société
+``_entete_societe_html``) restent STRICTEMENT identiques (aucune option de
+branding de ``render_pdf`` activée), donc le rendu est inchangé à l'octet près.
 """
 from datetime import date
 from decimal import Decimal
 from html import escape
-from io import BytesIO
 
 from apps.ventes.utils.nombre_lettres import montant_en_lettres
+from core.pdf import render_pdf
 
 MOIS_FR = [
     '', 'janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet',
     'août', 'septembre', 'octobre', 'novembre', 'décembre',
 ]
-
-
-def _html_to_pdf(html_string):
-    """HTML → octets PDF (WeasyPrint). Import paresseux de weasyprint."""
-    try:
-        import weasyprint
-    except ImportError as exc:  # pragma: no cover - dépend de l'environnement
-        raise RuntimeError(
-            "WeasyPrint n'est pas installé : génération PDF indisponible."
-        ) from exc
-    buf = BytesIO()
-    weasyprint.HTML(string=html_string).write_pdf(buf)
-    buf.seek(0)
-    return buf.read()
 
 
 def _fmt(montant):
@@ -139,8 +130,8 @@ def render_recu_note_frais_html(note, company_profile=None, *, today=None):
 
 
 def render_recu_note_frais_pdf(note, company_profile=None, *, today=None):
-    return _html_to_pdf(
-        render_recu_note_frais_html(note, company_profile, today=today))
+    return render_pdf(
+        html=render_recu_note_frais_html(note, company_profile, today=today))
 
 
 def render_recu_rapport_note_frais_html(rapport, company_profile=None, *,
@@ -192,6 +183,6 @@ def render_recu_rapport_note_frais_html(rapport, company_profile=None, *,
 
 def render_recu_rapport_note_frais_pdf(rapport, company_profile=None, *,
                                        today=None):
-    return _html_to_pdf(
-        render_recu_rapport_note_frais_html(
+    return render_pdf(
+        html=render_recu_rapport_note_frais_html(
             rapport, company_profile, today=today))

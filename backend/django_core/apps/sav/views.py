@@ -15,6 +15,7 @@ from authentication.mixins import TenantMixin
 from authentication.permissions import (
     HasPermissionOrLegacy, IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
+from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
 
 from . import activity
@@ -2255,9 +2256,13 @@ class AlarmeOnduleurViewSet(TenantMixin, viewsets.ModelViewSet):
 
 # ── XSAV14 — Taxonomie panne / cause / remède ─────────────────────────────────
 
-class CauseDefaillanceViewSet(TenantMixin, viewsets.ModelViewSet):
+class CauseDefaillanceViewSet(CompanyScopedModelViewSet):
     """Référentiel des causes de panne (XSAV14). Lecture tout rôle, écriture
-    responsable/admin (édité dans Paramètres)."""
+    responsable/admin (édité dans Paramètres).
+
+    ARC2 — pilote : base transverse unique (TenantMixin + ModelViewSet). Le
+    get_queryset (filtre archived) et perform_create (company forcée serveur)
+    SURCHARGENT la base : réponses inchangées."""
     queryset = CauseDefaillance.objects.all()
     serializer_class = CauseDefaillanceSerializer
 

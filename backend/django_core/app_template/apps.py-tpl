@@ -1,0 +1,34 @@
+from django.apps import AppConfig
+
+
+class {{ camel_case_app_name }}Config(AppConfig):
+    """AppConfig du module « apps.{{ app_label }} » (généré par startapp_erp — ARC42).
+
+    ODX2 — ``module_manifest`` : déclaré une fois, collecté génériquement par
+    ``core.modules.collect_manifests`` (apparaît dans le graphe de modules, le
+    gatage ``ModuleToggle`` et l'enforcement 404 ``DisabledModuleMiddleware``).
+    Ajuster ``label`` / ``categorie`` / ``depends`` / ``icone`` au vrai module.
+    Une app de FONDATION ou purement technique met ``installable=False``.
+    """
+
+    default_auto_field = 'django.db.models.BigAutoField'
+    name = 'apps.{{ app_label }}'
+    verbose_name = '{{ camel_case_app_name }}'
+    module_manifest = {
+        # Clé ``ModuleToggle`` (unique dans tout le dépôt, obligatoire).
+        'key': '{{ app_label }}',
+        'label': '{{ camel_case_app_name }}',
+        'icone': '',
+        'depends': [],
+        'installable': True,
+        'description': 'Module {{ app_label }} (à décrire).',
+        # Ventes/Finance/RH/Stock/Services/Marketing/Technique/Commercial.
+        'categorie': 'Technique',
+    }
+
+    def ready(self):
+        # M6 — abonnements au bus d'événements ``core.events`` (import local pour
+        # éviter les cycles au chargement des apps). Décommenter quand l'app
+        # réagit à l'état d'une autre app (ex. ``ventes`` émet ``devis_accepted``).
+        # from . import receivers  # noqa: F401
+        pass

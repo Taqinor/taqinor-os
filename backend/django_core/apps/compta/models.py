@@ -5183,6 +5183,23 @@ class Partenaire(models.Model):
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
+    # ── ARC19 — Pont additif vers le répertoire unifié Tiers ──
+    # FK nullable (string-FK ``'tiers.Tiers'`` — jamais d'import de
+    # apps.tiers.models ici). L'identité reste MAÎTRE côté Partenaire ; ``tiers``
+    # n'en est qu'un MIROIR one-way réversible, posé par le hook de sauvegarde
+    # (apps/compta/tiers_bridge.py) et backfillé par ``backfill_tiers``.
+    # ODX13-COMPATIBLE : le futur déplacement Partenaire→crm par
+    # ``SeparateDatabaseAndState`` ne touche pas ce string-FK (il pointe vers la
+    # couche fondation ``tiers``, non déplacée) — le pont SURVIT au move.
+    tiers = models.ForeignKey(
+        'tiers.Tiers',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='partenaires',
+        verbose_name='Tiers (répertoire unifié)',
+        help_text="Fiche du répertoire unifié des parties prenantes reflétant "
+                  "ce partenaire. Renseignée automatiquement (miroir).")
+
     class Meta:
         verbose_name = 'Partenaire commercial'
         verbose_name_plural = 'Partenaires commerciaux'

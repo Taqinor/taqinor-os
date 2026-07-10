@@ -26,7 +26,7 @@ import {
   fetchMouvements,
 } from '../../features/stock/store/stockSlice'
 import stockApi from '../../api/stockApi'
-import { useCanCreateProduit } from '../../hooks/useHasPermission'
+import { useCanCreateProduit, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 
 const DOC_LABELS = {
   bon_livraison: 'Bon de livraison',
@@ -120,7 +120,8 @@ export default function OcrStockImport() {
   // d'un réessai ciblé des échecs pour ne pas le recréer en double (750).
   const resolvedFournisseurRef = useRef(null)
 
-  const role = useSelector((s) => s.auth.role)
+  // ARC47 — accès à l'écran gaté via le hook partagé (responsable/admin).
+  const canAccess = useIsAdminOrResponsable()
   // QG5 — la création de produit (ligne « Créer ») est réservée à Directeur +
   // Commercial responsable (miroir UX de la garde backend QG4) ; les autres
   // rôles autorisés à voir cet écran (responsable/admin) ne peuvent que
@@ -524,7 +525,7 @@ const cp = produitsRef.current
     }
   }
 
-  if (role !== 'responsable' && role !== 'admin') {
+  if (!canAccess) {
     return (
       <div className="ui-root px-6 py-12">
         <EmptyState icon={AlertTriangle} title="Accès restreint"

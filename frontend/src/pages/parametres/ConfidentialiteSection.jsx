@@ -11,7 +11,7 @@
 // Section autonome : charge et enregistre ses propres données, sans le bouton
 // « Enregistrer » global. Texte en français ; clés techniques en anglais.
 import { useEffect, useState } from 'react'
-import { useSelector } from 'react-redux'
+import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { Plus, Trash2, Download, Lock, FileCheck2 } from 'lucide-react'
 import coreApi from '../../api/coreApi'
 import { downloadBlob, filenameFromResponse } from '../../api/importApi'
@@ -332,8 +332,7 @@ function BenchmarkingConsent() {
 }
 
 export default function ConfidentialiteSection() {
-  const role = useSelector((s) => s.auth.role)
-  const canManage = role === 'admin' || role === 'responsable'
+  const canManage = useIsAdminOrResponsable()
 
   if (!canManage) {
     return (

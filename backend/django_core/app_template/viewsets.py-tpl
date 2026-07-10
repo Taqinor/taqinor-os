@@ -1,0 +1,30 @@
+"""ViewSets du module « {{ app_label }} » (généré par startapp_erp — ARC42).
+
+CONVENTION (playbook) — un NOUVEAU viewset scopé société hérite de
+``core.viewsets.CompanyScopedModelViewSet`` (ARC2 : queryset filtré sur
+``request.user.company`` + ``company`` forcée côté serveur dans
+``perform_create``/``perform_update``, jamais lue du corps de la requête).
+
+Il exprime son contrôle d'accès d'UNE SEULE façon, jamais un mélange ad hoc :
+  * lecture ≠ écriture par méthode HTTP → poser ``read_permission`` /
+    ``write_permission`` (le défaut ``ScopedPermission`` les lit) ;
+  * grain par action (ex. ``destroy`` admin-only) → surcharger
+    ``get_permissions`` (prime sur le défaut, DRF standard) ;
+  * cas simple « authentifié suffit » → ne rien poser (défaut ARC55).
+"""
+from core.viewsets import CompanyScopedModelViewSet  # noqa: F401
+
+
+# Exemple (décommenter quand ``models.Exemple`` + son serializer existent) :
+#
+# from .models import Exemple
+# from .serializers import ExempleSerializer
+#
+# class ExempleViewSet(CompanyScopedModelViewSet):
+#     """CRUD scopé société sur ``Exemple`` (isolation ARC2 garantie)."""
+#
+#     queryset = Exemple.objects.all()
+#     serializer_class = ExempleSerializer
+#     # Contrôle d'accès lecture ≠ écriture (sinon : authentifié suffit) :
+#     # read_permission = '{{ app_label }}_voir'
+#     # write_permission = '{{ app_label }}_gerer'

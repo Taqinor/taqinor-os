@@ -147,6 +147,22 @@ class Fournisseur(models.Model):
         max_digits=5, decimal_places=2, default=0)
     escompte_jours = models.PositiveIntegerField(default=0)
 
+    # ── ARC18 — Pont additif vers le répertoire unifié Tiers ──
+    # FK nullable (string-FK — jamais d'import de apps.tiers.models ici, stock
+    # reste découplé de la couche fondation par référence string). L'identité
+    # reste MAÎTRE ici ; ``tiers`` n'en est qu'un MIROIR one-way, réversible,
+    # posé par le hook de sauvegarde (voir apps/stock/tiers_bridge.py) et
+    # backfillé par la commande ``backfill_tiers``. Vide = pas encore relié
+    # (comportement API historique strictement inchangé).
+    tiers = models.ForeignKey(
+        'tiers.Tiers',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='fournisseurs',
+        verbose_name='Tiers (répertoire unifié)',
+        help_text="Fiche du répertoire unifié des parties prenantes reflétant "
+                  "ce fournisseur. Renseignée automatiquement (miroir).")
+
     class Meta:
         verbose_name = "Fournisseur"
         verbose_name_plural = "Fournisseurs"

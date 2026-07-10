@@ -18,6 +18,14 @@ import api from './axios'
    ========================================================================== */
 
 const coreApi = {
+  // SCA24 — thème white-label de la société courante (FG392, singleton). GET
+  // est ouvert à tout utilisateur authentifié ; le shell l'utilise en lecture
+  // seule (aucun écran d'édition ici). Renvoie des défauts vides (jamais 404)
+  // quand aucun thème n'a été configuré — repli neutre côté frontend.
+  theme: {
+    getCourant: () => api.get('/core/theme/courant/'),
+  },
+
   // FG368 — jobs planifiés (Celery Beat), lecture + exécution manuelle admin.
   jobs: {
     list: () => api.get('/core/jobs/'),
