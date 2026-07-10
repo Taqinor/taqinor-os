@@ -142,6 +142,12 @@ jobs:
       - name: Lint imports (import-linter contracts — M3)
         working-directory: backend/django_core
         run: lint-imports
+      # ARC52 — garde-fous du socle en UN script DB-free (ARC8 *Activity, ARC26
+      # FileField, ARC11 imports WeasyPrint hors allowlist, ARC6 numérotation
+      # count()+1 hors socle). Étape ajoutée au job backend-lint EXISTANT — pas
+      # un nouveau check requis (protection de branche inchangée).
+      - name: Platform-kernel guards (check_platform — ARC8/26/11/6)
+        run: python scripts/check_platform.py
 
   # WOW6 — the fast backend suite is sharded 4× across free public-repo runners
   # (matrix legs run concurrently, each on its own 4-vCPU runner + Postgres). The

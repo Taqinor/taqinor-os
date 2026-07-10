@@ -630,7 +630,9 @@ class UserViewSet(viewsets.ModelViewSet):
         if not file:
             return Response({'detail': 'Aucun fichier fourni.'},
                             status=status.HTTP_400_BAD_REQUEST)
-        key, err = store_avatar(file, target.avatar_key)
+        # SCA42 — clé préfixée par société pour le NOUVEL objet
+        # (avatars/{company_id}/…). L'ancienne clé (supprimée) garde sa forme.
+        key, err = store_avatar(file, target.avatar_key, company=target.company)
         if err:
             return Response({'detail': err},
                             status=status.HTTP_400_BAD_REQUEST)

@@ -84,10 +84,26 @@ def fetch_avatar(key):
         return None
 
 
-def store_avatar(file, old_key=''):
+def _company_id(company):
+    """Identifiant de société pour le préfixe de clé, ou None (instance ou int)."""
+    if company is None:
+        return None
+    cid = getattr(company, 'id', company)
+    return cid or None
+
+
+def store_avatar(file, old_key='', *, company=None):
     """Valide + téléverse une photo, supprime l'ancienne.
 
     Retourne (key, None) en cas de succès, (None, message) en cas d'erreur.
+
+    SCA42 — isolation par société : quand ``company`` est fourni, la clé du
+    NOUVEL objet est préfixée par la société (``avatars/{company_id}/{uuid}.ext``)
+    — motif ERR75 généralisé. La clé reste sous le préfixe ``avatars/`` (donc
+    ``is_avatar_key``/le proxy de lecture continuent de l'accepter). Sans
+    ``company`` (appel historique) on retombe sur ``avatars/{uuid}.ext``. Les
+    objets DÉJÀ stockés ne bougent pas : la lecture utilise la clé STOCKÉE, donc
+    les anciennes photos restent servies quelle que soit la forme de la clé.
     """
     if file.size > _MAX_BYTES:
         return None, 'Fichier trop volumineux (max 2 Mo).'
@@ -101,7 +117,11 @@ def store_avatar(file, old_key=''):
     ext = file.name.rsplit('.', 1)[-1].lower() if '.' in file.name else ''
     if ext not in _ALLOWED_EXTENSIONS:
         ext = detected.split('/')[-1].replace('jpeg', 'jpg')
-    key = f"avatars/{uuid.uuid4().hex}.{ext}"
+    cid = _company_id(company)
+    if cid is not None:
+        key = f"avatars/{cid}/{uuid.uuid4().hex}.{ext}"
+    else:
+        key = f"avatars/{uuid.uuid4().hex}.{ext}"
 
     client = get_minio_client()
     ensure_uploads_bucket()  # N108 — self-heal a missing bucket before upload
