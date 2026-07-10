@@ -1296,6 +1296,27 @@ export default function LeadForm({
                           {a.body ? <>&nbsp;: {a.body}</> : null}
                         </span>
                       )}
+                      {/* QX32 — timeline unifiée : le cycle de vie du devis
+                          (envoyé/ouvert/signé/refusé) + le résumé d'engagement
+                          de la proposition en ligne, fusionnés par le serveur
+                          dans ce même historique (apps/ventes/selectors.py
+                          devis_events_for_lead) — le vendeur n'a plus besoin
+                          d'ouvrir la liste des devis pour préparer un appel. */}
+                      {a.kind === 'devis_sent' && (
+                        <span>📤 <strong>Devis envoyé</strong>{a.body ? <>&nbsp;: {a.body}</> : null}</span>
+                      )}
+                      {a.kind === 'devis_opened' && (
+                        <span>👁️ <strong>Proposition ouverte</strong>{a.body ? <>&nbsp;: {a.body}</> : null}</span>
+                      )}
+                      {a.kind === 'devis_signed' && (
+                        <span>✅ <strong>Devis signé</strong>{a.body ? <>&nbsp;: {a.body}</> : null}</span>
+                      )}
+                      {a.kind === 'devis_refused' && (
+                        <span>❌ <strong>Devis refusé</strong>{a.body ? <>&nbsp;: {a.body}</> : null}</span>
+                      )}
+                      {a.kind === 'devis_engagement' && (
+                        <span>📊 <strong>Engagement proposition</strong>{a.body ? <>&nbsp;: {a.body}</> : null}</span>
+                      )}
                       {a.bulk && <span className="chatter-bulk">en masse</span>}
                       <span className="chatter-meta">
                         — par {a.user_nom ?? '?'} · {timeAgo(a.created_at)}
