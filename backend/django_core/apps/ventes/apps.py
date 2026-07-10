@@ -25,3 +25,6 @@ class VentesConfig(AppConfig):
         # les récepteurs du bus d'événements (M6). Import local, jamais
         # d'effet de bord à l'import du module.
         from . import receivers  # noqa: F401
+        # QX24 — connecte les signaux LigneDevis (post_save/post_delete) qui
+        # gardent le payback de l'étude cohérent avec le total courant.
+        receivers._register_qx24_signals()
