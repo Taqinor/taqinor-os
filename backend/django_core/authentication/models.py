@@ -4,9 +4,34 @@ from django.utils.text import slugify
 
 
 class Company(models.Model):
+    # SCA18 — cycle de vie du tenant. ``actif`` (bool historique) est CONSERVÉ
+    # intact (jamais supprimé) et reste le drapeau lu partout ; ``statut`` ajoute
+    # une granularité (actif / suspendu / en fermeture) appliquée au JWT et à
+    # l'API. Un PONT de synchro bidirectionnel réversible garde les deux
+    # cohérents. Backfill (0018) : chaque société existante prend
+    # ``statut=actif`` si ``actif`` sinon ``suspendu`` — comportement inchangé.
+    STATUT_ACTIF = 'actif'
+    STATUT_SUSPENDU = 'suspendu'
+    STATUT_FERMETURE = 'fermeture'
+    STATUT_CHOICES = [
+        (STATUT_ACTIF, 'Actif'),
+        (STATUT_SUSPENDU, 'Suspendu'),
+        (STATUT_FERMETURE, 'En fermeture'),
+    ]
+
     nom = models.CharField(max_length=255)
     slug = models.SlugField(unique=True, blank=True)
     actif = models.BooleanField(default=True)
+    statut = models.CharField(
+        'Statut du compte', max_length=12, choices=STATUT_CHOICES,
+        default=STATUT_ACTIF,
+        help_text="Cycle de vie du tenant : seul « actif » autorise login/API. "
+                  "« suspendu »/« en fermeture » bloquent l'accès (rule SCA18).")
+    # SCA21 — date de passage en fermeture : démarre le délai de grâce (30 j)
+    # pendant lequel les données restent intactes avant qu'une purge explicite
+    # (management command, double confirmation) puisse être exécutée.
+    date_fermeture = models.DateTimeField(
+        'Date de mise en fermeture', null=True, blank=True)
     date_creation = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -16,10 +41,40 @@ class Company(models.Model):
     def __str__(self):
         return self.nom
 
+    @property
+    def est_operationnel(self):
+        """True si le tenant est ACTIF (login + API autorisés). Un tenant
+        suspendu ou en fermeture n'est pas opérationnel."""
+        return self.statut == self.STATUT_ACTIF and self.actif
+
     def save(self, *args, **kwargs):
         if not self.slug:
             base = slugify(self.nom)
             self.slug = base or f"company-{Company.objects.count() + 1}"
+        # SCA18 — pont de synchro bool↔statut (réversible, sans perte).
+        # ``actif`` (bool historique) et ``statut`` (granulaire) doivent toujours
+        # s'accorder sur l'état OPÉRATIONNEL. Réconciliation :
+        #   * si un code historique a mis ``actif=False`` alors que ``statut`` est
+        #     resté « actif » → on promeut ``statut`` en « suspendu » (le bool
+        #     mène) : une désactivation existante reste effective ;
+        #   * sinon ``actif`` suit ``statut`` (« actif » ⇔ True). Un tenant
+        #     suspendu/en fermeture a donc toujours ``actif=False``, ce qui fait
+        #     que TOUT code qui ne lit que ``actif`` bloque déjà ces tenants.
+        ancien_statut, ancien_actif = self.statut, self.actif
+        if self.statut == self.STATUT_ACTIF and self.actif is False:
+            self.statut = self.STATUT_SUSPENDU
+        self.actif = (self.statut == self.STATUT_ACTIF)
+        # Un save(update_fields=[…]) partiel doit persister la réconciliation
+        # du pont s'il a modifié statut/actif — sinon la base divergerait.
+        update_fields = kwargs.get('update_fields')
+        if update_fields is not None:
+            extra = set()
+            if self.statut != ancien_statut:
+                extra.add('statut')
+            if self.actif != ancien_actif:
+                extra.add('actif')
+            if extra:
+                kwargs['update_fields'] = list(set(update_fields) | extra)
         super().save(*args, **kwargs)
 
 

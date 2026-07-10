@@ -237,6 +237,24 @@ class CookieTokenRefreshView(APIView):
             )
         try:
             token = RefreshToken(refresh_raw)
+            # SCA18 — un tenant suspendu/en fermeture ne peut plus rafraîchir un
+            # jeton émis avant sa suspension : on rejette au refresh (message FR).
+            # Superuser (support) exempté. Tenant actif inchangé.
+            try:
+                uid = token.get('user_id')
+                u = CustomUser.objects.select_related('company').filter(
+                    pk=uid).first() if uid else None
+                if (u is not None and not u.is_superuser
+                        and u.company is not None
+                        and not u.company.est_operationnel):
+                    resp = Response(
+                        {'detail': 'Ce compte société est suspendu.'},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+                    _clear_auth_cookies(resp)
+                    return resp
+            except Exception:
+                pass
             access_token = token.access_token
             # XPLT19 — le claim ``active_company_id`` du refresh n'est PAS recopié
             # d'office sur l'access dérivé (simplejwt ne propage que les claims

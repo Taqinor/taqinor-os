@@ -26,6 +26,19 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         otp = (self.initial_data.get('otp') or '').strip()
         data = super().validate(attrs)
         user = self.user
+        # SCA18 — refuse d'émettre un JWT pour un tenant NON actif (suspendu ou
+        # en fermeture). Vérifié APRÈS l'authentification (mot de passe prouvé),
+        # message français. Un superuser (support/console) reste exempté pour
+        # pouvoir intervenir. Un tenant actif est inchangé.
+        if user is not None and not getattr(user, 'is_superuser', False):
+            company = getattr(user, 'company', None)
+            if company is not None and not getattr(
+                    company, 'est_operationnel', True):
+                raise serializers.ValidationError(
+                    {'detail': "Ce compte société est suspendu. Contactez "
+                               "l'administrateur."},
+                    code='tenant_suspendu',
+                )
         if user is not None and getattr(user, 'totp_enabled', False):
             if not otp:
                 # Signal clair que le 2FA est requis : le frontend déclenche la
