@@ -187,6 +187,16 @@ class Devis(models.Model):
     # mais on plafonne à 64 pour la cohérence). Index ≤ 30 chars : lyt_hash_idx.
     layout_hash = models.CharField(max_length=64, null=True, blank=True, db_index=True)
 
+    # ── QX23be — instantané de MARGE (usage manager UNIQUEMENT) ──
+    # Marge HT figée au save/envoi = Σ(HT lignes) − Σ(qté × prix_achat produit).
+    # NULLABLE (les devis dont aucun produit lié n'a de prix_achat gardent None).
+    # RÈGLE #4 / prix_achat : cette valeur ne DOIT JAMAIS apparaître dans un PDF
+    # ou une sortie client — elle n'est exposée que dans la vue liste/générateur
+    # côté responsable (voir DevisSerializer.marge_snapshot, manager-only).
+    marge_snapshot = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Marge HT figée (interne, manager-only)')
+
     class Meta:
         verbose_name = 'Devis'
         verbose_name_plural = 'Devis'

@@ -336,6 +336,20 @@ class DevisSerializer(serializers.ModelSerializer):
         link = self._active_share_link(obj)
         return link.engagement_summary if link else {}
 
+    # QX23be — marge interne figée, exposée UNIQUEMENT au responsable/admin
+    # (jamais dans un PDF ni une sortie client — prix_achat rule). Un
+    # commercial/lecteur reçoit toujours None ; ``fields='__all__'`` inclut le
+    # champ modèle, cette méthode le NEUTRALISE pour les non-managers.
+    marge_snapshot = serializers.SerializerMethodField()
+
+    def get_marge_snapshot(self, obj):
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if user is not None and getattr(user, 'is_responsable', False):
+            val = obj.marge_snapshot
+            return str(val) if val is not None else None
+        return None
+
     class Meta:
         model = Devis
         fields = '__all__'

@@ -519,6 +519,8 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
         return devis
 
     devis = create_with_reference(Devis, 'DEV', company, _create)
+    # QX23be — fige la marge interne dès la création (manager-only).
+    refresh_marge_snapshot(devis)
     logger.info(
         'Q3/QJ21: devis %s built from layout (%d lignes, %.2f kWc, %d pans, company %s)',
         devis.reference, len(line_specs), kwc,
@@ -1373,6 +1375,57 @@ def log_supplier_email(
     return ok, log
 
 
+def compute_marge_snapshot(devis):
+    """QX23be — marge HT interne figée d'un devis (usage MANAGER UNIQUEMENT).
+
+    marge = Σ(HT ligne, option acceptée si applicable) − Σ(qté × prix_achat).
+    Renvoie un Decimal, ou None si AUCUN produit lié ne porte de prix_achat
+    exploitable (on ne veut pas figer une fausse marge = 100 % du CA). Best-
+    effort : jamais d'exception remontée.
+
+    RÈGLE #4 : ``prix_achat`` ne quitte JAMAIS cette fonction interne — le
+    résultat (une marge) n'est exposé qu'au responsable dans la vue liste,
+    jamais dans un PDF/une sortie client.
+    """
+    from decimal import Decimal
+    try:
+        from apps.ventes.utils.options import option_lines
+        lignes = option_lines(devis)
+    except Exception:  # noqa: BLE001
+        try:
+            lignes = list(devis.lignes.select_related('produit').all())
+        except Exception:  # noqa: BLE001
+            return None
+    ht = Decimal('0')
+    cout = Decimal('0')
+    a_un_cout = False
+    for li in lignes:
+        try:
+            ht += Decimal(str(li.total_ht))
+        except Exception:  # noqa: BLE001
+            continue
+        produit = getattr(li, 'produit', None)
+        prix_achat = getattr(produit, 'prix_achat', None) if produit else None
+        if prix_achat is not None and Decimal(str(prix_achat)) > 0:
+            a_un_cout = True
+            cout += Decimal(str(li.quantite)) * Decimal(str(prix_achat))
+    if not a_un_cout:
+        return None
+    return (ht - cout).quantize(Decimal('0.01'))
+
+
+def refresh_marge_snapshot(devis):
+    """QX23be — recalcule et persiste ``marge_snapshot`` (best-effort)."""
+    try:
+        marge = compute_marge_snapshot(devis)
+        if devis.marge_snapshot != marge:
+            devis.marge_snapshot = marge
+            devis.save(update_fields=['marge_snapshot'])
+    except Exception as exc:  # noqa: BLE001 — jamais bloquant
+        logger.warning('QX23: marge_snapshot échoué pour devis %s : %s',
+                       getattr(devis, 'reference', '?'), exc)
+
+
 def mark_devis_sent(*, devis, user=None):
     """U4 — flip a Devis to « envoyé » through the ONE status-change path.
 
@@ -1411,6 +1464,8 @@ def mark_devis_sent(*, devis, user=None):
     devis.statut = Devis.Statut.ENVOYE
     devis.date_envoi = timezone.now()
     devis.save(update_fields=['statut', 'date_envoi'])
+    # QX23be — fige la marge interne au moment de l'envoi (manager-only).
+    refresh_marge_snapshot(devis)
     activity.log_devis_sent(devis, user)
     devis_sent.send(
         sender=Devis, devis=devis, user=user, ancien_statut=ancien)
