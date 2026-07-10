@@ -101,13 +101,19 @@ DROP DATABASE IF EXISTS $TestDb;
     }
 
     # ── Commande de test / test command ────────────────────────────────────
+    # L'image Docker n'installe que requirements.txt — les dépendances de TEST
+    # (factory_boy, freezegun, tblib… cf. requirements-dev.txt) en sont absentes
+    # et tout test important testkit/ échouerait en faux-négatif. On les installe
+    # dans le conteneur jetable avant de lancer (quelques secondes, idempotent).
     $ModulesList = $Modules -split '\s+' | Where-Object { $_ -ne '' }
+    $DjangoCmd = (@('python', 'manage.py', 'test') + $ModulesList + $KeepDbFlag +
+        @('--parallel', "$Parallel", '-v1')) -join ' '
     $testArgs = @(
         'compose', '-p', $ComposeProject, 'run', '--rm', '--no-deps',
         '-e', 'DJANGO_SETTINGS_MODULE=erp_agentique.settings.dev',
         'django_core',
-        'python', 'manage.py', 'test'
-    ) + $ModulesList + $KeepDbFlag + @('--parallel', "$Parallel", '-v1')
+        'sh', '-c', "pip install -q -r requirements-dev.txt && $DjangoCmd"
+    )
 
     Write-Host ""
     Write-Host "→ docker $($testArgs -join ' ')"
