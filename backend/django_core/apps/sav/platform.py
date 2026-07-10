@@ -10,7 +10,17 @@ Déclare ce que SAV expose aux surfaces transverses (voir ``core.platform``) :
   historique (``sav.ticket``). Équipement et ContratMaintenance n'ont PAS de
   chatter générique (dérive héritée « recherche_sans_chatter », rendue visible
   et baselinée dans ``core.platform_coverage.BASELINE_DRIFT`` — à retirer le
-  jour où ils recevront le chatter).
+  jour où ils recevront le chatter) ;
+* **import (ARC32)** — cible ``equipements`` (parc SAV, FG14) : le mapping
+  d'en-têtes reste dans ``dataimport.services.FIELD_MAPS`` ; seule la LISTE des
+  cibles importables bascule sur ce manifeste ;
+* **automation (ARC34)** — le couple (``sav.ticket``, ``statut``) est déclaré
+  automatisable (``automation_state_fields``) : une règle no-code
+  ``RECORD_STATE_CHANGE`` réagit aux transitions de statut du ticket.
+  L'émission part du SERVICE (``apps.sav.services.
+  emettre_changement_statut_ticket``, appelé par l'unique site de transition
+  gardée ``TicketViewSet._appliquer_transition_statut``, à côté de l'émission
+  ARC37) ; statut de DOMAINE ``Ticket.Statut``, jamais STAGES.py (rule #2).
 """
 from __future__ import annotations
 
@@ -23,8 +33,13 @@ PLATFORM = {
     # ARC30 — cible chatter/records historique (records.ALLOWED_TARGETS).
     'record_targets': ['sav.ticket'],
     'customfield_models': [],
-    'import_specs': [],
+    # ARC32 — cible d'import Équipements (parc SAV, clé FIELD_MAPS FG14).
+    'import_specs': ['equipements'],
     'agent_actions_module': '',
-    'automation_state_fields': [],
+    # ARC34 — statut Ticket automatisable par une règle no-code
+    # RECORD_STATE_CHANGE (whitelist registre ; émission via services).
+    'automation_state_fields': [
+        {'model': 'sav.ticket', 'field': 'statut'},
+    ],
     'kpi_providers': [],
 }

@@ -828,6 +828,12 @@ class TicketViewSet(CompanyScopedModelViewSet):
         sav_services.emettre_ticket_resolu(
             ticket, company=ticket.company, user=self.request.user,
             ancien_statut=old.statut)
+        # ARC34 — déclencheur automation générique RECORD_STATE_CHANGE sur
+        # TOUTE transition de statut réussie (whitelist registre plateforme ;
+        # no-op sans règle). Émission via le service (frontière respectée).
+        sav_services.emettre_changement_statut_ticket(
+            ticket, company=ticket.company, user=self.request.user,
+            ancien_statut=old.statut)
         # FG81 — recalcule sla_breach après toute mise à jour de statut.
         ticket.recompute_sla_breach()
         save_fields = ['sla_breach']

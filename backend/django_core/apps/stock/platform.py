@@ -15,7 +15,11 @@ Ce manifeste reflète le câblage RÉEL de Stock aujourd'hui :
   ``stock.fournisseur`` (DC33) ;
 * champs personnalisés (``customfields.registry``) : ``produit``,
   ``fournisseur`` (natifs historiques) ;
-* PAS d'import/export dédié, PAS d'actions agentiques déclarées via ce
+* import/export (``dataimport`` FIELD_MAPS, déclaré par ARC32) : ``products``,
+  ``fournisseurs`` (cibles FG14 historiques — leurs mappings d'en-têtes
+  restent dans ``dataimport.services.FIELD_MAPS``, seule la LISTE des cibles
+  importables bascule sur ce manifeste) ;
+* PAS d'actions agentiques déclarées via ce
   manifeste (``apps.stock.agent_actions`` existe et s'enregistre déjà depuis
   ``StockConfig.ready()`` — AG7 — donc HORS PÉRIMÈTRE d'auto-découverte
   ARC33 pour éviter un double enregistrement ; laissé vide ici) ;
@@ -39,8 +43,11 @@ PLATFORM = {
     # clés natives historiques 'produit' et 'fournisseur').
     'customfield_models': ['produit', 'fournisseur'],
 
-    # Surfaces non câblées via ce manifeste aujourd'hui.
-    'import_specs': [],
+    # ARC32 — cibles d'import déléguées à dataimport (clés FIELD_MAPS FG14).
+    # Le MAPPING d'en-têtes reste dans dataimport.services.FIELD_MAPS ; ce
+    # manifeste ne déclare que la LISTE des cibles importables (que
+    # ``services.TARGETS`` unionne au registre, non-régression testée).
+    'import_specs': ['products', 'fournisseurs'],
     # Vide À DESSEIN : apps.stock.agent_actions s'enregistre déjà depuis
     # StockConfig.ready() (AG7, register_stock_actions()) — le déclarer ici
     # ferait doublonner l'enregistrement une fois l'auto-découverte ARC33

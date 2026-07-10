@@ -24,10 +24,21 @@ est déclaré dans ``agent_actions_module`` et AUTO-DÉCOUVERT par
 ``AgentConfig.ready()`` — aucun câblage dans ``ContratsConfig.ready()``.
 Module ``ModuleToggle``-OFF ⇒ actions absentes du catalogue agent.
 
+ARC32 — cible d'import ``contrats`` (registre contractuel, ARC13) déclarée
+ici : l'écriture reste DÉLÉGUÉE à ``apps.contrats.services.creer_contrat_import``
+et le mapping d'en-têtes à ``dataimport.services.FIELD_MAPS`` ; seule la LISTE
+des cibles importables bascule sur ce manifeste (``services.TARGETS`` unionne).
+
+ARC34 — le couple (``contrats.contrat``, ``statut``) est déclaré automatisable
+(``automation_state_fields``) : une règle no-code ``RECORD_STATE_CHANGE`` peut
+réagir aux transitions de statut du contrat. L'émission part du SERVICE
+(``apps.contrats.services.changer_statut`` → automation best-effort), jamais du
+modèle ; le statut visé est le ``Contrat.Statut`` de DOMAINE
+(brouillon/en_approbation/signé/actif/…), jamais les étapes STAGES.py (rule #2).
+
 Surfaces encore VOLONTAIREMENT vides (le contrat n'y est pas branché) :
 
-* PAS d'import/export (absent de ``dataimport``) ;
-* PAS d'automatisation temporelle (absent de ``automation.DATE_TRIGGER_TARGETS``) ;
+* PAS d'automatisation temporelle DATE (absent de ``automation.DATE_TRIGGER_TARGETS``) ;
 * PAS de KPI/agrégat dédié (absent de ``reporting/reports.py``).
 
 Laissées explicites (jamais « remplies pour faire joli ») : un identifiant ici
@@ -56,8 +67,13 @@ PLATFORM = {
     # auto-découvertes par AgentConfig.ready() depuis cette déclaration.
     'agent_actions_module': 'apps.contrats.agent_actions',
 
-    # Surfaces DÉLIBÉRÉMENT VIDES (le contrat n'y est pas encore branché).
-    'import_specs': [],
-    'automation_state_fields': [],
+    # ARC32 — cible d'import Contrats (ARC13, écriture déléguée aux services).
+    'import_specs': ['contrats'],
+    # ARC34 — statut Contrat automatisable par une règle no-code
+    # RECORD_STATE_CHANGE (whitelist registre ; émission via services).
+    'automation_state_fields': [
+        {'model': 'contrats.contrat', 'field': 'statut'},
+    ],
+    # Surface DÉLIBÉRÉMENT VIDE (le contrat n'y est pas encore branché).
     'kpi_providers': [],
 }

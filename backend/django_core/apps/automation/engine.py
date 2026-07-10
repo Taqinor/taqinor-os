@@ -103,6 +103,30 @@ def _trigger_matches(rule, instance, context):
             return True
         return ctx.get('new_statut') == wanted
 
+    if rule.trigger_type == TriggerType.RECORD_STATE_CHANGE:
+        # ARC34 — déclencheur générique : le couple (model, field) de la règle
+        # doit correspondre à l'événement émis (contexte posé par le SERVICE
+        # émetteur : {'model', 'field', 'old_value', 'new_value'} — champs
+        # statut de DOMAINE, jamais les étapes STAGES.py, règle #2). ``value``
+        # (optionnel) exige une nouvelle valeur précise ; ``conditions``
+        # (optionnel) délègue à l'évaluateur d'arbre FG367 (``core.rules``)
+        # sur le contexte plat — jamais un nouvel évaluateur. La whitelist
+        # registre est appliquée à la CRÉATION de la règle (serializer).
+        cfg_model = (cfg.get('model') or '').strip().lower()
+        if cfg_model and cfg_model != _model_label(instance):
+            return False
+        cfg_field = (cfg.get('field') or '').strip()
+        if cfg_field and cfg_field != ctx.get('field'):
+            return False
+        wanted = cfg.get('value')
+        if wanted not in (None, '') and ctx.get('new_value') != wanted:
+            return False
+        conditions = cfg.get('conditions')
+        if conditions:
+            from core.rules import evaluate_condition_group
+            return evaluate_condition_group(conditions, ctx)
+        return True
+
     # DEVIS_ACCEPTED / FACTURE_OVERDUE / WARRANTY_EXPIRING / MAINTENANCE_DUE /
     # STOCK_BELOW_THRESHOLD : la condition est déjà tranchée par l'émetteur du
     # signal (le moteur n'est appelé que quand l'événement s'est produit).

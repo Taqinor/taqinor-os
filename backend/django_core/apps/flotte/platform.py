@@ -13,6 +13,11 @@ au lieu d'un appel explicite ``customfields.registry.register(...)`` dans
 ``FlotteConfig.ready()`` — la SOURCE de peuplement du registre bascule vers un
 chargeur central unique (``apps/customfields/apps.py``) qui lit ce manifeste ;
 l'API ``registry.register``/``get_model`` reste inchangée.
+
+ARC32 — cible d'import ``vehicules`` (parc flotte, XFLT22) déclarée ici :
+l'écriture reste DÉLÉGUÉE à ``apps.flotte.services.creer_vehicule_import`` et le
+mapping d'en-têtes à ``dataimport.services.FIELD_MAPS`` ; seule la LISTE des
+cibles importables bascule sur ce manifeste.
 """
 from __future__ import annotations
 
@@ -24,7 +29,8 @@ PLATFORM = {
     # ARC31 — cible customfieldable (pilote historique ARC14 ; source
     # basculée depuis FlotteConfig.ready() vers ce manifeste).
     'customfield_models': ['vehicule'],
-    'import_specs': [],
+    # ARC32 — cible d'import Véhicules (XFLT22, écriture déléguée aux services).
+    'import_specs': ['vehicules'],
     'agent_actions_module': '',
     'automation_state_fields': [],
     'kpi_providers': [],

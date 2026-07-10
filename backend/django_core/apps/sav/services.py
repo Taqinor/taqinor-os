@@ -1010,6 +1010,37 @@ def emettre_ticket_resolu(ticket, *, company, user=None, ancien_statut):
         pass
 
 
+def emettre_changement_statut_ticket(ticket, *, company, user=None,
+                                     ancien_statut):
+    """ARC34 — évalue les règles no-code automation ``RECORD_STATE_CHANGE``
+    après une transition de statut RÉUSSIE du ticket. Appelée par l'UNIQUE
+    site de transition gardée (``TicketViewSet._appliquer_transition_statut``,
+    juste à côté de l'émission ARC37 ``emettre_ticket_resolu`` ci-dessus).
+
+    Frontière : même précédent que ``gestion_projet.services`` (appel direct
+    ``apps.automation.engine.evaluate()``, import FONCTION-LOCAL, chemin
+    parallèle documenté dans automation/models.py). Le couple (sav.ticket,
+    statut) est déclaré automatisable dans ``apps/sav/platform.py``
+    (automation_state_fields) ; statut de DOMAINE ``Ticket.Statut``, jamais
+    STAGES.py (rule #2). Best-effort : aucune erreur ne remonte (la
+    transition, côté appelant, est déjà actée)."""
+    if ticket.statut == ancien_statut:
+        return  # pas de changement réel — n'émet jamais.
+    try:
+        from apps.automation.engine import evaluate
+        from apps.automation.models import TriggerType
+
+        evaluate(
+            TriggerType.RECORD_STATE_CHANGE, ticket, company,
+            context={
+                'model': 'sav.ticket', 'field': 'statut',
+                'old_value': ancien_statut, 'new_value': ticket.statut,
+            },
+            user=user)
+    except Exception:  # pragma: no cover - défensif (best-effort)
+        pass
+
+
 def abonner_suiveurs_globaux(ticket):
     """ZSAV9 — Abonne automatiquement (idempotent) chaque utilisateur listé
     dans ``SavSlaSettings.suivre_tous_tickets_sav`` au ticket nouvellement
