@@ -10,6 +10,7 @@ from apps.ventes.utils.references import create_with_reference
 from .models import (
     Installation, ChecklistTemplate, ChecklistEtapeModele,
     ChantierChecklistItem, StageModele, StockReservation,
+    DemandeTransfert,
 )
 
 
@@ -3262,3 +3263,68 @@ def generer_interventions_recurrentes(company, *, aujourd_hui=None):
                 rec.save(update_fields=[
                     'nb_generees', 'prochaine_echeance', 'actif'])
     return crees
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# XSTK20 — Réappro kanban deux-bacs par scan de carte.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def demande_transfert_depuis_kanban(
+        *, company, user, produit_id, emplacement_destination_id,
+        quantite=None):
+    """XSTK20 — Le scan d'une carte kanban (bac vide côté `emplacement_
+    destination_id`) crée une DemandeTransfert préremplie depuis le DÉPÔT
+    PRINCIPAL avec la quantité de recomplètement configurée sur la carte.
+
+    IDEMPOTENT : si une demande NON TERMINALE (demandé/approuvé) existe déjà
+    pour le même couple (produit, destination), elle est renvoyée SANS
+    doublon (`created=False`). `quantite` : si non fournie, reprend le
+    `StockEmplacement.seuil_max` (FG62) de cet emplacement pour ce produit ;
+    à défaut, 1 (repli sûr — mieux qu'une demande à 0).
+
+    Cross-app : `stock.EmplacementStock` / `stock.Produit` /
+    `stock.StockEmplacement` lus via `apps.stock.selectors` uniquement —
+    jamais leurs models importés ici."""
+    from apps.stock.selectors import (
+        emplacement_principal_scoped, get_emplacement_scoped,
+        get_produit_scoped, seuil_max_emplacement,
+    )
+
+    produit = get_produit_scoped(company, produit_id)
+    if produit is None:
+        raise ValueError('Produit introuvable pour cette société.')
+    destination = get_emplacement_scoped(company, emplacement_destination_id)
+    if destination is None:
+        raise ValueError('Emplacement introuvable pour cette société.')
+    if destination.is_principal:
+        raise ValueError(
+            'Le dépôt principal ne peut pas être la destination d’un '
+            'réappro kanban.')
+    source = emplacement_principal_scoped(company)
+    if source is None:
+        raise ValueError(
+            'Aucun dépôt principal configuré pour cette société.')
+
+    existante = DemandeTransfert.objects.filter(
+        company=company, produit_id=produit.id, source_id=source.id,
+        destination_id=destination.id,
+        statut__in=[DemandeTransfert.Statut.DEMANDE,
+                    DemandeTransfert.Statut.APPROUVE],
+    ).order_by('-date_creation').first()
+    if existante is not None:
+        return existante, False
+
+    if quantite is None:
+        quantite = seuil_max_emplacement(company, produit.id, destination.id)
+    if not quantite or quantite <= 0:
+        quantite = 1
+
+    def _save(reference):
+        return DemandeTransfert.objects.create(
+            company=company, reference=reference, produit=produit,
+            source=source, destination=destination, quantite=quantite,
+            motif='Carte kanban scannée (bac vide) — réappro deux-bacs.',
+            created_by=user)
+
+    demande = create_with_reference(DemandeTransfert, 'DTR', company, _save)
+    return demande, True
