@@ -1364,6 +1364,81 @@ class TestResidentialRenderer(TestCase):
         self.assertIn('data:image/png', html)
 
 
+@tag('pdf')
+class TestResidentialMultiTenantIdentity(TestCase):
+    """QX4 — le rendu résidentiel par défaut ne fuit plus l'identité TAQINOR.
+
+    Sans profil enrichi (entreprise vide) tous les littéraux Taqinor restent
+    (byte-équivalent-en-contenu pour Taqinor) ; avec le profil d'une AUTRE
+    société, c'est SON identité qui apparaît partout (footer, bande légale,
+    « Pourquoi … », signature, liens) — plus jamais celle de Taqinor.
+    """
+
+    def _html(self, entreprise=None, links=None):
+        from apps.ventes.quote_engine.residential import renderer, render
+        data = _residential_sample_data()
+        if entreprise is not None:
+            data["entreprise"] = entreprise
+        if links is not None:
+            data["links"] = links
+        d = renderer._augment(data)
+        return render.build_html(d)
+
+    def test_default_keeps_taqinor_identity(self):
+        """entreprise absent/vide → tous les littéraux Taqinor historiques."""
+        html = self._html()
+        self.assertIn('TAQINOR', html)                       # marque footer/sig
+        self.assertIn('TAQINOR Solutions SARLAU', html)      # bande légale
+        self.assertIn('003799642000067', html)               # ICE Taqinor
+        self.assertIn('691213', html)                        # RC Taqinor
+        self.assertIn('M. Reda Kasri', html)                 # gérant Taqinor
+        self.assertIn('contact@taqinor.com', html)           # email Taqinor
+        self.assertIn('Pourquoi TAQINOR', html)
+
+    def test_second_company_identity_everywhere(self):
+        """Un autre tenant voit SON identité partout ; zéro fuite Taqinor."""
+        ent = {
+            "nom": "SolarPro Maroc", "email": "hello@solarpro.ma",
+            "telephone": "+212 5 22 00 00 00", "ice": "111222333444555",
+            "rc": "998877", "capital": "500 000,00 MAD",
+            "gerant": "Mme Amina Berrada", "adresse": "Marrakech",
+            "site_url": "solarpro.ma",
+        }
+        html = self._html(entreprise=ent)
+        # Identité du tenant présente partout
+        self.assertIn('SOLARPRO MAROC', html)                # marque (upper)
+        self.assertIn('SolarPro Maroc', html)                # raison sociale
+        self.assertIn('hello@solarpro.ma', html)
+        self.assertIn('+212 5 22 00 00 00', html)
+        self.assertIn('111222333444555', html)               # ICE tenant
+        self.assertIn('998877', html)                        # RC tenant
+        self.assertIn('500 000,00 MAD', html)                # capital tenant
+        self.assertIn('Mme Amina Berrada', html)             # gérant tenant
+        self.assertIn('solarpro.ma', html)
+        self.assertIn('Pourquoi SolarPro Maroc', html)
+        # AUCUNE fuite de l'identité Taqinor
+        self.assertNotIn('TAQINOR Solutions SARLAU', html)
+        self.assertNotIn('003799642000067', html)            # ICE Taqinor
+        self.assertNotIn('691213', html)                     # RC Taqinor
+        self.assertNotIn('M. Reda Kasri', html)
+        self.assertNotIn('contact@taqinor.com', html)
+        # les liens produits/réalisations pointent vers le site du tenant
+        self.assertIn('solarpro.ma/produits', html)
+        self.assertIn('solarpro.ma/realisations', html)
+        self.assertNotIn('taqinor.ma/produits', html)
+
+    def test_partial_profile_falls_back_field_by_field(self):
+        """Un profil partiel : les champs renseignés priment, les vides
+        retombent sur le littéral Taqinor correspondant."""
+        html = self._html(entreprise={"nom": "EnerVerte", "ice": "555000555000"})
+        self.assertIn('ENERVERTE', html)                     # marque du tenant
+        self.assertIn('555000555000', html)                  # ICE du tenant
+        # champs non renseignés → repli Taqinor
+        self.assertIn('M. Reda Kasri', html)                 # gérant (repli)
+        self.assertIn('contact@taqinor.com', html)           # email (repli)
+        self.assertNotIn('003799642000067', html)            # ICE Taqinor absent
+
+
 # ─── QJ13 — Loi 82-21 self-consumption-first savings + utility tranche tables ──
 
 

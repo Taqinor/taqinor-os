@@ -38,6 +38,7 @@ def company_identity(company) -> dict:
             "nom": "", "adresse": "", "email": "", "telephone": "",
             "ice": "", "identifiant_fiscal": "", "rc": "", "patente": "",
             "cnss": "", "rib": "", "banque": "", "couleur_principale": "",
+            "capital": "", "gerant": "", "site_url": "",
         }
     return {
         "nom": p.nom or "",
@@ -52,6 +53,11 @@ def company_identity(company) -> dict:
         "rib": p.rib or "",
         "banque": p.banque or "",
         "couleur_principale": p.couleur_principale or "",
+        # QX4 — capital / gérant / site public (additifs). Vides → le moteur
+        # applique ses littéraux historiques (aucune fuite d'un autre tenant).
+        "capital": getattr(p, "capital", "") or "",
+        "gerant": getattr(p, "gerant", "") or "",
+        "site_url": getattr(p, "site_url", "") or "",
     }
 
 

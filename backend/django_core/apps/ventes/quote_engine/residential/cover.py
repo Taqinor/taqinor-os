@@ -26,6 +26,10 @@ def build(ctx):
     logo_dark = ctx["logo_dark"]
     charts = ctx["charts"]
     hero_img = ctx.get("hero_img", "")
+    # QX4 — identité société (multi-tenant) : marque affichée sur la cover
+    # (logo alt + « avec <marque> »), repli sur TAQINOR quand aucun profil.
+    ident = ctx.get("ident") or {}
+    brand = ident.get("brand_name") or "TAQINOR"
 
     # ── tokens ──────────────────────────────────────────────────────────────
     navy = C["navy"]
@@ -289,7 +293,7 @@ def build(ctx):
   <div class="c1-hero">
     <div class="c1-hero-glow"></div>
     <div class="c1-hero-top">
-      <img class="c1-logo" src="data:image/png;base64,{logo_dark}" alt="TAQINOR">
+      <img class="c1-logo" src="data:image/png;base64,{logo_dark}" alt="{brand}">
       <div class="c1-hero-meta">
         <div class="c1-ref-l">Réf. devis</div>
         <div class="c1-ref-v">{ref}</div>
@@ -351,7 +355,7 @@ def build(ctx):
         <div class="c1-bill-t">Votre facture mois par mois — avant / après</div>
         <div class="c1-bill-leg">
           <span class="c1-sw" style="background:#C2CCDA;"></span>aujourd'hui
-          <span class="c1-sw" style="background:{gold};"></span>avec TAQINOR
+          <span class="c1-sw" style="background:{gold};"></span>avec {brand}
         </div>
       </div>
       <img src="{charts['bill']}" alt="Facture mensuelle avant / après">

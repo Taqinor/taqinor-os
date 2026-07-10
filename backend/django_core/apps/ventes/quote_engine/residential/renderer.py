@@ -58,23 +58,39 @@ def _augment(data: dict) -> dict:
 
     d = dict(data)
     d.setdefault("client_full", d.get("client_name") or "Client")
+
+    # QX4 — site public piloté par l'identité société (multi-tenant). Le
+    # ``site_url`` du profil (parametres) prime ; repli sur le littéral
+    # historique « taqinor.ma » quand aucun profil enrichi n'existe (sortie
+    # byte-identique pour Taqinor). QX6 : les liens produits/réalisations/
+    # garanties dérivent de ce site ; le lien de signature réel est déjà posé
+    # par le builder (data['links']['signer']) — sinon repli historique.
+    ent = d.get("entreprise") or {}
+    ent_site = (ent.get("site_url") or "").strip().rstrip("/")
+    site_url = ent_site or d.get("site_url") or "taqinor.ma"
+    _existing_links = dict(d.get("links") or {})
+    _default_links = {
+        # QK5 — « avis » pointe vers /realisations (page réelle : nos
+        # réalisations clients). Le chemin /avis n'existe pas sur taqinor.ma ;
+        # un lien 404 sur un PDF client est corrigé ici. On ne fabrique jamais
+        # d'avis : on renvoie vers les réalisations vérifiables.
+        "realisations": f"{site_url}/realisations",
+        "avis": f"{site_url}/realisations",
+        "produits": f"{site_url}/produits",
+        "garanties": f"{site_url}/garanties",
+        "signer": f"{site_url}/signer/{d.get('ref', '')}",
+    }
+    # Les liens explicitement posés par le builder (ex. QX6 signer tokenisé)
+    # priment ; les manquants dérivent du site public de la société.
+    links = {**_default_links, **{k: v for k, v in _existing_links.items() if v}}
+
     d.update({
         "bills_before": before, "bills_after": after,
         "annual_before": annual_before, "annual_after": annual_after,
         "coverage_pct": coverage,
         "validity_days": d.get("validity_days", 30),
-        "site_url": d.get("site_url", "taqinor.ma"),
-        # QK5 — « avis » pointe vers /realisations (page réelle : nos
-        # réalisations clients). Le chemin /avis n'existe pas sur taqinor.ma ;
-        # un lien 404 sur un PDF client est corrigé ici. On ne fabrique jamais
-        # d'avis : on renvoie vers les réalisations vérifiables.
-        "links": d.get("links") or {
-            "realisations": "taqinor.ma/realisations",
-            "avis": "taqinor.ma/realisations",
-            "produits": "taqinor.ma/produits",
-            "garanties": "taqinor.ma/garanties",
-            "signer": f"taqinor.ma/signer/{d.get('ref', '')}",
-        },
+        "site_url": site_url,
+        "links": links,
     })
     return d
 

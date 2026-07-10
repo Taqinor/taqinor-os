@@ -76,6 +76,11 @@ def build(ctx) -> str:
 
     d = ctx["d"]
     C = ctx["C"]
+    # QX4 — identité société (multi-tenant) : marque, bande légale et bloc
+    # signature dérivent de l'identité résolue ; repli sur les littéraux
+    # Taqinor historiques (byte-identique sans profil enrichi).
+    ident = ctx.get("ident") or theme.company_identity(d)
+    brand = ident.get("brand_name") or "TAQINOR"
 
     client_full = (theme.titlecase_name(
         d.get("client_full") or d.get("client_name")) or "Le client")
@@ -223,13 +228,17 @@ def build(ctx) -> str:
         f'<span class="p3-cta-qr-t">Scannez pour signer</span></div>'
         if qr_uri else "")
 
-    # Legal identifier band — real company data (RC/ICE/capital from taqinor.ma).
+    # QX4 — Bande légale d'identité, pilotée par le profil société (multi-
+    # tenant). Chaque fait (raison sociale · capital · RC · ICE · gérant ·
+    # contact · site) retombe sur le littéral Taqinor historique quand le champ
+    # correspondant est vide, donc un devis Taqinor reste byte-identique et un
+    # autre tenant n'affiche plus jamais l'identité de Taqinor.
     legal = (
-        '<b>TAQINOR Solutions SARLAU</b> au capital de 100 000,00 MAD'
-        ' &middot; RC 691213 — Tribunal de Commerce de Casablanca'
-        ' &middot; ICE 003799642000067 &middot; Gérant : M. Reda Kasri'
-        ' &middot; contact@taqinor.com &middot; +212 6 61 85 04 10'
-        ' &middot; taqinor.ma'
+        f'<b>{ident["legal_nom"]}</b> au capital de {ident["capital"]}'
+        f' &middot; RC {ident["rc"]}'
+        f' &middot; ICE {ident["ice"]} &middot; Gérant : {ident["gerant"]}'
+        f' &middot; {ident["email"]} &middot; {ident["phone"]}'
+        f' &middot; {ident["site"]}'
     )
 
     return f"""
@@ -360,7 +369,7 @@ def build(ctx) -> str:
 
 <div class="p3-wrap">
   <div class="p3-kicker">Confiance &amp; Engagement</div>
-  <div class="p3-title">Pourquoi TAQINOR</div>
+  <div class="p3-title">Pourquoi {brand}</div>
 
   <div class="p3-values">{values_html}</div>
 
@@ -400,7 +409,7 @@ def build(ctx) -> str:
         <div class="p3-sig-line"></div>
       </div>
       <div class="p3-sig">
-        <div class="p3-sig-who">TAQINOR</div>
+        <div class="p3-sig-who">{brand}</div>
         <div class="p3-sig-name">Cachet &amp; signature</div>
         <div class="p3-sig-hint">Le devis fait foi dès réception de l'acompte</div>
         <div class="p3-sig-line"></div>
