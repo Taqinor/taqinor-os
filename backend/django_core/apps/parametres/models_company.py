@@ -48,6 +48,24 @@ class CompanyProfile(models.Model):
         help_text='Numéro d\'affiliation CNSS.')
     rib = models.CharField(max_length=50, blank=True, default='')
     banque = models.CharField(max_length=100, blank=True, default='')
+    # ── QX4 — identité société additive (bande légale + liens du devis) ──
+    # capital social + nom du gérant : les deux faits légaux qui n'avaient pas
+    # de logement (le devis résidentiel les codait en dur → fuite multi-tenant).
+    # site_url pilote les liens produits/réalisations/garanties du devis. Tous
+    # VIDES par défaut → le moteur applique ses littéraux historiques (Taqinor),
+    # donc une société sans profil enrichi reste rendue strictement à l'identique.
+    capital = models.CharField(
+        max_length=60, blank=True, default='',
+        help_text='Capital social (texte libre, ex. « 100 000,00 MAD ») '
+                  'affiché dans la bande légale du devis.')
+    gerant = models.CharField(
+        max_length=120, blank=True, default='',
+        help_text='Nom du gérant / représentant légal affiché dans la '
+                  'bande légale du devis.')
+    site_url = models.CharField(
+        max_length=200, blank=True, default='',
+        help_text='URL du site public (ex. « taqinor.ma ») — pilote les '
+                  'liens produits/réalisations/garanties du devis.')
     # ── Bloc paiement & conditions sur la FACTURE (Feature B, 2026-06) ──
     # Trois réglages texte libre, additifs et VIDES par défaut : tant qu'ils ne
     # sont pas renseignés, le PDF facture est strictement identique (les blocs ne

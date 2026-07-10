@@ -1364,6 +1364,536 @@ class TestResidentialRenderer(TestCase):
         self.assertIn('data:image/png', html)
 
 
+class TestCanonicalProductible(TestCase):
+    """QX38 — un seul modèle de productible (PVGIS par ville), partagé par
+    l'écran, le PDF et la proposition web. CompanyProfile.productible (1600)
+    devient un override, pas un modèle concurrent ; le barème ONEE est aligné.
+    """
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+
+    def test_productible_lookup_per_city(self):
+        from apps.ventes.quote_engine.productible import (
+            productible_for_city, PRODUCTIBLE_PAR_VILLE, DEFAULT_PRODUCTIBLE)
+        self.assertEqual(productible_for_city('Agadir'), 1687)
+        self.assertEqual(productible_for_city('agadir'), 1687)
+        self.assertEqual(productible_for_city('Casablanca'),
+                         PRODUCTIBLE_PAR_VILLE['casablanca'])
+        # ville inconnue → repli central (jamais un chiffre inventé)
+        self.assertEqual(productible_for_city('Oujda'), DEFAULT_PRODUCTIBLE)
+        # alias secondaire → ville de référence
+        self.assertEqual(productible_for_city('Kenitra'),
+                         PRODUCTIBLE_PAR_VILLE['rabat'])
+
+    def test_company_override_beats_pvgis_only_when_non_default(self):
+        from apps.ventes.quote_engine.productible import productible_for_city
+        # override = défaut historique 1600 → on lit le PVGIS de la ville
+        self.assertEqual(productible_for_city('Agadir', override=1600), 1687)
+        # override société explicite (≠ 1600) → il prime
+        self.assertEqual(productible_for_city('Agadir', override=1750), 1750)
+
+    def test_builder_uses_city_productible_for_production(self):
+        from apps.crm.models import Lead
+        from apps.ventes.quote_engine.builder import build_quote_data
+        lead = Lead.objects.create(
+            company=self.company, nom='Agadiri', ville='Agadir')
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau Canadien Solar 710W', '10', '1272.73'),
+            ('Onduleur réseau 8kW', '1', '14000'),
+        ], reference='DEV-QX38-1')
+        devis.lead = lead
+        devis.save(update_fields=['lead'])
+        data = build_quote_data(devis)
+        # 7.1 kWc × 1687 (Agadir PVGIS) = 11 977 kWh/an
+        self.assertEqual(data['puissance_kwc'], 7.1)
+        self.assertEqual(data['prod_kwh'], round(7.1 * 1687))
+
+    def test_onee_tranche_ceilings_aligned(self):
+        """QX38 — les plafonds ONEE représentent les vraies bandes cumulées
+        (100 / 250 / 400 / ∞), plus la bande 101-250 écrasée."""
+        from apps.ventes.quote_engine.pricing import ONEE_TRANCHES
+        ceilings = [c for c, _ in ONEE_TRANCHES]
+        self.assertEqual(ceilings, [100, 250, 400, None])
+
+
+class TestHonestCashflowPayback(TestCase):
+    """QX39 — payback par cashflow 25 ans (dégradation/escalade/batterie/
+    onduleur), croisement du cumul à zéro, hypothèses rendues sur le PDF."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+
+    def test_cashflow_payback_zero_crossing(self):
+        from apps.ventes.quote_engine.pricing import compute_cashflow_payback
+        cf = compute_cashflow_payback(50000, 10000)
+        # 25 années de cumul, payback interpolé au croisement de zéro
+        self.assertEqual(len(cf['cumulative']), 25)
+        self.assertGreater(cf['payback_years'], 0)
+        self.assertLess(cf['payback_years'], 25)
+        # le cumul est croissant puis positif (rentabilisé)
+        self.assertLess(cf['cumulative'][0], 0)
+        self.assertGreater(cf['cumulative'][-1], 0)
+        self.assertGreater(cf['net_gain'], 0)
+
+    def test_degenerate_inputs_return_zero(self):
+        from apps.ventes.quote_engine.pricing import compute_cashflow_payback
+        self.assertEqual(compute_cashflow_payback(0, 10000)['payback_years'], 0.0)
+        self.assertEqual(compute_cashflow_payback(50000, 0)['payback_years'], 0.0)
+
+    def test_battery_roundtrip_lengthens_payback(self):
+        from apps.ventes.quote_engine.pricing import compute_cashflow_payback
+        cf_no = compute_cashflow_payback(50000, 10000)
+        cf_bat = compute_cashflow_payback(50000, 10000, battery=True)
+        # le rendement aller-retour < 1 réduit l'économie → payback plus long
+        self.assertGreaterEqual(cf_bat['payback_years'], cf_no['payback_years'])
+
+    def test_assumptions_block_documented(self):
+        from apps.ventes.quote_engine.pricing import cashflow_assumptions
+        a = cashflow_assumptions()
+        self.assertEqual(a['years'], 25)
+        self.assertEqual(a['degradation_pct'], 0.5)
+        self.assertGreater(a['escalation_pct'], 0)
+        self.assertTrue(any('82-21' in n for n in a['notes']))
+        self.assertTrue(any('injection' in n.lower() for n in a['notes']))
+
+    def test_builder_roi_from_cashflow_and_assumptions_rendered(self):
+        from apps.ventes.quote_engine.builder import build_quote_data
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau Canadien Solar 710W', '14', '1272.73'),
+            ('Onduleur réseau Huawei 10kW', '1', '16666.67'),
+        ], reference='DEV-QX39-1')
+        data = build_quote_data(devis)
+        # le cumul du cashflow est porté dans les données de rendu
+        self.assertIsNotNone(data.get('cashflow_sans'))
+        self.assertEqual(len(data['cashflow_sans']), 25)
+        # les hypothèses documentées apparaissent dans le bloc « Nos hypothèses »
+        items = ' '.join(data['hypotheses']['items'])
+        self.assertIn('82-21', items)
+        self.assertIn('gradation', items.replace('é', 'e'))
+
+
+class TestQuoteNumbersHonestyPack(TestCase):
+    """QX7 — pack d'honnêteté des chiffres du PDF : couverture réelle (a),
+    échéancier custom sans case morte (b), ville résolue depuis le lead (c),
+    marques dérivées des vraies lignes (e). Sous-item (d) hors périmètre
+    (public_views, autre lane)."""
+
+    FULL_LINES = [
+        ('Onduleur réseau 10kW', '1', '11700'),
+        ('Onduleur hybride 5kW', '1', '24000'),
+        ('Panneau mono 550W', '14', '1100'),
+        ('Batterie 5 kWh', '1', '14000'),
+        ('Structures acier', '14', '375'),
+        ('Installation', '1', '4000'),
+    ]
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+
+    def _render_legacy(self, pdf_options=None, devis=None):
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        data = build_quote_data(devis or self._devis(), pdf_options)
+        cap = {}
+        orig = G._render_pdf_weasyprint
+        G._render_pdf_weasyprint = lambda html, out: cap.update(html=html)
+        try:
+            G.generate_premium_pdf(data, '/tmp/_qx7_test.pdf')
+        finally:
+            G._render_pdf_weasyprint = orig
+        return cap['html']
+
+    def _devis(self, ref='DEV-QX7-0'):
+        return make_devis(self.company, self.user, self.client_obj,
+                          self.FULL_LINES, reference=ref)
+
+    # ── (a) couverture ──────────────────────────────────────────────────────
+    def test_coverage_uses_real_consumption_when_known(self):
+        """Avec une conso réelle (étude), la couverture = prod/conso, pas un
+        diviseur /1.3 fabriqué, et n'est plus étiquetée « estimation »."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine.residential import renderer
+        devis = self._devis(ref='DEV-QX7-COV')
+        devis.etude_params = {'conso_annuelle': 12000, 'distributeur': 'onee'}
+        devis.save(update_fields=['etude_params'])
+        data = build_quote_data(devis)
+        self.assertEqual(data['conso_annuelle_kwh'], 12000)
+        d = renderer._augment(data)
+        self.assertFalse(d['coverage_estimated'])
+        # couverture = prod/conso arrondie, jamais planchée à 40
+        self.assertEqual(d['coverage_pct'],
+                         min(100, max(1, round(data['prod_kwh'] / 12000 * 100))))
+
+    def test_coverage_flagged_estimation_without_real_conso(self):
+        """Sans conso réelle, la couverture est dérivée honnêtement et
+        étiquetée « estimation » (drapeau vrai)."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine.residential import renderer
+        data = build_quote_data(self._devis(ref='DEV-QX7-EST'))
+        self.assertIsNone(data['conso_annuelle_kwh'])
+        d = renderer._augment(data)
+        self.assertTrue(d['coverage_estimated'])
+
+    # ── (b) échéancier custom sans case morte ───────────────────────────────
+    def test_custom_acompte_full_collapses_to_two_boxes(self):
+        """Un acompte custom qui absorbe la tranche matériel → échéancier à
+        DEUX cases (Acompte + Solde), jamais une case « Matériel » à 0 %."""
+        devis = self._devis(ref='DEV-QX7-ACPT')
+        # acompte custom énorme → materiel clampé à 0
+        html = self._render_legacy(
+            {'devis_final': True, 'payment_mode': 'custom',
+             'custom_acompte': 999999}, devis=devis)
+        self.assertIn('Modalit', html)                    # bloc présent
+        # aucune case « Matériel » morte
+        self.assertNotIn('Avant installation', html)
+        self.assertIn('la livraison', html)               # solde à la livraison
+        # pas de « 0% » orphelin dans une case de paiement
+        self.assertNotIn('>0%</div>', html)
+
+    def test_standard_payment_keeps_three_boxes(self):
+        """Chemin standard (materiel > 0) : trois cases, rendu inchangé."""
+        html = self._render_legacy(
+            {'devis_final': True}, devis=self._devis(ref='DEV-QX7-STD'))
+        self.assertIn('Avant installation', html)         # case Matériel présente
+        self.assertIn('Acompte', html)
+        self.assertIn('Solde', html)
+
+    # ── (c) ville résolue depuis le lead ────────────────────────────────────
+    def test_client_city_resolved_from_lead_ville(self):
+        from apps.crm.models import Lead
+        from apps.ventes.quote_engine.builder import build_quote_data
+        lead = Lead.objects.create(
+            company=self.company, nom='Bennani', ville='Agadir')
+        devis = self._devis(ref='DEV-QX7-CITY')
+        devis.lead = lead
+        devis.save(update_fields=['lead'])
+        data = build_quote_data(devis)
+        self.assertEqual(data['client_city'], 'Agadir')
+
+    def test_client_city_empty_without_lead(self):
+        from apps.ventes.quote_engine.builder import build_quote_data
+        data = build_quote_data(self._devis(ref='DEV-QX7-NOCITY'))
+        self.assertEqual(data['client_city'], '')
+
+    # ── (e) marques dérivées des vraies lignes ──────────────────────────────
+    @tag('pdf')
+    def test_brand_chips_derive_from_real_line_marques(self):
+        from apps.ventes.quote_engine.residential import renderer, render
+        from apps.ventes.quote_engine.builder import build_quote_data
+        # produits porteurs de marques réelles distinctives
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau Canadien Solar 710W', '14', '1272.73'),
+            ('Onduleur réseau Huawei 10kW', '1', '16666.67'),
+            ('Onduleur hybride Deye 10kW', '1', '23333.33'),
+            ('Batterie Deyness 10 kWh', '1', '25000'),
+            ('Installation', '1', '4000'),
+        ], reference='DEV-QX7-BRAND')
+        for li in devis.lignes.all():
+            if 'Canadien' in li.designation:
+                li.produit.marque = 'Canadian Solar'
+            elif 'Huawei' in li.designation:
+                li.produit.marque = 'Huawei'
+            elif 'Deye' in li.designation:
+                li.produit.marque = 'Deye'
+            elif 'Deyness' in li.designation:
+                li.produit.marque = 'Deyness'
+            li.produit.save(update_fields=['marque'])
+        data = build_quote_data(devis)
+        html = render.build_html(renderer._augment(data))
+        # les marques réelles apparaissent dans la puce de valeur
+        self.assertIn('Équipements premium certifiés', html)
+        self.assertIn('Huawei', html)
+        self.assertIn('Deye', html)
+
+    @tag('pdf')
+    def test_brand_chip_falls_back_to_iec_without_marques(self):
+        from apps.ventes.quote_engine.residential import renderer, render
+        from apps.ventes.quote_engine.builder import build_quote_data
+        # lignes sans marque → repli « équipements certifiés IEC »
+        devis = self._devis(ref='DEV-QX7-NOBRAND')
+        for li in devis.lignes.all():
+            li.produit.marque = ''
+            li.produit.save(update_fields=['marque'])
+        data = build_quote_data(devis)
+        html = render.build_html(renderer._augment(data))
+        self.assertIn('Équipements premium certifiés IEC', html)
+
+
+@tag('pdf')
+class TestResidentialWarmPathCache(TestCase):
+    """QX8 — chemin chaud : polices/logo/graphiques + octets PDF sont mis en
+    cache. Un second rendu du MÊME devis inchangé réutilise le travail (aucun
+    recalcul de graphiques) et produit des octets byte-identiques.
+    """
+
+    def test_font_and_logo_helpers_are_cached_pure(self):
+        from apps.ventes.quote_engine.residential import theme
+        # lru_cache présent → cache_info() disponible et effectif
+        theme.font_face_css.cache_clear()
+        theme.logo_dark_b64.cache_clear()
+        theme.logo_color_b64.cache_clear()
+        a = theme.font_face_css()
+        b = theme.font_face_css()
+        self.assertEqual(a, b)
+        self.assertEqual(theme.font_face_css.cache_info().misses, 1)
+        self.assertGreaterEqual(theme.font_face_css.cache_info().hits, 1)
+        # le logo recoloré (boucle par pixel) n'est calculé qu'une fois
+        theme.logo_dark_b64()
+        theme.logo_dark_b64()
+        self.assertEqual(theme.logo_dark_b64.cache_info().misses, 1)
+
+    def test_second_render_reuses_bytes_and_skips_chart_work(self):
+        from unittest.mock import patch
+        from apps.ventes.quote_engine.residential import renderer
+        from apps.ventes.quote_engine.residential import charts as charts_mod
+        data = _residential_sample_data()
+
+        # vide le cache PDF pour un décompte déterministe
+        renderer._PDF_CACHE.clear()
+
+        real_build_all = charts_mod.build_all
+        with patch.object(charts_mod, 'build_all',
+                          side_effect=real_build_all) as spy:
+            pdf1 = renderer.render_pdf_bytes(data)
+            pdf2 = renderer.render_pdf_bytes(data)
+        # second rendu : servi depuis le cache → graphiques NON recalculés
+        self.assertEqual(spy.call_count, 1)
+        # octets byte-identiques
+        self.assertEqual(pdf1, pdf2)
+        self.assertEqual(pdf1[:4], b'%PDF')
+
+    def test_edited_devis_forces_a_real_rerender(self):
+        from unittest.mock import patch
+        from apps.ventes.quote_engine.residential import renderer
+        from apps.ventes.quote_engine.residential import charts as charts_mod
+        renderer._PDF_CACHE.clear()
+        data = _residential_sample_data()
+        data2 = _residential_sample_data()
+        data2["ref"] = "DEV-202606-9999"   # une édition change l'empreinte
+        real = charts_mod.build_all
+        with patch.object(charts_mod, 'build_all', side_effect=real) as spy:
+            renderer.render_pdf_bytes(data)
+            renderer.render_pdf_bytes(data2)
+        # empreintes différentes → deux vrais rendus (pas de PDF périmé servi)
+        self.assertEqual(spy.call_count, 2)
+
+
+class TestQuoteSignLinkAndPageNumbers(TestCase):
+    """QX6 — le CTA de signature pointe vers la VRAIE proposition tokenisée
+    (ShareLink), plus l'ancien /signer/<ref> 404 ; le pied de page n'a plus de
+    « / 3 » codé en dur (il lit le nombre réel de pages rendues)."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+
+    def _resid_devis(self):
+        return make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau Canadien Solar 710W', '14', '1272.73'),
+            ('Onduleur réseau Huawei 10kW Triphasé', '1', '16666.67'),
+            ('Onduleur hybride Deye 10kW Triphasé', '1', '23333.33'),
+            ('Batterie Deyness 10 kWh', '1', '25000'),
+            ('Installation', '1', '4000'),
+        ], reference='DEV-QX6-1')
+
+    def test_builder_mints_tokenized_signer_link(self):
+        from apps.ventes.models import ShareLink
+        from apps.ventes.quote_engine.builder import build_quote_data
+        devis = self._resid_devis()
+        data = build_quote_data(devis)
+        signer = (data.get("links") or {}).get("signer", "")
+        self.assertIn('/proposition/', signer)
+        # le lien porte le token d'un vrai ShareLink de ce devis
+        link = ShareLink.for_devis(devis)
+        self.assertIn(link.token, signer)
+        # plus jamais l'ancien chemin inventé /signer/<ref>
+        self.assertNotIn('/signer/', signer)
+
+    def test_signer_link_reused_not_duplicated(self):
+        from apps.ventes.models import ShareLink
+        from apps.ventes.quote_engine.builder import build_quote_data
+        devis = self._resid_devis()
+        build_quote_data(devis)
+        build_quote_data(devis)
+        # un seul ShareLink valide par devis (réutilisé, pas dupliqué)
+        self.assertEqual(
+            ShareLink.objects.filter(devis=devis).count(), 1)
+
+    @tag('pdf')
+    def test_rendered_pdf_qr_points_at_live_proposal(self):
+        from apps.ventes.quote_engine.residential import renderer, render
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.models import ShareLink
+        devis = self._resid_devis()
+        data = build_quote_data(devis)
+        html = render.build_html(renderer._augment(data))
+        link = ShareLink.for_devis(devis)
+        # le lien texte « Signez en ligne » pointe vers la proposition tokenisée
+        self.assertIn(f'/proposition/{link.token}', html)
+        self.assertNotIn('taqinor.ma/signer/', html)
+
+    @tag('pdf')
+    def test_footer_page_total_matches_real_pages(self):
+        from apps.ventes.quote_engine.residential import renderer, render
+        from apps.ventes.quote_engine.builder import build_quote_data
+        devis = self._resid_devis()
+        html = render.build_html(renderer._augment(build_quote_data(devis)))
+        # le pied affiche « Page N / 3 » = nombre RÉEL de pages (résidentiel = 3)
+        self.assertIn('Page 1 / 3', html)
+        self.assertIn('Page 3 / 3', html)
+
+
+@tag('pdf')
+class TestResidentialSingleOptionGate(TestCase):
+    """QX5 — jamais d'option fantôme : un devis résidentiel mono-option rend
+    UNE seule carte partout (page 1 pleine largeur, page 2 sans découpage
+    delta, en-tête « commun aux deux options » renommé). Un devis à deux
+    options reste inchangé (les tests de nombre de pages ci-dessus le prouvent).
+    """
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+
+    def _resid_html(self, devis):
+        from apps.ventes.quote_engine.residential import renderer, render
+        from apps.ventes.quote_engine.builder import build_quote_data
+        data = build_quote_data(devis)
+        # mode résidentiel par défaut → renderer résidentiel
+        d = renderer._augment(data)
+        return render.build_html(d)
+
+    def _avec_only_devis(self):
+        # hybride + batterie + panneaux, AUCUN onduleur réseau → une seule
+        # option réelle (« Avec batterie »).
+        return make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau Canadien Solar 710W', '12', '1272.73'),
+            ('Onduleur hybride Deye 5kW', '1', '24000'),
+            ('Batterie Deyness 10 kWh', '1', '25000'),
+            ('Structures acier', '12', '417'),
+            ('Installation', '1', '5000'),
+        ], reference='DEV-QX5-AVEC')
+
+    def test_battery_only_quote_shows_single_option_everywhere(self):
+        from weasyprint import HTML
+        devis = self._avec_only_devis()
+        html = self._resid_html(devis)
+        doc = HTML(string=html).render()
+        # toujours 3 pages (le format n'a pas changé)
+        self.assertEqual(len(doc.pages), 3)
+        # page 1 : PAS de carte « Option 1 » / « Option 2 » fabriquée
+        self.assertNotIn('Option 1', html)
+        self.assertNotIn('Option 2', html)
+        # page 2 : l'en-tête « commun aux deux options » est renommé
+        self.assertNotIn('Équipement commun aux deux options', html)
+        self.assertIn('Votre équipement', html)
+        # page 2 : aucun bloc delta « ajoute »
+        self.assertNotIn('<small>ajoute</small>', html)
+        # aucune option « Sans batterie » fantôme (dépourvue d'onduleur)
+        self.assertNotIn('Sans batterie', html)
+        # l'option réelle est bien présente
+        self.assertIn('Avec batterie', html)
+
+    def test_two_option_quote_keeps_both_cards(self):
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau Canadien Solar 710W', '14', '1272.73'),
+            ('Onduleur réseau Huawei 10kW Triphasé', '1', '16666.67'),
+            ('Onduleur hybride Deye 10kW Triphasé', '1', '23333.33'),
+            ('Batterie Deyness 10 kWh', '1', '25000'),
+            ('Installation', '1', '4000'),
+        ], reference='DEV-QX5-DEUX')
+        html = self._resid_html(devis)
+        # deux options → les deux cartes + le découpage delta subsistent
+        self.assertIn('Option 1', html)
+        self.assertIn('Option 2', html)
+        self.assertIn('Équipement commun aux deux options', html)
+        self.assertIn('<small>ajoute</small>', html)
+
+
+@tag('pdf')
+class TestResidentialMultiTenantIdentity(TestCase):
+    """QX4 — le rendu résidentiel par défaut ne fuit plus l'identité TAQINOR.
+
+    Sans profil enrichi (entreprise vide) tous les littéraux Taqinor restent
+    (byte-équivalent-en-contenu pour Taqinor) ; avec le profil d'une AUTRE
+    société, c'est SON identité qui apparaît partout (footer, bande légale,
+    « Pourquoi … », signature, liens) — plus jamais celle de Taqinor.
+    """
+
+    def _html(self, entreprise=None, links=None):
+        from apps.ventes.quote_engine.residential import renderer, render
+        data = _residential_sample_data()
+        if entreprise is not None:
+            data["entreprise"] = entreprise
+        if links is not None:
+            data["links"] = links
+        d = renderer._augment(data)
+        return render.build_html(d)
+
+    def test_default_keeps_taqinor_identity(self):
+        """entreprise absent/vide → tous les littéraux Taqinor historiques."""
+        html = self._html()
+        self.assertIn('TAQINOR', html)                       # marque footer/sig
+        self.assertIn('TAQINOR Solutions SARLAU', html)      # bande légale
+        self.assertIn('003799642000067', html)               # ICE Taqinor
+        self.assertIn('691213', html)                        # RC Taqinor
+        self.assertIn('M. Reda Kasri', html)                 # gérant Taqinor
+        self.assertIn('contact@taqinor.com', html)           # email Taqinor
+        self.assertIn('Pourquoi TAQINOR', html)
+
+    def test_second_company_identity_everywhere(self):
+        """Un autre tenant voit SON identité partout ; zéro fuite Taqinor."""
+        ent = {
+            "nom": "SolarPro Maroc", "email": "hello@solarpro.ma",
+            "telephone": "+212 5 22 00 00 00", "ice": "111222333444555",
+            "rc": "998877", "capital": "500 000,00 MAD",
+            "gerant": "Mme Amina Berrada", "adresse": "Marrakech",
+            "site_url": "solarpro.ma",
+        }
+        html = self._html(entreprise=ent)
+        # Identité du tenant présente partout
+        self.assertIn('SOLARPRO MAROC', html)                # marque (upper)
+        self.assertIn('SolarPro Maroc', html)                # raison sociale
+        self.assertIn('hello@solarpro.ma', html)
+        self.assertIn('+212 5 22 00 00 00', html)
+        self.assertIn('111222333444555', html)               # ICE tenant
+        self.assertIn('998877', html)                        # RC tenant
+        self.assertIn('500 000,00 MAD', html)                # capital tenant
+        self.assertIn('Mme Amina Berrada', html)             # gérant tenant
+        self.assertIn('solarpro.ma', html)
+        self.assertIn('Pourquoi SolarPro Maroc', html)
+        # AUCUNE fuite de l'identité Taqinor
+        self.assertNotIn('TAQINOR Solutions SARLAU', html)
+        self.assertNotIn('003799642000067', html)            # ICE Taqinor
+        self.assertNotIn('691213', html)                     # RC Taqinor
+        self.assertNotIn('M. Reda Kasri', html)
+        self.assertNotIn('contact@taqinor.com', html)
+        # les liens produits/réalisations pointent vers le site du tenant
+        self.assertIn('solarpro.ma/produits', html)
+        self.assertIn('solarpro.ma/realisations', html)
+        self.assertNotIn('taqinor.ma/produits', html)
+
+    def test_partial_profile_falls_back_field_by_field(self):
+        """Un profil partiel : les champs renseignés priment, les vides
+        retombent sur le littéral Taqinor correspondant."""
+        html = self._html(entreprise={"nom": "EnerVerte", "ice": "555000555000"})
+        self.assertIn('ENERVERTE', html)                     # marque du tenant
+        self.assertIn('555000555000', html)                  # ICE du tenant
+        # champs non renseignés → repli Taqinor
+        self.assertIn('M. Reda Kasri', html)                 # gérant (repli)
+        self.assertIn('contact@taqinor.com', html)           # email (repli)
+        self.assertNotIn('003799642000067', html)            # ICE Taqinor absent
+
+
 # ─── QJ13 — Loi 82-21 self-consumption-first savings + utility tranche tables ──
 
 

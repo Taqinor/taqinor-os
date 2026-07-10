@@ -7,6 +7,7 @@ by `residential.renderer`. Reuses the engine's bundled fonts/logo.
 """
 from __future__ import annotations
 import base64
+import functools
 from pathlib import Path
 
 # Engine assets (fonts + logo), one level up at quote_engine/assets.
@@ -43,8 +44,13 @@ def _font_b64(name: str) -> str:
     return base64.b64encode(p.read_bytes()).decode() if p.exists() else ""
 
 
+@functools.lru_cache(maxsize=1)
 def logo_dark_b64() -> str:
-    """Logo recolored white-on-transparent for navy headers."""
+    """Logo recolored white-on-transparent for navy headers.
+
+    QX8 — pur (aucun argument, lit un asset figé) : le recolorage par pixel +
+    l'encodage b64 sont mis en cache une fois par processus, donc une rafale de
+    rendus ne refait plus la boucle par pixel."""
     from PIL import Image
     import io
     p = _LIVE_ASSETS / "logo.png"
@@ -63,7 +69,9 @@ def logo_dark_b64() -> str:
     return base64.b64encode(buf.getvalue()).decode()
 
 
+@functools.lru_cache(maxsize=1)
 def logo_color_b64() -> str:
+    # QX8 — asset figé, encodé une fois par processus (cache pur).
     p = _LIVE_ASSETS / "logo.png"
     return base64.b64encode(p.read_bytes()).decode()
 
@@ -88,7 +96,10 @@ def hero_image_b64(kwc=None, mode: str = "residentiel") -> str:
     return base64.b64encode(p.read_bytes()).decode() if p.exists() else ""
 
 
+@functools.lru_cache(maxsize=1)
 def font_face_css() -> str:
+    # QX8 — @font-face (6 woff2 encodés en b64) figé, calculé une fois par
+    # processus : plus de relecture/encodage des polices à chaque rendu.
     faces = [
         ("DM Serif Display", 400, "DMSerifDisplay-400.woff2"),
         ("Playfair Display", 400, "PlayfairDisplay-400.woff2"),
@@ -239,11 +250,77 @@ html, body {{ font-family:{FONT_SANS}; color:{C['ink']}; -weasy-hyphens:none; }}
 """
 
 
-def page_footer(data: dict) -> str:
-    site = data.get("site_url", "taqinor.ma")
+# ── QX4 — littéraux d'identité HISTORIQUES (Taqinor), défauts de repli ──────
+# Toute valeur d'identité société vide retombe sur ces littéraux, de sorte
+# qu'un devis sans profil enrichi reste rendu strictement à l'identique et
+# qu'aucune identité d'un autre tenant ne fuit dans le rendu résidentiel.
+_DEFAULT_BRAND = "TAQINOR"
+_DEFAULT_EMAIL = "contact@taqinor.com"
+_DEFAULT_PHONE = "+212 6 61 85 04 10"
+_DEFAULT_SITE = "taqinor.ma"
+_DEFAULT_LEGAL_NOM = "TAQINOR Solutions SARLAU"
+_DEFAULT_CAPITAL = "100 000,00 MAD"
+_DEFAULT_RC = "691213 — Tribunal de Commerce de Casablanca"
+_DEFAULT_ICE = "003799642000067"
+_DEFAULT_GERANT = "M. Reda Kasri"
+
+
+def _esc(v) -> str:
+    """Échappe le minimum HTML pour une valeur d'identité insérée en texte."""
+    return (str(v or "").replace("&", "&amp;")
+            .replace("<", "&lt;").replace(">", "&gt;"))
+
+
+def company_identity(data: dict) -> dict:
+    """QX4 — résout l'identité société affichée depuis ``data['entreprise']``.
+
+    ``data['entreprise']`` est le dict renvoyé par
+    ``parametres.selectors.company_identity`` (threadé par le builder). Chaque
+    champ vide retombe sur le littéral Taqinor historique correspondant, donc :
+      • une société AVEC profil enrichi voit SON identité partout (plus de fuite
+        multi-tenant) ;
+      • une société SANS profil (ou Taqinor) garde une sortie byte-identique.
+    Toutes les valeurs sont des chaînes déjà échappées, prêtes à insérer.
+    """
+    ent = data.get("entreprise") or {}
+    nom = (ent.get("nom") or "").strip()
+    email = (ent.get("email") or "").strip()
+    tel = (ent.get("telephone") or "").strip()
+    ice = (ent.get("ice") or "").strip()
+    rc = (ent.get("rc") or "").strip()
+    capital = (ent.get("capital") or "").strip()
+    gerant = (ent.get("gerant") or "").strip()
+    adresse = (ent.get("adresse") or "").strip()
+    site = (ent.get("site_url") or "").strip().rstrip("/")
+    # Repli sur le site déjà résolu par le renderer (_augment) puis Taqinor.
+    site = site or (data.get("site_url") or "").strip().rstrip("/") or _DEFAULT_SITE
+
+    return {
+        # Marque courte (footer, « Pourquoi … », signature TAQINOR).
+        "brand": _esc(nom.upper()) if nom else _DEFAULT_BRAND,
+        "brand_name": _esc(nom) if nom else _DEFAULT_BRAND,
+        "email": _esc(email) if email else _DEFAULT_EMAIL,
+        "phone": _esc(tel) if tel else _DEFAULT_PHONE,
+        "site": _esc(site),
+        # Bande légale — chaque fait retombe sur le littéral historique.
+        "legal_nom": _esc(nom) if nom else _DEFAULT_LEGAL_NOM,
+        "capital": _esc(capital) if capital else _DEFAULT_CAPITAL,
+        "rc": _esc(rc) if rc else _DEFAULT_RC,
+        "ice": _esc(ice) if ice else _DEFAULT_ICE,
+        "gerant": _esc(gerant) if gerant else _DEFAULT_GERANT,
+        "adresse": _esc(adresse),
+        # A-t-on une vraie identité société (au moins un champ renseigné) ?
+        "has_profile": bool(nom or email or tel or ice or rc or capital
+                            or gerant or site),
+    }
+
+
+def page_footer(data: dict, ident: dict | None = None, total_pages: int = 3) -> str:
+    ident = ident or company_identity(data)
+    site = ident.get("site") or _DEFAULT_SITE
     return f"""
 <div class="foot">
-  <div><b>TAQINOR</b> &nbsp;·&nbsp; contact@taqinor.com &nbsp;·&nbsp; +212 6 61 85 04 10</div>
-  <div>Page {{page}} / 3 &nbsp;·&nbsp; Réf. {data['ref']} &nbsp;·&nbsp; <a>{site}</a></div>
+  <div><b>{ident['brand']}</b> &nbsp;·&nbsp; {ident['email']} &nbsp;·&nbsp; {ident['phone']}</div>
+  <div>Page {{page}} / {total_pages} &nbsp;·&nbsp; Réf. {data['ref']} &nbsp;·&nbsp; <a>{site}</a></div>
 </div>
 """

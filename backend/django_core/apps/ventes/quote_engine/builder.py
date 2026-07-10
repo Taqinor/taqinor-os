@@ -666,13 +666,36 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # productible pilote la production annuelle et donc le ROI, même à l'écran ;
     # le tarif ONEE ne s'applique qu'en dernier repli (aucune donnée de conso),
     # de sorte que le simulateur et le PDF ne divergent plus.
+    # QX7c/QX38 — ville du client depuis le lead lié (lead.ville). Accès attribut
+    # sur l'instance liée (aucun import crm.models) ; vide si pas de lead/ville.
+    # Sert au productible PVGIS par ville (QX38) ET à la ligne meta du PDF (QX7c).
+    _client_city = ""
+    try:
+        _lead = getattr(devis, "lead", None)
+        if _lead is not None:
+            _client_city = (getattr(_lead, "ville", "") or "").strip()
+    except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus
+        _client_city = ""
+
     _tariff = {}
     try:
         from apps.parametres.selectors import tariff_for
         _tariff = tariff_for(getattr(devis, "company", None))
     except Exception:  # noqa: BLE001 — un PDF/une liste ne casse jamais ici
         _tariff = {}
-    _productible = _tariff.get("productible_kwh_kwc") or None
+    # ── QX38 — productible CANONIQUE (source unique PVGIS par ville) ──────────
+    # CompanyProfile.productible_kwh_kwc devient un OVERRIDE éditable, pas un
+    # modèle physique concurrent : quand il vaut le défaut historique 1600, on
+    # lit le productible PVGIS de la ville du lead/devis (aligné écran/PDF/web).
+    # Une valeur société ≠ 1600 (réglage explicite) prime. Repli sûr : sur toute
+    # erreur, on garde l'ancien productible du tarif (comportement inchangé).
+    _co_productible = _tariff.get("productible_kwh_kwc") or None
+    try:
+        from .productible import productible_for_city
+        _productible = productible_for_city(
+            _client_city, override=_co_productible)
+    except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus
+        _productible = _co_productible
     _onee_tarif = _tariff.get("onee_tarif_kwh") or None
     roi_kwargs = dict(
         conso_annuelle_kwh=float(_conso_annuelle) if _conso_annuelle else None,
@@ -815,6 +838,14 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             f"Production estimée : ≈ {int(round(_prod_factor))} kWh par kWc et "
             "par an (irradiation moyenne au Maroc), performance panneaux "
             "garantie sur 25 ans.")
+    # QX39 — hypothèses du cashflow 25 ans (dégradation/escalade/batterie),
+    # documentées et rendues sur le PDF/la proposition. Le payback vient
+    # désormais du croisement du cumul à zéro, pas d'un ratio année-1.
+    _cf_assum = roi.get("cashflow_assumptions") or {}
+    for _n in (_cf_assum.get("notes") or []):
+        _n = str(_n).strip()
+        if _n and _n not in hypotheses:
+            hypotheses.append(_n)
     hypotheses.append(
         "Estimations non contractuelles ; toute hausse future du tarif "
         "électrique améliore votre rentabilité.")
@@ -931,6 +962,30 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
         entreprise = {}
 
+    # ── QX6 — CTA de signature : lien tokenisé VERS LA VRAIE proposition ──────
+    # L'ancien « taqinor.ma/signer/<ref> » (404) est remplacé par un ShareLink
+    # tokenisé vers la page proposition publique (SITE_URL/proposition/<token>).
+    # Mint/réutilise un ShareLink (lecture seule, expirant) — cela NE CHANGE
+    # AUCUN statut (règle #4). Les autres liens (produits/réalisations/avis/
+    # garanties) dérivent du site public de la société (entreprise.site_url) ;
+    # absents quand aucun site n'est renseigné → le renderer retombe sur son
+    # littéral historique. Repli silencieux : sur toute erreur, le renderer
+    # garde son lien historique (aucun PDF ne casse ici).
+    links = {}
+    try:
+        from django.conf import settings
+        from apps.ventes.models import ShareLink
+        _pk = getattr(devis, "pk", None)
+        if _pk is not None:
+            _share = ShareLink.for_devis(devis)
+            _site = getattr(settings, "SITE_URL", "https://taqinor.ma").rstrip("/")
+            links["signer"] = f"{_site}/proposition/{_share.token}"
+    except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
+        links = {}
+    # Liens site (produits/réalisations/avis/garanties) pilotés par le site
+    # public de la société ; le renderer les complète/dérive du site_url et
+    # supprime ceux sans site. On ne pose ici QUE le signer réel.
+
     # ── QG7 — contact du CRÉATEUR du devis (nom + téléphone) ─────────────────
     # Le bloc contact du PDF affichait uniquement la société (donc toujours le
     # fondateur). On expose le créateur (Devis.created_by : first_name/last_name/
@@ -967,6 +1022,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "client_addr": client.adresse or "",
         "client_phone": client.telephone or "",
         "client_ice": (getattr(client, "ice", "") or ""),
+        # QX7c — ville du client : résolue depuis le lead lié (lead.ville) quand
+        # il existe, sinon vide (le champ était lu mais jamais alimenté). Accès
+        # attribut sur l'instance liée — aucun import de crm.models. Vide → la
+        # ligne meta ne montre pas de ville fantôme (join_meta l'omet).
+        "client_city": _client_city,
         "inst_type": inst_type,
         "puissance_kwc": puissance_kwc,
         "nb_panneaux": nb_panneaux,
@@ -989,9 +1049,21 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "roi_a": roi["roi_a"],
         "eco_s_monthly": roi["eco_s_monthly"],
         "eco_a_monthly": roi["eco_a_monthly"],
+        # QX39 — cumul du cashflow 25 ans (dégradation/escalade/batterie/onduleur)
+        # : pilote la courbe de rentabilité (plus de droite linéaire « plate »).
+        "cashflow_sans": roi.get("cashflow_sans"),
+        "cashflow_avec": roi.get("cashflow_avec"),
+        "net_gain_sans": roi.get("net_gain_sans"),
+        "net_gain_avec": roi.get("net_gain_avec"),
         # QJ13 — honest-number guard: True when savings are an estimate (no tariff data)
         "savings_estimated": roi.get("savings_estimated", False),
         "tarif_kwh": roi.get("tarif_kwh"),
+        # QX7a — consommation annuelle RÉELLE (kWh) quand elle est connue
+        # (étude industrielle ou dérivée d'une vraie facture via le tarif kWh) ;
+        # None sinon. Le renderer calcule alors une couverture honnête à partir
+        # de cette conso au lieu de fabriquer un diviseur /1.3. Jamais inventée.
+        "conso_annuelle_kwh": (
+            int(_conso_annuelle) if _conso_annuelle else None),
         # QF2 — modèle « deux factures » : les deux factures annuelles et le
         # modèle d'économie réellement utilisé ('factures'/'etude'/'estimation').
         # Les factures sont None hors modèle 'factures' — jamais inventées.
@@ -1018,6 +1090,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "avec_bullets": _bullets(avec_items),
         "scenario": scenario,
         "recommended": recommended,
+        # QX5 — drapeaux d'option RÉELS (après repli/QF6) : le rendu résidentiel
+        # gate les deux cartes dessus. `deux_options` True = document à deux
+        # options (rendu inchangé) ; mono-option → une seule carte, la page 2
+        # abandonne le découpage delta et renomme l'en-tête « commun ».
+        "sans_ok": bool(sans_ok),
+        "avec_ok": bool(avec_ok),
+        "deux_options": bool(deux_options),
         "all_items": all_items,
         "onepage_note_batterie": onepage_note_batterie,
         "display_total": display_total,
@@ -1048,6 +1127,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # DC1 — identité société (multi-tenant). Champs vides → le moteur premium
         # applique ses littéraux historiques (aucune fuite d'un autre tenant).
         "entreprise": entreprise,
+        # QX6 — liens tokenisés/site (signer réel posé ici ; produits/réalisations
+        # /avis/garanties dérivés du site public par le renderer). Vide → le
+        # renderer applique ses littéraux historiques.
+        "links": links,
+        # QX6 — site public de la société (pilote les liens du renderer) ; vide →
+        # repli historique « taqinor.ma ».
+        "site_url": (entreprise.get("site_url") or "").strip().rstrip("/"),
         # QG7 — contact du créateur du devis (nom + tél ; repli société).
         # Vide → le moteur retombe sur le contact société (byte-identique).
         "seller": seller,
