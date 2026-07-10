@@ -56,7 +56,9 @@ class TestClientIsolationARC2(TestCase):
         """POST : société forcée serveur (B injecté ignoré) + created_by posé."""
         api = _api(self.admin_a)
         r = api.post(
-            URL, {'nom': 'Mon client', 'company': self.company_b.id},
+            URL,
+            {'nom': 'Mon client', 'email': 'mon.client.arc2@example.com',
+             'company': self.company_b.id},
             format='json')
         self.assertEqual(r.status_code, 201, r.data)
         obj = Client.objects.get(nom='Mon client')
