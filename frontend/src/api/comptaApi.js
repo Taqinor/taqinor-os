@@ -1,4 +1,5 @@
 import api from './axios'
+import { makeResourceFactory } from './resource'
 
 /* ============================================================================
    Comptabilité (apps/compta) — client API.
@@ -20,16 +21,9 @@ export function downloadBlob(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-// Fabrique générique de CRUD REST sur une ressource du routeur compta.
-function resource(path) {
-  return {
-    list: (params) => api.get(`/compta/${path}/`, { params }),
-    get: (id) => api.get(`/compta/${path}/${id}/`),
-    create: (data) => api.post(`/compta/${path}/`, data),
-    update: (id, data) => api.patch(`/compta/${path}/${id}/`, data),
-    remove: (id) => api.delete(`/compta/${path}/${id}/`),
-  }
-}
+// ARC44 — Fabrique générique de CRUD REST sur une ressource du routeur compta
+// (factory partagée `frontend/src/api/resource.js`, forme/URLs inchangées).
+const resource = makeResourceFactory(api, '/compta')
 
 const comptaApi = {
   downloadBlob,
