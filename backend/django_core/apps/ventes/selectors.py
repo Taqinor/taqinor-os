@@ -940,3 +940,71 @@ def devis_milestones(token):
         'generated_at': timezone.now().isoformat(),
         'milestones': milestones,
     }
+
+
+def devis_events_for_lead(lead_id, company):
+    """QX32be — événements de cycle de vie des devis d'un LEAD (lecture seule).
+
+    Point d'entrée cross-app UNIQUE pour que ``crm`` fusionne les jalons devis
+    (envoyé/ouvert/signé/refusé) + un résumé d'engagement dans son historique
+    lead, SANS importer ``apps.ventes.models``. Multi-tenant : borné à la
+    société fournie (jamais de fuite d'une autre société). Jamais de
+    ``prix_achat``/marge.
+
+    Renvoie une liste d'événements triés (plus récents d'abord) :
+    ``[{devis_id, reference, kind, label, at, engagement}]`` où ``kind`` ∈
+    {sent, opened, signed, refused}. ``engagement`` (résumé par section) n'est
+    posé que sur l'événement ``opened``.
+    """
+    from .models import Devis, ShareLink
+
+    if not lead_id:
+        return []
+    devis_qs = (Devis.objects
+                .filter(lead_id=lead_id, company=company)
+                .order_by('-date_creation'))
+
+    # Résumé d'engagement par devis (dernier ShareLink vu).
+    links = (ShareLink.objects
+             .filter(devis__lead_id=lead_id, devis__company=company)
+             .order_by('devis_id', '-created_at'))
+    eng_by_devis = {}
+    first_view_by_devis = {}
+    for lk in links:
+        if lk.devis_id not in eng_by_devis:
+            eng_by_devis[lk.devis_id] = lk.engagement_summary
+            first_view_by_devis[lk.devis_id] = lk.first_viewed_at
+
+    def _iso(d):
+        return d.isoformat() if d is not None else None
+
+    events = []
+    for devis in devis_qs:
+        ref = devis.reference
+        if devis.date_envoi is not None:
+            events.append({
+                'devis_id': devis.id, 'reference': ref, 'kind': 'sent',
+                'label': 'Devis envoyé', 'at': _iso(devis.date_envoi),
+                'engagement': None,
+            })
+        fv = first_view_by_devis.get(devis.id)
+        if fv is not None:
+            events.append({
+                'devis_id': devis.id, 'reference': ref, 'kind': 'opened',
+                'label': 'Proposition ouverte', 'at': _iso(fv),
+                'engagement': eng_by_devis.get(devis.id) or {},
+            })
+        if devis.statut == 'accepte' and devis.date_acceptation is not None:
+            events.append({
+                'devis_id': devis.id, 'reference': ref, 'kind': 'signed',
+                'label': 'Devis signé', 'at': _iso(devis.date_acceptation),
+                'engagement': None,
+            })
+        if devis.statut == 'refuse' and devis.date_refus is not None:
+            events.append({
+                'devis_id': devis.id, 'reference': ref, 'kind': 'refused',
+                'label': 'Devis refusé', 'at': _iso(devis.date_refus),
+                'engagement': None,
+            })
+    events.sort(key=lambda e: (e['at'] or ''), reverse=True)
+    return events
