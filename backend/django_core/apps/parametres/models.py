@@ -13,6 +13,7 @@ from .models_messages import MESSAGE_TEMPLATE_DEFAULTS, MessageTemplate
 from .models_audit import SettingsAuditLog
 from .models_tariff import DEFAULT_RESIDENTIAL_TIERS, TariffSettings
 from .models_translations import TranslationOverride
+from .models_taxes import TAUX_TVA_MAROCAINS, TauxTVA
 
 __all__ = [
     'CompanyProfile',
@@ -22,4 +23,6 @@ __all__ = [
     'TariffSettings',
     'DEFAULT_RESIDENTIAL_TIERS',
     'TranslationOverride',
+    'TauxTVA',
+    'TAUX_TVA_MAROCAINS',
 ]

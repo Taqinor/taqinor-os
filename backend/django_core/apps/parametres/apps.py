@@ -36,3 +36,9 @@ class ParametresConfig(AppConfig):
         # N94 — surcharges de traduction de l'interface (par société/langue/clé),
         # fichier dédié enregistré ici sans toucher models.py.
         import apps.parametres.models_translations  # noqa: F401
+        # ARC23 — référentiel des taux de TVA par société (également ré-exporté
+        # par models.py) ; import ici pour l'enregistrement au démarrage.
+        import apps.parametres.models_taxes  # noqa: F401
+        # ARC23 — hook de seed « nouvelle société » des taux de TVA usuels.
+        from .signup_hooks import register_parametres_signup_hooks
+        register_parametres_signup_hooks()
