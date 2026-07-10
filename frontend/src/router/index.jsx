@@ -83,6 +83,7 @@ const MesActivitesPage = lazy(() => import('../pages/activities/MesActivitesPage
 const CalendarPage = lazy(() => import('../pages/CalendarPage'))
 const CartePage = lazy(() => import('../pages/CartePage'))
 const ParrainagePage = lazy(() => import('../pages/crm/ParrainagePage'))
+const WebsiteLeadPayloadsPage = lazy(() => import('../pages/crm/WebsiteLeadPayloadsPage'))
 const AvoirsPage = lazy(() => import('../pages/ventes/AvoirsPage'))
 const RelancesPage = lazy(() => import('../pages/ventes/RelancesPage'))
 const PaiementsPage = lazy(() => import('../pages/ventes/PaiementsPage'))
@@ -257,6 +258,8 @@ const router = createBrowserRouter([
   { path: '/calendrier', loader: authLoader, element: <WithLayout><CalendarPage /></WithLayout> },
   { path: '/carte', loader: authLoader, element: <WithLayout><CartePage /></WithLayout> },
   { path: '/crm/parrainage', loader: authLoader, element: <WithLayout><ParrainagePage /></WithLayout> },
+  // QX16 — rejeu des payloads leads site web (« jamais perdre un lead »).
+  { path: '/crm/payloads-site-web', loader: authLoader, element: <WithLayout><WebsiteLeadPayloadsPage /></WithLayout> },
 
   // Ventes
   { path: '/ventes/devis', loader: authLoader, element: <WithLayout><DevisList /></WithLayout> },

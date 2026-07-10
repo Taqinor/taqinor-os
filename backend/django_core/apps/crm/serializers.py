@@ -3,6 +3,7 @@ from .models import (
     Appointment, Client, ConcurrentPerte, EquipeCommerciale,
     EtapePlanActivite, Lead, LeadActivity, MessageTemplate,
     ObjectifCommercial, Parrainage, PlanActivite, PointContact, SiteProfile,
+    WebsiteLeadPayload,
 )
 from .devis_auto import champs_manquants, message_manquants
 from .scoring import compute_score, score_label
@@ -500,6 +501,23 @@ class CanalSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "La clé d'un canal protégé ne peut pas être modifiée.")
         return value
+
+
+class WebsiteLeadPayloadSerializer(serializers.ModelSerializer):
+    """QX16 — surface LECTURE SEULE des payloads bruts du site web, pour que
+    « jamais perdre un lead » (webhooks.py) soit vérifiable/actionnable, pas
+    juste une promesse en commentaire. Le rejeu s'effectue via l'action
+    ``replay`` du viewset (jamais depuis ce sérialiseur, jamais un champ
+    modifiable ici)."""
+    lead_nom = serializers.CharField(source='lead.nom', read_only=True, default=None)
+
+    class Meta:
+        model = WebsiteLeadPayload
+        fields = [
+            'id', 'company', 'payload', 'remote_addr', 'received_at',
+            'processed', 'error', 'lead', 'lead_nom',
+        ]
+        read_only_fields = fields
 
 
 class ParrainageSerializer(serializers.ModelSerializer):

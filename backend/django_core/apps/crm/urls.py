@@ -6,6 +6,7 @@ from .views import (
     LeadTagViewSet, MotifPerteViewSet, CanalViewSet, ParrainageViewSet,
     MessageTemplateViewSet, ObjectifCommercialViewSet, PlanActiviteViewSet,
     PointContactViewSet, SiteProfileViewSet, EquipeCommercialeViewSet,
+    WebsiteLeadPayloadViewSet,
 )
 from .webhooks import website_lead_webhook, meta_lead_ads_webhook
 from .roof_views import lead_roof_footprint
@@ -29,6 +30,7 @@ router.register(r'points-contact', PointContactViewSet)  # FG204
 router.register(r'site-profiles', SiteProfileViewSet)  # DC12
 router.register(r'plans-activite', PlanActiviteViewSet)  # ZSAL2
 router.register(r'equipes', EquipeCommercialeViewSet)  # ZSAL3 (admin CRUD)
+router.register(r'website-lead-payloads', WebsiteLeadPayloadViewSet)  # QX16
 
 urlpatterns = [
     # Récepteur des leads du site public (secret statique, voir webhooks.py)

@@ -8,7 +8,7 @@ from authentication.scoping import scope_queryset, scope_client_queryset
 from .models import (
     Appointment, Client, ConcurrentPerte, EquipeCommerciale, Lead, LeadTag,
     MotifPerte, Canal, Parrainage, MessageTemplate, ObjectifCommercial,
-    PlanActivite, PointContact, SiteProfile,
+    PlanActivite, PointContact, SiteProfile, WebsiteLeadPayload,
 )
 from .serializers import (
     AppointmentSerializer, ClientSerializer, ConcurrentPerteSerializer,
@@ -17,7 +17,7 @@ from .serializers import (
     ParrainageSerializer, MessageTemplateSerializer, _tag_en_usage, _motif_en_usage,
     ObjectifCommercialSerializer, ObjectifAttainmentSerializer,
     PlanActiviteSerializer, PointContactSerializer, SiteProfileSerializer,
-    EquipeCommercialeSerializer,
+    EquipeCommercialeSerializer, WebsiteLeadPayloadSerializer,
 )
 from . import activity
 from .services import default_responsable_for
@@ -1415,6 +1415,47 @@ class ParrainageViewSet(TenantMixin, viewsets.ModelViewSet):
             'recompenses_total': str(rec_total),
             'recompenses_versees': str(rec_versee),
         })
+
+
+# ── QX16 — Surface de rejeu des payloads leads site web ──────────────────────
+
+class WebsiteLeadPayloadViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+    """QX16 — « Jamais perdre un lead » (webhooks.py) devient opérationnel :
+    liste des payloads bruts, avec un filtre par défaut sur ceux qui méritent
+    une action (mapping en erreur OU sans lead rattaché). ``?all=1`` renvoie
+    la liste complète (comportement admin). LECTURE SEULE — la seule écriture
+    possible est l'action ``replay``, qui rejoue EXACTEMENT le même mapping
+    que le webhook (jamais une seconde implémentation)."""
+    queryset = WebsiteLeadPayload.objects.select_related('lead').all()
+    serializer_class = WebsiteLeadPayloadSerializer
+    permission_classes = [IsResponsableOrAdmin]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if self.request.query_params.get('all'):
+            return qs
+        # Défaut : ce qui mérite une action — erreur de mapping OU jamais
+        # rattaché à un lead (payload traité mais orphelin, ex. ping
+        # d'engagement QW7 sans lead correspondant — n'est pas une PERTE,
+        # mais reste utile à voir).
+        from django.db.models import Q
+        return qs.filter(Q(error__gt='') | Q(lead__isnull=True))
+
+    @action(detail=True, methods=['post'], url_path='replay')
+    def replay(self, request, pk=None):
+        """QX16 — rejoue ce payload à travers le mapping webhook standard.
+
+        Renvoie 200 avec le lead résultant en cas de succès, 422 si le rejeu
+        échoue encore (le payload reste rejouable — jamais supprimé)."""
+        from .webhooks import replay_website_lead_payload
+
+        payload = self.get_object()
+        ok, detail, lead = replay_website_lead_payload(payload)
+        payload.refresh_from_db()
+        data = WebsiteLeadPayloadSerializer(payload).data
+        if not ok:
+            return Response({'detail': detail, 'payload': data}, status=422)
+        return Response({'detail': detail, 'payload': data}, status=200)
 
 
 # ── DC12 — Profil site/énergie réutilisable par client ───────────────────────
