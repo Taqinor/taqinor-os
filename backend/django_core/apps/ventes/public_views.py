@@ -297,22 +297,33 @@ def _monthly_consumption(devis) -> list:
     """T4 — consommation mensuelle (kWh/mois) depuis les factures RÉELLES.
 
     Lit les factures du lead du devis via le sélecteur CRM (cross-app lecture
-    seule, jamais d'import direct de ``apps.crm.models``). Convertit MAD→kWh
-    avec le tarif INTERNE existant du projet (quote_engine.constants.KWH_PRICE),
-    jamais un nouveau tarif codé en dur. Facture d'hiver toute l'année, ou
-    hiver+été quand ``ete_differente`` (été = mois ~Mai→Oct). Sans facture → []
-    (la page masque alors le graphe)."""
+    seule, jamais d'import direct de ``apps.crm.models``). QX7d — convertit
+    MAD→kWh par le MÊME barème progressif que le chemin ROI
+    (``quote_engine.pricing.kwh_from_bill`` : tranches ONEE/Lydec/Redal du
+    distributeur, repli plat étiqueté sinon), au lieu de l'ancien prix plat
+    figé 1,75 MAD/kWh qui contredisait le tarif ROI (~1,20) sur la même
+    proposition. Facture d'hiver toute l'année, ou hiver+été quand
+    ``ete_differente`` (été = mois ~Mai→Oct). Sans facture → [] (la page masque
+    alors le graphe)."""
     from apps.crm.selectors import lead_bills_for_devis
     bills = lead_bills_for_devis(devis)
     if not bills:
         return []
-    from .quote_engine.constants import KWH_PRICE
-    if not KWH_PRICE:
-        return []
+    from .quote_engine.pricing import kwh_from_bill
+    utility = bills.get('distributeur')
     hiver_mad = bills['facture_hiver']
     ete_mad = bills['facture_ete']
     # Mois « été » (index 0=Jan) : Mai→Octobre. Le reste = hiver.
     ete_months = {4, 5, 6, 7, 8, 9}
+    # Barème stable par facture → on mémoïse la conversion (2 valeurs max).
+    _cache = {}
+
+    def _kwh(mad):
+        if mad not in _cache:
+            _cache[mad] = round(
+                kwh_from_bill(mad, utility=utility).get('kwh_mensuel') or 0)
+        return _cache[mad]
+
     out = []
     for m in range(12):
         if (bills['ete_differente'] and ete_mad is not None
@@ -320,7 +331,7 @@ def _monthly_consumption(devis) -> list:
             mad = ete_mad
         else:
             mad = hiver_mad
-        out.append(round(mad / KWH_PRICE))
+        out.append(_kwh(mad))
     return out
 
 
