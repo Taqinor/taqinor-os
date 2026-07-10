@@ -644,6 +644,19 @@ const noscriptTelHref = `tel:${NAP.phone}`;
             Estimate unavailable — please check the amount entered.
           </p>
 
+          <!-- WJ111 — AGRICULTURAL mode: `estimateFromBill` is mode-blind (bill/pin/
+               city only), so a pumping farm would otherwise see a residential
+               kWc/savings figure computed from its bill -- a FALSE number that
+               ignores the real sizing driver (HMT + desired flow rate). Show a
+               dedicated QUALITATIVE card instead (same visual family as
+               mt-estimate-unavailable) rather than a fabricated number. Capture stays
+               fully functional -- the pump/mode fields still flow through the lead
+               exactly as before. -->
+          <p id="mt-estimate-agricole" hidden class="mt-4 text-sm text-alert-300">
+            Pumping is sized on your head (HMT) and flow rate, not on a bill — an advisor
+            will call you back with a calculation adapted to your borehole.
+          </p>
+
           <!-- ===== WJ2 — "see the panels on your roof" (optional, lazy) =====
                Shown ONLY when an outline (≥3 vertices) was traced in step 1 AND a kWc
                estimate is available. Button = explicit gesture; the 3D engine
@@ -1206,6 +1219,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       syncProFieldsVisibility();
       markDataEntered();
       saveWizardState();
+      // WJ111 — if the estimate (step 3) was already computed, switching to/from
+      // agricultural must update the card IMMEDIATELY (numeric <-> qualitative
+      // card) without waiting for a fresh click on "See my estimate".
+      if (!$('mt-estimate-body')?.hidden || !$('mt-estimate-agricole')?.hidden) computeEstimate();
     });
   });
   // état initial : marquer le mode sélectionné (réhydraté ou résidentiel par défaut).
@@ -1585,6 +1602,32 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     const cowEl = $('mt-cost-of-waiting');
     const climateBandEl = $('mt-climate-band');
     const saveBtn = $('mt-save-estimate');
+    const agricoleEl = $('mt-estimate-agricole');
+    // WJ111 — AGRICULTURAL mode: `estimateFromBill` is mode-blind (bill only),
+    // so showing its residential kWc/savings here would be a FALSE number for
+    // a pumping project (the real driver is HMT + flow rate, not a bill). Show
+    // the dedicated qualitative card instead and stop -- capture (lead + pump
+    // fields) keeps working normally through the form, untouched here.
+    if (mode === 'agricole') {
+      if (card) card.hidden = true;
+      if (note) note.hidden = true;
+      if (unavail) unavail.hidden = true;
+      if (toolarge) toolarge.hidden = true;
+      if (agricoleEl) agricoleEl.hidden = false;
+      setFieldError('mt-facture-hiver', 'mt-facture-hiver-err', null);
+      lastKwcLabel = '';
+      lastSavingsLabel = '';
+      lastKwc = null;
+      lastEstFull = null;
+      if (cowEl) cowEl.hidden = true;
+      if (climateBandEl) climateBandEl.hidden = true;
+      { const nearestElAg = $('mt-nearest-install'); if (nearestElAg) nearestElAg.hidden = true; }
+      if (saveBtn) saveBtn.hidden = true;
+      updatePanels3dVisibility();
+      announceEstimate('Pumping is sized on your head (HMT) and flow rate — an advisor will call you back with an adapted calculation.');
+      return;
+    }
+    if (agricoleEl) agricoleEl.hidden = true;
     // WJ65 — exact amount beyond the cap: dedicated honest message (never a
     // confidently computed figure on a likely-mistaken entry) + inline error
     // on the field itself, without ever BLOCKING the step (the visitor can
