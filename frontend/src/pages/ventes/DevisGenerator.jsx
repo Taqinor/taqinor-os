@@ -425,6 +425,19 @@ export default function DevisGenerator({
 
   // ── Mode d'installation (Résidentiel / Industriel-Commercial / Agricole) ──
   const onModeChange = (m) => {
+    if (m === modeInstallation) return
+    // QX23 — changer de mode marché après saisie écrase l'étude/ROI et les
+    // lignes auto-remplies : on confirme AVANT (jamais de rejet silencieux de
+    // l'étude). Ne demande la confirmation que s'il y a réellement quelque
+    // chose à perdre (au moins une ligne avec produit, ou une étude calculée).
+    const hasWork = lines.some(l => l.produit && parseFloat(l.quantite) > 0)
+      || !!etudeIndustrielle || pompageAutoFilled
+    if (hasWork) {
+      const ok = window.confirm(
+        'Changer de marché va réinitialiser l\'étude et les lignes déjà '
+        + 'remplies pour ce devis. Continuer ?')
+      if (!ok) return
+    }
     setModeInstallation(m)
     if (m === 'industriel') {
       onInstTypeChange('Industrielle')
