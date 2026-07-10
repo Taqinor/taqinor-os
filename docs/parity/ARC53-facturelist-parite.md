@@ -119,12 +119,37 @@ de masse `role=region`), et émet `role="grid"` — pas `getByRole('table')` +
 casserait la parité (les 11 tests de page + les tests Kanban) — l'inverse de
 « migration prudente / zéro changement ».
 
-**Décision :** on livre **« lignes divisées » avec parité prouvée** en extrayant la
-ligne (`FactureRow`) et les deux modales lourdes (`PaymentDialog`, `AvoirDialog`)
-en composants internes au fichier nommé, en gardant `getByRole('table')` +
-`table.data-table`, tous les appels API, le PDF facture legacy, les statuts, les
-avoirs, la barre de masse, la bascule Kanban et les hooks DOM **strictement
-identiques**. La **bascule du CADRE vers `DataTable` est marquée BLOCKED**
-(incompatibilité prouvée) pour arbitrage de l'orchestrateur : elle exigerait
-d'étendre d'abord le moteur `ui/datatable`, hors périmètre « toucher uniquement les
-fichiers nommés ».
+**Décision (phase 1) :** on a d'abord livré **« lignes divisées » avec parité
+prouvée** en extrayant la ligne (`FactureRow`) et les deux modales lourdes en
+composants internes, en gardant `getByRole('table')` + `table.data-table`, tous
+les appels API, le PDF facture legacy, les statuts, les avoirs, la barre de masse,
+la bascule Kanban et les hooks DOM **strictement identiques**. La bascule du CADRE
+vers `DataTable` était alors marquée BLOCKED (incompatibilité prouvée).
+
+## 12. RÉSOLU (ARC53 3/3) — extension du moteur + bascule sur le frame
+
+Le blocage du §11 est LEVÉ (mêmes échappatoires additives du moteur qu'ARC49 §13 —
+`renderRow`/`renderHeaderRow`/`tableClassName`/`tableRole`/`hideToolbar`/
+`hidePagination`, 100 % opt-in, ~79 consommateurs intacts et prouvés).
+
+**Bascule FactureList (ARC53 3/3).** Seul le bloc `<table className="data-table">`
+a été remplacé par `<DataTable … renderRow={f => <FactureRow f={f} ctx={rowCtx} />}
+renderHeaderRow={…} tableClassName="data-table" tableRole="table" hideToolbar
+hidePagination manualSorting manualFiltering manualPagination>`. Points clés de
+parité :
+
+- **`tableRole="table"`** : le moteur rend par défaut `role="grid"` ; FactureList
+  exige `getByRole('table')` → on force `role="table"`. En Kanban, aucune table
+  n'est rendue → `queryByRole('table')` reste `null` (inchangé).
+- `<FactureRow>` reste **verbatim** (boutons à état, menu « Actions » queryable
+  par rôle, édition inline d'échéance, badges DGI/conformité, next-best-action).
+- La **barre de masse** `role="region"` « Actions factures en masse » reste rendue
+  PAR LA PAGE, hors de la table (le moteur n'héberge PAS cette barre — sa propre
+  `BulkActionBar` porte un autre nom accessible ; on ne l'utilise donc pas ici).
+  Sélection pilotée par l'état de page (`selectedIds`).
+- La **bascule Liste/Kanban** et le **PDF facture legacy** sont **inchangés**
+  (règle #4 — aucune option de format, aucun passage par `/proposal`).
+
+Les **11 tests page + 4 tests Kanban passent inchangés** ; seule modification de
+test : ajout du wrapper `<ThemeProvider>` au harnais (le moteur lit `useDensity()`,
+présent en prod via `<Layout>`) — **aucune assertion modifiée**.

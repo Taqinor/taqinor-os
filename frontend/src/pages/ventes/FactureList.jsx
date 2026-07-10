@@ -31,8 +31,24 @@ import {
 } from '../../ui'
 import { formatMAD, toNumber, normalizeMaPhone } from '../../lib/format'
 import { useSavedViews } from '../../hooks/useSavedViews'
+import { DataTable } from '../../ui/datatable'
 
 const FL_SAVED_VIEWS_KEY = 'taqinor.ventes.factures.savedViews'
+
+// ── ARC53 — Colonnes du frame `ui/datatable` en mode « ligne custom ».
+// L'écran rend chaque ligne via `renderRow` (<FactureRow>) ; ces définitions ne
+// décrivent que la grille au moteur (aucun `cell` n'est utilisé, tri/filtre/
+// pagination désactivés via seams manuels). Le rendu réel reste 100 % dans
+// <FactureRow> (mêmes cellules, boutons à état, menu « Actions », édition inline).
+const FACTURE_DT_COLUMNS = [
+  { id: 'reference', header: 'Référence', sortable: false, hideable: false, reorderable: false },
+  { id: 'client', header: 'Client', sortable: false, hideable: false, reorderable: false },
+  { id: 'date_emission', header: 'Émission', sortable: false, hideable: false, reorderable: false },
+  { id: 'date_echeance', header: 'Échéance', sortable: false, hideable: false, reorderable: false },
+  { id: 'total_ttc', header: 'Total TTC', align: 'right', sortable: false, hideable: false, reorderable: false },
+  { id: 'statut', header: 'Statut', sortable: false, hideable: false, reorderable: false },
+  { id: 'actions', header: 'Actions', sortable: false, hideable: false, reorderable: false },
+]
 
 const STATUT_DISPLAY = {
   brouillon: 'Brouillon',
@@ -1231,9 +1247,35 @@ export default function FactureList() {
           )}
         <Card className="mt-4 overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="data-table">
-              <thead>
-                <tr>
+            {/* ── ARC53 — Tableau sur le frame `ui/datatable` (mode ligne custom).
+                L'écran garde 100 % de son DOM : `table.data-table` avec
+                `role="table"` (contrat `getByRole('table')`), son en-tête 8
+                colonnes + case « tout sélectionner », `<FactureRow>` verbatim
+                (boutons à état, menu « Actions », édition inline d'échéance,
+                badges DGI), sa sélection propre (`selectedIds`) et sa barre de
+                masse `role="region"` (rendue plus haut, hors table). Le PDF
+                facture LEGACY est INTOUCHÉ (règle #4). Le moteur ne fait que
+                dérouler le pipeline de lignes (seams manuels → ordre serveur,
+                aucun tri/pagination/carte/outil intégré). `filtered.length > 0`
+                est déjà garanti par la branche parente. ── */}
+            <DataTable
+              data={filtered}
+              columns={FACTURE_DT_COLUMNS}
+              getRowId={f => f.id}
+              manualSorting
+              manualFiltering
+              manualPagination
+              rowCount={filtered.length}
+              pageSize={filtered.length}
+              pageSizeOptions={[filtered.length]}
+              searchable={false}
+              hideToolbar
+              hidePagination
+              tableClassName="data-table"
+              tableRole="table"
+              aria-label="Factures"
+              renderHeaderRow={() => (
+                <>
                   <th className="w-10">
                     <Checkbox
                       checked={filtered.length > 0 && selectedIds.length === filtered.length}
@@ -1248,14 +1290,10 @@ export default function FactureList() {
                   <th className="ta-right">Total TTC</th>
                   <th>Statut</th>
                   <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map(f => (
-                  <FactureRow key={f.id} f={f} ctx={rowCtx} />
-                ))}
-              </tbody>
-            </table>
+                </>
+              )}
+              renderRow={f => <FactureRow key={f.id} f={f} ctx={rowCtx} />}
+            />
           </div>
         </Card>
         </>
