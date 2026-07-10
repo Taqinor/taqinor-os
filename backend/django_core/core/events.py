@@ -369,6 +369,47 @@ importe ``apps.audit``.
     Abonné dans ce repo (ARC37) : ``notifications``
     (``apps/notifications/signals.py`` — notifie le responsable du projet,
     ``EventType.PROJET_STATUT_CHANGE``).
+
+``incident_declared``
+    Émis quand un ``qhse.Incident`` (QHSE29) est déclaré/créé via le chemin
+    canonique de création (``IncidentViewSet.perform_create``) — ARC38,
+    RAPATRIEMENT sur le bus d'un signal jusque-là LOCAL à l'app ``qhse``
+    (``apps/qhse/receivers.py``, posé par QHSE32 car à l'époque émetteur ET
+    abonné étaient la même app, donc invisible à tout abonné cross-app).
+    PÉRIODE DE DOUBLE ÉMISSION assumée et documentée : le site d'émission
+    (``IncidentViewSet.perform_create``) envoie D'ABORD le signal LOCAL
+    ``qhse.receivers.incident_declared`` (comportement QHSE32 inchangé —
+    l'escalade chatter/notification/audit interne à ``qhse`` continue de
+    fonctionner à l'identique) PUIS ce signal BUS (``core.events.
+    incident_declared``) pour toute réaction cross-app future. Le retrait du
+    signal local est un pas ULTÉRIEUR distinct (non fait ici — double émission
+    délibérément conservée le temps que d'éventuels abonnés externes migrent).
+    Arguments du signal (identiques au signal local) :
+
+    * ``incident`` — l'instance ``qhse.Incident`` créée ;
+    * ``company`` — la société (posée côté serveur) ;
+    * ``user`` — l'utilisateur qui déclare (peut être ``None``) ;
+    * ``gravite`` — la gravité de l'incident (``mineure`` / ``majeure`` /
+      ``critique``).
+
+    Abonné dans ce repo (ARC38) : ``qhse`` lui-même se réabonne à SON PROPRE
+    signal bus (``apps/qhse/receivers.py``, même patron émetteur=abonné que
+    ``contrats``/``contrat_signe``) pour prouver la visibilité cross-app avec
+    un abonné réel plutôt qu'un simple seam — journalise une entrée d'audit
+    dédiée (``apps.audit.recorder``) distincte de celle déjà posée par le
+    récepteur du signal local (YEVNT12), preuve qu'un abonné EXTERNE
+    hypothétique recevrait bien l'événement sans importer ``apps.qhse``.
+
+    ``publicapi`` — DÉCISION (ARC38) : ``apps/publicapi/signals.py`` reste
+    volontairement LOCAL et NE SOUSCRIT PAS à ``incident_declared``. Ce module
+    diffuse des WEBHOOKS SORTANTS vers des intégrations CLIENT externes
+    (``lead.*``/``devis.*``/``facture.*``/``ticket.*`` — catalogue fermé,
+    ``apps/publicapi/constants.py``) : un incident QHSE est une donnée
+    INTERNE de sécurité de site, jamais un événement métier CLIENT-FACING.
+    Aucun abonné cross-app légitime n'existe aujourd'hui pour ce cas —
+    documenté ici plutôt que migré, conformément à la consigne ARC38
+    (« vérifier puis migrer si valeur cross-app, sinon documenter le choix
+    local »).
 """
 import django.dispatch
 
@@ -551,3 +592,11 @@ equipement_remplace = django.dispatch.Signal()
 # Abonné dans ce repo : notifications (EventType.PROJET_STATUT_CHANGE) — voir
 # docstring du module ci-dessus.
 projet_status_change = django.dispatch.Signal()
+
+# Émis quand un Incident QHSE (QHSE29) est déclaré (ARC38 — rapatrié du signal
+# LOCAL qhse.receivers.incident_declared, conservé en DOUBLE ÉMISSION pendant
+# la transition). Arguments : incident, company, user (peut être None),
+# gravite. Abonné dans ce repo : qhse lui-même (audit dédié) — voir docstring
+# du module ci-dessus. Décision publicapi (pas d'abonné) documentée aussi
+# ci-dessus.
+incident_declared = django.dispatch.Signal()
