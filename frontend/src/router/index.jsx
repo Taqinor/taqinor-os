@@ -27,15 +27,6 @@ const Dashboard = lazy(() => import('../pages/Dashboard').then(m => ({ default: 
 const Reporting = lazy(() => import('../pages/Reporting').then(m => ({ default: m.Component })))
 const Rapports = lazy(() => import('../pages/Rapports').then(m => ({ default: m.Component })))
 const ContratsMaintenance = lazy(() => import('../pages/sav/ContratsMaintenance').then(m => ({ default: m.Component })))
-const StockList = lazy(() => import('../pages/stock/StockList'))
-const MouvementsPage = lazy(() => import('../pages/stock/MouvementsPage'))
-const BonsCommandeFournisseur = lazy(() => import('../pages/stock/BonsCommandeFournisseur'))
-const ModelesBcf = lazy(() => import('../pages/stock/ModelesBcf'))
-const CategoriesStock = lazy(() => import('../pages/stock/CategoriesStock'))
-const FournisseursStock = lazy(() => import('../pages/stock/FournisseursStock'))
-const RetoursFournisseur = lazy(() => import('../pages/stock/RetoursFournisseur'))
-const ReceptionsFournisseur = lazy(() => import('../pages/stock/ReceptionsFournisseur'))
-const FacturesFournisseur = lazy(() => import('../pages/stock/FacturesFournisseur'))
 const ClientList = lazy(() => import('../pages/crm/ClientList'))
 const LeadsPage = lazy(() => import('../pages/crm/leads/LeadsPage'))
 const DevisList = lazy(() => import('../pages/ventes/DevisList'))
@@ -71,7 +62,6 @@ const SavActionBoardPage = lazy(() => import('../pages/sav/SavActionBoardPage'))
 const KbArticlesPage = lazy(() => import('../pages/sav/KbArticlesPage'))
 const AgentChat = lazy(() => import('../pages/ia/AgentChat'))
 const OcrUpload = lazy(() => import('../pages/ia/OcrUpload'))
-const OcrStockImport = lazy(() => import('../pages/stock/OcrStockImport'))
 const UsersManagement = lazy(() => import('../pages/admin/UsersManagement'))
 const RolesManagement = lazy(() => import('../pages/admin/RolesManagement'))
 const TenantsConsole = lazy(() => import('../pages/admin/TenantsConsole'))
@@ -238,17 +228,7 @@ const router = createBrowserRouter([
   { path: '/dashboard', loader: authLoader, element: <WithLayout><Dashboard /></WithLayout> },
   { path: '/messages', loader: authLoader, element: <WithLayout><ChatPage /></WithLayout> },
 
-  // Stock
-  { path: '/stock', loader: authLoader, element: <WithLayout><StockList /></WithLayout> },
-  { path: '/stock/mouvements', loader: authLoader, element: <WithLayout><MouvementsPage /></WithLayout> },
-  { path: '/stock/categories', loader: authLoader, element: <WithLayout><CategoriesStock /></WithLayout> },
-  { path: '/stock/fournisseurs', loader: authLoader, element: <WithLayout><FournisseursStock /></WithLayout> },
-  { path: '/stock/bons-commande-fournisseur', loader: authLoader, element: <WithLayout><BonsCommandeFournisseur /></WithLayout> },
-  { path: '/stock/modeles-bcf', loader: authLoader, element: <WithLayout><ModelesBcf /></WithLayout> },
-  { path: '/stock/receptions-fournisseur', loader: authLoader, element: <WithLayout><ReceptionsFournisseur /></WithLayout> },
-  { path: '/stock/factures-fournisseur', loader: authLoader, element: <WithLayout><FacturesFournisseur /></WithLayout> },
-  { path: '/stock/retours-fournisseur', loader: authLoader, element: <WithLayout><RetoursFournisseur /></WithLayout> },
-  { path: '/stock/ocr-import', loader: authLoader, element: <WithLayout><OcrStockImport /></WithLayout> },
+  // Stock — migré vers frontend/src/features/stock/module.config.jsx (ARC48).
 
   // CRM
   { path: '/crm', loader: authLoader, element: <WithLayout><ClientList /></WithLayout> },
