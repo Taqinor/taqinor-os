@@ -25,6 +25,8 @@ ARC6 — no NEW ``.count() + 1`` reference/number generation outside the two
 SCA4 — no NEW hand-rolled ``company`` FK model (must inherit ``TenantModel``)
     and no NEW ``ModelViewSet`` outside ``CompanyScopedModelViewSet``, both
     against a frozen baseline that can only shrink.
+SCA42 — no NEW flat (non-company-prefixed) storage key outside the frozen
+    baseline: new upload keys go ``{app}/{company_id}/{uuid}.ext`` (ERR75).
 
 Run
 ---
@@ -45,12 +47,14 @@ if str(DJANGO_CORE) not in sys.path:
 from apps.records.platform_guards import (  # noqa: E402
     activity_error_line,
     filefield_error_line,
+    flat_storage_key_error_line,
     handrolled_model_error_line,
     new_handrolled_models,
     new_unscoped_viewsets,
     numbering_error_line,
     scan_activity_classes,
     scan_filefields,
+    scan_flat_storage_key,
     scan_handrolled_models,
     scan_numbering,
     scan_unscoped_viewsets,
@@ -61,6 +65,7 @@ from apps.records.platform_guards import (  # noqa: E402
 
 
 CORE_DIR = DJANGO_CORE / "core"
+AUTH_DIR = DJANGO_CORE / "authentication"
 
 
 def _app_of(models_path: Path) -> str:
@@ -198,6 +203,26 @@ def check_unscoped_viewsets() -> list[str]:
     return [unscoped_viewset_error_line(q) for q in sorted(find_new_unscoped_viewsets())]
 
 
+def find_new_flat_storage_keys() -> list[str]:
+    """SCA42 — fichiers NOUVEAUX (hors baseline) construisant une clé de stockage
+    plate (non préfixée company). Couvre apps/ + authentication/ (avatars)."""
+    violations: list[str] = []
+    for base in (APPS_DIR, AUTH_DIR):
+        for path in base.glob("**/*.py"):
+            relpath = path.relative_to(DJANGO_CORE).as_posix()
+            # Le module de gardes CITE les préfixes en littéral (regex) — l'exclure.
+            if relpath == "apps/records/platform_guards.py":
+                continue
+            if scan_flat_storage_key(relpath, path.read_text(encoding="utf-8")):
+                violations.append(relpath)
+    return violations
+
+
+def check_flat_storage_keys() -> list[str]:
+    """SCA42 guard — plus de clé de stockage plate hors baseline (empty = OK)."""
+    return [flat_storage_key_error_line(p) for p in sorted(set(find_new_flat_storage_keys()))]
+
+
 def run_checks() -> list[str]:
     """Run all platform guards; return the flat list of error lines."""
     errors: list[str] = []
@@ -207,6 +232,7 @@ def run_checks() -> list[str]:
     errors.extend(check_numbering_home())
     errors.extend(check_handrolled_models())
     errors.extend(check_unscoped_viewsets())
+    errors.extend(check_flat_storage_keys())
     return errors
 
 

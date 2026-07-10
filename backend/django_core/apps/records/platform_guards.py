@@ -444,3 +444,59 @@ def new_handrolled_models(found: list[str]) -> list[str]:
 def new_unscoped_viewsets(found: list[str]) -> list[str]:
     """Idem pour les viewsets non scopés au socle."""
     return [q for q in found if q not in BASELINE_UNSCOPED_VIEWSETS]
+
+
+# ── SCA42 — clés de stockage préfixées company pour les NOUVEAUX uploads ──────
+#
+# Constat (motif ERR75 généralisé) : ``ventes/utils/pdf.py`` préfixe déjà ses
+# clés par société (``devis/{company_id}/…``), mais les pièces jointes
+# (``records/storage.py``) et les avatars (``authentication/avatars.py``)
+# stockaient des clés PLATES (``attachments/{uuid}.ext`` / ``avatars/{uuid}.ext``).
+# SCA42 préfixe les NOUVELLES clés par société ; ce garde empêche toute NOUVELLE
+# clé de stockage plate (``attachments/{uuid…}`` / ``avatars/{uuid…}`` non
+# préfixée) d'apparaître HORS des fichiers déjà connus (baseline gelée). Les
+# objets existants ne bougent pas (lecture par clé stockée) — NTPLT8 (nommé)
+# vérifiera l'isolation live de l'existant.
+
+# Fichiers connus pour contenir une clé de stockage plate au 2026-07-10
+# (inventaire) : la branche de repli rétro-compatible de records/avatars + la
+# clé GED encore à migrer. Chemins POSIX relatifs à ``backend/django_core``.
+GRANDFATHERED_FLAT_STORAGE_KEYS = frozenset({
+    "authentication/avatars.py",   # branche de repli SCA42 (rétro-compat)
+    "apps/records/storage.py",     # branche de repli SCA42 (rétro-compat)
+    "apps/ged/services.py",        # clé attachments/{uuid} historique (à migrer)
+})
+
+# Clé de stockage f-string ``<prefix>/{X…`` où ``prefix`` ∈ {attachments,avatars}
+# et le PREMIER segment interpolé ``{X`` n'est PAS un identifiant de société
+# (``company``/``company_id``/``cid``/``c_id``…). Un préfixe company
+# (``attachments/{cid}/…`` ou ``avatars/{company_id}/…``) a l'identifiant société
+# juste après le slash → non matché. Une clé plate (``attachments/{uuid.uuid4()…``)
+# matche. Le lookahead reconnaît tout jeton commençant par ``company``/``comp_id``
+# ou exactement ``cid``/``c_id`` (bornés à droite pour ne pas confondre un autre
+# identifiant).
+FLAT_STORAGE_KEY_RE = re.compile(
+    r"""f['"](?:attachments|avatars)/\{"""
+    r"""(?!\s*(?:company[A-Za-z0-9_]*|comp_id|cid|c_id)\b)""",
+)
+
+
+def scan_flat_storage_key(relpath: str, text: str) -> bool:
+    """True si ``text`` construit une clé de stockage PLATE (non préfixée
+    company) ET ``relpath`` n'est ni gelé ni un fichier de tests.
+
+    ``relpath`` : chemin POSIX relatif à ``backend/django_core``."""
+    if relpath in GRANDFATHERED_FLAT_STORAGE_KEYS or is_test_path(relpath):
+        return False
+    return bool(FLAT_STORAGE_KEY_RE.search(text))
+
+
+def flat_storage_key_error_line(relpath: str) -> str:
+    return (
+        f"[SCA42] Nouvelle clé de stockage PLATE (non préfixée company) dans "
+        f"« {relpath} ». Préfixez les nouvelles clés par la société "
+        f"(« {{app}}/{{company_id}}/{{uuid}}.ext », motif ERR75) pour l'isolation "
+        f"multi-tenant du stockage objet. La liste gelée (branches de repli + clé "
+        f"GED à migrer) vit dans apps/records/platform_guards.py "
+        f"(GRANDFATHERED_FLAT_STORAGE_KEYS)."
+    )

@@ -15,6 +15,7 @@ from apps.records.platform_guards import (
     BASELINE_UNSCOPED_VIEWSETS,
     GRANDFATHERED_ACTIVITY_CLASSES,
     GRANDFATHERED_FILEFIELDS,
+    GRANDFATHERED_FLAT_STORAGE_KEYS,
     GRANDFATHERED_NUMBERING,
     GRANDFATHERED_WEASYPRINT,
     NUMBERING_HOME_FILES,
@@ -24,6 +25,7 @@ from apps.records.platform_guards import (
     new_unscoped_viewsets,
     scan_activity_classes,
     scan_filefields,
+    scan_flat_storage_key,
     scan_handrolled_models,
     scan_numbering,
     scan_unscoped_viewsets,
@@ -303,3 +305,45 @@ class TestUnscopedViewSetGuard(SimpleTestCase):
 
     def test_baseline_covers_current_tree(self):
         self.assertGreater(len(BASELINE_UNSCOPED_VIEWSETS), 0)
+
+
+class TestFlatStorageKeyGuard(SimpleTestCase):
+    """SCA42 — nouvelle clé de stockage plate (non préfixée company) = rouge."""
+
+    def test_new_flat_attachment_key_is_red(self):
+        src = "    key = f'attachments/{uuid.uuid4().hex}.pdf'\n"
+        self.assertTrue(scan_flat_storage_key("apps/nouveau/store.py", src))
+
+    def test_new_flat_avatar_key_is_red(self):
+        src = "    key = f'avatars/{uuid.uuid4().hex}.png'\n"
+        self.assertTrue(scan_flat_storage_key("apps/nouveau/store.py", src))
+
+    def test_company_prefixed_key_is_green(self):
+        for src in (
+            "    key = f'attachments/{cid}/{uuid.uuid4().hex}.pdf'\n",
+            "    key = f'avatars/{company_id}/{uuid}.png'\n",
+            "    key = f'attachments/{company.id}/{uuid}.pdf'\n",
+        ):
+            self.assertFalse(
+                scan_flat_storage_key("apps/nouveau/store.py", src), src)
+
+    def test_grandfathered_files_are_green(self):
+        """Les branches de repli + la clé GED historique sont gelées."""
+        src = "    key = f'attachments/{uuid.uuid4().hex}.pdf'\n"
+        for relpath in GRANDFATHERED_FLAT_STORAGE_KEYS:
+            self.assertFalse(scan_flat_storage_key(relpath, src), relpath)
+
+    def test_test_file_is_exempt(self):
+        src = "    key = f'attachments/{uuid.uuid4().hex}.pdf'\n"
+        self.assertFalse(
+            scan_flat_storage_key("apps/x/tests/test_y.py", src))
+
+    def test_unrelated_prefix_is_green(self):
+        """Une clé déjà préfixée par un autre schéma (devis/…) n'est pas visée."""
+        src = "    key = f'devis/{ref}.pdf'\n"
+        self.assertFalse(scan_flat_storage_key("apps/x/store.py", src))
+
+    def test_baseline_shape(self):
+        self.assertIn("apps/records/storage.py", GRANDFATHERED_FLAT_STORAGE_KEYS)
+        self.assertIn("authentication/avatars.py", GRANDFATHERED_FLAT_STORAGE_KEYS)
+        self.assertIn("apps/ged/services.py", GRANDFATHERED_FLAT_STORAGE_KEYS)

@@ -467,7 +467,9 @@ class AttachmentViewSet(viewsets.ModelViewSet):
         if not file:
             return Response({'detail': 'Aucun fichier fourni.'},
                             status=status.HTTP_400_BAD_REQUEST)
-        meta, err = store_attachment(file)
+        # SCA42 — clé préfixée par société pour les NOUVEAUX uploads
+        # (attachments/{company_id}/…). Les anciens objets gardent leur clé.
+        meta, err = store_attachment(file, company=company)
         if err:
             return Response({'detail': err},
                             status=status.HTTP_400_BAD_REQUEST)
