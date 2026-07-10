@@ -4020,3 +4020,37 @@ def abonnements_monitoring_dus_facturation(company, today=None):
         )
         if a.derniere_facturation != (a.prochaine_echeance or today)
     ]
+
+
+# ── ARC40 — provider KPI pour le reporting fédéré ────────────────────────────
+
+def kpi_echeances(company):
+    """ARC40 — tuiles KPI d'échéances de trésorerie (effets de commerce).
+
+    Déclaré dans ``apps/compta/platform.py`` (surface ``kpi_providers``) et
+    résolu par ``apps/reporting/reports.py::kpi_federes`` — le reporting
+    n'importe JAMAIS les modèles compta, il appelle ce sélecteur (frontière
+    inter-app). Un effet « ouvert » = en portefeuille ou remis (ni encaissé,
+    ni payé, ni rejeté, ni mobilisé). Chaque tuile suit la forme normalisée
+    ``{id, label, valeur, unite?}``. Lecture seule, scopé société.
+    """
+    from datetime import date, timedelta
+
+    from .models import Effet
+
+    today = date.today()
+    horizon = today + timedelta(days=30)
+    ouverts = Effet.objects.filter(
+        company=company,
+        statut__in=[Effet.Statut.PORTEFEUILLE, Effet.Statut.REMIS])
+    a_echoir_30j = ouverts.filter(
+        date_echeance__gte=today, date_echeance__lte=horizon).count()
+    depassees = ouverts.filter(date_echeance__lt=today).count()
+    return [
+        {'id': 'compta_echeances_30j',
+         'label': 'Échéances à 30 jours (effets ouverts)',
+         'valeur': a_echoir_30j, 'unite': 'effets'},
+        {'id': 'compta_echeances_depassees',
+         'label': 'Échéances dépassées (effets ouverts)',
+         'valeur': depassees, 'unite': 'effets'},
+    ]

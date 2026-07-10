@@ -1,4 +1,4 @@
-"""ARC28/ARC30/ARC33 — Manifeste plateforme du module RH
+"""ARC28/ARC30/ARC33/ARC40 — Manifeste plateforme du module RH
 (« déclarer une fois »).
 
 Déclare ce que RH expose aux surfaces transverses (voir ``core.platform``) :
@@ -9,7 +9,10 @@ Déclare ce que RH expose aux surfaces transverses (voir ``core.platform``) :
   seule : employés, demandes de congé), AUTO-DÉCOUVERT par
   ``AgentConfig.ready()`` depuis cette déclaration — aucun câblage dans
   ``RhConfig.ready()``. Module ``ModuleToggle``-OFF ⇒ actions absentes du
-  catalogue.
+  catalogue ;
+* **KPI reporting (ARC40, pilote)** — ``apps.rh.selectors.
+  kpi_effectifs_absences`` (effectif actif, absences en cours), agrégé par
+  l'endpoint fédéré ``reports/kpi-federes/``. Module OFF ⇒ tuiles absentes.
 
 Les autres surfaces restent vides ici (hors périmètre).
 """
@@ -25,5 +28,6 @@ PLATFORM = {
     # ARC33 — actions agentiques lecture seule, auto-découvertes.
     'agent_actions_module': 'apps.rh.agent_actions',
     'automation_state_fields': [],
-    'kpi_providers': [],
+    # ARC40 — provider KPI (callable dotted, résolu par le reporting fédéré).
+    'kpi_providers': ['apps.rh.selectors.kpi_effectifs_absences'],
 }

@@ -1,11 +1,14 @@
-"""ARC28/ARC30 — Manifeste plateforme du module Gestion de projet
+"""ARC28/ARC30/ARC40 — Manifeste plateforme du module Gestion de projet
 (« déclarer une fois »).
 
 Déclare ce que Gestion de projet expose aux surfaces transverses (voir
-``core.platform``). ARC30 fait basculer la source de
-``records.ALLOWED_TARGETS`` d'un ``set`` littéral figé vers l'union paresseuse
-des manifestes ``record_targets`` — ce manifeste porte la cible chatter/records
-historique (``gestion_projet.projet``, ARC26 — pièces jointes génériques).
+``core.platform``) :
+
+* **chatter/records (ARC30)** — la cible ``records.ALLOWED_TARGETS``
+  historique (``gestion_projet.projet``, ARC26 — pièces jointes génériques) ;
+* **KPI reporting (ARC40, pilote)** — ``apps.gestion_projet.selectors.
+  kpi_projets_par_statut`` (répartition des projets par statut), agrégé par
+  l'endpoint fédéré ``reports/kpi-federes/``. Module OFF ⇒ tuiles absentes.
 """
 from __future__ import annotations
 
@@ -18,5 +21,6 @@ PLATFORM = {
     'import_specs': [],
     'agent_actions_module': '',
     'automation_state_fields': [],
-    'kpi_providers': [],
+    # ARC40 — provider KPI (callable dotted, résolu par le reporting fédéré).
+    'kpi_providers': ['apps.gestion_projet.selectors.kpi_projets_par_statut'],
 }
