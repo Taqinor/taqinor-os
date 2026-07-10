@@ -315,17 +315,23 @@ def _canonical_totaux(lignes, *, remise_globale_pct, fallback_taux):
                      if li.taux_tva_effectif is not None else fallback_taux))
         buckets[rate] = buckets.get(rate, D('0')) + D(str(li.total_ht))
 
+    # Chaque panier expose ``ht_net`` ET ``base_ht`` (alias) : ``base_ht`` est la
+    # clé qu'attendent les consommateurs de ``tva_buckets`` (UBL, PDF facture),
+    # ``ht_net`` reste pour les appelants historiques — les deux valent la base
+    # HT nette (après remise) du panier, pour un drop-in compatible (QX1/QX2).
     if len(buckets) <= 1:
         rate = next(iter(buckets), D(str(fallback_taux)))
         tva_amt = q(ht_net * rate / D('100'))
-        tva_par_taux = [{'taux': rate, 'montant': tva_amt, 'ht_net': ht_net}]
+        tva_par_taux = [{'taux': rate, 'montant': tva_amt,
+                         'ht_net': ht_net, 'base_ht': ht_net}]
     else:
         rates = sorted(buckets)
         nets = {r: q(buckets[r] * (D('1') - disc / D('100'))) for r in rates}
         residu = q(ht_net - sum(nets.values(), D('0')))
         nets[rates[-1]] = q(nets[rates[-1]] + residu)
         tva_par_taux = [
-            {'taux': r, 'montant': q(nets[r] * r / D('100')), 'ht_net': nets[r]}
+            {'taux': r, 'montant': q(nets[r] * r / D('100')),
+             'ht_net': nets[r], 'base_ht': nets[r]}
             for r in rates
         ]
         tva_amt = q(sum((b['montant'] for b in tva_par_taux), D('0')))

@@ -1077,11 +1077,17 @@ def _fire_capi_signed_quote(*, devis):
     phone_digits = ''.join(c for c in (phone_raw or '') if c.isdigit())
     phone_hash = _sha256(phone_digits) if phone_digits else ''
 
-    # Valeur de conversion : total TTC du devis (sans prix d'achat — règle #4).
+    # Valeur de conversion : TTC REMISÉ de l'option acceptée (QX2 — chaîne
+    # canonique QX1), jamais le TTC brut du devis (mal calibré sur un devis à
+    # 2 options ou avec remise globale). Sans prix d'achat (règle #4).
     try:
-        value = float(getattr(devis, 'total_ttc', None) or 0)
-    except (TypeError, ValueError):
-        value = 0.0
+        from apps.ventes.utils.options import option_totaux
+        value = float(option_totaux(devis)['ttc'])
+    except Exception:  # noqa: BLE001 — CAPI ne casse jamais l'acceptation
+        try:
+            value = float(getattr(devis, 'total_ttc', None) or 0)
+        except (TypeError, ValueError):
+            value = 0.0
 
     user_data = {}
     if email_hash:
