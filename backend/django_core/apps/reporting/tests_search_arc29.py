@@ -209,9 +209,14 @@ class TestSearchRegistryDrivenWithoutTouchingSearchPy(TestCase):
         vrais_manifestes = core_platform.collect_platform_manifests()
         sans_stock = {k: v for k, v in vrais_manifestes.items() if k != 'stock'}
 
+        # ``apps.reporting.search.platform`` EST le module ``core.platform`` ;
+        # patcher son attribut remplace donc aussi ``core_platform.searchable_models``.
+        # On capture l'implémentation réelle AVANT le patch pour la rappeler dans
+        # le side_effect sans réentrer dans le mock.
+        vrai_searchable = core_platform.searchable_models
         with mock.patch(
                 'apps.reporting.search.platform.searchable_models',
-                side_effect=lambda company: core_platform.searchable_models(
+                side_effect=lambda company: vrai_searchable(
                     manifests=sans_stock)):
             resp = self.api.get(
                 '/api/django/reporting/search/?q=MockedRegistryProduitTest')
@@ -243,9 +248,12 @@ class TestSearchRegistryDrivenWithoutTouchingSearchPy(TestCase):
             'automation_state_fields': [], 'kpi_providers': [],
         }
 
+        # cf. note ci-dessus : capturer l'impl réelle avant le patch (le module
+        # patché est aussi core.platform), pour ne pas réentrer dans le mock.
+        vrai_searchable = core_platform.searchable_models
         with mock.patch(
                 'apps.reporting.search.platform.searchable_models',
-                side_effect=lambda company: core_platform.searchable_models(
+                side_effect=lambda company: vrai_searchable(
                     manifests=faux)):
             resp = self.api.get(
                 '/api/django/reporting/search/?q=DeclaredElsewhereProduitTest')

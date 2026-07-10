@@ -65,6 +65,17 @@ def register(module_key, app_label, model_name, *, label=None):
         _LABELS[module_key] = label
 
 
+def unregister(module_key):
+    """Retire une clé du registre (no-op si absente).
+
+    Utilisé surtout pour l'isolation des tests (prouver qu'une entrée revient
+    bien via le chargeur central après retrait, ou nettoyer une cible fictive).
+    Idempotent : retirer une clé déjà absente ne lève rien.
+    """
+    _REGISTRY.pop(module_key, None)
+    _LABELS.pop(module_key, None)
+
+
 def is_registered(module_key):
     """True si ``module_key`` a une cible enregistrée (native ou pilote)."""
     return module_key in _REGISTRY

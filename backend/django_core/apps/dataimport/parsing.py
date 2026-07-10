@@ -37,11 +37,18 @@ def normalize_header(s):
 def _decode_csv_text(file_bytes):
     """Décode des octets CSV en texte : utf-8 (avec BOM) en priorité, repli
     latin-1 si le fichier n'est pas de l'utf-8 valide (fichiers exportés
-    depuis Excel/Windows, courants côté clients)."""
+    depuis Excel/Windows, courants côté clients).
+
+    ``utf-8-sig`` retire le BOM d'encodage en tête ; on retire EN PLUS tout
+    caractère BOM/ZWNBSP (U+FEFF) résiduel en début de texte — un fichier peut
+    porter un BOM littéral au-delà de celui consommé par l'encodage (ou un BOM
+    non consommé sur le chemin latin-1), qui polluerait sinon le premier
+    en-tête (``'<BOM>Nom'`` au lieu de ``'Nom'``)."""
     try:
-        return file_bytes.decode('utf-8-sig')
+        text = file_bytes.decode('utf-8-sig')
     except UnicodeDecodeError:
-        return file_bytes.decode('latin-1')
+        text = file_bytes.decode('latin-1')
+    return text.lstrip('\ufeff')
 
 
 def _iter_csv_rows(file_bytes):

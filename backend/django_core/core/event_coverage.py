@@ -176,12 +176,17 @@ def _referenced_signal_names() -> set[str]:
             tree = ast.parse(path.read_text(encoding="utf-8"))
         except (OSError, SyntaxError, UnicodeDecodeError):
             continue
-        # Noms importés directement depuis core.events (from core.events import X)
-        imported_from_events: set[str] = set()
+        # Noms importés depuis core.events (from core.events import X [as Y]) :
+        # on mappe le nom LOCAL (l'alias Y, ou X sans alias) vers le nom RÉEL de
+        # l'attribut dans core.events (X) — un import aliasé
+        # (``import incident_declared as incident_declared_bus``) pointe bien un
+        # signal existant : c'est le nom D'ORIGINE qu'il faut vérifier, pas
+        # l'alias local (sinon le scan crée un faux « signal inexistant »).
+        imported_from_events: dict[str, str] = {}
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and node.module == "core.events":
                 for alias in node.names:
-                    imported_from_events.add(alias.asname or alias.name)
+                    imported_from_events[alias.asname or alias.name] = alias.name
         for node in ast.walk(tree):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
@@ -199,7 +204,7 @@ def _referenced_signal_names() -> set[str]:
                     names.add(first.attr)
                 elif (isinstance(first, ast.Name)
                         and first.id in imported_from_events):
-                    names.add(first.id)
+                    names.add(imported_from_events[first.id])
     return names
 
 
