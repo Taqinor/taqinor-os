@@ -111,6 +111,28 @@ forbidden_modules =
     apps.installations.models
     apps.compta.models
 
+[importlinter:contract:tiers-is-a-base-layer]
+name = The tiers foundation app imports downward only (no domain-core or satellite app — locks ARC17)
+type = forbidden
+source_modules =
+    apps.tiers
+forbidden_modules =
+    apps.crm
+    apps.ventes
+    apps.stock
+    apps.installations
+    apps.sav
+    apps.compta
+    apps.reporting
+    apps.automation
+    apps.monitoring
+    apps.notifications
+    apps.publicapi
+    apps.audit
+    apps.documents
+    apps.dataimport
+    apps.contact
+
 [importlinter:contract:core-foundation-is-a-base-layer]
 name = The core foundation app imports downward only (no domain-core or satellite app)
 type = forbidden
