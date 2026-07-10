@@ -113,6 +113,12 @@ def _avancer_ticket_on_intervention_completed(sender, intervention, company,
             f"Intervention {intervention.get_type_intervention_display()} "
             'terminée — ticket avancé automatiquement vers Résolu '
             f'(depuis {ancien_statut}).')
+        # ARC37 — sav devient émetteur du bus (core.events.ticket_resolu),
+        # même point d'émission unique que la transition manuelle gardée
+        # (apps/sav/views.py).
+        from . import services as sav_services
+        sav_services.emettre_ticket_resolu(
+            ticket, company=company, user=user, ancien_statut=ancien_statut)
     except Exception:  # pragma: no cover - défensif (best-effort)
         logger.warning(
             'sav: échec avancement ticket sur intervention terminée '

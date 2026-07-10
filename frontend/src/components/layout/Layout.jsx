@@ -9,6 +9,8 @@ import BottomTabBar from './BottomTabBar'
 import CopilotPanel from '../../features/ia/CopilotPanel'
 import OnboardingCoachmarks from '../../features/onboarding/OnboardingCoachmarks'
 import { OfflineBanner } from '../../ui/OfflineState'
+import coreApi from '../../api/coreApi'
+import { setTenantTheme, resetTenantTheme } from '../../design/tenantTheme'
 
 // I34 — État réduit de la sidebar persisté en localStorage. Défaut = false
 // (comportement actuel : sidebar dépliée). Lecture défensive : tout accès au
@@ -46,6 +48,17 @@ export default function Layout({ children }) {
     if (!isAuthenticated) dispatch(fetchMe())
     if (!profile) dispatch(fetchProfile())
   }, [dispatch]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // SCA24 — thème white-label (TenantTheme) : posé une fois au montage du shell.
+  // Résilient par construction : un échec réseau/permission ne doit JAMAIS
+  // casser l'app, on retombe silencieusement sur le thème neutre par défaut.
+  useEffect(() => {
+    let cancelled = false
+    coreApi.theme.getCourant()
+      .then((res) => { if (!cancelled) setTenantTheme(res.data) })
+      .catch(() => { if (!cancelled) resetTenantTheme() })
+    return () => { cancelled = true }
+  }, [])
 
   const toggleCollapsed = () => setCollapsed(v => {
     const next = !v

@@ -18,6 +18,14 @@ La détection des transitions se fait en comparant le statut entrant à celui
 stocké en base juste avant la sauvegarde. Tout est best-effort : la livraison
 (delivery.dispatch_event) attrape ses propres exceptions et ne bloque jamais
 la sauvegarde d'origine.
+
+ARC38 — DÉCISION : ``incident_declared`` (QHSE29, désormais aussi sur le bus
+``core.events`` — voir docstring de ce module et ``apps/qhse/receivers.py``)
+n'a PAS d'équivalent webhook ici et n'en aura pas. Ce module diffuse des
+webhooks SORTANTS vers des intégrations CLIENT externes (catalogue fermé
+ci-dessus : lead/devis/facture/paiement/chantier/intervention/ticket) ; un
+incident QHSE est une donnée INTERNE de sécurité de site, jamais un
+événement CLIENT-FACING. Choix documenté, pas d'abonné à ajouter.
 """
 import logging
 

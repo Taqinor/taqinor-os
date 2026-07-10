@@ -13,6 +13,9 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '../Tabs'
    fournie, sinon via le StatusPill générique.
 
    tabs : [{ value, label, content, count? }]
+   `footer` (ARC46) : slot optionnel rendu SOUS le corps (ex. la barre
+   d'enregistrement de RecordShell). Null par défaut — zéro changement de
+   comportement pour les pages existantes.
    ========================================================================== */
 
 export function DetailShell({
@@ -28,6 +31,7 @@ export function DetailShell({
   defaultTab,
   className,
   children,
+  footer = null,
 }) {
   const hasTabs = tabs.length > 0
   const body = hasTabs ? (
@@ -89,6 +93,9 @@ export function DetailShell({
       ) : (
         body
       )}
+
+      {/* -------- Pied optionnel (ARC46 — ex. save-bar de RecordShell) -------- */}
+      {footer}
     </div>
   )
 }

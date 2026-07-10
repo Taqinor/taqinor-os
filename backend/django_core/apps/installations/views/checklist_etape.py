@@ -6,6 +6,7 @@ from authentication.mixins import TenantMixin  # noqa: F401
 from authentication.permissions import (  # noqa: F401
     IsAnyRole, IsResponsableOrAdmin, IsAdminRole,
 )
+from core.viewsets import CompanyScopedModelViewSet
 from django.utils import timezone  # noqa: F401
 
 from .. import activity  # noqa: F401
@@ -107,7 +108,7 @@ def seed_types_intervention(company):
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-class ChecklistEtapeModeleViewSet(TenantMixin, viewsets.ModelViewSet):
+class ChecklistEtapeModeleViewSet(CompanyScopedModelViewSet):
     """Étapes MODÈLE de la checklist d'exécution (Paramètres → Chantiers, N4).
     Lecture tout rôle, écriture admin. Une étape protégée garde sa clé ; la
     désactivation (actif=False) la retire des nouveaux chantiers sans toucher

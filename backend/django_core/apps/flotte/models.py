@@ -170,6 +170,11 @@ class Vehicule(models.Model):
         max_length=150, blank=True, verbose_name='Acheteur')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
+    # ARC14 — champs personnalisés (additif, jamais destructif). Les
+    # définitions viennent de apps.customfields (module='vehicule', pilote
+    # enregistré via customfields.registry par apps/flotte/apps.py.ready()).
+    custom_data = models.JSONField(
+        null=True, blank=True, verbose_name='Champs personnalisés')
 
     class Meta:
         verbose_name = 'Véhicule'

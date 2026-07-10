@@ -31,8 +31,24 @@ import {
 } from '../../ui'
 import { formatMAD, toNumber, normalizeMaPhone } from '../../lib/format'
 import { useSavedViews } from '../../hooks/useSavedViews'
+import { DataTable } from '../../ui/datatable'
 
 const FL_SAVED_VIEWS_KEY = 'taqinor.ventes.factures.savedViews'
+
+// ── ARC53 — Colonnes du frame `ui/datatable` en mode « ligne custom ».
+// L'écran rend chaque ligne via `renderRow` (<FactureRow>) ; ces définitions ne
+// décrivent que la grille au moteur (aucun `cell` n'est utilisé, tri/filtre/
+// pagination désactivés via seams manuels). Le rendu réel reste 100 % dans
+// <FactureRow> (mêmes cellules, boutons à état, menu « Actions », édition inline).
+const FACTURE_DT_COLUMNS = [
+  { id: 'reference', header: 'Référence', sortable: false, hideable: false, reorderable: false },
+  { id: 'client', header: 'Client', sortable: false, hideable: false, reorderable: false },
+  { id: 'date_emission', header: 'Émission', sortable: false, hideable: false, reorderable: false },
+  { id: 'date_echeance', header: 'Échéance', sortable: false, hideable: false, reorderable: false },
+  { id: 'total_ttc', header: 'Total TTC', align: 'right', sortable: false, hideable: false, reorderable: false },
+  { id: 'statut', header: 'Statut', sortable: false, hideable: false, reorderable: false },
+  { id: 'actions', header: 'Actions', sortable: false, hideable: false, reorderable: false },
+]
 
 const STATUT_DISPLAY = {
   brouillon: 'Brouillon',
@@ -114,6 +130,235 @@ function openPdfBlob(blob, filename) {
   a.click()
   document.body.removeChild(a)
   setTimeout(() => URL.revokeObjectURL(url), 10000)
+}
+
+// ── ARC53 — Ligne de la liste des factures (« lignes divisées »). Extraite
+// VERBATIM du corps de `filtered.map(...)` : même <tr> (classe échue conservée),
+// mêmes boutons d'action VISIBLES + états loading individuels, même menu
+// « Actions » (DropdownMenu queryable), même édition inline d'échéance, mêmes
+// badges (DGI/mentions/next-best-action), mêmes appels API. Le PDF facture reste
+// legacy et INTOUCHÉ (règle #4). Tout l'état/handlers viennent du parent via `ctx`.
+function FactureRow({ f, ctx }) {
+  const {
+    selectedIds, toggleSelect,
+    echeanceEditId, echeanceValue, setEcheanceValue, echeanceSaving,
+    saveEcheance, setEcheanceEditId, startEditEcheance,
+    dgiActif, isAdmin,
+    actionId, pdfGenerating, pdfDownloading, waBusy, payLinkBusy, dgiBusy,
+    openEdit, doAction, emettreFacture, marquerPayeeFacture, annulerFacture,
+    openPayModal, handleLienPaiement, handleTelechargerPdf, handleGenererPdf,
+    openAvoirModal, handleWhatsApp, handleUbl, handleDgiExport, handleDgiConformite,
+  } = ctx
+  const overdue = isOverdue(f)
+  const statutKey = overdue && f.statut === 'emise' ? 'en_retard' : f.statut
+  const busy = actionId === f.id
+  const isGenerating = pdfGenerating[f.id]
+  const isDownloading = pdfDownloading[f.id]
+  const isWaBusy = waBusy[f.id]
+  // L853 — téléphone client normalisable (miroir backend).
+  const waPhoneOk = !!normalizeMaPhone(f.client_telephone)
+  const nba = nextBestAction(f)
+  const isPayLinkBusy = payLinkBusy[f.id]
+  const isDgiBusy = dgiBusy[f.id]
+
+  return (
+    <tr key={f.id} className={overdue ? 'bg-destructive/5' : undefined}>
+      <td>
+        <Checkbox
+          checked={selectedIds.includes(f.id)}
+          onCheckedChange={() => toggleSelect(f.id)}
+          aria-label={`Sélectionner la facture ${f.reference}`}
+        />
+      </td>
+      <td>
+        <strong>{f.reference}</strong>
+        {(f.type_facture_display || toNumber(f.pourcentage) > 0) && (
+          <div className="mt-0.5 text-xs text-muted-foreground">
+            {f.type_facture_display}
+            {toNumber(f.pourcentage) > 0
+              ? ` ${Math.round(toNumber(f.pourcentage))} %` : ''}
+          </div>
+        )}
+        {f.devis_reference && f.devis && (
+          <div className="mt-0.5 text-xs">
+            <Link to={`/ventes/devis?ref=${encodeURIComponent(f.devis_reference)}`}
+                  className="text-primary hover:underline">
+              Devis {f.devis_reference}
+            </Link>
+          </div>
+        )}
+        {Array.isArray(f.mentions_manquantes) && f.mentions_manquantes.length > 0 && (
+          <Badge
+            tone="warning"
+            className="mt-1 cursor-help"
+            title={`Mentions légales manquantes (Art. 145) :\n- ${f.mentions_manquantes.join('\n- ')}`}
+          >
+            <FileWarning className="size-3" />
+            {f.mentions_manquantes.length} mention(s) manquante(s)
+          </Badge>
+        )}
+      </td>
+      <td>{f.client_nom ?? '—'}</td>
+      <td>{new Date(f.date_emission).toLocaleDateString('fr-FR')}</td>
+      <td>
+        {echeanceEditId === f.id ? (
+          <span className="flex items-center gap-1">
+            <Input type="date" className="w-36" value={echeanceValue}
+                   onChange={e => setEcheanceValue(e.target.value)} />
+            <Button size="sm" loading={echeanceSaving} onClick={() => saveEcheance(f)}>OK</Button>
+            <Button size="sm" variant="ghost" onClick={() => setEcheanceEditId(null)}>×</Button>
+          </span>
+        ) : (
+          <span
+            className={`${overdue ? 'font-semibold text-destructive' : ''}`
+              + (['emise', 'en_retard'].includes(f.statut) || overdue
+                ? ' cursor-pointer hover:underline' : '')}
+            title={['emise', 'en_retard'].includes(f.statut) || overdue
+              ? 'Cliquer pour modifier l’échéance' : undefined}
+            onClick={() => {
+              if (['emise', 'en_retard'].includes(f.statut) || overdue) startEditEcheance(f)
+            }}
+          >
+            {f.date_echeance
+              ? new Date(f.date_echeance).toLocaleDateString('fr-FR')
+              : '—'}
+          </span>
+        )}
+      </td>
+      <td className="ta-right tabular-nums">
+        {f.total_ttc != null ? formatMAD(f.total_ttc) : '—'}
+        {(f.montant_paye != null || f.montant_du != null) && (
+          <div className="mt-0.5 text-xs text-muted-foreground">
+            Payé {formatMAD(f.montant_paye)} / Dû {formatMAD(f.montant_du)}
+          </div>
+        )}
+      </td>
+      <td>
+        <StatusPill status={statutKey} label={STATUT_DISPLAY[statutKey] ?? STATUT_DISPLAY.brouillon} />
+        {['emise', 'payee', 'en_retard'].includes(f.statut) && f.statut_teledeclaration && (
+          <Badge
+            tone={TELEDECLARATION_TONE[f.statut_teledeclaration] ?? 'neutral'}
+            className="mt-1 block w-fit"
+            title="Statut de télédéclaration DGI (informatif)"
+          >
+            {TELEDECLARATION_DISPLAY[f.statut_teledeclaration] ?? f.statut_teledeclaration}
+          </Badge>
+        )}
+        {/* WR2b — badge conformité DGI, visible seulement si l'interrupteur société est actif. */}
+        {dgiActif && ['emise', 'payee', 'en_retard'].includes(f.statut) && (
+          <Badge
+            tone="info"
+            className="mt-1 block w-fit cursor-pointer"
+            title="Vérifier la conformité DGI (aucune transmission)"
+            onClick={() => handleDgiConformite(f)}
+          >
+            <ShieldCheck className="size-3" /> Conformité DGI
+          </Badge>
+        )}
+      </td>
+      <td>
+        {nba === 'relancer' && (
+          <Badge tone="warning" className="mb-1 block w-fit"
+                 title="Facture échue — à relancer dans Relances / Impayés">
+            À relancer
+          </Badge>
+        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {f.statut === 'brouillon' && (
+            <Button size="sm" variant="outline" onClick={() => openEdit(f)}>
+              Éditer
+            </Button>
+          )}
+          {f.statut === 'brouillon' && (
+            <Button size="sm" variant={nba === 'emettre' ? 'default' : 'outline'}
+                    loading={busy} onClick={() => doAction(emettreFacture, f.id)}>
+              Émettre
+            </Button>
+          )}
+          {(f.statut === 'emise' || f.statut === 'en_retard' || overdue) && (
+            <Button size="sm" variant="success" loading={busy}
+                    onClick={() => doAction(marquerPayeeFacture, f.id, `Marquer la facture ${f.reference} comme payée ?`)}>
+              <Check /> Payée
+            </Button>
+          )}
+          {parseFloat(f.montant_du ?? 0) > 0 && f.statut !== 'annulee' && (
+            <Button size="sm" variant={nba === 'encaisser' ? 'default' : 'outline'}
+                    onClick={() => openPayModal(f)} title="Enregistrer un paiement">
+              Enregistrer paiement
+            </Button>
+          )}
+          {/* FG53/WR2b — lien « Payer en ligne » (copié au presse-papier). */}
+          {parseFloat(f.montant_du ?? 0) > 0 && f.statut !== 'annulee' && (
+            <Button size="sm" variant="outline" loading={isPayLinkBusy}
+                    onClick={() => handleLienPaiement(f)} title="Créer/copier le lien de paiement en ligne">
+              <CreditCard /> Payer en ligne
+            </Button>
+          )}
+          {f.fichier_pdf ? (
+            <Button size="sm" variant="success" loading={isDownloading}
+                    onClick={() => handleTelechargerPdf(f)} title="Télécharger le PDF">
+              <Download /> PDF
+            </Button>
+          ) : (
+            <Button size="sm" variant="outline" loading={isGenerating}
+                    onClick={() => handleGenererPdf(f)} title="Générer le PDF">
+              <FileText /> PDF
+            </Button>
+          )}
+          {isAdmin && ['emise', 'payee', 'en_retard'].includes(f.statut) && (
+            <Button size="sm" variant="outline" onClick={() => openAvoirModal(f)}
+                    title="Créer un avoir (note de crédit)">
+              Avoir
+            </Button>
+          )}
+          {/* Actions secondaires regroupées : tiennent sans déborder
+              sur écran étroit (menu compact « Actions »). */}
+          {(['emise', 'payee', 'en_retard'].includes(f.statut)
+            || (f.statut !== 'payee' && f.statut !== 'annulee')) && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" variant="outline" title="Plus d'actions">
+                  <MoreHorizontal /> Actions
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {['emise', 'payee', 'en_retard'].includes(f.statut) && (
+                  <DropdownMenuItem
+                    disabled={isWaBusy || !waPhoneOk}
+                    title={!waPhoneOk ? 'Numéro invalide' : undefined}
+                    onSelect={(e) => { e.preventDefault(); handleWhatsApp(f, 'facture') }}>
+                    <MessageCircle />
+                    {isWaBusy ? 'Préparation…'
+                      : !waPhoneOk ? 'WhatsApp (numéro invalide)'
+                        : 'WhatsApp'}
+                  </DropdownMenuItem>
+                )}
+                {['emise', 'payee', 'en_retard'].includes(f.statut) && (
+                  <DropdownMenuItem onClick={() => handleUbl(f)}>
+                    <Code2 /> Aperçu UBL
+                  </DropdownMenuItem>
+                )}
+                {/* N105/WR2b — export DGI : masqué tant que l'interrupteur société est OFF. */}
+                {dgiActif && ['emise', 'payee', 'en_retard'].includes(f.statut) && (
+                  <DropdownMenuItem
+                    disabled={isDgiBusy}
+                    onSelect={(e) => { e.preventDefault(); handleDgiExport(f) }}>
+                    <ShieldCheck /> Export DGI
+                  </DropdownMenuItem>
+                )}
+                {f.statut !== 'payee' && f.statut !== 'annulee' && (
+                  <DropdownMenuItem
+                    onClick={() => doAction(annulerFacture, f.id, `Annuler la facture ${f.reference} ?`)}>
+                    Annuler la facture
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
+      </td>
+    </tr>
+  )
 }
 
 export default function FactureList() {
@@ -591,6 +836,20 @@ export default function FactureList() {
     }
   }
 
+  // ── ARC53 — Sac de contexte passé à chaque <FactureRow> (« lignes divisées »).
+  // Regroupe l'état + les handlers que la ligne utilisait déjà depuis la clôture ;
+  // aucune valeur n'est transformée ni aucun flux modifié.
+  const rowCtx = {
+    selectedIds, toggleSelect,
+    echeanceEditId, echeanceValue, setEcheanceValue, echeanceSaving,
+    saveEcheance, setEcheanceEditId, startEditEcheance,
+    dgiActif, isAdmin,
+    actionId, pdfGenerating, pdfDownloading, waBusy, payLinkBusy, dgiBusy,
+    openEdit, doAction, emettreFacture, marquerPayeeFacture, annulerFacture,
+    openPayModal, handleLienPaiement, handleTelechargerPdf, handleGenererPdf,
+    openAvoirModal, handleWhatsApp, handleUbl, handleDgiExport, handleDgiConformite,
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
@@ -988,9 +1247,35 @@ export default function FactureList() {
           )}
         <Card className="mt-4 overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="data-table">
-              <thead>
-                <tr>
+            {/* ── ARC53 — Tableau sur le frame `ui/datatable` (mode ligne custom).
+                L'écran garde 100 % de son DOM : `table.data-table` avec
+                `role="table"` (contrat `getByRole('table')`), son en-tête 8
+                colonnes + case « tout sélectionner », `<FactureRow>` verbatim
+                (boutons à état, menu « Actions », édition inline d'échéance,
+                badges DGI), sa sélection propre (`selectedIds`) et sa barre de
+                masse `role="region"` (rendue plus haut, hors table). Le PDF
+                facture LEGACY est INTOUCHÉ (règle #4). Le moteur ne fait que
+                dérouler le pipeline de lignes (seams manuels → ordre serveur,
+                aucun tri/pagination/carte/outil intégré). `filtered.length > 0`
+                est déjà garanti par la branche parente. ── */}
+            <DataTable
+              data={filtered}
+              columns={FACTURE_DT_COLUMNS}
+              getRowId={f => f.id}
+              manualSorting
+              manualFiltering
+              manualPagination
+              rowCount={filtered.length}
+              pageSize={filtered.length}
+              pageSizeOptions={[filtered.length]}
+              searchable={false}
+              hideToolbar
+              hidePagination
+              tableClassName="data-table"
+              tableRole="table"
+              aria-label="Factures"
+              renderHeaderRow={() => (
+                <>
                   <th className="w-10">
                     <Checkbox
                       checked={filtered.length > 0 && selectedIds.length === filtered.length}
@@ -1005,223 +1290,10 @@ export default function FactureList() {
                   <th className="ta-right">Total TTC</th>
                   <th>Statut</th>
                   <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map(f => {
-                  const overdue = isOverdue(f)
-                  const statutKey = overdue && f.statut === 'emise' ? 'en_retard' : f.statut
-                  const busy = actionId === f.id
-                  const isGenerating = pdfGenerating[f.id]
-                  const isDownloading = pdfDownloading[f.id]
-                  const isWaBusy = waBusy[f.id]
-                  // L853 — téléphone client normalisable (miroir backend).
-                  const waPhoneOk = !!normalizeMaPhone(f.client_telephone)
-                  const nba = nextBestAction(f)
-                  const isPayLinkBusy = payLinkBusy[f.id]
-                  const isDgiBusy = dgiBusy[f.id]
-
-                  return (
-                    <tr key={f.id} className={overdue ? 'bg-destructive/5' : undefined}>
-                      <td>
-                        <Checkbox
-                          checked={selectedIds.includes(f.id)}
-                          onCheckedChange={() => toggleSelect(f.id)}
-                          aria-label={`Sélectionner la facture ${f.reference}`}
-                        />
-                      </td>
-                      <td>
-                        <strong>{f.reference}</strong>
-                        {(f.type_facture_display || toNumber(f.pourcentage) > 0) && (
-                          <div className="mt-0.5 text-xs text-muted-foreground">
-                            {f.type_facture_display}
-                            {toNumber(f.pourcentage) > 0
-                              ? ` ${Math.round(toNumber(f.pourcentage))} %` : ''}
-                          </div>
-                        )}
-                        {f.devis_reference && f.devis && (
-                          <div className="mt-0.5 text-xs">
-                            <Link to={`/ventes/devis?ref=${encodeURIComponent(f.devis_reference)}`}
-                                  className="text-primary hover:underline">
-                              Devis {f.devis_reference}
-                            </Link>
-                          </div>
-                        )}
-                        {Array.isArray(f.mentions_manquantes) && f.mentions_manquantes.length > 0 && (
-                          <Badge
-                            tone="warning"
-                            className="mt-1 cursor-help"
-                            title={`Mentions légales manquantes (Art. 145) :\n- ${f.mentions_manquantes.join('\n- ')}`}
-                          >
-                            <FileWarning className="size-3" />
-                            {f.mentions_manquantes.length} mention(s) manquante(s)
-                          </Badge>
-                        )}
-                      </td>
-                      <td>{f.client_nom ?? '—'}</td>
-                      <td>{new Date(f.date_emission).toLocaleDateString('fr-FR')}</td>
-                      <td>
-                        {echeanceEditId === f.id ? (
-                          <span className="flex items-center gap-1">
-                            <Input type="date" className="w-36" value={echeanceValue}
-                                   onChange={e => setEcheanceValue(e.target.value)} />
-                            <Button size="sm" loading={echeanceSaving} onClick={() => saveEcheance(f)}>OK</Button>
-                            <Button size="sm" variant="ghost" onClick={() => setEcheanceEditId(null)}>×</Button>
-                          </span>
-                        ) : (
-                          <span
-                            className={`${overdue ? 'font-semibold text-destructive' : ''}`
-                              + (['emise', 'en_retard'].includes(f.statut) || overdue
-                                ? ' cursor-pointer hover:underline' : '')}
-                            title={['emise', 'en_retard'].includes(f.statut) || overdue
-                              ? 'Cliquer pour modifier l’échéance' : undefined}
-                            onClick={() => {
-                              if (['emise', 'en_retard'].includes(f.statut) || overdue) startEditEcheance(f)
-                            }}
-                          >
-                            {f.date_echeance
-                              ? new Date(f.date_echeance).toLocaleDateString('fr-FR')
-                              : '—'}
-                          </span>
-                        )}
-                      </td>
-                      <td className="ta-right tabular-nums">
-                        {f.total_ttc != null ? formatMAD(f.total_ttc) : '—'}
-                        {(f.montant_paye != null || f.montant_du != null) && (
-                          <div className="mt-0.5 text-xs text-muted-foreground">
-                            Payé {formatMAD(f.montant_paye)} / Dû {formatMAD(f.montant_du)}
-                          </div>
-                        )}
-                      </td>
-                      <td>
-                        <StatusPill status={statutKey} label={STATUT_DISPLAY[statutKey] ?? STATUT_DISPLAY.brouillon} />
-                        {['emise', 'payee', 'en_retard'].includes(f.statut) && f.statut_teledeclaration && (
-                          <Badge
-                            tone={TELEDECLARATION_TONE[f.statut_teledeclaration] ?? 'neutral'}
-                            className="mt-1 block w-fit"
-                            title="Statut de télédéclaration DGI (informatif)"
-                          >
-                            {TELEDECLARATION_DISPLAY[f.statut_teledeclaration] ?? f.statut_teledeclaration}
-                          </Badge>
-                        )}
-                        {/* WR2b — badge conformité DGI, visible seulement si l'interrupteur société est actif. */}
-                        {dgiActif && ['emise', 'payee', 'en_retard'].includes(f.statut) && (
-                          <Badge
-                            tone="info"
-                            className="mt-1 block w-fit cursor-pointer"
-                            title="Vérifier la conformité DGI (aucune transmission)"
-                            onClick={() => handleDgiConformite(f)}
-                          >
-                            <ShieldCheck className="size-3" /> Conformité DGI
-                          </Badge>
-                        )}
-                      </td>
-                      <td>
-                        {nba === 'relancer' && (
-                          <Badge tone="warning" className="mb-1 block w-fit"
-                                 title="Facture échue — à relancer dans Relances / Impayés">
-                            À relancer
-                          </Badge>
-                        )}
-                        <div className="flex flex-wrap items-center gap-2">
-                          {f.statut === 'brouillon' && (
-                            <Button size="sm" variant="outline" onClick={() => openEdit(f)}>
-                              Éditer
-                            </Button>
-                          )}
-                          {f.statut === 'brouillon' && (
-                            <Button size="sm" variant={nba === 'emettre' ? 'default' : 'outline'}
-                                    loading={busy} onClick={() => doAction(emettreFacture, f.id)}>
-                              Émettre
-                            </Button>
-                          )}
-                          {(f.statut === 'emise' || f.statut === 'en_retard' || overdue) && (
-                            <Button size="sm" variant="success" loading={busy}
-                                    onClick={() => doAction(marquerPayeeFacture, f.id, `Marquer la facture ${f.reference} comme payée ?`)}>
-                              <Check /> Payée
-                            </Button>
-                          )}
-                          {parseFloat(f.montant_du ?? 0) > 0 && f.statut !== 'annulee' && (
-                            <Button size="sm" variant={nba === 'encaisser' ? 'default' : 'outline'}
-                                    onClick={() => openPayModal(f)} title="Enregistrer un paiement">
-                              Enregistrer paiement
-                            </Button>
-                          )}
-                          {/* FG53/WR2b — lien « Payer en ligne » (copié au presse-papier). */}
-                          {parseFloat(f.montant_du ?? 0) > 0 && f.statut !== 'annulee' && (
-                            <Button size="sm" variant="outline" loading={isPayLinkBusy}
-                                    onClick={() => handleLienPaiement(f)} title="Créer/copier le lien de paiement en ligne">
-                              <CreditCard /> Payer en ligne
-                            </Button>
-                          )}
-                          {f.fichier_pdf ? (
-                            <Button size="sm" variant="success" loading={isDownloading}
-                                    onClick={() => handleTelechargerPdf(f)} title="Télécharger le PDF">
-                              <Download /> PDF
-                            </Button>
-                          ) : (
-                            <Button size="sm" variant="outline" loading={isGenerating}
-                                    onClick={() => handleGenererPdf(f)} title="Générer le PDF">
-                              <FileText /> PDF
-                            </Button>
-                          )}
-                          {isAdmin && ['emise', 'payee', 'en_retard'].includes(f.statut) && (
-                            <Button size="sm" variant="outline" onClick={() => openAvoirModal(f)}
-                                    title="Créer un avoir (note de crédit)">
-                              Avoir
-                            </Button>
-                          )}
-                          {/* Actions secondaires regroupées : tiennent sans déborder
-                              sur écran étroit (menu compact « Actions »). */}
-                          {(['emise', 'payee', 'en_retard'].includes(f.statut)
-                            || (f.statut !== 'payee' && f.statut !== 'annulee')) && (
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button size="sm" variant="outline" title="Plus d'actions">
-                                  <MoreHorizontal /> Actions
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                {['emise', 'payee', 'en_retard'].includes(f.statut) && (
-                                  <DropdownMenuItem
-                                    disabled={isWaBusy || !waPhoneOk}
-                                    title={!waPhoneOk ? 'Numéro invalide' : undefined}
-                                    onSelect={(e) => { e.preventDefault(); handleWhatsApp(f, 'facture') }}>
-                                    <MessageCircle />
-                                    {isWaBusy ? 'Préparation…'
-                                      : !waPhoneOk ? 'WhatsApp (numéro invalide)'
-                                        : 'WhatsApp'}
-                                  </DropdownMenuItem>
-                                )}
-                                {['emise', 'payee', 'en_retard'].includes(f.statut) && (
-                                  <DropdownMenuItem onClick={() => handleUbl(f)}>
-                                    <Code2 /> Aperçu UBL
-                                  </DropdownMenuItem>
-                                )}
-                                {/* N105/WR2b — export DGI : masqué tant que l'interrupteur société est OFF. */}
-                                {dgiActif && ['emise', 'payee', 'en_retard'].includes(f.statut) && (
-                                  <DropdownMenuItem
-                                    disabled={isDgiBusy}
-                                    onSelect={(e) => { e.preventDefault(); handleDgiExport(f) }}>
-                                    <ShieldCheck /> Export DGI
-                                  </DropdownMenuItem>
-                                )}
-                                {f.statut !== 'payee' && f.statut !== 'annulee' && (
-                                  <DropdownMenuItem
-                                    onClick={() => doAction(annulerFacture, f.id, `Annuler la facture ${f.reference} ?`)}>
-                                    Annuler la facture
-                                  </DropdownMenuItem>
-                                )}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+                </>
+              )}
+              renderRow={f => <FactureRow key={f.id} f={f} ctx={rowCtx} />}
+            />
           </div>
         </Card>
         </>

@@ -37,13 +37,33 @@ def _detect(header: bytes, table=None):
     return None, None
 
 
-def store_attachment(file, *, audio=False):
+def _company_id(company):
+    """Identifiant de société pour le préfixe de clé, ou None.
+
+    Accepte une instance ``Company`` (on lit ``.id``) ou un entier directement.
+    None/0 → pas de préfixe (repli sur l'ancien chemin, cf. ``store_attachment``)."""
+    if company is None:
+        return None
+    cid = getattr(company, 'id', company)
+    return cid or None
+
+
+def store_attachment(file, *, audio=False, company=None):
     """Valide + téléverse un fichier. Retourne (dict, None) ou (None, message).
 
     dict = {file_key, filename, size, mime}.
 
     `audio=True` (F13 — mémos vocaux) accepte les formats audio courants au lieu
     des documents/images : même pipeline MinIO, même limite de taille.
+
+    SCA42 — isolation par société des clés de stockage : quand ``company`` est
+    fourni, la clé du NOUVEL objet est préfixée par la société
+    (``attachments/{company_id}/{uuid}.ext``) — motif ERR75 généralisé
+    (``ventes/utils/pdf.py`` : ``devis/{company_id}/…``). Sans ``company`` (appel
+    historique), on retombe sur l'ancien chemin plat ``attachments/{uuid}.ext``
+    (rétro-compatible). Les objets DÉJÀ stockés ne bougent pas : la lecture
+    utilise la clé STOCKÉE (``fetch_attachment``/``presign_attachment``), donc
+    les anciens fichiers restent servis quelle que soit la forme de la clé.
     """
     if file.size > _MAX_BYTES:
         return None, 'Fichier trop volumineux (max 10 Mo).'
@@ -58,7 +78,11 @@ def store_attachment(file, *, audio=False):
                           '(WebM, Ogg, MP4/M4A, WAV ou MP3 uniquement).')
         return None, 'Format non supporté (PDF, PNG, JPEG ou WebP uniquement).'
 
-    key = f'attachments/{uuid.uuid4().hex}.{ext}'
+    cid = _company_id(company)
+    if cid is not None:
+        key = f'attachments/{cid}/{uuid.uuid4().hex}.{ext}'
+    else:
+        key = f'attachments/{uuid.uuid4().hex}.{ext}'
     client = get_minio_client()
     ensure_uploads_bucket()  # N108 — self-heal a missing bucket before upload
     client.upload_fileobj(

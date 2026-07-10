@@ -8,7 +8,7 @@
    `a.url` (= le proxy Django /records/attachments/<id>/download/ renvoyé par le
    sérialiseur) — jamais une URL MinIO brute. */
 import { useEffect, useState } from 'react'
-import { useSelector } from 'react-redux'
+import { useIsAdmin } from '../hooks/useHasPermission'
 import { Paperclip, FileText, ImageOff, Trash2 } from 'lucide-react'
 import recordsApi from '../api/recordsApi'
 import api from '../api/axios'
@@ -25,8 +25,7 @@ const CONSTRAINTS = 'PDF/PNG/JPEG/WebP — 10 Mo max'
 const isImage = (mime) => typeof mime === 'string' && mime.startsWith('image/')
 
 export default function AttachmentsPanel({ model, id, onChange }) {
-  const role = useSelector((s) => s.auth.role)
-  const isAdmin = role === 'admin'
+  const isAdmin = useIsAdmin()
   const [items, setItems] = useState([])
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState(undefined)

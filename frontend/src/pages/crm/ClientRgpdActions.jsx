@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useSelector } from 'react-redux'
+import { useIsAdmin, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { Download, ShieldOff } from 'lucide-react'
 import crmApi from '../../api/crmApi'
 import {
@@ -15,12 +15,11 @@ import {
 //   AlertDialog. La règle vit côté serveur (permissions DRF) — le gate UI
 //   n'est qu'un confort ; un rôle non autorisé ne voit pas les boutons.
 export default function ClientRgpdActions({ client, onChanged }) {
-  const role = useSelector((s) => s.auth.role)
   const [busy, setBusy] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
 
-  const canExport = role === 'admin' || role === 'responsable'
-  const canAnonymize = role === 'admin'
+  const canExport = useIsAdminOrResponsable()
+  const canAnonymize = useIsAdmin()
   if (!canExport && !canAnonymize) return null
 
   const exporter = async () => {

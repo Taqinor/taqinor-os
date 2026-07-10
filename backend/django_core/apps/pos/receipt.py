@@ -6,10 +6,16 @@ décomposition TVA par taux, mode(s) de paiement, timbre fiscal si espèces,
 mention renvoyant à la facture légale correspondante. JAMAIS de
 ``prix_achat``. Le HTML est construit en Python (pas de nouveau template
 Django) pour rester autonome dans ``apps/pos``.
+
+ARC12 — la plomberie WeasyPrint (``HTML(string=...).write_pdf()`` + import
+paresseux) est déléguée au service partagé ``core.pdf.render_pdf`` ; le
+GABARIT HTML ci-dessus reste STRICTEMENT identique, donc le rendu est
+inchangé à l'octet près.
 """
 from decimal import Decimal
 from html import escape
-from io import BytesIO
+
+from core.pdf import render_pdf
 
 
 def _company_identity(company):
@@ -132,11 +138,7 @@ def receipt_html(vente, *, paiements=None, timbre=None):
 
 
 def receipt_pdf(vente, *, paiements=None, timbre=None):
-    """Génère le PDF du ticket de caisse (octets). Nécessite WeasyPrint
-    (déjà une dépendance existante — utilisé par ``ventes``/``sav``)."""
-    import weasyprint
+    """Génère le PDF du ticket de caisse (octets) via ``core.pdf.render_pdf``
+    (ARC12 — plomberie WeasyPrint centralisée)."""
     html = receipt_html(vente, paiements=paiements, timbre=timbre)
-    buf = BytesIO()
-    weasyprint.HTML(string=html).write_pdf(buf)
-    buf.seek(0)
-    return buf.read()
+    return render_pdf(html=html)

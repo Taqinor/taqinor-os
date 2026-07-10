@@ -51,6 +51,10 @@ vi.mock('../../api/parametresApi', async (importOriginal) => {
 import FactureList from './FactureList'
 import ventesApi from '../../api/ventesApi'
 import parametresApi from '../../api/parametresApi'
+// ARC53 — FactureList rend son tableau via le moteur `ui/datatable` (useDensity),
+// qui EXIGE un <ThemeProvider> dans l'arbre (présent en prod via <Layout>). Ajout
+// de wrapper de HARNAIS uniquement — aucune assertion n'est modifiée.
+import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
 function makeStore({ factures = [], loading = false, error = null, role = 'admin' } = {}) {
   return configureStore({
@@ -66,7 +70,9 @@ function renderList(opts) {
   return render(
     <Provider store={store}>
       <MemoryRouter initialEntries={['/ventes/factures']}>
-        <FactureList />
+        <ThemeProvider>
+          <FactureList />
+        </ThemeProvider>
       </MemoryRouter>
     </Provider>,
   )

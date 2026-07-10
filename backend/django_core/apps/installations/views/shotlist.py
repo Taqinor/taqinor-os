@@ -6,6 +6,7 @@ from authentication.mixins import TenantMixin  # noqa: F401
 from authentication.permissions import (  # noqa: F401
     IsAnyRole, IsResponsableOrAdmin, IsAdminRole,
 )
+from core.viewsets import CompanyScopedModelViewSet
 from django.utils import timezone  # noqa: F401
 
 from .. import activity  # noqa: F401
@@ -107,7 +108,7 @@ def seed_types_intervention(company):
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-class ShotListSlotViewSet(TenantMixin, viewsets.ModelViewSet):
+class ShotListSlotViewSet(CompanyScopedModelViewSet):
     """F7/F8 — créneaux de la shot list (Paramètres → Documentation terrain).
     Lecture tout rôle, écriture admin. Le défaut est semé au standard de
     documentation chantier solaire à la première liste. Un créneau protégé garde

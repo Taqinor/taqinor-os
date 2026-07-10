@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Plus, Check, Undo2, Trash2 } from 'lucide-react'
 import { ListShell, statusPill } from '../../../ui/module'
 import {
@@ -8,7 +8,8 @@ import {
 } from '../../../ui'
 import { formatMAD, formatDate } from '../../../lib/format'
 import comptaApi from '../../../api/comptaApi'
-import useComptaList, { unwrap } from '../components/useComptaList.js'
+import { unwrap } from '../components/useComptaList.js'
+import useResource from '../../../hooks/useResource'
 import { totalDebit, totalCredit, ecart, estEquilibree } from '../ecritureBalance.js'
 
 /* ============================================================================
@@ -195,22 +196,35 @@ function EcritureDialog({ open, onClose, journaux, comptesOpts, onSaved }) {
 export default function EcrituresPage() {
   const [journalFilter, setJournalFilter] = useState('')
   const [showDialog, setShowDialog] = useState(false)
-  const [journaux, setJournaux] = useState([])
-  const [comptesOpts, setComptesOpts] = useState([])
 
-  // Charge les listes de référence (journaux + comptes) une fois pour l'éditeur.
-  useEffect(() => {
-    comptaApi.journaux.list().then((res) => setJournaux(unwrap(res))).catch(() => {})
-    comptaApi.comptes.list().then((res) => {
-      setComptesOpts(unwrap(res).map((c) => ({
-        value: c.id, label: `${c.numero} — ${c.intitule}`,
-      })))
-    }).catch(() => {})
-  }, [])
+  // ARC45 — listes de référence (journaux + comptes), chargées une fois pour
+  // l'éditeur ; erreurs silencieuses (comme avant), abort au démontage.
+  const { data: journaux } = useResource(() => comptaApi.journaux.list(), undefined, {
+    initialData: [], select: (res) => unwrap(res), errorMessage: () => '',
+  })
+  const { data: comptesOpts } = useResource(() => comptaApi.comptes.list(), undefined, {
+    initialData: [],
+    select: (res) => unwrap(res).map((c) => ({
+      value: c.id, label: `${c.numero} — ${c.intitule}`,
+    })),
+    errorMessage: () => '',
+  })
 
   const params = useMemo(
     () => (journalFilter ? { journal: journalFilter } : undefined), [journalFilter])
-  const { rows, loading, error, reload } = useComptaList(comptaApi.ecritures.list, params)
+  // ARC45 — liste principale via useResource (remplace useComptaList) : même
+  // comportement (unwrap DRF, toast d'erreur FR, refetch réactif au filtre).
+  const { data: rows, loading, error, refetch: reload } = useResource(
+    () => comptaApi.ecritures.list(params), params,
+    {
+      initialData: [],
+      select: (res) => unwrap(res),
+      errorMessage: () => {
+        toast.error('Chargement impossible — réessayez.')
+        return 'Chargement impossible.'
+      },
+    },
+  )
 
   const valider = async (row) => {
     try {

@@ -2093,6 +2093,19 @@ class SousTraitant(models.Model):
 
     Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
     corps de requête. Modèle entièrement additif.
+
+    ARC22 — RÉGRESSION DC34 constatée : ce carnet est un 3e référentiel
+    sous-traitant parallèle, alors que DC34 a unifié le sous-traitant sur
+    ``stock.Fournisseur`` (``type=SERVICE``) + son satellite
+    ``stock.SousTraitantProfile`` (voir ``apps/installations/views/
+    soustraitant.py``, qui orchestre déjà EXCLUSIVEMENT via ce master).
+    ``fournisseur`` ci-dessous est le lien ADDITIF (nullable) vers ce master :
+    le carnet ``gestion_projet`` local N'EST PAS supprimé/fusionné par ARC22
+    (ça reste la propriété de DC34, cf. son annotation) — seul un NOUVEAU
+    sous-traitant projet créé via ``services.creer_sous_traitant_via_master``
+    pose ce lien ; le backfill (``manage.py backfill_sous_traitant_fournisseur``)
+    rattache les lignes EXISTANTES par correspondance nom/téléphone, sans
+    jamais fusionner ni geler les colonnes dupliquées (hors scope ARC22).
     """
     company = models.ForeignKey(
         'authentication.Company',
@@ -2111,6 +2124,23 @@ class SousTraitant(models.Model):
     actif = models.BooleanField(default=True, verbose_name='Actif')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
+    # ARC22 — lien ADDITIF (nullable) vers le master sous-traitant unifié DC34
+    # (``stock.Fournisseur`` type=SERVICE). String-FK : ``gestion_projet``
+    # n'importe jamais ``apps.stock.models`` (frontière cross-app, CLAUDE.md).
+    # SET_NULL : la suppression du Fournisseur master ne casse pas le carnet
+    # projet local (comportement actuel préservé pour les lignes non liées).
+    fournisseur = models.ForeignKey(
+        'stock.Fournisseur',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='gestion_projet_sous_traitants_lies',
+        verbose_name='Fournisseur (master DC34)',
+        help_text=(
+            'Lien optionnel vers le référentiel sous-traitant unifié DC34 '
+            '(stock.Fournisseur type=service). Posé automatiquement pour '
+            'tout nouveau sous-traitant créé via le master, ou par le '
+            'backfill pour les lignes existantes correspondantes.'),
+    )
 
     class Meta:
         verbose_name = 'Sous-traitant'

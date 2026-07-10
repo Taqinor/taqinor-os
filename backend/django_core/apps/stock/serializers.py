@@ -204,6 +204,11 @@ class ProduitSerializer(serializers.ModelSerializer):
     nb_mouvements = serializers.SerializerMethodField()
     premiere_date_mouvement = serializers.SerializerMethodField()
     derniere_date_mouvement = serializers.SerializerMethodField()
+    # ARC27 — libellé de l'unité issu du référentiel Paramètres (UniteMesure)
+    # quand une unité active correspond au ``unite_stock`` du produit ; sinon le
+    # code brut (comportement historique). Lecture seule, additif ; le générateur
+    # de devis (écran) consomme ce champ pour afficher le libellé du référentiel.
+    unite_stock_display = serializers.SerializerMethodField()
     # N15 — ventilation du stock par emplacement dans la liste catalogue
     # (lecture seule) pour afficher dépôt/camionnette sans ouvrir le modal
     # Transfert. Map calculée UNE fois par sérialisation (pas de N+1).
@@ -282,8 +287,9 @@ class ProduitSerializer(serializers.ModelSerializer):
             'code_barres',
             # XSTK19 — code SH (HS) + pays d'origine (dossier d'import ADII)
             'code_sh', 'pays_origine',
-            # XSTK15 — unité de mesure du stock
-            'unite_stock',
+            # XSTK15 — unité de mesure du stock ; ARC27 — FK miroir référentiel
+            # + libellé affiché (référentiel si présent, sinon code brut).
+            'unite_stock', 'unite', 'unite_stock_display',
             # Prix (prix_achat gardé par permission, cf. get_fields)
             'prix_achat', 'prix_vente', 'tva',
             # ZPUR1 — politique de facturation d'achat (sur_reception/
@@ -314,7 +320,10 @@ class ProduitSerializer(serializers.ModelSerializer):
             'quantite_en_commande', 'bcf_sources_en_commande',
         ]
         # company est posé côté serveur (TenantMixin) — jamais accepté du corps.
-        read_only_fields = ['company', 'date_creation', 'date_mise_a_jour']
+        # ARC27 — ``unite`` est un MIROIR (posé par le backfill), lecture seule :
+        # jamais accepté du corps (évite tout choix d'unité d'une autre société).
+        read_only_fields = ['company', 'date_creation', 'date_mise_a_jour',
+                            'unite']
         # XSTK3 — l'optionalité de `code_barres` (que DRF forcerait à tort à
         # `required=True` via l'UniqueTogetherValidator dérivé de la contrainte
         # partielle) est restaurée par la déclaration EXPLICITE du champ
@@ -456,6 +465,22 @@ class ProduitSerializer(serializers.ModelSerializer):
     def get_derniere_date_mouvement(self, obj):
         val = getattr(obj, 'derniere_date_mouvement', None)
         return val.isoformat() if val else None
+
+    def get_unite_stock_display(self, obj):
+        # ARC27 — libellé du référentiel Paramètres (UniteMesure) si l'unité
+        # miroir est reliée ou si une unité active correspond au code
+        # ``unite_stock`` ; sinon le code brut (comportement historique).
+        unite = getattr(obj, 'unite', None)
+        if unite is not None and getattr(unite, 'actif', False):
+            return unite.libelle
+        code = obj.unite_stock or ''
+        try:
+            from apps.parametres.models import UniteMesure
+            libelle = UniteMesure.libelle_pour_code(
+                getattr(obj, 'company', None), code)
+        except Exception:
+            libelle = None
+        return libelle or code
 
 
 class EmplacementStockSerializer(serializers.ModelSerializer):
