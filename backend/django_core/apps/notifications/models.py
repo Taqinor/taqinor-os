@@ -119,6 +119,9 @@ class EventType(models.TextChoices):
     # XMKT35 — un post réseau social planifié arrive à échéance SANS jeton
     # Meta Graph configuré : rappel manuel (texte prêt à coller) à l'auteur.
     POST_SOCIAL_RAPPEL = 'post_social_rappel', 'Post social à publier (rappel)'
+    # YSERV11 — réponse NPS promoteur (9-10) : proposer le parrainage au
+    # moment de l'enchantement (notification au commercial du client).
+    NPS_PROMOTEUR = 'nps_promoteur', 'Client promoteur — proposer le parrainage'
 
 
 class Channel(models.TextChoices):

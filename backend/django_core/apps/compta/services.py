@@ -8869,6 +8869,14 @@ def repondre_enquete_nps(enquete, *, score, commentaire=None):
 
     ``score`` est borné 0–10. Passe l'enquête à « répondue » et horodate.
     Renvoie l'enquête. Une enquête déjà répondue n'est pas ré-écrite.
+
+    YSERV11 — au moment de l'enchantement : un PROMOTEUR (9-10) déclenche,
+    si ``CompanyProfile.referral_enabled``, une notification au commercial du
+    client avec un brouillon WhatsApp wa.me « parrainage » (MessageTemplate
+    FR/darija, éditable) + lien vers la création de Parrainage (parrain
+    pré-rempli) ; un DÉTRACTEUR (0-6) ouvre une activité de rappel assignée
+    au responsable. Idempotent par enquête : la garde « déjà répondue »
+    ci-dessus ne laisse ce déclencheur s'exécuter qu'UNE fois.
     """
     from .models import EnqueteNPS
     if enquete.statut == EnqueteNPS.Statut.REPONDUE:
@@ -8881,7 +8889,111 @@ def repondre_enquete_nps(enquete, *, score, commentaire=None):
     enquete.repondue_le = timezone.now()
     enquete.save(update_fields=[
         'score', 'commentaire', 'statut', 'repondue_le'])
+    try:
+        _declencher_suivi_nps(enquete)
+    except Exception:  # pragma: no cover - défensif, jamais bloquant
+        pass
     return enquete
+
+
+def _referral_actif(company):
+    """YSERV11 — toggle ``CompanyProfile.referral_enabled`` (N98). OFF → rien."""
+    try:
+        from apps.parametres.models_company import CompanyProfile
+        profil = CompanyProfile.objects.filter(company=company).first()
+    except Exception:  # pragma: no cover - défensif
+        profil = None
+    return bool(getattr(profil, 'referral_enabled', False))
+
+
+def _commercial_pour_client(company, client_id):
+    """YSERV11 — le commercial du client : owner du lead le plus récent lié,
+    sinon le créateur de la fiche client. Peut renvoyer ``None``."""
+    from apps.crm.selectors import get_company_client, get_latest_lead_for_client
+    lead = get_latest_lead_for_client(company, client_id)
+    if lead is not None and lead.owner_id:
+        return lead.owner
+    client = get_company_client(company, client_id)
+    return getattr(client, 'created_by', None)
+
+
+def _declencher_suivi_nps(enquete):
+    """YSERV11 — suivi post-réponse NPS (promoteur → parrainage, détracteur →
+    rappel). Gated ``referral_enabled`` (OFF par défaut → no-op strict).
+    Appelé UNE seule fois par enquête (garde « déjà répondue » de l'appelant).
+    """
+    company = enquete.company
+    score = enquete.score
+    if score is None or not _referral_actif(company):
+        return
+    if 7 <= score <= 8:  # passif : aucun suivi automatique
+        return
+    from apps.crm.selectors import get_company_client, get_latest_lead_for_client
+    client = get_company_client(company, enquete.client_id)
+    if client is None:
+        return
+    commercial = _commercial_pour_client(company, enquete.client_id)
+
+    if score >= 9:
+        # ── Promoteur : notification + brouillon WhatsApp wa.me parrainage ──
+        from apps.crm.services import get_or_create_parrainage_template
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify
+        from apps.notifications.whatsapp_bsp import get_whatsapp_provider
+        if commercial is None:
+            return
+        lead = get_latest_lead_for_client(company, enquete.client_id)
+        langue = getattr(lead, 'langue_preferee', None) or 'fr'
+        template = get_or_create_parrainage_template(company, langue=langue)
+        message = template.render(
+            prenom=client.prenom or client.nom or '')
+        wa_url = None
+        telephone = client.telephone or ''
+        if telephone:
+            try:
+                wa_result = get_whatsapp_provider().get_wa_url(
+                    telephone, message)
+                wa_url = wa_result.get('url')
+            except Exception:  # pragma: no cover - défensif
+                wa_url = None
+        corps = f'Brouillon : {message}'
+        if wa_url:
+            corps += f'\nEnvoyer : {wa_url}'
+        notify(
+            commercial, EventType.NPS_PROMOTEUR,
+            'Client promoteur — proposer le parrainage',
+            body=corps[:2000],
+            link=f'/crm/parrainage?parrain={client.id}',
+            company=company)
+        return
+
+    # ── Détracteur (0-6) : activité de rappel assignée au responsable ──────
+    from django.contrib.contenttypes.models import ContentType
+    from apps.records.models import Activity, ActivityType
+    assigne = commercial
+    if assigne is None:
+        return
+    atype = ActivityType.objects.filter(company=company, nom='Appel').first()
+    if atype is None:
+        atype = ActivityType.objects.create(
+            company=company, nom='Appel', ordre=10)
+    ct = ContentType.objects.get_for_model(type(client))
+    marque = f'[nps:{enquete.id}]'
+    deja = Activity.objects.filter(
+        company=company, content_type=ct, object_id=client.id,
+        note__contains=marque).exists()
+    if deja:
+        return
+    Activity.objects.create(
+        company=company, content_type=ct, object_id=client.id,
+        activity_type=atype,
+        summary='Client détracteur — rappeler'[:255],
+        due_date=timezone.localdate(),
+        assigned_to=assigne,
+        note=f'{marque} Score NPS : {score}/10. '
+             f'{(enquete.commentaire or "")[:500]}'.strip(),
+        created_by=None,
+    )
 
 
 def score_nps(company):
