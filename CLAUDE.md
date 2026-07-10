@@ -271,6 +271,16 @@ the merge+deploy gate). Every SUBAGENT is dispatched via `Agent` `model:` / `Wor
   `@model:haiku|sonnet|opus` tag on a task line overrides the classifier) — a plan run reads each
   lane's `model=` off the lane plan and passes it to the Agent call; no judgment call needed for
   the routine tiers. `fable` is deliberately not routable — it stays a session-level scalpel.
+  **EVERY-PROMPT RULE (2026-07-10, founder): this routing applies to ALL of Reda's prompts, not
+  only plan runs.** On ANY substantive request — bug fix, audit, research, a facture, an
+  investigation — the session model acts as the ORCHESTRATOR ONLY: it thinks, decomposes, reviews
+  and reports, and DELEGATES the heavy mechanical volume (bulk edits, sweeps, log-reading, broad
+  greps, transcript/file mining, standard build work) to subagents tagged per the tiers above
+  (haiku scout / sonnet worker / opus judgment). Answer directly WITHOUT delegation only when the
+  work is genuinely small (a question, a one-file fix, pure judgment) — spawning an agent for a
+  two-minute task wastes more than it saves. The session model itself is never downgraded; the
+  savings come from where the VOLUME runs, and the orchestrator's adversarial review keeps the
+  quality bar identical regardless of which tier produced the work.
 
 **Token discipline — read the MAP before grepping the territory (founder rule).** `docs/CODEMAP.md`
 is the curated, always-current map (§3 repository map + §4 app-by-app: every app's
