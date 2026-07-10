@@ -183,6 +183,8 @@ HOW TO RUN verbatim, only the drain file changes). One-line starter:
 
 ---
 
+- [ ] ERR114 — [ventes/quote_engine] **Le PDF premium 'full' résidentiel déborde sur 4 pages dans l'image prod (contrat = 3 pages exactement)** — trouvé par le nouveau test golden YTEST10 à son premier run. REPRO (prouvée 2026-07-10, images `taqinor-django-prod:latest` ET `erp-agentique-django_core:latest`) : rendre `BASELINE_CASES[0]` ('residentiel_full', FULL_LINES 10 lignes, mêmes lignes que `test_quote_engine.test_premium_pdf_is_exactly_three_pages`) via `_render_pdf_bytes` → 4 pages ; la page 4 ne contient QUE le bloc CTA e-sign (« Prêt à passer au solaire ? / Signez en ligne → taqinor.ma/signer/… / Scannez pour signer », introduit par XSAL16) + la ligne légale — un débordement du bas de la page 3 (`residential/trust.py`). Le test canonique passe en CI (polices ubuntu ≠ polices image prod) donc la CI ne le voit pas : LES CLIENTS REÇOIVENT AUJOURD'HUI un PDF 4 pages dont la dernière est quasi vide. FIX attendu : resserrer le layout de `residential/trust.py` (ou déplacer le CTA) pour retenir exactement 3 pages DANS L'IMAGE PROD (vérifier avec la repro ci-dessus, pas seulement en CI), sans casser les autres formats ; puis générer le baseline manquant `residentiel_full_p1..p3.png` via `manage.py update_pdf_baselines` (image prod) et le committer. Rule #4 : édition du moteur autorisée pour un fix ; ne toucher à aucun statut. (@lane: backend/ventes-pdf)
+
 ## GATED — needs founder decision before fixing (agent does NOT auto-build)
 
 Move any task here with a `[BLOCKED: <reason>]` tag when fixing it would require a
