@@ -49,11 +49,15 @@ def _register_company(api, *, nom, username, email):
 
 
 def _login_token(api, username, password='motdepasse123'):
-    """login JWT (token/) → renvoie l'access token (str)."""
+    """login JWT (token/) → renvoie l'access token (str).
+
+    ``CustomTokenObtainPairView`` déplace l'access token du corps de la réponse
+    vers un cookie httpOnly ``access_token`` (contrat existant, sécurité) : on
+    lit donc le cookie, pas ``r.data['access']`` (absent du corps)."""
     r = api.post('/api/django/token/', {
         'username': username, 'password': password}, format='json')
     assert r.status_code == 200, r.data
-    return r.data['access']
+    return r.cookies['access_token'].value
 
 
 @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')

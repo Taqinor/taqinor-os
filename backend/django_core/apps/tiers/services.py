@@ -129,7 +129,11 @@ def attacher_ou_creer_tiers(*, company, nom, roles=None,
             setattr(tiers, role, True)
             dirty.append(role)
 
-    if not cree and dirty:
+    # Persiste les champs modifiés en mémoire. Sur le chemin CREATE, le
+    # ``Tiers.objects.create`` ci-dessus n'a PAS posé les rôles (ils sont
+    # calculés après) : il faut donc les sauvegarder ici aussi, sinon un Tiers
+    # fraîchement créé garderait ses drapeaux de rôle à False en base.
+    if dirty:
         tiers.save(update_fields=list(dict.fromkeys(dirty)))
     return tiers, cree
 

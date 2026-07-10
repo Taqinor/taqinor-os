@@ -66,10 +66,13 @@ class Arc37TicketResoluTests(TestCase):
             email='arc37-client@example.invalid')
         self.inst = Installation.objects.create(
             company=self.company, reference='CHT-ARC37', client=self.client_obj)
+        # Ticket EN_COURS : préalable de la machine d'états gardée (YDOCF1) —
+        # `resoudre` n'accepte que EN_COURS → RESOLU, jamais un saut direct
+        # depuis NOUVEAU. On teste ainsi la transition manuelle réelle.
         self.ticket = Ticket.objects.create(
             company=self.company, reference='SAV-ARC37-1', client=self.client_obj,
             installation=self.inst, type=Ticket.Type.CORRECTIF,
-            created_by=self.admin)
+            statut=Ticket.Statut.EN_COURS, created_by=self.admin)
 
     def test_action_resoudre_emet_ticket_resolu_et_notifie(self):
         api = auth(self.admin)
