@@ -28,12 +28,6 @@ const ToitureDesign = lazy(() => import('../pages/ventes/ToitureDesign'))
 const RoofViewerPage = lazy(() => import('../pages/ventes/RoofViewerPage'))
 const AgentChat = lazy(() => import('../pages/ia/AgentChat'))
 const OcrUpload = lazy(() => import('../pages/ia/OcrUpload'))
-const ParametresEntreprise = lazy(() => import('../pages/parametres/ParametresEntreprise'))
-const ExportSauvegarde = lazy(() => import('../pages/parametres/ExportSauvegarde'))
-const NotificationsPreferences = lazy(() => import('../pages/parametres/NotificationsPreferences'))
-const Journal = lazy(() => import('../pages/Journal'))
-// XPLT6 — CRUD des alertes de seuil sur KPI agrégés.
-const KpiAlertesPage = lazy(() => import('../pages/parametres/KpiAlertesPage'))
 // XPLT10 — kiosque TV public des dashboards partagés (sans layout ERP).
 const DashboardsTvPage = lazy(() => import('../pages/reporting/DashboardsTvPage'))
 const AgentActions = lazy(() => import('../pages/ia/AgentActions'))
@@ -192,13 +186,7 @@ const router = createBrowserRouter([
   // Reporting — migré vers frontend/src/features/reporting/module.config.jsx (ARC54).
 
   // Administration — migré vers frontend/src/features/admin/module.config.jsx (ARC54).
-  { path: '/parametres', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><ParametresEntreprise /></WithLayout> },
-  { path: '/parametres/export', loader: authLoader, element: <WithLayout><ExportSauvegarde /></WithLayout> },
-  { path: '/parametres/notifications', loader: authLoader, element: <WithLayout><NotificationsPreferences /></WithLayout> },
-  // XPLT6 — CRUD des alertes de seuil sur KPI agrégés (réservé responsable/admin,
-  // reflète `IsResponsableOrAdmin` côté backend).
-  { path: '/parametres/alertes-kpi', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><KpiAlertesPage /></WithLayout> },
-  { path: '/journal', loader: roleLoader(['normal', 'responsable', 'admin'], 'journal_activite_voir'), element: <WithLayout><Journal /></WithLayout> },
+  // Paramètres — migré vers frontend/src/features/parametres/module.config.jsx (ARC54).
 
   // UX1 — Routes des modules « coquille » enregistrées via le registre. Chaque
   // route est gatée par le même authLoader/roleLoader que le reste de l'app.
