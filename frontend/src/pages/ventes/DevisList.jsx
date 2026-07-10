@@ -32,6 +32,7 @@ import { useSavedViews } from '../../hooks/useSavedViews'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import { useHasPermission } from '../../hooks/useHasPermission'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
+import { DataTable } from '../../ui/datatable'
 import RoofViewer from './RoofViewer'
 
 // J141 — Squelette de la liste : reprend les 8 colonnes du vrai tableau pour que
@@ -66,6 +67,21 @@ function DevisTableSkeleton() {
 }
 
 const DL_SAVED_VIEWS_KEY = 'taqinor.ventes.devis.savedViews'
+
+// ── ARC49 — Colonnes du frame `ui/datatable` en mode « ligne custom ».
+// L'écran rend chaque ligne via `renderRow` (<DevisRow>), donc ces définitions
+// ne servent qu'à décrire la grille au moteur (identité de colonnes) : aucun
+// `cell` n'est utilisé, le tri/filtre/pagination sont désactivés (seams manuels).
+// Le rendu réel (cellules, boutons, panneaux) reste 100 % dans <DevisRow>.
+const DEVIS_DT_COLUMNS = [
+  { id: 'reference', header: 'Référence', sortable: false, hideable: false, reorderable: false },
+  { id: 'client', header: 'Client', sortable: false, hideable: false, reorderable: false },
+  { id: 'date_creation', header: 'Créé le', sortable: false, hideable: false, reorderable: false },
+  { id: 'date_validite', header: 'Validité', sortable: false, hideable: false, reorderable: false },
+  { id: 'total_ttc', header: 'Total TTC', align: 'right', sortable: false, hideable: false, reorderable: false },
+  { id: 'statut', header: 'Statut', sortable: false, hideable: false, reorderable: false },
+  { id: 'actions', header: 'Actions', sortable: false, hideable: false, reorderable: false },
+]
 
 const STATUT_DISPLAY = {
   brouillon: 'Brouillon',
@@ -1461,6 +1477,30 @@ export default function DevisList() {
     handleChantier, handleCreerProjet, handleGenererFacture,
   }
 
+  // ── ARC49 — Rangée d'en-tête du tableau (8 colonnes), partagée par le cas
+  //    « filtre sans résultat » (rendu direct) et le mode `renderRow` du moteur
+  //    (via `renderHeaderRow` → ses enfants <th>). Mêmes libellés/classes/case
+  //    « tout sélectionner » que l'écran historique — DOM inchangé. ──
+  const devisHeaderRow = (
+    <tr>
+      <th className="w-8">
+        {/* T7 — tout sélectionner (devis affichés / filtrés). */}
+        <Checkbox
+          checked={allFilteredSelected}
+          onCheckedChange={toggleSelectAll}
+          aria-label="Tout sélectionner"
+        />
+      </th>
+      <th>Référence</th>
+      <th>Client</th>
+      <th>Créé le</th>
+      <th>Validité</th>
+      <th className="ta-right">Total TTC</th>
+      <th>Statut</th>
+      <th>Actions</th>
+    </tr>
+  )
+
   // J141 — l'en-tête de page reste TOUJOURS visible (chargement, erreur, données)
   // pour éviter le saut de mise en page. Le contenu interne varie selon l'état.
   const pageHeader = (
@@ -1826,38 +1866,47 @@ export default function DevisList() {
       ) : (
         <Card className="mt-4 overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th className="w-8">
-                    {/* T7 — tout sélectionner (devis affichés / filtrés). */}
-                    <Checkbox
-                      checked={allFilteredSelected}
-                      onCheckedChange={toggleSelectAll}
-                      aria-label="Tout sélectionner"
-                    />
-                  </th>
-                  <th>Référence</th>
-                  <th>Client</th>
-                  <th>Créé le</th>
-                  <th>Validité</th>
-                  <th className="ta-right">Total TTC</th>
-                  <th>Statut</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredDevis.length === 0 ? (
+            {filteredDevis.length === 0 ? (
+              /* ── ARC49 — Filtre sans résultat : ligne pleine largeur conservée
+                  à l'identique (le moteur ne rend renderRow que pour ≥1 ligne). ── */
+              <table className="data-table">
+                <thead>{devisHeaderRow}</thead>
+                <tbody>
                   <tr>
                     <td colSpan={8} className="py-6 text-center text-sm text-muted-foreground">
                       Aucun devis ne correspond à ces filtres.
                     </td>
                   </tr>
-                ) : filteredDevis.map(d => (
-                  <DevisRow key={d.id} d={d} ctx={rowCtx} />
-                ))}
-              </tbody>
-            </table>
+                </tbody>
+              </table>
+            ) : (
+              /* ── ARC49 — Tableau sur le frame `ui/datatable` (mode ligne custom).
+                  L'écran garde 100 % de son DOM : `table.data-table`, son en-tête
+                  8 colonnes, `<DevisRow>` verbatim (boutons à état, AlertDialog,
+                  panneaux versions/3D pilotés par l'état de page + deep-links), sa
+                  sélection propre (`selectedIds`) et son flux PDF (règle #4). Le
+                  moteur ne fait que dérouler le pipeline de lignes ; il n'ajoute
+                  aucune cellule technique, ni tri client, ni pagination, ni carte
+                  mobile, ni barre d'outils (seams manuels + hideToolbar). ── */
+              <DataTable
+                data={filteredDevis}
+                columns={DEVIS_DT_COLUMNS}
+                getRowId={d => d.id}
+                manualSorting
+                manualFiltering
+                manualPagination
+                rowCount={filteredDevis.length}
+                pageSize={filteredDevis.length}
+                pageSizeOptions={[filteredDevis.length]}
+                searchable={false}
+                hideToolbar
+                hidePagination
+                tableClassName="data-table"
+                aria-label="Devis"
+                renderHeaderRow={() => devisHeaderRow.props.children}
+                renderRow={d => <DevisRow key={d.id} d={d} ctx={rowCtx} />}
+              />
+            )}
           </div>
         </Card>
       )}
