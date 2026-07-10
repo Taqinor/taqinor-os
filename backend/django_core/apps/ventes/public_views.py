@@ -834,11 +834,118 @@ def proposal_accept(request, token):
             {'detail': exc.message},
             status=(status.HTTP_409_CONFLICT if exc.conflict
                     else status.HTTP_400_BAD_REQUEST)))
+    # QX33be — état de succès post-signature : acompte (tranche 1 sur le TTC
+    # REMISÉ per QX1) + instructions de virement (RIB) + slot lien carte si un
+    # PSP est configuré. Aucun changement de comportement si rien n'est
+    # configuré (RIB vide, pas de PSP) — l'objet ``paiement`` est alors minimal.
     return _noindex(Response({
         'detail': 'Proposition acceptée. Merci !',
         'reference': devis.reference,
         'statut': devis.statut,
         'accepte_par_nom': devis.accepte_par_nom,
+        'paiement': _deposit_success_payload(devis, token),
+    }))
+
+
+def _company_rib():
+    """QX33be — coordonnées de virement (RIB/IBAN) depuis settings/env.
+
+    Non stocké sur un modèle aujourd'hui : lu depuis ``settings.COMPANY_RIB``
+    (ou l'env). Vide → aucune instruction de virement affichée (dégradation
+    propre, aucun changement de comportement)."""
+    from django.conf import settings
+    return (getattr(settings, 'COMPANY_RIB', '') or '').strip()
+
+
+def _deposit_success_payload(devis, token):
+    """QX33be — payload d'acompte pour l'écran/email de succès post-signature.
+
+    Montant = 1ʳᵉ tranche de l'échéancier (acompte) calculée sur le TTC REMISÉ
+    (chaîne canonique QX1). RIB si configuré. ``card_payment_url`` non nul
+    UNIQUEMENT si un vrai PSP est configuré (QXG2) — sinon None. Best-effort :
+    jamais d'exception (renvoie un payload minimal)."""
+    from decimal import Decimal
+    payload = {
+        'acompte_ttc': None,
+        'pourcentage': None,
+        'rib': _company_rib(),
+        'message': '',
+        'declare_url': f'/api/django/public/proposal/{token}/virement/',
+        'card_payment_url': None,
+    }
+    try:
+        from .utils.echeancier import next_tranche
+        from .deposit import deposit_protection_message
+        tr = next_tranche(devis)
+        if tr is not None:
+            acompte = Decimal(str(tr['ttc']))
+            payload['acompte_ttc'] = str(acompte)
+            payload['pourcentage'] = str(tr.get('pourcentage'))
+            payload['message'] = deposit_protection_message(
+                acompte, reference=devis.reference)
+    except Exception:  # noqa: BLE001 — best-effort
+        pass
+    # QX33be — slot lien carte : actif seulement si un PSP réel est configuré.
+    try:
+        from django.conf import settings
+        provider = (getattr(settings, 'PAYMENT_PROVIDER', '') or '').strip()
+        if provider and provider != 'noop':
+            payload['card_payment_url'] = (
+                f'/api/django/public/proposal/{token}/pay-card/')
+    except Exception:  # noqa: BLE001
+        pass
+    return payload
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicLinkRateThrottle])
+def proposal_virement_declare(request, token):
+    """QX33be — le client déclare « j'ai effectué le virement ».
+
+    Notifie le vendeur (Notification + chatter) et pose un horodatage sur le
+    devis via une note chatter — NE change JAMAIS le statut du devis ni ne crée
+    de Paiement (l'encaissement réel reste manuel/vérifié, règle #4). Idempotent
+    par lien (cache.add). Best-effort : jamais d'exception 500."""
+    link = _resolve_proposal_link(token)
+    if link is None:
+        return _not_found()
+    devis = link.devis
+    # Idempotence : une déclaration par lien et par heure.
+    try:
+        from django.core.cache import cache
+        if not cache.add(f'qx33-virement:{link.pk}', True, 3600):
+            return _noindex(Response({
+                'detail': 'Votre déclaration a bien été prise en compte.',
+                'already': True,
+            }))
+    except Exception:  # noqa: BLE001
+        pass
+    # Chatter + notification vendeur (best-effort).
+    try:
+        from . import activity
+        activity.log_devis_note(
+            devis, None,
+            'Le client déclare avoir effectué le virement de l\'acompte.')
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from apps.notifications.services import notify
+        from apps.notifications.models import EventType
+        vendeur = getattr(devis, 'created_by', None)
+        if vendeur is not None:
+            notify(
+                vendeur, EventType.CLIENT_CONTACT_REQUEST,
+                title=f'Virement déclaré — devis {devis.reference}',
+                body='Le client indique avoir effectué le virement de '
+                     'l\'acompte. À vérifier sur le compte bancaire.',
+                link=f'/ventes/devis?devis={devis.id}',
+                company=devis.company)
+    except Exception:  # noqa: BLE001
+        pass
+    return _noindex(Response({
+        'detail': 'Merci ! Votre déclaration a été transmise à votre '
+                  'conseiller.',
     }))
 
 

@@ -866,6 +866,37 @@ def _store_signed_pdf(*, devis):
             getattr(devis, 'reference', '?'), exc)
 
 
+def _acceptance_deposit_block(devis):
+    """QX33be — bloc texte « acompte + RIB » pour l'email de confirmation.
+
+    Acompte = 1ʳᵉ tranche de l'échéancier (sur le TTC REMISÉ, chaîne QX1). RIB
+    depuis ``settings.COMPANY_RIB`` si configuré. Chaîne VIDE quand rien n'est
+    configurable (pas de tranche, pas de RIB) → email inchangé. Best-effort."""
+    from decimal import Decimal
+    try:
+        from .utils.echeancier import next_tranche
+        tr = next_tranche(devis)
+        if tr is None:
+            return ''
+        acompte = Decimal(str(tr['ttc']))
+        montant_str = f'{acompte:,.2f}'.replace(',', ' ') + ' MAD'
+        from django.conf import settings
+        rib = (getattr(settings, 'COMPANY_RIB', '') or '').strip()
+        lignes = [
+            f"Pour démarrer votre installation, un acompte de {montant_str} "
+            f"est à régler.",
+        ]
+        if rib:
+            lignes.append(
+                f"Vous pouvez l'effectuer par virement sur : {rib}")
+            lignes.append(
+                "Une fois le virement effectué, signalez-le depuis votre "
+                "espace proposition pour informer votre conseiller.")
+        return '\n'.join(lignes) + '\n\n'
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        return ''
+
+
 def _send_acceptance_emails(*, devis, user):
     """QJ10 — Envoie un email de confirmation de signature au client + au vendeur.
 
@@ -884,13 +915,18 @@ def _send_acceptance_emails(*, devis, user):
                 f"{client.nom} {getattr(client, 'prenom', '') or ''}".strip()
             )
         salut = f'Bonjour {nom_client},' if nom_client else 'Bonjour,'
+        # QX33be — bloc acompte (tranche 1 sur le TTC REMISÉ per QX1) + RIB si
+        # configuré. Vide (aucune ligne) quand rien n'est configurable → texte
+        # de confirmation inchangé.
+        acompte_bloc = _acceptance_deposit_block(devis)
         corps = (
             f"{salut}\n\n"
             f"Nous avons bien reçu votre acceptation du devis "
             f"{devis.reference}.\n\n"
             f"Votre signature électronique a été enregistrée conformément "
-            f"à la loi 53-05 relative à l'échange électronique de données "
+            f"à la loi 43-20 relative à l'échange électronique de données "
             f"juridiques.\n\n"
+            f"{acompte_bloc}"
             f"Vous trouverez ci-joint votre exemplaire signé pour vos archives.\n\n"
             f"Merci pour votre confiance.\n\n"
             f"Cordialement,\nL'équipe TAQINOR"
