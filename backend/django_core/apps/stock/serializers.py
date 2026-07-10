@@ -881,7 +881,16 @@ class ReceptionFournisseurSerializer(serializers.ModelSerializer):
                     {'lignes': 'Ligne de commande hors de ce bon de commande.'})
             LigneReceptionFournisseur.objects.create(
                 reception=reception, ligne_commande=ligne_cmd,
-                produit=ligne_cmd.produit, quantite=ligne['quantite'])
+                produit=ligne_cmd.produit, quantite=ligne['quantite'],
+                # YTEST6 — les champs de traçabilité déclarés par le
+                # serializer de ligne (FG61 séries / FG64 lot+péremption)
+                # étaient silencieusement PERDUS à la création imbriquée :
+                # ils alimentent SerieEntrepot (YSTCK7) et LotEntrepot
+                # (XSTK6) à la confirmation. Absents du corps → None
+                # (comportement historique inchangé).
+                numeros_serie=ligne.get('numeros_serie'),
+                numero_lot=ligne.get('numero_lot'),
+                date_peremption=ligne.get('date_peremption'))
         return reception
 
 
