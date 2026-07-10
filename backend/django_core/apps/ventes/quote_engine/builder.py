@@ -1018,6 +1018,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "avec_bullets": _bullets(avec_items),
         "scenario": scenario,
         "recommended": recommended,
+        # QX5 — drapeaux d'option RÉELS (après repli/QF6) : le rendu résidentiel
+        # gate les deux cartes dessus. `deux_options` True = document à deux
+        # options (rendu inchangé) ; mono-option → une seule carte, la page 2
+        # abandonne le découpage delta et renomme l'en-tête « commun ».
+        "sans_ok": bool(sans_ok),
+        "avec_ok": bool(avec_ok),
+        "deux_options": bool(deux_options),
         "all_items": all_items,
         "onepage_note_batterie": onepage_note_batterie,
         "display_total": display_total,

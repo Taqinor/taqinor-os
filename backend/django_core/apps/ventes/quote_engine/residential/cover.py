@@ -87,6 +87,14 @@ def build(ctx):
     validity_days = d["validity_days"]
     sans_bullets = d.get("sans_bullets", []) or []
     avec_bullets = d.get("avec_bullets", []) or []
+    # QX5 — n'imprime JAMAIS d'option fantôme : deux cartes seulement quand le
+    # devis porte réellement deux options (réseau ET hybride+batterie). Un devis
+    # mono-option (batterie seule / réseau seul / choix vendeur restreint) rend
+    # UNE carte pleine largeur pour l'option réelle — jamais une « Sans batterie »
+    # fabriquée sans onduleur. Repli sûr : sans drapeau explicite, comportement
+    # deux-options historique.
+    deux_options = bool(d.get("deux_options", True))
+    avec_ok = bool(d.get("avec_ok", True))
 
     kwc_str = f"{kwc:.2f}".rstrip("0").rstrip(".").replace(".", ",")
     pkwc_sans = fmt(total_sans / kwc) if kwc else "—"
@@ -282,8 +290,42 @@ def build(ctx):
 .c1-opt li span{{min-width:0;}}
 .c1-note{{font-size:6.5pt;color:{muted_2};font-style:italic;margin-top:auto;
   padding-top:5px;}}
+/* QX5 — carte d'option unique : pleine largeur (aucune option fantôme). */
+.c1-opt-full{{flex:1 1 100%;}}
 </style>
 """
+
+    # ── QX5 — cartes d'option (deux OU une seule, jamais fantôme) ───────────
+    def _opt_card(kicker, name, price, pkwc, roi_v, bull, reco=False, full=False):
+        cls = "c1-opt" + (" c1-reco" if reco else "") + (" c1-opt-full" if full else "")
+        pill = ('<span class="c1-reco-pill">Recommandé</span>' if reco else "")
+        return (
+            f'<div class="{cls}">'
+            f'<div class="c1-opt-head"><div>'
+            f'<div class="c1-opt-k">{kicker}</div>'
+            f'<div class="c1-opt-name">{name}</div></div>{pill}</div>'
+            f'<div class="c1-opt-price">{fmt(price)}<span class="c1-u">&nbsp;MAD</span></div>'
+            f'<div class="c1-opt-kwc">soit {pkwc} MAD/kWc · TTC</div>'
+            f'<div class="c1-roi">{_roi_svg(green)}Rentabilisé en {_yrs(roi_v)} ans</div>'
+            f'<ul>{bullets(bull)}</ul>'
+            f'<div class="c1-note">Détail &amp; équipement en page 2</div>'
+            f'</div>')
+
+    if deux_options:
+        opts_html = (
+            _opt_card("Option 1", "Sans batterie", total_sans, pkwc_sans,
+                      roi_s, sans_bullets)
+            + _opt_card("Option 2", "Avec batterie", total_avec, pkwc_avec,
+                        roi_a, avec_bullets, reco=True))
+    elif avec_ok:
+        # Option unique AVEC batterie : une carte pleine largeur, pas de « Sans »
+        # fabriquée (dépourvue d'onduleur).
+        opts_html = _opt_card("Votre installation", "Avec batterie", total_avec,
+                              pkwc_avec, roi_a, avec_bullets, full=True)
+    else:
+        # Option unique SANS batterie (réseau seul) : une carte pleine largeur.
+        opts_html = _opt_card("Votre installation", "Sans batterie", total_sans,
+                              pkwc_sans, roi_s, sans_bullets, full=True)
 
     # ── HTML ────────────────────────────────────────────────────────────────
     html = f"""{css}
@@ -387,38 +429,7 @@ def build(ctx):
     </div>
 
     <!-- OPTION CARDS ───────────────────────────────────────────────────── -->
-    <div class="c1-opts">
-
-      <div class="c1-opt">
-        <div class="c1-opt-head">
-          <div>
-            <div class="c1-opt-k">Option 1</div>
-            <div class="c1-opt-name">Sans batterie</div>
-          </div>
-        </div>
-        <div class="c1-opt-price">{fmt(total_sans)}<span class="c1-u">&nbsp;MAD</span></div>
-        <div class="c1-opt-kwc">soit {pkwc_sans} MAD/kWc · TTC</div>
-        <div class="c1-roi">{_roi_svg(green)}Rentabilisé en {_yrs(roi_s)} ans</div>
-        <ul>{bullets(sans_bullets)}</ul>
-        <div class="c1-note">Détail &amp; équipement en page 2</div>
-      </div>
-
-      <div class="c1-opt c1-reco">
-        <div class="c1-opt-head">
-          <div>
-            <div class="c1-opt-k">Option 2</div>
-            <div class="c1-opt-name">Avec batterie</div>
-          </div>
-          <span class="c1-reco-pill">Recommandé</span>
-        </div>
-        <div class="c1-opt-price">{fmt(total_avec)}<span class="c1-u">&nbsp;MAD</span></div>
-        <div class="c1-opt-kwc">soit {pkwc_avec} MAD/kWc · TTC</div>
-        <div class="c1-roi">{_roi_svg(green)}Rentabilisé en {_yrs(roi_a)} ans</div>
-        <ul>{bullets(avec_bullets)}</ul>
-        <div class="c1-note">Détail &amp; équipement en page 2</div>
-      </div>
-
-    </div>
+    <div class="c1-opts">{opts_html}</div>
   </div>
 </div>
 """

@@ -1365,6 +1365,74 @@ class TestResidentialRenderer(TestCase):
 
 
 @tag('pdf')
+class TestResidentialSingleOptionGate(TestCase):
+    """QX5 — jamais d'option fantôme : un devis résidentiel mono-option rend
+    UNE seule carte partout (page 1 pleine largeur, page 2 sans découpage
+    delta, en-tête « commun aux deux options » renommé). Un devis à deux
+    options reste inchangé (les tests de nombre de pages ci-dessus le prouvent).
+    """
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+
+    def _resid_html(self, devis):
+        from apps.ventes.quote_engine.residential import renderer, render
+        from apps.ventes.quote_engine.builder import build_quote_data
+        data = build_quote_data(devis)
+        # mode résidentiel par défaut → renderer résidentiel
+        d = renderer._augment(data)
+        return render.build_html(d)
+
+    def _avec_only_devis(self):
+        # hybride + batterie + panneaux, AUCUN onduleur réseau → une seule
+        # option réelle (« Avec batterie »).
+        return make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau Canadien Solar 710W', '12', '1272.73'),
+            ('Onduleur hybride Deye 5kW', '1', '24000'),
+            ('Batterie Deyness 10 kWh', '1', '25000'),
+            ('Structures acier', '12', '417'),
+            ('Installation', '1', '5000'),
+        ], reference='DEV-QX5-AVEC')
+
+    def test_battery_only_quote_shows_single_option_everywhere(self):
+        from weasyprint import HTML
+        devis = self._avec_only_devis()
+        html = self._resid_html(devis)
+        doc = HTML(string=html).render()
+        # toujours 3 pages (le format n'a pas changé)
+        self.assertEqual(len(doc.pages), 3)
+        # page 1 : PAS de carte « Option 1 » / « Option 2 » fabriquée
+        self.assertNotIn('Option 1', html)
+        self.assertNotIn('Option 2', html)
+        # page 2 : l'en-tête « commun aux deux options » est renommé
+        self.assertNotIn('Équipement commun aux deux options', html)
+        self.assertIn('Votre équipement', html)
+        # page 2 : aucun bloc delta « ajoute »
+        self.assertNotIn('<small>ajoute</small>', html)
+        # aucune option « Sans batterie » fantôme (dépourvue d'onduleur)
+        self.assertNotIn('Sans batterie', html)
+        # l'option réelle est bien présente
+        self.assertIn('Avec batterie', html)
+
+    def test_two_option_quote_keeps_both_cards(self):
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau Canadien Solar 710W', '14', '1272.73'),
+            ('Onduleur réseau Huawei 10kW Triphasé', '1', '16666.67'),
+            ('Onduleur hybride Deye 10kW Triphasé', '1', '23333.33'),
+            ('Batterie Deyness 10 kWh', '1', '25000'),
+            ('Installation', '1', '4000'),
+        ], reference='DEV-QX5-DEUX')
+        html = self._resid_html(devis)
+        # deux options → les deux cartes + le découpage delta subsistent
+        self.assertIn('Option 1', html)
+        self.assertIn('Option 2', html)
+        self.assertIn('Équipement commun aux deux options', html)
+        self.assertIn('<small>ajoute</small>', html)
+
+
+@tag('pdf')
 class TestResidentialMultiTenantIdentity(TestCase):
     """QX4 — le rendu résidentiel par défaut ne fuit plus l'identité TAQINOR.
 

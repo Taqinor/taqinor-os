@@ -220,6 +220,18 @@ def build(ctx) -> str:
         for n, t, s in steps
     )
 
+    # QX5 — « Option choisie » : deux cases seulement pour un vrai devis à deux
+    # options ; mono-option → on nomme l'unique option (aucune case fantôme).
+    _deux = bool(d.get("deux_options", True))
+    _avec_ok = bool(d.get("avec_ok", True))
+    if _deux:
+        accord_opt_html = (
+            'Option choisie :'
+            '<span class="p3-box"></span> Sans batterie'
+            '<span class="p3-box"></span> Avec batterie')
+    else:
+        accord_opt_html = ("Avec batterie" if _avec_ok else "Sans batterie")
+
     # Scan-to-sign QR (degrades to the text link if qrcode is unavailable).
     qr_uri = _qr_data_uri(l_sign, C["navy"])
     qr_html = (
@@ -397,9 +409,7 @@ def build(ctx) -> str:
   <div class="p3-accord">
     <div class="p3-accord-hd">
       <div class="p3-accord-ttl">Bon pour accord</div>
-      <div class="p3-accord-opt">Option choisie :
-        <span class="p3-box"></span> Sans batterie
-        <span class="p3-box"></span> Avec batterie</div>
+      <div class="p3-accord-opt">{accord_opt_html}</div>
     </div>
     <div class="p3-accord-bd">
       <div class="p3-sig">
