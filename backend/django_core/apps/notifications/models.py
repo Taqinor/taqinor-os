@@ -147,6 +147,25 @@ class EventType(models.TextChoices):
     # (``core.events.projet_status_change``) : notifie le responsable du
     # projet d'un changement de statut.
     PROJET_STATUT_CHANGE = 'projet_statut_change', 'Statut de projet modifié'
+    # ARC39 — couverture notifications : le rapport O&M périodique
+    # (``monitoring/report.py``) est un envoi CLIENT (PDF joint, reste un
+    # ``EmailMessage`` direct — exception documentée comme
+    # ``ventes/email_service.py``/``installations/rfq_service.py``) ; cet
+    # événement notifie EN INTERNE les responsables qu'un rapport vient
+    # d'être envoyé, pour que l'équipe O&M ait enfin une trace côté
+    # notifications (jusqu'ici totalement invisible en interne).
+    MONITORING_RAPPORT = 'monitoring_rapport', 'Rapport O&M envoyé au client'
+    # ARC39 — ARC25 émettait déjà ``notify_many(..., 'paie_rib_divergence',
+    # ...)`` sans que ce type soit enregistré (avertissement + notification
+    # in-app jamais persistée). Enregistrement de l'événement existant, aucun
+    # changement de comportement de l'appelant.
+    PAIE_RIB_DIVERGENCE = (
+        'paie_rib_divergence', 'Divergence RIB paie ↔ RH')
+    # ARC39 — un run de paie (``PeriodePaie``) devient PRÊT (statut
+    # ``validee`` : tous ses bulletins sont validés) : notifie les
+    # gestionnaires paie que le run peut passer à la génération de l'ordre de
+    # virement / la clôture.
+    PAIE_RUN_PRET = 'paie_run_pret', 'Run de paie prêt (validé)'
 
 
 class Channel(models.TextChoices):

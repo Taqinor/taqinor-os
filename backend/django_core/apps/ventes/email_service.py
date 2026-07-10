@@ -18,6 +18,12 @@ Stack d'envoi :
 Chaque envoi est consigné dans `EmailLog` (fil du client + document) ET, pour un
 devis, une note est ajoutée au chatter `DevisActivity` — on réutilise le patron
 d'activité existant, on n'invente pas de nouveau mécanisme de log.
+
+ARC39 — ce module envoie des emails CLIENTS (documents/relances), PAS des
+notifications internes : exception documentée à la règle « plus d'email brut
+interne » (cf. `apps/notifications/`), au même titre que
+`installations/rfq_service.py` et le rapport O&M client de
+`monitoring/report.py`.
 """
 import logging
 
