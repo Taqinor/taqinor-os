@@ -52,6 +52,7 @@ class Sca40ParCommercialTests(AssertQueryBudgetMixin, TestCase):
             defaults={'nom': 'Produit SCA40',
                       'prix_vente': Decimal('10000'), 'tva': Decimal('20')})
         self._ref = 0
+        self._comm_seq = 0
 
     def _next_ref(self):
         self._ref += 1
@@ -76,9 +77,14 @@ class Sca40ParCommercialTests(AssertQueryBudgetMixin, TestCase):
             remise=remise)
 
     def _make_commercials(self, n):
-        """Crée n commerciaux, chacun avec un devis envoyé + une ligne."""
-        for i in range(n):
-            comm = self._commercial(i)
+        """Crée n commerciaux, chacun avec un devis envoyé + une ligne.
+
+        L'index d'username est monotone entre appels : deux appels successifs
+        (2 puis 4) créent 6 commerciaux distincts sans collision d'username.
+        """
+        for _ in range(n):
+            comm = self._commercial(self._comm_seq)
+            self._comm_seq += 1
             d = self._devis_envoye(comm)
             self._ligne(d, prix=Decimal('8000'))
 
