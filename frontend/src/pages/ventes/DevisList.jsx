@@ -3,8 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import {
   Download, Plus, FileText, FileDown, Check, ArrowRight, HardHat, FileStack,
-  Copy, Send, X, Eye, Search, AlertTriangle, UserCog, Box, ExternalLink,
-  Link2, FolderKanban,
+  Copy, Send, X, Eye, Search, AlertTriangle, Box, ExternalLink,
+  Link2, FolderKanban, MoreHorizontal,
 } from 'lucide-react'
 import {
   fetchDevis,
@@ -27,6 +27,8 @@ import {
   RadioGroup, RadioGroupItem, Checkbox, Label, Input, Segmented, toast,
   Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
   Textarea,
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
+  DropdownMenuItem, DropdownMenuLabel,
 } from '../../ui'
 import { formatMAD } from '../../lib/format'
 import { filenameFromResponse } from '../../utils/downloadBlob'
@@ -1575,19 +1577,57 @@ export default function DevisList() {
                           >
                             Éditer
                           </Button>
-                          {d.is_active && d.statut !== 'brouillon' && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              title="Créer une nouvelle version (v2, v3…) de ce devis"
-                              onClick={() => {
-                                ventesApi.reviserDevis(d.id)
-                                  .then(() => dispatch(fetchDevis()))
-                                  .catch(() => {})
-                              }}
-                            >
-                              Réviser
-                            </Button>
+                          {/* QX27 — actions secondaires (peu fréquentes / sans
+                              raccourci clavier) regroupées dans un menu « ⋯ »
+                              au lieu de gonfler la ligne : Réviser, Approuver
+                              remise, Contacter mon supérieur, Email. Les
+                              actions qui font AVANCER le funnel (Envoyer,
+                              Accepter, Refuser, BC, Chantier, Facture…)
+                              restent des boutons directs, visibles. */}
+                          {((d.is_active && d.statut !== 'brouillon')
+                            || (role === 'admin' && d.statut === 'brouillon' && parseFloat(d.remise_globale) > 0 && !d.remise_approuvee)
+                            || d.statut === 'brouillon' || d.statut === 'envoye') && (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button size="sm" variant="ghost" aria-label={`Autres actions — ${d.reference}`}>
+                                  <MoreHorizontal className="size-4" aria-hidden="true" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="start">
+                                <DropdownMenuLabel>Autres actions</DropdownMenuLabel>
+                                {d.is_active && d.statut !== 'brouillon' && (
+                                  <DropdownMenuItem onSelect={() => {
+                                    ventesApi.reviserDevis(d.id)
+                                      .then(() => dispatch(fetchDevis()))
+                                      .catch(() => {})
+                                  }}>
+                                    Réviser (nouvelle version)
+                                  </DropdownMenuItem>
+                                )}
+                                {role === 'admin' && d.statut === 'brouillon'
+                                  && parseFloat(d.remise_globale) > 0 && !d.remise_approuvee && (
+                                  <DropdownMenuItem onSelect={() => {
+                                    ventesApi.approuverRemise(d.id)
+                                      .then(() => dispatch(fetchDevis())).catch(() => {})
+                                  }}>
+                                    Approuver la remise
+                                  </DropdownMenuItem>
+                                )}
+                                {(d.statut === 'brouillon' || d.statut === 'envoye') && (
+                                  <DropdownMenuItem
+                                    disabled={superieurBusyId === d.id}
+                                    onSelect={() => handleContacterSuperieur(d)}
+                                  >
+                                    Contacter mon supérieur
+                                  </DropdownMenuItem>
+                                )}
+                                {(d.statut === 'brouillon' || d.statut === 'envoye') && (
+                                  <DropdownMenuItem onSelect={() => openEmailModal(d)}>
+                                    Envoyer par email
+                                  </DropdownMenuItem>
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           )}
                           {/* QG10/QJ15 — « Variante » : ouvre une modale pour
                               confirmer/éditer le pourcentage (défaut = config
@@ -1602,20 +1642,6 @@ export default function DevisList() {
                             >
                               <Copy className="size-3.5 mr-1" aria-hidden="true" />
                               Variante
-                            </Button>
-                          )}
-                          {role === 'admin' && d.statut === 'brouillon'
-                            && parseFloat(d.remise_globale) > 0 && !d.remise_approuvee && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              title="Approuver la remise (autorise l'envoi si au-dessus du seuil)"
-                              onClick={() => {
-                                ventesApi.approuverRemise(d.id)
-                                  .then(() => dispatch(fetchDevis())).catch(() => {})
-                              }}
-                            >
-                              Approuver remise
                             </Button>
                           )}
                           {canDelete && (
@@ -1655,30 +1681,6 @@ export default function DevisList() {
                               title="Envoyer par WhatsApp (message + lien de proposition) — marque le devis « Envoyé »"
                             >
                               <Send /> Envoyer
-                            </Button>
-                          )}
-                          {/* QJ28 — Contacter mon supérieur (notification, jamais automatique) */}
-                          {(d.statut === 'brouillon' || d.statut === 'envoye') && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              loading={superieurBusyId === d.id}
-                              onClick={() => handleContacterSuperieur(d)}
-                              title="Contacter mon supérieur — lui envoyer une notification avec le lien de ce devis"
-                            >
-                              <UserCog />
-                            </Button>
-                          )}
-                          {/* QJ14 — Envoyer par email : PDF premium + lien de proposition */}
-                          {(d.statut === 'brouillon' || d.statut === 'envoye') && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => openEmailModal(d)}
-                              title="Envoyer la proposition par email (PDF + lien de signature)"
-                            >
-                              <Send className="size-3.5 mr-1" aria-hidden="true" />
-                              Email
                             </Button>
                           )}
                           {/* WR2 — Copier le lien de proposition (share_link) :

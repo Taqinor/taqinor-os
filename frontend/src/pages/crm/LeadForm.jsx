@@ -45,6 +45,12 @@ const STATUT_DEVIS = {
 }
 
 const PRIORITES = { basse: 'Basse', normale: 'Normale', haute: 'Haute' }
+// FG30/QX27 — libellés FR du résultat d'un appel/e-mail journalisé (miroir de
+// LeadActivity.OUTCOMES côté serveur, apps/crm/models.py).
+const OUTCOME_LABELS = {
+  '': null, joint: 'Joint', non_joint: 'Non joint', rappel: 'À rappeler',
+  refuse: 'Refus', interesse: 'Intéressé',
+}
 // Langue préférée du contact — pré-sélectionne la langue du message WhatsApp.
 const LANGUES_PREFEREES = { fr: 'Français', darija: 'Darija' }
 const TYPES_INSTALLATION = {
@@ -1218,6 +1224,27 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
                         <span>
                           ✏️ <strong>{a.field_label}&nbsp;:</strong>{' '}
                           {a.old_value} → <strong>{a.new_value}</strong>
+                        </span>
+                      )}
+                      {/* FG30/QX27 — appel/e-mail journalisés (jusqu'ici rendus
+                          BLANCS faute de branche : aucune trace visible du
+                          contact). Corps libre + résultat (outcome) si posé. */}
+                      {a.kind === 'appel' && (
+                        <span>
+                          📞 <strong>Appel</strong>
+                          {OUTCOME_LABELS[a.outcome] && (
+                            <> — <strong>{OUTCOME_LABELS[a.outcome]}</strong></>
+                          )}
+                          {a.body ? <>&nbsp;: {a.body}</> : null}
+                        </span>
+                      )}
+                      {a.kind === 'email' && (
+                        <span>
+                          ✉️ <strong>E-mail</strong>
+                          {OUTCOME_LABELS[a.outcome] && (
+                            <> — <strong>{OUTCOME_LABELS[a.outcome]}</strong></>
+                          )}
+                          {a.body ? <>&nbsp;: {a.body}</> : null}
                         </span>
                       )}
                       {a.bulk && <span className="chatter-bulk">en masse</span>}
