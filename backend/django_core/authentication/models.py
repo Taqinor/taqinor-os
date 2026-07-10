@@ -83,6 +83,22 @@ class CustomUser(AbstractUser):
         blank=True,
         related_name='users',
     )
+    # XPLT19 — Accès multi-sociétés. Un utilisateur (ex. le fondateur qui opère
+    # une EI ET une SARL) peut être MEMBRE de plusieurs sociétés. ``company``
+    # ci-dessus reste la société d'attache (« home », défaut de connexion) ;
+    # ``societes_autorisees`` liste TOUTES les sociétés qu'il peut opérer.
+    # ADDITIF & rétrocompatible : une migration de données backfille chaque
+    # compte existant avec {sa ``company``}, donc un compte mono-société a
+    # exactement {sa société} — comportement byte-identique (il ne peut pas
+    # switcher). La société ACTIVE d'une requête est portée par un claim JWT et
+    # appliquée par ``ActiveCompanyMiddleware`` (voir ``active_company.py``) —
+    # jamais un ``save()`` : le FK ``company`` d'attache n'est jamais modifié.
+    societes_autorisees = models.ManyToManyField(
+        Company,
+        blank=True,
+        related_name='membres_autorises',
+        verbose_name='Sociétés autorisées',
+    )
     # Compte propriétaire protégé : ne peut être ni supprimé ni rétrogradé,
     # par personne (y compris lui-même). Garantit, avec la garde « dernier
     # propriétaire », qu'on ne peut jamais se verrouiller dehors. La
@@ -326,6 +342,22 @@ class CustomUser(AbstractUser):
         enregistrements (lui-même toujours inclus). Voir ``scoping``."""
         from authentication.scoping import visible_user_ids
         return visible_user_ids(self)
+
+    # ── XPLT19 — accès multi-sociétés & société active ────────────────────────
+    def societes_operables(self):
+        """Liste des sociétés que ce compte peut opérer (home + M2M), dédupliquée.
+
+        Un compte mono-société renvoie exactement {sa société} — il ne peut donc
+        pas switcher (comportement inchangé)."""
+        from authentication.active_company import companies_for_user
+        return companies_for_user(self)
+
+    def peut_operer_societe(self, company_id):
+        """True si ce compte est membre de la société ``company_id`` (home ou
+        ``societes_autorisees``). Un switch n'est autorisé que vers une société
+        pour laquelle ceci est True."""
+        from authentication.active_company import user_can_operate
+        return user_can_operate(self, company_id)
 
     # ── Rotation forcée des identifiants (N96) — strictement OPT-IN ──────────
     # Drapeau de rotation : quand un administrateur le passe à True, l'utilisateur

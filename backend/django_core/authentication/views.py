@@ -237,7 +237,17 @@ class CookieTokenRefreshView(APIView):
             )
         try:
             token = RefreshToken(refresh_raw)
-            access = str(token.access_token)
+            access_token = token.access_token
+            # XPLT19 — le claim ``active_company_id`` du refresh n'est PAS recopié
+            # d'office sur l'access dérivé (simplejwt ne propage que les claims
+            # enregistrés). On le reporte explicitement pour que la société active
+            # choisie survive au rafraîchissement transparent (sinon elle
+            # retomberait sur la société d'attache toutes les 30 min).
+            from authentication.active_company import ACTIVE_COMPANY_CLAIM
+            active = token.get(ACTIVE_COMPANY_CLAIM)
+            if active is not None:
+                access_token[ACTIVE_COMPANY_CLAIM] = active
+            access = str(access_token)
             new_refresh = str(token) if settings.SIMPLE_JWT.get(
                 'ROTATE_REFRESH_TOKENS', False
             ) else None
@@ -251,6 +261,78 @@ class CookieTokenRefreshView(APIView):
             )
             _clear_auth_cookies(resp)
             return resp
+
+
+# ── XPLT19 — Bascule de société active (accès multi-sociétés) ──────
+class SwitchCompanyView(APIView):
+    """POST /api/django/auth/switch-company/ — change la société ACTIVE.
+
+    Corps : ``{"company_id": <id>}``. Autorisé UNIQUEMENT si l'utilisateur est
+    membre de la société cible (société d'attache OU ``societes_autorisees``).
+    Un compte mono-société ne peut donc PAS switcher (403). Sur succès, on
+    réémet des jetons (access + refresh) portant le claim ``active_company_id``
+    de la société choisie, et on journalise la bascule dans l'audit. Toutes les
+    requêtes ultérieures sont alors bornées à la nouvelle société active."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        company_id = request.data.get('company_id')
+        if company_id in (None, ''):
+            return Response(
+                {'detail': 'Le champ « company_id » est requis.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            company_id = int(company_id)
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': 'Identifiant de société invalide.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # Garde d'appartenance STRICTE : jamais de switch vers une société non
+        # autorisée (défense contre l'escalade cross-tenant).
+        if not user.peut_operer_societe(company_id):
+            return Response(
+                {'detail': "Vous n'êtes pas membre de cette société."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        cible = Company.objects.filter(pk=company_id).first()
+        if cible is None:
+            return Response(
+                {'detail': 'Société introuvable.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        # Réémet des jetons portant le claim de société active choisie. On passe
+        # par le même ``get_token`` que le login (mêmes claims), puis on écrase
+        # le claim de société active sur le refresh ET l'access (l'access dérivé
+        # ne recopie pas les claims personnalisés tout seul).
+        from authentication.active_company import ACTIVE_COMPANY_CLAIM
+        refresh = CustomTokenObtainPairSerializer.get_token(user)
+        refresh[ACTIVE_COMPANY_CLAIM] = company_id
+        access = refresh.access_token
+        access[ACTIVE_COMPANY_CLAIM] = company_id
+        response = Response({
+            'detail': 'Société active changée.',
+            'company_id': company_id,
+            'company_nom': cible.nom,
+        })
+        _set_auth_cookies(response, str(access), str(refresh))
+        # Sessions actives (N96) — le nouveau refresh est tracé/révocable comme
+        # une connexion. Best-effort, ne bloque jamais le switch.
+        _record_session(user, str(refresh), request)
+        # Journal d'activité — bascule de société active (best-effort).
+        try:
+            from apps.audit.recorder import record
+            from apps.audit.models import AuditLog
+            record(
+                AuditLog.Action.SWITCH_COMPANY, user=user,
+                company=cible,
+                detail=f'Société active → {cible.nom} (#{company_id}).',
+            )
+        except Exception:
+            pass
+        return response
 
 
 # ── Inscription d'un utilisateur dans une entreprise existante ─

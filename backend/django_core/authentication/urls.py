@@ -15,6 +15,7 @@ from .views import (
     SessionListView,
     SessionRevokeView,
     ChangePasswordView,
+    SwitchCompanyView,
 )
 
 router = DefaultRouter()
@@ -29,6 +30,9 @@ urlpatterns = [
         name='auth_register_company',
     ),
     path('auth/me/', MeView.as_view(), name='auth_me'),
+    # XPLT19 — bascule de société active (utilisateur multi-sociétés).
+    path('auth/switch-company/', SwitchCompanyView.as_view(),
+         name='auth_switch_company'),
     path('auth/logout/', LogoutView.as_view(), name='auth_logout'),
     path('auth/token/refresh/', CookieTokenRefreshView.as_view(), name='auth_token_refresh'),
     # Double authentification (2FA TOTP) — opt-in par utilisateur (N96).
