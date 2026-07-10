@@ -3032,11 +3032,13 @@ def expire_stale_devis():
 
     Renvoie un dict ``{expired, funnel_followup, funnel_cold}`` pour les tests.
     """
-    from datetime import date
-
     from .models import Devis
 
-    today = date.today()
+    # QX11 — date Casablanca-aware (comme ses tâches sœurs), plus
+    # ``date.today()`` (fuseau serveur) qui pouvait décaler l'expiration d'un
+    # jour selon l'UTC.
+    from .scheduled import casablanca_today
+    today = casablanca_today()
     expired = 0
     funnel_followup = 0
     funnel_cold = 0
