@@ -28,6 +28,21 @@ Contenu :
   font avancer le workflow étape après étape. Ces opérations gèrent uniquement
   les statuts LOCAUX des étapes (``en_attente`` / ``approuve`` / ``rejete``) et
   ne touchent JAMAIS au ``Contrat.statut`` (préservation des statuts).
+
+- SCA35 — **Pilote « Contrat » du kit ``core.documents``** : ``changer_statut``
+  (réexporté de ``machine_etats``) reste le SEUL point de mutation du statut ;
+  ``Contrat.TRANSITIONS``/``transitions_permises``/``transition_permise``
+  (``models.py``) exposent le MÊME graphe en lecture seule, au format attendu
+  par ``core.documents.DocumentMetier`` — sans dupliquer la garde « ≥2 parties »
+  du kit générique, absente du socle. ``rendre_contrat_pdf`` ci-dessous délègue
+  déjà à ``core.pdf.render_pdf`` (ARC12), le MÊME point d'entrée que le hook du
+  kit ``render_document_pdf`` (SCA33). Aucune numérotation ``core.numbering``
+  n'est câblée sur ``Contrat.reference`` : c'est un champ libre saisi par
+  l'appelant (import, gabarit, ou API) depuis toujours — ``Devis``/``Facture``/
+  ``Avoir`` restent les seuls documents CLM à passer par la fabrique
+  ``create_with_reference`` dans ce module (renouvellement, avoirs) ; wirer une
+  numérotation forcée sur ``Contrat`` lui-même changerait son comportement
+  (règle interdite pour ce pilote — voir ``docs/PLAN.md`` SCA35).
 """
 import html as _html
 import re
@@ -203,6 +218,15 @@ def rendre_contrat_pdf(contrat):
     (import paresseux + ``write_pdf()``) est déléguée au service partagé
     ``core.pdf.render_pdf`` ; le GABARIT HTML de ``_contrat_html`` reste
     STRICTEMENT identique, donc le rendu est inchangé à l'octet près.
+
+    SCA35 — c'est le MÊME point de délégation que le hook du kit
+    ``core.documents.render_document_pdf`` (SCA33) : ce dernier n'est qu'un
+    fin emballage de ``core.pdf.render_pdf`` limité à un gabarit Django nommé
+    (``template=``), alors qu'ici le HTML est déjà construit à la main
+    (``_contrat_html``, échappement testé — ``tests/test_pdf_interne.py``) et
+    passé en ``html=``. Appeler le hook du kit exigerait de convertir ce HTML
+    en gabarit Django SANS aucun gain (même fonction sous-jacente), au risque
+    de changer le rendu à l'octet près — préservé tel quel plutôt que dupliqué.
     """
     html_str = _contrat_html(contrat)
     return render_pdf(html=html_str)
