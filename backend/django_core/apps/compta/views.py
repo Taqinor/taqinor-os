@@ -4687,6 +4687,44 @@ class CampagneViewSet(_ComptaBaseViewSet):
             campagne.corps, nb_destinataires=nb_destinataires, **kwargs)
         return Response(estimation)
 
+    @action(detail=False, methods=['get'], url_path='generer-ia-disponible')
+    def generer_ia_disponible(self, request):
+        """XMKT34 — probe UI : la génération IA est-elle configurée ?
+
+        Ne déclenche JAMAIS d'appel LLM (lit seulement le registre
+        ``core.ai``) — le frontend s'en sert pour masquer complètement le
+        bouton « Générer avec l'IA » sans clé (aucune trace UI)."""
+        from core.ai.registry import is_capability_configured
+        return Response({'configured': is_capability_configured('llm')})
+
+    @action(detail=False, methods=['post'], url_path='generer-ia')
+    def generer_ia(self, request):
+        """XMKT34 — Génère (suggestion éditable) un objet + corps de campagne.
+
+        NO-OP-safe : sans clé LLM configurée (Groq/Zhipu via
+        ``settings.AI_PROVIDERS``), renvoie ``configured: false`` (le
+        frontend masque le bouton). Le contenu généré n'est JAMAIS
+        auto-appliqué à la campagne — l'utilisateur relit/édite avant de
+        sauvegarder. Ne reçoit que du texte libre (segment/offre/consigne) :
+        aucun champ interne (prix_achat/marge) n'est jamais envoyé."""
+        from core.ai.services import draft_campaign_content
+        data = request.data
+        draft = draft_campaign_content(
+            segment_label=str(data.get('segment_label') or '')[:500],
+            offre=str(data.get('offre') or '')[:1000],
+            instruction=str(data.get('instruction') or '')[:500],
+            langue=str(data.get('langue') or 'fr')[:5],
+            longueur=str(data.get('longueur') or '')[:100],
+        )
+        return Response({
+            'configured': draft.configured,
+            'ok': draft.ok,
+            'objet': draft.objet,
+            'corps': draft.corps,
+            'langue': draft.langue,
+            'source': draft.source,
+        })
+
     @action(detail=True, methods=['get'], url_path='clics-par-lien')
     def clics_par_lien(self, request, pk=None):
         """XMKT9 — Page « clics par lien » du détail campagne."""

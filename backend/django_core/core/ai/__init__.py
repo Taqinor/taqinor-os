@@ -48,15 +48,19 @@ from core.ai.schemas import (
     get_schema,
 )
 from core.ai.services import (
+    CAMPAIGN_PROMPT_FORBIDDEN_TERMS,
     DEFAULT_PHOTO_QA_CHECKLIST,
     LIVECHAT_FORBIDDEN_TERMS,
     LIVECHAT_QUALIFICATION_SYSTEM_PROMPT,
     REPLY_CHANNELS,
+    CampaignContentDraft,
     LivechatQualificationExtract,
     MatchedLine,
     NextBestAction,
     ReplyDraft,
     ThreadSummary,
+    build_campaign_prompt,
+    draft_campaign_content,
     draft_reply,
     extract_document,
     extract_livechat_qualification,
@@ -114,4 +118,9 @@ __all__ = [
     'LivechatQualificationExtract',
     'qualify_livechat_reply',
     'extract_livechat_qualification',
+    # Génération de contenu de campagne (XMKT34)
+    'CampaignContentDraft',
+    'CAMPAIGN_PROMPT_FORBIDDEN_TERMS',
+    'build_campaign_prompt',
+    'draft_campaign_content',
 ]
