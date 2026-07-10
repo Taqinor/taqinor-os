@@ -46,6 +46,7 @@ const FactureList = lazy(() => import('../pages/ventes/FactureList'))
 const VentesKanban = lazy(() => import('../pages/ventes/VentesKanban'))
 const ListesPrixPage = lazy(() => import('../pages/ventes/ListesPrixPage'))
 const InstallationsPage = lazy(() => import('../pages/installations/InstallationsPage'))
+const DemandesAchatList = lazy(() => import('../pages/installations/DemandesAchatList'))
 const InterventionsPage = lazy(() => import('../pages/interventions/InterventionsPage'))
 const MaJourneePage = lazy(() => import('../pages/interventions/MaJourneePage'))
 const ParcInstallePage = lazy(() => import('../pages/installations/ParcInstallePage'))
@@ -273,6 +274,7 @@ const router = createBrowserRouter([
 
   // Chantiers / Installations
   { path: '/chantiers', loader: authLoader, element: <WithLayout><InstallationsPage /></WithLayout> },
+  { path: '/chantiers/demandes-achat', loader: authLoader, element: <WithLayout><DemandesAchatList /></WithLayout> },
   { path: '/interventions', loader: authLoader, element: <WithLayout><InterventionsPage /></WithLayout> },
   { path: '/planification', loader: authLoader, element: <WithLayout><PlanificationPage /></WithLayout> },
   { path: '/ma-journee', loader: authLoader, element: <WithLayout><MaJourneePage /></WithLayout> },
