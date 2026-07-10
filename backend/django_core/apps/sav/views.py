@@ -822,6 +822,13 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
                 ticket.canal_resolution = old.canal_resolution_propose()
             update_fields.append('canal_resolution')
         ticket.save(update_fields=update_fields)
+        # ARC37 — sav devient émetteur du bus (core.events.ticket_resolu) sur
+        # le FRANCHISSEMENT gardé par la condition ci-dessus. No-op si la
+        # transition n'atteint pas RESOLU (garde interne au service).
+        from . import services as sav_services
+        sav_services.emettre_ticket_resolu(
+            ticket, company=ticket.company, user=self.request.user,
+            ancien_statut=old.statut)
         # FG81 — recalcule sla_breach après toute mise à jour de statut.
         ticket.recompute_sla_breach()
         save_fields = ['sla_breach']

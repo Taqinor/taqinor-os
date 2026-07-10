@@ -131,6 +131,22 @@ class EventType(models.TextChoices):
     # ``bon_commande_cree``) : notifie le magasinier/managers (routable par
     # ``NotificationRoutingRule`` vers l'utilisateur entrepôt).
     BON_COMMANDE_CREE = 'bon_commande_cree', 'Bon de commande créé'
+    # ARC35 — consomme le seam ``contrat_signe`` (bus ``core.events``) :
+    # notifie le créateur du contrat (repli managers) qu'un contrat vient
+    # d'être intégralement signé.
+    CONTRAT_SIGNE = 'contrat_signe', 'Contrat signé'
+    # ARC37 — sav devient émetteur du bus (``core.events.ticket_resolu``) :
+    # notifie le technicien assigné (repli managers) qu'un ticket est résolu.
+    SAV_TICKET_RESOLU = 'sav_ticket_resolu', 'Ticket SAV résolu'
+    # ARC37 — sav devient émetteur du bus
+    # (``core.events.equipement_remplace``) : notifie les managers qu'un
+    # équipement du parc a été remplacé suite à un retrait de pièce.
+    SAV_EQUIPEMENT_REMPLACE = (
+        'sav_equipement_remplace', 'Équipement SAV remplacé')
+    # ARC37 — gestion_projet devient émetteur du bus
+    # (``core.events.projet_status_change``) : notifie le responsable du
+    # projet d'un changement de statut.
+    PROJET_STATUT_CHANGE = 'projet_statut_change', 'Statut de projet modifié'
 
 
 class Channel(models.TextChoices):

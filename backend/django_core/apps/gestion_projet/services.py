@@ -1520,6 +1520,12 @@ def notifier_transition_projet(
     interne) — la transition de statut qui a appelé cette fonction n'est
     JAMAIS bloquée. Variables ``{nom_projet}``/``{date}`` disponibles dans le
     corps des modèles de message (substitution côté automation).
+
+    ARC37 — émet AUSSI ``core.events.projet_status_change`` sur le bus
+    (double émission ASSUMÉE et documentée pendant la transition : le chemin
+    automation EXISTANT reste inchangé, le bus s'ajoute pour ouvrir un
+    abonné DÉCOUPLÉ — ``notifications`` — sans jamais importer
+    ``apps.automation`` depuis un abonné cross-app).
     """
     if ancien_statut == nouveau_statut:
         return
@@ -1537,6 +1543,15 @@ def notifier_transition_projet(
             },
             user=user,
         )
+    except Exception:  # pragma: no cover - défensif, ne bloque jamais
+        pass
+
+    try:
+        from core.events import projet_status_change
+
+        projet_status_change.send(
+            sender=None, projet=projet, company=projet.company, user=user,
+            ancien_statut=ancien_statut, nouveau_statut=nouveau_statut)
     except Exception:  # pragma: no cover - défensif, ne bloque jamais
         pass
 
@@ -2543,3 +2558,50 @@ def creer_tache_depuis_activite(activite, *, projet_id, company=None):
         description=getattr(activite, 'note', '') or '',
         date_fin_prevue=getattr(activite, 'due_date', None),
         statut=Tache.Statut.A_FAIRE)
+
+
+# ── ARC22 — chemin de création VIA le master sous-traitant unifié DC34 ──────
+def creer_sous_traitant_via_master(
+        *, company, user=None, nom, specialite='', contact='', telephone='',
+        email='', actif=True):
+    """ARC22 — crée un ``SousTraitant`` (carnet projet local) EN CRÉANT AUSSI
+    son pendant sur le référentiel unifié DC34 (``stock.Fournisseur``
+    type=service + ``SousTraitantProfile``), via ``stock.services.
+    create_sous_traitant`` — frontière cross-app respectée : ce module
+    n'importe JAMAIS ``apps.stock.models``, uniquement son point d'entrée
+    ``services.py`` (import fonction-local, CLAUDE.md).
+
+    C'est le chemin de création RECOMMANDÉ pour tout NOUVEAU sous-traitant
+    (corrige la régression PROJ38 constatée par ARC22 : avant cette fonction,
+    le carnet ``gestion_projet`` ne posait jamais le lien ``fournisseur``).
+    L'ancien chemin de création directe (``SousTraitantViewSet.create``) reste
+    disponible SANS lien — additif, aucune rupture de compat.
+
+    ``specialite`` (texte libre du carnet projet) n'a pas de correspondance
+    STRICTE avec ``SousTraitantProfile.Metier`` (enum fermé) : on tente un
+    mapping insensible à la casse, repli ``AUTRE`` si aucun métier ne
+    correspond (comportement jamais bloquant).
+
+    Renvoie le ``SousTraitant`` (carnet local) créé, avec ``fournisseur`` posé.
+    """
+    from apps.stock import services as stock_services
+    from apps.stock.models import SousTraitantProfile
+
+    from .models import SousTraitant
+
+    metier = SousTraitantProfile.Metier.AUTRE
+    if specialite:
+        for code, _label in SousTraitantProfile.Metier.choices:
+            if code.replace('_', ' ') == specialite.strip().lower():
+                metier = code
+                break
+
+    fournisseur = stock_services.create_sous_traitant(
+        company=company, user=user, nom=nom, metier=metier,
+        contact_personne=contact or None, email=email or None,
+        telephone=telephone or None, actif=actif)
+
+    return SousTraitant.objects.create(
+        company=company, nom=nom, specialite=specialite, contact=contact,
+        telephone=telephone, email=email, actif=actif,
+        fournisseur=fournisseur)

@@ -43,10 +43,6 @@ ALLOWED_UNCONSUMED = {
     # Destiné à l'app comptable (matérialiser un Paiement / rapprocher la
     # facture) ; core n'importe jamais l'app comptable — abonné à venir.
     "payment_captured",
-    # Pose de seam (CONTRAT16/17, YDOCF5) : aucun abonné obligatoire dans ce
-    # lot (facturation récurrente / notification / dépôt GED à brancher).
-    "contrat_signe",
-    "contrat_actif",
     # ARC36 — ``facture_payee``/``bon_commande_cree`` (YEVNT6) et
     # ``abonnement_monitoring_resilie`` (YSUBS4) ont désormais des abonnés
     # métier (compta lettrage + notifications vendeur/magasinier ;
@@ -55,6 +51,10 @@ ALLOWED_UNCONSUMED = {
     # résiduel→0) — DÉPRÉCIÉ pour l'abonnement (voir docstring du bus) afin
     # de ne jamais réagir deux fois au même règlement ; ne PAS s'y abonner.
     "facture_paid",
+    # ARC35 — ``contrat_signe``/``contrat_actif`` (CONTRAT16/17, YDOCF5) ont
+    # désormais un abonné réel (``apps/contrats/receivers.py`` : chatter ARC8
+    # + dépôt GED du contrat signé ; ``apps/notifications/signals.py`` pour
+    # ``contrat_signe``) : RETIRÉS de cette liste.
 }
 
 # Membres ``EventType`` déclarés mais sans producteur ``notify()`` encore câblé

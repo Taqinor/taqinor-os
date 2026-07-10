@@ -19,6 +19,11 @@ class ContratsConfig(AppConfig):
         # (core.events) pour marquer le renouvellement proposé accepté sans
         # couplage direct ventes -> contrats (import local pour éviter les
         # cycles au chargement des apps, même schéma que crm/installations).
+        # ARC35 — le même module abonne aussi `contrats` à ses propres
+        # `contrat_signe`/`contrat_actif` (chatter ARC8 + dépôt GED du
+        # contrat signé), sur le patron `qhse.receivers` (émetteur ET
+        # abonné = la même app, mais toujours via le bus pour rester
+        # ouvert à de futurs abonnés externes).
         from . import receivers  # noqa: F401
         # ARC14 — déclare Contrat comme cible PILOTE des champs personnalisés
         # (customfields.registry, registre data-driven — jamais un import de

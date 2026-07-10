@@ -3,11 +3,17 @@
 Abonne le CRM aux événements du cœur métier exposés par ``core.events``, pour
 réagir à des changements d'état déclenchés par d'autres apps (ex. ``ventes``)
 sans que celles-ci importent le CRM. Câblé au démarrage par ``CrmConfig.ready``.
+
+ARC37 — s'abonne aussi à ``ticket_resolu`` (``sav`` devient émetteur du bus) :
+pose une note chatter ARC8 (``records.services.log_note``) sur le
+``crm.Client`` lié au ticket, sans jamais importer ``apps.sav``.
 """
+import logging
+
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
-from core.events import devis_accepted, devis_refused, devis_sent
+from core.events import devis_accepted, devis_refused, devis_sent, ticket_resolu
 
 from .models import LeadActivity
 from .services import (
@@ -16,6 +22,8 @@ from .services import (
     avancer_stage_pour_devis,
     signaler_mismatch_signe_sur_refus,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @receiver(devis_accepted, dispatch_uid="crm_advance_stage_on_devis_accepted")
@@ -112,3 +120,27 @@ def _avancer_stage_on_contact_activity(sender, instance, created, **kwargs):
         return  # uniquement un contact MANUEL d'un utilisateur (pas auto/système)
     lead = instance.lead
     avancer_stage_new_vers_contacted(lead, instance.user)
+
+
+@receiver(ticket_resolu, dispatch_uid="crm_chatter_on_ticket_resolu")
+def _chatter_on_ticket_resolu(sender, ticket, company, user, ancien_statut,
+                              **kwargs):
+    """ARC37 — à la résolution d'un ticket SAV, pose une note chatter ARC8 sur
+    le ``crm.Client`` lié (``sav.Ticket.client`` — lien direct, jamais un
+    import d'``apps.sav.models``, uniquement l'instance déjà portée par le
+    signal). Best-effort : une erreur ici ne doit jamais remonter (la
+    résolution, côté ``sav``, est déjà actée)."""
+    client = getattr(ticket, 'client', None)
+    if client is None:
+        return
+    try:
+        from apps.records.services import log_note
+
+        log_note(
+            client, user,
+            f'Ticket SAV {ticket.reference} résolu.',
+            company=company)
+    except Exception:  # noqa: BLE001 — best-effort, ne casse jamais
+        logger.warning(
+            'ARC37 : chatter ARC8 échoué sur ticket_resolu pour ticket #%s',
+            getattr(ticket, 'pk', '?'), exc_info=True)

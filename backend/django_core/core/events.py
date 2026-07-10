@@ -129,9 +129,15 @@ importe ``apps.audit``.
       externe) ;
     * ``company`` — la société (posée côté serveur).
 
-    Aucun abonné obligatoire dans ce lot (pose du seam) — destiné à
-    découpler la facturation récurrente (CONTRAT31/FG40), une notification
-    client, un dépôt GED (CONTRAT-*), ou une vérification d'entitlement SAV.
+    Abonnés dans ce repo (ARC35) : ``contrats`` lui-même
+    (``apps/contrats/receivers.py`` — note chatter ARC8 via
+    ``records.services.log_note`` + dépôt GED du contrat signé via
+    ``deposer_contrat_signe_en_ged``, sur le patron émetteur=abonné de
+    ``qhse.receivers``) et ``notifications``
+    (``apps/notifications/signals.py`` — notifie l'utilisateur signataire,
+    repli managers, ``EventType.CONTRAT_SIGNE``). Reste ouvert à un futur
+    abonné pour la facturation récurrente (CONTRAT31/FG40) ou une
+    vérification d'entitlement SAV.
 
 ``contrat_actif``
     Émis EXACTEMENT une fois quand un ``contrats.Contrat`` bascule vers
@@ -142,6 +148,10 @@ importe ``apps.audit``.
     n'est jamais modifié par ce module lui-même (préservation des statuts,
     CONTRAT12) : le bus ne fait qu'observer la bascule déjà actée par la
     machine d'états gardée.
+
+    Abonné dans ce repo (ARC35) : ``contrats`` lui-même
+    (``apps/contrats/receivers.py`` — note chatter ARC8 ; pas de second dépôt
+    GED, déjà couvert par ``contrat_signe`` juste avant dans le même appel).
 
 ``contrat_resilie``
     Émis à la FIN de ``contrats.services.resilier_contrat`` (CONTRAT25) —
@@ -303,6 +313,103 @@ importe ``apps.audit``.
       ``None``) ;
     * ``ancien_statut`` — le statut BRUT (non canonicalisé) avant la
       transition.
+
+``ticket_resolu``
+    Émis quand un ``sav.Ticket`` bascule vers RESOLU (ARC37) — aux DEUX sites
+    où cette bascule peut être atteinte : l'action gardée ``resoudre``
+    (``apps/sav/views.py``, via ``sav.services.emettre_ticket_resolu``) et
+    l'avancement automatique sur intervention terminée
+    (``apps/sav/receivers.py``, YSERV2). Émis SYNCHRONE, best-effort,
+    uniquement sur le FRANCHISSEMENT (un ticket déjà RESOLU/CLOTURE ne réémet
+    rien — même garde que les autres transitions SAV). Ne change AUCUN statut
+    lui-même (l'émission suit la bascule déjà actée). Arguments du signal :
+
+    * ``ticket`` — l'instance ``sav.Ticket`` désormais RESOLU ;
+    * ``company`` — la société (posée côté serveur) ;
+    * ``user`` — l'utilisateur qui a déclenché la transition (peut être
+      ``None`` pour une résolution automatique) ;
+    * ``ancien_statut`` — le statut avant la transition.
+
+    Abonnés dans ce repo (ARC37) : ``notifications``
+    (``apps/notifications/signals.py`` — notifie le technicien assigné, repli
+    managers, ``EventType.SAV_TICKET_RESOLU``) et ``crm``
+    (``apps/crm/receivers.py`` — note chatter ARC8 sur le ``crm.Client`` du
+    ticket, sans jamais importer ``apps.sav``).
+
+``equipement_remplace``
+    Émis quand un ``sav.Equipement`` est marqué REMPLACE suite au retrait
+    d'une pièce (ARC37, ``sav.services.retirer_piece``). Émis SYNCHRONE,
+    best-effort, à l'unique site de la bascule. Ne change AUCUN statut
+    lui-même. Arguments du signal :
+
+    * ``equipement`` — l'instance ``sav.Equipement`` désormais REMPLACE ;
+    * ``ticket`` — le ``sav.Ticket`` dont le retrait de pièce a déclenché le
+      remplacement ;
+    * ``company`` — la société (posée côté serveur) ;
+    * ``user`` — l'utilisateur qui a retiré la pièce (peut être ``None``).
+
+    Abonné dans ce repo (ARC37) : ``notifications``
+    (``apps/notifications/signals.py`` — notifie les managers,
+    ``EventType.SAV_EQUIPEMENT_REMPLACE``).
+
+``projet_status_change``
+    Émis quand un ``gestion_projet.Projet`` change de statut (ARC37) — posé
+    dans ``gestion_projet.services.notifier_transition_projet`` (même site
+    que l'émission EXISTANTE vers le moteur ``automation`` N72/N73, qui reste
+    inchangée : les DEUX chemins cohabitent, ``automation`` en direct ET ce
+    signal sur le bus, pour ouvrir un abonné DÉCOUPLÉ sans importer
+    ``apps.automation``). Émis SYNCHRONE, best-effort. Arguments du signal :
+
+    * ``projet`` — l'instance ``gestion_projet.Projet`` concernée ;
+    * ``company`` — la société (posée côté serveur) ;
+    * ``user`` — l'utilisateur qui a déclenché la transition (peut être
+      ``None``) ;
+    * ``ancien_statut`` / ``nouveau_statut`` — l'instantané avant/après.
+
+    Abonné dans ce repo (ARC37) : ``notifications``
+    (``apps/notifications/signals.py`` — notifie le responsable du projet,
+    ``EventType.PROJET_STATUT_CHANGE``).
+
+``incident_declared``
+    Émis quand un ``qhse.Incident`` (QHSE29) est déclaré/créé via le chemin
+    canonique de création (``IncidentViewSet.perform_create``) — ARC38,
+    RAPATRIEMENT sur le bus d'un signal jusque-là LOCAL à l'app ``qhse``
+    (``apps/qhse/receivers.py``, posé par QHSE32 car à l'époque émetteur ET
+    abonné étaient la même app, donc invisible à tout abonné cross-app).
+    PÉRIODE DE DOUBLE ÉMISSION assumée et documentée : le site d'émission
+    (``IncidentViewSet.perform_create``) envoie D'ABORD le signal LOCAL
+    ``qhse.receivers.incident_declared`` (comportement QHSE32 inchangé —
+    l'escalade chatter/notification/audit interne à ``qhse`` continue de
+    fonctionner à l'identique) PUIS ce signal BUS (``core.events.
+    incident_declared``) pour toute réaction cross-app future. Le retrait du
+    signal local est un pas ULTÉRIEUR distinct (non fait ici — double émission
+    délibérément conservée le temps que d'éventuels abonnés externes migrent).
+    Arguments du signal (identiques au signal local) :
+
+    * ``incident`` — l'instance ``qhse.Incident`` créée ;
+    * ``company`` — la société (posée côté serveur) ;
+    * ``user`` — l'utilisateur qui déclare (peut être ``None``) ;
+    * ``gravite`` — la gravité de l'incident (``mineure`` / ``majeure`` /
+      ``critique``).
+
+    Abonné dans ce repo (ARC38) : ``qhse`` lui-même se réabonne à SON PROPRE
+    signal bus (``apps/qhse/receivers.py``, même patron émetteur=abonné que
+    ``contrats``/``contrat_signe``) pour prouver la visibilité cross-app avec
+    un abonné réel plutôt qu'un simple seam — journalise une entrée d'audit
+    dédiée (``apps.audit.recorder``) distincte de celle déjà posée par le
+    récepteur du signal local (YEVNT12), preuve qu'un abonné EXTERNE
+    hypothétique recevrait bien l'événement sans importer ``apps.qhse``.
+
+    ``publicapi`` — DÉCISION (ARC38) : ``apps/publicapi/signals.py`` reste
+    volontairement LOCAL et NE SOUSCRIT PAS à ``incident_declared``. Ce module
+    diffuse des WEBHOOKS SORTANTS vers des intégrations CLIENT externes
+    (``lead.*``/``devis.*``/``facture.*``/``ticket.*`` — catalogue fermé,
+    ``apps/publicapi/constants.py``) : un incident QHSE est une donnée
+    INTERNE de sécurité de site, jamais un événement métier CLIENT-FACING.
+    Aucun abonné cross-app légitime n'existe aujourd'hui pour ce cas —
+    documenté ici plutôt que migré, conformément à la consigne ARC38
+    (« vérifier puis migrer si valeur cross-app, sinon documenter le choix
+    local »).
 """
 import django.dispatch
 
@@ -361,13 +468,13 @@ employe_sorti = django.dispatch.Signal()
 conge_approuve = django.dispatch.Signal()
 
 # Émis à la bascule d'un contrat vers « signe » (CONTRAT16) — YDOCF5.
-# Arguments : contrat, user, company. Aucun abonné obligatoire dans ce lot
-# (pose du seam) — voir docstring du module ci-dessus.
+# Arguments : contrat, user, company. Abonnés (ARC35) : contrats lui-même
+# (chatter ARC8 + dépôt GED) et notifications — voir docstring du module.
 contrat_signe = django.dispatch.Signal()
 
 # Émis à la bascule d'un contrat vers « actif » (CONTRAT17) — YDOCF5.
-# Arguments : contrat, user, company. Aucun abonné obligatoire dans ce lot
-# (pose du seam) — voir docstring du module ci-dessus.
+# Arguments : contrat, user, company. Abonné (ARC35) : contrats lui-même
+# (chatter ARC8) — voir docstring du module ci-dessus.
 contrat_actif = django.dispatch.Signal()
 
 # Émis à la résiliation d'un contrat (CONTRAT25) — YSUBS5.
@@ -465,3 +572,31 @@ abonnement_monitoring_resilie = django.dispatch.Signal()
 # Abonné dans ce repo : compta (crée l'EnqueteNPS + envoyer_enquete_nps,
 # idempotent) — voir docstring du module ci-dessus.
 chantier_receptionne = django.dispatch.Signal()
+
+# Émis quand un Ticket SAV bascule vers RESOLU (ARC37). Arguments : ticket,
+# company, user (peut être None), ancien_statut. Abonnés dans ce repo :
+# notifications (EventType.SAV_TICKET_RESOLU) et crm (chatter ARC8 sur le
+# Client lié) — voir docstring du module ci-dessus.
+ticket_resolu = django.dispatch.Signal()
+
+# Émis quand un Equipement SAV est marqué REMPLACE suite au retrait d'une
+# pièce (ARC37). Arguments : equipement, ticket, company, user (peut être
+# None). Abonné dans ce repo : notifications (EventType.
+# SAV_EQUIPEMENT_REMPLACE) — voir docstring du module ci-dessus.
+equipement_remplace = django.dispatch.Signal()
+
+# Émis quand un Projet (gestion_projet) change de statut (ARC37). Arguments :
+# projet, company, user (peut être None), ancien_statut, nouveau_statut. Le
+# chemin EXISTANT vers le moteur automation (N72/N73) reste inchangé et
+# cohabite avec ce signal (double émission assumée, transition documentée).
+# Abonné dans ce repo : notifications (EventType.PROJET_STATUT_CHANGE) — voir
+# docstring du module ci-dessus.
+projet_status_change = django.dispatch.Signal()
+
+# Émis quand un Incident QHSE (QHSE29) est déclaré (ARC38 — rapatrié du signal
+# LOCAL qhse.receivers.incident_declared, conservé en DOUBLE ÉMISSION pendant
+# la transition). Arguments : incident, company, user (peut être None),
+# gravite. Abonné dans ce repo : qhse lui-même (audit dédié) — voir docstring
+# du module ci-dessus. Décision publicapi (pas d'abonné) documentée aussi
+# ci-dessus.
+incident_declared = django.dispatch.Signal()
