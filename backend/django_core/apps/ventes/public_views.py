@@ -897,6 +897,23 @@ def _deposit_success_payload(devis, token):
     return payload
 
 
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicLinkRateThrottle])
+def suivi_public(request, token):
+    """QX34 — suivi post-signature public en LECTURE SEULE, tokenisé.
+
+    Renvoie la timeline de jalons (accepté → acompte reçu → matériel commandé →
+    installation → facturé) dérivée des lignes EXISTANTES (aucun statut/PDF
+    touché — règle #4). Même discipline de jeton que ShareLink. 404 si le jeton
+    est invalide/expiré. Jamais de prix d'achat/marge."""
+    from .selectors import devis_milestones
+    data = devis_milestones(token)
+    if data is None:
+        return _not_found()
+    return _noindex(Response(data))
+
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])

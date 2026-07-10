@@ -853,3 +853,90 @@ def resoudre_plan_commission(company, owner):
         if plan is not None:
             return plan
     return qs.filter(owner__isnull=True).first()
+
+
+def devis_milestones(token):
+    """QX34 — jalons post-signature d'un devis, résolus depuis un jeton
+    ShareLink (lecture seule, public, tokenisé). Rien n'est muté.
+
+    Dérive la timeline à partir des LIGNES EXISTANTES (aucun nouveau statut) :
+    accepté → acompte reçu (Paiement) → matériel commandé (BonCommande) →
+    installation (chantier via le sélecteur installations) → facturé.
+
+    Renvoie ``None`` si le jeton est invalide/expiré/sans devis, sinon un dict
+    ``{reference, milestones: [{key, label, done, date}]}``. Multi-tenant :
+    le jeton borne un unique devis d'une seule société (aucune fuite d'une
+    autre société), et jamais de prix d'achat/marge.
+    """
+    from django.utils import timezone
+    from .models import ShareLink
+
+    link = (ShareLink.objects
+            .select_related('devis', 'devis__company')
+            .filter(token=token).first())
+    if link is None or not link.is_valid or not link.devis_id:
+        return None
+    devis = link.devis
+
+    def _iso(d):
+        return d.isoformat() if d is not None else None
+
+    # 1) Accepté.
+    accepte = devis.statut in ('accepte',) or devis.date_acceptation is not None
+    date_accepte = getattr(devis, 'date_acceptation', None)
+
+    # 2) Acompte reçu — un Paiement existe sur une facture liée au devis.
+    from .models import Paiement
+    paiement = (Paiement.objects
+                .filter(facture__devis=devis)
+                .order_by('date_paiement')
+                .first())
+    if paiement is None:
+        # Chaîne BC → facture.
+        paiement = (Paiement.objects
+                    .filter(facture__bon_commande__devis=devis)
+                    .order_by('date_paiement')
+                    .first())
+    acompte_recu = paiement is not None
+
+    # 3) Matériel commandé — un BonCommande existe.
+    bc = getattr(devis, 'bon_commande', None)
+    materiel_commande = bc is not None
+    date_bc = getattr(bc, 'date_creation', None) if bc else None
+
+    # 4) Installation — chantier lié (via sélecteur installations, jamais
+    #    d'import de son modèle).
+    chantier = None
+    try:
+        from apps.installations.selectors import installation_for_devis
+        chantier = installation_for_devis(devis)
+    except Exception:  # noqa: BLE001 — best-effort
+        chantier = None
+    installation_faite = chantier is not None
+
+    # 5) Facturé — au moins une facture liée.
+    facture_emise = devis.factures.exists() or (
+        bc is not None and bc.factures.exists() if bc else False)
+
+    milestones = [
+        {'key': 'accepte', 'label': 'Proposition acceptée',
+         'done': bool(accepte), 'date': _iso(date_accepte)},
+        {'key': 'acompte', 'label': 'Acompte reçu',
+         'done': bool(acompte_recu),
+         'date': _iso(getattr(paiement, 'date_paiement', None))},
+        {'key': 'materiel', 'label': 'Matériel commandé',
+         'done': bool(materiel_commande),
+         'date': (date_bc.date().isoformat()
+                  if hasattr(date_bc, 'date') else _iso(date_bc))},
+        {'key': 'installation', 'label': 'Installation',
+         'done': bool(installation_faite),
+         'date': (getattr(chantier, 'statut', None)
+                  if chantier is not None else None)},
+        {'key': 'facture', 'label': 'Facturé',
+         'done': bool(facture_emise), 'date': None},
+    ]
+    return {
+        'reference': devis.reference,
+        'generated_at': timezone.now().isoformat(),
+        'milestones': milestones,
+    }
