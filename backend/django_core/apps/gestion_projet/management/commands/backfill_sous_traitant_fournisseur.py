@@ -47,7 +47,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         from authentication.models import Company
         from apps.gestion_projet.models import SousTraitant
-        from apps.stock.models import Fournisseur
+        from apps.stock import selectors as stock_selectors
 
         slug = options.get('company')
         dry_run = options.get('dry_run')
@@ -71,9 +71,7 @@ class Command(BaseCommand):
         unmatched_report = []
 
         for company in companies:
-            fournisseurs = list(
-                Fournisseur.objects.filter(
-                    company=company, type=Fournisseur.Type.SERVICE))
+            fournisseurs = list(stock_selectors.sous_traitants_qs(company))
             by_nom_tel = {}
             by_nom = {}
             for f in fournisseurs:
