@@ -837,10 +837,31 @@ class Facture(models.Model):
         super().save(*args, **kwargs)
 
     @property
+    def _remise_globale_active(self):
+        """QX1 — vrai si une remise globale doit être appliquée aux totaux.
+
+        Ne s'applique JAMAIS à une facture de tranche (montants figés) et
+        seulement si ``remise_globale`` > 0. Une facture sans remise (défaut 0)
+        garde donc la sémantique historique « total = somme des lignes »,
+        byte-identique."""
+        from decimal import Decimal
+        if self.montant_ht is not None:
+            return False
+        return (self.remise_globale or Decimal('0')) > 0
+
+    @property
     def total_ht(self):
         # Tranche d'échéancier : montant figé. Sinon : somme des lignes.
         if self.montant_ht is not None:
             return self.montant_ht
+        if self._remise_globale_active:
+            # QX1 — HT NET (remise globale appliquée) via la chaîne canonique
+            # partagée avec le devis/l'échéancier (centime-exact).
+            from .selectors import _canonical_totaux
+            return _canonical_totaux(
+                self.lignes.all(),
+                remise_globale_pct=self.remise_globale,
+                fallback_taux=self.taux_tva)['ht_net']
         return sum(ligne.total_ht for ligne in self.lignes.all())
 
     @property
@@ -862,7 +883,17 @@ class Facture(models.Model):
 
         DC23 — délègue au selector unique ``tva_buckets``. Facture de tranche
         (montant figé) : panier figé passé via ``frozen``.
+
+        QX1 — quand une remise globale est active, la TVA est calculée sur le HT
+        NET via la même chaîne canonique que le devis (``_canonical_totaux``),
+        pour que devis/BC/facture s'accordent au centime.
         """
+        if self._remise_globale_active:
+            from .selectors import _canonical_totaux
+            return _canonical_totaux(
+                self.lignes.all(),
+                remise_globale_pct=self.remise_globale,
+                fallback_taux=self.taux_tva)['tva_par_taux']
         from .selectors import tva_buckets
         frozen = None
         if self.montant_tva is not None:
@@ -875,6 +906,12 @@ class Facture(models.Model):
     def total_ttc(self):
         if self.montant_ttc is not None:
             return self.montant_ttc
+        if self._remise_globale_active:
+            from .selectors import _canonical_totaux
+            return _canonical_totaux(
+                self.lignes.all(),
+                remise_globale_pct=self.remise_globale,
+                fallback_taux=self.taux_tva)['ttc']
         return self.total_ht + self.total_tva
 
     @property

@@ -141,14 +141,21 @@
   {% endif %}
 
   <div class="totaux">
+    {# QX1 — total_ht_brut = Sous-total HT (brut), remise_montant = delta déjà
+       calculé côté serveur, total_ht = HT NET, total_tva = TVA sur le net,
+       total_ttc = TTC net. Plus aucune re-soustraction dans le template. #}
     <div class="totaux-row">
       <span>Sous-total HT</span>
-      <span>{{ "%.2f"|format(total_ht) }} MAD</span>
+      <span>{{ "%.2f"|format(total_ht_brut) }} MAD</span>
     </div>
     {% if remise_globale > 0 %}
     <div class="totaux-row remise">
       <span>Remise globale ({{ remise_globale }}%)</span>
-      <span>−{{ "%.2f"|format(total_ht * remise_globale / 100) }} MAD</span>
+      <span>−{{ "%.2f"|format(remise_montant) }} MAD</span>
+    </div>
+    <div class="totaux-row">
+      <span>Total HT</span>
+      <span>{{ "%.2f"|format(total_ht) }} MAD</span>
     </div>
     {% endif %}
     <div class="totaux-row">
