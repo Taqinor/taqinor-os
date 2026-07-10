@@ -46,8 +46,12 @@ def _app_of(models_path: Path) -> str:
 
 
 def _iter_model_files():
-    """Yield every models.py (or models/ package file) under apps/."""
-    yield from APPS_DIR.glob("*/models.py")
+    """Yield every model file under apps/.
+
+    Couvre les trois dispositions du dépôt : ``models.py``, fichiers éclatés
+    ``models_*.py`` (ex. ``installations/models_intervention.py``) et un
+    paquet ``models/``."""
+    yield from APPS_DIR.glob("*/models*.py")
     yield from APPS_DIR.glob("*/models/*.py")
 
 
