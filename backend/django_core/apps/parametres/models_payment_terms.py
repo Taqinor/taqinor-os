@@ -38,7 +38,6 @@ class ConditionPaiement(TenantModel):
         max_digits=5, decimal_places=2, default=0)
     actif = models.BooleanField(default=True)
 
-
     class Meta:
         verbose_name = 'Condition de paiement'
         verbose_name_plural = 'Conditions de paiement'

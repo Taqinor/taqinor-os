@@ -43,7 +43,6 @@ class UniteMesure(TenantModel):
     libelle = models.CharField(max_length=80)
     actif = models.BooleanField(default=True)
 
-
     class Meta:
         verbose_name = 'Unité de mesure'
         verbose_name_plural = 'Unités de mesure'

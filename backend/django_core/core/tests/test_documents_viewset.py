@@ -21,6 +21,7 @@ from django.test import TestCase
 from rest_framework import serializers
 from rest_framework.test import APIRequestFactory, force_authenticate
 
+from apps.records.views import ChatterViewSetMixin
 from authentication.models import Company, CustomUser
 from core.documents import DocumentMetier, document_viewset
 
@@ -52,7 +53,9 @@ class _DocKitSerializer(serializers.ModelSerializer):
         read_only_fields = ["reference", "company", "statut"]
 
 
-_DocKitViewSet = document_viewset(_DocKit, _DocKitSerializer, prefix="MDOC")
+_DocKitViewSet = document_viewset(
+    _DocKit, _DocKitSerializer, prefix="MDOC",
+    chatter_mixin=ChatterViewSetMixin)
 
 
 class _KitTableMixin:

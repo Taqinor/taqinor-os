@@ -370,7 +370,6 @@ def demande_approbation_post_save(sender, instance, created, **kwargs):
             'notify APPROVAL_* failed (demande approbation %s)', instance.pk)
 
 
-
 # ── Contrat signé → CONTRAT_SIGNE (ARC35) ────────────────────────────────────
 # S'abonne à ``core.events.contrat_signe`` (YDOCF5 — seam posé par
 # CONTRAT16/17, jusqu'ici SANS abonné, catalogué ``ALLOWED_UNCONSUMED``).

@@ -154,7 +154,7 @@ class Arc37EquipementRemplaceTests(TestCase):
             type=Ticket.Type.CORRECTIF, created_by=self.admin)
 
     def test_retrait_piece_avec_serie_connue_emet_equipement_remplace(self):
-        equip = Equipement.objects.create(
+        Equipement.objects.create(
             company=self.company, produit=self.onduleur, installation=self.inst,
             numero_serie='SN-ARC37-1', created_by=self.admin)
         retirer_piece(

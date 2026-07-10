@@ -54,7 +54,6 @@ class TauxTVA(TenantModel):
     defaut = models.BooleanField(default=False)
     actif = models.BooleanField(default=True)
 
-
     class Meta:
         verbose_name = 'Taux de TVA'
         verbose_name_plural = 'Taux de TVA'

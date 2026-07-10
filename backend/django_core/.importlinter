@@ -85,6 +85,15 @@ ignore_imports =
 # stock→audit edge so the transitive ventes→stock.services→audit path is allowed.
     apps.stock.services -> apps.audit.recorder
     apps.stock.services -> apps.audit.models
+# ARC34 — le moteur d'automation écrit sa PROPRE trace d'audit (imports
+# fonction-locaux `audit.recorder`/`audit.models` dans `engine`, préexistants) ;
+# depuis qu'ARC34 abonne sav/contrats à `automation.engine` via leurs services,
+# le chemin transitif ventes→…→automation→audit apparaît. C'est le logging
+# transverse d'automation, PAS ventes atteignant audit directement (même motif
+# que les exceptions notifications/stock ci-dessus). Ignore ces arêtes
+# automation→audit.
+    apps.automation.engine -> apps.audit.recorder
+    apps.automation.engine -> apps.audit.models
 
 [importlinter:contract:ged-models-decoupled]
 name = GED models never import a business-core domain's models (string FKs only — GED38)
@@ -194,3 +203,19 @@ ignore_imports =
     core.tests.test_yhard4_i18n_content -> apps.stock.models
     core.tests.test_yhard4_i18n_content -> apps.stock.serializers
     core.tests.test_yhard10_export_anonymise -> apps.crm.models
+# ARC1/2/6 + SCA30-33 — les tests des primitives noyau (TenantModel, viewset
+# scopé, numérotation, kit DocumentMetier) exercent la primitive contre de VRAIS
+# modèles/viewsets domaine ; même motif que les exceptions ci-dessus (arêtes
+# test→domaine, jamais du couplage `core` de production — le code prod de core
+# n'importe plus records.views depuis le fold repair, cf. document_viewset qui
+# INJECTE désormais le chatter mixin).
+    core.tests.test_tenant_model -> apps.notifications.models
+    core.tests.test_numbering -> apps.crm.models
+    core.tests.test_numbering -> apps.ventes.models
+    core.tests.test_numbering -> apps.ventes.utils.references
+    core.tests.test_company_scoped_viewset -> apps.crm.views
+    core.tests.test_company_scoped_viewset -> apps.sav.views
+    core.tests.test_company_scoped_viewset -> apps.installations.views.transporteur
+    core.tests.test_documents_viewset -> apps.records.views
+    core.tests.test_documents_status -> apps.installations.models_demande_achat
+    core.tests.test_documents_status -> apps.installations.models_ordre_soustraitance

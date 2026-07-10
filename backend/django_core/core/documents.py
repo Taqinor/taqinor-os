@@ -407,7 +407,7 @@ class TotauxDocumentMixin(models.Model):
 
 
 def document_viewset(model, serializer, *, prefix, padding=4, period="monthly",
-                     base=None, **attrs):
+                     base=None, chatter_mixin=None, **attrs):
     """Compose un ViewSet complet pour un document du kit en UNE déclaration.
 
     Un NOUVEAU type de document ⇒ ~1 ligne : ``MonDocViewSet =
@@ -449,11 +449,12 @@ def document_viewset(model, serializer, *, prefix, padding=4, period="monthly",
     from core.numbering import create_with_reference
     from core.viewsets import CompanyScopedModelViewSet
 
-    # Chatter ARC8 : câblé au niveau viewset uniquement (records = fondation),
-    # jamais importé au niveau modèle du kit. Import fonction-local pour rester
-    # découplé au chargement.
-    from apps.records.views import ChatterViewSetMixin
-
+    # Chatter ARC8 INJECTÉ, jamais importé ici : ``core`` (fondation) ne dépend
+    # d'AUCUNE app — même records.views, qui tire tout le graphe domaine
+    # (gestion_projet/sav/crm) via ses activités (contrat import-linter
+    # core-foundation-is-a-base-layer + M1). L'app appelante passe son propre
+    # ``ChatterViewSetMixin`` (elle, elle a le droit d'importer records) ; sans
+    # lui, le viewset kit est simplement sans chatter (dégradation gracieuse).
     base_cls = base or CompanyScopedModelViewSet
 
     def perform_create(self, serializer_inst):
@@ -483,11 +484,8 @@ def document_viewset(model, serializer, *, prefix, padding=4, period="monthly",
     }
     namespace.update(attrs)
 
-    return type(
-        f"{model.__name__}KitViewSet",
-        (ChatterViewSetMixin, base_cls),
-        namespace,
-    )
+    bases = (chatter_mixin, base_cls) if chatter_mixin is not None else (base_cls,)
+    return type(f"{model.__name__}KitViewSet", bases, namespace)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
