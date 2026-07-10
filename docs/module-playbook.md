@@ -184,9 +184,22 @@ FK only) et `core` reste une couche de base (n'importe aucune app de domaine).
 - **`useHasPermission(code, [rôles])`** (`frontend/src/hooks/useHasPermission.js`)
   : masque une affordance que le backend refuserait ; le backend reste la seule
   garde qui compte (cohérence UX, pas de sécurité).
-- **Primitives partagées de liste/formulaire/détail** : réutiliser les
-  composants existants de `components/` (DataTable, etc.) plutôt que de
-  reconstruire — voir un module récent (`features/contrats`) comme gabarit.
+- **`useResource(fetcher, params?, options?)`** (`frontend/src/hooks/useResource.js`,
+  ARC45) : tout nouvel écran de liste/tableau de bord charge ses données via ce
+  hook (`{ data, loading, error, refetch }`, abort au démontage, params réactifs,
+  `select`/`errorMessage`/`enabled`) — jamais un `useState(loading/error)` +
+  `useEffect` maison. Aucune dépendance externe (TanStack Query = décision DEP
+  séparée, non prise).
+- **Factory API partagée** (`frontend/src/api/resource.js`, ARC44) : un module
+  api se déclare via `makeResourceFactory(client, basePath)` + `unwrapList` —
+  jamais une factory `{list,get,create,update,remove}` re-déclarée localement.
+  `scripts/scaffold-module.mjs` (ARC43) génère module.config + api + page
+  d'exemple d'un coup.
+- **Coquilles** : listes sur `ListShell` ; pages détail/fiche sur `RecordShell`
+  (`frontend/src/ui/module/RecordShell.jsx`, ARC46 — compose `DetailShell` et
+  ajoute la save-bar optimiste opt-in `record`/`onSave` via `useOptimisticSave` ;
+  slot chatter pour VX23). Réutiliser `components/` (DataTable, etc.) plutôt que
+  de reconstruire — voir un module récent (`features/contrats`) comme gabarit.
 
 > **Le câblage FE par-endpoint** (quel écran consomme quel endpoint) vit dans
 > `docs/FRONTEND_GAP_PLAN.md`, pas ici — ce playbook couvre la STRUCTURE d'un
