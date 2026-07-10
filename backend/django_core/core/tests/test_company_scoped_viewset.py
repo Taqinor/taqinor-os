@@ -10,6 +10,7 @@ manuel, la découverte le prend en charge dès qu'il hérite de la base.
 from django.test import SimpleTestCase
 
 from core.mixins import TenantMixin
+from core.permissions import ScopedPermission
 from core.tenant_isolation_scan import discover_tenant_viewsets
 from core.viewsets import CompanyScopedModelViewSet
 
@@ -65,3 +66,35 @@ class PilotsAutoDiscoveredBySweepTests(SimpleTestCase):
             self.assertTrue(
                 issubclass(by_name[name], CompanyScopedModelViewSet),
                 f"{name} doit hériter de CompanyScopedModelViewSet.")
+
+
+class DefaultScopedPermissionARC55Tests(SimpleTestCase):
+    """ARC55 — la base pose ``ScopedPermission`` en défaut ET les 3 pilotes
+    conservent leur ``get_permissions`` propre, donc leur matrice 401/403 est
+    INCHANGÉE (le défaut est shadowé). Les tests d'isolation par pilote
+    prouvent en plus les codes 401/403/404 réels côté HTTP."""
+
+    def test_base_default_permission_is_scoped(self):
+        self.assertEqual(
+            CompanyScopedModelViewSet.permission_classes, [ScopedPermission],
+            "La base doit poser ScopedPermission comme permission par défaut.")
+
+    def test_default_scoped_permission_has_no_specific_codes(self):
+        """Sans read_permission/write_permission, ScopedPermission = « authentifié
+        suffit » des deux côtés → équivalent strict du défaut IsAuthenticated."""
+        self.assertIsNone(
+            getattr(CompanyScopedModelViewSet, "read_permission", None))
+        self.assertIsNone(
+            getattr(CompanyScopedModelViewSet, "write_permission", None))
+
+    def test_pilots_keep_own_get_permissions(self):
+        """Chaque pilote surcharge get_permissions : DRF ne consulte donc jamais
+        le permission_classes de la base → 401/403 byte-identiques."""
+        from apps.crm.views import ClientViewSet
+        from apps.installations.views.transporteur import TransporteurViewSet
+        from apps.sav.views import CauseDefaillanceViewSet
+        for vs in (ClientViewSet, TransporteurViewSet, CauseDefaillanceViewSet):
+            self.assertIn(
+                "get_permissions", vs.__dict__,
+                f"{vs.__name__} doit conserver son get_permissions propre "
+                "(matrice 401/403 inchangée).")
