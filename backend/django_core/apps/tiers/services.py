@@ -132,3 +132,45 @@ def attacher_ou_creer_tiers(*, company, nom, roles=None,
     if not cree and dirty:
         tiers.save(update_fields=list(dict.fromkeys(dirty)))
     return tiers, cree
+
+
+# ── ARC21 — Bascule write-path (DÉCISION founder-gated, OFF par défaut) ──────
+#
+# Voir docs/decisions/ARC21-tiers-source-ecriture.md. Le mécanisme est LIVRÉ
+# mais DÉSACTIVÉ : avec le flag OFF, ``identite_source_est_tiers()`` renvoie
+# False et ``ecrire_identite`` est un NO-OP strict (comportement byte-identique
+# à aujourd'hui — l'historique reste maître, Tiers n'est qu'un miroir ARC18/19).
+
+def identite_source_est_tiers() -> bool:
+    """True si ``Tiers`` est la SOURCE d'écriture de l'identité (flag
+    ``TIERS_SOURCE_ECRITURE`` ON). False par défaut → historique maître."""
+    from django.conf import settings
+    return bool(getattr(settings, 'TIERS_SOURCE_ECRITURE', False))
+
+
+def ecrire_identite(*, company, tiers, champs):
+    """ARC21 — Point d'écriture UNIQUE de l'identité (mode transition).
+
+    Avec le flag OFF (défaut) : NO-OP total — renvoie ``False`` sans rien
+    écrire (le modèle historique reste l'unique chemin d'écriture, exactement
+    comme aujourd'hui). Aucun effet de bord, aucune requête.
+
+    Avec le flag ON : met à jour l'identité sur ``Tiers`` (source) — les
+    modèles historiques appliquent ensuite le miroir lecture chez eux. Écriture
+    company-scopée (``tiers`` doit appartenir à ``company``, sinon NO-OP).
+    Renvoie ``True`` si une écriture a eu lieu, ``False`` sinon.
+    """
+    if not identite_source_est_tiers():
+        return False  # flag OFF — comportement byte-identique à aujourd'hui.
+    if tiers is None or tiers.company_id != getattr(company, 'id', None):
+        return False
+    a_ecrire = {
+        k: v for k, v in (champs or {}).items()
+        if k in _CHAMPS_IDENTITE or k == 'nom'
+    }
+    if not a_ecrire:
+        return False
+    for champ, val in a_ecrire.items():
+        setattr(tiers, champ, val)
+    tiers.save(update_fields=list(a_ecrire.keys()))
+    return True

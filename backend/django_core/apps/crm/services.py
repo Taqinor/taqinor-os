@@ -872,6 +872,40 @@ def maybe_assign_mql(lead) -> bool:
         return False
 
 
+def ecrire_identite_client(client) -> bool:
+    """ARC21 (founder-gated, OFF par défaut) — quand la bascule write-path est
+    ACTIVE (``TIERS_SOURCE_ECRITURE`` ON), pousse l'identité du client vers son
+    ``Tiers`` (source d'écriture unique), puis le client relira le miroir.
+
+    Flag OFF (défaut) : NO-OP strict — renvoie ``False`` sans rien écrire (le
+    client reste l'unique chemin d'écriture, comportement byte-identique à
+    aujourd'hui). Best-effort ; ne fait jamais échouer l'appelant.
+
+    Voir docs/decisions/ARC21-tiers-source-ecriture.md.
+    """
+    try:
+        from apps.tiers import services as tiers_services
+        if not tiers_services.identite_source_est_tiers():
+            return False  # flag OFF — rien ne change.
+        if client is None or client.tiers_id is None:
+            return False
+        return tiers_services.ecrire_identite(
+            company=client.company, tiers=client.tiers,
+            champs={
+                'nom': client.nom or '',
+                'prenom': client.prenom or '',
+                'email': client.email or '',
+                'telephone': client.telephone or '',
+                'adresse': client.adresse or '',
+                'ice': client.ice or '',
+                'rc': client.rc or '',
+                'identifiant_fiscal': client.if_fiscal or '',
+                'cin': client.cin or '',
+            })
+    except Exception:
+        return False
+
+
 def resolve_client_for_lead(lead: Lead) -> Client:
     from django.db import IntegrityError, transaction
 

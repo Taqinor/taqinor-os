@@ -512,6 +512,15 @@ ENTREPRISE_COULEUR = os.environ.get('ENTREPRISE_COULEUR', '#2563EB')
 # the legacy ventes WeasyPrint quote PDF. Only affects QUOTES, never invoices.
 USE_PREMIUM_QUOTE_ENGINE = os.environ.get('USE_PREMIUM_QUOTE_ENGINE', '1') != '0'
 
+# ARC21 — DÉCISION founder-gated : Tiers comme source d'écriture de l'identité.
+# OFF par défaut → comportement byte-identique à aujourd'hui (les modèles
+# historiques restent maîtres, Tiers n'est qu'un miroir one-way ARC18/19/56).
+# ON (transition) → double-écriture via apps.tiers.services (Tiers source,
+# historique miroir lecture). Réversible ; à n'activer qu'après le dossier
+# docs/decisions/ARC21-tiers-source-ecriture.md (vidage des doublons ARC20 +
+# non-régression PDF/exports). NE PAS activer sans décision fondateur.
+TIERS_SOURCE_ECRITURE = os.environ.get('TIERS_SOURCE_ECRITURE', '0') == '1'
+
 # XFSM12 — trace d'étalonnage de l'instrument sur la fiche de recette IEC
 # 62446-1 (CommissioningRecord.instrument_id). Paramétrable warn/block (défaut
 # warn) : quand True, enregistrer une fiche référençant un instrument dont
