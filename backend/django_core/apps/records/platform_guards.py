@@ -210,13 +210,18 @@ def is_test_path(relpath: str) -> bool:
     """True si ``relpath`` est un fichier de tests (hors périmètre des gardes
     de surface : les tests peuvent importer WeasyPrint pour un rendu réel).
 
-    Couvre ``tests.py``, ``test_*.py``, ``tests_*.py`` et tout fichier sous un
-    répertoire ``tests/``. ``relpath`` : chemin POSIX."""
+    Couvre ``tests.py``, ``test_*.py``, ``tests_*.py``, tout fichier sous un
+    répertoire ``tests/`` ou ``__tests__/``, et les tests FRONTEND
+    ``*.test.js(x)`` / ``*.spec.js(x)`` (un test SCA24/SCA29 nomme légitimement
+    la marque pour affirmer son ABSENCE dans le DOM). ``relpath`` : chemin
+    POSIX."""
     parts = relpath.split("/")
-    if "tests" in parts[:-1]:  # un répertoire tests/ dans le chemin
+    if "tests" in parts[:-1] or "__tests__" in parts[:-1]:
         return True
     name = parts[-1]
-    return name == "tests.py" or name.startswith("test_") or name.startswith("tests_")
+    if name == "tests.py" or name.startswith("test_") or name.startswith("tests_"):
+        return True
+    return bool(re.search(r"\.(test|spec)\.(js|jsx|ts|tsx|mjs)$", name))
 
 
 def scan_weasyprint_import(relpath: str, text: str) -> bool:
