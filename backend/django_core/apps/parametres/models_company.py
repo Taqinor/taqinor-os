@@ -504,6 +504,24 @@ class CompanyProfile(models.Model):
         help_text="Au-delà de ce nombre de destinataires, l'envoi d'une "
                   "campagne exige l'approbation d'un Responsable/Directeur.")
 
+    # ── ZFAC11 — arrondi de caisse sur règlements en ESPÈCES ────────────────
+    # Le plus petit pas d'arrondi appliqué au reste à payer d'une facture
+    # réglée EN ESPÈCES (0,05 / 0,20 / 1,00 MAD sont les pas typiques marocains ;
+    # champ libre pour rester configurable). Défaut 0 = arrondi DÉSACTIVÉ →
+    # comportement actuel strictement inchangé (aucun arrondi, aucun écart).
+    # DÉCISION fondateur : pas d'arrondi configurable (défaut OFF) ; l'écart
+    # d'arrondi est tracé comme un abandon de résiduel « Arrondi espèces »
+    # (motif ZFAC11) — jamais silencieux — et suit l'écriture d'abandon de
+    # créance existante (compte d'écart = 6585, celui de l'abandon FG135/XFAC13).
+    # Ne s'applique QU'aux règlements en espèces ; virement/chèque/carte
+    # l'ignorent totalement.
+    arrondi_caisse = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal('0'),
+        verbose_name='Arrondi de caisse (espèces)',
+        help_text="Plus petit pas d'arrondi (MAD) appliqué au reste à payer "
+                  "d'une facture réglée en espèces (ex. 0,05 / 0,20 / 1,00). "
+                  "0 = désactivé (comportement actuel).")
+
     class Meta:
         verbose_name = 'Profil entreprise'
 
