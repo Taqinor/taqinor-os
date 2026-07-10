@@ -142,6 +142,22 @@ class Client(models.Model):
         help_text="Rattache ce client à une société mère (consolidation "
                   "CA groupe). Même société uniquement ; jamais de cycle.")
 
+    # ── ARC18 — Pont additif vers le répertoire unifié Tiers ──
+    # FK nullable (string-FK — jamais d'import de apps.tiers.models ici, crm
+    # reste découplé de la couche fondation par référence string). L'identité
+    # reste MAÎTRE ici ; ``tiers`` n'en est qu'un MIROIR one-way, réversible,
+    # posé par le hook de sauvegarde (voir apps/crm/tiers_bridge.py) et
+    # backfillé par la commande ``backfill_tiers``. Vide = pas encore relié
+    # (comportement API historique strictement inchangé).
+    tiers = models.ForeignKey(
+        'tiers.Tiers',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='clients',
+        verbose_name='Tiers (répertoire unifié)',
+        help_text="Fiche du répertoire unifié des parties prenantes reflétant "
+                  "ce client. Renseignée automatiquement (miroir).")
+
     class Meta:
         verbose_name = "Client"
         verbose_name_plural = "Clients"
