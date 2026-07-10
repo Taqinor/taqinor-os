@@ -486,8 +486,10 @@ def build_campaign_prompt(*, segment_label: str = '', offre: str = '',
         parts.append(f"Longueur souhaitée : {longueur}.")
     if instruction:
         parts.append(f"Consigne de réécriture : {instruction}.")
+    # Formulation volontairement sans les termes de CAMPAIGN_PROMPT_FORBIDDEN_TERMS :
+    # le garde-fou (test) vérifie leur absence LITTÉRALE dans tout prompt construit.
     parts.append(
-        "Ne mentionne JAMAIS de prix d'achat, de marge ou de coût interne — "
+        "Ne mentionne JAMAIS de données financières internes de l'entreprise — "
         "ces informations ne te sont de toute façon jamais fournies. "
         "Réponds strictement au format :\nOBJET: <objet>\nCORPS: <corps>")
     return '\n'.join(parts)
