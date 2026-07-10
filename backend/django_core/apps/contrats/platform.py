@@ -1,4 +1,5 @@
-"""ARC28/ARC29 — Manifeste plateforme du module Contrats (« déclarer une fois »).
+"""ARC28/ARC29/ARC31 — Manifeste plateforme du module Contrats
+(« déclarer une fois »).
 
 Déclare ce que l'app Contrats expose aux surfaces transverses (voir
 ``core.platform``). Il reflétait à l'origine (ARC28) un câblage ASYMÉTRIQUE :
@@ -12,10 +13,14 @@ ARC29 comble ce trou précis : Contrat est désormais cherchable
 correspondante est retirée dans le même commit (elle mentirait sinon : la
 dérive n'existe plus).
 
+ARC31 — Contrat est déclaré cible customfieldable ICI (``customfield_models``)
+au lieu d'un appel explicite ``customfields.registry.register(...)`` dans
+``ContratsConfig.ready()`` — la SOURCE de peuplement du registre bascule vers
+un chargeur central unique (``apps/customfields/apps.py``) qui lit ce
+manifeste ; l'API ``registry.register``/``get_model`` reste inchangée.
+
 Surfaces encore VOLONTAIREMENT vides (le contrat n'y est pas branché) :
 
-* PAS de champs personnalisés déclarés via ce manifeste (la cible pilote ARC14
-  reste enregistrée par ``ContratsConfig.ready()`` jusqu'à ARC31) ;
 * PAS d'import/export (absent de ``dataimport``) ;
 * PAS d'actions agentiques déclarées via ce manifeste ;
 * PAS d'automatisation temporelle (absent de ``automation.DATE_TRIGGER_TARGETS``) ;
@@ -39,8 +44,11 @@ PLATFORM = {
     # 'chatter_sans_recherche' correspondante dans core/platform_coverage.py.
     'searchable_models': ['contrats.contrat'],
 
+    # ARC31 — cible customfieldable (pilote historique ARC14 ; source
+    # basculée depuis ContratsConfig.ready() vers ce manifeste).
+    'customfield_models': ['contrat'],
+
     # Surfaces DÉLIBÉRÉMENT VIDES (le contrat n'y est pas encore branché).
-    'customfield_models': [],
     'import_specs': [],
     'agent_actions_module': '',
     'automation_state_fields': [],

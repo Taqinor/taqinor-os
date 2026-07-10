@@ -1,13 +1,11 @@
-"""ARC14 — registre data-driven des modules « customfieldable ».
+"""ARC14/ARC31 — registre data-driven des modules « customfieldable ».
 
 Avant ARC14, la cible d'un champ personnalisé (le modèle Django qui porte
 ``custom_data``) était un ``if/elif`` fermé dans ``serializers._module_model``
 — ajouter un 9ᵉ module exigeait de modifier ``apps/customfields`` lui-même
 (l'anti-leçon Odoo ``ir.model.fields``). Ce module introduit un REGISTRE :
-chaque app déclare ses modèles « customfieldables » via ``register()``
-(typiquement dans son ``AppConfig.ready()``, même idiome que les autres
-abonnements inter-app — cf. ``apps/crm/apps.py``), et ``get_model()``/
-``module_choices()`` résolvent la cible dynamiquement.
+chaque app déclare ses modèles « customfieldables » via ``register()``, et
+``get_model()``/``module_choices()`` résolvent la cible dynamiquement.
 
 Les 8 clés NATIVES historiques (lead/client/produit/devis/installation/
 ticket/document/fournisseur/employe — cf. ``CustomFieldDef.Module``) sont
@@ -17,13 +15,25 @@ est garanti identique, avant comme après ARC14 (non-régression).
 
 Résolution PARESSEUSE : on enregistre un ``(app_label, model_name)``, jamais
 la classe modèle elle-même (évite tout import circulaire au chargement des
-apps) — la classe est résolue à la demande via ``django.apps.apps.get_model``.
+apps) — la classe est résolue à la demande via ``django.apps.apps.get_model``
+(lookup CASE-INSENSITIVE côté Django : passer la clé de module en minuscule
+comme ``model_name`` résout correctement vers la classe réelle, quelle que
+soit sa casse — ``'vehicule'`` résout ``Vehicule``, ``'contrat'`` résout
+``Contrat``).
 
-FUTURE INTENT (voir docs/PLAN.md ARC31) : une prochaine tâche fera basculer
-la SOURCE de peuplement de ce registre vers les manifests ``core/platform.py``
-par app (``apps/<x>/platform.py`` → surface ``customfield_models``) — la
-fonction ``register()`` ci-dessous restera l'API stable ; seul l'APPELANT
-changera (un seul hook central au lieu d'un ``ready()`` par app pilote).
+ARC31 — SOURCE DE PEUPLEMENT DES PILOTES bascule des ``AppConfig.ready()``
+individuels (``contrats.apps.ContratsConfig.ready()``,
+``flotte.apps.FlotteConfig.ready()``) vers un CHARGEUR CENTRAL UNIQUE :
+:func:`register_from_platform_manifests`, appelé depuis
+``apps/customfields/apps.py::CustomfieldsConfig.ready()``. Il parcourt les
+manifestes ``core.platform`` (ARC28) et enregistre, pour chaque
+``module_key`` listé dans la surface ``customfield_models`` d'un manifeste,
+``(module_key, manifest['module'], module_key)`` — ``manifest['module']`` est
+la clé ModuleToggle/app_label du manifeste porteur. L'API ``register()``
+elle-même reste INCHANGÉE (stable) ; seul l'APPELANT a changé (un seul hook
+central au lieu d'un ``ready()`` par app pilote) — non-régression garantie
+par test (les clés ``contrat``/``vehicule`` résolvent toujours vers les mêmes
+modèles).
 """
 
 # module_key -> (app_label, model_name) — résolution paresseuse (jamais la
@@ -101,6 +111,39 @@ def _register_native_modules():
     # XPLT14 — couverture des modules récents.
     register('fournisseur', 'stock', 'Fournisseur', label='Fournisseur')
     register('employe', 'rh', 'DossierEmploye', label='Employé')
+
+
+def register_from_platform_manifests():
+    """ARC31 — CHARGEUR CENTRAL : peuple le registre depuis les manifestes
+    ``core.platform`` (surface ``customfield_models``), à la place d'un
+    ``AppConfig.ready()`` par app pilote.
+
+    Idempotent (comme :func:`register`) : sûr à ré-appeler (tests, ``ready()``
+    invoqué plusieurs fois). Pour chaque manifeste, chaque clé de
+    ``customfield_models`` est enregistrée vers ``(manifest['module'],
+    module_key)`` — ``manifest['module']`` est l'app_label porteur (clé
+    ModuleToggle) ; le lookup ``django.apps.apps.get_model`` étant
+    CASE-INSENSITIVE, la clé de module en minuscule résout directement vers la
+    classe réelle (``'vehicule'`` → ``Vehicule``) sans avoir besoin du nom de
+    classe exact dans le manifeste (qui ne le porte pas — la surface
+    ``customfield_models`` est documentée comme une liste de ``'model'`` nus).
+
+    N'écrase JAMAIS une clé déjà enregistrée : les clés natives sont
+    pré-enregistrées avec le nom de classe EXACT (``('crm', 'Lead')``) alors
+    que ce chargeur enregistre en minuscule (``('crm', 'lead')``) — un
+    ``register()`` direct verrait deux cibles « différentes » (comparaison de
+    tuples sensible à la casse) et lèverait. Une clé déjà présente est donc
+    SKIPPÉE : la déclaration manifeste d'une clé native (ex. ``crm`` déclare
+    ``lead``/``client``, ``stock`` déclare ``produit``/``fournisseur``) reste
+    purement informative, l'enregistrement natif fait foi (non-régression).
+    """
+    from core import platform as core_platform
+
+    for manifest in core_platform.collect_platform_manifests().values():
+        app_label = manifest['module']
+        for module_key in manifest['customfield_models']:
+            if not is_registered(module_key):
+                register(module_key, app_label, module_key)
 
 
 _register_native_modules()

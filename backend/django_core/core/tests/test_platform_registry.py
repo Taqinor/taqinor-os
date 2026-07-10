@@ -44,13 +44,16 @@ class PlatformCollectorTests(SimpleTestCase):
             crm['automation_state_fields'])
 
     def test_contrats_manifest_is_asymmetric(self):
-        """Contrats a le chatter ET la recherche câblés (ARC29) — les autres
-        surfaces (customfields, import, agent, automation, KPI) restent vides."""
+        """Contrats a le chatter (ARC8), la recherche (ARC29) et les champs
+        perso (ARC31) câblés — les autres surfaces (import, agent, automation,
+        KPI) restent vides."""
         contrats = self.manifests['contrats']
         self.assertEqual(contrats['record_targets'], ['contrats.contrat'])
         # ARC29 — trou comblé : Contrat est désormais cherchable.
         self.assertEqual(contrats['searchable_models'], ['contrats.contrat'])
-        self.assertEqual(contrats['customfield_models'], [])
+        # ARC31 — cible customfieldable déclarée au manifeste (source du
+        # registre customfields, plus un register() dans ready()).
+        self.assertEqual(contrats['customfield_models'], ['contrat'])
         self.assertEqual(contrats['agent_actions_module'], '')
 
     def test_aggregators_flatten_across_manifests(self):
