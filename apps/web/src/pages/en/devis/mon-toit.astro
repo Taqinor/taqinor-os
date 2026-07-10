@@ -440,6 +440,12 @@ const noscriptTelHref = `tel:${NAP.phone}`;
             <input id="mt-roof-age" name="roofAgeYears" type="number" step="1" min="0" inputmode="numeric"
               placeholder="e.g. 10" class={`${inputClass} mt-1`} />
           </label>
+          <!-- WJ112 — honesty: roof age informs the TECHNICAL SITE VISIT (roof/
+               framing condition), not the kWc/production figure shown here. -->
+          <p class="mt-1 text-xs text-lune-faint">
+            Used to prepare your technical site visit (roof condition) — does not change the
+            calculation above.
+          </p>
 
           <!-- Meter/bill photo — captured LOCALLY, never uploaded (no endpoint today). -->
           <div class="mt-4">
@@ -474,6 +480,12 @@ const noscriptTelHref = `tel:${NAP.phone}`;
             <input id="mt-battery-interest" name="batteryInterest" type="checkbox" class="mt-1 h-5 w-5 flex-none accent-brass-400" />
             <span>Interested in a storage battery</span>
           </label>
+          <!-- WJ112 — honesty: forwarded to your advisor for detailed pricing, does
+               NOT change the instant estimate above. -->
+          <p class="mt-1 text-xs text-lune-faint">
+            Forwarded to your advisor for detailed pricing — does not change the instant
+            estimate above.
+          </p>
         </details>
 
         <!-- Group 3/3 — for financing (3 fields). -->
@@ -1262,6 +1274,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   syncRoofCards(); // initial state (rehydrated or empty).
 
   // ——— WJ31 : puce à bascule unique (ombrage) — un seul choix actif à la fois ———
+  // WJ112 — shading is no longer decorative: it now REALLY derates production/
+  // kWc (billEstimate.ts OMBRAGE_DERATE), so recompute live on click, exactly
+  // like mode or the bill.
   let ombrage = savedWizard?.ombrage || '';
   document.querySelectorAll<HTMLButtonElement>('.mt-ombrage').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -1275,6 +1290,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       });
       markDataEntered();
       saveWizardState();
+      computeEstimate();
     });
   });
   if (ombrage) {
@@ -1654,7 +1670,12 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     if (toolarge) toolarge.hidden = true;
     const lat = capturePin?.lat;
     const city = (val('mt-city') || addressEl?.value || '').trim() || undefined;
-    const est = bill != null ? estimateFromBill(bill, { lat, city }) : null;
+    // WJ112 — the "refine my sizing" accordion now actually feeds the
+    // calculation: declared exact kWh overrides the MAD bill when present, and
+    // the chosen shading honestly derates production (see billEstimate.ts
+    // OMBRAGE_DERATE — documented, never a fabricated number).
+    const exactKwhMonthly = num('mt-bill-kwh') ?? undefined;
+    const est = bill != null ? estimateFromBill(bill, { lat, city, exactKwhMonthly, ombrage: ombrage || undefined }) : null;
     if (!est) {
       if (card) card.hidden = true;
       if (note) note.hidden = true;
@@ -1755,13 +1776,14 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     const payEl = $('mt-est-payback');
     if (payEl) payEl.innerHTML = '<span class="mt-est-skeleton mt-skeleton-shimmer"></span>';
   }
-  // WJ48 — branded anticipation (1.5-2.5 s, randomised within this window on
-  // each calculation): the real calculation (billEstimate) is synchronous and
-  // instant -- without this perceived delay the visitor never "sees" a
-  // calculation happen (Enpal/EnergySage's most-tested anticipation pattern).
-  // reduced-motion -> INSTANT (no artificial delay, no spinner to watch).
-  const THINKING_MIN_MS = 1500;
-  const THINKING_MAX_MS = 2500;
+  // WJ48/WJ112 — branded anticipation, CUT to <=500 ms (250-450 ms, randomised):
+  // the real calculation (billEstimate) is synchronous and instant -- a very
+  // short perceived delay still lets the visitor "see" a calculation happen
+  // (Enpal/EnergySage's pattern) without breaking WJ112's <=0.5 s first-number
+  // promise, including live recalcs (shading/exact kWh/mode).
+  // reduced-motion -> INSTANT (no artificial delay, no spinner to watch) -- unchanged.
+  const THINKING_MIN_MS = 250;
+  const THINKING_MAX_MS = 450;
   function thinkingDelayMs(): number {
     if (reducedMotion) return 0;
     return THINKING_MIN_MS + Math.random() * (THINKING_MAX_MS - THINKING_MIN_MS);
@@ -1781,6 +1803,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // recalcule à la volée si l'utilisateur revient corriger sa facture
   $('mt-facture-hiver')?.addEventListener('input', computeEstimate);
   $('mt-bill')?.addEventListener('change', computeEstimate);
+  // WJ112 — exact kWh now feeds the calculation, so it must recompute live too.
+  $('mt-bill-kwh')?.addEventListener('input', computeEstimate);
 
   // ——— WJ2 : « voir les panneaux sur votre toit » — facultatif, lazy, dégrade
   // proprement (pas de WebGL / pas de contour tracé → le bloc reste masqué). ———

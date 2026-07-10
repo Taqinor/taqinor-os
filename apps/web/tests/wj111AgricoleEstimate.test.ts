@@ -68,7 +68,9 @@ describe.each([
 
   it('résidentiel/professionnel : le chemin estimateFromBill reste intact après le garde', () => {
     const body = computeEstimateBody(src);
-    expect(body).toContain('estimateFromBill(bill, { lat, city })');
+    // WJ112 a étendu les options (exactKwhMonthly/ombrage) mais l'appel réel
+    // reste sur la MÊME facture/repère/ville dérivés plus haut dans la fonction.
+    expect(body).toMatch(/estimateFromBill\(bill, \{ lat, city[^}]*\}\)/);
   });
 
   it('le sélecteur de mode recalcule la carte en direct (bascule immédiate vers/depuis agricole)', () => {
