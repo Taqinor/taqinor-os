@@ -1503,6 +1503,85 @@ class TestResidentialFooterBrandingRendered(TestCase):
         self.assertIn('taqinor.ma/produits/', html)
 
 
+# ─── SCA27 — pied de page ÉTUDE (page 4) piloté par CompanyProfile ─────────────
+
+
+@tag('pdf')
+class TestEtudeFooterBranding(TestCase):
+    """SCA27 (page étude) — le pied de page de la page d'étude
+    d'autoconsommation (premium full + include_etude, industriel) ne grave plus
+    ``contact@taqinor.com`` / ``www.taqinor.ma`` (le contact fondateur) pour un
+    tenant qui n'a qu'un téléphone (email et site vides) : la ligne est
+    reconstruite dès qu'un contact quelconque est fourni. Le rendu fondateur
+    (email + tél + site) reste byte-identique."""
+
+    FULL_LINES = [
+        ('Onduleur réseau 10kW', '1', '11700'),
+        ('Panneau mono 550W', '14', '1100'),
+        ('Structures acier', '14', '375'),
+        ('Installation', '1', '4000'),
+    ]
+
+    ETUDE_PARAMS = {
+        'kwc': 9.94, 'production_annuelle': 12486, 'conso_annuelle': 120000,
+        'taux_autoconso': 100, 'taux_couverture': 10.4,
+        'economies_annuelles': 21851, 'payback': 3.0, 'prix_kwc': 6543,
+        'prod_mensuelle': [1040] * 12, 'conso_mensuelle': [10000] * 12,
+    }
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+        self.devis = make_devis(
+            self.company, self.user, self.client_obj, self.FULL_LINES,
+            reference='DEV-QE-ETUDE')
+        self.devis.mode_installation = 'industriel'
+        self.devis.etude_params = self.ETUDE_PARAMS
+        self.devis.save()
+
+    def _etude_page_html(self, entreprise):
+        """Rend le PDF premium+étude en injectant ``entreprise`` et renvoie le
+        fragment HTML de la page d'étude (à partir du titre « Étude
+        d'autoconsommation ») — la seule page portant ``ENT_ETUDE_CONTACT``."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
+        data = build_quote_data(self.devis, {'include_etude': True})
+        data['entreprise'] = entreprise
+        cap = {}
+        orig = G._render_pdf_weasyprint
+        G._render_pdf_weasyprint = lambda html, out: cap.update(html=html)
+        try:
+            G.generate_premium_pdf(data, '/tmp/_etude_footer_test.pdf')
+        finally:
+            G._render_pdf_weasyprint = orig
+        html = cap['html']
+        marker = "Étude d'autoconsommation"
+        idx = html.rfind(marker)
+        self.assertNotEqual(idx, -1, "la page d'étude doit être rendue")
+        return html[idx:]
+
+    def test_tel_only_tenant_no_founder_contact_on_etude_page(self):
+        """Tenant nom + téléphone, email et site VIDES → la page d'étude ne
+        montre NI l'email NI le site du fondateur (elle porte SON téléphone)."""
+        etude = self._etude_page_html({
+            'nom': 'Helios SARL', 'email': '', 'site_web': '',
+            'telephone': '+212 5 22 00 00 00'})
+        self.assertNotIn('contact@taqinor.com', etude)
+        self.assertNotIn('www.taqinor.ma', etude)
+        # Repli gracieux : à défaut d'email/site, SON téléphone est affiché.
+        self.assertIn('+212 5 22 00 00 00', etude)
+
+    def test_founder_full_profile_etude_footer_byte_identical(self):
+        """Profil fondateur (email + tél + site) → le pied de page d'étude
+        reste EXACTEMENT la chaîne historique (byte-identique)."""
+        etude = self._etude_page_html({
+            'nom': 'TAQINOR', 'email': 'contact@taqinor.com',
+            'telephone': '+212 6 61 85 04 10', 'site_web': 'www.taqinor.ma'})
+        self.assertIn('contact@taqinor.com &nbsp;·&nbsp; www.taqinor.ma', etude)
+
+
 # ─── SCA27 (complément) — site_url/produits_base du tenant câblés au moteur ────
 
 
