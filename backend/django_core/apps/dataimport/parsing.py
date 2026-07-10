@@ -57,14 +57,13 @@ def _iter_csv_rows(file_bytes):
     delim = ';' if sample.count(';') > sample.count(',') else ','
     reader = csv.DictReader(io.StringIO(text), delimiter=delim)
     headers = reader.fieldnames or []
-    rows = []
-    for raw_row in reader:
-        # Ignore les lignes entièrement vides (cellules vides ou absentes).
-        if not any((v or '').strip() if isinstance(v, str) else v is not None
-                   for v in raw_row.values()):
-            continue
-        rows.append(dict(raw_row))
-    return headers, rows
+    # ``csv.DictReader`` saute déjà les lignes STRICTEMENT vides (``[]`` — un
+    # ``\n`` isolé). On NE filtre PAS en plus les lignes à valeurs vides (``,``) :
+    # une ligne dont l'utilisateur a tapé les séparateurs est une DONNÉE (souvent
+    # une erreur de saisie) que la couche appelante doit VOIR et signaler — le
+    # flux d'import XPLT2 la compte en « ligne vide » plutôt que de la perdre en
+    # silence. Comportement identique à l'ancien ``parse_rows`` (``list(reader)``).
+    return headers, [dict(r) for r in reader]
 
 
 def _iter_xlsx_rows(file_bytes):

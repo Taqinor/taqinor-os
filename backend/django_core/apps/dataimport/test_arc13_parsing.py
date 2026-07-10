@@ -56,10 +56,15 @@ class IterRowsCsvTests(SimpleTestCase):
         headers, rows = iter_rows(file_bytes, 'data.csv')
         self.assertEqual(rows[0]['Ville'], 'Créteil')
 
-    def test_empty_rows_skipped(self):
+    def test_blank_lines_skipped_but_comma_only_row_kept(self):
+        # ``DictReader`` saute la ligne STRICTEMENT vide (le ``\n`` final), mais
+        # la ligne ``,`` (valeurs vides mais séparateur tapé) est CONSERVÉE : la
+        # couche appelante (import XPLT2) doit la voir pour la signaler « ligne
+        # vide » au lieu de perdre silencieusement la donnée.
         content = 'Nom,Email\nAlaoui,a@x.ma\n,\n\n'
         headers, rows = iter_rows(content.encode('utf-8'), 'data.csv')
-        self.assertEqual(len(rows), 1)
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[1], {'Nom': '', 'Email': ''})
 
     def test_extension_case_insensitive_defaults_to_csv(self):
         content = 'Nom\nAlaoui\n'
