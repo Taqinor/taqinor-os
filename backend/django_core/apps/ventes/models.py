@@ -129,6 +129,21 @@ class Devis(models.Model):
     )
     prix_cible_kwc = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True)
+    # ── SCA47 — prix au kWc DÉRIVÉ, gelé à la création (leçon ServiceTitan
+    # Price Insights) ──
+    # Signal comparable = Total TTC ÷ puissance kWc (le kWc vit déjà dans
+    # etude_params). Recomputable aujourd'hui mais le backfiller dans 2 ans
+    # coûterait bien plus que le dériver à l'écriture. Écrit UNE SEULE FOIS,
+    # quand le kWc est présent ET qu'un total existe (donc null pour le pompage
+    # sans kWc — jamais forcé) ; jamais recalculé ensuite (write-once).
+    #
+    # DONNÉE INTERNE générateur/BI — MÊME RÉGIME que prix_achat : n'apparaît sur
+    # AUCUN PDF ni aucune sortie client (alimente NTDATA46/47 + la couche
+    # métrique NTDATA7-13, nommées).
+    prix_par_kwc = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text='Prix TTC au kWc, dérivé et gelé à la création (interne '
+                  'générateur/BI — jamais sur un PDF/sortie client).')
     # ── Révisions / versionnage (T10) — additif. Un devis envoyé peut être
     # révisé en une nouvelle version qui garde l'historique lisible. La version
     # courante porte is_active=True ; les versions remplacées pointent vers leur
@@ -208,6 +223,32 @@ class Devis(models.Model):
 
     def __str__(self):
         return self.reference
+
+    def save(self, *args, **kwargs):
+        """SCA47 — dérive et GÈLE ``prix_par_kwc`` (Total TTC ÷ kWc) une seule
+        fois, dès qu'un kWc (etude_params) et un total existent. Write-once :
+        une fois posée, la valeur n'est JAMAIS recalculée (un ``update_fields``
+        qui ne la cite pas la laisse intacte). Null pour un devis sans kWc
+        (pompage) — jamais forcé. Donnée interne (jamais sur un PDF)."""
+        from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+        super().save(*args, **kwargs)
+        if self.prix_par_kwc is not None:
+            return  # déjà gelée — jamais recalculée.
+        kwc = (self.etude_params or {}).get('puissance_kwc')
+        try:
+            kwc_val = Decimal(str(kwc)) if kwc else Decimal('0')
+        except (InvalidOperation, TypeError, ValueError):
+            kwc_val = Decimal('0')
+        if kwc_val <= 0:
+            return  # pas de kWc → reste null (pompage / devis sans étude).
+        total = self.total_ttc
+        if not total or total <= 0:
+            return  # pas encore de lignes → on gèlera au prochain save utile.
+        prix = (Decimal(str(total)) / kwc_val).quantize(
+            Decimal('0.01'), rounding=ROUND_HALF_UP)
+        # Écriture ciblée (ne touche que cette colonne) — la valeur est gelée.
+        type(self).objects.filter(pk=self.pk).update(prix_par_kwc=prix)
+        self.prix_par_kwc = prix
 
     @property
     def total_ht(self):

@@ -339,7 +339,12 @@ class DevisSerializer(serializers.ModelSerializer):
     class Meta:
         model = Devis
         fields = '__all__'
-        read_only_fields = ['reference', 'created_by', 'fichier_pdf', 'date_creation']
+        # SCA47 — prix_par_kwc est DÉRIVÉ et gelé côté serveur (write-once au
+        # save) : lecture seule sur l'API interne générateur/BI, JAMAIS accepté
+        # du corps de requête (même régime interne que prix_achat, qui n'est
+        # jamais exposé côté client/PDF).
+        read_only_fields = ['reference', 'created_by', 'fichier_pdf',
+                            'date_creation', 'prix_par_kwc']
 
 
 class DevisWriteSerializer(serializers.ModelSerializer):
@@ -354,7 +359,10 @@ class DevisWriteSerializer(serializers.ModelSerializer):
         model = Devis
         exclude = ['reference', 'fichier_pdf']
         # company is force-assigned in perform_create — never accept it from the body.
-        read_only_fields = ['created_by', 'date_creation', 'company']
+        # SCA47 — prix_par_kwc est dérivé/gelé côté serveur (write-once), jamais
+        # accepté du corps de requête.
+        read_only_fields = ['created_by', 'date_creation', 'company',
+                            'prix_par_kwc']
         extra_kwargs = {'client': {'required': False}}
 
 
