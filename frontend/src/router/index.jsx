@@ -26,7 +26,6 @@ const Login = lazy(() => import('../pages/Login'))
 const Dashboard = lazy(() => import('../pages/Dashboard').then(m => ({ default: m.Component })))
 const Reporting = lazy(() => import('../pages/Reporting').then(m => ({ default: m.Component })))
 const Rapports = lazy(() => import('../pages/Rapports').then(m => ({ default: m.Component })))
-const ContratsMaintenance = lazy(() => import('../pages/sav/ContratsMaintenance').then(m => ({ default: m.Component })))
 const ClientList = lazy(() => import('../pages/crm/ClientList'))
 const LeadsPage = lazy(() => import('../pages/crm/leads/LeadsPage'))
 const DevisList = lazy(() => import('../pages/ventes/DevisList'))
@@ -52,14 +51,6 @@ const Co2Page = lazy(() => import('../pages/monitoring/Co2Page'))
 const CleaningsPage = lazy(() => import('../pages/monitoring/CleaningsPage'))
 const OmReportPage = lazy(() => import('../pages/monitoring/OmReportPage'))
 const ClientPortalPage = lazy(() => import('../pages/monitoring/ClientPortalPage'))
-const EquipementsPage = lazy(() => import('../pages/sav/EquipementsPage'))
-const TicketsPage = lazy(() => import('../pages/sav/TicketsPage'))
-const WarrantyClaimsPage = lazy(() => import('../pages/sav/WarrantyClaimsPage'))
-const SavParametresPage = lazy(() => import('../pages/sav/SavParametresPage'))
-const SavSlaReportPage = lazy(() => import('../pages/sav/SavSlaReportPage'))
-const SavAlarmesPage = lazy(() => import('../pages/sav/SavAlarmesPage'))
-const SavActionBoardPage = lazy(() => import('../pages/sav/SavActionBoardPage'))
-const KbArticlesPage = lazy(() => import('../pages/sav/KbArticlesPage'))
 const AgentChat = lazy(() => import('../pages/ia/AgentChat'))
 const OcrUpload = lazy(() => import('../pages/ia/OcrUpload'))
 const UsersManagement = lazy(() => import('../pages/admin/UsersManagement'))
@@ -274,22 +265,7 @@ const router = createBrowserRouter([
   // GED — gestion documentaire (navigateur arborescent)
   { path: '/ged', loader: authLoader, element: <WithLayout><DocumentsPage /></WithLayout> },
 
-  // Après-vente : parc d'équipements & tickets SAV
-  { path: '/equipements', loader: authLoader, element: <WithLayout><EquipementsPage /></WithLayout> },
-  { path: '/sav', loader: authLoader, element: <WithLayout><TicketsPage /></WithLayout> },
-  { path: '/sav/contrats', loader: authLoader, element: <WithLayout><ContratsMaintenance /></WithLayout> },
-  // FG83 — réclamations garantie fournisseur (flux RMA).
-  { path: '/sav/warranty-claims', loader: authLoader, element: <WithLayout><WarrantyClaimsPage /></WithLayout> },
-  // ZSAV2/ZMFG1/ZMFG2/XSAV14/XSAV23 — référentiels SAV (responsable/admin, écriture gardée côté serveur).
-  { path: '/sav/parametres', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><SavParametresPage /></WithLayout> },
-  // XSAV8 — rapport de conformité SLA + KPI avancés.
-  { path: '/sav/sla-rapport', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><SavSlaReportPage /></WithLayout> },
-  // Alarmes onduleur (FG280).
-  { path: '/sav/alarmes', loader: authLoader, element: <WithLayout><SavAlarmesPage /></WithLayout> },
-  // ZSAV6 — file d'action (tickets ouverts groupés par action attendue).
-  { path: '/sav/action-requise', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><SavActionBoardPage /></WithLayout> },
-  // FG87 — base de connaissances SAV (articles KB).
-  { path: '/sav/kb', loader: authLoader, element: <WithLayout><KbArticlesPage /></WithLayout> },
+  // Après-vente : migré vers frontend/src/features/sav/module.config.jsx (ARC48).
 
   // IA
   { path: '/ia/agent', loader: authLoader, element: <WithLayout><AgentChat /></WithLayout> },
