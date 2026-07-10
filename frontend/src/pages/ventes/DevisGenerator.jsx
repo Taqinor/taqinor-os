@@ -1377,6 +1377,19 @@ export default function DevisGenerator({
               </div>
             )}
 
+            {/* QX28 — le lead porte un repère toit (GPS) : raccourci vers la
+                conception 3D qui EXPLOITE ces données, plutôt qu'un devis à plat
+                qui les ignore. Visible seulement quand roof_point est présent. */}
+            {selectedLead?.roof_point && (
+              <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-brass-400/40 bg-brass-400/10 p-3 text-sm">
+                <span>🛰️ Repère toit disponible sur ce lead (GPS).</span>
+                <Button type="button" variant="outline" size="sm"
+                        onClick={() => navigate(`/devis-design/${selectedLead.id}`)}>
+                  Concevoir en 3D
+                </Button>
+              </div>
+            )}
+
             {!leadId && (
               <div className="mt-3 grid gap-4 sm:grid-cols-2">
                 <div className="grid gap-1.5">
