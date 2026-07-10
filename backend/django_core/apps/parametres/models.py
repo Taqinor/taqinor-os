@@ -15,6 +15,7 @@ from .models_tariff import DEFAULT_RESIDENTIAL_TIERS, TariffSettings
 from .models_translations import TranslationOverride
 from .models_taxes import TAUX_TVA_MAROCAINS, TauxTVA
 from .models_payment_terms import ConditionPaiement
+from .models_units import UNITES_MESURE_DEFAUT, UniteMesure
 
 __all__ = [
     'CompanyProfile',
@@ -27,4 +28,6 @@ __all__ = [
     'TauxTVA',
     'TAUX_TVA_MAROCAINS',
     'ConditionPaiement',
+    'UniteMesure',
+    'UNITES_MESURE_DEFAUT',
 ]

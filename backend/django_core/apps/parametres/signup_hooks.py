@@ -21,7 +21,15 @@ def seed_taux_tva_hook(company, *, user=None):
     TauxTVA.seed_defaults(company)
 
 
+def seed_unites_mesure_hook(company, *, user=None):
+    """Seede les unités de mesure usuelles de la société (idempotent)."""
+    from .models_units import UniteMesure
+    UniteMesure.seed_defaults(company)
+
+
 def register_parametres_signup_hooks():
     """Branche les hooks de seed Paramètres au registre (idempotent)."""
     from core.signup_hooks import register_signup_hook
     register_signup_hook('taux_tva', seed_taux_tva_hook, priority=30)
+    register_signup_hook('unites_mesure', seed_unites_mesure_hook,
+                         priority=30)

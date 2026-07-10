@@ -42,6 +42,9 @@ class ParametresConfig(AppConfig):
         # ARC24 — référentiel des conditions de paiement par société (également
         # ré-exporté par models.py) ; import ici pour l'enregistrement.
         import apps.parametres.models_payment_terms  # noqa: F401
+        # ARC27 — référentiel des unités de mesure par société (également
+        # ré-exporté par models.py) ; import ici pour l'enregistrement.
+        import apps.parametres.models_units  # noqa: F401
         # ARC23 — hook de seed « nouvelle société » des taux de TVA usuels.
         from .signup_hooks import register_parametres_signup_hooks
         register_parametres_signup_hooks()

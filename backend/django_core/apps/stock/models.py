@@ -637,6 +637,19 @@ class Produit(models.Model):
         max_length=20, default='unité',
         verbose_name='Unité de stock',
         help_text="Unité dans laquelle le stock est compté (unité/m/kg…).")
+    # ── ARC27 — référentiel des unités de mesure (additif, optionnel) ──
+    # FK nullable (string-FK — jamais d'import de apps.parametres.models ici)
+    # vers parametres.UniteMesure : MIROIR de ``unite_stock`` (qui reste MAÎTRE).
+    # Backfillée depuis les codes distincts par la commande
+    # ``backfill_unites_mesure``. Vide = comportement historique inchangé.
+    unite = models.ForeignKey(
+        'parametres.UniteMesure',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='produits',
+        verbose_name='Unité (référentiel)',
+        help_text="Unité du référentiel Paramètres reflétant ``unite_stock`` "
+                  "(miroir — source du libellé affiché).")
 
     # ── XSTK19 — Code SH (HS) + pays d'origine → dossier d'import (ADII) ────
     # Nullables : un produit sans ces champs garde le comportement historique
