@@ -76,12 +76,39 @@ def _fields_fournisseur(fournisseur):
     }
 
 
+def _fields_partenaire(partenaire):
+    """ARC19 — Champs d'identité miroités depuis un ``compta.Partenaire``."""
+    return {
+        'nom': partenaire.nom or '',
+        'roles': ('is_partenaire',),
+        'email': partenaire.email or '',
+        'type_tiers': 'entreprise',
+        'raison_sociale': partenaire.nom or '',
+        'telephone': partenaire.telephone or '',
+    }
+
+
+def _fields_dossier(dossier):
+    """ARC19 — Champs d'identité miroités depuis un ``rh.DossierEmploye``
+    (partie INTERNE : aucun rôle commercial, JAMAIS de RIB — voir ARC25)."""
+    return {
+        'nom': dossier.nom or '',
+        'roles': (),
+        'email': dossier.email or '',
+        'type_tiers': 'particulier',
+        'prenom': dossier.prenom or '',
+        'telephone': dossier.telephone or '',
+        'cin': dossier.cin or '',
+    }
+
+
 # Registre (modèle → extracteur de champs). Le moteur ci-dessous est agnostique
 # du modèle : ajouter une source = ajouter une ligne ici + un extracteur.
-# ARC19 y ajoute compta.Partenaire et rh.DossierEmploye.
 _SOURCES = [
     ('crm', 'Client', _fields_client),          # ARC18
     ('stock', 'Fournisseur', _fields_fournisseur),  # ARC18
+    ('compta', 'Partenaire', _fields_partenaire),   # ARC19
+    ('rh', 'DossierEmploye', _fields_dossier),      # ARC19
 ]
 
 
