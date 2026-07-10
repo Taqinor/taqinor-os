@@ -3010,3 +3010,81 @@ def get_or_create_parrainage_template(company, langue='fr'):
             'corps': corps_defaut,
         })
     return template
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# QX42 — Rétention PII des copies brutes d'intake (registre YOPSB10, core.retention)
+#
+# `WebsiteLeadPayload` (PII brute + IP, SET_NULL depuis Lead → l'effacement
+# RGPD d'un lead n'atteint JAMAIS ce payload brut) et `ChatSessionPublique`
+# s'accumulent INDÉFINIMENT. Le framework générique existe (`core.retention`)
+# mais son registre est VIDE — aucune app n'y enregistre de politique. Ceci
+# enregistre la politique CRM (voir `CrmConfig.ready()`), fenêtre par défaut
+# 180 jours, override founder via `WEBSITE_LEAD_PAYLOAD_RETENTION_DAYS` /
+# `CHAT_SESSION_RETENTION_DAYS` (settings/.env — même patron que les autres
+# constantes founder-configurables de ce module, ex.
+# `WEBSITE_LEAD_WEBHOOK_SECRET`). 0/négatif désactive la purge (conservation
+# illimitée, comportement actuel inchangé).
+
+DEFAULT_WEBSITE_LEAD_PAYLOAD_RETENTION_DAYS = 180
+DEFAULT_CHAT_SESSION_RETENTION_DAYS = 180
+
+
+def _retention_days(setting_name, default_days):
+    from django.conf import settings
+    value = getattr(settings, setting_name, None)
+    if value is None:
+        return default_days
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default_days
+
+
+def purge_website_lead_payloads(now, apply_) -> int:
+    """QX42 — purge les ``WebsiteLeadPayload`` PROCESSED au-delà de la
+    fenêtre de rétention. Les payloads NON traités ou en ERREUR (``error``
+    non vide) sont EXEMPTÉS — ils doivent d'abord vieillir via la surface de
+    rejeu QX16 (un payload en erreur reste la seule trace récupérable d'un
+    lead potentiellement perdu ; on ne purge jamais une piste encore
+    actionnable). Contrat ``core.retention`` : ``apply_=False`` (dry-run) ne
+    supprime rien, renvoie le compte qui SERAIT supprimé."""
+    from django.db.models import Q
+
+    from .models import WebsiteLeadPayload
+
+    days = _retention_days(
+        'WEBSITE_LEAD_PAYLOAD_RETENTION_DAYS',
+        DEFAULT_WEBSITE_LEAD_PAYLOAD_RETENTION_DAYS)
+    if days <= 0:
+        return 0
+    cutoff = now - timezone.timedelta(days=days)
+    qs = WebsiteLeadPayload.objects.filter(
+        processed=True, received_at__lt=cutoff,
+    ).filter(Q(error__isnull=True) | Q(error=''))
+    count = qs.count()
+    if apply_ and count:
+        qs.delete()
+    return count
+
+
+def purge_stale_chat_sessions(now, apply_) -> int:
+    """QX42 — purge les ``ChatSessionPublique`` (transcript PII d'un visiteur
+    anonyme) inactives au-delà de la fenêtre de rétention (mesurée sur
+    ``last_message_at`` — une session encore active récemment n'est jamais
+    purgée même si ``created_at`` est ancien). Une session déjà liée à un
+    Lead réel (``lead_id`` renseigné) garde son transcript — la conversation
+    fait partie de l'historique du lead, pas une trace anonyme jetable."""
+    from .models import ChatSessionPublique
+
+    days = _retention_days(
+        'CHAT_SESSION_RETENTION_DAYS', DEFAULT_CHAT_SESSION_RETENTION_DAYS)
+    if days <= 0:
+        return 0
+    cutoff = now - timezone.timedelta(days=days)
+    qs = ChatSessionPublique.objects.filter(
+        last_message_at__lt=cutoff, lead__isnull=True)
+    count = qs.count()
+    if apply_ and count:
+        qs.delete()
+    return count
