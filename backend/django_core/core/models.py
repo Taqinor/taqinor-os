@@ -92,6 +92,25 @@ class TenantModel(TimestampedModel):
 # app métier (le ``deleted_by`` pointe ``authentication.CustomUser``, une app de
 # fondation). Le journal concret de corbeille/undo est ``DeletionRecord``
 # (plus bas), keyé via ``contenttypes`` — toujours sans import métier.
+#
+# ── ARC15 — Inventaire d'adoption (recensement du 2026-07-10) ──────────────
+# Adoption réelle du mixin ``SoftDeleteModel`` par les modèles métier :
+#   NOMBRE DE MODÈLES QUI EN HÉRITENT : 0 (aucune app, sur les 35+ recensées).
+# Les seules références dans le dépôt sont l'INFRASTRUCTURE, pas de l'adoption :
+#   * ``core/models.py`` — définition du mixin + ``DeletionRecord`` (ce fichier) ;
+#   * ``core/trash.py``  — service corbeille/undo qui consomme l'interface
+#     DYNAMIQUEMENT (``obj.restore()`` / ``hasattr``), sans importer d'app ;
+#   * ``core/tests/test_trash.py`` — teste la STRUCTURE du mixin lui-même ;
+#   * un commentaire dans ``core/models.py`` (YOPSB3, ~l.1574) et la migration
+#     ``core/migrations/0021_...`` qui notent EXPLICITEMENT un soft-delete
+#     « léger » distinct (champ direct, PAS ce mixin).
+# Le socle est donc construit + testé + prêt, mais VOLONTAIREMENT non encore
+# adopté par le domaine.
+#
+# DÉCISION ARC15 : la vague d'adoption du soft-delete (YDATA17) s'implémente sur
+# CE mixin ``core.SoftDeleteModel`` (ne JAMAIS en créer un nouveau). Les modèles
+# pilotes d'adoption appartiennent à YDATA17, pas à ARC1/ARC15 : ici on se
+# contente d'acter le socle + de recenser l'adoption (nulle à ce jour).
 # ---------------------------------------------------------------------------
 
 
