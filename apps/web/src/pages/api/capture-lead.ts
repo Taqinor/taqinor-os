@@ -19,6 +19,7 @@ import * as cf from 'cloudflare:workers';
 import {
   buildLeadRecord,
   crossSiteRejection,
+  fireCapi,
   forwardLead,
   isHoneypotTripped,
   isSameOriginRequest,
@@ -108,6 +109,15 @@ export const POST: APIRoute = async ({ request }) => {
       console.error(
         `[capture-lead][ALERT] ${streak} échecs de livraison CRM consécutifs (dernier motif: ${fw.reason}) — vérifier LEAD_WEBHOOK_URL / le récepteur taqinor-os.`,
       );
+    }
+    // WJ110 — ce point d'entrée (CTA principal /devis/mon-toit) ne déclenchait
+    // JAMAIS le Meta CAPI, contrairement aux flux secondaires (simulate,
+    // preview-lead) : Meta optimisait donc les campagnes sur une tranche non
+    // représentative du trafic. Même appel, même tolérance de panne (silencieux,
+    // jamais bloquant), fireCapi se gate déjà lui-même sur `record.qualified`.
+    const capi = await fireCapi(record, env, fetch);
+    if (!capi.sent && baseRecord.qualified) {
+      console.log('[capi] non envoyé (service absent ou injoignable)');
     }
   })();
   const waitUntil = (cf as { waitUntil?: (p: Promise<unknown>) => void }).waitUntil;
