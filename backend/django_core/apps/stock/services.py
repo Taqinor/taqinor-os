@@ -1289,14 +1289,37 @@ def recompute_facture_fournisseur_statut(facture):
 # en important apps.stock.models directement. La société est TOUJOURS posée côté
 # serveur (jamais lue du corps) et le profil hérite de la société du fournisseur.
 
+def map_specialite_to_metier(specialite):
+    """DC34/ARC22 — fait correspondre un texte libre de spécialité (ex. carnet
+    projet ``gestion_projet.SousTraitant``) à un code ``SousTraitantProfile.
+    Metier`` (enum fermé), insensible à la casse, repli ``AUTRE`` si aucun
+    métier ne correspond (comportement jamais bloquant). Cette fonction est le
+    SEUL endroit qui connaît le mapping specialite→metier — les autres apps
+    passent ``specialite`` à ``create_sous_traitant`` plutôt que de dupliquer
+    cette logique en important ``apps.stock.models`` elles-mêmes."""
+    from .models import SousTraitantProfile
+    if specialite:
+        for code, _label in SousTraitantProfile.Metier.choices:
+            if code.replace('_', ' ') == specialite.strip().lower():
+                return code
+    return SousTraitantProfile.Metier.AUTRE
+
+
 def create_sous_traitant(*, company, user=None, nom, metier='autre',
-                         contact_personne=None, email=None, telephone=None,
-                         adresse=None, ice=None, identifiant_fiscal=None,
-                         rc=None, rib=None, actif=True, note=None):
+                         specialite=None, contact_personne=None, email=None,
+                         telephone=None, adresse=None, ice=None,
+                         identifiant_fiscal=None, rc=None, rib=None,
+                         actif=True, note=None):
     """DC34 — crée un sous-traitant = Fournisseur(type='service') + son
     SousTraitantProfile. Société posée serveur (fournisseur ET profil).
-    Renvoie le Fournisseur créé."""
+    ``specialite`` (texte libre, optionnel) est mappé vers ``metier`` via
+    ``map_specialite_to_metier`` quand fourni — permet aux appelants
+    cross-app (ex. ``gestion_projet``) de passer du texte libre sans importer
+    ``apps.stock.models`` eux-mêmes ; ``metier`` explicite reste prioritaire
+    si fourni. Renvoie le Fournisseur créé."""
     from .models import Fournisseur, SousTraitantProfile
+    if specialite is not None:
+        metier = map_specialite_to_metier(specialite)
     fournisseur = Fournisseur.objects.create(
         company=company, nom=nom, type=Fournisseur.Type.SERVICE,
         contact_personne=contact_personne, email=email or None,
