@@ -29,6 +29,10 @@ vi.mock('react-router-dom', async (importOriginal) => {
 
 import DevisList from './DevisList'
 import gestionProjetApi from '../../api/gestionProjetApi'
+// ARC49 — le tableau DevisList passe par le moteur `ui/datatable` (useDensity),
+// qui EXIGE un <ThemeProvider> (présent en prod via <Layout>). Wrapper de
+// harnais uniquement — aucune assertion modifiée.
+import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
 function makeStore(devis) {
   return configureStore({
@@ -44,7 +48,9 @@ function renderList(devis) {
   return render(
     <Provider store={store}>
       <MemoryRouter initialEntries={['/ventes/devis']}>
-        <DevisList />
+        <ThemeProvider>
+          <DevisList />
+        </ThemeProvider>
       </MemoryRouter>
     </Provider>,
   )

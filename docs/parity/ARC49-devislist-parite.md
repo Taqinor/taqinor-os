@@ -198,12 +198,41 @@ prouvée » exigé par ARC49. `renderExpanded` n'est utilisé par AUCUNE migrati
 Groupe J en production (seulement la démo `/ui`), confirmant que les écrans à
 actions riches n'ont pas été portés sur ce modèle.
 
-**Décision :** on livre le vrai gain de valeur de la tâche — **« lignes divisées »
-avec parité prouvée** — en extrayant la ligne (`DevisRow`) et la modale PDF
-(`DevisPdfDialog`) en composants internes au fichier nommé, en gardant le tableau
-`data-table`, tous les appels API, les options PDF, les statuts, les hooks DOM et
-les 23 tests **strictement identiques**. La **bascule du cadre vers `DataTable`
-lui-même est marquée BLOCKED** (incompatibilité de contrat prouvée ci-dessus) pour
-arbitrage de l'orchestrateur : elle exigerait d'abord d'étendre le moteur
-`ui/datatable` (rowActions riches + multi-`renderExpanded` + option `table.data-table`),
-hors périmètre « toucher uniquement les fichiers nommés ».
+**Décision (phase 1) :** on a d'abord livré **« lignes divisées » avec parité
+prouvée** en extrayant la ligne (`DevisRow`) et la modale PDF (`DevisPdfDialog`)
+en composants internes au fichier nommé, en gardant le tableau `data-table`, tous
+les appels API, les options PDF, les statuts, les hooks DOM et les 23 tests
+**strictement identiques**. La bascule du cadre vers `DataTable` était alors
+marquée BLOCKED (incompatibilité de contrat prouvée ci-dessus).
+
+## 13. RÉSOLU (ARC49 2/3) — extension du moteur + bascule sur le frame
+
+Le blocage du §12 est LEVÉ. Le moteur `ui/datatable` a été **étendu de façon
+strictement additive** (échappatoires opt-in, zéro changement des ~79 consommateurs
+existants — prouvé : `DataTable.test.jsx` 29 tests d'origine intacts + 8 nouveaux,
+et 3 suites de pages lourdes vertes) :
+
+- **`renderRow(row, api)`** — rend une LIGNE ENTIÈRE personnalisée (remplace le
+  pipeline de cellules + le `RowActions` kebab intégrés). Résout d'un coup les
+  points a) actions riches (boutons à état `loading`, variantes, `AlertDialog`,
+  « Générer facture » désactivé + note) et b) panneaux multiples : la ligne custom
+  émet elle-même ses `<tr>` de panneaux. `api` expose sélection + panneaux nommés
+  (`isPanelOpen`/`togglePanel`/`setPanel`) + `query`.
+- **`renderHeaderRow(api)`** — en-tête `<th>` personnalisé (l'écran garde ses 8
+  colonnes + la case « tout sélectionner »).
+- **`tableClassName`** (→ `data-table`) et **`tableRole`** (défaut `grid` inchangé).
+- **`hideToolbar` / `hideMobileCards` / `hidePagination`** — masquent les chromes
+  intégrés quand l'écran fournit les siens.
+
+**Bascule DevisList (ARC49 2/3).** Seul le bloc `<table className="data-table">` a
+été remplacé par `<DataTable … renderRow={d => <DevisRow d={d} ctx={rowCtx} />}
+renderHeaderRow={…} tableClassName="data-table" hideToolbar hidePagination
+manualSorting manualFiltering manualPagination>` (seams manuels → ordre serveur
+préservé, aucun tri/pagination client). `<DevisRow>` et `<DevisPdfDialog>` restent
+**verbatim** ; la sélection reste pilotée par l'état de page (`selectedIds`), les
+deux panneaux (versions / 3D) restent pilotés par l'état de page + deep-links
+(`?variantes=`, `?design3d=`), le flux PDF est **inchangé** (règle #4). Le cas
+« filtre sans résultat » garde sa ligne pleine largeur (le moteur ne déroule
+`renderRow` que pour ≥ 1 ligne). Les **23 tests page passent inchangés** ; seule
+modification de test : ajout du wrapper `<ThemeProvider>` au harnais (le moteur lit
+`useDensity()`, présent en prod via `<Layout>`) — **aucune assertion modifiée**.
