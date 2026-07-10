@@ -145,6 +145,12 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    # SCA43 / NTPLT16 — mémo de config société PAR REQUÊTE (contextvar). Ouvre un
+    # scope de cache autour de chaque requête pour que les accesseurs de config
+    # (CompanyProfile/DocumentTemplates/identité/TVA) lisent la config une seule
+    # fois quel que soit le nombre de devis sérialisés (dé-N+1 de la liste). Hors
+    # requête (Celery/PDF) → aucun scope → comportement historique inchangé.
+    'core.request_cache.RequestConfigCacheMiddleware',
     # ODX4 — 404 sur les endpoints d'un module désactivé pour la société.
     # Défaut = actif (aucun 404 nouveau sans toggle). Placé après l'auth Django ;
     # résout lui-même le JWT DRF best-effort (aucun blocage sans jeton valide).
