@@ -933,13 +933,25 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # /BPA/tampon). SURCHARGES non vides seulement ; toute clé absente → le moteur
     # applique son littéral historique, donc le PDF reste byte-identique tant que
     # rien n'est édité. Repli silencieux sur {} si la table n'existe pas encore.
-    doc_texts = {}
-    try:
-        from apps.parametres.models_documents import DocumentTemplates
-        doc_texts = DocumentTemplates.get(
-            company=getattr(devis, "company", None)).as_doc_texts()
-    except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
-        doc_texts = {}
+    #
+    # SCA43 / NTPLT16 — la LECTURE de config est mémorisée PAR REQUÊTE (contextvar,
+    # en amont du moteur) : le dict de surcharges est constant par société le temps
+    # d'une requête, donc la liste des devis ne relit plus DocumentTemplates une
+    # fois par devis (dé-N+1). Hors requête (Celery/PDF) le mémo est inactif → même
+    # lecture qu'avant. Le RENDU ne change pas : ``doc_texts`` est bit-identique.
+    _company = getattr(devis, "company", None)
+
+    def _load_doc_texts():
+        try:
+            from apps.parametres.models_documents import DocumentTemplates
+            return DocumentTemplates.get(company=_company).as_doc_texts()
+        except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
+            return {}
+
+    from core import request_cache
+    doc_texts = request_cache.memoize(
+        ("ventes.devis_doc_texts", getattr(_company, "id", None)),
+        _load_doc_texts)
 
     # DC1 — identité société (multi-tenant) : nom/RC/ICE/RIB/banque/adresse/tel/
     # couleur lus depuis CompanyProfile via le sélecteur parametres. Le moteur
