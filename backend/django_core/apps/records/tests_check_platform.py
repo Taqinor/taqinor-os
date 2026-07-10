@@ -13,23 +13,27 @@ from django.test import SimpleTestCase
 from apps.records.platform_guards import (
     BASELINE_BRANDING,
     BASELINE_HANDROLLED_MODELS,
+    BASELINE_KIT_BYPASS_DOCUMENTS,
     BASELINE_UNSCOPED_VIEWSETS,
     GRANDFATHERED_ACTIVITY_CLASSES,
     GRANDFATHERED_FILEFIELDS,
     GRANDFATHERED_FLAT_STORAGE_KEYS,
     GRANDFATHERED_NUMBERING,
     GRANDFATHERED_WEASYPRINT,
+    KIT_PERMANENT_EXCLUSIONS,
     NUMBERING_HOME_FILES,
     SOCLE_DEFINING_APPS,
     is_test_path,
     new_branding_hits,
     new_handrolled_models,
+    new_kit_bypass_documents,
     new_unscoped_viewsets,
     scan_activity_classes,
     scan_branding,
     scan_filefields,
     scan_flat_storage_key,
     scan_handrolled_models,
+    scan_kit_bypass_documents,
     scan_numbering,
     scan_unscoped_viewsets,
     scan_weasyprint_import,
@@ -395,3 +399,130 @@ class TestBrandingGuard(SimpleTestCase):
     def test_baseline_covers_current_tree(self):
         """Baseline datée non vide (état post-SCA25-27 du 2026-07-10)."""
         self.assertGreater(len(BASELINE_BRANDING), 0)
+
+
+class TestKitBypassDocumentGuard(SimpleTestCase):
+    """SCA37 — garde CI kit : plus de « document métier » hand-rollé (statut à
+    choices + ligne sœur Ligne<Nom> + montant_ttc) hors core.documents.DocumentMetier
+    (SCA30/31), sauf l'exclusion PERMANENTE règle #4 (Devis/Facture/BonCommande/Avoir)."""
+
+    # Un NOUVEAU document fictif hand-rollé : statut à choices + ligne sœur +
+    # montant_ttc sur la ligne, sans hériter DocumentMetier.
+    FICTIVE_HANDROLLED_DOC = (
+        "class SinistreDoc(models.Model):\n"
+        "    statut = models.CharField(max_length=20, choices=Statut.choices,"
+        " default=Statut.BROUILLON)\n"
+        "\n"
+        "class LigneSinistreDoc(models.Model):\n"
+        "    montant_ttc = models.DecimalField(max_digits=12, decimal_places=2)\n"
+    )
+
+    def test_fictive_handrolled_doc_is_red(self):
+        """Un document fictif hand-rollé (statut+ligne sœur+montant_ttc) = violation."""
+        found = scan_kit_bypass_documents("flotte", self.FICTIVE_HANDROLLED_DOC)
+        self.assertEqual(found, ["flotte.SinistreDoc"])
+        # Absent de la baseline → violation réelle.
+        self.assertEqual(new_kit_bypass_documents(found), ["flotte.SinistreDoc"])
+
+    def test_montant_ttc_on_parent_is_also_red(self):
+        """montant_ttc peut être sur le PARENT plutôt que la ligne — toujours rouge."""
+        src = (
+            "class BonDivers(models.Model):\n"
+            "    statut = models.CharField(max_length=20, choices=Statut.choices)\n"
+            "    montant_ttc = models.DecimalField(max_digits=12, decimal_places=2)\n"
+            "\n"
+            "class LigneBonDivers(models.Model):\n"
+            "    pass\n"
+        )
+        found = scan_kit_bypass_documents("qhse", src)
+        self.assertEqual(found, ["qhse.BonDivers"])
+
+    def test_no_sibling_line_is_green(self):
+        """Pas de classe Ligne<Nom> sœur → pas l'anatomie visée, jamais rouge."""
+        src = (
+            "class SoloDoc(models.Model):\n"
+            "    statut = models.CharField(max_length=20, choices=Statut.choices)\n"
+            "    montant_ttc = models.DecimalField(max_digits=12, decimal_places=2)\n"
+        )
+        self.assertEqual(scan_kit_bypass_documents("qhse", src), [])
+
+    def test_no_montant_ttc_is_green(self):
+        """Statut+ligne sœur SANS montant_ttc (ex. DemandeAchat-like) → pas visé
+        (SCA36 : le kit est composable sans le mixin totaux)."""
+        src = (
+            "class DemandeDivers(models.Model):\n"
+            "    statut = models.CharField(max_length=20, choices=Statut.choices)\n"
+            "\n"
+            "class LigneDemandeDivers(models.Model):\n"
+            "    quantite = models.IntegerField()\n"
+        )
+        self.assertEqual(scan_kit_bypass_documents("installations", src), [])
+
+    def test_no_statut_choices_is_green(self):
+        """Pas de statut à choices → pas l'anatomie visée."""
+        src = (
+            "class NonStatutDoc(models.Model):\n"
+            "    montant_ttc = models.DecimalField(max_digits=12, decimal_places=2)\n"
+            "\n"
+            "class LigneNonStatutDoc(models.Model):\n"
+            "    pass\n"
+        )
+        self.assertEqual(scan_kit_bypass_documents("qhse", src), [])
+
+    def test_kit_inheriting_doc_is_green(self):
+        """Un document QUI HÉRITE DocumentMetier n'est jamais un offender, même
+        avec les trois traits (statut+ligne sœur+montant_ttc)."""
+        src = (
+            "class OrdreMission(DocumentMetier):\n"
+            "    statut = models.CharField(max_length=20, choices=Statut.choices)\n"
+            "    montant_ttc = models.DecimalField(max_digits=12, decimal_places=2)\n"
+            "\n"
+            "class LigneOrdreMission(LigneDocumentMetier):\n"
+            "    pass\n"
+        )
+        self.assertEqual(scan_kit_bypass_documents("rh", src), [])
+
+    def test_rule4_permanent_exclusion_is_green(self):
+        """Devis/Facture/BonCommande/Avoir ne sont JAMAIS des offenders, même
+        avec les trois traits réunis — exclusion permanente règle #4."""
+        for name in ("Devis", "Facture", "BonCommande", "Avoir"):
+            src = (
+                f"class {name}(models.Model):\n"
+                f"    statut = models.CharField(max_length=20, choices=Statut.choices)\n"
+                f"    montant_ttc = models.DecimalField(max_digits=12, decimal_places=2)\n"
+                f"\n"
+                f"class Ligne{name}(models.Model):\n"
+                f"    pass\n"
+            )
+            self.assertEqual(scan_kit_bypass_documents("ventes", src), [], name)
+
+    def test_permanent_exclusion_set_is_named(self):
+        """L'exclusion permanente règle #4 couvre exactement les 4 documents
+        nommés dans CLAUDE.md — jamais retirable par un nettoyage de baseline."""
+        self.assertEqual(
+            KIT_PERMANENT_EXCLUSIONS,
+            frozenset({
+                "ventes.Devis", "ventes.Facture",
+                "ventes.BonCommande", "ventes.Avoir",
+            }),
+        )
+
+    def test_permanent_exclusion_never_enters_baseline(self):
+        """Même si un exclu permanent apparaissait dans ``found`` (défense en
+        profondeur), new_kit_bypass_documents ne le laisse jamais passer."""
+        self.assertEqual(new_kit_bypass_documents(["ventes.Devis"]), [])
+
+    def test_baseline_entry_is_green(self):
+        """Un offender déjà dans la baseline gelée n'est PAS une violation."""
+        baselined = next(iter(BASELINE_KIT_BYPASS_DOCUMENTS))
+        self.assertEqual(new_kit_bypass_documents([baselined]), [])
+
+    def test_baseline_covers_current_tree(self):
+        """Baseline datée non vide (inventaire pré-kit du 2026-07-10) et couvre
+        les deux pilotes réels connus (stock.FactureFournisseur, ventes.NoteDebit)."""
+        self.assertGreater(len(BASELINE_KIT_BYPASS_DOCUMENTS), 0)
+        self.assertIn("stock.FactureFournisseur", BASELINE_KIT_BYPASS_DOCUMENTS)
+        self.assertIn("ventes.NoteDebit", BASELINE_KIT_BYPASS_DOCUMENTS)
+        # Les 4 exclus permanents ne sont JAMAIS dans la baseline (ils vivent
+        # dans KIT_PERMANENT_EXCLUSIONS, pas dans le fichier baseline).
+        self.assertFalse(BASELINE_KIT_BYPASS_DOCUMENTS & KIT_PERMANENT_EXCLUSIONS)

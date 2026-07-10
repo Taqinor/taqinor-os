@@ -1,4 +1,4 @@
-"""ARC8/ARC26 — pure platform-kernel guard logic (no Django, no DB, no I/O).
+"""ARC8/ARC26/SCA4/SCA37 — pure platform-kernel guard logic (no Django, no DB, no I/O).
 
 Lives inside ``apps/records`` so it is importable both by the CI entry point
 ``scripts/check_platform.py`` (which adds ``backend/django_core`` to ``sys.path``)
@@ -563,3 +563,113 @@ def branding_error_line(relpath: str) -> str:
         f"ajoutez le fichier à la baseline gelée "
         f"apps/records/platform_baselines/branding_hits.txt (décroissante)."
     )
+
+
+# ── SCA37 — garde CI kit pour le code NOUVEAU : plus de « document métier »
+#    hand-rollé hors du kit ``core.documents.DocumentMetier`` (SCA30/31) ──────
+#
+# Constat (SCA37) : sans garde, le 18ᵉ document hand-rollé arrive au prochain
+# flood. L'anatomie « document métier » (statut + lignes + totaux TTC figés)
+# se répète sur le dépôt (cf. docstring ``core/documents.py``) ; le kit SCA30/31
+# fournit désormais l'unité réutilisable. Ce garde empêche un NOUVEAU modèle de
+# re-hand-roller cette anatomie au lieu d'hériter le kit.
+#
+# HEURISTIQUE (documentée) : un modèle CONCRET déclenche le garde quand LES
+# TROIS conditions suivantes sont réunies dans le fichier scanné :
+#   1. il déclare un champ ``statut`` (ou ``statut...``) à ``choices`` — la
+#      machine d'états d'un document ;
+#   2. une classe SŒUR nommée EXACTEMENT ``Ligne<MêmeNom>`` existe dans le même
+#      fichier (même app) — le motif ligne/totaux d'un document ;
+#   3. un champ ``montant_ttc`` (le nom EXACT posé par
+#      ``core.documents.TotauxDocumentMixin``) est déclaré sur le modèle
+#      LUI-MÊME OU sur sa ligne sœur — la chaîne de totaux figés.
+# ET ses bases de classe ne mentionnent PAS ``DocumentMetier`` (un modèle qui
+# hérite déjà le kit n'est jamais visé, même s'il porte par ailleurs les trois
+# traits ci-dessus — c'est justement le but du kit).
+#
+# EXCLUSION PERMANENTE (règle #4, CLAUDE.md) — nommée et ABSOLUE, jamais un
+# rétrofit exigé, jamais retirable par un nettoyage de baseline : Devis /
+# Facture / BonCommande / Avoir (``ventes``) restent sur leurs chaînes de
+# statuts propres à jamais, séparées de ce kit et de la couche funnel
+# ``STAGES.py`` (règle #2). Un futur champ ``montant_ttc`` ajouté à l'un de ces
+# quatre modèles ne doit JAMAIS faire rougir ce garde : l'exclusion est
+# vérifiée AVANT la baseline, par nom qualifié, en dur dans ce module.
+KIT_PERMANENT_EXCLUSIONS = frozenset({
+    "ventes.Devis",
+    "ventes.Facture",
+    "ventes.BonCommande",
+    "ventes.Avoir",
+})
+
+# ``statut`` (ou tout champ ``statut...``) déclaré avec des ``choices`` — motif
+# large pour couvrir ``statut = models.CharField(max_length=.., choices=…)`` sur
+# une ou plusieurs lignes (``DOTALL``).
+KIT_STATUT_CHOICES_RE = re.compile(
+    r"^\s*statut\w*\s*=\s*models\.\w*Field\([^)]*choices",
+    re.MULTILINE | re.DOTALL,
+)
+
+# Champ ``montant_ttc`` déclaré (nom EXACT posé par ``TotauxDocumentMixin``).
+KIT_MONTANT_TTC_RE = re.compile(r"^\s*montant_ttc\s*=\s*models\.", re.MULTILINE)
+
+
+def scan_kit_bypass_documents(app: str, text: str) -> list[str]:
+    """Retourne ``['app.ClassName', …]`` des documents hand-rollés NEUFS.
+
+    ``app`` : label d'app ; ``text`` : le contenu d'UN fichier de modèles (les
+    trois traits — statut/sœur/montant_ttc — doivent cohabiter dans le MÊME
+    fichier, comme c'est le cas pour tout document existant du dépôt). Un
+    modèle dans ``KIT_PERMANENT_EXCLUSIONS`` (règle #4) n'est JAMAIS retourné,
+    quels que soient ses traits. Un modèle dont les bases mentionnent
+    ``DocumentMetier`` (a déjà adopté le kit) n'est jamais retourné."""
+    found: list[str] = []
+    for name, bases, body in _class_blocks(text):
+        qualified = f"{app}.{name}"
+        if qualified in KIT_PERMANENT_EXCLUSIONS:
+            continue
+        if "DocumentMetier" in bases:
+            continue  # a déjà adopté le kit — jamais un offender
+        if not KIT_STATUT_CHOICES_RE.search(body):
+            continue
+        sibling_name = f"Ligne{name}"
+        sibling_body = None
+        for other_name, _other_bases, other_body in _class_blocks(text):
+            if other_name == sibling_name:
+                sibling_body = other_body
+                break
+        if sibling_body is None:
+            continue  # pas de ligne sœur → pas l'anatomie visée
+        if not (KIT_MONTANT_TTC_RE.search(body) or KIT_MONTANT_TTC_RE.search(sibling_body)):
+            continue
+        found.append(qualified)
+    return found
+
+
+def kit_bypass_error_line(qualified: str) -> str:
+    return (
+        f"[SCA37] Nouveau modèle « {qualified} » hand-roule l'anatomie "
+        f"« document métier » (statut à choices + ligne sœur Ligne{qualified.split('.')[-1]} "
+        f"+ champ montant_ttc) sans hériter core.documents.DocumentMetier "
+        f"(+ LigneDocumentMetier/TotauxDocumentMixin, SCA30/31). Composez le "
+        f"kit au lieu de re-copier statut/lignes/totaux à la main. Si c'est un "
+        f"document PRÉ-EXISTANT au kit, ajoutez-le à la baseline gelée "
+        f"apps/records/platform_baselines/kit_bypass_documents.txt (elle ne "
+        f"peut que décroître) — sauf Devis/Facture/BonCommande/Avoir, qui "
+        f"n'entrent JAMAIS dans cette baseline (exclusion permanente règle #4, "
+        f"KIT_PERMANENT_EXCLUSIONS dans ce module)."
+    )
+
+
+# Baseline gelée (chargée à l'import) des documents hand-rollés PRÉ-kit.
+BASELINE_KIT_BYPASS_DOCUMENTS = _load_baseline("kit_bypass_documents.txt")
+
+
+def new_kit_bypass_documents(found: list[str]) -> list[str]:
+    """Filtre ``found`` contre la baseline gelée : ne garde que les NOUVEAUX
+    offenders (absents de la baseline ET absents de ``KIT_PERMANENT_EXCLUSIONS``
+    — cette dernière est déjà appliquée en amont par ``scan_kit_bypass_documents``,
+    revérifiée ici par défense en profondeur)."""
+    return [
+        q for q in found
+        if q not in BASELINE_KIT_BYPASS_DOCUMENTS and q not in KIT_PERMANENT_EXCLUSIONS
+    ]
