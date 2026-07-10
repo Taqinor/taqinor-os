@@ -430,6 +430,121 @@ def draft_reply(messages: list[dict], *, channel: str = 'email',
                       channel=channel, source=res.provider)
 
 
+# --- XMKT34 — Génération IA de contenu de campagne (FR/AR), gated -----------
+#
+# Même patron NO-OP-safe que FG354 (``draft_reply``) : une SUGGESTION éditable
+# de sujet + corps, JAMAIS auto-envoyée — l'utilisateur relit/édite/envoie
+# lui-même. Sans clé LLM configurée, ``configured=False`` et l'appelant
+# (apps.compta.views) masque le bouton « Générer avec l'IA » (no-op complet,
+# aucun appel réseau). GARDE STRICTE : le prompt construit ne doit JAMAIS
+# contenir de donnée interne (prix_achat, marge) — testé par
+# ``build_campaign_prompt`` + une liste de mots-clés interdits.
+
+#: Champs interdits dans le prompt de génération de campagne (fuite de donnée
+#: commerciale interne — jamais envoyés à un fournisseur externe).
+CAMPAIGN_PROMPT_FORBIDDEN_TERMS = ('prix_achat', 'marge', 'coût interne')
+
+
+@dataclass
+class CampaignContentDraft:
+    """Objet + corps de campagne SUGGÉRÉS (jamais auto-envoyés)."""
+
+    ok: bool = False
+    configured: bool = False
+    objet: str = ''
+    corps: str = ''
+    langue: str = 'fr'
+    source: str = 'noop'
+
+    @property
+    def available(self) -> bool:
+        return self.ok and bool(self.corps)
+
+
+def build_campaign_prompt(*, segment_label: str = '', offre: str = '',
+                          instruction: str = '', langue: str = 'fr',
+                          longueur: str = '') -> str:
+    """Construit le prompt de génération de contenu marketing.
+
+    ``segment_label``/``offre`` décrivent le CIBLAGE et l'OFFRE en langage
+    naturel (fournis par l'appelant — jamais un objet ORM ni un champ interne
+    du catalogue). ``instruction`` porte une consigne libre de réécriture
+    (ton/longueur/langue). Ne référence JAMAIS ``prix_achat``/``marge`` — un
+    appelant qui les passerait par erreur les verrait apparaître ici, d'où le
+    test dédié sur cette fonction (jamais sur un prompt déjà envoyé)."""
+    langue_label = {'fr': 'français', 'ar': 'arabe'}.get(langue, 'français')
+    parts = [
+        "Tu es un rédacteur marketing pour un installateur solaire au Maroc.",
+        f"Rédige en {langue_label} un OBJET court et un CORPS de message "
+        "pour une campagne marketing (email ou WhatsApp).",
+    ]
+    if segment_label:
+        parts.append(f"Segment ciblé : {segment_label}.")
+    if offre:
+        parts.append(f"Offre / contexte : {offre}.")
+    if longueur:
+        parts.append(f"Longueur souhaitée : {longueur}.")
+    if instruction:
+        parts.append(f"Consigne de réécriture : {instruction}.")
+    # Formulation volontairement sans les termes de CAMPAIGN_PROMPT_FORBIDDEN_TERMS :
+    # le garde-fou (test) vérifie leur absence LITTÉRALE dans tout prompt construit.
+    parts.append(
+        "Ne mentionne JAMAIS de données financières internes de l'entreprise — "
+        "ces informations ne te sont de toute façon jamais fournies. "
+        "Réponds strictement au format :\nOBJET: <objet>\nCORPS: <corps>")
+    return '\n'.join(parts)
+
+
+def draft_campaign_content(*, segment_label: str = '', offre: str = '',
+                           instruction: str = '', langue: str = 'fr',
+                           longueur: str = '',
+                           max_tokens: int = 500) -> CampaignContentDraft:
+    """Génère un OBJET + CORPS de campagne suggérés (XMKT34), éditables.
+
+    NO-OP-safe : sans clé LLM configurée (Groq/Zhipu via
+    ``settings.AI_PROVIDERS``), ne fait AUCUN appel réseau et renvoie
+    ``configured=False`` — l'appelant masque alors le bouton « Générer avec
+    l'IA » (aucune trace UI). Le contenu généré reste une SUGGESTION éditable,
+    jamais envoyée automatiquement (même garantie que ``draft_reply``,
+    FG354)."""
+    provider = get_provider('llm')
+    if getattr(provider, 'key', 'noop') == 'noop':
+        return CampaignContentDraft(
+            ok=False, configured=False, objet='', corps='', langue=langue,
+            source='noop')
+
+    prompt = build_campaign_prompt(
+        segment_label=segment_label, offre=offre, instruction=instruction,
+        langue=langue, longueur=longueur)
+    system = (
+        "Tu rédiges du contenu marketing pour un installateur solaire "
+        "marocain. Reste concret, factuel, sans promesse de prix ni de délai "
+        "non confirmé. N'invente aucune donnée chiffrée."
+    )
+    res = provider.complete(prompt=prompt, system=system, max_tokens=max_tokens)
+    if not (res.ok and res.data.get('text')):
+        return CampaignContentDraft(
+            ok=False, configured=True, objet='', corps='', langue=langue,
+            source=res.provider)
+
+    text = res.data['text'].strip()
+    objet, corps = '', text
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.upper().startswith('OBJET:'):
+            objet = stripped.split(':', 1)[1].strip()
+        elif stripped.upper().startswith('CORPS:'):
+            corps = stripped.split(':', 1)[1].strip()
+    if not objet and '\n' in text:
+        # Repli : première ligne = objet, reste = corps, si le format demandé
+        # n'a pas été respecté par le modèle.
+        first, _, rest = text.partition('\n')
+        objet, corps = first.strip(), rest.strip() or text
+    return CampaignContentDraft(
+        ok=True, configured=True, objet=objet, corps=corps, langue=langue,
+        source=res.provider)
+
+
 # --- XMKT37 — Qualification livechat visiteur (site public) -----------------
 #
 # Prompt de qualification solaire pour un visiteur ANONYME du site public.

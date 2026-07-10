@@ -2488,3 +2488,25 @@ def intervention_export_row(interv):
         equipe_noms,
         duree if duree is not None else '',
     ]
+
+
+# ── XMFG19 — Remplacement de masse d'un composant ───────────────────────────
+
+def kits_utilisant_produit(company, produit_id):
+    """XMFG19 — kits de pré-assemblage (FG328) de cette société utilisant ce
+    produit dans leur nomenclature. Lecture seule, exposée à `stock` pour la
+    préview du remplacement de masse. Renvoie une liste de dicts plats
+    {kit_id, kit_nom, composant_id, quantite} — jamais d'instance exposée."""
+    from .models import KitComposant
+    out = []
+    for c in (KitComposant.objects
+              .filter(kit__company=company, produit_id=produit_id)
+              .select_related('kit')
+              .order_by('kit__nom', 'id')):
+        out.append({
+            'kit_id': c.kit_id,
+            'kit_nom': c.kit.nom,
+            'composant_id': c.id,
+            'quantite': c.quantite,
+        })
+    return out

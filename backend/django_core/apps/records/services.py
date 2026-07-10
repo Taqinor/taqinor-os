@@ -6,7 +6,72 @@ métier (crm/ventes/stock/installations/sav). Les diffusions vers
 best-effort — jamais d'exception remontée à l'appelant — exactement comme le
 fait déjà `views._notify_mentions` pour les @mentions du chatter (FG7).
 """
-from .models import Follower
+from .models import Activity, Follower
+
+
+def log_activity(target, kind, *, user=None, field='', field_label='',
+                 old_value='', new_value='', body='', company=None):
+    """ARC8 — écrit UNE entrée de chatter générique (`records.Activity`).
+
+    Le « mail.thread » maison : convergence des 13 modèles ``*Activity``
+    quasi identiques (kind/field/old/new/body/user/timestamp). Ce service est
+    le SEUL point d'écriture du chatter générique ; il pose la société et
+    l'utilisateur CÔTÉ SERVEUR (jamais lus du corps de requête).
+
+    Args:
+        target: instance métier cible (Contrat, Vehicule…). Sa société est
+            déduite via ``target.company`` si ``company`` n'est pas fourni.
+        kind: valeur de ``Activity.Kind`` (``note`` / ``modification`` /
+            ``creation``).
+        user: auteur (``request.user``), toujours posé côté serveur.
+        field / field_label / old_value / new_value: instantané d'un changement
+            de champ (pour un journal automatique ``kind=modification``).
+        body: texte libre (pour une note manuelle ``kind=note``).
+        company: société explicite ; par défaut ``target.company``.
+
+    `records` est une app de FONDATION : on ne connaît la cible qu'à travers son
+    ``ContentType`` (jamais d'import d'une app métier).
+    """
+    from django.contrib.contenttypes.models import ContentType
+
+    ct = ContentType.objects.get_for_model(target.__class__)
+    if company is None:
+        company = getattr(target, 'company', None)
+    return Activity.objects.create(
+        company=company,
+        content_type=ct,
+        object_id=target.pk,
+        activity_type=None,
+        kind=kind,
+        field=field or '',
+        field_label=field_label or '',
+        old_value=old_value or '',
+        new_value=new_value or '',
+        body=body or '',
+        created_by=user,
+    )
+
+
+def log_note(target, user, body, *, company=None):
+    """ARC8 — raccourci : note manuelle de chatter (``kind=note``)."""
+    return log_activity(
+        target, Activity.Kind.NOTE, user=user, body=body, company=company)
+
+
+def chatter_qs(target, company=None):
+    """ARC8 — timeline du chatter générique d'une cible (plus récent d'abord).
+
+    Ne renvoie QUE les entrées de chatter (``kind`` renseigné) — jamais les
+    activités planifiées (``kind`` vide) de la même cible. Scopé société si
+    fournie."""
+    from django.contrib.contenttypes.models import ContentType
+
+    ct = ContentType.objects.get_for_model(target.__class__)
+    qs = Activity.objects.filter(
+        content_type=ct, object_id=target.pk).exclude(kind='')
+    if company is not None:
+        qs = qs.filter(company=company)
+    return qs.select_related('created_by').order_by('-created_at', '-id')
 
 
 def follow(*, company, content_type, object_id, user, sous_type=''):

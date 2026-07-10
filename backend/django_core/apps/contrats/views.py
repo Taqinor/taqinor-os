@@ -32,6 +32,10 @@ from authentication.permissions import (
     HasPermissionOrLegacy, IsAdminRole,
 )
 from core.permissions import ScopedPermission, WriteScopedPermissionMixin
+# ARC8 — chatter générique (records.Activity). records est une app de
+# FONDATION : l'import direct de son mixin de vue est autorisé (frontière
+# cross-app exemptée pour records/core/authentication).
+from apps.records.views import ChatterViewSetMixin
 
 from . import selectors, services
 from .models import (
@@ -153,7 +157,7 @@ class _ContratsBaseViewSet(
     write_permission = 'contrat_gerer'
 
 
-class ContratViewSet(_ContratsBaseViewSet):
+class ContratViewSet(ChatterViewSetMixin, _ContratsBaseViewSet):
     """Contrats de la société (CLM). Recherche par référence/objet.
 
     Visibilité par confidentialité : les contrats ``CONFIDENTIEL`` ne sont

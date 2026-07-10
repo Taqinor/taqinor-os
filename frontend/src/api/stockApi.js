@@ -304,6 +304,12 @@ const stockApi = {
   exploserKit: (id, quantite) =>
     api.get(`/stock/kits/${id}/exploser/`,
       { params: quantite ? { quantite } : {} }),
+  // XMFG19 — remplacement de masse d'un composant (préview dry_run → confirmer).
+  remplacerComposantKits: (data) =>
+    api.post('/stock/kits/remplacer-composant/', data),
+  // ZMFG9 — disponibilité multi-niveaux du kit (kits assemblables + goulots).
+  getKitDisponibilite: (id) =>
+    api.get(`/stock/kits/${id}/disponibilite/`),
 
   // DC35 / FG254 — fiches techniques (datasheets) rattachées aux produits.
   getFichesTechniques: (produitId) =>

@@ -21,6 +21,9 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
+from rest_framework.views import APIView
+
+from django.utils import timezone
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsResponsableOrAdmin
@@ -39,7 +42,7 @@ from .models import (
     ExerciceComptable, FormulaireIntake, Immobilisation, IndemniteChantier,
     Journal,
     LignePrevisionnelTresorerie, LigneReleve, MessageWhatsAppEntrant,
-    ModeleDevis, MouvementCaisse, NoteFrais, OuverturePartage,
+    ModeleDevis, MouvementCaisse, NoteFrais, OuverturePartage, PostSocial,
     PaymentRun, PeriodeComptable, PlafondNoteFrais, PlanComptable, Provision,
     ProvisionCreance, RapportNoteFrais,
     Rapprochement, RapprochementBancaire, RelanceDevisAbandonne,
@@ -87,6 +90,7 @@ from .serializers import (
     BilletEvenementSerializer,
     QuestionEvenementSerializer,
     CommunicationEvenementSerializer,
+    PostSocialSerializer,
     CommissionPayoutRunSerializer, CompteComptableSerializer,
     CompteTresorerieSerializer, ContratAvancementSerializer,
     DeclarationTVASerializer, DemandeApprobationConfigSerializer,
@@ -4687,6 +4691,46 @@ class CampagneViewSet(_ComptaBaseViewSet):
             campagne.corps, nb_destinataires=nb_destinataires, **kwargs)
         return Response(estimation)
 
+    @action(detail=False, methods=['get'], url_path='generer-ia-disponible',
+            permission_classes=[IsResponsableOrAdmin])
+    def generer_ia_disponible(self, request):
+        """XMKT34 — probe UI : la génération IA est-elle configurée ?
+
+        Ne déclenche JAMAIS d'appel LLM (lit seulement le registre
+        ``core.ai``) — le frontend s'en sert pour masquer complètement le
+        bouton « Générer avec l'IA » sans clé (aucune trace UI)."""
+        from core.ai.registry import is_capability_configured
+        return Response({'configured': is_capability_configured('llm')})
+
+    @action(detail=False, methods=['post'], url_path='generer-ia',
+            permission_classes=[IsResponsableOrAdmin])
+    def generer_ia(self, request):
+        """XMKT34 — Génère (suggestion éditable) un objet + corps de campagne.
+
+        NO-OP-safe : sans clé LLM configurée (Groq/Zhipu via
+        ``settings.AI_PROVIDERS``), renvoie ``configured: false`` (le
+        frontend masque le bouton). Le contenu généré n'est JAMAIS
+        auto-appliqué à la campagne — l'utilisateur relit/édite avant de
+        sauvegarder. Ne reçoit que du texte libre (segment/offre/consigne) :
+        aucun champ interne (prix_achat/marge) n'est jamais envoyé."""
+        from core.ai.services import draft_campaign_content
+        data = request.data
+        draft = draft_campaign_content(
+            segment_label=str(data.get('segment_label') or '')[:500],
+            offre=str(data.get('offre') or '')[:1000],
+            instruction=str(data.get('instruction') or '')[:500],
+            langue=str(data.get('langue') or 'fr')[:5],
+            longueur=str(data.get('longueur') or '')[:100],
+        )
+        return Response({
+            'configured': draft.configured,
+            'ok': draft.ok,
+            'objet': draft.objet,
+            'corps': draft.corps,
+            'langue': draft.langue,
+            'source': draft.source,
+        })
+
     @action(detail=True, methods=['get'], url_path='clics-par-lien')
     def clics_par_lien(self, request, pk=None):
         """XMKT9 — Page « clics par lien » du détail campagne."""
@@ -4825,6 +4869,129 @@ class CampagneViewSet(_ComptaBaseViewSet):
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=400)
         return Response(rendu)
+
+
+# ── XMKT35 — Posts réseaux sociaux (calendrier de contenu, gated) ───────────
+
+class PostSocialViewSet(_ComptaBaseViewSet):
+    """Posts réseaux sociaux planifiés (XMKT35). La publication réelle Meta
+    Graph est gated (défaut OFF) : sans jeton, le post dû devient un rappel
+    manuel notifié (texte prêt à coller) — voir services.traiter_posts_
+    sociaux_dus. L'action ``planifier`` pose la date + le statut planifié."""
+    queryset = PostSocial.objects.all()
+    serializer_class = PostSocialSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['texte']
+    ordering_fields = ['date_planifiee', 'date_creation', 'statut']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company,
+                        created_by=self.request.user)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[IsResponsableOrAdmin])
+    def planifier(self, request, pk=None):
+        """Planifie le post à ``date_planifiee`` (brouillon → planifié)."""
+        post = self.get_object()
+        date_planifiee = request.data.get('date_planifiee')
+        if not date_planifiee:
+            return Response({'detail': 'date_planifiee requise.'}, status=400)
+        from django.utils.dateparse import parse_datetime
+        quand = parse_datetime(str(date_planifiee))
+        if quand is None:
+            return Response(
+                {'detail': 'date_planifiee invalide (ISO attendu).'},
+                status=400)
+        if timezone.is_naive(quand):
+            quand = timezone.make_aware(quand)
+        services.planifier_post_social(post, date_planifiee=quand)
+        return Response(PostSocialSerializer(post).data)
+
+
+# ── XMKT30 (partiel) — Calendrier marketing unifié ──────────────────────────
+# Endpoint agrégé consommé par features/marketing/MarketingCalendarScreen.jsx.
+# Sources servies AUJOURD'HUI : campagnes (planifiee_le, XMKT7) et posts
+# sociaux (date_planifiee, XMKT35). Les sources étapes-de-séquence/relances/
+# événements restent à brancher par la tâche XMKT30 backend (même contrat de
+# réponse {events: [...]}) — additif, aucun contrat cassé.
+
+class CalendrierMarketingView(APIView):
+    permission_classes = [IsResponsableOrAdmin]
+
+    def get(self, request):
+        company = request.user.company
+        date_from = request.query_params.get('from') or ''
+        date_to = request.query_params.get('to') or ''
+        events = []
+        campagnes = Campagne.objects.filter(
+            company=company, planifiee_le__isnull=False)
+        if date_from:
+            campagnes = campagnes.filter(planifiee_le__date__gte=date_from)
+        if date_to:
+            campagnes = campagnes.filter(planifiee_le__date__lte=date_to)
+        for c in campagnes:
+            events.append({
+                'id': f'campagne-{c.id}', 'obj_id': c.id,
+                'source': 'campagne', 'link_type': 'campagne',
+                'date': c.planifiee_le.date().isoformat(),
+                'title': c.nom, 'channel': c.canal,
+                'editable': c.statut in (
+                    Campagne.Statut.BROUILLON, Campagne.Statut.EN_FILE),
+            })
+        posts = PostSocial.objects.filter(
+            company=company, date_planifiee__isnull=False)
+        if date_from:
+            posts = posts.filter(date_planifiee__date__gte=date_from)
+        if date_to:
+            posts = posts.filter(date_planifiee__date__lte=date_to)
+        for p in posts:
+            events.append({
+                'id': f'post_social-{p.id}', 'obj_id': p.id,
+                'source': 'post_social', 'link_type': 'post_social',
+                'date': p.date_planifiee.date().isoformat(),
+                'title': f'{p.get_reseau_display()} — {(p.texte or "")[:60]}',
+                'channel': '', 'editable': False,
+            })
+        return Response({'events': events})
+
+
+class CalendrierMarketingRescheduleView(APIView):
+    permission_classes = [IsResponsableOrAdmin]
+
+    def post(self, request):
+        """Replanifie une CAMPAGNE non partie par glisser-déposer (XMKT30).
+        Seule source déplaçable aujourd'hui (contrat frontend isDraggable)."""
+        company = request.user.company
+        source = request.data.get('source')
+        obj_id = request.data.get('id')
+        date_str = str(request.data.get('date') or '')
+        if source != 'campagne':
+            return Response({'detail': 'Source non replanifiable.'}, status=400)
+        from django.utils.dateparse import parse_date
+        cible = parse_date(date_str)
+        if cible is None:
+            return Response({'detail': 'date invalide.'}, status=400)
+        campagne = Campagne.objects.filter(
+            company=company, id=obj_id).first()
+        if campagne is None:
+            return Response({'detail': 'Campagne inconnue.'}, status=404)
+        if campagne.statut not in (
+                Campagne.Statut.BROUILLON, Campagne.Statut.EN_FILE):
+            return Response(
+                {'detail': 'Campagne déjà partie — non replanifiable.'},
+                status=400)
+        ancienne = campagne.planifiee_le or timezone.now()
+        campagne.planifiee_le = ancienne.replace(
+            year=cible.year, month=cible.month, day=cible.day)
+        campagne.save(update_fields=['planifiee_le'])
+        return Response({'ok': True})
 
 
 # ── XMKT2 — Journal d'envoi par destinataire (drill-down) ───────────────────
@@ -5307,6 +5474,23 @@ class SegmentMarketingViewSet(_ComptaBaseViewSet):
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=400)
         return Response(data)
+
+    @action(detail=True, methods=['post'], url_path='exporter-audience-meta',
+            permission_classes=[IsResponsableOrAdmin])
+    def exporter_audience_meta(self, request, pk=None):
+        """XMKT36 — [DECISION] Synchronise le segment comme audience Meta.
+
+        Identifiants hashés SHA-256 côté serveur, consentement XMKT4 exigé,
+        clients signés en liste d'exclusion. GATED : sans jeton
+        (``META_ADS_ENABLED``/``META_ADS_TOKEN``/``META_AD_ACCOUNT_ID``),
+        aucun appel réseau — le résumé (compteurs, configured=false) est
+        renvoyé pour l'UI. AUCUNE campagne publicitaire créée (règle n°3)."""
+        segment = self.get_object()
+        try:
+            resume = services.exporter_segment_audience_meta(segment)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(resume)
 
 
 # ── FG202 — Séquences de relance automatisées ──────────────────────────────

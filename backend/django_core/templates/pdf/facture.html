@@ -225,6 +225,15 @@
       <span>{{ _L('total_ttc') }}</span>
       <span>{{ "%.2f"|format(facture.total_ttc) }} MAD</span>
     </div>
+    {# ZFAC11 — mention « Arrondi espèces » quand un écart d'arrondi de caisse a
+       été appliqué (règlement espèces arrondi au pas société). Conditionnel :
+       aucune mention si aucun arrondi → PDF strictement inchangé sinon. #}
+    {% if facture.abandon_motif == 'arrondi_caisse' and facture.abandon_montant %}
+    <div class="totaux-row remise">
+      <span>Arrondi espèces</span>
+      <span>−{{ "%.2f"|format(facture.abandon_montant) }} MAD</span>
+    </div>
+    {% endif %}
   </div>
 
   <!-- XFAC12 — Escompte pour règlement anticipé -->

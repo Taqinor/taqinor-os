@@ -194,6 +194,17 @@ ONE persistent `--keepdb` test DB across folds (a fresh full test DB build is ~3
 1. **Plan the lanes once.** Run `python scripts/plan_lanes.py <planfile>` for the file-ownership
    + dependency graph. A **lane** = tasks sharing a file/migration that must run in sequence;
    independent lanes run concurrently. (Drain `docs/PLAN2.md` before `docs/PLAN.md`.)
+   **Build-order gate (SCA6).** `plan_lanes.py` automatically consults `docs/BUILD_ORDER.yml`
+   (SCA1, the machine-readable wave DAG) before emitting a lane: noyau ARC → NTPLT+NTSEC →
+   reste du Tier-1 (NTAPI/NTOBS/NTGRC/NTADM/NTMAR) → floods features/verticaux is a RUN RULE,
+   not a suggestion — a task whose prerequisite group is under its `BUILD_ORDER.yml` threshold
+   is refused with a French reason (see the "Refusé — ordre de vague" section of the plan-lanes
+   output) instead of silently scheduled out of order. This is a pure machinery gate: no
+   BUILD_ORDER.yml (or a prefix absent from it / listed `unmapped_ok`) means gating is a no-op,
+   byte-identical to pre-SCA3 behaviour — never a reason to skip running `plan_lanes.py` first.
+   `--force-wave` bypasses the gate entirely and is **reserved for the founder** (every use is
+   logged to stderr) — an agent hitting a refused lane fixes the real prerequisite gap or moves
+   to a different lane, it does not reach for `--force-wave` on its own judgment.
 2. **Lane-draining is the unit of work: one agent OWNS one app and drains its WHOLE lane.**
    Dispatch up to ~8 worktree subagents (`isolation: worktree`) in parallel; each owns one
    `apps/<x>` and drains its ENTIRE pending queue in sequence — per task: verify-not-built →

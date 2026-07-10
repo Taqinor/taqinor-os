@@ -1188,3 +1188,27 @@ def estimations_maintenance(equipement):
         'prochaine_defaillance_estimee': prochaine_defaillance_estimee,
         'prochain_entretien_du': prochain_entretien_du,
     }
+
+
+def ticket_chatter_envelope(ticket):
+    """ARC9 — timeline chatter du ticket dans l'ENVELOPPE UNIFORME.
+
+    Projette ``sav.TicketActivity`` vers le format commun consommé par
+    ``records.serializers.UniformChatterSerializer`` — même contrat de lecture
+    que ``crm.selectors.lead_chatter_envelope`` et
+    ``contrats.selectors.contrat_chatter_envelope``. Lecture seule, aucune
+    table modifiée. Le ticket est déjà borné société par l'appelant.
+    """
+    rows = ticket.activites.select_related('user').all()
+    return [{
+        'id': a.id,
+        'kind': a.kind,
+        'field': a.field or '',
+        'field_label': a.field_label or '',
+        'old_value': a.old_value or '',
+        'new_value': a.new_value or '',
+        'body': a.body or '',
+        'user_username': a.user.username if a.user_id else None,
+        'created_at': a.created_at,
+        'source': 'sav.ticketactivity',
+    } for a in rows]

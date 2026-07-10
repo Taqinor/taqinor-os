@@ -9,13 +9,15 @@
    pages/ dans features/) et testable isolément.
    ========================================================================== */
 
-// ── Types de source affichés dans le calendrier (4 sources agrégées) ──
+// ── Types de source affichés dans le calendrier (5 sources agrégées) ──
 
 export const SOURCE_TYPES = [
   { key: 'campagne', label: 'Campagnes', color: '#2563eb' },
   { key: 'etape_sequence', label: 'Étapes de séquence', color: '#0d9488' },
   { key: 'evenement', label: 'Événements', color: '#7c3aed' },
   { key: 'relance', label: 'Relances', color: '#ea580c' },
+  // XMKT35 — posts réseaux sociaux planifiés (publication gated backend).
+  { key: 'post_social', label: 'Posts sociaux', color: '#db2777' },
 ]
 export const SOURCE_COLOR = Object.fromEntries(
   SOURCE_TYPES.map(t => [t.key, t.color]))
@@ -113,6 +115,8 @@ const ROUTE_BY_LINK_TYPE = {
   etape_sequence: '/comptabilite',
   evenement: '/comptabilite',
   relance: '/crm',
+  // XMKT35 — pas d'écran d'édition dédié aux posts : reste sur le calendrier.
+  post_social: '/marketing/calendrier',
 }
 
 export function routeForEvent(ev) {

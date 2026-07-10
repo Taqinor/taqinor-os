@@ -54,6 +54,20 @@ Pure Python standard library; no third-party dependency.
 Lane assignment is a prose heuristic (regex/keyword matching over the task
 text), not real static analysis of the codebase — a surprising grouping
 should be sanity-checked by a human before the run trusts it.
+
+SCA3 — build-order gating
+--------------------------
+If ``docs/BUILD_ORDER.yml`` (SCA1) is present, a task whose id-prefix names a
+prerequisite group (an ``after:`` edge) that is under its completion
+threshold (measured by ``scripts/plan_progress.py``, SCA2) is refused: it is
+moved out of ``buildable`` into a new ``wave_blocked`` bucket with a French
+reason listing exactly which prerequisite(s) are short, instead of being
+silently scheduled out of order. ``--force-wave`` overrides this and lets the
+task through (a founder-consigned escape hatch — every use is logged to
+stderr). This is **strictly additive**: with no ``BUILD_ORDER.yml``, or for a
+task whose prefix is absent from the file entirely or listed under
+``unmapped_ok``, or one with no ``after:`` edge, gating is a pure no-op and
+the schedule is byte-identical to before SCA3.
 """
 from __future__ import annotations
 
@@ -65,6 +79,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_PLAN = ROOT / "docs" / "PLAN.md"
+DEFAULT_BUILD_ORDER = ROOT / "docs" / "BUILD_ORDER.yml"
 
 # ``- [ ] N14 — …`` / ``- [x] **A1 — …`` / ``- [BLOCKED: …] N26 — …``
 _TASK_LIST_RE = re.compile(
@@ -237,6 +252,313 @@ KEYWORD_LANE = [
     (r"attachment|pièce jointe|@mention|\btag\b|chatter", "apps/records"),
 ]
 
+# Task-id prefix extraction: a compound "FE-XFLT" (dash-joined) lane id, or a
+# plain letter prefix ("ARC", "NTPLT", "SCA" ...). Mirrors
+# scripts/plan_progress.py's own prefix derivation so a task's wave-gating
+# lookup key matches exactly what plan_progress.py counts under.
+_TASK_ID_PREFIX_RE = re.compile(r"^(?:([A-Z]+-[A-Z]+)|([A-Z]+))(\d+)")
+
+
+def _task_prefix(task_id: str) -> str:
+    m = _TASK_ID_PREFIX_RE.match(task_id)
+    if not m:
+        return ""
+    return m.group(1) or m.group(2) or ""
+
+
+def _task_number(task_id: str) -> int | None:
+    m = _TASK_ID_PREFIX_RE.match(task_id)
+    if not m:
+        return None
+    return int(m.group(3))
+
+
+def gated_group_for_task(task_id: str, build_order: dict | None) -> str:
+    """The group name to use as ``edge.group`` for THIS task.
+
+    A plain prefix (``NTPLT``, ``FE-XFLT``) resolves to itself. A prefix that
+    BUILD_ORDER.yml also splits into numbered-subset aliases (e.g. ``ARC1``
+    is noyau, ``ARC3`` is sweep -- both share the bare prefix ``ARC``)
+    resolves to whichever alias's ``members`` list contains this task's
+    number; falls back to the bare prefix if no alias claims this number
+    (e.g. an ARC task numbered outside 1-56's two named subsets).
+    """
+    prefix = _task_prefix(task_id)
+    if not build_order or not prefix:
+        return prefix
+    number = _task_number(task_id)
+    if number is None:
+        return prefix
+    aliases = build_order.get("aliases") or {}
+    for alias_name, alias in aliases.items():
+        if not isinstance(alias, dict):
+            continue
+        if alias.get("prefix") != prefix:
+            continue
+        members = alias.get("members") or []
+        if number in members:
+            return alias_name
+    return prefix
+
+
+# ---------------------------------------------------------------------------
+# SCA3 — BUILD_ORDER.yml gating (additive; no-op when the file is absent).
+# ---------------------------------------------------------------------------
+# docs/BUILD_ORDER.yml (SCA1) is written in a deliberately minimal,
+# hand-parseable YAML subset (2-space indents, ``key: value`` mappings,
+# nested mappings, flow lists ``[a, b, c]``, ``#`` comments, no anchors/tags/
+# multiline scalars — see that file's own header for the exact grammar). The
+# stage-names CI job has no PyYAML install step, so this reads it with a tiny
+# stdlib-only parser rather than a real YAML library.
+
+class _MiniYamlParser:
+    """Parses the specific minimal YAML subset BUILD_ORDER.yml is written in.
+
+    NOT a general YAML parser -- deliberately narrow. Supports: ``#``
+    comments/blank lines, 2-space-indented nested mappings, scalar values
+    (str/int/float, quotes stripped), and flow-style lists
+    (``[a, b, c]``/``[]``). Folded scalars (``>-``) are read as opaque prose
+    and skipped by the gating logic below (only structural keys matter here).
+    """
+
+    def __init__(self, text: str):
+        self._lines = self._strip_comments_and_blanks(text)
+
+    @staticmethod
+    def _strip_comments_and_blanks(text: str) -> list[tuple[int, str]]:
+        out: list[tuple[int, str]] = []
+        in_fold = False
+        fold_indent = -1
+        for raw in text.splitlines():
+            if not raw.strip():
+                continue
+            stripped = raw.lstrip(" ")
+            indent = len(raw) - len(stripped)
+            if in_fold:
+                if indent > fold_indent:
+                    continue  # folded-scalar continuation line -> skip
+                in_fold = False
+            if stripped.startswith("#"):
+                continue
+            # Strip a trailing ``# comment``. Only treat a '#' as starting a
+            # comment if it is NOT preceded by an opening quote on this line
+            # (BUILD_ORDER.yml never puts a literal '#' inside a quoted
+            # value, but comments freely follow list items/scalars that
+            # themselves contain quotes earlier in the line, e.g.
+            # ``- FG   # legacy "feature gap" numbering...``).
+            hash_idx = stripped.find("#")
+            if hash_idx != -1:
+                before = stripped[:hash_idx]
+                if before.count('"') % 2 == 0 and before.count("'") % 2 == 0:
+                    stripped = before.rstrip()
+                    if not stripped:
+                        continue
+            if stripped.rstrip().endswith(">-") or stripped.rstrip().endswith("|-"):
+                in_fold = True
+                fold_indent = indent
+            out.append((indent, stripped))
+        return out
+
+    @staticmethod
+    def _parse_scalar(value: str):
+        value = value.strip()
+        if not value:
+            return None
+        if (value.startswith('"') and value.endswith('"')) or (
+            value.startswith("'") and value.endswith("'")
+        ):
+            return value[1:-1]
+        if value.startswith("[") and value.endswith("]"):
+            inner = value[1:-1].strip()
+            if not inner:
+                return []
+            return [_MiniYamlParser._parse_scalar(v) for v in inner.split(",")]
+        try:
+            if re.fullmatch(r"-?\d+", value):
+                return int(value)
+            if re.fullmatch(r"-?\d+\.\d+", value):
+                return float(value)
+        except ValueError:
+            pass
+        return value
+
+    def parse(self) -> dict:
+        pos = 0
+
+        def parse_block(min_indent: int) -> dict:
+            nonlocal pos
+            node: dict = {}
+            while pos < len(self._lines):
+                indent, line = self._lines[pos]
+                if indent < min_indent:
+                    break
+                if line.startswith("- "):
+                    # a bare list item at this indent belongs to a parent
+                    # list context this dict-only entry point doesn't model
+                    # -- stop here (only reached for the top-level call;
+                    # nested list-of-scalars is handled inside parse_list).
+                    break
+                if ":" not in line:
+                    pos += 1
+                    continue
+                key, _, rest = line.partition(":")
+                key = key.strip()
+                rest = rest.strip()
+                pos += 1
+                if rest in (">-", "|-"):
+                    # Folded/literal scalar: prose-only in BUILD_ORDER.yml
+                    # (e.g. wave ``description``), its continuation lines
+                    # were already dropped by the line preprocessor (only
+                    # structural keys matter to the gating logic below) --
+                    # store a marker string, never an empty dict, so a
+                    # consumer can tell "prose omitted" from "missing key".
+                    node[key] = "<folded-scalar-prose-omitted>"
+                elif rest == "":
+                    # nested mapping OR a list, written as following "- ..."
+                    # lines at deeper indent.
+                    if pos < len(self._lines) and self._lines[pos][0] > indent \
+                            and self._lines[pos][1].startswith("- "):
+                        node[key] = parse_list(indent)
+                    else:
+                        node[key] = parse_block(indent + 1)
+                else:
+                    node[key] = self._parse_scalar(rest)
+            return node
+
+        def parse_list(parent_indent: int) -> list:
+            """Parse a sequence of ``- ...`` items at one indent level.
+
+            Each item is either a bare scalar (``- ARC``) or the start of a
+            mapping (``- group: ARC-sweep`` followed by sibling
+            ``key: value`` lines indented to align with ``group`` -- i.e.
+            ``item_indent + 2``, matching how a YAML block-sequence-of-
+            -mappings is conventionally indented and how BUILD_ORDER.yml's
+            ``edges:`` list is written).
+            """
+            nonlocal pos
+            items: list = []
+            while pos < len(self._lines):
+                indent, line = self._lines[pos]
+                if indent <= parent_indent or not line.startswith("- "):
+                    break
+                item_indent = indent
+                after_dash = line[2:]
+                if ":" in after_dash and not after_dash.startswith("["):
+                    # mapping-style list item: "- key: value" starts a
+                    # mapping whose remaining keys are sibling lines
+                    # indented to item_indent + 2 (aligned under "key").
+                    # Rewrite this one line as a synthetic "key: value" at
+                    # the sibling indent and let parse_block consume it PLUS
+                    # every following sibling line in one pass (avoids
+                    # double-parsing the first key).
+                    sibling_indent = item_indent + 2
+                    self._lines[pos] = (sibling_indent, after_dash)
+                    entry = parse_block(sibling_indent)
+                    items.append(entry)
+                else:
+                    items.append(self._parse_scalar(after_dash))
+                    pos += 1
+            return items
+
+        return parse_block(0)
+
+
+def load_build_order(path: Path) -> dict | None:
+    """Load+parse ``docs/BUILD_ORDER.yml``; ``None`` if the file is absent.
+
+    A malformed file raises (loudly) rather than being silently ignored --
+    the caller decides whether that should abort gating (it does not; see
+    ``build_order_gate`` which treats a *load* failure as "skip gating" but
+    prints a warning, matching the SCA3 backward-compatibility contract of
+    never blocking a run over a broken/missing optional file).
+    """
+    if not path.is_file():
+        return None
+    return _MiniYamlParser(path.read_text(encoding="utf-8")).parse()
+
+
+def _resolve_alias_prefixes(build_order: dict, name: str) -> set[str]:
+    """A prerequisite name in an ``after:`` edge is either a real task-id
+    prefix (``NTPLT``) or an alias (``ARC-noyau``) resolving to a subset of
+    a real prefix's task numbers. Returns the set of real prefixes this name
+    maps to for a plan_progress.py lookup (the numbered-subset distinction
+    inside one prefix, e.g. ARC-noyau vs ARC-sweep, is NOT modelled by
+    plan_progress.py's per-prefix percentage -- it is treated at the whole-
+    prefix granularity, which is the conservative/safe direction: a subset
+    alias is gated on the WHOLE prefix's progress, never less strict)."""
+    aliases = build_order.get("aliases") or {}
+    if name in aliases:
+        alias = aliases[name]
+        prefix = alias.get("prefix") if isinstance(alias, dict) else None
+        return {prefix} if prefix else set()
+    return {name}
+
+
+def build_order_gate(
+    task_id: str,
+    build_order: dict | None,
+    progress_lookup,
+) -> list[str]:
+    """Return a list of French unmet-prerequisite reasons for ``task_id``
+    (empty list = not gated / allowed through).
+
+    ``progress_lookup`` is a callable ``prefix -> pct float`` (normally
+    ``scripts.plan_progress.group_pct``, injected so tests can fake it
+    without touching real plan files).
+
+    Two distinct group names come into play for one task: the bare id-prefix
+    (``ARC``, used for the ``unmapped_ok`` check -- BUILD_ORDER.yml lists
+    bare prefixes there) and the *gated group* (``ARC-noyau``/``ARC-sweep``
+    when the numbered subset resolves to a member alias, else the same bare
+    prefix) used to match an ``edges[].group`` entry -- this is what lets a
+    numbered SUBSET of one letter-prefix (the ARC sweep tasks ARC3-5/7/12)
+    be gated separately from the rest of that same prefix (the ARC kernel
+    tasks) without needing a distinct task-id prefix.
+
+    Backward compatibility (SCA3 contract): returns ``[]`` immediately when
+    ``build_order`` is ``None`` (file absent), when ``task_id`` has no
+    resolvable prefix, when the bare prefix appears in ``unmapped_ok``, or
+    when no wave/edge in the file constrains this task's gated group at all
+    -- i.e. the exact set of situations under which a plan file predates
+    BUILD_ORDER.yml or simply isn't covered by it.
+    """
+    task_prefix = _task_prefix(task_id)
+    if not build_order or not task_prefix:
+        return []
+    unmapped_ok = set(build_order.get("unmapped_ok") or [])
+    if task_prefix in unmapped_ok:
+        return []
+    gated_group = gated_group_for_task(task_id, build_order)
+    edges = build_order.get("edges") or []
+    if not isinstance(edges, list):
+        return []
+    reasons: list[str] = []
+    for edge in edges:
+        if not isinstance(edge, dict):
+            continue
+        if edge.get("group") != gated_group:
+            continue
+        after = edge.get("after") or {}
+        if not isinstance(after, dict):
+            continue
+        for prereq_name, threshold in after.items():
+            try:
+                threshold = float(threshold)
+            except (TypeError, ValueError):
+                continue
+            real_prefixes = _resolve_alias_prefixes(build_order, prereq_name)
+            # Conservative: the LOWEST progress among the resolved real
+            # prefixes must clear the threshold (an alias naming several
+            # prefixes is only "ready" once all of them are).
+            worst_pct = min(
+                (progress_lookup(p) for p in real_prefixes), default=0.0
+            )
+            if worst_pct < threshold:
+                reasons.append(
+                    f"{prereq_name} est à {worst_pct:.1f}% (seuil requis {threshold:.0f}%)"
+                )
+    return reasons
+
 
 def _norm_lane(raw: str) -> str:
     """Normalise a derived lane key to a single comparable token."""
@@ -390,6 +712,7 @@ def parse_tasks(path: Path) -> list[dict]:
         gate, reasons = _classify_gate(label)
         tasks.append({
             "id": m.group("id"),
+            "prefix": _task_prefix(m.group("id")),
             "lane": lane or "UNASSIGNED",
             "gate": gate,
             "gate_reasons": reasons,
@@ -398,6 +721,39 @@ def parse_tasks(path: Path) -> list[dict]:
             "model": _model_tier(label, lane or "UNASSIGNED", m.group("id"), reasons),
         })
     return tasks
+
+
+def apply_build_order_gate(
+    tasks: list[dict],
+    build_order: dict | None,
+    progress_lookup,
+    force_wave: bool = False,
+) -> tuple[list[dict], list[dict]]:
+    """SCA3 — split ``tasks`` into ``(allowed, wave_blocked)``.
+
+    A task is *wave-blocked* when its id-prefix names a ``BUILD_ORDER.yml``
+    edge whose prerequisite(s) are under threshold. ``force_wave=True`` lets
+    every task through unchanged (the founder-consigned escape hatch) but
+    each override is logged to stderr by the caller (``main``), not here, so
+    this function stays silent/pure and unit-testable.
+
+    Backward compatible by construction: ``build_order_gate`` (see above)
+    already returns ``[]`` for every situation that predates SCA3 (no file,
+    unmapped prefix, no edge) — this function is a thin wrapper that reuses
+    exactly that no-op contract, so with no BUILD_ORDER.yml the return is
+    always ``(tasks, [])``, i.e. the previous, ungated behaviour.
+    """
+    if force_wave or not build_order:
+        return tasks, []
+    allowed: list[dict] = []
+    blocked: list[dict] = []
+    for t in tasks:
+        reasons = build_order_gate(t.get("id", ""), build_order, progress_lookup)
+        if reasons:
+            blocked.append({**t, "wave_block_reasons": reasons})
+        else:
+            allowed.append(t)
+    return allowed, blocked
 
 
 def count_malformed(path: Path) -> int:
@@ -421,8 +777,17 @@ def count_malformed(path: Path) -> int:
     return malformed
 
 
-def schedule(tasks: list[dict], max_lanes: int) -> dict:
-    """Build lanes and a cross-category, longest-lane-first wave plan."""
+def schedule(tasks: list[dict], max_lanes: int, wave_blocked: list[dict] | None = None) -> dict:
+    """Build lanes and a cross-category, longest-lane-first wave plan.
+
+    ``wave_blocked`` (SCA3, optional -- defaults to none, so existing callers
+    that never pass it get byte-identical behaviour to pre-SCA3) is a list of
+    tasks already removed from ``tasks`` by ``apply_build_order_gate`` for
+    carrying a French unmet-prerequisite reason on each entry
+    (``wave_block_reasons``); it is surfaced in the returned plan/counts and
+    rendered as its own section, but never re-added to ``buildable``.
+    """
+    wave_blocked = wave_blocked or []
     buildable = [t for t in tasks if t["gate"] == "buildable" and t["lane"] != "UNASSIGNED"]
     gated = [t for t in tasks if t["gate"] == "gated"]
     unassigned = [t for t in tasks if t["lane"] == "UNASSIGNED" and t["gate"] == "buildable"]
@@ -478,12 +843,14 @@ def schedule(tasks: list[dict], max_lanes: int) -> dict:
         "wave_detail": waves,
         "gated": gated,
         "unassigned": unassigned,
+        "wave_blocked": wave_blocked,
         "counts": {
             "buildable": len(buildable),
             "lanes": len(lanes),
             "waves": len(waves),
             "gated": len(gated),
             "unassigned": len(unassigned),
+            "wave_blocked": len(wave_blocked),
             "max_parallel": max((len(w) for w in waves), default=0),
             "models": model_counts,
         },
@@ -525,6 +892,14 @@ def render(plan: dict, max_lanes: int, source: str) -> str:
         out += ["", "## Unassigned — add a `@lane:`/`@files:` tag for full coverage"]
         for t in plan["unassigned"]:
             out.append(f"- `{t['id']}`  ({t['section'][:60]})")
+    if plan.get("wave_blocked"):
+        out += [
+            "",
+            "## Refusé — ordre de vague (BUILD_ORDER.yml, SCA3) — "
+            "utiliser --force-wave pour outrepasser (fondateur, consigné)",
+        ]
+        for t in plan["wave_blocked"]:
+            out.append(f"- `{t['id']}`  [{t['lane']}] — " + " ; ".join(t["wave_block_reasons"]))
     return "\n".join(out)
 
 
@@ -547,6 +922,16 @@ def main(argv: list[str] | None = None) -> int:
         "--check", action="store_true",
         help="exit non-zero if any open buildable task is UNASSIGNED",
     )
+    parser.add_argument(
+        "--build-order", default=str(DEFAULT_BUILD_ORDER),
+        help="BUILD_ORDER.yml path for SCA3 wave gating "
+        "(default: docs/BUILD_ORDER.yml; missing file = gating is a no-op)",
+    )
+    parser.add_argument(
+        "--force-wave", action="store_true",
+        help="founder escape hatch (SCA3): bypass BUILD_ORDER.yml wave "
+        "gating entirely for this run. Every use is logged to stderr.",
+    )
     args = parser.parse_args(argv)
 
     path = Path(args.plan)
@@ -557,7 +942,36 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     tasks = parse_tasks(path)
-    plan = schedule(tasks, max(1, args.max_lanes))
+
+    build_order_path = Path(args.build_order)
+    if not build_order_path.is_absolute():
+        build_order_path = ROOT / build_order_path
+    build_order = load_build_order(build_order_path)
+
+    if args.force_wave and build_order is not None:
+        print(
+            "--force-wave: BUILD_ORDER.yml gating BYPASSED for this run "
+            "(founder escape hatch, SCA3) — every prerequisite check below "
+            "is skipped.",
+            file=sys.stderr,
+        )
+
+    def _progress_lookup(prefix: str) -> float:
+        import plan_progress  # lazy: keeps plan_lanes.py standalone-importable
+        return plan_progress.group_pct(prefix)
+
+    allowed_tasks, wave_blocked = apply_build_order_gate(
+        tasks, build_order, _progress_lookup, force_wave=args.force_wave,
+    )
+    if wave_blocked and not args.force_wave:
+        for t in wave_blocked:
+            print(
+                f"REFUSÉ (ordre de vague) : {t['id']} — "
+                + " ; ".join(t["wave_block_reasons"]),
+                file=sys.stderr,
+            )
+
+    plan = schedule(allowed_tasks, max(1, args.max_lanes), wave_blocked=wave_blocked)
     source = path.relative_to(ROOT).as_posix() if path.is_relative_to(ROOT) else str(path)
 
     if args.json:

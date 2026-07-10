@@ -13,6 +13,9 @@ from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+# ARC8 — chatter générique (records.Activity). records est une app de
+# FONDATION : l'import direct de son mixin de vue est autorisé.
+from apps.records.views import ChatterViewSetMixin
 
 from .models import (
     AccuseCharte,
@@ -107,7 +110,9 @@ READ_ACTIONS = ['list', 'retrieve', 'consommation', 'anomalies', 'echeances',
                 'tco', 'eco_conduite', 'documents', 'tableau_bord', 'journal',
                 'amortissement', 'expirants', 'ledger', 'historique',
                 'synthese_tva', 'detenteurs_courants', 'taux_completion',
-                'activites', 'ocr', 'divergences_permis']
+                'activites', 'ocr', 'divergences_permis',
+                # ARC8 — lecture du chatter générique (records.Activity).
+                'chatter_historique']
 
 
 def _parse_date_param(value):
@@ -131,7 +136,7 @@ class _FlotteBaseViewSet(TenantMixin, viewsets.ModelViewSet):
         return [IsResponsableOrAdmin()]
 
 
-class VehiculeViewSet(_FlotteBaseViewSet):
+class VehiculeViewSet(ChatterViewSetMixin, _FlotteBaseViewSet):
     """Véhicules immatriculés du parc (FLOTTE2). Filtrable par énergie/statut,
     recherche par immatriculation/marque/modèle."""
     queryset = Vehicule.objects.all()

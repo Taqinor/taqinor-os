@@ -173,6 +173,7 @@ from .models_consignation import (
 from .models_kitting import (
     Kit,
     KitComposant,
+    RevisionKit,
     OrdreAssemblage,
     ReservationAssemblage,
     OrdreAssemblageActivity,
@@ -305,6 +306,7 @@ __all__ = [
     'MaterielConsigne',
     'Kit',
     'KitComposant',
+    'RevisionKit',
     'OrdreAssemblage',
     'ReservationAssemblage',
     'OrdreAssemblageActivity',

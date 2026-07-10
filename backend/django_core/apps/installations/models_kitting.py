@@ -87,6 +87,48 @@ class KitComposant(models.Model):
         return f'{self.designation or self.produit_id} × {self.quantite}'
 
 
+class RevisionKit(models.Model):
+    """XMFG18 — révision de nomenclature d'un kit de pré-assemblage (pattern
+    RevisionDocument FG297) : snapshot JSON AUTO de la composition à chaque
+    modification des composants, numéroté par kit. L'ordre d'assemblage FIGE
+    le numéro de révision en vigueur à sa création
+    (``OrdreAssemblage.revision_kit_numero``)."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='installations_revisions_kit')
+    kit = models.ForeignKey(
+        Kit, on_delete=models.CASCADE, related_name='revisions')
+    numero = models.PositiveIntegerField(default=1)
+    composition = models.JSONField(
+        default=list,
+        help_text='Snapshot des composants : produit_id, désignation, '
+                  'quantité, taux de perte.')
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='installations_revisions_kit_creees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Révision de kit de pré-assemblage'
+        verbose_name_plural = 'Révisions de kit de pré-assemblage'
+        ordering = ['kit_id', '-numero']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['kit', 'numero'],
+                name='inst_revkit_kit_numero_uniq'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'kit'],
+                         name='inst_revkit_co_kit_idx'),
+        ]
+
+    def __str__(self):
+        return f'Rev.{self.numero} — kit {self.kit_id}'
+
+
 class OrdreAssemblage(models.Model):
     """FG328 — ordre d'assemblage de N kits. Référence ``ASM-YYYYMM-NNNN``
     anti-collision. Cycle : planifié → en cours → terminé. La consommation des
@@ -165,6 +207,11 @@ class OrdreAssemblage(models.Model):
         'OrdreSousTraitance', on_delete=models.SET_NULL,
         null=True, blank=True,
         related_name='ordres_assemblage')
+
+    # XMFG18 — numéro de la révision de nomenclature (RevisionKit) en vigueur
+    # à la création de l'ordre : l'ordre FIGE sa révision (traçabilité de la
+    # composition réellement utilisée, même si la BOM évolue ensuite).
+    revision_kit_numero = models.PositiveIntegerField(null=True, blank=True)
 
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,

@@ -26,10 +26,52 @@ from .models import (
 )
 from .serializers import (
     ActivitySerializer, ActivityTypeSerializer, AttachmentSerializer,
-    CommentSerializer, FollowerSerializer, TaggedItemSerializer,
-    TagSerializer, resolve_target,
+    ChatterActivitySerializer, CommentSerializer, FollowerSerializer,
+    TaggedItemSerializer, TagSerializer, resolve_target,
 )
 from .storage import delete_attachment, fetch_attachment, store_attachment
+
+
+# ── ARC8 — Chatter générique réutilisable (le « mail.thread » maison) ─────────
+class ChatterViewSetMixin:
+    """Donne à N'IMPORTE quel ``ModelViewSet`` un chatter générique adossé à
+    ``records.Activity`` — deux actions ``chatter/historique`` (GET) et
+    ``chatter/noter`` (POST), sur le patron de ``crm.LeadActivity``.
+
+    - ``GET  <detail>/chatter/historique/`` : timeline (plus récent d'abord) des
+      entrées de chatter générique de l'objet.
+    - ``POST <detail>/chatter/noter/`` : ajoute une note manuelle (corps :
+      ``body`` non vide). L'auteur ET la société sont TOUJOURS posés côté
+      serveur (``request.user`` / société de l'objet) — jamais lus du corps.
+
+    L'objet est borné à la société par le ``get_object()`` de la vue hôte (dont
+    le queryset est déjà scopé société). Ces actions sont ADDITIVES : elles
+    coexistent avec le journal maison éventuel de la vue (ex. l'action
+    ``historique`` de ``ContratViewSet``), sur des URL distinctes."""
+
+    @action(detail=True, methods=['get'], url_path='chatter/historique',
+            permission_classes=[IsAnyRole])
+    def chatter_historique(self, request, pk=None):
+        from .services import chatter_qs
+        target = self.get_object()
+        qs = chatter_qs(target, company=_company(request))
+        return Response(ChatterActivitySerializer(qs, many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='chatter/noter',
+            permission_classes=[IsResponsableOrAdmin])
+    def chatter_noter(self, request, pk=None):
+        from .models import Activity
+        from .services import log_activity
+        target = self.get_object()
+        body = (request.data.get('body') or '').strip()
+        if not body:
+            return Response({'body': 'Note vide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        act = log_activity(
+            target, Activity.Kind.NOTE, user=request.user, body=body,
+            company=_company(request))
+        return Response(ChatterActivitySerializer(act).data,
+                        status=status.HTTP_201_CREATED)
 
 
 def _company(request):

@@ -1006,6 +1006,38 @@ def lead_merge_fields(company, lead_id):
     }
 
 
+# ── XMKT36 — Identifiants de contact pour l'export d'audience Meta ─────────
+
+def lead_contact_identifiers(company, lead_ids):
+    """XMKT36 — email/téléphone LECTURE SEULE des leads d'un segment, pour le
+    hash SHA-256 côté serveur (``apps.compta``, jamais d'import direct de
+    ``apps.crm.models``). Scopé société : un id hors société est ignoré.
+    Ne renvoie JAMAIS aucune donnée interne (prix_achat/marge inexistants
+    ici) — uniquement les identifiants de contact déjà publics de la fiche."""
+    from .models import Lead
+    if not lead_ids:
+        return []
+    rows = Lead.objects.filter(
+        company=company, id__in=list(lead_ids),
+    ).values('email', 'telephone', 'whatsapp')
+    return [
+        {'email': r['email'] or '', 'telephone': r['telephone'] or r['whatsapp'] or ''}
+        for r in rows
+    ]
+
+
+def clients_contact_identifiers(company):
+    """XMKT36 — email/téléphone des CLIENTS signés de la société (liste
+    d'exclusion publicitaire : on n'achète pas d'impression pour un client
+    déjà converti). Même contrat lecture seule que ``lead_contact_identifiers``."""
+    from .models import Client
+    rows = Client.objects.filter(company=company).values('email', 'telephone')
+    return [
+        {'email': r['email'] or '', 'telephone': r['telephone'] or ''}
+        for r in rows
+    ]
+
+
 # ── XMKT17 — Coût & ROI MAD par campagne (compta.Campagne) ─────────────────
 
 def revenu_attribue_campagne(company, nom_campagne):
@@ -1126,3 +1158,28 @@ def consolidation_client(client):
         'nb_factures_total': nb_factures_total,
         'par_client': par_client,
     }
+
+
+def lead_chatter_envelope(lead):
+    """ARC9 — timeline chatter du lead dans l'ENVELOPPE UNIFORME.
+
+    Étape 1 (additive) de la convergence des chatters historiques : projette
+    ``crm.LeadActivity`` vers le format commun consommé par
+    ``records.serializers.UniformChatterSerializer`` (un seul contrat de
+    lecture pour le frontend, quel que soit le modèle source). Lecture seule —
+    AUCUNE table modifiée. Le queryset est déjà borné par le lead (lui-même
+    borné société par l'appelant).
+    """
+    rows = lead.activites.select_related('user').all()
+    return [{
+        'id': a.id,
+        'kind': a.kind,
+        'field': a.field or '',
+        'field_label': a.field_label or '',
+        'old_value': a.old_value or '',
+        'new_value': a.new_value or '',
+        'body': a.body or '',
+        'user_username': a.user.username if a.user_id else None,
+        'created_at': a.created_at,
+        'source': 'crm.leadactivity',
+    } for a in rows]

@@ -273,6 +273,64 @@ function DsrRequests() {
   )
 }
 
+// ── Bloc 3 : consentement au benchmarking anonymisé (SCA46) ──────────────────
+// Le CONSENTEMENT est une donnée (Company.benchmarking_opt_in, défaut False) ;
+// aucune agrégation n'existe encore. Bloc autonome : lit le profil, écrit via
+// PATCH /parametres/update/ (posé côté serveur sur la société de l'appelant).
+function BenchmarkingConsent() {
+  const [optIn, setOptIn] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    let actif = true
+    import('../../api/parametresApi').then(({ default: parametresApi }) =>
+      parametresApi.getProfile()
+        .then((r) => { if (actif) setOptIn(!!r.data?.benchmarking_opt_in) })
+        .catch(() => {})
+        .finally(() => { if (actif) setLoading(false) }))
+    return () => { actif = false }
+  }, [])
+
+  const toggle = async () => {
+    setBusy(true)
+    const next = !optIn
+    try {
+      const { default: parametresApi } = await import('../../api/parametresApi')
+      await parametresApi.updateProfile({ benchmarking_opt_in: next })
+      setOptIn(next)
+    } catch { /* best-effort : l'état affiché reste l'ancien */ }
+    finally { setBusy(false) }
+  }
+
+  return (
+    <Card>
+      <CardContent className="pt-4 sm:pt-5">
+        <SectionTitle
+          label="Benchmarking anonymisé"
+          hint="Consentement d'entreprise (désactivé par défaut)"
+        />
+        <label className="flex items-start gap-3" style={{ cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={optIn}
+            disabled={loading || busy}
+            onChange={toggle}
+            aria-label="Consentir au benchmarking anonymisé"
+          />
+          <span>
+            J'accepte que des indicateurs <strong>agrégés et anonymisés</strong>{' '}
+            de mon entreprise (jamais de données nominatives, jamais de
+            documents) puissent être utilisés pour des comparatifs sectoriels.
+            Ce consentement est révocable à tout moment ; aucune agrégation
+            n'est réalisée tant qu'il n'est pas donné.
+          </span>
+        </label>
+      </CardContent>
+    </Card>
+  )
+}
+
 export default function ConfidentialiteSection() {
   const role = useSelector((s) => s.auth.role)
   const canManage = role === 'admin' || role === 'responsable'
@@ -292,6 +350,7 @@ export default function ConfidentialiteSection() {
     <div className="flex flex-col gap-4">
       <RegistreTraitements />
       <DsrRequests />
+      <BenchmarkingConsent />
     </div>
   )
 }

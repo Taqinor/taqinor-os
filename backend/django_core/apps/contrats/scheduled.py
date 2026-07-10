@@ -47,7 +47,7 @@ def generer_factures_recurrentes_dues():
     synthèse ``{'echeances_facturees', 'echeances_echecs',
     'maintenances_facturees', 'maintenances_echecs'}``.
     """
-    from authentication.models import Company
+    from authentication.selectors import active_companies
 
     from . import services
     from .models import EcheancierContrat, LigneEcheance
@@ -58,7 +58,9 @@ def generer_factures_recurrentes_dues():
         'maintenances_facturees': 0, 'maintenances_echecs': 0,
     }
 
-    for company in Company.objects.filter(actif=True):
+    # SCA19 — source UNIQUE des sociétés balayables : un tenant suspendu/en
+    # fermeture (actif=False via le pont SCA18) n'est plus jamais facturé.
+    for company in active_companies():
         # (a) Échéancier de contrats — CONTRAT31.
         lignes_dues = (
             LigneEcheance.objects
@@ -144,7 +146,7 @@ def reconductions_et_alertes_daily():
     suivantes). Renvoie un dict de synthèse agrégé ``{'alertes_semees',
     'alertes_envoyees', 'contrats_reconduits'}``.
     """
-    from authentication.models import Company
+    from authentication.selectors import active_companies
 
     from . import services
 
@@ -152,7 +154,8 @@ def reconductions_et_alertes_daily():
         'alertes_semees': 0, 'alertes_envoyees': 0, 'contrats_reconduits': 0,
     }
 
-    for company in Company.objects.filter(actif=True):
+    # SCA19 — un tenant non actif n'est plus relancé/reconduit automatiquement.
+    for company in active_companies():
         try:
             semis = services.semer_alertes_echeances(company)
             total['alertes_semees'] += semis['nb_creees']

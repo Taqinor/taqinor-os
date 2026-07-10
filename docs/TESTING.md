@@ -42,8 +42,36 @@ python manage.py test apps authentication
 
 Tests étiquetés `pdf` aujourd'hui : `test_pdf.TestPdfRender`,
 `test_quote_engine.TestPremiumPdfRender`, `test_extra_docs._Base` (et ses
-sous-classes). Pour en ajouter : `from django.test import tag` puis `@tag('pdf')`
-sur la classe.
+sous-classes), `test_quote_engine_snapshot.TestQuoteEngineGoldenSnapshots`
+(YTEST10, également `@tag('slow')`). Pour en ajouter : `from django.test import
+tag` puis `@tag('pdf')` sur la classe.
+
+### Snapshots golden PDF (YTEST10/YTEST11) — mise à jour des baselines
+
+`apps/ventes/tests/test_quote_engine_snapshot.py` rend chaque format du moteur
+de devis premium (full, full+étude, une-page, agricole/pompage) sur des
+données fixes, rasterise en PNG (PyMuPDF/`fitz`) et compare à un baseline
+COMMITÉ sous `apps/ventes/tests/baselines/` avec un seuil de diff pixels (2 %
+— jamais une égalité octet-à-octet, WeasyPrint/matplotlib varient légèrement
+d'une machine à l'autre). Assertions structurelles en plus du pixel : nombre
+de pages exact, présence de la chaîne de totaux (Sous-total HT/Total HT/
+TVA/Total TTC), absence stricte de `prix_achat`.
+
+**La CI ne régénère JAMAIS les baselines automatiquement** — un baseline
+manquant ou divergent fait ÉCHOUER le test avec un message pointant ici,
+jamais un auto-accept silencieux. Pour régénérer (revue humaine du diff PNG
+obligatoire avant de committer) :
+
+```bash
+docker compose exec django_core python manage.py update_pdf_baselines
+git diff --stat apps/ventes/tests/baselines/   # relire CHAQUE page qui a changé
+git add apps/ventes/tests/baselines/ && git commit
+```
+
+La commande partage le même code de rendu/comparaison que le test
+(`UPDATE_PDF_SNAPSHOTS=1` en interne) — jamais deux logiques de génération
+divergentes. Un changement de baseline non revu ne doit jamais être committé
+« parce que le test passe » : le diff PNG EST la revue.
 
 ## Frontend — deux couches distinctes
 

@@ -692,6 +692,10 @@ class Facture(models.Model):
         GESTE_COMMERCIAL = 'geste_commercial', 'Geste commercial'
         ECART_REGLEMENT = 'ecart_reglement', 'Écart de règlement'
         LIQUIDATION = 'liquidation', 'Liquidation'
+        # ZFAC11 — écart d'arrondi de caisse (règlement espèces arrondi au pas
+        # configuré par la société) ; tracé comme un abandon de résiduel, jamais
+        # silencieux. Le PDF facture legacy affiche alors « Arrondi espèces ».
+        ARRONDI_CAISSE = 'arrondi_caisse', 'Arrondi espèces'
 
     abandon_motif = models.CharField(
         max_length=20, choices=MotifAbandon.choices, blank=True, default='')

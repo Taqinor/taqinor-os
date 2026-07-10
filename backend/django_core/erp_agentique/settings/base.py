@@ -130,6 +130,10 @@ INSTALLED_APPS = [
     'apps.litiges',
     # XPOS1 — Vente comptoir (point of sale, accessoires).
     'apps.pos',
+    # ARC17 — Répertoire unifié des tiers (res.partner). COUCHE FONDATION :
+    # ne dépend d'aucune app de domaine ; les domaines la référenceront
+    # (ARC18/19). Contrat import-linter `tiers-is-a-base-layer`.
+    'apps.tiers',
 ]
 
 MIDDLEWARE = [
@@ -145,6 +149,9 @@ MIDDLEWARE = [
     # Défaut = actif (aucun 404 nouveau sans toggle). Placé après l'auth Django ;
     # résout lui-même le JWT DRF best-effort (aucun blocage sans jeton valide).
     'core.permissions.DisabledModuleMiddleware',
+    # SCA18 — 403 sur les appels API d'un tenant suspendu/en fermeture (défaut
+    # actif : aucun blocage sans société non-active). Placé après l'auth Django ;
+    # résout le JWT DRF best-effort, superuser + endpoints /auth exemptés.
     # Porte la requête courante pour la capture du Journal d'activité (Feature G).
     'apps.audit.middleware.AuditActorMiddleware',
 ]
@@ -302,10 +309,20 @@ SIMPLE_JWT = {
 }
 
 # Redis Cache Configuration
+# SCA10 — le cache Django cible désormais une instance Redis DÉDIÉE
+# (`redis_cache`, docker-compose.yml), séparée du broker Celery (`redis`,
+# db0) qui garde `noeviction` + persistance AOF. REDIS_CACHE_HOST/
+# REDIS_CACHE_PORT (env) retombent sur REDIS_HOST/REDIS_PORT si absents —
+# RÉTRO-COMPATIBLE : sans ces nouvelles variables posées, CACHES pointe
+# EXACTEMENT vers l'ancienne cible (même hôte que le broker, db1),
+# comportement byte-identique à avant SCA10.
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": f"redis://{os.environ.get('REDIS_HOST', 'redis')}:{os.environ.get('REDIS_PORT', '6379')}/1",
+        "LOCATION": (
+            f"redis://{os.environ.get('REDIS_CACHE_HOST', os.environ.get('REDIS_HOST', 'redis'))}"
+            f":{os.environ.get('REDIS_CACHE_PORT', os.environ.get('REDIS_PORT', '6379'))}/1"
+        ),
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
         }

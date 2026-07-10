@@ -78,7 +78,8 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
         # « Commerciale » = lecture seule) avec comportement historique
         # pour les comptes hérités sans rôle fin.
         if self.action in READ_ACTIONS + [
-                'export_xlsx', 'resolve', 'previsionnel', 'tracer']:
+                'export_xlsx', 'resolve', 'previsionnel', 'tracer',
+                'etiquettes_showroom']:
             # XSTK3/XSTK4 — `resolve` (scan code-barres/GS1) est LECTURE
             # SEULE, accessible à tout rôle authentifié — même garde que
             # `@action(permission_classes=[IsAnyRole])` sur l'action
@@ -87,6 +88,8 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
             # ZSTK3 — `previsionnel` est LECTURE SEULE, même garde.
             # XSTK7 — `tracer` (rapport de traçabilité) est LECTURE SEULE,
             # même garde.
+            # XPOS17 — `etiquettes-showroom` (impression) est LECTURE SEULE,
+            # même garde que l'action `etiquettes` N20.
             return [IsAnyRole()]
         elif self.action in ('create', 'dupliquer'):
             # QG4 — création réservée à Directeur + Commercial responsable.
@@ -361,6 +364,74 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
         response['Content-Disposition'] = (
             'inline; filename="etiquettes-produits.pdf"')
+        return response
+
+    @action(detail=False, methods=['get'], url_path='etiquettes-showroom')
+    def etiquettes_showroom(self, request):
+        """XPOS17 — Étiquettes « showroom » : le QR encode l'URL de la fiche
+        produit PUBLIQUE de l'e-catalogue tokenisé (FG214) — le client scanne
+        en magasin et atterrit sur la fiche (prix TTC, garantie, dispo
+        indicative, CTA devis/rappel). JAMAIS de prix d'achat/marge.
+
+        Paramètres :
+          - ``ids`` : produits (répétés ou séparés par virgules) ;
+          - ``catalogue_token`` : jeton de l'e-catalogue de la société
+            (validé actif/non expiré ET appartenant à la société — un jeton
+            d'une autre société est refusé) ; seuls les produits EXPOSÉS par
+            ce catalogue sont imprimés ;
+          - ``sortie`` : ``html`` (aperçu) | ``pdf`` (défaut).
+        """
+        from django.conf import settings
+        from .. import labels
+        from apps.ventes.utils.pdf import _html_to_pdf
+        from apps.compta.selectors import ecatalogue_public_par_token
+
+        token = (request.query_params.get('catalogue_token') or '').strip()
+        if not token:
+            return Response(
+                {'detail': "Le jeton de l'e-catalogue est requis "
+                           '(catalogue_token).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        cat = ecatalogue_public_par_token(token)
+        if cat is None or cat.company_id != request.user.company_id:
+            return Response(
+                {'detail': 'E-catalogue introuvable pour cette société.'},
+                status=status.HTTP_404_NOT_FOUND)
+
+        ids = request.query_params.getlist('ids')
+        if len(ids) == 1 and ',' in ids[0]:
+            ids = ids[0].split(',')
+        ids = [int(i) for i in (str(x).strip() for x in ids) if i.isdigit()]
+        if not ids:
+            return Response({'detail': 'Sélectionnez au moins un produit.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        exposes = set(cat.produit_ids or [])
+        ids = [i for i in ids if i in exposes]
+
+        produits = (Produit.objects
+                    .filter(company=request.user.company, id__in=ids)
+                    .order_by('nom'))
+        base = getattr(settings, 'PUBLIC_BASE_URL', '') or ''
+        if not base:
+            base = request.build_absolute_uri('/')
+        items = [{
+            'token': labels.showroom_url(base, cat.token, p.id),
+            'titre': p.nom,
+            'sous_titre': 'Scannez pour la fiche & le prix',
+        } for p in produits]
+        if not items:
+            return Response(
+                {'detail': 'Aucun produit correspondant exposé par cet '
+                           'e-catalogue.'},
+                status=status.HTTP_404_NOT_FOUND)
+
+        html = labels.render_labels_html(items, symbology='qr')
+        if request.query_params.get('sortie') == 'html':
+            return HttpResponse(html, content_type='text/html; charset=utf-8')
+        pdf_bytes = _html_to_pdf(html)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            'inline; filename="etiquettes-showroom.pdf"')
         return response
 
     @action(detail=False, methods=['get'], url_path='a-reapprovisionner',
@@ -684,6 +755,41 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
                 'numero_serie': serie.numero_serie,
                 'statut': serie.statut,
                 'route': '/chantiers' if serie.installation_id else '/stock',
+            })
+
+        # XSTK20 — jeton KANBAN:<produit_id>:<emplacement_id> (3 segments,
+        # même raison que LOT/SERIE ci-dessus). Le scan (bac vide) CRÉE — de
+        # façon idempotente — une DemandeTransfert préremplie depuis le dépôt
+        # principal ; jamais d'import du modèle installations (services).
+        if first_prefix == labels.KANBAN_PREFIX:
+            parts = code.split(':', 2)
+            if len(parts) != 3 or not parts[1].strip().isdigit() \
+                    or not parts[2].strip().isdigit():
+                return Response(
+                    {'detail': 'Code illisible.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            produit_id = int(parts[1].strip())
+            emplacement_id = int(parts[2].strip())
+            from apps.installations.services import (
+                demande_transfert_depuis_kanban,
+            )
+            try:
+                demande, created = demande_transfert_depuis_kanban(
+                    company=request.user.company, user=request.user,
+                    produit_id=produit_id,
+                    emplacement_destination_id=emplacement_id)
+            except ValueError as exc:
+                return Response(
+                    {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({
+                'type': 'demande_transfert',
+                'id': demande.id,
+                'label': f'Demande {demande.reference}',
+                'reference': demande.reference,
+                'quantite': demande.quantite,
+                'statut': demande.statut,
+                'created': created,
+                'route': '/stock',
             })
 
         prefix, _, raw_id = code.partition(':')

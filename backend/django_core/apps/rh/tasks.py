@@ -93,7 +93,7 @@ def alertes_expiration(within_days=30):
     Réutilise ``selectors.echeances_rh`` (FG175, pur/testable) — cette tâche
     n'ajoute que la diffusion + la déduplication quotidienne par ``link``.
     """
-    from authentication.models import Company
+    from authentication.selectors import active_companies
 
     from apps.notifications.services import notify
     from apps.rh import selectors, services
@@ -103,7 +103,8 @@ def alertes_expiration(within_days=30):
     total_echeances = 0
     total_notifs = 0
 
-    for company in Company.objects.filter(actif=True):
+    # SCA19 — un tenant suspendu ne reçoit plus d'alertes d'échéances RH.
+    for company in active_companies():
         try:
             rows = selectors.echeances_rh(
                 company, within_days=within_days, today=today)
@@ -202,7 +203,7 @@ def alertes_cdd(within_days=30):
     """
     from datetime import timedelta
 
-    from authentication.models import Company
+    from authentication.selectors import active_companies
 
     from apps.notifications.services import notify
     from .models import DossierEmploye
@@ -212,7 +213,8 @@ def alertes_cdd(within_days=30):
     total_contrats = 0
     total_notifs = 0
 
-    for company in Company.objects.filter(actif=True):
+    # SCA19 — un tenant suspendu ne reçoit plus d'alertes CDD.
+    for company in active_companies():
         qs = DossierEmploye.objects.filter(
             company=company,
             type_contrat=DossierEmploye.TypeContrat.CDD,
