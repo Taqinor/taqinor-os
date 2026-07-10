@@ -59,24 +59,46 @@ class Sca39ExplainIndexScanTests(TestCase):
     """PostgreSQL uniquement : les listes ventes filtrées par (company, statut)
     empruntent un Index Scan quand le planificateur y est autorisé."""
 
+    # Statuts de « remplissage » (autres que celui recherché) — un mélange rend
+    # la colonne ``statut`` SÉLECTIVE : l'index (company, statut) devient
+    # strictement plus discriminant que (company, date_*) pour la requête, donc
+    # le planificateur le préfère de façon DÉTERMINISTE (sur des données
+    # uniformes il pourrait choisir n'importe quel index en tête ``company``).
+    DEVIS_STATUTS = ['envoye', 'accepte', 'refuse', 'expire']
+    FACTURE_STATUTS = ['payee', 'en_retard', 'annulee', 'brouillon']
+
     def setUp(self):
         self.company = Company.objects.create(
             slug='sca39-explain-co', nom='SCA39 Explain Co')
         self.client_obj = Client.objects.create(
             company=self.company, nom='Client', prenom='SCA39',
             email='sca39-explain@example.invalid')
-        # Quelques lignes pour que la requête ne soit pas vide (le forçage
-        # enable_seqscan=off suffit à faire choisir l'index, les lignes
-        # rendent juste le plan réaliste).
-        for i in range(5):
+        # Une ligne du statut RECHERCHÉ + plusieurs autres statuts : le statut
+        # ciblé est minoritaire, donc (company, statut) est le plan le plus
+        # sélectif. Le forçage enable_seqscan=off + ANALYZE (ci-dessous) rend le
+        # choix d'index déterministe même sur une table de test quasi vide.
+        Devis.objects.create(
+            company=self.company, reference='DEV-SCA39-0000',
+            client=self.client_obj, statut=Devis.Statut.BROUILLON,
+            taux_tva=Decimal('20'))
+        Facture.objects.create(
+            company=self.company, reference='FAC-SCA39-0000',
+            client=self.client_obj, statut=Facture.Statut.EMISE,
+            taux_tva=Decimal('20'))
+        for i, (ds, fs) in enumerate(
+                zip(self.DEVIS_STATUTS * 3, self.FACTURE_STATUTS * 3), start=1):
             Devis.objects.create(
                 company=self.company, reference=f'DEV-SCA39-{i:04d}',
-                client=self.client_obj, statut=Devis.Statut.BROUILLON,
-                taux_tva=Decimal('20'))
+                client=self.client_obj, statut=ds, taux_tva=Decimal('20'))
             Facture.objects.create(
                 company=self.company, reference=f'FAC-SCA39-{i:04d}',
-                client=self.client_obj, statut=Facture.Statut.EMISE,
-                taux_tva=Decimal('20'))
+                client=self.client_obj, statut=fs, taux_tva=Decimal('20'))
+        # Statistiques fraîches pour que le planificateur voie la sélectivité
+        # réelle du statut ciblé (sans ANALYZE, PG utilise des estimations par
+        # défaut identiques pour tous les index en tête company).
+        with connection.cursor() as cur:
+            cur.execute('ANALYZE ventes_devis;')
+            cur.execute('ANALYZE ventes_facture;')
 
     def _explain_uses_index(self, sql, params, index_name):
         """Retourne True si le plan EXPLAIN mentionne un Index Scan sur
