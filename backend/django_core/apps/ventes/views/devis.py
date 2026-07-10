@@ -1128,6 +1128,43 @@ class DevisViewSet(viewsets.ModelViewSet):
         return Response(
             DevisActivitySerializer(devis.activites.all(), many=True).data)
 
+    @action(detail=True, methods=['post'], url_path='whatsapp-preview',
+            permission_classes=[IsResponsableOrAdmin])
+    def whatsapp_preview(self, request, pk=None):
+        """QX22be — PRÉVISUALISATION WhatsApp (lecture seule) : construit le lien
+        wa.me + le message SANS marquer le devis « envoyé ».
+
+        Le vendeur ouvre la modale d'envoi (aperçu) puis clique le lien wa.me
+        pour VRAIMENT envoyer (l'action ``whatsapp`` marque alors « envoyé »).
+        Ouvrir puis fermer la modale ne doit JAMAIS créer un devis fantôme
+        « envoyé » dont l'horloge de validité a démarré. Aucune transition de
+        statut, aucune écriture (hormis le ShareLink réutilisé, idempotent)."""
+        from ..utils.phone import normalize_ma_phone
+        from ..utils.whatsapp import (
+            build_single_devis_whatsapp, build_wa_url, devis_recipient_phone,
+        )
+
+        devis = self.get_object()
+        phone = devis_recipient_phone(devis)
+        if not normalize_ma_phone(phone):
+            return Response(
+                {'detail': 'Aucun numéro de téléphone.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        langue = request.data.get('langue')
+        if langue is None:
+            lead = getattr(devis, 'lead', None)
+            langue = (getattr(lead, 'langue_preferee', None) or 'fr'
+                      if lead is not None else 'fr')
+        message, link = build_single_devis_whatsapp(request, devis, langue)
+        # PAS de mark_devis_sent, PAS de chatter : simple aperçu.
+        return Response({
+            'wa_url': build_wa_url(phone, message),
+            'phone': phone, 'message': message, 'url': link['url'],
+            'devis_statut': devis.statut,  # inchangé
+            'preview': True,
+        })
+
     @action(detail=True, methods=['post'], url_path='whatsapp',
             permission_classes=[IsResponsableOrAdmin])
     def whatsapp(self, request, pk=None):
