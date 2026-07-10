@@ -7,6 +7,21 @@ inline d'origine.
 """
 
 
+def compter_devis(company):
+    """SCA22 — nombre de devis d'une société (console fondateur). Point d'entrée
+    cross-app en LECTURE : ``authentication`` lit ce compteur sans importer
+    ``apps.ventes.models``."""
+    from .models import Devis
+    return Devis.objects.filter(company=company).count()
+
+
+def compter_factures(company):
+    """SCA22 — nombre de factures d'une société (console fondateur). Lecture
+    seule cross-app (jamais un import direct des modèles ventes)."""
+    from .models import Facture
+    return Facture.objects.filter(company=company).count()
+
+
 def factures_echues(company, *, today=None):
     """YEVNT3 — Factures en retard d'une société : échéance dépassée, non
     payées, non annulées. Point d'entrée cross-app sanctionné pour

@@ -17,6 +17,11 @@ from .views import (
     ChangePasswordView,
     SwitchCompanyView,
 )
+from .views_console import (
+    TenantConsoleListView,
+    TenantConsoleStatutView,
+    TenantConsoleNoteView,
+)
 
 router = DefaultRouter()
 router.register(r'users', UserViewSet, basename='users')
@@ -46,5 +51,12 @@ urlpatterns = [
          name='auth_session_revoke'),
     path('auth/change-password/', ChangePasswordView.as_view(),
          name='auth_change_password'),
+    # SCA22 — console fondateur des tenants (staff-only, sans billing).
+    path('auth/console/tenants/', TenantConsoleListView.as_view(),
+         name='auth_console_tenants'),
+    path('auth/console/tenants/<int:pk>/statut/',
+         TenantConsoleStatutView.as_view(), name='auth_console_tenant_statut'),
+    path('auth/console/tenants/<int:pk>/note/',
+         TenantConsoleNoteView.as_view(), name='auth_console_tenant_note'),
     path('', include(router.urls)),
 ]

@@ -32,6 +32,10 @@ class Company(models.Model):
     # (management command, double confirmation) puisse être exécutée.
     date_fermeture = models.DateTimeField(
         'Date de mise en fermeture', null=True, blank=True)
+    # SCA22 — annotation libre du fondateur (console tenants) : note de plan /
+    # remarque libre, JAMAIS de billing ici. Additif, défaut vide.
+    plan_flag = models.CharField(
+        'Note de plan (fondateur)', max_length=255, blank=True, default='')
     date_creation = models.DateTimeField(auto_now_add=True)
 
     class Meta:
