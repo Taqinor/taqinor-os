@@ -156,16 +156,14 @@ class TestProposalRoofLayoutPayload(TestCase):
         devis = make_devis(self.company, self.user, self.client_obj,
                            'DEV-QJ26-LEAK', roof_layout=sample_layout())
         resp = self._get_payload(devis)
-        pj = resp.json()
-        raw = json.dumps(pj)
-        # Diagnostic ciblé : si une fuite subsiste, dire EXACTEMENT dans quelle
-        # clé de la charge utile le prix d'achat apparaît (localisation directe).
-        leak_keys = [k for k in (pj or {})
-                     if '9999' in json.dumps(pj.get(k), default=str)]
-        self.assertNotIn(
-            '9999', raw,
-            msg=f"prix d'achat 9999 fuité — clés de charge utile concernées : "
-                f"{leak_keys}")
+        raw = json.dumps(resp.json())
+        # Le prix d'achat (9999) ne doit jamais apparaître comme VALEUR AUTONOME.
+        # On borne le motif (aucun chiffre/point adjacent) : « 9999 » en
+        # sous-chaîne d'un montant client LÉGITIME — ex. un cashflow 25 ans
+        # « 399991 » (QX39) — n'est PAS une fuite du prix d'achat.
+        self.assertNotRegex(
+            raw, r'(?<![\d.])9999(?![\d.])',
+            "prix d'achat 9999 fuité comme valeur autonome dans la charge utile")
         self.assertNotIn('prix_achat', raw)
 
 
