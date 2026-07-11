@@ -3187,6 +3187,17 @@ textarea.form-control {
   padding: 6px 10px 8px;
 }
 .nb-header-actions { display: flex; align-items: center; gap: 6px; }
+/* VX204 — indicateur discret « panne prolongée » (≥3 échecs consécutifs du
+   sondage léger), cliquable pour reprendre manuellement. */
+.nb-stalled {
+  display: block; width: 100%; text-align: center;
+  background: #fef2f2; border: none; border-bottom: 1px solid #fecaca;
+  border-radius: 8px 8px 0 0; color: #dc2626;
+  font-size: 0.72rem; font-weight: 600; padding: 6px 8px; cursor: pointer;
+}
+@media (hover: hover) {
+  .nb-stalled:hover { background: #fee2e2; }
+}
 .nb-link-btn {
   display: inline-flex; align-items: center; gap: 4px;
   background: none; border: none; cursor: pointer;

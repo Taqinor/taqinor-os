@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 
@@ -13,6 +13,7 @@ vi.mock('../api/recordsApi', () => ({
   },
 }))
 
+import recordsApi from '../api/recordsApi'
 import ChatterWidget from './ChatterWidget'
 
 function renderWidget(user = { username: 'sami', role: 'commerciale' }) {
@@ -38,5 +39,31 @@ describe('ChatterWidget (VX196)', () => {
     renderWidget()
     const btn = await screen.findByLabelText('Supprimer le commentaire')
     expect(btn).toHaveAttribute('title', 'Supprimer')
+  })
+
+  it('VX204 — un échec de chargement affiche un message + Réessayer (jamais une liste vide muette)', async () => {
+    recordsApi.getComments.mockRejectedValueOnce(new Error('boom'))
+    renderWidget()
+    expect(await screen.findByRole('alert')).toHaveTextContent('Impossible de charger les commentaires.')
+    expect(screen.queryByText('Aucun commentaire.')).not.toBeInTheDocument()
+
+    // Réessayer relance le chargement et efface l'erreur en cas de succès.
+    recordsApi.getComments.mockResolvedValueOnce({ data: [
+      { id: 2, body: 'Ça marche', author_display: 'Sami', author_username: 'sami', created_at: '2026-06-21T09:00:00' },
+    ] })
+    fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }))
+    expect(await screen.findByText('Ça marche')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('VX204 — un échec d\'envoi de commentaire affiche un message d\'erreur visible', async () => {
+    recordsApi.createComment.mockRejectedValueOnce(new Error('boom'))
+    renderWidget()
+    await screen.findByText('Bonjour')
+    fireEvent.change(screen.getByPlaceholderText(/Ajouter un commentaire/), { target: { value: 'salut' } })
+    fireEvent.click(screen.getByTitle('Envoyer (Ctrl+Entrée)'))
+    await waitFor(() => {
+      expect(screen.getByText('Envoi impossible — réessayez.')).toBeInTheDocument()
+    })
   })
 })
