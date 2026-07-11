@@ -177,6 +177,11 @@ class UserSerializer(serializers.ModelSerializer):
     # Palier de menu faisant autorité, dérivé du NOUVEAU rôle (jamais du legacy).
     menu_tier = serializers.ReadOnlyField()
     permissions = serializers.SerializerMethodField()
+    # ODX6 — clés des modules explicitement DÉSACTIVÉS pour la société de
+    # l'utilisateur (lecture seule), servies au bootstrap pour que la nav
+    # frontend masque ces modules et que le routeur bloque leurs routes. Défaut
+    # (aucun toggle) = liste vide ⇒ nav strictement identique à aujourd'hui.
+    modules_desactives = serializers.SerializerMethodField()
     avatar_url = serializers.SerializerMethodField()
     # Superviseur direct (Feature E) — assignable par un Directeur/Admin dans
     # Paramètres → Équipe. Nom en lecture seule pour l'affichage.
@@ -202,6 +207,7 @@ class UserSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'username', 'email', 'first_name', 'last_name',
             'role', 'role_nom', 'role_legacy', 'menu_tier', 'permissions',
+            'modules_desactives',
             'poste', 'poste_ref', 'poste_ref_intitule',
             'avatar_key', 'avatar_url',
             'supervisor', 'supervisor_nom',
@@ -222,6 +228,7 @@ class UserSerializer(serializers.ModelSerializer):
             'societes_operables', 'active_company_id',
             'password_changed_at',
             'role_nom', 'role_legacy', 'menu_tier', 'permissions',
+            'modules_desactives',
             # DC17 — le référentiel poste ne se pose PAS par un PATCH direct du
             # corps utilisateur (multi-tenant : jamais de Poste cross-société lu
             # de la requête). Il est rattaché par la migration de dédup puis géré
@@ -241,6 +248,20 @@ class UserSerializer(serializers.ModelSerializer):
         if obj.role:
             return obj.role.permissions or []
         return []
+
+    def get_modules_desactives(self, obj):
+        """ODX6 — clés des modules désactivés pour la société de l'utilisateur.
+
+        Source unique : ``core.feature_flags.modules_desactives`` (état
+        ``ModuleToggle`` — ODX3). ``core`` est une app de fondation, sa lecture
+        depuis ``authentication`` est autorisée. Aucune société / absence de
+        toggle ⇒ liste vide (comportement par défaut inchangé). Best-effort :
+        jamais bloquant pour ``/auth/me/``."""
+        try:
+            from core.feature_flags import modules_desactives
+            return sorted(modules_desactives(getattr(obj, 'company', None)))
+        except Exception:
+            return []
 
     def get_societes_operables(self, obj):
         """Sociétés que ce compte peut opérer (home + M2M), dédupliquées."""
