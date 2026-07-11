@@ -562,6 +562,13 @@ export default function InterventionsPage() {
       .catch(() => { toast.error('Réassignation impossible.'); fetchData() })
   }
 
+  // VX43 — pull-to-refresh maison : `overscroll-behavior: contain` a coupé le
+  // rubber-band natif sans rien remettre à sa place. Relance `fetchData` (pas
+  // `reload` — un rafraîchissement de fond ne doit pas faire clignoter la vue).
+  // Appelé AVANT tout early-return : les hooks doivent s'exécuter dans le même
+  // ordre à chaque rendu (rules-of-hooks).
+  const { containerProps, pullDistance, refreshing } = usePullToRefresh(fetchData)
+
   if (loading) {
     return (
       <div className="page lp-page">
@@ -583,11 +590,6 @@ export default function InterventionsPage() {
       </div>
     )
   }
-
-  // VX43 — pull-to-refresh maison : `overscroll-behavior: contain` a coupé le
-  // rubber-band natif sans rien remettre à sa place. Relance `fetchData` (pas
-  // `reload` — un rafraîchissement de fond ne doit pas faire clignoter la vue).
-  const { containerProps, pullDistance, refreshing } = usePullToRefresh(fetchData)
 
   return (
     <div className="page lp-page overflow-y-auto" {...containerProps}>

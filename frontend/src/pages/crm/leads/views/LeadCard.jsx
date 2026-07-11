@@ -19,26 +19,27 @@ import AssigneePicker from '../../../../components/AssigneePicker'
 //
 // Seuil de distance anti-scroll : le geste ne s'engage QUE si le mouvement est
 // nettement plus horizontal que vertical (sinon un swipe raté couperait le
-// scroll vertical du kanban/de la liste). Fonctions pures exportées pour test.
-export const SWIPE_REVEAL_PX = 96 // largeur du panneau d'actions révélé
-export const SWIPE_OPEN_THRESHOLD = SWIPE_REVEAL_PX / 2
+// scroll vertical du kanban/de la liste). Fonctions pures locales (le test
+// node en garde une copie exacte — un fichier de composant n'exporte que des
+// composants, règle react-refresh).
+const SWIPE_REVEAL_PX = 96 // largeur du panneau d'actions révélé
 
 /** Le geste ne s'arme que si le mouvement est majoritairement horizontal
     (anti-scroll vertical) et dépasse un petit seuil d'intention (5px). */
-export function shouldArmSwipe(deltaX, deltaY) {
+function shouldArmSwipe(deltaX, deltaY) {
   if (Math.abs(deltaX) < 5) return false
   return Math.abs(deltaX) > Math.abs(deltaY)
 }
 
 /** Distance de traînée bornée à [-SWIPE_REVEAL_PX, 0] (on ne révèle que vers
     la gauche ; un balayage vers la droite ne fait rien — pas d'action là). */
-export function clampSwipeOffset(deltaX, maxReveal = SWIPE_REVEAL_PX) {
+function clampSwipeOffset(deltaX, maxReveal = SWIPE_REVEAL_PX) {
   return Math.max(-maxReveal, Math.min(0, deltaX))
 }
 
 /** Lâcher au-delà de la moitié du panneau → reste ouvert (aimanté) ; sinon
     referme (aimanté à 0). */
-export function resolveSwipeSnap(offset, maxReveal = SWIPE_REVEAL_PX) {
+function resolveSwipeSnap(offset, maxReveal = SWIPE_REVEAL_PX) {
   return Math.abs(offset) >= maxReveal / 2 ? -maxReveal : 0
 }
 

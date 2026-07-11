@@ -240,7 +240,6 @@ export default function Journal() {
   useEffect(() => {
     if (!allowed) return
     loadMeta()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allowed])
 
   // Graphe + table : période + date + filtres + page. Le setState vit dans une

@@ -23,8 +23,9 @@ import { cn } from '../lib/cn'
        déjà sa propre classe de présentation (ex. `.cal-chip`) et lit
        simplement l'accent via CSS (`var(--kb-accent)`). */
 export function StatusAccentCard({
-  accent, variant = 'card', as: Comp = 'div', className, style, children, ...props
+  accent, variant = 'card', as = 'div', className, style, children, ...props
 }) {
+  const Comp = as
   const shellClass =
     variant === 'bare' ? null
       : variant === 'compact' ? 'kb-card kc-card kb-card-compact'
