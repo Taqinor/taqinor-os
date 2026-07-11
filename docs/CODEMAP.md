@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev` on 2026-06-29, refreshed for the functional-domain expansion wave (5 parallel worktree lanes: apps/compta clôture de période + OD manuelles + à-nouveaux FG115–117; apps/ventes solar string-design + inverter match + tilt/azimut FG246/247/249; apps/installations jalons/modèles-de-projet/réunions FG293/296/298; **NEW app apps/flotte** Vehicule+EnginRoulant FLOTTE1/2/4; **NEW app apps/ged** Cabinet/Folder/Document/Version GED1/2/3 — all additive, company-scoped, tested), on top of the prior `dev-uiwave-20260621` world-class UI wave (34 frontend UI/UX tasks: premium DataTable, calm chrome, foundation hooks/primitives, page redesigns) (PLAN2 priority-queue run — Group Q Devis↔Toiture-3D pipeline backend (Q1–Q7: Devis.roof_layout/roof_image + layout endpoints, Lead roof_point/roof_outline/bill_kwh + per-lead token, build_devis_from_layout() service, MinIO roof-image, layout-aware quote data with byte-identical no-layout path, tokenized /proposal data endpoint + e-sign accept); Group R agentic layer — NEW APP `apps/agent` (in-code action registry + `/api/django/agent/` catalogue, AG1), FastAPI registry-driven tools with propose→confirm (`/sql-agent/confirm`, AG2) surfaced on /query, assistant confirm/result cards (AG3), domain agent actions in ventes/crm/stock/sav/installations `agent_actions.py` (AG4–AG9), Groq-Whisper assistant voice `/sql-agent/transcribe` (AG10) + voice/hands-free chat (AG11/AG12); Group S internal team chat — NEW APP `apps/chat` (Conversation/Member/Message/Attachment/Reaction/Mention, company+membership scoped, `/api/django/chat/`, S1–S9), self-hosted faster-whisper `/chat/transcribe` (NEW dep, `CHAT_TRANSCRIPTION_ENABLED`, S10) + Celery transcription pipeline (S11), full React `features/messaging` UI + `/messages` route (S12–S20); design/UI/reporting polish (F120–F123 OKLCH tokens, G124–G128 primitives, K147/N161/K148/K149/J146/P167 chart kit + dashboard + table unification); P171 DataTable→@tanstack engine swap (API-compatible, full parity). ADDITIVE migrations: ventes/0024, crm/0024, chat/0001, notifications/0007. Founder standing consent recorded in CLAUDE.md lifting the ARCH/AUTH/COST/DECISION/GALLERY/DEP gate. + 2026-06-22 greenfield-foundations run: 7 NEW apps stood up (apps/rh DossierEmploye master FG154/DC29, apps/paie ParametrePaie/BaremeIR PAIE1/2/4, apps/gestion_projet Projet/ProjetChantier PROJ1, apps/contrats Contrat CONTRAT1/2, apps/qhse NCR/CAPA QHSE1/9/10, apps/kb KbArticle KB1, apps/litiges Reclamation LITIGE1) — additive, multi-tenant, admin-gated, tested; INSTALLED_APPS+urls wired; 13 tasks ticked. BLOCKED: S21 WebSocket/Channels (needs provisioned ASGI/nginx-WS infra), I134/I138 ⌘K palette (reconcile with existing providers).) + 2026-06-22 `claude/serene-ptolemy-dj5cs0` wave-1 run: 8 parallel worktree lanes — FG122 (compta consolidated treasury position + AR/AP/payroll/TVA projection, GL-only selector + read endpoint), M4 (last `ventes → audit` back-edge removed — PDF audit capture now flows through the `core.events.document_pdf_generated` bus with an `audit` receiver; new import-linter contract pins it), FG157 (apps/rh `Remuneration` gated by the new `salaires_voir` permission), PAIE3 (apps/paie 2026 Moroccan legal payroll defaults seeded editable + `valide_par_fondateur` flag), PROJ5 (apps/gestion_projet `Tache` WBS with self-FK sub-tasks), QHSE5 (apps/qhse auto-conformity min/max on `PointControleModele`/`ReleveControle`), FG350 (frontend global `CopilotPanel` drawer reusing the FastAPI agent), GED5 (frontend `/ged` arborescent navigator over existing ged endpoints) — all additive, multi-tenant, tested; ADDITIVE migrations rh/0004, paie/0002, qhse/0004, gestion_projet/0005. + wave-2 (same run): FG123 (compta `RapprochementBancaire`/`LigneReleve`/`PointageReleve` — statement↔GL pointing, écart-zero close, no écriture), FG49 (ventes account-coded grand-livre export CGNC 3421/7111/4455, xlsx+csv, configurable codes), FG351 (apps/agent registry guarded write actions `ventes.devis.create`/`crm.client.create`/`crm.lead.create` via propose→confirm + FastAPI dynamic action_tools), FG158 (rh `DossierEmploye` emergency-contact + extended coordinates fields), PAIE5 (paie family-charge deduction params + `compute_ir` helper), GED6 (ged `DocumentLien` generic-target link via `records.ALLOWED_TARGETS` +ventes.boncommande), PROJ6 (gestion_projet `DependanceTache` FS/SS/FF/SF + lag with cycle guards), QHSE6 (qhse hold-point gating selector/endpoint) — all additive, multi-tenant, tested; ADDITIVE migrations compta/0006, rh/0005, paie/0003, ged/0002, gestion_projet/0006 (FG49/FG351/QHSE6 need none); import-linter stays 4/4. + wave-3 (same run, 7 lanes): FG124 (compta `Caisse`/`MouvementCaisse`/`ClotureCaisse` petty-cash with optional GL posting honouring the FG115 period lock), FG50 (ventes acompte transfer/refund on facture cancel — re-point Paiement or reversing negative Paiement, chatter, no migration), FG159 (rh `DocumentEmploye` vault reusing `records.Attachment` MinIO storage + optional expiry), PAIE6 (paie `Rubrique` configurable payslip-line catalogue + idempotent seed), GED7 (ged `migrate_attachments_to_ged` command importing records.Attachment into Documents reusing file_key + DocumentLien), PROJ7 (gestion_projet `Jalon` milestones + `facturation_pct`), QHSE7 (qhse `ReleveCourbeIV` PV string I-V curve + fill factor) — all additive, multi-tenant, tested; ADDITIVE migrations compta/0007, rh/0006, paie/0004, gestion_projet/0007, qhse/0005 (FG50/GED7 need none); import-linter stays 4/4. FG352 (RAG/pgvector, DEP:langchain-textsplitters) intentionally left [ ] for a focused run. + 2026-06-22 `claude/plan-md-completion-ysbchz` drain: 8 parallel worktree lanes off PLAN.md (compta FG125–130, ventes FG51/53/248/250/251, core FG355–359 NoOp-AI, rh FG160–165, paie PAIE7–12, ged GED8–13, gestion_projet PROJ8–13, qhse QHSE8/11–15 — 46 tasks; ADDITIVE migrations across those apps + customfields/0003; new NoOp scaffolds add no external dependency; GED12 semantic embedding OFF by default). + 2026-06-23 PLAN2 **Group U** drain (U1–U14, 10 parallel worktree lanes, one self-merge): lead-modal stays-open UX (U1), mouse-wheel + mobile-header CSS regressions (U2/U3), WhatsApp-send flips devis→envoyé via a NEW `core.events.devis_sent` event (U4), surface generated factures/BC in the devis list + BC-state warning (U5/U8), hide/badge superseded devis revisions (U7), auto-create chantier on devis acceptance via the `devis_accepted` bus (U6), stock reservation on the direct generer-facture path (U9), relance-escalation reset on full payment (U10), phantom-signé flag on post-acceptance refusal (U11, flag-only), direct nullable lead FK on Facture/BonCommande (U12), avatar same-origin proxy fix (U13), GED « Documents » write UI + `documents/televerser/` upload (U14) — additive, multi-tenant, tested; ADDITIVE migrations ventes/0027_devis_date_envoi + 0028_boncommande_lead_facture_lead. + 2026-06-24 PLAN.md batch-1 drain (8 parallel worktree lanes off the FG/module wave plan, adversarial review + local CI incl. makemigrations-check & full affected test run, one self-merge): 7 shipped — FG52 (ventes multi-currency `devise`/`taux_change` + CompanyProfile default), FG166 (rh `Pointage` clock-in/out), CONTRAT6 (contrats `confidentialite` gated on `menu_tier`), FLOTTE5 (flotte `ActifFlotte` unified asset ref), PAIE13 (paie multi-profile base-salary + proration), GED14 (ged inline `apercu` preview), PROJ14 (gestion_projet delay detection). ADDITIVE migrations ventes/0029 + parametres/0025, rh/0008, contrats/0005, flotte/0005, paie/0006. **FG131 (compta 3-way match) DEFERRED/backed-out** — the build duplicated stock's BonCommandeFournisseur/FactureFournisseur (reverse-accessor clash); needs a rebuild reusing stock procurement via selectors/services (left `[ ]`). + 2026-06-27 `claude/lucid-banzai-33af1c` PLAN.md wave-1 drain (5 parallel worktree lanes, one self-merge): PAIE14 (paie heures-sup majorées 25/50/100 %), FG167 (rh `FeuilleTemps` timesheets + labour-hours selector), CONTRAT7 (contrats `ModeleContrat` + `/instancier/`), FLOTTE7 (flotte `Conducteur` + permis), QHSE16 (qhse `Audit`/`ReponseCritere` + score → NCR) — all additive, multi-tenant, tested; ADDITIVE migrations paie/0007, rh/0009, contrats/0006, flotte/0006, qhse/0010. No new external/paid dependency, no auth change. Validated on the docker CI harness (511 affected-app tests green, makemigrations --check clean). + 2026-06-27 same run waves 2+3 (9 more file-disjoint lanes): GED15 (ged document version history + restore, `restored_from` audit), PROJ15 (gestion_projet `RessourceProfil`/`Equipe`, internal cout_horaire), FG39 (crm `ObjectifCommercial` + attainment selector, backend), FG5 (notifications `WorkingHoursConfig`/`Holiday` + calendar helpers + `seed_ma_holidays`, opt-in), FG86 (sav `Ticket.share_token` + public read-only tracking endpoint, allowlist no cout/chatter), KB5 (kb `seed_kb_templates` 5 SOP/ONEE/82-21 gabarits), FG96 (reporting `DashboardConfig` per-user/role, backend), FG102 (publicapi webhook deliveries history + replay + test, backend), FG297 (installations `DocumentProjet`/`RevisionDocument` versioned project-doc register) — all additive, multi-tenant, tested; ADDITIVE migrations ged/0008, gestion_projet/0010, crm/0028, notifications/0010, sav/0009, reporting/0003, installations/0014 (KB5/FG102 need none); import-linter stays 4/4. No new external/paid dependency, no auth change. + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-1 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI, one self-merge): FG135 (compta `NoteFrais` notes de frais + remboursements, justificatif photo, écritures équilibrées, verrou de période, réf NDF race-safe), FG291 (installations `Projet` programme multi-chantiers regroupant chantiers/devis/tickets par FK chaînes, machine d'états propre — NEW arch component), FG255 (ventes `ev_charger_sizing` borne VE couplée au PV, math pure), FG361 (core `forecast.py` prévision CA/devis mensuels, Holt-Winters statsmodels + repli pur Python), FG172 (rh `Competence`/`CompetenceEmploye` matrice de compétences), CONTRAT13 (contrats `RegleApprobation` par montant/type + résolveur), FLOTTE13 (flotte conso L/100 km & kWh/100 km depuis pleins+odomètre, endpoint scopé), GED17 (ged `Document.statut` cycle de vie brouillon→…→obsolète, machine d'états gardée, distinct de STAGES.py) — all additive, multi-tenant, tested; ADDITIVE migrations compta/0011, installations/0016, rh/0014, contrats/0010, ged/0011 (FG255/FG361/FLOTTE13 need none). **NEW external dependency `statsmodels==0.14.4`** (FG361, import défensif + repli si absente). Adversarial review fixed 2 CI-red issues pre-merge (FG361 garde NaN avant clamp, FLOTTE13 action `consommation` en lecture tout rôle) + an FG135 reference race; core stays a foundation layer (import-linter 4/4). + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-2 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI): FG136 (compta `BaremeIndemnite`+`IndemniteChantier` indemnités km/per-diem, haversine, écritures équilibrées + verrou de période), FG292 (installations `ProjetTache` tâches/sous-tâches + prédécesseur avec gardes anti-cycle — étend l'ARCH Projet FG291), FG256 (ventes `battery_storage_sizing` autoconso-max vs backup-heures, math pure), FG362 (core `win_probability.py` scorer pur fondation + `reporting/pipeline.py` pondéré par lead, repli statique), FG173 (rh `Habilitation` électriques NF C 18-510 + expiry), CONTRAT14 (contrats `EtapeApprobation` workflow depuis `RegleApprobation`, ne touche pas `Contrat.statut`), FLOTTE14 (flotte `CarteCarburant` + détecteur d'anomalies pleins), QHSE19 (qhse `RetourClientQualite` satisfaction 1–5) — all additive, multi-tenant, tested; ADDITIVE migrations compta/0012, installations/0017, rh/0015, contrats/0011, flotte/0012, qhse/0013 (FG256/FG362 need none). No new external/paid dependency, no auth change; import-linter 4/4 (core reste fondation). Fixed an FG136 constraint Q-order migration drift pre-merge (makemigrations --check clean). + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-3 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI incl. the 8 wave-3 test modules run green before push): FG137 (compta `DeclarationTVA` préparation TVA collectée−déductible par régime/méthode + export), FG294 (installations `BudgetProjet`/`BudgetEngagement` budget vs réel agrégé cross-app via get_model/selectors, alerte dépassement — ARCH), FG257 (ventes `simulate_bankable_yield` P50/P90 + Performance Ratio, math pure), FG363 (core `churn_risk.py` scorer pur fondation), FG174 (rh `Certification` non-électriques + expiry), CONTRAT15 (contrats `ContratActivity` chatter/journal des transitions), FLOTTE15 (flotte `PlanEntretien` entretien préventif km/date/heures via ActifFlotte), GED18 (ged `DemandeApprobation` workflow réutilisant la machine d'états GED17) — all additive, multi-tenant, tested; ADDITIVE migrations compta/0013, installations/0018, rh/0016, contrats/0012, flotte/0013, ged/0012 (FG257/FG363 need none). No new external/paid dependency, no auth change; import-linter 4/4 (core reste fondation, FG363 stdlib-only). No migration drift. + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-4 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI of the 8 wave-4 test modules before push — **ZERO migrations this wave**, all aggregation/pure-math/helper tasks): FG138 (compta `releve_deductions_tva` annexe TVA déductible depuis le GL, réconcilie FG137), FG295 (installations `projet_pnl` P&L consolidé revenu−coûts par Projet, réutilise les agrégats cross-app FG294), FG258 (ventes `hourly_self_consumption` profil autoconso 8760 h + parser xlsx openpyxl déjà présent), FG364 (core `stock_reorder.py` prévision rupture/réappro, stdlib seul), FG175 (rh `echeances_rh` moteur d'alertes d'expiration unifié + commande notifiant via `notifications.notify`), PROJ18 (gestion_projet `plan_de_charge` capacité vs affecté), PAIE20 (paie helper `cimr_salariale` CIMR optionnelle par employé, champs préexistants), QHSE20 (qhse `iso9001_readiness` tableau de bord) — all additive, multi-tenant, tested; NO migrations; no new external/paid dependency, no auth change; import-linter 4/4 (core reste fondation). No migration drift. + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-5 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI of the 8 wave-5 test modules before push): FG139 (compta `RetenueSource` RAS retenue à la source + bordereau de versement, export `?export=csv`), FG299 (installations `plan_de_charge_equipes` capacité vs affecté des techniciens/équipes sur interventions), FG259 (ventes `net_metering_savings` valorisation surplus injecté par tranche loi 13-09), FG365 (core `payment_delay.py` prédiction de retard de paiement, stdlib seul), FG176 (rh `verifier_habilitation_requise` garde d'affectation par habilitation, blocage doux), CONTRAT16 (contrats `SignatureContrat` e-sign in-app loi 53-05, preuve serveur, bascule statut signé), FLOTTE16 (flotte `EcheanceEntretien` génération idempotente d'échéances dues + alertes), GED19 (ged `AclGed` ACL par dossier/document héritage+override, rétrocompatible) — all additive, multi-tenant, tested; ADDITIVE migrations compta/0014, contrats/0013, flotte/0014, ged/0013 (FG299/FG259/FG365/FG176 need none). No new external/paid dependency, no auth change; import-linter 4/4. Fixed a GED19 CheckConstraint `condition=` migration drift pre-merge (Django 5.1 deconstruction; Meta.constraints aligned with the migration, makemigrations --check clean). + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-6 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI of the 8 wave-6 test modules before push): FG140 (compta aide au calcul de l'IS — barème progressif + cotisation minimale + 4 acomptes + régularisation, selectors-only), FG300 (installations `conflits_affectation` double-booking technicien/camionnette même jour), FG260 (ventes `tariff_escalation_projection` escalade ONEE 20-25 ans + VAN/TRI stdlib), **FG366 (core moteur de workflow BPM générique `WorkflowDefinition/StepDefinition/Instance/StepInstance` cible générique contenttypes + SLA/escalades — NEW ARCH component dans la fondation, import-linter 4/4)**, FG177 (rh `VisiteMedicale` du travail + aptitude + expiry, alimente FG175), PROJ19 (gestion_projet `conflits_affectation` ressources chevauchantes), PAIE21 (paie frais professionnels — déjà présent, tests ajoutés), QHSE21 (qhse `EvaluationRisque`/`LigneEvaluationRisque` document unique, criticité=gravité×probabilité) — all additive, multi-tenant, tested; ADDITIVE migrations core/0002 (BPM), rh/0017, qhse/0014 (FG140/FG300/FG260/PROJ19/PAIE21 need none). No migration drift; no new external/paid dependency, no auth change; import-linter 4/4 (core reste fondation). + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-7 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI of 9 wave-7 test modules before push): FG141 (compta `export_fec` export FEC DGI 18 colonnes, `?export=fec`), FG301 (installations `nivellement_charge` rééquilibrage des interventions surchargées sans conflit, lecture seule), FG261 (ventes `optimize_subscribed_power` réduction puissance souscrite post-PV C&I), FG367 (core `rules.py` évaluateur de conditions ET/OU/NON + actions séquentielles, pur fondation), FG178 (rh `EpiCatalogue`/`DotationEpi` dotation EPI nominative), CONTRAT17 (contrats auto signé→actif sur signature), FLOTTE17 (flotte `Garage`/`OrdreReparation` ordres de réparation + coûts), GED20 (ged `PartageGed` partage tokenisé public expiry/password/quota) — all additive, multi-tenant, tested; ADDITIVE migrations rh/0018, flotte/0015, ged/0014 (FG141/FG301/FG261/FG367/CONTRAT17 need none). No migration drift; no new external/paid dependency, no auth change; import-linter 4/4 (core reste fondation). GED20 introduces a PUBLIC AllowAny tokenized document endpoint (token-only resolution, expiry/quota/password-hash, no cross-tenant leak — security model calqué sur ventes.ShareLink). + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-8 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI of 8 wave-8 test modules before push): FG142 (compta `liasse_fiscale` trousse liasse fiscale bilan+CPC+balance+annexe-TVA, réutilise les sélecteurs), FG302 (installations `IndisponibiliteRessource` calendrier de disponibilité technicien/camionnette + sélecteur d'exclusion), FG262 (ventes `module_degradation_curve` dégradation modules + planchers de garantie), FG368 (core `core/jobs.py` + `ScheduledJobViewSet` liste/exécution des jobs Celery Beat, admin, câblé `/api/django/core/`), FG179 (rh péremption/contrôle EPI dérivés + alertes, alimente FG175), PROJ20 (gestion_projet `nivellement_charge` rééquilibrage ressources projet), PAIE22 (paie calcul IR — déjà présent PAIE5, 30 tests ajoutés), QHSE22 (qhse `document_unique_valide`/`exiger_document_unique` gate document unique avant pose) — all additive, multi-tenant, tested; ADDITIVE migrations installations/0019, rh/0019 (FG142/FG262/FG368/PROJ20/PAIE22/QHSE22 need none). FG368 added a root-URLConf line (`api/django/core/` → `core.urls`, orchestrator wiring step). No migration drift; no new external/paid dependency, no auth change; import-linter 4/4 (core reste fondation, jobs via celery infra). Wave-9 PLAN.md drain (2026-06-29, 8 parallel file-disjoint worktree lanes): rh `EmargementEpi` (FG180), contrats `VersionContrat` (CONTRAT18), flotte `Pneumatique`/`PieceFlotte` (FLOTTE18), ged watermarking flags `Document.watermark_diffusion`/`PartageGed.watermark` (GED21, lazy PyMuPDF/Pillow — no hard dep), core workflow-template library + `/api/django/core/` workflow-templates route (FG369), plus selector/endpoint-only FG143 (compta état 9421), FG303 (installations van planning), FG263 (ventes PPA model) — all additive & company-scoped, 4 additive migrations (rh 0020, contrats 0014, flotte 0016, ged 0015). Wave-10 PLAN.md drain (2026-06-29, 7 parallel file-disjoint worktree lanes in apps disjoint from wave 9): crm `ConcurrentPerte` (lost-deal competitor capture FG242), gestion_projet `BudgetProjet`/`LigneBudgetProjet` (PROJ21), qhse `PermisTravail` (QHSE23), kb `KbArticleAcl`/`KbLecture` (role ACL + read tracking KB7), sav `AlarmeOnduleur` (inverter alarms FG280), plus paie allocations-familiales employer charge (PAIE23, fields on ParametrePaie/BulletinPaie) and selector-only LITIGE6 (disputes dashboard) — all additive & company-scoped, 6 additive migrations (crm 0029, gestion_projet 0013, kb 0005, paie 0011, qhse 0015, sav 0011). Wave-11 PLAN.md drain (2026-06-29, 6 parallel file-disjoint worktree lanes resuming wave-9 app lanes off the merged base): compta `TimbreFiscal` (droit de timbre cash FG144), rh `AccidentTravail` (HSE/accidents register FG181), installations `SousTraitant` (subcontractor registry FG304), ged `PolitiqueRetention` (non-destructive retention policies GED22), flotte `EcheanceReglementaire` (regulatory deadlines FLOTTE19), plus pure-math FG264 (ventes pumping-cycle water yield) — all additive & company-scoped, 5 additive migrations (compta 0015, rh 0021, installations 0020, ged 0016, flotte 0017). Wave-12 PLAN.md drain (2026-06-29, 3 parallel file-disjoint lanes resuming wave-10 app lanes): qhse `ConsignationLoto` (LOTO on a work permit QHSE24), crm `PointContact` (multi-touch attribution journal FG204), plus paie taxe de formation professionnelle employer charge (PAIE24, BulletinPaie snapshot) — all additive & company-scoped, 3 additive migrations (paie 0012, qhse 0016, crm 0030). Wave-13 PLAN.md drain (2026-06-30, 6 parallel file-disjoint worktree lanes resuming wave-9 app lanes): compta `RetenueGarantie`/`CautionBancaire` (FG145), rh `PresquAccident` (near-miss FG182), installations `OrdreSousTraitance` (subcontractor work orders FG305), ged `ArchivageLegal` (legal write-once GED23), flotte `BaremeVignette` + `Vehicule.puissance_fiscale` (TSAV FLOTTE20), plus selector-only PROJ22 (committed-vs-actual project cost) — all additive & company-scoped, 5 additive migrations (compta 0016, rh 0022, installations 0021, ged 0017, flotte 0018).
-Structure fingerprint: 31bb3ef3b10238602865778a9989fed0c0d975e4c955fb8e186b7c81410efe96
-Plan fingerprint: 3f5c2e1ddec15c689d406bc1a336be31345def258e96629dcd2f45bdcd861c08
+Structure fingerprint: 6cb6751da576d1228cd311ef42cb9a4a5fda30912af27223a87a8b9c221acdb0
+Plan fingerprint: e5349fd494c691dc4d7fcbbf21a974640bbd8b784cfbb38a2bed2b514a2a36fc
 
 > This file is **regenerated by the build pipeline**. It is derived by reading the
 > actual source (models, urls, serializers, settings, docker-compose, requirements,
@@ -732,7 +732,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (285)**
+**Done (417)**
 
 - `ERR1` — [FastAPI] NL→SQL agent has no SELECT-only enforcement in code…
 - `ERR2` — [FastAPI] NL→SQL tenant isolation is defeatable four ways…
@@ -902,6 +902,10 @@ Things this map could not fully verify from source — do not over-trust:
 - `ARC54` — Routes legacy dans le registre — phase 2 (le reste, après les pilotes ARC48)
 - `ARC55` — Unifier les DEUX schémas de permission viewset concurrents
 - `ARC56` — Pont Tiers : crm.Lead (l identité pré-conversion)
+- `DC34` — Sous-traitant : pas de master fournisseur parallèle
+- `ODX1` — Carte des modules cible (docs/module-map.md)
+- `ODX6` — Nav filtrée par modules actifs
+- `ODX16` — Reloger AbonnementMonitoring (revenu récurrent)
 - `QPERF1` — DevisSerializer list N+1 (query budget déféré)
 - `SCA1` — `docs/BUILD_ORDER.yml` : le DAG de vagues machine-lisible
 - `SCA2` — `scripts/plan_progress.py` : complétude mesurée par groupe
@@ -961,9 +965,14 @@ Things this map could not fully verify from source — do not over-trust:
 - `XMKT36` — [DECISION] Export de segments vers audiences publicitaires Meta
 - `XPLT19` — Accès multi-sociétés pour un utilisateur + sélecteur de société
 - `XPOS17` — QR showroom → fiche produit publique
+- `XSAL15` — Vue kanban « Prévision » avec glisser-déposer entre mois
 - `XSTK20` — Réappro kanban / deux-bacs par scan de carte
+- `YAPIC1` — Classe de pagination partagée avec plafond dur (`max_page_size`)
+- `YRBAC10` — Vérification de parité gating frontend↔backend (source unique + test de dérive)
+- `YRBAC11` — Sweep object-level : les vues fonctionnelles/actions custom touchant un objet par ID…
 - `YRBAC12` — Test générique d'isolation multi-tenant sur tous les viewsets `TenantMixin`
 - `YSERV4` — Événement `chantier_receptionne` sur le bus + création auto de l'enquête NPS à la…
+- `YSERV8` — Semer la référence de production attendue du monitoring depuis l'étude/la recette (le…
 - `YSERV11` — NPS promoteur → demande de parrainage au moment de l'enchantement
 - `YTEST4` — E2E processus lead-to-cash complet (backend, un seul test) asservissant la vraie…
 - `YTEST5` — E2E chemins malheureux du processus commercial (devis refusé, expiré, avoir)
@@ -972,6 +981,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `YTEST11` — Workflow revu de mise à jour des baselines PDF (pas d'auto-accept en CI)
 - `ZFAC11` — Arrondi de caisse (cash rounding) sur factures réglées en espèces
 - `ZMFG9` — Disponibilité multi-niveaux du kit (combien assemblables en traversant les sous-kits)
+- `ZSAL9` — Avertissements de vente configurables par produit / par client (sale warnings)
 - `QW8` — Make QW4's email leg actually fire (today it's config-dead by default)
 - `QX1` — [CRITICAL] `remise_globale` reaches the ENTIRE billing chain
 - `QX2` — Fix the discount's OTHER consumers: founder KPIs, Meta CAPI value, DGI/UBL export
@@ -1015,30 +1025,148 @@ Things this map could not fully verify from source — do not over-trust:
 - `QX40` — Pompage electrical + data sanity
 - `QX41` — Public hardening pack
 - `QX42` — PII retention for the raw intake copies
+- `VX1` — Un seul or, un seul navy : fusion des jetons de marque
+- `VX2` — Re-signer la coquille permanente (Sidebar + Header) aux couleurs de marque
+- `VX3` — La typo de marque et le fond tokenisé au niveau `<body>`
+- `VX4` — Finir le dark mode sur la surface legacy
+- `VX5` — Data typography « .num » : les chiffres deviennent les héros
+- `VX6` — Un seul langage de rayon et d'élévation
+- `VX7` — Passe « calm color » : hiérarchie de poids visuel sur les écrans denses
+- `VX8` — Un accent de couleur par module (le bout manquant du découpage Odoo)
+- `VX9` — Le Lanceur d'applications TAQINOR (grille légère, pas une page)
+- `VX10` — Apps épinglées personnelles dans la Sidebar
+- `VX11` — Fil d'Ariane cliquable vers le cockpit du module + mémoire du dernier module
+- `VX12` — « Plus » mobile = sélecteur d'apps en grille, pas le tiroir de 100 items
+- `VX13` — Une seule recherche : hook partagé GlobalSearch + CommandPalette, pastilles de module
+- `VX14` — Centre de notifications : onglets + config déclarative (delta mince, vérifié)
+- `VX15` — Identité de cockpit : ModuleHero + accent + sparklines dans ModuleDashboard
 - `VX16` — Rail de résumé permanent du générateur de devis (desktop)
 - `VX17` — Générateur : le cœur visuel passe aux tokens (dark mode réparé sur l'écran le plus…
 - `VX18` — Brancher la fonctionnalité fantôme : modèles de devis (DevisPresetPanel)
+- `VX20` — Fin de la « soupe d'actions » : menus Plus sur DevisList, RelancesPage et BulkActionBar…
+- `VX21` — FactureList à parité de polish avec DevisList (squelette + cockpit trésorerie)
+- `VX22` — Une vraie page lead : route `/crm/leads/:id`
+- `VX23` — ChatterTimeline : battre le chatter d'Odoo, pas le sous-imiter
+- `VX24` — Anatomie de carte Kanban à 2 niveaux + bandeau résumé de fiche
+- `VX25` — MonthGrid partagé + résurrection du calendrier transverse
+- `VX27` — Le cockpit du matin : Dashboard par rôle + bandeau « aujourd'hui »
+- `VX28` — Un seul langage de graphique + un seul PageHeader
+- `VX29` — CommercialDashboard : le restyle « star » de l'écran le plus waouh
+- `VX30` — Le mur de flotte vivant (cartes par centrale + pouls temps réel)
+- `VX31` — SAV en boîte de réception : split-view liste + détail
+- `VX32` — CartePage + MapView rejoignent le design system (la « control room » géographique)
+- `VX34` — Login signature (le premier pixel de la marque)
+- `VX35` — Paramètres : de 22 onglets plats à une vraie architecture d'information
+- `VX36` — L'onboarding sort de sa cachette (bannière Dashboard + first-run)
+- `VX37` — L'IA qui « pense » : streaming visuel + preuve lisible par un humain
+- `VX38` — Admin cohérent : RolesManagement + documents GED sur DataTable, matrice de permissions
+- `VX39` — OCR : source et extraction côte à côte + correction inline
+- `VX40` — Le délice mesuré : célébration « devis signé » + états vides illustrés
+- `VX42` — Terrain un-tap : appeler/naviguer sur Ma journée + FAB + retour haptique
+- `VX43` — Gestes natifs : swipe-to-action, pull-to-refresh, sheets cohérents
+- `VX45` — La voix TAQINOR : microcopie FR premium + fin des emojis-icônes
+- `VX46` — « Mes préférences » : un centre de personnalisation par utilisateur
+- `VX47` — Aide contextuelle intégrée : popovers « ? » sur les écrans difficiles
+- `VX48` — [BUG iOS] Ouvrir tous les PDF via un onglet pré-ouvert AVANT l'await (le bug le plus…
+- `VX49` — Détection réelle du blocage popup + gestion d'erreur des ~49 téléchargements blob
+- `VX50` — [BUG mobile] `data-label` sur les tables financières + garde CI anti-régression
+- `VX51` — Le champ focalisé ne passe plus SOUS le clavier iOS (VisualViewport)
+- `VX53` — Balayage compat mécanique : garde `@media (hover:hover)`, dvh d'AgentChat…
+- `VX54` — [BUG données] Fin de la troncature silencieuse à 100 lignes + pagination PARALLÈLE…
+- `VX55` — Discipline réseau : timeout axios global + annulation des requêtes obsolètes
+- `VX56` — NotificationBell cesse de poller un onglet caché
+- `VX57` — Alléger le chemin froid : `sora.css` hors du rendu-bloquant + CopilotPanel paresseux
+- `VX58` — Préchargement au survol/focus des destinations chaudes de la Sidebar (adaptatif)
+- `VX59` — Nom de chunk roof-tool indépendant de la machine (hygiène du gate YHARD7)
+- `VX60` — Gate e2e « comptes justes » : >100 enregistrements affichés en entier (sans polluer la…
+- `VX62` — Brouillon auto + garde de sortie sur DevisGenerator (le formulaire à 20 minutes)
+- `VX64` — Error boundaries sur les routes nues : `/ui`, `/`, `/login` et TOUTES les pages…
+- `VX65` — Le lien profond survit à la connexion : `?next=` au redirect `/login`
+- `VX67` — Déployer `StateBlock` (chargement/vide/erreur + Réessayer) sur les 5 listes principales
+- `VX68` — Le gate e2e apprend Safari et l'iPad : projets WebKit + tablet dans Playwright
+- `VX69` — Contrat de zoom : e2e à 150 % et 200 % sur les flux clés (WCAG 1.4.10)
+- `VX70` — Régression visuelle ÉTROITE : ÉTENDRE `e2e/visual.spec.js` (il existe déjà) à 6-8…
+- `VX72` — [DECISION] [GATED: new dep @sentry/react] Sentry frontend en no-op DSN-gaté, miroir du…
+- `VX73` — Le sélecteur de langue arrête de mentir + label `Ctrl K` sur Windows
+- `VX74` — [DECISION — ZÉRO build] L'arabe : interface complète RTL, ou langue de documents…
+- `VX75` — Un seul format d'argent et de date : consolidation des ~90 contournements de…
+- `VX76` — [backend-template] Emails de marque : wrapper HTML unique sur les DEUX points d'envoi
+- `VX77` — Compression photo côté client AVANT upload sur les 3 écrans de capture terrain
+- `VX78` — Brancher le 404 déjà construit : fini la redirection silencieuse vers le dashboard
+- `VX79` — Liens internes partageables : `?id=` + « Copier le lien » pour devis, chantier et…
+- `VX80` — Feuille de style d'impression + bouton « Imprimer » sur devis-liste, factures et…
+- `VX82` — Chrome navigateur vivant : titre d'onglet par page + préfixe `(N)` non-lus +…
+- `VX83` — « Ma file » : LA file de travail unique (décision d'architecture — flagship)
+- `VX84` — [BUG] La cloche arrête de compter le travail des AUTRES
+- `VX85` — Plomberie de la file dans `apps/records` : snooze non destructif + mentions cliquables…
+- `VX86` — Signal ambiant sur les approbations (badge sidebar + carte Dashboard + rangée cloche)
+- `VX87` — Journal d'appel en un geste : ressusciter `log-interaction` (mort UI) + relance dans le…
+- `VX89` — LeadForm : Escape + autofocus via `ResponsiveDialog` (et corriger le « done » menteur…
+- `VX90` — « Ajouter ligne » déplace enfin le focus sur la nouvelle ligne (devis + facture)
+- `VX91` — Convergence FactureForm : `ProduitPicker` + « + Nouveau client »
+- `VX92` — « Enregistrer et créer un autre » + mort du `window.alert` du paiement
+- `VX93` — Défauts intelligents : propriétaire = moi, dernière ville, dernière TVA, dernier mode…
+- `VX95` — Câbler `toastWithUndo` (0 appelant) : archivage leads + drop kanban en avant
+- `VX96` — Le delete de lead cesse d'être « irréversible » : `Lead` premier adoptant du…
+- `VX97` — La facture (et le devis) montrent enfin « qui a fait quoi »
+- `VX98` — Confiance en 2 clics : lien « Historique » sur la fiche + puce de fraîcheur
+- `VX100` — Fin de la décision à l'aveugle : montant + lien source dans l'inbox d'approbations
+- `VX101` — [BUG AUTH] Seul le bon tier peut approuver
 - `VX102` — (CONSTRUIT 2026-07-09, demande directe du fondateur) Le terrain peut CRÉER une…
+- `VX103` — Écran de délégation d'absence (backend XKB3 complet, 0 UI)
+- `VX104` — Le superviseur se règle à la création de l'employé
+- `VX108` — `tel:`/`wa.me` partout où un numéro s'affiche (pas seulement les leads)
+- `VX109` — Importer fournisseurs & équipements : brancher les cibles orphelines d'ExcelImport
+- `VX111` — [PRÉMISSE CORRIGÉE] Lier une pièce jointe à une NOTE du chatter lead + la remonter dans…
+- `VX112` — La balance âgée cesse d'être un cul-de-sac : drill-down « Relancer » vers les relances…
+- `VX113` — FiscalitePage : sélecteur d'exercice (fin de la saisie « Exercice (ID) » à la main)
+- `VX115` — Les KPI du cockpit comptable pointent vers l'écran d'ACTION, + un index « Où trouver…
+- `VX119` — [BUG] CANDIDAT BUILD : outbox terrain — une op rejetée par le serveur disparaît en
+- `VX120` — [BUG] [GATED: génération QR] La graine TOTP 2FA est exfiltrée vers
+- `VX124` — Craft-physics pack : les 4 micro-détails qui signent un produit investi
+- `VX126` — L'état PRESSÉ propagé : 12+ contrôles cessent d'être morts au clic, courbes
+- `VX137` — La table de lignes du générateur sort du HTML brut
+- `VX139` — Deux éditeurs de devis, UNE présentation des totaux et UNE devise
+- `VX140` — DevisList : 14 boutons deviennent 4 + un menu, la cellule Référence respire
+- `VX142` — FactureList & cousins : toolbar rangée, action recommandée trouvable, primitives
+- `VX143` — LeadForm refondu : un seul langage de formulaire dans le module CRM
+- `VX144` — Hiérarchie de lecture des cartes et vues CRM : montrer moins pour dire plus
+- `VX145` — Barres d'action CRM : groupes, risque perçu, désencombrement
+- `VX149` — Un seul accent de statut : `StatusAccentCard` + le terrain + le micro-pack ops
+- `VX157` — Le langage d'impact : icônes métier unifiées + la fierté ambiante du parc
+- `VX160` — Outbox terrain : une op rejetée par le serveur ne disparaît plus en silence
+- `VX183` — Densité par palier : colonnes kanban 272px fixes (pipeline à moitié invisible sur
+- `VX184` — Un seul comportement mobile pour les lignes-produit : `data-label` + bascule
+- `VX188` — DevisGenerator : extraire `DevisLineRow` mémoïsé + `startTransition` sur les
+- `VX192` — Kanbans accessibles : `StageMover` porté au kanban chantiers + `KeyboardSensor` +
+- `VX195` — Carte Leaflet accessible : rôle + liste clavier parallèle
+- `VX196` — Régions live : chat/chatter annoncés + scroll clavier + erreurs toast en
+- `VX199` — [BACKEND] `IsResponsableOrAdmin` : n'importe quelle permission d'écriture ouvre
+- `VX204` — Fin des veuves silencieuses : ChatterWidget, ActivitiesPanel, Journal +
+- `VX213` — [BACKEND] Notifier les handoffs AVAL : chantier créé, chantier réassigné,
+- `VX216` — Rendre les seams VISIBLES des deux côtés : divergence devis↔chantier, ticket
+- `VX218` — Le handoff se voit aussi CÔTÉ RÉCEPTION et DANS LE TEMPS : « Nouveau pour moi » +
+- `VX221` — Le score de lead dit enfin POURQUOI (tooltip de raisons + tri)
+- `VX227` — Les coutures chantier↔intervention : pont Demande d'achat, photos reliées,
+- `VX234` — [BACKEND] L'audit des rôles au grain de la PERMISSION + garde de
+- `VX242` — [BACKEND+AUTH — noter au DONE LOG] Sécurité de session digne de confiance : le
+- `VX251` — Le dispatch au glisser-déposer : réaffecter une intervention comme
 
-**Open — to build (332)**
+**Open — to build (198)**
 
 - `ERR114` — [ventes/quote_engine]
 - `ARC50` — Types TS générés depuis l OpenAPI (étend YAPIC5)
-- `DC34` — Sous-traitant : pas de master fournisseur parallèle
 - `FG386` — Mode terrain hors-ligne (offline queue)
 - `N100` — Build out multi-tenant operation on the existing tenant_id foundation (strict…
 - `N101` — Tenant administration console (manage tenants/plans/usage/support) + self-serve signup…
 - `N102` — After the modules above are built, update the master project document + PLAN + DONE log…
-- `ODX1` — Carte des modules cible (docs/module-map.md)
 - `ODX5` — Écran Paramètres → « Applications » (catalogue de modules)
-- `ODX6` — Nav filtrée par modules actifs
 - `ODX7` — Regrouper la nav legacy en « apps » via le registre UX1
 - `ODX11` — Sortir les appels d'offres de compta → `apps/ao`
 - `ODX12` — Sortir le portail client de compta → `apps/portail`
 - `ODX13` — Rapatrier partenaires & territoires dans le CRM
 - `ODX14` — Rapatrier la config de vente dans ventes
 - `ODX15` — Sortir les notes de frais de compta → `apps/frais`
-- `ODX16` — Reloger AbonnementMonitoring (revenu récurrent)
 - `ODX17` — App Facturation — étape 1 (modèles, state-only)
 - `ODX18` — App Facturation — étape 2 (vues/urls/recouvrement/frontend)
 - `ODX19` — App Achats — étape 1 (modèles, state-only)
@@ -1053,10 +1181,8 @@ Things this map could not fully verify from source — do not over-trust:
 - `XPOS19` — E-commerce transactionnel : checkout direct des petits articles (panier → paiement CMI…
 - `XSAL5` — Lignes optionnelles sur devis + ajout self-service dans la proposition web
 - `XSAL14` — Lignes de section et de note dans le devis
-- `XSAL15` — Vue kanban « Prévision » avec glisser-déposer entre mois
 - `XSAV22` — Déflection KB sur le portail client + tracking d'usage des articles
 - `XSTK18` — Bon de livraison & liste de colisage bilingues FR/AR (RTL)
-- `YAPIC1` — Classe de pagination partagée avec plafond dur (`max_page_size`)
 - `YAPIC2` — Backends de filtre/tri/recherche par défaut + garde-fou anti-`ordering_fields` manquant
 - `YAPIC3` — Enveloppe d'erreur unifiée via un `EXCEPTION_HANDLER` global
 - `YAPIC4` — Middleware d'identifiant de corrélation (`X-Request-Id`) sur 100 % des réponses
@@ -1093,12 +1219,8 @@ Things this map could not fully verify from source — do not over-trust:
 - `YHARD9` — Fondation analytique : séparation du store OLTP (réplica de lecture, optionnel) +…
 - `YOPSB11` — Sweep d'archivage des tables à forte croissance (chatter/logs/webhooks)
 - `YRBAC3` — Fine-grainer les apps gatées seulement par `IsResponsableOrAdmin` …
-- `YRBAC10` — Vérification de parité gating frontend↔backend (source unique + test de dérive)
-- `YRBAC11` — Sweep object-level : les vues fonctionnelles/actions custom touchant un objet par ID…
 - `YRBAC13` — Fine-grainer les @action de compta/marketing (dette YRBAC4 rehaussée batch-4)
-- `YSERV8` — Semer la référence de production attendue du monitoring depuis l'étude/la recette (le…
 - `YSERV10` — Réception sans contrat O&M → offre de contrat automatique (taux d'attache)
-- `ZSAL9` — Avertissements de vente configurables par produit / par client (sale warnings)
 - `ZSTK5` — Étiquette de colis (contenu + code-barres colis)
 - `ZSTK13` — Réglages société stock (barcode / lots-séries / multi-emplacements / colis) — surface…
 - `QXG1` — [GATED: founder account]
@@ -1106,128 +1228,31 @@ Things this map could not fully verify from source — do not over-trust:
 - `QXG3` — [GATED: founder data]
 - `QXG4` — [GATED: founder content]
 - `QXG5` — [GATED: founder ops check, 10 minutes]
-- `VX1` — Un seul or, un seul navy : fusion des jetons de marque
-- `VX2` — Re-signer la coquille permanente (Sidebar + Header) aux couleurs de marque
-- `VX3` — La typo de marque et le fond tokenisé au niveau `<body>`
-- `VX4` — Finir le dark mode sur la surface legacy
-- `VX5` — Data typography « .num » : les chiffres deviennent les héros
-- `VX6` — Un seul langage de rayon et d'élévation
-- `VX7` — Passe « calm color » : hiérarchie de poids visuel sur les écrans denses
-- `VX8` — Un accent de couleur par module (le bout manquant du découpage Odoo)
-- `VX9` — Le Lanceur d'applications TAQINOR (grille légère, pas une page)
-- `VX10` — Apps épinglées personnelles dans la Sidebar
-- `VX11` — Fil d'Ariane cliquable vers le cockpit du module + mémoire du dernier module
-- `VX12` — « Plus » mobile = sélecteur d'apps en grille, pas le tiroir de 100 items
-- `VX13` — Une seule recherche : hook partagé GlobalSearch + CommandPalette, pastilles de module
-- `VX14` — Centre de notifications : onglets + config déclarative (delta mince, vérifié)
-- `VX15` — Identité de cockpit : ModuleHero + accent + sparklines dans ModuleDashboard
 - `VX19` — Zéro popup navigateur : éradiquer les `window.alert/confirm/prompt` (~65 appels, 40…
-- `VX20` — Fin de la « soupe d'actions » : menus Plus sur DevisList, RelancesPage et BulkActionBar…
-- `VX21` — FactureList à parité de polish avec DevisList (squelette + cockpit trésorerie)
-- `VX22` — Une vraie page lead : route `/crm/leads/:id`
-- `VX23` — ChatterTimeline : battre le chatter d'Odoo, pas le sous-imiter
-- `VX24` — Anatomie de carte Kanban à 2 niveaux + bandeau résumé de fiche
-- `VX25` — MonthGrid partagé + résurrection du calendrier transverse
 - `VX26` — Couleurs de stage dérivées des tokens (STAGES.py intact — règle #2 à la lettre)
-- `VX27` — Le cockpit du matin : Dashboard par rôle + bandeau « aujourd'hui »
-- `VX28` — Un seul langage de graphique + un seul PageHeader
-- `VX29` — CommercialDashboard : le restyle « star » de l'écran le plus waouh
-- `VX30` — Le mur de flotte vivant (cartes par centrale + pouls temps réel)
-- `VX31` — SAV en boîte de réception : split-view liste + détail
-- `VX32` — CartePage + MapView rejoignent le design system (la « control room » géographique)
 - `VX33` — Le Pilotage stock devient la tour de contrôle qu'il prétend être
-- `VX34` — Login signature (le premier pixel de la marque)
-- `VX35` — Paramètres : de 22 onglets plats à une vraie architecture d'information
-- `VX36` — L'onboarding sort de sa cachette (bannière Dashboard + first-run)
-- `VX37` — L'IA qui « pense » : streaming visuel + preuve lisible par un humain
-- `VX38` — Admin cohérent : RolesManagement + documents GED sur DataTable, matrice de permissions
-- `VX39` — OCR : source et extraction côte à côte + correction inline
-- `VX40` — Le délice mesuré : célébration « devis signé » + états vides illustrés
 - `VX41` — Craft data-viz : palette catégorielle de marque, comparaison de période, annotations
-- `VX42` — Terrain un-tap : appeler/naviguer sur Ma journée + FAB + retour haptique
-- `VX43` — Gestes natifs : swipe-to-action, pull-to-refresh, sheets cohérents
 - `VX44` — Photos chantier en rafale + partage natif WhatsApp
-- `VX45` — La voix TAQINOR : microcopie FR premium + fin des emojis-icônes
-- `VX46` — « Mes préférences » : un centre de personnalisation par utilisateur
-- `VX47` — Aide contextuelle intégrée : popovers « ? » sur les écrans difficiles
-- `VX48` — [BUG iOS] Ouvrir tous les PDF via un onglet pré-ouvert AVANT l'await (le bug le plus…
-- `VX49` — Détection réelle du blocage popup + gestion d'erreur des ~49 téléchargements blob
-- `VX50` — [BUG mobile] `data-label` sur les tables financières + garde CI anti-régression
-- `VX51` — Le champ focalisé ne passe plus SOUS le clavier iOS (VisualViewport)
 - `VX52` — Les avertissements de conformité en `title=` seul deviennent visibles au tactile
-- `VX53` — Balayage compat mécanique : garde `@media (hover:hover)`, dvh d'AgentChat…
-- `VX54` — [BUG données] Fin de la troncature silencieuse à 100 lignes + pagination PARALLÈLE…
-- `VX55` — Discipline réseau : timeout axios global + annulation des requêtes obsolètes
-- `VX56` — NotificationBell cesse de poller un onglet caché
-- `VX57` — Alléger le chemin froid : `sora.css` hors du rendu-bloquant + CopilotPanel paresseux
-- `VX58` — Préchargement au survol/focus des destinations chaudes de la Sidebar (adaptatif)
-- `VX59` — Nom de chunk roof-tool indépendant de la machine (hygiène du gate YHARD7)
-- `VX60` — Gate e2e « comptes justes » : >100 enregistrements affichés en entier (sans polluer la…
 - `VX61` — [GATED: new dep web-vitals ~2KB] [backend-collection] Mesure des Web Vitals RÉELS…
-- `VX62` — Brouillon auto + garde de sortie sur DevisGenerator (le formulaire à 20 minutes)
 - `VX63` — Fin du JSON brut à l'écran : erreurs lisibles + Réessayer sur DevisList (et chasse aux…
-- `VX64` — Error boundaries sur les routes nues : `/ui`, `/`, `/login` et TOUTES les pages…
-- `VX65` — Le lien profond survit à la connexion : `?next=` au redirect `/login`
 - `VX66` — Filet anti-double-soumission au niveau du composant `Button`
-- `VX67` — Déployer `StateBlock` (chargement/vide/erreur + Réessayer) sur les 5 listes principales
-- `VX68` — Le gate e2e apprend Safari et l'iPad : projets WebKit + tablet dans Playwright
-- `VX69` — Contrat de zoom : e2e à 150 % et 200 % sur les flux clés (WCAG 1.4.10)
-- `VX70` — Régression visuelle ÉTROITE : ÉTENDRE `e2e/visual.spec.js` (il existe déjà) à 6-8…
 - `VX71` — [GATED: new dev-dep @axe-core/playwright] a11y dynamique : scans axe DANS les parcours…
-- `VX72` — [DECISION] [GATED: new dep @sentry/react] Sentry frontend en no-op DSN-gaté, miroir du…
-- `VX73` — Le sélecteur de langue arrête de mentir + label `Ctrl K` sur Windows
-- `VX74` — [DECISION — ZÉRO build] L'arabe : interface complète RTL, ou langue de documents…
-- `VX75` — Un seul format d'argent et de date : consolidation des ~90 contournements de…
-- `VX76` — [backend-template] Emails de marque : wrapper HTML unique sur les DEUX points d'envoi
-- `VX77` — Compression photo côté client AVANT upload sur les 3 écrans de capture terrain
-- `VX78` — Brancher le 404 déjà construit : fini la redirection silencieuse vers le dashboard
-- `VX79` — Liens internes partageables : `?id=` + « Copier le lien » pour devis, chantier et…
-- `VX80` — Feuille de style d'impression + bouton « Imprimer » sur devis-liste, factures et…
 - `VX81` — Noms de fichiers d'export XLSX/CSV horodatés (parité avec le fix PDF QD2)
-- `VX82` — Chrome navigateur vivant : titre d'onglet par page + préfixe `(N)` non-lus +…
-- `VX83` — « Ma file » : LA file de travail unique (décision d'architecture — flagship)
-- `VX84` — [BUG] La cloche arrête de compter le travail des AUTRES
-- `VX85` — Plomberie de la file dans `apps/records` : snooze non destructif + mentions cliquables…
-- `VX86` — Signal ambiant sur les approbations (badge sidebar + carte Dashboard + rangée cloche)
-- `VX87` — Journal d'appel en un geste : ressusciter `log-interaction` (mort UI) + relance dans le…
 - `VX88` — Ma journée branche la tournée géo-optimisée déjà payée
-- `VX89` — LeadForm : Escape + autofocus via `ResponsiveDialog` (et corriger le « done » menteur…
-- `VX90` — « Ajouter ligne » déplace enfin le focus sur la nouvelle ligne (devis + facture)
-- `VX91` — Convergence FactureForm : `ProduitPicker` + « + Nouveau client »
-- `VX92` — « Enregistrer et créer un autre » + mort du `window.alert` du paiement
-- `VX93` — Défauts intelligents : propriétaire = moi, dernière ville, dernière TVA, dernier mode…
 - `VX94` — Enter-pour-ajouter + refocus sur les panneaux de capture terrain (surface 100 % pouces)
-- `VX95` — Câbler `toastWithUndo` (0 appelant) : archivage leads + drop kanban en avant
-- `VX96` — Le delete de lead cesse d'être « irréversible » : `Lead` premier adoptant du…
-- `VX97` — La facture (et le devis) montrent enfin « qui a fait quoi »
-- `VX98` — Confiance en 2 clics : lien « Historique » sur la fiche + puce de fraîcheur
-- `VX99` — Les 3 sources d'approbation muettes se mettent à sonner
-- `VX100` — Fin de la décision à l'aveugle : montant + lien source dans l'inbox d'approbations
-- `VX101` — [BUG AUTH] Seul le bon tier peut approuver
-- `VX103` — Écran de délégation d'absence (backend XKB3 complet, 0 UI)
-- `VX104` — Le superviseur se règle à la création de l'employé
 - `VX105` — Finir l'écran du technicien : statut + onglets persistants + honnêteté hors-ligne des…
 - `VX106` — La signature client sort de sa tombe (FG69 : modèle + endpoint + offline construits, 0…
 - `VX107` — Résumé client en lecture seule dans le flux terrain (garantie + dernier ticket SAV)
-- `VX108` — `tel:`/`wa.me` partout où un numéro s'affiche (pas seulement les leads)
-- `VX109` — Importer fournisseurs & équipements : brancher les cibles orphelines d'ExcelImport
 - `VX110` — « Copier » vers le presse-papiers depuis toute liste DataTable (TSV → colle propre dans…
-- `VX111` — [PRÉMISSE CORRIGÉE] Lier une pièce jointe à une NOTE du chatter lead + la remonter dans…
-- `VX112` — La balance âgée cesse d'être un cul-de-sac : drill-down « Relancer » vers les relances…
-- `VX113` — FiscalitePage : sélecteur d'exercice (fin de la saisie « Exercice (ID) » à la main)
 - `VX114` — Fin des `window.prompt()` de l'« Export comptable » : vrai sélecteur de dates
-- `VX115` — Les KPI du cockpit comptable pointent vers l'écran d'ACTION, + un index « Où trouver…
 - `VX116` — Relance en lot : proposer « Consigner + aperçu WhatsApp » sans jamais auto-envoyer
 - `VX117` — [BUG] CANDIDAT BUILD : `resilientMutation` — fin du doublon fiscal au retry
 - `VX118` — [BUG] CANDIDAT BUILD : surfaces fantômes — deux features entières rendent sans
-- `VX119` — [BUG] CANDIDAT BUILD : outbox terrain — une op rejetée par le serveur disparaît en
-- `VX120` — [BUG] [GATED: génération QR] La graine TOTP 2FA est exfiltrée vers
 - `VX121` — Zéro couleur hors token : le sweep CSS et JS, avec garde CI
 - `VX122` — La voix typographique : police de marque par défaut + échelle F121 réellement
 - `VX123` — Plancher d'accessibilité visuelle : anneau de focus token-isé consommé partout +
-- `VX124` — Craft-physics pack : les 4 micro-détails qui signent un produit investi
 - `VX125` — [DECISION] Gouvernance anti-monday : budget de densité de signaux + badge de
-- `VX126` — L'état PRESSÉ propagé : 12+ contrôles cessent d'être morts au clic, courbes
 - `VX127` — L'état LECTURE-SEULE existe enfin + EditableCell honnête (pending/erreur
 - `VX128` — Comboboxes audibles : `aria-activedescendant` câblé (0 occurrence dans tout le
 - `VX129` — Primitives complétées : menus pro, Textarea adulte, Progress indéterminé, Avatar
@@ -1238,19 +1263,11 @@ Things this map could not fully verify from source — do not over-trust:
 - `VX134` — Chorégraphie de coquille : ⌘K, sidebar, route, badge, thème — cinq
 - `VX135` — Mouvement piloté par JS rendu accessible + FLIP des listes
 - `VX136` — Scroll-timeline natif : reveal des cockpits + progression des formulaires
-- `VX137` — La table de lignes du générateur sort du HTML brut
 - `VX138` — L'aperçu de simulation devient un comparateur : Sans/Avec groupés, chiffres héros
-- `VX139` — Deux éditeurs de devis, UNE présentation des totaux et UNE devise
-- `VX140` — DevisList : 14 boutons deviennent 4 + un menu, la cellule Référence respire
 - `VX141` — `DocumentStageTrack` : le statut devient un parcours
-- `VX142` — FactureList & cousins : toolbar rangée, action recommandée trouvable, primitives
-- `VX143` — LeadForm refondu : un seul langage de formulaire dans le module CRM
-- `VX144` — Hiérarchie de lecture des cartes et vues CRM : montrer moins pour dire plus
-- `VX145` — Barres d'action CRM : groupes, risque perçu, désencombrement
 - `VX146` — `/calendrier` rejoint le design system : un seul calendrier mensuel dans l'app
 - `VX147` — LeadsPage et ses 4 vues parlent enfin le même langage d'état
 - `VX148` — Le kit `ui/charts` réellement adopté : fin des 3 thèmes recopiés et des rapports
-- `VX149` — Un seul accent de statut : `StatusAccentCard` + le terrain + le micro-pack ops
 - `VX150` — Le login re-signé : la première impression cesse de contredire le système
 - `VX151` — Paramètres : 24 onglets deviennent une surface de réglages navigable
 - `VX152` — Fin des moteurs de table parallèles : GED, Admin, ClientDetail, OCR
@@ -1258,10 +1275,8 @@ Things this map could not fully verify from source — do not over-trust:
 - `VX154` — `TaqinorMark` + `SolarLoader` : le mot-symbole soleil-éclair porté dans l'app,
 - `VX155` — La gradation émotionnelle du funnel : signé célébré, envoyé/payé reconnus
 - `VX156` — Une voix avec un point de vue + le moment d'accueil
-- `VX157` — Le langage d'impact : icônes métier unifiées + la fierté ambiante du parc
 - `VX158` — Confiance et clarté : les valeurs suggérées se déclarent, le jargon fiscal se
 - `VX159` — `RelationCounters` : le seul bon réflexe d'Odoo, systématisé
-- `VX160` — Outbox terrain : une op rejetée par le serveur ne disparaît plus en silence
 - `VX161` — `refreshCoordinator` : un seul refresh 401 partagé entre `axios.js` et
 - `VX162` — `BroadcastChannel` de session : le logout se propage à tous les onglets
 - `VX163` — Infrastructure thunk : annulation `{signal}` + dé-duplication en vol des 4 thunks
@@ -1284,28 +1299,20 @@ Things this map could not fully verify from source — do not over-trust:
 - `VX180` — `DataTable`/`ListShell` : le seuil documenté (768px) n'est PAS le seuil réel
 - `VX181` — `.header-right` : 9 cibles interactives sans garde de largeur — débordement à
 - `VX182` — 7 modales fait-main hors LeadForm : le même défaut que VX89 corrige, sur 7
-- `VX183` — Densité par palier : colonnes kanban 272px fixes (pipeline à moitié invisible sur
-- `VX184` — Un seul comportement mobile pour les lignes-produit : `data-label` + bascule
 - `VX185` — Le barrel `ui/index.js` fuit `datatable`/`recharts`/`pdfjs-dist` dans le preload
 - `VX186` — Code-splitting intra-écran : les 5 vues de LeadsPage + `MapView`/leaflet enfin
 - `VX187` — LeadsPage runtime : `useDeferredValue` sur le filtre + `React.memo` sur les
-- `VX188` — DevisGenerator : extraire `DevisLineRow` mémoïsé + `startTransition` sur les
 - `VX189` — Pack micro-perf mécanique : chunk `icons` unique, Sidebar `useMemo`,
 - `VX190` — Garde CI WebKit étendue : exports blob + sticky DataTable + standalone
 - `VX191` — `useActiveDescendant` : brancher `aria-activedescendant` sur les 10
-- `VX192` — Kanbans accessibles : `StageMover` porté au kanban chantiers + `KeyboardSensor` +
 - `VX193` — LeadForm : labels associés + validation client annoncée ; AppointmentBooker :
 - `VX194` — Plancher visuel WCAG 2.2 : texte accent brass 1.8:1 → ≥4.5:1 + cibles 24px
-- `VX195` — Carte Leaflet accessible : rôle + liste clavier parallèle
-- `VX196` — Régions live : chat/chatter annoncés + scroll clavier + erreurs toast en
 - `VX197` — `RouteFocus` : skip-link + focus `<main>` + navigation annoncée
 - `VX198` — [GATED si dev-dep à ajouter] Garde statique jsx-a11y ciblée : empêcher d'ÉCRIRE
-- `VX199` — [BACKEND] `IsResponsableOrAdmin` : n'importe quelle permission d'écriture ouvre
 - `VX200` — [BACKEND infra] CSP figée sur des valeurs de DEV + zéro header de repli côté
 - `VX201` — Pack durcissement client : DevTools coupé en prod, garde SVG + CI
 - `VX202` — [BACKEND nginx] Pages publiques tokenisées : `noindex` + throttle client +
 - `VX203` — Contrat d'erreur UNIQUE : fin du double-toast (35 pages), `getApiError`
-- `VX204` — Fin des veuves silencieuses : ChatterWidget, ActivitiesPanel, Journal +
 - `VX205` — Déployer la `SectionBoundary` DÉJÀ CONSTRUITE : un panneau meurt, l'écran
 - `VX206` — Socle local d'observabilité : `console.error` des boundaries +
 - `VX207` — [BACKEND additif] Une seule vérité de comptage : endpoint canonique
@@ -1314,28 +1321,22 @@ Things this map could not fully verify from source — do not over-trust:
 - `VX210` — [BACKEND additif] Le snooze devient un rappel actif, généralisé, et déclenché par
 - `VX211` — « Ma file » par persona + départage « victoires rapides »
 - `VX212` — [BACKEND additif léger] Transparence « pourquoi je reçois ça » + contexte
-- `VX213` — [BACKEND] Notifier les handoffs AVAL : chantier créé, chantier réassigné,
 - `VX214` — [BACKEND additif] [RESHAPÉE — grand-verdict] Les kinds d'EXÉCUTION entrent dans
 - `VX215` — Boucle de retour « pris en charge » : l'émetteur sait que le ballon est
-- `VX216` — Rendre les seams VISIBLES des deux côtés : divergence devis↔chantier, ticket
 - `VX217` — La cloche finit le travail : aperçu sans naviguer, actions par entité,
-- `VX218` — Le handoff se voit aussi CÔTÉ RÉCEPTION et DANS LE TEMPS : « Nouveau pour moi » +
 - `VX219` — « Mes chiffres » : le vendeur `normal` voit ENFIN sa propre performance
 - `VX220` — ⌘K atterrit sur le RECORD (pas la liste) + créations au clavier
-- `VX221` — Le score de lead dit enfin POURQUOI (tooltip de raisons + tri)
 - `VX222` — « Relancer ce devis » : le pendant devis de la relance facture
 - `VX223` — [BACKEND léger] Actions de carte en 2 clics : « ✗ Perdu (motif) », file
 - `VX224` — La session de qualification en rafale : ◀▶ prev/next, « créer un autre »,
 - `VX225` — La raison de blocage de statut cesse d'être jetée à la poubelle
 - `VX226` — « Ma journée » dit l'urgence et reste fraîche
-- `VX227` — Les coutures chantier↔intervention : pont Demande d'achat, photos reliées,
 - `VX228` — Le rapprochement bancaire ligne-à-ligne : le contrat d'interaction complet
 - `VX229` — `CrudDialog` apprend le Combobox : fin des champs FK « (ID) » tapés à la main
 - `VX230` — Encaisser LÀ où on chasse l'impayé + total « reste à encaisser » visible
 - `VX231` — La navigation finance atterrit sur la CIBLE : `?facture=`, lien client, onglet
 - `VX232` — Les états financiers deviennent LISIBLES : noms réels, tableaux exploitables,
 - `VX233` — [BACKEND 1 ligne] Le journal des paramètres montre TOUTES ses sections + la
-- `VX234` — [BACKEND] L'audit des rôles au grain de la PERMISSION + garde de
 - `VX235` — [BACKEND] Gardes-fous du pouvoir admin : motif par item en bulk-refus, cycle de
 - `VX236` — Fin des culs-de-sac de pilotage : équipes cliquables, Journal deep-linké, seuils
 - `VX237` — Collage intelligent : le presse-papiers du monde réel entre proprement
@@ -1343,7 +1344,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `VX239` — Doublons : prévenir à la création CLIENT + le geste de FUSION
 - `VX240` — Parité mécanique des formulaires : autofocus, mémoire des défauts,
 - `VX241` — [BACKEND] Le journal d'audit dit VRAI : cascade KB avouée, destroys
-- `VX242` — [BACKEND+AUTH — noter au DONE LOG] Sécurité de session digne de confiance : le
 - `VX243` — [BACKEND] La confiance au niveau du DOSSIER : « archivé par X », historique de
 - `VX244` — Le poids de la confirmation devient proportionné au dégât : primitive
 - `VX245` — [BACKEND] Le cycle client sortant se boucle : `.ics` d'événement unique,
@@ -1352,10 +1352,9 @@ Things this map could not fully verify from source — do not over-trust:
 - `VX248` — Raccourcis d'ACTION à une touche sur le record focalisé + cheatsheet filtrée par
 - `VX249` — Le langage des micro-états : pulse de champ sauvé, valeur « suggérée », pastille
 - `VX250` — La fiche annonce son état et ses relations : « en attente de… » + compteurs
-- `VX251` — Le dispatch au glisser-déposer : réaffecter une intervention comme
-- `VX252` — [BACKEND additif léger] Maîtrise personnelle : milestones non comparatifs, KPI
 
-**Blocked — awaiting founder decision (2)**
+**Blocked — awaiting founder decision (3)**
 
 - `QC2` — [GATED: paid — Inforisk/Charika API] Registry-backed autocomplete (the true Odoo-style…
 - `S21` — Real-time WebSocket upgrade (Django Channels)
+- `VX252` — [BACKEND additif léger] Maîtrise personnelle : milestones non comparatifs, KPI
