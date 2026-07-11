@@ -1,6 +1,19 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeAll } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { press, pressItem, pressCurve } from './interaction'
+
+// Radix Slider observe la taille de sa piste : jsdom n'a pas ResizeObserver.
+beforeAll(() => {
+  if (typeof globalThis.ResizeObserver === 'undefined') {
+    globalThis.ResizeObserver = class {
+      observe() {}
+
+      unobserve() {}
+
+      disconnect() {}
+    }
+  }
+})
 import { Switch } from './Switch'
 import { Slider } from './Slider'
 import { Segmented } from './Segmented'
