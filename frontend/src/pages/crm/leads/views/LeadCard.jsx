@@ -1,6 +1,9 @@
 // Carte lead réutilisable (colonne kanban + aperçu DragOverlay).
 // Présentation pure : aucune mutation, tout vient des props et de stages.js.
 import { useRef, useState } from 'react'
+// VX45 — emoji ⚡ fonctionnel remplacé par l'icône lucide (rendu variable
+// selon l'OS avec un emoji brut).
+import { Zap } from 'lucide-react'
 import {
   CANAL_LABELS,
   PRIORITE_LABELS,
@@ -12,6 +15,10 @@ import {
 } from '../../../../features/crm/stages'
 import AssigneePicker from '../../../../components/AssigneePicker'
 import { telHref, waHref } from '../../../../lib/contactLinks'
+// VX24 — score de qualité désormais aussi visible sur la carte (ex Liste seule).
+import ScoreBadge from '../../../../features/crm/ScoreBadge'
+// VX87 — nudge post-appel « Appel terminé — noter le résultat ? ».
+import CallLogPopover, { useCallEndedNudge } from '../../../../features/crm/CallLogPopover'
 
 // VX43 — Swipe-to-action horizontal maison (touchstart/move/end, zéro
 // dépendance). Les liens tel:/wa.me existaient déjà mais en texte 12px noyé
@@ -159,6 +166,25 @@ export default function LeadCard({
   const jInactif = joursInactif(lead.date_modification)
   const inactif = jInactif != null && jInactif >= INACTIF_JOURS && !perdu
   const action = prochaineAction(lead)
+  // VX24 — anatomie de carte à 2 niveaux : UNE seule pilule d'alerte
+  // prioritaire au premier plan (perdu > rappel > expiré) au lieu d'empiler
+  // jusqu'à 3 pilules en tête de carte. « Inactif N j » + horloge d'activité
+  // sont relégués en pied de carte (kb-card-foot), discrets.
+  const alertePill = perdu
+    ? { key: 'perdu', label: 'Perdu', className: 'kb-badge-perdu' }
+    : lead.contact_preference === 'phone_ok'
+      ? {
+          key: 'rappel', label: '☎ Rappel demandé',
+          className: 'kb-badge-rappel rounded-full bg-info/15 px-1.5 py-0.5 text-info',
+          title: 'Le client a demandé à être rappelé par téléphone',
+        }
+      : dernierDevisExpire
+        ? {
+            key: 'expire', label: 'Devis expiré',
+            className: 'kb-badge-expire rounded-full bg-warning/15 px-1.5 py-0.5 text-warning',
+            title: 'Le dernier devis du lead est expiré',
+          }
+        : null
   const tel = telHref(lead.telephone)
   const wa = waHref(lead.whatsapp)
   // QX31 — minuteur premier contact : uniquement en colonne NEW (dès que le
@@ -188,6 +214,10 @@ export default function LeadCard({
   // (sinon rien à révéler derrière la carte).
   const swipe = useSwipeReveal(!!(tel || wa))
 
+  // VX87 — nudge post-appel : armé juste avant d'ouvrir tel:, proposé au
+  // retour dans l'onglet (visibilitychange).
+  const { nudgeVisible, armCallNudge, dismissNudge } = useCallEndedNudge()
+
   return (
     <div className="kb-swipe-wrap" style={{ position: 'relative' }}>
       {(tel || wa) && (
@@ -205,7 +235,7 @@ export default function LeadCard({
               href={tel}
               aria-label="Appeler (glissement)"
               title="Appeler"
-              onClick={(e) => { e.stopPropagation(); swipe.close() }}
+              onClick={(e) => { e.stopPropagation(); swipe.close(); armCallNudge() }}
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 width: `${SWIPE_REVEAL_PX / (tel && wa ? 2 : 1)}px`, minHeight: '44px',
@@ -260,37 +290,11 @@ export default function LeadCard({
           />
         )}
         <span className="kb-card-name">{nomComplet}</span>
-        {perdu && <span className="kb-badge-perdu">Perdu</span>}
-        {lead.contact_preference === 'phone_ok' && (
-          <span
-            className="kb-badge-rappel rounded-full bg-info/15 px-1.5 py-0.5 text-info"
-            title="Le client a demandé à être rappelé par téléphone"
-          >
-            ☎ Rappel demandé
-          </span>
-        )}
-        {dernierDevisExpire && (
-          <span
-            className="kb-badge-expire rounded-full bg-warning/15 px-1.5 py-0.5 text-warning"
-            title="Le dernier devis du lead est expiré"
-          >
-            Devis expiré
-          </span>
-        )}
-        {inactif && (
-          <span
-            className="kb-badge-inactif rounded-full bg-muted px-1.5 py-0.5 text-muted-foreground"
-            title={`Aucune modification depuis ${jInactif} jours`}
-          >
-            Inactif {jInactif} j
-          </span>
-        )}
-        {lead.next_activity && (
-          <span
-            className={`kb-act-clock ${lead.next_activity.state}`}
-            title={`Activité ${lead.next_activity.summary} — ${lead.next_activity.due_date}`}
-          >
-            ⏰
+        <ScoreBadge lead={lead} />
+        {/* VX24 — une seule pilule d'alerte prioritaire (perdu > rappel > expiré) */}
+        {alertePill && (
+          <span className={alertePill.className} title={alertePill.title}>
+            {alertePill.label}
           </span>
         )}
         <button
@@ -309,7 +313,7 @@ export default function LeadCard({
             if (onAutoQuote) onAutoQuote(lead)
           }}
         >
-          ⚡
+          <Zap size={14} aria-hidden="true" />
           {/* QX28 — badge le bouton quand un repère toit (GPS) existe : le
               devis auto peut s'appuyer sur des données réelles, pas estimées. */}
           {roofReady && (
@@ -363,9 +367,9 @@ export default function LeadCard({
           )}
           {devisReady && (
             <span className="kb-chip kb-chip-devis"
-                  style={{ fontSize: '11px', borderRadius: '9999px', padding: '1px 8px', background: 'var(--color-primary-muted, rgba(37,99,235,.12))', color: 'var(--color-primary, #2563eb)' }}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '11px', borderRadius: '9999px', padding: '1px 8px', background: 'var(--color-primary-muted, rgba(37,99,235,.12))', color: 'var(--color-primary, #2563eb)' }}
                   title="Toutes les données nécessaires sont réunies pour générer un devis en un clic">
-              ⚡ Prêt à deviser en 1 clic
+              <Zap size={11} aria-hidden="true" /> Prêt à deviser en 1 clic
             </span>
           )}
         </div>
@@ -389,7 +393,7 @@ export default function LeadCard({
               className="kb-card-tel"
               href={tel}
               title="Appeler"
-              onClick={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); armCallNudge() }}
               onPointerDown={(e) => e.stopPropagation()}
               onTouchStart={(e) => e.stopPropagation()}
             >
@@ -484,6 +488,25 @@ export default function LeadCard({
             📅 {formatDateFr(lead.relance_date)}
           </span>
         )}
+        {/* VX24 — « Inactif N j » relégué en pied de carte, discret (n'était
+            plus une pilule de tête à côté de perdu/rappel/expiré). */}
+        {inactif && (
+          <span
+            className="kb-foot-inactif text-[11px] text-muted-foreground"
+            title={`Aucune modification depuis ${jInactif} jours`}
+          >
+            Inactif {jInactif} j
+          </span>
+        )}
+        {/* VX24 — horloge d'activité reléguée au pied, même traitement discret. */}
+        {lead.next_activity && (
+          <span
+            className={`kb-act-clock kb-foot-clock ${lead.next_activity.state}`}
+            title={`Activité ${lead.next_activity.summary} — ${lead.next_activity.due_date}`}
+          >
+            ⏰
+          </span>
+        )}
         <span
           className="kb-card-assignee"
           onClick={(e) => e.stopPropagation()}
@@ -500,6 +523,33 @@ export default function LeadCard({
           />
         </span>
       </div>
+
+      {/* VX87 — nudge post-appel : proposé au retour dans l'onglet après un
+          tap tel: (armCallNudge), jamais intrusif — dismissable, ne bloque
+          rien. */}
+      {nudgeVisible && (
+        <div
+          className="kb-call-nudge"
+          role="status"
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <span className="kb-call-nudge-text">Appel terminé — noter le résultat ?</span>
+          <CallLogPopover
+            leadId={lead.id}
+            trigger={<button type="button" className="kb-call-nudge-log">Noter</button>}
+            onLogged={dismissNudge}
+          />
+          <button
+            type="button"
+            className="kb-call-nudge-dismiss"
+            aria-label="Ignorer"
+            onClick={dismissNudge}
+          >
+            ✕
+          </button>
+        </div>
+      )}
       </article>
     </div>
   )

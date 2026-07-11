@@ -3191,6 +3191,38 @@ textarea.form-control {
   margin-bottom: 0.75rem;
 }
 
+/* VX111 — attacher une pièce jointe à une note du chatter (input natif
+   masqué, déclenché par le bouton trombone). */
+.chatter-note-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.chatter-note-file-preview {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: -0.4rem 0 0.6rem;
+  font-size: 0.78rem;
+  color: var(--muted-foreground, #5a6488);
+}
+
+.chatter-note-file-clear {
+  border: none;
+  background: transparent;
+  color: var(--muted-foreground, #64748b);
+  cursor: pointer;
+  font-size: 0.72rem;
+  padding: 0 2px;
+}
+
 .chatter-note-box .form-control { flex: 1; }
 
 .chatter-timeline {
@@ -3230,6 +3262,156 @@ textarea.form-control {
   background: #e2e8f0;
   border-radius: 999px;
   vertical-align: middle;
+}
+
+/* VX23 — ChatterTimeline : regroupement par jour + avatar + distinction
+   note manuelle (fond plein) / log auto de champ (texte discret + crayon). */
+.chatter-timeline-grouped { gap: 0.6rem; }
+
+.chatter-day-group { display: flex; flex-direction: column; gap: 0.35rem; }
+
+.chatter-day-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: #94a3b8;
+  margin: 0.25rem 0 0.1rem;
+}
+
+.chatter-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.chatter-item-body { flex: 1; min-width: 0; }
+
+/* Note manuelle : fond plein (déjà porté par .chatter-note ci-dessus). */
+.chatter-item-note { font-weight: 500; }
+
+/* Log auto de champ : texte discret + icône crayon, jamais un fond plein. */
+.chatter-item-autolog {
+  background: transparent;
+  border-color: transparent;
+  color: #94a3b8;
+  padding-left: 0;
+}
+
+.chatter-autolog-icon {
+  display: inline-block;
+  margin-right: 3px;
+  vertical-align: -1px;
+  color: #cbd5e1;
+}
+
+.chatter-attachment { background: #f8fafc; border: 1px solid #eef2f7; border-radius: 8px; padding: 0.5rem 0.75rem; }
+
+.chatter-attachment-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: #1d4ed8;
+  text-decoration: none;
+}
+
+.chatter-attachment-link:hover { text-decoration: underline; }
+
+/* VX111 — pièce jointe attachée à une note (inline dans la ligne, pas un
+   bloc séparé — contrairement au flux de pièces jointes récentes injecté
+   par VX23). */
+.chatter-note-attachment-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.8rem;
+  color: #1d4ed8;
+  text-decoration: none;
+}
+
+.chatter-note-attachment-link:hover { text-decoration: underline; }
+
+/* VX87 — CallLogPopover : journal d'appel en un geste (issue + note +
+   prochaine action), le tout dans le popover ouvert depuis LeadForm/LeadCard/
+   ListView. */
+.clp-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.clp-title {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--foreground, #0b1f3a);
+}
+
+.clp-outcomes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.clp-outcome-btn {
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border, #e2e8f0);
+  background: var(--card, #fff);
+  color: var(--foreground, #0b1f3a);
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+
+.clp-outcome-btn-active {
+  background: var(--primary, #e8b54a);
+  border-color: var(--primary, #e8b54a);
+  color: var(--primary-foreground, #1a1505);
+  font-weight: 600;
+}
+
+.clp-note { font-size: 0.8rem; }
+
+.clp-next-action {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.clp-next-action-label {
+  font-size: 0.76rem;
+  color: var(--muted-foreground, #5a6488);
+}
+
+.clp-next-action-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.clp-next-btn {
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border, #e2e8f0);
+  background: var(--muted, #eef1f8);
+  color: var(--foreground, #0b1f3a);
+  font-size: 0.74rem;
+  cursor: pointer;
+}
+
+.clp-next-btn-active {
+  background: var(--color-info, #2342b5);
+  border-color: var(--color-info, #2342b5);
+  color: #fff;
+  font-weight: 600;
+}
+
+.clp-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 2px;
 }
 
 
@@ -3533,6 +3715,21 @@ textarea.form-control {
 
 .lead-head-owner { display: inline-flex; align-items: center; margin-right: 4px; }
 
+/* VX24 — LeadSummaryBar : bandeau de faits clés (score, montant estimé,
+   prochaine activité, jours depuis modif.) façon Attio, en tête de fiche. */
+.lead-summary-bar {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  padding: 8px 20px;
+  font-size: 0.82rem;
+  color: var(--muted-foreground, #475569);
+  border-bottom: 1px solid var(--border, #e2e8f0);
+}
+
+.lead-summary-item { display: inline-flex; align-items: center; gap: 4px; }
+
 /* Barre d'actions sous l'entête : facture inline (gauche) + devis (droite). */
 .lead-subbar {
   display: flex;
@@ -3546,7 +3743,17 @@ textarea.form-control {
 }
 
 .lead-subbar-bills { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.lead-subbar-label { font-weight: 600; color: var(--muted-foreground, #475569); font-size: 0.85rem; }
+.lead-subbar-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+  color: var(--muted-foreground, #475569);
+  font-size: 0.85rem;
+}
+
+/* VX45 — icône lucide remplaçant l'emoji 💡 (rendu variable selon l'OS). */
+.lead-subbar-icon { flex-shrink: 0; }
 .lead-bill-input { width: 110px; }
 
 .lead-bill-view {
@@ -4293,7 +4500,17 @@ textarea.form-control {
 
 .cal-today-btn {
   min-height: 40px;
+}
+
+/* VX25 — regroupe le contenu additionnel de l'en-tête (Segmented, sélecteur
+   responsable…) + le bouton « Aujourd'hui » ; poussé à droite en bloc
+   (auparavant seul le bouton portait `margin-left: auto`). */
+.cal-header-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   margin-left: auto;
+  flex-wrap: wrap;
 }
 
 .cal-title {
@@ -4453,6 +4670,10 @@ textarea.form-control {
 
 /* ── Leads sans date de relance ── */
 .cal-undated {
+  /* VX25 — MonthGrid.jsx ne fournit plus .cal-root en parent flex direct
+     (CalendarView compose la grille + cette section via un Fragment) : le
+     gap de 12px qu'apportait .cal-root est reproduit ici en margin-top. */
+  margin-top: 12px;
   border-top: 1px solid var(--border, #e2e8f0);
   padding-top: 10px;
 }
@@ -4510,6 +4731,111 @@ textarea.form-control {
   .cal-undated-chips .cal-chip {
     max-width: 150px;
   }
+}
+
+/* ── VX25 — CalendarPage (calendrier transverse) restylé sur MonthGrid +
+   tokens : 100 % inline style / ~20 hex codés / boutons `btn btn-light`
+   pré-design-system remplacés par les primitifs + var(--module-accent-*). */
+.cp-page-header {
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.cp-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.cp-subscribe-box {
+  margin-bottom: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--muted, #f8fafc);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius-sm, 8px);
+}
+
+.cp-subscribe-hint {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+  color: var(--muted-foreground, #475569);
+}
+
+.cp-subscribe-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.cp-subscribe-input {
+  flex: 1 1 320px;
+  min-width: 0;
+  font-size: 0.8rem;
+}
+
+.cp-type-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.cp-type-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  border: 1px solid var(--cp-chip-color);
+  font-size: 0.8rem;
+  background: var(--cp-chip-color);
+  color: var(--primary-foreground, #fff);
+}
+
+.cp-type-chip-off {
+  background: transparent;
+  color: var(--cp-chip-color);
+}
+
+.cp-type-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--primary-foreground, #fff);
+}
+
+.cp-type-chip-off .cp-type-dot {
+  background: var(--cp-chip-color);
+}
+
+.cp-error { color: var(--destructive, #dc2626); }
+
+.cp-empty {
+  margin-top: 0.75rem;
+  text-align: center;
+  color: var(--muted-foreground, #64748b);
+  font-size: 0.9rem;
+}
+
+/* Évènements du calendrier transverse : rendus dans .cal-chips (layout
+   colonne déjà fourni par MonthGrid/CalendarView), fond de couleur pleine
+   (type d'évènement) au lieu du fond carte + point des pastilles lead. */
+.cp-event {
+  color: var(--primary-foreground, #fff);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 0.72rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Évènement passé (date < aujourd'hui) : atténué + bord d'alerte. */
+.cp-event-past {
+  opacity: 0.55;
+  box-shadow: inset 0 0 0 1.5px var(--destructive, #dc2626);
 }
 
 /* ===== migrated from src/pages/crm/leads/views/charts.css (P67) ===== */
@@ -4864,6 +5190,41 @@ textarea.form-control {
   margin-top: 0.5rem;
 }
 
+/* VX87 — nudge post-appel : « Appel terminé — noter le résultat ? »,
+   dismissable, jamais bloquant. */
+.kb-call-nudge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 0.4rem;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--color-info-muted, rgba(37, 99, 235, 0.1));
+  font-size: 0.72rem;
+}
+
+.kb-call-nudge-text { flex: 1; color: var(--foreground, #0b1f3a); }
+
+.kb-call-nudge-log {
+  border: none;
+  background: var(--color-info, #2342b5);
+  color: #fff;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.kb-call-nudge-dismiss {
+  border: none;
+  background: transparent;
+  color: var(--muted-foreground, #64748b);
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 0.72rem;
+}
+
 .kb-canal {
   padding: 0.08rem 0.35rem;
   border-radius: 4px;
@@ -5144,6 +5505,44 @@ textarea.form-control {
   text-align: center;
   color: var(--muted-foreground, #94a3b8);
   padding: 24px 14px;
+}
+
+/* VX87 — nudge post-appel (vue Liste) : bandeau fixe en bas d'écran, un seul
+   appel à la fois — dismissable, jamais bloquant. */
+.lv-call-nudge {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--color-info-muted, rgba(37, 99, 235, 0.1));
+  font-size: 0.8rem;
+  z-index: 1;
+}
+
+.lv-call-nudge-text { flex: 1; color: var(--foreground, #0b1f3a); }
+
+.lv-call-nudge-log {
+  border: none;
+  background: var(--color-info, #2342b5);
+  color: #fff;
+  border-radius: 4px;
+  padding: 3px 10px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.lv-call-nudge-dismiss {
+  border: none;
+  background: transparent;
+  color: var(--muted-foreground, #64748b);
+  cursor: pointer;
+  padding: 0 3px;
+  font-size: 0.78rem;
 }
 
 /* ── Mobile (≤768px) : la table globale passe en cartes ; on garde la

@@ -5,6 +5,10 @@
 // LeadForm's chatter renders them with distinct icons, so a seller
 // preparing a call sees the quote lifecycle inline instead of opening two
 // screens. Verified against SOURCE (no node_modules in this worktree/lane).
+//
+// VX23 — the rendering branches moved from LeadForm.jsx into the reusable
+// components/ChatterTimeline.jsx (LeadForm now just delegates via
+// <ChatterTimeline entries={historique} />). This test follows the move.
 //   node --test src/pages/crm/LeadFormUnifiedTimeline.test.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
@@ -13,7 +17,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const SRC = readFileSync(join(HERE, 'LeadForm.jsx'), 'utf8')
+const SRC = readFileSync(join(HERE, '..', '..', 'components', 'ChatterTimeline.jsx'), 'utf8')
 
 const KIND_ICONS = {
   devis_sent: '📤',

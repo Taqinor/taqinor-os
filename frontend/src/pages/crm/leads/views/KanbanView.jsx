@@ -73,7 +73,10 @@ export function StageMover({ lead, onInlineSave }) {
 
 // Probabilité de conversion par étape (entonnoir) — UI seulement, sert au
 // prévisionnel pondéré (proba × total devis). Les leads perdus comptent 0.
-const STAGE_PROBABILITY = {
+// XSAL15 — exportée pour être réutilisée telle quelle par la vue « Prévision »
+// (regroupement par mois plutôt que par étape, MÊME calcul de pondération —
+// jamais une seconde table de probabilités déclarée ailleurs).
+export const STAGE_PROBABILITY = {
   NEW: 0.1,
   CONTACTED: 0.25,
   QUOTE_SENT: 0.5,
