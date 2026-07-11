@@ -399,3 +399,67 @@ class TestVx100MontantEtLien(ApprobationsBase):
         self.assertEqual(resp.status_code, 200)
         libelles = [it['libelle'] for it in resp.data['items']]
         self.assertEqual(libelles[0], 'Réquisition DA-VX100-BIG')
+
+
+class TestVx218NiveauEscalade(ApprobationsBase):
+    """VX218 — l'agrégateur expose l'état de relance/escalade YEVNT9 côté
+    demandeur (source `automation`, seule balayée par le sweep aujourd'hui;
+    les autres sources renvoient les deux champs à None sans fabrication)."""
+
+    def _make_pending_approval(self, days_old):
+        from apps.automation.models import (
+            ActionType, AutomationApproval, AutomationRule, TriggerType,
+        )
+        rule = AutomationRule.objects.create(
+            company=self.company, nom='Règle VX218',
+            trigger_type=TriggerType.DEVIS_ACCEPTED,
+            action_type=ActionType.SEND_EMAIL, requires_approval=True)
+        approval = AutomationApproval.objects.create(
+            company=self.company, rule=rule, description='Action VX218',
+            requested_by=self.user)
+        approval.date_creation = timezone.now() - datetime.timedelta(
+            days=days_old)
+        approval.save(update_fields=['date_creation'])
+        return approval
+
+    def test_niveau_escalade_absent_by_default(self):
+        AutomationApproval.objects.create(
+            company=self.company, status=AutomationApproval.Status.PENDING)
+        resp = self.api.get(self._url() + '?source=automation')
+        self.assertEqual(resp.status_code, 200)
+        item = resp.data['items'][0]
+        self.assertIn('niveau_escalade', item)
+        self.assertIsNone(item['niveau_escalade'])
+        self.assertIsNone(item['derniere_relance_le'])
+
+    def test_niveau_escalade_relance_after_sweep(self):
+        from apps.notifications.services import sweep_approval_reminders
+        approval = self._make_pending_approval(days_old=5)
+        sweep_approval_reminders(self.company)
+        resp = self.api.get(self._url() + '?source=automation')
+        self.assertEqual(resp.status_code, 200)
+        item = next(
+            it for it in resp.data['items'] if it['id'] == approval.id)
+        self.assertEqual(item['niveau_escalade'], 'relance')
+        self.assertIsNotNone(item['derniere_relance_le'])
+
+    def test_niveau_escalade_escalade_after_sweep(self):
+        from apps.notifications.services import sweep_approval_reminders
+        approval = self._make_pending_approval(days_old=10)
+        sweep_approval_reminders(self.company)
+        resp = self.api.get(self._url() + '?source=automation')
+        self.assertEqual(resp.status_code, 200)
+        item = next(
+            it for it in resp.data['items'] if it['id'] == approval.id)
+        self.assertEqual(item['niveau_escalade'], 'escalade')
+
+    def test_other_sources_never_fabricate_niveau_escalade(self):
+        DemandeAchat.objects.create(
+            company=self.company, reference='DA-VX218-1', objet='X',
+            statut=DemandeAchat.Statut.SOUMISE)
+        resp = self.api.get(self._url() + '?source=installations')
+        self.assertEqual(resp.status_code, 200)
+        item = resp.data['items'][0]
+        self.assertIn('niveau_escalade', item)
+        self.assertIsNone(item['niveau_escalade'])
+        self.assertIsNone(item['derniere_relance_le'])

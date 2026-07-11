@@ -2341,7 +2341,7 @@ droite)**
   undo ; sur WebKit mobile (projet VX68) la cloche respecte l'encoche ; `prix_achat` jamais rendu ;
   e2e verts. (T2 — M, sonnet) (@lane: backend/notify — @after VX208)
 
-- [ ] VX218 — **Le handoff se voit aussi CÔTÉ RÉCEPTION et DANS LE TEMPS : « Nouveau pour moi » +
+- [x] VX218 — **Le handoff se voit aussi CÔTÉ RÉCEPTION et DANS LE TEMPS : « Nouveau pour moi » +
   état d'escalade lisible.** Deux trous jumeaux de VX213/VX215 : (a)
   `InstallationsPage.jsx:40` a un filtre `mine=only` mais rien ne distingue un chantier
   NOUVELLEMENT confié d'un ancien ; (b) `APPROVAL_ESCALATED`/`APPROVAL_REMINDER` (YEVNT9)

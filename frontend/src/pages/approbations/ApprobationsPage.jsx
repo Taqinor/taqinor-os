@@ -169,6 +169,21 @@ export default function ApprobationsPage() {
       ),
     },
     {
+      // VX218 — niveau d'escalade YEVNT9, lisible côté DEMANDEUR (jusqu'ici
+      // seuls les managers voyaient la notif d'escalade ; le demandeur ne
+      // savait jamais où en était sa propre demande). `None` = jamais
+      // relancé (aucune fabrication) ; seule la source `automation` est
+      // balayée par ce sweep aujourd'hui, les autres n'affichent rien ici.
+      id: 'niveau_escalade', header: 'Relance', width: 150,
+      accessor: (r) => r.niveau_escalade || '',
+      cell: (v, r) => {
+        if (!r.niveau_escalade) return '—'
+        const label = r.niveau_escalade === 'escalade' ? 'Escaladée' : 'Relancée'
+        const tone = r.niveau_escalade === 'escalade' ? 'danger' : 'warning'
+        return <Badge tone={tone}>{label}</Badge>
+      },
+    },
+    {
       id: 'actions', header: '', width: 220, align: 'right',
       accessor: () => '',
       cell: (v, r) => {

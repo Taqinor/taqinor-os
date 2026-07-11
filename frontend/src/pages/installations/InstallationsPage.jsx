@@ -11,6 +11,7 @@ import {
   upcomingPoses,
   funnelSummary,
   installerLoad,
+  isNewlyAssigned,
 } from '../../features/installations/statuses'
 import importApi, { downloadXlsx } from '../../api/importApi'
 import crmApi from '../../api/crmApi'
@@ -33,6 +34,36 @@ import InstallationDetail from './InstallationDetail'
 
 const VIEW_KEY = 'taqinor.chantiers.view'
 const VALID_VIEWS = ['liste', 'kanban', 'calendrier']
+
+// VX218 — horodatage de la dernière visite de l'écran (localStorage), pour
+// distinguer un chantier NOUVELLEMENT confié d'un ancien (badge « Nouveau »).
+// Accès défensif : un environnement sans localStorage (SSR, navigation privée
+// bloquée) ne casse jamais l'écran, il désactive juste le badge.
+const LAST_SEEN_KEY = 'taqinor.chantiers.lastSeen'
+
+function safeStorage() {
+  try {
+    return typeof window !== 'undefined' && window.localStorage
+      ? window.localStorage
+      : null
+  } catch {
+    return null
+  }
+}
+
+function readLastSeen() {
+  try {
+    return safeStorage()?.getItem(LAST_SEEN_KEY) ?? null
+  } catch {
+    return null
+  }
+}
+
+function writeLastSeen(iso) {
+  try {
+    safeStorage()?.setItem(LAST_SEEN_KEY, iso)
+  } catch { /* stockage indisponible */ }
+}
 
 // Paramètres SERVEUR dérivés des filtres « annulés » et « Mes chantiers ».
 const serverParams = (filters) => {
@@ -228,6 +259,7 @@ function CalendarView({ items, onOpen, onReschedule }) {
 export default function InstallationsPage() {
   const dispatch = useDispatch()
   const { items, loading, error } = useSelector(s => s.installations)
+  const currentUser = useSelector(s => s.auth?.user)
 
   const [view, setView] = useState(() => {
     try {
@@ -242,7 +274,25 @@ export default function InstallationsPage() {
   }, [view])
 
   const [filters, setFilters] = useState(EMPTY_FILTERS)
-  const filtered = useMemo(() => filterInstallations(items, filters), [items, filters])
+
+  // VX218 — badge « Nouveau » : chantiers assignés à moi depuis ma dernière
+  // visite (lue UNE fois au montage — figée pour la session, sinon le badge
+  // s'effacerait tout seul dès le premier rendu). Ouvrir l'écran efface le
+  // marqueur pour la PROCHAINE visite (jamais la visite en cours).
+  const [lastSeen] = useState(() => readLastSeen())
+  useEffect(() => {
+    writeLastSeen(new Date().toISOString())
+  }, [])
+  const nouveaux = useMemo(
+    () => (items ?? []).filter((it) => isNewlyAssigned(it, currentUser?.id, lastSeen)),
+    [items, currentUser, lastSeen],
+  )
+  const nouveauxIds = useMemo(() => new Set(nouveaux.map((it) => it.id)), [nouveaux])
+
+  const filtered = useMemo(() => {
+    const base = filterInstallations(items, filters)
+    return filters.nouveaux ? base.filter((it) => nouveauxIds.has(it.id)) : base
+  }, [items, filters, nouveauxIds])
 
   // N13/N14 — synthèses calculées à la lecture (aucun appel serveur en plus) :
   // poses à venir (≤ 7 j) et répartition funnel + nombre en retard.
@@ -386,6 +436,19 @@ export default function InstallationsPage() {
               {aVenir.length} pose(s) à venir (≤ 7 j)
             </button>
           )}
+          {/* VX218 — raccourci « Mes nouveaux chantiers » : chantiers qui
+              m'ont été assignés depuis ma dernière visite. */}
+          {nouveaux.length > 0 && (
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-xs font-semibold text-success"
+              onClick={() => setFilters((f) => ({ ...f, mine: 'only', nouveaux: true }))}
+              title="Filtrer mes chantiers nouvellement assignés"
+              data-testid="chantiers-nouveaux-shortcut"
+            >
+              {nouveaux.length} nouveau(x) chantier(s)
+            </button>
+          )}
         </h2>
         <div className="page-header-actions lp-header-actions flex flex-wrap items-center gap-2">
           {/* VX79 — « Copier le lien » du chantier ouvert : URL INTERNE
@@ -484,11 +547,12 @@ export default function InstallationsPage() {
         )}
         {!showSkeleton && view === 'liste' && (
           <ListView items={filtered} onOpen={onOpen} users={users}
-                    onChangeStatus={onChangeStatus} onReassign={onReassign} />
+                    onChangeStatus={onChangeStatus} onReassign={onReassign}
+                    nouveauxIds={nouveauxIds} />
         )}
         {!showSkeleton && view === 'kanban' && (
           <KanbanView items={filtered} onOpen={onOpen} onChangeStatus={onChangeStatus}
-                      users={users} onReassign={onReassign} />
+                      users={users} onReassign={onReassign} nouveauxIds={nouveauxIds} />
         )}
         {!showSkeleton && view === 'calendrier' && (
           filtered.length === 0 ? (
