@@ -10,7 +10,10 @@
 import { useEffect, useState } from 'react'
 import importApi, { downloadBlob, filenameFromResponse } from '../api/importApi'
 
-const TARGET_LABEL = { leads: 'leads', clients: 'clients', products: 'produits' }
+const TARGET_LABEL = {
+  leads: 'leads', clients: 'clients', products: 'produits',
+  fournisseurs: 'fournisseurs', equipements: 'équipements',
+}
 
 const MODES = [
   { value: 'creer', label: 'Créer seulement (doublons ignorés)' },

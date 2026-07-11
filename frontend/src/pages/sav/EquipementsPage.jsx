@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import {
-  Download, PackageSearch, AlarmClock, AlertTriangle, RotateCcw, Save,
+  Download, Upload, PackageSearch, AlarmClock, AlertTriangle, RotateCcw, Save,
   Wrench, Pencil, ShieldCheck, Trash2, ChevronRight, Activity,
 } from 'lucide-react'
 import { fetchEquipements } from '../../features/sav/store/equipementsSlice'
@@ -10,6 +10,7 @@ import savApi from '../../api/savApi'
 import installationsApi from '../../api/installationsApi'
 import stockApi from '../../api/stockApi'
 import importApi, { downloadXlsx } from '../../api/importApi'
+import ExcelImport from '../../components/ExcelImport'
 import RegistreGarantiesDialog from './RegistreGarantiesDialog'
 import EquipementFiabilitePanel from './EquipementFiabilitePanel'
 import {
@@ -439,6 +440,8 @@ export default function EquipementsPage() {
   const [selected, setSelected] = useState(null)
   // WR11/FG290 — registre des garanties par parc (échéancier).
   const [showRegistre, setShowRegistre] = useState(false)
+  // VX109 — import Excel/CSV du parc d'équipements.
+  const [showImport, setShowImport] = useState(false)
 
   const reload = () => dispatch(fetchEquipements())
   useEffect(() => { reload() }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -546,6 +549,9 @@ export default function EquipementsPage() {
             <Button variant="outline" size="sm" onClick={() => setShowRegistre(true)}>
               <ShieldCheck /> Registre des garanties
             </Button>
+            <Button variant="outline" size="sm" onClick={() => setShowImport(true)}>
+              <Upload /> Importer
+            </Button>
             <Button variant="outline" size="sm"
                     onClick={() => importApi.exportList('equipements', rows.map((r) => r.id))
                       .then((r) => downloadXlsx(r.data, 'equipements.xlsx')).catch(() => {})}>
@@ -553,6 +559,11 @@ export default function EquipementsPage() {
             </Button>
           </div>
         </header>
+
+        {showImport && (
+          <ExcelImport target="equipements" onClose={() => setShowImport(false)}
+                       onDone={reload} />
+        )}
 
         {/* ── Filtres ── */}
         <div className="flex flex-wrap items-center gap-2">
