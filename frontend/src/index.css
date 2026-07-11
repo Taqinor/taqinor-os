@@ -1075,6 +1075,29 @@ button:active, [role="button"]:active, a.btn:active,
   gap: 6px;
 }
 
+/* ── VX7 — passe « calm color » (recette Linear : chrome désaturé / signal
+   saturé). Modifieur `.calm-list` sur les tables denses (DevisList, leads
+   ListView, StockList, FactureList) : (a) séparateurs de lignes adoucis à
+   ~60 % d'opacité (le filet structure sans crier) ; (b) actions de ligne
+   révélées au survol de la ligne (opacité 0 → 1, aucun reflow — l'espace reste
+   réservé). Aucune information n'est retirée, seulement re-pesée. */
+.calm-list.data-table td {
+  border-bottom-color: color-mix(in oklch, var(--border) 60%, transparent);
+}
+.calm-list .actions-cell {
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+/* Toujours visibles au clavier (focus dans la ligne) et sur tactile (pas de
+   survol) : on ne révèle « au survol » que là où le survol existe vraiment. */
+.calm-list .actions-cell:focus-within { opacity: 1; }
+@media (hover: hover) {
+  .calm-list tbody tr:hover .actions-cell { opacity: 1; }
+}
+@media (hover: none) {
+  .calm-list .actions-cell { opacity: 1; }
+}
+
 /* ── Badge ────────────────────────────────────────────── */
 .badge {
   display: inline-flex;
