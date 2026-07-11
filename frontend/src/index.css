@@ -3314,7 +3314,8 @@ textarea.form-control {
   display: flex; flex-direction: column; align-items: flex-start;
   width: 100%; text-align: left;
   background: none; border: none; cursor: pointer;
-  padding: 7px 10px; border-radius: 6px;
+  padding: 7px 10px 7px 18px; border-radius: 6px;
+  position: relative;
 }
 @media (hover: hover) {
   .gs-result:hover,
@@ -3322,6 +3323,17 @@ textarea.form-control {
 }
 .gs-result-label { font-size: 0.875rem; color: #0f172a; }
 .gs-result-sub { font-size: 0.75rem; color: #64748b; }
+/* VX13 — pastille d'accent du module d'origine (VX8), petit point discret
+   aligné sur le libellé. */
+.gs-result-accent {
+  position: absolute;
+  left: 6px;
+  top: 13px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--module-accent);
+}
 /* L17 — état d'échec réseau distinct d'un « aucun résultat ». */
 .gs-empty.gs-error { color: #dc2626; }
 /* L9 — lien « voir tout / +N autres » par groupe. */
@@ -5320,6 +5332,16 @@ textarea.form-control {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* VX13 — pastille d'accent du module d'origine (VX8), petit point discret
+   avant le libellé (même patron que .gs-result-accent). */
+.cmdk-item-accent {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--module-accent);
 }
 .cmdk-item-sub {
   flex: 0 1 auto;

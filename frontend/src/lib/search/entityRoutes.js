@@ -53,6 +53,25 @@ export const TYPE_LABEL = {
   produit: 'Produit',
 }
 
+// VX13 — pastille d'accent du module d'origine (VX8 : une des 7 clés
+// `--module-accent-*` de tokens.css, aucune couleur inventée) posée sur
+// chaque résultat des DEUX surfaces. Dérivée du module Sidebar qui possède
+// chaque route (cf. Sidebar.jsx NAV_SECTIONS) — repli neutre (pas de pastille)
+// pour un type sans section connue.
+export const TYPE_ACCENT = {
+  lead: 'azur',
+  client: 'azur',
+  devis: 'brass',
+  facture: 'brass',
+  bon_commande: 'brass',
+  chantier: 'success',
+  dossier: 'success',
+  equipement: 'destructive',
+  ticket: 'destructive',
+  contrat: 'destructive',
+  produit: 'lune',
+}
+
 /**
  * useEntitySearch — recherche transverse débouncée (~250 ms), même patron que
  * l'un et l'autre composant AVANT cette tâche : `term.length < 2` = pas de

@@ -6,7 +6,7 @@ import { useNavigate } from 'react-router-dom'
 import { Search } from 'lucide-react'
 // VX13 — ROUTE/LIST_ROUTE + recherche débouncée mutualisés avec CommandPalette
 // (⌘K) : plus aucune table dupliquée (cf. lib/search/entityRoutes.js).
-import { ROUTE, LIST_ROUTE, useEntitySearch } from '../../lib/search/entityRoutes'
+import { ROUTE, LIST_ROUTE, TYPE_ACCENT, useEntitySearch } from '../../lib/search/entityRoutes'
 
 // Mémoire des recherches récentes (localStorage, effacée à la déconnexion).
 const RECENT_KEY = 'taqinor.search.recent'
@@ -254,6 +254,14 @@ export default function GlobalSearch() {
                   onMouseEnter={() => setActiveIndex(r.index)}
                   onClick={() => go(g.type, r.id)}
                 >
+                  {/* VX13 — pastille d'accent du module d'origine (VX8). */}
+                  {TYPE_ACCENT[g.type] && (
+                    <span
+                      className="gs-result-accent"
+                      style={{ '--module-accent': `var(--module-accent-${TYPE_ACCENT[g.type]})` }}
+                      aria-hidden="true"
+                    />
+                  )}
                   <span className="gs-result-label">{r.label}</span>
                   {r.sublabel && <span className="gs-result-sub">{r.sublabel}</span>}
                 </button>

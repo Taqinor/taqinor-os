@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
-import { ROUTE, LIST_ROUTE, TYPE_LABEL, useEntitySearch } from './entityRoutes'
+import { ROUTE, LIST_ROUTE, TYPE_LABEL, TYPE_ACCENT, useEntitySearch } from './entityRoutes'
 import reportingApi from '../../api/reportingApi'
 
 vi.mock('../../api/reportingApi', () => ({
@@ -35,6 +35,14 @@ describe('VX13 — entityRoutes (source unique GlobalSearch + CommandPalette)', 
     expect(ROUTE.produit).toBeTypeOf('function')
     expect(LIST_ROUTE.contrat).toBeTypeOf('function')
     expect(TYPE_LABEL.devis).toBe('Devis')
+  })
+
+  it('TYPE_ACCENT — chaque clé pointe vers une des 7 clés --module-accent-* de VX8', () => {
+    const VALID = ['brass', 'azur', 'nuit', 'success', 'destructive', 'warning', 'lune']
+    Object.values(TYPE_ACCENT).forEach((accent) => {
+      expect(VALID).toContain(accent)
+    })
+    expect(TYPE_ACCENT.devis).toBe('brass')
   })
 
   it('ne cherche rien tant que le terme fait moins de 2 caractères', async () => {

@@ -19,7 +19,7 @@ import {
 import { filterActions, readRecentEntities, pushRecentEntity } from './commandActions'
 // VX13 — ROUTE/TYPE_LABEL + recherche débouncée mutualisés avec GlobalSearch
 // (barre du haut) : plus aucune table dupliquée (cf. lib/search/entityRoutes.js).
-import { ROUTE, TYPE_LABEL, useEntitySearch } from '../lib/search/entityRoutes'
+import { ROUTE, TYPE_LABEL, TYPE_ACCENT, useEntitySearch } from '../lib/search/entityRoutes'
 
 export function CommandPalette() {
   const [open, setOpen] = useState(false)
@@ -235,6 +235,14 @@ export function CommandPalette() {
                       onMouseMove={() => setActive(i)}
                       onClick={() => activate({ kind: 'recent', entity: r })}
                     >
+                      {/* VX13 — pastille d'accent du module d'origine (VX8). */}
+                      {TYPE_ACCENT[r.type] && (
+                        <span
+                          className="cmdk-item-accent"
+                          style={{ '--module-accent': `var(--module-accent-${TYPE_ACCENT[r.type]})` }}
+                          aria-hidden="true"
+                        />
+                      )}
                       <span className="cmdk-item-label">{r.label || TYPE_LABEL[r.type] || r.type}</span>
                       {TYPE_LABEL[r.type] && <span className="cmdk-item-sub">{TYPE_LABEL[r.type]}</span>}
                     </button>
@@ -250,6 +258,14 @@ export function CommandPalette() {
                     onMouseMove={() => setActive(i)}
                     onClick={() => activate({ kind: 'result', type: sec.type, item: r })}
                   >
+                    {/* VX13 — pastille d'accent du module d'origine (VX8). */}
+                    {TYPE_ACCENT[sec.type] && (
+                      <span
+                        className="cmdk-item-accent"
+                        style={{ '--module-accent': `var(--module-accent-${TYPE_ACCENT[sec.type]})` }}
+                        aria-hidden="true"
+                      />
+                    )}
                     <span className="cmdk-item-label">{r.label}</span>
                     {r.sublabel && <span className="cmdk-item-sub">{r.sublabel}</span>}
                   </button>
