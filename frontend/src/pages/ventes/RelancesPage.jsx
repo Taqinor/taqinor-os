@@ -312,21 +312,23 @@ export default function RelancesPage() {
                                 aria-label={`Sélectionner ${r.reference}`} />
                     </td>
                     <td><strong>{r.reference}</strong></td>
-                    <td>{r.client_nom}</td>
-                    <td className={r.jours_retard > 0 ? 'font-semibold text-destructive' : undefined}>
+                    <td data-label="Client">{r.client_nom}</td>
+                    <td data-label="Échéance"
+                        className={r.jours_retard > 0 ? 'font-semibold text-destructive' : undefined}>
                       {r.date_echeance || '—'}
                     </td>
-                    <td className="ta-right tabular-nums">{formatMAD(r.montant_du)}</td>
-                    <td className={r.jours_retard > 0 ? 'text-destructive' : undefined}>
+                    <td className="ta-right tabular-nums" data-label="Dû">{formatMAD(r.montant_du)}</td>
+                    <td data-label="Retard"
+                        className={r.jours_retard > 0 ? 'text-destructive' : undefined}>
                       {r.jours_retard > 0
                         ? `${r.jours_retard} j`
                         : <span className="text-muted-foreground">À échoir</span>}
                     </td>
-                    <td>{ageBucket(r.jours_retard)
+                    <td className="m-hide">{ageBucket(r.jours_retard)
                       ? <Badge tone="warning">{ageBucket(r.jours_retard)}</Badge>
                       : '—'}</td>
-                    <td>{r.niveau ? <Badge tone="warning">{r.niveau.nom}</Badge> : '—'}</td>
-                    <td>{r.nb_relances}</td>
+                    <td data-label="Niveau">{r.niveau ? <Badge tone="warning">{r.niveau.nom}</Badge> : '—'}</td>
+                    <td className="m-hide">{r.nb_relances}</td>
                     <td className="ta-right">
                       {/* VX20 — « soupe d'actions » réduite : Relancer (action
                           principale) + WhatsApp (canal de communication le

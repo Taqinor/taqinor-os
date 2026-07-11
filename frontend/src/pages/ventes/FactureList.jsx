@@ -252,9 +252,9 @@ function FactureRow({ f, ctx }) {
           </Badge>
         )}
       </td>
-      <td>{f.client_nom ?? '—'}</td>
-      <td>{new Date(f.date_emission).toLocaleDateString('fr-FR')}</td>
-      <td>
+      <td data-label="Client">{f.client_nom ?? '—'}</td>
+      <td data-label="Émission">{new Date(f.date_emission).toLocaleDateString('fr-FR')}</td>
+      <td data-label="Échéance">
         {echeanceEditId === f.id ? (
           <span className="flex items-center gap-1">
             <Input type="date" className="w-36" value={echeanceValue}
@@ -279,7 +279,7 @@ function FactureRow({ f, ctx }) {
           </span>
         )}
       </td>
-      <td className="ta-right tabular-nums">
+      <td className="ta-right tabular-nums" data-label="Total TTC">
         {f.total_ttc != null ? formatMAD(f.total_ttc) : '—'}
         {(f.montant_paye != null || f.montant_du != null) && (
           <div className="mt-0.5 text-xs text-muted-foreground">
@@ -287,7 +287,7 @@ function FactureRow({ f, ctx }) {
           </div>
         )}
       </td>
-      <td>
+      <td data-label="Statut">
         <StatusPill status={statutKey} label={STATUT_DISPLAY[statutKey] ?? STATUT_DISPLAY.brouillon} />
         {['emise', 'payee', 'en_retard'].includes(f.statut) && f.statut_teledeclaration && (
           <Badge
@@ -1229,9 +1229,9 @@ export default function FactureList() {
                   <tbody>
                     {avoirTarget.lignes.map(l => (
                       <tr key={l.id}>
-                        <td>{l.designation}</td>
-                        <td className="ta-right tabular-nums">{l.quantite}</td>
-                        <td className="ta-right">
+                        <td data-label="Désignation">{l.designation}</td>
+                        <td className="ta-right tabular-nums" data-label="Qté facturée">{l.quantite}</td>
+                        <td className="ta-right" data-label="Qté à créditer">
                           <Input
                             type="number" min="0" step="any"
                             className="w-24"
