@@ -2994,7 +2994,7 @@ textarea.form-control {
 .gen-page { max-width: 1100px; }
 
 /* VX4 — carte du générateur tokenisée (dark mode réel sur l'écran le plus
-   stratégique ; VX17 a déjà migré .gen-metric*/.lines-table* et le chart). */
+   stratégique ; VX17 a déjà migré .gen-metric / .lines-table et le chart). */
 .gen-card {
   background: var(--card);
   /* VX6 — rayon dérivé de --radius (radius-xl=14px) ; carte définie par son
