@@ -4362,7 +4362,17 @@ textarea.form-control {
 
 .cal-today-btn {
   min-height: 40px;
+}
+
+/* VX25 — regroupe le contenu additionnel de l'en-tête (Segmented, sélecteur
+   responsable…) + le bouton « Aujourd'hui » ; poussé à droite en bloc
+   (auparavant seul le bouton portait `margin-left: auto`). */
+.cal-header-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   margin-left: auto;
+  flex-wrap: wrap;
 }
 
 .cal-title {
@@ -4522,6 +4532,10 @@ textarea.form-control {
 
 /* ── Leads sans date de relance ── */
 .cal-undated {
+  /* VX25 — MonthGrid.jsx ne fournit plus .cal-root en parent flex direct
+     (CalendarView compose la grille + cette section via un Fragment) : le
+     gap de 12px qu'apportait .cal-root est reproduit ici en margin-top. */
+  margin-top: 12px;
   border-top: 1px solid var(--border, #e2e8f0);
   padding-top: 10px;
 }
@@ -4579,6 +4593,111 @@ textarea.form-control {
   .cal-undated-chips .cal-chip {
     max-width: 150px;
   }
+}
+
+/* ── VX25 — CalendarPage (calendrier transverse) restylé sur MonthGrid +
+   tokens : 100 % inline style / ~20 hex codés / boutons `btn btn-light`
+   pré-design-system remplacés par les primitifs + var(--module-accent-*). */
+.cp-page-header {
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.cp-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.cp-subscribe-box {
+  margin-bottom: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--muted, #f8fafc);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius-sm, 8px);
+}
+
+.cp-subscribe-hint {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+  color: var(--muted-foreground, #475569);
+}
+
+.cp-subscribe-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.cp-subscribe-input {
+  flex: 1 1 320px;
+  min-width: 0;
+  font-size: 0.8rem;
+}
+
+.cp-type-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.cp-type-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  border: 1px solid var(--cp-chip-color);
+  font-size: 0.8rem;
+  background: var(--cp-chip-color);
+  color: var(--primary-foreground, #fff);
+}
+
+.cp-type-chip-off {
+  background: transparent;
+  color: var(--cp-chip-color);
+}
+
+.cp-type-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--primary-foreground, #fff);
+}
+
+.cp-type-chip-off .cp-type-dot {
+  background: var(--cp-chip-color);
+}
+
+.cp-error { color: var(--destructive, #dc2626); }
+
+.cp-empty {
+  margin-top: 0.75rem;
+  text-align: center;
+  color: var(--muted-foreground, #64748b);
+  font-size: 0.9rem;
+}
+
+/* Évènements du calendrier transverse : rendus dans .cal-chips (layout
+   colonne déjà fourni par MonthGrid/CalendarView), fond de couleur pleine
+   (type d'évènement) au lieu du fond carte + point des pastilles lead. */
+.cp-event {
+  color: var(--primary-foreground, #fff);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 0.72rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Évènement passé (date < aujourd'hui) : atténué + bord d'alerte. */
+.cp-event-past {
+  opacity: 0.55;
+  box-shadow: inset 0 0 0 1.5px var(--destructive, #dc2626);
 }
 
 /* ===== migrated from src/pages/crm/leads/views/charts.css (P67) ===== */
