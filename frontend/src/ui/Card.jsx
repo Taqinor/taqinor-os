@@ -1,11 +1,14 @@
 import { cn } from '../lib/cn'
 
-/* G29 — Card + sous-parties. Surface tokenisée (clair/sombre). */
+/* G29 — Card + sous-parties. Surface tokenisée (clair/sombre).
+   VX6 — discipline d'élévation F122 : une carte se DÉFINIT par son liseré 1px
+   (shadow-card), elle ne « flotte » plus au repos (fin de shadow-ui-sm) ;
+   seuls les calques au-dessus du flux (menu/modal/toast) portent une ombre. */
 export function Card({ className, ...props }) {
   return (
     <div
       className={cn(
-        'rounded-xl border border-border bg-card text-card-foreground shadow-ui-sm',
+        'rounded-xl border border-border bg-card text-card-foreground shadow-card',
         className,
       )}
       {...props}

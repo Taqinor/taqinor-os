@@ -238,7 +238,8 @@ export default function ListView({
 
   return (
     <div className="lv-wrap">
-      <table className="data-table lv-table">
+      {/* VX7 — calm color : séparateurs adoucis + actions révélées au survol. */}
+      <table className="data-table lv-table calm-list">
         <thead>
           <tr>
             {onToggleSelect && (

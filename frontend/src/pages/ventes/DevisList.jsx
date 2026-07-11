@@ -444,7 +444,9 @@ function DevisRow({ d, ctx }) {
         )}
       </td>
       <td data-label="Client">
-        {d.client_nom ?? '—'}
+        {/* VX7 — calm color : le nom client est une donnée PRIMAIRE (contraste
+            plein + poids medium), il ressort du chrome désaturé environnant. */}
+        <span className="font-medium text-foreground">{d.client_nom ?? '—'}</span>
         {d.lead && (
           <div className="mt-1">
             <button
@@ -464,8 +466,10 @@ function DevisRow({ d, ctx }) {
           </div>
         )}
       </td>
-      <td data-label="Créé le">{new Date(d.date_creation).toLocaleDateString('fr-FR')}</td>
-      <td className="m-hide">
+      {/* VX7 — calm color : les dates sont des métadonnées secondaires → mutées
+          (le contraste plein est réservé au client, au total TTC et au statut). */}
+      <td data-label="Créé le" className="text-muted-foreground">{new Date(d.date_creation).toLocaleDateString('fr-FR')}</td>
+      <td className="m-hide text-muted-foreground">
         {d.date_validite
           ? new Date(d.date_validite).toLocaleDateString('fr-FR')
           : '—'}
@@ -2205,7 +2209,7 @@ export default function DevisList() {
                 searchable={false}
                 hideToolbar
                 hidePagination
-                tableClassName="data-table"
+                tableClassName="data-table calm-list"
                 aria-label="Devis"
                 renderHeaderRow={() => devisHeaderRow.props.children}
                 renderRow={d => <DevisRow key={d.id} d={d} ctx={rowCtx} />}

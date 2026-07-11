@@ -270,8 +270,10 @@ function FactureRow({ f, ctx }) {
           </button>
         </div>
       </td>
-      <td data-label="Client">{f.client_nom ?? '—'}</td>
-      <td data-label="Émission">{new Date(f.date_emission).toLocaleDateString('fr-FR')}</td>
+      {/* VX7 — calm color : nom client = donnée primaire (contraste plein +
+          poids medium) ; date d'émission = métadonnée secondaire (mutée). */}
+      <td data-label="Client"><span className="font-medium text-foreground">{f.client_nom ?? '—'}</span></td>
+      <td data-label="Émission" className="text-muted-foreground">{new Date(f.date_emission).toLocaleDateString('fr-FR')}</td>
       <td data-label="Échéance">
         {echeanceEditId === f.id ? (
           <span className="flex items-center gap-1">
@@ -1689,7 +1691,7 @@ export default function FactureList() {
               searchable={false}
               hideToolbar
               hidePagination
-              tableClassName="data-table"
+              tableClassName="data-table calm-list"
               tableRole="table"
               aria-label="Factures"
               renderHeaderRow={() => (

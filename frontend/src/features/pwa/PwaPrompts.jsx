@@ -10,8 +10,11 @@
 import { useEffect, useState } from 'react'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 
-const NAVY = '#0f172a'
-const GOLD = '#f5a623'
+/* VX1 — un seul or, un seul navy : le bandeau PWA consomme la signature de
+   marque (tokens.css) au lieu de ses propres hex. `var(--…)` fonctionne en
+   style inline React ; repli hex pour le rare cas hors-DOM tokenisé. */
+const NAVY = 'var(--color-nuit, #070b1d)'
+const GOLD = 'var(--primary, #e8b54a)'
 const DISMISS_KEY = 'taqinor-pwa-install-dismissed'
 
 function isStandalone() {
