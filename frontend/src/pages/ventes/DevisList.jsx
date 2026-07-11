@@ -37,6 +37,7 @@ import { useHasPermission } from '../../hooks/useHasPermission'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import { DataTable } from '../../ui/datatable'
 import RoofViewer from './RoofViewer'
+import { StateBlock } from '../../components/StateBlock'
 
 // J141 — Squelette de la liste : reprend les 8 colonnes du vrai tableau pour que
 // la mise en page ne saute pas à l'arrivée des données. Affiché dans la même
@@ -1639,11 +1640,18 @@ export default function DevisList() {
     )
   }
   if (error) {
+    // VX67 — StateBlock unifie l'état d'erreur avec un bouton « Réessayer »
+    // (relance le même thunk que le montage initial), là où l'ancien
+    // EmptyState d'erreur n'offrait aucun moyen de réessayer sans recharger
+    // la page entière.
     return (
       <div className="page">
         {pageHeader}
-        <EmptyState className="mt-4" icon={FileStack} title="Erreur de chargement"
-                    description={typeof error === 'string' ? error : JSON.stringify(error)} />
+        <StateBlock
+          className="mt-4"
+          error={typeof error === 'string' ? error : 'Erreur de chargement.'}
+          onRetry={() => dispatch(fetchDevis())}
+        />
       </div>
     )
   }
