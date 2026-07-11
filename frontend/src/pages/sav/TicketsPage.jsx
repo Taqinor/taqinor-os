@@ -21,6 +21,7 @@ import TicketSuiviClientPanel from './TicketSuiviClientPanel'
 import TicketChecklistPanel from './TicketChecklistPanel'
 import TicketAdvancedPanel from './TicketAdvancedPanel'
 import { groupTicketsByDate } from './ticketCalendarUtils'
+import { useIsMobile } from '../../ui/ResponsiveDialog'
 import { INTERVENTION_TYPES } from '../../features/installations/statuses'
 import {
   EMPTY_TICKET_FILTERS,
@@ -109,6 +110,17 @@ function frError(err, fallback = 'Action impossible.') {
 
 // L298 — niveau SLA → présentation (badge ton + libellé « ouvert depuis X j »).
 const SLA_TONES = { ok: 'neutral', warn: 'warning', late: 'danger' }
+
+// VX31 — boîte de réception SAV : sur grand viewport (≥1280px, xl Tailwind),
+// le détail du ticket vit dans un panneau latéral PERSISTANT à côté de la liste
+// (pattern inbox Linear/Plain) au lieu du tiroir `Sheet` plein-tiroir. Sous ce
+// seuil (tablette/mobile), le `Sheet` reste le fallback inchangé. On réutilise
+// le hook media-query de `ResponsiveDialog` (M158) avec une requête inversée —
+// « pas mobile » devient ici « assez large pour le split-view ».
+const DESKTOP_SPLIT_QUERY = '(min-width: 1280px)'
+function useIsDesktopSplit() {
+  return useIsMobile(DESKTOP_SPLIT_QUERY)
+}
 
 // L313 — section repliable (usage terrain/mobile). Utilise <details> natif :
 // ouverte par défaut, le résumé fait office d'en-tête d'accordéon cliquable.
@@ -525,34 +537,37 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
     return new Date() < fin ? 'oui' : 'non'
   }, [fields.equipement, linkedEquip])
 
-  return (
-    <Sheet open onOpenChange={(o) => { if (!o) onClose() }}>
-      <SheetContent side="right" className="w-[min(46rem,calc(100%-1.5rem))] sm:max-w-3xl">
-        <SheetHeader>
-          <SheetTitle className="flex flex-wrap items-center gap-2">
-            Ticket SAV — {current.reference ?? ''}
-            <StatutPill statut={current.statut} />
-            {current.annule && <Badge tone="danger">Annulé</Badge>}
-            <TicketSlaBadge ticket={current} />
-          </SheetTitle>
-          <SheetDescription>
-            Suivi, équipement, interventions, pièces et historique du ticket.
-          </SheetDescription>
-          {/* L299/L1 — compte-à-rebours de garantie de l'équipement lié. */}
-          {current.equipement_fin_garantie && (
-            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <ShieldCheck className="size-3.5" aria-hidden="true" />
-              {(() => {
-                const fin = new Date(`${current.equipement_fin_garantie}T00:00:00`)
-                const jours = Math.round((fin - new Date()) / 86400000)
-                return jours >= 0
-                  ? `Garantie jusqu'au ${formatDateFR(current.equipement_fin_garantie)} (${jours} j restant${jours > 1 ? 's' : ''})`
-                  : `Garantie expirée le ${formatDateFR(current.equipement_fin_garantie)} (${-jours} j)`
-              })()}
-            </span>
-          )}
-        </SheetHeader>
+  // VX31 — sur grand viewport, le panneau est un aside PERSISTANT à côté de la
+  // liste (jamais un tiroir plein-tiroir qui masque la DataTable) ; sous le
+  // seuil desktop, le `Sheet` plein-tiroir reste le fallback mobile/tablette
+  // inchangé (mêmes CollapsibleSection, même contenu — seule l'enveloppe change).
+  const isDesktopSplit = useIsDesktopSplit()
 
+  const titleContent = (
+    <>
+      Ticket SAV — {current.reference ?? ''}
+      <StatutPill statut={current.statut} />
+      {current.annule && <Badge tone="danger">Annulé</Badge>}
+      <TicketSlaBadge ticket={current} />
+    </>
+  )
+
+  // L299/L1 — compte-à-rebours de garantie de l'équipement lié.
+  const headerContent = current.equipement_fin_garantie ? (
+    <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      <ShieldCheck className="size-3.5" aria-hidden="true" />
+      {(() => {
+        const fin = new Date(`${current.equipement_fin_garantie}T00:00:00`)
+        const jours = Math.round((fin - new Date()) / 86400000)
+        return jours >= 0
+          ? `Garantie jusqu'au ${formatDateFR(current.equipement_fin_garantie)} (${jours} j restant${jours > 1 ? 's' : ''})`
+          : `Garantie expirée le ${formatDateFR(current.equipement_fin_garantie)} (${-jours} j)`
+      })()}
+    </span>
+  ) : null
+
+  const bodyContent = (
+    <>
         {current.annule && (
           <div role="alert"
                className="flex flex-wrap items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
@@ -962,6 +977,44 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+    </>
+  )
+
+  // ── Desktop (≥1280px) : panneau latéral persistant à côté de la liste. ──
+  if (isDesktopSplit) {
+    return (
+      <aside
+        aria-label={`Détail du ticket ${current.reference ?? ''}`}
+        className="flex w-[26rem] shrink-0 flex-col gap-4 overflow-y-auto rounded-xl border border-border bg-card p-4 xl:sticky xl:top-1"
+      >
+        <div className="flex flex-col gap-1.5 border-b border-border pb-3">
+          <div className="flex flex-wrap items-center gap-2 font-display text-lg font-semibold">
+            {titleContent}
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Suivi, équipement, interventions, pièces et historique du ticket.
+          </p>
+          {headerContent}
+        </div>
+        {bodyContent}
+      </aside>
+    )
+  }
+
+  // ── Mobile/tablette (<1280px) : tiroir Sheet plein-tiroir (fallback inchangé). ──
+  return (
+    <Sheet open onOpenChange={(o) => { if (!o) onClose() }}>
+      <SheetContent side="right" className="w-[min(46rem,calc(100%-1.5rem))] sm:max-w-3xl">
+        <SheetHeader>
+          <SheetTitle className="flex flex-wrap items-center gap-2">
+            {titleContent}
+          </SheetTitle>
+          <SheetDescription>
+            Suivi, équipement, interventions, pièces et historique du ticket.
+          </SheetDescription>
+          {headerContent}
+        </SheetHeader>
+        {bodyContent}
       </SheetContent>
     </Sheet>
   )
@@ -1558,87 +1611,96 @@ export default function TicketsPage() {
           </div>
         </div>
 
-        {loading ? (
-          <Card className="space-y-2 p-4">
-            {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}
-          </Card>
-        ) : error ? (
-          <EmptyState
-            icon={AlertTriangle}
-            title="Chargement impossible"
-            description="Les tickets n'ont pas pu être chargés. Réessayez."
-            action={<Button size="sm" variant="outline" onClick={reload}><RotateCcw /> Réessayer</Button>}
-          />
-        ) : rows.length === 0 ? (
-          // L315 — distinguer « aucun ticket ouvert » de « aucun match ».
-          <EmptyState
-            icon={TicketIcon}
-            title={hasFilters ? 'Aucun résultat' : 'Aucun ticket ouvert'}
-            description={hasFilters
-              ? 'Aucun ticket ne correspond aux filtres.'
-              : "Aucun ticket ouvert pour le moment. Ouvrez-en un depuis la fiche d'un chantier."}
-            action={hasFilters
-              ? <Button size="sm" variant="outline" onClick={() => setFilters(EMPTY_TICKET_FILTERS)}><RotateCcw /> Réinitialiser</Button>
-              : undefined}
-          />
-        ) : view === 'kanban' ? (
-          // L295 — vue Kanban : colonnes Nouveau → Clôturé via TICKET_STATUSES.
-          <div className="flex gap-3 overflow-x-auto pb-2">
-            {TICKET_STATUSES.map((k) => (
-              <KanbanColumn key={k} statut={k}
-                            tickets={rows.filter((r) => r.statut === k)}
-                            onSelect={setSelected} />
-            ))}
+        {/* VX31 — boîte de réception SAV : à partir de 1280px (xl), la liste et
+            le panneau de détail vivent CÔTE À CÔTE (pattern inbox Linear/Plain) —
+            la liste ne disparaît jamais derrière un tiroir. Sous ce seuil,
+            `TicketDetail` retombe seul sur son `Sheet` plein-tiroir (fallback
+            mobile/tablette inchangé), donc pas de wrapper flex nécessaire ici. */}
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-start">
+          <div className="min-w-0 flex-1">
+            {loading ? (
+              <Card className="space-y-2 p-4">
+                {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}
+              </Card>
+            ) : error ? (
+              <EmptyState
+                icon={AlertTriangle}
+                title="Chargement impossible"
+                description="Les tickets n'ont pas pu être chargés. Réessayez."
+                action={<Button size="sm" variant="outline" onClick={reload}><RotateCcw /> Réessayer</Button>}
+              />
+            ) : rows.length === 0 ? (
+              // L315 — distinguer « aucun ticket ouvert » de « aucun match ».
+              <EmptyState
+                icon={TicketIcon}
+                title={hasFilters ? 'Aucun résultat' : 'Aucun ticket ouvert'}
+                description={hasFilters
+                  ? 'Aucun ticket ne correspond aux filtres.'
+                  : "Aucun ticket ouvert pour le moment. Ouvrez-en un depuis la fiche d'un chantier."}
+                action={hasFilters
+                  ? <Button size="sm" variant="outline" onClick={() => setFilters(EMPTY_TICKET_FILTERS)}><RotateCcw /> Réinitialiser</Button>
+                  : undefined}
+              />
+            ) : view === 'kanban' ? (
+              // L295 — vue Kanban : colonnes Nouveau → Clôturé via TICKET_STATUSES.
+              <div className="flex gap-3 overflow-x-auto pb-2">
+                {TICKET_STATUSES.map((k) => (
+                  <KanbanColumn key={k} statut={k}
+                                tickets={rows.filter((r) => r.statut === k)}
+                                onSelect={setSelected} />
+                ))}
+              </div>
+            ) : view === 'calendrier' ? (
+              // ZMFG3 — vue calendrier : tickets datés (date_tournee) par jour,
+              // glisser-déposer pour replanifier, création rapide depuis un créneau.
+              <TicketCalendarView tickets={rows} onSelect={setSelected} onReload={reload} />
+            ) : (
+              <DataTable
+                data={rows}
+                columns={columns}
+                getRowId={(row) => row.id}
+                searchable={false}
+                selectable
+                onRowClick={(row) => setSelected(row)}
+                exportName="tickets"
+                emptyTitle="Aucun ticket"
+                emptyDescription="Aucun ticket ne correspond à votre recherche."
+                bulkActions={(selRows, selKeys, clear) => [
+                  // L317 — assignation technicien en lot.
+                  ...[...technicienById.entries()].map(([tid, nom]) => ({
+                    id: `tech-${tid}`,
+                    label: `Assigner à ${nom}`,
+                    icon: Wrench,
+                    onClick: () => bulkAction(selKeys, 'technicien', { technicien: tid }, clear),
+                  })),
+                  // YDOCF1/ZSAV10 — changement de statut en lot, désormais via
+                  // l'action groupée gardée (respecte la machine d'états).
+                  ...TICKET_STATUSES.map((k) => ({
+                    id: `statut-${k}`,
+                    label: `Statut → ${TICKET_STATUS_LABELS[k]}`,
+                    onClick: () => bulkAction(selKeys, 'statut', { statut: k }, clear),
+                  })),
+                  // ZSAV10 — priorité en lot (nouveau, n'existait pas avant).
+                  ...TICKET_PRIORITES.map((p) => ({
+                    id: `priorite-${p}`,
+                    label: `Priorité → ${TICKET_PRIORITE_LABELS[p]}`,
+                    onClick: () => bulkAction(selKeys, 'priorite', { priorite: p }, clear),
+                  })),
+                  // ZSAV10 — annulation en lot (nouveau, n'existait pas avant).
+                  {
+                    id: 'annuler',
+                    label: 'Annuler',
+                    onClick: () => bulkAction(selKeys, 'annuler', {}, clear),
+                  },
+                ]}
+              />
+            )}
           </div>
-        ) : view === 'calendrier' ? (
-          // ZMFG3 — vue calendrier : tickets datés (date_tournee) par jour,
-          // glisser-déposer pour replanifier, création rapide depuis un créneau.
-          <TicketCalendarView tickets={rows} onSelect={setSelected} onReload={reload} />
-        ) : (
-          <DataTable
-            data={rows}
-            columns={columns}
-            getRowId={(row) => row.id}
-            searchable={false}
-            selectable
-            onRowClick={(row) => setSelected(row)}
-            exportName="tickets"
-            emptyTitle="Aucun ticket"
-            emptyDescription="Aucun ticket ne correspond à votre recherche."
-            bulkActions={(selRows, selKeys, clear) => [
-              // L317 — assignation technicien en lot.
-              ...[...technicienById.entries()].map(([tid, nom]) => ({
-                id: `tech-${tid}`,
-                label: `Assigner à ${nom}`,
-                icon: Wrench,
-                onClick: () => bulkAction(selKeys, 'technicien', { technicien: tid }, clear),
-              })),
-              // YDOCF1/ZSAV10 — changement de statut en lot, désormais via
-              // l'action groupée gardée (respecte la machine d'états).
-              ...TICKET_STATUSES.map((k) => ({
-                id: `statut-${k}`,
-                label: `Statut → ${TICKET_STATUS_LABELS[k]}`,
-                onClick: () => bulkAction(selKeys, 'statut', { statut: k }, clear),
-              })),
-              // ZSAV10 — priorité en lot (nouveau, n'existait pas avant).
-              ...TICKET_PRIORITES.map((p) => ({
-                id: `priorite-${p}`,
-                label: `Priorité → ${TICKET_PRIORITE_LABELS[p]}`,
-                onClick: () => bulkAction(selKeys, 'priorite', { priorite: p }, clear),
-              })),
-              // ZSAV10 — annulation en lot (nouveau, n'existait pas avant).
-              {
-                id: 'annuler',
-                label: 'Annuler',
-                onClick: () => bulkAction(selKeys, 'annuler', {}, clear),
-              },
-            ]}
-          />
-        )}
 
-        {detailTicket && (
-          <TicketDetail ticket={detailTicket} onClose={closeDetail} onSaved={reload} />
-        )}
+          {detailTicket && (
+            <TicketDetail ticket={detailTicket} onClose={closeDetail} onSaved={reload} />
+          )}
+        </div>
       </div>
     </TooltipProvider>
   )
