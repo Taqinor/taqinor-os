@@ -1,8 +1,9 @@
-from rest_framework import filters, status
+from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
+from core.mixins import TenantMixin
 from core.viewsets import CompanyScopedModelViewSet
 from authentication.scoping import scope_queryset, scope_client_queryset
 from .models import (
