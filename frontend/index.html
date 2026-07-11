@@ -21,7 +21,14 @@
     <link rel="preload" href="/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="stylesheet" href="/fonts/brand.css" />
 
-    <!-- PWA : couleur de barre + installation « app » plein écran -->
+    <!-- PWA : couleur de barre + installation « app » plein écran.
+         VX82 — deux balises `media`-ciblées (le chrome OS restait navy autour
+         d'une app CLAIRE sans ça) : sombre par défaut/mode sombre, claire en
+         `prefers-color-scheme: light` — la première balise `media`
+         correspondante l'emporte, celle sans `media` sert de repli pour les
+         navigateurs qui ignorent `prefers-color-scheme` sur `theme-color`. -->
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0f172a" media="(prefers-color-scheme: dark)" />
     <meta name="theme-color" content="#0f172a" />
     <meta name="description" content="L’ERP solaire de Taqinor : devis, CRM, stock et facturation." />
     <!-- iOS ignore une partie du manifeste : balises dédiées ci-dessous -->

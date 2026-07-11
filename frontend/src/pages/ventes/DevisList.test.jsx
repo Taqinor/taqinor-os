@@ -612,3 +612,14 @@ describe('DevisList — VX140 : ≤5 boutons d\'action visibles + menu, cellule 
     expect(refCell.children.length).toBe(1)
   })
 })
+
+describe('DevisList — VX82 : titre d’onglet dédié', () => {
+  const originalTitle = document.title
+  afterEach(() => { document.title = originalTitle })
+
+  it('monter DevisList met à jour document.title', () => {
+    document.title = 'TAQINOR'
+    renderList({ loading: false, devis: [] })
+    expect(document.title).toBe('Devis · TAQINOR')
+  })
+})

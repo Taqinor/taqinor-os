@@ -34,6 +34,7 @@ import { proposalParams, pdfBlob } from '../../features/ventes/previewPdf'
 import { useSavedViews } from '../../hooks/useSavedViews'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import { useHasPermission, useCanValiderVente } from '../../hooks/useHasPermission'
+import useDocumentTitle from '../../hooks/useDocumentTitle'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import { DataTable } from '../../ui/datatable'
 import RoofViewer from './RoofViewer'
@@ -922,6 +923,8 @@ function DevisRow({ d, ctx }) {
 }
 
 export default function DevisList() {
+  // VX82 — titre d'onglet dédié (chrome navigateur vivant).
+  useDocumentTitle('Devis')
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()

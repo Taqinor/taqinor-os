@@ -33,6 +33,7 @@ import {
 import { formatMAD, toNumber, normalizeMaPhone, formatDateTime } from '../../lib/format'
 import { useSavedViews } from '../../hooks/useSavedViews'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
+import useDocumentTitle from '../../hooks/useDocumentTitle'
 import { DataTable } from '../../ui/datatable'
 import { openPdfBlob, openPdfInGesture } from '../../utils/pdfBlob'
 
@@ -501,6 +502,8 @@ function FactureRow({ f, ctx }) {
 }
 
 export default function FactureList() {
+  // VX82 — titre d'onglet dédié (chrome navigateur vivant).
+  useDocumentTitle('Factures')
   const dispatch = useDispatch()
   const { factures, loading, error } = useSelector(s => s.ventes)
   const isAdmin = useSelector(s => s.auth.role) === 'admin'

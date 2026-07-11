@@ -18,6 +18,7 @@ import {
 } from '../../../ui'
 import { errorMessageFrom, toastWithUndo, toastError } from '../../../lib/toast'
 import { useSavedViews } from '../../../hooks/useSavedViews'
+import useDocumentTitle from '../../../hooks/useDocumentTitle'
 import LeadForm from '../LeadForm'
 import ExcelImport from '../../../components/ExcelImport'
 import SavedViewsBar, { SaveViewButton } from '../../../components/SavedViewsBar'
@@ -55,6 +56,8 @@ function loadFilters() {
 }
 
 export default function LeadsPage() {
+  // VX82 — titre d'onglet dédié (chrome navigateur vivant).
+  useDocumentTitle('Leads')
   const dispatch = useDispatch()
   const [searchParams, setSearchParams] = useSearchParams()
   const { leads, leadsLoading, error } = useSelector(s => s.crm)
