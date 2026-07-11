@@ -18,6 +18,7 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import ProduitPicker from '../../components/ProduitPicker'
+import ClientQuickCreateModal from './ClientQuickCreateModal'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
 import { formatMAD } from '../../lib/format'
 import QuoteTotalsSummary from '../../features/ventes/QuoteTotalsSummary'
@@ -46,6 +47,7 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState({})
   const [dirty, setDirty] = useState(false)
+  const [clientQuickCreateOpen, setClientQuickCreateOpen] = useState(false)
   useDirtyGuard(dirty)
 
   const [fields, setFields] = useState({
@@ -231,19 +233,27 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
           {/* ── Infos générales ── */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <FormField label="Client" required htmlFor="dv-client" error={errors.client}>
-              <Select value={fields.client ? String(fields.client) : undefined}
-                      onValueChange={v => setField('client', v)}>
-                <SelectTrigger id="dv-client" invalid={!!errors.client}>
-                  <SelectValue placeholder="— Sélectionner un client —" />
-                </SelectTrigger>
-                <SelectContent>
-                  {clients.map(c => (
-                    <SelectItem key={c.id} value={String(c.id)}>
-                      {c.nom}{c.prenom ? ` ${c.prenom}` : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <Select value={fields.client ? String(fields.client) : undefined}
+                          onValueChange={v => setField('client', v)}>
+                    <SelectTrigger id="dv-client" invalid={!!errors.client}>
+                      <SelectValue placeholder="— Sélectionner un client —" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {clients.map(c => (
+                        <SelectItem key={c.id} value={String(c.id)}>
+                          {c.nom}{c.prenom ? ` ${c.prenom}` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {/* VX91 — création rapide client (QG3), sans quitter le devis */}
+                <Button type="button" variant="outline" onClick={() => setClientQuickCreateOpen(true)}>
+                  <Plus /> Nouveau client
+                </Button>
+              </div>
             </FormField>
 
             <FormField label="Date de validité" htmlFor="dv-validite">
@@ -412,6 +422,17 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
             </Button>
           </FormActions>
         </Form>
+
+        {/* VX91 — création rapide client (QG3) ; sélectionne le nouveau client */}
+        <ClientQuickCreateModal
+          open={clientQuickCreateOpen}
+          onClose={() => setClientQuickCreateOpen(false)}
+          onCreated={(c) => {
+            setClients(cs => [...cs, c])
+            setField('client', String(c.id))
+            setClientQuickCreateOpen(false)
+          }}
+        />
       </DialogContent>
     </Dialog>
   )
