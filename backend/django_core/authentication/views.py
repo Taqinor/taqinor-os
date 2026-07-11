@@ -994,4 +994,32 @@ class ChangePasswordView(APIView):
         user.password_changed_at = timezone.now()
         user.save(update_fields=[
             'password', 'must_change_password', 'password_changed_at'])
-        return Response({'detail': 'Mot de passe mis à jour.'})
+        # VX242 — un changement de mot de passe doit révoquer toute AUTRE
+        # session active (blackliste son jeton de rafraîchissement) : sans
+        # cela, un attaquant qui a compromis le compte garde son refresh
+        # jusqu'à expiration (jusqu'à 7 j) alors que la machinerie de
+        # révocation existe déjà (SessionRevokeView / _blacklist_refresh_jti),
+        # simplement jamais invoquée depuis ce chemin. La session COURANTE
+        # (celle qui vient de changer le mot de passe) reste active.
+        current_jti = _refresh_jti(request.COOKIES.get('refresh_token'))
+        other_sessions = UserSession.objects.filter(user=user, revoked=False)
+        if current_jti:
+            other_sessions = other_sessions.exclude(jti=current_jti)
+        sessions_revoked = 0
+        for session in other_sessions:
+            _blacklist_refresh_jti(session.jti)
+            session.revoked = True
+            session.save(update_fields=['revoked'])
+            sessions_revoked += 1
+        detail = 'Mot de passe mis à jour.'
+        if sessions_revoked:
+            detail += (
+                f' {sessions_revoked} autre'
+                f'{"s" if sessions_revoked > 1 else ""} session'
+                f'{"s" if sessions_revoked > 1 else ""} déconnectée'
+                f'{"s" if sessions_revoked > 1 else ""}.'
+            )
+        return Response({
+            'detail': detail,
+            'sessions_revoked': sessions_revoked,
+        })
