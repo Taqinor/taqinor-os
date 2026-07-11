@@ -15,6 +15,7 @@ import documentsApi from '../../api/documentsApi'
 import ventesApi from '../../api/ventesApi'
 import { downloadBlob } from '../../utils/downloadBlob'
 import { errorMessageFrom } from '../../lib/toast'
+import { telHref } from '../../lib/contactLinks'
 import {
   pdfBlob, previewView, classifyFetchError, PREVIEW_VIEW,
 } from '../../features/ventes/previewPdf'
@@ -973,8 +974,14 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                        onChange={(e) => set('contact_site_nom', e.target.value)} />
               </FormField>
               <FormField label="Téléphone du contact" htmlFor="ch-contact-tel">
-                <Input id="ch-contact-tel" value={fields.contact_site_telephone ?? ''}
-                       onChange={(e) => set('contact_site_telephone', e.target.value)} />
+                <div className="flex items-center gap-2">
+                  <Input id="ch-contact-tel" value={fields.contact_site_telephone ?? ''}
+                         onChange={(e) => set('contact_site_telephone', e.target.value)} />
+                  {telHref(fields.contact_site_telephone) && (
+                    <a href={telHref(fields.contact_site_telephone)} title="Appeler"
+                       className="link-blue whitespace-nowrap">☎</a>
+                  )}
+                </div>
               </FormField>
               <FormField label="Horaires d'accès" htmlFor="ch-horaires" className="sm:col-span-2">
                 <Input id="ch-horaires" value={fields.horaires_acces ?? ''}

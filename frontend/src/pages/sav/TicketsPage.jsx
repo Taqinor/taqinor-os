@@ -21,6 +21,7 @@ import TicketSuiviClientPanel from './TicketSuiviClientPanel'
 import TicketChecklistPanel from './TicketChecklistPanel'
 import TicketAdvancedPanel from './TicketAdvancedPanel'
 import { groupTicketsByDate } from './ticketCalendarUtils'
+import { telHref } from '../../lib/contactLinks'
 import { useIsMobile } from '../../ui/ResponsiveDialog'
 import { INTERVENTION_TYPES } from '../../features/installations/statuses'
 import {
@@ -583,7 +584,13 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
           {/* ── Infos ── */}
           <FormSection title="Ticket">
             <FormField label="Client">
-              <Input value={current.client_nom ?? '—'} readOnly />
+              <div className="flex items-center gap-2">
+                <Input value={current.client_nom ?? '—'} readOnly />
+                {telHref(current.client_telephone) && (
+                  <a href={telHref(current.client_telephone)} title="Appeler"
+                     className="link-blue whitespace-nowrap">☎ {current.client_telephone}</a>
+                )}
+              </div>
             </FormField>
             <FormField label="Chantier">
               <div className="flex items-center gap-2">

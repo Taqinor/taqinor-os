@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import { formatMAD } from '../../lib/format'
+import { telHref } from '../../lib/contactLinks'
 import {
   Spinner, Tabs, TabsList, TabsTrigger, TabsContent,
   Card, CardHeader, CardTitle, CardContent, Stat,
@@ -305,7 +306,9 @@ function OngletAccordsPrix({ fournisseurId }) {
   )
 }
 
-export default function FournisseurFiche360({ fournisseurId: fournisseurIdProp, fournisseurNom } = {}) {
+export default function FournisseurFiche360({
+  fournisseurId: fournisseurIdProp, fournisseurNom, fournisseurTelephone,
+} = {}) {
   const params = useParams()
   const fournisseurId = fournisseurIdProp ?? params.id
   // ARC47 — gating via le hook partagé. Donnée d'achat INTERNE
@@ -317,6 +320,8 @@ export default function FournisseurFiche360({ fournisseurId: fournisseurIdProp, 
   const canViewViaPerm = useHasPermission('stock_voir')
   const canViewViaRole = useIsAdminOrResponsable()
   const canView = hasFinePermissions ? canViewViaPerm : canViewViaRole
+  // VX108 — tap-to-call : la fiche n'affichait aucun téléphone.
+  const tel = telHref(fournisseurTelephone)
 
   const tabs = useMemo(() => ([
     { value: 'performance', label: 'Performance', icon: BarChart3, Comp: OngletPerformance },
@@ -356,6 +361,11 @@ export default function FournisseurFiche360({ fournisseurId: fournisseurIdProp, 
           <Wallet className="mr-1 inline size-3.5" aria-hidden="true" />
           Vue d&apos;ensemble achats — donnée interne, jamais client-facing.
         </p>
+        {tel && (
+          <p className="text-sm">
+            <a href={tel} className="link-blue" title="Appeler">☎ {fournisseurTelephone}</a>
+          </p>
+        )}
       </header>
 
       <Card>

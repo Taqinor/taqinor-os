@@ -11,6 +11,7 @@ import {
   tagList,
 } from '../../../../features/crm/stages'
 import AssigneePicker from '../../../../components/AssigneePicker'
+import { telHref, waHref } from '../../../../lib/contactLinks'
 
 // VX43 — Swipe-to-action horizontal maison (touchstart/move/end, zéro
 // dépendance). Les liens tel:/wa.me existaient déjà mais en texte 12px noyé
@@ -140,20 +141,6 @@ const prochaineAction = (lead) => {
     return { label: 'Planifier une relance', planifier: true }
   }
   return null
-}
-
-// Numéro de téléphone nettoyé pour un lien tel: / wa.me (chiffres et + initial).
-const telHref = (raw) => {
-  const s = String(raw ?? '').trim()
-  if (!s) return null
-  const cleaned = s.replace(/[^\d+]/g, '')
-  return cleaned ? `tel:${cleaned}` : null
-}
-const waHref = (raw) => {
-  const s = String(raw ?? '').trim()
-  if (!s) return null
-  const digits = s.replace(/\D/g, '')
-  return digits ? `https://wa.me/${digits}` : null
 }
 
 export default function LeadCard({
