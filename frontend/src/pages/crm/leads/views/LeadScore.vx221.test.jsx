@@ -1,7 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
-import { scoreTooltip } from './ListView'
-import { LeadScoreBadge } from './LeadCard'
+import ScoreBadge, { scoreTooltip } from '../../../../features/crm/ScoreBadge'
 
 /* VX221 — le score de lead dit POURQUOI : le badge expose un tooltip des 2-3
    facteurs dominants, construit depuis la décomposition score_reasons du
@@ -36,9 +35,9 @@ describe('scoreTooltip (VX221)', () => {
   })
 })
 
-describe('LeadScoreBadge (VX221)', () => {
+describe('ScoreBadge partagé (VX221)', () => {
   it('affiche le score sur la carte avec le tooltip des raisons', () => {
-    render(<LeadScoreBadge lead={{
+    render(<ScoreBadge lead={{
       score: 72,
       score_label: 'Chaud',
       score_reasons: [
@@ -53,7 +52,7 @@ describe('LeadScoreBadge (VX221)', () => {
   })
 
   it('ne rend rien sans score', () => {
-    const { container } = render(<LeadScoreBadge lead={{ score: null }} />)
-    expect(container.querySelector('.kb-badge-score')).toBeNull()
+    const { container } = render(<ScoreBadge lead={{ score: null }} />)
+    expect(container.querySelector('.lv-score-badge')).toBeNull()
   })
 })

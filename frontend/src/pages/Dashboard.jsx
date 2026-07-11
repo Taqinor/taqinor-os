@@ -104,8 +104,10 @@ export function cockpitProfile({ roleNom, roleTier } = {}) {
   if (roleTier === 'admin' || /directeur|gérant|gerant|patron|fondateur|admin/.test(n)) {
     return 'directeur'
   }
-  if (/commercial|vente|sales/.test(n)) return 'commercial'
+  // SAV AVANT commercial : « après-vente » contient « vente » et serait sinon
+  // classé commercial par erreur (VX27 fix).
   if (/sav|technicien|support|après-vente|apres-vente|maintenance|terrain/.test(n)) return 'sav'
+  if (/commercial|vente|sales/.test(n)) return 'commercial'
   return 'directeur'
 }
 

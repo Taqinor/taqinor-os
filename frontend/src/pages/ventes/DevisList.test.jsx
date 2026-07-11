@@ -216,6 +216,7 @@ describe('DevisList — WR1/QX26 : refus passe par l\'action dédiée refuser() 
   it('ouvre une modale de motif obligatoire (jamais un window.prompt optionnel)', async () => {
     renderList({
       loading: false,
+      permissions: ['ventes_valider'],
       devis: [{
         id: 42, reference: 'DEV-REFUS', client_nom: 'ACME', statut: 'envoye',
         date_creation: '2026-07-01', total_ttc: 5000, nb_options: 1, version: 1,
@@ -234,6 +235,7 @@ describe('DevisList — WR1/QX26 : refus passe par l\'action dédiée refuser() 
     const user = userEvent.setup()
     renderList({
       loading: false,
+      permissions: ['ventes_valider'],
       devis: [{
         id: 42, reference: 'DEV-REFUS', client_nom: 'ACME', statut: 'envoye',
         date_creation: '2026-07-01', total_ttc: 5000, nb_options: 1, version: 1,
