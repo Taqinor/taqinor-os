@@ -681,10 +681,14 @@ def request_esign_otp(link):
     email = (getattr(client, 'email', '') or '').strip()
 
     sent = False
-    # Préférer WhatsApp / SMS (wa.me), puis email.
+    # Préférer WhatsApp / SMS (wa.me), puis email. QX10 — le repli email est
+    # TOUJOURS tenté quand WhatsApp échoue, même si le client n'a pas d'email
+    # renseigné : sinon un client téléphone-seul (stub WhatsApp figé à False)
+    # ne recevrait JAMAIS son code, verrouillé hors de la signature. Un email
+    # vide/absent échoue simplement (best-effort, cf. _send_otp_email).
     if phone:
         sent = _send_otp_whatsapp(phone=phone, code=code, devis_ref=devis.reference)
-    if not sent and email:
+    if not sent:
         sent = _send_otp_email(email=email, code=code, devis_ref=devis.reference)
 
     if not sent:

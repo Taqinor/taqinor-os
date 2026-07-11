@@ -1153,15 +1153,20 @@ def ecatalogue_demander_devis(request, token):
 
     # QX41 — verrou d'idempotence (cache.add atomique, miroir de
     # proposal_contact_request) : un double-clic « demander un devis » ne crée
-    # plus deux brouillons + deux notifications. Clé = jeton catalogue +
-    # hash des coordonnées. Fenêtre courte (5 min) — un vrai deuxième panier
-    # plus tard passe. Un cache indisponible ne bloque jamais la demande.
+    # plus deux brouillons + deux notifications. Clé = jeton catalogue + hash
+    # des coordonnées ET du panier — un vrai DEUXIÈME panier différent (même
+    # personne) passe tout de suite ; seul un rejeu STRICTEMENT identique
+    # (double-clic) est absorbé. Fenêtre courte (5 min). Un cache indisponible
+    # ne bloque jamais la demande.
     try:
         import hashlib
         from django.core.cache import cache
-        contact_hash = hashlib.sha256(
-            f'{telephone}|{email}|{nom}'.encode('utf-8')).hexdigest()[:24]
-        idem_key = f'qx41-ecat:{token}:{contact_hash}'
+        panier_sig = '|'.join(
+            f'{c["produit"].id}:{c["quantite"]}' for c in clean_lignes)
+        req_hash = hashlib.sha256(
+            f'{telephone}|{email}|{nom}|{panier_sig}'.encode('utf-8')
+        ).hexdigest()[:24]
+        idem_key = f'qx41-ecat:{token}:{req_hash}'
         if not cache.add(idem_key, True, 300):
             return _noindex(Response({
                 'detail': ('Votre demande a déjà été transmise. '

@@ -99,6 +99,11 @@ class DevisViewSet(viewsets.ModelViewSet):
             'envoyer_email', 'dupliquer_variante', 'variantes',
             'save_preset', 'apply_preset', 'contacter_superieur',
             'whatsapp', 'proforma_pdf',
+            # QX21be — atomic create + replace-lines (self.action is the
+            # Python method name, not url_path: 'replace-lines' → 'replace_lines').
+            'atomic', 'replace_lines',
+            # QX22be — WhatsApp preview (read-only, no status change).
+            'whatsapp_preview',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
