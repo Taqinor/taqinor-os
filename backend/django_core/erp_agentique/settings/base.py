@@ -257,8 +257,11 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
     ),
-    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-    'PAGE_SIZE': 100,
+    # YAPIC1 — pagination partagée avec plafond dur : page_size=50 par défaut,
+    # ``?page_size=`` autorisé, max_page_size=200 (plafond serveur). L'enveloppe
+    # count/next/previous/results reste identique à DRF.
+    'DEFAULT_PAGINATION_CLASS': 'core.pagination.StandardPagination',
+    'PAGE_SIZE': 50,
     # Fix 1 : taux de throttle par scope (appliqués per-view)
     'DEFAULT_THROTTLE_RATES': {
         'login': '5/minute',   # 5 tentatives/min par IP sur /token/
