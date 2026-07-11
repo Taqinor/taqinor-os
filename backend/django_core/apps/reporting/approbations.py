@@ -321,6 +321,15 @@ def _decider_approbation_core(company, user, source, obj_id, decision, motif):
         return 400, {'detail': 'Source inconnue.'}
     if decision not in ('approuver', 'refuser'):
         return 400, {'detail': 'Décision invalide.'}
+    # VX101 — [BUG AUTH] `decider_demande_achat` (installations) et l'étape de
+    # contrat ne vérifiaient AUCUN rôle au-delà de `IsAnyRole` : un commercial
+    # ou un technicien pouvait approuver une réquisition d'achat ou une étape
+    # de contrat. Point d'ancrage unique des 5 sources (`_decider_approbation_
+    # core`) : exige le tier Responsable/Admin pour DÉCIDER (approuver/refuser)
+    # une source `installations`/`contrats` — la LECTURE (`approbations_en_
+    # attente`) reste ouverte à tout rôle, inchangée.
+    if source in ('installations', 'contrats') and not user.is_responsable:
+        return 403, {'detail': 'Réservé au Responsable ou à l\'Admin.'}
     approve = decision == 'approuver'
     if not approve and not motif:
         return 400, {'detail': 'Un motif de refus est obligatoire.'}
