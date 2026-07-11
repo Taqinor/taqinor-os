@@ -283,5 +283,77 @@ class EndToEndCliTests(unittest.TestCase):
         self.assertIn("SCA1", allowed_ids)
 
 
+class TaskCostTests(unittest.TestCase):
+    """The ``— <size>`` tag drives the effort weight used to balance workers."""
+
+    def test_sizes_map_to_weights(self):
+        self.assertEqual(pl._task_cost("x (ROUTINE — S, sonnet)"), 1.0)
+        self.assertEqual(pl._task_cost("x (ROUTINE — M, sonnet)"), 2.0)
+        self.assertEqual(pl._task_cost("x (ROUTINE — L, sonnet)"), 4.0)
+        self.assertEqual(pl._task_cost("x (SCHEMA — XL, opus)"), 6.0)
+        self.assertEqual(pl._task_cost("x (ROUTINE — S/M, sonnet)"), 1.5)
+
+    def test_untagged_defaults_to_medium(self):
+        # No size tag at all -> never treated as free (modal M).
+        self.assertEqual(pl._task_cost("x (ROUTINE — note in DONE LOG)"), 2.0)
+        self.assertEqual(pl._task_cost("a task with no category paren"), 2.0)
+
+    def test_bare_L_outside_category_paren_is_not_a_size(self):
+        # A stray "L" in prose must not be read as a size tag.
+        self.assertEqual(pl._task_cost("build the L-shaped thing"), 2.0)
+
+
+class WorkerPackingTests(unittest.TestCase):
+    """Lanes are LPT bin-packed into N time-balanced worker buckets."""
+
+    @staticmethod
+    def _mk(task_id, lane, cost, model="sonnet"):
+        return {
+            "id": task_id, "prefix": "VX", "lane": lane, "gate": "buildable",
+            "gate_reasons": [], "deps": [], "section": "", "model": model,
+            "cost": cost,
+        }
+
+    def test_lane_never_split_and_all_tasks_covered(self):
+        tasks = [
+            self._mk("A1", "lane-a", 4.0), self._mk("A2", "lane-a", 4.0),
+            self._mk("B1", "lane-b", 2.0),
+            self._mk("C1", "lane-c", 1.0), self._mk("C2", "lane-c", 1.0),
+        ]
+        plan = pl.schedule(tasks, max_lanes=8, n_workers=2)
+        # Every task lands in exactly one worker, none dropped/duplicated.
+        placed = [tid for w in plan["workers"] for tid in w["tasks"]]
+        self.assertEqual(sorted(placed), ["A1", "A2", "B1", "C1", "C2"])
+        # A lane is never split across two workers.
+        for lane in ("lane-a", "lane-b", "lane-c"):
+            owners = [i for i, w in enumerate(plan["workers"]) if lane in w["lanes"]]
+            self.assertEqual(len(owners), 1, f"{lane} split across workers")
+
+    def test_balances_makespan_below_naive(self):
+        # 8 unit lanes into 2 workers -> perfect 4/4 split (makespan 4),
+        # far below the 8 a single worker would carry.
+        tasks = [self._mk(f"T{i}", f"lane-{i}", 1.0) for i in range(8)]
+        plan = pl.schedule(tasks, max_lanes=8, n_workers=2)
+        costs = sorted(w["cost"] for w in plan["workers"])
+        self.assertEqual(costs, [4.0, 4.0])
+        self.assertEqual(plan["counts"]["makespan_cost"], 4.0)
+        self.assertEqual(plan["counts"]["total_cost"], 8.0)
+
+    def test_fewer_lanes_than_workers_drops_empty_buckets(self):
+        tasks = [self._mk("A1", "lane-a", 2.0), self._mk("B1", "lane-b", 2.0)]
+        plan = pl.schedule(tasks, max_lanes=8, n_workers=8)
+        self.assertEqual(plan["counts"]["workers"], 2)  # not 8 empty ones
+
+    def test_worker_model_is_highest_tier_in_its_bundle(self):
+        tasks = [
+            self._mk("A1", "lane-a", 2.0, model="haiku"),
+            self._mk("B1", "lane-b", 2.0, model="opus"),
+        ]
+        # One worker forced to carry both lanes -> must run at opus (safe bar).
+        plan = pl.schedule(tasks, max_lanes=8, n_workers=1)
+        self.assertEqual(len(plan["workers"]), 1)
+        self.assertEqual(plan["workers"][0]["model"], "opus")
+
+
 if __name__ == "__main__":
     unittest.main()

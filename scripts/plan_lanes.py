@@ -661,6 +661,54 @@ def _deps(label: str) -> set[str]:
     return out
 
 
+# --- Task effort/cost (for time-balanced worker packing) -------------------
+# The plan tags each task's size inside its category paren, e.g.
+# ``(ROUTINE — L, sonnet)`` / ``(SCHEMA — S/M, …)``. We turn that size into a
+# relative cost so ``pack_workers`` can bin-pack lanes into N buckets that
+# finish at ~the same wall-clock time (the founder rule: 8 parallel agents
+# should all land together, not idle waiting on one heavy straggler). A task
+# with no size tag defaults to ``M`` — the modal size, so an untagged task is
+# never treated as free.
+_COST_BY_SIZE = {"S": 1.0, "S/M": 1.5, "M": 2.0, "L": 4.0, "XL": 6.0}
+_DEFAULT_COST = _COST_BY_SIZE["M"]
+_SIZE_RE = re.compile(
+    r"\((?:ROUTINE|SCHEMA|ARCH|AUTH|DECISION|COST|GALLERY|DEP)\b[^)]*?"
+    r"[—-]\s*(XL|S/M|S|M|L)\b"
+)
+
+
+def _task_cost(label: str) -> float:
+    """Relative effort weight parsed from the task's ``— <size>`` tag."""
+    m = _SIZE_RE.search(label)
+    return _COST_BY_SIZE.get(m.group(1), _DEFAULT_COST) if m else _DEFAULT_COST
+
+
+def pack_workers(
+    lanes: dict[str, list[dict]], lane_order: list[str], n_workers: int,
+) -> tuple[list[dict], dict[str, float]]:
+    """Bin-pack whole lanes into ``n_workers`` time-balanced buckets (LPT).
+
+    One bucket = one dispatched agent that drains ALL its lanes in sequence.
+    Longest-processing-time-first (heaviest lane → currently-lightest bucket)
+    is the classic 4/3-optimal greedy for makespan minimisation, so the 8
+    agents finish at approximately the same time instead of one carrying a
+    9-task lane while another carries a 1-task lane. A lane is never split
+    across agents (it owns files that must build in sequence).
+    """
+    lane_cost = {k: sum(t["cost"] for t in lanes[k]) for k in lane_order}
+    workers = [{"lanes": [], "tasks": [], "cost": 0.0} for _ in range(max(1, n_workers))]
+    # Heaviest lane first; ties broken by name for deterministic output.
+    for k in sorted(lane_order, key=lambda k: (-lane_cost[k], k)):
+        w = min(workers, key=lambda w: (w["cost"], len(w["lanes"])))
+        w["lanes"].append(k)
+        w["tasks"].extend(t["id"] for t in lanes[k])
+        w["cost"] = round(w["cost"] + lane_cost[k], 3)
+    # Drop empty buckets (fewer lanes than workers) and order heaviest-first.
+    workers = [w for w in workers if w["lanes"]]
+    workers.sort(key=lambda w: (-w["cost"], w["lanes"][0]))
+    return workers, lane_cost
+
+
 def parse_tasks(path: Path) -> list[dict]:
     """Parse every unchecked BUILD-QUEUE task with its derived lane + gate.
 
@@ -719,6 +767,7 @@ def parse_tasks(path: Path) -> list[dict]:
             "deps": sorted(_deps(label)),
             "section": (headers["###"] or headers["##"]).lstrip("# ").strip(),
             "model": _model_tier(label, lane or "UNASSIGNED", m.group("id"), reasons),
+            "cost": _task_cost(label),
         })
     return tasks
 
@@ -777,7 +826,12 @@ def count_malformed(path: Path) -> int:
     return malformed
 
 
-def schedule(tasks: list[dict], max_lanes: int, wave_blocked: list[dict] | None = None) -> dict:
+def schedule(
+    tasks: list[dict],
+    max_lanes: int,
+    wave_blocked: list[dict] | None = None,
+    n_workers: int | None = None,
+) -> dict:
     """Build lanes and a cross-category, longest-lane-first wave plan.
 
     ``wave_blocked`` (SCA3, optional -- defaults to none, so existing callers
@@ -836,9 +890,29 @@ def schedule(tasks: list[dict], max_lanes: int, wave_blocked: list[dict] | None 
     for t in buildable:
         model_counts[t["model"]] += 1
 
+    # Time-balanced worker buckets: pack whole lanes into <= n_workers agents
+    # so all finish at ~the same wall-clock time (default: the same ceiling as
+    # the per-wave parallelism, i.e. one agent per worker).
+    workers, lane_costs = pack_workers(
+        lanes, lane_order, n_workers if n_workers is not None else max_lanes,
+    )
+    worker_out = [
+        {
+            "lanes": w["lanes"],
+            "tasks": w["tasks"],
+            "cost": round(w["cost"], 3),
+            "model": max(
+                (lane_models[k] for k in w["lanes"]), key=_MODEL_RANK.__getitem__,
+            ),
+        }
+        for w in workers
+    ]
+
     return {
         "lanes": {k: [t["id"] for t in lanes[k]] for k in lane_order},
         "lane_models": lane_models,
+        "lane_costs": {k: round(v, 3) for k, v in lane_costs.items()},
+        "workers": worker_out,
         "waves": [[t["id"] for t in w] for w in waves],
         "wave_detail": waves,
         "gated": gated,
@@ -853,6 +927,9 @@ def schedule(tasks: list[dict], max_lanes: int, wave_blocked: list[dict] | None 
             "wave_blocked": len(wave_blocked),
             "max_parallel": max((len(w) for w in waves), default=0),
             "models": model_counts,
+            "workers": len(worker_out),
+            "makespan_cost": max((w["cost"] for w in worker_out), default=0.0),
+            "total_cost": round(sum(lane_costs.values()), 3),
         },
     }
 
@@ -871,6 +948,22 @@ def render(plan: dict, max_lanes: int, source: str) -> str:
         f"{c['models']['haiku']} haiku / {c['models']['sonnet']} sonnet / "
         f"{c['models']['opus']} opus — dispatch each lane's Agent with the "
         f"lane's `model=` below (founder rule: never inherit the session model).",
+        "",
+        f"## Workers ({c['workers']} time-balanced agents — dispatch ONE per row; "
+        f"each drains its lanes in sequence)",
+        f"Effort is bin-packed (LPT) so all agents finish together: "
+        f"makespan ~{c['makespan_cost']:g} vs total {c['total_cost']:g} "
+        f"(size cost S=1/M=2/L=4/XL=6; untagged=M).",
+    ]
+    for n, w in enumerate(plan.get("workers", []), 1):
+        lanes_desc = ", ".join(
+            f"{lk}[{'/'.join(plan['lanes'][lk])}]" for lk in w["lanes"]
+        )
+        out.append(
+            f"- **Agent {n}** (model={w['model']}, cost~{w['cost']:g}, "
+            f"{len(w['tasks'])} task(s)): {lanes_desc}"
+        )
+    out += [
         "",
         "## Waves (each row builds in parallel; one task per lane)",
     ]
@@ -916,6 +1009,12 @@ def main(argv: list[str] | None = None) -> int:
         "--max-lanes", type=int, default=8,
         help="worktree ceiling = max tasks to run in parallel per wave "
         "(default 8; raise it on a capable session)",
+    )
+    parser.add_argument(
+        "--workers", type=int, default=None,
+        help="number of parallel AGENTS to time-balance lanes across "
+        "(default: same as --max-lanes). Lanes are LPT bin-packed by task "
+        "size so all agents finish at ~the same wall-clock time.",
     )
     parser.add_argument("--json", action="store_true", help="emit JSON")
     parser.add_argument(
@@ -971,7 +1070,10 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
 
-    plan = schedule(allowed_tasks, max(1, args.max_lanes), wave_blocked=wave_blocked)
+    plan = schedule(
+        allowed_tasks, max(1, args.max_lanes), wave_blocked=wave_blocked,
+        n_workers=args.workers,
+    )
     source = path.relative_to(ROOT).as_posix() if path.is_relative_to(ROOT) else str(path)
 
     if args.json:
