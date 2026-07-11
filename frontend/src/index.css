@@ -4,6 +4,9 @@
    noms de tokens personnalisés, n'écrase aucun défaut Tailwind ni la police du
    <body> ci-dessous, donc les écrans existants restent identiques. */
 @import "./design/tokens.css";
+/* VX80 — feuille d'impression globale (chrome masqué, noir-sur-blanc, tables
+   complètes). Inerte à l'écran : tout est sous @media print. */
+@import "./styles/print.css";
 /* Variante sombre pilotée par la classe .dark sur <html> (aucun `dark:` utilisé
    ailleurs dans le code aujourd'hui → totalement inerte pour l'existant). */
 @custom-variant dark (&:where(.dark, .dark *));

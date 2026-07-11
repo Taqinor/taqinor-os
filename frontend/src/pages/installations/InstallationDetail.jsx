@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   Link2, FileText, Package, Hammer, ClipboardList, Camera, Wrench, Zap,
   History, Send, ScrollText, Download, ExternalLink, WifiOff, TriangleAlert,
-  RotateCw, Milestone,
+  RotateCw, Milestone, Printer,
 } from 'lucide-react'
 import { updateInstallation } from '../../features/installations/store/installationsSlice'
 import { fetchProduits } from '../../features/stock/store/stockSlice'
@@ -1062,6 +1062,14 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
 
           {/* ── Checklist d'exécution (N4/N9) ── */}
           <Section icon={ClipboardList} title="Checklist d'exécution">
+            {/* VX80 — impression de la checklist chantier (feuille print.css :
+                chrome masqué, noir-sur-blanc, contenu complet). Distinct des PDF
+                WeasyPrint. */}
+            <div className="mb-3">
+              <Button size="sm" variant="outline" onClick={() => window.print()}>
+                <Printer /> Imprimer la checklist
+              </Button>
+            </div>
             {/* FG386/N91/F21 — état de la synchro terrain hors-ligne (silencieux
                 si en ligne et file vide). */}
             <OfflineSyncIndicator />

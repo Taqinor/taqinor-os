@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import {
   Search, Plus, Download, BookText, ListChecks, FileWarning,
   MessageCircle, Code2, Check, FileText, ReceiptText, MoreHorizontal,
-  CreditCard, ShieldCheck, X, LayoutList, LayoutGrid,
+  CreditCard, ShieldCheck, X, LayoutList, LayoutGrid, Printer,
 } from 'lucide-react'
 import {
   fetchFactures,
@@ -901,6 +901,11 @@ export default function FactureList() {
                   onClick={() => importApi.exportList('factures', factures.map(f => f.id))
                     .then(r => downloadXlsx(r.data, 'factures.xlsx')).catch(() => {})}>
             <Download /> Exporter Excel
+          </Button>
+          {/* VX80 — impression navigateur (feuille print.css : chrome masqué,
+              noir-sur-blanc, table complète). Distinct des PDF WeasyPrint. */}
+          <Button size="sm" variant="outline" onClick={() => window.print()}>
+            <Printer /> Imprimer
           </Button>
           <Button size="sm" variant="outline" title="Journal des ventes + résumé TVA (comptable) — mois ou trimestre"
                   onClick={() => {
