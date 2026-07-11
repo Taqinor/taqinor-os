@@ -106,6 +106,23 @@ export function formatDateTime(value, { long = false } = {}) {
 }
 
 /**
+ * VX30 — « il y a X min/h » relatif, extrait de TicketsPage.jsx en util
+ * partagé (bandeau de fraîcheur du mur de flotte + chatter tickets). Sous 1
+ * min « à l'instant », sous 60 min en minutes, sous 24 h en heures arrondies,
+ * au-delà la date jj/mm/aaaa (`formatDate`, jamais un `toLocaleDateString` brut).
+ */
+export function timeAgo(value) {
+  const d = asDate(value)
+  if (!d) return '—'
+  const mins = Math.round((Date.now() - d.getTime()) / 60000)
+  if (mins < 1) return "à l'instant"
+  if (mins < 60) return `il y a ${mins} min`
+  const h = Math.round(mins / 60)
+  if (h < 24) return `il y a ${h} h`
+  return formatDate(d)
+}
+
+/**
  * Téléphone marocain pour AFFICHAGE.
  * - Local 10 chiffres « 0612345678 » → « 06 12 34 56 78 »
  * - International « +212612345678 » / « 212612345678 » → « +212 6 12 34 56 78 »

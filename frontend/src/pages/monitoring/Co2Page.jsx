@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import monitoringApi from '../../api/monitoringApi'
 import { DataTable, EmptyState } from '../../ui'
 import { ModuleDashboard } from '../../ui/module'
 import { BarArrondie, ChartEmpty } from '../../ui/charts'
-import { formatNumber } from '../../lib/format'
+import { formatNumber, timeAgo } from '../../lib/format'
 import { METRIC_ICONS } from '../../ui/metricIcons'
 import MonitoringNav from './MonitoringNav'
 
@@ -11,12 +11,44 @@ import MonitoringNav from './MonitoringNav'
    depuis GET /monitoring/configs/co2-fleet/. Rend uniquement ce que renvoie le
    backend (kg / tonnes / production) — aucune donnée interne.
    VX157 — icônes de grandeur métier unifiées via ui/metricIcons.js (avant :
-   Leaf/Sprout/Zap importées ad hoc ici), + accent d'impact sur le CO₂ évité. */
+   Leaf/Sprout/Zap importées ad hoc ici), + accent d'impact sur le CO₂ évité.
+   VX30 — badge de fraîcheur + auto-poll léger 5 min (mêmes garde-fous que
+   FleetPage.jsx : `useVisibilityAwarePolling` VX56 n'existe pas encore, ce
+   hook local reprend la garde minimale de useApprobationsCount — jamais un
+   `setInterval` nu qui cogne l'API en onglet caché). */
+
+// Cf. FleetPage.jsx — même patron, dupliqué ici volontairement (pas de nouveau
+// fichier hors du périmètre Files de la tâche VX30).
+const CO2_POLL_MS = 5 * 60 * 1000
+
+function useVisibilityAwarePoll(callback, intervalMs) {
+  const cbRef = useRef(callback)
+  cbRef.current = callback
+  useEffect(() => {
+    const tick = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+      cbRef.current()
+    }
+    const iv = setInterval(tick, intervalMs)
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') cbRef.current()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      clearInterval(iv)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [intervalMs])
+}
 
 export default function Co2Page() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [lastUpdated, setLastUpdated] = useState(null)
+  const [stale, setStale] = useState(false)
+  const mountedRef = useRef(true)
+  useEffect(() => () => { mountedRef.current = false }, [])
 
   useEffect(() => {
     let active = true
@@ -26,7 +58,12 @@ export default function Co2Page() {
       setLoading(true)
       try {
         const r = await monitoringApi.getCo2Fleet()
-        if (active) { setData(r.data); setError(null) }
+        if (active) {
+          setData(r.data)
+          setError(null)
+          setStale(false)
+          setLastUpdated(new Date())
+        }
       } catch {
         if (active) setError('Impossible de charger le suivi CO₂.')
       } finally {
@@ -36,6 +73,21 @@ export default function Co2Page() {
     load()
     return () => { active = false }
   }, [])
+
+  // VX30 — re-sondage silencieux : ne remplace jamais l'état chargé/erreur
+  // affiché par un flash de loading ; une carte/total périmé est marqué
+  // explicitement, jamais confondu avec un vrai zéro.
+  useVisibilityAwarePoll(() => {
+    monitoringApi.getCo2Fleet()
+      .then((r) => {
+        if (!mountedRef.current) return
+        setData(r.data)
+        setError(null)
+        setStale(false)
+        setLastUpdated(new Date())
+      })
+      .catch(() => { if (mountedRef.current) setStale(true) })
+  }, CO2_POLL_MS)
 
   const systems = useMemo(() => data?.systems ?? [], [data])
 
@@ -98,6 +150,23 @@ export default function Co2Page() {
         </div>
       </div>
       <MonitoringNav />
+
+      {/* VX30 — badge de fraîcheur : distinct visuellement d'un « 0 » réel
+          (jamais la même couleur/forme qu'un état périmé). */}
+      {lastUpdated && (
+        <div className="mb-4 flex justify-end">
+          <span
+            className={
+              stale
+                ? 'inline-flex items-center gap-1 rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning'
+                : 'text-xs text-muted-foreground'
+            }
+          >
+            {stale ? 'Hors-ligne — ' : 'Actualisé '}
+            {timeAgo(lastUpdated)}
+          </span>
+        </div>
+      )}
 
       <ModuleDashboard
         stats={stats}
