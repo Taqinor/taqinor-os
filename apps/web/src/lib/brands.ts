@@ -4,10 +4,18 @@
  * de marque uniquement — aucun numéro de modèle, référence ou spec n'est
  * inventé ici.
  *
- * `logo` pointe vers un fichier sous `/public/` (ex. '/brands/jinko.svg') ou
- * vaut `null` tant qu'aucun fichier logo n'existe. Les logos officiels seront
- * déposés dans `public/brands/` plus tard ; jusque-là, des word-marks stylisés
- * sont rendus à la place.
+ * `logo` pointe vers un fichier sous `/public/` (ex. '/brands/jinko.png') ou
+ * vaut `null` tant qu'aucun fichier logo officiel n'est disponible ; dans ce
+ * cas un word-mark stylisé est rendu à la place.
+ *
+ * W187 (2026-07-11) — logos officiels déposés dans `public/brands/`, sourcés
+ * depuis Wikimedia Commons (seule source d'assets de marque atteignable depuis
+ * l'environnement) : Huawei / Nexans / JA Solar en SVG officiel, Jinko en PNG
+ * domaine public. Canadian Solar, Deye et Dyness n'ont AUCUN asset officiel
+ * atteignable (absents de Commons, ou — pour Deye — sous une licence exigeant
+ * attribution avec une identité de fichier ambiguë) : ils restent `null` /
+ * word-mark plutôt qu'un logo fabriqué ou incertain (règle « aucun contenu
+ * inventé »).
  *
  * W183 — `heightMultiplier` : facteur optique pour égaliser la hauteur visuelle
  * des logos dans la bande (certains logos sont hauts et fins, d'autres larges et
@@ -25,11 +33,11 @@ export interface Brand {
 }
 
 export const BRANDS: Brand[] = [
-  { name: 'Canadian Solar', category: 'Panneaux',   logo: null, heightMultiplier: 1.1 },
-  { name: 'JA Solar',       category: 'Panneaux',   logo: null, heightMultiplier: 1.0 },
-  { name: 'Jinko',          category: 'Panneaux',   logo: null, heightMultiplier: 0.9 },
-  { name: 'Deye',           category: 'Onduleurs',  logo: null, heightMultiplier: 0.85 },
-  { name: 'Huawei',         category: 'Onduleurs',  logo: null, heightMultiplier: 0.95 },
-  { name: 'Dyness',         category: 'Batteries',  logo: null, heightMultiplier: 1.0 },
-  { name: 'Nexans',         category: 'Câbles',     logo: null, heightMultiplier: 0.9 },
+  { name: 'Canadian Solar', category: 'Panneaux',   logo: null,                    heightMultiplier: 1.1 },
+  { name: 'JA Solar',       category: 'Panneaux',   logo: '/brands/ja-solar.svg',  heightMultiplier: 1.0 },
+  { name: 'Jinko',          category: 'Panneaux',   logo: '/brands/jinko.png',     heightMultiplier: 1.0 },
+  { name: 'Deye',           category: 'Onduleurs',  logo: null,                    heightMultiplier: 0.85 },
+  { name: 'Huawei',         category: 'Onduleurs',  logo: '/brands/huawei.svg',    heightMultiplier: 0.95 },
+  { name: 'Dyness',         category: 'Batteries',  logo: null,                    heightMultiplier: 1.0 },
+  { name: 'Nexans',         category: 'Câbles',     logo: '/brands/nexans.svg',    heightMultiplier: 0.9 },
 ];
