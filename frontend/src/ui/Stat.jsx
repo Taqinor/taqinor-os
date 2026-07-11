@@ -42,7 +42,9 @@ export function Stat({ label, value, hint, delta, icon, tone, className, childre
           />
         )}
       </div>
-      <div className="mt-2 font-display text-2xl font-semibold tabular-nums leading-none stat-value-solidify">
+      {/* VX5 — `.num` (data typography) : chiffres tabulaires à zéro barré +
+          tracking resserré, la valeur héros d'un KPI aligne ses colonnes. */}
+      <div className="num mt-2 text-2xl font-semibold leading-none stat-value-solidify">
         {value}
       </div>
       {(hint || delta) && (

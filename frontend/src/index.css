@@ -1056,6 +1056,14 @@ button:active, [role="button"]:active, a.btn:active,
 }
 
 .ta-right { text-align: right; }
+/* VX5 — colonnes numériques des tables legacy (cellules alignées à droite) en
+   data typography `.num` : chiffres tabulaires à zéro barré, colonnes alignées.
+   (Le DataTable /ui applique déjà tabular-nums à ses colonnes numeric/right.) */
+.data-table td.ta-right {
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'tnum' 1, 'zero' 1;
+  letter-spacing: -0.01em;
+}
 
 .actions-cell {
   display: flex;
@@ -1503,17 +1511,24 @@ textarea.form-control {
 
 .devis-total-discount { color: #15803d; }
 
+/* VX5 — total TTC = chiffre héros : data typography `.num` (police
+   d'affichage + tabular-nums slashed-zero + tracking resserré) pour aligner
+   la colonne monétaire. */
 .devis-total-ttc {
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid var(--border);
   margin-top: 4px;
   padding-top: 10px;
   font-size: 1rem;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--foreground);
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'tnum' 1, 'zero' 1;
+  letter-spacing: -0.01em;
 }
 
 .devis-total-ttc span,
-.devis-total-ttc strong { color: #0f172a; }
+.devis-total-ttc strong { color: var(--foreground); }
 
 /* ── Page header actions (search + button row) ────────── */
 .page-header-actions {
@@ -3116,11 +3131,16 @@ textarea.form-control {
   letter-spacing: 0.04em;
 }
 
+/* VX5 — métrique du générateur : chiffre héros en data typography `.num`. */
 .gen-metric-value {
   font-size: 1.3rem;
   font-weight: 700;
   color: var(--foreground);
   margin-top: 0.25rem;
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'tnum' 1, 'zero' 1;
+  letter-spacing: -0.01em;
 }
 
 .gen-metric-unit { font-size: 0.72rem; color: var(--muted-foreground); }
@@ -4674,12 +4694,16 @@ textarea.form-control {
   font-weight: 600;
 }
 
+/* VX5 — montant catalogue KB en data typography `.num`. */
 .kb-col-money {
   display: block;
   margin-top: 0.15rem;
   font-size: 0.72rem;
   color: var(--muted-foreground, #64748b);
-  font-variant-numeric: tabular-nums;
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'tnum' 1, 'zero' 1;
+  letter-spacing: -0.01em;
 }
 
 .kb-col-body {

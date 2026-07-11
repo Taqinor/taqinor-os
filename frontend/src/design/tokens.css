@@ -351,6 +351,19 @@
   font-feature-settings: 'tnum' 1, 'zero' 1;
 }
 
+/* VX5 — utilitaire `.num` : « les chiffres deviennent les héros » (numeric
+   story Stripe/Mercury). Police d'affichage de marque + chiffres tabulaires à
+   zéro barré + tracking resserré : tout montant MAD / kWc / production /
+   référence / total aligne ses colonnes à graisse et chasse identiques. Le
+   FORMATAGE fr/MAD reste l'unique responsabilité de lib/format.js — `.num` ne
+   fait que la présentation typographique. */
+.num {
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'tnum' 1, 'zero' 1;
+  letter-spacing: -0.01em;
+}
+
 /* ── Animations d'overlay (Dialog/Popover/Dropdown/Tooltip…) ─────────────── */
 @theme {
   --animate-overlay-in: overlay-in var(--motion-base) var(--ease-standard) both;
