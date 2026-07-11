@@ -15,15 +15,23 @@ import {
 } from '../../features/installations/offline/fieldOutbox'
 
 export default function ChantierChecklist({
-  installationId, produits, series = [], onChanged,
+  installationId, produits, series = [], interventionSeries = [], onChanged,
 }) {
   const [items, setItems] = useState([])
   const [completion, setCompletion] = useState(null)
   const [loading, setLoading] = useState(true)
   // Saisies de série en attente, par clé d'étape : { produit, numero_serie }
   const [serie, setSerie] = useState({})
-  // N15 — n° de série déjà présents sur ce chantier (avertissement de doublon).
-  const seriesSet = new Set(series.map((s) => String(s).trim().toLowerCase()))
+  // N15 / VX227 — n° de série déjà présents sur ce chantier (avertissement de
+  // doublon). Le Set UNIT désormais les deux sources : les séries du parc
+  // (`series`) ET les relevés saisis côté intervention (`interventionSeries`,
+  // F9) — une série saisie côté N9 est détectée en doublon côté F9 et
+  // réciproquement, sans jamais fusionner les magasins.
+  const seriesSet = new Set(
+    [...series, ...interventionSeries]
+      .map((s) => String(s || '').trim().toLowerCase())
+      .filter(Boolean),
+  )
   const isDoublon = (v) => {
     const t = (v || '').trim().toLowerCase()
     return !!t && seriesSet.has(t)

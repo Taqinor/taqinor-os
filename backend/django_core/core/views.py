@@ -24,7 +24,7 @@ from rest_framework.decorators import (
     permission_classes,
     action,
 )
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny, BasePermission, IsAuthenticated
 from rest_framework.response import Response
 
 from authentication.permissions import (
@@ -75,6 +75,7 @@ from .serializers import (
     ScheduledExportSerializer,
     ScheduledJobSerializer,
     TenantThemeSerializer,
+    TenantUsageSnapshotSerializer,
     WorkflowTemplateSerializer,
 )
 
@@ -907,3 +908,49 @@ def metrics_view(request):
 
     body = metrics_infra.render_prometheus_text()
     return HttpResponse(body, content_type='text/plain; version=0.0.4')
+
+
+# ── NTPLT6 — Endpoint superuser des compteurs d'usage par tenant (metering) ──
+
+
+class _IsSuperUser(BasePermission):
+    """Permission stricte : superuser Django uniquement (jamais un tenant)."""
+
+    def has_permission(self, request, view):
+        user = getattr(request, 'user', None)
+        return bool(user and user.is_authenticated and user.is_superuser)
+
+
+class TenantUsageSnapshotViewSet(viewsets.ReadOnlyModelViewSet):
+    """NTPLT6 — instantanés d'usage par tenant (lecture seule, SUPERUSER only).
+
+    Fondation technique de N100 (plans/billing, différé). JAMAIS exposé à un
+    tenant : c'est une vue transverse à toutes les sociétés, réservée à
+    l'exploitant de l'instance. Filtrable par ``?company=<id>`` et
+    ``?jour=AAAA-MM-JJ``. Une action ``snapshot`` déclenche un calcul immédiat
+    (utile hors du beat nocturne).
+
+      * ``GET  usage/``           — liste des instantanés (toutes sociétés)
+      * ``GET  usage/{id}/``      — un instantané
+      * ``POST usage/snapshot/``  — calcule/rafraîchit l'instantané du jour
+    """
+    serializer_class = TenantUsageSnapshotSerializer
+    permission_classes = [_IsSuperUser]
+
+    def get_queryset(self):
+        from .models import TenantUsageSnapshot
+        qs = TenantUsageSnapshot.objects.select_related('company').all()
+        company = self.request.query_params.get('company')
+        if company:
+            qs = qs.filter(company_id=company)
+        jour = self.request.query_params.get('jour')
+        if jour:
+            qs = qs.filter(jour=jour)
+        return qs
+
+    @action(detail=False, methods=['post'])
+    def snapshot(self, request):
+        """Calcule/rafraîchit l'instantané du jour pour toutes les sociétés."""
+        from . import usage
+        done = usage.snapshot_all()
+        return Response({'companies': len(done)}, status=status.HTTP_200_OK)

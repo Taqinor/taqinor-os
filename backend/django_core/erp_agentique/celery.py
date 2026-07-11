@@ -264,6 +264,12 @@ app.conf.beat_schedule = {
         'task': 'core.beat_heartbeat',
         'schedule': crontab(minute='*/5'),
     },
+    # NTPLT6 — metering d'usage par tenant, instantané nocturne (idempotent,
+    # comptages bornés) ; fondation de N100 (plans/billing, différé).
+    'core-snapshot-tenant-usage': {
+        'task': 'core.snapshot_tenant_usage',
+        'schedule': crontab(hour=1, minute=45),
+    },
     # YSERV3 — balayage monitoring quotidien (synchro fournisseur + évaluation
     # de sous-performance), heure creuse matinale.
     'monitoring-balayage-quotidien': {

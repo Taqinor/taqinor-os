@@ -3,9 +3,10 @@
 // (apps.records, cible installations.installation).
 // J43 — porté sur le système de design (Button, IconButton, AlertDialog).
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useIsAdmin } from '../../hooks/useHasPermission'
 import {
-  Plus, X, FileText, ChevronLeft, ChevronRight,
+  Plus, X, FileText, ChevronLeft, ChevronRight, Images,
 } from 'lucide-react'
 import recordsApi from '../../api/recordsApi'
 import { compressImage } from '../../ui/file-utils'
@@ -46,6 +47,7 @@ const ACCEPTED = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp']
 
 export default function ChantierPhotos({ installationId }) {
   const isAdmin = useIsAdmin()
+  const navigate = useNavigate()
   const [items, setItems] = useState([])
   const [busyPhase, setBusyPhase] = useState(null)
   const [toDelete, setToDelete] = useState(null)
@@ -148,6 +150,16 @@ export default function ChantierPhotos({ installationId }) {
           </Button>
         </div>
       )}
+      {/* VX227 — lien croisé discret vers les photos terrain des interventions
+          de ce chantier (magasins jamais fusionnés, mais navigables). */}
+      <div className="flex items-center justify-between gap-2">
+        <button type="button"
+          onClick={() => navigate(`/interventions?installation=${installationId}`)}
+          className="flex items-center gap-1.5 text-[12px] text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-foreground">
+          <Images className="size-3.5" aria-hidden="true" />
+          Voir aussi les photos de l'intervention
+        </button>
+      </div>
       {/* VX149 — densité des vignettes : utile dès qu'un chantier accumule
           40+ photos, où le format compact fixe devient difficile à parcourir. */}
       <div className="flex items-center justify-end">

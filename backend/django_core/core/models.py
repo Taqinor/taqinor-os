@@ -1972,3 +1972,65 @@ class ContentTranslation(TimestampedModel):
 
     def __str__(self):
         return f'{self.content_type}#{self.object_id} [{self.locale}] {self.field}'
+
+
+# ---------------------------------------------------------------------------
+# NTPLT6 — Compteurs d'usage par tenant (metering).
+#
+# Photographie NOCTURNE, par société et par jour, de la consommation :
+# nombre de lignes par grosse table, octets MinIO du préfixe société, nombre
+# de requêtes API du jour, nombre de tâches Celery. FONDATION technique que
+# N100 (plans/billing, volontairement différé) consommera plus tard sans
+# re-travail. ``core`` reste FONDATION : aucune app métier n'est importée — les
+# comptages passent par le registre Django (get_models) et des string-FK.
+# ---------------------------------------------------------------------------
+
+
+class TenantUsageSnapshot(TimestampedModel):
+    """Instantané quotidien d'usage d'une société (metering, NTPLT6).
+
+    Une ligne par ``(company, jour)`` (idempotente : ré-exécuter le snapshot du
+    jour met à jour la même ligne). Les comptages sont BORNÉS (COUNT plafonné,
+    jamais un scan illimité) et l'ensemble par table vit dans un JSON pour
+    rester agnostique du schéma (aucune FK vers une app domaine).
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='usage_snapshots', verbose_name='Société')
+    jour = models.DateField(
+        'Jour', help_text="Jour de l'instantané (UTC).")
+
+    lignes_par_table = models.JSONField(
+        'Lignes par table', default=dict, blank=True,
+        help_text="{ 'app_label.Model': nombre_de_lignes } pour les grosses "
+                  "tables company-scopées (comptage borné).")
+    octets_minio = models.BigIntegerField(
+        'Octets MinIO', default=0,
+        help_text="Total d'octets stockés sous le préfixe société dans MinIO "
+                  "(0 si le stockage est indisponible).")
+    nb_requetes_api = models.PositiveIntegerField(
+        'Requêtes API du jour', default=0,
+        help_text="Somme des requêtes API (ApiUsageRecord) de la société ce "
+                  "jour-là.")
+    nb_taches_celery = models.PositiveIntegerField(
+        'Tâches Celery', default=0,
+        help_text="Nombre de tâches Celery attribuables à la société ce jour "
+                  "(0 si non instrumenté).")
+
+    class Meta:
+        verbose_name = "Instantané d'usage"
+        verbose_name_plural = "Instantanés d'usage"
+        ordering = ['-jour', 'company_id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'jour'],
+                name='core_tenantusage_company_jour'),
+        ]
+        indexes = [
+            models.Index(fields=['company', '-jour'],
+                         name='core_tenantusage_co_jour_idx'),
+        ]
+
+    def __str__(self):
+        return f'Usage {self.company_id} le {self.jour}'
