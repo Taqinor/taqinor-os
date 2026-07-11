@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Leaf, Sprout, Zap } from 'lucide-react'
 import monitoringApi from '../../api/monitoringApi'
 import { DataTable, EmptyState } from '../../ui'
 import { ModuleDashboard } from '../../ui/module'
 import { BarArrondie, ChartEmpty } from '../../ui/charts'
 import { formatNumber } from '../../lib/format'
+import { METRIC_ICONS } from '../../ui/metricIcons'
 import MonitoringNav from './MonitoringNav'
 
 /* WR7 — Suivi CO₂ évité (FG286) : CO₂ évité cumulé sur le parc + par système,
    depuis GET /monitoring/configs/co2-fleet/. Rend uniquement ce que renvoie le
-   backend (kg / tonnes / production) — aucune donnée interne. */
+   backend (kg / tonnes / production) — aucune donnée interne.
+   VX157 — icônes de grandeur métier unifiées via ui/metricIcons.js (avant :
+   Leaf/Sprout/Zap importées ad hoc ici), + accent d'impact sur le CO₂ évité. */
 
 export default function Co2Page() {
   const [data, setData] = useState(null)
@@ -41,18 +43,20 @@ export default function Co2Page() {
     {
       label: 'CO₂ évité (parc)',
       value: `${formatNumber(data.total_co2_tonnes, { decimals: 3 })} t`,
-      icon: Leaf,
+      icon: METRIC_ICONS.co2,
       hint: `${formatNumber(data.total_co2_kg, { decimals: 0 })} kg`,
+      tone: 'impact',
     },
     {
       label: 'Production cumulée',
       value: `${formatNumber(data.total_production_kwh, { decimals: 0 })} kWh`,
-      icon: Zap,
+      icon: METRIC_ICONS.production,
+      tone: 'impact',
     },
     {
       label: 'Facteur réseau',
       value: `${formatNumber(data.co2_kg_par_kwh, { decimals: 2 })} kg/kWh`,
-      icon: Sprout,
+      icon: METRIC_ICONS.co2,
       hint: 'CO₂ évité par kWh autoproduit',
     },
   ] : []), [data])
@@ -111,7 +115,7 @@ export default function Co2Page() {
       {!loading && !error && (
         systems.length === 0 ? (
           <EmptyState
-            icon={Leaf}
+            icon={METRIC_ICONS.co2}
             title="Aucune donnée CO₂"
             description="Le CO₂ évité apparaît dès qu'un système supervisé a des relevés de production."
             className="my-6"

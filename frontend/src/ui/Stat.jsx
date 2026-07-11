@@ -3,8 +3,11 @@ import { Card } from './Card'
 
 /* G29 — Carte de KPI / statistique. `value` déjà formatée (via lib/format).
    `delta` optionnel : { value, direction: 'up'|'down', tone? }. Chiffres
-   tabulaires pour alignement. */
-export function Stat({ label, value, hint, delta, icon, className, ...props }) {
+   tabulaires pour alignement.
+   VX157 — `tone="impact"` : variante à accent brass pour les grandeurs
+   d'impact POSITIF (production, CO₂ évité, économies…), qui la distingue
+   visuellement d'une carte KPI neutre sans être criarde. */
+export function Stat({ label, value, hint, delta, icon, tone, className, ...props }) {
   const Icon = icon
   const deltaTone =
     delta?.tone ??
@@ -14,14 +17,27 @@ export function Stat({ label, value, hint, delta, icon, className, ...props }) {
     danger: 'text-destructive',
     muted: 'text-muted-foreground',
   }[deltaTone]
+  const isImpact = tone === 'impact'
 
   return (
-    <Card className={cn('p-4 sm:p-5', className)} {...props}>
+    <Card
+      className={cn(
+        'p-4 sm:p-5',
+        isImpact && 'border-primary/40 bg-primary/[0.06]',
+        className,
+      )}
+      {...props}
+    >
       <div className="flex items-start justify-between gap-3">
         <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           {label}
         </span>
-        {Icon && <Icon className="size-4 text-muted-foreground" aria-hidden="true" />}
+        {Icon && (
+          <Icon
+            className={cn('size-4', isImpact ? 'text-primary' : 'text-muted-foreground')}
+            aria-hidden="true"
+          />
+        )}
       </div>
       <div className="mt-2 font-display text-2xl font-semibold tabular-nums leading-none">
         {value}
