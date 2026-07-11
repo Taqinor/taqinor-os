@@ -197,6 +197,37 @@ seed the DB once, `test-backend.ps1 -Snapshot` freezes it as a Postgres TEMPLATE
 gate uses `-RestoreDb` (TEMPLATE clone ~seconds + `--keepdb` for only the new migrations) instead
 of a cold rebuild — a real ARC+SCA run burned ~3.5 h purely on local test-DB churn without it.
 
+**WOW23 — PIPELINED 80-TASK WAVES (founder, 2026-07-11 — supersedes the sizing/testing specifics
+above where they conflict; the mechanics are CODED into `plan_lanes.py`, read them off its output).**
+- **A wave = ~80 tasks = 8 file-disjoint lanes of ~5-15 tasks each = ONE merge.** Never a merge per
+  agent-round: a "wave of agents" is not a merge unit (a run once shipped 5 PRs for 20 tasks — the
+  exact ceremony this forbids). `plan_lanes.py --workers 8 --wave-size 80` emits the whole thing:
+  lanes FORCED file-disjoint (lanes sharing a substantive declared `Files:` are auto-unioned;
+  append-only surfaces like index.css exempt), LPT time-balanced so the 8 agents finish together,
+  and a SEQUENCE of mutually-disjoint waves.
+- **Pipeline the waves:** while wave K runs its single CI, wave K+1 is being BUILT (disjointness
+  guarantees no collision). Don't wait for a whole wave: an agent that finishes early immediately
+  work-steals the heaviest not-yet-started lane of wave K+1. **Disjointness outranks the
+  PLAN2→PLAN→NT file order** — pool the plan files (`plan_lanes.py f1 f2 f3`) and pick disjoint
+  work over strict order.
+- **TEST ECONOMICS (supersedes "local combined docker test before every merge"):** a local gate is
+  worth running ONLY if its FULL relevant set is faster than the CI job that catches the same
+  thing. With CI at ~6-10 min: the ONLY routine local gate is `eslint` on changed files (seconds —
+  catches what no-node_modules worktree agents can't see). NO local vitest subsets (false-green:
+  you still pay the CI round), NO local docker test-DB gate (contended, OOM-prone, slower than CI).
+  Exceptions: the ONE test you're actively fixing; `vite build` (~8 s) after any MANUAL conflict
+  resolution. Local docker remains a debugging tool for reproducing a specific red, never a gate.
+- **Merge the INSTANT CI is green** (a green run sat on for an hour went BEHIND main → integrate +
+  full CI again + a woken flaky test). During an active CI wait, check every ~5 min. Skip
+  preflight.ps1 on the cache-hit path (it doubles wall-clock for nothing).
+- **At every merge, report:** tasks done this batch (one line each: what it was for) + remaining
+  open counts per plan file.
+- **Agent hygiene:** commit-per-task (a process crash killed 7 live agents; only COMMITTED work
+  survived — ~16 tasks recovered), push the accumulating batch branch to origin as backup after
+  each fold, kill stale 6-8h+ agent processes at run START (never mid-run, never broadly), and on
+  a heavy fold conflict DROP & REQUEUE the task on the merged base — never hand-merge 100+-line
+  collisions (both build-breakers of the 2026-07-11 batch were manual resolutions).
+
 1. **Plan the lanes once.** Run `python scripts/plan_lanes.py <planfile>` for the file-ownership
    + dependency graph. A **lane** = tasks sharing a file/migration that must run in sequence;
    independent lanes run concurrently. (Drain `docs/PLAN2.md` before `docs/PLAN.md`.)

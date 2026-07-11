@@ -1157,6 +1157,16 @@ def render(plan: dict, max_lanes: int, source: str) -> str:
             f"- **Agent {n}** (model={w['model']}, cost~{w['cost']:g}, "
             f"{len(w['tasks'])} task(s)): {lanes_desc}"
         )
+    # Founder band: a lane should hold ~5-15 tasks. An oversized lane (often the
+    # product of file-merges) serializes one agent far past its wave-mates and
+    # defeats the time balance — surface it so the plan can split it via @lane:
+    # tags (or accept the imbalance knowingly).
+    oversized = {k: len(ids) for k, ids in plan["lanes"].items() if len(ids) > 15}
+    if oversized:
+        out += ["", "## Oversized lanes (>15 tasks — consider splitting via @lane: tags)"]
+        for k, n in sorted(oversized.items(), key=lambda kv: -kv[1]):
+            out.append(f"- **{k}**: {n} tasks — one agent will run ~{n / 10:.0f}x "
+                       f"longer than a 10-task lane; split if the tasks allow it")
     pw = plan.get("pipelined_waves", [])
     if pw:
         out += [
