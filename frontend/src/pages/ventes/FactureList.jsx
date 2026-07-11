@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef } from 'react'
+import { Fragment, useEffect, useState, useMemo, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Link } from 'react-router-dom'
 import {
@@ -208,6 +208,7 @@ function FactureRow({ f, ctx }) {
     openEdit, doAction, emettreFacture, marquerPayeeFacture, annulerFacture,
     openPayModal, handleLienPaiement, handleTelechargerPdf, handleGenererPdf,
     openAvoirModal, handleWhatsApp, handleUbl, handleDgiExport, handleDgiConformite,
+    histoOpenId, toggleHistorique, histoCache, histoLoadingId,
   } = ctx
   const overdue = isOverdue(f)
   const statutKey = overdue && f.statut === 'emise' ? 'en_retard' : f.statut
@@ -222,7 +223,8 @@ function FactureRow({ f, ctx }) {
   const isDgiBusy = dgiBusy[f.id]
 
   return (
-    <tr key={f.id} className={overdue ? 'bg-destructive/5' : undefined}>
+    <Fragment key={f.id}>
+    <tr className={overdue ? 'bg-destructive/5' : undefined}>
       <td>
         <Checkbox
           checked={selectedIds.includes(f.id)}
@@ -257,6 +259,16 @@ function FactureRow({ f, ctx }) {
             {f.mentions_manquantes.length} mention(s) manquante(s)
           </Badge>
         )}
+        {/* VX97 — journal des changements (qui/quand/ancien→nouveau), repliable. */}
+        <div className="mt-0.5">
+          <button
+            type="button"
+            className="text-xs text-primary hover:underline"
+            onClick={() => toggleHistorique(f.id)}
+          >
+            {histoOpenId === f.id ? "Masquer l'historique" : 'Historique'}
+          </button>
+        </div>
       </td>
       <td data-label="Client">{f.client_nom ?? '—'}</td>
       <td data-label="Émission">{new Date(f.date_emission).toLocaleDateString('fr-FR')}</td>
@@ -418,6 +430,52 @@ function FactureRow({ f, ctx }) {
         </div>
       </td>
     </tr>
+    {/* VX97 — Panneau « Historique » : journal des changements de la facture
+        (FactureActivity). Qui / quand / ancien→nouveau. `prix_achat` jamais
+        rendu (le journal ne le porte pas). */}
+    {histoOpenId === f.id && (
+      <tr>
+        <td colSpan={8} className="bg-muted/30">
+          <div className="px-3 py-2">
+            <p className="mb-1 text-xs font-medium text-muted-foreground">
+              Historique des modifications — {f.reference}
+            </p>
+            {histoLoadingId === f.id ? (
+              <p className="text-xs text-muted-foreground">Chargement…</p>
+            ) : (histoCache[f.id]?.length ?? 0) === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Aucune modification consignée.
+              </p>
+            ) : (
+              <ul className="space-y-1 text-sm">
+                {histoCache[f.id].map(a => (
+                  <li key={a.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                    <span className="text-xs text-muted-foreground">
+                      {a.created_at ? formatDateTime(a.created_at) : '—'}
+                      {a.user_nom ? ` · ${a.user_nom}` : ''}
+                    </span>
+                    <span>
+                      {a.body
+                        ? a.body
+                        : (
+                          <>
+                            <strong>{a.field_label || a.field}</strong>
+                            {' : '}
+                            <span className="text-muted-foreground">{a.old_value || '—'}</span>
+                            {' → '}
+                            <span>{a.new_value || '—'}</span>
+                          </>
+                        )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </td>
+      </tr>
+    )}
+    </Fragment>
   )
 }
 
@@ -549,6 +607,25 @@ export default function FactureList() {
       setFactureActivites(res.data)
     } catch {
       setFactureActivites([])
+    }
+  }
+
+  // VX97 — Panneau « Historique » repliable dans le détail facture : journal des
+  // changements (FactureActivity) — qui/quand/ancien→nouveau — sur le document
+  // au plus gros blast-radius financier. Feed existant monté ; migrera vers
+  // ChatterTimeline (VX23). `prix_achat` jamais rendu (le journal ne le porte pas).
+  const [histoOpenId, setHistoOpenId] = useState(null)
+  const [histoCache, setHistoCache] = useState({})   // id → entrées
+  const [histoLoadingId, setHistoLoadingId] = useState(null)
+  const toggleHistorique = (id) => {
+    if (histoOpenId === id) { setHistoOpenId(null); return }
+    setHistoOpenId(id)
+    if (histoCache[id] === undefined) {
+      setHistoLoadingId(id)
+      api.get(`/ventes/factures/${id}/historique/`)
+        .then(res => setHistoCache(c => ({ ...c, [id]: res.data || [] })))
+        .catch(() => setHistoCache(c => ({ ...c, [id]: [] })))
+        .finally(() => setHistoLoadingId(l => (l === id ? null : l)))
     }
   }
 
@@ -984,6 +1061,7 @@ export default function FactureList() {
     openEdit, doAction, emettreFacture, marquerPayeeFacture, annulerFacture,
     openPayModal, handleLienPaiement, handleTelechargerPdf, handleGenererPdf,
     openAvoirModal, handleWhatsApp, handleUbl, handleDgiExport, handleDgiConformite,
+    histoOpenId, toggleHistorique, histoCache, histoLoadingId,
   }
 
   // VX21 — l'en-tête de page reste TOUJOURS visible (chargement, erreur,

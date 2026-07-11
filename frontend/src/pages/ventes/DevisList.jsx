@@ -271,6 +271,7 @@ function DevisRow({ d, ctx }) {
   const {
     selectedIds, toggleSelected,
     versionsOpenId, setVersionsOpenId, roofOpenId, setRoofOpenId,
+    histoOpenId, toggleHistorique, histoCache, histoLoadingId,
     versionChain, effStatutOf,
     navigate, dispatch,
     role, canDelete, highlightId,
@@ -692,6 +693,11 @@ function DevisRow({ d, ctx }) {
                   Créer projet
                 </DropdownMenuItem>
               )}
+              {/* VX97 — journal des changements (qui/quand/ancien→nouveau),
+                  section repliable ; distinct de la chaîne de versions. */}
+              <DropdownMenuItem onSelect={() => toggleHistorique(d.id)}>
+                {histoOpenId === d.id ? "Masquer l'historique" : "Historique des modifications"}
+              </DropdownMenuItem>
               {/* QX27 — actions historiquement dans « Autres actions » :
                   Réviser, Approuver remise, Contacter mon supérieur, Email. */}
               {d.is_active && d.statut !== 'brouillon' && (
@@ -782,6 +788,51 @@ function DevisRow({ d, ctx }) {
         </td>
       </tr>
     )}
+    {/* VX97 — Panneau « Historique » : journal des changements du devis
+        (DevisActivity). Qui / quand / ancien→nouveau. `prix_achat` jamais
+        rendu (le journal ne le porte pas). */}
+    {histoOpenId === d.id && (
+      <tr>
+        <td colSpan={8} className="bg-muted/30">
+          <div className="px-3 py-2">
+            <p className="mb-1 text-xs font-medium text-muted-foreground">
+              Historique des modifications — {d.reference}
+            </p>
+            {histoLoadingId === d.id ? (
+              <p className="text-xs text-muted-foreground">Chargement…</p>
+            ) : (histoCache[d.id]?.length ?? 0) === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Aucune modification consignée.
+              </p>
+            ) : (
+              <ul className="space-y-1 text-sm">
+                {histoCache[d.id].map(a => (
+                  <li key={a.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                    <span className="text-xs text-muted-foreground">
+                      {a.created_at ? formatDateTime(a.created_at) : '—'}
+                      {a.user_nom ? ` · ${a.user_nom}` : ''}
+                    </span>
+                    <span>
+                      {a.body
+                        ? a.body
+                        : (
+                          <>
+                            <strong>{a.field_label || a.field}</strong>
+                            {' : '}
+                            <span className="text-muted-foreground">{a.old_value || '—'}</span>
+                            {' → '}
+                            <span>{a.new_value || '—'}</span>
+                          </>
+                        )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </td>
+      </tr>
+    )}
     {/* QG11 — Panneau « Voir le design 3D » : rendu LECTURE
         SEULE du plan de toiture stocké (roof_layout). */}
     {roofOpenId === d.id && (
@@ -862,6 +913,25 @@ export default function DevisList() {
     const r = searchParams.get('design3d')
     return r ? Number(r) : null
   })
+
+  // VX97 — Panneau « Historique » (journal des changements DevisActivity : qui a
+  // fait quoi / ancien→nouveau) — distinct de la chaîne de VERSIONS ci-dessus.
+  // Feed existant monté en section repliable ; migrera vers ChatterTimeline (VX23)
+  // quand il atterrira. `prix_achat` n'apparaît jamais (le journal ne le porte pas).
+  const [histoOpenId, setHistoOpenId] = useState(null)
+  const [histoCache, setHistoCache] = useState({})   // id → entrées
+  const [histoLoadingId, setHistoLoadingId] = useState(null)
+  const toggleHistorique = (id) => {
+    if (histoOpenId === id) { setHistoOpenId(null); return }
+    setHistoOpenId(id)
+    if (histoCache[id] === undefined) {
+      setHistoLoadingId(id)
+      ventesApi.historiqueDevis(id)
+        .then(res => setHistoCache(c => ({ ...c, [id]: res.data || [] })))
+        .catch(() => setHistoCache(c => ({ ...c, [id]: [] })))
+        .finally(() => setHistoLoadingId(l => (l === id ? null : l)))
+    }
+  }
 
   // ── Filtre statut + recherche (référence / client) ──
   // QX12 — deep-link ?statut=<key> pré-règle le filtre au montage (liens de
@@ -1557,6 +1627,7 @@ export default function DevisList() {
   const rowCtx = {
     selectedIds, toggleSelected,
     versionsOpenId, setVersionsOpenId, roofOpenId, setRoofOpenId,
+    histoOpenId, toggleHistorique, histoCache, histoLoadingId,
     versionChain, effStatutOf,
     navigate, dispatch,
     role, canDelete, highlightId,
