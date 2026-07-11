@@ -55,9 +55,6 @@ export default function RelancesPage() {
   const [waLangue, setWaLangue] = useState('fr')
   const [waBusy, setWaBusy] = useState({})
   const [waPreview, setWaPreview] = useState(null) // { reference, message, url, wa_url }
-  // VX116 — file d'attente pour « Consigner + aperçu WhatsApp pour chacun » :
-  // factures restant à prévisualiser en séquence (jamais d'envoi automatique).
-  const [waQueue, setWaQueue] = useState([])
 
   const load = () => {
     setLoading(true)
@@ -162,52 +159,10 @@ export default function RelancesPage() {
     }
   }
 
-  // Ouvre wa.me après confirmation de l'aperçu, puis enchaîne sur la
-  // prochaine facture de la file (VX116 — jamais d'ouverture sans ce clic).
+  // Ouvre wa.me après confirmation de l'aperçu.
   const ouvrirWhatsApp = () => {
     if (waPreview?.wa_url) window.open(waPreview.wa_url, '_blank', 'noopener')
     setWaPreview(null)
-    avancerFileWhatsApp()
-  }
-
-  // Passe à la facture suivante de la file d'aperçu WhatsApp (annulation ou
-  // après ouverture) ; s'arrête si la file est vide.
-  const avancerFileWhatsApp = () => {
-    const rest = waQueue.slice(1)
-    setWaQueue(rest)
-    if (rest.length > 0) whatsapp(rest[0])
-  }
-
-  // Annule l'aperçu WhatsApp courant ; en mode file, passe quand même à la
-  // facture suivante (chacune reste consignée individuellement, cf. relancerSelection).
-  const annulerApercuWhatsApp = () => {
-    setWaPreview(null)
-    if (waQueue.length > 0) avancerFileWhatsApp()
-  }
-
-  // VX116 — « Consigner + aperçu WhatsApp pour chacun » : consigne la relance
-  // de TOUTES les factures cochées (comportement identique à « Consigner
-  // uniquement »), puis ouvre l'aperçu WhatsApp de la première en séquence —
-  // jamais de wa.me sans clic explicite par client (règle manuel-wa.me).
-  const relancerSelectionAvecWhatsapp = async () => {
-    const ids = Object.keys(selected).filter(id => selected[id])
-    if (ids.length === 0) return
-    if (!window.confirm(
-      `Consigner une relance pour ${ids.length} facture(s), puis prévisualiser un rappel WhatsApp pour chacune ?`)) return
-    setBulkBusy(true)
-    try {
-      const targets = []
-      for (const id of ids) {
-        const r = rows.find(x => String(x.id) === String(id))
-        await ventesApi.relancerFacture(id, { niveau: r?.niveau?.ordre })
-        if (r) targets.push(r)
-      }
-      setSelected({}); load()
-      if (targets.length > 0) {
-        setWaQueue(targets)
-        whatsapp(targets[0])
-      }
-    } catch { /* */ } finally { setBulkBusy(false) }
   }
 
   // Niveaux distincts présents (pour le filtre).
@@ -294,23 +249,9 @@ export default function RelancesPage() {
             </select>
           </label>
           {selCount > 0 && (
-            /* VX116 — deux options : consigner seule (inchangé) ou consigner
-               + aperçu WhatsApp par client en séquence (jamais d'auto-envoi). */
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button size="sm" loading={bulkBusy}>
-                  Consigner pour la sélection ({selCount})
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
-                <DropdownMenuItem onClick={relancerSelection}>
-                  Consigner uniquement
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={relancerSelectionAvecWhatsapp}>
-                  Consigner + aperçu WhatsApp pour chacun
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <Button size="sm" loading={bulkBusy} onClick={relancerSelection}>
+              Consigner pour la sélection ({selCount})
+            </Button>
           )}
           {/* L851 — langue des rappels WhatsApp (FR par défaut). */}
           <div role="group" aria-label="Langue des rappels WhatsApp"
@@ -453,16 +394,14 @@ export default function RelancesPage() {
         </Card>
       )}
 
-      {/* ── L852/VX116 — Aperçu du rappel WhatsApp avant ouverture de wa.me,
-          un par client en séquence quand appelé depuis la relance en lot ── */}
-      <Dialog open={!!waPreview} onOpenChange={(o) => { if (!o) annulerApercuWhatsApp() }}>
+      {/* ── L852 — Aperçu du rappel WhatsApp avant ouverture de wa.me ── */}
+      <Dialog open={!!waPreview} onOpenChange={(o) => { if (!o) setWaPreview(null) }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Aperçu du rappel WhatsApp — {waPreview?.reference}</DialogTitle>
             <DialogDescription>
               {waLangue === 'darija' ? 'Variante Darija' : 'Variante Français'}
               {' '}— vérifiez le texte et le lien, puis ouvrez WhatsApp.
-              {waQueue.length > 1 && ` (${waQueue.length} restantes dans la file)`}
             </DialogDescription>
           </DialogHeader>
           <pre className="m-0 whitespace-pre-wrap break-words rounded-lg bg-muted p-3 text-sm"
@@ -475,7 +414,7 @@ export default function RelancesPage() {
             </p>
           )}
           <DialogFooter>
-            <Button type="button" variant="ghost" onClick={annulerApercuWhatsApp}>Annuler</Button>
+            <Button type="button" variant="ghost" onClick={() => setWaPreview(null)}>Annuler</Button>
             <Button type="button" variant="success" disabled={!waPreview?.wa_url}
                     onClick={ouvrirWhatsApp}>
               <MessageCircle /> Ouvrir WhatsApp
