@@ -523,12 +523,6 @@ export default function FactureList() {
   const [payCreerUnAutre, setPayCreerUnAutre] = useState(() => lireCreerUnAutrePaiement())
   const payMontantRef = useRef(null)
 
-  // VX114 — modale « Export comptable » (remplace les deux window.prompt()).
-  const [showExportComptable, setShowExportComptable] = useState(false)
-  const [exportComptableStart, setExportComptableStart] = useState(
-    new Date().toISOString().slice(0, 8) + '01')
-  const [exportComptableEnd, setExportComptableEnd] = useState(today)
-
   // Chatter facture (avoirs + paiements) chargé à l'ouverture de la modale.
   const [factureActivites, setFactureActivites] = useState([])
   const loadActivites = async (id) => {
@@ -717,12 +711,13 @@ export default function FactureList() {
 
   // Export comptable DGI (groundwork) : factures validées d'une plage, en
   // .xlsx ET .csv (ventilation TVA par ligne + ICE + totaux). Borné société.
-  // VX114 — les dates viennent désormais de la modale (plus de window.prompt()).
-  const handleExportComptable = async (e) => {
-    e?.preventDefault?.()
-    const start = exportComptableStart
-    const end = exportComptableEnd
-    if (!start || !end) return
+  const handleExportComptable = async () => {
+    const start = window.prompt('Export comptable — date de début (AAAA-MM-JJ) :',
+      new Date().toISOString().slice(0, 8) + '01')
+    if (!start) return
+    const end = window.prompt('Date de fin (exclue, AAAA-MM-JJ) :',
+      new Date().toISOString().slice(0, 10))
+    if (!end) return
     const dl = async (fmt, ext) => {
       const res = await api.get('/ventes/export-comptable/', {
         params: { start, end, fmt }, responseType: 'blob',
@@ -732,7 +727,6 @@ export default function FactureList() {
     try {
       await dl('xlsx', 'xlsx')
       await dl('csv', 'csv')
-      setShowExportComptable(false)
     } catch {
       alert('Export comptable impossible.')
     }
@@ -1271,38 +1265,6 @@ export default function FactureList() {
               Avoir total
             </Button>
           </FormActions>
-        </DialogContent>
-      </Dialog>
-
-      {/* ── VX114 — Export comptable : sélecteur de dates (remplace window.prompt) ── */}
-      <Dialog open={showExportComptable} onOpenChange={setShowExportComptable}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Export comptable</DialogTitle>
-            <DialogDescription>
-              Factures validées sur la plage choisie, en Excel et CSV (ventilation TVA + ICE + totaux).
-            </DialogDescription>
-          </DialogHeader>
-          <Form onSubmit={handleExportComptable} className="gap-4">
-            <FormField label="Date de début" required htmlFor="export-comptable-start">
-              <Input id="export-comptable-start" type="date" required
-                     value={exportComptableStart}
-                     onChange={e => setExportComptableStart(e.target.value)} />
-            </FormField>
-            <FormField label="Date de fin (exclue)" required htmlFor="export-comptable-end">
-              <Input id="export-comptable-end" type="date" required
-                     value={exportComptableEnd}
-                     onChange={e => setExportComptableEnd(e.target.value)} />
-            </FormField>
-            <FormActions sticky={false}>
-              <Button type="button" variant="ghost" onClick={() => setShowExportComptable(false)}>
-                Annuler
-              </Button>
-              <Button type="submit">
-                <Download /> Exporter
-              </Button>
-            </FormActions>
-          </Form>
         </DialogContent>
       </Dialog>
 
