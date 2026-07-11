@@ -3587,6 +3587,21 @@ textarea.form-control {
 
 .lead-head-owner { display: inline-flex; align-items: center; margin-right: 4px; }
 
+/* VX24 — LeadSummaryBar : bandeau de faits clés (score, montant estimé,
+   prochaine activité, jours depuis modif.) façon Attio, en tête de fiche. */
+.lead-summary-bar {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  padding: 8px 20px;
+  font-size: 0.82rem;
+  color: var(--muted-foreground, #475569);
+  border-bottom: 1px solid var(--border, #e2e8f0);
+}
+
+.lead-summary-item { display: inline-flex; align-items: center; gap: 4px; }
+
 /* Barre d'actions sous l'entête : facture inline (gauche) + devis (droite). */
 .lead-subbar {
   display: flex;

@@ -12,6 +12,8 @@ import {
 } from '../../../../features/crm/stages'
 import AssigneePicker from '../../../../components/AssigneePicker'
 import { telHref, waHref } from '../../../../lib/contactLinks'
+// VX24 — score de qualité désormais aussi visible sur la carte (ex Liste seule).
+import ScoreBadge from '../../../../features/crm/ScoreBadge'
 
 // VX43 — Swipe-to-action horizontal maison (touchstart/move/end, zéro
 // dépendance). Les liens tel:/wa.me existaient déjà mais en texte 12px noyé
@@ -159,6 +161,25 @@ export default function LeadCard({
   const jInactif = joursInactif(lead.date_modification)
   const inactif = jInactif != null && jInactif >= INACTIF_JOURS && !perdu
   const action = prochaineAction(lead)
+  // VX24 — anatomie de carte à 2 niveaux : UNE seule pilule d'alerte
+  // prioritaire au premier plan (perdu > rappel > expiré) au lieu d'empiler
+  // jusqu'à 3 pilules en tête de carte. « Inactif N j » + horloge d'activité
+  // sont relégués en pied de carte (kb-card-foot), discrets.
+  const alertePill = perdu
+    ? { key: 'perdu', label: 'Perdu', className: 'kb-badge-perdu' }
+    : lead.contact_preference === 'phone_ok'
+      ? {
+          key: 'rappel', label: '☎ Rappel demandé',
+          className: 'kb-badge-rappel rounded-full bg-info/15 px-1.5 py-0.5 text-info',
+          title: 'Le client a demandé à être rappelé par téléphone',
+        }
+      : dernierDevisExpire
+        ? {
+            key: 'expire', label: 'Devis expiré',
+            className: 'kb-badge-expire rounded-full bg-warning/15 px-1.5 py-0.5 text-warning',
+            title: 'Le dernier devis du lead est expiré',
+          }
+        : null
   const tel = telHref(lead.telephone)
   const wa = waHref(lead.whatsapp)
   // QX31 — minuteur premier contact : uniquement en colonne NEW (dès que le
@@ -260,37 +281,11 @@ export default function LeadCard({
           />
         )}
         <span className="kb-card-name">{nomComplet}</span>
-        {perdu && <span className="kb-badge-perdu">Perdu</span>}
-        {lead.contact_preference === 'phone_ok' && (
-          <span
-            className="kb-badge-rappel rounded-full bg-info/15 px-1.5 py-0.5 text-info"
-            title="Le client a demandé à être rappelé par téléphone"
-          >
-            ☎ Rappel demandé
-          </span>
-        )}
-        {dernierDevisExpire && (
-          <span
-            className="kb-badge-expire rounded-full bg-warning/15 px-1.5 py-0.5 text-warning"
-            title="Le dernier devis du lead est expiré"
-          >
-            Devis expiré
-          </span>
-        )}
-        {inactif && (
-          <span
-            className="kb-badge-inactif rounded-full bg-muted px-1.5 py-0.5 text-muted-foreground"
-            title={`Aucune modification depuis ${jInactif} jours`}
-          >
-            Inactif {jInactif} j
-          </span>
-        )}
-        {lead.next_activity && (
-          <span
-            className={`kb-act-clock ${lead.next_activity.state}`}
-            title={`Activité ${lead.next_activity.summary} — ${lead.next_activity.due_date}`}
-          >
-            ⏰
+        <ScoreBadge lead={lead} />
+        {/* VX24 — une seule pilule d'alerte prioritaire (perdu > rappel > expiré) */}
+        {alertePill && (
+          <span className={alertePill.className} title={alertePill.title}>
+            {alertePill.label}
           </span>
         )}
         <button
@@ -482,6 +477,25 @@ export default function LeadCard({
             title="Date de relance"
           >
             📅 {formatDateFr(lead.relance_date)}
+          </span>
+        )}
+        {/* VX24 — « Inactif N j » relégué en pied de carte, discret (n'était
+            plus une pilule de tête à côté de perdu/rappel/expiré). */}
+        {inactif && (
+          <span
+            className="kb-foot-inactif text-[11px] text-muted-foreground"
+            title={`Aucune modification depuis ${jInactif} jours`}
+          >
+            Inactif {jInactif} j
+          </span>
+        )}
+        {/* VX24 — horloge d'activité reléguée au pied, même traitement discret. */}
+        {lead.next_activity && (
+          <span
+            className={`kb-act-clock kb-foot-clock ${lead.next_activity.state}`}
+            title={`Activité ${lead.next_activity.summary} — ${lead.next_activity.due_date}`}
+          >
+            ⏰
           </span>
         )}
         <span

@@ -26,6 +26,8 @@ import {
   CONVERSION_STAGE, STAGE_LABELS, PRIORITE_LABELS, TYPE_INSTALLATION_LABELS,
 } from '../../features/crm/stages'
 import useCanaux from '../../features/crm/useCanaux'
+// VX24 — bandeau de faits clés (LeadSummaryBar) réutilise le même ScoreBadge.
+import ScoreBadge from '../../features/crm/ScoreBadge'
 import useKeyboardAwareScroll from '../../hooks/useKeyboardAwareScroll'
 import {
   Button, Input, FormSection, FormField,
@@ -136,6 +138,44 @@ const buildNavSections = ({ agricole, isEdit, hasWebOrigin, dupCount = 0 }) => {
 }
 
 // VX23 — timeAgo() déménagé dans ChatterTimeline.jsx (seul consommateur).
+
+// VX24 — nombre de jours entiers depuis une date ISO (ou null si absente).
+function joursDepuis(iso) {
+  if (!iso) return null
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return null
+  const jours = Math.floor((Date.now() - d.getTime()) / 86400000)
+  return jours >= 0 ? jours : null
+}
+
+// VX24 — LeadSummaryBar : le bandeau de faits clés façon Attio, en tête de
+// fiche. Score, montant estimé, prochaine activité, jours depuis dernière
+// modification — les 4 faits qui comptent pour préparer un appel, visibles
+// sans avoir à scroller dans les sections détaillées.
+function LeadSummaryBar({ lead }) {
+  if (!lead) return null
+  const jours = joursDepuis(lead.date_modification)
+  const montant = lead.montant_estime != null && lead.montant_estime !== ''
+    ? formatMAD(parseFloat(lead.montant_estime)) : null
+  return (
+    <div className="lead-summary-bar" data-testid="lead-summary-bar">
+      <span className="lead-summary-item" title="Score de qualité du lead">
+        <ScoreBadge lead={lead} />
+      </span>
+      <span className="lead-summary-item" title="Montant estimé (avant devis)">
+        {montant ?? '—'}
+      </span>
+      <span className="lead-summary-item" title="Prochaine activité planifiée">
+        {lead.next_activity
+          ? `⏰ ${lead.next_activity.summary} — ${lead.next_activity.due_date}`
+          : 'Aucune activité planifiée'}
+      </span>
+      <span className="lead-summary-item" title="Jours depuis la dernière modification">
+        {jours != null ? `Modifié il y a ${jours} j` : '—'}
+      </span>
+    </div>
+  )
+}
 
 export default function LeadForm({
   lead = null, onClose, onSaved, initialDevis = null, onOpenDuplicate = null,
@@ -697,6 +737,11 @@ export default function LeadForm({
             )}
           </div>
         )}
+
+        {/* VX24 — bandeau de faits clés (LeadSummaryBar) : score, montant
+            estimé, prochaine activité, jours depuis dernière modification —
+            les 4 faits qui comptent, visibles sans scroller. */}
+        {isEdit && <LeadSummaryBar lead={liveLead} />}
 
         {/* ── Barre d'actions devis (style Odoo) — tout reste dans la fiche ── */}
         {isEdit && (
