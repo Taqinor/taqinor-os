@@ -30,6 +30,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '../../ui'
 import { useCanCreateProduit } from '../../hooks/useHasPermission'
+import useKeyboardAwareScroll from '../../hooks/useKeyboardAwareScroll'
 import {
   MONTHS_FR, CHART_MONTHS, DEFAULT_MONTHLY_BILLS, DAY_USAGE_DEFAULTS,
   formatMoney, estimerMois, estimerPanneaux, computeROI, ttcFromHt, htFromTtc,
@@ -138,6 +139,8 @@ export default function DevisGenerator({
   // pour tout autre rôle la désignation est en lecture seule (verrouillée au
   // nom du produit lié). Le backend reste la seule garde qui compte.
   const canRenameLine = useCanCreateProduit()
+  // VX51 — un champ bas de page ne doit plus rester caché sous le clavier iOS.
+  useKeyboardAwareScroll()
   // Dialogue « renommer ici seulement » vs « créer un nouveau produit ».
   // { key, ancienNom, nouveauNom, produitId } quand ouvert, sinon null.
   const [renameDialog, setRenameDialog] = useState(null)
