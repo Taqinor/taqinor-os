@@ -14,11 +14,15 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Bell, Clock, ShieldCheck, Banknote, X, BellRing, Check, Settings,
-  CalendarClock, RefreshCw,
+  CalendarClock, RefreshCw, Inbox,
 } from 'lucide-react'
 import reportingApi from '../../api/reportingApi'
 import notificationsApi from '../../api/notificationsApi'
 import { toastInfo } from '../../lib/toast'
+// VX86 — compteur partagé des approbations en attente (même source que le
+// badge nav Sidebar et la carte Dashboard) : rangée « N approbations » en
+// tête de la cloche.
+import { useApprobationsCount } from '../../hooks/useApprobationsCount'
 
 // Bip court (Web Audio) joué à l'arrivée d'une nouvelle notification quand
 // l'app est ouverte. Best-effort : échoue silencieusement si l'autoplay audio
@@ -96,6 +100,10 @@ export default function NotificationBell() {
   // notification (compteur en hausse) pour déclencher le bip + le toast.
   const prevUnreadRef = useRef(null)
   const navigate = useNavigate()
+  // VX86 — même hook que le badge nav Sidebar et la carte Dashboard : un seul
+  // total cohérent affiché partout.
+  const { total: approbationsTotal, loading: approbationsLoading, error: approbationsError } = useApprobationsCount()
+  const showApprobationsRow = !approbationsLoading && !approbationsError && approbationsTotal > 0
 
   // Recharge la liste in-app persistée (best-effort).
   const refreshFeed = () => {
@@ -257,10 +265,29 @@ export default function NotificationBell() {
             <div className="nb-empty nb-error" role="alert">
               Notifications indisponibles
             </div>
-          ) : feed.length === 0 && (!data || derivedTotal === 0) ? (
+          ) : feed.length === 0 && (!data || derivedTotal === 0) && !showApprobationsRow ? (
             <div className="nb-empty">Rien à signaler 🎉</div>
           ) : (
             <>
+              {/* VX86 — rangée « N approbations », EN TÊTE (avant les autres
+                  groupes) : l'inbox d'approbations dort sinon dans la section
+                  ANALYSE de la sidebar sans jamais apparaître ici. */}
+              {showApprobationsRow && (
+                <div className="nb-group">
+                  <div className="nb-group-title">
+                    <Inbox size={13} aria-hidden="true" /> Approbations
+                  </div>
+                  <button
+                    type="button"
+                    className="nb-item"
+                    onClick={() => goto('/approbations')}
+                  >
+                    <span className="nb-overdue">
+                      {approbationsTotal} approbation{approbationsTotal > 1 ? 's' : ''} en attente
+                    </span>
+                  </button>
+                </div>
+              )}
               {feed.length > 0 && (
                 <div className="nb-group">
                   <div className="nb-group-title">

@@ -1,7 +1,9 @@
 import api from './axios'
 
 const crmApi = {
-  getClients: (params) => api.get('/crm/clients/', { params }),
+  // VX55 — `config` optionnel (ex. { signal }) pour l'annulation
+  // AbortController câblée depuis les thunks (createAsyncThunk {signal}).
+  getClients: (params, config) => api.get('/crm/clients/', { params, ...config }),
   getClient: (id) => api.get(`/crm/clients/${id}/`),
   // QC1 — autocomplete entreprise sur les données PROPRES de la société
   // (clients + fournisseurs + leads, recherche floue nom/ICE, scopée société).
@@ -20,7 +22,8 @@ const crmApi = {
   getClientConsolidation: (id) => api.get(`/crm/clients/${id}/consolidation/`),
 
   // Leads / opportunities
-  getLeads: (params) => api.get('/crm/leads/', { params }),
+  // VX55 — même `config` optionnel (signal d'annulation) que getClients.
+  getLeads: (params, config) => api.get('/crm/leads/', { params, ...config }),
   getLead: (id) => api.get(`/crm/leads/${id}/`),
   createLead: (data) => api.post('/crm/leads/', data),
   updateLead: (id, data) => api.patch(`/crm/leads/${id}/`, data),

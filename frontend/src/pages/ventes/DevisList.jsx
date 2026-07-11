@@ -1097,7 +1097,12 @@ export default function DevisList() {
     }
   }
 
-  useEffect(() => { dispatch(fetchDevis()) }, [dispatch])
+  // VX55 — annule la requête en vol au démontage : sans ça, une réponse tardive
+  // (3G qui cale) peut écraser l'état d'un AUTRE écran après navigation.
+  useEffect(() => {
+    const thunk = dispatch(fetchDevis())
+    return () => thunk?.abort?.()
+  }, [dispatch])
 
   // QX12 — une fois les devis chargés, fait défiler jusqu'à la ligne ciblée par
   // ?devis=<pk> et efface le paramètre après un court délai (la surbrillance

@@ -15,6 +15,8 @@ import { logoutUser } from '../../features/auth/store/authSlice'
 import { moduleNavSections } from '../../router/moduleRoutes'
 // N93 — libellés de la coquille traduits (nav + sections). FR = repli.
 import { useT } from '../../i18n'
+// VX86 — compteur partagé des approbations en attente (badge nav discret).
+import { useApprobationsCount } from '../../hooks/useApprobationsCount'
 // VX157 — pastille d'impact du parc (production + CO₂ évité cumulés),
 // chargée PARESSEUSEMENT : le composant fait son propre appel API et rend
 // null tant que rien n'est disponible, donc aucun coût/flash pour les écrans
@@ -238,6 +240,10 @@ export default function Sidebar({ collapsed, onToggle, onNavigate }) {
   const companyName = useSelector((s) => s.parametres.profile?.nom) || 'TAQINOR ERP'
   const roleMeta    = ROLE_META[role] ?? ROLE_META.normal
   const t           = useT()
+  // VX86 — badge numérique sur l'item « Approbations » : masqué à 0/erreur/
+  // chargement (jamais un « 0 » affiché avant que le compteur réel arrive).
+  const { total: approbationsTotal, loading: approbationsLoading, error: approbationsError } = useApprobationsCount()
+  const showApprobationsBadge = !approbationsLoading && !approbationsError && approbationsTotal > 0
 
   // N93 — traduit un libellé de la coquille via sa clé i18n, en gardant le
   // libellé FR en dur comme repli (modules « coquille » sans clé → FR inchangé).
@@ -327,6 +333,15 @@ export default function Sidebar({ collapsed, onToggle, onNavigate }) {
                 >
                   <span className="sidebar-nav-icon">{item.icon}</span>
                   {!collapsed && <span className="sidebar-nav-label">{label}</span>}
+                  {/* VX86 — pastille de compte sur « Approbations » (nav + tiroir replié). */}
+                  {item.to === '/approbations' && showApprobationsBadge && (
+                    <span
+                      className="sidebar-nav-badge"
+                      aria-label={`${approbationsTotal} approbation${approbationsTotal > 1 ? 's' : ''} en attente`}
+                    >
+                      {approbationsTotal > 99 ? '99+' : approbationsTotal}
+                    </span>
+                  )}
                 </NavLink>
                 )
               })}

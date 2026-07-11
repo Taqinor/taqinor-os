@@ -2,6 +2,9 @@ import { lazy, Suspense, useEffect, useMemo } from 'react'
 
 const ActivityFeedWidget = lazy(() => import('../components/ActivityFeedWidget'))
 const MesEquipesCard = lazy(() => import('../components/MesEquipesCard'))
+// VX86 — carte « Attend votre décision » (boîte d'approbations centralisée),
+// chargée paresseusement comme les autres compléments autonomes du Dashboard.
+const ApprobationsAttentionCard = lazy(() => import('../components/ApprobationsAttentionCard'))
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -420,6 +423,15 @@ export function Component() {
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">Vue d'ensemble de votre activité</p>
       </header>
+
+      {/* VX86 — carte « Attend votre décision » : autonome, se masque elle-même
+          si rien n'attend l'utilisateur ; indépendante des sources loading/
+          error ci-dessous (approbations n'a rien à voir avec stock/crm/ventes). */}
+      <div className="mb-4 sm:mb-5">
+        <Suspense fallback={null}>
+          <ApprobationsAttentionCard />
+        </Suspense>
+      </div>
 
       {showError ? (
         <Card>

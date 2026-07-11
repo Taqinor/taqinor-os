@@ -34,7 +34,6 @@ export async function fetchAllPages(fetchPage, { concurrency = 20, maxPages = 20
       for (let i = 0; i < concurrency && page <= maxPages; i += 1, page += 1) {
         batchPages.push(page)
       }
-      // eslint-disable-next-line no-await-in-loop -- lots bornés voulus, pas un aller-retour par page
       const batch = await Promise.all(batchPages.map((p) => fetchPage(p)))
       for (const data of batch) {
         if (data?.results?.length) results.push(...data.results)
@@ -51,7 +50,6 @@ export async function fetchAllPages(fetchPage, { concurrency = 20, maxPages = 20
   for (let start = 2; start <= totalPages; start += concurrency) {
     const batchPages = []
     for (let p = start; p < start + concurrency && p <= totalPages; p += 1) batchPages.push(p)
-    // eslint-disable-next-line no-await-in-loop -- lots bornés voulus
     const batch = await Promise.all(batchPages.map((p) => fetchPage(p)))
     for (const data of batch) {
       if (data?.results) results.push(...data.results)

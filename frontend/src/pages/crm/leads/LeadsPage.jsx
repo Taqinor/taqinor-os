@@ -146,8 +146,12 @@ export default function LeadsPage() {
   // Le filtre « Archivés » est une dimension SERVEUR : on refait l'appel avec
   // le bon paramètre quand il change (les autres filtres restent côté client).
   const refetch = () => dispatch(fetchLeads(archivedParam(filters.archived)))
+  // VX55 — annule la requête en vol au démontage / changement de filtre : sans
+  // ça, une réponse tardive (3G qui cale) peut écraser l'état d'un AUTRE écran
+  // après navigation. `thunk.abort()` coupe le signal jusqu'à axios.
   useEffect(() => {
-    dispatch(fetchLeads(archivedParam(filters.archived)))
+    const thunk = dispatch(fetchLeads(archivedParam(filters.archived)))
+    return () => thunk?.abort?.()
   }, [dispatch, filters.archived])
 
   // Lien profond depuis les ventes : /crm/leads?lead=<id> ouvre la fiche du

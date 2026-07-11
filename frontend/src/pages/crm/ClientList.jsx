@@ -60,7 +60,12 @@ export default function ClientList() {
   // Panneau détail (lecture) : devis / factures / chantiers du client cliqué.
   const [detailClient, setDetailClient] = useState(null)
 
-  useEffect(() => { dispatch(fetchClients()) }, [dispatch])
+  // VX55 — annule la requête en vol au démontage : sans ça, une réponse tardive
+  // (3G qui cale) peut écraser l'état d'un AUTRE écran après navigation.
+  useEffect(() => {
+    const thunk = dispatch(fetchClients())
+    return () => thunk?.abort?.()
+  }, [dispatch])
 
   // Filtre segmenté par type (Particulier / Entreprise), appliqué avant le
   // DataTable (qui garde sa propre recherche/tri/export sur le sous-ensemble).
