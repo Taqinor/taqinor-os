@@ -189,7 +189,12 @@ class Client(models.Model):
         super().save(*args, **kwargs)
         if is_new and not self.code_parrainage:
             self.code_parrainage = f'TQ-{self.pk}'
-            super().save(update_fields=['code_parrainage'])
+            # QX35 — écrire via QuerySet.update() plutôt qu'un 2ᵉ save() : un
+            # second save() re-déclenche le post_save (le miroir tiers ARC18
+            # créerait alors un DOUBLON pour un client sans clé). .update() pose
+            # le champ en base sans signal ; l'instance le porte déjà.
+            type(self).objects.filter(pk=self.pk).update(
+                code_parrainage=self.code_parrainage)
 
     def clean(self):
         super().clean()

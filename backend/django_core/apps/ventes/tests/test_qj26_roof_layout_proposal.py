@@ -156,8 +156,16 @@ class TestProposalRoofLayoutPayload(TestCase):
         devis = make_devis(self.company, self.user, self.client_obj,
                            'DEV-QJ26-LEAK', roof_layout=sample_layout())
         resp = self._get_payload(devis)
-        raw = json.dumps(resp.json())
-        self.assertNotIn('9999', raw)
+        pj = resp.json()
+        raw = json.dumps(pj)
+        # Diagnostic ciblé : si une fuite subsiste, dire EXACTEMENT dans quelle
+        # clé de la charge utile le prix d'achat apparaît (localisation directe).
+        leak_keys = [k for k in (pj or {})
+                     if '9999' in json.dumps(pj.get(k), default=str)]
+        self.assertNotIn(
+            '9999', raw,
+            msg=f"prix d'achat 9999 fuité — clés de charge utile concernées : "
+                f"{leak_keys}")
         self.assertNotIn('prix_achat', raw)
 
 

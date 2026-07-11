@@ -336,7 +336,7 @@ def page_footer(data: dict, ident: dict | None = None, total_pages: int = 3) -> 
     site = ident.get("site") or _DEFAULT_SITE
     return f"""
 <div class="foot">
-  <div><b>{ident['brand']}</b> &nbsp;·&nbsp; {ident['email']} &nbsp;·&nbsp; {ident['phone']}</div>
+  <div><b>{ident['brand_name']}</b> &nbsp;·&nbsp; {ident['email']} &nbsp;·&nbsp; {ident['phone']}</div>
   <div>Page {{page}} / {total_pages} &nbsp;·&nbsp; Réf. {data['ref']} &nbsp;·&nbsp; <a>{site}</a></div>
 </div>
 """
