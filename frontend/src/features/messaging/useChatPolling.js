@@ -5,6 +5,12 @@ import {
   fetchUnreadCount,
   fetchMessages,
 } from './store/messagingSlice'
+// VX56 — cadence + suspension à la visibilité de l'onglet extraites dans un
+// hook partagé (ce fichier en était le patron d'origine ; `NotificationBell`
+// gaspillait radio/batterie/données sur un onglet caché faute de la même
+// garde). Ce fichier ne garde que ce qui lui est propre : la RÉSOLUTION des
+// trois sondages (Redux) + le suivi d'échecs PAR source.
+import useVisibilityAwarePolling from '../../hooks/useVisibilityAwarePolling'
 
 // VX204 — rien ne détectait une SÉRIE d'échecs de sondage (silence total :
 // aucun `.catch`). Chaque source (liste / non-lus / messages actifs) a son
@@ -18,21 +24,12 @@ const STALL_THRESHOLD = 3
 //   • liste des conversations : plus lent (~15 s),
 //   • compteur de non-lus (badge) : ~20 s.
 // Le sondage est SUSPENDU quand l'onglet est masqué (visibilitychange) et
-// reprend — avec un rafraîchissement immédiat — au retour. Aucune dépendance
-// nouvelle : setInterval + l'API Page Visibility du navigateur.
+// reprend — avec un rafraîchissement immédiat — au retour, via
+// `useVisibilityAwarePolling` (VX56).
 
 export const ACTIVE_POLL_MS = 3000
 export const LIST_POLL_MS = 15000
 export const UNREAD_POLL_MS = 20000
-
-// Lecture défensive de la visibilité (jsdom/SSR : on suppose visible).
-function isHidden() {
-  try {
-    return typeof document !== 'undefined' && document.visibilityState === 'hidden'
-  } catch {
-    return false
-  }
-}
 
 export default function useChatPolling(
   activeConversationId,
@@ -49,7 +46,6 @@ export default function useChatPolling(
   // Référence stable de l'id actif pour les callbacks d'intervalle. On la met à
   // jour dans un effet (jamais pendant le rendu).
   const activeRef = useRef(activeConversationId)
-  const timersRef = useRef([])
   // Un compteur d'échecs consécutifs PAR source de sondage.
   const failCountsRef = useRef({ list: 0, unread: 0, active: 0 })
   const [stalled, setStalled] = useState(false)
@@ -70,73 +66,27 @@ export default function useChatPolling(
   }
 
   const pollActive = () => {
-    if (isHidden()) return
     const id = activeRef.current
     if (id != null) dispatch(fetchMessages({ conversationId: id })).then(trackResult('active'))
   }
   const pollList = () => {
-    if (isHidden()) return
     dispatch(fetchConversations()).then(trackResult('list'))
   }
   const pollUnread = () => {
-    if (isHidden()) return
     dispatch(fetchUnreadCount()).then(trackResult('unread'))
   }
 
-  // Reprise manuelle : relance immédiatement les trois sondages (l'utilisateur
-  // clique l'indicateur « Mise à jour interrompue »).
-  const resume = () => {
-    pollList()
-    pollUnread()
-    pollActive()
-  }
-
-  const stop = () => {
-    timersRef.current.forEach((t) => clearInterval(t))
-    timersRef.current = []
-  }
-
-  const start = () => {
-    stop()
-    if (!enabled) return
-    timersRef.current = [
-      setInterval(pollActive, activeMs),
-      setInterval(pollList, listMs),
-      setInterval(pollUnread, unreadMs),
-    ]
-  }
-
-  useEffect(() => {
-    if (!enabled) {
-      stop()
-      return undefined
-    }
-    // Amorçage immédiat (sauf si onglet masqué) puis démarrage des intervalles.
-    pollList()
-    pollUnread()
-    pollActive()
-    start()
-
-    const onVisibility = () => {
-      if (isHidden()) {
-        // Onglet masqué : on coupe les intervalles pour ne rien sonder.
-        stop()
-      } else {
-        // Retour au premier plan : rafraîchit tout de suite puis relance.
-        pollList()
-        pollUnread()
-        pollActive()
-        start()
-      }
-    }
-
-    document.addEventListener('visibilitychange', onVisibility)
-    return () => {
-      document.removeEventListener('visibilitychange', onVisibility)
-      stop()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeConversationId, enabled, activeMs, listMs, unreadMs])
+  // VX56 — la garde de visibilité (amorçage immédiat, suspension sur onglet
+  // caché, rafraîchissement immédiat au retour) vit désormais dans le hook
+  // partagé ; ce hook ne fournit que les TROIS tâches + leur cadence.
+  const { resume } = useVisibilityAwarePolling(
+    [
+      { fn: pollActive, intervalMs: activeMs },
+      { fn: pollList, intervalMs: listMs },
+      { fn: pollUnread, intervalMs: unreadMs },
+    ],
+    { enabled },
+  )
 
   return { stalled, resume }
 }

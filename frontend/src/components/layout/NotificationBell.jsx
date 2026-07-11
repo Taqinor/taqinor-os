@@ -23,6 +23,9 @@ import { toastInfo } from '../../lib/toast'
 // badge nav Sidebar et la carte Dashboard) : rangée « N approbations » en
 // tête de la cloche.
 import { useApprobationsCount } from '../../hooks/useApprobationsCount'
+// VX56 — sondage sensible à la visibilité de l'onglet (patron partagé avec
+// `useChatPolling`) : cesse de sonder un onglet caché.
+import useVisibilityAwarePolling from '../../hooks/useVisibilityAwarePolling'
 
 // Bip court (Web Audio) joué à l'arrivée d'une nouvelle notification quand
 // l'app est ouverte. Best-effort : échoue silencieusement si l'autoplay audio
@@ -192,22 +195,19 @@ export default function NotificationBell() {
       .catch(() => { setData(null); setDerivedError(true) })
       .finally(() => setLoaded(true))
     refreshFeed()
-    checkUnread()
   }
 
-  useEffect(() => {
-    load()
-    // Rafraîchissement complet (alertes dérivées + feed) toutes les 3 min.
-    const ivFull = setInterval(load, 3 * 60 * 1000)
-    // Sondage léger du compteur toutes les 30 s → alerte sonore + toast quasi
-    // temps réel dès qu'une notification arrive, app ouverte.
-    const ivPoll = setInterval(checkUnread, 30 * 1000)
-    return () => { clearInterval(ivFull); clearInterval(ivPoll) }
-    // mount-only: install the two intervals once; `load`/`checkUnread` are
-    // re-created each render but read via closure, re-running this on every
-    // render would restart both timers continuously.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  // VX56 — les deux cadences (rafraîchissement complet 3 min, sondage léger
+  // 30 s) sont désormais SUSPENDUES quand l'onglet est masqué et rafraîchies
+  // immédiatement au retour, via le hook partagé avec `useChatPolling`.
+  // `checkUnread` n'est plus appelé À L'INTÉRIEUR de `load` (VX56) : le hook
+  // partagé les programme déjà tous les deux au montage — les enchaîner ici
+  // aurait doublé chaque appel (mount + tous les ~3 min quand les deux
+  // cadences coïncident).
+  const { resume: resumePolling } = useVisibilityAwarePolling([
+    { fn: load, intervalMs: 3 * 60 * 1000 },
+    { fn: checkUnread, intervalMs: 30 * 1000 },
+  ])
 
   // Marque une notification persistée comme lue, puis recharge le compteur.
   // On ne met à jour l'UI QUE si le serveur a confirmé (succès) : un échec ne
@@ -279,7 +279,7 @@ export default function NotificationBell() {
             <button
               type="button"
               className="nb-stalled"
-              onClick={() => { unreadFailRef.current = 0; setStalled(false); checkUnread() }}
+              onClick={() => { unreadFailRef.current = 0; setStalled(false); resumePolling() }}
             >
               Mise à jour interrompue — reprendre
             </button>
