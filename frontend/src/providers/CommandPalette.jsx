@@ -16,46 +16,25 @@ import { Search } from 'lucide-react'
 import {
   Dialog, DialogContent, DialogTitle, DialogDescription,
 } from '../ui/Dialog'
-import reportingApi from '../api/reportingApi'
 import { filterActions, readRecentEntities, pushRecentEntity } from './commandActions'
-
-// Route d'ouverture par type d'entité (aligné sur router/index.jsx). `produit`
-// est inclus pour le jour où le back le renvoie ; il pointe vers le stock.
-const ROUTE = {
-  lead: (id) => `/crm/leads?lead=${id}`,
-  client: () => '/crm',
-  devis: () => '/ventes/devis',
-  facture: () => '/ventes/factures',
-  chantier: () => '/chantiers',
-  equipement: () => '/equipements',
-  ticket: () => '/sav',
-  produit: () => '/stock',
-}
-
-// Libellé de groupe par type d'entité — sert d'étiquette discrète aux récents.
-const TYPE_LABEL = {
-  lead: 'Lead',
-  client: 'Client',
-  devis: 'Devis',
-  facture: 'Facture',
-  chantier: 'Chantier',
-  equipement: 'Équipement',
-  ticket: 'SAV',
-  produit: 'Produit',
-}
+// VX13 — ROUTE/TYPE_LABEL + recherche débouncée mutualisés avec GlobalSearch
+// (barre du haut) : plus aucune table dupliquée (cf. lib/search/entityRoutes.js).
+import { ROUTE, TYPE_LABEL, useEntitySearch } from '../lib/search/entityRoutes'
 
 export function CommandPalette() {
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
-  const [groups, setGroups] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(false)
   const [active, setActive] = useState(0)
   const inputRef = useRef(null)
   const listRef = useRef(null)
   const navigate = useNavigate()
 
   const term = q.trim()
+  // VX13 — recherche débouncée mutualisée (cf. lib/search/entityRoutes.js) ;
+  // `enabled: open` préserve le comportement d'origine (aucune requête tant
+  // que la palette est fermée). `failed` renommé `error` au point d'usage pour
+  // ne rien changer au reste du composant.
+  const { groups, loading, failed: error } = useEntitySearch(term, { enabled: open })
   const actions = useMemo(() => filterActions(term), [term])
   // Récents (entités ouvertes via la palette) relus à chaque ouverture — DÉRIVÉS
   // via useMemo, donc aucun setState synchrone dans un effet (règle lint).
@@ -102,8 +81,6 @@ export function CommandPalette() {
   const close = useCallback(() => {
     setOpen(false)
     setQ('')
-    setGroups([])
-    setError(false)
     setActive(0)
   }, [])
 
@@ -133,24 +110,14 @@ export function CommandPalette() {
     return () => clearTimeout(t)
   }, [open])
 
-  // ── Recherche débouncée (~250 ms) ───────────────────────────────────────────
-  // Tous les setState vivent DANS le callback différé (asynchrone) — aucun
-  // setState synchrone dans le corps de l'effet (motif GlobalSearch).
+  // VX13 — la recherche elle-même vit dans useEntitySearch (débounce ~250 ms,
+  // cf. lib/search/entityRoutes.js) ; on garde ici SEULEMENT la remise à zéro
+  // de la sélection clavier à chaque nouvelle requête (comportement
+  // byte-identique à l'ancien effet local, qui remettait `active` à 0 au
+  // lancement ET à l'arrivée de la réponse).
   useEffect(() => {
-    if (!open) return undefined
-    const t = setTimeout(() => {
-      if (term.length < 2) {
-        setGroups([]); setLoading(false); setError(false); setActive(0)
-        return
-      }
-      setLoading(true)
-      reportingApi.search(term)
-        .then((r) => { setGroups(r.data?.groups ?? []); setError(false) })
-        .catch(() => { setGroups([]); setError(true) })
-        .finally(() => { setLoading(false); setActive(0) })
-    }, term.length < 2 ? 0 : 250)
-    return () => clearTimeout(t)
-  }, [q, open]) // eslint-disable-line react-hooks/exhaustive-deps
+    setActive(0)
+  }, [term])
 
   // L'index actif peut dépasser la liste après un changement de résultats : on le
   // borne au point d'usage (rendu + Entrée) plutôt que via un setState en effet.

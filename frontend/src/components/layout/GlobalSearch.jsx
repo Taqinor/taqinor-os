@@ -4,35 +4,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Search } from 'lucide-react'
-import reportingApi from '../../api/reportingApi'
-
-// Route d'ouverture par type d'entité (cf. router/index.jsx).
-const ROUTE = {
-  lead: (id) => `/crm/leads?lead=${id}`,
-  client: () => '/crm',
-  devis: () => '/ventes/devis',
-  facture: () => '/ventes/factures',
-  chantier: () => '/chantiers',
-  equipement: () => '/equipements',
-  ticket: () => '/sav',
-  bon_commande: () => '/ventes/bons-commande',
-  contrat: () => '/sav/contrats',
-  dossier: () => '/chantiers',
-}
-
-// Route de LISTE par type, filtrée par la requête (lien « voir tout »). On reste
-// sur la route d'ouverture du type quand aucune liste filtrable n'existe.
-const LIST_ROUTE = {
-  lead: (q) => `/crm/leads?q=${encodeURIComponent(q)}`,
-  client: (q) => `/crm?q=${encodeURIComponent(q)}`,
-  devis: (q) => `/ventes/devis?q=${encodeURIComponent(q)}`,
-  facture: (q) => `/ventes/factures?q=${encodeURIComponent(q)}`,
-  chantier: (q) => `/chantiers?q=${encodeURIComponent(q)}`,
-  equipement: (q) => `/equipements?q=${encodeURIComponent(q)}`,
-  ticket: (q) => `/sav?q=${encodeURIComponent(q)}`,
-  bon_commande: (q) => `/ventes/bons-commande?q=${encodeURIComponent(q)}`,
-  contrat: (q) => `/sav/contrats?q=${encodeURIComponent(q)}`,
-}
+// VX13 — ROUTE/LIST_ROUTE + recherche débouncée mutualisés avec CommandPalette
+// (⌘K) : plus aucune table dupliquée (cf. lib/search/entityRoutes.js).
+import { ROUTE, LIST_ROUTE, useEntitySearch } from '../../lib/search/entityRoutes'
 
 // Mémoire des recherches récentes (localStorage, effacée à la déconnexion).
 const RECENT_KEY = 'taqinor.search.recent'
@@ -56,11 +30,7 @@ function writeRecent(items) {
 
 export default function GlobalSearch() {
   const [q, setQ] = useState('')
-  const [groups, setGroups] = useState([])
   const [open, setOpen] = useState(false)
-  const [loading, setLoading] = useState(false)
-  // L11 — distinguer un échec réseau d'un vrai « aucun résultat ».
-  const [failed, setFailed] = useState(false)
   // L9 — mémoire des recherches récentes (affichée quand la boîte vide a le focus).
   const [recent, setRecent] = useState(readRecent)
   // L9 — navigation clavier : index de l'item surligné dans la liste aplatie.
@@ -72,6 +42,9 @@ export default function GlobalSearch() {
   const navigate = useNavigate()
 
   const term = q.trim()
+  // VX13 — recherche débouncée mutualisée (cf. lib/search/entityRoutes.js) ;
+  // L11 — `failed` distingue un échec réseau d'un vrai « aucun résultat ».
+  const { groups, loading, failed } = useEntitySearch(term)
 
   // Liste APLATIE des cibles ouvrables (résultats + liens « voir tout ») pour la
   // navigation clavier, en portant déjà l'index plat sur chaque élément de
@@ -107,22 +80,18 @@ export default function GlobalSearch() {
     return { flat: flatList, recentRows: [], groupRows: grows }
   }, [term, recent, groups])
 
-  // Débounce : on ne lance la recherche que ~250 ms après la dernière frappe.
+  // VX13 — la recherche elle-même vit dans useEntitySearch (débounce ~250 ms,
+  // cf. lib/search/entityRoutes.js) ; ici on garde SEULEMENT les effets propres
+  // à GlobalSearch : réinitialiser la sélection clavier à chaque nouvelle
+  // requête, et rouvrir le panneau quand une réponse (résultats OU échec) est
+  // disponible — comportement byte-identique à l'ancien effet local.
   useEffect(() => {
-    const t = setTimeout(() => {
-      if (term.length < 2) {
-        setGroups([]); setLoading(false); setFailed(false); setActiveIndex(-1); return
-      }
-      setLoading(true)
-      setFailed(false)
-      setActiveIndex(-1)
-      reportingApi.search(term)
-        .then((r) => { setGroups(r.data.groups ?? []); setOpen(true) })
-        .catch(() => { setGroups([]); setFailed(true); setOpen(true) })
-        .finally(() => setLoading(false))
-    }, term.length < 2 ? 0 : 250)
-    return () => clearTimeout(t)
-  }, [q]) // eslint-disable-line react-hooks/exhaustive-deps
+    setActiveIndex(-1)
+  }, [term])
+
+  useEffect(() => {
+    if (term.length >= 2 && !loading) setOpen(true)
+  }, [groups, failed, loading, term])
 
   // Fermer le panneau au clic extérieur (et replier l'input mobile).
   useEffect(() => {
