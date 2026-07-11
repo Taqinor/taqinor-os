@@ -22,10 +22,19 @@ from .views_console import (
     TenantConsoleStatutView,
     TenantConsoleNoteView,
 )
+from .views_webauthn import (
+    WebAuthnCredentialViewSet,
+    WebAuthnLoginBeginView,
+    WebAuthnLoginCompleteView,
+    WebAuthnRegisterBeginView,
+    WebAuthnRegisterCompleteView,
+)
 
 router = DefaultRouter()
 router.register(r'users', UserViewSet, basename='users')
 router.register(r'companies', CompanyViewSet, basename='companies')
+router.register(r'auth/webauthn/credentials', WebAuthnCredentialViewSet,
+                basename='webauthn-credentials')
 
 urlpatterns = [
     path('register/', RegisterView.as_view(), name='auth_register'),
@@ -51,6 +60,17 @@ urlpatterns = [
          name='auth_session_revoke'),
     path('auth/change-password/', ChangePasswordView.as_view(),
          name='auth_change_password'),
+    # NTSEC8 — Passkeys / WebAuthn (enregistrement + connexion sans mot de passe).
+    path('auth/webauthn/register/begin/',
+         WebAuthnRegisterBeginView.as_view(), name='webauthn_register_begin'),
+    path('auth/webauthn/register/complete/',
+         WebAuthnRegisterCompleteView.as_view(),
+         name='webauthn_register_complete'),
+    path('auth/webauthn/login/begin/',
+         WebAuthnLoginBeginView.as_view(), name='webauthn_login_begin'),
+    path('auth/webauthn/login/complete/',
+         WebAuthnLoginCompleteView.as_view(),
+         name='webauthn_login_complete'),
     # SCA22 — console fondateur des tenants (staff-only, sans billing).
     path('auth/console/tenants/', TenantConsoleListView.as_view(),
          name='auth_console_tenants'),
