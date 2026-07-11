@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useDispatch } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 import {
   User, TrendingUp, Zap, Droplet, Home, ClipboardList, Globe,
   FileText, Clock, Paperclip, GitMerge, History,
@@ -36,6 +36,17 @@ import { formatMAD, normalizeMaPhone } from '../../lib/format'
 const DEFAULT_CANAL = 'walk_in'
 // Validation e-mail minimale (le formulaire est noValidate) : « un@deux.trois ».
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+// VX93 — défauts intelligents : mémoire de la dernière ville saisie (par
+// localStorage, toujours modifiable, jamais bloquant ; le pattern owner=moi
+// utilise l'utilisateur courant côté composant). Silencieux si absent.
+const LAST_VILLE_KEY = 'vx93.lead.ville'
+const readLastVille = () => {
+  try { return localStorage.getItem(LAST_VILLE_KEY) || '' } catch { return '' }
+}
+const rememberVille = (v) => {
+  try { if (v && v.trim()) localStorage.setItem(LAST_VILLE_KEY, v.trim()) } catch { /* best-effort */ }
+}
 
 // VX143 — STAGE_LABELS/PRIORITE_LABELS/TYPE_INSTALLATION_LABELS viennent
 // désormais de features/crm/stages.js (miroir strict de STAGES.py) au lieu
@@ -155,6 +166,9 @@ export default function LeadForm({
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const isEdit = !!lead
+  // VX93 — défaut « propriétaire = moi » à la création (le créateur est presque
+  // toujours le propriétaire) ; toujours modifiable ensuite.
+  const currentUserId = useSelector((s) => s.auth?.user?.id)
   // Canaux depuis le référentiel géré (Paramètres → CRM) + libellés statiques :
   // un canal ajouté en Paramètres apparaît dans le sélecteur sans redéploiement.
   const { labels: canalLabels } = useCanaux()
@@ -251,10 +265,14 @@ export default function LeadForm({
     // Contact
     nom: F('nom'), prenom: F('prenom'), societe: F('societe'),
     email: F('email'), telephone: F('telephone'), whatsapp: F('whatsapp'),
-    adresse: F('adresse'), ville: F('ville'),
+    adresse: F('adresse'),
+    // VX93 — ville pré-remplie avec la dernière saisie (création seulement).
+    ville: lead ? F('ville') : (F('ville') || readLastVille()),
     gps_lat: F('gps_lat'), gps_lng: F('gps_lng'),
     // Pipeline
-    stage: F('stage', 'NEW'), owner: F('owner', '') ?? '',
+    stage: F('stage', 'NEW'),
+    // VX93 — owner = utilisateur courant à la création (jamais en édition).
+    owner: lead ? (F('owner', '') ?? '') : (F('owner', '') || (currentUserId ? String(currentUserId) : '')),
     // Canal prérempli à la création (jamais null) ; en édition on respecte la
     // valeur du lead (y compris vide pour un ancien lead).
     canal: lead ? (F('canal', '') ?? '') : DEFAULT_CANAL,
@@ -615,6 +633,7 @@ export default function LeadForm({
         savedConfirmTimer.current = setTimeout(() => setSavedConfirm(false), 2000)
       } else {
         await dispatch(createLead(payload)).unwrap()
+        rememberVille(fields.ville)  // VX93 — mémorise la ville pour le prochain lead
         onSaved?.()
         onClose()
       }

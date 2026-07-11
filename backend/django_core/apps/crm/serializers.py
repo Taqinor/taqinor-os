@@ -159,6 +159,9 @@ class LeadSerializer(serializers.ModelSerializer):
     score_label = serializers.SerializerMethodField()
     # FG29 — Âge dans l'étape courante (jours depuis le dernier changement d'étape).
     stage_since_days = serializers.SerializerMethodField()
+    # VX98 — auteur de la dernière modification (puce de fraîcheur). Lecture seule.
+    updated_by_nom = serializers.CharField(
+        source='updated_by.username', read_only=True, default=None)
 
     @staticmethod
     def _canonical_phone(value):
@@ -345,6 +348,7 @@ class LeadSerializer(serializers.ModelSerializer):
             'company', 'external_system', 'external_id', 'client',
             'is_archived', 'archived_by', 'archived_at',
             'first_contacted_at',  # FG28 — posé server-side uniquement
+            'updated_by',  # VX98 — posé server-side (perform_update) uniquement
             # B3 — toiture 3D : pin/contour bruts + conso saisis par le client
             # (webhook site, posés server-side). Exposés en LECTURE SEULE sur la
             # fiche lead pour que la page de conception authentifiée réhydrate la

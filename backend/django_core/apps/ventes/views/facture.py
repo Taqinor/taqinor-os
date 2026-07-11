@@ -292,7 +292,9 @@ class FactureViewSet(CompanyScopedModelViewSet):
                         ),
                         'champs_refuses': sorted(champs_touches),
                     })
-        serializer.save()
+        # VX98 — dernier auteur de modification (server-side, jamais du corps) :
+        # alimente la puce de fraîcheur. Pattern created_by.
+        serializer.save(updated_by=self.request.user)
 
     @action(detail=True, methods=['post'], url_path='emettre',
             permission_classes=[IsResponsableOrAdmin])

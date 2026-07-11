@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useHasPermission } from '../hooks/useHasPermission'
 import { History } from 'lucide-react'
 import {
@@ -201,6 +201,18 @@ function AsOfTrigger({ contentType, objectId, label }) {
 export default function Journal() {
   const allowed = useHasPermission('journal_activite_voir')
 
+  // VX98 — deep-link « Historique » depuis une fiche : ?model=devis&object_id=42
+  // pré-filtre le journal sur CET objet (le backend filtre content_type__model +
+  // object_id). Un bouton « Voir tout le journal » retire le filtre.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const modelParam = searchParams.get('model') || ''
+  const objectIdParam = searchParams.get('object_id') || ''
+  const clearObjectFilter = () => {
+    const next = new URLSearchParams(searchParams)
+    next.delete('model'); next.delete('object_id')
+    setSearchParams(next, { replace: true })
+  }
+
   const [period, setPeriod] = useState('jour')
   const [date, setDate] = useState(todayISO())
   const [users, setUsers] = useState([])
@@ -228,8 +240,11 @@ export default function Journal() {
     if (action) p.action = action
     if (moduleF) p.module = moduleF
     if (search.trim()) p.search = search.trim()
+    // VX98 — pré-filtre deep-link (fiche → journal sur cet objet).
+    if (modelParam) p.model = modelParam
+    if (objectIdParam) p.object_id = objectIdParam
     return p
-  }, [users, action, moduleF, search])
+  }, [users, action, moduleF, search, modelParam, objectIdParam])
 
   // Métadonnées (une fois).
   const loadMeta = () => {
@@ -319,6 +334,20 @@ export default function Journal() {
           Qui a fait quoi, et quand — heures en Africa/Casablanca.
         </p>
       </header>
+
+      {/* VX98 — bandeau « filtré sur cet objet » quand on arrive via le bouton
+          « Historique » d'une fiche (?model=&object_id=). */}
+      {(modelParam || objectIdParam) && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm">
+          <span className="text-foreground">
+            Journal filtré sur {modelParam || 'objet'}
+            {objectIdParam ? ` #${objectIdParam}` : ''}
+          </span>
+          <Button size="sm" variant="outline" onClick={clearObjectFilter}>
+            Voir tout le journal
+          </Button>
+        </div>
+      )}
 
       {/* Switcher période + date */}
       <div className="mb-4 flex flex-wrap items-center gap-3">

@@ -83,6 +83,9 @@ class DevisSerializer(serializers.ModelSerializer):
     nb_options = serializers.SerializerMethodField()
     client_nom = serializers.CharField(source='client.nom', read_only=True)
     lead_nom = serializers.SerializerMethodField()
+    # VX98 — auteur de la dernière modification (puce de fraîcheur). Lecture seule.
+    updated_by_nom = serializers.CharField(
+        source='updated_by.username', read_only=True, default=None)
     # Contexte « quote-aware » du lead lié (profil énergétique) — lecture seule,
     # pour un aperçu au survol dans la liste des devis. None si pas de lead.
     lead_facture_hiver = serializers.SerializerMethodField()
@@ -397,7 +400,8 @@ class DevisSerializer(serializers.ModelSerializer):
         # du corps de requête (même régime interne que prix_achat, qui n'est
         # jamais exposé côté client/PDF).
         read_only_fields = ['reference', 'created_by', 'fichier_pdf',
-                            'date_creation', 'prix_par_kwc']
+                            'date_creation', 'prix_par_kwc',
+                            'updated_at', 'updated_by']  # VX98 — server-side only
 
 
 class DevisWriteSerializer(serializers.ModelSerializer):
@@ -581,6 +585,9 @@ class FactureSerializer(serializers.ModelSerializer):
     statut_display = serializers.CharField(source='get_statut_display', read_only=True)
     type_facture_display = serializers.CharField(source='get_type_facture_display', read_only=True)
     devis_reference = serializers.CharField(source='devis.reference', read_only=True, default=None)
+    # VX98 — auteur de la dernière modification (puce de fraîcheur). Lecture seule.
+    updated_by_nom = serializers.CharField(
+        source='updated_by.username', read_only=True, default=None)
     # Ventilation TVA par taux (10 %/20 %), réconciliée au centime.
     tva_par_taux = serializers.SerializerMethodField()
     is_overdue = serializers.SerializerMethodField()
@@ -607,7 +614,8 @@ class FactureSerializer(serializers.ModelSerializer):
     class Meta:
         model = Facture
         fields = '__all__'
-        read_only_fields = ['reference', 'created_by', 'fichier_pdf', 'date_emission']
+        read_only_fields = ['reference', 'created_by', 'fichier_pdf', 'date_emission',
+                            'updated_at', 'updated_by']  # VX98 — server-side only
 
     def get_is_overdue(self, obj):
         # S'appuie sur jours_retard du modèle (échéance dépassée + reste dû,

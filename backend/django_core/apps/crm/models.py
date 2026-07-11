@@ -704,6 +704,18 @@ class Lead(SoftDeleteModel):
     )
     archived_at = models.DateTimeField(null=True, blank=True)
 
+    # VX98 — dernier auteur d'une modification (posé server-side dans
+    # perform_update, jamais accepté du corps de requête). Alimente la puce de
+    # fraîcheur « modifié par X il y a N min » (silencieuse si NULL ou si c'est
+    # l'utilisateur courant). Pattern identique à archived_by ; date_modification
+    # (auto_now) porte l'horodatage.
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='leads_modifies',
+    )
+
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
 

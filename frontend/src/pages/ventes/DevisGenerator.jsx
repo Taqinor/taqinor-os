@@ -60,6 +60,19 @@ const MODE_OPTIONS = [
 let _keyCounter = 0
 const newKey = () => ++_keyCounter
 
+// VX93 — défaut intelligent : dernier taux TVA saisi sur une ligne ajoutée à la
+// main (localStorage). Repli sur le taux standard (20 %) si absent. Toujours
+// modifiable ligne par ligne ; jamais bloquant.
+const LAST_TVA_KEY = 'taqinor.devisGenerator.lastTva'
+const lireLastTva = () => {
+  try { return window.localStorage.getItem(LAST_TVA_KEY) || String(TVA_STANDARD_DEFAUT) }
+  catch { return String(TVA_STANDARD_DEFAUT) }
+}
+const ecrireLastTva = (v) => {
+  try { if (v !== '' && v != null) window.localStorage.setItem(LAST_TVA_KEY, String(v)) }
+  catch { /* no-op silencieux */ }
+}
+
 const withKeys = (rows) => rows.map(r => ({
   _key: newKey(),
   produit: String(r.produit ?? ''),
@@ -80,7 +93,7 @@ const emptyLine = () => ({
   designation: '',
   quantite: '0',
   prix_unit_ttc: '0',
-  taux_tva: '20',
+  taux_tva: lireLastTva(),  // VX93 — dernière TVA saisie (défaut 20 %)
   groupeIndex: null,
   groupeLabel: '',
 })
@@ -839,8 +852,12 @@ export default function DevisGenerator({
     setMonthly(m => m.map((old, idx) => (idx === i ? v : old)))
 
   // ── Lignes ──
-  const setLine = (key, k, v) =>
+  const setLine = (key, k, v) => {
+    // VX93 — mémorise le dernier taux TVA saisi à la main pour pré-remplir la
+    // prochaine ligne ajoutée (emptyLine → lireLastTva).
+    if (k === 'taux_tva') ecrireLastTva(v)
     setLines(ls => ls.map(l => (l._key === key ? { ...l, [k]: v } : l)))
+  }
 
   // XSAL3 — badge « Tarif : <liste> » par ligne, quand le prix résolu vient
   // d'une liste de prix client (source !== 'standard'). Purement informatif +
