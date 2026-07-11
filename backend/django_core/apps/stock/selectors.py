@@ -66,6 +66,25 @@ def valid_produit_ids(company, ids):
     )
 
 
+def produits_avertissements(company, produit_ids):
+    """ZSAL9 — avertissements de vente (« sale warnings ») des produits dont
+    l'id est dans ``produit_ids``, scopés société. Lecture seule : renvoie une
+    liste de dicts plats ``{id, nom, avertissement_vente, avertissement_bloquant}``
+    pour les seuls produits PORTEURS d'un message — jamais d'instance ni de
+    prix. Les appelants (ventes) l'utilisent pour afficher la bannière et
+    décider du blocage sans importer ``stock.models``."""
+    from .models import Produit
+    ids = [pid for pid in (produit_ids or []) if pid]
+    if not ids:
+        return []
+    return list(
+        Produit.objects
+        .filter(id__in=ids, company=company)
+        .exclude(avertissement_vente='')
+        .values('id', 'nom', 'avertissement_vente', 'avertissement_bloquant')
+    )
+
+
 def factures_fournisseur_ouvertes(company, *, date_limite=None):
     """YLEDG8 — Factures fournisseur à solde dû > 0, pour proposer les
     échéances d'un ``compta.PaymentRun``. Triées par ``date_echeance``

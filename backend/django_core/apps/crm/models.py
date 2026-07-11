@@ -172,6 +172,22 @@ class Client(models.Model):
         verbose_name='Tiers (répertoire unifié)',
         help_text="Fiche du répertoire unifié des parties prenantes reflétant "
                   "ce client. Renseignée automatiquement (miroir).")
+    # ── ZSAL9 — Avertissement de vente (« sale warnings » façon Odoo) ──
+    # Message optionnel affiché quand ce client est sélectionné dans le
+    # générateur de devis (ex. « client à traiter au comptant »). Si
+    # ``avertissement_bloquant`` est True, une garde serveur refuse
+    # l'acceptation / la génération de facture d'un devis pour ce client SAUF
+    # override responsable/admin journalisé (patron XFAC28). Vide (défaut) =
+    # comportement historique strictement inchangé. Jamais de prix d'achat ici.
+    avertissement_vente = models.TextField(
+        blank=True, default='',
+        verbose_name='Avertissement de vente',
+        help_text="Message affiché au devis quand ce client est sélectionné.")
+    avertissement_bloquant = models.BooleanField(
+        default=False,
+        verbose_name='Avertissement bloquant',
+        help_text="Si activé, empêche l'acceptation/facturation sans override "
+                  "responsable/admin.")
 
     class Meta:
         verbose_name = "Client"

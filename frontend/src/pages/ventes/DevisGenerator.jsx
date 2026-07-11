@@ -31,6 +31,8 @@ import {
 } from '../../ui'
 import { useCanCreateProduit } from '../../hooks/useHasPermission'
 import useKeyboardAwareScroll from '../../hooks/useKeyboardAwareScroll'
+import { useDirtyGuard } from '../../ui/useDirtyGuard'
+import { useDraftAutosave } from '../../ui/useDraftAutosave'
 import {
   MONTHS_FR, CHART_MONTHS, DEFAULT_MONTHLY_BILLS, DAY_USAGE_DEFAULTS,
   formatMoney, estimerMois, estimerPanneaux, computeROI, ttcFromHt, htFromTtc,
@@ -259,6 +261,10 @@ export default function DevisGenerator({
   const [tauxTva, setTauxTva] = useState('20.00')
   const [discountPct, setDiscountPct] = useState('0')
   const linesInitialized = useRef(false)
+  // VX90 — après « Ajouter ligne », déplacer le focus sur le sélecteur produit
+  // de la NOUVELLE ligne (ref-walk DOM via data-line-key ; pas de useFieldArray).
+  const linesTableRef = useRef(null)
+  const [pendingFocusKey, setPendingFocusKey] = useState(null)
 
   // ── QJ31 — Multi-propriétés (un seul devis, jamais scindé) ──
   // 'none' = mono-système (défaut, comportement historique inchangé) ;
@@ -318,6 +324,104 @@ export default function DevisGenerator({
   const [farmFuelPeriod, setFarmFuelPeriod] = useState('mois') // 'mois' | 'an'
   const [farmHmtStatic, setFarmHmtStatic] = useState('')
   const [farmHmtDrawdown, setFarmHmtDrawdown] = useState('')
+
+  // ── VX62 — Brouillon auto + garde de sortie ──
+  // Le formulaire (2 300+ lignes, ~20 min de saisie) n'avait NI brouillon NI
+  // garde : un onglet fermé/un swipe retour = tout perdu. On sauvegarde un
+  // snapshot débouncé dans localStorage (clé scopée lead/client/édition), on
+  // propose « Reprendre le brouillon » au montage, on purge au succès, et on
+  // pose useDirtyGuard pour la fermeture d'onglet.
+  const draftKey = editId
+    ? `devis:edit:${editId}`
+    : (leadId ? `devis:lead:${leadId}` : (clientId ? `devis:client:${clientId}` : 'devis:new'))
+  // Snapshot des champs éditables saillants (les référentiels leads/clients/
+  // produits ne sont jamais persistés — seulement la saisie de l'utilisateur).
+  const draftSnapshot = useMemo(() => ({
+    leadId, clientId, dateValidite, instType, scenario, recommendedChoice, note,
+    fHiver, fEte, monthly, distributeur, realBillMode, realBillMad, realBillKwh,
+    nbPanneaux, panelW, structureType, dayUsage, lines, tauxTva, discountPct,
+    multiMode, nombreProprietes, villaGroups, modeInstallation, consoMensuelle,
+    prixCible, remiseMax, accessoiresOnly,
+    pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit, pompeProfondeur,
+    pompeDistance, pompeHeures, farmRegion, farmCrop, farmSurfaceHa,
+    farmIrrigation, farmFuel, farmFuelSpend, farmFuelPeriod, farmHmtStatic,
+    farmHmtDrawdown,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [
+    leadId, clientId, dateValidite, instType, scenario, recommendedChoice, note,
+    fHiver, fEte, monthly, distributeur, realBillMode, realBillMad, realBillKwh,
+    nbPanneaux, panelW, structureType, dayUsage, lines, tauxTva, discountPct,
+    multiMode, nombreProprietes, villaGroups, modeInstallation, consoMensuelle,
+    prixCible, remiseMax, accessoiresOnly,
+    pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit, pompeProfondeur,
+    pompeDistance, pompeHeures, farmRegion, farmCrop, farmSurfaceHa,
+    farmIrrigation, farmFuel, farmFuelSpend, farmFuelPeriod, farmHmtStatic,
+    farmHmtDrawdown,
+  ])
+  // « Dirty » = l'utilisateur a réellement saisi quelque chose de significatif
+  // (au moins un identifiant de cible OU une note OU des factures OU des
+  // paramètres techniques). Tant que le formulaire est vierge, ni brouillon ni
+  // garde ne s'activent (évite un bandeau/blocage sur un simple montage).
+  const dirty = Boolean(
+    leadId || clientId || note || fHiver || fEte || nbPanneaux
+    || consoMensuelle || prixCible || pompeHmt || pompeDebit || farmSurfaceHa,
+  )
+  const { restored, restore, discard, clear } = useDraftAutosave(draftKey, draftSnapshot, {
+    enabled: dirty,
+  })
+  useDirtyGuard(dirty)
+
+  // Restauration : réinjecte le snapshot sauvegardé dans tous les setters.
+  const handleRestoreDraft = () => {
+    const d = restore()
+    if (!d) return
+    if (d.leadId != null) setLeadId(d.leadId)
+    if (d.clientId != null) setClientId(d.clientId)
+    if (d.dateValidite != null) setDateValidite(d.dateValidite)
+    if (d.instType != null) setInstType(d.instType)
+    if (d.scenario != null) setScenario(d.scenario)
+    if (d.recommendedChoice != null) setRecommendedChoice(d.recommendedChoice)
+    if (d.note != null) setNote(d.note)
+    if (d.fHiver != null) setFHiver(d.fHiver)
+    if (d.fEte != null) setFEte(d.fEte)
+    if (d.monthly != null) setMonthly(d.monthly)
+    if (d.distributeur != null) setDistributeur(d.distributeur)
+    if (d.realBillMode != null) setRealBillMode(d.realBillMode)
+    if (d.realBillMad != null) setRealBillMad(d.realBillMad)
+    if (d.realBillKwh != null) setRealBillKwh(d.realBillKwh)
+    if (d.nbPanneaux != null) setNbPanneaux(d.nbPanneaux)
+    if (d.panelW != null) setPanelW(d.panelW)
+    if (d.structureType != null) setStructureType(d.structureType)
+    if (d.dayUsage != null) setDayUsage(d.dayUsage)
+    if (Array.isArray(d.lines)) { setLines(withKeys(d.lines)); linesInitialized.current = true }
+    if (d.tauxTva != null) setTauxTva(d.tauxTva)
+    if (d.discountPct != null) setDiscountPct(d.discountPct)
+    if (d.multiMode != null) setMultiMode(d.multiMode)
+    if (d.nombreProprietes != null) setNombreProprietes(d.nombreProprietes)
+    if (Array.isArray(d.villaGroups)) setVillaGroups(d.villaGroups)
+    if (d.modeInstallation != null) setModeInstallation(d.modeInstallation)
+    if (d.consoMensuelle != null) setConsoMensuelle(d.consoMensuelle)
+    if (d.prixCible != null) setPrixCible(d.prixCible)
+    if (d.remiseMax != null) setRemiseMax(d.remiseMax)
+    if (d.accessoiresOnly != null) setAccessoiresOnly(d.accessoiresOnly)
+    if (d.pompeCv != null) setPompeCv(d.pompeCv)
+    if (d.pompeType != null) setPompeType(d.pompeType)
+    if (d.pompeAlim != null) setPompeAlim(d.pompeAlim)
+    if (d.pompeHmt != null) setPompeHmt(d.pompeHmt)
+    if (d.pompeDebit != null) setPompeDebit(d.pompeDebit)
+    if (d.pompeProfondeur != null) setPompeProfondeur(d.pompeProfondeur)
+    if (d.pompeDistance != null) setPompeDistance(d.pompeDistance)
+    if (d.pompeHeures != null) setPompeHeures(d.pompeHeures)
+    if (d.farmRegion != null) setFarmRegion(d.farmRegion)
+    if (d.farmCrop != null) setFarmCrop(d.farmCrop)
+    if (d.farmSurfaceHa != null) setFarmSurfaceHa(d.farmSurfaceHa)
+    if (d.farmIrrigation != null) setFarmIrrigation(d.farmIrrigation)
+    if (d.farmFuel != null) setFarmFuel(d.farmFuel)
+    if (d.farmFuelSpend != null) setFarmFuelSpend(d.farmFuelSpend)
+    if (d.farmFuelPeriod != null) setFarmFuelPeriod(d.farmFuelPeriod)
+    if (d.farmHmtStatic != null) setFarmHmtStatic(d.farmHmtStatic)
+    if (d.farmHmtDrawdown != null) setFarmHmtDrawdown(d.farmHmtDrawdown)
+  }
 
   useEffect(() => {
     // Les trois échecs réseau sont SURFACÉS (bannière) au lieu d'avaler l'erreur :
@@ -855,8 +959,27 @@ export default function DevisGenerator({
     }
   }
 
-  const addLine = () => setLines(ls => [...ls, emptyLine()])
+  const addLine = () => setLines(ls => {
+    const line = emptyLine()
+    setPendingFocusKey(line._key) // VX90 — focus la nouvelle ligne après rendu.
+    return [...ls, line]
+  })
   const removeLine = (key) => setLines(ls => ls.filter(l => l._key !== key))
+
+  // VX90 — quand une ligne vient d'être ajoutée, focaliser son ProduitPicker et
+  // la faire défiler dans la vue. On cible la ligne par son data-line-key, puis
+  // le premier bouton (le déclencheur du ProduitPicker) de cette ligne.
+  useEffect(() => {
+    if (pendingFocusKey == null) return
+    const row = linesTableRef.current
+      ?.querySelector(`[data-line-key="${pendingFocusKey}"]`)
+    if (row) {
+      const picker = row.querySelector('button[type="button"]')
+      picker?.focus()
+      row.scrollIntoView({ block: 'nearest' })
+    }
+    setPendingFocusKey(null)
+  }, [pendingFocusKey, lines])
 
   // ── QJ31 — Multi-propriétés ──────────────────────────────────────────────
   // Bascule de mode. En passant en « villas », chaque ligne sans groupe est
@@ -1145,6 +1268,7 @@ export default function DevisGenerator({
         devisId = data.id
       }
 
+      clear() // VX62 — succès : purge le brouillon local.
       finish(devisId)
     } catch (err) {
       // Message HUMAIN, jamais de JSON brut — et le formulaire reste vivant.
@@ -1172,6 +1296,37 @@ export default function DevisGenerator({
   }
 
   const selectedClient = clients.find(c => String(c.id) === String(clientId))
+
+  // ZSAL9 — avertissements de vente (« sale warnings ») : message du client
+  // sélectionné + des produits présents dans les lignes. Purement informatif à
+  // l'écran (une bannière non intrusive) ; le blocage éventuel est appliqué
+  // côté serveur à l'acceptation/facturation (garde XFAC28-like).
+  const saleWarnings = useMemo(() => {
+    const out = []
+    if (selectedClient?.avertissement_vente) {
+      out.push({
+        key: `client-${selectedClient.id}`,
+        cible: selectedClient.nom || 'Client',
+        message: selectedClient.avertissement_vente,
+        bloquant: !!selectedClient.avertissement_bloquant,
+      })
+    }
+    const seen = new Set()
+    for (const l of lines) {
+      if (!l.produit || seen.has(l.produit)) continue
+      seen.add(l.produit)
+      const p = produits.find(x => String(x.id) === String(l.produit))
+      if (p?.avertissement_vente) {
+        out.push({
+          key: `produit-${p.id}`,
+          cible: p.nom || 'Produit',
+          message: p.avertissement_vente,
+          bloquant: !!p.avertissement_bloquant,
+        })
+      }
+    }
+    return out
+  }, [selectedClient, lines, produits])
 
   // QC1 — recherche client sur les données propres (endpoint /search/). On ne
   // retient QUE les correspondances de source « client » : le devis a besoin
@@ -1278,6 +1433,29 @@ export default function DevisGenerator({
       {/* noValidate : aucune contrainte navigateur — toute valeur saisie est
           acceptée telle quelle (les steps ne servent qu'aux flèches). */}
       <form id="gen-form" onSubmit={handleSubmit} noValidate className="flex flex-col gap-4 lg:flex-1 lg:min-w-0">
+        {restored && (
+          <div
+            data-testid="draft-restore-banner"
+            className="flex flex-col gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning sm:flex-row sm:items-center sm:justify-between"
+          >
+            <span>
+              Un brouillon non enregistré du{' '}
+              {(() => {
+                try { return new Date(restored.savedAt).toLocaleString('fr-FR') }
+                catch { return 'précédent' }
+              })()}{' '}
+              a été retrouvé.
+            </span>
+            <div className="flex gap-2">
+              <Button type="button" size="sm" variant="outline" onClick={handleRestoreDraft}>
+                Reprendre le brouillon
+              </Button>
+              <Button type="button" size="sm" variant="ghost" onClick={discard}>
+                Ignorer
+              </Button>
+            </div>
+          </div>
+        )}
         {refsLoading && (
           <div className="rounded-lg border border-info/30 bg-info/10 p-3 text-sm text-info">
             Chargement des données (leads, clients, produits)…
@@ -1286,6 +1464,26 @@ export default function DevisGenerator({
         {loadFailed.length > 0 && (
           <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
             Échec du chargement : {loadFailed.join(', ')}. Vérifiez votre connexion puis rechargez la page.
+          </div>
+        )}
+        {/* ZSAL9 — avertissements de vente (client/produits) : bannière non
+            intrusive ; un avertissement bloquant est signalé mais n'empêche pas
+            la saisie (le blocage réel est côté serveur à l'acceptation). */}
+        {saleWarnings.length > 0 && (
+          <div
+            data-testid="sale-warnings"
+            className="flex flex-col gap-1 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning"
+          >
+            {saleWarnings.map(w => (
+              <div key={w.key}>
+                <span className="font-medium">{w.cible} :</span> {w.message}
+                {w.bloquant && (
+                  <span className="ml-1 font-medium">
+                    (bloquant — un responsable devra passer outre)
+                  </span>
+                )}
+              </div>
+            ))}
           </div>
         )}
         {/* ── Mode d'installation (marché) ── */}
@@ -2085,7 +2283,7 @@ export default function DevisGenerator({
               Avenant / accessoires ou main-d'œuvre seuls (désactive la vérification équipement)
             </label>
             <div className="lines-table-wrap">
-              <table className="lines-table">
+              <table className="lines-table" ref={linesTableRef}>
                 <thead>
                   <tr>
                     <th style={{ minWidth: 160 }}>Désignation</th>
@@ -2112,7 +2310,7 @@ export default function DevisGenerator({
                     const designationDivergente = !!prodLie
                       && (l.designation || '').trim() !== (prodLie.nom || '').trim()
                     return (
-                      <tr key={l._key}>
+                      <tr key={l._key} data-line-key={l._key}>
                         <td data-label="Désignation">
                           {/* QP2 — désignation en LECTURE SEULE sauf pour
                               Directeur + Commercial responsable. Un rôle non

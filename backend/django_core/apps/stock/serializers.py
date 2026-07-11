@@ -295,6 +295,9 @@ class ProduitSerializer(serializers.ModelSerializer):
             # ZPUR1 — politique de facturation d'achat (sur_reception/
             # sur_commande) — INTERNE, jamais client-facing (achat).
             'politique_facturation_achat',
+            # ZSAL9 — avertissement de vente (« sale warnings ») : message +
+            # drapeau bloquant. Non sensible (jamais de prix), affiché au devis.
+            'avertissement_vente', 'avertissement_bloquant',
             # Stock
             'quantite_stock', 'seuil_alerte', 'is_archived',
             # Relations (lecture imbriquée + écriture par *_id)

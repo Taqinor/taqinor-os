@@ -173,9 +173,11 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
-      - name: Install Playwright browser (chromium)
+      - name: Install Playwright browsers (chromium + webkit)
         working-directory: frontend
-        run: npx playwright install --with-deps chromium
+        # VX68 — WebKit requis pour les projets `mobile-safari` (Safari réel) et
+        # `tablet` (iPad WebKit) inclus dans la matrice complète ci-dessous.
+        run: npx playwright install --with-deps chromium webkit
       - name: Build frontend (no service worker for E2E)
         working-directory: frontend
         env:

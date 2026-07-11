@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useDispatch } from 'react-redux'
 import { Plus, Trash2, AlertTriangle } from 'lucide-react'
 import {
@@ -78,12 +78,27 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
   )
 
   const [removedLineIds, setRemovedLineIds] = useState([])
+  // VX90 — focus la nouvelle ligne (sélecteur produit) après « Ajouter ligne ».
+  const linesTableRef = useRef(null)
+  const [pendingFocusKey, setPendingFocusKey] = useState(null)
 
   useEffect(() => {
     crmApi.getClients().then(r => setClients(r.data.results ?? r.data)).catch(() => {})
     stockApi.getProduits().then(r => setProduits(r.data.results ?? r.data)).catch(() => {})
     ventesApi.getBonsCommande().then(r => setBonsCommande(r.data.results ?? r.data)).catch(() => {})
   }, [])
+
+  // VX90 — après ajout d'une ligne, focaliser son sélecteur produit + défiler.
+  useEffect(() => {
+    if (pendingFocusKey == null) return
+    const row = linesTableRef.current
+      ?.querySelector(`[data-line-key="${pendingFocusKey}"]`)
+    if (row) {
+      row.querySelector('button[type="button"]')?.focus()
+      row.scrollIntoView({ block: 'nearest' })
+    }
+    setPendingFocusKey(null)
+  }, [pendingFocusKey, lines])
 
   // Live totals
   const remGlobal   = parseFloat(fields.remise_globale) || 0
@@ -168,7 +183,14 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
     ))
   }
 
-  const addLine    = () => { setDirty(true); setLines(ls => [...ls, emptyLine()]) }
+  const addLine    = () => {
+    setDirty(true)
+    setLines(ls => {
+      const line = emptyLine()
+      setPendingFocusKey(line._key) // VX90
+      return [...ls, line]
+    })
+  }
   const removeLine = key => {
     setDirty(true)
     const line = lines.find(l => l._key === key)
@@ -407,7 +429,7 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
                 bascule en cartes empilées sous 768px via `data-label`
                 (index.css ~2264-2296), au lieu du scroll horizontal permanent. */}
             <div className="lines-table-wrap">
-              <table className="lines-table">
+              <table className="lines-table" ref={linesTableRef}>
                 <thead>
                   <tr>
                     <th style={{ minWidth: 160 }}>Produit</th>
@@ -427,7 +449,7 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
                       (parseFloat(l.prix_unitaire) || 0) *
                       (1 - (parseFloat(l.remise)   || 0) / 100)
                     return (
-                      <tr key={l._key}>
+                      <tr key={l._key} data-line-key={l._key}>
                         <td data-label="Produit">
                           <Select value={l.produit ? String(l.produit) : undefined}
                                   onValueChange={v => onProduitChange(l._key, v)}>

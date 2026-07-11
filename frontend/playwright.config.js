@@ -52,7 +52,7 @@ export default defineConfig({
     },
 
     // 3) Mobile pass at an iPhone viewport (E16). Chromium with isMobile so we
-    //    don't need to install a second browser engine.
+    //    don't need to install a second browser engine — the FAST smoke path.
     {
       name: 'mobile',
       testMatch: /mobile\.spec\.js/,
@@ -67,6 +67,35 @@ export default defineConfig({
           'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) ' +
           'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 ' +
           'Mobile/15E148 Safari/604.1',
+        storageState: AUTH_FILE,
+      },
+    },
+
+    // 4) VX68 — Safari RÉEL : le projet `mobile` ci-dessus est Chromium déguisé
+    //    en iPhone (aucun moteur WebKit), donc rien de ce qui ne casse QUE sur
+    //    Safari (window.open post-await de VX48, sticky, backdrop-blur…) n'y est
+    //    jamais capté. Ce projet exécute le MÊME spec mobile sur WebKit réel
+    //    (iPhone 13). PR-only/matrice complète — jamais dans le smoke par-merge.
+    {
+      name: 'mobile-safari',
+      testMatch: /mobile\.spec\.js/,
+      dependencies: ['setup'],
+      use: {
+        ...devices['iPhone 13'],
+        storageState: AUTH_FILE,
+      },
+    },
+
+    // 5) VX68 — Tablette (iPad gen 7 paysage, WebKit) : viewport 768-1024 jamais
+    //    couvert. Le spec tablet vérifie l'absence de débordement + que les
+    //    affordances tri/actions restent atteignables SANS survol (pas de hover
+    //    sur écran tactile). PR-only/matrice complète.
+    {
+      name: 'tablet',
+      testMatch: /tablet\.spec\.js/,
+      dependencies: ['setup'],
+      use: {
+        ...devices['iPad (gen 7) landscape'],
         storageState: AUTH_FILE,
       },
     },
