@@ -148,11 +148,46 @@ export default function MapView({
     }
   }, [markers, fitToMarkers, onMarkerClick])
 
+  // VX195 — la carte Leaflet est manipulée en impératif (pas de rôle/focus
+  // natif sur les marqueurs) : un technicien au clavier ou avec un lecteur
+  // d'écran n'a aucun moyen d'atteindre les points géolocalisés. On ajoute
+  // (1) role="application" + aria-label FR annonçant le nombre de points sur
+  // le conteneur carte, et (2) une liste de boutons PARALLÈLE (repliable via
+  // <details>/<summary> natifs) où chaque marqueur devient un `<button>`
+  // focalisable qui appelle le même `onMarkerClick` — sans dépendance ni
+  // changement du pilotage impératif de Leaflet.
+  const pointCount = markers.length
+  const mapLabel = `Carte, ${pointCount} point${pointCount !== 1 ? 's' : ''}`
+
   return (
-    <div
-      ref={containerRef}
-      className="mapview-container"
-      style={{ height, width: '100%', borderRadius: 8, overflow: 'hidden' }}
-    />
+    <div>
+      <div
+        ref={containerRef}
+        className="mapview-container"
+        role="application"
+        aria-label={mapLabel}
+        style={{ height, width: '100%', borderRadius: 8, overflow: 'hidden' }}
+      />
+      {pointCount > 0 && (
+        <details className="mapview-keyboard-list mt-2">
+          <summary className="cursor-pointer text-sm text-muted-foreground">
+            Liste des points de la carte (accès clavier)
+          </summary>
+          <ul className="mt-1 flex flex-col gap-1" aria-label={mapLabel}>
+            {markers.map((m) => (
+              <li key={m.id}>
+                <button
+                  type="button"
+                  className="w-full rounded-md px-2 py-1 text-left text-sm hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  onClick={() => { if (onMarkerClick) onMarkerClick(m) }}
+                >
+                  {m.label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
   )
 }
