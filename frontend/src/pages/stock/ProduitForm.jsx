@@ -42,6 +42,24 @@ function ecrireCreerUnAutre(v) {
   }
 }
 
+// VX93 — défaut intelligent : dernier taux de TVA saisi (création seulement),
+// mémorisé par localStorage. Repli sur '20' (cas le plus courant) si absent.
+const LAST_TVA_KEY = 'taqinor.produitForm.lastTva'
+function lireLastTva() {
+  try {
+    return window.localStorage.getItem(LAST_TVA_KEY) || '20'
+  } catch {
+    return '20'
+  }
+}
+function ecrireLastTva(v) {
+  try {
+    if (v !== '' && v != null) window.localStorage.setItem(LAST_TVA_KEY, String(v))
+  } catch {
+    // no-op silencieux.
+  }
+}
+
 // Traduit une erreur serveur DRF en phrase française lisible (jamais de JSON brut).
 function frSubmitError(err) {
   if (!err) return 'Une erreur est survenue. Réessayez.'
@@ -298,9 +316,9 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
     description:    produit?.description    ?? '',
     prix_vente:     String(produit?.prix_vente  ?? ''),
     prix_achat:     String(produit?.prix_achat  ?? '0'),
-    // Nouveau produit : TVA 20 % par défaut (cas le plus courant) ;
+    // VX93 — nouveau produit : dernier taux TVA saisi (localStorage, défaut 20 %) ;
     // l'édition conserve la valeur existante (y compris « Sans TVA »).
-    tva:            produit?.tva != null ? String(produit.tva) : (isEdit ? '' : '20'),
+    tva:            produit?.tva != null ? String(produit.tva) : (isEdit ? '' : lireLastTva()),
     quantite_stock: String(produit?.quantite_stock ?? '0'),
     seuil_alerte:   String(produit?.seuil_alerte  ?? '0'),
     categorie_id:   produit?.categorie?.id  ? String(produit.categorie.id) : '',
@@ -409,13 +427,15 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
         await dispatch(updateProduit({ id: produit.id, data: payload })).unwrap()
       } else {
         await dispatch(createProduit(payload)).unwrap()
+        ecrireLastTva(fields.tva)  // VX93 — mémorise la TVA pour le prochain produit
       }
       onSaved?.()
       // VX92 — « Créer un autre » (uniquement à la création) : on vide le
       // formulaire et on refocalise le champ 1 au lieu de fermer le dialog.
       if (!isEdit && creerUnAutre) {
         toast.success('Produit créé.')
-        setFields(initialFields)
+        // VX93 — le formulaire vidé ré-applique la dernière TVA saisie.
+        setFields({ ...initialFields, tva: lireLastTva() })
         setErrors({})
         nomRef.current?.focus()
       } else {

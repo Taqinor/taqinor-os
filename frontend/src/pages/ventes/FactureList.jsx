@@ -163,6 +163,24 @@ function ecrireCreerUnAutrePaiement(v) {
   }
 }
 
+// VX93 — défaut intelligent : dernier mode de paiement utilisé (localStorage).
+// Repli sur 'virement' (cas le plus courant) si absent. Toujours modifiable.
+const PAY_MODE_KEY = 'taqinor.factureList.paiement.dernierMode'
+function lireDernierMode() {
+  try {
+    return window.localStorage.getItem(PAY_MODE_KEY) || 'virement'
+  } catch {
+    return 'virement'
+  }
+}
+function ecrireDernierMode(v) {
+  try {
+    if (v) window.localStorage.setItem(PAY_MODE_KEY, v)
+  } catch {
+    // no-op silencieux.
+  }
+}
+
 // Prochaine action contextuelle (next-best-action) : clé de l'action mise en
 // avant selon statut/montant dû/retard. Une brouillon → Émettre ; une émise en
 // retard → Relancer ; une émise partiellement payée → Encaisser ; sinon null.
@@ -515,7 +533,7 @@ export default function FactureList() {
   const [paySaving, setPaySaving] = useState(false)
   const [payMontant, setPayMontant] = useState('')
   const [payDate, setPayDate] = useState(today)
-  const [payMode, setPayMode] = useState('virement')
+  const [payMode, setPayMode] = useState(() => lireDernierMode())  // VX93 — dernier mode utilisé
   const [payReference, setPayReference] = useState('')
   // ZFAC11 — proposition d'arrondi de caisse (règlement espèces).
   const [arrondiCaisse, setArrondiCaisse] = useState(null)
@@ -538,7 +556,7 @@ export default function FactureList() {
     setPayTarget(f)
     setPayMontant(f.montant_du ?? '')
     setPayDate(today)
-    setPayMode('virement')
+    setPayMode(lireDernierMode())  // VX93 — pré-remplit avec le dernier mode utilisé
     setPayReference('')
     setArrondiCaisse(null)
     setFactureActivites([])
@@ -577,13 +595,14 @@ export default function FactureList() {
         reference: payReference || undefined,
       })
       dispatch(fetchFactures())
+      ecrireDernierMode(payMode)  // VX93 — mémorise le mode pour le prochain paiement
       toast.success('Paiement enregistré.')
       // VX92 — « Créer un autre » : on vide les champs (sauf la facture
       // ciblée, inchangée) et on refocalise le montant au lieu de fermer.
       if (payCreerUnAutre) {
         setPayMontant('')
         setPayDate(today)
-        setPayMode('virement')
+        setPayMode(lireDernierMode())  // VX93 — ré-applique le dernier mode saisi
         setPayReference('')
         loadActivites(payTarget.id)
         payMontantRef.current?.focus()
