@@ -98,6 +98,7 @@ const SORTERS = {
 }
 
 // VX24 — ScoreBadge (+ SCORE_COLORS) déménagé vers features/crm/ScoreBadge.jsx.
+// VX221 — le tooltip « pourquoi ce score » (score_reasons) y est intégré.
 
 const todayISO = () => {
   const d = new Date()

@@ -9,6 +9,7 @@ import { MapPin, Zap, CalendarDays } from 'lucide-react'
 import {
   DndContext,
   DragOverlay,
+  KeyboardSensor,
   PointerSensor,
   TouchSensor,
   useDraggable,
@@ -22,8 +23,13 @@ import {
   STATUS_COLORS,
   canonicalStatus,
   canMoveStatus,
+  adjacentStatuses,
   isPoseEnRetard,
 } from '../../../features/installations/statuses'
+import {
+  buildKanbanAnnouncements,
+  kanbanScreenReaderInstructions,
+} from '../../../features/kanban/kanbanA11y'
 import {
   StatusPill,
   Progress,
@@ -39,8 +45,78 @@ import { formatDate } from '../../../lib/format'
 // Sentinelle « aucun installateur » (le Select du design system n'accepte pas '').
 const NO_TECH = '__none__'
 
-function ChantierCard({ inst, users, onReassign, isNew }) {
+// VX192 — alternative CLAVIER au glisser-déposer pour les chantiers (miroir du
+// StageMover du kanban leads). Un <select> natif sous chaque carte n'offre que
+// les statuts atteignables (règle « un seul pas dans l'entonnoir »,
+// adjacentStatuses) ; le changement passe par onChangeStatus (optimistic géré
+// par le parent). stopPropagation : manipuler le select ne démarre jamais un
+// drag ni n'ouvre la fiche.
+export function StatusMover({ inst, onChangeStatus }) {
+  if (!onChangeStatus) return null
+  const current = canonicalStatus(inst.statut)
+  const options = adjacentStatuses(current)
+  const stop = (e) => e.stopPropagation()
+  return (
+    <div
+      className="kb-stage-mover"
+      onClick={stop}
+      onPointerDown={stop}
+      onTouchStart={stop}
+    >
+      <label className="sr-only" htmlFor={`kc-statut-${inst.id}`}>
+        Changer le statut du chantier {inst.reference || ''}
+      </label>
+      <select
+        id={`kc-statut-${inst.id}`}
+        className="form-control kb-stage-select"
+        value={current}
+        onChange={(e) => {
+          const next = e.target.value
+          if (next !== current) onChangeStatus(inst, next)
+        }}
+      >
+        {options.map((s) => (
+          <option key={s} value={s}>{STATUS_LABELS[s]}</option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
+// VX192 — réassignation de l'installateur extraite de ChantierCard : c'est un
+// contrôle INTERACTIF (Select) et ne peut donc pas vivre à l'intérieur du
+// <button> d'ouverture de carte (imbrication interactive invalide). Rendu comme
+// frère du bouton dans DraggableCard.
+function ChantierReassign({ inst, users, onReassign }) {
+  if (!onReassign) return null
   const techValue = inst.technicien_responsable ? String(inst.technicien_responsable) : NO_TECH
+  return (
+    <div
+      className="kc-reassign"
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <Select
+        value={techValue}
+        onValueChange={(v) => onReassign(inst, v === NO_TECH ? null : v)}
+      >
+        <SelectTrigger className="h-8 text-xs" aria-label="Installateur">
+          <SelectValue placeholder="Installateur" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={NO_TECH}>— Installateur —</SelectItem>
+          {(users ?? []).map((u) => (
+            <SelectItem key={u.id} value={String(u.id)}>
+              {u.username ?? u.nom ?? `#${u.id}`}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
+
+function ChantierCard({ inst, isNew }) {
   return (
     <div className="kb-card kc-card" style={{ '--kb-accent': STATUS_COLORS[canonicalStatus(inst.statut)] }}>
       <div className="kc-card-top">
@@ -73,44 +149,34 @@ function ChantierCard({ inst, users, onReassign, isNew }) {
           <span className="kc-progress-label">{inst.checklist_completion}%</span>
         </div>
       )}
-      {/* Réassignation de l'installateur (même comportement que le kanban leads). */}
-      {onReassign && (
-        <div
-          className="kc-reassign"
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <Select
-            value={techValue}
-            onValueChange={(v) => onReassign(inst, v === NO_TECH ? null : v)}
-          >
-            <SelectTrigger className="h-8 text-xs" aria-label="Installateur">
-              <SelectValue placeholder="Installateur" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={NO_TECH}>— Installateur —</SelectItem>
-              {(users ?? []).map((u) => (
-                <SelectItem key={u.id} value={String(u.id)}>
-                  {u.username ?? u.nom ?? `#${u.id}`}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
     </div>
   )
 }
 
-function DraggableCard({ inst, users, onReassign, isNew }) {
+function DraggableCard({ inst, users, onReassign, isNew, onOpen, onChangeStatus }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: inst.id, data: { inst },
   })
   return (
     <div ref={setNodeRef}
-         className={isDragging ? 'kb-drag-wrap kb-drag-source' : 'kb-drag-wrap'}
-         {...listeners} {...attributes}>
-      <ChantierCard inst={inst} users={users} onReassign={onReassign} isNew={isNew} />
+         className={isDragging ? 'kb-drag-wrap kb-drag-source' : 'kb-drag-wrap'}>
+      {/* VX192 — carte ouverte au clavier : <button> focalisable (Entrée/Espace
+          ouvre la fiche) au lieu d'un <div onClick> non atteignable au clavier.
+          La poignée de drag (listeners/attributes) est portée par ce bouton. Le
+          bouton n'enveloppe QUE l'affichage : les contrôles interactifs
+          (réassignation, sélecteur de statut) restent frères pour ne pas
+          imbriquer d'interactif dans le bouton. */}
+      <button
+        type="button"
+        className="kb-card-open"
+        onClick={() => onOpen?.(inst)}
+        {...listeners}
+        {...attributes}
+      >
+        <ChantierCard inst={inst} isNew={isNew} />
+      </button>
+      <ChantierReassign inst={inst} users={users} onReassign={onReassign} />
+      <StatusMover inst={inst} onChangeStatus={onChangeStatus} />
     </div>
   )
 }
@@ -139,8 +205,13 @@ export default function KanbanView({ items, onOpen, onChangeStatus, users, onRea
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 8 } }),
+    // VX192 — 0 dépendance : sensor clavier natif de @dnd-kit/core.
+    useSensor(KeyboardSensor),
   )
   const [active, setActive] = useState(null)
+  // VX192 — remplace window.alert (bloquant, inaccessible) par un bandeau
+  // role="status" annoncé (patron du kanban leads « On ne recule pas… »).
+  const [refusMsg, setRefusMsg] = useState('')
 
   const columns = useMemo(() => {
     const byCol = Object.fromEntries(INSTALLATION_STATUSES.map((s) => [s, []]))
@@ -154,6 +225,18 @@ export default function KanbanView({ items, onOpen, onChangeStatus, users, onRea
     }))
   }, [items])
 
+  // VX192 — annonces FR partagées : traduit un id de chantier (référence) ou de
+  // colonne (libellé de statut) pour le lecteur d'écran.
+  const announcements = useMemo(() => {
+    const byId = new Map((items ?? []).map((it) => [it.id, it]))
+    const labelFor = (id) => {
+      if (STATUS_LABELS[id]) return STATUS_LABELS[id]
+      const it = byId.get(id)
+      return it?.reference ?? String(id)
+    }
+    return buildKanbanAnnouncements(labelFor)
+  }, [items])
+
   const handleDragEnd = ({ active: a, over }) => {
     setActive(null)
     const inst = a.data.current?.inst
@@ -161,9 +244,10 @@ export default function KanbanView({ items, onOpen, onChangeStatus, users, onRea
     // N2 — n'accepte qu'un mouvement d'un seul pas sur l'entonnoir : un dépôt
     // à plus d'un pas « snap back » (aucune mutation) avec un message FR.
     if (!canMoveStatus(inst.statut, over.id)) {
-      window.alert(
+      setRefusMsg(
         'Mouvement impossible : un chantier ne peut avancer ou reculer que '
         + "d'une étape à la fois dans l'entonnoir.")
+      window.setTimeout(() => setRefusMsg(''), 4000)
       return
     }
     onChangeStatus?.(inst, over.id)
@@ -171,17 +255,29 @@ export default function KanbanView({ items, onOpen, onChangeStatus, users, onRea
 
   return (
     <DndContext sensors={sensors}
+                accessibility={{
+                  announcements,
+                  screenReaderInstructions: kanbanScreenReaderInstructions,
+                }}
                 onDragStart={({ active: a }) => setActive(a.data.current?.inst ?? null)}
                 onDragEnd={handleDragEnd}
                 onDragCancel={() => setActive(null)}>
+      {refusMsg && (
+        <div
+          className="kb-recul-msg mb-2 rounded-lg border border-destructive/30 bg-destructive/12 px-3 py-1.5 text-[13px] font-semibold text-destructive"
+          role="status"
+        >
+          {refusMsg}
+        </div>
+      )}
       <div className="kb-board">
         {columns.map((col) => (
           <StatusColumn key={col.key} col={col}>
             {col.items.map((inst) => (
-              <div key={inst.id} onClick={() => onOpen?.(inst)}>
-                <DraggableCard inst={inst} users={users} onReassign={onReassign}
-                               isNew={nouveauxIds?.has(inst.id)} />
-              </div>
+              <DraggableCard key={inst.id} inst={inst} users={users}
+                             onReassign={onReassign} onOpen={onOpen}
+                             onChangeStatus={onChangeStatus}
+                             isNew={nouveauxIds?.has(inst.id)} />
             ))}
           </StatusColumn>
         ))}

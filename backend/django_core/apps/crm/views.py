@@ -27,6 +27,7 @@ from authentication.permissions import (
     IsAnyRole,
     IsResponsableOrAdmin,
     IsAdminRole,
+    HasPermissionOrLegacy,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -880,7 +881,7 @@ class LeadViewSet(CompanyScopedModelViewSet):
         return Response(out)
 
     @action(detail=True, methods=['post'], url_path='merge',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[HasPermissionOrLegacy('crm_modifier')])
     def merge(self, request, pk=None):
         """Fusionne d'autres leads DANS celui-ci (survivant). Sans perte :
         devis, chantiers, activités, pièces jointes et historique sont déplacés ;
@@ -937,7 +938,7 @@ class LeadViewSet(CompanyScopedModelViewSet):
             status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='convertir-client',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[HasPermissionOrLegacy('crm_modifier')])
     def convertir_client(self, request, pk=None):
         """ZSAL4 — assistant de conversion EXPLICITE lead → client (body
         {mode: nouveau|lier|aucun, client_id?}). Journalisé dans le chatter."""

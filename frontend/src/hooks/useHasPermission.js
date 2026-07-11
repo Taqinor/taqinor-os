@@ -68,4 +68,18 @@ export function useCanCreateProduit() {
   return useHasPermission('stock_creer', PRODUIT_CREATE_ROLES)
 }
 
+// VX199 — les actions VENTES sensibles (valider/accepter un devis, émettre une
+// facture) sont gardées côté backend par la permission ERP fine
+// `ventes_valider` (HasPermissionOrLegacy dans ventes/views/{devis,facture}.py),
+// PLUS par `IsResponsableOrAdmin`. Le front doit cacher l'affordance avec
+// EXACTEMENT ce code — un test d'alignement (useHasPermission.test.jsx) échoue si
+// la constante front diverge du code backend. Un rôle « lecture + une écriture »
+// (ex. Commercial sans ventes_valider) ne verra plus le bouton ET recevra 403
+// s'il appelle l'API directement.
+export const VENTES_VALIDER_PERMISSION = 'ventes_valider'
+
+export function useCanValiderVente() {
+  return useHasPermission(VENTES_VALIDER_PERMISSION)
+}
+
 export default useHasPermission

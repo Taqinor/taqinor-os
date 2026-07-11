@@ -32,6 +32,7 @@ from authentication.permissions import (  # noqa: F401
     IsAnyRole,
     IsResponsableOrAdmin,
     IsAdminRole,
+    HasPermissionOrLegacy,
 )
 from core.viewsets import CompanyScopedModelViewSet  # noqa: F401  ARC5
 from ..utils.references import create_with_reference  # noqa: F401
@@ -297,7 +298,7 @@ class FactureViewSet(CompanyScopedModelViewSet):
         serializer.save(updated_by=self.request.user)
 
     @action(detail=True, methods=['post'], url_path='emettre',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[HasPermissionOrLegacy('ventes_valider')])
     def emettre(self, request, pk=None):
         facture = self.get_object()
         if facture.statut != Facture.Statut.BROUILLON:
