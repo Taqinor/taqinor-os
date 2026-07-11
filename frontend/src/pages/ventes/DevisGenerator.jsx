@@ -28,6 +28,7 @@ import {
   Input, Textarea, Label, Segmented,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+  HelpTip,
 } from '../../ui'
 import { useCanCreateProduit } from '../../hooks/useHasPermission'
 import useKeyboardAwareScroll from '../../hooks/useKeyboardAwareScroll'
@@ -1509,6 +1510,16 @@ export default function DevisGenerator({
                 <span className="font-display text-sm font-semibold tracking-tight">
                   Facture réelle du client (recommandé)
                 </span>
+                {/* VX47 — aide contextuelle : le calcul « par tranche » selon
+                    le distributeur n'est pas intuitif pour un nouvel employé. */}
+                <HelpTip label="Aide — distributeur et tranches">
+                  Chaque distributeur (ONEE, Lydec, Redal) facture l'électricité
+                  par <strong>tranches</strong> : plus la consommation est
+                  élevée, plus le prix du kWh grimpe. En renseignant la facture
+                  ou consommation réelle du client, l'économie solaire est
+                  calculée avec le vrai barème du distributeur choisi — sans
+                  ces champs, une estimation par défaut est utilisée.
+                </HelpTip>
                 <span className="text-xs text-muted-foreground">
                   affine les économies avec le barème par tranche du distributeur
                 </span>

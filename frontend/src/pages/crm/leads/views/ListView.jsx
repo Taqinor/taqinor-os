@@ -23,7 +23,7 @@ import InlineEdit from '../../../../components/InlineEdit'
 import LeadInsightsDialog from '../LeadInsightsDialog'
 import { allVisibleSelected } from '../../../../features/crm/bulk'
 import {
-  Button, Checkbox, IconButton, StatusPill,
+  Button, Checkbox, HelpTip, IconButton, StatusPill,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
   DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
 } from '../../../../ui'
@@ -130,16 +130,21 @@ const formatDateFR = (iso) => {
   return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('fr-FR')
 }
 
-function SortableTh({ col, label, sort, onSort, className }) {
+function SortableTh({ col, label, sort, onSort, className, help }) {
   const active = sort.key === col
   return (
     <th className={className} aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
-      <button type="button" className="lv-th-btn" onClick={() => onSort(col)}>
-        {label}
-        <span className="lv-sort-ind" aria-hidden="true">
-          {active ? (sort.dir === 'asc' ? '▲' : '▼') : ''}
-        </span>
-      </button>
+      {/* `help` reste HORS du bouton de tri : deux éléments interactifs ne
+          s'imbriquent jamais (<button> dans <button> serait invalide). */}
+      <span className="inline-flex items-center gap-1">
+        <button type="button" className="lv-th-btn" onClick={() => onSort(col)}>
+          {label}
+          <span className="lv-sort-ind" aria-hidden="true">
+            {active ? (sort.dir === 'asc' ? '▲' : '▼') : ''}
+          </span>
+        </button>
+        {help}
+      </span>
     </th>
   )
 }
@@ -263,7 +268,22 @@ export default function ListView({
             )}
             <SortableTh col="lead" label="Lead" sort={sort} onSort={onSort} />
             <SortableTh col="stage" label="Stade" sort={sort} onSort={onSort} />
-            <SortableTh col="score" label="Score" sort={sort} onSort={onSort} className="m-hide" />
+            <SortableTh
+              col="score" label="Score" sort={sort} onSort={onSort} className="m-hide"
+              // VX47 — aide contextuelle : « d'où vient ce chiffre » n'est
+              // expliqué nulle part côté écran (scoring.py reste opaque).
+              help={(
+                <HelpTip label="Aide — score de lead">
+                  Le score (0-100) combine des signaux automatiques : complétude
+                  du profil, montant de facture (budget), canal d'acquisition,
+                  type d'installation, ancienneté du lead et maturité d'achat
+                  déclarée (propriétaire, délai, financement…).
+                  <strong> Chaud</strong> (≥70), <strong>Tiède</strong> (45-69),
+                  <strong> Froid</strong> (&lt;45) — recalculé à chaque mise à
+                  jour du lead.
+                </HelpTip>
+              )}
+            />
             <SortableTh col="telephone" label="Téléphone" sort={sort} onSort={onSort} className="m-hide" />
             <SortableTh col="ville" label="Ville" sort={sort} onSort={onSort} className="m-hide" />
             <th className="m-hide">Facture</th>
