@@ -347,7 +347,11 @@ export default function NotificationBell() {
               {data && (data.activites_en_retard?.length ?? 0) > 0 && (
                 <div className="nb-group">
                   <div className="nb-group-title">
-                    <Clock size={13} aria-hidden="true" /> Activités en retard
+                    {/* VX84 — ce groupe est désormais borné à `assigned_to=
+                        request.user` côté serveur (même source que « Ma
+                        file ») : « pour moi », par opposition aux garanties/
+                        contrats ci-dessous qui restent des alertes société. */}
+                    <Clock size={13} aria-hidden="true" /> Activités en retard (pour moi)
                   </div>
                   {byUrgency(data.activites_en_retard).map((a) => (
                     <button key={`act-${a.id}`} type="button" className="nb-item"
