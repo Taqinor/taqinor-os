@@ -1,4 +1,4 @@
-import { Card, StatusPill } from '../../ui'
+import { Card } from '../../ui'
 import { formatMAD } from '../../lib/format'
 import { kanbanSummary } from './factureKanban'
 
@@ -44,7 +44,18 @@ export default function FactureKanbanBoard({ factures, today, onOpenFacture }) {
                   <Card className="flex flex-col gap-1 p-3 text-sm transition-colors hover:bg-muted/40">
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-medium">{f.reference}</span>
-                      <StatusPill status={col.key} label={col.label} />
+                      {/* VX142(d) — la colonne EST déjà le statut : le StatusPill
+                          répété sur chaque carte n'apporte rien. Remplacé par une
+                          info utile (échéance si due, sinon montant dû). */}
+                      {f.date_echeance ? (
+                        <span className="text-xs text-muted-foreground" title="Échéance">
+                          {new Date(f.date_echeance).toLocaleDateString('fr-FR')}
+                        </span>
+                      ) : f.montant_du != null && Number(f.montant_du) > 0 ? (
+                        <span className="text-xs text-muted-foreground" title="Montant dû">
+                          Dû {formatMAD(f.montant_du)}
+                        </span>
+                      ) : null}
                     </div>
                     <span className="text-xs text-muted-foreground">{f.client_nom}</span>
                     <span className="tabular-nums font-medium">

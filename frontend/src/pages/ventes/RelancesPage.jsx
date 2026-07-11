@@ -11,6 +11,7 @@ import {
   Label, Textarea,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuLabel,
+  Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
 } from '../../ui'
 import { formatMAD, formatDateTime, toNumber, normalizeMaPhone } from '../../lib/format'
 
@@ -234,19 +235,26 @@ export default function RelancesPage() {
             <strong className="tabular-nums">{formatMAD(totalDu)}</strong>
             <span className="text-muted-foreground"> sur {displayed.length} facture{displayed.length > 1 ? 's' : ''}</span>
           </Card>
+          {/* VX142(c) — seul <select> HTML natif de pages/ventes/ : remplacé par
+              le composant Select tokenisé (Radix). Valeur vide « Tous » mappée
+              sur 'all' (Select n'accepte pas de valeur vide). */}
           <label className="flex items-center gap-1.5 text-sm">
             Niveau&nbsp;:
-            <select
-              className="rounded border px-2 py-1"
-              value={niveauFilter}
-              onChange={e => setNiveauFilter(e.target.value)}
+            <Select
+              value={niveauFilter === '' ? 'all' : niveauFilter}
+              onValueChange={v => setNiveauFilter(v === 'all' ? '' : v)}
             >
-              <option value="">Tous</option>
-              <option value="none">Sans niveau</option>
-              {niveaux.map(([ordre, nom]) => (
-                <option key={ordre} value={String(ordre)}>{nom}</option>
-              ))}
-            </select>
+              <SelectTrigger className="w-40" aria-label="Filtrer par niveau de relance">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tous</SelectItem>
+                <SelectItem value="none">Sans niveau</SelectItem>
+                {niveaux.map(([ordre, nom]) => (
+                  <SelectItem key={ordre} value={String(ordre)}>{nom}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </label>
           {selCount > 0 && (
             <Button size="sm" loading={bulkBusy} onClick={relancerSelection}>
