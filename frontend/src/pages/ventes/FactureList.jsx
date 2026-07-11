@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Link } from 'react-router-dom'
 import {
@@ -20,7 +20,7 @@ import importApi, { downloadXlsx } from '../../api/importApi'
 import FactureForm from './FactureForm'
 import FactureKanbanBoard from './FactureKanbanBoard'
 import {
-  Button, Badge, StatusPill, Card, EmptyState, Spinner,
+  Button, Badge, StatusPill, Card, EmptyState, Spinner, Switch,
   Tabs, TabsList, TabsTrigger,
   Input, Checkbox,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
@@ -107,6 +107,26 @@ const today = new Date().toISOString().slice(0, 10)
 const isOverdue = f =>
   f.is_overdue ||
   (f.statut === 'emise' && f.date_echeance && f.date_echeance < today)
+
+// VX92 — « Créer un autre » : persisté par utilisateur/poste (localStorage),
+// défaut OFF (comportement historique inchangé). Un relevé bancaire = 5
+// paiements à saisir d'affilée ; sans ce toggle chaque paiement coûte un
+// cycle fermer/rouvrir (~10-30 s).
+const PAY_CREER_UN_AUTRE_KEY = 'taqinor.factureList.paiement.creerUnAutre'
+function lireCreerUnAutrePaiement() {
+  try {
+    return window.localStorage.getItem(PAY_CREER_UN_AUTRE_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+function ecrireCreerUnAutrePaiement(v) {
+  try {
+    window.localStorage.setItem(PAY_CREER_UN_AUTRE_KEY, v ? '1' : '0')
+  } catch {
+    // localStorage indisponible (navigation privée, quota) : no-op silencieux.
+  }
+}
 
 // Prochaine action contextuelle (next-best-action) : clé de l'action mise en
 // avant selon statut/montant dû/retard. Une brouillon → Émettre ; une émise en
@@ -474,6 +494,9 @@ export default function FactureList() {
   const [payReference, setPayReference] = useState('')
   // ZFAC11 — proposition d'arrondi de caisse (règlement espèces).
   const [arrondiCaisse, setArrondiCaisse] = useState(null)
+  // VX92 — « Créer un autre » : persisté, défaut OFF.
+  const [payCreerUnAutre, setPayCreerUnAutre] = useState(() => lireCreerUnAutrePaiement())
+  const payMontantRef = useRef(null)
 
   // Chatter facture (avoirs + paiements) chargé à l'ouverture de la modale.
   const [factureActivites, setFactureActivites] = useState([])
@@ -528,9 +551,20 @@ export default function FactureList() {
         mode: payMode,
         reference: payReference || undefined,
       })
-      setPayTarget(null)
       dispatch(fetchFactures())
-      alert('Paiement enregistré.')
+      toast.success('Paiement enregistré.')
+      // VX92 — « Créer un autre » : on vide les champs (sauf la facture
+      // ciblée, inchangée) et on refocalise le montant au lieu de fermer.
+      if (payCreerUnAutre) {
+        setPayMontant('')
+        setPayDate(today)
+        setPayMode('virement')
+        setPayReference('')
+        loadActivites(payTarget.id)
+        payMontantRef.current?.focus()
+      } else {
+        setPayTarget(null)
+      }
     } catch (err) {
       alert(err?.response?.data?.detail ?? 'Enregistrement du paiement impossible.')
     } finally {
@@ -970,7 +1004,8 @@ export default function FactureList() {
           </DialogHeader>
           <Form onSubmit={handleEnregistrerPaiement} className="gap-4">
             <FormField label="Montant (MAD)" required htmlFor="pay-montant" fullWidth>
-              <Input id="pay-montant" type="number" min="0" step="any" required
+              <Input id="pay-montant" ref={payMontantRef} type="number" min="0" step="any" required
+                     autoFocus
                      value={payMontant} onChange={e => setPayMontant(e.target.value)} />
             </FormField>
             <FormField label="Date de paiement" required htmlFor="pay-date">
@@ -1005,6 +1040,16 @@ export default function FactureList() {
                      value={payReference} onChange={e => setPayReference(e.target.value)} />
             </FormField>
             <FormActions sticky={false}>
+              {/* VX92 — « Créer un autre » : saisir plusieurs paiements d'affilée
+                  (ex. relevé bancaire) sans rouvrir la modale à chaque fois. */}
+              <label className="mr-auto flex items-center gap-2 text-sm text-muted-foreground">
+                <Switch
+                  checked={payCreerUnAutre}
+                  onCheckedChange={(v) => { setPayCreerUnAutre(v); ecrireCreerUnAutrePaiement(v) }}
+                  aria-label="Créer un autre"
+                />
+                Créer un autre
+              </label>
               <Button type="button" variant="ghost" onClick={() => setPayTarget(null)}>Annuler</Button>
               <Button type="submit" loading={paySaving}>Enregistrer</Button>
             </FormActions>
