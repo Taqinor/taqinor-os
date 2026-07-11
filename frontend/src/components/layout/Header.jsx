@@ -1,7 +1,7 @@
 import { useSelector, useDispatch } from 'react-redux'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
-import { Menu, Search, LogOut, User as UserIcon, Settings, Zap, Bot } from 'lucide-react'
+import { Menu, Search, LogOut, User as UserIcon, Settings, Zap, Bot, LayoutGrid } from 'lucide-react'
 import {
   Avatar, AvatarFallback, initials,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
@@ -15,6 +15,9 @@ import NotificationBell from './NotificationBell'
 import ChatBell from './ChatBell'
 import Breadcrumbs from './Breadcrumbs'
 import LanguageSwitcher from './LanguageSwitcher'
+// VX9 — Lanceur d'applications (overlay grille), déclenché par le bouton
+// grille ci-dessous ou le raccourci « g a » (câblé dans le composant lui-même).
+import AppLauncher from './AppLauncher'
 import { titleFor } from './routes.meta'
 import { ThemeToggle } from '../../design/ThemeToggle'
 import { useT } from '../../i18n'
@@ -29,6 +32,14 @@ const PRODUCT_NAME = import.meta.env.VITE_PRODUCT_NAME || 'ERP'
 function fireCommandPalette() {
   try {
     window.dispatchEvent(new CustomEvent('taqinor:command-palette'))
+  } catch { /* environnement sans window : silencieux */ }
+}
+
+// VX9 — même patron que fireCommandPalette, pour le lanceur d'applications
+// (AppLauncher.jsx écoute exactement cet événement).
+function fireAppLauncher() {
+  try {
+    window.dispatchEvent(new CustomEvent('taqinor:app-launcher'))
   } catch { /* environnement sans window : silencieux */ }
 }
 
@@ -100,6 +111,13 @@ export default function Header({ onMenu }) {
           <Search size={16} aria-hidden="true" />
           <kbd className="header-cmdk-kbd">⌘K</kbd>
         </button>
+        {/* VX9 — bouton grille : ouvre le lanceur d'applications (overlay léger,
+            toutes les apps par catégorie). Raccourci clavier « g a ». */}
+        <button type="button" className="nb-btn" onClick={fireAppLauncher}
+                aria-label="Toutes les applications (g a)" title="Toutes les applications (g a)">
+          <LayoutGrid size={18} aria-hidden="true" />
+        </button>
+        <AppLauncher />
 
         <div className="header-user">
           {/* XPLT19 — sélecteur de société active (multi-sociétés uniquement). */}

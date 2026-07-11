@@ -5289,5 +5289,92 @@ textarea.form-control {
 @keyframes module-hero-sheen-drift {
   0%, 100% { background-position: 0% 0; }
   50% { background-position: 100% 0; }
+/* ── VX9 — Lanceur d'applications (grille légère, PAS une page) ──────────────
+   Overlay Radix Dialog (AppLauncher.jsx) : grille de modules par catégorie
+   (favoris / récents / toutes), icône + label FR. `--module-accent` (VX8) sur
+   `.sidebar-section` n'entre PAS ici (le lanceur est hors Sidebar) — les tuiles
+   restent neutres, le liseré/l'icône de survol reprend le brass (cohérent avec
+   l'item actif générique de la nav). reduced-motion géré globalement (§ plus
+   haut) : aucune animation propre à ajouter ici. */
+.app-launcher-content {
+  max-width: 34rem;
+  max-height: min(32rem, calc(100dvh - 4rem));
+}
+.app-launcher-title { margin-right: 0; }
+.app-launcher-section + .app-launcher-section { margin-top: 0.9rem; }
+.app-launcher-section-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+  margin-bottom: 0.4rem;
+}
+.app-launcher-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr));
+  gap: 0.5rem;
+}
+.app-launcher-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.75rem 0.4rem 0.5rem;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: none;
+  cursor: pointer;
+  color: var(--foreground);
+  text-align: center;
+  transition: background var(--motion-fast) var(--ease-out),
+              border-color var(--motion-fast) var(--ease-out);
+}
+@media (hover: hover) {
+  .app-launcher-tile:hover { background: var(--secondary); border-color: var(--border); }
+}
+.app-launcher-tile:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+.app-launcher-tile-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 8px;
+  background: var(--secondary);
+  color: var(--primary);
+}
+.app-launcher-tile-label {
+  font-size: 0.78rem;
+  line-height: 1.25;
+}
+.app-launcher-tile-pin {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 6px;
+  color: var(--muted-foreground);
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out);
+}
+.app-launcher-tile:hover .app-launcher-tile-pin,
+.app-launcher-tile-pin:focus-visible {
+  opacity: 1;
+}
+.app-launcher-tile-pin[aria-label^="Désépingler"] {
+  color: var(--primary);
+  opacity: 1;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .app-launcher-content[data-state="open"] { animation-duration: 150ms; }
 }
 .header-lang-code { font-size: 0.7rem; font-weight: 600; line-height: 1; }
