@@ -18,6 +18,7 @@ import {
   TabsTrigger,
   TabsContent,
   Input,
+  KeyValueTable,
   toast,
 } from '../../ui'
 import { FileUpload } from '../../ui/FileUpload'
@@ -56,6 +57,17 @@ const FIELD_LABELS = {
   montant_ttc: 'Montant TTC',
   conditions_paiement: 'Conditions de paiement',
   iban: 'IBAN',
+}
+
+// VX152 — point de rendu UNIQUE de FIELD_LABELS : transforme un objet de données
+// OCR en lignes « libellé → valeur » (clés présentes uniquement). Les deux onglets
+// (Analyser éditable, Documents lecture seule) le réutilisent au lieu de réitérer
+// FIELD_LABELS chacun de son côté — fin des deux tables clé/valeur parallèles.
+function ocrFieldRows(source) {
+  const data = source ?? {}
+  return Object.entries(FIELD_LABELS)
+    .filter(([key]) => data[key] != null)
+    .map(([key, label]) => ({ key, label }))
 }
 
 function ConfidenceBadge({ value }) {
@@ -220,7 +232,7 @@ function AnalyseTab({ canSave }) {
   // Champs affichés = ceux présents à l'origine (non nuls) — restent visibles
   // même si l'utilisateur efface une valeur en la corrigeant.
   const rawDonnees = ocrResult?.donnees_structurees ?? {}
-  const editableKeys = Object.keys(FIELD_LABELS).filter((k) => rawDonnees[k] != null)
+  const champsExtraits = ocrFieldRows(rawDonnees)
 
   return (
     <div className="space-y-4">
@@ -268,7 +280,7 @@ function AnalyseTab({ canSave }) {
           {/* VX39 — source et extraction côte à côte : aperçu du document à
               gauche, table de champs extraits ÉDITABLE à droite (boucle
               vérifier-puis-corriger avant enregistrement). */}
-          {editableKeys.length > 0 && (
+          {champsExtraits.length > 0 && (
             <div className="grid gap-4 lg:grid-cols-2">
               <Card>
                 <CardContent className="p-0">
@@ -302,25 +314,19 @@ function AnalyseTab({ canSave }) {
                   <p className="border-b border-border px-4 py-2.5 text-sm font-semibold text-foreground">
                     Données extraites — corrigez si besoin
                   </p>
-                  <table className="w-full text-sm">
-                    <tbody>
-                      {editableKeys.map((key) => (
-                        <tr key={key} className="border-b border-border last:border-0">
-                          <td className="w-40 bg-muted/50 px-4 py-2 align-middle font-medium text-muted-foreground">
-                            {FIELD_LABELS[key]}
-                          </td>
-                          <td className="px-3 py-1.5">
-                            <Input
-                              value={donnees[key] ?? ''}
-                              onChange={(e) => handleFieldChange(key, e.target.value)}
-                              aria-label={FIELD_LABELS[key]}
-                              data-testid={`ocr-field-${key}`}
-                            />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  {/* VX152 — primitif partagé KeyValueTable (variante éditable). */}
+                  <KeyValueTable
+                    aria-label="Champs extraits"
+                    items={champsExtraits}
+                    renderValue={(it) => (
+                      <Input
+                        value={donnees[it.key] ?? ''}
+                        onChange={(e) => handleFieldChange(it.key, e.target.value)}
+                        aria-label={it.label}
+                        data-testid={`ocr-field-${it.key}`}
+                      />
+                    )}
+                  />
                 </CardContent>
               </Card>
             </div>
@@ -507,6 +513,7 @@ function DocumentsTab({ canDelete }) {
       {documents.map((doc) => {
         const isOpen = expanded === doc.id
         const d = doc.donnees_structurees ?? {}
+        const champsOcr = ocrFieldRows(d)
         return (
           <Card key={doc.id} className="overflow-hidden">
             {/* Ligne principale */}
@@ -556,21 +563,14 @@ function DocumentsTab({ canDelete }) {
                   <TypeBadge type={doc.type_document} />
                   <ConfidenceBadge value={doc.confiance} />
                 </div>
-                {Object.keys(d).some(k => k !== 'lignes' && d[k] != null) && (
-                  <table className="w-full text-xs">
-                    <tbody>
-                      {Object.entries(FIELD_LABELS).map(([key, label]) => {
-                        const val = d[key]
-                        if (val == null) return null
-                        return (
-                          <tr key={key} className="border-b border-border last:border-0">
-                            <td className="w-36 py-1 font-medium text-muted-foreground">{label}</td>
-                            <td className="py-1 text-foreground">{String(val)}</td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
+                {champsOcr.length > 0 && (
+                  // VX152 — même primitif partagé KeyValueTable (variante lecture seule).
+                  <KeyValueTable
+                    dense
+                    aria-label="Champs extraits"
+                    items={champsOcr}
+                    renderValue={(it) => String(d[it.key])}
+                  />
                 )}
                 {(d.lignes ?? []).length > 0 && (
                   <p className="text-xs text-muted-foreground">{d.lignes.length} ligne(s) de détail</p>

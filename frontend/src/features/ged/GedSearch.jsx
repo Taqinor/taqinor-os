@@ -11,9 +11,47 @@ import {
   Card, CardContent, Button, EmptyState, Badge, Input,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+import { DataTable } from '../../ui/datatable'
 import {
   rows, normalizeQuery, hasActiveSearch, filterDocuments,
 } from './search.js'
+
+// VX152 — les résultats de recherche rejoignent le moteur DataTable partagé
+// (fin de la table HTML héritée). Liste seule : résultats pré-filtrés/triés
+// côté serveur (seams manuels), aucune barre d'outils.
+const GED_SEARCH_COLUMNS = [
+  {
+    id: 'nom', header: 'Document', sortable: false, hideable: false, reorderable: false,
+    accessor: (d) => d.nom,
+    cell: (v) => (
+      <span className="flex items-center gap-1.5 font-medium">
+        <FileText className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        {v}
+      </span>
+    ),
+  },
+  {
+    id: 'tags', header: 'Tags', sortable: false, hideable: false, reorderable: false,
+    accessor: (d) => (d.tags || []).map((t) => t.nom).join(' '),
+    cell: (unused, d) => ((d.tags || []).length === 0 ? '—' : (
+      <span className="flex flex-wrap gap-1">
+        {(d.tags || []).map((t) => (
+          <Badge key={t.id} tone="neutral">
+            <TagIcon className="size-3" aria-hidden="true" /> {t.nom}
+          </Badge>
+        ))}
+      </span>
+    )),
+  },
+  {
+    id: 'folder', header: 'Dossier', sortable: false, hideable: false, reorderable: false,
+    accessor: (d) => d.folder_nom || '—',
+  },
+  {
+    id: 'updated', header: 'Mis à jour', sortable: false, hideable: false, reorderable: false,
+    accessor: (d) => formatDate(d.updated_at),
+  },
+]
 
 export default function GedSearch() {
   const [query, setQuery] = useState('')
@@ -144,41 +182,22 @@ export default function GedSearch() {
                   <Badge tone="neutral">Plein-texte (sémantique indisponible)</Badge>
                 )}
               </div>
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Document</th>
-                    <th className="m-hide">Tags</th>
-                    <th className="m-hide">Dossier</th>
-                    <th>Mis à jour</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {results.map((d) => (
-                    <tr key={d.id}>
-                      <td data-label="Document" className="font-medium">
-                        <span className="flex items-center gap-1.5">
-                          <FileText className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                          {d.nom}
-                        </span>
-                      </td>
-                      <td data-label="Tags" className="m-hide">
-                        {(d.tags || []).length === 0 ? '—' : (
-                          <span className="flex flex-wrap gap-1">
-                            {(d.tags || []).map((t) => (
-                              <Badge key={t.id} tone="neutral">
-                                <TagIcon className="size-3" aria-hidden="true" /> {t.nom}
-                              </Badge>
-                            ))}
-                          </span>
-                        )}
-                      </td>
-                      <td data-label="Dossier" className="m-hide">{d.folder_nom || '—'}</td>
-                      <td data-label="Mis à jour">{formatDate(d.updated_at)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <DataTable
+                data={results}
+                columns={GED_SEARCH_COLUMNS}
+                getRowId={(d) => d.id}
+                manualSorting
+                manualFiltering
+                manualPagination
+                rowCount={results.length}
+                pageSize={results.length}
+                pageSizeOptions={[results.length]}
+                searchable={false}
+                hideToolbar
+                hidePagination
+                tableRole="table"
+                aria-label="Résultats de recherche"
+              />
             </div>
           )
         ) : null}
