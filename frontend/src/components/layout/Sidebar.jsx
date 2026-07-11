@@ -109,7 +109,10 @@ const ROLE_META = {
 // VX8 — accent de module par section : une des 7 clés `--module-accent-*` de
 // tokens.css (dérivées des rampes/couleurs existantes, aucune inventée).
 // `accent: null` (première section, sans label) reste neutre.
-const NAV_SECTIONS = [
+// VX12 — exportée en plus de l'usage local : le sélecteur mobile « Plus »
+// (BottomTabBar.jsx) réutilise la MÊME liste que la Sidebar desktop (aucune
+// duplication), seule la présentation change (grille par catégorie).
+export const NAV_SECTIONS = [
   {
     label: null,
     accent: null,

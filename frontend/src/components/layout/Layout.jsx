@@ -104,8 +104,11 @@ export default function Layout({ children }) {
           )}
           {children}
         </main>
-        {/* I36 — Barre d'onglets inférieure (mobile uniquement, via CSS). */}
-        <BottomTabBar onMore={() => setDrawerOpen(true)} />
+        {/* I36 — Barre d'onglets inférieure (mobile uniquement, via CSS).
+            VX12 — « Plus » ouvre désormais son PROPRE tiroir compact (grille de
+            modules), auto-porté par BottomTabBar : ne pilote plus `drawerOpen`
+            (réservé au hamburger du Header → tiroir latéral complet). */}
+        <BottomTabBar />
       </div>
       {/* FG350 — Copilote in-app : tiroir conversationnel global (agent FastAPI),
           piloté par la slice `ia`. VX57 — chargé et monté paresseusement, à
