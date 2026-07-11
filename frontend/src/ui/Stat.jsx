@@ -6,7 +6,10 @@ import { Card } from './Card'
    tabulaires pour alignement.
    VX157 — `tone="impact"` : variante à accent brass pour les grandeurs
    d'impact POSITIF (production, CO₂ évité, économies…), qui la distingue
-   visuellement d'une carte KPI neutre sans être criarde. */
+   visuellement d'une carte KPI neutre sans être criarde.
+   VX124 — `.stat-value-solidify` (voir tokens.css) : le chiffre KPI « se
+   solidifie » au montage — la police variable (100–900, brand.css) passe de
+   wght 500 à 600 sur --motion-slow, un saut direct sous reduced-motion. */
 export function Stat({ label, value, hint, delta, icon, tone, className, ...props }) {
   const Icon = icon
   const deltaTone =
@@ -39,7 +42,7 @@ export function Stat({ label, value, hint, delta, icon, tone, className, ...prop
           />
         )}
       </div>
-      <div className="mt-2 font-display text-2xl font-semibold tabular-nums leading-none">
+      <div className="mt-2 font-display text-2xl font-semibold tabular-nums leading-none stat-value-solidify">
         {value}
       </div>
       {(hint || delta) && (

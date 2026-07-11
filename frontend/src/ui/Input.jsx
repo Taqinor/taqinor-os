@@ -3,10 +3,13 @@ import { cn } from '../lib/cn'
 
 /* G22 — Champ texte. 16px sur mobile (anti-zoom iOS) → text-base sm:text-sm.
    `invalid` câble aria-invalid + style. `leading`/`trailing` = ornements
-   (icône, unité). Hauteur pilotée par la densité (F20). */
+   (icône, unité). Hauteur pilotée par la densité (F20).
+   VX124 — `caret-color: var(--primary)` : le curseur de saisie prend la
+   teinte de marque au lieu du noir système, sur le champ le plus regardé
+   de l'ERP (générateur de devis). */
 const baseField =
   'flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs ' +
-  'transition-colors placeholder:text-muted-foreground ' +
+  'transition-colors placeholder:text-muted-foreground caret-primary ' +
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring ' +
   'disabled:cursor-not-allowed disabled:opacity-60 ' +
   'aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 ' +
