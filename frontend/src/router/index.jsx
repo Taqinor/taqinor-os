@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components --
    Fichier de configuration du routeur (lazy imports + loaders), pas un module
    de composants : le fast-refresh ne s'y applique pas. */
-import { createBrowserRouter, Navigate, redirect, useLocation } from 'react-router-dom'
+import { createBrowserRouter, redirect, useLocation } from 'react-router-dom'
 import { lazy, Suspense } from 'react'
 import { store } from '../store'
 import { fetchMe } from '../features/auth/store/authSlice'
@@ -51,6 +51,9 @@ const TicketSuiviPage = lazy(() => import('../pages/sav/TicketSuiviPage'))
 const PublicArticlePage = lazy(() => import('../pages/kb/PublicArticlePage'))
 const ChatPage = lazy(() => import('../pages/messaging/ChatPage'))
 const DocumentsPage = lazy(() => import('../pages/ged/DocumentsPage'))
+// VX78 — Écran 404 déjà construit (ui/NotFound.jsx), jusqu'ici jamais importé
+// par le routeur : le catch-all rebondissait en silence vers /dashboard.
+const NotFound = lazy(() => import('../ui/NotFound'))
 
 // ── Auth loader ────────────────────────────────────────────────────────────────
 // Verifie la session via le cookie httpOnly — aucun token cote client.
@@ -212,8 +215,9 @@ const router = createBrowserRouter([
   // route est gatée par le même authLoader/roleLoader que le reste de l'app.
   ...buildModuleRoutes({ WithLayout, authLoader, roleLoader }),
 
-  // Catch-all
-  { path: '*', element: <Navigate to="/dashboard" replace /> },
+  // Catch-all — VX78 : un favori/lien périmé affiche désormais l'écran 404
+  // (ui/NotFound.jsx) au lieu de rebondir en silence vers /dashboard.
+  { path: '*', element: <WithLayout><NotFound /></WithLayout> },
 ])
 
 export default router

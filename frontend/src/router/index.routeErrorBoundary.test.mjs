@@ -68,8 +68,11 @@ test('chaque route nue déclarée est bien enveloppée dans <RouteErrorBoundary>
   }
 })
 
-test('le catch-all "*" reste une simple redirection (pas de rendu, pas de boundary nécessaire)', () => {
+// VX78 — Le catch-all rend désormais l'écran 404 (ui/NotFound.jsx) au lieu de
+// rediriger en silence vers /dashboard (un favori/lien périmé doit s'expliquer).
+test('le catch-all "*" rend la page 404 (NotFound) au lieu de rediriger silencieusement', () => {
   const catchAllLine = routeLines.find((line) => /path:\s*'\*'/.test(line))
   assert.ok(catchAllLine, 'la route catch-all "*" doit exister')
-  assert.match(catchAllLine, /<Navigate\s/, 'le catch-all doit rester un <Navigate>, sans rendu de page')
+  assert.match(catchAllLine, /<WithLayout><NotFound \/><\/WithLayout>/, 'le catch-all doit rendre NotFound (dans WithLayout)')
+  assert.doesNotMatch(catchAllLine, /<Navigate\s/, 'le catch-all ne doit plus rediriger silencieusement vers /dashboard')
 })
