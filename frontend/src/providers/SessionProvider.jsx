@@ -15,6 +15,7 @@ import { Label } from '../ui/Label'
 import api from '../api/axios'
 import { setCredentials } from '../features/auth/store/authSlice'
 import { SESSION_EXPIRED_EVENT } from './session-bridge'
+import { isAnyFormDirty, confirmLeaveIfDirty } from '../ui/useDirtyGuard'
 
 export function SessionProvider({ children }) {
   const [open, setOpen] = useState(false)
@@ -74,7 +75,10 @@ export function SessionProvider({ children }) {
   }, [username, password, dispatch, dismiss])
 
   // Fermeture forcée vers le login si l'utilisateur abandonne la reconnexion.
+  // VX62 — un rechargement dur (`window.location.href`) détruit tout formulaire
+  // en cours : si un formulaire modifié est monté, on confirme d'abord.
   const goToLogin = useCallback(() => {
+    if (isAnyFormDirty() && !confirmLeaveIfDirty(true)) return
     dismiss()
     window.location.href = '/login'
   }, [dismiss])
