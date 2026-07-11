@@ -153,7 +153,7 @@ def tenant_task(func):
     ``set_current_company`` AVANT d'exécuter le corps — de sorte que, RLS actif,
     la tâche ne voit/écrit que les lignes de CE tenant, même via SQL brut.
 
-        @shared_task(name='crm.relancer')
+        @shared_task(name=...)   # ex. nom explicite « crm.relancer »
         @tenant_task
         def relancer(*, company_id, lead_id):
             ...

@@ -168,13 +168,8 @@ class FactureViewSet(CompanyScopedModelViewSet):
             'paiements', 'relances', 'emails', 'arrondi_caisse',
         ]:
             return [IsAnyRole()]
-        elif self.action == 'emettre':
-            # VX199 — émission de facture : permission ERP FINE (ventes_valider),
-            # pas le grossier IsResponsableOrAdmin. get_permissions PRIME sur le
-            # permission_classes de l'@action, donc la garde fine doit être ICI.
-            return [HasPermissionOrLegacy('ventes_valider')()]
         elif self.action in WRITE_ACTIONS + [
-            'marquer_payee', 'enregistrer_paiement',
+            'emettre', 'marquer_payee', 'enregistrer_paiement',
             'generer_pdf', 'telecharger_pdf', 'envoyer_email',
             'relancer', 'exclure_relance', 'whatsapp', 'ubl',
             'dgi_export', 'dgi_conformite', 'dgi_transmettre',
@@ -302,8 +297,7 @@ class FactureViewSet(CompanyScopedModelViewSet):
         # alimente la puce de fraîcheur. Pattern created_by.
         serializer.save(updated_by=self.request.user)
 
-    @action(detail=True, methods=['post'], url_path='emettre',
-            permission_classes=[HasPermissionOrLegacy('ventes_valider')])
+    @action(detail=True, methods=['post'], url_path='emettre')
     def emettre(self, request, pk=None):
         facture = self.get_object()
         if facture.statut != Facture.Statut.BROUILLON:

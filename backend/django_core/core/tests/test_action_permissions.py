@@ -38,7 +38,10 @@ UNGUARDED_ACTION_BASELINE = {
     "publicapi": 5,
     "qhse": 65,
     "rh": 103,
-    "roles": 1,
+    # YRBAC10 a gardé la dernière @action roles non gardée (permission-catalog
+    # est admin-only) → dette tombée à 0 ; on resserre le baseline (le cliquet
+    # ne fait que DÉCROÎTRE).
+    "roles": 0,
     "stock": 3,
     "ventes": 1,
 }

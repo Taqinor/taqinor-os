@@ -29,7 +29,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from apps.roles.models import Role
 from apps.crm.models import Client as CrmClient, Lead
-from apps.ventes.models import Devis, Facture
+from apps.ventes.models import Devis
 
 User = get_user_model()
 MONTH = timezone.now().strftime('%Y%m')
@@ -111,36 +111,10 @@ class TestDevisValidationGuard(VX199GuardBase):
         self.assertNotEqual(r.status_code, 403, r.data)
 
 
-class TestFactureEmissionGuard(VX199GuardBase):
-    def _facture(self, num=1):
-        return Facture.objects.create(
-            company=self.company, reference=f'FAC-{MONTH}-{num:04d}',
-            client=self.client_obj, statut=Facture.Statut.BROUILLON,
-            montant_ht=Decimal('1000'), montant_tva=Decimal('200'),
-            montant_ttc=Decimal('1200'))
-
-    def test_read_write_role_gets_403_on_emettre(self):
-        facture = self._facture(num=1)
-        r = _auth(self.commercial).post(
-            f'/api/django/ventes/factures/{facture.id}/emettre/', {},
-            format='json')
-        self.assertEqual(r.status_code, 403, r.data)
-
-    def test_valideur_role_not_blocked_on_emettre(self):
-        facture = self._facture(num=2)
-        r = _auth(self.valideur).post(
-            f'/api/django/ventes/factures/{facture.id}/emettre/', {},
-            format='json')
-        # Permission fine présente → pas 403 (peut être 400 si la facture n'a
-        # pas de ligne, mais l'accès n'est PAS refusé).
-        self.assertNotEqual(r.status_code, 403, r.data)
-
-    def test_legacy_responsable_not_blocked_on_emettre(self):
-        facture = self._facture(num=3)
-        r = _auth(self.legacy_resp).post(
-            f'/api/django/ventes/factures/{facture.id}/emettre/', {},
-            format='json')
-        self.assertNotEqual(r.status_code, 403, r.data)
+# NB : l'émission de facture (`emettre`) N'EST PAS re-gardée par VX199 — sa
+# permission reste gouvernée par le workflow de revue XFAC18 (flag société +
+# rôle) déjà en place ; VX199 ne touche QUE devis accepter/refuser + lead
+# merge/convertir, pour ne pas entrer en conflit avec XFAC18.
 
 
 class TestLeadSensitiveActionsGuard(VX199GuardBase):

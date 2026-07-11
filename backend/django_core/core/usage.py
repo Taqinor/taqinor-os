@@ -36,6 +36,7 @@ MAX_COUNT = 1_000_000
 # Grosses tables suivies EN PRIORITÉ (par nom de table) — intersectées avec le
 # périmètre company-scopé réel pour ne jamais viser une table absente.
 _TRACKED_TABLE_HINTS = (
+    'authentication_customuser',
     'crm_lead', 'crm_client', 'ventes_devis', 'ventes_facture',
     'ventes_boncommande', 'stock_mouvementstock', 'stock_produit',
     'installations_installation', 'installations_intervention',
