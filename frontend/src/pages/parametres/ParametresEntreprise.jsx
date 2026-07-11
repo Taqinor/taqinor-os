@@ -17,12 +17,13 @@ import stockApi from '../../api/stockApi'
 import customFieldsApi from '../../api/customFieldsApi'
 import { CheckCircle2, AlertCircle, Save, Search, X } from 'lucide-react'
 import {
-  Button, Spinner, Tabs, TabsList, TabsTrigger, TooltipProvider, Input,
+  Button, Spinner, TooltipProvider, Input,
 } from '../../ui'
 import {
   TABS, DEFAULT_PAYMENT_TERMS, DEFAULT_PREFIXES, DEFAULT_NUMBERING,
-  searchSettings,
+  searchSettings, groupTabs,
 } from './peConstants'
+import SettingsSidebar from './SettingsSidebar'
 import OnboardingSection from './OnboardingSection'
 import SocieteSection from './SocieteSection'
 import LeadsSection from './LeadsSection'
@@ -52,13 +53,13 @@ import ConfidentialiteSection from './ConfidentialiteSection'
 // N96 — onglet « Sécurité du compte » (double authentification 2FA, opt-in).
 // Ajouté localement (sans modifier la liste partagée peConstants.TABS) pour
 // rester dans le périmètre de ce fichier.
-const SECURITE_COMPTE_TAB = { key: 'securite_compte', label: 'Sécurité du compte' }
+const SECURITE_COMPTE_TAB = { key: 'securite_compte', label: 'Sécurité du compte', group: 'equipe' }
 // N94 — onglet « Traductions » (surcharges d'interface par langue, sans code).
 // Ajouté localement, même logique que l'onglet N96 (hors peConstants.TABS).
-const TRADUCTIONS_TAB = { key: 'traductions', label: 'Traductions' }
+const TRADUCTIONS_TAB = { key: 'traductions', label: 'Traductions', group: 'avance' }
 // XPLT23 — onglet « Confidentialité » (registre CNDP + demandes de personnes
 // concernées). Ajouté localement, même logique que N96/N94.
-const CONFIDENTIALITE_TAB = { key: 'confidentialite', label: 'Confidentialité' }
+const CONFIDENTIALITE_TAB = { key: 'confidentialite', label: 'Confidentialité', group: 'equipe' }
 
 // ── Conteneur de la page Paramètres (D1) ───────────────────────────────────────
 // Toute la logique (état du formulaire, chargements, handlers) vit ici, dans un
@@ -84,6 +85,9 @@ export default function ParametresEntreprise() {
   // Liste d'onglets affichée = onglets partagés + N96 (2FA) + N94 (traductions)
   // + XPLT23 (confidentialité).
   const allTabs = [...TABS, SECURITE_COMPTE_TAB, TRADUCTIONS_TAB, CONFIDENTIALITE_TAB]
+  // VX35 — onglets rangés en familles pour la sidebar verticale (ordre =
+  // SETTINGS_GROUPS). groupTabs garantit qu'aucun onglet ne disparaît.
+  const tabGroups = groupTabs(allTabs)
   const tabLabel = (key) => (allTabs.find(t => t.key === key)?.label ?? key)
   const jumpToTab = (key) => { setTab(key); setSearch('') }
 
@@ -749,6 +753,43 @@ export default function ParametresEntreprise() {
     setPT, setPrefix, setNumbering, numberingPreview,
   }
 
+  // ── L790 — recherche de réglage (saute à l'onglet correspondant). Rendue en
+  //    tête de la sidebar (VX35) ; sa logique — searchSettings, jumpToTab — est
+  //    inchangée. ──
+  const searchBlock = (
+    <div className="relative">
+      <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+      <Input
+        type="search" value={search} onChange={e => setSearch(e.target.value)}
+        placeholder="Rechercher un réglage (ex. « TVA », « ICE », « relance »)…"
+        aria-label="Rechercher un réglage"
+        className="pl-9 pr-9"
+      />
+      {search && (
+        <button type="button" onClick={() => setSearch('')}
+                aria-label="Effacer la recherche"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+          <X className="size-4" aria-hidden="true" />
+        </button>
+      )}
+      {search.trim().length >= 2 && (
+        <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-border bg-popover shadow-ui-md">
+          {searchResults.length === 0 ? (
+            <p className="px-3 py-2.5 text-xs text-muted-foreground">Aucun réglage correspondant.</p>
+          ) : (
+            searchResults.slice(0, 8).map(({ tab: rt, hits }) => (
+              <button key={rt} type="button" onClick={() => jumpToTab(rt)}
+                      className="flex w-full flex-col items-start gap-0.5 border-b border-border px-3 py-2 text-left last:border-0 hover:bg-accent">
+                <span className="text-sm font-medium text-foreground">{tabLabel(rt)}</span>
+                <span className="text-[11px] text-muted-foreground">{hits.slice(0, 4).join(' · ')}</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  )
+
   return (
     <TooltipProvider delayDuration={200}>
       <div className="mx-auto max-w-[1100px] p-6">
@@ -763,49 +804,17 @@ export default function ParametresEntreprise() {
           </p>
         </div>
 
-        {/* ── L790 — recherche de réglage (saute à l'onglet correspondant) ── */}
-        <div className="relative mb-3">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-          <Input
-            type="search" value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Rechercher un réglage (ex. « TVA », « ICE », « relance »)…"
-            aria-label="Rechercher un réglage"
-            className="pl-9 pr-9"
-          />
-          {search && (
-            <button type="button" onClick={() => setSearch('')}
-                    aria-label="Effacer la recherche"
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-              <X className="size-4" aria-hidden="true" />
-            </button>
-          )}
-          {search.trim().length >= 2 && (
-            <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-border bg-popover shadow-ui-md">
-              {searchResults.length === 0 ? (
-                <p className="px-3 py-2.5 text-xs text-muted-foreground">Aucun réglage correspondant.</p>
-              ) : (
-                searchResults.slice(0, 8).map(({ tab: rt, hits }) => (
-                  <button key={rt} type="button" onClick={() => jumpToTab(rt)}
-                          className="flex w-full flex-col items-start gap-0.5 border-b border-border px-3 py-2 text-left last:border-0 hover:bg-accent">
-                    <span className="text-sm font-medium text-foreground">{tabLabel(rt)}</span>
-                    <span className="text-[11px] text-muted-foreground">{hits.slice(0, 4).join(' · ')}</span>
-                  </button>
-                ))
-              )}
-            </div>
-          )}
-        </div>
+        {/* ── VX35 — sidebar verticale groupée + colonne de contenu ── */}
+        <div className="flex flex-col gap-6 md:flex-row md:items-start">
 
-        {/* ── Onglets (primitif Tabs, défilable sur mobile) ── */}
-        <Tabs value={tab} onValueChange={setTab} className="mb-5">
-          <TabsList className="pe-tabs-scroll flex w-full justify-start overflow-x-auto">
-            {allTabs.map(t => (
-              <TabsTrigger key={t.key} value={t.key} className="shrink-0">
-                {t.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+          <SettingsSidebar
+            groups={tabGroups}
+            activeTab={tab}
+            onSelect={setTab}
+            searchSlot={searchBlock}
+          />
+
+          <div className="min-w-0 flex-1">
 
         {/* ── Bandeaux de feedback ── */}
         {saved && (
@@ -873,6 +882,9 @@ export default function ParametresEntreprise() {
           {/* Bouton d'enregistrement du profil (onglets porteurs de champs) */}
           {showSave && saveButton}
         </form>
+
+          </div>
+        </div>
       </div>
     </TooltipProvider>
   )
