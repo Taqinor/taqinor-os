@@ -27,7 +27,9 @@ test('QX28 : les chips sont rendus dans l\'en-tête, uniquement en édition', ()
   assert.match(SRC, /Prêt à deviser en 1 clic/)
 })
 
-test('QX28 : les deux occurrences du raccourci 3D sont badgées quand roofReady', () => {
+test('QX28 : le raccourci 3D (dédupliqué en une seule occurrence par VX143) est badgé quand roofReady', () => {
+  // VX143 a dédupliqué le bouton « Concevoir la toiture (3D) » à UNE seule
+  // occurrence (subbar, toujours visible) ; elle reste badgée 📍 quand roofReady.
   const occurrences = [...SRC.matchAll(/Concevoir la toiture \(3D\)\{roofReady \? ' 📍' : ''\}/g)]
-  assert.equal(occurrences.length, 2)
+  assert.equal(occurrences.length, 1)
 })

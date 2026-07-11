@@ -97,7 +97,7 @@ export default function ChatterWidget({ model, id, readOnly = false }) {
         <span>Commentaires {comments.length > 0 && `(${comments.length})`}</span>
       </div>
 
-      <div className="chatter-list">
+      <div className="chatter-list" role="log" aria-live="polite" aria-relevant="additions">
         {loading && (
           <div className="chatter-empty">Chargement…</div>
         )}
@@ -114,6 +114,7 @@ export default function ChatterWidget({ model, id, readOnly = false }) {
                 <button
                   className="chatter-delete"
                   title="Supprimer"
+                  aria-label="Supprimer le commentaire"
                   onClick={() => handleDelete(c.id)}
                 >
                   <Trash2 size={12} />

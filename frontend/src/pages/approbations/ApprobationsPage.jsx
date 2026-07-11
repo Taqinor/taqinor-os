@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { CheckCircle2, Inbox, XCircle } from 'lucide-react'
 import reportingApi from '../../api/reportingApi'
+import { formatMAD } from '../../lib/format'
 import {
   Badge, Button, DataTable, EmptyState, Select, SelectTrigger, SelectValue,
   SelectContent, SelectItem, Spinner, toast,
@@ -136,12 +138,25 @@ export default function ApprobationsPage() {
       accessor: (r) => SOURCE_LABELS[r.source] || r.source,
       cell: (v, r) => <Badge tone="neutral">{SOURCE_LABELS[r.source] || r.source}</Badge>,
     },
-    { id: 'libelle', header: 'Demande', accessor: (r) => r.libelle || `#${r.id}` },
+    {
+      id: 'libelle', header: 'Demande',
+      accessor: (r) => r.libelle || `#${r.id}`,
+      // VX100 — clic → la pièce (lien réel fourni par le serveur, ex.
+      // chantier/contrat) ; jamais de lien fabriqué côté front.
+      cell: (v, r) => (r.lien ? (
+        <Link to={r.lien} className="font-medium text-info hover:underline">{v}</Link>
+      ) : v),
+    },
     { id: 'demandeur', header: 'Demandeur', width: 160, accessor: (r) => r.demandeur || '—' },
     {
       id: 'priorite', header: 'Priorité', width: 110,
       accessor: (r) => r.priorite || '—',
       cell: (v, r) => (r.priorite ? <Badge tone="warning">{r.priorite}</Badge> : '—'),
+    },
+    {
+      id: 'montant', header: 'Montant', width: 140, align: 'right',
+      accessor: (r) => (r.montant ?? null),
+      cell: (v) => (v === null || v === undefined ? '—' : formatMAD(v)),
     },
     {
       id: 'anciennete', header: 'Ancienneté', width: 140,

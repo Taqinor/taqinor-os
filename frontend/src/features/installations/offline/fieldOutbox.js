@@ -36,6 +36,12 @@ export const fieldOutbox = new Outbox({
   sender,
 })
 
+// Ops actuellement en erreur serveur (message + compteur de tentatives) —
+// jamais retirées silencieusement, voir `Outbox.flush()` (VX119).
+export async function failed() {
+  return fieldOutbox.failed()
+}
+
 // Helper : tente l'appel ONLINE d'abord ; si le réseau échoue (pas de réponse
 // serveur), met l'op en file pour synchro ultérieure et renvoie
 // { queued: true }. Une vraie erreur applicative (réponse 4xx du serveur) est

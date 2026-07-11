@@ -55,6 +55,11 @@ def _automation_items(company):
             'cree_le': approval.date_creation,
             'demandeur': getattr(approval.requested_by, 'username', None),
             'priorite': None,
+            # VX100 — aucune source homogène de montant/lien côté automation
+            # aujourd'hui : champs présents pour un contrat d'API uniforme,
+            # jamais fabriqués.
+            'montant': None,
+            'lien': None,
         })
     return out
 
@@ -74,6 +79,11 @@ def _contrats_items(company):
             'cree_le': etape.date_creation,
             'demandeur': None,
             'priorite': None,
+            # VX100 — le contrat porte une route détail (`/contrats/:id`) ;
+            # lien réel vers la pièce. Aucun montant homogène exposé ici
+            # aujourd'hui (jamais fabriqué).
+            'montant': None,
+            'lien': f'/contrats/{etape.contrat_id}' if etape.contrat_id else None,
         })
     return out
 
@@ -89,6 +99,10 @@ def _ged_items(company):
             'cree_le': demande.created_at,
             'demandeur': getattr(demande.demandeur, 'username', None),
             'priorite': None,
+            # VX100 — pas de route détail document ni de montant homogène
+            # côté GED aujourd'hui : jamais fabriqués.
+            'montant': None,
+            'lien': None,
         })
     return out
 
@@ -106,6 +120,14 @@ def _installations_items(company):
             'demandeur': None,
             # ZCTR9 — seule source à porter une vraie priorité aujourd'hui.
             'priorite': da.priorite or None,
+            # VX100 — montant réel (Σ lignes, property existante
+            # ``montant_estime``, jamais fabriqué) ; alimente le tri
+            # ``?trier=montant`` (déjà supporté, restait sans donnée).
+            'montant': da.montant_estime,
+            # VX100 — lien interne vers le chantier ciblé (patron VX79
+            # ``/chantiers?id=<pk>``, jamais une route fabriquée) ; `None`
+            # si la DA n'a pas de chantier rattaché (pas de fabrication).
+            'lien': f'/chantiers?id={da.chantier_id}' if da.chantier_id else None,
         })
     return out
 
@@ -122,6 +144,10 @@ def _core_workflow_items(company):
             'cree_le': step.created_at,
             'demandeur': getattr(step.assignee, 'username', None),
             'priorite': None,
+            # VX100 — le moteur BPM générique n'a pas de route détail ni de
+            # montant homogène : jamais fabriqués.
+            'montant': None,
+            'lien': None,
         })
     return out
 

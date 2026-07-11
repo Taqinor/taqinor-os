@@ -14,10 +14,16 @@ export function useFieldOutbox() {
     typeof navigator === 'undefined' ? true : navigator.onLine !== false,
   )
   const [pending, setPending] = useState(0)
+  const [failed, setFailed] = useState([])
   const [flushing, setFlushing] = useState(false)
 
   const refreshCount = useCallback(async () => {
-    try { setPending(await fieldOutbox.count()) } catch { /* défensif */ }
+    try {
+      const all = await fieldOutbox.pending()
+      const fail = all.filter((op) => !!op.serverError)
+      setPending(all.length - fail.length)
+      setFailed(fail)
+    } catch { /* défensif */ }
   }, [])
 
   const flush = useCallback(async () => {
@@ -29,6 +35,13 @@ export function useFieldOutbox() {
     } finally {
       setFlushing(false)
     }
+  }, [refreshCount])
+
+  // Abandon EXPLICITE d'une op en échec — la SEULE façon de la faire
+  // disparaître (jamais un effet de bord du flush automatique).
+  const discard = useCallback(async (clientOpId) => {
+    await fieldOutbox.discard(clientOpId)
+    await refreshCount()
   }, [refreshCount])
 
   useEffect(() => {
@@ -63,5 +76,5 @@ export function useFieldOutbox() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  return { online, pending, flushing, flush, refreshCount }
+  return { online, pending, failed, flushing, flush, refreshCount, discard }
 }
