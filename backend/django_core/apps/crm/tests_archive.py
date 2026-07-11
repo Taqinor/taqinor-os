@@ -106,18 +106,80 @@ class TestArchiveRestore(ArchiveTestBase):
         self.assertIsNotNone(self.lead.archived_at)
 
 
-class TestHardDelete(ArchiveTestBase):
-    def test_commerciale_cannot_hard_delete(self):
+class TestSoftDelete(ArchiveTestBase):
+    """VX96 — la suppression d'un lead est désormais un SOFT-DELETE réversible.
+
+    ``Lead`` est le premier adoptant de ``core.SoftDeleteModel`` (FG388) :
+    ``destroy()`` appelle ``soft_delete`` (le lead sort des querysets par
+    défaut, une entrée de corbeille ``DeletionRecord`` est créée, restaurable
+    30 min via ``/core/corbeille/``). Aucune destruction physique.
+    """
+
+    def test_commerciale_cannot_delete(self):
         api = auth(self.resp)
         r = api.delete(f'/api/django/crm/leads/{self.lead.id}/')
         self.assertEqual(r.status_code, 403)
-        self.assertTrue(Lead.objects.filter(pk=self.lead.id).exists())
+        # Ni soft ni hard : le lead reste vivant.
+        self.lead.refresh_from_db()
+        self.assertFalse(self.lead.is_deleted)
 
-    def test_admin_can_hard_delete_lead_without_devis(self):
+    def test_admin_soft_deletes_lead_and_it_leaves_default_querysets(self):
         api = auth(self.admin)
         r = api.delete(f'/api/django/crm/leads/{self.lead.id}/')
-        self.assertEqual(r.status_code, 204)
+        # Réponse 200 avec l'id de corbeille pour l'undo (plus de 204).
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertIn('corbeille_id', r.data)
+        self.assertIsNotNone(r.data['corbeille_id'])
+        # La ligne existe TOUJOURS en base (soft-delete), mais est masquée du
+        # manager par défaut et présente via all_objects.
         self.assertFalse(Lead.objects.filter(pk=self.lead.id).exists())
+        self.assertTrue(Lead.all_objects.filter(pk=self.lead.id).exists())
+        deleted = Lead.all_objects.get(pk=self.lead.id)
+        self.assertTrue(deleted.is_deleted)
+        self.assertEqual(deleted.deleted_by_id, self.admin.id)
+        self.assertIsNotNone(deleted.deleted_at)
+        # Disparaît de la liste API par défaut.
+        r = api.get('/api/django/crm/leads/')
+        self.assertNotIn(self.lead.id, ids_of(r))
+
+    def test_soft_deleted_lead_is_restorable_within_undo_window(self):
+        api = auth(self.admin)
+        r = api.delete(f'/api/django/crm/leads/{self.lead.id}/')
+        corbeille_id = r.data['corbeille_id']
+        # Il apparaît dans la fenêtre d'undo de la corbeille (société courante).
+        r = api.get('/api/django/core/corbeille/?undo=1')
+        undo_ids = [row['id'] for row in r.data]
+        self.assertIn(corbeille_id, undo_ids)
+        # Restauration via le TrashViewSet partagé.
+        rest = api.post(f'/api/django/core/corbeille/{corbeille_id}/restaurer/')
+        self.assertEqual(rest.status_code, 200, rest.data)
+        self.assertTrue(rest.data['restored'])
+        # Le lead revient dans les querysets par défaut.
+        self.lead.refresh_from_db()
+        self.assertFalse(self.lead.is_deleted)
+        self.assertTrue(Lead.objects.filter(pk=self.lead.id).exists())
+        r = api.get('/api/django/crm/leads/')
+        self.assertIn(self.lead.id, ids_of(r))
+
+    def test_restore_is_scoped_to_company(self):
+        """La corbeille d'une autre société n'est jamais restaurable ici."""
+        api = auth(self.admin)
+        r = api.delete(f'/api/django/crm/leads/{self.lead.id}/')
+        corbeille_id = r.data['corbeille_id']
+        # Admin d'une AUTRE société : ne voit pas l'entrée, ne peut pas restaurer.
+        other_company = make_company(slug='other-co', nom='Other Co')
+        other_admin = User.objects.create_user(
+            username='other_admin', password='x', role_legacy='admin',
+            company=other_company,
+        )
+        other = auth(other_admin)
+        r = other.get('/api/django/core/corbeille/?undo=1')
+        self.assertNotIn(corbeille_id, [row['id'] for row in r.data])
+        rest = other.post(
+            f'/api/django/core/corbeille/{corbeille_id}/restaurer/')
+        self.assertEqual(rest.status_code, 404)
+        # Le lead d'origine reste supprimé (non restauré par la mauvaise société).
+        self.assertTrue(Lead.all_objects.get(pk=self.lead.id).is_deleted)
 
     def test_delete_blocked_when_lead_has_devis(self):
         client = Client.objects.create(
@@ -130,4 +192,5 @@ class TestHardDelete(ArchiveTestBase):
         api = auth(self.admin)
         r = api.delete(f'/api/django/crm/leads/{self.lead.id}/')
         self.assertEqual(r.status_code, 409)
-        self.assertTrue(Lead.objects.filter(pk=self.lead.id).exists())
+        self.lead.refresh_from_db()
+        self.assertFalse(self.lead.is_deleted)

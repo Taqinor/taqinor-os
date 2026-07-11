@@ -4,6 +4,8 @@ from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
+from core.models import SoftDeleteModel
+
 from .stages import STAGE_CHOICES, NEW
 
 
@@ -224,12 +226,20 @@ class Client(models.Model):
             depth += 1
 
 
-class Lead(models.Model):
+class Lead(SoftDeleteModel):
     """A sales lead / opportunity — distinct from a Client (customer) record.
 
     Leads carry a pipeline stage (canonical from STAGES.py) and a source/origin
     so imported test leads are distinguishable from leads created natively in the
     OS. Pipeline stage lives HERE, never on the Client/contact table.
+
+    VX96 — ``Lead`` est le PREMIER adoptant du soft-delete partagé
+    (``core.SoftDeleteModel``, FG388). La suppression n'est plus définitive :
+    ``LeadViewSet.destroy()`` appelle ``lead.soft_delete(user)``, qui masque le
+    lead des querysets par défaut (``Lead.objects`` = vivants) et journalise une
+    entrée de corbeille (``DeletionRecord``) restaurable pendant 30 min via le
+    ``TrashViewSet`` (``/core/corbeille/``). ``Lead.all_objects`` atteint aussi
+    les supprimés. (On ne construit AUCUN écran corbeille ici — NTUX7.)
     """
 
     class Source(models.TextChoices):
