@@ -59,6 +59,116 @@ function SortIcon({ dir }) {
   return <ChevronsUpDown className="size-3.5 opacity-40 group-hover:opacity-70" aria-hidden="true" />
 }
 
+/* VX43 — Swipe-to-action horizontal maison sur les cartes mobiles
+   (`data-dt-cards`), même geste/maths que LeadCard.jsx (touchstart/move/end,
+   seuil de distance anti-scroll, zéro dépendance). 100 % opt-in via la prop
+   `swipeActions` : non fournie, le rendu carte reste identique à avant. */
+const SWIPE_REVEAL_PX = 96
+function shouldArmSwipe(deltaX, deltaY) {
+  if (Math.abs(deltaX) < 5) return false
+  return Math.abs(deltaX) > Math.abs(deltaY)
+}
+function clampSwipeOffset(deltaX, maxReveal = SWIPE_REVEAL_PX) {
+  return Math.max(-maxReveal, Math.min(0, deltaX))
+}
+function resolveSwipeSnap(offset, maxReveal = SWIPE_REVEAL_PX) {
+  return Math.abs(offset) >= maxReveal / 2 ? -maxReveal : 0
+}
+
+function useSwipeReveal(enabled) {
+  const [offset, setOffset] = useState(0)
+  const start = useRef(null)
+  const armed = useRef(false)
+
+  const onTouchStart = (e) => {
+    if (!enabled) return
+    const t = e.touches?.[0]
+    if (!t) return
+    start.current = { x: t.clientX, y: t.clientY }
+    armed.current = false
+  }
+  const onTouchMove = (e) => {
+    if (!enabled || !start.current) return
+    const t = e.touches?.[0]
+    if (!t) return
+    const deltaX = t.clientX - start.current.x
+    const deltaY = t.clientY - start.current.y
+    if (!armed.current) {
+      if (!shouldArmSwipe(deltaX, deltaY)) return
+      armed.current = true
+    }
+    setOffset(clampSwipeOffset(deltaX))
+  }
+  const onTouchEnd = () => {
+    if (!enabled) return
+    start.current = null
+    if (armed.current) {
+      armed.current = false
+      setOffset((prev) => resolveSwipeSnap(prev))
+    }
+  }
+  const close = () => setOffset(0)
+
+  return {
+    offset,
+    close,
+    handlers: { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel: onTouchEnd },
+  }
+}
+
+/** Carte mobile swipeable : enveloppe une carte `data-dt-cards` existante avec
+    le panneau d'actions révélé derrière elle. Rendu neutre (juste `children`)
+    quand aucune action n'est fournie pour cette ligne. */
+function SwipeableCard({ actions, children }) {
+  const list = (actions ?? []).slice(0, 2)
+  const swipe = useSwipeReveal(list.length > 0)
+  if (!list.length) return children
+  return (
+    <div style={{ position: 'relative' }}>
+      <div
+        aria-hidden={swipe.offset === 0}
+        style={{
+          position: 'absolute', inset: 0, display: 'flex',
+          justifyContent: 'flex-end', alignItems: 'stretch',
+          overflow: 'hidden', borderRadius: '0.75rem',
+        }}
+      >
+        {list.map((a) => {
+          const Icon = a.icon
+          return (
+            <button
+              key={a.id}
+              type="button"
+              title={a.label}
+              aria-label={a.label}
+              onClick={(e) => { e.stopPropagation(); swipe.close(); a.onClick?.() }}
+              style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center',
+                justifyContent: 'center', gap: '2px', border: 'none',
+                width: `${SWIPE_REVEAL_PX / list.length}px`, minHeight: '44px',
+                background: a.background ?? (a.destructive ? 'var(--color-destructive, #dc2626)' : 'var(--color-primary, #2563eb)'),
+                color: '#fff', fontSize: '11px',
+              }}
+            >
+              {Icon && <Icon className="size-4" aria-hidden="true" />}
+            </button>
+          )
+        })}
+      </div>
+      <div
+        {...swipe.handlers}
+        style={{
+          transform: swipe.offset ? `translateX(${swipe.offset}px)` : undefined,
+          transition: 'transform 150ms ease',
+          position: 'relative',
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  )
+}
+
 export const DataTable = forwardRef(function DataTable(
   {
     data = [],
@@ -75,6 +185,12 @@ export const DataTable = forwardRef(function DataTable(
     selectable = false,
     bulkActions, // (selectedRows, selectedKeys, clear) => [{ id,label,icon,onClick,... }]
     rowActions, // (row) => [{ id, label, icon, onClick, destructive }] (max 3 + overflow)
+    // VX43 — swipe-to-action sur les cartes mobiles (data-dt-cards) : maison,
+    // touchstart/move/end, zéro dépendance. 100 % opt-in / rétrocompatible :
+    // non fourni, le rendu des cartes reste STRICTEMENT identique à avant.
+    // (row) => [{ id, label, icon, onClick, destructive, background? }]
+    // (max 2 actions révélées, comme rowActions révèle ses 2 actions rapides).
+    swipeActions,
     onRowClick,
     onRowPrefetch, // (row) => void — H133 : préchargement au survol/intention
     renderExpanded, // (row) => ReactNode → ligne dépliable
@@ -836,9 +952,12 @@ export const DataTable = forwardRef(function DataTable(
                   const value = c.accessor ? c.accessor(row) : row?.[c.id]
                   return c.cell ? c.cell(value, row, { query }) : <Highlighted text={String(value ?? '—')} query={query} />
                 }
+                // VX43 — swipeActions est opt-in : non fourni, SwipeableCard
+                // rend `children` tel quel (aucune différence de DOM/comportement).
+                const rowSwipeActions = swipeActions ? swipeActions(row) : []
                 return (
+                  <SwipeableCard key={rowKey} actions={rowSwipeActions}>
                   <div
-                    key={rowKey}
                     role={onRowClick ? 'button' : undefined}
                     tabIndex={onRowClick ? 0 : undefined}
                     aria-pressed={onRowClick && selectable ? isSelected : undefined}
@@ -889,6 +1008,7 @@ export const DataTable = forwardRef(function DataTable(
                       </div>
                     </div>
                   </div>
+                  </SwipeableCard>
                 )
               })
             )}

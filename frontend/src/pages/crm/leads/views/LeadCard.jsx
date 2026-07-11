@@ -1,5 +1,6 @@
 // Carte lead réutilisable (colonne kanban + aperçu DragOverlay).
 // Présentation pure : aucune mutation, tout vient des props et de stages.js.
+import { useRef, useState } from 'react'
 import {
   CANAL_LABELS,
   PRIORITE_LABELS,
@@ -10,6 +11,79 @@ import {
   tagList,
 } from '../../../../features/crm/stages'
 import AssigneePicker from '../../../../components/AssigneePicker'
+
+// VX43 — Swipe-to-action horizontal maison (touchstart/move/end, zéro
+// dépendance). Les liens tel:/wa.me existaient déjà mais en texte 12px noyé
+// dans la carte (kb-card-contact) — ici on les révèle en GRAND (≥44px) par un
+// balayage vers la gauche, le geste iOS/Android attendu sur une liste de cartes.
+//
+// Seuil de distance anti-scroll : le geste ne s'engage QUE si le mouvement est
+// nettement plus horizontal que vertical (sinon un swipe raté couperait le
+// scroll vertical du kanban/de la liste). Fonctions pures exportées pour test.
+export const SWIPE_REVEAL_PX = 96 // largeur du panneau d'actions révélé
+export const SWIPE_OPEN_THRESHOLD = SWIPE_REVEAL_PX / 2
+
+/** Le geste ne s'arme que si le mouvement est majoritairement horizontal
+    (anti-scroll vertical) et dépasse un petit seuil d'intention (5px). */
+export function shouldArmSwipe(deltaX, deltaY) {
+  if (Math.abs(deltaX) < 5) return false
+  return Math.abs(deltaX) > Math.abs(deltaY)
+}
+
+/** Distance de traînée bornée à [-SWIPE_REVEAL_PX, 0] (on ne révèle que vers
+    la gauche ; un balayage vers la droite ne fait rien — pas d'action là). */
+export function clampSwipeOffset(deltaX, maxReveal = SWIPE_REVEAL_PX) {
+  return Math.max(-maxReveal, Math.min(0, deltaX))
+}
+
+/** Lâcher au-delà de la moitié du panneau → reste ouvert (aimanté) ; sinon
+    referme (aimanté à 0). */
+export function resolveSwipeSnap(offset, maxReveal = SWIPE_REVEAL_PX) {
+  return Math.abs(offset) >= maxReveal / 2 ? -maxReveal : 0
+}
+
+/** Hook local : expose `offset` (px, ≤0) + les handlers tactiles à poser sur
+    la carte. `enabled=false` (pas de tel/wa) désactive tout le geste. */
+function useSwipeReveal(enabled) {
+  const [offset, setOffset] = useState(0)
+  const start = useRef(null)
+  const armed = useRef(false)
+
+  const onTouchStart = (e) => {
+    if (!enabled) return
+    const t = e.touches?.[0]
+    if (!t) return
+    start.current = { x: t.clientX, y: t.clientY }
+    armed.current = false
+  }
+  const onTouchMove = (e) => {
+    if (!enabled || !start.current) return
+    const t = e.touches?.[0]
+    if (!t) return
+    const deltaX = t.clientX - start.current.x
+    const deltaY = t.clientY - start.current.y
+    if (!armed.current) {
+      if (!shouldArmSwipe(deltaX, deltaY)) return
+      armed.current = true
+    }
+    setOffset(clampSwipeOffset(deltaX))
+  }
+  const onTouchEnd = () => {
+    if (!enabled) return
+    start.current = null
+    if (armed.current) {
+      armed.current = false
+      setOffset((prev) => resolveSwipeSnap(prev))
+    }
+  }
+  const close = () => setOffset(0)
+
+  return {
+    offset,
+    close,
+    handlers: { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel: onTouchEnd },
+  }
+}
 
 const formatDateFr = (iso) =>
   new Date(`${iso}T00:00:00`).toLocaleDateString('fr-FR')
@@ -122,11 +196,68 @@ export default function LeadCard({
     .filter(Boolean)
     .join(' ')
 
+  // VX43 — le geste ne s'active que si au moins une action est disponible
+  // (sinon rien à révéler derrière la carte).
+  const swipe = useSwipeReveal(!!(tel || wa))
+
   return (
-    <article
-      className={classes}
-      onClick={onOpen ? () => onOpen(lead) : undefined}
-    >
+    <div className="kb-swipe-wrap" style={{ position: 'relative' }}>
+      {(tel || wa) && (
+        <div
+          className="kb-swipe-actions"
+          aria-hidden={swipe.offset === 0}
+          style={{
+            position: 'absolute', inset: 0, display: 'flex',
+            justifyContent: 'flex-end', alignItems: 'stretch',
+            overflow: 'hidden', borderRadius: 'var(--radius, 10px)',
+          }}
+        >
+          {tel && (
+            <a
+              href={tel}
+              aria-label="Appeler (glissement)"
+              title="Appeler"
+              onClick={(e) => { e.stopPropagation(); swipe.close() }}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: `${SWIPE_REVEAL_PX / (tel && wa ? 2 : 1)}px`, minHeight: '44px',
+                background: 'var(--color-success, #16a34a)', color: '#fff',
+                fontSize: '18px', textDecoration: 'none',
+              }}
+            >
+              ☎
+            </a>
+          )}
+          {wa && (
+            <a
+              href={wa}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Ouvrir WhatsApp (glissement)"
+              title="Ouvrir WhatsApp"
+              onClick={(e) => { e.stopPropagation(); swipe.close() }}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: `${SWIPE_REVEAL_PX / (tel && wa ? 2 : 1)}px`, minHeight: '44px',
+                background: 'var(--color-info, #25D366)', color: '#fff',
+                fontSize: '18px', textDecoration: 'none',
+              }}
+            >
+              💬
+            </a>
+          )}
+        </div>
+      )}
+      <article
+        className={classes}
+        onClick={onOpen ? () => onOpen(lead) : undefined}
+        {...swipe.handlers}
+        style={{
+          transform: swipe.offset ? `translateX(${swipe.offset}px)` : undefined,
+          transition: 'transform 150ms ease',
+          position: 'relative',
+        }}
+      >
       <div className="kb-card-head">
         {onToggleSelect && (
           <input
@@ -381,6 +512,7 @@ export default function LeadCard({
           />
         </span>
       </div>
-    </article>
+      </article>
+    </div>
   )
 }
