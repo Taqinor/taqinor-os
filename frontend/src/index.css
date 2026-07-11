@@ -4192,6 +4192,8 @@ textarea.form-control {
   width: 8px;
   height: 8px;
   border-radius: 50%;
+  /* VX149 — pilotée par --kb-accent (StatusAccentCard), plus un style inline. */
+  background: var(--kb-accent, var(--muted-foreground, #64748b));
 }
 
 .cal-chip-name {
@@ -4511,6 +4513,13 @@ textarea.form-control {
 .kb-card-busy {
   opacity: 0.45;
   pointer-events: none;
+}
+
+/* VX149 — StatusAccentCard en liste plate (Ma journée) : padding resserré,
+   pas de curseur "grab" (pas de glisser-déposer hors kanban). */
+.kb-card-compact {
+  padding: 0.5rem 0.6rem;
+  cursor: default;
 }
 
 /* Lead perdu : nettement distinct mais il RESTE dans sa colonne d'étape. */

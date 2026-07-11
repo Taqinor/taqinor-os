@@ -18,7 +18,7 @@ import {
 } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import {
-  Card, Spinner, EmptyState, Badge, StatusPill,
+  Spinner, EmptyState, Badge, StatusPill, StatusAccentCard,
   Sheet, SheetContent, SheetHeader, SheetTitle,
   Tabs, TabsList, TabsTrigger, TabsContent,
   FloatingActionButton,
@@ -38,6 +38,19 @@ import { formatDate } from '../../lib/format'
 const TYPE_LABELS = Object.fromEntries(
   INTERVENTION_TYPES.map((t) => [t.value, t.label]))
 const typeLabel = (k) => TYPE_LABELS[k] ?? k ?? '—'
+
+// VX149 — accent par TYPE d'intervention (pose/raccordement/mise en
+// service/contrôle/dépannage) — un axe différent du statut (déjà porté par
+// StatusPill) : chaque ligne se différencie visuellement au premier coup
+// d'œil, même style d'accent que le kanban (`ui/StatusAccentCard`).
+const TYPE_ACCENT = {
+  pose: '#3b82f6',
+  raccordement: '#a855f7',
+  mise_en_service: '#16a34a',
+  controle: '#0ea5e9',
+  depannage: '#f59e0b',
+}
+const typeAccent = (k) => TYPE_ACCENT[k] ?? '#64748b'
 
 function todayISO() {
   const d = new Date()
@@ -114,7 +127,10 @@ export default function MaJourneePage() {
             const maps = mapsHref(interv)
             return (
               <li key={interv.id}>
-                <Card className="overflow-hidden p-0">
+                <StatusAccentCard
+                  variant="compact"
+                  accent={typeAccent(interv.type_intervention)}
+                  className="overflow-hidden !p-0">
                   <button type="button" onClick={() => { setInitialTab('prep'); setActive(interv) }}
                     className="flex w-full items-center gap-3 p-3 text-left active:bg-accent">
                     <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
@@ -136,7 +152,7 @@ export default function MaJourneePage() {
                           </span>)}
                         {/* XFSM21 — risque météo J+3 (pluie/vent) sur une pose planifiée. */}
                         {interv.meteo_risque && (
-                          <span className="flex items-center gap-1 text-amber-600">
+                          <span className="flex items-center gap-1 text-warning">
                             <CloudRain className="size-3.5" aria-hidden="true" />
                             Météo à risque
                           </span>)}
@@ -166,7 +182,7 @@ export default function MaJourneePage() {
                       )}
                     </div>
                   )}
-                </Card>
+                </StatusAccentCard>
               </li>
             )
           })}

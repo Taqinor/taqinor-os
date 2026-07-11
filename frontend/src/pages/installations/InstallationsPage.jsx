@@ -21,6 +21,7 @@ import {
   Spinner,
   EmptyState,
   Card,
+  StatusAccentCard,
   toast,
 } from '../../ui'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
@@ -56,11 +57,18 @@ function poseKey(it) {
   return localKey(y, m, d)
 }
 
+// VX149 — même mécanisme d'accent que le kanban interventions
+// (`ui/StatusAccentCard`, `--kb-accent`) au lieu d'un `style={{background}}`
+// posé à la main sur le point : le point lit désormais l'accent via CSS
+// (`.cal-chip-dot` → `background: var(--kb-accent)`).
 function Chip({ item, onOpen, onDragStart }) {
   const dot = item.annule ? '#dc2626' : statusColor(item.statut)
   const name = item.reference || item.client_nom || '(Sans réf.)'
   return (
-    <button
+    <StatusAccentCard
+      as="button"
+      variant="bare"
+      accent={dot}
       type="button"
       draggable={!item.annule}
       onDragStart={(e) => onDragStart?.(e, item)}
@@ -68,9 +76,9 @@ function Chip({ item, onOpen, onDragStart }) {
       title={`${name} — ${statusLabel(item.statut)}`}
       onClick={() => onOpen(item)}
     >
-      <span className="cal-chip-dot" style={{ background: dot }} />
+      <span className="cal-chip-dot" />
       <span className="cal-chip-name">{name}</span>
-    </button>
+    </StatusAccentCard>
   )
 }
 

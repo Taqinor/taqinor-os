@@ -33,6 +33,7 @@ import {
   EmptyState,
   Card,
   StatusPill,
+  StatusAccentCard,
   Select,
   SelectTrigger,
   SelectValue,
@@ -69,8 +70,7 @@ const NO_TECH = '__none__'
 function InterventionCard({ it, users, onReassign }) {
   const techValue = it.technicien ? String(it.technicien) : NO_TECH
   return (
-    <div className="kb-card kc-card"
-         style={{ '--kb-accent': INTERVENTION_STATUS_COLORS[it.statut] }}>
+    <StatusAccentCard accent={INTERVENTION_STATUS_COLORS[it.statut]}>
       <div className="kc-card-top">
         <span className="kc-card-ref">{it.installation_reference ?? `#${it.id}`}</span>
         <StatusPill status={it.statut} label={interventionStatusLabel(it.statut)} dot={false} />
@@ -108,7 +108,7 @@ function InterventionCard({ it, users, onReassign }) {
           </Select>
         </div>
       )}
-    </div>
+    </StatusAccentCard>
   )
 }
 

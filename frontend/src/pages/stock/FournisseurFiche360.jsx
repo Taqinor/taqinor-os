@@ -8,7 +8,10 @@ import {
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import { formatMAD } from '../../lib/format'
-import { Spinner, Tabs, TabsList, TabsTrigger, TabsContent } from '../../ui'
+import {
+  Spinner, Tabs, TabsList, TabsTrigger, TabsContent,
+  Card, CardHeader, CardTitle, CardContent, Stat,
+} from '../../ui'
 
 // XPUR25 — Fiche fournisseur 360 : une page à onglets qui rassemble les
 // briques déjà existantes (performance FG59, factures/solde AP, retours/avoirs,
@@ -38,27 +41,6 @@ function frErr(err, fallback = 'Une erreur est survenue.') {
   if (typeof data === 'string') return data
   if (data.detail) return data.detail
   return fallback
-}
-
-function Card({ title, icon: Icon, children }) {
-  return (
-    <div className="rounded-lg border border-border bg-card p-4">
-      <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-foreground">
-        {Icon && <Icon className="size-4 text-muted-foreground" aria-hidden="true" />}
-        {title}
-      </h3>
-      {children}
-    </div>
-  )
-}
-
-function Stat({ label, value }) {
-  return (
-    <div className="rounded-md border border-border bg-muted/30 p-3">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-1 text-lg font-semibold tabular-nums">{value}</p>
-    </div>
-  )
 }
 
 function Indisponible({ message }) {
@@ -376,8 +358,13 @@ export default function FournisseurFiche360({ fournisseurId: fournisseurIdProp, 
         </p>
       </header>
 
-      <Card title="Vue d'ensemble">
-        <ResumePanel fournisseurId={fournisseurId} />
+      <Card>
+        <CardHeader>
+          <CardTitle>Vue d&apos;ensemble</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ResumePanel fournisseurId={fournisseurId} />
+        </CardContent>
       </Card>
 
       <Tabs defaultValue="performance">

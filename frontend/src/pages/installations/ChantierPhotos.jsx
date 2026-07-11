@@ -11,6 +11,7 @@ import recordsApi from '../../api/recordsApi'
 import {
   Button,
   IconButton,
+  Segmented,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   AlertDialog,
   AlertDialogContent,
@@ -21,6 +22,14 @@ import {
   AlertDialogCancel,
   AlertDialogAction,
 } from '../../ui'
+
+// VX149 — densité des vignettes (bascule compact/confortable) : au-delà
+// d'une quarantaine de photos par chantier les vignettes fixes size-16
+// (64px) devenaient difficiles à parcourir sur un grand chantier ; la
+// densité confortable agrandit la vignette, la densité compacte (défaut)
+// garde le format actuel.
+const DENSITY_KEY = 'taqinor.chantierPhotos.density'
+const THUMB_SIZE = { compact: 'size-16', confortable: 'size-24' }
 
 const PHASES = [
   { key: 'avant', label: 'Avant' },
@@ -42,6 +51,20 @@ export default function ChantierPhotos({ installationId }) {
   const [uploadError, setUploadError] = useState(null)
   // Lightbox in-app : { phase, index } de l'image affichée (null = fermé).
   const [viewer, setViewer] = useState(null)
+  // VX149 — densité des vignettes, persistée (même patron que VIEW_KEY des
+  // autres écrans : localStorage, repli propre si indisponible/invalide).
+  const [density, setDensity] = useState(() => {
+    try {
+      const saved = localStorage.getItem(DENSITY_KEY)
+      return saved === 'confortable' ? 'confortable' : 'compact'
+    } catch {
+      return 'compact'
+    }
+  })
+  useEffect(() => {
+    try { localStorage.setItem(DENSITY_KEY, density) } catch { /* stockage indisponible */ }
+  }, [density])
+  const thumbSize = THUMB_SIZE[density]
   const fileRefs = { avant: useRef(null), pendant: useRef(null), apres: useRef(null) }
 
   const load = () => {
@@ -120,6 +143,20 @@ export default function ChantierPhotos({ installationId }) {
           </Button>
         </div>
       )}
+      {/* VX149 — densité des vignettes : utile dès qu'un chantier accumule
+          40+ photos, où le format compact fixe devient difficile à parcourir. */}
+      <div className="flex items-center justify-end">
+        <Segmented
+          size="sm"
+          value={density}
+          onChange={setDensity}
+          aria-label="Densité des vignettes"
+          options={[
+            { value: 'compact', label: 'Compact' },
+            { value: 'confortable', label: 'Confortable' },
+          ]}
+        />
+      </div>
       <div className="flex flex-wrap gap-4">
         {PHASES.map((p) => {
           const atts = byPhase(p.key)
@@ -149,11 +186,11 @@ export default function ChantierPhotos({ installationId }) {
                         <button type="button" title={a.filename}
                                 onClick={() => openViewer(p.key, a)}>
                           <img src={a.url} alt={a.filename} loading="lazy"
-                               className="size-16 rounded-md border border-border object-cover" />
+                               className={`${thumbSize} rounded-md border border-border object-cover`} />
                         </button>
                       ) : (
                         <a href={a.url} target="_blank" rel="noopener noreferrer" title={a.filename}>
-                          <span className="flex size-16 items-center justify-center rounded-md border border-border bg-muted text-muted-foreground">
+                          <span className={`flex ${thumbSize} items-center justify-center rounded-md border border-border bg-muted text-muted-foreground`}>
                             <FileText className="size-6" aria-hidden="true" />
                           </span>
                         </a>
