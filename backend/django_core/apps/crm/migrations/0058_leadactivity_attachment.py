@@ -9,7 +9,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ("records", "0012_activity_snoozed_until"),
-        ("crm", "0055_alter_lead_managers"),
+        ("crm", "0057_zsal9_client_avertissement_vente"),
     ]
 
     operations = [
