@@ -85,6 +85,40 @@ function initialPerm() {
 // duquel on affiche un indicateur discret « Mise à jour interrompue ».
 const STALL_THRESHOLD = 3
 
+// VX14 — Config DÉCLARATIVE des onglets du panneau (delta mince, vérifié).
+// Le panneau groupait DÉJÀ par domaine en sections empilées ; on les range
+// désormais dans 2-3 onglets internes avec compteur. Ajouter un domaine =
+// une entrée `groups` ici (pas du JSX copié) : chaque groupe déclare son id
+// (utilisé pour router son propre rendu existant) + une fonction `count(ctx)`
+// qui lit l'état du panneau (feed/data/approbations) pour le compteur total
+// de l'onglet — aucune duplication du rendu de groupe lui-même.
+const NOTIF_TABS = [
+  {
+    id: 'activites',
+    label: 'Activités',
+    groups: ['approbations', 'feed', 'activites_en_retard'],
+    count: (ctx) =>
+      (ctx.showApprobationsRow ? ctx.approbationsTotal : 0) +
+      ctx.feedUnread +
+      (ctx.data?.activites_en_retard?.length ?? 0),
+  },
+  {
+    id: 'echeances',
+    label: 'Échéances',
+    groups: ['garanties_expirantes', 'contrats_a_renouveler', 'visites_dues'],
+    count: (ctx) =>
+      (ctx.data?.garanties_expirantes?.length ?? 0) +
+      (ctx.data?.contrats_a_renouveler?.length ?? 0) +
+      (ctx.data?.visites_dues?.length ?? 0),
+  },
+  {
+    id: 'financier',
+    label: 'Financier',
+    groups: ['factures_impayees'],
+    count: (ctx) => ctx.data?.factures_impayees?.length ?? 0,
+  },
+]
+
 export default function NotificationBell() {
   const [data, setData] = useState(null)
   // L11 — distinguer un échec de fetch d'un vrai « rien à signaler ».
@@ -95,6 +129,8 @@ export default function NotificationBell() {
   const [feed, setFeed] = useState([])
   const [feedUnread, setFeedUnread] = useState(0)
   const [open, setOpen] = useState(false)
+  // VX14 — onglet interne actif du panneau (déclaratif, voir NOTIF_TABS).
+  const [activeTab, setActiveTab] = useState(NOTIF_TABS[0].id)
   // VX204 — compteur d'échecs consécutifs du sondage léger (`checkUnread`) :
   // rien ne détectait auparavant une SÉRIE d'échecs (silence total).
   const unreadFailRef = useRef(0)
@@ -292,10 +328,31 @@ export default function NotificationBell() {
             <div className="nb-empty">Rien à signaler 🎉</div>
           ) : (
             <>
+              {/* VX14 — onglets internes déclaratifs (NOTIF_TABS) : remplace les
+                  groupes empilés par domaine. Chaque onglet affiche son
+                  compteur (somme des groupes qu'il contient). */}
+              <div className="nb-tabs" role="tablist" aria-label="Catégories de notifications">
+                {NOTIF_TABS.map((tab) => {
+                  const n = tab.count({ data, feedUnread, showApprobationsRow, approbationsTotal })
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={activeTab === tab.id}
+                      className={`nb-tab${activeTab === tab.id ? ' nb-tab-active' : ''}`}
+                      onClick={() => setActiveTab(tab.id)}
+                    >
+                      {tab.label}
+                      {n > 0 && <span className="nb-tab-count">{n > 99 ? '99+' : n}</span>}
+                    </button>
+                  )
+                })}
+              </div>
               {/* VX86 — rangée « N approbations », EN TÊTE (avant les autres
                   groupes) : l'inbox d'approbations dort sinon dans la section
                   ANALYSE de la sidebar sans jamais apparaître ici. */}
-              {showApprobationsRow && (
+              {activeTab === 'activites' && showApprobationsRow && (
                 <div className="nb-group">
                   <div className="nb-group-title">
                     <Inbox size={13} aria-hidden="true" /> Approbations
@@ -311,7 +368,7 @@ export default function NotificationBell() {
                   </button>
                 </div>
               )}
-              {feed.length > 0 && (
+              {activeTab === 'activites' && feed.length > 0 && (
                 <div className="nb-group">
                   <div className="nb-group-title">
                     <BellRing size={13} aria-hidden="true" /> Activité récente
@@ -344,7 +401,7 @@ export default function NotificationBell() {
                   ))}
                 </div>
               )}
-              {data && (data.activites_en_retard?.length ?? 0) > 0 && (
+              {activeTab === 'activites' && data && (data.activites_en_retard?.length ?? 0) > 0 && (
                 <div className="nb-group">
                   <div className="nb-group-title">
                     {/* VX84 — ce groupe est désormais borné à `assigned_to=
@@ -362,7 +419,7 @@ export default function NotificationBell() {
                   ))}
                 </div>
               )}
-              {data && (data.garanties_expirantes?.length ?? 0) > 0 && (
+              {activeTab === 'echeances' && data && (data.garanties_expirantes?.length ?? 0) > 0 && (
                 <div className="nb-group">
                   <div className="nb-group-title">
                     <ShieldCheck size={13} aria-hidden="true" /> Garanties (≤ 90 j)
@@ -376,7 +433,7 @@ export default function NotificationBell() {
                   ))}
                 </div>
               )}
-              {data && (data.factures_impayees?.length ?? 0) > 0 && (
+              {activeTab === 'financier' && data && (data.factures_impayees?.length ?? 0) > 0 && (
                 <div className="nb-group">
                   <div className="nb-group-title">
                     <Banknote size={13} aria-hidden="true" /> Factures impayées
@@ -390,7 +447,7 @@ export default function NotificationBell() {
                   ))}
                 </div>
               )}
-              {data && (data.contrats_a_renouveler?.length ?? 0) > 0 && (
+              {activeTab === 'echeances' && data && (data.contrats_a_renouveler?.length ?? 0) > 0 && (
                 <div className="nb-group">
                   <div className="nb-group-title">
                     <RefreshCw size={13} aria-hidden="true" /> Contrats à renouveler (≤ 90 j)
@@ -404,7 +461,7 @@ export default function NotificationBell() {
                   ))}
                 </div>
               )}
-              {data && (data.visites_dues?.length ?? 0) > 0 && (
+              {activeTab === 'echeances' && data && (data.visites_dues?.length ?? 0) > 0 && (
                 <div className="nb-group">
                   <div className="nb-group-title">
                     <CalendarClock size={13} aria-hidden="true" /> Visites dues
@@ -417,6 +474,13 @@ export default function NotificationBell() {
                     </button>
                   ))}
                 </div>
+              )}
+              {/* VX14 — onglet actif sans le moindre élément : message dédié
+                  plutôt qu'un panneau vide silencieux. */}
+              {NOTIF_TABS.find((t) => t.id === activeTab)?.count(
+                { data, feedUnread, showApprobationsRow, approbationsTotal },
+              ) === 0 && (
+                <div className="nb-empty">Rien à signaler ici</div>
               )}
             </>
           )}
