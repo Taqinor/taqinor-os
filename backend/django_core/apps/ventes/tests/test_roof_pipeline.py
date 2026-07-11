@@ -375,10 +375,11 @@ class TestProposalMonthlyArrays(TestCase):
         resp = self._data()
         conso = resp.data['monthly_consumption']
         self.assertEqual(len(conso), 12)
-        # Tous les mois identiques (été non différent), MAD→kWh au tarif interne.
-        from apps.ventes.quote_engine.constants import KWH_PRICE
-        expected = round(875 / KWH_PRICE)
-        self.assertTrue(all(v == expected for v in conso))
+        # Tous les mois identiques (été non différent). QX7d — MAD→kWh via
+        # kwh_from_bill : pas de distributeur renseigné sur ce lead → aucune
+        # table de tranches → repli plat _FALLBACK_KWH_PRICE = 1.20 MAD/kWh
+        # (pas l'ancien prix plat KWH_PRICE=1.75) : 875 / 1.20 = 729.17 → 729.
+        self.assertTrue(all(v == 729 for v in conso))
 
     def test_monthly_consumption_summer_split(self):
         from apps.crm.models import Lead
@@ -390,10 +391,12 @@ class TestProposalMonthlyArrays(TestCase):
         resp = self._data()
         conso = resp.data['monthly_consumption']
         self.assertEqual(len(conso), 12)
-        from apps.ventes.quote_engine.constants import KWH_PRICE
+        # QX7d — MAD→kWh via kwh_from_bill : pas de distributeur renseigné →
+        # repli plat _FALLBACK_KWH_PRICE = 1.20 MAD/kWh.
+        # Hiver : 1200 / 1.20 = 1000.0 → 1000. Été : 600 / 1.20 = 500.0 → 500.
         # Un mois d'été (index 5 = Juin) < un mois d'hiver (index 0 = Jan).
-        self.assertEqual(conso[0], round(1200 / KWH_PRICE))
-        self.assertEqual(conso[5], round(600 / KWH_PRICE))
+        self.assertEqual(conso[0], 1000)
+        self.assertEqual(conso[5], 500)
         self.assertLess(conso[5], conso[0])
 
     def test_consumption_resolves_via_client_when_no_direct_lead(self):
@@ -406,8 +409,10 @@ class TestProposalMonthlyArrays(TestCase):
         resp = self._data()
         conso = resp.data['monthly_consumption']
         self.assertEqual(len(conso), 12)
-        from apps.ventes.quote_engine.constants import KWH_PRICE
-        self.assertEqual(conso[0], round(1000 / KWH_PRICE))
+        # QX7d — MAD→kWh via kwh_from_bill : pas de distributeur renseigné →
+        # repli plat _FALLBACK_KWH_PRICE = 1.20 MAD/kWh.
+        # 1000 / 1.20 = 833.33 → round(.,1) = 833.3 → round(.) = 833.
+        self.assertEqual(conso[0], 833)
 
 
 class TestQ7ProposalAccept(TestCase):

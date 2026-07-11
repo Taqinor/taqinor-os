@@ -157,7 +157,8 @@ class WebsiteLeadPayloadViewSetTests(TestCase):
             company=other, payload={}, error='ValueError: x')
         r = self.api.get('/api/django/crm/website-lead-payloads/')
         self.assertEqual(r.status_code, 200, r.data)
-        ids = [p['id'] for p in (r.data.get('results') or r.data)]
+        results = r.data['results'] if 'results' in r.data else r.data
+        ids = [p['id'] for p in results]
         self.assertEqual(ids, [])
 
 

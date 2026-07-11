@@ -1996,14 +1996,21 @@ class TestSavingsMath(TestCase):
         self.assertEqual(roi["eco_s_ann"], round(prod * 0.60 * 2.50))
 
     def test_roi_computed_from_totals(self):
-        """ROI = total_option / economie_annuelle (± rounding tolerance)."""
-        from apps.ventes.quote_engine.pricing import calculate_savings_roi
+        """QX39 — le payback n'est plus un ratio année-1 (total / éco annuelle)
+        mais le croisement à zéro du cumul de cashflow 25 ans (dégradation
+        panneau, escalade tarifaire, batterie/onduleur). On vérifie donc que
+        ``roi_s``/``roi_a`` DÉLÈGUENT bien à ``compute_cashflow_payback`` avec
+        le total de l'option et son économie annuelle — le vrai contrat."""
+        from apps.ventes.quote_engine.pricing import (
+            calculate_savings_roi, compute_cashflow_payback)
         roi = calculate_savings_roi(
             5.0, 50000, 80000,
             tarif_kwh_override=1.75,
         )
-        expected_roi_s = round(50000 / roi["eco_s_ann"], 1)
-        expected_roi_a = round(80000 / roi["eco_a_ann"], 1)
+        expected_roi_s = compute_cashflow_payback(
+            50000, roi["eco_s_ann"])["payback_years"]
+        expected_roi_a = compute_cashflow_payback(
+            80000, roi["eco_a_ann"], battery=True)["payback_years"]
         self.assertAlmostEqual(roi["roi_s"], expected_roi_s, places=1)
         self.assertAlmostEqual(roi["roi_a"], expected_roi_a, places=1)
 

@@ -73,7 +73,7 @@ class Qx1RemiseGlobaleBillingTests(TestCase):
         bc = BonCommande.objects.create(
             company=self.company, reference=f'BC-QX1-{num:04d}',
             client=self.client_obj, devis=devis,
-            statut=BonCommande.Statut.CONFIRME, created_by=self.user)
+            statut=BonCommande.Statut.CONFIRME)
         facture = Facture.objects.create(
             reference=f'FAC-{MONTH}-QX1{num:03d}', bon_commande=bc,
             client=self.client_obj, statut=Facture.Statut.BROUILLON,
