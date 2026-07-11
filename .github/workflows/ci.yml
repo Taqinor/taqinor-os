@@ -438,9 +438,11 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
-      - name: Install Playwright browser (chromium)
+      - name: Install Playwright browsers (chromium + webkit)
         working-directory: frontend
-        run: npx playwright install --with-deps chromium
+        # VX68 — WebKit (Safari réel) en plus de Chromium : le smoke ajoute un
+        # passage `mobile-safari` pour attraper ce qui ne casse QUE sur Safari.
+        run: npx playwright install --with-deps chromium webkit
       - name: Build frontend (no service worker for E2E)
         working-directory: frontend
         env:
@@ -468,6 +470,10 @@ jobs:
           # dans la matrice ordonnée → reste en e2e COMPLET (release-verify), pas
           # en smoke. La matrice complète + mobile tourne dans release-verify.yml.
           npx playwright test --project=chromium devis.spec.js health.spec.js
+          # VX68 — passage WebKit RÉEL (Safari) sur le spec mobile : capte les
+          # régressions qui n'apparaissent que sur Safari (VX48 window.open
+          # post-await, sticky, backdrop-blur). PR-only, hors matrice complète.
+          npx playwright test --project=mobile-safari
       - name: Upload Playwright report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
