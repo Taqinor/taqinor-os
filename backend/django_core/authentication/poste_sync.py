@@ -43,7 +43,14 @@ def backfill_poste_ref(user_model, poste_model):
     # Cache (company_id, intitule_normalisé_casefold) -> Poste, pour ne pas
     # interroger la base à chaque compte partageant le même intitulé.
     cache = {}
-    qs = user_model.objects.filter(company__isnull=False).exclude(poste='')
+    # order_by('pk') : « première occurrence rencontrée » (docstring) = premier
+    # CRÉÉ (plus petit pk), de façon DÉTERMINISTE. Sans tri explicite, Postgres
+    # ne garantit aucun ordre de retour ; sous --keepdb/--parallel (CI) l'ordre
+    # physique varie et l'intitulé stocké pouvait garder la casse d'un compte
+    # arbitraire ('commercial' au lieu de 'Commercial'). Le tri ne change que le
+    # DÉPARTAGE de casse : la déduplication (casefold/iexact) reste identique.
+    qs = (user_model.objects
+          .filter(company__isnull=False).exclude(poste='').order_by('pk'))
     for user in qs.iterator():
         intitule = _norm(user.poste)
         if not intitule:

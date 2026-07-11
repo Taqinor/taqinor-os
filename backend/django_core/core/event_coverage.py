@@ -55,6 +55,13 @@ ALLOWED_UNCONSUMED = {
     # désormais un abonné réel (``apps/contrats/receivers.py`` : chatter ARC8
     # + dépôt GED du contrat signé ; ``apps/notifications/signals.py`` pour
     # ``contrat_signe``) : RETIRÉS de cette liste.
+    # SCA30 — ``document_statut_change`` : seam GÉNÉRIQUE émis par le kit
+    # ``core.documents`` au changement de statut d'un document métier (voir la
+    # docstring du signal dans ``core.events`` : « aucun abonné obligatoire —
+    # pose du seam pour audit/notifications/KPI d'un futur type de document »).
+    # Volontairement sans abonné aujourd'hui (aucun consommateur métier requis),
+    # donc réservé ici plutôt que d'être un orphelin — comme les seams ci-dessus.
+    "document_statut_change",
 }
 
 # Membres ``EventType`` déclarés mais sans producteur ``notify()`` encore câblé

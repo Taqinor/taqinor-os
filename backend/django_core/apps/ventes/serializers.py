@@ -466,14 +466,26 @@ class PaiementSerializer(serializers.ModelSerializer):
     statut_affectation_display = serializers.CharField(
         source='get_statut_affectation_display', read_only=True)
 
+    # SCA45 — ``idempotency_key`` est OPTIONNEL : un encaissement MANUEL n'en a
+    # pas (seuls les appels idempotents webhook/API en fournissent une). Il DOIT
+    # être déclaré EXPLICITEMENT ``required=False`` : la contrainte d'unicité
+    # (company, idempotency_key) — CONDITIONNELLE côté DB (WHERE clé non nulle) —
+    # fait générer par DRF un validateur unique-together AUTO qui, en ignorant la
+    # condition, marque le champ ``required=True`` au MOMENT de la construction du
+    # champ (dans ``super().__init__``). Retirer seulement le validateur ensuite
+    # (ci-dessous) NE réinitialise PAS ``field.required`` déjà calculé → 400 « Ce
+    # champ est obligatoire » sur chaque encaissement manuel. La déclaration
+    # explicite court-circuite cette logique auto ; la contrainte DB reste
+    # l'arbitre de l'unicité pour les vrais appels idempotents.
+    idempotency_key = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True)
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # SCA45 — la contrainte d'unicité (company, idempotency_key) est
-        # CONDITIONNELLE côté DB (exclut les clés nulles/vides — un paiement
-        # manuel n'en a pas). Le validateur unique-together AUTO de DRF ignore
-        # cette condition et rendait ``idempotency_key`` OBLIGATOIRE sur CHAQUE
-        # création (régression : 400 sur tout encaissement manuel). On le retire
-        # ici ; la contrainte DB conditionnelle reste l'arbitre de l'unicité.
+        # Retire AUSSI le validateur unique-together AUTO (en plus de la
+        # déclaration explicite ci-dessus) pour qu'il ne tente pas la vérif
+        # d'unicité sur la clé nulle d'un paiement manuel ; la contrainte DB
+        # conditionnelle reste l'arbitre.
         self.validators = [
             v for v in self.validators
             if not (isinstance(v, UniqueTogetherValidator)
