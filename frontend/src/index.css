@@ -4365,6 +4365,16 @@ textarea.form-control {
   transition: background-color var(--motion-base) ease, box-shadow var(--motion-base) ease;
 }
 
+/* VX183(a) — iPad paysage (~1024px, sidebar 240px + kb-board padding/gaps
+   inclus dans le calcul) : 272px fixes ne montrent que ~3,7 des 6 colonnes
+   STAGES.py, défilement horizontal permanent. Palier resserré entre
+   900-1024px pour remonter à ≥5 colonnes visibles ; desktop (>1024px) inchangé. */
+@media (max-width: 1024px) and (min-width: 900px) {
+  .kb-col {
+    flex: 0 0 150px;
+  }
+}
+
 /* Colonne survolée pendant un drag : halo net + fond teinté couleur d'étape,
    pour signaler clairement la zone de dépôt. */
 .kb-over {

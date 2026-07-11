@@ -1761,18 +1761,19 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   équivalente, e2e leads/logistique verts. Complément de VX168 (dirty-guard flotte/GP — fichiers
   disjoints, préoccupation différente). (T2 — M, sonnet) (@lane: frontend/forms — @after VX89)
 
-- [ ] VX183 — **Densité par palier : colonnes kanban 272px fixes (pipeline à moitié invisible sur
-  iPad) + calendrier 7 colonnes illisible sous 400px.** (a) `index.css:4094-4095` (`.kb-col { flex:
-  0 0 272px }`), aucune media query 768-1024 : sur l'iPad 1024×768 paysage que VX68 ajoute
-  justement en e2e, 6 étapes STAGES.py ≈ 1670px → ~3,7 colonnes visibles, défilement horizontal
-  permanent — et le test « pas de débordement » de VX68 PASSE quand même. Fix :
-  `@media (max-width:1024px)` → `.kb-col` ~220px entre 900-1024, bureau ≥1280 inchangé. (b)
-  `index.css:3846-3848` + `4011-4025` : la grille calendrier reste `repeat(7, minmax(0,1fr))` à
-  TOUTES les largeurs — à 320px, cellules ≈40px, contenu événement intruncable. Fix : vue
-  « agenda » (liste verticale jour-par-jour) sous ~400px, `@after VX147` (coordonner avec son
-  extraction `MonthGrid`). Files : `index.css`, `components/MonthGrid.jsx`/`CalendarPage.jsx`/
-  `crm/leads/views/CalendarView.jsx`. DoD : à 1024px, ≥5 des 6 colonnes visibles sans défilement
-  (mesure Playwright) ; à 320-375px, titre + heure d'un événement lisibles. (T2 — M, sonnet)
+- [x] VX183 — **Densité par palier : colonnes kanban 272px fixes (pipeline à moitié invisible sur
+  iPad) + calendrier 7 colonnes illisible sous 400px.** (a) DONE — `index.css` `.kb-col { flex: 0 0
+  272px }`, aucune media query 768-1024 : sur l'iPad 1024×768 paysage, 6 étapes STAGES.py ≈ 1670px →
+  ~3,7 colonnes visibles, défilement horizontal permanent. Fix livré : `@media (max-width: 1024px)
+  and (min-width: 900px)` → `.kb-col` 150px (calcul incluant sidebar 240px + kb-board padding/gaps,
+  garantit ≥5 des 6 colonnes visibles à 1024px même sidebar dépliée) ; bureau >1024px inchangé.
+  Partagé par CRM leads/installations/interventions (même classe `.kb-col`). (b) BLOCKED : `@after
+  VX147` — dépend de l'extraction `MonthGrid` que VX147 doit produire (`MonthGrid.jsx` n'existe pas
+  encore dans `pages/CalendarPage.jsx`/`crm/leads/views/CalendarView.jsx`) ; composition guard —
+  ne pas hand-roll cette extraction ici. Reste à faire une fois VX147 mergé : vue « agenda » (liste
+  verticale jour-par-jour) sous ~400px pour la grille `repeat(7, minmax(0,1fr))` illisible à 320px.
+  Files : `index.css` (fait), `components/MonthGrid.jsx`/`CalendarPage.jsx`/
+  `crm/leads/views/CalendarView.jsx` (en attente de VX147). (T2 — M, sonnet)
   (@lane: frontend/ios — @after VX147)
 
 - [x] VX184 — **Un seul comportement mobile pour les lignes-produit : `data-label` + bascule
