@@ -6,12 +6,13 @@ import {
   Button, Spinner, Badge,
   Card, CardHeader, CardTitle,
   EmptyState, Skeleton,
-  AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader,
+  AlertDialog, AlertDialogContent, AlertDialogHeader,
   AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
   Form, FormActions,
   Label, Input, Checkbox,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+import { DataTable } from '../../ui/datatable'
 
 // Grille module × action (Feature D/RBAC). La SOURCE des codes est l'endpoint
 // /roles/permissions-disponibles (models.ALL_PERMISSIONS) ; cette table ne sert
@@ -166,6 +167,10 @@ export default function RolesManagement() {
   const [expandedUsers, setExpandedUsers] = useState(null)
   // Dialogue de réassignation après une suppression bloquée.
   const [reassign, setReassign] = useState(null) // { role, target }
+  // VX152 — dialogue de confirmation de suppression : contrôlé par état
+  // (déclenché depuis rowActions du DataTable) au lieu d'un AlertDialogTrigger
+  // par ligne (même AlertDialog, même comportement — VX234 le teste).
+  const [pendingDelete, setPendingDelete] = useState(null) // role | null
 
   const groups = useMemo(() => buildGroups(availableCodes), [availableCodes])
   const viewCodes = useMemo(
@@ -304,6 +309,7 @@ export default function RolesManagement() {
   const handleDelete = async (role) => {
     try {
       await rolesApi.deleteRole(role.id)
+      setPendingDelete(null)
       await load()
     } catch (err) {
       // Suppression bloquée car des utilisateurs y sont assignés → proposer la
@@ -311,6 +317,7 @@ export default function RolesManagement() {
       // ERR101 — On se base sur users_count seul : le sérialiseur de liste peut
       // omettre le tableau `users` imbriqué, mais le dialogue doit quand même
       // s'ouvrir dès qu'il y a au moins un utilisateur.
+      setPendingDelete(null)
       if (role.users_count > 0) {
         setReassign({ role, target: '' })
       } else {
@@ -338,7 +345,68 @@ export default function RolesManagement() {
     }
   }
 
-  const th = 'px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground'
+  // VX152 — la liste des rôles rejoint le moteur DataTable déjà utilisé par
+  // UsersManagement (même dossier admin) : recherche/tri/export gratuits, la
+  // grille de permissions de l'éditeur au-dessus reste inchangée. La ligne
+  // « Utilisateurs » dépliable devient `renderExpanded` (moteur natif).
+  const columns = useMemo(() => [
+    {
+      id: 'nom',
+      header: 'Nom',
+      accessor: (r) => r.nom,
+      cell: (value) => <span className="font-medium text-foreground">{value}</span>,
+    },
+    {
+      id: 'type',
+      header: 'Type',
+      width: 140,
+      accessor: (r) => (r.est_systeme ? 'Système' : 'Personnalisé'),
+      cell: (value, r) => (
+        <Badge tone={r.est_systeme ? 'info' : 'success'}>{value}</Badge>
+      ),
+    },
+    {
+      id: 'permissions',
+      header: 'Permissions',
+      width: 150,
+      accessor: (r) => r.permissions.length,
+      cell: (value) => `${value} permission${value !== 1 ? 's' : ''}`,
+    },
+    {
+      id: 'users_count',
+      header: 'Utilisateurs',
+      width: 160,
+      accessor: (r) => r.users_count,
+      cell: (value, r) => (value > 0 ? (
+        <Button
+          size="sm"
+          variant="link"
+          className="h-auto p-0 text-xs"
+          onClick={() => setExpandedUsers(expandedUsers === r.id ? null : r.id)}
+        >
+          {value} utilisateur{value !== 1 ? 's' : ''}
+          <ChevronDown
+            className={expandedUsers === r.id ? 'rotate-180 transition' : 'transition'}
+          />
+        </Button>
+      ) : (
+        <span className="text-muted-foreground">0</span>
+      )),
+    },
+  ], [expandedUsers])
+
+  const rowActions = (r) => {
+    const actions = [
+      { id: 'edit', label: 'Modifier', icon: Pencil, onClick: () => openEdit(r) },
+    ]
+    if (!r.est_systeme) {
+      actions.push({
+        id: 'delete', label: 'Supprimer', icon: Trash2, destructive: true,
+        separatorBefore: true, onClick: () => setPendingDelete(r),
+      })
+    }
+    return actions
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -484,101 +552,68 @@ export default function RolesManagement() {
           action={<Button size="sm" onClick={openCreate}><ShieldPlus /> Nouveau rôle</Button>}
         />
       ) : (
-        <Card className="overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[560px] border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-border bg-muted/40">
-                  <th className={th}>Nom</th>
-                  <th className={th}>Type</th>
-                  <th className={th}>Permissions</th>
-                  <th className={th}>Utilisateurs</th>
-                  <th className={`${th} text-right`}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {roles.map((r) => [
-                  <tr key={r.id} className="border-b border-border/60 last:border-b-0 hover:bg-accent/40">
-                    <td className="px-4 py-2.5 font-medium text-foreground">{r.nom}</td>
-                    <td className="px-4 py-2.5">
-                      <Badge tone={r.est_systeme ? 'info' : 'success'}>
-                        {r.est_systeme ? 'Système' : 'Personnalisé'}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-2.5 text-muted-foreground">
-                      {r.permissions.length} permission{r.permissions.length !== 1 ? 's' : ''}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      {r.users_count > 0 ? (
-                        <Button
-                          size="sm"
-                          variant="link"
-                          className="h-auto p-0 text-xs"
-                          onClick={() => setExpandedUsers(expandedUsers === r.id ? null : r.id)}
-                        >
-                          {r.users_count} utilisateur{r.users_count !== 1 ? 's' : ''}
-                          <ChevronDown
-                            className={expandedUsers === r.id ? 'rotate-180 transition' : 'transition'}
-                          />
-                        </Button>
-                      ) : (
-                        <span className="text-muted-foreground">0</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <div className="flex items-center justify-end gap-2">
-                        <Button size="sm" variant="outline" onClick={() => openEdit(r)}>
-                          <Pencil /> Modifier
-                        </Button>
-                        {!r.est_systeme && (
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button size="sm" variant="ghost" className="text-destructive hover:bg-destructive/10">
-                                <Trash2 /> Supprimer
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Supprimer ce rôle ?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  {r.users_count > 0
-                                    ? `Le rôle « ${r.nom} » est porté par ${r.users_count} utilisateur(s). `
-                                      + 'Vous devrez les réassigner avant la suppression.'
-                                    : `Le rôle « ${r.nom} » sera définitivement supprimé.`}
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Annuler</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => handleDelete(r)}>
-                                  Supprimer
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        )}
-                      </div>
-                    </td>
-                  </tr>,
-                  expandedUsers === r.id ? (
-                    <tr key={`${r.id}-users`} className="border-b border-border/60 bg-muted/20">
-                      <td colSpan={5} className="px-4 py-2.5">
-                        <div className="flex flex-wrap gap-1.5">
-                          {(r.users || []).map(u => (
-                            <Badge key={u.id} tone="neutral">{u.username}</Badge>
-                          ))}
-                          {(r.users?.length ?? 0) === 0 && (
-                            <span className="text-xs text-muted-foreground">Aucun détail disponible.</span>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ) : null,
-                ])}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+        <>
+          <DataTable
+            data={roles}
+            columns={columns}
+            getRowId={(r) => r.id}
+            rowActions={rowActions}
+            searchable
+            searchPlaceholder="Rechercher un rôle…"
+            exportName="roles"
+            emptyTitle="Aucun rôle défini"
+            emptyDescription="Aucun rôle ne correspond à cette recherche."
+            aria-label="Liste des rôles"
+          />
+          {/* Panneau « Utilisateurs » du rôle déplié (bouton dans la colonne
+              Utilisateurs) — reste hors du moteur DataTable : seuls les rôles
+              PORTANT des utilisateurs affichent un déclencheur (contrairement
+              au chevron toujours-visible du mécanisme natif renderExpanded). */}
+          {expandedUsers != null && (() => {
+            const r = roles.find(x => x.id === expandedUsers)
+            if (!r) return null
+            return (
+              <Card className="p-4">
+                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Utilisateurs — {r.nom}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {(r.users || []).map(u => (
+                    <Badge key={u.id} tone="neutral">{u.username}</Badge>
+                  ))}
+                  {(r.users?.length ?? 0) === 0 && (
+                    <span className="text-xs text-muted-foreground">Aucun détail disponible.</span>
+                  )}
+                </div>
+              </Card>
+            )
+          })()}
+        </>
       )}
+
+      {/* ── Dialogue de suppression (contrôlé par état — VX152, déclenché
+          depuis rowActions du DataTable) ── */}
+      <AlertDialog open={!!pendingDelete} onOpenChange={(o) => { if (!o) setPendingDelete(null) }}>
+        {pendingDelete && (
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Supprimer ce rôle ?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {pendingDelete.users_count > 0
+                  ? `Le rôle « ${pendingDelete.nom} » est porté par ${pendingDelete.users_count} utilisateur(s). `
+                    + 'Vous devrez les réassigner avant la suppression.'
+                  : `Le rôle « ${pendingDelete.nom} » sera définitivement supprimé.`}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Annuler</AlertDialogCancel>
+              <AlertDialogAction onClick={() => handleDelete(pendingDelete)}>
+                Supprimer
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        )}
+      </AlertDialog>
 
       {/* ── Dialogue de réassignation (suppression bloquée) ── */}
       <AlertDialog open={!!reassign} onOpenChange={(o) => { if (!o) setReassign(null) }}>
