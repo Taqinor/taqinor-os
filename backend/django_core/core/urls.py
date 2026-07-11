@@ -43,6 +43,7 @@ from .views import (
     ScheduledJobViewSet,
     SystemStatusViewSet,
     TenantThemeViewSet,
+    TenantUsageSnapshotViewSet,
     TrashViewSet,
     WorkflowTemplateViewSet,
     health_live,
@@ -96,6 +97,8 @@ router.register(r'status', SystemStatusViewSet, basename='system-status')
 router.register(r'api-usage', ApiUsagePlanViewSet, basename='api-usage')
 # FG399 — journal des nouveautés in-app (changelog) + suivi de lecture.
 router.register(r'changelog', ChangelogViewSet, basename='changelog')
+# NTPLT6 — compteurs d'usage par tenant (metering), SUPERUSER only.
+router.register(r'usage', TenantUsageSnapshotViewSet, basename='tenant-usage')
 # XPLT10 — liens publics tokenisés + partage interne fin de dashboards.
 router.register(r'dashboards-partages', PartageDashboardViewSet,
                 basename='dashboard-partage')

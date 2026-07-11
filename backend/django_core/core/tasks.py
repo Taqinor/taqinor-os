@@ -100,3 +100,18 @@ def beat_heartbeat_task():
 
     metrics.mark_beat_heartbeat()
     return {'ok': True}
+
+
+@shared_task(name='core.snapshot_tenant_usage')
+def snapshot_tenant_usage_task():
+    """NTPLT6 — instantané NOCTURNE d'usage par tenant (metering).
+
+    Une ligne ``TenantUsageSnapshot`` par (société, jour), idempotente (un
+    re-run du jour met à jour la même ligne). Comptages BORNÉS. Fondation de
+    N100 (plans/billing, différé). Queue ``scheduled`` (tâche planifiée)."""
+    from . import usage
+
+    done = usage.snapshot_all()
+    logger.info('core.snapshot_tenant_usage: %d société(s) mesurée(s)',
+                len(done))
+    return {'companies': len(done)}
