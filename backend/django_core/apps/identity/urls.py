@@ -6,11 +6,15 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from . import views_oidc, views_saml, views_scim
-from .views import IdentityProviderViewSet, ScimTokenViewSet
+from .views import (
+    IdentityProviderViewSet, ScimGroupMappingViewSet, ScimTokenViewSet,
+)
 
 router = DefaultRouter()
 router.register(r'providers', IdentityProviderViewSet, basename='idp')
 router.register(r'scim-tokens', ScimTokenViewSet, basename='scim-token')
+router.register(r'scim-group-mappings', ScimGroupMappingViewSet,
+                basename='scim-group-mapping')
 
 urlpatterns = [
     path('', include(router.urls)),
@@ -33,4 +37,9 @@ urlpatterns = [
          name='scim-users'),
     path('scim/v2/<slug:company_slug>/Users/<int:pk>',
          views_scim.ScimUserDetailView.as_view(), name='scim-user-detail'),
+    # NTSEC6 — Provisioning SCIM 2.0 — Groups → rôles.
+    path('scim/v2/<slug:company_slug>/Groups',
+         views_scim.ScimGroupsView.as_view(), name='scim-groups'),
+    path('scim/v2/<slug:company_slug>/Groups/<int:pk>',
+         views_scim.ScimGroupDetailView.as_view(), name='scim-group-detail'),
 ]

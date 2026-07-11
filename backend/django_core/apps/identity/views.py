@@ -11,8 +11,10 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsAdminRole
 
-from .models import IdentityProvider, ScimToken
-from .serializers import IdentityProviderSerializer, ScimTokenSerializer
+from .models import IdentityProvider, ScimGroupMapping, ScimToken
+from .serializers import (
+    IdentityProviderSerializer, ScimGroupMappingSerializer, ScimTokenSerializer,
+)
 
 
 class IdentityProviderViewSet(viewsets.ModelViewSet):
@@ -79,3 +81,22 @@ class ScimTokenViewSet(viewsets.ModelViewSet):
         data = ScimTokenSerializer(token).data
         data['token'] = raw
         return Response(data)
+
+
+class ScimGroupMappingViewSet(viewsets.ModelViewSet):
+    """CRUD des mappings groupe SCIM → rôle (NTSEC6, Directeur/Admin only)."""
+
+    serializer_class = ScimGroupMappingSerializer
+    permission_classes = [IsAdminRole]
+
+    def get_queryset(self):
+        company = getattr(self.request.user, 'company', None)
+        if company is None:
+            return ScimGroupMapping.objects.none()
+        return ScimGroupMapping.objects.filter(company=company)
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+    def perform_update(self, serializer):
+        serializer.save(company=self.request.user.company)

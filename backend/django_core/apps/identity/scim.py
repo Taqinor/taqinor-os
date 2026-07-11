@@ -75,6 +75,29 @@ def user_to_scim(user, request=None):
     }
 
 
+def group_to_scim(mapping):
+    """Représentation SCIM ``Group`` d'un ``ScimGroupMapping``.
+
+    Les membres = les utilisateurs de la société portant le rôle mappé
+    (source de vérité = le rôle appliqué).
+    """
+    members = []
+    try:
+        from authentication.models import CustomUser
+        users = CustomUser.objects.filter(
+            company=mapping.company, role_id=mapping.role_id, is_active=True)
+        members = [{'value': str(u.pk), 'display': u.username} for u in users]
+    except Exception:  # noqa: BLE001
+        members = []
+    return {
+        'schemas': [SCIM_GROUP_SCHEMA],
+        'id': str(mapping.pk),
+        'displayName': mapping.scim_group_name,
+        'members': members,
+        'meta': {'resourceType': 'Group'},
+    }
+
+
 def scim_error(detail, status_code):
     """Enveloppe d'erreur au schéma SCIM."""
     return {

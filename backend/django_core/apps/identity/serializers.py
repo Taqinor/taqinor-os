@@ -1,7 +1,7 @@
 """Sérialiseurs de la fondation identité (NTSEC)."""
 from rest_framework import serializers
 
-from .models import IdentityProvider, ScimToken
+from .models import IdentityProvider, ScimGroupMapping, ScimToken
 
 
 class IdentityProviderSerializer(serializers.ModelSerializer):
@@ -61,3 +61,20 @@ class ScimTokenSerializer(serializers.ModelSerializer):
             'last_rotated_at', 'rotation_period_days',
         ]
         read_only_fields = fields
+
+
+class ScimGroupMappingSerializer(serializers.ModelSerializer):
+    """Mapping groupe SCIM → rôle. ``company`` forcée côté serveur."""
+
+    class Meta:
+        model = ScimGroupMapping
+        fields = ['id', 'scim_group_name', 'role']
+        read_only_fields = ['id']
+
+    def validate_role(self, value):
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is not None and value.company_id != company.id:
+            raise serializers.ValidationError(
+                "Ce rôle n'appartient pas à votre société.")
+        return value

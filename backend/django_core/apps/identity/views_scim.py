@@ -14,6 +14,7 @@ from rest_framework.views import APIView
 from authentication.models import Company, CustomUser, UserSession
 
 from . import scim
+from .models import ScimGroupMapping
 
 logger = logging.getLogger(__name__)
 
@@ -195,6 +196,110 @@ class ScimUserDetailView(_ScimBase):
             _revoke_user_sessions(user)
             _audit_scim(user, provision=False)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ScimGroupsView(_ScimBase):
+    """GET (list) / POST (create/apply members) sur ``scim/v2/<slug>/Groups``.
+
+    Un « groupe » SCIM correspond à un ``ScimGroupMapping`` (nom de groupe →
+    rôle). L'ajout d'un membre applique le rôle mappé sur le ``CustomUser`` (via
+    ``roles/services.py``, jamais d'accès direct au FK) ; POST sans membres crée
+    seulement le groupe visible.
+    """
+
+    def get(self, request, company_slug):
+        company, token = self._resolve(request, company_slug)
+        if company is None:
+            return self._not_found('Société')
+        if token is None:
+            return self._unauthorized()
+        resources = [scim.group_to_scim(m)
+                     for m in ScimGroupMapping.objects.filter(company=company)]
+        return Response(
+            scim.list_response(resources), content_type=SCIM_CONTENT_TYPE)
+
+    def post(self, request, company_slug):
+        company, token = self._resolve(request, company_slug)
+        if company is None:
+            return self._not_found('Société')
+        if token is None:
+            return self._unauthorized()
+        data = request.data or {}
+        name = (data.get('displayName') or '').strip()
+        mapping = ScimGroupMapping.objects.filter(
+            company=company, scim_group_name=name).first()
+        if mapping is None:
+            return Response(
+                scim.scim_error(
+                    'Groupe SCIM non mappé à un rôle (créez le mapping via '
+                    "l'admin).", 404),
+                status=status.HTTP_404_NOT_FOUND,
+                content_type=SCIM_CONTENT_TYPE)
+        for member in (data.get('members') or []):
+            _apply_role_to_member(company, mapping, member, add=True)
+        return Response(
+            scim.group_to_scim(mapping), status=status.HTTP_200_OK,
+            content_type=SCIM_CONTENT_TYPE)
+
+
+class ScimGroupDetailView(_ScimBase):
+    """PATCH sur ``scim/v2/<slug>/Groups/<id>`` — add/remove members → rôle."""
+
+    def _get_mapping(self, company, pk):
+        return ScimGroupMapping.objects.filter(company=company, pk=pk).first()
+
+    def get(self, request, company_slug, pk):
+        company, token = self._resolve(request, company_slug)
+        if company is None:
+            return self._not_found('Société')
+        if token is None:
+            return self._unauthorized()
+        mapping = self._get_mapping(company, pk)
+        if mapping is None:
+            return self._not_found('Groupe')
+        return Response(
+            scim.group_to_scim(mapping), content_type=SCIM_CONTENT_TYPE)
+
+    def patch(self, request, company_slug, pk):
+        company, token = self._resolve(request, company_slug)
+        if company is None:
+            return self._not_found('Société')
+        if token is None:
+            return self._unauthorized()
+        mapping = self._get_mapping(company, pk)
+        if mapping is None:
+            return self._not_found('Groupe')
+        for op in (request.data or {}).get('Operations') or []:
+            if not isinstance(op, dict):
+                continue
+            verb = (op.get('op') or '').lower()
+            value = op.get('value')
+            members = value if isinstance(value, list) else \
+                (value.get('members') if isinstance(value, dict) else [])
+            for member in (members or []):
+                _apply_role_to_member(
+                    company, mapping, member, add=(verb != 'remove'))
+        return Response(
+            scim.group_to_scim(mapping), content_type=SCIM_CONTENT_TYPE)
+
+
+def _apply_role_to_member(company, mapping, member, *, add):
+    """Applique/retire le rôle mappé sur le membre SCIM (via roles/services)."""
+    from apps.roles import services as role_services
+
+    value = member.get('value') if isinstance(member, dict) else member
+    if not value:
+        return
+    user = CustomUser.objects.filter(company=company, pk=value).first()
+    if user is None:
+        user = CustomUser.objects.filter(
+            company=company, username__iexact=str(value)).first()
+    if user is None:
+        return
+    if add:
+        role_services.assign_role(user, mapping.role)
+    else:
+        role_services.revoke_role(user, mapping.role)
 
 
 def _primary_email(data):
