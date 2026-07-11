@@ -109,4 +109,22 @@ describe('NumeriserPage (XGED12)', () => {
     expect(screen.getByRole('button', { name: /assembler en pdf et classer \(0\)/i }))
       .toBeInTheDocument()
   })
+
+  // VX42 — FAB terrain : un raccourci flottant vers la caméra, au libellé
+  // DISTINCT du bouton inline (deux boutons identiques peuvent coexister à
+  // l'écran ; un `getByRole` ciblé sur l'un ne doit jamais matcher l'autre).
+  it('propose un FAB « Photo (caméra) » distinct du bouton inline, masqué tant que la caméra est ouverte', async () => {
+    const user = userEvent.setup()
+    render(<NumeriserPage />)
+    await waitFor(() => expect(gedApi.getDossiers).toHaveBeenCalled())
+
+    const fab = await screen.findByRole('button', { name: 'Photo (caméra)' })
+    expect(screen.getByRole('button', { name: /prendre la première photo/i })).toBeInTheDocument()
+
+    await user.click(fab)
+    // La caméra (mock) est maintenant ouverte : le FAB comme le bouton inline
+    // s'effacent au profit du flux de capture.
+    expect(screen.queryByRole('button', { name: 'Photo (caméra)' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /prendre la photo \(mock\)/i })).toBeInTheDocument()
+  })
 })

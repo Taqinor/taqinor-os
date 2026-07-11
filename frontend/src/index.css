@@ -1970,6 +1970,8 @@ textarea.form-control {
 .gen-preview-toggle { display: none; }
 /* I36 — Barre d'onglets inférieure : masquée sur le bureau (≥ 769 px). */
 .bottom-tabbar { display: none; }
+/* VX42 — FAB : masqué sur le bureau (≥ 769 px), l'action vit dans la page. */
+.fab-button { display: none; }
 
 @media (max-width: 768px) {
   /* U2 — même raison que la règle globale : overflow-x:clip au lieu de hidden
@@ -2115,6 +2117,29 @@ textarea.form-control {
     font-size: 0.62rem;
     font-weight: 600;
     letter-spacing: 0.01em;
+  }
+
+  /* VX42 — Bouton d'action flottant (FAB) : posé au pouce, dans le tiers bas
+     de l'écran. Fixed + safe-area, et surélevé de la hauteur RÉELLE de la
+     barre d'onglets basse (52 px + son propre safe-area-inset-bottom) pour
+     ne jamais la recouvrir — même palier --z-sticky que le reste du chrome
+     collant (au-dessus du contenu, sous les overlays/modales). N'existe
+     qu'en dessous de 768 px : au-delà l'action principale vit déjà dans la
+     page (bouton normal), pas besoin d'un raccourci flottant. */
+  .fab-button {
+    display: inline-flex;
+    position: fixed;
+    right: max(16px, env(safe-area-inset-right));
+    bottom: calc(52px + env(safe-area-inset-bottom) + 16px);
+    z-index: var(--z-sticky, 1100);
+    height: 52px;
+    padding: 0 18px;
+    min-width: 52px;
+  }
+  .fab-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    white-space: nowrap;
   }
 
   /* La barre de progression épouse le padding mobile (0.9rem) du contenu. */

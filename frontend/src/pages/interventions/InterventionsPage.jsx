@@ -17,6 +17,7 @@ import {
 } from '@dnd-kit/core'
 import installationsApi from '../../api/installationsApi'
 import crmApi from '../../api/crmApi'
+import { hapticTap } from '../../lib/haptics'
 import {
   INTERVENTION_STATUSES,
   INTERVENTION_STATUS_LABELS,
@@ -264,6 +265,7 @@ function DetailSheet({ intervention, users, onClose, onChanged }) {
     try {
       await installationsApi.updateIntervention(intervention.id, { statut })
       toast.success('Statut mis à jour.')
+      hapticTap()
       await reloadHist()
       onChanged?.()
     } catch {

@@ -15,7 +15,7 @@ import {
 import gedApi from '../../api/gedApi'
 import {
   Card, CardContent, Button, EmptyState, Select, SelectTrigger, SelectValue,
-  SelectContent, SelectItem, Input, Textarea, toast,
+  SelectContent, SelectItem, Input, Textarea, toast, FloatingActionButton,
 } from '../../ui'
 import CameraCapture from '../pwa/CameraCapture.jsx'
 import { buildFolderTree, flattenVisible } from './tree.js'
@@ -247,6 +247,20 @@ export default function NumeriserPage() {
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {/* VX42 — FAB : le pouce vit dans le tiers bas de l'écran sur le
+          terrain. Masqué le temps que la caméra est déjà ouverte ou tant
+          qu'aucune armoire n'est choisie. Libellé DISTINCT du bouton inline
+          « Prendre la première photo »/« Ajouter une photo » (même action,
+          mais un nom accessible différent — deux boutons identiques
+          coexistent à l'écran, un test `getByRole` sur l'un ne doit jamais
+          matcher les deux). */}
+      {hasCabinet && !cameraOpen && (
+        <FloatingActionButton
+          label="Photo (caméra)"
+          icon={<Camera className="size-5" aria-hidden="true" />}
+          onClick={() => setCameraOpen(true)} />
       )}
     </div>
   )

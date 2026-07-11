@@ -5,16 +5,23 @@
 // thumb-reachable et 100 % en français. La portée « seulement les miennes » est
 // garantie côté serveur par le rôle Technicien (scope_queryset) ; aucun prix
 // d'achat ni marge n'est exposé.
+//
+// VX42 — Terrain un-tap : deux boutons directs (téléphone, navigation) sur
+// chaque carte — l'action la plus fréquente d'un technicien garé était à
+// 3 taps (ouvrir la fiche → onglet Trajet → bouton). Rail d'onglets
+// icône+libellé (au lieu des 9 icônes seules) avec bandeau « Prochaine
+// action ». FAB « Photo rapide » posé au pouce.
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   CalendarDays, MapPin, ChevronRight, ClipboardList, Navigation, Camera,
-  Tag, ListChecks, Mic, ShieldCheck, Wrench, AlertOctagon, CloudRain,
+  Tag, ListChecks, Mic, ShieldCheck, Wrench, AlertOctagon, CloudRain, Phone,
 } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import {
   Card, Spinner, EmptyState, Badge, StatusPill,
   Sheet, SheetContent, SheetHeader, SheetTitle,
   Tabs, TabsList, TabsTrigger, TabsContent,
+  FloatingActionButton,
 } from '../../ui'
 import {
   PreparationPanel, TrajetPanel, PhotosPanel,
@@ -38,10 +45,37 @@ function todayISO() {
   return new Date(d - tz).toISOString().slice(0, 10)
 }
 
+// VX42 — Lien tel: nettoyé (chiffres et + initial), même convention que
+// LeadCard.jsx/ListView.jsx.
+function telHref(phone) {
+  const s = String(phone ?? '').trim()
+  if (!s) return null
+  const cleaned = s.replace(/[^\d+]/g, '')
+  return cleaned ? `tel:${cleaned}` : null
+}
+
+// VX42 — Navigation maps UNIVERSELLE : geo: sur Android (ouvre le choix
+// d'appli installée), repli Google Maps web partout ailleurs (iOS Safari, etc.
+// — aucune dépendance à une appli installée). Priorité aux coordonnées GPS du
+// chantier (plus précises), repli sur la ville.
+function mapsHref(interv) {
+  const lat = interv.gps_lat, lng = interv.gps_lng
+  if (lat != null && lng != null) {
+    return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`
+  }
+  if (interv.site_ville) {
+    return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(interv.site_ville)}`
+  }
+  return null
+}
+
 export default function MaJourneePage() {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [active, setActive] = useState(null)
+  // VX42 — le FAB « Photo rapide » ouvre la fiche directement sur l'onglet
+  // Photos ; sinon la fiche s'ouvre normalement sur la préparation.
+  const [initialTab, setInitialTab] = useState('prep')
   const today = useMemo(() => todayISO(), [])
 
   // Le rôle Technicien ne reçoit déjà que SES interventions (scope serveur).
@@ -75,41 +109,67 @@ export default function MaJourneePage() {
           description="Vos interventions du jour apparaîtront ici." />
       ) : (
         <ol className="flex flex-col gap-2">
-          {rows.map((interv, i) => (
-            <li key={interv.id}>
-              <Card className="overflow-hidden p-0">
-                <button type="button" onClick={() => setActive(interv)}
-                  className="flex w-full items-center gap-3 p-3 text-left active:bg-accent">
-                  <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
-                    {i + 1}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate font-medium">{interv.client_nom || interv.installation_reference || '—'}</span>
-                      <StatusPill status={interv.statut} label={interventionStatusLabel(interv.statut)} dot={false} />
+          {rows.map((interv, i) => {
+            const tel = telHref(interv.contact_site_telephone)
+            const maps = mapsHref(interv)
+            return (
+              <li key={interv.id}>
+                <Card className="overflow-hidden p-0">
+                  <button type="button" onClick={() => { setInitialTab('prep'); setActive(interv) }}
+                    className="flex w-full items-center gap-3 p-3 text-left active:bg-accent">
+                    <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
+                      {i + 1}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate font-medium">{interv.client_nom || interv.installation_reference || '—'}</span>
+                        <StatusPill status={interv.statut} label={interventionStatusLabel(interv.statut)} dot={false} />
+                      </div>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[12px] text-muted-foreground">
+                        <span>{typeLabel(interv.type_intervention)}</span>
+                        {interv.site_ville && (
+                          <span className="flex items-center gap-1"><MapPin className="size-3.5" aria-hidden="true" />{interv.site_ville}</span>)}
+                        {interv.photos_obligatoires_manquantes > 0 && (
+                          <span className="flex items-center gap-1 text-destructive">
+                            <AlertOctagon className="size-3.5" aria-hidden="true" />
+                            {interv.photos_obligatoires_manquantes} photo(s) requise(s)
+                          </span>)}
+                        {/* XFSM21 — risque météo J+3 (pluie/vent) sur une pose planifiée. */}
+                        {interv.meteo_risque && (
+                          <span className="flex items-center gap-1 text-amber-600">
+                            <CloudRain className="size-3.5" aria-hidden="true" />
+                            Météo à risque
+                          </span>)}
+                      </div>
                     </div>
-                    <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[12px] text-muted-foreground">
-                      <span>{typeLabel(interv.type_intervention)}</span>
-                      {interv.site_ville && (
-                        <span className="flex items-center gap-1"><MapPin className="size-3.5" aria-hidden="true" />{interv.site_ville}</span>)}
-                      {interv.photos_obligatoires_manquantes > 0 && (
-                        <span className="flex items-center gap-1 text-destructive">
-                          <AlertOctagon className="size-3.5" aria-hidden="true" />
-                          {interv.photos_obligatoires_manquantes} photo(s) requise(s)
-                        </span>)}
-                      {/* XFSM21 — risque météo J+3 (pluie/vent) sur une pose planifiée. */}
-                      {interv.meteo_risque && (
-                        <span className="flex items-center gap-1 text-amber-600">
-                          <CloudRain className="size-3.5" aria-hidden="true" />
-                          Météo à risque
-                        </span>)}
+                    <ChevronRight className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  </button>
+                  {/* VX42 — un-tap terrain : appeler / naviguer SANS ouvrir la
+                      fiche. Masqués individuellement si la donnée manque
+                      (aucun numéro de contact site, ni GPS/ville). */}
+                  {(tel || maps) && (
+                    <div className="flex border-t border-border">
+                      {tel && (
+                        <a href={tel}
+                          className="flex min-h-11 flex-1 items-center justify-center gap-1.5 py-2.5 text-[13px] font-medium text-primary active:bg-accent"
+                          aria-label={`Appeler le contact sur site pour ${interv.client_nom || interv.installation_reference || 'cette intervention'}`}>
+                          <Phone className="size-4" aria-hidden="true" /> Appeler
+                        </a>
+                      )}
+                      {tel && maps && <span className="my-2 w-px bg-border" aria-hidden="true" />}
+                      {maps && (
+                        <a href={maps} target="_blank" rel="noopener noreferrer"
+                          className="flex min-h-11 flex-1 items-center justify-center gap-1.5 py-2.5 text-[13px] font-medium text-primary active:bg-accent"
+                          aria-label={`Ouvrir l'itinéraire vers ${interv.site_ville || 'le chantier'}`}>
+                          <Navigation className="size-4" aria-hidden="true" /> Itinéraire
+                        </a>
+                      )}
                     </div>
-                  </div>
-                  <ChevronRight className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
-                </button>
-              </Card>
-            </li>
-          ))}
+                  )}
+                </Card>
+              </li>
+            )
+          })}
         </ol>
       )}
 
@@ -118,14 +178,55 @@ export default function MaJourneePage() {
           se reflètent sans avoir à la rouvrir. */}
       <InterventionFlowSheet
         interv={active ? (rows.find((r) => r.id === active.id) ?? active) : null}
+        initialTab={initialTab}
         onClose={() => setActive(null)}
         onChanged={load} />
+
+      {/* VX42 — FAB « Photo rapide » : ouvre directement la première
+          intervention du jour sur l'onglet Photos (le pouce vit dans le
+          tiers bas de l'écran). Masqué s'il n'y a aucune intervention. */}
+      {rows.length > 0 && (
+        <FloatingActionButton
+          label="Photo rapide"
+          icon={<Camera className="size-5" aria-hidden="true" />}
+          onClick={() => { setInitialTab('photos'); setActive(rows[0]) }} />
+      )}
     </div>
   )
 }
 
-function InterventionFlowSheet({ interv, onClose, onChanged }) {
+// VX42 — rail d'onglets : icône + libellé court (au lieu de l'icône seule),
+// défilable horizontalement plutôt que replié en grille serrée.
+const FLOW_TABS = [
+  { value: 'prep', label: 'Prépa', Icon: ClipboardList },
+  { value: 'trajet', label: 'Trajet', Icon: Navigation },
+  { value: 'safety', label: 'Sécurité', Icon: ShieldCheck },
+  { value: 'photos', label: 'Photos', Icon: Camera },
+  { value: 'serials', label: 'N° série', Icon: Tag },
+  { value: 'conso', label: 'Conso', Icon: ListChecks },
+  { value: 'memos', label: 'Mémos', Icon: Mic },
+  { value: 'reserves', label: 'Réserves', Icon: AlertOctagon },
+  { value: 'outils', label: 'Outils', Icon: Wrench },
+]
+
+// VX42 — bandeau « Prochaine action » (pattern ch6-next-action de
+// ChantierGateTimeline) : une phrase FR qui dit au technicien où aller
+// ensuite dans le flux, dérivée du statut PROPRE de l'intervention (F3).
+const NEXT_ACTION = {
+  a_preparer: { tab: 'prep', text: 'terminer la liste de préparation.' },
+  prete: { tab: 'trajet', text: 'enregistrer le départ dépôt.' },
+  en_route: { tab: 'trajet', text: 'faire le check-in à l’arrivée sur site.' },
+  sur_site: { tab: 'photos', text: 'compléter les photos obligatoires.' },
+  terminee: { tab: 'outils', text: 'confirmer le retour d’outillage.' },
+}
+
+function InterventionFlowSheet({ interv, initialTab, onClose, onChanged }) {
+  const [tab, setTab] = useState(initialTab || 'prep')
+  useEffect(() => { if (interv) setTab(initialTab || 'prep') }, [interv?.id, initialTab])
   if (!interv) return null
+
+  const next = NEXT_ACTION[interv.statut]
+
   return (
     <Sheet open={!!interv} onOpenChange={(o) => { if (!o) onClose() }}>
       <SheetContent side="right" className="w-full max-w-md overflow-y-auto p-0">
@@ -141,17 +242,27 @@ function InterventionFlowSheet({ interv, onClose, onChanged }) {
           <div className="pt-1"><CompteRenduButton intervention={interv} /></div>
         </SheetHeader>
 
-        <Tabs defaultValue="prep" className="p-3">
-          <TabsList className="flex w-full flex-wrap gap-1">
-            <TabsTrigger value="prep" className="text-[12px]"><ClipboardList className="size-4" aria-hidden="true" /></TabsTrigger>
-            <TabsTrigger value="trajet" className="text-[12px]"><Navigation className="size-4" aria-hidden="true" /></TabsTrigger>
-            <TabsTrigger value="safety" className="text-[12px]"><ShieldCheck className="size-4" aria-hidden="true" /></TabsTrigger>
-            <TabsTrigger value="photos" className="text-[12px]"><Camera className="size-4" aria-hidden="true" /></TabsTrigger>
-            <TabsTrigger value="serials" className="text-[12px]"><Tag className="size-4" aria-hidden="true" /></TabsTrigger>
-            <TabsTrigger value="conso" className="text-[12px]"><ListChecks className="size-4" aria-hidden="true" /></TabsTrigger>
-            <TabsTrigger value="memos" className="text-[12px]"><Mic className="size-4" aria-hidden="true" /></TabsTrigger>
-            <TabsTrigger value="reserves" className="text-[12px]"><AlertOctagon className="size-4" aria-hidden="true" /></TabsTrigger>
-            <TabsTrigger value="outils" className="text-[12px]"><Wrench className="size-4" aria-hidden="true" /></TabsTrigger>
+        {/* VX42 — bandeau « Prochaine action » : masqué si le statut n'a pas
+            de suite mappée (ex. « validée », fin du flux). */}
+        {next && (
+          <div className="flex items-center justify-between gap-2 border-b border-info/30 bg-info/10 px-4 py-2 text-[13px]"
+            data-testid="mj-next-action">
+            <span><strong className="text-info">Prochaine action&nbsp;:</strong> {next.text}</span>
+            <button type="button" onClick={() => setTab(next.tab)}
+              className="shrink-0 font-medium text-info underline-offset-2 active:underline">
+              Y aller
+            </button>
+          </div>
+        )}
+
+        <Tabs value={tab} onValueChange={setTab} className="p-3">
+          <TabsList className="flex w-full gap-1 overflow-x-auto" data-testid="mj-tab-rail">
+            {FLOW_TABS.map(({ value, label, Icon }) => (
+              <TabsTrigger key={value} value={value} className="shrink-0 flex-col gap-0.5 px-2.5 py-1.5 text-[11px] leading-tight">
+                <Icon className="size-4" aria-hidden="true" />
+                {label}
+              </TabsTrigger>
+            ))}
           </TabsList>
           <TabsContent value="prep"><PreparationPanel intervention={interv} onChanged={onChanged} /></TabsContent>
           <TabsContent value="trajet"><TrajetPanel intervention={interv} onChanged={onChanged} /></TabsContent>
