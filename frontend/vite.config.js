@@ -36,14 +36,26 @@ const WEB_SRC = resolvePath(__dir, '../apps/web/src')
 // Vite peut varier selon la plateforme.
 const WEB_TS_RE = /[\\/]apps[\\/]web[\\/]src[\\/].*\.(m?ts|tsx)(\?.*)?$/
 
-// Préfixe d'ID VIRTUEL pour les modules TS du builder. La VRAIE chemin du fichier
-// est encodée dans l'id et l'id NE finit PAS par `.ts`/`.tsx` → le transform TS
+// Préfixe d'ID VIRTUEL pour les modules TS du builder. Le CHEMIN du fichier est
+// encodé dans l'id et l'id NE finit PAS par `.ts`/`.tsx` → le transform TS
 // natif de Vite (dont le filtre `include` est `/\.(m?ts|[jt]sx)$/`) ne le traite
 // PAS, donc ne déclenche jamais la découverte du tsconfig astro. C'est NOTRE
 // plugin qui charge + transpile ces fichiers (sans découverte de tsconfig).
+//
+// VX59 — l'id encode un chemin RELATIF à `WEB_SRC` (jamais le chemin ABSOLU du
+// disque) : sans ça, le nom de chunk émis par Rollup dérive de cet id et publie
+// la structure du disque local dans un asset (non portable entre
+// machines/CI — `manualChunks` ci-dessous re-nomme quand même explicitement ce
+// chunk en `roof-tool`, mais gardons l'id lui-même propre en profondeur, au cas
+// où un id de secours/sourcemap venait à être dérivé de lui).
 const RB_PREFIX = '\0rb:'
-const encodeRb = (abs) => `${RB_PREFIX}${encodeURIComponent(abs.replace(/\\/g, '/'))}`
-const decodeRb = (id) => decodeURIComponent(id.slice(RB_PREFIX.length))
+const toWebSrcRelative = (abs) => {
+  const rel = abs.replace(/\\/g, '/').replace(WEB_SRC.replace(/\\/g, '/') + '/', '')
+  return rel
+}
+const fromWebSrcRelative = (rel) => resolvePath(WEB_SRC, rel)
+const encodeRb = (abs) => `${RB_PREFIX}${encodeURIComponent(toWebSrcRelative(abs))}`
+const decodeRb = (id) => fromWebSrcRelative(decodeURIComponent(id.slice(RB_PREFIX.length)))
 
 function roofBuilderTsPlugin() {
   return {
@@ -201,6 +213,16 @@ export default defineConfig({
         // code applicatif). Un module hors de ces groupes suit le découpage par
         // route (React.lazy) — comportement par défaut de Rollup conservé.
         manualChunks(id) {
+          // VX59 — Le builder roof-tool est chargé par `roofBuilderTsPlugin`
+          // (ci-dessus) sous un id VIRTUEL `\0rb:<chemin-relatif-à-WEB_SRC>`.
+          // Sans règle dédiée ici, Rollup dérive le nom de chunk directement de
+          // cet id — même un chemin relatif publierait la structure interne du
+          // dépôt dans le nom d'asset, et resterait sensible au séparateur de
+          // chemin de la plateforme. On regroupe donc TOUJOURS ces modules sous
+          // le même nom FIXE `roof-tool`, indépendant de la machine — c'est
+          // aussi le nom que `check_bundle_budget.mjs` cherche (VENDOR_CHUNK_
+          // BUDGETS_KB['roof-tool']) pour lui donner son budget dédié.
+          if (id.startsWith(RB_PREFIX)) return 'roof-tool'
           if (!id.includes('node_modules')) return undefined
           if (/[\\/]node_modules[\\/]recharts[\\/]/.test(id)) return 'recharts'
           if (/[\\/]node_modules[\\/]pdfjs-dist[\\/]/.test(id)) return 'pdfjs-dist'

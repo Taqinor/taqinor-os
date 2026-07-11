@@ -700,9 +700,14 @@ class LeadViewSet(CompanyScopedModelViewSet):
         })
 
     def destroy(self, request, *args, **kwargs):
-        """Suppression DÉFINITIVE (admin). Bloquée si des devis sont liés —
-        on n'orpheline jamais de pièces financières : message clair, archiver
-        à la place. L'événement est journalisé (qui/quand) côté serveur."""
+        """Suppression RÉVERSIBLE (admin) — VX96 : soft-delete + undo 30 min.
+
+        Le lead n'est plus détruit : ``soft_delete`` le masque des querysets par
+        défaut (``Lead.objects``) et journalise une entrée de corbeille
+        (``DeletionRecord``) restaurable pendant 30 min via ``/core/corbeille/``.
+        Toujours bloqué si des devis sont liés (on n'orpheline jamais de pièces
+        financières). L'événement est journalisé (qui/quand) côté serveur ; la
+        réponse porte l'``corbeille_id`` pour l'undo-toast du front."""
         import logging
         lead = self.get_object()
         if lead.devis.exists():
@@ -712,11 +717,23 @@ class LeadViewSet(CompanyScopedModelViewSet):
                 status=status.HTTP_409_CONFLICT,
             )
         logging.getLogger('crm.audit').warning(
-            'HARD DELETE lead id=%s "%s" par user=%s (company=%s)',
+            'SOFT DELETE lead id=%s "%s" par user=%s (company=%s)',
             lead.id, lead, getattr(request.user, 'username', '?'),
             getattr(lead, 'company_id', None),
         )
-        return super().destroy(request, *args, **kwargs)
+        lead.soft_delete(request.user)
+        # Entrée de corbeille tout juste créée (undo dans la fenêtre de 30 min).
+        from django.contrib.contenttypes.models import ContentType
+        from core.models import DeletionRecord
+        ct = ContentType.objects.get_for_model(Lead)
+        record = (DeletionRecord.objects
+                  .filter(content_type=ct, object_id=lead.pk,
+                          restored_at__isnull=True)
+                  .order_by('-id').first())
+        return Response(
+            {'corbeille_id': getattr(record, 'id', None), 'id': lead.id},
+            status=status.HTTP_200_OK,
+        )
 
     @action(detail=True, methods=['get'], url_path='duplicates',
             permission_classes=[IsAnyRole])

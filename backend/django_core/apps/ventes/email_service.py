@@ -28,11 +28,31 @@ interne » (cf. `apps/notifications/`), au même titre que
 import logging
 
 from django.conf import settings
-from django.core.mail import EmailMessage, get_connection
+from django.core.mail import EmailMultiAlternatives, get_connection
 
 from .models import EmailLog
 
 logger = logging.getLogger(__name__)
+
+
+def _branded_html(company, sujet, corps):
+    """VX76 — wrapper HTML de marque (logo + en-tête navy + pied) autour du
+    corps texte existant. Best-effort : jamais d'exception, jamais de
+    changement du corps texte brut conservé en repli MIME."""
+    try:
+        from apps.parametres.selectors import company_identity
+        from core.selectors import wrap_email_html
+        identite = company_identity(company) if company is not None else {}
+        return wrap_email_html(
+            sujet, corps,
+            company_nom=identite.get('nom', ''),
+            company_adresse=identite.get('adresse', ''),
+            company_telephone=identite.get('telephone', ''),
+            company_email=identite.get('email', ''),
+            couleur_principale=identite.get('couleur_principale', ''),
+        )
+    except Exception:  # noqa: BLE001 — un email ne casse jamais sur ce point
+        return ''
 
 
 def is_email_configured():
@@ -102,7 +122,8 @@ def _signature(company, **context):
         return f"L'équipe {nom}" if nom else "L'équipe"
 
 
-def _send(to_email, sujet, corps, attachment=None, attachment_name=None):
+def _send(to_email, sujet, corps, attachment=None, attachment_name=None,
+          company=None):
     """Envoie via le backend Django configuré. Retourne (ok, erreur).
 
     Sans clé configurée → backend console → l'email est « envoyé » sans appel
@@ -111,14 +132,22 @@ def _send(to_email, sujet, corps, attachment=None, attachment_name=None):
 
     QX36 — pose un ``Reply-To`` vers la boîte entrante (si configurée) pour
     qu'une réponse client atterrisse sur le fil du devis (voir
-    ``ventes.inbound_email``)."""
+    ``ventes.inbound_email``).
+
+    VX76 — le corps texte existant reste le corps MIME principal (repli
+    ``text/plain`` inchangé) ; une alternative ``text/html`` brandée
+    (wrapper logo/en-tête navy/pied) est ajoutée quand le rendu réussit —
+    additif, jamais cassant."""
     try:
         connection = get_connection(fail_silently=False)
         reply_to = _reply_to_address()
-        msg = EmailMessage(
+        msg = EmailMultiAlternatives(
             subject=sujet, body=corps, from_email=_from_email(),
             to=[to_email], connection=connection,
             reply_to=[reply_to] if reply_to else None)
+        html = _branded_html(company, sujet, corps)
+        if html:
+            msg.attach_alternative(html, 'text/html')
         if attachment and attachment_name:
             msg.attach(attachment_name, attachment, 'application/pdf')
         msg.send(fail_silently=False)
@@ -235,7 +264,9 @@ def send_document_email(document, *, to_email=None, sujet=None, corps=None,
         log.save()
         return log
 
-    ok, err = _send(dest, sujet, corps, attachment, attachment_name)
+    ok, err = _send(
+        dest, sujet, corps, attachment, attachment_name,
+        company=getattr(document, 'company', None))
     log.statut = EmailLog.Statut.ENVOYE if ok else EmailLog.Statut.ECHEC
     log.erreur = err
     log.save()
@@ -295,7 +326,9 @@ def send_relance_email(facture, *, niveau_nom='', message='', user=None,
         log.save()
         return log
 
-    ok, err = _send(dest, sujet, corps, attachment, attachment_name)
+    ok, err = _send(
+        dest, sujet, corps, attachment, attachment_name,
+        company=getattr(facture, 'company', None))
     log.statut = EmailLog.Statut.ENVOYE if ok else EmailLog.Statut.ECHEC
     log.erreur = err
     log.save()
@@ -354,7 +387,7 @@ def send_pre_echeance_email(facture, *, user=None):
         log.save()
         return log
 
-    ok, err = _send(dest, sujet, corps)
+    ok, err = _send(dest, sujet, corps, company=getattr(facture, 'company', None))
     log.statut = EmailLog.Statut.ENVOYE if ok else EmailLog.Statut.ECHEC
     log.erreur = err
     log.save()
@@ -408,7 +441,8 @@ def send_recu_email(paiement, *, user=None, to_email=None):
 
     ok, err = _send(
         dest, sujet, corps, pdf_bytes,
-        f'Quittance_{reference}.pdf' if pdf_bytes else None)
+        f'Quittance_{reference}.pdf' if pdf_bytes else None,
+        company=getattr(paiement, 'company', None))
     log.statut = EmailLog.Statut.ENVOYE if ok else EmailLog.Statut.ECHEC
     log.erreur = err
     log.save()
@@ -454,7 +488,8 @@ def send_releve_email(client, releve_data, *, user=None):
 
     ok, err = _send(
         dest, sujet, corps, pdf_bytes,
-        f'Releve_{client.nom}.pdf' if pdf_bytes else None)
+        f'Releve_{client.nom}.pdf' if pdf_bytes else None,
+        company=getattr(client, 'company', None))
     log.statut = EmailLog.Statut.ENVOYE if ok else EmailLog.Statut.ECHEC
     log.erreur = err
     log.save()

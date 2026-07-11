@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, Gauge, Sun, Zap } from 'lucide-react'
+import { AlertTriangle, Gauge, Sun } from 'lucide-react'
 import monitoringApi from '../../api/monitoringApi'
 import { Badge, DataTable, EmptyState, Segmented } from '../../ui'
 import { ModuleDashboard } from '../../ui/module'
 import { BarArrondie, ChartEmpty } from '../../ui/charts'
 import { formatNumber, formatPercent } from '../../lib/format'
+import { METRIC_ICONS } from '../../ui/metricIcons'
 import MonitoringNav from './MonitoringNav'
 
 /* WR6 — Vue PARC / FLOTTE multi-systèmes (FG281) : production totale, kWc
    installés, PR moyen pondéré et alertes de sous-performance ouvertes sur tous
-   les systèmes supervisés de la société, sur une fenêtre glissante. */
+   les systèmes supervisés de la société, sur une fenêtre glissante.
+   VX157 — kWc/production partagent l'icône métier unifiée (ui/metricIcons.js). */
 
 const WINDOWS = [
   { value: 90, label: '90 j' },
@@ -54,12 +56,14 @@ export default function FleetPage() {
     {
       label: 'Puissance installée',
       value: `${formatNumber(fleet.total_kwc)} kWc`,
-      icon: Zap,
+      icon: METRIC_ICONS.kwc,
     },
     {
       label: 'Production (fenêtre)',
       value: `${formatNumber(fleet.total_production_kwh)} kWh`,
+      icon: METRIC_ICONS.production,
       hint: `sur ${fleet.window_days ?? windowDays} jours`,
+      tone: 'impact',
     },
     {
       label: 'PR parc',

@@ -429,6 +429,25 @@ button:active, [role="button"]:active, a.btn:active,
 .sidebar--collapsed .sidebar-nav-item { justify-content: center; padding: 0.52rem; }
 .sidebar--collapsed .sidebar-section { padding-bottom: 0.05rem; }
 
+/* VX157 — pastille d'impact du parc : discrète, teinte brass tamisée (même
+   esprit que le repère d'item actif ci-dessus), jamais criarde. */
+.sidebar-impact {
+  margin: 0.5rem 0.5rem 0;
+  padding: 0.4rem 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  border-radius: 8px;
+  background: rgba(245, 193, 0, 0.07);
+  color: #c9a227;
+  font-size: 0.78rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.sidebar-impact-icon { flex-shrink: 0; color: #F5C100; }
+.sidebar-impact-label { overflow: hidden; text-overflow: ellipsis; }
+.sidebar--collapsed .sidebar-impact { justify-content: center; padding: 0.4rem; }
+
 .sidebar-logout {
   margin: 0.5rem;
   padding: 0.48rem 0.75rem;
