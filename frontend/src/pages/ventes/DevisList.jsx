@@ -33,7 +33,7 @@ import { openPdfBlob, openPdfInGesture } from '../../utils/pdfBlob'
 import { proposalParams, pdfBlob } from '../../features/ventes/previewPdf'
 import { useSavedViews } from '../../hooks/useSavedViews'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
-import { useHasPermission } from '../../hooks/useHasPermission'
+import { useHasPermission, useCanValiderVente } from '../../hooks/useHasPermission'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import { DataTable } from '../../ui/datatable'
 import RoofViewer from './RoofViewer'
@@ -273,7 +273,7 @@ function DevisRow({ d, ctx }) {
     versionsOpenId, setVersionsOpenId, roofOpenId, setRoofOpenId,
     versionChain, effStatutOf,
     navigate, dispatch,
-    role, canDelete, highlightId,
+    role, canDelete, canValiderVente, highlightId,
     deletingId, statutActionId, superieurBusyId, shareBusyId, previewingId,
     pdfGenerating, pdfDownloading, pdfSlowPoll, convertingId, chantierBusy, projetBusy, factureGenId,
     openEdit, openVarianteModal, handleDelete, handleEnvoyer, handleContacterSuperieur,
@@ -532,7 +532,7 @@ function DevisRow({ d, ctx }) {
               <Send /> Envoyer
             </Button>
           )}
-          {d.statut === 'envoye' && (
+          {d.statut === 'envoye' && canValiderVente && (
             <Button
               size="sm"
               title="Marquer accepté (date + nom + option) — déclenche la création du chantier"
@@ -541,7 +541,7 @@ function DevisRow({ d, ctx }) {
               <Check /> Accepter
             </Button>
           )}
-          {d.statut === 'envoye' && (
+          {d.statut === 'envoye' && canValiderVente && (
             <Button
               size="sm"
               variant="outline"
@@ -824,6 +824,11 @@ export default function DevisList() {
   // pourcentage des variantes (le backend variante-config renvoie 403 sinon).
   // Les autres rôles voient la valeur par défaut en lecture seule.
   const canEditVariantePct = useHasPermission(null, ['Directeur', 'Commercial responsable'])
+  // VX199 — accepter/refuser un devis exige la permission ERP fine
+  // `ventes_valider` (garde backend HasPermissionOrLegacy) : on cache
+  // l'affordance pour les rôles « lecture + une écriture » (ex. Commercial)
+  // qui recevraient sinon 403 sur l'appel direct.
+  const canValiderVente = useCanValiderVente()
   // J141 — chargement différé anti-scintillement : spinner discret puis squelette.
   const { showSpinner, showSkeleton } = useDelayedLoading(loading)
 
@@ -1559,7 +1564,7 @@ export default function DevisList() {
     versionsOpenId, setVersionsOpenId, roofOpenId, setRoofOpenId,
     versionChain, effStatutOf,
     navigate, dispatch,
-    role, canDelete, highlightId,
+    role, canDelete, canValiderVente, highlightId,
     deletingId, statutActionId, superieurBusyId, shareBusyId, previewingId,
     pdfGenerating, pdfDownloading, pdfSlowPoll, convertingId, chantierBusy, projetBusy, factureGenId,
     openEdit, openVarianteModal, handleDelete, handleEnvoyer, handleContacterSuperieur,

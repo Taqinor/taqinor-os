@@ -28,6 +28,7 @@ from authentication.permissions import (  # noqa: F401
     IsAnyRole,
     IsResponsableOrAdmin,
     IsAdminRole,
+    HasPermissionOrLegacy,
 )
 from core.viewsets import CompanyScopedModelViewSet  # noqa: F401  ARC5
 from ..utils.references import create_with_reference  # noqa: F401
@@ -1002,7 +1003,7 @@ class DevisViewSet(CompanyScopedModelViewSet):
             status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'], url_path='accepter',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[HasPermissionOrLegacy('ventes_valider')])
     def accepter(self, request, pk=None):
         """N25 — marque le devis « accepté » à une date choisie, en capturant le
         nom de la personne qui accepte ; l'acceptation est consignée dans le
@@ -1090,7 +1091,7 @@ class DevisViewSet(CompanyScopedModelViewSet):
         return option, None
 
     @action(detail=True, methods=['post'], url_path='refuser',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[HasPermissionOrLegacy('ventes_valider')])
     def refuser(self, request, pk=None):
         """FG44 — marque le devis « refusé » avec date + motif + chatter.
 
