@@ -113,7 +113,7 @@ export default function AgentChat() {
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="ui-root flex h-[calc(100vh-7rem)] min-h-[28rem] flex-col gap-3">
+      <div className="ui-root flex h-[calc(100dvh-7rem)] min-h-[28rem] flex-col gap-3">
 
         {/* ── En-tête ── */}
         <div className="flex flex-wrap items-center justify-between gap-3">

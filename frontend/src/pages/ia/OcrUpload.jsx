@@ -17,6 +17,7 @@ import {
   TabsList,
   TabsTrigger,
   TabsContent,
+  toast,
 } from '../../ui'
 import { FileUpload } from '../../ui/FileUpload'
 import { cn } from '../../lib/cn'
@@ -151,7 +152,10 @@ function AnalyseTab({ canSave }) {
     if (ocrResult?.texte_brut) {
       navigator.clipboard.writeText(ocrResult.texte_brut).then(() => {
         setCopied(true)
+        toast.success('Texte copié.')
         setTimeout(() => setCopied(false), 2000)
+      }).catch(() => {
+        toast.error('Copie impossible — copiez le texte manuellement.')
       })
     }
   }
