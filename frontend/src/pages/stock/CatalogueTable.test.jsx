@@ -131,7 +131,7 @@ describe('CatalogueTable (J142)', () => {
     expect(screen.getAllByText(/1\D?200/).length).toBeGreaterThan(0)
     // VX75 — formatMAD ajoute un séparateur de milliers (« 1 000,00 HT ») ;
     // on reste tolérant sur ce séparateur (espace/nbsp/narrow-nbsp ou aucun).
-    expect(screen.getAllByText(/1[\s  ]?000[.,]00 HT/).length)
+    expect(screen.getAllByText(/1\s?000[.,]00 HT/).length)
       .toBeGreaterThan(0)
   })
 
