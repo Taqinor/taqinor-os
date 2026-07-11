@@ -10,6 +10,44 @@ export function ouvrirPdfBlob(blob, filename) {
   return 'download'
 }
 
+// VX48 — [BUG iOS] Safari iOS bloque en silence tout `window.open()` qui suit
+// un `await` : le PDF n'apparaît jamais et rien ne le signale. Le seul geste
+// que Safari accepte sans blocage est un `window.open` SYNCHRONE, appelé
+// directement dans le handler de tap/clic (avant tout `await`).
+//
+// Usage — appeler dans le handler AVANT l'appel async, puis rediriger la
+// fenêtre pré-ouverte quand le blob est prêt :
+//
+//   const pending = openPdfInGesture()          // synchrone, dans le tap
+//   const res = await api.getPdf(id)            // await : OK après coup
+//   const ok = pending.deliver(pdfBlob(res.data), filename)
+//   if (!ok) toast.error('Ouverture bloquée — Télécharger le PDF', { action... })
+//
+// `deliver()` redirige l'onglet pré-ouvert vers l'URL du blob ; renvoie
+// `false` (et ne fait AUCUN fallback lui-même) si la fenêtre pré-ouverte a été
+// bloquée/fermée entre-temps (l'appelant décide alors du repli — toast ou
+// téléchargement direct), pour ne jamais régresser QG1.
+export function openPdfInGesture() {
+  const win = window.open('', '_blank', 'noopener')
+  return {
+    win,
+    deliver(blob, filename) {
+      const url = URL.createObjectURL(blob)
+      setTimeout(() => URL.revokeObjectURL(url), 60000)
+      if (!win || win.closed) return false
+      try {
+        win.location = url
+      } catch {
+        return false
+      }
+      if (filename) {
+        try { win.document.title = filename } catch { /* cross-origin-safe no-op */ }
+      }
+      return true
+    },
+  }
+}
+
 // QS1 — vrai si la réponse est bien un PDF (et pas une page HTML d'erreur…).
 export function estBlobPdf(blob) {
   return blob instanceof Blob && (blob.type || '').includes('pdf')

@@ -29,6 +29,7 @@ import {
 } from '../../ui'
 import { formatMAD, formatDateTime } from '../../lib/format'
 import { filenameFromResponse } from '../../utils/downloadBlob'
+import { openPdfBlob, openPdfInGesture } from '../../utils/pdfBlob'
 import { proposalParams, pdfBlob } from '../../features/ventes/previewPdf'
 import { useSavedViews } from '../../hooks/useSavedViews'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
@@ -149,19 +150,6 @@ function engagementSummary(engagement) {
     const duree = mins >= 1 ? `${mins} min` : `${v.seconds} s`
     return `${duree} sur ${label}`
   }).join(' · ')
-}
-
-function openPdfBlob(blob, filename) {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.target = '_blank'
-  a.rel = 'noopener'
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  setTimeout(() => URL.revokeObjectURL(url), 10000)
 }
 
 // ── ARC49 — Modale de génération PDF de la LISTE (formats du simulateur). ──
@@ -1246,7 +1234,10 @@ export default function DevisList() {
 
   // T10 — Aperçu PDF en application : récupère le blob /proposal et l'ouvre dans
   // un nouvel onglet (mêmes params que la modale d'aperçu de la fiche lead).
+  // VX48 — l'onglet est pré-ouvert SYNCHRONE dans le geste (avant l'await),
+  // sinon Safari iOS bloque silencieusement le window.open post-await.
   const handlePreview = async (d) => {
+    const pending = openPdfInGesture()
     setPreviewingId(d.id)
     try {
       const params = proposalParams(
@@ -1255,9 +1246,10 @@ export default function DevisList() {
           && !!(d.etude_params && Object.keys(d.etude_params).length > 0),
       )
       const res = await ventesApi.getProposalPdf(d.id, params)
-      const url = URL.createObjectURL(pdfBlob(res.data))
-      window.open(url, '_blank', 'noopener')
-      setTimeout(() => URL.revokeObjectURL(url), 10000)
+      const blob = pdfBlob(res.data)
+      if (!pending.deliver(blob, `${d.reference}.pdf`)) {
+        openPdfBlob(blob, `${d.reference}.pdf`)
+      }
     } catch (err) {
       // T11 — l'absence d'onduleur lève une ValueError côté moteur premium.
       const msg = frenchError(err, '')
@@ -1379,11 +1371,28 @@ export default function DevisList() {
             dispatch(fetchDevis())
             setPdfSlowPoll(prev => ({ ...prev, [d.id]: false }))
             if (autoOpen) {
+              // VX48 — l'auto-open existant (QG1) reste l'expérience PAR
+              // DÉFAUT et se déclenche EN PREMIER ; on n'affiche le toast
+              // d'action « Ouvrir » (tap = geste frais, seul geste que
+              // Safari iOS honore après ce polling asynchrone) que si le
+              // téléchargement/l'ouverture automatique échoue.
               try {
                 const pdfRes = await ventesApi.telechargerPdfDevis(d.id)
                 openPdfBlob(pdfRes.data, filenameFromResponse(pdfRes, `${d.reference}.pdf`))
               } catch {
-                toast.error(`${d.reference} : PDF généré mais l'ouverture automatique a échoué — utilisez le bouton de téléchargement.`)
+                toast.error(`${d.reference} : PDF prêt — l'ouverture automatique a échoué.`, {
+                  action: {
+                    label: 'Ouvrir',
+                    onClick: async () => {
+                      try {
+                        const pdfRes = await ventesApi.telechargerPdfDevis(d.id)
+                        openPdfBlob(pdfRes.data, filenameFromResponse(pdfRes, `${d.reference}.pdf`))
+                      } catch {
+                        toast.error(`${d.reference} : PDF indisponible — utilisez le bouton de téléchargement.`)
+                      }
+                    },
+                  },
+                })
               }
             }
           } else {

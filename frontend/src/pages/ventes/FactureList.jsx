@@ -34,6 +34,7 @@ import { formatMAD, toNumber, normalizeMaPhone, formatDateTime } from '../../lib
 import { useSavedViews } from '../../hooks/useSavedViews'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import { DataTable } from '../../ui/datatable'
+import { openPdfBlob, openPdfInGesture } from '../../utils/pdfBlob'
 
 // VX21 — squelette de la liste (parité DevisList/DevisTableSkeleton) : reprend
 // les 8 colonnes du vrai tableau pour que la mise en page ne saute pas à
@@ -171,19 +172,6 @@ function nextBestAction(f) {
   if (isOverdue(f)) return 'relancer'
   if (toNumber(f.montant_paye) > 0 && toNumber(f.montant_du) > 0) return 'encaisser'
   return null
-}
-
-function openPdfBlob(blob, filename) {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.target = '_blank'
-  a.rel = 'noopener'
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  setTimeout(() => URL.revokeObjectURL(url), 10000)
 }
 
 // ── ARC53 — Ligne de la liste des factures (« lignes divisées »). Extraite
@@ -824,6 +812,10 @@ export default function FactureList() {
   }
 
   // Ouvre wa.me après confirmation de l'aperçu.
+  // VX48 — exclu volontairement : ce window.open() n'est précédé d'AUCUN await
+  // (il tourne synchrone dans le clic du bouton « Envoyer » de la modale), donc
+  // hors du bug Safari iOS (qui ne bloque qu'un window.open post-await). Ce
+  // n'est de toute façon pas un PDF (lien wa.me).
   const ouvrirWhatsApp = () => {
     if (waPreview?.wa_url) window.open(waPreview.wa_url, '_blank', 'noopener')
     setWaPreview(null)
@@ -871,20 +863,33 @@ export default function FactureList() {
 
   // FG53/WR2b — « Payer en ligne » : crée/réutilise le lien de paiement puis le
   // copie au presse-papier (aucun envoi automatique au client).
+  // VX48 — le repli window.open (quand le presse-papier est indisponible) suit
+  // un await : onglet pré-ouvert SYNCHRONE (pas un PDF, donc `.win.location`
+  // direct plutôt que `openPdfInGesture().deliver()` qui attend un Blob).
   const handleLienPaiement = async (f) => {
     setPayLinkBusy(prev => ({ ...prev, [f.id]: true }))
+    const pending = openPdfInGesture()
     try {
       const { data } = await ventesApi.lienPaiementFacture(f.id)
       const url = data?.pay_url ?? ''
       if (url && navigator.clipboard?.writeText) {
+        pending.win?.close?.()
         await navigator.clipboard.writeText(url)
         toast.success(`Lien de paiement copié — ${formatMAD(data.montant)}.`)
       } else if (url) {
-        window.open(url, '_blank', 'noopener')
+        if (pending.win && !pending.win.closed) {
+          pending.win.location = url
+        } else {
+          toast.error('Ouverture bloquée par le navigateur.', {
+            action: { label: 'Ouvrir', onClick: () => window.open(url, '_blank', 'noopener') },
+          })
+        }
       } else {
+        pending.win?.close?.()
         toast.error('Lien de paiement indisponible.')
       }
     } catch (err) {
+      pending.win?.close?.()
       toast.error(err?.response?.data?.detail ?? 'Création du lien de paiement impossible.')
     } finally {
       setPayLinkBusy(prev => ({ ...prev, [f.id]: false }))

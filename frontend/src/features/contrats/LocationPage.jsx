@@ -10,6 +10,7 @@ import {
 } from '../../ui'
 import { StatutLocation, StatutCautionLocation } from './locationStatus'
 import { formatMAD, formatDate } from '../../lib/format'
+import { openPdfInGesture } from '../../utils/pdfBlob'
 import SimpleTable from './SimpleTable'
 
 /* ============================================================================
@@ -75,14 +76,18 @@ export default function LocationPage() {
     catch (e) { toast.error(errMsg(e, 'Action impossible.')) }
   }
 
+  // VX48 — onglet pré-ouvert SYNCHRONE avant l'await (Safari iOS bloque
+  // silencieusement un window.open() post-await).
   const bonPdf = async (ordre, kind) => {
+    const pending = openPdfInGesture()
     try {
       const res = kind === 'enlevement'
         ? await contratsApi.getBonEnlevement(ordre.id)
         : await contratsApi.getBonRestitution(ordre.id)
-      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }))
-      window.open(url, '_blank', 'noopener')
-      setTimeout(() => URL.revokeObjectURL(url), 60000)
+      const blob = new Blob([res.data], { type: 'application/pdf' })
+      if (!pending.deliver(blob, `${kind}-${ordre.id}.pdf`)) {
+        toast.error('Ouverture bloquée par le navigateur.')
+      }
     } catch { toast.error('Bon PDF indisponible.') }
   }
 

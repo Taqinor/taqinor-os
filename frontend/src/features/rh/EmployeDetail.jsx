@@ -10,6 +10,7 @@ import {
 import { formatMAD, formatDate, formatPhoneMA, formatPercent } from '../../lib/format'
 import { useSelector } from 'react-redux'
 import rhApi from '../../api/rhApi'
+import { openPdfInGesture } from '../../utils/pdfBlob'
 import { peutVoirSalaires } from './permissions.js'
 import { StatutEmploye, TYPE_CONTRAT_LABELS } from './constants.jsx'
 
@@ -119,12 +120,16 @@ export default function EmployeDetail() {
 
   const recharger = () => setReloadTick((t) => t + 1)
 
+  // VX48 — onglet pré-ouvert SYNCHRONE avant l'await (Safari iOS bloque
+  // silencieusement un window.open() post-await).
   const telechargerCertificat = async () => {
+    const pending = openPdfInGesture()
     try {
       const res = await rhApi.getCertificatTravail(id)
-      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }))
-      window.open(url, '_blank', 'noopener')
-      setTimeout(() => URL.revokeObjectURL(url), 60000)
+      const blob = new Blob([res.data], { type: 'application/pdf' })
+      if (!pending.deliver(blob, `certificat-travail-${id}.pdf`)) {
+        toast.error('Ouverture bloquée par le navigateur.')
+      }
     } catch (err) {
       if (err?.response?.status === 404) {
         toast.error('Certificat indisponible : l’employé n’est pas sorti.')
