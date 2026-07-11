@@ -1,12 +1,35 @@
+// VX49 — import PARESSEUX du toast : `ui/Toaster` tire `sonner` (dépendance
+// externe + JSX), indésirable dans un module utilitaire testé en `node --test`
+// SANS bundler ni node_modules. Le dynamic import échoue proprement (catch) en
+// environnement de test — le helper reste 100% fonctionnel sans le toast.
+async function toastErreur(message, options) {
+  try {
+    const { toast } = await import('../ui/Toaster')
+    toast.error(message, options)
+  } catch { /* pas d'UI de toast disponible (test / SSR) — silencieux */ }
+}
+
+// VX49 — Safari renvoie parfois un objet fenêtre non-null mais INERTE (popup
+// silencieusement bloquée) : `win.closed` vaut déjà `true`, ou `win.closed`
+// n'est même pas défini sur l'objet renvoyé. Un simple `if (win)` rate ce cas.
+function isFenetreInerte(win) {
+  return win == null || win.closed || typeof win.closed === 'undefined'
+}
+
 // QS1 — ouvre un PDF (Blob) dans un NOUVEL ONGLET (window.open) ; si le
-// navigateur bloque la popup, retombe sur le téléchargement `openPdfBlob`.
+// navigateur bloque la popup (détection VX49 : null OU fenêtre inerte),
+// affiche un toast d'action « Ouverture bloquée — Télécharger le PDF » au
+// lieu d'échouer en silence, ET retombe sur le téléchargement `openPdfBlob`.
 // Retourne 'open' | 'download' (utile aux tests).
 export function ouvrirPdfBlob(blob, filename) {
   const url = URL.createObjectURL(blob)
   const win = window.open(url, '_blank', 'noopener')
   setTimeout(() => URL.revokeObjectURL(url), 60000)
-  if (win) return 'open'
+  if (!isFenetreInerte(win)) return 'open'
   openPdfBlob(blob, filename)
+  toastErreur('Ouverture bloquée — Télécharger le PDF', {
+    action: { label: 'Télécharger', onClick: () => openPdfBlob(blob, filename) },
+  })
   return 'download'
 }
 
@@ -84,15 +107,24 @@ export async function messageErreurBlob(err, {
 }
 
 // Ouvre/télécharge un blob PDF reçu d'une réponse axios (responseType blob).
+// VX49 — un blob invalide (ou un DOM indisponible) ne doit jamais échouer en
+// silence : toast FR + `revokeObjectURL` garanti en `finally` (sinon fuite
+// mémoire sur des échecs répétés, ex. blob corrompu retenté en boucle).
 export function openPdfBlob(blob, filename) {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.target = '_blank'
-  a.rel = 'noopener'
-  if (filename) a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  setTimeout(() => URL.revokeObjectURL(url), 10000)
+  let url
+  try {
+    url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.target = '_blank'
+    a.rel = 'noopener'
+    if (filename) a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+  } catch {
+    toastErreur('Fichier indisponible — réessayez.')
+  } finally {
+    if (url) setTimeout(() => URL.revokeObjectURL(url), 10000)
+  }
 }
