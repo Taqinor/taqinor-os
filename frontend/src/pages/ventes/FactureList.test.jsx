@@ -51,6 +51,7 @@ vi.mock('../../api/parametresApi', async (importOriginal) => {
 import FactureList from './FactureList'
 import ventesApi from '../../api/ventesApi'
 import parametresApi from '../../api/parametresApi'
+import api from '../../api/axios'
 // ARC53 — FactureList rend son tableau via le moteur `ui/datatable` (useDensity),
 // qui EXIGE un <ThemeProvider> dans l'arbre (présent en prod via <Layout>). Ajout
 // de wrapper de HARNAIS uniquement — aucune assertion n'est modifiée.
@@ -179,6 +180,42 @@ describe('FactureList — WR2b : barre d\'actions en masse (bulkFactures)', () =
     fireEvent.click(screen.getByRole('checkbox', { name: 'Tout sélectionner' }))
     const bulkBar = screen.getByRole('region', { name: 'Actions factures en masse' })
     expect(within(bulkBar).getByText('2')).toBeVisible()
+  })
+})
+
+describe('FactureList — VX114 : Export comptable via modale (plus de window.prompt)', () => {
+  it('ouvre une modale avec deux champs date au lieu de window.prompt', async () => {
+    const promptSpy = vi.spyOn(window, 'prompt')
+    const user = userEvent.setup()
+    renderList({ factures: [{ ...baseFacture }] })
+    await user.click(screen.getByRole('button', { name: /Export comptable/ }))
+    expect(await screen.findByRole('heading', { name: 'Export comptable' })).toBeVisible()
+    expect(screen.getByLabelText('Date de début')).toBeVisible()
+    expect(screen.getByLabelText('Date de fin (exclue)')).toBeVisible()
+    expect(promptSpy).not.toHaveBeenCalled()
+  })
+
+  it('soumet la plage choisie et télécharge xlsx + csv', async () => {
+    const getSpy = vi.spyOn(api, 'get').mockResolvedValue({ data: new Blob(['x']) })
+    const user = userEvent.setup()
+    renderList({ factures: [{ ...baseFacture }] })
+    await user.click(screen.getByRole('button', { name: /Export comptable/ }))
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.change(within(dialog).getByLabelText('Date de début'), { target: { value: '2026-07-01' } })
+    fireEvent.change(within(dialog).getByLabelText('Date de fin (exclue)'), { target: { value: '2026-07-31' } })
+    await user.click(within(dialog).getByRole('button', { name: /Exporter/ }))
+    await waitFor(() => {
+      expect(getSpy).toHaveBeenCalledWith('/ventes/export-comptable/', {
+        params: { start: '2026-07-01', end: '2026-07-31', fmt: 'xlsx' },
+        responseType: 'blob',
+      })
+    })
+    await waitFor(() => {
+      expect(getSpy).toHaveBeenCalledWith('/ventes/export-comptable/', {
+        params: { start: '2026-07-01', end: '2026-07-31', fmt: 'csv' },
+        responseType: 'blob',
+      })
+    })
   })
 })
 
