@@ -3868,6 +3868,17 @@ textarea.form-control {
   margin-left: auto;
 }
 
+/* VX145(b) — sépare visuellement le cluster d'actions (Nouveau/Express/⋯) du
+   cluster de mode (ViewSwitcher, déjà poussé à droite par .vs-group ci-dessus :
+   comme .vs-group porte l'unique margin-left:auto, ce séparateur est collé
+   contre lui, ce qui isole visuellement les deux clusters). */
+.lp-header-sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 0.2rem 0.5rem;
+  background: var(--border, #e2e8f0);
+}
+
 /* Zone derrière les vues : surface sourde de tableau de bord. */
 .lp-view-area {
   background: var(--muted, #f1f5f9);

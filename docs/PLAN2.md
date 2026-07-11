@@ -1208,22 +1208,26 @@ subset) pour les identifiants (`--font-mono`) — à soumettre au fondateur avan
   que les 3 autres en desktop, empilée en mobile. (T2 — M, sonnet) (@lane: frontend/crm — @after
   VX89)
 
-- [ ] VX145 — **Barres d'action CRM : groupes, risque perçu, désencombrement. @after VX89.** Trois
+- [x] VX145 — **Barres d'action CRM : groupes, risque perçu, désencombrement. @after VX89.** Trois
   toolbars du même module sans hiérarchie : (a) `BulkActionBar` leads rend 11-12 boutons
   identiques — grouper en 3 clusters séparés (éditions de champ / cycle de vie / export+destructif)
   par `border-left` + gap ; **rogné (grand-verdict) :** le regroupement en clusters de
   BulkActionBar recoupe déjà VX20 — ne pas refaire ce point isolément, seuls (b) et (c) survivent.
-  (b) l'en-tête `LeadsPage` (L349-371) montre 6 actions de même poids pour des fréquences très
-  différentes — démoter Doublons/Importer/Exporter dans un menu « ⋯ » (pattern DropdownMenu déjà
-  importé dans `ListView.jsx:24-26`), ne garder que « + Nouveau lead », « ⚡ Express » et le
-  ViewSwitcher, avec un séparateur qui isole le ViewSwitcher comme cluster de mode ; (c) le bloc
-  « vues enregistrées » est copié-collé entre `ClientList.jsx:366-383` et `LeadsPage.jsx:376-393`
-  et occupe une rangée pleine largeur même vide — extraire `<SavedViewsBar>` partagé, replié dans
-  la rangée de filtres quand 0 vue (le hook `useSavedViews` client existant, PAS les vues serveur
-  NTUX). Files : `pages/crm/leads/LeadsPage.jsx` (L349-371, 376-393), `pages/crm/ClientList.jsx`
-  (L366-383), `components/SavedViewsBar.jsx` (nouveau), `index.css`. DoD : en-tête = 3 contrôles +
-  1 menu ⋯ dont chaque action reste déclenchable (test RTL à travers le menu) ; 0 rangée dédiée
-  quand `savedViews.length === 0`. (T2 — M, sonnet) (@lane: frontend/crm — @after VX89)
+  (b) DONE — l'en-tête `LeadsPage` montrait 6 actions de même poids pour des fréquences très
+  différentes ; Doublons/Importer/Exporter démotés dans un menu « ⋯ » (`DropdownMenu`, même pattern
+  que `ListView.jsx`), l'en-tête ne garde que « + Nouveau lead », « ⚡ Express », le bouton « ⭐
+  Enregistrer cette vue » et le ViewSwitcher, séparés par `.lp-header-sep` qui isole le ViewSwitcher
+  comme cluster de mode. (c) DONE — le bloc « vues enregistrées » était copié-collé entre
+  `ClientList.jsx` et `LeadsPage.jsx` et occupait une rangée pleine largeur même vide ; extrait en
+  `components/SavedViewsBar.jsx` (chips, rend `null` si `savedViews.length === 0` → 0 rangée dédiée)
+  + `SaveViewButton` (déclencheur, placé par chaque écran dans SA rangée déjà existante — en-tête
+  pour LeadsPage, rangée Segmented pour ClientList — jamais dans une rangée à lui seul) ; le hook
+  `useSavedViews` client reste inchangé dans chaque écran (formes différentes : filters+view vs
+  typeFilter). Files : `pages/crm/leads/LeadsPage.jsx`, `pages/crm/ClientList.jsx`,
+  `components/SavedViewsBar.jsx` (nouveau), `components/SavedViewsBar.test.mjs` (nouveau),
+  `index.css`. DoD : en-tête = 3 contrôles + 1 menu ⋯ dont chaque action reste déclenchable (test de
+  source `node --test` — pas de RTL installé dans ce lane, cf. convention `MesEquipesCard.test.mjs`) ;
+  0 rangée dédiée quand `savedViews.length === 0`. (T2 — M, sonnet) (@lane: frontend/crm — @after VX89)
 
 - [ ] VX146 — **`/calendrier` rejoint le design system : un seul calendrier mensuel dans l'app.**
   `pages/CalendarPage.jsx` (292 l., l'agenda global qui agrège poses/interventions/maintenance/

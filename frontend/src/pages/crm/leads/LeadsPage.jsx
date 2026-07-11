@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useSearchParams } from 'react-router-dom'
-import { Upload, Download, X, Plus } from 'lucide-react'
+import { Upload, Download, X, Plus, MoreHorizontal } from 'lucide-react'
 import { useIsAdmin } from '../../../hooks/useHasPermission'
 import { fetchLeads, updateLead, leadStagePatched } from '../../../features/crm/store/crmSlice'
 import crmApi from '../../../api/crmApi'
@@ -9,11 +9,15 @@ import { filterLeads, EMPTY_FILTERS, archivedParam, CONVERSION_STAGE } from '../
 import {
   toggleId, toggleAll, pruneSelection, bulkResultMessage,
 } from '../../../features/crm/bulk'
-import { Button, IconButton, Spinner, FloatingActionButton } from '../../../ui'
+import {
+  Button, IconButton, Spinner, FloatingActionButton,
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+} from '../../../ui'
 import { errorMessageFrom } from '../../../lib/toast'
 import { useSavedViews } from '../../../hooks/useSavedViews'
 import LeadForm from '../LeadForm'
 import ExcelImport from '../../../components/ExcelImport'
+import SavedViewsBar, { SaveViewButton } from '../../../components/SavedViewsBar'
 import FilterBar from './FilterBar'
 import BulkActionBar from './BulkActionBar'
 import ViewSwitcher from './ViewSwitcher'
@@ -374,44 +378,53 @@ export default function LeadsPage() {
             title="Saisie express : nom + téléphone + canal"
             onClick={() => setShowExpressModal(true)}
           >⚡ Express</Button>
-          <Button variant="outline" onClick={() => setShowDoublons(true)}>
-            🔀 Doublons
-            {doublonsCount > 0 && (
-              <span className="count-badge" title="Groupes de doublons détectés">
-                {doublonsCount}
-              </span>
-            )}
-          </Button>
-          <Button variant="outline" onClick={() => setShowImport(true)}>
-            <Upload /> Importer
-          </Button>
-          <Button variant="outline" onClick={exportFiltered}>
-            <Download /> Exporter Excel
-          </Button>
+          {/* VX145(b) — Doublons/Importer/Exporter sont des fréquences basses
+              face aux 2 contrôles ci-dessus ; démotés dans un menu « ⋯ »
+              (pattern DropdownMenu déjà importé dans ListView.jsx). */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" title="Plus d'actions" aria-label="Plus d'actions">
+                <MoreHorizontal />
+                {doublonsCount > 0 && (
+                  <span className="count-badge" title="Groupes de doublons détectés">
+                    {doublonsCount}
+                  </span>
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => setShowDoublons(true)}>
+                🔀 Doublons
+                {doublonsCount > 0 && (
+                  <span className="count-badge" title="Groupes de doublons détectés">
+                    {doublonsCount}
+                  </span>
+                )}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setShowImport(true)}>
+                <Upload /> Importer
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={exportFiltered}>
+                <Download /> Exporter Excel
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          {/* VX145(c) — le déclencheur vit dans la rangée d'en-tête déjà
+              existante ; SavedViewsBar (chips) ne rend une rangée dédiée que
+              s'il y a au moins une vue enregistrée. */}
+          <SaveViewButton onSave={saveCurrentView} />
+          <div className="lp-header-sep" role="separator" aria-orientation="vertical" />
           <ViewSwitcher view={view} setView={setView} />
         </div>
       </div>
 
       <FilterBar filters={filters} setFilters={setFilters} leads={leads} />
 
-      <div className="lp-saved-views">
-        <Button type="button" variant="link" size="sm" onClick={saveCurrentView}>
-          ⭐ Enregistrer cette vue
-        </Button>
-        {savedViews.map((v) => (
-          <span key={v.name} className="lp-saved-view-chip">
-            <button type="button" className="lp-saved-view-apply"
-                    onClick={() => applySavedView(v)} title="Appliquer cette vue">
-              {v.name}
-            </button>
-            <button type="button" className="lp-saved-view-del"
-                    onClick={() => deleteSavedView(v.name)}
-                    aria-label={`Supprimer la vue ${v.name}`}>
-              ✕
-            </button>
-          </span>
-        ))}
-      </div>
+      <SavedViewsBar
+        savedViews={savedViews}
+        onApply={applySavedView}
+        onDelete={deleteSavedView}
+      />
 
       {visibleSelected.size > 0 && (
         <BulkActionBar

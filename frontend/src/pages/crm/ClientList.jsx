@@ -10,6 +10,7 @@ import { openPdfBlob } from '../../utils/pdfBlob'
 import ClientForm from './ClientForm'
 import ClientDetailPanel from './ClientDetailPanel'
 import ExcelImport from '../../components/ExcelImport'
+import SavedViewsBar, { SaveViewButton } from '../../components/SavedViewsBar'
 import {
   DataTable, Badge, Button, Segmented,
   Skeleton, SkeletonTableRow, EmptyState,
@@ -375,24 +376,12 @@ export default function ClientList() {
               onChange={setTypeFilter}
               aria-label="Filtrer par type de client"
             />
-            <div className="lp-saved-views">
-              <Button type="button" variant="link" size="sm" onClick={saveCurrentView}>
-                ⭐ Enregistrer cette vue
-              </Button>
-              {savedViews.map((v) => (
-                <span key={v.name} className="lp-saved-view-chip">
-                  <button type="button" className="lp-saved-view-apply"
-                          onClick={() => applyView(v)} title="Appliquer cette vue">
-                    {v.name}
-                  </button>
-                  <button type="button" className="lp-saved-view-del"
-                          onClick={() => deleteView(v.name)}
-                          aria-label={`Supprimer la vue ${v.name}`}>
-                    ✕
-                  </button>
-                </span>
-              ))}
-            </div>
+            <SaveViewButton onSave={saveCurrentView} />
+            <SavedViewsBar
+              savedViews={savedViews}
+              onApply={applyView}
+              onDelete={deleteView}
+            />
           </div>
 
           <DataTable
