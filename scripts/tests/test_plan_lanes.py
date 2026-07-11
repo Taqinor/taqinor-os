@@ -429,5 +429,60 @@ class MergeLanesBySharedFilesTests(unittest.TestCase):
         self.assertEqual(owner["A1"], owner["B1"], "colliding lanes split across workers")
 
 
+class PipelinedWavesTests(unittest.TestCase):
+    """Lanes chunk into a sequence of ~wave_size, cross-disjoint waves."""
+
+    @staticmethod
+    def _t(tid, lane, files=(), cost=2.0):
+        return {
+            "id": tid, "prefix": "VX", "lane": lane, "gate": "buildable",
+            "gate_reasons": [], "deps": [], "section": "", "model": "sonnet",
+            "cost": cost, "files": list(files),
+        }
+
+    def test_chunks_into_multiple_waves(self):
+        # 30 one-task lanes, wave_size 8, 4 workers -> 4 waves (8/8/8/6).
+        tasks = [self._t(f"T{i}", f"lane-{i}") for i in range(30)]
+        plan = pl.schedule(tasks, max_lanes=4, n_workers=4, wave_size=8)
+        pw = plan["pipelined_waves"]
+        self.assertEqual(len(pw), 4)
+        self.assertEqual([w["tasks_total"] for w in pw], [8, 8, 8, 6])
+
+    def test_every_task_in_exactly_one_wave(self):
+        tasks = [self._t(f"T{i}", f"lane-{i}") for i in range(20)]
+        plan = pl.schedule(tasks, max_lanes=4, n_workers=4, wave_size=8)
+        placed = [tid for w in plan["pipelined_waves"]
+                  for a in w["agents"] for tid in a["tasks"]]
+        self.assertEqual(sorted(placed), sorted(f"T{i}" for i in range(20)))
+
+    def test_waves_are_file_disjoint(self):
+        # Each file lives in exactly one lane (merge step) -> no file spans two
+        # waves, so wave K+1 can build while wave K tests.
+        tasks = (
+            [self._t(f"A{i}", f"a-{i}", [f"a{i}.py"]) for i in range(10)]
+            + [self._t(f"B{i}", f"b-{i}", [f"b{i}.py"]) for i in range(10)]
+        )
+        plan = pl.schedule(tasks, max_lanes=4, n_workers=4, wave_size=8)
+        # collect the file set of each wave; no file appears in two waves.
+        by_task = {t["id"]: t["files"] for t in tasks}
+        wave_files = []
+        for w in plan["pipelined_waves"]:
+            fs = set()
+            for a in w["agents"]:
+                for tid in a["tasks"]:
+                    fs.update(by_task[tid])
+            wave_files.append(fs)
+        for i in range(len(wave_files)):
+            for j in range(i + 1, len(wave_files)):
+                self.assertEqual(wave_files[i] & wave_files[j], set())
+
+    def test_single_lane_never_splits_across_waves(self):
+        # A 20-task lane must stay whole even when wave_size is 8.
+        tasks = [self._t(f"T{i}", "big-lane") for i in range(20)]
+        plan = pl.schedule(tasks, max_lanes=4, n_workers=4, wave_size=8)
+        self.assertEqual(len(plan["pipelined_waves"]), 1)
+        self.assertEqual(plan["pipelined_waves"][0]["tasks_total"], 20)
+
+
 if __name__ == "__main__":
     unittest.main()

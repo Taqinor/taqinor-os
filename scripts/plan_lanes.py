@@ -755,6 +755,53 @@ def pack_workers(
     return workers, lane_cost
 
 
+def pack_pipelined_waves(
+    lanes: dict[str, list[dict]],
+    lane_order: list[str],
+    n_workers: int,
+    wave_size: int,
+) -> list[list[dict]]:
+    """Partition file-disjoint lanes into a SEQUENCE of pipelinable waves.
+
+    Each wave is ``n_workers`` time-balanced agents draining ~``wave_size``
+    tasks total (so a wave = one merge-batch). Because every lane is already
+    file-disjoint (``_merge_lanes_by_shared_files``), *any* two lanes — and
+    therefore any two waves — touch no common file: **wave K+1 can be BUILT
+    while wave K runs its tests + CI**, and folds clean on top of it. Waves are
+    filled heaviest-lane-first (long chains start early) and LPT-balanced inside
+    each wave so its agents finish together. Returns ``[[worker, …], …]`` —
+    one inner list per wave, each worker a ``{lanes, tasks, cost}`` bundle.
+
+    The orchestrator work-steals across the soft wave boundary: when a wave-K
+    agent finishes early it pulls the heaviest not-yet-started lane of wave K+1,
+    so the pipeline never idles and successive waves stay length-balanced.
+    """
+    lane_cost = {k: sum(t["cost"] for t in lanes[k]) for k in lane_order}
+    pending = sorted(lane_order, key=lambda k: (-len(lanes[k]), -lane_cost[k], k))
+    waves: list[list[dict]] = []
+    while pending:
+        workers = [{"lanes": [], "tasks": [], "cost": 0.0}
+                   for _ in range(max(1, n_workers))]
+        wave_tasks = 0
+        leftover: list[str] = []
+        for k in pending:
+            # Fill a wave until it holds ~wave_size tasks; defer the rest. A
+            # single lane never spills across waves (it stays whole).
+            if wave_tasks >= wave_size:
+                leftover.append(k)
+                continue
+            w = min(workers, key=lambda w: (w["cost"], len(w["lanes"])))
+            w["lanes"].append(k)
+            w["tasks"].extend(t["id"] for t in lanes[k])
+            w["cost"] = round(w["cost"] + lane_cost[k], 3)
+            wave_tasks += len(lanes[k])
+        workers = [w for w in workers if w["lanes"]]
+        workers.sort(key=lambda w: (-w["cost"], w["lanes"][0]))
+        waves.append(workers)
+        pending = leftover
+    return waves
+
+
 def parse_tasks(path: Path) -> list[dict]:
     """Parse every unchecked BUILD-QUEUE task with its derived lane + gate.
 
@@ -941,6 +988,7 @@ def schedule(
     max_lanes: int,
     wave_blocked: list[dict] | None = None,
     n_workers: int | None = None,
+    wave_size: int = 80,
 ) -> dict:
     """Build lanes and a cross-category, longest-lane-first wave plan.
 
@@ -1015,16 +1063,35 @@ def schedule(
     workers, lane_costs = pack_workers(
         lanes, lane_order, n_workers if n_workers is not None else max_lanes,
     )
-    worker_out = [
+
+    def _emit_workers(ws):
+        return [
+            {
+                "lanes": w["lanes"],
+                "tasks": w["tasks"],
+                "cost": round(w["cost"], 3),
+                "model": max(
+                    (lane_models[k] for k in w["lanes"]),
+                    key=_MODEL_RANK.__getitem__,
+                ),
+            }
+            for w in ws
+        ]
+
+    worker_out = _emit_workers(workers)
+
+    # Pipelined merge-batches: a sequence of ~wave_size-task waves, each of
+    # n_workers file-disjoint time-balanced agents. Wave K+1 is built while
+    # wave K tests/CIs (lanes are globally file-disjoint → waves never collide).
+    n_agents = n_workers if n_workers is not None else max_lanes
+    pipe = pack_pipelined_waves(lanes, lane_order, n_agents, max(1, wave_size))
+    pipelined = [
         {
-            "lanes": w["lanes"],
-            "tasks": w["tasks"],
-            "cost": round(w["cost"], 3),
-            "model": max(
-                (lane_models[k] for k in w["lanes"]), key=_MODEL_RANK.__getitem__,
-            ),
+            "wave": i + 1,
+            "tasks_total": sum(len(w["tasks"]) for w in wave),
+            "agents": _emit_workers(wave),
         }
-        for w in workers
+        for i, wave in enumerate(pipe)
     ]
 
     return {
@@ -1032,6 +1099,7 @@ def schedule(
         "lane_models": lane_models,
         "lane_costs": {k: round(v, 3) for k, v in lane_costs.items()},
         "workers": worker_out,
+        "pipelined_waves": pipelined,
         "waves": [[t["id"] for t in w] for w in waves],
         "wave_detail": waves,
         "gated": gated,
@@ -1050,6 +1118,8 @@ def schedule(
             "makespan_cost": max((w["cost"] for w in worker_out), default=0.0),
             "total_cost": round(sum(lane_costs.values()), 3),
             "file_merges": len(file_merges),
+            "pipelined_waves": len(pipelined),
+            "wave_size": max(1, wave_size),
         },
         "file_merges": file_merges,
     }
@@ -1087,6 +1157,37 @@ def render(plan: dict, max_lanes: int, source: str) -> str:
             f"- **Agent {n}** (model={w['model']}, cost~{w['cost']:g}, "
             f"{len(w['tasks'])} task(s)): {lanes_desc}"
         )
+    # Founder band: a lane should hold ~5-15 tasks. An oversized lane (often the
+    # product of file-merges) serializes one agent far past its wave-mates and
+    # defeats the time balance — surface it so the plan can split it via @lane:
+    # tags (or accept the imbalance knowingly).
+    oversized = {k: len(ids) for k, ids in plan["lanes"].items() if len(ids) > 15}
+    if oversized:
+        out += ["", "## Oversized lanes (>15 tasks — consider splitting via @lane: tags)"]
+        for k, n in sorted(oversized.items(), key=lambda kv: -kv[1]):
+            out.append(f"- **{k}**: {n} tasks — one agent will run ~{n / 10:.0f}x "
+                       f"longer than a 10-task lane; split if the tasks allow it")
+    pw = plan.get("pipelined_waves", [])
+    if pw:
+        out += [
+            "",
+            f"## Pipelined merge-batches ({c['pipelined_waves']} wave(s) of "
+            f"~{c['wave_size']} tasks — build wave K+1 while wave K tests/CIs; "
+            "waves are mutually file-disjoint so they never collide)",
+            "Dispatch wave 1's agents now; when any agent finishes, work-steal "
+            "the heaviest not-yet-started lane of the next wave (keeps the "
+            "pipeline full and successive waves length-balanced).",
+        ]
+        for wave in pw:
+            out.append(
+                f"- **Wave {wave['wave']}** ({wave['tasks_total']} tasks, "
+                f"{len(wave['agents'])} agents):"
+            )
+            for j, a in enumerate(wave["agents"], 1):
+                out.append(
+                    f"    - agent {j} (model={a['model']}, cost~{a['cost']:g}, "
+                    f"{len(a['tasks'])} task(s)): {', '.join(a['lanes'])}"
+                )
     out += [
         "",
         "## Waves (each row builds in parallel; one task per lane)",
@@ -1126,13 +1227,22 @@ def main(argv: list[str] | None = None) -> int:
         "'work on the plan' run.",
     )
     parser.add_argument(
-        "plan", nargs="?", default=str(DEFAULT_PLAN),
-        help="plan file to schedule (default: docs/PLAN.md)",
+        "plan", nargs="*", default=[str(DEFAULT_PLAN)],
+        help="plan file(s) to schedule (default: docs/PLAN.md). Pass SEVERAL "
+        "to POOL them (e.g. docs/PLAN2.md docs/PLAN.md docs/new_tasks_plan.md) "
+        "so lanes are chosen for FILE-DISJOINTNESS across plans first — the "
+        "pipeline needs disjoint lanes more than it needs strict file order.",
     )
     parser.add_argument(
         "--max-lanes", type=int, default=8,
         help="worktree ceiling = max tasks to run in parallel per wave "
         "(default 8; raise it on a capable session)",
+    )
+    parser.add_argument(
+        "--wave-size", type=int, default=80,
+        help="target tasks per pipelined merge-batch (default 80). Lanes are "
+        "packed into a SEQUENCE of ~this-size waves of --workers agents each; "
+        "wave K+1 builds while wave K tests/CIs (waves are file-disjoint).",
     )
     parser.add_argument(
         "--workers", type=int, default=None,
@@ -1157,14 +1267,24 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    path = Path(args.plan)
-    if not path.is_absolute():
-        path = ROOT / path
-    if not path.is_file():
-        print(f"plan file not found: {path}", file=sys.stderr)
-        return 2
+    plan_args = args.plan if isinstance(args.plan, list) else [args.plan]
+    paths = []
+    for p in plan_args:
+        pth = Path(p)
+        if not pth.is_absolute():
+            pth = ROOT / pth
+        if not pth.is_file():
+            print(f"plan file not found: {pth}", file=sys.stderr)
+            return 2
+        paths.append(pth)
+    path = paths[0]  # primary file (fingerprint/malformed checks, source label)
 
-    tasks = parse_tasks(path)
+    # Pool tasks across every plan file so lanes can be chosen for
+    # file-disjointness across plans first (the pipeline needs disjoint lanes
+    # more than strict plan order). Single-file callers are unaffected.
+    tasks = []
+    for pth in paths:
+        tasks.extend(parse_tasks(pth))
 
     build_order_path = Path(args.build_order)
     if not build_order_path.is_absolute():
@@ -1196,9 +1316,12 @@ def main(argv: list[str] | None = None) -> int:
 
     plan = schedule(
         allowed_tasks, max(1, args.max_lanes), wave_blocked=wave_blocked,
-        n_workers=args.workers,
+        n_workers=args.workers, wave_size=args.wave_size,
     )
-    source = path.relative_to(ROOT).as_posix() if path.is_relative_to(ROOT) else str(path)
+    source = ", ".join(
+        p.relative_to(ROOT).as_posix() if p.is_relative_to(ROOT) else str(p)
+        for p in paths
+    )
 
     if args.json:
         payload = {k: v for k, v in plan.items() if k != "wave_detail"}
