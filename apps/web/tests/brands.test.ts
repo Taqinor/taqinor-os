@@ -48,14 +48,14 @@ describe('BRANDS data', () => {
 
   it('W187 — sourced brands have a logo; unsourced brands stay null (word-mark)', () => {
     const logoByName = Object.fromEntries(BRANDS.map((b) => [b.name, b.logo]));
-    // Reachable official assets: 3 SVG + 1 PD PNG.
+    // Sourced official assets (Wikimedia SVG/PNG + Wikipedia EN + Commons BY-SA).
     expect(logoByName['Huawei']).toBe('/brands/huawei.svg');
     expect(logoByName['Nexans']).toBe('/brands/nexans.svg');
     expect(logoByName['JA Solar']).toBe('/brands/ja-solar.svg');
     expect(logoByName['Jinko']).toBe('/brands/jinko.png');
-    // No reachable/clean official asset → honest word-mark fallback.
-    expect(logoByName['Canadian Solar']).toBeNull();
-    expect(logoByName['Deye']).toBeNull();
+    expect(logoByName['Canadian Solar']).toBe('/brands/canadian-solar.png');
+    expect(logoByName['Deye']).toBe('/brands/deye.png');
+    // Dyness — no reachable official asset anywhere → honest word-mark fallback.
     expect(logoByName['Dyness']).toBeNull();
   });
 
