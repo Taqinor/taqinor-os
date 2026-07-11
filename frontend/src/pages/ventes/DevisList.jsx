@@ -528,8 +528,8 @@ function DevisRow({ d, ctx }) {
             size="sm"
             variant="ghost"
             onClick={() => copierLienInterne(d)}
-            title="Copier le lien interne de ce devis (à envoyer à un collègue)"
-            aria-label={`Copier le lien interne de ${d.reference}`}
+            title="Lien interne de ce devis (à envoyer à un collègue)"
+            aria-label={`Lien interne de ${d.reference}`}
           >
             <Link2 className="size-3.5 mr-1" aria-hidden="true" />
             Lien interne
