@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   formatFileSize, fileExtension, matchesAccept, validateFile, validateFiles, clampProgress,
+  compressImage, scaledSize, MAX_DIMENSION,
 } from './file-utils.js'
 
 const MB = 1024 * 1024
@@ -101,4 +102,98 @@ test('clampProgress : borne 0–100, gère NaN', () => {
   assert.equal(clampProgress(42.6), 43)
   assert.equal(clampProgress(150), 100)
   assert.equal(clampProgress('abc'), 0)
+})
+
+// ── VX77 — compressImage / scaledSize ────────────────────────────────────────
+
+test('scaledSize : borne le bord long, préserve le ratio, no-op si déjà petit', () => {
+  assert.deepEqual(scaledSize(4000, 3000, 1600), { width: 1600, height: 1200 })
+  assert.deepEqual(scaledSize(3000, 4000, 1600), { width: 1200, height: 1600 })
+  assert.deepEqual(scaledSize(800, 600, 1600), { width: 800, height: 600 }) // déjà petit
+  assert.deepEqual(scaledSize(0, 0, 1600), { width: 0, height: 0 })
+})
+
+test('compressImage : passthrough pour un PDF (jamais compressé)', async () => {
+  const pdf = { name: 'bon.pdf', type: 'application/pdf', size: 5_000_000 }
+  const out = await compressImage(pdf)
+  assert.equal(out, pdf)
+})
+
+test('compressImage : passthrough sans document/Image (SSR, vieux navigateur, jsdom absent)', async () => {
+  const savedDoc = globalThis.document
+  const savedImg = globalThis.Image
+  delete globalThis.document
+  delete globalThis.Image
+  try {
+    const photo = { name: 'photo.jpg', type: 'image/jpeg', size: 5_000_000 }
+    const out = await compressImage(photo)
+    assert.equal(out, photo)
+  } finally {
+    if (savedDoc !== undefined) globalThis.document = savedDoc
+    if (savedImg !== undefined) globalThis.Image = savedImg
+  }
+})
+
+test('compressImage : passthrough pour un SVG (pas de bitmap à compresser)', async () => {
+  const svg = { name: 'plan.svg', type: 'image/svg+xml', size: 10_000 }
+  const out = await compressImage(svg)
+  assert.equal(out, svg)
+})
+
+test('compressImage : réduit un fichier N Mo, plafonne les dimensions, renomme en .jpg', async () => {
+  // Mock DOM minimal : Image (charge instantanément), canvas (toBlob renvoie
+  // un blob plus petit que l'original), URL.createObjectURL/revokeObjectURL.
+  const ORIGINAL_SIZE = 8 * 1024 * 1024 // 8 Mo, routinier sur un appareil moderne
+  const COMPRESSED_SIZE = 900 * 1024 // 900 Ko après compression
+
+  class FakeImage {
+    set src(_v) {
+      this.width = 4032
+      this.height = 3024
+      queueMicrotask(() => this.onload?.())
+    }
+  }
+  const savedImage = globalThis.Image
+  globalThis.Image = FakeImage
+
+  const savedURL = globalThis.URL
+  globalThis.URL = { createObjectURL: () => 'blob:fake', revokeObjectURL: () => {} }
+
+  let canvasWidth = null
+  let canvasHeight = null
+  const fakeCanvas = {
+    set width(v) { canvasWidth = v },
+    get width() { return canvasWidth },
+    set height(v) { canvasHeight = v },
+    get height() { return canvasHeight },
+    getContext: () => ({ drawImage: () => {} }),
+    toBlob: (cb) => cb({ size: COMPRESSED_SIZE }),
+  }
+  const savedDocument = globalThis.document
+  globalThis.document = { createElement: () => fakeCanvas }
+
+  const savedFile = globalThis.File
+  globalThis.File = class FakeFile {
+    constructor(parts, name, opts) {
+      this.parts = parts
+      this.name = name
+      this.type = opts?.type
+      this.size = COMPRESSED_SIZE
+    }
+  }
+
+  try {
+    const original = { name: 'chantier.jpg', type: 'image/jpeg', size: ORIGINAL_SIZE }
+    const out = await compressImage(original)
+    assert.equal(canvasWidth, MAX_DIMENSION, 'bord long plafonné à 1600px')
+    assert.ok(canvasHeight < canvasWidth, 'ratio préservé (portrait/paysage source)')
+    assert.ok(out.size < original.size, 'le fichier compressé est plus petit')
+    assert.equal(out.name, 'chantier.jpg')
+    assert.equal(out.type, 'image/jpeg')
+  } finally {
+    if (savedImage !== undefined) globalThis.Image = savedImage; else delete globalThis.Image
+    if (savedURL !== undefined) globalThis.URL = savedURL; else delete globalThis.URL
+    if (savedDocument !== undefined) globalThis.document = savedDocument; else delete globalThis.document
+    if (savedFile !== undefined) globalThis.File = savedFile; else delete globalThis.File
+  }
 })

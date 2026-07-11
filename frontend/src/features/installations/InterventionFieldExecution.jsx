@@ -20,6 +20,7 @@ import {
 import { formatDateTime } from '../../lib/format'
 import { withOfflineFallback, FIELD_OPS } from './offline/fieldOutbox'
 import CameraCapture from '../pwa/CameraCapture'
+import { compressImage } from '../../ui/file-utils'
 
 // N91/F21 — message commun quand une action a été MISE EN FILE (hors-ligne) :
 // elle se synchronisera toute seule au retour du réseau.
@@ -313,7 +314,11 @@ export function PhotosPanel({ intervention, onChanged }) {
     if (!file) return
     setBusy(true)
     try {
-      await installationsApi.ajouterPhoto(id, file, slot)
+      // VX77 — compresse AVANT envoi (bord long ≤1600px, JPEG q0.75) : la
+      // photo brute d'un appareil moderne (4-8 Mo) fait caler/timeout la 3G
+      // rurale. Les PDF/SVG passent intouchés (compressImage() no-op).
+      const toSend = await compressImage(file)
+      await installationsApi.ajouterPhoto(id, toSend, slot)
       toast.success('Photo ajoutée.')
       await load(); onChanged?.()
     } catch (err) {

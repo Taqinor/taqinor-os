@@ -21,6 +21,7 @@ import {
 } from '../../ui'
 import { formatDateTime } from '../../lib/format'
 import { withOfflineFallback, FIELD_OPS } from './offline/fieldOutbox'
+import { compressImage } from '../../ui/file-utils'
 
 // N91/F21 — message commun quand une action a été MISE EN FILE (hors-ligne).
 const QUEUED_MSG = 'Hors ligne — enregistré, synchro au retour du réseau.'
@@ -44,8 +45,12 @@ export function SerialsPanel({ intervention, onChanged }) {
   const add = async () => {
     setBusy(true)
     try {
+      // VX77 — compresse la photo de plaque AVANT envoi (bord long ≤1600px,
+      // JPEG q0.75) : évite les minutes/timeout sur la 3G rurale.
+      const rawFile = fileRef.current?.files?.[0]
+      const file = rawFile ? await compressImage(rawFile) : rawFile
       await installationsApi.ajouterSerial(id, {
-        designation, numero_serie: numero, file: fileRef.current?.files?.[0] })
+        designation, numero_serie: numero, file })
       setDesignation(''); setNumero('')
       if (fileRef.current) fileRef.current.value = ''
       toast.success('N° de série enregistré.')

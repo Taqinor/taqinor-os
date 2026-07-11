@@ -8,6 +8,7 @@ import {
   Plus, X, FileText, ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import recordsApi from '../../api/recordsApi'
+import { compressImage } from '../../ui/file-utils'
 import {
   Button,
   IconButton,
@@ -87,7 +88,11 @@ export default function ChantierPhotos({ installationId }) {
     setUploadError(null)
     setBusyPhase(phase)
     try {
-      await recordsApi.uploadAttachment('installations.installation', installationId, file, phase)
+      // VX77 — compresse AVANT envoi (bord long ≤1600px, JPEG q0.75) : la
+      // photo brute d'un appareil moderne (4-8 Mo) fait caler/timeout la
+      // 3G rurale. Les PDF passent intouchés (compressImage() no-op).
+      const toSend = await compressImage(file)
+      await recordsApi.uploadAttachment('installations.installation', installationId, toSend, phase)
       load()
     } catch {
       setUploadError("Échec de l'envoi. Réessayez.")
