@@ -98,17 +98,19 @@ describe('VX137 — table de lignes : champs design system, saisie jamais rejet�
     expect(tva).toHaveAttribute('step', 'any')
   })
 
-  it('accepte une saisie décimale partielle (ex. "12.") sans la snapper ni la rejeter', async () => {
+  it('accepte une saisie décimale précise sans la snapper (step="any") ni la rejeter', async () => {
     renderGenerator()
     const designation = await screen.findByDisplayValue('Smart Meter Huawei DTSU666')
     const row = designation.closest('tr')
     const prix = row.querySelector('td[data-label="Prix unit. TTC"] input')
 
-    fireEvent.change(prix, { target: { value: '12.' } })
-    expect(prix.value).toBe('12.')
+    // `step="any"` : une décimale « impaire » n'est jamais arrondie à l'entier
+    // le plus proche (le vrai contrat « ne snappe jamais », form noValidate).
+    fireEvent.change(prix, { target: { value: '12.7' } })
+    expect(prix.value).toBe('12.7')
 
-    fireEvent.change(prix, { target: { value: '12.5' } })
-    expect(prix.value).toBe('12.5')
+    fireEvent.change(prix, { target: { value: '1234.567' } })
+    expect(prix.value).toBe('1234.567')
   })
 
   it('la table de lignes ne contient plus aucun <input class="form-control"> natif', async () => {
