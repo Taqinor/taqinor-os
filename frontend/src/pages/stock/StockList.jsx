@@ -31,7 +31,7 @@ import {
 import { validateTransfert, totalVentile, quantiteEmplacement, produitDansEmplacement } from '../../features/stock/emplacements'
 import { normalizeCode, isValidCode, resolveTarget } from '../../features/stock/labels'
 import BarcodeScanner from '../../features/pwa/BarcodeScanner'
-import { toastError, toastSuccess } from '../../lib/toast'
+import { toastError, toastSuccess, toastWithUndo } from '../../lib/toast'
 import { openPdfInGesture } from '../../utils/pdfBlob'
 import { useCanCreateProduit, useHasPermission, useIsAdmin, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import {
@@ -805,6 +805,18 @@ export default function StockList() {
       if (result.archived) {
         setArchiveNotif(result.detail)
         setTimeout(() => setArchiveNotif(null), 6000)
+        // VX95 — archivage (produit avec mouvements) déjà commis serveur :
+        // « Annuler » relance l'action inverse (unarchiveProduit). Un vrai
+        // delete (204, non archivé) n'est pas réversible ici — pas de toast.
+        toastWithUndo({
+          message: 'Produit archivé.',
+          onUndo: async () => {
+            try {
+              await dispatch(unarchiveProduit(p.id)).unwrap()
+              dispatch(fetchProduitsArchived())
+            } catch { toastError('Désarchivage impossible.') }
+          },
+        })
       }
     } catch (err) {
       alert(err?.detail ?? 'Erreur lors de la suppression.')
@@ -816,6 +828,15 @@ export default function StockList() {
     try {
       await dispatch(unarchiveProduit(p.id)).unwrap()
       dispatch(fetchProduitsArchived())
+      toastWithUndo({
+        message: 'Produit désarchivé.',
+        onUndo: async () => {
+          try {
+            await dispatch(deleteProduit(p.id)).unwrap()
+            dispatch(fetchProduitsArchived())
+          } catch { toastError('Archivage impossible.') }
+        },
+      })
     } catch (err) {
       alert(err?.detail ?? 'Erreur lors du désarchivage.')
     }

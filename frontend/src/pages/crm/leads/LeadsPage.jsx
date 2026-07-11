@@ -13,7 +13,7 @@ import {
   Button, IconButton, Spinner, FloatingActionButton,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from '../../../ui'
-import { errorMessageFrom } from '../../../lib/toast'
+import { errorMessageFrom, toastWithUndo, toastError } from '../../../lib/toast'
 import { useSavedViews } from '../../../hooks/useSavedViews'
 import LeadForm from '../LeadForm'
 import ExcelImport from '../../../components/ExcelImport'
@@ -204,13 +204,26 @@ export default function LeadsPage() {
   // (élaguée aux leads encore présents par l'effet ci-dessus).
   const runBulk = async (action, params = {}) => {
     if (!visibleSelected.size) return
+    const ids = [...visibleSelected]
     setBulkBusy(true)
     try {
-      const { data } = await crmApi.bulkLeads({
-        ids: [...visibleSelected], action, ...params,
-      })
+      const { data } = await crmApi.bulkLeads({ ids, action, ...params })
       setBulkMsg(bulkResultMessage(data))
       refetch()
+      // VX95 — archivage en masse déjà commis serveur : « Annuler » relance
+      // l'action inverse (unarchive) sur le même lot d'ids.
+      if (action === 'archive' || action === 'unarchive') {
+        const reverse = action === 'archive' ? 'unarchive' : 'archive'
+        toastWithUndo({
+          message: action === 'archive' ? 'Leads archivés.' : 'Leads restaurés.',
+          onUndo: async () => {
+            try {
+              await crmApi.bulkLeads({ ids, action: reverse })
+              refetch()
+            } catch { toastError('Annulation impossible.') }
+          },
+        })
+      }
     } catch (err) {
       setBulkMsg(err?.response?.data?.detail
         ?? "L'action en masse a échoué — réessayez.")
@@ -323,6 +336,23 @@ export default function LeadsPage() {
     dispatch(leadStagePatched({ id: lead.id, stage: newStage }))
     try {
       await dispatch(updateLead({ id: lead.id, data: { stage: newStage } })).unwrap()
+      // VX95 — ce chemin n'est atteint QUE par le drop kanban (drag-and-drop
+      // en avant, jamais un recul — gardé par KanbanView avant l'appel, ni
+      // SIGNED — gardé ci-dessus par SigneDialog). « Annuler » restaure
+      // l'étape antérieure EXACTE en contournant volontairement le
+      // recul-guard : c'est l'undo de sa propre action, pas un recul manuel.
+      toastWithUndo({
+        message: 'Étape modifiée.',
+        onUndo: async () => {
+          dispatch(leadStagePatched({ id: lead.id, stage: prev }))
+          try {
+            await dispatch(updateLead({ id: lead.id, data: { stage: prev } })).unwrap()
+          } catch {
+            dispatch(leadStagePatched({ id: lead.id, stage: newStage }))
+            toastError("Annulation impossible — vérifiez votre connexion.")
+          }
+        },
+      })
     } catch {
       dispatch(leadStagePatched({ id: lead.id, stage: prev }))
       setStageError("Le changement d'étape n'a pas pu être enregistré — vérifiez votre connexion et réessayez.")

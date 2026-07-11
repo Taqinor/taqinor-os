@@ -163,6 +163,17 @@ export default function ListView({
     try {
       await dispatch(archiveLead(lead.id)).unwrap()
       onRefetch?.()
+      // VX95 — l'archivage est déjà commis côté serveur : « Annuler » relance
+      // l'action inverse (restaurerLead), pas un commit différé.
+      toastWithUndo({
+        message: 'Lead archivé.',
+        onUndo: async () => {
+          try {
+            await dispatch(restoreLead(lead.id)).unwrap()
+            onRefetch?.()
+          } catch { toastError('Restauration impossible.') }
+        },
+      })
     } catch { /* erreur silencieuse */ } finally { setBusyId(null) }
   }
 
@@ -171,6 +182,15 @@ export default function ListView({
     try {
       await dispatch(restoreLead(lead.id)).unwrap()
       onRefetch?.()
+      toastWithUndo({
+        message: 'Lead restauré.',
+        onUndo: async () => {
+          try {
+            await dispatch(archiveLead(lead.id)).unwrap()
+            onRefetch?.()
+          } catch { toastError('Archivage impossible.') }
+        },
+      })
     } catch { /* erreur silencieuse */ } finally { setBusyId(null) }
   }
 
