@@ -4,7 +4,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { filenameFromResponse } from './downloadBlob.js'
+import { filenameFromResponse, stampedFilename } from './downloadBlob.js'
 
 test('lit filename="…" de Content-Disposition', () => {
   const res = {
@@ -43,4 +43,40 @@ test('repli sur le fallback quand aucun header', () => {
   assert.equal(filenameFromResponse({}, 'DEV-1.pdf'), 'DEV-1.pdf')
   assert.equal(filenameFromResponse(null, 'DEV-1.pdf'), 'DEV-1.pdf')
   assert.equal(filenameFromResponse(undefined), 'document.pdf')
+})
+
+// VX81 — stampedFilename : nom de fichier horodaté pour les exports tableur
+// (pas de Content-Disposition serveur à lire). Deux exports le même jour
+// doivent produire deux noms distincts (base différente ou société différente).
+test('le nom contient la date AAAAMMJJ', () => {
+  const d = new Date(2026, 6, 11) // 11 juillet 2026 (mois 0-indexé)
+  assert.equal(
+    stampedFilename('analyse-achats', 'xlsx', 'TAQINOR', d),
+    'analyse-achats_TAQINOR_20260711.xlsx')
+})
+
+test('deux exports (bases différentes) le même jour = deux noms distincts', () => {
+  const d = new Date(2026, 6, 11)
+  const a = stampedFilename('mouvements-stock', 'xlsx', 'TAQINOR', d)
+  const b = stampedFilename('mouvements-agregation', 'xlsx', 'TAQINOR', d)
+  assert.notEqual(a, b)
+})
+
+test('societe absente : repli silencieux (pas de segment vide ni "undefined")', () => {
+  const d = new Date(2026, 6, 11)
+  assert.equal(stampedFilename('FEC', 'txt', undefined, d), 'FEC_20260711.txt')
+  assert.equal(stampedFilename('FEC', 'txt', '', d), 'FEC_20260711.txt')
+})
+
+test('slugifie les caractères spéciaux/accents de la société', () => {
+  const d = new Date(2026, 6, 11)
+  assert.equal(
+    stampedFilename('etat', 'csv', "Société d'Énergie & Co.", d),
+    'etat_Societe-d-Energie-Co_20260711.csv')
+})
+
+test('extension acceptée avec ou sans point initial', () => {
+  const d = new Date(2026, 6, 11)
+  assert.equal(stampedFilename('x', '.csv', 'ACME', d), 'x_ACME_20260711.csv')
+  assert.equal(stampedFilename('x', 'csv', 'ACME', d), 'x_ACME_20260711.csv')
 })

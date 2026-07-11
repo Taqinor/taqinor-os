@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSelector } from 'react-redux'
 import { Download, RefreshCw, FileText, GitCompare } from 'lucide-react'
 import { Button, Segmented, Input, Label, Card, EmptyState, toast } from '../../../ui'
 import { formatMAD } from '../../../lib/format'
 import comptaApi from '../../../api/comptaApi'
+import { stampedFilename } from '../../../utils/downloadBlob'
 import { unwrap } from '../components/useComptaList.js'
 
 /* ============================================================================
@@ -135,6 +137,7 @@ function EtatRender({ data }) {
 }
 
 export default function EtatsPage() {
+  const societe = useSelector((s) => s.auth.user?.company_nom)
   const [etat, setEtat] = useState('balance')
   const [dateDebut, setDateDebut] = useState('')
   const [dateFin, setDateFin] = useState('')
@@ -188,7 +191,7 @@ export default function EtatsPage() {
     try {
       const res = await current.fetch({ ...params, export: 'csv' })
       const blob = res.data instanceof Blob ? res.data : new Blob([res.data])
-      comptaApi.downloadBlob(blob, `${etat}.csv`)
+      comptaApi.downloadBlob(blob, stampedFilename(etat, 'csv', societe))
     } catch {
       toast.error('Export CSV indisponible pour cet état.')
     }
@@ -199,7 +202,7 @@ export default function EtatsPage() {
     try {
       const res = await current.fetch({ ...params, export: 'pdf' })
       const blob = res.data instanceof Blob ? res.data : new Blob([res.data])
-      comptaApi.downloadBlob(blob, `${etat}.pdf`)
+      comptaApi.downloadBlob(blob, stampedFilename(etat, 'pdf', societe))
     } catch {
       toast.error('Export PDF indisponible pour cet état.')
     }
@@ -214,7 +217,7 @@ export default function EtatsPage() {
     try {
       const res = await comptaApi.etats.dossierCloture({ exercice })
       const blob = res.data instanceof Blob ? res.data : new Blob([res.data])
-      comptaApi.downloadBlob(blob, `dossier-cloture-${exercice}.xlsx`)
+      comptaApi.downloadBlob(blob, stampedFilename(`dossier-cloture-${exercice}`, 'xlsx', societe))
     } catch {
       toast.error('Dossier de clôture indisponible — vérifiez l’exercice.')
     }

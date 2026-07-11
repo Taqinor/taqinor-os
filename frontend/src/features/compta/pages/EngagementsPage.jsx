@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSelector } from 'react-redux'
 import { useIsAdmin } from '../../../hooks/useHasPermission'
 import {
   Plus, Unlock, ShieldCheck, TrendingUp, Undo2, Send, CheckCircle2,
@@ -8,6 +9,7 @@ import { ListShell, statusPill } from '../../../ui/module'
 import { Button, Segmented, Card, EmptyState, toast } from '../../../ui'
 import { formatMAD, formatDate } from '../../../lib/format'
 import comptaApi from '../../../api/comptaApi'
+import { stampedFilename } from '../../../utils/downloadBlob'
 import useComptaList from '../components/useComptaList.js'
 import CrudDialog from '../components/CrudDialog.jsx'
 
@@ -401,6 +403,7 @@ function CompensationsPanel() {
 function ProvisionsPeriodePanel() {
   const [rapport, setRapport] = useState(null)
   const [loading, setLoading] = useState(true)
+  const societe = useSelector((s) => s.auth.user?.company_nom)
 
   useEffect(() => {
     comptaApi.provisionsPeriode.rapport()
@@ -413,7 +416,7 @@ function ProvisionsPeriodePanel() {
     try {
       const res = await comptaApi.provisionsPeriode.exportCsv()
       const blob = res.data instanceof Blob ? res.data : new Blob([res.data])
-      comptaApi.downloadBlob(blob, 'provisions_fnp_fae.csv')
+      comptaApi.downloadBlob(blob, stampedFilename('provisions_fnp_fae', 'csv', societe))
     } catch {
       toast.error('Export indisponible.')
     }

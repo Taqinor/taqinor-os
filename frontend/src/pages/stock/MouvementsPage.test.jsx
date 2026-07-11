@@ -30,10 +30,10 @@ vi.mock('../../features/stock/store/stockSlice', () => ({
 import stockApi from '../../api/stockApi'
 import MouvementsPage from './MouvementsPage.jsx'
 
-function store({ role = 'admin', mouvements = [], produits = [] } = {}) {
+function store({ role = 'admin', mouvements = [], produits = [], companyNom = 'TAQINOR' } = {}) {
   return configureStore({
     reducer: {
-      auth: (s = { role, permissions: [] }) => s,
+      auth: (s = { role, permissions: [], user: { company_nom: companyNom } }) => s,
       stock: (s = { mouvements, produits, loading: false, error: null }) => s,
     },
   })
@@ -104,5 +104,30 @@ describe('ZSTK7 — bascule Vue liste / Vue groupée', () => {
     fireEvent.click(screen.getByRole('button', { name: /Exporter Excel/ }))
     await waitFor(() => expect(stockApi.mouvementsAgregationXlsx).toHaveBeenCalledWith({ group_by: 'produit' }))
     clickSpy.mockRestore()
+  })
+
+  // VX81 — noms de fichiers horodatés (base_societe_AAAAMMJJ.xlsx) pour les
+  // deux exports Excel de cet écran (pivot + liste) : jamais un nom nu.
+  it('nomme les exports Excel avec la date + la société (VX81)', async () => {
+    stockApi.mouvementsAgregation.mockResolvedValue({ data: [] })
+    stockApi.mouvementsAgregationXlsx.mockResolvedValue({ data: new Blob(['x']) })
+    stockApi.exportMouvementsXlsx.mockResolvedValue({ data: new Blob(['y']) })
+    const anchor = document.createElement('a')
+    const createSpy = vi.spyOn(document, 'createElement').mockReturnValue(anchor)
+    const clickSpy = vi.spyOn(anchor, 'click').mockImplementation(() => {})
+    renderPage()
+    const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+
+    fireEvent.click(screen.getByRole('button', { name: /Exporter Excel/ }))
+    await waitFor(() => expect(stockApi.exportMouvementsXlsx).toHaveBeenCalled())
+    expect(anchor.download).toBe(`mouvements-stock_TAQINOR_${stamp}.xlsx`)
+
+    fireEvent.click(screen.getByRole('button', { name: /Vue groupée/ }))
+    await waitFor(() => expect(stockApi.mouvementsAgregation).toHaveBeenCalled())
+    fireEvent.click(screen.getByRole('button', { name: /Exporter Excel/ }))
+    await waitFor(() => expect(stockApi.mouvementsAgregationXlsx).toHaveBeenCalled())
+    expect(anchor.download).toBe(`mouvements-agregation_TAQINOR_${stamp}.xlsx`)
+
+    createSpy.mockRestore()
   })
 })
