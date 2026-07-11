@@ -3,7 +3,7 @@
 // relance ET leur date de visite prévue ; les étapes viennent EXCLUSIVEMENT de
 // features/crm/stages. Les pastilles se colorent par étape OU par responsable.
 import { useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react'
 import {
   STAGE_LABELS,
   STAGE_COLORS,
@@ -261,6 +261,7 @@ export default function CalendarView({ leads, onOpenLead }) {
       {undated.length > 0 && (
         <div className="cal-undated">
           <p className="cal-undated-label">
+            <AlertTriangle className="size-3.5 shrink-0" aria-hidden="true" />
             {undated.length} lead{undated.length > 1 ? 's' : ''} sans date de
             relance ni de visite
           </p>

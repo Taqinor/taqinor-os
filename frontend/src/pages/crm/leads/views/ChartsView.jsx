@@ -138,7 +138,7 @@ export default function ChartsView({
   return (
     <>
     <div className="ch-grid">
-      <Card className="ch-card">
+      <Card className="ch-card ch-card-wide">
         <CardHeader>
           <CardTitle>Leads par étape</CardTitle>
           {totalDevis > 0 && (
