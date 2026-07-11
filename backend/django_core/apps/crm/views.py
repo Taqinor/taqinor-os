@@ -590,10 +590,16 @@ class LeadViewSet(CompanyScopedModelViewSet):
                                           'client_match', 'points_contact',
                                           'scan_carte']:
             return [IsAnyRole()]
+        elif self.action in ('merge', 'convertir_client'):
+            # VX199 — fusion / conversion de lead : permission ERP FINE
+            # (crm_modifier), pas le grossier IsResponsableOrAdmin. get_permissions
+            # PRIME sur le permission_classes de l'@action, donc la garde fine
+            # doit être ICI.
+            return [HasPermissionOrLegacy('crm_modifier')()]
         elif self.action in WRITE_ACTIONS + [
-            'noter', 'devis_auto', 'archiver', 'restaurer', 'merge',
+            'noter', 'devis_auto', 'archiver', 'restaurer',
             'whatsapp_devis', 'bulk', 'log_interaction',
-            'appliquer_plan', 'convertir_client',
+            'appliquer_plan',
         ]:
             # L'archivage réversible est ouvert à la Commerciale.
             return [IsResponsableOrAdmin()]

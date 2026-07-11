@@ -44,8 +44,11 @@ export default function useVisibilityAwarePolling(tasks, options = {}) {
   // toujours la DERNIÈRE version (fermetures re-créées à chaque rendu) sans
   // redémarrer les timers à chaque rendu.
   const tasksRef = useRef(tasks)
-  tasksRef.current = tasks
   const timersRef = useRef([])
+  // Garder la référence à jour SANS muter pendant le rendu (react-hooks/refs) :
+  // l'effet sans dépendances s'exécute après chaque commit, bien avant qu'un
+  // timer d'intervalle (30 s+) ne lise `tasksRef.current`.
+  useEffect(() => { tasksRef.current = tasks })
 
   const runAll = () => {
     tasksRef.current.forEach((t) => t.fn())

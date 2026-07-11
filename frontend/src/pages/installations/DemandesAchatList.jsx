@@ -117,6 +117,7 @@ export default function DemandesAchatList() {
     const chantierParam = searchParams.get('chantier')
     if (!chantierParam) return
     const interventionParam = searchParams.get('intervention')
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- pre-remplissage depuis l'URL au montage
     setForm({
       ...emptyForm(),
       chantier: chantierParam,

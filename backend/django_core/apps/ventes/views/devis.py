@@ -112,9 +112,15 @@ class DevisViewSet(CompanyScopedModelViewSet):
             # variante_config : la LECTURE est ouverte à tous ; l'ÉCRITURE (PUT)
             # est re-vérifiée dans l'action (Directeur / Commercial responsable).
             return [IsAnyRole()]
+        elif self.action in ('accepter', 'refuser'):
+            # VX199 — validation/refus de devis : permission ERP FINE
+            # (ventes_valider), pas le grossier IsResponsableOrAdmin (qui passe
+            # pour tout rôle portant une écriture). get_permissions PRIME sur le
+            # permission_classes de l'@action, donc la garde fine doit être ICI.
+            return [HasPermissionOrLegacy('ventes_valider')()]
         elif self.action in WRITE_ACTIONS + [
             'generer_pdf', 'telecharger_pdf', 'convertir_en_bc', 'proposal',
-            'generer_facture', 'reviser', 'accepter', 'refuser', 'noter',
+            'generer_facture', 'reviser', 'noter',
             'layout', 'roof_image', 'from_layout', 'auto', 'share_link',
             'envoyer_email', 'dupliquer_variante', 'variantes',
             'save_preset', 'apply_preset', 'contacter_superieur',

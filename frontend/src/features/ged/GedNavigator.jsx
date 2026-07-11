@@ -270,7 +270,7 @@ export default function GedNavigator() {
       accessor: (d) => d.updated_at || '',
       cell: (_v, d) => formatDate(d.updated_at),
     },
-  ], []) // eslint-disable-line react-hooks/exhaustive-deps -- setPreviewDoc stable (useState setter)
+  ], [])  
 
   // Libellés SUFFIXÉS par le nom du document (comme l'ancien <table> fait
   // main : `Aperçu de facture.pdf`) — nom accessible sans ambiguïté quand

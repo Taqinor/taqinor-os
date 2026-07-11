@@ -20,6 +20,7 @@ const WEEKDAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
 const pad2 = (n) => String(n).padStart(2, '0')
 
 // Clé locale 'YYYY-MM-DD' d'une date (jamais via toISOString → pas d'UTC).
+// eslint-disable-next-line react-refresh/only-export-components -- helper co-localisé (dev HMR only)
 export const localKey = (y, m, d) => `${y}-${pad2(m)}-${pad2(d)}`
 
 // Titre « Juin 2026 » : locale fr puis majuscule initiale.

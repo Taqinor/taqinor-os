@@ -254,7 +254,7 @@ export default function NotificationBell() {
   useEffect(() => {
     const stripped = document.title.replace(/^\(\d+\+?\)\s*/, '')
     document.title = total > 0 ? `(${total > 99 ? '99+' : total}) ${stripped}` : stripped
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [total, location.pathname])
 
   const goto = (path) => { navigate(path); setOpen(false) }

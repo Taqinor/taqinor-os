@@ -172,6 +172,7 @@ export default function CallLogPopover({
 // (un onglet resté en fond des heures ne doit pas surprendre au retour).
 const NUDGE_TIMEOUT_MS = 10 * 60 * 1000
 
+// eslint-disable-next-line react-refresh/only-export-components -- hook co-localisé (dev HMR only)
 export function useCallEndedNudge() {
   const [nudgeVisible, setNudgeVisible] = useState(false)
   const armedAt = useRef(null)

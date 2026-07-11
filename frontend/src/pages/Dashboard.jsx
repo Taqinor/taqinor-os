@@ -96,6 +96,7 @@ const num = (v) => {
 // historique). Fonctions PURES exportées → testées sans monter le composant.
 
 // Renvoie 'commercial' | 'sav' | 'directeur' d'après le nom de rôle + le palier.
+// eslint-disable-next-line react-refresh/only-export-components -- helper cockpit co-localisé
 export function cockpitProfile({ roleNom, roleTier } = {}) {
   const n = String(roleNom ?? '').toLowerCase()
   // Les rôles direction/admin gardent la vue macro même si leur libellé
@@ -116,6 +117,7 @@ function isoToday(now = new Date()) {
 // Leads « à relancer » : relance planifiée aujourd'hui ou déjà dépassée, lead
 // non perdu/archivé. Si `ownerId` est fourni, on scope à « mes » leads (le
 // backend restreint déjà la visibilité ; ce filtre affine à l'assigné courant).
+// eslint-disable-next-line react-refresh/only-export-components -- helper cockpit co-localisé
 export function leadsARelancer(leads, { ownerId, now = new Date() } = {}) {
   const today = isoToday(now)
   return (leads ?? []).filter((l) => {
@@ -128,6 +130,7 @@ export function leadsARelancer(leads, { ownerId, now = new Date() } = {}) {
 
 // Devis qui expirent bientôt : encore ouverts (brouillon/envoyé), date de
 // validité comprise entre aujourd'hui et +N jours (défaut 7).
+// eslint-disable-next-line react-refresh/only-export-components -- helper cockpit co-localisé
 export function devisQuiExpirent(devis, { days = 7, now = new Date() } = {}) {
   const start = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   const end = new Date(start)
@@ -144,6 +147,7 @@ export function devisQuiExpirent(devis, { days = 7, now = new Date() } = {}) {
 // Tickets SAV « à faire aujourd'hui » côté terrain : ouverts (nouveau/planifié/
 // en cours), non annulés. Proxy honnête de la charge du jour sans nouvel
 // endpoint (les interventions planifiées vivent dans les tickets ouverts).
+// eslint-disable-next-line react-refresh/only-export-components -- helper cockpit co-localisé
 export function ticketsAujourdhui(tickets) {
   return (tickets ?? []).filter(
     (t) => t && !t.annule && TICKET_OPEN_STATUSES.includes(t.statut),
@@ -151,6 +155,7 @@ export function ticketsAujourdhui(tickets) {
 }
 
 // Tickets urgents : priorité haute/urgente, ouverts, non annulés.
+// eslint-disable-next-line react-refresh/only-export-components -- helper cockpit co-localisé
 export function ticketsUrgents(tickets) {
   return (tickets ?? []).filter(
     (t) => t && !t.annule && TICKET_OPEN_STATUSES.includes(t.statut)
@@ -159,6 +164,7 @@ export function ticketsUrgents(tickets) {
 }
 
 // Tickets en retard de SLA (réutilise ticketSlaLevel === 'late').
+// eslint-disable-next-line react-refresh/only-export-components -- helper cockpit co-localisé
 export function ticketsSlaEnRetard(tickets, now = new Date()) {
   return (tickets ?? []).filter((t) => ticketSlaLevel(t, now) === 'late')
 }

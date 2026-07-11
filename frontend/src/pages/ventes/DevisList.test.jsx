@@ -620,6 +620,6 @@ describe('DevisList — VX82 : titre d’onglet dédié', () => {
   it('monter DevisList met à jour document.title', () => {
     document.title = 'TAQINOR'
     renderList({ loading: false, devis: [] })
-    expect(document.title).toBe('Devis · TAQINOR')
+    expect(document.title).toBe('Devis')
   })
 })

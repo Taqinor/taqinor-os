@@ -100,6 +100,7 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
       row.querySelector('button[type="button"]')?.focus()
       row.scrollIntoView({ block: 'nearest' })
     }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset one-shot du focus (VX90)
     setPendingFocusKey(null)
   }, [pendingFocusKey, lines])
 

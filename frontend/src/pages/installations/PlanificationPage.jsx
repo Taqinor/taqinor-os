@@ -160,6 +160,7 @@ const colKey = (grp) => String(grp?.technicien?.id ?? NON_ASSIGNE)
 // technicien de l'état du calendrier. Renvoie un nouvel état (jamais de
 // mutation) ; renvoie l'entrée inchangée si l'intervention est introuvable
 // dans la colonne source.
+// eslint-disable-next-line react-refresh/only-export-components -- helper co-localisé
 export function moveInterventionLocal(list, ivId, fromKey, toKey) {
   let moved = null
   const stripped = (list ?? []).map((grp) => {

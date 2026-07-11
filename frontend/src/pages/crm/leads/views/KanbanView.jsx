@@ -81,6 +81,7 @@ export function StageMover({ lead, onInlineSave }) {
 // XSAL15 — exportée pour être réutilisée telle quelle par la vue « Prévision »
 // (regroupement par mois plutôt que par étape, MÊME calcul de pondération —
 // jamais une seconde table de probabilités déclarée ailleurs).
+// eslint-disable-next-line react-refresh/only-export-components -- STAGE_PROBABILITY co-localisé
 export const STAGE_PROBABILITY = {
   NEW: 0.1,
   CONTACTED: 0.25,

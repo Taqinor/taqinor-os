@@ -10,10 +10,10 @@ describe('useDocumentTitle (VX82)', () => {
   const originalTitle = document.title
   afterEach(() => { document.title = originalTitle })
 
-  it('pose le titre suffixé « · TAQINOR » au montage', () => {
+  it('pose le nom de page comme titre (SCA29 — sans marque en dur)', () => {
     document.title = 'Ancien titre'
     renderHook(() => useDocumentTitle('Devis'))
-    expect(document.title).toBe('Devis · TAQINOR')
+    expect(document.title).toBe('Devis')
   })
 
   it('bascule le titre quand la valeur change', () => {
@@ -21,15 +21,15 @@ describe('useDocumentTitle (VX82)', () => {
       ({ title }) => useDocumentTitle(title),
       { initialProps: { title: 'Devis' } },
     )
-    expect(document.title).toBe('Devis · TAQINOR')
+    expect(document.title).toBe('Devis')
     rerender({ title: 'Factures' })
-    expect(document.title).toBe('Factures · TAQINOR')
+    expect(document.title).toBe('Factures')
   })
 
   it('restaure le titre précédent au démontage', () => {
     document.title = 'Ancien titre'
     const { unmount } = renderHook(() => useDocumentTitle('Devis'))
-    expect(document.title).toBe('Devis · TAQINOR')
+    expect(document.title).toBe('Devis')
     unmount()
     expect(document.title).toBe('Ancien titre')
   })

@@ -359,7 +359,7 @@ export default function DevisGenerator({
     pompeDistance, pompeHeures, farmRegion, farmCrop, farmSurfaceHa,
     farmIrrigation, farmFuel, farmFuelSpend, farmFuelPeriod, farmHmtStatic,
     farmHmtDrawdown,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }), [
     leadId, clientId, dateValidite, instType, scenario, recommendedChoice, note,
     fHiver, fEte, monthly, distributeur, realBillMode, realBillMad, realBillKwh,
@@ -1004,6 +1004,7 @@ export default function DevisGenerator({
       picker?.focus()
       row.scrollIntoView({ block: 'nearest' })
     }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset one-shot du focus (VX90)
     setPendingFocusKey(null)
   }, [pendingFocusKey, lines])
 

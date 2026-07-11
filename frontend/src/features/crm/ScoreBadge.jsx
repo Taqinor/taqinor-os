@@ -16,6 +16,7 @@ const SCORE_COLORS = {
 // On montre les 3 facteurs dominants (déjà triés par points décroissants côté
 // serveur), ex. « +20 Facture élevée · +15 Canal · +12 Lead récent ». Sans
 // décomposition (ancien payload), on retombe sur l'ancien libellé.
+// eslint-disable-next-line react-refresh/only-export-components -- scoreTooltip co-localisé (dev HMR only)
 export function scoreTooltip(lead) {
   const s = lead?.score ?? 0
   const reasons = Array.isArray(lead?.score_reasons) ? lead.score_reasons : []
