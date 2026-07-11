@@ -92,6 +92,90 @@ test('flush respecte maxBatch (découpage en paquets)', async () => {
   assert.deepEqual(server.batches.map((b) => b.length), [2, 2, 1])
 })
 
+test('VX119 — une op rejetée par le serveur (status error) reste GARDÉE en file, jamais purgée en silence', async () => {
+  const sender = async (ops) => ({
+    results: ops.map((o) => ({
+      client_op_id: o.client_op_id,
+      status: 'error',
+      error: 'signature illisible',
+    })),
+  })
+  const ob = new Outbox({ store: memoryStore(), sender })
+  const id = await ob.enqueue('intervention.signer_client', {
+    intervention: 1, signature_client: 'sig',
+  })
+  const res = await ob.flush()
+  assert.equal(res.flushed, 0)
+  assert.equal(res.failed, 1)
+  assert.equal(res.remaining, 1)
+  assert.equal(await ob.count(), 1) // toujours en file — PAS perdue
+  const pending = await ob.pending()
+  assert.equal(pending[0].client_op_id, id)
+  assert.equal(pending[0].serverError, 'signature illisible')
+  assert.equal(pending[0].attempts, 1)
+})
+
+test('VX119 — une 2e tentative en échec incrémente attempts et met à jour le message serveur', async () => {
+  let call = 0
+  const sender = async (ops) => {
+    call += 1
+    const msg = call === 1 ? 'timeout cible' : 'cible toujours indisponible'
+    return { results: ops.map((o) => ({ client_op_id: o.client_op_id, status: 'error', error: msg })) }
+  }
+  const ob = new Outbox({ store: memoryStore(), sender })
+  await ob.enqueue('intervention.reserve', { intervention: 1 })
+  await ob.flush()
+  await ob.flush()
+  const pending = await ob.pending()
+  assert.equal(pending[0].attempts, 2)
+  assert.equal(pending[0].serverError, 'cible toujours indisponible')
+})
+
+test('VX119 — failed() liste uniquement les ops en erreur serveur ; discard() les retire explicitement', async () => {
+  const sender = async (ops) => ({
+    results: ops.map((o) => ({ client_op_id: o.client_op_id, status: 'error', error: 'boom' })),
+  })
+  const ob = new Outbox({ store: memoryStore(), sender })
+  const id = await ob.enqueue('intervention.checkin', { intervention: 1 })
+  await ob.flush()
+  const failed = await ob.failed()
+  assert.equal(failed.length, 1)
+  assert.equal(failed[0].client_op_id, id)
+  await ob.discard(id)
+  assert.equal(await ob.count(), 0)
+  assert.equal((await ob.failed()).length, 0)
+})
+
+test('VX119 — un lot mixte (une confirmée, une en erreur) garde SEULEMENT celle en erreur', async () => {
+  const sender = async (ops) => ({
+    results: ops.map((o, i) => (
+      i === 0
+        ? { client_op_id: o.client_op_id, status: 'applied' }
+        : { client_op_id: o.client_op_id, status: 'error', error: 'refusé' }
+    )),
+  })
+  const ob = new Outbox({ store: memoryStore(), sender })
+  await ob.enqueue('intervention.checkin', { intervention: 1 })
+  const badId = await ob.enqueue('intervention.signer_client', { intervention: 2 })
+  const res = await ob.flush()
+  assert.equal(res.flushed, 1)
+  assert.equal(res.failed, 1)
+  const pending = await ob.pending()
+  assert.equal(pending.length, 1)
+  assert.equal(pending[0].client_op_id, badId)
+  assert.equal(pending[0].serverError, 'refusé')
+})
+
+test('non-régression : applied/replayed continuent de vider la file normalement', async () => {
+  const server = fakeServer()
+  const ob = new Outbox({ store: memoryStore(), sender: server.sender })
+  await ob.enqueue('intervention.checkin', { intervention: 1 })
+  const res = await ob.flush()
+  assert.equal(res.flushed, 1)
+  assert.equal(res.failed, 0)
+  assert.equal(await ob.count(), 0)
+})
+
 test('un flush concurrent est ignoré (anti-réentrance)', async () => {
   let resolve
   const gate = new Promise((r) => { resolve = r })
