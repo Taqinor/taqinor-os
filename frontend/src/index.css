@@ -1067,29 +1067,48 @@ button:active, [role="button"]:active, a.btn:active,
   flex-direction: column;
   gap: 2px;
   padding: 14px 8px;
-  background: #f8fafc;
-  border-right: 1px solid #e2e8f0;
+  background: var(--muted, #f8fafc);
+  border-right: 1px solid var(--border, #e2e8f0);
   overflow-y: auto;
 }
+/* VX143 — rail tokenisé (thème clair/sombre) : barre d'accent à gauche +
+   même icône que la section active, au lieu d'un simple fond hex figé. */
 .lead-nav button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   text-align: left;
   border: none;
+  border-left: 3px solid transparent;
   background: transparent;
   padding: 8px 10px;
   border-radius: 8px;
   font-size: 0.8rem;
-  color: #475569;
+  color: var(--muted-foreground, #475569);
   cursor: pointer;
   white-space: nowrap;
 }
+.lead-nav-icon { flex-shrink: 0; opacity: 0.75; }
+.lead-nav-badge {
+  margin-left: auto;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--primary, #2563eb);
+  background: color-mix(in srgb, var(--primary, #2563eb) 12%, transparent);
+  border-radius: 999px;
+  padding: 1px 6px;
+  line-height: 1.4;
+}
 @media (hover: hover) {
-  .lead-nav button:hover { background: #eef2f7; }
+  .lead-nav button:hover { background: var(--accent, #eef2f7); }
 }
 .lead-nav button.active {
-  background: #dbeafe;
-  color: #1d4ed8;
+  border-left-color: var(--primary, #2563eb);
+  background: color-mix(in srgb, var(--primary, #2563eb) 10%, transparent);
+  color: var(--primary, #1d4ed8);
   font-weight: 700;
 }
+.lead-nav button.active .lead-nav-icon { opacity: 1; }
 @media (max-width: 720px) {
   .lead-form-layout { flex-direction: column; }
   .lead-nav {
@@ -1099,7 +1118,7 @@ button:active, [role="button"]:active, a.btn:active,
     overflow-y: hidden;
     padding: 8px;
     border-right: none;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--border, #e2e8f0);
   }
 }
 
@@ -1245,23 +1264,33 @@ textarea.form-control {
   color: #b91c1c;
 }
 
-/* ── Form section (lignes) ────────────────────────────── */
+/* ── Form section (VX143 — traitement de carte) ──────────
+   Avant : sections nues (flex sans frontière), distinguées SEULEMENT par une
+   emoji. Maintenant : bordure/fond visibles (`preview_inspect`-vérifiables)
+   qui séparent chaque section, quel que soit le contenu qu'elle porte
+   (FormSection interne gère la grille des champs). */
 .form-section {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 10px;
+  background: var(--card, #ffffff);
 }
 
-.form-section-header {
+.form-section-title-inner {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-}
-
-.form-section-title {
+  gap: 8px;
   font-size: 0.875rem;
   font-weight: 600;
-  color: #374151;
+  color: var(--foreground, #374151);
+}
+
+.form-section-icon {
+  flex-shrink: 0;
+  color: var(--primary, #2563eb);
 }
 
 /* ── Lines table ──────────────────────────────────────── */

@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useDispatch } from 'react-redux'
+import {
+  User, TrendingUp, Zap, Droplet, Home, ClipboardList, Globe,
+  FileText, Clock, Paperclip, GitMerge, History,
+} from 'lucide-react'
 import { createLead, updateLead, archiveLead, restoreLead } from '../../features/crm/store/crmSlice'
 import api from '../../api/axios'
 import crmApi from '../../api/crmApi'
@@ -16,10 +20,12 @@ import LeadDevisPanel from './leads/LeadDevisPanel'
 import SigneDialog from './leads/SigneDialog'
 import PlanActiviteDialog from './leads/PlanActiviteDialog'
 import ConvertirClientDialog from './leads/ConvertirClientDialog'
-import { CONVERSION_STAGE } from '../../features/crm/stages'
+import {
+  CONVERSION_STAGE, STAGE_LABELS, PRIORITE_LABELS, TYPE_INSTALLATION_LABELS,
+} from '../../features/crm/stages'
 import useCanaux from '../../features/crm/useCanaux'
 import {
-  Button, Input,
+  Button, Input, FormSection, FormField,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '../../ui'
 import { formatMAD, normalizeMaPhone } from '../../lib/format'
@@ -30,21 +36,15 @@ const DEFAULT_CANAL = 'walk_in'
 // Validation e-mail minimale (le formulaire est noValidate) : « un@deux.trois ».
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-const STAGE_LABELS = {
-  NEW: 'Nouveau',
-  CONTACTED: 'Contacté',
-  QUOTE_SENT: 'Devis envoyé',
-  FOLLOW_UP: 'Relance',
-  SIGNED: 'Signé',
-  COLD: 'Froid',
-}
+// VX143 — STAGE_LABELS/PRIORITE_LABELS/TYPE_INSTALLATION_LABELS viennent
+// désormais de features/crm/stages.js (miroir strict de STAGES.py) au lieu
+// d'une copie locale : une seule source, jamais de divergence (#2).
 
 const STATUT_DEVIS = {
   brouillon: 'Brouillon', envoye: 'Envoyé', accepte: 'Accepté',
   refuse: 'Refusé', expire: 'Expiré',
 }
 
-const PRIORITES = { basse: 'Basse', normale: 'Normale', haute: 'Haute' }
 // FG30/QX27 — libellés FR du résultat d'un appel/e-mail journalisé (miroir de
 // LeadActivity.OUTCOMES côté serveur, apps/crm/models.py).
 const OUTCOME_LABELS = {
@@ -53,10 +53,6 @@ const OUTCOME_LABELS = {
 }
 // Langue préférée du contact — pré-sélectionne la langue du message WhatsApp.
 const LANGUES_PREFEREES = { fr: 'Français', darija: 'Darija' }
-const TYPES_INSTALLATION = {
-  residentiel: 'Résidentiel', commercial: 'Commercial',
-  industriel: 'Industriel', agricole: 'Agricole',
-}
 const RACCORDEMENTS = { monophase: 'Monophasé', triphase: 'Triphasé', inconnu: 'Je ne sais pas' }
 const TYPES_TOITURE = {
   terrasse_beton: 'Terrasse béton', tole_metal: 'Tôle/Métal', tuiles: 'Tuiles',
@@ -75,20 +71,56 @@ const enumOptions = (labels) => [
   ...Object.entries(labels).map(([k, v]) => <option key={k} value={k}>{v}</option>),
 ]
 
-// Helpers hors composant : identité stable entre rendus (sinon les champs
-// seraient démontés à chaque frappe et perdraient le focus).
-const Sec = ({ title, children, id }) => (
-  <div className="form-section" data-nav-id={id}>
-    <div className="form-section-header">
-      <span className="form-section-title">{title}</span>
-    </div>
-    {children}
-  </div>
-)
+// VX143 — un seul langage de formulaire dans le module CRM : les anciens
+// helpers locaux `Sec`/`Txt`/`Sel` (classes hex-brutes) sont remplacés par les
+// primitifs composables démontrés par ClientForm.jsx (`FormSection`/`FormField`),
+// présentation pure — le scroll-spy `data-nav-id` et les verrouillages métier
+// (perdu/motif, agricole, devis auto…) restent inchangés.
 
-// Navigateur de sections (rail gauche) : libellé court → section du formulaire.
-// La liste est calculée dans le composant car Pompage n'apparaît qu'en agricole.
-const buildNavSections = ({ agricole, isEdit, hasWebOrigin }) => {
+// Icône par section — même icône que le rail de navigation (VX143), à la
+// place des emoji bruts. `contentBadge` (optionnel) affiche un compte dans le
+// rail (ex. « Doublons (3) ») là où une simple emoji n'affichait jamais rien.
+const NAV_ICONS = {
+  contact: User,
+  pipeline: TrendingUp,
+  energie: Zap,
+  pompage: Droplet,
+  toiture: Home,
+  visite: ClipboardList,
+  origine: Globe,
+  devis: FileText,
+  activites: Clock,
+  pieces: Paperclip,
+  doublons: GitMerge,
+  historique: History,
+}
+
+// Carte de section titrée, avec bordure/séparation visible (VX143 : les
+// sections n'étaient distinguées que par une emoji, sans frontière). Identité
+// stable hors composant (les champs enfants ne doivent pas être démontés à
+// chaque frappe et perdre le focus).
+const Sec = ({ title, children, id }) => {
+  const Icon = NAV_ICONS[id]
+  return (
+    <div className="form-section" data-nav-id={id}>
+      <FormSection
+        title={(
+          <span className="form-section-title-inner">
+            {Icon && <Icon className="form-section-icon" aria-hidden="true" size={16} />}
+            {title}
+          </span>
+        )}
+      >
+        {children}
+      </FormSection>
+    </div>
+  )
+}
+
+// Navigateur de sections (rail gauche) : id → libellé court + compte de
+// contenu optionnel (ex. nombre de doublons). La liste est calculée dans le
+// composant car Pompage n'apparaît qu'en agricole et les comptes varient.
+const buildNavSections = ({ agricole, isEdit, hasWebOrigin, dupCount = 0 }) => {
   const secs = [
     ['contact', 'Contact'],
     ['pipeline', 'Suivi commercial'],
@@ -99,29 +131,10 @@ const buildNavSections = ({ agricole, isEdit, hasWebOrigin }) => {
   if (hasWebOrigin) secs.push(['origine', 'Origine web'])
   if (isEdit) secs.push(
     ['devis', 'Devis'], ['activites', 'Activités'],
-    ['pieces', 'Pièces jointes'], ['doublons', 'Doublons'],
+    ['pieces', 'Pièces jointes'], ['doublons', 'Doublons', dupCount || null],
     ['historique', 'Historique'])
   return secs
 }
-
-const Txt = ({ fields, set, k, label, type = 'text', ...rest }) => (
-  <div className="form-group">
-    <label className="form-label">{label}</label>
-    <input type={type} step={type === 'number' ? 'any' : undefined}
-           className="form-control" value={fields[k] ?? ''}
-           onChange={e => set(k, e.target.value)} {...rest} />
-  </div>
-)
-
-const Sel = ({ fields, set, k, label, labels }) => (
-  <div className="form-group">
-    <label className="form-label">{label}</label>
-    <select className="form-select" value={fields[k] ?? ''}
-            onChange={e => set(k, e.target.value)}>
-      {enumOptions(labels)}
-    </select>
-  </div>
-)
 
 function timeAgo(iso) {
   const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000)
@@ -784,16 +797,22 @@ export default function LeadForm({
         <form onSubmit={handleSubmit} noValidate>
           <div className="lead-form-layout">
             <nav className="lead-nav" aria-label="Sections du lead">
-              {buildNavSections({ agricole, isEdit, hasWebOrigin }).map(([id, label]) => (
-                <button key={id} type="button"
-                        className={activeSec === id ? 'active' : ''}
-                        onClick={() => jumpTo(id)}>
-                  {label}
-                </button>
-              ))}
+              {buildNavSections({ agricole, isEdit, hasWebOrigin, dupCount: dups.length })
+                .map(([id, label, badge]) => {
+                  const Icon = NAV_ICONS[id]
+                  return (
+                    <button key={id} type="button"
+                            className={activeSec === id ? 'active' : ''}
+                            onClick={() => jumpTo(id)}>
+                      {Icon && <Icon className="lead-nav-icon" aria-hidden="true" size={15} />}
+                      <span>{label}</span>
+                      {!!badge && <span className="lead-nav-badge">{badge}</span>}
+                    </button>
+                  )
+                })}
             </nav>
           <div className="modal-body" ref={bodyRef} onScroll={onBodyScroll}>
-            <Sec id="contact" title="👤 Contact">
+            <Sec id="contact" title="Contact">
               {dupMatches.length > 0 && (
                 <div className="lead-dup-warning" role="status">
                   ⚠️ Un lead avec ce numéro existe déjà
@@ -818,12 +837,20 @@ export default function LeadForm({
                          value={fields.nom} onChange={e => set('nom', e.target.value)} />
                   {errors.nom && <div className="form-feedback">{errors.nom}</div>}
                 </div>
-                <Txt fields={fields} set={set} k="prenom" label="Prénom" />
-                <Txt fields={fields} set={set} k="telephone" label="Téléphone" />
+                <FormField label="Prénom" htmlFor="lf-prenom">
+                  <Input id="lf-prenom" value={fields.prenom ?? ''} onChange={e => set('prenom', e.target.value)} />
+                </FormField>
+                <FormField label="Téléphone" htmlFor="lf-telephone">
+                  <Input id="lf-telephone" value={fields.telephone ?? ''} onChange={e => set('telephone', e.target.value)} />
+                </FormField>
               </div>
               <div className="form-row">
-                <Txt fields={fields} set={set} k="whatsapp" label="WhatsApp" />
-                <Txt fields={fields} set={set} k="ville" label="Ville / quartier" />
+                <FormField label="WhatsApp" htmlFor="lf-whatsapp">
+                  <Input id="lf-whatsapp" value={fields.whatsapp ?? ''} onChange={e => set('whatsapp', e.target.value)} />
+                </FormField>
+                <FormField label="Ville / quartier" htmlFor="lf-ville">
+                  <Input id="lf-ville" value={fields.ville ?? ''} onChange={e => set('ville', e.target.value)} />
+                </FormField>
                 <div className="form-group">
                   <label className="form-label">Email</label>
                   <input type="email"
@@ -834,10 +861,20 @@ export default function LeadForm({
                 </div>
               </div>
               <div className="form-row">
-                <Txt fields={fields} set={set} k="societe" label="Société" />
-                <div className="form-group fg-grow"><Txt fields={fields} set={set} k="adresse" label="Adresse" /></div>
-                <Txt fields={fields} set={set} k="gps_lat" label="GPS lat." type="number" />
-                <Txt fields={fields} set={set} k="gps_lng" label="GPS long." type="number" />
+                <FormField label="Société" htmlFor="lf-societe">
+                  <Input id="lf-societe" value={fields.societe ?? ''} onChange={e => set('societe', e.target.value)} />
+                </FormField>
+                <div className="form-group fg-grow">
+                  <FormField label="Adresse" htmlFor="lf-adresse">
+                    <Input id="lf-adresse" value={fields.adresse ?? ''} onChange={e => set('adresse', e.target.value)} />
+                  </FormField>
+                </div>
+                <FormField label="GPS lat." htmlFor="lf-gps-lat">
+                  <Input id="lf-gps-lat" type="number" step="any" value={fields.gps_lat ?? ''} onChange={e => set('gps_lat', e.target.value)} />
+                </FormField>
+                <FormField label="GPS long." htmlFor="lf-gps-lng">
+                  <Input id="lf-gps-lng" type="number" step="any" value={fields.gps_lng ?? ''} onChange={e => set('gps_lng', e.target.value)} />
+                </FormField>
               </div>
               {fields.gps_lat && fields.gps_lng && (
                 <div className="form-row">
@@ -850,10 +887,20 @@ export default function LeadForm({
               )}
             </Sec>
 
-            <Sec id="pipeline" title="📈 Suivi commercial">
+            <Sec id="pipeline" title="Suivi commercial">
               <div className="form-row">
-                <Sel fields={fields} set={set} k="type_installation" label="Type d'installation" labels={TYPES_INSTALLATION} />
-                <Sel fields={fields} set={set} k="stage" label="Étape" labels={STAGE_LABELS} />
+                <FormField label="Type d'installation" htmlFor="lf-type-installation">
+                  <select id="lf-type-installation" className="form-select" value={fields.type_installation ?? ''}
+                          onChange={e => set('type_installation', e.target.value)}>
+                    {enumOptions(TYPE_INSTALLATION_LABELS)}
+                  </select>
+                </FormField>
+                <FormField label="Étape" htmlFor="lf-stage">
+                  <select id="lf-stage" className="form-select" value={fields.stage ?? ''}
+                          onChange={e => set('stage', e.target.value)}>
+                    {enumOptions(STAGE_LABELS)}
+                  </select>
+                </FormField>
                 <div className="form-group">
                   <label className="form-label">Responsable</label>
                   <AssigneePicker
@@ -862,21 +909,44 @@ export default function LeadForm({
                     onChange={(id) => set('owner', id ?? '')}
                   />
                 </div>
-                <Txt fields={fields} set={set} k="relance_date" label="Relance le" type="date" />
+                <FormField label="Relance le" htmlFor="lf-relance-date">
+                  <Input id="lf-relance-date" type="date" value={fields.relance_date ?? ''} onChange={e => set('relance_date', e.target.value)} />
+                </FormField>
               </div>
               <div className="form-row">
                 {/* XSAL7 — pipeline pondéré pré-devis : un lead chaud sans
                     devis pèse zéro dans la prévision sans ces deux champs. */}
-                <Txt fields={fields} set={set} k="montant_estime" label="Montant estimé (MAD)" type="number" />
-                <Txt fields={fields} set={set} k="date_cloture_prevue" label="Clôture prévue le" type="date" />
+                <FormField label="Montant estimé (MAD)" htmlFor="lf-montant-estime">
+                  <Input id="lf-montant-estime" type="number" step="any" value={fields.montant_estime ?? ''} onChange={e => set('montant_estime', e.target.value)} />
+                </FormField>
+                <FormField label="Clôture prévue le" htmlFor="lf-date-cloture">
+                  <Input id="lf-date-cloture" type="date" value={fields.date_cloture_prevue ?? ''} onChange={e => set('date_cloture_prevue', e.target.value)} />
+                </FormField>
               </div>
               <div className="form-row">
-                <Sel fields={fields} set={set} k="priorite" label="Priorité" labels={PRIORITES} />
-                <Sel fields={fields} set={set} k="canal" label="Canal" labels={canalLabels} />
-                <Sel fields={fields} set={set} k="langue_preferee" label="Langue préférée" labels={LANGUES_PREFEREES} />
+                <FormField label="Priorité" htmlFor="lf-priorite">
+                  <select id="lf-priorite" className="form-select" value={fields.priorite ?? ''}
+                          onChange={e => set('priorite', e.target.value)}>
+                    {enumOptions(PRIORITE_LABELS)}
+                  </select>
+                </FormField>
+                <FormField label="Canal" htmlFor="lf-canal">
+                  <select id="lf-canal" className="form-select" value={fields.canal ?? ''}
+                          onChange={e => set('canal', e.target.value)}>
+                    {enumOptions(canalLabels)}
+                  </select>
+                </FormField>
+                <FormField label="Langue préférée" htmlFor="lf-langue-preferee">
+                  <select id="lf-langue-preferee" className="form-select" value={fields.langue_preferee ?? ''}
+                          onChange={e => set('langue_preferee', e.target.value)}>
+                    {enumOptions(LANGUES_PREFEREES)}
+                  </select>
+                </FormField>
                 <div className="form-group fg-grow">
-                  <Txt fields={fields} set={set} k="tags" label="Tags (séparés par des virgules)"
-                       placeholder="ex: Régularisation 82-21, VIP" list="ld-tags" />
+                  <FormField label="Tags (séparés par des virgules)" htmlFor="lf-tags">
+                    <Input id="lf-tags" value={fields.tags ?? ''} onChange={e => set('tags', e.target.value)}
+                           placeholder="ex: Régularisation 82-21, VIP" list="ld-tags" />
+                  </FormField>
                   <datalist id="ld-tags">
                     {tagOptions.map(t => <option key={t.id} value={t.nom} />)}
                   </datalist>
@@ -928,11 +998,12 @@ export default function LeadForm({
               </div>
             </Sec>
 
-            <Sec id="energie" title="💡 Profil énergétique">
+            <Sec id="energie" title="Profil énergétique">
               <div className="form-row">
-                <Txt fields={fields} set={set} k="facture_hiver"
-                     label={fields.ete_differente ? 'Facture Hiver (MAD/mois)' : 'Facture mensuelle (MAD/mois)'}
-                     type="number" placeholder="ex: 650" />
+                <FormField label={fields.ete_differente ? 'Facture Hiver (MAD/mois)' : 'Facture mensuelle (MAD/mois)'} htmlFor="lf-facture-hiver">
+                  <Input id="lf-facture-hiver" type="number" step="any" placeholder="ex: 650"
+                         value={fields.facture_hiver ?? ''} onChange={e => set('facture_hiver', e.target.value)} />
+                </FormField>
                 <div className="form-group" style={{ alignSelf: 'flex-end' }}>
                   <label className="pdf-toggle">
                     <input type="checkbox" checked={fields.ete_differente}
@@ -941,13 +1012,25 @@ export default function LeadForm({
                   </label>
                 </div>
                 {fields.ete_differente && (
-                  <Txt fields={fields} set={set} k="facture_ete" label="Facture Été (MAD/mois)" type="number" placeholder="ex: 420" />
+                  <FormField label="Facture Été (MAD/mois)" htmlFor="lf-facture-ete">
+                    <Input id="lf-facture-ete" type="number" step="any" placeholder="ex: 420"
+                           value={fields.facture_ete ?? ''} onChange={e => set('facture_ete', e.target.value)} />
+                  </FormField>
                 )}
               </div>
               <div className="form-row">
-                <Txt fields={fields} set={set} k="conso_mensuelle_kwh" label="Conso mensuelle (kWh)" type="number" />
-                <Txt fields={fields} set={set} k="tranche_onee" label="Tarif / tranche ONEE" />
-                <Sel fields={fields} set={set} k="raccordement" label="Raccordement" labels={RACCORDEMENTS} />
+                <FormField label="Conso mensuelle (kWh)" htmlFor="lf-conso-mensuelle">
+                  <Input id="lf-conso-mensuelle" type="number" step="any" value={fields.conso_mensuelle_kwh ?? ''} onChange={e => set('conso_mensuelle_kwh', e.target.value)} />
+                </FormField>
+                <FormField label="Tarif / tranche ONEE" htmlFor="lf-tranche-onee">
+                  <Input id="lf-tranche-onee" value={fields.tranche_onee ?? ''} onChange={e => set('tranche_onee', e.target.value)} />
+                </FormField>
+                <FormField label="Raccordement" htmlFor="lf-raccordement">
+                  <select id="lf-raccordement" className="form-select" value={fields.raccordement ?? ''}
+                          onChange={e => set('raccordement', e.target.value)}>
+                    {enumOptions(RACCORDEMENTS)}
+                  </select>
+                </FormField>
                 <div className="form-group" style={{ alignSelf: 'flex-end' }}>
                   <label className="pdf-toggle">
                     <input type="checkbox" checked={fields.regularisation_8221}
@@ -961,17 +1044,20 @@ export default function LeadForm({
             {/* Pompage — section dédiée, visible uniquement en mode agricole ;
                 ces champs alimentent le devis automatique. */}
             {agricole && (
-              <Sec id="pompage" title="💧 Pompage">
+              <Sec id="pompage" title="Pompage">
                 <div className="form-row">
-                  <Txt fields={fields} set={set} k="pompe_cv" type="number"
-                       label={<>Pompe (CV)<span className="req-auto"> *</span></>}
-                       placeholder="ex: 10" />
-                  <Txt fields={fields} set={set} k="pompe_hmt_m" type="number"
-                       label={<>HMT (m)<span className="req-auto"> *</span></>}
-                       placeholder="ex: 80" />
-                  <Txt fields={fields} set={set} k="pompe_debit_m3h" type="number"
-                       label={<>Débit souhaité (m³/h)<span className="req-auto"> *</span></>}
-                       placeholder="ex: 12" />
+                  <FormField label={<>Pompe (CV)<span className="req-auto"> *</span></>} htmlFor="lf-pompe-cv">
+                    <Input id="lf-pompe-cv" type="number" step="any" placeholder="ex: 10"
+                           value={fields.pompe_cv ?? ''} onChange={e => set('pompe_cv', e.target.value)} />
+                  </FormField>
+                  <FormField label={<>HMT (m)<span className="req-auto"> *</span></>} htmlFor="lf-pompe-hmt">
+                    <Input id="lf-pompe-hmt" type="number" step="any" placeholder="ex: 80"
+                           value={fields.pompe_hmt_m ?? ''} onChange={e => set('pompe_hmt_m', e.target.value)} />
+                  </FormField>
+                  <FormField label={<>Débit souhaité (m³/h)<span className="req-auto"> *</span></>} htmlFor="lf-pompe-debit">
+                    <Input id="lf-pompe-debit" type="number" step="any" placeholder="ex: 12"
+                           value={fields.pompe_debit_m3h ?? ''} onChange={e => set('pompe_debit_m3h', e.target.value)} />
+                  </FormField>
                 </div>
                 <p className="gen-hint">
                   <span className="req-auto">*</span> Requis pour le devis automatique en mode agricole.
@@ -979,30 +1065,67 @@ export default function LeadForm({
               </Sec>
             )}
 
-            <Sec id="toiture" title="🏠 Toiture & site">
+            <Sec id="toiture" title="Toiture & site">
               <div className="form-row">
-                <Sel fields={fields} set={set} k="type_toiture" label="Type de toiture" labels={TYPES_TOITURE} />
-                <Txt fields={fields} set={set} k="surface_toiture_m2" label="Surface (m²)" type="number" />
-                <Txt fields={fields} set={set} k="taille_souhaitee_kwc" label="Taille souhaitée (kWc)" type="number" />
-                <Sel fields={fields} set={set} k="batterie_souhaitee" label="Batterie" labels={BATTERIES} />
+                <FormField label="Type de toiture" htmlFor="lf-type-toiture">
+                  <select id="lf-type-toiture" className="form-select" value={fields.type_toiture ?? ''}
+                          onChange={e => set('type_toiture', e.target.value)}>
+                    {enumOptions(TYPES_TOITURE)}
+                  </select>
+                </FormField>
+                <FormField label="Surface (m²)" htmlFor="lf-surface-toiture">
+                  <Input id="lf-surface-toiture" type="number" step="any" value={fields.surface_toiture_m2 ?? ''} onChange={e => set('surface_toiture_m2', e.target.value)} />
+                </FormField>
+                <FormField label="Taille souhaitée (kWc)" htmlFor="lf-taille-souhaitee">
+                  <Input id="lf-taille-souhaitee" type="number" step="any" value={fields.taille_souhaitee_kwc ?? ''} onChange={e => set('taille_souhaitee_kwc', e.target.value)} />
+                </FormField>
+                <FormField label="Batterie" htmlFor="lf-batterie">
+                  <select id="lf-batterie" className="form-select" value={fields.batterie_souhaitee ?? ''}
+                          onChange={e => set('batterie_souhaitee', e.target.value)}>
+                    {enumOptions(BATTERIES)}
+                  </select>
+                </FormField>
               </div>
               <div className="form-row">
-                <Sel fields={fields} set={set} k="orientation" label="Orientation" labels={ORIENTATIONS} />
-                <Txt fields={fields} set={set} k="inclinaison_deg" label="Inclinaison / pente (°)" type="number" />
-                <Sel fields={fields} set={set} k="ombrage" label="Ombrage" labels={OMBRAGES} />
+                <FormField label="Orientation" htmlFor="lf-orientation">
+                  <select id="lf-orientation" className="form-select" value={fields.orientation ?? ''}
+                          onChange={e => set('orientation', e.target.value)}>
+                    {enumOptions(ORIENTATIONS)}
+                  </select>
+                </FormField>
+                <FormField label="Inclinaison / pente (°)" htmlFor="lf-inclinaison">
+                  <Input id="lf-inclinaison" type="number" step="any" value={fields.inclinaison_deg ?? ''} onChange={e => set('inclinaison_deg', e.target.value)} />
+                </FormField>
+                <FormField label="Ombrage" htmlFor="lf-ombrage">
+                  <select id="lf-ombrage" className="form-select" value={fields.ombrage ?? ''}
+                          onChange={e => set('ombrage', e.target.value)}>
+                    {enumOptions(OMBRAGES)}
+                  </select>
+                </FormField>
                 <div className="form-group fg-grow">
-                  <Txt fields={fields} set={set} k="ombrage_notes" label="Notes ombrage" />
+                  <FormField label="Notes ombrage" htmlFor="lf-ombrage-notes">
+                    <Input id="lf-ombrage-notes" value={fields.ombrage_notes ?? ''} onChange={e => set('ombrage_notes', e.target.value)} />
+                  </FormField>
                 </div>
               </div>
               <div className="form-row">
-                <Sel fields={fields} set={set} k="structure_pref" label="Structure" labels={STRUCTURES} />
-                <Txt fields={fields} set={set} k="nb_etages" label="Étages / hauteur" type="number" />
+                <FormField label="Structure" htmlFor="lf-structure">
+                  <select id="lf-structure" className="form-select" value={fields.structure_pref ?? ''}
+                          onChange={e => set('structure_pref', e.target.value)}>
+                    {enumOptions(STRUCTURES)}
+                  </select>
+                </FormField>
+                <FormField label="Étages / hauteur" htmlFor="lf-nb-etages">
+                  <Input id="lf-nb-etages" type="number" step="any" value={fields.nb_etages ?? ''} onChange={e => set('nb_etages', e.target.value)} />
+                </FormField>
               </div>
             </Sec>
 
-            <Sec id="visite" title="📋 Visite technique">
+            <Sec id="visite" title="Visite technique">
               <div className="form-row">
-                <Txt fields={fields} set={set} k="visite_prevue_le" label="Visite prévue le" type="date" />
+                <FormField label="Visite prévue le" htmlFor="lf-visite-prevue">
+                  <Input id="lf-visite-prevue" type="date" value={fields.visite_prevue_le ?? ''} onChange={e => set('visite_prevue_le', e.target.value)} />
+                </FormField>
                 <div className="form-group" style={{ alignSelf: 'flex-end' }}>
                   <label className="pdf-toggle">
                     <input type="checkbox" checked={fields.visite_effectuee}
@@ -1011,7 +1134,9 @@ export default function LeadForm({
                   </label>
                 </div>
                 <div className="form-group fg-grow">
-                  <Txt fields={fields} set={set} k="visite_notes" label="Notes de visite" />
+                  <FormField label="Notes de visite" htmlFor="lf-visite-notes">
+                    <Input id="lf-visite-notes" value={fields.visite_notes ?? ''} onChange={e => set('visite_notes', e.target.value)} />
+                  </FormField>
                 </div>
               </div>
               {/* QJ20 — Planifier une visite (inline, edit mode seulement) */}
@@ -1021,7 +1146,7 @@ export default function LeadForm({
             {/* ── Origine web (taqinor.ma) — lecture seule ; masquée si tout vide.
                 Ces champs sont capturés par le site et ne s'éditent pas ici. ── */}
             {hasWebOrigin && (
-              <Sec id="origine" title="🌐 Origine (site web)">
+              <Sec id="origine" title="Origine (site web)">
                 <div className="form-row">
                   {webRO('bill_range_bucket', 'Tranche de facture (site)')}
                   {webRO('roi_band', 'Estimation ROI (site)')}
@@ -1042,19 +1167,11 @@ export default function LeadForm({
             </div>
 
             {/* ── Devis empilés ── */}
+            {/* VX143 — le bouton « Concevoir la toiture (3D) » vit désormais
+                UNE SEULE FOIS, dans la barre d'actions devis (sticky, hors
+                scroll) : plus de doublon verbatim ici. */}
             {isEdit && (
-              <Sec id="devis" title={`📄 Devis de ce lead${liveLead?.client_nom ? ` — client : ${liveLead.client_nom}` : ''}`}>
-                {lead?.id && (
-                  <div style={{ margin: '0 0 8px' }}>
-                    <Button type="button" size="sm" className="gen-btn-orange"
-                            title={roofReady
-                              ? 'Repère toit (GPS) disponible — ouvrir le plan déjà positionné'
-                              : "Ouvrir l'outil de conception 3D du site avec ce lead déjà chargé"}
-                            onClick={ouvrirConceptionToiture}>
-                      🏠 Concevoir la toiture (3D){roofReady ? ' 📍' : ''}
-                    </Button>
-                  </div>
-                )}
+              <Sec id="devis" title={`Devis de ce lead${liveLead?.client_nom ? ` — client : ${liveLead.client_nom}` : ''}`}>
                 {(liveLead?.devis ?? []).length === 0 ? (
                   <p className="gen-hint">Aucun devis pour ce lead.</p>
                 ) : (
@@ -1193,7 +1310,7 @@ export default function LeadForm({
 
             {/* ── Activités planifiées ── */}
             {isEdit && (
-              <Sec id="activites" title="⏰ Activités">
+              <Sec id="activites" title="Activités">
                 <div style={{ margin: '0 0 8px' }}>
                   <Button type="button" size="sm" variant="outline"
                           onClick={() => setPlanOpen(true)}>
@@ -1209,14 +1326,14 @@ export default function LeadForm({
 
             {/* ── Pièces jointes ── */}
             {isEdit && (
-              <Sec id="pieces" title="📎 Pièces jointes">
+              <Sec id="pieces" title="Pièces jointes">
                 <AttachmentsPanel model="crm.lead" id={lead.id} />
               </Sec>
             )}
 
             {/* ── Doublons / Fusion ── */}
             {isEdit && (
-              <Sec id="doublons" title={`🔀 Doublons${dups.length ? ` (${dups.length})` : ''}`}>
+              <Sec id="doublons" title={`Doublons${dups.length ? ` (${dups.length})` : ''}`}>
                 {dups.length === 0 ? (
                   <p className="gen-hint">Aucun doublon détecté (même téléphone ou email).</p>
                 ) : (
@@ -1247,7 +1364,7 @@ export default function LeadForm({
 
             {/* ── Historique (chatter) ── */}
             {isEdit && (
-              <Sec id="historique" title="🕐 Historique">
+              <Sec id="historique" title="Historique">
                 <div className="chatter-note-box">
                   <input className="form-control" placeholder="Écrire une note (appel, commentaire…)"
                          value={noteBody} onChange={e => setNoteBody(e.target.value)}
