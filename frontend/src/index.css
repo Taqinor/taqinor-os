@@ -1736,18 +1736,10 @@ textarea.form-control {
 
 /* ── Catalogue hiérarchisé (CATÉGORIE → MARQUE → ARTICLES) ──
    Langage navy/gold du devis premium : rail navy profond, filets dorés,
-   rangées denses et lisibles. Une page de l'app, pas une nouvelle identité. */
-:root {
-  --cat-navy: #0b1f3a;
-  --cat-navy-soft: #122a4d;
-  --cat-gold: #f5a623;
-  --cat-gold-soft: #fdf3e0;
-  /* VX17 — couleurs de courbe du générateur (Recharts) via tokens de marque
-     plutôt qu'un hex codé en dur dans le JSX. Alignées sur le langage navy/gold
-     du devis premium. */
-  --gen-chart-sans: #1a2b4a;
-  --gen-chart-avec: #f5a623;
-}
+   rangées denses et lisibles. Une page de l'app, pas une nouvelle identité.
+   VX1 — les jetons --cat-navy/--cat-gold (+ variantes) et --gen-chart-* sont
+   désormais définis UNE seule fois dans design/tokens.css (dérivés de la
+   signature primary/nuit) ; plus aucune redéclaration locale ici. */
 .cat-layout {
   display: flex;
   gap: 18px;
@@ -4971,9 +4963,8 @@ textarea.form-control {
    Préfixe lv- ; s'appuie sur .data-table (index.css) sans le modifier. */
 
 .lv-wrap {
-  --cat-navy: #0b1f3a;
-  --cat-gold: #f5a623;
-  --cat-gold-soft: #fdf3e0;
+  /* VX1 — --cat-navy/--cat-gold hérités de design/tokens.css (signature
+     unique), plus de redéclaration locale. */
   overflow-x: auto;
 }
 

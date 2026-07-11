@@ -101,6 +101,17 @@
   --module-accent-warning: var(--warning);         /* Analyse/reporting — #c8870f */
   --module-accent-lune: var(--color-lune-faint);   /* Documents/Intelligence — #8d96b4 */
 
+  /* VX1 — un seul or, un seul navy : les jetons « catalogue/générateur » du
+     langage navy/or (devis premium) pointent désormais sur la signature de
+     marque, plus aucune quatrième couleur locale. `--cat-gold` = la primary
+     brass, `--cat-navy` = la nuit de marque ; les variantes -soft dérivées. */
+  --cat-navy: var(--color-nuit);
+  --cat-navy-soft: var(--color-nuit-700);
+  --cat-gold: var(--primary);
+  --cat-gold-soft: var(--color-brass-50);
+  --gen-chart-sans: var(--color-nuit-700);
+  --gen-chart-avec: var(--primary);
+
   --border: #dde3f0;
   --input: #d2d9ea;
   /* Anneau de focus (F122). `--ring` = couleur azur (contraste ≥ 3:1 sur le
