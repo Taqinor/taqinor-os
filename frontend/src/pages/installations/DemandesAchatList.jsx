@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { Plus, Trash2, Send, Check, X } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
@@ -55,6 +56,10 @@ const emptyForm = () => ({
 
 export default function DemandesAchatList() {
   const isManager = useIsAdminOrResponsable()
+  // VX227 — pré-remplissage depuis une intervention : un tap dans la
+  // préparation ouvre la DA avec le chantier (et l'intervention) déjà
+  // renseignés dans l'objet, pour ne pas ressaisir le contexte terrain.
+  const [searchParams, setSearchParams] = useSearchParams()
 
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
@@ -101,6 +106,30 @@ export default function DemandesAchatList() {
     )
     return () => { alive = false }
   }, [])
+
+  // VX227 — un lien « Autre besoin non prévu → Nouvelle demande d'achat »
+  // depuis la préparation d'une intervention navigue vers
+  // `/chantiers/demandes-achat?chantier={id}&intervention={id}` ; on ouvre
+  // alors le formulaire de création avec le chantier pré-sélectionné et un
+  // objet pré-rempli rappelant l'intervention d'origine. Consommé UNE fois,
+  // puis les params sont retirés de l'URL pour ne pas re-déclencher au retour.
+  useEffect(() => {
+    const chantierParam = searchParams.get('chantier')
+    if (!chantierParam) return
+    const interventionParam = searchParams.get('intervention')
+    setForm({
+      ...emptyForm(),
+      chantier: chantierParam,
+      objet: interventionParam
+        ? `Besoin non prévu — intervention #${interventionParam}`
+        : '',
+    })
+    setFormError('')
+    setCreating(true)
+    // Nettoie l'URL pour que le formulaire ne se rouvre pas sur un simple
+    // remontage (retour arrière, refresh) — le pré-remplissage est ponctuel.
+    setSearchParams({}, { replace: true })
+  }, [searchParams, setSearchParams])
 
   const openCreate = () => {
     setForm(emptyForm())

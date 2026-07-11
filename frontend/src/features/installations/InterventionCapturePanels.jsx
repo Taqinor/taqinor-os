@@ -27,7 +27,13 @@ import { compressImage } from '../../ui/file-utils'
 const QUEUED_MSG = 'Hors ligne — enregistré, synchro au retour du réseau.'
 
 // ── F9 — N° de série par composant ───────────────────────────────────────────
-export function SerialsPanel({ intervention, onChanged }) {
+// VX227 — le garde-doublon des n° de série voit désormais l'UNION des deux
+// sources du même chantier : les relevés déjà capturés côté intervention (F9)
+// ET les séries connues du chantier (`knownSeries` — parc + saisies de la
+// checklist N9). Une série saisie côté F9 est détectée en doublon côté N9 et
+// réciproquement. Les deux magasins ne sont jamais fusionnés — seul le
+// contrôle de doublon est unifié.
+export function SerialsPanel({ intervention, onChanged, knownSeries = [] }) {
   const id = intervention.id
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
@@ -41,6 +47,17 @@ export function SerialsPanel({ intervention, onChanged }) {
     .catch(() => setRows([]))
     .finally(() => setLoading(false)), [id])
   useEffect(() => { load() }, [load])
+
+  // Union des séries connues : relevés F9 déjà enregistrés + séries du chantier
+  // (parc/checklist). La comparaison est insensible à la casse et aux espaces.
+  const knownSerieSet = new Set([
+    ...rows.map((s) => s.numero_serie),
+    ...knownSeries,
+  ].map((s) => String(s || '').trim().toLowerCase()).filter(Boolean))
+  const isDoublon = (v) => {
+    const t = (v || '').trim().toLowerCase()
+    return !!t && knownSerieSet.has(t)
+  }
 
   const add = async () => {
     setBusy(true)
@@ -77,6 +94,11 @@ export function SerialsPanel({ intervention, onChanged }) {
           value={designation} onChange={(e) => setDesignation(e.target.value)} />
         <Input placeholder="N° de série (optionnel)"
           value={numero} onChange={(e) => setNumero(e.target.value)} />
+        {isDoublon(numero) && (
+          <span className="text-[12px] text-destructive">
+            Ce numéro de série existe déjà sur ce chantier (parc ou checklist).
+          </span>
+        )}
         <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp"
           className="text-[12px]" />
         <Button size="sm" disabled={busy} onClick={add}>

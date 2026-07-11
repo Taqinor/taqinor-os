@@ -34,7 +34,7 @@ import installationsApi from '../../api/installationsApi'
 import stockApi from '../../api/stockApi'
 import DemandesAchatList from './DemandesAchatList.jsx'
 
-function makeWrapper({ role = 'responsable' } = {}) {
+function makeWrapper({ role = 'responsable', initialEntries = ['/chantiers/demandes-achat'] } = {}) {
   const store = configureStore({
     reducer: { auth: authReducer },
     preloadedState: {
@@ -47,7 +47,7 @@ function makeWrapper({ role = 'responsable' } = {}) {
   return function wrapper({ children }) {
     return (
       <Provider store={store}>
-        <MemoryRouter>
+        <MemoryRouter initialEntries={initialEntries}>
           <ThemeProvider>{children}</ThemeProvider>
         </MemoryRouter>
       </Provider>
@@ -129,5 +129,27 @@ describe('DemandesAchatList (FG310)', () => {
     await screen.findAllByText('Fixations chantier Anfa')
     expect(screen.queryByRole('button', { name: /Approuver/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Refuser/i })).not.toBeInTheDocument()
+  })
+
+  // VX227 — pré-remplissage depuis une intervention : arriver sur
+  // /chantiers/demandes-achat?chantier=5&intervention=9 ouvre le formulaire de
+  // création avec le chantier pré-sélectionné et un objet rappelant
+  // l'intervention d'origine.
+  it('pré-remplit le formulaire depuis les query params chantier/intervention', async () => {
+    installationsApi.getInstallations.mockResolvedValue({
+      data: [{ id: 5, nom: 'Villa Anfa', reference: 'CH-5' }],
+    })
+    render(<DemandesAchatList />, {
+      wrapper: makeWrapper({
+        initialEntries: ['/chantiers/demandes-achat?chantier=5&intervention=9'],
+      }),
+    })
+    // Le dialogue de création s'ouvre automatiquement, objet pré-rempli.
+    const objet = await screen.findByLabelText('Objet')
+    await waitFor(() =>
+      expect(objet).toHaveValue('Besoin non prévu — intervention #9'),
+    )
+    // Le chantier ciblé est pré-sélectionné dans le formulaire.
+    expect(screen.getByText('Villa Anfa')).toBeInTheDocument()
   })
 })
