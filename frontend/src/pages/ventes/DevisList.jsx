@@ -72,6 +72,20 @@ function DevisTableSkeleton() {
 
 const DL_SAVED_VIEWS_KEY = 'taqinor.ventes.devis.savedViews'
 
+// VX216(a) — un chantier « en cours » a sa nomenclature (bom) GELÉE : éditer
+// le devis lié APRÈS ce point crée un écart devis↔chantier invisible côté
+// vendeur (l'installateur seul le voyait, InstallationDetail.jsx `devisDivergent`).
+// Statuts avant réception/clôture/annulation = composition encore gelée et
+// potentiellement engagée sur le terrain (miroir Installation.Statut ordonné,
+// apps/installations/models_installation.py).
+const CHANTIER_EN_COURS_STATUTS = [
+  'signe', 'materiel_commande', 'planifie', 'en_cours', 'installe',
+  // Statuts hérités équivalents (LEGACY_STATUT_MAP backend).
+  'a_planifier', 'pose_en_cours', 'pose', 'raccordement_onee', 'mise_en_service',
+]
+const chantierEnCours = (chantier) =>
+  !!chantier && CHANTIER_EN_COURS_STATUTS.includes(chantier.statut)
+
 // ── ARC49 — Colonnes du frame `ui/datatable` en mode « ligne custom ».
 // L'écran rend chaque ligne via `renderRow` (<DevisRow>), donc ces définitions
 // ne servent qu'à décrire la grille au moteur (identité de colonnes) : aucun
@@ -414,6 +428,19 @@ function DevisRow({ d, ctx }) {
             ))}
           </div>
         )}
+        {/* VX216(a) — rend le seam devis↔chantier VISIBLE côté vendeur (avant,
+            seul InstallationDetail.jsx le détectait). Un chantier en cours a
+            sa nomenclature (bom) GELÉE : éditer ce devis maintenant crée un
+            écart que l'installateur découvrira seul sur le terrain. */}
+        {chantierEnCours(d.chantier) && (
+          <div
+            className="mt-1 inline-flex items-center gap-1 rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning"
+            title="La nomenclature de ce chantier est gelée — éditer ce devis peut créer un écart devis↔chantier"
+          >
+            <AlertTriangle className="size-3" aria-hidden="true" />
+            Chantier en cours (compo gelée)
+          </div>
+        )}
       </td>
       <td data-label="Client">
         {d.client_nom ?? '—'}
@@ -713,6 +740,15 @@ function DevisRow({ d, ctx }) {
                   Réviser, Approuver remise, Contacter mon supérieur, Email. */}
               {d.is_active && d.statut !== 'brouillon' && (
                 <DropdownMenuItem onSelect={() => {
+                  // VX216(a) — « Réviser » est le chemin d'édition réel d'un
+                  // devis accepté : avertit AVANT si un chantier en cours
+                  // (nomenclature gelée) est lié, pour éviter un écart
+                  // devis↔chantier découvert seul par l'installateur.
+                  if (chantierEnCours(d.chantier)) {
+                    toast.warning(
+                      `Le chantier ${d.chantier.reference} lié à ${d.reference} est en cours — sa nomenclature est gelée.`,
+                    )
+                  }
                   ventesApi.reviserDevis(d.id)
                     .then(() => dispatch(fetchDevis()))
                     .catch(() => {})
@@ -1108,6 +1144,14 @@ export default function DevisList() {
   const openNew  = () => navigate('/ventes/devis/nouveau')
   const openEdit = (d) => {
     if (d.statut !== 'brouillon') return
+    // VX216(a) — garde défensive : un devis normalement brouillon ne porte
+    // pas encore de chantier, mais si un lien existe malgré tout (ex. flux
+    // hérité), le vendeur est prévenu avant d'éditer une composition gelée.
+    if (chantierEnCours(d.chantier)) {
+      toast.warning(
+        `Le chantier ${d.chantier.reference} lié à ${d.reference} est en cours — sa nomenclature est gelée.`,
+      )
+    }
     navigate(`/ventes/devis/nouveau?edit=${d.id}`)
   }
   const closeForm = () => { setShowForm(false); setEditDevis(null) }
