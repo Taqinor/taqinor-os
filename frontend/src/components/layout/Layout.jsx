@@ -51,10 +51,10 @@ export default function Layout({ children }) {
   // fermer ne doit pas jeter son état/historique de conversation) ; tant
   // qu'il n'a jamais été ouvert, son chunk lazy n'est jamais demandé.
   const copilotOpen = useSelector(s => s.ia.copilotOpen)
+  // Latch monotone en phase de rendu (patron React « ajuster l'état quand une
+  // prop change ») : une fois ouvert, le panneau reste monté ; pas d'effet.
   const [copilotEverOpened, setCopilotEverOpened] = useState(false)
-  useEffect(() => {
-    if (copilotOpen) setCopilotEverOpened(true)
-  }, [copilotOpen])
+  if (copilotOpen && !copilotEverOpened) setCopilotEverOpened(true)
 
   // Layout est remonté à CHAQUE navigation de module : ne refetcher la
   // session et le profil entreprise que s'ils manquent — chaque clic de

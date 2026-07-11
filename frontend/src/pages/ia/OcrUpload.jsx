@@ -127,12 +127,13 @@ function AnalyseTab({ canSave }) {
 
   // VX39 — réinitialise les valeurs éditées depuis le nouveau résultat OCR
   // (une seule fois par résultat — l'édition locale suivante ne se réécrase
-  // pas tant que le résultat ne change pas).
-  useEffect(() => {
-    if (ocrResult) {
-      setEditedFields({ ...(ocrResult.donnees_structurees ?? {}) })
-    }
-  }, [ocrResult])
+  // pas tant que le résultat ne change pas). Patron React « ajuster l'état
+  // pendant le rendu quand une donnée change » (pas d'effet-setState).
+  const [prevOcrResult, setPrevOcrResult] = useState(null)
+  if (ocrResult !== prevOcrResult) {
+    setPrevOcrResult(ocrResult)
+    if (ocrResult) setEditedFields({ ...(ocrResult.donnees_structurees ?? {}) })
+  }
 
   const handleFieldChange = (key, value) => {
     setEditedFields((prev) => ({ ...prev, [key]: value }))

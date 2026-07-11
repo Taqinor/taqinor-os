@@ -23,7 +23,7 @@ const CO2_POLL_MS = 5 * 60 * 1000
 
 function useVisibilityAwarePoll(callback, intervalMs) {
   const cbRef = useRef(callback)
-  cbRef.current = callback
+  useEffect(() => { cbRef.current = callback }, [callback])
   useEffect(() => {
     const tick = () => {
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
