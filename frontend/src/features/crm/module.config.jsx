@@ -20,6 +20,8 @@ import { lazy } from 'react'
 // Pages chargées à la demande (code-splitting préservé — <Suspense> côté routeur).
 const ClientList = lazy(() => import('../../pages/crm/ClientList'))
 const LeadsPage = lazy(() => import('../../pages/crm/leads/LeadsPage'))
+// VX22 — fiche lead adressable (deep-link, F5, ctrl-clic nouvel onglet).
+const LeadDetailPage = lazy(() => import('../../pages/crm/leads/LeadDetailPage'))
 const MesActivitesPage = lazy(() => import('../../pages/activities/MesActivitesPage'))
 const CalendarPage = lazy(() => import('../../pages/CalendarPage'))
 const CartePage = lazy(() => import('../../pages/CartePage'))
@@ -33,6 +35,8 @@ const config = {
   routes: [
     { path: '/crm', component: ClientList },
     { path: '/crm/leads', component: LeadsPage },
+    // VX22 — page dédiée : deep-link partageable, F5 recharge via crmApi.getLead.
+    { path: '/crm/leads/:id', component: LeadDetailPage },
     { path: '/activites', component: MesActivitesPage },
     { path: '/calendrier', component: CalendarPage },
     { path: '/carte', component: CartePage },
