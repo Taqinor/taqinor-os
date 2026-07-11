@@ -10,7 +10,8 @@ from rest_framework_simplejwt.tokens import AccessToken
 from apps.automation.models import AutomationApproval
 from apps.contrats.models import Contrat, EtapeApprobation
 from apps.ged.models import Cabinet, Document, Folder
-from apps.installations.models_demande_achat import DemandeAchat
+from apps.installations.models import Installation
+from apps.installations.models_demande_achat import DemandeAchat, DemandeAchatLigne
 from apps.reporting.models import ApprobationSlaConfig
 from authentication.models import Company
 from core.models import WorkflowDefinition, WorkflowStepDefinition
@@ -316,3 +317,85 @@ class TestZctr9Facettes(ApprobationsBase):
             '&trier=urgence')
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.data['total'], 0)
+
+
+class TestVx100MontantEtLien(ApprobationsBase):
+    """VX100 — montant réel + lien cliquable dans l'agrégateur d'approbations."""
+
+    def test_installations_item_exposes_real_montant(self):
+        da = DemandeAchat.objects.create(
+            company=self.company, reference='DA-VX100-1', objet='Panneaux',
+            statut=DemandeAchat.Statut.SOUMISE)
+        DemandeAchatLigne.objects.create(
+            demande=da, designation='Panneau 500W', quantite=10,
+            prix_estime=1000)
+        resp = self.api.get(self._url())
+        self.assertEqual(resp.status_code, 200)
+        item = next(
+            it for it in resp.data['items']
+            if it['libelle'] == 'Réquisition DA-VX100-1')
+        self.assertEqual(float(item['montant']), 10000.0)
+
+    def test_installations_item_lien_points_to_chantier(self):
+        chantier = Installation.objects.create(
+            company=self.company, reference='CHT-VX100-1')
+        DemandeAchat.objects.create(
+            company=self.company, reference='DA-VX100-2', objet='Onduleurs',
+            statut=DemandeAchat.Statut.SOUMISE, chantier=chantier)
+        resp = self.api.get(self._url())
+        self.assertEqual(resp.status_code, 200)
+        item = next(
+            it for it in resp.data['items']
+            if it['libelle'] == 'Réquisition DA-VX100-2')
+        self.assertEqual(item['lien'], f'/chantiers?id={chantier.id}')
+
+    def test_installations_item_lien_none_without_chantier(self):
+        DemandeAchat.objects.create(
+            company=self.company, reference='DA-VX100-3', objet='Câbles',
+            statut=DemandeAchat.Statut.SOUMISE)
+        resp = self.api.get(self._url())
+        self.assertEqual(resp.status_code, 200)
+        item = next(
+            it for it in resp.data['items']
+            if it['libelle'] == 'Réquisition DA-VX100-3')
+        self.assertIsNone(item['lien'])
+
+    def test_other_sources_expose_montant_and_lien_keys_without_fabricating(self):
+        AutomationApproval.objects.create(
+            company=self.company, status=AutomationApproval.Status.PENDING)
+        resp = self.api.get(self._url() + '?source=automation')
+        self.assertEqual(resp.status_code, 200)
+        item = resp.data['items'][0]
+        self.assertIn('montant', item)
+        self.assertIn('lien', item)
+        self.assertIsNone(item['montant'])
+        self.assertIsNone(item['lien'])
+
+    def test_contrats_item_lien_points_to_contrat_detail(self):
+        contrat = Contrat.objects.create(
+            company=self.company, objet='Contrat VX100', reference='C-VX100')
+        EtapeApprobation.objects.create(
+            company=self.company, contrat=contrat, niveau=1,
+            statut=EtapeApprobation.Statut.EN_ATTENTE)
+        resp = self.api.get(self._url() + '?source=contrats')
+        self.assertEqual(resp.status_code, 200)
+        item = resp.data['items'][0]
+        self.assertEqual(item['lien'], f'/contrats/{contrat.id}')
+
+    def test_trier_montant_orders_amounts_descending(self):
+        small = DemandeAchat.objects.create(
+            company=self.company, reference='DA-VX100-SMALL', objet='X',
+            statut=DemandeAchat.Statut.SOUMISE)
+        DemandeAchatLigne.objects.create(
+            demande=small, designation='Petit', quantite=1, prix_estime=100)
+        big = DemandeAchat.objects.create(
+            company=self.company, reference='DA-VX100-BIG', objet='X',
+            statut=DemandeAchat.Statut.SOUMISE)
+        DemandeAchatLigne.objects.create(
+            demande=big, designation='Gros', quantite=1, prix_estime=999999)
+
+        resp = self.api.get(
+            self._url() + '?source=installations&trier=montant')
+        self.assertEqual(resp.status_code, 200)
+        libelles = [it['libelle'] for it in resp.data['items']]
+        self.assertEqual(libelles[0], 'Réquisition DA-VX100-BIG')
