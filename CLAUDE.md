@@ -170,7 +170,10 @@ run is the GitHub CI `backend-tests` gate. Its measured arc: **2h15** (serial + 
 → **45.5 min** (WOW1 `--parallel 4`) → **41 min** (WOW6 4× shard — small gain because the
 ~850-migration test-DB build was **97% of each shard**; the tests themselves ran in 62s) →
 **WOW8** cache-restores that pre-migrated DB (key = migrations hash, rebuilt once per migration
-change), targeting **~6-10 min** on the hit path; e2e restores from the same cache (its
+change), targeting **~6-10 min** on the hit path; **WOW8-INCR** (2026-07-11) adds a `restore-keys`
+fallback so the exact-key MISS that EVERY migration-adding plan build hits restores the newest
+prior dump and applies ONLY the new migrations (delta, a few min) instead of the ~40-min cold
+replay — the CI twin of the local harness's `-RestoreDb`; e2e restores from the same cache (its
 migrate+seed was 94% of its 32 min — the specs run in 36s). Docs-only merges skip the heavy jobs
 entirely and cost **~2 min** (measured) — the floor below NEVER applies to them.
 **MERGE FLOOR (founder rule — CONDITION FIRED 2026-07-09).** The old ~200-task floor was the
@@ -250,8 +253,16 @@ of a cold rebuild — a real ARC+SCA run burned ~3.5 h purely on local test-DB c
 5. **ONE gate at the very end.** When the queue drains (or a cap is hit): refresh `docs/CODEMAP.md`
    if structure/plan changed (then `codemap_fingerprint.py --write`), integrate the latest
    `origin/main` into `dev` (sync-safe — merge it in, recompute the structure fingerprint if the
-   structural surface moved, NEVER force-push), push `dev`, run the four required checks **once**
-   over the whole batch, self-merge `dev` → `main` **exactly once**, then **deploy once**
+   structural surface moved, NEVER force-push). **Then run `powershell -File scripts/preflight.ps1`
+   BEFORE pushing** — it runs EVERY fast gate (backend-lint's compileall-3.11 / flake8 / lint-imports,
+   the model↔migration drift check, and all 10 `stage-names` sub-checks) locally in the prod 3.11
+   image in one pass and reports ALL failures at once. A run that skipped this (only ran 3 of the 11
+   stage-names checks) burned FOUR CI round-trips discovering them one at a time — preflight collapses
+   that to one local pass. Fix everything red, THEN push `dev` and run the four required checks **once**
+   over the whole batch. To WAIT on that CI, use `powershell -File scripts/watch-ci.ps1` (or
+   `-Pr <n>`) — it wraps `gh run watch --exit-status` and prints a per-job PASS/FAIL summary, so no
+   session re-invents a waiter/monitor or hand-rolls a `2>&1 | tail` status check that masks the exit
+   code. Self-merge `dev` → `main` **exactly once**, then **deploy once**
    (`scripts/deploy-prod.ps1` for the ERP; the website auto-deploys via Cloudflare). When branch
    protection requires it, ONE batch PR used purely as the CI-gated merge vehicle counts as that
    single self-merge. If the push is rejected because `main` advanced, repeat the sync-safe
