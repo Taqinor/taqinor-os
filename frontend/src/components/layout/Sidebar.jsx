@@ -17,6 +17,9 @@ import { moduleNavSections } from '../../router/moduleRoutes'
 import { useT } from '../../i18n'
 // VX86 — compteur partagé des approbations en attente (badge nav discret).
 import { useApprobationsCount } from '../../hooks/useApprobationsCount'
+// VX58 — préchargement au survol/focus des destinations chaudes (même source
+// d'imports dynamiques que le routeur ; no-op sous Data Saver/2G).
+import { prefetchRoute } from '../../router/prefetchMap'
 // VX157 — pastille d'impact du parc (production + CO₂ évité cumulés),
 // chargée PARESSEUSEMENT : le composant fait son propre appel API et rend
 // null tant que rien n'est disponible, donc aucun coût/flash pour les écrans
@@ -326,6 +329,10 @@ export default function Sidebar({ collapsed, onToggle, onNavigate }) {
                   data-coach={COACH_ANCHORS[item.to]}
                   title={collapsed ? label : undefined}
                   onClick={onNavigate}
+                  // VX58 — précharge le chunk de la destination dès le survol
+                  // souris/clavier, avant le clic réel.
+                  onMouseEnter={() => prefetchRoute(item.to)}
+                  onFocus={() => prefetchRoute(item.to)}
                   // I135 — l'item actif porte aria-current="page" : NavLink le
                   // pose automatiquement sur le lien actif (valeur par défaut
                   // "page"), en plus de la classe `active` (pastille discrète).
