@@ -5,7 +5,8 @@ WORKDIR /app
 
 ENV PYTHONUNBUFFERED=1
 
-# Dépendances système pour WeasyPrint (Pango, Cairo, GDK-PixBuf)
+# Dépendances système pour WeasyPrint (Pango, Cairo, GDK-PixBuf) +
+# python3-saml/NTSEC2 (libxml2 + xmlsec1 requis à l'installation du wheel).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpango-1.0-0 \
     libpangoft2-1.0-0 \
@@ -17,6 +18,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     shared-mime-info \
     fonts-liberation \
     fonts-noto-core \
+    pkg-config \
+    libxml2-dev \
+    libxmlsec1-dev \
+    libxmlsec1-openssl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /app/
