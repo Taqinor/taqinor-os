@@ -525,3 +525,73 @@ class UserSession(models.Model):
 
     def __str__(self):
         return f"{self.user_id} — {self.user_agent[:40]}"
+
+
+class WebAuthnCredential(models.Model):
+    """Passkey / justificatif WebAuthn enregistré par un utilisateur (NTSEC8).
+
+    Stocke la clé PUBLIQUE (jamais de secret) et le compteur de signatures
+    (``sign_count``) qui, monotone croissant, détecte le clonage d'un
+    authentificateur : une assertion présentant un ``sign_count`` régressé est
+    refusée. Additif et strictement OPT-IN — un compte sans passkey se connecte
+    exactement comme avant.
+    """
+
+    user = models.ForeignKey(
+        'authentication.CustomUser',
+        on_delete=models.CASCADE,
+        related_name='webauthn_credentials',
+    )
+    # Identifiant du justificatif (base64url) renvoyé par l'authentificateur.
+    credential_id = models.CharField(max_length=255, unique=True, db_index=True)
+    # Clé publique COSE (base64url) — sert à vérifier les futures assertions.
+    public_key = models.TextField()
+    # Compteur de signatures monotone (anti-clone). Mis à jour à chaque
+    # assertion réussie ; une régression est refusée.
+    sign_count = models.PositiveBigIntegerField(default=0)
+    nom_appareil = models.CharField(max_length=120, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Passkey (WebAuthn)'
+        verbose_name_plural = 'Passkeys (WebAuthn)'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.user_id} — {self.nom_appareil or self.credential_id[:16]}'
+
+
+class WebAuthnChallenge(models.Model):
+    """Défi WebAuthn transitoire (register/login), à usage unique (NTSEC8).
+
+    Émis au ``begin/`` et consommé au ``complete/`` pour lier l'attestation/
+    l'assertion à un défi serveur (anti-rejeu). ``user`` est nullable : un défi
+    de LOGIN peut précéder l'identification (flux « usernameless »).
+    """
+
+    PURPOSE_REGISTER = 'register'
+    PURPOSE_LOGIN = 'login'
+    PURPOSE_CHOICES = [
+        (PURPOSE_REGISTER, 'Enregistrement'),
+        (PURPOSE_LOGIN, 'Connexion'),
+    ]
+
+    challenge = models.CharField(max_length=255, db_index=True)
+    purpose = models.CharField(max_length=10, choices=PURPOSE_CHOICES)
+    user = models.ForeignKey(
+        'authentication.CustomUser',
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='webauthn_challenges',
+    )
+    used = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Défi WebAuthn'
+        verbose_name_plural = 'Défis WebAuthn'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.purpose} — {self.challenge[:16]}…'
