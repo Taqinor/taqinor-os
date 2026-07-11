@@ -25,6 +25,8 @@ import { prefetchRoute } from '../../router/prefetchMap'
 // null tant que rien n'est disponible, donc aucun coût/flash pour les écrans
 // qui n'ont jamais de données de parc.
 const ImpactPastille = lazy(() => import('./ImpactPastille'))
+// VX10 — bande d'apps épinglées personnelles, sous le badge de rôle.
+const PinnedApps = lazy(() => import('./PinnedApps'))
 
 // FG16 — ancres du guide d'accueil : map `to` → valeur `data-coach` posée sur
 // le lien correspondant, pour que le spotlight des coachmarks puisse le cibler.
@@ -318,6 +320,11 @@ export default function Sidebar({ collapsed, onToggle, onNavigate }) {
           <span className="sidebar-role-label">{roleMeta.label}</span>
         </div>
       )}
+
+      {/* ── Apps épinglées (VX10) ──────────────── */}
+      <Suspense fallback={null}>
+        <PinnedApps collapsed={collapsed} />
+      </Suspense>
 
       {/* ── Navigation ─────────────────────────── */}
       <nav className="sidebar-nav">
