@@ -313,12 +313,13 @@
   --ui-text: 0.875rem;        /* 14px */
 }
 
-/* ── Racine de l'interface refonte (appliquée par les nouveaux écrans/showcase ;
-      n'affecte PAS les écrans existants tant qu'ils ne portent pas .ui-root) ── */
+/* ── Racine de l'interface refonte ────────────────────────────────────────
+   VX3 — la police de marque, le fond tokenisé et la couleur de texte sont
+   désormais portés directement par <body> (index.css), donc hérités partout.
+   `.ui-root` devient un no-op quasi total (rétro-compatible) : il ne reste que
+   `font-size: var(--ui-text)` pour les écrans refonte qui veulent la taille de
+   base de densité ; font-family/background/color sont hérités du <body>. */
 .ui-root {
-  font-family: var(--font-brand);
-  background: var(--background);
-  color: var(--foreground);
   font-size: var(--ui-text);
 }
 

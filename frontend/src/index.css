@@ -26,10 +26,18 @@
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, sans-serif;
-  background: #f1f5f9;
-  color: #1e293b;
+  /* VX3 — la voix typographique de marque au niveau <body> : Hanken en corps
+     (var(--font-brand)), fond et texte pilotés par les tokens sémantiques (donc
+     le fond suit le thème clair/sombre), plus aucun hex figé. Les titres passent
+     en Archivo via var(--font-display) sur les headings. */
+  font-family: var(--font-brand);
+  background: var(--background);
+  color: var(--foreground);
 }
+/* VX3 — Archivo (police d'affichage de marque) sur les titres de niveau
+   document ; les composants /ui posent déjà .text-display/.text-h* avec leur
+   propre famille, ceci couvre les <h1>–<h3> bruts des écrans legacy. */
+h1, h2, h3 { font-family: var(--font-display); }
 
 /* M58 — Garde anti-défilement horizontal sur les flux principaux. Borné à la
    racine (html/body) pour ne pas créer de conteneur de bloc qui casserait le
