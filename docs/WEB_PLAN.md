@@ -1334,15 +1334,18 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
   `apps/web/src/pages/realisations/[slug].astro`.
   "Cinéma du chantier" claim (keep the hero ungraded for LCP). Files: `apps/web/scripts/` or scoped
   `apps/web/src/styles/v3-photo-motion.css`.
-- [BLOCKED: founder must drop 6 official brand SVGs or widen the network egress allowlist] W187 — **Source real brand-logo SVGs** (Canadian Solar, Huawei, Deye, Jinko, JA Solar,
+- [x] W187 — **Source real brand-logo SVGs** (Canadian Solar, Huawei, Deye, Jinko, JA Solar,
   Dyness, Nexans) to replace the text word-mark fallback. These are THIRD-PARTY *manufacturer*
-  logos for the partner trust-strip — distinct from Taqinor's own mark (W168). *(BLOCKED 2026-06-21:
-  net-sourcing attempted but this environment's network egress is ALLOWLISTED — only npm-type hosts
-  are reachable; commons.wikimedia.org and the open web return `403 Host not in allowlist`. Of the 7,
-  only Huawei exists in a reachable npm logo set (`simple-icons`); the 6 solar brands are in none.
-  To finish, EITHER the founder drops the 6 remaining official monochrome SVGs (Canadian Solar,
-  JA Solar, Jinko, Deye, Dyness, Nexans) in a zip — best, from each brand kit — OR widens the
-  environment's network egress allowlist to include the logo source hosts, then a run can fetch them.)*
+  logos for the partner trust-strip — distinct from Taqinor's own mark (W168). *(DONE 2026-07-11:
+  re-sourced from the web. This environment's egress is still allowlisted, but `commons.wikimedia.org`
+  + `upload.wikimedia.org` ARE now reachable (the open web / brand sites / en.wikipedia still 403/000).
+  Sourced **4 of 7 real official logos** from Wikimedia Commons: Huawei, Nexans, JA Solar as official
+  SVG + Jinko as a public-domain PNG — all wired in `brands.ts`, greyscale→colour on hover, verified
+  present on disk by a test. The remaining 3 have NO reachable clean official asset: Canadian Solar &
+  Dyness are absent from Commons entirely, and the only Deye file is CC BY-SA 4.0 (needs attribution)
+  with an ambiguous identity — so they honestly stay word-mark, never a fabricated/uncertain logo.
+  To finish those 3, the founder can drop official monochrome SVGs for Canadian Solar / Deye / Dyness,
+  or the env allowlist can widen to a brand-asset host.)*
   Files: `apps/web/public/brands/`, `apps/web/src/lib/brands.ts`.
 
 **— Forms & interactive widgets (visual-only; lead mechanics untouched) —**
@@ -1536,11 +1539,13 @@ each for Lydec/Redal/Amendis).
   gate: a web run MAY add a needed dependency and NOTE it in the DONE LOG. Only a **paid** API/account
   (a cost you must approve) or a **new Cloudflare secret** still waits on you. **MY RECOMMENDATION:
   keep the site dependency-light; approve paid APIs case by case.**
-- **W187 — 6 manufacturer logo SVGs** (Canadian Solar, JA Solar, Jinko, Deye, Dyness, Nexans). Blocked
-  by network egress (only npm is reachable; the open web returns 403), not by a decision. **MY
-  RECOMMENDATION: drop a zip of the 6 official monochrome SVGs** (from each brand's media kit — correct
-  colours + license-clean, better than random web logos). Wiring them into `public/brands/` +
-  `brands.ts` is then trivial (S). The text word-mark fallback is fine meanwhile — low urgency.
+- **W187 — 3 remaining manufacturer logos** (Canadian Solar, Deye, Dyness). *Update 2026-07-11: the
+  other 4 (Huawei, Nexans, JA Solar, Jinko) are now SHIPPED — sourced from Wikimedia Commons, which
+  became reachable.* These 3 have NO reachable clean official asset (absent from Commons; the one Deye
+  file is CC BY-SA 4.0 + ambiguous), so they honestly stay word-mark. **MY RECOMMENDATION: drop the 3
+  official monochrome SVGs** (Canadian Solar / Deye / Dyness, from each brand's media kit — correct
+  colours + license-clean) — wiring them into `public/brands/` + `brands.ts` is then trivial (S). The
+  word-mark fallback is fine meanwhile — low urgency.
 
 **Founder shopping list from the 2026-07-02 trust audit — each unlocks already-built components
 (everything below is REAL data only; the site's integrity rule renders nothing until you supply it):**
@@ -1644,6 +1649,9 @@ each for Lydec/Redal/Amendis).
 ---
 
 ## DONE LOG (agent appends one plain-language line per completed task)
+
+### 2026-07-11 — W187 real brand logos sourced from the web (founder: "search yourself")
+- **W187 (brand trust-strip):** re-attempted web sourcing instead of waiting on founder-dropped files. `commons.wikimedia.org`/`upload.wikimedia.org` are now reachable through the proxy (the open web, brand sites and en.wikipedia still 403/000). Sourced **4 of 7 real official logos**: Huawei, Nexans, JA Solar as official **SVG** + Jinko as a **public-domain PNG** — vendored into `apps/web/public/brands/` and wired in `brands.ts` (greyscale→colour on hover already handled by BrandStrip; `<img>` renders SVG+PNG alike). A test verifies each non-null logo is a real file on disk and the unsourced brands stay null. The other 3 — Canadian Solar & Dyness (absent from Commons) and Deye (only a CC BY-SA 4.0, identity-ambiguous file) — honestly keep their word-mark rather than a fabricated or attribution-encumbered logo; they need the founder to drop official SVGs (or an allowlist widening). SVGs scanned clean (no `<script>`). No new dependency.
 
 ### 2026-07-11 — WJ115 + WJ116 unblocked & shipped (2 parallel worktree lanes)
 - **Correction of prior report:** an earlier "work on the web plan" run declared the queue empty because WEB_PLAN's blocked notes said QX34/QX35 were unbuilt. Verified against real backend code on `main` (not the stale note): both landed in the 2026-07-10 batch (PR #373) — `/api/django/ventes/suivi/<token>/` (QX34) and the parrainage webhook `handle_parrainage_signup` matching `Client.code_parrainage` (QX35). So WJ115/WJ116 were buildable and were built.
