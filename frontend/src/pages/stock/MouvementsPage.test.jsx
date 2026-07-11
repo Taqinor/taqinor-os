@@ -114,7 +114,7 @@ describe('ZSTK7 — bascule Vue liste / Vue groupée', () => {
     stockApi.exportMouvementsXlsx.mockResolvedValue({ data: new Blob(['y']) })
     const anchor = document.createElement('a')
     const createSpy = vi.spyOn(document, 'createElement').mockReturnValue(anchor)
-    const clickSpy = vi.spyOn(anchor, 'click').mockImplementation(() => {})
+    vi.spyOn(anchor, 'click').mockImplementation(() => {})
     renderPage()
     const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
 
