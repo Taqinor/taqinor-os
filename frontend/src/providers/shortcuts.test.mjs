@@ -1,6 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { GOTO_SHORTCUTS, GLOBAL_SHORTCUTS, isTypingTarget } from './shortcuts.js'
+import {
+  GOTO_SHORTCUTS, GLOBAL_SHORTCUTS, isTypingTarget,
+  isMacPlatform, quickSearchShortcutLabel,
+} from './shortcuts.js'
 
 test('isTypingTarget: vrai pour les champs de saisie', () => {
   assert.equal(isTypingTarget({ tagName: 'INPUT' }), true)
@@ -35,8 +38,30 @@ test('GOTO_SHORTCUTS: bien formés (keys "g x" + route absolue + libellé)', () 
   assert.equal(new Set(letters).size, letters.length)
 })
 
-test('GLOBAL_SHORTCUTS: contient ⌘K et ?', () => {
+test('GLOBAL_SHORTCUTS: contient un raccourci "K" (⌘ ou Ctrl selon plateforme) et ?', () => {
   const keys = GLOBAL_SHORTCUTS.map((s) => s.keys)
   assert.ok(keys.some((k) => k.includes('K')))
   assert.ok(keys.includes('?'))
+})
+
+// VX73 — la plateforme RÉELLE de l'ERP est Windows/Linux : le glyphe ⌘ codé en
+// dur mentait. quickSearchShortcutLabel() détecte la plateforme au lieu de
+// supposer macOS.
+test('isMacPlatform: détecte macOS via navigator.platform', () => {
+  assert.equal(isMacPlatform({ platform: 'MacIntel' }), true)
+  assert.equal(isMacPlatform({ platform: 'Win32' }), false)
+  assert.equal(isMacPlatform({ platform: 'Linux x86_64' }), false)
+  assert.equal(isMacPlatform(null), false)
+  assert.equal(isMacPlatform(undefined), false)
+})
+
+test('isMacPlatform: retombe sur navigator.userAgentData.platform si présent', () => {
+  assert.equal(isMacPlatform({ userAgentData: { platform: 'macOS' } }), true)
+  assert.equal(isMacPlatform({ userAgentData: { platform: 'Windows' } }), false)
+})
+
+test('quickSearchShortcutLabel: "⌘ K" sur Mac, "Ctrl K" sur Windows/Linux (la plateforme réelle de l\'ERP)', () => {
+  assert.equal(quickSearchShortcutLabel({ platform: 'MacIntel' }), '⌘ K')
+  assert.equal(quickSearchShortcutLabel({ platform: 'Win32' }), 'Ctrl K')
+  assert.equal(quickSearchShortcutLabel({ platform: 'Linux x86_64' }), 'Ctrl K')
 })
