@@ -117,3 +117,37 @@ def resolve_email_signature(company, nom_societe='', **context) -> str:
     ctx.update(context)
     rendu = rendre(tpl.corps, ctx).strip()
     return rendu or fallback
+
+
+# ── VX76 — wrapper HTML de marque UNIQUE pour les emails transactionnels ─────
+def wrap_email_html(
+        sujet, corps_texte, *, company_nom='', company_adresse='',
+        company_telephone='', company_email='', couleur_principale=''):
+    """Rend ``templates/email/base.html`` (logo textuel + en-tête navy + pied)
+    autour d'un corps texte brut existant.
+
+    ``core`` reste FONDATION : ce wrapper ne fait que RENDRE — aucune logique
+    métier, aucun changement de statut, aucun nouvel EmailLog/chatter (RULE #4
+    du même esprit : un moteur de rendu ne décide jamais). Le corps texte brut
+    est converti en HTML minimal (retours à la ligne → ``<br>``, échappé pour
+    éviter toute injection) et injecté dans le bloc central du gabarit. Les
+    identifiants de société sont fournis par l'appelant (résolus via
+    ``apps.parametres.selectors.company_identity`` — que ``core`` ne connaît
+    pas). Ne lève jamais : une erreur de rendu retombe sur le corps texte brut
+    tel quel (repli identique au comportement actuel)."""
+    from django.template.loader import render_to_string
+    from django.utils.html import escape, linebreaks
+
+    try:
+        corps_html = linebreaks(escape(corps_texte or ''))
+        return render_to_string('email/base.html', {
+            'sujet': sujet or '',
+            'corps_html': corps_html,
+            'company_nom': company_nom or '',
+            'company_adresse': company_adresse or '',
+            'company_telephone': company_telephone or '',
+            'company_email': company_email or '',
+            'couleur_principale': couleur_principale or '',
+        })
+    except Exception:  # noqa: BLE001 — un email ne casse jamais sur ce point
+        return corps_texte or ''

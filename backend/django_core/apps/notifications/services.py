@@ -86,23 +86,52 @@ def _is_email_configured():
         return False
 
 
+def _branded_html(company, sujet, corps):
+    """VX76 — wrapper HTML de marque (logo + en-tête navy + pied) autour du
+    corps texte existant. Best-effort : jamais d'exception, jamais de
+    changement du corps texte brut conservé en repli MIME."""
+    try:
+        from apps.parametres.selectors import company_identity
+        from core.selectors import wrap_email_html
+        identite = company_identity(company) if company is not None else {}
+        return wrap_email_html(
+            sujet, corps,
+            company_nom=identite.get('nom', ''),
+            company_adresse=identite.get('adresse', ''),
+            company_telephone=identite.get('telephone', ''),
+            company_email=identite.get('email', ''),
+            couleur_principale=identite.get('couleur_principale', ''),
+        )
+    except Exception:  # noqa: BLE001 — un email ne casse jamais sur ce point
+        return ''
+
+
 def _dispatch_email(user, title, body):
     """Diffuse une notification par email via le backend Django configuré.
 
     NO-OP silencieux si l'email n'est pas configuré ou si l'utilisateur n'a pas
-    d'adresse. Best-effort : jamais d'exception remontée."""
+    d'adresse. Best-effort : jamais d'exception remontée.
+
+    VX76 — le corps texte reste le corps MIME principal (repli ``text/plain``
+    inchangé) ; une alternative ``text/html`` brandée (wrapper logo/en-tête
+    navy/pied) est ajoutée quand le rendu réussit — additif, jamais cassant."""
     dest = (getattr(user, 'email', '') or '').strip()
     if not dest or not _is_email_configured():
         return False
     try:
         from django.conf import settings
-        from django.core.mail import EmailMessage, get_connection
+        from django.core.mail import EmailMultiAlternatives, get_connection
         from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', '') or 'noreply@erp.local'
         connection = get_connection(fail_silently=True)
-        EmailMessage(
-            subject=title[:300], body=body or title,
+        corps = body or title
+        msg = EmailMultiAlternatives(
+            subject=title[:300], body=corps,
             from_email=from_email, to=[dest], connection=connection,
-        ).send(fail_silently=True)
+        )
+        html = _branded_html(getattr(user, 'company', None), title, corps)
+        if html:
+            msg.attach_alternative(html, 'text/html')
+        msg.send(fail_silently=True)
         return True
     except Exception as exc:  # pragma: no cover - dépend du backend réel
         logger.warning('Notification email échouée vers %s : %s', dest, exc)
