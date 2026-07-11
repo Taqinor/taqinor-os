@@ -61,9 +61,13 @@ export default function BottomTabBar() {
 
 // AppGridDrawer — tiroir compact « Plus » : grille de catégories, puis items
 // de la catégorie choisie (2e niveau), retour possible à la grille.
+const EMPTY_PERMISSIONS = []
+
 function AppGridDrawer({ onClose }) {
   const role = useSelector((s) => s.auth.role) || 'normal'
-  const permissions = useSelector((s) => s.auth.permissions) || []
+  // Repli sur une référence STABLE (pas un `[]` littéral recréé à chaque rendu)
+  // pour ne pas invalider le useMemo `sections` ci-dessous à chaque render.
+  const permissions = useSelector((s) => s.auth.permissions) || EMPTY_PERMISSIONS
   const [activeSection, setActiveSection] = useState(null)
 
   // Mêmes règles de gating que la Sidebar (role + perm), mêmes sections dans

@@ -32,7 +32,13 @@ const FRONTEND_ROOT = path.resolve(__dirname, '..')
 // react-vendor, cf. vite.config.js manualChunks) ont un budget dédié plus
 // généreux — ce sont des dépendances tierces stables, mises en cache à part.
 const PER_CHUNK_BUDGET_KB = 350
-const TOTAL_BUDGET_KB = 2200
+// 2026-07-11 : 2200 -> 2240 Ko. La vague PLAN2 (lanceur d'applications VX9,
+// système d'accents module VX8, apps épinglées VX10, fil d'Ariane VX11,
+// recherche unifiée VX13, préférences VX46, gestes terrain, etc. — ~15
+// fonctionnalités) fait croître le bundle de ~22 Ko gzip (croissance produit
+// légitime, pas une régression). Marge relevée d'autant ; le garde continue
+// d'attraper toute VRAIE régression au-dessus de 2240.
+const TOTAL_BUDGET_KB = 2240
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,
