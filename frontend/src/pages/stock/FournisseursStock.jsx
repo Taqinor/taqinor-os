@@ -3,6 +3,7 @@ import { useSelector } from 'react-redux'
 import { useHasPermission, useIsAdmin, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { Plus, Pencil, Trash2, Package, ShoppingCart, BarChart3 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
+import { formatMAD } from '../../lib/format'
 import {
   Button, IconButton, DataTable, Spinner,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -145,9 +146,7 @@ function FournisseurForm({ fournisseur, onClose, onSaved }) {
 // ── WR4 / FG59 — Scorecard performance fournisseur (admin, INTERNE) ──────────
 // Délai moyen de livraison, taux de remplissage, taux de retour, dépenses
 // totales (prix d'achat) — jamais client-facing.
-const fmtMad = (v) => `${(Number(v) || 0).toLocaleString('fr-FR', {
-  minimumFractionDigits: 2, maximumFractionDigits: 2,
-})} MAD`
+const fmtMad = (v) => formatMAD(v)
 
 function ScorecardModal({ fournisseur, onClose }) {
   const [data, setData] = useState(null)

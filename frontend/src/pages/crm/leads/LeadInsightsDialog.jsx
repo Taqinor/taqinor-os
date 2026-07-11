@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import crmApi from '../../../api/crmApi'
 import { Badge, Button, Spinner } from '../../../ui'
+import { formatDateTime, formatMAD } from '../../../lib/format'
 
 // WR9 — fiche « Parcours » d'un lead (lecture seule) :
 //  - FG204 : timeline multi-touch (points de contact + attribution
@@ -8,16 +9,9 @@ import { Badge, Button, Spinner } from '../../../ui'
 //  - FG38  : correspondance avec un Client existant (retour client).
 // Les données viennent des endpoints scopés société — aucun calcul local.
 
-const fmtDateTime = (iso) => {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString('fr-FR')
-}
+const fmtDateTime = (iso) => formatDateTime(iso)
 
-const fmtMAD = (v) => {
-  const n = Number(v ?? 0)
-  return Number.isFinite(n) ? `${n.toLocaleString('fr-MA')} MAD` : '—'
-}
+const fmtMAD = (v) => formatMAD(v)
 
 export default function LeadInsightsDialog({ lead, onClose }) {
   const [touches, setTouches] = useState(null)

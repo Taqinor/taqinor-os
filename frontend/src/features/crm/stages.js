@@ -1,7 +1,8 @@
 // Étapes canoniques du pipeline CRM — MIROIR STRICT de STAGES.py (racine du
 // repo). La CI (scripts/check_stages.py) échoue à la moindre divergence.
 // Ne JAMAIS déclarer une autre liste d'étapes ailleurs : tout importe d'ici.
-// Module volontairement pur (aucun import) : testable avec node --test.
+// Testable avec node --test (import limité au formateur monnaie partagé).
+import { formatMAD as sharedFormatMAD } from '../../lib/format.js'
 
 export const PIPELINE_STAGES = [
   'NEW',
@@ -109,8 +110,7 @@ export const latestDevisTotal = (lead) => {
   return Number.isFinite(n) ? n : 0
 }
 
-export const formatMAD = (n) =>
-  `${Math.round(n).toLocaleString('fr-FR')} MAD`
+export const formatMAD = (n) => sharedFormatMAD(n, { decimals: 0 })
 
 // Tri dans une colonne : priorité haute d'abord, puis le plus récent.
 const PRIO_ORDER = { haute: 0, normale: 1, basse: 2 }

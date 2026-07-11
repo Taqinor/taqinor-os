@@ -85,10 +85,20 @@ export function formatDate(value, { long = false } = {}) {
   }).format(d)
 }
 
-/** Date + heure : « 18/06/2026 14:05 ». */
-export function formatDateTime(value) {
+/**
+ * Date + heure : « 18/06/2026 14:05 » (défaut), ou « 18 juin 2026, 14:05 »
+ * si `long=true` (VX75 — variante lisible utilisée pour les rendez-vous/
+ * horodatages destinés à un titre/tooltip plutôt qu'une colonne de tableau).
+ */
+export function formatDateTime(value, { long = false } = {}) {
   const d = asDate(value)
   if (!d) return '—'
+  if (long) {
+    return new Intl.DateTimeFormat(LOCALE, {
+      day: 'numeric', month: 'long', year: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+    }).format(d)
+  }
   return new Intl.DateTimeFormat(LOCALE, {
     day: '2-digit', month: '2-digit', year: 'numeric',
     hour: '2-digit', minute: '2-digit',

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import api from '../../api/axios'
 import { Badge, Button, Spinner } from '../../ui'
 import ClientRgpdActions from './ClientRgpdActions'
+import { formatMAD } from '../../lib/format'
 
 // Panneau détail client (L4) — lecture seule : devis, factures et chantiers
 // liés au client, avec référence / statut / total (montants client-facing
@@ -9,12 +10,6 @@ import ClientRgpdActions from './ClientRgpdActions'
 // société GET /crm/clients/<id>/documents/.
 
 const formatDateFR = (iso) => (iso ? new Date(iso).toLocaleDateString('fr-FR') : '—')
-
-const formatMAD = (v) => {
-  const n = Number(v ?? 0)
-  if (!Number.isFinite(n)) return '—'
-  return `${n.toLocaleString('fr-MA')} MAD`
-}
 
 function DocTable({ titre, rows, withTotal, withDate, emptyLabel }) {
   return (

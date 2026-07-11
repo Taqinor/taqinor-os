@@ -7,7 +7,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
   Button, Label, Input, Textarea,
 } from '../../ui'
-import { formatMAD, formatDate, formatPhoneMA } from '../../lib/format'
+import { formatMAD, formatDate, formatPhoneMA, formatPercent } from '../../lib/format'
 import { useSelector } from 'react-redux'
 import rhApi from '../../api/rhApi'
 import { peutVoirSalaires } from './permissions.js'
@@ -342,7 +342,7 @@ export default function EmployeDetail() {
       {/* XRH16 — compa-ratio (salaire vs bande du poste), donnée paie gatée. */}
       {compaRatio && (
         <div className="rounded-lg border border-border bg-card px-3 py-2 text-sm">
-          <p className="font-medium">Compa-ratio : {compaRatio.compa_ratio != null ? `${(compaRatio.compa_ratio * 100).toFixed(0)}%` : '—'}</p>
+          <p className="font-medium">Compa-ratio : {compaRatio.compa_ratio != null ? formatPercent(compaRatio.compa_ratio * 100, { decimals: 0 }) : '—'}</p>
           <p className="text-xs text-muted-foreground">
             Salaire {compaRatio.salaire != null ? formatMAD(compaRatio.salaire) : '—'}
             {' · '}bande {compaRatio.mediane != null ? formatMAD(compaRatio.mediane) : '—'} (médiane)

@@ -11,7 +11,7 @@ import {
   Button, Badge, Skeleton, EmptyState, IconButton,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose,
 } from '../ui'
-import { formatNumber } from '../lib/format'
+import { formatDateTime, formatNumber } from '../lib/format'
 
 /* Journal d'activité (Feature G) — réservé au Directeur par défaut
    (permission « journal_activite_voir », octroyable dans Paramètres → Rôles).
@@ -429,7 +429,7 @@ export default function Journal() {
                       return (
                         <tr key={e.id} className="border-b border-border/60 last:border-b-0 hover:bg-accent/40">
                           <td className="px-4 py-2.5 whitespace-nowrap text-muted-foreground">
-                            {e.timestamp_local ? new Date(e.timestamp_local).toLocaleString('fr-FR') : '—'}
+                            {e.timestamp_local ? formatDateTime(e.timestamp_local) : '—'}
                           </td>
                           <td className="px-4 py-2.5 text-foreground">{e.utilisateur}</td>
                           <td className="px-4 py-2.5"><Badge tone="info">{e.action_label}</Badge></td>

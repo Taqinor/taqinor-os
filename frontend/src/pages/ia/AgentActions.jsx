@@ -6,6 +6,7 @@ import {
   Badge, Card, CardContent, EmptyState, Input, Spinner,
   Tabs, TabsList, TabsTrigger, TabsContent, Button,
 } from '../../ui'
+import { formatDateTime } from '../../lib/format'
 
 /* WR8 — Catalogue des actions agentiques (AG1). Liste, dans l'assistant, les
    actions pilotées par le registre que l'utilisateur courant a le droit
@@ -194,7 +195,7 @@ function ActionsHistorique() {
                   {log.undone_at && <Badge tone="neutral">Annulée</Badge>}
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  {log.user || '—'} · {log.confirmed_at ? new Date(log.confirmed_at).toLocaleString('fr-FR') : '—'}
+                  {log.user || '—'} · {log.confirmed_at ? formatDateTime(log.confirmed_at) : '—'}
                 </div>
               </div>
               <Button

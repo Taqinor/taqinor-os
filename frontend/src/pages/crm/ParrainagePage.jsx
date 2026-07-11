@@ -4,13 +4,14 @@
 import { useEffect, useState } from 'react'
 import crmApi from '../../api/crmApi'
 import { Table } from '../reporting/Table'
+import { formatMAD } from '../../lib/format'
 
 const STATUTS = [
   ['en_attente', 'En attente'],
   ['converti', 'Converti'],
   ['recompense_versee', 'Récompense versée'],
 ]
-const dh = (v) => `${Number(v ?? 0).toLocaleString('fr-MA')} DH`
+const dh = (v) => `${formatMAD(v, { withSymbol: false })} DH`
 
 export default function ParrainagePage() {
   // YSERV11 — « ?parrain=<client_id> » pré-remplit le parrain (lien depuis

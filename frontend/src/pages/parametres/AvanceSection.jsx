@@ -6,6 +6,7 @@ import {
   Plus, Trash2, Pencil, Check, X, ChevronUp, ChevronDown,
 } from 'lucide-react'
 import parametresApi from '../../api/parametresApi'
+import { formatMAD, formatDateTime } from '../../lib/format'
 import {
   Card, CardContent, Input, Button, IconButton, Badge,
   Checkbox, Switch, EmptyState, Spinner,
@@ -29,7 +30,7 @@ export default function AvanceSection({
     (Number(form.productible_kwh_kwc) || 0)
     * (Number(form.rendement_global) || 0)
     * (Number(form.onee_tarif_kwh) || 0))
-  const fmtMad = (n) => n.toLocaleString('fr-FR')
+  const fmtMad = (n) => formatMAD(n, { decimals: 0, withSymbol: false })
 
   // L765 — journal d'audit des changements de paramètres (lecture seule).
   const [audit, setAudit] = useState(null) // null = pas encore chargé
@@ -47,9 +48,7 @@ export default function AvanceSection({
   }, [auditSection])
   const fmtVal = (v) => (v === null || v === undefined || v === '' ? '—'
     : (typeof v === 'object' ? JSON.stringify(v) : String(v)))
-  const fmtDate = (s) => {
-    try { return new Date(s).toLocaleString('fr-FR') } catch { return s }
-  }
+  const fmtDate = (s) => formatDateTime(s)
 
   return (
     <>

@@ -23,6 +23,7 @@ import BulkProductBar from './BulkProductBar'
 import ExcelImport from '../../components/ExcelImport'
 import stockApi from '../../api/stockApi'
 import api from '../../api/axios'
+import { formatNumber, formatMAD } from '../../lib/format'
 import { toggleId, pruneSelection, bulkResultMessage } from '../../features/crm/bulk'
 import {
   groupCatalogue, searchCatalogue, sansPrix,
@@ -46,7 +47,7 @@ import { useSavedViews } from '../../hooks/useSavedViews'
 
 const SL_SAVED_VIEWS_KEY = 'taqinor.stock.produits.savedViews'
 
-const fmtNum2 = (n) => Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const fmtNum2 = (n) => formatNumber(n, { decimals: 2 })
 
 // Suggestion de quantité à commander pour un produit en stock bas :
 // vise un réassort à 2× le seuil d'alerte, jamais négative.
@@ -848,7 +849,7 @@ export default function StockList() {
         : '—') },
     { id: 'prix_vente', header: 'Prix vente HT', align: 'right', width: 120, searchable: false,
       accessor: (p) => p.prix_vente,
-      cell: (v) => `${parseFloat(v).toFixed(2)} DH` },
+      cell: (v) => `${formatMAD(v, { withSymbol: false })} DH` },
   ], [])
 
   const archivedRowActions = (p) => [

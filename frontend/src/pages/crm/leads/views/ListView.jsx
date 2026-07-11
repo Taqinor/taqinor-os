@@ -27,6 +27,7 @@ import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
   DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
 } from '../../../../ui'
+import { formatMAD } from '../../../../lib/format'
 
 const MOBILE_QUERY = '(max-width: 768px)'
 
@@ -349,7 +350,7 @@ export default function ListView({
                     placeholder="+ facture"
                     display={lead.facture_hiver != null && lead.facture_hiver !== '' ? (
                       <span>
-                        {Math.round(parseFloat(lead.facture_hiver)).toLocaleString('fr-MA')} MAD
+                        {formatMAD(lead.facture_hiver, { decimals: 0 })}
                       </span>
                     ) : null}
                     onSave={(v) => onInlineSave(lead, 'facture_hiver', v === '' ? null : v)}

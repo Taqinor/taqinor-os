@@ -9,7 +9,7 @@ import {
   Button, Label, Input, Textarea,
 } from '../../ui'
 import { useConfirmDialog } from '../../ui/confirm'
-import { formatDate } from '../../lib/format'
+import { formatDate, formatNumber } from '../../lib/format'
 import rhApi from '../../api/rhApi'
 import {
   EtapeCandidature, StatutPoste, StatutSanction, StatutEvaluation,
@@ -559,7 +559,7 @@ function ComparatifDialog({ candidature, onClose }) {
                 {rows.map((r, i) => (
                   <li key={r.id ?? i} className="flex items-center justify-between rounded-lg border border-border bg-card px-3 py-2 text-sm">
                     <span className="font-medium">{r.nom || `Candidat ${r.id}`}</span>
-                    <Badge tone="info">{r.note_moyenne != null ? Number(r.note_moyenne).toFixed(1) : '—'}</Badge>
+                    <Badge tone="info">{r.note_moyenne != null ? formatNumber(r.note_moyenne, { decimals: 1 }) : '—'}</Badge>
                   </li>
                 ))}
               </ul>

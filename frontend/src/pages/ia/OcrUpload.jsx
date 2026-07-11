@@ -21,6 +21,7 @@ import {
 } from '../../ui'
 import { FileUpload } from '../../ui/FileUpload'
 import { cn } from '../../lib/cn'
+import { formatDateTime } from '../../lib/format'
 import publicapiApi from '../../api/publicapiApi'
 import stockApi from '../../api/stockApi'
 import {
@@ -438,7 +439,7 @@ function DocumentsTab({ canDelete }) {
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-foreground">{doc.filename}</p>
                 <p className="text-xs text-muted-foreground">
-                  {new Date(doc.created_at).toLocaleString('fr-FR')} — {doc.username}
+                  {formatDateTime(doc.created_at)} — {doc.username}
                 </p>
               </div>
               <div className="hidden shrink-0 items-center gap-2 sm:flex">

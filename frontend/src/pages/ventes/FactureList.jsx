@@ -29,7 +29,7 @@ import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
   toast,
 } from '../../ui'
-import { formatMAD, toNumber, normalizeMaPhone } from '../../lib/format'
+import { formatMAD, toNumber, normalizeMaPhone, formatDateTime } from '../../lib/format'
 import { useSavedViews } from '../../hooks/useSavedViews'
 import { DataTable } from '../../ui/datatable'
 
@@ -1039,7 +1039,7 @@ export default function FactureList() {
                 {factureActivites.map(a => (
                   <li key={a.id} className="flex justify-between gap-3">
                     <span className="text-muted-foreground">
-                      {a.created_at ? new Date(a.created_at).toLocaleString('fr-FR') : '—'}
+                      {a.created_at ? formatDateTime(a.created_at) : '—'}
                       {a.user_nom ? ` · ${a.user_nom}` : ''}
                     </span>
                     <span className="text-right">{a.body || a.field_label}</span>
