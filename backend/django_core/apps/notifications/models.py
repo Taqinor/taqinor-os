@@ -176,6 +176,17 @@ class EventType(models.TextChoices):
     # gestionnaires paie que le run peut passer à la génération de l'ordre de
     # virement / la clôture.
     PAIE_RUN_PRET = 'paie_run_pret', 'Run de paie prêt (validé)'
+    # VX213 — handoffs AVAL (exécution) longtemps muets. (a) un chantier est
+    # créé depuis un devis accepté et assigné à un technicien ; (b) un chantier
+    # est réassigné à un NOUVEAU technicien : dans les deux cas l'installateur
+    # est notifié (le plus gros transfert de l'entreprise n'est plus silencieux).
+    CHANTIER_ASSIGNE = 'chantier_assigne', 'Nouveau chantier assigné'
+    # VX213 — le bord RETOUR d'une demande d'achat : à l'approbation OU au refus,
+    # le DEMANDEUR (created_by) est notifié de la décision (motif si refus).
+    DA_DECIDEE = 'da_decidee', "Demande d'achat décidée"
+    # VX213 — SLA : une demande d'achat reste SOUMISE au-delà du seuil sans
+    # décision → relance des approbateurs (miroir de sav_ticket_breaching).
+    DA_SOUMISE_STALE = 'da_soumise_stale', "Demande d'achat en attente (SLA)"
 
 
 class Channel(models.TextChoices):

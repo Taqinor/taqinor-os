@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 WARRANTY_HORIZON_DAYS = 90   # garantie expirant dans les 90 prochains jours
 BREACH_OPEN_DAYS = 7         # ticket ouvert depuis ≥ 7 jours sans résolution
 CHANTIER_DUE_DAYS = 14      # chantier dont date_pose_prevue arrive dans 14 j
+DA_STALE_DAYS = 3            # VX213 — DA soumise sans décision depuis ≥ 3 jours
 
 
 def _companies():
@@ -319,6 +320,58 @@ def _sweep_facture_overdue(company):
         return 0
 
 
+# ── DA_SOUMISE_STALE sweep (VX213) ────────────────────────────────────────────
+
+def _sweep_da_soumise_stale(company):
+    """VX213 (d) — réquisitions d'achat (``installations.DemandeAchat``) restées
+    SOUMISE au-delà de ``DA_STALE_DAYS`` sans décision → relance les
+    approbateurs (managers de la société).
+
+    Miroir de ``_sweep_sav_breaching`` : cross-app lecture seule via le
+    sélecteur ``installations.selectors.demandes_achat_soumises_stale`` (jamais
+    un import du modèle installations). Idempotence stricte : une relance par DA
+    par jour (dédup par ``link`` via ``_already_notified_today``)."""
+    try:
+        from django.utils import timezone as tz
+        from apps.installations.selectors import demandes_achat_soumises_stale
+    except Exception:  # pragma: no cover — installations indisponible
+        return 0
+    try:
+        cutoff = tz.now() - timedelta(days=DA_STALE_DAYS)
+        qs = demandes_achat_soumises_stale(company, cutoff)
+        today = date.today()
+        count = 0
+        for da in qs:
+            try:
+                link = f'/installations/demandes-achat?demande={da.pk}'
+                if _already_notified_today(
+                        company, EventType.DA_SOUMISE_STALE, link):
+                    continue
+                # Ancienneté depuis la dernière touche (soumission).
+                dm = da.date_modification
+                if dm is not None:
+                    anciennete = (today - tz.localdate(dm)).days
+                else:  # pragma: no cover - défensif
+                    anciennete = DA_STALE_DAYS
+                title = "Demande d'achat en attente d'approbation"
+                body = (
+                    f"La demande d'achat « {da.reference} » ({da.objet}) est "
+                    f"soumise depuis {anciennete} jour(s) sans décision."
+                )
+                for mgr in _managers(company):
+                    notify(mgr, EventType.DA_SOUMISE_STALE, title,
+                           body=body, link=link, company=company)
+                count += 1
+            except Exception:  # pragma: no cover
+                logger.warning('sweeps: da_soumise_stale %s échouée',
+                               da.pk, exc_info=True)
+        return count
+    except Exception:  # pragma: no cover
+        logger.warning('sweeps: da_soumise_stale société %s échouée',
+                       getattr(company, 'pk', None), exc_info=True)
+        return 0
+
+
 # ── Annonce sweep (XKB5) ──────────────────────────────────────────────────────
 
 def _sweep_annonces_due(company):
@@ -474,7 +527,7 @@ def sweep_daily():
     tickets SAV en rupture de délai, chantiers à venir, factures en retard
     (YEVNT3), annonces programmées à publier (XKB5), relances de lecture
     obligatoire en retard (XKB6), relances/escalades d'approbations en
-    attente (YEVNT9).
+    attente (YEVNT9), demandes d'achat soumises non décidées (VX213).
     Best-effort par société ; renvoie le total de notifications émises."""
     total = 0
     for company in _companies():
@@ -487,6 +540,7 @@ def sweep_daily():
             total += _sweep_annonces_due(company)
             total += _sweep_annonce_reminders(company)
             total += _sweep_approval_reminders(company)
+            total += _sweep_da_soumise_stale(company)
         except Exception:  # pragma: no cover
             logger.warning('sweeps: société %s échouée globalement',
                            getattr(company, 'pk', None), exc_info=True)

@@ -319,6 +319,14 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         inst = serializer.instance
         _stamp_statut_dates(inst, old.statut)
         activity.log_changes(old, inst, self.request.user)
+        # VX213 (b) — handoff AVAL : réassigner un chantier à un NOUVEAU
+        # technicien le notifie (diff pré/post sur technicien_responsable_id).
+        # `_notifier_chantier_assigne` no-op si absent ; best-effort (ne lève
+        # jamais). On ne notifie QUE sur un vrai changement de titulaire.
+        if (inst.technicien_responsable_id
+                and inst.technicien_responsable_id != old.technicien_responsable_id):
+            from ..services import _notifier_chantier_assigne
+            _notifier_chantier_assigne(inst, inst.technicien_responsable)
         if franchit_vers_planifie and motif_override:
             activity.log_note(
                 inst, self.request.user,

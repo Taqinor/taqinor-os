@@ -285,7 +285,34 @@ def create_installation_from_devis(devis, user, company):
     # (`reserver-stock`) appelle le MÊME service, aucune logique dupliquée.
     if methode_reservation_stock(company) != METHODE_RESERVATION_MANUELLE:
         seed_reservations(inst)
+    # VX213 (a) — handoff AVAL : le plus gros transfert de l'entreprise
+    # (chantier assigné à un technicien) n'est plus silencieux. Notify UNIQUEMENT
+    # à la création (created=True) ; ré-accepter le devis retourne le chantier
+    # existant (created=False) plus haut sans repasser ici — pas de doublon.
+    _notifier_chantier_assigne(inst, inst.technicien_responsable)
     return inst, True
+
+
+def _notifier_chantier_assigne(inst, technicien):
+    """VX213 (a)/(b) — notifie (best-effort, ne lève jamais) le technicien
+    assigné à un chantier (création depuis devis, ou réassignation). No-op si
+    aucun technicien. La société est celle du chantier (jamais d'une requête)."""
+    if technicien is None or not getattr(technicien, 'pk', None):
+        return
+    try:
+        from apps.notifications.services import notify
+        from apps.notifications.models import EventType
+        client_nom = getattr(getattr(inst, 'client', None), 'nom', '') or ''
+        titre = f"Nouveau chantier assigné — {inst.reference}"
+        corps = (f"Le chantier « {inst.reference} »"
+                 + (f" (client : {client_nom})" if client_nom else '')
+                 + " vous est assigné.")
+        notify(
+            technicien, EventType.CHANTIER_ASSIGNE, titre,
+            body=corps, link=f'/installations?installation={inst.pk}',
+            company=inst.company)
+    except Exception:  # pragma: no cover - défensif
+        pass
 
 
 # ── N14 — Réservation de stock sur chantier → consommation à « Installé » ─────
