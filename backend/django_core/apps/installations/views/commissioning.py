@@ -7,13 +7,13 @@ côté serveur (jamais lue du corps) ; le queryset est scopé à la société du
 demandeur.
 """
 from django.conf import settings
-from rest_framework import viewsets, status
+from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import CommissioningRecord, CommissioningIVReading
 from ..serializers_commissioning import (
@@ -23,7 +23,7 @@ from ..serializers_commissioning import (
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class CommissioningRecordViewSet(TenantMixin, viewsets.ModelViewSet):
+class CommissioningRecordViewSet(CompanyScopedModelViewSet):
     """CH3 — fiches de recette IEC 62446-1. Lecture tout rôle, écriture
     Responsable/Admin. Filtrable par ``?installation=<id>``."""
     queryset = CommissioningRecord.objects.select_related(

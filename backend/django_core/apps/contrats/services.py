@@ -28,6 +28,21 @@ Contenu :
   font avancer le workflow étape après étape. Ces opérations gèrent uniquement
   les statuts LOCAUX des étapes (``en_attente`` / ``approuve`` / ``rejete``) et
   ne touchent JAMAIS au ``Contrat.statut`` (préservation des statuts).
+
+- SCA35 — **Pilote « Contrat » du kit ``core.documents``** : ``changer_statut``
+  (réexporté de ``machine_etats``) reste le SEUL point de mutation du statut ;
+  ``Contrat.TRANSITIONS``/``transitions_permises``/``transition_permise``
+  (``models.py``) exposent le MÊME graphe en lecture seule, au format attendu
+  par ``core.documents.DocumentMetier`` — sans dupliquer la garde « ≥2 parties »
+  du kit générique, absente du socle. ``rendre_contrat_pdf`` ci-dessous délègue
+  déjà à ``core.pdf.render_pdf`` (ARC12), le MÊME point d'entrée que le hook du
+  kit ``render_document_pdf`` (SCA33). Aucune numérotation ``core.numbering``
+  n'est câblée sur ``Contrat.reference`` : c'est un champ libre saisi par
+  l'appelant (import, gabarit, ou API) depuis toujours — ``Devis``/``Facture``/
+  ``Avoir`` restent les seuls documents CLM à passer par la fabrique
+  ``create_with_reference`` dans ce module (renouvellement, avoirs) ; wirer une
+  numérotation forcée sur ``Contrat`` lui-même changerait son comportement
+  (règle interdite pour ce pilote — voir ``docs/PLAN.md`` SCA35).
 """
 import html as _html
 import re
@@ -37,6 +52,8 @@ from decimal import Decimal
 from django.db import transaction
 from django.utils import timezone
 
+from core.pdf import render_pdf
+
 from .machine_etats import (  # noqa: F401 — réexport (point d'entrée services)
     TRANSITIONS_AUTORISEES,
     TransitionInterdite,
@@ -44,6 +61,57 @@ from .machine_etats import (  # noqa: F401 — réexport (point d'entrée servic
     statuts_suivants,
     transition_permise,
 )
+
+# ---------------------------------------------------------------------------
+# ARC34 — émission automation générique sur transition de statut du Contrat
+# ---------------------------------------------------------------------------
+#
+# Frontière : même précédent que ``gestion_projet.services`` (appel direct
+# ``apps.automation.engine.evaluate()``, import FONCTION-LOCAL, chemin
+# parallèle documenté dans automation/models.py). L'émission part du SERVICE
+# (jamais du modèle) ; le couple (contrats.contrat, statut) est déclaré
+# automatisable dans ``apps/contrats/platform.py`` (automation_state_fields).
+# Le statut visé est le ``Contrat.Statut`` de DOMAINE, jamais STAGES.py.
+
+
+def emettre_changement_statut_automation(contrat, *, ancien_statut, user=None):
+    """ARC34 — évalue les règles no-code ``RECORD_STATE_CHANGE`` après une
+    transition de statut RÉUSSIE du contrat. Best-effort : aucune erreur ne
+    remonte (la transition, côté appelant, est déjà actée)."""
+    if contrat.statut == ancien_statut:
+        return
+    try:
+        from apps.automation.engine import evaluate
+        from apps.automation.models import TriggerType
+
+        evaluate(
+            TriggerType.RECORD_STATE_CHANGE, contrat, contrat.company,
+            context={
+                'model': 'contrats.contrat', 'field': 'statut',
+                'old_value': ancien_statut, 'new_value': contrat.statut,
+            },
+            user=user)
+    except Exception:  # pragma: no cover - défensif (best-effort)
+        pass
+
+
+_changer_statut_machine = changer_statut
+
+
+def changer_statut(contrat, statut_cible, *, persister=True, user=None):  # noqa: F811 — enveloppe ARC34 du réexport ci-dessus
+    """ARC34 — enveloppe du point d'entrée services : applique la transition
+    GARDÉE (``machine_etats.changer_statut`` — mêmes gardes, mêmes exceptions,
+    comportement inchangé) puis émet le déclencheur automation générique sur un
+    changement RÉELLEMENT persisté. Tous les appelants du service (vue
+    ``changer-statut``, ``activer_si_eligible``, ``signer_contrat``) émettent
+    donc sans modification. ``user`` (optionnel) est journalisé sur les runs."""
+    ancien = contrat.statut
+    _changer_statut_machine(contrat, statut_cible, persister=persister)
+    if persister and contrat.statut != ancien:
+        emettre_changement_statut_automation(
+            contrat, ancien_statut=ancien, user=user)
+    return contrat
+
 
 # ---------------------------------------------------------------------------
 # CONTRAT10 — Génération par fusion (merge tokens)
@@ -197,14 +265,22 @@ def rendre_contrat_pdf(contrat):
     """Rend un PDF INTERNE du contrat (bytes) — hors ``/proposal``.
 
     PDF de travail interne : ce N'EST PAS un PDF de devis client (``/proposal``
-    reste l'unique chemin des PDF de devis). Import de ``weasyprint``
-    FONCTION-LOCAL pour ne pas alourdir le chargement du module ni casser les
-    environnements sans la lib.
-    """
-    import weasyprint  # import local : lib lourde, chargée à la demande
+    reste l'unique chemin des PDF de devis). ARC12 — la plomberie WeasyPrint
+    (import paresseux + ``write_pdf()``) est déléguée au service partagé
+    ``core.pdf.render_pdf`` ; le GABARIT HTML de ``_contrat_html`` reste
+    STRICTEMENT identique, donc le rendu est inchangé à l'octet près.
 
+    SCA35 — c'est le MÊME point de délégation que le hook du kit
+    ``core.documents.render_document_pdf`` (SCA33) : ce dernier n'est qu'un
+    fin emballage de ``core.pdf.render_pdf`` limité à un gabarit Django nommé
+    (``template=``), alors qu'ici le HTML est déjà construit à la main
+    (``_contrat_html``, échappement testé — ``tests/test_pdf_interne.py``) et
+    passé en ``html=``. Appeler le hook du kit exigerait de convertir ce HTML
+    en gabarit Django SANS aucun gain (même fonction sous-jacente), au risque
+    de changer le rendu à l'octet près — préservé tel quel plutôt que dupliqué.
+    """
     html_str = _contrat_html(contrat)
-    return weasyprint.HTML(string=html_str).write_pdf()
+    return render_pdf(html=html_str)
 
 
 def _gabarit_par_defaut(contexte):
@@ -4108,3 +4184,89 @@ def creer_ordres_location_depuis_devis(devis, *, company, created_by=None,
         crees.append(ordre)
 
     return crees
+
+
+# ── ARC13 — import générique (framework `apps.dataimport`) ─────────────────
+
+def _parse_date_import(valeur):
+    """Normalise une valeur de date issue d'un import (str ISO/FR ou objet
+    date/datetime déjà résolu par openpyxl) ; ``None`` si vide/invalide."""
+    import datetime as _dt
+
+    if valeur is None or valeur == '':
+        return None
+    if isinstance(valeur, _dt.datetime):
+        return valeur.date()
+    if isinstance(valeur, _dt.date):
+        return valeur
+    for fmt in ('%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y'):
+        try:
+            return _dt.datetime.strptime(str(valeur).strip(), fmt).date()
+        except (ValueError, AttributeError):
+            continue
+    return None
+
+
+def creer_contrat_import(company, ligne, *, user=None):
+    """ARC13 — Crée (ou saute si doublon) UN contrat depuis une ligne d'import
+    CSV/XLSX (dict de colonnes déjà nettoyées), via ``apps.contrats.services``
+    — jamais le modèle ``Contrat`` directement (contrat du framework
+    ``apps.dataimport``, même motif que ``creer_vehicule_import`` XFLT22).
+
+    Colonnes attendues : ``objet`` (obligatoire), ``reference`` (clé
+    d'idempotence si fournie), ``type_contrat``, ``statut``, ``date_debut``,
+    ``date_fin``, ``montant``, ``devise``. Idempotent sur ``reference`` : une
+    ligne dont la référence est déjà utilisée pour la société est SAUTÉE
+    (retourne ``'doublon'``), jamais mise à jour ni dupliquée — une ligne SANS
+    référence est toujours créée (pas de clé d'idempotence disponible).
+    Retourne ``('cree'|'doublon'|'erreur', message|None)``.
+    """
+    from decimal import Decimal, InvalidOperation
+
+    from .models import Contrat
+
+    objet = str(ligne.get('objet', '') or '').strip()
+    if not objet:
+        return 'erreur', 'Objet manquant.'
+
+    reference = str(ligne.get('reference', '') or '').strip()
+    if reference and Contrat.objects.filter(
+            company=company, reference=reference).exists():
+        return 'doublon', None
+
+    type_brut = str(ligne.get('type_contrat', '') or '').strip().lower()
+    types_valides = {c for c, _ in Contrat.TypeContrat.choices}
+    type_contrat = type_brut if type_brut in types_valides \
+        else Contrat.TypeContrat.AUTRE
+
+    statut_brut = str(ligne.get('statut', '') or '').strip().lower()
+    statuts_valides = {c for c, _ in Contrat.Statut.choices}
+    statut = statut_brut if statut_brut in statuts_valides \
+        else Contrat.Statut.BROUILLON
+
+    montant_brut = ligne.get('montant')
+    montant = Decimal('0')
+    if montant_brut not in (None, ''):
+        raw = str(montant_brut).replace('\xa0', '').replace(' ', '').replace(',', '.')
+        try:
+            montant = Decimal(raw)
+        except (InvalidOperation, ValueError):
+            montant = Decimal('0')
+
+    try:
+        Contrat.objects.create(
+            company=company,
+            reference=reference,
+            objet=objet,
+            type_contrat=type_contrat,
+            statut=statut,
+            date_debut=_parse_date_import(ligne.get('date_debut')),
+            date_fin=_parse_date_import(ligne.get('date_fin')),
+            montant=montant,
+            devise=str(ligne.get('devise', '') or '').strip() or 'MAD',
+            created_by=user if getattr(user, 'pk', None) else None,
+        )
+    except Exception as exc:  # pragma: no cover - défensif, erreur inattendue
+        return 'erreur', str(exc)
+
+    return 'cree', None

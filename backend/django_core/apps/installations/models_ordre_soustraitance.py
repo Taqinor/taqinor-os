@@ -21,12 +21,49 @@ numéroteur anti-collision partagé (``apps.ventes.utils.references`` ; jamais
 Additif & multi-tenant : on AJOUTE une table avec une FK ``company`` posée côté
 serveur, jamais lue du corps de la requête. ``sous_traitant`` et ``chantier``
 sont validés tenant (même société) côté vue.
+
+SCA34 — pilote 1 du kit ``core.documents`` (Groupe SCA). ``OrdreSousTraitance``
+hérite désormais de ``core.documents.DocumentMetier`` (ARC1 ``TenantModel`` +
+contrat statut/transitions du kit) au lieu de ``models.Model`` nu. Conversion
+MIXTE, justifiée champ par champ :
+
+  * ``company`` — REDÉCLARÉE à l'identique (``null=True, blank=True``,
+    ``related_name`` historique inchangé) : la colonne DB existe déjà avec CETTE
+    forme, donc AUCUN changement de schéma pour ce champ (state résolu
+    identique à avant — cf. note ``core.models.TenantModel`` sur la
+    redéclaration ``company``) ;
+  * ``created_at``/``updated_at`` — NOUVEAUX champs hérités de
+    ``TenantModel``/``TimestampedModel`` : ``date_creation``/``date_modification``
+    (auto_now_add/auto_now historiques) sont CONSERVÉS tels quels (aucune
+    suppression, aucun renommage — rétrofit de colonne interdit) ; les deux
+    nouvelles colonnes sont ADDITIVES (``AddField``, nullable via
+    ``auto_now_add``/``auto_now`` — pas de valeur par défaut à fournir sur la
+    table existante grâce au comportement ``auto_now*`` de Django au
+    ``makemigrations``) ;
+  * ``statut`` — le champ abstrait du kit est ``max_length=32`` (vs 20
+    existant) ; ``__init_subclass__`` adosse ``choices``/``default`` à
+    ``Statut`` mais PAS ``max_length`` → ``AlterField`` élargit 20→32
+    (élargissement pur, aucune troncature possible, migration additive/sûre) ;
+    les ``choices`` (mêmes 5 valeurs, même libellés) et le ``default``
+    (BROUILLON) restent bit-identiques.
+  * ``TRANSITIONS`` déclare le MÊME graphe que les gardes de vue historiques
+    (``emettre``/``receptionner``/``cloturer``) — la migration vers
+    ``changer_statut()`` viendra dans une passe ultérieure (hors périmètre
+    SCA34, qui porte sur le SOCLE + chatter + PDF ; les 3 actions de cycle de
+    vie existantes restent le point d'écriture aujourd'hui, inchangées).
+
+Référence ``OST-YYYYMM-NNNN`` INCHANGÉE — même numéroteur anti-collision
+(``core.numbering``, shim ``apps.ventes.utils.references``), même préfixe,
+même padding (4) et période (mensuelle) : test de non-régression de format
+dans ``tests_fg305_ordre_sous_traitance.py``.
 """
 from django.conf import settings
 from django.db import models
 
+from core.documents import DocumentMetier
 
-class OrdreSousTraitance(models.Model):
+
+class OrdreSousTraitance(DocumentMetier):
     """FG305 — un ordre de travaux émis à un sous-traitant chantier.
 
     Relie un ``SousTraitant`` (FG304, prestataire de main-d'œuvre) à un
@@ -35,8 +72,10 @@ class OrdreSousTraitance(models.Model):
     (optionnel) capture le réalisé à la réception. Le ``statut`` suit le cycle de
     vie de l'ordre, distinct de toute autre couche de statut de l'OS.
 
-    Multi-tenant : la société est posée côté serveur. La référence
-    ``OST-YYYYMM-NNNN`` est anti-collision (jamais count()+1)."""
+    SCA34 — socle ``core.documents.DocumentMetier`` (ARC1 ``TenantModel`` +
+    contrat statut/transitions du kit). Multi-tenant : la société est posée
+    côté serveur. La référence ``OST-YYYYMM-NNNN`` est anti-collision (jamais
+    count()+1)."""
 
     class Statut(models.TextChoices):
         # Machine à états PROPRE à l'ordre — distincte de toute autre couche.
@@ -46,6 +85,23 @@ class OrdreSousTraitance(models.Model):
         RECEPTIONNE = 'receptionne', 'Réceptionné'
         CLOS = 'clos', 'Clos'
 
+    # SCA34 — table déclarative du graphe d'états (kit ``DocumentMetier``),
+    # miroir des gardes historiques des actions de vue
+    # (emettre/receptionner/cloturer) HORS ré-application idempotente du même
+    # statut (permise par les vues, non déclarée ici — un document ne
+    # « transite » pas vers lui-même, cf. ``changer_statut``). Documentaire
+    # pour l'instant : les actions de vue restent le point d'écriture (pas de
+    # bascule vers ``changer_statut()`` — périmètre SCA34 = socle+chatter+PDF).
+    TRANSITIONS = {
+        Statut.BROUILLON: {Statut.EMIS},
+        Statut.EMIS: {Statut.EN_COURS, Statut.RECEPTIONNE},
+        Statut.EN_COURS: {Statut.RECEPTIONNE},
+        Statut.RECEPTIONNE: {Statut.CLOS},
+        Statut.CLOS: set(),
+    }
+
+    # Redéclarée à l'identique (SCA34) : conserve le related_name + la
+    # nullabilité historiques — colonne DB inchangée (state-only pour ce champ).
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True,
@@ -74,9 +130,11 @@ class OrdreSousTraitance(models.Model):
         max_digits=12, decimal_places=2, null=True, blank=True)
     date_emission = models.DateField(null=True, blank=True)
     date_echeance = models.DateField(null=True, blank=True)
-    # max_length=20 couvre le plus long code de Statut ('receptionne' = 11).
-    statut = models.CharField(
-        max_length=20, choices=Statut.choices, default=Statut.BROUILLON)
+    # SCA34 — ``statut`` n'est PLUS redéclaré ici : hérité du kit
+    # (``DocumentMetier.statut``, ``max_length=32``) et adossé aux ``choices``/
+    # ``default`` de CETTE sous-classe par ``__init_subclass__`` (mêmes 5
+    # valeurs, même défaut BROUILLON — seul ``max_length`` change, 20→32,
+    # élargissement pur). Cf. docstring de tête pour la justification complète.
     note = models.TextField(blank=True, null=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,

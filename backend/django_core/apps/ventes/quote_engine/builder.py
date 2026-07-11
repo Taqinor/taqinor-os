@@ -65,6 +65,28 @@ def _parse_watt(*texts) -> int | None:
     return None
 
 
+def _normalize_site_host(site: str) -> str:
+    """SCA27 — forme d'AFFICHAGE d'un site tenant (comme le littéral fondateur
+    ``exemple.ma``) : sans schéma, sans ``www.``, sans chemin ni slash final.
+
+    ``https://www.helios.ma/`` → ``helios.ma``. Chaîne vide/None → '' (le moteur
+    garde alors ses littéraux historiques). N'invente jamais de domaine.
+    """
+    s = (site or "").strip()
+    if not s:
+        return ""
+    # Retire le schéma (http/https/…) puis un éventuel www.
+    if "://" in s:
+        s = s.split("://", 1)[1]
+    if s.lower().startswith("www."):
+        s = s[4:]
+    # Garde uniquement l'hôte (coupe au premier / ? #).
+    for sep in ("/", "?", "#"):
+        if sep in s:
+            s = s.split(sep, 1)[0]
+    return s.strip().rstrip("/")
+
+
 def _is_battery(designation: str) -> bool:
     return "batterie" in (designation or "").lower()
 
@@ -942,13 +964,25 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # /BPA/tampon). SURCHARGES non vides seulement ; toute clé absente → le moteur
     # applique son littéral historique, donc le PDF reste byte-identique tant que
     # rien n'est édité. Repli silencieux sur {} si la table n'existe pas encore.
-    doc_texts = {}
-    try:
-        from apps.parametres.models_documents import DocumentTemplates
-        doc_texts = DocumentTemplates.get(
-            company=getattr(devis, "company", None)).as_doc_texts()
-    except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
-        doc_texts = {}
+    #
+    # SCA43 / NTPLT16 — la LECTURE de config est mémorisée PAR REQUÊTE (contextvar,
+    # en amont du moteur) : le dict de surcharges est constant par société le temps
+    # d'une requête, donc la liste des devis ne relit plus DocumentTemplates une
+    # fois par devis (dé-N+1). Hors requête (Celery/PDF) le mémo est inactif → même
+    # lecture qu'avant. Le RENDU ne change pas : ``doc_texts`` est bit-identique.
+    _company = getattr(devis, "company", None)
+
+    def _load_doc_texts():
+        try:
+            from apps.parametres.models_documents import DocumentTemplates
+            return DocumentTemplates.get(company=_company).as_doc_texts()
+        except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
+            return {}
+
+    from core import request_cache
+    doc_texts = request_cache.memoize(
+        ("ventes.devis_doc_texts", getattr(_company, "id", None)),
+        _load_doc_texts)
 
     # DC1 — identité société (multi-tenant) : nom/RC/ICE/RIB/banque/adresse/tel/
     # couleur lus depuis CompanyProfile via le sélecteur parametres. Le moteur
@@ -962,15 +996,29 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
         entreprise = {}
 
+    # ── SCA27 (complément) — site du tenant câblé au moteur résidentiel ───────
+    # ``build_quote_data`` peuplait ``entreprise`` (identité) mais laissait le
+    # renderer retomber sur ``taqinor.ma`` pour la ligne « site » du pied de page
+    # ET la base des fiches produits, faisant fuiter le site du fondateur sur le
+    # PDF d'un autre tenant. On passe désormais SON site quand il est renseigné :
+    #   • ``site_url`` = forme d'affichage de son site (helios.ma) ;
+    #   • ``links["produits"]`` = son site + '/produits' → ``theme.fiche_href``
+    #     omet naturellement les fiches taqinor.ma (base non-taqinor) ; les autres
+    #     liens pointent sur son site (aucun 404 vers le fondateur).
+    # Site ABSENT → aucune clé posée : le renderer garde ses littéraux historiques
+    # (taqinor.ma) et le rendu fondateur/sans-profil reste byte-identique (DC1).
+    _tenant_site = _normalize_site_host(entreprise.get("site_web") or "")
+
     # ── QX6 — CTA de signature : lien tokenisé VERS LA VRAIE proposition ──────
     # L'ancien « taqinor.ma/signer/<ref> » (404) est remplacé par un ShareLink
-    # tokenisé vers la page proposition publique (SITE_URL/proposition/<token>).
-    # Mint/réutilise un ShareLink (lecture seule, expirant) — cela NE CHANGE
-    # AUCUN statut (règle #4). Les autres liens (produits/réalisations/avis/
-    # garanties) dérivent du site public de la société (entreprise.site_url) ;
-    # absents quand aucun site n'est renseigné → le renderer retombe sur son
-    # littéral historique. Repli silencieux : sur toute erreur, le renderer
-    # garde son lien historique (aucun PDF ne casse ici).
+    # tokenisé vers la page proposition publique (<base>/proposition/<token>).
+    # RÈGLE #4 (fusion SCA27) : la BASE du lien est le site DU TENANT quand il
+    # est renseigné (helios.ma) — jamais le domaine fondateur — de sorte qu'aucun
+    # « taqinor.ma » ne fuit dans le PDF d'un autre tenant. Sans site tenant, on
+    # retombe sur ``SITE_URL`` (taqinor.ma) : rendu fondateur inchangé. Mint/
+    # réutilise un ShareLink (lecture seule, expirant) — cela NE CHANGE AUCUN
+    # statut. Repli silencieux : sur toute erreur, le renderer garde son lien
+    # historique (aucun PDF ne casse ici).
     links = {}
     try:
         from django.conf import settings
@@ -978,13 +1026,14 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         _pk = getattr(devis, "pk", None)
         if _pk is not None:
             _share = ShareLink.for_devis(devis)
-            _site = getattr(settings, "SITE_URL", "https://taqinor.ma").rstrip("/")
-            links["signer"] = f"{_site}/proposition/{_share.token}"
+            if _tenant_site:
+                _signer_base = "https://" + _tenant_site
+            else:
+                _signer_base = getattr(
+                    settings, "SITE_URL", "https://taqinor.ma").rstrip("/")
+            links["signer"] = f"{_signer_base}/proposition/{_share.token}"
     except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
         links = {}
-    # Liens site (produits/réalisations/avis/garanties) pilotés par le site
-    # public de la société ; le renderer les complète/dérive du site_url et
-    # supprime ceux sans site. On ne pose ici QUE le signer réel.
 
     # ── QG7 — contact du CRÉATEUR du devis (nom + téléphone) ─────────────────
     # Le bloc contact du PDF affichait uniquement la société (donc toujours le
@@ -1131,9 +1180,10 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # /avis/garanties dérivés du site public par le renderer). Vide → le
         # renderer applique ses littéraux historiques.
         "links": links,
-        # QX6 — site public de la société (pilote les liens du renderer) ; vide →
-        # repli historique « taqinor.ma ».
-        "site_url": (entreprise.get("site_url") or "").strip().rstrip("/"),
+        # QX6/SCA27 — site public de la société (pilote les liens du renderer),
+        # normalisé depuis le champ CANONIQUE ``site_web`` (SCA27). Vide → repli
+        # historique « taqinor.ma ».
+        "site_url": _tenant_site,
         # QG7 — contact du créateur du devis (nom + tél ; repli société).
         # Vide → le moteur retombe sur le contact société (byte-identique).
         "seller": seller,
@@ -1167,6 +1217,23 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     )
     if financing is not None:
         data["financing"] = financing
+
+    # ── SCA27 (complément) — site du tenant : ligne site + base fiches ────────
+    # Posé UNIQUEMENT quand le profil porte un site : le renderer résidentiel lit
+    # alors ``data["site_url"]``/``data["links"]`` (au lieu de ``taqinor.ma``),
+    # et ``theme.fiche_href`` omet les fiches taqinor.ma (base non-taqinor). Site
+    # absent → aucune clé → littéraux moteur historiques (byte-identique DC1).
+    # QX6 : on PRÉSERVE le lien signer tokenisé (ShareLink) déjà minté ci-dessus —
+    # il pointe sur la VRAIE proposition publique (jamais un « /signer/<ref> » 404).
+    if _tenant_site:
+        data["site_url"] = _tenant_site
+        data["links"] = {
+            "realisations": f"{_tenant_site}/realisations",
+            "avis": f"{_tenant_site}/realisations",
+            "produits": f"{_tenant_site}/produits",
+            "garanties": f"{_tenant_site}/garanties",
+            "signer": links.get("signer") or f"{_tenant_site}/signer/{devis.reference}",
+        }
 
     # ── QJ29 — Multi-propriétés (additif, tout optionnel) ────────────────────
     # (A) ×N villas identiques : multiplicateur whole-quote (défaut 1) qui met à

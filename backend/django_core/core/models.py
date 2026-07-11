@@ -20,6 +20,69 @@ class TimestampedModel(models.Model):
 
 
 # ---------------------------------------------------------------------------
+# ARC1 — Socle multi-tenant : ``TenantModel`` (FK company + timestamps).
+#
+# Constat (audit noyau) : la paire « FK ``company`` posée à la main + horodatage
+# ``created_at``/``updated_at`` » est réécrite dans des dizaines de fichiers
+# alors qu'aucune classe abstraite ne la regroupait. ``TenantModel`` factorise
+# EXACTEMENT ce socle :
+#   * hérite de ``TimestampedModel`` (``created_at`` / ``updated_at``) ;
+#   * ajoute une FK ``company`` vers ``authentication.Company`` (app de
+#     FONDATION — ``core`` reste une couche de base, contrat import-linter
+#     ``core-foundation-is-a-base-layer`` ; aucun import d'app métier).
+#
+# RÈGLE PLAYBOOK (à respecter pour tout NOUVEAU modèle) :
+#   Tout NOUVEAU modèle métier multi-société hérite de ``core.models.TenantModel``
+#   plutôt que de redéclarer à la main la FK ``company`` + les timestamps. Il
+#   suffit alors de définir ses propres champs (et un ``related_name`` explicite
+#   si l'accesseur inverse par défaut ne convient pas — voir ci-dessous).
+#
+# ACCESSEUR INVERSE (``related_name``) — NE JAMAIS renommer un accesseur existant.
+#   Le ``related_name`` par défaut ``'%(app_label)s_%(class)s_set'`` garantit
+#   que deux modèles concrets distincts n'entrent jamais en collision sur
+#   ``company.<...>`` (chaque sous-classe reçoit un accesseur unique). Un modèle
+#   CONVERTI depuis une FK ``company`` écrite à la main DOIT conserver son
+#   ``related_name`` EXACT : pour cela il REDÉCLARE simplement le champ
+#   ``company`` dans son propre corps (Django autorise une sous-classe concrète à
+#   redéfinir un champ hérité d'une base abstraite) tout en gagnant les
+#   timestamps de la base — jamais un renommage d'accesseur (qui casserait le
+#   code appelant ``company.<ancien_related_name>``).
+#
+# Le garde-fou de complétude de la conversion de masse reste YDATA2 (nommé, non
+# dupliqué ici) : ARC1 ne fait que poser la classe + convertir des pilotes dont
+# la migration générée est vide/state-only.
+# ---------------------------------------------------------------------------
+
+
+class TenantModel(TimestampedModel):
+    """Socle abstrait multi-tenant : FK ``company`` + horodatage (ARC1).
+
+    Hériter de ce mixin donne, en une ligne, la paire multi-société standard :
+      * ``company`` — FK obligatoire vers ``authentication.Company`` ;
+      * ``created_at`` / ``updated_at`` — hérités de ``TimestampedModel``.
+
+    GÉNÉRIQUE : ne référence AUCUNE app métier (seulement ``authentication``,
+    une app de fondation) — ``core`` reste une couche de base.
+
+    ``related_name`` par défaut ``'%(app_label)s_%(class)s_set'`` : chaque
+    sous-classe concrète reçoit un accesseur inverse unique. Un modèle converti
+    qui doit garder un ``related_name`` historique redéclare le champ ``company``
+    dans son propre corps (voir la note PLAYBOOK ci-dessus) — jamais de
+    renommage d'accesseur.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='%(app_label)s_%(class)s_set',
+        verbose_name='Société',
+    )
+
+    class Meta:
+        abstract = True
+
+
+# ---------------------------------------------------------------------------
 # FG388 — Corbeille / restauration (soft-delete + undo), standard partagé.
 #
 # Fondation GÉNÉRIQUE : ``SoftDeleteModel`` est un mixin ABSTRAIT que n'importe
@@ -29,6 +92,25 @@ class TimestampedModel(models.Model):
 # app métier (le ``deleted_by`` pointe ``authentication.CustomUser``, une app de
 # fondation). Le journal concret de corbeille/undo est ``DeletionRecord``
 # (plus bas), keyé via ``contenttypes`` — toujours sans import métier.
+#
+# ── ARC15 — Inventaire d'adoption (recensement du 2026-07-10) ──────────────
+# Adoption réelle du mixin ``SoftDeleteModel`` par les modèles métier :
+#   NOMBRE DE MODÈLES QUI EN HÉRITENT : 0 (aucune app, sur les 35+ recensées).
+# Les seules références dans le dépôt sont l'INFRASTRUCTURE, pas de l'adoption :
+#   * ``core/models.py`` — définition du mixin + ``DeletionRecord`` (ce fichier) ;
+#   * ``core/trash.py``  — service corbeille/undo qui consomme l'interface
+#     DYNAMIQUEMENT (``obj.restore()`` / ``hasattr``), sans importer d'app ;
+#   * ``core/tests/test_trash.py`` — teste la STRUCTURE du mixin lui-même ;
+#   * un commentaire dans ``core/models.py`` (YOPSB3, ~l.1574) et la migration
+#     ``core/migrations/0021_...`` qui notent EXPLICITEMENT un soft-delete
+#     « léger » distinct (champ direct, PAS ce mixin).
+# Le socle est donc construit + testé + prêt, mais VOLONTAIREMENT non encore
+# adopté par le domaine.
+#
+# DÉCISION ARC15 : la vague d'adoption du soft-delete (YDATA17) s'implémente sur
+# CE mixin ``core.SoftDeleteModel`` (ne JAMAIS en créer un nouveau). Les modèles
+# pilotes d'adoption appartiennent à YDATA17, pas à ARC1/ARC15 : ici on se
+# contente d'acter le socle + de recenser l'adoption (nulle à ce jour).
 # ---------------------------------------------------------------------------
 
 

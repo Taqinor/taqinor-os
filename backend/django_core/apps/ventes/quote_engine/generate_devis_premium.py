@@ -337,6 +337,10 @@ ENT_NOM_MARQUE = "TAQINOR"                       # nom affiché dans les footers
 ENT_CONTACT_LINE = ("contact@taqinor.com &nbsp;&#183;&nbsp; "
                     "+212&#160;6&#160;61&#160;85&#160;04&#160;10 "
                     "&nbsp;&#183;&nbsp; www.taqinor.ma")
+# Pied de la page ETUDE (email · site, sans téléphone) — littéral historique
+# exact (SCA27 : reconstruit par _apply_entreprise dès qu’un email ou un site
+# de profil est fourni — plus de fuite du contact fondateur sur la page étude).
+ENT_ETUDE_CONTACT = "contact@taqinor.com &nbsp;·&nbsp; www.taqinor.ma"
 # Ligne légale du footer page 3 (raison sociale · RC · ICE · capital · siège).
 ENT_LEGAL_LINE = ("Taqinor Solutions SARLAU &middot; RC 691213 &middot; "
                   "ICE 003799642000067 &middot; Capital 100&#8239;000 MAD "
@@ -352,6 +356,7 @@ ENT_RIB_LINE = ('<strong style="color:{cg7}">TAQINOR SOLUTION</strong> '
 # pour qu'aucune identité de tenant ne persiste d'un rendu au suivant.
 _ENT_DEFAULT_NOM_MARQUE = ENT_NOM_MARQUE
 _ENT_DEFAULT_CONTACT_LINE = ENT_CONTACT_LINE
+_ENT_DEFAULT_ETUDE_CONTACT = ENT_ETUDE_CONTACT
 _ENT_DEFAULT_LEGAL_LINE = ENT_LEGAL_LINE
 _ENT_DEFAULT_RIB_LINE = ENT_RIB_LINE
 
@@ -365,11 +370,13 @@ def _apply_entreprise(ent):
     le devis d'un autre tenant n'affiche plus jamais l'identité de Taqinor.
     """
     global ENT_NOM_MARQUE, ENT_CONTACT_LINE, ENT_LEGAL_LINE, ENT_RIB_LINE
+    global ENT_ETUDE_CONTACT
     global CA
     # Réinitialise TOUJOURS depuis les défauts d'abord : pas de fuite d'un rendu
     # précédent (les globals sont mutés sous _RENDER_LOCK).
     ENT_NOM_MARQUE = _ENT_DEFAULT_NOM_MARQUE
     ENT_CONTACT_LINE = _ENT_DEFAULT_CONTACT_LINE
+    ENT_ETUDE_CONTACT = _ENT_DEFAULT_ETUDE_CONTACT
     ENT_LEGAL_LINE = _ENT_DEFAULT_LEGAL_LINE
     ENT_RIB_LINE = _ENT_DEFAULT_RIB_LINE
     CA = _CA_DEFAULT
@@ -397,6 +404,20 @@ def _apply_entreprise(ent):
     if email or tel:
         parts = [p for p in (_esc(email), _esc(tel)) if p]
         ENT_CONTACT_LINE = " &nbsp;&#183;&nbsp; ".join(parts)
+
+    # Pied de page ÉTUDE : reconstruit dès QU'UN contact quelconque est fourni
+    # (email, site OU téléphone) — même sémantique que la ligne de contact
+    # ci-dessus (SCA27). On préfère email + site ; si les deux manquent mais
+    # qu'un téléphone est présent (profil PME tel-seul), on affiche le tél afin
+    # de ne JAMAIS laisser le littéral fondateur près d'un nom de tenant. Seul
+    # le cas « aucun contact » (nom-seul / DC1) garde le défaut Taqinor, donc le
+    # rendu du fondateur (email+tél+site) reste byte-identique.
+    site_web = (ent.get("site_web") or "").strip()
+    if email or tel or site_web:
+        etude_parts = [p for p in (_esc(email), _esc(site_web)) if p]
+        if not etude_parts and tel:
+            etude_parts = [_esc(tel)]
+        ENT_ETUDE_CONTACT = " &nbsp;·&nbsp; ".join(etude_parts)
 
     # Ligne légale : raison sociale · RC · ICE · IF · Patente · Siège.
     legal_bits = []
@@ -1979,7 +2000,7 @@ def page_etude():
 
   <div style="background:{CN};padding:6px 24px 5px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;">
     <div style="font-size:9pt;font-weight:800;color:{CA};letter-spacing:1px;">{ENT_NOM_MARQUE}</div>
-    <div style="font-size:7pt;color:#888;">contact@taqinor.com &nbsp;\u00b7&nbsp; www.taqinor.ma</div>
+    <div style="font-size:7pt;color:#888;">{ENT_ETUDE_CONTACT}</div>
     <div style="font-size:7pt;color:#888;">\u00c9tude \u2014 R\u00e9f.\u00a0{REF}</div>
   </div>
 </div>

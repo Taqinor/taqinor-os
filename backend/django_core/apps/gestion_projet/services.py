@@ -1347,15 +1347,28 @@ class DevisVersProjetError(Exception):
 def _prochain_code_projet(company):
     """Code ``Projet`` sûr : plus haut suffixe utilisé + 1 (JAMAIS count()+1).
 
-    Radical ``PRJ-<année>-`` (reset annuel), même politique anti-collision que
-    ``apps/ventes/utils/references.py`` (pas de dépendance croisée : logique
-    dupliquée localement, modèle différent).
+    ARC7 — ``Projet.code`` (``unique_together = [('company', 'code')]``) n'est
+    PAS un champ ``reference`` : ``core.numbering.next_reference`` filtre
+    littéralement sur ``reference__startswith``, donc il ne s'applique pas tel
+    quel à ce modèle. On réutilise ses helpers de bucket (``_bucket_prefix``/
+    ``_period_segment`` — même radical ``PRJ-<année>-``, reset annuel, déjà
+    ré-exportés par le shim ``apps/ventes/utils/references.py``) pour rester
+    à l'octet près du même algorithme plus-haut-utilisé+1, et on ajoute la
+    protection race-safe qui manquait : verrouille la ligne ``Company``
+    (``select_for_update``) le temps du calcul pour sérialiser les créations
+    concurrentes — même patron que ``prochain_numero_situation`` ci-dessous
+    (verrou sur la ligne ancre faute de ligne ``Projet`` existante à
+    verrouiller pour une CRÉATION). Doit être appelé dans une transaction
+    atomique par l'appelant (``creer_projet_depuis_devis`` l'est via
+    ``@transaction.atomic``).
     """
     import re
-    from django.utils import timezone
 
-    annee = timezone.now().strftime('%Y')
-    prefix = f'PRJ-{annee}-'
+    from authentication.models import Company
+    from core.numbering import _bucket_prefix
+
+    Company.objects.select_for_update().get(pk=company.pk)
+    prefix = _bucket_prefix('PRJ', 'yearly')
     refs = Projet.objects.filter(
         company=company, code__startswith=prefix).values_list(
             'code', flat=True)
@@ -1365,7 +1378,7 @@ def _prochain_code_projet(company):
         m = suffix_re.search(ref)
         if m:
             highest = max(highest, int(m.group(1)))
-    return f'{prefix}{highest + 1:04d}'
+    return f'{prefix}-{highest + 1:04d}'
 
 
 @transaction.atomic
@@ -1520,6 +1533,12 @@ def notifier_transition_projet(
     interne) — la transition de statut qui a appelé cette fonction n'est
     JAMAIS bloquée. Variables ``{nom_projet}``/``{date}`` disponibles dans le
     corps des modèles de message (substitution côté automation).
+
+    ARC37 — émet AUSSI ``core.events.projet_status_change`` sur le bus
+    (double émission ASSUMÉE et documentée pendant la transition : le chemin
+    automation EXISTANT reste inchangé, le bus s'ajoute pour ouvrir un
+    abonné DÉCOUPLÉ — ``notifications`` — sans jamais importer
+    ``apps.automation`` depuis un abonné cross-app).
     """
     if ancien_statut == nouveau_statut:
         return
@@ -1537,6 +1556,15 @@ def notifier_transition_projet(
             },
             user=user,
         )
+    except Exception:  # pragma: no cover - défensif, ne bloque jamais
+        pass
+
+    try:
+        from core.events import projet_status_change
+
+        projet_status_change.send(
+            sender=None, projet=projet, company=projet.company, user=user,
+            ancien_statut=ancien_statut, nouveau_statut=nouveau_statut)
     except Exception:  # pragma: no cover - défensif, ne bloque jamais
         pass
 
@@ -2543,3 +2571,44 @@ def creer_tache_depuis_activite(activite, *, projet_id, company=None):
         description=getattr(activite, 'note', '') or '',
         date_fin_prevue=getattr(activite, 'due_date', None),
         statut=Tache.Statut.A_FAIRE)
+
+
+# ── ARC22 — chemin de création VIA le master sous-traitant unifié DC34 ──────
+def creer_sous_traitant_via_master(
+        *, company, user=None, nom, specialite='', contact='', telephone='',
+        email='', actif=True):
+    """ARC22 — crée un ``SousTraitant`` (carnet projet local) EN CRÉANT AUSSI
+    son pendant sur le référentiel unifié DC34 (``stock.Fournisseur``
+    type=service + ``SousTraitantProfile``), via ``stock.services.
+    create_sous_traitant`` — frontière cross-app respectée : ce module
+    n'importe JAMAIS ``apps.stock.models``, uniquement son point d'entrée
+    ``services.py`` (import fonction-local, CLAUDE.md).
+
+    C'est le chemin de création RECOMMANDÉ pour tout NOUVEAU sous-traitant
+    (corrige la régression PROJ38 constatée par ARC22 : avant cette fonction,
+    le carnet ``gestion_projet`` ne posait jamais le lien ``fournisseur``).
+    L'ancien chemin de création directe (``SousTraitantViewSet.create``) reste
+    disponible SANS lien — additif, aucune rupture de compat.
+
+    ``specialite`` (texte libre du carnet projet) n'a pas de correspondance
+    STRICTE avec ``SousTraitantProfile.Metier`` (enum fermé) : le mapping
+    (insensible à la casse, repli ``AUTRE`` si aucun métier ne correspond,
+    comportement jamais bloquant) est délégué à ``stock.services.
+    create_sous_traitant`` (``specialite=``) — la connaissance de l'enum
+    ``Metier`` reste côté ``stock``.
+
+    Renvoie le ``SousTraitant`` (carnet local) créé, avec ``fournisseur`` posé.
+    """
+    from apps.stock import services as stock_services
+
+    from .models import SousTraitant
+
+    fournisseur = stock_services.create_sous_traitant(
+        company=company, user=user, nom=nom, specialite=specialite,
+        contact_personne=contact or None, email=email or None,
+        telephone=telephone or None, actif=actif)
+
+    return SousTraitant.objects.create(
+        company=company, nom=nom, specialite=specialite, contact=contact,
+        telephone=telephone, email=email, actif=actif,
+        fournisseur=fournisseur)

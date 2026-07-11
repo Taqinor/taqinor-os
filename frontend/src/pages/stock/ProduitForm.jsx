@@ -9,6 +9,7 @@ import {
   createCategorie,
   createFournisseur,
 } from '../../features/stock/store/stockSlice'
+import { useIsAdmin } from '../../hooks/useHasPermission'
 import stockApi from '../../api/stockApi'
 import {
   Button, Badge,
@@ -246,7 +247,7 @@ function PrixFournisseursSection({ produitId, fournisseurs, isAdmin = false }) {
 export default function ProduitForm({ produit = null, onClose, onSaved }) {
   const dispatch = useDispatch()
   const { categories, fournisseurs, produits } = useSelector(s => s.stock)
-  const isAdmin = useSelector(s => s.auth.role) === 'admin'
+  const isAdmin = useIsAdmin()
   const isEdit = !!produit
 
   const [saving, setSaving] = useState(false)

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useSelector } from 'react-redux'
+import { useHasPermission, useIsAdmin } from '../../hooks/useHasPermission'
 import { Zap, ShieldAlert, ArrowRightLeft, Lock, History, Undo2 } from 'lucide-react'
 import iaApi from '../../api/iaApi'
 import {
@@ -216,11 +216,12 @@ function ActionsHistorique() {
 }
 
 export default function AgentActions() {
-  const role = useSelector((s) => s.auth.role)
-  const roleNom = useSelector((s) => s.auth.role_nom)
   // YHARD2 — le journal des actions IA est un réglage interne sensible,
-  // réservé admin/Directeur (le backend re-vérifie : IsAdminRole).
-  const canViewHistorique = role === 'admin' || roleNom === 'Directeur'
+  // réservé admin/Directeur (le backend re-vérifie : IsAdminRole). Les deux
+  // hooks sont appelés inconditionnellement (règle des hooks) puis combinés.
+  const isAdmin = useIsAdmin()
+  const isDirecteur = useHasPermission(null, ['Directeur'])
+  const canViewHistorique = isAdmin || isDirecteur
 
   return (
     <div className="page" data-testid="agent-actions">

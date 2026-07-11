@@ -11,7 +11,7 @@ Run:
 from decimal import Decimal
 from unittest.mock import patch
 
-from django.test import TestCase, tag
+from django.test import SimpleTestCase, TestCase, tag
 from django.contrib.auth import get_user_model
 
 from apps.crm.models import Client
@@ -1819,79 +1819,340 @@ class TestResidentialSingleOptionGate(TestCase):
         self.assertIn('<small>ajoute</small>', html)
 
 
+# ─── SCA27 — pied de page + liens du PDF résidentiel pilotés par CompanyProfile ─
+
+
+class TestResidentialFooterBranding(SimpleTestCase):
+    """SCA27 — le pied de page résidentiel et les liens fiches ne gravent plus
+    « TAQINOR · contact@taqinor.com · +212 6 61 85 04 10 » ni taqinor.ma pour
+    tout tenant : ils sont pilotés par ``data["entreprise"]`` (CompanyProfile).
+    Fonctions pures : aucune DB, aucun rendu PDF."""
+
+    # La chaîne EXACTE gravée aujourd'hui (référence byte-à-byte fondateur).
+    FOUNDER_FOOTER = ('<b>TAQINOR</b> &nbsp;·&nbsp; contact@taqinor.com '
+                      '&nbsp;·&nbsp; +212 6 61 85 04 10')
+
+    def test_footer_default_is_exact_founder_string(self):
+        """Sans ``entreprise`` (forme des données d'échantillon), le pied de page
+        reproduit EXACTEMENT la chaîne fondateur historique."""
+        from apps.ventes.quote_engine.residential import theme
+        foot = theme.page_footer({'ref': 'DEV-1'})
+        self.assertIn(self.FOUNDER_FOOTER, foot)
+
+    def test_footer_founder_profile_is_char_for_char_identical(self):
+        """Quand le profil porte les valeurs fondateur, la ligne est identique."""
+        from apps.ventes.quote_engine.residential import theme
+        data = {'ref': 'DEV-1', 'entreprise': {
+            'nom': 'TAQINOR', 'email': 'contact@taqinor.com',
+            'telephone': '+212 6 61 85 04 10'}}
+        self.assertIn(self.FOUNDER_FOOTER, theme.page_footer(data))
+
+    def test_footer_tenant_carries_its_own_coordinates(self):
+        """Un tenant #2 : SES coordonnées, jamais celles du fondateur."""
+        from apps.ventes.quote_engine.residential import theme
+        data = {'ref': 'DEV-2', 'entreprise': {
+            'nom': 'Helios SARL', 'email': 'hello@helios.ma',
+            'telephone': '+212 5 22 00 00 00'}}
+        foot = theme.page_footer(data)
+        self.assertIn('<b>Helios SARL</b>', foot)
+        self.assertIn('hello@helios.ma', foot)
+        self.assertIn('+212 5 22 00 00 00', foot)
+        self.assertNotIn('TAQINOR', foot)
+        self.assertNotIn('contact@taqinor.com', foot)
+
+    def test_footer_nom_only_keeps_founder_contact_line(self):
+        """Nom fourni sans contact → contact fondateur préservé (comme DC1)."""
+        from apps.ventes.quote_engine.residential import theme
+        foot = theme.page_footer(
+            {'ref': 'DEV-3', 'entreprise': {'nom': 'Helios SARL'}})
+        self.assertIn('<b>Helios SARL</b>', foot)
+        self.assertIn('contact@taqinor.com &nbsp;·&nbsp; +212 6 61 85 04 10',
+                      foot)
+
+    def test_footer_html_escapes_tenant_name(self):
+        from apps.ventes.quote_engine.residential import theme
+        foot = theme.page_footer(
+            {'ref': 'DEV-4', 'entreprise': {'nom': 'A & B <Co>'}})
+        self.assertIn('A &amp; B &lt;Co&gt;', foot)
+        self.assertNotIn('<Co>', foot)
+
+    def test_fiche_href_kept_for_taqinor_base(self):
+        """Base taqinor.ma (fondateur) → lien fiche conservé (byte-identique)."""
+        from apps.ventes.quote_engine.residential import theme
+        self.assertEqual(
+            theme.fiche_href('Panneau Jinko 710W', 'Jinko'),
+            'https://taqinor.ma/produits/jinko-710')
+
+    def test_fiche_href_omitted_for_non_taqinor_base(self):
+        """Base d'un autre site → aucun lien fiche (omis) : le PDF d'un tenant
+        ne pointe pas vers les fiches produits du fondateur."""
+        from apps.ventes.quote_engine.residential import theme
+        self.assertEqual(
+            theme.fiche_href('Panneau Jinko 710W', 'Jinko',
+                             produits_base='helios.ma/produits'),
+            '')
+
+
 @tag('pdf')
-class TestResidentialMultiTenantIdentity(TestCase):
-    """QX4 — le rendu résidentiel par défaut ne fuit plus l'identité TAQINOR.
+class TestResidentialFooterBrandingRendered(TestCase):
+    """SCA27 (harnais rendu) — un devis résidentiel d'un tenant #2 porte SES
+    coordonnées dans le pied de page des 3 pages, jamais celles du fondateur."""
 
-    Sans profil enrichi (entreprise vide) tous les littéraux Taqinor restent
-    (byte-équivalent-en-contenu pour Taqinor) ; avec le profil d'une AUTRE
-    société, c'est SON identité qui apparaît partout (footer, bande légale,
-    « Pourquoi … », signature, liens) — plus jamais celle de Taqinor.
-    """
-
-    def _html(self, entreprise=None, links=None):
+    def test_tenant_footer_and_no_founder_datasheet_links(self):
+        from weasyprint import HTML
         from apps.ventes.quote_engine.residential import renderer, render
         data = _residential_sample_data()
-        if entreprise is not None:
-            data["entreprise"] = entreprise
-        if links is not None:
-            data["links"] = links
+        # Identité d'un tenant #2 + base produits de SON site.
+        data['entreprise'] = {
+            'nom': 'Helios SARL', 'email': 'hello@helios.ma',
+            'telephone': '+212 5 22 00 00 00'}
+        data['links'] = {'produits': 'helios.ma/produits',
+                         'realisations': 'helios.ma/realisations',
+                         'avis': 'helios.ma/realisations',
+                         'garanties': 'helios.ma/garanties',
+                         'signer': 'helios.ma/signer'}
+        data['site_url'] = 'helios.ma'
         d = renderer._augment(data)
-        return render.build_html(d)
-
-    def test_default_keeps_taqinor_identity(self):
-        """entreprise absent/vide → tous les littéraux Taqinor historiques."""
-        html = self._html()
-        self.assertIn('TAQINOR', html)                       # marque footer/sig
-        self.assertIn('TAQINOR Solutions SARLAU', html)      # bande légale
-        self.assertIn('003799642000067', html)               # ICE Taqinor
-        self.assertIn('691213', html)                        # RC Taqinor
-        self.assertIn('M. Reda Kasri', html)                 # gérant Taqinor
-        self.assertIn('contact@taqinor.com', html)           # email Taqinor
-        self.assertIn('Pourquoi TAQINOR', html)
-
-    def test_second_company_identity_everywhere(self):
-        """Un autre tenant voit SON identité partout ; zéro fuite Taqinor."""
-        ent = {
-            "nom": "SolarPro Maroc", "email": "hello@solarpro.ma",
-            "telephone": "+212 5 22 00 00 00", "ice": "111222333444555",
-            "rc": "998877", "capital": "500 000,00 MAD",
-            "gerant": "Mme Amina Berrada", "adresse": "Marrakech",
-            "site_url": "solarpro.ma",
-        }
-        html = self._html(entreprise=ent)
-        # Identité du tenant présente partout
-        self.assertIn('SOLARPRO MAROC', html)                # marque (upper)
-        self.assertIn('SolarPro Maroc', html)                # raison sociale
-        self.assertIn('hello@solarpro.ma', html)
-        self.assertIn('+212 5 22 00 00 00', html)
-        self.assertIn('111222333444555', html)               # ICE tenant
-        self.assertIn('998877', html)                        # RC tenant
-        self.assertIn('500 000,00 MAD', html)                # capital tenant
-        self.assertIn('Mme Amina Berrada', html)             # gérant tenant
-        self.assertIn('solarpro.ma', html)
-        self.assertIn('Pourquoi SolarPro Maroc', html)
-        # AUCUNE fuite de l'identité Taqinor
-        self.assertNotIn('TAQINOR Solutions SARLAU', html)
-        self.assertNotIn('003799642000067', html)            # ICE Taqinor
-        self.assertNotIn('691213', html)                     # RC Taqinor
-        self.assertNotIn('M. Reda Kasri', html)
+        html = render.build_html(d)
+        # Pied de page : coordonnées du tenant, aucune trace fondateur.
+        self.assertIn('Helios SARL', html)
+        self.assertIn('hello@helios.ma', html)
         self.assertNotIn('contact@taqinor.com', html)
-        # les liens produits/réalisations pointent vers le site du tenant
-        self.assertIn('solarpro.ma/produits', html)
-        self.assertIn('solarpro.ma/realisations', html)
-        self.assertNotIn('taqinor.ma/produits', html)
+        self.assertNotIn('<b>TAQINOR</b>', html)
+        # Liens fiches produits du fondateur omis (base non-taqinor.ma).
+        self.assertNotIn('taqinor.ma/produits/', html)
+        # Le PDF se rend (octets valides).
+        doc = HTML(string=html).render()
+        self.assertEqual(len(doc.pages), 3)
 
-    def test_partial_profile_falls_back_field_by_field(self):
-        """Un profil partiel : les champs renseignés priment, les vides
-        retombent sur le littéral Taqinor correspondant."""
-        html = self._html(entreprise={"nom": "EnerVerte", "ice": "555000555000"})
-        self.assertIn('ENERVERTE', html)                     # marque du tenant
-        self.assertIn('555000555000', html)                  # ICE du tenant
-        # champs non renseignés → repli Taqinor
-        self.assertIn('M. Reda Kasri', html)                 # gérant (repli)
-        self.assertIn('contact@taqinor.com', html)           # email (repli)
-        self.assertNotIn('003799642000067', html)            # ICE Taqinor absent
+    def test_founder_render_unchanged_when_no_entreprise(self):
+        """Sans ``entreprise`` (rendu fondateur historique), le pied de page
+        garde la chaîne exacte et les liens fiches taqinor.ma."""
+        from apps.ventes.quote_engine.residential import renderer, render
+        d = renderer._augment(_residential_sample_data())
+        html = render.build_html(d)
+        self.assertIn('<b>TAQINOR</b> &nbsp;·&nbsp; contact@taqinor.com '
+                      '&nbsp;·&nbsp; +212 6 61 85 04 10', html)
+        self.assertIn('taqinor.ma/produits/', html)
+
+
+# ─── SCA27 — pied de page ÉTUDE (page 4) piloté par CompanyProfile ─────────────
+
+
+@tag('pdf')
+class TestEtudeFooterBranding(TestCase):
+    """SCA27 (page étude) — le pied de page de la page d'étude
+    d'autoconsommation (premium full + include_etude, industriel) ne grave plus
+    ``contact@taqinor.com`` / ``www.taqinor.ma`` (le contact fondateur) pour un
+    tenant qui n'a qu'un téléphone (email et site vides) : la ligne est
+    reconstruite dès qu'un contact quelconque est fourni. Le rendu fondateur
+    (email + tél + site) reste byte-identique."""
+
+    FULL_LINES = [
+        ('Onduleur réseau 10kW', '1', '11700'),
+        ('Panneau mono 550W', '14', '1100'),
+        ('Structures acier', '14', '375'),
+        ('Installation', '1', '4000'),
+    ]
+
+    ETUDE_PARAMS = {
+        'kwc': 9.94, 'production_annuelle': 12486, 'conso_annuelle': 120000,
+        'taux_autoconso': 100, 'taux_couverture': 10.4,
+        'economies_annuelles': 21851, 'payback': 3.0, 'prix_kwc': 6543,
+        'prod_mensuelle': [1040] * 12, 'conso_mensuelle': [10000] * 12,
+    }
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+        self.devis = make_devis(
+            self.company, self.user, self.client_obj, self.FULL_LINES,
+            reference='DEV-QE-ETUDE')
+        self.devis.mode_installation = 'industriel'
+        self.devis.etude_params = self.ETUDE_PARAMS
+        self.devis.save()
+
+    def _etude_page_html(self, entreprise):
+        """Rend le PDF premium+étude en injectant ``entreprise`` et renvoie le
+        fragment HTML de la page d'étude (à partir du titre « Étude
+        d'autoconsommation ») — la seule page portant ``ENT_ETUDE_CONTACT``."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
+        data = build_quote_data(self.devis, {'include_etude': True})
+        data['entreprise'] = entreprise
+        cap = {}
+        orig = G._render_pdf_weasyprint
+        G._render_pdf_weasyprint = lambda html, out: cap.update(html=html)
+        try:
+            G.generate_premium_pdf(data, '/tmp/_etude_footer_test.pdf')
+        finally:
+            G._render_pdf_weasyprint = orig
+        html = cap['html']
+        marker = "Étude d'autoconsommation"
+        idx = html.rfind(marker)
+        self.assertNotEqual(idx, -1, "la page d'étude doit être rendue")
+        return html[idx:]
+
+    def test_tel_only_tenant_no_founder_contact_on_etude_page(self):
+        """Tenant nom + téléphone, email et site VIDES → la page d'étude ne
+        montre NI l'email NI le site du fondateur (elle porte SON téléphone)."""
+        etude = self._etude_page_html({
+            'nom': 'Helios SARL', 'email': '', 'site_web': '',
+            'telephone': '+212 5 22 00 00 00'})
+        self.assertNotIn('contact@taqinor.com', etude)
+        self.assertNotIn('www.taqinor.ma', etude)
+        # Repli gracieux : à défaut d'email/site, SON téléphone est affiché.
+        self.assertIn('+212 5 22 00 00 00', etude)
+
+    def test_founder_full_profile_etude_footer_byte_identical(self):
+        """Profil fondateur (email + tél + site) → le pied de page d'étude
+        reste EXACTEMENT la chaîne historique (byte-identique)."""
+        etude = self._etude_page_html({
+            'nom': 'TAQINOR', 'email': 'contact@taqinor.com',
+            'telephone': '+212 6 61 85 04 10', 'site_web': 'www.taqinor.ma'})
+        self.assertIn('contact@taqinor.com &nbsp;·&nbsp; www.taqinor.ma', etude)
+
+
+# ─── SCA27 (complément) — site_url/produits_base du tenant câblés au moteur ────
+
+
+class TestNormalizeSiteHost(SimpleTestCase):
+    """SCA27 — forme d'affichage d'un site tenant (fonction pure, aucune DB)."""
+
+    def test_strips_scheme_www_path_and_trailing_slash(self):
+        from apps.ventes.quote_engine.builder import _normalize_site_host
+        self.assertEqual(_normalize_site_host('https://www.helios.ma/'),
+                         'helios.ma')
+        self.assertEqual(_normalize_site_host('http://helios.ma'), 'helios.ma')
+        self.assertEqual(_normalize_site_host('helios.ma/produits'), 'helios.ma')
+        self.assertEqual(_normalize_site_host('  helios.ma  '), 'helios.ma')
+
+    def test_empty_or_none_yields_empty(self):
+        from apps.ventes.quote_engine.builder import _normalize_site_host
+        self.assertEqual(_normalize_site_host(''), '')
+        self.assertEqual(_normalize_site_host(None), '')
+        self.assertEqual(_normalize_site_host('   '), '')
+
+
+class TestBuilderWiresTenantSite(TestCase):
+    """SCA27 (complément) — ``build_quote_data`` passe le site du tenant au
+    renderer (ligne site + base des fiches), fermant la fuite ``taqinor.ma``.
+
+    Trois cas : tenant AVEC site → SES clés ; tenant SANS site → aucune clé
+    (défauts renderer = littéraux fondateur, byte-identique DC1) ; profil
+    fondateur (site = taqinor.ma) → base taqinor conservée (fiches gardées)."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+
+    def _residential_devis(self, reference):
+        # Forme résidentielle « deux options » (panneaux + les deux onduleurs +
+        # batterie) → le renderer résidentiel s'applique.
+        return make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau mono 550W', '14', '1100'),
+            ('Onduleur réseau 10kW', '1', '11700'),
+            ('Onduleur hybride 5kW', '1', '24000'),
+            ('Batterie 5 kWh', '1', '14000'),
+        ], reference=reference)
+
+    def _set_site(self, site):
+        from apps.parametres.models import CompanyProfile
+        p = CompanyProfile.get(company=self.company)
+        p.site_web = site
+        p.save()
+
+    def test_tenant_with_site_gets_own_site_url_and_produits_base(self):
+        from apps.ventes.quote_engine import build_quote_data
+        self._set_site('https://www.helios.ma/')
+        devis = self._residential_devis('DEV-SCA27-WITH')
+        data = build_quote_data(devis)
+        # Ligne site du pied de page = SON site (forme d'affichage normalisée).
+        self.assertEqual(data['site_url'], 'helios.ma')
+        # Base des liens fiches = SON site → theme.fiche_href omet taqinor.ma.
+        self.assertEqual(data['links']['produits'], 'helios.ma/produits')
+        self.assertEqual(data['links']['realisations'], 'helios.ma/realisations')
+        # QX6 (fusion) — le lien de signature est tokenisé VERS LA VRAIE
+        # proposition (ShareLink), sur la base DU TENANT : plus jamais l'ancien
+        # « /signer/<ref> » 404, et aucun domaine fondateur ne fuit.
+        self.assertIn('/proposition/', data['links']['signer'])
+        self.assertTrue(data['links']['signer'].startswith('https://helios.ma/'))
+        self.assertNotIn('/signer/', data['links']['signer'])
+        # Aucune valeur ne fuit vers le site du fondateur.
+        for v in [data['site_url']] + list(data['links'].values()):
+            self.assertNotIn('taqinor', v.lower())
+
+    def test_siteless_tenant_omits_keys_founder_defaults_preserved(self):
+        """Tenant SANS site → aucune BASE tenant n'est posée : ``site_url`` est
+        vide et ``links`` ne porte AUCUNE fiche tenant (produits/réalisations/
+        garanties), donc le renderer garde ses littéraux historiques (taqinor.ma)
+        — repli fondateur DC1.
+
+        QX6 (fusion) : ``data`` porte quand même ``links`` avec l'UNIQUE lien de
+        signature tokenisé (sur la base fondateur ``SITE_URL`` puisqu'il n'y a pas
+        de site tenant) — c'est un vrai lien de proposition, jamais un 404, et il
+        ne fait fuiter aucun AUTRE tenant."""
+        from apps.ventes.quote_engine import build_quote_data
+        self._set_site('')  # profil rempli MAIS sans site
+        devis = self._residential_devis('DEV-SCA27-NOSITE')
+        data = build_quote_data(devis)
+        # Aucune base tenant : site_url vide → renderer applique taqinor.ma.
+        self.assertEqual(data.get('site_url', ''), '')
+        # links ne contient AUCUNE fiche tenant (seul le signer QX6 peut y être).
+        _links = data.get('links') or {}
+        for k in ('produits', 'realisations', 'garanties'):
+            self.assertNotIn(k, _links)
+
+    def test_founder_site_keeps_taqinor_base(self):
+        """Profil fondateur (site = taqinor.ma) → base taqinor conservée : les
+        fiches produits taqinor.ma restent liées (byte-identique fondateur)."""
+        from apps.ventes.quote_engine import build_quote_data
+        self._set_site('taqinor.ma')
+        devis = self._residential_devis('DEV-SCA27-FOUNDER')
+        data = build_quote_data(devis)
+        self.assertEqual(data['site_url'], 'taqinor.ma')
+        self.assertEqual(data['links']['produits'], 'taqinor.ma/produits')
+
+
+@tag('pdf')
+class TestBuilderTenantSiteRendered(TestCase):
+    """SCA27 (complément, rendu réel) — un devis résidentiel d'un tenant #2 avec
+    site rempli produit un PDF SANS aucune trace de ``taqinor.ma`` (ligne site du
+    pied de page + liens fiches). Rendu WeasyPrint lourd → ``@tag('pdf')``."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+
+    def test_no_taqinor_anywhere_when_tenant_fills_site(self):
+        from apps.ventes.quote_engine import build_quote_data
+        from apps.ventes.quote_engine.residential import renderer, render
+        from apps.parametres.models import CompanyProfile
+        p = CompanyProfile.get(company=self.company)
+        p.nom = 'Helios SARL'
+        p.email = 'hello@helios.ma'
+        p.telephone = '+212 5 22 00 00 00'
+        p.site_web = 'helios.ma'
+        p.save()
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau mono 550W', '14', '1100'),
+            ('Onduleur réseau 10kW', '1', '11700'),
+            ('Onduleur hybride 5kW', '1', '24000'),
+            ('Batterie 5 kWh', '1', '14000'),
+        ], reference='DEV-SCA27-REND')
+        data = build_quote_data(devis)
+        d = renderer._augment(data)
+        html = render.build_html(d)
+        # SON site partout, ZÉRO taqinor.ma.
+        self.assertIn('helios.ma', html)
+        self.assertNotIn('taqinor.ma', html)
+        # Le pied de page porte SES coordonnées (identité DC1 déjà câblée).
+        self.assertIn('hello@helios.ma', html)
+        self.assertNotIn('contact@taqinor.com', html)
 
 
 # ─── QJ13 — Loi 82-21 self-consumption-first savings + utility tranche tables ──

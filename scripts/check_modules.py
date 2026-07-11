@@ -42,6 +42,10 @@ FRONTEND_KEY_ALIASES = {
     'magasin': 'stock',
     'logistique': 'stock',
     'workflow': 'automation',
+    # ARC54 — regroupement nav "admin" (utilisateurs/rôles/console tenants) migré
+    # depuis index.jsx vers features/admin/module.config.jsx ; pas de nouvelle app
+    # backend, la surface d'administration RBAC vit dans `roles`.
+    'admin': 'roles',
 }
 
 

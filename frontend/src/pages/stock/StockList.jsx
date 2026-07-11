@@ -31,7 +31,7 @@ import { validateTransfert, totalVentile, quantiteEmplacement, produitDansEmplac
 import { normalizeCode, isValidCode, resolveTarget } from '../../features/stock/labels'
 import BarcodeScanner from '../../features/pwa/BarcodeScanner'
 import { toastError, toastSuccess } from '../../lib/toast'
-import { useCanCreateProduit } from '../../hooks/useHasPermission'
+import { useCanCreateProduit, useHasPermission, useIsAdmin, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import {
   Button, IconButton, Badge, Checkbox, Input, Spinner, Skeleton,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -568,14 +568,17 @@ export default function StockList() {
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const { produits, produitsArchived, categories, loading, error } = useSelector(s => s.stock)
-  const role = useSelector(s => s.auth.role)
-  const permissions = useSelector(s => s.auth.permissions)
-  // Rôle fin (ex. « Commerciale » lecture seule) : les permissions priment ;
-  // comptes hérités sans rôle fin : comportement historique par rôle.
-  const canWrite = permissions.length
-    ? permissions.includes('stock_modifier')
-    : (role === 'responsable' || role === 'admin')
-  const canDelete = role === 'admin'
+  // ARC47 — gating via le hook partagé (plus de lecture directe de state.auth
+  // pour un droit). Rôle fin (ex. « Commerciale » lecture seule) : les
+  // permissions priment ; comptes hérités sans rôle fin : repli par palier.
+  // Les deux hooks sont appelés inconditionnellement (règle des hooks) ;
+  // `hasFinePermissions` (présence de codes ERP, PAS un droit) choisit ensuite
+  // la branche — sémantique identique à l'ancien ternaire.
+  const hasFinePermissions = useSelector(s => (s.auth.permissions || []).length > 0)
+  const canWriteViaPerm = useHasPermission('stock_modifier')
+  const canWriteViaRole = useIsAdminOrResponsable()
+  const canWrite = hasFinePermissions ? canWriteViaPerm : canWriteViaRole
+  const canDelete = useIsAdmin()
   // QG5 — la CRÉATION de produit est restreinte à Directeur + Commercial
   // responsable (UX miroir de la garde backend QG4) ; canWrite reste pour la
   // modification/l'import, séparés de la création.
@@ -909,19 +912,19 @@ export default function StockList() {
                     title="Pilotage stock : réapprovisionnement, prévisions, rotation, péremptions">
               <LineChart /> Pilotage
             </Button>
-            {role === 'admin' && (
+            {canDelete && (
               <Button variant={showArchived ? 'secondary' : 'outline'} size="sm"
                       onClick={() => setShowArchived(v => !v)}>
                 <Archive /> {showArchived ? 'Masquer archivés' : `Archivés${produitsArchived.length > 0 ? ` (${produitsArchived.length})` : ''}`}
               </Button>
             )}
-            {role === 'admin' && (
+            {canDelete && (
               <Button variant="outline" size="sm" onClick={() => setShowInventaire(true)}
                       title="Inventaire physique : saisir un comptage et ajuster le stock">
                 <Calculator /> Inventaire
               </Button>
             )}
-            {role === 'admin' && (
+            {canDelete && (
               <Button variant="outline" size="sm" onClick={() => setShowValorisation(true)}
                       title="Valorisation du stock par emplacement (coût moyen, interne)">
                 <Wallet /> Valorisation
@@ -959,17 +962,17 @@ export default function StockList() {
                 <DropdownMenuItem onSelect={() => setShowPilotage(v => !v)}>
                   <LineChart /> Pilotage
                 </DropdownMenuItem>
-                {role === 'admin' && (
+                {canDelete && (
                   <DropdownMenuItem onSelect={() => setShowArchived(v => !v)}>
                     <Archive /> {showArchived ? 'Masquer archivés' : 'Archivés'}
                   </DropdownMenuItem>
                 )}
-                {role === 'admin' && (
+                {canDelete && (
                   <DropdownMenuItem onSelect={() => setShowInventaire(true)}>
                     <Calculator /> Inventaire
                   </DropdownMenuItem>
                 )}
-                {role === 'admin' && (
+                {canDelete && (
                   <DropdownMenuItem onSelect={() => setShowValorisation(true)}>
                     <Wallet /> Valorisation
                   </DropdownMenuItem>
@@ -1063,7 +1066,7 @@ export default function StockList() {
       )}
 
       {showTransfert && (
-        <TransfertModal produits={produits} isAdmin={role === 'admin'}
+        <TransfertModal produits={produits} isAdmin={canDelete}
                         onClose={() => setShowTransfert(false)}
                         onDone={() => dispatch(fetchProduits())} />
       )}

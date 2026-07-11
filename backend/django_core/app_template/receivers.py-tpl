@@ -1,0 +1,21 @@
+"""Abonnements au bus d'événements (M6) du module « {{ app_label }} ».
+
+``core.events`` expose des objets ``django.dispatch.Signal`` (bus synchrone qui
+ne dépend de rien). Une app réagit au changement d'état d'une AUTRE app en s'y
+abonnant ICI (décorateur ``@receiver`` avec un ``dispatch_uid`` stable) et en
+branchant ce module dans ``apps.py`` ``ready()`` (``from . import receivers``) —
+jamais en important les vues/modèles de l'autre app (frontière import-linter).
+Ex. ``ventes`` émet ``devis_accepted`` ; ``crm`` s'abonne pour faire avancer
+l'étape du lead.
+"""
+from __future__ import annotations
+
+# Exemple (calqué sur ``apps/crm/receivers.py``) :
+#
+# from django.dispatch import receiver
+#
+# from core.events import devis_accepted
+#
+# @receiver(devis_accepted, dispatch_uid="{{ app_label }}_on_devis_accepted")
+# def _quand_devis_accepte(sender, devis, user, ancien_statut, **kwargs):
+#     ...  # réagir sans coupler ventes -> {{ app_label }}

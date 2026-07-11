@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
+import { useIsAdmin } from '../../hooks/useHasPermission'
 import {
   AlarmClock, CalendarCheck2, CalendarClock, ExternalLink, PartyPopper, Sparkles, Users,
   PhoneCall, MessageCircle,
@@ -83,7 +83,7 @@ const targetLink = (a) => {
 
 export default function MesActivitesPage() {
   const navigate = useNavigate()
-  const isAdmin = useSelector((s) => s.auth.role === 'admin')
+  const isAdmin = useIsAdmin()
   const [data, setData] = useState({ en_retard: [], aujourdhui: [], a_venir: [] })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)

@@ -496,6 +496,16 @@ button:active, [role="button"]:active, a.btn:active,
   align-items: center;
   justify-content: center;
 }
+/* SCA24 — logo white-label de la société (TenantTheme.logo_url), remplace la
+   pastille éclair quand renseigné. Même emprise que .header-brand-bolt. */
+.header-brand-logo {
+  height: 26px;
+  width: auto;
+  max-width: 120px;
+  display: block;
+  border-radius: 4px;
+  object-fit: contain;
+}
 
 /* I35 — Groupes gauche (menu + titre/fil d'Ariane) et droite (recherche +
    cloche + menu utilisateur). */

@@ -24,93 +24,12 @@ import { buildModuleRoutes } from './moduleRoutes'
 const Landing = lazy(() => import('../pages/Landing'))
 const Login = lazy(() => import('../pages/Login'))
 const Dashboard = lazy(() => import('../pages/Dashboard').then(m => ({ default: m.Component })))
-const Reporting = lazy(() => import('../pages/Reporting').then(m => ({ default: m.Component })))
-const Rapports = lazy(() => import('../pages/Rapports').then(m => ({ default: m.Component })))
-const ContratsMaintenance = lazy(() => import('../pages/sav/ContratsMaintenance').then(m => ({ default: m.Component })))
-const StockList = lazy(() => import('../pages/stock/StockList'))
-const MouvementsPage = lazy(() => import('../pages/stock/MouvementsPage'))
-const BonsCommandeFournisseur = lazy(() => import('../pages/stock/BonsCommandeFournisseur'))
-const ModelesBcf = lazy(() => import('../pages/stock/ModelesBcf'))
-const CategoriesStock = lazy(() => import('../pages/stock/CategoriesStock'))
-const FournisseursStock = lazy(() => import('../pages/stock/FournisseursStock'))
-const RetoursFournisseur = lazy(() => import('../pages/stock/RetoursFournisseur'))
-const ReceptionsFournisseur = lazy(() => import('../pages/stock/ReceptionsFournisseur'))
-const FacturesFournisseur = lazy(() => import('../pages/stock/FacturesFournisseur'))
-const ClientList = lazy(() => import('../pages/crm/ClientList'))
-const LeadsPage = lazy(() => import('../pages/crm/leads/LeadsPage'))
-const DevisList = lazy(() => import('../pages/ventes/DevisList'))
-const DevisActionBoardPage = lazy(() => import('../pages/ventes/DevisActionBoardPage'))
-const DevisGenerator = lazy(() => import('../pages/ventes/DevisGenerator'))
 const ToitureDesign = lazy(() => import('../pages/ventes/ToitureDesign'))
 const RoofViewerPage = lazy(() => import('../pages/ventes/RoofViewerPage'))
-const FactureList = lazy(() => import('../pages/ventes/FactureList'))
-const VentesKanban = lazy(() => import('../pages/ventes/VentesKanban'))
-const ListesPrixPage = lazy(() => import('../pages/ventes/ListesPrixPage'))
-const InstallationsPage = lazy(() => import('../pages/installations/InstallationsPage'))
-const DemandesAchatList = lazy(() => import('../pages/installations/DemandesAchatList'))
-const InterventionsPage = lazy(() => import('../pages/interventions/InterventionsPage'))
-const MaJourneePage = lazy(() => import('../pages/interventions/MaJourneePage'))
-const ParcInstallePage = lazy(() => import('../pages/installations/ParcInstallePage'))
-const PlanificationPage = lazy(() => import('../pages/installations/PlanificationPage'))
-const AteliersPage = lazy(() => import('../pages/installations/AteliersPage'))
-const OutillagePage = lazy(() => import('../pages/outillage/OutillagePage'))
-const ProductionPage = lazy(() => import('../pages/monitoring/ProductionPage'))
-const FleetPage = lazy(() => import('../pages/monitoring/FleetPage'))
-const OmAnalyticsPage = lazy(() => import('../pages/monitoring/OmAnalyticsPage'))
-const WarrantiesPage = lazy(() => import('../pages/monitoring/WarrantiesPage'))
-const Co2Page = lazy(() => import('../pages/monitoring/Co2Page'))
-const CleaningsPage = lazy(() => import('../pages/monitoring/CleaningsPage'))
-const OmReportPage = lazy(() => import('../pages/monitoring/OmReportPage'))
-const ClientPortalPage = lazy(() => import('../pages/monitoring/ClientPortalPage'))
-const EquipementsPage = lazy(() => import('../pages/sav/EquipementsPage'))
-const TicketsPage = lazy(() => import('../pages/sav/TicketsPage'))
-const WarrantyClaimsPage = lazy(() => import('../pages/sav/WarrantyClaimsPage'))
-const SavParametresPage = lazy(() => import('../pages/sav/SavParametresPage'))
-const SavSlaReportPage = lazy(() => import('../pages/sav/SavSlaReportPage'))
-const SavAlarmesPage = lazy(() => import('../pages/sav/SavAlarmesPage'))
-const SavActionBoardPage = lazy(() => import('../pages/sav/SavActionBoardPage'))
-const KbArticlesPage = lazy(() => import('../pages/sav/KbArticlesPage'))
 const AgentChat = lazy(() => import('../pages/ia/AgentChat'))
 const OcrUpload = lazy(() => import('../pages/ia/OcrUpload'))
-const OcrStockImport = lazy(() => import('../pages/stock/OcrStockImport'))
-const UsersManagement = lazy(() => import('../pages/admin/UsersManagement'))
-const RolesManagement = lazy(() => import('../pages/admin/RolesManagement'))
-const TenantsConsole = lazy(() => import('../pages/admin/TenantsConsole'))
-const ParametresEntreprise = lazy(() => import('../pages/parametres/ParametresEntreprise'))
-const ExportSauvegarde = lazy(() => import('../pages/parametres/ExportSauvegarde'))
-const NotificationsPreferences = lazy(() => import('../pages/parametres/NotificationsPreferences'))
-const Journal = lazy(() => import('../pages/Journal'))
-const MesActivitesPage = lazy(() => import('../pages/activities/MesActivitesPage'))
-const CalendarPage = lazy(() => import('../pages/CalendarPage'))
-const CartePage = lazy(() => import('../pages/CartePage'))
-const ParrainagePage = lazy(() => import('../pages/crm/ParrainagePage'))
-const WebsiteLeadPayloadsPage = lazy(() => import('../pages/crm/WebsiteLeadPayloadsPage'))
-const AvoirsPage = lazy(() => import('../pages/ventes/AvoirsPage'))
-const RelancesPage = lazy(() => import('../pages/ventes/RelancesPage'))
-const PaiementsPage = lazy(() => import('../pages/ventes/PaiementsPage'))
-const BalanceAgeePage = lazy(() => import('../pages/reporting/BalanceAgeePage'))
-const ArchiveClientPage = lazy(() => import('../pages/reporting/ArchiveClientPage'))
-const ArchiveChantierPage = lazy(() => import('../pages/reporting/ArchiveChantierPage'))
-const CommercialDashboard = lazy(() => import('../pages/reporting/CommercialDashboard'))
-const CohortsPage = lazy(() => import('../pages/reporting/CohortsPage'))
-const DashboardConfigPage = lazy(() => import('../pages/reporting/DashboardConfigPage'))
-// XPLT10 — partage de dashboard (liens publics tokenisés, créer/révoquer).
-const DashboardSharePage = lazy(() => import('../pages/reporting/DashboardSharePage'))
-// XKB1/ZCTR7-9 — boîte d'approbations centralisée cross-app (5 sources).
-const ApprobationsPage = lazy(() => import('../pages/approbations/ApprobationsPage'))
-// XPLT6 — CRUD des alertes de seuil sur KPI agrégés.
-const KpiAlertesPage = lazy(() => import('../pages/parametres/KpiAlertesPage'))
-// XPLT22 — classeur léger embarqué (mini-spreadsheet BI, données live).
-const ClasseursListPage = lazy(() => import('../pages/reporting/ClasseursListPage'))
-const ClasseurPage = lazy(() => import('../pages/reporting/ClasseurPage'))
 // XPLT10 — kiosque TV public des dashboards partagés (sans layout ERP).
 const DashboardsTvPage = lazy(() => import('../pages/reporting/DashboardsTvPage'))
-// XSAV8 — conformité SLA + KPI SAV avancés.
-const SavSlaPage = lazy(() => import('../pages/reporting/SavSlaPage'))
-// XFSM16 — analytics field service consolidés.
-const FieldServiceReportPage = lazy(() => import('../pages/reporting/FieldServiceReportPage'))
-// XFSM17 — scorecard coaching par technicien vs moyenne équipe.
-const TechnicienScorecardPage = lazy(() => import('../pages/reporting/TechnicienScorecardPage'))
 const AgentActions = lazy(() => import('../pages/ia/AgentActions'))
 // Vitrine interne du système UI (refonte, P68) — référence vivante des primitifs.
 const UIShowcase = lazy(() => import('../pages/ui/UIShowcase'))
@@ -240,125 +159,34 @@ const router = createBrowserRouter([
   { path: '/dashboard', loader: authLoader, element: <WithLayout><Dashboard /></WithLayout> },
   { path: '/messages', loader: authLoader, element: <WithLayout><ChatPage /></WithLayout> },
 
-  // Stock
-  { path: '/stock', loader: authLoader, element: <WithLayout><StockList /></WithLayout> },
-  { path: '/stock/mouvements', loader: authLoader, element: <WithLayout><MouvementsPage /></WithLayout> },
-  { path: '/stock/categories', loader: authLoader, element: <WithLayout><CategoriesStock /></WithLayout> },
-  { path: '/stock/fournisseurs', loader: authLoader, element: <WithLayout><FournisseursStock /></WithLayout> },
-  { path: '/stock/bons-commande-fournisseur', loader: authLoader, element: <WithLayout><BonsCommandeFournisseur /></WithLayout> },
-  { path: '/stock/modeles-bcf', loader: authLoader, element: <WithLayout><ModelesBcf /></WithLayout> },
-  { path: '/stock/receptions-fournisseur', loader: authLoader, element: <WithLayout><ReceptionsFournisseur /></WithLayout> },
-  { path: '/stock/factures-fournisseur', loader: authLoader, element: <WithLayout><FacturesFournisseur /></WithLayout> },
-  { path: '/stock/retours-fournisseur', loader: authLoader, element: <WithLayout><RetoursFournisseur /></WithLayout> },
-  { path: '/stock/ocr-import', loader: authLoader, element: <WithLayout><OcrStockImport /></WithLayout> },
+  // Stock — migré vers frontend/src/features/stock/module.config.jsx (ARC48).
 
-  // CRM
-  { path: '/crm', loader: authLoader, element: <WithLayout><ClientList /></WithLayout> },
-  { path: '/crm/leads', loader: authLoader, element: <WithLayout><LeadsPage /></WithLayout> },
-  { path: '/activites', loader: authLoader, element: <WithLayout><MesActivitesPage /></WithLayout> },
-  { path: '/calendrier', loader: authLoader, element: <WithLayout><CalendarPage /></WithLayout> },
-  { path: '/carte', loader: authLoader, element: <WithLayout><CartePage /></WithLayout> },
-  { path: '/crm/parrainage', loader: authLoader, element: <WithLayout><ParrainagePage /></WithLayout> },
-  // QX16 — rejeu des payloads leads site web (« jamais perdre un lead »).
-  { path: '/crm/payloads-site-web', loader: authLoader, element: <WithLayout><WebsiteLeadPayloadsPage /></WithLayout> },
+  // CRM — migré vers frontend/src/features/crm/module.config.jsx (ARC54).
 
-  // Ventes
-  { path: '/ventes/devis', loader: authLoader, element: <WithLayout><DevisList /></WithLayout> },
-  // QX29 — « Relances du jour » : tableau d'action des devis (miroir ZSAV6).
-  { path: '/ventes/devis/action-requise', loader: authLoader, element: <WithLayout><DevisActionBoardPage /></WithLayout> },
-  { path: '/ventes/devis/nouveau', loader: authLoader, element: <WithLayout><DevisGenerator /></WithLayout> },
+  // Ventes — migré vers frontend/src/features/ventes/module.config.jsx (ARC54).
+  // Non-migrables (errorElement dédié, non exprimable par buildModuleRoutes) :
   // QG12 — Design 3D d'un devis en LECTURE SEULE, plein écran, ouvrable dans une fenêtre.
   { path: '/ventes/devis/:id/3d', loader: authLoader, errorElement: <RouteErrorBoundary />, element: <WithLayout><RoofViewerPage /></WithLayout> },
   // Conception 3D de la toiture (héberge le builder roofPro11 du site, en ERP).
   { path: '/devis-design/:id', loader: authLoader, errorElement: <RouteErrorBoundary />, element: <WithLayout><ToitureDesign /></WithLayout> },
-  { path: '/ventes/bons-commande', loader: authLoader, element: <WithLayout><VentesKanban /></WithLayout> },
-  { path: '/ventes/factures', loader: authLoader, element: <WithLayout><FactureList /></WithLayout> },
-  { path: '/ventes/avoirs', loader: authLoader, element: <WithLayout><AvoirsPage /></WithLayout> },
-  { path: '/ventes/relances', loader: authLoader, element: <WithLayout><RelancesPage /></WithLayout> },
-  { path: '/ventes/paiements', loader: authLoader, element: <WithLayout><PaiementsPage /></WithLayout> },
-  // XSAL1-2 — administration des listes de prix clients (écriture Responsable/Admin, gardée serveur).
-  { path: '/ventes/listes-prix', loader: authLoader, element: <WithLayout><ListesPrixPage /></WithLayout> },
 
-  // Chantiers / Installations
-  { path: '/chantiers', loader: authLoader, element: <WithLayout><InstallationsPage /></WithLayout> },
-  { path: '/chantiers/demandes-achat', loader: authLoader, element: <WithLayout><DemandesAchatList /></WithLayout> },
-  { path: '/interventions', loader: authLoader, element: <WithLayout><InterventionsPage /></WithLayout> },
-  { path: '/planification', loader: authLoader, element: <WithLayout><PlanificationPage /></WithLayout> },
-  { path: '/ma-journee', loader: authLoader, element: <WithLayout><MaJourneePage /></WithLayout> },
-  { path: '/parc', loader: authLoader, element: <WithLayout><ParcInstallePage /></WithLayout> },
-  { path: '/atelier', loader: authLoader, element: <WithLayout><AteliersPage /></WithLayout> },
-  { path: '/production', loader: authLoader, element: <WithLayout><ProductionPage /></WithLayout> },
-  { path: '/production/parc', loader: authLoader, element: <WithLayout><FleetPage /></WithLayout> },
-  { path: '/production/analytique', loader: authLoader, element: <WithLayout><OmAnalyticsPage /></WithLayout> },
-  { path: '/production/garanties', loader: authLoader, element: <WithLayout><WarrantiesPage /></WithLayout> },
-  { path: '/production/co2', loader: authLoader, element: <WithLayout><Co2Page /></WithLayout> },
-  { path: '/production/nettoyages', loader: authLoader, element: <WithLayout><CleaningsPage /></WithLayout> },
-  { path: '/production/rapports', loader: authLoader, element: <WithLayout><OmReportPage /></WithLayout> },
-  { path: '/production/portail-client', loader: authLoader, element: <WithLayout><ClientPortalPage /></WithLayout> },
-  { path: '/outillage', loader: authLoader, element: <WithLayout><OutillagePage /></WithLayout> },
+  // Chantiers / Installations — migré vers
+  // frontend/src/features/installations/module.config.jsx (ARC54).
 
   // GED — gestion documentaire (navigateur arborescent)
   { path: '/ged', loader: authLoader, element: <WithLayout><DocumentsPage /></WithLayout> },
 
-  // Après-vente : parc d'équipements & tickets SAV
-  { path: '/equipements', loader: authLoader, element: <WithLayout><EquipementsPage /></WithLayout> },
-  { path: '/sav', loader: authLoader, element: <WithLayout><TicketsPage /></WithLayout> },
-  { path: '/sav/contrats', loader: authLoader, element: <WithLayout><ContratsMaintenance /></WithLayout> },
-  // FG83 — réclamations garantie fournisseur (flux RMA).
-  { path: '/sav/warranty-claims', loader: authLoader, element: <WithLayout><WarrantyClaimsPage /></WithLayout> },
-  // ZSAV2/ZMFG1/ZMFG2/XSAV14/XSAV23 — référentiels SAV (responsable/admin, écriture gardée côté serveur).
-  { path: '/sav/parametres', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><SavParametresPage /></WithLayout> },
-  // XSAV8 — rapport de conformité SLA + KPI avancés.
-  { path: '/sav/sla-rapport', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><SavSlaReportPage /></WithLayout> },
-  // Alarmes onduleur (FG280).
-  { path: '/sav/alarmes', loader: authLoader, element: <WithLayout><SavAlarmesPage /></WithLayout> },
-  // ZSAV6 — file d'action (tickets ouverts groupés par action attendue).
-  { path: '/sav/action-requise', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><SavActionBoardPage /></WithLayout> },
-  // FG87 — base de connaissances SAV (articles KB).
-  { path: '/sav/kb', loader: authLoader, element: <WithLayout><KbArticlesPage /></WithLayout> },
+  // Après-vente : migré vers frontend/src/features/sav/module.config.jsx (ARC48).
 
   // IA
   { path: '/ia/agent', loader: authLoader, element: <WithLayout><AgentChat /></WithLayout> },
   { path: '/ia/actions', loader: authLoader, element: <WithLayout><AgentActions /></WithLayout> },
   { path: '/ia/ocr', loader: authLoader, element: <WithLayout><OcrUpload /></WithLayout> },
 
-  // Reporting
-  { path: '/reporting', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><Reporting /></WithLayout> },
-  { path: '/rapports', loader: authLoader, element: <WithLayout><Rapports /></WithLayout> },
-  { path: '/reporting/balance-agee', loader: authLoader, element: <WithLayout><BalanceAgeePage /></WithLayout> },
-  { path: '/reporting/commercial', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><CommercialDashboard /></WithLayout> },
-  { path: '/reporting/cohortes', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><CohortsPage /></WithLayout> },
-  { path: '/reporting/dashboards', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><DashboardConfigPage /></WithLayout> },
-  // XPLT10 — partage de dashboard (liens publics tokenisés).
-  { path: '/reporting/dashboards/partage', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><DashboardSharePage /></WithLayout> },
-  { path: '/reporting/archive/client/:id', loader: authLoader, element: <WithLayout><ArchiveClientPage /></WithLayout> },
-  { path: '/reporting/archive/chantier/:id', loader: authLoader, element: <WithLayout><ArchiveChantierPage /></WithLayout> },
-  // XKB1/ZCTR7-9 — boîte d'approbations centralisée (toutes sources), accessible
-  // à tout rôle (chacun peut avoir des demandes en attente sur son périmètre).
-  { path: '/approbations', loader: authLoader, element: <WithLayout><ApprobationsPage /></WithLayout> },
-  // XPLT22 — classeur léger embarqué (mini-spreadsheet BI, données live).
-  { path: '/reporting/classeurs', loader: authLoader, element: <WithLayout><ClasseursListPage /></WithLayout> },
-  { path: '/reporting/classeurs/:id', loader: authLoader, element: <WithLayout><ClasseurPage /></WithLayout> },
-  // XSAV8 — conformité SLA + KPI SAV avancés (responsable/admin).
-  { path: '/reporting/sav-sla', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><SavSlaPage /></WithLayout> },
-  // XFSM16 — analytics field service consolidés (responsable/admin).
-  { path: '/reporting/field-service', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><FieldServiceReportPage /></WithLayout> },
-  // XFSM17 — scorecard coaching par technicien (responsable/admin uniquement,
-  // jamais visible du technicien lui-même — cf. permission backend).
-  { path: '/reporting/scorecard-technicien', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><TechnicienScorecardPage /></WithLayout> },
+  // Reporting — migré vers frontend/src/features/reporting/module.config.jsx (ARC54).
 
-  // Administration
-  { path: '/admin/users', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><UsersManagement /></WithLayout> },
-  { path: '/admin/roles', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><RolesManagement /></WithLayout> },
-  // SCA22 — console fondateur des tenants (le serveur exige superuser : 403 sinon).
-  { path: '/admin/tenants', loader: roleLoader(['admin']), element: <WithLayout><TenantsConsole /></WithLayout> },
-  { path: '/parametres', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><ParametresEntreprise /></WithLayout> },
-  { path: '/parametres/export', loader: authLoader, element: <WithLayout><ExportSauvegarde /></WithLayout> },
-  { path: '/parametres/notifications', loader: authLoader, element: <WithLayout><NotificationsPreferences /></WithLayout> },
-  // XPLT6 — CRUD des alertes de seuil sur KPI agrégés (réservé responsable/admin,
-  // reflète `IsResponsableOrAdmin` côté backend).
-  { path: '/parametres/alertes-kpi', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><KpiAlertesPage /></WithLayout> },
-  { path: '/journal', loader: roleLoader(['normal', 'responsable', 'admin'], 'journal_activite_voir'), element: <WithLayout><Journal /></WithLayout> },
+  // Administration — migré vers frontend/src/features/admin/module.config.jsx (ARC54).
+  // Paramètres — migré vers frontend/src/features/parametres/module.config.jsx (ARC54).
 
   // UX1 — Routes des modules « coquille » enregistrées via le registre. Chaque
   // route est gatée par le même authLoader/roleLoader que le reste de l'app.

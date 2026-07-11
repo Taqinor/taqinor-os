@@ -31,3 +31,9 @@ class CoreConfig(AppConfig):
         # sans ``SENTRY_DSN`` (aucune dépendance chargée, aucun appel réseau).
         from . import monitoring
         monitoring.init_sentry()
+
+        # SCA28 — hook signup « branding neutre » (thème + modèles brandés par
+        # défaut) enregistré dans le registre core.signup_hooks. Idempotent :
+        # le ré-enregistrement remplace, jamais de doublon d'exécution.
+        from .signup_hooks import register_core_signup_hooks
+        register_core_signup_hooks()

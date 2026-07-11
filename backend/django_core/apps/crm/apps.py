@@ -39,3 +39,6 @@ class CrmConfig(AppConfig):
             'crm_website_lead_payloads', purge_website_lead_payloads)
         register_retention_policy(
             'crm_chat_sessions_publiques', purge_stale_chat_sessions)
+        # ARC18 — miroir one-way crm.Client → répertoire unifié tiers.Tiers
+        # (l'import câble le récepteur post_save ; pont réversible).
+        from . import tiers_bridge  # noqa: F401

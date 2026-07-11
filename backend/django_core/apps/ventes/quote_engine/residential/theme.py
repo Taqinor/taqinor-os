@@ -8,7 +8,16 @@ by `residential.renderer`. Reuses the engine's bundled fonts/logo.
 from __future__ import annotations
 import base64
 import functools
+from html import escape
 from pathlib import Path
+
+# ── SCA27 — littéraux d'identité du fondateur (repli byte-identique) ──────────
+# Reproduisent EXACTEMENT la ligne de pied de page historique. Tant qu'aucune
+# identité société n'est fournie dans ``data["entreprise"]`` (CompanyProfile),
+# le pied de page reste strictement identique à aujourd'hui.
+_FOOT_DEFAULT_NOM = "TAQINOR"
+_FOOT_DEFAULT_EMAIL = "contact@taqinor.com"
+_FOOT_DEFAULT_TEL = "+212 6 61 85 04 10"
 
 # Engine assets (fonts + logo), one level up at quote_engine/assets.
 _LIVE_ASSETS = Path(__file__).resolve().parent.parent / "assets"
@@ -200,12 +209,27 @@ def fiche_slug(designation, marque="") -> str:
     return ""
 
 
+# SCA27 — les fiches-techniques (/produits/<slug>) sont des pages RÉELLES de
+# taqinor.ma (le fondateur) ; leurs slugs (jinko-710, batterie-dyness…) n'existent
+# que là. On ne les lie donc QUE lorsque la base pointe sur taqinor.ma : le PDF
+# d'un autre locataire n'affiche plus un lien produit vers le site du fondateur
+# (la fiche est alors omise → texte simple). Rendu du fondateur inchangé.
+_FICHE_HOST = "taqinor.ma"
+
+
 def fiche_href(designation, marque="", produits_base="taqinor.ma/produits") -> str:
-    """Full https URL of a line's fiche-technique page, or '' if none."""
+    """Full https URL of a line's fiche-technique page, or '' if none.
+
+    SCA27 — omise si ``produits_base`` ne pointe pas sur ``taqinor.ma`` (seul
+    hôte des fiches) : liens produits = site du fondateur uniquement, sinon
+    omis. Base par défaut = taqinor.ma → comportement fondateur byte-identique.
+    """
     slug = fiche_slug(designation, marque)
     if not slug:
         return ""
     base = (produits_base or "taqinor.ma/produits").strip().rstrip("/")
+    if _FICHE_HOST not in base.lower():
+        return ""
     if not base.startswith("http"):
         base = "https://" + base
     return f"{base}/{slug}"
@@ -250,19 +274,14 @@ html, body {{ font-family:{FONT_SANS}; color:{C['ink']}; -weasy-hyphens:none; }}
 """
 
 
-# ── QX4 — littéraux d'identité HISTORIQUES (Taqinor), défauts de repli ──────
-# Toute valeur d'identité société vide retombe sur ces littéraux, de sorte
-# qu'un devis sans profil enrichi reste rendu strictement à l'identique et
+# ── Identité société — littéraux d'identité HISTORIQUES (Taqinor), défauts ──
+# de repli. Toute valeur d'identité société vide retombe sur ces littéraux, de
+# sorte qu'un devis sans profil enrichi reste rendu strictement à l'identique et
 # qu'aucune identité d'un autre tenant ne fuit dans le rendu résidentiel.
 _DEFAULT_BRAND = "TAQINOR"
 _DEFAULT_EMAIL = "contact@taqinor.com"
 _DEFAULT_PHONE = "+212 6 61 85 04 10"
 _DEFAULT_SITE = "taqinor.ma"
-_DEFAULT_LEGAL_NOM = "TAQINOR Solutions SARLAU"
-_DEFAULT_CAPITAL = "100 000,00 MAD"
-_DEFAULT_RC = "691213 — Tribunal de Commerce de Casablanca"
-_DEFAULT_ICE = "003799642000067"
-_DEFAULT_GERANT = "M. Reda Kasri"
 
 
 def _esc(v) -> str:
@@ -272,28 +291,30 @@ def _esc(v) -> str:
 
 
 def company_identity(data: dict) -> dict:
-    """QX4 — résout l'identité société affichée depuis ``data['entreprise']``.
+    """Résout l'identité société AFFICHÉE (marque/contact/site) depuis
+    ``data['entreprise']`` — QX7 (chips/marque) + SCA27 (tenant-safe).
 
     ``data['entreprise']`` est le dict renvoyé par
-    ``parametres.selectors.company_identity`` (threadé par le builder). Chaque
-    champ vide retombe sur le littéral Taqinor historique correspondant, donc :
+    ``parametres.selectors.company_identity`` (threadé par le builder). Sémantique
+    SCA27/DC1 par champ : le NOM ne remplace le littéral fondateur que s'il est
+    fourni ; email/téléphone/site ne remplacent le littéral fondateur que
+    lorsqu'ils sont renseignés. Donc :
       • une société AVEC profil enrichi voit SON identité partout (plus de fuite
         multi-tenant) ;
       • une société SANS profil (ou Taqinor) garde une sortie byte-identique.
-    Toutes les valeurs sont des chaînes déjà échappées, prêtes à insérer.
+    La bande légale complète (capital/RC/ICE/gérant) N'est PAS construite ici —
+    elle est composée par ``trust.py`` (SCA27) directement depuis
+    ``data['entreprise']`` avec le littéral fondateur en repli. Toutes les valeurs
+    renvoyées sont des chaînes déjà échappées, prêtes à insérer.
     """
     ent = data.get("entreprise") or {}
     nom = (ent.get("nom") or "").strip()
     email = (ent.get("email") or "").strip()
     tel = (ent.get("telephone") or "").strip()
-    ice = (ent.get("ice") or "").strip()
-    rc = (ent.get("rc") or "").strip()
-    capital = (ent.get("capital") or "").strip()
-    gerant = (ent.get("gerant") or "").strip()
     adresse = (ent.get("adresse") or "").strip()
-    site = (ent.get("site_url") or "").strip().rstrip("/")
-    # Repli sur le site déjà résolu par le renderer (_augment) puis Taqinor.
-    site = site or (data.get("site_url") or "").strip().rstrip("/") or _DEFAULT_SITE
+    # Site : le builder a déjà résolu ``data['site_url']`` depuis le champ
+    # CANONIQUE ``site_web`` (SCA27, normalisé) ; repli Taqinor si vide.
+    site = (data.get("site_url") or "").strip().rstrip("/") or _DEFAULT_SITE
 
     return {
         # Marque courte (footer, « Pourquoi … », signature TAQINOR).
@@ -302,20 +323,15 @@ def company_identity(data: dict) -> dict:
         "email": _esc(email) if email else _DEFAULT_EMAIL,
         "phone": _esc(tel) if tel else _DEFAULT_PHONE,
         "site": _esc(site),
-        # Bande légale — chaque fait retombe sur le littéral historique.
-        "legal_nom": _esc(nom) if nom else _DEFAULT_LEGAL_NOM,
-        "capital": _esc(capital) if capital else _DEFAULT_CAPITAL,
-        "rc": _esc(rc) if rc else _DEFAULT_RC,
-        "ice": _esc(ice) if ice else _DEFAULT_ICE,
-        "gerant": _esc(gerant) if gerant else _DEFAULT_GERANT,
         "adresse": _esc(adresse),
         # A-t-on une vraie identité société (au moins un champ renseigné) ?
-        "has_profile": bool(nom or email or tel or ice or rc or capital
-                            or gerant or site),
+        "has_profile": bool(nom or email or tel or adresse
+                            or (data.get("site_url") or "").strip()),
     }
 
 
 def page_footer(data: dict, ident: dict | None = None, total_pages: int = 3) -> str:
+    # QX6 — le pied lit le NOMBRE RÉEL de pages rendues (jamais « / 3 » codé).
     ident = ident or company_identity(data)
     site = ident.get("site") or _DEFAULT_SITE
     return f"""

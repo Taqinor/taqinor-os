@@ -145,6 +145,12 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    # SCA43 / NTPLT16 — mémo de config société PAR REQUÊTE (contextvar). Ouvre un
+    # scope de cache autour de chaque requête pour que les accesseurs de config
+    # (CompanyProfile/DocumentTemplates/identité/TVA) lisent la config une seule
+    # fois quel que soit le nombre de devis sérialisés (dé-N+1 de la liste). Hors
+    # requête (Celery/PDF) → aucun scope → comportement historique inchangé.
+    'core.request_cache.RequestConfigCacheMiddleware',
     # ODX4 — 404 sur les endpoints d'un module désactivé pour la société.
     # Défaut = actif (aucun 404 nouveau sans toggle). Placé après l'auth Django ;
     # résout lui-même le JWT DRF best-effort (aucun blocage sans jeton valide).
@@ -400,6 +406,9 @@ CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 CELERY_TASK_ROUTES = {
     'ventes.generate_devis_pdf': {'queue': 'interactive'},
     'ventes.generate_facture_pdf': {'queue': 'interactive'},
+    # SCA41 — export xlsx volumineux déclenché par une action utilisateur → même
+    # queue `interactive` que les rendus PDF (pilote de NTPLT29/30).
+    'ventes.build_async_export': {'queue': 'interactive'},
     'chat.transcribe_voice_attachment': {'queue': 'interactive'},
     # Toutes les tâches planifiées (beat_schedule) → `scheduled`.
     'ventes.check_overdue_factures': {'queue': 'scheduled'},
@@ -539,6 +548,15 @@ ENTREPRISE_COULEUR = os.environ.get('ENTREPRISE_COULEUR', '#2563EB')
 # vendored premium engine (apps.ventes.quote_engine). Set to '0' to fall back to
 # the legacy ventes WeasyPrint quote PDF. Only affects QUOTES, never invoices.
 USE_PREMIUM_QUOTE_ENGINE = os.environ.get('USE_PREMIUM_QUOTE_ENGINE', '1') != '0'
+
+# ARC21 — DÉCISION founder-gated : Tiers comme source d'écriture de l'identité.
+# OFF par défaut → comportement byte-identique à aujourd'hui (les modèles
+# historiques restent maîtres, Tiers n'est qu'un miroir one-way ARC18/19/56).
+# ON (transition) → double-écriture via apps.tiers.services (Tiers source,
+# historique miroir lecture). Réversible ; à n'activer qu'après le dossier
+# docs/decisions/ARC21-tiers-source-ecriture.md (vidage des doublons ARC20 +
+# non-régression PDF/exports). NE PAS activer sans décision fondateur.
+TIERS_SOURCE_ECRITURE = os.environ.get('TIERS_SOURCE_ECRITURE', '0') == '1'
 
 # XFSM12 — trace d'étalonnage de l'instrument sur la fiche de recette IEC
 # 62446-1 (CommissioningRecord.instrument_id). Paramétrable warn/block (défaut

@@ -132,8 +132,15 @@ class RendreAnalyseNcrPdfTests(TestCase):
         analyse = enregistrer_analyse_ncr(ncr, cinq_pourquoi=[])
 
         fake_module = types.ModuleType('weasyprint')
-        fake_html_instance = type('FakeHTML', (), {
-            'write_pdf': lambda self: b'%PDF-1.4 fake'})()
+
+        def _write_pdf(self, target=None):
+            data = b'%PDF-1.4 fake'
+            if target is not None:
+                target.write(data)
+                return None
+            return data
+
+        fake_html_instance = type('FakeHTML', (), {'write_pdf': _write_pdf})()
         fake_module.HTML = lambda string: fake_html_instance
 
         with patch.dict(sys.modules, {'weasyprint': fake_module}):

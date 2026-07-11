@@ -134,7 +134,7 @@ class TestAttachments(TestCase):
         from io import BytesIO
         png = (b'\x89PNG\r\n\x1a\n' + b'\x00' * 64)
 
-        def fake_store(file):
+        def fake_store(file, **kwargs):  # accepte company= (SCA42)
             return ({'file_key': 'attachments/test.png',
                      'filename': 'test.png', 'size': len(png),
                      'mime': 'image/png'}, None)
@@ -223,7 +223,7 @@ class TestAttachments(TestCase):
         from io import BytesIO
         pdf = b'%PDF-1.4\n%%EOF\n'
 
-        def fake_store(file):
+        def fake_store(file, **kwargs):  # accepte company= (SCA42)
             return ({'file_key': 'attachments/rt.pdf', 'filename': 'rt.pdf',
                      'size': len(pdf), 'mime': 'application/pdf'}, None)
 
@@ -365,6 +365,49 @@ class TestAttachments(TestCase):
         # …puis le fichier a bien été téléversé.
         self.assertTrue(fake_client.upload_fileobj.called)
 
+    def test_sca42_new_attachment_key_is_company_prefixed(self):
+        """SCA42 — un upload via l'endpoint records (store_attachment RÉEL, seul
+        MinIO est mocké) produit une clé préfixée société
+        (``attachments/{company_id}/{uuid}.ext``). Isole le stockage par tenant."""
+        from io import BytesIO
+        png = b'\x89PNG\r\n\x1a\n' + b'\x00' * 64
+
+        fake_client = mock.MagicMock()
+        with mock.patch('apps.records.storage.get_minio_client',
+                        return_value=fake_client), \
+                mock.patch('apps.ventes.utils.minio_client.get_minio_client',
+                           return_value=fake_client):
+            up = BytesIO(png)
+            up.name = 'cover.png'
+            resp = self.api.post('/api/django/records/attachments/', {
+                'model': 'crm.lead', 'id': self.lead.id, 'file': up,
+            }, format='multipart')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        att = Attachment.objects.get(id=resp.data['id'])
+        self.assertTrue(
+            att.file_key.startswith(f'attachments/{self.company.id}/'),
+            f'clé non préfixée société : {att.file_key}')
+
+    def test_sca42_store_attachment_without_company_is_flat(self):
+        """SCA42 — appel historique SANS company : clé plate rétro-compatible
+        (``attachments/{uuid}.ext``), aucune régression pour les appelants non
+        encore migrés."""
+        from io import BytesIO
+        from apps.records.storage import store_attachment
+        pdf = BytesIO(b'%PDF-1.4 test')
+        pdf.name = 'x.pdf'
+        pdf.size = 12
+        fake_client = mock.MagicMock()
+        with mock.patch('apps.records.storage.get_minio_client',
+                        return_value=fake_client), \
+                mock.patch('apps.ventes.utils.minio_client.get_minio_client',
+                           return_value=fake_client):
+            meta, err = store_attachment(pdf)
+        self.assertIsNone(err)
+        self.assertTrue(meta['file_key'].startswith('attachments/'))
+        # Pas de segment société inséré (forme plate historique).
+        self.assertNotIn(f'attachments/{self.company.id}/', meta['file_key'])
+
 
 def _ct_lead():
     from django.contrib.contenttypes.models import ContentType
@@ -451,7 +494,7 @@ class TestVentesAttachmentTargets(TestCase):
         from io import BytesIO
         pdf = b'%PDF-1.4\n%%EOF\n'
 
-        def fake_store(file):
+        def fake_store(file, **kwargs):  # accepte company= (SCA42)
             return ({'file_key': f'attachments/{model}.pdf',
                      'filename': 'piece.pdf', 'size': len(pdf),
                      'mime': 'application/pdf'}, None)

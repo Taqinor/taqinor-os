@@ -259,18 +259,37 @@ def build(ctx) -> str:
         f'<span class="p3-cta-qr-t">Scannez pour signer</span></div>'
         if qr_uri else "")
 
-    # QX4 — Bande légale d'identité, pilotée par le profil société (multi-
-    # tenant). Chaque fait (raison sociale · capital · RC · ICE · gérant ·
-    # contact · site) retombe sur le littéral Taqinor historique quand le champ
-    # correspondant est vide, donc un devis Taqinor reste byte-identique et un
-    # autre tenant n'affiche plus jamais l'identité de Taqinor.
-    legal = (
-        f'<b>{ident["legal_nom"]}</b> au capital de {ident["capital"]}'
-        f' &middot; RC {ident["rc"]}'
-        f' &middot; ICE {ident["ice"]} &middot; Gérant : {ident["gerant"]}'
-        f' &middot; {ident["email"]} &middot; {ident["phone"]}'
-        f' &middot; {ident["site"]}'
-    )
+    # Legal identifier band — real company data (RC/ICE/capital from taqinor.ma).
+    # SCA27 (fix règle-#4-permis) — pour un TENANT (profil au nom non-TAQINOR),
+    # la bande se compose de SES identifiants (nom/RC/ICE/email/téléphone/site,
+    # champs absents omis — capital et gérant n'ont pas de champ profil). Le
+    # littéral fondateur reste le repli byte-identique (profil vide OU marque
+    # TAQINOR — même sémantique par-la-donnée que _footer_brand/DC1).
+    from html import escape as _esc
+    ent = d.get("entreprise") or {}
+    ent_nom = (ent.get("nom") or "").strip()
+    if ent_nom and "TAQINOR" not in ent_nom.upper():
+        parts = [f"<b>{_esc(ent_nom)}</b>"]
+        if (ent.get("rc") or "").strip():
+            parts.append("RC " + _esc(ent["rc"].strip()))
+        if (ent.get("ice") or "").strip():
+            parts.append("ICE " + _esc(ent["ice"].strip()))
+        if (ent.get("email") or "").strip():
+            parts.append(_esc(ent["email"].strip()))
+        if (ent.get("telephone") or "").strip():
+            parts.append(_esc(ent["telephone"].strip()))
+        _site_tenant = (d.get("site_url") or "").strip()
+        if _site_tenant and "taqinor" not in _site_tenant.lower():
+            parts.append(_esc(_site_tenant))
+        legal = " &middot; ".join(parts)
+    else:
+        legal = (
+            '<b>TAQINOR Solutions SARLAU</b> au capital de 100 000,00 MAD'
+            ' &middot; RC 691213 — Tribunal de Commerce de Casablanca'
+            ' &middot; ICE 003799642000067 &middot; Gérant : M. Reda Kasri'
+            ' &middot; contact@taqinor.com &middot; +212 6 61 85 04 10'
+            ' &middot; taqinor.ma'
+        )
 
     return f"""
 <style>

@@ -253,13 +253,19 @@ of a cold rebuild — a real ARC+SCA run burned ~3.5 h purely on local test-DB c
 5. **ONE gate at the very end.** When the queue drains (or a cap is hit): refresh `docs/CODEMAP.md`
    if structure/plan changed (then `codemap_fingerprint.py --write`), integrate the latest
    `origin/main` into `dev` (sync-safe — merge it in, recompute the structure fingerprint if the
-   structural surface moved, NEVER force-push). **Then run `powershell -File scripts/preflight.ps1`
-   BEFORE pushing** — it runs EVERY fast gate (backend-lint's compileall-3.11 / flake8 / lint-imports,
-   the model↔migration drift check, and all 10 `stage-names` sub-checks) locally in the prod 3.11
-   image in one pass and reports ALL failures at once. A run that skipped this (only ran 3 of the 11
-   stage-names checks) burned FOUR CI round-trips discovering them one at a time — preflight collapses
-   that to one local pass. Fix everything red, THEN push `dev` and run the four required checks **once**
-   over the whole batch. To WAIT on that CI, use `powershell -File scripts/watch-ci.ps1` (or
+   structural surface moved, NEVER force-push). **Then decide whether to run `powershell -File
+   scripts/preflight.ps1` BEFORE pushing — WOW (2026-07-11): gate it on the CI path, do NOT run it
+   reflexively.** Preflight runs EVERY fast gate (backend-lint's compileall-3.11 / flake8 / lint-imports,
+   the model↔migration drift check, and all 10 `stage-names` sub-checks) locally in the prod 3.11 image
+   in one pass (~7 min) and reports ALL failures at once — a run that skipped it once burned FOUR CI
+   round-trips discovering stage-names reds one at a time. Its ONLY value is catching a fast-gate red
+   BEFORE a SLOW CI cycle, so gate it on the WOW8-INCR cache path: **run full preflight when the push
+   will be a cold cache-MISS (new/changed migrations → ~40-min CI) or touches a high-risk fast-gate
+   surface (migrations, imports, stage-names/CODEMAP).** But on the cache-HIT path the CI gate is now
+   ~6-7 min (measured 2026-07-11) — a ~7-min preflight in front of a ~7-min CI just DOUBLES the
+   wall-clock for zero saving, so there SKIP full preflight and run only the cheap host-only checks on
+   the changed files (`flake8` + `py_compile`), letting the fast CI be the gate. Fix everything red,
+   THEN push `dev` and run the four required checks **once** over the whole batch. To WAIT on that CI, use `powershell -File scripts/watch-ci.ps1` (or
    `-Pr <n>`) — it wraps `gh run watch --exit-status` and prints a per-job PASS/FAIL summary, so no
    session re-invents a waiter/monitor or hand-rolls a `2>&1 | tail` status check that masks the exit
    code. Self-merge `dev` → `main` **exactly once**, then **deploy once**

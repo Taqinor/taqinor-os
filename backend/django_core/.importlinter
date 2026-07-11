@@ -85,6 +85,15 @@ ignore_imports =
 # stock→audit edge so the transitive ventes→stock.services→audit path is allowed.
     apps.stock.services -> apps.audit.recorder
     apps.stock.services -> apps.audit.models
+# ARC34 — le moteur d'automation écrit sa PROPRE trace d'audit (imports
+# fonction-locaux `audit.recorder`/`audit.models` dans `engine`, préexistants) ;
+# depuis qu'ARC34 abonne sav/contrats à `automation.engine` via leurs services,
+# le chemin transitif ventes→…→automation→audit apparaît. C'est le logging
+# transverse d'automation, PAS ventes atteignant audit directement (même motif
+# que les exceptions notifications/stock ci-dessus). Ignore ces arêtes
+# automation→audit.
+    apps.automation.engine -> apps.audit.recorder
+    apps.automation.engine -> apps.audit.models
 
 [importlinter:contract:ged-models-decoupled]
 name = GED models never import a business-core domain's models (string FKs only — GED38)
@@ -132,7 +141,27 @@ forbidden_modules =
     apps.documents
     apps.dataimport
     apps.contact
+# ARC18/19/21 — les modules de TEST des ponts Tiers importent volontairement les
+# vrais modèles historiques (crm.Client/Lead, stock.Fournisseur, compta.Partenaire,
+# rh.DossierEmploye) et le service crm pour PROUVER que le miroir one-way et la
+# bascule flag-gatée fonctionnent de bout en bout. Ce sont des tests d'intégration
+# cross-couche, PAS un couplage de production : le code de PRODUCTION de `tiers`
+# reste strictement base-layer (aucun import statique de domaine — vérifié). On
+# ignore uniquement ces arêtes test→domaine (même motif que les exceptions
+# core.tests.* ci-dessous).
+ignore_imports =
+    apps.tiers.tests.test_arc18_bridge -> apps.crm.models
+    apps.tiers.tests.test_arc18_bridge -> apps.stock.models
+    apps.tiers.tests.test_arc19_bridge -> apps.compta.models
+    apps.tiers.tests.test_arc19_bridge -> apps.rh.models
+    apps.tiers.tests.test_arc21_source_ecriture -> apps.crm.models
+    apps.tiers.tests.test_arc21_source_ecriture -> apps.crm.services
 
+# ARC6 — `core.numbering` (fabrique de références anti-collision, ex
+# `apps.ventes.utils.references`) est une primitive de FONDATION relogée ici :
+# elle reçoit en paramètre le modèle/préfixe/société dont elle a besoin, n'importe
+# donc AUCUNE app métier et respecte nativement le contrat base-layer ci-dessous.
+# `apps.ventes.utils.references` n'est plus qu'un shim de ré-export bit-identique.
 [importlinter:contract:core-foundation-is-a-base-layer]
 name = The core foundation app imports downward only (no domain-core or satellite app)
 type = forbidden
@@ -174,3 +203,19 @@ ignore_imports =
     core.tests.test_yhard4_i18n_content -> apps.stock.models
     core.tests.test_yhard4_i18n_content -> apps.stock.serializers
     core.tests.test_yhard10_export_anonymise -> apps.crm.models
+# ARC1/2/6 + SCA30-33 — les tests des primitives noyau (TenantModel, viewset
+# scopé, numérotation, kit DocumentMetier) exercent la primitive contre de VRAIS
+# modèles/viewsets domaine ; même motif que les exceptions ci-dessus (arêtes
+# test→domaine, jamais du couplage `core` de production — le code prod de core
+# n'importe plus records.views depuis le fold repair, cf. document_viewset qui
+# INJECTE désormais le chatter mixin).
+    core.tests.test_tenant_model -> apps.notifications.models
+    core.tests.test_numbering -> apps.crm.models
+    core.tests.test_numbering -> apps.ventes.models
+    core.tests.test_numbering -> apps.ventes.utils.references
+    core.tests.test_company_scoped_viewset -> apps.crm.views
+    core.tests.test_company_scoped_viewset -> apps.sav.views
+    core.tests.test_company_scoped_viewset -> apps.installations.views.transporteur
+    core.tests.test_documents_viewset -> apps.records.views
+    core.tests.test_documents_status -> apps.installations.models_demande_achat
+    core.tests.test_documents_status -> apps.installations.models_ordre_soustraitance

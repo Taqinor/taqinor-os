@@ -1,4 +1,5 @@
 import api from './axios'
+import { makeResourceFactory } from './resource'
 
 /* ============================================================================
    FLOTTE (UX15–UX20) — client API du module Flotte (parc de véhicules & engins).
@@ -10,16 +11,9 @@ import api from './axios'
    demandée ni rendue côté client.
    ========================================================================== */
 
-// Fabrique CRUD standard pour un ViewSet DRF simple (list/get/create/update/del).
-function crud(prefix) {
-  return {
-    list: (params) => api.get(`/flotte/${prefix}/`, { params }),
-    get: (id) => api.get(`/flotte/${prefix}/${id}/`),
-    create: (data) => api.post(`/flotte/${prefix}/`, data),
-    update: (id, data) => api.patch(`/flotte/${prefix}/${id}/`, data),
-    remove: (id) => api.delete(`/flotte/${prefix}/${id}/`),
-  }
-}
+// ARC44 — Fabrique CRUD standard (factory partagée `api/resource.js`), URLs
+// et forme des réponses inchangées.
+const crud = makeResourceFactory(api, '/flotte')
 
 const flotteApi = {
   // ── Parc : véhicules, engins, référentiels, actifs unifiés ──

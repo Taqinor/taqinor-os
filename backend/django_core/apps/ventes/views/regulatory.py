@@ -5,12 +5,13 @@ borné à la société de l'utilisateur), jamais lue du corps. Querysets filtré
 ``request.user.company``. Couche additive : ne touche ni le PDF premium ni
 `/proposal`, et ne change aucun statut de devis (RULE #4). Aucun prix exposé.
 """
-from rest_framework import viewsets, status
+from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet  # ARC5
 from ..models import (
     RegulatoryDossier, DossierChecklistItem, DossierExchange,
     SubventionDossier, Regularisation8221,
@@ -37,7 +38,12 @@ def _company_or_none(user):
     return getattr(user, 'company', None)
 
 
-class RegulatoryDossierViewSet(viewsets.ModelViewSet):
+class RegulatoryDossierViewSet(CompanyScopedModelViewSet):
+    # ARC5 — sweep TenantMixin : base transverse unique (idem pour les 5 viewsets
+    # de ce module). get_queryset / perform_create / perform_update /
+    # get_permissions SURCHARGENT la base (scoping direct sur `company`) : scoping
+    # et matrice 401/403/404 INCHANGÉS (règle #4 : couche additive, aucun statut
+    # de devis touché, aucun prix exposé).
     """FG268 — CRUD dossier réglementaire + génération de checklist par régime."""
 
     queryset = RegulatoryDossier.objects.select_related(
@@ -115,7 +121,7 @@ class RegulatoryDossierViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK)
 
 
-class DossierChecklistItemViewSet(viewsets.ModelViewSet):
+class DossierChecklistItemViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG268 — CRUD pièces/étapes de checklist (scopé société)."""
 
     queryset = DossierChecklistItem.objects.select_related('dossier').all()
@@ -159,7 +165,7 @@ class DossierChecklistItemViewSet(viewsets.ModelViewSet):
         serializer.save(company=company)
 
 
-class DossierExchangeViewSet(viewsets.ModelViewSet):
+class DossierExchangeViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG269 — journal de la navette opérateur (scopé société)."""
 
     queryset = DossierExchange.objects.select_related(
@@ -207,7 +213,7 @@ class DossierExchangeViewSet(viewsets.ModelViewSet):
         serializer.save(company=company)
 
 
-class SubventionDossierViewSet(viewsets.ModelViewSet):
+class SubventionDossierViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG270 — éligibilité & suivi des subventions (scopé société)."""
 
     queryset = SubventionDossier.objects.select_related(
@@ -261,7 +267,7 @@ class SubventionDossierViewSet(viewsets.ModelViewSet):
         serializer.save(company=company)
 
 
-class Regularisation8221ViewSet(viewsets.ModelViewSet):
+class Regularisation8221ViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG271 — workflow de régularisation Article 33 (scopé société)."""
 
     queryset = Regularisation8221.objects.select_related(

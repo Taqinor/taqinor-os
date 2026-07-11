@@ -3,7 +3,9 @@ from rest_framework.routers import DefaultRouter
 from .views import dashboard
 from .search import global_search, notifications
 from .pipeline import pipeline, funnel_velocity
-from .reports import sales_report, stock_report, service_report
+from .reports import (
+    kpi_federes, sales_report, stock_report, service_report,
+)
 from .insights import (
     recurring_revenue, audit_log, job_costing, analytics, commissions,
     sales_leaderboard, cf_group_by, cohorts, profitability,
@@ -59,6 +61,8 @@ urlpatterns = [
     path('reports/sales/', sales_report, name='report-sales'),
     path('reports/stock/', stock_report, name='report-stock'),
     path('reports/service/', service_report, name='report-service'),
+    # ARC40 — KPI fédérés pilotés par le registre plateforme (kpi_providers).
+    path('reports/kpi-federes/', kpi_federes, name='report-kpi-federes'),
     path('insights/recurring-revenue/', recurring_revenue,
          name='insights-recurring-revenue'),
     path('insights/audit-log/', audit_log, name='insights-audit-log'),

@@ -1,0 +1,37 @@
+"""Modèles du module « {{ app_label }} » (généré par startapp_erp — ARC42).
+
+CONVENTION (playbook « ajouter un module ») :
+  * Tout NOUVEAU modèle métier multi-société hérite de
+    ``core.models.TenantModel`` (FK ``company`` + ``created_at``/``updated_at``,
+    ARC1) — JAMAIS une FK ``company`` recodée à la main.
+  * Pour conserver un ``related_name`` historique lors d'une conversion,
+    redéclarer le champ ``company`` à l'identique dans le corps du modèle.
+  * Numérotation de documents : ``core.numbering.next_reference`` /
+    ``create_with_reference`` (race-safe, plus-haut-utilisé + 1). JAMAIS
+    ``count() + 1`` (collision en production sur les documents supprimés).
+"""
+from core.models import TenantModel  # noqa: F401
+
+
+# Exemple (décommenter et adapter) — un modèle scopé société type :
+#
+# from django.db import models
+#
+# class Exemple(TenantModel):
+#     """Modèle d'exemple : hérite du socle multi-tenant ARC1."""
+#
+#     nom = models.CharField('Nom', max_length=160)
+#     reference = models.CharField('Référence', max_length=40, blank=True,
+#                                  default='')
+#
+#     class Meta:
+#         verbose_name = 'Exemple'
+#         ordering = ['-id']
+#         constraints = [
+#             models.UniqueConstraint(
+#                 fields=['company', 'reference'],
+#                 name='{{ app_label }}_exemple_co_ref_uniq'),
+#         ]
+#
+#     def __str__(self):
+#         return self.nom

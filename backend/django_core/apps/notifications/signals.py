@@ -176,6 +176,73 @@ def bon_commande_cree_receiver(sender, instance, company, **kwargs):
             'notify BON_COMMANDE_CREE failed (bc %s)', instance.pk)
 
 
+# ── Ticket SAV résolu → SAV_TICKET_RESOLU (ARC37) ───────────────────────────
+# S'abonne à ``core.events.ticket_resolu`` (nouveau signal, sav devient
+# émetteur du bus). Notifie le technicien assigné, repli managers.
+def ticket_resolu_receiver(sender, ticket, company, user, ancien_statut,
+                           **kwargs):
+    try:
+        from .sweeps import _notify_user_or_managers
+        technicien = getattr(ticket, 'technicien_responsable', None)
+        _notify_user_or_managers(
+            technicien, company, EventType.SAV_TICKET_RESOLU,
+            'Ticket SAV résolu',
+            body=f'Le ticket {ticket.reference} est passé à Résolu.',
+            link=f'/sav/tickets/{ticket.pk}',
+        )
+    except Exception:  # noqa: BLE001 — jamais bloquant
+        logger.exception(
+            'notify SAV_TICKET_RESOLU failed (ticket %s)', ticket.pk)
+
+
+# ── Équipement SAV remplacé → SAV_EQUIPEMENT_REMPLACE (ARC37) ──────────────
+# S'abonne à ``core.events.equipement_remplace`` (nouveau signal, sav devient
+# émetteur du bus). Notifie les managers de la société (pas d'owner dédié sur
+# un équipement du parc).
+def equipement_remplace_receiver(sender, equipement, ticket, company, user,
+                                 **kwargs):
+    try:
+        from .sweeps import _managers
+        numero = getattr(equipement, 'numero_serie', '') or f'#{equipement.pk}'
+        for mgr in _managers(company):
+            notify(
+                mgr, EventType.SAV_EQUIPEMENT_REMPLACE,
+                'Équipement SAV remplacé',
+                body=(f'Équipement {numero} remplacé (ticket '
+                      f'{getattr(ticket, "reference", ticket.pk)}).'),
+                link=f'/sav/tickets/{ticket.pk}',
+                company=company,
+            )
+    except Exception:  # noqa: BLE001 — jamais bloquant
+        logger.exception(
+            'notify SAV_EQUIPEMENT_REMPLACE failed (equipement %s)',
+            getattr(equipement, 'pk', '?'))
+
+
+# ── Projet — changement de statut → PROJET_STATUT_CHANGE (ARC37) ───────────
+# S'abonne à ``core.events.projet_status_change`` (nouveau signal,
+# gestion_projet devient émetteur du bus, en plus du chemin EXISTANT vers le
+# moteur automation qui reste inchangé). Notifie le responsable du projet.
+def projet_status_change_receiver(sender, projet, company, user,
+                                  ancien_statut, nouveau_statut, **kwargs):
+    responsable = getattr(projet, 'responsable', None)
+    if responsable is None:
+        return
+    try:
+        notify(
+            responsable, EventType.PROJET_STATUT_CHANGE,
+            'Statut de projet modifié',
+            body=(f'Le projet {projet.nom} est passé de {ancien_statut} à '
+                  f'{nouveau_statut}.'),
+            link=f'/gestion-projet/projets/{projet.pk}',
+            company=company,
+        )
+    except Exception:  # noqa: BLE001 — jamais bloquant
+        logger.exception(
+            'notify PROJET_STATUT_CHANGE failed (projet %s)',
+            getattr(projet, 'pk', '?'))
+
+
 # ── SAV Ticket → SAV_TICKET_OPENED (YEVNT4) ─────────────────────────────────
 def sav_ticket_post_save(sender, instance, created, **kwargs):
     """À la CRÉATION d'un ticket SAV → notifie le technicien assigné, sinon
@@ -306,6 +373,27 @@ def demande_approbation_post_save(sender, instance, created, **kwargs):
             'notify APPROVAL_* failed (demande approbation %s)', instance.pk)
 
 
+# ── Contrat signé → CONTRAT_SIGNE (ARC35) ────────────────────────────────────
+# S'abonne à ``core.events.contrat_signe`` (YDOCF5 — seam posé par
+# CONTRAT16/17, jusqu'ici SANS abonné, catalogué ``ALLOWED_UNCONSUMED``).
+# Notifie l'utilisateur qui a agi à la signature (``user``), sinon les
+# managers de la société (même repli que les autres producteurs de ce module).
+def contrat_signe_receiver(sender, contrat, user, company, **kwargs):
+    try:
+        from .sweeps import _notify_user_or_managers
+
+        ref = (contrat.reference or '').strip() or f'#{contrat.pk}'
+        _notify_user_or_managers(
+            user, company, EventType.CONTRAT_SIGNE,
+            'Contrat signé',
+            body=f'Le contrat {ref} a été intégralement signé.',
+            link=f'/contrats/{contrat.pk}',
+        )
+    except Exception:  # noqa: BLE001 — jamais bloquant
+        logger.exception(
+            'notify CONTRAT_SIGNE failed (contrat %s)', getattr(contrat, 'pk', '?'))
+
+
 def connect():
     """Branche les récepteurs. Appelé depuis ``AppConfig.ready()``."""
     from apps.automation.models import AutomationApproval
@@ -313,7 +401,10 @@ def connect():
     from apps.crm.models import Lead
     from apps.sav.models import Ticket
     from apps.ventes.models import Devis
-    from core.events import bon_commande_cree, devis_expired, facture_payee
+    from core.events import (
+        bon_commande_cree, contrat_signe, devis_expired, equipement_remplace,
+        facture_payee, projet_status_change, ticket_resolu,
+    )
 
     pre_save.connect(lead_pre_save, sender=Lead,
                      dispatch_uid='notifications_lead_pre')
@@ -330,6 +421,16 @@ def connect():
                           dispatch_uid='notifications_facture_payee')
     bon_commande_cree.connect(bon_commande_cree_receiver,
                               dispatch_uid='notifications_bon_commande_cree')
+    contrat_signe.connect(contrat_signe_receiver,
+                          dispatch_uid='notifications_contrat_signe')
+    ticket_resolu.connect(ticket_resolu_receiver,
+                          dispatch_uid='notifications_ticket_resolu')
+    equipement_remplace.connect(
+        equipement_remplace_receiver,
+        dispatch_uid='notifications_equipement_remplace')
+    projet_status_change.connect(
+        projet_status_change_receiver,
+        dispatch_uid='notifications_projet_status_change')
     post_save.connect(sav_ticket_post_save, sender=Ticket,
                       dispatch_uid='notifications_sav_ticket_opened')
     pre_save.connect(automation_approval_pre_save, sender=AutomationApproval,
