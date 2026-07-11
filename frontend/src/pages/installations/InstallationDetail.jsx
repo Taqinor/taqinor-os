@@ -44,6 +44,7 @@ import {
   SOUS_GARANTIE_LABELS,
 } from '../../features/sav/ticketStatuses'
 import { formatDate } from '../../lib/format'
+import useDocumentTitle from '../../hooks/useDocumentTitle'
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
   Card, CardHeader, CardTitle, CardContent,
@@ -122,6 +123,11 @@ const equipStatutLabel = (v) =>
   EQUIP_STATUTS.find((s) => s.value === v)?.label ?? '—'
 
 export default function InstallationDetail({ installation, onClose, onSaved }) {
+  // VX82 — titre d'onglet dédié (chrome navigateur vivant) : la fiche
+  // installation est un panneau/hub ouvert par actif, donc dynamique (client)
+  // plutôt qu'une route dédiée — repli sur « Installation » si le client
+  // n'est pas encore chargé.
+  useDocumentTitle(installation?.client_nom ? `Installation · ${installation.client_nom}` : 'Installation')
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const id = installation.id

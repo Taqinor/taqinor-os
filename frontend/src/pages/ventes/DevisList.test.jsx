@@ -493,3 +493,14 @@ describe('DevisList — XSAL16 : résumé d\'engagement par section', () => {
     expect(within(row).queryByText(/sur prix|sur étude/)).toBeNull()
   })
 })
+
+describe('DevisList — VX82 : titre d’onglet dédié', () => {
+  const originalTitle = document.title
+  afterEach(() => { document.title = originalTitle })
+
+  it('monter DevisList met à jour document.title', () => {
+    document.title = 'TAQINOR'
+    renderList({ loading: false, devis: [] })
+    expect(document.title).toBe('Devis · TAQINOR')
+  })
+})

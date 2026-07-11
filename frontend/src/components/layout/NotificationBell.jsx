@@ -11,7 +11,7 @@
 // aucune erreur, aucun blocage. Le backend web-push n'existe pas encore : on ne
 // fait qu'enregistrer la PERMISSION ; l'abonnement réel sera ajouté ensuite.
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import {
   Bell, Clock, ShieldCheck, Banknote, X, BellRing, Check, Settings,
   CalendarClock, RefreshCw, Inbox,
@@ -147,6 +147,10 @@ export default function NotificationBell() {
   // notification (compteur en hausse) pour déclencher le bip + le toast.
   const prevUnreadRef = useRef(null)
   const navigate = useNavigate()
+  // VX82 — chaque changement de route peut poser un NOUVEAU titre de page
+  // (`useDocumentTitle` dans la page elle-même) : on réapplique le préfixe
+  // juste après pour qu'il survive à la navigation.
+  const location = useLocation()
   // VX86 — même hook que le badge nav Sidebar et la carte Dashboard : un seul
   // total cohérent affiché partout.
   const { total: approbationsTotal, loading: approbationsLoading, error: approbationsError } = useApprobationsCount()
@@ -238,6 +242,21 @@ export default function NotificationBell() {
   // Le compteur de la cloche cumule les alertes dérivées et les notifications
   // in-app persistées non lues.
   const total = derivedTotal + feedUnread
+
+  // VX82 — préfixe `(N)` sur le titre d'onglet quand des notifications sont
+  // non lues (chrome navigateur vivant). La cloche vit dans le header, monté
+  // pour toute la durée de vie du SPA — contrairement à `useDocumentTitle`
+  // (page-scoped, restaure l'ancien titre au démontage), on RETIRE puis
+  // RÉAPPLIQUE juste le préfixe à chaque changement de `total`, sans jamais
+  // toucher au reste du titre — ainsi ça compose sans ordre imposé avec le
+  // titre de page posé par `useDocumentTitle` (peu importe lequel des deux
+  // effets tourne en dernier après une navigation).
+  useEffect(() => {
+    const stripped = document.title.replace(/^\(\d+\+?\)\s*/, '')
+    document.title = total > 0 ? `(${total > 99 ? '99+' : total}) ${stripped}` : stripped
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [total, location.pathname])
+
   const goto = (path) => { navigate(path); setOpen(false) }
 
   // Demande l'autorisation à la DEMANDE de l'utilisateur (clic), jamais avant.

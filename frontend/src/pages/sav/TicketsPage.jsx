@@ -64,6 +64,7 @@ import {
   toast,
 } from '../../ui'
 import { useSavedViews } from '../../hooks/useSavedViews'
+import useDocumentTitle from '../../hooks/useDocumentTitle'
 
 const TP_SAVED_VIEWS_KEY = 'taqinor.sav.tickets.savedViews'
 
@@ -1298,6 +1299,8 @@ export function TicketCalendarView({ tickets, onSelect, onReload }) {
 }
 
 export default function TicketsPage() {
+  // VX82 — titre d'onglet dédié (chrome navigateur vivant).
+  useDocumentTitle('Tickets SAV')
   const dispatch = useDispatch()
   const { items, loading, error } = useSelector((s) => s.tickets)
   const [filters, setFilters] = useState(EMPTY_TICKET_FILTERS)
