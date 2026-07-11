@@ -1441,7 +1441,8 @@ class WebsiteLeadPayloadViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         from django.db.models import Q
         return qs.filter(Q(error__gt='') | Q(lead__isnull=True))
 
-    @action(detail=True, methods=['post'], url_path='replay')
+    @action(detail=True, methods=['post'], url_path='replay',
+            permission_classes=[IsResponsableOrAdmin])
     def replay(self, request, pk=None):
         """QX16 — rejoue ce payload à travers le mapping webhook standard.
 

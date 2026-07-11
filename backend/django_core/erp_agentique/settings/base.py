@@ -440,6 +440,27 @@ CELERY_TASK_ROUTES = {
     'stock.expiration_alerts': {'queue': 'scheduled'},
     'stock.relancer_bcf_en_retard': {'queue': 'scheduled'},
     'crm.escalader_rappels_demandes': {'queue': 'scheduled'},
+    # QX11/QX36 — rappels d'échéance + relevés côté ventes.
+    'ventes.pre_echeance_reminders': {'queue': 'scheduled'},
+    'ventes.devis_a_facturer_reminder': {'queue': 'scheduled'},
+    # QX — moteur de relance d'engagement + relève des boîtes entrantes.
+    'ventes.engagement_followup_engine': {'queue': 'scheduled'},
+    'ventes.poll_inbound_mailboxes': {'queue': 'scheduled'},
+    'ged.poll_mail_intake': {'queue': 'scheduled'},
+    # Marketing/compta — séquences, campagnes, communications, dormants, A/B.
+    'compta.executer_sequences_relance': {'queue': 'scheduled'},
+    'compta.envoyer_campagnes_planifiees': {'queue': 'scheduled'},
+    'compta.envoyer_communications_evenement': {'queue': 'scheduled'},
+    'compta.recalculer_dormants_marketing': {'queue': 'scheduled'},
+    'compta.traiter_posts_sociaux': {'queue': 'scheduled'},
+    'compta.decider_gagnants_ab': {'queue': 'scheduled'},
+    # KB — balayages lectures obligatoires / articles périmés.
+    'kb.sweep_lectures_obligatoires': {'queue': 'scheduled'},
+    'kb.sweep_articles_perimes': {'queue': 'scheduled'},
+    # QHSE — escalade des check-ins en retard.
+    'qhse.escalader_checkins_en_retard': {'queue': 'scheduled'},
+    # Notifications — balayage des leads chauds.
+    'notifications.sweep_hot_leads': {'queue': 'scheduled'},
 }
 # Le worker par défaut (sans -Q) écoute la queue nommée dans
 # task_default_queue — on la garde `default` pour ne rien casser ; en
