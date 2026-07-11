@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useDispatch } from 'react-redux'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { Eye, EyeOff, AlertCircle } from 'lucide-react'
 import { setCredentials } from '../features/auth/store/authSlice'
 import api from '../api/axios'
@@ -69,10 +69,19 @@ const onBlur = (e) => {
   e.target.style.background  = '#f9fafb'
 }
 
+// VX65 — Garde anti-open-redirect pour `?next=` : on ne suit la destination
+// d'origine que si c'est un chemin interne (`/...`), jamais un `//host` ou une
+// URL absolue (protocole-relative), qui redirigerait vers un domaine externe.
+const safeNextPath = (next) => {
+  if (!next || !next.startsWith('/') || next.startsWith('//')) return null
+  return next
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function Login() {
   const dispatch = useDispatch()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
 
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -102,7 +111,8 @@ export default function Login() {
         role_nom: res.data.role_nom || null,
         permissions: res.data.permissions || [],
       }))
-      navigate('/dashboard')
+      const next = safeNextPath(searchParams.get('next'))
+      navigate(next || '/dashboard')
     } catch (err) {
       const data = err.response?.data || {}
       // 2FA requise : on déverrouille le champ code et on demande le code.

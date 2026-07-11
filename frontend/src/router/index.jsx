@@ -79,9 +79,23 @@ const ensureSession = async () => {
   return bootstrapPromise
 }
 
-const authLoader = async () => {
+// VX65 — Lien profond survivant à une reconnexion : si la session a expiré,
+// on capture l'URL d'origine (`?next=`) avant de rediriger vers /login, pour
+// que Login.jsx puisse y revenir après une connexion réussie (au lieu de
+// toujours retomber sur /dashboard). Le loader reçoit le `Request` de
+// react-router — on lit son URL, pas `window.location` (SSR-safe/testable).
+const buildLoginRedirect = (request) => {
+  const url = new URL(request.url)
+  const next = url.pathname + url.search + url.hash
+  if (next && next !== '/') {
+    return redirect(`/login?next=${encodeURIComponent(next)}`)
+  }
+  return redirect('/login')
+}
+
+const authLoader = async ({ request }) => {
   const ok = await ensureSession()
-  return ok ? null : redirect('/login')
+  return ok ? null : buildLoginRedirect(request)
 }
 
 // ERR27 — Garde de rôle/permission sur les routes d'administration. Reflète
@@ -90,9 +104,9 @@ const authLoader = async () => {
 // qu'elle est présente dans les permissions de l'utilisateur. Sinon, l'utilisateur
 // authentifié mais non autorisé est renvoyé vers `/dashboard` (accessible à tous),
 // au lieu de monter la page d'admin via un lien direct.
-const roleLoader = (roles, perm) => async () => {
+const roleLoader = (roles, perm) => async ({ request }) => {
   const ok = await ensureSession()
-  if (!ok) return redirect('/login')
+  if (!ok) return buildLoginRedirect(request)
   const { role, permissions } = store.getState().auth
   const tier = role || 'normal'
   const allowed = roles.includes(tier) && (!perm || (permissions || []).includes(perm))
