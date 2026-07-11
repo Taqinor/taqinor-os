@@ -433,6 +433,30 @@ button:active, [role="button"]:active, a.btn:active,
 .sidebar-nav-icon { display: flex; flex-shrink: 0; }
 .sidebar-nav-label { flex: 1; }
 
+/* VX86 — pastille de compte (ex. « Approbations en attente ») : même langage
+   que `.nb-badge` (cloche) pour un repère visuel cohérent dans toute la
+   coquille, mais posée en flux (pas en position absolute) puisqu'elle vit à
+   la fin d'un item nav plutôt que sur un bouton icône seul. */
+.sidebar-nav-badge {
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  min-width: 17px; height: 17px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #dc2626; color: #fff;
+  font-size: 0.66rem; font-weight: 700;
+  line-height: 1;
+}
+/* Tiroir replié : l'item est centré sur l'icône seule ; la pastille se pose
+   en coin plutôt que de forcer l'item à s'élargir. */
+.sidebar--collapsed .sidebar-nav-badge {
+  position: absolute;
+  top: 2px; right: 2px;
+  min-width: 14px; height: 14px;
+  font-size: 0.6rem;
+  padding: 0 3px;
+}
+
 .sidebar--collapsed .sidebar-nav-item { justify-content: center; padding: 0.52rem; }
 .sidebar--collapsed .sidebar-section { padding-bottom: 0.05rem; }
 
