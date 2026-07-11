@@ -73,19 +73,19 @@ test('VX55 : LeadsPage annule le thunk fetchLeads au cleanup d\'effet (démontag
   const start = LEADS_PAGE_SRC.indexOf('const refetch = () => dispatch(fetchLeads(')
   const block = LEADS_PAGE_SRC.slice(start, start + 600)
   assert.match(block, /const thunk = dispatch\(fetchLeads\(archivedParam\(filters\.archived\)\)\)/)
-  assert.match(block, /return \(\) => thunk\.abort\(\)/)
+  assert.match(block, /return \(\) => thunk\??\.abort\??\.\(\)/)
 })
 
 test('VX55 : DevisList annule le thunk fetchDevis au cleanup d\'effet (démontage)', () => {
   const start = DEVIS_LIST_SRC.indexOf('const thunk = dispatch(fetchDevis())')
   assert.notEqual(start, -1)
   const block = DEVIS_LIST_SRC.slice(start, start + 100)
-  assert.match(block, /return \(\) => thunk\.abort\(\)/)
+  assert.match(block, /return \(\) => thunk\??\.abort\??\.\(\)/)
 })
 
 test('VX55 : ClientList annule le thunk fetchClients au cleanup d\'effet (démontage)', () => {
   const start = CLIENT_LIST_SRC.indexOf('const thunk = dispatch(fetchClients())')
   assert.notEqual(start, -1)
   const block = CLIENT_LIST_SRC.slice(start, start + 100)
-  assert.match(block, /return \(\) => thunk\.abort\(\)/)
+  assert.match(block, /return \(\) => thunk\??\.abort\??\.\(\)/)
 })
