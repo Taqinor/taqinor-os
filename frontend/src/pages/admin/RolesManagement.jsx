@@ -603,13 +603,33 @@ export default function RolesManagement() {
                   <SelectValue placeholder="Choisir un rôle…" />
                 </SelectTrigger>
                 <SelectContent>
-                  {roles.filter(r => r.id !== reassign.role.id).map(r => (
-                    <SelectItem key={r.id} value={String(r.id)}>
-                      {r.nom} {r.est_systeme ? '(Système)' : '(Personnalisé)'}
-                    </SelectItem>
-                  ))}
+                  {/* VX234 — trié par nombre de permissions CROISSANT : un clic
+                      hâtif tombe d'abord sur les rôles les moins larges plutôt
+                      que sur « Administrateur » en tête de liste alphabétique. */}
+                  {roles
+                    .filter(r => r.id !== reassign.role.id)
+                    .slice()
+                    .sort((a, b) => (a.permissions?.length ?? 0) - (b.permissions?.length ?? 0))
+                    .map(r => {
+                      const wider = (r.permissions?.length ?? 0) > (reassign.role.permissions?.length ?? 0)
+                      return (
+                        <SelectItem key={r.id} value={String(r.id)}>
+                          {r.nom} {r.est_systeme ? '(Système)' : '(Personnalisé)'}
+                          {' '}({r.permissions?.length ?? 0} permission{(r.permissions?.length ?? 0) !== 1 ? 's' : ''})
+                          {wider ? ' ⚠ plus large' : ''}
+                        </SelectItem>
+                      )
+                    })}
                 </SelectContent>
               </Select>
+              {reassign.target && (() => {
+                const targetRole = roles.find(r => r.id === reassign.target)
+                const wider = targetRole
+                  && (targetRole.permissions?.length ?? 0) > (reassign.role.permissions?.length ?? 0)
+                return wider ? (
+                  <Badge tone="warning">⚠ plus large que « {reassign.role.nom} »</Badge>
+                ) : null
+              })()}
               <p className="text-xs text-muted-foreground">
                 Utilisateurs concernés :{' '}
                 {(reassign.role.users || []).map(u => u.username).join(', ') || '—'}

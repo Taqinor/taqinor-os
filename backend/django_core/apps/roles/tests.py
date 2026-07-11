@@ -7,8 +7,12 @@ Couvre :
   section='roles' (tâche RBAC « journaliser à l'audit »),
 - la société reste forcée côté serveur (multi-tenant),
 - les protections existantes (rôle système / rôle assigné) ne sont pas
-  affaiblies.
+  affaiblies,
+- VX234 : le diff structuré (permissions ajoutées/retirées) est journalisé
+  même pour un échange net-neutre (compte de permissions inchangé).
 """
+import json
+
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
@@ -112,6 +116,38 @@ class RolesRbacTest(TestCase):
         resp = self.api.delete(f'/api/django/roles/{role.id}/')
         self.assertEqual(resp.status_code, 403)
         self.assertTrue(Role.objects.filter(id=role.id).exists())
+
+    # ── VX234 : diff structuré (échange net-neutre reste lisible) ────────
+    def test_net_neutral_permission_swap_logs_added_and_removed(self):
+        role = Role.objects.create(
+            company=self.company, nom='Commercial',
+            permissions=['crm_voir', 'crm_supprimer'])
+        resp = self.api.patch(
+            f'/api/django/roles/{role.id}/',
+            {'permissions': ['crm_voir', 'ventes_export']}, format='json')
+        self.assertEqual(resp.status_code, 200)
+        row = SettingsAuditLog.objects.get(
+            company=self.company, section='roles', field_label='Rôle modifié')
+        new_value = json.loads(row.new_value)
+        self.assertEqual(new_value['ajoutees'], ['ventes_export'])
+        self.assertEqual(new_value['retirees'], ['crm_supprimer'])
+        # Le compte total est net-neutre (2 → 2) : la preuve du bug corrigé
+        # est que le diff distingue quand même les deux codes échangés.
+        self.assertEqual(new_value['total'], 2)
+
+    def test_create_role_audit_new_value_is_json_with_ajoutees(self):
+        resp = self.api.post(
+            '/api/django/roles/',
+            {'nom': 'Magasinier2', 'permissions': ['stock_voir', 'stock_creer']},
+            format='json')
+        self.assertEqual(resp.status_code, 201)
+        row = SettingsAuditLog.objects.get(
+            company=self.company, section='roles', field_label='Rôle créé',
+            field='role:Magasinier2')
+        new_value = json.loads(row.new_value)
+        self.assertEqual(
+            sorted(new_value['ajoutees']), ['stock_creer', 'stock_voir'])
+        self.assertEqual(new_value['retirees'], [])
 
     def test_company_is_forced_server_side_on_create(self):
         other = Company.objects.create(nom='Autre', slug='autre-co')
