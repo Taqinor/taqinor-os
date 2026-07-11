@@ -39,8 +39,13 @@ vi.mock('../../ui/Toaster', () => ({
 
 import gedApi from '../../api/gedApi'
 import GedNavigator from './GedNavigator'
+// VX152 — GedNavigator rend désormais le moteur DataTable partagé, qui lit la
+// densité via useTheme : comme tout écran consommant DataTable, le test doit
+// fournir le ThemeProvider (cf. flotte/*Screen.test.jsx, RolesManagement.test.jsx).
+import { ThemeProvider } from '../../design/ThemeProvider'
 
 const ok = (data) => Promise.resolve({ data })
+const renderGed = () => render(<ThemeProvider><GedNavigator /></ThemeProvider>)
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -57,7 +62,7 @@ describe('GedNavigator — écriture (U14)', () => {
       .mockResolvedValueOnce(ok([])) // montage : aucune armoire
       .mockResolvedValue(ok([{ id: 7, nom: 'Administratif' }]))
 
-    render(<GedNavigator />)
+    renderGed()
 
     // L'état vide propose explicitement de créer la première armoire.
     const cta = await screen.findByRole('button', { name: /première armoire/i })
@@ -77,7 +82,7 @@ describe('GedNavigator — écriture (U14)', () => {
     gedApi.getDossiers.mockResolvedValue(ok([]))
     gedApi.createDossier.mockResolvedValue(ok({ id: 9, nom: 'Contrats' }))
 
-    render(<GedNavigator />)
+    renderGed()
 
     // L'arbre vide propose de créer un dossier.
     const btn = await screen.findByRole('button', { name: /Créer un dossier/i })
@@ -103,7 +108,7 @@ describe('GedNavigator — écriture (U14)', () => {
     gedApi.getDocuments.mockResolvedValue(ok([]))
     gedApi.uploadDocument.mockResolvedValue(ok({ id: 3, nom: 'cni.pdf' }))
 
-    render(<GedNavigator />)
+    renderGed()
 
     // Sélectionne le dossier dans l'arbre.
     const folderBtn = await screen.findByText('Docs')
@@ -138,7 +143,7 @@ describe('GedNavigator — écriture (U14)', () => {
       { id: 22, numero: 1, mime: 'application/pdf', filename: 'facture.pdf' },
     ]))
 
-    render(<GedNavigator />)
+    renderGed()
     await userEvent.click(await screen.findByText('Docs'))
 
     // Le bouton « Aperçu » de la ligne ouvre la modale.
@@ -163,7 +168,7 @@ describe('GedNavigator — écriture (U14)', () => {
       { id: 8, nom: 'facture.pdf', is_locked: false, updated_at: '2026-06-01T10:00:00Z' },
     ]))
 
-    render(<GedNavigator />)
+    renderGed()
     await userEvent.click(await screen.findByText('Docs'))
     await userEvent.click(await screen.findByRole('button', { name: /Extraire facture\.pdf/i }))
 
@@ -180,7 +185,7 @@ describe('GedNavigator — écriture (U14)', () => {
       { id: 9, nom: 'b.pdf', updated_at: '2026-06-02T10:00:00Z' },
     ]))
 
-    render(<GedNavigator />)
+    renderGed()
     await userEvent.click(await screen.findByText('Docs'))
 
     // Coche deux documents.
@@ -203,7 +208,7 @@ describe('GedNavigator — écriture (U14)', () => {
     gedApi.getDocuments.mockResolvedValue(ok([]))
     gedApi.renameDossier.mockResolvedValue(ok({ id: 5, nom: 'Archives' }))
 
-    render(<GedNavigator />)
+    renderGed()
     await userEvent.click(await screen.findByText('Docs'))
 
     await userEvent.click(await screen.findByRole('button', { name: /Renommer/i }))

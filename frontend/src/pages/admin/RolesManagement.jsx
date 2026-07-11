@@ -564,6 +564,13 @@ export default function RolesManagement() {
             emptyTitle="Aucun rôle défini"
             emptyDescription="Aucun rôle ne correspond à cette recherche."
             aria-label="Liste des rôles"
+            /* VX152 — liste d'administration courte : table unique (recherche/tri
+               conservés), sans repli en cartes ni pagination, donc toutes les lignes
+               visibles et un seul rendu du DOM (pas de doublon desktop/mobile ni de
+               <select> « lignes par page » parasite). */
+            pageSize={roles.length}
+            hidePagination
+            hideMobileCards
           />
           {/* Panneau « Utilisateurs » du rôle déplié (bouton dans la colonne
               Utilisateurs) — reste hors du moteur DataTable : seuls les rôles
