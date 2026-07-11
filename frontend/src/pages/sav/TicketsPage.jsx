@@ -181,6 +181,18 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
   const [current, setCurrent] = useState(ticket)
   const F = (k, d = '') => current?.[k] ?? d
 
+  // VX216(b) — l'intervention qui a RÉSOLU ce ticket : la plus récemment
+  // réalisée parmi `current.interventions` (TicketInterventionSerializer,
+  // déjà exposé par l'API — aucun champ backend manquant). N'affiche rien
+  // pour un ticket jamais résolu par une intervention (résolution à distance,
+  // manuelle...).
+  const resolvingIntervention = useMemo(() => {
+    const list = (current.interventions ?? []).filter((iv) => iv.date_realisee)
+    if (list.length === 0) return null
+    return list.reduce((latest, iv) =>
+      (!latest || iv.date_realisee > latest.date_realisee ? iv : latest), null)
+  }, [current.interventions])
+
   const initialFields = useMemo(() => ({
     statut: current.statut ?? 'nouveau',
     type: current.type ?? 'correctif',
@@ -589,13 +601,40 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
               <div className="flex items-center gap-2">
                 <Input value={current.installation_reference ?? '—'} readOnly />
                 {current.installation && (
-                  // L312 — lien vers la page des chantiers.
-                  <Button asChild variant="ghost" size="sm" title="Ouvrir les chantiers">
-                    <Link to="/chantiers"><ExternalLink /></Link>
+                  // VX216(b) — L312 pointait vers la page générique des
+                  // chantiers ; deep-link réel vers CE chantier (même patron
+                  // `?id=` que VX79/InstallationsPage.jsx).
+                  <Button asChild variant="ghost" size="sm" title="Ouvrir ce chantier">
+                    <Link to={`/chantiers?id=${current.installation}`}><ExternalLink /></Link>
                   </Button>
                 )}
               </div>
             </FormField>
+            {/* VX216(b) — YSERV2 avance automatiquement un ticket vers RESOLU
+                quand son intervention liée se termine, mais jusqu'ici le
+                ticket ne montrait jamais QUELLE intervention l'a résolu.
+                `current.interventions` (TicketInterventionSerializer) porte
+                déjà date_realisee/technicien_nom — la plus récente réalisée
+                est la résolvante. */}
+            {resolvingIntervention && (
+              <FormField label="Résolu par">
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={
+                      `Intervention #${resolvingIntervention.id} du `
+                      + `${formatDateFR(resolvingIntervention.date_realisee)} par `
+                      + `${resolvingIntervention.technicien_nom ?? '—'}`
+                    }
+                    readOnly
+                  />
+                  {current.installation && (
+                    <Button asChild variant="ghost" size="sm" title="Ouvrir le chantier de cette intervention">
+                      <Link to={`/chantiers?id=${current.installation}`}><ExternalLink /></Link>
+                    </Button>
+                  )}
+                </div>
+              </FormField>
+            )}
             <FormField label="Ouvert le">
               <Input value={formatDateFR(current.date_ouverture)} readOnly />
             </FormField>

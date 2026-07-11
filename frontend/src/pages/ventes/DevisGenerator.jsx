@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch } from 'react-redux'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
@@ -18,9 +18,9 @@ import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
 import parametresApi from '../../api/parametresApi'
-import ProduitPicker from '../../components/ProduitPicker'
 import ClientQuickCreateModal from './ClientQuickCreateModal'
 import DevisPresetPanel from './DevisPresetPanel'
+import DevisLineRow from './DevisLineRow'
 import { Combobox } from '../../ui/Combobox'
 import { searchCompanies } from '../../features/crm/companyLookup'
 import {
@@ -43,9 +43,8 @@ import {
   isBattery, isHybridInverter, isReseauInverter, isPanel, isPompe,
   prixParKwc, discountForTarget,
   computeBuyCost, avecBatterieAvailability, KWH_PRICE, EFFICIENCY,
-  panneauxPourKwc, expectedTvaForDesignation,
+  panneauxPourKwc,
   TVA_STANDARD_DEFAUT, TVA_PANNEAUX_DEFAUT,
-  classifyProduct,
   kwhFromBill, buildEtudeParamsChoice, multiPropertyPreviewTTC,
   productibleForCity,
 } from '../../features/ventes/solar'
@@ -852,12 +851,14 @@ export default function DevisGenerator({
     setMonthly(m => m.map((old, idx) => (idx === i ? v : old)))
 
   // ── Lignes ──
-  const setLine = (key, k, v) => {
-    // VX93 — mémorise le dernier taux TVA saisi à la main pour pré-remplir la
-    // prochaine ligne ajoutée (emptyLine → lireLastTva).
+  // VX188 — callback stabilisé (identité stable via useCallback, clé de ligne
+  // en ARGUMENT) pour que `React.memo(DevisLineRow)` saute le re-rendu d'une
+  // ligne inchangée. VX93 — mémorise le dernier taux TVA saisi à la main pour
+  // pré-remplir la prochaine ligne ajoutée (ecrireLastTva est un writer stable).
+  const setLine = useCallback((key, k, v) => {
     if (k === 'taux_tva') ecrireLastTva(v)
     setLines(ls => ls.map(l => (l._key === key ? { ...l, [k]: v } : l)))
-  }
+  }, [])
 
   // XSAL3 — badge « Tarif : <liste> » par ligne, quand le prix résolu vient
   // d'une liste de prix client (source !== 'standard'). Purement informatif +
@@ -891,7 +892,7 @@ export default function DevisGenerator({
     }
   }
 
-  const onProduitChange = (key, produitId) => {
+  const onProduitChange = useCallback((key, produitId) => {
     const p = produits.find(p => String(p.id) === String(produitId))
     setLines(ls => ls.map(l =>
       l._key === key
@@ -908,16 +909,18 @@ export default function DevisGenerator({
       const l = lines.find(x => x._key === key)
       refreshTarif(key, produitId, l?.quantite)
     }
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [produits, lines])
 
   // Ré-interroge le tarif applicable quand la quantité change sur une ligne
   // déjà liée à un produit (paliers XSAL2), ou quand le client change (liste
   // XSAL1 assignée) — pour toutes les lignes liées à un produit.
-  const onQuantiteChange = (key, quantite) => {
+  const onQuantiteChange = useCallback((key, quantite) => {
     setLine(key, 'quantite', quantite)
     const l = lines.find(x => x._key === key)
     if (l?.produit) refreshTarif(key, l.produit, quantite)
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lines, setLine])
 
   useEffect(() => {
     lines.forEach(l => { if (l.produit) refreshTarif(l._key, l.produit, l.quantite) })
@@ -929,7 +932,7 @@ export default function DevisGenerator({
   // (on garde le texte divergent, rien d'autre) ou « créer un nouveau produit
   // dans le stock » (clone serveur via /dupliquer/, puis on relie la ligne au
   // clone). Non bloquant : ne s'ouvre que sur une vraie divergence.
-  const onDesignationBlur = (key) => {
+  const onDesignationBlur = useCallback((key) => {
     if (!canRenameLine) return
     const l = lines.find(x => x._key === key)
     if (!l || !l.produit) return
@@ -939,7 +942,7 @@ export default function DevisGenerator({
     if (!nouveauNom || nouveauNom === (prod.nom || '').trim()) return
     setRenameError(null)
     setRenameDialog({ key, ancienNom: prod.nom, nouveauNom, produitId: l.produit })
-  }
+  }, [canRenameLine, lines, produits])
 
   // Option (a) — « Renommer sur ce devis seulement » : on garde la désignation
   // divergente telle quelle, aucun produit créé. Juste fermer le dialogue.
@@ -981,7 +984,12 @@ export default function DevisGenerator({
     setPendingFocusKey(line._key) // VX90 — focus la nouvelle ligne après rendu.
     return [...ls, line]
   })
-  const removeLine = (key) => setLines(ls => ls.filter(l => l._key !== key))
+  const removeLine = useCallback((key) =>
+    setLines(ls => ls.filter(l => l._key !== key)), [])
+  // VX188 — identité stable pour ProduitPicker.onProduitCreated (passé à
+  // chaque DevisLineRow) : setProduits est déjà un setState fonctionnel,
+  // aucune dépendance réelle.
+  const onProduitCreated = useCallback((p) => setProduits(ps => [...ps, p]), [])
 
   // VX90 — quand une ligne vient d'être ajoutée, focaliser son ProduitPicker et
   // la faire défiler dans la vue. On cible la ligne par son data-line-key, puis
@@ -1013,11 +1021,11 @@ export default function DevisGenerator({
   }
 
   // Assigne une ligne à un groupe villa (met à jour l'index + le libellé).
-  const setLineGroupe = (key, idx) => {
+  const setLineGroupe = useCallback((key, idx) => {
     const grp = villaGroups.find(g => g.index === idx)
     setLines(ls => ls.map(l =>
       l._key === key ? { ...l, groupeIndex: idx, groupeLabel: grp?.label ?? '' } : l))
-  }
+  }, [villaGroups])
 
   const addVillaGroup = () => {
     setVillaGroups(gs => {
@@ -2314,115 +2322,30 @@ export default function DevisGenerator({
                   </tr>
                 </thead>
                 <tbody>
-                  {lines.map(l => {
-                    const lineTtc =
-                      (parseFloat(l.quantite) || 0) * (parseFloat(l.prix_unit_ttc) || 0)
-                    // Indice non bloquant : la désignation a été éditée et ne
-                    // correspond plus au nom du produit choisi — la classification
-                    // (réseau/hybride/batterie/panneau) pourrait changer la
-                    // répartition d'options du PDF. On n'altère jamais la saisie.
-                    const prodLie = l.produit
-                      ? produits.find(p => String(p.id) === String(l.produit))
-                      : null
-                    const designationDivergente = !!prodLie
-                      && (l.designation || '').trim() !== (prodLie.nom || '').trim()
-                    return (
-                      <tr key={l._key} data-line-key={l._key}>
-                        <td data-label="Désignation">
-                          {/* QP2 — désignation en LECTURE SEULE sauf pour
-                              Directeur + Commercial responsable. Un rôle non
-                              autorisé ne peut pas renommer une ligne (verrouillée
-                              au nom du produit) ; un rôle autorisé qui diverge du
-                              nom du produit reçoit au blur le choix « renommer
-                              ici » vs « créer un nouveau produit ». */}
-                          <Input className="h-[var(--control-h-sm)]" value={l.designation}
-                                 readOnly={!canRenameLine}
-                                 disabled={!canRenameLine}
-                                 title={!canRenameLine
-                                   ? 'Renommer une ligne est réservé au Directeur et au Commercial responsable'
-                                   : undefined}
-                                 onChange={e => setLine(l._key, 'designation', e.target.value)}
-                                 onBlur={() => onDesignationBlur(l._key)}
-                                 placeholder="Désignation" />
-                          {designationDivergente && (
-                            <div className="mt-0.5 text-xs text-warning"
-                                 title="La désignation diffère du nom du produit — vérifiez la classification PDF">
-                              Désignation modifiée (produit : {prodLie.nom})
-                            </div>
-                          )}
-                        </td>
-                        <td data-label="Produit (stock)">
-                          <ProduitPicker
-                            produits={produits}
-                            value={l.produit}
-                            onChange={id => onProduitChange(l._key, id)}
-                            typeFilter={classifyProduct(l.designation) || undefined}
-                            onProduitCreated={(p) => setProduits(ps => [...ps, p])}
-                          />
-                          {tarifBadges[l._key] && (
-                            <span className="mt-0.5 inline-block rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary">
-                              Tarif : {tarifBadges[l._key]}
-                            </span>
-                          )}
-                        </td>
-                        {multiMode === 'villas' && (
-                          <td data-label="Villa">
-                            <Select
-                              value={l.groupeIndex != null ? String(l.groupeIndex) : '0'}
-                              onValueChange={(v) => setLineGroupe(l._key, parseInt(v, 10))}>
-                              <SelectTrigger className="h-[var(--control-h-sm)]"><SelectValue /></SelectTrigger>
-                              <SelectContent>
-                                {villaGroups.map(g => (
-                                  <SelectItem key={g.index} value={String(g.index)}>{g.label}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </td>
-                        )}
-                        <td data-label="Qté">
-                          <Input type="number" min="0" step="any"
-                                 className="h-[var(--control-h-sm)] ta-right" value={l.quantite}
-                                 onChange={e => onQuantiteChange(l._key, e.target.value)} />
-                        </td>
-                        <td data-label="Prix unit. TTC">
-                          <Input type="number" min="0" step="any"
-                                 className="h-[var(--control-h-sm)] ta-right" value={l.prix_unit_ttc}
-                                 onChange={e => setLine(l._key, 'prix_unit_ttc', e.target.value)} />
-                        </td>
-                        <td data-label="TVA %">
-                          <Input type="number" min="0" step="any"
-                                 className="h-[var(--control-h-sm)] ta-right w-14 text-xs text-muted-foreground"
-                                 value={l.taux_tva ?? '20'}
-                                 onChange={e => setLine(l._key, 'taux_tva', e.target.value)} />
-                          {(() => {
-                            // DC7 — AVERTISSEMENT de divergence uniquement : le
-                            // taux attendu suit la désignation + les repères TVA
-                            // société (expectedTvaForDesignation), et `Produit.tva`
-                            // reste la source autoritaire par ligne. On n'altère
-                            // JAMAIS la valeur saisie (frappe souveraine).
-                            const t = parseFloat(l.taux_tva)
-                            if (!Number.isFinite(t) || !(l.designation || '').trim()) return null
-                            const expected = expectedTvaForDesignation(l.designation, {
-                              tvaPanneaux: quoteLogic.tvaPanneaux,
-                              tvaStandard: quoteLogic.tvaStandard,
-                            })
-                            if (t !== expected) {
-                              return <div className="mt-0.5 text-xs text-warning">{`${expected} % attendu`}</div>
-                            }
-                            return null
-                          })()}
-                        </td>
-                        <td className="line-total" data-label="Total TTC">{formatMoney(lineTtc)}</td>
-                        <td>
-                          <IconButton type="button" label="Supprimer la ligne" size="sm"
-                                      className="text-destructive hover:bg-destructive/10"
-                                      onClick={() => removeLine(l._key)}>
-                            <Trash2 />
-                          </IconButton>
-                        </td>
-                      </tr>
-                    )
-                  })}
+                  {/* VX188 — ligne extraite en <DevisLineRow> mémoïsé : taper
+                      dans Note/farmSurfaceHa/n'importe lequel des autres
+                      useState ne re-rend plus les lignes inchangées (callbacks
+                      stabilisés ci-dessus, clé en argument). */}
+                  {lines.map(l => (
+                    <DevisLineRow
+                      key={l._key}
+                      line={l}
+                      produits={produits}
+                      multiMode={multiMode}
+                      villaGroups={villaGroups}
+                      canRenameLine={canRenameLine}
+                      tarifBadge={tarifBadges[l._key]}
+                      tvaPanneaux={quoteLogic.tvaPanneaux}
+                      tvaStandard={quoteLogic.tvaStandard}
+                      onSetField={setLine}
+                      onDesignationBlur={onDesignationBlur}
+                      onProduitChange={onProduitChange}
+                      onProduitCreated={onProduitCreated}
+                      onQuantiteChange={onQuantiteChange}
+                      onSetGroupe={setLineGroupe}
+                      onRemove={removeLine}
+                    />
+                  ))}
                 </tbody>
               </table>
             </div>

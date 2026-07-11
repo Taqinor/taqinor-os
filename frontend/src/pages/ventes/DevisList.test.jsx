@@ -46,6 +46,9 @@ vi.mock('../../api/ventesApi', async (importOriginal) => {
       shareLinkDevis: vi.fn(() => Promise.resolve({ data: { token: 'tok123', path: '/proposition/tok123' } })),
       whatsappPreviewDevis: vi.fn(() => Promise.resolve({ data: { wa_url: 'https://wa.me/212600000000', message: 'Bonjour' } })),
       whatsappDevis: vi.fn(() => Promise.resolve({ data: { statut: 'envoye' } })),
+      // VX216(a) — « Réviser (nouvelle version) », mocké pour ne jamais
+      // toucher le réseau réel dans le test du toast.warning associé.
+      reviserDevis: vi.fn(() => Promise.resolve({ data: {} })),
     },
   }
 })
@@ -67,6 +70,7 @@ vi.mock('../../api/crmApi', async (importOriginal) => {
 import DevisList from './DevisList'
 import ventesApi from '../../api/ventesApi'
 import crmApi from '../../api/crmApi'
+import { toast } from '../../ui'
 // ARC49 — DevisList rend désormais son tableau via le moteur `ui/datatable`, qui
 // lit la densité via useDensity() et EXIGE donc un <ThemeProvider> dans l'arbre
 // (comme en production, où <Layout> l'enveloppe). Ajout de wrapper de HARNAIS
@@ -491,5 +495,120 @@ describe('DevisList — XSAL16 : résumé d\'engagement par section', () => {
     })
     const row = screen.getByText('DEV-NOENGAGE').closest('tr')
     expect(within(row).queryByText(/sur prix|sur étude/)).toBeNull()
+  })
+})
+
+describe('DevisList — VX216(a) : seam devis↔chantier visible côté vendeur', () => {
+  it('badge « Chantier en cours (compo gelée) » quand le chantier lié n\'est ni réceptionné ni clôturé', () => {
+    renderList({
+      loading: false,
+      devis: [{
+        id: 70, reference: 'DEV-VX216-A', client_nom: 'ACME', statut: 'accepte',
+        date_creation: '2026-07-01', total_ttc: 20000, nb_options: 1, version: 1,
+        chantier: { id: 5, reference: 'CH-2026-07-0005', statut: 'en_cours' },
+      }],
+    })
+    const row = screen.getByText('DEV-VX216-A').closest('tr')
+    expect(within(row).getByText('Chantier en cours (compo gelée)')).toBeVisible()
+  })
+
+  it('aucun badge quand le chantier est réceptionné/clôturé (composition plus « engagée »)', () => {
+    renderList({
+      loading: false,
+      devis: [{
+        id: 71, reference: 'DEV-VX216-B', client_nom: 'ACME', statut: 'accepte',
+        date_creation: '2026-07-01', total_ttc: 20000, nb_options: 1, version: 1,
+        chantier: { id: 6, reference: 'CH-2026-07-0006', statut: 'cloture' },
+      }],
+    })
+    const row = screen.getByText('DEV-VX216-B').closest('tr')
+    expect(within(row).queryByText('Chantier en cours (compo gelée)')).toBeNull()
+  })
+
+  it('« Réviser (nouvelle version) » avertit (toast.warning) quand un chantier en cours est lié', async () => {
+    const user = userEvent.setup()
+    const warnSpy = vi.spyOn(toast, 'warning')
+    renderList({
+      loading: false,
+      devis: [{
+        id: 72, reference: 'DEV-VX216-C', client_nom: 'ACME', statut: 'envoye',
+        date_creation: '2026-07-01', total_ttc: 20000, nb_options: 1, version: 1,
+        is_active: true,
+        chantier: { id: 7, reference: 'CH-2026-07-0007', statut: 'planifie' },
+      }],
+    })
+    const row = screen.getByText('DEV-VX216-C').closest('tr')
+    await user.click(within(row).getByRole('button', { name: /Plus d'actions/ }))
+    await user.click(screen.getByRole('menuitem', { name: /Réviser/ }))
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('CH-2026-07-0007'))
+  })
+})
+
+describe('DevisList — VX140 : ≤5 boutons d\'action visibles + menu, cellule Référence à 2 niveaux', () => {
+  it('un devis brouillon montre au plus 5 boutons visibles + le menu « Plus d\'actions »', () => {
+    renderList({
+      loading: false,
+      devis: [{
+        id: 60, reference: 'DEV-VX140-A', client_nom: 'ACME', statut: 'brouillon',
+        date_creation: '2026-07-01', total_ttc: 5000, nb_options: 1, version: 1,
+      }],
+    })
+    const row = screen.getByText('DEV-VX140-A').closest('tr')
+    const actionsCell = row.cells[row.cells.length - 1]
+    const buttons = within(actionsCell).getAllByRole('button')
+    // PDF, Envoyer, Générer facture (désactivé), Plus d'actions = 4 boutons visibles.
+    expect(buttons.length).toBeLessThanOrEqual(5)
+    expect(within(actionsCell).getByRole('button', { name: /Plus d'actions/ })).toBeVisible()
+  })
+
+  it('un devis envoyé montre au plus 5 boutons visibles + le menu « Plus d\'actions »', () => {
+    renderList({
+      loading: false,
+      devis: [{
+        id: 61, reference: 'DEV-VX140-B', client_nom: 'ACME', statut: 'envoye',
+        date_creation: '2026-07-01', total_ttc: 5000, nb_options: 1, version: 1,
+      }],
+    })
+    const row = screen.getByText('DEV-VX140-B').closest('tr')
+    const actionsCell = row.cells[row.cells.length - 1]
+    const buttons = within(actionsCell).getAllByRole('button')
+    // PDF, Accepter, Refuser, Générer facture (désactivé), Plus d'actions = 5 boutons visibles.
+    expect(buttons.length).toBeLessThanOrEqual(5)
+  })
+
+  it('la cellule Référence rend la référence + badges en ligne 1, métadonnées compactes en ligne 2', () => {
+    renderList({
+      loading: false,
+      devis: [{
+        id: 62, reference: 'DEV-VX140-C', client_nom: 'ACME', statut: 'envoye',
+        date_creation: '2026-07-01', total_ttc: 5000, nb_options: 1, version: 2,
+        version_parent_ref: 'DEV-VX140-B0', deja_consulte: true, nombre_vues: 3,
+      }],
+    })
+    const refCell = screen.getByTestId('ref-cell-62')
+    // Ligne 1 : référence + badge de version, en gras.
+    const line1 = refCell.firstElementChild
+    expect(line1.className).toMatch(/font-semibold/)
+    expect(within(line1).getByText('DEV-VX140-C')).toBeVisible()
+    expect(within(line1).getByText('v2')).toBeVisible()
+    // Ligne 2 : métadonnées muted, text-xs, séparées par « · ».
+    const line2 = line1.nextElementSibling
+    expect(line2.className).toMatch(/text-xs/)
+    expect(line2.className).toMatch(/text-muted-foreground/)
+    expect(within(line2).getByText(/Voir les versions/)).toBeVisible()
+    expect(within(line2).getByText(/Consulté ×3/)).toBeVisible()
+  })
+
+  it('la cellule Référence ne rend pas de ligne 2 quand il n\'y a aucune métadonnée', () => {
+    renderList({
+      loading: false,
+      devis: [{
+        id: 63, reference: 'DEV-VX140-D', client_nom: 'ACME', statut: 'brouillon',
+        date_creation: '2026-07-01', total_ttc: 5000, nb_options: 1, version: 1,
+      }],
+    })
+    const refCell = screen.getByTestId('ref-cell-63')
+    // Seule la ligne 1 (référence) est présente — pas de deuxième div de métadonnées.
+    expect(refCell.children.length).toBe(1)
   })
 })

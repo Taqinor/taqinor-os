@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import {
   Search, Plus, Download, BookText, ListChecks, FileWarning,
   MessageCircle, Code2, Check, FileText, ReceiptText, MoreHorizontal,
-  CreditCard, ShieldCheck, X, LayoutList, LayoutGrid, Printer,
+  CreditCard, ShieldCheck, X, LayoutList, LayoutGrid, Printer, Zap,
 } from 'lucide-react'
 import {
   fetchFactures,
@@ -336,13 +336,32 @@ function FactureRow({ f, ctx }) {
           </Badge>
         )}
         <div className="flex flex-wrap items-center gap-2">
+          {/* VX142(b) — l'action recommandée (nextBestAction) occupe TOUJOURS
+              le PREMIER slot de la rangée, icône + halo tokenisé (variant
+              "default"), ordre stable — plus de position mouvante selon les
+              autres boutons présents/absents. Rendue ici UNE seule fois ;
+              retirée de sa position historique plus bas pour ne jamais
+              apparaître deux fois. */}
+          {nba === 'emettre' && (
+            <Button size="sm" variant="default" loading={busy}
+                    onClick={() => doAction(emettreFacture, f.id)}
+                    title="Action recommandée">
+              <Zap className="size-3.5" aria-hidden="true" /> Émettre
+            </Button>
+          )}
+          {nba === 'encaisser' && (
+            <Button size="sm" variant="default"
+                    onClick={() => openPayModal(f)} title="Action recommandée — enregistrer un paiement">
+              <Zap className="size-3.5" aria-hidden="true" /> Encaisser
+            </Button>
+          )}
           {f.statut === 'brouillon' && (
             <Button size="sm" variant="outline" onClick={() => openEdit(f)}>
               Éditer
             </Button>
           )}
-          {f.statut === 'brouillon' && (
-            <Button size="sm" variant={nba === 'emettre' ? 'default' : 'outline'}
+          {f.statut === 'brouillon' && nba !== 'emettre' && (
+            <Button size="sm" variant="outline"
                     loading={busy} onClick={() => doAction(emettreFacture, f.id)}>
               Émettre
             </Button>
@@ -353,8 +372,8 @@ function FactureRow({ f, ctx }) {
               <Check /> Payée
             </Button>
           )}
-          {parseFloat(f.montant_du ?? 0) > 0 && f.statut !== 'annulee' && (
-            <Button size="sm" variant={nba === 'encaisser' ? 'default' : 'outline'}
+          {parseFloat(f.montant_du ?? 0) > 0 && f.statut !== 'annulee' && nba !== 'encaisser' && (
+            <Button size="sm" variant="outline"
                     onClick={() => openPayModal(f)} title="Enregistrer un paiement">
               Enregistrer paiement
             </Button>
@@ -562,6 +581,20 @@ export default function FactureList() {
   const [pdfGenerating, setPdfGenerating] = useState({})
   const [pdfDownloading, setPdfDownloading] = useState({})
   const [auditBusy, setAuditBusy] = useState(false)
+  // VX142(a) — Journal comptable : petit Dialog mois/trimestre à la place du
+  // window.prompt() texte libre (regroupé dans le menu « Exporter »).
+  const [journalOpen, setJournalOpen] = useState(false)
+  const [journalMode, setJournalMode] = useState('mois') // 'mois' | 'trimestre'
+  const [journalMois, setJournalMois] = useState(() => new Date().toISOString().slice(0, 7))
+  const [journalAnnee, setJournalAnnee] = useState(() => String(new Date().getFullYear()))
+  const [journalTrimestre, setJournalTrimestre] = useState('1')
+  const [journalBusy, setJournalBusy] = useState(false)
+  // VX142(a) — Export comptable : même traitement, deux champs date au lieu
+  // de deux window.prompt() successifs.
+  const [exportComptableOpen, setExportComptableOpen] = useState(false)
+  const [exportStart, setExportStart] = useState(() => new Date().toISOString().slice(0, 8) + '01')
+  const [exportEnd, setExportEnd] = useState(() => new Date().toISOString().slice(0, 10))
+  const [exportComptableBusy, setExportComptableBusy] = useState(false)
   // ── Envoi WhatsApp : busy par facture (L857), langue (L851), aperçu (L852) ──
   const [waBusy, setWaBusy] = useState({})
   const [waLangue, setWaLangue] = useState('fr')
@@ -805,15 +838,15 @@ export default function FactureList() {
     () => aEcheoirSoon.reduce((s, f) => s + (toNumber(f.montant_du) || 0), 0),
     [aEcheoirSoon])
 
-  // Export comptable DGI (groundwork) : factures validées d'une plage, en
-  // .xlsx ET .csv (ventilation TVA par ligne + ICE + totaux). Borné société.
+  // VX142(a) — Export comptable DGI (groundwork) : factures validées d'une
+  // plage, en .xlsx ET .csv (ventilation TVA par ligne + ICE + totaux).
+  // Borné société. Plage saisie via le petit Dialog `exportComptableOpen`
+  // (deux champs date), plus de window.prompt().
   const handleExportComptable = async () => {
-    const start = window.prompt('Export comptable — date de début (AAAA-MM-JJ) :',
-      new Date().toISOString().slice(0, 8) + '01')
-    if (!start) return
-    const end = window.prompt('Date de fin (exclue, AAAA-MM-JJ) :',
-      new Date().toISOString().slice(0, 10))
-    if (!end) return
+    const start = exportStart
+    const end = exportEnd
+    if (!start || !end) return
+    setExportComptableBusy(true)
     const dl = async (fmt, ext) => {
       const res = await api.get('/ventes/export-comptable/', {
         params: { start, end, fmt }, responseType: 'blob',
@@ -823,8 +856,31 @@ export default function FactureList() {
     try {
       await dl('xlsx', 'xlsx')
       await dl('csv', 'csv')
+      setExportComptableOpen(false)
     } catch {
-      alert('Export comptable impossible.')
+      toast.error('Export comptable impossible.')
+    } finally {
+      setExportComptableBusy(false)
+    }
+  }
+
+  // VX142(a) — Journal des ventes + résumé TVA : plus de window.prompt(), la
+  // période (mois ou trimestre) vient du Dialog `journalOpen`.
+  const handleJournalComptable = async () => {
+    const v = journalMode === 'trimestre'
+      ? `${journalAnnee}-${journalTrimestre}`
+      : journalMois
+    const isQuarter = journalMode === 'trimestre'
+    const params = isQuarter ? { quarter: v } : { month: v }
+    setJournalBusy(true)
+    try {
+      const r = await ventesApi.journalVentes(params)
+      downloadXlsx(r.data, `journal-ventes-${v}.xlsx`)
+      setJournalOpen(false)
+    } catch {
+      toast.error('Journal comptable indisponible.')
+    } finally {
+      setJournalBusy(false)
     }
   }
 
@@ -1097,46 +1153,40 @@ export default function FactureList() {
             ))}
           </SelectContent>
         </Select>
-        <Button size="sm" variant="outline"
-                onClick={() => importApi.exportList('factures', factures.map(f => f.id))
-                  .then(r => downloadXlsx(r.data, 'factures.xlsx')).catch(() => {})}>
-          <Download /> Exporter Excel
-        </Button>
         {/* VX80 — impression navigateur (feuille print.css : chrome masqué,
             noir-sur-blanc, table complète). Distinct des PDF WeasyPrint. */}
         <Button size="sm" variant="outline" onClick={() => window.print()}>
           <Printer /> Imprimer
         </Button>
-        <Button size="sm" variant="outline" title="Journal des ventes + résumé TVA (comptable) — mois ou trimestre"
-                onClick={() => {
-                  const choix = window.prompt(
-                    'Période du journal des ventes :\n'
-                    + '— Mois : AAAA-MM (ex. 2026-06)\n'
-                    + '— Trimestre : AAAA-T (ex. 2026-2)',
-                    new Date().toISOString().slice(0, 7))
-                  if (!choix) return
-                  const v = choix.trim()
-                  // Trimestre (AAAA-Q avec Q de 1 à 4) vs mois (AAAA-MM).
-                  const isQuarter = /^\d{4}-[1-4]$/.test(v)
-                  const params = isQuarter ? { quarter: v } : { month: v }
-                  ventesApi.journalVentes(params)
-                    .then(r => downloadXlsx(r.data, `journal-ventes-${v}.xlsx`))
-                    .catch(() => {})
-                }}>
-          <BookText /> Journal comptable
-        </Button>
-        <Button size="sm" variant="outline"
-                title="Export comptable (factures validées d'une plage) — Excel + CSV"
-                onClick={handleExportComptable}>
-          <Download /> Export comptable
-        </Button>
-        {isAdmin && (
-          <Button size="sm" variant="outline" loading={auditBusy}
-                  title="Vérifier les trous/doublons de numérotation (Art. 145 — séquence continue)"
-                  onClick={handleAuditNumerotation}>
-            <ListChecks /> Audit numérotation
-          </Button>
-        )}
+        {/* VX142(a) — toolbar à 5 groupes : recherche+filtre, imprimer,
+            EXPORTER (menu unique, remplace 4 boutons à plat + le
+            window.prompt() du Journal comptable), langue WhatsApp, Nouvelle
+            facture. */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="sm" variant="outline">
+              <Download /> Exporter
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuItem
+              onSelect={() => importApi.exportList('factures', factures.map(f => f.id))
+                .then(r => downloadXlsx(r.data, 'factures.xlsx')).catch(() => {})}>
+              <Download className="size-3.5" aria-hidden="true" /> Exporter Excel
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setJournalOpen(true)}>
+              <BookText className="size-3.5" aria-hidden="true" /> Journal comptable…
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setExportComptableOpen(true)}>
+              <Download className="size-3.5" aria-hidden="true" /> Export comptable…
+            </DropdownMenuItem>
+            {isAdmin && (
+              <DropdownMenuItem disabled={auditBusy} onSelect={handleAuditNumerotation}>
+                <ListChecks className="size-3.5" aria-hidden="true" /> Audit numérotation
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
         {/* L851 — langue des messages WhatsApp (FR par défaut). */}
         <div role="group" aria-label="Langue des messages WhatsApp"
              className="inline-flex items-center gap-1"
@@ -1153,6 +1203,79 @@ export default function FactureList() {
         </div>
         <Button onClick={openNew}><Plus /> Nouvelle facture</Button>
       </div>
+      {/* VX142(a) — Journal comptable : Dialog mois/trimestre (remplace le
+          window.prompt() texte libre). */}
+      <Dialog open={journalOpen} onOpenChange={setJournalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Journal comptable</DialogTitle>
+            <DialogDescription>
+              Journal des ventes + résumé TVA (comptable), par mois ou par trimestre.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3">
+            <div role="group" aria-label="Période" className="inline-flex gap-1">
+              {[['mois', 'Mois'], ['trimestre', 'Trimestre']].map(([val, label]) => (
+                <Button key={val} type="button" size="sm"
+                        variant={journalMode === val ? 'default' : 'outline'}
+                        aria-pressed={journalMode === val}
+                        onClick={() => setJournalMode(val)}>
+                  {label}
+                </Button>
+              ))}
+            </div>
+            {journalMode === 'mois' ? (
+              <Input type="month" value={journalMois}
+                     onChange={e => setJournalMois(e.target.value)}
+                     aria-label="Mois du journal" />
+            ) : (
+              <div className="flex gap-2">
+                <Input type="number" className="w-28" value={journalAnnee}
+                       onChange={e => setJournalAnnee(e.target.value)}
+                       aria-label="Année du trimestre" />
+                <Select value={journalTrimestre} onValueChange={setJournalTrimestre}>
+                  <SelectTrigger className="w-32" aria-label="Trimestre">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {['1', '2', '3', '4'].map(q => (
+                      <SelectItem key={q} value={q}>{`T${q}`}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setJournalOpen(false)}>Annuler</Button>
+            <Button loading={journalBusy} onClick={handleJournalComptable}>Télécharger</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* VX142(a) — Export comptable : Dialog plage de dates (remplace les
+          deux window.prompt() successifs). */}
+      <Dialog open={exportComptableOpen} onOpenChange={setExportComptableOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Export comptable</DialogTitle>
+            <DialogDescription>
+              Factures validées d'une plage de dates, en Excel + CSV (ventilation TVA, ICE, totaux).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-2">
+            <Input type="date" value={exportStart}
+                   onChange={e => setExportStart(e.target.value)}
+                   aria-label="Date de début" />
+            <Input type="date" value={exportEnd}
+                   onChange={e => setExportEnd(e.target.value)}
+                   aria-label="Date de fin" />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setExportComptableOpen(false)}>Annuler</Button>
+            <Button loading={exportComptableBusy} onClick={handleExportComptable}>Télécharger</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 
