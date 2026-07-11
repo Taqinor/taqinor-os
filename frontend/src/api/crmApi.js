@@ -27,10 +27,14 @@ const crmApi = {
   // Garde serveur du « Devis auto » : 200 {ok:true} si le lead est prêt,
   // 400 {detail:'Manque : …'} sinon — la règle vit côté backend.
   checkDevisAuto: (id) => api.post(`/crm/leads/${id}/devis-auto/`),
-  // Archivage réversible (Commerciale) + suppression définitive (admin).
+  // Archivage réversible (Commerciale) + suppression RÉVERSIBLE (admin, VX96 :
+  // soft-delete + corbeille 30 min). `deleteLead` renvoie { corbeille_id } ;
+  // `restaurerCorbeille` annule la suppression via le TrashViewSet partagé.
   archiverLead: (id) => api.post(`/crm/leads/${id}/archiver/`),
   restaurerLead: (id) => api.post(`/crm/leads/${id}/restaurer/`),
   deleteLead: (id) => api.delete(`/crm/leads/${id}/`),
+  restaurerCorbeille: (corbeilleId) =>
+    api.post(`/core/corbeille/${corbeilleId}/restaurer/`),
   getHistoriqueLead: (id) => api.get(`/crm/leads/${id}/historique/`),
   // Employés assignables (id, username, poste, avatar_url) — ouvert à la
   // Commerciale (le sélecteur de responsable doit marcher pour elle aussi).
