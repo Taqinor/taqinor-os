@@ -7,22 +7,28 @@ requêtes ne doit PAS grandir avec le nombre de lignes (peuple 10 puis 25 devis,
 chacun avec 2 lignes).
 
 SCA43 — ce module était SKIPPÉ : ``DevisSerializer._display`` appelle le moteur
-(``build_quote_data``) UNE FOIS PAR DEVIS pour le total d'affichage, et chaque
-appel refaisait ~6 lectures de config identiques pour la MÊME société
-(CompanyProfile + DocumentTemplates + identité) → N+1 réel (~38-109 requêtes,
-croissant avec le nombre de devis). Correctif SCA43 : un mémo de config PAR
-REQUÊTE (``core.request_cache``, contextvar, ouvert par ``RequestConfigCacheMiddleware``)
-au niveau des ACCESSEURS que le moteur consomme — EN AMONT du moteur, qui reste
-intact (RÈGLE #4 : il rend, il ne change rien). La config est désormais lue UNE
-seule fois par requête quel que soit le nombre de devis → O(1). Le test est
-dé-skippé.
+(``build_quote_data``) UNE FOIS PAR DEVIS pour le total d'affichage. Il y avait
+DEUX N+1 distincts :
+  1. chaque appel refaisait ~6 lectures de config identiques pour la MÊME
+     société (CompanyProfile + DocumentTemplates + identité) ;
+  2. ``_line_to_item`` lit ``ligne.produit`` (marque/description/garantie) PAR
+     LIGNE, et le queryset de liste ne préchargeait que ``lignes`` (pas
+     ``lignes__produit``) → un produit-par-ligne, croissant avec le nombre de
+     devis.
+Correctifs SCA43 : (1) un mémo de config PAR REQUÊTE (``core.request_cache``,
+contextvar, ouvert par ``RequestConfigCacheMiddleware``) au niveau des ACCESSEURS
+que le moteur consomme — EN AMONT du moteur, qui reste intact (RÈGLE #4 : il
+rend, il ne change rien) ; (2) ``lignes__produit`` ajouté au prefetch du
+``DevisViewSet.queryset`` (même prefetch que ``generate_premium_devis_pdf``).
+Config ET produits sont désormais lus une seule fois par requête quel que soit
+le nombre de devis → O(1). Le test est dé-skippé.
 
 Budget : le test de CROISSANCE (count@10 == count@25) est la garde N+1
-autoritaire (prouve le O(1)). Le plafond fixe est calé sur ce même précédent que
-les autres listes lourdes du dépôt (SAV tickets = 20) : liste plus lourde (7
-select_related, prefetch imbriqués factures→paiements/avoirs, + le get_or_create
-« à froid » de CompanyProfile/DocumentTemplates à la 1ʳᵉ requête, savepoints
-comptés) → plafond 20, très serré face aux 38-109 d'avant."""
+autoritaire (prouve le O(1)). Le plafond fixe (40) borne l'absolu : il est calé
+sur le coût O(1) mesuré (~32 requêtes à 10 devis — 7 select_related, prefetchs
+imbriqués factures→paiements/avoirs, le get_or_create « à froid » de
+CompanyProfile/DocumentTemplates à la 1ʳᵉ requête, savepoints comptés) avec une
+marge de régression — très en-deçà des ~51 (croissants) d'avant le prefetch."""
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -107,11 +113,16 @@ class DevisListQueryBudgetTests(AssertQueryBudgetMixin, TestCase):
             'DevisViewSet.queryset (client, created_by, lignes).')
 
     def test_query_count_stays_within_fixed_budget(self):
-        # SCA43 — plafond O(1) après le cache de config par requête. Le test de
-        # CROISSANCE ci-dessus est la garde N+1 autoritaire ; ce plafond borne
-        # l'absolu (précédent liste lourde du dépôt : SAV tickets = 20). 20 reste
-        # TRÈS serré face au N+1 d'avant (~38-109 requêtes pour 10 devis).
+        # SCA43 — plafond O(1) après DEUX correctifs : le cache de config PAR
+        # REQUÊTE (contextvar) ET le prefetch `lignes__produit` sur le queryset
+        # (build_quote_data lit `ligne.produit` par ligne pour le total
+        # d'affichage). Le test de CROISSANCE ci-dessus reste la garde N+1
+        # AUTORITAIRE (prouve le O(1)) ; ce plafond borne l'absolu. Il est calé
+        # sur le coût O(1) MESURÉ (~32 requêtes à 10 devis : select_related +
+        # prefetchs imbriqués factures→paiements/avoirs + get_or_create « à
+        # froid » CompanyProfile/DocumentTemplates + savepoints) avec une marge
+        # de régression — très en-deçà des ~51 (croissants) d'avant le prefetch.
         self._seed_devis(10)
-        with self.assertMaxQueries(20):
+        with self.assertMaxQueries(40):
             resp = self.api.get(DEVIS_URL)
         self.assertEqual(resp.status_code, 200)

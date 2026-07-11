@@ -72,7 +72,14 @@ class DevisViewSet(CompanyScopedModelViewSet):
         # YOPSB13 — paiements/avoirs imbriqués préchargés : DevisSerializer.
         # get_solde (via solde_devis) itère f.paiements/f.avoirs PAR facture ;
         # sans ces prefetch c'était un N+1 imbriqué sur la liste.
-        'lignes', 'factures', 'factures__paiements', 'factures__avoirs',
+        # SCA43 — `lignes__produit` (pas seulement `lignes`) : DevisSerializer.
+        # _display appelle build_quote_data PAR DEVIS pour le total d'affichage,
+        # et `_line_to_item` y lit `ligne.produit` (marque/description/garantie)
+        # PAR LIGNE. Sans ce prefetch c'était un produit-par-ligne → N+1 qui
+        # grandit avec le nombre de devis (même prefetch que
+        # generate_premium_devis_pdf). Rend le total de liste O(1).
+        'lignes', 'lignes__produit',
+        'factures', 'factures__paiements', 'factures__avoirs',
         'share_links',
         # YOPSB13 — évite le N+1 de DevisSerializer.get_chantier (avant :
         # une requête Installation par devis via le sélecteur
