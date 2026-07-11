@@ -17,6 +17,7 @@ import {
   TabsList,
   TabsTrigger,
   TabsContent,
+  Input,
   toast,
 } from '../../ui'
 import { FileUpload } from '../../ui/FileUpload'
@@ -76,6 +77,14 @@ function AnalyseTab({ canSave }) {
 
   const [currentFile, setCurrentFile] = useState(null)
   const [copied, setCopied] = useState(false)
+  // VX39 — boucle vérifier-puis-corriger : valeurs éditées localement avant
+  // enregistrement (initialisées depuis les champs extraits à chaque nouveau
+  // résultat OCR, jamais renvoyées au serveur tant que l'utilisateur n'a pas
+  // cliqué « Valider et enregistrer »).
+  const [editedFields, setEditedFields] = useState({})
+  // Aperçu du document source (créé une seule fois par fichier ; libéré au
+  // changement de fichier / démontage pour ne pas fuiter des Blob URLs).
+  const [previewUrl, setPreviewUrl] = useState(null)
   // FG106 — création d'un lead / brouillon de devis depuis le document OCR.
   const [crmLoading, setCrmLoading] = useState(false)
   const [crmDone, setCrmDone] = useState(null) // { mode, devisReference? }
@@ -88,6 +97,11 @@ function AnalyseTab({ canSave }) {
   const processFile = useCallback((file) => {
     if (!file) return
     setCurrentFile(file)
+    // VX39 — aperçu du document source affiché à gauche pendant l'analyse.
+    setPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev)
+      return URL.createObjectURL(file)
+    })
     dispatch(processOcrDocument(file))
   }, [dispatch])
 
@@ -98,6 +112,30 @@ function AnalyseTab({ canSave }) {
     setCrmDone(null)
     setFactureDone(null)
     setFactureError(null)
+    setEditedFields({})
+    setPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev)
+      return null
+    })
+  }
+
+  // Libère le Blob URL au démontage du composant.
+  useEffect(() => () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // VX39 — réinitialise les valeurs éditées depuis le nouveau résultat OCR
+  // (une seule fois par résultat — l'édition locale suivante ne se réécrase
+  // pas tant que le résultat ne change pas).
+  useEffect(() => {
+    if (ocrResult) {
+      setEditedFields({ ...(ocrResult.donnees_structurees ?? {}) })
+    }
+  }, [ocrResult])
+
+  const handleFieldChange = (key, value) => {
+    setEditedFields((prev) => ({ ...prev, [key]: value }))
   }
 
   // XACC36 — POSTe les champs extraits + le scan d'origine vers le SINK
@@ -163,17 +201,25 @@ function AnalyseTab({ canSave }) {
 
   const handleSave = () => {
     if (!ocrResult || !currentFile) return
+    // VX39 — envoie les valeurs CORRIGÉES (édition inline), pas les valeurs
+    // brutes de l'extraction : boucle vérifier-puis-corriger.
     dispatch(saveOcrDocument({
       filename: currentFile.name,
       texte_brut: ocrResult.texte_brut,
       type_document: ocrResult.type_document ?? 'autre',
       confiance: ocrResult.confiance ?? 0,
-      donnees_structurees: ocrResult.donnees_structurees ?? {},
+      donnees_structurees: editedFields,
     }))
   }
 
-  const donnees = ocrResult?.donnees_structurees ?? {}
-  const lignes = donnees.lignes ?? []
+  // VX39 — la table éditable lit/écrit `editedFields` (valeurs corrigibles),
+  // `lignes` (non éditées ici) reste dérivé du résultat OCR brut.
+  const donnees = editedFields
+  const lignes = ocrResult?.donnees_structurees?.lignes ?? []
+  // Champs affichés = ceux présents à l'origine (non nuls) — restent visibles
+  // même si l'utilisateur efface une valeur en la corrigeant.
+  const rawDonnees = ocrResult?.donnees_structurees ?? {}
+  const editableKeys = Object.keys(FIELD_LABELS).filter((k) => rawDonnees[k] != null)
 
   return (
     <div className="space-y-4">
@@ -218,29 +264,65 @@ function AnalyseTab({ canSave }) {
             )}
           </div>
 
-          {/* Données structurées */}
-          {Object.keys(donnees).some(k => k !== 'lignes' && donnees[k] != null) && (
-            <Card>
-              <CardContent className="p-0">
-                <p className="border-b border-border px-4 py-2.5 text-sm font-semibold text-foreground">
-                  Données extraites
-                </p>
-                <table className="w-full text-sm">
-                  <tbody>
-                    {Object.entries(FIELD_LABELS).map(([key, label]) => {
-                      const val = donnees[key]
-                      if (val == null) return null
-                      return (
+          {/* VX39 — source et extraction côte à côte : aperçu du document à
+              gauche, table de champs extraits ÉDITABLE à droite (boucle
+              vérifier-puis-corriger avant enregistrement). */}
+          {editableKeys.length > 0 && (
+            <div className="grid gap-4 lg:grid-cols-2">
+              <Card>
+                <CardContent className="p-0">
+                  <p className="border-b border-border px-4 py-2.5 text-sm font-semibold text-foreground">
+                    Document source
+                  </p>
+                  <div className="flex max-h-96 items-start justify-center overflow-auto bg-muted/30 p-2">
+                    {previewUrl && currentFile?.type?.startsWith('image/') ? (
+                      <img
+                        src={previewUrl}
+                        alt="Aperçu du document source"
+                        data-testid="ocr-source-preview"
+                        className="max-w-full rounded"
+                      />
+                    ) : previewUrl ? (
+                      <iframe
+                        src={previewUrl}
+                        title="Aperçu du document source"
+                        data-testid="ocr-source-preview"
+                        className="h-96 w-full rounded border-0"
+                      />
+                    ) : (
+                      <p className="p-4 text-xs text-muted-foreground">Aperçu indisponible.</p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="p-0">
+                  <p className="border-b border-border px-4 py-2.5 text-sm font-semibold text-foreground">
+                    Données extraites — corrigez si besoin
+                  </p>
+                  <table className="w-full text-sm">
+                    <tbody>
+                      {editableKeys.map((key) => (
                         <tr key={key} className="border-b border-border last:border-0">
-                          <td className="w-44 bg-muted/50 px-4 py-2 font-medium text-muted-foreground">{label}</td>
-                          <td className="px-4 py-2 text-foreground">{String(val)}</td>
+                          <td className="w-40 bg-muted/50 px-4 py-2 align-middle font-medium text-muted-foreground">
+                            {FIELD_LABELS[key]}
+                          </td>
+                          <td className="px-3 py-1.5">
+                            <Input
+                              value={donnees[key] ?? ''}
+                              onChange={(e) => handleFieldChange(key, e.target.value)}
+                              aria-label={FIELD_LABELS[key]}
+                              data-testid={`ocr-field-${key}`}
+                            />
+                          </td>
                         </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </CardContent>
-            </Card>
+                      ))}
+                    </tbody>
+                  </table>
+                </CardContent>
+              </Card>
+            </div>
           )}
 
           {/* Lignes */}
