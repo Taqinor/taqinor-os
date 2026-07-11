@@ -2120,7 +2120,7 @@ export default function DevisGenerator({
                               au nom du produit) ; un rôle autorisé qui diverge du
                               nom du produit reçoit au blur le choix « renommer
                               ici » vs « créer un nouveau produit ». */}
-                          <input className="form-control form-control-sm" value={l.designation}
+                          <Input className="h-[var(--control-h-sm)]" value={l.designation}
                                  readOnly={!canRenameLine}
                                  disabled={!canRenameLine}
                                  title={!canRenameLine
@@ -2165,19 +2165,18 @@ export default function DevisGenerator({
                           </td>
                         )}
                         <td data-label="Qté">
-                          <input type="number" min="0" step="any"
-                                 className="form-control form-control-sm ta-right" value={l.quantite}
+                          <Input type="number" min="0" step="any"
+                                 className="h-[var(--control-h-sm)] ta-right" value={l.quantite}
                                  onChange={e => onQuantiteChange(l._key, e.target.value)} />
                         </td>
                         <td data-label="Prix unit. TTC">
-                          <input type="number" min="0" step="any"
-                                 className="form-control form-control-sm ta-right" value={l.prix_unit_ttc}
+                          <Input type="number" min="0" step="any"
+                                 className="h-[var(--control-h-sm)] ta-right" value={l.prix_unit_ttc}
                                  onChange={e => setLine(l._key, 'prix_unit_ttc', e.target.value)} />
                         </td>
                         <td data-label="TVA %">
-                          <input type="number" min="0" step="any"
-                                 className="form-control form-control-sm ta-right"
-                                 style={{ width: 56, fontSize: '0.75rem', color: '#64748b' }}
+                          <Input type="number" min="0" step="any"
+                                 className="h-[var(--control-h-sm)] ta-right w-14 text-xs text-muted-foreground"
                                  value={l.taux_tva ?? '20'}
                                  onChange={e => setLine(l._key, 'taux_tva', e.target.value)} />
                           {(() => {
