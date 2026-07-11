@@ -34,6 +34,10 @@ const authSlice = createSlice({
     role: null,
     role_nom: null,
     permissions: [],
+    // ODX6 — clés des modules DÉSACTIVÉS pour la société de l'utilisateur,
+    // servies par /auth/me/. Défaut = [] ⇒ nav strictement identique à
+    // aujourd'hui (aucun module masqué tant qu'aucun toggle n'existe).
+    modulesDesactives: [],
     isAuthenticated: false,
     loading: true, // true au demarrage : on verifie la session
   },
@@ -44,6 +48,7 @@ const authSlice = createSlice({
       state.role = action.payload.menu_tier || action.payload.role || 'normal'
       state.role_nom = action.payload.role_nom || null
       state.permissions = action.payload.permissions || []
+      state.modulesDesactives = action.payload.modules_desactives || []
       state.isAuthenticated = true
       state.loading = false
     },
@@ -52,6 +57,7 @@ const authSlice = createSlice({
       state.role = null
       state.role_nom = null
       state.permissions = []
+      state.modulesDesactives = []
       state.isAuthenticated = false
       state.loading = false
     },
@@ -71,6 +77,7 @@ const authSlice = createSlice({
         state.role = action.payload.menu_tier || action.payload.role_legacy || action.payload.role || 'normal'
         state.role_nom = action.payload.role_nom || null
         state.permissions = action.payload.permissions || []
+        state.modulesDesactives = action.payload.modules_desactives || []
         state.isAuthenticated = true
         state.loading = false
       })

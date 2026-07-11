@@ -20,6 +20,8 @@ import { useApprobationsCount } from '../../hooks/useApprobationsCount'
 // VX58 — préchargement au survol/focus des destinations chaudes (même source
 // d'imports dynamiques que le routeur ; no-op sous Data Saver/2G).
 import { prefetchRoute } from '../../router/prefetchMap'
+// ODX6 — gating par module actif/désactivé (source unique = /auth/me/).
+import { filterNavSections, selectModulesDesactives } from '../../router/moduleGating'
 // VX157 — pastille d'impact du parc (production + CO₂ évité cumulés),
 // chargée PARESSEUSEMENT : le composant fait son propre appel API et rend
 // null tant que rien n'est disponible, donc aucun coût/flash pour les écrans
@@ -129,6 +131,9 @@ export const NAV_SECTIONS = [
     ],
   },
   {
+    // ODX6 — clé de module pour le gating nav/route (masqué si désactivé pour
+    // la société). Absence de toggle ⇒ affiché comme aujourd'hui.
+    key: 'stock',
     label: 'STOCK', labelKey: 'nav.section.stock',
     accent: 'lune',
     items: [
@@ -145,6 +150,7 @@ export const NAV_SECTIONS = [
     ],
   },
   {
+    key: 'crm',
     label: 'CRM', labelKey: 'nav.section.crm',
     accent: 'azur',
     items: [
@@ -156,6 +162,7 @@ export const NAV_SECTIONS = [
     ],
   },
   {
+    key: 'ventes',
     label: 'VENTES', labelKey: 'nav.section.ventes',
     accent: 'brass',
     items: [
@@ -168,6 +175,7 @@ export const NAV_SECTIONS = [
     ],
   },
   {
+    key: 'installations',
     label: 'CHANTIERS', labelKey: 'nav.section.chantiers',
     accent: 'success',
     items: [
@@ -183,6 +191,7 @@ export const NAV_SECTIONS = [
     ],
   },
   {
+    key: 'sav',
     label: 'APRÈS-VENTE', labelKey: 'nav.section.apres_vente',
     accent: 'destructive',
     items: [
@@ -198,6 +207,7 @@ export const NAV_SECTIONS = [
     ],
   },
   {
+    key: 'ged',
     label: 'DOCUMENTS', labelKey: 'nav.section.documents',
     accent: 'lune',
     items: [
@@ -213,6 +223,7 @@ export const NAV_SECTIONS = [
     ],
   },
   {
+    key: 'reporting',
     label: 'ANALYSE', labelKey: 'nav.section.analyse',
     accent: 'warning',
     items: [
@@ -261,6 +272,8 @@ export default function Sidebar({ collapsed, onToggle, onNavigate }) {
   const navigate    = useNavigate()
   const role        = useSelector((s) => s.auth.role) || 'normal'
   const permissions = useSelector((s) => s.auth.permissions) || []
+  // ODX6 — clés de modules désactivés pour la société ([] par défaut).
+  const modulesOff  = useSelector(selectModulesDesactives)
   const companyName = useSelector((s) => s.parametres.profile?.nom) || 'TAQINOR ERP'
   const roleMeta    = ROLE_META[role] ?? ROLE_META.normal
   const t           = useT()
@@ -277,12 +290,15 @@ export default function Sidebar({ collapsed, onToggle, onNavigate }) {
   // (qui reste la dernière section), sans que la Sidebar connaisse chaque module.
   const sections = (() => {
     const adminIdx = NAV_SECTIONS.findIndex((s) => s.label === 'ADMINISTRATION')
-    if (adminIdx < 0) return [...NAV_SECTIONS, ...moduleNavSections]
-    return [
-      ...NAV_SECTIONS.slice(0, adminIdx),
-      ...moduleNavSections,
-      ...NAV_SECTIONS.slice(adminIdx),
-    ]
+    const all = adminIdx < 0
+      ? [...NAV_SECTIONS, ...moduleNavSections]
+      : [
+          ...NAV_SECTIONS.slice(0, adminIdx),
+          ...moduleNavSections,
+          ...NAV_SECTIONS.slice(adminIdx),
+        ]
+    // ODX6 — masque les sections des modules désactivés (liste vide ⇒ no-op).
+    return filterNavSections(all, modulesOff)
   })()
 
   const handleLogout = async () => {

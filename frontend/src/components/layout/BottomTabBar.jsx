@@ -15,6 +15,8 @@ import { NavLink } from 'react-router-dom'
 import { LayoutDashboard, Target, FileText, CalendarClock, Menu, ChevronLeft, X } from 'lucide-react'
 import { NAV_SECTIONS } from './Sidebar'
 import { moduleNavSections } from '../../router/moduleRoutes'
+// ODX6 — même gating par module actif/désactivé que la Sidebar desktop.
+import { filterNavSections, selectModulesDesactives } from '../../router/moduleGating'
 
 // Destinations primaires — un sous-ensemble du menu, pensé pour le pouce.
 // Toutes existent pour tous les rôles (cf. router/index.jsx + Sidebar).
@@ -68,10 +70,13 @@ function AppGridDrawer({ onClose }) {
   // Repli sur une référence STABLE (pas un `[]` littéral recréé à chaque rendu)
   // pour ne pas invalider le useMemo `sections` ci-dessous à chaque render.
   const permissions = useSelector((s) => s.auth.permissions) || EMPTY_PERMISSIONS
+  // ODX6 — clés de modules désactivés pour la société ([] par défaut).
+  const modulesOff = useSelector(selectModulesDesactives)
   const [activeSection, setActiveSection] = useState(null)
 
-  // Mêmes règles de gating que la Sidebar (role + perm), mêmes sections dans
-  // le MÊME ordre (coquille insérée avant Administration comme sur bureau).
+  // Mêmes règles de gating que la Sidebar (role + perm + module actif), mêmes
+  // sections dans le MÊME ordre (coquille insérée avant Administration comme sur
+  // bureau).
   const sections = useMemo(() => {
     const all = (() => {
       const adminIdx = NAV_SECTIONS.findIndex((s) => s.label === 'ADMINISTRATION')
@@ -82,7 +87,8 @@ function AppGridDrawer({ onClose }) {
         ...NAV_SECTIONS.slice(adminIdx),
       ]
     })()
-    return all
+    // ODX6 — retire les sections des modules désactivés (liste vide ⇒ no-op).
+    return filterNavSections(all, modulesOff)
       .map((section) => ({
         ...section,
         items: section.items.filter(
@@ -90,7 +96,7 @@ function AppGridDrawer({ onClose }) {
         ),
       }))
       .filter((section) => section.items.length > 0 && section.label)
-  }, [role, permissions])
+  }, [role, permissions, modulesOff])
 
   const current = sections.find((s) => s.label === activeSection) || null
 

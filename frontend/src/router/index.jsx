@@ -19,6 +19,8 @@ import RouteErrorBoundary from '../components/RouteErrorBoundary'
 // Flotte, QHSE, Contrats, Projet, GED, KB, Litiges…) enregistre ses routes via
 // un fichier `features/<module>/module.config.jsx`, sans toucher ce fichier.
 import { buildModuleRoutes } from './moduleRoutes'
+// ODX6 — source unique des modules désactivés (état /auth/me/ → store).
+import { isModuleDisabled } from './moduleGating'
 
 // ── Pages lazy ────────────────────────────────────────────────────────────────
 const Landing = lazy(() => import('../pages/Landing'))
@@ -114,6 +116,21 @@ const roleLoader = (roles, perm) => async ({ request }) => {
   const tier = role || 'normal'
   const allowed = roles.includes(tier) && (!perm || (permissions || []).includes(perm))
   return allowed ? null : redirect('/dashboard')
+}
+
+// ODX6 — Garde de MODULE. Enveloppe un loader de base (auth ou rôle) : une fois
+// la session/le rôle validés (le loader de base a renvoyé `null`), on redirige
+// vers /dashboard si le module `key` de la route est désactivé pour la société.
+// Défaut (aucun toggle → liste vide) ⇒ le module n'est jamais désactivé, donc
+// comportement byte-identique à aujourd'hui. La liste vient du store, alimentée
+// par /auth/me/ (déjà résolue par `ensureSession`).
+const moduleLoader = (key, base) => async (args) => {
+  const result = await base(args)
+  // Le loader de base a redirigé (login / rôle insuffisant) → on respecte.
+  if (result) return result
+  const disabled = store.getState().auth.modulesDesactives || []
+  if (isModuleDisabled(disabled, key)) return redirect('/dashboard')
+  return null
 }
 
 // O65 — squelette de page (en-tête + contenu) au lieu d'un texte brut, pour un
@@ -213,7 +230,7 @@ const router = createBrowserRouter([
 
   // UX1 — Routes des modules « coquille » enregistrées via le registre. Chaque
   // route est gatée par le même authLoader/roleLoader que le reste de l'app.
-  ...buildModuleRoutes({ WithLayout, authLoader, roleLoader }),
+  ...buildModuleRoutes({ WithLayout, authLoader, roleLoader, moduleLoader }),
 
   // Catch-all — VX78 : un favori/lien périmé affiche désormais l'écran 404
   // (ui/NotFound.jsx) au lieu de rebondir en silence vers /dashboard.
