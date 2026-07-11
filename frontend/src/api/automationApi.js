@@ -28,6 +28,12 @@ const automationApi = {
 
   // ── FG3 : bibliothèque de modèles prédéfinis ──
   getTemplates: () => api.get('/automation/templates/'),
+
+  // ── VX103 — Délégations d'absence (XKB3) : suppléant + plage de dates,
+  // CRUD complet sur `automation/approval-delegations/`. ──
+  getDelegations: (params) => api.get('/automation/approval-delegations/', { params }),
+  createDelegation: (data) => api.post('/automation/approval-delegations/', data),
+  deleteDelegation: (id) => api.delete(`/automation/approval-delegations/${id}/`),
 }
 
 export default automationApi
