@@ -110,6 +110,79 @@ class TestActivities(TestCase):
         }, format='json')
         self.assertEqual(resp.status_code, 400)
 
+    def test_snooze_is_non_destructive_and_excludes_from_mine(self):
+        # VX85(a) — « ⏰ Plus tard » pose `snoozed_until` SANS toucher
+        # `due_date`. Tant que non échu, l'item est exclu de `mine`.
+        original_due = date.today() - timedelta(days=1)
+        act = Activity.objects.create(
+            company=self.company, content_type=_ct_lead(),
+            object_id=self.lead.id, activity_type=self.type_appel,
+            due_date=original_due, assigned_to=self.user)
+        resp = self.api.post(
+            f'/api/django/records/activities/{act.id}/snooze/',
+            {'snoozed_until': str(date.today() + timedelta(days=1))},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        act.refresh_from_db()
+        # due_date d'origine INTACTE.
+        self.assertEqual(act.due_date, original_due)
+        self.assertIsNotNone(act.snoozed_until)
+        # Exclue de `mine` tant que le snooze n'est pas échu.
+        mine = self.api.get('/api/django/records/activities/mine/')
+        ids = [a['id'] for bucket in mine.data.values() for a in bucket]
+        self.assertNotIn(act.id, ids)
+
+    def test_snooze_expired_reappears_with_original_due_date(self):
+        original_due = date.today() - timedelta(days=5)
+        act = Activity.objects.create(
+            company=self.company, content_type=_ct_lead(),
+            object_id=self.lead.id, activity_type=self.type_appel,
+            due_date=original_due, assigned_to=self.user,
+            snoozed_until=date.today() - timedelta(days=1))
+        mine = self.api.get('/api/django/records/activities/mine/')
+        ids = [a['id'] for bucket in mine.data.values() for a in bucket]
+        self.assertIn(act.id, ids)
+        act.refresh_from_db()
+        self.assertEqual(act.due_date, original_due)
+
+    def test_reassignment_notifies_new_owner_with_link(self):
+        # VX85(c) — changer `assigned_to` notifie le NOUVEAU propriétaire
+        # avec un lien profond ; l'ancien ne reçoit rien.
+        from apps.notifications.models import EventType, Notification
+        colleague = User.objects.create_user(
+            username='act_colleague', password='x', role_legacy='commercial',
+            company=self.company)
+        act = Activity.objects.create(
+            company=self.company, content_type=_ct_lead(),
+            object_id=self.lead.id, activity_type=self.type_appel,
+            due_date=date.today(), assigned_to=self.user)
+        resp = self.api.patch(
+            f'/api/django/records/activities/{act.id}/',
+            {'assigned_to': colleague.id}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        notifs = Notification.objects.filter(
+            recipient=colleague, event_type=EventType.LEAD_ASSIGNED)
+        self.assertEqual(notifs.count(), 1)
+        self.assertEqual(notifs.first().link, f'/crm/leads?lead={self.lead.id}')
+        self.assertFalse(
+            Notification.objects.filter(
+                recipient=self.user, event_type=EventType.LEAD_ASSIGNED
+            ).exists())
+
+    def test_reassignment_to_same_user_does_not_notify(self):
+        from apps.notifications.models import EventType, Notification
+        act = Activity.objects.create(
+            company=self.company, content_type=_ct_lead(),
+            object_id=self.lead.id, activity_type=self.type_appel,
+            due_date=date.today(), assigned_to=self.user)
+        resp = self.api.patch(
+            f'/api/django/records/activities/{act.id}/',
+            {'summary': 'Sans changement d\'assigné'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertFalse(
+            Notification.objects.filter(
+                recipient=self.user, event_type=EventType.LEAD_ASSIGNED).exists())
+
 
 class TestAttachments(TestCase):
     @classmethod
@@ -661,6 +734,20 @@ class TestComments(TestCase):
         notif = notifs.first()
         self.assertIn('cmt_resp', notif.title)
 
+    def test_mention_notification_has_deep_link(self):
+        # VX85(b) — avant ce fix, `_notify_mentions` notifiait SANS `link` :
+        # la mention n'était cliquable nulle part. Elle doit désormais porter
+        # le même lien que « Ma file » (crm.lead → /crm/leads?lead=<id>).
+        from apps.notifications.models import Notification
+        res = self.api.post('/api/django/records/comments/', {
+            'model': 'crm.lead', 'id': self.lead.id,
+            'body': 'Regarde ça @cmt_admin',
+        }, format='json')
+        self.assertEqual(res.status_code, 201, res.data)
+        notif = Notification.objects.filter(recipient=self.admin).first()
+        self.assertIsNotNone(notif)
+        self.assertEqual(notif.link, f'/crm/leads?lead={self.lead.id}')
+
     def test_mention_own_name_no_self_notification(self):
         """@auto-mention → pas de notification envoyée à soi-même."""
         from apps.notifications.models import Notification
@@ -1127,6 +1214,11 @@ class TestFollowers(TestCase):
         # Le commentateur ne se notifie jamais lui-même.
         self.assertFalse(
             Notification.objects.filter(recipient=self.owner).exists())
+        # VX85(b) — la notification followers porte désormais un lien profond
+        # (même mapping que les mentions / « Ma file »).
+        follower_notif = Notification.objects.filter(
+            recipient=self.follower_user).first()
+        self.assertEqual(follower_notif.link, f'/crm/leads?lead={self.lead.id}')
 
         # Se désabonner arrête les notifications futures.
         del_resp = self.api_follower.delete(

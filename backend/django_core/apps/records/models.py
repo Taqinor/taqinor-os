@@ -172,6 +172,15 @@ class Activity(models.Model):
     summary = models.CharField(max_length=255, blank=True, default='')
     note = models.TextField(blank=True, default='')
     due_date = models.DateField(null=True, blank=True)
+    # VX85(a) — « Reporter » (picker ⏰ Plus tard : ce soir/demain/lundi/+1
+    # semaine/perso) est NON DESTRUCTIF : il pose `snoozed_until` sans toucher
+    # `due_date`. Tant que `snoozed_until` est dans le futur, l'activité est
+    # exclue de `mine`/`ma-file` ; une fois échu elle réapparaît avec sa
+    # `due_date` d'ORIGINE intacte. `due_date` reste réservée aux vrais
+    # changements d'échéance (bouton « Reporter » distinct, inchangé).
+    snoozed_until = models.DateField(
+        null=True, blank=True,
+        verbose_name='Reportée (snooze) jusqu\'au')
     assigned_to = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='activities_assignees')

@@ -201,6 +201,12 @@ class ActivityViewSet(viewsets.ModelViewSet):
         qs = _scoped(Activity.objects.select_related(
             'activity_type', 'content_type'), request.user).filter(
             assigned_to=request.user, done=False)
+        # VX85(a) — un item snoozé (`snoozed_until` dans le futur) est exclu
+        # tant que non échu ; il revient de lui-même à l'heure dite, avec sa
+        # `due_date` d'origine intacte (le snooze n'y touche jamais).
+        qs = qs.filter(
+            models.Q(snoozed_until__isnull=True)
+            | models.Q(snoozed_until__lte=timezone.now().date()))
         buckets = {'en_retard': [], 'aujourdhui': [], 'a_venir': []}
         for act in qs:
             # QX25be — passe le contexte requête pour résoudre target_phone.
@@ -245,6 +251,10 @@ class ActivityViewSet(viewsets.ModelViewSet):
         acts = _scoped(Activity.objects.select_related(
             'activity_type', 'content_type'), request.user).filter(
             assigned_to=request.user, done=False)
+        # VX85(a) — même exclusion snooze que `mine` : une file cohérente.
+        acts = acts.filter(
+            models.Q(snoozed_until__isnull=True)
+            | models.Q(snoozed_until__lte=timezone.now().date()))
         nb_retard = nb_aujourdhui = 0
         for act in acts:
             data = ActivitySerializer(act, context={'request': request}).data
@@ -365,8 +375,82 @@ class ActivityViewSet(viewsets.ModelViewSet):
             'suggestion': suggestion,
         })
 
+    @action(detail=True, methods=['post'], url_path='snooze',
+            permission_classes=[IsResponsableOrAdmin])
+    def snooze(self, request, pk=None):
+        """VX85(a) — « ⏰ Plus tard » : reporte NON DESTRUCTIVEMENT.
+
+        Pose `snoozed_until` (l'activité disparaît de `mine`/`ma-file` jusqu'à
+        cette date) sans jamais toucher `due_date` — le vrai changement
+        d'échéance reste la mise à jour normale de `due_date` (bouton
+        « Reporter »). Corps : `{"snoozed_until": "YYYY-MM-DD"}` ; `null`/absent
+        annule le snooze (l'item redevient visible immédiatement)."""
+        act = self.get_object()
+        raw = request.data.get('snoozed_until')
+        if raw:
+            from django.utils.dateparse import parse_date
+            d = parse_date(str(raw))
+            if d is None:
+                return Response({'snoozed_until': 'Date invalide.'},
+                                status=status.HTTP_400_BAD_REQUEST)
+            act.snoozed_until = d
+        else:
+            act.snoozed_until = None
+        act.save(update_fields=['snoozed_until'])
+        return Response(ActivitySerializer(act).data)
+
     def perform_update(self, serializer):
-        serializer.save()
+        # VX85(c) — détecte un changement d'`assigned_to` AVANT de sauver (le
+        # travail ne doit jamais tomber entre deux personnes en silence) :
+        # notifie le NOUVEAU propriétaire avec un `link` profond, une fois la
+        # sauvegarde confirmée. Best-effort — n'échoue jamais la requête.
+        instance = serializer.instance
+        old_assigned_id = instance.assigned_to_id if instance else None
+        act = serializer.save()
+        new_assigned_id = act.assigned_to_id
+        if new_assigned_id and new_assigned_id != old_assigned_id:
+            _notify_reassignment(act, self.request.user)
+
+
+def _notify_reassignment(act, actor):
+    """VX85(c) — notifie le nouveau `assigned_to` d'une activité réaffectée.
+
+    Best-effort (jamais d'exception remontée) : company/link/notify passent
+    tous par leurs conventions habituelles (jamais un import de modèle
+    étranger, `link` dérivé de la MÊME table que `_ma_file_activity_link`)."""
+    try:
+        user = act.assigned_to
+        if user is None or (actor is not None and user.id == actor.id):
+            return
+        from apps.notifications.models import EventType as ET
+        from apps.notifications.services import notify
+        link = _deep_link(act.content_type, act.object_id)
+        actor_label = getattr(actor, 'username', '') or 'Quelqu\'un'
+        notify(
+            user, ET.LEAD_ASSIGNED,
+            f'{actor_label} vous a assigné une activité',
+            body=act.summary or '', link=link, company=act.company)
+    except Exception:  # pragma: no cover - défensif, jamais de 500
+        pass
+
+
+def _deep_link(content_type, object_id):
+    """Lien profond vers l'enregistrement parent, à partir de son
+    ``ContentType``/``object_id`` bruts — MÊME mapping que
+    ``_ma_file_activity_link``/``targetLink`` (MesActivitesPage.jsx), pour que
+    mentions/followers/réaffectation naviguent exactement comme « Ma file »."""
+    if content_type is None or object_id is None:
+        return None
+    label = f'{content_type.app_label}.{content_type.model}'
+    if label == 'crm.lead':
+        return f'/crm/leads?lead={object_id}'
+    if label == 'crm.client':
+        return '/crm'
+    if label == 'installations.installation':
+        return '/chantiers'
+    if label == 'sav.ticket':
+        return '/sav'
+    return None
 
 
 def _ma_file_activity_link(data):
@@ -496,8 +580,13 @@ def _parse_mentions(body):
     return list(set(_MENTION_RE.findall(body or '')))
 
 
-def _notify_mentions(body, author, company):
-    """Notifie les utilisateurs mentionnés via @username (best-effort)."""
+def _notify_mentions(body, author, company, content_type=None, object_id=None):
+    """Notifie les utilisateurs mentionnés via @username (best-effort).
+
+    VX85(b) — passe désormais `link` (même mapping que
+    `_ma_file_activity_link`/`targetLink`) : avant ce fix la mention n'était
+    cliquable nulle part (absente de toute file), `content_type`/`object_id`
+    sont optionnels pour ne rien casser des appelants sans cible connue."""
     mentions = _parse_mentions(body)
     if not mentions:
         return
@@ -506,6 +595,7 @@ def _notify_mentions(body, author, company):
         from apps.notifications.models import EventType as ET
         from apps.notifications.services import notify
         User = get_user_model()
+        link = _deep_link(content_type, object_id)
         for username in mentions:
             try:
                 user = User.objects.get(username=username, company=company)
@@ -515,6 +605,7 @@ def _notify_mentions(body, author, company):
                     user, ET.LEAD_ASSIGNED,  # réutilise l'event le plus proche
                     f'{author.username} vous a mentionné',
                     body=body[:200],
+                    link=link,
                     company=company)
             except User.DoesNotExist:
                 pass
@@ -571,14 +662,19 @@ class CommentViewSet(viewsets.ModelViewSet):
             object_id=request.data.get('id'),
             author=request.user)
         # Notifie les @mentions (best-effort, jamais d'erreur remontée).
-        _notify_mentions(comment.body, request.user, company)
+        # VX85(b) — content_type/object_id passés pour un lien cliquable.
+        _notify_mentions(
+            comment.body, request.user, company,
+            content_type=ct, object_id=comment.object_id)
         # XKB34 — notifie les followers de la cible sur une nouvelle note de
-        # chatter (best-effort, jamais l'auteur lui-même).
+        # chatter (best-effort, jamais l'auteur lui-même). VX85(b) — `link`
+        # même mapping, la notification followers devient cliquable aussi.
         from .services import notify_followers
         notify_followers(
             content_type=ct, object_id=comment.object_id,
             title=f'{request.user.username} a ajouté une note',
-            body=comment.body[:200], exclude_user=request.user)
+            body=comment.body[:200], exclude_user=request.user,
+            link=_deep_link(ct, comment.object_id))
         return Response(CommentSerializer(comment).data,
                         status=status.HTTP_201_CREATED)
 
