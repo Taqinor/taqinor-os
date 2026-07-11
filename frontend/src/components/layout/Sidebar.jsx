@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import {
@@ -14,6 +15,11 @@ import { logoutUser } from '../../features/auth/store/authSlice'
 import { moduleNavSections } from '../../router/moduleRoutes'
 // N93 — libellés de la coquille traduits (nav + sections). FR = repli.
 import { useT } from '../../i18n'
+// VX157 — pastille d'impact du parc (production + CO₂ évité cumulés),
+// chargée PARESSEUSEMENT : le composant fait son propre appel API et rend
+// null tant que rien n'est disponible, donc aucun coût/flash pour les écrans
+// qui n'ont jamais de données de parc.
+const ImpactPastille = lazy(() => import('./ImpactPastille'))
 
 // FG16 — ancres du guide d'accueil : map `to` → valeur `data-coach` posée sur
 // le lien correspondant, pour que le spotlight des coachmarks puisse le cibler.
@@ -325,6 +331,11 @@ export default function Sidebar({ collapsed, onToggle, onNavigate }) {
           )
         })}
       </nav>
+
+      {/* ── Pastille d'impact du parc (VX157) ──── */}
+      <Suspense fallback={null}>
+        <ImpactPastille collapsed={collapsed} />
+      </Suspense>
 
       {/* ── Logout ─────────────────────────────── */}
       <button

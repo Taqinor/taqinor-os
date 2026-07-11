@@ -14,9 +14,10 @@ import { EmptyState } from '../EmptyState'
    correspondante. États chargement (squelettes calqués sur le bandeau) et
    erreur (EmptyState en français) gérés une seule fois ici.
 
-   stats  : [{ label, value, hint?, delta?, icon?, to? }]
+   stats  : [{ label, value, hint?, delta?, icon?, to?, tone? }]
    charts : [{ title, node, span? }]   (span === 'full' → pleine largeur)
-   ========================================================================== */
+   VX157 — `tone` (ex. "impact") passe telle quelle à <Stat> pour les
+   grandeurs d'impact positif (production, CO₂ évité, économies…). */
 
 export function ModuleDashboard({
   stats = [],
@@ -60,6 +61,7 @@ export function ModuleDashboard({
                   hint={s.hint}
                   delta={s.delta}
                   icon={s.icon}
+                  tone={s.tone}
                 />
               )
               return s.to ? (
