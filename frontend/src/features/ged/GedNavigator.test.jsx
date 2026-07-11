@@ -43,9 +43,19 @@ import GedNavigator from './GedNavigator'
 // densité via useTheme : comme tout écran consommant DataTable, le test doit
 // fournir le ThemeProvider (cf. flotte/*Screen.test.jsx, RolesManagement.test.jsx).
 import { ThemeProvider } from '../../design/ThemeProvider'
+// Le moteur DataTable appelle TOUJOURS useSearchParams (hook, même sans
+// persistToUrl) → il lui faut aussi un <Router>, en plus du <ThemeProvider>.
+import { MemoryRouter } from 'react-router-dom'
 
 const ok = (data) => Promise.resolve({ data })
-const renderGed = () => render(<ThemeProvider><GedNavigator /></ThemeProvider>)
+const renderGed = () =>
+  render(
+    <ThemeProvider>
+      <MemoryRouter>
+        <GedNavigator />
+      </MemoryRouter>
+    </ThemeProvider>,
+  )
 
 beforeEach(() => {
   vi.clearAllMocks()
