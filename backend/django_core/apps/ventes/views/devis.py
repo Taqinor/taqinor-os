@@ -28,6 +28,7 @@ from authentication.permissions import (  # noqa: F401
     IsAnyRole,
     IsResponsableOrAdmin,
     IsAdminRole,
+    HasPermissionOrLegacy,
 )
 from core.viewsets import CompanyScopedModelViewSet  # noqa: F401  ARC5
 from ..utils.references import create_with_reference  # noqa: F401
@@ -1001,8 +1002,14 @@ class DevisViewSet(CompanyScopedModelViewSet):
             DevisSerializer(nd, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
+    # VX199 — action sensible : la validation/acceptation d'un devis exige la
+    # permission ERP FINE ``ventes_valider`` (pas la garde grossière
+    # ``IsResponsableOrAdmin``, que tout rôle porteur d'AU MOINS UNE écriture
+    # franchit depuis ERR4). Un rôle « lecture + une écriture » sans
+    # ``ventes_valider`` reçoit donc 403 ; les comptes hérités sans rôle fin
+    # (admin/directeur legacy) gardent l'accès via le repli historique.
     @action(detail=True, methods=['post'], url_path='accepter',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[HasPermissionOrLegacy('ventes_valider')])
     def accepter(self, request, pk=None):
         """N25 — marque le devis « accepté » à une date choisie, en capturant le
         nom de la personne qui accepte ; l'acceptation est consignée dans le

@@ -68,4 +68,19 @@ export function useCanCreateProduit() {
   return useHasPermission('stock_creer', PRODUIT_CREATE_ROLES)
 }
 
+// VX199 — actions sensibles ventes : accepter/valider un devis et émettre une
+// facture exigent la permission ERP FINE `ventes_valider`. Aligné 1:1 avec le
+// backend (`HasPermissionOrLegacy('ventes_valider')` sur devis.accepter /
+// facture.emettre) : l'écran cache/désactive l'affordance exactement quand
+// l'API refuserait l'appel direct (403), fermant l'écart front↔back de VX101.
+export const VENTES_VALIDER_PERMISSION = 'ventes_valider'
+
+export function useCanValiderDevis() {
+  return useHasPermission(VENTES_VALIDER_PERMISSION)
+}
+
+export function useCanEmettreFacture() {
+  return useHasPermission(VENTES_VALIDER_PERMISSION)
+}
+
 export default useHasPermission

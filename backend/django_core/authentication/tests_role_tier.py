@@ -293,3 +293,121 @@ class TestIsResponsableTightening(RoleTierBase):
             username='viewer_block', password='x', company=self.company,
             role=self._role('RO2', ['ventes_voir', 'crm_voir']))
         self.assertFalse(viewer.is_responsable)
+
+
+class TestVX199SensitiveActionsFineGate(RoleTierBase):
+    """VX199 — les ACTIONS SENSIBLES ventes (accepter un devis / émettre une
+    facture) exigent la permission ERP FINE ``ventes_valider``, pas la garde
+    grossière ``IsResponsableOrAdmin``.
+
+    Le piège ERR4 : un rôle « lecture + UNE écriture » (ex. Commercial qui
+    ne peut que créer des leads) rend ``is_responsable`` vrai — il FRANCHIT donc
+    ``IsResponsableOrAdmin`` — alors qu'il n'a AUCUN droit de valider un devis
+    ou d'émettre une facture. Ces deux endpoints doivent lui répondre 403.
+    Les rôles qui portent réellement ``ventes_valider``, et les comptes hérités
+    admin/directeur sans rôle fin, gardent l'accès.
+
+    Test d'ALIGNEMENT front↔back : la surface exposée par ``/auth/me`` (les
+    ``permissions`` que le frontend consomme pour cacher/afficher le bouton via
+    ``useCanValiderDevis``/``useCanEmettreFacture``) contient ``ventes_valider``
+    SI ET SEULEMENT SI le backend n'oppose pas 403 — donc l'écran et l'API ne
+    peuvent pas diverger."""
+
+    import django.utils.timezone as _tz
+    _MONTH = _tz.now().strftime('%Y%m')
+
+    def setUp(self):
+        super().setUp()
+        from decimal import Decimal
+        from apps.crm.models import Client
+        from apps.ventes.models import Devis, Facture
+
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='Client', prenom='VX199',
+            email='vx199@example.com', telephone='+212600000199')
+        self.devis = Devis.objects.create(
+            company=self.company,
+            reference=f'DEV-{self._MONTH}-9001',
+            client=self.client_obj, statut=Devis.Statut.ENVOYE,
+            taux_tva=Decimal('20'))
+        self.facture = Facture.objects.create(
+            company=self.company,
+            reference=f'FAC-{self._MONTH}-9001',
+            devis=self.devis, client=self.client_obj,
+            statut=Facture.Statut.BROUILLON, type_facture='acompte',
+            montant_ht=Decimal('1000'), montant_tva=Decimal('200'),
+            montant_ttc=Decimal('1200'), created_by=self.owner)
+
+        # Rôle « lecture + UNE écriture » — franchit le contrôle grossier
+        # ``is_responsable`` (ERR4) mais NE porte PAS ``ventes_valider``.
+        self.read_plus_one_write = User.objects.create_user(
+            username='vx199_rw', password='x', company=self.company,
+            role=Role.objects.create(
+                company=self.company, nom='Commercial VX199',
+                permissions=['ventes_voir', 'crm_voir', 'crm_creer'],
+                est_systeme=False))
+        # Rôle qui porte réellement la validation ventes.
+        self.valideur = User.objects.create_user(
+            username='vx199_valideur', password='x', company=self.company,
+            role=Role.objects.create(
+                company=self.company, nom='Valideur VX199',
+                permissions=['ventes_voir', 'ventes_valider'],
+                est_systeme=False))
+        # Compte hérité admin (sans rôle fin) : repli historique.
+        self.legacy_admin = User.objects.create_user(
+            username='vx199_legacy_admin', password='x', company=self.company,
+            role_legacy='admin')
+
+    def _accepter(self, user):
+        return self._client_for(user).post(
+            f'/api/django/ventes/devis/{self.devis.id}/accepter/',
+            {}, format='json')
+
+    def _emettre(self, user):
+        return self._client_for(user).post(
+            f'/api/django/ventes/factures/{self.facture.id}/emettre/',
+            {}, format='json')
+
+    # ── Le read+one-write franchit bien la garde grossière (preuve du piège) ──
+    def test_read_plus_one_write_role_is_responsable(self):
+        self.assertTrue(self.read_plus_one_write.is_responsable)
+        self.assertFalse(
+            self.read_plus_one_write.has_erp_permission('ventes_valider'))
+
+    # ── DoD : 403 sur les deux actions sensibles ──────────────────────────────
+    def test_read_plus_one_write_role_forbidden_to_accepter_devis(self):
+        self.assertEqual(self._accepter(self.read_plus_one_write).status_code,
+                         403)
+
+    def test_read_plus_one_write_role_forbidden_to_emettre_facture(self):
+        self.assertEqual(self._emettre(self.read_plus_one_write).status_code,
+                         403)
+
+    # ── Les porteurs légitimes de ``ventes_valider`` ne sont PAS bloqués ──────
+    def test_role_with_ventes_valider_not_forbidden_to_accepter(self):
+        self.assertNotEqual(self._accepter(self.valideur).status_code, 403)
+
+    def test_role_with_ventes_valider_not_forbidden_to_emettre(self):
+        self.assertNotEqual(self._emettre(self.valideur).status_code, 403)
+
+    # ── Repli historique : admin/directeur legacy sans rôle fin passent ───────
+    def test_legacy_admin_not_forbidden_to_accepter(self):
+        self.assertNotEqual(self._accepter(self.legacy_admin).status_code, 403)
+
+    def test_legacy_admin_not_forbidden_to_emettre(self):
+        self.assertNotEqual(self._emettre(self.legacy_admin).status_code, 403)
+
+    # ── Alignement front↔back dérivé de /auth/me (pas d'une constante figée) ──
+    def test_front_back_alignment_via_auth_me(self):
+        for user, must_be_403 in (
+            (self.read_plus_one_write, True),
+            (self.valideur, False),
+        ):
+            api = self._client_for(user)
+            me = api.get('/api/django/auth/me/')
+            self.assertEqual(me.status_code, 200, me.data)
+            front_can = 'ventes_valider' in (me.data.get('permissions') or [])
+            back_403 = self._accepter(user).status_code == 403
+            # Le bouton front (front_can) est visible ⇔ l'API n'oppose pas 403.
+            self.assertEqual(front_can, not back_403)
+            self.assertEqual(back_403, must_be_403)
