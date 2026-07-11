@@ -44,6 +44,7 @@ export * from './Tooltip'
 export * from './DropdownMenu'
 export * from './HoverCard'
 export * from './ContextMenu'
+export * from './HelpTip'
 
 // Affichage / feedback
 export * from './Toaster'

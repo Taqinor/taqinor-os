@@ -5,7 +5,7 @@ import {
 } from 'lucide-react'
 import {
   Button, Card, Input, Select, SelectTrigger, SelectValue, SelectContent,
-  SelectItem, EmptyState, Badge, Spinner, toast,
+  SelectItem, EmptyState, Badge, HelpTip, Spinner, toast,
 } from '../../ui'
 import { DataTable } from '../../ui'
 import { formatMAD } from '../../lib/format'
@@ -492,6 +492,16 @@ function StepRevue({ bulletins, anomalies }) {
         <div>
           <h2 className="font-display text-base font-semibold">
             3. Revue des bulletins
+            {/* VX47 — aide contextuelle : la logique revue-avant-validation
+                (pourquoi ce garde-fou existe) n'est pas évidente pour un
+                nouvel employé. */}
+            <HelpTip label="Aide — revue avant validation" className="ml-1.5 align-middle">
+              Cette étape est un <strong>garde-fou</strong> : une fois les
+              bulletins <strong>validés</strong>, ils ne sont plus modifiables
+              directement. Vérifiez chaque brut/net et les écarts signalés
+              avant de continuer — un écart marqué ici (ex. net anormal) mérite
+              d'être corrigé sur le profil concerné avant validation.
+            </HelpTip>
           </h2>
           <p className="mt-0.5 text-sm text-muted-foreground">
             Vérifiez bruts, nets et écarts avant de valider.

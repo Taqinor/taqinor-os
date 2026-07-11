@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSelector } from 'react-redux'
+import { useNavigate } from 'react-router-dom'
 import { UserPlus, Users, Pencil, Trash2, ShieldCheck, UserCheck, UserX } from 'lucide-react'
 import api from '../../api/axios'
 import rolesApi from '../../api/rolesApi'
@@ -44,13 +45,17 @@ const isAdminRole = (r) => {
 
 export default function UsersManagement() {
   const currentUsername = useSelector(s => s.auth.user?.username)
+  const navigate = useNavigate()
   const { confirm } = useConfirmDialog()
   const [users, setUsers] = useState([])
   const [roles, setRoles] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ username: '', email: '', password: '', role: '', must_change_password: false })
+  // VX104 — `supervisor` réglable dès la création (auparavant seul
+  // EquipeSection.jsx le permettait, après coup — hiérarchie oubliée en
+  // silence). '' = aucun superviseur choisi.
+  const [form, setForm] = useState({ username: '', email: '', password: '', role: '', supervisor: '', must_change_password: false })
   const [saving, setSaving] = useState(false)
   const [createError, setCreateError] = useState(null)
 
@@ -157,10 +162,29 @@ export default function UsersManagement() {
     setSaving(true)
     setCreateError(null)
     try {
-      await api.post('/users/', form)
-      setForm({ username: '', email: '', password: '', role: roles.find(r => r.nom === 'Utilisateur')?.id || roles[0]?.id || '', must_change_password: false })
+      // VX104 — `supervisor` n'est envoyé QUE s'il est choisi (le champ FK
+      // n'accepte pas une chaîne vide) ; sinon toast de rappel avec lien vers
+      // Paramètres → Équipe, où la hiérarchie reste réglable après coup.
+      const payload = { ...form, supervisor: form.supervisor ? Number(form.supervisor) : null }
+      await api.post('/users/', payload)
+      const hadSupervisor = !!form.supervisor
+      setForm({
+        username: '', email: '', password: '',
+        role: roles.find(r => r.nom === 'Utilisateur')?.id || roles[0]?.id || '',
+        supervisor: '', must_change_password: false,
+      })
       setShowForm(false)
-      toast.success('Utilisateur créé.')
+      if (hadSupervisor) {
+        toast.success('Utilisateur créé.')
+      } else {
+        toast.message('Utilisateur créé.', {
+          description: 'Pensez à définir son responsable direct.',
+          action: {
+            label: 'Paramètres → Équipe',
+            onClick: () => navigate('/parametres'),
+          },
+        })
+      }
       await load()
     } catch (err) {
       setCreateError('Erreur : ' + (err.response?.data?.username?.[0] ?? err.message))
@@ -384,6 +408,27 @@ export default function UsersManagement() {
                     <SelectContent>
                       {roles.map(r => (
                         <SelectItem key={r.id} value={String(r.id)}>{roleOptionLabel(r)}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </FormField>
+                {/* VX104 — superviseur réglable dès la création (mêmes options
+                    que EquipeSection.jsx) : sans lien, la hiérarchie est
+                    oubliée en silence (visibilité des dossiers cassée sans
+                    erreur). Optionnel — le toast post-création rappelle de le
+                    définir si laissé vide. */}
+                <FormField label="Superviseur direct (optionnel)" htmlFor="new-supervisor">
+                  <Select
+                    value={form.supervisor ? String(form.supervisor) : '__none__'}
+                    onValueChange={v => setForm(f => ({ ...f, supervisor: v === '__none__' ? '' : v }))}
+                  >
+                    <SelectTrigger id="new-supervisor">
+                      <SelectValue placeholder="— Aucun —" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">— Aucun —</SelectItem>
+                      {users.map(u => (
+                        <SelectItem key={u.id} value={String(u.id)}>{u.username}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

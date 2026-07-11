@@ -10,7 +10,8 @@ import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { Eye, FileWarning } from 'lucide-react'
 import ventesApi from '../../../api/ventesApi'
 import { proposalParams, pdfBlob } from '../../../features/ventes/previewPdf'
-import { Button, Spinner } from '../../../ui'
+import { Button, Spinner, toast } from '../../../ui'
+import { celebrateDealSigned } from '../../../ui/celebrate'
 import { formatMAD } from '../../../lib/format'
 
 // Rendu PDF.js (canvas) chargé à la demande — même composant inblocable que le
@@ -203,6 +204,11 @@ export default function SigneDialog({ lead, onClose, onConfirmed }) {
     setError(null)
     try {
       await ventesApi.accepterDevis(selected.id, { nom, date, option })
+      // VX40 — le SEUL moment célébré de toute l'app : devis envoyé→accepté
+      // (rare, lié au revenu). Toast riche + burst CSS-only autour de lui ;
+      // celebrateDealSigned() ne pose rien sous reduced-motion (toast seul).
+      toast.success(`Devis ${selected.reference} accepté — client signé !`)
+      celebrateDealSigned()
       onConfirmed?.()
     } catch (err) {
       setError(err?.response?.data?.detail

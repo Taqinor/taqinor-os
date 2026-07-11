@@ -4,6 +4,7 @@ import reportingApi from '../api/reportingApi'
 import MapView, { escapeHtml } from '../components/MapView'
 import { Badge } from '../ui/Badge'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../ui/Select'
+import { EmptyState } from '../ui/EmptyState'
 
 // N85 — Vue carte : leads, chantiers, systèmes installés et visites prévues sur
 // une carte (Leaflet / OpenStreetMap), filtrables par type ET par statut.
@@ -134,10 +135,13 @@ export default function CartePage() {
       {loading && <p className="page-loading">Chargement…</p>}
 
       {!loading && !err && markers.length === 0 && (
-        <p className="py-4 text-muted-foreground">
-          Aucun enregistrement géolocalisé. Ajoutez les coordonnées GPS sur les
-          leads et les chantiers pour les voir ici.
-        </p>
+        // VX40 — pictogramme solaire illustré (l'un des 4-5 écrans les plus vus).
+        <EmptyState
+          illustrated
+          title="Aucun enregistrement géolocalisé"
+          description="Ajoutez les coordonnées GPS sur les leads et les chantiers pour les voir ici."
+          className="my-4"
+        />
       )}
 
       <MapView markers={markers} onMarkerClick={openRecord} />
