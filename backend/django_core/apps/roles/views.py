@@ -5,7 +5,7 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from authentication.mixins import TenantMixin
-from authentication.permissions import IsAdminOrResponsableTier
+from authentication.permissions import IsAdminOrResponsableTier, IsAdminRole
 from apps.parametres.models import SettingsAuditLog
 from .models import Role, ALL_PERMISSIONS
 from .serializers import RoleSerializer
@@ -33,6 +33,16 @@ class RoleViewSet(TenantMixin, viewsets.ModelViewSet):
     queryset = Role.objects.select_related('company').all()
     serializer_class = RoleSerializer
     permission_classes = [IsAdminOrResponsableTier]
+
+    def get_permissions(self):
+        # YRBAC10 — le CATALOGUE de permissions (source unique du gating
+        # front↔back) est réservé à l'Administrateur : c'est une carte de
+        # sécurité (permissions + enforcement par route), lue par un écran
+        # admin, jamais nécessaire au palier Responsable. Le reste du viewset
+        # garde son palier Administrateur/Responsable (comportement inchangé).
+        if getattr(self, 'action', None) == 'permission_catalog':
+            return [IsAdminRole()]
+        return super().get_permissions()
 
     def get_queryset(self):
         return super().get_queryset().prefetch_related('users')
@@ -117,3 +127,36 @@ class RoleViewSet(TenantMixin, viewsets.ModelViewSet):
     def permissions_disponibles(self, request):
         """Retourne la liste de toutes les permissions disponibles."""
         return Response({'permissions': ALL_PERMISSIONS})
+
+    @action(detail=False, methods=['get'], url_path='permission-catalog')
+    def permission_catalog(self, request):
+        """YRBAC10 — Catalogue de permissions + carte d'enforcement par route.
+
+        SOURCE UNIQUE (admin, lecture seule) alimentant le gating frontend
+        (Sidebar, gardes de route, hook ``useHasPermission``) : plus de liste
+        parallèle codée en dur côté SPA. Le catalogue expose
+
+          - ``permissions`` : la matrice de codes ``ALL_PERMISSIONS`` ;
+          - ``routes`` : la carte route→rôles RÉELLEMENT enforced, DÉRIVÉE de la
+            matrice canonique YRBAC2 (``core.rbac_matrix``) — pour chaque
+            endpoint de référence, la liste des rôles canoniques autorisés
+            (verdict ``allow``). Un test de dérive front↔back compare cette
+            carte au gating de la nav/routes et échoue sur tout décalage.
+
+        ``core`` est FONDATION : sa lecture depuis ``roles`` est autorisée et
+        n'introduit aucun import métier (le module ne déclare que des données)."""
+        from core.rbac_matrix import MATRIX, ALLOW
+        routes = [
+            {
+                'app': entry.app,
+                'label': entry.label,
+                'method': entry.method,
+                'path': entry.path,
+                'allowed_roles': sorted(
+                    name for name, verdict in entry.verdicts.items()
+                    if verdict == ALLOW
+                ),
+            }
+            for entry in MATRIX
+        ]
+        return Response({'permissions': ALL_PERMISSIONS, 'routes': routes})
