@@ -52,7 +52,9 @@ export default function MagasinCockpit() {
   return (
     <div className="page flex flex-col gap-4">
       <h2 className="font-display text-xl font-semibold tracking-tight">Magasin</h2>
-      <ModuleDashboard stats={stats} loading={loading} error={error} />
+      {/* VX15 — `accent` : pastille de couleur de module (token sémantique
+          existant en attendant le registre VX8 ; jamais une couleur inventée). */}
+      <ModuleDashboard stats={stats} loading={loading} error={error} accent="var(--info)" />
     </div>
   )
 }

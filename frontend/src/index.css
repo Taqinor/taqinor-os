@@ -5261,4 +5261,26 @@ textarea.form-control {
 
 /* Le petit code de langue à côté du globe : léger espacement logique. */
 .header-lang-btn { display: inline-flex; align-items: center; gap: 0.25rem; }
+
+/* ── VX15 — ModuleHero : liseré gradient brass→transparent ───────────────────
+   Le SEUL gradient de marque autorisé à l'intérieur de l'app (« lumière à
+   travers le verre »). Opacité plafonnée à 8 % — jamais criard. Le léger
+   déplacement du dégradé est une animation `background-position` : coupée
+   automatiquement sous `prefers-reduced-motion` par la règle globale
+   `animation-duration: 0.01ms !important` (ci-dessus), donc statique pour les
+   utilisateurs sensibles au mouvement sans média-query dupliquée ici. */
+.module-hero-sheen {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--color-brass-400, #e8b54a) 8%, transparent),
+    transparent 60%
+  );
+  background-size: 200% 100%;
+  animation: module-hero-sheen-drift 6s ease-in-out infinite;
+}
+
+@keyframes module-hero-sheen-drift {
+  0%, 100% { background-position: 0% 0; }
+  50% { background-position: 100% 0; }
+}
 .header-lang-code { font-size: 0.7rem; font-weight: 600; line-height: 1; }

@@ -12,6 +12,7 @@ import {
   TrendingUp, Activity, ReceiptText, Clock,
 } from 'lucide-react'
 import { AreaSansAxe, BarArrondie, KpiSpark, ChartEmpty } from '../ui/charts'
+import { ModuleHero } from '../ui/module/ModuleHero.jsx'
 import { fetchProduits } from '../features/stock/store/stockSlice'
 import { fetchClients } from '../features/crm/store/crmSlice'
 import { fetchDevis, fetchFactures } from '../features/ventes/store/ventesSlice'
@@ -415,14 +416,17 @@ export function Component() {
 
   return (
     <div className="ui-root min-h-full p-4 sm:p-6">
-      {/* En-tête — le titre « Tableau de bord » reste un <h2> (heading) :
-          l'e2e (auth.setup.js) s'appuie dessus, ne pas modifier. */}
-      <header className="mb-6">
-        <h2 className="font-display text-xl font-bold tracking-tight text-foreground">
-          Tableau de bord
-        </h2>
-        <p className="mt-1 text-sm text-muted-foreground">Vue d'ensemble de votre activité</p>
-      </header>
+      {/* VX15 — ModuleHero remplace le <h2> nu : identité de cockpit (liseré
+          gradient brass). Le titre « Tableau de bord » reste un <h2>
+          (headingAs="h2") : l'e2e (auth.setup.js) s'appuie dessus, contrat
+          heading INCHANGÉ. */}
+      <div className="mb-6">
+        <ModuleHero
+          headingAs="h2"
+          title="Tableau de bord"
+          subtitle="Vue d'ensemble de votre activité"
+        />
+      </div>
 
       {/* VX86 — carte « Attend votre décision » : autonome, se masque elle-même
           si rien n'attend l'utilisateur ; indépendante des sources loading/

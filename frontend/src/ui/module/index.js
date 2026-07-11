@@ -7,6 +7,7 @@
    pure. Un seul point d'import : `import { ... } from '@/ui/module'`.
    ========================================================================== */
 export * from './statusPill'
+export * from './ModuleHero'
 export * from './ModuleDashboard'
 export * from './ListShell'
 export * from './DetailShell'

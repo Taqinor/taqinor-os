@@ -10,7 +10,7 @@ import { Card } from './Card'
    VX124 — `.stat-value-solidify` (voir tokens.css) : le chiffre KPI « se
    solidifie » au montage — la police variable (100–900, brand.css) passe de
    wght 500 à 600 sur --motion-slow, un saut direct sous reduced-motion. */
-export function Stat({ label, value, hint, delta, icon, tone, className, ...props }) {
+export function Stat({ label, value, hint, delta, icon, tone, className, children, ...props }) {
   const Icon = icon
   const deltaTone =
     delta?.tone ??
@@ -55,6 +55,7 @@ export function Stat({ label, value, hint, delta, icon, tone, className, ...prop
           {hint && <span className="text-muted-foreground">{hint}</span>}
         </div>
       )}
+      {children}
     </Card>
   )
 }
