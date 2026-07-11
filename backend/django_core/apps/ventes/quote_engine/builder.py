@@ -1029,8 +1029,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             if _tenant_site:
                 _signer_base = "https://" + _tenant_site
             else:
-                _signer_base = getattr(
-                    settings, "SITE_URL", "https://taqinor.ma").rstrip("/")
+                # Repli plateforme : settings.SITE_URL (SCA29 — jamais de marque
+                # en dur ici ; le défaut vit dans settings.base, configurable).
+                _signer_base = (getattr(settings, "SITE_URL", "") or "").rstrip("/")
             links["signer"] = f"{_signer_base}/proposition/{_share.token}"
     except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
         links = {}

@@ -21,8 +21,8 @@ SUIVI_PATH = '/suivi/{token}'
 def _site_url() -> str:
     """Base URL du site public (settings.SITE_URL), sans slash final."""
     from django.conf import settings
-    return (getattr(settings, 'SITE_URL', 'https://taqinor.ma')
-            or 'https://taqinor.ma').rstrip('/')
+    # SCA29 — pas de marque en dur ici ; le défaut vit dans settings.base.
+    return (getattr(settings, 'SITE_URL', '') or '').rstrip('/')
 
 
 def proposition_path(token: str) -> str:

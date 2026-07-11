@@ -519,6 +519,12 @@ WEBSITE_LEAD_WEBHOOK_SECRET = os.environ.get('WEBSITE_LEAD_WEBHOOK_SECRET', '')
 # Tenant cible des leads web (id de Company) ; à défaut, la première Company.
 WEBSITE_LEADS_COMPANY_ID = os.environ.get('WEBSITE_LEADS_COMPANY_ID') or None
 
+# URL publique par DÉFAUT de la plateforme (page proposition/suivi client). Un
+# tenant white-label pointe ses liens sur SON propre site (CompanyProfile.site_web,
+# cf. quote_engine.builder) ; SITE_URL n'est que le repli plateforme/fondateur,
+# configurable par déploiement (SCA29 — pas de marque en dur dans le code app).
+SITE_URL = os.environ.get('SITE_URL', 'https://taqinor.ma')
+
 # XMKT32 — Sync Meta Lead Ads → leads CRM (gated, API officielle, jamais de
 # scraping). Sans META_LEAD_ADS_VERIFY_TOKEN, le webhook de vérification
 # (GET hub.challenge) répond 404 ; sans META_LEAD_ADS_ACCESS_TOKEN, le POST
