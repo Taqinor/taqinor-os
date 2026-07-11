@@ -5579,9 +5579,11 @@ textarea.form-control {
   opacity: 0;
   transition: opacity var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out);
 }
-.app-launcher-tile:hover .app-launcher-tile-pin,
 .app-launcher-tile-pin:focus-visible {
   opacity: 1;
+}
+@media (hover: hover) {
+  .app-launcher-tile:hover .app-launcher-tile-pin { opacity: 1; }
 }
 .app-launcher-tile-pin[aria-label^="Désépingler"] {
   color: var(--primary);

@@ -18,9 +18,11 @@ test('QX27 : DropdownMenu importé depuis ../../ui (même primitive que ListView
 })
 
 test('QX27 : les actions secondaires sont dans le menu « ⋯ », plus des boutons directs', () => {
-  const start = SRC.indexOf('<DropdownMenuContent align="start">')
+  // VX20 a réaligné le menu de ligne sur `align="end"` et y a replié davantage
+  // d'actions : on découpe TOUT le contenu du menu (jusqu'à sa fermeture).
+  const start = SRC.indexOf('<DropdownMenuContent align="end">')
   assert.ok(start > 0, 'menu de la ligne devis introuvable')
-  const block = SRC.slice(start, start + 2200)
+  const block = SRC.slice(start, SRC.indexOf('</DropdownMenuContent>', start))
   assert.match(block, /Réviser \(nouvelle version\)/)
   assert.match(block, /Approuver la remise/)
   assert.match(block, /Contacter mon supérieur/)
