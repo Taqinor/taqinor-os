@@ -6,6 +6,8 @@ const recordsApi = {
   getActivities: (model, id) =>
     api.get('/records/activities/', { params: { model, id } }),
   getMyActivities: () => api.get('/records/activities/mine/'),
+  // VX83 — « Ma file » : file de travail unifiée cross-module.
+  getMaFile: () => api.get('/records/activities/ma-file/'),
   getActivityTypes: () => api.get('/records/activity-types/'),
   createActivity: (data) => api.post('/records/activities/', data),
   updateActivity: (id, data) => api.patch(`/records/activities/${id}/`, data),

@@ -414,6 +414,87 @@ def _ct_lead():
     return ContentType.objects.get_for_model(Lead)
 
 
+class TestMaFile(TestCase):
+    """VX83 — « Ma file » : la file de travail unique cross-module agrège les
+    activités de l'utilisateur, les mentions non lues et les items commerciaux
+    (relances/leads chauds/devis) en UNE liste classée + un total unique, et le
+    quick-add « + À faire » crée bien une activité personnelle assignée à soi."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.company = Company.objects.create(nom='File Co', slug='file-co')
+        cls.other = Company.objects.create(nom='Autre Co', slug='autre-co')
+        cls.type_appel = ActivityType.objects.create(
+            company=cls.company, nom='Appel', ordre=10)
+        cls.user = User.objects.create_user(
+            username='file_resp', password='x', role_legacy='responsable',
+            company=cls.company)
+
+    def setUp(self):
+        self.api = auth(self.user)
+
+    def test_ma_file_aggregates_activities_relances_and_total(self):
+        # Activité en retard assignée à l'utilisateur.
+        lead = Lead.objects.create(company=self.company, nom='Retard')
+        Activity.objects.create(
+            company=self.company, content_type=_ct_lead(), object_id=lead.id,
+            activity_type=self.type_appel, summary='À rappeler',
+            due_date=date.today() - timedelta(days=2),
+            assigned_to=self.user, created_by=self.user)
+        # Lead avec relance en retard (family relance) — possédé par l'user.
+        Lead.objects.create(
+            company=self.company, nom='Relance', owner=self.user,
+            relance_date=date.today() - timedelta(days=1))
+        # Lead chaud jamais contacté.
+        Lead.objects.create(
+            company=self.company, nom='Chaud', owner=self.user, score=80)
+
+        resp = self.api.get('/api/django/records/activities/ma-file/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        kinds = {it['kind'] for it in resp.data['items']}
+        self.assertIn('activite', kinds)
+        self.assertIn('relance', kinds)
+        self.assertIn('lead_chaud', kinds)
+        self.assertEqual(resp.data['total'], len(resp.data['items']))
+        # En-tête compté : 1 activité en retard.
+        self.assertGreaterEqual(resp.data['resume']['en_retard'], 1)
+        # Classement plus-urgent-d'abord : le 1er item est en retard.
+        self.assertEqual(resp.data['items'][0]['urgency'], 'overdue')
+
+    def test_ma_file_mentions_unread_only_and_company_scoped(self):
+        from apps.notifications.models import EventType, Notification
+        # Mention non lue de l'utilisateur → présente avec son lien.
+        Notification.objects.create(
+            company=self.company, recipient=self.user,
+            event_type=EventType.CHAT_MENTION,
+            title='Sami vous a mentionné', link='/messages?thread=9',
+            read=False)
+        # Mention DÉJÀ lue → exclue.
+        Notification.objects.create(
+            company=self.company, recipient=self.user,
+            event_type=EventType.CHAT_MENTION, title='Vieux', read=True)
+
+        resp = self.api.get('/api/django/records/activities/ma-file/')
+        mentions = [it for it in resp.data['items'] if it['kind'] == 'mention']
+        self.assertEqual(len(mentions), 1)
+        self.assertEqual(mentions[0]['link'], '/messages?thread=9')
+
+    def test_quick_add_todo_creates_personal_activity_for_self(self):
+        resp = self.api.post('/api/django/records/activities/', {
+            'summary': 'Ma tâche perso',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        act = Activity.objects.get(summary='Ma tâche perso')
+        self.assertTrue(act.personnelle)
+        self.assertEqual(act.assigned_to_id, self.user.id)
+        self.assertEqual(act.company_id, self.company.id)
+        # Elle apparaît dans Ma file (bucket activité, sans lien profond).
+        resp2 = self.api.get('/api/django/records/activities/ma-file/')
+        titres = [it['title'] for it in resp2.data['items']
+                  if it['kind'] == 'activite']
+        self.assertIn('Ma tâche perso', titres)
+
+
 class TestResolveTargetErrors(TestCase):
     """ERR56 — un `model` valide + `id` inexistant ou de mauvais type doit
     produire une 400/200-vide propre (jamais un 500 non rattrapé)."""

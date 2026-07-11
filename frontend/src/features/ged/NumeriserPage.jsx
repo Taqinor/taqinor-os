@@ -202,6 +202,7 @@ export default function NumeriserPage() {
                         src={URL.createObjectURL(p.file)}
                         alt={`Page ${idx + 1}`}
                         style={{ transform: `rotate(${p.rotation}deg)` }}
+                        loading="lazy"
                         className="aspect-[3/4] w-full object-cover" />
                       <span className="absolute left-1 top-1 rounded bg-black/60 px-1.5 py-0.5 text-[11px] text-white">
                         Page {idx + 1}
