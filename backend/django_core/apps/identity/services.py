@@ -59,19 +59,44 @@ def resolve_or_provision_user(idp, *, email, first_name='', last_name='',
 
 
 def apply_sso_groups(idp, user, groups):
-    """Applique les rôles issus des groupes SSO (NTSEC7).
+    """Just-in-time provisioning depuis les groupes SSO (NTSEC7).
 
-    Placeholder de fondation câblé pleinement en NTSEC7 : ici, best-effort,
-    n'échoue jamais. Sans mapping de groupe, retombe sur ``default_role`` pour
-    un compte fraîchement provisionné (déjà posé à la création).
+    À CHAQUE connexion SSO (source de vérité = l'IdP), applique le rôle mappé au
+    premier groupe SSO reconnu via ``ScimGroupMapping`` (réutilisé de NTSEC6).
+    Si aucun groupe n'est reconnu (claim inconnu ou vide), retombe sur
+    ``idp.default_role``. Ne s'applique QUE si ``idp.auto_provision`` (la source
+    de vérité des rôles est déléguée à l'IdP). Best-effort : n'échoue jamais.
+
+    Passe par ``roles/services.py`` (jamais d'accès direct au FK de rôle depuis
+    ici) — cohérent avec NTSEC6.
     """
     try:
-        if not groups:
+        if not idp.auto_provision:
             return
-        # Le mapping groupe→rôle détaillé (ScimGroupMapping) est branché en
-        # NTSEC7 ; on ne fait rien de plus ici pour rester additif.
-    except Exception:  # noqa: BLE001 — best-effort
+        from apps.roles import services as role_services
+
+        matched_role = None
+        for name in (groups or []):
+            if not name:
+                continue
+            role = role_services.role_for_scim_group(idp.company, str(name))
+            if role is not None:
+                matched_role = role
+                break
+
+        target = matched_role or _default_role(idp)
+        if target is not None:
+            role_services.assign_role(user, target)
+    except Exception:  # noqa: BLE001 — best-effort : jamais bloquer le login
         logger.debug('apply_sso_groups failed', exc_info=True)
+
+
+def _default_role(idp):
+    """Rôle par défaut de l'IdP (repli JIT), ou None."""
+    try:
+        return idp.default_role
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def finalize_sso_login(request, idp, user):
