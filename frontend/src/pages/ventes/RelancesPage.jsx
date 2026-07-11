@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { PartyPopper, FileText, MessageCircle, Mail, History, ReceiptText } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
 import { openPdfBlob } from '../../utils/pdfBlob'
@@ -36,6 +37,11 @@ export default function RelancesPage() {
   const [prochaine, setProchaine] = useState('')  // date de prochaine relance
   const [busy, setBusy] = useState(false)
   const [niveauFilter, setNiveauFilter] = useState('')  // '' = tous
+  // VX112 — pré-filtre client depuis le drill-down de la balance âgée
+  // (?client=<id> ; miroir du ?produit= de MouvementsPage), filtrage
+  // d'affichage sur les lignes déjà chargées, aucun endpoint dédié.
+  const [searchParams] = useSearchParams()
+  const clientFilter = searchParams.get('client')
   const [sortByDu, setSortByDu] = useState(false)  // tri par montant dû décroissant
   const [selected, setSelected] = useState({})  // {id: true} pour la relance en lot
   const [bulkBusy, setBulkBusy] = useState(false)
@@ -163,9 +169,13 @@ export default function RelancesPage() {
     return [...map.entries()].sort((a, b) => a[0] - b[0])
   }, [rows])
 
-  // Lignes affichées : filtre par niveau courant + tri optionnel par dû.
+  // Lignes affichées : pré-filtre client (URL) + filtre par niveau courant +
+  // tri optionnel par dû.
   const displayed = useMemo(() => {
     let list = rows
+    if (clientFilter) {
+      list = list.filter(r => String(r.client_id) === String(clientFilter))
+    }
     if (niveauFilter === 'none') list = list.filter(r => !r.niveau)
     else if (niveauFilter !== '') {
       list = list.filter(r => r.niveau && String(r.niveau.ordre) === niveauFilter)
@@ -175,7 +185,7 @@ export default function RelancesPage() {
         (a, b) => (toNumber(b.montant_du) || 0) - (toNumber(a.montant_du) || 0))
     }
     return list
-  }, [rows, niveauFilter, sortByDu])
+  }, [rows, clientFilter, niveauFilter, sortByDu])
 
   // Encours total à recouvrer (somme des montants dus affichés).
   const totalDu = useMemo(
@@ -204,6 +214,15 @@ export default function RelancesPage() {
         Vue de recouvrement — consigner et imprimer uniquement. Aucun envoi
         automatique (email/SMS) n'est effectué.
       </p>
+
+      {clientFilter && (
+        <div className="mb-3">
+          <Badge tone="info" className="align-middle">
+            Filtré sur un client{' '}
+            <Link to="/ventes/relances" className="ml-1 underline">(effacer)</Link>
+          </Badge>
+        </div>
+      )}
 
       {!loading && rows.length > 0 && (
         <div className="mb-3 flex flex-wrap items-center gap-3">

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { FileText, CheckCircle2, Download, AlertCircle } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { FileText, Send, CheckCircle2, Download, AlertCircle } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
 import reportingApi from '../../api/reportingApi'
 import { downloadXlsx } from '../../api/importApi'
@@ -127,9 +128,20 @@ export default function BalanceAgeePage() {
                   header: '',
                   align: 'right',
                   cell: (r) => (
-                    <Button variant="outline" size="sm" onClick={() => releve(r)}>
-                      <FileText /> Relevé
-                    </Button>
+                    <div className="flex justify-end gap-2">
+                      {/* VX112 — drill-down vers les relances filtrées sur ce
+                          client (mirroir du pré-filtre ?produit= de
+                          MouvementsPage) : la balance âgée n'est plus un
+                          cul-de-sac, elle mène à l'action de recouvrement. */}
+                      <Button variant="outline" size="sm" asChild>
+                        <Link to={`/ventes/relances?client=${r.client_id}`}>
+                          <Send /> Relancer
+                        </Link>
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => releve(r)}>
+                        <FileText /> Relevé
+                      </Button>
+                    </div>
                   ),
                 },
               ]}
