@@ -169,20 +169,6 @@ class CustomTokenObtainPairView(TokenObtainPairView):
             response = super().post(request, *args, **kwargs)
         except ValidationError as exc:
             detail = exc.detail if isinstance(exc.detail, dict) else {}
-            # NTSEC4 — enforce-SSO : le login local est interdit pour cette
-            # société (IdP actif enforce_sso). On renvoie un 403 stable au
-            # contour clair (`sso_required: true`) que le frontend redirige
-            # vers le flux SSO.
-            if detail.get('sso_required'):
-                msg = detail.get('detail')
-                if isinstance(msg, (list, tuple)):
-                    msg = msg[0] if msg else None
-                msg = str(msg) if msg else \
-                    'Connexion via SSO obligatoire pour cette société.'
-                return Response(
-                    {'sso_required': True, 'detail': msg},
-                    status=status.HTTP_403_FORBIDDEN,
-                )
             if detail.get('otp_required'):
                 msg = detail.get('detail')
                 if isinstance(msg, (list, tuple)):

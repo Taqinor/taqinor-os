@@ -43,29 +43,6 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
                                "l'administrateur."},
                     code='tenant_suspendu',
                 )
-        # NTSEC4 — enforce-SSO : si la société de l'utilisateur a un IdP ACTIF
-        # avec ``enforce_sso=True``, le login LOCAL (mot de passe) est refusé —
-        # les membres doivent passer par le SSO. Best-effort et FAIL-OPEN :
-        # sans IdP actif enforce, rien ne change (login local intact). Sont
-        # exemptés : le super-admin (support/console) et les comptes
-        # break-glass (accès d'urgence, NTSEC22).
-        if user is not None and not getattr(user, 'is_superuser', False):
-            try:
-                from apps.identity import selectors as _idsel
-                company = getattr(user, 'company', None)
-                if (company is not None
-                        and _idsel.enforce_sso_active(company)
-                        and not _idsel.is_break_glass(user)):
-                    raise serializers.ValidationError(
-                        {'sso_required': True,
-                         'detail': 'Connexion via SSO obligatoire pour cette '
-                                   'société.'},
-                        code='sso_required',
-                    )
-            except serializers.ValidationError:
-                raise
-            except Exception:  # noqa: BLE001 — fail-open : jamais bloquer
-                pass
         if user is not None and getattr(user, 'totp_enabled', False):
             if not otp:
                 # Signal clair que le 2FA est requis : le frontend déclenche la

@@ -84,9 +84,6 @@ urlpatterns = [
     path('api/django/litiges/', include('apps.litiges.urls')),
     # ARC17 — Répertoire des tiers (res.partner), couche fondation.
     path('api/django/tiers/', include('apps.tiers.urls')),
-    # NTSEC — Identité fédérée & SSO (fondation) : CRUD IdP, SSO SAML/OIDC,
-    # SCIM 2.0, break-glass. Key-gated OFF par défaut.
-    path('api/django/identity/', include('apps.identity.urls')),
     # XPOS1 — Vente comptoir (point of sale).
     path('api/django/pos/', include('apps.pos.urls')),
     # XPOS3 — Lien public tokenisé vers le PDF du ticket de caisse.

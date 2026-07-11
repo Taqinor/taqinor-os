@@ -85,19 +85,6 @@ import-linter==2.11
 # client) is key-gated via settings.GED_TSA_URL — no-op without it.
 pyHanko==0.28.0
 
-# NTSEC2/3 — SSO fédéré par tenant (open-source, gratuit). Importés
-# PARESSEUSEMENT + gardés dans apps/identity (saml.py::saml_available,
-# oidc.py::oidc_available) : sans ces wheels installés, les endpoints SSO
-# dégradent proprement en 501 et le login LOCAL reste octet-identique — même
-# patron défensif que statsmodels / pyHanko ci-dessus. Aucun coût, aucune clé.
-# python3-saml exige xmlsec/libxml2 côté système (fournis par le build Docker).
-python3-saml==1.16.0
-mozilla-django-oidc==4.0.1
-# NTSEC8 — Passkeys / WebAuthn (open-source, gratuit). Idem : importé
-# paresseusement + gardé (webauthn_util.py::webauthn_available) ; sans le
-# wheel, les endpoints WebAuthn dégradent en 501 et rien d'autre ne change.
-webauthn==2.2.0
-
 # YHARD6 — Prometheus metrics (open-source, free). OPTIONAL: core/metrics.py
 # renders the /metrics exposition text in pure stdlib regardless of whether
 # this package is installed, so the endpoint (and its custom Celery/beat
