@@ -5501,6 +5501,7 @@ textarea.form-control {
 @keyframes module-hero-sheen-drift {
   0%, 100% { background-position: 0% 0; }
   50% { background-position: 100% 0; }
+}
 /* ── VX9 — Lanceur d'applications (grille légère, PAS une page) ──────────────
    Overlay Radix Dialog (AppLauncher.jsx) : grille de modules par catégorie
    (favoris / récents / toutes), icône + label FR. `--module-accent` (VX8) sur

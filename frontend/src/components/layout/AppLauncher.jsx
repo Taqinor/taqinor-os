@@ -1,4 +1,4 @@
-// VX9 — Lanceur d'applications TAQINOR (grille légère, PAS une page).
+// VX9 — Lanceur d'applications (grille légère, PAS une page).
 //   • Overlay Radix Dialog (~150 ms, cf. index.css) affichant les modules
 //     « coquille » enregistrés par `router/moduleRoutes.jsx` (`moduleConfigs`,
 //     UX1) en grille par catégorie : icône (VX8 accent) + label FR.
@@ -187,7 +187,7 @@ export default function AppLauncher() {
       >
         <DialogTitle className="app-launcher-title">Mes applications</DialogTitle>
         <DialogDescription>
-          Toutes les applications TAQINOR. Cliquez ou naviguez au clavier pour ouvrir un module.
+          Toutes vos applications. Cliquez ou naviguez au clavier pour ouvrir un module.
         </DialogDescription>
 
         {pinnedEntries.length > 0 && (

@@ -35,5 +35,7 @@ test("Login.jsx lit '?next=' via useSearchParams et le suit seulement s'il est s
   assert.match(loginSrc, /safeNextPath/)
   // Garde anti-open-redirect : chemin interne uniquement, jamais protocole-relatif.
   assert.match(loginSrc, /!next\.startsWith\('\/'\)\s*\|\|\s*next\.startsWith\('\/\/'\)/)
-  assert.match(loginSrc, /navigate\(next \|\| '\/dashboard'\)/)
+  // VX46 a introduit le module d'atterrissage préféré : `?next=` reste PRIORITAIRE
+  // (garde intacte), le repli n'est plus le `/dashboard` codé en dur.
+  assert.match(loginSrc, /navigate\(next \|\| resolveLandingPath\(/)
 })
