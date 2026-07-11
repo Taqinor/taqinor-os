@@ -6,9 +6,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Download, BarChart3, BookmarkPlus, Trash2, Pin, PinOff, Mail } from 'lucide-react'
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
-} from 'recharts'
 import api from '../api/axios'
 import reportingApi from '../api/reportingApi'
 import crmApi from '../api/crmApi'
@@ -18,11 +15,12 @@ import {
   Button, Card, CardHeader, CardTitle, CardDescription, CardContent,
   Tabs, TabsList, TabsTrigger, TabsContent, Skeleton, EmptyState, Input,
 } from '../ui'
+// VX28 — un seul langage de graphique (kit ui/charts), un seul PageHeader, un
+// seul moteur de table de reporting (Table partagé).
+import { BarArrondie } from '../ui/charts'
+import { PageHeader } from '../ui/PageHeader'
+import { Table as SharedTable } from './reporting/Table'
 import { StateBlock } from '../components/StateBlock'
-
-const CHART_PRIMARY = 'var(--color-info)'
-const CHART_GRID = 'var(--color-border)'
-const CHART_AXIS = 'var(--color-muted-foreground)'
 
 // L9 — types filtrables du Journal d'activité (clés acceptées par ?type=).
 const AUDIT_TYPES = [
@@ -56,39 +54,40 @@ function auditRef(it) {
   return it.object_ref
 }
 
-// Tableau de données restylé (conserve la classe sémantique .data-table).
-// Enveloppé dans un conteneur scrollable horizontalement pour les tables
-// multi-colonnes sur petits écrans.
+// VX28 — un seul moteur de table de reporting : cet adaptateur mince délègue au
+// `Table` PARTAGÉ (pages/reporting/Table.jsx, tokenisé, scrollable PWA) tout en
+// gardant l'API historique de ce hub (`headers` + `rows` de tableaux + `footer`
+// de tableau) — donc AUCUN site d'appel n'a besoin de changer.
 //
 // L882 — `footer` (optionnel) : un tableau de cellules de pied « Total » rendu
 // dans un <tfoot>, calculé depuis les MÊMES données que les lignes. Masqué
 // quand il n'y a aucune ligne.
 function Table({ headers, rows, footer }) {
+  const columns = headers.map((h, j) => ({
+    key: String(j),
+    header: h,
+    // Les lignes de ce hub sont des TABLEAUX (une cellule par colonne) : on lit
+    // la cellule d'indice colonne.
+    cell: (row) => row[j],
+  }))
   return (
-    <div className="overflow-x-auto">
-      <table className="data-table mb-2">
-        <thead><tr>{headers.map(h => <th key={h}>{h}</th>)}</tr></thead>
-        <tbody>
-          {rows.map((r, i) => (
-            <tr key={i}>{r.map((c, j) => <td key={j} data-label={headers[j]}>{c}</td>)}</tr>
+    <SharedTable
+      className="mb-2"
+      columns={columns}
+      rows={rows}
+      empty={<span className="text-muted-foreground">Aucune donnée.</span>}
+      footer={footer && rows.length > 0 ? (
+        <tr className="border-t border-border font-semibold">
+          {footer.map((c, j) => (
+            <td key={j}
+                data-label={typeof headers[j] === 'string' ? headers[j] : undefined}
+                className="px-3 py-2 text-foreground">
+              {c}
+            </td>
           ))}
-          {!rows.length && (
-            <tr>
-              <td colSpan={headers.length} className="text-muted-foreground">Aucune donnée.</td>
-            </tr>
-          )}
-        </tbody>
-        {footer && rows.length > 0 && (
-          <tfoot>
-            <tr className="font-semibold">
-              {footer.map((c, j) => (
-                <td key={j} data-label={headers[j]}>{c}</td>
-              ))}
-            </tr>
-          </tfoot>
-        )}
-      </table>
-    </div>
+        </tr>
+      ) : null}
+    />
   )
 }
 
@@ -581,9 +580,8 @@ export function Component() {
 
   return (
     <div className="ui-root page" style={{ maxWidth: 1100 }}>
-      <div className="page-header" style={{ marginBottom: '1.5rem' }}>
-        <h2>Rapports</h2>
-      </div>
+      {/* VX28 — PageHeader unifié (remplace le `.page-header` + `<h2>` nu). */}
+      <PageHeader title="Rapports" icon={BarChart3} />
 
       <Tabs defaultValue="ventes">
         <TabsList className="flex-wrap">
@@ -838,22 +836,15 @@ export function Component() {
                   </p>
                   <Subhead>kWc installés par mois</Subhead>
                   {analytics.kwc_by_month.length > 0 ? (
-                    <ResponsiveContainer width="100%" height={220}>
-                      <BarChart data={analytics.kwc_by_month.map(m => ({ mois: m.mois, kwc: Number(m.kwc) }))}>
-                        <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
-                        <XAxis dataKey="mois" tick={{ fontSize: 11, fill: CHART_AXIS }} stroke={CHART_GRID} />
-                        <YAxis tick={{ fontSize: 11, fill: CHART_AXIS }} stroke={CHART_GRID} />
-                        <Tooltip
-                          contentStyle={{
-                            borderRadius: 8, fontSize: 12,
-                            background: 'var(--color-popover)',
-                            border: '1px solid var(--color-border)',
-                            color: 'var(--color-popover-foreground)',
-                          }}
-                        />
-                        <Bar dataKey="kwc" name="kWc" fill={CHART_PRIMARY} radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
+                    <BarArrondie
+                      data={analytics.kwc_by_month.map(m => ({ mois: m.mois, kwc: Number(m.kwc) }))}
+                      dataKey="kwc"
+                      categoryKey="mois"
+                      tone="info"
+                      name="kWc"
+                      height={220}
+                      tooltipFormat={(v) => formatNumber(v)}
+                    />
                   ) : (
                     <EmptyState icon={BarChart3} title="Aucune donnée" className="border-0 py-6" />
                   )}
