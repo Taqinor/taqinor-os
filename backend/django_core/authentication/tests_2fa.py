@@ -99,6 +99,21 @@ class TestTwoFactorSetupEnableDisable(TestCase):
         # Tant que non activé, la connexion reste libre.
         self.assertEqual(self._login().status_code, 200)
 
+    def test_setup_returns_qr_as_inline_svg_never_a_third_party_url(self):
+        """VX120 — le QR est un SVG rendu par NOTRE serveur (réutilise le
+        générateur QR maison de `apps.stock.labels`), jamais une URL vers un
+        service tiers (qui exfiltrerait la graine TOTP contenue dans
+        `otpauth_uri` à un domaine non contrôlé)."""
+        resp = self.auth.post('/api/django/auth/2fa/setup/', {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIn('qr_svg', resp.data)
+        svg = resp.data['qr_svg']
+        self.assertTrue(svg.strip().startswith('<svg'))
+        # Pas de script ni de référence à un service tiers dans le SVG
+        # lui-même (le seul "http://" légitime est le namespace XML du <svg>).
+        self.assertNotIn('<script', svg)
+        self.assertNotIn('qrserver.com', svg)
+
     def test_enable_requires_valid_code(self):
         setup = self.auth.post('/api/django/auth/2fa/setup/', {}, format='json')
         secret = setup.data['secret']
