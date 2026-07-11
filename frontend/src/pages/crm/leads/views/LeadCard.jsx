@@ -17,6 +17,8 @@ import AssigneePicker from '../../../../components/AssigneePicker'
 import { telHref, waHref } from '../../../../lib/contactLinks'
 // VX24 — score de qualité désormais aussi visible sur la carte (ex Liste seule).
 import ScoreBadge from '../../../../features/crm/ScoreBadge'
+// VX87 — nudge post-appel « Appel terminé — noter le résultat ? ».
+import CallLogPopover, { useCallEndedNudge } from '../../../../features/crm/CallLogPopover'
 
 // VX43 — Swipe-to-action horizontal maison (touchstart/move/end, zéro
 // dépendance). Les liens tel:/wa.me existaient déjà mais en texte 12px noyé
@@ -212,6 +214,10 @@ export default function LeadCard({
   // (sinon rien à révéler derrière la carte).
   const swipe = useSwipeReveal(!!(tel || wa))
 
+  // VX87 — nudge post-appel : armé juste avant d'ouvrir tel:, proposé au
+  // retour dans l'onglet (visibilitychange).
+  const { nudgeVisible, armCallNudge, dismissNudge } = useCallEndedNudge()
+
   return (
     <div className="kb-swipe-wrap" style={{ position: 'relative' }}>
       {(tel || wa) && (
@@ -229,7 +235,7 @@ export default function LeadCard({
               href={tel}
               aria-label="Appeler (glissement)"
               title="Appeler"
-              onClick={(e) => { e.stopPropagation(); swipe.close() }}
+              onClick={(e) => { e.stopPropagation(); swipe.close(); armCallNudge() }}
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 width: `${SWIPE_REVEAL_PX / (tel && wa ? 2 : 1)}px`, minHeight: '44px',
@@ -387,7 +393,7 @@ export default function LeadCard({
               className="kb-card-tel"
               href={tel}
               title="Appeler"
-              onClick={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); armCallNudge() }}
               onPointerDown={(e) => e.stopPropagation()}
               onTouchStart={(e) => e.stopPropagation()}
             >
@@ -517,6 +523,33 @@ export default function LeadCard({
           />
         </span>
       </div>
+
+      {/* VX87 — nudge post-appel : proposé au retour dans l'onglet après un
+          tap tel: (armCallNudge), jamais intrusif — dismissable, ne bloque
+          rien. */}
+      {nudgeVisible && (
+        <div
+          className="kb-call-nudge"
+          role="status"
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <span className="kb-call-nudge-text">Appel terminé — noter le résultat ?</span>
+          <CallLogPopover
+            leadId={lead.id}
+            trigger={<button type="button" className="kb-call-nudge-log">Noter</button>}
+            onLogged={dismissNudge}
+          />
+          <button
+            type="button"
+            className="kb-call-nudge-dismiss"
+            aria-label="Ignorer"
+            onClick={dismissNudge}
+          >
+            ✕
+          </button>
+        </div>
+      )}
       </article>
     </div>
   )

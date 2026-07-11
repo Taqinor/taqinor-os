@@ -23,6 +23,8 @@ import InlineEdit from '../../../../components/InlineEdit'
 import LeadInsightsDialog from '../LeadInsightsDialog'
 // VX24 — ScoreBadge extrait vers features/crm (réutilisé par LeadCard/LeadSummaryBar).
 import ScoreBadge from '../../../../features/crm/ScoreBadge'
+// VX87 — nudge post-appel « Appel terminé — noter le résultat ? ».
+import CallLogPopover, { useCallEndedNudge } from '../../../../features/crm/CallLogPopover'
 import { allVisibleSelected } from '../../../../features/crm/bulk'
 import {
   Button, Checkbox, IconButton, StatusPill,
@@ -136,6 +138,13 @@ export default function ListView({
   // WR9 — fiche « Parcours » (timeline multi-touch + correspondance client).
   const [insightsLead, setInsightsLead] = useState(null)
   const today = todayISO()
+
+  // VX87 — nudge post-appel : armé au tap tel: (mémorise QUEL lead a été
+  // appelé, une table n'a qu'un seul nudge visible à la fois — comme un
+  // vendeur ne passe qu'un appel à la fois), proposé au retour dans l'onglet.
+  const { nudgeVisible, armCallNudge, dismissNudge } = useCallEndedNudge()
+  const [nudgeLead, setNudgeLead] = useState(null)
+  const armCallNudgeFor = (lead) => { setNudgeLead(lead); armCallNudge() }
 
   const onArchive = async (lead) => {
     setBusyId(lead.id)
@@ -297,7 +306,8 @@ export default function ListView({
                         {telHref(lead.telephone) && (
                           <a href={telHref(lead.telephone)} title="Appeler"
                              aria-label={`Appeler ${fullName(lead) || 'ce lead'}`}
-                             className="text-muted-foreground hover:text-foreground">
+                             className="text-muted-foreground hover:text-foreground"
+                             onClick={() => armCallNudgeFor(lead)}>
                             <PhoneCall className="size-3.5" aria-hidden="true" />
                           </a>
                         )}
@@ -335,7 +345,8 @@ export default function ListView({
                 </td>
                 <td className="m-hide" onClick={(e) => e.stopPropagation()}>
                   {lead.telephone ? (
-                    <a className="link-blue" href={`tel:${lead.telephone}`}>
+                    <a className="link-blue" href={`tel:${lead.telephone}`}
+                       onClick={() => armCallNudgeFor(lead)}>
                       {lead.telephone}
                     </a>
                   ) : '—'}
@@ -545,6 +556,28 @@ export default function ListView({
           lead={insightsLead}
           onClose={() => setInsightsLead(null)}
         />
+      )}
+      {/* VX87 — nudge post-appel : proposé au retour dans l'onglet après un
+          tap tel: sur une ligne, jamais intrusif — dismissable. */}
+      {nudgeVisible && nudgeLead && (
+        <div className="lv-call-nudge" role="status">
+          <span className="lv-call-nudge-text">
+            Appel terminé avec {fullName(nudgeLead) || 'ce lead'} — noter le résultat ?
+          </span>
+          <CallLogPopover
+            leadId={nudgeLead.id}
+            trigger={<button type="button" className="lv-call-nudge-log">Noter</button>}
+            onLogged={dismissNudge}
+          />
+          <button
+            type="button"
+            className="lv-call-nudge-dismiss"
+            aria-label="Ignorer"
+            onClick={dismissNudge}
+          >
+            ✕
+          </button>
+        </div>
       )}
     </div>
   )

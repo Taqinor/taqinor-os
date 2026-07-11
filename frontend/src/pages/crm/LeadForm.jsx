@@ -28,6 +28,8 @@ import {
 import useCanaux from '../../features/crm/useCanaux'
 // VX24 — bandeau de faits clés (LeadSummaryBar) réutilise le même ScoreBadge.
 import ScoreBadge from '../../features/crm/ScoreBadge'
+// VX87 — journal d'appel en un geste (issue + note + prochaine relance).
+import CallLogPopover from '../../features/crm/CallLogPopover'
 import useKeyboardAwareScroll from '../../hooks/useKeyboardAwareScroll'
 import {
   Button, Input, FormSection, FormField,
@@ -219,6 +221,9 @@ export default function LeadForm({
   const [waLangue, setWaLangue] = useState(() => lead?.langue_preferee || 'fr')
   // L852 — aperçu du message avant ouverture de wa.me.
   const [waPreview, setWaPreview] = useState(null) // { message, links, wa_url }
+  // VX87 — ouverture contrôlée du popover « Journaliser un appel » (section
+  // Historique), pour pouvoir la déclencher aussi depuis un futur nudge.
+  const [callLogOpen, setCallLogOpen] = useState(false)
 
   const toggleWaSelect = (id) => setWaSelected(prev => {
     const next = new Set(prev)
@@ -411,8 +416,7 @@ export default function LeadForm({
       await crmApi.mergeLeads(lead.id, [otherId])
       setDups(d => d.filter(x => x.id !== otherId))
       refreshLead()
-      api.get(`/crm/leads/${lead.id}/historique/`)
-        .then(r => setHistorique(r.data)).catch(() => {})
+      refreshHistorique()
     } catch (err) {
       alert(err?.response?.data?.detail ?? 'La fusion a échoué — réessayez.')
     }
@@ -583,6 +587,15 @@ export default function LeadForm({
       onSaved?.()
       onClose()
     } catch { /* erreur silencieuse */ } finally { setArchiveBusy(false) }
+  }
+
+  // VX87 — helper partagé : recharge l'Historique (chatter) sans tout
+  // recharger le lead. Consommé par le merge de doublons (déjà existant) et
+  // par CallLogPopover après une journalisation d'appel réussie.
+  const refreshHistorique = () => {
+    if (!lead?.id) return
+    api.get(`/crm/leads/${lead.id}/historique/`)
+      .then(r => setHistorique(r.data)).catch(() => {})
   }
 
   const postNote = async () => {
@@ -1413,6 +1426,15 @@ export default function LeadForm({
                   <Button type="button" variant="outline" onClick={postNote}>
                     Noter
                   </Button>
+                  {/* VX87 — journal d'appel en un geste : issue + note +
+                      prochaine relance, le tout en 1 requête (logInteraction
+                      avait ZÉRO site d'appel avant cette tâche). */}
+                  <CallLogPopover
+                    leadId={lead.id}
+                    open={callLogOpen}
+                    onOpenChange={setCallLogOpen}
+                    onLogged={refreshHistorique}
+                  />
                 </div>
                 {noteError && (
                   <p className="form-error" role="alert">{noteError}</p>

@@ -3286,6 +3286,88 @@ textarea.form-control {
 
 .chatter-attachment-link:hover { text-decoration: underline; }
 
+/* VX87 — CallLogPopover : journal d'appel en un geste (issue + note +
+   prochaine action), le tout dans le popover ouvert depuis LeadForm/LeadCard/
+   ListView. */
+.clp-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.clp-title {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--foreground, #0b1f3a);
+}
+
+.clp-outcomes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.clp-outcome-btn {
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border, #e2e8f0);
+  background: var(--card, #fff);
+  color: var(--foreground, #0b1f3a);
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+
+.clp-outcome-btn-active {
+  background: var(--primary, #e8b54a);
+  border-color: var(--primary, #e8b54a);
+  color: var(--primary-foreground, #1a1505);
+  font-weight: 600;
+}
+
+.clp-note { font-size: 0.8rem; }
+
+.clp-next-action {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.clp-next-action-label {
+  font-size: 0.76rem;
+  color: var(--muted-foreground, #5a6488);
+}
+
+.clp-next-action-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.clp-next-btn {
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border, #e2e8f0);
+  background: var(--muted, #eef1f8);
+  color: var(--foreground, #0b1f3a);
+  font-size: 0.74rem;
+  cursor: pointer;
+}
+
+.clp-next-btn-active {
+  background: var(--color-info, #2342b5);
+  border-color: var(--color-info, #2342b5);
+  color: #fff;
+  font-weight: 600;
+}
+
+.clp-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 2px;
+}
+
 
 /* ████████████████████████████████████████████████████████████████████
    P67 — CSS de composants ad hoc RELOCALISÉ ICI (verbatim). Les fichiers
@@ -5062,6 +5144,41 @@ textarea.form-control {
   margin-top: 0.5rem;
 }
 
+/* VX87 — nudge post-appel : « Appel terminé — noter le résultat ? »,
+   dismissable, jamais bloquant. */
+.kb-call-nudge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 0.4rem;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--color-info-muted, rgba(37, 99, 235, 0.1));
+  font-size: 0.72rem;
+}
+
+.kb-call-nudge-text { flex: 1; color: var(--foreground, #0b1f3a); }
+
+.kb-call-nudge-log {
+  border: none;
+  background: var(--color-info, #2342b5);
+  color: #fff;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.kb-call-nudge-dismiss {
+  border: none;
+  background: transparent;
+  color: var(--muted-foreground, #64748b);
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 0.72rem;
+}
+
 .kb-canal {
   padding: 0.08rem 0.35rem;
   border-radius: 4px;
@@ -5342,6 +5459,44 @@ textarea.form-control {
   text-align: center;
   color: var(--muted-foreground, #94a3b8);
   padding: 24px 14px;
+}
+
+/* VX87 — nudge post-appel (vue Liste) : bandeau fixe en bas d'écran, un seul
+   appel à la fois — dismissable, jamais bloquant. */
+.lv-call-nudge {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--color-info-muted, rgba(37, 99, 235, 0.1));
+  font-size: 0.8rem;
+  z-index: 1;
+}
+
+.lv-call-nudge-text { flex: 1; color: var(--foreground, #0b1f3a); }
+
+.lv-call-nudge-log {
+  border: none;
+  background: var(--color-info, #2342b5);
+  color: #fff;
+  border-radius: 4px;
+  padding: 3px 10px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.lv-call-nudge-dismiss {
+  border: none;
+  background: transparent;
+  color: var(--muted-foreground, #64748b);
+  cursor: pointer;
+  padding: 0 3px;
+  font-size: 0.78rem;
 }
 
 /* ── Mobile (≤768px) : la table globale passe en cartes ; on garde la
