@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 
@@ -31,6 +31,7 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
 
 import RolesManagement from './RolesManagement'
 import { ThemeProvider } from '../../design/ThemeProvider'
+import { ConfirmProvider } from '../../providers/ConfirmProvider'
 
 const ROLES = [
   {
@@ -57,7 +58,9 @@ function renderPage() {
   return render(
     <ThemeProvider>
       <MemoryRouter>
-        <RolesManagement />
+        <ConfirmProvider>
+          <RolesManagement />
+        </ConfirmProvider>
       </MemoryRouter>
     </ThemeProvider>,
   )
@@ -74,11 +77,25 @@ describe('RolesManagement (VX234 — dialogue de réassignation)', () => {
     renderPage()
 
     await screen.findByText('Commercial')
-    // Ouvre le AlertDialog de suppression du rôle "Commercial" (assigné).
-    const deleteButtons = await screen.findAllByRole('button', { name: /Supprimer/ })
-    await user.click(deleteButtons[0])
-    const confirmButtons = await screen.findAllByRole('button', { name: 'Supprimer' })
-    await user.click(confirmButtons[confirmButtons.length - 1])
+    // VX38 — la suppression vit désormais dans les actions de ligne DataTable
+    // (action rapide au survol, IconButton étiqueté par aria-label) : on cible
+    // la ligne « Commercial » précisément, comme UsersManagement.test.jsx cible
+    // sa ligne par contenu plutôt que par index global de bouton.
+    const commercialRow = [...document.querySelectorAll('table tbody tr')]
+      .find((tr) => tr.textContent.includes('Commercial'))
+    expect(commercialRow).toBeTruthy()
+    const rowDeleteBtn = within(commercialRow).getByRole('button', { name: 'Supprimer' })
+    await user.click(rowDeleteBtn)
+
+    // Confirmation maison (AlertDialog du ConfirmProvider), JAMAIS window.confirm.
+    // On clique « Supprimer » DANS la boîte de dialogue (portée dans le body).
+    const confirmBtn = await waitFor(() => {
+      const btn = [...document.querySelectorAll('[role="alertdialog"] button')]
+        .find((b) => b.textContent.trim() === 'Supprimer')
+      expect(btn).toBeTruthy()
+      return btn
+    })
+    await user.click(confirmBtn)
 
     await waitFor(() => screen.getByText('Réassigner avant de supprimer'))
     const combo = screen.getByRole('combobox')
@@ -107,10 +124,19 @@ describe('RolesManagement (VX234 — dialogue de réassignation)', () => {
     renderPage()
 
     await screen.findByText('Commercial')
-    const deleteButtons = await screen.findAllByRole('button', { name: /Supprimer/ })
-    await user.click(deleteButtons[0])
-    const confirmButtons = await screen.findAllByRole('button', { name: 'Supprimer' })
-    await user.click(confirmButtons[confirmButtons.length - 1])
+    const commercialRow = [...document.querySelectorAll('table tbody tr')]
+      .find((tr) => tr.textContent.includes('Commercial'))
+    expect(commercialRow).toBeTruthy()
+    const rowDeleteBtn = within(commercialRow).getByRole('button', { name: 'Supprimer' })
+    await user.click(rowDeleteBtn)
+
+    const confirmBtn = await waitFor(() => {
+      const btn = [...document.querySelectorAll('[role="alertdialog"] button')]
+        .find((b) => b.textContent.trim() === 'Supprimer')
+      expect(btn).toBeTruthy()
+      return btn
+    })
+    await user.click(confirmBtn)
 
     await waitFor(() => screen.getByText('Réassigner avant de supprimer'))
     const combo = screen.getByRole('combobox')
