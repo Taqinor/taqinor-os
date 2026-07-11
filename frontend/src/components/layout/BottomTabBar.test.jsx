@@ -61,8 +61,10 @@ describe('VX12 — « Plus » ouvre la grille de modules (2 niveaux), pas le tir
     renderBar()
     await userEvent.click(screen.getByRole('button', { name: /Plus de menus/i }))
     await userEvent.click(screen.getByText('VENTES'))
-    // 2e niveau : les items de VENTES apparaissent (ex. Devis).
-    expect(screen.getByRole('link', { name: /Devis/ })).toBeInTheDocument()
+    // 2e niveau : les items de VENTES apparaissent (ex. Devis). Le libellé
+    // « Devis » peut apparaître plus d'une fois (drawer + sous-menu) ; on
+    // vérifie sa présence sans exiger l'unicité.
+    expect(screen.getAllByRole('link', { name: /Devis/ }).length).toBeGreaterThan(0)
     // Bouton retour vers la grille.
     const back = screen.getByRole('button', { name: /Retour à la grille/i })
     await userEvent.click(back)

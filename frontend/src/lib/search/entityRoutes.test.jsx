@@ -68,10 +68,16 @@ describe('VX13 — entityRoutes (source unique GlobalSearch + CommandPalette)', 
   })
 
   it('failed=true sur échec réseau, groups vidés', async () => {
+    // Vrais timers ici : le rejet asynchrone + ses microtâches ne se vident pas
+    // proprement sous fake timers (et `waitFor` boucle sous fake timers). Le
+    // debounce 250 ms tourne pour de vrai, `waitFor` sonde normalement.
+    vi.useRealTimers()
     reportingApi.search.mockRejectedValue(new Error('network'))
     render(<Harness term="solaire" enabled />)
-    await vi.advanceTimersByTimeAsync(300)
-    await waitFor(() => expect(screen.getByTestId('failed').textContent).toBe('true'))
+    await waitFor(
+      () => expect(screen.getByTestId('failed').textContent).toBe('true'),
+      { timeout: 2000 },
+    )
     expect(screen.getByTestId('groups').textContent).toBe('[]')
   })
 })
