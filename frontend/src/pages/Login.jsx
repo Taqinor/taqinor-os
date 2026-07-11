@@ -4,6 +4,11 @@ import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { Eye, EyeOff, AlertCircle } from 'lucide-react'
 import { setCredentials } from '../features/auth/store/authSlice'
 import api from '../api/axios'
+// VX46 — module d'atterrissage au login (« Mes préférences »), résolu depuis
+// `moduleConfigs` (UX1) + le dernier module visité (VX11) ; repli `/dashboard`
+// inchangé quand aucune préférence n'est choisie.
+import { moduleConfigs } from '../router/moduleRoutes'
+import { resolveLandingPath, getLastModuleSegment } from './preferences/prefs'
 
 // VX34 — Login = premier pixel de la marque. On garde EXACTEMENT les teintes de
 // marque (#1863DC azur, #F5C100 laiton, #050e1f nuit) mais on les fait entrer
@@ -111,8 +116,10 @@ export default function Login() {
         role_nom: res.data.role_nom || null,
         permissions: res.data.permissions || [],
       }))
+      // VX65 : un lien profond `?next=` interne est prioritaire ; sinon VX46
+      // route vers le module d'atterrissage préféré (repli /dashboard inchangé).
       const next = safeNextPath(searchParams.get('next'))
-      navigate(next || '/dashboard')
+      navigate(next || resolveLandingPath(moduleConfigs, getLastModuleSegment()))
     } catch (err) {
       const data = err.response?.data || {}
       // 2FA requise : on déverrouille le champ code et on demande le code.
