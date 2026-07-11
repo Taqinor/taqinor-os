@@ -45,7 +45,11 @@ export async function initMonitoring() {
   try {
     // Import dynamique — jamais résolu tant que le paquet n'est pas installé
     // ET qu'aucun DSN n'est configuré (l'un ou l'autre suffit à rester no-op).
-    _sentry = await import('@sentry/react')
+    // Paquet optionnel absent de package.json : un specifier VARIABLE empêche
+    // vite/vitest de le résoudre statiquement au build (sinon échec « cannot
+    // resolve »). Chargé au runtime uniquement, une fois Reda l'a installé + DSN.
+    const pkg = '@sentry/react'
+    _sentry = await import(/* @vite-ignore */ pkg)
   } catch {
     // Paquet absent (pas encore installé par le fondateur) → no-op silencieux.
     return false
