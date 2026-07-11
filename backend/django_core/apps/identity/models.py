@@ -162,3 +162,31 @@ class ConsumedAssertion(models.Model):
 
     def __str__(self):
         return f'{self.company_id} — {self.assertion_id}'
+
+
+class OidcAuthState(models.Model):
+    """État transitoire d'un flux OIDC Authorization Code + PKCE (NTSEC3).
+
+    Créé au ``login/`` (redirection vers l'IdP) et consommé une seule fois au
+    ``callback/`` : porte le ``state`` (anti-CSRF), le ``nonce`` (anti-rejeu de
+    l'id_token) et le ``code_verifier`` PKCE. Scopé société, à usage unique
+    (``used=True`` après consommation), avec une fenêtre de validité courte.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='oidc_states',
+    )
+    state = models.CharField(max_length=128, unique=True, db_index=True)
+    nonce = models.CharField(max_length=128)
+    code_verifier = models.CharField(max_length=128)
+    used = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'État OIDC (PKCE)'
+        verbose_name_plural = 'États OIDC (PKCE)'
+
+    def __str__(self):
+        return f'{self.company_id} — {self.state[:12]}…'
