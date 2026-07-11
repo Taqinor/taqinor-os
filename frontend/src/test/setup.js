@@ -18,6 +18,18 @@ if (typeof window !== 'undefined') {
   if (!Element.prototype.scrollIntoView) {
     Element.prototype.scrollIntoView = () => {}
   }
+  /* Radix (Slider, ResponsiveDialog…) et les sparklines observent la taille :
+     jsdom n'a pas ResizeObserver. Stub global (un no-op) pour ne pas répéter le
+     polyfill dans chaque fichier de test. */
+  if (typeof globalThis.ResizeObserver === 'undefined') {
+    globalThis.ResizeObserver = class {
+      observe() {}
+
+      unobserve() {}
+
+      disconnect() {}
+    }
+  }
 }
 
 /* jsdom est recréé entre fichiers mais pas entre tests : on démonte le DOM
