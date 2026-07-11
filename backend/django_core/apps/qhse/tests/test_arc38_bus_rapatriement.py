@@ -111,7 +111,13 @@ class Arc38IncidentDeclaredSurLeBusTests(TestCase):
     def test_abonne_bus_qhse_ecrit_une_entree_audit_dediee(self):
         """L'abonné réel de ce lot (qhse se réabonne à son propre signal bus)
         écrit une entrée d'audit DISTINCTE de celle de YEVNT12 (signal local)
-        — un incident même NON critique déclenche cet audit dédié."""
+        — un incident même NON critique déclenche cet audit dédié.
+
+        Action ``create`` (et non ``notify``) : l'abonné bus ne notifie
+        personne, il TRACE la visibilité de la déclaration sur le bus. Il ne
+        doit donc PAS polluer le flux d'audit ``notify`` réservé aux vraies
+        notifications YEVNT12 (garde de non-régression : YEVNT12 compte 1
+        ``notify`` pour un critique, 0 pour un mineur)."""
         resp = self.client_api.post(
             INCIDENT_URL,
             {'titre': 'Incident mineur', 'gravite': 'mineure'},
@@ -120,9 +126,15 @@ class Arc38IncidentDeclaredSurLeBusTests(TestCase):
         inc = Incident.objects.get(id=resp.data['id'])
 
         logs = AuditLog.objects.filter(
-            company=self.company, action='notify', object_id=str(inc.pk))
+            company=self.company, action='create', object_id=str(inc.pk))
         self.assertTrue(
             logs.filter(detail__icontains='ARC38').exists())
+        # Non-régression YEVNT12 : l'abonné bus n'écrit AUCUN audit ``notify``
+        # (aucune notification envoyée pour un incident mineur).
+        self.assertFalse(
+            AuditLog.objects.filter(
+                company=self.company, action='notify',
+                object_id=str(inc.pk)).exists())
 
     def test_incident_declared_nest_plus_orphelin(self):
         self.assertNotIn(

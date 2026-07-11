@@ -196,8 +196,13 @@ def _audit_bus_on_incident_declared(sender, incident, company, user, gravite,
         from apps.audit import recorder as audit_recorder
 
         ref = getattr(incident, 'reference', '') or 'INC'
+        # Action ``create`` (déclaration d'incident observée sur le bus), PAS
+        # ``notify`` : aucune notification n'est envoyée ici (contrairement à
+        # l'audit YEVNT12 du signal LOCAL, réservé aux incidents CRITIQUES qui
+        # notifient réellement). Réutiliser ``notify`` polluait le flux d'audit
+        # ``notify`` et cassait le comptage YEVNT12 (1 pour critique, 0 sinon).
         audit_recorder.record(
-            'notify',
+            'create',
             instance=incident,
             company=company,
             user=user,
