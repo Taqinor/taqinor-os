@@ -1,11 +1,21 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import ventesApi from '../../../api/ventesApi'
+import { fetchAllPages } from '../../../utils/fetchAllPages'
 
 // ── Devis ──────────────────────────────────────────────
+// VX54 — la page 1 DRF (PAGE_SIZE=100) ne renvoyait que les 100 premiers
+// devis : DevisList et les KPI du Dashboard étaient FAUX dès 101 devis. On lit
+// désormais TOUTES les pages, en parallèle mais borné à ~3-5 MAX (au lieu du
+// ~20 par défaut) tant que QPERF1 (N+1 backend : ~38-109 requêtes SQL PAR
+// page de devis) n'est pas corrigé — sinon ~20 pages parallèles = ~2 000
+// requêtes SQL quasi simultanées auto-infligées au Postgres à chaque montage
+// de DevisList. Relever cette borne quand QPERF1 atterrit (@coord QPERF1).
+const DEVIS_PAGE_CONCURRENCY = 5
+
 export const fetchDevis = createAsyncThunk('ventes/fetchDevis', async (_, { rejectWithValue }) => {
   try {
-    const res = await ventesApi.getDevis()
-    return res.data
+    const results = await fetchAllPages((page) => ventesApi.getDevis({ page }).then((r) => r.data), { concurrency: DEVIS_PAGE_CONCURRENCY })
+    return { results }
   } catch (err) {
     return rejectWithValue(err.response?.data ?? err.message)
   }
@@ -162,10 +172,13 @@ export const creerFactureFromBC = createAsyncThunk('ventes/creerFactureFromBC', 
 })
 
 // ── Factures ───────────────────────────────────────────
+// VX54 — même bug de troncature silencieuse que fetchDevis : toutes les
+// pages désormais lues, en parallèle borné (les factures n'ont pas le N+1
+// QPERF1 des devis, donc la borne par défaut ~20 s'applique).
 export const fetchFactures = createAsyncThunk('ventes/fetchFactures', async (_, { rejectWithValue }) => {
   try {
-    const res = await ventesApi.getFactures()
-    return res.data
+    const results = await fetchAllPages((page) => ventesApi.getFactures({ page }).then((r) => r.data), { concurrency: 20 })
+    return { results }
   } catch (err) {
     return rejectWithValue(err.response?.data ?? err.message)
   }

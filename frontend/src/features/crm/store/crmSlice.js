@@ -1,10 +1,14 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import crmApi from '../../../api/crmApi'
+import { fetchAllPages } from '../../../utils/fetchAllPages'
 
+// VX54 — la page 1 DRF (PAGE_SIZE=100) ne renvoyait que les 100 premiers
+// clients : FAUX dès 101 clients. Toutes les pages sont désormais lues, en
+// parallèle borné.
 export const fetchClients = createAsyncThunk('crm/fetchClients', async (_, { rejectWithValue }) => {
   try {
-    const res = await crmApi.getClients()
-    return res.data
+    const results = await fetchAllPages((page) => crmApi.getClients({ page }).then((r) => r.data), { concurrency: 20 })
+    return { results }
   } catch (err) {
     return rejectWithValue(err.response?.data ?? err.message)
   }
@@ -41,17 +45,12 @@ export const fetchLeads = createAsyncThunk('crm/fetchLeads', async (params, { re
   try {
     // Le kanban doit voir TOUS les leads : on suit la pagination DRF
     // (PAGE_SIZE 100) jusqu'au bout au lieu de s'arrêter à la première page.
-    const first = await crmApi.getLeads(params)
-    let data = first.data
-    if (!data || !Array.isArray(data.results)) return data
-    const all = [...data.results]
-    let page = 2
-    while (data.next && page <= 50) {
-      const res = await crmApi.getLeads({ ...(params ?? {}), page })
-      data = res.data
-      all.push(...(data.results ?? []))
-      page += 1
-    }
+    // VX54 — était un `while` SÉRIEL (un aller-retour réseau par page, gel de
+    // plusieurs secondes à 250-500 ms de RTT) ; désormais parallèle borné.
+    const all = await fetchAllPages(
+      (page) => crmApi.getLeads({ ...(params ?? {}), page }).then((r) => r.data),
+      { concurrency: 20 },
+    )
     return all
   } catch (err) {
     return rejectWithValue(err.response?.data ?? err.message)

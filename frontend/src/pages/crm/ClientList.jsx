@@ -18,6 +18,7 @@ import { useConfirmDialog, toast } from '../../ui/confirm'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import ClientTypeToggle from './ClientTypeToggle'
 import { useSavedViews } from '../../hooks/useSavedViews'
+import { formatMAD } from '../../lib/format'
 
 const CL_SAVED_VIEWS_KEY = 'taqinor.crm.clients.savedViews'
 
@@ -222,9 +223,9 @@ export default function ClientList() {
         if (!facture && !paye) return <span className="text-muted-foreground">—</span>
         return (
           <span className="flex flex-col items-end leading-tight">
-            <span className="font-medium">{facture.toLocaleString('fr-MA')} MAD</span>
+            <span className="font-medium">{formatMAD(facture)}</span>
             <span className="text-xs text-muted-foreground">
-              Payé : {paye.toLocaleString('fr-MA')} MAD
+              Payé : {formatMAD(paye)}
             </span>
           </span>
         )

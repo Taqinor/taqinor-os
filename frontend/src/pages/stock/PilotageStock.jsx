@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ShoppingCart, RefreshCw, Download, FileText } from 'lucide-react'
 import stockApi from '../../api/stockApi'
+import { formatMAD } from '../../lib/format'
 import { downloadBlob } from '../../utils/downloadBlob'
 import { ouvrirPdfBlob, estBlobPdf, messageErreurBlob } from '../../utils/pdfBlob'
 import { ModuleDashboard } from '../../ui/module'
@@ -27,9 +28,7 @@ function messageSection(err) {
   return err?.response?.data?.detail ?? 'Chargement impossible. Réessayez.'
 }
 
-const fmtMad = (v) => `${(Number(v) || 0).toLocaleString('fr-FR', {
-  minimumFractionDigits: 2, maximumFractionDigits: 2,
-})} MAD`
+const fmtMad = (v) => formatMAD(v)
 const fmtDateFR = (iso) => {
   if (!iso) return '—'
   const d = new Date(`${iso}T00:00:00`)

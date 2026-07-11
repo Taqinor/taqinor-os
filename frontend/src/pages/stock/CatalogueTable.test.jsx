@@ -129,7 +129,10 @@ describe('CatalogueTable (J142)', () => {
     // 1000 HT + TVA 20% = 1200 TTC ; le separateur de milliers depend de la
     // locale (1 200 / 1.200 / 1,200 / 1200) : on reste tolerant.
     expect(screen.getAllByText(/1\D?200/).length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/1000[.,]00 HT/).length).toBeGreaterThan(0)
+    // VX75 — formatMAD ajoute un séparateur de milliers (« 1 000,00 HT ») ;
+    // on reste tolérant sur ce séparateur (espace/nbsp/narrow-nbsp ou aucun).
+    expect(screen.getAllByText(/1\s?000[.,]00 HT/).length)
+      .toBeGreaterThan(0)
   })
 
   it('en lecture seule (canWrite=false) les cellules ne sont pas editables', () => {

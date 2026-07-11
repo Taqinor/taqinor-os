@@ -11,6 +11,7 @@ import { Eye, FileWarning } from 'lucide-react'
 import ventesApi from '../../../api/ventesApi'
 import { proposalParams, pdfBlob } from '../../../features/ventes/previewPdf'
 import { Button, Spinner } from '../../../ui'
+import { formatMAD } from '../../../lib/format'
 
 // Rendu PDF.js (canvas) chargé à la demande — même composant inblocable que le
 // panneau devis de la fiche lead. Réutilisé tel quel, jamais dupliqué.
@@ -96,9 +97,7 @@ function preselectDevis(list) {
 }
 
 function fmtMAD(value) {
-  const n = parseFloat(value)
-  return Number.isFinite(n)
-    ? `${Math.round(n).toLocaleString('fr-MA')} MAD` : '—'
+  return formatMAD(value, { decimals: 0 })
 }
 
 export default function SigneDialog({ lead, onClose, onConfirmed }) {

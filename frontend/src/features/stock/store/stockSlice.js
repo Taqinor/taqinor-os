@@ -1,11 +1,16 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import stockApi from '../../../api/stockApi'
+import { fetchAllPages } from '../../../utils/fetchAllPages'
 
 // ── Produits ───────────────────────────────────────────────────
+// VX54 — la page 1 DRF (PAGE_SIZE=100) ne renvoyait que les 100 premiers
+// produits : StockList et les KPI/graphiques du Dashboard étaient FAUX dès
+// 101 produits, sans indicateur. On lit désormais TOUTES les pages, en
+// parallèle borné (pas un escalier sériel).
 export const fetchProduits = createAsyncThunk('stock/fetchProduits', async (_, { rejectWithValue }) => {
   try {
-    const res = await stockApi.getProduits()
-    return res.data
+    const results = await fetchAllPages((page) => stockApi.getProduits({ page }).then((r) => r.data), { concurrency: 20 })
+    return { results }
   } catch (err) {
     return rejectWithValue(err.response?.data ?? err.message)
   }

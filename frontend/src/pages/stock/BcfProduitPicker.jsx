@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as PopoverPrimitive from '@radix-ui/react-popover'
 import { cn } from '../../lib/cn'
+import { formatMAD } from '../../lib/format'
 import {
   groupCatalogue, searchCatalogue, keySpec, prixTtc, sansPrix,
 } from '../../features/stock/catalogue'
@@ -156,7 +157,7 @@ export default function BcfProduitPicker({ produits, value, onChange, invalid })
                   <span className="flex-1 truncate">{p.nom}</span>
                   {spec && <span className="shrink-0 text-xs text-muted-foreground">{spec}</span>}
                   <span className={cn('shrink-0 text-xs tabular-nums', noPrix ? 'italic text-muted-foreground' : 'font-medium text-foreground')}>
-                    {noPrix ? 'sans prix de vente' : `${prixTtc(p).toLocaleString('fr-MA')} DH`}
+                    {noPrix ? 'sans prix de vente' : `${formatMAD(prixTtc(p), { withSymbol: false })} DH`}
                   </span>
                 </button>
               )

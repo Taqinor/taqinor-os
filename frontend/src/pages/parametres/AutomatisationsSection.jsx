@@ -12,6 +12,7 @@
 import { useEffect, useState } from 'react'
 import { Plus, Trash2, RefreshCw, Wand2, Sparkles } from 'lucide-react'
 import automationApi from '../../api/automationApi'
+import { formatDateTime } from '../../lib/format'
 import {
   Card, CardContent, Input, Textarea, Button, IconButton, Badge, Spinner,
   EmptyState, Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
@@ -472,7 +473,7 @@ export default function AutomatisationsSection() {
                   <span className="font-medium">{run.rule_nom ?? `Règle #${run.rule}`}</span>
                   <span className="text-muted-foreground">{run.message}</span>
                   <span className="ml-auto text-muted-foreground">
-                    {run.timestamp ? new Date(run.timestamp).toLocaleString('fr-FR') : ''}
+                    {run.timestamp ? formatDateTime(run.timestamp) : ''}
                   </span>
                 </div>
               ))}

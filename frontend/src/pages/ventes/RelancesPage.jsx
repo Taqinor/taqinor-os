@@ -8,7 +8,7 @@ import {
   Label, Textarea,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from '../../ui'
-import { formatMAD, toNumber, normalizeMaPhone } from '../../lib/format'
+import { formatMAD, formatDateTime, toNumber, normalizeMaPhone } from '../../lib/format'
 
 // Ajoute n jours à aujourd'hui (date ISO AAAA-MM-JJ).
 function todayPlus(days) {
@@ -439,7 +439,7 @@ export default function RelancesPage() {
                 <li key={h.id} className="border-b pb-2 last:border-b-0">
                   <div className="flex justify-between gap-3">
                     <span className="font-medium">
-                      {h.date ? new Date(h.date).toLocaleString('fr-FR') : '—'}
+                      {h.date ? formatDateTime(h.date) : '—'}
                       {h.niveau_nom ? ` · ${h.niveau_nom}` : ''}
                     </span>
                     <span className="text-muted-foreground">{h.created_by_nom || '—'}</span>

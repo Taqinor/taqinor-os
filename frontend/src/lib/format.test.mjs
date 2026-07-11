@@ -59,6 +59,15 @@ test('formatDate / formatDateTime jj/mm/aaaa', () => {
   assert.equal(formatDate('pas une date'), '—')
 })
 
+// VX75 — variante longue de formatDateTime (« 18 juin 2026, 14:05 »), ajoutée
+// pour éliminer le dernier toLocaleString natif ad hoc (AppointmentBooker.jsx).
+test('formatDateTime: variante long= « 18 juin 2026, 14:05 »', () => {
+  const iso = '2026-06-18T14:05:00Z'
+  assert.match(formatDateTime(iso, { long: true }), /juin 2026/)
+  assert.match(formatDateTime(iso, { long: true }), /14:05|15:05/)
+  assert.equal(formatDateTime(null, { long: true }), '—')
+})
+
 test('formatPhoneMA: local + international', () => {
   assert.equal(formatPhoneMA('0612345678'), '06 12 34 56 78')
   assert.equal(formatPhoneMA('06 12-34 56 78'), '06 12 34 56 78')

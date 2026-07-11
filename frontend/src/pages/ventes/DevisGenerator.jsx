@@ -46,6 +46,7 @@ import {
   kwhFromBill, buildEtudeParamsChoice, multiPropertyPreviewTTC,
   productibleForCity,
 } from '../../features/ventes/solar'
+import { formatNumber, formatMAD } from '../../lib/format'
 
 const MODE_OPTIONS = [
   { value: 'residentiel', label: '🏠 Résidentiel' },
@@ -81,7 +82,7 @@ const emptyLine = () => ({
   groupeLabel: '',
 })
 
-const fmtNum = (v) => (v !== null && v !== undefined) ? v.toLocaleString('fr-MA') : 'N/A'
+const fmtNum = (v) => (v !== null && v !== undefined) ? formatNumber(v) : 'N/A'
 
 // En-tête de carte du générateur (style design system, repose sur Card).
 function GenCardHeader({ icon: Icon, title, children }) {
@@ -1296,7 +1297,7 @@ export default function DevisGenerator({
             />
             {modeInstallation === 'residentiel' && kwp > 36 && (
               <div className="mt-3 rounded-lg border border-info/30 bg-info/10 p-3 text-sm text-info">
-                Ce système fait {kwp.toFixed(2)} kWc — au-delà de l'échelle résidentielle.
+                Ce système fait {formatNumber(kwp, { decimals: 2 })} kWc — au-delà de l'échelle résidentielle.
                 Le mode Industriel / Commercial produira un document plus adapté
                 (étude d'autoconsommation, option unique). Vous pouvez ignorer cette suggestion.
               </div>
@@ -1823,7 +1824,7 @@ export default function DevisGenerator({
               </div>
               <div className="grid gap-1.5">
                 <Label>Puissance PV (kWp) — calculée</Label>
-                <div className="gen-kwp">{kwp > 0 ? kwp.toFixed(2) + ' kWp' : '—'}</div>
+                <div className="gen-kwp">{kwp > 0 ? formatNumber(kwp, { decimals: 2 }) + ' kWp' : '—'}</div>
               </div>
               <div className="grid gap-1.5">
                 <Label>Type de Structure</Label>
@@ -1962,8 +1963,8 @@ export default function DevisGenerator({
                     <XAxis dataKey="month" tick={{ fontSize: 11 }} />
                     <YAxis tick={{ fontSize: 11 }}
                            label={{ value: 'MAD / mois', angle: -90, position: 'insideLeft', fontSize: 11 }}
-                           tickFormatter={(v) => v.toLocaleString('fr-MA')} />
-                    <Tooltip formatter={(v, name) => [`${Math.round(v).toLocaleString('fr-MA')} MAD`, name]} />
+                           tickFormatter={(v) => formatNumber(v)} />
+                    <Tooltip formatter={(v, name) => [`${formatMAD(v, { decimals: 0 })}`, name]} />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
                     <Bar dataKey="facture" name="Facture ONEE (MAD)"
                          fill="rgba(181,192,206,0.55)" stroke="rgba(181,192,206,0.8)" radius={[3, 3, 0, 0]} />
@@ -2432,7 +2433,7 @@ export default function DevisGenerator({
             <div className="border-t border-border pt-3">
               <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Système</div>
               <div className="text-sm text-foreground">
-                {kwp > 0 ? `${kwp.toFixed(2)} kWc` : '— kWc'}
+                {kwp > 0 ? `${formatNumber(kwp, { decimals: 2 })} kWc` : '— kWc'}
                 {parseInt(nbPanneaux) > 0 ? ` · ${parseInt(nbPanneaux)} panneaux` : ''}
               </div>
             </div>

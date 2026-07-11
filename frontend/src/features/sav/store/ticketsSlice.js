@@ -1,24 +1,21 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import savApi from '../../../api/savApi'
+import { fetchAllPages } from '../../../utils/fetchAllPages'
 
 // On récupère TOUS les tickets (toutes pages, ?ouvert=tous) puis on filtre
 // côté client — comme les slices CRM/chantiers.
+// VX54 — était un `while` SÉRIEL (un aller-retour réseau par page ; gèle les
+// écrans TERRAIN plusieurs secondes à 250-500 ms de RTT) ; désormais
+// parallèle borné.
 export const fetchTickets = createAsyncThunk(
   'tickets/fetchAll',
   async (params, { rejectWithValue }) => {
     try {
       const q = { ouvert: 'tous', ...(params ?? {}) }
-      const first = await savApi.getTickets(q)
-      let data = first.data
-      if (!data || !Array.isArray(data.results)) return data
-      const all = [...data.results]
-      let page = 2
-      while (data.next && page <= 50) {
-        const res = await savApi.getTickets({ ...q, page })
-        data = res.data
-        all.push(...(data.results ?? []))
-        page += 1
-      }
+      const all = await fetchAllPages(
+        (page) => savApi.getTickets({ ...q, page }).then((r) => r.data),
+        { concurrency: 20 },
+      )
       return all
     } catch (err) {
       return rejectWithValue(err.response?.data ?? err.message)

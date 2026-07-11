@@ -11,6 +11,7 @@ import {
 } from '../../features/stock/store/stockSlice'
 import { useIsAdmin } from '../../hooks/useHasPermission'
 import stockApi from '../../api/stockApi'
+import { formatMAD, formatPercent } from '../../lib/format'
 import {
   Button, Badge,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -147,9 +148,9 @@ function PrixFournisseursSection({ produitId, fournisseurs, isAdmin = false }) {
                                value={editPrix} onChange={(e) => setEditPrix(e.target.value)} />
                       ) : (
                         <span className="inline-flex items-center gap-1.5">
-                          {Number(r.prix_achat).toFixed(2)} DH
+                          {formatMAD(r.prix_achat, { withSymbol: false })} DH
                           {ecart != null && ecart > 0 && (
-                            <span className="text-xs text-warning">+{ecart.toFixed(0)} % vs le moins cher</span>
+                            <span className="text-xs text-warning">+{formatPercent(ecart, { decimals: 0 })} vs le moins cher</span>
                           )}
                         </span>
                       )}
@@ -222,7 +223,7 @@ function PrixFournisseursSection({ produitId, fournisseurs, isAdmin = false }) {
                       {i === 0 ? <Star className="size-3.5 fill-warning text-warning" aria-label="Le moins cher" /> : i + 1}
                     </td>
                     <td className="px-3 py-2">{c.fournisseur_nom}</td>
-                    <td className="px-3 py-2 tabular-nums">{Number(c.prix_achat).toFixed(2)} DH</td>
+                    <td className="px-3 py-2 tabular-nums">{formatMAD(c.prix_achat, { withSymbol: false })} DH</td>
                     <td className="px-3 py-2 text-muted-foreground">
                       {c.date_dernier_achat
                         ? new Date(c.date_dernier_achat).toLocaleDateString('fr-FR')
@@ -541,13 +542,13 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
               <div className="sm:col-span-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 {tvaN !== null && venteN > 0 && (
                   <span>
-                    Vente TTC : <strong className="text-foreground">{(venteN * (1 + tvaN / 100)).toFixed(2)} DH</strong>
-                    {achatN > 0 && <> · Achat TTC : {(achatN * (1 + tvaN / 100)).toFixed(2)} DH</>}
+                    Vente TTC : <strong className="text-foreground">{formatMAD(venteN * (1 + tvaN / 100), { withSymbol: false })} DH</strong>
+                    {achatN > 0 && <> · Achat TTC : {formatMAD(achatN * (1 + tvaN / 100), { withSymbol: false })} DH</>}
                   </span>
                 )}
                 {marge !== null && (
                   <Badge tone={marge >= 0 ? 'success' : 'danger'}>
-                    Marge {(venteN - achatN).toFixed(2)} DH · {marge.toFixed(1)} % (interne)
+                    Marge {formatMAD(venteN - achatN, { withSymbol: false })} DH · {formatPercent(marge, { decimals: 1 })} (interne)
                   </Badge>
                 )}
               </div>

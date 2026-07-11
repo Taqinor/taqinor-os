@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import messagesApi from '../../api/messagesApi'
+import { formatMAD } from '../../lib/format'
 import BcfProduitPicker from './BcfProduitPicker'
 import ProduitQuickCreateModal from '../../components/ProduitQuickCreateModal'
 import { useCanCreateProduit } from '../../hooks/useHasPermission'
@@ -46,10 +47,7 @@ function frBcfError(err, fallback = 'Une erreur est survenue. Réessayez.') {
 }
 
 
-const fmtMad = (v) => {
-  const n = Number(v) || 0
-  return `${n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MAD`
-}
+const fmtMad = (v) => formatMAD(v)
 const fmtDateFR = (iso) => {
   if (!iso) return '—'
   const d = new Date(`${iso}T00:00:00`)
