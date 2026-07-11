@@ -1297,6 +1297,37 @@ export default function DevisGenerator({
 
   const selectedClient = clients.find(c => String(c.id) === String(clientId))
 
+  // ZSAL9 — avertissements de vente (« sale warnings ») : message du client
+  // sélectionné + des produits présents dans les lignes. Purement informatif à
+  // l'écran (une bannière non intrusive) ; le blocage éventuel est appliqué
+  // côté serveur à l'acceptation/facturation (garde XFAC28-like).
+  const saleWarnings = useMemo(() => {
+    const out = []
+    if (selectedClient?.avertissement_vente) {
+      out.push({
+        key: `client-${selectedClient.id}`,
+        cible: selectedClient.nom || 'Client',
+        message: selectedClient.avertissement_vente,
+        bloquant: !!selectedClient.avertissement_bloquant,
+      })
+    }
+    const seen = new Set()
+    for (const l of lines) {
+      if (!l.produit || seen.has(l.produit)) continue
+      seen.add(l.produit)
+      const p = produits.find(x => String(x.id) === String(l.produit))
+      if (p?.avertissement_vente) {
+        out.push({
+          key: `produit-${p.id}`,
+          cible: p.nom || 'Produit',
+          message: p.avertissement_vente,
+          bloquant: !!p.avertissement_bloquant,
+        })
+      }
+    }
+    return out
+  }, [selectedClient, lines, produits])
+
   // QC1 — recherche client sur les données propres (endpoint /search/). On ne
   // retient QUE les correspondances de source « client » : le devis a besoin
   // d'un id client réel (un fournisseur/lead n'est pas sélectionnable ici). Le
@@ -1433,6 +1464,26 @@ export default function DevisGenerator({
         {loadFailed.length > 0 && (
           <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
             Échec du chargement : {loadFailed.join(', ')}. Vérifiez votre connexion puis rechargez la page.
+          </div>
+        )}
+        {/* ZSAL9 — avertissements de vente (client/produits) : bannière non
+            intrusive ; un avertissement bloquant est signalé mais n'empêche pas
+            la saisie (le blocage réel est côté serveur à l'acceptation). */}
+        {saleWarnings.length > 0 && (
+          <div
+            data-testid="sale-warnings"
+            className="flex flex-col gap-1 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning"
+          >
+            {saleWarnings.map(w => (
+              <div key={w.key}>
+                <span className="font-medium">{w.cible} :</span> {w.message}
+                {w.bloquant && (
+                  <span className="ml-1 font-medium">
+                    (bloquant — un responsable devra passer outre)
+                  </span>
+                )}
+              </div>
+            ))}
           </div>
         )}
         {/* ── Mode d'installation (marché) ── */}

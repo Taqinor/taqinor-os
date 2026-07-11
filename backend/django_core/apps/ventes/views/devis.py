@@ -1011,6 +1011,7 @@ class DevisViewSet(CompanyScopedModelViewSet):
         from datetime import date as _date
         from ..services import (
             accept_devis, AcceptError, verifier_credit_hold, CreditHoldError,
+            verifier_sale_warnings, SaleWarningError,
         )
         devis = self.get_object()
         nom = (request.data.get('nom') or '').strip()
@@ -1039,6 +1040,20 @@ class DevisViewSet(CompanyScopedModelViewSet):
                         'outre avec `override_credit: true`.'),
                      'credit_hold': True},
                     status=status.HTTP_403_FORBIDDEN)
+        # ZSAL9 — avertissement de vente BLOQUANT (produit/client). Vide (défaut)
+        # → no-op. Bloquant → 403, sauf override responsable/admin journalisé.
+        try:
+            verifier_sale_warnings(
+                devis, override=bool(request.data.get('override_avertissement')),
+                user=request.user, chatter_target=devis)
+        except SaleWarningError as exc:
+            return Response(
+                {'detail': (
+                    f'Avertissement de vente bloquant : {exc.motif}. '
+                    'Un responsable/admin peut passer outre avec '
+                    '`override_avertissement: true`.'),
+                 'sale_warning': True},
+                status=status.HTTP_403_FORBIDDEN)
         # A1 — option retenue (« Sans batterie » / « Avec batterie »). La
         # résolution (deux options → choix explicite obligatoire ; mono-option
         # → déduit du scénario) et le tampon d'acceptation passent désormais
@@ -1634,6 +1649,7 @@ class DevisViewSet(CompanyScopedModelViewSet):
         from ..services import (
             reserver_stock_devis_facture, StockInsuffisantError,
             verifier_credit_hold, CreditHoldError,
+            verifier_sale_warnings, SaleWarningError,
         )
         company = request.user.company
         # XFAC28 — blocage crédit dur (étend FG41). Flag OFF (défaut) → no-op.
@@ -1651,6 +1667,19 @@ class DevisViewSet(CompanyScopedModelViewSet):
                         'outre avec `override_credit: true`.'),
                      'credit_hold': True},
                     status=status.HTTP_403_FORBIDDEN)
+        # ZSAL9 — avertissement de vente BLOQUANT (produit/client). Vide → no-op.
+        try:
+            verifier_sale_warnings(
+                devis, override=bool(request.data.get('override_avertissement')),
+                user=request.user, chatter_target=devis)
+        except SaleWarningError as exc:
+            return Response(
+                {'detail': (
+                    f'Avertissement de vente bloquant : {exc.motif}. '
+                    'Un responsable/admin peut passer outre avec '
+                    '`override_avertissement: true`.'),
+                 'sale_warning': True},
+                status=status.HTTP_403_FORBIDDEN)
         try:
             # U9 — la facturation directe par échéancier court-circuite le bon
             # de commande : on réserve/consomme ici le stock matériel du devis,
