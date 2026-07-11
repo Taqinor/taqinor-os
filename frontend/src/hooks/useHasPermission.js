@@ -68,4 +68,24 @@ export function useCanCreateProduit() {
   return useHasPermission('stock_creer', PRODUIT_CREATE_ROLES)
 }
 
+// VX199 — code de permission ERP unique pour les ACTIONS SENSIBLES de
+// validation ventes : accepter/valider un devis et émettre une facture. Le
+// backend garde désormais ces endpoints par HasPermissionOrLegacy(
+// 'ventes_valider') ; le front DOIT gater sur EXACTEMENT ce code (dérivé de
+// /auth/me → state.auth.permissions), jamais sur un palier grossier
+// admin/responsable — sinon l'écran cache un bouton que l'API refuse (ou
+// l'inverse). Constante partagée = point unique de parité front↔back, vérifié
+// par le test d'alignement (voir tests_role_tier.py::TestFrontBackAlignment).
+export const VENTES_VALIDER_PERMISSION = 'ventes_valider'
+
+// Peut accepter/valider un devis (déclencheur de chantier).
+export function useCanValiderDevis() {
+  return useHasPermission(VENTES_VALIDER_PERMISSION)
+}
+
+// Peut émettre une facture (passage brouillon → émise).
+export function useCanEmettreFacture() {
+  return useHasPermission(VENTES_VALIDER_PERMISSION)
+}
+
 export default useHasPermission

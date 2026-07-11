@@ -28,6 +28,7 @@ from authentication.permissions import (  # noqa: F401
     IsAnyRole,
     IsResponsableOrAdmin,
     IsAdminRole,
+    HasPermissionOrLegacy,
 )
 from core.viewsets import CompanyScopedModelViewSet  # noqa: F401  ARC5
 from ..utils.references import create_with_reference  # noqa: F401
@@ -1001,8 +1002,13 @@ class DevisViewSet(CompanyScopedModelViewSet):
             DevisSerializer(nd, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
+    # VX199 — action sensible : la validation/acceptation d'un devis exige la
+    # permission fine ``ventes_valider`` (via HasPermissionOrLegacy : les
+    # comptes hérités sans rôle fin gardent le comportement responsable/admin).
+    # Un rôle « lecture + une écriture » qui n'a pas ``ventes_valider`` reçoit
+    # 403 même s'il passait la garde grossière IsResponsableOrAdmin.
     @action(detail=True, methods=['post'], url_path='accepter',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[HasPermissionOrLegacy('ventes_valider')])
     def accepter(self, request, pk=None):
         """N25 — marque le devis « accepté » à une date choisie, en capturant le
         nom de la personne qui accepte ; l'acceptation est consignée dans le

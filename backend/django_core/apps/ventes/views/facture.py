@@ -32,6 +32,7 @@ from authentication.permissions import (  # noqa: F401
     IsAnyRole,
     IsResponsableOrAdmin,
     IsAdminRole,
+    HasPermissionOrLegacy,
 )
 from core.viewsets import CompanyScopedModelViewSet  # noqa: F401  ARC5
 from ..utils.references import create_with_reference  # noqa: F401
@@ -294,8 +295,13 @@ class FactureViewSet(CompanyScopedModelViewSet):
                     })
         serializer.save()
 
+    # VX199 — action sensible : l'émission d'une facture exige la permission
+    # fine ``ventes_valider`` (via HasPermissionOrLegacy : les comptes hérités
+    # sans rôle fin gardent le comportement responsable/admin). Un rôle
+    # « lecture + une écriture » sans ``ventes_valider`` reçoit 403 même s'il
+    # passait la garde grossière IsResponsableOrAdmin.
     @action(detail=True, methods=['post'], url_path='emettre',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[HasPermissionOrLegacy('ventes_valider')])
     def emettre(self, request, pk=None):
         facture = self.get_object()
         if facture.statut != Facture.Statut.BROUILLON:

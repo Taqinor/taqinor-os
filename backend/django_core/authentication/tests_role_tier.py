@@ -293,3 +293,176 @@ class TestIsResponsableTightening(RoleTierBase):
             username='viewer_block', password='x', company=self.company,
             role=self._role('RO2', ['ventes_voir', 'crm_voir']))
         self.assertFalse(viewer.is_responsable)
+
+
+class TestVX199SensitiveActionsFineGate(RoleTierBase):
+    """VX199 — les actions SENSIBLES (validation de devis, émission de facture)
+    ne doivent plus passer via la garde grossière ``IsResponsableOrAdmin`` : un
+    compte « lecture + UNE écriture » (donc ``is_responsable`` == True, ex. un
+    rôle qui n'a que ``crm_creer``) est désormais refusé (403) faute de la
+    permission fine ``ventes_valider``.  Les comptes hérités responsable/admin
+    et les rôles qui DÉTIENNENT ``ventes_valider`` continuent de passer la
+    garde (HasPermissionOrLegacy).
+    """
+
+    def _role(self, nom, perms):
+        return Role.objects.create(
+            company=self.company, nom=nom, permissions=perms,
+            est_systeme=False)
+
+    def _client_obj(self):
+        from apps.crm.models import Client
+        return Client.objects.create(
+            company=self.company, nom='Cli', prenom='VX199',
+            email='vx199@example.com', telephone='+212600009199')
+
+    def _devis(self):
+        from decimal import Decimal
+        from django.utils import timezone
+        from apps.ventes.models import Devis
+        month = timezone.now().strftime('%Y%m')
+        return Devis.objects.create(
+            company=self.company, reference=f'DEV-{month}-9199',
+            client=self._client_obj(), statut=Devis.Statut.ENVOYE,
+            taux_tva=Decimal('20'))
+
+    def _facture(self):
+        from decimal import Decimal
+        from apps.ventes.models import Facture, LigneFacture
+        from apps.stock.models import Produit
+        cli = self._client_obj()
+        produit = Produit.objects.create(
+            company=self.company, nom='Onduleur', sku='OND-VX199',
+            prix_vente=Decimal('5000'), quantite_stock=10,
+            tva=Decimal('20.00'))
+        facture = Facture.objects.create(
+            company=self.company, reference='FAC-VX199-0001',
+            client=cli, statut=Facture.Statut.BROUILLON,
+            taux_tva=Decimal('20.00'))
+        LigneFacture.objects.create(
+            facture=facture, produit=produit, designation='Onduleur',
+            quantite=Decimal('1'), prix_unitaire=Decimal('5000'),
+            taux_tva=Decimal('20.00'))
+        return facture
+
+    # ── Validation de devis (accepter) ───────────────────────────────────
+    def test_read_plus_one_write_role_forbidden_to_accepter_devis(self):
+        """Un rôle « lecture + une écriture » SANS ventes_valider → 403."""
+        user = User.objects.create_user(
+            username='vx199_rw_devis', password='x', company=self.company,
+            role=self._role('LeadWriter', ['crm_voir', 'crm_creer',
+                                           'ventes_voir']))
+        # Garde grossière historique : ce rôle passait (une écriture posée).
+        self.assertTrue(user.is_responsable)
+        devis = self._devis()
+        resp = self._client_for(user).post(
+            f'/api/django/ventes/devis/{devis.id}/accepter/',
+            {'nom': 'X'}, format='json')
+        self.assertEqual(resp.status_code, 403, resp.data)
+
+    def test_role_with_ventes_valider_passes_accepter_gate(self):
+        """Un rôle qui détient ventes_valider franchit la garde (pas 403)."""
+        user = User.objects.create_user(
+            username='vx199_valider_devis', password='x',
+            company=self.company,
+            role=self._role('Valideur', ['ventes_voir', 'ventes_creer',
+                                         'ventes_valider']))
+        devis = self._devis()
+        resp = self._client_for(user).post(
+            f'/api/django/ventes/devis/{devis.id}/accepter/',
+            {'nom': 'X'}, format='json')
+        self.assertNotEqual(resp.status_code, 403, resp.data)
+
+    def test_legacy_responsable_passes_accepter_gate(self):
+        """Compte hérité responsable (sans rôle fin) : comportement préservé."""
+        user = User.objects.create_user(
+            username='vx199_legacy_devis', password='x',
+            company=self.company, role_legacy='responsable')
+        devis = self._devis()
+        resp = self._client_for(user).post(
+            f'/api/django/ventes/devis/{devis.id}/accepter/',
+            {'nom': 'X'}, format='json')
+        self.assertNotEqual(resp.status_code, 403, resp.data)
+
+    # ── Émission de facture (emettre) ────────────────────────────────────
+    def test_read_plus_one_write_role_forbidden_to_emettre_facture(self):
+        user = User.objects.create_user(
+            username='vx199_rw_fac', password='x', company=self.company,
+            role=self._role('LeadWriter2', ['crm_voir', 'crm_creer',
+                                            'ventes_voir']))
+        self.assertTrue(user.is_responsable)
+        facture = self._facture()
+        resp = self._client_for(user).post(
+            f'/api/django/ventes/factures/{facture.id}/emettre/')
+        self.assertEqual(resp.status_code, 403, resp.data)
+
+    def test_role_with_ventes_valider_passes_emettre_gate(self):
+        user = User.objects.create_user(
+            username='vx199_valider_fac', password='x', company=self.company,
+            role=self._role('Valideur2', ['ventes_voir', 'ventes_creer',
+                                          'ventes_valider']))
+        facture = self._facture()
+        resp = self._client_for(user).post(
+            f'/api/django/ventes/factures/{facture.id}/emettre/')
+        self.assertNotEqual(resp.status_code, 403, resp.data)
+
+    def test_legacy_responsable_passes_emettre_gate(self):
+        user = User.objects.create_user(
+            username='vx199_legacy_fac', password='x', company=self.company,
+            role_legacy='responsable')
+        facture = self._facture()
+        resp = self._client_for(user).post(
+            f'/api/django/ventes/factures/{facture.id}/emettre/')
+        self.assertNotEqual(resp.status_code, 403, resp.data)
+
+
+class TestVX199FrontBackAlignment(TestCase):
+    """VX199 — parité front↔back : le code de permission ERP sur lequel le
+    frontend gate les actions sensibles de validation ventes doit être
+    EXACTEMENT celui que le backend exige sur les endpoints (accepter /
+    emettre). Le test échoue si la constante frontend
+    (``VENTES_VALIDER_PERMISSION`` dans ``useHasPermission.js``) diverge du
+    code réellement gardé côté backend, ou si ce code sort du catalogue
+    ``ALL_PERMISSIONS``.
+    """
+
+    #: Code de permission fine gardant accepter (devis) + emettre (facture).
+    BACKEND_SENSITIVE_CODE = 'ventes_valider'
+
+    def test_backend_code_is_a_real_permission(self):
+        self.assertIn(self.BACKEND_SENSITIVE_CODE, ALL_PERMISSIONS)
+
+    def test_backend_endpoints_gate_on_the_sensitive_code(self):
+        """Le décorateur des actions sensibles porte bien
+        HasPermissionOrLegacy(<code>)."""
+        from apps.ventes.views.devis import DevisViewSet
+        from apps.ventes.views.facture import FactureViewSet
+        for viewset, method in (
+                (DevisViewSet, 'accepter'), (FactureViewSet, 'emettre')):
+            perms = getattr(
+                viewset, method).kwargs['permission_classes']
+            names = [getattr(p, '__name__', '') for p in perms]
+            self.assertIn(
+                f'HasPermissionOrLegacy_{self.BACKEND_SENSITIVE_CODE}', names,
+                f'{viewset.__name__}.{method} ne garde pas '
+                f'{self.BACKEND_SENSITIVE_CODE}')
+
+    def test_frontend_constant_matches_backend_code(self):
+        """La constante frontend est la seule source de gating côté écran ;
+        elle DOIT valoir le code backend. Lecture du fichier source (pas de
+        build JS) pour garder le test hermétique."""
+        import os
+        import re
+        here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        # backend/django_core/authentication/ → remonter à la racine repo.
+        repo_root = os.path.dirname(os.path.dirname(here))
+        hook = os.path.join(
+            repo_root, 'frontend', 'src', 'hooks', 'useHasPermission.js')
+        self.assertTrue(os.path.exists(hook), hook)
+        with open(hook, encoding='utf-8') as fh:
+            src = fh.read()
+        m = re.search(
+            r"VENTES_VALIDER_PERMISSION\s*=\s*'([^']+)'", src)
+        self.assertIsNotNone(
+            m, 'VENTES_VALIDER_PERMISSION introuvable dans useHasPermission.js')
+        self.assertEqual(m.group(1), self.BACKEND_SENSITIVE_CODE)
