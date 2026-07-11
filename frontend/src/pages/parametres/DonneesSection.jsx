@@ -13,6 +13,7 @@ import {
   ClipboardCheck, FileText, Archive, Plus, Trash2, ExternalLink,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
+import { formatMAD } from '../../lib/format'
 import {
   Card, CardContent, Button, IconButton, Badge, Spinner, EmptyState,
   Input,
@@ -270,7 +271,7 @@ function KitExplosion() {
                       <td className="px-3 py-2">{l.designation}</td>
                       <td className="px-3 py-2 font-mono text-xs">{l.sku || '—'}</td>
                       <td className="px-3 py-2 text-right tabular-nums">{l.quantite}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{Number(l.prix_vente_unitaire).toFixed(2)} DH</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{formatMAD(l.prix_vente_unitaire, { withSymbol: false })} DH</td>
                       <td className="px-3 py-2 text-right tabular-nums">{l.disponible}</td>
                     </tr>
                   ))}

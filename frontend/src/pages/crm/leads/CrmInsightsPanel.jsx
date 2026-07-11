@@ -4,6 +4,7 @@ import crmApi from '../../../api/crmApi'
 import {
   Card, CardHeader, CardTitle, CardDescription, CardContent, Badge, Spinner,
 } from '../../../ui'
+import { formatMAD, formatNumber } from '../../../lib/format'
 
 // WR9 — surfaces consultatives du pipeline (lecture seule) :
 //  - FG39 : atteinte des objectifs commerciaux (réalisé vs cible) ;
@@ -11,10 +12,7 @@ import {
 //  - FG28 : leads NEW non contactés au-delà du SLA société.
 // Les règles vivent côté serveur ; ce panneau ne fait qu'afficher.
 
-const fmtMAD = (v) => {
-  const n = Number(v ?? 0)
-  return Number.isFinite(n) ? `${n.toLocaleString('fr-MA')} MAD` : '—'
-}
+const fmtMAD = (v) => formatMAD(v)
 
 const periodLabel = (o) => {
   if (o.period_type === 'month' && o.period_month) {
@@ -94,8 +92,8 @@ export default function CrmInsightsPanel() {
                     </Badge>
                   </div>
                   <p className="mt-0.5 text-xs text-muted-foreground">
-                    {periodLabel(o)} · réalisé {Number(o.realise).toLocaleString('fr-MA')}
-                    {' '}/ cible {Number(o.cible).toLocaleString('fr-MA')}
+                    {periodLabel(o)} · réalisé {formatNumber(o.realise)}
+                    {' '}/ cible {formatNumber(o.cible)}
                   </p>
                 </li>
               ))}

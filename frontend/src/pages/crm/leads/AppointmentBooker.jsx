@@ -5,6 +5,7 @@
    et affiche les RDV existants du lead. Aucun état global Redux : local only. */
 import { useState, useEffect, useCallback } from 'react'
 import crmApi from '../../../api/crmApi'
+import { formatDateTime } from '../../../lib/format'
 
 const STATUS_LABELS = {
   planifie: 'Planifié',
@@ -82,9 +83,11 @@ export default function AppointmentBooker({ leadId }) {
                 borderRadius: 6, fontSize: 13,
               }}>
                 <span style={{ fontWeight: 500 }}>
-                  {new Date(a.scheduled_at).toLocaleString('fr-MA', {
-                    dateStyle: 'medium', timeStyle: 'short',
-                  })}
+                  {/* VX75 — variante lisible « 18 juin 2026, 14:05 » via
+                      formatDateTime(..., { long: true }), une seule source
+                      de vérité (lib/format.js) au lieu d'un toLocaleString
+                      natif dupliqué. */}
+                  {formatDateTime(a.scheduled_at, { long: true })}
                 </span>
                 <span style={{
                   fontSize: 11, padding: '2px 6px', borderRadius: 10,

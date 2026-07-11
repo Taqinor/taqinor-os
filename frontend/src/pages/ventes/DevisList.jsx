@@ -30,7 +30,7 @@ import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
   DropdownMenuItem, DropdownMenuLabel,
 } from '../../ui'
-import { formatMAD } from '../../lib/format'
+import { formatMAD, formatDateTime } from '../../lib/format'
 import { filenameFromResponse } from '../../utils/downloadBlob'
 import { proposalParams, pdfBlob } from '../../features/ventes/previewPdf'
 import { useSavedViews } from '../../hooks/useSavedViews'
@@ -363,7 +363,7 @@ function DevisRow({ d, ctx }) {
           <div
             className="mt-0.5 inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
             title={d.derniere_consultation
-              ? `Dernière ouverture : ${new Date(d.derniere_consultation).toLocaleString('fr-FR')}`
+              ? `Dernière ouverture : ${formatDateTime(d.derniere_consultation)}`
               : 'Document consulté'}
           >
             <Eye className="size-3" aria-hidden="true" />
@@ -474,7 +474,7 @@ function DevisRow({ d, ctx }) {
                 ? [
                     `Signé par : ${d.signature_info.signataire_nom || '—'}`,
                     d.signature_info.signed_at
-                      ? `le ${new Date(d.signature_info.signed_at).toLocaleString('fr-FR')}`
+                      ? `le ${formatDateTime(d.signature_info.signed_at)}`
                       : null,
                     d.signature_info.has_pdf
                       ? 'PDF signé disponible'

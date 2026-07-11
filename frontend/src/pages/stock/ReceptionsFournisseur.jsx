@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { PackageCheck, Plus, ReceiptText, Tags } from 'lucide-react'
 import stockApi from '../../api/stockApi'
+import { formatMAD } from '../../lib/format'
 import {
   Button, StatusPill, DataTable,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -259,9 +260,7 @@ export function ReceptionDetail({ reception, onClose, onSaved }) {
       const r = await stockApi.facturerReception(reception.id)
       const ff = r.data ?? {}
       setFactureInfo(`Facture fournisseur ${ff.reference ?? ''} créée (${
-        Number(ff.montant_ttc ?? 0).toLocaleString('fr-FR', {
-          minimumFractionDigits: 2, maximumFractionDigits: 2,
-        })} MAD TTC).`)
+        formatMAD(ff.montant_ttc ?? 0)} TTC).`)
       onSaved?.()
     } catch (err) {
       setError(frError(err, 'La facturation de la réception a échoué.'))

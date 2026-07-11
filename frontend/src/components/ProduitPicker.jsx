@@ -7,6 +7,7 @@ import {
 } from '../features/stock/catalogue'
 import { classifyProduct } from '../features/ventes/solar'
 import { useCanCreateProduit } from '../hooks/useHasPermission'
+import { formatMAD } from '../lib/format'
 import ProduitQuickCreateModal from './ProduitQuickCreateModal'
 
 /* G23 — Picker produit groupé CATÉGORIE → MARQUE → ARTICLE, search-first.
@@ -192,7 +193,7 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
                   <span className="flex-1 truncate">{p.nom}</span>
                   {spec && <span className="shrink-0 text-xs text-muted-foreground">{spec}</span>}
                   <span className={cn('shrink-0 text-xs tabular-nums', dispo ? 'font-medium text-foreground' : 'italic text-muted-foreground')}>
-                    {dispo ? `${prixTtc(p).toLocaleString('fr-MA')} DH` : 'prix à renseigner'}
+                    {dispo ? `${formatMAD(prixTtc(p), { withSymbol: false })} DH` : 'prix à renseigner'}
                   </span>
                 </button>
               )

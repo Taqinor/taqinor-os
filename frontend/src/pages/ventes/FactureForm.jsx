@@ -19,6 +19,7 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
+import { formatMAD } from '../../lib/format'
 
 let _keyCounter = 0
 const newKey = () => ++_keyCounter
@@ -470,7 +471,7 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
                                  title="Vide = taux global de la facture"
                                  onChange={e => setLine(l._key, 'taux_tva', e.target.value)} />
                         </td>
-                        <td className="px-2 py-1.5 text-right font-medium tabular-nums">{lineTotal.toFixed(2)} DH</td>
+                        <td className="px-2 py-1.5 text-right font-medium tabular-nums">{formatMAD(lineTotal, { withSymbol: false })} DH</td>
                         <td className="px-2 py-1.5 text-center">
                           {lines.length > 1 && (
                             <IconButton type="button" label="Supprimer la ligne" size="sm"
@@ -492,17 +493,17 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
           <div className="ml-auto w-full max-w-xs rounded-lg border border-border bg-muted/30 p-3 text-sm">
             <div className="flex justify-between py-0.5">
               <span className="text-muted-foreground">Sous-total HT</span>
-              <span className="tabular-nums">{subtotalHT.toFixed(2)} DH</span>
+              <span className="tabular-nums">{formatMAD(subtotalHT, { withSymbol: false })} DH</span>
             </div>
             {remGlobal > 0 && (
               <div className="flex justify-between py-0.5 text-warning">
                 <span>Remise globale ({remGlobal}%)</span>
-                <span className="tabular-nums">−{(subtotalHT * remGlobal / 100).toFixed(2)} DH</span>
+                <span className="tabular-nums">−{formatMAD(subtotalHT * remGlobal / 100, { withSymbol: false })} DH</span>
               </div>
             )}
             <div className="flex justify-between py-0.5">
               <span className="text-muted-foreground">Total HT</span>
-              <strong className="tabular-nums">{totalHT.toFixed(2)} DH</strong>
+              <strong className="tabular-nums">{formatMAD(totalHT, { withSymbol: false })} DH</strong>
             </div>
             {tauxDistincts.length > 1 ? (
               <>
@@ -514,24 +515,24 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
                         TVA {Number(taux)} %
                       </span>
                       <span className="tabular-nums">
-                        {(tvaParTaux[taux] * Number(taux) / 100).toFixed(2)} DH
+                        {formatMAD(tvaParTaux[taux] * Number(taux) / 100, { withSymbol: false })} DH
                       </span>
                     </div>
                   ))}
                 <div className="flex justify-between py-0.5">
                   <span className="text-muted-foreground">TVA totale</span>
-                  <span className="tabular-nums">{totalTVA.toFixed(2)} DH</span>
+                  <span className="tabular-nums">{formatMAD(totalTVA, { withSymbol: false })} DH</span>
                 </div>
               </>
             ) : (
               <div className="flex justify-between py-0.5">
                 <span className="text-muted-foreground">TVA ({tva}%)</span>
-                <span className="tabular-nums">{totalTVA.toFixed(2)} DH</span>
+                <span className="tabular-nums">{formatMAD(totalTVA, { withSymbol: false })} DH</span>
               </div>
             )}
             <div className="mt-1 flex justify-between border-t border-border pt-1.5 text-base">
               <span className="font-semibold">Total TTC</span>
-              <strong className="tabular-nums text-primary">{totalTTC.toFixed(2)} DH</strong>
+              <strong className="tabular-nums text-primary">{formatMAD(totalTTC, { withSymbol: false })} DH</strong>
             </div>
           </div>
 

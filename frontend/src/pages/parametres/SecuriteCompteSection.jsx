@@ -9,6 +9,7 @@
 import { useEffect, useState } from 'react'
 import { ShieldCheck, ShieldAlert, KeyRound, Copy, CheckCircle2, Monitor, LogOut, Lock } from 'lucide-react'
 import api from '../../api/axios'
+import { formatDateTime } from '../../lib/format'
 import { Card, CardContent, Button, Input, Spinner } from '../../ui'
 import { SectionTitle } from './peComponents'
 
@@ -42,10 +43,7 @@ function SessionsActives() {
     } finally { setRevoking(null) }
   }
 
-  const fmt = (iso) => {
-    if (!iso) return '—'
-    try { return new Date(iso).toLocaleString('fr-FR') } catch { return iso }
-  }
+  const fmt = (iso) => formatDateTime(iso)
 
   return (
     <Card>

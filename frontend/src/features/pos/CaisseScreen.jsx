@@ -3,6 +3,7 @@ import { Plus, Minus, Trash2, Printer, Link2, Usb } from 'lucide-react'
 import posApi from '../../api/posApi'
 import api from '../../api/axios'
 import { prixTtc, sansPrix } from '../stock/catalogue'
+import { formatMAD } from '../../lib/format'
 import {
   Button, Input, Label, Badge, EmptyState,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -271,7 +272,7 @@ export default function CaisseScreen() {
                 >
                   <span className="line-clamp-2 font-medium">{p.nom}</span>
                   <span className="text-xs tabular-nums text-muted-foreground">
-                    {dispo ? `${prixTtc(p).toLocaleString('fr-MA')} DH` : 'prix à renseigner'}
+                    {dispo ? `${formatMAD(prixTtc(p), { withSymbol: false })} DH` : 'prix à renseigner'}
                   </span>
                   <span className="text-xs text-muted-foreground">
                     Stock : {p.quantite_disponible ?? '—'}
@@ -316,7 +317,7 @@ export default function CaisseScreen() {
                     <div className="flex-1">
                       <div className="text-sm font-medium">{l.nom}</div>
                       <div className="text-xs tabular-nums text-muted-foreground">
-                        {l.prixTtc.toLocaleString('fr-MA')} DH TTC × {l.quantite} = {cartLineTotal(l).toLocaleString('fr-MA')} DH
+                        {formatMAD(l.prixTtc, { withSymbol: false })} DH TTC × {l.quantite} = {formatMAD(cartLineTotal(l), { withSymbol: false })} DH
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
@@ -363,7 +364,7 @@ export default function CaisseScreen() {
           <div className="flex items-center justify-between border-t border-border pt-2 text-sm">
             <span className="text-muted-foreground">{nbArticles} article(s)</span>
             <span className="text-lg font-semibold tabular-nums" data-testid="pos-total">
-              {total.toLocaleString('fr-MA')} DH TTC
+              {formatMAD(total, { withSymbol: false })} DH TTC
             </span>
           </div>
 
@@ -427,7 +428,7 @@ export default function CaisseScreen() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Encaissement</DialogTitle>
-            <DialogDescription>Total à payer : {total.toLocaleString('fr-MA')} DH TTC</DialogDescription>
+            <DialogDescription>Total à payer : {formatMAD(total, { withSymbol: false })} DH TTC</DialogDescription>
           </DialogHeader>
           <form noValidate onSubmit={(e) => { e.preventDefault(); handleConfirmerEncaissement() }} className="grid gap-3">
             {paiements.map((p, idx) => (
@@ -466,12 +467,12 @@ export default function CaisseScreen() {
             <div className="rounded-md bg-muted/40 p-2 text-sm">
               {rendu.reste > 0 && (
                 <div className="text-destructive" data-testid="reste-a-payer">
-                  Il manque {rendu.reste.toLocaleString('fr-MA')} DH
+                  Il manque {formatMAD(rendu.reste, { withSymbol: false })} DH
                 </div>
               )}
               {rendu.rendu > 0 && (
                 <div className="font-medium" data-testid="rendu-monnaie">
-                  Monnaie à rendre : {rendu.rendu.toLocaleString('fr-MA')} DH
+                  Monnaie à rendre : {formatMAD(rendu.rendu, { withSymbol: false })} DH
                 </div>
               )}
             </div>

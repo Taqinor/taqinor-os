@@ -6,6 +6,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   toast,
 } from '../../ui'
+import { formatMAD } from '../../lib/format'
 
 /* XPOS4 — Session de caisse comptoir (route /pos/session).
    Ouverture (fond de caisse) → clôture (comptage espèces/TPE) → rapport Z.
@@ -135,11 +136,11 @@ export default function SessionScreen() {
                   </Badge>
                 </div>
                 <span className="text-xs tabular-nums text-muted-foreground">
-                  Fond : {Number(s.fond_ouverture).toLocaleString('fr-MA')} DH
+                  Fond : {formatMAD(s.fond_ouverture, { withSymbol: false })} DH
                   {s.montant_compte_cloture != null &&
-                    ` · Compté : ${Number(s.montant_compte_cloture).toLocaleString('fr-MA')} DH`}
+                    ` · Compté : ${formatMAD(s.montant_compte_cloture, { withSymbol: false })} DH`}
                   {s.ecart_tpe != null &&
-                    ` · Écart TPE : ${Number(s.ecart_tpe).toLocaleString('fr-MA')} DH`}
+                    ` · Écart TPE : ${formatMAD(s.ecart_tpe, { withSymbol: false })} DH`}
                 </span>
               </div>
               <div className="flex gap-2">
@@ -164,10 +165,10 @@ export default function SessionScreen() {
             <button type="button" className="text-sm text-muted-foreground" onClick={() => setRapport(null)}>Fermer</button>
           </div>
           <div className="text-sm tabular-nums">
-            <div>{rapport.nb_ventes} vente(s) — total {Number(rapport.total).toLocaleString('fr-MA')} DH</div>
+            <div>{rapport.nb_ventes} vente(s) — total {formatMAD(rapport.total, { withSymbol: false })} DH</div>
             <ul className="mt-1 flex flex-col gap-0.5 text-muted-foreground">
               {Object.entries(rapport.par_mode || {}).map(([mode, v]) => (
-                <li key={mode}>{mode} : {Number(v.total).toLocaleString('fr-MA')} DH ({v.nb})</li>
+                <li key={mode}>{mode} : {formatMAD(v.total, { withSymbol: false })} DH ({v.nb})</li>
               ))}
             </ul>
           </div>

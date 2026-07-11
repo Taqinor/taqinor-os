@@ -1,15 +1,13 @@
 import { useEffect, useState } from 'react'
 import { TrendingUp, Award, Target, Clock, BarChart3, AlertCircle } from 'lucide-react'
 import reportingApi from '../../api/reportingApi'
+import { formatMAD, formatNumber } from '../../lib/format'
 import { Card, CardContent, Skeleton, EmptyState, Segmented } from '../../ui'
 
 // ── Utilitaires d'affichage ────────────────────────────────────────────────
 const pct = (v) => (v == null ? '—' : `${v} %`)
 const jours = (v) => (v == null ? '—' : `${v} j`)
-const mad = (v) => {
-  const n = parseFloat(v || 0)
-  return n.toLocaleString('fr-MA', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' MAD'
-}
+const mad = (v) => formatMAD(v, { decimals: 0 })
 
 // Couleur de barre d'entonnoir selon le taux de conversion.
 const barColor = (pctVal) => {
@@ -211,7 +209,7 @@ export default function CommercialDashboard() {
                             <td style={{ textAlign: 'right', padding: '0.5rem 0' }}>{mad(r.avg_deal_ht)}</td>
                             <td style={{ textAlign: 'right', padding: '0.5rem 0' }}>{pct(r.win_rate_pct)}</td>
                             <td style={{ textAlign: 'right', padding: '0.5rem 0', opacity: 0.7 }}>
-                              {parseFloat(r.kwc || 0) > 0 ? `${parseFloat(r.kwc).toFixed(1)} kWc` : '—'}
+                              {parseFloat(r.kwc || 0) > 0 ? `${formatNumber(r.kwc, { decimals: 1 })} kWc` : '—'}
                             </td>
                           </tr>
                         ))}

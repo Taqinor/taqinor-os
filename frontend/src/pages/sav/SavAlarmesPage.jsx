@@ -8,17 +8,14 @@ import {
   TooltipProvider, Card, StatusPill, Button, Select, SelectTrigger,
   SelectValue, SelectContent, SelectItem, EmptyState, Skeleton, toast,
 } from '../../ui'
+import { formatDateTime } from '../../lib/format'
 
 const GRAVITE_TONES = { info: 'neutral', warning: 'warning', critique: 'danger' }
 const STATUT_TONES = {
   active: 'danger', acquittee: 'warning', resolue: 'success', escaladee: 'info',
 }
 
-const fmtDateTime = (iso) => {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString('fr-FR')
-}
+const fmtDateTime = (iso) => formatDateTime(iso)
 
 export default function SavAlarmesPage() {
   const [rows, setRows] = useState([])

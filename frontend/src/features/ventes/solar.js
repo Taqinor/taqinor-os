@@ -4,6 +4,8 @@
 // simulator UI) and only converted to HT at save time. Pure functions, no I/O.
 // The premium PDF engine computes its own figures server-side — never fed here.
 
+import { formatMAD } from '../../lib/format.js'
+
 // ── Constantes Maroc (irradiance GHI mensuelle + tarif ONEE) ──────────────────
 // DC9 — MIROIR de la source Python unique
 // (backend apps/ventes/quote_engine/constants.py GHI). Les deux tables DOIVENT
@@ -77,7 +79,7 @@ export const DAY_USAGE_DEFAULTS = {
 // ── Format monétaire (port exact de formatMoney) ─────────────────────────────
 export function formatMoney(val) {
   if (val === null || val === undefined || isNaN(val)) return '0 MAD'
-  return Math.round(val).toLocaleString('fr-MA') + ' MAD'
+  return formatMAD(val, { decimals: 0 })
 }
 
 // ── Estimation des factures mensuelles depuis hiver/été ──────────────────────

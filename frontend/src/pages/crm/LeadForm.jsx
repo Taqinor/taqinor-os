@@ -22,7 +22,7 @@ import {
   Button, Input,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '../../ui'
-import { normalizeMaPhone } from '../../lib/format'
+import { formatMAD, normalizeMaPhone } from '../../lib/format'
 
 // Canal posé par défaut sur un lead créé à la main (jamais null) : une visite/
 // un appel direct au showroom. Le webhook du site impose 'site_web' de son côté.
@@ -719,9 +719,9 @@ export default function LeadForm({
                         title="Cliquer pour modifier la facture (enregistre ce champ seul)">
                   {liveLead?.facture_hiver != null && liveLead.facture_hiver !== ''
                     ? <>
-                        {Math.round(parseFloat(liveLead.facture_hiver)).toLocaleString('fr-MA')} MAD
+                        {formatMAD(liveLead.facture_hiver, { decimals: 0 })}
                         {liveLead?.ete_differente && liveLead?.facture_ete != null && liveLead.facture_ete !== ''
-                          ? ` (hiver) · ${Math.round(parseFloat(liveLead.facture_ete)).toLocaleString('fr-MA')} MAD (été)` : ''}
+                          ? ` (hiver) · ${formatMAD(liveLead.facture_ete, { decimals: 0 })} (été)` : ''}
                         <span className="lead-bill-edit-hint"> ✎</span>
                       </>
                     : <span className="lead-bill-empty">+ Renseigner la facture ✎</span>}
@@ -1148,7 +1148,7 @@ export default function LeadForm({
                             <td><strong>{d.reference}</strong></td>
                             <td>{STATUT_DEVIS[d.statut] ?? d.statut}</td>
                             <td className="ta-right">
-                              {Math.round(parseFloat(d.total_ttc)).toLocaleString('fr-MA')} MAD
+                              {formatMAD(d.total_ttc, { decimals: 0 })}
                             </td>
                             <td>{new Date(d.date_creation).toLocaleDateString('fr-FR')}</td>
                             <td className="ta-right">

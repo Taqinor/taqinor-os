@@ -7,6 +7,7 @@ import {
   Undo2, ShieldCheck, Tags,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
+import { formatMAD } from '../../lib/format'
 import { Spinner, Tabs, TabsList, TabsTrigger, TabsContent } from '../../ui'
 
 // XPUR25 — Fiche fournisseur 360 : une page à onglets qui rassemble les
@@ -24,9 +25,7 @@ import { Spinner, Tabs, TabsList, TabsTrigger, TabsContent } from '../../ui'
 // message technique) tant que l'agrégat 404, et les onglets détaillés
 // continuent à fonctionner via les vrais endpoints existants.
 
-const fmtMad = (v) => `${(Number(v) || 0).toLocaleString('fr-FR', {
-  minimumFractionDigits: 2, maximumFractionDigits: 2,
-})} MAD`
+const fmtMad = (v) => formatMAD(v)
 
 const fmtDate = (v) => {
   if (!v) return '—'
