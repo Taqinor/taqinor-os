@@ -36,10 +36,14 @@ class Qx13ClientLinksTests(TestCase):
                          'https://taqinor.ma/proposition/t')
 
     def test_every_emitted_path_exists_in_website_routes(self):
-        # Chaque chemin dynamique doit correspondre à un fichier [token].astro.
+        # Chaque chemin client-facing RÉELLEMENT émis doit correspondre à un
+        # fichier [token].astro du site (garde anti-lien-mort). Seul
+        # « /proposition » est émis aujourd'hui (nudges QX13). La page
+        # « /suivi/<token> » est WEB_PLAN WJ115 (session site) : l'endpoint ERP
+        # /suivi (QX34) existe mais AUCUN message client n'émet encore ce lien —
+        # réactiver l'assertion /suivi quand WJ115 aura livré la page.
         checks = {
             client_links.proposition_path('X'): 'proposition',
-            client_links.suivi_path('X'): 'suivi',
         }
         for _path, folder in checks.items():
             candidate = WEB_PAGES / folder / '[token].astro'
