@@ -33,6 +33,7 @@ import {
   EmptyState,
   Card,
   StatusPill,
+  StatusAccentCard,
   Select,
   SelectTrigger,
   SelectValue,
@@ -49,6 +50,8 @@ import {
   Textarea,
   toast,
 } from '../../ui'
+import { useIsMobile } from '../../ui/ResponsiveDialog'
+import { usePullToRefresh } from '../../ui/usePullToRefresh'
 import {
   PreparationPanel, TrajetPanel, PhotosPanel,
 } from '../../features/installations/InterventionFieldExecution'
@@ -59,6 +62,14 @@ import {
 import OfflineSyncIndicator from '../../features/installations/offline/OfflineSyncIndicator'
 import { formatDate, formatDateTime } from '../../lib/format'
 
+// VX43 — repli « changer le statut au menu » sans drag, sous 768px : le
+// glisser-déposer @dnd-kit (TouchSensor delay 150ms) reste utilisable au
+// pouce, mais un menu <select> natif est une alternative sans ambigüité de
+// geste sur les petits écrans (même besoin que StageMover côté leads).
+function useIsMobileViewport() {
+  return useIsMobile('(max-width: 767px)')
+}
+
 const TYPE_LABELS = Object.fromEntries(
   INTERVENTION_TYPES.map((t) => [t.value, t.label]))
 const typeLabel = (k) => TYPE_LABELS[k] ?? k ?? '—'
@@ -66,11 +77,10 @@ const typeLabel = (k) => TYPE_LABELS[k] ?? k ?? '—'
 // Sentinelle « aucun technicien » (le Select du design system n'accepte pas '').
 const NO_TECH = '__none__'
 
-function InterventionCard({ it, users, onReassign }) {
+function InterventionCard({ it, users, onReassign, onChangeStatus }) {
   const techValue = it.technicien ? String(it.technicien) : NO_TECH
   return (
-    <div className="kb-card kc-card"
-         style={{ '--kb-accent': INTERVENTION_STATUS_COLORS[it.statut] }}>
+    <StatusAccentCard accent={INTERVENTION_STATUS_COLORS[it.statut]}>
       <div className="kc-card-top">
         <span className="kc-card-ref">{it.installation_reference ?? `#${it.id}`}</span>
         <StatusPill status={it.statut} label={interventionStatusLabel(it.statut)} dot={false} />
@@ -88,6 +98,30 @@ function InterventionCard({ it, users, onReassign }) {
           <span className="kc-chip"><Users className="kc-chip-icon" aria-hidden="true" />{it.equipe_noms.join(', ')}</span>
         )}
       </div>
+      {/* VX43 — repli SANS glisser sous 768px : le glisser-déposer @dnd-kit
+          reste actif (delay tactile 150ms), mais un <select> natif offre une
+          alternative univoque au pouce, masqué en desktop (`sm:hidden`, comme
+          le reste du repli mobile du DataTable). */}
+      {onChangeStatus && (
+        <div className="kc-status-mover sm:hidden"
+             onPointerDown={(e) => e.stopPropagation()}
+             onTouchStart={(e) => e.stopPropagation()}
+             onClick={(e) => e.stopPropagation()}>
+          <label className="sr-only" htmlFor={`kc-status-${it.id}`}>
+            Changer le statut de {it.client_nom || it.installation_reference || `l'intervention #${it.id}`}
+          </label>
+          <select
+            id={`kc-status-${it.id}`}
+            className="form-control h-8 w-full rounded-md border border-input bg-card px-2 text-xs"
+            value={it.statut}
+            onChange={(e) => onChangeStatus(it, e.target.value)}
+          >
+            {INTERVENTION_STATUSES.map((s) => (
+              <option key={s} value={s}>{INTERVENTION_STATUS_LABELS[s]}</option>
+            ))}
+          </select>
+        </div>
+      )}
       {onReassign && (
         <div className="kc-reassign"
              onPointerDown={(e) => e.stopPropagation()}
@@ -108,11 +142,11 @@ function InterventionCard({ it, users, onReassign }) {
           </Select>
         </div>
       )}
-    </div>
+    </StatusAccentCard>
   )
 }
 
-function DraggableCard({ it, users, onReassign }) {
+function DraggableCard({ it, users, onReassign, onChangeStatus }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: it.id, data: { it },
   })
@@ -120,7 +154,7 @@ function DraggableCard({ it, users, onReassign }) {
     <div ref={setNodeRef}
          className={isDragging ? 'kb-drag-wrap kb-drag-source' : 'kb-drag-wrap'}
          {...listeners} {...attributes}>
-      <InterventionCard it={it} users={users} onReassign={onReassign} />
+      <InterventionCard it={it} users={users} onReassign={onReassign} onChangeStatus={onChangeStatus} />
     </div>
   )
 }
@@ -182,7 +216,7 @@ function KanbanView({ items, onOpen, onChangeStatus, users, onReassign }) {
           <StatusColumn key={col.key} col={col}>
             {col.items.map((it) => (
               <div key={it.id} onClick={() => onOpen?.(it)}>
-                <DraggableCard it={it} users={users} onReassign={onReassign} />
+                <DraggableCard it={it} users={users} onReassign={onReassign} onChangeStatus={onChangeStatus} />
               </div>
             ))}
           </StatusColumn>
@@ -247,6 +281,10 @@ function DetailSheet({ intervention, users, onClose, onChanged }) {
   const [hist, setHist] = useState([])
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
+  // VX43 — bottom-sheet sous 768px (glisser-vers-le-bas-pour-fermer inclus
+  // nativement par Sheet.jsx pour side="bottom") ; tiroir latéral inchangé
+  // sur desktop.
+  const isMobile = useIsMobileViewport()
 
   useEffect(() => {
     let alive = true
@@ -308,7 +346,10 @@ function DetailSheet({ intervention, users, onClose, onChanged }) {
 
   return (
     <Sheet open onOpenChange={(o) => { if (!o) onClose() }}>
-      <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+      <SheetContent
+        side={isMobile ? 'bottom' : 'right'}
+        className={isMobile ? 'max-h-[85vh] w-full overflow-y-auto' : 'w-full sm:max-w-md overflow-y-auto'}
+      >
         <SheetHeader>
           <SheetTitle>
             {typeLabel(intervention.type_intervention)} — {intervention.installation_reference ?? `#${intervention.id}`}
@@ -521,6 +562,13 @@ export default function InterventionsPage() {
       .catch(() => { toast.error('Réassignation impossible.'); fetchData() })
   }
 
+  // VX43 — pull-to-refresh maison : `overscroll-behavior: contain` a coupé le
+  // rubber-band natif sans rien remettre à sa place. Relance `fetchData` (pas
+  // `reload` — un rafraîchissement de fond ne doit pas faire clignoter la vue).
+  // Appelé AVANT tout early-return : les hooks doivent s'exécuter dans le même
+  // ordre à chaque rendu (rules-of-hooks).
+  const { containerProps, pullDistance, refreshing } = usePullToRefresh(fetchData)
+
   if (loading) {
     return (
       <div className="page lp-page">
@@ -544,7 +592,17 @@ export default function InterventionsPage() {
   }
 
   return (
-    <div className="page lp-page">
+    <div className="page lp-page overflow-y-auto" {...containerProps}>
+      {(pullDistance > 0 || refreshing) && (
+        <div
+          className="flex items-center justify-center gap-2 text-xs text-muted-foreground"
+          style={{ height: `${Math.max(pullDistance, refreshing ? 32 : 0)}px`, overflow: 'hidden', transition: refreshing ? 'height 150ms ease' : 'none' }}
+          role="status"
+        >
+          {refreshing ? <Spinner className="size-4" /> : null}
+          {refreshing ? 'Actualisation…' : 'Tirer pour actualiser'}
+        </div>
+      )}
       <div className="page-header lp-header">
         <h2 className="flex items-center gap-2">
           Interventions

@@ -272,9 +272,14 @@ def notifications(request):
     today = date.today()
 
     # ── Activités en retard (records.Activity ouvertes, échéance passée) ──
+    # VX84 — bornées à `assigned_to=request.user` : avant ce filtre le badge
+    # était company-wide pendant que « Ma file » (records.mine/ma-file) ne
+    # montre QUE les activités de l'utilisateur — deux chiffres contradictoires
+    # sur la même page. Même source de vérité que records.views.mine/ma_file.
     from apps.records.models import Activity
     overdue_acts = (Activity.objects
-                    .filter(**co, done=False, due_date__lt=today)
+                    .filter(**co, assigned_to=request.user, done=False,
+                            due_date__lt=today)
                     .select_related('assigned_to')
                     .order_by('due_date')[:20])
     activites = [

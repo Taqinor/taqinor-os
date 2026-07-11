@@ -1,12 +1,43 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   Wallet, TrendingUp, Landmark, Clock, Percent, Users,
+  FolderOpen, ReceiptText, FileBarChart2, Scale,
 } from 'lucide-react'
 import { ModuleDashboard } from '../../../ui/module'
 import { BarArrondie } from '../../../ui/charts'
-import { toast } from '../../../ui'
+import { toast, Card, CardHeader, CardTitle, CardDescription, CardContent } from '../../../ui'
 import { formatMAD, formatNumber, formatPercent } from '../../../lib/format'
 import comptaApi from '../../../api/comptaApi'
+
+// VX115 — les 4 destinations où le comptable externe va chercher son export
+// mensuel (index de navigation pur : ZÉRO logique d'export dupliquée ici).
+const EXPORT_DESTINATIONS = [
+  {
+    to: '/ventes/factures',
+    label: 'Factures — Export comptable',
+    hint: 'Export DGI (Excel + CSV) d’une plage de factures validées',
+    icon: ReceiptText,
+  },
+  {
+    to: '/comptabilite/fiscalite',
+    label: 'Fiscalité',
+    hint: 'Échéances et déclarations fiscales',
+    icon: Scale,
+  },
+  {
+    to: '/comptabilite/etats',
+    label: 'États CGNC',
+    hint: 'Résultat, bilan et journaux comptables',
+    icon: FileBarChart2,
+  },
+  {
+    to: '/reporting/balance-agee',
+    label: 'Balance âgée',
+    hint: 'Créances clients par ancienneté',
+    icon: FolderOpen,
+  },
+]
 
 /* ============================================================================
    UX2 — Cockpit financier (GET /compta/pilotage/cockpit/).
@@ -74,7 +105,7 @@ export default function CockpitPage() {
       value: `${formatNumber(d.dso)} j`,
       hint: `Encours clients : ${formatMAD(d.encours_clients)}`,
       icon: Clock,
-      to: '/comptabilite/etats',
+      to: '/ventes/relances',
     },
     {
       label: 'DPO (paiement fournisseur)',
@@ -87,7 +118,7 @@ export default function CockpitPage() {
       value: formatMAD(d.encours_clients),
       hint: 'Encours non lettré (compte 3421)',
       icon: Users,
-      to: '/comptabilite/etats',
+      to: '/reporting/balance-agee',
     },
     {
       label: 'Dettes fournisseurs',
@@ -130,6 +161,36 @@ export default function CockpitPage() {
         loading={loading}
         error={error}
       />
+      {/* VX115 — index de navigation vers les 4 écrans où le comptable externe
+          va chercher son export mensuel (aucune logique d'export dupliquée). */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Où trouver mes exports</CardTitle>
+          <CardDescription>
+            Le handoff mensuel au comptable externe est réparti sur ces écrans.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {EXPORT_DESTINATIONS.map((dest) => {
+              const Icon = dest.icon
+              return (
+                <Link
+                  key={dest.to}
+                  to={dest.to}
+                  className="flex items-start gap-3 rounded-lg border border-border p-3 transition-shadow hover:ring-2 hover:ring-ring/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <Icon className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
+                  <span className="flex flex-col">
+                    <span className="font-medium">{dest.label}</span>
+                    <span className="text-sm text-muted-foreground">{dest.hint}</span>
+                  </span>
+                </Link>
+              )
+            })}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

@@ -5,13 +5,14 @@
 // onExport. Les règles du funnel sont appliquées SERVEUR — ici, on ne fait que
 // présenter les actions.
 import { useState } from 'react'
-import { Download, X } from 'lucide-react'
+import { Download, X, MoreHorizontal } from 'lucide-react'
 import {
   PIPELINE_STAGES, STAGE_LABELS, CANAL_LABELS, PRIORITE_LABELS,
 } from '../../../features/crm/stages'
 import {
   Button, Input,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from '../../../ui'
 
 // Radix Select interdit la valeur chaîne vide → sentinelle pour « aucun ».
@@ -43,6 +44,10 @@ export default function BulkActionBar({
         <strong>{count}</strong> sélectionné{count > 1 ? 's' : ''}
       </div>
 
+      {/* VX20 — « soupe d'actions » réduite : Responsable/Étape/Archiver/
+          Export restent des boutons directs (les plus fréquents) ; le reste
+          (Canal, Priorité, Tag, Relance, Planifier activité, Perdu,
+          Restaurer, Supprimer) vit dans un seul menu « Plus ». */}
       <div className="bulk-bar-actions">
         <Button type="button" size="sm" variant="outline"
                 onClick={() => toggle('reassign')} disabled={busy}>
@@ -53,59 +58,66 @@ export default function BulkActionBar({
           Étape
         </Button>
         <Button type="button" size="sm" variant="outline"
-                onClick={() => toggle('canal')} disabled={busy}>
-          Canal
-        </Button>
-        <Button type="button" size="sm" variant="outline"
-                onClick={() => toggle('priorite')} disabled={busy}>
-          Priorité
-        </Button>
-        <Button type="button" size="sm" variant="outline"
-                onClick={() => toggle('tag')} disabled={busy}>
-          Tag
-        </Button>
-        <Button type="button" size="sm" variant="outline"
-                onClick={() => toggle('relance')} disabled={busy}>
-          Relance
-        </Button>
-        <Button type="button" size="sm" variant="outline"
-                onClick={() => toggle('activity')} disabled={busy}>
-          Planifier activité
-        </Button>
-        <Button type="button" size="sm" variant="outline"
-                onClick={() => toggle('perdu')} disabled={busy}>
-          Perdu
-        </Button>
-        <Button type="button" size="sm" variant="outline"
                 onClick={() => run('archive')} disabled={busy}>
           Archiver
-        </Button>
-        <Button type="button" size="sm" variant="outline"
-                onClick={() => run('unarchive')}
-                disabled={busy || !hasArchivedSelected}
-                title={hasArchivedSelected
-                  ? undefined : 'Aucun lead archivé sélectionné'}>
-          Restaurer
         </Button>
         <Button type="button" size="sm" variant="outline"
                 onClick={onExport} disabled={busy}>
           <Download /> Exporter Excel
         </Button>
-        {canDelete && (
-          <Button type="button" size="sm" variant="destructive"
-                  onClick={() => {
-                    // VX96 — soft-delete réversible : plus de « définitivement ».
-                    // Les leads partent à la corbeille (restaurables 30 min).
-                    if (window.confirm(
-                      `Supprimer ${count} lead(s) ? Ils iront à la corbeille `
-                      + '(restaurables 30 min). Les leads avec des devis liés '
-                      + 'seront ignorés.')) {
-                      run('delete')
-                    }
-                  }} disabled={busy}>
-            Supprimer
-          </Button>
-        )}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button type="button" size="sm" variant="outline" disabled={busy}
+                    aria-label="Plus d'actions en masse">
+              <MoreHorizontal className="size-4" aria-hidden="true" />
+              Plus
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuItem onSelect={() => toggle('canal')}>
+              Canal
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => toggle('priorite')}>
+              Priorité
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => toggle('tag')}>
+              Tag
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => toggle('relance')}>
+              Relance
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => toggle('activity')}>
+              Planifier activité
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => toggle('perdu')}>
+              Perdu
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={!hasArchivedSelected}
+              title={hasArchivedSelected ? undefined : 'Aucun lead archivé sélectionné'}
+              onSelect={() => run('unarchive')}
+            >
+              Restaurer
+            </DropdownMenuItem>
+            {canDelete && (
+              <DropdownMenuItem
+                destructive
+                onSelect={() => {
+                  // VX96 — soft-delete réversible : plus de « définitivement ».
+                  // Les leads partent à la corbeille (restaurables 30 min).
+                  if (window.confirm(
+                    `Supprimer ${count} lead(s) ? Ils iront à la corbeille `
+                    + '(restaurables 30 min). Les leads avec des devis liés '
+                    + 'seront ignorés.')) {
+                    run('delete')
+                  }
+                }}
+              >
+                Supprimer
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
         <Button type="button" size="sm" variant="ghost" className="bulk-bar-clear"
                 onClick={onClear} disabled={busy}>
           <X /> Désélectionner

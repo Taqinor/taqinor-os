@@ -14,6 +14,7 @@ import { fetchTickets, updateTicket } from '../../features/sav/store/ticketsSlic
 import savApi from '../../api/savApi'
 import api from '../../api/axios'
 import { downloadBlob } from '../../utils/downloadBlob'
+import { timeAgo } from '../../lib/format'
 import importApi, { downloadXlsx } from '../../api/importApi'
 import installationsApi from '../../api/installationsApi'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
@@ -21,6 +22,7 @@ import TicketSuiviClientPanel from './TicketSuiviClientPanel'
 import TicketChecklistPanel from './TicketChecklistPanel'
 import TicketAdvancedPanel from './TicketAdvancedPanel'
 import { groupTicketsByDate } from './ticketCalendarUtils'
+import { telHref } from '../../lib/contactLinks'
 import { useIsMobile } from '../../ui/ResponsiveDialog'
 import { INTERVENTION_TYPES } from '../../features/installations/statuses'
 import {
@@ -65,14 +67,6 @@ import { useSavedViews } from '../../hooks/useSavedViews'
 
 const TP_SAVED_VIEWS_KEY = 'taqinor.sav.tickets.savedViews'
 
-function timeAgo(iso) {
-  const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000)
-  if (mins < 1) return "à l'instant"
-  if (mins < 60) return `il y a ${mins} min`
-  const h = Math.round(mins / 60)
-  if (h < 24) return `il y a ${h} h`
-  return new Date(iso).toLocaleDateString('fr-FR')
-}
 const formatDateFR = (iso) => {
   if (!iso) return '—'
   const d = new Date(`${iso}T00:00:00`)
@@ -583,7 +577,13 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
           {/* ── Infos ── */}
           <FormSection title="Ticket">
             <FormField label="Client">
-              <Input value={current.client_nom ?? '—'} readOnly />
+              <div className="flex items-center gap-2">
+                <Input value={current.client_nom ?? '—'} readOnly />
+                {telHref(current.client_telephone) && (
+                  <a href={telHref(current.client_telephone)} title="Appeler"
+                     className="link-blue whitespace-nowrap">☎ {current.client_telephone}</a>
+                )}
+              </div>
             </FormField>
             <FormField label="Chantier">
               <div className="flex items-center gap-2">

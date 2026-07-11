@@ -50,6 +50,25 @@ export default function AvanceSection({
     : (typeof v === 'object' ? JSON.stringify(v) : String(v)))
   const fmtDate = (s) => formatDateTime(s)
 
+  // VX234 — le Journal des rôles stocke un diff structuré JSON (permissions
+  // ajoutées/retirées, cf. apps/roles/views.py::_perms_diff) plutôt qu'un
+  // simple compte de permissions : un échange net-neutre (retirer une
+  // permission + en ajouter une autre) doit rester lisible au lieu de
+  // s'afficher comme "inchangé". `old_value`/`new_value` arrivent toujours en
+  // texte (TextField) : on tente un JSON.parse et on détecte les tableaux
+  // ajoutees/retirees avant de retomber sur le rendu texte brut (fmtVal).
+  const parsePermsDiff = (v) => {
+    if (typeof v !== 'string' || !v) return null
+    try {
+      const parsed = JSON.parse(v)
+      if (parsed && typeof parsed === 'object'
+          && (Array.isArray(parsed.ajoutees) || Array.isArray(parsed.retirees))) {
+        return parsed
+      }
+    } catch { /* pas du JSON — valeur texte brute historique */ }
+    return null
+  }
+
   return (
     <>
       {/* ROI — hypothèses (tarif ONEE, productible) */}
@@ -315,24 +334,41 @@ export default function AvanceSection({
               description="Les changements de paramètres apparaîtront ici." className="py-6" />
           ) : (
             <div className="flex flex-col gap-1.5">
-              {(audit ?? []).map(row => (
-                <div key={row.id} className="rounded-md border border-border px-3 py-2 text-[12px]">
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                    <span className="font-medium text-foreground">
-                      {row.field_label || row.field}
-                    </span>
-                    <Badge tone="neutral">{row.section}</Badge>
-                    <span className="ml-auto text-[11px] text-muted-foreground">
-                      {row.user_nom || '—'} · {fmtDate(row.timestamp)}
-                    </span>
+              {(audit ?? []).map(row => {
+                const diff = parsePermsDiff(row.new_value)
+                return (
+                  <div key={row.id} className="rounded-md border border-border px-3 py-2 text-[12px]">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <span className="font-medium text-foreground">
+                        {row.field_label || row.field}
+                      </span>
+                      <Badge tone="neutral">{row.section}</Badge>
+                      <span className="ml-auto text-[11px] text-muted-foreground">
+                        {row.user_nom || '—'} · {fmtDate(row.timestamp)}
+                      </span>
+                    </div>
+                    {diff ? (
+                      <div className="mt-1 flex flex-wrap items-center gap-1">
+                        {(diff.ajoutees ?? []).map(code => (
+                          <Badge key={`+${code}`} tone="success">+{code}</Badge>
+                        ))}
+                        {(diff.retirees ?? []).map(code => (
+                          <Badge key={`-${code}`} tone="danger">-{code}</Badge>
+                        ))}
+                        {(diff.ajoutees ?? []).length === 0 && (diff.retirees ?? []).length === 0 && (
+                          <span className="text-[11.5px] text-muted-foreground">Aucun changement de permission.</span>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="mt-0.5 text-[11.5px] text-muted-foreground">
+                        <span className="line-through">{fmtVal(row.old_value)}</span>
+                        {' → '}
+                        <span className="text-foreground">{fmtVal(row.new_value)}</span>
+                      </div>
+                    )}
                   </div>
-                  <div className="mt-0.5 text-[11.5px] text-muted-foreground">
-                    <span className="line-through">{fmtVal(row.old_value)}</span>
-                    {' → '}
-                    <span className="text-foreground">{fmtVal(row.new_value)}</span>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </CardContent>

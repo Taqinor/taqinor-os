@@ -1,7 +1,7 @@
 import { useSelector, useDispatch } from 'react-redux'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
-import { Menu, Search, LogOut, User as UserIcon, Settings, Zap, Bot } from 'lucide-react'
+import { Menu, Search, LogOut, User as UserIcon, Settings, Zap, Bot, LayoutGrid, SlidersHorizontal } from 'lucide-react'
 import {
   Avatar, AvatarFallback, initials,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
@@ -15,10 +15,16 @@ import NotificationBell from './NotificationBell'
 import ChatBell from './ChatBell'
 import Breadcrumbs from './Breadcrumbs'
 import LanguageSwitcher from './LanguageSwitcher'
+// VX9 — Lanceur d'applications (overlay grille), déclenché par le bouton
+// grille ci-dessous ou le raccourci « g a » (câblé dans le composant lui-même).
+import AppLauncher from './AppLauncher'
 import { titleFor } from './routes.meta'
 import { ThemeToggle } from '../../design/ThemeToggle'
 import { useT } from '../../i18n'
 import { getCurrentTenantTheme, subscribeTenantTheme } from '../../design/tenantTheme'
+// VX46 — « Mes préférences » : panneau ouvert depuis le menu utilisateur.
+import PreferencesPanel from '../../pages/preferences/PreferencesPanel'
+import { initPreferences } from '../../pages/preferences/prefs'
 
 // SCA24 — marque produit neutre par défaut (build-time), écrasée par le
 // `nom_affichage` du TenantTheme de la société quand il est renseigné.
@@ -29,6 +35,14 @@ const PRODUCT_NAME = import.meta.env.VITE_PRODUCT_NAME || 'ERP'
 function fireCommandPalette() {
   try {
     window.dispatchEvent(new CustomEvent('taqinor:command-palette'))
+  } catch { /* environnement sans window : silencieux */ }
+}
+
+// VX9 — même patron que fireCommandPalette, pour le lanceur d'applications
+// (AppLauncher.jsx écoute exactement cet événement).
+function fireAppLauncher() {
+  try {
+    window.dispatchEvent(new CustomEvent('taqinor:app-launcher'))
   } catch { /* environnement sans window : silencieux */ }
 }
 
@@ -45,6 +59,12 @@ export default function Header({ onMenu }) {
   useEffect(() => subscribeTenantTheme(setTenantThemeState), [])
   const brandName = tenantTheme.nomAffichage || PRODUCT_NAME
   const brandLogoUrl = tenantTheme.logoUrl
+
+  // VX46 — applique la préférence de réduction de mouvement déjà stockée, une
+  // fois par montage de la coquille (Header est présent sur tout écran
+  // authentifié — thème/densité ont leur propre init via <ThemeProvider>).
+  useEffect(() => { initPreferences() }, [])
+  const [prefsOpen, setPrefsOpen] = useState(false)
 
   // N93 — titre de page traduit via t() ; FR reste le repli (titleFor accepte
   // le traducteur et retombe sur le libellé FR pour tout titre non couvert).
@@ -100,6 +120,13 @@ export default function Header({ onMenu }) {
           <Search size={16} aria-hidden="true" />
           <kbd className="header-cmdk-kbd">⌘K</kbd>
         </button>
+        {/* VX9 — bouton grille : ouvre le lanceur d'applications (overlay léger,
+            toutes les apps par catégorie). Raccourci clavier « g a ». */}
+        <button type="button" className="nb-btn" onClick={fireAppLauncher}
+                aria-label="Toutes les applications (g a)" title="Toutes les applications (g a)">
+          <LayoutGrid size={18} aria-hidden="true" />
+        </button>
+        <AppLauncher />
 
         <div className="header-user">
           {/* XPLT19 — sélecteur de société active (multi-sociétés uniquement). */}
@@ -134,6 +161,10 @@ export default function Header({ onMenu }) {
               <DropdownMenuLabel>{username}</DropdownMenuLabel>
               {user?.email && <div className="header-usermenu-email">{user.email}</div>}
               <DropdownMenuSeparator />
+              {/* VX46 — « Mes préférences » : thème/densité/atterrissage/mouvement. */}
+              <DropdownMenuItem onSelect={() => setPrefsOpen(true)}>
+                <SlidersHorizontal aria-hidden="true" /> Mes préférences
+              </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => navigate('/parametres')}>
                 <Settings aria-hidden="true" /> Paramètres
               </DropdownMenuItem>
@@ -146,6 +177,7 @@ export default function Header({ onMenu }) {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          <PreferencesPanel open={prefsOpen} onOpenChange={setPrefsOpen} />
         </div>
       </div>
     </header>

@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSelector } from 'react-redux'
 import { useHasPermission, useIsAdmin, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
-import { Plus, Pencil, Trash2, Package, ShoppingCart, BarChart3 } from 'lucide-react'
+import { Plus, Pencil, Trash2, Package, ShoppingCart, BarChart3, Upload } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import { formatMAD } from '../../lib/format'
+import ExcelImport from '../../components/ExcelImport'
 import {
   Button, IconButton, DataTable, Spinner,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -236,6 +237,7 @@ export default function FournisseursStock() {
   const [error, setError] = useState(null)
   const [selected, setSelected] = useState(null) // objet fournisseur ou {} (nouveau)
   const [scorecard, setScorecard] = useState(null) // WR4 — perf fournisseur (admin)
+  const [showImport, setShowImport] = useState(false) // VX109 — import Excel/CSV
   const isAdmin = canDelete
 
   // setState n'arrive que dans les callbacks asynchrones (jamais synchrone dans
@@ -309,11 +311,21 @@ export default function FournisseursStock() {
           <p className="text-sm text-muted-foreground">{items.length} fournisseur(s)</p>
         </div>
         {canWrite && (
-          <Button onClick={() => setSelected({})}>
-            <Plus /> Nouveau fournisseur
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setShowImport(true)}>
+              <Upload /> Importer
+            </Button>
+            <Button onClick={() => setSelected({})}>
+              <Plus /> Nouveau fournisseur
+            </Button>
+          </div>
         )}
       </header>
+
+      {showImport && (
+        <ExcelImport target="fournisseurs" onClose={() => setShowImport(false)}
+                     onDone={reload} />
+      )}
 
       {error && (
         <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">

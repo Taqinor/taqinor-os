@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { PartyPopper, FileText, MessageCircle, Mail, History, ReceiptText } from 'lucide-react'
+import {
+  PartyPopper, FileText, MessageCircle, Mail, History, ReceiptText, MoreHorizontal,
+} from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
 import { openPdfBlob } from '../../utils/pdfBlob'
 import {
@@ -8,6 +10,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   Label, Textarea,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuLabel,
 } from '../../ui'
 import { formatMAD, formatDateTime, toNumber, normalizeMaPhone } from '../../lib/format'
 
@@ -309,28 +312,31 @@ export default function RelancesPage() {
                                 aria-label={`Sélectionner ${r.reference}`} />
                     </td>
                     <td><strong>{r.reference}</strong></td>
-                    <td>{r.client_nom}</td>
-                    <td className={r.jours_retard > 0 ? 'font-semibold text-destructive' : undefined}>
+                    <td data-label="Client">{r.client_nom}</td>
+                    <td data-label="Échéance"
+                        className={r.jours_retard > 0 ? 'font-semibold text-destructive' : undefined}>
                       {r.date_echeance || '—'}
                     </td>
-                    <td className="ta-right tabular-nums">{formatMAD(r.montant_du)}</td>
-                    <td className={r.jours_retard > 0 ? 'text-destructive' : undefined}>
+                    <td className="ta-right tabular-nums" data-label="Dû">{formatMAD(r.montant_du)}</td>
+                    <td data-label="Retard"
+                        className={r.jours_retard > 0 ? 'text-destructive' : undefined}>
                       {r.jours_retard > 0
                         ? `${r.jours_retard} j`
                         : <span className="text-muted-foreground">À échoir</span>}
                     </td>
-                    <td>{ageBucket(r.jours_retard)
+                    <td className="m-hide">{ageBucket(r.jours_retard)
                       ? <Badge tone="warning">{ageBucket(r.jours_retard)}</Badge>
                       : '—'}</td>
-                    <td>{r.niveau ? <Badge tone="warning">{r.niveau.nom}</Badge> : '—'}</td>
-                    <td>{r.nb_relances}</td>
+                    <td data-label="Niveau">{r.niveau ? <Badge tone="warning">{r.niveau.nom}</Badge> : '—'}</td>
+                    <td className="m-hide">{r.nb_relances}</td>
                     <td className="ta-right">
+                      {/* VX20 — « soupe d'actions » réduite : Relancer (action
+                          principale) + WhatsApp (canal de communication le
+                          plus fréquent) restent des boutons directs ; le
+                          reste (Historique, Lettre, Relevé, Relance premium,
+                          Exclure) vit dans un seul menu « Plus ». */}
                       <div className="flex flex-wrap items-center justify-end gap-2">
                         <Button size="sm" onClick={() => openRelancer(r)}>Relancer</Button>
-                        <Button size="sm" variant="outline" onClick={() => openHistorique(r)}
-                                title="Historique des relances consignées">
-                          <History /> Historique
-                        </Button>
                         <Button size="sm" variant="outline"
                                 loading={!!waBusy[r.id]}
                                 disabled={!!waBusy[r.id] || !normalizeMaPhone(r.client_telephone)}
@@ -340,32 +346,44 @@ export default function RelancesPage() {
                                   : 'Rappel de paiement par WhatsApp'}>
                           <MessageCircle /> {waBusy[r.id] ? 'Préparation…' : 'WhatsApp'}
                         </Button>
-                        <Button size="sm" variant="outline" onClick={() => lettre(r)}>
-                          <FileText /> Lettre
-                        </Button>
-                        <Button size="sm" variant="outline" onClick={() => releve(r)}
-                                title="Relevé de compte client (PDF)">
-                          <ReceiptText /> Relevé
-                        </Button>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button size="sm" variant="outline" title="Lettre de relance premium">
-                              <Mail /> Relance premium
+                            <Button size="sm" variant="ghost" aria-label={`Plus d'actions — ${r.reference}`}>
+                              <MoreHorizontal className="size-4" aria-hidden="true" />
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => lettrePremium(r, 1)}>
+                            <DropdownMenuLabel>Plus d'actions</DropdownMenuLabel>
+                            <DropdownMenuItem onSelect={() => openHistorique(r)}>
+                              <History className="size-3.5" aria-hidden="true" />
+                              Historique
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => lettre(r)}>
+                              <FileText className="size-3.5" aria-hidden="true" />
+                              Lettre
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => releve(r)}>
+                              <ReceiptText className="size-3.5" aria-hidden="true" />
+                              Relevé de compte client (PDF)
+                            </DropdownMenuItem>
+                            <DropdownMenuLabel>Relance premium</DropdownMenuLabel>
+                            <DropdownMenuItem onSelect={() => lettrePremium(r, 1)}>
+                              <Mail className="size-3.5" aria-hidden="true" />
                               Niveau 1 — courtois
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => lettrePremium(r, 2)}>
+                            <DropdownMenuItem onSelect={() => lettrePremium(r, 2)}>
+                              <Mail className="size-3.5" aria-hidden="true" />
                               Niveau 2 — ferme
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => lettrePremium(r, 3)}>
+                            <DropdownMenuItem onSelect={() => lettrePremium(r, 3)}>
+                              <Mail className="size-3.5" aria-hidden="true" />
                               Niveau 3 — mise en demeure
+                            </DropdownMenuItem>
+                            <DropdownMenuItem destructive onSelect={() => exclure(r)}>
+                              Exclure
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                        <Button size="sm" variant="outline" onClick={() => exclure(r)}>Exclure</Button>
                       </div>
                     </td>
                   </tr>

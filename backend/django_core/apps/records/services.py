@@ -127,13 +127,15 @@ def auto_follow(*, company, content_type, object_id, user, sous_type=''):
 
 
 def notify_followers(*, content_type, object_id, title, body='',
-                     exclude_user=None, sous_type=None):
+                     exclude_user=None, sous_type=None, link=None):
     """Notifie tous les followers d'une cible (note de chatter, XKB34).
 
     `sous_type` : si fourni, ne notifie que les abonnements SANS filtre
     (`sous_type=''`, "tout") OU dont le filtre correspond exactement (ex. les
     followers `'etape'` ne sont notifiés que sur un changement d'étape). Si
     omis (None), notifie tous les followers de la cible sans distinction.
+    `link` (VX85(b)) : lien profond optionnel transmis tel quel à `notify()`
+    (None par défaut — comportement inchangé pour les appelants existants).
     Best-effort : une notification qui échoue n'empêche jamais les autres, et
     n'échoue jamais l'appelant (import fonction-local, satellite optionnel).
     """
@@ -155,7 +157,7 @@ def notify_followers(*, content_type, object_id, title, body='',
     for f in qs:
         try:
             notify(f.user, ET.CHAT_MENTION, title, body=body,
-                   company=f.company)
+                   link=link, company=f.company)
             sent += 1
         except Exception:  # pragma: no cover - défensif
             continue

@@ -37,6 +37,33 @@ def mentions_non_lues(user, company):
     return qs.order_by('-created_at', '-id')
 
 
+def escalade_state_pour(instance):
+    """VX218 — état de relance/escalade YEVNT9 (``ApprovalReminderState``)
+    d'UNE approbation en attente, générique via content-type — jamais un
+    import de ``notifications.models`` ailleurs.
+
+    Renvoie ``(niveau_label, derniere_relance_le)`` où ``niveau_label`` est
+    ``None`` (jamais relancé), ``'relance'`` (palier 1) ou ``'escalade'``
+    (palier 2). Ne FABRIQUE rien : une instance sans ligne d'état connue
+    (jamais balayée, ou décidée puis état non nettoyé) renvoie ``(None,
+    None)``. Best-effort : toute erreur (content-type absent, etc.) renvoie
+    aussi ``(None, None)`` plutôt qu'une exception qui casserait l'agrégateur
+    appelant."""
+    try:
+        from django.contrib.contenttypes.models import ContentType
+
+        from .models import ApprovalReminderState
+        ct = ContentType.objects.get_for_model(instance.__class__)
+        state = ApprovalReminderState.objects.filter(
+            content_type=ct, object_id=instance.pk).first()
+    except Exception:  # pragma: no cover - défensif
+        return (None, None)
+    if state is None or not state.palier:
+        return (None, None)
+    label = 'escalade' if state.palier >= 2 else 'relance'
+    return (label, state.derniere_action_le)
+
+
 def est_hors_fenetre_silence(moment, company) -> bool:
     """Renvoie True si ``moment`` (datetime) tombe DANS la fenêtre de silence
     (nuit ou jour férié/non-ouvré) — c-à-d qu'un SMS/WhatsApp ne DOIT PAS

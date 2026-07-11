@@ -18,11 +18,13 @@ import {
 } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import {
-  Card, Spinner, EmptyState, Badge, StatusPill,
+  Spinner, EmptyState, Badge, StatusPill, StatusAccentCard,
   Sheet, SheetContent, SheetHeader, SheetTitle,
   Tabs, TabsList, TabsTrigger, TabsContent,
   FloatingActionButton,
 } from '../../ui'
+import { useIsMobile } from '../../ui/ResponsiveDialog'
+import { usePullToRefresh } from '../../ui/usePullToRefresh'
 import {
   PreparationPanel, TrajetPanel, PhotosPanel,
 } from '../../features/installations/InterventionFieldExecution'
@@ -38,6 +40,19 @@ import { formatDate } from '../../lib/format'
 const TYPE_LABELS = Object.fromEntries(
   INTERVENTION_TYPES.map((t) => [t.value, t.label]))
 const typeLabel = (k) => TYPE_LABELS[k] ?? k ?? '—'
+
+// VX149 — accent par TYPE d'intervention (pose/raccordement/mise en
+// service/contrôle/dépannage) — un axe différent du statut (déjà porté par
+// StatusPill) : chaque ligne se différencie visuellement au premier coup
+// d'œil, même style d'accent que le kanban (`ui/StatusAccentCard`).
+const TYPE_ACCENT = {
+  pose: '#3b82f6',
+  raccordement: '#a855f7',
+  mise_en_service: '#16a34a',
+  controle: '#0ea5e9',
+  depannage: '#f59e0b',
+}
+const typeAccent = (k) => TYPE_ACCENT[k] ?? '#64748b'
 
 function todayISO() {
   const d = new Date()
@@ -90,8 +105,31 @@ export default function MaJourneePage() {
     .finally(() => setLoading(false)), [today])
   useEffect(() => { load() }, [load])
 
+  // VX43 — sheet terrain alignée sur le bottom-sheet mobile (au lieu de
+  // side="right", un tiroir latéral peu naturel au pouce sur un écran de
+  // technicien) ; desktop garde le tiroir latéral existant.
+  const isMobile = useIsMobile()
+
+  // VX43 — pull-to-refresh maison : `overscroll-behavior: contain` a coupé le
+  // rubber-band natif sans rien remettre à sa place. Relance le fetch existant
+  // (`load`), sans changer son contrat.
+  const { containerProps, pullDistance, refreshing } = usePullToRefresh(load)
+
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-3 p-3 sm:p-4">
+    <div
+      className="mx-auto flex max-w-2xl flex-col gap-3 overflow-y-auto p-3 sm:p-4"
+      {...containerProps}
+    >
+      {(pullDistance > 0 || refreshing) && (
+        <div
+          className="flex items-center justify-center gap-2 text-xs text-muted-foreground"
+          style={{ height: `${Math.max(pullDistance, refreshing ? 32 : 0)}px`, overflow: 'hidden', transition: refreshing ? 'height 150ms ease' : 'none' }}
+          role="status"
+        >
+          {refreshing ? <Spinner className="size-4" /> : null}
+          {refreshing ? 'Actualisation…' : 'Tirer pour actualiser'}
+        </div>
+      )}
       <header className="flex items-center gap-2">
         <CalendarDays className="size-5 text-primary" aria-hidden="true" />
         <h1 className="text-lg font-semibold">Ma journée</h1>
@@ -114,7 +152,10 @@ export default function MaJourneePage() {
             const maps = mapsHref(interv)
             return (
               <li key={interv.id}>
-                <Card className="overflow-hidden p-0">
+                <StatusAccentCard
+                  variant="compact"
+                  accent={typeAccent(interv.type_intervention)}
+                  className="overflow-hidden !p-0">
                   <button type="button" onClick={() => { setInitialTab('prep'); setActive(interv) }}
                     className="flex w-full items-center gap-3 p-3 text-left active:bg-accent">
                     <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
@@ -136,7 +177,7 @@ export default function MaJourneePage() {
                           </span>)}
                         {/* XFSM21 — risque météo J+3 (pluie/vent) sur une pose planifiée. */}
                         {interv.meteo_risque && (
-                          <span className="flex items-center gap-1 text-amber-600">
+                          <span className="flex items-center gap-1 text-warning">
                             <CloudRain className="size-3.5" aria-hidden="true" />
                             Météo à risque
                           </span>)}
@@ -166,7 +207,7 @@ export default function MaJourneePage() {
                       )}
                     </div>
                   )}
-                </Card>
+                </StatusAccentCard>
               </li>
             )
           })}
@@ -180,6 +221,7 @@ export default function MaJourneePage() {
         key={active ? `${active.id}:${initialTab}` : 'none'}
         interv={active ? (rows.find((r) => r.id === active.id) ?? active) : null}
         initialTab={initialTab}
+        isMobile={isMobile}
         onClose={() => setActive(null)}
         onChanged={load} />
 
@@ -221,7 +263,7 @@ const NEXT_ACTION = {
   terminee: { tab: 'outils', text: 'confirmer le retour d’outillage.' },
 }
 
-function InterventionFlowSheet({ interv, initialTab, onClose, onChanged }) {
+function InterventionFlowSheet({ interv, initialTab, isMobile, onClose, onChanged }) {
   // Le tab initial est fixé au montage ; le parent remonte le composant
   // (via `key={id:initialTab}`) quand l'intervention ou l'onglet visé change,
   // ce qui ré-initialise `tab` sans effet-setState (règle no-setstate-in-effect).
@@ -230,9 +272,15 @@ function InterventionFlowSheet({ interv, initialTab, onClose, onChanged }) {
 
   const next = NEXT_ACTION[interv.statut]
 
+  // VX43 — bottom-sheet sous 768px (glisser-vers-le-bas-pour-fermer inclus
+  // nativement par Sheet.jsx pour side="bottom") ; tiroir latéral inchangé
+  // sur desktop.
   return (
     <Sheet open={!!interv} onOpenChange={(o) => { if (!o) onClose() }}>
-      <SheetContent side="right" className="w-full max-w-md overflow-y-auto p-0">
+      <SheetContent
+        side={isMobile ? 'bottom' : 'right'}
+        className={isMobile ? 'max-h-[85vh] w-full overflow-y-auto p-0' : 'w-full max-w-md overflow-y-auto p-0'}
+      >
         <SheetHeader className="border-b border-border p-4">
           <SheetTitle className="flex items-center gap-2">
             {interv.client_nom || interv.installation_reference}

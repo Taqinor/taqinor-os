@@ -8,7 +8,11 @@ import {
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import { formatMAD } from '../../lib/format'
-import { Spinner, Tabs, TabsList, TabsTrigger, TabsContent } from '../../ui'
+import { telHref } from '../../lib/contactLinks'
+import {
+  Spinner, Tabs, TabsList, TabsTrigger, TabsContent,
+  Card, CardHeader, CardTitle, CardContent, Stat,
+} from '../../ui'
 
 // XPUR25 — Fiche fournisseur 360 : une page à onglets qui rassemble les
 // briques déjà existantes (performance FG59, factures/solde AP, retours/avoirs,
@@ -38,27 +42,6 @@ function frErr(err, fallback = 'Une erreur est survenue.') {
   if (typeof data === 'string') return data
   if (data.detail) return data.detail
   return fallback
-}
-
-function Card({ title, icon: Icon, children }) {
-  return (
-    <div className="rounded-lg border border-border bg-card p-4">
-      <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-foreground">
-        {Icon && <Icon className="size-4 text-muted-foreground" aria-hidden="true" />}
-        {title}
-      </h3>
-      {children}
-    </div>
-  )
-}
-
-function Stat({ label, value }) {
-  return (
-    <div className="rounded-md border border-border bg-muted/30 p-3">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-1 text-lg font-semibold tabular-nums">{value}</p>
-    </div>
-  )
 }
 
 function Indisponible({ message }) {
@@ -323,7 +306,9 @@ function OngletAccordsPrix({ fournisseurId }) {
   )
 }
 
-export default function FournisseurFiche360({ fournisseurId: fournisseurIdProp, fournisseurNom } = {}) {
+export default function FournisseurFiche360({
+  fournisseurId: fournisseurIdProp, fournisseurNom, fournisseurTelephone,
+} = {}) {
   const params = useParams()
   const fournisseurId = fournisseurIdProp ?? params.id
   // ARC47 — gating via le hook partagé. Donnée d'achat INTERNE
@@ -335,6 +320,8 @@ export default function FournisseurFiche360({ fournisseurId: fournisseurIdProp, 
   const canViewViaPerm = useHasPermission('stock_voir')
   const canViewViaRole = useIsAdminOrResponsable()
   const canView = hasFinePermissions ? canViewViaPerm : canViewViaRole
+  // VX108 — tap-to-call : la fiche n'affichait aucun téléphone.
+  const tel = telHref(fournisseurTelephone)
 
   const tabs = useMemo(() => ([
     { value: 'performance', label: 'Performance', icon: BarChart3, Comp: OngletPerformance },
@@ -374,10 +361,20 @@ export default function FournisseurFiche360({ fournisseurId: fournisseurIdProp, 
           <Wallet className="mr-1 inline size-3.5" aria-hidden="true" />
           Vue d&apos;ensemble achats — donnée interne, jamais client-facing.
         </p>
+        {tel && (
+          <p className="text-sm">
+            <a href={tel} className="link-blue" title="Appeler">☎ {fournisseurTelephone}</a>
+          </p>
+        )}
       </header>
 
-      <Card title="Vue d'ensemble">
-        <ResumePanel fournisseurId={fournisseurId} />
+      <Card>
+        <CardHeader>
+          <CardTitle>Vue d&apos;ensemble</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ResumePanel fournisseurId={fournisseurId} />
+        </CardContent>
       </Card>
 
       <Tabs defaultValue="performance">

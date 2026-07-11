@@ -17,6 +17,9 @@ vi.mock('./ChatBell', () => ({ default: () => null }))
 vi.mock('./GlobalSearch', () => ({ default: () => null }))
 // ThemeToggle dépend d'un ThemeProvider (hors périmètre de ce test).
 vi.mock('../../design/ThemeToggle', () => ({ ThemeToggle: () => null }))
+// VX46 — PreferencesPanel dépend lui aussi d'un ThemeProvider (useDensity),
+// hors périmètre de ce test (comme ThemeToggle ci-dessus).
+vi.mock('../../pages/preferences/PreferencesPanel', () => ({ default: () => null }))
 
 import Header from './Header'
 

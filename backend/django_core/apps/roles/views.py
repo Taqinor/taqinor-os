@@ -1,3 +1,5 @@
+import json
+
 from rest_framework import viewsets
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.decorators import action
@@ -7,6 +9,16 @@ from authentication.permissions import IsAdminOrResponsableTier
 from apps.parametres.models import SettingsAuditLog
 from .models import Role, ALL_PERMISSIONS
 from .serializers import RoleSerializer
+
+
+def _perms_diff(old_perms, new_perms):
+    """VX234 — diff structuré des permissions (set-difference), stocké en JSON
+    dans old_value/new_value (TextField) : {"nom": ..., "ajoutees": [...],
+    "retirees": [...], "total": N}. Un échange net-neutre (ex. retirer
+    crm_supprimer + ajouter ventes_export) reste donc lisible au Journal au
+    lieu d'un compte de permissions inchangé."""
+    old_set, new_set = set(old_perms or []), set(new_perms or [])
+    return sorted(new_set - old_set), sorted(old_set - new_set)
 
 
 class RoleViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -36,11 +48,15 @@ class RoleViewSet(TenantMixin, viewsets.ModelViewSet):
     def perform_create(self, serializer):
         # TenantMixin force la société côté serveur (jamais depuis la requête).
         instance = serializer.save(company=self.request.user.company)
+        ajoutees, _retirees = _perms_diff([], instance.permissions)
         self._audit(
             field=f'role:{instance.nom}',
             label='Rôle créé',
             old=None,
-            new=f"{instance.nom} ({len(instance.permissions or [])} permissions)",
+            new=json.dumps({
+                'nom': instance.nom, 'ajoutees': ajoutees, 'retirees': [],
+                'total': len(instance.permissions or []),
+            }),
         )
 
     def perform_update(self, serializer):
@@ -66,11 +82,15 @@ class RoleViewSet(TenantMixin, viewsets.ModelViewSet):
         instance = serializer.save(company=self.request.user.company)
         new_perms = sorted(instance.permissions or [])
         if old_perms != new_perms or old_nom != instance.nom:
+            ajoutees, retirees = _perms_diff(old_perms, new_perms)
             self._audit(
                 field=f'role:{instance.nom}',
                 label='Rôle modifié',
-                old=f"{old_nom} ({len(old_perms)} permissions)",
-                new=f"{instance.nom} ({len(new_perms)} permissions)",
+                old=json.dumps({'nom': old_nom, 'total': len(old_perms)}),
+                new=json.dumps({
+                    'nom': instance.nom, 'ajoutees': ajoutees, 'retirees': retirees,
+                    'total': len(new_perms),
+                }),
             )
 
     def perform_destroy(self, instance):
@@ -89,7 +109,7 @@ class RoleViewSet(TenantMixin, viewsets.ModelViewSet):
         self._audit(
             field=f'role:{nom}',
             label='Rôle supprimé',
-            old=f"{nom} ({perms_count} permissions)",
+            old=json.dumps({'nom': nom, 'total': perms_count}),
             new=None,
         )
 

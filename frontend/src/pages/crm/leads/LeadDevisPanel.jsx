@@ -17,6 +17,7 @@ import {
 } from '../../../features/ventes/previewPdf'
 import DevisGenerator from '../../ventes/DevisGenerator'
 import { filenameFromResponse } from '../../../utils/downloadBlob'
+import { openPdfInGesture } from '../../../utils/pdfBlob'
 import { Button, Input, Spinner, Segmented, Checkbox, EmptyState } from '../../../ui'
 
 // Le rendu PDF.js (canvas) est chargé à la demande (gros module) : il ne pèse
@@ -202,8 +203,11 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
   // « Ouvrir dans un nouvel onglet » : on ouvre le MÊME PDF authentifié via une
   // URL blob (donc indépendante d'un bloqueur sur l'embed inline). On réutilise
   // le blob déjà récupéré ; sinon on le récupère d'abord.
+  // VX48 — onglet pré-ouvert SYNCHRONE dans le geste de tap, avant tout await
+  // (Safari iOS bloque silencieusement un window.open() post-await).
   const handleOpenNewTab = async () => {
     if (!devisId) return
+    const pending = openPdfInGesture()
     try {
       let blob = previewBlob
       if (!blob) {
@@ -211,9 +215,9 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
           devisId, proposalParams(pdfMode, includeEtude))
         blob = pdfBlob(res.data)
       }
-      const url = URL.createObjectURL(blob)
-      window.open(url, '_blank', 'noopener')
-      setTimeout(() => URL.revokeObjectURL(url), 60000)
+      if (!pending.deliver(blob, `${devisRef || 'Devis'}.pdf`)) {
+        setErrorMsg('Ouverture bloquée par le navigateur. Téléchargez le PDF.')
+      }
     } catch {
       setErrorMsg('Ouverture impossible. Réessayez ou téléchargez le PDF.')
     }

@@ -20,6 +20,7 @@ import {
 import ProduitPicker from '../../components/ProduitPicker'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
 import { formatMAD } from '../../lib/format'
+import QuoteTotalsSummary from '../../features/ventes/QuoteTotalsSummary'
 
 let _keyCounter = 0
 const newKey = () => ++_keyCounter
@@ -299,7 +300,7 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
                     <th style={{ minWidth: 160 }}>Produit</th>
                     <th>Désignation</th>
                     <th className="col-num">Qté</th>
-                    <th className="col-num">Prix HT (DH)</th>
+                    <th className="col-num">Prix HT</th>
                     <th className="col-num">Rem. %</th>
                     <th className="col-num" title="Taux TVA de la ligne (vide = taux du devis)">TVA %</th>
                     <th className="col-num">Total HT</th>
@@ -335,7 +336,7 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
                                  value={l.quantite}
                                  onChange={e => setLine(l._key, 'quantite', e.target.value)} />
                         </td>
-                        <td data-label="Prix HT (DH)">
+                        <td data-label="Prix HT">
                           <Input type="number" min="0" step="0.01"
                                  className="h-[var(--control-h-sm)] text-right text-xs"
                                  value={l.prix_unitaire}
@@ -354,7 +355,7 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
                                  value={l.taux_tva}
                                  onChange={e => setLine(l._key, 'taux_tva', e.target.value)} />
                         </td>
-                        <td className="line-total" data-label="Total HT">{formatMAD(lineTotal, { withSymbol: false })} DH</td>
+                        <td className="line-total" data-label="Total HT">{formatMAD(lineTotal)}</td>
                         <td>
                           {lines.length > 1 && (
                             <IconButton type="button" label="Supprimer la ligne" size="sm"
@@ -372,31 +373,16 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
             </div>
           </section>
 
-          {/* ── Totaux ── */}
-          <div className="ml-auto w-full max-w-xs rounded-lg border border-border bg-muted/30 p-3 text-sm">
-            <div className="flex justify-between py-0.5">
-              <span className="text-muted-foreground">Sous-total HT</span>
-              <span className="tabular-nums">{formatMAD(subtotalHT, { withSymbol: false })} DH</span>
-            </div>
-            {remGlobal > 0 && (
-              <div className="flex justify-between py-0.5 text-warning">
-                <span>Remise globale ({remGlobal}%)</span>
-                <span className="tabular-nums">−{formatMAD(subtotalHT * remGlobal / 100, { withSymbol: false })} DH</span>
-              </div>
-            )}
-            <div className="flex justify-between py-0.5">
-              <span className="text-muted-foreground">Total HT</span>
-              <strong className="tabular-nums">{formatMAD(totalHT, { withSymbol: false })} DH</strong>
-            </div>
-            <div className="flex justify-between py-0.5">
-              <span className="text-muted-foreground">TVA ({tva}%)</span>
-              <span className="tabular-nums">{formatMAD(totalTVA, { withSymbol: false })} DH</span>
-            </div>
-            <div className="mt-1 flex justify-between border-t border-border pt-1.5 text-base">
-              <span className="font-semibold">Total TTC</span>
-              <strong className="tabular-nums text-primary">{formatMAD(totalTTC, { withSymbol: false })} DH</strong>
-            </div>
-          </div>
+          {/* ── Totaux (VX139 — bloc partagé avec le générateur, une seule devise) ── */}
+          <QuoteTotalsSummary
+            subtotalHT={subtotalHT}
+            remiseLabel={`Remise globale (${remGlobal}%)`}
+            remiseMontant={remGlobal > 0 ? subtotalHT * remGlobal / 100 : 0}
+            totalHT={totalHT}
+            tauxTva={tva}
+            totalTVA={totalTVA}
+            totalTTC={totalTTC}
+          />
 
           {/* ── Note ── */}
           <div className="grid gap-1.5">

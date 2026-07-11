@@ -49,7 +49,10 @@ def auth(user):
 def make_produit(company, nom='Groupe électrogène', **kwargs):
     return Produit.objects.create(
         company=company, nom=nom, prix_vente=Decimal('100'),
-        prix_achat=Decimal('42'),  # ne doit JAMAIS fuiter dans le PDF
+        # Sentinelle DISTINCTIVE (jamais un petit nombre comme 42 qui entre en
+        # collision avec un id/pk auto-incrémenté dans un repr d'objet du
+        # contexte selon l'état de la base de test) : ne doit JAMAIS fuiter.
+        prix_achat=Decimal('987654'),
         louable=True, tarif_location_jour=kwargs.pop(
             'tarif_location_jour', Decimal('500')),
         **kwargs)
@@ -95,7 +98,9 @@ class BonEnlevementPdfTests(TestCase):
 
         context = _base_context(ordre)
         rendu_str = str(context)
-        self.assertNotIn('42', rendu_str.replace(str(ordre.id), ''))
+        # La valeur d'achat distinctive n'apparaît nulle part (RULE #4) ; pas de
+        # `.replace(id)` fragile — la sentinelle ne peut pas collisionner un pk.
+        self.assertNotIn('987654', rendu_str)
         self.assertNotIn('prix_achat', rendu_str)
 
 

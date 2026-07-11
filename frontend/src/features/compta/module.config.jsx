@@ -41,6 +41,7 @@ const config = {
   order: 10,
   nav: {
     label: 'COMPTABILITÉ',
+    accent: 'nuit', // VX8 — finance = accent nuit (dérivé, cf. tokens.css)
     items: [
       { to: '/comptabilite', label: 'Cockpit', icon: icon(LayoutDashboard), roles: ROLES },
       { to: '/comptabilite/plan', label: 'Plan comptable', icon: icon(BookOpen), roles: ROLES },

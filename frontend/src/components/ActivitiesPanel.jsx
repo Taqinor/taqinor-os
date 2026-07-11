@@ -29,9 +29,12 @@ export default function ActivitiesPanel({ model, id, users = [], onChange }) {
   const [reschedId, setReschedId] = useState(null)
   const [reschedDate, setReschedDate] = useState('')
 
+  // VX204 — un échec de chargement était INDISCERNABLE de « aucune relance
+  // due » (l'état `error` existait déjà mais n'était jamais alimenté ici).
   const load = () => {
     recordsApi.getActivities(model, id)
-      .then(r => setActivities(r.data.results ?? r.data)).catch(() => {})
+      .then(r => { setActivities(r.data.results ?? r.data); setError(null) })
+      .catch(() => setError('Impossible de charger les activités.'))
   }
   useEffect(() => {
     recordsApi.getActivityTypes()
@@ -144,10 +147,15 @@ export default function ActivitiesPanel({ model, id, users = [], onChange }) {
         </div>
       )}
 
-      {error && <p className="form-error" role="alert">{error}</p>}
+      {error && (
+        <p className="form-error" role="alert">
+          {error}{' '}
+          <button type="button" className="chatter-retry" onClick={load}>Réessayer</button>
+        </p>
+      )}
 
       <div className="act-list">
-        {open.length === 0 && done.length === 0 && (
+        {!error && open.length === 0 && done.length === 0 && (
           <p className="gen-hint">Aucune activité planifiée.</p>
         )}
         {open.map(a => {

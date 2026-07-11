@@ -81,6 +81,10 @@ function initialPerm() {
   try { return Notification.permission } catch { return 'unsupported' }
 }
 
+// VX204 — seuil d'échecs consécutifs de sondage (compteur badge) au-delà
+// duquel on affiche un indicateur discret « Mise à jour interrompue ».
+const STALL_THRESHOLD = 3
+
 export default function NotificationBell() {
   const [data, setData] = useState(null)
   // L11 — distinguer un échec de fetch d'un vrai « rien à signaler ».
@@ -91,6 +95,10 @@ export default function NotificationBell() {
   const [feed, setFeed] = useState([])
   const [feedUnread, setFeedUnread] = useState(0)
   const [open, setOpen] = useState(false)
+  // VX204 — compteur d'échecs consécutifs du sondage léger (`checkUnread`) :
+  // rien ne détectait auparavant une SÉRIE d'échecs (silence total).
+  const unreadFailRef = useRef(0)
+  const [stalled, setStalled] = useState(false)
   // État de l'autorisation push — lu une fois au montage, jamais demandé ici.
   const [perm, setPerm] = useState(initialPerm)
   // L'invite reste masquée tant que l'utilisateur n'a pas ouvert la cloche.
@@ -132,8 +140,14 @@ export default function NotificationBell() {
         }
         prevUnreadRef.current = n
         setFeedUnread(n)
+        // Un succès lève immédiatement l'indicateur de panne prolongée.
+        unreadFailRef.current = 0
+        setStalled(false)
       })
-      .catch(() => {})
+      .catch(() => {
+        unreadFailRef.current += 1
+        if (unreadFailRef.current >= STALL_THRESHOLD) setStalled(true)
+      })
   }
 
   const load = () => {
@@ -225,6 +239,15 @@ export default function NotificationBell() {
       </button>
       {open && (
         <div className="nb-panel" role="menu">
+          {stalled && (
+            <button
+              type="button"
+              className="nb-stalled"
+              onClick={() => { unreadFailRef.current = 0; setStalled(false); checkUnread() }}
+            >
+              Mise à jour interrompue — reprendre
+            </button>
+          )}
           <div className="nb-header">
             Notifications
             <span className="nb-header-actions">
@@ -324,7 +347,11 @@ export default function NotificationBell() {
               {data && (data.activites_en_retard?.length ?? 0) > 0 && (
                 <div className="nb-group">
                   <div className="nb-group-title">
-                    <Clock size={13} aria-hidden="true" /> Activités en retard
+                    {/* VX84 — ce groupe est désormais borné à `assigned_to=
+                        request.user` côté serveur (même source que « Ma
+                        file ») : « pour moi », par opposition aux garanties/
+                        contrats ci-dessous qui restent des alertes société. */}
+                    <Clock size={13} aria-hidden="true" /> Activités en retard (pour moi)
                   </div>
                   {byUrgency(data.activites_en_retard).map((a) => (
                     <button key={`act-${a.id}`} type="button" className="nb-item"

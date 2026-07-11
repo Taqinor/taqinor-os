@@ -13,13 +13,34 @@ import { useIsAdmin } from '../../hooks/useHasPermission'
 import stockApi from '../../api/stockApi'
 import { formatMAD, formatPercent } from '../../lib/format'
 import {
-  Button, Badge,
+  Button, Badge, Switch,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   Form, FormSection, FormField, useDirtyGuard,
   Input, Textarea,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  toast,
 } from '../../ui'
 import { isDirty } from '../../ui/form-utils'
+
+// VX92 — « Créer un autre » : persisté par utilisateur/poste (localStorage),
+// défaut OFF (comportement historique inchangé). Un salon = 10 leads/produits
+// créés d'affilée ; sans ce toggle chaque création coûte un cycle
+// fermer/rouvrir (~10-30 s).
+const CREER_UN_AUTRE_KEY = 'taqinor.produitForm.creerUnAutre'
+function lireCreerUnAutre() {
+  try {
+    return window.localStorage.getItem(CREER_UN_AUTRE_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+function ecrireCreerUnAutre(v) {
+  try {
+    window.localStorage.setItem(CREER_UN_AUTRE_KEY, v ? '1' : '0')
+  } catch {
+    // localStorage indisponible (navigation privée, quota) : no-op silencieux.
+  }
+}
 
 // Traduit une erreur serveur DRF en phrase française lisible (jamais de JSON brut).
 function frSubmitError(err) {
@@ -254,6 +275,11 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState({})
 
+  // VX92 — « Créer un autre » : uniquement pertinent à la création (jamais en
+  // édition), persisté (localStorage), défaut OFF.
+  const [creerUnAutre, setCreerUnAutre] = useState(() => !isEdit && lireCreerUnAutre())
+  const nomRef = useRef(null)
+
   const [newCatName, setNewCatName] = useState('')
   const [showNewCat, setShowNewCat] = useState(false)
   const [catSaving, setCatSaving] = useState(false)
@@ -385,7 +411,16 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
         await dispatch(createProduit(payload)).unwrap()
       }
       onSaved?.()
-      onClose()
+      // VX92 — « Créer un autre » (uniquement à la création) : on vide le
+      // formulaire et on refocalise le champ 1 au lieu de fermer le dialog.
+      if (!isEdit && creerUnAutre) {
+        toast.success('Produit créé.')
+        setFields(initialFields)
+        setErrors({})
+        nomRef.current?.focus()
+      } else {
+        onClose()
+      }
     } catch (err) {
       setErrors(prev => ({ ...prev, submit: frSubmitError(err) }))
     } finally {
@@ -413,7 +448,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
         <Form onSubmit={handleSubmit} className="gap-6">
           <FormSection>
             <FormField label="Nom" required htmlFor="pf-nom" error={errors.nom}>
-              <Input id="pf-nom" invalid={!!errors.nom} value={fields.nom}
+              <Input id="pf-nom" ref={nomRef} invalid={!!errors.nom} value={fields.nom}
                      onChange={e => setField('nom', e.target.value)} placeholder="Nom du produit" />
             </FormField>
             <FormField label="SKU / Référence" htmlFor="pf-sku" error={errors.sku}>
@@ -604,7 +639,20 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
           )}
 
           <DialogFooter>
-            {dirty && <span className="mr-auto text-xs text-warning">Modifications non enregistrées</span>}
+            <div className="mr-auto flex flex-col gap-1">
+              {dirty && <span className="text-xs text-warning">Modifications non enregistrées</span>}
+              {/* VX92 — « Créer un autre » : seulement à la création. */}
+              {!isEdit && (
+                <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Switch
+                    checked={creerUnAutre}
+                    onCheckedChange={(v) => { setCreerUnAutre(v); ecrireCreerUnAutre(v) }}
+                    aria-label="Créer un autre"
+                  />
+                  Créer un autre
+                </label>
+              )}
+            </div>
             <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
             <Button type="submit" loading={saving}>
               {saving ? 'Enregistrement…' : (isEdit ? 'Mettre à jour' : 'Créer le produit')}

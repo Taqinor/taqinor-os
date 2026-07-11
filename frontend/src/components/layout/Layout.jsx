@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigation } from 'react-router-dom'
 import { fetchMe } from '../../features/auth/store/authSlice'
@@ -6,7 +6,6 @@ import { fetchProfile } from '../../features/parametres/store/parametresSlice'
 import Sidebar from './Sidebar'
 import Header from './Header'
 import BottomTabBar from './BottomTabBar'
-import CopilotPanel from '../../features/ia/CopilotPanel'
 import OnboardingCoachmarks from '../../features/onboarding/OnboardingCoachmarks'
 import { OfflineBanner } from '../../ui/OfflineState'
 import coreApi from '../../api/coreApi'
@@ -16,6 +15,14 @@ import { setTenantTheme, resetTenantTheme } from '../../design/tenantTheme'
 // (comportement actuel : sidebar dépliée). Lecture défensive : tout accès au
 // stockage est protégé pour ne jamais casser le rendu (mode privé, SSR…).
 const COLLAPSE_KEY = 'taqinor.sidebar.collapsed'
+
+// VX57 — CopilotPanel était monté en dur sur CHAQUE écran authentifié : son
+// chunk (icônes, textarea, slice ia…) pesait sur le chemin froid même pour
+// les utilisateurs qui n'ouvrent jamais le copilote. Chargé paresseusement
+// (React.lazy) et rendu seulement une fois `copilotOpen` devenu vrai une
+// première fois (patron AgentChat) — après quoi il reste monté (pas de
+// démontage sur fermeture, pour ne pas perdre l'état de la conversation).
+const CopilotPanel = lazy(() => import('../../features/ia/CopilotPanel'))
 
 function readCollapsed() {
   try {
@@ -40,6 +47,14 @@ export default function Layout({ children }) {
   const isAuthenticated = useSelector(s => s.auth.isAuthenticated)
   const profile = useSelector(s => s.parametres.profile)
   const navigation = useNavigation()
+  // VX57 — une fois `copilotOpen` vu vrai, on garde le panneau monté (le
+  // fermer ne doit pas jeter son état/historique de conversation) ; tant
+  // qu'il n'a jamais été ouvert, son chunk lazy n'est jamais demandé.
+  const copilotOpen = useSelector(s => s.ia.copilotOpen)
+  // Latch monotone en phase de rendu (patron React « ajuster l'état quand une
+  // prop change ») : une fois ouvert, le panneau reste monté ; pas d'effet.
+  const [copilotEverOpened, setCopilotEverOpened] = useState(false)
+  if (copilotOpen && !copilotEverOpened) setCopilotEverOpened(true)
 
   // Layout est remonté à CHAQUE navigation de module : ne refetcher la
   // session et le profil entreprise que s'ils manquent — chaque clic de
@@ -89,12 +104,22 @@ export default function Layout({ children }) {
           )}
           {children}
         </main>
-        {/* I36 — Barre d'onglets inférieure (mobile uniquement, via CSS). */}
-        <BottomTabBar onMore={() => setDrawerOpen(true)} />
+        {/* I36 — Barre d'onglets inférieure (mobile uniquement, via CSS).
+            VX12 — « Plus » ouvre désormais son PROPRE tiroir compact (grille de
+            modules), auto-porté par BottomTabBar : ne pilote plus `drawerOpen`
+            (réservé au hamburger du Header → tiroir latéral complet). */}
+        <BottomTabBar />
       </div>
       {/* FG350 — Copilote in-app : tiroir conversationnel global (agent FastAPI),
-          monté une fois pour toute l'app, piloté par la slice `ia`. */}
-      <CopilotPanel />
+          piloté par la slice `ia`. VX57 — chargé et monté paresseusement, à
+          partir de la première ouverture seulement (voir copilotEverOpened
+          ci-dessus) ; fallback null pour ne jamais afficher de spinner sur un
+          panneau encore fermé le temps du chunk. */}
+      {copilotEverOpened && (
+        <Suspense fallback={null}>
+          <CopilotPanel />
+        </Suspense>
+      )}
       {/* FG16 — Guide d'accueil (coachmarks) : monté une fois, ne s'affiche
           qu'à la première visite (drapeau localStorage) et rejouable depuis
           les Paramètres. Rend null le reste du temps. */}

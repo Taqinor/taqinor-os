@@ -42,6 +42,10 @@ export default function ChatterWidget({ model, id, readOnly = false }) {
   const [body, setBody] = useState('')
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  // VX204 — un échec de chargement/envoi ne doit jamais rendre un état muet
+  // (liste vide indiscernable d'« aucun commentaire »).
+  const [loadError, setLoadError] = useState(false)
+  const [submitError, setSubmitError] = useState(false)
   const textareaRef = useRef(null)
 
   const load = useCallback(async () => {
@@ -53,8 +57,9 @@ export default function ChatterWidget({ model, id, readOnly = false }) {
       setComments(Array.isArray(data)
         ? data
         : (data?.results ?? []))
+      setLoadError(false)
     } catch {
-      // ignore
+      setLoadError(true)
     } finally {
       setLoading(false)
     }
@@ -68,12 +73,13 @@ export default function ChatterWidget({ model, id, readOnly = false }) {
     const text = body.trim()
     if (!text || submitting) return
     setSubmitting(true)
+    setSubmitError(false)
     try {
       const res = await recordsApi.createComment(model, id, text)
       setComments(prev => [...prev, res.data])
       setBody('')
     } catch {
-      // ignore
+      setSubmitError(true)
     } finally {
       setSubmitting(false)
     }
@@ -84,7 +90,7 @@ export default function ChatterWidget({ model, id, readOnly = false }) {
       await recordsApi.deleteComment(commentId)
       setComments(prev => prev.filter(c => c.id !== commentId))
     } catch {
-      // ignore
+      setSubmitError(true)
     }
   }
 
@@ -101,7 +107,13 @@ export default function ChatterWidget({ model, id, readOnly = false }) {
         {loading && (
           <div className="chatter-empty">Chargement…</div>
         )}
-        {!loading && comments.length === 0 && (
+        {!loading && loadError && (
+          <div className="chatter-empty chatter-error" role="alert">
+            Impossible de charger les commentaires.
+            <button type="button" className="chatter-retry" onClick={load}>Réessayer</button>
+          </div>
+        )}
+        {!loading && !loadError && comments.length === 0 && (
           <div className="chatter-empty">Aucun commentaire.</div>
         )}
         {comments.map(c => (
@@ -125,6 +137,10 @@ export default function ChatterWidget({ model, id, readOnly = false }) {
           </div>
         ))}
       </div>
+
+      {!readOnly && submitError && (
+        <p className="form-error" role="alert">Envoi impossible — réessayez.</p>
+      )}
 
       {!readOnly && (
         <form className="chatter-form" onSubmit={handleSubmit}>

@@ -31,6 +31,15 @@ class ApprobationsBase(TestCase):
         self.api = APIClient()
         self.api.credentials(
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+        # VX101 — utilisateur Responsable, requis pour DÉCIDER une source
+        # installations/contrats depuis cet agrégateur (`self.user` ci-dessus
+        # reste un rôle normal, réutilisé par le test de régression AUTH).
+        self.resp_user = User.objects.create_user(
+            username='xkb1_resp', password='x', company=self.company,
+            role_legacy='responsable')
+        self.resp_api = APIClient()
+        self.resp_api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.resp_user)}')
 
     def _url(self):
         return '/api/django/reporting/approbations-en-attente/'
@@ -152,10 +161,13 @@ class TestApprobationsDecision(ApprobationsBase):
         self.assertEqual(resp.status_code, 400)
 
     def test_reject_with_motif_installations(self):
+        # VX101 — décider une source `installations` exige le tier
+        # Responsable/Admin : utilise `resp_api` (rôle normal → voir
+        # TestVx101RoleGate ci-dessous pour le 403).
         da = DemandeAchat.objects.create(
             company=self.company, reference='DA-4', objet='Test',
             statut=DemandeAchat.Statut.SOUMISE)
-        resp = self.api.post(self._decide_url(), {
+        resp = self.resp_api.post(self._decide_url(), {
             'source': 'installations', 'id': da.id, 'decision': 'refuser',
             'motif': 'Budget dépassé',
         }, format='json')
@@ -168,7 +180,7 @@ class TestApprobationsDecision(ApprobationsBase):
         da = DemandeAchat.objects.create(
             company=self.other_company, reference='DA-5', objet='Test',
             statut=DemandeAchat.Statut.SOUMISE)
-        resp = self.api.post(self._decide_url(), {
+        resp = self.resp_api.post(self._decide_url(), {
             'source': 'installations', 'id': da.id, 'decision': 'approuver',
         }, format='json')
         self.assertEqual(resp.status_code, 404)
@@ -195,6 +207,79 @@ class TestApprobationsDecision(ApprobationsBase):
         a2.refresh_from_db()
         self.assertEqual(a1.status, AutomationApproval.Status.APPROVED)
         self.assertEqual(a2.status, AutomationApproval.Status.APPROVED)
+
+
+class TestVx101RoleGate(ApprobationsBase):
+    """VX101 — [BUG AUTH] seul le tier Responsable/Admin peut DÉCIDER une
+    source `installations`/`contrats` depuis l'agrégateur cross-app ; avant ce
+    fix `decider_demande_achat`/l'étape de contrat n'étaient gardés par AUCUN
+    rôle ici (un commercial ou technicien pouvait approuver). La LECTURE reste
+    ouverte à tout rôle (non-régression)."""
+
+    def _decide_url(self):
+        return self._url() + 'decider/'
+
+    def test_normal_role_forbidden_to_decide_installations(self):
+        da = DemandeAchat.objects.create(
+            company=self.company, reference='DA-VX101-1', objet='Test',
+            statut=DemandeAchat.Statut.SOUMISE)
+        resp = self.api.post(self._decide_url(), {
+            'source': 'installations', 'id': da.id, 'decision': 'approuver',
+        }, format='json')
+        self.assertEqual(resp.status_code, 403)
+        da.refresh_from_db()
+        self.assertEqual(da.statut, DemandeAchat.Statut.SOUMISE)
+
+    def test_normal_role_forbidden_to_decide_contrats(self):
+        contrat = Contrat.objects.create(
+            company=self.company, objet='Contrat VX101', reference='C-VX101')
+        etape = EtapeApprobation.objects.create(
+            company=self.company, contrat=contrat, niveau=1,
+            statut=EtapeApprobation.Statut.EN_ATTENTE)
+        resp = self.api.post(self._decide_url(), {
+            'source': 'contrats', 'id': etape.id, 'decision': 'approuver',
+        }, format='json')
+        self.assertEqual(resp.status_code, 403)
+        etape.refresh_from_db()
+        self.assertEqual(etape.statut, EtapeApprobation.Statut.EN_ATTENTE)
+
+    def test_responsable_can_decide_installations_and_contrats(self):
+        da = DemandeAchat.objects.create(
+            company=self.company, reference='DA-VX101-2', objet='Test',
+            statut=DemandeAchat.Statut.SOUMISE)
+        contrat = Contrat.objects.create(
+            company=self.company, objet='Contrat VX101-2', reference='C-VX101-2')
+        etape = EtapeApprobation.objects.create(
+            company=self.company, contrat=contrat, niveau=1,
+            statut=EtapeApprobation.Statut.EN_ATTENTE)
+        r1 = self.resp_api.post(self._decide_url(), {
+            'source': 'installations', 'id': da.id, 'decision': 'approuver',
+        }, format='json')
+        self.assertEqual(r1.status_code, 200, r1.data)
+        r2 = self.resp_api.post(self._decide_url(), {
+            'source': 'contrats', 'id': etape.id, 'decision': 'approuver',
+        }, format='json')
+        self.assertEqual(r2.status_code, 200, r2.data)
+
+    def test_reading_stays_open_to_normal_role(self):
+        # La LECTURE de la boîte d'approbations n'est jamais gardée par ce
+        # fix — seule la DÉCISION (POST decider/) l'est.
+        DemandeAchat.objects.create(
+            company=self.company, reference='DA-VX101-3', objet='Test',
+            statut=DemandeAchat.Statut.SOUMISE)
+        resp = self.api.get(self._url())
+        self.assertEqual(resp.status_code, 200)
+        sources = {it['source'] for it in resp.data['items']}
+        self.assertIn('installations', sources)
+
+    def test_normal_role_can_still_decide_automation_ged_workflow(self):
+        # Non-régression — le gate ne touche QUE installations/contrats.
+        approval = AutomationApproval.objects.create(
+            company=self.company, status=AutomationApproval.Status.PENDING)
+        resp = self.api.post(self._decide_url(), {
+            'source': 'automation', 'id': approval.id, 'decision': 'approuver',
+        }, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
 
 
 class TestZctr9Facettes(ApprobationsBase):
@@ -399,3 +484,67 @@ class TestVx100MontantEtLien(ApprobationsBase):
         self.assertEqual(resp.status_code, 200)
         libelles = [it['libelle'] for it in resp.data['items']]
         self.assertEqual(libelles[0], 'Réquisition DA-VX100-BIG')
+
+
+class TestVx218NiveauEscalade(ApprobationsBase):
+    """VX218 — l'agrégateur expose l'état de relance/escalade YEVNT9 côté
+    demandeur (source `automation`, seule balayée par le sweep aujourd'hui;
+    les autres sources renvoient les deux champs à None sans fabrication)."""
+
+    def _make_pending_approval(self, days_old):
+        from apps.automation.models import (
+            ActionType, AutomationApproval, AutomationRule, TriggerType,
+        )
+        rule = AutomationRule.objects.create(
+            company=self.company, nom='Règle VX218',
+            trigger_type=TriggerType.DEVIS_ACCEPTED,
+            action_type=ActionType.SEND_EMAIL, requires_approval=True)
+        approval = AutomationApproval.objects.create(
+            company=self.company, rule=rule, description='Action VX218',
+            requested_by=self.user)
+        approval.date_creation = timezone.now() - datetime.timedelta(
+            days=days_old)
+        approval.save(update_fields=['date_creation'])
+        return approval
+
+    def test_niveau_escalade_absent_by_default(self):
+        AutomationApproval.objects.create(
+            company=self.company, status=AutomationApproval.Status.PENDING)
+        resp = self.api.get(self._url() + '?source=automation')
+        self.assertEqual(resp.status_code, 200)
+        item = resp.data['items'][0]
+        self.assertIn('niveau_escalade', item)
+        self.assertIsNone(item['niveau_escalade'])
+        self.assertIsNone(item['derniere_relance_le'])
+
+    def test_niveau_escalade_relance_after_sweep(self):
+        from apps.notifications.services import sweep_approval_reminders
+        approval = self._make_pending_approval(days_old=5)
+        sweep_approval_reminders(self.company)
+        resp = self.api.get(self._url() + '?source=automation')
+        self.assertEqual(resp.status_code, 200)
+        item = next(
+            it for it in resp.data['items'] if it['id'] == approval.id)
+        self.assertEqual(item['niveau_escalade'], 'relance')
+        self.assertIsNotNone(item['derniere_relance_le'])
+
+    def test_niveau_escalade_escalade_after_sweep(self):
+        from apps.notifications.services import sweep_approval_reminders
+        approval = self._make_pending_approval(days_old=10)
+        sweep_approval_reminders(self.company)
+        resp = self.api.get(self._url() + '?source=automation')
+        self.assertEqual(resp.status_code, 200)
+        item = next(
+            it for it in resp.data['items'] if it['id'] == approval.id)
+        self.assertEqual(item['niveau_escalade'], 'escalade')
+
+    def test_other_sources_never_fabricate_niveau_escalade(self):
+        DemandeAchat.objects.create(
+            company=self.company, reference='DA-VX218-1', objet='X',
+            statut=DemandeAchat.Statut.SOUMISE)
+        resp = self.api.get(self._url() + '?source=installations')
+        self.assertEqual(resp.status_code, 200)
+        item = resp.data['items'][0]
+        self.assertIn('niveau_escalade', item)
+        self.assertIsNone(item['niveau_escalade'])
+        self.assertIsNone(item['derniere_relance_le'])

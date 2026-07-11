@@ -1,9 +1,19 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { renderHook } from '@testing-library/react'
+import { renderHook, act } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import messagingReducer from './store/messagingSlice'
-import useChatPolling, { ACTIVE_POLL_MS } from './useChatPolling'
+import useChatPolling, { ACTIVE_POLL_MS, UNREAD_POLL_MS } from './useChatPolling'
+
+vi.mock('../../api/messagesApi', () => ({
+  default: {
+    listConversations: vi.fn(() => Promise.resolve({ data: [] })),
+    unreadCount: vi.fn(() => Promise.resolve({ data: { total: 0 } })),
+    listMessages: vi.fn(() => Promise.resolve({ data: { results: [] } })),
+  },
+}))
+
+import messagesApi from '../../api/messagesApi'
 
 /* S12 — Le sondage du chat doit se SUSPENDRE quand l'onglet est masqué
    (visibilitychange) et NE PLUS dispatcher tant qu'il l'est. On espionne
@@ -73,5 +83,44 @@ describe('useChatPolling', () => {
     setVisibility('visible')
     // Rafraîchissement immédiat au retour.
     expect(spy).toHaveBeenCalled()
+  })
+
+  /* VX204 — aucun `.catch` ne détectait une SÉRIE d'échecs de sondage
+     (silence total). ≥3 échecs consécutifs → `stalled`; un succès le lève. */
+  describe('détection de panne prolongée (VX204)', () => {
+    beforeEach(() => {
+      vi.clearAllMocks()
+    })
+
+    it('bascule `stalled` à true après 3 échecs consécutifs, false après un succès', async () => {
+      messagesApi.unreadCount.mockRejectedValue(new Error('boom'))
+      const store = makeStore()
+      const wrapper = ({ children }) => <Provider store={store}>{children}</Provider>
+      const { result } = renderHook(() => useChatPolling(null, { enabled: true }), { wrapper })
+
+      expect(result.current.stalled).toBe(false)
+
+      // Amorçage immédiat = 1 échec ; 2 ticks d'intervalle supplémentaires = 3.
+      await act(async () => { await Promise.resolve() })
+      await act(async () => {
+        vi.advanceTimersByTime(UNREAD_POLL_MS)
+        await Promise.resolve()
+      })
+      await act(async () => {
+        vi.advanceTimersByTime(UNREAD_POLL_MS)
+        await Promise.resolve()
+      })
+
+      expect(result.current.stalled).toBe(true)
+
+      // Un succès (reprise manuelle) lève l'indicateur.
+      messagesApi.unreadCount.mockResolvedValue({ data: { total: 0 } })
+      await act(async () => {
+        result.current.resume()
+        await Promise.resolve()
+      })
+
+      expect(result.current.stalled).toBe(false)
+    })
   })
 })

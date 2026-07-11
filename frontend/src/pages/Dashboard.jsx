@@ -12,6 +12,7 @@ import {
   TrendingUp, Activity, ReceiptText, Clock,
 } from 'lucide-react'
 import { AreaSansAxe, BarArrondie, KpiSpark, ChartEmpty } from '../ui/charts'
+import { ModuleHero } from '../ui/module/ModuleHero.jsx'
 import { fetchProduits } from '../features/stock/store/stockSlice'
 import { fetchClients } from '../features/crm/store/crmSlice'
 import { fetchDevis, fetchFactures } from '../features/ventes/store/ventesSlice'
@@ -23,6 +24,7 @@ import {
   Card, CardHeader, CardTitle, CardDescription, CardContent,
   StatusPill, Badge, Progress, EmptyState, Skeleton, SkeletonText,
 } from '../ui'
+import { StateBlock } from '../components/StateBlock'
 import { cn } from '../lib/cn'
 import { formatMAD, formatNumber, formatPercent, formatDate } from '../lib/format'
 
@@ -188,12 +190,18 @@ export function Component() {
   const { devis, factures, loading: ventesLoading, error: ventesError } = useSelector((s) => s.ventes)
   const { items: installations, loading: instLoading } = useSelector((s) => s.installations)
 
-  useEffect(() => {
+  // VX67 — extrait en fonction nommée pour être réutilisable comme `onRetry`
+  // du StateBlock d'erreur ci-dessous (même 5 fetch qu'au montage).
+  const reload = () => {
     dispatch(fetchProduits())
     dispatch(fetchClients())
     dispatch(fetchDevis())
     dispatch(fetchFactures())
     dispatch(fetchInstallations())
+  }
+  useEffect(() => {
+    reload()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch])
 
   const devisAcceptes = devis.filter((d) => d.statut === 'accepte')
@@ -415,14 +423,17 @@ export function Component() {
 
   return (
     <div className="ui-root min-h-full p-4 sm:p-6">
-      {/* En-tête — le titre « Tableau de bord » reste un <h2> (heading) :
-          l'e2e (auth.setup.js) s'appuie dessus, ne pas modifier. */}
-      <header className="mb-6">
-        <h2 className="font-display text-xl font-bold tracking-tight text-foreground">
-          Tableau de bord
-        </h2>
-        <p className="mt-1 text-sm text-muted-foreground">Vue d'ensemble de votre activité</p>
-      </header>
+      {/* VX15 — ModuleHero remplace le <h2> nu : identité de cockpit (liseré
+          gradient brass). Le titre « Tableau de bord » reste un <h2>
+          (headingAs="h2") : l'e2e (auth.setup.js) s'appuie dessus, contrat
+          heading INCHANGÉ. */}
+      <div className="mb-6">
+        <ModuleHero
+          headingAs="h2"
+          title="Tableau de bord"
+          subtitle="Vue d'ensemble de votre activité"
+        />
+      </div>
 
       {/* VX86 — carte « Attend votre décision » : autonome, se masque elle-même
           si rien n'attend l'utilisateur ; indépendante des sources loading/
@@ -434,15 +445,12 @@ export function Component() {
       </div>
 
       {showError ? (
+        // VX67 — StateBlock unifie l'état d'erreur avec un bouton « Réessayer »
+        // (relance les 5 fetch du montage), là où l'ancienne carte d'erreur
+        // n'offrait aucun moyen de réessayer sans recharger la page entière.
         <Card>
-          <CardContent className="flex flex-col items-center gap-3 py-12 text-center sm:pt-12">
-            <span className="flex size-11 items-center justify-center rounded-full bg-destructive/12 text-destructive">
-              <AlertTriangle className="size-5" aria-hidden="true" />
-            </span>
-            <p className="font-display text-base font-semibold text-foreground">
-              Impossible de charger le tableau de bord
-            </p>
-            <p className="max-w-sm text-sm text-muted-foreground">{errorMessage}</p>
+          <CardContent className="py-8 sm:py-10">
+            <StateBlock error={errorMessage} onRetry={reload} />
           </CardContent>
         </Card>
       ) : showLoading ? (

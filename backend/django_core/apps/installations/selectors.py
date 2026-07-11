@@ -14,6 +14,22 @@ def installation_for_devis(devis):
     return Installation.objects.filter(devis=devis).first()
 
 
+def demandes_achat_soumises_stale(company, cutoff):
+    """VX213 (d) — réquisitions d'achat restées SOUMISE (jamais décidées) et
+    inchangées depuis ``cutoff`` (datetime seuil). Lecture seule, exposée au
+    balayage SLA de ``notifications`` (miroir de ``_sweep_sav_breaching``).
+
+    ``date_modification`` (auto_now) reflète la dernière touche : une DA soumise
+    non décidée n'est plus modifiée, donc c'est le proxy de « soumise depuis ».
+    Scopée company ; le sweep en dérive les approbateurs (managers)."""
+    from .models import DemandeAchat
+    return (DemandeAchat.objects
+            .filter(company=company,
+                    statut=DemandeAchat.Statut.SOUMISE,
+                    date_modification__lte=cutoff)
+            .select_related('chantier'))
+
+
 def installation_summaries_for_devis(devis_qs):
     """Map {devis_id: {id, reference, statut}} des chantiers liés à un lot de
     devis — une seule requête (évite un N+1 sur la fiche lead)."""

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useSearchParams } from 'react-router-dom'
-import { Upload, Download, X, Plus } from 'lucide-react'
+import { Upload, Download, X, Plus, MoreHorizontal } from 'lucide-react'
 import { useIsAdmin } from '../../../hooks/useHasPermission'
 import { fetchLeads, updateLead, leadStagePatched } from '../../../features/crm/store/crmSlice'
 import crmApi from '../../../api/crmApi'
@@ -9,11 +9,15 @@ import { filterLeads, EMPTY_FILTERS, archivedParam, CONVERSION_STAGE } from '../
 import {
   toggleId, toggleAll, pruneSelection, bulkResultMessage,
 } from '../../../features/crm/bulk'
-import { Button, IconButton, Spinner, FloatingActionButton } from '../../../ui'
-import { errorMessageFrom } from '../../../lib/toast'
+import {
+  Button, IconButton, Spinner, FloatingActionButton,
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+} from '../../../ui'
+import { errorMessageFrom, toastWithUndo, toastError } from '../../../lib/toast'
 import { useSavedViews } from '../../../hooks/useSavedViews'
 import LeadForm from '../LeadForm'
 import ExcelImport from '../../../components/ExcelImport'
+import SavedViewsBar, { SaveViewButton } from '../../../components/SavedViewsBar'
 import FilterBar from './FilterBar'
 import BulkActionBar from './BulkActionBar'
 import ViewSwitcher from './ViewSwitcher'
@@ -200,13 +204,26 @@ export default function LeadsPage() {
   // (élaguée aux leads encore présents par l'effet ci-dessus).
   const runBulk = async (action, params = {}) => {
     if (!visibleSelected.size) return
+    const ids = [...visibleSelected]
     setBulkBusy(true)
     try {
-      const { data } = await crmApi.bulkLeads({
-        ids: [...visibleSelected], action, ...params,
-      })
+      const { data } = await crmApi.bulkLeads({ ids, action, ...params })
       setBulkMsg(bulkResultMessage(data))
       refetch()
+      // VX95 — archivage en masse déjà commis serveur : « Annuler » relance
+      // l'action inverse (unarchive) sur le même lot d'ids.
+      if (action === 'archive' || action === 'unarchive') {
+        const reverse = action === 'archive' ? 'unarchive' : 'archive'
+        toastWithUndo({
+          message: action === 'archive' ? 'Leads archivés.' : 'Leads restaurés.',
+          onUndo: async () => {
+            try {
+              await crmApi.bulkLeads({ ids, action: reverse })
+              refetch()
+            } catch { toastError('Annulation impossible.') }
+          },
+        })
+      }
     } catch (err) {
       setBulkMsg(err?.response?.data?.detail
         ?? "L'action en masse a échoué — réessayez.")
@@ -319,6 +336,23 @@ export default function LeadsPage() {
     dispatch(leadStagePatched({ id: lead.id, stage: newStage }))
     try {
       await dispatch(updateLead({ id: lead.id, data: { stage: newStage } })).unwrap()
+      // VX95 — ce chemin n'est atteint QUE par le drop kanban (drag-and-drop
+      // en avant, jamais un recul — gardé par KanbanView avant l'appel, ni
+      // SIGNED — gardé ci-dessus par SigneDialog). « Annuler » restaure
+      // l'étape antérieure EXACTE en contournant volontairement le
+      // recul-guard : c'est l'undo de sa propre action, pas un recul manuel.
+      toastWithUndo({
+        message: 'Étape modifiée.',
+        onUndo: async () => {
+          dispatch(leadStagePatched({ id: lead.id, stage: prev }))
+          try {
+            await dispatch(updateLead({ id: lead.id, data: { stage: prev } })).unwrap()
+          } catch {
+            dispatch(leadStagePatched({ id: lead.id, stage: newStage }))
+            toastError("Annulation impossible — vérifiez votre connexion.")
+          }
+        },
+      })
     } catch {
       dispatch(leadStagePatched({ id: lead.id, stage: prev }))
       setStageError("Le changement d'étape n'a pas pu être enregistré — vérifiez votre connexion et réessayez.")
@@ -374,44 +408,53 @@ export default function LeadsPage() {
             title="Saisie express : nom + téléphone + canal"
             onClick={() => setShowExpressModal(true)}
           >⚡ Express</Button>
-          <Button variant="outline" onClick={() => setShowDoublons(true)}>
-            🔀 Doublons
-            {doublonsCount > 0 && (
-              <span className="count-badge" title="Groupes de doublons détectés">
-                {doublonsCount}
-              </span>
-            )}
-          </Button>
-          <Button variant="outline" onClick={() => setShowImport(true)}>
-            <Upload /> Importer
-          </Button>
-          <Button variant="outline" onClick={exportFiltered}>
-            <Download /> Exporter Excel
-          </Button>
+          {/* VX145(b) — Doublons/Importer/Exporter sont des fréquences basses
+              face aux 2 contrôles ci-dessus ; démotés dans un menu « ⋯ »
+              (pattern DropdownMenu déjà importé dans ListView.jsx). */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" title="Plus d'actions" aria-label="Plus d'actions">
+                <MoreHorizontal />
+                {doublonsCount > 0 && (
+                  <span className="count-badge" title="Groupes de doublons détectés">
+                    {doublonsCount}
+                  </span>
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => setShowDoublons(true)}>
+                🔀 Doublons
+                {doublonsCount > 0 && (
+                  <span className="count-badge" title="Groupes de doublons détectés">
+                    {doublonsCount}
+                  </span>
+                )}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setShowImport(true)}>
+                <Upload /> Importer
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={exportFiltered}>
+                <Download /> Exporter Excel
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          {/* VX145(c) — le déclencheur vit dans la rangée d'en-tête déjà
+              existante ; SavedViewsBar (chips) ne rend une rangée dédiée que
+              s'il y a au moins une vue enregistrée. */}
+          <SaveViewButton onSave={saveCurrentView} />
+          <div className="lp-header-sep" role="separator" aria-orientation="vertical" />
           <ViewSwitcher view={view} setView={setView} />
         </div>
       </div>
 
       <FilterBar filters={filters} setFilters={setFilters} leads={leads} />
 
-      <div className="lp-saved-views">
-        <Button type="button" variant="link" size="sm" onClick={saveCurrentView}>
-          ⭐ Enregistrer cette vue
-        </Button>
-        {savedViews.map((v) => (
-          <span key={v.name} className="lp-saved-view-chip">
-            <button type="button" className="lp-saved-view-apply"
-                    onClick={() => applySavedView(v)} title="Appliquer cette vue">
-              {v.name}
-            </button>
-            <button type="button" className="lp-saved-view-del"
-                    onClick={() => deleteSavedView(v.name)}
-                    aria-label={`Supprimer la vue ${v.name}`}>
-              ✕
-            </button>
-          </span>
-        ))}
-      </div>
+      <SavedViewsBar
+        savedViews={savedViews}
+        onApply={applySavedView}
+        onDelete={deleteSavedView}
+      />
 
       {visibleSelected.size > 0 && (
         <BulkActionBar

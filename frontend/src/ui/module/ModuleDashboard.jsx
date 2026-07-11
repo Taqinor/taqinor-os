@@ -5,6 +5,7 @@ import { Card } from '../Card'
 import { Stat } from '../Stat'
 import { Skeleton } from '../Skeleton'
 import { EmptyState } from '../EmptyState'
+import { KpiSpark } from '../charts/KpiSpark.jsx'
 
 /* ============================================================================
    UX1 — Tableau de bord de module.
@@ -14,16 +15,23 @@ import { EmptyState } from '../EmptyState'
    correspondante. États chargement (squelettes calqués sur le bandeau) et
    erreur (EmptyState en français) gérés une seule fois ici.
 
-   stats  : [{ label, value, hint?, delta?, icon?, to?, tone? }]
+   stats  : [{ label, value, hint?, delta?, icon?, to?, tone?, trend? }]
+            VX15 — `trend` (number[] optionnel) rend une mini-sparkline
+            (KpiSpark) sous la valeur du KPI ; absent = rien (rétrocompatible,
+            aucune fabrication de données).
    charts : [{ title, node, span? }]   (span === 'full' → pleine largeur)
    VX157 — `tone` (ex. "impact") passe telle quelle à <Stat> pour les
-   grandeurs d'impact positif (production, CO₂ évité, économies…). */
+   grandeurs d'impact positif (production, CO₂ évité, économies…).
+   VX15 — `accent` (optionnel, teinte CSS) : pastille de couleur de module
+   posée à côté du libellé de chaque KPI (registre VX8 pas encore livré —
+   no-op tant qu'aucun `accent` n'est fourni, jamais fabriqué). */
 
 export function ModuleDashboard({
   stats = [],
   charts = [],
   loading = false,
   error = null,
+  accent,
   className,
 }) {
   if (error) {
@@ -56,13 +64,30 @@ export function ModuleDashboard({
             {stats.map((s, i) => {
               const stat = (
                 <Stat
-                  label={s.label}
+                  label={(
+                    <span className="inline-flex items-center gap-1.5">
+                      {accent && (
+                        <span
+                          className="size-1.5 shrink-0 rounded-full"
+                          style={{ background: accent }}
+                          aria-hidden="true"
+                        />
+                      )}
+                      {s.label}
+                    </span>
+                  )}
                   value={s.value}
                   hint={s.hint}
                   delta={s.delta}
                   icon={s.icon}
                   tone={s.tone}
-                />
+                >
+                  {Array.isArray(s.trend) && s.trend.length > 0 && (
+                    <div className="mt-2">
+                      <KpiSpark data={s.trend} tone={s.tone === 'impact' ? 'primary' : 'muted'} height={28} />
+                    </div>
+                  )}
+                </Stat>
               )
               return s.to ? (
                 <Link

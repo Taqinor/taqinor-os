@@ -12,7 +12,7 @@ import {
   STATUS_LABELS,
 } from '../../../features/installations/statuses'
 import {
-  DataTable, StatusPill, Button,
+  DataTable, StatusPill, Button, Badge,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '../../../ui'
@@ -134,7 +134,7 @@ function BulkActionDialog({ kind, rows, users, onApply, onClose }) {
   )
 }
 
-export default function ListView({ items, onOpen, users, onChangeStatus, onReassign }) {
+export default function ListView({ items, onOpen, users, onChangeStatus, onReassign, nouveauxIds }) {
   // L10 — action groupée en cours ('statut' | 'technicien' | null) + lignes ciblées.
   const [bulk, setBulk] = useState(null) // { kind, rows, clear }
   const canBulk = typeof onChangeStatus === 'function' && typeof onReassign === 'function'
@@ -145,7 +145,13 @@ export default function ListView({ items, onOpen, users, onChangeStatus, onReass
         id: 'reference',
         header: 'Référence',
         width: 160,
-        cell: (value) => <span className="font-semibold">{value ?? '—'}</span>,
+        cell: (value, row) => (
+          <span className="flex items-center gap-1.5">
+            <span className="font-semibold">{value ?? '—'}</span>
+            {/* VX218 — badge « Nouveau » : chantier assigné depuis ma dernière visite. */}
+            {nouveauxIds?.has(row.id) && <Badge tone="success">Nouveau</Badge>}
+          </span>
+        ),
         exportValue: (row) => row.reference ?? '',
       },
       { id: 'client_nom', header: 'Client', width: 180, accessor: (r) => r.client_nom ?? '' },
@@ -188,7 +194,7 @@ export default function ListView({ items, onOpen, users, onChangeStatus, onReass
         exportValue: (row) => formatDate(row.date_pose_prevue),
       },
     ],
-    [],
+    [nouveauxIds],
   )
 
   const rowActions = (row) => [

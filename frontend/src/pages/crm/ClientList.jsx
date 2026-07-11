@@ -10,10 +10,12 @@ import { openPdfBlob } from '../../utils/pdfBlob'
 import ClientForm from './ClientForm'
 import ClientDetailPanel from './ClientDetailPanel'
 import ExcelImport from '../../components/ExcelImport'
+import SavedViewsBar, { SaveViewButton } from '../../components/SavedViewsBar'
 import {
   DataTable, Badge, Button, Segmented,
   Skeleton, SkeletonTableRow, EmptyState,
 } from '../../ui'
+import { StateBlock } from '../../components/StateBlock'
 import { useConfirmDialog, toast } from '../../ui/confirm'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import ClientTypeToggle from './ClientTypeToggle'
@@ -334,15 +336,12 @@ export default function ClientList() {
       )}
 
       {error ? (
-        // État erreur explicite + réessai (jamais d'objet brut ni de page blanche).
-        <EmptyState
-          title="Impossible de charger les clients"
-          description="Vérifiez votre connexion puis réessayez."
-          action={(
-            <Button variant="outline" onClick={() => dispatch(fetchClients())}>
-              Réessayer
-            </Button>
-          )}
+        // VX67 — StateBlock unifie l'état d'erreur avec un bouton « Réessayer »
+        // câblé sur le même thunk que le montage initial (jamais d'objet brut
+        // ni de page blanche).
+        <StateBlock
+          error="Impossible de charger les clients. Vérifiez votre connexion puis réessayez."
+          onRetry={() => dispatch(fetchClients())}
         />
       ) : loading && clients.length === 0 ? (
         // Chargement : squelette de table différé (anti-flash via useDelayedLoading).
@@ -375,24 +374,12 @@ export default function ClientList() {
               onChange={setTypeFilter}
               aria-label="Filtrer par type de client"
             />
-            <div className="lp-saved-views">
-              <Button type="button" variant="link" size="sm" onClick={saveCurrentView}>
-                ⭐ Enregistrer cette vue
-              </Button>
-              {savedViews.map((v) => (
-                <span key={v.name} className="lp-saved-view-chip">
-                  <button type="button" className="lp-saved-view-apply"
-                          onClick={() => applyView(v)} title="Appliquer cette vue">
-                    {v.name}
-                  </button>
-                  <button type="button" className="lp-saved-view-del"
-                          onClick={() => deleteView(v.name)}
-                          aria-label={`Supprimer la vue ${v.name}`}>
-                    ✕
-                  </button>
-                </span>
-              ))}
-            </div>
+            <SaveViewButton onSave={saveCurrentView} />
+            <SavedViewsBar
+              savedViews={savedViews}
+              onApply={applyView}
+              onDelete={deleteView}
+            />
           </div>
 
           <DataTable

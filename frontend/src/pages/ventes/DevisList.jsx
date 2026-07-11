@@ -21,9 +21,6 @@ import {
   Button, Badge, StatusPill, Card, EmptyState, Spinner,
   Skeleton, SkeletonTableRow,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader,
-  AlertDialogTitle, AlertDialogDescription, AlertDialogFooter,
-  AlertDialogCancel, AlertDialogAction,
   RadioGroup, RadioGroupItem, Checkbox, Label, Input, Segmented, toast,
   Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
   Textarea,
@@ -32,6 +29,7 @@ import {
 } from '../../ui'
 import { formatMAD, formatDateTime } from '../../lib/format'
 import { filenameFromResponse } from '../../utils/downloadBlob'
+import { openPdfBlob, openPdfInGesture } from '../../utils/pdfBlob'
 import { proposalParams, pdfBlob } from '../../features/ventes/previewPdf'
 import { useSavedViews } from '../../hooks/useSavedViews'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
@@ -39,6 +37,7 @@ import { useHasPermission } from '../../hooks/useHasPermission'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import { DataTable } from '../../ui/datatable'
 import RoofViewer from './RoofViewer'
+import { StateBlock } from '../../components/StateBlock'
 
 // J141 — Squelette de la liste : reprend les 8 colonnes du vrai tableau pour que
 // la mise en page ne saute pas à l'arrivée des données. Affiché dans la même
@@ -152,19 +151,6 @@ function engagementSummary(engagement) {
     const duree = mins >= 1 ? `${mins} min` : `${v.seconds} s`
     return `${duree} sur ${label}`
   }).join(' · ')
-}
-
-function openPdfBlob(blob, filename) {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.target = '_blank'
-  a.rel = 'noopener'
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  setTimeout(() => URL.revokeObjectURL(url), 10000)
 }
 
 // ── ARC49 — Modale de génération PDF de la LISTE (formats du simulateur). ──
@@ -509,188 +495,14 @@ function DevisRow({ d, ctx }) {
       </td>
       <td>
         <div className="flex flex-wrap items-center gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => openEdit(d)}
-            disabled={d.statut !== 'brouillon'}
-            title={d.statut === 'brouillon'
-              ? 'Ouvrir dans le générateur'
-              : 'Devis envoyé/clôturé — non modifiable (dupliquez-le depuis le générateur si besoin)'}
-          >
-            Éditer
-          </Button>
-          {/* VX79 — « Copier le lien interne » : URL de l'ERP partageable
-              (/ventes/devis?devis=<pk>) à envoyer à un collègue. Distinct du
-              lien PUBLIC de proposition (règle #4) plus bas — celui-ci ouvre le
-              devis DANS l'ERP, toujours disponible quel que soit le statut. */}
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => copierLienInterne(d)}
-            title="Lien interne de ce devis (à envoyer à un collègue)"
-            aria-label={`Lien interne de ${d.reference}`}
-          >
-            <Link2 className="size-3.5 mr-1" aria-hidden="true" />
-            Lien interne
-          </Button>
-          {/* QX27 — actions secondaires (peu fréquentes / sans raccourci
-              clavier) regroupées dans un menu « ⋯ » au lieu de gonfler la
-              ligne : Réviser, Approuver remise, Contacter mon supérieur,
-              Email. Les actions qui font AVANCER le funnel (Envoyer,
-              Accepter, Refuser, BC, Chantier, Facture…) restent des
-              boutons directs, visibles. */}
-          {((d.is_active && d.statut !== 'brouillon')
-            || (role === 'admin' && d.statut === 'brouillon' && parseFloat(d.remise_globale) > 0 && !d.remise_approuvee)
-            || d.statut === 'brouillon' || d.statut === 'envoye') && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button size="sm" variant="ghost" aria-label={`Autres actions — ${d.reference}`}>
-                  <MoreHorizontal className="size-4" aria-hidden="true" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
-                <DropdownMenuLabel>Autres actions</DropdownMenuLabel>
-                {d.is_active && d.statut !== 'brouillon' && (
-                  <DropdownMenuItem onSelect={() => {
-                    ventesApi.reviserDevis(d.id)
-                      .then(() => dispatch(fetchDevis()))
-                      .catch(() => {})
-                  }}>
-                    Réviser (nouvelle version)
-                  </DropdownMenuItem>
-                )}
-                {role === 'admin' && d.statut === 'brouillon'
-                  && parseFloat(d.remise_globale) > 0 && !d.remise_approuvee && (
-                  <DropdownMenuItem onSelect={() => {
-                    ventesApi.approuverRemise(d.id)
-                      .then(() => dispatch(fetchDevis())).catch(() => {})
-                  }}>
-                    Approuver la remise
-                  </DropdownMenuItem>
-                )}
-                {(d.statut === 'brouillon' || d.statut === 'envoye') && (
-                  <DropdownMenuItem
-                    disabled={superieurBusyId === d.id}
-                    onSelect={() => handleContacterSuperieur(d)}
-                  >
-                    Contacter mon supérieur
-                  </DropdownMenuItem>
-                )}
-                {(d.statut === 'brouillon' || d.statut === 'envoye') && (
-                  <DropdownMenuItem onSelect={() => openEmailModal(d)}>
-                    Envoyer par email
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-          {/* QG10/QJ15 — « Variante » : ouvre une modale pour
-              confirmer/éditer le pourcentage (défaut = config
-              société), créer les 3 variantes puis router vers la
-              comparaison côte-à-côte. */}
-          {d.statut === 'brouillon' && (
-            <Button
-              size="sm"
-              variant="outline"
-              title="Créer 3 variantes de taille (−p %, standard, +p %) pour comparaison côte-à-côte"
-              onClick={() => openVarianteModal(d)}
-            >
-              <Copy className="size-3.5 mr-1" aria-hidden="true" />
-              Variante
-            </Button>
-          )}
-          {canDelete && (
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  loading={deletingId === d.id}
-                  className="border-destructive/40 text-destructive hover:bg-destructive/10"
-                  title="Supprimer ce devis"
-                >
-                  Supprimer
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Supprimer le devis {d.reference} ?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    Cette action est définitive et irréversible.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Annuler</AlertDialogCancel>
-                  <AlertDialogAction onClick={() => handleDelete(d)}>Supprimer</AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          )}
-
-          {d.statut === 'brouillon' && (
-            <Button
-              size="sm"
-              variant="outline"
-              loading={statutActionId === d.id}
-              onClick={() => handleEnvoyer(d)}
-              title="Envoyer par WhatsApp (message + lien de proposition) — marque le devis « Envoyé »"
-            >
-              <Send /> Envoyer
-            </Button>
-          )}
-          {/* WR2 — Copier le lien de proposition (share_link) :
-              surface la fonctionnalité serveur invisible, sans
-              passer par un envoi email/WhatsApp. */}
-          {(d.statut === 'brouillon' || d.statut === 'envoye') && (
-            <Button
-              size="sm"
-              variant="ghost"
-              loading={shareBusyId === d.id}
-              onClick={() => handleCopierLienProposition(d)}
-              title="Copier le lien de la proposition (à coller où vous voulez)"
-            >
-              <Link2 className="size-3.5 mr-1" aria-hidden="true" />
-              Copier le lien
-            </Button>
-          )}
-          {/* QG11 — « Voir le design 3D » : ouvre le plan de
-              toiture (roof_layout) en lecture seule dans le
-              détail. N'apparaît que si un plan existe. */}
-          {d.roof_layout && (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setRoofOpenId(
-                roofOpenId === d.id ? null : d.id)}
-              title="Voir le design 3D de la toiture (lecture seule)"
-            >
-              <Box className="size-3.5 mr-1" aria-hidden="true" />
-              Design 3D
-            </Button>
-          )}
-          {/* QG12 — « Ouvrir dans une fenêtre » : le plan plein
-              écran sur sa propre route /ventes/devis/:id/3d. */}
-          {d.roof_layout && (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => window.open(`/ventes/devis/${d.id}/3d`, '_blank', 'noopener')}
-              title="Ouvrir le design 3D dans une nouvelle fenêtre"
-              aria-label={`Ouvrir le design 3D de ${d.reference} dans une fenêtre`}
-            >
-              <ExternalLink className="size-3.5" aria-hidden="true" />
-            </Button>
-          )}
-          <Button
-            size="sm"
-            variant="ghost"
-            loading={previewingId === d.id}
-            onClick={() => handlePreview(d)}
-            title="Aperçu du PDF dans l'application"
-          >
-            <Eye />
-          </Button>
+          {/* VX20 — « soupe d'actions » réduite : 2-3 actions primaires
+              contextuelles restent des boutons directs (PDF, Envoyer/
+              Accepter/Refuser selon statut, Générer facture) ; tout le reste
+              (Éditer, Lien interne, Variante, Supprimer, Copier le lien,
+              Design 3D, Aperçu, Télécharger, BC, Chantier, Créer projet, +
+              l'ancien menu « Autres actions ») vit dans UN SEUL menu « ⋯ ».
+              Anatomie de rangée Linear/Attio — actions révélées, jamais
+              empilées. Hauteur de ligne stable, aucun bouton perdu. */}
           <Button
             size="sm"
             variant="outline"
@@ -708,18 +520,18 @@ function DevisRow({ d, ctx }) {
               PDF toujours en cours…
             </Badge>
           )}
-          {d.fichier_pdf && (
+
+          {d.statut === 'brouillon' && (
             <Button
               size="sm"
-              variant="success"
-              onClick={() => handleTelechargerPdf(d)}
-              loading={isDownloading}
-              title="Télécharger le dernier PDF généré"
+              variant="outline"
+              loading={statutActionId === d.id}
+              onClick={() => handleEnvoyer(d)}
+              title="Envoyer par WhatsApp (message + lien de proposition) — marque le devis « Envoyé »"
             >
-              <FileDown />
+              <Send /> Envoyer
             </Button>
           )}
-
           {d.statut === 'envoye' && (
             <Button
               size="sm"
@@ -738,45 +550,6 @@ function DevisRow({ d, ctx }) {
               title="Marquer ce devis comme refusé (motif obligatoire)"
             >
               <X /> Refuser
-            </Button>
-          )}
-
-          {d.statut === 'accepte' && (
-            <Button
-              size="sm"
-              variant="success"
-              onClick={() => handleConvertBC(d)}
-              loading={convertingId === d.id}
-              title="Convertir en bon de commande"
-            >
-              <ArrowRight /> BC
-            </Button>
-          )}
-
-          {d.statut === 'accepte' && (
-            <Button
-              size="sm"
-              variant={d.chantier ? 'outline' : 'default'}
-              onClick={() => handleChantier(d)}
-              loading={chantierBusy === d.id}
-              title={d.chantier
-                ? `Ouvrir le chantier ${d.chantier.reference}`
-                : 'Créer le chantier à partir de ce devis'}
-            >
-              <HardHat /> {d.chantier ? 'Voir le chantier' : 'Créer le chantier'}
-            </Button>
-          )}
-
-          {/* XPRJ21 — Créer un projet (gestion de projet) depuis ce devis accepté. */}
-          {d.statut === 'accepte' && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => handleCreerProjet(d)}
-              loading={projetBusy === d.id}
-              title="Créer un projet (planning, budget, ressources) à partir de ce devis"
-            >
-              <FolderKanban /> Créer projet
             </Button>
           )}
 
@@ -808,6 +581,168 @@ function DevisRow({ d, ctx }) {
               Générer facture
             </Button>
           )}
+
+          {/* VX20 — menu « Plus » unique : regroupe TOUTES les actions
+              secondaires (précédemment jusqu'à 10 boutons par ligne). */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="ghost" aria-label={`Plus d'actions — ${d.reference}`}>
+                <MoreHorizontal className="size-4" aria-hidden="true" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Plus d'actions</DropdownMenuLabel>
+              <DropdownMenuItem
+                disabled={d.statut !== 'brouillon'}
+                onSelect={() => openEdit(d)}
+              >
+                Éditer
+              </DropdownMenuItem>
+              {/* VX79 — « Copier le lien interne » : URL de l'ERP partageable
+                  (/ventes/devis?devis=<pk>) à envoyer à un collègue. Distinct
+                  du lien PUBLIC de proposition (règle #4) plus bas — celui-ci
+                  ouvre le devis DANS l'ERP, toujours disponible quel que soit
+                  le statut. */}
+              <DropdownMenuItem onSelect={() => copierLienInterne(d)}>
+                <Link2 className="size-3.5" aria-hidden="true" />
+                Lien interne
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={previewingId === d.id}
+                onSelect={() => handlePreview(d)}
+              >
+                <Eye className="size-3.5" aria-hidden="true" />
+                {previewingId === d.id ? 'Aperçu du PDF…' : 'Aperçu du PDF'}
+              </DropdownMenuItem>
+              {d.fichier_pdf && (
+                <DropdownMenuItem
+                  disabled={isDownloading}
+                  onSelect={() => handleTelechargerPdf(d)}
+                >
+                  <FileDown className="size-3.5" aria-hidden="true" />
+                  {isDownloading ? 'Téléchargement…' : 'Télécharger le dernier PDF'}
+                </DropdownMenuItem>
+              )}
+              {/* WR2 — Copier le lien de proposition (share_link) :
+                  surface la fonctionnalité serveur invisible, sans passer
+                  par un envoi email/WhatsApp. */}
+              {(d.statut === 'brouillon' || d.statut === 'envoye') && (
+                <DropdownMenuItem
+                  disabled={shareBusyId === d.id}
+                  onSelect={() => handleCopierLienProposition(d)}
+                >
+                  <Link2 className="size-3.5" aria-hidden="true" />
+                  Copier le lien de la proposition{shareBusyId === d.id ? '…' : ''}
+                </DropdownMenuItem>
+              )}
+              {/* QG10/QJ15 — « Variante » : ouvre une modale pour
+                  confirmer/éditer le pourcentage (défaut = config société),
+                  créer les 3 variantes puis router vers la comparaison
+                  côte-à-côte. */}
+              {d.statut === 'brouillon' && (
+                <DropdownMenuItem onSelect={() => openVarianteModal(d)}>
+                  <Copy className="size-3.5" aria-hidden="true" />
+                  Variante
+                </DropdownMenuItem>
+              )}
+              {/* QG11/QG12 — « Voir le design 3D » : ouvre le plan de toiture
+                  (roof_layout) en lecture seule dans le détail, ou dans une
+                  fenêtre séparée. N'apparaît que si un plan existe. */}
+              {d.roof_layout && (
+                <DropdownMenuItem onSelect={() => setRoofOpenId(
+                  roofOpenId === d.id ? null : d.id)}>
+                  <Box className="size-3.5" aria-hidden="true" />
+                  Design 3D
+                </DropdownMenuItem>
+              )}
+              {d.roof_layout && (
+                <DropdownMenuItem
+                  onSelect={() => window.open(`/ventes/devis/${d.id}/3d`, '_blank', 'noopener')}
+                  aria-label={`Ouvrir le design 3D de ${d.reference} dans une fenêtre`}
+                >
+                  <ExternalLink className="size-3.5" aria-hidden="true" />
+                  Design 3D — nouvelle fenêtre
+                </DropdownMenuItem>
+              )}
+              {d.statut === 'accepte' && (
+                <DropdownMenuItem
+                  disabled={convertingId === d.id}
+                  onSelect={() => handleConvertBC(d)}
+                >
+                  <ArrowRight className="size-3.5" aria-hidden="true" />
+                  Convertir en bon de commande
+                </DropdownMenuItem>
+              )}
+              {d.statut === 'accepte' && (
+                <DropdownMenuItem
+                  disabled={chantierBusy === d.id}
+                  onSelect={() => handleChantier(d)}
+                >
+                  <HardHat className="size-3.5" aria-hidden="true" />
+                  {d.chantier ? `Voir le chantier ${d.chantier.reference}` : 'Créer le chantier'}
+                </DropdownMenuItem>
+              )}
+              {/* XPRJ21 — Créer un projet (gestion de projet) depuis ce devis accepté. */}
+              {d.statut === 'accepte' && (
+                <DropdownMenuItem
+                  disabled={projetBusy === d.id}
+                  onSelect={() => handleCreerProjet(d)}
+                >
+                  <FolderKanban className="size-3.5" aria-hidden="true" />
+                  Créer projet
+                </DropdownMenuItem>
+              )}
+              {/* QX27 — actions historiquement dans « Autres actions » :
+                  Réviser, Approuver remise, Contacter mon supérieur, Email. */}
+              {d.is_active && d.statut !== 'brouillon' && (
+                <DropdownMenuItem onSelect={() => {
+                  ventesApi.reviserDevis(d.id)
+                    .then(() => dispatch(fetchDevis()))
+                    .catch(() => {})
+                }}>
+                  Réviser (nouvelle version)
+                </DropdownMenuItem>
+              )}
+              {role === 'admin' && d.statut === 'brouillon'
+                && parseFloat(d.remise_globale) > 0 && !d.remise_approuvee && (
+                <DropdownMenuItem onSelect={() => {
+                  ventesApi.approuverRemise(d.id)
+                    .then(() => dispatch(fetchDevis())).catch(() => {})
+                }}>
+                  Approuver la remise
+                </DropdownMenuItem>
+              )}
+              {(d.statut === 'brouillon' || d.statut === 'envoye') && (
+                <DropdownMenuItem
+                  disabled={superieurBusyId === d.id}
+                  onSelect={() => handleContacterSuperieur(d)}
+                >
+                  Contacter mon supérieur
+                </DropdownMenuItem>
+              )}
+              {(d.statut === 'brouillon' || d.statut === 'envoye') && (
+                <DropdownMenuItem onSelect={() => openEmailModal(d)}>
+                  Envoyer par email
+                </DropdownMenuItem>
+              )}
+              {canDelete && (
+                <DropdownMenuItem
+                  destructive
+                  disabled={deletingId === d.id}
+                  onSelect={(e) => {
+                    e.preventDefault()
+                    if (window.confirm(
+                      `Supprimer le devis ${d.reference} ? Cette action est définitive et irréversible.`,
+                    )) {
+                      handleDelete(d)
+                    }
+                  }}
+                >
+                  Supprimer
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </td>
     </tr>
@@ -1300,7 +1235,10 @@ export default function DevisList() {
 
   // T10 — Aperçu PDF en application : récupère le blob /proposal et l'ouvre dans
   // un nouvel onglet (mêmes params que la modale d'aperçu de la fiche lead).
+  // VX48 — l'onglet est pré-ouvert SYNCHRONE dans le geste (avant l'await),
+  // sinon Safari iOS bloque silencieusement le window.open post-await.
   const handlePreview = async (d) => {
+    const pending = openPdfInGesture()
     setPreviewingId(d.id)
     try {
       const params = proposalParams(
@@ -1309,9 +1247,10 @@ export default function DevisList() {
           && !!(d.etude_params && Object.keys(d.etude_params).length > 0),
       )
       const res = await ventesApi.getProposalPdf(d.id, params)
-      const url = URL.createObjectURL(pdfBlob(res.data))
-      window.open(url, '_blank', 'noopener')
-      setTimeout(() => URL.revokeObjectURL(url), 10000)
+      const blob = pdfBlob(res.data)
+      if (!pending.deliver(blob, `${d.reference}.pdf`)) {
+        openPdfBlob(blob, `${d.reference}.pdf`)
+      }
     } catch (err) {
       // T11 — l'absence d'onduleur lève une ValueError côté moteur premium.
       const msg = frenchError(err, '')
@@ -1433,11 +1372,28 @@ export default function DevisList() {
             dispatch(fetchDevis())
             setPdfSlowPoll(prev => ({ ...prev, [d.id]: false }))
             if (autoOpen) {
+              // VX48 — l'auto-open existant (QG1) reste l'expérience PAR
+              // DÉFAUT et se déclenche EN PREMIER ; on n'affiche le toast
+              // d'action « Ouvrir » (tap = geste frais, seul geste que
+              // Safari iOS honore après ce polling asynchrone) que si le
+              // téléchargement/l'ouverture automatique échoue.
               try {
                 const pdfRes = await ventesApi.telechargerPdfDevis(d.id)
                 openPdfBlob(pdfRes.data, filenameFromResponse(pdfRes, `${d.reference}.pdf`))
               } catch {
-                toast.error(`${d.reference} : PDF généré mais l'ouverture automatique a échoué — utilisez le bouton de téléchargement.`)
+                toast.error(`${d.reference} : PDF prêt — l'ouverture automatique a échoué.`, {
+                  action: {
+                    label: 'Ouvrir',
+                    onClick: async () => {
+                      try {
+                        const pdfRes = await ventesApi.telechargerPdfDevis(d.id)
+                        openPdfBlob(pdfRes.data, filenameFromResponse(pdfRes, `${d.reference}.pdf`))
+                      } catch {
+                        toast.error(`${d.reference} : PDF indisponible — utilisez le bouton de téléchargement.`)
+                      }
+                    },
+                  },
+                })
               }
             }
           } else {
@@ -1684,11 +1640,18 @@ export default function DevisList() {
     )
   }
   if (error) {
+    // VX67 — StateBlock unifie l'état d'erreur avec un bouton « Réessayer »
+    // (relance le même thunk que le montage initial), là où l'ancien
+    // EmptyState d'erreur n'offrait aucun moyen de réessayer sans recharger
+    // la page entière.
     return (
       <div className="page">
         {pageHeader}
-        <EmptyState className="mt-4" icon={FileStack} title="Erreur de chargement"
-                    description={typeof error === 'string' ? error : JSON.stringify(error)} />
+        <StateBlock
+          className="mt-4"
+          error={typeof error === 'string' ? error : 'Erreur de chargement.'}
+          onRetry={() => dispatch(fetchDevis())}
+        />
       </div>
     )
   }
@@ -2085,7 +2048,8 @@ export default function DevisList() {
             ) : (
               /* ── ARC49 — Tableau sur le frame `ui/datatable` (mode ligne custom).
                   L'écran garde 100 % de son DOM : `table.data-table`, son en-tête
-                  8 colonnes, `<DevisRow>` verbatim (boutons à état, AlertDialog,
+                  8 colonnes, `<DevisRow>` verbatim (boutons à état, menu « Plus »
+                  VX20, confirmation window.confirm à la suppression,
                   panneaux versions/3D pilotés par l'état de page + deep-links), sa
                   sélection propre (`selectedIds`) et son flux PDF (règle #4). Le
                   moteur ne fait que dérouler le pipeline de lignes ; il n'ajoute

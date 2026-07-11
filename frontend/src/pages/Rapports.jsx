@@ -18,6 +18,7 @@ import {
   Button, Card, CardHeader, CardTitle, CardDescription, CardContent,
   Tabs, TabsList, TabsTrigger, TabsContent, Skeleton, EmptyState, Input,
 } from '../ui'
+import { StateBlock } from '../components/StateBlock'
 
 const CHART_PRIMARY = 'var(--color-info)'
 const CHART_GRID = 'var(--color-border)'
@@ -392,25 +393,28 @@ function MesRapports() {
   )
 }
 
-// Carte d'erreur FR quand un rapport échoue (réseau / serveur).
-function ErrorCard({ title, message }) {
+// VX67 — Carte d'erreur FR quand un rapport échoue (réseau / serveur),
+// StateBlock apporte un bouton « Réessayer » câblé sur le reload de CETTE
+// carte (onRetry), là où l'ancienne carte n'offrait aucun moyen de réessayer
+// sans recharger toute la page.
+function ErrorCard({ title, message, onRetry }) {
   return (
     <Card>
       <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
       <CardContent>
-        <p className="text-sm text-destructive">{message || 'Rapport indisponible'}</p>
+        <StateBlock error={message || 'Rapport indisponible'} onRetry={onRetry} />
       </CardContent>
     </Card>
   )
 }
 
-// Carte « chargement » explicite (libellé FR + squelette).
+// Carte « chargement » explicite (libellé FR + squelette) via StateBlock.
 function LoadingCard({ title }) {
   return (
     <Card>
       <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
       <CardContent>
-        <p className="text-sm text-muted-foreground">Chargement…</p>
+        <StateBlock loading loadingText="Chargement…" />
         <Skeleton className="mt-2 h-24 w-full" />
       </CardContent>
     </Card>
@@ -526,13 +530,51 @@ export function Component() {
   if (from) periodParams.from = from
   if (to) periodParams.to = to
 
+  // VX67 — recharge UNE SEULE carte par sa clé (utilisé par le bouton
+  // « Réessayer » de StateBlock/ErrorCard). Reprend exactement les mêmes
+  // requêtes/params que les effets ci-dessus, sans jamais recharger la page.
+  const reloadCard = (key) => {
+    setCardStatus(key, undefined)
+    if (key === 'sales') {
+      const params = {}
+      if (from) params.from = from
+      if (to) params.to = to
+      load('sales', api.get('/reporting/reports/sales/', { params }), setSales)
+    } else if (key === 'stock') {
+      const params = {}
+      if (from) params.from = from
+      if (to) params.to = to
+      load('stock', api.get('/reporting/reports/stock/', { params }), setStock)
+    } else if (key === 'service') {
+      const params = {}
+      if (from) params.from = from
+      if (to) params.to = to
+      load('service', api.get('/reporting/reports/service/', { params }), setService)
+    } else if (key === 'attribution') {
+      const attrParams = {}
+      if (from) attrParams.debut = from
+      if (to) attrParams.fin = to
+      load('attribution', crmApi.getAttributionLeads(attrParams), setAttribution)
+    } else if (key === 'recurring') {
+      load('recurring', reportingApi.recurringRevenue(), setRecurring)
+    } else if (key === 'jobCosting') {
+      load('jobCosting', reportingApi.jobCosting(), setJobCosting)
+    } else if (key === 'analytics') {
+      load('analytics', reportingApi.analytics(), setAnalytics)
+    } else if (key === 'commissions') {
+      load('commissions', reportingApi.commissions(), setCommissions)
+    } else if (key === 'audit') {
+      load('audit', reportingApi.auditLog(auditParams), setAudit)
+    }
+  }
+
   // Rendu d'une carte period-aware selon son état de chargement.
   const renderReportCard = (key, title, render) => {
     if (status[key] === 'loading' || status[key] === undefined) {
       return <LoadingCard title={title} />
     }
     if (status[key] === 'error') {
-      return <ErrorCard title={title} message="Rapport indisponible" />
+      return <ErrorCard title={title} message="Rapport indisponible" onRetry={() => reloadCard(key)} />
     }
     return render()
   }
@@ -708,7 +750,7 @@ export function Component() {
             <InsightCard title="Revenu récurrent (contrats de maintenance)"
                          onExport={exportInsight('recurring-revenue')}>
               {status.recurring === 'error' ? (
-                <p className="text-sm text-destructive">Rapport indisponible</p>
+                <StateBlock error="Rapport indisponible" onRetry={() => reloadCard('recurring')} />
               ) : recurring ? (
                 <>
                   <p className="text-sm">
@@ -749,7 +791,7 @@ export function Component() {
                 )}
               </div>
               {status.audit === 'error' ? (
-                <p className="text-sm text-destructive">Rapport indisponible</p>
+                <StateBlock error="Rapport indisponible" onRetry={() => reloadCard('audit')} />
               ) : audit ? (
                 <Table headers={['Date', 'Utilisateur', 'Type', 'Référence', 'Action']}
                        rows={audit.items.map(it => [
@@ -787,7 +829,7 @@ export function Component() {
             <InsightCard title="Analytics (délais & kWc installés)"
                          onExport={exportInsight('analytics')}>
               {status.analytics === 'error' ? (
-                <p className="text-sm text-destructive">Rapport indisponible</p>
+                <StateBlock error="Rapport indisponible" onRetry={() => reloadCard('analytics')} />
               ) : analytics ? (
                 <>
                   <p className="text-sm">

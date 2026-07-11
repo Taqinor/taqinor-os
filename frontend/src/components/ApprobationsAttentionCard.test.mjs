@@ -36,10 +36,12 @@ test('clic → navigue vers /approbations (lien direct)', () => {
 test('Dashboard : monte la carte en lazy + Suspense, en tête (avant l’état loading/error)', () => {
   assert.match(DASHBOARD_SRC, /const ApprobationsAttentionCard = lazy\(\(\) => import\('\.\.\/components\/ApprobationsAttentionCard'\)\)/)
   assert.match(DASHBOARD_SRC, /<ApprobationsAttentionCard \/>/)
-  const headerIdx = DASHBOARD_SRC.indexOf('</header>')
+  // VX15 a remplacé le `<header>` littéral par le composant `<ModuleHero>` en
+  // tête du Dashboard : on repère l'en-tête via lui.
+  const headerIdx = DASHBOARD_SRC.indexOf('<ModuleHero')
   const cardIdx = DASHBOARD_SRC.indexOf('<ApprobationsAttentionCard')
   const errorBranchIdx = DASHBOARD_SRC.indexOf('showError ?')
-  assert.ok(headerIdx > -1 && cardIdx > headerIdx, 'la carte doit suivre le header')
+  assert.ok(headerIdx > -1 && cardIdx > headerIdx, 'la carte doit suivre l’en-tête (ModuleHero)')
   assert.ok(errorBranchIdx > -1 && cardIdx < errorBranchIdx, 'la carte doit précéder la branche loading/error du reste du dashboard')
 })
 

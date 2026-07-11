@@ -24,6 +24,7 @@ import {
   CONVERSION_STAGE, STAGE_LABELS, PRIORITE_LABELS, TYPE_INSTALLATION_LABELS,
 } from '../../features/crm/stages'
 import useCanaux from '../../features/crm/useCanaux'
+import useKeyboardAwareScroll from '../../hooks/useKeyboardAwareScroll'
 import {
   Button, Input, FormSection, FormField,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
@@ -157,6 +158,8 @@ export default function LeadForm({
   // Canaux depuis le référentiel géré (Paramètres → CRM) + libellés statiques :
   // un canal ajouté en Paramètres apparaît dans le sélecteur sans redéploiement.
   const { labels: canalLabels } = useCanaux()
+  // VX51 — un champ bas de page ne doit plus rester caché sous le clavier iOS.
+  useKeyboardAwareScroll()
 
   // Copie « vivante » du lead : reflète les enregistrements ponctuels faits
   // SANS soumettre tout le formulaire (facture inline, devis créés). Sert au

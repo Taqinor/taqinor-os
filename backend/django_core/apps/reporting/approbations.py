@@ -45,8 +45,14 @@ def _co(user):
 
 def _automation_items(company):
     from apps.automation import selectors as automation_selectors
+    from apps.notifications import selectors as notifications_selectors
     out = []
     for approval in automation_selectors.approvals_en_attente(company):
+        # VX218 — état de relance/escalade YEVNT9 (la seule source de cet
+        # agrégateur balayée par `sweep_approval_reminders` aujourd'hui ;
+        # jamais fabriqué pour les autres sources).
+        niveau_escalade, derniere_relance_le = (
+            notifications_selectors.escalade_state_pour(approval))
         out.append({
             'source': 'automation',
             'id': approval.id,
@@ -60,6 +66,8 @@ def _automation_items(company):
             # jamais fabriqués.
             'montant': None,
             'lien': None,
+            'niveau_escalade': niveau_escalade,
+            'derniere_relance_le': derniere_relance_le,
         })
     return out
 
@@ -84,6 +92,10 @@ def _contrats_items(company):
             # aujourd'hui (jamais fabriqué).
             'montant': None,
             'lien': f'/contrats/{etape.contrat_id}' if etape.contrat_id else None,
+            # VX218 — seule `automation` est balayée par YEVNT9 aujourd'hui ;
+            # champs présents pour un contrat d'API uniforme, jamais fabriqués.
+            'niveau_escalade': None,
+            'derniere_relance_le': None,
         })
     return out
 
@@ -103,6 +115,10 @@ def _ged_items(company):
             # côté GED aujourd'hui : jamais fabriqués.
             'montant': None,
             'lien': None,
+            # VX218 — seule `automation` est balayée par YEVNT9 aujourd'hui ;
+            # champs présents pour un contrat d'API uniforme, jamais fabriqués.
+            'niveau_escalade': None,
+            'derniere_relance_le': None,
         })
     return out
 
@@ -128,6 +144,10 @@ def _installations_items(company):
             # ``/chantiers?id=<pk>``, jamais une route fabriquée) ; `None`
             # si la DA n'a pas de chantier rattaché (pas de fabrication).
             'lien': f'/chantiers?id={da.chantier_id}' if da.chantier_id else None,
+            # VX218 — seule `automation` est balayée par YEVNT9 aujourd'hui ;
+            # champs présents pour un contrat d'API uniforme, jamais fabriqués.
+            'niveau_escalade': None,
+            'derniere_relance_le': None,
         })
     return out
 
@@ -148,6 +168,10 @@ def _core_workflow_items(company):
             # montant homogène : jamais fabriqués.
             'montant': None,
             'lien': None,
+            # VX218 — seule `automation` est balayée par YEVNT9 aujourd'hui ;
+            # champs présents pour un contrat d'API uniforme, jamais fabriqués.
+            'niveau_escalade': None,
+            'derniere_relance_le': None,
         })
     return out
 
@@ -247,7 +271,13 @@ def approbations_en_attente(request):
       - ``?trier=urgence|anciennete|montant`` — ZCTR9, voir ``_trier_items``.
     Chaque item porte désormais ``anciennete_jours`` (jours ouvrés en
     attente, FG5) et ``en_retard`` (au-delà du SLA société paramétrable,
-    ``ApprobationSlaConfig``, défaut 3 j ouvrés)."""
+    ``ApprobationSlaConfig``, défaut 3 j ouvrés). VX218 — chaque item porte
+    aussi ``niveau_escalade`` (``None``/``'relance'``/``'escalade'``) et
+    ``derniere_relance_le``, reflet lecture-seule de l'état YEVNT9
+    (``ApprovalReminderState``) pour que le DEMANDEUR voie le niveau
+    d'escalade de sa propre demande sans devoir être admin/manager ; seule
+    la source ``automation`` est balayée par ce sweep aujourd'hui, les
+    autres sources renvoient ces deux champs à ``None`` (jamais fabriqué)."""
     company = _co(request.user)
     if company is None:
         return Response({'items': [], 'total': 0})
@@ -291,6 +321,15 @@ def _decider_approbation_core(company, user, source, obj_id, decision, motif):
         return 400, {'detail': 'Source inconnue.'}
     if decision not in ('approuver', 'refuser'):
         return 400, {'detail': 'Décision invalide.'}
+    # VX101 — [BUG AUTH] `decider_demande_achat` (installations) et l'étape de
+    # contrat ne vérifiaient AUCUN rôle au-delà de `IsAnyRole` : un commercial
+    # ou un technicien pouvait approuver une réquisition d'achat ou une étape
+    # de contrat. Point d'ancrage unique des 5 sources (`_decider_approbation_
+    # core`) : exige le tier Responsable/Admin pour DÉCIDER (approuver/refuser)
+    # une source `installations`/`contrats` — la LECTURE (`approbations_en_
+    # attente`) reste ouverte à tout rôle, inchangée.
+    if source in ('installations', 'contrats') and not user.is_responsable:
+        return 403, {'detail': 'Réservé au Responsable ou à l\'Admin.'}
     approve = decision == 'approuver'
     if not approve and not motif:
         return 400, {'detail': 'Un motif de refus est obligatoire.'}

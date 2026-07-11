@@ -34,7 +34,6 @@ function StageRow({ etape, isLast }) {
       data-cle={etape.cle}
       data-courante={courante ? 'true' : 'false'}
       className={`relative flex gap-3 pb-4 ${isLast ? '' : 'border-l border-border ml-2.5 pl-4'}`}
-      style={isLast ? undefined : { marginLeft: '10px', paddingLeft: '16px' }}
     >
       <span className="absolute -left-[10.5px] top-0 flex size-5 items-center justify-center rounded-full bg-background">
         <StageIcon satisfait={satisfait} courante={courante} bloquant={bloquant} />

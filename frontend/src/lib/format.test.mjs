@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   toNumber, formatMAD, formatNumber, formatPercent,
   formatDate, formatDateTime, formatPhoneMA, canonicalPhoneMA, normalizeMaPhone,
+  timeAgo,
 } from './format.js'
 
 // Intl fr-FR utilise des espaces insécables variables (U+00A0 / U+202F) comme
@@ -66,6 +67,21 @@ test('formatDateTime: variante long= « 18 juin 2026, 14:05 »', () => {
   assert.match(formatDateTime(iso, { long: true }), /juin 2026/)
   assert.match(formatDateTime(iso, { long: true }), /14:05|15:05/)
   assert.equal(formatDateTime(null, { long: true }), '—')
+})
+
+// VX30 — timeAgo() extrait de TicketsPage.jsx en util partagé (bandeau de
+// fraîcheur du mur de flotte + chatter tickets).
+test('timeAgo: instant / minutes / heures / repli date', () => {
+  const now = Date.now()
+  assert.equal(timeAgo(new Date(now - 10 * 1000)), "à l'instant")
+  assert.equal(timeAgo(new Date(now - 5 * 60 * 1000)), 'il y a 5 min')
+  assert.equal(timeAgo(new Date(now - 3 * 3600 * 1000)), 'il y a 3 h')
+  // Au-delà de 24 h : repli sur formatDate (jj/mm/aaaa), jamais un
+  // toLocaleDateString brut.
+  const huit_jours = new Date(now - 8 * 24 * 3600 * 1000)
+  assert.equal(timeAgo(huit_jours), formatDate(huit_jours))
+  assert.equal(timeAgo(null), '—')
+  assert.equal(timeAgo('pas une date'), '—')
 })
 
 test('formatPhoneMA: local + international', () => {

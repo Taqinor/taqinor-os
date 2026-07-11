@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch } from 'react-redux'
 import { createClient, updateClient } from '../../features/crm/store/crmSlice'
 import {
   Form, FormSection, FormField, FormErrorSummary,
-  Input, Textarea, Segmented, Button, useDirtyGuard,
+  Input, Textarea, Segmented, Button, Switch, useDirtyGuard,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { Combobox } from '../../ui/Combobox'
@@ -50,6 +50,26 @@ function cinWarning(value) {
     : 'Le format CIN paraît inhabituel — vérifiez la saisie.'
 }
 
+// VX92 — « Créer un autre » : persisté par utilisateur/poste (localStorage),
+// défaut OFF (comportement historique inchangé). Un salon = 10 leads/clients
+// créés d'affilée ; sans ce toggle chaque création coûte un cycle
+// fermer/rouvrir (~10-30 s).
+const CREER_UN_AUTRE_KEY = 'taqinor.clientForm.creerUnAutre'
+function lireCreerUnAutre() {
+  try {
+    return window.localStorage.getItem(CREER_UN_AUTRE_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+function ecrireCreerUnAutre(v) {
+  try {
+    window.localStorage.setItem(CREER_UN_AUTRE_KEY, v ? '1' : '0')
+  } catch {
+    // localStorage indisponible (navigation privée, quota) : no-op silencieux.
+  }
+}
+
 export default function ClientForm({ client = null, onClose }) {
   const dispatch = useDispatch()
   const t = useT()
@@ -57,6 +77,11 @@ export default function ClientForm({ client = null, onClose }) {
 
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState({})
+
+  // VX92 — « Créer un autre » : uniquement pertinent à la création (jamais en
+  // édition), persisté (localStorage), défaut OFF.
+  const [creerUnAutre, setCreerUnAutre] = useState(() => !isEdit && lireCreerUnAutre())
+  const nomRef = useRef(null)
 
   const initial = useMemo(() => ({
     nom:         client?.nom         ?? '',
@@ -208,11 +233,21 @@ export default function ClientForm({ client = null, onClose }) {
       if (isEdit) {
         await dispatch(updateClient({ id: client.id, data: payload })).unwrap()
         toast.success('Client mis à jour.')
+        onClose()
       } else {
         await dispatch(createClient(payload)).unwrap()
         toast.success('Client créé.')
+        // VX92 — « Créer un autre » : on vide le formulaire et on refocalise
+        // le champ 1 au lieu de fermer le dialog.
+        if (creerUnAutre) {
+          setFields(initial)
+          setErrors({})
+          setDupWarning(null)
+          nomRef.current?.focus()
+        } else {
+          onClose()
+        }
       }
-      onClose()
     } catch (err) {
       // Map DRF field errors back to form fields
       const e = {}
@@ -274,6 +309,7 @@ export default function ClientForm({ client = null, onClose }) {
               <FormField label="Nom" required htmlFor="cf-nom" error={errors.nom}>
                 <Input
                   id="cf-nom"
+                  ref={nomRef}
                   value={fields.nom}
                   invalid={!!errors.nom}
                   onChange={e => setField('nom', e.target.value)}
@@ -498,6 +534,17 @@ export default function ClientForm({ client = null, onClose }) {
         </div>
 
         <div className="modal-footer">
+          {/* VX92 — « Créer un autre » : seulement à la création. */}
+          {!isEdit && (
+            <label className="mr-auto flex items-center gap-2 text-sm text-muted-foreground">
+              <Switch
+                checked={creerUnAutre}
+                onCheckedChange={(v) => { setCreerUnAutre(v); ecrireCreerUnAutre(v) }}
+                aria-label="Créer un autre"
+              />
+              Créer un autre
+            </label>
+          )}
           <Button type="button" variant="outline" onClick={onClose}>
             Annuler
           </Button>

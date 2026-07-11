@@ -27,6 +27,7 @@ import {
 import {
   StatusPill,
   Progress,
+  Badge,
   Select,
   SelectTrigger,
   SelectValue,
@@ -38,12 +39,14 @@ import { formatDate } from '../../../lib/format'
 // Sentinelle « aucun installateur » (le Select du design system n'accepte pas '').
 const NO_TECH = '__none__'
 
-function ChantierCard({ inst, users, onReassign }) {
+function ChantierCard({ inst, users, onReassign, isNew }) {
   const techValue = inst.technicien_responsable ? String(inst.technicien_responsable) : NO_TECH
   return (
     <div className="kb-card kc-card" style={{ '--kb-accent': STATUS_COLORS[canonicalStatus(inst.statut)] }}>
       <div className="kc-card-top">
         <span className="kc-card-ref">{inst.reference}</span>
+        {/* VX218 — badge « Nouveau » : chantier assigné depuis ma dernière visite. */}
+        {isNew && <Badge tone="success">Nouveau</Badge>}
         <StatusPill status={inst.statut} label={STATUS_LABELS[canonicalStatus(inst.statut)]} dot={false} />
       </div>
       <div className="kc-card-sub">{inst.client_nom ?? '—'}</div>
@@ -99,7 +102,7 @@ function ChantierCard({ inst, users, onReassign }) {
   )
 }
 
-function DraggableCard({ inst, users, onReassign }) {
+function DraggableCard({ inst, users, onReassign, isNew }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: inst.id, data: { inst },
   })
@@ -107,7 +110,7 @@ function DraggableCard({ inst, users, onReassign }) {
     <div ref={setNodeRef}
          className={isDragging ? 'kb-drag-wrap kb-drag-source' : 'kb-drag-wrap'}
          {...listeners} {...attributes}>
-      <ChantierCard inst={inst} users={users} onReassign={onReassign} />
+      <ChantierCard inst={inst} users={users} onReassign={onReassign} isNew={isNew} />
     </div>
   )
 }
@@ -132,7 +135,7 @@ function StatusColumn({ col, children }) {
   )
 }
 
-export default function KanbanView({ items, onOpen, onChangeStatus, users, onReassign }) {
+export default function KanbanView({ items, onOpen, onChangeStatus, users, onReassign, nouveauxIds }) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 8 } }),
@@ -176,7 +179,8 @@ export default function KanbanView({ items, onOpen, onChangeStatus, users, onRea
           <StatusColumn key={col.key} col={col}>
             {col.items.map((inst) => (
               <div key={inst.id} onClick={() => onOpen?.(inst)}>
-                <DraggableCard inst={inst} users={users} onReassign={onReassign} />
+                <DraggableCard inst={inst} users={users} onReassign={onReassign}
+                               isNew={nouveauxIds?.has(inst.id)} />
               </div>
             ))}
           </StatusColumn>

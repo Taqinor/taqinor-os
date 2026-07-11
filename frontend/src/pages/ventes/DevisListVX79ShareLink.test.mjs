@@ -31,8 +31,10 @@ test('VX79 : le lien interne est DISTINCT du lien public de proposition (règle 
   assert.doesNotMatch(block, /proposition\/|share_link|shareLinkDevis/)
 })
 
-test('VX79 : un bouton de ligne déclenche copierLienInterne', () => {
-  assert.match(SRC, /onClick=\{\(\) => copierLienInterne\(d\)\}/)
+test('VX79 : une action de ligne déclenche copierLienInterne', () => {
+  // VX20 a replié « Lien interne » dans le menu « ⋯ » (DropdownMenuItem
+  // `onSelect`) au lieu d'un bouton direct `onClick` — le handler est le même.
+  assert.match(SRC, /onSelect=\{\(\) => copierLienInterne\(d\)\}/)
   // Le handler transite par le sac de contexte de la ligne (rowCtx + destructure).
   const occurrences = (SRC.match(/copierLienInterne/g) || []).length
   assert.ok(occurrences >= 4, `attendu >=4 occurrences, trouvé ${occurrences}`)

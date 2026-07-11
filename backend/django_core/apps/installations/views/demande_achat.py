@@ -45,6 +45,37 @@ def _check_tenant(serializer, company, field):
         raise ValidationError({field: 'Objet inconnu pour cette société.'})
 
 
+def _notifier_demandeur_decision(da, approuvee):
+    """VX213 (c) — bord RETOUR : notifie le DEMANDEUR (``created_by``) de la
+    décision d'approbation de sa réquisition (motif inclus si refus).
+
+    Best-effort (ne lève jamais) : émettre la notification ne doit jamais
+    casser la transition d'approbation. No-op si aucun demandeur. Le corps
+    reste CLIENT-SAFE — aucun montant (jamais dérivé de ``prix_achat``) : la
+    décision porte sur la référence + l'objet, pas sur un prix d'achat interne.
+    La société est celle de la DA (jamais issue d'une requête)."""
+    demandeur = getattr(da, 'created_by', None)
+    if demandeur is None or not getattr(demandeur, 'pk', None):
+        return
+    try:
+        from apps.notifications.services import notify
+        from apps.notifications.models import EventType
+        if approuvee:
+            titre = f"Demande d'achat approuvée — {da.reference}"
+            corps = f"Votre demande « {da.objet} » ({da.reference}) a été approuvée."
+        else:
+            titre = f"Demande d'achat refusée — {da.reference}"
+            corps = f"Votre demande « {da.objet} » ({da.reference}) a été refusée."
+            if da.motif_refus:
+                corps += f" Motif : {da.motif_refus}"
+        notify(
+            demandeur, EventType.DA_DECIDEE, titre, body=corps,
+            link=f'/installations/demandes-achat?demande={da.pk}',
+            company=da.company)
+    except Exception:  # pragma: no cover - défensif
+        pass
+
+
 class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
     """FG310 — réquisitions d'achat. Lecture tout rôle, écriture
     responsable/admin. Référence anti-collision + société + `created_by` posés
@@ -122,6 +153,7 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
         da.motif_refus = None
         da.save(update_fields=['statut', 'approuvee_par', 'date_decision',
                                'motif_refus', 'date_modification'])
+        _notifier_demandeur_decision(da, approuvee=True)
         return Response(self.get_serializer(da).data)
 
     @action(detail=True, methods=['post'])
@@ -138,6 +170,7 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
         da.motif_refus = (request.data.get('motif_refus') or '').strip() or None
         da.save(update_fields=['statut', 'approuvee_par', 'date_decision',
                                'motif_refus', 'date_modification'])
+        _notifier_demandeur_decision(da, approuvee=False)
         return Response(self.get_serializer(da).data)
 
     @action(detail=True, methods=['post'])

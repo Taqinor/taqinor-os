@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components --
    Fichier de configuration du routeur (lazy imports + loaders), pas un module
    de composants : le fast-refresh ne s'y applique pas. */
-import { createBrowserRouter, Navigate, redirect, useLocation } from 'react-router-dom'
+import { createBrowserRouter, redirect, useLocation } from 'react-router-dom'
 import { lazy, Suspense } from 'react'
 import { store } from '../store'
 import { fetchMe } from '../features/auth/store/authSlice'
@@ -51,6 +51,9 @@ const TicketSuiviPage = lazy(() => import('../pages/sav/TicketSuiviPage'))
 const PublicArticlePage = lazy(() => import('../pages/kb/PublicArticlePage'))
 const ChatPage = lazy(() => import('../pages/messaging/ChatPage'))
 const DocumentsPage = lazy(() => import('../pages/ged/DocumentsPage'))
+// VX78 — Écran 404 déjà construit (ui/NotFound.jsx), jusqu'ici jamais importé
+// par le routeur : le catch-all rebondissait en silence vers /dashboard.
+const NotFound = lazy(() => import('../ui/NotFound'))
 
 // ── Auth loader ────────────────────────────────────────────────────────────────
 // Verifie la session via le cookie httpOnly — aucun token cote client.
@@ -79,9 +82,23 @@ const ensureSession = async () => {
   return bootstrapPromise
 }
 
-const authLoader = async () => {
+// VX65 — Lien profond survivant à une reconnexion : si la session a expiré,
+// on capture l'URL d'origine (`?next=`) avant de rediriger vers /login, pour
+// que Login.jsx puisse y revenir après une connexion réussie (au lieu de
+// toujours retomber sur /dashboard). Le loader reçoit le `Request` de
+// react-router — on lit son URL, pas `window.location` (SSR-safe/testable).
+const buildLoginRedirect = (request) => {
+  const url = new URL(request.url)
+  const next = url.pathname + url.search + url.hash
+  if (next && next !== '/') {
+    return redirect(`/login?next=${encodeURIComponent(next)}`)
+  }
+  return redirect('/login')
+}
+
+const authLoader = async ({ request }) => {
   const ok = await ensureSession()
-  return ok ? null : redirect('/login')
+  return ok ? null : buildLoginRedirect(request)
 }
 
 // ERR27 — Garde de rôle/permission sur les routes d'administration. Reflète
@@ -90,9 +107,9 @@ const authLoader = async () => {
 // qu'elle est présente dans les permissions de l'utilisateur. Sinon, l'utilisateur
 // authentifié mais non autorisé est renvoyé vers `/dashboard` (accessible à tous),
 // au lieu de monter la page d'admin via un lien direct.
-const roleLoader = (roles, perm) => async () => {
+const roleLoader = (roles, perm) => async ({ request }) => {
   const ok = await ensureSession()
-  if (!ok) return redirect('/login')
+  if (!ok) return buildLoginRedirect(request)
   const { role, permissions } = store.getState().auth
   const tier = role || 'normal'
   const allowed = roles.includes(tier) && (!perm || (permissions || []).includes(perm))
@@ -198,8 +215,9 @@ const router = createBrowserRouter([
   // route est gatée par le même authLoader/roleLoader que le reste de l'app.
   ...buildModuleRoutes({ WithLayout, authLoader, roleLoader }),
 
-  // Catch-all
-  { path: '*', element: <Navigate to="/dashboard" replace /> },
+  // Catch-all — VX78 : un favori/lien périmé affiche désormais l'écran 404
+  // (ui/NotFound.jsx) au lieu de rebondir en silence vers /dashboard.
+  { path: '*', element: <WithLayout><NotFound /></WithLayout> },
 ])
 
 export default router

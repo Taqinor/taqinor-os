@@ -1,4 +1,4 @@
-import { forwardRef } from 'react'
+import { forwardRef, useRef, useState } from 'react'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { X } from 'lucide-react'
 import { cn } from '../lib/cn'
@@ -16,10 +16,52 @@ const SIDE = {
   top: 'inset-x-0 top-0 max-h-[85vh] w-full rounded-b-2xl border-b',
 }
 
+// VX43 — Glisser-vers-le-bas-pour-fermer, UNIQUEMENT sur les bottom-sheets
+// (`side="bottom"`) : le geste terrain attendu (sheets iOS/Android). Zéro
+// dépendance : touchstart/move/end sur le contenu, seuil de distance avant
+// d'armer (anti-scroll-vertical-interne d'une longue liste de panneaux), et un
+// lâcher au-delà du seuil déclenche la fermeture RÉELLE via un clic
+// programmatique sur `DialogPrimitive.Close` (le seul point d'accès à
+// `onOpenChange` que Radix Dialog expose sans changer l'API du composant).
+const DRAG_CLOSE_THRESHOLD = 80
+
 export const SheetContent = forwardRef(function SheetContent(
   { className, children, side = 'right', showClose = true, ...props },
   ref,
 ) {
+  const draggable = side === 'bottom'
+  const [dragY, setDragY] = useState(0)
+  const dragging = useRef(false)
+  const startY = useRef(0)
+  const closeRef = useRef(null)
+
+  const onTouchStart = (e) => {
+    if (!draggable) return
+    const t = e.touches?.[0]
+    if (!t) return
+    startY.current = t.clientY
+    dragging.current = false
+  }
+  const onTouchMove = (e) => {
+    if (!draggable) return
+    const t = e.touches?.[0]
+    if (!t) return
+    const delta = t.clientY - startY.current
+    // On n'arme le geste QUE vers le bas (un tirage vers le haut ne fait rien
+    // ici — le contenu peut avoir son propre scroll interne vers le haut).
+    if (delta <= 0) return
+    dragging.current = true
+    setDragY(delta)
+  }
+  const onTouchEnd = () => {
+    if (!draggable) return
+    if (dragging.current && dragY >= DRAG_CLOSE_THRESHOLD) {
+      closeRef.current?.click()
+    }
+    dragging.current = false
+    setDragY(0)
+  }
+
   return (
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay
@@ -33,16 +75,36 @@ export const SheetContent = forwardRef(function SheetContent(
           SIDE[side],
           className,
         )}
+        style={draggable && dragY ? { transform: `translateY(${dragY}px)`, transition: 'none' } : undefined}
+        onTouchStart={draggable ? onTouchStart : undefined}
+        onTouchMove={draggable ? onTouchMove : undefined}
+        onTouchEnd={draggable ? onTouchEnd : undefined}
+        onTouchCancel={draggable ? onTouchEnd : undefined}
         {...props}
       >
+        {/* VX43 — poignée visuelle de bottom-sheet : affordance « glisser pour
+            fermer », posée seulement côté bottom (jamais sur right/left/top). */}
+        {draggable && (
+          <div
+            aria-hidden="true"
+            className="mx-auto -mt-1 mb-1 h-1.5 w-10 shrink-0 rounded-full bg-muted-foreground/30"
+          />
+        )}
         {children}
         {showClose && (
           <DialogPrimitive.Close
+            ref={closeRef}
             className="absolute right-3 top-3 rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="Fermer"
           >
             <X className="size-4" />
           </DialogPrimitive.Close>
+        )}
+        {/* Fermeture programmatique du glisser-pour-fermer quand `showClose`
+            est désactivé par l'écran : bouton invisible mais toujours présent
+            pour que le clic programmatique du drag fonctionne malgré tout. */}
+        {draggable && !showClose && (
+          <DialogPrimitive.Close ref={closeRef} className="sr-only" aria-hidden="true" tabIndex={-1} />
         )}
       </DialogPrimitive.Content>
     </DialogPrimitive.Portal>

@@ -11,7 +11,10 @@
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>TAQINOR — ERP Agentique</title>
-    <link rel="stylesheet" href="/fonts/sora.css" />
+    <!-- Sora (police Landing uniquement) N'EST PLUS chargée ici (VX57) : elle
+         bloquait le rendu de CHAQUE écran (dont /login) pour une police
+         utilisée seulement par /landing. Importée depuis Landing.jsx à la
+         place — Vite la rattache au chunk lazy de la page. -->
     <!-- Polices de marque de la refonte UI (F16) : Archivo (titres) + Hanken
          Grotesk (corps). Préchargées pour éviter le flash de texte sans style. -->
     <link rel="preload" href="/fonts/hanken-latin.woff2" as="font" type="font/woff2" crossorigin />

@@ -3,6 +3,7 @@ import api from '../../api/axios'
 import { Badge, Button, Spinner } from '../../ui'
 import ClientRgpdActions from './ClientRgpdActions'
 import { formatMAD } from '../../lib/format'
+import { telHref, waHref } from '../../lib/contactLinks'
 
 // Panneau détail client (L4) — lecture seule : devis, factures et chantiers
 // liés au client, avec référence / statut / total (montants client-facing
@@ -80,6 +81,9 @@ export default function ClientDetailPanel({ client, onClose, onNewDevis, onChang
   }, [client.id])
 
   const nomComplet = [client.nom, client.prenom].filter(Boolean).join(' ')
+  // VX108 — tap-to-call : le panneau n'affichait jusqu'ici aucun téléphone.
+  const tel = telHref(client.telephone)
+  const wa = waHref(client.whatsapp)
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -89,6 +93,20 @@ export default function ClientDetailPanel({ client, onClose, onNewDevis, onChang
           <button type="button" className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">
+          {(tel || wa) && (
+            <div className="mb-4 flex flex-wrap gap-3 text-sm">
+              {tel && (
+                <a className="link-blue" href={tel} title="Appeler">
+                  ☎ {client.telephone}
+                </a>
+              )}
+              {wa && (
+                <a className="link-blue" href={wa} target="_blank" rel="noopener noreferrer" title="Ouvrir WhatsApp">
+                  WhatsApp
+                </a>
+              )}
+            </div>
+          )}
           {loading && (
             <p className="page-loading"><Spinner /> Chargement des documents…</p>
           )}

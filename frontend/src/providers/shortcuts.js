@@ -14,10 +14,26 @@ export const GOTO_SHORTCUTS = [
   { keys: 'g t', to: '/sav', label: 'Aller au SAV' },
 ]
 
+// VX73 — l'ERP tourne réellement sur Windows/Linux (glyphe ⌘ codé en dur
+// mentait sur la plateforme) : détecte Mac vs le reste pour choisir le bon
+// libellé de raccourci clavier. `navigator` est absent en SSR/Node → repli LTR
+// « Ctrl K » (comportement Windows/Linux, la plateforme réelle de l'ERP).
+export function isMacPlatform(nav) {
+  const n = nav || (typeof navigator !== 'undefined' ? navigator : null)
+  if (!n) return false
+  const platform = n.platform || ''
+  const uaData = n.userAgentData && n.userAgentData.platform
+  return /mac/i.test(platform) || /mac/i.test(uaData || '')
+}
+
+export function quickSearchShortcutLabel(nav) {
+  return isMacPlatform(nav) ? '⌘ K' : 'Ctrl K'
+}
+
 // Raccourcis « globaux » affichés dans l'aide (les actions sont câblées
-// ailleurs : ⌘K par la palette, ? par le ShortcutsProvider).
+// ailleurs : ⌘K/Ctrl K par la palette, ? par le ShortcutsProvider).
 export const GLOBAL_SHORTCUTS = [
-  { keys: '⌘ K', label: 'Ouvrir la recherche rapide' },
+  { keys: quickSearchShortcutLabel(), label: 'Ouvrir la recherche rapide' },
   { keys: '?', label: 'Afficher l’aide des raccourcis' },
 ]
 

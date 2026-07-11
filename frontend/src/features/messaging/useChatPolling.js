@@ -1,10 +1,17 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useDispatch } from 'react-redux'
 import {
   fetchConversations,
   fetchUnreadCount,
   fetchMessages,
 } from './store/messagingSlice'
+
+// VX204 — rien ne détectait une SÉRIE d'échecs de sondage (silence total :
+// aucun `.catch`). Chaque source (liste / non-lus / messages actifs) a son
+// PROPRE compteur d'échecs consécutifs — une source qui réussit ne doit
+// jamais masquer une autre source en échec. `stalled` = au moins une source a
+// atteint le seuil ; un succès de CETTE source relève aussitôt son compteur.
+const STALL_THRESHOLD = 3
 
 // S12 — Sondage intelligent (short-poll) du chat. Trois cadences :
 //   • conversation OUVERTE : ~3 s (messages frais quasi temps réel),
@@ -43,23 +50,45 @@ export default function useChatPolling(
   // jour dans un effet (jamais pendant le rendu).
   const activeRef = useRef(activeConversationId)
   const timersRef = useRef([])
+  // Un compteur d'échecs consécutifs PAR source de sondage.
+  const failCountsRef = useRef({ list: 0, unread: 0, active: 0 })
+  const [stalled, setStalled] = useState(false)
 
   useEffect(() => {
     activeRef.current = activeConversationId
   }, [activeConversationId])
 
+  // Comptabilise le résultat d'un dispatch de sondage pour SA source (rejected
+  // → +1, sinon reset à 0). ≥3 échecs consécutifs sur une source → `stalled`;
+  // un succès de cette même source le relève (les autres sources n'affectent
+  // jamais son compteur).
+  const trackResult = (source) => (action) => {
+    const failed = action?.type?.endsWith('/rejected')
+    const counts = failCountsRef.current
+    counts[source] = failed ? counts[source] + 1 : 0
+    setStalled(Object.values(counts).some((n) => n >= STALL_THRESHOLD))
+  }
+
   const pollActive = () => {
     if (isHidden()) return
     const id = activeRef.current
-    if (id != null) dispatch(fetchMessages({ conversationId: id }))
+    if (id != null) dispatch(fetchMessages({ conversationId: id })).then(trackResult('active'))
   }
   const pollList = () => {
     if (isHidden()) return
-    dispatch(fetchConversations())
+    dispatch(fetchConversations()).then(trackResult('list'))
   }
   const pollUnread = () => {
     if (isHidden()) return
-    dispatch(fetchUnreadCount())
+    dispatch(fetchUnreadCount()).then(trackResult('unread'))
+  }
+
+  // Reprise manuelle : relance immédiatement les trois sondages (l'utilisateur
+  // clique l'indicateur « Mise à jour interrompue »).
+  const resume = () => {
+    pollList()
+    pollUnread()
+    pollActive()
   }
 
   const stop = () => {
@@ -108,4 +137,6 @@ export default function useChatPolling(
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeConversationId, enabled, activeMs, listMs, unreadMs])
+
+  return { stalled, resume }
 }

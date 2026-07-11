@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { PackageCheck, Plus, ReceiptText, Tags } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import { formatMAD } from '../../lib/format'
+import { openPdfInGesture } from '../../utils/pdfBlob'
 import {
   Button, StatusPill, DataTable,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -271,13 +272,17 @@ export function ReceptionDetail({ reception, onClose, onSaved }) {
   // numéro de série reçu + une par lot renseigné sur cette réception.
   const aSerieOuLot = lignes.some(
     (l) => (l.numeros_serie ?? []).length > 0 || l.numero_lot)
+  // VX48 — onglet pré-ouvert SYNCHRONE avant l'await (Safari iOS bloque
+  // silencieusement un window.open() post-await).
   const imprimerEtiquettes = async () => {
+    const pending = openPdfInGesture()
     setLabelsBusy(true); setError(null)
     try {
       const res = await stockApi.receptionEtiquettes(reception.id)
-      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }))
-      window.open(url, '_blank', 'noopener')
-      setTimeout(() => URL.revokeObjectURL(url), 60000)
+      const blob = new Blob([res.data], { type: 'application/pdf' })
+      if (!pending.deliver(blob, `etiquettes-reception-${reception.id}.pdf`)) {
+        setError('Ouverture bloquée par le navigateur.')
+      }
     } catch (err) {
       setError(frError(err, "L'impression des étiquettes a échoué."))
     } finally { setLabelsBusy(false) }

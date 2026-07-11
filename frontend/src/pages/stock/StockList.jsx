@@ -31,7 +31,8 @@ import {
 import { validateTransfert, totalVentile, quantiteEmplacement, produitDansEmplacement } from '../../features/stock/emplacements'
 import { normalizeCode, isValidCode, resolveTarget } from '../../features/stock/labels'
 import BarcodeScanner from '../../features/pwa/BarcodeScanner'
-import { toastError, toastSuccess } from '../../lib/toast'
+import { toastError, toastSuccess, toastWithUndo } from '../../lib/toast'
+import { openPdfInGesture } from '../../utils/pdfBlob'
 import { useCanCreateProduit, useHasPermission, useIsAdmin, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import {
   Button, IconButton, Badge, Checkbox, Input, Spinner, Skeleton,
@@ -677,14 +678,18 @@ export default function StockList() {
   }
   // N20 — Imprime des étiquettes QR pour la sélection (PDF ; jamais de prix
   // d'achat — l'étiquette ne porte que nom + SKU + jeton PRODUIT:<id>).
+  // VX48 — onglet pré-ouvert SYNCHRONE avant l'await (Safari iOS bloque
+  // silencieusement un window.open() post-await).
   const printLabels = async () => {
     if (!visibleSelected.size) return
+    const pending = openPdfInGesture()
     setLabelsBusy(true)
     try {
       const res = await stockApi.etiquettesProduits([...visibleSelected])
-      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }))
-      window.open(url, '_blank', 'noopener')
-      setTimeout(() => URL.revokeObjectURL(url), 60000)
+      const blob = new Blob([res.data], { type: 'application/pdf' })
+      if (!pending.deliver(blob, 'etiquettes.pdf')) {
+        toastError('Ouverture bloquée par le navigateur.')
+      }
     } catch { toastError('Génération des étiquettes indisponible.') }
     finally { setLabelsBusy(false) }
   }
@@ -800,6 +805,18 @@ export default function StockList() {
       if (result.archived) {
         setArchiveNotif(result.detail)
         setTimeout(() => setArchiveNotif(null), 6000)
+        // VX95 — archivage (produit avec mouvements) déjà commis serveur :
+        // « Annuler » relance l'action inverse (unarchiveProduit). Un vrai
+        // delete (204, non archivé) n'est pas réversible ici — pas de toast.
+        toastWithUndo({
+          message: 'Produit archivé.',
+          onUndo: async () => {
+            try {
+              await dispatch(unarchiveProduit(p.id)).unwrap()
+              dispatch(fetchProduitsArchived())
+            } catch { toastError('Désarchivage impossible.') }
+          },
+        })
       }
     } catch (err) {
       alert(err?.detail ?? 'Erreur lors de la suppression.')
@@ -811,6 +828,15 @@ export default function StockList() {
     try {
       await dispatch(unarchiveProduit(p.id)).unwrap()
       dispatch(fetchProduitsArchived())
+      toastWithUndo({
+        message: 'Produit désarchivé.',
+        onUndo: async () => {
+          try {
+            await dispatch(deleteProduit(p.id)).unwrap()
+            dispatch(fetchProduitsArchived())
+          } catch { toastError('Archivage impossible.') }
+        },
+      })
     } catch (err) {
       alert(err?.detail ?? 'Erreur lors du désarchivage.')
     }

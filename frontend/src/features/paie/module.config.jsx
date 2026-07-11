@@ -29,6 +29,7 @@ export default {
   order: 30,
   nav: {
     label: 'PAIE',
+    accent: 'azur', // VX8 — RH/paie = accent azur (dérivé)
     items: [
       { to: '/paie', label: 'Run de paie',
         icon: <Wallet {...ICON} />, roles: PALIER },

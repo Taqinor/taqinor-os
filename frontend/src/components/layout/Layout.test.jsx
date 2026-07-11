@@ -23,6 +23,8 @@ function makeStore() {
     reducer: {
       auth: (s = { isAuthenticated: true, user: { username: 'u' } }) => s,
       parametres: (s = { profile: {} }) => s,
+      // VX57 — Layout lit désormais s.ia.copilotOpen (mount paresseux du copilote).
+      ia: (s = { copilotOpen: false }) => s,
     },
   })
 }

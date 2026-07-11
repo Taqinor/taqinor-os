@@ -26,6 +26,7 @@ const config = {
   order: 55,
   nav: {
     label: 'MARKETING',
+    accent: 'brass', // VX8 — commercial/croissance = accent brass (dérivé)
     items: [
       { to: '/marketing/calendrier', label: 'Calendrier marketing', icon: <CalendarDays size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/marketing/campagnes', label: 'Campagnes', icon: <Megaphone size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },

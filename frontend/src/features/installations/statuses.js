@@ -358,6 +358,7 @@ export const EMPTY_FILTERS = {
   art33: '', // '' | 'seuls'
   annule: 'avec', // 'avec' | 'sans' | 'seuls'
   mine: '', // '' | 'only' (filtre SERVEUR « Mes chantiers »)
+  nouveaux: false, // VX218 — filtre CLIENT « Mes nouveaux chantiers »
 }
 
 export function filterInstallations(items, filters) {
@@ -380,6 +381,20 @@ export function filterInstallations(items, filters) {
       (it.technicien_nom ?? '').toLowerCase().includes(q)
     )
   })
+}
+
+// VX218 — un chantier est « nouveau pour moi » quand il m'est assigné
+// (technicien_responsable = mon id) et que sa `date_creation` est postérieure
+// à ma dernière visite de l'écran (`lastSeen`, timestamp ISO ou null = tout
+// est nouveau). Aucun champ de date de RÉASSIGNATION n'existe côté modèle
+// aujourd'hui (VX213 non construit) : `date_creation` est le seul horodatage
+// réel disponible — jamais de fabrication d'un champ absent.
+export function isNewlyAssigned(item, userId, lastSeen) {
+  if (!item || !userId) return false
+  if (item.technicien_responsable !== userId) return false
+  if (!item.date_creation) return false
+  if (!lastSeen) return true
+  return new Date(item.date_creation).getTime() > new Date(lastSeen).getTime()
 }
 
 // Tri funnel-aware : par défaut on trie par statut (ordre d'entonnoir) puis

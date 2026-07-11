@@ -333,9 +333,12 @@ describe('DevisList — QG10 : modale « Variante » (% + navigation comparaison
   }])
 
   it('ouvre une modale pré-remplie depuis la config société (variante_pct)', async () => {
+    const user = userEvent.setup()
     renderList({ loading: false, devis: draft(), role_nom: 'Directeur' })
     const row = screen.getByText('DEV-VAR').closest('tr')
-    fireEvent.click(within(row).getByRole('button', { name: /Variante/ }))
+    // VX20 — « Variante » vit désormais dans le menu « Plus d'actions ».
+    await user.click(within(row).getByRole('button', { name: /Plus d'actions/ }))
+    await user.click(await screen.findByRole('menuitem', { name: /Variante/ }))
     // La config est lue (GET variante-config) et le % pré-rempli à 25.
     await waitFor(() => {
       expect(ventesApi.getVarianteConfig).toHaveBeenCalled()
@@ -347,9 +350,11 @@ describe('DevisList — QG10 : modale « Variante » (% + navigation comparaison
   })
 
   it('crée les variantes avec le % puis ouvre la comparaison (panneau versions)', async () => {
+    const user = userEvent.setup()
     renderList({ loading: false, devis: draft(), role_nom: 'Commercial responsable' })
     const row = screen.getByText('DEV-VAR').closest('tr')
-    fireEvent.click(within(row).getByRole('button', { name: /Variante/ }))
+    await user.click(within(row).getByRole('button', { name: /Plus d'actions/ }))
+    await user.click(await screen.findByRole('menuitem', { name: /Variante/ }))
     await screen.findByLabelText(/Pourcentage de variation/)
     fireEvent.click(screen.getByRole('button', { name: /Créer les variantes/ }))
     await waitFor(() => {
@@ -363,9 +368,11 @@ describe('DevisList — QG10 : modale « Variante » (% + navigation comparaison
   })
 
   it('rend le champ % en lecture seule pour un rôle non autorisé', async () => {
+    const user = userEvent.setup()
     renderList({ loading: false, devis: draft(), role: 'commercial', role_nom: 'Commercial' })
     const row = screen.getByText('DEV-VAR').closest('tr')
-    fireEvent.click(within(row).getByRole('button', { name: /Variante/ }))
+    await user.click(within(row).getByRole('button', { name: /Plus d'actions/ }))
+    await user.click(await screen.findByRole('menuitem', { name: /Variante/ }))
     const input = await screen.findByLabelText(/Pourcentage de variation/)
     expect(input).toHaveAttribute('readonly')
   })
@@ -385,16 +392,20 @@ describe('DevisList — QG11/QG12 : design 3D (roof_layout) lecture seule', () =
     },
   }])
 
-  it('affiche le bouton « Design 3D » et ouvre le panneau en lecture seule', () => {
+  it('affiche l\'action « Design 3D » dans le menu « Plus » et ouvre le panneau en lecture seule', async () => {
+    const user = userEvent.setup()
     renderList({ loading: false, devis: withRoof() })
     const row = screen.getByText('DEV-ROOF').closest('tr')
-    fireEvent.click(within(row).getByRole('button', { name: /Design 3D/ }))
+    // VX20 — « Design 3D » vit désormais dans le menu « Plus d'actions ».
+    await user.click(within(row).getByRole('button', { name: /Plus d'actions/ }))
+    await user.click(await screen.findByRole('menuitem', { name: /^Design 3D$/ }))
     // Le plan SVG (RoofViewer) apparaît dans le détail.
     expect(screen.getByTestId('roofviewer-svg')).toBeTruthy()
     expect(screen.getByText(/Design 3D de la toiture — DEV-ROOF/)).toBeTruthy()
   })
 
-  it('n\'affiche AUCUN bouton design 3D quand le devis n\'a pas de roof_layout', () => {
+  it('n\'affiche AUCUNE action design 3D quand le devis n\'a pas de roof_layout', async () => {
+    const user = userEvent.setup()
     renderList({
       loading: false,
       devis: [{
@@ -403,14 +414,20 @@ describe('DevisList — QG11/QG12 : design 3D (roof_layout) lecture seule', () =
       }],
     })
     const row = screen.getByText('DEV-NOROOF').closest('tr')
-    expect(within(row).queryByRole('button', { name: /Design 3D/ })).toBeNull()
+    await user.click(within(row).getByRole('button', { name: /Plus d'actions/ }))
+    expect(await screen.findByRole('menu')).toBeTruthy()
+    expect(screen.queryByRole('menuitem', { name: /Design 3D/ })).toBeNull()
   })
 
-  it('ouvre la fenêtre plein écran (/ventes/devis/:id/3d) via l\'affordance', () => {
+  it('ouvre la fenêtre plein écran (/ventes/devis/:id/3d) via l\'affordance', async () => {
+    const user = userEvent.setup()
     const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
     renderList({ loading: false, devis: withRoof() })
     const row = screen.getByText('DEV-ROOF').closest('tr')
-    fireEvent.click(within(row).getByRole('button', { name: /Ouvrir le design 3D de DEV-ROOF dans une fenêtre/ }))
+    await user.click(within(row).getByRole('button', { name: /Plus d'actions/ }))
+    await user.click(await screen.findByRole(
+      'menuitem', { name: /Ouvrir le design 3D de DEV-ROOF dans une fenêtre/ },
+    ))
     expect(openSpy).toHaveBeenCalledWith('/ventes/devis/30/3d', '_blank', 'noopener')
     openSpy.mockRestore()
   })
@@ -418,6 +435,7 @@ describe('DevisList — QG11/QG12 : design 3D (roof_layout) lecture seule', () =
 
 describe('DevisList — WR2 : copier le lien de proposition (share_link)', () => {
   it('appelle shareLinkDevis et copie l\'URL publique au presse-papier', async () => {
+    const user = userEvent.setup()
     const writeText = vi.fn(() => Promise.resolve())
     // navigator.clipboard peut être un getter en lecture seule selon la version
     // de jsdom → defineProperty (configurable) au lieu d'Object.assign qui jette.
@@ -432,7 +450,10 @@ describe('DevisList — WR2 : copier le lien de proposition (share_link)', () =>
       }],
     })
     const row = screen.getByText('DEV-SHARE').closest('tr')
-    fireEvent.click(within(row).getByRole('button', { name: /Copier le lien/ }))
+    // VX20 — « Copier le lien de la proposition » vit désormais dans le menu
+    // « Plus d'actions ».
+    await user.click(within(row).getByRole('button', { name: /Plus d'actions/ }))
+    await user.click(await screen.findByRole('menuitem', { name: /Copier le lien de la proposition/ }))
     await waitFor(() => {
       expect(ventesApi.shareLinkDevis).toHaveBeenCalledWith(40)
     })

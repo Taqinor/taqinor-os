@@ -11,6 +11,7 @@ import { formatMAD, formatDate, formatDateTime } from '../../lib/format'
 import { StatutContrat, StatutResiliation, CONTRAT_STATUS } from './status'
 import StateMachine from './StateMachine'
 import SimpleTable from './SimpleTable'
+import { openPdfInGesture } from '../../utils/pdfBlob'
 
 /* ============================================================================
    UX34 (détail) — Fiche cycle de vie d'un contrat + actions du cycle de vie.
@@ -79,12 +80,16 @@ export default function ContratDetail() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- refetch only when id changes
   }, [id])
 
+  // VX48 — onglet pré-ouvert SYNCHRONE avant l'await (Safari iOS bloque
+  // silencieusement un window.open() post-await).
   const genererPdf = async () => {
+    const pending = openPdfInGesture()
     try {
       const res = await contratsApi.getPdf(id)
-      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }))
-      window.open(url, '_blank', 'noopener')
-      setTimeout(() => URL.revokeObjectURL(url), 60000)
+      const blob = new Blob([res.data], { type: 'application/pdf' })
+      if (!pending.deliver(blob, `contrat-${id}.pdf`)) {
+        toast.error('Ouverture bloquée par le navigateur.')
+      }
     } catch { toast.error('PDF indisponible.') }
   }
 

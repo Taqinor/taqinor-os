@@ -215,6 +215,9 @@ export default function Journal() {
   const [count, setCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  // VX204 — un échec de `getMeta()` rendait des menus de filtre vides sans le
+  // dire (indiscernable de « aucune valeur possible »).
+  const [metaError, setMetaError] = useState(false)
 
   const range = useMemo(() => periodRange(period, date), [period, date])
 
@@ -229,9 +232,14 @@ export default function Journal() {
   }, [users, action, moduleF, search])
 
   // Métadonnées (une fois).
+  const loadMeta = () => {
+    auditApi.getMeta()
+      .then((r) => { setMeta(r.data); setMetaError(false) })
+      .catch(() => setMetaError(true))
+  }
   useEffect(() => {
     if (!allowed) return
-    auditApi.getMeta().then((r) => setMeta(r.data)).catch(() => {})
+    loadMeta()
   }, [allowed])
 
   // Graphe + table : période + date + filtres + page. Le setState vit dans une
@@ -323,6 +331,13 @@ export default function Journal() {
           className="h-[var(--control-h)] rounded-md border border-input bg-card px-[var(--control-px)] text-sm text-foreground shadow-ui-xs focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
       </div>
+
+      {metaError && (
+        <p className="form-error mb-2" role="alert">
+          Filtres indisponibles (utilisateurs/actions/modules).{' '}
+          <button type="button" className="chatter-retry" onClick={loadMeta}>Réessayer</button>
+        </p>
+      )}
 
       {/* Barre de filtres */}
       <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">

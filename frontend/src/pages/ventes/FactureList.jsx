@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Link } from 'react-router-dom'
 import {
@@ -20,7 +20,8 @@ import importApi, { downloadXlsx } from '../../api/importApi'
 import FactureForm from './FactureForm'
 import FactureKanbanBoard from './FactureKanbanBoard'
 import {
-  Button, Badge, StatusPill, Card, EmptyState, Spinner,
+  Button, Badge, StatusPill, Card, EmptyState, Spinner, Switch,
+  Skeleton, SkeletonTableRow,
   Tabs, TabsList, TabsTrigger,
   Input, Checkbox,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
@@ -31,7 +32,41 @@ import {
 } from '../../ui'
 import { formatMAD, toNumber, normalizeMaPhone, formatDateTime } from '../../lib/format'
 import { useSavedViews } from '../../hooks/useSavedViews'
+import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import { DataTable } from '../../ui/datatable'
+import { openPdfBlob, openPdfInGesture } from '../../utils/pdfBlob'
+
+// VX21 — squelette de la liste (parité DevisList/DevisTableSkeleton) : reprend
+// les 8 colonnes du vrai tableau pour que la mise en page ne saute pas à
+// l'arrivée des données. Affiché dans la même carte que le tableau réel, en
+// gardant l'en-tête de page visible.
+function FactureTableSkeleton() {
+  return (
+    <Card className="mt-4 overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th className="w-10" />
+              <th>Référence</th>
+              <th>Client</th>
+              <th>Émission</th>
+              <th>Échéance</th>
+              <th className="ta-right">Total TTC</th>
+              <th>Statut</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {Array.from({ length: 6 }).map((unused, i) => (
+              <SkeletonTableRow key={i} columns={8} />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  )
+}
 
 const FL_SAVED_VIEWS_KEY = 'taqinor.ventes.factures.savedViews'
 
@@ -108,6 +143,26 @@ const isOverdue = f =>
   f.is_overdue ||
   (f.statut === 'emise' && f.date_echeance && f.date_echeance < today)
 
+// VX92 — « Créer un autre » : persisté par utilisateur/poste (localStorage),
+// défaut OFF (comportement historique inchangé). Un relevé bancaire = 5
+// paiements à saisir d'affilée ; sans ce toggle chaque paiement coûte un
+// cycle fermer/rouvrir (~10-30 s).
+const PAY_CREER_UN_AUTRE_KEY = 'taqinor.factureList.paiement.creerUnAutre'
+function lireCreerUnAutrePaiement() {
+  try {
+    return window.localStorage.getItem(PAY_CREER_UN_AUTRE_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+function ecrireCreerUnAutrePaiement(v) {
+  try {
+    window.localStorage.setItem(PAY_CREER_UN_AUTRE_KEY, v ? '1' : '0')
+  } catch {
+    // localStorage indisponible (navigation privée, quota) : no-op silencieux.
+  }
+}
+
 // Prochaine action contextuelle (next-best-action) : clé de l'action mise en
 // avant selon statut/montant dû/retard. Une brouillon → Émettre ; une émise en
 // retard → Relancer ; une émise partiellement payée → Encaisser ; sinon null.
@@ -117,19 +172,6 @@ function nextBestAction(f) {
   if (isOverdue(f)) return 'relancer'
   if (toNumber(f.montant_paye) > 0 && toNumber(f.montant_du) > 0) return 'encaisser'
   return null
-}
-
-function openPdfBlob(blob, filename) {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.target = '_blank'
-  a.rel = 'noopener'
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  setTimeout(() => URL.revokeObjectURL(url), 10000)
 }
 
 // ── ARC53 — Ligne de la liste des factures (« lignes divisées »). Extraite
@@ -198,9 +240,9 @@ function FactureRow({ f, ctx }) {
           </Badge>
         )}
       </td>
-      <td>{f.client_nom ?? '—'}</td>
-      <td>{new Date(f.date_emission).toLocaleDateString('fr-FR')}</td>
-      <td>
+      <td data-label="Client">{f.client_nom ?? '—'}</td>
+      <td data-label="Émission">{new Date(f.date_emission).toLocaleDateString('fr-FR')}</td>
+      <td data-label="Échéance">
         {echeanceEditId === f.id ? (
           <span className="flex items-center gap-1">
             <Input type="date" className="w-36" value={echeanceValue}
@@ -225,7 +267,7 @@ function FactureRow({ f, ctx }) {
           </span>
         )}
       </td>
-      <td className="ta-right tabular-nums">
+      <td className="ta-right tabular-nums" data-label="Total TTC">
         {f.total_ttc != null ? formatMAD(f.total_ttc) : '—'}
         {(f.montant_paye != null || f.montant_du != null) && (
           <div className="mt-0.5 text-xs text-muted-foreground">
@@ -233,7 +275,7 @@ function FactureRow({ f, ctx }) {
           </div>
         )}
       </td>
-      <td>
+      <td data-label="Statut">
         <StatusPill status={statutKey} label={STATUT_DISPLAY[statutKey] ?? STATUT_DISPLAY.brouillon} />
         {['emise', 'payee', 'en_retard'].includes(f.statut) && f.statut_teledeclaration && (
           <Badge
@@ -365,6 +407,9 @@ export default function FactureList() {
   const dispatch = useDispatch()
   const { factures, loading, error } = useSelector(s => s.ventes)
   const isAdmin = useSelector(s => s.auth.role) === 'admin'
+  // VX21 — chargement différé anti-scintillement (parité DevisList) : spinner
+  // discret puis squelette, en-tête de page toujours visible.
+  const { showSpinner, showSkeleton } = useDelayedLoading(loading)
 
   // ── Avoir (note de crédit) : modale total OU partiel ──
   const [avoirTarget, setAvoirTarget] = useState(null) // facture ciblée
@@ -474,6 +519,9 @@ export default function FactureList() {
   const [payReference, setPayReference] = useState('')
   // ZFAC11 — proposition d'arrondi de caisse (règlement espèces).
   const [arrondiCaisse, setArrondiCaisse] = useState(null)
+  // VX92 — « Créer un autre » : persisté, défaut OFF.
+  const [payCreerUnAutre, setPayCreerUnAutre] = useState(() => lireCreerUnAutrePaiement())
+  const payMontantRef = useRef(null)
 
   // Chatter facture (avoirs + paiements) chargé à l'ouverture de la modale.
   const [factureActivites, setFactureActivites] = useState([])
@@ -528,9 +576,20 @@ export default function FactureList() {
         mode: payMode,
         reference: payReference || undefined,
       })
-      setPayTarget(null)
       dispatch(fetchFactures())
-      alert('Paiement enregistré.')
+      toast.success('Paiement enregistré.')
+      // VX92 — « Créer un autre » : on vide les champs (sauf la facture
+      // ciblée, inchangée) et on refocalise le montant au lieu de fermer.
+      if (payCreerUnAutre) {
+        setPayMontant('')
+        setPayDate(today)
+        setPayMode('virement')
+        setPayReference('')
+        loadActivites(payTarget.id)
+        payMontantRef.current?.focus()
+      } else {
+        setPayTarget(null)
+      }
     } catch (err) {
       alert(err?.response?.data?.detail ?? 'Enregistrement du paiement impossible.')
     } finally {
@@ -608,6 +667,47 @@ export default function FactureList() {
     }
     return total
   }, [factures])
+
+  // VX21 — cockpit trésorerie : 3 cartes additionnelles dérivées des factures
+  // déjà chargées (aucun appel réseau). Encaissé ce mois (au-dessus) mesure le
+  // flux entrant ; Total dû / En retard / À échoir ≤7 j mesurent l'encours.
+  const encaisseMoisPrecedent = useMemo(() => {
+    const d = new Date()
+    d.setMonth(d.getMonth() - 1)
+    const ym = d.toISOString().slice(0, 7)
+    let total = 0
+    for (const f of factures) {
+      for (const p of (f.paiements || [])) {
+        if ((p.date_paiement || '').slice(0, 7) === ym) {
+          total += toNumber(p.montant) || 0
+        }
+      }
+    }
+    return total
+  }, [factures])
+
+  const totalDu = useMemo(
+    () => factures.reduce((s, f) => s + (toNumber(f.montant_du) || 0), 0),
+    [factures])
+
+  const totalEnRetard = useMemo(
+    () => factures.filter(isOverdue)
+      .reduce((s, f) => s + (toNumber(f.montant_du) || 0), 0),
+    [factures])
+  const countEnRetard = useMemo(() => factures.filter(isOverdue).length, [factures])
+
+  // À échoir dans les 7 prochains jours (émise, pas déjà en retard).
+  const in7Days = new Date(today)
+  in7Days.setDate(in7Days.getDate() + 7)
+  const in7DaysIso = in7Days.toISOString().slice(0, 10)
+  const aEcheoirSoon = useMemo(
+    () => factures.filter(f =>
+      f.statut === 'emise' && !isOverdue(f)
+      && f.date_echeance && f.date_echeance >= today && f.date_echeance <= in7DaysIso),
+    [factures, in7DaysIso])
+  const totalAEcheoirSoon = useMemo(
+    () => aEcheoirSoon.reduce((s, f) => s + (toNumber(f.montant_du) || 0), 0),
+    [aEcheoirSoon])
 
   // Export comptable DGI (groundwork) : factures validées d'une plage, en
   // .xlsx ET .csv (ventilation TVA par ligne + ICE + totaux). Borné société.
@@ -712,6 +812,10 @@ export default function FactureList() {
   }
 
   // Ouvre wa.me après confirmation de l'aperçu.
+  // VX48 — exclu volontairement : ce window.open() n'est précédé d'AUCUN await
+  // (il tourne synchrone dans le clic du bouton « Envoyer » de la modale), donc
+  // hors du bug Safari iOS (qui ne bloque qu'un window.open post-await). Ce
+  // n'est de toute façon pas un PDF (lien wa.me).
   const ouvrirWhatsApp = () => {
     if (waPreview?.wa_url) window.open(waPreview.wa_url, '_blank', 'noopener')
     setWaPreview(null)
@@ -759,20 +863,33 @@ export default function FactureList() {
 
   // FG53/WR2b — « Payer en ligne » : crée/réutilise le lien de paiement puis le
   // copie au presse-papier (aucun envoi automatique au client).
+  // VX48 — le repli window.open (quand le presse-papier est indisponible) suit
+  // un await : onglet pré-ouvert SYNCHRONE (pas un PDF, donc `.win.location`
+  // direct plutôt que `openPdfInGesture().deliver()` qui attend un Blob).
   const handleLienPaiement = async (f) => {
     setPayLinkBusy(prev => ({ ...prev, [f.id]: true }))
+    const pending = openPdfInGesture()
     try {
       const { data } = await ventesApi.lienPaiementFacture(f.id)
       const url = data?.pay_url ?? ''
       if (url && navigator.clipboard?.writeText) {
+        pending.win?.close?.()
         await navigator.clipboard.writeText(url)
         toast.success(`Lien de paiement copié — ${formatMAD(data.montant)}.`)
       } else if (url) {
-        window.open(url, '_blank', 'noopener')
+        if (pending.win && !pending.win.closed) {
+          pending.win.location = url
+        } else {
+          toast.error('Ouverture bloquée par le navigateur.', {
+            action: { label: 'Ouvrir', onClick: () => window.open(url, '_blank', 'noopener') },
+          })
+        }
       } else {
+        pending.win?.close?.()
         toast.error('Lien de paiement indisponible.')
       }
     } catch (err) {
+      pending.win?.close?.()
       toast.error(err?.response?.data?.detail ?? 'Création du lien de paiement impossible.')
     } finally {
       setPayLinkBusy(prev => ({ ...prev, [f.id]: false }))
@@ -850,17 +967,130 @@ export default function FactureList() {
     openAvoirModal, handleWhatsApp, handleUbl, handleDgiExport, handleDgiConformite,
   }
 
+  // VX21 — l'en-tête de page reste TOUJOURS visible (chargement, erreur,
+  // données), parité DevisList/J141 : la mise en page ne saute plus au retour
+  // des données (plus de spinner plein écran qui remplace toute la page).
+  const pageHeader = (
+    <div className="page-header">
+      <h2>
+        Factures
+        {factures.length > 0 && (
+          <Badge tone="primary" className="ml-2 align-middle">{factures.length}</Badge>
+        )}
+      </h2>
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          type="search"
+          className="w-full sm:w-56"
+          leading={<Search />}
+          placeholder="Référence, client…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+        <Select value={typeFilter || 'all'}
+                onValueChange={v => setTypeFilter(v === 'all' ? '' : v)}>
+          <SelectTrigger className="w-full sm:w-44" title="Filtrer par type de facture">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {TYPES_FACTURE.map(t => (
+              <SelectItem key={t.value || 'all'} value={t.value || 'all'}>
+                {t.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button size="sm" variant="outline"
+                onClick={() => importApi.exportList('factures', factures.map(f => f.id))
+                  .then(r => downloadXlsx(r.data, 'factures.xlsx')).catch(() => {})}>
+          <Download /> Exporter Excel
+        </Button>
+        {/* VX80 — impression navigateur (feuille print.css : chrome masqué,
+            noir-sur-blanc, table complète). Distinct des PDF WeasyPrint. */}
+        <Button size="sm" variant="outline" onClick={() => window.print()}>
+          <Printer /> Imprimer
+        </Button>
+        <Button size="sm" variant="outline" title="Journal des ventes + résumé TVA (comptable) — mois ou trimestre"
+                onClick={() => {
+                  const choix = window.prompt(
+                    'Période du journal des ventes :\n'
+                    + '— Mois : AAAA-MM (ex. 2026-06)\n'
+                    + '— Trimestre : AAAA-T (ex. 2026-2)',
+                    new Date().toISOString().slice(0, 7))
+                  if (!choix) return
+                  const v = choix.trim()
+                  // Trimestre (AAAA-Q avec Q de 1 à 4) vs mois (AAAA-MM).
+                  const isQuarter = /^\d{4}-[1-4]$/.test(v)
+                  const params = isQuarter ? { quarter: v } : { month: v }
+                  ventesApi.journalVentes(params)
+                    .then(r => downloadXlsx(r.data, `journal-ventes-${v}.xlsx`))
+                    .catch(() => {})
+                }}>
+          <BookText /> Journal comptable
+        </Button>
+        <Button size="sm" variant="outline"
+                title="Export comptable (factures validées d'une plage) — Excel + CSV"
+                onClick={handleExportComptable}>
+          <Download /> Export comptable
+        </Button>
+        {isAdmin && (
+          <Button size="sm" variant="outline" loading={auditBusy}
+                  title="Vérifier les trous/doublons de numérotation (Art. 145 — séquence continue)"
+                  onClick={handleAuditNumerotation}>
+            <ListChecks /> Audit numérotation
+          </Button>
+        )}
+        {/* L851 — langue des messages WhatsApp (FR par défaut). */}
+        <div role="group" aria-label="Langue des messages WhatsApp"
+             className="inline-flex items-center gap-1"
+             title="Langue du message « Envoyer par WhatsApp »">
+          <MessageCircle className="size-4 text-muted-foreground" />
+          {[['fr', 'FR'], ['darija', 'Darija']].map(([val, label]) => (
+            <Button key={val} size="sm"
+                    variant={waLangue === val ? 'default' : 'outline'}
+                    aria-pressed={waLangue === val}
+                    onClick={() => setWaLangue(val)}>
+              {label}
+            </Button>
+          ))}
+        </div>
+        <Button onClick={openNew}><Plus /> Nouvelle facture</Button>
+      </div>
+    </div>
+  )
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
-        <Spinner /> Chargement des factures…
+      <div className="page">
+        {pageHeader}
+        {showSpinner && (
+          <div className="mt-4 flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
+            <Spinner /> Chargement des factures…
+          </div>
+        )}
+        {showSkeleton && (
+          <>
+            {/* Rangée de cartes trésorerie squelette (parité KPI ci-dessous). */}
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {Array.from({ length: 4 }).map((unused, i) => (
+                <div key={i} className="rounded-lg border border-border bg-card p-3">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="mt-2 h-6 w-20" />
+                  <Skeleton className="mt-1.5 h-3 w-16" />
+                </div>
+              ))}
+            </div>
+            <FactureTableSkeleton />
+          </>
+        )}
       </div>
     )
   }
   if (error) {
     return (
       <div className="page">
-        <EmptyState icon={FileWarning} title="Erreur de chargement"
+        {pageHeader}
+        <EmptyState className="mt-4" icon={FileWarning} title="Erreur de chargement"
                     description="Impossible de charger les factures. Réessayez." />
       </div>
     )
@@ -868,92 +1098,7 @@ export default function FactureList() {
 
   return (
     <div className="page">
-      <div className="page-header">
-        <h2>
-          Factures
-          {factures.length > 0 && (
-            <Badge tone="primary" className="ml-2 align-middle">{factures.length}</Badge>
-          )}
-        </h2>
-        <div className="flex flex-wrap items-center gap-2">
-          <Input
-            type="search"
-            className="w-full sm:w-56"
-            leading={<Search />}
-            placeholder="Référence, client…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
-          <Select value={typeFilter || 'all'}
-                  onValueChange={v => setTypeFilter(v === 'all' ? '' : v)}>
-            <SelectTrigger className="w-full sm:w-44" title="Filtrer par type de facture">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {TYPES_FACTURE.map(t => (
-                <SelectItem key={t.value || 'all'} value={t.value || 'all'}>
-                  {t.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button size="sm" variant="outline"
-                  onClick={() => importApi.exportList('factures', factures.map(f => f.id))
-                    .then(r => downloadXlsx(r.data, 'factures.xlsx')).catch(() => {})}>
-            <Download /> Exporter Excel
-          </Button>
-          {/* VX80 — impression navigateur (feuille print.css : chrome masqué,
-              noir-sur-blanc, table complète). Distinct des PDF WeasyPrint. */}
-          <Button size="sm" variant="outline" onClick={() => window.print()}>
-            <Printer /> Imprimer
-          </Button>
-          <Button size="sm" variant="outline" title="Journal des ventes + résumé TVA (comptable) — mois ou trimestre"
-                  onClick={() => {
-                    const choix = window.prompt(
-                      'Période du journal des ventes :\n'
-                      + '— Mois : AAAA-MM (ex. 2026-06)\n'
-                      + '— Trimestre : AAAA-T (ex. 2026-2)',
-                      new Date().toISOString().slice(0, 7))
-                    if (!choix) return
-                    const v = choix.trim()
-                    // Trimestre (AAAA-Q avec Q de 1 à 4) vs mois (AAAA-MM).
-                    const isQuarter = /^\d{4}-[1-4]$/.test(v)
-                    const params = isQuarter ? { quarter: v } : { month: v }
-                    ventesApi.journalVentes(params)
-                      .then(r => downloadXlsx(r.data, `journal-ventes-${v}.xlsx`))
-                      .catch(() => {})
-                  }}>
-            <BookText /> Journal comptable
-          </Button>
-          <Button size="sm" variant="outline"
-                  title="Export comptable (factures validées d'une plage) — Excel + CSV"
-                  onClick={handleExportComptable}>
-            <Download /> Export comptable
-          </Button>
-          {isAdmin && (
-            <Button size="sm" variant="outline" loading={auditBusy}
-                    title="Vérifier les trous/doublons de numérotation (Art. 145 — séquence continue)"
-                    onClick={handleAuditNumerotation}>
-              <ListChecks /> Audit numérotation
-            </Button>
-          )}
-          {/* L851 — langue des messages WhatsApp (FR par défaut). */}
-          <div role="group" aria-label="Langue des messages WhatsApp"
-               className="inline-flex items-center gap-1"
-               title="Langue du message « Envoyer par WhatsApp »">
-            <MessageCircle className="size-4 text-muted-foreground" />
-            {[['fr', 'FR'], ['darija', 'Darija']].map(([val, label]) => (
-              <Button key={val} size="sm"
-                      variant={waLangue === val ? 'default' : 'outline'}
-                      aria-pressed={waLangue === val}
-                      onClick={() => setWaLangue(val)}>
-                {label}
-              </Button>
-            ))}
-          </div>
-          <Button onClick={openNew}><Plus /> Nouvelle facture</Button>
-        </div>
-      </div>
+      {pageHeader}
 
       {showForm && (
         <FactureForm facture={editFacture} onClose={closeForm} onSaved={onSaved} />
@@ -970,7 +1115,8 @@ export default function FactureList() {
           </DialogHeader>
           <Form onSubmit={handleEnregistrerPaiement} className="gap-4">
             <FormField label="Montant (MAD)" required htmlFor="pay-montant" fullWidth>
-              <Input id="pay-montant" type="number" min="0" step="any" required
+              <Input id="pay-montant" ref={payMontantRef} type="number" min="0" step="any" required
+                     autoFocus
                      value={payMontant} onChange={e => setPayMontant(e.target.value)} />
             </FormField>
             <FormField label="Date de paiement" required htmlFor="pay-date">
@@ -1005,6 +1151,16 @@ export default function FactureList() {
                      value={payReference} onChange={e => setPayReference(e.target.value)} />
             </FormField>
             <FormActions sticky={false}>
+              {/* VX92 — « Créer un autre » : saisir plusieurs paiements d'affilée
+                  (ex. relevé bancaire) sans rouvrir la modale à chaque fois. */}
+              <label className="mr-auto flex items-center gap-2 text-sm text-muted-foreground">
+                <Switch
+                  checked={payCreerUnAutre}
+                  onCheckedChange={(v) => { setPayCreerUnAutre(v); ecrireCreerUnAutrePaiement(v) }}
+                  aria-label="Créer un autre"
+                />
+                Créer un autre
+              </label>
               <Button type="button" variant="ghost" onClick={() => setPayTarget(null)}>Annuler</Button>
               <Button type="submit" loading={paySaving}>Enregistrer</Button>
             </FormActions>
@@ -1078,9 +1234,9 @@ export default function FactureList() {
                   <tbody>
                     {avoirTarget.lignes.map(l => (
                       <tr key={l.id}>
-                        <td>{l.designation}</td>
-                        <td className="ta-right tabular-nums">{l.quantite}</td>
-                        <td className="ta-right">
+                        <td data-label="Désignation">{l.designation}</td>
+                        <td className="ta-right tabular-nums" data-label="Qté facturée">{l.quantite}</td>
+                        <td className="ta-right" data-label="Qté à créditer">
                           <Input
                             type="number" min="0" step="any"
                             className="w-24"
@@ -1141,11 +1297,48 @@ export default function FactureList() {
         </DialogContent>
       </Dialog>
 
+      {/* VX21 — cockpit trésorerie : 4 cartes KPI max, détail sous le pli
+          (Stripe) — un directeur voit la santé de trésorerie d'un coup d'œil.
+          Anatomie complète : valeur + delta (vs mois précédent où pertinent)
+          + période. Dérivées des factures déjà chargées, aucun appel réseau. */}
       {factures.length > 0 && (
-        <Card className="mt-3 w-fit px-4 py-2 text-sm">
-          <span className="text-muted-foreground">Encaissé ce mois : </span>
-          <strong className="tabular-nums">{formatMAD(encaisseMois)}</strong>
-        </Card>
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <Card className="p-3 text-sm">
+            <div className="text-muted-foreground">Encaissé ce mois</div>
+            <div className="mt-1 text-lg font-semibold tabular-nums">{formatMAD(encaisseMois)}</div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {encaisseMoisPrecedent > 0 ? (
+                <span className={encaisseMois >= encaisseMoisPrecedent ? 'text-success' : 'text-destructive'}>
+                  {encaisseMois >= encaisseMoisPrecedent ? '▲' : '▼'}{' '}
+                  {formatMAD(Math.abs(encaisseMois - encaisseMoisPrecedent))} vs mois dernier
+                </span>
+              ) : 'Mois en cours'}
+            </div>
+          </Card>
+          <Card className="p-3 text-sm">
+            <div className="text-muted-foreground">Total dû</div>
+            <div className="mt-1 text-lg font-semibold tabular-nums">{formatMAD(totalDu)}</div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              Toutes factures non soldées
+            </div>
+          </Card>
+          <Card className="p-3 text-sm">
+            <div className="text-muted-foreground">En retard</div>
+            <div className={`mt-1 text-lg font-semibold tabular-nums ${countEnRetard > 0 ? 'text-destructive' : ''}`}>
+              {formatMAD(totalEnRetard)}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {countEnRetard} facture{countEnRetard > 1 ? 's' : ''} échue{countEnRetard > 1 ? 's' : ''}
+            </div>
+          </Card>
+          <Card className="p-3 text-sm">
+            <div className="text-muted-foreground">À échoir ≤ 7 j</div>
+            <div className="mt-1 text-lg font-semibold tabular-nums">{formatMAD(totalAEcheoirSoon)}</div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {aEcheoirSoon.length} facture{aEcheoirSoon.length > 1 ? 's' : ''} · 7 prochains jours
+            </div>
+          </Card>
+        </div>
       )}
 
       {/* ── Tabs + vues enregistrées (FG11) ── */}

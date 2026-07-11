@@ -95,6 +95,33 @@ describe('CockpitPage — rendu smoke (UX2)', () => {
   }, 30000)
 })
 
+describe('CockpitPage — VX115 : KPI vers l’écran d’action + index des exports', () => {
+  it('« Créances clients » pointe vers la balance âgée et « DSO » vers les relances', async () => {
+    const { default: CockpitPage } = await import('./pages/CockpitPage.jsx')
+    mount(<CockpitPage />)
+    const creances = await screen.findByText('Créances clients')
+    expect(creances.closest('a')).toHaveAttribute('href', '/reporting/balance-agee')
+    const dso = screen.getByText('DSO (encaissement client)')
+    expect(dso.closest('a')).toHaveAttribute('href', '/ventes/relances')
+    // Résultat/Trésorerie restent sur les états — c'est juste là.
+    const resultat = screen.getByText('Résultat de la période')
+    expect(resultat.closest('a')).toHaveAttribute('href', '/comptabilite/etats')
+    const tresorerie = screen.getByText('Trésorerie nette')
+    expect(tresorerie.closest('a')).toHaveAttribute('href', '/comptabilite/tresorerie')
+  }, 30000)
+
+  it('affiche la carte « Où trouver mes exports » avec les 4 destinations', async () => {
+    const { default: CockpitPage } = await import('./pages/CockpitPage.jsx')
+    mount(<CockpitPage />)
+    expect(await screen.findByText('Où trouver mes exports')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Factures — Export comptable/ }))
+      .toHaveAttribute('href', '/ventes/factures')
+    expect(screen.getByRole('link', { name: /Fiscalité/ })).toHaveAttribute('href', '/comptabilite/fiscalite')
+    expect(screen.getByRole('link', { name: /États CGNC/ })).toHaveAttribute('href', '/comptabilite/etats')
+    expect(screen.getByRole('link', { name: /Balance âgée/ })).toHaveAttribute('href', '/reporting/balance-agee')
+  }, 30000)
+})
+
 describe('PlanComptablePage — rendu smoke (UX3)', () => {
   it('rend le titre et le sélecteur de vue', async () => {
     const { default: PlanComptablePage } = await import('./pages/PlanComptablePage.jsx')

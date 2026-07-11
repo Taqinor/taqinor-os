@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Plus, Pencil, Download, FileText, Send, Bell } from 'lucide-react'
 import { ListShell, statusPill } from '../../../ui/module'
-import { Button, Segmented, Card, Input, Label, EmptyState, toast } from '../../../ui'
+import { Button, Segmented, Card, Label, EmptyState, toast } from '../../../ui'
 import { formatMAD, formatDate } from '../../../lib/format'
 import comptaApi from '../../../api/comptaApi'
 import useComptaList, { unwrap } from '../components/useComptaList.js'
@@ -210,10 +210,15 @@ export default function FiscalitePage() {
   const [tab, setTab] = useState('declarationsTva')
   const [dialog, setDialog] = useState(null)
   const [exercice, setExercice] = useState('')
+  const [exercices, setExercices] = useState([])
 
   const isEcheances = tab === 'echeances'
   const list = useComptaList(
     isEcheances ? comptaApi.exercices.list : RESOURCE[tab].list, undefined)
+
+  useEffect(() => {
+    comptaApi.exercices.list().then((res) => setExercices(unwrap(res))).catch(() => {})
+  }, [])
 
   const download = async (fn, filename, okMsg) => {
     try {
@@ -339,9 +344,17 @@ export default function FiscalitePage() {
         <Card className="mt-4 p-4 sm:p-5">
           <h3 className="mb-3 font-display text-base font-semibold">Exports & télédéclarations</h3>
           <div className="mb-3 flex flex-col gap-1 sm:max-w-xs">
-            <Label htmlFor="fx-exercice">Exercice (ID) — requis pour FEC / liasse / IS</Label>
-            <Input id="fx-exercice" value={exercice} onChange={(e) => setExercice(e.target.value)}
-                   placeholder="ex. 3" inputMode="numeric" />
+            <Label htmlFor="fx-exercice">Exercice — requis pour FEC / liasse / IS</Label>
+            <select
+              id="fx-exercice"
+              className="h-[var(--control-h)] rounded-md border border-input bg-card px-[var(--control-px)] text-sm"
+              value={exercice} onChange={(e) => setExercice(e.target.value)}
+            >
+              <option value="">—</option>
+              {exercices.map((ex) => (
+                <option key={ex.id} value={ex.id}>{ex.libelle}</option>
+              ))}
+            </select>
           </div>
           <div className="flex flex-wrap gap-2">
             {EXPORTS.map((exp) => (
