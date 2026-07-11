@@ -101,7 +101,15 @@ export default function MessageThread({ currentUserId, onEditMessage, onDeleteMe
         </div>
       )}
 
-      <div className="chat-thread-scroll flex-1 overflow-y-auto px-3 py-2" ref={scrollRef} onScroll={onScroll}>
+      <div
+        className="chat-thread-scroll flex-1 overflow-y-auto px-3 py-2"
+        ref={scrollRef}
+        onScroll={onScroll}
+        role="log"
+        tabIndex={0}
+        aria-live="polite"
+        aria-relevant="additions"
+      >
         {nextOlder && (
           <div className="chat-thread-older">
             {loadingOlder ? <Spinner size="sm" /> : (
@@ -117,6 +125,8 @@ export default function MessageThread({ currentUserId, onEditMessage, onDeleteMe
             const own = m.sender?.id === currentUserId
             // Regroupe les messages consécutifs du même auteur (en-tête masqué).
             const showHeader = !prev || prev.sender?.id !== m.sender?.id
+            // aria-relevant="additions" (ci-dessus) n'annonce QUE le dernier
+            // message poussé dans le log — pas tout l'historique déjà rendu.
             return (
               <MessageBubble
                 key={m.id}

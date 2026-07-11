@@ -50,4 +50,17 @@ describe('MessageThread (S15)', () => {
     )
     expect(screen.getByText('Charger les anciens messages')).toBeInTheDocument()
   })
+
+  it('VX196 — le fil est un log annoncé (polite/additions) et défilable au clavier', () => {
+    render(
+      <Provider store={storeWithThread()}>
+        <MessageThread currentUserId={9} nextOlder="cursor-older" />
+      </Provider>,
+    )
+    const scrollEl = screen.getByText('à moi').closest('[role="log"]')
+    expect(scrollEl).not.toBeNull()
+    expect(scrollEl).toHaveAttribute('aria-live', 'polite')
+    expect(scrollEl).toHaveAttribute('aria-relevant', 'additions')
+    expect(scrollEl).toHaveAttribute('tabIndex', '0')
+  })
 })

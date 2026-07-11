@@ -7,13 +7,33 @@
 // ces helpers sont appelables depuis n'importe où (handlers, thunks, axios).
 import { toast } from '../ui/Toaster'
 
+// VX196 — sonner ne rend qu'UNE région aria-live="polite" pour tous les
+// toasts : une erreur bloquante n'interrompt jamais le lecteur d'écran
+// (sonner ne propose aucune option par-toast pour changer sa politesse).
+// On relaie donc chaque erreur vers une région assertive dédiée, montée par
+// `<Toaster>` (ui/Toaster.jsx) — mini pub-sub, aucune dépendance ajoutée.
+const assertiveListeners = new Set()
+
+/** S'abonne aux annonces assertives (erreurs). Renvoie la fonction de désabonnement. */
+export function subscribeAssertiveAnnouncer(listener) {
+  assertiveListeners.add(listener)
+  return () => assertiveListeners.delete(listener)
+}
+
+function announceAssertive(message) {
+  if (!message) return
+  for (const listener of assertiveListeners) listener(String(message))
+}
+
 /** Toast de succès. `message` (FR) requis ; `description` optionnelle. */
 export function toastSuccess(message, options = {}) {
   return toast.success(message, options)
 }
 
-/** Toast d'erreur. */
+/** Toast d'erreur — annoncé en `assertive` (interrompt), contrairement aux
+ * toasts succès/info qui restent `polite`. */
 export function toastError(message, options = {}) {
+  announceAssertive(message)
   return toast.error(message, options)
 }
 
