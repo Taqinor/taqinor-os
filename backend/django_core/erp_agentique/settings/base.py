@@ -134,6 +134,10 @@ INSTALLED_APPS = [
     # ne dépend d'aucune app de domaine ; les domaines la référenceront
     # (ARC18/19). Contrat import-linter `tiers-is-a-base-layer`.
     'apps.tiers',
+    # NTSEC — Identité fédérée & sécurité enterprise (fondation). SSO SAML/OIDC
+    # par tenant, provisioning SCIM 2.0, break-glass. N'importe aucune app
+    # métier ; tout key-gated OFF par défaut (login local inchangé sans IdP).
+    'apps.identity',
 ]
 
 MIDDLEWARE = [
