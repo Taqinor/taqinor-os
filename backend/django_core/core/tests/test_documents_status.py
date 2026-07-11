@@ -32,7 +32,7 @@ from core.models import TenantModel
 
 
 # ── Modèle document JETABLE (app_label='core', table créée à la main) ─────────
-class _DocDeTest(DocumentMetier):
+class DocDeTest(DocumentMetier):
     """Document concret jetable — mêmes statuts qu'un flux simple à 4 états."""
 
     class Statut(models.TextChoices):
@@ -61,12 +61,12 @@ class _CreateDocTableMixin:
     def setUpClass(cls):
         super().setUpClass()
         with connection.schema_editor() as schema:
-            schema.create_model(_DocDeTest)
+            schema.create_model(DocDeTest)
 
     @classmethod
     def tearDownClass(cls):
         with connection.schema_editor() as schema:
-            schema.delete_model(_DocDeTest)
+            schema.delete_model(DocDeTest)
         super().tearDownClass()
 
 
@@ -78,22 +78,22 @@ class DocumentMetierContractTests(TestCase):
 
     def test_herite_du_socle_tenant_arc1(self):
         self.assertTrue(issubclass(DocumentMetier, TenantModel))
-        champs = {f.name for f in _DocDeTest._meta.get_fields()}
+        champs = {f.name for f in DocDeTest._meta.get_fields()}
         self.assertIn("company", champs)
         self.assertIn("created_at", champs)
         self.assertIn("updated_at", champs)
 
     def test_statut_field_adosse_aux_choices_de_la_sous_classe(self):
-        field = _DocDeTest._meta.get_field("statut")
+        field = DocDeTest._meta.get_field("statut")
         choix = {c[0] for c in field.choices}
         self.assertEqual(
             choix, {"brouillon", "emis", "cloture", "annule"})
         # default = premier membre de Statut (STATUT_INITIAL calculé).
         self.assertEqual(field.default, "brouillon")
-        self.assertEqual(_DocDeTest.STATUT_INITIAL, "brouillon")
+        self.assertEqual(DocDeTest.STATUT_INITIAL, "brouillon")
 
     def test_transitions_lues_de_la_table_declarative(self):
-        doc = _DocDeTest(statut="brouillon")
+        doc = DocDeTest(statut="brouillon")
         self.assertEqual(doc.transitions_permises(), {"emis", "annule"})
         self.assertTrue(doc.transition_permise("emis"))
         self.assertFalse(doc.transition_permise("cloture"))
@@ -107,7 +107,7 @@ class ChangerStatutTests(_CreateDocTableMixin, TestCase):
 
     def setUp(self):
         self.company = Company.objects.create(nom="SCA30 Test SARL")
-        self.doc = _DocDeTest.objects.create(
+        self.doc = DocDeTest.objects.create(
             company=self.company, reference="MDOC-0001")
 
     def _default_statut_a_la_creation(self):
@@ -153,7 +153,7 @@ class ChangerStatutTests(_CreateDocTableMixin, TestCase):
         finally:
             events.document_statut_change.disconnect(_handler)
 
-        self.assertEqual(recu["sender"], _DocDeTest)
+        self.assertEqual(recu["sender"], DocDeTest)
         self.assertIs(recu["instance"], self.doc)
         self.assertEqual(recu["ancien"], "brouillon")
         self.assertEqual(recu["nouveau"], "emis")
@@ -178,7 +178,7 @@ class ChangerStatutTests(_CreateDocTableMixin, TestCase):
         changer_statut(self.doc, "emis", save=False)
         self.assertEqual(self.doc.statut, "emis")
         # Pas persisté : la base garde l'ancien.
-        fresh = _DocDeTest.objects.get(pk=self.doc.pk)
+        fresh = DocDeTest.objects.get(pk=self.doc.pk)
         self.assertEqual(fresh.statut, "brouillon")
 
 
@@ -190,7 +190,7 @@ class ChangerStatutTests(_CreateDocTableMixin, TestCase):
 # l'abstrait) : le dernier document défini gagnait, écrasant les choices/default
 # vus par ses frères ET par la base. On teste ici les MÉTADONNÉES de champ
 # (``_meta.get_field('statut')``) — aucune table requise (pas de DB).
-class _KitDocA(DocumentMetier):
+class KitDocA(DocumentMetier):
     """Kit doc A — 2 statuts (a1/a2)."""
 
     class Statut(models.TextChoices):
@@ -201,7 +201,7 @@ class _KitDocA(DocumentMetier):
         app_label = "core"
 
 
-class _KitDocB(DocumentMetier):
+class KitDocB(DocumentMetier):
     """Kit doc B — 3 statuts DIFFÉRENTS (b1/b2/b3)."""
 
     class Statut(models.TextChoices):
@@ -213,7 +213,7 @@ class _KitDocB(DocumentMetier):
         app_label = "core"
 
 
-class _KitDocSansStatut(DocumentMetier):
+class KitDocSansStatut(DocumentMetier):
     """Kit doc SANS ``Statut`` propre — voie documentée « sans effet » : garde le
     champ hérité de l'abstrait (défaut blanc), jamais les valeurs d'un frère."""
 
@@ -233,19 +233,19 @@ class DocumentMetierChampStatutIsoleTests(TestCase):
     """DEFECT 1 — chaque document a SON champ ``statut`` ; l'abstrait est intact."""
 
     def test_chaque_document_porte_ses_propres_choices_et_default(self):
-        self.assertEqual(_choices(_KitDocA), ["a1", "a2"])
-        self.assertEqual(_default(_KitDocA), "a1")
-        self.assertEqual(_choices(_KitDocB), ["b1", "b2", "b3"])
-        self.assertEqual(_default(_KitDocB), "b1")
+        self.assertEqual(_choices(KitDocA), ["a1", "a2"])
+        self.assertEqual(_default(KitDocA), "a1")
+        self.assertEqual(_choices(KitDocB), ["b1", "b2", "b3"])
+        self.assertEqual(_default(KitDocB), "b1")
 
     def test_definir_un_document_ne_corrompt_pas_son_frere(self):
-        # _KitDocB est défini APRÈS _KitDocA ; A ne doit PAS avoir hérité les
+        # KitDocB est défini APRÈS KitDocA ; A ne doit PAS avoir hérité les
         # choices/default de B (le bug historique : le dernier défini gagnait).
-        self.assertEqual(_choices(_KitDocA), ["a1", "a2"])
-        self.assertEqual(_default(_KitDocA), "a1")
+        self.assertEqual(_choices(KitDocA), ["a1", "a2"])
+        self.assertEqual(_default(KitDocA), "a1")
         # Ce sont des objets-champs DISTINCTS (pas le champ partagé de la base).
-        champ_a = _KitDocA._meta.get_field("statut")
-        champ_b = _KitDocB._meta.get_field("statut")
+        champ_a = KitDocA._meta.get_field("statut")
+        champ_b = KitDocB._meta.get_field("statut")
         self.assertIsNot(champ_a, champ_b)
 
     def test_champ_de_l_abstrait_jamais_mute(self):
@@ -258,8 +258,8 @@ class DocumentMetierChampStatutIsoleTests(TestCase):
     def test_document_sans_statut_propre_garde_un_default_blanc(self):
         # Voie « sans effet » : pas de ``Statut`` propre → champ hérité blanc,
         # jamais les valeurs d'un frère défini plus tard.
-        self.assertEqual(_choices(_KitDocSansStatut), [])
-        self.assertEqual(_default(_KitDocSansStatut), "")
+        self.assertEqual(_choices(KitDocSansStatut), [])
+        self.assertEqual(_default(KitDocSansStatut), "")
 
     def test_pilotes_reels_conservent_leur_contrat_statut(self):
         # Les 2 pilotes réels (OST-, DA-) DOIVENT garder choices/default exacts —

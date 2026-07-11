@@ -27,7 +27,7 @@ from core.documents import DocumentMetier, document_viewset
 
 
 # ── Document + serializer JETABLES ────────────────────────────────────────────
-class _DocKit(DocumentMetier):
+class DocKit(DocumentMetier):
     class Statut(models.TextChoices):
         BROUILLON = "brouillon", "Brouillon"
         EMIS = "emis", "Émis"
@@ -48,13 +48,13 @@ class _DocKit(DocumentMetier):
 
 class _DocKitSerializer(serializers.ModelSerializer):
     class Meta:
-        model = _DocKit
+        model = DocKit
         fields = ["id", "reference", "titre", "statut", "company"]
         read_only_fields = ["reference", "company", "statut"]
 
 
 _DocKitViewSet = document_viewset(
-    _DocKit, _DocKitSerializer, prefix="MDOC",
+    DocKit, _DocKitSerializer, prefix="MDOC",
     chatter_mixin=ChatterViewSetMixin)
 
 
@@ -63,12 +63,12 @@ class _KitTableMixin:
     def setUpClass(cls):
         super().setUpClass()
         with connection.schema_editor() as schema:
-            schema.create_model(_DocKit)
+            schema.create_model(DocKit)
 
     @classmethod
     def tearDownClass(cls):
         with connection.schema_editor() as schema:
-            schema.delete_model(_DocKit)
+            schema.delete_model(DocKit)
         super().tearDownClass()
 
 
@@ -95,7 +95,7 @@ class DocumentViewSetCompositionTests(_KitTableMixin, TestCase):
     def test_create_forces_company_and_reference_server_side(self):
         resp = self._create(self.user, "Doc A1")
         self.assertEqual(resp.status_code, 201, resp.data)
-        doc = _DocKit.objects.get(pk=resp.data["id"])
+        doc = DocKit.objects.get(pk=resp.data["id"])
         self.assertEqual(doc.company, self.company)  # jamais du corps
         self.assertTrue(doc.reference.startswith("MDOC-"))
         self.assertEqual(doc.statut, "brouillon")  # STATUT_INITIAL
@@ -123,8 +123,8 @@ class DocumentViewSetCompositionTests(_KitTableMixin, TestCase):
     def test_two_creates_get_distinct_references(self):
         r1 = self._create(self.user, "One")
         r2 = self._create(self.user, "Two")
-        d1 = _DocKit.objects.get(pk=r1.data["id"])
-        d2 = _DocKit.objects.get(pk=r2.data["id"])
+        d1 = DocKit.objects.get(pk=r1.data["id"])
+        d2 = DocKit.objects.get(pk=r2.data["id"])
         self.assertNotEqual(d1.reference, d2.reference)
         # plus-haut-utilisé+1 : -0001 puis -0002.
         self.assertTrue(d1.reference.endswith("-0001"))
@@ -132,7 +132,7 @@ class DocumentViewSetCompositionTests(_KitTableMixin, TestCase):
 
     def test_reference_uses_configured_prefix(self):
         r = self._create(self.user, "Prefixed")
-        d = _DocKit.objects.get(pk=r.data["id"])
+        d = DocKit.objects.get(pk=r.data["id"])
         self.assertRegex(d.reference, r"^MDOC-\d{6}-\d{4}$")
 
     def test_reference_uses_highest_plus_one_not_count(self):
@@ -140,11 +140,11 @@ class DocumentViewSetCompositionTests(_KitTableMixin, TestCase):
         # régénérerait -0002 et planterait ; la factory (via next_reference)
         # DOIT prendre plus-haut-utilisé+1 = -0006. Preuve qu'elle passe par
         # core.numbering, jamais count()+1.
-        _DocKit.objects.create(
+        DocKit.objects.create(
             company=self.company, reference=f"MDOC-{_month()}-0005",
             titre="pre")
         r = self._create(self.user, "next")
-        d = _DocKit.objects.get(pk=r.data["id"])
+        d = DocKit.objects.get(pk=r.data["id"])
         self.assertTrue(d.reference.endswith("-0006"))
 
     # ── ARC8 : chatter vivant (historique/noter) ─────────────────────────────

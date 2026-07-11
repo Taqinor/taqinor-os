@@ -117,7 +117,7 @@ class DefaultScopedPermissionARC55Tests(SimpleTestCase):
 #
 # Modèle + serializer + viewset JETABLES (``app_label='core'``, table créée via
 # ``schema_editor``) — même patron que test_documents_viewset.py.
-class _ScopedThing(TenantModel):
+class ScopedThing(TenantModel):
     """Modèle scopé jetable avec ``company`` NULLABLE (démo du détachement)."""
 
     nom = models.CharField(max_length=120, blank=True, default="")
@@ -128,13 +128,13 @@ class _ScopedThing(TenantModel):
 
 class _ScopedThingSerializer(serializers.ModelSerializer):
     class Meta:
-        model = _ScopedThing
+        model = ScopedThing
         fields = ["id", "nom", "company"]
         read_only_fields = ["company"]
 
 
 class _ScopedThingViewSet(CompanyScopedModelViewSet):
-    queryset = _ScopedThing.objects.all()
+    queryset = ScopedThing.objects.all()
     serializer_class = _ScopedThingSerializer
 
 
@@ -143,12 +143,12 @@ class _ScopedThingTableMixin:
     def setUpClass(cls):
         super().setUpClass()
         with connection.schema_editor() as schema:
-            schema.create_model(_ScopedThing)
+            schema.create_model(ScopedThing)
 
     @classmethod
     def tearDownClass(cls):
         with connection.schema_editor() as schema:
-            schema.delete_model(_ScopedThing)
+            schema.delete_model(ScopedThing)
         super().tearDownClass()
 
 
@@ -164,7 +164,7 @@ class PerformUpdateCompanyLessSuperuserTests(_ScopedThingTableMixin, TestCase):
             username="d2platform", email="plat@ex.com", password="x")
         self.assertIsNone(self.platform_admin.company_id)
         # Objet appartenant au tenant, édité par le superuser plateforme.
-        self.obj = _ScopedThing.objects.create(company=self.tenant, nom="avant")
+        self.obj = ScopedThing.objects.create(company=self.tenant, nom="avant")
 
     def _patch_as(self, user, data):
         request = self.factory.patch("/x/", data, format="json")

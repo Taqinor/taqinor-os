@@ -31,7 +31,7 @@ from core.documents import (
 
 
 # ── Document + ligne JETABLES ─────────────────────────────────────────────────
-class _DocTotaux(TotauxDocumentMixin, DocumentMetier):
+class DocTotaux(TotauxDocumentMixin, DocumentMetier):
     class Statut(models.TextChoices):
         BROUILLON = "brouillon", "Brouillon"
 
@@ -46,17 +46,17 @@ class _DocTotaux(TotauxDocumentMixin, DocumentMetier):
         app_label = "core"
 
 
-class _LigneTotaux(LigneDocumentMetier):
+class LigneTotaux(LigneDocumentMetier):
     PARENT_FIELD = "document"
     document = models.ForeignKey(
-        _DocTotaux, on_delete=models.CASCADE, related_name="lignes")
+        DocTotaux, on_delete=models.CASCADE, related_name="lignes")
 
     class Meta:
         app_label = "core"
 
 
 class _KitTablesMixin:
-    MODELS = (_DocTotaux, _LigneTotaux)
+    MODELS = (DocTotaux, LigneTotaux)
 
     @classmethod
     def setUpClass(cls):
@@ -77,7 +77,7 @@ class LigneTotalHtSemanticsTests(TestCase):
     """``total_ht`` : miroir EXACT de ``LigneDevis.total_ht`` (aucune table)."""
 
     def _ligne(self, q, pu, remise=0, taux=None):
-        return _LigneTotaux(
+        return LigneTotaux(
             designation="x", quantite=Decimal(str(q)),
             prix_unitaire=Decimal(str(pu)), remise=Decimal(str(remise)),
             taux_tva=None if taux is None else Decimal(str(taux)))
@@ -100,13 +100,13 @@ class LigneTotalHtSemanticsTests(TestCase):
         self.assertEqual(ligne.total_ht, attendu)
 
     def test_taux_tva_effectif_utilise_la_ligne_si_presente(self):
-        doc = _DocTotaux(taux_tva=Decimal("20"))
+        doc = DocTotaux(taux_tva=Decimal("20"))
         ligne = self._ligne("1", "100", taux="10")
         ligne.document = doc
         self.assertEqual(ligne.taux_tva_effectif, Decimal("10"))
 
     def test_taux_tva_effectif_retombe_sur_le_parent_si_null(self):
-        doc = _DocTotaux(taux_tva=Decimal("20"))
+        doc = DocTotaux(taux_tva=Decimal("20"))
         ligne = self._ligne("1", "100", taux=None)
         ligne.document = doc
         # NULL sur la ligne → taux du document (contrat LigneDevis).
@@ -120,15 +120,15 @@ class TotauxMixinFrozenAndFallbackTests(_KitTablesMixin, TestCase):
         self.company = Company.objects.create(nom="SCA31 Test SARL")
 
     def _doc(self, **kw):
-        return _DocTotaux.objects.create(
+        return DocTotaux.objects.create(
             company=self.company, reference="MDOC-0001", **kw)
 
     def test_recompute_depuis_les_lignes_quand_non_gele(self):
         doc = self._doc(taux_tva=Decimal("20"))
-        _LigneTotaux.objects.create(
+        LigneTotaux.objects.create(
             document=doc, designation="a", quantite=Decimal("2"),
             prix_unitaire=Decimal("100"), remise=Decimal("0"))
-        _LigneTotaux.objects.create(
+        LigneTotaux.objects.create(
             document=doc, designation="b", quantite=Decimal("1"),
             prix_unitaire=Decimal("50"), remise=Decimal("0"))
         # HT = 200 + 50 = 250 ; TVA @20% = 50 ; TTC = 300.
@@ -139,11 +139,11 @@ class TotauxMixinFrozenAndFallbackTests(_KitTablesMixin, TestCase):
     def test_taux_par_ligne_applique_en_repli(self):
         doc = self._doc(taux_tva=Decimal("20"))
         # Ligne 1 : taux ligne 10 % ; Ligne 2 : NULL → 20 % du document.
-        _LigneTotaux.objects.create(
+        LigneTotaux.objects.create(
             document=doc, designation="pv", quantite=Decimal("1"),
             prix_unitaire=Decimal("100"), remise=Decimal("0"),
             taux_tva=Decimal("10"))
-        _LigneTotaux.objects.create(
+        LigneTotaux.objects.create(
             document=doc, designation="autre", quantite=Decimal("1"),
             prix_unitaire=Decimal("100"), remise=Decimal("0"), taux_tva=None)
         # TVA = 100×10% + 100×20% = 10 + 20 = 30.
@@ -155,7 +155,7 @@ class TotauxMixinFrozenAndFallbackTests(_KitTablesMixin, TestCase):
         doc = self._doc(
             montant_ht=Decimal("1000.00"), montant_tva=Decimal("200.00"),
             montant_ttc=Decimal("1200.00"))
-        _LigneTotaux.objects.create(
+        LigneTotaux.objects.create(
             document=doc, designation="ignoree", quantite=Decimal("9"),
             prix_unitaire=Decimal("9"), remise=Decimal("0"))
         self.assertEqual(doc.total_ht, Decimal("1000.00"))
