@@ -26,6 +26,29 @@ def active_provider(company, protocol=None):
         return None
 
 
+def is_break_glass(user):
+    """True si ``user`` bénéficie d'un accès d'urgence break-glass actif (NTSEC22).
+
+    Un compte break-glass CONTOURNE ``enforce_sso`` (NTSEC4). Tant que le modèle
+    ``BreakGlassGrant`` (NTSEC22) n'est pas encore branché, cette fonction
+    renvoie False (aucun contournement) et NTSEC22 la câblera sur ses octrois
+    actifs non révoqués et non échus. Best-effort : toute erreur → False.
+    """
+    if user is None:
+        return False
+    try:
+        from django.utils import timezone
+        from .models import BreakGlassGrant
+        now = timezone.now()
+        return BreakGlassGrant.objects.filter(
+            user_id=getattr(user, 'pk', None),
+            revoque_le__isnull=True,
+            active_jusqu_a__gt=now,
+        ).exists()
+    except Exception:  # noqa: BLE001 — modèle absent (avant NTSEC22) ou erreur
+        return False
+
+
 def enforce_sso_active(company):
     """True si la société a un IdP ACTIF avec ``enforce_sso=True`` (NTSEC4).
 
