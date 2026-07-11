@@ -130,3 +130,35 @@ class IdentityProvider(models.Model):
 
     def __str__(self):
         return f'{self.company_id} — {self.get_protocol_display()} · {self.nom}'
+
+
+class ConsumedAssertion(models.Model):
+    """Cache anti-rejeu des assertions SAML consommées (NTSEC2).
+
+    Chaque ``assertion_id`` d'une réponse SAML validée est enregistré ici ; une
+    réponse rejouée (même id) est refusée. ``expire_le`` = borne de validité de
+    l'assertion (``NotOnOrAfter``) : un nettoyage best-effort purge les entrées
+    échues. Scopé société pour ne jamais fuiter entre tenants.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='consumed_assertions',
+    )
+    assertion_id = models.CharField(max_length=255, db_index=True)
+    consumed_at = models.DateTimeField(auto_now_add=True)
+    expire_le = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Assertion SAML consommée'
+        verbose_name_plural = 'Assertions SAML consommées'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'assertion_id'],
+                name='identity_unique_assertion_per_company',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.company_id} — {self.assertion_id}'
