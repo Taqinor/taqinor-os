@@ -153,7 +153,7 @@ class TestWeasyPrintGuard(SimpleTestCase):
     def test_grandfathered_importer_is_green(self):
         """Un importeur direct gelé (à migrer) ne déclenche rien."""
         self.assertFalse(scan_weasyprint_import(
-            "apps/reporting/report_pdf.py", "import weasyprint\n"))
+            "apps/qhse/services.py", "import weasyprint\n"))
 
     def test_test_file_is_exempt(self):
         """Un fichier de tests peut importer WeasyPrint (rendu réel validé)."""
@@ -174,7 +174,10 @@ class TestWeasyPrintGuard(SimpleTestCase):
         self.assertIn(
             "apps/ventes/quote_engine/generate_devis_premium.py",
             GRANDFATHERED_WEASYPRINT)
-        self.assertIn("apps/ged/services.py", GRANDFATHERED_WEASYPRINT)
+        # ARC12 a migré apps/ged/services.py vers core.pdf.render_pdf (retiré
+        # de l'allowlist, il n'importe plus weasyprint directement) —
+        # apps/qhse/services.py reste l'importeur direct GELÉ (à migrer).
+        self.assertIn("apps/qhse/services.py", GRANDFATHERED_WEASYPRINT)
 
 
 class TestNumberingGuard(SimpleTestCase):

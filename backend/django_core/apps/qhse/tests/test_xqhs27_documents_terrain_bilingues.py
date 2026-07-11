@@ -47,9 +47,21 @@ def auth_client(user):
 
 
 def _fake_weasyprint():
+    """Faux module ``weasyprint`` : ``write_pdf`` mirrors the real WeasyPrint
+    API (``target=None`` accepte à la fois ``write_pdf()`` [renvoie les
+    octets] et ``write_pdf(buf)`` [écrit dans la cible]) — compatible avec
+    ``core.pdf.render_pdf`` (ARC11/ARC12, appel sans cible) ET tout appelant
+    encore non migré qui passerait un buffer."""
     fake_module = types.ModuleType('weasyprint')
-    fake_html_instance = type('FakeHTML', (), {
-        'write_pdf': lambda self: b'%PDF-1.4 fake'})()
+
+    def _write_pdf(self, target=None):
+        data = b'%PDF-1.4 fake'
+        if target is not None:
+            target.write(data)
+            return None
+        return data
+
+    fake_html_instance = type('FakeHTML', (), {'write_pdf': _write_pdf})()
     fake_module.HTML = lambda string: fake_html_instance
     return fake_module
 
