@@ -24,6 +24,20 @@ from html import escape
 
 from core.pdf import render_pdf
 
+
+def _html_to_pdf(html_string):
+    """ARC12 — shim de compat : délègue au service PDF partagé
+    (``core.pdf.render_pdf``). Trois appelants dans ``apps/compta/views.py``
+    (ZACC3 tableau_flux, ZACC12 tableau_immobilisations, ZACC10 bordereau_pdf)
+    construisent leur fragment HTML directement dans la vue et importent ce
+    helper — le refactor ARC12 avait recâblé les 6 renderers ``render_*_pdf``
+    de CE module vers ``render_pdf`` mais supprimé ce seam sans le réexporter,
+    d'où un ``ImportError`` (NON attrapé par ``_pdf_or_503`` qui ne gère que
+    ``RuntimeError``). ``render_pdf`` conserve le contrat ``RuntimeError`` si
+    WeasyPrint est absent, donc la dégradation gracieuse 503 refonctionne."""
+    return render_pdf(html=html_string)
+
+
 MOIS_FR = [
     '', 'janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet',
     'août', 'septembre', 'octobre', 'novembre', 'décembre',

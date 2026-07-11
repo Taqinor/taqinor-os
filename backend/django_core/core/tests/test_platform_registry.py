@@ -45,9 +45,9 @@ class PlatformCollectorTests(SimpleTestCase):
 
     def test_contrats_manifest_is_asymmetric(self):
         """Contrats a le chatter (ARC8), la recherche (ARC29), les champs
-        perso (ARC31) et les actions agent LECTURE (ARC33) câblés — les
-        surfaces restantes (import, automation, KPI) restent VIDES : le
-        collecteur tolère un manifeste partiel/asymétrique."""
+        perso (ARC31), les actions agent LECTURE (ARC33), l'import (ARC32)
+        et l'automation de statut (ARC34) câblés — seule la surface KPI
+        reste VIDE : le collecteur tolère un manifeste partiel/asymétrique."""
         contrats = self.manifests['contrats']
         self.assertEqual(contrats['record_targets'], ['contrats.contrat'])
         # ARC29 — trou comblé : Contrat est désormais cherchable.
@@ -58,10 +58,14 @@ class PlatformCollectorTests(SimpleTestCase):
         # ARC33 — actions agent LECTURE seule désormais déclarées.
         self.assertEqual(
             contrats['agent_actions_module'], 'apps.contrats.agent_actions')
-        # Surfaces DÉLIBÉRÉMENT vides (asymétrie préservée) : le collecteur
+        # ARC32 — trou comblé : Contrat est désormais une cible d'import.
+        self.assertEqual(contrats['import_specs'], ['contrats'])
+        # ARC34 — trou comblé : statut Contrat automatisable (RECORD_STATE_CHANGE).
+        self.assertEqual(
+            contrats['automation_state_fields'],
+            [{'model': 'contrats.contrat', 'field': 'statut'}])
+        # Surface DÉLIBÉRÉMENT vide (asymétrie préservée) : le collecteur
         # tolère un manifeste où seules certaines surfaces sont câblées.
-        self.assertEqual(contrats['import_specs'], [])
-        self.assertEqual(contrats['automation_state_fields'], [])
         self.assertEqual(contrats['kpi_providers'], [])
 
     def test_aggregators_flatten_across_manifests(self):
