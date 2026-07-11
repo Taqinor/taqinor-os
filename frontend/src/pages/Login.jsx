@@ -1,8 +1,26 @@
 import { useState } from 'react'
 import { useDispatch } from 'react-redux'
 import { useNavigate, Link } from 'react-router-dom'
+import { Eye, EyeOff, AlertCircle } from 'lucide-react'
 import { setCredentials } from '../features/auth/store/authSlice'
 import api from '../api/axios'
+
+// VX34 — Login = premier pixel de la marque. On garde EXACTEMENT les teintes de
+// marque (#1863DC azur, #F5C100 laiton, #050e1f nuit) mais on les fait entrer
+// dans le système : chaque hex est ré-exprimé en OKLCH (round-trip sRGB à
+// ΔE ≈ 0, même méthode que design/tokens.css) et exposé en variable CSS locale,
+// consommée partout via var(). Aucune couleur ne change à l'écran ; elles sont
+// désormais tokenisées. (Pré-auth : pas de token tenant runtime ici, donc ces
+// jetons restent locaux à l'écran de login.)
+const BRAND_TOKENS = `
+  .login-root {
+    --login-azur: oklch(53.1% 0.1985 260.25);      /* #1863DC */
+    --login-azur-bright: oklch(58.3% 0.2259 264.10);/* #326CFE */
+    --login-brass: oklch(83.4% 0.1704 88.96);       /* #F5C100 */
+    --login-nuit: oklch(16.5% 0.0389 260.32);       /* #050e1f */
+    --login-nuit-mid: oklch(26.1% 0.0924 263.49);   /* #0b2050 */
+  }
+`
 
 // SCA24 — Login est PRÉ-AUTH : on ne connaît pas encore la société de
 // l'utilisateur (donc pas son TenantTheme), donc pas de logo/couleur dynamique
@@ -20,7 +38,7 @@ function ProductBrand() {
       <span style={{
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
         width: 40, height: 40, borderRadius: 10,
-        background: 'linear-gradient(135deg, #1863DC 0%, #326CFE 100%)',
+        background: 'linear-gradient(135deg, var(--login-azur) 0%, var(--login-azur-bright) 100%)',
         color: '#fff', fontWeight: 800, fontSize: 18,
       }} aria-hidden="true">
         {PRODUCT_NAME.charAt(0).toUpperCase()}
@@ -41,7 +59,7 @@ const baseInput = {
   fontFamily: 'inherit',
 }
 const onFocus = (e) => {
-  e.target.style.borderColor = '#1863DC'
+  e.target.style.borderColor = 'var(--login-azur)'
   e.target.style.boxShadow   = '0 0 0 3px rgba(24,99,220,0.12)'
   e.target.style.background  = '#ffffff'
 }
@@ -108,10 +126,10 @@ export default function Login() {
   }
 
   return (
-    <div style={{
+    <div className="login-root" style={{
       position: 'fixed', inset: 0,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: 'linear-gradient(135deg, #050e1f 0%, #0b2050 50%, #050e1f 100%)',
+      background: 'linear-gradient(135deg, var(--login-nuit) 0%, var(--login-nuit-mid) 50%, var(--login-nuit) 100%)',
       overflow: 'hidden',
     }}>
       {/* Halo lumineux central */}
@@ -121,13 +139,12 @@ export default function Login() {
       }} />
 
       {/* Card */}
-      <div style={{
+      <div className="login-card" style={{
         position: 'relative', zIndex: 10,
         width: '100%', maxWidth: 420, margin: '0 16px',
         background: '#ffffff', borderRadius: 22,
         padding: '44px 40px 38px',
         boxShadow: '0 32px 80px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.06)',
-        animation: 'loginIn 0.55s cubic-bezier(0.16, 1, 0.3, 1) both',
       }}>
 
         {/* Marque produit centrée */}
@@ -138,7 +155,7 @@ export default function Login() {
         {/* Ligne décorative */}
         <div style={{
           width: 40, height: 3, borderRadius: 2,
-          background: 'linear-gradient(90deg, #1863DC, #F5C100)',
+          background: 'linear-gradient(90deg, var(--login-azur), var(--login-brass))',
           margin: '14px auto 0',
         }} />
 
@@ -157,7 +174,7 @@ export default function Login() {
             color: '#b91c1c', fontSize: 13,
             display: 'flex', alignItems: 'flex-start', gap: 8,
           }}>
-            <span style={{ flexShrink: 0, marginTop: 1 }}>⚠️</span>
+            <AlertCircle size={15} style={{ flexShrink: 0, marginTop: 1 }} aria-hidden="true" />
             <span>{error}</span>
           </div>
         )}
@@ -204,12 +221,13 @@ export default function Login() {
                   position: 'absolute', right: 13, top: '50%',
                   transform: 'translateY(-50%)',
                   background: 'none', border: 'none', cursor: 'pointer',
-                  color: '#9ca3af', fontSize: 17, padding: 0, lineHeight: 1,
+                  color: '#9ca3af', padding: 0, lineHeight: 1,
+                  display: 'inline-flex', alignItems: 'center',
                 }}
                 tabIndex={-1}
                 aria-label={showPwd ? 'Masquer' : 'Afficher'}
               >
-                {showPwd ? '🙈' : '👁️'}
+                {showPwd ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
               </button>
             </div>
           </div>
@@ -249,7 +267,7 @@ export default function Login() {
               borderRadius: 12, border: 'none',
               background: loading
                 ? '#93c5fd'
-                : 'linear-gradient(135deg, #1863DC 0%, #326CFE 100%)',
+                : 'linear-gradient(135deg, var(--login-azur) 0%, var(--login-azur-bright) 100%)',
               color: '#fff', fontWeight: 700, fontSize: 15,
               cursor: loading ? 'not-allowed' : 'pointer',
               letterSpacing: '0.03em',
@@ -268,16 +286,21 @@ export default function Login() {
 
         {/* Retour accueil */}
         <p style={{ textAlign: 'center', marginTop: 26, fontSize: 13, color: '#9ca3af' }}>
-          <Link to="/landing" style={{ color: '#1863DC', textDecoration: 'none', fontWeight: 500 }}>
+          <Link to="/landing" style={{ color: 'var(--login-azur)', textDecoration: 'none', fontWeight: 500 }}>
             ← Retour à l'accueil
           </Link>
         </p>
       </div>
 
       <style>{`
+        ${BRAND_TOKENS}
         @keyframes loginIn {
           from { opacity: 0; transform: translateY(28px) scale(0.96); }
           to   { opacity: 1; transform: translateY(0)    scale(1);    }
+        }
+        .login-card { animation: loginIn 0.55s cubic-bezier(0.16, 1, 0.3, 1) both; }
+        @media (prefers-reduced-motion: reduce) {
+          .login-card { animation: none; }
         }
       `}</style>
     </div>
