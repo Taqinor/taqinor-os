@@ -1,6 +1,6 @@
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
-from rest_framework.parsers import MultiPartParser
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from core.mixins import TenantMixin
@@ -1152,19 +1152,42 @@ class LeadViewSet(CompanyScopedModelViewSet):
         })
 
     @action(detail=True, methods=['post'], url_path='noter',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[IsResponsableOrAdmin],
+            parser_classes=[MultiPartParser, FormParser, JSONParser])
     def noter(self, request, pk=None):
         """Note manuelle (appel, commentaire…) — auteur pris de la requête.
 
         FG28 : si le lead est encore en NEW et n'a jamais été contacté, cette
         note constitue la première prise de contact → first_contacted_at est posé.
+
+        VX111 — accepte en plus un fichier multipart optionnel (`file`, ex.
+        photo prise depuis mobile pendant une visite) : réutilise le magasin
+        `records.Attachment` EXISTANT (déjà whitelisté ('crm','lead')) — la
+        pièce jointe créée cible directement le LEAD (visible aussi dans
+        AttachmentsPanel) et est liée à cette note. Jamais un second magasin.
         """
         lead = self.get_object()
         body = (request.data.get('body') or '').strip()
-        if not body:
+        file = request.FILES.get('file')
+        if not body and not file:
             return Response({'body': 'Note vide.'},
                             status=status.HTTP_400_BAD_REQUEST)
-        act = activity.log_note(lead, request.user, body)
+        attachment = None
+        if file:
+            from apps.records.storage import store_attachment
+            from apps.records.models import Attachment
+            from django.contrib.contenttypes.models import ContentType
+            meta, err = store_attachment(file, company=request.user.company)
+            if err:
+                return Response({'file': err}, status=status.HTTP_400_BAD_REQUEST)
+            ct = ContentType.objects.get(app_label='crm', model='lead')
+            attachment = Attachment.objects.create(
+                company=request.user.company, content_type=ct, object_id=lead.id,
+                uploaded_by=request.user, **meta)
+        act = activity.log_note(lead, request.user, body or '📎 Pièce jointe')
+        if attachment:
+            act.attachment = attachment
+            act.save(update_fields=['attachment'])
         # FG28 — première note = premier contact (même sans changer d'étape)
         if lead.stage == 'NEW' and lead.first_contacted_at is None:
             from django.utils import timezone

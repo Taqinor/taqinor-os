@@ -3191,6 +3191,38 @@ textarea.form-control {
   margin-bottom: 0.75rem;
 }
 
+/* VX111 — attacher une pièce jointe à une note du chatter (input natif
+   masqué, déclenché par le bouton trombone). */
+.chatter-note-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.chatter-note-file-preview {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: -0.4rem 0 0.6rem;
+  font-size: 0.78rem;
+  color: var(--muted-foreground, #5a6488);
+}
+
+.chatter-note-file-clear {
+  border: none;
+  background: transparent;
+  color: var(--muted-foreground, #64748b);
+  cursor: pointer;
+  font-size: 0.72rem;
+  padding: 0 2px;
+}
+
 .chatter-note-box .form-control { flex: 1; }
 
 .chatter-timeline {
@@ -3285,6 +3317,20 @@ textarea.form-control {
 }
 
 .chatter-attachment-link:hover { text-decoration: underline; }
+
+/* VX111 — pièce jointe attachée à une note (inline dans la ligne, pas un
+   bloc séparé — contrairement au flux de pièces jointes récentes injecté
+   par VX23). */
+.chatter-note-attachment-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.8rem;
+  color: #1d4ed8;
+  text-decoration: none;
+}
+
+.chatter-note-attachment-link:hover { text-decoration: underline; }
 
 /* VX87 — CallLogPopover : journal d'appel en un geste (issue + note +
    prochaine action), le tout dans le popover ouvert depuis LeadForm/LeadCard/

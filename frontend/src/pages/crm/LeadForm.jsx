@@ -32,7 +32,7 @@ import ScoreBadge from '../../features/crm/ScoreBadge'
 import CallLogPopover from '../../features/crm/CallLogPopover'
 import useKeyboardAwareScroll from '../../hooks/useKeyboardAwareScroll'
 import {
-  Button, Input, FormSection, FormField,
+  Button, IconButton, Input, FormSection, FormField,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '../../ui'
 // VX89 — shell externe Escape + focus-trap + bottom-sheet mobile (comme ClientForm).
@@ -332,6 +332,11 @@ export default function LeadForm({
   const [historique, setHistorique] = useState([])
   const [noteBody, setNoteBody] = useState('')
   const [noteError, setNoteError] = useState(null)
+  // VX111 — pièce jointe optionnelle sur la note en cours de rédaction (ex.
+  // photo prise depuis mobile). Réutilise records.Attachment côté serveur
+  // (jamais un second magasin) — voir crmApi via postNote().
+  const [noteFile, setNoteFile] = useState(null)
+  const noteFileInputRef = useRef(null)
   const [saving, setSaving] = useState(false)
   const [savedConfirm, setSavedConfirm] = useState(false)
   const savedConfirmTimer = useRef(null)
@@ -600,14 +605,29 @@ export default function LeadForm({
       .then(r => setHistorique(r.data)).catch(() => {})
   }
 
+  // VX111 — la note poste en multipart dès qu'une pièce jointe est attachée
+  // (endpoint `noter` désormais bilingue JSON/multipart côté serveur) ; sans
+  // fichier, comportement STRICTEMENT inchangé (JSON simple).
   const postNote = async () => {
     const body = noteBody.trim()
-    if (!body) return
+    if (!body && !noteFile) return
     setNoteError(null)
     try {
-      const r = await api.post(`/crm/leads/${lead.id}/noter/`, { body })
+      let r
+      if (noteFile) {
+        const form = new FormData()
+        form.append('body', body)
+        form.append('file', noteFile)
+        r = await api.post(`/crm/leads/${lead.id}/noter/`, form, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })
+      } else {
+        r = await api.post(`/crm/leads/${lead.id}/noter/`, { body })
+      }
       setHistorique(h => [r.data, ...h])
       setNoteBody('')
+      setNoteFile(null)
+      if (noteFileInputRef.current) noteFileInputRef.current.value = ''
     } catch (err) {
       // La note reste saisie ; on explique l'échec au lieu de l'avaler.
       setNoteError(err?.response?.data?.detail
@@ -1447,6 +1467,25 @@ export default function LeadForm({
                   <input className="form-control" placeholder="Écrire une note (appel, commentaire…)"
                          value={noteBody} onChange={e => setNoteBody(e.target.value)}
                          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); postNote() } }} />
+                  {/* VX111 — attacher une pièce jointe à CETTE note (ex. photo
+                      prise depuis mobile pendant une visite) : réutilise le
+                      magasin records.Attachment existant, jamais un second
+                      magasin (décision tranchée dans cette tâche). */}
+                  <input
+                    ref={noteFileInputRef}
+                    type="file"
+                    accept="application/pdf,image/png,image/jpeg,image/webp"
+                    className="chatter-note-file-input"
+                    onChange={e => setNoteFile(e.target.files?.[0] ?? null)}
+                  />
+                  <IconButton
+                    type="button"
+                    variant="outline"
+                    label="Attacher une pièce jointe à la note"
+                    onClick={() => noteFileInputRef.current?.click()}
+                  >
+                    <Paperclip aria-hidden="true" size={16} />
+                  </IconButton>
                   <Button type="button" variant="outline" onClick={postNote}>
                     Noter
                   </Button>
@@ -1460,6 +1499,16 @@ export default function LeadForm({
                     onLogged={refreshHistorique}
                   />
                 </div>
+                {noteFile && (
+                  <p className="chatter-note-file-preview" data-testid="chatter-note-file-preview">
+                    <Paperclip size={12} aria-hidden="true" /> {noteFile.name}
+                    <button type="button" className="chatter-note-file-clear"
+                            aria-label="Retirer la pièce jointe"
+                            onClick={() => { setNoteFile(null); if (noteFileInputRef.current) noteFileInputRef.current.value = '' }}>
+                      ✕
+                    </button>
+                  </p>
+                )}
                 {noteError && (
                   <p className="form-error" role="alert">{noteError}</p>
                 )}

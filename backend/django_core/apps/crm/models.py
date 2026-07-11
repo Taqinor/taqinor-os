@@ -846,6 +846,16 @@ class LeadActivity(models.Model):
     old_value = models.TextField(blank=True, null=True)
     new_value = models.TextField(blank=True, null=True)
     body = models.TextField(blank=True, null=True)
+    # VX111 — pièce jointe optionnelle sur une note manuelle (kind='note'),
+    # ex. photo prise depuis mobile pendant une visite. RÉUTILISE le magasin
+    # `records.Attachment` existant (déjà whitelisté ('crm','lead')) — jamais
+    # un second magasin de fichiers. SET_NULL : la note reste lisible même si
+    # la pièce jointe est supprimée indépendamment (ex. depuis AttachmentsPanel).
+    attachment = models.ForeignKey(
+        'records.Attachment', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='lead_notes',
+        verbose_name='Pièce jointe',
+    )
     # Marque une entrée issue d'une action « en masse » (édition groupée de
     # plusieurs leads) — l'Historique l'affiche avec un badge « en masse ».
     bulk = models.BooleanField(default=False)

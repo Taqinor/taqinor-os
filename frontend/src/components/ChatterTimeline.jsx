@@ -77,7 +77,27 @@ function groupByDay(feed) {
 
 function ActivityLine({ a }) {
   if (a.kind === 'note') {
-    return <span>📝 <strong>Note&nbsp;:</strong> {a.body}</span>
+    return (
+      <span>
+        📝 <strong>Note&nbsp;:</strong> {a.body}
+        {/* VX111 — pièce jointe attachée à CETTE note (photo prise depuis
+            mobile pendant une visite, ex.) — même proxy Django que
+            AttachmentsPanel, jamais un lien MinIO direct. */}
+        {a.attachment_url && (
+          <>
+            {' '}
+            <a
+              href={a.attachment_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="chatter-note-attachment-link"
+            >
+              <Paperclip size={12} aria-hidden="true" /> {a.attachment_filename || 'Pièce jointe'}
+            </a>
+          </>
+        )}
+      </span>
+    )
   }
   if (a.kind === 'creation') {
     return <span>✨ {a.body}</span>

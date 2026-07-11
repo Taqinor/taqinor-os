@@ -11,16 +11,36 @@ from .scoring import compute_score, score_label
 
 class LeadActivitySerializer(serializers.ModelSerializer):
     user_nom = serializers.SerializerMethodField()
+    # VX111 — pièce jointe optionnelle sur une note (photo prise depuis
+    # mobile). Même forme d'URL que AttachmentSerializer.get_url (proxy
+    # Django même origine, jamais MinIO direct) — pas de sérialiseur imbriqué
+    # pour rester compatible avec la structure plate consommée par
+    # ChatterTimeline côté frontend.
+    attachment_url = serializers.SerializerMethodField()
+    attachment_filename = serializers.SerializerMethodField()
+    attachment_mime = serializers.SerializerMethodField()
 
     class Meta:
         model = LeadActivity
         fields = [
             'id', 'kind', 'field', 'field_label', 'old_value', 'new_value',
             'body', 'outcome', 'bulk', 'user_nom', 'created_at',
+            'attachment_url', 'attachment_filename', 'attachment_mime',
         ]
 
     def get_user_nom(self, obj):
         return getattr(obj.user, 'username', None)
+
+    def get_attachment_url(self, obj):
+        if not obj.attachment_id:
+            return None
+        return f'/api/django/records/attachments/{obj.attachment_id}/download/'
+
+    def get_attachment_filename(self, obj):
+        return getattr(obj.attachment, 'filename', None)
+
+    def get_attachment_mime(self, obj):
+        return getattr(obj.attachment, 'mime', None)
 
 
 class _CurrentCompanyDefault:
