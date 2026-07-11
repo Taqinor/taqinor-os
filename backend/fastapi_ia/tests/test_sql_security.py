@@ -20,6 +20,7 @@ le test se saute proprement (comme les autres suites du dossier).
 import os
 import sys
 import unittest
+from unittest import mock
 
 os.environ.setdefault("DJANGO_SECRET_KEY", "test-secret")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -196,6 +197,59 @@ class CombinedGuardTests(unittest.TestCase):
         self.assertTrue(
             svc._references_forbidden_column(
                 "SELECT prix_achat FROM stock_produit WHERE company_id=7"))
+
+
+@unittest.skipIf(svc is None, f"sql_agent_service non importable: {_IMPORT_ERR}")
+class TenantGucTests(unittest.TestCase):
+    """NTPLT4 — GUC app.current_company pose sur le moteur du SQL-agent.
+
+    Defense en profondeur : meme une requete ecrite par le LLM ne peut pas lire
+    un autre tenant. No-op sans POSTGRES_RLS_ENABLED (defaut).
+    """
+
+    class _FakeEngine:
+        """Enregistre les listeners `connect` poses via sqlalchemy.event."""
+
+    def _fake_db(self):
+        db = type("FakeDB", (), {})()
+        db._engine = self._FakeEngine()
+        return db
+
+    def test_rls_flag_off_by_default(self):
+        with mock.patch.dict(os.environ, {"POSTGRES_RLS_ENABLED": "0"}):
+            self.assertFalse(svc._rls_enabled())
+
+    def test_rls_flag_on(self):
+        with mock.patch.dict(os.environ, {"POSTGRES_RLS_ENABLED": "1"}):
+            self.assertTrue(svc._rls_enabled())
+
+    def test_apply_guc_noop_when_flag_off(self):
+        # Flag OFF : aucun listener n'est enregistre (event.listens_for pas
+        # appele du tout).
+        db = self._fake_db()
+        with mock.patch.dict(os.environ, {"POSTGRES_RLS_ENABLED": "0"}):
+            with mock.patch("sqlalchemy.event.listens_for") as m_listen:
+                svc._apply_tenant_guc(db, 7)
+                m_listen.assert_not_called()
+
+    def test_apply_guc_noop_when_company_missing(self):
+        db = self._fake_db()
+        with mock.patch.dict(os.environ, {"POSTGRES_RLS_ENABLED": "1"}):
+            with mock.patch("sqlalchemy.event.listens_for") as m_listen:
+                svc._apply_tenant_guc(db, 0)
+                m_listen.assert_not_called()
+
+    def test_apply_guc_registers_connect_listener_when_on(self):
+        db = self._fake_db()
+        with mock.patch.dict(os.environ, {"POSTGRES_RLS_ENABLED": "1"}):
+            with mock.patch("sqlalchemy.event.listens_for") as m_listen:
+                # listens_for renvoie un decorateur ; on l'imite.
+                m_listen.return_value = lambda fn: fn
+                svc._apply_tenant_guc(db, 7)
+                m_listen.assert_called_once()
+                # Le 2e argument positionnel est l'evenement "connect".
+                args, _ = m_listen.call_args
+                self.assertEqual(args[1], "connect")
 
 
 if __name__ == "__main__":

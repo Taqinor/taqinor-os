@@ -130,3 +130,54 @@ class TenantContextMiddlewareTests(TestCase):
                     "SELECT current_setting('app.current_company', true)")
                 value = cursor.fetchone()[0]
             self.assertEqual(value, str(self.company.pk))
+
+
+class TenantTaskDecoratorTests(TestCase):
+    """NTPLT4 — le décorateur tenant_task pose le GUC en tête d'une tâche."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.company = Company.objects.create(nom='ACME')
+
+    def test_noop_passthrough_when_flag_off(self):
+        seen = {}
+
+        @tenant_context.tenant_task
+        def task(*, company_id, x):
+            seen['x'] = x
+            return x * 2
+
+        # Flag OFF : aucune transaction/GUC ajoutés, le corps s'exécute tel quel.
+        with _env(False):
+            with self.assertNumQueries(0):
+                result = task(company_id=self.company.pk, x=21)
+        self.assertEqual(result, 42)
+        self.assertEqual(seen['x'], 21)
+
+    def test_noop_when_company_id_none(self):
+        # Tâche cross-company (company_id None) : jamais de GUC (tourne owner).
+        @tenant_context.tenant_task
+        def task(*, company_id=None):
+            return 'ok'
+
+        with _env(True):
+            with self.assertNumQueries(0):
+                self.assertEqual(task(company_id=None), 'ok')
+
+    def test_sets_guc_when_on_postgres(self):
+        if connection.vendor != 'postgresql':
+            self.skipTest('GUC réel testé uniquement sur PostgreSQL.')
+        captured = {}
+
+        @tenant_context.tenant_task
+        def task(*, company_id):
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT current_setting('app.current_company', true)")
+                captured['value'] = cursor.fetchone()[0]
+            return 'done'
+
+        with _env(True):
+            self.assertEqual(task(company_id=self.company.pk), 'done')
+        # Le GUC était bien posé PENDANT l'exécution du corps.
+        self.assertEqual(captured['value'], str(self.company.pk))

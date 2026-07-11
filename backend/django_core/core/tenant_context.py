@@ -141,3 +141,46 @@ class TenantContextMiddleware:
                 # transaction ouverte par ATOMIC_REQUESTS/les vues.
                 set_current_company(company_id)
         return self.get_response(request)
+
+
+# ── NTPLT4 — GUC tenant dans les tâches Celery ───────────────────────────────
+def tenant_task(func):
+    """Décorateur : pose ``app.current_company`` au début d'une tâche à effet.
+
+    Convention (NTPLT4) : les tâches Celery à effets tenant reçoivent un kwarg
+    ``company_id``. Ce décorateur, appliqué SOUS ``@shared_task`` (donc au plus
+    près de la fonction), ouvre une transaction et y pose le GUC via
+    ``set_current_company`` AVANT d'exécuter le corps — de sorte que, RLS actif,
+    la tâche ne voit/écrit que les lignes de CE tenant, même via SQL brut.
+
+        @shared_task(name='crm.relancer')
+        @tenant_task
+        def relancer(*, company_id, lead_id):
+            ...
+
+    Sûreté et rétro-compatibilité :
+      * No-op total quand RLS est désactivé (défaut) : ``set_current_company``
+        court-circuite, et on n'ouvre PAS de transaction supplémentaire — le
+        corps s'exécute exactement comme avant (comportement historique).
+      * ``company_id`` absent/None : aucune erreur, aucun GUC — utile pour les
+        tâches VOLONTAIREMENT cross-company (beat système) qui tournent sous le
+        rôle owner/BYPASSRLS (NTPLT3) et ne doivent JAMAIS poser de GUC.
+      * ``SET LOCAL`` est transaction-scopé : il s'efface à la fin de la
+        transaction ouverte ici (jamais de fuite vers la tâche suivante sur le
+        même worker/connexion — contrainte SCA14 × pooling).
+    """
+    import functools
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        company_id = kwargs.get('company_id')
+        if not rls_enabled() or company_id is None:
+            # Chemin par défaut (RLS off) OU tâche cross-company : aucun GUC,
+            # aucune transaction ajoutée — comportement inchangé.
+            return func(*args, **kwargs)
+        from django.db import transaction
+        with transaction.atomic():
+            set_current_company(company_id)
+            return func(*args, **kwargs)
+
+    return wrapper
