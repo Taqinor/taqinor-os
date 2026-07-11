@@ -261,6 +261,10 @@ export default function DevisGenerator({
   const [tauxTva, setTauxTva] = useState('20.00')
   const [discountPct, setDiscountPct] = useState('0')
   const linesInitialized = useRef(false)
+  // VX90 — après « Ajouter ligne », déplacer le focus sur le sélecteur produit
+  // de la NOUVELLE ligne (ref-walk DOM via data-line-key ; pas de useFieldArray).
+  const linesTableRef = useRef(null)
+  const [pendingFocusKey, setPendingFocusKey] = useState(null)
 
   // ── QJ31 — Multi-propriétés (un seul devis, jamais scindé) ──
   // 'none' = mono-système (défaut, comportement historique inchangé) ;
@@ -955,8 +959,27 @@ export default function DevisGenerator({
     }
   }
 
-  const addLine = () => setLines(ls => [...ls, emptyLine()])
+  const addLine = () => setLines(ls => {
+    const line = emptyLine()
+    setPendingFocusKey(line._key) // VX90 — focus la nouvelle ligne après rendu.
+    return [...ls, line]
+  })
   const removeLine = (key) => setLines(ls => ls.filter(l => l._key !== key))
+
+  // VX90 — quand une ligne vient d'être ajoutée, focaliser son ProduitPicker et
+  // la faire défiler dans la vue. On cible la ligne par son data-line-key, puis
+  // le premier bouton (le déclencheur du ProduitPicker) de cette ligne.
+  useEffect(() => {
+    if (pendingFocusKey == null) return
+    const row = linesTableRef.current
+      ?.querySelector(`[data-line-key="${pendingFocusKey}"]`)
+    if (row) {
+      const picker = row.querySelector('button[type="button"]')
+      picker?.focus()
+      row.scrollIntoView({ block: 'nearest' })
+    }
+    setPendingFocusKey(null)
+  }, [pendingFocusKey, lines])
 
   // ── QJ31 — Multi-propriétés ──────────────────────────────────────────────
   // Bascule de mode. En passant en « villas », chaque ligne sans groupe est
@@ -2209,7 +2232,7 @@ export default function DevisGenerator({
               Avenant / accessoires ou main-d'œuvre seuls (désactive la vérification équipement)
             </label>
             <div className="lines-table-wrap">
-              <table className="lines-table">
+              <table className="lines-table" ref={linesTableRef}>
                 <thead>
                   <tr>
                     <th style={{ minWidth: 160 }}>Désignation</th>
@@ -2236,7 +2259,7 @@ export default function DevisGenerator({
                     const designationDivergente = !!prodLie
                       && (l.designation || '').trim() !== (prodLie.nom || '').trim()
                     return (
-                      <tr key={l._key}>
+                      <tr key={l._key} data-line-key={l._key}>
                         <td data-label="Désignation">
                           {/* QP2 — désignation en LECTURE SEULE sauf pour
                               Directeur + Commercial responsable. Un rôle non
