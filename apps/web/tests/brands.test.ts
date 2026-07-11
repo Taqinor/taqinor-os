@@ -35,10 +35,28 @@ describe('BRANDS data', () => {
     expect(names).toContain('Nexans');
   });
 
-  it('ships every logo as null (word-marks render, no missing-file errors)', () => {
+  // W187 — real logos sourced where an official asset was reachable (Wikimedia
+  // Commons); the rest stay null → word-mark, never a fabricated logo.
+  it('W187 — every non-null logo points to a real file under public/brands/', () => {
     for (const brand of BRANDS) {
-      expect(brand.logo).toBeNull();
+      if (brand.logo === null) continue;
+      expect(brand.logo).toMatch(/^\/brands\/[a-z0-9-]+\.(svg|png)$/);
+      const file = path.join(__dirname, '..', 'public', brand.logo);
+      expect(readFileSync(file).byteLength).toBeGreaterThan(0);
     }
+  });
+
+  it('W187 — sourced brands have a logo; unsourced brands stay null (word-mark)', () => {
+    const logoByName = Object.fromEntries(BRANDS.map((b) => [b.name, b.logo]));
+    // Sourced official assets (Wikimedia SVG/PNG + Wikipedia EN + Commons BY-SA).
+    expect(logoByName['Huawei']).toBe('/brands/huawei.svg');
+    expect(logoByName['Nexans']).toBe('/brands/nexans.svg');
+    expect(logoByName['JA Solar']).toBe('/brands/ja-solar.svg');
+    expect(logoByName['Jinko']).toBe('/brands/jinko.png');
+    expect(logoByName['Canadian Solar']).toBe('/brands/canadian-solar.png');
+    expect(logoByName['Deye']).toBe('/brands/deye.png');
+    // Dyness — no reachable official asset anywhere → honest word-mark fallback.
+    expect(logoByName['Dyness']).toBeNull();
   });
 
   it('gives every brand a non-empty category', () => {

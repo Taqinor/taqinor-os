@@ -2129,6 +2129,25 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     return clientRef;
   }
 
+  // WJ116 — reprise fbclid + UTM depuis sessionStorage (capture first-touch du
+  // Layout, apps/web/src/layouts/Layout.astro ~l.206) : sans ceci, AUCUNE
+  // attribution UTM (parrainage compris — /parrainage) ne partait jamais sur ce
+  // funnel PRINCIPAL alors que le webhook / validateLead les acceptent déjà.
+  // Miroir exact de DiagnosticForm.astro ~l.279. Seules les clés PRÉSENTES sont
+  // jointes (convention WJ30/WJ31 « absent plutôt que vide ») : un visiteur sans
+  // paramètre de tracking envoie un corps byte-identique à avant.
+  const TRACK_KEYS = ['fbclid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'] as const;
+  function readTrackingParams(): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const k of TRACK_KEYS) {
+      try {
+        const v = sessionStorage.getItem('tq_' + k);
+        if (v) out[k] = v;
+      } catch {}
+    }
+    return out;
+  }
+
   /** Construit le corps de lead + renvoie les erreurs client (miroir validateLead). */
   function buildBody(): { body: Record<string, unknown>; errors: Record<string, string> } {
     const eteDifferente = eteToggle?.checked === true;
@@ -2186,6 +2205,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       // écran, jamais rempli sciemment) ; rejeté côté serveur si non vide.
       website_url: val('mt-hp'),
     };
+    // WJ116 — fbclid/UTM (parrainage inclus) : joints seulement s'ils existent.
+    Object.assign(body, readTrackingParams());
     // WJ4 — repère FACULTATIF : on le joint s'il existe, on ne BLOQUE jamais sans lui.
     if (capturePin) {
       body.roofPoint = capturePin;

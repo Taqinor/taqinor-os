@@ -8,6 +8,14 @@
  * Same referral mechanic as the FR page: personal link rides the EXISTING
  * utm_campaign passthrough (zero backend change). WG14 (reward amount +
  * trigger milestone) stays gated — no invented figure.
+ *
+ * WJ116 — the referral <code> is NOT something the referrer makes up (their
+ * first name, their file number...): backend QX35 (LIVE) only auto-creates a
+ * `Parrainage` when <code> matches an EXISTING `Client.code_parrainage`, a
+ * deterministic code Taqinor assigns each client (form `TQ-<id>`, e.g.
+ * `TQ-482`) — an invented code matches no client, so the referrer is never
+ * credited. This page now communicates the real code (via the advisor or
+ * the customer portal), never a self-chosen one.
  */
 import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
@@ -117,11 +125,13 @@ const jsonLd = {
         <Callout type="info" title="Your personal link">
           <p>
             No account to create, no app to install: your personal link is simply our usual
-            diagnostic journey, with a code you choose yourself so we know it came from you — for
-            example your first name or your client file number:
+            diagnostic journey, completed with your referral code. This code isn’t something you
+            make up: Taqinor assigns it to you, in the form <strong class="text-brass-300">TQ-</strong>
+            followed by a number — your advisor gives it to you, or you find it in your customer
+            portal.
           </p>
           <p class="mt-3 break-all rounded-none border border-white/15 bg-black/20 px-4 py-3 font-mono text-xs text-lune" dir="ltr">
-            taqinor.ma/devis/mon-toit?utm_source=parrainage&utm_campaign=<strong class="text-brass-300">your-code</strong>
+            taqinor.ma/devis/mon-toit?utm_source=parrainage&utm_campaign=<strong class="text-brass-300">TQ-482</strong>
           </p>
           <p class="mt-3">
             Send it over WhatsApp, SMS, or any other channel — that’s all there is to do on your
