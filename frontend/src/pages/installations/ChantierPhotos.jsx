@@ -148,7 +148,7 @@ export default function ChantierPhotos({ installationId }) {
                       {isImage(a) ? (
                         <button type="button" title={a.filename}
                                 onClick={() => openViewer(p.key, a)}>
-                          <img src={a.url} alt={a.filename}
+                          <img src={a.url} alt={a.filename} loading="lazy"
                                className="size-16 rounded-md border border-border object-cover" />
                         </button>
                       ) : (

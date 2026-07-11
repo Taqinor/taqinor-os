@@ -432,7 +432,7 @@ function PhotoThumb({ photo, onRemove, busy }) {
   return (
     <div className="relative">
       <a href={photo.url} target="_blank" rel="noreferrer">
-        <img src={photo.url} alt={photo.filename}
+        <img src={photo.url} alt={photo.filename} loading="lazy"
           className="size-20 rounded border border-border object-cover" />
       </a>
       <button type="button" disabled={busy}

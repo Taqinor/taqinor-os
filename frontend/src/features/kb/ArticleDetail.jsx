@@ -249,6 +249,7 @@ export default function ArticleDetail({
         <img
           src={kbApi.couvertureImageUrl(articleId)}
           alt=""
+          loading="lazy"
           className="h-40 w-full rounded-lg object-cover"
         />
       )}
