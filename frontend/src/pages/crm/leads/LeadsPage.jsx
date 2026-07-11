@@ -32,11 +32,12 @@ import ListView from './views/ListView'
 import CalendarView from './views/CalendarView'
 import ChartsView from './views/ChartsView'
 import CarteView from './views/CarteView'  // FG37
+import ForecastView from './views/ForecastView'  // XSAL15
 
 const VIEW_KEY = 'taqinor.leads.view'
 const FILTERS_KEY = 'taqinor.leads.filters'
 const SAVED_VIEWS_KEY = 'taqinor.leads.savedViews'
-const VALID_VIEWS = ['kanban', 'liste', 'calendrier', 'graphique', 'carte']  // FG37
+const VALID_VIEWS = ['kanban', 'liste', 'calendrier', 'graphique', 'carte', 'prevision']  // FG37, XSAL15
 
 // loadSavedViews inlined removed — now using useSavedViews hook (FG11).
 
@@ -518,6 +519,9 @@ export default function LeadsPage() {
             onOpenLead={onOpenLead}
           />
         )}
+        {/* XSAL15 — Vue prévision : leads ouverts groupés par mois de clôture
+            prévue, glisser une carte replanifie le mois. */}
+        {view === 'prevision' && <ForecastView {...viewProps} />}
       </div>
 
       {(showForm || deepLead) && (
