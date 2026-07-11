@@ -9,7 +9,9 @@ lecture n'est exposée ici — l'agrégat p75 par route vit dans
 ``insights.py`` (à consommer par un futur tableau de bord perf)."""
 from django.utils import timezone
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import (
+    api_view, permission_classes, authentication_classes,
+)
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
@@ -22,6 +24,7 @@ DEFAULT_VITAL_METRIC_RETENTION_DAYS = 90
 
 
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 def vitals_collect(request):
     """POST une métrique Web Vital ``{name, value, path}``.
