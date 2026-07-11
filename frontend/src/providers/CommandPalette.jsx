@@ -115,9 +115,13 @@ export function CommandPalette() {
   // de la sélection clavier à chaque nouvelle requête (comportement
   // byte-identique à l'ancien effet local, qui remettait `active` à 0 au
   // lancement ET à l'arrivée de la réponse).
-  useEffect(() => {
+  // Remise à zéro de la sélection clavier quand la requête change — en phase
+  // de rendu (patron React), pas dans un effet-setState.
+  const [prevTerm, setPrevTerm] = useState(term)
+  if (term !== prevTerm) {
+    setPrevTerm(term)
     setActive(0)
-  }, [term])
+  }
 
   // L'index actif peut dépasser la liste après un changement de résultats : on le
   // borne au point d'usage (rendu + Entrée) plutôt que via un setState en effet.

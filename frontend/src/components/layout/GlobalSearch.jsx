@@ -85,11 +85,19 @@ export default function GlobalSearch() {
   // à GlobalSearch : réinitialiser la sélection clavier à chaque nouvelle
   // requête, et rouvrir le panneau quand une réponse (résultats OU échec) est
   // disponible — comportement byte-identique à l'ancien effet local.
-  useEffect(() => {
+  // Réinitialise la sélection clavier quand la requête change — en phase de
+  // rendu (patron React « ajuster l'état quand une valeur change »), pas dans
+  // un effet-setState.
+  const [prevTerm, setPrevTerm] = useState(term)
+  if (term !== prevTerm) {
+    setPrevTerm(term)
     setActiveIndex(-1)
-  }, [term])
+  }
 
   useEffect(() => {
+    // Rouvre le panneau à l'ARRIVÉE d'une réponse asynchrone (résultats/échec) :
+    // réaction à un état externe, pas un état dérivable en rendu.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (term.length >= 2 && !loading) setOpen(true)
   }, [groups, failed, loading, term])
 

@@ -105,12 +105,17 @@ export default function AppLauncher() {
   const entryByKey = useMemo(() => new Map(entries.map((e) => [e.key, e])), [entries])
 
   // Relit favoris/récents à CHAQUE ouverture (repli défensif — VX10 peut
-  // modifier la clé pinned pendant que le lanceur est fermé).
-  useEffect(() => {
-    if (!open) return
+  // modifier la clé pinned pendant que le lanceur est fermé). Fait en phase de
+  // rendu au front montant de `open` (patron React « ajuster l'état quand une
+  // valeur change »), pas dans un effet-setState ; lecture localStorage pure.
+  const [wasOpen, setWasOpen] = useState(false)
+  if (open && !wasOpen) {
+    setWasOpen(true)
     setPinned(readPinnedModules())
     setRecent(readRecentModules())
-  }, [open])
+  } else if (!open && wasOpen) {
+    setWasOpen(false)
+  }
 
   // Déclencheur (a) — événement window (bouton grille du Header), même patron
   // que `taqinor:command-palette` (I134).

@@ -111,7 +111,10 @@ const ROLE_META = {
 // `accent: null` (première section, sans label) reste neutre.
 // VX12 — exportée en plus de l'usage local : le sélecteur mobile « Plus »
 // (BottomTabBar.jsx) réutilise la MÊME liste que la Sidebar desktop (aucune
-// duplication), seule la présentation change (grille par catégorie).
+// duplication), seule la présentation change (grille par catégorie). L'export
+// d'une constante partagée est délibéré (react-refresh est une règle de DX
+// hot-reload, pas de correction) — d'où le disable ciblé ci-dessous.
+// eslint-disable-next-line react-refresh/only-export-components
 export const NAV_SECTIONS = [
   {
     label: null,

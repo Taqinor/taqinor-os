@@ -90,6 +90,10 @@ export function useEntitySearch(term, { enabled = true } = {}) {
 
   useEffect(() => {
     if (!enabled) return undefined
+    /* eslint-disable react-hooks/set-state-in-effect --
+       recherche débouncée : les setState synchrones ci-dessous ne font que
+       remettre à zéro / basculer l'état de chargement ; l'appel réseau réel
+       vit dans le setTimeout (250 ms) plus bas. Pas d'état dérivable en rendu. */
     if (term.length < 2) {
       setGroups([])
       setLoading(false)
@@ -98,6 +102,7 @@ export function useEntitySearch(term, { enabled = true } = {}) {
     }
     setLoading(true)
     setFailed(false)
+    /* eslint-enable react-hooks/set-state-in-effect */
     const t = setTimeout(() => {
       reportingApi.search(term)
         .then((r) => { setGroups(r.data?.groups ?? []); setFailed(false) })
