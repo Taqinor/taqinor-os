@@ -79,6 +79,8 @@ def _reply_to_address():
     devis. Précédence : ``INBOUND_REPLY_EMAIL`` (settings/env) → adresse
     d'expédition par défaut. Vide → pas de Reply-To (comportement inchangé)."""
     return (getattr(settings, 'INBOUND_REPLY_EMAIL', '') or '').strip()
+
+
 def _signature(company, **context):
     """SCA25 — signature d'email de la société (BrandedTemplate ou repli neutre).
 

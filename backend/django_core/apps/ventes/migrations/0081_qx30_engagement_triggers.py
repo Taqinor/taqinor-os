@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('ventes', '0076_qx23_marge_snapshot'),
+        ('ventes', '0080_qx23_marge_snapshot'),
     ]
 
     operations = [

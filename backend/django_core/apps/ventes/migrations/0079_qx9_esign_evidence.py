@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('ventes', '0074_alter_facture_abandon_motif'),
+        ('ventes', '0078_facture_condition_paiement_ref'),
     ]
 
     operations = [

@@ -9,7 +9,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("crm", "0050_qx15_lead_contact_preference_set_at"),
+        ("crm", "0052_qx15_lead_contact_preference_set_at"),
     ]
 
     operations = [

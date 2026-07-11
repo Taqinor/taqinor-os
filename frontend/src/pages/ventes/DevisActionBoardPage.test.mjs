@@ -13,7 +13,10 @@ import { dirname, join } from 'node:path'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SRC = readFileSync(join(HERE, 'DevisActionBoardPage.jsx'), 'utf8')
 const API_SRC = readFileSync(join(HERE, '../../api/ventesApi.js'), 'utf8')
-const ROUTER_SRC = readFileSync(join(HERE, '../../router/index.jsx'), 'utf8')
+// ARC54 — les routes ventes sont désormais déclarées dans le module-config
+// (features/ventes/module.config.jsx), plus dans router/index.jsx inline.
+const ROUTER_SRC = readFileSync(
+  join(HERE, '../../features/ventes/module.config.jsx'), 'utf8')
 
 test('QX29 : les 4 buckets attendus sont déclarés', () => {
   for (const key of ['envoyes_sans_reponse', 'acceptes_non_factures', 'refuses_sans_motif', 'expirant_bientot']) {
@@ -36,10 +39,10 @@ test('QX29 : ventesApi expose l\'action-board (contrat backend)', () => {
   assert.match(API_SRC, /getDevisActionBoard: \(\) => api\.get\('\/ventes\/devis\/action-requise\/'\)/)
 })
 
-test('QX29 : la route est enregistrée en ajout (append-only, pattern existant conservé)', () => {
-  assert.match(ROUTER_SRC, /const DevisActionBoardPage = lazy\(\(\) => import\('\.\.\/pages\/ventes\/DevisActionBoardPage'\)\)/)
-  assert.match(ROUTER_SRC, /path: '\/ventes\/devis\/action-requise'/)
+test('QX29 : la route est enregistrée en ajout (module-config ARC54, pattern existant conservé)', () => {
+  assert.match(ROUTER_SRC, /const DevisActionBoardPage = lazy\(\(\) => import\('\.\.\/\.\.\/pages\/ventes\/DevisActionBoardPage'\)\)/)
+  assert.match(ROUTER_SRC, /path: '\/ventes\/devis\/action-requise', component: DevisActionBoardPage/)
   // Le reste des routes ventes existantes n'a pas été supprimé.
-  assert.match(ROUTER_SRC, /path: '\/ventes\/devis', loader: authLoader, element: <WithLayout><DevisList \/><\/WithLayout>/)
+  assert.match(ROUTER_SRC, /path: '\/ventes\/devis', component: DevisList/)
   assert.match(ROUTER_SRC, /path: '\/ventes\/devis\/nouveau'/)
 })

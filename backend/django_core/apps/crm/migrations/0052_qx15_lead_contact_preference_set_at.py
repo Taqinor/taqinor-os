@@ -10,7 +10,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("crm", "0049_qw10_lead_dedup_indexes_concurrent"),
+        ("crm", "0051_lead_tiers"),
     ]
 
     operations = [
