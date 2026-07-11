@@ -10,7 +10,7 @@ test('E10: attach a file to a lead, then open/download it', async ({ page }) => 
   await gotoLeads(page)
   const name = await createLead(page, { nom: uniq('Attach') })
   await openLead(page, name)
-  const modal = page.locator('.modal.modal-xl')
+  const modal = page.locator('[role="dialog"]').filter({ has: page.locator('.modal-title') })
 
   const fname = `e2e-${Date.now()}.pdf`
   const [resp] = await Promise.all([

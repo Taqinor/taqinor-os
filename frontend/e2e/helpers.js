@@ -45,7 +45,7 @@ export async function setLeadsView(page, view) {
   await page.getByRole('button', { name: label }).click()
 }
 
-const leadModal = (page) => page.locator('.modal.modal-xl')
+const leadModal = (page) => page.locator('[role="dialog"]').filter({ has: page.locator('.modal-title') })
 
 // Create a lead through the modal. Returns its display name (its nom).
 // `facture` (winter bill, MAD) makes the lead "devis-ready" for residential.
