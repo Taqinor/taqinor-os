@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import {
   Bot, MessageSquare, Send, Code2, ChevronDown, CheckCircle2,
@@ -24,6 +24,7 @@ import {
 } from '../../features/ia/store/iaSlice'
 import useVoiceChat from '../../features/ia/voice/useVoiceChat'
 import { LOOP_STATES } from '../../features/ia/voice/conversationLoop'
+import { prefersReducedMotion } from '../../ui/charts/chart-theme'
 
 const SUGGESTIONS = [
   'Quels produits sont en rupture de stock ?',
@@ -49,6 +50,85 @@ function isConfigMissing(text) {
     && (t.includes('manquante') || t.includes('manquant') || t.includes('missing')
         || t.includes('.env') || t.includes('absente'))
   )
+}
+
+// VX37 — reconnaît un tableau de lignes structurées (objets plats homogènes)
+// éventuellement porté par le payload agent, pour un mini-tableau inline à la
+// place du seul `<details><pre>` SQL brut. Défensif : jamais de plantage sur
+// une forme inattendue, aucun changement backend requis (inerte tant qu'aucun
+// payload ne porte ce champ).
+function extractStructuredRows(msg) {
+  const candidate = msg?.rows ?? msg?.data
+  if (!Array.isArray(candidate) || candidate.length === 0) return null
+  const isPlainRow = (r) => r && typeof r === 'object' && !Array.isArray(r)
+  if (!candidate.every(isPlainRow)) return null
+  const columns = Object.keys(candidate[0])
+  if (columns.length === 0) return null
+  return { columns, rows: candidate }
+}
+
+// VX37 — mini-tableau de données inline (preuve lisible par un non-développeur).
+function StructuredRowsTable({ columns, rows }) {
+  return (
+    <div data-testid="structured-rows-table" className="mt-2 overflow-x-auto rounded-md border border-border">
+      <table className="w-full text-left text-xs">
+        <thead>
+          <tr className="border-b border-border bg-muted/60">
+            {columns.map((col) => (
+              <th key={col} className="px-2.5 py-1.5 font-medium text-muted-foreground">{col}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => (
+            <tr key={i} className="border-b border-border last:border-0">
+              {columns.map((col) => (
+                <td key={col} className="px-2.5 py-1.5 text-foreground">{String(row[col] ?? '')}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+// VX37 — révélation incrémentale du texte agent (le texte complet est déjà
+// côté client : on l'affiche mot à mot via requestAnimationFrame, sans aucun
+// appel réseau). `prefers-reduced-motion` affiche le texte instantanément.
+// `active` ne rejoue le reveal que sur le DERNIER message agent au moment de
+// son arrivée — les messages déjà affichés restent statiques.
+function RevealText({ text, active }) {
+  const words = useMemo(() => (text ? text.split(/(\s+)/) : []), [text])
+  const reduced = useMemo(() => prefersReducedMotion(), [])
+  const [count, setCount] = useState(active && !reduced ? 0 : words.length)
+
+  useEffect(() => {
+    if (!active || reduced) {
+      setCount(words.length)
+      return undefined
+    }
+    setCount(0)
+    let i = 0
+    let frame
+    let lastTime = 0
+    const STEP_MS = 28
+    const tick = (t) => {
+      if (t - lastTime >= STEP_MS) {
+        lastTime = t
+        i += 1
+        setCount(i)
+      }
+      if (i < words.length) {
+        frame = requestAnimationFrame(tick)
+      }
+    }
+    frame = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(frame)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text, active, reduced])
+
+  return <>{words.slice(0, count).join('')}</>
 }
 
 export default function AgentChat() {
@@ -214,7 +294,16 @@ export default function AgentChat() {
               />
             )}
 
-            {messages.map((msg, i) => (
+            {messages.map((msg, i) => {
+              // VX37 — seul le DERNIER message agent (à son arrivée, tant que
+              // l'agent n'est plus en train de charger) rejoue le reveal
+              // incrémental ; les messages déjà affichés restent statiques.
+              const isLastAgentMsg = msg.role === 'agent' && i === messages.length - 1 && !agentLoading
+              const structuredRows = msg.role === 'agent' ? extractStructuredRows(msg) : null
+              const displayText = msg.role === 'agent' && isConfigMissing(msg.content)
+                ? CONFIG_MISSING_FR
+                : msg.content
+              return (
               <div
                 key={i}
                 className={cn(
@@ -236,10 +325,13 @@ export default function AgentChat() {
                   )}
                 >
                   <p className="whitespace-pre-wrap break-words">
-                    {msg.role === 'agent' && isConfigMissing(msg.content)
-                      ? CONFIG_MISSING_FR
-                      : msg.content}
+                    {msg.role === 'agent'
+                      ? <RevealText text={displayText} active={isLastAgentMsg} />
+                      : displayText}
                   </p>
+                  {structuredRows && (
+                    <StructuredRowsTable columns={structuredRows.columns} rows={structuredRows.rows} />
+                  )}
                   {msg.action_performed && (
                     <span className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
                       <CheckCircle2 className="size-3.5" aria-hidden="true" />
@@ -355,7 +447,8 @@ export default function AgentChat() {
                   )}
                 </div>
               </div>
-            ))}
+              )
+            })}
 
             {agentLoading && (
               <div className="flex items-start gap-2.5">

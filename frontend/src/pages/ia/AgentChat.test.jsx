@@ -36,6 +36,21 @@ beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn()
 })
 
+// Mock déterministe de matchMedia (prefers-reduced-motion) — surchargé par
+// test via `mockMatchMedia`.
+function mockMatchMedia(reduced) {
+  window.matchMedia = vi.fn().mockImplementation((query) => ({
+    matches: reduced,
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  }))
+}
+
 /* ── Couche LOGIQUE : normalisation des payloads agent (proposition / résultat) ── */
 describe('iaSlice — normalisation des messages agent (AG3)', () => {
   it('parseStructuredPayload extrait un objet proposition encadré de texte', () => {
@@ -160,5 +175,45 @@ describe('AgentChat — cartes proposition / résultat (AG3)', () => {
     ])
     render(<Provider store={store}><AgentChat /></Provider>)
     expect(screen.getByRole('button', { name: /Confirmer/ })).toBeDisabled()
+  })
+})
+
+/* ── VX37 — reveal incrémental + mini-tableau de lignes structurées ── */
+describe('AgentChat — reveal texte + mini-tableau (VX37)', () => {
+  it('reduced-motion : le texte du dernier message agent est instantané', () => {
+    mockMatchMedia(true)
+    const store = makeStore([
+      { role: 'agent', content: 'Réponse complète immédiate.' },
+    ])
+    render(<Provider store={store}><AgentChat /></Provider>)
+    expect(screen.getByText('Réponse complète immédiate.')).toBeInTheDocument()
+  })
+
+  it('rend un mini-tableau inline quand le message porte des lignes structurées', () => {
+    mockMatchMedia(true)
+    const store = makeStore([
+      {
+        role: 'agent',
+        content: 'Voici les produits en rupture.',
+        rows: [
+          { produit: 'Panneau 450W', stock: 0 },
+          { produit: 'Onduleur 5kW', stock: 2 },
+        ],
+      },
+    ])
+    render(<Provider store={store}><AgentChat /></Provider>)
+    const table = screen.getByTestId('structured-rows-table')
+    expect(within(table).getByText('produit')).toBeInTheDocument()
+    expect(within(table).getByText('Panneau 450W')).toBeInTheDocument()
+    expect(within(table).getByText('Onduleur 5kW')).toBeInTheDocument()
+  })
+
+  it('pas de mini-tableau quand aucune ligne structurée n\'est portée', () => {
+    mockMatchMedia(true)
+    const store = makeStore([
+      { role: 'agent', content: 'Réponse texte simple.' },
+    ])
+    render(<Provider store={store}><AgentChat /></Provider>)
+    expect(screen.queryByTestId('structured-rows-table')).not.toBeInTheDocument()
   })
 })
