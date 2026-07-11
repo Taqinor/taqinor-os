@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import api from '../../api/axios'
 import { Badge, Button, Spinner } from '../../ui'
+import { Table } from '../reporting/Table'
 import ClientRgpdActions from './ClientRgpdActions'
 import { formatMAD } from '../../lib/format'
 import { telHref, waHref } from '../../lib/contactLinks'
@@ -13,6 +14,14 @@ import { telHref, waHref } from '../../lib/contactLinks'
 const formatDateFR = (iso) => (iso ? new Date(iso).toLocaleDateString('fr-FR') : '—')
 
 function DocTable({ titre, rows, withTotal, withDate, emptyLabel }) {
+  // VX152 — un seul moteur de table : la fiche client rejoint le primitif `Table`
+  // partagé (reporting) au lieu d'un troisième moteur `DocTable` maison.
+  const columns = [
+    { key: 'reference', header: 'Référence', cellClassName: 'font-medium', cell: (r) => r.reference || '—' },
+    { key: 'statut', header: 'Statut', cell: (r) => <Badge tone="neutral">{r.statut || '—'}</Badge> },
+    ...(withDate ? [{ key: 'date', header: 'Date', cell: (r) => formatDateFR(r.date) }] : []),
+    ...(withTotal ? [{ key: 'total', header: 'Total TTC', align: 'right', cell: (r) => formatMAD(r.total_ttc) }] : []),
+  ]
   return (
     <section className="mb-4">
       <h4 className="font-medium mb-2">
@@ -21,30 +30,7 @@ function DocTable({ titre, rows, withTotal, withDate, emptyLabel }) {
       {rows.length === 0 ? (
         <p className="text-muted-foreground">{emptyLabel}</p>
       ) : (
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left text-muted-foreground">
-              <th className="py-1 pr-2">Référence</th>
-              <th className="py-1 pr-2">Statut</th>
-              {withDate && <th className="py-1 pr-2">Date</th>}
-              {withTotal && <th className="py-1 text-right">Total TTC</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.id} className="border-t">
-                <td className="py-1 pr-2 font-medium">{r.reference || '—'}</td>
-                <td className="py-1 pr-2">
-                  <Badge tone="neutral">{r.statut || '—'}</Badge>
-                </td>
-                {withDate && <td className="py-1 pr-2">{formatDateFR(r.date)}</td>}
-                {withTotal && (
-                  <td className="py-1 text-right">{formatMAD(r.total_ttc)}</td>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <Table columns={columns} rows={rows} getRowKey={(r) => r.id} aria-label={titre} />
       )}
     </section>
   )

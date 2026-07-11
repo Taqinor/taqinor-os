@@ -26,6 +26,21 @@ import {
 } from '../../ui'
 import { buildFolderTree, flattenVisible, countFolders } from './tree.js'
 import GedSearch from './GedSearch.jsx'
+import { DataTable } from '../../ui/datatable'
+
+// VX152 — colonnes structurelles seules : le rendu réel de l'en-tête et des
+// lignes passe par renderHeaderRow/renderRow (échappatoire ARC49 du moteur), ce
+// qui permet à la liste des documents de rejoindre DataTable sans perdre son DOM
+// (cases nommées « Sélectionner … », actions par ligne, badges de verrou). Ces
+// colonnes ne servent qu'à la largeur/au colSpan interne du moteur.
+const GED_DOC_COLUMNS = [
+  { id: 'select', header: '', sortable: false, hideable: false, reorderable: false },
+  { id: 'nom', header: 'Document', sortable: false, hideable: false, reorderable: false },
+  { id: 'versions', header: 'Versions', sortable: false, hideable: false, reorderable: false },
+  { id: 'created_by', header: 'Créé par', sortable: false, hideable: false, reorderable: false },
+  { id: 'updated', header: 'Mis à jour', sortable: false, hideable: false, reorderable: false },
+  { id: 'actions', header: '', sortable: false, hideable: false, reorderable: false },
+]
 
 // Le backend pagine certains endpoints (DRF) : on accepte `results` OU le
 // tableau brut, comme partout dans le frontend.
@@ -388,86 +403,98 @@ export default function GedNavigator() {
                         <Upload className="size-4" aria-hidden="true" /> Téléverser un document
                       </Button>} />
                   ) : (
-                    <table className="data-table">
-                      <thead>
-                        <tr>
-                          <th className="w-8">
+                    <DataTable
+                      data={documents}
+                      columns={GED_DOC_COLUMNS}
+                      getRowId={(d) => d.id}
+                      manualSorting
+                      manualFiltering
+                      manualPagination
+                      rowCount={documents.length}
+                      pageSize={documents.length}
+                      pageSizeOptions={[documents.length]}
+                      searchable={false}
+                      hideToolbar
+                      hidePagination
+                      tableRole="table"
+                      aria-label="Documents du dossier"
+                      renderHeaderRow={() => (
+                        <>
+                          <th scope="col" className="w-8">
                             {/* XGED14 — tout sélectionner. */}
                             <input type="checkbox"
                               aria-label="Tout sélectionner"
                               checked={selectedIds.size === documents.length && documents.length > 0}
                               onChange={toggleSelectAll} />
                           </th>
-                          <th>Document</th>
-                          <th className="m-hide">Versions</th>
-                          <th className="m-hide">Créé par</th>
-                          <th>Mis à jour</th>
-                          <th aria-label="Actions" />
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {documents.map((d) => (
-                          <tr key={d.id}>
-                            <td data-label="" className="w-8">
-                              <input type="checkbox"
-                                aria-label={`Sélectionner ${d.nom}`}
-                                checked={selectedIds.has(d.id)}
-                                onChange={() => toggleSelect(d.id)} />
-                            </td>
-                            <td data-label="Document" className="font-medium">
-                              {/* GED14 — clic sur le nom → aperçu du document. */}
-                              <button type="button"
-                                className="flex items-center gap-1.5 text-left hover:underline"
+                          <th scope="col">Document</th>
+                          <th scope="col" className="m-hide">Versions</th>
+                          <th scope="col" className="m-hide">Créé par</th>
+                          <th scope="col">Mis à jour</th>
+                          <th scope="col" aria-label="Actions" />
+                        </>
+                      )}
+                      renderRow={(d) => (
+                        <tr key={d.id}>
+                          <td data-label="" className="w-8">
+                            <input type="checkbox"
+                              aria-label={`Sélectionner ${d.nom}`}
+                              checked={selectedIds.has(d.id)}
+                              onChange={() => toggleSelect(d.id)} />
+                          </td>
+                          <td data-label="Document" className="font-medium">
+                            {/* GED14 — clic sur le nom → aperçu du document. */}
+                            <button type="button"
+                              className="flex items-center gap-1.5 text-left hover:underline"
+                              onClick={() => setPreviewDoc(d)}>
+                              <FileText className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                              {d.nom}
+                            </button>
+                          </td>
+                          <td data-label="Versions" className="m-hide">
+                            {d.version_count ?? 0}
+                            {d.derniere_version ? ` (v${d.derniere_version})` : ''}
+                          </td>
+                          <td data-label="Créé par" className="m-hide">
+                            {d.created_by_nom || '—'}
+                            {d.is_locked && (
+                              <Badge tone="warning" className="ml-1.5 inline-flex items-center gap-0.5">
+                                <Lock className="size-3" aria-hidden="true" />
+                                {d.locked_by_nom ? d.locked_by_nom : 'extrait'}
+                              </Badge>
+                            )}
+                          </td>
+                          <td data-label="Mis à jour">{formatDate(d.updated_at)}</td>
+                          <td data-label="Actions" className="text-right">
+                            <div className="flex items-center justify-end gap-0.5">
+                              <Button size="sm" variant="ghost"
+                                aria-label={`Aperçu de ${d.nom}`}
                                 onClick={() => setPreviewDoc(d)}>
-                                <FileText className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                                {d.nom}
-                              </button>
-                            </td>
-                            <td data-label="Versions" className="m-hide">
-                              {d.version_count ?? 0}
-                              {d.derniere_version ? ` (v${d.derniere_version})` : ''}
-                            </td>
-                            <td data-label="Créé par" className="m-hide">
-                              {d.created_by_nom || '—'}
-                              {d.is_locked && (
-                                <Badge tone="warning" className="ml-1.5 inline-flex items-center gap-0.5">
-                                  <Lock className="size-3" aria-hidden="true" />
-                                  {d.locked_by_nom ? d.locked_by_nom : 'extrait'}
-                                </Badge>
+                                <Eye className="size-4" aria-hidden="true" /> Aperçu
+                              </Button>
+                              {d.is_locked ? (
+                                <Button size="sm" variant="ghost"
+                                  aria-label={`Archiver ${d.nom}`}
+                                  onClick={() => checkIn(d)}>
+                                  <LockOpen className="size-4" aria-hidden="true" /> Archiver
+                                </Button>
+                              ) : (
+                                <Button size="sm" variant="ghost"
+                                  aria-label={`Extraire ${d.nom}`}
+                                  onClick={() => checkOut(d)}>
+                                  <Lock className="size-4" aria-hidden="true" /> Extraire
+                                </Button>
                               )}
-                            </td>
-                            <td data-label="Mis à jour">{formatDate(d.updated_at)}</td>
-                            <td data-label="Actions" className="text-right">
-                              <div className="flex items-center justify-end gap-0.5">
-                                <Button size="sm" variant="ghost"
-                                  aria-label={`Aperçu de ${d.nom}`}
-                                  onClick={() => setPreviewDoc(d)}>
-                                  <Eye className="size-4" aria-hidden="true" /> Aperçu
-                                </Button>
-                                {d.is_locked ? (
-                                  <Button size="sm" variant="ghost"
-                                    aria-label={`Archiver ${d.nom}`}
-                                    onClick={() => checkIn(d)}>
-                                    <LockOpen className="size-4" aria-hidden="true" /> Archiver
-                                  </Button>
-                                ) : (
-                                  <Button size="sm" variant="ghost"
-                                    aria-label={`Extraire ${d.nom}`}
-                                    onClick={() => checkOut(d)}>
-                                    <Lock className="size-4" aria-hidden="true" /> Extraire
-                                  </Button>
-                                )}
-                                <Button size="sm" variant="ghost"
-                                  aria-label={`Mettre ${d.nom} en corbeille`}
-                                  onClick={() => mettreEnCorbeille(d)}>
-                                  <Trash2 className="size-4" aria-hidden="true" />
-                                </Button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                              <Button size="sm" variant="ghost"
+                                aria-label={`Mettre ${d.nom} en corbeille`}
+                                onClick={() => mettreEnCorbeille(d)}>
+                                <Trash2 className="size-4" aria-hidden="true" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    />
                   )}
                 </>
               )}
