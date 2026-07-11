@@ -9,7 +9,7 @@ import {
 } from 'lucide-react'
 import publicapiApi from '../../api/publicapiApi'
 import {
-  Card, CardContent, Button, Input, Spinner, Badge, Switch, Checkbox,
+  Card, CardContent, Button, Input, Spinner, Badge, Switch, Checkbox, toast,
 } from '../../ui'
 import { SectionTitle } from './peComponents'
 
@@ -17,7 +17,13 @@ import { SectionTitle } from './peComponents'
 function RevealOnce({ label, value, onDismiss }) {
   const [copied, setCopied] = useState(false)
   const copy = async () => {
-    try { await navigator.clipboard.writeText(value); setCopied(true) } catch { /* */ }
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopied(true)
+      toast.success('Copié.')
+    } catch {
+      toast.error('Copie impossible — copiez la valeur manuellement.')
+    }
     setTimeout(() => setCopied(false), 1800)
   }
   return (
