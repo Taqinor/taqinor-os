@@ -10,11 +10,14 @@
  * URL vers le parcours devis existant avec deux paramètres UTM déjà supportés
  * par le passthrough UTM du site :
  *   /devis/mon-toit?utm_source=parrainage&utm_campaign=<code>
- * `<code>` est un identifiant que le parrain choisit lui-même (son prénom,
- * son numéro de dossier...) — rien n'est généré ni stocké côté site ; l'ERP
- * peut plus tard filtrer ses leads entrants sur utm_source=parrainage et
- * regarder utm_campaign pour retrouver le parrain, exactement comme n'importe
- * quelle autre source UTM déjà trackée.
+ * WJ116 — `<code>` N'EST PAS un identifiant que le parrain invente (son
+ * prénom, son numéro de dossier...) : le backend QX35 (LIVE) crée
+ * automatiquement un `Parrainage` UNIQUEMENT quand `<code>` correspond à un
+ * `Client.code_parrainage` EXISTANT, un code déterministe attribué par
+ * Taqinor à chaque client (forme `TQ-<id>`, ex. `TQ-482`) — un code inventé
+ * ne correspond à AUCUN client, et le parrain n'est donc JAMAIS crédité.
+ * Cette page communique désormais le vrai code (via le conseiller ou
+ * l'espace client), jamais un code auto-choisi.
  *
  * GATE WG14 (founder) — le MONTANT de la récompense et le JALON qui la
  * déclenche (devis signé ? facture payée ?) ne sont PAS fixés par le
@@ -125,12 +128,13 @@ const jsonLd = {
         <Callout type="info" title="Votre lien personnel">
           <p>
             Pas de compte à créer, pas d’application à installer : votre lien personnel est
-            simplement notre parcours de diagnostic habituel, avec un code que vous choisissez
-            vous-même pour qu’on sache qu’il vient de vous — par exemple votre prénom ou votre
-            numéro de dossier client :
+            simplement notre parcours de diagnostic habituel, complété par votre code de
+            parrainage. Ce code n’est pas à inventer : c’est Taqinor qui vous l’attribue, de la
+            forme <strong class="text-brass-300">TQ-</strong> suivie d’un numéro — votre
+            conseiller vous le communique, ou vous le retrouvez dans votre espace client.
           </p>
           <p class="mt-3 break-all rounded-none border border-white/15 bg-black/20 px-4 py-3 font-mono text-xs text-lune" dir="ltr">
-            taqinor.ma/devis/mon-toit?utm_source=parrainage&utm_campaign=<strong class="text-brass-300">votre-code</strong>
+            taqinor.ma/devis/mon-toit?utm_source=parrainage&utm_campaign=<strong class="text-brass-300">TQ-482</strong>
           </p>
           <p class="mt-3">
             Envoyez-le par WhatsApp, SMS ou tout autre canal — c’est tout ce qu’il y a à faire de
