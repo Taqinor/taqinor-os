@@ -44,6 +44,7 @@ export default {
   order: 70,
   nav: {
     label: 'CONTRATS',
+    accent: 'lune', // VX8 — documentaire/juridique = accent lune (dérivé)
     items: [
       { to: '/contrats/tableau-de-bord', label: 'Tableau de bord', icon: LD, roles: ROLES },
       { to: '/contrats', label: 'Contrats', icon: FS, roles: ROLES },

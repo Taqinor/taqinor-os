@@ -104,9 +104,13 @@ const ROLE_META = {
 // N93 — chaque libellé porte une clé i18n `k` (nav.*) et chaque section une
 // `labelKey` (nav.section.*). Le libellé FR reste en dur comme REPLI (rendu
 // identique quand locale=fr, et si une clé venait à manquer).
+// VX8 — accent de module par section : une des 7 clés `--module-accent-*` de
+// tokens.css (dérivées des rampes/couleurs existantes, aucune inventée).
+// `accent: null` (première section, sans label) reste neutre.
 const NAV_SECTIONS = [
   {
     label: null,
+    accent: null,
     items: [
       { to: '/dashboard',            label: 'Dashboard',        k: 'nav.dashboard',  icon: I.dashboard,    roles: ['normal','responsable','admin'] },
       // VX83 — « Ma file » : LA file de travail unique cross-module, promue
@@ -118,6 +122,7 @@ const NAV_SECTIONS = [
   },
   {
     label: 'STOCK', labelKey: 'nav.section.stock',
+    accent: 'lune',
     items: [
       { to: '/stock',                label: 'Produits',         k: 'nav.produits',   icon: I.produits,     roles: ['normal','responsable','admin'] },
       { to: '/stock/categories',     label: 'Catégories & marques', k: 'nav.categories', icon: I.equipements, roles: ['responsable','admin'] },
@@ -133,6 +138,7 @@ const NAV_SECTIONS = [
   },
   {
     label: 'CRM', labelKey: 'nav.section.crm',
+    accent: 'azur',
     items: [
       { to: '/calendrier',           label: 'Calendrier',       k: 'nav.calendrier', icon: I.calendrier,   roles: ['normal','responsable','admin'] },
       { to: '/crm',                  label: 'Clients',          k: 'nav.clients',    icon: I.clients,      roles: ['normal','responsable','admin'] },
@@ -143,6 +149,7 @@ const NAV_SECTIONS = [
   },
   {
     label: 'VENTES', labelKey: 'nav.section.ventes',
+    accent: 'brass',
     items: [
       { to: '/ventes/devis',         label: 'Devis',            k: 'nav.devis',      icon: I.devis,        roles: ['normal','responsable','admin'] },
       { to: '/ventes/bons-commande', label: 'Bons de commande', k: 'nav.bons_commande', icon: I.bons_cmd,  roles: ['normal','responsable','admin'] },
@@ -154,6 +161,7 @@ const NAV_SECTIONS = [
   },
   {
     label: 'CHANTIERS', labelKey: 'nav.section.chantiers',
+    accent: 'success',
     items: [
       { to: '/ma-journee',           label: 'Ma journée',       k: 'nav.ma_journee', icon: I.agenda,       roles: ['normal','responsable','admin'] },
       { to: '/chantiers',            label: 'Chantiers',        k: 'nav.chantiers',  icon: I.chantiers,    roles: ['normal','responsable','admin'] },
@@ -168,6 +176,7 @@ const NAV_SECTIONS = [
   },
   {
     label: 'APRÈS-VENTE', labelKey: 'nav.section.apres_vente',
+    accent: 'destructive',
     items: [
       { to: '/equipements',          label: 'Équipements',      k: 'nav.equipements', icon: I.equipements, roles: ['normal','responsable','admin'] },
       { to: '/sav',                  label: 'Tickets SAV',      k: 'nav.tickets_sav', icon: I.sav,         roles: ['normal','responsable','admin'] },
@@ -182,12 +191,14 @@ const NAV_SECTIONS = [
   },
   {
     label: 'DOCUMENTS', labelKey: 'nav.section.documents',
+    accent: 'lune',
     items: [
       { to: '/ged',                  label: 'Documents (GED)',  k: 'nav.documents_ged', icon: I.documents, roles: ['normal','responsable','admin'] },
     ],
   },
   {
     label: 'INTELLIGENCE', labelKey: 'nav.section.intelligence',
+    accent: 'lune',
     items: [
       { to: '/ia/ocr',               label: 'OCR',              k: 'nav.ocr',        icon: I.ocr,          roles: ['responsable','admin'] },
       { to: '/ia/agent',             label: 'Agent IA',         k: 'nav.agent_ia',   icon: I.agent_ia,     roles: ['admin'] },
@@ -195,6 +206,7 @@ const NAV_SECTIONS = [
   },
   {
     label: 'ANALYSE', labelKey: 'nav.section.analyse',
+    accent: 'warning',
     items: [
       { to: '/reporting',            label: 'Reporting',        k: 'nav.reporting',  icon: I.reporting,    roles: ['responsable','admin'] },
       { to: '/rapports',             label: 'Rapports',         k: 'nav.rapports',   icon: I.reporting,    roles: ['responsable','admin'] },
@@ -219,6 +231,7 @@ const NAV_SECTIONS = [
   },
   {
     label: 'ADMINISTRATION', labelKey: 'nav.section.administration',
+    accent: 'nuit',
     items: [
       { to: '/admin/users',          label: 'Utilisateurs',     k: 'nav.utilisateurs', icon: I.utilisateurs, roles: ['responsable','admin'] },
       { to: '/admin/roles',          label: 'Rôles',            k: 'nav.roles',      icon: I.roles_icon,    roles: ['responsable','admin'] },
@@ -312,8 +325,14 @@ export default function Sidebar({ collapsed, onToggle, onNavigate }) {
           const items = section.items.filter(it =>
             it.roles.includes(role) && (!it.perm || permissions.includes(it.perm)))
           if (items.length === 0) return null
+          // VX8 — accent de module posé en variable CSS sur la section ; les
+          // sections « coquille » (moduleNavSections) portent déjà `nav.accent`
+          // au même format, `undefined`/`null` reste neutre (repli existant).
+          const accentStyle = section.accent
+            ? { '--module-accent': `var(--module-accent-${section.accent})` }
+            : undefined
           return (
-            <div key={si} className="sidebar-section">
+            <div key={si} className="sidebar-section" style={accentStyle}>
               {section.label && !collapsed && (
                 <div className="sidebar-section-label">{tr(section.labelKey, section.label)}</div>
               )}

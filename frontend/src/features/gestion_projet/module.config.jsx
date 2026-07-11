@@ -35,6 +35,7 @@ export default {
   order: 55,
   nav: {
     label: 'PROJETS',
+    accent: 'warning', // VX8 — pilotage/reporting = accent warning (dérivé)
     items: [
       { to: '/projets', label: 'Projets', icon: <FolderKanban size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/projets/planning', label: 'Planning', icon: <CalendarRange size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },

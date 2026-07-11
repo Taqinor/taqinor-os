@@ -34,6 +34,7 @@ export default {
   order: 80,
   nav: {
     label: 'GESTION DOCUMENTAIRE',
+    accent: 'lune', // VX8 — documentaire = accent lune (dérivé)
     items: [
       { to: '/ged/numeriser', label: 'Numériser', icon: <ScanLine size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/ged/approbation', label: 'Approbation & signature', icon: <FileSignature size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },

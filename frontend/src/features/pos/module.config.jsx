@@ -30,6 +30,7 @@ const config = {
   order: 15,
   nav: {
     label: 'CAISSE',
+    accent: 'brass', // VX8 — commercial/vente = accent brass (dérivé)
     items: [
       { to: '/pos', label: 'Caisse', icon: <ShoppingCart size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/pos/session', label: 'Sessions de caisse', icon: <ShoppingCart size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES_CAISSE },
