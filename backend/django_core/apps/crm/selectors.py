@@ -1174,6 +1174,156 @@ def consolidation_client(client):
     }
 
 
+# ── VX83 — « Ma file » : items commerciaux pour la file de travail unique ────
+
+def relances_du_jour(company, user, scope='today', today=None):
+    """VX83 — File de relance d'un utilisateur, EXTRAITE de
+    ``LeadViewSet.relances`` (FG31, ``apps/crm/views.py``) pour être consommée
+    par la « Ma file » cross-module (``records`` ne fabrique jamais sa propre
+    union — convention selectors, jamais forker/appeler une vue).
+
+    Mêmes règles que l'action d'origine : leads non archivés portant une
+    ``relance_date``, filtrés par ``scope`` (``overdue`` / ``today`` / ``week``),
+    ordonnés par échéance puis nom. La PORTÉE DE VISIBILITÉ de l'utilisateur est
+    respectée à l'identique (``scope_queryset(..., ['owner'])`` — Feature F : un
+    rôle restreint ne voit que ses leads). Lecture seule, scopée société.
+    """
+    import datetime
+    from django.utils import timezone
+    from authentication.scoping import scope_queryset
+    from .models import Lead
+
+    today = today or timezone.localdate()
+    qs = Lead.objects.filter(
+        company=company, is_archived=False, relance_date__isnull=False)
+    qs = scope_queryset(qs, user, ['owner'])
+    if scope == 'overdue':
+        qs = qs.filter(relance_date__lt=today)
+    elif scope == 'week':
+        week_end = today + datetime.timedelta(days=6)
+        qs = qs.filter(relance_date__lte=week_end)
+    else:  # today
+        qs = qs.filter(relance_date=today)
+    return qs.order_by('relance_date', 'nom')
+
+
+def leads_chauds_non_contactes(company, user, seuil_score=None):
+    """VX83 — Leads « chauds » (score élevé) JAMAIS contactés, pour la file de
+    travail. Un lead à fort potentiel dont ``first_contacted_at`` est NULL est
+    une opportunité qui dort. Portée de visibilité de l'utilisateur respectée
+    (``scope_queryset(..., ['owner'])``). Lecture seule, scopée société.
+
+    ``seuil_score`` par défaut = 60 (« chaud » sur l'échelle 0-100 de QJ6). Un
+    lead archivé/perdu/déjà signé est exclu (funnel via STAGES.py — règle #2).
+    """
+    from authentication.scoping import scope_queryset
+    from . import stages as stage_mod
+    from .models import Lead
+
+    seuil = 60 if seuil_score is None else seuil_score
+    qs = Lead.objects.filter(
+        company=company, is_archived=False, perdu=False,
+        first_contacted_at__isnull=True, score__gte=seuil,
+    ).exclude(stage__in=(stage_mod.SIGNED, stage_mod.COLD))
+    qs = scope_queryset(qs, user, ['owner'])
+    return qs.order_by('-score', 'date_creation')
+
+
+def devis_expirant_bientot(company, user, dans_jours=7, today=None):
+    """VX83 — Devis au statut ``envoye`` dont la validité expire dans les
+    ``dans_jours`` prochains jours (ou déjà expirés mais encore ``envoye``),
+    pour la file de travail. Lu via la relation ``lead.devis`` déjà dans le
+    domaine crm (JAMAIS un import de ``apps.ventes.models`` — même patron que
+    ``attribution_leads``/``revenu_attribue_campagne``). Portée de visibilité
+    respectée (le devis suit le ``owner`` de son lead). Lecture seule.
+
+    Renvoie une liste de dicts ``{devis_id, reference, lead_id, lead_nom,
+    date_expiration, total_ttc}``.
+    """
+    import datetime
+    from django.utils import timezone
+    from authentication.scoping import scope_queryset
+    from .models import Lead
+
+    today = today or timezone.localdate()
+    limite = today + datetime.timedelta(days=dans_jours)
+    leads = scope_queryset(
+        Lead.objects.filter(company=company, is_archived=False),
+        user, ['owner']).prefetch_related('devis')
+
+    out = []
+    for lead in leads:
+        for devis in lead.devis.all():
+            if getattr(devis, 'statut', None) != 'envoye':
+                continue
+            exp = getattr(devis, 'date_expiration', None) or getattr(
+                devis, 'date_validite', None)
+            if exp is None or exp > limite:
+                continue
+            out.append({
+                'devis_id': devis.id,
+                'reference': getattr(devis, 'reference', '') or f'#{devis.id}',
+                'lead_id': lead.id,
+                'lead_nom': f'{lead.nom} {lead.prenom or ""}'.strip(),
+                'date_expiration': exp,
+                'total_ttc': str(getattr(devis, 'total_ttc', None) or ''),
+            })
+    out.sort(key=lambda d: (d['date_expiration'], d['reference']))
+    return out
+
+
+def ma_file_commercial_items(company, user, today=None):
+    """VX83 — Items COMMERCIAUX normalisés de la « Ma file » d'un utilisateur,
+    prêts pour l'union cross-module de ``records`` (aucun agrégateur dupliqué
+    côté records : il consomme CE point d'entrée). Chaque item est un dict
+    ``{kind, title, due, link, urgency, montant?}`` — contrat commun à toutes
+    les familles de la file. Lecture seule, scopée société + visibilité.
+
+    Trois familles réunies :
+      * relances dues (FG31, ``relances_du_jour`` scope ``overdue`` — en retard
+        seulement, l'urgence de la file) ;
+      * leads chauds jamais contactés (``leads_chauds_non_contactes``) ;
+      * devis ``envoye`` proches d'expiration (``devis_expirant_bientot``).
+    """
+    from django.utils import timezone
+    today = today or timezone.localdate()
+    items = []
+
+    for lead in relances_du_jour(company, user, scope='overdue', today=today):
+        nom = f'{lead.nom} {lead.prenom or ""}'.strip() or f'Lead #{lead.id}'
+        items.append({
+            'kind': 'relance',
+            'title': f'Relancer {nom}',
+            'due': lead.relance_date,
+            'link': f'/crm/leads?lead={lead.id}',
+            'urgency': 'overdue',
+        })
+
+    for lead in leads_chauds_non_contactes(company, user):
+        nom = f'{lead.nom} {lead.prenom or ""}'.strip() or f'Lead #{lead.id}'
+        items.append({
+            'kind': 'lead_chaud',
+            'title': f'Contacter {nom} (chaud, jamais contacté)',
+            'due': None,
+            'link': f'/crm/leads?lead={lead.id}',
+            'urgency': 'today',
+        })
+
+    for d in devis_expirant_bientot(company, user, today=today):
+        expire = d['date_expiration'] < today
+        items.append({
+            'kind': 'devis_expire',
+            'title': f'Devis {d["reference"]} — {d["lead_nom"]} '
+                     f'{"expiré" if expire else "expire bientôt"}',
+            'due': d['date_expiration'],
+            'link': f'/crm/leads?lead={d["lead_id"]}',
+            'urgency': 'overdue' if expire else 'today',
+            'montant': d['total_ttc'] or None,
+        })
+
+    return items
+
+
 def lead_chatter_envelope(lead):
     """ARC9 — timeline chatter du lead dans l'ENVELOPPE UNIFORME.
 

@@ -98,6 +98,10 @@ const NAV_SECTIONS = [
     label: null,
     items: [
       { to: '/dashboard',            label: 'Dashboard',        k: 'nav.dashboard',  icon: I.dashboard,    roles: ['normal','responsable','admin'] },
+      // VX83 — « Ma file » : LA file de travail unique cross-module, promue
+      // hors de CRM vers le groupe de tête (route /activites préservée pour
+      // ne casser ni le routing ni les hooks e2e).
+      { to: '/activites',            label: 'Ma file',          k: 'nav.activites',  icon: I.agenda,       roles: ['normal','responsable','admin'] },
       { to: '/messages',             label: 'Messages',         k: 'nav.messages',   icon: I.messages,     roles: ['normal','responsable','admin'] },
     ],
   },
@@ -119,7 +123,6 @@ const NAV_SECTIONS = [
   {
     label: 'CRM', labelKey: 'nav.section.crm',
     items: [
-      { to: '/activites',            label: 'Mes activités',    k: 'nav.activites',  icon: I.agenda,       roles: ['normal','responsable','admin'] },
       { to: '/calendrier',           label: 'Calendrier',       k: 'nav.calendrier', icon: I.calendrier,   roles: ['normal','responsable','admin'] },
       { to: '/crm',                  label: 'Clients',          k: 'nav.clients',    icon: I.clients,      roles: ['normal','responsable','admin'] },
       { to: '/crm/leads',            label: 'Leads',            k: 'nav.leads',      icon: I.leads,        roles: ['normal','responsable','admin'] },

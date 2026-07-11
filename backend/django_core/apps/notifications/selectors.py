@@ -20,6 +20,23 @@ _HEURE_DEBUT_JOUR = 8
 _HEURE_FIN_JOUR = 20
 
 
+def mentions_non_lues(user, company):
+    """VX83 — Notifications de MENTION non lues d'un utilisateur (``chat_mention``),
+    plus récentes d'abord. Point d'entrée cross-app LECTURE SEULE pour que
+    « Ma file » (``apps.records``) liste les mentions non lues avec leur
+    ``link`` sans importer ``notifications.models``. Scopé société : jamais une
+    mention d'une autre société. Renvoie un queryset (éventuellement vide).
+    """
+    from .models import EventType, Notification
+    qs = Notification.objects.filter(
+        recipient=user, read=False,
+        event_type=EventType.CHAT_MENTION,
+    )
+    if company is not None:
+        qs = qs.filter(company=company)
+    return qs.order_by('-created_at', '-id')
+
+
 def est_hors_fenetre_silence(moment, company) -> bool:
     """Renvoie True si ``moment`` (datetime) tombe DANS la fenêtre de silence
     (nuit ou jour férié/non-ouvré) — c-à-d qu'un SMS/WhatsApp ne DOIT PAS
