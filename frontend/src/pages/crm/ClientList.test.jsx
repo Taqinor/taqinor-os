@@ -3,7 +3,6 @@ import { render, screen, cleanup, within } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
 import { configureStore } from '@reduxjs/toolkit'
-import crmReducer from '../../features/crm/store/crmSlice'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import ClientList from './ClientList'
 
@@ -69,7 +68,6 @@ describe('ClientList — VX144(c) empilement 2 lignes déterministe (cellule Cli
     // condition nécessaire à un empilement flex-col déterministe (nom en
     // premier, badge en second, jamais l'inverse).
     const position = nameCell.compareDocumentPosition(badge)
-    // eslint-disable-next-line no-bitwise
     expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
