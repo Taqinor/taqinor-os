@@ -7,13 +7,12 @@ responsable/admin. Multi-tenant via ``TenantMixin`` ; produit/emplacements
 validés tenant. Cross-app : ``stock`` en string-FK (quantités lues via
 ``stock.selectors``).
 """
-from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import RegleReappro
 from ..serializers import RegleReapproSerializer
@@ -22,7 +21,7 @@ from .. import selectors
 READ_ACTIONS = ['list', 'retrieve', 'propositions']
 
 
-class RegleReapproViewSet(TenantMixin, viewsets.ModelViewSet):
+class RegleReapproViewSet(CompanyScopedModelViewSet):
     """FG326 — règles de réapprovisionnement. Lecture tout rôle, écriture
     responsable/admin. Filtrable par `produit`, `emplacement_cible`, `active`."""
     queryset = RegleReappro.objects.select_related(

@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from rest_framework.validators import UniqueTogetherValidator
 from .models import (
     Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
     Avoir, LigneAvoir, DevisActivity, DevisPreset, RoofLayout,
@@ -8,20 +9,43 @@ from .models import (
 
 
 def _fallback_taux_tva(company, designation):
-    """DC4 — taux de TVA de repli d'une ligne sans taux ni produit taxé.
+    """DC4 / ARC23 — taux de TVA de repli d'une ligne sans taux ni produit taxé.
 
     Une ligne PANNEAU retombe sur le défaut société panneaux
-    (CompanyProfile.tva_panneaux, 10 %) ; toute autre ligne sur le taux standard
-    (20 %). `Produit.tva` reste prioritaire côté appelant (DC7) : ce repli ne
-    s'applique QUE lorsqu'il n'existe ni taux explicite ni produit portant un
-    taux, donc le comportement reste identique tant que les produits portent
-    leur taux (cas nominal après seed_catalogue).
+    (CompanyProfile.tva_panneaux, 10 %) ; toute autre ligne sur le taux standard.
+    `Produit.tva` reste prioritaire côté appelant (DC7) : ce repli ne s'applique
+    QUE lorsqu'il n'existe ni taux explicite ni produit portant un taux, donc le
+    comportement reste identique tant que les produits portent leur taux (cas
+    nominal après seed_catalogue).
+
+    ARC23 — pour une ligne STANDARD, le knob éditable en Paramètres
+    (`CompanyProfile.tva_standard`, réglé par l'utilisateur) est PRIORITAIRE :
+    on le lit d'abord. Le référentiel `parametres.TauxTVA` (sans UI, seedé à
+    20 % pour chaque nouveau tenant par `signup_hooks.seed_taux_tva_hook`) ne
+    sert plus que de repli quand ce knob ne donne pas de taux, puis la constante
+    historique (20). Ainsi un tenant qui met « TVA standard » à 14 % voit 14 %
+    sur ses lignes de repli — le référentiel seedé ne le réprime plus. Un tenant
+    qui n'a jamais touché le champ garde sa valeur par défaut (20 %), inchangée.
+    Un taux déjà figé sur un document existant n'est JAMAIS réécrit (règle #4).
     """
     from apps.ventes.utils.company_settings import tva_standard, tva_panneaux
     d = (designation or '').lower()
     if 'panneau' in d:
         return tva_panneaux(company)
-    return tva_standard(company)
+    # Knob éditable (Paramètres) d'abord — l'édition de l'utilisateur prime.
+    standard = tva_standard(company)
+    if standard is not None:
+        return standard
+    # Repli : référentiel TauxTVA (sans UI), puis constante historique.
+    try:
+        from apps.parametres.models_taxes import TauxTVA
+        referentiel = TauxTVA.default_taux(company)
+    except Exception:
+        referentiel = None
+    if referentiel is not None:
+        return referentiel
+    from decimal import Decimal
+    return Decimal('20')
 
 
 class LigneDevisSerializer(serializers.ModelSerializer):
@@ -339,7 +363,12 @@ class DevisSerializer(serializers.ModelSerializer):
     class Meta:
         model = Devis
         fields = '__all__'
-        read_only_fields = ['reference', 'created_by', 'fichier_pdf', 'date_creation']
+        # SCA47 — prix_par_kwc est DÉRIVÉ et gelé côté serveur (write-once au
+        # save) : lecture seule sur l'API interne générateur/BI, JAMAIS accepté
+        # du corps de requête (même régime interne que prix_achat, qui n'est
+        # jamais exposé côté client/PDF).
+        read_only_fields = ['reference', 'created_by', 'fichier_pdf',
+                            'date_creation', 'prix_par_kwc']
 
 
 class DevisWriteSerializer(serializers.ModelSerializer):
@@ -354,7 +383,10 @@ class DevisWriteSerializer(serializers.ModelSerializer):
         model = Devis
         exclude = ['reference', 'fichier_pdf']
         # company is force-assigned in perform_create — never accept it from the body.
-        read_only_fields = ['created_by', 'date_creation', 'company']
+        # SCA47 — prix_par_kwc est dérivé/gelé côté serveur (write-once), jamais
+        # accepté du corps de requête.
+        read_only_fields = ['created_by', 'date_creation', 'company',
+                            'prix_par_kwc']
         extra_kwargs = {'client': {'required': False}}
 
 
@@ -433,6 +465,31 @@ class PaiementSerializer(serializers.ModelSerializer):
         max_digits=12, decimal_places=2, read_only=True)
     statut_affectation_display = serializers.CharField(
         source='get_statut_affectation_display', read_only=True)
+
+    # SCA45 — ``idempotency_key`` est OPTIONNEL : un encaissement MANUEL n'en a
+    # pas (seuls les appels idempotents webhook/API en fournissent une). Il DOIT
+    # être déclaré EXPLICITEMENT ``required=False`` : la contrainte d'unicité
+    # (company, idempotency_key) — CONDITIONNELLE côté DB (WHERE clé non nulle) —
+    # fait générer par DRF un validateur unique-together AUTO qui, en ignorant la
+    # condition, marque le champ ``required=True`` au MOMENT de la construction du
+    # champ (dans ``super().__init__``). Retirer seulement le validateur ensuite
+    # (ci-dessous) NE réinitialise PAS ``field.required`` déjà calculé → 400 « Ce
+    # champ est obligatoire » sur chaque encaissement manuel. La déclaration
+    # explicite court-circuite cette logique auto ; la contrainte DB reste
+    # l'arbitre de l'unicité pour les vrais appels idempotents.
+    idempotency_key = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Retire AUSSI le validateur unique-together AUTO (en plus de la
+        # déclaration explicite ci-dessus) pour qu'il ne tente pas la vérif
+        # d'unicité sur la clé nulle d'un paiement manuel ; la contrainte DB
+        # conditionnelle reste l'arbitre.
+        self.validators = [
+            v for v in self.validators
+            if not (isinstance(v, UniqueTogetherValidator)
+                    and 'idempotency_key' in getattr(v, 'fields', ()))]
 
     def get_client_nom(self, obj):
         c = obj.facture.client if obj.facture_id else obj.client

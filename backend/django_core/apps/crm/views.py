@@ -1,9 +1,9 @@
-from rest_framework import viewsets, filters, status
+from rest_framework import filters, status
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
-from authentication.mixins import TenantMixin
+from core.viewsets import CompanyScopedModelViewSet
 from authentication.scoping import scope_queryset, scope_client_queryset
 from .models import (
     Appointment, Client, ConcurrentPerte, EquipeCommerciale, Lead, LeadTag,
@@ -93,7 +93,10 @@ def rapport_attribution(request):
     return Response(attribution_leads(user.company, debut=debut, fin=fin))
 
 
-class ClientViewSet(TenantMixin, viewsets.ModelViewSet):
+class ClientViewSet(CompanyScopedModelViewSet):
+    # ARC2 — pilote : base transverse unique (TenantMixin + ModelViewSet). Le
+    # get_queryset (portée de visibilité) et perform_create (company +
+    # created_by forcés serveur) SURCHARGENT la base : réponses inchangées.
     queryset = Client.objects.all()
     serializer_class = ClientSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -404,7 +407,7 @@ class ClientViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response({'segment': segment, 'count': len(result), 'results': result})
 
 
-class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
+class LeadViewSet(CompanyScopedModelViewSet):
     """Leads + historique « chatter » (journal automatique + notes manuelles).
 
     L'utilisateur acteur et la société viennent toujours de la requête côté
@@ -1264,7 +1267,7 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
         return export_leads_xlsx(leads)
 
 
-class LeadTagViewSet(TenantMixin, viewsets.ModelViewSet):
+class LeadTagViewSet(CompanyScopedModelViewSet):
     """Étiquettes de lead gérées (Paramètres → CRM). Lecture tout rôle,
     écriture admin. Garde-fou (L780) : une étiquette référencée par des leads
     ne se supprime pas — l'admin l'archive plutôt (l'historique est préservé)."""
@@ -1286,7 +1289,7 @@ class LeadTagViewSet(TenantMixin, viewsets.ModelViewSet):
         return super().destroy(request, *args, **kwargs)
 
 
-class MotifPerteViewSet(TenantMixin, viewsets.ModelViewSet):
+class MotifPerteViewSet(CompanyScopedModelViewSet):
     """Motifs de perte gérés (Paramètres → CRM). Lecture tout rôle,
     écriture admin. Garde-fou (L779) : un motif utilisé par des leads ne se
     supprime pas — l'admin l'archive plutôt (comme pour les canaux)."""
@@ -1331,7 +1334,7 @@ def seed_canaux(company):
             defaults={'libelle': libelle, 'ordre': i, 'protege': protege})
 
 
-class CanalViewSet(TenantMixin, viewsets.ModelViewSet):
+class CanalViewSet(CompanyScopedModelViewSet):
     """Canaux / sources de lead gérés (Paramètres → CRM). Lecture tout rôle,
     écriture admin. Garde-fous : un canal protégé ('site_web') ne se supprime
     pas, et aucun canal utilisé par des leads ne se supprime."""
@@ -1365,7 +1368,7 @@ class CanalViewSet(TenantMixin, viewsets.ModelViewSet):
         return super().destroy(request, *args, **kwargs)
 
 
-class ParrainageViewSet(TenantMixin, viewsets.ModelViewSet):
+class ParrainageViewSet(CompanyScopedModelViewSet):
     """N98 — parrainages. Lecture tout rôle, écriture responsable/admin.
 
     À la création, la récompense est pré-remplie depuis Paramètres
@@ -1419,7 +1422,7 @@ class ParrainageViewSet(TenantMixin, viewsets.ModelViewSet):
 
 # ── DC12 — Profil site/énergie réutilisable par client ───────────────────────
 
-class SiteProfileViewSet(TenantMixin, viewsets.ModelViewSet):
+class SiteProfileViewSet(CompanyScopedModelViewSet):
     """DC12 — profil site/énergie réutilisable, attaché au client.
 
     Saisi une fois par client, le générateur de devis le pré-remplit ensuite
@@ -1450,7 +1453,7 @@ class SiteProfileViewSet(TenantMixin, viewsets.ModelViewSet):
 
 # ── ZSAL2 — Plans d'activité ──────────────────────────────────────────────────
 
-class PlanActiviteViewSet(TenantMixin, viewsets.ModelViewSet):
+class PlanActiviteViewSet(CompanyScopedModelViewSet):
     """Plans d'activité (checklists de tâches commerciales) : lecture tout
     rôle, écriture responsable/admin. Société forcée côté serveur."""
     queryset = PlanActivite.objects.prefetch_related(
@@ -1463,7 +1466,7 @@ class PlanActiviteViewSet(TenantMixin, viewsets.ModelViewSet):
         return [IsResponsableOrAdmin()]
 
 
-class EquipeCommercialeViewSet(TenantMixin, viewsets.ModelViewSet):
+class EquipeCommercialeViewSet(CompanyScopedModelViewSet):
     """ZSAL3 — Équipes commerciales (admin CRUD, Paramètres → CRM). Lecture
     tout rôle (le dashboard « Mes équipes » y référence des noms), écriture
     responsable/admin. Société forcée côté serveur (TenantMixin)."""
@@ -1478,7 +1481,7 @@ class EquipeCommercialeViewSet(TenantMixin, viewsets.ModelViewSet):
 
 # ── FG36 — Modèles de messages WhatsApp/SMS ───────────────────────────────────
 
-class MessageTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
+class MessageTemplateViewSet(CompanyScopedModelViewSet):
     """Modèles de messages CRM (WhatsApp/SMS). Lecture tout rôle, écriture admin.
 
     La société est toujours posée côté serveur (TenantMixin). Un modèle archivé
@@ -1544,7 +1547,7 @@ class MessageTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
 
 # ── QJ20 — Rendez-vous (visites commerciales/techniques) ──────────────────────
 
-class AppointmentViewSet(TenantMixin, viewsets.ModelViewSet):
+class AppointmentViewSet(CompanyScopedModelViewSet):
     """QJ20 — Rendez-vous planifiés sur les leads (visites commerciales/techniques).
 
     Lecture tout rôle, écriture responsable/admin.
@@ -1590,7 +1593,7 @@ class AppointmentViewSet(TenantMixin, viewsets.ModelViewSet):
 
 # ── FG39 — ObjectifCommercial / KPI Target ────────────────────────────────────
 
-class ObjectifCommercialViewSet(TenantMixin, viewsets.ModelViewSet):
+class ObjectifCommercialViewSet(CompanyScopedModelViewSet):
     """CRUD objectifs commerciaux + endpoint d'atteinte (réalisé vs cible).
 
     Routes :
@@ -1684,7 +1687,7 @@ class ObjectifCommercialViewSet(TenantMixin, viewsets.ModelViewSet):
 
 # ── FG242 — Suivi des concurrents sur deals perdus ────────────────────────────
 
-class ConcurrentPerteViewSet(TenantMixin, viewsets.ModelViewSet):
+class ConcurrentPerteViewSet(CompanyScopedModelViewSet):
     """FG242 — concurrent gagnant + prix saisis sur un lead perdu.
 
     Intelligence concurrentielle : sur un lead PERDU (drapeau ``Lead.perdu`` —
@@ -1740,7 +1743,7 @@ class ConcurrentPerteViewSet(TenantMixin, viewsets.ModelViewSet):
             pass
 
 
-class PointContactViewSet(TenantMixin, viewsets.ModelViewSet):
+class PointContactViewSet(CompanyScopedModelViewSet):
     """FG204 — journal multi-touch des points de contact d'un lead.
 
     Au-delà du first-touch (``Lead.canal``), on consigne chaque point de contact

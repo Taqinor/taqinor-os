@@ -67,3 +67,29 @@ def run_signup_hooks(company, user=None):
                            exc_info=True)
             resultats[name] = f'erreur: {exc}'
     return resultats
+
+
+# ---------------------------------------------------------------------------
+# SCA28 — hook « branding neutre » de core (thème + modèles brandés par défaut).
+#
+# ``core`` étant lui-même une couche de fondation qui PORTE les modèles
+# ``TenantTheme``/``BrandedTemplate``, il enregistre son propre hook de seed
+# (contrairement à stock/authentication qui le font depuis LEUR ``apps.py``).
+# Le seed vit dans ``core.services`` ; ce hook n'est qu'un adaptateur mince vers
+# ``run_signup_hooks``. Idempotent + best-effort (isolé par ``run_signup_hooks``).
+# ---------------------------------------------------------------------------
+
+
+def seed_branding_hook(company, *, user=None):
+    """Seed le thème neutre + les modèles brandés par défaut (idempotent)."""
+    from core.services import seed_tenant_branding
+    seed_tenant_branding(company, user=user)
+
+
+def register_core_signup_hooks():
+    """Branche le hook de branding neutre au registre (idempotent).
+
+    Appelé depuis ``core.apps.CoreConfig.ready()``. Le ré-enregistrement remplace
+    (jamais de doublon d'exécution). Priorité 30 : après les rôles/profil INLINE
+    de la vue, aux côtés des seeds satellites (types d'activité / relance)."""
+    register_signup_hook('branding', seed_branding_hook, priority=30)

@@ -10,11 +10,9 @@ Flux en deux temps, multi-tenant :
 
 Séparé de la migration ponctuelle des 619 leads Odoo (gardée à part).
 """
-import csv
-import io
-import unicodedata
-
 from django.db import transaction
+
+from .parsing import iter_rows, normalize_header
 
 # Mapping en-tête (normalisé) → champ modèle, par cible.
 FIELD_MAPS = {
@@ -67,9 +65,78 @@ FIELD_MAPS = {
         'kilometrage': 'kilometrage', 'km': 'kilometrage',
         'cv': 'cv', 'puissance_fiscale': 'cv',
     },
+    # ARC13 — Contrats : import initial du registre contractuel. Écriture
+    # DÉLÉGUÉE à ``apps.contrats.services.creer_contrat_import`` (jamais le
+    # modèle ``Contrat`` directement, même motif XFLT22 que ``vehicules``).
+    'contrats': {
+        'reference': 'reference', 'ref': 'reference',
+        'objet': 'objet', 'type_contrat': 'type_contrat',
+        'type': 'type_contrat', 'statut': 'statut',
+        'date_debut': 'date_debut', 'date_fin': 'date_fin',
+        'montant': 'montant', 'devise': 'devise',
+    },
+    # ARC13 — Dossiers RH : import initial des fiches employé. Écriture
+    # DÉLÉGUÉE à ``apps.rh.services.creer_dossier_employe_import`` (jamais le
+    # modèle ``DossierEmploye`` directement, même motif XFLT22).
+    'dossiers_rh': {
+        'matricule': 'matricule', 'nom': 'nom', 'prenom': 'prenom',
+        'prénom': 'prenom', 'email': 'email', 'telephone': 'telephone',
+        'tel': 'telephone', 'cin': 'cin', 'poste': 'poste',
+        'date_embauche': 'date_embauche', 'type_contrat': 'type_contrat',
+    },
 }
 
-TARGETS = set(FIELD_MAPS)
+
+# ARC32 — l'ensemble des cibles importables lit désormais le REGISTRE plateforme
+# (``core.platform.import_specs``) : chaque app propriétaire déclare ses cibles
+# dans son ``apps/<x>/platform.py`` (surface ``import_specs``), exactement comme
+# ``records.ALLOWED_TARGETS`` (ARC30). ``TARGETS`` est un OBJET PARESSEUX qui se
+# comporte comme un ``set`` immuable en lecture (``in``, itération, ``len``) mais
+# calcule son contenu à la PREMIÈRE UTILISATION en unionnant les clés
+# ``FIELD_MAPS`` (le MAPPING d'en-têtes → champ reste ici, local à dataimport)
+# avec les ``import_specs`` déclarés par tous les manifestes installés.
+#
+# Résolution PARESSEUSE À DESSEIN : au moment où ce module est importé
+# (chargement des apps Django), le registre applicatif n'est pas garanti prêt —
+# le calcul n'a lieu qu'au premier ``in``/itération, bien après le démarrage.
+# Non-régression garantie par test (le set résolu == les 8 clés FIELD_MAPS
+# historiques, chaque cible étant déclarée par son app propriétaire).
+class _LazyTargets:
+    """Vue ``set``-like sur ``FIELD_MAPS`` ∪ ``core.platform.import_specs()``,
+    calculée au premier accès (jamais à l'import de ce module — ``core`` /
+    ``django.apps`` peuvent ne pas être prêts à ce moment).
+
+    DROP-IN replacement de l'ancien ``set(FIELD_MAPS)`` littéral pour tous les
+    usages du dépôt (``target in TARGETS``, itération, ``len``, ``sorted``)."""
+
+    def _resolve(self):
+        cibles = set(FIELD_MAPS)
+        try:
+            from core import platform
+            cibles |= set(platform.import_specs(company=None))
+        except Exception:  # pragma: no cover - registre indisponible ⇒ FIELD_MAPS seul
+            pass
+        return cibles
+
+    def __contains__(self, item):
+        return item in self._resolve()
+
+    def __iter__(self):
+        return iter(self._resolve())
+
+    def __len__(self):
+        return len(self._resolve())
+
+    def __repr__(self):
+        return f'_LazyTargets({sorted(self._resolve())!r})'
+
+    def __eq__(self, other):
+        if isinstance(other, _LazyTargets):
+            return self._resolve() == other._resolve()
+        return self._resolve() == other
+
+
+TARGETS = _LazyTargets()
 
 # ERR53 — Plafond de lignes : au-delà, on refuse proprement (ValueError → 400
 # clair côté vue) plutôt que de charger un fichier géant en mémoire et risquer
@@ -82,33 +149,19 @@ class ImportTooLarge(ValueError):
 
 
 def _norm(s):
-    """Normalise un en-tête : minuscules, sans accents, espaces → underscore."""
-    s = (s or '').strip().lower()
-    s = ''.join(c for c in unicodedata.normalize('NFD', s)
-                if unicodedata.category(c) != 'Mn')
-    return s.replace(' ', '_').replace('-', '_')
+    """Normalise un en-tête : minuscules, sans accents, espaces → underscore.
+
+    ARC13 — délègue à ``apps.dataimport.parsing.normalize_header`` (logique
+    partagée) ; comportement inchangé."""
+    return normalize_header(s)
 
 
 def parse_rows(file_bytes, filename):
-    """Renvoie (headers, rows[list[dict]]) depuis un CSV ou XLSX."""
-    name = (filename or '').lower()
-    if name.endswith('.xlsx'):
-        from openpyxl import load_workbook
-        wb = load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
-        ws = wb.active
-        it = ws.iter_rows(values_only=True)
-        headers = [str(h) if h is not None else '' for h in next(it, [])]
-        rows = []
-        for r in it:
-            rows.append({headers[i]: r[i] for i in range(len(headers)) if i < len(r)})
-        return headers, rows
-    # CSV (utf-8, séparateur , ou ;)
-    text = file_bytes.decode('utf-8-sig', errors='replace')
-    sample = text[:2000]
-    delim = ';' if sample.count(';') > sample.count(',') else ','
-    reader = csv.DictReader(io.StringIO(text), delimiter=delim)
-    headers = reader.fieldnames or []
-    return headers, list(reader)
+    """Renvoie (headers, rows[list[dict]]) depuis un CSV ou XLSX.
+
+    ARC13 — délègue à ``apps.dataimport.parsing.iter_rows`` (parseur générique
+    partagé) ; comportement inchangé pour les 6 cibles historiques."""
+    return iter_rows(file_bytes, filename)
 
 
 def _map_headers(headers, target, saved_mapping=None):
@@ -502,6 +555,36 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
                 elif statut == 'doublon':
                     skipped.append(
                         {'ligne': i, 'raison': 'doublon (immatriculation existe)'})
+                else:
+                    skipped.append({'ligne': i, 'raison': message or 'erreur'})
+
+        # ARC13 — Contrats : écriture déléguée à ``apps.contrats.services``
+        # (jamais le modèle ``Contrat`` directement, motif XFLT22).
+        elif target == 'contrats':
+            from apps.contrats.services import creer_contrat_import
+            for i, row in enumerate(rows, 1):
+                f = _row_to_fields(row, mapped)
+                statut, message = creer_contrat_import(company, f, user=user)
+                if statut == 'cree':
+                    created += 1
+                elif statut == 'doublon':
+                    skipped.append(
+                        {'ligne': i, 'raison': 'doublon (référence existe)'})
+                else:
+                    skipped.append({'ligne': i, 'raison': message or 'erreur'})
+
+        # ARC13 — Dossiers RH : écriture déléguée à ``apps.rh.services``
+        # (jamais le modèle ``DossierEmploye`` directement, motif XFLT22).
+        elif target == 'dossiers_rh':
+            from apps.rh.services import creer_dossier_employe_import
+            for i, row in enumerate(rows, 1):
+                f = _row_to_fields(row, mapped)
+                statut, message = creer_dossier_employe_import(company, f)
+                if statut == 'cree':
+                    created += 1
+                elif statut == 'doublon':
+                    skipped.append(
+                        {'ligne': i, 'raison': 'doublon (matricule existe)'})
                 else:
                     skipped.append({'ligne': i, 'raison': message or 'erreur'})
 

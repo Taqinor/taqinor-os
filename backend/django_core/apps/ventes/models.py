@@ -129,6 +129,21 @@ class Devis(models.Model):
     )
     prix_cible_kwc = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True)
+    # ── SCA47 — prix au kWc DÉRIVÉ, gelé à la création (leçon ServiceTitan
+    # Price Insights) ──
+    # Signal comparable = Total TTC ÷ puissance kWc (le kWc vit déjà dans
+    # etude_params). Recomputable aujourd'hui mais le backfiller dans 2 ans
+    # coûterait bien plus que le dériver à l'écriture. Écrit UNE SEULE FOIS,
+    # quand le kWc est présent ET qu'un total existe (donc null pour le pompage
+    # sans kWc — jamais forcé) ; jamais recalculé ensuite (write-once).
+    #
+    # DONNÉE INTERNE générateur/BI — MÊME RÉGIME que prix_achat : n'apparaît sur
+    # AUCUN PDF ni aucune sortie client (alimente NTDATA46/47 + la couche
+    # métrique NTDATA7-13, nommées).
+    prix_par_kwc = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text='Prix TTC au kWc, dérivé et gelé à la création (interne '
+                  'générateur/BI — jamais sur un PDF/sortie client).')
     # ── Révisions / versionnage (T10) — additif. Un devis envoyé peut être
     # révisé en une nouvelle version qui garde l'historique lisible. La version
     # courante porte is_active=True ; les versions remplacées pointent vers leur
@@ -192,9 +207,48 @@ class Devis(models.Model):
         verbose_name_plural = 'Devis'
         ordering = ['-date_creation']
         unique_together = [('company', 'reference')]
+        # SCA39 — index chemin-de-l'argent (sous-ensemble Devis de NTPLT20).
+        # (company, statut) couvre les listes filtrées par statut (11+ sites) ;
+        # (company, date_creation) couvre la liste par défaut (scopée société,
+        # triée -date_creation). Posés SANS verrou d'écriture bloquant via
+        # AddIndexConcurrently + lock_timeout (YOPSB6) dans la migration.
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='ventes_devis_co_statut_idx'),
+            models.Index(
+                fields=['company', 'date_creation'],
+                name='ventes_devis_co_datecrea_idx'),
+        ]
 
     def __str__(self):
         return self.reference
+
+    def save(self, *args, **kwargs):
+        """SCA47 — dérive et GÈLE ``prix_par_kwc`` (Total TTC ÷ kWc) une seule
+        fois, dès qu'un kWc (etude_params) et un total existent. Write-once :
+        une fois posée, la valeur n'est JAMAIS recalculée (un ``update_fields``
+        qui ne la cite pas la laisse intacte). Null pour un devis sans kWc
+        (pompage) — jamais forcé. Donnée interne (jamais sur un PDF)."""
+        from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+        super().save(*args, **kwargs)
+        if self.prix_par_kwc is not None:
+            return  # déjà gelée — jamais recalculée.
+        kwc = (self.etude_params or {}).get('puissance_kwc')
+        try:
+            kwc_val = Decimal(str(kwc)) if kwc else Decimal('0')
+        except (InvalidOperation, TypeError, ValueError):
+            kwc_val = Decimal('0')
+        if kwc_val <= 0:
+            return  # pas de kWc → reste null (pompage / devis sans étude).
+        total = self.total_ttc
+        if not total or total <= 0:
+            return  # pas encore de lignes → on gèlera au prochain save utile.
+        prix = (Decimal(str(total)) / kwc_val).quantize(
+            Decimal('0.01'), rounding=ROUND_HALF_UP)
+        # Écriture ciblée (ne touche que cette colonne) — la valeur est gelée.
+        type(self).objects.filter(pk=self.pk).update(prix_par_kwc=prix)
+        self.prix_par_kwc = prix
 
     @property
     def total_ht(self):
@@ -657,6 +711,20 @@ class Facture(models.Model):
     # Tous deux optionnels : leur absence ne fait qu'AVERTIR, jamais bloquer.
     date_livraison = models.DateField(null=True, blank=True)
     conditions_paiement = models.TextField(blank=True, default='')
+    # ── ARC24 — référentiel des conditions de paiement (additif, optionnel) ──
+    # FK nullable (string-FK — jamais d'import de apps.parametres.models ici)
+    # vers parametres.ConditionPaiement : SOURCE du libellé par défaut. Le
+    # TextField ``conditions_paiement`` ci-dessus reste MAÎTRE (surchargeable) ;
+    # cette FK ne fait que tracer la condition référentielle choisie. Vide =
+    # comportement historique inchangé (texte libre seul).
+    condition_paiement_ref = models.ForeignKey(
+        'parametres.ConditionPaiement',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='factures',
+        verbose_name='Condition de paiement (référentiel)',
+        help_text="Condition du référentiel Paramètres — source du libellé par "
+                  "défaut. Le texte libre reste surchargeable.")
     # ── Relances / recouvrement (workstream E) — additif ──
     # Date de la prochaine relance prévue (posée à l'enregistrement d'une
     # relance) ; exclu_relances retire la facture des listes d'impayés.
@@ -810,6 +878,19 @@ class Facture(models.Model):
         verbose_name_plural = 'Factures'
         ordering = ['-date_emission']
         unique_together = [('company', 'reference')]
+        # SCA39 — index chemin-de-l'argent (sous-ensemble Facture de NTPLT20).
+        # (company, statut) couvre les listes filtrées par statut (impayés,
+        # en_retard…) ; (company, date_emission) couvre la liste par défaut
+        # (scopée société, triée -date_emission). Posés SANS verrou d'écriture
+        # bloquant via AddIndexConcurrently + lock_timeout (YOPSB6).
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='ventes_fact_co_statut_idx'),
+            models.Index(
+                fields=['company', 'date_emission'],
+                name='ventes_fact_co_dateemis_idx'),
+        ]
 
     def __str__(self):
         return self.reference
@@ -834,6 +915,17 @@ class Facture(models.Model):
             lead = getattr(devis, 'lead', None) if devis is not None else None
             if lead is not None:
                 self.lead = lead
+        # ── ARC24 — défaut du libellé de conditions de paiement à la CRÉATION ──
+        # Quand une condition référentielle est reliée mais que le texte libre
+        # (mention N11) est vide, on l'initialise depuis le libellé du
+        # référentiel. UNIQUEMENT à la création (self.pk None) et si le texte est
+        # vide : le texte libre reste MAÎTRE et surchargeable, et un document
+        # existant n'est JAMAIS réécrit (immutabilité — règle #4).
+        if self.pk is None and self.condition_paiement_ref_id is not None \
+                and not (self.conditions_paiement or '').strip():
+            libelle = getattr(self.condition_paiement_ref, 'libelle', '')
+            if libelle:
+                self.conditions_paiement = libelle
         super().save(*args, **kwargs)
 
     @property
@@ -1237,10 +1329,42 @@ class Paiement(models.Model):
     )
     date_creation = models.DateTimeField(auto_now_add=True)
 
+    # ── SCA45 — champs PROVIDER-AGNOSTIQUES (le « sol » de QJ24/NTSUB) ──
+    # Leçon ServiceTitan/Toast : un paiement doit être un objet de registre de
+    # première classe DANS le schéma, pas la boîte noire d'un PSP futur. Ces
+    # deux champs accueillent une future intégration (CMI/PayZone — QJ24, gated
+    # fondateur ; NTSUB1-4 comme moteur d'abonnement) SANS nouveau schéma le
+    # jour venu. AUCUNE intégration PSP ici : purement additif.
+    #
+    # ARCHITECTURE (garde-fou permanent) : un futur webhook PSP ne touchera
+    # JAMAIS Facture.statut EN DIRECT — il route par apps.ventes.services
+    # (règle #4 + frontières inter-app). Ces colonnes ne font que STOCKER la
+    # référence prestataire + la clé d'idempotence, jamais piloter un statut.
+    provider_ref = models.CharField(
+        max_length=200, null=True, blank=True,
+        help_text='Référence du prestataire de paiement (PSP) — vide tant '
+                  'qu\'aucune intégration ne renseigne ce paiement.')
+    idempotency_key = models.CharField(
+        max_length=200, null=True, blank=True,
+        help_text='Clé d\'idempotence (déduplication webhook PSP) — unique par '
+                  'société quand renseignée.')
+
     class Meta:
         verbose_name = 'Paiement'
         verbose_name_plural = 'Paiements'
         ordering = ['-date_paiement', '-date_creation']
+        constraints = [
+            # SCA45 — la clé d'idempotence est unique PAR SOCIÉTÉ quand elle est
+            # renseignée (empêche le double-encaissement d'un même événement PSP
+            # rejoué). Les paiements sans clé (saisie manuelle actuelle) sont
+            # exclus de la contrainte — comportement historique inchangé.
+            models.UniqueConstraint(
+                fields=['company', 'idempotency_key'],
+                condition=models.Q(idempotency_key__isnull=False)
+                & ~models.Q(idempotency_key=''),
+                name='uniq_paiement_idempotency_par_societe',
+            ),
+        ]
 
     def __str__(self):
         cible = self.facture.reference if self.facture_id else (

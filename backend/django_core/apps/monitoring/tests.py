@@ -15,6 +15,7 @@ Run :
 """
 from datetime import date, timedelta
 from decimal import Decimal
+from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -796,6 +797,59 @@ class TestOmReport(TestCase):
             f'/api/django/monitoring/configs/{self.config.id}/om-report/')
         self.assertEqual(r.status_code, 200, r.data)
         self.assertIn('period_kwh', r.data)
+
+    def test_email_sends_via_client_email_and_notifies_internally(self):
+        # ARC39 — l'envoi CLIENT (PDF joint) reste un EmailMessage direct
+        # (exception documentée), mais une notification INTERNE centrale
+        # doit désormais être émise en plus (best-effort, non bloquante).
+        from django.core import mail
+        from apps.monitoring.report import email_om_report
+        with mock.patch(
+                'apps.notifications.services.notify_many') as notify_many:
+            ok = email_om_report(self.inst, period='monthly', today=self.today)
+        self.assertTrue(ok)
+        # L'email client part toujours (comportement inchangé).
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn('rep-cli@example.invalid', mail.outbox[0].to)
+        # La notification interne est bien routée par le système central.
+        notify_many.assert_called_once()
+        args, kwargs = notify_many.call_args
+        self.assertEqual(args[1], 'monitoring_rapport')
+        self.assertEqual(kwargs.get('company'), self.company)
+
+    def test_notification_interne_persiste_reellement(self):
+        # Bout en bout sans mock : preuve que l'EventType est bien enregistré.
+        from apps.monitoring.report import email_om_report
+        from apps.notifications.models import Notification
+        email_om_report(self.inst, period='monthly', today=self.today)
+        qs = Notification.objects.filter(
+            company=self.company, recipient=self.user,
+            event_type='monitoring_rapport')
+        self.assertEqual(qs.count(), 1)
+
+    def test_echec_notification_interne_non_bloquant_pour_email_client(self):
+        from django.core import mail
+        from apps.monitoring.report import email_om_report
+        with mock.patch(
+                'apps.notifications.services.notify_many',
+                side_effect=RuntimeError('boom')):
+            ok = email_om_report(self.inst, period='monthly', today=self.today)
+        self.assertTrue(ok)
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_sans_destinataire_aucune_notification_interne(self):
+        # No-op AVANT même la génération du PDF : pas de notification non plus.
+        client_sans_email = Client.objects.create(
+            company=self.company, nom='SansMail2', prenom='X', email='')
+        inst2 = Installation.objects.create(
+            company=self.company, reference='R-3', client=client_sans_email,
+            puissance_installee_kwc=Decimal('5'))
+        from apps.monitoring.report import email_om_report
+        with mock.patch(
+                'apps.notifications.services.notify_many') as notify_many:
+            ok = email_om_report(inst2, today=self.today)
+        self.assertFalse(ok)
+        notify_many.assert_not_called()
 
 
 class TestBalayageQuotidien(TestCase):

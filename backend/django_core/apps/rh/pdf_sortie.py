@@ -17,32 +17,26 @@ au moteur devis ventes). Suit le même pattern self-contained que
 HTML -> PDF via WeasyPrint, aucune dépendance à une autre app business,
 lecture seule de champs publics.
 
-WeasyPrint est optionnel à l'import : si la lib n'est pas installée (build
-allégé), ``render_certificat_travail_pdf`` lève une ``RuntimeError``
-explicite plutôt que de planter à l'import du module.
+ARC12 — la plomberie WeasyPrint (``HTML(string=...).write_pdf()`` + import
+paresseux) est déléguée au service partagé ``core.pdf.render_pdf`` ; le
+GABARIT HTML ci-dessous reste STRICTEMENT identique, donc le rendu est
+inchangé à l'octet près.
 """
 from datetime import date
 from html import escape
-from io import BytesIO
+
+from core.pdf import render_pdf
+
+
+def _html_to_pdf(html_string):
+    """HTML → octets PDF via ``core.pdf.render_pdf`` (ARC12)."""
+    return render_pdf(html=html_string)
+
 
 MOIS_FR = [
     '', 'janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet',
     'août', 'septembre', 'octobre', 'novembre', 'décembre',
 ]
-
-
-def _html_to_pdf(html_string):
-    """HTML → octets PDF (WeasyPrint). Import paresseux de weasyprint."""
-    try:
-        import weasyprint
-    except ImportError as exc:  # pragma: no cover - dépend de l'environnement
-        raise RuntimeError(
-            "WeasyPrint n'est pas installé : génération PDF indisponible."
-        ) from exc
-    buf = BytesIO()
-    weasyprint.HTML(string=html_string).write_pdf(buf)
-    buf.seek(0)
-    return buf.read()
 
 
 def _postes_occupes(employe):

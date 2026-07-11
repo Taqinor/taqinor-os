@@ -872,10 +872,81 @@ def maybe_assign_mql(lead) -> bool:
         return False
 
 
+def ecrire_identite_client(client) -> bool:
+    """ARC21 (founder-gated, OFF par défaut) — quand la bascule write-path est
+    ACTIVE (``TIERS_SOURCE_ECRITURE`` ON), pousse l'identité du client vers son
+    ``Tiers`` (source d'écriture unique), puis le client relira le miroir.
+
+    Flag OFF (défaut) : NO-OP strict — renvoie ``False`` sans rien écrire (le
+    client reste l'unique chemin d'écriture, comportement byte-identique à
+    aujourd'hui). Best-effort ; ne fait jamais échouer l'appelant.
+
+    Voir docs/decisions/ARC21-tiers-source-ecriture.md.
+    """
+    try:
+        from apps.tiers import services as tiers_services
+        if not tiers_services.identite_source_est_tiers():
+            return False  # flag OFF — rien ne change.
+        if client is None or client.tiers_id is None:
+            return False
+        return tiers_services.ecrire_identite(
+            company=client.company, tiers=client.tiers,
+            champs={
+                'nom': client.nom or '',
+                'prenom': client.prenom or '',
+                'email': client.email or '',
+                'telephone': client.telephone or '',
+                'adresse': client.adresse or '',
+                'ice': client.ice or '',
+                'rc': client.rc or '',
+                'identifiant_fiscal': client.if_fiscal or '',
+                'cin': client.cin or '',
+            })
+    except Exception:
+        return False
+
+
+def attacher_tiers_au_lead(lead: Lead, client: Client) -> None:
+    """ARC56 — Rattache le lead au MÊME ``tiers.Tiers`` que le Client résolu.
+
+    Le pont crm.Client → Tiers (ARC18) a déjà créé/lié le Tiers du client à la
+    sauvegarde ; ce hook ne fait que RECOPIER ce lien sur le lead pour que le
+    recoupement « qui est ce tiers ? » (ARC20) couvre aussi le stade amont du
+    funnel. Ne CRÉE jamais un 2ᵉ Tiers, n'écrit ni ne lit AUCUN champ de nom du
+    lead (QW7), et n'écrit que si le lien change. Best-effort : ne fait jamais
+    échouer la résolution du client.
+
+    Hook APPELÉ APRÈS ``resolve_client_for_lead`` (jamais dans sa logique de
+    résolution) — le Tiers vient toujours du client, jamais recalculé ici.
+    """
+    try:
+        if lead is None or client is None:
+            return
+        tiers_id = getattr(client, 'tiers_id', None)
+        if tiers_id is None:
+            # Le client n'a pas encore de Tiers (miroir best-effort échoué à la
+            # création) : on relit une fois après un refresh, sinon on abandonne
+            # proprement (le prochain save du client re-tentera le miroir).
+            client.refresh_from_db(fields=['tiers'])
+            tiers_id = getattr(client, 'tiers_id', None)
+        if tiers_id is None:
+            return
+        if lead.tiers_id != tiers_id:
+            # Écriture CIBLÉE (update_fields=['tiers']) — aucun champ de nom
+            # n'est touché, aucun autre effet de bord (QW7).
+            Lead.objects.filter(pk=lead.pk).update(tiers_id=tiers_id)
+            lead.tiers_id = tiers_id
+    except Exception:
+        pass
+
+
 def resolve_client_for_lead(lead: Lead) -> Client:
     from django.db import IntegrityError, transaction
 
     if lead.client_id:
+        # Rattache le Tiers du client déjà lié (stade amont ARC56), sans
+        # jamais modifier la résolution existante ni un champ de nom.
+        attacher_tiers_au_lead(lead, lead.client)
         return lead.client
 
     def _find_existing():
@@ -922,6 +993,10 @@ def resolve_client_for_lead(lead: Lead) -> Client:
         company=lead.company, lead=lead, user=None,
         kind=LeadActivity.Kind.NOTE,
         body=f"Client lié : {nom_client}")
+    # ARC56 — rattache le lead au MÊME Tiers que le client fraîchement résolu
+    # (le pont ARC18 a déjà posé client.tiers à sa sauvegarde). Aucun champ de
+    # nom du lead n'est touché (QW7).
+    attacher_tiers_au_lead(lead, client)
     return client
 
 

@@ -4,23 +4,20 @@ Même moteur WeasyPrint sobre que ``pdf_notes_frais.py``/
 ``pdf_certificat_enquete.py`` — HORS ``/proposal`` (règle #4 CLAUDE.md non
 concernée, ce n'est pas un devis). Aucune donnée interne (``prix_achat``)
 — sans objet ici de toute façon.
+
+ARC12 — la plomberie WeasyPrint (``HTML(string=...).write_pdf()`` + import
+paresseux) est déléguée au service partagé ``core.pdf.render_pdf`` ; les
+GABARITS HTML ci-dessous restent STRICTEMENT identiques, donc le rendu est
+inchangé à l'octet près.
 """
 from html import escape
-from io import BytesIO
+
+from core.pdf import render_pdf
 
 
 def _html_to_pdf(html_string):
-    """HTML → octets PDF (WeasyPrint). Import paresseux."""
-    try:
-        import weasyprint
-    except ImportError as exc:  # pragma: no cover - dépend de l'environnement
-        raise RuntimeError(
-            "WeasyPrint n'est pas installé : génération PDF indisponible."
-        ) from exc
-    buf = BytesIO()
-    weasyprint.HTML(string=html_string).write_pdf(buf)
-    buf.seek(0)
-    return buf.read()
+    """HTML → octets PDF via ``core.pdf.render_pdf`` (ARC12)."""
+    return render_pdf(html=html_string)
 
 
 _STYLE = """

@@ -24,3 +24,6 @@ class CrmConfig(AppConfig):
         # XPLT23 — fournisseur DSR CRM (export/anonymisation loi 09-08).
         from . import dsr_provider
         dsr_provider.register()
+        # ARC18 — miroir one-way crm.Client → répertoire unifié tiers.Tiers
+        # (l'import câble le récepteur post_save ; pont réversible).
+        from . import tiers_bridge  # noqa: F401

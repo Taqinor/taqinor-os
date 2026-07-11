@@ -43,10 +43,6 @@ ALLOWED_UNCONSUMED = {
     # Destiné à l'app comptable (matérialiser un Paiement / rapprocher la
     # facture) ; core n'importe jamais l'app comptable — abonné à venir.
     "payment_captured",
-    # Pose de seam (CONTRAT16/17, YDOCF5) : aucun abonné obligatoire dans ce
-    # lot (facturation récurrente / notification / dépôt GED à brancher).
-    "contrat_signe",
-    "contrat_actif",
     # ARC36 — ``facture_payee``/``bon_commande_cree`` (YEVNT6) et
     # ``abonnement_monitoring_resilie`` (YSUBS4) ont désormais des abonnés
     # métier (compta lettrage + notifications vendeur/magasinier ;
@@ -55,6 +51,17 @@ ALLOWED_UNCONSUMED = {
     # résiduel→0) — DÉPRÉCIÉ pour l'abonnement (voir docstring du bus) afin
     # de ne jamais réagir deux fois au même règlement ; ne PAS s'y abonner.
     "facture_paid",
+    # ARC35 — ``contrat_signe``/``contrat_actif`` (CONTRAT16/17, YDOCF5) ont
+    # désormais un abonné réel (``apps/contrats/receivers.py`` : chatter ARC8
+    # + dépôt GED du contrat signé ; ``apps/notifications/signals.py`` pour
+    # ``contrat_signe``) : RETIRÉS de cette liste.
+    # SCA30 — ``document_statut_change`` : seam GÉNÉRIQUE émis par le kit
+    # ``core.documents`` au changement de statut d'un document métier (voir la
+    # docstring du signal dans ``core.events`` : « aucun abonné obligatoire —
+    # pose du seam pour audit/notifications/KPI d'un futur type de document »).
+    # Volontairement sans abonné aujourd'hui (aucun consommateur métier requis),
+    # donc réservé ici plutôt que d'être un orphelin — comme les seams ci-dessus.
+    "document_statut_change",
 }
 
 # Membres ``EventType`` déclarés mais sans producteur ``notify()`` encore câblé
@@ -176,12 +183,17 @@ def _referenced_signal_names() -> set[str]:
             tree = ast.parse(path.read_text(encoding="utf-8"))
         except (OSError, SyntaxError, UnicodeDecodeError):
             continue
-        # Noms importés directement depuis core.events (from core.events import X)
-        imported_from_events: set[str] = set()
+        # Noms importés depuis core.events (from core.events import X [as Y]) :
+        # on mappe le nom LOCAL (l'alias Y, ou X sans alias) vers le nom RÉEL de
+        # l'attribut dans core.events (X) — un import aliasé
+        # (``import incident_declared as incident_declared_bus``) pointe bien un
+        # signal existant : c'est le nom D'ORIGINE qu'il faut vérifier, pas
+        # l'alias local (sinon le scan crée un faux « signal inexistant »).
+        imported_from_events: dict[str, str] = {}
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and node.module == "core.events":
                 for alias in node.names:
-                    imported_from_events.add(alias.asname or alias.name)
+                    imported_from_events[alias.asname or alias.name] = alias.name
         for node in ast.walk(tree):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
@@ -199,7 +211,7 @@ def _referenced_signal_names() -> set[str]:
                     names.add(first.attr)
                 elif (isinstance(first, ast.Name)
                         and first.id in imported_from_events):
-                    names.add(first.id)
+                    names.add(imported_from_events[first.id])
     return names
 
 

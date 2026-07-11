@@ -29,6 +29,7 @@ from authentication.permissions import (  # noqa: F401
     IsResponsableOrAdmin,
     IsAdminRole,
 )
+from core.viewsets import CompanyScopedModelViewSet  # noqa: F401  ARC5
 from ..utils.references import create_with_reference  # noqa: F401
 from ..utils.company_settings import create_numbered  # noqa: F401
 
@@ -52,7 +53,18 @@ def _company_qs(qs, user):
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-class DevisViewSet(viewsets.ModelViewSet):
+class DevisViewSet(CompanyScopedModelViewSet):
+    # ARC5 — sweep TenantMixin : base transverse unique (CompanyScopedModelViewSet
+    # = TenantMixin + ModelViewSet). get_queryset (portée de visibilité +
+    # _company_qs) / perform_create / perform_update / get_permissions SURCHARGENT
+    # la base : scoping société et matrice 401/403/404 INCHANGÉS.
+    #   Règle #4 : ce sweep ne touche NI le statut NI la sérialisation Devis. Le
+    #   moteur ne change jamais les statuts. L'@action `proposal` (chemin canonique
+    #   du PDF client, IsResponsableOrAdmin) reste une LECTURE AUTHENTIFIÉE scopée
+    #   société : `self.get_object()` passe par get_queryset (devis d'une autre
+    #   société → 404). Elle N'EST PAS un endpoint public — l'accès CLIENT au PDF
+    #   passe par les vues tokenisées ShareLink de `public_views.py`
+    #   (AllowAny, hors périmètre de ce sweep), qui restent inchangées.
     queryset = Devis.objects.select_related(
         'client', 'created_by', 'lead', 'bon_commande', 'signature',
         'superseded_by', 'version_parent',
@@ -60,7 +72,14 @@ class DevisViewSet(viewsets.ModelViewSet):
         # YOPSB13 — paiements/avoirs imbriqués préchargés : DevisSerializer.
         # get_solde (via solde_devis) itère f.paiements/f.avoirs PAR facture ;
         # sans ces prefetch c'était un N+1 imbriqué sur la liste.
-        'lignes', 'factures', 'factures__paiements', 'factures__avoirs',
+        # SCA43 — `lignes__produit` (pas seulement `lignes`) : DevisSerializer.
+        # _display appelle build_quote_data PAR DEVIS pour le total d'affichage,
+        # et `_line_to_item` y lit `ligne.produit` (marque/description/garantie)
+        # PAR LIGNE. Sans ce prefetch c'était un produit-par-ligne → N+1 qui
+        # grandit avec le nombre de devis (même prefetch que
+        # generate_premium_devis_pdf). Rend le total de liste O(1).
+        'lignes', 'lignes__produit',
+        'factures', 'factures__paiements', 'factures__avoirs',
         'share_links',
         # YOPSB13 — évite le N+1 de DevisSerializer.get_chantier (avant :
         # une requête Installation par devis via le sélecteur

@@ -10,14 +10,18 @@ FACTURE : Jinja2 → WeasyPrint, avec l'identité société de
 Garde-fou prix d'achat : le contexte chantier construit ici n'expose JAMAIS
 ``prix_achat`` / marge. On ne lit que des champs publics (désignation,
 quantité, garantie texte). Aucun prix d'achat ne traverse cette couche.
+
+ARC12 — la plomberie WeasyPrint (``HTML(string=...).write_pdf()``) est
+déléguée au service partagé ``core.pdf.render_pdf`` ; les gabarits Django
+(``get_template(...).render(ctx)``) restent STRICTEMENT identiques, donc le
+rendu est inchangé à l'octet près.
 """
 from datetime import date, datetime
-from io import BytesIO
 
-import weasyprint
 from django.template.loader import get_template
 
 from apps.ventes.utils.pdf import _company_context
+from core.pdf import render_pdf
 
 # Garantie par défaut (raisonnable) quand un produit n'a pas de texte garantie.
 DEFAULT_GARANTIE = "Garantie selon conditions constructeur."
@@ -60,11 +64,8 @@ def _as_date(value):
 
 
 def _html_to_pdf(html_string):
-    """HTML → octets PDF (WeasyPrint). Identique au pipeline facture."""
-    buf = BytesIO()
-    weasyprint.HTML(string=html_string).write_pdf(buf)
-    buf.seek(0)
-    return buf.read()
+    """HTML → octets PDF via ``core.pdf.render_pdf`` (ARC12)."""
+    return render_pdf(html=html_string)
 
 
 def _systeme_summary(chantier):

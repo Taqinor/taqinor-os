@@ -7,64 +7,72 @@ Tout est company-stampé côté serveur et filtré par société, comme le reste
 ALLOWED_TARGETS borne explicitement les modèles que l'on peut cibler : on ne
 laisse jamais le navigateur attacher une activité/un fichier à un modèle
 arbitraire.
+
+ARC30 — PILOTÉE PAR LE REGISTRE (``core.platform``). Avant ARC30, les 19
+cibles historiques étaient un ``set`` littéral figé ici : une nouvelle cible
+exigeait de modifier CE fichier (l'anti-leçon Odoo). Elles sont désormais
+DÉCLARÉES par leurs apps propriétaires dans les manifestes
+``apps/<x>/platform.py`` (surface ``record_targets``, format ``'app.model'``).
+``ALLOWED_TARGETS`` est désormais un OBJET PARESSEUX
+(:class:`_LazyAllowedTargets`) qui se comporte comme un ``set`` immuable en
+lecture (``in``, itération, ``len``) mais calcule son contenu à la PREMIÈRE
+UTILISATION en unionnant ``core.platform.record_targets(company=None)`` (tous
+les manifestes, gatage société non pertinent ici — ``ALLOWED_TARGETS`` borne
+la forme des URLs/modèles acceptés, pas leur visibilité par société) sur
+TOUTES les apps installées. Résolution PARESSEUSE À DESSEIN : au moment où ce
+module est importé (chargement des apps Django), le registre applicatif n'est
+pas garanti prêt — le calcul n'a lieu qu'au premier ``in``/itération, bien
+après le démarrage. Chaque app propriétaire déclare désormais sa/ses cible(s)
+dans son propre ``platform.py`` (``record_targets``) — ajouter une cible = une
+ligne dans le manifeste de l'app, jamais plus une modification de ce fichier.
 """
 from django.conf import settings
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
 
+
+class _LazyAllowedTargets:
+    """Vue ``frozenset``-like sur ``core.platform.record_targets()``, calculée
+    au premier accès (jamais à l'import de ce module — ``core`` /
+    ``django.apps`` peuvent ne pas être prêts à ce moment).
+
+    Se comporte comme l'ancien ``set`` littéral pour tous les usages existants
+    du dépôt (``in``, itération, ``len``) — DROP-IN replacement, non-régression
+    garantie par test (le set résolu == les 19 couples historiques).
+    """
+
+    def _resolve(self):
+        from core import platform
+        return {
+            tuple(cle.split('.', 1))
+            for cle in platform.record_targets(company=None)
+        }
+
+    def __contains__(self, item):
+        return item in self._resolve()
+
+    def __iter__(self):
+        return iter(self._resolve())
+
+    def __len__(self):
+        return len(self._resolve())
+
+    def __repr__(self):
+        return f'_LazyAllowedTargets({sorted(self._resolve())!r})'
+
+    def __eq__(self, other):
+        if isinstance(other, _LazyAllowedTargets):
+            return self._resolve() == other._resolve()
+        return self._resolve() == other
+
+
 # (app_label, model) autorisés comme cibles d'activité / pièce jointe / lien GED.
 # Registre unique partagé : Activity, Comment, TaggedItem, Attachment (records)
-# ET DocumentLien (GED). GED6 ajoute le bon de commande (`ventes.boncommande`)
-# pour pouvoir rattacher un document GED à toute la chaîne devis→commande→facture.
-ALLOWED_TARGETS = {
-    ('crm', 'lead'),
-    ('crm', 'client'),
-    ('ventes', 'devis'),
-    ('ventes', 'boncommande'),
-    ('ventes', 'facture'),
-    ('installations', 'installation'),
-    ('sav', 'ticket'),
-    ('outillage', 'outillage'),
-    # DC27 — taxonomie de tags transversale : le produit catalogue devient
-    # une cible taggable (clients/devis/factures/chantiers/tickets l'étaient
-    # déjà), pour adosser tout le vocabulaire au registre `records.Tag`.
-    ('stock', 'produit'),
-    # DC33 — GED : liens polymorphes (DocumentLien) vers le fournisseur et la
-    # fiche employé, en plus des cibles Lead/Client/Devis/Facture/Chantier déjà
-    # présentes — l'identité n'est jamais recopiée sur le document, on ne fait
-    # que pointer via ContentType. (Active aussi tags/PJ sur ces objets.)
-    ('stock', 'fournisseur'),
-    ('rh', 'dossieremploye'),
-    # QHSE8 — photos de contrôle (avant/pendant/après) rattachées à un relevé
-    # de contrôle ITP, et pièces jointes d'une non-conformité (NCR).
-    ('qhse', 'relevecontrole'),
-    ('qhse', 'nonconformite'),
-    # XKB10 — pièces jointes/images d'un article de la base de connaissances
-    # (éditeur Markdown : insertion d'image dans le corps). XKB13 réutilise la
-    # MÊME entrée pour les commentaires génériques (records.Comment) sur les
-    # articles KB.
-    ('kb', 'kbarticle'),
-    # XGED15 — chatter documentaire : réutilise le chatter générique @mentions
-    # (FG7, `records.Comment`) sur un document GED au lieu d'un système de
-    # mentions parallèle. N'active QUE notes+@mentions ; le journal automatique
-    # des événements majeurs (nouvelle version, statut, partage, signature) vit
-    # à part dans `ged.DocumentActivity` (couche séparée, complète GED35).
-    ('ged', 'document'),
-    # ARC8 — convergence du chatter : le contrat et le véhicule reçoivent le
-    # chatter GÉNÉRIQUE (records.Activity) via ChatterViewSetMixin. Leurs
-    # journaux maison (contrats.ContratActivity, flotte.ActiviteFlotte) restent
-    # intacts en parallèle (couche héritée, non touchée dans cette vague).
-    ('contrats', 'contrat'),
-    ('flotte', 'vehicule'),
-    # ARC26 — pièces jointes génériques : le projet et l'appel d'offres
-    # deviennent des cibles records (Attachment/Activity/Comment/Tag). La
-    # convention « plus de FileField sauvage » (garde-fou dans
-    # scripts/check_platform.py) impose que toute NOUVELLE pièce jointe passe
-    # par records.Attachment ou ged.Document — jamais un FileField de plus.
-    ('gestion_projet', 'projet'),
-    ('ao', 'appeloffre'),
-}
+# ET DocumentLien (GED). Source de vérité désormais RÉPARTIE : chaque app
+# déclare ses cibles dans son ``platform.py`` (surface ``record_targets``,
+# voir ``core.platform``) — cette variable en reste l'UNION paresseuse.
+ALLOWED_TARGETS = _LazyAllowedTargets()
 
 
 class ActivityType(models.Model):

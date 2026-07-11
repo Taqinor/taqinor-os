@@ -9,23 +9,40 @@ la société de l'utilisateur ; la référence, la société et ``created_by`` s
 posés côté serveur (jamais lus du corps). Le ``sous_traitant`` et le
 ``chantier`` ciblés sont validés tenant (même société). La référence
 ``OST-YYYYMM-NNNN`` est anti-collision (jamais ``count()+1``).
-"""
+
+SCA34 — pilote 1 du kit ``core.documents``. Le viewset gagne :
+  * le chatter générique (``ChatterViewSetMixin``, ARC8) : ``chatter/historique``
+    (GET) + ``chatter/noter`` (POST), adossé à ``records.Activity`` ;
+  * une action ``pdf`` (GET) qui délègue à ``core.documents.render_document_pdf``
+    (SCA33 → ``core.pdf.render_pdf``, ARC11) avec le gabarit minimal
+    ``installations/ordre_soustraitance_pdf.html``.
+Le reste (queryset/permissions/perform_create/actions de cycle de vie) est
+INCHANGÉ — la numérotation continue de passer par le même shim
+(``apps.ventes.utils.references`` = ré-export bit-identique de
+``core.numbering``, cf. docstring du modèle)."""
+from django.http import HttpResponse
 from django.utils import timezone
-from rest_framework import viewsets, status
+from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.documents import render_document_pdf
+from core.viewsets import CompanyScopedModelViewSet
 
+from apps.records.views import ChatterViewSetMixin
 from apps.ventes.utils.references import create_with_reference
 
 from ..models import OrdreSousTraitance
 from ..serializers import OrdreSousTraitanceSerializer
 
 # Toute action de LECTURE doit figurer ici (sinon écriture requise par défaut).
-READ_ACTIONS = ['list', 'retrieve']
+# SCA34 — 'pdf' est une lecture (même barrière que 'retrieve') ;
+# 'chatter_historique' aussi (patron flotte : le get_permissions maison prime
+# sur les permission_classes d'@action du mixin, donc la lecture du chatter se
+# déclare ICI — 'chatter_noter' reste écriture responsable/admin par défaut).
+READ_ACTIONS = ['list', 'retrieve', 'pdf', 'chatter_historique']
 
 
 def _check_tenant(serializer, company, field):
@@ -46,12 +63,14 @@ def _check_tenant(serializer, company, field):
             {field: 'Ce fournisseur n\'est pas un sous-traitant (type service).'})
 
 
-class OrdreSousTraitanceViewSet(TenantMixin, viewsets.ModelViewSet):
+class OrdreSousTraitanceViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
     """FG305 — ordres de travaux sous-traitant. Lecture tout rôle, écriture
     responsable/admin. Référence anti-collision + société + `created_by` posés
     côté serveur ; `sous_traitant`/`chantier` validés tenant. Filtrable par
     `sous_traitant`, `statut` et `chantier`. Cycle de vie via les actions
-    `emettre`/`receptionner`/`cloturer`."""
+    `emettre`/`receptionner`/`cloturer`. SCA34 — chatter générique
+    (`chatter/historique`, `chatter/noter`) + PDF (`pdf`) via le kit
+    `core.documents`."""
     queryset = OrdreSousTraitance.objects.select_related(
         'sous_traitant', 'chantier', 'created_by').all()
     serializer_class = OrdreSousTraitanceSerializer
@@ -162,3 +181,16 @@ class OrdreSousTraitanceViewSet(TenantMixin, viewsets.ModelViewSet):
         ordre.statut = OrdreSousTraitance.Statut.CLOS
         ordre.save(update_fields=['statut', 'date_modification'])
         return Response(self.get_serializer(ordre).data)
+
+    @action(detail=True, methods=['get'])
+    def pdf(self, request, pk=None):
+        """SCA34 — PDF de l'ordre via le hook du kit (``render_document_pdf``
+        → ``core.pdf.render_pdf``, ARC11). Lecture : tout rôle (même barrière
+        que ``retrieve``, cf. ``READ_ACTIONS``)."""
+        ordre = self.get_object()
+        pdf_bytes = render_document_pdf(
+            ordre, 'installations/ordre_soustraitance_pdf.html')
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'inline; filename="{ordre.reference}.pdf"')
+        return response

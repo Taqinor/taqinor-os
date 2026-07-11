@@ -6,11 +6,10 @@ rôle, écriture responsable/admin. Multi-tenant via ``TenantMixin`` : le querys
 est filtré sur la société de l'utilisateur et la société + ``created_by`` sont
 posés côté serveur (jamais lus du corps). Les cibles (technicien, camionnette)
 sont validées tenant : elles doivent appartenir à la société de l'utilisateur."""
-from rest_framework import viewsets
 from rest_framework.exceptions import ValidationError
 
-from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import IndisponibiliteRessource
 from ..serializers import IndisponibiliteRessourceSerializer
@@ -31,7 +30,7 @@ def _check_target_tenant(serializer, company):
         raise ValidationError({'camionnette': 'Camionnette inconnue.'})
 
 
-class IndisponibiliteRessourceViewSet(TenantMixin, viewsets.ModelViewSet):
+class IndisponibiliteRessourceViewSet(CompanyScopedModelViewSet):
     """FG302 — indisponibilités (congé/formation/arrêt/autre) d'un technicien ou
     d'une camionnette. Lecture tout rôle, écriture responsable/admin. Société +
     `created_by` posés côté serveur ; cibles validées tenant. Filtrable par

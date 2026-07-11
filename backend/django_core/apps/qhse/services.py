@@ -370,6 +370,116 @@ def cloturer_ncr(ncr):
     return ncr
 
 
+# ── ARC10 — Clôture NCR pilotée par le moteur d'approbation core (FG366/FG369) ─
+#
+# Pilote domaine du moteur BPM générique de ``core`` : la clôture d'une NCR
+# passe par un cycle d'approbation à deux temps (agent QHSE → responsable QHSE)
+# instancié à partir du modèle FG369 « cloture_ncr » et attaché à la NCR par
+# ``contenttypes`` (aucun import de modèle core→qhse : c'est qhse qui pilote le
+# moteur, ``core`` reste fondation). La règle ARC10 : toute NOUVELLE approbation
+# multi-étapes passe par ce moteur — plus de mécanisme d'approbation ad hoc.
+# ``parametres.ApprovalPolicy`` (FG25) reste le successeur pour la
+# configurabilité UI (config), ce moteur l'EXÉCUTION.
+
+WORKFLOW_TEMPLATE_CLOTURE_NCR = 'cloture_ncr'
+
+
+@transaction.atomic
+def demarrer_workflow_cloture_ncr(ncr, *, user=None, now=None):
+    """Démarre le cycle d'approbation de clôture d'une NCR sur le moteur core.
+
+    Installe (idempotemment) le modèle FG369 « cloture_ncr » pour la société de
+    la NCR, puis instancie une ``WorkflowInstance`` core visant la NCR (cible
+    générique via contenttypes). ``company`` est TOUJOURS celle de la NCR (posée
+    côté serveur, jamais lue d'un corps). Idempotent : si un cycle est déjà EN
+    COURS pour cette NCR, on le renvoie sans en créer un second. Refuse une NCR
+    déjà clôturée. Retourne la ``WorkflowInstance``.
+    """
+    from core import workflow as core_workflow
+    from core import workflow_templates as core_templates
+
+    if ncr.statut == NonConformite.Statut.CLOTUREE:
+        raise ValueError('La non-conformité est déjà clôturée.')
+
+    company = ncr.company
+    existante = core_workflow.instance_en_cours_pour(
+        ncr, company, definition_code=WORKFLOW_TEMPLATE_CLOTURE_NCR)
+    if existante is not None:
+        return existante
+
+    definition, _ = core_templates.installer_modele_workflow(
+        company, WORKFLOW_TEMPLATE_CLOTURE_NCR)
+    return core_workflow.demarrer_workflow(
+        definition, ncr, company, user=user, now=now)
+
+
+def _instance_cloture_ncr(ncr):
+    """Résout la ``WorkflowInstance`` de clôture EN COURS d'une NCR (ou lève)."""
+    from core import workflow as core_workflow
+
+    instance = core_workflow.instance_en_cours_pour(
+        ncr, ncr.company, definition_code=WORKFLOW_TEMPLATE_CLOTURE_NCR)
+    if instance is None:
+        raise ValueError(
+            "Aucun cycle d'approbation de clôture en cours pour cette "
+            "non-conformité.")
+    return instance
+
+
+@transaction.atomic
+def approuver_etape_cloture_ncr(ncr, *, user=None, commentaire='', now=None):
+    """Approuve l'étape courante du cycle de clôture d'une NCR (moteur core).
+
+    Délègue à ``core.workflow.approuver_etape`` (mêmes garde-fous). Quand la
+    DERNIÈRE étape est approuvée (instance terminée), clôture effectivement la
+    NCR via ``cloturer_ncr`` (donc la garde d'efficacité CAPA QHSE13 s'applique
+    toujours). Retourne ``(instance, ncr)``.
+    """
+    from core import workflow as core_workflow
+
+    instance = _instance_cloture_ncr(ncr)
+    core_workflow.approuver_etape(
+        instance, user=user, commentaire=commentaire, now=now)
+    instance.refresh_from_db()
+    if instance.statut == instance.STATUT_TERMINE:
+        cloturer_ncr(ncr)
+        ncr.refresh_from_db()
+    return instance, ncr
+
+
+@transaction.atomic
+def rejeter_etape_cloture_ncr(ncr, *, user=None, commentaire='', now=None):
+    """Rejette l'étape courante : le cycle est stoppé, la NCR reste ouverte.
+
+    Délègue à ``core.workflow.rejeter_etape`` (l'instance passe à ``termine``,
+    chaîne arrêtée). La NCR n'est PAS clôturée. Retourne ``(instance, ncr)``.
+    """
+    from core import workflow as core_workflow
+
+    instance = _instance_cloture_ncr(ncr)
+    core_workflow.rejeter_etape(
+        instance, user=user, commentaire=commentaire, now=now)
+    instance.refresh_from_db()
+    return instance, ncr
+
+
+@transaction.atomic
+def escalader_workflow_cloture_ncr(ncr, *, now=None):
+    """Escalade l'étape courante EN ATTENTE du cycle de clôture de la NCR.
+
+    Délègue à ``core.workflow.escalader_etape`` sur l'étape active (utile après
+    un dépassement SLA). Lève ``ValueError`` si aucune étape n'est en attente.
+    Retourne l'étape escaladée.
+    """
+    from core import workflow as core_workflow
+
+    instance = _instance_cloture_ncr(ncr)
+    step = core_workflow.etape_courante_de(instance)
+    if step is None:
+        raise ValueError("Aucune étape en attente à escalader.")
+    return core_workflow.escalader_etape(step, now=now)
+
+
 # ── XQHS2 — Disposition de la NCR + dérogations ─────────────────────────────
 
 @transaction.atomic

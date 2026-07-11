@@ -19,3 +19,7 @@ class RhConfig(AppConfig):
         # obligations sociales/paie). Enregistré auprès du registre core.dsr.
         from . import dsr_provider
         dsr_provider.register()
+        # ARC19 — miroir one-way (interne) rh.DossierEmploye → répertoire
+        # unifié tiers.Tiers (l'import câble le récepteur post_save ; pas de
+        # rôle commercial, pas de RIB — voir tiers_bridge).
+        from . import tiers_bridge  # noqa: F401

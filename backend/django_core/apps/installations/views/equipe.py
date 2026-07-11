@@ -7,11 +7,10 @@ responsable/admin. Multi-tenant via ``TenantMixin`` : le queryset est filtré
 sur la société de l'utilisateur et la société + ``created_by`` sont posés côté
 serveur (jamais lus du corps). Les cibles (membres, chef) sont validées tenant :
 elles doivent appartenir à la société de l'utilisateur."""
-from rest_framework import viewsets
 from rest_framework.exceptions import ValidationError
 
-from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import Equipe
 from ..serializers import EquipeSerializer
@@ -34,7 +33,7 @@ def _check_members_tenant(serializer, company):
         raise ValidationError({'chef': 'Chef inconnu.'})
 
 
-class EquipeViewSet(TenantMixin, viewsets.ModelViewSet):
+class EquipeViewSet(CompanyScopedModelViewSet):
     """DC40 — équipes terrain (membres = utilisateurs). Lecture tout rôle,
     écriture responsable/admin. Société + `created_by` posés côté serveur ;
     membres/chef validés tenant. Filtrable par `actif`."""

@@ -10,10 +10,10 @@ INTERNE — admin uniquement ; les écarts de stock ne sont jamais exposés
 au client.
 """
 from django.db import transaction  # noqa: F401
-from rest_framework import viewsets, filters, status
+from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from authentication.mixins import TenantMixin
+from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
 from ..models import InventaireSession
 from ..serializers import InventaireSessionSerializer
@@ -22,7 +22,7 @@ from authentication.permissions import IsAdminRole
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class InventaireSessionViewSet(TenantMixin, viewsets.ModelViewSet):
+class InventaireSessionViewSet(CompanyScopedModelViewSet):
     """FG63 — Sessions de comptage physique du stock (draft → valider)."""
     queryset = InventaireSession.objects.prefetch_related(
         'lignes__produit').all()
