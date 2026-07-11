@@ -160,6 +160,10 @@ MIDDLEWARE = [
     # résout le JWT DRF best-effort, superuser + endpoints /auth exemptés.
     # Porte la requête courante pour la capture du Journal d'activité (Feature G).
     'apps.audit.middleware.AuditActorMiddleware',
+    # NTPLT1 — pose le GUC Postgres app.current_company par requête (fondation
+    # RLS, défense en profondeur multi-tenant). NO-OP TOTAL sans le flag env
+    # POSTGRES_RLS_ENABLED=1 (défaut OFF) : aucune requête SQL supplémentaire.
+    'core.tenant_context.TenantContextMiddleware',
 ]
 
 ROOT_URLCONF = 'erp_agentique.urls'
