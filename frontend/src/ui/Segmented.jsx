@@ -1,7 +1,9 @@
 import { cn } from '../lib/cn'
+import { press, pressCurve } from './interaction'
 
 /* G25 — Contrôle segmenté (choix unique court). Contrôlé : `value` + `onChange`.
-   `options` = [{ value, label, icon? }]. Accessible (role=radiogroup). */
+   `options` = [{ value, label, icon? }]. Accessible (role=radiogroup).
+   VX126 — press partagé au clic (courbe identique à Button). */
 export function Segmented({ options = [], value, onChange, size = 'md', className, ...props }) {
   const pad = size === 'sm' ? 'px-2.5 py-1 text-xs' : 'px-3 py-1.5 text-sm'
   return (
@@ -24,9 +26,11 @@ export function Segmented({ options = [], value, onChange, size = 'md', classNam
             aria-checked={active}
             onClick={() => onChange?.(opt.value)}
             className={cn(
-              'inline-flex items-center gap-1.5 rounded-md font-medium transition-colors',
+              'inline-flex items-center gap-1.5 rounded-md font-medium transition-[color,background-color,box-shadow,transform]',
+              pressCurve,
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
               pad,
+              press,
               active
                 ? 'bg-card text-foreground shadow-ui-xs'
                 : 'text-muted-foreground hover:text-foreground',

@@ -3,6 +3,7 @@ import * as SelectPrimitive from '@radix-ui/react-select'
 import { Check, ChevronDown, ChevronUp } from 'lucide-react'
 import { cn } from '../lib/cn'
 import { Spinner } from './Spinner'
+import { pressItem } from './interaction'
 
 /* G23 — Select natif accessible (clavier + type-ahead gérés par Radix).
    Pour une liste fixe et courte. Combobox/MultiSelect couvrent la recherche. */
@@ -114,6 +115,7 @@ export const SelectItem = forwardRef(function SelectItem({ className, children, 
       className={cn(
         'relative flex w-full cursor-pointer select-none items-center rounded-md py-1.5 pl-7 pr-2 text-sm outline-none',
         'focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+        pressItem,
         className,
       )}
       {...props}
