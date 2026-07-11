@@ -355,5 +355,79 @@ class WorkerPackingTests(unittest.TestCase):
         self.assertEqual(plan["workers"][0]["model"], "opus")
 
 
+class TaskFilesTests(unittest.TestCase):
+    """``Files:`` parsing drives forced file-disjoint lanes."""
+
+    def test_parses_files_clause(self):
+        label = "x. Files: `apps/crm/models.py`, `apps/crm/views.py`. (ROUTINE — M)"
+        self.assertEqual(
+            pl._task_files(label), frozenset({"apps/crm/models.py", "apps/crm/views.py"}))
+
+    def test_append_only_surfaces_excluded(self):
+        label = "x. Files: frontend/src/index.css, frontend/src/pages/x/Foo.jsx."
+        # index.css is append-only → dropped; only the substantive file remains.
+        self.assertEqual(pl._task_files(label), frozenset({"frontend/src/pages/x/Foo.jsx"}))
+
+    def test_no_files_clause_is_empty(self):
+        self.assertEqual(pl._task_files("a task with no Files declaration"), frozenset())
+
+    def test_refs_before_files_ignored(self):
+        # Only the segment after the LAST "Files:" is scanned.
+        label = "bug at webhooks.py:182 … Fix it. Files: `apps/crm/webhooks.py`."
+        self.assertEqual(pl._task_files(label), frozenset({"apps/crm/webhooks.py"}))
+
+
+class MergeLanesBySharedFilesTests(unittest.TestCase):
+    """Lanes sharing a substantive file are unioned so workers fold clean."""
+
+    @staticmethod
+    def _t(tid, lane, files):
+        return {
+            "id": tid, "prefix": "VX", "lane": lane, "gate": "buildable",
+            "gate_reasons": [], "deps": [], "section": "", "model": "sonnet",
+            "cost": 2.0, "files": files,
+        }
+
+    def test_two_lanes_sharing_a_file_merge(self):
+        lanes = {
+            "lane-a": [self._t("A1", "lane-a", ["x/Foo.jsx"])],
+            "lane-b": [self._t("B1", "lane-b", ["x/Foo.jsx"])],
+            "lane-c": [self._t("C1", "lane-c", ["y/Bar.jsx"])],
+        }
+        merged, merges = pl._merge_lanes_by_shared_files(lanes)
+        # lane-a and lane-b collapse into one; lane-c stays separate.
+        self.assertEqual(len(merged), 2)
+        self.assertEqual(len(merges), 1)
+        # every task's lane label points at an existing merged key.
+        for k, ts in merged.items():
+            for t in ts:
+                self.assertEqual(t["lane"], k)
+
+    def test_no_shared_file_is_noop(self):
+        lanes = {
+            "lane-a": [self._t("A1", "lane-a", ["a.jsx"])],
+            "lane-b": [self._t("B1", "lane-b", ["b.jsx"])],
+        }
+        merged, merges = pl._merge_lanes_by_shared_files(lanes)
+        self.assertEqual(merges, [])
+        self.assertEqual(set(merged), {"lane-a", "lane-b"})
+
+    def test_workers_are_file_disjoint_end_to_end(self):
+        # Two lanes that would collide (share Foo.jsx) must land in ONE worker.
+        tasks = [
+            self._t("A1", "lane-a", ["shared/Foo.jsx"]),
+            self._t("B1", "lane-b", ["shared/Foo.jsx"]),
+            self._t("C1", "lane-c", ["other/Bar.jsx"]),
+        ]
+        plan = pl.schedule(tasks, max_lanes=8, n_workers=8)
+        self.assertEqual(plan["counts"]["file_merges"], 1)
+        # A1 and B1 share Foo.jsx → they must land in the SAME worker.
+        owner = {}
+        for i, w in enumerate(plan["workers"]):
+            for tid in w["tasks"]:
+                owner[tid] = i
+        self.assertEqual(owner["A1"], owner["B1"], "colliding lanes split across workers")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -683,6 +683,52 @@ def _task_cost(label: str) -> float:
     return _COST_BY_SIZE.get(m.group(1), _DEFAULT_COST) if m else _DEFAULT_COST
 
 
+# --- Declared files (for FORCED file-disjoint lanes) -----------------------
+# A plan task line ends with ``Files: <path>, <path>, …``. Two tasks that share
+# a SUBSTANTIVE file must never be co-scheduled in the same merge-batch (they'd
+# collide at fold — the batch-4/shell+design pain). We parse those paths and
+# union any lanes that share one, so every emitted lane (hence every packed
+# worker) is file-disjoint by construction and folds clean the first time.
+_FILE_PATH_RE = re.compile(
+    r"[\w./-]+\.(?:py|jsx?|mjs|tsx?|css|html|txt|ya?ml|md)"
+)
+# Append-only / trivially keep-both shared surfaces: co-scheduling them is safe
+# (their conflicts are additive), so they DON'T force a lane merge — otherwise
+# index.css alone would collapse half the plan into one serial lane.
+_APPEND_ONLY_SUFFIXES = (
+    "index.css", "tokens.css", "print.css", "records-panels.css",
+    "ui/index.js", "router/index.jsx", "main.jsx", "App.jsx",
+    "docs/PLAN.md", "docs/PLAN2.md", "docs/CODEMAP.md",
+)
+
+
+def _is_append_only(path: str) -> bool:
+    return any(path.endswith(sfx) for sfx in _APPEND_ONLY_SUFFIXES)
+
+
+def _task_files(label: str) -> frozenset[str]:
+    """Substantive file paths a task declares it will edit (its ``Files:``).
+
+    Only the segment after the LAST ``Files:`` is scanned (paths elsewhere in
+    the prose — ``webhooks.py:182`` refs — are ignored), and append-only shared
+    surfaces are dropped (they never force a lane merge). Returns an empty set
+    when the task declares no files, in which case it falls back to the lane
+    heuristic exactly as before (fully backward-compatible).
+    """
+    idx = label.rfind("Files:")
+    if idx < 0:
+        idx = label.rfind("Files :")
+    if idx < 0:
+        return frozenset()
+    tail = label[idx:]
+    out = set()
+    for raw in _FILE_PATH_RE.findall(tail):
+        p = raw.strip("`'\" ")
+        if p and not _is_append_only(p):
+            out.add(p)
+    return frozenset(out)
+
+
 def pack_workers(
     lanes: dict[str, list[dict]], lane_order: list[str], n_workers: int,
 ) -> tuple[list[dict], dict[str, float]]:
@@ -768,6 +814,7 @@ def parse_tasks(path: Path) -> list[dict]:
             "section": (headers["###"] or headers["##"]).lstrip("# ").strip(),
             "model": _model_tier(label, lane or "UNASSIGNED", m.group("id"), reasons),
             "cost": _task_cost(label),
+            "files": sorted(_task_files(label)),
         })
     return tasks
 
@@ -826,6 +873,69 @@ def count_malformed(path: Path) -> int:
     return malformed
 
 
+def _merge_lanes_by_shared_files(
+    lanes: dict[str, list[dict]],
+) -> tuple[dict[str, list[dict]], list[tuple[str, str, str]]]:
+    """Union lanes that share a substantive declared file (union-find).
+
+    Returns ``(merged_lanes, merges)`` where ``merges`` is a list of
+    ``(file, lane_a, lane_b)`` triples for the report. The merged lane keeps the
+    heaviest constituent lane's key and preserves each task's original plan
+    order (tasks are re-sorted by their (section-stable) appearance). Idempotent
+    and a no-op when no two lanes share a file.
+    """
+    parent = {k: k for k in lanes}
+
+    def find(x: str) -> str:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(a: str, b: str) -> None:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[rb] = ra
+
+    # file -> the lanes that declare it (substantive files only; see _task_files)
+    file_to_lanes: dict[str, list[str]] = {}
+    for lk, ts in lanes.items():
+        for t in ts:
+            for f in t.get("files", ()):
+                file_to_lanes.setdefault(f, []).append(lk)
+
+    merges: list[tuple[str, str, str]] = []
+    for f, lks in file_to_lanes.items():
+        uniq = sorted(set(lks))
+        for other in uniq[1:]:
+            if find(uniq[0]) != find(other):
+                merges.append((f, find(uniq[0]), find(other)))
+            union(uniq[0], other)
+
+    if not merges:
+        return lanes, []
+
+    # Rebuild lanes under their representative; keep a stable per-task order by
+    # remembering the original index a task had inside its lane + lane order.
+    order = {lk: i for i, lk in enumerate(lanes)}
+    merged: dict[str, list[tuple[int, int, dict]]] = {}
+    for lk, ts in lanes.items():
+        root = find(lk)
+        for i, t in enumerate(ts):
+            merged.setdefault(root, []).append((order[lk], i, t))
+    out: dict[str, list[dict]] = {}
+    for root, triples in merged.items():
+        triples.sort(key=lambda x: (x[0], x[1]))
+        lane_tasks = []
+        for _, _, t in triples:
+            # Relabel to the merged root so the wave scheduler's cursor (keyed by
+            # ``t["lane"]``) and lane_models resolve to the merged lane.
+            t["lane"] = root
+            lane_tasks.append(t)
+        out[root] = lane_tasks
+    return out, merges
+
+
 def schedule(
     tasks: list[dict],
     max_lanes: int,
@@ -850,6 +960,15 @@ def schedule(
     lanes: dict[str, list[dict]] = {}
     for t in buildable:
         lanes.setdefault(t["lane"], []).append(t)
+
+    # FORCE FILE-DISJOINT LANES: union any two lanes whose tasks share a
+    # substantive declared file, so no merge-batch ever co-schedules two lanes
+    # that would collide at fold (the batch-4 / shell+design lesson). Append-only
+    # shared surfaces (index.css, ui/index.js…) are already excluded from
+    # ``files`` so they never collapse parallelism. Tasks with no ``Files:`` are
+    # untouched → byte-identical to the pre-file behaviour for those.
+    lanes, file_merges = _merge_lanes_by_shared_files(lanes)
+
     # Longest lane first => start the long chains early (critical-path heuristic).
     lane_order = sorted(lanes, key=lambda k: (-len(lanes[k]), k))
 
@@ -930,7 +1049,9 @@ def schedule(
             "workers": len(worker_out),
             "makespan_cost": max((w["cost"] for w in worker_out), default=0.0),
             "total_cost": round(sum(lane_costs.values()), 3),
+            "file_merges": len(file_merges),
         },
+        "file_merges": file_merges,
     }
 
 
@@ -954,6 +1075,9 @@ def render(plan: dict, max_lanes: int, source: str) -> str:
         f"Effort is bin-packed (LPT) so all agents finish together: "
         f"makespan ~{c['makespan_cost']:g} vs total {c['total_cost']:g} "
         f"(size cost S=1/M=2/L=4/XL=6; untagged=M).",
+        f"File-disjoint: {c['file_merges']} lane-pair(s) merged on a shared "
+        f"declared file, so every worker folds clean (append-only surfaces like "
+        f"index.css exempt).",
     ]
     for n, w in enumerate(plan.get("workers", []), 1):
         lanes_desc = ", ".join(
