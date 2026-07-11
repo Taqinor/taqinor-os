@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react'
 import {
   DndContext,
   DragOverlay,
+  KeyboardSensor,
   PointerSensor,
   TouchSensor,
   useDraggable,
@@ -15,6 +16,10 @@ import {
 import {
   formatMAD, groupLeadsByStage, PIPELINE_STAGES, STAGE_LABELS,
 } from '../../../../features/crm/stages'
+import {
+  buildKanbanAnnouncements,
+  kanbanScreenReaderInstructions,
+} from '../../../../features/kanban/kanbanA11y'
 import { useOptimisticSave } from '../../../../hooks/useOptimisticSave'
 import { toast } from '../../../../ui/confirm'
 import LeadCard from './LeadCard'
@@ -175,9 +180,22 @@ export default function KanbanView({
     useSensor(TouchSensor, {
       activationConstraint: { delay: 150, tolerance: 8 },
     }),
+    // VX192 — sensor clavier natif (@dnd-kit/core), 0 dépendance.
+    useSensor(KeyboardSensor),
   )
   const columns = useMemo(() => groupLeadsByStage(leads), [leads])
   const [activeLead, setActiveLead] = useState(null)
+
+  // VX192 — annonces FR : id de lead → nom, id de colonne → libellé d'étape.
+  const announcements = useMemo(() => {
+    const byId = new Map((leads ?? []).map((l) => [l.id, l]))
+    const labelFor = (id) => {
+      if (STAGE_LABELS[id]) return STAGE_LABELS[id]
+      const l = byId.get(id)
+      return l?.nom || `#${id}`
+    }
+    return buildKanbanAnnouncements(labelFor)
+  }, [leads])
 
   const handleDragStart = ({ active }) => {
     setActiveLead(active.data.current?.lead ?? null)
@@ -204,6 +222,10 @@ export default function KanbanView({
   return (
     <DndContext
       sensors={sensors}
+      accessibility={{
+        announcements,
+        screenReaderInstructions: kanbanScreenReaderInstructions,
+      }}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}

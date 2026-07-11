@@ -4677,6 +4677,28 @@ textarea.form-control {
   outline-offset: 2px;
 }
 
+/* VX192 — carte chantier ouvrable au clavier : un <button> transparent qui
+   enveloppe la carte sans altérer sa mise en page (reset complet des styles
+   par défaut du bouton), focalisable au clavier avec un anneau visible. */
+.kb-card-open {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius, 10px);
+}
+
+.kb-card-open:focus-visible {
+  outline: 2px solid var(--ring, #f5a623);
+  outline-offset: 2px;
+}
+
 /* L'original reste en place comme repère pendant le drag (overlay au doigt). */
 .kb-drag-source .kb-card {
   opacity: 0.35;
