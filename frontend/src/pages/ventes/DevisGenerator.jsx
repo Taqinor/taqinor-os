@@ -49,7 +49,7 @@ import {
   kwhFromBill, buildEtudeParamsChoice, multiPropertyPreviewTTC,
   productibleForCity,
 } from '../../features/ventes/solar'
-import { formatNumber, formatMAD } from '../../lib/format'
+import { formatNumber, formatMAD, formatDateTime } from '../../lib/format'
 
 const MODE_OPTIONS = [
   { value: 'residentiel', label: '🏠 Résidentiel' },
@@ -1468,7 +1468,7 @@ export default function DevisGenerator({
             <span>
               Un brouillon non enregistré du{' '}
               {(() => {
-                try { return new Date(restored.savedAt).toLocaleString('fr-FR') }
+                try { return formatDateTime(restored.savedAt) }
                 catch { return 'précédent' }
               })()}{' '}
               a été retrouvé.

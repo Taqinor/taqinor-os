@@ -55,6 +55,8 @@ test('LeadsPage : en-tête démote Doublons/Importer/Exporter dans un menu « �
 
 test('LeadsPage : en-tête garde + Nouveau lead / Express / ViewSwitcher comme contrôles de premier plan', () => {
   assert.match(LEADS_SRC, /\+ Nouveau lead/)
-  assert.match(LEADS_SRC, /⚡ Express/)
+  // VX45 — l'emoji ⚡ a été remplacé par l'icône lucide <Zap/> ; on garde le
+  // contrôle « Express » au premier plan (le libellé, pas l'emoji).
+  assert.match(LEADS_SRC, /> Express/)
   assert.match(LEADS_SRC, /<ViewSwitcher view=\{view\} setView=\{setView\} \/>/)
 })

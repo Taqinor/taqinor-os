@@ -12,13 +12,13 @@ UNITÉ pure (aucun endpoint réel, aucun modèle métier importé) ; le câblage
 `DEFAULT_PAGINATION_CLASS` est porté par `settings/base.py` et couvert de bout
 en bout par les suites des apps elles-mêmes.
 """
-from django.test import TestCase
+from django.test import SimpleTestCase
 from rest_framework.test import APIRequestFactory
 
 from core.pagination import StandardPagination
 
 
-class HardCapUnitTests(TestCase):
+class HardCapUnitTests(SimpleTestCase):
     """Le plafond dur est purement server-side (get_page_size / paginate)."""
 
     def setUp(self):

@@ -3405,7 +3405,9 @@ textarea.form-control {
   text-decoration: none;
 }
 
-.chatter-attachment-link:hover { text-decoration: underline; }
+@media (hover: hover) {
+  .chatter-attachment-link:hover { text-decoration: underline; }
+}
 
 /* VX111 — pièce jointe attachée à une note (inline dans la ligne, pas un
    bloc séparé — contrairement au flux de pièces jointes récentes injecté
@@ -3419,7 +3421,9 @@ textarea.form-control {
   text-decoration: none;
 }
 
-.chatter-note-attachment-link:hover { text-decoration: underline; }
+@media (hover: hover) {
+  .chatter-note-attachment-link:hover { text-decoration: underline; }
+}
 
 /* VX87 — CallLogPopover : journal d'appel en un geste (issue + note +
    prochaine action), le tout dans le popover ouvert depuis LeadForm/LeadCard/
