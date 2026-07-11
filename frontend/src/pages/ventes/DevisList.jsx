@@ -291,7 +291,7 @@ function DevisRow({ d, ctx }) {
     deletingId, statutActionId, superieurBusyId, shareBusyId, previewingId,
     pdfGenerating, pdfDownloading, pdfSlowPoll, convertingId, chantierBusy, projetBusy, factureGenId,
     openEdit, openVarianteModal, handleDelete, handleEnvoyer, handleContacterSuperieur,
-    openEmailModal, handleCopierLienProposition, handlePreview, openPdfModal,
+    openEmailModal, handleCopierLienProposition, copierLienInterne, handlePreview, openPdfModal,
     handleTelechargerPdf, openAcceptModal, openRefusModal, handleConvertBC,
     handleChantier, handleCreerProjet, handleGenererFacture,
   } = ctx
@@ -519,6 +519,20 @@ function DevisRow({ d, ctx }) {
               : 'Devis envoyé/clôturé — non modifiable (dupliquez-le depuis le générateur si besoin)'}
           >
             Éditer
+          </Button>
+          {/* VX79 — « Copier le lien interne » : URL de l'ERP partageable
+              (/ventes/devis?devis=<pk>) à envoyer à un collègue. Distinct du
+              lien PUBLIC de proposition (règle #4) plus bas — celui-ci ouvre le
+              devis DANS l'ERP, toujours disponible quel que soit le statut. */}
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => copierLienInterne(d)}
+            title="Lien interne de ce devis (à envoyer à un collègue)"
+            aria-label={`Lien interne de ${d.reference}`}
+          >
+            <Link2 className="size-3.5 mr-1" aria-hidden="true" />
+            Lien interne
           </Button>
           {/* QX27 — actions secondaires (peu fréquentes / sans raccourci
               clavier) regroupées dans un menu « ⋯ » au lieu de gonfler la
@@ -1094,6 +1108,16 @@ export default function DevisList() {
     if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }, [highlightId, loading, devis])
 
+  // VX79 — lien INTERNE partageable d'un devis : /ventes/devis?devis=<pk> (miroir
+  // du deep-link QX12 déjà supporté au montage). Distinct du lien PUBLIC de
+  // proposition (règle #4 — handleCopierLienProposition, intouché) : celui-ci
+  // pointe vers l'ERP, à envoyer à un collègue (« regarde CE devis »).
+  const copierLienInterne = async (d) => {
+    const url = `${window.location.origin}/ventes/devis?devis=${d.id}`
+    try { await navigator.clipboard?.writeText(url) } catch { /* presse-papier indispo */ }
+    toast.success('Lien interne du devis copié.')
+  }
+
   // WR2 — « Copier le lien proposition » : (re)mint le lien public tokenisé du
   // devis (DevisViewSet.share_link) et le copie au presse-papier, sans passer
   // par l'envoi email/WhatsApp. Surface une fonctionnalité serveur jusqu'ici
@@ -1483,6 +1507,13 @@ export default function DevisList() {
     })
   }, [devis, statutFilter, query, showSuperseded])
 
+  // VX79 — lien profond ?devis=<pk> pointant vers un devis introuvable parmi
+  // ceux chargés (une fois le chargement terminé) : signalé par un EmptyState
+  // inline, jamais une page blanche. Un devis masqué (révision remplacée) reste
+  // « trouvé » — on cherche dans TOUS les devis chargés, pas seulement filtrés.
+  const highlightMissing = !!highlightId && !loading
+    && !devis.some(d => d.id === highlightId)
+
   // U7 — nombre de révisions remplacées actuellement masquées (pour le bouton
   // de bascule + le compteur).
   const supersededCount = useMemo(
@@ -1571,7 +1602,7 @@ export default function DevisList() {
     deletingId, statutActionId, superieurBusyId, shareBusyId, previewingId,
     pdfGenerating, pdfDownloading, pdfSlowPoll, convertingId, chantierBusy, projetBusy, factureGenId,
     openEdit, openVarianteModal, handleDelete, handleEnvoyer, handleContacterSuperieur,
-    openEmailModal, handleCopierLienProposition, handlePreview, openPdfModal,
+    openEmailModal, handleCopierLienProposition, copierLienInterne, handlePreview, openPdfModal,
     handleTelechargerPdf, openAcceptModal, openRefusModal, handleConvertBC,
     handleChantier, handleCreerProjet, handleGenererFacture,
   }
@@ -2005,6 +2036,17 @@ export default function DevisList() {
           </div>
         </div>
       </ResponsiveDialog>
+
+      {/* VX79 — lien profond ?devis=<pk> ciblant un devis introuvable :
+          EmptyState inline (jamais une page blanche). */}
+      {highlightMissing && (
+        <EmptyState
+          icon={AlertTriangle}
+          title="Devis introuvable"
+          description="Le devis de ce lien n'existe plus ou n'est pas accessible."
+          className="mt-4 border-warning/40"
+        />
+      )}
 
       {devis.length === 0 ? (
         <EmptyState
