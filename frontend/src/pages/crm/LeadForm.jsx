@@ -35,6 +35,8 @@ import {
   Button, Input, FormSection, FormField,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '../../ui'
+// VX89 — shell externe Escape + focus-trap + bottom-sheet mobile (comme ClientForm).
+import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import { formatMAD, normalizeMaPhone } from '../../lib/format'
 
 // Canal posé par défaut sur un lead créé à la main (jamais null) : une visite/
@@ -669,10 +671,28 @@ export default function LeadForm({
     }
   }
 
+  // VX89 — le modal n°1 de l'ERP (20-40 ouvertures/jour/commercial) était le
+  // SEUL à ne pas répondre à Escape ni focuser son champ requis : shell brut
+  // `div.modal-overlay` (MB4 prétendait la migration ResponsiveDialog faite —
+  // fact-check : faux pour ce fichier, corrigé ici). Le shell EXTERNE
+  // (overlay + conteneur) est désormais `ResponsiveDialog` (Escape + focus-
+  // trap + bottom-sheet mobile gratuits, comme ClientForm) ; l'entête
+  // personnalisée (avatar, badge devis, actions Convertir/Archiver, bouton
+  // fermer) et tout le `lead-form-layout` interne restent EXACTEMENT ceux
+  // d'avant — ResponsiveDialog est monté SANS `title` (donc sans rendre de
+  // second header) et avec `showClose={false}` (le bouton ✕ existant reste
+  // l'unique fermeture).
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal modal-xl" onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
+    <ResponsiveDialog
+      open
+      onOpenChange={(o) => { if (!o) onClose() }}
+      // p-0 : .modal-header/.modal-body/.modal-footer portent déjà chacun
+      // leur propre padding (comme avant ResponsiveDialog) — sans ce reset,
+      // le p-5 par défaut de DialogContent doublerait la marge visuelle.
+      className="sm:max-w-5xl p-0 overflow-hidden gap-0"
+      showClose={false}
+    >
+      <div className="modal-header">
           <h3 className="modal-title">
             {isEdit ? `Lead — ${lead.nom} ${lead.prenom || ''}` : 'Nouveau lead'}
             {isEdit && lead.is_archived && (
@@ -886,8 +906,12 @@ export default function LeadForm({
               )}
               <div className="form-row">
                 <div className="form-group fg-grow">
-                  <label className="form-label">Nom <span className="req">*</span></label>
-                  <input className={`form-control${errors.nom ? ' is-invalid' : ''}`}
+                  <label className="form-label" htmlFor="lf-nom">Nom <span className="req">*</span></label>
+                  {/* VX89 — le modal n°1 de l'ERP (20-40 ouvertures/jour/commercial)
+                      focusait jusqu'ici son champ requis nulle part : autoFocus
+                      posé explicitement (indépendant du focus-management par
+                      défaut de Radix Dialog/Sheet). */}
+                  <input id="lf-nom" autoFocus className={`form-control${errors.nom ? ' is-invalid' : ''}`}
                          value={fields.nom} onChange={e => set('nom', e.target.value)} />
                   {errors.nom && <div className="form-feedback">{errors.nom}</div>}
                 </div>
@@ -1466,7 +1490,6 @@ export default function LeadForm({
             </Button>
           </div>
         </form>
-      </div>
 
       {/* Panneau devis inline : créer / voir / télécharger sans quitter la fiche. */}
       {isEdit && devisPanel && (
@@ -1508,6 +1531,6 @@ export default function LeadForm({
           onConverted={refreshLead}
         />
       )}
-    </div>
+    </ResponsiveDialog>
   )
 }
