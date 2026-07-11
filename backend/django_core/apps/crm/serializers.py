@@ -6,7 +6,7 @@ from .models import (
     WebsiteLeadPayload,
 )
 from .devis_auto import champs_manquants, message_manquants
-from .scoring import compute_score, score_label
+from .scoring import compute_score, score_label, score_reasons
 
 
 class LeadActivitySerializer(serializers.ModelSerializer):
@@ -157,6 +157,9 @@ class LeadSerializer(serializers.ModelSerializer):
     # FG27 — Score de qualité du lead (lecture seule, calculé à la volée).
     score = serializers.SerializerMethodField()
     score_label = serializers.SerializerMethodField()
+    # VX221 — décomposition « pourquoi ce score » (facteurs + points), pour le
+    # tooltip du badge. Pure exposition des composantes déjà calculées.
+    score_reasons = serializers.SerializerMethodField()
     # FG29 — Âge dans l'étape courante (jours depuis le dernier changement d'étape).
     stage_since_days = serializers.SerializerMethodField()
 
@@ -240,6 +243,10 @@ class LeadSerializer(serializers.ModelSerializer):
 
     def get_score_label(self, obj):
         return score_label(compute_score(obj))
+
+    def get_score_reasons(self, obj):
+        # VX221 — liste [{facteur, label, points}] triée par points décroissants.
+        return score_reasons(obj)
 
     # FG29 — Âge dans l'étape courante
     def get_stage_since_days(self, obj):

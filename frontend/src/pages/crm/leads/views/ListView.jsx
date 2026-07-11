@@ -100,6 +100,22 @@ const SCORE_COLORS = {
   Froid: { bg: '#f1f5f9', color: '#64748b', border: '#cbd5e1' },
 }
 
+// VX221 — construit le tooltip « pourquoi ce score » à partir de la
+// décomposition exposée par le backend (score_reasons : [{label, points}]).
+// On montre les 3 facteurs dominants (déjà triés par points décroissants côté
+// serveur), ex. « +20 Facture élevée · +15 Canal · +12 Lead récent ». Sans
+// décomposition (ancien payload), on retombe sur l'ancien libellé.
+export function scoreTooltip(lead) {
+  const s = lead.score ?? 0
+  const reasons = Array.isArray(lead.score_reasons) ? lead.score_reasons : []
+  if (!reasons.length) return `Score de qualité : ${s}/100`
+  const top = reasons
+    .slice(0, 3)
+    .map((r) => `+${r.points} ${r.label}`)
+    .join(' · ')
+  return `Score de qualité : ${s}/100\n${top}`
+}
+
 function ScoreBadge({ lead }) {
   const score = lead.score ?? null
   const label = lead.score_label ?? null
@@ -111,7 +127,7 @@ function ScoreBadge({ lead }) {
     <span
       className="lv-score-badge"
       style={{ background: c.bg, color: c.color, border: `1px solid ${c.border}` }}
-      title={`Score de qualité : ${s}/100`}
+      title={scoreTooltip(lead)}
     >
       {s}
     </span>

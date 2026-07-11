@@ -143,6 +143,38 @@ const prochaineAction = (lead) => {
   return null
 }
 
+// VX221 — badge score compact sur la carte kanban (absent jusqu'ici). Couleur
+// selon le libellé (Chaud/Tiède/Froid), tooltip « pourquoi » construit depuis la
+// décomposition score_reasons exposée par le backend (top 3 facteurs). Sans
+// décomposition (ancien payload) → tooltip simple « Score : X/100 ».
+const SCORE_TONE = {
+  Chaud: 'bg-amber-100 text-amber-800',
+  Tiède: 'bg-sky-100 text-sky-800',
+  Tiede: 'bg-sky-100 text-sky-800',
+  Froid: 'bg-slate-100 text-slate-600',
+}
+
+export function LeadScoreBadge({ lead }) {
+  const score = lead.score ?? null
+  if (score === null) return null
+  const lbl = lead.score_label
+    ?? (score >= 70 ? 'Chaud' : score >= 45 ? 'Tiède' : 'Froid')
+  const tone = SCORE_TONE[lbl] ?? SCORE_TONE.Froid
+  const reasons = Array.isArray(lead.score_reasons) ? lead.score_reasons : []
+  const top = reasons.slice(0, 3).map((r) => `+${r.points} ${r.label}`).join(' · ')
+  const title = top
+    ? `Score : ${score}/100\n${top}`
+    : `Score : ${score}/100`
+  return (
+    <span
+      className={`kb-badge-score rounded-full px-1.5 py-0.5 text-[11px] font-semibold ${tone}`}
+      title={title}
+    >
+      {score}
+    </span>
+  )
+}
+
 export default function LeadCard({
   lead, busy = false, onOpen, onAutoQuote, users = [], onReassign,
   selected = false, onToggleSelect, onPlanifierRelance,
@@ -260,6 +292,7 @@ export default function LeadCard({
           />
         )}
         <span className="kb-card-name">{nomComplet}</span>
+        <LeadScoreBadge lead={lead} />
         {perdu && <span className="kb-badge-perdu">Perdu</span>}
         {lead.contact_preference === 'phone_ok' && (
           <span
