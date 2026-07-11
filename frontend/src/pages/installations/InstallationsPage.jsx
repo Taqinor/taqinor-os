@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Download, ChevronLeft, ChevronRight } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
+import { Download, ChevronLeft, ChevronRight, Link2 } from 'lucide-react'
 import { fetchInstallations, updateInstallation } from '../../features/installations/store/installationsSlice'
 import {
   EMPTY_FILTERS,
@@ -242,6 +243,7 @@ export default function InstallationsPage() {
   const charge = useMemo(() => installerLoad(filtered, 14), [filtered])
 
   const [selected, setSelected] = useState(null)
+  const [searchParams, setSearchParams] = useSearchParams()
   const [users, setUsers] = useState([])
   useEffect(() => {
     crmApi.getAssignableUsers().then(r => setUsers(r.data?.results ?? r.data ?? [])).catch(() => {})
@@ -272,9 +274,42 @@ export default function InstallationsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch, filters.annule, filters.mine])
 
+  // VX79 — lien interne partageable : /chantiers?id=<pk> ouvre le panneau du
+  // chantier ciblé (patron ?lead= de LeadsPage — état DÉRIVÉ, aucun effet).
+  // Fermer retire le paramètre pour ne pas ré-ouvrir la fiche. Un id absent des
+  // chantiers chargés est signalé par un EmptyState inline (jamais page blanche).
+  const wantedId = searchParams.get('id')
+  const deepItem = useMemo(() => {
+    if (!wantedId) return null
+    return (items ?? []).find((it) => String(it.id) === String(wantedId)) ?? null
+  }, [wantedId, items])
+  // VX79 — id demandé mais introuvable (une fois le chargement terminé) : on
+  // affiche un EmptyState inline plutôt qu'un panneau vide ou une page blanche.
+  const deepMissing = !!wantedId && !loading && !deepItem
+
+  const clearDeepLink = () => {
+    if (searchParams.has('id')) {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev)
+        next.delete('id')
+        return next
+      }, { replace: true })
+    }
+  }
   const onOpen = (it) => setSelected(it)
-  const onClose = () => setSelected(null)
-  const onSaved = () => { refetch(); setSelected(null) }
+  const onClose = () => { setSelected(null); clearDeepLink() }
+  const onSaved = () => { refetch(); setSelected(null); clearDeepLink() }
+
+  // VX79 — « Copier le lien » : URL INTERNE de l'ERP (jamais un lien public) que
+  // l'on peut envoyer à un collègue — /chantiers?id=<pk> rouvre le même chantier.
+  const copierLien = async (it) => {
+    const url = `${window.location.origin}/chantiers?id=${it.id}`
+    try { await navigator.clipboard?.writeText(url) } catch { /* presse-papier indispo */ }
+    toast.success('Lien du chantier copié.')
+  }
+
+  // Panneau ouvert : sélection manuelle OU chantier ciblé par le lien profond.
+  const detailItem = selected ?? deepItem
 
   // J143 — chargement différé anti-scintillement (foundation useDelayedLoading) :
   // rien sous 300 ms, spinner discret jusqu'à 500 ms, puis squelette calqué sur
@@ -345,6 +380,19 @@ export default function InstallationsPage() {
           )}
         </h2>
         <div className="page-header-actions lp-header-actions flex flex-wrap items-center gap-2">
+          {/* VX79 — « Copier le lien » du chantier ouvert : URL INTERNE
+              partageable (/chantiers?id=<pk>), pour l'envoyer à un collègue. */}
+          {detailItem && (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => copierLien(detailItem)}
+              title="Copier le lien interne de ce chantier (à envoyer à un collègue)"
+            >
+              <Link2 /> Copier le lien
+            </Button>
+          )}
           <Button
             type="button"
             size="sm"
@@ -369,6 +417,17 @@ export default function InstallationsPage() {
       </div>
 
       <FilterBar filters={filters} setFilters={setFilters} items={items} />
+
+      {/* VX79 — lien profond ?id=<pk> pointant vers un chantier introuvable :
+          EmptyState inline (jamais une page blanche). */}
+      {deepMissing && (
+        <EmptyState
+          title="Chantier introuvable"
+          description="Le chantier de ce lien n'existe plus ou n'est pas accessible."
+          action={<Button size="sm" variant="outline" onClick={clearDeepLink}>Fermer</Button>}
+          className="my-2 border-warning/40"
+        />
+      )}
 
       {/* N14 — synthèse funnel : compte par statut + nb en retard. */}
       <div className="flex flex-wrap items-center gap-2 py-1 text-xs">
@@ -438,8 +497,8 @@ export default function InstallationsPage() {
         )}
       </div>
 
-      {selected && (
-        <InstallationDetail installation={selected} onClose={onClose} onSaved={onSaved} />
+      {detailItem && (
+        <InstallationDetail installation={detailItem} onClose={onClose} onSaved={onSaved} />
       )}
     </div>
   )

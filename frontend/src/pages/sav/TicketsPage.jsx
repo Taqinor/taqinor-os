@@ -3,13 +3,13 @@ import { useDispatch, useSelector } from 'react-redux'
 import {
   Download, Ticket as TicketIcon, AlertTriangle, RotateCcw, Save, FileText,
   Plus, Trash2, StickyNote, Sparkles, Pencil, Wrench, History, Clock,
-  ShieldCheck, ExternalLink, Zap, ChevronRight, ChevronLeft,
+  ShieldCheck, ExternalLink, Zap, ChevronRight, ChevronLeft, Link2,
 } from 'lucide-react'
 import {
   DndContext, PointerSensor, TouchSensor, useDraggable, useDroppable,
   useSensor, useSensors,
 } from '@dnd-kit/core'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { fetchTickets, updateTicket } from '../../features/sav/store/ticketsSlice'
 import savApi from '../../api/savApi'
 import api from '../../api/axios'
@@ -1249,6 +1249,7 @@ export default function TicketsPage() {
   const { items, loading, error } = useSelector((s) => s.tickets)
   const [filters, setFilters] = useState(EMPTY_TICKET_FILTERS)
   const [selected, setSelected] = useState(null)
+  const [searchParams, setSearchParams] = useSearchParams()
   const [view, setView] = useState('table') // L295/ZMFG3 — 'table' | 'kanban' | 'calendrier'
   // Vues enregistrées (FG11).
   const { savedViews: ticketSavedViews, saveView: saveTicketView, deleteView: deleteTicketView } = useSavedViews(TP_SAVED_VIEWS_KEY)
@@ -1262,6 +1263,38 @@ export default function TicketsPage() {
 
   const reload = () => dispatch(fetchTickets())
   useEffect(() => { reload() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // VX79 — lien interne partageable : /sav?id=<pk> ouvre la fiche du ticket
+  // ciblé (patron ?lead= de LeadsPage — état DÉRIVÉ, aucun effet). Fermer retire
+  // le paramètre pour ne pas ré-ouvrir la fiche. Un id absent des tickets
+  // chargés est signalé par un EmptyState inline (jamais une page blanche).
+  const wantedId = searchParams.get('id')
+  const deepTicket = useMemo(() => {
+    if (!wantedId) return null
+    return (items ?? []).find((t) => String(t.id) === String(wantedId)) ?? null
+  }, [wantedId, items])
+  const deepMissing = !!wantedId && !loading && !error && !deepTicket
+
+  const clearDeepLink = () => {
+    if (searchParams.has('id')) {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev)
+        next.delete('id')
+        return next
+      }, { replace: true })
+    }
+  }
+  // Panneau ouvert : sélection manuelle OU ticket ciblé par le lien profond.
+  const detailTicket = selected ?? deepTicket
+  const closeDetail = () => { setSelected(null); clearDeepLink() }
+
+  // VX79 — « Copier le lien » : URL INTERNE de l'ERP (jamais un lien public) que
+  // l'on peut envoyer à un collègue — /sav?id=<pk> rouvre le même ticket.
+  const copierLien = async (t) => {
+    const url = `${window.location.origin}/sav?id=${t.id}`
+    try { await navigator.clipboard?.writeText(url) } catch { /* presse-papier indispo */ }
+    toast.success('Lien du ticket copié.')
+  }
 
   const setF = (k, v) => setFilters((f) => ({ ...f, [k]: v }))
 
@@ -1391,6 +1424,15 @@ export default function TicketsPage() {
                 { value: 'calendrier', label: 'Calendrier' },
               ]}
             />
+            {/* VX79 — « Copier le lien » du ticket ouvert : URL INTERNE
+                partageable (/sav?id=<pk>), pour l'envoyer à un collègue. */}
+            {detailTicket && (
+              <Button variant="ghost" size="sm"
+                      onClick={() => copierLien(detailTicket)}
+                      title="Copier le lien interne de ce ticket (à envoyer à un collègue)">
+                <Link2 /> Copier le lien
+              </Button>
+            )}
             <Button variant="outline" size="sm"
                     onClick={() => importApi.exportList('tickets', rows.map((r) => r.id))
                       .then((r) => downloadXlsx(r.data, 'tickets.xlsx')).catch(() => {})}>
@@ -1413,6 +1455,17 @@ export default function TicketsPage() {
               </button>
             ))}
           </div>
+        )}
+
+        {/* VX79 — lien profond ?id=<pk> pointant vers un ticket introuvable :
+            EmptyState inline (jamais une page blanche). */}
+        {deepMissing && (
+          <EmptyState
+            icon={AlertTriangle}
+            title="Ticket introuvable"
+            description="Le ticket de ce lien n'existe plus ou n'est pas accessible."
+            action={<Button size="sm" variant="outline" onClick={clearDeepLink}>Fermer</Button>}
+          />
         )}
 
         {/* ── Filtres ── */}
@@ -1583,8 +1636,8 @@ export default function TicketsPage() {
           />
         )}
 
-        {selected && (
-          <TicketDetail ticket={selected} onClose={() => setSelected(null)} onSaved={reload} />
+        {detailTicket && (
+          <TicketDetail ticket={detailTicket} onClose={closeDetail} onSaved={reload} />
         )}
       </div>
     </TooltipProvider>
