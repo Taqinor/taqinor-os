@@ -5,9 +5,13 @@ import { fetchAllPages } from '../../../utils/fetchAllPages'
 // VX54 — la page 1 DRF (PAGE_SIZE=100) ne renvoyait que les 100 premiers
 // clients : FAUX dès 101 clients. Toutes les pages sont désormais lues, en
 // parallèle borné.
-export const fetchClients = createAsyncThunk('crm/fetchClients', async (_, { rejectWithValue }) => {
+// VX55 — `signal` natif de createAsyncThunk : câblé jusqu'à l'appel axios pour
+// que `thunk.abort()` (cleanup d'effet au démontage) annule réellement les
+// pages en vol, au lieu de laisser une réponse tardive écraser l'état d'un
+// AUTRE écran après navigation.
+export const fetchClients = createAsyncThunk('crm/fetchClients', async (_, { rejectWithValue, signal }) => {
   try {
-    const results = await fetchAllPages((page) => crmApi.getClients({ page }).then((r) => r.data), { concurrency: 20 })
+    const results = await fetchAllPages((page) => crmApi.getClients({ page }, { signal }).then((r) => r.data), { concurrency: 20 })
     return { results }
   } catch (err) {
     return rejectWithValue(err.response?.data ?? err.message)
@@ -41,14 +45,16 @@ export const deleteClient = createAsyncThunk('crm/deleteClient', async (id, { re
   }
 })
 
-export const fetchLeads = createAsyncThunk('crm/fetchLeads', async (params, { rejectWithValue }) => {
+export const fetchLeads = createAsyncThunk('crm/fetchLeads', async (params, { rejectWithValue, signal }) => {
   try {
     // Le kanban doit voir TOUS les leads : on suit la pagination DRF
     // (PAGE_SIZE 100) jusqu'au bout au lieu de s'arrêter à la première page.
     // VX54 — était un `while` SÉRIEL (un aller-retour réseau par page, gel de
     // plusieurs secondes à 250-500 ms de RTT) ; désormais parallèle borné.
+    // VX55 — `signal` transmis à chaque page : `thunk.abort()` annule les
+    // requêtes en vol (démontage LeadsPage / changement de filtre serveur).
     const all = await fetchAllPages(
-      (page) => crmApi.getLeads({ ...(params ?? {}), page }).then((r) => r.data),
+      (page) => crmApi.getLeads({ ...(params ?? {}), page }, { signal }).then((r) => r.data),
       { concurrency: 20 },
     )
     return all

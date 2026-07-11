@@ -12,9 +12,12 @@ import { fetchAllPages } from '../../../utils/fetchAllPages'
 // de DevisList. Relever cette borne quand QPERF1 atterrit (@coord QPERF1).
 const DEVIS_PAGE_CONCURRENCY = 5
 
-export const fetchDevis = createAsyncThunk('ventes/fetchDevis', async (_, { rejectWithValue }) => {
+// VX55 — `signal` natif de createAsyncThunk câblé jusqu'à l'appel axios :
+// `thunk.abort()` (cleanup d'effet au démontage de DevisList) annule les pages
+// en vol au lieu de laisser une réponse tardive écraser l'état après navigation.
+export const fetchDevis = createAsyncThunk('ventes/fetchDevis', async (_, { rejectWithValue, signal }) => {
   try {
-    const results = await fetchAllPages((page) => ventesApi.getDevis({ page }).then((r) => r.data), { concurrency: DEVIS_PAGE_CONCURRENCY })
+    const results = await fetchAllPages((page) => ventesApi.getDevis({ page }, { signal }).then((r) => r.data), { concurrency: DEVIS_PAGE_CONCURRENCY })
     return { results }
   } catch (err) {
     return rejectWithValue(err.response?.data ?? err.message)

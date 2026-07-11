@@ -24,7 +24,9 @@ const ventesApi = {
     api.post(`/ventes/listes-prix/${listeId}/regles/`, data),
 
   // Devis
-  getDevis: (params) => api.get('/ventes/devis/', { params }),
+  // VX55 — `config` optionnel (ex. { signal }) pour l'annulation
+  // AbortController câblée depuis fetchDevis (createAsyncThunk {signal}).
+  getDevis: (params, config) => api.get('/ventes/devis/', { params, ...config }),
   getDevisById: (id) => api.get(`/ventes/devis/${id}/`),
   createDevis: (data) => api.post('/ventes/devis/', data),
   // QX21 — création ATOMIQUE (devis + lignes en un seul commit serveur) : plus
