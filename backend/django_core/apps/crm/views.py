@@ -569,6 +569,10 @@ class LeadViewSet(CompanyScopedModelViewSet):
         old = Lead.objects.get(pk=serializer.instance.pk)
         super().perform_update(serializer)
         new_lead = serializer.instance
+        # VX98 — dernier auteur de modification (server-side, jamais du corps) :
+        # alimente la puce de fraîcheur. Pattern archived_by.
+        new_lead.updated_by = self.request.user
+        new_lead.save(update_fields=['updated_by'])
         activity.log_changes(old, new_lead, self.request.user)
         from .services import sync_relance_activity, maybe_set_first_contacted_at, recompute_lead_score
         sync_relance_activity(new_lead, self.request.user)

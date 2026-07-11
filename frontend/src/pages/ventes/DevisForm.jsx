@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { useDispatch } from 'react-redux'
-import { Plus, Trash2 } from 'lucide-react'
+import { useDispatch, useSelector } from 'react-redux'
+import { Link } from 'react-router-dom'
+import { History, Plus, Trash2 } from 'lucide-react'
 import {
   createDevis,
   updateDevis,
@@ -20,7 +21,8 @@ import {
 import ProduitPicker from '../../components/ProduitPicker'
 import ClientQuickCreateModal from './ClientQuickCreateModal'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
-import { formatMAD } from '../../lib/format'
+import { useHasPermission } from '../../hooks/useHasPermission'
+import { formatMAD, timeAgo } from '../../lib/format'
 import QuoteTotalsSummary from '../../features/ventes/QuoteTotalsSummary'
 
 let _keyCounter = 0
@@ -41,6 +43,13 @@ const emptyLine = () => ({
 export default function DevisForm({ devis = null, onClose, onSaved }) {
   const dispatch = useDispatch()
   const isEdit = !!devis
+  // VX98 — puce de fraîcheur + lien Journal. Le chip reste SILENCIEUX si le
+  // dernier auteur est l'utilisateur courant (« mon propre edit ») ou si null.
+  const currentUsername = useSelector((s) => s.auth?.user?.username)
+  const canViewJournal = useHasPermission('journal_activite_voir')
+  const freshBy = devis?.updated_by_nom
+  const freshAt = devis?.updated_at
+  const showFreshness = !!(freshBy && freshBy !== currentUsername)
 
   const [clients, setClients] = useState([])
   const [produits, setProduits] = useState([])
@@ -227,6 +236,26 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
       <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEdit ? `Éditer — ${devis.reference}` : 'Nouveau devis'}</DialogTitle>
+          {isEdit && (showFreshness || canViewJournal) && (
+            <div className="mt-1 flex flex-wrap items-center gap-3 text-xs">
+              {/* VX98 — puce de fraîcheur : silencieuse sur mon propre edit / si null. */}
+              {showFreshness && (
+                <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-muted-foreground">
+                  <History className="size-3" aria-hidden="true" />
+                  modifié par {freshBy}{freshAt ? ` ${timeAgo(freshAt)}` : ''}
+                </span>
+              )}
+              {/* VX98 — 1 clic → Journal pré-filtré sur CE devis (permission requise). */}
+              {canViewJournal && (
+                <Link
+                  to={`/journal?model=devis&object_id=${devis.id}`}
+                  className="inline-flex items-center gap-1 text-primary hover:underline"
+                >
+                  <History className="size-3" aria-hidden="true" /> Historique
+                </Link>
+              )}
+            </div>
+          )}
         </DialogHeader>
 
         <Form onSubmit={handleSubmit} className="gap-5">

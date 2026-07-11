@@ -1383,6 +1383,10 @@ class DevisViewSet(CompanyScopedModelViewSet):
         self._guard_discount_approval(
             serializer.instance, ancien_statut, nouveau_statut, remise)
         super().perform_update(serializer)
+        # VX98 — dernier auteur de modification (server-side, jamais du corps) :
+        # alimente la puce de fraîcheur. Pattern archived_by.
+        serializer.instance.updated_by = self.request.user
+        serializer.instance.save(update_fields=['updated_by'])
         from apps.crm.services import avancer_stage_pour_devis
         avancer_stage_pour_devis(
             serializer.instance, ancien_statut,

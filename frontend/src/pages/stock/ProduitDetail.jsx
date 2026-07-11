@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
-import { PackageSearch } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { History, PackageSearch } from 'lucide-react'
 import stockApi from '../../api/stockApi'
+import { useHasPermission } from '../../hooks/useHasPermission'
 import {
   Spinner, Badge,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -150,6 +152,10 @@ function OngletPrevisionnel({ produitId }) {
 
 // Export nommé : testé directement.
 export function ProduitDetail({ produit, onClose }) {
+  // VX98 — bouton « Historique » → Journal pré-filtré sur CE produit, visible
+  // uniquement avec la permission journal_activite_voir (AuditLog couvre tous
+  // les modèles ; le backend re-vérifie la permission).
+  const canViewJournal = useHasPermission('journal_activite_voir')
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
       <DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto">
@@ -177,6 +183,13 @@ export function ProduitDetail({ produit, onClose }) {
         </Tabs>
 
         <DialogFooter>
+          {canViewJournal && (
+            <Button asChild type="button" variant="outline">
+              <Link to={`/journal?model=produit&object_id=${produit.id}`}>
+                <History className="size-4" aria-hidden="true" /> Historique
+              </Link>
+            </Button>
+          )}
           <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
         </DialogFooter>
       </DialogContent>
