@@ -214,6 +214,117 @@ class ActivityViewSet(viewsets.ModelViewSet):
                 buckets['a_venir'].append(data)
         return Response(buckets)
 
+    @action(detail=False, methods=['get'], url_path='ma-file')
+    def ma_file(self, request):
+        """VX83 — « Ma file » : LA file de travail unique, cross-module.
+
+        Une seule liste unifiée de tout ce qui attend l'utilisateur, agrégée à
+        partir des sources DÉJÀ existantes (jamais un nouvel agrégateur, jamais
+        une nouvelle app inbox — décision d'architecture VX83) :
+
+          * les 3 buckets d'activités (``mine`` — en retard / aujourd'hui /
+            à venir), y compris les à-faire personnels (XKB4) ;
+          * les approbations décidables par l'utilisateur — via l'agrégateur
+            existant ``reporting.approbations`` (jamais forké) ;
+          * les mentions non lues (notifications ``chat_mention``) avec leur
+            ``link`` — via ``notifications.selectors`` (jamais un import de ses
+            models) ;
+          * pour le rôle commercial : relances dues / leads chauds jamais
+            contactés / devis proches d'expiration — via ``crm.selectors``.
+
+        Chaque item porte ``{kind, title, due, link, urgency, montant?}`` ; la
+        liste est renvoyée classée plus-urgent-d'abord, avec un total unique et
+        un en-tête compté. Tout est scopé société + visibilité côté serveur.
+        """
+        from .serializers import activity_state
+        company = _company(request)
+
+        items = []
+
+        # ── 1) Activités de l'utilisateur (les 3 buckets) ──────────────────
+        acts = _scoped(Activity.objects.select_related(
+            'activity_type', 'content_type'), request.user).filter(
+            assigned_to=request.user, done=False)
+        nb_retard = nb_aujourdhui = 0
+        for act in acts:
+            data = ActivitySerializer(act, context={'request': request}).data
+            st = activity_state(act.due_date, act.done)
+            if st == 'overdue':
+                urgency = 'overdue'
+                nb_retard += 1
+            elif st == 'today':
+                urgency = 'today'
+                nb_aujourdhui += 1
+            else:
+                urgency = 'upcoming'
+            items.append({
+                'kind': 'activite',
+                'title': data.get('summary') or data.get('activity_type_nom')
+                or 'Activité',
+                'due': act.due_date,
+                'link': _ma_file_activity_link(data),
+                'urgency': urgency,
+                'activity_id': act.id,
+            })
+
+        # ── 2) Approbations décidables par l'utilisateur ───────────────────
+        nb_approbations = 0
+        if company is not None:
+            try:
+                from apps.reporting import approbations as appro
+                appro_items = []
+                for source in appro._SOURCE_LOADERS:
+                    appro_items.extend(appro._SOURCE_LOADERS[source](company))
+                appro._enrichir_urgence(appro_items, company)
+                for it in appro_items:
+                    nb_approbations += 1
+                    items.append({
+                        'kind': 'approbation',
+                        'title': it.get('libelle') or 'Approbation',
+                        'due': it.get('cree_le'),
+                        'link': '/approbations',
+                        'urgency': 'overdue' if it.get('en_retard') else 'today',
+                        'source': it.get('source'),
+                        'source_id': it.get('id'),
+                    })
+            except Exception:  # pragma: no cover - défensif, jamais de 500
+                pass
+
+        # ── 3) Mentions non lues (notifications chat_mention) ──────────────
+        for it in _ma_file_mentions(request.user, company):
+            items.append(it)
+
+        # ── 4) File commerciale (relances / leads chauds / devis) ──────────
+        if company is not None:
+            try:
+                from apps.crm.selectors import ma_file_commercial_items
+                items.extend(ma_file_commercial_items(company, request.user))
+            except Exception:  # pragma: no cover - défensif
+                pass
+
+        # Classement plus-urgent-d'abord : en retard, puis aujourd'hui, puis
+        # à venir ; à urgence égale, échéance la plus proche d'abord (les items
+        # sans échéance en dernier de leur groupe). Tri stable.
+        rang = {'overdue': 0, 'today': 1, 'upcoming': 2}
+
+        def _due_key(due):
+            if due is None:
+                return (1, '')
+            return (0, str(due))
+
+        items.sort(key=lambda it: (
+            rang.get(it.get('urgency'), 3), _due_key(it.get('due'))))
+
+        return Response({
+            'items': items,
+            'total': len(items),
+            'resume': {
+                'en_retard': nb_retard,
+                'aujourdhui': nb_aujourdhui,
+                'approbations': nb_approbations,
+            },
+        })
+
     @action(detail=True, methods=['post'], url_path='done',
             permission_classes=[IsResponsableOrAdmin])
     def marquer_fait(self, request, pk=None):
@@ -256,6 +367,51 @@ class ActivityViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         serializer.save()
+
+
+def _ma_file_activity_link(data):
+    """VX83 — lien profond vers l'enregistrement parent d'une activité, dérivé
+    du ``target_model``/``object_id`` du serializer (miroir serveur du
+    ``targetLink`` frontend). None pour un à-faire personnel (sans cible)."""
+    model = data.get('target_model')
+    oid = data.get('object_id')
+    if model == 'crm.lead' and oid:
+        return f'/crm/leads?lead={oid}'
+    if model == 'crm.client':
+        return '/crm'
+    if model == 'installations.installation':
+        return '/chantiers'
+    if model == 'sav.ticket':
+        return '/sav'
+    return None
+
+
+def _ma_file_mentions(user, company):
+    """VX83 — mentions non lues de l'utilisateur (notifications
+    ``chat_mention``), au format d'item de « Ma file » avec leur ``link``.
+
+    Lecture cross-app EXCLUSIVEMENT via ``notifications.selectors`` (jamais un
+    import de ``apps.notifications.models`` — convention selectors). Best-effort :
+    aucune mention / app absente ⇒ liste vide, jamais une erreur qui casse la
+    file."""
+    if company is None:
+        return []
+    try:
+        from apps.notifications import selectors as notif_selectors
+        rows = notif_selectors.mentions_non_lues(user, company)
+    except Exception:  # pragma: no cover - défensif
+        return []
+    out = []
+    for n in rows:
+        out.append({
+            'kind': 'mention',
+            'title': getattr(n, 'title', None) or 'Vous avez été mentionné',
+            'due': getattr(n, 'created_at', None),
+            'link': getattr(n, 'link', '') or None,
+            'urgency': 'today',
+            'notification_id': getattr(n, 'id', None),
+        })
+    return out
 
 
 def _log_done_to_chatter(activity, user):

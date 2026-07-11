@@ -994,23 +994,16 @@ class LeadViewSet(CompanyScopedModelViewSet):
 
         scope= overdue (en retard) | today (aujourd'hui) | week (cette semaine)
         Portée de visibilité de l'utilisateur respectée (scope_queryset).
+
+        VX83 — la logique de sélection vit désormais dans
+        ``crm.selectors.relances_du_jour`` (consommée aussi par « Ma file »
+        cross-module) ; cette vue ne fait que la présenter (convention
+        selectors — jamais deux implémentations divergentes).
         """
-        from django.utils import timezone
-        import datetime
+        from .selectors import relances_du_jour
         scope = request.query_params.get('scope', 'today')
-        today = timezone.localdate()
-        qs = self.get_queryset().filter(
-            is_archived=False,
-            relance_date__isnull=False,
-        )
-        if scope == 'overdue':
-            qs = qs.filter(relance_date__lt=today)
-        elif scope == 'week':
-            week_end = today + datetime.timedelta(days=6)
-            qs = qs.filter(relance_date__lte=week_end)
-        else:  # today
-            qs = qs.filter(relance_date=today)
-        qs = qs.order_by('relance_date', 'nom')
+        company = request.user.company if request.user.company_id else None
+        qs = relances_du_jour(company, request.user, scope=scope)
         serializer = LeadSerializer(qs, many=True, context={'request': request})
         return Response({'count': qs.count(), 'results': serializer.data})
 
