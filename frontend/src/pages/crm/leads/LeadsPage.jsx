@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useSearchParams } from 'react-router-dom'
-import { Upload, Download, X } from 'lucide-react'
+import { Upload, Download, X, Plus } from 'lucide-react'
 import { useIsAdmin } from '../../../hooks/useHasPermission'
 import { fetchLeads, updateLead, leadStagePatched } from '../../../features/crm/store/crmSlice'
 import crmApi from '../../../api/crmApi'
@@ -9,7 +9,7 @@ import { filterLeads, EMPTY_FILTERS, archivedParam, CONVERSION_STAGE } from '../
 import {
   toggleId, toggleAll, pruneSelection, bulkResultMessage,
 } from '../../../features/crm/bulk'
-import { Button, IconButton, Spinner } from '../../../ui'
+import { Button, IconButton, Spinner, FloatingActionButton } from '../../../ui'
 import { errorMessageFrom } from '../../../lib/toast'
 import { useSavedViews } from '../../../hooks/useSavedViews'
 import LeadForm from '../LeadForm'
@@ -515,6 +515,14 @@ export default function LeadsPage() {
           onSaved={() => { setShowExpressModal(false); refetch() }}
         />
       )}
+
+      {/* VX42 — FAB mobile : le pouce vit dans le tiers bas de l'écran ; le
+          bouton « + Nouveau lead » du header n'y est pas toujours atteignable
+          sans faire défiler. Même action que le bouton desktop (openNew). */}
+      <FloatingActionButton
+        label="Nouveau lead"
+        icon={<Plus className="size-5" aria-hidden="true" />}
+        onClick={openNew} />
     </div>
   )
 }

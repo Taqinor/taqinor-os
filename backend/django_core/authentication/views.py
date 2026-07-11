@@ -774,6 +774,13 @@ class TwoFactorSetupView(APIView):
 
     def post(self, request):
         import pyotp
+        # VX120 — le QR est rendu ICI, côté serveur (SVG inline, réutilise le
+        # générateur QR maison déjà vendored pour les étiquettes stock), au lieu
+        # d'envoyer l'URI otpauth:// (qui CONTIENT la graine TOTP en clair) à un
+        # service tiers non contrôlé (api.qrserver.com). `otpauth_uri` reste dans
+        # la réponse pour compat (saisie manuelle/anciens clients) mais n'est
+        # plus utilisé pour le QR par le frontend.
+        from apps.stock.labels import qr_svg
         user = request.user
         if user.totp_enabled:
             return Response(
@@ -791,6 +798,7 @@ class TwoFactorSetupView(APIView):
         return Response({
             'secret': secret,
             'otpauth_uri': uri,
+            'qr_svg': qr_svg(uri),
             'issuer': _TOTP_ISSUER,
             'label': label,
         })

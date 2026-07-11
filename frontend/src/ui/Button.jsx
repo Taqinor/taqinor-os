@@ -9,7 +9,10 @@ import { Spinner } from './Spinner'
    Le press tactile `active:scale-[0.97]` (~150 ms, cubic-bezier(0.23,1,0.32,1))
    est RÉSERVÉ aux pointeurs fins via `@media (hover:hover)` : sur mobile le
    « survol émulé » ne doit jamais déclencher le press. La transition couvre
-   désormais aussi `transform` (pour le press) en plus des couleurs. */
+   désormais aussi `transform` (pour le press) en plus des couleurs.
+   VX124 — le variant `default` (CTA primaire) gagne une ombre TEINTÉE brass
+   au survol (`--shadow-primary-hover`, tokens.css) au lieu du gris-nuit
+   neutre partagé par tous les autres variants. */
 export const buttonVariants = cva(
   [
     'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md',
@@ -24,7 +27,8 @@ export const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: 'bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 shadow-ui-xs',
+        default:
+          'bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 shadow-ui-xs hover:shadow-ui-primary-hover',
         secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80 active:bg-secondary/70',
         outline: 'border border-input bg-card text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80',
         ghost: 'text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80',
@@ -56,8 +60,12 @@ export const Button = forwardRef(function Button(
       aria-busy={loading || undefined}
       {...props}
     >
-      {loading && !asChild && <Spinner className="size-4" />}
-      {children}
+      {asChild ? children : (
+        <>
+          {loading && <Spinner className="size-4" />}
+          {children}
+        </>
+      )}
     </Comp>
   )
 })

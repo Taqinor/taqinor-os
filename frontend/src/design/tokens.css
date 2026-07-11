@@ -136,6 +136,13 @@
   --elevation-modal: var(--shadow-lg);
   --elevation-toast: var(--shadow-lg);
 
+  /* VX124 — Craft-physics : ombre TEINTÉE brass au survol du CTA primaire
+     (jusqu'ici toutes les ombres étaient gris-nuit neutre, même sur le
+     bouton `default`). color-mix garde la forme du shadow-sm mais injecte
+     35 % de brass dans la couleur d'ombre. */
+  --shadow-primary-hover: 0 1px 3px 0 color-mix(in oklch, var(--primary) 35%, rgb(12 19 53 / 0.10)),
+                          0 1px 2px -1px rgb(12 19 53 / 0.08);
+
   /* Z-index — échelle unique */
   --z-base: 0;
   --z-dropdown: 1000;
@@ -238,6 +245,7 @@
   --shadow-ui-sm: var(--shadow-sm);
   --shadow-ui-md: var(--shadow-md);
   --shadow-ui-lg: var(--shadow-lg);
+  --shadow-ui-primary-hover: var(--shadow-primary-hover);
 
   /* F122 — élévations nommées exposées en utilitaires shadow-* */
   --shadow-card: var(--elevation-card);
@@ -289,6 +297,14 @@
 .text-small { font-size: var(--text-small); line-height: var(--text-small-lh); letter-spacing: var(--text-small-ls); }
 .text-caption { font-size: var(--text-caption); line-height: var(--text-caption-lh); letter-spacing: var(--text-caption-ls); }
 
+/* VX124 — Craft-physics : le tracking négatif fixe des paliers display/h1
+   (-0.03em / -0.025em) sur-comprime un montant à 7 chiffres tabulaire
+   (ex. 1 234 567 MAD). Quand les chiffres sont tabulaires ET en grande
+   taille, on desserre le tracking à -0.01em — les titres textuels normaux
+   gardent leur tracking d'origine. */
+.tabular-nums.text-display,
+.tabular-nums.text-h1 { letter-spacing: -0.01em; }
+
 /* ── F121 — Chiffres tabulaires + zéro barré pour tout montant / quantité /
    référence (F16). `tabular-nums` aligne les colonnes de chiffres ; `slashed
    zero` (font-feature-settings 'zero') distingue 0 de O dans les références.
@@ -314,6 +330,20 @@
 @keyframes pop-out {
   from { opacity: 1; transform: none }
   to { opacity: 0; transform: translateY(4px) scale(0.97) }
+}
+
+/* VX124 — Craft-physics : le chiffre KPI de <Stat> « se solidifie » au
+   montage — la police variable (wght 100–900, brand.css) passe de 500 à 600
+   sur --motion-slow. Sous prefers-reduced-motion, --motion-slow tombe à 0ms
+   (règle ci-dessous) : la transition devient un saut direct au poids final,
+   jamais un mouvement perçu. */
+.stat-value-solidify {
+  font-variation-settings: 'wght' 600;
+  animation: stat-solidify var(--motion-slow) var(--ease-standard) both;
+}
+@keyframes stat-solidify {
+  from { font-variation-settings: 'wght' 500 }
+  to { font-variation-settings: 'wght' 600 }
 }
 
 /* Respect de prefers-reduced-motion (F/M : confort de mouvement) */

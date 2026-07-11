@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Eraser } from 'lucide-react'
 import { Button } from '../../ui'
+import { hapticTap } from '../../lib/haptics'
 
 export default function SignaturePad({ onChange, className = '', height = 160 }) {
   const canvasRef = useRef(null)
@@ -66,6 +67,8 @@ export default function SignaturePad({ onChange, className = '', height = 160 })
     if (emptyRef.current) {
       emptyRef.current = false
       setEmpty(false)
+      // VX42 — retour haptique au premier trait tracé (signature capturée).
+      hapticTap()
     }
   }
 
