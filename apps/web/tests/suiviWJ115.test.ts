@@ -201,7 +201,9 @@ describe('WJ115 — [token].astro', () => {
   });
 
   it('a une affordance de partage WhatsApp', () => {
-    expect(SUIVI_PAGE).toContain('whatsappShareLink');
+    expect(SUIVI_PAGE).toContain('waShareLink');
+    // WJ115 — message de partage dédié au SUIVI (jamais « proposition »).
+    expect(SUIVI_PAGE).toContain('Voici le suivi de mon projet solaire Taqinor');
     expect(SUIVI_PAGE).toContain('Partager ce suivi sur WhatsApp');
   });
 

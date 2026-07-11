@@ -23,7 +23,7 @@ import {
   buildTimeline,
   formatSuiviDate,
 } from '../../lib/suivi';
-import { whatsappLink, whatsappShareLink } from '../../lib/proposition';
+import { whatsappLink } from '../../lib/proposition';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 
 const API_BASE = (import.meta.env.PUBLIC_API_BASE as string | undefined) ?? 'https://api.taqinor.ma';
@@ -109,10 +109,15 @@ const stepsFr = ok ? buildTimeline(data!, 'fr') : [];
 const stepsAr = ok ? buildTimeline(data!, 'ar') : [];
 const generatedLabel = formatSuiviDate(data?.generated_at ?? null);
 
-// Lien de partage WhatsApp (même helper que /proposition — partage l'URL
-// COURANTE, donc CETTE page de suivi) + un repli contact direct pour l'état
-// d'erreur (même convention que waLinkFallback de /proposition, WJ81).
-const waShareLink = whatsappShareLink(Astro.url.href, reference);
+// Lien de partage WhatsApp : compositeur générique (wa.me sans numéro — le
+// client choisit le destinataire) partageant l'URL COURANTE, donc CETTE page
+// de suivi. Message dédié au SUIVI (jamais « proposition » : après signature
+// ce lien montre l'avancement du chantier, pas une offre). Repli contact
+// direct pour l'état d'erreur (même convention que waLinkFallback, WJ81).
+const waShareMsg = reference
+  ? `Voici le suivi de mon projet solaire Taqinor (réf. ${reference}) : ${Astro.url.href}`
+  : `Voici le suivi de mon projet solaire Taqinor : ${Astro.url.href}`;
+const waShareLink = `https://wa.me/?text=${encodeURIComponent(waShareMsg)}`;
 const waFallbackLink = whatsappLink(reference || '');
 
 const pageTitle = ok ? `Suivi ${reference} | Taqinor` : 'Suivi de projet | Taqinor';
