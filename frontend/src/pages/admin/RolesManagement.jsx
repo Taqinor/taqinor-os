@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ShieldPlus, ShieldCheck, Pencil, Trash2, Eye, Lock } from 'lucide-react'
+import { ShieldPlus, ShieldCheck, Pencil, Trash2, Eye, ChevronDown, Lock } from 'lucide-react'
 import api from '../../api/axios'
 import rolesApi from '../../api/rolesApi'
 import {
@@ -11,9 +11,8 @@ import {
   Form, FormActions,
   Label, Input, Checkbox,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
-  DataTable,
 } from '../../ui'
-import { useConfirmDialog } from '../../ui/confirm'
+import { DataTable } from '../../ui/datatable'
 
 // Grille module × action (Feature D/RBAC). La SOURCE des codes est l'endpoint
 // /roles/permissions-disponibles (models.ALL_PERMISSIONS) ; cette table ne sert
@@ -154,7 +153,6 @@ function buildGroups(availableCodes) {
 }
 
 export default function RolesManagement() {
-  const { confirm } = useConfirmDialog()
   const [roles, setRoles] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -165,8 +163,14 @@ export default function RolesManagement() {
   const [formError, setFormError] = useState(null)
   // Catalogue de permissions chargé depuis le backend (source de vérité).
   const [availableCodes, setAvailableCodes] = useState([])
+  // Ligne « Utilisateurs » dépliée (id du rôle) — tâche RBAC.
+  const [expandedUsers, setExpandedUsers] = useState(null)
   // Dialogue de réassignation après une suppression bloquée.
   const [reassign, setReassign] = useState(null) // { role, target }
+  // VX152 — dialogue de confirmation de suppression : contrôlé par état
+  // (déclenché depuis rowActions du DataTable) au lieu d'un AlertDialogTrigger
+  // par ligne (même AlertDialog, même comportement — VX234 le teste).
+  const [pendingDelete, setPendingDelete] = useState(null) // role | null
 
   const groups = useMemo(() => buildGroups(availableCodes), [availableCodes])
   const viewCodes = useMemo(
@@ -305,6 +309,7 @@ export default function RolesManagement() {
   const handleDelete = async (role) => {
     try {
       await rolesApi.deleteRole(role.id)
+      setPendingDelete(null)
       await load()
     } catch (err) {
       // Suppression bloquée car des utilisateurs y sont assignés → proposer la
@@ -312,31 +317,13 @@ export default function RolesManagement() {
       // ERR101 — On se base sur users_count seul : le sérialiseur de liste peut
       // omettre le tableau `users` imbriqué, mais le dialogue doit quand même
       // s'ouvrir dès qu'il y a au moins un utilisateur.
+      setPendingDelete(null)
       if (role.users_count > 0) {
         setReassign({ role, target: '' })
       } else {
         setError(err.response?.data?.detail || 'Impossible de supprimer ce rôle.')
       }
     }
-  }
-
-  // VX38 — confirmation maison (Radix, jamais window.confirm) avant suppression
-  // — remplace l'AlertDialogTrigger inline de l'ancien <table> fait main ; la
-  // DataTable ne porte pas de dialogue par ligne, donc la confirmation devient
-  // impérative ici (même mécanique que UsersManagement.askDelete).
-  const askDeleteRole = async (role) => {
-    const ok = await confirm({
-      title: 'Supprimer ce rôle ?',
-      description: role.users_count > 0
-        ? `Le rôle « ${role.nom} » est porté par ${role.users_count} utilisateur(s). `
-          + 'Vous devrez les réassigner avant la suppression.'
-        : `Le rôle « ${role.nom} » sera définitivement supprimé.`,
-      confirmLabel: 'Supprimer',
-      cancelLabel: 'Annuler',
-      destructive: true,
-    })
-    if (!ok) return
-    await handleDelete(role)
   }
 
   // Réassigne tous les utilisateurs du rôle bloqué vers `target`, puis supprime.
@@ -358,37 +345,55 @@ export default function RolesManagement() {
     }
   }
 
-  // VX38 — colonnes DataTable (le même moteur qu'UsersManagement un écran à
-  // côté) : tri/recherche gagnés, comportement fonctionnel inchangé. Les
-  // utilisateurs assignés se déplient via le chevron intégré (`renderExpanded`)
-  // à la place de l'ancien bouton-lien + <tr> manuelle.
+  // VX152 — la liste des rôles rejoint le moteur DataTable déjà utilisé par
+  // UsersManagement (même dossier admin) : recherche/tri/export gratuits, la
+  // grille de permissions de l'éditeur au-dessus reste inchangée. La ligne
+  // « Utilisateurs » dépliable devient `renderExpanded` (moteur natif).
   const columns = useMemo(() => [
     {
-      id: 'nom', header: 'Nom', width: 220, hideable: false,
+      id: 'nom',
+      header: 'Nom',
       accessor: (r) => r.nom,
+      cell: (value) => <span className="font-medium text-foreground">{value}</span>,
     },
     {
-      id: 'type', header: 'Type', width: 140,
+      id: 'type',
+      header: 'Type',
+      width: 140,
       accessor: (r) => (r.est_systeme ? 'Système' : 'Personnalisé'),
-      cell: (_v, r) => (
-        <Badge tone={r.est_systeme ? 'info' : 'success'}>
-          {r.est_systeme ? 'Système' : 'Personnalisé'}
-        </Badge>
+      cell: (value, r) => (
+        <Badge tone={r.est_systeme ? 'info' : 'success'}>{value}</Badge>
       ),
     },
     {
-      id: 'permissions', header: 'Permissions', width: 160,
+      id: 'permissions',
+      header: 'Permissions',
+      width: 150,
       accessor: (r) => r.permissions.length,
-      cell: (v) => `${v} permission${v !== 1 ? 's' : ''}`,
+      cell: (value) => `${value} permission${value !== 1 ? 's' : ''}`,
     },
     {
-      id: 'users', header: 'Utilisateurs', width: 160,
+      id: 'users_count',
+      header: 'Utilisateurs',
+      width: 160,
       accessor: (r) => r.users_count,
-      cell: (v) => (v > 0
-        ? `${v} utilisateur${v !== 1 ? 's' : ''}`
-        : <span className="text-muted-foreground">0</span>),
+      cell: (value, r) => (value > 0 ? (
+        <Button
+          size="sm"
+          variant="link"
+          className="h-auto p-0 text-xs"
+          onClick={() => setExpandedUsers(expandedUsers === r.id ? null : r.id)}
+        >
+          {value} utilisateur{value !== 1 ? 's' : ''}
+          <ChevronDown
+            className={expandedUsers === r.id ? 'rotate-180 transition' : 'transition'}
+          />
+        </Button>
+      ) : (
+        <span className="text-muted-foreground">0</span>
+      )),
     },
-  ], [])
+  ], [expandedUsers])
 
   const rowActions = (r) => {
     const actions = [
@@ -397,24 +402,11 @@ export default function RolesManagement() {
     if (!r.est_systeme) {
       actions.push({
         id: 'delete', label: 'Supprimer', icon: Trash2, destructive: true,
-        onClick: () => askDeleteRole(r),
+        separatorBefore: true, onClick: () => setPendingDelete(r),
       })
     }
     return actions
   }
-
-  // Zone dépliable (chevron DataTable) : détail des utilisateurs assignés,
-  // fonctionnellement identique à l'ancienne ligne <tr> repliable.
-  const renderExpandedUsers = (r) => (
-    <div className="flex flex-wrap gap-1.5">
-      {(r.users || []).map((u) => (
-        <Badge key={u.id} tone="neutral">{u.username}</Badge>
-      ))}
-      {(r.users?.length ?? 0) === 0 && (
-        <span className="text-xs text-muted-foreground">Aucun détail disponible.</span>
-      )}
-    </div>
-  )
 
   return (
     <div className="flex flex-col gap-6">
@@ -560,23 +552,75 @@ export default function RolesManagement() {
           action={<Button size="sm" onClick={openCreate}><ShieldPlus /> Nouveau rôle</Button>}
         />
       ) : (
-        // VX38 — même moteur DataTable qu'UsersManagement : tri/recherche
-        // gagnés, aucune perte fonctionnelle (utilisateurs assignés toujours
-        // consultables via le chevron déplier).
-        <DataTable
-          data={roles}
-          columns={columns}
-          getRowId={(r) => r.id}
-          rowActions={rowActions}
-          renderExpanded={renderExpandedUsers}
-          searchable
-          searchPlaceholder="Rechercher un rôle…"
-          exportName="roles"
-          emptyTitle="Aucun rôle"
-          emptyDescription="Aucun rôle ne correspond à cette recherche."
-          aria-label="Liste des rôles"
-        />
+        <>
+          <DataTable
+            data={roles}
+            columns={columns}
+            getRowId={(r) => r.id}
+            rowActions={rowActions}
+            searchable
+            searchPlaceholder="Rechercher un rôle…"
+            exportName="roles"
+            emptyTitle="Aucun rôle défini"
+            emptyDescription="Aucun rôle ne correspond à cette recherche."
+            aria-label="Liste des rôles"
+            /* VX152 — liste d'administration courte : table unique (recherche/tri
+               conservés), sans repli en cartes ni pagination, donc toutes les lignes
+               visibles et un seul rendu du DOM (pas de doublon desktop/mobile ni de
+               <select> « lignes par page » parasite). */
+            pageSize={roles.length}
+            hidePagination
+            hideMobileCards
+          />
+          {/* Panneau « Utilisateurs » du rôle déplié (bouton dans la colonne
+              Utilisateurs) — reste hors du moteur DataTable : seuls les rôles
+              PORTANT des utilisateurs affichent un déclencheur (contrairement
+              au chevron toujours-visible du mécanisme natif renderExpanded). */}
+          {expandedUsers != null && (() => {
+            const r = roles.find(x => x.id === expandedUsers)
+            if (!r) return null
+            return (
+              <Card className="p-4">
+                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Utilisateurs — {r.nom}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {(r.users || []).map(u => (
+                    <Badge key={u.id} tone="neutral">{u.username}</Badge>
+                  ))}
+                  {(r.users?.length ?? 0) === 0 && (
+                    <span className="text-xs text-muted-foreground">Aucun détail disponible.</span>
+                  )}
+                </div>
+              </Card>
+            )
+          })()}
+        </>
       )}
+
+      {/* ── Dialogue de suppression (contrôlé par état — VX152, déclenché
+          depuis rowActions du DataTable) ── */}
+      <AlertDialog open={!!pendingDelete} onOpenChange={(o) => { if (!o) setPendingDelete(null) }}>
+        {pendingDelete && (
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Supprimer ce rôle ?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {pendingDelete.users_count > 0
+                  ? `Le rôle « ${pendingDelete.nom} » est porté par ${pendingDelete.users_count} utilisateur(s). `
+                    + 'Vous devrez les réassigner avant la suppression.'
+                  : `Le rôle « ${pendingDelete.nom} » sera définitivement supprimé.`}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Annuler</AlertDialogCancel>
+              <AlertDialogAction onClick={() => handleDelete(pendingDelete)}>
+                Supprimer
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        )}
+      </AlertDialog>
 
       {/* ── Dialogue de réassignation (suppression bloquée) ── */}
       <AlertDialog open={!!reassign} onOpenChange={(o) => { if (!o) setReassign(null) }}>

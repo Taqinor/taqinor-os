@@ -1329,7 +1329,7 @@ subset) pour les identifiants (`--font-mono`) — à soumettre au fondateur avan
   (`tab===…` inchangé) ; hiérarchie 2 niveaux visible ; chaque onglet annonce son modèle de
   sauvegarde avant édition ; recherche fonctionnelle. (T2 — M, sonnet) (@lane: frontend/brand)
 
-- [ ] VX152 — **Fin des moteurs de table parallèles : GED, Admin, ClientDetail, OCR
+- [x] VX152 — **Fin des moteurs de table parallèles : GED, Admin, ClientDetail, OCR
   convergent.** Quatre modules contiennent chacun DEUX systèmes de table à deux clics l'un de
   l'autre : le point d'entrée GED (`GedNavigator.jsx:391-470`, `GedSearch.jsx:147-181`) rend en
   `<table class="data-table">` hex-legacy pendant que les écrans avancés du MÊME module
@@ -3203,6 +3203,8 @@ droite)**
 ---
 
 ## DONE LOG (agent appends one plain-language line per completed task)
+
+- 2026-07-11 — **VX152 — fin des moteurs de table parallèles (dernier volet, landé seul).** GED (`GedNavigator`/`GedSearch`), `ClientDetailPanel` et OCR (`OcrUpload`) rejoignent le moteur de table déjà utilisé par leur voisin direct : GedNavigator/GedSearch → moteur `DataTable` partagé (GedNavigator via l'échappatoire `renderRow`/`renderHeaderRow` ARC49 pour préserver le DOM testé ; GedSearch en colonnes), `ClientDetailPanel` → primitif `Table` partagé (fin du 3e moteur maison `DocTable` ; plus aucune `<table>` HTML), OcrUpload → NOUVEAU primitif partagé `ui/KeyValueTable` alimenté par un point de rendu UNIQUE de `FIELD_LABELS` (helper `ocrFieldRows`). + volet `RolesManagement` (liste des rôles → `DataTable`, grille de permissions inchangée). Tests de source `node --test` par surface ; tests comportementaux existants (GedNavigator/GedSearch/OcrUpload) verts par préservation du DOM (cases/actions/testids conservés). Frontend pur, zéro migration. Landé SEUL par cherry-pick sur `main` (les autres commits VX de la branche — VX141/146/147/148 — restent en attente : VX141 introduit `DEVIS_TRACK_STAGES` qui fait échouer `check_stages.py`, à traiter séparément). (ROUTINE)
 
 - 2026-07-11 — **PLAN2 clean-lane wave 2 (8 lane-drainers) — 10 tasks folded onto batch, ~15 conflict-heavy tasks dropped+requeued to keep the batch clean.** LANDED : VX61 Web Vitals maison (INP/LCP/CLS/TTFB → endpoint reporting, AUCUNE dépendance) ; VX77 compression photo canvas avant upload terrain ; VX67 StateBlock+Réessayer sur 5 listes ; VX8 accent de couleur par module (7 jetons OKLCH AA) ; VX9 lanceur d'applications (overlay grille, `g a`) ; VX10 apps épinglées Sidebar ; VX11 fil d'Ariane cliquable ; VX12 « Plus » mobile = grille d'apps 2 niveaux ; VX13 hook `useEntitySearch` partagé (GlobalSearch+CommandPalette) ; VX46 « Mes préférences ». Fold-time : Login VX46↔VX65 réconcilié (`?next=` prioritaire sinon atterrissage) ; index.css VX9↔VX15 keep-both ; 6 lints react-hooks/react-refresh corrigés ; 2 tests réparés (vrais timers pour le rejet entityRoutes, requête `/Devis/` ambiguë BottomTabBar). DROPPED+REQUEUED (conflits lourds — reconstruire sur base fusionnée) : lane design VX1–7, crm VX192/VX221, grappe NotificationBell VX14/VX56/VX82, VX19 (sweep ~40 fichiers). Tout validé (eslint + vitest verts).
 

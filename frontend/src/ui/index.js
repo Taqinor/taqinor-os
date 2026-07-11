@@ -58,3 +58,5 @@ export * from './FloatingActionButton'
 
 // Données / listes (Groupe H — moteur DataTable réutilisable)
 export { DataTable, useDataTable, EditableCell, BulkActionBar, ColumnManager } from './datatable'
+// VX152 — primitif « libellé → valeur » partagé (fin des tables clé/valeur maison).
+export * from './KeyValueTable'

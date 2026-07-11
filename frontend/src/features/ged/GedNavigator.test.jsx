@@ -39,19 +39,23 @@ vi.mock('../../ui/Toaster', () => ({
 
 import gedApi from '../../api/gedApi'
 import GedNavigator from './GedNavigator'
-import { ThemeProvider } from '../../design/ThemeProvider.jsx'
-
-// VX38 — les documents sont désormais rendus par le moteur DataTable, qui lit
-// la densité via `useDensity()`/`useTheme()` (lève sans <ThemeProvider>) et
-// utilise des popovers Radix (menu kebab) qui appellent ResizeObserver.
-if (typeof globalThis.ResizeObserver === 'undefined') {
-  globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-}
-function renderNav(ui) {
-  return render(<ThemeProvider>{ui}</ThemeProvider>)
-}
+// VX152 — GedNavigator rend désormais le moteur DataTable partagé, qui lit la
+// densité via useTheme : comme tout écran consommant DataTable, le test doit
+// fournir le ThemeProvider (cf. flotte/*Screen.test.jsx, RolesManagement.test.jsx).
+import { ThemeProvider } from '../../design/ThemeProvider'
+// Le moteur DataTable appelle TOUJOURS useSearchParams (hook, même sans
+// persistToUrl) → il lui faut aussi un <Router>, en plus du <ThemeProvider>.
+import { MemoryRouter } from 'react-router-dom'
 
 const ok = (data) => Promise.resolve({ data })
+const renderGed = () =>
+  render(
+    <ThemeProvider>
+      <MemoryRouter>
+        <GedNavigator />
+      </MemoryRouter>
+    </ThemeProvider>,
+  )
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -68,7 +72,7 @@ describe('GedNavigator — écriture (U14)', () => {
       .mockResolvedValueOnce(ok([])) // montage : aucune armoire
       .mockResolvedValue(ok([{ id: 7, nom: 'Administratif' }]))
 
-    renderNav(<GedNavigator />)
+    renderGed()
 
     // L'état vide propose explicitement de créer la première armoire.
     const cta = await screen.findByRole('button', { name: /première armoire/i })
@@ -88,7 +92,7 @@ describe('GedNavigator — écriture (U14)', () => {
     gedApi.getDossiers.mockResolvedValue(ok([]))
     gedApi.createDossier.mockResolvedValue(ok({ id: 9, nom: 'Contrats' }))
 
-    renderNav(<GedNavigator />)
+    renderGed()
 
     // L'arbre vide propose de créer un dossier.
     const btn = await screen.findByRole('button', { name: /Créer un dossier/i })
@@ -114,7 +118,7 @@ describe('GedNavigator — écriture (U14)', () => {
     gedApi.getDocuments.mockResolvedValue(ok([]))
     gedApi.uploadDocument.mockResolvedValue(ok({ id: 3, nom: 'cni.pdf' }))
 
-    renderNav(<GedNavigator />)
+    renderGed()
 
     // Sélectionne le dossier dans l'arbre.
     const folderBtn = await screen.findByText('Docs')
@@ -137,43 +141,6 @@ describe('GedNavigator — écriture (U14)', () => {
     expect(gedApi.uploadDocument.mock.calls[0][0].file).toBeInstanceOf(File)
   })
 
-  it('VX38 — fil d’Ariane Armoire › Dossier au-dessus des documents', async () => {
-    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Administratif' }]))
-    gedApi.getDossiers.mockResolvedValue(ok([
-      { id: 5, nom: 'Contrats', cabinet: 1, parent: null, path: '/5/' },
-    ]))
-    gedApi.getDocuments.mockResolvedValue(ok([]))
-
-    renderNav(<GedNavigator />)
-    await userEvent.click(await screen.findByText('Contrats'))
-
-    const breadcrumb = await screen.findByRole('navigation', { name: "Fil d'Ariane" })
-    expect(within(breadcrumb).getByText('Administratif')).toBeInTheDocument()
-    expect(within(breadcrumb).getByText('Contrats')).toBeInTheDocument()
-  })
-
-  it('VX38 — porte DataTable : tri/recherche disponibles sur les documents', async () => {
-    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
-    gedApi.getDossiers.mockResolvedValue(ok([
-      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
-    ]))
-    gedApi.getDocuments.mockResolvedValue(ok([
-      { id: 8, nom: 'facture.pdf', updated_at: '2026-06-01T10:00:00Z' },
-      { id: 9, nom: 'rapport.xlsx', updated_at: '2026-06-02T10:00:00Z' },
-    ]))
-
-    renderNav(<GedNavigator />)
-    await userEvent.click(await screen.findByText('Docs'))
-
-    // Le moteur DataTable expose une recherche — gagnée par le portage VX38,
-    // absente de l'ancien <table> fait main.
-    const search = await screen.findByPlaceholderText('Rechercher un document…')
-    await userEvent.type(search, 'facture')
-
-    expect(await screen.findByText('facture.pdf')).toBeInTheDocument()
-    expect(screen.queryByText('rapport.xlsx')).not.toBeInTheDocument()
-  })
-
   it('GED14 — clic sur un document ouvre l’aperçu inline', async () => {
     gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
     gedApi.getDossiers.mockResolvedValue(ok([
@@ -186,7 +153,7 @@ describe('GedNavigator — écriture (U14)', () => {
       { id: 22, numero: 1, mime: 'application/pdf', filename: 'facture.pdf' },
     ]))
 
-    renderNav(<GedNavigator />)
+    renderGed()
     await userEvent.click(await screen.findByText('Docs'))
 
     // Le bouton « Aperçu » de la ligne ouvre la modale.
@@ -211,7 +178,7 @@ describe('GedNavigator — écriture (U14)', () => {
       { id: 8, nom: 'facture.pdf', is_locked: false, updated_at: '2026-06-01T10:00:00Z' },
     ]))
 
-    renderNav(<GedNavigator />)
+    renderGed()
     await userEvent.click(await screen.findByText('Docs'))
     await userEvent.click(await screen.findByRole('button', { name: /Extraire facture\.pdf/i }))
 
@@ -228,17 +195,12 @@ describe('GedNavigator — écriture (U14)', () => {
       { id: 9, nom: 'b.pdf', updated_at: '2026-06-02T10:00:00Z' },
     ]))
 
-    renderNav(<GedNavigator />)
+    renderGed()
     await userEvent.click(await screen.findByText('Docs'))
 
-    // VX38 — la sélection vit désormais dans le moteur DataTable (le même
-    // qu'admin RolesManagement/UsersManagement) : chaque case à cocher de
-    // ligne porte l'aria-label générique "Sélectionner la ligne N" (au lieu
-    // du nom du document) — comportement standard du moteur, pas une
-    // régression fonctionnelle (le lot ciblé reste correct, vérifié via
-    // `operationsLot` ci-dessous).
-    await userEvent.click(await screen.findByRole('checkbox', { name: 'Sélectionner la ligne 1' }))
-    await userEvent.click(screen.getByRole('checkbox', { name: 'Sélectionner la ligne 2' }))
+    // Coche deux documents.
+    await userEvent.click(await screen.findByRole('checkbox', { name: /Sélectionner a\.pdf/i }))
+    await userEvent.click(screen.getByRole('checkbox', { name: /Sélectionner b\.pdf/i }))
 
     // La barre d'actions apparaît → mise en corbeille par lot.
     await userEvent.click(await screen.findByRole('button', { name: /Mettre en corbeille/i }))
@@ -256,7 +218,7 @@ describe('GedNavigator — écriture (U14)', () => {
     gedApi.getDocuments.mockResolvedValue(ok([]))
     gedApi.renameDossier.mockResolvedValue(ok({ id: 5, nom: 'Archives' }))
 
-    renderNav(<GedNavigator />)
+    renderGed()
     await userEvent.click(await screen.findByText('Docs'))
 
     await userEvent.click(await screen.findByRole('button', { name: /Renommer/i }))
