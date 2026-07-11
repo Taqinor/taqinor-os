@@ -129,32 +129,38 @@ function WithLayout({ children }) {
 const router = createBrowserRouter([
   // Entrée de l'OS : un visiteur non connecté arrive DIRECTEMENT sur le login.
   // La landing reste dans le code (route /landing) mais n'est plus l'entrée.
-  { path: '/',      element: <Suspense fallback={<Fallback />}><Login /></Suspense> },
-  { path: '/landing', element: <Suspense fallback={<Fallback />}><Landing /></Suspense> },
-  { path: '/login',  element: <Suspense fallback={<Fallback />}><Login /></Suspense> },
+  //
+  // VX64 — Ces routes NUES (sans WithLayout) n'ont AUCUNE boundary : un throw de
+  // rendu montrait une page blanche, y compris sur des flux publics tokenisés
+  // vus par des clients externes (signature légale, portail, kiosque…). Chaque
+  // élément est désormais enveloppé du même `RouteErrorBoundary` que WithLayout,
+  // sans layout ERP autour.
+  { path: '/',      element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><Login /></Suspense></RouteErrorBoundary> },
+  { path: '/landing', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><Landing /></Suspense></RouteErrorBoundary> },
+  { path: '/login',  element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><Login /></Suspense></RouteErrorBoundary> },
   // Référence interne du design system (sans auth ni layout : page autonome).
-  { path: '/ui', element: <Suspense fallback={<Fallback />}><UIShowcase /></Suspense> },
+  { path: '/ui', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><UIShowcase /></Suspense></RouteErrorBoundary> },
   // XSAL17 — réservation de visite publique (sans login, sans layout ERP).
-  { path: '/rdv/:token', element: <Suspense fallback={<Fallback />}><PublicBookingPage /></Suspense> },
+  { path: '/rdv/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><PublicBookingPage /></Suspense></RouteErrorBoundary> },
   // XCTR14 — portail client public « Mes contrats » (sans login, sans layout ERP).
-  { path: '/portail-contrats/:token', element: <Suspense fallback={<Fallback />}><PortailContratsPage /></Suspense> },
+  { path: '/portail-contrats/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><PortailContratsPage /></Suspense></RouteErrorBoundary> },
   // XGED1 — cérémonie de signature publique (mono-signataire), sans login.
-  { path: '/ged/signature/:token', element: <Suspense fallback={<Fallback />}><PublicSignaturePage mode="signature" /></Suspense> },
+  { path: '/ged/signature/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><PublicSignaturePage mode="signature" /></Suspense></RouteErrorBoundary> },
   // XGED2 — cérémonie de signature publique d'un destinataire (multi-signataires).
-  { path: '/ged/signataire/:token', element: <Suspense fallback={<Fallback />}><PublicSignaturePage mode="signataire" /></Suspense> },
+  { path: '/ged/signataire/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><PublicSignaturePage mode="signataire" /></Suspense></RouteErrorBoundary> },
   // XGED7 — dépôt public de fichier (upload-request), sans login.
-  { path: '/ged/depot/:token', element: <Suspense fallback={<Fallback />}><PublicDepotPage /></Suspense> },
+  { path: '/ged/depot/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><PublicDepotPage /></Suspense></RouteErrorBoundary> },
   // XRH10 — kiosque de pointage (jeton de device en localStorage, sans session).
-  { path: '/kiosque', element: <Suspense fallback={<Fallback />}><KiosquePointage /></Suspense> },
+  { path: '/kiosque', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><KiosquePointage /></Suspense></RouteErrorBoundary> },
   // XSAV19 — « Signaler un problème » via QR équipement (sans login, sans layout ERP).
-  { path: '/e/:token', element: <Suspense fallback={<Fallback />}><EquipementSignalerPage /></Suspense> },
+  { path: '/e/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><EquipementSignalerPage /></Suspense></RouteErrorBoundary> },
   // XSAV10/FG86 — suivi client d'un ticket SAV + CSAT (sans login, sans layout ERP).
-  { path: '/suivi/:token', element: <Suspense fallback={<Fallback />}><TicketSuiviPage /></Suspense> },
+  { path: '/suivi/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><TicketSuiviPage /></Suspense></RouteErrorBoundary> },
   // XPLT10 — kiosque TV plein écran des dashboards partagés (authentifié,
   // sans layout ERP — rotation/rafraîchissement pilotés côté écran).
-  { path: '/dashboards-tv', loader: authLoader, element: <Suspense fallback={<Fallback />}><DashboardsTvPage /></Suspense> },
+  { path: '/dashboards-tv', loader: authLoader, element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><DashboardsTvPage /></Suspense></RouteErrorBoundary> },
   // XKB19 — consultation publique d'un article KB partagé (sans login, sans layout ERP).
-  { path: '/kb/public/:token', element: <Suspense fallback={<Fallback />}><PublicArticlePage /></Suspense> },
+  { path: '/kb/public/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><PublicArticlePage /></Suspense></RouteErrorBoundary> },
 
   { path: '/dashboard', loader: authLoader, element: <WithLayout><Dashboard /></WithLayout> },
   { path: '/messages', loader: authLoader, element: <WithLayout><ChatPage /></WithLayout> },

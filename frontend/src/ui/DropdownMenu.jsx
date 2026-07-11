@@ -2,8 +2,10 @@ import { forwardRef } from 'react'
 import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu'
 import { Check } from 'lucide-react'
 import { cn } from '../lib/cn'
+import { pressItem } from './interaction'
 
-/* G28 — Menu déroulant (clavier géré par Radix). */
+/* G28 — Menu déroulant (clavier géré par Radix).
+   VX126 — press partagé sur les items (assombrissement au clic). */
 export const DropdownMenu = DropdownMenuPrimitive.Root
 export const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger
 export const DropdownMenuGroup = DropdownMenuPrimitive.Group
@@ -14,7 +16,8 @@ const menuContent =
 
 const menuItem =
   'flex cursor-pointer select-none items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none ' +
-  'focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:size-4'
+  'focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:size-4 ' +
+  pressItem
 
 export const DropdownMenuContent = forwardRef(function DropdownMenuContent(
   { className, sideOffset = 6, ...props },

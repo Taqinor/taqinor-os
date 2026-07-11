@@ -161,11 +161,16 @@ export default function ClientList() {
       width: 200,
       hideable: false,
       accessor: (c) => [c.nom, c.prenom].filter(Boolean).join(' '),
+      // VX144(c) — empilement 2 lignes déterministe à 200px : nom+pastille
+      // toujours ensemble sur la 1re ligne, badge ICE toujours en dessous
+      // (jamais avant le nom, quel que soit l'ordre de wrap du flex).
       cell: (value, c) => (
-        <span className="flex flex-wrap items-center gap-1.5">
-          <span className="font-medium">{value || '—'}</span>
-          {/* L151 — type éditable en place avec enregistrement optimiste. */}
-          <ClientTypeToggle client={c} onSave={(next) => saveType(c, next)} />
+        <span className="flex flex-col gap-0.5">
+          <span className="flex flex-wrap items-center gap-1.5">
+            <span className="font-medium">{value || '—'}</span>
+            {/* L151 — type éditable en place avec enregistrement optimiste. */}
+            <ClientTypeToggle client={c} onSave={(next) => saveType(c, next)} />
+          </span>
           {isEntreprise(c) && !c.ice && (
             <Badge tone="warning" title="Identifiant ICE manquant sur un client B2B">
               ICE manquant

@@ -3,6 +3,7 @@ import * as PopoverPrimitive from '@radix-ui/react-popover'
 import { Calendar, ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { cn } from '../lib/cn'
 import { formatDate } from '../lib/format'
+import { pressItem } from './interaction'
 import {
   WEEKDAY_LABELS, MONTH_LABELS,
   startOfDay, today, isSameDay, isWithinRange, isDateDisabled,
@@ -124,6 +125,7 @@ function CalendarGrid({
                   // (compact ↔ confortable) plutôt qu'une hauteur fixe.
                   'grid h-[var(--control-h-sm)] place-items-center rounded-md text-sm tabular-nums transition-colors',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  !dis && pressItem,
                   !inMonth && 'text-muted-foreground/50',
                   inMonth && !sel && !rangeEnd && 'text-foreground hover:bg-accent',
                   inRange && !sel && !rangeEnd && 'rounded-none bg-accent',

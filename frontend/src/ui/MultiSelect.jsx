@@ -3,6 +3,7 @@ import * as PopoverPrimitive from '@radix-ui/react-popover'
 import { AlertCircle, Check, ChevronsUpDown, X } from 'lucide-react'
 import { cn } from '../lib/cn'
 import { Spinner } from './Spinner'
+import { pressItem } from './interaction'
 
 /* G23 — MultiSelect (sélection multiple, recherche async ou locale). `value`
    est un tableau de valeurs. Les choix retenus s'affichent en jetons effaçables.
@@ -215,6 +216,7 @@ export const MultiSelect = forwardRef(function MultiSelect(
                     'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none',
                     isCur && 'bg-accent text-accent-foreground',
                     opt.disabled && 'cursor-not-allowed opacity-50',
+                    pressItem,
                   )}
                 >
                   <span className={cn(
