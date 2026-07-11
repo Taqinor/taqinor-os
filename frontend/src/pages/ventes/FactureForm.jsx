@@ -403,20 +403,21 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
               <p role="alert" className="text-xs text-destructive">{errors.lines}</p>
             )}
 
-            {/* Sur écran étroit le tableau garde une largeur minimale et défile
-                horizontalement (les colonnes ne s'écrasent pas). */}
-            <div className="-mx-1 overflow-x-auto rounded-lg border border-border px-1">
-              <table className="w-full min-w-[640px] border-collapse text-sm">
-                <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+            {/* VX184 — même comportement mobile que le générateur : `.lines-table`
+                bascule en cartes empilées sous 768px via `data-label`
+                (index.css ~2264-2296), au lieu du scroll horizontal permanent. */}
+            <div className="lines-table-wrap">
+              <table className="lines-table">
+                <thead>
                   <tr>
-                    <th className="px-2 py-2 text-left" style={{ minWidth: 160 }}>Produit</th>
-                    <th className="px-2 py-2 text-left">Désignation</th>
-                    <th className="px-2 py-2 text-right">Qté</th>
-                    <th className="px-2 py-2 text-right">Prix HT (DH)</th>
-                    <th className="px-2 py-2 text-right">Rem. %</th>
-                    <th className="px-2 py-2 text-right">TVA %</th>
-                    <th className="px-2 py-2 text-right">Total HT</th>
-                    <th className="w-10 px-2 py-2" />
+                    <th style={{ minWidth: 160 }}>Produit</th>
+                    <th>Désignation</th>
+                    <th className="col-num">Qté</th>
+                    <th className="col-num">Prix HT (DH)</th>
+                    <th className="col-num">Rem. %</th>
+                    <th className="col-num">TVA %</th>
+                    <th className="col-num">Total HT</th>
+                    <th className="col-del" />
                   </tr>
                 </thead>
                 <tbody>
@@ -426,8 +427,8 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
                       (parseFloat(l.prix_unitaire) || 0) *
                       (1 - (parseFloat(l.remise)   || 0) / 100)
                     return (
-                      <tr key={l._key} className="border-t border-border align-top">
-                        <td className="px-2 py-1.5">
+                      <tr key={l._key}>
+                        <td data-label="Produit">
                           <Select value={l.produit ? String(l.produit) : undefined}
                                   onValueChange={v => onProduitChange(l._key, v)}>
                             <SelectTrigger className="h-[var(--control-h-sm)] text-xs">
@@ -440,30 +441,30 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
                             </SelectContent>
                           </Select>
                         </td>
-                        <td className="px-2 py-1.5">
+                        <td data-label="Désignation">
                           <Input className="h-[var(--control-h-sm)] text-xs" value={l.designation}
                                  onChange={e => setLine(l._key, 'designation', e.target.value)}
                                  placeholder="Désignation" />
                         </td>
-                        <td className="px-2 py-1.5">
+                        <td data-label="Qté">
                           <Input type="number" min="0.01" step="0.01"
                                  className="h-[var(--control-h-sm)] text-right text-xs"
                                  value={l.quantite}
                                  onChange={e => setLine(l._key, 'quantite', e.target.value)} />
                         </td>
-                        <td className="px-2 py-1.5">
+                        <td data-label="Prix HT (DH)">
                           <Input type="number" min="0" step="0.01"
                                  className="h-[var(--control-h-sm)] text-right text-xs"
                                  value={l.prix_unitaire}
                                  onChange={e => setLine(l._key, 'prix_unitaire', e.target.value)} />
                         </td>
-                        <td className="px-2 py-1.5">
+                        <td data-label="Rem. %">
                           <Input type="number" min="0" max="100" step="0.01"
                                  className="h-[var(--control-h-sm)] text-right text-xs"
                                  value={l.remise}
                                  onChange={e => setLine(l._key, 'remise', e.target.value)} />
                         </td>
-                        <td className="px-2 py-1.5">
+                        <td data-label="TVA %">
                           <Input type="number" min="0" max="100" step="0.01"
                                  className="h-[var(--control-h-sm)] text-right text-xs"
                                  value={l.taux_tva}
@@ -471,8 +472,8 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
                                  title="Vide = taux global de la facture"
                                  onChange={e => setLine(l._key, 'taux_tva', e.target.value)} />
                         </td>
-                        <td className="px-2 py-1.5 text-right font-medium tabular-nums">{formatMAD(lineTotal, { withSymbol: false })} DH</td>
-                        <td className="px-2 py-1.5 text-center">
+                        <td className="line-total" data-label="Total HT">{formatMAD(lineTotal, { withSymbol: false })} DH</td>
+                        <td>
                           {lines.length > 1 && (
                             <IconButton type="button" label="Supprimer la ligne" size="sm"
                                         className="text-destructive hover:bg-destructive/10"
