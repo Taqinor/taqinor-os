@@ -15,6 +15,8 @@ import AssigneePicker from '../../components/AssigneePicker'
 import ActivitiesPanel from '../../components/ActivitiesPanel'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
 import CustomFieldsInput from '../../components/CustomFieldsInput'
+// VX23 — chatter réutilisable (regroupement par jour, avatars, notes/logs).
+import ChatterTimeline from '../../components/ChatterTimeline'
 import AppointmentBooker from './leads/AppointmentBooker'
 import LeadDevisPanel from './leads/LeadDevisPanel'
 import SigneDialog from './leads/SigneDialog'
@@ -46,12 +48,8 @@ const STATUT_DEVIS = {
   refuse: 'Refusé', expire: 'Expiré',
 }
 
-// FG30/QX27 — libellés FR du résultat d'un appel/e-mail journalisé (miroir de
-// LeadActivity.OUTCOMES côté serveur, apps/crm/models.py).
-const OUTCOME_LABELS = {
-  '': null, joint: 'Joint', non_joint: 'Non joint', rappel: 'À rappeler',
-  refuse: 'Refus', interesse: 'Intéressé',
-}
+// VX23 — OUTCOME_LABELS (résultat d'appel/e-mail journalisé) déménagé dans
+// ChatterTimeline.jsx, seule source de rendu du chatter désormais.
 // Langue préférée du contact — pré-sélectionne la langue du message WhatsApp.
 const LANGUES_PREFEREES = { fr: 'Français', darija: 'Darija' }
 const RACCORDEMENTS = { monophase: 'Monophasé', triphase: 'Triphasé', inconnu: 'Je ne sais pas' }
@@ -137,14 +135,7 @@ const buildNavSections = ({ agricole, isEdit, hasWebOrigin, dupCount = 0 }) => {
   return secs
 }
 
-function timeAgo(iso) {
-  const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000)
-  if (mins < 1) return "à l'instant"
-  if (mins < 60) return `il y a ${mins} min`
-  const h = Math.round(mins / 60)
-  if (h < 24) return `il y a ${h} h`
-  return new Date(iso).toLocaleDateString('fr-FR')
-}
+// VX23 — timeAgo() déménagé dans ChatterTimeline.jsx (seul consommateur).
 
 export default function LeadForm({
   lead = null, onClose, onSaved, initialDevis = null, onOpenDuplicate = null,
@@ -1379,71 +1370,10 @@ export default function LeadForm({
                 {noteError && (
                   <p className="form-error" role="alert">{noteError}</p>
                 )}
-                <div className="chatter-timeline">
-                  {historique.length === 0 && (
-                    <p className="gen-hint">Aucune activité pour le moment.</p>
-                  )}
-                  {historique.map(a => (
-                    <div key={a.id} className={`chatter-item chatter-${a.kind}`}>
-                      {a.kind === 'note' && (
-                        <span>📝 <strong>Note&nbsp;:</strong> {a.body}</span>
-                      )}
-                      {a.kind === 'creation' && <span>✨ {a.body}</span>}
-                      {a.kind === 'modification' && (
-                        <span>
-                          ✏️ <strong>{a.field_label}&nbsp;:</strong>{' '}
-                          {a.old_value} → <strong>{a.new_value}</strong>
-                        </span>
-                      )}
-                      {/* FG30/QX27 — appel/e-mail journalisés (jusqu'ici rendus
-                          BLANCS faute de branche : aucune trace visible du
-                          contact). Corps libre + résultat (outcome) si posé. */}
-                      {a.kind === 'appel' && (
-                        <span>
-                          📞 <strong>Appel</strong>
-                          {OUTCOME_LABELS[a.outcome] && (
-                            <> — <strong>{OUTCOME_LABELS[a.outcome]}</strong></>
-                          )}
-                          {a.body ? <>&nbsp;: {a.body}</> : null}
-                        </span>
-                      )}
-                      {a.kind === 'email' && (
-                        <span>
-                          ✉️ <strong>E-mail</strong>
-                          {OUTCOME_LABELS[a.outcome] && (
-                            <> — <strong>{OUTCOME_LABELS[a.outcome]}</strong></>
-                          )}
-                          {a.body ? <>&nbsp;: {a.body}</> : null}
-                        </span>
-                      )}
-                      {/* QX32 — timeline unifiée : le cycle de vie du devis
-                          (envoyé/ouvert/signé/refusé) + le résumé d'engagement
-                          de la proposition en ligne, fusionnés par le serveur
-                          dans ce même historique (apps/ventes/selectors.py
-                          devis_events_for_lead) — le vendeur n'a plus besoin
-                          d'ouvrir la liste des devis pour préparer un appel. */}
-                      {a.kind === 'devis_sent' && (
-                        <span>📤 <strong>Devis envoyé</strong>{a.body ? <>&nbsp;: {a.body}</> : null}</span>
-                      )}
-                      {a.kind === 'devis_opened' && (
-                        <span>👁️ <strong>Proposition ouverte</strong>{a.body ? <>&nbsp;: {a.body}</> : null}</span>
-                      )}
-                      {a.kind === 'devis_signed' && (
-                        <span>✅ <strong>Devis signé</strong>{a.body ? <>&nbsp;: {a.body}</> : null}</span>
-                      )}
-                      {a.kind === 'devis_refused' && (
-                        <span>❌ <strong>Devis refusé</strong>{a.body ? <>&nbsp;: {a.body}</> : null}</span>
-                      )}
-                      {a.kind === 'devis_engagement' && (
-                        <span>📊 <strong>Engagement proposition</strong>{a.body ? <>&nbsp;: {a.body}</> : null}</span>
-                      )}
-                      {a.bulk && <span className="chatter-bulk">en masse</span>}
-                      <span className="chatter-meta">
-                        — par {a.user_nom ?? '?'} · {timeAgo(a.created_at)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
+                {/* VX23 — ChatterTimeline : composant réutilisable (regroupement
+                    par jour, avatars, distinction note/log). Remplace l'ancien
+                    journal texte plat rendu inline ici. */}
+                <ChatterTimeline entries={historique} />
               </Sec>
             )}
 

@@ -3232,6 +3232,60 @@ textarea.form-control {
   vertical-align: middle;
 }
 
+/* VX23 — ChatterTimeline : regroupement par jour + avatar + distinction
+   note manuelle (fond plein) / log auto de champ (texte discret + crayon). */
+.chatter-timeline-grouped { gap: 0.6rem; }
+
+.chatter-day-group { display: flex; flex-direction: column; gap: 0.35rem; }
+
+.chatter-day-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: #94a3b8;
+  margin: 0.25rem 0 0.1rem;
+}
+
+.chatter-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.chatter-item-body { flex: 1; min-width: 0; }
+
+/* Note manuelle : fond plein (déjà porté par .chatter-note ci-dessus). */
+.chatter-item-note { font-weight: 500; }
+
+/* Log auto de champ : texte discret + icône crayon, jamais un fond plein. */
+.chatter-item-autolog {
+  background: transparent;
+  border-color: transparent;
+  color: #94a3b8;
+  padding-left: 0;
+}
+
+.chatter-autolog-icon {
+  display: inline-block;
+  margin-right: 3px;
+  vertical-align: -1px;
+  color: #cbd5e1;
+}
+
+.chatter-attachment { background: #f8fafc; border: 1px solid #eef2f7; border-radius: 8px; padding: 0.5rem 0.75rem; }
+
+.chatter-attachment-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: #1d4ed8;
+  text-decoration: none;
+}
+
+.chatter-attachment-link:hover { text-decoration: underline; }
+
 
 /* ████████████████████████████████████████████████████████████████████
    P67 — CSS de composants ad hoc RELOCALISÉ ICI (verbatim). Les fichiers
