@@ -113,9 +113,20 @@ class Qx1RemiseGlobaleBillingTests(TestCase):
         self.assertEqual(_q(somme), ref_ttc,
                          'Σ échéancier != TTC remisé')
 
-        # 3) Le TTC remisé de référence = chaîne canonique directe.
+        # 3) Le TTC remisé de référence = chaîne canonique directe SUR LES
+        #    MÊMES lignes que option_totaux (l'option acceptée pour un devis à
+        #    deux options — sinon toutes les lignes). Comparer la canonique
+        #    toutes-lignes au total de l'option acceptée était faux en 2-options.
+        from apps.ventes.utils.options import (
+            filter_lines_for_option, has_two_options,
+        )
+        opt = getattr(devis, 'option_acceptee', '') or ''
+        lignes = (
+            filter_lines_for_option(list(devis.lignes.all()), opt)
+            if opt and has_two_options(devis)
+            else list(devis.lignes.all()))
         can = _canonical_totaux(
-            devis.lignes.all(), remise_globale_pct=devis.remise_globale,
+            lignes, remise_globale_pct=devis.remise_globale,
             fallback_taux=devis.taux_tva)
         self.assertEqual(_q(can['ttc']), ref_ttc)
 

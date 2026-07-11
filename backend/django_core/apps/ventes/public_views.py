@@ -91,6 +91,27 @@ def _not_found():
     ))
 
 
+_CONFIDENTIAL_KEY_MARKERS = ('prix_achat', 'achat', 'marge', 'revendeur')
+
+
+def _strip_confidential_deep(obj):
+    """RÈGLE #4 — retire RÉCURSIVEMENT toute clé de dict contenant un marqueur
+    d'achat/marge (prix_achat, achat, marge, revendeur) à N'IMPORTE QUELLE
+    profondeur, avant toute exposition client. Un layout 3D brut imbriqué
+    (Devis.roof_layout, un panneau portant ``prix_achat``/``marge``) ne peut
+    plus fuiter le prix d'achat que le filtre de premier niveau manquait. Listes
+    parcourues élément par élément ; scalaires renvoyés inchangés."""
+    if isinstance(obj, dict):
+        return {
+            k: _strip_confidential_deep(v)
+            for k, v in obj.items()
+            if not any(m in str(k) for m in _CONFIDENTIAL_KEY_MARKERS)
+        }
+    if isinstance(obj, (list, tuple)):
+        return [_strip_confidential_deep(v) for v in obj]
+    return obj
+
+
 def _stamp_view(link):
     """QJ1 — Horodate la consultation du lien public et renvoie True si c'est
     la première (first_viewed_at était None avant ce GET).
@@ -470,10 +491,12 @@ def proposal_data(request, token):
         devis = link.devis
         data = build_quote_data(devis, {'pdf_mode': 'full'})
         # Rule #4 — jamais de prix d'achat / marge côté client, même si le
-        # builder en plaçait par mégarde dans la donnée du devis (défense en
-        # profondeur : retirer toute clé d'achat/marge avant l'exposition).
-        data = {k: v for k, v in data.items()
-                if not any(s in k for s in ('prix_achat', 'achat', 'marge', 'revendeur'))}
+        # builder en plaçait par mégarde dans la donnée du devis. Défense en
+        # profondeur RÉCURSIVE : un layout 3D brut (Devis.roof_layout) peut être
+        # imbriqué dans ``data`` avec des clés « prix_achat »/« marge » sur
+        # chaque panneau — un filtre de premier niveau les manquait. On retire
+        # donc toute clé confidentielle à N'IMPORTE QUELLE profondeur.
+        data = _strip_confidential_deep(data)
         roof_url = None
         if data.get('roof_image_key'):
             try:

@@ -20,7 +20,9 @@ from apps.ventes.utils import client_links
 
 User = get_user_model()
 MONTH = timezone.now().strftime('%Y%m')
-WEB_PAGES = (pathlib.Path(__file__).resolve().parents[4]
+# parents: [0]=tests [1]=ventes [2]=apps [3]=django_core [4]=backend [5]=repo
+# root. apps/web vit à la RACINE du dépôt, pas sous backend/ → parents[5].
+WEB_PAGES = (pathlib.Path(__file__).resolve().parents[5]
              / 'apps' / 'web' / 'src' / 'pages')
 
 
