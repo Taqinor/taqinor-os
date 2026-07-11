@@ -94,9 +94,12 @@ export default function BulkActionBar({
         {canDelete && (
           <Button type="button" size="sm" variant="destructive"
                   onClick={() => {
+                    // VX96 — soft-delete réversible : plus de « définitivement ».
+                    // Les leads partent à la corbeille (restaurables 30 min).
                     if (window.confirm(
-                      `Supprimer définitivement ${count} lead(s) ? `
-                      + 'Les leads avec des devis liés seront ignorés.')) {
+                      `Supprimer ${count} lead(s) ? Ils iront à la corbeille `
+                      + '(restaurables 30 min). Les leads avec des devis liés '
+                      + 'seront ignorés.')) {
                       run('delete')
                     }
                   }} disabled={busy}>

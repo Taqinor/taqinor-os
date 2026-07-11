@@ -6,6 +6,8 @@ import { MoreHorizontal, PhoneCall, MessageCircle } from 'lucide-react'
 import { useDispatch } from 'react-redux'
 import { useIsAdmin } from '../../../../hooks/useHasPermission'
 import { archiveLead, restoreLead, deleteLead } from '../../../../features/crm/store/crmSlice'
+import crmApi from '../../../../api/crmApi'
+import { toastWithUndo, toastError } from '../../../../lib/toast'
 import {
   PIPELINE_STAGES,
   STAGE_LABELS,
@@ -172,10 +174,23 @@ export default function ListView({
   }
 
   const onDelete = async (lead) => {
-    if (!window.confirm('Supprimer définitivement ce lead ? Cette action est irréversible.')) return
+    // VX96 — la suppression est RÉVERSIBLE (soft-delete + corbeille 30 min) :
+    // plus de copie « irréversible », et un toast « Annuler » restaure le lead.
+    if (!window.confirm('Supprimer ce lead ? Il ira à la corbeille (restaurable 30 min).')) return
     setBusyId(lead.id)
     try {
-      await dispatch(deleteLead(lead.id)).unwrap()
+      const { corbeille_id: corbeilleId } = await dispatch(deleteLead(lead.id)).unwrap()
+      toastWithUndo({
+        message: 'Lead supprimé.',
+        description: 'Restaurable pendant 30 minutes depuis la corbeille.',
+        onUndo: async () => {
+          if (!corbeilleId) return
+          try {
+            await crmApi.restaurerCorbeille(corbeilleId)
+            onRefetch?.()
+          } catch { toastError('Restauration impossible.') }
+        },
+      })
       onRefetch?.()
     } catch (err) {
       // 409 : lead lié à un devis → on archive plutôt que de supprimer.

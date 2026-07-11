@@ -96,8 +96,11 @@ export const restoreLead = createAsyncThunk('crm/restoreLead', async (id, { reje
 
 export const deleteLead = createAsyncThunk('crm/deleteLead', async (id, { rejectWithValue }) => {
   try {
-    await crmApi.deleteLead(id)
-    return id
+    // VX96 — la suppression est désormais un SOFT-DELETE réversible : la
+    // réponse porte `corbeille_id`, l'entrée de corbeille à restaurer si
+    // l'utilisateur clique « Annuler » (fenêtre 30 min, TrashViewSet).
+    const res = await crmApi.deleteLead(id)
+    return { id, corbeille_id: res?.data?.corbeille_id ?? null }
   } catch (err) {
     return rejectWithValue(err.response?.data ?? err.message)
   }
@@ -169,7 +172,9 @@ const crmSlice = createSlice({
         if (idx !== -1) state.leads[idx] = action.payload
       })
       .addCase(deleteLead.fulfilled, (state, action) => {
-        state.leads = state.leads.filter(l => l.id !== action.payload)
+        // VX96 — payload = { id, corbeille_id } (soft-delete réversible).
+        const deletedId = action.payload?.id ?? action.payload
+        state.leads = state.leads.filter(l => l.id !== deletedId)
       })
   },
 })

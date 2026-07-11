@@ -2340,11 +2340,13 @@ def apply_bulk_action(*, company, user, lead_ids, op, params):
                 if lead.devis.exists():
                     skip(lead, "devis liés — archivez-le plutôt")
                     continue
+                # VX96 — soft-delete réversible (corbeille 30 min), cohérent avec
+                # la suppression unitaire : plus de destruction définitive ici.
                 import logging
                 logging.getLogger('crm.audit').warning(
-                    'BULK HARD DELETE lead id=%s "%s" par user=%s (company=%s)',
+                    'BULK SOFT DELETE lead id=%s "%s" par user=%s (company=%s)',
                     lead.id, lead, getattr(user, 'username', '?'), company.id)
-                lead.delete()
+                lead.soft_delete(user)
                 updated += 1
 
             # FG33 — Préparer la file WhatsApp en masse (pas d'envoi auto)
