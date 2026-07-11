@@ -29,7 +29,11 @@ function todayISO() {
 // montés). Chaque panneau appelle son endpoint de chargement au montage — on
 // les stub en rejet gracieux (chaque panneau a son propre `.catch`) pour
 // éviter un throw synchrone sur une méthode manquante du mock.
-const rejected = () => Promise.reject(new Error('non mocké'))
+// `vi.mock` est hoistée au-dessus des `const` du module : on définit `rejected`
+// via `vi.hoisted` pour qu'il soit initialisé avant l'exécution de la factory.
+const { rejected } = vi.hoisted(() => ({
+  rejected: () => Promise.reject(new Error('non mocké')),
+}))
 vi.mock('../../api/installationsApi', () => ({
   default: {
     getInterventions: vi.fn(),

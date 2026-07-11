@@ -104,7 +104,7 @@ export default function MaJourneePage() {
         </p>
       ) : rows.length === 0 ? (
         <EmptyState
-          icon={<ClipboardList className="size-8" aria-hidden="true" />}
+          icon={ClipboardList}
           title="Aucune intervention aujourd'hui"
           description="Vos interventions du jour apparaîtront ici." />
       ) : (
@@ -177,6 +177,7 @@ export default function MaJourneePage() {
           capturé au tap : les changements de statut/photos faits dans la fiche
           se reflètent sans avoir à la rouvrir. */}
       <InterventionFlowSheet
+        key={active ? `${active.id}:${initialTab}` : 'none'}
         interv={active ? (rows.find((r) => r.id === active.id) ?? active) : null}
         initialTab={initialTab}
         onClose={() => setActive(null)}
@@ -221,8 +222,10 @@ const NEXT_ACTION = {
 }
 
 function InterventionFlowSheet({ interv, initialTab, onClose, onChanged }) {
+  // Le tab initial est fixé au montage ; le parent remonte le composant
+  // (via `key={id:initialTab}`) quand l'intervention ou l'onglet visé change,
+  // ce qui ré-initialise `tab` sans effet-setState (règle no-setstate-in-effect).
   const [tab, setTab] = useState(initialTab || 'prep')
-  useEffect(() => { if (interv) setTab(initialTab || 'prep') }, [interv?.id, initialTab])
   if (!interv) return null
 
   const next = NEXT_ACTION[interv.statut]
@@ -257,10 +260,10 @@ function InterventionFlowSheet({ interv, initialTab, onClose, onChanged }) {
 
         <Tabs value={tab} onValueChange={setTab} className="p-3">
           <TabsList className="flex w-full gap-1 overflow-x-auto" data-testid="mj-tab-rail">
-            {FLOW_TABS.map(({ value, label, Icon }) => (
-              <TabsTrigger key={value} value={value} className="shrink-0 flex-col gap-0.5 px-2.5 py-1.5 text-[11px] leading-tight">
-                <Icon className="size-4" aria-hidden="true" />
-                {label}
+            {FLOW_TABS.map((t) => (
+              <TabsTrigger key={t.value} value={t.value} className="shrink-0 flex-col gap-0.5 px-2.5 py-1.5 text-[11px] leading-tight">
+                <t.Icon className="size-4" aria-hidden="true" />
+                {t.label}
               </TabsTrigger>
             ))}
           </TabsList>

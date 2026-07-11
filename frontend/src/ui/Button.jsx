@@ -60,8 +60,12 @@ export const Button = forwardRef(function Button(
       aria-busy={loading || undefined}
       {...props}
     >
-      {loading && !asChild && <Spinner className="size-4" />}
-      {children}
+      {asChild ? children : (
+        <>
+          {loading && <Spinner className="size-4" />}
+          {children}
+        </>
+      )}
     </Comp>
   )
 })
