@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useSearchParams } from 'react-router-dom'
-import { Upload, Download, X, Plus, MoreHorizontal } from 'lucide-react'
+// VX45 — ⚡/🔀 (emoji fonctionnels, rendu variable selon l'OS) remplacés par
+// Zap/GitMerge (GitMerge = même icône que la section « Doublons » de
+// LeadForm.jsx, features/crm/stages : un seul vocabulaire visuel).
+import { Upload, Download, X, Plus, MoreHorizontal, Zap, GitMerge } from 'lucide-react'
 import { useIsAdmin } from '../../../hooks/useHasPermission'
 import { fetchLeads, updateLead, leadStagePatched } from '../../../features/crm/store/crmSlice'
 import crmApi from '../../../api/crmApi'
@@ -407,7 +410,7 @@ export default function LeadsPage() {
             variant="outline"
             title="Saisie express : nom + téléphone + canal"
             onClick={() => setShowExpressModal(true)}
-          >⚡ Express</Button>
+          ><Zap aria-hidden="true" size={14} /> Express</Button>
           {/* VX145(b) — Doublons/Importer/Exporter sont des fréquences basses
               face aux 2 contrôles ci-dessus ; démotés dans un menu « ⋯ »
               (pattern DropdownMenu déjà importé dans ListView.jsx). */}
@@ -424,7 +427,7 @@ export default function LeadsPage() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onSelect={() => setShowDoublons(true)}>
-                🔀 Doublons
+                <GitMerge aria-hidden="true" /> Doublons
                 {doublonsCount > 0 && (
                   <span className="count-badge" title="Groupes de doublons détectés">
                     {doublonsCount}

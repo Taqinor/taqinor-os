@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useDispatch } from 'react-redux'
 import {
   User, TrendingUp, Zap, Droplet, Home, ClipboardList, Globe,
-  FileText, Clock, Paperclip, GitMerge, History,
+  FileText, Clock, Paperclip, GitMerge, History, Lightbulb,
 } from 'lucide-react'
 import { createLead, updateLead, archiveLead, restoreLead } from '../../features/crm/store/crmSlice'
 import api from '../../api/axios'
@@ -747,7 +747,9 @@ export default function LeadForm({
         {isEdit && (
           <div className="lead-subbar">
             <div className="lead-subbar-bills">
-              <span className="lead-subbar-label">💡 Facture :</span>
+              <span className="lead-subbar-label">
+                <Lightbulb className="lead-subbar-icon" aria-hidden="true" size={14} /> Facture :
+              </span>
               {billEditing ? (
                 <>
                   <Input type="number" step="any" className="lead-bill-input"
@@ -791,19 +793,19 @@ export default function LeadForm({
                           ? 'Repère toit (GPS) disponible — ouvrir le plan déjà positionné'
                           : "Ouvrir l'outil de conception 3D du site avec ce lead déjà chargé"}
                         onClick={ouvrirConceptionToiture}>
-                  🏠 Concevoir la toiture (3D){roofReady ? ' 📍' : ''}
+                  <Home aria-hidden="true" size={14} /> Concevoir la toiture (3D){roofReady ? ' 📍' : ''}
                 </Button>
               )}
               <Button type="button" size="sm" className="gen-btn-orange"
                       disabled={!devisReady}
                       title={devisReady ? 'Créer le devis automatique (affiché ici)' : devisNotReadyMsg}
                       onClick={() => openDevisPanel('auto')}>
-                ⚡ Devis automatique
+                <Zap aria-hidden="true" size={14} /> Devis automatique
               </Button>
               <div className="lead-devis-menu-wrap" ref={devisMenuRef}>
                 <Button type="button" size="sm"
                         onClick={() => setDevisMenuOpen(o => !o)}>
-                  📝 Devis modifiable ▾
+                  <FileText aria-hidden="true" size={14} /> Devis modifiable ▾
                 </Button>
                 {devisMenuOpen && (
                   <div className="lead-devis-menu">

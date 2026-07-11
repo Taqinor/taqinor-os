@@ -1,6 +1,9 @@
 // Carte lead réutilisable (colonne kanban + aperçu DragOverlay).
 // Présentation pure : aucune mutation, tout vient des props et de stages.js.
 import { useRef, useState } from 'react'
+// VX45 — emoji ⚡ fonctionnel remplacé par l'icône lucide (rendu variable
+// selon l'OS avec un emoji brut).
+import { Zap } from 'lucide-react'
 import {
   CANAL_LABELS,
   PRIORITE_LABELS,
@@ -304,7 +307,7 @@ export default function LeadCard({
             if (onAutoQuote) onAutoQuote(lead)
           }}
         >
-          ⚡
+          <Zap size={14} aria-hidden="true" />
           {/* QX28 — badge le bouton quand un repère toit (GPS) existe : le
               devis auto peut s'appuyer sur des données réelles, pas estimées. */}
           {roofReady && (
@@ -358,9 +361,9 @@ export default function LeadCard({
           )}
           {devisReady && (
             <span className="kb-chip kb-chip-devis"
-                  style={{ fontSize: '11px', borderRadius: '9999px', padding: '1px 8px', background: 'var(--color-primary-muted, rgba(37,99,235,.12))', color: 'var(--color-primary, #2563eb)' }}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '11px', borderRadius: '9999px', padding: '1px 8px', background: 'var(--color-primary-muted, rgba(37,99,235,.12))', color: 'var(--color-primary, #2563eb)' }}
                   title="Toutes les données nécessaires sont réunies pour générer un devis en un clic">
-              ⚡ Prêt à deviser en 1 clic
+              <Zap size={11} aria-hidden="true" /> Prêt à deviser en 1 clic
             </span>
           )}
         </div>

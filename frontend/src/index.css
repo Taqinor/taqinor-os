@@ -3615,7 +3615,17 @@ textarea.form-control {
 }
 
 .lead-subbar-bills { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.lead-subbar-label { font-weight: 600; color: var(--muted-foreground, #475569); font-size: 0.85rem; }
+.lead-subbar-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+  color: var(--muted-foreground, #475569);
+  font-size: 0.85rem;
+}
+
+/* VX45 — icône lucide remplaçant l'emoji 💡 (rendu variable selon l'OS). */
+.lead-subbar-icon { flex-shrink: 0; }
 .lead-bill-input { width: 110px; }
 
 .lead-bill-view {
