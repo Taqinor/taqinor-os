@@ -306,72 +306,89 @@ function DevisRow({ d, ctx }) {
           aria-label={`Sélectionner ${d.reference}`}
         />
       </td>
-      <td>
-        <strong>{d.reference}</strong>
-        {d.version > 1 && (
-          <Badge tone="primary" className="ml-1.5">v{d.version}</Badge>
-        )}
-        {/* U7 — une révision remplacée (is_active=False) porte un
-            badge « Remplacé » explicite ; le lien ouvre l'historique
-            des versions (qui pointe vers la version courante). */}
-        {d.is_active === false && (
-          <Badge tone="neutral" className="ml-1.5">Remplacé</Badge>
-        )}
-        {d.superseded_by_ref && (
-          <div className="mt-0.5 text-xs text-warning">
-            remplacé par{' '}
-            <button
-              type="button"
-              className="font-medium underline hover:no-underline"
-              onClick={() => setVersionsOpenId(
-                versionsOpenId === d.id ? null : d.id)}
-              title="Voir la version qui remplace ce devis"
-            >
-              {d.superseded_by_ref}
-            </button>
-          </div>
-        )}
-        {(d.version > 1 || d.superseded_by_ref || d.version_parent_ref) && (
-          <div className="mt-0.5">
-            <button
-              type="button"
-              className="text-xs text-primary hover:underline"
-              onClick={() => setVersionsOpenId(
-                versionsOpenId === d.id ? null : d.id)}
-            >
-              {versionsOpenId === d.id ? 'Masquer les versions' : 'Voir les versions'}
-            </button>
-          </div>
-        )}
-        {/* QJ1 — Badge de consultation : affiché quand le lien public
-            a été ouvert au moins une fois. Nombre de vues + date. */}
-        {d.deja_consulte && (
-          <div
-            className="mt-0.5 inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
-            title={d.derniere_consultation
-              ? `Dernière ouverture : ${formatDateTime(d.derniere_consultation)}`
-              : 'Document consulté'}
-          >
-            <Eye className="size-3" aria-hidden="true" />
-            Consulté ×{d.nombre_vues ?? 1}
-          </div>
-        )}
-        {/* XSAL16 — résumé d'engagement par section de la proposition
-            web (« a passé 2 min sur le prix, n'a pas ouvert l'étude »).
-            Vide sans beacon (déjà serialisé, comportement QJ1 inchangé). */}
-        {engagementSummary(d.engagement) && (
-          <div
-            className="mt-0.5 text-xs text-muted-foreground"
-            title="Temps passé par section sur la proposition en ligne"
-          >
-            {engagementSummary(d.engagement)}
+      <td data-testid={`ref-cell-${d.id}`}>
+        {/* VX140 — cellule Référence à 2 niveaux : ligne 1 = référence + badges
+            de version en gras ; ligne 2 = métadonnées compactes (versions,
+            consultation, engagement) séparées par « · », muted, text-xs ;
+            chips de documents liés en dessous (rendues, pas title-only, pour
+            ne pas casser les tests U5 qui vérifient leur texte visible). */}
+        <div className="text-sm font-semibold">
+          {d.reference}
+          {d.version > 1 && (
+            <Badge tone="primary" className="ml-1.5">v{d.version}</Badge>
+          )}
+          {/* U7 — une révision remplacée (is_active=False) porte un
+              badge « Remplacé » explicite ; le lien ouvre l'historique
+              des versions (qui pointe vers la version courante). */}
+          {d.is_active === false && (
+            <Badge tone="neutral" className="ml-1.5">Remplacé</Badge>
+          )}
+        </div>
+        {(d.superseded_by_ref
+          || d.version > 1 || d.version_parent_ref
+          || d.deja_consulte || engagementSummary(d.engagement)) && (
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+            {d.superseded_by_ref && (
+              <span className="text-warning">
+                remplacé par{' '}
+                <button
+                  type="button"
+                  className="font-medium underline hover:no-underline"
+                  onClick={() => setVersionsOpenId(
+                    versionsOpenId === d.id ? null : d.id)}
+                  title="Voir la version qui remplace ce devis"
+                >
+                  {d.superseded_by_ref}
+                </button>
+              </span>
+            )}
+            {d.superseded_by_ref
+              && (d.version > 1 || d.version_parent_ref || d.deja_consulte
+                || engagementSummary(d.engagement)) && <span aria-hidden="true">·</span>}
+            {(d.version > 1 || d.superseded_by_ref || d.version_parent_ref) && (
+              <button
+                type="button"
+                className="text-primary hover:underline"
+                onClick={() => setVersionsOpenId(
+                  versionsOpenId === d.id ? null : d.id)}
+              >
+                {versionsOpenId === d.id ? 'Masquer les versions' : 'Voir les versions'}
+              </button>
+            )}
+            {(d.version > 1 || d.version_parent_ref)
+              && (d.deja_consulte || engagementSummary(d.engagement)) && <span aria-hidden="true">·</span>}
+            {/* QJ1 — Badge de consultation : affiché quand le lien public
+                a été ouvert au moins une fois. Nombre de vues + date. */}
+            {d.deja_consulte && (
+              <span
+                className="inline-flex items-center gap-1 font-medium text-primary"
+                title={d.derniere_consultation
+                  ? `Dernière ouverture : ${formatDateTime(d.derniere_consultation)}`
+                  : 'Document consulté'}
+              >
+                <Eye className="size-3" aria-hidden="true" />
+                Consulté ×{d.nombre_vues ?? 1}
+              </span>
+            )}
+            {d.deja_consulte && engagementSummary(d.engagement) && <span aria-hidden="true">·</span>}
+            {/* XSAL16 — résumé d'engagement par section de la proposition
+                web (« a passé 2 min sur le prix, n'a pas ouvert l'étude »).
+                Vide sans beacon (déjà serialisé, comportement QJ1 inchangé). */}
+            {engagementSummary(d.engagement) && (
+              <span title="Temps passé par section sur la proposition en ligne">
+                {engagementSummary(d.engagement)}
+              </span>
+            )}
           </div>
         )}
         {/* U5 — Documents générés depuis ce devis : factures (chips
             cliquables → liste Factures) + bon de commande (→ BC).
             Lecture seule, données du serializer. */}
         {(d.factures_liees?.length > 0 || d.bon_commande_etat?.exists) && (
-          <div className="mt-1 flex flex-wrap gap-1">
+          <div
+            className="mt-1 flex flex-wrap gap-1"
+            title="Documents liés à ce devis"
+          >
             {d.bon_commande_etat?.exists && (
               <button
                 type="button"

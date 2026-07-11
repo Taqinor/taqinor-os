@@ -493,3 +493,72 @@ describe('DevisList — XSAL16 : résumé d\'engagement par section', () => {
     expect(within(row).queryByText(/sur prix|sur étude/)).toBeNull()
   })
 })
+
+describe('DevisList — VX140 : ≤5 boutons d\'action visibles + menu, cellule Référence à 2 niveaux', () => {
+  it('un devis brouillon montre au plus 5 boutons visibles + le menu « Plus d\'actions »', () => {
+    renderList({
+      loading: false,
+      devis: [{
+        id: 60, reference: 'DEV-VX140-A', client_nom: 'ACME', statut: 'brouillon',
+        date_creation: '2026-07-01', total_ttc: 5000, nb_options: 1, version: 1,
+      }],
+    })
+    const row = screen.getByText('DEV-VX140-A').closest('tr')
+    const actionsCell = row.cells[row.cells.length - 1]
+    const buttons = within(actionsCell).getAllByRole('button')
+    // PDF, Envoyer, Générer facture (désactivé), Plus d'actions = 4 boutons visibles.
+    expect(buttons.length).toBeLessThanOrEqual(5)
+    expect(within(actionsCell).getByRole('button', { name: /Plus d'actions/ })).toBeVisible()
+  })
+
+  it('un devis envoyé montre au plus 5 boutons visibles + le menu « Plus d\'actions »', () => {
+    renderList({
+      loading: false,
+      devis: [{
+        id: 61, reference: 'DEV-VX140-B', client_nom: 'ACME', statut: 'envoye',
+        date_creation: '2026-07-01', total_ttc: 5000, nb_options: 1, version: 1,
+      }],
+    })
+    const row = screen.getByText('DEV-VX140-B').closest('tr')
+    const actionsCell = row.cells[row.cells.length - 1]
+    const buttons = within(actionsCell).getAllByRole('button')
+    // PDF, Accepter, Refuser, Générer facture (désactivé), Plus d'actions = 5 boutons visibles.
+    expect(buttons.length).toBeLessThanOrEqual(5)
+  })
+
+  it('la cellule Référence rend la référence + badges en ligne 1, métadonnées compactes en ligne 2', () => {
+    renderList({
+      loading: false,
+      devis: [{
+        id: 62, reference: 'DEV-VX140-C', client_nom: 'ACME', statut: 'envoye',
+        date_creation: '2026-07-01', total_ttc: 5000, nb_options: 1, version: 2,
+        version_parent_ref: 'DEV-VX140-B0', deja_consulte: true, nombre_vues: 3,
+      }],
+    })
+    const refCell = screen.getByTestId('ref-cell-62')
+    // Ligne 1 : référence + badge de version, en gras.
+    const line1 = refCell.firstElementChild
+    expect(line1.className).toMatch(/font-semibold/)
+    expect(within(line1).getByText('DEV-VX140-C')).toBeVisible()
+    expect(within(line1).getByText('v2')).toBeVisible()
+    // Ligne 2 : métadonnées muted, text-xs, séparées par « · ».
+    const line2 = line1.nextElementSibling
+    expect(line2.className).toMatch(/text-xs/)
+    expect(line2.className).toMatch(/text-muted-foreground/)
+    expect(within(line2).getByText(/Voir les versions/)).toBeVisible()
+    expect(within(line2).getByText(/Consulté ×3/)).toBeVisible()
+  })
+
+  it('la cellule Référence ne rend pas de ligne 2 quand il n\'y a aucune métadonnée', () => {
+    renderList({
+      loading: false,
+      devis: [{
+        id: 63, reference: 'DEV-VX140-D', client_nom: 'ACME', statut: 'brouillon',
+        date_creation: '2026-07-01', total_ttc: 5000, nb_options: 1, version: 1,
+      }],
+    })
+    const refCell = screen.getByTestId('ref-cell-63')
+    // Seule la ligne 1 (référence) est présente — pas de deuxième div de métadonnées.
+    expect(refCell.children.length).toBe(1)
+  })
+})
