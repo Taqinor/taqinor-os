@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
+import { useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { ShoppingCart, RefreshCw, Download, FileText } from 'lucide-react'
 import stockApi from '../../api/stockApi'
-import { downloadBlob } from '../../utils/downloadBlob'
+import { downloadBlob, stampedFilename } from '../../utils/downloadBlob'
 import { ouvrirPdfBlob, estBlobPdf, messageErreurBlob } from '../../utils/pdfBlob'
 import { ModuleDashboard } from '../../ui/module'
 import { Button, Badge, Spinner } from '../../ui'
@@ -83,6 +84,7 @@ const BUCKET_META = {
 
 export default function PilotageStock({ onBcfGenere }) {
   const navigate = useNavigate()
+  const societe = useSelector((s) => s.auth.user?.company_nom)
   const etatInitial = { loading: true, data: null, error: null }
   const [reappro, setReappro] = useState(etatInitial)
   const [previsions, setPrevisions] = useState(etatInitial)
@@ -137,7 +139,7 @@ export default function PilotageStock({ onBcfGenere }) {
     setAnalyseBusy('xlsx'); setAnalyseErr(null)
     try {
       const res = await stockApi.analyseAchatsXlsx()
-      downloadBlob(res.data, 'analyse-achats.xlsx')
+      downloadBlob(res.data, stampedFilename('analyse-achats', 'xlsx', societe))
     } catch (e) {
       setAnalyseErr(await messageErreurBlob(e, {
         fallback: "L'export Excel de l'analyse d'achats a échoué.",

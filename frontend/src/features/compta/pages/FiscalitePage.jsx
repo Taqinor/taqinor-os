@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useSelector } from 'react-redux'
 import { Plus, Pencil, Download, FileText, Send, Bell } from 'lucide-react'
 import { ListShell, statusPill } from '../../../ui/module'
 import { Button, Segmented, Card, Input, Label, EmptyState, toast } from '../../../ui'
 import { formatMAD, formatDate } from '../../../lib/format'
 import comptaApi from '../../../api/comptaApi'
+import { stampedFilename } from '../../../utils/downloadBlob'
 import useComptaList, { unwrap } from '../components/useComptaList.js'
 import CrudDialog from '../components/CrudDialog.jsx'
 
@@ -113,13 +115,15 @@ const FIELDS = {
 }
 
 // Exports fichiers (blob). Ceux exigeant un exercice sont marqués `needsExercice`.
+// VX81 — `file`/`ext` (plutôt qu'un nom nu) alimentent stampedFilename() dans
+// runExport : deux exports le même jour restent distinguables au comptable.
 const EXPORTS = [
-  { key: 'exportFec', label: 'FEC (DGI)', fn: comptaApi.etats.exportFec, file: 'FEC.txt', needsExercice: true },
-  { key: 'liasseFiscale', label: 'Liasse fiscale', fn: comptaApi.etats.liasseFiscale, file: 'liasse-fiscale.csv', needsExercice: true },
-  { key: 'exportFiduciaire', label: 'Export fiduciaire', fn: comptaApi.etats.exportFiduciaire, file: 'export-fiduciaire.csv', needsExercice: true },
-  { key: 'releveDeductionsTva', label: 'Relevé déductions TVA', fn: comptaApi.etats.releveDeductionsTva, file: 'releve-deductions-tva.csv' },
-  { key: 'declarationHonoraires', label: 'Déclaration honoraires', fn: comptaApi.etats.declarationHonoraires, file: 'declaration-honoraires.csv' },
-  { key: 'aideIs', label: 'Aide au calcul IS', fn: comptaApi.etats.aideIs, file: 'aide-is.csv', needsExercice: true },
+  { key: 'exportFec', label: 'FEC (DGI)', fn: comptaApi.etats.exportFec, file: 'FEC', ext: 'txt', needsExercice: true },
+  { key: 'liasseFiscale', label: 'Liasse fiscale', fn: comptaApi.etats.liasseFiscale, file: 'liasse-fiscale', ext: 'csv', needsExercice: true },
+  { key: 'exportFiduciaire', label: 'Export fiduciaire', fn: comptaApi.etats.exportFiduciaire, file: 'export-fiduciaire', ext: 'csv', needsExercice: true },
+  { key: 'releveDeductionsTva', label: 'Relevé déductions TVA', fn: comptaApi.etats.releveDeductionsTva, file: 'releve-deductions-tva', ext: 'csv' },
+  { key: 'declarationHonoraires', label: 'Déclaration honoraires', fn: comptaApi.etats.declarationHonoraires, file: 'declaration-honoraires', ext: 'csv' },
+  { key: 'aideIs', label: 'Aide au calcul IS', fn: comptaApi.etats.aideIs, file: 'aide-is', ext: 'csv', needsExercice: true },
 ]
 
 // XACC9 — Calendrier des échéances fiscales : lecture seule + génération/rappels.
@@ -210,6 +214,7 @@ export default function FiscalitePage() {
   const [tab, setTab] = useState('declarationsTva')
   const [dialog, setDialog] = useState(null)
   const [exercice, setExercice] = useState('')
+  const societe = useSelector((s) => s.auth.user?.company_nom)
 
   const isEcheances = tab === 'echeances'
   const list = useComptaList(
@@ -243,11 +248,11 @@ export default function FiscalitePage() {
         { id: 'bordereau', label: 'Bordereau PDF', icon: FileText,
           onClick: () => download(
             () => comptaApi.declarationsTva.bordereauPdf(row.id),
-            `bordereau_tva_${row.reference || row.id}.pdf`) },
+            stampedFilename(`bordereau_tva_${row.reference || row.id}`, 'pdf', societe)) },
         { id: 'comparatif', label: 'Comparatif N-1', icon: Download,
           onClick: () => download(
             () => comptaApi.declarationsTva.export(row.id),
-            `declaration_tva_${row.reference || row.id}.csv`) },
+            stampedFilename(`declaration_tva_${row.reference || row.id}`, 'csv', societe)) },
         ...(row.statut !== 'deposee' ? [{
           id: 'deposer', label: 'Déposer', icon: Send,
           onClick: () => act(() => comptaApi.declarationsTva.deposer(row.id), 'Déclaration déposée.'),
@@ -288,7 +293,7 @@ export default function FiscalitePage() {
       const params = exp.needsExercice ? { exercice } : {}
       const res = await exp.fn(params)
       const blob = res.data instanceof Blob ? res.data : new Blob([res.data])
-      comptaApi.downloadBlob(blob, exp.file)
+      comptaApi.downloadBlob(blob, stampedFilename(exp.file, exp.ext, societe))
       toast.success('Export téléchargé.')
     } catch {
       toast.error('Export indisponible — vérifiez les paramètres.')

@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
+import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
+import { configureStore } from '@reduxjs/toolkit'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
 /* ============================================================================
@@ -24,11 +26,22 @@ vi.mock('../../api/stockApi', () => ({
 import stockApi from '../../api/stockApi'
 import PilotageStock from './PilotageStock.jsx'
 
+// VX81 — le nom de fichier stampé lit la société active dans le store auth.
+function testStore(companyNom = 'TAQINOR') {
+  return configureStore({
+    reducer: {
+      auth: (s = { user: { company_nom: companyNom } }) => s,
+    },
+  })
+}
+
 function wrapper({ children }) {
   return (
-    <MemoryRouter>
-      <ThemeProvider>{children}</ThemeProvider>
-    </MemoryRouter>
+    <Provider store={testStore()}>
+      <MemoryRouter>
+        <ThemeProvider>{children}</ThemeProvider>
+      </MemoryRouter>
+    </Provider>
   )
 }
 
@@ -146,6 +159,22 @@ describe('ZPUR9/XPUR24 — rapport « analyse d\'achats » (Excel + PDF)', () =>
     fireEvent.click(btn)
     await waitFor(() => expect(stockApi.analyseAchatsXlsx).toHaveBeenCalled())
     clickSpy.mockRestore()
+  })
+
+  // VX81 — le nom de fichier est horodaté (base_societe_AAAAMMJJ.xlsx), jamais
+  // un nom nu : deux exports le même jour restent distinguables.
+  it('nomme le fichier Excel avec la date + la société (VX81)', async () => {
+    stockApi.analyseAchatsXlsx.mockResolvedValue({ data: new Blob(['x']) })
+    const anchor = document.createElement('a')
+    const createSpy = vi.spyOn(document, 'createElement').mockReturnValue(anchor)
+    const clickSpy = vi.spyOn(anchor, 'click').mockImplementation(() => {})
+    render(<PilotageStock />, { wrapper })
+    const btn = await screen.findByRole('button', { name: /Analyse d'achats \(Excel\)/ })
+    fireEvent.click(btn)
+    await waitFor(() => expect(clickSpy).toHaveBeenCalled())
+    const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+    expect(anchor.download).toBe(`analyse-achats_TAQINOR_${stamp}.xlsx`)
+    createSpy.mockRestore()
   })
 
   it('ouvre le rapport PDF « analyse d\'achats » dans un nouvel onglet', async () => {
