@@ -1,8 +1,10 @@
 import { forwardRef } from 'react'
 import * as ContextMenuPrimitive from '@radix-ui/react-context-menu'
 import { cn } from '../lib/cn'
+import { pressItem } from './interaction'
 
-/* G28 — Menu contextuel (clic droit / appui long). */
+/* G28 — Menu contextuel (clic droit / appui long).
+   VX126 — press partagé sur les items (assombrissement au clic). */
 export const ContextMenu = ContextMenuPrimitive.Root
 export const ContextMenuTrigger = ContextMenuPrimitive.Trigger
 export const ContextMenuGroup = ContextMenuPrimitive.Group
@@ -30,6 +32,7 @@ export const ContextMenuItem = forwardRef(function ContextMenuItem({ className, 
       className={cn(
         'flex cursor-pointer select-none items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none',
         'focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:size-4',
+        pressItem,
         destructive && 'text-destructive focus:bg-destructive/10 focus:text-destructive',
         className,
       )}

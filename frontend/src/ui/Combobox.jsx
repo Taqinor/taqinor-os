@@ -3,6 +3,7 @@ import * as PopoverPrimitive from '@radix-ui/react-popover'
 import { AlertCircle, Check, ChevronsUpDown, X } from 'lucide-react'
 import { cn } from '../lib/cn'
 import { Spinner } from './Spinner'
+import { pressItem } from './interaction'
 
 /* G23 — Combobox/autocomplete (sélection simple, recherche). Données soit
    statiques (`options`), soit asynchrones via `onSearch(query) => Promise<opts>`.
@@ -192,6 +193,7 @@ export const Combobox = forwardRef(function Combobox(
                     'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none',
                     isCur && 'bg-accent text-accent-foreground',
                     opt.disabled && 'cursor-not-allowed opacity-50',
+                    pressItem,
                   )}
                 >
                   <Check className={cn('size-4 shrink-0', isSel ? 'opacity-100' : 'opacity-0')} />

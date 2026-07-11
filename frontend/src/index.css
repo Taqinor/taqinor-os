@@ -4224,10 +4224,16 @@ textarea.form-control {
   padding-top: 10px;
 }
 
+/* VX144(d) — accent --warning : les leads sans date de relance ni de visite
+   n'étaient signalés qu'en note neutre (muted), invisible au balayage rapide. */
 .cal-undated-label {
   margin: 0 0 6px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
   font-size: 0.82rem;
-  color: var(--muted-foreground, #64748b);
+  font-weight: 500;
+  color: var(--warning, #d97706);
 }
 
 .cal-undated-chips {
@@ -4292,6 +4298,15 @@ textarea.form-control {
 
 .ch-card {
   min-width: 0; /* laisse ResponsiveContainer rétrécir dans la grille */
+}
+
+/* VX144(e) — l'entonnoir (Leads par étape) est le graphique le plus lu du
+   module ; il ne doit pas peser pareil que les 3 autres. Pleine largeur en
+   desktop (grid 2 colonnes), empilé comme les autres en mobile. */
+@media (min-width: 1100px) {
+  .ch-card-wide {
+    grid-column: 1 / -1;
+  }
 }
 
 .ch-chartbox {
