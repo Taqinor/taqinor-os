@@ -35,6 +35,7 @@ import { useSavedViews } from '../../hooks/useSavedViews'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import { useHasPermission } from '../../hooks/useHasPermission'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
+import { celebrateDealSigned } from '../../ui/celebrate'
 import { DataTable } from '../../ui/datatable'
 import RoofViewer from './RoofViewer'
 import { StateBlock } from '../../components/StateBlock'
@@ -1226,6 +1227,10 @@ export default function DevisList() {
       setAcceptTarget(null)
       dispatch(fetchDevis())
       toast.success(`Devis ${d.reference} marqué « Accepté ».`)
+      // VX40 — le SEUL moment célébré de l'app : devis envoyé→accepté (rare,
+      // lié au revenu). Burst CSS-only autour du toast ci-dessus ; rien sous
+      // reduced-motion (le toast reste le seul retour visuel).
+      celebrateDealSigned()
     } catch (err) {
       toast.error(frenchError(err, 'Acceptation impossible.'))
     } finally {
@@ -2023,7 +2028,7 @@ export default function DevisList() {
 
       {devis.length === 0 ? (
         <EmptyState
-          icon={FileStack}
+          illustrated
           title="Aucun devis"
           description="Créez votre premier devis depuis le générateur solaire."
           action={<Button onClick={openNew}><Plus /> Nouveau devis</Button>}

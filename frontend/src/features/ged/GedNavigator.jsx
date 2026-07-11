@@ -265,7 +265,8 @@ export default function GedNavigator() {
       ) : cabinets.length === 0 ? (
         // U14 — état vide qui GUIDE le premier usage : bouton pour créer la
         // première armoire (sans quoi l'écran paraissait cassé sur un déploiement neuf).
-        <EmptyState icon={Folder}
+        // VX40 — pictogramme solaire illustré (l'un des 4-5 écrans les plus vus).
+        <EmptyState illustrated
           title="Aucune armoire documentaire"
           description="Commencez par créer une armoire (cabinet), puis ajoutez-y des dossiers et téléversez vos documents."
           action={<Button onClick={() => setCabinetDlg(true)}>

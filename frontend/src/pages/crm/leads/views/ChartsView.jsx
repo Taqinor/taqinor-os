@@ -106,9 +106,12 @@ export default function ChartsView({
     // Distingue « aucun lead du tout » de « aucun résultat pour ces filtres ».
     const aucunDuTout = totalLeads != null && totalLeads === 0
     if (aucunDuTout) {
+      // VX40 — pictogramme solaire illustré (l'un des 4-5 écrans les plus
+      // vus) : réservé au vrai « aucun lead du tout », jamais au cas
+      // « filtres sans résultat » ci-dessous (routine, pas de délice).
       return (
         <EmptyState
-          icon={BarChart3}
+          illustrated
           title="Aucune donnée à représenter"
           description="Aucun lead — créez votre premier lead"
         />

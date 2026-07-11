@@ -371,6 +371,18 @@
   to { font-variation-settings: 'wght' 600 }
 }
 
+/* VX40 — Le délice mesuré : burst CSS-only posé par ui/celebrate.js autour du
+   toast sonner « devis signé » (rare, significatif, jamais gamifié). Chaque
+   span anime sa propre paire angle/distance via les variables inline
+   --vx40-angle/--vx40-distance posées en JS. `celebrate.js` ne pose même pas
+   ces spans sous reduced-motion (garde JS en amont) ; la règle globale
+   `@media (prefers-reduced-motion: reduce)` d'index.css neutraliserait de
+   toute façon la translation si jamais posée. */
+@keyframes vx40-burst {
+  from { opacity: 1; transform: rotate(var(--vx40-angle)) translateX(0) scale(1) }
+  to { opacity: 0; transform: rotate(var(--vx40-angle)) translateX(var(--vx40-distance)) scale(0.4) }
+}
+
 /* Respect de prefers-reduced-motion (F/M : confort de mouvement) */
 @media (prefers-reduced-motion: reduce) {
   :root {

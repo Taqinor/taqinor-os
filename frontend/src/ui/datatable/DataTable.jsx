@@ -256,6 +256,9 @@ export const DataTable = forwardRef(function DataTable(
     className,
     emptyTitle = 'Aucune donnée',
     emptyDescription = 'La liste est vide pour le moment.',
+    // VX40 — pictogramme solaire illustré au lieu de l'icône Inbox générique,
+    // réservé aux écrans les plus vus (opt-in, jamais par défaut).
+    emptyIllustrated = false,
     'aria-label': ariaLabel = 'Tableau de données',
   },
   ref,
@@ -743,7 +746,13 @@ export const DataTable = forwardRef(function DataTable(
                   ) : rows.length === 0 ? (
                     <tr>
                       <td colSpan={colSpan} className="p-0">
-                        <EmptyState icon={Inbox} title={emptyTitle} description={emptyDescription} className="m-3 border-0" />
+                        <EmptyState
+                          icon={emptyIllustrated ? undefined : Inbox}
+                          illustrated={emptyIllustrated}
+                          title={emptyTitle}
+                          description={emptyDescription}
+                          className="m-3 border-0"
+                        />
                       </td>
                     </tr>
                   ) : (
@@ -934,7 +943,12 @@ export const DataTable = forwardRef(function DataTable(
                 </div>
               ))
             ) : rows.length === 0 ? (
-              <EmptyState icon={Inbox} title={emptyTitle} description={emptyDescription} />
+              <EmptyState
+                icon={emptyIllustrated ? undefined : Inbox}
+                illustrated={emptyIllustrated}
+                title={emptyTitle}
+                description={emptyDescription}
+              />
             ) : (
               rows.map((row, i) => {
                 const rowKey = keyOf(row, pageOffset + i)
