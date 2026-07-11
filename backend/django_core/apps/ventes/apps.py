@@ -1,4 +1,34 @@
+import os
+
 from django.apps import AppConfig
+from django.core.checks import Warning as DjangoWarning, register
+
+
+@register()
+def _qx10_esign_otp_channel_check(app_configs, **kwargs):
+    """QX10 — avertit si ``ESIGN_OTP_ENABLED`` est actif alors que le seul
+    canal OTP disponible est le STUB WhatsApp (aucun BSP câblé).
+
+    Sans email configuré, un client téléphone-seul ne peut alors PAS recevoir
+    son code → il est bloqué hors de la signature. Simple avertissement au
+    démarrage (jamais une erreur bloquante)."""
+    warnings = []
+    if os.getenv('ESIGN_OTP_ENABLED', '0').strip() == '1':
+        try:
+            from apps.ventes.email_service import is_email_configured
+            email_ok = is_email_configured()
+        except Exception:  # noqa: BLE001
+            email_ok = False
+        if not email_ok:
+            warnings.append(DjangoWarning(
+                'ESIGN_OTP_ENABLED est actif mais le seul canal OTP est le '
+                'stub WhatsApp (aucun BSP câblé) et aucun email n\'est '
+                'configuré : les clients téléphone-seul ne recevront pas leur '
+                'code et ne pourront pas signer.',
+                hint='Configurer un backend email (BREVO_API_KEY/SENDGRID) ou '
+                     'câbler un BSP WhatsApp avant d\'activer ESIGN_OTP_ENABLED.',
+                id='ventes.W010'))
+    return warnings
 
 
 class VentesConfig(AppConfig):
@@ -25,3 +55,10 @@ class VentesConfig(AppConfig):
         # les récepteurs du bus d'événements (M6). Import local, jamais
         # d'effet de bord à l'import du module.
         from . import receivers  # noqa: F401
+        # QX24 — connecte les signaux LigneDevis (post_save/post_delete) qui
+        # gardent le payback de l'étude cohérent avec le total courant.
+        receivers._register_qx24_signals()
+        # QX36 — abonne le handler email entrant (réponse client → chatter +
+        # notification sur le devis) au bus core.email_intake.
+        from .inbound_email import register_ventes_inbound_handler
+        register_ventes_inbound_handler()

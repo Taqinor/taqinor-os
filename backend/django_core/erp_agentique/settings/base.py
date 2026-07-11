@@ -271,6 +271,13 @@ REST_FRAMEWORK = {
         'automation_webhook': '60/minute',
         # XSAL8 — scan de carte de visite (OCR), par utilisateur authentifié.
         'crm_ocr_scan': '20/hour',
+        # QX41 — scopes des throttles publics jusqu'ici codés inline, désormais
+        # source de vérité UNIQUE ici (les classes lisent settings en priorité,
+        # repli sur leur défaut). ``public_sharelink`` : liens publics
+        # devis/facture/proposition (par IP+jeton) ; ``public_livechat`` :
+        # ouverture de session chat public (par IP).
+        'public_sharelink': '30/minute',
+        'public_livechat': '30/minute',
     },
     # YDATA9 — DRF sérialise déjà les `Decimal` en string par défaut (c'est
     # la valeur par défaut de DRF), mais rien ne le VERROUILLAIT explicitement
@@ -442,6 +449,27 @@ CELERY_TASK_ROUTES = {
     'stock.expiration_alerts': {'queue': 'scheduled'},
     'stock.relancer_bcf_en_retard': {'queue': 'scheduled'},
     'crm.escalader_rappels_demandes': {'queue': 'scheduled'},
+    # QX11/QX36 — rappels d'échéance + relevés côté ventes.
+    'ventes.pre_echeance_reminders': {'queue': 'scheduled'},
+    'ventes.devis_a_facturer_reminder': {'queue': 'scheduled'},
+    # QX — moteur de relance d'engagement + relève des boîtes entrantes.
+    'ventes.engagement_followup_engine': {'queue': 'scheduled'},
+    'ventes.poll_inbound_mailboxes': {'queue': 'scheduled'},
+    'ged.poll_mail_intake': {'queue': 'scheduled'},
+    # Marketing/compta — séquences, campagnes, communications, dormants, A/B.
+    'compta.executer_sequences_relance': {'queue': 'scheduled'},
+    'compta.envoyer_campagnes_planifiees': {'queue': 'scheduled'},
+    'compta.envoyer_communications_evenement': {'queue': 'scheduled'},
+    'compta.recalculer_dormants_marketing': {'queue': 'scheduled'},
+    'compta.traiter_posts_sociaux': {'queue': 'scheduled'},
+    'compta.decider_gagnants_ab': {'queue': 'scheduled'},
+    # KB — balayages lectures obligatoires / articles périmés.
+    'kb.sweep_lectures_obligatoires': {'queue': 'scheduled'},
+    'kb.sweep_articles_perimes': {'queue': 'scheduled'},
+    # QHSE — escalade des check-ins en retard.
+    'qhse.escalader_checkins_en_retard': {'queue': 'scheduled'},
+    # Notifications — balayage des leads chauds.
+    'notifications.sweep_hot_leads': {'queue': 'scheduled'},
 }
 # Le worker par défaut (sans -Q) écoute la queue nommée dans
 # task_default_queue — on la garde `default` pour ne rien casser ; en
@@ -490,6 +518,12 @@ CAREERS_ENABLED = os.environ.get('CAREERS_ENABLED', '0') == '1'
 WEBSITE_LEAD_WEBHOOK_SECRET = os.environ.get('WEBSITE_LEAD_WEBHOOK_SECRET', '')
 # Tenant cible des leads web (id de Company) ; à défaut, la première Company.
 WEBSITE_LEADS_COMPANY_ID = os.environ.get('WEBSITE_LEADS_COMPANY_ID') or None
+
+# URL publique par DÉFAUT de la plateforme (page proposition/suivi client). Un
+# tenant white-label pointe ses liens sur SON propre site (CompanyProfile.site_web,
+# cf. quote_engine.builder) ; SITE_URL n'est que le repli plateforme/fondateur,
+# configurable par déploiement (SCA29 — pas de marque en dur dans le code app).
+SITE_URL = os.environ.get('SITE_URL', 'https://taqinor.ma')
 
 # XMKT32 — Sync Meta Lead Ads → leads CRM (gated, API officielle, jamais de
 # scraping). Sans META_LEAD_ADS_VERIFY_TOKEN, le webhook de vérification

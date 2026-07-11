@@ -135,6 +135,13 @@ const crmApi = {
   // ZSAL6 — Rapport d'attribution des leads (par commercial + par source).
   getAttributionLeads: (params) =>
     api.get('/crm/rapports/attribution/', { params }),
+
+  // QX16 — Payloads leads site web (« jamais perdre un lead ») : rejeu des
+  // captures dont le mapping a échoué ou qui n'ont jamais été rattachées.
+  getWebsiteLeadPayloads: (params) =>
+    api.get('/crm/website-lead-payloads/', { params }),
+  replayWebsiteLeadPayload: (id) =>
+    api.post(`/crm/website-lead-payloads/${id}/replay/`),
 }
 
 export default crmApi

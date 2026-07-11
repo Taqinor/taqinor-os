@@ -24,6 +24,8 @@ const MesActivitesPage = lazy(() => import('../../pages/activities/MesActivitesP
 const CalendarPage = lazy(() => import('../../pages/CalendarPage'))
 const CartePage = lazy(() => import('../../pages/CartePage'))
 const ParrainagePage = lazy(() => import('../../pages/crm/ParrainagePage'))
+// QX16 — rejeu des payloads leads site web (« jamais perdre un lead »).
+const WebsiteLeadPayloadsPage = lazy(() => import('../../pages/crm/WebsiteLeadPayloadsPage'))
 
 const config = {
   key: 'crm',
@@ -35,6 +37,8 @@ const config = {
     { path: '/calendrier', component: CalendarPage },
     { path: '/carte', component: CartePage },
     { path: '/crm/parrainage', component: ParrainagePage },
+    // QX16 — rejeu des payloads leads site web.
+    { path: '/crm/payloads-site-web', component: WebsiteLeadPayloadsPage },
   ],
 }
 

@@ -360,6 +360,35 @@ class DevisSerializer(serializers.ModelSerializer):
         link = self._active_share_link(obj)
         return link.engagement_summary if link else {}
 
+    # QX23be — marge interne figée, exposée UNIQUEMENT au responsable/admin
+    # (jamais dans un PDF ni une sortie client — prix_achat rule). Un
+    # commercial/lecteur reçoit toujours None ; ``fields='__all__'`` inclut le
+    # champ modèle, cette méthode le NEUTRALISE pour les non-managers.
+    marge_snapshot = serializers.SerializerMethodField()
+
+    def get_marge_snapshot(self, obj):
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if user is not None and getattr(user, 'is_responsable', False):
+            val = obj.marge_snapshot
+            return str(val) if val is not None else None
+        return None
+
+    def to_representation(self, instance):
+        """QX23be / RULE #4 — the ``marge_snapshot`` KEY itself must never reach
+        a client-facing / context-less path (a structural prix_achat/marge
+        guard flags the mere presence of the key, not just its value). We keep
+        the key ONLY when the serializer runs for an AUTHENTICATED internal
+        user (commercial → None, responsable → valeur) ; any anonymous /
+        context-less / public-token rendering drops the key entirely."""
+        data = super().to_representation(instance)
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        is_auth = bool(user is not None and getattr(user, 'is_authenticated', False))
+        if not is_auth:
+            data.pop('marge_snapshot', None)
+        return data
+
     class Meta:
         model = Devis
         fields = '__all__'

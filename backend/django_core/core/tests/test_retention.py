@@ -17,8 +17,18 @@ from core.models import RetentionRun
 
 
 class RetentionRegistryTests(TestCase):
+    def setUp(self):
+        # QX42 — des apps (ex. crm) enregistrent désormais de VRAIES politiques
+        # de rétention au démarrage (AppConfig.ready). Ces tests supposent un
+        # registre vide : on l'isole (snapshot + clear) pour rester hermétique
+        # quel que soit l'ordre d'exécution ou ce que les apps ont enregistré,
+        # puis on restaure l'état réel en teardown.
+        self._saved = dict(retention._REGISTRY)
+        retention.clear_registry()
+
     def tearDown(self):
         retention.clear_registry()
+        retention._REGISTRY.update(self._saved)
 
     def test_register_and_list_policy(self):
         retention.register_retention_policy('demo', lambda now, apply_: 0)
@@ -109,8 +119,14 @@ class RetentionRegistryTests(TestCase):
 
 
 class RunRetentionCommandTests(TestCase):
+    def setUp(self):
+        # Voir RetentionRegistryTests.setUp — isolation du registre partagé.
+        self._saved = dict(retention._REGISTRY)
+        retention.clear_registry()
+
     def tearDown(self):
         retention.clear_registry()
+        retention._REGISTRY.update(self._saved)
 
     def test_command_dry_run_by_default(self):
         received = {}

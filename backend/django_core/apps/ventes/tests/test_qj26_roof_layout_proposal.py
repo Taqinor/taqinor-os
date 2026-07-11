@@ -157,7 +157,13 @@ class TestProposalRoofLayoutPayload(TestCase):
                            'DEV-QJ26-LEAK', roof_layout=sample_layout())
         resp = self._get_payload(devis)
         raw = json.dumps(resp.json())
-        self.assertNotIn('9999', raw)
+        # Le prix d'achat (9999) ne doit jamais apparaître comme VALEUR AUTONOME.
+        # On borne le motif (aucun chiffre/point adjacent) : « 9999 » en
+        # sous-chaîne d'un montant client LÉGITIME — ex. un cashflow 25 ans
+        # « 399991 » (QX39) — n'est PAS une fuite du prix d'achat.
+        self.assertNotRegex(
+            raw, r'(?<![\d.])9999(?![\d.])',
+            "prix d'achat 9999 fuité comme valeur autonome dans la charge utile")
         self.assertNotIn('prix_achat', raw)
 
 

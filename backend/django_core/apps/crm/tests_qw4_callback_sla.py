@@ -208,3 +208,80 @@ class EscaladerRappelsDemandesCommandTests(TestCase):
         self.assertEqual(escalated, 1)
         self.assertEqual(LeadActivity.objects.count(), 0)
         self.assertEqual(Notification.objects.count(), 0)
+
+
+class QX15ContactPreferenceSetAtClockTests(TestCase):
+    """QX15 — the SLA clock measures from `contact_preference_set_at`, not
+    blindly from `date_creation`. An OLD lead whose callback preference is
+    set NOW must not appear instantly SLA-breached (false-urgent noise)."""
+
+    def setUp(self):
+        self.company = Company.objects.create(
+            nom='Taqinor QX15', slug='taqinor-qx15')
+        CompanyProfile.objects.create(company=self.company, lead_sla_hours=8)  # callback = 4h
+
+    def test_old_lead_fresh_preference_not_escalated(self):
+        now = timezone.now()
+        lead = Lead.objects.create(
+            company=self.company, nom='Vieux lead', telephone='+212600222233',
+            contact_preference=Lead.ContactPreference.PHONE_OK)
+        # Lead créé il y a 30 jours, mais la préférence vient d'être posée.
+        Lead.objects.filter(pk=lead.pk).update(
+            date_creation=now - datetime.timedelta(days=30),
+            contact_preference_set_at=now)
+        qs = selectors.leads_callback_sla_depasse(self.company, now=now)
+        self.assertNotIn(lead, list(qs))
+
+    def test_old_preference_set_at_still_escalates(self):
+        now = timezone.now()
+        lead = Lead.objects.create(
+            company=self.company, nom='Rappel ancien', telephone='+212600222244',
+            contact_preference=Lead.ContactPreference.PHONE_OK)
+        Lead.objects.filter(pk=lead.pk).update(
+            date_creation=now - datetime.timedelta(days=30),
+            contact_preference_set_at=now - datetime.timedelta(hours=10))
+        qs = selectors.leads_callback_sla_depasse(self.company, now=now)
+        self.assertIn(lead, list(qs))
+
+    def test_null_set_at_falls_back_to_date_creation(self):
+        # Lead créé avant l'ajout du champ (NULL) — comportement historique
+        # inchangé : mesure depuis date_creation.
+        now = timezone.now()
+        lead = _phone_ok_lead(self.company, hours_ago=10)
+        self.assertIsNone(lead.contact_preference_set_at)
+        qs = selectors.leads_callback_sla_depasse(self.company, now=now)
+        self.assertIn(lead, list(qs))
+
+    def test_webhook_stamps_contact_preference_set_at(self):
+        from django.test import override_settings
+        from django.urls import reverse
+        import json as _json
+
+        with override_settings(WEBSITE_LEAD_WEBHOOK_SECRET='qx15-secret'):
+            url = reverse('website-lead-webhook')
+            res = self.client.post(
+                url,
+                data=_json.dumps({
+                    'fullName': 'Test QX15',
+                    'phoneE164': '+212600222255',
+                    'contactPreference': 'phone_ok',
+                    'consent': True,
+                }),
+                content_type='application/json',
+                HTTP_X_WEBHOOK_SECRET='qx15-secret',
+            )
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertIsNotNone(lead.contact_preference_set_at)
+
+    def test_services_stamps_contact_preference_set_at(self):
+        from apps.crm.services import notify_client_contact_request
+
+        lead = Lead.objects.create(
+            company=self.company, nom='Via proposition',
+            telephone='+212600222266')
+        self.assertIsNone(lead.contact_preference_set_at)
+        notify_client_contact_request('DEV-001', lead, canal='rappel')
+        lead.refresh_from_db()
+        self.assertEqual(lead.contact_preference, Lead.ContactPreference.PHONE_OK)
+        self.assertIsNotNone(lead.contact_preference_set_at)

@@ -120,18 +120,27 @@ class TestFacturePaidOnPaymentLink(TestCase):
             facture_paid.disconnect, dispatch_uid='test_ydocf4_link_listener')
 
     def test_record_payment_from_link_emits_facture_paid_once(self):
-        paiement, err = ventes_services.record_payment_from_link(
-            link=self.link, payload={})
-        self.assertIsNone(err)
-        self.assertIsNotNone(paiement)
-        self.facture.refresh_from_db()
-        self.assertEqual(self.facture.statut, Facture.Statut.PAYEE)
-        self.assertEqual(len(self.listener.calls), 1)
-        self.assertEqual(self.listener.calls[0][0], self.facture.id)
+        # QX3 — NoOp est désormais fail-closed ; on simule un VRAI fournisseur
+        # qui confirme le paiement (montant serveur) pour tester l'événement.
+        from unittest import mock
+        fake = mock.Mock()
+        fake.verify_webhook.return_value = {
+            'paid': True, 'provider_ref': 'REAL', 'montant': None}
+        with mock.patch(
+                'apps.ventes.payments.providers.get_provider',
+                return_value=fake):
+            paiement, err = ventes_services.record_payment_from_link(
+                link=self.link, payload={})
+            self.assertIsNone(err)
+            self.assertIsNotNone(paiement)
+            self.facture.refresh_from_db()
+            self.assertEqual(self.facture.statut, Facture.Statut.PAYEE)
+            self.assertEqual(len(self.listener.calls), 1)
+            self.assertEqual(self.listener.calls[0][0], self.facture.id)
 
-        # Idempotent re-verification (webhook retry) must not re-emit.
-        paiement2, err2 = ventes_services.record_payment_from_link(
-            link=self.link, payload={})
-        self.assertIsNone(err2)
-        self.assertEqual(paiement2.id, paiement.id)
-        self.assertEqual(len(self.listener.calls), 1)
+            # Idempotent re-verification (webhook retry) must not re-emit.
+            paiement2, err2 = ventes_services.record_payment_from_link(
+                link=self.link, payload={})
+            self.assertIsNone(err2)
+            self.assertEqual(paiement2.id, paiement.id)
+            self.assertEqual(len(self.listener.calls), 1)

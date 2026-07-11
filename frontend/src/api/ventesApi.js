@@ -27,6 +27,15 @@ const ventesApi = {
   getDevis: (params) => api.get('/ventes/devis/', { params }),
   getDevisById: (id) => api.get(`/ventes/devis/${id}/`),
   createDevis: (data) => api.post('/ventes/devis/', data),
+  // QX21 — création ATOMIQUE (devis + lignes en un seul commit serveur) : plus
+  // de brouillons orphelins/partiels si la connexion est coupée en cours de
+  // sauvegarde. `data` porte le devis + une clé `lignes: [...]`.
+  createDevisAtomic: (data) => api.post('/ventes/devis/atomic/', data),
+  // QX21 — remplacement ATOMIQUE des lignes d'un devis (édition) : les
+  // anciennes lignes sont remplacées par les nouvelles en une transaction ; un
+  // échec préserve les lignes existantes (jamais un devis à zéro ligne).
+  replaceLignesDevis: (id, lignes) =>
+    api.post(`/ventes/devis/${id}/replace-lines/`, { lignes }),
   updateDevis: (id, data) => api.put(`/ventes/devis/${id}/`, data),
   patchDevis: (id, data) => api.patch(`/ventes/devis/${id}/`, data),
   deleteDevis: (id) => api.delete(`/ventes/devis/${id}/`),
@@ -47,6 +56,10 @@ const ventesApi = {
   envoyerEmailDevis: (id, payload = {}) => api.post(`/ventes/devis/${id}/envoyer-email/`, payload),
   // QG8 — « Envoyer » = flux WhatsApp : lien wa.me + lien tokenisé, marque envoyé.
   whatsappDevis: (id, payload = {}) => api.post(`/ventes/devis/${id}/whatsapp/`, payload),
+  // QX22 — aperçu LECTURE SEULE du message WhatsApp (aucune mutation de statut) :
+  // peuple la modale d'aperçu ; seul le clic-through sur wa.me (whatsappDevis
+  // ci-dessus) marque réellement le devis « Envoyé ».
+  whatsappPreviewDevis: (id, payload = {}) => api.post(`/ventes/devis/${id}/whatsapp-preview/`, payload),
   // QJ28 — « Contacter mon supérieur » : notifie le supérieur du vendeur sur ce devis.
   contacterSuperieur: (id, payload = {}) => api.post(`/ventes/devis/${id}/contacter-superieur/`, payload),
   // QJ15 — Variantes : créer 2–3 copies dimensionnées pour comparaison côte-à-côte.
@@ -71,6 +84,11 @@ const ventesApi = {
     api.get('/ventes/journal-ventes/', { params, responseType: 'blob' }),
   // Échéancier devis → factures : génère la prochaine tranche (acompte → solde).
   genererFacture: (id) => api.post(`/ventes/devis/${id}/generer-facture/`),
+  // QX29 — « Relances du jour » : devis nécessitant une action (envoyés sans
+  // réponse par palier de cadence, acceptés non facturés — réutilise le
+  // sélecteur ZFAC12, refusés sans motif, expirant bientôt). Miroir de
+  // savApi.getSavFileAction() (ZSAV6) — buckets { count, ids }.
+  getDevisActionBoard: () => api.get('/ventes/devis/action-requise/'),
 
   // Lignes de devis
   getLignesDevis: (params) => api.get('/ventes/devis-lignes/', { params }),

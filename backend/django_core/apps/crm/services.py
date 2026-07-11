@@ -950,11 +950,28 @@ def resolve_client_for_lead(lead: Lead) -> Client:
         return lead.client
 
     def _find_existing():
-        if not lead.email:
+        if lead.email:
+            match = Client.objects.filter(
+                company=lead.company, email__iexact=lead.email,
+            ).first()
+            if match is not None:
+                return match
+        # QX17 — repli téléphone : un client marocain récurrent n'a pas
+        # toujours le MÊME email (ou aucun) d'un dossier à l'autre — le
+        # téléphone est l'identité de facto. Comparaison Python-side (pas de
+        # colonne normalisée indexée sur Client, à la différence de
+        # Lead.phone_normalise) : borne de perf documentée — un scan de TOUS
+        # les clients de la société, acceptable au volume actuel (PME
+        # marocaines, quelques centaines à quelques milliers de clients par
+        # société) ; à indexer (colonne normalisée + index, comme QW10 sur
+        # Lead) si ce volume devient un goulot mesuré.
+        lead_phone = normalize_phone(lead.telephone)
+        if not lead_phone:
             return None
-        return Client.objects.filter(
-            company=lead.company, email__iexact=lead.email,
-        ).first()
+        for candidate in Client.objects.filter(company=lead.company):
+            if normalize_phone(candidate.telephone) == lead_phone:
+                return candidate
+        return None
 
     client = _find_existing()
 
@@ -964,6 +981,17 @@ def resolve_client_for_lead(lead: Lead) -> Client:
         adresse = lead.adresse or ''
         if lead.ville:
             adresse = ', '.join(p for p in (adresse, lead.ville) if p)
+        # QX18 — l'arabophone ne doit pas disparaître à la couche document :
+        # un lead qui préfère la darija (message WhatsApp) obtenait quand
+        # même un PDF FLAGSHIP en français par défaut. Seed
+        # `langue_document='ar'` UNIQUEMENT à la création (jamais écrasé sur
+        # un client déjà existant réutilisé ci-dessus — sa préférence
+        # documentaire, si posée manuellement, prime toujours).
+        langue_document = (
+            Client.LangueDocument.AR
+            if lead.langue_preferee == Lead.LanguePreferee.DARIJA
+            else Client.LangueDocument.FR
+        )
         try:
             # Savepoint : si une création concurrente partageant le même email
             # a gagné la course, l'unique_together (company, email) lève une
@@ -977,6 +1005,7 @@ def resolve_client_for_lead(lead: Lead) -> Client:
                     email=lead.email,
                     telephone=(lead.telephone or '')[:20] or None,
                     adresse=adresse or None,
+                    langue_document=langue_document,
                 )
         except IntegrityError:
             client = _find_existing()
@@ -1814,7 +1843,13 @@ def notify_client_contact_request(devis_reference: str, lead,
         # absente et route vers la notification distincte + SLA rappel.
         if canal_key == 'rappel' and getattr(lead, 'contact_preference', None) != Lead.ContactPreference.PHONE_OK:
             lead.contact_preference = Lead.ContactPreference.PHONE_OK
-            lead.save(update_fields=['contact_preference'])
+            # QX15 — même horodatage dédié que le webhook : le SLA rappel
+            # mesure depuis la POSE de la préférence, pas depuis la création
+            # du lead (un vieux lead qui demande un rappel MAINTENANT ne doit
+            # pas être instantanément « SLA rompu »).
+            lead.contact_preference_set_at = timezone.now()
+            lead.save(update_fields=[
+                'contact_preference', 'contact_preference_set_at'])
         if canal_key == 'rappel':
             notify_lead_callback_requested(lead)
 
@@ -1897,6 +1932,81 @@ def notify_lead_callback_requested(lead) -> None:
         import logging
         logging.getLogger(__name__).warning(
             'QW4: notify_lead_callback_requested échoué pour lead #%s : %s',
+            getattr(lead, 'pk', '?'), exc)
+
+
+PARRAINAGE_SIGNUP_MARKER = 'auto — filleul détecté (utm_source=parrainage)'
+
+
+def handle_parrainage_signup(lead) -> None:
+    """QX35 — Wire la promesse de la page /parrainage : un lead capté avec
+    ``utm_source=parrainage`` crée automatiquement un ``Parrainage`` en
+    attente, rattaché au CLIENT parrain identifié par son code (porté par
+    ``utm_campaign`` — voir ``apps/web/src/pages/parrainage.astro``, le lien
+    personnel est `?utm_source=parrainage&utm_campaign=<code>`).
+
+    Idempotent (un seul ``Parrainage`` par ``filleul_lead``) ; no-op si
+    ``utm_source`` n'est pas ``'parrainage'``, si le code de parrain est
+    absent/inconnu, ou en cas d'auto-parrainage (le filleul est déjà le même
+    téléphone/email que le parrain — anti-abus minimal). Notifie les managers
+    de la société (repli ``_company_fallback_managers``, pas de owner dédié à
+    ce stade). Best-effort — jamais d'exception propagée."""
+    try:
+        if (getattr(lead, 'utm_source', None) or '').strip().lower() != 'parrainage':
+            return
+        from .models import Parrainage
+
+        if Parrainage.objects.filter(filleul_lead=lead).exists():
+            return  # déjà traité (idempotent — visiteur revenant, replay).
+
+        code = (getattr(lead, 'utm_campaign', None) or '').strip()
+        if not code:
+            return
+        parrain = Client.objects.filter(
+            company=lead.company, code_parrainage=code).first()
+        if parrain is None:
+            return  # code inconnu/périmé — jamais bloquant, jamais d'erreur.
+
+        # Anti auto-parrainage minimal : même téléphone/email normalisé que
+        # le parrain → on ne crée rien (le parrain ne peut pas se parrainer
+        # lui-même, ni un dossier déjà connu sous une autre forme — promesse
+        # affichée sur /parrainage).
+        lead_phone = normalize_phone(getattr(lead, 'telephone', None))
+        lead_email = normalize_email(getattr(lead, 'email', None))
+        parrain_phone = normalize_phone(getattr(parrain, 'telephone', None))
+        parrain_email = normalize_email(getattr(parrain, 'email', None))
+        if ((lead_phone and lead_phone == parrain_phone)
+                or (lead_email and lead_email == parrain_email)):
+            return
+
+        Parrainage.objects.create(
+            company=lead.company, parrain=parrain,
+            filleul_lead=lead, filleul_nom=lead.nom or '',
+            statut=Parrainage.Statut.EN_ATTENTE,
+        )
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.NOTE,
+            body=f'{PARRAINAGE_SIGNUP_MARKER} — parrain : {parrain.nom}.',
+        )
+
+        managers = _company_fallback_managers(lead.company)
+        if managers:
+            from apps.notifications.services import notify_many
+            nom = (lead.nom or '').strip() or 'Un prospect'
+            notify_many(
+                managers,
+                'lead_new',
+                f'🤝 Parrainage : {parrain.nom} recommande {nom}',
+                body=(f'{nom} est arrivé via le lien de parrainage de '
+                      f'{parrain.nom} (code {code}).'),
+                link=f'/crm/parrainage?parrain={parrain.pk}',
+                company=lead.company,
+            )
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        import logging
+        logging.getLogger(__name__).warning(
+            'QX35: handle_parrainage_signup échoué pour lead #%s : %s',
             getattr(lead, 'pk', '?'), exc)
 
 
@@ -2975,3 +3085,81 @@ def get_or_create_parrainage_template(company, langue='fr'):
             'corps': corps_defaut,
         })
     return template
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# QX42 — Rétention PII des copies brutes d'intake (registre YOPSB10, core.retention)
+#
+# `WebsiteLeadPayload` (PII brute + IP, SET_NULL depuis Lead → l'effacement
+# RGPD d'un lead n'atteint JAMAIS ce payload brut) et `ChatSessionPublique`
+# s'accumulent INDÉFINIMENT. Le framework générique existe (`core.retention`)
+# mais son registre est VIDE — aucune app n'y enregistre de politique. Ceci
+# enregistre la politique CRM (voir `CrmConfig.ready()`), fenêtre par défaut
+# 180 jours, override founder via `WEBSITE_LEAD_PAYLOAD_RETENTION_DAYS` /
+# `CHAT_SESSION_RETENTION_DAYS` (settings/.env — même patron que les autres
+# constantes founder-configurables de ce module, ex.
+# `WEBSITE_LEAD_WEBHOOK_SECRET`). 0/négatif désactive la purge (conservation
+# illimitée, comportement actuel inchangé).
+
+DEFAULT_WEBSITE_LEAD_PAYLOAD_RETENTION_DAYS = 180
+DEFAULT_CHAT_SESSION_RETENTION_DAYS = 180
+
+
+def _retention_days(setting_name, default_days):
+    from django.conf import settings
+    value = getattr(settings, setting_name, None)
+    if value is None:
+        return default_days
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default_days
+
+
+def purge_website_lead_payloads(now, apply_) -> int:
+    """QX42 — purge les ``WebsiteLeadPayload`` PROCESSED au-delà de la
+    fenêtre de rétention. Les payloads NON traités ou en ERREUR (``error``
+    non vide) sont EXEMPTÉS — ils doivent d'abord vieillir via la surface de
+    rejeu QX16 (un payload en erreur reste la seule trace récupérable d'un
+    lead potentiellement perdu ; on ne purge jamais une piste encore
+    actionnable). Contrat ``core.retention`` : ``apply_=False`` (dry-run) ne
+    supprime rien, renvoie le compte qui SERAIT supprimé."""
+    from django.db.models import Q
+
+    from .models import WebsiteLeadPayload
+
+    days = _retention_days(
+        'WEBSITE_LEAD_PAYLOAD_RETENTION_DAYS',
+        DEFAULT_WEBSITE_LEAD_PAYLOAD_RETENTION_DAYS)
+    if days <= 0:
+        return 0
+    cutoff = now - timezone.timedelta(days=days)
+    qs = WebsiteLeadPayload.objects.filter(
+        processed=True, received_at__lt=cutoff,
+    ).filter(Q(error__isnull=True) | Q(error=''))
+    count = qs.count()
+    if apply_ and count:
+        qs.delete()
+    return count
+
+
+def purge_stale_chat_sessions(now, apply_) -> int:
+    """QX42 — purge les ``ChatSessionPublique`` (transcript PII d'un visiteur
+    anonyme) inactives au-delà de la fenêtre de rétention (mesurée sur
+    ``last_message_at`` — une session encore active récemment n'est jamais
+    purgée même si ``created_at`` est ancien). Une session déjà liée à un
+    Lead réel (``lead_id`` renseigné) garde son transcript — la conversation
+    fait partie de l'historique du lead, pas une trace anonyme jetable."""
+    from .models import ChatSessionPublique
+
+    days = _retention_days(
+        'CHAT_SESSION_RETENTION_DAYS', DEFAULT_CHAT_SESSION_RETENTION_DAYS)
+    if days <= 0:
+        return 0
+    cutoff = now - timezone.timedelta(days=days)
+    qs = ChatSessionPublique.objects.filter(
+        last_message_at__lt=cutoff, lead__isnull=True)
+    count = qs.count()
+    if apply_ and count:
+        qs.delete()
+    return count

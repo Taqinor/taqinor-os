@@ -117,9 +117,26 @@ def build_ubl_xml(facture, profile, currency=None):
         el(cts, 'ID', text='ICE')
 
     # ── Ventilation TVA par taux (réutilise la logique exacte de la facture) ──
-    total_ht = Decimal(facture.total_ht)
+    # QX2 — ``facture.total_*`` sont désormais NETS de la remise globale (QX1) :
+    # header LegalMonetaryTotal, TVA et PayableAmount reflètent le montant remisé.
+    total_ht = Decimal(facture.total_ht)         # HT NET (après remise globale)
     total_tva = Decimal(facture.total_tva)
     total_ttc = Decimal(facture.total_ttc)
+
+    # QX2 — remise globale documentée en AllowanceCharge (cohérence UBL : la
+    # somme des lignes est BRUTE, l'AllowanceCharge la ramène au HT net du
+    # header). Aucune remise → aucun AllowanceCharge (document inchangé).
+    from decimal import Decimal as _D
+    lignes_brut = sum(
+        (_D(str(li.total_ht)) for li in facture.lignes.all()), _D('0'))
+    remise_montant = (lignes_brut - total_ht).quantize(
+        _D('0.01'), rounding=ROUND_HALF_UP)
+    if remise_montant > 0:
+        allowance = ET.SubElement(root, f'{{{cac}}}AllowanceCharge')
+        el(allowance, 'ChargeIndicator', text='false')  # false = remise
+        el(allowance, 'AllowanceChargeReason', text='Remise globale')
+        el(allowance, 'Amount', text=_q2(remise_montant), currencyID=currency)
+
     tax_total = ET.SubElement(root, f'{{{cac}}}TaxTotal')
     el(tax_total, 'TaxAmount', text=_q2(total_tva), currencyID=currency)
     for bucket in facture.tva_par_taux:
@@ -133,11 +150,17 @@ def build_ubl_xml(facture, profile, currency=None):
         el(scheme, 'ID', text='TVA')
 
     # ── Totaux (LegalMonetaryTotal) ──
+    # QX2 — LineExtensionAmount = somme BRUTE des lignes ; AllowanceTotalAmount =
+    # remise globale ; TaxExclusive/Inclusive/Payable = montants NETS remisés.
+    # Cohérence UBL : LineExtension − Allowance = TaxExclusive.
     monetary = ET.SubElement(root, f'{{{cac}}}LegalMonetaryTotal')
-    el(monetary, 'LineExtensionAmount', text=_q2(total_ht),
+    el(monetary, 'LineExtensionAmount', text=_q2(lignes_brut),
        currencyID=currency)
     el(monetary, 'TaxExclusiveAmount', text=_q2(total_ht), currencyID=currency)
     el(monetary, 'TaxInclusiveAmount', text=_q2(total_ttc), currencyID=currency)
+    if remise_montant > 0:
+        el(monetary, 'AllowanceTotalAmount', text=_q2(remise_montant),
+           currencyID=currency)
     el(monetary, 'PayableAmount', text=_q2(total_ttc), currencyID=currency)
 
     # ── Lignes (InvoiceLine) ──

@@ -79,6 +79,9 @@ PUBLIC_ALLOWLIST_PREFIXES = (
     "api/django/ged/signature",
     # Proposition de devis tokenisée (client, sans login — cf. RÈGLE #4 /proposal) :
     "api/django/ventes/proposal",
+    # QX34 — suivi post-signature public en lecture seule, tokenisé (ShareLink),
+    # alias sous le mount ventes/ (la même vue vit aussi sous public/). Sans login.
+    "api/django/ventes/suivi",
     # Marketing PUBLIC (ODX10 — nouveau préfixe /marketing/, miroir de /compta/) :
     "api/django/marketing/webhooks/",         # webhooks entrants Brevo/SMS-STOP
     "api/django/marketing/desinscription/",   # désinscription tokenisée (opt-out)

@@ -91,7 +91,9 @@ def devis_post_save(sender, instance, created, **kwargs):
             event_type=EventType.DEVIS_ACCEPTED,
             title='Devis accepté',
             body=f'Le devis {instance.reference} a été accepté.',
-            link=f'/devis/{instance.pk}',
+            # QX12be — deep-link qui ATTERRIT : /devis/<pk> n'existe pas côté
+            # front ; DevisList consomme le param ?devis=<pk>.
+            link=f'/ventes/devis?devis={instance.pk}',
         )
     except Exception:  # noqa: BLE001
         logger.exception('notify DEVIS_ACCEPTED failed (devis %s)', instance.pk)
@@ -114,7 +116,8 @@ def devis_expired_receiver(sender, devis, ancien_statut, **kwargs):
             title='Devis expiré',
             body=(f'Le devis {devis.reference} a expiré automatiquement '
                   '(date de validité dépassée). Pensez à relancer le client.'),
-            link=f'/devis/{devis.pk}',
+            # QX12be — deep-link qui atterrit (voir devis_post_save).
+            link=f'/ventes/devis?devis={devis.pk}',
         )
     except Exception:  # noqa: BLE001 — jamais bloquant
         logger.exception('notify DEVIS_EXPIRED failed (devis %s)', devis.pk)

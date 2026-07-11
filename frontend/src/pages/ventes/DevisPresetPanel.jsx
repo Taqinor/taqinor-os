@@ -28,15 +28,14 @@
 import { useState, useEffect, useCallback } from 'react'
 import { BookmarkPlus, BookOpen, Trash2, Check, ChevronDown, ChevronUp } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
-import { Button, Input, Label } from '../../ui'
+import { Button, Input, Label, Badge } from '../../ui'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+// VX18 — statut via le Badge du kit (tokens de thème) plutôt qu'un hex codé en
+// dur : 'success' vert, sinon 'danger' rouge — cohérent avec le reste de l'UI.
 function StatusBadge({ text, variant }) {
-  const cls = variant === 'success'
-    ? 'text-xs rounded px-2 py-0.5 bg-green-50 text-green-700 border border-green-200'
-    : 'text-xs rounded px-2 py-0.5 bg-red-50 text-red-700 border border-red-200'
-  return <span className={cls}>{text}</span>
+  return <Badge tone={variant === 'success' ? 'success' : 'danger'}>{text}</Badge>
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────

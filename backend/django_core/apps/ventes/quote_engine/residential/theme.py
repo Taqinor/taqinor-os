@@ -7,6 +7,7 @@ by `residential.renderer`. Reuses the engine's bundled fonts/logo.
 """
 from __future__ import annotations
 import base64
+import functools
 from html import escape
 from pathlib import Path
 
@@ -52,8 +53,13 @@ def _font_b64(name: str) -> str:
     return base64.b64encode(p.read_bytes()).decode() if p.exists() else ""
 
 
+@functools.lru_cache(maxsize=1)
 def logo_dark_b64() -> str:
-    """Logo recolored white-on-transparent for navy headers."""
+    """Logo recolored white-on-transparent for navy headers.
+
+    QX8 — pur (aucun argument, lit un asset figé) : le recolorage par pixel +
+    l'encodage b64 sont mis en cache une fois par processus, donc une rafale de
+    rendus ne refait plus la boucle par pixel."""
     from PIL import Image
     import io
     p = _LIVE_ASSETS / "logo.png"
@@ -72,7 +78,9 @@ def logo_dark_b64() -> str:
     return base64.b64encode(buf.getvalue()).decode()
 
 
+@functools.lru_cache(maxsize=1)
 def logo_color_b64() -> str:
+    # QX8 — asset figé, encodé une fois par processus (cache pur).
     p = _LIVE_ASSETS / "logo.png"
     return base64.b64encode(p.read_bytes()).decode()
 
@@ -97,7 +105,10 @@ def hero_image_b64(kwc=None, mode: str = "residentiel") -> str:
     return base64.b64encode(p.read_bytes()).decode() if p.exists() else ""
 
 
+@functools.lru_cache(maxsize=1)
 def font_face_css() -> str:
+    # QX8 — @font-face (6 woff2 encodés en b64) figé, calculé une fois par
+    # processus : plus de relecture/encodage des polices à chaque rendu.
     faces = [
         ("DM Serif Display", 400, "DMSerifDisplay-400.woff2"),
         ("Playfair Display", 400, "PlayfairDisplay-400.woff2"),
@@ -263,36 +274,69 @@ html, body {{ font-family:{FONT_SANS}; color:{C['ink']}; -weasy-hyphens:none; }}
 """
 
 
-def _footer_brand(data: dict) -> str:
-    """SCA27 — bloc marque du pied de page piloté par ``data["entreprise"]``
-    (identité CompanyProfile via ``parametres.company_identity``).
+# ── Identité société — littéraux d'identité HISTORIQUES (Taqinor), défauts ──
+# de repli. Toute valeur d'identité société vide retombe sur ces littéraux, de
+# sorte qu'un devis sans profil enrichi reste rendu strictement à l'identique et
+# qu'aucune identité d'un autre tenant ne fuit dans le rendu résidentiel.
+_DEFAULT_BRAND = "TAQINOR"
+_DEFAULT_EMAIL = "contact@taqinor.com"
+_DEFAULT_PHONE = "+212 6 61 85 04 10"
+_DEFAULT_SITE = "taqinor.ma"
 
-    Sémantique IDENTIQUE à ``generate_devis_premium._apply_entreprise`` (DC1),
-    par champ : le NOM ne remplace le littéral fondateur que s'il est fourni ; la
-    ligne de contact (email · téléphone) n'est reconstruite QUE si un email ou un
-    téléphone est fourni — sinon le littéral fondateur est conservé. Un tenant
-    qui renseigne son identité voit SES coordonnées ; le fondateur (profil
-    rempli, ou aucun profil) garde son pied de page byte-identique.
+
+def _esc(v) -> str:
+    """Échappe le minimum HTML pour une valeur d'identité insérée en texte."""
+    return (str(v or "").replace("&", "&amp;")
+            .replace("<", "&lt;").replace(">", "&gt;"))
+
+
+def company_identity(data: dict) -> dict:
+    """Résout l'identité société AFFICHÉE (marque/contact/site) depuis
+    ``data['entreprise']`` — QX7 (chips/marque) + SCA27 (tenant-safe).
+
+    ``data['entreprise']`` est le dict renvoyé par
+    ``parametres.selectors.company_identity`` (threadé par le builder). Sémantique
+    SCA27/DC1 par champ : le NOM ne remplace le littéral fondateur que s'il est
+    fourni ; email/téléphone/site ne remplacent le littéral fondateur que
+    lorsqu'ils sont renseignés. Donc :
+      • une société AVEC profil enrichi voit SON identité partout (plus de fuite
+        multi-tenant) ;
+      • une société SANS profil (ou Taqinor) garde une sortie byte-identique.
+    La bande légale complète (capital/RC/ICE/gérant) N'est PAS construite ici —
+    elle est composée par ``trust.py`` (SCA27) directement depuis
+    ``data['entreprise']`` avec le littéral fondateur en repli. Toutes les valeurs
+    renvoyées sont des chaînes déjà échappées, prêtes à insérer.
     """
     ent = data.get("entreprise") or {}
     nom = (ent.get("nom") or "").strip()
     email = (ent.get("email") or "").strip()
     tel = (ent.get("telephone") or "").strip()
+    adresse = (ent.get("adresse") or "").strip()
+    # Site : le builder a déjà résolu ``data['site_url']`` depuis le champ
+    # CANONIQUE ``site_web`` (SCA27, normalisé) ; repli Taqinor si vide.
+    site = (data.get("site_url") or "").strip().rstrip("/") or _DEFAULT_SITE
 
-    marque = f"<b>{escape(nom)}</b>" if nom else f"<b>{_FOOT_DEFAULT_NOM}</b>"
-    if email or tel:
-        contact = " &nbsp;·&nbsp; ".join(escape(p) for p in (email, tel) if p)
-    else:
-        contact = f"{_FOOT_DEFAULT_EMAIL} &nbsp;·&nbsp; {_FOOT_DEFAULT_TEL}"
-    return f"{marque} &nbsp;·&nbsp; {contact}"
+    return {
+        # Marque courte (footer, « Pourquoi … », signature TAQINOR).
+        "brand": _esc(nom.upper()) if nom else _DEFAULT_BRAND,
+        "brand_name": _esc(nom) if nom else _DEFAULT_BRAND,
+        "email": _esc(email) if email else _DEFAULT_EMAIL,
+        "phone": _esc(tel) if tel else _DEFAULT_PHONE,
+        "site": _esc(site),
+        "adresse": _esc(adresse),
+        # A-t-on une vraie identité société (au moins un champ renseigné) ?
+        "has_profile": bool(nom or email or tel or adresse
+                            or (data.get("site_url") or "").strip()),
+    }
 
 
-def page_footer(data: dict) -> str:
-    site = data.get("site_url", "taqinor.ma")
-    brand = _footer_brand(data)
+def page_footer(data: dict, ident: dict | None = None, total_pages: int = 3) -> str:
+    # QX6 — le pied lit le NOMBRE RÉEL de pages rendues (jamais « / 3 » codé).
+    ident = ident or company_identity(data)
+    site = ident.get("site") or _DEFAULT_SITE
     return f"""
 <div class="foot">
-  <div>{brand}</div>
-  <div>Page {{page}} / 3 &nbsp;·&nbsp; Réf. {data['ref']} &nbsp;·&nbsp; <a>{site}</a></div>
+  <div><b>{ident['brand_name']}</b> &nbsp;·&nbsp; {ident['email']} &nbsp;·&nbsp; {ident['phone']}</div>
+  <div>Page {{page}} / {total_pages} &nbsp;·&nbsp; Réf. {data['ref']} &nbsp;·&nbsp; <a>{site}</a></div>
 </div>
 """

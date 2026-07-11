@@ -24,6 +24,8 @@ import { lazy } from 'react'
 
 // Pages chargées à la demande (code-splitting préservé — <Suspense> côté routeur).
 const DevisList = lazy(() => import('../../pages/ventes/DevisList'))
+// QX29 — « Relances du jour » : tableau d'action des devis (miroir ZSAV6).
+const DevisActionBoardPage = lazy(() => import('../../pages/ventes/DevisActionBoardPage'))
 const DevisGenerator = lazy(() => import('../../pages/ventes/DevisGenerator'))
 const VentesKanban = lazy(() => import('../../pages/ventes/VentesKanban'))
 const FactureList = lazy(() => import('../../pages/ventes/FactureList'))
@@ -38,6 +40,8 @@ const config = {
   order: 50,
   routes: [
     { path: '/ventes/devis', component: DevisList },
+    // QX29 — « Relances du jour » : tableau d'action des devis (miroir ZSAV6).
+    { path: '/ventes/devis/action-requise', component: DevisActionBoardPage },
     { path: '/ventes/devis/nouveau', component: DevisGenerator },
     { path: '/ventes/bons-commande', component: VentesKanban },
     { path: '/ventes/factures', component: FactureList },

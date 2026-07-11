@@ -118,6 +118,11 @@ class DevisViewSet(CompanyScopedModelViewSet):
             'envoyer_email', 'dupliquer_variante', 'variantes',
             'save_preset', 'apply_preset', 'contacter_superieur',
             'whatsapp', 'proforma_pdf',
+            # QX21be — atomic create + replace-lines (self.action is the
+            # Python method name, not url_path: 'replace-lines' → 'replace_lines').
+            'atomic', 'replace_lines',
+            # QX22be — WhatsApp preview (read-only, no status change).
+            'whatsapp_preview',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -308,6 +313,131 @@ class DevisViewSet(CompanyScopedModelViewSet):
                 'proposal_path': f'/proposition/{link.token}',
             },
             status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'], url_path='atomic',
+            permission_classes=[IsResponsableOrAdmin])
+    def atomic(self, request):
+        """QX21be — création TRANSACTIONNELLE d'un devis + ses lignes en UN
+        SEUL commit. Remplace les 1+N allers-retours non gardés du générateur
+        (qui laissaient des brouillons orphelins/partiels qu'un vendeur pouvait
+        ensuite envoyer). Couper la connexion en cours de route laisse soit
+        RIEN, soit un devis complet.
+
+        Corps : les champs de devis (statut/taux_tva/remise_globale/lead/
+        client/mode_installation/etude_params…) + ``lignes`` : liste de
+        ``{produit, designation, quantite, prix_unitaire, remise?, taux_tva?}``.
+        La société est TOUJOURS forcée côté serveur. Aucun ``prix_achat``.
+        """
+        from django.db import transaction
+        from rest_framework.exceptions import ValidationError
+        from apps.crm.services import resolve_client_for_lead
+
+        company = request.user.company
+        if company is None:
+            return Response({'detail': 'Utilisateur sans société.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        lignes_in = request.data.get('lignes')
+        if not isinstance(lignes_in, list) or not lignes_in:
+            return Response({'detail': 'Au moins une ligne est requise.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        head = {k: v for k, v in request.data.items() if k != 'lignes'}
+        head.pop('company', None)  # jamais accepté du corps
+        serializer = DevisWriteSerializer(data=head)
+        serializer.is_valid(raise_exception=True)
+
+        lead = serializer.validated_data.get('lead')
+        client = serializer.validated_data.get('client')
+        if lead is not None and lead.company_id != company.id:
+            raise ValidationError({'lead': 'Lead inconnu.'})
+        if client is not None and client.company_id != company.id:
+            raise ValidationError({'client': 'Client inconnu.'})
+        if client is None:
+            if lead is None:
+                raise ValidationError(
+                    {'client': 'Un client ou un lead est requis.'})
+            client = resolve_client_for_lead(lead)
+
+        try:
+            with transaction.atomic():
+                def _save(ref):
+                    devis = serializer.save(
+                        reference=ref, client=client,
+                        created_by=request.user, company=company)
+                    self._replace_lines_atomic(devis, lignes_in, company)
+                    return devis
+                create_numbered(Devis, company, 'devis', _save)
+        except ValidationError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            return Response({'detail': f'Enregistrement échoué : {exc}'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        devis = serializer.instance
+        # QX23be — fige la marge interne à la création (manager-only).
+        try:
+            from ..services import refresh_marge_snapshot
+            refresh_marge_snapshot(devis)
+        except Exception:  # noqa: BLE001
+            pass
+        return Response(DevisSerializer(
+            devis, context={'request': request}).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='replace-lines',
+            permission_classes=[IsResponsableOrAdmin])
+    def replace_lines(self, request, pk=None):
+        """QX21be — remplace ATOMIQUEMENT toutes les lignes d'un devis en un
+        seul commit (édition). Remplace le delete-all-puis-recréer à erreurs
+        avalées du générateur, qui pouvait laisser un devis avec moins/aucune
+        ligne. Un échec préserve les lignes d'origine (rollback complet)."""
+        from django.db import transaction
+        devis = self.get_object()  # borné société par get_queryset
+        lignes_in = request.data.get('lignes')
+        if not isinstance(lignes_in, list):
+            return Response({'detail': 'Champ « lignes » requis (liste).'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            with transaction.atomic():
+                self._replace_lines_atomic(devis, lignes_in, devis.company)
+        except Exception as exc:  # noqa: BLE001 — rollback : lignes d'origine
+            return Response({'detail': f'Remplacement échoué : {exc}'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(DevisSerializer(
+            devis, context={'request': request}).data)
+
+    def _replace_lines_atomic(self, devis, lignes_in, company):
+        """QX21be — supprime puis recrée les lignes du devis (appelé SOUS une
+        transaction par l'appelant). Produits bornés société ; jamais de
+        ``prix_achat`` accepté du corps."""
+        from decimal import Decimal, InvalidOperation
+        from ..models import LigneDevis
+        from apps.stock.models import Produit
+        devis.lignes.all().delete()
+        for li in lignes_in:
+            if not isinstance(li, dict):
+                continue
+            try:
+                produit_id = int(li.get('produit'))
+            except (TypeError, ValueError):
+                raise ValueError('Ligne sans produit valide.')
+            produit = Produit.objects.filter(
+                id=produit_id, company=company).first()
+            if produit is None:
+                raise ValueError(f'Produit {produit_id} inconnu.')
+            try:
+                qte = Decimal(str(li.get('quantite', 1)))
+                pu = Decimal(str(li.get('prix_unitaire', produit.prix_vente)))
+                remise = Decimal(str(li.get('remise', 0)))
+            except (InvalidOperation, TypeError, ValueError):
+                raise ValueError('Quantité/prix/remise invalide.')
+            taux = li.get('taux_tva')
+            LigneDevis.objects.create(
+                devis=devis, produit=produit,
+                designation=(li.get('designation') or produit.nom)[:255],
+                quantite=qte, prix_unitaire=pu, remise=remise,
+                taux_tva=Decimal(str(taux)) if taux is not None else None)
 
     @action(detail=False, methods=['post'], url_path='auto',
             permission_classes=[IsResponsableOrAdmin])
@@ -1021,6 +1151,43 @@ class DevisViewSet(CompanyScopedModelViewSet):
         devis = self.get_object()
         return Response(
             DevisActivitySerializer(devis.activites.all(), many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='whatsapp-preview',
+            permission_classes=[IsResponsableOrAdmin])
+    def whatsapp_preview(self, request, pk=None):
+        """QX22be — PRÉVISUALISATION WhatsApp (lecture seule) : construit le lien
+        wa.me + le message SANS marquer le devis « envoyé ».
+
+        Le vendeur ouvre la modale d'envoi (aperçu) puis clique le lien wa.me
+        pour VRAIMENT envoyer (l'action ``whatsapp`` marque alors « envoyé »).
+        Ouvrir puis fermer la modale ne doit JAMAIS créer un devis fantôme
+        « envoyé » dont l'horloge de validité a démarré. Aucune transition de
+        statut, aucune écriture (hormis le ShareLink réutilisé, idempotent)."""
+        from ..utils.phone import normalize_ma_phone
+        from ..utils.whatsapp import (
+            build_single_devis_whatsapp, build_wa_url, devis_recipient_phone,
+        )
+
+        devis = self.get_object()
+        phone = devis_recipient_phone(devis)
+        if not normalize_ma_phone(phone):
+            return Response(
+                {'detail': 'Aucun numéro de téléphone.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        langue = request.data.get('langue')
+        if langue is None:
+            lead = getattr(devis, 'lead', None)
+            langue = (getattr(lead, 'langue_preferee', None) or 'fr'
+                      if lead is not None else 'fr')
+        message, link = build_single_devis_whatsapp(request, devis, langue)
+        # PAS de mark_devis_sent, PAS de chatter : simple aperçu.
+        return Response({
+            'wa_url': build_wa_url(phone, message),
+            'phone': phone, 'message': message, 'url': link['url'],
+            'devis_statut': devis.statut,  # inchangé
+            'preview': True,
+        })
 
     @action(detail=True, methods=['post'], url_path='whatsapp',
             permission_classes=[IsResponsableOrAdmin])

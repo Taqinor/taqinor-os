@@ -375,10 +375,11 @@ class TestProposalMonthlyArrays(TestCase):
         resp = self._data()
         conso = resp.data['monthly_consumption']
         self.assertEqual(len(conso), 12)
-        # Tous les mois identiques (été non différent), MAD→kWh au tarif interne.
-        from apps.ventes.quote_engine.constants import KWH_PRICE
-        expected = round(875 / KWH_PRICE)
-        self.assertTrue(all(v == expected for v in conso))
+        # Tous les mois identiques (été non différent). QX7d — MAD→kWh via
+        # kwh_from_bill : pas de distributeur renseigné sur ce lead → aucune
+        # table de tranches → repli plat _FALLBACK_KWH_PRICE = 1.20 MAD/kWh
+        # (pas l'ancien prix plat KWH_PRICE=1.75) : 875 / 1.20 = 729.17 → 729.
+        self.assertTrue(all(v == 729 for v in conso))
 
     def test_monthly_consumption_summer_split(self):
         from apps.crm.models import Lead
@@ -390,10 +391,12 @@ class TestProposalMonthlyArrays(TestCase):
         resp = self._data()
         conso = resp.data['monthly_consumption']
         self.assertEqual(len(conso), 12)
-        from apps.ventes.quote_engine.constants import KWH_PRICE
+        # QX7d — MAD→kWh via kwh_from_bill : pas de distributeur renseigné →
+        # repli plat _FALLBACK_KWH_PRICE = 1.20 MAD/kWh.
+        # Hiver : 1200 / 1.20 = 1000.0 → 1000. Été : 600 / 1.20 = 500.0 → 500.
         # Un mois d'été (index 5 = Juin) < un mois d'hiver (index 0 = Jan).
-        self.assertEqual(conso[0], round(1200 / KWH_PRICE))
-        self.assertEqual(conso[5], round(600 / KWH_PRICE))
+        self.assertEqual(conso[0], 1000)
+        self.assertEqual(conso[5], 500)
         self.assertLess(conso[5], conso[0])
 
     def test_consumption_resolves_via_client_when_no_direct_lead(self):
@@ -406,8 +409,10 @@ class TestProposalMonthlyArrays(TestCase):
         resp = self._data()
         conso = resp.data['monthly_consumption']
         self.assertEqual(len(conso), 12)
-        from apps.ventes.quote_engine.constants import KWH_PRICE
-        self.assertEqual(conso[0], round(1000 / KWH_PRICE))
+        # QX7d — MAD→kWh via kwh_from_bill : pas de distributeur renseigné →
+        # repli plat _FALLBACK_KWH_PRICE = 1.20 MAD/kWh.
+        # 1000 / 1.20 = 833.33 → round(.,1) = 833.3 → round(.) = 833.
+        self.assertEqual(conso[0], 833)
 
 
 class TestQ7ProposalAccept(TestCase):
@@ -427,7 +432,8 @@ class TestQ7ProposalAccept(TestCase):
 
     def test_accept_flips_status_and_writes_stamp(self):
         resp = self.api.post(
-            self._url(self.link.token), {'nom': 'Salma Bennani'},
+            self._url(self.link.token),
+            {'nom': 'Salma Bennani', 'consent_esign': True},
             format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.devis.refresh_from_db()
@@ -446,10 +452,12 @@ class TestQ7ProposalAccept(TestCase):
 
     def test_idempotent_double_submit(self):
         first = self.api.post(
-            self._url(self.link.token), {'nom': 'A'}, format='json')
+            self._url(self.link.token),
+            {'nom': 'A', 'consent_esign': True}, format='json')
         self.assertEqual(first.status_code, 200)
         second = self.api.post(
-            self._url(self.link.token), {'nom': 'B'}, format='json')
+            self._url(self.link.token),
+            {'nom': 'B', 'consent_esign': True}, format='json')
         self.assertEqual(second.status_code, 200, second.data)
         self.devis.refresh_from_db()
         # Still the first signer; no second stamp.
@@ -459,13 +467,15 @@ class TestQ7ProposalAccept(TestCase):
 
     def test_invalid_token_404(self):
         self.assertEqual(
-            self.api.post(self._url('bad'), {'nom': 'X'}, format='json')
+            self.api.post(self._url('bad'),
+                          {'nom': 'X', 'consent_esign': True}, format='json')
             .status_code, 404)
 
     def test_bon_commande_chain_preserved(self):
         # After tokenized accept, the devis can be converted to a BC exactly
         # like an in-app acceptance (chain preserved 1:1).
-        self.api.post(self._url(self.link.token), {'nom': 'Chain'},
+        self.api.post(self._url(self.link.token),
+                      {'nom': 'Chain', 'consent_esign': True},
                       format='json')
         self.devis.refresh_from_db()
         self.assertEqual(self.devis.statut, 'accepte')

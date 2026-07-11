@@ -270,6 +270,88 @@ app.conf.beat_schedule = {
         'task': 'monitoring.balayage_quotidien',
         'schedule': crontab(hour=7, minute=35),
     },
+    # ── QX11 — jobs périodiques BÂTIS mais JAMAIS planifiés (bug dominant :
+    # une tâche testée mais absente du beat ne tourne jamais). Ajoutés à des
+    # créneaux heures creuses ; un test de garde (test_qx11_beat_reachability)
+    # échoue désormais si un nouveau @shared_task périodique reste hors beat.
+    # XFAC7 — rappels J-N avant échéance de tranche (devis accepté).
+    'ventes-pre-echeance-reminders': {
+        'task': 'ventes.pre_echeance_reminders',
+        'schedule': crontab(hour=7, minute=20),
+    },
+    # ZFAC12 — « accepté mais jamais facturé » : nudge le facturier.
+    'ventes-devis-a-facturer-reminder': {
+        'task': 'ventes.devis_a_facturer_reminder',
+        'schedule': crontab(hour=7, minute=25),
+    },
+    # XMKT1 — exécute les étapes de séquences de relance marketing dues.
+    'compta-executer-sequences-relance': {
+        'task': 'compta.executer_sequences_relance',
+        'schedule': crontab(hour=8, minute=10),
+    },
+    # XMKT7 — envoie les campagnes marketing planifiées dues.
+    'compta-envoyer-campagnes-planifiees': {
+        'task': 'compta.envoyer_campagnes_planifiees',
+        'schedule': crontab(minute='*/15'),
+    },
+    # XMKT — communications d'événement dues (anniversaires/jalons).
+    'compta-envoyer-communications-evenement': {
+        'task': 'compta.envoyer_communications_evenement',
+        'schedule': crontab(hour=8, minute=20),
+    },
+    # XMKT — recalcule les contacts marketing dormants, quotidien.
+    'compta-recalculer-dormants-marketing': {
+        'task': 'compta.recalculer_dormants_marketing',
+        'schedule': crontab(hour=3, minute=40),
+    },
+    # XMKT — publie les posts sociaux programmés dus.
+    'compta-traiter-posts-sociaux': {
+        'task': 'compta.traiter_posts_sociaux',
+        'schedule': crontab(minute='*/15'),
+    },
+    # XMKT — décide les gagnants des tests A/B arrivés à terme.
+    'compta-decider-gagnants-ab': {
+        'task': 'compta.decider_gagnants_ab',
+        'schedule': crontab(hour=8, minute=25),
+    },
+    # XKB7 — relance quotidienne des non-lecteurs de lecture obligatoire.
+    'kb-sweep-lectures-obligatoires': {
+        'task': 'kb.sweep_lectures_obligatoires',
+        'schedule': crontab(hour=8, minute=30),
+    },
+    # XKB14 — relance de re-revue des articles KB périmés, quotidien.
+    'kb-sweep-articles-perimes': {
+        'task': 'kb.sweep_articles_perimes',
+        'schedule': crontab(hour=8, minute=35),
+    },
+    # XFSM24 — escalade des check-ins QHSE en retard.
+    'qhse-escalader-checkins-en-retard': {
+        'task': 'qhse.escalader_checkins_en_retard',
+        'schedule': crontab(minute='*/30'),
+    },
+    # QX36 — relève des boîtes email entrantes (dispatch bus core.email_intake :
+    # SAV email→ticket, ventes réponse→devis). No-op sans boîte configurée.
+    'ventes-poll-inbound-mailboxes': {
+        'task': 'ventes.poll_inbound_mailboxes',
+        'schedule': crontab(minute='*/10'),
+    },
+    # QX36 — FG373 relève GED (import documentaire par email), toutes les 10 min.
+    'ged-poll-mail-intake': {
+        'task': 'ged.poll_mail_intake',
+        'schedule': crontab(minute='*/10'),
+    },
+    # QX30be — moteur de relance déclenchée par le comportement (non-ouverture
+    # 24 h / ouvert-non-signé 48 h / rouvert 3×). Toutes les 3 h.
+    'ventes-engagement-followup-engine': {
+        'task': 'ventes.engagement_followup_engine',
+        'schedule': crontab(minute=5, hour='*/3'),
+    },
+    # QX31be — escalade speed-to-lead : lead chaud dont la notif d'arrivée
+    # reste non lue au-delà du seuil minutes. Cadence rapide (toutes les 15 min).
+    'notifications-sweep-hot-leads': {
+        'task': 'notifications.sweep_hot_leads',
+        'schedule': crontab(minute='*/15'),
+    },
 }
 
 # YHARD6 — compteurs Celery succès/échec (process-local, best-effort) pour

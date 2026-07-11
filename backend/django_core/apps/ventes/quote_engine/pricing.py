@@ -30,10 +30,16 @@ from __future__ import annotations
 # La dernière tranche n'a pas de plafond (None = tranche supérieure).
 #
 # ONEE (tarif BT résidentiel 2025 — public, officiels ONEE)
+# QX38 — plafonds CUMULATIFS alignés sur les vraies bandes ONEE (le modèle
+# progressif lit ces valeurs comme des seuils cumulés) : 0-100, 101-250,
+# 251-400, > 400. Avant QX38 les plafonds (150/200) contredisaient leurs propres
+# libellés et écrasaient la bande 101-250 → sous-tarification des foyers 150-400
+# kWh/mois typiques. Prix inchangés (publics ONEE) ; seuls les seuils sont
+# corrigés. Le miroir JS solar.js ONEE_TRANCHES porte les MÊMES valeurs.
 ONEE_TRANCHES = [
     (100, 0.9010),    # 0–100 kWh/mois
-    (150, 1.0258),    # 101–250 kWh/mois  (tranche 101–150 incluse ici)
-    (200, 1.2515),    # 251–400 kWh/mois  (tranche 201–400 incluse ici)
+    (250, 1.0258),    # 101–250 kWh/mois
+    (400, 1.2515),    # 251–400 kWh/mois
     (None, 1.4017),   # > 400 kWh/mois
 ]
 
@@ -324,6 +330,101 @@ def two_bills_savings(
     }
 
 
+# ── QX39 — hypothèses du cashflow 25 ans (source unique, miroir solar.js) ─────
+# Documentées et rendues sur le PDF/la proposition ; jamais un chiffre inventé.
+CASHFLOW_YEARS = 25
+PANEL_DEGRADATION = 0.005        # 0,5 %/an — perte de production annuelle
+TARIFF_ESCALATION = 0.02         # +2 %/an — hypothèse PRUDENTE d'inflation ONEE
+BATTERY_ROUNDTRIP = 0.90         # rendement aller-retour batterie (option 2)
+INVERTER_REPLACE_YEAR = 12       # remplacement onduleur (année) — optionnel
+INVERTER_REPLACE_FRACTION = 0.08  # coût ≈ 8 % de l'investissement, à l'année ci-dessus
+
+
+def compute_cashflow_payback(
+    investment: float,
+    economie_annee1: float,
+    *,
+    battery: bool = False,
+    years: int = CASHFLOW_YEARS,
+    degradation: float = PANEL_DEGRADATION,
+    escalation: float = TARIFF_ESCALATION,
+    battery_roundtrip: float = BATTERY_ROUNDTRIP,
+    inverter_replace_year: int | None = INVERTER_REPLACE_YEAR,
+    inverter_replace_fraction: float = INVERTER_REPLACE_FRACTION,
+) -> dict:
+    """QX39 — cashflow 25 ans honnête + payback par croisement du cumul à zéro.
+
+    Chaque année : l'économie de base (année 1) est érodée par la dégradation
+    panneau (0,5 %/an) MAIS améliorée par l'escalade tarifaire documentée ; la
+    batterie (option 2) applique son rendement aller-retour. Un remplacement
+    onduleur optionnel retranche une fraction de l'investissement l'année dite.
+    Le payback = première année où le cumul devient ≥ 0 (interpolé dans l'année).
+    Renvoie le cashflow annuel, le cumul, le payback (années) et le gain net.
+    """
+    inv = float(investment or 0)
+    base = float(economie_annee1 or 0)
+    if base <= 0 or inv <= 0:
+        return {
+            "payback_years": 0.0, "cashflow": [], "cumulative": [],
+            "net_gain": 0.0, "years": years,
+        }
+
+    cashflow, cumulative = [], []
+    cumul = -inv
+    payback = None
+    prev_cumul = -inv
+    for y in range(1, years + 1):
+        prod_factor = (1 - degradation) ** (y - 1)      # dégradation panneau
+        tarif_factor = (1 + escalation) ** (y - 1)      # escalade tarifaire
+        year_saving = base * prod_factor * tarif_factor
+        if battery:
+            year_saving *= battery_roundtrip
+        year_cf = year_saving
+        if inverter_replace_year and y == inverter_replace_year:
+            year_cf -= inv * inverter_replace_fraction
+        cashflow.append(round(year_cf))
+        prev_cumul = cumul
+        cumul += year_cf
+        cumulative.append(round(cumul))
+        # Croisement à zéro → payback interpolé dans l'année.
+        if payback is None and cumul >= 0:
+            span = cumul - prev_cumul
+            frac = (0 - prev_cumul) / span if span else 0.0
+            payback = round((y - 1) + frac, 1)
+
+    if payback is None:
+        payback = float(years)  # jamais rentabilisé sur l'horizon
+    return {
+        "payback_years": payback,
+        "cashflow": cashflow,
+        "cumulative": cumulative,
+        "net_gain": round(cumul),
+        "years": years,
+    }
+
+
+def cashflow_assumptions() -> dict:
+    """QX39 — hypothèses documentées du cashflow, rendues sur le PDF/la
+    proposition (autoconsommation d'abord ; rachat BT surplus toujours non
+    publié ; plafond d'injection 20 % pré-intégré via l'autoconso)."""
+    return {
+        "years": CASHFLOW_YEARS,
+        "degradation_pct": round(PANEL_DEGRADATION * 100, 2),
+        "escalation_pct": round(TARIFF_ESCALATION * 100, 1),
+        "battery_roundtrip_pct": round(BATTERY_ROUNDTRIP * 100),
+        "inverter_replace_year": INVERTER_REPLACE_YEAR,
+        "notes": [
+            "Autoconsommation d'abord (loi 82-21) : seuls les kWh autoconsommés "
+            "sont valorisés ; le surplus injecté n'est pas rémunéré (tarif de "
+            "rachat BT résidentiel toujours non publié).",
+            "Plafond d'injection 20 % pré-intégré dans les taux d'autoconsommation.",
+            f"Dégradation panneau {round(PANEL_DEGRADATION * 100, 2)} %/an ; "
+            f"hypothèse d'escalade du tarif électrique {round(TARIFF_ESCALATION * 100, 1)} %/an "
+            "(prudente) ; performance garantie 25 ans.",
+        ],
+    }
+
+
 def calculate_savings_roi(
     puissance_kwc: float,
     total_sans: float,
@@ -416,9 +517,18 @@ def calculate_savings_roi(
             facture_avec_a = _tb_a["facture_avec"]
             factures_approximatif = _tb_s["approximatif"]
 
-    # Retour sur investissement (années)
-    roi_opt1 = round(total_sans / economie_opt1, 1) if economie_opt1 > 0 else 0.0
-    roi_opt2 = round(total_avec / economie_opt2, 1) if economie_opt2 > 0 else 0.0
+    # ── QX39 — retour sur investissement par CASHFLOW 25 ans (honnête) ────────
+    # Le payback n'est plus un simple ratio année-1 (ni conservateur, ni
+    # optimiste) : on cumule le cashflow réel avec dégradation panneau 0,5 %/an,
+    # une hypothèse DOCUMENTÉE d'escalade tarifaire, le rendement aller-retour
+    # de la batterie (option 2), et un remplacement onduleur optionnel. Le
+    # payback = première année où le cumul devient positif (interpolée). Repli
+    # sûr sur le ratio année-1 quand l'économie est nulle.
+    cf_s = compute_cashflow_payback(total_sans, economie_opt1)
+    cf_a = compute_cashflow_payback(
+        total_avec, economie_opt2, battery=True)
+    roi_opt1 = cf_s["payback_years"] if economie_opt1 > 0 else 0.0
+    roi_opt2 = cf_a["payback_years"] if economie_opt2 > 0 else 0.0
 
     # Répartition mensuelle saisonnière (12 facteurs, somme = 1,000)
     _SF = [0.053, 0.062, 0.083, 0.098, 0.114, 0.116,
@@ -450,4 +560,11 @@ def calculate_savings_roi(
         "factures_approximatif": factures_approximatif,
         # QK4 — productible réellement utilisé (kWh/kWc/an), pour transparence.
         "productible":      prod_factor,
+        # QX39 — cashflow 25 ans honnête (dégradation/escalade/batterie/onduleur)
+        # + hypothèses documentées, rendus sur le PDF/la proposition.
+        "cashflow_sans":    cf_s["cumulative"],
+        "cashflow_avec":    cf_a["cumulative"],
+        "net_gain_sans":    cf_s["net_gain"],
+        "net_gain_avec":    cf_a["net_gain"],
+        "cashflow_assumptions": cashflow_assumptions(),
     }

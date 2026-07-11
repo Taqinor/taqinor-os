@@ -294,7 +294,11 @@ class TestDevisSignatureEmail(TestCase):
         accept_devis(devis=devis, user=self.user, nom='Test')
         mock_email.assert_called_once()
         call_kwargs = mock_email.call_args.kwargs
-        self.assertIs(call_kwargs['devis'], devis)
+        # QX41 re-lit le devis VERROUILLÉ (select_for_update) sous le verrou
+        # anti-course, donc l'instance transmise à l'email n'est plus le MÊME
+        # objet Python que celui passé par l'appelant — mais bien le MÊME devis
+        # (même PK). On vérifie l'identité MÉTIER (PK), pas l'identité objet.
+        self.assertEqual(call_kwargs['devis'].pk, devis.pk)
 
     @patch('apps.ventes.services._send_acceptance_emails',
            side_effect=Exception('email down'))

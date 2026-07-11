@@ -387,7 +387,18 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
                 # l'échéancier. Sans vraie deuxième option (option unique,
                 # pompage, liste libre), option_lines renvoie TOUTES les lignes
                 # → comportement historique strictement inchangé.
+                #
+                # QX1 — la remise GLOBALE du devis était PERDUE ici (la facture
+                # copiait les lignes brutes → sur-facturation). On la PERSISTE
+                # désormais sur ``Facture.remise_globale`` ; ``Facture.total_*``
+                # la lit via la même chaîne canonique que le devis/l'échéancier
+                # (centime-exact, cohérent de bout en bout).
+                from decimal import Decimal
                 from ..utils.options import option_lines
+                g = Decimal(str(bc.devis.remise_globale or 0))
+                if g:
+                    facture.remise_globale = g
+                    facture.save(update_fields=['remise_globale'])
                 for ligne in option_lines(bc.devis):
                     LigneFacture.objects.create(
                         facture=facture,

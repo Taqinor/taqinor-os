@@ -142,6 +142,19 @@ class Client(models.Model):
         help_text="Rattache ce client à une société mère (consolidation "
                   "CA groupe). Même société uniquement ; jamais de cycle.")
 
+    # ── QX35 — Code de parrainage DÉTERMINISTE (additif) ──
+    # Dérivé du pk (ex. « TQ-1042 ») dès la première sauvegarde — jamais un
+    # UUID aléatoire : un code stable, lisible, copiable dans un lien
+    # `?utm_source=parrainage&utm_campaign=<code>` (parrainage.astro). Unique
+    # par construction (dérivé du pk) ; nullable pour les lignes existantes
+    # tant qu'elles ne sont pas resauvegardées (comportement inchangé).
+    code_parrainage = models.CharField(
+        max_length=20, blank=True, null=True, unique=True,
+        verbose_name='Code de parrainage',
+        help_text="Code stable partagé par ce client pour parrainer un "
+                  "prospect (lien /devis/mon-toit?utm_source=parrainage&"
+                  "utm_campaign=<code>).",
+    )
     # ── ARC18 — Pont additif vers le répertoire unifié Tiers ──
     # FK nullable (string-FK — jamais d'import de apps.tiers.models ici, crm
     # reste découplé de la couche fondation par référence string). L'identité
@@ -165,6 +178,23 @@ class Client(models.Model):
 
     def __str__(self):
         return f"{self.nom} {self.prenom if self.prenom else ''}"
+
+    def save(self, *args, **kwargs):
+        # QX35 — génère le code de parrainage APRÈS la première sauvegarde
+        # (a besoin du pk pour rester déterministe et unique sans collision) —
+        # patron standard Django « dérivé du pk », deuxième save() ciblé sur
+        # le seul champ concerné (jamais de boucle : ne s'exécute qu'une
+        # fois, quand code_parrainage est encore vide).
+        is_new = self.pk is None
+        super().save(*args, **kwargs)
+        if is_new and not self.code_parrainage:
+            self.code_parrainage = f'TQ-{self.pk}'
+            # QX35 — écrire via QuerySet.update() plutôt qu'un 2ᵉ save() : un
+            # second save() re-déclenche le post_save (le miroir tiers ARC18
+            # créerait alors un DOUBLON pour un client sans clé). .update() pose
+            # le champ en base sans signal ; l'instance le porte déjà.
+            type(self).objects.filter(pk=self.pk).update(
+                code_parrainage=self.code_parrainage)
 
     def clean(self):
         super().clean()
@@ -545,6 +575,14 @@ class Lead(models.Model):
     contact_preference = models.CharField(
         max_length=16, choices=ContactPreference.choices, blank=True, null=True,
         verbose_name='Préférence de contact')
+    # QX15 — horodatage de la POSE de `contact_preference` (distinct de
+    # `date_creation` du lead). Le SLA rappel doit mesurer depuis QUAND le
+    # rappel a été demandé, pas depuis quand le lead a été créé — un vieux
+    # lead dont la préférence est posée MAINTENANT ne doit pas apparaître
+    # instantanément « SLA rompu ». NULL = jamais posé (ou posé avant ce
+    # champ) ; le sélecteur retombe sur `date_creation` dans ce cas
+    # (comportement historique inchangé pour les leads déjà en base).
+    contact_preference_set_at = models.DateTimeField(null=True, blank=True)
     consent_timestamp = models.DateTimeField(null=True, blank=True)
     # Attribution publicitaire (capture first-touch du site)
     fbclid = models.CharField(max_length=500, blank=True, null=True)

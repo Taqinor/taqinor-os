@@ -1652,30 +1652,39 @@ def page3():
         _pct_m = round(_materiel / _pay_total * 100) if _pay_total else 0
         _pct_s = round(_solde / _pay_total * 100) if _pay_total else 0
 
+        def _pay_box(pct, montant, label):
+            return (
+                f'<div style="flex:1;text-align:center;padding:6px 5px;background:white;border-radius:8px;border:1px solid {CG2};">'
+                f'<div class="serif" style="font-size:22px;font-weight:800;color:{CA};line-height:1.0;">{pct}%</div>'
+                f'<div style="font-size:12px;color:{CN};font-weight:700;margin-top:2px;">{fmt(montant)} MAD</div>'
+                f'<div style="font-size:9px;color:{CG4};margin-top:2px;">{label}</div>'
+                f'</div>')
+
+        # QX7b — n’imprime JAMAIS une case Matériel morte à 0 % : quand
+        # l’acompte custom absorbe la tranche matériel (materiel <= 0), on
+        # bascule sur un échéancier à DEUX cases (Acompte + Solde) qui somment
+        # à 100 % — plus de pourcentages faux. Chemin standard (materiel > 0) :
+        # trois cases, rendu inchangé. Le solde reprend le reliquat exact.
+        _ac_l = 'Acompte · À la signature'
+        _mt_l = 'Matériel · Avant installation'
+        _sd_l = 'Solde · Après installation'
+        if _materiel > 0:
+            _boxes = (_pay_box(_pct_a, _acompte, _ac_l)
+                      + _pay_box(_pct_m, _materiel, _mt_l)
+                      + _pay_box(_pct_s, _solde, _sd_l))
+        else:
+            _solde2 = int(_pay_total) - _acompte  # reliquat exact -> somme 100 %
+            _pct_s2 = round(_solde2 / _pay_total * 100) if _pay_total else 0
+            _boxes = (_pay_box(_pct_a, _acompte, _ac_l)
+                      + _pay_box(_pct_s2, _solde2, 'Solde · À la livraison'))
+
         _payment_html = (
             f'<div style="margin-bottom:4px;">'
             f'<div style="border-left:3px solid {CN};padding-left:8px;margin-bottom:4px;">'
-            f'<div style="font-size:8pt;font-weight:700;color:{CN};text-transform:uppercase;letter-spacing:1px;">Modalit\u00e9s de paiement</div>'
+            f'<div style="font-size:8pt;font-weight:700;color:{CN};text-transform:uppercase;letter-spacing:1px;">Modalités de paiement</div>'
             f'</div>'
             f'<div style="display:flex;gap:6px;margin-bottom:3px;">'
-            # Box 1 — Acompte
-            f'<div style="flex:1;text-align:center;padding:6px 5px;background:white;border-radius:8px;border:1px solid {CG2};">'
-            f'<div class="serif" style="font-size:22px;font-weight:800;color:{CA};line-height:1.0;">{_pct_a}%</div>'
-            f'<div style="font-size:12px;color:{CN};font-weight:700;margin-top:2px;">{fmt(_acompte)}\u00a0MAD</div>'
-            f'<div style="font-size:9px;color:{CG4};margin-top:2px;">Acompte \u00b7 \u00c0 la signature</div>'
-            f'</div>'
-            # Box 2 — Matériel
-            f'<div style="flex:1;text-align:center;padding:6px 5px;background:white;border-radius:8px;border:1px solid {CG2};">'
-            f'<div class="serif" style="font-size:22px;font-weight:800;color:{CA};line-height:1.0;">{_pct_m}%</div>'
-            f'<div style="font-size:12px;color:{CN};font-weight:700;margin-top:2px;">{fmt(_materiel)}\u00a0MAD</div>'
-            f'<div style="font-size:9px;color:{CG4};margin-top:2px;">Mat\u00e9riel \u00b7 Avant installation</div>'
-            f'</div>'
-            # Box 3 — Solde
-            f'<div style="flex:1;text-align:center;padding:6px 5px;background:white;border-radius:8px;border:1px solid {CG2};">'
-            f'<div class="serif" style="font-size:22px;font-weight:800;color:{CA};line-height:1.0;">{_pct_s}%</div>'
-            f'<div style="font-size:12px;color:{CN};font-weight:700;margin-top:2px;">{fmt(_solde)}\u00a0MAD</div>'
-            f'<div style="font-size:9px;color:{CG4};margin-top:2px;">Solde \u00b7 Apr\u00e8s installation</div>'
-            f'</div>'
+            f'{_boxes}'
             f'</div>'
             # Note
             f'<div style="font-size:7pt;color:{CG4};font-style:italic;margin-bottom:3px;">'

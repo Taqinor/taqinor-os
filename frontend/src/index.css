@@ -1185,9 +1185,11 @@ textarea.form-control {
 }
 
 /* ── Lines table ──────────────────────────────────────── */
+/* VX17 — tableau de lignes : tokens de thème plutôt qu'hex codés en dur
+   (fonctionne en clair ET sombre). */
 .lines-table-wrap {
   overflow-x: auto;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border);
   border-radius: 10px;
 }
 
@@ -1198,26 +1200,26 @@ textarea.form-control {
 }
 
 .lines-table th {
-  background: #f8fafc;
+  background: var(--muted);
   padding: 8px 10px;
   text-align: left;
   font-size: 0.72rem;
   font-weight: 600;
-  color: #64748b;
+  color: var(--muted-foreground);
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
 
 .lines-table td {
   padding: 6px 8px;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid var(--border);
   vertical-align: middle;
 }
 
 .lines-table tbody tr:last-child td { border-bottom: none; }
-.lines-table tbody tr:hover { background: #f8fafc; }
+.lines-table tbody tr:hover { background: var(--muted); }
 
 .col-num { width: 90px; text-align: right; }
 .col-del { width: 32px; }
@@ -1532,6 +1534,11 @@ textarea.form-control {
   --cat-navy-soft: #122a4d;
   --cat-gold: #f5a623;
   --cat-gold-soft: #fdf3e0;
+  /* VX17 — couleurs de courbe du générateur (Recharts) via tokens de marque
+     plutôt qu'un hex codé en dur dans le JSX. Alignées sur le langage navy/gold
+     du devis premium. */
+  --gen-chart-sans: #1a2b4a;
+  --gen-chart-avec: #f5a623;
 }
 .cat-layout {
   display: flex;
@@ -2679,22 +2686,35 @@ textarea.form-control {
   margin-bottom: 1.25rem;
 }
 
+/* VX16 — rail récapitulatif STICKY du générateur (lg+ uniquement). Le masquage
+   mobile et la largeur sont gérés par les classes utilitaires ; ici on garantit
+   le comportement sticky + l'offset sous l'en-tête. */
+@media (min-width: 1024px) {
+  .gen-summary-rail {
+    position: sticky;
+    align-self: flex-start;
+    top: var(--header-h, 64px);
+  }
+}
+
+/* VX17 — cartes métriques du générateur : tokens de thème plutôt qu'hex codés
+   en dur (fonctionne en clair ET sombre). */
 .gen-metric {
-  background: #f8fafc;
-  border: 1px solid #eef2f7;
+  background: var(--muted);
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 0.75rem 0.9rem;
   text-align: center;
 }
 
-.gen-metric-accent { background: #eff6ff; border-color: #dbeafe; }
+.gen-metric-accent { background: var(--card); border-color: var(--border); }
 
-.gen-metric-rec { box-shadow: 0 0 0 2px #f5a623; }
+.gen-metric-rec { box-shadow: 0 0 0 2px var(--cat-gold); }
 
 .gen-metric-label {
   font-size: 0.7rem;
   font-weight: 600;
-  color: #64748b;
+  color: var(--muted-foreground);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -2702,16 +2722,16 @@ textarea.form-control {
 .gen-metric-value {
   font-size: 1.3rem;
   font-weight: 700;
-  color: #0f1e35;
+  color: var(--foreground);
   margin-top: 0.25rem;
 }
 
-.gen-metric-unit { font-size: 0.72rem; color: #94a3b8; }
+.gen-metric-unit { font-size: 0.72rem; color: var(--muted-foreground); }
 
 .gen-rec-badge {
   font-size: 0.6rem;
-  background: #f5a623;
-  color: #0f1e35;
+  background: var(--cat-gold);
+  color: var(--cat-navy);
   border-radius: 3px;
   padding: 1px 5px;
   font-weight: 700;

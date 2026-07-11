@@ -105,27 +105,69 @@ class PaymentLinkTests(TestCase):
         # Jamais de prix d'achat / marge dans la charge utile publique.
         self.assertNotIn('prix_achat', resp.data)
 
-    def test_webhook_records_payment_and_is_idempotent(self):
+    def test_webhook_noop_never_confirms_payment(self):
+        """QX3 [SÉCURITÉ] — le webhook public NoOp ne solde JAMAIS une facture.
+
+        Sans passerelle réelle vérifiant une signature, un POST non authentifié
+        (même avec un ``provider_ref`` ou un ``montant`` forgé) ne peut pas
+        fabriquer un ``Paiement`` ni faire passer la facture à PAYEE."""
         link_token = self._create_link().data['token']
-        # 1er webhook : enregistre le paiement, solde la facture.
-        r1 = self.public.post(
+        # POST forgé : provider_ref ET montant fabriqués — doit être refusé.
+        resp = self.public.post(
             f'/api/django/public/pay/{link_token}/webhook/',
-            {'provider_ref': 'TX-123'}, format='json')
-        self.assertEqual(r1.status_code, 200, r1.content)
+            {'provider_ref': 'FORGED', 'montant': '1200.00'}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
         self.assertEqual(Paiement.objects.filter(
-            facture=self.facture).count(), 1)
+            facture=self.facture).count(), 0)
+        self.facture.refresh_from_db()
+        self.assertNotEqual(self.facture.statut, Facture.Statut.PAYEE)
+        link = PaymentLink.objects.get(token=link_token)
+        self.assertNotEqual(link.statut, PaymentLink.Statut.PAYE)
+
+    def test_webhook_empty_body_cannot_mark_paid(self):
+        """QX3 [SÉCURITÉ] — ``POST {}`` ne peut jamais marquer payé."""
+        link_token = self._create_link().data['token']
+        resp = self.public.post(
+            f'/api/django/public/pay/{link_token}/webhook/', {},
+            format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(Paiement.objects.filter(
+            facture=self.facture).count(), 0)
+        self.facture.refresh_from_db()
+        self.assertNotEqual(self.facture.statut, Facture.Statut.PAYEE)
+
+    def test_noop_verify_webhook_is_fail_closed(self):
+        """QX3 — l'unité ``NoOpProvider.verify_webhook`` renvoie paid=False."""
+        from apps.ventes.payments.providers import NoOpProvider
+        link = self._create_link()
+        link_obj = PaymentLink.objects.get(token=link.data['token'])
+        result = NoOpProvider().verify_webhook(
+            link_obj, {'paid': True, 'montant': '9999', 'provider_ref': 'X'})
+        self.assertFalse(result['paid'])
+        self.assertIsNone(result['montant'])
+
+    def test_real_provider_path_still_confirms(self):
+        """QX3 — un vrai fournisseur (mocké paid=True) enregistre bien un
+        paiement, avec le montant SERVEUR (link.montant), jamais le payload."""
+        from unittest import mock
+        link_token = self._create_link().data['token']
+        fake = mock.Mock()
+        # Le fournisseur confirme mais ne renvoie PAS de montant → serveur.
+        fake.verify_webhook.return_value = {
+            'paid': True, 'provider_ref': 'REAL-TX', 'montant': None}
+        with mock.patch(
+                'apps.ventes.payments.providers.get_provider',
+                return_value=fake):
+            resp = self.public.post(
+                f'/api/django/public/pay/{link_token}/webhook/',
+                {'montant': '999999'}, format='json')  # payload forgé ignoré
+        self.assertEqual(resp.status_code, 200, resp.content)
+        paiements = Paiement.objects.filter(facture=self.facture)
+        self.assertEqual(paiements.count(), 1)
+        # Montant = reste à payer serveur (1200), jamais le 999999 forgé.
+        self.assertEqual(paiements.first().montant, Decimal('1200.00'))
         self.facture.refresh_from_db()
         self.assertEqual(self.facture.statut, Facture.Statut.PAYEE)
-        link = PaymentLink.objects.get(token=link_token)
-        self.assertEqual(link.statut, PaymentLink.Statut.PAYE)
-        self.assertEqual(link.provider_ref, 'TX-123')
-        # 2e webhook : IDEMPOTENT — aucun second paiement.
-        r2 = self.public.post(
-            f'/api/django/public/pay/{link_token}/webhook/',
-            {'provider_ref': 'TX-123'}, format='json')
-        self.assertEqual(r2.status_code, 200, r2.content)
-        self.assertEqual(Paiement.objects.filter(
-            facture=self.facture).count(), 1)
 
     def test_webhook_bad_token_404(self):
         resp = self.public.post(

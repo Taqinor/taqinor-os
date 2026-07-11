@@ -203,7 +203,8 @@ class ActivityViewSet(viewsets.ModelViewSet):
             assigned_to=request.user, done=False)
         buckets = {'en_retard': [], 'aujourdhui': [], 'a_venir': []}
         for act in qs:
-            data = ActivitySerializer(act).data
+            # QX25be — passe le contexte requête pour résoudre target_phone.
+            data = ActivitySerializer(act, context={'request': request}).data
             st = activity_state(act.due_date, act.done)
             if st == 'overdue':
                 buckets['en_retard'].append(data)

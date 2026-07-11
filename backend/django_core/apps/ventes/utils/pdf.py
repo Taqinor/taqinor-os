@@ -368,15 +368,24 @@ def generate_bon_commande_pdf(bc_id):
     if bc.devis:
         context['lignes'] = option_lines(bc.devis)
         totaux = option_totaux(bc.devis)
-        context['total_ht'] = totaux['ht']
-        context['total_tva'] = totaux['tva']
-        context['total_ttc'] = totaux['ttc']
+        # QX1 — ``option_totaux`` renvoie désormais les totaux NETS (remise
+        # globale déjà appliquée), plus le brut/remise pour l'affichage. Le
+        # template reçoit le brut (Sous-total HT) + la remise (delta) + les
+        # valeurs nettes (HT net, TVA sur net, TTC) : plus de double
+        # soustraction, plus de sur-facturation.
+        context['total_ht_brut'] = totaux.get('ht_brut', totaux['ht'])
+        context['total_ht'] = totaux['ht']          # HT NET (après remise)
+        context['total_tva'] = totaux['tva']         # TVA sur le HT net
+        context['total_ttc'] = totaux['ttc']         # TTC net
+        context['remise_montant'] = totaux.get('remise', Decimal('0'))
         context['remise_globale'] = bc.devis.remise_globale or Decimal('0')
     else:
         context['lignes'] = []
+        context['total_ht_brut'] = Decimal('0')
         context['total_ht'] = Decimal('0')
         context['total_tva'] = Decimal('0')
         context['total_ttc'] = Decimal('0')
+        context['remise_montant'] = Decimal('0')
         context['remise_globale'] = Decimal('0')
 
     html = _render_html('bon_commande.html', context)
