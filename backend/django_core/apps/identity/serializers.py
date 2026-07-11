@@ -1,7 +1,7 @@
 """Sérialiseurs de la fondation identité (NTSEC)."""
 from rest_framework import serializers
 
-from .models import IdentityProvider
+from .models import IdentityProvider, ScimToken
 
 
 class IdentityProviderSerializer(serializers.ModelSerializer):
@@ -45,3 +45,19 @@ class IdentityProviderSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Ce rôle n'appartient pas à votre société.")
         return value
+
+
+class ScimTokenSerializer(serializers.ModelSerializer):
+    """Sérialise un ``ScimToken`` SANS jamais exposer le hash ni le secret.
+
+    Le secret en clair n'est ajouté à la réponse qu'à la création/rotation (par
+    la vue), jamais via ce sérialiseur ni en relecture.
+    """
+
+    class Meta:
+        model = ScimToken
+        fields = [
+            'id', 'label', 'prefix', 'actif', 'created_at', 'last_used_at',
+            'last_rotated_at', 'rotation_period_days',
+        ]
+        read_only_fields = fields

@@ -5,11 +5,12 @@ Montées sous ``/api/django/identity/`` (voir ``erp_agentique/urls.py``).
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from . import views_oidc, views_saml
-from .views import IdentityProviderViewSet
+from . import views_oidc, views_saml, views_scim
+from .views import IdentityProviderViewSet, ScimTokenViewSet
 
 router = DefaultRouter()
 router.register(r'providers', IdentityProviderViewSet, basename='idp')
+router.register(r'scim-tokens', ScimTokenViewSet, basename='scim-token')
 
 urlpatterns = [
     path('', include(router.urls)),
@@ -27,4 +28,9 @@ urlpatterns = [
          name='oidc-login'),
     path('oidc/<slug:company_slug>/callback/', views_oidc.oidc_callback,
          name='oidc-callback'),
+    # NTSEC5 — Provisioning SCIM 2.0 — Users (jeton SCIM porteur dédié).
+    path('scim/v2/<slug:company_slug>/Users', views_scim.ScimUsersView.as_view(),
+         name='scim-users'),
+    path('scim/v2/<slug:company_slug>/Users/<int:pk>',
+         views_scim.ScimUserDetailView.as_view(), name='scim-user-detail'),
 ]

@@ -6,7 +6,32 @@ d'attributs et sa politique d'auto-provisioning. Tout est OFF par défaut
 (``actif=False``) : tant qu'aucun IdP n'est activé, le login local est
 strictement inchangé.
 """
+import hashlib
+import hmac
+import secrets
+
+from django.conf import settings
 from django.db import models
+
+
+SCIM_TOKEN_PREFIX = 'scim_'
+
+
+def hash_scim_token(raw):
+    """Empreinte HMAC-SHA256 « poivrée » d'un jeton SCIM (indexable, O(1)).
+
+    Même patron que ``publicapi.hash_key`` : un jeton SCIM est un secret à haute
+    entropie, on stocke/compare une empreinte déterministe poivrée par la
+    SECRET_KEY du serveur (une fuite de table reste inexploitable hors-ligne)."""
+    return hmac.new(
+        settings.SECRET_KEY.encode('utf-8'),
+        raw.encode('utf-8'),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def generate_scim_token():
+    return SCIM_TOKEN_PREFIX + secrets.token_urlsafe(32)
 
 
 class IdentityProvider(models.Model):
@@ -190,3 +215,90 @@ class OidcAuthState(models.Model):
 
     def __str__(self):
         return f'{self.company_id} — {self.state[:12]}…'
+
+
+class ScimToken(models.Model):
+    """Jeton porteur dédié au provisioning SCIM 2.0 d'une société (NTSEC5).
+
+    Authentifie l'IdP appelant le service SCIM. Seul un HASH est stocké ; le
+    secret en clair n'est montré qu'une fois, à l'émission. Scopé société,
+    révocable (``actif``). ``last_rotated_at``/``rotation_period_days`` (NTSEC29)
+    sont posés additifs, défaut inerte.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='scim_tokens',
+    )
+    label = models.CharField(max_length=120, blank=True, default='')
+    token_hash = models.CharField(max_length=64, unique=True, db_index=True)
+    prefix = models.CharField(max_length=20, blank=True, default='')
+    actif = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='scim_tokens_crees',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    # NTSEC29 — registre de rotation (réutilise YHARD5). Défaut inerte.
+    last_rotated_at = models.DateTimeField(null=True, blank=True)
+    rotation_period_days = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        verbose_name = 'Jeton SCIM'
+        verbose_name_plural = 'Jetons SCIM'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.company_id} — SCIM {self.prefix}…'
+
+    @classmethod
+    def issue(cls, *, company, label='', created_by=None):
+        """Crée un jeton et renvoie (instance, jeton_en_clair)."""
+        raw = generate_scim_token()
+        instance = cls.objects.create(
+            company=company,
+            label=label,
+            token_hash=hash_scim_token(raw),
+            prefix=raw[:12],
+            created_by=created_by,
+        )
+        return instance, raw
+
+
+class ScimGroupMapping(models.Model):
+    """Mappe un groupe SCIM/SSO vers un rôle de la société (NTSEC6/NTSEC7).
+
+    L'ajout/retrait d'un membre d'un groupe SCIM applique/retire le rôle
+    correspondant ; réutilisé par le JIT SSO (NTSEC7). Scopé société. Le rôle
+    est référencé par STRING-FK (``roles.Role``) — aucun import des modèles
+    roles ici.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='scim_group_mappings',
+    )
+    scim_group_name = models.CharField(max_length=255)
+    role = models.ForeignKey(
+        'roles.Role',
+        on_delete=models.CASCADE,
+        related_name='+',
+    )
+
+    class Meta:
+        verbose_name = 'Mapping groupe SCIM → rôle'
+        verbose_name_plural = 'Mappings groupe SCIM → rôle'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'scim_group_name'],
+                name='identity_unique_scim_group_per_company',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.company_id} — {self.scim_group_name} → {self.role_id}'
