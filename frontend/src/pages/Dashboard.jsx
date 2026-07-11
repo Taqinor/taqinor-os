@@ -5,6 +5,9 @@ const MesEquipesCard = lazy(() => import('../components/MesEquipesCard'))
 // VX86 — carte « Attend votre décision » (boîte d'approbations centralisée),
 // chargée paresseusement comme les autres compléments autonomes du Dashboard.
 const ApprobationsAttentionCard = lazy(() => import('../components/ApprobationsAttentionCard'))
+// VX36 — bannière de prise en main (autonome : se masque si terminé/rejeté),
+// visible dès le premier login en haut du Dashboard.
+const OnboardingBanner = lazy(() => import('../components/OnboardingBanner'))
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -656,6 +659,12 @@ export function Component() {
           subtitle="Vue d'ensemble de votre activité"
         />
       </div>
+
+      {/* VX36 — bannière de prise en main (autonome : se masque si terminé ou
+          « ne plus afficher »). En tête, visible au premier login. */}
+      <Suspense fallback={null}>
+        <OnboardingBanner />
+      </Suspense>
 
       {/* VX27 — bandeau « aujourd'hui » : les signaux du jour, cliquables. Se
           masque de lui-même un matin sans alerte. */}
