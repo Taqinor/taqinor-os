@@ -64,7 +64,7 @@ export default function ClientList() {
   // (3G qui cale) peut écraser l'état d'un AUTRE écran après navigation.
   useEffect(() => {
     const thunk = dispatch(fetchClients())
-    return () => thunk.abort()
+    return () => thunk?.abort?.()
   }, [dispatch])
 
   // Filtre segmenté par type (Particulier / Entreprise), appliqué avant le

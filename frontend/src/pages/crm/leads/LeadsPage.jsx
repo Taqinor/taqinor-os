@@ -151,7 +151,7 @@ export default function LeadsPage() {
   // après navigation. `thunk.abort()` coupe le signal jusqu'à axios.
   useEffect(() => {
     const thunk = dispatch(fetchLeads(archivedParam(filters.archived)))
-    return () => thunk.abort()
+    return () => thunk?.abort?.()
   }, [dispatch, filters.archived])
 
   // Lien profond depuis les ventes : /crm/leads?lead=<id> ouvre la fiche du
