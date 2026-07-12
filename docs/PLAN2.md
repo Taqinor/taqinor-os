@@ -77,6 +77,7 @@ the journey the best in the world for the CLIENT and the COMMERCIAL user.*
 - 2026-07-12 — VX117 **(already present)** : `lib/resilientMutation.js` déjà extrait et consommé par `DevisForm.jsx`/`FactureForm.jsx`/`PaieRunWizard.jsx`/`RolesManagement.jsx` (allSettled + rapport nominatif, allOk gate) ; `DevisGenerator.jsx` a depuis migré vers les endpoints ATOMIQUES `createDevisAtomic`/`replaceLignesDevis` (QX21), qui suppriment le pattern « parent + N lignes en Promise.all » visé par cette tâche.
 - 2026-07-12 — VX161 **(already present)** : `api/refreshCoordinator.js` déjà construit et consommé par `axios.js` ET `iaApi.js` (promesse de refresh UNIQUE partagée, reset en `finally`).
 - 2026-07-12 — VX162 **(already present)** : `providers/session-bridge.js` a déjà `BroadcastChannel('taqinor-session')` + `broadcastLogout()`/`subscribeToSessionLogout()`, câblé depuis `authSlice.logoutUser.fulfilled` et consommé par `SessionProvider.jsx`.
+- 2026-07-12 — VX164 **(already present)** : les 3 volets sont déjà construits — (a) `messagingSlice.js` a `activeMessagesRequestId` (garde de séquence sur `fetchMessages.fulfilled`) ; (b) `crmSlice.js`/`ventesSlice.js`/`stockSlice.js` ont chacun `seqMap[id]`/`isStaleResourceUpdate` sur leurs réducteurs `update*/patch*.fulfilled` ; (c) `InlineEdit.jsx` a `committingRef` vérifié en tête de `commit()`.
 
 #### DONE LOG — Vague 2 (VX terrain/finance/CRM + QX groupe) (2026-07-12)
 
@@ -1522,7 +1523,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   même payload ; démontage → `meta.aborted === true`, 0 toast. (T2 — M, sonnet) (@lane:
   frontend/data — @with/after VX54)
 
-- [ ] VX164 — **Plancher anti-course : séquence (messaging), fraîcheur (réducteurs `update*`), (@lane: frontend/data)
+- [x] VX164 **(already present)** — **Plancher anti-course : séquence (messaging), fraîcheur (réducteurs `update*`), (@lane: frontend/data)
   verrou `InlineEdit`.** (a) `messagingSlice.js:200-205` protège le changement de conversation mais
   pas l'ORDRE — le poll 3 s (`useChatPolling.js:51-55`) n'annule pas le tick précédent : un tick
   N-1 lent écrase la page plus fraîche (un message reçu DISPARAÎT jusqu'au tick suivant). (b)
