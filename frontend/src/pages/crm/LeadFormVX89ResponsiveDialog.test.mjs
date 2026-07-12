@@ -23,7 +23,8 @@ test('VX89 : le shell brut div.modal-overlay a disparu', () => {
 
 test('VX89 : ResponsiveDialog est monté avec open + onOpenChange → onClose', () => {
   assert.match(SRC, /<ResponsiveDialog/)
-  assert.match(SRC, /onOpenChange=\{\(o\) => \{ if \(!o\) onClose\(\) \}\}/)
+  // VX167 — la fermeture passe par guardedClose (garde « quitter sans sauver »).
+  assert.match(SRC, /onOpenChange=\{\(o\) => \{ if \(!o\) guardedClose\(\) \}\}/)
 })
 
 test('VX89 : le champ Nom porte autoFocus', () => {
@@ -40,5 +41,5 @@ test('VX89 : le lead-form-layout interne (nav + modal-body) reste intact', () =>
 
 test('VX89 : le bouton fermer existant reste l\'unique fermeture (showClose désactivé sur ResponsiveDialog)', () => {
   assert.match(SRC, /showClose=\{false\}/)
-  assert.match(SRC, /className="modal-close" onClick=\{onClose\}/)
+  assert.match(SRC, /className="modal-close" onClick=\{guardedClose\}/)
 })
