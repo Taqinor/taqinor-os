@@ -4,17 +4,16 @@ NTSEC11 — CRUD de la politique réseau (allowlist IP/CIDR), réservé au
 Directeur (rôle Administrateur). Tout est scopé société côté serveur : la
 société n'est jamais lue du corps de requête.
 """
-from rest_framework import viewsets
 from rest_framework.exceptions import ValidationError as DRFValidationError
 
 from authentication.permissions import IsAdminRole
-from core.mixins import TenantMixin
+from core.viewsets import CompanyScopedModelViewSet
 
 from .models import IpAllowRule, NetworkPolicy
 from .serializers import IpAllowRuleSerializer, NetworkPolicySerializer
 
 
-class NetworkPolicyViewSet(TenantMixin, viewsets.ModelViewSet):
+class NetworkPolicyViewSet(CompanyScopedModelViewSet):
     """Politique réseau de la société (une seule par société)."""
 
     queryset = NetworkPolicy.objects.all().prefetch_related('rules')
@@ -29,7 +28,7 @@ class NetworkPolicyViewSet(TenantMixin, viewsets.ModelViewSet):
         serializer.save(company=company)
 
 
-class IpAllowRuleViewSet(TenantMixin, viewsets.ModelViewSet):
+class IpAllowRuleViewSet(CompanyScopedModelViewSet):
     """Plages CIDR autorisées, rattachées à la politique de la société."""
 
     queryset = IpAllowRule.objects.all()
