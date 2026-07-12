@@ -10,6 +10,8 @@ import {
 } from '../../ui'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import { useConfirmDialog, toast } from '../../ui/confirm'
+import { isDirty } from '../../ui/form-utils'
+import { useNavigationGuard } from '../../hooks/useNavigationGuard'
 import DashboardFilterBar from '../../features/reporting/DashboardFilterBar'
 
 /* WR8 — Gestionnaire de configuration de tableau de bord (FG96).
@@ -60,6 +62,15 @@ export default function DashboardConfigPage() {
   const [userId, setUserId] = useState('')
   const [cards, setCards] = useState([...ALL_CARDS])
   const [saving, setSaving] = useState(false)
+
+  // VX169 — garde de navigation IN-APP : le dialogue de création réinitialise
+  // toujours les mêmes valeurs par défaut (`openCreate`) — comparer à celles-ci
+  // suffit à détecter une saisie perdue si l'utilisateur navigue en interne.
+  const dirty = dialogOpen && isDirty(
+    { scope: 'tier', tier: 'normal', userId: '', cards: ALL_CARDS },
+    { scope, tier, userId, cards },
+  )
+  useNavigationGuard(dirty)
 
   // XPLT9 — dashboards FG381 (`core.Dashboard`) disponibles pour le filtre
   // global, et le dashboard actuellement sélectionné. `selectedLayout` est un

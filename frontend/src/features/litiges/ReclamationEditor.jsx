@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { ArrowLeft, Save } from 'lucide-react'
 import { Button, Input, Textarea, Label, Switch, toast } from '../../ui'
+import { isDirty } from '../../ui/form-utils'
+import { useNavigationGuard } from '../../hooks/useNavigationGuard'
 import litigesApi from '../../api/litigesApi'
 import { GRAVITE_MAP, TYPE_MAP } from './litigesStatus'
 import FilterSelect from './FilterSelect'
@@ -36,6 +38,10 @@ export default function ReclamationEditor({ reclamation, onCancel, onSaved }) {
     audit_id: reclamation?.audit_id ?? '',
   })
   const [saving, setSaving] = useState(false)
+  // VX169 — garde de navigation IN-APP (snapshot pris au montage).
+  const initialSnapshotRef = useRef(form)
+  const dirty = isDirty(initialSnapshotRef.current, form)
+  useNavigationGuard(dirty)
 
   const set = (key) => (e) =>
     setForm((f) => ({ ...f, [key]: e?.target ? e.target.value : e }))

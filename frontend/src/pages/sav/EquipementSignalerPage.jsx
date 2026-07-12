@@ -13,6 +13,7 @@ import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import api from '../../api/axios'
 import { Button, Textarea, Input } from '../../ui'
+import { useNavigationGuard } from '../../hooks/useNavigationGuard'
 
 export default function EquipementSignalerPage() {
   const { token } = useParams()
@@ -23,6 +24,10 @@ export default function EquipementSignalerPage() {
   const [status, setStatus] = useState('form') // form | submitting | done | error
   const [error, setError] = useState(null)
   const [reference, setReference] = useState(null)
+
+  // VX169 — garde de navigation IN-APP (clic lien pendant la saisie).
+  const dirty = status !== 'done' && Boolean(description || telephone || photo)
+  useNavigationGuard(dirty)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
