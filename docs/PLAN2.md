@@ -2230,7 +2230,7 @@ VX83-86/99-101 (round 3, non construit) — transcrire chaque @after tel quel.**
   ramène ; tests des 2 chemins de sortie. (T2/T3 — M/L, sonnet ; opus si le générique cross-source
   dérape) (@lane: backend/notify — @after VX85)
 
-- [ ] VX211 — **« Ma file » par persona + départage « victoires rapides ». @after VX83.** VX83 (@lane: backend/notify — @after VX83)
+- [x] VX211 **(already present)** — **« Ma file » par persona + départage « victoires rapides ». @after VX83.** VX83 (@lane: backend/notify — @after VX83)
   construit UNE union triée par urgence globale, identique pour tous — or
   commercial/comptable/technicien/directeur ont des priorités radicalement différentes. Fix
   frontend : `queueViewForRole(role)` (rôle déjà dans le store, `MesActivitesPage.jsx:66`) posant
@@ -3207,6 +3207,8 @@ droite)**
 ---
 
 ## DONE LOG (agent appends one plain-language line per completed task)
+
+- 2026-07-12 — **VX211 (already present)** — verified: `frontend/src/features/queue/queueViews.js` (+ `queueViews.test.js`) provides `queueViewForRole` persona ordering, `apps/records/views.py` exposes `effort_estime` per-kind (`_EFFORT_ESTIME_PAR_KIND`) for the "victoires rapides" secondary sort; commit `782b5c92` on main. Ticked, no rebuild.
 
 - 2026-07-12 — **VX210 (already present)** — verified: sweep `reveiller_snoozes` (Celery task, `sweeps.py:553`) wakes both `records.Activity.snoozed_until` and the new `notifications.SnoozedItem` (approvals), `records.Activity.snooze_trigger_event` (closed choices, `records/services.py:181-313`) subscribed via events; `tests_vx210_reveil_snooze.py` covers both exit paths; commit `9eccf915` on main. Ticked, no rebuild.
 
