@@ -144,3 +144,85 @@ describe('MaJourneePage (VX42)', () => {
     expect(banner).toHaveTextContent('photos obligatoires')
   })
 })
+
+/* VX226 — priorité (déjà annotée/triée côté serveur, jamais rendue avant) +
+   fraîcheur (bouton Actualiser + refetch throttlé sur visibilitychange). */
+describe('MaJourneePage (VX226)', () => {
+  it('une intervention urgente porte une puce « Urgente » distincte du rang', async () => {
+    installationsApi.getInterventions.mockResolvedValue({
+      data: {
+        results: [{
+          id: 4,
+          date_prevue: todayISO(),
+          client_nom: 'Client Urgent',
+          type_intervention: 'depannage',
+          statut: 'a_preparer',
+          priorite: 'urgente',
+        }],
+      },
+    })
+    render(<MemoryRouter><MaJourneePage /></MemoryRouter>)
+
+    await waitFor(() => expect(screen.getByText('Client Urgent')).toBeInTheDocument())
+    expect(screen.getByText('Urgente')).toBeInTheDocument()
+  })
+
+  it('une intervention priorité normale ne porte aucune puce (silence visuel)', async () => {
+    installationsApi.getInterventions.mockResolvedValue({
+      data: {
+        results: [{
+          id: 5,
+          date_prevue: todayISO(),
+          client_nom: 'Client Normal',
+          type_intervention: 'maintenance',
+          statut: 'a_preparer',
+          priorite: 'normale',
+        }],
+      },
+    })
+    render(<MemoryRouter><MaJourneePage /></MemoryRouter>)
+
+    await waitFor(() => expect(screen.getByText('Client Normal')).toBeInTheDocument())
+    expect(screen.queryByText('Urgente')).not.toBeInTheDocument()
+    expect(screen.queryByText('Haute')).not.toBeInTheDocument()
+  })
+
+  it('le bouton Actualiser relance le chargement au clic', async () => {
+    const user = userEvent.setup()
+    installationsApi.getInterventions.mockResolvedValue({ data: { results: [] } })
+    render(<MemoryRouter><MaJourneePage /></MemoryRouter>)
+
+    await waitFor(() => expect(installationsApi.getInterventions).toHaveBeenCalledTimes(1))
+    await user.click(screen.getByRole('button', { name: 'Actualiser' }))
+    await waitFor(() => expect(installationsApi.getInterventions).toHaveBeenCalledTimes(2))
+  })
+
+  it('un retour sur l’onglet après ≥ 2 min déclenche un refetch silencieux (visibilitychange)', async () => {
+    installationsApi.getInterventions.mockResolvedValue({ data: { results: [] } })
+    render(<MemoryRouter><MaJourneePage /></MemoryRouter>)
+    await waitFor(() => expect(installationsApi.getInterventions).toHaveBeenCalledTimes(1))
+
+    const realNow = Date.now
+    try {
+      Date.now = () => realNow() + 3 * 60 * 1000 // + 3 min (>= throttle 2 min)
+      Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
+      document.dispatchEvent(new Event('visibilitychange'))
+      await waitFor(() => expect(installationsApi.getInterventions).toHaveBeenCalledTimes(2))
+    } finally {
+      Date.now = realNow
+    }
+  })
+
+  it('un retour sur l’onglet avant 2 min ne déclenche PAS de refetch (throttle)', async () => {
+    installationsApi.getInterventions.mockResolvedValue({ data: { results: [] } })
+    render(<MemoryRouter><MaJourneePage /></MemoryRouter>)
+    await waitFor(() => expect(installationsApi.getInterventions).toHaveBeenCalledTimes(1))
+
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
+    document.dispatchEvent(new Event('visibilitychange'))
+    // Laisse le temps à un éventuel (mauvais) refetch de partir, puis vérifie
+    // qu'il n'y en a PAS eu (throttle < 2 min depuis le fetch initial).
+    await new Promise((r) => setTimeout(r, 20))
+    expect(installationsApi.getInterventions).toHaveBeenCalledTimes(1)
+  })
+})

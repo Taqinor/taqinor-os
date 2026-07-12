@@ -11,14 +11,15 @@
 // 3 taps (ouvrir la fiche → onglet Trajet → bouton). Rail d'onglets
 // icône+libellé (au lieu des 9 icônes seules) avec bandeau « Prochaine
 // action ». FAB « Photo rapide » posé au pouce.
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   CalendarDays, MapPin, ChevronRight, ClipboardList, Navigation, Camera,
   Tag, ListChecks, Mic, ShieldCheck, Wrench, AlertOctagon, CloudRain, Phone,
+  RefreshCw,
 } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import {
-  Spinner, EmptyState, Badge, StatusPill, StatusAccentCard,
+  Spinner, EmptyState, Badge, StatusPill, StatusAccentCard, Button,
   Sheet, SheetContent, SheetHeader, SheetTitle,
   Tabs, TabsList, TabsTrigger, TabsContent,
   FloatingActionButton,
@@ -53,6 +54,17 @@ const TYPE_ACCENT = {
   depannage: '#f59e0b',
 }
 const typeAccent = (k) => TYPE_ACCENT[k] ?? '#64748b'
+
+// VX226(a) — `priorite` (XFSM4, Intervention.Priorite : urgente/haute/
+// normale) est déjà annotée + TRIÉE côté serveur (views/intervention.py,
+// `priorite_rang`) mais n'était JAMAIS rendue ici : une réaffectation
+// urgente se noyait visuellement parmi les interventions normales, dans le
+// même ordre que le tri serveur sans aucun repère. `normale` = comportement
+// actuel (aucune puce — silence visuel, pas de bruit sur le cas courant).
+const PRIORITE_BADGE = {
+  urgente: { tone: 'danger', label: 'Urgente' },
+  haute: { tone: 'warning', label: 'Haute' },
+}
 
 function todayISO() {
   const d = new Date()
@@ -93,6 +105,9 @@ export default function MaJourneePage() {
   const [initialTab, setInitialTab] = useState('prep')
   const today = useMemo(() => todayISO(), [])
 
+  // VX226(b) — horodatage du dernier fetch (ref, pas de re-rendu) : pilote le
+  // throttle du refetch sur `visibilitychange` ci-dessous.
+  const lastFetchedAtRef = useRef(0)
   // Le rôle Technicien ne reçoit déjà que SES interventions (scope serveur).
   const load = useCallback(() => installationsApi
     .getInterventions({ date_prevue: today })
@@ -100,10 +115,37 @@ export default function MaJourneePage() {
       const all = r.data?.results ?? r.data ?? []
       // Filtre défensif : aujourd'hui uniquement (l'API peut ignorer le filtre).
       setRows(all.filter((i) => (i.date_prevue || '').slice(0, 10) === today))
+      lastFetchedAtRef.current = Date.now()
     })
     .catch(() => setRows([]))
     .finally(() => setLoading(false)), [today])
   useEffect(() => { load() }, [load])
+
+  // VX226(b) — `load()` n'était appelé qu'au montage : une réaffectation
+  // dispatchée à 10 h restait invisible jusqu'au rechargement manuel de
+  // l'onglet (aucun bouton refresh, aucun `visibilitychange`, et le
+  // pull-to-refresh natif est coupé par `overscroll-behavior: contain`).
+  // Throttlé à un retour visible après ≥ 2 min depuis le dernier fetch —
+  // JAMAIS un poll actif (aucun setInterval, uniquement l'événement
+  // navigateur `visibilitychange`).
+  useEffect(() => {
+    const REFRESH_THROTTLE_MS = 2 * 60 * 1000
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return
+      if (Date.now() - lastFetchedAtRef.current < REFRESH_THROTTLE_MS) return
+      load()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [load])
+
+  // VX226(b) — bouton « Actualiser » discret (cohérent OfflineSyncIndicator :
+  // RefreshCw + rotation pendant le fetch).
+  const [manualRefreshing, setManualRefreshing] = useState(false)
+  const refreshNow = () => {
+    setManualRefreshing(true)
+    load().finally(() => setManualRefreshing(false))
+  }
 
   // VX43 — sheet terrain alignée sur le bottom-sheet mobile (au lieu de
   // side="right", un tiroir latéral peu naturel au pouce sur un écran de
@@ -134,6 +176,12 @@ export default function MaJourneePage() {
         <CalendarDays className="size-5 text-primary" aria-hidden="true" />
         <h1 className="text-lg font-semibold">Ma journée</h1>
         <span className="text-sm text-muted-foreground">{formatDate(today, { long: true })}</span>
+        {/* VX226(b) — actualisation manuelle discrète (repli au throttle
+            visibilitychange ci-dessus, pour un besoin immédiat). */}
+        <Button size="sm" variant="ghost" className="ml-auto" onClick={refreshNow} disabled={manualRefreshing}
+                aria-label="Actualiser">
+          <RefreshCw className={`size-4${manualRefreshing ? ' animate-spin' : ''}`} aria-hidden="true" />
+        </Button>
       </header>
 
       {loading ? (
@@ -165,6 +213,14 @@ export default function MaJourneePage() {
                       <div className="flex items-center gap-2">
                         <span className="truncate font-medium">{interv.client_nom || interv.installation_reference || '—'}</span>
                         <StatusPill status={interv.statut} label={interventionStatusLabel(interv.statut)} dot={false} />
+                        {/* VX226(a) — puce distincte du rang de la liste : une
+                            intervention urgente/haute reste identifiable même
+                            après un tri/filtre. */}
+                        {PRIORITE_BADGE[interv.priorite] && (
+                          <Badge tone={PRIORITE_BADGE[interv.priorite].tone}>
+                            {PRIORITE_BADGE[interv.priorite].label}
+                          </Badge>
+                        )}
                       </div>
                       <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[12px] text-muted-foreground">
                         <span>{typeLabel(interv.type_intervention)}</span>
