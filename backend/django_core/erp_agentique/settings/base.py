@@ -62,6 +62,11 @@ INSTALLED_APPS = [
     # concret → aucune migration. N'importe que vers le bas (import-linter).
     'core',
     'authentication',
+    # ODX19 — Achats (bons de commande/réceptions/factures/paiements/retours
+    # fournisseur, équivalent Odoo Purchase). Sorti de stock en préservant
+    # les tables physiques (SeparateDatabaseAndState). Chargé AVANT stock :
+    # le shim de ré-export de stock.models importe apps.achats.models.
+    'apps.achats',
     'apps.stock',
     'apps.crm',
     'apps.ventes',
