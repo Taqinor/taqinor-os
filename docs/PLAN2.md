@@ -2037,7 +2037,7 @@ détail en tête de document — voir **VX120**. Ne pas la reconstruire ici.*
   divergent. **@coord VX101** (il corrige `decider_approbation`/`IsAnyRole` — même classe de bug,
   endpoints disjoints ; ne pas doubler). (T1 — L, opus : auth/permissions) (@lane: backend/auth)
 
-- [ ] VX200 — **[BACKEND infra] CSP figée sur des valeurs de DEV + zéro header de repli côté (@lane: backend/auth)
+- [x] VX200 **(already present)** — **[BACKEND infra] CSP figée sur des valeurs de DEV + zéro header de repli côté (@lane: backend/auth)
   SPA : templater la prod, décommenter HSTS.** `backend/nginx/Dockerfile` copie `nginx.conf`
   VERBATIM (pas d'envsubst) or `nginx.conf:78` code en dur `http://localhost:9000` (MinIO dev)
   dans `img-src`/`connect-src`/`frame-src` : en prod, les URL MinIO présignées réelles sont
