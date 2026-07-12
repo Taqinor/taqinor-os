@@ -1,47 +1,47 @@
 # Core
-Django==5.1.4
-djangorestframework==3.15.2
-djangorestframework-simplejwt==5.3.1
-django-cors-headers==4.6.0
+Django==6.0.7
+djangorestframework==3.17.1
+djangorestframework-simplejwt==5.5.1
+django-cors-headers==4.9.0
 
 # Database
-psycopg2-binary==2.9.10
-pgvector==0.3.6
+psycopg2-binary==2.9.12
+pgvector==0.5.0
 
 # Cache / Queue
-redis==5.2.1
-django-redis==5.4.0
-celery==5.4.0
+redis==8.0.1
+django-redis==7.0.0
+celery==5.6.3
 
 # PDF generation
-weasyprint==62.3
+weasyprint==69.0
 # PyMuPDF (fitz) — PDF split/merge, signature-field zones, annotation/stamp
 # overlays and scan-batch separation (GED module). Lazy-imported with graceful
 # degradation, but shipped so those features work in prod/CI.
 PyMuPDF==1.28.0
-pydyf==0.11.0
-Jinja2==3.1.5
+pydyf==0.12.1
+Jinja2==3.1.6
 
 # Premium quote-PDF engine (apps.ventes.quote_engine) — ROI/savings charts
-numpy==1.26.4
-matplotlib==3.9.2
+numpy==2.5.1
+matplotlib==3.11.0
 
 # FG361 — Prévision de ventes / demande (séries temporelles). Holt-Winters /
 # lissage exponentiel. Importé défensivement dans core/forecast.py (repli pur
 # Python : tendance linéaire / moyenne glissante), donc le code reste import-safe
 # et les tests passent même sans cette dépendance installée.
-statsmodels==0.14.4
+statsmodels==0.14.6
 
 # Email
-django-anymail[sendgrid]==10.3
+django-anymail[sendgrid]==15.0
 
 # XMKT33 — vérification DNS (SPF/DKIM/DMARC) du domaine d'envoi marketing.
 # Dépendance libre (MIT), aucun coût.
-dnspython==2.7.0
+dnspython==2.8.0
 
 # File storage MinIO/S3
-django-storages[s3]==1.14.4
-boto3==1.35.99
+django-storages[s3]==1.14.6
+boto3==1.43.46
 
 # Excel (.xlsx) export — exports CRM/listes (pré-approuvé, voir docs/PLAN.md)
 openpyxl==3.1.5
@@ -49,41 +49,41 @@ openpyxl==3.1.5
 # FG352 — RAG / DocQA : découpage de texte en fragments (free/open-source).
 # Importé défensivement dans apps/ged/services.chunk_text (repli pur Python si
 # absent), donc le code reste import-safe sans cette dépendance.
-langchain-text-splitters==0.3.2
+langchain-text-splitters==1.1.2
 
 # Image handling
-Pillow==10.4.0
+Pillow==12.3.0
 
 # QR codes for the quote PDF (premium scan-to-sign: rounded navy + centre logo).
 # Pure Python (Pillow already pinned above); imported defensively, so a missing
 # wheel degrades to the textual sign link rather than breaking a PDF.
-qrcode==7.4.2
+qrcode==8.2
 
 # HTTP client
 httpx==0.28.1
 
 # Server
-gunicorn==22.0.0
+gunicorn==26.0.0
 
 # Web push (PWA) — N92/N109. Diffusion web-push + génération de paire VAPID
 # (py_vapid arrive en dépendance transitive). Le sdist http-ece se build
 # proprement avec des setuptools récents (la CI et le build Docker mettent pip/
 # setuptools à jour avant l'install). Toujours importé paresseusement côté code :
 # sans clés VAPID, le push reste un NO-OP.
-pywebpush==2.0.3
+pywebpush==2.3.0
 # TOTP two-factor auth (2FA opt-in, N96)
 pyotp==2.10.0
 # Architectural import contracts (M3) — enforces the import rules in
 # backend/django_core/.importlinter via the `lint-imports` CI step (no cycles
 # between core domain models; the `core` app stays a base foundation layer).
-import-linter==2.11
+import-linter==2.13
 
 # XGED5 — PAdES cryptographic sealing of signed GED PDFs (open-source, free).
 # Imported function-locally + guarded in apps/ged/services.py: without the
 # lib installed the sealing step degrades cleanly to a no-op (XGED4's flow
 # stays intact). RFC 3161 timestamp support (pyhanko also ships the TSA
 # client) is key-gated via settings.GED_TSA_URL — no-op without it.
-pyHanko==0.28.0
+pyHanko==0.35.2
 
 # YHARD6 — Prometheus metrics (open-source, free). OPTIONAL: core/metrics.py
 # renders the /metrics exposition text in pure stdlib regardless of whether
@@ -91,7 +91,7 @@ pyHanko==0.28.0
 # collectors) never depends on it being present. When installed, it also
 # provides standard Django HTTP/DB instrumentation (not wired by default —
 # add its middleware in settings if that richer surface is wanted later).
-django-prometheus==2.3.1
+django-prometheus==2.5.0
 
 # NTPLT46 — Sentry (supervision d'erreurs), dépendance OPTIONNELLE gated-founder.
 # core/monitoring.py importe sentry-sdk PARESSEUSEMENT et UNIQUEMENT si SENTRY_DSN
