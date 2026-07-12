@@ -1,6 +1,7 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import stockApi from '../../../api/stockApi'
 import { fetchAllPages } from '../../../utils/fetchAllPages'
+import { createCancellableThunk, dedupeInFlight } from '../../../lib/thunkHelpers'
 
 // VX164 — garde anti-course PAR RESSOURCE sur les `update*.fulfilled` :
 // deux PATCH rapides du MÊME enregistrement, résolus dans l'ordre INVERSE
@@ -19,14 +20,15 @@ function isStaleResourceUpdate(seqMap, id, requestId) {
 // produits : StockList et les KPI/graphiques du Dashboard étaient FAUX dès
 // 101 produits, sans indicateur. On lit désormais TOUTES les pages, en
 // parallèle borné (pas un escalier sériel).
-export const fetchProduits = createAsyncThunk('stock/fetchProduits', async (_, { rejectWithValue }) => {
-  try {
-    const results = await fetchAllPages((page) => stockApi.getProduits({ page }).then((r) => r.data), { concurrency: 20 })
-    return { results }
-  } catch (err) {
-    return rejectWithValue(err.response?.data ?? err.message)
-  }
-})
+// VX163 — `{signal}` câblé (démontage annule la pagination en vol,
+// `meta.aborted === true`) + dé-duplication en vol (deux montages simultanés
+// de StockList ne déclenchent qu'UNE seule pagination complète, partagée).
+export const fetchProduits = createCancellableThunk('stock/fetchProduits', (_, { signal }) =>
+  dedupeInFlight('stock/fetchProduits', () =>
+    fetchAllPages((page) => stockApi.getProduits({ page }, { signal }).then((r) => r.data), { concurrency: 20 })
+      .then((results) => ({ results })),
+  ),
+)
 
 export const createProduit = createAsyncThunk('stock/createProduit', async (data, { rejectWithValue }) => {
   try {

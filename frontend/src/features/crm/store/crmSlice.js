@@ -1,6 +1,7 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import crmApi from '../../../api/crmApi'
 import { fetchAllPages } from '../../../utils/fetchAllPages'
+import { createCancellableThunk, dedupeInFlight } from '../../../lib/thunkHelpers'
 
 // VX164 — garde anti-course PAR RESSOURCE sur les `update*.fulfilled` :
 // deux PATCH rapides du MÊME enregistrement, résolus dans l'ordre INVERSE
@@ -58,23 +59,24 @@ export const deleteClient = createAsyncThunk('crm/deleteClient', async (id, { re
   }
 })
 
-export const fetchLeads = createAsyncThunk('crm/fetchLeads', async (params, { rejectWithValue, signal }) => {
-  try {
+// VX163 — enrobé par `createCancellableThunk` (annulation propre →
+// `meta.aborted === true`) + dé-duplication en vol PAR JEU DE PARAMÈTRES (deux
+// montages simultanés avec les MÊMES filtres partagent la même pagination ;
+// des filtres différents restent des requêtes distinctes).
+export const fetchLeads = createCancellableThunk('crm/fetchLeads', (params, { signal }) =>
+  dedupeInFlight(`crm/fetchLeads:${JSON.stringify(params ?? {})}`, () =>
     // Le kanban doit voir TOUS les leads : on suit la pagination DRF
     // (PAGE_SIZE 100) jusqu'au bout au lieu de s'arrêter à la première page.
     // VX54 — était un `while` SÉRIEL (un aller-retour réseau par page, gel de
     // plusieurs secondes à 250-500 ms de RTT) ; désormais parallèle borné.
     // VX55 — `signal` transmis à chaque page : `thunk.abort()` annule les
     // requêtes en vol (démontage LeadsPage / changement de filtre serveur).
-    const all = await fetchAllPages(
+    fetchAllPages(
       (page) => crmApi.getLeads({ ...(params ?? {}), page }, { signal }).then((r) => r.data),
       { concurrency: 20 },
-    )
-    return all
-  } catch (err) {
-    return rejectWithValue(err.response?.data ?? err.message)
-  }
-})
+    ),
+  ),
+)
 
 export const createLead = createAsyncThunk('crm/createLead', async (data, { rejectWithValue }) => {
   try {

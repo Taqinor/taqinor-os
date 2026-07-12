@@ -81,6 +81,7 @@ the journey the best in the world for the CLIENT and the COMMERCIAL user.*
 - 2026-07-12 — VX165 **(already present)** : `ventesSlice.js`/`crmSlice.js`/`stockSlice.js` ont déjà `pendingCount` incrémenté/décrémenté par `pending`/settled sur chaque fetch, `loading = pendingCount > 0`.
 - 2026-07-12 — VX203 **[BLOCKED: partiel]** : `lib/apiError.js` (b) et la délégation `toast.js→apiError.js` étaient déjà construites (vagues précédentes). Fait cette session : (c) `api/iaApi.js` aligné sur le contrat (a) d'`axios.js` — toute erreur ≠401 hors annulation/`suppressErrorToast` surface désormais un toast FR via `getApiError` (un 403 du catalogue d'actions agentiques n'est plus muet). PAS FAIT (hors budget d'une session sans `eslint`/`vitest`/`vite build` disponibles dans ce worktree) : le scan réel des pages fautives donne ~104 fichiers (catch + `toastError`/`toast.error` direct), très au-delà des « ~35 » du texte — un codemod à l'aveugle sur ce volume, sans aucun moyen de vérifier une régression de build, est un risque disproportionné ; `scripts/check_double_toast.mjs` non créé pour la même raison (il casserait frontend-lint immédiatement tant que les ~104 fichiers ne sont pas corrigés). Laissé en BLOCKED pour une session avec outillage complet (build/lint) qui peut vérifier le codemod page par page.
 - 2026-07-12 — VX205 **(already present)** : `ErrorBoundary` déjà déployée autour de chaque `TabsContent`/onglet indépendant de `LeadForm.jsx`, `Dashboard.jsx` (+ cockpit), `CommercialDashboard.jsx` et `InterventionCapturePanels.jsx` (commentaires `VX205` déjà présents sur les 4 fichiers).
+- 2026-07-12 — VX163 : nouveau `lib/thunkHelpers.js` (`createCancellableThunk` — normalise l'annulation axios en vraie `AbortError` pour que RTK marque `meta.aborted===true` ; `dedupeInFlight` — `Map<clé,Promise>` in-vol). Appliqué aux 4 thunks visés : `fetchProduits` (stockSlice), `fetchDevis`/`fetchFactures` (ventesSlice), `fetchLeads` (crmSlice, clé incluant les params). `stockApi.getProduits`/`ventesApi.getFactures` acceptent désormais un `config` (signal).
 
 #### DONE LOG — Vague 2 (VX terrain/finance/CRM + QX groupe) (2026-07-12)
 
@@ -1514,7 +1515,7 @@ pas la dupliquer ici, la numérotation continue directement à SEED-02.*
   onglet A → onglet B simulé passe `isAuthenticated:false` sans appel réseau. (T2 — S, sonnet)
   (@lane: frontend/data)
 
-- [ ] VX163 — **Infrastructure thunk : annulation `{signal}` + dé-duplication en vol des 4 thunks (@lane: frontend/data — @with/after VX54)
+- [x] VX163 — **Infrastructure thunk : annulation `{signal}` + dé-duplication en vol des 4 thunks (@lane: frontend/data — @with/after VX54)
   chauds.** 79 `createAsyncThunk` identiques, ZÉRO `{signal}` (grep) — un démontage laisse la
   requête vivre et réduire un écran disparu ; et zéro dédup : deux montages simultanés = deux GET
   identiques. Fix (0 dép — le « RTK Query sans RTK Query ») : `lib/thunkHelpers.js` —

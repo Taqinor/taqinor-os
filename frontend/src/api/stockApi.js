@@ -2,7 +2,8 @@ import api from './axios'
 
 const stockApi = {
   // Produits
-  getProduits: (params) => api.get('/stock/produits/', { params }),
+  // VX163 — `config` (ex. `{signal}`) transmis pour l'annulation en vol.
+  getProduits: (params, config) => api.get('/stock/produits/', { params, ...config }),
   getProduit: (id) => api.get(`/stock/produits/${id}/`),
   createProduit: (data) => api.post('/stock/produits/', data),
   updateProduit: (id, data) => api.patch(`/stock/produits/${id}/`, data),
