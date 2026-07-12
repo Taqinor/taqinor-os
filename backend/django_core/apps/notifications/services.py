@@ -415,6 +415,15 @@ def notify(user, event_type, title, body='', link=None, company=None,
         return None
 
     company = company if company is not None else getattr(user, 'company', None)
+
+    # ODX23 — un événement d'un module ModuleToggle-OFF pour la société ne
+    # notifie plus personne (no-op best-effort, même politique que
+    # l'enforcement API ODX4). Whitelist fermée et partielle : voir
+    # apps.notifications.module_gating.EVENT_MODULE.
+    from .module_gating import event_module_disabled
+    if event_module_disabled(event_type, company):
+        return None
+
     prefs = resolve_prefs(user, event_type)
     from .models import NotificationReason
     reason = reason if reason in NotificationReason.values else ''
