@@ -372,19 +372,30 @@ app.conf.beat_schedule = {
 from celery.signals import task_success, task_failure  # noqa: E402
 
 
+def _queue_of(sender):
+    """NTPLT44 — nom de queue best-effort d'une tâche (routing_key), 'default'."""
+    try:
+        info = getattr(getattr(sender, 'request', None), 'delivery_info', None)
+        return (info or {}).get('routing_key') or 'default'
+    except Exception:  # noqa: BLE001 — best-effort
+        return 'default'
+
+
 @task_success.connect
-def _yhard6_on_task_success(**kwargs):
+def _yhard6_on_task_success(sender=None, **kwargs):
     try:
         from core import metrics
         metrics.record_task_success()
+        metrics.record_task_queue(_queue_of(sender), ok=True)  # NTPLT44
     except Exception:  # noqa: BLE001 — best-effort, ne doit jamais casser Celery
         pass
 
 
 @task_failure.connect
-def _yhard6_on_task_failure(**kwargs):
+def _yhard6_on_task_failure(sender=None, **kwargs):
     try:
         from core import metrics
         metrics.record_task_failure()
+        metrics.record_task_queue(_queue_of(sender), ok=False)  # NTPLT44
     except Exception:  # noqa: BLE001 — best-effort, ne doit jamais casser Celery
         pass

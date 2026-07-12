@@ -48,6 +48,7 @@ from .views import (
     TenantUsageSnapshotViewSet,
     TrashViewSet,
     WorkflowTemplateViewSet,
+    db_stats_view,
     health_live,
     health_ready,
     maintenance_toggle,
@@ -129,4 +130,6 @@ urlpatterns = router.urls + [
     path('metrics/', metrics_view, name='metrics'),
     # NTPLT55 — bascule superuser du mode maintenance (lecture seule).
     path('maintenance/', maintenance_toggle, name='maintenance-toggle'),
+    # NTPLT19 — statistiques DB d'exploitation (SUPERUSER only, lecture seule).
+    path('db-stats/', db_stats_view, name='db-stats'),
 ]
