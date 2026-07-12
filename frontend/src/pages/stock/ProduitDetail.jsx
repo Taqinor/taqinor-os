@@ -8,6 +8,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   Button, Tabs, TabsList, TabsTrigger, TabsContent,
 } from '../../ui'
+import RelationCounters from '../../ui/RelationCounters'
 
 // ZPUR10 / ZSTK3 — Fiche produit (au-delà du catalogue) : quantité « en
 // commande » (BCF brouillon/envoyé, jamais annulé/reçu) + rapport
@@ -168,6 +169,21 @@ export function ProduitDetail({ produit, onClose }) {
             Engagements d&apos;achat et rapport prévisionnel — donnée interne, lecture seule.
           </DialogDescription>
         </DialogHeader>
+
+        {/* VX159 — compteur de relations cliquable en tête (BCF ouverts du
+            produit), lien vers la liste des commandes fournisseur pré-filtrée
+            (?produit=). Lit les sources déjà portées par le produit. */}
+        <RelationCounters
+          className="mb-1"
+          counters={[
+            {
+              key: 'bcf',
+              label: 'BCF ouverts',
+              count: (produit.bcf_sources_en_commande ?? []).length,
+              to: `/stock/bons-commande-fournisseur?produit=${produit.id}`,
+            },
+          ]}
+        />
 
         <Tabs defaultValue="en-commande">
           <TabsList>

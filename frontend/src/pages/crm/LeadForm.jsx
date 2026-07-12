@@ -37,6 +37,7 @@ import {
 } from '../../ui'
 // VX89 — shell externe Escape + focus-trap + bottom-sheet mobile (comme ClientForm).
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
+import RelationCounters from '../../ui/RelationCounters'
 import { formatMAD, normalizeMaPhone } from '../../lib/format'
 
 // Canal posé par défaut sur un lead créé à la main (jamais null) : une visite/
@@ -814,6 +815,23 @@ export default function LeadForm({
             estimé, prochaine activité, jours depuis dernière modification —
             les 4 faits qui comptent, visibles sans scroller. */}
         {isEdit && <LeadSummaryBar lead={liveLead} />}
+
+        {/* VX159 — compteurs de relations cliquables en tête de fiche : les
+            devis du lead, lien vers la liste devis pré-filtrée (?lead=). Lit la
+            liste `devis` déjà portée par le lead (aucune agrégation nouvelle). */}
+        {isEdit && liveLead?.id && (
+          <RelationCounters
+            className="mt-2"
+            counters={[
+              {
+                key: 'devis',
+                label: 'devis',
+                count: (liveLead.devis ?? []).length,
+                to: `/ventes/devis?lead=${liveLead.id}`,
+              },
+            ]}
+          />
+        )}
 
         {/* ── Barre d'actions devis (style Odoo) — tout reste dans la fiche ── */}
         {isEdit && (

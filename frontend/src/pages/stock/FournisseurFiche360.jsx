@@ -13,6 +13,7 @@ import {
   Spinner, Tabs, TabsList, TabsTrigger, TabsContent,
   Card, CardHeader, CardTitle, CardContent, Stat,
 } from '../../ui'
+import RelationCounters from '../../ui/RelationCounters'
 
 // XPUR25 — Fiche fournisseur 360 : une page à onglets qui rassemble les
 // briques déjà existantes (performance FG59, factures/solde AP, retours/avoirs,
@@ -81,7 +82,17 @@ function ResumePanel({ fournisseurId }) {
   }
 
   return (
-    <div className="grid gap-3 sm:grid-cols-4">
+    <div className="flex flex-col gap-3">
+      {/* VX159 — compteurs de relations cliquables en tête (liste cible
+          pré-filtrée ?fournisseur=). Lit l'agrégat vue-360 déjà chargé. */}
+      <RelationCounters
+        counters={[
+          { key: 'bcf', label: 'BCF ouverts', count: data.bcf_ouverts ?? 0, to: `/stock/bons-commande-fournisseur?fournisseur=${fournisseurId}` },
+          { key: 'factures', label: 'factures ouvertes', count: data.factures_ouvertes ?? 0, to: `/stock/factures-fournisseur?fournisseur=${fournisseurId}` },
+          { key: 'retours', label: 'retours/avoirs', count: data.nb_retours_avoirs ?? 0, to: `/stock/retours-fournisseur?fournisseur=${fournisseurId}` },
+        ]}
+      />
+      <div className="grid gap-3 sm:grid-cols-4">
       <Stat label="BCF ouverts" value={String(data.bcf_ouverts ?? 0)} />
       <Stat label="BCF en retard" value={String(data.bcf_en_retard ?? 0)} />
       <Stat label="Réceptions attendues" value={String(data.receptions_attendues ?? 0)} />
@@ -90,6 +101,7 @@ function ResumePanel({ fournisseurId }) {
       <Stat label="Score performance" value={data.score_performance != null ? String(data.score_performance) : '—'} />
       <Stat label="Retours/avoirs" value={String(data.nb_retours_avoirs ?? 0)} />
       <Stat label="Accords de prix actifs" value={String(data.accords_prix_actifs ?? 0)} />
+      </div>
     </div>
   )
 }
