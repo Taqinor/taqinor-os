@@ -32,6 +32,9 @@ import { formatMAD, formatDateTime } from '../../lib/format'
 import { voice } from '../../lib/voice'
 // VX155 — jalon « devis envoyé » : un cran au-dessus du toast succès plat.
 import { toastMilestone } from '../../lib/toast'
+// VX236 — `?equipe=<id>` (lien depuis MesEquipesCard) filtre la liste sur les
+// membres de cette équipe — filtre client-side, aucun endpoint nouveau.
+import { useEquipeMembreIds } from '../../hooks/useEquipeMembreIds'
 import { filenameFromResponse, downloadBlobInGesture } from '../../utils/downloadBlob'
 import { openPdfBlob, openPdfInGesture } from '../../utils/pdfBlob'
 import { proposalParams, pdfBlob } from '../../features/ventes/previewPdf'
@@ -1755,6 +1758,11 @@ export default function DevisList() {
   // sans changer son statut stocké (logique T7, partagée filtre/résumé/tableau).
   const effStatutOf = (d) => (d.is_expired ? 'expire' : d.statut)
 
+  // VX236 — `?equipe=<id>` (lien depuis MesEquipesCard) : filtre additif sur
+  // les membres de l'équipe (commercial créateur du devis).
+  const equipeId = searchParams.get('equipe')
+  const equipeMembreIds = useEquipeMembreIds(equipeId)
+
   // T5 — Liste filtrée (statut effectif) + recherche (référence / client).
   // U7 — les révisions remplacées (is_active === false) sont masquées tant que
   // le bouton « voir les versions remplacées » n'est pas activé.
@@ -1763,12 +1771,13 @@ export default function DevisList() {
     return devis.filter(d => {
       if (!showSuperseded && d.is_active === false) return false
       if (statutFilter !== 'tous' && effStatutOf(d) !== statutFilter) return false
+      if (equipeId && equipeMembreIds && !equipeMembreIds.has(d.created_by)) return false
       if (!q) return true
       const ref = String(d.reference ?? '').toLowerCase()
       const client = String(d.client_nom ?? '').toLowerCase()
       return ref.includes(q) || client.includes(q)
     })
-  }, [devis, statutFilter, query, showSuperseded])
+  }, [devis, statutFilter, query, showSuperseded, equipeId, equipeMembreIds])
 
   // VX79 — lien profond ?devis=<pk> pointant vers un devis introuvable parmi
   // ceux chargés (une fois le chargement terminé) : signalé par un EmptyState

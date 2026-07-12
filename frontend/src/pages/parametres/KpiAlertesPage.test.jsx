@@ -58,4 +58,12 @@ describe('KpiAlertesPage (XPLT6 — alertes de seuil sur KPI agrégés)', () => 
     screen.getByRole('button', { name: /Nouvelle alerte/i }).click()
     expect(await screen.findByText('Nouvelle alerte KPI')).toBeInTheDocument()
   })
+
+  // VX236 — la dernière valeur d'une alerte DSO ouvre la balance âgée (source
+  // réelle du KPI) au lieu de rester un chiffre affiché sans suite.
+  it('VX236 : la dernière valeur (DSO) est un lien vers la balance âgée', async () => {
+    renderPage(<KpiAlertesPage />)
+    const link = await screen.findByRole('link', { name: '45.00' })
+    expect(link).toHaveAttribute('href', '/reporting/balance-agee')
+  })
 })
