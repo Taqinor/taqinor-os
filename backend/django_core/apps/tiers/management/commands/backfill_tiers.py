@@ -1,7 +1,8 @@
 """ARC18/19 — Backfill idempotent du répertoire unifié ``Tiers``.
 
 Pour chaque enregistrement historique porteur d'une identité (crm.Client,
-stock.Fournisseur — ARC18 ; compta.Partenaire, rh.DossierEmploye — ARC19),
+stock.Fournisseur — ARC18 ; crm.Partenaire [ODX13 : ex-compta.Partenaire],
+rh.DossierEmploye — ARC19),
 crée OU rattache son ``Tiers`` miroir, pose les drapeaux de rôle et écrit le
 lien retour ``<modèle>.tiers``. La déduplication (email/ICE) est STRICTEMENT
 company-scopée : deux sociétés partageant un même email/ICE gardent des Tiers
@@ -77,7 +78,8 @@ def _fields_fournisseur(fournisseur):
 
 
 def _fields_partenaire(partenaire):
-    """ARC19 — Champs d'identité miroités depuis un ``compta.Partenaire``."""
+    """ARC19 — Champs d'identité miroités depuis un ``crm.Partenaire`` (ODX13
+    — rapatrié de compta, même modèle historique)."""
     return {
         'nom': partenaire.nom or '',
         'roles': ('is_partenaire',),
@@ -107,7 +109,7 @@ def _fields_dossier(dossier):
 _SOURCES = [
     ('crm', 'Client', _fields_client),          # ARC18
     ('stock', 'Fournisseur', _fields_fournisseur),  # ARC18
-    ('compta', 'Partenaire', _fields_partenaire),   # ARC19
+    ('crm', 'Partenaire', _fields_partenaire),      # ARC19 (ODX13: ex-compta)
     ('rh', 'DossierEmploye', _fields_dossier),      # ARC19
 ]
 
