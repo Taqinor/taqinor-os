@@ -13,7 +13,7 @@ test('E11: doublons view renders and merging a cluster completes', async ({ page
   for (let i = 0; i < 2; i += 1) {
     await page.getByRole('button', { name: '+ Nouveau lead' }).click()
     const modal = page.locator('[role="dialog"]').filter({ has: page.locator('.modal-title') })
-    await modal.locator('input.form-control').first().fill(name)
+    await modal.locator('#lf-nom').fill(name)
     await modal.locator('.form-group', { hasText: 'Téléphone' }).locator('input').fill(phone)
     await modal.getByRole('button', { name: 'Créer le lead' }).click()
     await expect(page.locator('[role="dialog"]').filter({ has: page.locator('.modal-title') })).toHaveCount(0)
