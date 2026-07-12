@@ -101,6 +101,12 @@ app.conf.beat_schedule = {
         'task': 'notifications.reveiller_snoozes',
         'schedule': crontab(minute='*/30'),
     },
+    # VX209(c) — purge/archive quotidienne des notifications anciennes (lues
+    # > 60 j supprimées, non-lues > 60 j archivées) ; heure creuse.
+    'notifications-purge-anciennes': {
+        'task': 'notifications.purge_notifications_anciennes',
+        'schedule': crontab(hour=2, minute=45),
+    },
     # NTPLT10 — filet beat de l'outbox : livre les événements pending/failed
     # échus (en plus de l'enqueue on_commit immédiat) toutes les 5 minutes.
     'core-dispatch-outbox': {

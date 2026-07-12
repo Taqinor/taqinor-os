@@ -2194,7 +2194,7 @@ VX83-86/99-101 (round 3, non construit) — transcrire chaque @after tel quel.**
   digest n'incrémente pas le badge d'actions ; « Tout lu » puis « Annuler » restaure l'état exact ;
   3 notifs même lien = 1 ligne pliée. (T2 — L, sonnet) (@lane: backend/notify — @with VX14)
 
-- [ ] VX209 — **[BACKEND] `notify()` devient humain : heures calmes, bon event de mention, (@lane: backend/notify)
+- [x] VX209 — **[BACKEND] `notify()` devient humain : heures calmes, bon event de mention, (@lane: backend/notify)
   purge, émetteurs manquants.** Quatre défauts du même moteur : (a) `est_hors_fenetre_silence()`
   (`selectors.py:23`) n'est consulté que par le marketing ET la compta (`compta/services.py:6083`),
   jamais par `notify()` lui-même — un push/email de `sweep_daily` ou d'escalade part à 23 h ou un
@@ -3207,6 +3207,8 @@ droite)**
 ---
 
 ## DONE LOG (agent appends one plain-language line per completed task)
+
+- 2026-07-12 — **VX209 — `notify()` heures calmes + bonne @mention + purge + 2 events morts émis.** (a) `notify(respect_quiet_hours=True` par défaut) tait désormais email/WhatsApp/push (jamais l'in-app) pour un événement NON-critique quand l'instant tombe dans la fenêtre de silence de la société (`selectors.est_hors_fenetre_silence`) — un `INCIDENT_CRITICAL` part toujours. (b) `_notify_mentions` (`apps/records/views.py`) émet enfin `CHAT_MENTION` au lieu de `LEAD_ASSIGNED` — coupait silencieusement les mentions si un utilisateur désactivait `lead_assigned`, et `selectors.mentions_non_lues` (VX83 « Ma file ») filtrait déjà sur `CHAT_MENTION` sans jamais rien trouver. (c) tâche Celery `purge_notifications_anciennes` (nouvelle, planifiée dans `beat_schedule` + routée `scheduled`) : lues > 60 j supprimées, non-lues > 60 j archivées (`Notification.archived`, migration additive `0038`) ; `list()` bornée 90 j + non-archivées (les autres actions — détail/read/unread/read-all — restent sur la queryset complète). (d) `SAV_ACTIVITE_DUE` (activités `sav.TicketActiviteAFaire` échues non faites) et `STOCK_EXPIRATION_SOON` (lots `stock.LotEntrepot` proches péremption avec reliquat) sont désormais réellement émis par `sweep_daily` ; warranty/maintenance routent vers le technicien responsable du chantier quand il existe (repli managers inchangé). Corrigé 3 tests existants rendus flaky par le nouveau défaut heures-calmes (QW8/VX76/YEVNT5 — événements non-critiques testés sans horloge figée) en gelant l'horloge sur un jour ouvré en journée. Files : `apps/notifications/{models,services,sweeps,views}.py` + migration `0038_vx209_notification_archived.py`, `apps/records/views.py`, `erp_agentique/celery.py`, `erp_agentique/settings/base.py`, nouveau `apps/notifications/tests_vx209_notify_humain.py` + tests ajoutés dans `apps/records/tests.py`.
 
 - 2026-07-12 — **VX245 (already present)** — verified: `build_ics` extracted as pure function (`apps/reporting/calendar.py:366`), `GET /crm/appointments/<id>/ics/` endpoint referenced in `apps/crm/services.py:2529`, WhatsApp confirmation + invoice-reminder message service present; commit `94060cca` on main. Ticked, no rebuild.
 

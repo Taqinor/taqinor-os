@@ -385,12 +385,35 @@ def notify_many(recipients, event_type, title, body='', link=None, company=None,
     return created
 
 
+def _in_quiet_hours_non_critique(event_type, company, respect_quiet_hours):
+    """VX209(a) — True si les canaux HORS-APP de `event_type` doivent être
+    tus MAINTENANT pour `company` : le flag est actif, l'événement n'est PAS
+    critique (`severity.severity_of`), et l'instant présent tombe dans la
+    fenêtre de silence (nuit ou jour férié/non-ouvré,
+    `selectors.est_hors_fenetre_silence`). L'in-app n'est JAMAIS concerné —
+    seul l'appelant de `notify()` décide d'en tenir compte pour email/
+    WhatsApp/push. Best-effort : toute erreur retombe sur `False` (ne JAMAIS
+    faire échouer une notification pour une histoire d'heures calmes)."""
+    if not respect_quiet_hours:
+        return False
+    try:
+        from . import severity as severity_module
+        if severity_module.severity_of(event_type) == severity_module.CRITIQUE:
+            return False
+        from . import selectors as notifications_selectors
+        return notifications_selectors.est_hors_fenetre_silence(
+            timezone.now(), company)
+    except Exception:  # pragma: no cover - défensif
+        return False
+
+
 def notify(user, event_type, title, body='', link=None, company=None,
-           skip_email=False, reason=''):
+           skip_email=False, reason='', respect_quiet_hours=True):
     """Émet une notification pour `user` en respectant ses préférences.
 
-    - Crée la ligne in-app si le canal in-app est activé (défaut : oui).
-    - Diffuse vers email/WhatsApp si le canal est activé ET configuré
+    - Crée la ligne in-app si le canal in-app est activé (défaut : oui) —
+      TOUJOURS immédiate, jamais différée par les heures calmes.
+    - Diffuse vers email/WhatsApp/push si le canal est activé ET configuré
       (best-effort, jamais d'exception remontée).
 
     `event_type` doit appartenir à `EventType`. La société est déduite de
@@ -407,6 +430,15 @@ def notify(user, event_type, title, body='', link=None, company=None,
     QUAND il la connaît (ex. `_managers(company)` → `'manager'`). Une valeur
     hors énumération est silencieusement ignorée (jamais une exception) ;
     vide = raison non classée, comportement historique inchangé.
+
+    `respect_quiet_hours` (VX209(a), défaut `True`) : quand l'événement n'est
+    PAS classé `'critique'` (`severity.EVENT_SEVERITY`) et que l'instant
+    présent tombe dans la fenêtre de silence de `company` (nuit stricte ou
+    jour férié/non-ouvré — `selectors.est_hors_fenetre_silence`), les canaux
+    HORS-APP (email/WhatsApp/push) sont SKIPPÉS pour cet appel — la ligne
+    in-app reste créée normalement. Un événement `'critique'` part toujours,
+    à toute heure. Passer `False` préserve le comportement historique (envoi
+    à toute heure) pour un appelant qui gère déjà sa propre fenêtre.
     """
     if user is None or not getattr(user, 'pk', None):
         return None
@@ -418,6 +450,8 @@ def notify(user, event_type, title, body='', link=None, company=None,
     prefs = resolve_prefs(user, event_type)
     from .models import NotificationReason
     reason = reason if reason in NotificationReason.values else ''
+    quiet_now = _in_quiet_hours_non_critique(
+        event_type, company, respect_quiet_hours)
 
     created = None
     if prefs.get('in_app'):
@@ -433,6 +467,12 @@ def notify(user, event_type, title, body='', link=None, company=None,
             _audit_notify(
                 user, company, event_type, channel='in_app', ok=True,
                 instance=created)
+
+    if quiet_now:
+        # VX209(a) — heures calmes : in-app livré ci-dessus, canaux hors-app
+        # tus pour ce cycle (jamais de file d'attente/retry dans ce moteur —
+        # comportement identique à un opt-out ponctuel du canal).
+        return created
 
     # Diffusions hors-app : best-effort, chacune isolée.
     if prefs.get('email') and not skip_email:

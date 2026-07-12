@@ -531,6 +531,7 @@ CELERY_TASK_ROUTES = {
     'notifications.weekly_digest': {'queue': 'scheduled'},
     'notifications.sweep_daily': {'queue': 'scheduled'},
     'notifications.reveiller_snoozes': {'queue': 'scheduled'},
+    'notifications.purge_notifications_anciennes': {'queue': 'scheduled'},
     'automation.time_triggers_daily': {'queue': 'scheduled'},
     'reporting.email_saved_reports': {'queue': 'scheduled'},
     'reporting.evaluate_kpi_alertes': {'queue': 'scheduled'},

@@ -748,6 +748,22 @@ class TestComments(TestCase):
         self.assertIsNotNone(notif)
         self.assertEqual(notif.link, f'/crm/leads?lead={self.lead.id}')
 
+    def test_mention_emits_chat_mention_event_type(self):
+        """VX209(b) — une @mention émet `CHAT_MENTION` (pas `LEAD_ASSIGNED`) :
+        couper la préférence d'assignation de lead ne doit plus couper
+        silencieusement les mentions, et `notifications.selectors.
+        mentions_non_lues` (VX83, « Ma file ») filtre justement sur
+        `CHAT_MENTION`."""
+        from apps.notifications.models import EventType, Notification
+        res = self.api.post('/api/django/records/comments/', {
+            'model': 'crm.lead', 'id': self.lead.id,
+            'body': 'Regarde ça @cmt_admin',
+        }, format='json')
+        self.assertEqual(res.status_code, 201, res.data)
+        notif = Notification.objects.filter(recipient=self.admin).first()
+        self.assertIsNotNone(notif)
+        self.assertEqual(notif.event_type, EventType.CHAT_MENTION)
+
     def test_mention_own_name_no_self_notification(self):
         """@auto-mention → pas de notification envoyée à soi-même."""
         from apps.notifications.models import Notification
