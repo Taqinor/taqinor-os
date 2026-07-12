@@ -17,12 +17,12 @@ export function ChartTooltip({ active, payload, label, format, labelFormatter })
         <div
           key={i}
           className="flex items-center gap-1.5 tabular-nums"
-          style={{ color: p.color ?? CHART_TOKENS.info }}
+          style={{ color: p.color ?? p.payload?.color ?? CHART_TOKENS.info }}
         >
           <span
             aria-hidden="true"
             className="inline-block size-2 shrink-0 rounded-[2px]"
-            style={{ background: p.color ?? CHART_TOKENS.info }}
+            style={{ background: p.color ?? p.payload?.color ?? CHART_TOKENS.info }}
           />
           <span className="text-muted-foreground">{p.name}</span>
           <span className="ml-auto pl-2 font-semibold text-foreground">

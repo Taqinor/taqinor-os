@@ -8,8 +8,9 @@ import {
   Button, Badge, Skeleton, EmptyState, IconButton,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose,
 } from '../ui'
-// VX28 — un seul langage de graphique (kit ui/charts) + un seul PageHeader.
-import { BarArrondie } from '../ui/charts'
+// VX28/VX148 — un seul langage de graphique (kit ui/charts) + un seul
+// PageHeader ; `ChartEmpty` pour le graphe sans donnée (au lieu d'un <p> nu).
+import { BarArrondie, ChartEmpty } from '../ui/charts'
 import { PageHeader } from '../ui/PageHeader'
 import { formatDateTime, formatNumber } from '../lib/format'
 
@@ -405,9 +406,7 @@ export default function Journal() {
               {loading && !stats ? (
                 <Skeleton className="h-48 w-full" />
               ) : !hasChartData ? (
-                <p className="py-8 text-center text-sm text-muted-foreground">
-                  Aucune activité sur cette période.
-                </p>
+                <ChartEmpty title="Aucune activité" description="Aucune activité sur cette période." />
               ) : (
                 <BarArrondie
                   data={chartData}
